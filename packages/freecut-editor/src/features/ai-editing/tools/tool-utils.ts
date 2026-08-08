@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import type { AiEditingTool, AiEditingToolResult, AiEditingToolValidation } from '../types'
+import type {
+  AiEditingTool,
+  AiEditingToolExecutionContext,
+  AiEditingToolResult,
+  AiEditingToolValidation,
+} from '../types'
 
 type JsonSchema = AiEditingTool['inputSchema']
 
@@ -22,7 +27,10 @@ export function defineAiEditingTool<S extends z.ZodType>(definition: {
   inputSchema: JsonSchema
   schema: S
   summarize: (args: z.infer<S>) => string
-  execute: (args: z.infer<S>) => Promise<AiEditingToolResult> | AiEditingToolResult
+  execute: (
+    args: z.infer<S>,
+    context?: AiEditingToolExecutionContext,
+  ) => Promise<AiEditingToolResult> | AiEditingToolResult
 }): AiEditingTool {
   return {
     id: definition.id,
@@ -33,6 +41,6 @@ export function defineAiEditingTool<S extends z.ZodType>(definition: {
     inputSchema: definition.inputSchema,
     validate: (value) => zodValidation(definition.schema, value),
     summarize: (args) => definition.summarize(args as z.infer<S>),
-    execute: (args) => definition.execute(args as z.infer<S>),
+    execute: (args, context) => definition.execute(args as z.infer<S>, context),
   }
 }

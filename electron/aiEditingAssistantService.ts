@@ -25,6 +25,7 @@ const MAX_TOOL_ARGUMENT_LENGTH = 50_000
 const MAX_TOOL_CALLS_PER_MESSAGE = 3
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/
 const TOOL_CALL_ID_PATTERN = /^[\x21-\x7E]{1,256}$/
+const REASONING_EFFORTS = new Set(['low', 'high', 'xhigh', 'max'])
 const activeRequests = new Map<string, AbortController>()
 
 interface StoredAssistantConfig {
@@ -180,6 +181,7 @@ function validateTools(input: AiEditingAssistantGenerateInput): void {
 function validateGenerateInput(input: AiEditingAssistantGenerateInput): void {
   if (!input || typeof input !== 'object') throw new Error('请求无效，请重试。')
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(input.requestId)) throw new Error('请求无效，请重试。')
+  if (!REASONING_EFFORTS.has(input.reasoningEffort)) throw new Error('思考强度无效，请重新选择。')
   if (!Array.isArray(input.messages) || input.messages.length === 0 || input.messages.length > MAX_MESSAGE_COUNT) {
     throw new Error('剪辑助手上下文无效，请重新发起请求。')
   }
@@ -361,6 +363,7 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
       messages: toChatMessages(input.messages),
       max_tokens: input.maxTokens,
       temperature: input.temperature,
+      reasoning_effort: input.reasoningEffort,
     }
     const mode = input.mode ?? 'auto'
     const tools = toChatTools(input)

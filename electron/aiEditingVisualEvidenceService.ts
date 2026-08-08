@@ -21,6 +21,7 @@ function sampleTimes(durationSeconds: number, maxSamples: number): number[] {
 export async function analyzeVisualEvidence(
   request: WorkspaceVisualAnalysisRequest,
   signal?: AbortSignal,
+  onProgress?: (progress: { label: string; percent: number }) => void,
 ): Promise<WorkspaceVisualAnalysisResult> {
   const source = await stat(request.filePath)
   if (!source.isFile()) throw new Error('素材文件无效')
@@ -31,10 +32,14 @@ export async function analyzeVisualEvidence(
   const maxSamples = Math.max(1, Math.min(MAX_SAMPLES, Math.round(requestedMaxSamples)))
   const isImage = IMAGE_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())
   const samples: WorkspaceVisualAnalysisResult['samples'] = []
-  for (const timeSeconds of sampleTimes(request.durationSeconds, maxSamples)) {
+  const times = sampleTimes(request.durationSeconds, maxSamples)
+  onProgress?.({ label: '正在准备画面分析', percent: 0 })
+  for (const [index, timeSeconds] of times.entries()) {
     signal?.throwIfAborted()
+    onProgress?.({ label: `正在理解画面 ${index + 1}/${times.length}`, percent: index / times.length * 100 })
     const tags = await analyzeContentTagsForFrame(request.filePath, isImage ? undefined : timeSeconds, signal)
     samples.push({ timeSeconds, tags })
+    onProgress?.({ label: `已理解画面 ${index + 1}/${times.length}`, percent: (index + 1) / times.length * 100 })
   }
 
   const yolo = SPECIALIZED_SEGMENTATION_MODELS.find((model) => model.id === 'yolo26s-seg')!

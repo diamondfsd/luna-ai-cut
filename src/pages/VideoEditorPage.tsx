@@ -3,6 +3,7 @@ import type {
   EmbeddedAiAssistantConfigInput,
   EmbeddedAiAssistantGenerateInput,
   EmbeddedMediaSource,
+  EmbeddedTaskProgress,
   ImportMediaFiles,
 } from '@freecut/embedded'
 
@@ -111,7 +112,10 @@ export function VideoEditorPage() {
     if (!open) pendingImportRef.current = null
   }, [])
 
-  const handleTranscribeMedia = useCallback(async (source: EmbeddedMediaSource) => {
+  const handleTranscribeMedia = useCallback(async (
+    source: EmbeddedMediaSource,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+  ) => {
     const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
       ?? findImportedSourcePath(loadImportedSourcePaths(), source)
     if (!filePath) throw new Error('这段素材需要重新导入后才能使用本地口播识别。')
@@ -119,36 +123,57 @@ export function VideoEditorPage() {
       throw new Error('这段素材的时长尚未准备完成，请稍后再试。')
     }
 
-    const result = await window.luna.workspace.transcribeSubtitles({
-      requestId: crypto.randomUUID(),
-      filePath,
-      startMs: 0,
-      endMs: Math.max(1, Math.round(source.durationSeconds * 1_000)),
-      language: 'auto',
+    const requestId = crypto.randomUUID()
+    const unsubscribe = window.luna.onWorkspaceSubtitleProgress((progress) => {
+      if (progress.requestId !== requestId) return
+      onProgress?.({ label: progress.label, percent: progress.percent })
     })
-    return {
-      language: result.language,
-      cues: result.cues.map((cue) => ({
-        startSeconds: cue.startMs / 1_000,
-        endSeconds: cue.endMs / 1_000,
-        text: cue.text,
-      })),
-      model: { id: result.model.id, version: result.model.version },
-      sourceFingerprint: result.sourceFingerprint,
+    try {
+      const result = await window.luna.workspace.transcribeSubtitles({
+        requestId,
+        filePath,
+        startMs: 0,
+        endMs: Math.max(1, Math.round(source.durationSeconds * 1_000)),
+        language: 'auto',
+      })
+      return {
+        language: result.language,
+        cues: result.cues.map((cue) => ({
+          startSeconds: cue.startMs / 1_000,
+          endSeconds: cue.endMs / 1_000,
+          text: cue.text,
+        })),
+        model: { id: result.model.id, version: result.model.version },
+        sourceFingerprint: result.sourceFingerprint,
+      }
+    } finally {
+      unsubscribe()
     }
   }, [])
 
-  const handleAnalyzeMediaVisual = useCallback(async (source: EmbeddedMediaSource) => {
+  const handleAnalyzeMediaVisual = useCallback(async (
+    source: EmbeddedMediaSource,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+  ) => {
     const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
       ?? findImportedSourcePath(loadImportedSourcePaths(), source)
       ?? await window.luna.freecutWorkspace.getMediaSourcePath(source.mediaId)
     if (!filePath) throw new Error('这段素材没有可用的原始文件，无法进行本地画面分析。')
-    return window.luna.workspace.analyzeVisualEvidence({
-      requestId: crypto.randomUUID(),
-      filePath,
-      durationSeconds: Math.max(0.1, source.durationSeconds),
-      maxSamples: AI_VISUAL_ANALYSIS_SAMPLE_LIMIT,
+    const requestId = crypto.randomUUID()
+    const unsubscribe = window.luna.onWorkspaceSegmentationProgress((progress) => {
+      if (progress.requestId !== requestId) return
+      onProgress?.({ label: progress.label, percent: progress.percent })
     })
+    try {
+      return await window.luna.workspace.analyzeVisualEvidence({
+        requestId,
+        filePath,
+        durationSeconds: Math.max(0.1, source.durationSeconds),
+        maxSamples: AI_VISUAL_ANALYSIS_SAMPLE_LIMIT,
+      })
+    } finally {
+      unsubscribe()
+    }
   }, [])
 
   const handleGetAiAssistantConfig = useCallback(() => window.luna.aiEditingAssistant.getConfig(), [])

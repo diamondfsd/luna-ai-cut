@@ -14,8 +14,11 @@ const applyWorkspaceEditProgram = defineAiEditingTool({
   inputSchema: editProgramToolInputSchema,
   schema: z.object({ program: editProgramSchema }),
   summarize: (args) => `执行编辑程序：${args.program.intent}`,
-  execute: async ({ program }) => {
+  execute: async ({ program }, context) => {
+    context?.signal?.throwIfAborted()
+    context?.reportProgress({ label: '正在校验剪辑方案', percent: 10 })
     const result = await applyEditProgram(program as EditProgram)
+    context?.reportProgress({ label: '正在保存剪辑结果', percent: 90 })
     return {
       ok: true,
       message: result.committed ? '编辑程序已完整应用。' : '编辑程序预演通过，尚未修改时间轴。',

@@ -25,6 +25,11 @@ declare module '@freecut/embedded' {
     sourceFingerprint: { size: number; modifiedAtMs: number }
   }
 
+  export interface EmbeddedTaskProgress {
+    label: string
+    percent: number | null
+  }
+
   export interface EmbeddedAiAssistantConfig {
     baseUrl: string
     model: string
@@ -67,7 +72,10 @@ declare module '@freecut/embedded' {
     tools?: EmbeddedAiAssistantToolDefinition[]
     maxTokens: number
     temperature: number
+    reasoningEffort: EmbeddedAiAssistantReasoningEffort
   }
+
+  export type EmbeddedAiAssistantReasoningEffort = 'low' | 'high' | 'xhigh' | 'max'
 
   export interface EmbeddedAiAssistantGenerateResult {
     mode: 'tools' | 'json' | 'fallback'
@@ -77,8 +85,14 @@ declare module '@freecut/embedded' {
 
   export interface FreeCutEditorProps {
     onRequestMediaImport?: (importFiles: ImportMediaFiles) => void
-    onTranscribeMedia?: (source: EmbeddedMediaSource) => Promise<EmbeddedTranscriptResult>
-    onAnalyzeMediaVisual?: (source: EmbeddedMediaSource) => Promise<EmbeddedVisualEvidence>
+    onTranscribeMedia?: (
+      source: EmbeddedMediaSource,
+      onProgress?: (progress: EmbeddedTaskProgress) => void,
+    ) => Promise<EmbeddedTranscriptResult>
+    onAnalyzeMediaVisual?: (
+      source: EmbeddedMediaSource,
+      onProgress?: (progress: EmbeddedTaskProgress) => void,
+    ) => Promise<EmbeddedVisualEvidence>
     onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
     onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
     onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>

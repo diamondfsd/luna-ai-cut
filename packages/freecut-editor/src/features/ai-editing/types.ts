@@ -12,6 +12,16 @@ export interface AiEditingToolResult {
   data?: unknown
 }
 
+export interface AiEditingToolProgress {
+  label: string
+  percent: number | null
+}
+
+export interface AiEditingToolExecutionContext {
+  signal?: AbortSignal
+  reportProgress(progress: AiEditingToolProgress): void
+}
+
 export type AiEditingToolValidation =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; error: string }
@@ -31,7 +41,10 @@ export interface AiEditingTool {
   }
   validate(args: unknown): AiEditingToolValidation
   summarize(args: Record<string, unknown>): string
-  execute(args: Record<string, unknown>): Promise<AiEditingToolResult> | AiEditingToolResult
+  execute(
+    args: Record<string, unknown>,
+    context?: AiEditingToolExecutionContext,
+  ): Promise<AiEditingToolResult> | AiEditingToolResult
 }
 
 /**
@@ -64,6 +77,8 @@ export interface AiEditingToolActivity {
   title: string
   status: 'running' | 'succeeded' | 'failed'
   message?: string
+  progressLabel?: string
+  progressPercent?: number | null
 }
 
 export interface AiEditingResponse {

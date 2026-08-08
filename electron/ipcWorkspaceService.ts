@@ -402,8 +402,16 @@ export function register(): void {
     const task = segmentationTasks.begin(event.sender.id, request.requestId)
     const finishForegroundSegmentation = beginForegroundSegmentation('yolo26s-seg')
     watchSender(event.sender)
+    const reportProgress = (progress: { label: string; percent: number }): void => {
+      if (!segmentationTasks.isActive(task) || event.sender.isDestroyed()) return
+      event.sender.send('workspace:segmentation-progress', {
+        requestId: request.requestId,
+        phase: 'recognizing',
+        ...progress,
+      })
+    }
     try {
-      return await analyzeVisualEvidence(request, task.controller.signal)
+      return await analyzeVisualEvidence(request, task.controller.signal, reportProgress)
     } finally {
       segmentationTasks.finish(task)
       finishForegroundSegmentation()

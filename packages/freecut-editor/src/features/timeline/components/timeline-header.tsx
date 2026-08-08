@@ -70,6 +70,11 @@ function getTimelineHeaderButtonClass(active = false): string {
     : 'editor-toolbar-button timeline-header-button'
 }
 
+function toolTooltip(label: string, ...bindings: string[]): string {
+  const shortcuts = bindings.map((binding) => formatHotkeyBinding(binding)).filter(Boolean)
+  return shortcuts.length > 0 ? `${label} (${shortcuts.join(' / ')})` : label
+}
+
 function TrimEditIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
@@ -552,7 +557,7 @@ export const TimelineHeader = memo(function TimelineHeader({
               className={getTimelineHeaderButtonClass(activeTool === 'select')}
               onClick={() => setActiveTool('select')}
               aria-label={t('timeline.header.selectTool')}
-              data-tooltip={t('timeline.header.selectToolTooltip')}
+              data-tooltip={toolTooltip(t('timeline.header.selectToolTooltip'), hotkeys.SELECTION_TOOL)}
             >
               <MousePointer2 className="w-3.5 h-3.5" />
             </Button>
@@ -564,7 +569,7 @@ export const TimelineHeader = memo(function TimelineHeader({
               className={getTimelineHeaderButtonClass(activeTool === 'trim-edit')}
               onClick={() => setActiveTool(activeTool === 'trim-edit' ? 'select' : 'trim-edit')}
               aria-label={t('timeline.header.trimEditTool')}
-              data-tooltip={t('timeline.header.trimEditToolTooltip')}
+              data-tooltip={toolTooltip(t('timeline.header.trimEditToolTooltip'), hotkeys.TRIM_EDIT_TOOL)}
             >
               <TrimEditIcon className="w-3.5 h-3.5" />
             </Button>
@@ -576,7 +581,7 @@ export const TimelineHeader = memo(function TimelineHeader({
               className={getTimelineHeaderButtonClass(activeTool === 'razor')}
               onClick={() => setActiveTool(activeTool === 'razor' ? 'select' : 'razor')}
               aria-label={t('timeline.header.razorTool')}
-              data-tooltip={t('timeline.header.razorToolTooltip')}
+              data-tooltip={toolTooltip(t('timeline.header.razorToolTooltip'), hotkeys.RAZOR_TOOL)}
             >
               <Scissors className="w-3.5 h-3.5 -rotate-90" />
             </Button>
@@ -590,7 +595,10 @@ export const TimelineHeader = memo(function TimelineHeader({
                 setActiveTool(activeTool === 'rate-stretch' ? 'select' : 'rate-stretch')
               }
               aria-label={t('timeline.header.rateStretchTool')}
-              data-tooltip={t('timeline.header.rateStretchToolTooltip')}
+              data-tooltip={toolTooltip(
+                t('timeline.header.rateStretchToolTooltip'),
+                hotkeys.RATE_STRETCH_TOOL,
+              )}
             >
               <Gauge className="w-3.5 h-3.5" />
             </Button>
@@ -603,7 +611,11 @@ export const TimelineHeader = memo(function TimelineHeader({
                     style={{ height: EDITOR_LAYOUT_CSS_VALUES.toolbarButtonSize }}
                     className={`${getTimelineHeaderButtonClass(activeTool === 'slip' || activeTool === 'slide')} gap-1 px-2`}
                     aria-label={t('timeline.header.slipSlideTools')}
-                    data-tooltip={t('timeline.header.slipSlideToolsTooltip')}
+                    data-tooltip={toolTooltip(
+                      t('timeline.header.slipSlideToolsTooltip'),
+                      hotkeys.SLIP_TOOL,
+                      hotkeys.SLIDE_TOOL,
+                    )}
                   >
                     <span className="flex items-center gap-1">
                       <span className="inline-flex items-center justify-center">

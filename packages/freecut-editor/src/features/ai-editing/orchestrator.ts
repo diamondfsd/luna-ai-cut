@@ -100,6 +100,7 @@ export interface AiEditingRunOptions {
   onToken?: (delta: string, fullText: string) => void
   onToolActivity?: (activity: AiEditingToolActivity) => void
   adapter?: LlmAdapter
+  reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
@@ -119,8 +120,31 @@ async function executeToolCall(
   if (!validation.ok) return toolError(tool.id, validation.error)
 
   const activityId = `${callIndex}-${tool.id}`
-  options.onToolActivity?.({ id: activityId, toolId: tool.id, title: tool.title, status: 'running' })
+  const tracksProgress = tool.execution === 'async' || tool.risk === 'analysis'
+  options.onToolActivity?.({
+    id: activityId,
+    toolId: tool.id,
+    title: tool.title,
+    status: 'running',
+    ...(tracksProgress
+      ? { progressLabel: `正在${tool.title}`, progressPercent: null }
+      : {}),
+  })
   await yieldForUi()
+
+  const reportProgress = (progress: { label: string; percent: number | null }): void => {
+    const percent = progress.percent === null
+      ? null
+      : Math.max(0, Math.min(100, Math.round(progress.percent)))
+    options.onToolActivity?.({
+      id: activityId,
+      toolId: tool.id,
+      title: tool.title,
+      status: 'running',
+      progressLabel: progress.label,
+      progressPercent: percent,
+    })
+  }
 
   let result: AiEditingToolResult
   try {
@@ -128,13 +152,19 @@ async function executeToolCall(
       result = useTimelineCommandStore.getState().executeTransaction(
         { type: 'AI_EDITING_TOOL', payload: { toolId: tool.id } },
         () => {
-          const execution = tool.execute(validation.value)
+          const execution = tool.execute(validation.value, {
+            signal: options.signal,
+            reportProgress,
+          })
           if (execution instanceof Promise) throw new Error('剪辑操作未能及时完成。')
           return execution
         },
       )
     } else {
-      result = await tool.execute(validation.value)
+      result = await tool.execute(validation.value, {
+        signal: options.signal,
+        reportProgress,
+      })
     }
     if (result.ok && tool.risk === 'edit') await saveTimelineAfterEdit()
   } catch (error) {
@@ -147,6 +177,9 @@ async function executeToolCall(
     title: tool.title,
     status: result.ok ? 'succeeded' : 'failed',
     message: result.message,
+    ...(tracksProgress && result.ok
+      ? { progressLabel: `${tool.title}已完成`, progressPercent: 100 }
+      : {}),
   })
   return { toolId: tool.id, result }
 }
@@ -228,6 +261,7 @@ async function runJsonToolLoop(
     const raw = rawFromPreviousRequest ?? await adapter.generate(messages, {
       maxTokens: MAX_TOKENS,
       temperature: 0,
+      reasoningEffort: options.reasoningEffort,
       signal: options.signal,
       onToken: options.onToken,
     })
@@ -295,6 +329,7 @@ async function runNativeToolLoop(
     const response = await adapter.generateWithTools(messages, catalog.definitions, {
       maxTokens: MAX_TOKENS,
       temperature: 0,
+      reasoningEffort: options.reasoningEffort,
       signal: options.signal,
     })
     if (response.mode === 'fallback') {

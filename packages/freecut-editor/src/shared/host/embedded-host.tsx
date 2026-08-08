@@ -28,6 +28,11 @@ export interface EmbeddedVisualEvidence {
   sourceFingerprint: { size: number; modifiedAtMs: number }
 }
 
+export interface EmbeddedTaskProgress {
+  label: string
+  percent: number | null
+}
+
 export interface EmbeddedAiAssistantConfig {
   baseUrl: string
   model: string
@@ -70,7 +75,10 @@ export interface EmbeddedAiAssistantGenerateInput {
   tools?: EmbeddedAiAssistantToolDefinition[]
   maxTokens: number
   temperature: number
+  reasoningEffort: EmbeddedAiAssistantReasoningEffort
 }
+
+export type EmbeddedAiAssistantReasoningEffort = 'low' | 'high' | 'xhigh' | 'max'
 
 export interface EmbeddedAiAssistantGenerateResult {
   mode: 'tools' | 'json' | 'fallback'
@@ -88,8 +96,14 @@ export interface EmbeddedAiAssistantBridge {
 export interface EmbeddedHostBridge {
   requestMediaImport?: (importFiles: ImportMediaFiles) => void
   /** Runs the host's local speech model. It never receives an editor path. */
-  transcribeMedia?: (source: EmbeddedMediaSource) => Promise<EmbeddedTranscriptResult>
-  analyzeMediaVisual?: (source: EmbeddedMediaSource) => Promise<EmbeddedVisualEvidence>
+  transcribeMedia?: (
+    source: EmbeddedMediaSource,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+  ) => Promise<EmbeddedTranscriptResult>
+  analyzeMediaVisual?: (
+    source: EmbeddedMediaSource,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+  ) => Promise<EmbeddedVisualEvidence>
   /** The remote model connection is implemented by the trusted Electron host. */
   aiAssistant?: EmbeddedAiAssistantBridge
 }

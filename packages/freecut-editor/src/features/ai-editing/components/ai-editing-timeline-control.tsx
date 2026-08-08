@@ -21,8 +21,8 @@ export const AiEditingTimelineControl = memo(function AiEditingTimelineControl({
       aria-pressed={open}
       data-tooltip="剪辑助手"
     >
-      <span className="pt-1 text-[10px] font-semibold leading-none" aria-hidden="true">AI</span>
-      <Sparkles className="absolute right-0.5 top-0.5 h-2.5 w-2.5" aria-hidden="true" />
+      <span className="pt-0.5 text-[13px] font-semibold leading-none" aria-hidden="true">AI</span>
+      <Sparkles className="absolute right-0.5 top-0.5 h-2 w-2" aria-hidden="true" />
     </Button>
   )
 })

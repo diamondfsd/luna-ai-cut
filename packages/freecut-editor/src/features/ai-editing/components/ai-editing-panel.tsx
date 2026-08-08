@@ -37,6 +37,31 @@ const ToolActivityRow = memo(function ToolActivityRow({ activity }: { activity: 
       {status}
       <div className="min-w-0 flex-1">
         <p className="text-foreground">{activity.title}</p>
+        {activity.progressPercent !== undefined && (
+          <div className="mt-1.5 space-y-1">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <span className="min-w-0 truncate">{activity.progressLabel ?? '正在处理'}</span>
+              {activity.progressPercent !== null && <span className="shrink-0 tabular-nums">{activity.progressPercent}%</span>}
+            </div>
+            <div
+              className="h-1 overflow-hidden rounded-full bg-secondary"
+              role="progressbar"
+              aria-label={activity.progressLabel ?? activity.title}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={activity.progressPercent ?? undefined}
+            >
+              <div
+                className={activity.progressPercent === null
+                  ? 'h-full w-full animate-pulse bg-primary/55'
+                  : 'h-full bg-primary transition-[width] duration-200'}
+                style={activity.progressPercent === null
+                  ? undefined
+                  : { width: `${activity.progressPercent}%` }}
+              />
+            </div>
+          </div>
+        )}
         {activity.message && <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{activity.message}</p>}
       </div>
     </li>
@@ -56,6 +81,38 @@ const ToolActivityCard = memo(function ToolActivityCard({ activities }: { activi
   )
 })
 
+const PhaseProgressCard = memo(function PhaseProgressCard({
+  label,
+  percent,
+}: {
+  label: string
+  percent: number | null
+}) {
+  return (
+    <section className="rounded-lg border border-border bg-secondary/30 p-2.5" aria-live="polite">
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>{label}</span>
+        {percent !== null && <span className="tabular-nums">{Math.round(percent)}%</span>}
+      </div>
+      <div
+        className="mt-1.5 h-1 overflow-hidden rounded-full bg-secondary"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent ?? undefined}
+      >
+        <div
+          className={percent === null
+            ? 'h-full w-full animate-pulse bg-primary/55'
+            : 'h-full bg-primary transition-[width] duration-200'}
+          style={percent === null ? undefined : { width: `${percent}%` }}
+        />
+      </div>
+    </section>
+  )
+})
+
 type ConnectionState = 'checking' | 'ready' | 'needs-setup' | 'unavailable'
 
 interface AiEditingPanelProps {
@@ -67,6 +124,8 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const loadPercent = useAiEditingStore((state) => state.loadPercent)
   const messages = useAiEditingStore((state) => state.messages)
   const toolActivities = useAiEditingStore((state) => state.toolActivities)
+  const reasoningEffort = useAiEditingStore((state) => state.reasoningEffort)
+  const setReasoningEffort = useAiEditingStore((state) => state.setReasoningEffort)
   const error = useAiEditingStore((state) => state.error)
   const isRestoringConversation = useAiEditingStore((state) => state.isRestoringConversation)
   const submit = useAiEditingStore((state) => state.submit)
@@ -210,18 +269,22 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
           </Fragment>
         ))}
 
-        {canChat && phase === 'loading' && (
-          <div className="space-y-1.5 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在准备剪辑助手</div>
-            <div className="h-1 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width]" style={{ width: `${loadPercent}%` }} /></div>
-          </div>
+        {canChat && phase === 'loading' && <PhaseProgressCard label="正在准备剪辑助手" percent={loadPercent} />}
+        {canChat && phase === 'thinking' && <PhaseProgressCard label="正在理解需求并规划剪辑" percent={null} />}
+        {canChat && phase === 'executing' && !toolActivities.some((activity) => activity.status === 'running') && (
+          <PhaseProgressCard label="正在检查结果并继续完成剪辑" percent={null} />
         )}
-        {canChat && phase === 'thinking' && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在整理剪辑建议</div>}
-        {canChat && phase === 'executing' && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在继续完成剪辑</div>}
         {canChat && error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs leading-relaxed text-destructive">{error}</div>}
       </div>
 
-      <AiEditingComposer canChat={canChat} busy={busy} onSubmit={send} onCancel={cancel} />
+      <AiEditingComposer
+        canChat={canChat}
+        busy={busy}
+        reasoningEffort={reasoningEffort}
+        onReasoningEffortChange={setReasoningEffort}
+        onSubmit={send}
+        onCancel={cancel}
+      />
       <AiProviderDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
       <AiEditingSkillsDialog open={skillsDialogOpen} onOpenChange={setSkillsDialogOpen} />
     </div>
