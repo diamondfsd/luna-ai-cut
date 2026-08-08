@@ -2,9 +2,9 @@
  * Storage type for media files
  * - 'handle':    Uses FileSystemFileHandle — references the user's original
  *                file on disk (instant import, no copy). Origin-scoped.
- * - 'workspace': Source bytes copied into the user-picked workspace folder
+ * - 'workspace': Source bytes copied into the app-managed workspace folder
  *                (`media/{id}/{filename}`). Durable and shared across every
- *                origin that picks the same folder — the source of truth for
+ *                origin that opens the same folder — the source of truth for
  *                media with no user file handle (remote/generated/copied).
  * - 'opfs':      Legacy: source copied into the Origin Private File System.
  *                Origin-scoped, so NOT visible cross-origin. No longer written

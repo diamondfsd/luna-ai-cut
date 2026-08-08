@@ -58,7 +58,7 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
         cwd: projectRoot,
         env: {
           ...process.env,
-          LUNA_E2E_FREECUT_STORAGE: 'opfs',
+          LUNA_E2E_FREECUT_STORAGE: 'disk',
           ...lunaElectronOptions.launchEnv,
           LUNA_E2E_USER_DATA_DIR: userDataDir,
         },

@@ -74,7 +74,7 @@ export function App() {
   // GlobalTooltip handles lightweight data-tooltip attributes without per-item providers.
   // Toaster for toast notifications
   // ErrorBoundary for graceful error recovery
-  // WorkspaceGate blocks RouterProvider until a workspace handle is granted.
+  // WorkspaceGate blocks RouterProvider until the workspace is initialized.
   // Mounted HERE (not inside __root.tsx) so route loaders — which run before
   // children components mount — never see an uninitialized workspace root.
   return (

@@ -105,7 +105,7 @@ export function deleteExportFile(path: string[]): Promise<void> {
   return removeEntry(requireWorkspaceRoot(), path)
 }
 
-/** The user-picked workspace folder's name (for telling users where files land). */
+/** The active workspace folder's name (for telling users where files land). */
 export function workspaceFolderName(): string | null {
   return getWorkspaceRoot()?.name ?? null
 }

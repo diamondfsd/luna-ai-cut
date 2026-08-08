@@ -26,6 +26,7 @@ import type {
   WifiHttpRequestOptions,
   WifiPortCheckOptions,
   ExportTaskRecord,
+  FreecutWorkspaceApi,
   OriginalFileExportRequest,
 } from '../src/shared/types'
 
@@ -56,6 +57,18 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   environment: {
     freecutStorage: process.env.LUNA_E2E_FREECUT_STORAGE === 'opfs' ? 'opfs' : 'disk',
   },
+  freecutWorkspace: {
+    ensureRoot: () => ipcRenderer.invoke('freecut-workspace:ensure-root'),
+    getEntry: (path, kind, create) => ipcRenderer.invoke('freecut-workspace:get-entry', path, kind, create),
+    list: (path) => ipcRenderer.invoke('freecut-workspace:list', path),
+    readFile: (path) => ipcRenderer.invoke('freecut-workspace:read-file', path),
+    openWriter: (path) => ipcRenderer.invoke('freecut-workspace:open-writer', path),
+    writeWriter: (writerId, data) => ipcRenderer.invoke('freecut-workspace:write-writer', writerId, data),
+    closeWriter: (writerId) => ipcRenderer.invoke('freecut-workspace:close-writer', writerId),
+    abortWriter: (writerId) => ipcRenderer.invoke('freecut-workspace:abort-writer', writerId),
+    removeEntry: (path, recursive) => ipcRenderer.invoke('freecut-workspace:remove-entry', path, recursive),
+    moveFile: (sourcePath, destinationPath) => ipcRenderer.invoke('freecut-workspace:move-file', sourcePath, destinationPath),
+  } satisfies FreecutWorkspaceApi,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   // 日志
   log: (level: string, message: string, meta?: unknown) => {

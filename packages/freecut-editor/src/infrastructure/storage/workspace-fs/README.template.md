@@ -48,7 +48,8 @@ Everything except media source bytes is safe to inspect. Editing
 Binary caches (waveforms, decoded audio, filmstrips) are regeneratable -
 delete them and the app will rebuild them on demand.
 
-## Moving the workspace
+## Workspace location
 
-You can move this folder to a new location - the app just needs you to
-re-pick it via the "Reconnect" prompt on next launch.
+The desktop app creates and opens this folder automatically under its local
+application data directory. Browser deployments may ask you to grant access to
+the folder again after it is moved.

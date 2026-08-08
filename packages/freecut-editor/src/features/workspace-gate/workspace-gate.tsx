@@ -2,13 +2,11 @@
  * WorkspaceGate
  *
  * Wraps the router and, when the current URL is a storage-dependent route
- * (`/projects*` or `/editor*`), blocks it until the user has picked a
- * workspace folder and granted read/write permission:
+ * (`/projects*` or `/editor*`), blocks it until the workspace is ready:
  *
- *   1. Check handles-db for a saved workspace handle
- *   2. If missing → show splash prompting user to pick a folder
- *   3. If present → queryPermission; if granted, set the active root and
- *      render the children. If revoked, show a Reconnect splash.
+ *   1. In Electron, initialize the app-managed disk workspace automatically.
+ *   2. In browser mode, restore a saved workspace handle when available.
+ *   3. If browser permission is revoked, show a Reconnect splash.
  *
  * The landing page (`/`) is not a storage-dependent route — it renders
  * without waiting for the gate, so users see no splash flash on first
@@ -31,6 +29,7 @@ import {
 } from '@freecut/infrastructure/storage/handles-db'
 import { onPermissionLost, setWorkspaceRoot } from '@freecut/infrastructure/storage/workspace-fs/root'
 import { createLogger } from '@freecut/shared/logging/logger'
+import { getNativeWorkspaceRoot } from '@freecut/infrastructure/storage/native-file-system'
 import { WorkspaceGateSplash } from './workspace-gate-splash'
 import { usePathname } from './use-pathname'
 
@@ -53,7 +52,7 @@ type E2eWindow = Window & {
   }
 }
 
-async function getE2eWorkspaceRoot(): Promise<FileSystemDirectoryHandle | null> {
+async function getOpfsWorkspaceRoot(): Promise<FileSystemDirectoryHandle | null> {
   const e2eWindow = window as E2eWindow
   if (e2eWindow.luna?.environment?.freecutStorage !== 'opfs') return null
   if (typeof navigator.storage?.getDirectory !== 'function') return null
@@ -99,11 +98,16 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      // Electron E2E keeps its storage isolated from native folder pickers.
-      // Production Electron always uses the disk-backed path below.
-      const e2eRoot = await getE2eWorkspaceRoot()
+      // OPFS is reserved for isolated browser automation. Electron production
+      // uses the native app-managed workspace below.
+      const e2eRoot = await getOpfsWorkspaceRoot()
       if (e2eRoot) {
         if (!cancelled) await activate(e2eRoot)
+        return
+      }
+      const nativeRoot = await getNativeWorkspaceRoot()
+      if (nativeRoot) {
+        if (!cancelled) await activate(nativeRoot)
         return
       }
       if (!isFileSystemAccessSupported()) {

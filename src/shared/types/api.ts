@@ -166,10 +166,29 @@ export interface WorkspaceSegmentationModelStatus {
   sizeBytes: number
 }
 
+export interface FreecutWorkspaceEntry {
+  name: string
+  kind: 'file' | 'directory'
+}
+
+export interface FreecutWorkspaceApi {
+  ensureRoot(): Promise<{ name: string; path: string }>
+  getEntry(path: string[], kind: 'file' | 'directory', create: boolean): Promise<boolean>
+  list(path: string[]): Promise<FreecutWorkspaceEntry[] | null>
+  readFile(path: string[]): Promise<ArrayBuffer | null>
+  openWriter(path: string[]): Promise<string>
+  writeWriter(writerId: string, data: ArrayBuffer): Promise<void>
+  closeWriter(writerId: string): Promise<void>
+  abortWriter(writerId: string): Promise<void>
+  removeEntry(path: string[], recursive: boolean): Promise<void>
+  moveFile(sourcePath: string[], destinationPath: string[]): Promise<void>
+}
+
 export interface LunaApi {
   environment?: {
     freecutStorage?: 'disk' | 'opfs'
   }
+  freecutWorkspace: FreecutWorkspaceApi
   startupReady(): void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
