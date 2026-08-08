@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useProjectStore } from '@freecut/features/projects/stores/project-store'
 import { AiEditingPanel } from './ai-editing-panel'
+import { useAiEditingStore } from '../store'
 
 interface AiEditingDockProps {
   onClose(): void
@@ -24,11 +26,17 @@ function loadWidth(): number {
 }
 
 export function AiEditingDock({ onClose }: AiEditingDockProps) {
+  const projectId = useProjectStore((state) => state.currentProject?.id ?? null)
+  const restoreConversation = useAiEditingStore((state) => state.restoreConversation)
   const [width, setWidth] = useState(loadWidth)
   const isResizingRef = useRef(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(width)
   const widthRef = useRef(width)
+
+  useEffect(() => {
+    void restoreConversation(projectId)
+  }, [projectId, restoreConversation])
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {

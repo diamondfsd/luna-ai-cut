@@ -87,6 +87,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const observations = useAiEditingStore((state) => state.observations)
   const error = useAiEditingStore((state) => state.error)
   const streamingText = useAiEditingStore((state) => state.streamingText)
+  const isRestoringConversation = useAiEditingStore((state) => state.isRestoringConversation)
   const submit = useAiEditingStore((state) => state.submit)
   const cancel = useAiEditingStore((state) => state.cancel)
   const clear = useAiEditingStore((state) => state.clear)
@@ -96,7 +97,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
   const scrollRef = useRef<HTMLDivElement>(null)
   const busy = phase !== 'idle' && phase !== 'awaiting-confirmation'
-  const canChat = connectionState === 'ready'
+  const canChat = connectionState === 'ready' && !isRestoringConversation
 
   useEffect(() => {
     const bridge = getEmbeddedHostBridge().aiAssistant
@@ -142,7 +143,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setProviderDialogOpen(true)} aria-label="剪辑助手连接" data-tooltip="剪辑助手连接">
             <Settings2 className="h-3.5 w-3.5" />
           </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={clear} aria-label="清空剪辑助手记录" data-tooltip="清空剪辑助手记录">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => void clear()} aria-label="清空剪辑助手记录" data-tooltip="清空剪辑助手记录">
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
           {onClose && (
@@ -154,13 +155,19 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {connectionState === 'checking' && (
+        {isRestoringConversation && (
+          <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />正在恢复本项目的对话记录
+          </div>
+        )}
+
+        {!isRestoringConversation && connectionState === 'checking' && (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />正在检查连接
           </div>
         )}
 
-        {connectionState === 'needs-setup' && (
+        {!isRestoringConversation && connectionState === 'needs-setup' && (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center">
             <Settings2 className="h-5 w-5 text-primary" />
             <div className="space-y-1">
@@ -174,7 +181,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
           </div>
         )}
 
-        {connectionState === 'unavailable' && (
+        {!isRestoringConversation && connectionState === 'unavailable' && (
           <div className="flex h-full items-center justify-center px-5 text-center text-xs leading-relaxed text-muted-foreground">
             当前无法使用剪辑助手连接。
           </div>
