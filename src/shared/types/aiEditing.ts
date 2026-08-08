@@ -33,12 +33,43 @@ export interface AiEditingAssistantConfigInput {
   clearApiKey?: boolean
 }
 
+export interface AiEditingAssistantToolDefinition {
+  /** Function name accepted by Chat Completions. */
+  name: string
+  description: string
+  parameters: {
+    type: 'object'
+    properties: Record<string, unknown>
+    required?: string[]
+    additionalProperties?: boolean
+  }
+}
+
+export interface AiEditingAssistantToolCall {
+  id: string
+  name: string
+  /** JSON encoded arguments returned by the model. */
+  arguments: string
+}
+
+export type AiEditingAssistantMessage =
+  | { role: 'system' | 'user'; content: string }
+  | { role: 'assistant'; content?: string; toolCalls?: AiEditingAssistantToolCall[] }
+  | { role: 'tool'; toolCallId: string; content: string }
+
 export interface AiEditingAssistantGenerateInput {
   requestId: string
-  messages: Array<{
-    role: 'system' | 'user' | 'assistant'
-    content: string
-  }>
+  messages: AiEditingAssistantMessage[]
+  /** Prefer native tool calling and automatically use the JSON protocol when unavailable. */
+  mode?: 'auto' | 'json'
+  tools?: AiEditingAssistantToolDefinition[]
   maxTokens: number
   temperature: number
+}
+
+export interface AiEditingAssistantGenerateResult {
+  /** `fallback` asks the renderer to restart this turn with the JSON compatibility protocol. */
+  mode: 'tools' | 'json' | 'fallback'
+  content: string
+  toolCalls: AiEditingAssistantToolCall[]
 }

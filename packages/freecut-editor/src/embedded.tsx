@@ -11,6 +11,7 @@ import {
   type EmbeddedAiAssistantConfig,
   type EmbeddedAiAssistantConfigInput,
   type EmbeddedAiAssistantGenerateInput,
+  type EmbeddedAiAssistantGenerateResult,
 } from './shared/host/embedded-host'
 import './index.css'
 
@@ -20,7 +21,7 @@ export interface FreeCutEditorProps {
   onAnalyzeMediaVisual?: (source: EmbeddedMediaSource) => Promise<EmbeddedVisualEvidence>
   onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
   onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
-  onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<string>
+  onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>
   onCancelAiAssistant?: (requestId: string) => Promise<void>
 }
 

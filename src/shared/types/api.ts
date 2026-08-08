@@ -35,6 +35,7 @@ import type {
   AiEditingAssistantConfig,
   AiEditingAssistantConfigInput,
   AiEditingAssistantGenerateInput,
+  AiEditingAssistantGenerateResult,
   WorkspaceVisualAnalysisRequest,
   WorkspaceVisualAnalysisResult,
 } from './aiEditing'
@@ -274,7 +275,7 @@ export interface LunaApi {
   aiEditingAssistant: {
     getConfig(): Promise<AiEditingAssistantConfig>
     saveConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfig>
-    generate(input: AiEditingAssistantGenerateInput): Promise<string>
+    generate(input: AiEditingAssistantGenerateInput): Promise<AiEditingAssistantGenerateResult>
     cancel(requestId: string): Promise<void>
   }
   workspace: {
