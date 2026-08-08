@@ -1,6 +1,6 @@
 import { _electron as electron, test as base, type ElectronApplication, type Page } from '@playwright/test'
 import { createWriteStream } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -13,6 +13,7 @@ export interface LunaElectronApp {
   page: Page
   runtimeErrors: string[]
   temporaryRoot: string
+  userDataDir: string
 }
 
 export interface LunaElectronOptions {
@@ -36,20 +37,26 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
   lunaApp: async ({ playwright: _playwright, lunaElectronOptions }, use, testInfo) => {
     void _playwright
     const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-playwright-e2e-'))
-    const userDataDir = path.join(temporaryRoot, 'user-data')
+    const existingUserDataDir = process.env.LUNA_E2E_EXISTING_USER_DATA_DIR
+    const useExistingUserDataDir = Boolean(existingUserDataDir)
+    const userDataDir = existingUserDataDir
+      ? path.resolve(existingUserDataDir)
+      : path.join(temporaryRoot, 'user-data')
     const downloadDir = path.join(temporaryRoot, 'downloads')
     const artifactDir = path.join(temporaryRoot, 'artifacts')
     await Promise.all([
-      mkdir(userDataDir, { recursive: true }),
+      useExistingUserDataDir ? access(userDataDir) : mkdir(userDataDir, { recursive: true }),
       mkdir(downloadDir, { recursive: true }),
       mkdir(artifactDir, { recursive: true }),
     ])
-    await writeFile(path.join(userDataDir, 'settings.json'), `${JSON.stringify({
-      downloadDir,
-      localResourcesDir: path.join(downloadDir, 'localResources'),
-      exportDir: path.join(downloadDir, 'export'),
-      developerMode: false,
-    }, null, 2)}\n`, 'utf8')
+    if (!useExistingUserDataDir) {
+      await writeFile(path.join(userDataDir, 'settings.json'), `${JSON.stringify({
+        downloadDir,
+        localResourcesDir: path.join(downloadDir, 'localResources'),
+        exportDir: path.join(downloadDir, 'export'),
+        developerMode: false,
+      }, null, 2)}\n`, 'utf8')
+    }
 
     let app: ElectronApplication | undefined
     try {
@@ -75,7 +82,7 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
         if (message.type() === 'error') runtimeErrors.push(message.text())
       })
       await page.waitForLoadState('domcontentloaded')
-      await use({ app, page, runtimeErrors, temporaryRoot })
+      await use({ app, page, runtimeErrors, temporaryRoot, userDataDir })
     } finally {
       const failed = testInfo.status !== testInfo.expectedStatus
       const page = app?.windows().find((candidate) => !candidate.isClosed())

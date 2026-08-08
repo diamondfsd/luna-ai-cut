@@ -5,6 +5,7 @@ import {
   Loader2,
   RotateCcw,
   Settings2,
+  LibraryBig,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -16,6 +17,7 @@ import type { AiEditingToolActivity } from '../types'
 import { AiEditingComposer } from './ai-editing-composer'
 import { AiEditingMessageBubble } from './ai-editing-message'
 import { AiProviderDialog } from './ai-provider-dialog'
+import { AiEditingSkillsDialog } from './ai-editing-skills-dialog'
 
 const SUGGESTIONS = [
   '帮我查看当前时间轴内容',
@@ -72,6 +74,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const clear = useAiEditingStore((state) => state.clear)
 
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
+  const [skillsDialogOpen, setSkillsDialogOpen] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -137,6 +140,9 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
           <span className="text-xs font-medium text-foreground">剪辑助手</span>
         </div>
         <div className="flex items-center gap-0.5">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSkillsDialogOpen(true)} aria-label="管理剪辑技能" data-tooltip="管理剪辑技能">
+            <LibraryBig className="h-3.5 w-3.5" />
+          </Button>
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setProviderDialogOpen(true)} aria-label="剪辑助手连接" data-tooltip="剪辑助手连接">
             <Settings2 className="h-3.5 w-3.5" />
           </Button>
@@ -217,6 +223,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
 
       <AiEditingComposer canChat={canChat} busy={busy} onSubmit={send} onCancel={cancel} />
       <AiProviderDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
+      <AiEditingSkillsDialog open={skillsDialogOpen} onOpenChange={setSkillsDialogOpen} />
     </div>
   )
 })

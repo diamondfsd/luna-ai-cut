@@ -17,6 +17,8 @@ export interface MediaCompositionSelection {
   mediaId: string
   startSeconds?: number
   endSeconds?: number
+  /** Still images may remain on the timeline longer than their source metadata. */
+  durationSeconds?: number
 }
 
 export interface MediaCompositionRequest {
@@ -50,6 +52,10 @@ function resolveSourceRange(
   const sourceFps = media.fps && media.fps > 0 ? media.fps : timelineFps
   const sourceDurationSeconds = mediaType === 'image' ? Math.max(media.duration, 3) : media.duration
   const totalSourceFrames = Math.max(1, Math.round(sourceDurationSeconds * sourceFps))
+  if (mediaType === 'image' && selection.durationSeconds !== undefined) {
+    const durationInFrames = Math.max(1, Math.round(selection.durationSeconds * timelineFps))
+    return { sourceStart: 0, sourceEnd: totalSourceFrames, durationInFrames }
+  }
   const sourceStart = Math.min(totalSourceFrames - 1, Math.round((selection.startSeconds ?? 0) * sourceFps))
   const sourceEnd = Math.min(
     totalSourceFrames,

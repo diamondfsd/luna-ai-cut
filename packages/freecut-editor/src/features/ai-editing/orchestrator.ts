@@ -14,8 +14,11 @@ import {
   type EmbeddedAiAssistantToolCall,
   type EmbeddedAiAssistantToolDefinition,
 } from '@freecut/shared/host/embedded-host'
-import { buildProjectEvidence } from './evidence'
+import { buildProjectEvidence, getTimelineRevision } from './evidence'
+import { validateFinishedVideo } from './production-skill'
 import { parseAiEditingResponse } from './response-parser'
+import { listAiEditingSkills, selectAiEditingSkill } from './skills/service'
+import type { AiEditingSkill } from './skills/types'
 import { listAiEditingToolCatalog } from './tool-discovery'
 import { getAiEditingTool, listAiEditingTools } from './tool-registry'
 import type {
@@ -41,7 +44,22 @@ function toolNameCatalog(): string {
     .join('\n')
 }
 
-function systemPrompt(evidence: unknown, protocol: 'native' | 'json'): string {
+function skillPrompt(selectedSkill: AiEditingSkill | null, skills: readonly AiEditingSkill[]): string {
+  const available = skills.filter((skill) => skill.enabled)
+  if (!selectedSkill) {
+    return available.length > 0
+      ? `可用剪辑技能：\n${available.map((skill) => `- ${skill.name}: ${skill.description}`).join('\n')}`
+      : '当前没有启用的剪辑技能。'
+  }
+  return `本次已选择剪辑技能：${selectedSkill.name}\n${selectedSkill.description}\n\n技能工作流：\n${selectedSkill.instructions}`
+}
+
+function systemPrompt(
+  evidence: unknown,
+  protocol: 'native' | 'json',
+  selectedSkill: AiEditingSkill | null,
+  skills: readonly AiEditingSkill[],
+): string {
   const protocolInstructions = protocol === 'native'
     ? `8. 初始只开放基础函数。需要执行目录中的具体操作时，先调用“查看剪辑能力”并传入精确工具 ID；不确定 ID 时再调用“查找剪辑能力”。结果会在下一轮开放对应函数。
 9. 工具接口已经提供时，必须调用对应函数，不能用文字或 JSON 模拟工具执行。全部完成后，直接用简短文字说明结果。`
@@ -67,7 +85,10 @@ ${availableTools}
 5. 对口播剪辑，优先引用字幕时间；对卡点剪辑，只有获得节拍证据后才能按节拍编辑。
 6. 用户要求从素材库挑选并混剪时，只能使用已有画面描述的素材；没有画面描述则先调用 analysis.request。已有画面描述时，使用 timeline.compose_from_media 编排到时间轴末尾。
 7. 所有需要的操作完成后再结束回复。只有纯问答才可以在第一轮直接结束。
+${selectedSkill?.requiresFinishedVideo ? '8. 本次要求制作成片。必须遵循已选技能：先核对素材和画面分析，再制作完整画面、动效文字和收尾；完成前需要检查更新后的时间轴。没有通过检查时，明确说明还缺什么，绝不能声称已经完成。' : ''}
 ${protocolInstructions}
+
+${skillPrompt(selectedSkill, skills)}
 
 当前项目的结构化证据：
 ${JSON.stringify(evidence)}`
@@ -122,6 +143,12 @@ async function saveTimelineAfterEdit(): Promise<void> {
 export interface AiEditingRunResult {
   reply: string
   observations: AiEditingObservation[]
+  skillId?: string
+  plan: string[]
+  completed: boolean
+  completionNotes: string[]
+  timelineRevisionBefore: number
+  timelineRevisionAfter: number
 }
 
 export interface AiEditingRunOptions {
@@ -229,9 +256,11 @@ function buildInitialMessages(
   history: LlmMessage[],
   evidence: unknown,
   protocol: 'native' | 'json',
+  selectedSkill: AiEditingSkill | null,
+  skills: readonly AiEditingSkill[],
 ): LlmMessage[] {
   return [
-    { role: 'system', content: systemPrompt(evidence, protocol) },
+    { role: 'system', content: systemPrompt(evidence, protocol, selectedSkill, skills) },
     ...history.slice(-6),
     { role: 'user', content: userText },
   ]
@@ -241,8 +270,10 @@ async function buildJsonFallbackMessages(
   userText: string,
   history: LlmMessage[],
   observations: AiEditingObservation[],
+  selectedSkill: AiEditingSkill | null,
+  skills: readonly AiEditingSkill[],
 ): Promise<LlmMessage[]> {
-  const messages = buildInitialMessages(userText, history, await buildProjectEvidence(), 'json')
+  const messages = buildInitialMessages(userText, history, await buildProjectEvidence(), 'json', selectedSkill, skills)
   if (observations.length > 0) {
     messages.push({
       role: 'user',
@@ -304,7 +335,7 @@ async function runJsonToolLoop(
     })
   }
 
-  return { reply: reply || defaultReply(observations), observations }
+  return { reply: reply || defaultReply(observations), observations, plan: [], completed: true, completionNotes: [], timelineRevisionBefore: 0, timelineRevisionAfter: 0 }
 }
 
 async function runNativeToolLoop(
@@ -312,6 +343,8 @@ async function runNativeToolLoop(
   userText: string,
   options: AiEditingRunOptions,
   adapter: NativeToolCallingLlmAdapter,
+  selectedSkill: AiEditingSkill | null,
+  skills: readonly AiEditingSkill[],
 ): Promise<AiEditingRunResult> {
   const allTools = listAiEditingTools()
   const knownToolIds = new Set(allTools.map((tool) => tool.id))
@@ -320,6 +353,7 @@ async function runNativeToolLoop(
     'tool.describe',
     'tool.search',
     'analysis.request',
+    ...(selectedSkill?.toolIds ?? []),
   ])
   const observations: AiEditingObservation[] = []
   let reply = ''
@@ -334,14 +368,14 @@ async function runNativeToolLoop(
     })
     if (response.mode === 'fallback') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations),
+        await buildJsonFallbackMessages(userText, options.history, observations, selectedSkill, skills),
         options,
         adapter,
       )
     }
     if (response.mode === 'json') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations),
+        await buildJsonFallbackMessages(userText, options.history, observations, selectedSkill, skills),
         options,
         adapter,
         response.content,
@@ -388,7 +422,7 @@ async function runNativeToolLoop(
     })
   }
 
-  return { reply: reply || defaultReply(observations), observations }
+  return { reply: reply || defaultReply(observations), observations, plan: [], completed: true, completionNotes: [], timelineRevisionBefore: 0, timelineRevisionAfter: 0 }
 }
 
 export async function runAiEditingTurn(
@@ -397,17 +431,56 @@ export async function runAiEditingTurn(
 ): Promise<AiEditingRunResult> {
   const adapter = options.adapter ?? getAiEditingAdapter()
   const evidence = await buildProjectEvidence()
+  const timelineRevisionBefore = getTimelineRevision()
+  const skills = await listAiEditingSkills()
+  const selectedSkill = selectAiEditingSkill(userText, skills)
+  let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
-    return runNativeToolLoop(
-      toNativeMessages(buildInitialMessages(userText, options.history, evidence, 'native')),
+    result = await runNativeToolLoop(
+      toNativeMessages(buildInitialMessages(userText, options.history, evidence, 'native', selectedSkill, skills)),
       userText,
+      options,
+      adapter,
+      selectedSkill,
+      skills,
+    )
+  } else {
+    result = await runJsonToolLoop(
+      buildInitialMessages(userText, options.history, evidence, 'json', selectedSkill, skills),
       options,
       adapter,
     )
   }
-  return runJsonToolLoop(
-    buildInitialMessages(userText, options.history, evidence, 'json'),
-    options,
-    adapter,
-  )
+  if (!selectedSkill?.requiresFinishedVideo) {
+    return {
+      ...result,
+      ...(selectedSkill ? { skillId: selectedSkill.id } : {}),
+      plan: selectedSkill ? selectedSkill.instructions.split('\n').filter(Boolean).slice(0, 8) : [],
+      timelineRevisionBefore,
+      timelineRevisionAfter: getTimelineRevision(),
+    }
+  }
+
+  const quality = validateFinishedVideo(await buildProjectEvidence())
+  if (quality.passed) {
+    return {
+      ...result,
+      skillId: selectedSkill.id,
+      plan: selectedSkill.instructions.split('\n').filter(Boolean).slice(0, 8),
+      completed: true,
+      completionNotes: [],
+      timelineRevisionBefore,
+      timelineRevisionAfter: getTimelineRevision(),
+    }
+  }
+  return {
+    ...result,
+    reply: `这次还不能称为成片。${quality.reasons.join('')}`,
+    skillId: selectedSkill.id,
+    plan: selectedSkill.instructions.split('\n').filter(Boolean).slice(0, 8),
+    completed: false,
+    completionNotes: quality.reasons,
+    timelineRevisionBefore,
+    timelineRevisionAfter: getTimelineRevision(),
+  }
 }

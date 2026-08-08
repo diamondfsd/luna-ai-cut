@@ -3,6 +3,7 @@ import type { LlmMessage } from '@freecut/infrastructure/llm'
 import {
   clearAiEditingConversation,
   loadAiEditingConversation,
+  saveAiEditingRun,
   saveAiEditingConversation,
 } from '@freecut/infrastructure/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
@@ -196,6 +197,26 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         },
       })
       if (controller.signal.aborted || get().projectId !== projectId) return
+      try {
+        await saveAiEditingRun(projectId, {
+          id: newId(),
+          createdAt: Date.now(),
+          request: trimmed,
+          ...(result.skillId ? { skillId: result.skillId } : {}),
+          plan: result.plan,
+          timelineRevisionBefore: result.timelineRevisionBefore,
+          timelineRevisionAfter: result.timelineRevisionAfter,
+          toolCalls: result.observations.map((observation) => ({
+            id: observation.toolId,
+            ok: observation.result.ok,
+            message: observation.result.message,
+          })),
+          completed: result.completed,
+          completionNotes: result.completionNotes,
+        })
+      } catch (error) {
+        logger.warn('Failed to persist AI editing run', error)
+      }
       const nextMessages = [
         ...get().messages,
         { id: newId(), role: 'assistant' as const, content: result.reply || '已完成分析。' },
