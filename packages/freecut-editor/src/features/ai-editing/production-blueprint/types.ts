@@ -22,6 +22,7 @@ export interface ProductUiLaunchBlueprint {
   tone: string
   aspectRatio: string
   replaceExisting: boolean
+  videoTrack: number
   shots: ProductUiLaunchShot[]
 }
 
@@ -30,4 +31,9 @@ export interface ProductUiLaunchReview {
   reasons: string[]
   expectedShotCount: number
   actualVisualCount: number
+}
+
+export interface ProductUiLaunchReviewScope {
+  startSeconds: number
+  endSeconds: number
 }

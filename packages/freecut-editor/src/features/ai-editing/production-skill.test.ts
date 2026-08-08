@@ -19,7 +19,7 @@ const productSkill: AiEditingSkill = {
 }
 
 function evidence(clips: AiProjectEvidence['clips'], durationSeconds: number): AiProjectEvidence {
-  return { timelineRevision: 1, fps: 30, clips, durationSeconds, media: [] }
+  return { timelineRevision: 1, fps: 30, clips, durationSeconds, tracks: [], media: [] }
 }
 
 describe('AI editing production skill', () => {

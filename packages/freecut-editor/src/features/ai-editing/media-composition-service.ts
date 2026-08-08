@@ -25,6 +25,7 @@ export interface MediaCompositionRequest {
   selections: MediaCompositionSelection[]
   startSeconds?: number
   includeOriginalAudio: boolean
+  targetTrackId?: string
 }
 
 interface ResolvedSelection extends MediaCompositionSelection {
@@ -100,6 +101,11 @@ function timelineEndFrame(): number {
   )
 }
 
+function trackNumber(trackName: string): number {
+  const match = /^V(\d+)$/i.exec(trackName)
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER
+}
+
 /**
  * Turns model-selected library ranges into the same linked video/audio items
  * used by a regular media-library drop. Existing timeline content is kept and
@@ -116,9 +122,11 @@ export async function composeTimelineFromMedia(
   const preferredKind = resolved.selections.every((selection) => selection.mediaType === 'audio')
     ? 'audio'
     : 'video'
-  const targetTrack = timeline.tracks.find(
-    (track) => !track.isGroup && !track.locked && getTrackKind(track) === preferredKind,
-  )
+  const targetTrack = request.targetTrackId
+    ? timeline.tracks.find((track) => track.id === request.targetTrackId && !track.isGroup && !track.locked && getTrackKind(track) === preferredKind)
+    : timeline.tracks
+      .filter((track) => !track.isGroup && !track.locked && getTrackKind(track) === preferredKind)
+      .sort((left, right) => trackNumber(left.name) - trackNumber(right.name) || right.order - left.order)[0]
   if (!targetTrack) return { ok: false, message: '时间轴中没有可放置素材的轨道。' }
 
   const startFrame = Math.round((request.startSeconds ?? timelineEndFrame() / fps) * fps)

@@ -7,6 +7,7 @@ import {
   applyTextMotionEffect,
   createOverlayLayerTrack,
   createTextTemplateItem,
+  getTrackKind,
   removeItems,
   updateItem,
 } from '@freecut/features/editor/deps/timeline-contract'
@@ -50,6 +51,10 @@ async function compileProductUiLaunch(blueprint: ProductUiLaunchBlueprint) {
   if (blueprint.shots.some((shot) => mediaById.get(shot.mediaId)?.kind !== 'image')) {
     return { ok: false as const, message: '这次界面短片试验目前只支持已分析的图片素材。' }
   }
+  const videoTrack = useTimelineStore.getState().tracks.find(
+    (track) => track.name === `V${blueprint.videoTrack}` && !track.isGroup && !track.locked && getTrackKind(track) === 'video',
+  )
+  if (!videoTrack) return { ok: false as const, message: `V${blueprint.videoTrack} 当前不可用于放置画面。` }
   if (blueprint.replaceExisting) removeItems(useTimelineStore.getState().items.map((item) => item.id))
 
   const beforeIds = new Set(useTimelineStore.getState().items.map((item) => item.id))
@@ -57,6 +62,7 @@ async function compileProductUiLaunch(blueprint: ProductUiLaunchBlueprint) {
     selections: blueprint.shots.map((shot) => ({ mediaId: shot.mediaId, durationSeconds: shot.durationSeconds })),
     startSeconds: blueprint.replaceExisting ? 0 : undefined,
     includeOriginalAudio: false,
+    targetTrackId: videoTrack.id,
   })
   if (!composed.ok) return composed
 
@@ -110,7 +116,13 @@ async function compileProductUiLaunch(blueprint: ProductUiLaunchBlueprint) {
   return {
     ok: true as const,
     message: `已按 ${blueprint.shots.length} 个镜头制作界面短片。`,
-    data: { shotCount: blueprint.shots.length, durationSeconds: visualItems.reduce((total, item) => total + item.durationInFrames / fps, 0) },
+    data: {
+      shotCount: blueprint.shots.length,
+      durationSeconds: visualItems.reduce((total, item) => total + item.durationInFrames / fps, 0),
+      startSeconds: visualItems[0]!.from / fps,
+      endSeconds: (visualItems.at(-1)!.from + visualItems.at(-1)!.durationInFrames) / fps,
+      videoTrack: videoTrack.name,
+    },
   }
 }
 
