@@ -22,6 +22,7 @@ import type {
   AiEditingToolResult,
   AiEditingToolValidation,
 } from './types'
+import { removeFillersTool, removeSilenceTool } from './cleanup-tools'
 
 type JsonSchema = AiEditingTool['inputSchema']
 
@@ -428,7 +429,7 @@ const updateSettings = defineTool({
 })
 
 function legacyTools(): AiEditingTool[] {
-  return listEditorTools().map((tool) => ({
+  return listEditorTools().filter((tool) => !tool.handoff).map((tool) => ({
     id: `timeline.${tool.name}`,
     title: tool.title,
     description: tool.description,
@@ -450,6 +451,8 @@ const tools = [
   inspectBeats,
   analyzeBeats,
   splitOnBeats,
+  removeSilenceTool,
+  removeFillersTool,
   inspectSettings,
   updateSettings,
   ...legacyTools(),

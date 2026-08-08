@@ -5,8 +5,8 @@ import process from 'node:process'
 
 import { expect, test } from './fixtures/lunaElectron'
 
-const USER_MESSAGE = '请保留这条项目对话'
-const ASSISTANT_MESSAGE = '已记录本地对话。'
+const USER_MESSAGE = '给这段生活日常加一个标题'
+const ASSISTANT_MESSAGE = '标题已经添加到时间轴。'
 
 async function waitForLunaWindow(app: import('@playwright/test').ElectronApplication) {
   await expect.poll(async () => {
@@ -17,14 +17,22 @@ async function waitForLunaWindow(app: import('@playwright/test').ElectronApplica
 }
 
 async function startChatCompletionsMock(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  let requestCount = 0
   const server = createServer((request, response) => {
     if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
       response.writeHead(404).end()
       return
     }
     response.writeHead(200, { 'content-type': 'application/json' })
+    const content = requestCount === 0
+      ? JSON.stringify({
+        reply: '正在添加标题。',
+        toolCalls: [{ id: 'timeline.add_title', args: { text: '生活日常' } }],
+      })
+      : JSON.stringify({ reply: ASSISTANT_MESSAGE, toolCalls: [] })
+    requestCount += 1
     response.end(JSON.stringify({
-      choices: [{ message: { content: JSON.stringify({ reply: ASSISTANT_MESSAGE, toolCalls: [] }) } }],
+      choices: [{ message: { content } }],
     }))
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -67,7 +75,18 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     await input.fill(USER_MESSAGE)
     await page.getByRole('button', { name: '发送剪辑请求' }).click()
     await expect(page.getByText(USER_MESSAGE, { exact: true })).toBeVisible()
+    const execution = page.getByRole('region', { name: '剪辑执行过程' })
+    await expect(execution).toContainText('Add title')
+    await expect(page.locator('[data-timeline-item]')).toHaveCount(1)
     await expect(page.getByText(ASSISTANT_MESSAGE, { exact: true })).toBeVisible()
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async () => undefined },
+      })
+    })
+    await page.getByRole('button', { name: '复制聊天记录' }).last().click()
+    await expect(page.getByRole('button', { name: '已复制聊天记录' })).toBeVisible()
 
     await app.close()
 

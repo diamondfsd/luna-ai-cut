@@ -1,9 +1,9 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Check,
-  ChevronRight,
+  CircleAlert,
+  Copy,
   Loader2,
-  Play,
   RotateCcw,
   Send,
   Settings2,
@@ -14,8 +14,8 @@ import { Button } from '@freecut/components/ui/button'
 import { Textarea } from '@freecut/components/ui/textarea'
 import { cn } from '@freecut/shared/ui/cn'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
-import { useAiEditingStore } from '../store'
-import type { AiEditingPlanStep, AiEditingToolRisk } from '../types'
+import { useAiEditingStore, type AiEditingMessage } from '../store'
+import type { AiEditingToolActivity } from '../types'
 import { AiProviderDialog } from './ai-provider-dialog'
 
 const SUGGESTIONS = [
@@ -25,52 +25,62 @@ const SUGGESTIONS = [
   '把选中的片段做得更紧凑一些',
 ]
 
-function riskLabel(risk: Exclude<AiEditingToolRisk, 'read'>): string {
-  if (risk === 'analysis') return '分析素材'
-  if (risk === 'settings') return '调整设置'
-  return '调整时间轴'
-}
-
-const PlanStep = memo(function PlanStep({ step }: { step: AiEditingPlanStep }) {
+const ToolActivityRow = memo(function ToolActivityRow({ activity }: { activity: AiEditingToolActivity }) {
+  const status = activity.status === 'running'
+    ? <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+    : activity.status === 'succeeded'
+      ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+      : <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
   return (
-    <li className="flex items-start gap-2 py-1 text-xs text-foreground">
-      <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-      <span className="min-w-0 flex-1">{step.summary}</span>
-      <span className="shrink-0 text-[10px] text-muted-foreground">{riskLabel(step.risk)}</span>
+    <li className="flex items-start gap-2 py-1.5 text-xs">
+      {status}
+      <div className="min-w-0 flex-1">
+        <p className="text-foreground">{activity.title}</p>
+        {activity.message && <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{activity.message}</p>}
+      </div>
     </li>
   )
 })
 
-const PlanCard = memo(function PlanCard() {
-  const plan = useAiEditingStore((state) => state.plan)
-  const phase = useAiEditingStore((state) => state.phase)
-  const applyPlan = useAiEditingStore((state) => state.applyPlan)
-  const dismissPlan = useAiEditingStore((state) => state.dismissPlan)
-
-  if (!plan) return null
-  const applying = phase === 'applying'
-
+const ToolActivityCard = memo(function ToolActivityCard({ activities }: { activities: AiEditingToolActivity[] }) {
+  if (activities.length === 0) return null
   return (
-    <section className="rounded-lg border border-primary/30 bg-primary/5 p-2.5" aria-label="待确认剪辑计划">
-      <div className="flex items-start gap-2">
+    <section className="rounded-lg border border-primary/25 bg-primary/5 p-2.5" aria-label="剪辑执行过程" aria-live="polite">
+      <div className="flex items-center gap-2">
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-foreground">{plan.title}</p>
-          {plan.summary && <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{plan.summary}</p>}
-        </div>
+        <p className="text-xs font-medium text-foreground">本次剪辑操作</p>
       </div>
-      <ol className="mt-2 divide-y divide-border/70">{plan.steps.map((step, index) => <PlanStep key={`${step.toolId}-${index}`} step={step} />)}</ol>
-      <div className="mt-2.5 flex gap-1.5">
-        <Button size="sm" className="h-7 flex-1 gap-1.5" onClick={() => void applyPlan()} disabled={applying}>
-          {applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-          应用计划
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 gap-1.5" onClick={dismissPlan} disabled={applying}>
-          <X className="h-3.5 w-3.5" />
-          放弃
-        </Button>
-      </div>
+      <ol className="mt-1.5 divide-y divide-border/70">{activities.map((activity) => <ToolActivityRow key={activity.id} activity={activity} />)}</ol>
     </section>
+  )
+})
+
+const ChatBubble = memo(function ChatBubble({
+  message,
+  copied,
+  onCopy,
+}: {
+  message: AiEditingMessage
+  copied: boolean
+  onCopy: (message: AiEditingMessage) => void
+}) {
+  const isUser = message.role === 'user'
+  return (
+    <div className={cn('group flex', isUser ? 'justify-end' : 'justify-start')}>
+      <div className={cn('relative max-w-[88%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 pr-8 text-xs leading-relaxed', isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-foreground')}>
+        {message.content}
+        <Button
+          size="icon"
+          variant="ghost"
+          className={cn('absolute right-1 top-1 h-6 w-6 opacity-55 transition-opacity hover:opacity-100 focus-visible:opacity-100', isUser ? 'text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground' : 'text-muted-foreground')}
+          onClick={() => onCopy(message)}
+          aria-label={copied ? '已复制聊天记录' : '复制聊天记录'}
+          data-tooltip={copied ? '已复制' : '复制'}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+    </div>
   )
 })
 
@@ -84,9 +94,8 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const phase = useAiEditingStore((state) => state.phase)
   const loadPercent = useAiEditingStore((state) => state.loadPercent)
   const messages = useAiEditingStore((state) => state.messages)
-  const observations = useAiEditingStore((state) => state.observations)
+  const toolActivities = useAiEditingStore((state) => state.toolActivities)
   const error = useAiEditingStore((state) => state.error)
-  const streamingText = useAiEditingStore((state) => state.streamingText)
   const isRestoringConversation = useAiEditingStore((state) => state.isRestoringConversation)
   const submit = useAiEditingStore((state) => state.submit)
   const cancel = useAiEditingStore((state) => state.cancel)
@@ -95,9 +104,12 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const [input, setInput] = useState('')
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const busy = phase !== 'idle' && phase !== 'awaiting-confirmation'
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const busy = phase !== 'idle'
   const canChat = connectionState === 'ready' && !isRestoringConversation
+  const activeUserMessageId = [...messages].reverse().find((message) => message.role === 'user')?.id
 
   useEffect(() => {
     const bridge = getEmbeddedHostBridge().aiAssistant
@@ -123,7 +135,11 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, streamingText, phase])
+  }, [messages, toolActivities, phase])
+
+  useEffect(() => () => {
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current)
+  }, [])
 
   const send = useCallback((value: string) => {
     const text = value.trim()
@@ -131,6 +147,17 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
     setInput('')
     void submit(text)
   }, [busy, connectionState, submit])
+
+  const copyMessage = useCallback(async (message: AiEditingMessage) => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      setCopiedMessageId(message.id)
+      if (copyResetTimer.current) clearTimeout(copyResetTimer.current)
+      copyResetTimer.current = setTimeout(() => setCopiedMessageId(null), 2_000)
+    } catch {
+      setCopiedMessageId(null)
+    }
+  }, [])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -189,7 +216,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
 
         {canChat && messages.length === 0 && phase === 'idle' && (
           <div className="space-y-3">
-            <p className="text-xs leading-relaxed text-muted-foreground">根据时间轴、字幕和本地素材分析提出可确认的剪辑计划。</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">根据时间轴、字幕和本地素材分析，直接完成剪辑操作。</p>
             <div className="flex flex-wrap gap-1.5">
               {SUGGESTIONS.map((suggestion) => (
                 <Button key={suggestion} size="sm" variant="outline" className="h-auto min-h-7 whitespace-normal px-2 py-1 text-left text-[11px]" onClick={() => send(suggestion)} disabled={!canChat}>
@@ -201,16 +228,11 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         )}
 
         {canChat && messages.map((message) => (
-          <div key={message.id} className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}>
-            <div className={cn('max-w-[88%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs leading-relaxed', message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-foreground')}>
-              {message.content}
-            </div>
-          </div>
+          <Fragment key={message.id}>
+            <ChatBubble message={message} copied={copiedMessageId === message.id} onCopy={(entry) => void copyMessage(entry)} />
+            {message.id === activeUserMessageId && <ToolActivityCard activities={toolActivities} />}
+          </Fragment>
         ))}
-
-        {canChat && streamingText && (
-          <div className="rounded-lg bg-secondary/60 px-2.5 py-1.5 text-xs leading-relaxed text-foreground">{streamingText}</div>
-        )}
 
         {canChat && phase === 'loading' && (
           <div className="space-y-1.5 text-xs text-muted-foreground">
@@ -219,8 +241,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
           </div>
         )}
         {canChat && phase === 'thinking' && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在整理剪辑建议</div>}
-        {canChat && observations.length > 0 && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Check className="h-3.5 w-3.5 text-emerald-500" />已参考 {observations.length} 条素材或项目结果</div>}
-        {canChat && <PlanCard />}
+        {canChat && phase === 'executing' && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在继续完成剪辑</div>}
         {canChat && error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs leading-relaxed text-destructive">{error}</div>}
       </div>
 
@@ -240,7 +261,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
             disabled={!canChat || busy}
           />
           {busy ? (
-            <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={cancel} aria-label="停止生成剪辑建议"><X className="h-4 w-4" /></Button>
+            <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={cancel} aria-label="停止剪辑操作"><X className="h-4 w-4" /></Button>
           ) : (
             <Button size="icon" className="h-9 w-9 shrink-0" onClick={() => send(input)} disabled={!canChat || !input.trim()} aria-label="发送剪辑请求"><Send className="h-4 w-4" /></Button>
           )}

@@ -5,17 +5,19 @@ import { useProjectStore } from '@freecut/features/projects/stores/project-store
 import { useTimelineCommandStore } from '@freecut/features/timeline/stores/timeline-command-store'
 import { useTimelineStore } from '@freecut/features/timeline/stores/timeline-store-facade'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
-import { buildProjectEvidence, getTimelineRevision } from './evidence'
+import { buildProjectEvidence } from './evidence'
 import { parseAiEditingResponse } from './response-parser'
 import { getAiEditingTool, listAiEditingTools } from './tool-registry'
 import type {
   AiEditingObservation,
-  AiEditingPlan,
-  AiEditingPlanStep,
+  AiEditingToolActivity,
+  AiEditingToolCall,
+  AiEditingToolResult,
 } from './types'
 
-const MAX_TOOL_ROUNDS = 3
-const MAX_TOKENS = 768
+const MAX_TOOL_ROUNDS = 8
+const MAX_TOKENS = 1_024
+const MAX_TOOL_RESULT_CHARS = 8_000
 
 function toolCatalog(): string {
   return listAiEditingTools()
@@ -30,14 +32,15 @@ function systemPrompt(evidence: unknown): string {
 可用内部工具：
 ${toolCatalog()}
 
-规则：
-1. 先用 read 工具补足信息；read 工具会自动执行。
-2. analysis、edit、settings 工具只会形成待确认计划，绝不直接生效。
-3. 工具参数必须使用素材或片段的真实 ID，时间使用秒。
-4. 对口播剪辑，优先引用字幕时间；对卡点剪辑，只有获得节拍证据后才能提出节拍对齐。
-5. 用户要求分析之外的剪辑、添加素材或调整设置时，toolCalls 至少包含一个 analysis、edit 或 settings 工具；只有纯问答可以使用空数组。
-6. 用户要求从素材库挑选并混剪时，只能使用已有画面描述的素材；如没有画面描述，先提出 analysis.request。只要请求素材已有画面描述，必须使用 timeline.compose_from_media 编排到时间轴末尾，不能重复提出 analysis.request。
-7. 每次只返回一个 JSON 对象，不要 Markdown，不要 JSON 前后的任何解释：
+工作方式：
+1. 你的 toolCalls 会立刻在编辑器中执行；每一个工具结果和更新后的项目证据都会在下一轮发回给你。
+2. 不需要等待用户确认。对所有剪辑、分析和设置请求直接执行，编辑器支持撤销。
+3. 一轮只调用完成当前决策所需的 1 至 3 个工具。不要预先列出长计划；先观察每一步结果，再决定下一步。
+4. 先用 read 工具补足信息。工具参数必须使用素材或片段的真实 ID，时间使用秒。
+5. 对口播剪辑，优先引用字幕时间；对卡点剪辑，只有获得节拍证据后才能按节拍编辑。
+6. 用户要求从素材库挑选并混剪时，只能使用已有画面描述的素材；没有画面描述则先调用 analysis.request。已有画面描述时，使用 timeline.compose_from_media 编排到时间轴末尾。
+7. 所有需要的操作完成后，返回 toolCalls: [] 并在 reply 中简短说明完成内容。只有纯问答才可以在第一轮返回空数组。
+8. 每次只返回一个 JSON 对象，不要 Markdown，不要 JSON 前后的任何解释：
 {"reply":"给用户的简短说明","toolCalls":[{"id":"工具 ID","args":{}}]}
 
 当前项目的结构化证据：
@@ -48,34 +51,83 @@ function toolError(toolId: string, message: string): AiEditingObservation {
   return { toolId, result: { ok: false, message } }
 }
 
-function makePlan(reply: string, calls: AiEditingPlanStep[]): AiEditingPlan | null {
-  if (calls.length === 0) return null
-  return {
-    id: crypto.randomUUID(),
-    title: calls.length === 1 ? calls[0]!.summary : `执行 ${calls.length} 项剪辑调整`,
-    summary: reply,
-    timelineRevision: getTimelineRevision(),
-    steps: calls,
-    createdAt: Date.now(),
-  }
+function serializeForModel(value: unknown): string {
+  const text = JSON.stringify(value)
+  return text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}…` : text
+}
+
+async function yieldForUi(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+}
+
+async function saveTimelineAfterEdit(): Promise<void> {
+  const timeline = useTimelineStore.getState()
+  if (!timeline.isDirty) return
+  const projectId = useProjectStore.getState().currentProject?.id
+  if (!projectId) throw new Error('当前项目不可用，无法保存剪辑结果。')
+  await timeline.saveTimeline(projectId)
 }
 
 export interface AiEditingRunResult {
   reply: string
   observations: AiEditingObservation[]
-  plan: AiEditingPlan | null
 }
 
 export interface AiEditingRunOptions {
   history: LlmMessage[]
   signal?: AbortSignal
   onToken?: (delta: string, fullText: string) => void
+  onToolActivity?: (activity: AiEditingToolActivity) => void
   adapter?: LlmAdapter
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
   if (getEmbeddedHostBridge().aiAssistant) return openAiChatCompletionsLlmAdapter
   return getDefaultLlmAdapter()
+}
+
+async function executeToolCall(
+  call: AiEditingToolCall,
+  callIndex: number,
+  options: AiEditingRunOptions,
+): Promise<AiEditingObservation> {
+  const tool = getAiEditingTool(call.id)
+  if (!tool) return toolError(call.id, '这个操作目前不可用。')
+
+  const validation = tool.validate(call.args)
+  if (!validation.ok) return toolError(tool.id, validation.error)
+
+  const activityId = `${callIndex}-${tool.id}`
+  options.onToolActivity?.({ id: activityId, toolId: tool.id, title: tool.title, status: 'running' })
+  await yieldForUi()
+
+  let result: AiEditingToolResult
+  try {
+    if (tool.risk === 'edit' && tool.execution === 'sync') {
+      result = useTimelineCommandStore.getState().executeTransaction(
+        { type: 'AI_EDITING_TOOL', payload: { toolId: tool.id } },
+        () => {
+          const execution = tool.execute(validation.value)
+          if (execution instanceof Promise) throw new Error('剪辑操作未能及时完成。')
+          return execution
+        },
+      )
+    } else {
+      result = await tool.execute(validation.value)
+    }
+    if (result.ok && tool.risk === 'edit') await saveTimelineAfterEdit()
+  } catch (error) {
+    result = { ok: false, message: error instanceof Error ? error.message : '操作未能完成。' }
+  }
+
+  options.onToolActivity?.({
+    id: activityId,
+    toolId: tool.id,
+    title: tool.title,
+    status: result.ok ? 'succeeded' : 'failed',
+    message: result.message,
+  })
+  return { toolId: tool.id, result }
 }
 
 export async function runAiEditingTurn(
@@ -90,8 +142,8 @@ export async function runAiEditingTurn(
     { role: 'user', content: userText },
   ]
   const observations: AiEditingObservation[] = []
-  const plannedSteps: AiEditingPlanStep[] = []
   let reply = ''
+  let callIndex = 0
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     const raw = await adapter.generate(messages, {
@@ -103,7 +155,7 @@ export async function runAiEditingTurn(
     const parsed = parseAiEditingResponse(raw)
     if (!parsed) {
       if (round === MAX_TOOL_ROUNDS - 1) {
-        throw new Error('助手这次没有按约定返回剪辑计划，已自动重试 3 次。请再试一次。')
+        throw new Error('助手这次没有按约定返回剪辑操作，已自动重试多次。请再试一次。')
       }
       messages.push({ role: 'assistant', content: raw })
       messages.push({
@@ -113,102 +165,25 @@ export async function runAiEditingTurn(
       continue
     }
 
-    reply = parsed.reply
-    const readObservations: AiEditingObservation[] = []
-    for (const call of parsed.toolCalls) {
-      const tool = getAiEditingTool(call.id)
-      if (!tool) {
-        readObservations.push(toolError(call.id, '这个操作目前不可用。'))
-        continue
-      }
-      const validation = tool.validate(call.args)
-      if (!validation.ok) {
-        readObservations.push(toolError(call.id, validation.error))
-        continue
-      }
-      if (tool.risk === 'read') {
-        try {
-          readObservations.push({ toolId: tool.id, result: await tool.execute(validation.value) })
-        } catch (error) {
-          readObservations.push(toolError(tool.id, error instanceof Error ? error.message : '读取失败。'))
-        }
-        continue
-      }
-      plannedSteps.push({
-        toolId: tool.id,
-        args: validation.value,
-        summary: tool.summarize(validation.value),
-        risk: tool.risk,
-      })
-    }
+    reply = parsed.reply || reply
+    if (parsed.toolCalls.length === 0) break
 
-    observations.push(...readObservations)
-    if (readObservations.length === 0 || plannedSteps.length > 0 || round === MAX_TOOL_ROUNDS - 1) break
+    const roundObservations: AiEditingObservation[] = []
+    for (const call of parsed.toolCalls.slice(0, 3)) {
+      if (options.signal?.aborted) break
+      const observation = await executeToolCall(call, callIndex, options)
+      callIndex += 1
+      roundObservations.push(observation)
+      observations.push(observation)
+    }
+    if (options.signal?.aborted) break
 
     messages.push({ role: 'assistant', content: raw })
     messages.push({
       role: 'user',
-      content: `工具结果：${JSON.stringify(readObservations)}。请依据这些结果回答或提出待确认的下一步。`,
+      content: `工具结果：${serializeForModel(roundObservations)}。\n最新项目证据：${serializeForModel(await buildProjectEvidence())}\n继续完成用户请求；若已完成，返回 toolCalls: []。`,
     })
   }
 
-  return { reply, observations, plan: makePlan(reply, plannedSteps) }
-}
-
-export async function applyAiEditingPlan(plan: AiEditingPlan): Promise<AiEditingObservation[]> {
-  if (getTimelineRevision() !== plan.timelineRevision) {
-    throw new Error('时间轴已发生变化，请重新生成剪辑计划。')
-  }
-
-  const resolved = plan.steps.map((step) => {
-    const tool = getAiEditingTool(step.toolId)
-    if (!tool) throw new Error(`操作“${step.toolId}”已不可用。`)
-    const validation = tool.validate(step.args)
-    if (!validation.ok) throw new Error(validation.error)
-    return { step, tool, args: validation.value }
-  })
-
-  const observations: AiEditingObservation[] = []
-  const syncEdits: typeof resolved = []
-
-  const flushSyncEdits = (): void => {
-    if (syncEdits.length === 0) return
-    useTimelineCommandStore.getState().executeTransaction(
-      {
-        type: 'APPLY_AI_EDITING_PLAN',
-        payload: { planId: plan.id, toolIds: syncEdits.map(({ tool }) => tool.id) },
-      },
-      () => {
-        for (const entry of syncEdits) {
-          const result = entry.tool.execute(entry.args)
-          if (result instanceof Promise) throw new Error('剪辑操作未能及时完成。')
-          observations.push({ toolId: entry.tool.id, result })
-          if (!result.ok) throw new Error(result.message)
-        }
-      },
-    )
-    syncEdits.length = 0
-  }
-
-  for (const entry of resolved) {
-    if (entry.tool.risk === 'edit' && entry.tool.execution === 'sync') {
-      syncEdits.push(entry)
-      continue
-    }
-    flushSyncEdits()
-    observations.push({ toolId: entry.tool.id, result: await entry.tool.execute(entry.args) })
-  }
-  flushSyncEdits()
-
-  // AI edits are applied as one explicit user action. Persist before reporting
-  // success so closing the app immediately afterwards cannot lose the plan
-  // while the editor's normal debounced autosave is still pending.
-  const timeline = useTimelineStore.getState()
-  if (timeline.isDirty) {
-    const projectId = useProjectStore.getState().currentProject?.id
-    if (!projectId) throw new Error('当前项目不可用，无法保存剪辑结果。')
-    await timeline.saveTimeline(projectId)
-  }
-
-  return observations
+  return { reply: reply || (observations.length > 0 ? '已完成本次剪辑操作。' : '已完成分析。'), observations }
 }

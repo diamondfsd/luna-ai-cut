@@ -1,7 +1,7 @@
 /**
- * Internal contracts for the review-first AI editor. These objects are kept
- * independent from a particular language model transport and never expose
- * source frames, audio bytes, local paths, or credentials to the model.
+ * Internal contracts for the AI editor. These objects are kept independent
+ * from a particular language model transport and never expose source frames,
+ * audio bytes, local paths, or credentials to the model.
  */
 
 export type AiEditingToolRisk = 'read' | 'analysis' | 'edit' | 'settings'
@@ -44,20 +44,12 @@ export interface AiEditingObservation {
   result: AiEditingToolResult
 }
 
-export interface AiEditingPlanStep {
-  toolId: string
-  args: Record<string, unknown>
-  summary: string
-  risk: Exclude<AiEditingToolRisk, 'read'>
-}
-
-export interface AiEditingPlan {
+export interface AiEditingToolActivity {
   id: string
+  toolId: string
   title: string
-  summary: string
-  timelineRevision: number
-  steps: AiEditingPlanStep[]
-  createdAt: number
+  status: 'running' | 'succeeded' | 'failed'
+  message?: string
 }
 
 export interface AiEditingResponse {

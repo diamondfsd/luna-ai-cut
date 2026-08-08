@@ -7,15 +7,14 @@ import {
 } from '@freecut/infrastructure/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
 import {
-  applyAiEditingPlan,
   getAiEditingAdapter,
   runAiEditingTurn,
 } from './orchestrator'
-import type { AiEditingObservation, AiEditingPlan } from './types'
+import type { AiEditingObservation, AiEditingToolActivity } from './types'
 
 const logger = createLogger('AiEditingStore')
 
-export type AiEditingPhase = 'idle' | 'loading' | 'thinking' | 'awaiting-confirmation' | 'applying'
+export type AiEditingPhase = 'idle' | 'loading' | 'thinking' | 'executing'
 
 export interface AiEditingMessage {
   id: string
@@ -31,13 +30,11 @@ interface AiEditingState {
   streamingText: string
   messages: AiEditingMessage[]
   observations: AiEditingObservation[]
-  plan: AiEditingPlan | null
+  toolActivities: AiEditingToolActivity[]
   projectId: string | null
   isRestoringConversation: boolean
   restoreConversation: (projectId: string | null) => Promise<void>
   submit: (text: string) => Promise<void>
-  applyPlan: () => Promise<void>
-  dismissPlan: () => void
   cancel: () => void
   clear: () => Promise<void>
 }
@@ -52,13 +49,6 @@ function newId(): string {
 
 function buildHistory(messages: AiEditingMessage[]): LlmMessage[] {
   return messages.slice(-6).map((message) => ({ role: message.role, content: message.content }))
-}
-
-function observationsSummary(observations: readonly AiEditingObservation[]): string {
-  const succeeded = observations.filter((item) => item.result.ok).length
-  const failed = observations.length - succeeded
-  if (failed === 0) return `已完成 ${succeeded} 项调整。`
-  return `完成 ${succeeded} 项调整，${failed} 项未能完成。`
 }
 
 function enqueueConversationWrite(projectId: string, operation: () => Promise<void>): Promise<void> {
@@ -84,7 +74,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
   streamingText: '',
   messages: [],
   observations: [],
-  plan: null,
+  toolActivities: [],
   projectId: null,
   isRestoringConversation: false,
 
@@ -101,7 +91,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       streamingText: '',
       messages: [],
       observations: [],
-      plan: null,
+      toolActivities: [],
     })
     if (!projectId) return
 
@@ -131,7 +121,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       error: null,
       streamingText: '',
       observations: [],
-      plan: null,
+      toolActivities: [],
     })
     try {
       await enqueueConversationWrite(projectId, () => saveAiEditingConversation(projectId, messages))
@@ -173,6 +163,19 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             set({ streamingText: fullText })
           }
         },
+        onToolActivity: (activity) => {
+          if (controller.signal.aborted || get().projectId !== projectId) return
+          set((state) => {
+            const existingIndex = state.toolActivities.findIndex((item) => item.id === activity.id)
+            const toolActivities = existingIndex === -1
+              ? [...state.toolActivities, activity]
+              : state.toolActivities.map((item, index) => index === existingIndex ? activity : item)
+            return {
+              toolActivities,
+              phase: activity.status === 'running' ? 'executing' : state.phase,
+            }
+          })
+        },
       })
       if (controller.signal.aborted || get().projectId !== projectId) return
       const nextMessages = [
@@ -192,9 +195,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       set({
         messages: nextMessages,
         observations: result.observations,
-        plan: result.plan,
         streamingText: '',
-        phase: result.plan ? 'awaiting-confirmation' : 'idle',
+        phase: 'idle',
       })
     } catch (error) {
       if (!controller.signal.aborted && get().projectId === projectId) {
@@ -209,54 +211,16 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     }
   },
 
-  applyPlan: async () => {
-    const plan = get().plan
-    if (!plan || get().phase !== 'awaiting-confirmation') return
-    const projectId = get().projectId
-    if (!projectId) return
-    set({ phase: 'applying', error: null })
-    try {
-      const observations = await applyAiEditingPlan(plan)
-      if (get().projectId !== projectId) return
-      const messages = [
-        ...get().messages,
-        { id: newId(), role: 'assistant' as const, content: observationsSummary(observations) },
-      ]
-      try {
-        await enqueueConversationWrite(projectId, () => saveAiEditingConversation(projectId, messages))
-      } catch (error) {
-        logger.warn('Failed to persist AI editing conversation', error)
-        if (get().projectId === projectId) {
-          set({ phase: 'awaiting-confirmation', error: '无法保存本项目的对话记录。' })
-        }
-        return
-      }
-      if (get().projectId !== projectId) return
-      set({
-        observations,
-        plan: null,
-        phase: 'idle',
-        messages,
-      })
-    } catch (error) {
-      if (get().projectId === projectId) {
-        set({
-          phase: 'awaiting-confirmation',
-          error: error instanceof Error ? error.message : '无法应用这份剪辑计划。',
-        })
-      }
-    }
-  },
-
-  dismissPlan: () => {
-    if (get().phase === 'applying') return
-    set({ plan: null, phase: 'idle' })
-  },
-
   cancel: () => {
     activeController?.abort()
     activeController = null
-    set({ phase: 'idle', streamingText: '' })
+    set((state) => ({
+      phase: 'idle',
+      streamingText: '',
+      toolActivities: state.toolActivities.map((activity) => activity.status === 'running'
+        ? { ...activity, status: 'failed', message: '已停止本次操作。' }
+        : activity),
+    }))
   },
 
   clear: async () => {
@@ -267,7 +231,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     set({
       messages: [],
       observations: [],
-      plan: null,
+      toolActivities: [],
       phase: 'idle',
       streamingText: '',
       error: null,
