@@ -23,8 +23,8 @@ if (!app.isPackaged && e2eUserDataDir) {
 }
 
 // `file://` has an opaque, unstable origin in Electron. The renderer uses a
-// stable, secure application origin so the File System Access API can restore
-// permissions for the user-selected FreeCut workspace across normal launches.
+// stable, secure application origin so File System Access and local storage
+// behave consistently across normal launches.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'luna',

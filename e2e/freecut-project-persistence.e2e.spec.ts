@@ -1,4 +1,5 @@
 import { _electron as electron } from '@playwright/test'
+import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -20,6 +21,11 @@ test('FreeCut 项目在 Electron 重启后仍可打开', async ({ lunaApp }) => 
   await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => window.location.origin)).toBe('luna://app')
   await page.evaluate(() => localStorage.setItem('freecut-persistence-e2e', 'stored'))
+  await expect.poll(async () => {
+    const projectRoot = path.join(temporaryRoot, 'user-data', 'freecut-workspace', 'projects')
+    const entries = await readdir(projectRoot, { withFileTypes: true }).catch(() => [])
+    return entries.filter((entry) => entry.isDirectory()).length
+  }).toBe(1)
 
   await app.close()
 
@@ -27,7 +33,7 @@ test('FreeCut 项目在 Electron 重启后仍可打开', async ({ lunaApp }) => 
   const relaunched = await electron.launch({
     args: ['.'],
     cwd: path.resolve(import.meta.dirname, '..'),
-    env: { ...process.env, LUNA_E2E_USER_DATA_DIR: userDataDir, LUNA_E2E_FREECUT_STORAGE: 'opfs' },
+    env: { ...process.env, LUNA_E2E_USER_DATA_DIR: userDataDir, LUNA_E2E_FREECUT_STORAGE: 'disk' },
   })
   try {
     const relaunchedPage = await waitForLunaWindow(relaunched)

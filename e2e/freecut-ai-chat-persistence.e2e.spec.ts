@@ -228,7 +228,7 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     relaunched = await electron.launch({
       args: ['.'],
       cwd: path.resolve(import.meta.dirname, '..'),
-      env: { ...process.env, LUNA_E2E_USER_DATA_DIR: userDataDir, LUNA_E2E_FREECUT_STORAGE: 'opfs' },
+      env: { ...process.env, LUNA_E2E_USER_DATA_DIR: userDataDir, LUNA_E2E_FREECUT_STORAGE: 'disk' },
     })
     const relaunchedPage = await waitForLunaWindow(relaunched)
     const relaunchErrors: string[] = []
