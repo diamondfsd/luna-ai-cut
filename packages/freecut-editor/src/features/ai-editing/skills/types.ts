@@ -6,6 +6,7 @@ export interface AiEditingSkill {
   triggers: string[]
   toolIds: string[]
   requiresFinishedVideo: boolean
+  productionMode?: 'blueprint'
   source: 'built-in' | 'custom'
   enabled: boolean
 }

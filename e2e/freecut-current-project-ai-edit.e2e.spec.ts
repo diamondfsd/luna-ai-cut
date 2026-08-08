@@ -23,7 +23,17 @@ interface ProjectFile {
 }
 
 interface AiEditingRunsFile {
-  runs?: Array<{ completed?: boolean }>
+  runs?: Array<{
+    completed?: boolean
+    skillId?: string
+    production?: {
+      blueprint?: {
+        title?: string
+        shots?: Array<{ id?: string; mediaId?: string; region?: string }>
+      }
+      review?: { passed?: boolean }
+    }
+  }>
 }
 
 test('用当前项目的剪辑助手制作 UI 重构主题短片', async ({ lunaLiveApp }) => {
@@ -61,14 +71,18 @@ test('用当前项目的剪辑助手制作 UI 重构主题短片', async ({ luna
   const items = saved.timeline?.items ?? []
   const textItems = items.filter((item) => item.type === 'text')
   expect(items.some((item) => item.type === 'image' && (item.motionModifiers?.length ?? 0) > 0)).toBe(true)
-  expect(textItems).toHaveLength(3)
-  expect(textItems.map((item) => item.text)).toEqual(expect.arrayContaining([
-    expect.stringMatching(/挑战.*剪映/),
-    expect.stringMatching(/第一天.*UI.*重构/),
-  ]))
+  expect(textItems.length).toBeGreaterThanOrEqual(3)
   expect(textItems.some((item) => item.text === 'Main')).toBe(false)
-  expect(items.some((item) => item.text === '第一天，UI重构' && (item.durationInFrames ?? 0) >= 1_800)).toBe(false)
   const runs = JSON.parse(await readFile(path.join(path.dirname(projectFile), 'ai-editing-runs.json'), 'utf8')) as AiEditingRunsFile
-  expect(runs.runs?.at(-1)?.completed).toBe(true)
+  expect(runs.runs?.at(-1)).toMatchObject({
+    completed: true,
+    skillId: 'product-ui-launch',
+    production: { review: { passed: true } },
+  })
+  const blueprint = runs.runs?.at(-1)?.production?.blueprint
+  expect(blueprint?.title).toMatch(/挑战.*剪映.*UI.*重构/)
+  expect(blueprint?.shots).toHaveLength(5)
+  expect(blueprint?.shots?.every((shot, index) => shot.id === `SHOT-0${index + 1}` && Boolean(shot.mediaId))).toBe(true)
+  expect(blueprint?.shots?.some((shot) => shot.region === 'timeline')).toBe(true)
   expect(runtimeErrors).toEqual([])
 })

@@ -1,0 +1,6 @@
+{
+  "id": "product-ui-launch",
+  "version": 1,
+  "productionMode": "blueprint",
+  "artifact": "product-ui-launch-blueprint"
+}

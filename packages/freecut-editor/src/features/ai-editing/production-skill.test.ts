@@ -28,6 +28,16 @@ describe('AI editing production skill', () => {
     expect(selectAiEditingSkill('帮我做成片', [{ ...productSkill, enabled: false }])).toBeNull()
   })
 
+  it('prefers a specialised blueprint skill when it ties a generic skill', () => {
+    const blueprintSkill: AiEditingSkill = {
+      ...productSkill,
+      id: 'product-ui-launch',
+      name: 'product-ui-launch',
+      productionMode: 'blueprint',
+    }
+    expect(selectAiEditingSkill('帮我把这个 UI 原型做成片', [productSkill, blueprintSkill])).toBe(blueprintSkill)
+  })
+
   it('does not accept text-only content as a finished video', () => {
     const result = validateFinishedVideo(evidence([
       { id: 'title-1', label: '标题', type: 'text', trackId: 'v1', startSeconds: 0, endSeconds: 60 },

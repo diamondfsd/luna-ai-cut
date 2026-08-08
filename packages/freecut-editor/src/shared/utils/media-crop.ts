@@ -113,7 +113,7 @@ export function normalizeCropSettings(crop?: CropSettings): CropSettings | undef
     return undefined
   }
 
-  return normalized
+  return { ...normalized, ...(crop.refit === true ? { refit: true } : {}) }
 }
 
 export function hasMediaCrop(crop?: CropSettings): boolean {

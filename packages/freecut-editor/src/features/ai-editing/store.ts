@@ -213,6 +213,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           })),
           completed: result.completed,
           completionNotes: result.completionNotes,
+          ...(result.production ? { production: result.production } : {}),
         })
       } catch (error) {
         logger.warn('Failed to persist AI editing run', error)

@@ -18,6 +18,7 @@ export interface AiEditingRunRecord {
   toolCalls: Array<{ id: string; ok: boolean; message: string }>
   completed: boolean
   completionNotes: string[]
+  production?: { blueprint: unknown; review: unknown }
 }
 
 interface AiEditingRunsFile {
@@ -56,6 +57,9 @@ function sanitizeRecord(value: unknown): AiEditingRunRecord | null {
     ).slice(0, 64),
     completed: candidate.completed,
     completionNotes: candidate.completionNotes.filter((entry): entry is string => typeof entry === 'string').slice(0, 12),
+    ...(candidate.production && typeof candidate.production === 'object' && !Array.isArray(candidate.production)
+      ? { production: candidate.production as { blueprint: unknown; review: unknown } }
+      : {}),
   }
 }
 

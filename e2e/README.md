@@ -42,3 +42,5 @@ LUNA_E2E_LIVE=1 \
 LUNA_E2E_PROJECT_ID="project-id" \
 pnpm exec playwright test e2e/freecut-current-project-ai-edit.e2e.spec.ts --workers=1
 ```
+
+For the `product-ui-launch` skill, the accepted run also persists its production blueprint and compiler review in the project's `ai-editing-runs.json`. This makes the planned shots inspectable alongside the resulting timeline.
