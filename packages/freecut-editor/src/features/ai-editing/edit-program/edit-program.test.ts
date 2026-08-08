@@ -1,8 +1,9 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it } from 'vite-plus/test'
-import { useTimelineSettingsStore } from '@freecut/features/editor/deps/timeline-contract'
-import type { ImageItem } from '@freecut/types/timeline'
+import {
+  useItemsStore,
+  useTimelineSettingsStore,
+} from '@freecut/features/editor/deps/timeline-contract'
+import type { ImageItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { compileEditProgram, compileVisualState, transformForPose } from './compiler'
 import { editProgramSchema } from './schema'
 import type { EditProgram } from './types'
@@ -25,6 +26,89 @@ function imageItem(): ImageItem {
 describe('EditProgram', () => {
   beforeEach(() => {
     useTimelineSettingsStore.setState({ fps: 30, changeVersion: 7, isDirty: false })
+    useItemsStore.setState({ items: [], tracks: [] })
+  })
+
+  it('reuses the previous caption track when rebuilding implicit text', async () => {
+    const tracks: TimelineTrack[] = [
+      {
+        id: 'caption-track',
+        name: 'V6',
+        kind: 'video',
+        height: 72,
+        order: -5,
+        locked: false,
+        syncLock: true,
+        visible: true,
+        muted: false,
+        solo: false,
+        volume: 0,
+        items: [],
+      },
+      ...[-4, -3, -2, -1].map((order, index): TimelineTrack => ({
+        id: `stale-caption-track-${index}`,
+        name: `V${5 - index}`,
+        kind: 'video',
+        height: 72,
+        order,
+        locked: false,
+        syncLock: true,
+        visible: true,
+        muted: false,
+        solo: false,
+        volume: 0,
+        items: [],
+      })),
+      {
+        id: 'picture-track',
+        name: 'V1',
+        kind: 'video',
+        height: 72,
+        order: 0,
+        locked: false,
+        syncLock: true,
+        visible: true,
+        muted: false,
+        solo: false,
+        volume: 0,
+        items: [],
+      },
+    ]
+    const previousCaption = {
+      id: 'old-caption',
+      type: 'text',
+      trackId: 'caption-track',
+      from: 0,
+      durationInFrames: 240,
+      label: '旧字幕',
+      text: '旧字幕',
+    } as TimelineItem
+    const picture = {
+      ...imageItem(),
+      trackId: 'picture-track',
+      durationInFrames: 240,
+    }
+    useItemsStore.setState({ items: [previousCaption, picture], tracks })
+
+    const compiled = await compileEditProgram({
+      version: 1,
+      baseRevision: 7,
+      intent: '重做字幕',
+      operations: [
+        { type: 'removeClip', clipRef: 'clip:old-caption' },
+        { type: 'insertText', text: { ref: 'caption-1', text: '第一句', start: 0, duration: 2, role: 'caption' } },
+        { type: 'insertText', text: { ref: 'caption-2', text: '第二句', start: 2, duration: 2, role: 'caption' } },
+        { type: 'insertText', text: { ref: 'caption-3', text: '第三句', start: 4, duration: 2, role: 'caption' } },
+      ],
+    })
+
+    expect(compiled.tracks).toHaveLength(2)
+    expect(compiled.tracks.map((track) => track.id)).toEqual(['caption-track', 'picture-track'])
+    expect(compiled.insertItems.map((item) => item.trackId)).toEqual([
+      'caption-track',
+      'caption-track',
+      'caption-track',
+    ])
   })
 
   it('rejects malformed framing before compilation', () => {

@@ -7,10 +7,13 @@ description: Create an evidence-led product interface launch video from real scr
 
 ## Creative judgment
 
+- Establish the intended viewer, platform, duration, product claim and proof before choosing shots.
 - Build the narrative around visible interface evidence: product identity, a meaningful interaction or detail, and the user's intended takeaway.
+- For a substantial creation, form a concise shot plan before the EditProgram. Each shot should identify the real interface region, the viewer's focus and why that view follows the previous one.
 - Choose the number and order of views from the real assets. Do not force a standard shot count or invent screens to fill a structure.
 - With a single screenshot, use deliberate crops and restrained camera movement to direct attention while remaining honest that every view comes from the same source.
 - Use on-screen text only where it adds information the interface cannot communicate by itself.
+- Start with the strongest available proof or most legible product identity. Alternate overview and detail only when the change helps orientation or reveals new information.
 
 ## Evidence and safety
 
@@ -21,5 +24,5 @@ description: Create an evidence-led product interface launch video from real scr
 ## Quality standard
 
 - Camera movement should express an editorial decision, not add random motion.
-- The sequence should remain visually covered, readable, paced for its content, and end deliberately.
-- Inspect and review the compiled timeline before reporting completion. Continue with atomic tools when a high-level build needs correction.
+- The sequence should remain visually covered, readable, paced for its content, and end deliberately. Allow complex screens enough time to be understood.
+- Inspect the workspace returned by the applied EditProgram before reporting completion. Correct source ranges, framing, motion, captions, track reuse, transitions or coverage through a targeted follow-up EditProgram when needed.
