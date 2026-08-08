@@ -42,6 +42,18 @@ type EditOperation =
     }
   | { type: 'insertClip'; clip: ClipDraft }
   | {
+      type: 'insertText'
+      text: {
+        ref: string
+        text: string
+        start: number
+        duration: number
+        label?: string
+        trackRef?: string // 省略时自动创建画面文字轨道
+        role?: 'title' | 'caption'
+      }
+    }
+  | {
       type: 'updateClip'
       clipRef: string
       changes: {
@@ -49,6 +61,7 @@ type EditOperation =
         duration?: number
         trackRef?: string
         label?: string
+        text?: string // 仅用于现有文字片段
         framing?: Framing
         cameraMove?: CameraMove | null
         volumeDb?: number

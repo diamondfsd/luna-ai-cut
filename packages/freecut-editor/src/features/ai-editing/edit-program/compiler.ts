@@ -1,12 +1,16 @@
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { resolveMediaUrl, useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
-import { getTrackKind } from '@freecut/features/editor/deps/timeline-contract'
+import {
+  createOverlayLayerTrack,
+  createTextTemplateItem,
+  getTrackKind,
+} from '@freecut/features/editor/deps/timeline-contract'
 import { buildMediaTimelineItems } from '@freecut/features/editor/deps/timeline-utils'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
 import type { EasingType } from '@freecut/types/keyframe'
 import type { MotionAnimationLayer, MotionLayerTrack } from '@freecut/types/motion'
-import type { TimelineItem } from '@freecut/types/timeline'
+import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import type { TransformProperties } from '@freecut/types/transform'
 import { clipRef, idFromAgentRef } from '../workspace-document/build-workspace-document'
 import type {
@@ -28,6 +32,7 @@ export interface CompiledEditProgram {
   program: EditProgram
   removeIds: string[]
   insertItems: TimelineItem[]
+  tracks: TimelineTrack[]
   updates: Array<{ id: string; updates: Partial<TimelineItem> }>
   transitions: CompiledTransition[]
   diff: EditProgramDiff
@@ -246,6 +251,7 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
     height: metadata?.height ?? DEFAULT_PROJECT_HEIGHT,
   }
   let virtualItems = [...timeline.items]
+  let virtualTracks = [...timeline.tracks]
   const removeIds = new Set<string>()
   const insertItems: TimelineItem[] = []
   const updates = new Map<string, Partial<TimelineItem>>()
@@ -300,6 +306,44 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       continue
     }
 
+    if (operation.type === 'insertText') {
+      if (refs.has(operation.text.ref)) {
+        throw new Error(`编辑程序中的片段引用“${operation.text.ref}”重复。`)
+      }
+      let textTrackId: string
+      if (operation.text.trackRef) {
+        textTrackId = idFromAgentRef(operation.text.trackRef, 'track')
+        assertTrackCompatibility(textTrackId, 'video')
+      } else {
+        const overlay = createOverlayLayerTrack({ tracks: virtualTracks, activeTrackId: null })
+        if (!overlay) throw new Error('无法为文字创建画面轨道。')
+        textTrackId = overlay.trackId
+        virtualTracks = overlay.tracks
+      }
+      const textItem = createTextTemplateItem({
+        placement: {
+          trackId: textTrackId,
+          from: secondsToFrames(operation.text.start, fps),
+          durationInFrames: Math.max(1, secondsToFrames(operation.text.duration, fps)),
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          fps,
+        },
+        text: operation.text.text,
+        label: operation.text.label ?? operation.text.text.slice(0, 40),
+        ...(operation.text.role !== 'caption' ? { textStylePresetId: 'clean-title' } : {}),
+      })
+      refs.set(operation.text.ref, textItem.id)
+      insertItems.push(textItem)
+      virtualItems.push(textItem)
+      touchedIds.add(textItem.id)
+      changedRanges.push({
+        start: operation.text.start,
+        end: operation.text.start + operation.text.duration,
+      })
+      continue
+    }
+
     if (operation.type === 'removeClip') {
       const id = resolveClipId(operation.clipRef)
       const item = virtualItems.find((candidate) => candidate.id === id)
@@ -327,6 +371,10 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         ...(operation.changes.trackRef ? { trackId: nextTrackId } : {}),
         ...(operation.changes.label ? { label: operation.changes.label } : {}),
         ...(operation.changes.volumeDb !== undefined ? { volume: operation.changes.volumeDb } : {}),
+      }
+      if (operation.changes.text !== undefined) {
+        if (item.type !== 'text') throw new Error('只有文字片段可以修改文字内容。')
+        Object.assign(next, { text: operation.changes.text })
       }
       const candidate = { ...item, ...next } as TimelineItem
       Object.assign(next, compileVisualState({
@@ -359,6 +407,7 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
     program,
     removeIds: [...removeIds],
     insertItems,
+    tracks: virtualTracks,
     updates: [...updates].map(([id, itemUpdates]) => ({ id, updates: itemUpdates })),
     transitions,
     warnings: [],

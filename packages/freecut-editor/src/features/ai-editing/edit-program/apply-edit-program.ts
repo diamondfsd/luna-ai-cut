@@ -1,4 +1,5 @@
 import { useTimelineCommandStore, useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
+import { addItemsOnNewTracks } from '@freecut/features/editor/deps/timeline-contract'
 import { compileEditProgram } from './compiler'
 import { buildAgentWorkspaceDocument } from '../workspace-document/build-workspace-document'
 import type { EditProgram, EditProgramApplyResult } from './types'
@@ -26,7 +27,7 @@ export async function applyEditProgram(program: EditProgram): Promise<EditProgra
       const timeline = useTimelineStore.getState()
       if (compiled.removeIds.length > 0) timeline.removeItems(compiled.removeIds)
       if (compiled.insertItems.length > 0) {
-        for (const item of compiled.insertItems) timeline.addItem(item)
+        addItemsOnNewTracks(compiled.insertItems, compiled.tracks)
       }
       for (const update of compiled.updates) timeline.updateItem(update.id, update.updates)
 

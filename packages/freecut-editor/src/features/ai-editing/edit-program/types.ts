@@ -114,6 +114,16 @@ export interface AgentClipDraft {
   cameraMove?: AgentCameraMove
 }
 
+export interface AgentTextDraft {
+  ref: string
+  text: string
+  start: number
+  duration: number
+  label?: string
+  trackRef?: AgentTrackRef
+  role?: 'title' | 'caption'
+}
+
 export interface AgentTransitionDraft {
   between: [string, string]
   transition: AgentTransitionSpec
@@ -135,6 +145,7 @@ export type EditOperation =
       transitions?: AgentTransitionDraft[]
     }
   | { type: 'insertClip'; clip: AgentClipDraft }
+  | { type: 'insertText'; text: AgentTextDraft }
   | {
       type: 'updateClip'
       clipRef: AgentClipRef
@@ -143,6 +154,7 @@ export type EditOperation =
         duration?: number
         trackRef?: AgentTrackRef
         label?: string
+        text?: string
         framing?: AgentFraming
         cameraMove?: AgentCameraMove | null
         volumeDb?: number
