@@ -10,6 +10,9 @@
  */
 
 import type { LlmMessage } from '@freecut/infrastructure/llm'
+import legacyAgentPrompt from '@freecut/features/ai-editing/prompts/legacy-agent.md?raw'
+import legacyRequestPrompt from '@freecut/features/ai-editing/prompts/messages/legacy-request.md?raw'
+import { renderPrompt } from '@freecut/features/ai-editing/prompts/render-prompt'
 import { buildToolCatalog } from './tools'
 
 export interface RawPlanStep {
@@ -23,41 +26,7 @@ export interface ParsedPlan {
 }
 
 export function buildSystemPrompt(): string {
-  return `You are the FreeCut editing assistant, embedded in a browser-based video editor.
-You help the user edit by choosing editing tools to run. You are given a snapshot
-of the timeline, including a list of clips with short refs (c1, c2, …).
-
-Respond with ONLY a single JSON object and nothing else:
-{ "reply": "<one short sentence for the user>", "steps": [ { "tool": "<name>", "args": { ... } } ] }
-
-Rules:
-- Use ONLY the tools listed below, with the exact args shapes shown.
-- Target clips by their ref (e.g. "clips": ["c2","c3"]) using the timeline list.
-  Omit "clips" to act on the user's current selection.
-- Put steps in the order they should run.
-- If the user is only chatting or asking a question, return "steps": [] and answer in "reply".
-- If the request is impossible with these tools, return "steps": [] and explain briefly in "reply".
-- Keep "reply" under 20 words. Output the JSON only — no prose, no code fences.
-
-Tools:
-${buildToolCatalog()}
-
-Examples:
-User: cut the silences
-{ "reply": "Opening the silence review.", "steps": [ { "tool": "remove_silence", "args": {} } ] }
-
-User: delete the second clip and speed up the first one
-{ "reply": "Deleting c2 and speeding up c1.", "steps": [ { "tool": "delete_clips", "args": { "clips": ["c2"] } }, { "tool": "set_speed", "args": { "clips": ["c1"], "speed": 2 } } ] }
-
-User: add a title that says Welcome
-{ "reply": "Adding the title.", "steps": [ { "tool": "add_title", "args": { "text": "Welcome" } } ] }
-
-User: delete the part where I talk about pricing
-(You don't know where that is — search first; you'll get the results back, then plan.)
-{ "reply": "Finding where you mention pricing.", "steps": [ { "tool": "search_transcript", "args": { "query": "pricing" } } ] }
-
-User: what can you do?
-{ "reply": "I can cut silences/fillers, add titles, split, delete, trim, change speed/volume, and add transitions.", "steps": [] }`
+  return renderPrompt(legacyAgentPrompt, { TOOL_CATALOG: buildToolCatalog() })
 }
 
 export function buildMessages(
@@ -68,7 +37,13 @@ export function buildMessages(
   return [
     { role: 'system', content: buildSystemPrompt() },
     ...history,
-    { role: 'user', content: `Timeline:\n${contextText}\n\nRequest: ${userText}` },
+    {
+      role: 'user',
+      content: renderPrompt(legacyRequestPrompt, {
+        TIMELINE_CONTEXT: contextText,
+        USER_REQUEST: userText,
+      }),
+    },
   ]
 }
 

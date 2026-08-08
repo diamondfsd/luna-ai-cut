@@ -11,6 +11,10 @@
 
 import { getDefaultLlmAdapter, type LlmAdapter, type LlmMessage } from '@freecut/infrastructure/llm'
 import { createLogger } from '@freecut/shared/logging/logger'
+import legacyInvalidJsonPrompt from '@freecut/features/ai-editing/prompts/messages/legacy-invalid-json.md?raw'
+import legacyInvalidToolsPrompt from '@freecut/features/ai-editing/prompts/messages/legacy-invalid-tools.md?raw'
+import legacyReadResultsPrompt from '@freecut/features/ai-editing/prompts/messages/legacy-read-results.md?raw'
+import { renderPrompt } from '@freecut/features/ai-editing/prompts/render-prompt'
 import { buildTimelineContext } from './timeline-context'
 import { buildMessages, parsePlan } from './prompt'
 import { getEditorTool } from './tools'
@@ -79,10 +83,10 @@ function validateSteps(rawSteps: { tool: string; args: Record<string, unknown> }
 
 function buildCorrection(wasValidJson: boolean, dropped: DroppedStep[]): string {
   if (!wasValidJson) {
-    return 'Your last response was not valid JSON. Respond with ONLY the single JSON object described — no prose, no code fences.'
+    return legacyInvalidJsonPrompt.trim()
   }
   const issues = dropped.map((entry) => `"${entry.tool}" (${entry.reason})`).join(', ')
-  return `These tool calls were invalid: ${issues}. Use only the listed tool names with the exact arg shapes, and target clips by their refs. Respond with ONLY the corrected JSON object.`
+  return renderPrompt(legacyInvalidToolsPrompt, { ISSUES: issues })
 }
 
 export interface PlanRequestOptions {
@@ -150,7 +154,7 @@ export async function planRequest(
       { role: 'assistant', content: raw },
       {
         role: 'user',
-        content: `Results:\n${observations.join('\n')}\n\nNow give the final plan as JSON using these clip refs and times. Do not call read-only tools again.`,
+        content: renderPrompt(legacyReadResultsPrompt, { OBSERVATIONS: observations.join('\n') }),
       },
     ]
     const hopRaw = await adapter.generate(hopMessages, {
