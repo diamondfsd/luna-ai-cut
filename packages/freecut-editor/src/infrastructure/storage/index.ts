@@ -171,6 +171,16 @@ export {
   clearAiEditingConversation,
   type AiEditingConversationMessage,
 } from '@freecut/infrastructure/storage/workspace-fs/ai-editing-conversation'
+export {
+  loadAiEditingSkills,
+  saveAiEditingSkills,
+  type AiEditingSkillsSettings,
+  type StoredAiEditingCustomSkill,
+} from '@freecut/infrastructure/storage/workspace-fs/ai-editing-skills'
+export {
+  saveAiEditingRun,
+  type AiEditingRunRecord,
+} from '@freecut/infrastructure/storage/workspace-fs/ai-editing-runs'
 
 // Soft-delete / trash for projects
 export {

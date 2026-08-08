@@ -15,6 +15,7 @@ const SEARCH_KEYWORDS: Record<string, string[]> = {
   'analysis.search_transcript': ['口播', '台词', '文案', '说话', '搜索字幕'],
   'captions.generate': ['字幕', '字幕条'],
   'timeline.compose_from_media': ['混剪', '成片', '编排', '素材', 'vlog', '日常'],
+  'timeline.build_product_showcase': ['成片', '短视频', '产品更新', '原型', 'UI', '产品展示'],
   'audio.inspect_beats': ['节拍', '卡点', 'bpm', '音乐'],
   'audio.analyze_beats': ['节拍分析', '卡点', 'bpm', '音乐'],
   'timeline.split_on_beats': ['卡点', '节拍切分', '踩点'],

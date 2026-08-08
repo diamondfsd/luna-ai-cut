@@ -18,6 +18,7 @@ const composeFromMedia = defineAiEditingTool({
           mediaId: { type: 'string', description: '素材库中的素材 ID。' },
           startSeconds: { type: 'number', minimum: 0, description: '选段起点，默认从开头开始。' },
           endSeconds: { type: 'number', minimum: 0, description: '选段终点，默认到素材结尾。' },
+          durationSeconds: { type: 'number', exclusiveMinimum: 0, description: '图片在时间轴中的展示时长。' },
         },
         required: ['mediaId'],
       },
@@ -31,6 +32,7 @@ const composeFromMedia = defineAiEditingTool({
       mediaId: z.string().min(1),
       startSeconds: z.number().min(0).optional(),
       endSeconds: z.number().min(0).optional(),
+      durationSeconds: z.number().positive().optional(),
     }).refine(
       (selection) => selection.endSeconds === undefined
         || selection.startSeconds === undefined
