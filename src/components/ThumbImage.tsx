@@ -19,6 +19,8 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
   unavailableFallback?: ReactNode
   /** 自动重试后仍无法加载时触发 */
   onUnavailable?: (src: string) => void
+  /** 本地缓存文件准备好时触发 */
+  onCacheReady?: (cacheFilePath: string) => void
 }
 
 /**
@@ -33,13 +35,17 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const retryCountRef = useRef(0)
-  const { thumbnailUrl, hasError, retry } = useFileCache(src, visible && !embeddedImage)
+  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, visible && !embeddedImage)
+
+  useEffect(() => {
+    if (cacheFilePath) onCacheReady?.(cacheFilePath)
+  }, [cacheFilePath, onCacheReady])
 
   useEffect(() => {
     retryCountRef.current = 0
