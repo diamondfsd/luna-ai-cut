@@ -75,6 +75,7 @@ const {
 } = mockState
 let mockedPlayerFrame = 0
 let mockedPlayerIsPlaying = false
+let emitMockPlayerFrame: (frame: number) => void = () => undefined
 let deferPlayerSeekCompletion = false
 let completeDeferredPlayerSeek: ((frameOverride?: number) => void) | null = null
 let lastPlayerDimensions: { width: number; height: number } | null = null
@@ -333,6 +334,17 @@ vi.mock('@freecut/features/preview/deps/player-core', async () => {
     React.useEffect(() => {
       onFrameChangeRef.current = onFrameChange
     }, [onFrameChange])
+
+    React.useEffect(() => {
+      emitMockPlayerFrame = (frame: number) => {
+        mockedPlayerFrame = Math.round(frame)
+        setRenderTick((value) => value + 1)
+        onFrameChangeRef.current?.(mockedPlayerFrame)
+      }
+      return () => {
+        emitMockPlayerFrame = () => undefined
+      }
+    }, [])
 
     React.useImperativeHandle(
       ref,
@@ -892,6 +904,7 @@ describe('VideoPreview sync behavior', () => {
   beforeEach(() => {
     mockedPlayerFrame = 0
     mockedPlayerIsPlaying = false
+    emitMockPlayerFrame = () => undefined
     deferPlayerSeekCompletion = false
     completeDeferredPlayerSeek = null
     lastPlayerDimensions = null
@@ -4078,6 +4091,35 @@ describe('VideoPreview sync behavior', () => {
       expect(usePlaybackStore.getState().previewFrame).toBeNull()
       expect(seekToMock).toHaveBeenCalledWith(48)
       expect(playMock).toHaveBeenCalled()
+    })
+  })
+
+  it('pauses and clamps playback when the player reaches the content end', async () => {
+    setSingleVideoItemAtFrame(
+      {
+        id: 'clip-at-timeline-end',
+        durationInFrames: 240,
+      },
+      238,
+    )
+    await renderAfterInitialSeek()
+
+    act(() => {
+      usePlaybackStore.getState().play()
+    })
+    await waitFor(() => expect(playMock).toHaveBeenCalled())
+
+    act(() => {
+      emitMockPlayerFrame(264)
+    })
+
+    await waitFor(() => {
+      expect(usePlaybackStore.getState()).toMatchObject({
+        currentFrame: 239,
+        isPlaying: false,
+      })
+      expect(pauseMock).toHaveBeenCalled()
+      expect(seekToMock).toHaveBeenCalledWith(239)
     })
   })
 

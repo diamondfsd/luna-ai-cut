@@ -89,6 +89,8 @@ export interface PlaybackActions {
   cancelPlaybackScrubResume: () => void
   play: () => void
   pause: () => void
+  /** Pause playback and commit the final visible frame in one state update. */
+  finishPlaybackAtFrame: (frame: number) => void
   togglePlayPause: () => void
   shuttleForward: () => void
   shuttleReverse: () => void

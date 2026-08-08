@@ -16,6 +16,7 @@ import type { PreviewPerfStats } from './use-preview-diagnostics'
 
 interface UsePreviewPlaybackControllerParams {
   fps: number
+  contentFrames: number
   combinedTracks: TimelineTrack[]
   keyframes: ItemKeyframes[]
   forceFastScrubOverlay: boolean
@@ -32,6 +33,7 @@ interface UsePreviewPlaybackControllerParams {
 
 export function usePreviewPlaybackController({
   fps,
+  contentFrames,
   combinedTracks,
   keyframes,
   forceFastScrubOverlay,
@@ -74,7 +76,8 @@ export function usePreviewPlaybackController({
 
   const handleFrameChange = useCallback(
     (frame: number) => {
-      const nextFrame = Math.round(frame)
+      const lastValidFrame = Math.max(0, Math.round(contentFrames) - 1)
+      const nextFrame = Math.min(lastValidFrame, Math.max(0, Math.round(frame)))
       resolvePendingSeekLatency(nextFrame)
       if (ignorePlayerUpdatesRef.current) return
       const playbackState = usePlaybackStore.getState()
@@ -87,6 +90,11 @@ export function usePreviewPlaybackController({
 
       if (interactionMode === 'playing') {
         resolvePlaybackColdStartFrameAdvance(nextFrame)
+        if (playbackState.playbackRate >= 0 && nextFrame >= lastValidFrame) {
+          playbackState.finishPlaybackAtFrame(lastValidFrame)
+          adaptiveFrameSampleRef.current = null
+          return
+        }
         const nowMs = performance.now()
         const previousSample = adaptiveFrameSampleRef.current
         if (previousSample && nextFrame !== previousSample.frame) {
@@ -135,6 +143,7 @@ export function usePreviewPlaybackController({
     [
       adaptiveFrameSampleRef,
       adaptiveQualityStateRef,
+      contentFrames,
       fps,
       ignorePlayerUpdatesRef,
       isGizmoInteractingRef,
