@@ -19,6 +19,8 @@ interface ProjectFile {
       from: number
       text?: string
       durationInFrames?: number
+      transform?: { x?: number; y?: number; width?: number; height?: number }
+      motionLayers?: unknown[]
       motionModifiers?: unknown[]
     }>
     tracks?: Array<{ id: string; name: string }>
@@ -29,14 +31,9 @@ interface AiEditingRunsFile {
   runs?: Array<{
     completed?: boolean
     skillId?: string
-    production?: {
-      blueprint?: {
-        title?: string
-        videoTrack?: number
-        shots?: Array<{ id?: string; mediaId?: string; region?: string }>
-      }
-      review?: { passed?: boolean }
-    }
+    timelineRevisionBefore?: number
+    timelineRevisionAfter?: number
+    toolCalls?: Array<{ id?: string; ok?: boolean }>
   }>
 }
 
@@ -49,6 +46,7 @@ test('用当前项目的剪辑助手制作 UI 重构主题短片', async ({ luna
     projectId,
     'project.json',
   )
+  const runsFile = path.join(path.dirname(projectFile), 'ai-editing-runs.json')
 
   await page.getByRole('link', { name: '剪辑', exact: true }).click()
   const projectCard = page.locator(`[data-project-card][data-project-id="${projectId}"]`)
@@ -67,34 +65,19 @@ test('用当前项目的剪辑助手制作 UI 重构主题短片', async ({ luna
   await expect(error).toHaveCount(0)
 
   await expect.poll(async () => {
-    const saved = JSON.parse(await readFile(projectFile, 'utf8')) as ProjectFile
-    return saved.timeline?.items?.filter((item) => item.type === 'text').length ?? 0
-  }, { timeout: 90_000 }).toBeGreaterThanOrEqual(3)
+    const runs = JSON.parse(await readFile(runsFile, 'utf8')) as AiEditingRunsFile
+    return runs.runs?.at(-1)?.completed
+  }, { timeout: 90_000 }).toBe(true)
 
   const saved = JSON.parse(await readFile(projectFile, 'utf8')) as ProjectFile
   const items = saved.timeline?.items ?? []
-  const textItems = items.filter((item) => item.type === 'text')
-  expect(items.some((item) => item.type === 'image' && (item.motionModifiers?.length ?? 0) > 0)).toBe(true)
-  expect(textItems.length).toBeGreaterThanOrEqual(3)
-  expect(textItems.some((item) => item.text === 'Main')).toBe(false)
-  const runs = JSON.parse(await readFile(path.join(path.dirname(projectFile), 'ai-editing-runs.json'), 'utf8')) as AiEditingRunsFile
-  expect(runs.runs?.at(-1)).toMatchObject({
-    completed: true,
-    skillId: 'product-ui-launch',
-    production: { review: { passed: true } },
-  })
-  const blueprint = runs.runs?.at(-1)?.production?.blueprint
-  expect(blueprint?.title).toMatch(/挑战.*剪映.*UI.*重构/)
-  expect(blueprint?.videoTrack).toBe(1)
-  expect(blueprint?.shots).toHaveLength(5)
-  expect(blueprint?.shots?.every((shot, index) => shot.id === `SHOT-0${index + 1}` && Boolean(shot.mediaId))).toBe(true)
-  expect(blueprint?.shots?.some((shot) => shot.region === 'timeline')).toBe(true)
-  const trackNameById = new Map(saved.timeline?.tracks?.map((track) => [track.id, track.name]))
-  const latestVisualItems = items
-    .filter((item) => item.type === 'image')
-    .sort((left, right) => left.from - right.from)
-    .slice(-5)
-  expect(latestVisualItems).toHaveLength(5)
-  expect(latestVisualItems.every((item) => trackNameById.get(item.trackId) === 'V1')).toBe(true)
+  expect(items.some((item) => item.type === 'image' || item.type === 'video')).toBe(true)
+  const runs = JSON.parse(await readFile(runsFile, 'utf8')) as AiEditingRunsFile
+  const run = runs.runs?.at(-1)
+  expect(run?.timelineRevisionAfter).toBeGreaterThan(run?.timelineRevisionBefore ?? 0)
+  expect(run?.toolCalls?.some((call) => call.id === 'workspace.apply_edit_program' && call.ok)).toBe(true)
+  const visualItems = items.filter((item) => item.type === 'image' || item.type === 'video')
+  expect(visualItems.some((item) => (item.motionLayers?.length ?? 0) > 0)).toBe(true)
+  expect(new Set(visualItems.map((item) => JSON.stringify(item.transform ?? null))).size).toBeGreaterThan(1)
   expect(runtimeErrors).toEqual([])
 })

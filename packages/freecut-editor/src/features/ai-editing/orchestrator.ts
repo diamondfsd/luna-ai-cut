@@ -15,7 +15,8 @@ import {
   type EmbeddedAiAssistantToolDefinition,
 } from '@freecut/shared/host/embedded-host'
 import { buildAiEditingSystemPrompt } from './agent-prompt'
-import { buildProjectSnapshot, getTimelineRevision } from './evidence'
+import { getTimelineRevision } from './evidence'
+import { buildAgentWorkspaceDocument } from './workspace-document/build-workspace-document'
 import { parseAiEditingResponse } from './response-parser'
 import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
@@ -31,7 +32,7 @@ import type {
 } from './types'
 
 const MAX_TOOL_ROUNDS = 8
-const MAX_TOKENS = 1_024
+const MAX_TOKENS = 4_096
 const MAX_TOOL_RESULT_CHARS = 8_000
 
 interface NativeToolCatalog {
@@ -43,9 +44,9 @@ function nativeFunctionName(toolId: string): string {
   return `fc_${toolId.replaceAll('.', '_')}`
 }
 
-function createNativeToolCatalog(activeToolIds: ReadonlySet<string>): NativeToolCatalog {
+function createNativeToolCatalog(): NativeToolCatalog {
   const idsByFunctionName = new Map<string, string>()
-  const definitions = listAiEditingTools().filter((tool) => activeToolIds.has(tool.id)).map((tool) => {
+  const definitions = listAiEditingTools().map((tool) => {
     // Chat Completions function names cannot contain the dots used by editor tool IDs.
     const name = nativeFunctionName(tool.id)
     if (idsByFunctionName.has(name)) throw new Error('剪辑助手工具名称重复，无法继续。')
@@ -150,7 +151,10 @@ async function executeToolCall(
 }
 
 function defaultReply(observations: AiEditingObservation[]): string {
-  return observations.length > 0 ? '已完成本次剪辑操作。' : '已完成分析。'
+  const edited = observations.some((observation) =>
+    observation.result.ok && getAiEditingTool(observation.toolId)?.risk === 'edit')
+  if (edited) return '已执行时间轴修改，请继续检查当前结果。'
+  return observations.length > 0 ? '已读取当前项目，但还没有完成实际修改。' : '尚未执行项目操作。'
 }
 
 function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
@@ -179,19 +183,6 @@ async function executeNativeToolCall(
   return executeToolCall({ id: toolId, args }, callIndex, options)
 }
 
-function discoveredToolIds(observation: AiEditingObservation): string[] {
-  if (!observation.result.ok) return []
-  const data = observation.result.data
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return []
-  const matches = (data as { tools?: unknown }).tools
-  if (!Array.isArray(matches)) return []
-  return matches.flatMap((match) => {
-    if (!match || typeof match !== 'object' || Array.isArray(match)) return []
-    const id = (match as { id?: unknown }).id
-    return typeof id === 'string' ? [id] : []
-  })
-}
-
 function buildInitialMessages(
   userText: string,
   history: LlmMessage[],
@@ -210,7 +201,7 @@ async function buildJsonFallbackMessages(
   history: LlmMessage[],
   observations: AiEditingObservation[],
 ): Promise<LlmMessage[]> {
-  const messages = buildInitialMessages(userText, history, await buildProjectSnapshot(), 'json')
+  const messages = buildInitialMessages(userText, history, await buildAgentWorkspaceDocument(), 'json')
   if (observations.length > 0) {
     messages.push({
       role: 'user',
@@ -230,6 +221,7 @@ async function runJsonToolLoop(
   let reply = ''
   let callIndex = 0
   let rawFromPreviousRequest = initialRaw
+  let finished = false
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     const raw = rawFromPreviousRequest ?? await adapter.generate(messages, {
@@ -250,7 +242,10 @@ async function runJsonToolLoop(
     }
 
     reply = parsed.reply || reply
-    if (parsed.toolCalls.length === 0) break
+    if (parsed.toolCalls.length === 0) {
+      finished = true
+      break
+    }
 
     const roundObservations: AiEditingObservation[] = []
     for (const call of parsed.toolCalls.slice(0, 3)) {
@@ -267,12 +262,20 @@ async function runJsonToolLoop(
       role: 'user',
       content: renderPrompt(toolResultsPrompt, {
         OBSERVATIONS: serializeForModel(roundObservations),
-        PROJECT_EVIDENCE: serializeForModel(await buildProjectSnapshot()),
+        PROJECT_EVIDENCE: JSON.stringify(await buildAgentWorkspaceDocument()),
       }),
     })
   }
 
-  return { reply: reply || defaultReply(observations), observations, plan: [], completed: true, completionNotes: [], timelineRevisionBefore: 0, timelineRevisionAfter: 0 }
+  return {
+    reply: reply || defaultReply(observations),
+    observations,
+    plan: [],
+    completed: finished && !options.signal?.aborted,
+    completionNotes: finished ? [] : ['本轮没有在操作上限内完成用户目标。'],
+    timelineRevisionBefore: 0,
+    timelineRevisionAfter: 0,
+  }
 }
 
 async function runNativeToolLoop(
@@ -281,22 +284,13 @@ async function runNativeToolLoop(
   options: AiEditingRunOptions,
   adapter: NativeToolCallingLlmAdapter,
 ): Promise<AiEditingRunResult> {
-  const allTools = listAiEditingTools()
-  const knownToolIds = new Set(allTools.map((tool) => tool.id))
-  const activeToolIds = new Set([
-    'project.inspect',
-    'tool.describe',
-    'tool.search',
-    'skill.search',
-    'skill.read',
-    'analysis.request',
-  ])
+  const catalog = createNativeToolCatalog()
   const observations: AiEditingObservation[] = []
   let reply = ''
   let callIndex = 0
+  let finished = false
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const catalog = createNativeToolCatalog(activeToolIds)
     const response = await adapter.generateWithTools(messages, catalog.definitions, {
       maxTokens: MAX_TOKENS,
       temperature: 0,
@@ -321,6 +315,7 @@ async function runNativeToolLoop(
     if (response.content) reply = response.content
     if (response.toolCalls.length === 0) {
       if (response.content) options.onToken?.(response.content, response.content)
+      finished = true
       break
     }
 
@@ -333,12 +328,6 @@ async function runNativeToolLoop(
       roundObservations.push({ call, observation })
     }
     if (options.signal?.aborted) break
-
-    for (const { observation } of roundObservations) {
-      for (const toolId of discoveredToolIds(observation)) {
-        if (knownToolIds.has(toolId)) activeToolIds.add(toolId)
-      }
-    }
 
     messages.push({
       role: 'assistant',
@@ -355,12 +344,20 @@ async function runNativeToolLoop(
     messages.push({
       role: 'user',
       content: renderPrompt(nativeContinuePrompt, {
-        PROJECT_EVIDENCE: serializeForModel(await buildProjectSnapshot()),
+        PROJECT_EVIDENCE: JSON.stringify(await buildAgentWorkspaceDocument()),
       }),
     })
   }
 
-  return { reply: reply || defaultReply(observations), observations, plan: [], completed: true, completionNotes: [], timelineRevisionBefore: 0, timelineRevisionAfter: 0 }
+  return {
+    reply: reply || defaultReply(observations),
+    observations,
+    plan: [],
+    completed: finished && !options.signal?.aborted,
+    completionNotes: finished ? [] : ['本轮没有在操作上限内完成用户目标。'],
+    timelineRevisionBefore: 0,
+    timelineRevisionAfter: 0,
+  }
 }
 
 export async function runAiEditingTurn(
@@ -368,7 +365,7 @@ export async function runAiEditingTurn(
   options: AiEditingRunOptions,
 ): Promise<AiEditingRunResult> {
   const adapter = options.adapter ?? getAiEditingAdapter()
-  const evidence = await buildProjectSnapshot()
+  const evidence = await buildAgentWorkspaceDocument()
   const timelineRevisionBefore = getTimelineRevision()
   let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
@@ -385,19 +382,21 @@ export async function runAiEditingTurn(
       adapter,
     )
   }
-  const loadedSkill = result.observations.findLast((entry) => entry.toolId === 'skill.read' && entry.result.ok)
-  const skill = loadedSkill?.result.data && typeof loadedSkill.result.data === 'object'
-    ? (loadedSkill.result.data as { skill?: { id?: unknown } }).skill
-    : undefined
-  const failedReview = result.observations.findLast(
-    (entry) => entry.toolId.startsWith('review.') && !entry.result.ok,
+  const failedEdit = result.observations.findLast(
+    (entry) => entry.toolId === 'workspace.apply_edit_program' && !entry.result.ok,
   )
   return {
     ...result,
-    ...(typeof skill?.id === 'string' ? { skillId: skill.id } : {}),
+    ...(failedEdit
+      ? { reply: `编辑程序没有提交：${failedEdit.result.message}` }
+      : !result.completed
+        ? { reply: '本轮达到操作上限，尚未确认完成用户目标。请继续提出调整，助手会基于当前项目接着处理。' }
+      : {}),
     plan: result.observations.map((entry) => entry.toolId),
-    completed: !failedReview,
-    completionNotes: failedReview ? [failedReview.result.message] : [],
+    completed: !failedEdit && result.completed,
+    completionNotes: failedEdit
+      ? [failedEdit.result.message]
+      : result.completionNotes,
     timelineRevisionBefore,
     timelineRevisionAfter: getTimelineRevision(),
   }

@@ -5,9 +5,9 @@ import process from 'node:process'
 
 import { expect, test } from './fixtures/lunaElectron'
 
-const USER_MESSAGE = '给这段生活日常加一个标题'
-const ASSISTANT_MARKDOWN = '**标题已经添加到时间轴。**'
-const ASSISTANT_MESSAGE = '标题已经添加到时间轴。'
+const USER_MESSAGE = '检查有没有提到生活日常的口播'
+const ASSISTANT_MARKDOWN = '**没有找到对应口播。**'
+const ASSISTANT_MESSAGE = '没有找到对应口播。'
 const REFERENCED_USER_MESSAGE = '只检查我引用的资源'
 
 interface ChatCompletionsRequest {
@@ -55,21 +55,15 @@ async function startChatCompletionsMock(): Promise<{
     }
     const payload = await readRequestBody(request)
     requests.push(payload)
-    const describeTool = payload.tools?.find((tool) =>
+    const transcriptTool = payload.tools?.find((tool) =>
       tool.type === 'function'
       && typeof tool.function?.name === 'string'
       && typeof tool.function?.description === 'string'
-      && tool.function.description.includes('按工具 ID 获取'),
-    )
-    const titleTool = payload.tools?.find((tool) =>
-      tool.type === 'function'
-      && typeof tool.function?.name === 'string'
-      && typeof tool.function?.description === 'string'
-      && tool.function.description.includes('Add a text/title layer'),
+      && tool.function.description.includes('按说出的词或短语查找时间点'),
     )
     if (requestCount === 0) {
-      if (!describeTool || typeof describeTool.function?.name !== 'string') {
-        response.writeHead(400).end(JSON.stringify({ error: { message: 'Expected the tool detail definition.' } }))
+      if (!transcriptTool || typeof transcriptTool.function?.name !== 'string') {
+        response.writeHead(400).end(JSON.stringify({ error: { message: 'Expected the transcript tool definition.' } }))
         return
       }
       requestCount += 1
@@ -79,30 +73,9 @@ async function startChatCompletionsMock(): Promise<{
           message: {
             content: null,
             tool_calls: [{
-              id: 'call_describe_title',
+              id: 'call_search_life_transcript',
               type: 'function',
-              function: { name: describeTool.function.name, arguments: JSON.stringify({ toolIds: ['timeline.add_title'] }) },
-            }],
-          },
-        }],
-      }))
-      return
-    }
-    if (requestCount === 1) {
-      if (!titleTool || typeof titleTool.function?.name !== 'string') {
-        response.writeHead(400).end(JSON.stringify({ error: { message: 'Expected the title tool definition.' } }))
-        return
-      }
-      requestCount += 1
-      response.writeHead(200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify({
-        choices: [{
-          message: {
-            content: null,
-            tool_calls: [{
-              id: 'call_add_life_title',
-              type: 'function',
-              function: { name: titleTool.function.name, arguments: JSON.stringify({ text: '生活日常' }) },
+              function: { name: transcriptTool.function.name, arguments: JSON.stringify({ query: '生活日常' }) },
             }],
           },
         }],
@@ -155,46 +128,40 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     await page.getByRole('button', { name: '发送剪辑请求' }).click()
     await expect(page.getByText(USER_MESSAGE, { exact: true })).toBeVisible()
     const execution = page.getByRole('region', { name: '剪辑执行过程' })
-    await expect(execution).toContainText('Add title')
-    await expect(page.locator('[data-timeline-item]')).toHaveCount(1)
+    await expect(execution).toContainText('查找口播内容')
+    await expect(page.locator('[data-timeline-item]')).toHaveCount(0)
     await expect(page.locator('strong', { hasText: ASSISTANT_MESSAGE })).toBeVisible()
-    expect(chatMock.requests).toHaveLength(3)
+    expect(chatMock.requests).toHaveLength(2)
     expect(chatMock.requests[0]?.tool_choice).toBe('auto')
     const firstRequest = chatMock.requests[0]
-    const firstTitleTool = firstRequest?.tools?.find((tool) =>
-      tool.type === 'function' && tool.function?.description?.includes('Add a text/title layer'),
+    const firstTranscriptTool = firstRequest?.tools?.find((tool) =>
+      tool.type === 'function' && tool.function?.description?.includes('按说出的词或短语查找时间点'),
     )
-    expect(firstTitleTool).toBeUndefined()
-    expect(firstRequest?.tools?.length).toBeLessThan(24)
-    expect(firstRequest?.tools?.find((tool) => tool.function?.name === 'fc_tool_describe')).toBeDefined()
+    expect(firstTranscriptTool?.function?.name).toBe('fc_analysis_search_transcript')
+    expect(firstRequest?.tools).toHaveLength(4)
+    expect(firstRequest?.tools?.find((tool) => tool.function?.name === 'fc_workspace_apply_edit_program')).toBeDefined()
+    expect(firstRequest?.tools?.find((tool) => tool.function?.name === 'fc_tool_describe')).toBeUndefined()
+    expect(firstRequest?.tools?.find((tool) => tool.function?.name === 'fc_tool_search')).toBeUndefined()
+    expect(firstRequest?.tools?.find((tool) => tool.function?.name === 'fc_skill_search')).toBeUndefined()
+    expect(firstRequest?.tools?.find((tool) => tool.function?.name === 'fc_skill_read')).toBeUndefined()
     const systemMessages = firstRequest?.messages?.filter((message) => message.role === 'system') ?? []
     expect(systemMessages).toHaveLength(1)
-    expect(systemMessages[0]?.content).toContain('timeline.add_title | Add title')
-    expect(systemMessages[0]?.content).not.toContain('参数:')
-    const secondRequest = chatMock.requests[1]
-    const titleTool = secondRequest?.tools?.find((tool) =>
-      tool.type === 'function' && tool.function?.description?.includes('Add a text/title layer'),
-    )
-    expect(titleTool?.function?.name).toBe('fc_timeline_add_title')
-    expect(secondRequest?.messages).toEqual(expect.arrayContaining([
+    expect(systemMessages[0]?.content).toContain('专业自主 Agent')
+    expect(systemMessages[0]?.content).toContain('workspace.apply_edit_program [edit]')
+    expect(systemMessages[0]?.content).toContain('EditProgram 协议')
+    expect(systemMessages[0]?.content).toContain('AgentWorkspaceDocument')
+    expect(systemMessages[0]?.content).toContain('参数:')
+    expect(systemMessages[0]?.content).not.toContain('技能工作流')
+    expect(systemMessages[0]?.content).not.toContain('本次已选择剪辑技能')
+    expect(chatMock.requests[1]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         role: 'assistant',
         tool_calls: [expect.objectContaining({
-          id: 'call_describe_title',
-          function: expect.objectContaining({ name: 'fc_tool_describe' }),
+          id: 'call_search_life_transcript',
+          function: expect.objectContaining({ name: firstTranscriptTool?.function?.name }),
         })],
       }),
-      expect.objectContaining({ role: 'tool', tool_call_id: 'call_describe_title' }),
-    ]))
-    expect(chatMock.requests[2]?.messages).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        role: 'assistant',
-        tool_calls: [expect.objectContaining({
-          id: 'call_add_life_title',
-          function: expect.objectContaining({ name: titleTool?.function?.name }),
-        })],
-      }),
-      expect.objectContaining({ role: 'tool', tool_call_id: 'call_add_life_title' }),
+      expect.objectContaining({ role: 'tool', tool_call_id: 'call_search_life_transcript' }),
     ]))
     await expect(page.getByRole('button', { name: '引用编辑资源' })).toBeVisible()
     await input.fill('@')
@@ -204,8 +171,8 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     await expect(page.getByLabel('已引用的编辑资源').getByRole('button', { name: /移除引用/ })).toHaveCount(1)
     await input.fill(REFERENCED_USER_MESSAGE)
     await page.getByRole('button', { name: '发送剪辑请求' }).click()
-    await expect.poll(() => chatMock.requests.length).toBe(4)
-    const referencedRequest = chatMock.requests[3]
+    await expect.poll(() => chatMock.requests.length).toBe(3)
+    const referencedRequest = chatMock.requests[2]
     const referencedMessage = referencedRequest?.messages?.find((message) =>
       message.role === 'user'
       && typeof message.content === 'string'

@@ -1,6 +1,7 @@
 import { getEditingEvidence, getTranscript } from '@freecut/infrastructure/storage'
 import { useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
+import { buildClipRefs } from '@freecut/features/editor/agent/tools'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { useSelectionStore } from '@freecut/shared/state/selection'
 import type { MediaMetadata, MediaTranscript } from '@freecut/types/storage'
@@ -46,8 +47,10 @@ function buildTimelineEvidence(): { clips: AiTimelineClipEvidence[]; durationSec
   const timeline = useTimelineStore.getState()
   const fps = timeline.fps > 0 ? timeline.fps : 30
   const selectedIds = new Set(useSelectionStore.getState().selectedItemIds)
+  const refsById = new Map(buildClipRefs().map((entry) => [entry.itemId, entry.ref]))
   const clips = timeline.items.map((item) => ({
     id: item.id,
+    ...(refsById.get(item.id) ? { ref: refsById.get(item.id) } : {}),
     label: item.label,
     type: item.type,
     trackId: item.trackId,
