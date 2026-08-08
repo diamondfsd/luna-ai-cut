@@ -5,6 +5,12 @@ import { randomUUID } from 'node:crypto'
 import type { FreecutWorkspaceEntry } from '../src/shared/types'
 
 const WORKSPACE_DIRECTORY = 'freecut-workspace'
+const NON_SOURCE_MEDIA_FILES = new Set([
+  'metadata.json',
+  'thumbnail.jpg',
+  'thumbnail.meta.json',
+  'source.link.json',
+])
 const writers = new Map<string, { targetPath: string; temporaryPath: string; tail: Promise<void> }>()
 
 function workspaceRoot(): string {
@@ -27,6 +33,20 @@ function validateSegments(segments: string[]): void {
 function resolveWorkspacePath(segments: string[]): string {
   validateSegments(segments)
   return path.join(workspaceRoot(), ...segments)
+}
+
+async function findMediaSourcePath(mediaId: string): Promise<string | null> {
+  validateSegments([mediaId])
+  const mediaPath = resolveWorkspacePath(['media', mediaId])
+  let entries
+  try {
+    entries = await readdir(mediaPath, { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+  const source = entries.find((entry) => entry.isFile() && !NON_SOURCE_MEDIA_FILES.has(entry.name))
+  return source ? path.join(mediaPath, source.name) : null
 }
 
 function ensureContained(candidate: string): void {
@@ -71,6 +91,10 @@ export function register(): void {
     await mkdir(root, { recursive: true })
     return { name: path.basename(root), path: root }
   })
+
+  ipcMain.handle('freecut-workspace:get-media-source-path', (_event, mediaId: string) =>
+    typeof mediaId === 'string' ? findMediaSourcePath(mediaId) : null,
+  )
 
   ipcMain.handle(
     'freecut-workspace:get-entry',

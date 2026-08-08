@@ -9,4 +9,5 @@ description: Create a concise product-update or interface showcase video. Use fo
 2. Request visual analysis for every selected visual asset that has no description. Do not infer its contents from a filename.
 3. Build a compact sequence with a hook, product detail, and ending. Use the product showcase tool for the complete sequence rather than adding independent long titles.
 4. When only one still image is available, describe the output as a dynamic product teaser. Do not claim that it is a multi-shot video.
-5. Inspect the updated timeline before saying the video is complete. Report any missing assets or incomplete checks plainly.
+5. When the user has explicitly approved replacing old content, pass `replaceExisting: true` to start the new video from a clean timeline. Otherwise preserve existing work.
+6. Inspect the updated timeline before saying the video is complete. Report any missing assets or incomplete checks plainly.

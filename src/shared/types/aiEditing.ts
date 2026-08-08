@@ -18,7 +18,7 @@ export interface WorkspaceVisualAnalysisResult {
   sourceFingerprint: { size: number; modifiedAtMs: number }
 }
 
-/** Public connection state. The API Key stays in Electron's secure storage. */
+/** Public connection state. The API Key is kept in the app's local configuration file. */
 export interface AiEditingAssistantConfig {
   baseUrl: string
   model: string

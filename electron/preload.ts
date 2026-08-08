@@ -59,6 +59,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   },
   freecutWorkspace: {
     ensureRoot: () => ipcRenderer.invoke('freecut-workspace:ensure-root'),
+    getMediaSourcePath: (mediaId) => ipcRenderer.invoke('freecut-workspace:get-media-source-path', mediaId),
     getEntry: (path, kind, create) => ipcRenderer.invoke('freecut-workspace:get-entry', path, kind, create),
     list: (path) => ipcRenderer.invoke('freecut-workspace:list', path),
     readFile: (path) => ipcRenderer.invoke('freecut-workspace:read-file', path),

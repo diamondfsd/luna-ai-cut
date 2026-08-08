@@ -1,10 +1,12 @@
 import { stat } from 'node:fs/promises'
+import path from 'node:path'
 import type { WorkspaceVisualAnalysisRequest, WorkspaceVisualAnalysisResult } from '../src/shared/types'
 import { SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS } from '../src/shared/segmentationModels'
 import { analyzeContentTagsForFrame } from './aiSelectionSemantic'
 
 const DEFAULT_MAX_SAMPLES = 12
 const MAX_SAMPLES = 24
+const IMAGE_EXTENSIONS = new Set(['.avif', '.bmp', '.gif', '.heic', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp'])
 
 function sampleTimes(durationSeconds: number, maxSamples: number): number[] {
   const duration = Math.max(0.1, durationSeconds)
@@ -27,10 +29,11 @@ export async function analyzeVisualEvidence(
     ? request.maxSamples!
     : DEFAULT_MAX_SAMPLES
   const maxSamples = Math.max(1, Math.min(MAX_SAMPLES, Math.round(requestedMaxSamples)))
+  const isImage = IMAGE_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())
   const samples: WorkspaceVisualAnalysisResult['samples'] = []
   for (const timeSeconds of sampleTimes(request.durationSeconds, maxSamples)) {
     signal?.throwIfAborted()
-    const tags = await analyzeContentTagsForFrame(request.filePath, timeSeconds, signal)
+    const tags = await analyzeContentTagsForFrame(request.filePath, isImage ? undefined : timeSeconds, signal)
     samples.push({ timeSeconds, tags })
   }
 

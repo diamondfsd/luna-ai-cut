@@ -1,4 +1,4 @@
-import { app, safeStorage } from 'electron'
+import { app } from 'electron'
 import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import OpenAI from 'openai'
@@ -28,10 +28,10 @@ const TOOL_CALL_ID_PATTERN = /^[\x21-\x7E]{1,256}$/
 const activeRequests = new Map<string, AbortController>()
 
 interface StoredAssistantConfig {
-  schemaVersion: 1
+  schemaVersion: 2
   baseUrl: string
   model: string
-  encryptedApiKey?: string
+  apiKey?: string
 }
 
 function configPath(): string {
@@ -39,14 +39,14 @@ function configPath(): string {
 }
 
 function emptyConfig(): StoredAssistantConfig {
-  return { schemaVersion: 1, baseUrl: DEFAULT_BASE_URL, model: '' }
+  return { schemaVersion: 2, baseUrl: DEFAULT_BASE_URL, model: '' }
 }
 
 function publicConfig(config: StoredAssistantConfig): AiEditingAssistantConfig {
   return {
     baseUrl: config.baseUrl,
     model: config.model,
-    hasApiKey: typeof config.encryptedApiKey === 'string' && config.encryptedApiKey.length > 0,
+    hasApiKey: typeof config.apiKey === 'string' && config.apiKey.length > 0,
   }
 }
 
@@ -85,14 +85,16 @@ function normalizeApiKey(value: string): string {
 async function readConfig(): Promise<StoredAssistantConfig> {
   try {
     const parsed = JSON.parse(await fs.readFile(configPath(), 'utf8')) as Partial<StoredAssistantConfig>
-    if (parsed.schemaVersion !== 1 || typeof parsed.baseUrl !== 'string' || typeof parsed.model !== 'string') {
+    if (typeof parsed.baseUrl !== 'string' || typeof parsed.model !== 'string') {
       return emptyConfig()
     }
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       baseUrl: normalizeBaseUrl(parsed.baseUrl),
       model: parsed.model.trim(),
-      ...(typeof parsed.encryptedApiKey === 'string' ? { encryptedApiKey: parsed.encryptedApiKey } : {}),
+      ...(typeof parsed.apiKey === 'string' && parsed.apiKey.trim()
+        ? { apiKey: normalizeApiKey(parsed.apiKey) }
+        : {}),
     }
   } catch {
     return emptyConfig()
@@ -112,14 +114,9 @@ async function writeConfig(config: StoredAssistantConfig): Promise<void> {
   }
 }
 
-function decryptApiKey(config: StoredAssistantConfig): string {
-  if (!config.encryptedApiKey) throw new Error('请先配置剪辑助手模型连接。')
-  if (!safeStorage.isEncryptionAvailable()) throw new Error('系统安全存储暂不可用，无法读取 API Key。')
-  try {
-    return safeStorage.decryptString(Buffer.from(config.encryptedApiKey, 'base64'))
-  } catch {
-    throw new Error('已保存的 API Key 无法读取，请重新保存。')
-  }
+function requireApiKey(config: StoredAssistantConfig): string {
+  if (!config.apiKey) throw new Error('请先配置剪辑助手模型连接。')
+  return config.apiKey
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -331,7 +328,7 @@ export async function getAiEditingAssistantConfig(): Promise<AiEditingAssistantC
 export async function saveAiEditingAssistantConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfig> {
   const current = await readConfig()
   const next: StoredAssistantConfig = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     baseUrl: normalizeBaseUrl(input.baseUrl),
     model: normalizeModel(input.model),
   }
@@ -339,10 +336,9 @@ export async function saveAiEditingAssistantConfig(input: AiEditingAssistantConf
   if (input.clearApiKey) {
     if (input.apiKey?.trim()) throw new Error('请只选择保存新的 API Key 或清除已保存的 API Key。')
   } else if (input.apiKey !== undefined) {
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('系统安全存储暂不可用，无法保存 API Key。')
-    next.encryptedApiKey = safeStorage.encryptString(normalizeApiKey(input.apiKey)).toString('base64')
-  } else if (current.encryptedApiKey) {
-    next.encryptedApiKey = current.encryptedApiKey
+    next.apiKey = normalizeApiKey(input.apiKey)
+  } else if (current.apiKey) {
+    next.apiKey = current.apiKey
   }
 
   await writeConfig(next)
@@ -354,7 +350,7 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
   if (activeRequests.has(input.requestId)) throw new Error('剪辑助手正在处理这个请求。')
 
   const config = await readConfig()
-  const apiKey = decryptApiKey(config)
+  const apiKey = requireApiKey(config)
   const model = normalizeModel(config.model)
   const controller = new AbortController()
   activeRequests.set(input.requestId, controller)
