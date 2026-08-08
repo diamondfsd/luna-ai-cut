@@ -22,6 +22,7 @@ import type {
   EditProgram,
   EditProgramDiff,
 } from './types'
+import { resolveImplicitTextTrack } from './implicit-text-track'
 
 interface CompiledTransition {
   between: [string, string]
@@ -259,6 +260,11 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
   const refs = new Map<string, string>(timeline.items.map((item) => [clipRef(item.id), item.id]))
   const touchedIds = new Set<string>()
   const changedRanges: EditProgramDiff['changedRanges'] = []
+  const originalTextTrackIds = new Set(
+    timeline.items
+      .filter((item) => item.type === 'text' || item.type === 'subtitle')
+      .map((item) => item.trackId),
+  )
 
   const resolveClipId = (value: string): string => {
     const id = refs.get(value)
@@ -310,21 +316,35 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       if (refs.has(operation.text.ref)) {
         throw new Error(`编辑程序中的片段引用“${operation.text.ref}”重复。`)
       }
+      const startFrame = secondsToFrames(operation.text.start, fps)
+      const durationInFrames = Math.max(1, secondsToFrames(operation.text.duration, fps))
       let textTrackId: string
       if (operation.text.trackRef) {
         textTrackId = idFromAgentRef(operation.text.trackRef, 'track')
         assertTrackCompatibility(textTrackId, 'video')
       } else {
-        const overlay = createOverlayLayerTrack({ tracks: virtualTracks, activeTrackId: null })
-        if (!overlay) throw new Error('无法为文字创建画面轨道。')
-        textTrackId = overlay.trackId
-        virtualTracks = overlay.tracks
+        const reusableTrack = resolveImplicitTextTrack({
+          tracks: virtualTracks,
+          items: virtualItems,
+          originalTextTrackIds,
+          startFrame,
+          endFrame: startFrame + durationInFrames,
+        })
+        if (reusableTrack) {
+          textTrackId = reusableTrack.trackId
+          virtualTracks = reusableTrack.tracks
+        } else {
+          const overlay = createOverlayLayerTrack({ tracks: virtualTracks, activeTrackId: null })
+          if (!overlay) throw new Error('无法为文字创建画面轨道。')
+          textTrackId = overlay.trackId
+          virtualTracks = overlay.tracks
+        }
       }
       const textItem = createTextTemplateItem({
         placement: {
           trackId: textTrackId,
-          from: secondsToFrames(operation.text.start, fps),
-          durationInFrames: Math.max(1, secondsToFrames(operation.text.duration, fps)),
+          from: startFrame,
+          durationInFrames,
           canvasWidth: canvas.width,
           canvasHeight: canvas.height,
           fps,

@@ -183,14 +183,14 @@ async function executeNativeToolCall(
   return executeToolCall({ id: toolId, args }, callIndex, options)
 }
 
-function buildInitialMessages(
+async function buildInitialMessages(
   userText: string,
   history: LlmMessage[],
   evidence: unknown,
   protocol: 'native' | 'json',
-): LlmMessage[] {
+): Promise<LlmMessage[]> {
   return [
-    { role: 'system', content: buildAiEditingSystemPrompt(evidence, protocol) },
+    { role: 'system', content: await buildAiEditingSystemPrompt(evidence, protocol, userText) },
     ...history.slice(-6),
     { role: 'user', content: userText },
   ]
@@ -201,7 +201,7 @@ async function buildJsonFallbackMessages(
   history: LlmMessage[],
   observations: AiEditingObservation[],
 ): Promise<LlmMessage[]> {
-  const messages = buildInitialMessages(userText, history, await buildAgentWorkspaceDocument(), 'json')
+  const messages = await buildInitialMessages(userText, history, await buildAgentWorkspaceDocument(), 'json')
   if (observations.length > 0) {
     messages.push({
       role: 'user',
@@ -370,14 +370,14 @@ export async function runAiEditingTurn(
   let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
     result = await runNativeToolLoop(
-      toNativeMessages(buildInitialMessages(userText, options.history, evidence, 'native')),
+      toNativeMessages(await buildInitialMessages(userText, options.history, evidence, 'native')),
       userText,
       options,
       adapter,
     )
   } else {
     result = await runJsonToolLoop(
-      buildInitialMessages(userText, options.history, evidence, 'json'),
+      await buildInitialMessages(userText, options.history, evidence, 'json'),
       options,
       adapter,
     )
