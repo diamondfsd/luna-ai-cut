@@ -1,5 +1,5 @@
-import productShowcaseMarkdown from './product-showcase/SKILL.md?raw'
-import productUiLaunchMarkdown from './product-ui-launch/SKILL.md?raw'
+import productShowcaseMarkdown from '../prompts/skills/product-showcase.md?raw'
+import productUiLaunchMarkdown from '../prompts/skills/product-ui-launch.md?raw'
 import type { AiEditingSkill } from './types'
 
 function readFrontmatter(markdown: string): { name: string; description: string; instructions: string } {
@@ -34,7 +34,6 @@ function builtInProductUiLaunch(): AiEditingSkill {
     triggers: ['UI重构', 'UI 重构', '挑战一个人做出剪映', '界面短片', '界面成片', '产品原型成片'],
     toolIds: ['timeline.compile_product_ui_launch'],
     requiresFinishedVideo: true,
-    productionMode: 'blueprint',
     source: 'built-in',
     enabled: true,
   }

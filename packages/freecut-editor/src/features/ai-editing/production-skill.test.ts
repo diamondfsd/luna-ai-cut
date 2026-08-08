@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vite-plus/test'
 import { validateFinishedVideo } from './production-skill'
-import { selectAiEditingSkill } from './skills/service'
+import { searchAiEditingSkills } from './skills/service'
 import type { AiEditingSkill } from './skills/types'
 import type { AiProjectEvidence } from './types'
 
@@ -23,19 +23,20 @@ function evidence(clips: AiProjectEvidence['clips'], durationSeconds: number): A
 }
 
 describe('AI editing production skill', () => {
-  it('selects a matching enabled skill from its trigger catalog', () => {
-    expect(selectAiEditingSkill('帮我把这个 UI 原型做成片', [productSkill])).toBe(productSkill)
-    expect(selectAiEditingSkill('帮我做成片', [{ ...productSkill, enabled: false }])).toBeNull()
+  it('returns matching knowledge for the agent to choose without executing it', () => {
+    expect(searchAiEditingSkills('帮我把这个 UI 原型做成片', [productSkill])).toEqual([productSkill])
+    expect(searchAiEditingSkills('帮我做成片', [{ ...productSkill, enabled: false }])).toEqual([])
   })
 
-  it('prefers a specialised blueprint skill when it ties a generic skill', () => {
-    const blueprintSkill: AiEditingSkill = {
+  it('ranks more specific discovery terms without turning them into a route', () => {
+    const interfaceSkill: AiEditingSkill = {
       ...productSkill,
       id: 'product-ui-launch',
       name: 'product-ui-launch',
-      productionMode: 'blueprint',
+      triggers: ['界面成片'],
     }
-    expect(selectAiEditingSkill('帮我把这个 UI 原型做成片', [productSkill, blueprintSkill])).toBe(blueprintSkill)
+    expect(searchAiEditingSkills('帮我做一个界面成片', [productSkill, interfaceSkill]))
+      .toEqual([interfaceSkill, productSkill])
   })
 
   it('does not accept text-only content as a finished video', () => {

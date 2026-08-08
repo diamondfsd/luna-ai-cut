@@ -79,6 +79,25 @@ export interface AiTimelineClipEvidence {
   startSeconds: number
   endSeconds: number
   mediaId?: string
+  selected?: boolean
+  linkedGroupId?: string
+  sourceStartSeconds?: number
+  sourceEndSeconds?: number
+  speed?: number
+  reversed?: boolean
+  volumeDb?: number
+  text?: string
+  crop?: { left: number; right: number; top: number; bottom: number }
+  transform?: {
+    x?: number
+    y?: number
+    width?: number
+    height?: number
+    rotation?: number
+    opacity?: number
+  }
+  effectCount?: number
+  hasMotion?: boolean
 }
 
 export interface AiMediaEvidence {
@@ -112,6 +131,13 @@ export interface AiProjectEvidence {
   timelineRevision: number
   fps: number
   durationSeconds: number
+  playheadSeconds?: number
+  selection?: {
+    itemIds: string[]
+    trackIds: string[]
+    activeTrackId: string | null
+    type: 'item' | 'track' | 'marker' | 'transition' | null
+  }
   clips: AiTimelineClipEvidence[]
   tracks: Array<{
     id: string
@@ -119,6 +145,11 @@ export interface AiProjectEvidence {
     kind: 'video' | 'audio' | 'other'
     order: number
     locked: boolean
+    syncLock?: boolean
+    visible?: boolean
+    muted?: boolean
+    solo?: boolean
+    volumeDb?: number
   }>
   media: AiMediaEvidence[]
 }

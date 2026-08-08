@@ -1,7 +1,10 @@
 import { getEditingEvidence, getTranscript } from '@freecut/infrastructure/storage'
 import { useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
+import { usePlaybackStore } from '@freecut/shared/state/playback'
+import { useSelectionStore } from '@freecut/shared/state/selection'
 import type { MediaMetadata, MediaTranscript } from '@freecut/types/storage'
+import type { TimelineItem } from '@freecut/types/timeline'
 import { getAudioBeatEvidence } from './audio-beat-service'
 import type { AiMediaEvidence, AiProjectEvidence, AiTimelineClipEvidence } from './types'
 
@@ -23,9 +26,26 @@ function countWords(transcript: MediaTranscript): number {
   return transcript.segments.reduce((count, segment) => count + (segment.words?.length ?? 0), 0)
 }
 
+function cropEvidence(item: TimelineItem): AiTimelineClipEvidence['crop'] {
+  if (!item.crop) return undefined
+  return {
+    left: item.crop.left ?? 0,
+    right: item.crop.right ?? 0,
+    top: item.crop.top ?? 0,
+    bottom: item.crop.bottom ?? 0,
+  }
+}
+
+function textEvidence(item: TimelineItem): string | undefined {
+  if (item.type === 'text') return item.text.slice(0, 500)
+  if (item.type === 'subtitle') return `${item.cues.length} 条字幕`
+  return undefined
+}
+
 function buildTimelineEvidence(): { clips: AiTimelineClipEvidence[]; durationSeconds: number; fps: number; revision: number } {
   const timeline = useTimelineStore.getState()
   const fps = timeline.fps > 0 ? timeline.fps : 30
+  const selectedIds = new Set(useSelectionStore.getState().selectedItemIds)
   const clips = timeline.items.map((item) => ({
     id: item.id,
     label: item.label,
@@ -34,6 +54,22 @@ function buildTimelineEvidence(): { clips: AiTimelineClipEvidence[]; durationSec
     startSeconds: item.from / fps,
     endSeconds: (item.from + item.durationInFrames) / fps,
     ...(item.type === 'video' || item.type === 'audio' ? { mediaId: item.mediaId } : {}),
+    selected: selectedIds.has(item.id),
+    ...(item.linkedGroupId ? { linkedGroupId: item.linkedGroupId } : {}),
+    ...(item.sourceStart !== undefined
+      ? { sourceStartSeconds: item.sourceStart / (item.sourceFps || fps) }
+      : {}),
+    ...(item.sourceEnd !== undefined
+      ? { sourceEndSeconds: item.sourceEnd / (item.sourceFps || fps) }
+      : {}),
+    speed: item.speed ?? 1,
+    reversed: item.isReversed ?? false,
+    ...(item.volume !== undefined ? { volumeDb: item.volume } : {}),
+    ...(textEvidence(item) ? { text: textEvidence(item) } : {}),
+    ...(cropEvidence(item) ? { crop: cropEvidence(item) } : {}),
+    ...(item.transform ? { transform: item.transform } : {}),
+    effectCount: item.effects?.length ?? 0,
+    hasMotion: Boolean(item.motionLayers?.length || item.motionModifiers?.length),
   }))
   const durationSeconds = clips.reduce((duration, clip) => Math.max(duration, clip.endSeconds), 0)
   return { clips, durationSeconds, fps, revision: timeline.changeVersion ?? 0 }
@@ -51,12 +87,21 @@ export function getTimelineRevision(): number {
 
 export async function buildProjectEvidence(): Promise<AiProjectEvidence> {
   const timeline = buildTimelineEvidence()
+  const playback = usePlaybackStore.getState()
+  const selection = useSelectionStore.getState()
   const mediaItems = useMediaLibraryStore.getState().mediaItems
   const media = await Promise.all(mediaItems.map(buildMediaEvidence))
   return {
     timelineRevision: timeline.revision,
     fps: timeline.fps,
     durationSeconds: timeline.durationSeconds,
+    playheadSeconds: playback.currentFrame / timeline.fps,
+    selection: {
+      itemIds: [...selection.selectedItemIds],
+      trackIds: [...selection.selectedTrackIds],
+      activeTrackId: selection.activeTrackId,
+      type: selection.selectionType,
+    },
     clips: timeline.clips,
     tracks: useTimelineStore.getState().tracks.map((track) => ({
       id: track.id,
@@ -64,8 +109,29 @@ export async function buildProjectEvidence(): Promise<AiProjectEvidence> {
       kind: evidenceTrackKind(track),
       order: track.order,
       locked: track.locked,
+      syncLock: track.syncLock !== false,
+      visible: track.visible,
+      muted: track.muted,
+      solo: track.solo,
+      volumeDb: track.volume ?? 0,
     })),
     media,
+  }
+}
+
+export async function buildProjectSnapshot(): Promise<unknown> {
+  const evidence = await buildProjectEvidence()
+  return {
+    ...evidence,
+    media: evidence.media.map((media) => ({
+      mediaId: media.mediaId,
+      name: media.name,
+      kind: media.kind,
+      durationSeconds: media.durationSeconds,
+      visualEvidenceCount: media.visual.length,
+      transcript: media.transcript,
+      audio: media.audio,
+    })),
   }
 }
 

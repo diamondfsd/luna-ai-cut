@@ -87,7 +87,7 @@ export function AiEditingSkillsDialog({ open, onOpenChange }: AiEditingSkillsDia
   const add = async (): Promise<void> => {
     const triggers = form.triggers.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean)
     if (!form.name.trim() || !form.description.trim() || !form.instructions.trim() || triggers.length === 0) {
-      setError('请填写名称、简介、触发词和剪辑指引。')
+      setError('请填写名称、简介、检索词和专业指引。')
       return
     }
     setSaving(true)
@@ -108,7 +108,7 @@ export function AiEditingSkillsDialog({ open, onOpenChange }: AiEditingSkillsDia
       <DialogContent className="freecut-app dark max-h-[85vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>剪辑技能</DialogTitle>
-          <DialogDescription>启用适合当前创作方式的技能。每个技能会在匹配请求时提供专门的剪辑流程和风格指引。</DialogDescription>
+          <DialogDescription>管理可供助手按需读取的专业知识。技能提供判断原则和质量标准，不会自动启动固定流程。</DialogDescription>
         </DialogHeader>
 
         {loading ? (
@@ -137,10 +137,10 @@ export function AiEditingSkillsDialog({ open, onOpenChange }: AiEditingSkillsDia
           <div className="flex items-center gap-2"><Plus className="h-4 w-4 text-primary" /><p className="text-sm font-medium">添加自定义技能</p></div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><Label htmlFor="editing-skill-name">名称</Label><Input id="editing-skill-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} disabled={saving} /></div>
-            <div className="space-y-1.5"><Label htmlFor="editing-skill-triggers">触发词</Label><Input id="editing-skill-triggers" value={form.triggers} onChange={(event) => setForm((current) => ({ ...current, triggers: event.target.value }))} placeholder="旅行、日常、Vlog" disabled={saving} /></div>
+            <div className="space-y-1.5"><Label htmlFor="editing-skill-triggers">检索词</Label><Input id="editing-skill-triggers" value={form.triggers} onChange={(event) => setForm((current) => ({ ...current, triggers: event.target.value }))} placeholder="旅行、日常、Vlog" disabled={saving} /></div>
           </div>
           <div className="space-y-1.5"><Label htmlFor="editing-skill-description">简介</Label><Input id="editing-skill-description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} disabled={saving} /></div>
-          <div className="space-y-1.5"><Label htmlFor="editing-skill-instructions">剪辑指引</Label><Textarea id="editing-skill-instructions" value={form.instructions} onChange={(event) => setForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="描述镜头节奏、转场、文字和收尾的处理方式。" className="min-h-24 resize-y" disabled={saving} /></div>
+          <div className="space-y-1.5"><Label htmlFor="editing-skill-instructions">专业指引</Label><Textarea id="editing-skill-instructions" value={form.instructions} onChange={(event) => setForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="描述判断原则、可用资源、约束和质量标准。" className="min-h-24 resize-y" disabled={saving} /></div>
         </div>
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

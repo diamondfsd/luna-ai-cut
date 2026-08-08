@@ -14,14 +14,14 @@ import {
   type EmbeddedAiAssistantToolCall,
   type EmbeddedAiAssistantToolDefinition,
 } from '@freecut/shared/host/embedded-host'
-import { buildProjectEvidence, getTimelineRevision } from './evidence'
-import { validateFinishedVideo } from './production-skill'
-import { planProductUiLaunch } from './production-blueprint/planner'
-import { reviewProductUiLaunch } from './production-blueprint/validation'
+import { buildAiEditingSystemPrompt } from './agent-prompt'
+import { buildProjectSnapshot, getTimelineRevision } from './evidence'
 import { parseAiEditingResponse } from './response-parser'
-import { listAiEditingSkills, selectAiEditingSkill } from './skills/service'
-import type { AiEditingSkill } from './skills/types'
-import { listAiEditingToolCatalog } from './tool-discovery'
+import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
+import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
+import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
+import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
+import { renderPrompt } from './prompts/render-prompt'
 import { getAiEditingTool, listAiEditingTools } from './tool-registry'
 import type {
   AiEditingObservation,
@@ -33,68 +33,6 @@ import type {
 const MAX_TOOL_ROUNDS = 8
 const MAX_TOKENS = 1_024
 const MAX_TOOL_RESULT_CHARS = 8_000
-
-function toolCatalog(): string {
-  return listAiEditingTools()
-    .map((tool) => `${tool.id} [${tool.risk}] ${tool.description}\n参数: ${JSON.stringify(tool.inputSchema)}`)
-    .join('\n')
-}
-
-function toolNameCatalog(): string {
-  return listAiEditingToolCatalog(listAiEditingTools())
-    .map((tool) => `${tool.id} | ${tool.title}`)
-    .join('\n')
-}
-
-function skillPrompt(selectedSkill: AiEditingSkill | null, skills: readonly AiEditingSkill[]): string {
-  const available = skills.filter((skill) => skill.enabled)
-  if (!selectedSkill) {
-    return available.length > 0
-      ? `可用剪辑技能：\n${available.map((skill) => `- ${skill.name}: ${skill.description}`).join('\n')}`
-      : '当前没有启用的剪辑技能。'
-  }
-  return `本次已选择剪辑技能：${selectedSkill.name}\n${selectedSkill.description}\n\n技能工作流：\n${selectedSkill.instructions}`
-}
-
-function systemPrompt(
-  evidence: unknown,
-  protocol: 'native' | 'json',
-  selectedSkill: AiEditingSkill | null,
-  skills: readonly AiEditingSkill[],
-): string {
-  const protocolInstructions = protocol === 'native'
-    ? `8. 初始只开放基础函数。需要执行目录中的具体操作时，先调用“查看剪辑能力”并传入精确工具 ID；不确定 ID 时再调用“查找剪辑能力”。结果会在下一轮开放对应函数。
-9. 工具接口已经提供时，必须调用对应函数，不能用文字或 JSON 模拟工具执行。全部完成后，直接用简短文字说明结果。`
-    : `8. 每次只返回一个 JSON 对象，不要 Markdown，不要 JSON 前后的任何解释：
-{"reply":"给用户的简短说明","toolCalls":[{"id":"工具 ID","args":{}}]}`
-  const availableTools = protocol === 'native'
-    ? `可扩展剪辑能力清单（仅工具 ID 和名称）：
-${toolNameCatalog()}
-`
-    : `可用内部工具：
-${toolCatalog()}
-`
-  return `你是本地视频剪辑助手。你只能依据提供的时间轴、字幕、画面描述和音频证据工作。
-绝不能要求或假设能读取原始视频帧、音频文件、本地路径、账号信息或密钥。
-
-${availableTools}
-
-工作方式：
-1. 你的工具调用会立刻在编辑器中执行；每一个工具结果和更新后的项目证据都会在下一轮发回给你。
-2. 不需要等待用户确认。对所有剪辑、分析和设置请求直接执行，编辑器支持撤销。
-3. 一轮只调用完成当前决策所需的 1 至 3 个工具。不要预先列出长计划；先观察每一步结果，再决定下一步。
-4. 先用 read 工具补足信息。工具参数必须使用素材或片段的真实 ID，时间使用秒。
-5. 对口播剪辑，优先引用字幕时间；对卡点剪辑，只有获得节拍证据后才能按节拍编辑。
-6. 用户要求从素材库挑选并混剪时，只能使用已有画面描述的素材；没有画面描述则先调用 analysis.request。已有画面描述时，使用 timeline.compose_from_media 编排到时间轴末尾。
-7. 所有需要的操作完成后再结束回复。只有纯问答才可以在第一轮直接结束。
-${selectedSkill?.requiresFinishedVideo ? '8. 本次要求制作成片。必须遵循已选技能：先核对素材和画面分析，再制作完整画面、动效文字和收尾；完成前需要检查更新后的时间轴。没有通过检查时，明确说明还缺什么，绝不能声称已经完成。' : ''}
-${protocolInstructions}
-
-${skillPrompt(selectedSkill, skills)}
-
-当前项目的结构化证据：
-${JSON.stringify(evidence)}`
-}
 
 interface NativeToolCatalog {
   definitions: EmbeddedAiAssistantToolDefinition[]
@@ -160,13 +98,6 @@ export interface AiEditingRunOptions {
   onToken?: (delta: string, fullText: string) => void
   onToolActivity?: (activity: AiEditingToolActivity) => void
   adapter?: LlmAdapter
-}
-
-function productUiLaunchReviewScope(data: unknown): { startSeconds: number; endSeconds: number } | undefined {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined
-  const candidate = data as { startSeconds?: unknown; endSeconds?: unknown }
-  if (typeof candidate.startSeconds !== 'number' || typeof candidate.endSeconds !== 'number') return undefined
-  return candidate.endSeconds > candidate.startSeconds ? candidate as { startSeconds: number; endSeconds: number } : undefined
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
@@ -249,7 +180,7 @@ async function executeNativeToolCall(
 }
 
 function discoveredToolIds(observation: AiEditingObservation): string[] {
-  if ((observation.toolId !== 'tool.describe' && observation.toolId !== 'tool.search') || !observation.result.ok) return []
+  if (!observation.result.ok) return []
   const data = observation.result.data
   if (!data || typeof data !== 'object' || Array.isArray(data)) return []
   const matches = (data as { tools?: unknown }).tools
@@ -266,11 +197,9 @@ function buildInitialMessages(
   history: LlmMessage[],
   evidence: unknown,
   protocol: 'native' | 'json',
-  selectedSkill: AiEditingSkill | null,
-  skills: readonly AiEditingSkill[],
 ): LlmMessage[] {
   return [
-    { role: 'system', content: systemPrompt(evidence, protocol, selectedSkill, skills) },
+    { role: 'system', content: buildAiEditingSystemPrompt(evidence, protocol) },
     ...history.slice(-6),
     { role: 'user', content: userText },
   ]
@@ -280,14 +209,12 @@ async function buildJsonFallbackMessages(
   userText: string,
   history: LlmMessage[],
   observations: AiEditingObservation[],
-  selectedSkill: AiEditingSkill | null,
-  skills: readonly AiEditingSkill[],
 ): Promise<LlmMessage[]> {
-  const messages = buildInitialMessages(userText, history, await buildProjectEvidence(), 'json', selectedSkill, skills)
+  const messages = buildInitialMessages(userText, history, await buildProjectSnapshot(), 'json')
   if (observations.length > 0) {
     messages.push({
       role: 'user',
-      content: `本次已执行的操作结果：${serializeForModel(observations)}。请在此基础上继续完成原始请求。`,
+      content: renderPrompt(fallbackProgressPrompt, { OBSERVATIONS: serializeForModel(observations) }),
     })
   }
   return messages
@@ -318,10 +245,7 @@ async function runJsonToolLoop(
         throw new Error('助手这次没有按约定返回剪辑操作，已自动重试多次。请再试一次。')
       }
       messages.push({ role: 'assistant', content: raw })
-      messages.push({
-        role: 'user',
-        content: '刚才的回复无法解析。请只返回一个 JSON 对象，不要任何解释；必须包含字符串 reply 和数组 toolCalls。',
-      })
+      messages.push({ role: 'user', content: invalidJsonPrompt.trim() })
       continue
     }
 
@@ -341,7 +265,10 @@ async function runJsonToolLoop(
     messages.push({ role: 'assistant', content: raw })
     messages.push({
       role: 'user',
-      content: `工具结果：${serializeForModel(roundObservations)}。\n最新项目证据：${serializeForModel(await buildProjectEvidence())}\n继续完成用户请求；若已完成，返回 toolCalls: []。`,
+      content: renderPrompt(toolResultsPrompt, {
+        OBSERVATIONS: serializeForModel(roundObservations),
+        PROJECT_EVIDENCE: serializeForModel(await buildProjectSnapshot()),
+      }),
     })
   }
 
@@ -353,8 +280,6 @@ async function runNativeToolLoop(
   userText: string,
   options: AiEditingRunOptions,
   adapter: NativeToolCallingLlmAdapter,
-  selectedSkill: AiEditingSkill | null,
-  skills: readonly AiEditingSkill[],
 ): Promise<AiEditingRunResult> {
   const allTools = listAiEditingTools()
   const knownToolIds = new Set(allTools.map((tool) => tool.id))
@@ -362,8 +287,9 @@ async function runNativeToolLoop(
     'project.inspect',
     'tool.describe',
     'tool.search',
+    'skill.search',
+    'skill.read',
     'analysis.request',
-    ...(selectedSkill?.toolIds ?? []),
   ])
   const observations: AiEditingObservation[] = []
   let reply = ''
@@ -378,14 +304,14 @@ async function runNativeToolLoop(
     })
     if (response.mode === 'fallback') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations, selectedSkill, skills),
+        await buildJsonFallbackMessages(userText, options.history, observations),
         options,
         adapter,
       )
     }
     if (response.mode === 'json') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations, selectedSkill, skills),
+        await buildJsonFallbackMessages(userText, options.history, observations),
         options,
         adapter,
         response.content,
@@ -428,7 +354,9 @@ async function runNativeToolLoop(
     }
     messages.push({
       role: 'user',
-      content: `最新项目证据：${serializeForModel(await buildProjectEvidence())}\n继续完成用户请求；若已完成，请直接说明完成内容。`,
+      content: renderPrompt(nativeContinuePrompt, {
+        PROJECT_EVIDENCE: serializeForModel(await buildProjectSnapshot()),
+      }),
     })
   }
 
@@ -440,84 +368,36 @@ export async function runAiEditingTurn(
   options: AiEditingRunOptions,
 ): Promise<AiEditingRunResult> {
   const adapter = options.adapter ?? getAiEditingAdapter()
-  const evidence = await buildProjectEvidence()
+  const evidence = await buildProjectSnapshot()
   const timelineRevisionBefore = getTimelineRevision()
-  const skills = await listAiEditingSkills()
-  const selectedSkill = selectAiEditingSkill(userText, skills)
-  if (selectedSkill?.productionMode === 'blueprint') {
-    const blueprint = await planProductUiLaunch({
-      request: userText,
-      history: options.history,
-      evidence,
-      adapter,
-      signal: options.signal,
-    })
-    const observation = await executeToolCall({
-      id: 'timeline.compile_product_ui_launch',
-      args: { blueprint },
-    }, 0, options)
-    const postEvidence = await buildProjectEvidence()
-    const review = observation.result.ok
-      ? reviewProductUiLaunch(blueprint, postEvidence, productUiLaunchReviewScope(observation.result.data))
-      : { passed: false, reasons: [observation.result.message], expectedShotCount: blueprint.shots.length, actualVisualCount: 0 }
-    return {
-      reply: review.passed ? '已依据制作蓝图完成界面短片，并完成时间轴复核。' : `短片尚未完成：${review.reasons.join('')}`,
-      observations: [observation],
-      skillId: selectedSkill.id,
-      plan: blueprint.shots.map((shot) => `${shot.id} ${shot.purpose}`),
-      completed: review.passed,
-      completionNotes: review.reasons,
-      timelineRevisionBefore,
-      timelineRevisionAfter: getTimelineRevision(),
-      production: { blueprint, review },
-    }
-  }
   let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
     result = await runNativeToolLoop(
-      toNativeMessages(buildInitialMessages(userText, options.history, evidence, 'native', selectedSkill, skills)),
+      toNativeMessages(buildInitialMessages(userText, options.history, evidence, 'native')),
       userText,
       options,
       adapter,
-      selectedSkill,
-      skills,
     )
   } else {
     result = await runJsonToolLoop(
-      buildInitialMessages(userText, options.history, evidence, 'json', selectedSkill, skills),
+      buildInitialMessages(userText, options.history, evidence, 'json'),
       options,
       adapter,
     )
   }
-  if (!selectedSkill?.requiresFinishedVideo) {
-    return {
-      ...result,
-      ...(selectedSkill ? { skillId: selectedSkill.id } : {}),
-      plan: selectedSkill ? selectedSkill.instructions.split('\n').filter(Boolean).slice(0, 8) : [],
-      timelineRevisionBefore,
-      timelineRevisionAfter: getTimelineRevision(),
-    }
-  }
-
-  const quality = validateFinishedVideo(await buildProjectEvidence())
-  if (quality.passed) {
-    return {
-      ...result,
-      skillId: selectedSkill.id,
-      plan: selectedSkill.instructions.split('\n').filter(Boolean).slice(0, 8),
-      completed: true,
-      completionNotes: [],
-      timelineRevisionBefore,
-      timelineRevisionAfter: getTimelineRevision(),
-    }
-  }
+  const loadedSkill = result.observations.findLast((entry) => entry.toolId === 'skill.read' && entry.result.ok)
+  const skill = loadedSkill?.result.data && typeof loadedSkill.result.data === 'object'
+    ? (loadedSkill.result.data as { skill?: { id?: unknown } }).skill
+    : undefined
+  const failedReview = result.observations.findLast(
+    (entry) => entry.toolId.startsWith('review.') && !entry.result.ok,
+  )
   return {
     ...result,
-    reply: `这次还不能称为成片。${quality.reasons.join('')}`,
-    skillId: selectedSkill.id,
-    plan: selectedSkill.instructions.split('\n').filter(Boolean).slice(0, 8),
-    completed: false,
-    completionNotes: quality.reasons,
+    ...(typeof skill?.id === 'string' ? { skillId: skill.id } : {}),
+    plan: result.observations.map((entry) => entry.toolId),
+    completed: !failedReview,
+    completionNotes: failedReview ? [failedReview.result.message] : [],
     timelineRevisionBefore,
     timelineRevisionAfter: getTimelineRevision(),
   }

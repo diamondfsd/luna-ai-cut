@@ -25,23 +25,29 @@ export async function listAiEditingSkills(): Promise<AiEditingSkill[]> {
   ]
 }
 
-export function selectAiEditingSkill(request: string, skills: readonly AiEditingSkill[]): AiEditingSkill | null {
-  const normalized = request.toLocaleLowerCase()
+export function searchAiEditingSkills(query: string, skills: readonly AiEditingSkill[]): AiEditingSkill[] {
+  const normalized = query.trim().toLocaleLowerCase()
+  if (!normalized) return []
   return skills
     .filter((skill) => skill.enabled)
     .map((skill) => ({
       skill,
-      score: skill.triggers.reduce((score, trigger) => {
-        const normalizedTrigger = trigger.trim().toLocaleLowerCase()
-        return score + (normalizedTrigger && normalized.includes(normalizedTrigger) ? normalizedTrigger.length : 0)
+      score: [skill.name, skill.description, ...skill.triggers].reduce((score, candidate) => {
+        const normalizedCandidate = candidate.trim().toLocaleLowerCase()
+        if (!normalizedCandidate) return score
+        if (normalized === normalizedCandidate) return score + 100
+        if (normalized.includes(normalizedCandidate)) return score + normalizedCandidate.length
+        if (normalizedCandidate.includes(normalized)) return score + normalized.length
+        return score
       }, 0),
     }))
     .filter((entry) => entry.score > 0)
-    .sort((left, right) =>
-      right.score - left.score ||
-      Number(right.skill.productionMode === 'blueprint') - Number(left.skill.productionMode === 'blueprint') ||
-      left.skill.name.localeCompare(right.skill.name),
-    )[0]?.skill ?? null
+    .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))
+    .map((entry) => entry.skill)
+}
+
+export async function readAiEditingSkill(id: string): Promise<AiEditingSkill | null> {
+  return (await listAiEditingSkills()).find((skill) => skill.enabled && skill.id === id) ?? null
 }
 
 export async function updateAiEditingSkillEnabled(id: string, enabled: boolean): Promise<void> {
