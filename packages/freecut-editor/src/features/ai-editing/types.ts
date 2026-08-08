@@ -34,6 +34,20 @@ export interface AiEditingTool {
   execute(args: Record<string, unknown>): Promise<AiEditingToolResult> | AiEditingToolResult
 }
 
+/**
+ * Shared context passed to every dynamically discovered tool module. The
+ * catalog is populated after all modules have contributed their tools, so a
+ * discovery tool can always inspect the complete registry when it executes.
+ */
+export interface AiEditingToolRegistryContext {
+  listTools(): readonly AiEditingTool[]
+}
+
+/** A capability-domain module discovered by the editor bundle at build time. */
+export interface AiEditingToolModule {
+  createTools(context: AiEditingToolRegistryContext): AiEditingTool[]
+}
+
 export interface AiEditingToolCall {
   id: string
   args: Record<string, unknown>

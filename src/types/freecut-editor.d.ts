@@ -38,11 +38,41 @@ declare module '@freecut/embedded' {
     clearApiKey?: boolean
   }
 
+  export interface EmbeddedAiAssistantToolDefinition {
+    name: string
+    description: string
+    parameters: {
+      type: 'object'
+      properties: Record<string, unknown>
+      required?: string[]
+      additionalProperties?: boolean
+    }
+  }
+
+  export interface EmbeddedAiAssistantToolCall {
+    id: string
+    name: string
+    arguments: string
+  }
+
+  export type EmbeddedAiAssistantMessage =
+    | { role: 'system' | 'user'; content: string }
+    | { role: 'assistant'; content?: string; toolCalls?: EmbeddedAiAssistantToolCall[] }
+    | { role: 'tool'; toolCallId: string; content: string }
+
   export interface EmbeddedAiAssistantGenerateInput {
     requestId: string
-    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+    messages: EmbeddedAiAssistantMessage[]
+    mode?: 'auto' | 'json'
+    tools?: EmbeddedAiAssistantToolDefinition[]
     maxTokens: number
     temperature: number
+  }
+
+  export interface EmbeddedAiAssistantGenerateResult {
+    mode: 'tools' | 'json' | 'fallback'
+    content: string
+    toolCalls: EmbeddedAiAssistantToolCall[]
   }
 
   export interface FreeCutEditorProps {
@@ -51,7 +81,7 @@ declare module '@freecut/embedded' {
     onAnalyzeMediaVisual?: (source: EmbeddedMediaSource) => Promise<EmbeddedVisualEvidence>
     onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
     onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
-    onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<string>
+    onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>
     onCancelAiAssistant?: (requestId: string) => Promise<void>
   }
 
