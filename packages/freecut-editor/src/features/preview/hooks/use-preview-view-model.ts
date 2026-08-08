@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
+  useItemsStore,
   useTimelineStore,
   useTransitionsStore,
   useMediaDependencyStore,
@@ -53,6 +54,7 @@ export function usePreviewViewModel({
   const [playerContainerRect, setPlayerContainerRect] = useState<DOMRect | null>(null)
 
   const fps = useTimelineStore((s) => s.fps)
+  const contentFrames = useItemsStore((s) => Math.max(1, s.maxItemEndFrame))
   const tracks = useTimelineStore((s) => s.tracks)
   const keyframes = useTimelineStore((s) => s.keyframes)
   const { items, itemsByTrackId } = itemsSnapshot
@@ -165,6 +167,7 @@ export function usePreviewViewModel({
 
   return {
     fps,
+    contentFrames,
     tracks,
     keyframes,
     items,

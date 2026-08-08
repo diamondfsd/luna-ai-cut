@@ -75,6 +75,28 @@ describe('playback-store', () => {
       expect(usePlaybackStore.getState().isPlaying).toBe(false)
     })
 
+    it('finishes playback on a final frame atomically', () => {
+      const listener = vi.fn()
+      usePlaybackStore.setState({
+        currentFrame: 238,
+        isPlaying: true,
+        playbackRate: 2,
+        transportMode: 'shuttle',
+      })
+      const unsubscribe = usePlaybackStore.subscribe(listener)
+
+      usePlaybackStore.getState().finishPlaybackAtFrame(239)
+
+      expect(usePlaybackStore.getState()).toMatchObject({
+        currentFrame: 239,
+        isPlaying: false,
+        playbackRate: 1,
+        transportMode: 'normal',
+      })
+      expect(listener).toHaveBeenCalledTimes(1)
+      unsubscribe()
+    })
+
     it('toggles play/pause', () => {
       usePlaybackStore.getState().togglePlayPause()
       expect(usePlaybackStore.getState().isPlaying).toBe(true)

@@ -153,6 +153,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
   const { showPerfPanel, perfPanelSnapshot, latestRenderSourceSwitch } = usePreviewPerfPanel()
   const {
     fps,
+    contentFrames,
     tracks,
     keyframes,
     items,
@@ -604,6 +605,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
   )
   const { handleFrameChange, handlePlayStateChange } = usePreviewPlaybackController({
     fps,
+    contentFrames,
     combinedTracks,
     keyframes,
     forceFastScrubOverlay,
@@ -620,7 +622,10 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
 
   const handleStageFrameChange = useCallback(
     (frame: number) => {
-      const nextFrame = Math.max(0, Math.round(frame))
+      const nextFrame = Math.min(
+        Math.max(0, contentFrames - 1),
+        Math.max(0, Math.round(frame)),
+      )
       latestPlayerDisplayedFrameRef.current = nextFrame
       // Ordinary playback consumes this imperatively through the ref below.
       // Mirroring every Clock tick into React state invalidates the entire
@@ -629,9 +634,9 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
       if (comparisonEnabled) {
         setPlayerDisplayedFrame((prevFrame) => (prevFrame === nextFrame ? prevFrame : nextFrame))
       }
-      handleFrameChange(frame)
+      handleFrameChange(nextFrame)
     },
-    [comparisonEnabled, handleFrameChange],
+    [comparisonEnabled, contentFrames, handleFrameChange],
   )
 
   const getLivePlaybackFrame = useCallback(() => {

@@ -42,7 +42,7 @@ export function TimecodeDisplay({ fps, totalFrames }: TimecodeDisplayProps) {
 
   const getVisibleFrame = useCallback(() => {
     const playbackState = usePlaybackStore.getState()
-    return getResolvedPlaybackFrame({
+    const resolvedFrame = getResolvedPlaybackFrame({
       currentFrame: playbackState.currentFrame,
       currentFrameEpoch: playbackState.currentFrameEpoch,
       previewFrame: playbackState.previewFrame,
@@ -50,6 +50,7 @@ export function TimecodeDisplay({ fps, totalFrames }: TimecodeDisplayProps) {
       isPlaying: playbackState.isPlaying,
       displayedFrame: usePreviewBridgeStore.getState().displayedFrame,
     })
+    return Math.min(Math.max(0, totalFramesRef.current - 1), Math.max(0, resolvedFrame))
   }, [])
 
   // Subscribe to the resolved visible preview frame and update DOM directly
