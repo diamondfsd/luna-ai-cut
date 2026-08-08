@@ -18,6 +18,7 @@ import { buildAiEditingSystemPrompt } from './agent-prompt'
 import { getTimelineRevision } from './evidence'
 import { buildAgentWorkspaceDocument } from './workspace-document/build-workspace-document'
 import { parseAiEditingResponse } from './response-parser'
+import { latestFailedEdit } from './latest-edit-result'
 import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
 import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
@@ -382,9 +383,7 @@ export async function runAiEditingTurn(
       adapter,
     )
   }
-  const failedEdit = result.observations.findLast(
-    (entry) => entry.toolId === 'workspace.apply_edit_program' && !entry.result.ok,
-  )
+  const failedEdit = latestFailedEdit(result.observations)
   return {
     ...result,
     ...(failedEdit
