@@ -22,9 +22,9 @@ if (!app.isPackaged && e2eUserDataDir) {
   app.setPath('sessionData', join(isolatedUserData, 'session-data'))
 }
 
-// `file://` has an opaque, unstable storage origin in Electron. The renderer
-// must use a privileged application origin so OPFS-backed FreeCut projects
-// persist across normal launches.
+// `file://` has an opaque, unstable origin in Electron. The renderer uses a
+// stable, secure application origin so the File System Access API can restore
+// permissions for the user-selected FreeCut workspace across normal launches.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'luna',

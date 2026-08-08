@@ -45,8 +45,18 @@ function isStorageProtectedPath(pathname: string): boolean {
 
 const logger = createLogger('WorkspaceGate')
 
-async function getEmbeddedWorkspaceRoot(): Promise<FileSystemDirectoryHandle | null> {
-  if (!('luna' in window) || typeof navigator.storage?.getDirectory !== 'function') return null
+type E2eWindow = Window & {
+  luna?: {
+    environment?: {
+      freecutStorage?: 'disk' | 'opfs'
+    }
+  }
+}
+
+async function getE2eWorkspaceRoot(): Promise<FileSystemDirectoryHandle | null> {
+  const e2eWindow = window as E2eWindow
+  if (e2eWindow.luna?.environment?.freecutStorage !== 'opfs') return null
+  if (typeof navigator.storage?.getDirectory !== 'function') return null
   const originRoot = await navigator.storage.getDirectory()
   return originRoot.getDirectoryHandle('luna-freecut', { create: true })
 }
@@ -89,9 +99,11 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const embeddedRoot = await getEmbeddedWorkspaceRoot()
-      if (embeddedRoot) {
-        if (!cancelled) await activate(embeddedRoot)
+      // Electron E2E keeps its storage isolated from native folder pickers.
+      // Production Electron always uses the disk-backed path below.
+      const e2eRoot = await getE2eWorkspaceRoot()
+      if (e2eRoot) {
+        if (!cancelled) await activate(e2eRoot)
         return
       }
       if (!isFileSystemAccessSupported()) {
@@ -162,6 +174,7 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
       }
       logger.error('Folder pick failed', error)
       setError(t('projects.workspaceGate.folderPickFailed'))
+      setStatus({ kind: 'pick' })
     }
   }, [activate, t])
 

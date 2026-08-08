@@ -27,7 +27,7 @@ test('FreeCut 项目在 Electron 重启后仍可打开', async ({ lunaApp }) => 
   const relaunched = await electron.launch({
     args: ['.'],
     cwd: path.resolve(import.meta.dirname, '..'),
-    env: { ...process.env, LUNA_E2E_USER_DATA_DIR: userDataDir },
+    env: { ...process.env, LUNA_E2E_USER_DATA_DIR: userDataDir, LUNA_E2E_FREECUT_STORAGE: 'opfs' },
   })
   try {
     const relaunchedPage = await waitForLunaWindow(relaunched)
