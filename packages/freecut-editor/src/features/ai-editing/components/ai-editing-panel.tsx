@@ -2,20 +2,19 @@ import { Fragment, memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Check,
   CircleAlert,
-  Copy,
   Loader2,
   RotateCcw,
-  Send,
   Settings2,
   Sparkles,
   X,
 } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
-import { Textarea } from '@freecut/components/ui/textarea'
-import { cn } from '@freecut/shared/ui/cn'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
+import { describeAiEditingReference } from '../resource-references'
 import { useAiEditingStore, type AiEditingMessage } from '../store'
 import type { AiEditingToolActivity } from '../types'
+import { AiEditingComposer } from './ai-editing-composer'
+import { AiEditingMessageBubble } from './ai-editing-message'
 import { AiProviderDialog } from './ai-provider-dialog'
 
 const SUGGESTIONS = [
@@ -55,35 +54,6 @@ const ToolActivityCard = memo(function ToolActivityCard({ activities }: { activi
   )
 })
 
-const ChatBubble = memo(function ChatBubble({
-  message,
-  copied,
-  onCopy,
-}: {
-  message: AiEditingMessage
-  copied: boolean
-  onCopy: (message: AiEditingMessage) => void
-}) {
-  const isUser = message.role === 'user'
-  return (
-    <div className={cn('group flex', isUser ? 'justify-end' : 'justify-start')}>
-      <div className={cn('relative max-w-[88%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 pr-8 text-xs leading-relaxed', isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-foreground')}>
-        {message.content}
-        <Button
-          size="icon"
-          variant="ghost"
-          className={cn('absolute right-1 top-1 h-6 w-6 opacity-55 transition-opacity hover:opacity-100 focus-visible:opacity-100', isUser ? 'text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground' : 'text-muted-foreground')}
-          onClick={() => onCopy(message)}
-          aria-label={copied ? '已复制聊天记录' : '复制聊天记录'}
-          data-tooltip={copied ? '已复制' : '复制'}
-        >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        </Button>
-      </div>
-    </div>
-  )
-})
-
 type ConnectionState = 'checking' | 'ready' | 'needs-setup' | 'unavailable'
 
 interface AiEditingPanelProps {
@@ -101,7 +71,6 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const cancel = useAiEditingStore((state) => state.cancel)
   const clear = useAiEditingStore((state) => state.clear)
 
-  const [input, setInput] = useState('')
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
@@ -141,16 +110,17 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
     if (copyResetTimer.current) clearTimeout(copyResetTimer.current)
   }, [])
 
-  const send = useCallback((value: string) => {
-    const text = value.trim()
-    if (!text || busy || connectionState !== 'ready') return
-    setInput('')
-    void submit(text)
+  const send = useCallback((value: string, references?: AiEditingMessage['references']) => {
+    if (busy || connectionState !== 'ready') return
+    void submit(value, references)
   }, [busy, connectionState, submit])
 
   const copyMessage = useCallback(async (message: AiEditingMessage) => {
     try {
-      await navigator.clipboard.writeText(message.content)
+      const referenceText = message.references?.length
+        ? `\n\n引用的编辑资源：\n${message.references.map((reference) => `- ${describeAiEditingReference(reference)}`).join('\n')}`
+        : ''
+      await navigator.clipboard.writeText(`${message.content}${referenceText}`)
       setCopiedMessageId(message.id)
       if (copyResetTimer.current) clearTimeout(copyResetTimer.current)
       copyResetTimer.current = setTimeout(() => setCopiedMessageId(null), 2_000)
@@ -229,7 +199,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
 
         {canChat && messages.map((message) => (
           <Fragment key={message.id}>
-            <ChatBubble message={message} copied={copiedMessageId === message.id} onCopy={(entry) => void copyMessage(entry)} />
+            <AiEditingMessageBubble message={message} copied={copiedMessageId === message.id} onCopy={(entry) => void copyMessage(entry)} />
             {message.id === activeUserMessageId && <ToolActivityCard activities={toolActivities} />}
           </Fragment>
         ))}
@@ -245,28 +215,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         {canChat && error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs leading-relaxed text-destructive">{error}</div>}
       </div>
 
-      <div className="shrink-0 border-t border-border p-2.5">
-        <div className="flex items-end gap-1.5">
-          <Textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                send(input)
-              }
-            }}
-            placeholder={canChat ? '描述想要完成的剪辑' : '完成设置后开始对话'}
-            className="min-h-9 max-h-28 resize-none text-xs"
-            disabled={!canChat || busy}
-          />
-          {busy ? (
-            <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={cancel} aria-label="停止剪辑操作"><X className="h-4 w-4" /></Button>
-          ) : (
-            <Button size="icon" className="h-9 w-9 shrink-0" onClick={() => send(input)} disabled={!canChat || !input.trim()} aria-label="发送剪辑请求"><Send className="h-4 w-4" /></Button>
-          )}
-        </div>
-      </div>
+      <AiEditingComposer canChat={canChat} busy={busy} onSubmit={send} onCancel={cancel} />
       <AiProviderDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
     </div>
   )

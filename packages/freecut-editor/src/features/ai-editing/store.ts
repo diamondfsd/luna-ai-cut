@@ -10,6 +10,10 @@ import {
   getAiEditingAdapter,
   runAiEditingTurn,
 } from './orchestrator'
+import {
+  addAiEditingReferenceContext,
+  type AiEditingResourceReference,
+} from './resource-references'
 import type { AiEditingObservation, AiEditingToolActivity } from './types'
 
 const logger = createLogger('AiEditingStore')
@@ -20,6 +24,7 @@ export interface AiEditingMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  references?: AiEditingResourceReference[]
 }
 
 interface AiEditingState {
@@ -34,7 +39,7 @@ interface AiEditingState {
   projectId: string | null
   isRestoringConversation: boolean
   restoreConversation: (projectId: string | null) => Promise<void>
-  submit: (text: string) => Promise<void>
+  submit: (text: string, references?: AiEditingResourceReference[]) => Promise<void>
   cancel: () => void
   clear: () => Promise<void>
 }
@@ -48,7 +53,12 @@ function newId(): string {
 }
 
 function buildHistory(messages: AiEditingMessage[]): LlmMessage[] {
-  return messages.slice(-6).map((message) => ({ role: message.role, content: message.content }))
+  return messages.slice(-6).map((message) => ({
+    role: message.role,
+    content: message.role === 'user'
+      ? addAiEditingReferenceContext(message.content, message.references ?? [])
+      : message.content,
+  }))
 }
 
 function enqueueConversationWrite(projectId: string, operation: () => Promise<void>): Promise<void> {
@@ -101,7 +111,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     set({ messages, isRestoringConversation: false })
   },
 
-  submit: async (text) => {
+  submit: async (text, references = []) => {
     const trimmed = text.trim()
     if (!trimmed || get().phase !== 'idle') return
     const projectId = get().projectId
@@ -114,7 +124,15 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     }
 
     const history = buildHistory(get().messages)
-    const messages = [...get().messages, { id: newId(), role: 'user' as const, content: trimmed }]
+    const messages = [
+      ...get().messages,
+      {
+        id: newId(),
+        role: 'user' as const,
+        content: trimmed,
+        ...(references.length > 0 ? { references } : {}),
+      },
+    ]
     set({
       messages,
       phase: 'loading',
@@ -154,7 +172,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     activeController = controller
     set({ phase: 'thinking' })
     try {
-      const result = await runAiEditingTurn(trimmed, {
+      const result = await runAiEditingTurn(addAiEditingReferenceContext(trimmed, references), {
         history,
         adapter,
         signal: controller.signal,

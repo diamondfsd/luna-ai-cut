@@ -6,7 +6,9 @@ import process from 'node:process'
 import { expect, test } from './fixtures/lunaElectron'
 
 const USER_MESSAGE = '给这段生活日常加一个标题'
+const ASSISTANT_MARKDOWN = '**标题已经添加到时间轴。**'
 const ASSISTANT_MESSAGE = '标题已经添加到时间轴。'
+const REFERENCED_USER_MESSAGE = '只检查我引用的资源'
 
 interface ChatCompletionsRequest {
   tool_choice?: unknown
@@ -109,7 +111,7 @@ async function startChatCompletionsMock(): Promise<{
     }
     requestCount += 1
     response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ choices: [{ message: { content: ASSISTANT_MESSAGE } }] }))
+    response.end(JSON.stringify({ choices: [{ message: { content: ASSISTANT_MARKDOWN } }] }))
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -155,7 +157,7 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     const execution = page.getByRole('region', { name: '剪辑执行过程' })
     await expect(execution).toContainText('Add title')
     await expect(page.locator('[data-timeline-item]')).toHaveCount(1)
-    await expect(page.getByText(ASSISTANT_MESSAGE, { exact: true })).toBeVisible()
+    await expect(page.locator('strong', { hasText: ASSISTANT_MESSAGE })).toBeVisible()
     expect(chatMock.requests).toHaveLength(3)
     expect(chatMock.requests[0]?.tool_choice).toBe('auto')
     const firstRequest = chatMock.requests[0]
@@ -194,6 +196,23 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
       }),
       expect.objectContaining({ role: 'tool', tool_call_id: 'call_add_life_title' }),
     ]))
+    await expect(page.getByRole('button', { name: '引用编辑资源' })).toBeVisible()
+    await input.fill('@')
+    const referencePicker = page.getByRole('listbox', { name: '可引用的编辑资源' })
+    await expect(referencePicker.getByRole('option')).not.toHaveCount(0)
+    await referencePicker.getByRole('option').first().click()
+    await expect(page.getByLabel('已引用的编辑资源').getByRole('button', { name: /移除引用/ })).toHaveCount(1)
+    await input.fill(REFERENCED_USER_MESSAGE)
+    await page.getByRole('button', { name: '发送剪辑请求' }).click()
+    await expect.poll(() => chatMock.requests.length).toBe(4)
+    const referencedRequest = chatMock.requests[3]
+    const referencedMessage = referencedRequest?.messages?.find((message) =>
+      message.role === 'user'
+      && typeof message.content === 'string'
+      && message.content.includes(REFERENCED_USER_MESSAGE),
+    )
+    expect(referencedMessage?.content).toContain('用户明确引用的编辑资源')
+    expect(referencedMessage?.content).toContain('ID：')
     await page.evaluate(() => {
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
@@ -223,7 +242,8 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     await expect(relaunchedPage.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
     await relaunchedPage.getByRole('button', { name: '打开剪辑助手' }).click()
     await expect(relaunchedPage.getByText(USER_MESSAGE, { exact: true })).toBeVisible()
-    await expect(relaunchedPage.getByText(ASSISTANT_MESSAGE, { exact: true })).toBeVisible()
+    await expect(relaunchedPage.getByText(ASSISTANT_MESSAGE, { exact: true }).first()).toBeVisible()
+    await expect(relaunchedPage.getByLabel('引用的编辑资源')).toBeVisible()
     expect(relaunchErrors).toEqual([])
   } finally {
     await relaunched?.close().catch(() => undefined)
