@@ -1,4 +1,5 @@
 import productShowcaseMarkdown from './product-showcase/SKILL.md?raw'
+import productUiLaunchMarkdown from './product-ui-launch/SKILL.md?raw'
 import type { AiEditingSkill } from './types'
 
 function readFrontmatter(markdown: string): { name: string; description: string; instructions: string } {
@@ -23,6 +24,23 @@ function builtInProductShowcase(): AiEditingSkill {
   }
 }
 
+function builtInProductUiLaunch(): AiEditingSkill {
+  const parsed = readFrontmatter(productUiLaunchMarkdown)
+  return {
+    id: 'product-ui-launch',
+    name: parsed.name || 'product-ui-launch',
+    description: parsed.description,
+    instructions: parsed.instructions,
+    triggers: ['UI重构', 'UI 重构', '挑战一个人做出剪映', '界面短片', '界面成片', '产品原型成片'],
+    toolIds: ['timeline.compile_product_ui_launch'],
+    requiresFinishedVideo: true,
+    productionMode: 'blueprint',
+    source: 'built-in',
+    enabled: true,
+  }
+}
+
 export const BUILT_IN_AI_EDITING_SKILLS: readonly AiEditingSkill[] = Object.freeze([
+  builtInProductUiLaunch(),
   builtInProductShowcase(),
 ])

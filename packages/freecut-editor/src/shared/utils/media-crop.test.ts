@@ -24,6 +24,17 @@ describe('media-crop', () => {
     expect(normalizeCropSettings({ softness: -0.5 })).toBeUndefined()
   })
 
+  it('preserves refit for a visible programmatic crop', () => {
+    expect(normalizeCropSettings({ left: 0.2, refit: true })).toEqual({
+      left: 0.2,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      softness: 0,
+      refit: true,
+    })
+  })
+
   it('clamps opposing edges so they never fully collapse the visible area', () => {
     const resolved = resolveCropSettings({ left: 0.8, right: 0.5 })
     expect(resolved.left).toBeCloseTo(0.6147692308)

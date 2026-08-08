@@ -29,9 +29,19 @@ export function selectAiEditingSkill(request: string, skills: readonly AiEditing
   const normalized = request.toLocaleLowerCase()
   return skills
     .filter((skill) => skill.enabled)
-    .map((skill) => ({ skill, score: skill.triggers.reduce((score, trigger) => score + (normalized.includes(trigger.toLocaleLowerCase()) ? 1 : 0), 0) }))
+    .map((skill) => ({
+      skill,
+      score: skill.triggers.reduce((score, trigger) => {
+        const normalizedTrigger = trigger.trim().toLocaleLowerCase()
+        return score + (normalizedTrigger && normalized.includes(normalizedTrigger) ? normalizedTrigger.length : 0)
+      }, 0),
+    }))
     .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))[0]?.skill ?? null
+    .sort((left, right) =>
+      right.score - left.score ||
+      Number(right.skill.productionMode === 'blueprint') - Number(left.skill.productionMode === 'blueprint') ||
+      left.skill.name.localeCompare(right.skill.name),
+    )[0]?.skill ?? null
 }
 
 export async function updateAiEditingSkillEnabled(id: string, enabled: boolean): Promise<void> {

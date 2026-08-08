@@ -16,6 +16,8 @@ import {
 } from '@freecut/shared/host/embedded-host'
 import { buildProjectEvidence, getTimelineRevision } from './evidence'
 import { validateFinishedVideo } from './production-skill'
+import { planProductUiLaunch } from './production-blueprint/planner'
+import { reviewProductUiLaunch } from './production-blueprint/validation'
 import { parseAiEditingResponse } from './response-parser'
 import { listAiEditingSkills, selectAiEditingSkill } from './skills/service'
 import type { AiEditingSkill } from './skills/types'
@@ -149,6 +151,7 @@ export interface AiEditingRunResult {
   completionNotes: string[]
   timelineRevisionBefore: number
   timelineRevisionAfter: number
+  production?: { blueprint: unknown; review: unknown }
 }
 
 export interface AiEditingRunOptions {
@@ -434,6 +437,34 @@ export async function runAiEditingTurn(
   const timelineRevisionBefore = getTimelineRevision()
   const skills = await listAiEditingSkills()
   const selectedSkill = selectAiEditingSkill(userText, skills)
+  if (selectedSkill?.productionMode === 'blueprint') {
+    const blueprint = await planProductUiLaunch({
+      request: userText,
+      history: options.history,
+      evidence,
+      adapter,
+      signal: options.signal,
+    })
+    const observation = await executeToolCall({
+      id: 'timeline.compile_product_ui_launch',
+      args: { blueprint },
+    }, 0, options)
+    const postEvidence = await buildProjectEvidence()
+    const review = observation.result.ok
+      ? reviewProductUiLaunch(blueprint, postEvidence)
+      : { passed: false, reasons: [observation.result.message], expectedShotCount: blueprint.shots.length, actualVisualCount: 0 }
+    return {
+      reply: review.passed ? '已依据制作蓝图完成界面短片，并完成时间轴复核。' : `短片尚未完成：${review.reasons.join('')}`,
+      observations: [observation],
+      skillId: selectedSkill.id,
+      plan: blueprint.shots.map((shot) => `${shot.id} ${shot.purpose}`),
+      completed: review.passed,
+      completionNotes: review.reasons,
+      timelineRevisionBefore,
+      timelineRevisionAfter: getTimelineRevision(),
+      production: { blueprint, review },
+    }
+  }
   let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
     result = await runNativeToolLoop(
