@@ -10,4 +10,4 @@ description: Create an evidence-led product interface launch video from real scr
 3. For a single screenshot, treat the work as multiple camera views of the same real interface. Do not invent screens, features, or footage.
 4. Keep camera movement deliberate: use crop regions and restrained push, pull, or pan motion. Do not use random motion as a substitute for a shot decision.
 5. Put only the opening, one narrative beat, and the ending on screen as text. Let the product evidence carry the rest.
-6. Only replace existing timeline content after the user explicitly confirms it. Review the compiled timeline against the blueprint before reporting completion.
+6. Decide whether this request is a new standalone video or an addition to the current edit. Replace unrelated work for a new video; preserve it for an extension or revision. Review the compiled timeline against the blueprint before reporting completion.

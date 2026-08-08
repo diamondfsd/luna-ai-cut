@@ -162,6 +162,13 @@ export interface AiEditingRunOptions {
   adapter?: LlmAdapter
 }
 
+function productUiLaunchReviewScope(data: unknown): { startSeconds: number; endSeconds: number } | undefined {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined
+  const candidate = data as { startSeconds?: unknown; endSeconds?: unknown }
+  if (typeof candidate.startSeconds !== 'number' || typeof candidate.endSeconds !== 'number') return undefined
+  return candidate.endSeconds > candidate.startSeconds ? candidate as { startSeconds: number; endSeconds: number } : undefined
+}
+
 export function getAiEditingAdapter(): LlmAdapter {
   if (getEmbeddedHostBridge().aiAssistant) return openAiChatCompletionsLlmAdapter
   return getDefaultLlmAdapter()
@@ -451,7 +458,7 @@ export async function runAiEditingTurn(
     }, 0, options)
     const postEvidence = await buildProjectEvidence()
     const review = observation.result.ok
-      ? reviewProductUiLaunch(blueprint, postEvidence)
+      ? reviewProductUiLaunch(blueprint, postEvidence, productUiLaunchReviewScope(observation.result.data))
       : { passed: false, reasons: [observation.result.message], expectedShotCount: blueprint.shots.length, actualVisualCount: 0 }
     return {
       reply: review.passed ? '已依据制作蓝图完成界面短片，并完成时间轴复核。' : `短片尚未完成：${review.reasons.join('')}`,

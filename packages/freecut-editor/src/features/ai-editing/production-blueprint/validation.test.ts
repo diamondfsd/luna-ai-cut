@@ -22,6 +22,7 @@ const source = {
   tone: '克制的产品发布感',
   aspectRatio: '16:9',
   replaceExisting: true,
+  videoTrack: 1,
   shots: [
     { id: 'SHOT-01', mediaId: 'ui-image', region: 'overview', durationSeconds: 2, purpose: '开场钩子', evidence: '完整剪辑器界面', camera: 'push-in', caption: '挑战一个人做出剪映' },
     { id: 'SHOT-02', mediaId: 'ui-image', region: 'top-left', durationSeconds: 2, purpose: '展示素材区域', evidence: '左上素材区域', camera: 'pan-right' },
@@ -32,7 +33,14 @@ const source = {
 }
 
 function evidence(clips: AiProjectEvidence['clips'] = [], durationSeconds = 10): AiProjectEvidence {
-  return { timelineRevision: 1, fps: 30, clips, durationSeconds, media }
+  return {
+    timelineRevision: 1,
+    fps: 30,
+    clips,
+    durationSeconds,
+    tracks: [{ id: 'v1', name: 'V1', kind: 'video', order: 0, locked: false }],
+    media,
+  }
 }
 
 describe('product UI launch blueprint', () => {
@@ -50,6 +58,13 @@ describe('product UI launch blueprint', () => {
     }), evidence())).toThrow('未完成画面分析')
   })
 
+  it('rejects a plan that selects an unavailable video track', () => {
+    expect(() => parseProductUiLaunchBlueprint(JSON.stringify({
+      ...source,
+      videoTrack: 2,
+    }), evidence())).toThrow('视频轨道当前不可用')
+  })
+
   it('reviews the compiled timeline against every planned shot', () => {
     const blueprint = parseProductUiLaunchBlueprint(JSON.stringify(source), evidence())
     const clips: AiProjectEvidence['clips'] = [
@@ -59,5 +74,21 @@ describe('product UI launch blueprint', () => {
       { id: 'title-3', label: '收尾', type: 'text', trackId: 'overlay', startSeconds: 8, endSeconds: 10 },
     ]
     expect(reviewProductUiLaunch(blueprint, evidence(clips))).toMatchObject({ passed: true, expectedShotCount: 5, actualVisualCount: 5 })
+  })
+
+  it('reviews only the newly compiled range when a video is appended', () => {
+    const blueprint = parseProductUiLaunchBlueprint(JSON.stringify({ ...source, replaceExisting: false }), evidence())
+    const clips: AiProjectEvidence['clips'] = [
+      { id: 'existing', label: '已有画面', type: 'image', trackId: 'video', startSeconds: 0, endSeconds: 8, mediaId: 'ui-image' },
+      ...source.shots.map((shot, index) => ({ id: shot.id, label: shot.id, type: 'image' as const, trackId: 'video', startSeconds: 8 + index * 2, endSeconds: 10 + index * 2, mediaId: 'ui-image' })),
+      { id: 'title-1', label: '开场', type: 'text', trackId: 'overlay', startSeconds: 8, endSeconds: 10 },
+      { id: 'title-2', label: '展示', type: 'text', trackId: 'overlay', startSeconds: 12, endSeconds: 14 },
+      { id: 'title-3', label: '收尾', type: 'text', trackId: 'overlay', startSeconds: 16, endSeconds: 18 },
+    ]
+    expect(reviewProductUiLaunch(blueprint, evidence(clips, 18), { startSeconds: 8, endSeconds: 18 })).toMatchObject({
+      passed: true,
+      expectedShotCount: 5,
+      actualVisualCount: 5,
+    })
   })
 })

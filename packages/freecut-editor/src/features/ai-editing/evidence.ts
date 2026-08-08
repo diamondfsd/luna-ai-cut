@@ -39,6 +39,12 @@ function buildTimelineEvidence(): { clips: AiTimelineClipEvidence[]; durationSec
   return { clips, durationSeconds, fps, revision: timeline.changeVersion ?? 0 }
 }
 
+function evidenceTrackKind(track: { name: string; kind?: string }): 'video' | 'audio' | 'other' {
+  if (track.kind === 'video' || /^V\d+$/i.test(track.name)) return 'video'
+  if (track.kind === 'audio' || /^A\d+$/i.test(track.name)) return 'audio'
+  return 'other'
+}
+
 export function getTimelineRevision(): number {
   return useTimelineStore.getState().changeVersion ?? 0
 }
@@ -52,6 +58,13 @@ export async function buildProjectEvidence(): Promise<AiProjectEvidence> {
     fps: timeline.fps,
     durationSeconds: timeline.durationSeconds,
     clips: timeline.clips,
+    tracks: useTimelineStore.getState().tracks.map((track) => ({
+      id: track.id,
+      name: track.name,
+      kind: evidenceTrackKind(track),
+      order: track.order,
+      locked: track.locked,
+    })),
     media,
   }
 }

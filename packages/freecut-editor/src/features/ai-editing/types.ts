@@ -113,5 +113,12 @@ export interface AiProjectEvidence {
   fps: number
   durationSeconds: number
   clips: AiTimelineClipEvidence[]
+  tracks: Array<{
+    id: string
+    name: string
+    kind: 'video' | 'audio' | 'other'
+    order: number
+    locked: boolean
+  }>
   media: AiMediaEvidence[]
 }

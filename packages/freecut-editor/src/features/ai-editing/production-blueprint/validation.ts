@@ -4,6 +4,7 @@ import {
   PRODUCT_UI_LAUNCH_BLUEPRINT_VERSION,
   type ProductUiLaunchBlueprint,
   type ProductUiLaunchReview,
+  type ProductUiLaunchReviewScope,
 } from './types'
 
 const shotSchema = z.object({
@@ -25,6 +26,7 @@ export const productUiLaunchBlueprintSchema = z.object({
   tone: z.string().trim().min(2).max(60),
   aspectRatio: z.string().trim().min(3).max(12),
   replaceExisting: z.boolean().default(false),
+  videoTrack: z.number().int().positive(),
   shots: z.array(shotSchema).min(4).max(6),
 }).strict()
 
@@ -50,6 +52,9 @@ export function parseProductUiLaunchBlueprint(raw: string, evidence: AiProjectEv
   if (blueprint.shots.some((shot) => !eligibleMediaIds.has(shot.mediaId))) {
     throw new Error('制作计划引用了未完成画面分析的素材，未开始修改时间轴。')
   }
+  if (!evidence.tracks.some((track) => track.kind === 'video' && track.name === `V${blueprint.videoTrack}` && !track.locked)) {
+    throw new Error('制作计划选择的视频轨道当前不可用，未开始修改时间轴。')
+  }
   if (blueprint.shots.filter((shot) => Boolean(shot.caption)).length < 3) {
     throw new Error('制作计划缺少开场、展示和收尾文案，未开始修改时间轴。')
   }
@@ -62,14 +67,19 @@ export function parseProductUiLaunchBlueprint(raw: string, evidence: AiProjectEv
 export function reviewProductUiLaunch(
   blueprint: ProductUiLaunchBlueprint,
   evidence: AiProjectEvidence,
+  scope?: ProductUiLaunchReviewScope,
 ): ProductUiLaunchReview {
   const reasons: string[] = []
-  const visualClips = evidence.clips.filter((clip) => clip.type === 'image' || clip.type === 'video')
-  const textClips = evidence.clips.filter((clip) => clip.type === 'text')
+  const scopedClips = scope
+    ? evidence.clips.filter((clip) => clip.startSeconds >= scope.startSeconds && clip.endSeconds <= scope.endSeconds)
+    : evidence.clips
+  const visualClips = scopedClips.filter((clip) => clip.type === 'image' || clip.type === 'video')
+  const textClips = scopedClips.filter((clip) => clip.type === 'text')
   const expectedDuration = blueprint.shots.reduce((total, shot) => total + shot.durationSeconds, 0)
   if (visualClips.length < blueprint.shots.length) reasons.push('实际画面镜头少于制作计划。')
   if (textClips.length < 3) reasons.push('实际时间轴缺少完整的开场、展示和收尾文案。')
-  if (Math.abs(evidence.durationSeconds - expectedDuration) > 0.15) reasons.push('实际片长与制作计划不一致。')
+  const actualDuration = scope ? scope.endSeconds - scope.startSeconds : evidence.durationSeconds
+  if (Math.abs(actualDuration - expectedDuration) > 0.15) reasons.push('实际片长与制作计划不一致。')
   return {
     passed: reasons.length === 0,
     reasons,

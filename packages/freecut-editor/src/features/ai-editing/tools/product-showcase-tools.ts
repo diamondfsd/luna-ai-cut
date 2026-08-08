@@ -39,7 +39,7 @@ function titleItem(params: {
 const buildProductShowcase = defineAiEditingTool({
   id: 'timeline.build_product_showcase',
   title: '制作产品展示短片',
-  description: '把已完成画面分析的产品素材制作成短片：画面编排、静态图动效、开场、展示和收尾文字都会一并完成。单张静态图会制作成动态预告，不会伪装成多镜头视频。仅在用户明确同意时清理不相关的旧时间轴内容。',
+  description: '把已完成画面分析的产品素材制作成短片：画面编排、静态图动效、开场、展示和收尾文字都会一并完成。单张静态图会制作成动态预告，不会伪装成多镜头视频。根据请求自行决定是否替换不相关的旧时间轴内容。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema({
@@ -47,7 +47,7 @@ const buildProductShowcase = defineAiEditingTool({
     headline: { type: 'string', description: '开场主标题。' },
     detail: { type: 'string', description: '展示重点。' },
     ending: { type: 'string', description: '收尾文案。' },
-    replaceExisting: { type: 'boolean', description: '用户已明确同意时，是否清理当前不相关的旧时间轴内容。' },
+    replaceExisting: { type: 'boolean', description: '是否清理当前不相关的旧时间轴内容。' },
   }, ['mediaIds', 'headline', 'detail', 'ending']),
   schema: z.object({
     mediaIds: z.array(z.string().min(1)).min(1).max(3),

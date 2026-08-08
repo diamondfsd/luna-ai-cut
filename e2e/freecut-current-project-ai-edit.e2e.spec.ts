@@ -5,7 +5,7 @@ import { expect, test } from './fixtures/lunaElectronLive'
 
 const projectId = process.env.LUNA_E2E_PROJECT_ID ?? 'J4ANiM2O'
 const prompt = process.env.LUNA_E2E_AI_PROMPT
-  ?? '帮我基于当前素材库的这个新UI原型图，完成 挑战一个人做出剪映，第一天，UI重构。视频的制作。我确认清理当前不相关的旧测试内容，请直接完成成片。'
+  ?? '帮我基于当前素材库的这个新UI原型图，完成 挑战一个人做出剪映，第一天，UI重构。视频的制作，请直接完成成片。'
 
 test.skip(process.env.LUNA_E2E_LIVE !== '1', '需要显式设置 LUNA_E2E_LIVE=1 才会操作现有项目')
 test.setTimeout(8 * 60_000)
@@ -15,10 +15,13 @@ interface ProjectFile {
     items?: Array<{
       id: string
       type: string
+      trackId: string
+      from: number
       text?: string
       durationInFrames?: number
       motionModifiers?: unknown[]
     }>
+    tracks?: Array<{ id: string; name: string }>
   }
 }
 
@@ -29,6 +32,7 @@ interface AiEditingRunsFile {
     production?: {
       blueprint?: {
         title?: string
+        videoTrack?: number
         shots?: Array<{ id?: string; mediaId?: string; region?: string }>
       }
       review?: { passed?: boolean }
@@ -81,8 +85,16 @@ test('用当前项目的剪辑助手制作 UI 重构主题短片', async ({ luna
   })
   const blueprint = runs.runs?.at(-1)?.production?.blueprint
   expect(blueprint?.title).toMatch(/挑战.*剪映.*UI.*重构/)
+  expect(blueprint?.videoTrack).toBe(1)
   expect(blueprint?.shots).toHaveLength(5)
   expect(blueprint?.shots?.every((shot, index) => shot.id === `SHOT-0${index + 1}` && Boolean(shot.mediaId))).toBe(true)
   expect(blueprint?.shots?.some((shot) => shot.region === 'timeline')).toBe(true)
+  const trackNameById = new Map(saved.timeline?.tracks?.map((track) => [track.id, track.name]))
+  const latestVisualItems = items
+    .filter((item) => item.type === 'image')
+    .sort((left, right) => left.from - right.from)
+    .slice(-5)
+  expect(latestVisualItems).toHaveLength(5)
+  expect(latestVisualItems.every((item) => trackNameById.get(item.trackId) === 'V1')).toBe(true)
   expect(runtimeErrors).toEqual([])
 })
