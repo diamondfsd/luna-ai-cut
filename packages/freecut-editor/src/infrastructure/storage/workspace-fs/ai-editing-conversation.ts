@@ -19,6 +19,13 @@ export interface AiEditingConversationMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  references?: AiEditingConversationReference[]
+}
+
+export interface AiEditingConversationReference {
+  kind: 'project' | 'media' | 'timeline-clip'
+  id: string
+  label: string
 }
 
 interface AiEditingConversationFile {
@@ -37,7 +44,31 @@ function sanitizeMessage(value: unknown): AiEditingConversationMessage | null {
   ) {
     return null
   }
-  return { id: candidate.id, role: candidate.role, content: candidate.content }
+  const references = sanitizeReferences(candidate.references)
+  return {
+    id: candidate.id,
+    role: candidate.role,
+    content: candidate.content,
+    ...(references.length > 0 ? { references } : {}),
+  }
+}
+
+function sanitizeReferences(value: unknown): AiEditingConversationReference[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const candidate = entry as Partial<AiEditingConversationReference>
+    if (
+      (candidate.kind !== 'project' && candidate.kind !== 'media' && candidate.kind !== 'timeline-clip') ||
+      typeof candidate.id !== 'string' ||
+      !candidate.id ||
+      typeof candidate.label !== 'string' ||
+      !candidate.label
+    ) {
+      return []
+    }
+    return [{ kind: candidate.kind, id: candidate.id, label: candidate.label }]
+  })
 }
 
 function sanitizeConversation(value: unknown): AiEditingConversationMessage[] {
