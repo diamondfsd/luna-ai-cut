@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Check, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
@@ -7,7 +7,7 @@ import { ThumbImage } from './ThumbImage'
 import dolbyVisionLogo from '../assets/logos/dolby-vision-vertical.png'
 import '../styles/media-card-format-badge.css'
 
-const CARD_PRELOAD_ROOT_MARGIN = '0px 0px 300px 0px'
+const LIVE_DETECT_ROOT_MARGIN = '0px 0px 300px 0px'
 
 interface MediaCardProps {
   file: LunaFile
@@ -27,9 +27,12 @@ interface MediaCardProps {
 
 function formatDuration(seconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(seconds))
+  const h = Math.floor(totalSeconds / 3600)
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60
-  return `${m}:${String(s).padStart(2, '0')}`
+  return h > 0
+    ? `${h}:${String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`
 }
 
 export function MediaCard({
@@ -48,41 +51,14 @@ export function MediaCard({
   previewTitle = '预览',
 }: MediaCardProps) {
   const cardRef = useRef<HTMLElement>(null)
-  const fileRef = useRef(file)
-  fileRef.current = file
-  const visibilityFiredRef = useRef(false)
-  const [cacheEnabled, setCacheEnabled] = useState(false)
 
-  // 视口可见时启用缓存
-  useEffect(() => {
-    if (visibilityFiredRef.current) return
-    const el = cardRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          visibilityFiredRef.current = true
-          setCacheEnabled(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: CARD_PRELOAD_ROOT_MARGIN },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [file.id])
-
-  // 视频时长：优先用 file.duration，没有则异步探测
+  // 视频时长：优先用文件数据；缩略图缓存就绪后再异步补全。
   const [videoDuration, setVideoDuration] = useState<number | null>(null)
   const [detectedDolbyVision, setDetectedDolbyVision] = useState<boolean | null>(null)
   const [detectedDolbyVisionProfile, setDetectedDolbyVisionProfile] = useState<number | null>(null)
   const [detectedILog, setDetectedILog] = useState<boolean | null>(null)
   useEffect(() => {
-    if (!cacheEnabled || file.kind !== 'video' || (file.duration != null && file.dolbyVision != null && file.iLog != null)) return
-    const filePath = file.downloadFilePath ?? file.localPath ?? file.sourceUrl
-    if (!filePath) return
-
-    window.luna.requestVideoFrameRate(fileRef.current, filePath).catch(() => {})
+    if (file.kind !== 'video') return
     const unsub = window.luna.onVideoFrameRateReady((data) => {
       if (data.fileId === file.id && data.duration != null) {
         setVideoDuration(data.duration)
@@ -96,7 +72,12 @@ export function MediaCard({
       }
     })
     return () => { unsub() }
-  }, [cacheEnabled, file])
+  }, [file.id, file.kind])
+
+  const handleCacheReady = useCallback((cacheFilePath: string) => {
+    if (file.kind !== 'video' || (file.duration != null && file.dolbyVision != null && file.iLog != null)) return
+    void window.luna.requestVideoFrameRate(file, cacheFilePath).catch(() => {})
+  }, [file])
 
   const effectiveDuration = file.duration ?? videoDuration
   const isDolbyVision = file.dolbyVision ?? detectedDolbyVision ?? false
@@ -111,7 +92,7 @@ export function MediaCard({
   const showProgress = Boolean(
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,
   )
-  const detectedLive = useLivePhotoWhenVisible(liveDetectSource, cardRef, CARD_PRELOAD_ROOT_MARGIN)
+  const detectedLive = useLivePhotoWhenVisible(liveDetectSource, cardRef, LIVE_DETECT_ROOT_MARGIN)
   const isLive = file.isLivePhoto || detectedLive
 
   return (
@@ -157,7 +138,12 @@ export function MediaCard({
         tabIndex={0}
         title={previewTitle}
       >
-        <ThumbImage src={file.previewUrl || file.sourceUrl} preloadBottom={300} alt={file.name} />
+        <ThumbImage
+          src={file.previewUrl || file.sourceUrl}
+          preloadBottom={300}
+          alt={file.name}
+          onCacheReady={handleCacheReady}
+        />
         {file.kind === 'video' && effectiveDuration != null ? (
           <span className="duration-badge">{formatDuration(effectiveDuration)}</span>
         ) : isLive ? (
