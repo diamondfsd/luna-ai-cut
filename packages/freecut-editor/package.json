@@ -117,13 +117,14 @@
     "@types/node": "22.19.17",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.1",
+    "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "4.1.10",
     "@webgpu/types": "0.1.69",
     "jsdom": "27.4.0",
     "playwright": "1.60.0",
     "tailwindcss": "4.2.2",
     "typescript": "7.0.2",
+    "vite": "7.3.6",
     "vite-plus": "0.2.4"
   },
   "overrides": {

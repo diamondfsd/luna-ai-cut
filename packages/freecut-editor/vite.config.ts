@@ -98,6 +98,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@freecut': fileURLToPath(new URL('./src', import.meta.url)),
     },
     // Keep every UI dependency on the same React dispatcher. This also prevents
     // an optimizer refresh from leaving Radix on a stale React module during HMR.

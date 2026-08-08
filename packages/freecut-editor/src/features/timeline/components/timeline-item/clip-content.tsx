@@ -856,7 +856,7 @@ function hasBasicMediaVisuals(item: TimelineItem): boolean {
   if (item.type === 'audio') {
     return !!item.mediaId && !item.compositionId
   }
-  return item.type === 'image' && !!item.src && !!item.mediaId
+  return item.type === 'image' && !!item.mediaId
 }
 
 const CollapsedClipContent = memo(function CollapsedClipContent({
