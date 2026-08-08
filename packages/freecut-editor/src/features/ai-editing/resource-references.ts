@@ -1,3 +1,6 @@
+import resourceReferencesPrompt from './prompts/messages/resource-references.md?raw'
+import { renderPrompt } from './prompts/render-prompt'
+
 export type AiEditingResourceKind = 'project' | 'media' | 'timeline-clip'
 
 export interface AiEditingResourceReference {
@@ -22,5 +25,8 @@ export function addAiEditingReferenceContext(
 ): string {
   if (references.length === 0) return text
   const resources = references.map((reference) => `- ${describeAiEditingReference(reference)}`).join('\n')
-  return `${text}\n\n用户明确引用的编辑资源：\n${resources}\n请优先围绕这些资源完成请求，并使用其中的真实 ID 调用工具。`
+  return renderPrompt(resourceReferencesPrompt, {
+    USER_REQUEST: text,
+    RESOURCES: resources,
+  })
 }

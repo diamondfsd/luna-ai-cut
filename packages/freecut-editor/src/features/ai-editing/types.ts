@@ -73,6 +73,7 @@ export interface AiEditingResponse {
 
 export interface AiTimelineClipEvidence {
   id: string
+  ref?: string
   label: string
   type: string
   trackId: string

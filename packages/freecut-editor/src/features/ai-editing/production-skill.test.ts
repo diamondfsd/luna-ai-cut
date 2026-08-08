@@ -58,4 +58,11 @@ describe('AI editing production skill', () => {
     ], 8))
     expect(result).toMatchObject({ passed: true, visualCoverage: 1 })
   })
+
+  it('does not impose a fixed title or duration template', () => {
+    const result = validateFinishedVideo(evidence([
+      { id: 'video-1', label: '完整镜头', type: 'video', trackId: 'v1', startSeconds: 0, endSeconds: 2, mediaId: 'media-1' },
+    ], 2))
+    expect(result).toMatchObject({ passed: true, visualCoverage: 1 })
+  })
 })
