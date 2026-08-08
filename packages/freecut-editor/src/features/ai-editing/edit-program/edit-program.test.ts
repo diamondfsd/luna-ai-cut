@@ -29,7 +29,7 @@ describe('EditProgram', () => {
     useItemsStore.setState({ items: [], tracks: [] })
   })
 
-  it('reuses the previous caption track when rebuilding implicit text', async () => {
+  it('moves rebuilt implicit text to the nearest available overlay track', async () => {
     const tracks: TimelineTrack[] = [
       {
         id: 'caption-track',
@@ -103,11 +103,92 @@ describe('EditProgram', () => {
     })
 
     expect(compiled.tracks).toHaveLength(2)
-    expect(compiled.tracks.map((track) => track.id)).toEqual(['caption-track', 'picture-track'])
+    expect(compiled.tracks.map((track) => track.id)).toEqual([
+      'stale-caption-track-3',
+      'picture-track',
+    ])
     expect(compiled.insertItems.map((item) => item.trackId)).toEqual([
-      'caption-track',
-      'caption-track',
-      'caption-track',
+      'stale-caption-track-3',
+      'stale-caption-track-3',
+      'stale-caption-track-3',
+    ])
+  })
+
+  it('reuses an adjacent text track without moving unrelated text', async () => {
+    const tracks: TimelineTrack[] = [
+      {
+        id: 'remote-text-track',
+        name: 'V3',
+        kind: 'video',
+        height: 72,
+        order: -2,
+        locked: false,
+        visible: true,
+        muted: false,
+        solo: false,
+        items: [],
+      },
+      {
+        id: 'adjacent-text-track',
+        name: 'V2',
+        kind: 'video',
+        height: 72,
+        order: -1,
+        locked: false,
+        visible: true,
+        muted: false,
+        solo: false,
+        items: [],
+      },
+      {
+        id: 'picture-track',
+        name: 'V1',
+        kind: 'video',
+        height: 72,
+        order: 0,
+        locked: false,
+        visible: true,
+        muted: false,
+        solo: false,
+        items: [],
+      },
+    ]
+    const remoteText = {
+      id: 'remote-text',
+      type: 'text',
+      trackId: 'remote-text-track',
+      from: 0,
+      durationInFrames: 60,
+      label: '保留标题',
+      text: '保留标题',
+    } as TimelineItem
+    const adjacentCaption = {
+      id: 'adjacent-caption',
+      type: 'text',
+      trackId: 'adjacent-text-track',
+      from: 0,
+      durationInFrames: 60,
+      label: '已有字幕',
+      text: '已有字幕',
+    } as TimelineItem
+    const picture = { ...imageItem(), trackId: 'picture-track', durationInFrames: 240 }
+    useItemsStore.setState({ items: [remoteText, adjacentCaption, picture], tracks })
+
+    const compiled = await compileEditProgram({
+      version: 1,
+      baseRevision: 7,
+      intent: '补充字幕',
+      operations: [
+        { type: 'insertText', text: { ref: 'caption-2', text: '新增字幕', start: 2, duration: 2, role: 'caption' } },
+      ],
+    })
+
+    expect(compiled.insertItems[0]?.trackId).toBe('adjacent-text-track')
+    expect(compiled.removeIds).toEqual([])
+    expect(compiled.tracks.map((track) => track.id)).toEqual([
+      'remote-text-track',
+      'adjacent-text-track',
+      'picture-track',
     ])
   })
 

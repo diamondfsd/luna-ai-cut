@@ -19,6 +19,26 @@ export function resolveImplicitTextTrack(
     else itemsByTrackId.set(item.trackId, [item])
   }
 
+  const occupiedVisualOrders = params.tracks
+    .filter((candidate) => {
+      if (candidate.isGroup || getTrackKind(candidate) !== 'video') return false
+      return (itemsByTrackId.get(candidate.id) ?? []).some(
+        (item) => item.type !== 'text' && item.type !== 'subtitle',
+      )
+    })
+    .map((candidate) => candidate.order)
+
+  const overlayDistance = (candidate: TimelineTrack): number => {
+    const tracksBelow = occupiedVisualOrders.filter((order) => order > candidate.order)
+    if (tracksBelow.length > 0) {
+      return Math.min(...tracksBelow.map((order) => order - candidate.order))
+    }
+    if (occupiedVisualOrders.length > 0) {
+      return Math.min(...occupiedVisualOrders.map((order) => Math.abs(order - candidate.order)))
+    }
+    return Number.POSITIVE_INFINITY
+  }
+
   const track =
     params.tracks
       .filter((candidate) => {
@@ -41,44 +61,42 @@ export function resolveImplicitTextTrack(
         )
       })
       .toSorted((left, right) => {
+        const leftDistance = overlayDistance(left)
+        const rightDistance = overlayDistance(right)
+        if (leftDistance < rightDistance) return -1
+        if (leftDistance > rightDistance) return 1
         const leftWasTextTrack = params.originalTextTrackIds.has(left.id)
         const rightWasTextTrack = params.originalTextTrackIds.has(right.id)
         if (leftWasTextTrack !== rightWasTextTrack) return leftWasTextTrack ? -1 : 1
-        return left.order - right.order
+        return right.order - left.order
       })[0] ?? null
   if (!track) return null
-  if (!params.originalTextTrackIds.has(track.id)) {
+  if (params.originalTextTrackIds.has(track.id)) {
     return { trackId: track.id, tracks: params.tracks }
   }
 
-  const occupiedTrackIds = new Set(params.items.map((item) => item.trackId))
-  const nextOccupiedVideoOrder = params.tracks
-    .filter(
-      (candidate) =>
-        candidate.order > track.order &&
-        getTrackKind(candidate) === 'video' &&
-        occupiedTrackIds.has(candidate.id),
-    )
-    .reduce<number | null>(
-      (nearest, candidate) =>
-        nearest === null ? candidate.order : Math.min(nearest, candidate.order),
-      null,
-    )
-  if (nextOccupiedVideoOrder === null) {
+  const vacatedTextTracks = params.tracks.filter(
+    (candidate) =>
+      params.originalTextTrackIds.has(candidate.id) &&
+      candidate.order < track.order &&
+      (itemsByTrackId.get(candidate.id) ?? []).length === 0,
+  )
+  if (vacatedTextTracks.length === 0) {
     return { trackId: track.id, tracks: params.tracks }
   }
+  const cleanupStartOrder = Math.min(...vacatedTextTracks.map((candidate) => candidate.order))
 
   return {
     trackId: track.id,
     tracks: params.tracks.filter(
       (candidate) =>
-        candidate.id === track.id ||
+        candidate.order < cleanupStartOrder ||
+        candidate.order >= track.order ||
         candidate.isGroup ||
         candidate.locked ||
+        candidate.visible === false ||
         getTrackKind(candidate) !== 'video' ||
-        occupiedTrackIds.has(candidate.id) ||
-        candidate.order <= track.order ||
-        candidate.order >= nextOccupiedVideoOrder,
+        (itemsByTrackId.get(candidate.id) ?? []).length > 0,
     ),
   }
 }

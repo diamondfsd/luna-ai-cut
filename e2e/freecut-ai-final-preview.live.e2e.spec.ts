@@ -20,7 +20,7 @@ test('最终 AI 成片的四个镜头预览帧非空且互不相同', async ({ l
   await page.keyboard.press('Home')
 
   const hashes: string[] = []
-  const sampleFrames = [30, 90, 150, 210]
+  const sampleFrames = [30, 105, 255, 450]
   let currentFrame = 0
   for (const frame of sampleFrames) {
     for (; currentFrame < frame; currentFrame += 1) await page.keyboard.press('ArrowRight')

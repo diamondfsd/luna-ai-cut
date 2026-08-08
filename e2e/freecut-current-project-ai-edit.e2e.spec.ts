@@ -4,6 +4,7 @@ import path from 'node:path'
 import { expect, test } from './fixtures/lunaElectronLive'
 
 const projectId = process.env.LUNA_E2E_PROJECT_ID ?? 'J4ANiM2O'
+const clearConversation = process.env.LUNA_E2E_AI_CLEAR_CONVERSATION === '1'
 const prompt = process.env.LUNA_E2E_AI_PROMPT
   ?? '帮我基于当前素材库的这个新UI原型图，完成 挑战一个人做出剪映，第一天，UI重构。视频的制作，请直接完成成片。'
 
@@ -55,6 +56,10 @@ test('用当前项目的剪辑助手制作 UI 重构主题短片', async ({ luna
   await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
 
   await page.getByRole('button', { name: '打开剪辑助手' }).click()
+  if (clearConversation) {
+    await page.getByRole('button', { name: '清空剪辑助手记录' }).click()
+    await expect(page.getByText('根据时间轴、字幕和本地素材分析，直接完成剪辑操作。')).toBeVisible()
+  }
   const input = page.getByPlaceholder('描述想要完成的剪辑')
   await expect(input).toBeEnabled()
   await input.fill(prompt)
