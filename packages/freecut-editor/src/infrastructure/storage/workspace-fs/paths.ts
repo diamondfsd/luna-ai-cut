@@ -73,6 +73,8 @@ const PROJECT_THUMBNAIL_FILENAME = 'thumbnail.jpg'
 const PROJECT_MEDIA_LINKS_FILENAME = 'media-links.json'
 /** Persisted render-queue jobs for a project (survives refresh). */
 const PROJECT_RENDER_QUEUE_FILENAME = 'render-queue.json'
+/** Conversation history for the project's AI editing assistant. */
+const PROJECT_AI_EDITING_CONVERSATION_FILENAME = 'ai-editing-conversation.json'
 /** User-saved animation presets, scoped to a single project. */
 const PROJECT_ANIMATION_PRESETS_FILENAME = 'animation-presets.json'
 
@@ -138,6 +140,11 @@ export function projectMediaLinksPath(id: string): string[] {
 /** Segments for `projects/{id}/render-queue.json`. */
 export function projectRenderQueuePath(id: string): string[] {
   return [...projectDir(id), PROJECT_RENDER_QUEUE_FILENAME]
+}
+
+/** Segments for `projects/{id}/ai-editing-conversation.json`. */
+export function projectAiEditingConversationPath(id: string): string[] {
+  return [...projectDir(id), PROJECT_AI_EDITING_CONVERSATION_FILENAME]
 }
 
 /** Segments for `projects/{id}/animation-presets.json`. */

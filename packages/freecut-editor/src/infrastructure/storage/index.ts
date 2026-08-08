@@ -164,6 +164,14 @@ export {
   saveRenderQueue,
 } from '@freecut/infrastructure/storage/workspace-fs/render-queue'
 
+// Project-scoped AI editing assistant conversation history
+export {
+  loadAiEditingConversation,
+  saveAiEditingConversation,
+  clearAiEditingConversation,
+  type AiEditingConversationMessage,
+} from '@freecut/infrastructure/storage/workspace-fs/ai-editing-conversation'
+
 // Soft-delete / trash for projects
 export {
   softDeleteProject,
