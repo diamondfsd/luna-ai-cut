@@ -7,6 +7,7 @@ import {
   applyTextMotionEffect,
   createOverlayLayerTrack,
   createTextTemplateItem,
+  removeItems,
 } from '@freecut/features/editor/deps/timeline-contract'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
 import { createTextMotionEffect } from '@freecut/shared/typography/text-motion'
@@ -38,7 +39,7 @@ function titleItem(params: {
 const buildProductShowcase = defineAiEditingTool({
   id: 'timeline.build_product_showcase',
   title: '制作产品展示短片',
-  description: '把已完成画面分析的产品素材制作成短片：画面编排、静态图动效、开场、展示和收尾文字都会一并完成。单张静态图会制作成动态预告，不会伪装成多镜头视频。不会覆盖已有时间轴内容。',
+  description: '把已完成画面分析的产品素材制作成短片：画面编排、静态图动效、开场、展示和收尾文字都会一并完成。单张静态图会制作成动态预告，不会伪装成多镜头视频。仅在用户明确同意时清理不相关的旧时间轴内容。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema({
@@ -46,12 +47,14 @@ const buildProductShowcase = defineAiEditingTool({
     headline: { type: 'string', description: '开场主标题。' },
     detail: { type: 'string', description: '展示重点。' },
     ending: { type: 'string', description: '收尾文案。' },
+    replaceExisting: { type: 'boolean', description: '用户已明确同意时，是否清理当前不相关的旧时间轴内容。' },
   }, ['mediaIds', 'headline', 'detail', 'ending']),
   schema: z.object({
     mediaIds: z.array(z.string().min(1)).min(1).max(3),
     headline: z.string().trim().min(1).max(60),
     detail: z.string().trim().min(1).max(80),
     ending: z.string().trim().min(1).max(60),
+    replaceExisting: z.boolean().default(false),
   }),
   summarize: (args) => `制作 ${args.mediaIds.length} 个素材的产品展示短片`,
   execute: async (args) => {
@@ -65,6 +68,9 @@ const buildProductShowcase = defineAiEditingTool({
       return { ok: false, message: '请先分析选中的产品画面，再开始制作短片。' }
     }
 
+    if (args.replaceExisting) {
+      removeItems(useTimelineStore.getState().items.map((item) => item.id))
+    }
     const beforeIds = new Set(useTimelineStore.getState().items.map((item) => item.id))
     const composed = await composeTimelineFromMedia({
       selections: selected.map((media) => ({

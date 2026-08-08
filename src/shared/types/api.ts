@@ -173,6 +173,7 @@ export interface FreecutWorkspaceEntry {
 
 export interface FreecutWorkspaceApi {
   ensureRoot(): Promise<{ name: string; path: string }>
+  getMediaSourcePath(mediaId: string): Promise<string | null>
   getEntry(path: string[], kind: 'file' | 'directory', create: boolean): Promise<boolean>
   list(path: string[]): Promise<FreecutWorkspaceEntry[] | null>
   readFile(path: string[]): Promise<ArrayBuffer | null>

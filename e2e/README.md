@@ -9,7 +9,7 @@ Shared workspace mode lets the developer and Codex test the same FreeCut project
 Enable it only for a named, agreed user action:
 
 ```bash
-LUNA_E2E_EXISTING_USER_DATA_DIR="/path/to/luna-user-data" \
+LUNA_E2E_LIVE=1 \
 LUNA_E2E_PROJECT_ID="project-id" \
 pnpm exec playwright test e2e/freecut-current-project-drag.e2e.spec.ts --workers=1
 ```
@@ -34,3 +34,11 @@ Use this mode for paired feature checks and targeted regression reproduction. Ke
 4. Assert the matching timeline item is saved in `project.json`.
 
 The test deliberately requires an empty timeline before it runs so it cannot silently add duplicate media to a shared project.
+
+`freecut-current-project-ai-edit.e2e.spec.ts` is the paired acceptance case for a real AI edit. It removes only the agreed stale test title, submits the configured AI request, and retains the generated result for inspection:
+
+```bash
+LUNA_E2E_LIVE=1 \
+LUNA_E2E_PROJECT_ID="project-id" \
+pnpm exec playwright test e2e/freecut-current-project-ai-edit.e2e.spec.ts --workers=1
+```

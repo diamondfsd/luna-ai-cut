@@ -141,7 +141,8 @@ export function VideoEditorPage() {
   const handleAnalyzeMediaVisual = useCallback(async (source: EmbeddedMediaSource) => {
     const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
       ?? findImportedSourcePath(loadImportedSourcePaths(), source)
-    if (!filePath) throw new Error('这段素材需要重新导入后才能使用本地画面分析。')
+      ?? await window.luna.freecutWorkspace.getMediaSourcePath(source.mediaId)
+    if (!filePath) throw new Error('这段素材没有可用的原始文件，无法进行本地画面分析。')
     return window.luna.workspace.analyzeVisualEvidence({
       requestId: crypto.randomUUID(),
       filePath,
