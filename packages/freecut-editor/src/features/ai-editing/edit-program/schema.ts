@@ -64,10 +64,21 @@ const updateClipSchema = z.object({
     duration: z.number().finite().positive().max(86_400).optional(),
     trackRef: ref('track').optional(),
     label: z.string().min(1).max(200).optional(),
+    text: z.string().min(1).max(2_000).optional(),
     framing: framingSchema.optional(),
     cameraMove: cameraMoveSchema.nullable().optional(),
     volumeDb: z.number().finite().min(-60).max(12).optional(),
   }).refine((changes) => Object.keys(changes).length > 0, '片段修改不能为空。'),
+})
+
+const textDraftSchema = z.object({
+  ref: z.string().min(1).max(80),
+  text: z.string().min(1).max(2_000),
+  start: finiteNonNegative,
+  duration: z.number().finite().positive().max(86_400),
+  label: z.string().min(1).max(200).optional(),
+  trackRef: ref('track').optional(),
+  role: z.enum(['title', 'caption']).optional(),
 })
 
 export const editProgramSchema = z.object({
@@ -78,6 +89,7 @@ export const editProgramSchema = z.object({
   operations: z.array(z.discriminatedUnion('type', [
     replaceRangeSchema,
     z.object({ type: z.literal('insertClip'), clip: clipDraftSchema }),
+    z.object({ type: z.literal('insertText'), text: textDraftSchema }),
     updateClipSchema,
     z.object({ type: z.literal('removeClip'), clipRef: ref('clip') }),
     z.object({
