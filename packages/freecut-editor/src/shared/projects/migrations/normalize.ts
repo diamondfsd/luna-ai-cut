@@ -31,7 +31,10 @@ function normalizeTrack(
   index: number,
 ): ProjectTimeline['tracks'][number] {
   const normalizedVolume = track.volume
-  const normalizedKind = track.kind === 'video' || track.kind === 'audio' ? track.kind : undefined
+  const normalizedKind =
+    track.kind === 'video' || track.kind === 'audio' || track.kind === 'subtitle'
+      ? track.kind
+      : undefined
   return {
     ...track,
     // Track height is a local view preference, persisted to localStorage and
@@ -50,6 +53,105 @@ function normalizeTrack(
     // Ensure order is set (fallback to index if missing)
     order: track.order ?? index,
   }
+}
+
+function separateSubtitleTracks(
+  tracks: ProjectTimeline['tracks'],
+  items: ProjectTimeline['items'],
+): { tracks: ProjectTimeline['tracks']; items: ProjectTimeline['items'] } {
+  const itemsByTrackId = new Map<string, ProjectTimeline['items']>()
+  for (const item of items) {
+    const trackItems = itemsByTrackId.get(item.trackId)
+    if (trackItems) trackItems.push(item)
+    else itemsByTrackId.set(item.trackId, [item])
+  }
+
+  const subtitleTracks = tracks.filter((track) => {
+    const trackItems = itemsByTrackId.get(track.id) ?? []
+    return (
+      (trackItems.length === 0 && track.kind === 'subtitle') ||
+      (trackItems.length > 0 && trackItems.every((item) => item.type === 'subtitle'))
+    )
+  })
+  const subtitleTrackIds = new Set(subtitleTracks.map((track) => track.id))
+  const migratedItems = items.map((item) => ({ ...item }))
+  const migratedTracks = tracks.map((track) => {
+    if (subtitleTrackIds.has(track.id)) return { ...track, kind: 'subtitle' as const }
+    if (track.kind !== 'subtitle') return track
+    const nonSubtitleItems = (itemsByTrackId.get(track.id) ?? []).filter(
+      (item) => item.type !== 'subtitle',
+    )
+    const kind =
+      nonSubtitleItems.length > 0 && nonSubtitleItems.every((item) => item.type === 'audio')
+        ? 'audio'
+        : 'video'
+    return { ...track, kind } as ProjectTimeline['tracks'][number]
+  })
+  const occupiedByTrack = new Map<string, Array<{ from: number; end: number }>>()
+
+  for (const item of migratedItems) {
+    if (item.type !== 'subtitle' || !subtitleTrackIds.has(item.trackId)) continue
+    const ranges = occupiedByTrack.get(item.trackId) ?? []
+    ranges.push({ from: item.from, end: item.from + item.durationInFrames })
+    occupiedByTrack.set(item.trackId, ranges)
+  }
+
+  const mixedTrackSubtitles = migratedItems.filter(
+    (item) => item.type === 'subtitle' && !subtitleTrackIds.has(item.trackId),
+  )
+  const minOrder = migratedTracks.reduce((lowest, track) => Math.min(lowest, track.order ?? 0), 0)
+
+  for (const item of mixedTrackSubtitles) {
+    const end = item.from + item.durationInFrames
+    let target: ProjectTimeline['tracks'][number] | undefined = migratedTracks.find(
+      (track) =>
+        track.kind === 'subtitle' &&
+        (occupiedByTrack.get(track.id) ?? []).every(
+          (range) => range.end <= item.from || range.from >= end,
+        ),
+    )
+    if (!target) {
+      const index = migratedTracks.filter((track) => track.kind === 'subtitle').length + 1
+      let id = `track-subtitles-migrated-${index}`
+      while (migratedTracks.some((track) => track.id === id)) id += '-next'
+      const newTarget: ProjectTimeline['tracks'][number] = {
+        id,
+        name: `S${index}`,
+        kind: 'subtitle',
+        height: DEFAULT_TRACK_HEIGHT,
+        locked: false,
+        syncLock: true,
+        visible: true,
+        muted: false,
+        solo: false,
+        volume: 0,
+        order: minOrder - index,
+      }
+      migratedTracks.push(newTarget)
+      target = newTarget
+    }
+    if (!target) continue
+    item.trackId = target.id
+    const ranges = occupiedByTrack.get(target.id) ?? []
+    ranges.push({ from: item.from, end })
+    occupiedByTrack.set(target.id, ranges)
+  }
+
+  const lowestMediaOrder = migratedTracks
+    .filter((track) => track.kind !== 'subtitle')
+    .reduce((lowest, track) => Math.min(lowest, track.order ?? 0), 0)
+  let subtitleIndex = 0
+  const orderedTracks = migratedTracks.map((track) => {
+    if (track.kind !== 'subtitle') return track
+    subtitleIndex += 1
+    return {
+      ...track,
+      name: `S${subtitleIndex}`,
+      order: lowestMediaOrder - (migratedTracks.length - subtitleIndex + 1),
+    }
+  })
+
+  return { tracks: orderedTracks, items: migratedItems }
 }
 
 /**
@@ -273,6 +375,7 @@ function normalizeTimeline(
   )
 
   const normalizedItems = timeline.items.map((item) => normalizeItem(item, warnings))
+  const separated = separateSubtitleTracks(normalizedTracks, normalizedItems)
   const normalizedTransitions = timeline.transitions?.map(normalizeTransition)
 
   // Drop tab ids that don't resolve to a composition (and any duplicates), so
@@ -290,22 +393,31 @@ function normalizeTimeline(
     ...timeline,
     topLevelSequenceIds: normalizedTopLevelSequenceIds,
     // Normalize tracks
-    tracks: normalizedTracks,
+    tracks: separated.tracks,
     busAudioEq: normalizeAudioEqSettings(timeline.busAudioEq),
     // Normalize items and repair overlaps
-    items: repairOverlappingItems(normalizedItems, normalizedTransitions, warnings),
+    items: repairOverlappingItems(separated.items, normalizedTransitions, warnings),
     // Normalize transitions if present
     transitions: normalizedTransitions,
     // Normalize sub-composition tracks and items
     compositions: timeline.compositions?.map((comp) => {
       const compItems = comp.items.map((item) => normalizeItem(item, warnings, comp.id))
       const compTransitions = comp.transitions?.map(normalizeTransition)
+      const compTracks = flattenTrackGroups(
+        comp.tracks.map((track, index) => normalizeTrack(track, index)),
+      )
+      const separatedComposition = separateSubtitleTracks(compTracks, compItems)
       return {
         ...comp,
         editorKind: comp.editorKind === 'composite-2d' ? 'composite-2d' : 'sequence',
-        tracks: flattenTrackGroups(comp.tracks.map((track, index) => normalizeTrack(track, index))),
+        tracks: separatedComposition.tracks,
         busAudioEq: normalizeAudioEqSettings(comp.busAudioEq),
-        items: repairOverlappingItems(compItems, compTransitions, warnings, comp.id),
+        items: repairOverlappingItems(
+          separatedComposition.items,
+          compTransitions,
+          warnings,
+          comp.id,
+        ),
         transitions: compTransitions,
       }
     }),

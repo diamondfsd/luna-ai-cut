@@ -750,6 +750,7 @@ class MediaTranscriptionService {
       const existingGeneratedCaptions = options.replaceExisting
         ? findReplaceableCaptionItemsForClip(timeline.items, clip, 'transcript')
         : []
+      const previousAttachedStyle = clip.transcriptCaptions?.style
       const preferredTrackId = this.resolvePreferredCaptionTrackId(
         newTracks,
         plannedItems,
@@ -785,9 +786,13 @@ class MediaTranscriptionService {
           mediaId,
           clipId: clip.id,
         },
-        styleTemplate: existingGeneratedCaptions[0]
-          ? getCaptionTextItemTemplate(existingGeneratedCaptions[0])
-          : defaultCaptionTemplate,
+        styleTemplate: {
+          ...definedCaptionStyleFields(defaultCaptionTemplate),
+          ...definedCaptionStyleFields(previousAttachedStyle),
+          ...(existingGeneratedCaptions[0]
+            ? definedCaptionStyleFields(getCaptionTextItemTemplate(existingGeneratedCaptions[0]))
+            : {}),
+        } as CaptionTextItemTemplate,
       })
 
       if (!clipCaptionItem) {
@@ -815,7 +820,19 @@ class MediaTranscriptionService {
 
     if (insertedItems.length > 0) {
       timeline.addItems(insertedItems)
-      useSelectionStore.getState().selectItems(insertedItems.map((item) => item.id))
+      for (const clip of targetClips) {
+        if (
+          clip.transcriptCaptions &&
+          insertedItems.some(
+            (item) => item.source.type === 'transcript' && item.source.clipId === clip.id,
+          )
+        ) {
+          timeline.updateItem(clip.id, { transcriptCaptions: undefined } as Partial<TimelineItem>)
+        }
+      }
+      if (options.selectUpdatedClips !== false) {
+        useSelectionStore.getState().selectItems(insertedItems.map((item) => item.id))
+      }
     }
 
     return {

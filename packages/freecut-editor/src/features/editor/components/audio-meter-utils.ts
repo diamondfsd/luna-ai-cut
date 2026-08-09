@@ -1186,7 +1186,7 @@ export function isAudioMixerTrack(track: TimelineTrack): boolean {
   // Audio and video live on separate tracks by design: a video track never gets
   // a mixer channel strip, even if a clip on it still carries un-split embedded
   // audio. The mixer is audio-track-only.
-  if (trackKind === 'video') {
+  if (trackKind === 'video' || trackKind === 'subtitle') {
     return false
   }
 

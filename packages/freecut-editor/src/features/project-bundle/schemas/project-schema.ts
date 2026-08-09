@@ -623,6 +623,7 @@ const trackSchema = z
   .object({
     id: z.string().min(1),
     name: z.string(),
+    kind: z.enum(['video', 'audio', 'subtitle']).optional(),
     height: z.number().int().min(20).max(500),
     locked: z.boolean(),
     visible: z.boolean(),

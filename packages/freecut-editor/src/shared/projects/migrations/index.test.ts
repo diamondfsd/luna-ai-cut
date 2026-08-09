@@ -8,7 +8,7 @@ import { getMigrationsToApply } from './migrations'
 function createTrack(
   id: string,
   order: number,
-  kind: 'video' | 'audio',
+  kind: 'video' | 'audio' | 'subtitle',
 ): ProjectTimeline['tracks'][number] {
   return {
     id,
@@ -22,6 +22,48 @@ function createTrack(
     order,
   }
 }
+
+describe('subtitle track normalization', () => {
+  it('moves mixed subtitle segments to dedicated top tracks without changing their timing', () => {
+    const project = createBaseProject({
+      tracks: [createTrack('video-track', 0, 'subtitle')],
+      items: [
+        {
+          id: 'video-1',
+          type: 'video',
+          trackId: 'video-track',
+          from: 0,
+          durationInFrames: 120,
+          label: 'Video',
+          src: 'video.mp4',
+        },
+        {
+          id: 'subtitle-1',
+          type: 'subtitle',
+          trackId: 'video-track',
+          from: 10,
+          durationInFrames: 60,
+          label: 'Subtitle',
+        },
+      ],
+      transitions: [],
+      currentFrame: 0,
+      zoomLevel: 1,
+      scrollPosition: 0,
+    } as ProjectTimeline)
+
+    const migrated = migrateProject(project).project.timeline!
+    const subtitle = migrated.items.find((item) => item.id === 'subtitle-1')!
+    const subtitleTrack = migrated.tracks.find((track) => track.id === subtitle.trackId)!
+
+    expect(subtitleTrack.kind).toBe('subtitle')
+    expect(migrated.tracks.find((track) => track.id === 'video-track')?.kind).toBe('video')
+    expect(subtitleTrack.order).toBeLessThan(
+      migrated.tracks.find((track) => track.id === 'video-track')!.order,
+    )
+    expect(subtitle).toMatchObject({ from: 10, durationInFrames: 60 })
+  })
+})
 
 function createBaseProject(timeline: ProjectTimeline): Project {
   return {

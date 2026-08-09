@@ -357,13 +357,16 @@ const SingleSubtitleSegmentEditor = memo(function SingleSubtitleSegmentEditor({
   )
 
   const sourceLabel =
-    segment.source.type === 'embedded-subtitles'
+    segment.sourceLabel ??
+    (segment.source.type === 'embedded-subtitles'
       ? (segment.source.trackName ??
         segment.source.language ??
         i18n.t('editor.subtitleSection.trackLabel', { number: segment.source.trackNumber }))
       : segment.source.type === 'subtitle-import'
         ? segment.source.fileName
-        : i18n.t('editor.subtitleSection.transcript')
+        : segment.source.type === 'manual'
+          ? i18n.t('editor.subtitleSection.title')
+          : i18n.t('editor.subtitleSection.transcript'))
 
   // Memoize the items array passed to CaptionStyleControls so identity is
   // stable across re-renders that don't actually change the segment object.

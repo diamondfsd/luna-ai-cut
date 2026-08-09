@@ -324,12 +324,39 @@ function isLegacyGeneratedCaptionItem(item: TimelineItem): item is TextItem {
 // changes identity.
 let captionCacheItems: TimelineItem[] | null = null
 let captionCacheSet: Set<string> = new Set()
+let timelineCaptionCacheItems: TimelineItem[] | null = null
+let timelineCaptionCacheSet: Set<string> = new Set()
 
 export function selectReplaceableCaptionClipIds(state: { items: TimelineItem[] }): Set<string> {
   if (captionCacheItems === state.items) return captionCacheSet
   captionCacheItems = state.items
   captionCacheSet = buildReplaceableCaptionClipIds(state.items)
   return captionCacheSet
+}
+
+/** Clip ids backed by an actual selectable item on a visible timeline track. */
+export function selectTimelineCaptionClipIds(state: { items: TimelineItem[] }): Set<string> {
+  if (timelineCaptionCacheItems === state.items) return timelineCaptionCacheSet
+  timelineCaptionCacheItems = state.items
+  timelineCaptionCacheSet = new Set<string>()
+
+  for (const item of state.items) {
+    if (
+      item.type === 'text' &&
+      item.captionSource?.type === 'transcript' &&
+      item.captionSource.clipId
+    ) {
+      timelineCaptionCacheSet.add(item.captionSource.clipId)
+    } else if (
+      item.type === 'subtitle' &&
+      item.source.type === 'transcript' &&
+      item.source.clipId
+    ) {
+      timelineCaptionCacheSet.add(item.source.clipId)
+    }
+  }
+
+  return timelineCaptionCacheSet
 }
 
 function buildReplaceableCaptionClipIds(items: TimelineItem[]): Set<string> {

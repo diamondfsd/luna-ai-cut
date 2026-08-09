@@ -6,7 +6,7 @@ import type { CaptionDialogState } from './use-caption-dialog-state'
 interface UseAutoTranscriptCaptionsParams {
   item: TimelineItemType
   caption: CaptionDialogState
-  hasGeneratedCaptions: boolean
+  hasTimelineCaptions: boolean
   isBroken: boolean
 }
 
@@ -19,7 +19,7 @@ interface UseAutoTranscriptCaptionsParams {
 export function useAutoTranscriptCaptions({
   item,
   caption,
-  hasGeneratedCaptions,
+  hasTimelineCaptions,
   isBroken,
 }: UseAutoTranscriptCaptionsParams): void {
   const attemptRef = useRef<string | null>(null)
@@ -28,7 +28,9 @@ export function useAutoTranscriptCaptions({
     if (
       !caption.canManageCaptions ||
       !caption.mediaHasTranscript ||
-      hasGeneratedCaptions ||
+      hasTimelineCaptions ||
+      (item.transcriptCaptions?.type === 'transcript' &&
+        item.transcriptCaptions.enabled === false) ||
       isBroken ||
       (item.type !== 'video' && item.type !== 'audio') ||
       !item.mediaId
@@ -43,7 +45,7 @@ export function useAutoTranscriptCaptions({
     attemptRef.current = attemptKey
 
     void mediaTranscriptionService
-      .enableTranscriptCaptions(item.mediaId, {
+      .insertTranscriptAsCaptions(item.mediaId, {
         clipIds: [item.id],
         replaceExisting: false,
         selectUpdatedClips: false,
@@ -54,10 +56,11 @@ export function useAutoTranscriptCaptions({
   }, [
     caption.canManageCaptions,
     caption.mediaHasTranscript,
-    hasGeneratedCaptions,
+    hasTimelineCaptions,
     isBroken,
     item.id,
     item.mediaId,
+    item.transcriptCaptions,
     item.type,
   ])
 }

@@ -158,7 +158,7 @@ export interface AiProjectEvidence {
   tracks: Array<{
     id: string
     name: string
-    kind: 'video' | 'audio' | 'other'
+    kind: 'video' | 'audio' | 'subtitle' | 'other'
     order: number
     locked: boolean
     syncLock?: boolean

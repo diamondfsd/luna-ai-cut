@@ -54,7 +54,7 @@ export interface AgentMedia {
 export interface AgentTrack {
   ref: AgentTrackRef
   name: string
-  kind: 'video' | 'audio' | 'other'
+  kind: 'video' | 'audio' | 'subtitle' | 'other'
   order: number
   locked: boolean
   visible?: boolean

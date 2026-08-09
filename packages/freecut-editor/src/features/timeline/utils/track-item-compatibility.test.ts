@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { findCompatibleTrackForItemType } from './track-item-compatibility'
 
-function makeTrack(id: string, order: number, kind: 'video' | 'audio'): TimelineTrack {
+function makeTrack(id: string, order: number, kind: 'video' | 'audio' | 'subtitle'): TimelineTrack {
   return {
     id,
     name: id,
@@ -20,6 +20,27 @@ function makeTrack(id: string, order: number, kind: 'video' | 'audio'): Timeline
 }
 
 describe('findCompatibleTrackForItemType', () => {
+  it('only places subtitle items on subtitle tracks', () => {
+    const tracks = [
+      makeTrack('subtitle-1', -1, 'subtitle'),
+      makeTrack('video-1', 0, 'video'),
+      makeTrack('audio-1', 1, 'audio'),
+    ]
+
+    expect(
+      findCompatibleTrackForItemType({ tracks, items: [], itemType: 'subtitle' })?.id,
+    ).toBe('subtitle-1')
+    expect(
+      findCompatibleTrackForItemType({
+        tracks,
+        items: [],
+        itemType: 'video',
+        preferredTrackId: 'subtitle-1',
+        allowPreferredTrackFallback: false,
+      }),
+    ).toBeNull()
+  })
+
   it('can fall back to a compatible track by default', () => {
     const tracks = [makeTrack('video-1', 0, 'video'), makeTrack('audio-1', 1, 'audio')]
 

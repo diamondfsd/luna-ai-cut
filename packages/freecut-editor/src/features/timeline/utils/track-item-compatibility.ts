@@ -2,7 +2,9 @@ import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { getTrackKind, type TrackKind } from './classic-tracks'
 
 function getRequiredTrackKindForItemType(itemType: TimelineItem['type']): TrackKind {
-  return itemType === 'audio' ? 'audio' : 'video'
+  if (itemType === 'audio') return 'audio'
+  if (itemType === 'subtitle') return 'subtitle'
+  return 'video'
 }
 
 export function getEffectiveTrackKindForItem(
@@ -15,17 +17,24 @@ export function getEffectiveTrackKindForItem(
   }
 
   let hasAudioItems = false
+  let hasSubtitleItems = false
   for (const item of items) {
     if (item.trackId !== track.id) continue
     if (item.type === 'audio') {
       hasAudioItems = true
       continue
     }
+    if (item.type === 'subtitle') {
+      hasSubtitleItems = true
+      continue
+    }
 
     return 'video'
   }
 
-  return hasAudioItems ? 'audio' : null
+  if (hasAudioItems) return 'audio'
+  if (hasSubtitleItems) return 'subtitle'
+  return null
 }
 
 export function isTrackCompatibleWithItemType(

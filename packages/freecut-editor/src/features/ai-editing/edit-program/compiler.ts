@@ -3,6 +3,7 @@ import { resolveMediaUrl, useMediaLibraryStore } from '@freecut/features/editor/
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import {
   createOverlayLayerTrack,
+  createClassicTrack,
   createTextTemplateItem,
   getTrackKind,
 } from '@freecut/features/editor/deps/timeline-contract'
@@ -164,19 +165,54 @@ export function compileVisualState(params: {
   return { transform: start, motionLayers: [...retainedLayers, layer] }
 }
 
-function assertTrackCompatibility(trackId: string, type: 'video' | 'audio' | 'image'): void {
+function assertTrackCompatibility(
+  trackId: string,
+  type: 'video' | 'audio' | 'image' | 'subtitle',
+): void {
   const track = useTimelineStore.getState().tracks.find((candidate) => candidate.id === trackId)
   if (!track || track.isGroup) throw new Error('编辑程序引用了不存在的轨道。')
   if (track.locked) throw new Error(`轨道“${track.name}”已锁定。`)
-  const expected = type === 'audio' ? 'audio' : 'video'
+  const expected = type === 'audio' ? 'audio' : type === 'subtitle' ? 'subtitle' : 'video'
   if (getTrackKind(track) !== expected) throw new Error(`素材不能放入轨道“${track.name}”。`)
+}
+
+export function resolveAiLinkedAudioPlacement(params: {
+  tracks: TimelineTrack[]
+  items: TimelineItem[]
+  from: number
+  durationInFrames: number
+}): { tracks: TimelineTrack[]; trackId: string } {
+  const end = params.from + params.durationInFrames
+  const reusableTrack = params.tracks
+    .filter((track) => !track.isGroup && !track.locked && getTrackKind(track) === 'audio')
+    .filter((track) =>
+      params.items.every(
+        (item) =>
+          item.trackId !== track.id ||
+          item.from + item.durationInFrames <= params.from ||
+          item.from >= end,
+      ),
+    )
+    .sort((left, right) => left.order - right.order)[0]
+
+  if (reusableTrack) return { tracks: params.tracks, trackId: reusableTrack.id }
+
+  const maxOrder = params.tracks.reduce((highest, track) => Math.max(highest, track.order), 0)
+  const audioTrack = createClassicTrack({
+    tracks: params.tracks,
+    kind: 'audio',
+    order: maxOrder + 1,
+  })
+  return { tracks: [...params.tracks, audioTrack], trackId: audioTrack.id }
 }
 
 async function prepareClipDraft(
   draft: AgentClipDraft,
   fps: number,
   canvas: { width: number; height: number },
-): Promise<TimelineItem> {
+  tracks: TimelineTrack[],
+  items: TimelineItem[],
+): Promise<{ items: TimelineItem[]; tracks: TimelineTrack[] }> {
   const mediaId = idFromAgentRef(draft.mediaRef, 'media')
   const trackId = idFromAgentRef(draft.trackRef, 'track')
   const media = useMediaLibraryStore.getState().mediaById[mediaId]
@@ -194,7 +230,22 @@ async function prepareClipDraft(
   const sourceEnd = draft.source
     ? secondsToFrames(draft.source.out, sourceFps)
     : undefined
-  const [item] = buildMediaTimelineItems({
+  const from = secondsToFrames(draft.start, fps)
+  const durationInFrames = Math.max(1, secondsToFrames(draft.duration, fps))
+  let nextTracks = tracks
+  let linkedAudioTrackId: string | undefined
+  if (type === 'video' && media.audioCodec) {
+    const audioPlacement = resolveAiLinkedAudioPlacement({
+      tracks,
+      items,
+      from,
+      durationInFrames,
+    })
+    nextTracks = audioPlacement.tracks
+    linkedAudioTrackId = audioPlacement.trackId
+  }
+
+  const builtItems = buildMediaTimelineItems({
     media,
     mediaId,
     mediaType: type,
@@ -206,17 +257,23 @@ async function prepareClipDraft(
     placements: {
       primary: {
         trackId,
-        from: secondsToFrames(draft.start, fps),
-        durationInFrames: Math.max(1, secondsToFrames(draft.duration, fps)),
+        from,
+        durationInFrames,
       },
+      ...(linkedAudioTrackId
+        ? { linkedAudio: { trackId: linkedAudioTrackId, from, durationInFrames } }
+        : {}),
     },
+    linkVideoAudio: linkedAudioTrackId !== undefined,
     sourceStart,
     sourceEnd,
   })
+  const item = builtItems[0]
   if (!item) throw new Error('无法创建时间线片段。')
   const sourceSpan = draft.source ? draft.source.out - draft.source.in : undefined
   if (sourceSpan !== undefined && type !== 'image') {
-    item.speed = Math.max(0.1, Math.min(10, sourceSpan / draft.duration))
+    const speed = Math.max(0.1, Math.min(10, sourceSpan / draft.duration))
+    for (const builtItem of builtItems) builtItem.speed = speed
   }
   Object.assign(item, compileVisualState({
     item,
@@ -225,7 +282,7 @@ async function prepareClipDraft(
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,
   }))
-  return item
+  return { items: builtItems, tracks: nextTracks }
 }
 
 function assertNoCollisions(items: TimelineItem[], touchedIds: Set<string>): void {
@@ -273,11 +330,14 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
   }
   const appendDraft = async (draft: AgentClipDraft) => {
     if (refs.has(draft.ref)) throw new Error(`编辑程序中的片段引用“${draft.ref}”重复。`)
-    const item = await prepareClipDraft(draft, fps, canvas)
+    const prepared = await prepareClipDraft(draft, fps, canvas, virtualTracks, virtualItems)
+    const item = prepared.items[0]
+    if (!item) throw new Error('无法创建时间线片段。')
+    virtualTracks = prepared.tracks
     refs.set(draft.ref, item.id)
-    insertItems.push(item)
-    virtualItems.push(item)
-    touchedIds.add(item.id)
+    insertItems.push(...prepared.items)
+    virtualItems.push(...prepared.items)
+    for (const preparedItem of prepared.items) touchedIds.add(preparedItem.id)
   }
 
   for (const operation of program.operations) {
@@ -293,6 +353,13 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         if (item.from >= end || item.from + item.durationInFrames <= start) continue
         removeIds.add(item.id)
         touchedIds.add(item.id)
+        if (item.linkedGroupId) {
+          for (const linkedItem of virtualItems) {
+            if (linkedItem.linkedGroupId !== item.linkedGroupId) continue
+            removeIds.add(linkedItem.id)
+            touchedIds.add(linkedItem.id)
+          }
+        }
       }
       virtualItems = virtualItems.filter((item) => !removeIds.has(item.id))
       for (const draft of operation.clips) await appendDraft(draft)
@@ -319,7 +386,45 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       const startFrame = secondsToFrames(operation.text.start, fps)
       const durationInFrames = Math.max(1, secondsToFrames(operation.text.duration, fps))
       let textTrackId: string
-      if (operation.text.trackRef) {
+      if (operation.text.role === 'caption') {
+        if (operation.text.trackRef) {
+          textTrackId = idFromAgentRef(operation.text.trackRef, 'track')
+          assertTrackCompatibility(textTrackId, 'subtitle')
+        } else {
+          const endFrame = startFrame + durationInFrames
+          const reusableTrack = virtualTracks
+            .filter(
+              (track) =>
+                !track.isGroup &&
+                !track.locked &&
+                track.visible !== false &&
+                getTrackKind(track) === 'subtitle',
+            )
+            .find((track) =>
+              virtualItems.every(
+                (item) =>
+                  item.trackId !== track.id ||
+                  item.from + item.durationInFrames <= startFrame ||
+                  item.from >= endFrame,
+              ),
+            )
+          if (reusableTrack) {
+            textTrackId = reusableTrack.id
+          } else {
+            const minOrder = virtualTracks.reduce(
+              (lowest, track) => Math.min(lowest, track.order),
+              0,
+            )
+            const subtitleTrack = createClassicTrack({
+              tracks: virtualTracks,
+              kind: 'subtitle',
+              order: minOrder - 1,
+            })
+            virtualTracks = [...virtualTracks, subtitleTrack]
+            textTrackId = subtitleTrack.id
+          }
+        }
+      } else if (operation.text.trackRef) {
         textTrackId = idFromAgentRef(operation.text.trackRef, 'track')
         assertTrackCompatibility(textTrackId, 'video')
       } else {
@@ -353,10 +458,27 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         label: operation.text.label ?? operation.text.text.slice(0, 40),
         ...(operation.text.role !== 'caption' ? { textStylePresetId: 'clean-title' } : {}),
       })
-      refs.set(operation.text.ref, textItem.id)
-      insertItems.push(textItem)
-      virtualItems.push(textItem)
-      touchedIds.add(textItem.id)
+      const insertedTextItem: TimelineItem =
+        operation.text.role === 'caption'
+          ? ({
+              ...textItem,
+              type: 'subtitle',
+              source: { type: 'manual' },
+              sourceLabel: operation.text.label ?? 'AI Caption',
+              cues: [
+                {
+                  id: crypto.randomUUID(),
+                  startSeconds: 0,
+                  endSeconds: durationInFrames / fps,
+                  text: operation.text.text,
+                },
+              ],
+            } as TimelineItem)
+          : textItem
+      refs.set(operation.text.ref, insertedTextItem.id)
+      insertItems.push(insertedTextItem)
+      virtualItems.push(insertedTextItem)
+      touchedIds.add(insertedTextItem.id)
       changedRanges.push({
         start: operation.text.start,
         end: operation.text.start + operation.text.duration,

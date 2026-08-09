@@ -7,7 +7,7 @@ import {
 } from './classic-tracks'
 
 export interface TrackContentDragPlan {
-  kind: TrackKind
+  kind: Exclude<TrackKind, 'subtitle'>
   sectionTrackIds: string[]
   draggedTrackIds: string[]
 }
@@ -39,7 +39,7 @@ export function resolveTrackContentDragPlan(params: {
   }
 
   const kind = getTrackKind(anchorTrack)
-  if (!kind) {
+  if (!kind || kind === 'subtitle') {
     return null
   }
 

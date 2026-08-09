@@ -78,9 +78,12 @@ function buildTimelineEvidence(): { clips: AiTimelineClipEvidence[]; durationSec
   return { clips, durationSeconds, fps, revision: timeline.changeVersion ?? 0 }
 }
 
-function evidenceTrackKind(track: { name: string; kind?: string }): 'video' | 'audio' | 'other' {
+function evidenceTrackKind(
+  track: { name: string; kind?: string },
+): 'video' | 'audio' | 'subtitle' | 'other' {
   if (track.kind === 'video' || /^V\d+$/i.test(track.name)) return 'video'
   if (track.kind === 'audio' || /^A\d+$/i.test(track.name)) return 'audio'
+  if (track.kind === 'subtitle' || /^S\d+$/i.test(track.name)) return 'subtitle'
   return 'other'
 }
 
