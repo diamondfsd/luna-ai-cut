@@ -8,6 +8,7 @@ export interface DownloadProgress {
   speedBps: number
   status: 'queued' | 'downloading' | 'done' | 'exists' | 'failed' | 'canceled'
   destinationPath?: string
+  error?: string
 }
 
 export interface DownloadRecord {

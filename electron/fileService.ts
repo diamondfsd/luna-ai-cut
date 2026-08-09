@@ -52,7 +52,7 @@ export async function listExportFiles(exportDir: string): Promise<import('../src
         extension: entry.name.split('.').pop() || '',
         bytes: s.size, width: 0, height: 0,
         downloadFilePath: fullPath, localPath: fullPath,
-      } as any)
+      } as unknown as import('../src/shared/types').LunaFile)
     }
   } catch { /* ignore */ }
   return files
@@ -551,6 +551,7 @@ export async function downloadFiles(
         percent: null,
         speedBps: 0,
         status: 'failed',
+        error: message,
       })
       summary.failed.push({ name: file.name, error: message })
     }

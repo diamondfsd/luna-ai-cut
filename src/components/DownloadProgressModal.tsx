@@ -173,11 +173,13 @@ export function DownloadProgressModal({
             percent: null,
             speedBps: 0,
             status: 'failed',
+            error: failed.error,
           })
           return next
         })
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
       console.error(error)
       setDownloadProgress((current) => {
         const next = new Map(current)
@@ -190,6 +192,7 @@ export function DownloadProgressModal({
           percent: null,
           speedBps: 0,
           status: 'failed',
+          error: message,
         })
         return next
       })
@@ -351,6 +354,7 @@ export function DownloadProgressModal({
                     {progress.status === 'failed' && ' · 失败'}
                     {progress.status === 'canceled' && ' · 已取消'}
                   </span>
+                  {progress.status === 'failed' && progress.error && <span className="dl-file-error">{progress.error}</span>}
                   <div className="dl-file-progress-track">
                     <div className="dl-file-progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
