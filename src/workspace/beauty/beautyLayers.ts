@@ -47,6 +47,11 @@ function normalizedExposure(value: number): number {
   return Number(value.toFixed(4))
 }
 
+function smoothingForRendering(value: number): number {
+  const normalized = clampParameter(value) / 100
+  return Math.pow(normalized, 0.75) * 100
+}
+
 export function beautyLayers(pipeline: EditPipeline): {
   face: ColorMaskLayer | null
   body: ColorMaskLayer | null
@@ -187,7 +192,7 @@ function faceColorForRendering(parameters: BeautyParameters): EditPipeline['colo
   return {
     ...faceColor(parameters),
     ...skinWhiteningColorForRendering(parameters.skinWhitening + parameters.faceWhitening, parameters.skinWarmth ?? 0),
-    denoise: parameters.smoothing * 0.72,
+    denoise: smoothingForRendering(parameters.smoothing),
     texture: parameters.texture * 0.35,
   }
 }
