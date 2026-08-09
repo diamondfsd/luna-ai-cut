@@ -172,6 +172,7 @@ export function useAiSelection() {
     setPersonAvatar: (groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => run(() => window.luna.aiSelection.setPersonAvatar(session!.id, groupId, itemId, bounds)),
     mergePeople: (targetGroupId: string, sourceGroupId: string) => run(() => window.luna.aiSelection.mergePeople(session!.id, targetGroupId, sourceGroupId)),
     unmergePerson: (targetGroupId: string, memberIdentityId: string) => run(() => window.luna.aiSelection.unmergePerson(session!.id, targetGroupId, memberIdentityId)),
+    deletePerson: (groupId: string) => run(() => window.luna.aiSelection.deletePerson(session!.id, groupId)),
     analyzeContentTags: (itemIds: string[] = []) => run(() => window.luna.aiSelection.analyzeContentTags(session!.id, itemIds)),
     analyzeVideos: (itemIds: string[]) => run(() => window.luna.aiSelection.analyzeVideos(session!.id, itemIds)),
   // eslint-disable-next-line react-hooks/exhaustive-deps

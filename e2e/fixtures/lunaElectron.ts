@@ -37,17 +37,17 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
     void _playwright
     const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-playwright-e2e-'))
     const userDataDir = path.join(temporaryRoot, 'user-data')
-    const downloadDir = path.join(temporaryRoot, 'downloads')
+    const baseDir = path.join(temporaryRoot, 'downloads')
     const artifactDir = path.join(temporaryRoot, 'artifacts')
     await Promise.all([
       mkdir(userDataDir, { recursive: true }),
-      mkdir(downloadDir, { recursive: true }),
+      mkdir(baseDir, { recursive: true }),
       mkdir(artifactDir, { recursive: true }),
     ])
     await writeFile(path.join(userDataDir, 'settings.json'), `${JSON.stringify({
-      downloadDir,
-      localResourcesDir: path.join(downloadDir, 'localResources'),
-      exportDir: path.join(downloadDir, 'export'),
+      baseDir,
+      localResourcesDir: path.join(baseDir, 'localResources'),
+      exportDir: path.join(baseDir, 'export'),
       developerMode: false,
     }, null, 2)}\n`, 'utf8')
 

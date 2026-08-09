@@ -4,6 +4,7 @@ import * as path from 'node:path'
 import type { DownloadRecord, LunaFile } from '../src/shared/types'
 
 const MANIFEST_FILE = '.luna-media-manifest.json'
+const manifestWrites = new Map<string, Promise<void>>()
 
 interface SourceRecord {
   fileName: string
@@ -43,9 +44,32 @@ async function readManifest(dir: string): Promise<SourceManifest> {
 async function writeManifest(dir: string, manifest: SourceManifest): Promise<void> {
   await fs.mkdir(dir, { recursive: true })
   const target = manifestPath(dir)
-  const tmp = `${target}.tmp`
-  await fs.writeFile(tmp, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-  await fs.rename(tmp, target)
+  const temporary = `${target}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+  try {
+    await fs.writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+    try {
+      await fs.rename(temporary, target)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (!['EACCES', 'EEXIST', 'EPERM'].includes(String(code))) throw error
+      await fs.rm(target, { force: true })
+      await fs.rename(temporary, target)
+    }
+  } finally {
+    await fs.rm(temporary, { force: true }).catch(() => undefined)
+  }
+}
+
+async function withManifestWrite(dir: string, write: () => Promise<void>): Promise<void> {
+  const key = path.resolve(dir)
+  const previous = manifestWrites.get(key) ?? Promise.resolve()
+  const current = previous.catch(() => undefined).then(write)
+  manifestWrites.set(key, current)
+  try {
+    await current
+  } finally {
+    if (manifestWrites.get(key) === current) manifestWrites.delete(key)
+  }
 }
 
 function normalizeRecord(fileName: string, file: LunaFile): SourceRecord {
@@ -66,10 +90,12 @@ function normalizeRecord(fileName: string, file: LunaFile): SourceRecord {
 }
 
 export async function recordDownloadedFileSource(outputDir: string, destination: string, file: LunaFile): Promise<void> {
-  const fileName = path.basename(destination)
-  const manifest = await readManifest(outputDir)
-  manifest.files[fileName] = normalizeRecord(fileName, file)
-  await writeManifest(outputDir, manifest)
+  await withManifestWrite(outputDir, async () => {
+    const fileName = path.basename(destination)
+    const manifest = await readManifest(outputDir)
+    manifest.files[fileName] = normalizeRecord(fileName, file)
+    await writeManifest(outputDir, manifest)
+  })
 }
 
 export async function applySourceMetadataToFile(outputDir: string, file: LunaFile): Promise<LunaFile> {

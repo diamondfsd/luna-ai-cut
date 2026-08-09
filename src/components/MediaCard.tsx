@@ -23,6 +23,7 @@ interface MediaCardProps {
   overlay?: ReactNode
   className?: string
   previewTitle?: string
+  onDragStart?: () => void
 }
 
 function formatDuration(seconds: number): string {
@@ -49,6 +50,7 @@ export function MediaCard({
   overlay,
   className,
   previewTitle = '预览',
+  onDragStart,
 }: MediaCardProps) {
   const cardRef = useRef<HTMLElement>(null)
 
@@ -96,7 +98,13 @@ export function MediaCard({
   const isLive = file.isLivePhoto || detectedLive
 
   return (
-    <article ref={cardRef} className={['media-card', selected && 'selected', className].filter(Boolean).join(' ')} data-file-id={file.id}>
+    <article
+      ref={cardRef}
+      className={['media-card', selected && 'selected', className].filter(Boolean).join(' ')}
+      data-file-id={file.id}
+      draggable={Boolean(onDragStart)}
+      onDragStart={onDragStart}
+    >
       {showProgress && progress && (
         <button
           className={`download-state ${progress.status}`}

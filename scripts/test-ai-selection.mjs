@@ -15,7 +15,7 @@ import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
 import { buildFaceGroups, FACE_EMBEDDING_VERSION, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
-import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
+import { buildGlobalFaceGroups, hideGlobalPerson, loadGlobalPeople, mergeGlobalPeople, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
 import {
   countSimilarityGroups,
   matchesResultFilter,
@@ -319,6 +319,12 @@ try {
   assert.deepEqual(groupsAfterMerge[0].mergedMembers?.map((member) => member.id), [secondIdentity.id], '合并弹窗应能展示来源身份')
   await unmergeGlobalPerson(peopleStoreRoot, { ...peopleSession, faceGroups: groupsAfterMerge }, groupsAfterMerge[0].id, secondIdentity.id)
   assert.equal(buildGlobalFaceGroups(faceItems).length, 2, '移除合并成员后应恢复两个独立人物')
+  const targetAfterUnmerge = buildGlobalFaceGroups(faceItems).find((group) => group.identityId === registeredIdentity.id)
+  assert.ok(targetAfterUnmerge, '删除前应能找到目标人物')
+  await hideGlobalPerson(peopleStoreRoot, { ...peopleSession, faceGroups: buildGlobalFaceGroups(faceItems) }, targetAfterUnmerge.id)
+  assert.deepEqual(buildGlobalFaceGroups(faceItems).map((group) => group.identityId), [secondIdentity.id], '删除人物后应抑制相同人脸再次出现')
+  await loadGlobalPeople(peopleStoreRoot)
+  assert.deepEqual(buildGlobalFaceGroups(faceItems).map((group) => group.identityId), [secondIdentity.id], '重新加载人物库后仍应抑制已删除人物')
 
   const legacyStoreRoot = path.join(peopleStoreRoot, 'legacy')
   await fs.mkdir(legacyStoreRoot)
