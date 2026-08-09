@@ -597,7 +597,7 @@ export const AudioMeterPanel = memo(function AudioMeterPanel({
     return mixerSourceTracks.map((track) => ({
       id: track.id,
       name: track.name,
-      kind: track.kind,
+      kind: track.kind === 'audio' ? 'audio' : 'video',
       color: track.color,
       muted: track.muted,
       solo: track.solo,

@@ -439,6 +439,9 @@ export type SubtitleSegmentItem = BaseTimelineItem &
 
 export type SubtitleSegmentSource =
   | {
+      type: 'manual'
+    }
+  | {
       type: 'transcript'
       mediaId: string
       clipId: string
@@ -476,7 +479,7 @@ export type TimelineItem =
 export interface TimelineTrack {
   id: string
   name: string
-  kind?: 'video' | 'audio'
+  kind?: 'video' | 'audio' | 'subtitle'
   height: number
   locked: boolean
   syncLock?: boolean // Defaults to true - controls whether ripple edits propagate to this track

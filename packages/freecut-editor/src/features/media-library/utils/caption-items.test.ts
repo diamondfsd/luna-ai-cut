@@ -10,9 +10,9 @@ vi.mock('../deps/timeline-caption-utils-contract', () => ({
   ) => Math.max(0, Math.round((timelineFrames / timelineFps) * sourceFps * speed)),
   getNextClassicTrackName: (
     tracks: Array<{ name: string; kind?: string }>,
-    kind: 'video' | 'audio',
+    kind: 'video' | 'audio' | 'subtitle',
   ) => {
-    const prefix = kind === 'video' ? 'V' : 'A'
+    const prefix = kind === 'video' ? 'V' : kind === 'audio' ? 'A' : 'S'
     const regex = new RegExp(`^${prefix}(\\d+)$`, 'i')
     const used = new Set(
       tracks
@@ -28,7 +28,7 @@ vi.mock('../deps/timeline-caption-utils-contract', () => ({
     return `${prefix}${next}`
   },
   getTrackKind: (track: { name: string; kind?: string }) => {
-    if (track.kind === 'video' || track.kind === 'audio') {
+    if (track.kind === 'video' || track.kind === 'audio' || track.kind === 'subtitle') {
       return track.kind
     }
     if (/^V(\d+)$/i.test(track.name)) {
@@ -36,6 +36,9 @@ vi.mock('../deps/timeline-caption-utils-contract', () => ({
     }
     if (/^A(\d+)$/i.test(track.name)) {
       return 'audio'
+    }
+    if (/^S(\d+)$/i.test(track.name)) {
+      return 'subtitle'
     }
     return null
   },
@@ -43,7 +46,7 @@ vi.mock('../deps/timeline-caption-utils-contract', () => ({
     track: { id: string; name: string; kind?: string },
     items: Array<{ trackId: string; type: string }>,
   ) => {
-    if (track.kind === 'video' || track.kind === 'audio') {
+    if (track.kind === 'video' || track.kind === 'audio' || track.kind === 'subtitle') {
       return track.kind
     }
     if (/^V(\d+)$/i.test(track.name)) {
@@ -51,6 +54,9 @@ vi.mock('../deps/timeline-caption-utils-contract', () => ({
     }
     if (/^A(\d+)$/i.test(track.name)) {
       return 'audio'
+    }
+    if (/^S(\d+)$/i.test(track.name)) {
+      return 'subtitle'
     }
 
     let hasAudioItems = false
@@ -211,7 +217,7 @@ describe('caption-items', () => {
     })
   })
 
-  it('finds a compatible track without overlap', () => {
+  it('only reuses a dedicated subtitle track without overlap', () => {
     const tracks: TimelineTrack[] = [
       {
         id: 'track-1',
@@ -226,7 +232,8 @@ describe('caption-items', () => {
       },
       {
         id: 'track-2',
-        name: 'Track 2',
+        name: 'S1',
+        kind: 'subtitle',
         height: 64,
         locked: false,
         visible: true,
@@ -252,7 +259,7 @@ describe('caption-items', () => {
     expect(track?.id).toBe('track-2')
   })
 
-  it('never reuses audio tracks for caption text', () => {
+  it('never reuses audio or video tracks for subtitles', () => {
     const tracks: TimelineTrack[] = [
       {
         id: 'track-audio',
@@ -267,9 +274,9 @@ describe('caption-items', () => {
         items: [],
       },
       {
-        id: 'track-video',
-        name: 'V1',
-        kind: 'video',
+        id: 'track-subtitle',
+        name: 'S1',
+        kind: 'subtitle',
         height: 64,
         locked: false,
         visible: true,
@@ -282,10 +289,10 @@ describe('caption-items', () => {
 
     expect(isCaptionTrackCandidate(tracks[0]!, [])).toBe(false)
     expect(isCaptionTrackCandidate(tracks[1]!, [])).toBe(true)
-    expect(findCompatibleCaptionTrack(tracks, [], 30, 90)?.id).toBe('track-video')
+    expect(findCompatibleCaptionTrack(tracks, [], 30, 90)?.id).toBe('track-subtitle')
     expect(
       findCompatibleCaptionTrackForRanges(tracks, [], [{ startFrame: 30, endFrame: 90 }])?.id,
-    ).toBe('track-video')
+    ).toBe('track-subtitle')
   })
 
   it('can target audio tracks for generated audio content', () => {
@@ -989,16 +996,16 @@ describe('aiCaptionsToSegments', () => {
 })
 
 describe('buildCaptionTrackAbove', () => {
-  it('places the caption track halfway between the reference and the next track up', () => {
+  it('places the caption track above the entire media stack', () => {
     const tracks = [makeTrack('a', 0), makeTrack('b', 1), makeTrack('c', 2)]
     const captionTrack = buildCaptionTrackAbove(tracks, 2)
-    expect(captionTrack.order).toBe(1.5)
+    expect(captionTrack.order).toBe(-1)
   })
 
   it('places the track a full integer above when nothing sits higher', () => {
     const tracks = [makeTrack('a', 5)]
     const captionTrack = buildCaptionTrackAbove(tracks, 5)
-    expect(captionTrack.order).toBe(4)
+    expect(captionTrack.order).toBe(-1)
   })
 
   it('sorts visually higher than the reference clip track after insertion', () => {
@@ -1011,25 +1018,25 @@ describe('buildCaptionTrackAbove', () => {
     expect(captionIndex).toBeLessThan(clipIndex)
   })
 
-  it('creates a video-kind overlay track so the timeline renders it immediately', () => {
+  it('creates a dedicated subtitle track', () => {
     const tracks = [makeTrack('clip', 1)]
     const captionTrack = buildCaptionTrackAbove(tracks, 1)
-    expect(captionTrack.kind).toBe('video')
-    expect(getTrackKind(captionTrack)).toBe('video')
-    expect(captionTrack.name).toBe('V1')
+    expect(captionTrack.kind).toBe('subtitle')
+    expect(getTrackKind(captionTrack)).toBe('subtitle')
+    expect(captionTrack.name).toBe('S1')
   })
 })
 
 describe('buildCaptionTrack (append-to-bottom helper)', () => {
-  it('still creates tracks at maxOrder + 1', () => {
+  it('creates subtitle tracks above all media tracks', () => {
     const tracks = [
       { ...makeTrack('a', 0), name: 'V1', kind: 'video' as const },
       { ...makeTrack('b', 1), name: 'A1', kind: 'audio' as const },
       { ...makeTrack('c', 2), name: 'V2', kind: 'video' as const },
     ]
     const captionTrack = buildCaptionTrack(tracks)
-    expect(captionTrack.order).toBe(3)
-    expect(captionTrack.kind).toBe('video')
-    expect(captionTrack.name).toBe('V3')
+    expect(captionTrack.order).toBe(-1)
+    expect(captionTrack.kind).toBe('subtitle')
+    expect(captionTrack.name).toBe('S1')
   })
 })

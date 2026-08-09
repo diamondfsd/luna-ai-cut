@@ -500,6 +500,7 @@ interface TimelineTrackSectionsSurfaceProps {
   actualDuration: number
   containerWidth: number
   initialTimelineWidth: number
+  subtitleTracks: TimelineTrackType[]
   videoTracks: TimelineTrackType[]
   audioTracks: TimelineTrackType[]
   videoZoneHeight: number
@@ -516,6 +517,7 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
   actualDuration,
   containerWidth,
   initialTimelineWidth,
+  subtitleTracks,
   videoTracks,
   audioTracks,
   videoZoneHeight,
@@ -561,7 +563,7 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
   const renderTrackSection = (
     sectionTracks: TimelineTrackType[],
     options: {
-      section: 'video' | 'audio'
+      section: 'subtitle' | 'video' | 'audio'
       zoneHeight: number
       anchorTrackId: string | null
       firstTrackFrame: 'with-top-divider' | 'regular'
@@ -639,11 +641,17 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
           className="h-full min-h-0 overflow-y-auto overflow-x-hidden"
         >
           <div className="relative min-h-full">
+            {renderTrackSection(subtitleTracks, {
+              section: 'subtitle',
+              zoneHeight: 0,
+              anchorTrackId: null,
+              firstTrackFrame: 'with-top-divider',
+            })}
             {renderTrackSection(videoTracks, {
               section: 'video',
               zoneHeight: videoZoneHeight,
               anchorTrackId: topZoneAnchorTrackId,
-              firstTrackFrame: 'with-top-divider',
+              firstTrackFrame: subtitleTracks.length > 0 ? 'regular' : 'with-top-divider',
             })}
             {renderTrackSection(audioTracks, {
               section: 'audio',
@@ -690,6 +698,10 @@ export const TimelineContent = memo(function TimelineContent({
 
   const videoTracks = useMemo(
     () => tracks.filter((track) => getTrackKind(track) === 'video'),
+    [tracks],
+  )
+  const subtitleTracks = useMemo(
+    () => tracks.filter((track) => getTrackKind(track) === 'subtitle'),
     [tracks],
   )
   const audioTracks = useMemo(
@@ -2044,6 +2056,7 @@ export const TimelineContent = memo(function TimelineContent({
             actualDuration={actualDuration}
             containerWidth={containerWidth}
             initialTimelineWidth={timelineWidth}
+            subtitleTracks={subtitleTracks}
             videoTracks={videoTracks}
             audioTracks={audioTracks}
             videoZoneHeight={videoZoneHeight}

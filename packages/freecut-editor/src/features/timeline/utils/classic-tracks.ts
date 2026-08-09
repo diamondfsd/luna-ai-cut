@@ -1,22 +1,27 @@
 import type { TimelineTrack } from '@freecut/types/timeline'
 import { DEFAULT_TRACK_HEIGHT } from '../constants'
 
-export type TrackKind = 'video' | 'audio'
+export type TrackKind = 'video' | 'audio' | 'subtitle'
 
 const VIDEO_TRACK_NAME_REGEX = /^V(\d+)$/i
 const AUDIO_TRACK_NAME_REGEX = /^A(\d+)$/i
+const SUBTITLE_TRACK_NAME_REGEX = /^S(\d+)$/i
 const GENERIC_TRACK_NAME_REGEX = /^Track\s+\d+$/i
 
 function getTrackNameRegex(kind: TrackKind): RegExp {
-  return kind === 'video' ? VIDEO_TRACK_NAME_REGEX : AUDIO_TRACK_NAME_REGEX
+  if (kind === 'video') return VIDEO_TRACK_NAME_REGEX
+  if (kind === 'audio') return AUDIO_TRACK_NAME_REGEX
+  return SUBTITLE_TRACK_NAME_REGEX
 }
 
-function getTrackPrefix(kind: TrackKind): 'V' | 'A' {
-  return kind === 'video' ? 'V' : 'A'
+function getTrackPrefix(kind: TrackKind): 'V' | 'A' | 'S' {
+  if (kind === 'video') return 'V'
+  if (kind === 'audio') return 'A'
+  return 'S'
 }
 
 export function getTrackKind(track: TimelineTrack): TrackKind | null {
-  if (track.kind === 'video' || track.kind === 'audio') {
+  if (track.kind === 'video' || track.kind === 'audio' || track.kind === 'subtitle') {
     return track.kind
   }
   if (VIDEO_TRACK_NAME_REGEX.test(track.name)) {
@@ -24,6 +29,9 @@ export function getTrackKind(track: TimelineTrack): TrackKind | null {
   }
   if (AUDIO_TRACK_NAME_REGEX.test(track.name)) {
     return 'audio'
+  }
+  if (SUBTITLE_TRACK_NAME_REGEX.test(track.name)) {
+    return 'subtitle'
   }
   return null
 }
@@ -92,6 +100,10 @@ export function normalizeClassicTrackNames(tracks: TimelineTrack[]): TimelineTra
   collectClassicTracks('audio')
     .sort((left, right) => left.order - right.order)
     .forEach((track, index) => desiredNameById.set(track.id, `A${index + 1}`))
+
+  collectClassicTracks('subtitle')
+    .sort((left, right) => left.order - right.order)
+    .forEach((track, index) => desiredNameById.set(track.id, `S${index + 1}`))
 
   let changed = false
   const next = tracks.map((track) => {

@@ -14,6 +14,8 @@ interface EditProgram {
 
 所有时间使用秒。画面中心坐标基于素材自身：左上角 `[0, 0]`，右下角 `[1, 1]`。`zoom` 为 `1` 时按 mode 填充画布，大于 `1` 表示特写。
 
+`workspace.tracks[].kind` 是轨道的硬约束：`video` 放画面，`audio` 放声音，`subtitle` 放字幕。字幕轨道固定显示在所有视频轨道上方。带原声的视频写入后会由宿主同时建立相互绑定的视频片段和音频片段。
+
 ```ts
 type FramingPose = {
   center: [number, number]
@@ -100,6 +102,9 @@ interface TransitionSpec {
 - 制作类请求优先提交一份完整程序，不连续提交许多小程序。
 - 新片段使用局部 `ref`，现有片段使用 workspace 中的 `clip:` 引用。
 - `replaceRange` 删除指定轨道内与范围相交的原片段，再放入新片段。
+- 不得让任何两个片段在同一轨道上发生时间交叉；需要同期叠加时使用不同的同类型轨道。
+- 不得把字幕放进 `video` 或 `audio` 轨道，也不得把视频、图片或标题放进 `subtitle` 轨道。
+- 使用带原声的视频素材时应保留宿主生成的绑定音频片段；除非用户明确要求静音，不要删除或遗漏原声。
 - 单张图片可重复成为多个片段；用不同的 `center`、`zoom`、`from` 和 `to` 制作不同特写与运镜。
 - 不要声称取景已经不同，除非返回 workspace 中的实际 framing/cameraMove 不同。
 - 工具失败时，基于最新 workspace 修正整份程序，不得隐瞒失败。

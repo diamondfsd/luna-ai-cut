@@ -3,7 +3,10 @@ import type { TimelineItem as TimelineItemType } from '@freecut/types/timeline'
 import { useShallow } from 'zustand/react/shallow'
 import { useTimelineStore } from '../../stores/timeline-store'
 import { useItemsStore } from '../../stores/items-store'
-import { selectReplaceableCaptionClipIds } from '../../stores/items-store-indexes'
+import {
+  selectReplaceableCaptionClipIds,
+  selectTimelineCaptionClipIds,
+} from '../../stores/items-store-indexes'
 import { useKeyframesStore } from '../../stores/keyframes-store'
 import { useEffectDropPreviewStore } from '../../stores/effect-drop-preview-store'
 import { useEditPreviewShifts } from './use-edit-preview-shifts'
@@ -164,6 +167,18 @@ export const TimelineItem = memo(function TimelineItem({
       [item.id, linkedItemsForCaptionOwnership],
     ),
   )
+  const hasTimelineCaptions = useItemsStore(
+    useCallback(
+      (s) => {
+        const captionClipIds = selectTimelineCaptionClipIds(s)
+        if (captionClipIds.has(item.id)) return true
+        return linkedItemsForCaptionOwnership.some((linkedItem) =>
+          captionClipIds.has(linkedItem.id),
+        )
+      },
+      [item.id, linkedItemsForCaptionOwnership],
+    ),
+  )
   const linkedSelectionEnabled = useEditorStore((s) => s.linkedSelectionEnabled)
   const segmentOverlays = useTimelineItemOverlayStore(
     useCallback((s) => s.overlaysByItemId[item.id] ?? EMPTY_SEGMENT_OVERLAYS, [item.id]),
@@ -191,7 +206,7 @@ export const TimelineItem = memo(function TimelineItem({
     isBroken,
     linkedItemsForCaptionOwnership,
   })
-  useAutoTranscriptCaptions({ item, caption, hasGeneratedCaptions, isBroken })
+  useAutoTranscriptCaptions({ item, caption, hasTimelineCaptions, isBroken })
   const reverseMenuShowsUnreverse = useMemo(() => {
     if (item.type !== 'video' && item.type !== 'audio') {
       return false

@@ -1,12 +1,24 @@
-import { beforeEach, describe, expect, it } from 'vite-plus/test'
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   useItemsStore,
   useTimelineSettingsStore,
 } from '@freecut/features/editor/deps/timeline-contract'
+import { useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
+import type { MediaMetadata } from '@freecut/types/storage'
 import type { ImageItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
-import { compileEditProgram, compileVisualState, transformForPose } from './compiler'
+import {
+  compileEditProgram,
+  compileVisualState,
+  resolveAiLinkedAudioPlacement,
+  transformForPose,
+} from './compiler'
 import { editProgramSchema } from './schema'
 import type { EditProgram } from './types'
+
+vi.mock('@freecut/features/editor/deps/media-library', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@freecut/features/editor/deps/media-library')>()),
+  resolveMediaUrl: vi.fn(async () => 'blob:video'),
+}))
 
 function imageItem(): ImageItem {
   return {
@@ -27,6 +39,175 @@ describe('EditProgram', () => {
   beforeEach(() => {
     useTimelineSettingsStore.setState({ fps: 30, changeVersion: 7, isDirty: false })
     useItemsStore.setState({ items: [], tracks: [] })
+    useMediaLibraryStore.setState({ mediaItems: [], mediaById: {} })
+  })
+
+  it('keeps source audio when compiling a video clip', async () => {
+    const videoTrack = {
+      id: 'video-track',
+      name: 'V1',
+      kind: 'video',
+      height: 64,
+      order: 0,
+      locked: false,
+      visible: true,
+      muted: false,
+      solo: false,
+      items: [],
+    } satisfies TimelineTrack
+    const media = {
+      id: 'video-media',
+      fileName: 'source.mp4',
+      fileSize: 1024,
+      mimeType: 'video/mp4',
+      duration: 10,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      codec: 'h264',
+      audioCodec: 'aac',
+      bitrate: 1_000_000,
+    } as MediaMetadata
+    useItemsStore.setState({ tracks: [videoTrack], items: [] })
+    useMediaLibraryStore.setState({ mediaItems: [media], mediaById: { [media.id]: media } })
+
+    const compiled = await compileEditProgram({
+      version: 1,
+      baseRevision: 7,
+      intent: '剪入带原声的视频',
+      operations: [
+        {
+          type: 'insertClip',
+          clip: {
+            ref: 'shot-1',
+            mediaRef: `media:${media.id}`,
+            trackRef: `track:${videoTrack.id}`,
+            start: 0,
+            duration: 3,
+          },
+        },
+      ],
+    })
+
+    expect(compiled.insertItems.map((item) => item.type)).toEqual(['video', 'audio'])
+    expect(compiled.insertItems[0]?.linkedGroupId).toBeTruthy()
+    expect(compiled.insertItems[1]?.linkedGroupId).toBe(compiled.insertItems[0]?.linkedGroupId)
+    const audioTrack = compiled.tracks.find(
+      (track) => track.id === compiled.insertItems[1]?.trackId,
+    )
+    expect(audioTrack?.kind).toBe('audio')
+  })
+
+  it('creates a separate audio track when every existing audio lane overlaps', () => {
+    const videoTrack = {
+      id: 'video-track',
+      name: 'V1',
+      kind: 'video',
+      height: 64,
+      order: 0,
+      locked: false,
+      visible: true,
+      muted: false,
+      solo: false,
+      items: [],
+    } satisfies TimelineTrack
+    const audioTrack = { ...videoTrack, id: 'audio-track', name: 'A1', kind: 'audio' as const, order: 1 }
+    const occupiedAudio = {
+      id: 'audio-existing',
+      type: 'audio',
+      trackId: audioTrack.id,
+      from: 0,
+      durationInFrames: 120,
+      label: 'Existing audio',
+      src: 'blob:audio',
+    } satisfies TimelineItem
+
+    const placement = resolveAiLinkedAudioPlacement({
+      tracks: [videoTrack, audioTrack],
+      items: [occupiedAudio],
+      from: 30,
+      durationInFrames: 60,
+    })
+
+    expect(placement.trackId).not.toBe(audioTrack.id)
+    expect(placement.tracks.find((track) => track.id === placement.trackId)?.kind).toBe('audio')
+  })
+
+  it('rejects AI edits that overlap material on the same track', async () => {
+    const track = {
+      id: 'video-track',
+      name: 'V1',
+      kind: 'video',
+      height: 64,
+      order: 0,
+      locked: false,
+      visible: true,
+      muted: false,
+      solo: false,
+      items: [],
+    } satisfies TimelineTrack
+    useItemsStore.setState({
+      tracks: [track],
+      items: [{ ...imageItem(), trackId: track.id, from: 0, durationInFrames: 120 }],
+    })
+
+    await expect(
+      compileEditProgram({
+        version: 1,
+        baseRevision: 7,
+        intent: '添加重叠文字',
+        operations: [
+          {
+            type: 'insertText',
+            text: {
+              ref: 'overlap-title',
+              text: 'Title',
+              start: 1,
+              duration: 2,
+              trackRef: 'track:video-track',
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow('同一轨道发生重叠')
+  })
+
+  it('compiles caption text into a dedicated subtitle track', async () => {
+    const videoTrack = {
+      id: 'video-track',
+      name: 'V1',
+      kind: 'video',
+      height: 64,
+      order: 0,
+      locked: false,
+      visible: true,
+      muted: false,
+      solo: false,
+      items: [],
+    } satisfies TimelineTrack
+    useItemsStore.setState({ tracks: [videoTrack], items: [] })
+
+    const compiled = await compileEditProgram({
+      version: 1,
+      baseRevision: 7,
+      intent: '添加字幕',
+      operations: [
+        {
+          type: 'insertText',
+          text: { ref: 'caption-1', text: '字幕内容', start: 0, duration: 2, role: 'caption' },
+        },
+      ],
+    })
+
+    expect(compiled.insertItems[0]).toMatchObject({
+      type: 'subtitle',
+      cues: [{ text: '字幕内容', startSeconds: 0, endSeconds: 2 }],
+    })
+    const subtitleTrack = compiled.tracks.find(
+      (track) => track.id === compiled.insertItems[0]?.trackId,
+    )
+    expect(subtitleTrack?.kind).toBe('subtitle')
+    expect(subtitleTrack?.order).toBeLessThan(videoTrack.order)
   })
 
   it('moves rebuilt implicit text to the nearest available overlay track', async () => {
@@ -96,9 +277,9 @@ describe('EditProgram', () => {
       intent: '重做字幕',
       operations: [
         { type: 'removeClip', clipRef: 'clip:old-caption' },
-        { type: 'insertText', text: { ref: 'caption-1', text: '第一句', start: 0, duration: 2, role: 'caption' } },
-        { type: 'insertText', text: { ref: 'caption-2', text: '第二句', start: 2, duration: 2, role: 'caption' } },
-        { type: 'insertText', text: { ref: 'caption-3', text: '第三句', start: 4, duration: 2, role: 'caption' } },
+        { type: 'insertText', text: { ref: 'caption-1', text: '第一句', start: 0, duration: 2 } },
+        { type: 'insertText', text: { ref: 'caption-2', text: '第二句', start: 2, duration: 2 } },
+        { type: 'insertText', text: { ref: 'caption-3', text: '第三句', start: 4, duration: 2 } },
       ],
     })
 
@@ -179,7 +360,7 @@ describe('EditProgram', () => {
       baseRevision: 7,
       intent: '补充字幕',
       operations: [
-        { type: 'insertText', text: { ref: 'caption-2', text: '新增字幕', start: 2, duration: 2, role: 'caption' } },
+        { type: 'insertText', text: { ref: 'caption-2', text: '新增字幕', start: 2, duration: 2 } },
       ],
     })
 

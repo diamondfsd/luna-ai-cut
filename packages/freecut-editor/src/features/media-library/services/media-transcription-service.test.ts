@@ -197,6 +197,14 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       sourceDuration: 90,
       sourceFps: 30,
       speed: 1,
+      transcriptCaptions: {
+        type: 'transcript',
+        mediaId: 'media-1',
+        enabled: true,
+        updatedAt: 1,
+        cues: [{ id: 'attached-old', startSeconds: 0, endSeconds: 2, text: 'Hello there' }],
+        style: { color: '#ffcc00' },
+      },
     }
     const initialTracks = [
       makeTrack('track-top', 0),
@@ -206,6 +214,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
     const setTracks = vi.fn()
     const removeItems = vi.fn()
     const addItems = vi.fn()
+    const updateItem = vi.fn()
 
     useTimelineStoreGetStateMock.mockReturnValue({
       fps: 30,
@@ -218,6 +227,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       setTracks,
       removeItems,
       addItems,
+      updateItem,
     })
 
     const transcript: MediaTranscript = {
@@ -248,7 +258,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       (track) => !initialTracks.some((existing) => existing.id === track.id),
     )
     expect(captionTrack).toBeDefined()
-    expect(captionTrack?.order).toBe(0.5)
+    expect(captionTrack?.order).toBe(-1)
 
     expect(addItems).toHaveBeenCalledTimes(1)
     const insertedItems = addItems.mock.calls[0]![0] as TimelineItem[]
@@ -263,11 +273,13 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
         clipId: 'clip-1',
       },
       cues: [{ text: 'Hello there' }],
+      color: '#ffcc00',
     })
     const insertedCue = insertedItems[0]?.type === 'subtitle' ? insertedItems[0].cues[0] : undefined
     expect(insertedCue?.startSeconds).toBeCloseTo(0)
     expect(insertedCue?.endSeconds).toBeCloseTo(2)
     expect(removeItems).not.toHaveBeenCalled()
+    expect(updateItem).toHaveBeenCalledWith('clip-1', { transcriptCaptions: undefined })
   })
 
   it('does not reuse an audio track when regenerating transcript captions', async () => {
@@ -348,7 +360,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       (track) => !initialTracks.some((existing) => existing.id === track.id),
     )
     expect(captionTrack).toBeDefined()
-    expect(captionTrack?.kind).toBe('video')
+    expect(captionTrack?.kind).toBe('subtitle')
 
     expect(addItems).toHaveBeenCalledTimes(1)
     const insertedItems = addItems.mock.calls[0]![0] as TimelineItem[]
@@ -448,14 +460,18 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       insertedItemCount: 1,
       removedItemCount: 1,
     })
-    expect(setTracks).not.toHaveBeenCalled()
+    expect(setTracks).toHaveBeenCalledTimes(1)
+    const updatedTracks = (setTracks.mock.calls[0]?.[0] ?? []) as TimelineTrack[]
+    expect(
+      updatedTracks.some((track) => track.kind === 'subtitle'),
+    ).toBe(true)
     expect(removeTimelineItemsExactMock).toHaveBeenCalledWith(['transcript-old'])
     expect(removeItems).not.toHaveBeenCalled()
     const insertedItems = addItems.mock.calls[0]![0] as TimelineItem[]
     expect(insertedItems).toHaveLength(1)
     expect(insertedItems[0]).toMatchObject({
       type: 'subtitle',
-      trackId: 'track-captions',
+      trackId: expect.stringMatching(/^track-captions-/),
       linkedGroupId: 'linked-av-1',
       source: {
         type: 'transcript',

@@ -260,14 +260,14 @@ export function useTimelineItemActions({
             store.setTranscriptStatus(mediaId, 'ready')
             store.clearTranscriptProgress(mediaId)
           }
-          const result = await mediaTranscriptionService.enableTranscriptCaptions(mediaId, {
+          const result = await mediaTranscriptionService.insertTranscriptAsCaptions(mediaId, {
             clipIds: [clipId],
             replaceExisting,
           })
 
           const modelLabel = getMediaTranscriptionModelLabel(model)
           const successMessage = replaceExisting
-            ? result.updatedClipCount > 0
+            ? result.insertedItemCount > 0
               ? result.removedItemCount > 0
                 ? i18n.t('timeline.captions.updatedWithModel', { model: modelLabel })
                 : i18n.t('timeline.captions.refreshedWithModel', { model: modelLabel })

@@ -142,6 +142,10 @@ export const Timeline = memo(function Timeline({
     () => visibleTracks.filter((track) => getTrackKind(track) === 'video'),
     [visibleTracks],
   )
+  const subtitleTracks = useMemo(
+    () => visibleTracks.filter((track) => getTrackKind(track) === 'subtitle'),
+    [visibleTracks],
+  )
   const audioTracks = useMemo(
     () => visibleTracks.filter((track) => getTrackKind(track) === 'audio'),
     [visibleTracks],
@@ -572,20 +576,22 @@ export const Timeline = memo(function Timeline({
   }, [activeTrackId, removeTracks, selectedTrackIds, syncTrackSelectionAfterRemoval, tracks])
 
   const videoDropIndicatorIndex =
-    isTrackDragging && dropIndicatorIndex >= 0 && dropIndicatorIndex <= videoTracks.length
-      ? dropIndicatorIndex
+    isTrackDragging &&
+    dropIndicatorIndex >= subtitleTracks.length &&
+    dropIndicatorIndex <= subtitleTracks.length + videoTracks.length
+      ? dropIndicatorIndex - subtitleTracks.length
       : -1
   const audioDropIndicatorIndex =
     isTrackDragging &&
-    dropIndicatorIndex >= videoTracks.length &&
+    dropIndicatorIndex >= subtitleTracks.length + videoTracks.length &&
     dropIndicatorIndex <= visibleTracks.length
-      ? dropIndicatorIndex - videoTracks.length
+      ? dropIndicatorIndex - subtitleTracks.length - videoTracks.length
       : -1
 
   const renderTrackHeadersSection = (
     sectionTracks: typeof visibleTracks,
     options: {
-      section: 'video' | 'audio'
+      section: 'subtitle' | 'video' | 'audio'
       zoneHeight: number
       dropIndicatorLocalIndex: number
       firstTrackFrame: 'with-top-divider' | 'regular'
@@ -810,11 +816,17 @@ export const Timeline = memo(function Timeline({
                 className="h-full overflow-hidden"
               >
                 <div className="relative min-h-full">
+                  {renderTrackHeadersSection(subtitleTracks, {
+                    section: 'subtitle',
+                    zoneHeight: 0,
+                    dropIndicatorLocalIndex: -1,
+                    firstTrackFrame: 'with-top-divider',
+                  })}
                   {renderTrackHeadersSection(videoTracks, {
                     section: 'video',
                     zoneHeight: videoZoneHeight,
                     dropIndicatorLocalIndex: videoDropIndicatorIndex,
-                    firstTrackFrame: 'with-top-divider',
+                    firstTrackFrame: subtitleTracks.length > 0 ? 'regular' : 'with-top-divider',
                   })}
                   {renderTrackHeadersSection(audioTracks, {
                     section: 'audio',

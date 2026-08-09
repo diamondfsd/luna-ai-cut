@@ -59,7 +59,7 @@ export interface ProjectTimeline {
   tracks: Array<{
     id: string
     name: string
-    kind?: 'video' | 'audio'
+    kind?: 'video' | 'audio' | 'subtitle'
     height: number
     locked: boolean
     syncLock?: boolean
@@ -94,6 +94,7 @@ export interface ProjectTimeline {
         | 'composition'
         | 'adjustment'
         | 'controller'
+        | 'subtitle'
       // Type-specific fields stored as optional for flexibility
       src?: string
       thumbnailUrl?: string
