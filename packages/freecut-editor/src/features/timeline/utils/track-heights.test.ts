@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vite-plus/test'
 import { useEditorStore } from '@freecut/shared/state/editor'
-import { COMPACT_TRACK_HEIGHT, DEFAULT_TRACK_HEIGHT, MAX_TRACK_HEIGHT } from '../constants'
+import {
+  COMPACT_TRACK_HEIGHT,
+  DEFAULT_TRACK_HEIGHT,
+  MAX_TRACK_HEIGHT,
+  SUBTITLE_TRACK_HEIGHT,
+} from '../constants'
 import {
   clearAllTrackHeightOverrides,
   clearTrackHeightOverride,
@@ -23,6 +28,14 @@ describe('track-heights', () => {
 
     useEditorStore.getState().setTrackSizePreset('compact')
     expect(resolveTrackHeight('v1')).toBe(COMPACT_TRACK_HEIGHT)
+  })
+
+  it('keeps subtitle tracks compact regardless of the media track preset', () => {
+    expect(resolveTrackHeight('s1', 'subtitle')).toBe(SUBTITLE_TRACK_HEIGHT)
+
+    setTrackHeightOverride('s1', MAX_TRACK_HEIGHT)
+    useEditorStore.getState().setTrackSizePreset('large')
+    expect(resolveTrackHeight('s1', 'subtitle')).toBe(SUBTITLE_TRACK_HEIGHT)
   })
 
   it('clamps overrides into the supported range', () => {

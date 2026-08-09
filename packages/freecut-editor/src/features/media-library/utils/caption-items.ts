@@ -954,9 +954,6 @@ export function buildSubtitleSegmentForClip(
           ? source.fileName
           : 'Transcript'),
     mediaId: clip.mediaId,
-    // Tie the segment to the clip's A/V link group so move/delete/copy on the
-    // pair pulls the subtitle along (and re-extracts inherit the group too).
-    linkedGroupId: clip.linkedGroupId,
     sourceLabel: label,
     source,
     cues: segmentRelativeCues,
@@ -1116,14 +1113,6 @@ export function consolidateCaptionTextItemsToSegments(
     const segmentFrom = first.from
     const segmentEnd = last.from + last.durationInFrames
 
-    // Inherit the source clip's linkedGroupId so the consolidated segment
-    // tracks with the A/V pair, matching the fresh-extract path.
-    const sourceClip = items.find(
-      (candidate) =>
-        (candidate.type === 'video' || candidate.type === 'audio') && candidate.id === clipId,
-    )
-    const linkedGroupId = sourceClip?.linkedGroupId
-
     const sampleSource = first.captionSource
     const segmentSource: import('@freecut/types/timeline').SubtitleSegmentSource =
       sampleSource.type === 'embedded-subtitles'
@@ -1164,7 +1153,6 @@ export function consolidateCaptionTextItemsToSegments(
       durationInFrames: Math.max(1, segmentEnd - segmentFrom),
       label: first.label,
       mediaId: first.mediaId,
-      linkedGroupId,
       source: segmentSource,
       cues,
       fontSize: first.fontSize,

@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import {
   createTextTemplateItem,
+  createClassicTrack,
   findCompatibleTrackForItemType,
   findNearestAvailableSpace,
   getDefaultGeneratedLayerDurationInFrames,
@@ -200,17 +201,22 @@ const addTitle = defineTool({
   schema: z.object({ text: z.string().min(1).max(300), atSeconds: z.number().min(0).optional() }),
   summarize: (args) => `Add title: "${args.text.slice(0, 40)}"`,
   execute: (args) => {
-    const { tracks, items, fps, addItem } = useTimelineStore.getState()
+    const { tracks, items, fps, addItem, addItemOnNewTrack } = useTimelineStore.getState()
     const { activeTrackId, selectItems } = useSelectionStore.getState()
     const currentProject = useProjectStore.getState().currentProject
 
-    const targetTrack = findCompatibleTrackForItemType({
+    let targetTrack = findCompatibleTrackForItemType({
       tracks,
       items,
       itemType: 'text',
       preferredTrackId: activeTrackId,
     })
-    if (!targetTrack) throw new Error('No available track for a text layer.')
+    let nextTracks: typeof tracks | null = null
+    if (!targetTrack) {
+      const minOrder = tracks.reduce((lowest, track) => Math.min(lowest, track.order), 0)
+      targetTrack = createClassicTrack({ tracks, kind: 'subtitle', order: minOrder - 1 })
+      nextTracks = [...tracks, targetTrack]
+    }
 
     const durationInFrames = getDefaultGeneratedLayerDurationInFrames(fps)
     const proposed =
@@ -232,7 +238,8 @@ const addTitle = defineTool({
       text: args.text,
     })
 
-    addItem(textItem)
+    if (nextTracks) addItemOnNewTrack(textItem, nextTracks)
+    else addItem(textItem)
     if (useTimelineStore.getState().items.some((item) => item.id === textItem.id)) {
       selectItems([textItem.id])
     }

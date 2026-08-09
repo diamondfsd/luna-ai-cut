@@ -159,8 +159,7 @@ function captureCurrentTimeline(compositionId: string | null): StashedTimeline {
 
 /** Restore a stashed timeline into the domain stores. */
 function restoreTimeline(stash: StashedTimeline) {
-  useItemsStore.getState().setItems(stash.items)
-  useItemsStore.getState().setTracks(stash.tracks)
+  useItemsStore.getState().setItemsAndTracks(stash.items, stash.tracks)
   useTransitionsStore.getState().setTransitions(stash.transitions)
   useKeyframesStore.getState().setKeyframes(stash.keyframes)
   useSelectionStore.getState().clearSelection()
@@ -204,8 +203,7 @@ function loadComposition(compositionId: string): boolean {
   const subComp = useCompositionsStore.getState().getComposition(compositionId)
   if (!subComp) return false
 
-  useItemsStore.getState().setItems(subComp.items)
-  useItemsStore.getState().setTracks(subComp.tracks)
+  useItemsStore.getState().setItemsAndTracks(subComp.items, subComp.tracks)
   useTransitionsStore.getState().setTransitions(subComp.transitions ?? [])
   useKeyframesStore.getState().setKeyframes(subComp.keyframes ?? [])
   useSelectionStore.getState().clearSelection()

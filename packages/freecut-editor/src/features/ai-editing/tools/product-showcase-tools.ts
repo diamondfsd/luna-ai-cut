@@ -5,7 +5,7 @@ import {
   addItemsOnNewTracks,
   applyMotionModifierToItems,
   applyTextMotionEffect,
-  createOverlayLayerTrack,
+  createClassicTrack,
   createTextTemplateItem,
   removeItems,
 } from '@freecut/features/editor/deps/timeline-contract'
@@ -99,8 +99,15 @@ const buildProductShowcase = defineAiEditingTool({
       },
     })))
 
-    const overlay = createOverlayLayerTrack({ tracks: timeline.tracks, activeTrackId: null })
-    if (!overlay) return { ok: false, message: '无法为短片文字创建图层。' }
+    const minOrder = timeline.tracks.reduce(
+      (lowest, track) => Math.min(lowest, track.order),
+      0,
+    )
+    const textTrack = createClassicTrack({
+      tracks: timeline.tracks,
+      kind: 'subtitle',
+      order: minOrder - 1,
+    })
     const project = useProjectStore.getState().currentProject
     const canvasWidth = project?.metadata.width ?? DEFAULT_PROJECT_WIDTH
     const canvasHeight = project?.metadata.height ?? DEFAULT_PROJECT_HEIGHT
@@ -110,11 +117,11 @@ const buildProductShowcase = defineAiEditingTool({
     const firstDuration = Math.max(1, Math.round(total * 0.28))
     const secondDuration = Math.max(1, Math.round(total * 0.44))
     const titleItems = [
-      titleItem({ trackId: overlay.trackId, from: start, durationInFrames: firstDuration, text: args.headline, label: '开场', canvasWidth, canvasHeight, fps }),
-      titleItem({ trackId: overlay.trackId, from: start + firstDuration, durationInFrames: secondDuration, text: args.detail, label: '展示重点', canvasWidth, canvasHeight, fps }),
-      titleItem({ trackId: overlay.trackId, from: start + firstDuration + secondDuration, durationInFrames: Math.max(1, end - (start + firstDuration + secondDuration)), text: args.ending, label: '收尾', canvasWidth, canvasHeight, fps }),
+      titleItem({ trackId: textTrack.id, from: start, durationInFrames: firstDuration, text: args.headline, label: '开场', canvasWidth, canvasHeight, fps }),
+      titleItem({ trackId: textTrack.id, from: start + firstDuration, durationInFrames: secondDuration, text: args.detail, label: '展示重点', canvasWidth, canvasHeight, fps }),
+      titleItem({ trackId: textTrack.id, from: start + firstDuration + secondDuration, durationInFrames: Math.max(1, end - (start + firstDuration + secondDuration)), text: args.ending, label: '收尾', canvasWidth, canvasHeight, fps }),
     ]
-    addItemsOnNewTracks(titleItems, overlay.tracks)
+    addItemsOnNewTracks(titleItems, [...timeline.tracks, textTrack])
     applyTextMotionEffect(titleItems.map((item) => item.id), 'in', createTextMotionEffect('fade-up'))
 
     return {

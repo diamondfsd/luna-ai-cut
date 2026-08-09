@@ -472,13 +472,13 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
     expect(insertedItems[0]).toMatchObject({
       type: 'subtitle',
       trackId: expect.stringMatching(/^track-captions-/),
-      linkedGroupId: 'linked-av-1',
       source: {
         type: 'transcript',
         mediaId: 'media-1',
         clipId: 'clip-1',
       },
     })
+    expect(insertedItems[0]?.linkedGroupId).toBeUndefined()
     if (insertedItems[0]?.type === 'subtitle') {
       expect(insertedItems[0].cues.map((cue) => cue.text)).toEqual(['Fresh one', 'Fresh two'])
     }

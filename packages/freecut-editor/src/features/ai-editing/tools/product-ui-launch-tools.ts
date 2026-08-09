@@ -5,7 +5,7 @@ import {
   addItemsOnNewTracks,
   applyMotionModifierToItems,
   applyTextMotionEffect,
-  createOverlayLayerTrack,
+  createClassicTrack,
   createTextTemplateItem,
   getTrackKind,
   removeItems,
@@ -87,8 +87,13 @@ async function compileProductUiLaunch(blueprint: ProductUiLaunchBlueprint) {
     modifier: motionForShot(index, blueprint.shots[index]!.camera),
   })))
 
-  const overlay = createOverlayLayerTrack({ tracks: useTimelineStore.getState().tracks, activeTrackId: null })
-  if (!overlay) return { ok: false as const, message: '无法为界面短片创建文字图层。' }
+  const currentTracks = useTimelineStore.getState().tracks
+  const minOrder = currentTracks.reduce((lowest, track) => Math.min(lowest, track.order), 0)
+  const textTrack = createClassicTrack({
+    tracks: currentTracks,
+    kind: 'subtitle',
+    order: minOrder - 1,
+  })
   const project = useProjectStore.getState().currentProject
   const canvasWidth = project?.metadata.width ?? DEFAULT_PROJECT_WIDTH
   const canvasHeight = project?.metadata.height ?? DEFAULT_PROJECT_HEIGHT
@@ -98,7 +103,7 @@ async function compileProductUiLaunch(blueprint: ProductUiLaunchBlueprint) {
     if (!caption) return []
     return [createTextTemplateItem({
       placement: {
-        trackId: overlay.trackId,
+        trackId: textTrack.id,
         from: item.from,
         durationInFrames: item.durationInFrames,
         canvasWidth,
@@ -110,7 +115,7 @@ async function compileProductUiLaunch(blueprint: ProductUiLaunchBlueprint) {
       textStylePresetId: 'clean-title',
     })]
   })
-  addItemsOnNewTracks(titleItems, overlay.tracks)
+  addItemsOnNewTracks(titleItems, [...currentTracks, textTrack])
   applyTextMotionEffect(titleItems.map((item) => item.id), 'in', createTextMotionEffect('fade-up'))
 
   return {

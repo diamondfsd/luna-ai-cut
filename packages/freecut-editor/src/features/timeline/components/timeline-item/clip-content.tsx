@@ -538,15 +538,11 @@ const StaticClipContent = memo(function StaticClipContent({ item }: { item: Time
   }
 
   if (item.type === 'subtitle') {
-    const cueCount = item.cues.length
     const firstCueText = item.cues[0]?.text ?? ''
     return (
-      <div className="absolute inset-0 flex flex-col px-2 py-1 overflow-hidden">
-        <div className="text-[10px] text-muted-foreground truncate">
-          {`Subtitles · ${cueCount} cue${cueCount === 1 ? '' : 's'}`}
-        </div>
-        <div className="text-xs font-medium truncate flex-1">
-          {firstCueText || item.label || 'Subtitles'}
+      <div className="absolute inset-0 flex items-center overflow-hidden px-2">
+        <div className="truncate text-xs font-medium">
+          {firstCueText}
         </div>
       </div>
     )

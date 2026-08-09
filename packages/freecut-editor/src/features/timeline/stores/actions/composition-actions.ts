@@ -1541,8 +1541,7 @@ export function repairCompositeCompositionEditorialLeak(params: {
   })
 
   if (useCompositionNavigationStore.getState().activeCompositionId === params.compositionId) {
-    useItemsStore.getState().setItems(items)
-    useItemsStore.getState().setTracks(tracks)
+    useItemsStore.getState().setItemsAndTracks(items, tracks)
     useTransitionsStore.getState().setTransitions(transitions)
     useKeyframesStore.getState().setKeyframes(keyframes)
   }

@@ -13,7 +13,11 @@
  * so a drag gesture doesn't write once per mousemove.
  */
 import { useEditorStore } from '@freecut/shared/state/editor'
-import { COLLAPSED_TRACK_HEIGHT, TRACK_SIZE_PRESET_HEIGHTS } from '../constants'
+import {
+  COLLAPSED_TRACK_HEIGHT,
+  SUBTITLE_TRACK_HEIGHT,
+  TRACK_SIZE_PRESET_HEIGHTS,
+} from '../constants'
 import { clampTrackHeight } from './track-resize'
 
 const OVERRIDES_KEY_PREFIX = 'editor:trackHeights:'
@@ -65,7 +69,11 @@ export function getPresetTrackHeight(): number {
     : TRACK_SIZE_PRESET_HEIGHTS[state.trackSizePreset]
 }
 
-export function resolveTrackHeight(trackId: string): number {
+export function resolveTrackHeight(
+  trackId: string,
+  trackKind?: 'video' | 'audio' | 'subtitle' | null,
+): number {
+  if (trackKind === 'subtitle') return SUBTITLE_TRACK_HEIGHT
   if (useEditorStore.getState().trackPreviewCollapsed) return COLLAPSED_TRACK_HEIGHT
   return overrides.get(trackId) ?? getPresetTrackHeight()
 }
