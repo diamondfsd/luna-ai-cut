@@ -2,7 +2,6 @@ import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { resolveMediaUrl, useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import {
-  createOverlayLayerTrack,
   createClassicTrack,
   createTextTemplateItem,
   getTrackKind,
@@ -23,7 +22,6 @@ import type {
   EditProgram,
   EditProgramDiff,
 } from './types'
-import { resolveImplicitTextTrack } from './implicit-text-track'
 
 interface CompiledTransition {
   between: [string, string]
@@ -167,12 +165,13 @@ export function compileVisualState(params: {
 
 function assertTrackCompatibility(
   trackId: string,
-  type: 'video' | 'audio' | 'image' | 'subtitle',
+  type: 'video' | 'audio' | 'image' | 'text' | 'subtitle',
 ): void {
   const track = useTimelineStore.getState().tracks.find((candidate) => candidate.id === trackId)
   if (!track || track.isGroup) throw new Error('编辑程序引用了不存在的轨道。')
   if (track.locked) throw new Error(`轨道“${track.name}”已锁定。`)
-  const expected = type === 'audio' ? 'audio' : type === 'subtitle' ? 'subtitle' : 'video'
+  const expected =
+    type === 'audio' ? 'audio' : type === 'text' || type === 'subtitle' ? 'subtitle' : 'video'
   if (getTrackKind(track) !== expected) throw new Error(`素材不能放入轨道“${track.name}”。`)
 }
 
@@ -317,11 +316,6 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
   const refs = new Map<string, string>(timeline.items.map((item) => [clipRef(item.id), item.id]))
   const touchedIds = new Set<string>()
   const changedRanges: EditProgramDiff['changedRanges'] = []
-  const originalTextTrackIds = new Set(
-    timeline.items
-      .filter((item) => item.type === 'text' || item.type === 'subtitle')
-      .map((item) => item.trackId),
-  )
 
   const resolveClipId = (value: string): string => {
     const id = refs.get(value)
@@ -386,63 +380,41 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       const startFrame = secondsToFrames(operation.text.start, fps)
       const durationInFrames = Math.max(1, secondsToFrames(operation.text.duration, fps))
       let textTrackId: string
-      if (operation.text.role === 'caption') {
-        if (operation.text.trackRef) {
-          textTrackId = idFromAgentRef(operation.text.trackRef, 'track')
-          assertTrackCompatibility(textTrackId, 'subtitle')
-        } else {
-          const endFrame = startFrame + durationInFrames
-          const reusableTrack = virtualTracks
-            .filter(
-              (track) =>
-                !track.isGroup &&
-                !track.locked &&
-                track.visible !== false &&
-                getTrackKind(track) === 'subtitle',
-            )
-            .find((track) =>
-              virtualItems.every(
-                (item) =>
-                  item.trackId !== track.id ||
-                  item.from + item.durationInFrames <= startFrame ||
-                  item.from >= endFrame,
-              ),
-            )
-          if (reusableTrack) {
-            textTrackId = reusableTrack.id
-          } else {
-            const minOrder = virtualTracks.reduce(
-              (lowest, track) => Math.min(lowest, track.order),
-              0,
-            )
-            const subtitleTrack = createClassicTrack({
-              tracks: virtualTracks,
-              kind: 'subtitle',
-              order: minOrder - 1,
-            })
-            virtualTracks = [...virtualTracks, subtitleTrack]
-            textTrackId = subtitleTrack.id
-          }
-        }
-      } else if (operation.text.trackRef) {
+      if (operation.text.trackRef) {
         textTrackId = idFromAgentRef(operation.text.trackRef, 'track')
-        assertTrackCompatibility(textTrackId, 'video')
+        assertTrackCompatibility(textTrackId, 'text')
       } else {
-        const reusableTrack = resolveImplicitTextTrack({
-          tracks: virtualTracks,
-          items: virtualItems,
-          originalTextTrackIds,
-          startFrame,
-          endFrame: startFrame + durationInFrames,
-        })
+        const endFrame = startFrame + durationInFrames
+        const reusableTrack = virtualTracks
+          .filter(
+            (track) =>
+              !track.isGroup &&
+              !track.locked &&
+              track.visible !== false &&
+              getTrackKind(track) === 'subtitle',
+          )
+          .find((track) =>
+            virtualItems.every(
+              (item) =>
+                item.trackId !== track.id ||
+                item.from + item.durationInFrames <= startFrame ||
+                item.from >= endFrame,
+            ),
+          )
         if (reusableTrack) {
-          textTrackId = reusableTrack.trackId
-          virtualTracks = reusableTrack.tracks
+          textTrackId = reusableTrack.id
         } else {
-          const overlay = createOverlayLayerTrack({ tracks: virtualTracks, activeTrackId: null })
-          if (!overlay) throw new Error('无法为文字创建画面轨道。')
-          textTrackId = overlay.trackId
-          virtualTracks = overlay.tracks
+          const minOrder = virtualTracks.reduce(
+            (lowest, track) => Math.min(lowest, track.order),
+            0,
+          )
+          const textTrack = createClassicTrack({
+            tracks: virtualTracks,
+            kind: 'subtitle',
+            order: minOrder - 1,
+          })
+          virtualTracks = [...virtualTracks, textTrack]
+          textTrackId = textTrack.id
         }
       }
       const textItem = createTextTemplateItem({
@@ -504,7 +476,11 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       const nextTrackId = operation.changes.trackRef
         ? idFromAgentRef(operation.changes.trackRef, 'track')
         : item.trackId
-      assertTrackCompatibility(nextTrackId, item.type === 'audio' ? 'audio' : 'video')
+      const compatibilityType =
+        item.type === 'audio' || item.type === 'text' || item.type === 'subtitle'
+          ? item.type
+          : 'video'
+      assertTrackCompatibility(nextTrackId, compatibilityType)
       const next: Partial<TimelineItem> = {
         ...(operation.changes.start !== undefined ? { from: secondsToFrames(operation.changes.start, fps) } : {}),
         ...(operation.changes.duration !== undefined

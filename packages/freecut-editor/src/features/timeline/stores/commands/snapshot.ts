@@ -124,8 +124,7 @@ export function captureSnapshot(): TimelineSnapshot {
  */
 export function restoreSnapshot(snapshot: TimelineSnapshot): void {
   // Restore items and tracks
-  useItemsStore.getState().setItems(snapshot.items)
-  useItemsStore.getState().setTracks(snapshot.tracks)
+  useItemsStore.getState().setItemsAndTracks(snapshot.items, snapshot.tracks)
 
   // Restore transitions
   useTransitionsStore.getState().setTransitions(snapshot.transitions)

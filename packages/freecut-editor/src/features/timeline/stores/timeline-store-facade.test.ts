@@ -99,7 +99,7 @@ vi.mock('@freecut/shared/projects/migrations', () => ({
 
 // Import stores and facade after mocks
 import { useItemsStore } from './items-store'
-import { DEFAULT_TRACK_HEIGHT } from '../constants'
+import { DEFAULT_TRACK_HEIGHT, SUBTITLE_TRACK_HEIGHT } from '../constants'
 import { useTransitionsStore } from './transitions-store'
 import { useKeyframesStore } from './keyframes-store'
 import { useMarkersStore } from './markers-store'
@@ -263,6 +263,27 @@ describe('TimelineStoreFacade', () => {
 
       // Height is a local view preference, so the stored 80 is discarded.
       expect(useItemsStore.getState().tracks).toEqual([{ ...track, height: DEFAULT_TRACK_HEIGHT }])
+    })
+
+    it('maps subtitle tracks to the compact subtitle height', () => {
+      const track = {
+        id: 'subtitle-track-1',
+        name: 'S1',
+        kind: 'subtitle' as const,
+        height: DEFAULT_TRACK_HEIGHT,
+        locked: false,
+        visible: true,
+        muted: false,
+        solo: false,
+        order: -1,
+        items: [],
+      }
+
+      useTimelineStore.setState({ tracks: [track] })
+
+      expect(useItemsStore.getState().tracks).toEqual([
+        { ...track, height: SUBTITLE_TRACK_HEIGHT },
+      ])
     })
 
     it('maps fps to settings store', () => {

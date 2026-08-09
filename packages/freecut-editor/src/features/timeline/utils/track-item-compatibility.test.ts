@@ -2,7 +2,10 @@
 
 import { describe, expect, it } from 'vite-plus/test'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
-import { findCompatibleTrackForItemType } from './track-item-compatibility'
+import {
+  assertItemTrackCompatibility,
+  findCompatibleTrackForItemType,
+} from './track-item-compatibility'
 
 function makeTrack(id: string, order: number, kind: 'video' | 'audio' | 'subtitle'): TimelineTrack {
   return {
@@ -41,8 +44,12 @@ describe('findCompatibleTrackForItemType', () => {
     ).toBeNull()
   })
 
-  it('can fall back to a compatible track by default', () => {
-    const tracks = [makeTrack('video-1', 0, 'video'), makeTrack('audio-1', 1, 'audio')]
+  it('only places plain text on dedicated text tracks', () => {
+    const tracks = [
+      makeTrack('subtitle-1', -1, 'subtitle'),
+      makeTrack('video-1', 0, 'video'),
+      makeTrack('audio-1', 1, 'audio'),
+    ]
 
     expect(
       findCompatibleTrackForItemType({
@@ -51,11 +58,15 @@ describe('findCompatibleTrackForItemType', () => {
         itemType: 'text',
         preferredTrackId: 'audio-1',
       })?.id,
-    ).toBe('video-1')
+    ).toBe('subtitle-1')
   })
 
   it('does not fall back when strict preferred track matching is requested', () => {
-    const tracks = [makeTrack('video-1', 0, 'video'), makeTrack('audio-1', 1, 'audio')]
+    const tracks = [
+      makeTrack('subtitle-1', -1, 'subtitle'),
+      makeTrack('video-1', 0, 'video'),
+      makeTrack('audio-1', 1, 'audio'),
+    ]
 
     expect(
       findCompatibleTrackForItemType({
@@ -68,6 +79,25 @@ describe('findCompatibleTrackForItemType', () => {
     ).toBeNull()
   })
 
+  it('rejects plain text on a video track at the data boundary', () => {
+    const item = {
+      id: 'text-1',
+      type: 'text',
+      trackId: 'video-1',
+      from: 0,
+      durationInFrames: 30,
+      label: 'Title',
+      text: 'Title',
+    } as TimelineItem
+
+    expect(() => assertItemTrackCompatibility(item, [makeTrack('video-1', 0, 'video')]))
+      .toThrow('文字不能放在“video-1”轨道。')
+    expect(() => assertItemTrackCompatibility(
+      { ...item, trackId: 'subtitle-1' },
+      [makeTrack('subtitle-1', -1, 'subtitle')],
+    )).not.toThrow()
+  })
+
   it('treats hidden tracks as compatible by default', () => {
     const tracks = [
       { ...makeTrack('video-1', 0, 'video'), visible: false },
@@ -78,7 +108,7 @@ describe('findCompatibleTrackForItemType', () => {
       findCompatibleTrackForItemType({
         tracks,
         items: [] as TimelineItem[],
-        itemType: 'text',
+        itemType: 'image',
         preferredTrackId: 'video-1',
         allowPreferredTrackFallback: false,
       })?.id,
@@ -95,7 +125,7 @@ describe('findCompatibleTrackForItemType', () => {
       findCompatibleTrackForItemType({
         tracks,
         items: [] as TimelineItem[],
-        itemType: 'text',
+        itemType: 'image',
         preferredTrackId: 'video-1',
         includeHidden: false,
       })?.id,

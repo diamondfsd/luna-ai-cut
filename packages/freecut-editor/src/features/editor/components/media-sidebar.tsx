@@ -45,6 +45,7 @@ import {
   createDefaultGradientItem,
   createDefaultShapeItem,
   createDefaultSolidColorItem,
+  createClassicTrack,
   createOverlayLayerTrack,
   createTextTemplateItem,
   getDefaultGeneratedLayerDurationInFrames,
@@ -390,15 +391,12 @@ export const MediaSidebar = memo(function MediaSidebar() {
     (presetId?: (typeof TEXT_STYLE_PRESETS)[number]['id']) => {
       // Read all needed state from stores directly to avoid subscriptions
       const { tracks, fps, addItemOnNewTrack } = useTimelineStore.getState()
-      const { activeTrackId, selectItems, setActiveTrack } = useSelectionStore.getState()
+      const { selectItems, setActiveTrack } = useSelectionStore.getState()
       const currentProject = useProjectStore.getState().currentProject
 
-      const newTrack = createOverlayLayerTrack({ tracks, activeTrackId })
-
-      if (!newTrack) {
-        logger.warn('No available track for text item')
-        return
-      }
+      const minOrder = tracks.reduce((lowest, track) => Math.min(lowest, track.order), 0)
+      const textTrack = createClassicTrack({ tracks, kind: 'subtitle', order: minOrder - 1 })
+      const nextTracks = [...tracks, textTrack]
 
       const durationInFrames = getDefaultGeneratedLayerDurationInFrames(fps)
 
@@ -411,7 +409,7 @@ export const MediaSidebar = memo(function MediaSidebar() {
         : undefined
       const textItem: TextItem = createTextTemplateItem({
         placement: {
-          trackId: newTrack.trackId,
+          trackId: textTrack.id,
           from: Math.max(0, usePlaybackStore.getState().currentFrame),
           durationInFrames,
           canvasWidth,
@@ -423,8 +421,8 @@ export const MediaSidebar = memo(function MediaSidebar() {
         textStylePresetId: presetId,
       })
 
-      addItemOnNewTrack(textItem, newTrack.tracks)
-      setActiveTrack(newTrack.trackId)
+      addItemOnNewTrack(textItem, nextTracks)
+      setActiveTrack(textTrack.id)
       selectItems([textItem.id])
     },
     [t],

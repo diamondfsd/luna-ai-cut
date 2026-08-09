@@ -128,6 +128,9 @@ export interface ProjectTimeline {
         format?: 'srt' | 'vtt'
         importedAt?: number
       }
+      sourceLabel?: string
+      source?: import('./timeline').SubtitleSegmentSource
+      cues?: import('./timeline').SubtitleSegmentCue[]
       textStylePresetId?: TextStylePresetId
       textStyleScale?: number
       textSpans?: TextSpan[]

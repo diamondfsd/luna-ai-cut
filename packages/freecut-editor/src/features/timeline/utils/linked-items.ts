@@ -36,16 +36,25 @@ export function getLinkedItemIds(items: TimelineItem[], itemId: string): string[
 
 export function getAttachedCaptionItemIds(items: TimelineItem[], itemId: string): string[] {
   const anchor = items.find((item) => item.id === itemId)
-  if (!anchor || anchor.type === 'text') {
+  if (!anchor || anchor.type === 'text' || anchor.type === 'subtitle') {
     return []
   }
 
   return items
     .filter(
-      (item) =>
-        item.type === 'text' &&
-        (item.textRole === 'caption' || item.captionSource !== undefined) &&
-        item.captionSource?.clipId === anchor.id,
+      (item) => {
+        if (item.type === 'subtitle') {
+          return (
+            (item.source.type === 'transcript' || item.source.type === 'embedded-subtitles') &&
+            item.source.clipId === anchor.id
+          )
+        }
+        return (
+          item.type === 'text' &&
+          (item.textRole === 'caption' || item.captionSource !== undefined) &&
+          item.captionSource?.clipId === anchor.id
+        )
+      },
     )
     .map((item) => item.id)
 }

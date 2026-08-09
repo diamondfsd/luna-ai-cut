@@ -298,11 +298,18 @@ function createTimelineStoreFacade(): TimelineStoreFacade {
       ('fps' in partial && partial.fps !== undefined)
 
     // Map partial state to appropriate domain stores
-    if ('items' in partial && partial.items !== undefined) {
-      useItemsStore.getState().setItems(partial.items)
-    }
-    if ('tracks' in partial && partial.tracks !== undefined) {
-      useItemsStore.getState().setTracks(partial.tracks)
+    if (
+      'items' in partial && partial.items !== undefined &&
+      'tracks' in partial && partial.tracks !== undefined
+    ) {
+      useItemsStore.getState().setItemsAndTracks(partial.items, partial.tracks)
+    } else {
+      if ('items' in partial && partial.items !== undefined) {
+        useItemsStore.getState().setItems(partial.items)
+      }
+      if ('tracks' in partial && partial.tracks !== undefined) {
+        useItemsStore.getState().setTracks(partial.tracks)
+      }
     }
     if ('transitions' in partial && partial.transitions !== undefined) {
       useTransitionsStore.getState().setTransitions(partial.transitions)

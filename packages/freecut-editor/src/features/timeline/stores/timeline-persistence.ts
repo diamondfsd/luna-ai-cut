@@ -1127,8 +1127,10 @@ export async function hydrateTimelineStoresFromProject(project: Project): Promis
     const hydratedItems = await reverseConformService.hydrateItems(
       (t.items || []) as TimelineItem[],
     )
-    useItemsStore.getState().setTracks(sortedTracks as TimelineTrack[])
-    useItemsStore.getState().setItems(hydratedItems)
+    useItemsStore.getState().setItemsAndTracks(
+      hydratedItems,
+      sortedTracks as TimelineTrack[],
+    )
     useTransitionsStore.getState().setTransitions((t.transitions || []) as Transition[])
     useKeyframesStore.getState().setKeyframes((t.keyframes || []) as ItemKeyframes[])
     useMarkersStore.getState().setMarkers(t.markers || [])
@@ -1198,8 +1200,7 @@ export async function hydrateTimelineStoresFromProject(project: Project): Promis
     logger.debug('hydrateTimelineStoresFromProject: initializing new project with default track')
 
     // Initialize with default tracks for new projects
-    useItemsStore.getState().setTracks(createDefaultClassicTracks())
-    useItemsStore.getState().setItems([])
+    useItemsStore.getState().setItemsAndTracks([], createDefaultClassicTracks())
     useTransitionsStore.getState().setTransitions([])
     useKeyframesStore.getState().setKeyframes([])
     useMarkersStore.getState().setMarkers([])

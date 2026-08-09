@@ -63,6 +63,162 @@ describe('subtitle track normalization', () => {
     )
     expect(subtitle).toMatchObject({ from: 10, durationInFrames: 60 })
   })
+
+  it('keeps linked audio and owned subtitles aligned when a title pushes video forward', () => {
+    const project = createBaseProject({
+      tracks: [
+        createTrack('subtitle-track', -1, 'subtitle'),
+        createTrack('video-track', 0, 'video'),
+        createTrack('audio-track', 1, 'audio'),
+      ],
+      items: [
+        {
+          id: 'title-1',
+          type: 'text',
+          trackId: 'video-track',
+          from: 0,
+          durationInFrames: 75,
+          label: 'Title',
+          text: 'Title',
+          color: '#fff',
+        },
+        {
+          id: 'video-1',
+          type: 'video',
+          trackId: 'video-track',
+          from: 0,
+          durationInFrames: 105,
+          label: 'Video',
+          mediaId: 'media-1',
+          src: 'video.mp4',
+          linkedGroupId: 'group-1',
+        },
+        {
+          id: 'audio-1',
+          type: 'audio',
+          trackId: 'audio-track',
+          from: 0,
+          durationInFrames: 105,
+          label: 'Audio',
+          mediaId: 'media-1',
+          src: 'video.mp4',
+          linkedGroupId: 'group-1',
+        },
+        {
+          id: 'subtitle-1',
+          type: 'subtitle',
+          trackId: 'subtitle-track',
+          from: 15,
+          durationInFrames: 60,
+          label: 'Caption',
+          linkedGroupId: 'group-1',
+          source: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
+          cues: [{ id: 'cue-1', startSeconds: 0, endSeconds: 2, text: 'Caption' }],
+          color: '#fff',
+        },
+      ],
+      transitions: [],
+      currentFrame: 0,
+      zoomLevel: 1,
+      scrollPosition: 0,
+    } as ProjectTimeline)
+
+    const migrated = migrateProject(project).project.timeline!
+    const itemById = Object.fromEntries(migrated.items.map((item) => [item.id, item]))
+
+    expect(itemById['video-1']?.from).toBe(75)
+    expect(itemById['audio-1']?.from).toBe(75)
+    expect(itemById['subtitle-1']?.from).toBe(90)
+    expect(itemById['subtitle-1']?.linkedGroupId).toBeUndefined()
+  })
+
+  it('repairs a repeated saved A/V offset without resetting an isolated manual offset', () => {
+    const linkedItems = [
+      ['1', 75, 0],
+      ['2', 180, 105],
+    ].flatMap(([suffix, videoFrom, audioFrom]) => [
+      {
+        id: `video-${suffix}`,
+        type: 'video' as const,
+        trackId: 'video-track',
+        from: Number(videoFrom),
+        durationInFrames: 105,
+        label: `Video ${suffix}`,
+        mediaId: `media-${suffix}`,
+        src: 'video.mp4',
+        linkedGroupId: `group-${suffix}`,
+      },
+      {
+        id: `audio-${suffix}`,
+        type: 'audio' as const,
+        trackId: 'audio-track',
+        from: Number(audioFrom),
+        durationInFrames: 105,
+        label: `Audio ${suffix}`,
+        mediaId: `media-${suffix}`,
+        src: 'video.mp4',
+        linkedGroupId: `group-${suffix}`,
+      },
+    ])
+    const project = createBaseProject({
+      tracks: [
+        createTrack('subtitle-track', -1, 'subtitle'),
+        createTrack('video-track', 0, 'video'),
+        createTrack('audio-track', 1, 'audio'),
+      ],
+      items: [
+        ...linkedItems,
+        {
+          id: 'subtitle-1',
+          type: 'subtitle',
+          trackId: 'subtitle-track',
+          from: 15,
+          durationInFrames: 60,
+          label: 'Caption',
+          linkedGroupId: 'group-1',
+          source: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
+          cues: [{ id: 'cue-1', startSeconds: 0, endSeconds: 2, text: 'Caption' }],
+          color: '#fff',
+        },
+        {
+          id: 'video-manual',
+          type: 'video',
+          trackId: 'video-track-2',
+          from: 30,
+          durationInFrames: 30,
+          label: 'Manual video',
+          src: 'video.mp4',
+          linkedGroupId: 'manual-group',
+        },
+        {
+          id: 'audio-manual',
+          type: 'audio',
+          trackId: 'audio-track-2',
+          from: 20,
+          durationInFrames: 30,
+          label: 'Manual audio',
+          src: 'video.mp4',
+          linkedGroupId: 'manual-group',
+        },
+      ],
+      transitions: [],
+      currentFrame: 0,
+      zoomLevel: 1,
+      scrollPosition: 0,
+    } as ProjectTimeline)
+    project.timeline!.tracks.push(
+      createTrack('video-track-2', 2, 'video'),
+      createTrack('audio-track-2', 3, 'audio'),
+    )
+
+    const migrated = migrateProject(project).project.timeline!
+    const itemById = Object.fromEntries(migrated.items.map((item) => [item.id, item]))
+
+    expect(itemById['audio-1']?.from).toBe(75)
+    expect(itemById['audio-2']?.from).toBe(180)
+    expect(itemById['subtitle-1']?.from).toBe(90)
+    expect(itemById['audio-manual']?.from).toBe(20)
+  })
 })
 
 function createBaseProject(timeline: ProjectTimeline): Project {

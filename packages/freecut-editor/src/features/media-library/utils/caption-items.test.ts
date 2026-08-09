@@ -701,7 +701,7 @@ describe('caption-items', () => {
     expect(replaceableCaptions.map((item) => item.id)).toEqual(['legacy-caption'])
   })
 
-  it('inherits the clip linkedGroupId on the built subtitle segment', () => {
+  it('keeps subtitle segments out of the source clip A/V link group', () => {
     const clip: VideoItem = {
       id: 'video-clip',
       type: 'video',
@@ -731,7 +731,7 @@ describe('caption-items', () => {
     })
 
     expect(segment).not.toBeNull()
-    expect(segment?.linkedGroupId).toBe('pair-1')
+    expect(segment?.linkedGroupId).toBeUndefined()
   })
 
   it('omits linkedGroupId when the source clip is solo (not linked to A/V pair)', () => {
@@ -900,7 +900,7 @@ describe('caption-items', () => {
     expect(tracks.some((track) => track.id === VIRTUAL_TRANSCRIPT_CAPTION_TRACK_ID)).toBe(false)
   })
 
-  it('inherits linkedGroupId from the source clip when consolidating per-cue captions', () => {
+  it('keeps consolidated subtitles out of the source clip A/V link group', () => {
     const items: TimelineItem[] = [
       {
         id: 'video-clip',
@@ -945,7 +945,7 @@ describe('caption-items', () => {
 
     const { segments } = consolidateCaptionTextItemsToSegments(items, 30)
     expect(segments).toHaveLength(1)
-    expect(segments[0]?.linkedGroupId).toBe('pair-9')
+    expect(segments[0]?.linkedGroupId).toBeUndefined()
   })
 })
 

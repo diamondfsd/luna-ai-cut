@@ -126,14 +126,14 @@ describe('EditProgram', () => {
       tracks: [videoTrack, audioTrack],
       items: [occupiedAudio],
       from: 30,
-      durationInFrames: 60,
+      durationInFrames: 240,
     })
 
     expect(placement.trackId).not.toBe(audioTrack.id)
     expect(placement.tracks.find((track) => track.id === placement.trackId)?.kind).toBe('audio')
   })
 
-  it('rejects AI edits that overlap material on the same track', async () => {
+  it('rejects AI text that explicitly targets a video track', async () => {
     const track = {
       id: 'video-track',
       name: 'V1',
@@ -169,7 +169,7 @@ describe('EditProgram', () => {
           },
         ],
       }),
-    ).rejects.toThrow('同一轨道发生重叠')
+    ).rejects.toThrow('素材不能放入轨道“V1”')
   })
 
   it('compiles caption text into a dedicated subtitle track', async () => {
@@ -210,88 +210,46 @@ describe('EditProgram', () => {
     expect(subtitleTrack?.order).toBeLessThan(videoTrack.order)
   })
 
-  it('moves rebuilt implicit text to the nearest available overlay track', async () => {
-    const tracks: TimelineTrack[] = [
-      {
-        id: 'caption-track',
-        name: 'V6',
-        kind: 'video',
-        height: 72,
-        order: -5,
-        locked: false,
-        syncLock: true,
-        visible: true,
-        muted: false,
-        solo: false,
-        volume: 0,
-        items: [],
-      },
-      ...[-4, -3, -2, -1].map((order, index): TimelineTrack => ({
-        id: `stale-caption-track-${index}`,
-        name: `V${5 - index}`,
-        kind: 'video',
-        height: 72,
-        order,
-        locked: false,
-        syncLock: true,
-        visible: true,
-        muted: false,
-        solo: false,
-        volume: 0,
-        items: [],
-      })),
-      {
-        id: 'picture-track',
-        name: 'V1',
-        kind: 'video',
-        height: 72,
-        order: 0,
-        locked: false,
-        syncLock: true,
-        visible: true,
-        muted: false,
-        solo: false,
-        volume: 0,
-        items: [],
-      },
-    ]
-    const previousCaption = {
-      id: 'old-caption',
-      type: 'text',
-      trackId: 'caption-track',
-      from: 0,
-      durationInFrames: 240,
-      label: '旧字幕',
-      text: '旧字幕',
-    } as TimelineItem
+  it('reuses one dedicated text track for sequential plain text', async () => {
+    const tracks: TimelineTrack[] = [{
+      id: 'picture-track',
+      name: 'V1',
+      kind: 'video',
+      height: 72,
+      order: 0,
+      locked: false,
+      syncLock: true,
+      visible: true,
+      muted: false,
+      solo: false,
+      volume: 0,
+      items: [],
+    }]
     const picture = {
       ...imageItem(),
       trackId: 'picture-track',
       durationInFrames: 240,
     }
-    useItemsStore.setState({ items: [previousCaption, picture], tracks })
+    useItemsStore.setState({ items: [picture], tracks })
 
     const compiled = await compileEditProgram({
       version: 1,
       baseRevision: 7,
       intent: '重做字幕',
       operations: [
-        { type: 'removeClip', clipRef: 'clip:old-caption' },
         { type: 'insertText', text: { ref: 'caption-1', text: '第一句', start: 0, duration: 2 } },
         { type: 'insertText', text: { ref: 'caption-2', text: '第二句', start: 2, duration: 2 } },
         { type: 'insertText', text: { ref: 'caption-3', text: '第三句', start: 4, duration: 2 } },
       ],
     })
 
-    expect(compiled.tracks).toHaveLength(2)
-    expect(compiled.tracks.map((track) => track.id)).toEqual([
-      'stale-caption-track-3',
-      'picture-track',
-    ])
+    const textTrack = compiled.tracks.find((track) => track.kind === 'subtitle')
+    expect(textTrack).toBeDefined()
+    expect(textTrack?.order).toBeLessThan(0)
     expect(compiled.insertItems.map((item) => item.trackId)).toEqual([
-      'stale-caption-track-3',
-      'stale-caption-track-3',
-      'stale-caption-track-3',
+      textTrack?.id,
+      textTrack?.id,
+      textTrack?.id,
     ])
   })
 
@@ -299,8 +257,8 @@ describe('EditProgram', () => {
     const tracks: TimelineTrack[] = [
       {
         id: 'remote-text-track',
-        name: 'V3',
-        kind: 'video',
+        name: 'S1',
+        kind: 'subtitle',
         height: 72,
         order: -2,
         locked: false,
@@ -311,8 +269,8 @@ describe('EditProgram', () => {
       },
       {
         id: 'adjacent-text-track',
-        name: 'V2',
-        kind: 'video',
+        name: 'S2',
+        kind: 'subtitle',
         height: 72,
         order: -1,
         locked: false,
@@ -339,7 +297,7 @@ describe('EditProgram', () => {
       type: 'text',
       trackId: 'remote-text-track',
       from: 0,
-      durationInFrames: 60,
+      durationInFrames: 240,
       label: '保留标题',
       text: '保留标题',
     } as TimelineItem
