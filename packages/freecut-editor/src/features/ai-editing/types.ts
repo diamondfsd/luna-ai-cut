@@ -17,6 +17,13 @@ export interface AiEditingToolProgress {
   percent: number | null
 }
 
+export interface AiEditingRunProgress {
+  label: string
+  percent: number
+  /** UI may advance gradually to this bound while waiting for the next real event. */
+  ceiling?: number
+}
+
 export interface AiEditingToolExecutionContext {
   signal?: AbortSignal
   reportProgress(progress: AiEditingToolProgress): void

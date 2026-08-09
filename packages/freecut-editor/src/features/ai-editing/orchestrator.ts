@@ -27,6 +27,7 @@ import { renderPrompt } from './prompts/render-prompt'
 import { getAiEditingTool, listAiEditingTools } from './tool-registry'
 import type {
   AiEditingObservation,
+  AiEditingRunProgress,
   AiEditingToolActivity,
   AiEditingToolCall,
   AiEditingToolResult,
@@ -99,8 +100,24 @@ export interface AiEditingRunOptions {
   signal?: AbortSignal
   onToken?: (delta: string, fullText: string) => void
   onToolActivity?: (activity: AiEditingToolActivity) => void
+  onRunProgress?: (progress: AiEditingRunProgress) => void
   adapter?: LlmAdapter
   reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
+}
+
+function reportRunProgress(
+  options: AiEditingRunOptions,
+  label: string,
+  percent: number,
+  ceiling?: number,
+): void {
+  options.onRunProgress?.({
+    label,
+    percent: Math.max(0, Math.min(100, Math.round(percent))),
+    ...(ceiling === undefined
+      ? {}
+      : { ceiling: Math.max(percent, Math.min(100, Math.round(ceiling))) }),
+  })
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
@@ -258,6 +275,12 @@ async function runJsonToolLoop(
   let finished = false
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    reportRunProgress(
+      options,
+      round === 0 ? '正在理解需求并规划剪辑' : '正在根据执行结果继续规划',
+      round === 0 ? 32 : Math.min(88, 70 + round * 3),
+      round === 0 ? 68 : Math.min(92, 82 + round * 2),
+    )
     const raw = rawFromPreviousRequest ?? await adapter.generate(messages, {
       maxTokens: MAX_TOKENS,
       temperature: 0,
@@ -266,6 +289,7 @@ async function runJsonToolLoop(
       onToken: options.onToken,
     })
     rawFromPreviousRequest = undefined
+    reportRunProgress(options, '正在检查剪辑方案', round === 0 ? 72 : Math.min(94, 84 + round * 2))
     const parsed = parseAiEditingResponse(raw)
     if (!parsed) {
       if (round === MAX_TOOL_ROUNDS - 1) {
@@ -278,6 +302,7 @@ async function runJsonToolLoop(
 
     reply = parsed.reply || reply
     if (parsed.toolCalls.length === 0) {
+      reportRunProgress(options, '剪辑方案已确认', 96)
       finished = true
       break
     }
@@ -326,6 +351,12 @@ async function runNativeToolLoop(
   let finished = false
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    reportRunProgress(
+      options,
+      round === 0 ? '正在理解需求并规划剪辑' : '正在根据执行结果继续规划',
+      round === 0 ? 32 : Math.min(88, 70 + round * 3),
+      round === 0 ? 68 : Math.min(92, 82 + round * 2),
+    )
     const response = await adapter.generateWithTools(messages, catalog.definitions, {
       maxTokens: MAX_TOKENS,
       temperature: 0,
@@ -348,9 +379,11 @@ async function runNativeToolLoop(
       )
     }
 
+    reportRunProgress(options, '正在检查剪辑方案', round === 0 ? 72 : Math.min(94, 84 + round * 2))
     if (response.content) reply = response.content
     if (response.toolCalls.length === 0) {
       if (response.content) options.onToken?.(response.content, response.content)
+      reportRunProgress(options, '剪辑方案已确认', 96)
       finished = true
       break
     }
@@ -401,10 +434,13 @@ export async function runAiEditingTurn(
   options: AiEditingRunOptions,
 ): Promise<AiEditingRunResult> {
   const adapter = options.adapter ?? getAiEditingAdapter()
+  reportRunProgress(options, '正在读取当前编辑空间', 6)
   const evidence = await buildAgentWorkspaceDocument()
+  reportRunProgress(options, '正在整理轨道、素材和上下文', 18)
   const timelineRevisionBefore = getTimelineRevision()
   let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
+    reportRunProgress(options, '正在准备剪辑需求', 26)
     result = await runNativeToolLoop(
       toNativeMessages(await buildInitialMessages(userText, options.history, evidence, 'native')),
       userText,
@@ -412,6 +448,7 @@ export async function runAiEditingTurn(
       adapter,
     )
   } else {
+    reportRunProgress(options, '正在准备剪辑需求', 26)
     result = await runJsonToolLoop(
       await buildInitialMessages(userText, options.history, evidence, 'json'),
       options,
