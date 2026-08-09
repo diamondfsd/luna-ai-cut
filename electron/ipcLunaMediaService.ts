@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, nativeImage } from 'electron'
 import { access, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -27,6 +27,7 @@ import { listSampleFiles } from './localMedia'
 import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { detectInsta360ILog } from './iLogDetection'
+import { existingDragFiles } from './nativeFileDragService'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
   const ext = path.extname(filePath).toLowerCase()
@@ -88,6 +89,14 @@ function localSourcePath(sourceUrl: string): string | null {
 }
 
 export function register(ctx: IpcContext): void {
+  ipcMain.on('files:start-drag', (event, requestedPaths: unknown) => {
+    const files = existingDragFiles(requestedPaths)
+    if (files.length === 0) return
+    const iconPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.png')
+      : path.join(app.getAppPath(), 'build', 'icon.png')
+    event.sender.startDrag({ file: files[0], files, icon: nativeImage.createFromPath(iconPath) })
+  })
   ipcMain.handle('luna:cacheFile', async (_event, params: string | { sourceUrl: string; previewUrl?: string | null }) => {
     // 兼容旧格式（直接传 sourceUrl 字符串）
     const sourceUrl = typeof params === 'string' ? params : params.sourceUrl
@@ -321,12 +330,13 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[]) => {
     const settings = await getSettings()
+    const localResourcesDir = getLocalResourcesDir(settings)
     logMainInfo(`[下载] 开始下载文件`, { fileCount: files.length, fileNames: files.map((file) => file.name).slice(0, 5).join(', ') + (files.length > 5 ? `...(+${files.length - 5})` : '') })
 
     const controller = new AbortController()
     ctx.activeDownloadControllers.add(controller)
     try {
-      return await downloadFiles(files, getLocalResourcesDir(settings), (progress: DownloadProgress) => {
+      return await downloadFiles(files, localResourcesDir, (progress: DownloadProgress) => {
         ctx.win?.webContents.send('download:progress', progress)
       }, controller.signal)
     } finally {

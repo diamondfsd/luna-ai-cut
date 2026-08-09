@@ -169,7 +169,7 @@ export function useMediaLibraryController(pageType: PageType) {
       void loadCameraLibrary()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDevice?.id, pageType, settings?.downloadDir, settings?.mountedCameraRoot, sourceMode, storageFilter])
+  }, [activeDevice?.id, pageType, settings?.baseDir, settings?.localResourcesDir, settings?.mountedCameraRoot, sourceMode, storageFilter])
 
   // 本地导出视图自动加载
   useEffect(() => {
@@ -353,11 +353,11 @@ export function useMediaLibraryController(pageType: PageType) {
   }
 
   async function loadDownloadedLibrary(): Promise<void> {
-    if (!settings?.downloadDir || loadingDownloadsRef.current) return
+    if (!settings || loadingDownloadsRef.current) return
     loadingDownloadsRef.current = true
     setLoadingDownloads(true)
     try {
-      const localFiles = await window.luna.listDownloadedFiles(settings.downloadDir)
+      const localFiles = await window.luna.listDownloadedFiles()
       setDownloadedFiles(localFiles)
       setSelected(new Set())
       setCacheFailedIds(new Set())

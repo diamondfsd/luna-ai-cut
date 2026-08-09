@@ -78,7 +78,7 @@ async function runInpaintStage(options: InpaintStageOptions): Promise<{ composit
   return { composite, modelLoadMs: metrics.modelLoadMs, inferenceMs: metrics.inferenceMs }
 }
 
-export async function removeObject(request: WorkspaceObjectRemovalRequest, downloadDir: string, width: number, height: number, ownerId: number, signal?: AbortSignal): Promise<WorkspaceObjectRemovalResult> {
+export async function removeObject(request: WorkspaceObjectRemovalRequest, baseDir: string, width: number, height: number, ownerId: number, signal?: AbortSignal): Promise<WorkspaceObjectRemovalResult> {
   if (width * height > MAX_PIXELS) throw new Error('图片尺寸过大，暂不支持消除')
   const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
   if (maskBytes.byteLength !== request.maskWidth * request.maskHeight || !maskBytes.some((value) => value >= 16)) throw new Error('请先选择要消除的区域')
@@ -127,7 +127,7 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
     }
     const projectId = request.projectId
     if (!/^[\w.-]{1,100}$/.test(projectId)) throw new Error('项目标识无效')
-    const outputDir = path.join(downloadDir, 'workspace-projects', projectId, 'removal')
+    const outputDir = path.join(baseDir, 'workspace-projects', projectId, 'removal')
     await mkdir(outputDir, { recursive: true })
     const id = `${Date.now()}-${randomUUID()}`
     const staging = path.join(outputDir, `.${id}.png.tmp`)

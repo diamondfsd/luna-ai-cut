@@ -3,21 +3,14 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import type {
-  AiSelectionItem,
-  AiSelectionProgress,
-  AiSelectionSession,
-  AiSelectionStartRequest,
-  AiSelectionUserOperation,
-  WorkspaceProject,
-} from '../src/shared/types'
+import type { AiSelectionItem, AiSelectionProgress, AiSelectionSession, AiSelectionStartRequest, AiSelectionUserOperation, WorkspaceProject } from '../src/shared/types'
 import { normalizeSelectionTarget } from './aiSelectionAlgorithms'
 import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { readAiSelectionItemCache, writeAiSelectionItemCache } from './aiSelectionItemCache'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideoPeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
-import { loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
+import { hideGlobalPerson, loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
 import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
@@ -26,10 +19,7 @@ import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
 
 const ANALYSIS_VERSION = 'selection-evidence-v6'
 const ROOT_DIR = 'ai-selection'
-interface StoredSession extends AiSelectionSession {
-  undoStack: AiSelectionSnapshot[]
-  redoStack: AiSelectionSnapshot[]
-}
+interface StoredSession extends AiSelectionSession { undoStack: AiSelectionSnapshot[]; redoStack: AiSelectionSnapshot[] }
 type Notify = (event: 'progress' | 'session', payload: AiSelectionProgress | AiSelectionSession) => void
 const sessions = new Map<string, StoredSession>()
 let loaded = false
@@ -445,6 +435,14 @@ export async function unmergeAiSelectionPerson(id: string, targetGroupId: string
   return publicSession(session)
 }
 
+export async function deleteAiSelectionPerson(id: string, groupId: string): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  await hideGlobalPerson(peopleStoreDir(), session, groupId)
+  await persistPeopleAndRefreshSessions()
+  return publicSession(session)
+}
+
 export async function analyzeAiSelectionContentTags(id: string, itemIds: string[]): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
@@ -480,7 +478,7 @@ export async function createProjectFromAiSelection(id: string, name: string): Pr
   await updateAndPersist(session)
   try {
     const settings = await getSettings()
-    const project = await createWorkspaceProject(settings.downloadDir, name.trim() || session.name, assets)
+    const project = await createWorkspaceProject(settings.baseDir, name.trim() || session.name, assets)
     session.workspaceCreation = { status: 'created', projectId: project.id, error: null }
     session.status = 'completed'
     await updateAndPersist(session)

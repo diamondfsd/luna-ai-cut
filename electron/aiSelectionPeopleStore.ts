@@ -8,13 +8,14 @@ export interface AiPersonIdentity {
   samples: number[][]
   avatarDataUrl: string | null
   mergedIntoId: string | null
+  hidden: boolean
   createdAt: string
   updatedAt: string
 }
 
 interface AiPeopleStore {
-  schemaVersion: 1 | 2
-  identities: Array<Omit<AiPersonIdentity, 'mergedIntoId'> & { mergedIntoId?: string | null }>
+  schemaVersion: 1 | 2 | 3
+  identities: Array<Omit<AiPersonIdentity, 'mergedIntoId' | 'hidden'> & { mergedIntoId?: string | null; hidden?: boolean }>
 }
 
 const STORE_FILE = 'people.json'
@@ -22,13 +23,14 @@ const STORE_FILE = 'people.json'
 export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity[]> {
   try {
     const parsed = JSON.parse(await fs.readFile(path.join(rootDir, STORE_FILE), 'utf8')) as AiPeopleStore
-    if (![1, 2].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
+    if (![1, 2, 3].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
     const identities = parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples)).map((identity) => ({
       ...identity,
       avatarDataUrl: typeof identity.avatarDataUrl === 'string' && identity.avatarDataUrl.startsWith('data:image/')
         ? identity.avatarDataUrl
         : null,
       mergedIntoId: typeof identity.mergedIntoId === 'string' ? identity.mergedIntoId : null,
+      hidden: identity.hidden === true,
     }))
     const byId = new Map(identities.map((identity) => [identity.id, identity]))
     for (const identity of identities) {
@@ -57,7 +59,7 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
   const destination = path.join(rootDir, STORE_FILE)
   const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
   try {
-    const store: AiPeopleStore = { schemaVersion: 2, identities }
+    const store: AiPeopleStore = { schemaVersion: 3, identities }
     await fs.writeFile(temporary, `${JSON.stringify(store)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     try {
       await fs.rename(temporary, destination)
@@ -74,5 +76,5 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
 
 export function createPersonIdentity(name: string, sample: number[]): AiPersonIdentity {
   const now = new Date().toISOString()
-  return { id: `person_${randomUUID()}`, name, samples: [[...sample]], avatarDataUrl: null, mergedIntoId: null, createdAt: now, updatedAt: now }
+  return { id: `person_${randomUUID()}`, name, samples: [[...sample]], avatarDataUrl: null, mergedIntoId: null, hidden: false, createdAt: now, updatedAt: now }
 }

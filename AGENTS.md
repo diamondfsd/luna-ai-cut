@@ -178,7 +178,7 @@ Electron E2E 必须统一使用 Playwright Test。禁止新增基于 `agent-brow
 
 - 使用 `@playwright/test` 的 `_electron.launch()` 直接启动已构建应用，不通过外部 CDP 端口或全局浏览器自动化 CLI 控制 Electron。
 - 所有 Electron E2E 统一放在 `e2e/`，复用 `e2e/fixtures/lunaElectron.ts`，并通过 `pnpm test:e2e` 执行；不得为单个功能另建测试执行器。
-- 需要隔离设置、缓存和项目数据时，为测试创建独立临时目录并设置 `LUNA_E2E_USER_DATA_DIR`，同时将 `downloadDir`、`localResourcesDir` 和 `exportDir` 指向该目录；不得复用用户现有项目制造损坏或只读场景。
+- 需要隔离设置、缓存和项目数据时，为测试创建独立临时目录并设置 `LUNA_E2E_USER_DATA_DIR`，同时将 `baseDir`、`localResourcesDir` 和 `exportDir` 指向该目录；不得复用用户现有项目制造损坏或只读场景。
 - Electron E2E 默认单 worker 串行运行；每个用例自行启动和关闭应用，涉及重启恢复时复用该用例的隔离数据目录。
 - 优先使用 `getByRole`、`getByLabel` 等用户语义 locator 和 Playwright 自动等待；页面更新后重新查询 locator，不持有 DOM ElementHandle 跨更新使用。
 - 失败证据写入 `test-results/playwright/`，测试临时目录在成功后清理、失败时保留；新用例必须检查 fixture 收集的 renderer `pageerror` 与 error console。

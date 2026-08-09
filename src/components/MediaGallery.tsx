@@ -1,5 +1,5 @@
 import { CalendarDays, FileQuestion, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { MediaCard } from './MediaCard'
 import { useMediaLib } from '../pages/useMediaLibraryController'
@@ -37,6 +37,9 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
   const [dateNavCollapsed, setDateNavCollapsed] = useState(false)
   const [activeDateGroup, setActiveDateGroup] = useState<string | null>(ctrl.firstGroup)
   const groupSignature = ctrl.groups.map(([group]) => group).join('\0')
+  const selectedLocalPaths = useMemo(() => ctrl.selectedFiles
+    .map((file) => file.downloadFilePath ?? file.localPath)
+    .filter((filePath): filePath is string => Boolean(filePath)), [ctrl.selectedFiles])
 
   useEffect(() => {
     setActiveDateGroup(ctrl.firstGroup)
@@ -295,6 +298,7 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
                   onPreview={ctrl.handlePreviewClick}
                   onRevealPath={ctrl.revealFileByPath}
                   onRevealProgress={ctrl.revealDownloadedFile}
+                  onDragStart={isSelected && localPath ? () => window.luna.startFileDrag(selectedLocalPaths) : undefined}
                 />
               )
             })}

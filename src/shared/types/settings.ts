@@ -10,7 +10,7 @@ export interface CustomLutFile {
 }
 
 export interface AppSettings {
-  downloadDir: string
+  baseDir: string
   localResourcesDir?: string
   exportDir?: string
   cacheDir: string

@@ -33,7 +33,10 @@ function effectiveIdentities(): AiPersonIdentity[] {
 }
 
 export function buildGlobalFaceGroups(items: AiSelectionItem[]) {
-  return buildFaceGroups(items, effectiveIdentities()).map((group) => ({
+  const hiddenRoots = new Set(identities.filter((identity) => rootIdentity(identity).hidden).map((identity) => rootIdentity(identity).id))
+  return buildFaceGroups(items, effectiveIdentities()).filter((group) => (
+    !group.identityId || !hiddenRoots.has(group.identityId)
+  )).map((group) => ({
     ...group,
     mergedMembers: group.identityId
       ? identities.filter((identity) => identity.id !== group.identityId && rootIdentity(identity).id === group.identityId)
@@ -136,5 +139,12 @@ export async function unmergeGlobalPerson(storeDir: string, session: AiSelection
   if (!member || member.id === target.id || rootIdentity(member).id !== target.id) throw new Error('这个人物不在当前合并组中')
   member.mergedIntoId = null
   member.updatedAt = new Date().toISOString()
+  await savePeopleStore(storeDir, identities)
+}
+
+export async function hideGlobalPerson(storeDir: string, session: AiSelectionSession, groupId: string): Promise<void> {
+  const identity = rootIdentity(ensureIdentity(session, groupId))
+  identity.hidden = true
+  identity.updatedAt = new Date().toISOString()
   await savePeopleStore(storeDir, identities)
 }

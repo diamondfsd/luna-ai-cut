@@ -86,7 +86,7 @@ async function main() {
   try {
     await Promise.all([mkdir(userData, { recursive: true }), mkdir(fixture, { recursive: true })])
     await Promise.all(sourceNames.map((name) => copyFile(path.join(sourceRoot, name), path.join(fixture, name))))
-    await writeFile(path.join(userData, 'settings.json'), `${JSON.stringify({ downloadDir: path.join(temporaryRoot, 'downloads'), localResourcesDir: fixture, exportDir: path.join(temporaryRoot, 'exports') })}\n`)
+    await writeFile(path.join(userData, 'settings.json'), `${JSON.stringify({ baseDir: path.join(temporaryRoot, 'downloads'), localResourcesDir: fixture, exportDir: path.join(temporaryRoot, 'exports') })}\n`)
     appProcess = spawn('pnpm', ['exec', 'vite', '--mode', 'e2e', '--port', String(rendererPort), '--strictPort'], { cwd: projectRoot, env: { ...process.env, LUNA_E2E_CDP_PORT: String(port), LUNA_E2E_USER_DATA_DIR: userData }, detached: true, stdio: 'ignore' })
     const target = await waitFor('Electron 页面', async () => {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => null)

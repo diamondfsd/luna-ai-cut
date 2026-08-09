@@ -5,7 +5,7 @@ import { deleteCustomLutInDirectory, listCustomLutsInDirectory } from './customL
 import { getSettings } from './settingsService'
 
 function lutRoot(settings: AppSettings): string {
-  return path.resolve(settings.lutDir || path.join(settings.downloadDir, 'luts'))
+  return path.resolve(settings.lutDir || path.join(settings.baseDir, 'luts'))
 }
 
 export async function listCustomLuts(): Promise<CustomLutFile[]> {
