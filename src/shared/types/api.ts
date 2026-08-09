@@ -167,7 +167,7 @@ export interface LunaApi {
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>
-  chooseDownloadDir(): Promise<string | null>
+  chooseBaseDir(): Promise<string | null>
   chooseLocalResourcesDir(): Promise<string | null>
   chooseExportDir(): Promise<string | null>
   chooseLutDir(): Promise<string | null>
@@ -192,7 +192,7 @@ export interface LunaApi {
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>
   deleteCameraFiles(files: LunaFile[], host?: string): Promise<CameraDeleteResult>
   listSampleFiles(): Promise<LunaFile[]>
-  listDownloadedFiles(downloadDir?: string): Promise<LunaFile[]>
+  listDownloadedFiles(): Promise<LunaFile[]>
   listExportFiles(exportDir?: string): Promise<LunaFile[]>
   previewFile(file: LunaFile, files: LunaFile[]): Promise<PreviewResult>
   previewLivePhoto(sourceUrl: string): Promise<PreviewResult>
@@ -203,7 +203,7 @@ export interface LunaApi {
   resolveThumbnail(filePath: string, kind?: string): Promise<string | null>
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   detectILog(filePath: string): Promise<boolean>
-  downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
+  downloadFiles(files: LunaFile[]): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
   exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
@@ -216,9 +216,10 @@ export interface LunaApi {
     start(): Promise<LocalMediaShareStatus>
     stop(): Promise<LocalMediaShareStatus>
   }
-  getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
+  getDownloadedRecords(files: LunaFile[]): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>
+  startFileDrag(filePaths: string[]): void
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
   readExifModel(localPath: string): Promise<string | null>
@@ -255,6 +256,7 @@ export interface LunaApi {
     setPersonAvatar(sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession>
     mergePeople(sessionId: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession>
     unmergePerson(sessionId: string, targetGroupId: string, memberIdentityId: string): Promise<AiSelectionSession>
+    deletePerson(sessionId: string, groupId: string): Promise<AiSelectionSession>
     analyzeContentTags(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     analyzeVideos(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     undo(sessionId: string): Promise<AiSelectionSession>

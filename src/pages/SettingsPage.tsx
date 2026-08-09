@@ -145,13 +145,13 @@ export function SettingsPage({
           <div className="settings-card">
             <DirectorySettingRow
               label="基础目录"
-              path={settings?.downloadDir ?? ''}
-              onOpen={() => openDirectory(settings?.downloadDir)}
+              path={settings?.baseDir ?? ''}
+              onOpen={() => openDirectory(settings?.baseDir)}
               onChange={chooseBaseDir}
             />
             <DirectorySettingRow
               label="下载目录"
-              path={settings?.localResourcesDir ?? (settings?.downloadDir ? `${settings.downloadDir}/localResources` : '')}
+              path={settings?.localResourcesDir ?? (settings?.baseDir ? `${settings.baseDir}/localResources` : '')}
               onOpen={() => openDirectory(settings?.localResourcesDir)}
               onChange={chooseLocalResourcesDir}
             />
@@ -164,13 +164,13 @@ export function SettingsPage({
             <article className="settings-row">
               <div className="settings-row-copy">
                 <span>LUT 目录</span>
-                <strong>{settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : '未设置')}</strong>
+                <strong>{settings?.lutDir || (settings?.baseDir ? `${settings.baseDir}/luts` : '未设置')}</strong>
               </div>
               <div className="settings-row-actions">
                 <Button variant="secondary" size="compact" onClick={() => setLutManagementOpen(true)} icon={<Settings2 size={15} />}>
                   管理
                 </Button>
-                <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : null))} icon={<FolderOpen size={15} />}>
+                <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.lutDir || (settings?.baseDir ? `${settings.baseDir}/luts` : null))} icon={<FolderOpen size={15} />}>
                   打开
                 </Button>
                 <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={async () => {

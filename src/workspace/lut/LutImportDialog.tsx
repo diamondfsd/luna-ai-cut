@@ -65,7 +65,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
     try {
       const s = await (window as any).luna?.getSettings?.()
       if (s?.lutDir) return s.lutDir
-      if (s?.downloadDir) return `${s.downloadDir}/luts`
+      if (s?.baseDir) return `${s.baseDir}/luts`
     } catch { /* ignore */ }
     return ''
   }, [])

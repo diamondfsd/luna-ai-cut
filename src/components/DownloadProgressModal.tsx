@@ -8,7 +8,6 @@ import { Button, DropdownPanel, IconButton } from '../ui'
 import '../styles/download-progress.css'
 
 interface DownloadProgressModalProps {
-  downloadDir: string | undefined
   downloadQueue: LunaFile[]
   downloadProgress: Map<string, DownloadProgress>
   activeFileNames: Set<string>
@@ -58,7 +57,6 @@ const statusRank: Record<DownloadProgress['status'], number> = {
 }
 
 export function DownloadProgressModal({
-  downloadDir,
   downloadQueue,
   downloadProgress,
   activeFileNames,
@@ -138,7 +136,7 @@ export function DownloadProgressModal({
 
   const MAX_CONCURRENT = 2
 
-  async function downloadFile(file: LunaFile, downloadDir: string): Promise<void> {
+  async function downloadFile(file: LunaFile): Promise<void> {
     setDownloadProgress((current) => {
       const next = new Map(current)
       const existing = next.get(file.name)
@@ -158,9 +156,27 @@ export function DownloadProgressModal({
     })
 
     try {
-      const summary = await window.luna.downloadFiles([file], downloadDir)
+      const summary = await window.luna.downloadFiles([file])
       const completed = summary.completed.find((item) => item.name === file.name)
       if (completed) onFileDownloadedRef.current(file.name, completed.path)
+      const failed = summary.failed.find((item) => item.name === file.name)
+      if (failed) {
+        setDownloadProgress((current) => {
+          const next = new Map(current)
+          const progress = next.get(file.name)
+          next.set(file.name, {
+            fileName: file.name,
+            index: progress?.index ?? 0,
+            totalFiles: progress?.totalFiles ?? 1,
+            downloaded: progress?.downloaded ?? 0,
+            total: progress?.total ?? file.bytes,
+            percent: null,
+            speedBps: 0,
+            status: 'failed',
+          })
+          return next
+        })
+      }
     } catch (error) {
       console.error(error)
       setDownloadProgress((current) => {
@@ -185,7 +201,7 @@ export function DownloadProgressModal({
 
   useEffect(() => {
     async function drainQueue(): Promise<void> {
-      if (!downloadDir || drainingRef.current || queueRef.current.length === 0) return
+      if (drainingRef.current || queueRef.current.length === 0) return
 
       drainingRef.current = true
       setDownloading(true)
@@ -201,7 +217,7 @@ export function DownloadProgressModal({
           const batch = queueRef.current.slice(0, MAX_CONCURRENT)
           if (batch.length === 0) break
 
-          await Promise.all(batch.map((file) => downloadFile(file, downloadDir!)))
+          await Promise.all(batch.map((file) => downloadFile(file)))
         }
       } finally {
         drainingRef.current = false
