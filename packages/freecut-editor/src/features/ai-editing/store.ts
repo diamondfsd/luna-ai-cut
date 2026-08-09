@@ -48,6 +48,9 @@ interface AiEditingState {
   supported: boolean
   phase: AiEditingPhase
   loadPercent: number
+  thinkingLabel: string
+  thinkingPercent: number
+  thinkingCeiling: number
   error: string | null
   streamingText: string
   messages: AiEditingMessage[]
@@ -99,6 +102,9 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
   supported: getAiEditingAdapter().isSupported(),
   phase: 'idle',
   loadPercent: 0,
+  thinkingLabel: '正在理解需求并规划剪辑',
+  thinkingPercent: 0,
+  thinkingCeiling: 0,
   error: null,
   streamingText: '',
   messages: [],
@@ -117,6 +123,9 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       isRestoringConversation: projectId !== null,
       phase: 'idle',
       loadPercent: 0,
+      thinkingLabel: '正在理解需求并规划剪辑',
+      thinkingPercent: 0,
+      thinkingCeiling: 0,
       error: null,
       streamingText: '',
       messages: [],
@@ -156,6 +165,10 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     set({
       messages,
       phase: 'loading',
+      loadPercent: 0,
+      thinkingLabel: '正在理解需求并规划剪辑',
+      thinkingPercent: 0,
+      thinkingCeiling: 0,
       error: null,
       streamingText: '',
       observations: [],
@@ -190,7 +203,12 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
 
     const controller = new AbortController()
     activeController = controller
-    set({ phase: 'thinking' })
+    set({
+      phase: 'thinking',
+      thinkingLabel: '正在读取当前编辑空间',
+      thinkingPercent: 3,
+      thinkingCeiling: 6,
+    })
     try {
       const result = await runAiEditingTurn(addAiEditingReferenceContext(trimmed, references), {
         history,
@@ -201,6 +219,15 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           if (!controller.signal.aborted && get().projectId === projectId) {
             set({ streamingText: fullText })
           }
+        },
+        onRunProgress: (progress) => {
+          if (controller.signal.aborted || get().projectId !== projectId) return
+          set({
+            phase: 'thinking',
+            thinkingLabel: progress.label,
+            thinkingPercent: progress.percent,
+            thinkingCeiling: progress.ceiling ?? progress.percent,
+          })
         },
         onToolActivity: (activity) => {
           if (controller.signal.aborted || get().projectId !== projectId) return
@@ -287,6 +314,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     set((state) => ({
       phase: 'idle',
       streamingText: '',
+      thinkingPercent: 0,
+      thinkingCeiling: 0,
       toolActivities: state.toolActivities.map((activity) => activity.status === 'running'
         ? { ...activity, status: 'failed', message: '已停止本次操作。' }
         : activity),
@@ -304,6 +333,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       toolActivities: [],
       phase: 'idle',
       streamingText: '',
+      thinkingPercent: 0,
+      thinkingCeiling: 0,
       error: null,
       isRestoringConversation: false,
     })

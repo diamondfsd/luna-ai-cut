@@ -84,15 +84,34 @@ const ToolActivityCard = memo(function ToolActivityCard({ activities }: { activi
 const PhaseProgressCard = memo(function PhaseProgressCard({
   label,
   percent,
+  ceiling,
 }: {
   label: string
   percent: number | null
+  ceiling?: number
 }) {
+  const [displayPercent, setDisplayPercent] = useState(percent)
+
+  useEffect(() => {
+    setDisplayPercent(percent)
+  }, [percent])
+
+  useEffect(() => {
+    if (percent === null || ceiling === undefined || ceiling <= percent) return
+    const timer = window.setInterval(() => {
+      setDisplayPercent((current) => {
+        if (current === null || current >= ceiling) return current
+        return Math.min(ceiling, current + 1)
+      })
+    }, 1_200)
+    return () => window.clearInterval(timer)
+  }, [ceiling, percent])
+
   return (
     <section className="rounded-lg border border-border bg-secondary/30 p-2.5" aria-live="polite">
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{label}</span>
-        {percent !== null && <span className="tabular-nums">{Math.round(percent)}%</span>}
+        {displayPercent !== null && <span className="tabular-nums">{Math.round(displayPercent)}%</span>}
       </div>
       <div
         className="mt-1.5 h-1 overflow-hidden rounded-full bg-secondary"
@@ -100,13 +119,13 @@ const PhaseProgressCard = memo(function PhaseProgressCard({
         aria-label={label}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={percent ?? undefined}
+        aria-valuenow={displayPercent ?? undefined}
       >
         <div
           className={percent === null
             ? 'h-full w-full animate-pulse bg-primary/55'
             : 'h-full bg-primary transition-[width] duration-200'}
-          style={percent === null ? undefined : { width: `${percent}%` }}
+          style={displayPercent === null ? undefined : { width: `${displayPercent}%` }}
         />
       </div>
     </section>
@@ -122,6 +141,9 @@ interface AiEditingPanelProps {
 export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditingPanelProps) {
   const phase = useAiEditingStore((state) => state.phase)
   const loadPercent = useAiEditingStore((state) => state.loadPercent)
+  const thinkingLabel = useAiEditingStore((state) => state.thinkingLabel)
+  const thinkingPercent = useAiEditingStore((state) => state.thinkingPercent)
+  const thinkingCeiling = useAiEditingStore((state) => state.thinkingCeiling)
   const messages = useAiEditingStore((state) => state.messages)
   const toolActivities = useAiEditingStore((state) => state.toolActivities)
   const reasoningEffort = useAiEditingStore((state) => state.reasoningEffort)
@@ -270,7 +292,13 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         ))}
 
         {canChat && phase === 'loading' && <PhaseProgressCard label="正在准备剪辑助手" percent={loadPercent} />}
-        {canChat && phase === 'thinking' && <PhaseProgressCard label="正在理解需求并规划剪辑" percent={null} />}
+        {canChat && phase === 'thinking' && (
+          <PhaseProgressCard
+            label={thinkingLabel}
+            percent={thinkingPercent}
+            ceiling={thinkingCeiling}
+          />
+        )}
         {canChat && phase === 'executing' && !toolActivities.some((activity) => activity.status === 'running') && (
           <PhaseProgressCard label="正在检查结果并继续完成剪辑" percent={null} />
         )}
