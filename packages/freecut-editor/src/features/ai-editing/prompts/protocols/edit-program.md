@@ -14,9 +14,9 @@ interface EditProgram {
 
 所有时间使用秒。画面中心坐标基于素材自身：左上角 `[0, 0]`，右下角 `[1, 1]`。`zoom` 为 `1` 时按 mode 填充画布，大于 `1` 表示特写。
 
-`workspace.tracks[].kind` 是轨道的硬约束：`video` 放画面和 HTML 视觉，`audio` 放声音，`subtitle` 是专用文字轨道，放标题、普通文字和字幕。文字轨道固定显示在所有视频轨道上方。带原声的视频写入后会由宿主同时建立相互绑定的视频片段和音频片段。
+`workspace.tracks[].kind` 是轨道的硬约束：`video` 放画面和 HTML 视觉，`audio` 放声音，`subtitle` 是专用文字轨道，放标题、普通文字和字幕。文字轨道固定显示在所有视频轨道上方。`insertText` 创建的标题和字幕都是可视化原生文字；`role=caption` 只标记其字幕用途。带原声的视频写入后会由宿主同时建立相互绑定的视频片段和音频片段。
 
-HTML/CSS 是高扩展视觉的底层格式，适合花字、信息卡、复杂排版、网页式组件和 CSS 动画。普通标题、字幕、字体、颜色和基础排版必须优先使用 `insertText`，让用户可以继续可视化编辑。`workspace.clips[].html` 只提供 `hash/revision/viewport/renderMode` 摘要，不包含源码；修改现有 HTML 片段前先调用 `html.read`，需要预检新源码时调用 `html.validate`。不要因为结构化文字样式表达不了目标就拒绝，确实超出结构化能力时再改用 HTML/CSS 编码。
+HTML/CSS 是高扩展视觉的底层格式，适合花字、信息卡、复杂排版、网页式组件和 CSS 动画。普通标题、字幕、字体、颜色、关键词高亮和基础排版必须优先使用 `insertText` 或 `updateClip` 的文字样式字段，让用户可以继续可视化编辑。文字框 `box`/`textBox` 使用画布左上角为原点的 0..1 归一化坐标；关键词用连续的 `spans`/`textSpans` 表达，各段文字拼接后应等于完整文字。`workspace.clips[].html` 只提供 `hash/revision/viewport/renderMode` 摘要，不包含源码；修改现有 HTML 片段前先调用 `html.read`，需要预检新源码时调用 `html.validate`。不要因为结构化文字样式表达不了目标就拒绝，确实超出结构化能力时再改用 HTML/CSS 编码。
 
 ```ts
 type FramingPose = {
@@ -55,6 +55,9 @@ type EditOperation =
         label?: string
         trackRef?: string // 省略时自动创建专用文字轨道
         role?: 'title' | 'caption'
+        style?: TextStyle
+        spans?: Array<{ text: string; color?: string; underline?: boolean }>
+        box?: TextBox
       }
     }
   | {
@@ -91,6 +94,9 @@ type EditOperation =
         trackRef?: string
         label?: string
         text?: string // 仅用于现有文字片段
+        textStyle?: TextStyle
+        textSpans?: Array<{ text: string; color?: string; underline?: boolean }> | null
+        textBox?: TextBox
         framing?: Framing
         cameraMove?: CameraMove | null
         volumeDb?: number
@@ -109,6 +115,29 @@ interface ClipDraft {
   source?: { in: number; out: number }
   framing?: Framing
   cameraMove?: CameraMove
+}
+
+interface TextStyle {
+  fontSize?: number
+  fontFamily?: string
+  fontWeight?: 'normal' | 'medium' | 'semibold' | 'bold'
+  fontStyle?: 'normal' | 'italic'
+  underline?: boolean
+  color?: string
+  backgroundColor?: string
+  backgroundRadius?: number
+  textAlign?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
+  lineHeight?: number
+  letterSpacing?: number
+  textPadding?: number
+}
+
+interface TextBox {
+  left: number
+  top: number
+  width: number
+  height: number
 }
 
 interface TransitionDraft {
@@ -131,6 +160,7 @@ interface TransitionSpec {
 - `replaceRange` 删除指定轨道内与范围相交的原片段，再放入新片段。
 - 不得让任何两个片段在同一轨道上发生时间交叉；需要同期叠加时使用不同的同类型轨道。
 - `text` 和 `subtitle` 都是纯文字素材，只能放进 `subtitle` 专用文字轨道。`video` 轨道不接受标题、字幕或任何其他纯文本。
+- `workspace.clips[].subtitle.source` 用来区分系统字幕来源。用户明确说“生成的旁白/文字，不是识别字幕”时，只修改 `type=text` 或 `subtitle.source=manual` 的片段，不修改 `transcript`、导入字幕或内嵌字幕。
 - `html` 是可编程视觉素材，只能放进 `video` 轨道。它可以表达完整 HTML 布局和 CSS 视觉效果，但不能包含脚本、内联事件、嵌套页面或 JavaScript 地址。
 - 创建 HTML 片段时，省略 viewport 会使用项目画布尺寸和 1 倍缩放。静态画面使用 `renderMode=static`，包含 CSS 动画时使用 `animated`。
 - 修改现有 HTML 片段前按需调用一次 `html.read`，基于完整源码整体改写，并把最新 `revision` 写入 `expectedRevision`。不要根据 workspace 中的 hash 猜测源码。

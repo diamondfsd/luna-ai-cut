@@ -298,6 +298,15 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             id: observation.toolId,
             ok: observation.result.ok,
             message: observation.result.message,
+            ...(observation.result.data &&
+              typeof observation.result.data === 'object' &&
+              Array.isArray((observation.result.data as { validationIssues?: unknown }).validationIssues)
+              ? {
+                  details: (observation.result.data as { validationIssues: unknown[] }).validationIssues
+                    .filter((entry): entry is string => typeof entry === 'string')
+                    .slice(0, 8),
+                }
+              : {}),
           })),
           completed: result.completed,
           completionNotes: result.completionNotes,

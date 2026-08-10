@@ -74,8 +74,47 @@ export interface AgentClip {
   framing?: AgentFraming
   cameraMove?: AgentCameraMove
   text?: string
+  textStyle?: AgentTextStyle
+  textSpans?: AgentTextSpan[]
+  textBox?: AgentTextBox
+  subtitle?: AgentSubtitleSummary
   html?: AgentHtmlSummary
   volumeDb?: number
+}
+
+export interface AgentSubtitleSummary {
+  source: 'manual' | 'transcript' | 'embedded-subtitles' | 'subtitle-import'
+  cues: Array<{ start: number; end: number; text: string }>
+}
+
+export interface AgentTextStyle {
+  fontSize?: number
+  fontFamily?: string
+  fontWeight?: 'normal' | 'medium' | 'semibold' | 'bold'
+  fontStyle?: 'normal' | 'italic'
+  underline?: boolean
+  color?: string
+  backgroundColor?: string
+  backgroundRadius?: number
+  textAlign?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
+  lineHeight?: number
+  letterSpacing?: number
+  textPadding?: number
+}
+
+export interface AgentTextSpan {
+  text: string
+  color?: string
+  underline?: boolean
+}
+
+/** Normalized top-left text box coordinates within the project canvas. */
+export interface AgentTextBox {
+  left: number
+  top: number
+  width: number
+  height: number
 }
 
 export interface AgentHtmlViewport {
@@ -137,6 +176,9 @@ export interface AgentTextDraft {
   label?: string
   trackRef?: AgentTrackRef
   role?: 'title' | 'caption'
+  style?: AgentTextStyle
+  spans?: AgentTextSpan[]
+  box?: AgentTextBox
 }
 
 export interface AgentHtmlDraft {
@@ -194,6 +236,9 @@ export type EditOperation =
         trackRef?: AgentTrackRef
         label?: string
         text?: string
+        textStyle?: AgentTextStyle
+        textSpans?: AgentTextSpan[] | null
+        textBox?: AgentTextBox
         framing?: AgentFraming
         cameraMove?: AgentCameraMove | null
         volumeDb?: number

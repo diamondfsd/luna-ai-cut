@@ -8,6 +8,24 @@ import type {
 
 type JsonSchema = AiEditingTool['inputSchema']
 
+function valueAtPath(value: unknown, path: PropertyKey[]): unknown {
+  return path.reduce<unknown>((current, key) => {
+    if (!current || typeof current !== 'object') return undefined
+    return (current as Record<PropertyKey, unknown>)[key]
+  }, value)
+}
+
+function summarizeValue(value: unknown): string {
+  if (Array.isArray(value)) return `数组(${value.length})`
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const type = typeof record.type === 'string' ? `type=${record.type}; ` : ''
+    return `对象(${type}字段=${Object.keys(record).slice(0, 12).join(',')})`
+  }
+  const serialized = JSON.stringify(value)
+  return serialized === undefined ? typeof value : serialized.slice(0, 160)
+}
+
 export function objectSchema(properties: Record<string, unknown>, required?: string[]): JsonSchema {
   return { type: 'object', properties, required, additionalProperties: false }
 }
@@ -15,7 +33,14 @@ export function objectSchema(properties: Record<string, unknown>, required?: str
 export function zodValidation<S extends z.ZodType>(schema: S, value: unknown): AiEditingToolValidation {
   const result = schema.safeParse(value)
   if (result.success) return { ok: true, value: result.data as Record<string, unknown> }
-  return { ok: false, error: result.error.issues[0]?.message ?? '参数无效。' }
+  return {
+    ok: false,
+    error: '提交内容不符合当前编辑规范。',
+    details: result.error.issues.slice(0, 8).map((issue) => {
+      const path = issue.path.map(String).join('.') || '参数'
+      return `${path}: ${issue.message}; 收到 ${summarizeValue(valueAtPath(value, issue.path))}`
+    }),
+  }
 }
 
 export function defineAiEditingTool<S extends z.ZodType>(definition: {

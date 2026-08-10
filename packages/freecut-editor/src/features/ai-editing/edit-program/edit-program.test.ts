@@ -172,7 +172,7 @@ describe('EditProgram', () => {
     ).rejects.toThrow('素材不能放入轨道“V1”')
   })
 
-  it('compiles caption text into a dedicated subtitle track', async () => {
+  it('compiles caption text into an editable text item on a dedicated subtitle track', async () => {
     const videoTrack = {
       id: 'video-track',
       name: 'V1',
@@ -200,14 +200,68 @@ describe('EditProgram', () => {
     })
 
     expect(compiled.insertItems[0]).toMatchObject({
-      type: 'subtitle',
-      cues: [{ text: '字幕内容', startSeconds: 0, endSeconds: 2 }],
+      type: 'text',
+      text: '字幕内容',
+      textRole: 'caption',
     })
     const subtitleTrack = compiled.tracks.find(
       (track) => track.id === compiled.insertItems[0]?.trackId,
     )
     expect(subtitleTrack?.kind).toBe('subtitle')
     expect(subtitleTrack?.order).toBeLessThan(videoTrack.order)
+  })
+
+  it('converts a legacy single-cue manual subtitle when applying keyword styles', async () => {
+    const track = {
+      id: 'subtitle-track',
+      name: 'S1',
+      kind: 'subtitle',
+      height: 72,
+      order: -1,
+      locked: false,
+      visible: true,
+      muted: false,
+      solo: false,
+      items: [],
+    } satisfies TimelineTrack
+    const subtitle = {
+      id: 'manual-subtitle',
+      type: 'subtitle',
+      trackId: track.id,
+      from: 0,
+      durationInFrames: 90,
+      label: 'AI Caption',
+      source: { type: 'manual' },
+      cues: [{ id: 'cue-1', startSeconds: 0, endSeconds: 3, text: 'AI陪宝宝创造' }],
+      color: '#ffffff',
+    } satisfies TimelineItem
+    useItemsStore.setState({ tracks: [track], items: [subtitle] })
+
+    const compiled = await compileEditProgram({
+      version: 1,
+      baseRevision: 7,
+      intent: '修改生成旁白样式',
+      operations: [{
+        type: 'updateClip',
+        clipRef: 'clip:manual-subtitle',
+        changes: {
+          textStyle: { fontSize: 80, fontWeight: 'bold' },
+          textSpans: [
+            { text: 'AI', color: '#ffcc00' },
+            { text: '陪宝宝创造', color: '#ffffff' },
+          ],
+        },
+      }],
+    })
+
+    expect(compiled.updates[0]?.updates).toMatchObject({
+      type: 'text',
+      text: 'AI陪宝宝创造',
+      textRole: 'caption',
+      fontSize: 80,
+      fontWeight: 'bold',
+      spanLayout: 'inline',
+    })
   })
 
   it('reuses one dedicated text track for sequential plain text', async () => {
@@ -329,6 +383,51 @@ describe('EditProgram', () => {
       'adjacent-text-track',
       'picture-track',
     ])
+  })
+
+  it('compiles editable text styling, keyword colors, and normalized placement', async () => {
+    const compiled = await compileEditProgram({
+      version: 1,
+      baseRevision: 7,
+      intent: '制作左上角关键词高亮旁白',
+      operations: [{
+        type: 'insertText',
+        text: {
+          ref: 'narration',
+          text: 'AI陪宝宝做游戏',
+          start: 0,
+          duration: 3,
+          style: {
+            fontSize: 88,
+            fontWeight: 'bold',
+            color: '#ffffff',
+            textAlign: 'left',
+            verticalAlign: 'top',
+          },
+          spans: [
+            { text: 'AI', color: '#ffcc00' },
+            { text: '陪宝宝做游戏', color: '#ffffff' },
+          ],
+          box: { left: 0.04, top: 0.05, width: 0.56, height: 0.2 },
+        },
+      }],
+    })
+
+    const item = compiled.insertItems[0]
+    expect(item).toMatchObject({
+      type: 'text',
+      text: 'AI陪宝宝做游戏',
+      fontSize: 88,
+      fontWeight: 'bold',
+      textAlign: 'left',
+      verticalAlign: 'top',
+      spanLayout: 'inline',
+      textSpans: [
+        { text: 'AI', color: '#ffcc00' },
+        { text: '陪宝宝做游戏', color: '#ffffff' },
+      ],
+    })
+    expect(item?.transform).toMatchObject({ x: -345.6, y: -378, width: 1075.2, height: 216 })
   })
 
   it('rejects malformed framing before compilation', () => {
