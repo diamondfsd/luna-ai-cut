@@ -1,4 +1,4 @@
-import type { LlmAdapter, LlmMessage, LlmRequestStatus } from '@freecut/infrastructure/llm'
+import type { LlmAdapter, LlmMessage } from '@freecut/infrastructure/llm'
 import { getDefaultLlmAdapter } from '@freecut/infrastructure/llm'
 import {
   openAiChatCompletionsLlmAdapter,
@@ -13,11 +13,9 @@ import {
 import { buildAiEditingSystemPrompt } from './agent-prompt'
 import { getTimelineRevision } from './evidence'
 import { buildAgentWorkspaceDocument } from './workspace-document/build-workspace-document'
-import type { AgentWorkspaceDocument } from './edit-program/types'
 import { parseAiEditingResponse } from './response-parser'
 import { latestFailedEdit } from './latest-edit-result'
 import { createNativeToolCatalog } from './native-tool-catalog'
-import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
 import missingFinishPrompt from './prompts/messages/missing-finish.md?raw'
 import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
@@ -26,9 +24,17 @@ import { renderPrompt } from './prompts/render-prompt'
 import type { AiEditingObservation } from './types'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
 import { executeNativeToolCall, executeToolCall, serializeForModel } from './tool-execution'
+import { reportModelRequestStatus, reportRunProgress, traceRun as trace } from './orchestration-progress'
+import {
+  buildInitialMessages,
+  buildJsonFallbackMessages,
+  currentWorkspace,
+  toNativeMessages,
+} from './orchestration-messages'
 import {
   declaredPlan,
   defaultReply,
+  deferredCall,
   EDIT_PROGRAM_TOOL_ID,
   FINISH_TOOL_ID,
   hasCommittedEdit,
@@ -39,89 +45,9 @@ import {
 const MAX_TOOL_ROUNDS = 8
 const MAX_TOKENS = 4_096
 
-async function currentWorkspace(options: AiEditingRunOptions): Promise<AgentWorkspaceDocument> {
-  const workspace = await buildAgentWorkspaceDocument()
-  return options.scopeWorkspace?.(workspace) ?? workspace
-}
-
-function reportRunProgress(
-  options: AiEditingRunOptions,
-  label: string,
-  percent: number,
-  ceiling?: number,
-  previewText?: string,
-): void {
-  options.onRunProgress?.({
-    label,
-    percent: Math.max(0, Math.min(100, Math.round(percent))),
-    ...(ceiling === undefined
-      ? {}
-      : { ceiling: Math.max(percent, Math.min(100, Math.round(ceiling))) }),
-    ...(previewText === undefined ? {} : { previewText }),
-  })
-}
-
-function reportModelRequestStatus(
-  options: AiEditingRunOptions,
-  status: LlmRequestStatus,
-  percent: number,
-): void {
-  const label = status.state === 'streaming'
-    ? `${status.previewKind === 'reasoning' ? '正在整理剪辑思路' : '正在生成剪辑方案'}（第 ${status.attempt}/${status.maxAttempts} 次）`
-    : status.state === 'retrying' || status.attempt > 1
-      ? `正在重新尝试获取剪辑方案（第 ${status.attempt}/${status.maxAttempts} 次）`
-      : `正在等待剪辑方案（第 ${status.attempt}/${status.maxAttempts} 次）`
-  reportRunProgress(options, label, percent, Math.max(percent, 68), status.previewText)
-}
-
 export function getAiEditingAdapter(): LlmAdapter {
   if (getEmbeddedHostBridge().aiAssistant) return openAiChatCompletionsLlmAdapter
   return getDefaultLlmAdapter()
-}
-
-function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
-  return messages.map((message) => ({ role: message.role, content: message.content }))
-}
-
-function deferredCall(toolId: string, message: string): AiEditingObservation {
-  return { toolId, result: { ok: false, message } }
-}
-
-async function buildInitialMessages(
-  userText: string,
-  history: LlmMessage[],
-  evidence: unknown,
-  protocol: 'native' | 'json',
-  availableToolIds?: ReadonlySet<string>,
-): Promise<LlmMessage[]> {
-  return [
-    { role: 'system', content: await buildAiEditingSystemPrompt(evidence, protocol, userText, availableToolIds) },
-    ...history,
-    { role: 'user', content: userText },
-  ]
-}
-
-async function buildJsonFallbackMessages(
-  userText: string,
-  history: LlmMessage[],
-  observations: AiEditingObservation[],
-  options: AiEditingRunOptions,
-  availableToolIds?: ReadonlySet<string>,
-): Promise<LlmMessage[]> {
-  const messages = await buildInitialMessages(
-    userText,
-    history,
-    await currentWorkspace(options),
-    'json',
-    availableToolIds,
-  )
-  if (observations.length > 0) {
-    messages.push({
-      role: 'user',
-      content: renderPrompt(fallbackProgressPrompt, { OBSERVATIONS: serializeForModel(observations) }),
-    })
-  }
-  return messages
 }
 
 async function runJsonToolLoop(
@@ -140,6 +66,11 @@ async function runJsonToolLoop(
   let rawFromPreviousRequest = initialRaw
 
   for (let round = 0; round < maxRounds; round += 1) {
+    trace(options, 'model-request', `请求模型处理第 ${round + 1} 轮。`, {
+      protocol: 'json',
+      round: round + 1,
+      messageCount: messages.length,
+    })
     reportRunProgress(
       options,
       round === 0 ? '正在理解需求' : '正在根据执行结果继续处理',
@@ -157,6 +88,10 @@ async function runJsonToolLoop(
         onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
       })
     } catch (error) {
+      trace(options, 'model-error', '模型请求失败。', {
+        round: round + 1,
+        error: error instanceof Error ? error.message : String(error),
+      })
       if (!hasCommittedEdit(observations)) throw error
       const message = error instanceof Error ? error.message : '后续剪辑生成失败。'
       return {
@@ -169,10 +104,16 @@ async function runJsonToolLoop(
         timelineRevisionAfter: 0,
       }
     }
+    trace(options, 'model-response', `模型返回第 ${round + 1} 轮结果。`, {
+      protocol: 'json',
+      round: round + 1,
+      raw,
+    })
     rawFromPreviousRequest = undefined
     reportRunProgress(options, '正在检查处理结果', round === 0 ? 72 : Math.min(94, 84 + round * 2))
     const parsed = parseAiEditingResponse(raw)
     if (!parsed) {
+      trace(options, 'protocol-error', '模型返回内容无法解析为工具协议。', { round: round + 1 })
       if (round === maxRounds - 1) {
         throw new Error('助手这次没有按约定返回剪辑操作，已自动重试多次。请再试一次。')
       }
@@ -192,6 +133,11 @@ async function runJsonToolLoop(
     let editCallSeen = false
     for (const call of parsed.toolCalls.slice(0, 3)) {
       if (options.signal?.aborted) break
+      trace(options, 'tool-start', `开始执行工具 ${call.id}。`, {
+        round: round + 1,
+        toolId: call.id,
+        arguments: call.args,
+      })
       let observation: AiEditingObservation
       if (call.id === EDIT_PROGRAM_TOOL_ID && editCallSeen) {
         observation = deferredCall(
@@ -211,11 +157,17 @@ async function runJsonToolLoop(
       callIndex += 1
       roundObservations.push(observation)
       observations.push(observation)
+      trace(options, 'tool-result', `工具 ${observation.toolId} 执行结束。`, {
+        round: round + 1,
+        toolId: observation.toolId,
+        result: observation.result,
+      })
     }
     if (options.signal?.aborted) break
 
     const terminal = terminalState(observations)
     if (terminal.finished) {
+      trace(options, 'terminal', '模型声明本轮任务结束。', terminal)
       reportRunProgress(options, '处理结果已确认', 96)
       break
     }
@@ -273,6 +225,11 @@ async function runNativeToolLoop(
   let callIndex = 0
 
   for (let round = 0; round < maxRounds; round += 1) {
+    trace(options, 'model-request', `请求模型处理第 ${round + 1} 轮。`, {
+      protocol: 'native',
+      round: round + 1,
+      messageCount: messages.length,
+    })
     reportRunProgress(
       options,
       round === 0 ? '正在理解需求' : '正在根据执行结果继续处理',
@@ -289,6 +246,10 @@ async function runNativeToolLoop(
         onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
       })
     } catch (error) {
+      trace(options, 'model-error', '模型请求失败。', {
+        round: round + 1,
+        error: error instanceof Error ? error.message : String(error),
+      })
       if (!hasCommittedEdit(observations)) throw error
       const message = error instanceof Error ? error.message : '后续剪辑生成失败。'
       return {
@@ -301,7 +262,15 @@ async function runNativeToolLoop(
         timelineRevisionAfter: 0,
       }
     }
+    trace(options, 'model-response', `模型返回第 ${round + 1} 轮结果。`, {
+      protocol: 'native',
+      round: round + 1,
+      mode: response.mode,
+      content: 'content' in response ? response.content : undefined,
+      toolCalls: 'toolCalls' in response ? response.toolCalls : undefined,
+    })
     if (response.mode === 'fallback') {
+      trace(options, 'protocol-fallback', '原生工具协议不可用，切换兼容协议。')
       return runJsonToolLoop(
         await buildJsonFallbackMessages(userText, options.history, observations, options, availableToolIds),
         userText,
@@ -340,6 +309,11 @@ async function runNativeToolLoop(
     for (const call of response.toolCalls) {
       if (options.signal?.aborted) break
       const toolId = catalog.idsByFunctionName.get(call.name) ?? call.name
+      trace(options, 'tool-start', `开始执行工具 ${toolId}。`, {
+        round: round + 1,
+        toolId,
+        arguments: call.arguments,
+      })
       let observation: AiEditingObservation
       if (toolId === EDIT_PROGRAM_TOOL_ID && editCallSeen) {
         observation = deferredCall(
@@ -365,11 +339,18 @@ async function runNativeToolLoop(
       callIndex += 1
       observations.push(observation)
       roundObservations.push({ call, observation })
+      trace(options, 'tool-result', `工具 ${observation.toolId} 执行结束。`, {
+        round: round + 1,
+        toolId: observation.toolId,
+        arguments: call.arguments,
+        result: observation.result,
+      })
     }
     if (options.signal?.aborted) break
 
     const terminal = terminalState(observations)
     if (terminal.finished) {
+      trace(options, 'terminal', '模型声明本轮任务结束。', terminal)
       reportRunProgress(options, '处理结果已确认', 96)
       break
     }

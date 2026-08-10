@@ -3,6 +3,10 @@ import type { AiEditingObservation } from './types'
 export const FINISH_TOOL_ID = 'workflow.finish'
 export const EDIT_PROGRAM_TOOL_ID = 'workspace.apply_edit_program'
 
+export function deferredCall(toolId: string, message: string): AiEditingObservation {
+  return { toolId, result: { ok: false, message } }
+}
+
 interface FinishData {
   outcome: 'responded' | 'edited' | 'blocked'
   summary: string

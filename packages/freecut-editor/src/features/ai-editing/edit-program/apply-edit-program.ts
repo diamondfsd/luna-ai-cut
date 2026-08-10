@@ -2,9 +2,11 @@ import { useTimelineCommandStore, useTimelineStore } from '@freecut/features/edi
 import { addItemsOnNewTracks } from '@freecut/features/editor/deps/timeline-contract'
 import { compileEditProgram } from './compiler'
 import type { EditProgram, EditProgramApplyResult } from './types'
+import { assertSingleShotInsert } from './single-shot-policy'
 
 export async function applyEditProgram(program: EditProgram): Promise<EditProgramApplyResult> {
   const compiled = await compileEditProgram(program)
+  assertSingleShotInsert(compiled.insertItems)
   const revisionBefore = useTimelineStore.getState().changeVersion ?? 0
   if (program.mode === 'preview') {
     return {
