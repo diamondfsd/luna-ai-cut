@@ -15,12 +15,13 @@ import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
 import { buildFaceGroups, FACE_EMBEDDING_VERSION, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
-import { buildGlobalFaceGroups, hideGlobalPerson, loadGlobalPeople, mergeGlobalPeople, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
+import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, restoreGlobalPerson, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
 import {
   countSimilarityGroups,
   matchesResultFilter,
 } from '../src/ai-selection/aiSelectionView.ts'
 import { buildCoPhotoGroups } from '../src/ai-selection/aiCoPhotoGroups.ts'
+import { coverFittedFaceBounds } from '../src/ai-selection/aiFaceOverlayGeometry.ts'
 
 function quality(score = 80) {
   return {
@@ -267,6 +268,20 @@ const faceGroups = buildFaceGroups(faceItems)
 assert.equal(faceGroups.length, 2)
 assert.deepEqual(faceGroups[0].itemIds, ['face-a', 'face-a-again', 'face-a-and-b'])
 assert.deepEqual(faceGroups[1].itemIds, ['face-b', 'face-a-and-b'])
+assert.deepEqual(coverFittedFaceBounds({ x: 0.25, y: 0.25, width: 0.25, height: 0.25 }, 4000, 3000), { x: 0.25, y: 0.25, width: 0.25, height: 0.25 }, '4:3 照片的人脸框应保持原始位置')
+const portraitFaceBounds = coverFittedFaceBounds({ x: 0.25, y: 0.25, width: 0.25, height: 0.25 }, 3000, 4000)
+assert.ok(Math.abs(portraitFaceBounds.x - 0.25) < 1e-9)
+assert.ok(Math.abs(portraitFaceBounds.y - 1 / 18) < 1e-9)
+assert.ok(Math.abs(portraitFaceBounds.width - 0.25) < 1e-9)
+assert.ok(Math.abs(portraitFaceBounds.height - 4 / 9) < 1e-9, '竖图的人脸框应补偿缩略图的上下裁切')
+
+const uncertainIdentity = createPersonIdentity('已确认人物', faceVector(127, 0))
+const uncertainFaceGroups = buildFaceGroups([
+  item('known-face', '2026-07-18T03:03:10.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('uncertain-face', '2026-07-18T03:03:11.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.22, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(58, 116), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+], [uncertainIdentity])
+assert.equal(uncertainFaceGroups.length, 1, '相近的人脸仍应形成本次任务的局部组')
+assert.equal(uncertainFaceGroups[0].identityId, null, '只有组内一张脸匹配时不能把整个组归入已确认人物')
 
 const sampledVideoFace = item('sampled-video-face', '2026-07-18T03:04:00.000Z', {
   kind: 'video',
@@ -320,17 +335,22 @@ try {
   await unmergeGlobalPerson(peopleStoreRoot, { ...peopleSession, faceGroups: groupsAfterMerge }, groupsAfterMerge[0].id, secondIdentity.id)
   assert.equal(buildGlobalFaceGroups(faceItems).length, 2, '移除合并成员后应恢复两个独立人物')
   const targetAfterUnmerge = buildGlobalFaceGroups(faceItems).find((group) => group.identityId === registeredIdentity.id)
-  assert.ok(targetAfterUnmerge, '删除前应能找到目标人物')
+  assert.ok(targetAfterUnmerge, '隐藏前应能找到目标人物')
   await hideGlobalPerson(peopleStoreRoot, { ...peopleSession, faceGroups: buildGlobalFaceGroups(faceItems) }, targetAfterUnmerge.id)
-  assert.deepEqual(buildGlobalFaceGroups(faceItems).map((group) => group.identityId), [secondIdentity.id], '删除人物后应抑制相同人脸再次出现')
+  assert.deepEqual(buildGlobalFaceGroups(faceItems).map((group) => group.identityId), [secondIdentity.id], '隐藏人物后应抑制相同人脸再次出现')
+  assert.deepEqual(listHiddenGlobalPeople().map((person) => person.id), [registeredIdentity.id], '隐藏人物应出现在可恢复列表中')
+  await restoreGlobalPerson(peopleStoreRoot, registeredIdentity.id)
+  assert.deepEqual(new Set(buildGlobalFaceGroups(faceItems).map((group) => group.identityId)), new Set([registeredIdentity.id, secondIdentity.id]), '恢复人物后应重新进入分组')
   await loadGlobalPeople(peopleStoreRoot)
-  assert.deepEqual(buildGlobalFaceGroups(faceItems).map((group) => group.identityId), [secondIdentity.id], '重新加载人物库后仍应抑制已删除人物')
+  assert.deepEqual(new Set(buildGlobalFaceGroups(faceItems).map((group) => group.identityId)), new Set([registeredIdentity.id, secondIdentity.id]), '重新加载人物库后应保留恢复状态')
 
   const legacyStoreRoot = path.join(peopleStoreRoot, 'legacy')
   await fs.mkdir(legacyStoreRoot)
-  const { mergedIntoId: _ignored, ...legacyIdentity } = registeredIdentity
+  const { mergedIntoId: _ignored, hidden: _hidden, confirmed: _confirmed, ...legacyIdentity } = { ...registeredIdentity, avatarDataUrl: null }
   await fs.writeFile(path.join(legacyStoreRoot, 'people.json'), JSON.stringify({ schemaVersion: 1, identities: [legacyIdentity] }))
-  assert.equal((await loadPeopleStore(legacyStoreRoot))[0].mergedIntoId, null, '旧人物库应无损迁移为未合并身份')
+  const legacyPeople = await loadPeopleStore(legacyStoreRoot)
+  assert.equal(legacyPeople[0].mergedIntoId, null, '旧人物库应无损迁移为未合并身份')
+  assert.equal(legacyPeople[0].confirmed, false, '历史自动编号人物不应继续影响后续任务的人物匹配')
 } finally {
   await fs.rm(peopleStoreRoot, { recursive: true, force: true })
 }
@@ -363,6 +383,15 @@ const poseGroups = buildFaceGroups([
   item('pose-profile', '2026-07-18T03:12:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(0, 80, 100), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
 ])
 assert.equal(poseGroups.length, 1, '同一人物的正脸、过渡角度和侧脸应通过组内相似样本归为一组')
+
+const widePoseGroups = buildFaceGroups([
+  item('wide-pose-front', '2026-07-18T03:13:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(127, 0, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-left-1', '2026-07-18T03:14:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 120, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-left-2', '2026-07-18T03:15:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 120, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-left-3', '2026-07-18T03:16:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 120, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-right', '2026-07-18T03:17:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 0, 120), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+])
+assert.equal(widePoseGroups.length, 1, '同一人跨多个角度时不能因分组均值漂移而被拆散')
 
 const coPhotoGroups = buildCoPhotoGroups([
   { id: 'face-a', name: '安安', itemIds: ['photo-ab-1', 'photo-ab-2', 'photo-abc'], coverItemId: 'photo-ab-1', identityId: 'a', coverUrl: null, coverBounds: { x: 0, y: 0, width: 1, height: 1 }, memberFaces: [] },
