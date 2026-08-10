@@ -5,6 +5,8 @@ export interface AiAvatarCropBounds {
   height: number
 }
 
+export const FACE_AVATAR_CONTEXT_SCALE = 2.4
+
 export function squareCropAroundCenter(
   bounds: AiAvatarCropBounds,
   sourceWidth: number,

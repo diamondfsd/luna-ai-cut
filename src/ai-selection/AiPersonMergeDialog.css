@@ -1,10 +1,30 @@
-.ai-person-merge-dialog.ui-dialog-content { width: min(520px, 92vw); }
-.ai-person-merge-body { max-height: min(620px, 70vh); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
-.ai-person-merge-body > section { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.ai-person-merge-body > section > strong { font-size: 12px; }
-.ai-person-merged-list { display: flex; flex-direction: column; gap: 5px; }
-.ai-person-merged-list > div { min-height: 46px; padding: 5px 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-.ai-person-merged-list > div > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.ai-person-merged-avatar { width: 34px; height: 34px; }
-.ai-person-merge-empty { padding: 12px 8px; color: var(--text-secondary, #6e6e73); font-size: 11px; }
-.ai-person-merge-body .ai-selection-person-merge-list { max-height: 300px; padding: 0; }
+.ai-person-merge-dialog.ui-dialog-content { width: min(820px, calc(100vw - 48px)); height: min(660px, calc(100vh - 64px)); max-height: none; }
+.ai-person-merge-body { min-height: 0; height: 100%; padding: 18px 20px; overflow: hidden; display: grid; grid-template-columns: minmax(230px, .86fr) minmax(0, 1.14fr); gap: 20px; box-sizing: border-box; }
+.ai-person-merge-body > section { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.ai-person-merge-body > section + section { padding-left: 20px; border-left: 1px solid var(--border, #d9dce2); }
+.ai-person-merge-body > section > strong { font-size: 13px; }
+.ai-person-merged-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
+.ai-person-merged-list > div { min-height: 66px; padding: 6px 8px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 10px; box-sizing: border-box; }
+.ai-person-merged-list > div > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.ai-person-merged-avatar { width: 52px; height: 52px; }
+.ai-person-merge-empty { padding: 16px 8px; color: var(--text-secondary, #6e6e73); font-size: 12px; }
+.ai-person-merge-body .ai-selection-person-merge-list { min-height: 0; max-height: none; padding: 0 2px 2px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; }
+.ai-person-merge-body .ai-selection-person-merge-list > .ui-btn { min-width: 0; min-height: 76px; padding: 8px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; background: var(--surface, #fff); color: var(--text-primary, #1d1d1f); display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 10px; text-align: left; white-space: normal; }
+.ai-person-merge-body .ai-selection-person-merge-list > .ui-btn:hover { border-color: color-mix(in srgb, var(--blue, #06c) 38%, white); background: color-mix(in srgb, var(--blue, #06c) 4%, white); color: var(--text-primary, #1d1d1f); }
+.ai-person-merge-body .ai-selection-person-merge-list > .ui-btn.selected { border-color: color-mix(in srgb, var(--blue, #06c) 50%, white); background: color-mix(in srgb, var(--blue, #06c) 9%, white); color: var(--blue, #06c); }
+.ai-person-merge-body .ai-selection-person-merge-list .ui-btn-icon { width: 56px; height: 56px; flex: 0 0 56px; }
+.ai-person-merge-body .ai-selection-person-merge-list .ai-selection-face-group-cover { width: 56px; height: 56px; }
+.ai-person-merge-body .ai-selection-person-merge-list > .ui-btn span:not(.ui-btn-icon):not(.ai-selection-face-group-cover) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.ai-person-merge-body .ai-selection-person-merge-list > .ui-btn strong { color: var(--text-secondary, #6e6e73); font-size: 12px; }
+
+@media (max-width: 680px) {
+  .ai-person-merge-dialog.ui-dialog-content { width: min(560px, calc(100vw - 32px)); height: min(720px, calc(100vh - 32px)); }
+  .ai-person-merge-body { overflow-y: auto; grid-template-columns: 1fr; gap: 18px; }
+  .ai-person-merge-body > section + section { padding: 18px 0 0; border-top: 1px solid var(--border, #d9dce2); border-left: 0; }
+  .ai-person-merged-list { overflow: visible; }
+}
+
+@media (max-width: 430px) {
+  .ai-person-merge-body { padding: 14px; }
+  .ai-person-merge-body .ai-selection-person-merge-list { grid-template-columns: 1fr; }
+}
