@@ -16,6 +16,7 @@ import {
   pauseAiSelection,
   mergeAiSelectionPeople,
   redoAiSelection,
+  reanalyzeAiSelection,
   renameAiSelectionPerson,
   removeAiSelectionSession,
   resumeAiSelection,
@@ -47,6 +48,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('ai-selection:get', (_event, sessionId: string) => getAiSelectionSession(sessionId))
   ipcMain.handle('ai-selection:pause', (_event, sessionId: string) => pauseAiSelection(sessionId))
   ipcMain.handle('ai-selection:resume', (_event, sessionId: string) => resumeAiSelection(sessionId))
+  ipcMain.handle('ai-selection:reanalyze', (_event, sessionId: string) => reanalyzeAiSelection(sessionId))
   ipcMain.handle('ai-selection:cancel', (_event, sessionId: string) => cancelAiSelection(sessionId))
   ipcMain.handle('ai-selection:apply-operation', (_event, sessionId: string, revision: number, operation: AiSelectionUserOperation) => applyAiSelectionOperation(sessionId, revision, operation))
   ipcMain.handle('ai-selection:analyze-people', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionPeople(sessionId, itemIds))
