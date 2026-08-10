@@ -36,6 +36,8 @@ function getBucketColorClasses(item: TimelineItem): string {
       return 'bg-timeline-audio border-timeline-audio'
     case 'image':
       return 'bg-timeline-image/40 border-timeline-image'
+    case 'html':
+      return 'bg-cyan-950/80 border-cyan-500/70'
     case 'text':
       return 'bg-timeline-text/40 border-timeline-text'
     case 'shape':

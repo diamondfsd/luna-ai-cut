@@ -36,6 +36,21 @@ export interface EmbeddedTaskProgress {
   percent: number | null
 }
 
+export interface EmbeddedHtmlRenderRequest {
+  html: string
+  css: string
+  width: number
+  height: number
+  timeMs: number
+}
+
+export interface EmbeddedHtmlRenderResult {
+  png: ArrayBuffer
+  width: number
+  height: number
+  warnings: string[]
+}
+
 export interface EmbeddedAiAssistantConfig {
   baseUrl: string
   model: string
@@ -120,6 +135,7 @@ export interface EmbeddedHostBridge {
   ) => Promise<EmbeddedVisualEvidence>
   /** The remote model connection is implemented by the trusted Electron host. */
   aiAssistant?: EmbeddedAiAssistantBridge
+  renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
 }
 
 const EmbeddedHostContext = createContext<EmbeddedHostBridge>({})

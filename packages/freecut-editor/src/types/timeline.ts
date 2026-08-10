@@ -7,6 +7,7 @@ import type { TextStylePresetId } from '@freecut/shared/typography/text-style-pr
 import type { TextMotionSpec } from './text-motion'
 import type { TextLayoutDrafts, TextSpan, TextStyleFields } from './text'
 import type { CompositionControlOverrides } from './composition-controls'
+import type { HtmlAssetReference, HtmlRenderMode, HtmlViewport } from './html'
 
 export interface TimelineItemCornerPin {
   topLeft: [number, number]
@@ -242,6 +243,16 @@ export type ImageItem = BaseTimelineItem & {
   sourceHeight?: number
 }
 
+export type HtmlItem = BaseTimelineItem & {
+  type: 'html'
+  html: string
+  css: string
+  viewport: HtmlViewport
+  renderMode: HtmlRenderMode
+  sourceRevision: number
+  assets: HtmlAssetReference[]
+}
+
 export type LottieItem = BaseTimelineItem & {
   type: 'lottie'
   src: string // blob URL to the Lottie JSON
@@ -469,6 +480,7 @@ export type TimelineItem =
   | AudioItem
   | TextItem
   | ImageItem
+  | HtmlItem
   | LottieItem
   | ShapeItem
   | AdjustmentItem

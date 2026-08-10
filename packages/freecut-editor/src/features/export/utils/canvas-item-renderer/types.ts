@@ -32,6 +32,7 @@ import type { GlyphAtlasTextPipeline } from '@freecut/infrastructure/gpu-text'
 import type { MaskCombinePipeline } from '@freecut/infrastructure/gpu-masks'
 import type { AdjustmentLayerWithTrackOrder, EffectSourceMask } from '../canvas-effects'
 import type { RenderTimelineSpan } from '../render-span'
+import type { HtmlFrameProvider } from '../html-frame-provider'
 import type { calculateMediaCropLayout } from '@freecut/shared/utils/media-crop'
 import type {
   CompositionControlOverrides,
@@ -170,6 +171,8 @@ export interface ItemRenderContext {
   imageElements: Map<string, WorkerLoadedImage>
   gifFramesMap: Map<string, CachedGifFrames>
   ensureImageItemReady?: (item: ImageItem) => Promise<void>
+  htmlFrameProvider?: HtmlFrameProvider
+  htmlRasterCache?: Map<string, ImageBitmap>
   /** Preloaded Lottie renderers keyed by item id; renders a frame on demand. */
   lottieProvider: LottieExportProvider
   ensureLottieItemReady?: (item: import('@freecut/types/timeline').LottieItem) => Promise<void>

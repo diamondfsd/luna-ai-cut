@@ -105,6 +105,10 @@ self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
   try {
     const tracks = composition.tracks ?? []
 
+    if (tracks.some((track) => track.items?.some((item) => item.type === 'html'))) {
+      throw new Error('WORKER_REQUIRES_MAIN_THREAD:html-renderer')
+    }
+
     if (settings.mode === 'video' && compositionHasAnimatedImage(composition.tracks ?? [])) {
       throw new Error('WORKER_REQUIRES_MAIN_THREAD:animated-image')
     }

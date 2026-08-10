@@ -105,6 +105,7 @@ import {
 import { ReverseVideoFrameCache } from './reverse-video-frame-cache'
 import { resolveReverseConformedVideoItem } from '@freecut/shared/utils/reverse-conform-item'
 import { resolveCompositionSourceFrame } from './render-span'
+import { getHtmlFrameProvider, type HtmlFrameProvider } from './html-frame-provider'
 import {
   itemHasEnabledGpuEffect,
   isAnimatedImage,
@@ -645,6 +646,7 @@ export async function createCompositionRenderer(
     domVideoElementProvider?: (itemId: string) => HTMLVideoElement | null
     useProxyMedia?: boolean
     renderText?: boolean
+    htmlFrameProvider?: HtmlFrameProvider
   } = {},
 ) {
   const { fps, transitions = [], backgroundColor = '#000000', keyframes = [] } = composition
@@ -1196,6 +1198,7 @@ export async function createCompositionRenderer(
   let prewarmCtx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null = null
   let prewarmAttempted = false
   const reverseVideoFrameCache = renderMode === 'export' ? new ReverseVideoFrameCache() : undefined
+  const htmlRasterCache = new Map<string, ImageBitmap>()
 
   // Build the shared ItemRenderContext used by canvas-item-renderer functions
   const itemRenderContext: ItemRenderContext = {
@@ -1244,6 +1247,8 @@ export async function createCompositionRenderer(
     imageElements,
     gifFramesMap,
     ensureImageItemReady: (item) => ensureImageItemReady(item),
+    htmlFrameProvider: options.htmlFrameProvider ?? getHtmlFrameProvider(),
+    htmlRasterCache,
     lottieProvider,
     ensureLottieItemReady: (item) => ensureLottieItemReady(item),
     keyframesMap,
@@ -2840,6 +2845,8 @@ export async function createCompositionRenderer(
       // MB for text rasters / corner-pin warps); drop them now instead of at GC.
       itemRenderContext.textRasterCache?.clear()
       itemRenderContext.cornerPinWarpCache?.clear()
+      for (const bitmap of htmlRasterCache.values()) bitmap.close()
+      htmlRasterCache.clear()
 
       gpu.dispose()
       frameSceneCache.invalidate()

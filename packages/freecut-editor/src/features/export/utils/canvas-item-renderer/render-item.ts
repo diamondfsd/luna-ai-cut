@@ -7,6 +7,7 @@
 import type {
   CompositionItem,
   ImageItem,
+  HtmlItem,
   LottieItem,
   ShapeItem,
   SubtitleSegmentItem,
@@ -37,6 +38,7 @@ import {
 import { renderVideoItem } from './video'
 import { renderImageItem } from './image'
 import { renderLottieItem } from './lottie'
+import { renderHtmlItem } from './html'
 import { getTextRasterCacheKey, renderSubtitleSegmentItem, renderTextItem } from './text'
 import { isTextMotionActive } from '@freecut/shared/typography/text-motion'
 import { renderCompositionItem } from './composition'
@@ -195,6 +197,9 @@ async function renderItemContent(
     case 'lottie':
       await rctx.ensureLottieItemReady?.(effectiveItem as LottieItem)
       renderLottieItem(ctx, effectiveItem as LottieItem, transform, rctx, frame)
+      break
+    case 'html':
+      await renderHtmlItem(ctx, effectiveItem as HtmlItem, transform, frame, rctx)
       break
     case 'text': {
       const textItem = effectiveItem as TextItem

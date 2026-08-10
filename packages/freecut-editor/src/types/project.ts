@@ -8,6 +8,7 @@ import type { TextMotionSpec } from './text-motion'
 import type { MaskVertex } from './masks'
 import type { ShapeStyleFields } from './timeline'
 import type { CompositionControlOverrides, CompositionControlSchema } from './composition-controls'
+import type { HtmlAssetReference, HtmlRenderMode, HtmlViewport } from './html'
 
 /**
  * Selects the editing surface a stored composition naturally opens in.
@@ -90,6 +91,7 @@ export interface ProjectTimeline {
         | 'audio'
         | 'text'
         | 'image'
+        | 'html'
         | 'shape'
         | 'composition'
         | 'adjustment'
@@ -100,6 +102,13 @@ export interface ProjectTimeline {
       thumbnailUrl?: string
       offset?: number // @deprecated Use sourceStart instead
       waveformData?: number[]
+      // HTML document fields
+      html?: string
+      css?: string
+      viewport?: HtmlViewport
+      renderMode?: HtmlRenderMode
+      sourceRevision?: number
+      assets?: HtmlAssetReference[]
       // Source boundaries for media items (video/audio)
       sourceStart?: number // Start position in source media (frames)
       sourceEnd?: number // End position in source media (frames)

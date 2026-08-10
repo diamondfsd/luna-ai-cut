@@ -68,6 +68,7 @@ export interface GizmoState {
     | 'video'
     | 'audio'
     | 'image'
+    | 'html'
     | 'lottie'
     | 'text'
     | 'shape'

@@ -29,6 +29,7 @@ import type {
   FreecutWorkspaceApi,
   OriginalFileExportRequest,
 } from '../src/shared/types'
+import type { HtmlRenderApi } from './htmlRenderTypes'
 
 interface ExportItemInput {
   id: string
@@ -442,8 +443,13 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:deleteCubeFile', cubePath, isBuiltin),
 }
 
+const lunaHtmlRendererApi: HtmlRenderApi = {
+  render: (request) => ipcRenderer.invoke('html-render:render', request),
+}
+
 contextBridge.exposeInMainWorld('luna', lunaApi)
 contextBridge.exposeInMainWorld('lunaRenderCore', lunaRenderCoreApi)
+contextBridge.exposeInMainWorld('lunaHtmlRenderer', lunaHtmlRendererApi)
 contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)

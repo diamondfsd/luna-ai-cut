@@ -74,7 +74,21 @@ export interface AgentClip {
   framing?: AgentFraming
   cameraMove?: AgentCameraMove
   text?: string
+  html?: AgentHtmlSummary
   volumeDb?: number
+}
+
+export interface AgentHtmlViewport {
+  width: number
+  height: number
+  deviceScaleFactor: number
+}
+
+export interface AgentHtmlSummary {
+  hash: string
+  revision: number
+  viewport: AgentHtmlViewport
+  renderMode: 'static' | 'animated'
 }
 
 export interface AgentWorkspaceDocument {
@@ -125,6 +139,18 @@ export interface AgentTextDraft {
   role?: 'title' | 'caption'
 }
 
+export interface AgentHtmlDraft {
+  ref: string
+  html: string
+  css: string
+  start: number
+  duration: number
+  label?: string
+  trackRef?: AgentTrackRef
+  viewport?: AgentHtmlViewport
+  renderMode?: 'static' | 'animated'
+}
+
 export interface AgentTransitionDraft {
   between: [string, string]
   transition: AgentTransitionSpec
@@ -147,6 +173,18 @@ export type EditOperation =
     }
   | { type: 'insertClip'; clip: AgentClipDraft }
   | { type: 'insertText'; text: AgentTextDraft }
+  | { type: 'insertHtml'; html: AgentHtmlDraft }
+  | {
+      type: 'updateHtml'
+      clipRef: AgentClipRef
+      expectedRevision: number
+      changes: {
+        html?: string
+        css?: string
+        viewport?: AgentHtmlViewport
+        renderMode?: 'static' | 'animated'
+      }
+    }
   | {
       type: 'updateClip'
       clipRef: AgentClipRef

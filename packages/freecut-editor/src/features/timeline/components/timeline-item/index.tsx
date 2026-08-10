@@ -598,6 +598,8 @@ export const TimelineItem = memo(function TimelineItem({
         return 'bg-timeline-audio border-timeline-audio'
       case 'image':
         return 'bg-timeline-image/30 border-timeline-image'
+      case 'html':
+        return 'bg-cyan-950/70 border-cyan-500/70'
       case 'text':
         return 'bg-timeline-text/30 border-timeline-text'
       case 'shape':

@@ -9,6 +9,8 @@ describe('AI editing tool surface', () => {
       'analysis.request',
       'analysis.search_transcript',
       'audio.analyze_beats',
+      'html.read',
+      'html.validate',
       'skill.read',
       'skill.search',
       'workflow.set_plan',

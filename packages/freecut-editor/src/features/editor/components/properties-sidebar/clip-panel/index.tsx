@@ -68,6 +68,9 @@ const LazyTextEffectsSection = lazy(() =>
 const LazyTextStyleSection = lazy(() =>
   import('./text-section').then((module) => ({ default: module.TextStyleSection })),
 )
+const LazyHtmlSection = lazy(() =>
+  import('./html-section').then((module) => ({ default: module.HtmlSection })),
+)
 const LazyAnimationPresetLibrary = lazy(() =>
   import('../../animate-workspace/animation-preset-library').then((module) => ({
     default: module.AnimationPresetLibrary,
@@ -86,7 +89,7 @@ function isGifItem(item: TimelineItem): boolean {
  * Uses Set for O(1) type lookups instead of repeated array iterations.
  */
 function computeItemTypeInfo(items: TimelineItem[]) {
-  const types = new Set(items.map((item) => item.type))
+  const types = new Set<string>(items.map((item) => item.type))
   const hasGifItems = items.some(isGifItem)
 
   return {
@@ -99,6 +102,7 @@ function computeItemTypeInfo(items: TimelineItem[]) {
       types.has('composition') ||
       types.has('subtitle') ||
       types.has('lottie') ||
+      types.has('html') ||
       types.has('controller'),
     hasVideoItems: types.has('video'),
     hasCompositionItems: types.has('composition'),
@@ -123,6 +127,7 @@ function computeItemTypeInfo(items: TimelineItem[]) {
     isOnlyText: items.length > 0 && items.every((item) => item.type === 'text'),
     // Pure shape selection gets a Shape tab (no audio) instead of Video.
     isOnlyShape: items.length > 0 && items.every((item) => item.type === 'shape'),
+    isOnlyHtml: items.length > 0 && items.every((item) => item.type === 'html'),
     isOnlyController: items.length > 0 && items.every((item) => item.type === 'controller'),
   }
 }
@@ -462,6 +467,7 @@ const ClipPanelCore = memo(function ClipPanelCore({
     isOnlyTextOrShape,
     isOnlyText,
     isOnlyShape,
+    isOnlyHtml,
     isOnlyController,
   } = itemTypeInfo
 
@@ -620,6 +626,14 @@ const ClipPanelCore = memo(function ClipPanelCore({
 
   if (selectedItems.length === 0) {
     return null
+  }
+
+  if (isOnlyHtml) {
+    return (
+      <Suspense fallback={<div className="h-80 rounded-md bg-muted/20" />}>
+        <LazyHtmlSection items={selectedItems} />
+      </Suspense>
+    )
   }
 
   const motionUsesFullHeight = activeTab === 'motion' && showFullMotionLibrary

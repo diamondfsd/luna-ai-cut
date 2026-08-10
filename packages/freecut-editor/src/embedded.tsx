@@ -15,7 +15,10 @@ import {
   type EmbeddedAiAssistantGenerateInput,
   type EmbeddedAiAssistantGenerateResult,
   type EmbeddedAiAssistantBridge,
+  type EmbeddedHtmlRenderRequest,
+  type EmbeddedHtmlRenderResult,
 } from './shared/host/embedded-host'
+import { setHtmlFrameProvider } from './features/export/utils/html-frame-provider'
 import './index.css'
 
 export interface FreeCutEditorProps {
@@ -38,6 +41,7 @@ export interface FreeCutEditorProps {
   ) => Promise<EmbeddedAiAssistantGenerateResult>
   onCancelAiAssistant?: (requestId: string) => Promise<void>
   onAiAssistantStatus?: EmbeddedAiAssistantBridge['onStatus']
+  onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
 }
 
 export function FreeCutEditor({
@@ -49,6 +53,7 @@ export function FreeCutEditor({
   onGenerateAiAssistant,
   onCancelAiAssistant,
   onAiAssistantStatus,
+  onRenderHtmlFrame,
 }: FreeCutEditorProps) {
   const [ready, setReady] = useState(false)
   const hostBridge = useMemo(
@@ -56,6 +61,7 @@ export function FreeCutEditor({
       requestMediaImport: onRequestMediaImport,
       transcribeMedia: onTranscribeMedia,
       analyzeMediaVisual: onAnalyzeMediaVisual,
+      renderHtmlFrame: onRenderHtmlFrame,
       aiAssistant:
         onGetAiAssistantConfig &&
         onSaveAiAssistantConfig &&
@@ -75,6 +81,7 @@ export function FreeCutEditor({
       onRequestMediaImport,
       onTranscribeMedia,
       onAnalyzeMediaVisual,
+      onRenderHtmlFrame,
       onGetAiAssistantConfig,
       onSaveAiAssistantConfig,
       onGenerateAiAssistant,
@@ -82,6 +89,24 @@ export function FreeCutEditor({
       onAiAssistantStatus,
     ],
   )
+
+  useEffect(() => {
+    if (!onRenderHtmlFrame) {
+      setHtmlFrameProvider(undefined)
+      return
+    }
+    setHtmlFrameProvider(async ({ item, width, height, timeMs }) => {
+      const result = await onRenderHtmlFrame({
+        html: item.html,
+        css: item.css,
+        width,
+        height,
+        timeMs,
+      })
+      return createImageBitmap(new Blob([result.png], { type: 'image/png' }))
+    })
+    return () => setHtmlFrameProvider(undefined)
+  }, [onRenderHtmlFrame])
 
   useEffect(() => {
     document.body.classList.add('freecut-active')
