@@ -105,6 +105,7 @@ interface TransitionSpec {
 - 不得让任何两个片段在同一轨道上发生时间交叉；需要同期叠加时使用不同的同类型轨道。
 - `text` 和 `subtitle` 都是纯文字素材，只能放进 `subtitle` 专用文字轨道。`video` 轨道不接受标题、字幕或任何其他纯文本。
 - 视频、图片等画面素材不得放进 `subtitle` 专用文字轨道。
+- `ClipDraft.mediaRef` 指向 `video` 或 `image` 素材时，`trackRef` 必须指向 `kind=video` 的轨道，绝不能为了保留原声而把同一画面素材再写入 `A1`。带原声视频对应的音频片段由宿主自动建立；Agent 不手工复制视频素材到音频轨。
 - 使用带原声的视频素材时应保留宿主生成的绑定音频片段；除非用户明确要求静音，不要删除或遗漏原声。
 - 单张图片可重复成为多个片段；用不同的 `center`、`zoom`、`from` 和 `to` 制作不同特写与运镜。
 - 不要声称取景已经不同，除非返回 workspace 中的实际 framing/cameraMove 不同。

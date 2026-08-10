@@ -12,7 +12,6 @@ import {
   getEmbeddedHostBridge,
   type EmbeddedAiAssistantMessage,
   type EmbeddedAiAssistantToolCall,
-  type EmbeddedAiAssistantToolDefinition,
 } from '@freecut/shared/host/embedded-host'
 import { buildAiEditingSystemPrompt } from './agent-prompt'
 import { getTimelineRevision } from './evidence'
@@ -20,43 +19,19 @@ import { buildAgentWorkspaceDocument } from './workspace-document/build-workspac
 import type { AgentWorkspaceDocument } from './edit-program/types'
 import { parseAiEditingResponse } from './response-parser'
 import { latestFailedEdit } from './latest-edit-result'
+import { createNativeToolCatalog } from './native-tool-catalog'
 import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
 import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
 import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
-import { getAiEditingTool, listAiEditingTools } from './tool-registry'
+import { getAiEditingTool } from './tool-registry'
 import type { AiEditingObservation, AiEditingToolCall, AiEditingToolResult } from './types'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
 
-const MAX_TOOL_ROUNDS = 8
+const MAX_TOOL_ROUNDS = 4
 const MAX_TOKENS = 4_096
 const MAX_TOOL_RESULT_CHARS = 8_000
-
-interface NativeToolCatalog {
-  definitions: EmbeddedAiAssistantToolDefinition[]
-  idsByFunctionName: Map<string, string>
-}
-
-function nativeFunctionName(toolId: string): string {
-  return `fc_${toolId.replaceAll('.', '_')}`
-}
-
-function createNativeToolCatalog(): NativeToolCatalog {
-  const idsByFunctionName = new Map<string, string>()
-  const definitions = listAiEditingTools().map((tool) => {
-    // Chat Completions function names cannot contain the dots used by editor tool IDs.
-    const name = nativeFunctionName(tool.id)
-    if (idsByFunctionName.has(name)) throw new Error('剪辑助手工具名称重复，无法继续。')
-    idsByFunctionName.set(name, tool.id)
-    return {
-      name,
-      description: `${tool.title}。${tool.description}`,
-      parameters: tool.inputSchema,
-    }
-  })
-  return { definitions, idsByFunctionName }
-}
 
 function toolError(toolId: string, message: string): AiEditingObservation {
   return { toolId, result: { ok: false, message } }
@@ -123,7 +98,11 @@ async function executeToolCall(
   call: AiEditingToolCall,
   callIndex: number,
   options: AiEditingRunOptions,
+  availableToolIds?: ReadonlySet<string>,
 ): Promise<AiEditingObservation> {
+  if (availableToolIds && !availableToolIds.has(call.id)) {
+    return toolError(call.id, '这个操作不属于当前任务。')
+  }
   const tool = getAiEditingTool(call.id)
   if (!tool) return toolError(call.id, '这个操作目前不可用。')
 
@@ -202,6 +181,12 @@ function defaultReply(observations: AiEditingObservation[]): string {
   return observations.length > 0 ? '已读取当前项目，但还没有完成实际修改。' : '尚未执行项目操作。'
 }
 
+function declaredPlan(observations: readonly AiEditingObservation[]): string[] {
+  const result = observations.findLast((entry) => entry.toolId === 'workflow.set_plan')?.result.data
+  if (!result || typeof result !== 'object' || !('steps' in result) || !Array.isArray(result.steps)) return []
+  return result.steps.filter((step): step is string => typeof step === 'string')
+}
+
 function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
   return messages.map((message) => ({ role: message.role, content: message.content }))
 }
@@ -220,12 +205,13 @@ async function executeNativeToolCall(
   toolIdsByFunctionName: Map<string, string>,
   callIndex: number,
   options: AiEditingRunOptions,
+  availableToolIds?: ReadonlySet<string>,
 ): Promise<AiEditingObservation> {
   const toolId = toolIdsByFunctionName.get(call.name)
   if (!toolId) return toolError(call.name, '这个操作目前不可用。')
   const args = parseNativeArguments(call.arguments)
   if (!args) return toolError(toolId, '操作参数无效，未执行此操作。')
-  return executeToolCall({ id: toolId, args }, callIndex, options)
+  return executeToolCall({ id: toolId, args }, callIndex, options, availableToolIds)
 }
 
 async function buildInitialMessages(
@@ -233,10 +219,11 @@ async function buildInitialMessages(
   history: LlmMessage[],
   evidence: unknown,
   protocol: 'native' | 'json',
+  availableToolIds?: ReadonlySet<string>,
 ): Promise<LlmMessage[]> {
   return [
-    { role: 'system', content: await buildAiEditingSystemPrompt(evidence, protocol, userText) },
-    ...history.slice(-6),
+    { role: 'system', content: await buildAiEditingSystemPrompt(evidence, protocol, userText, availableToolIds) },
+    ...history,
     { role: 'user', content: userText },
   ]
 }
@@ -246,8 +233,15 @@ async function buildJsonFallbackMessages(
   history: LlmMessage[],
   observations: AiEditingObservation[],
   options: AiEditingRunOptions,
+  availableToolIds?: ReadonlySet<string>,
 ): Promise<LlmMessage[]> {
-  const messages = await buildInitialMessages(userText, history, await currentWorkspace(options), 'json')
+  const messages = await buildInitialMessages(
+    userText,
+    history,
+    await currentWorkspace(options),
+    'json',
+    availableToolIds,
+  )
   if (observations.length > 0) {
     messages.push({
       role: 'user',
@@ -263,6 +257,7 @@ async function runJsonToolLoop(
   adapter: LlmAdapter,
   initialRaw?: string,
   maxRounds = MAX_TOOL_ROUNDS,
+  availableToolIds?: ReadonlySet<string>,
 ): Promise<AiEditingRunResult> {
   const observations: AiEditingObservation[] = []
   let reply = ''
@@ -273,7 +268,7 @@ async function runJsonToolLoop(
   for (let round = 0; round < maxRounds; round += 1) {
     reportRunProgress(
       options,
-      round === 0 ? '正在理解需求并规划剪辑' : '正在根据执行结果继续规划',
+      round === 0 ? '正在理解需求' : '正在根据执行结果继续处理',
       round === 0 ? 32 : Math.min(88, 70 + round * 3),
       round === 0 ? 68 : Math.min(92, 82 + round * 2),
     )
@@ -286,7 +281,7 @@ async function runJsonToolLoop(
       onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
     })
     rawFromPreviousRequest = undefined
-    reportRunProgress(options, '正在检查剪辑方案', round === 0 ? 72 : Math.min(94, 84 + round * 2))
+    reportRunProgress(options, '正在检查处理结果', round === 0 ? 72 : Math.min(94, 84 + round * 2))
     const parsed = parseAiEditingResponse(raw)
     if (!parsed) {
       if (round === maxRounds - 1) {
@@ -299,7 +294,7 @@ async function runJsonToolLoop(
 
     reply = parsed.reply || reply
     if (parsed.toolCalls.length === 0) {
-      reportRunProgress(options, '剪辑方案已确认', 96)
+      reportRunProgress(options, '处理结果已确认', 96)
       finished = true
       break
     }
@@ -307,7 +302,7 @@ async function runJsonToolLoop(
     const roundObservations: AiEditingObservation[] = []
     for (const call of parsed.toolCalls.slice(0, 3)) {
       if (options.signal?.aborted) break
-      const observation = await executeToolCall(call, callIndex, options)
+      const observation = await executeToolCall(call, callIndex, options, availableToolIds)
       callIndex += 1
       roundObservations.push(observation)
       observations.push(observation)
@@ -341,8 +336,9 @@ async function runNativeToolLoop(
   options: AiEditingRunOptions,
   adapter: NativeToolCallingLlmAdapter,
   maxRounds = MAX_TOOL_ROUNDS,
+  availableToolIds?: ReadonlySet<string>,
 ): Promise<AiEditingRunResult> {
-  const catalog = createNativeToolCatalog()
+  const catalog = createNativeToolCatalog(availableToolIds)
   const observations: AiEditingObservation[] = []
   let reply = ''
   let callIndex = 0
@@ -351,7 +347,7 @@ async function runNativeToolLoop(
   for (let round = 0; round < maxRounds; round += 1) {
     reportRunProgress(
       options,
-      round === 0 ? '正在理解需求并规划剪辑' : '正在根据执行结果继续规划',
+      round === 0 ? '正在理解需求' : '正在根据执行结果继续处理',
       round === 0 ? 32 : Math.min(88, 70 + round * 3),
       round === 0 ? 68 : Math.min(92, 82 + round * 2),
     )
@@ -364,28 +360,30 @@ async function runNativeToolLoop(
     })
     if (response.mode === 'fallback') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations, options),
+        await buildJsonFallbackMessages(userText, options.history, observations, options, availableToolIds),
         options,
         adapter,
         undefined,
         maxRounds,
+        availableToolIds,
       )
     }
     if (response.mode === 'json') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations, options),
+        await buildJsonFallbackMessages(userText, options.history, observations, options, availableToolIds),
         options,
         adapter,
         response.content,
         maxRounds,
+        availableToolIds,
       )
     }
 
-    reportRunProgress(options, '正在检查剪辑方案', round === 0 ? 72 : Math.min(94, 84 + round * 2))
+    reportRunProgress(options, '正在检查处理结果', round === 0 ? 72 : Math.min(94, 84 + round * 2))
     if (response.content) reply = response.content
     if (response.toolCalls.length === 0) {
       if (response.content) options.onToken?.(response.content, response.content)
-      reportRunProgress(options, '剪辑方案已确认', 96)
+      reportRunProgress(options, '处理结果已确认', 96)
       finished = true
       break
     }
@@ -393,7 +391,13 @@ async function runNativeToolLoop(
     const roundObservations: Array<{ call: EmbeddedAiAssistantToolCall; observation: AiEditingObservation }> = []
     for (const call of response.toolCalls) {
       if (options.signal?.aborted) break
-      const observation = await executeNativeToolCall(call, catalog.idsByFunctionName, callIndex, options)
+      const observation = await executeNativeToolCall(
+        call,
+        catalog.idsByFunctionName,
+        callIndex,
+        options,
+        availableToolIds,
+      )
       callIndex += 1
       observations.push(observation)
       roundObservations.push({ call, observation })
@@ -434,31 +438,40 @@ async function runNativeToolLoop(
 export async function runSingleAiEditingTurn(
   userText: string,
   options: AiEditingRunOptions,
-  config: { evidence?: unknown; maxToolRounds?: number } = {},
+  config: { evidence?: unknown; maxToolRounds?: number; availableToolIds?: readonly string[] } = {},
 ): Promise<AiEditingRunResult> {
   const adapter = options.adapter ?? getAiEditingAdapter()
   reportRunProgress(options, '正在读取当前编辑空间', 6)
   const evidence = config.evidence ?? await buildAgentWorkspaceDocument()
   reportRunProgress(options, '正在整理轨道、素材和上下文', 18)
   const timelineRevisionBefore = getTimelineRevision()
+  const availableToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
   let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
     reportRunProgress(options, '正在准备剪辑需求', 26)
     result = await runNativeToolLoop(
-      toNativeMessages(await buildInitialMessages(userText, options.history, evidence, 'native')),
+      toNativeMessages(await buildInitialMessages(
+        userText,
+        options.history,
+        evidence,
+        'native',
+        availableToolIds,
+      )),
       userText,
       options,
       adapter,
       config.maxToolRounds,
+      availableToolIds,
     )
   } else {
     reportRunProgress(options, '正在准备剪辑需求', 26)
     result = await runJsonToolLoop(
-      await buildInitialMessages(userText, options.history, evidence, 'json'),
+      await buildInitialMessages(userText, options.history, evidence, 'json', availableToolIds),
       options,
       adapter,
       undefined,
       config.maxToolRounds,
+      availableToolIds,
     )
   }
   const failedEdit = latestFailedEdit(result.observations)
@@ -469,7 +482,7 @@ export async function runSingleAiEditingTurn(
       : !result.completed
         ? { reply: '本轮达到操作上限，尚未确认完成用户目标。请继续提出调整，助手会基于当前项目接着处理。' }
       : {}),
-    plan: result.observations.map((entry) => entry.toolId),
+    plan: declaredPlan(result.observations),
     completed: !failedEdit && result.completed,
     completionNotes: failedEdit
       ? [failedEdit.result.message]

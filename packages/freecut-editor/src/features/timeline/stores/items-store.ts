@@ -20,6 +20,7 @@ import { isCompositionWrapperItem, wouldCreateCompositionCycle } from '../utils/
 import { getTrackKind, normalizeClassicTrackNames } from '../utils/classic-tracks'
 import { pruneEmptyLayerGroups } from '../utils/group-utils'
 import { resolveTrackHeight } from '../utils/track-heights'
+import { assertRequiredTracksPreserved } from '../utils/track-removal'
 import {
   assertItemTrackCompatibility,
   assertItemsTrackCompatibility,
@@ -189,6 +190,7 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
       // passes the existing stored object, normalization is a no-op re-clone, so
       // reuse the previous reference.
       const nextTracks = normalizeStoreTracks(tracks, state.tracks)
+      assertRequiredTracksPreserved(state.tracks, nextTracks)
       assertItemsTrackCompatibility(state.items, nextTracks)
 
       // If the result is element-wise identical to the current tracks, keep the
@@ -204,6 +206,7 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
     set((state) => {
       const normalizedItems = items.map((item) => normalizeFrameFields(item))
       const nextTracks = normalizeStoreTracks(tracks, state.tracks)
+      assertRequiredTracksPreserved(state.tracks, nextTracks)
       assertItemsTrackCompatibility(normalizedItems, nextTracks)
       return {
         ...withItemIndexes(normalizedItems, state),

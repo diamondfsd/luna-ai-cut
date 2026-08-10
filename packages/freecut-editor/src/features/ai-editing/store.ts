@@ -1,15 +1,16 @@
 import { create } from 'zustand'
-import type { LlmMessage } from '@freecut/infrastructure/llm'
 import {
   archiveAiEditingConversation,
   clearAiEditingConversation,
-  loadAiEditingConversation,
+  loadAiEditingConversationState,
   resumeAiEditingConversation,
   saveAiEditingRun,
-  saveAiEditingConversation,
+  saveAiEditingConversationState,
+  type AiEditingConversationContext,
 } from '@freecut/infrastructure/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { getAiEditingAdapter, runAiEditingTurn } from './run-ai-editing-turn'
+import { getTimelineRevision } from './evidence'
 import {
   addAiEditingReferenceContext,
   type AiEditingResourceReference,
@@ -19,6 +20,18 @@ import type {
   AiEditingTaskActivity,
   AiEditingToolActivity,
 } from './types'
+import { prepareConversationContext } from './conversation-context'
+import {
+  enqueueAiEditingConversationWrite,
+  waitForAiEditingConversationWrites,
+} from './conversation-writes'
+import {
+  conversationMessagesForModel,
+  newAiEditingMessageId,
+  type AiEditingMessage,
+} from './conversation-messages'
+
+export type { AiEditingMessage } from './conversation-messages'
 
 const logger = createLogger('AiEditingStore')
 
@@ -40,14 +53,6 @@ function loadReasoningEffort(): AiEditingReasoningEffort {
   }
 }
 
-export interface AiEditingMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  createdAt: number
-  references?: AiEditingResourceReference[]
-}
-
 interface AiEditingState {
   supported: boolean
   phase: AiEditingPhase
@@ -58,6 +63,7 @@ interface AiEditingState {
   error: string | null
   streamingText: string
   messages: AiEditingMessage[]
+  agentContext: AiEditingConversationContext | null
   observations: AiEditingObservation[]
   toolActivities: AiEditingToolActivity[]
   taskActivities: AiEditingTaskActivity[]
@@ -75,48 +81,18 @@ interface AiEditingState {
 
 let activeController: AbortController | null = null
 let conversationLoadGeneration = 0
-const conversationWrites = new Map<string, Promise<void>>()
-
-function newId(): string {
-  return crypto.randomUUID()
-}
-
-function buildHistory(messages: AiEditingMessage[]): LlmMessage[] {
-  return messages.slice(-6).map((message) => ({
-    role: message.role,
-    content:
-      message.role === 'user'
-        ? addAiEditingReferenceContext(message.content, message.references ?? [])
-        : message.content,
-  }))
-}
-
-function enqueueConversationWrite<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
-  const previous = conversationWrites.get(projectId) ?? Promise.resolve()
-  const next = previous.catch(() => undefined).then(operation)
-  const completion = next.then(() => undefined)
-  conversationWrites.set(projectId, completion)
-  void completion.then(
-    () => {
-      if (conversationWrites.get(projectId) === completion) conversationWrites.delete(projectId)
-    },
-    () => {
-      if (conversationWrites.get(projectId) === completion) conversationWrites.delete(projectId)
-    },
-  )
-  return next
-}
 
 export const useAiEditingStore = create<AiEditingState>((set, get) => ({
   supported: getAiEditingAdapter().isSupported(),
   phase: 'idle',
   loadPercent: 0,
-  thinkingLabel: '正在理解需求并规划剪辑',
+  thinkingLabel: '正在理解需求',
   thinkingPercent: 0,
   thinkingCeiling: 0,
   error: null,
   streamingText: '',
   messages: [],
+  agentContext: null,
   observations: [],
   toolActivities: [],
   taskActivities: [],
@@ -135,22 +111,27 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       isStartingNewConversation: false,
       phase: 'idle',
       loadPercent: 0,
-      thinkingLabel: '正在理解需求并规划剪辑',
+      thinkingLabel: '正在理解需求',
       thinkingPercent: 0,
       thinkingCeiling: 0,
       error: null,
       streamingText: '',
       messages: [],
+      agentContext: null,
       observations: [],
       toolActivities: [],
       taskActivities: [],
     })
     if (!projectId) return
 
-    await (conversationWrites.get(projectId) ?? Promise.resolve()).catch(() => undefined)
-    const messages = await loadAiEditingConversation(projectId)
+    await waitForAiEditingConversationWrites(projectId).catch(() => undefined)
+    const conversation = await loadAiEditingConversationState(projectId)
     if (generation !== conversationLoadGeneration || get().projectId !== projectId) return
-    set({ messages, isRestoringConversation: false })
+    set({
+      messages: conversation.messages,
+      agentContext: conversation.context,
+      isRestoringConversation: false,
+    })
   },
 
   submit: async (text, references = []) => {
@@ -165,11 +146,12 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       return
     }
 
-    const history = buildHistory(get().messages)
+    const previousMessages = get().messages
+    const storedContext = get().agentContext
     const messages = [
-      ...get().messages,
+      ...previousMessages,
       {
-        id: newId(),
+        id: newAiEditingMessageId(),
         role: 'user' as const,
         content: trimmed,
         createdAt: Date.now(),
@@ -180,7 +162,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       messages,
       phase: 'loading',
       loadPercent: 0,
-      thinkingLabel: '正在理解需求并规划剪辑',
+      thinkingLabel: '正在理解需求',
       thinkingPercent: 0,
       thinkingCeiling: 0,
       error: null,
@@ -190,8 +172,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       taskActivities: [],
     })
     try {
-      await enqueueConversationWrite(projectId, () =>
-        saveAiEditingConversation(projectId, messages),
+      await enqueueAiEditingConversationWrite(projectId, () =>
+        saveAiEditingConversationState(projectId, { messages, context: storedContext }),
       )
     } catch (error) {
       logger.warn('Failed to persist AI editing conversation', error)
@@ -227,9 +209,33 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       thinkingPercent: 3,
       thinkingCeiling: 6,
     })
+    const timelineRevisionBefore = getTimelineRevision()
     try {
+      const preparedContext = await prepareConversationContext(
+        conversationMessagesForModel(previousMessages),
+        storedContext,
+        {
+          adapter,
+          signal: controller.signal,
+          onCompacting: () => {
+            if (get().projectId === projectId) {
+              set({ thinkingLabel: '正在整理较早的会话', thinkingPercent: 5, thinkingCeiling: 10 })
+            }
+          },
+        },
+      )
+      if (preparedContext.context !== storedContext) {
+        await enqueueAiEditingConversationWrite(projectId, () =>
+          saveAiEditingConversationState(projectId, {
+            messages,
+            context: preparedContext.context,
+          }),
+        )
+        if (get().projectId !== projectId || controller.signal.aborted) return
+        set({ agentContext: preparedContext.context })
+      }
       const result = await runAiEditingTurn(addAiEditingReferenceContext(trimmed, references), {
-        history,
+        history: preparedContext.history,
         adapter,
         reasoningEffort: get().reasoningEffort,
         signal: controller.signal,
@@ -281,7 +287,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       if (controller.signal.aborted || get().projectId !== projectId) return
       try {
         await saveAiEditingRun(projectId, {
-          id: newId(),
+          id: newAiEditingMessageId(),
           createdAt: Date.now(),
           request: trimmed,
           ...(result.skillId ? { skillId: result.skillId } : {}),
@@ -303,15 +309,18 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       const nextMessages = [
         ...get().messages,
         {
-          id: newId(),
+          id: newAiEditingMessageId(),
           role: 'assistant' as const,
           content: result.reply || '已完成分析。',
           createdAt: Date.now(),
         },
       ]
       try {
-        await enqueueConversationWrite(projectId, () =>
-          saveAiEditingConversation(projectId, nextMessages),
+        await enqueueAiEditingConversationWrite(projectId, () =>
+          saveAiEditingConversationState(projectId, {
+            messages: nextMessages,
+            context: preparedContext.context,
+          }),
         )
       } catch (error) {
         logger.warn('Failed to persist AI editing conversation', error)
@@ -329,10 +338,26 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       })
     } catch (error) {
       if (!controller.signal.aborted && get().projectId === projectId) {
+        const message = error instanceof Error ? error.message : '剪辑助手暂时无法完成这次请求。'
+        try {
+          await saveAiEditingRun(projectId, {
+            id: newAiEditingMessageId(),
+            createdAt: Date.now(),
+            request: trimmed,
+            plan: [],
+            timelineRevisionBefore,
+            timelineRevisionAfter: getTimelineRevision(),
+            toolCalls: [],
+            completed: false,
+            completionNotes: [message],
+          })
+        } catch (persistError) {
+          logger.warn('Failed to persist unsuccessful AI editing run', persistError)
+        }
         set({
           phase: 'idle',
           streamingText: '',
-          error: error instanceof Error ? error.message : '剪辑助手暂时无法完成这次请求。',
+          error: message,
         })
       }
     } finally {
@@ -380,6 +405,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     if (!projectId) {
       set({
         messages: [],
+        agentContext: null,
         observations: [],
         toolActivities: [],
         taskActivities: [],
@@ -393,10 +419,10 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
 
     set({ isStartingNewConversation: true, error: null })
     try {
-      await enqueueConversationWrite(projectId, async () => {
+      await enqueueAiEditingConversationWrite(projectId, async () => {
         if (messages.length > 0) {
           await archiveAiEditingConversation(projectId, {
-            id: messages[0]?.id ?? newId(),
+            id: messages[0]?.id ?? newAiEditingMessageId(),
             createdAt: messages[0]?.createdAt ?? Date.now(),
             archivedAt: Date.now(),
             messages,
@@ -415,6 +441,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     conversationLoadGeneration += 1
     set({
       messages: [],
+      agentContext: null,
       observations: [],
       toolActivities: [],
       taskActivities: [],
@@ -443,13 +470,14 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     activeController = null
     set({ isRestoringConversation: true, error: null })
     try {
-      const messages = await enqueueConversationWrite(projectId, () =>
+      const messages = await enqueueAiEditingConversationWrite(projectId, () =>
         resumeAiEditingConversation(projectId, sessionId),
       )
       if (get().projectId !== projectId) return false
       conversationLoadGeneration += 1
       set({
         messages,
+        agentContext: null,
         observations: [],
         toolActivities: [],
         taskActivities: [],

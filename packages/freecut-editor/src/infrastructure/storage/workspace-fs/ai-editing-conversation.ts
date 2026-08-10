@@ -24,6 +24,17 @@ export interface AiEditingConversationMessage {
   references?: AiEditingConversationReference[]
 }
 
+export interface AiEditingConversationContext {
+  summary: string
+  throughMessageId: string
+  updatedAt: number
+}
+
+export interface AiEditingConversationState {
+  messages: AiEditingConversationMessage[]
+  context: AiEditingConversationContext | null
+}
+
 export interface AiEditingConversationReference {
   kind: 'project' | 'media' | 'timeline-clip'
   id: string
@@ -33,6 +44,7 @@ export interface AiEditingConversationReference {
 interface AiEditingConversationFile {
   version: typeof CONVERSATION_VERSION
   messages: AiEditingConversationMessage[]
+  context?: AiEditingConversationContext
 }
 
 export interface AiEditingConversationHistorySession {
@@ -106,13 +118,37 @@ function sanitizeReferences(value: unknown): AiEditingConversationReference[] {
   })
 }
 
-function sanitizeConversation(value: unknown): AiEditingConversationMessage[] {
-  if (!value || typeof value !== 'object') return []
+function sanitizeContext(value: unknown): AiEditingConversationContext | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Partial<AiEditingConversationContext>
+  if (
+    typeof candidate.summary !== 'string' || !candidate.summary.trim() ||
+    typeof candidate.throughMessageId !== 'string' || !candidate.throughMessageId ||
+    typeof candidate.updatedAt !== 'number' || !Number.isFinite(candidate.updatedAt)
+  ) return null
+  return {
+    summary: candidate.summary.trim(),
+    throughMessageId: candidate.throughMessageId,
+    updatedAt: candidate.updatedAt,
+  }
+}
+
+function sanitizeConversation(value: unknown): AiEditingConversationState {
+  if (!value || typeof value !== 'object') return { messages: [], context: null }
   const candidate = value as Partial<AiEditingConversationFile>
-  if (candidate.version !== CONVERSATION_VERSION || !Array.isArray(candidate.messages)) return []
-  return candidate.messages
+  if (candidate.version !== CONVERSATION_VERSION || !Array.isArray(candidate.messages)) {
+    return { messages: [], context: null }
+  }
+  const messages = candidate.messages
     .map(sanitizeMessage)
     .filter((message): message is AiEditingConversationMessage => message !== null)
+  const context = sanitizeContext(candidate.context)
+  return {
+    messages,
+    context: context && messages.some((message) => message.id === context.throughMessageId)
+      ? context
+      : null,
+  }
 }
 
 function sanitizeHistorySession(value: unknown): AiEditingConversationHistorySession | null {
@@ -158,6 +194,12 @@ function sanitizeConversationHistory(value: unknown): AiEditingConversationHisto
 export async function loadAiEditingConversation(
   projectId: string,
 ): Promise<AiEditingConversationMessage[]> {
+  return (await loadAiEditingConversationState(projectId)).messages
+}
+
+export async function loadAiEditingConversationState(
+  projectId: string,
+): Promise<AiEditingConversationState> {
   try {
     const file = await readJson<unknown>(
       requireWorkspaceRoot(),
@@ -166,7 +208,7 @@ export async function loadAiEditingConversation(
     return sanitizeConversation(file)
   } catch (error) {
     logger.warn(`loadAiEditingConversation(${projectId}) failed`, error)
-    return []
+    return { messages: [], context: null }
   }
 }
 
@@ -174,10 +216,18 @@ export async function saveAiEditingConversation(
   projectId: string,
   messages: AiEditingConversationMessage[],
 ): Promise<void> {
+  await saveAiEditingConversationState(projectId, { messages, context: null })
+}
+
+export async function saveAiEditingConversationState(
+  projectId: string,
+  state: AiEditingConversationState,
+): Promise<void> {
   try {
     const file: AiEditingConversationFile = {
       version: CONVERSATION_VERSION,
-      messages: messages.map((message) => ({ ...message })),
+      messages: state.messages.map((message) => ({ ...message })),
+      ...(state.context ? { context: { ...state.context } } : {}),
     }
     await writeJsonAtomic(requireWorkspaceRoot(), projectAiEditingConversationPath(projectId), file)
   } catch (error) {

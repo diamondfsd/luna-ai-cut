@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it } from 'vite-plus/test'
 import type { TextItem, TimelineTrack } from '@freecut/types/timeline'
 import { useItemsStore } from './items-store'
 
-function makeTrack(id: string, kind: 'video' | 'subtitle', order: number): TimelineTrack {
+function makeTrack(id: string, kind: 'video' | 'audio' | 'subtitle', order: number): TimelineTrack {
   return {
     id,
-    name: kind === 'subtitle' ? 'S1' : 'V1',
+    name: kind === 'subtitle' ? 'S1' : kind === 'audio' ? 'A1' : 'V1',
     kind,
     order,
     height: 64,
@@ -64,5 +64,17 @@ describe('items store track compatibility', () => {
 
     expect(() => useItemsStore.getState().setTracks([{ ...textTrack, kind: 'video', name: 'V1' }]))
       .toThrow('文字不能放在“V1”轨道。')
+  })
+
+  it('rejects removing the final video or audio track after initialization', () => {
+    const videoTrack = makeTrack('video-1', 'video', 0)
+    const audioTrack = makeTrack('audio-1', 'audio', 1)
+    useItemsStore.getState().setTracks([videoTrack, audioTrack])
+
+    expect(() => useItemsStore.getState().setTracks([videoTrack]))
+      .toThrow('时间轴至少需要一条音频轨道。')
+    expect(() => useItemsStore.getState().setTracks([audioTrack]))
+      .toThrow('时间轴至少需要一条视频轨道。')
+    expect(useItemsStore.getState().tracks).toHaveLength(2)
   })
 })

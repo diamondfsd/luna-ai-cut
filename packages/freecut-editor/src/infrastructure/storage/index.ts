@@ -167,12 +167,16 @@ export {
 // Project-scoped AI editing assistant conversation history
 export {
   loadAiEditingConversation,
+  loadAiEditingConversationState,
   saveAiEditingConversation,
+  saveAiEditingConversationState,
   clearAiEditingConversation,
   listAiEditingConversationHistory,
   archiveAiEditingConversation,
   resumeAiEditingConversation,
   type AiEditingConversationMessage,
+  type AiEditingConversationContext,
+  type AiEditingConversationState,
   type AiEditingConversationHistorySession,
 } from '@freecut/infrastructure/storage/workspace-fs/ai-editing-conversation'
 export {

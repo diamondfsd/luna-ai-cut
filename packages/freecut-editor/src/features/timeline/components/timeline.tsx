@@ -41,7 +41,7 @@ import {
   trackDragJustDroppedRef,
 } from '../hooks/use-track-drag'
 import { createClassicTrack, getAdjacentTrackOrder, getTrackKind } from '../utils/classic-tracks'
-import { getEmptyTrackIdsForRemoval } from '../utils/track-removal'
+import { canRemoveTrack, getEmptyTrackIdsForRemoval, getRemovableTrackIds } from '../utils/track-removal'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { EDITOR_LAYOUT_CSS_VALUES, getEditorLayout } from '@freecut/config/editor-layout'
 import { useTrackHeightResize } from '../hooks/use-track-height-resize'
@@ -123,17 +123,10 @@ export const Timeline = memo(function Timeline({
   const canDeleteEmptyTracks = useItemsStore(
     useCallback(
       (s) => {
-        let emptyTrackCount = 0
-
-        for (const track of tracks) {
-          if ((s.itemsByTrackId[track.id]?.length ?? 0) === 0) {
-            emptyTrackCount += 1
-          }
-        }
-
-        if (emptyTrackCount === 0) return false
-        if (emptyTrackCount < tracks.length) return true
-        return tracks.length > 1
+        const emptyTrackIds = tracks
+          .filter((track) => (s.itemsByTrackId[track.id]?.length ?? 0) === 0)
+          .map((track) => track.id)
+        return getRemovableTrackIds(tracks, emptyTrackIds).length > 0
       },
       [tracks],
     ),
@@ -520,8 +513,8 @@ export const Timeline = memo(function Timeline({
 
   const handleDeleteTrack = useCallback(
     (trackId: string) => {
-      if (tracks.length <= 1) {
-        logger.warn('Cannot remove all tracks')
+      if (!canRemoveTrack(tracks, trackId)) {
+        logger.warn('Cannot remove the last required track')
         return
       }
 
@@ -562,14 +555,13 @@ export const Timeline = memo(function Timeline({
 
     if (tracksToRemove.length === 0) return
 
-    // Don't allow removing all tracks
-    const tracksToRemoveSet = new Set(tracksToRemove)
-    if (tracksToRemoveSet.size >= tracks.length) {
-      logger.warn('Cannot remove all tracks')
+    const tracksToRemoveSet = new Set(getRemovableTrackIds(tracks, tracksToRemove))
+    if (tracksToRemoveSet.size === 0) {
+      logger.warn('Cannot remove the last required tracks')
       return
     }
 
-    removeTracks(tracksToRemove)
+    removeTracks([...tracksToRemoveSet])
 
     const remainingTrack = tracks.find((t) => !tracksToRemoveSet.has(t.id))
     syncTrackSelectionAfterRemoval(tracksToRemove, remainingTrack?.id ?? null)
@@ -631,7 +623,7 @@ export const Timeline = memo(function Timeline({
                   track={track}
                   isActive={activeTrackId === track.id}
                   isSelected={selectedTrackIdsSet.has(track.id)}
-                  canDeleteTrack={tracks.length > 1}
+                  canDeleteTrack={canRemoveTrack(tracks, track.id)}
                   canDeleteEmptyTracks={canDeleteEmptyTracks}
                   onToggleLock={() => toggleTrackLock(track.id)}
                   onToggleSyncLock={() => toggleTrackSyncLock(track.id)}
