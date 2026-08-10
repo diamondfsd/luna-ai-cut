@@ -26,6 +26,7 @@ import { AiEditingMessageBubble } from './ai-editing-message'
 import { AiProviderDialog } from './ai-provider-dialog'
 import { AiEditingSkillsDialog } from './ai-editing-skills-dialog'
 import { AiEditingStreamPreview } from './ai-editing-stream-preview'
+import { AiEditingTaskList } from './ai-editing-task-list'
 
 const SUGGESTIONS = [
   '帮我查看当前时间轴内容',
@@ -191,6 +192,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const streamingText = useAiEditingStore((state) => state.streamingText)
   const messages = useAiEditingStore((state) => state.messages)
   const toolActivities = useAiEditingStore((state) => state.toolActivities)
+  const taskActivities = useAiEditingStore((state) => state.taskActivities)
   const reasoningEffort = useAiEditingStore((state) => state.reasoningEffort)
   const setReasoningEffort = useAiEditingStore((state) => state.setReasoningEffort)
   const error = useAiEditingStore((state) => state.error)
@@ -244,7 +246,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, toolActivities, phase])
+  }, [messages, taskActivities, toolActivities, phase])
 
   useEffect(
     () => () => {
@@ -441,7 +443,10 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
                 onCopy={(entry) => void copyMessage(entry)}
               />
               {message.id === activeUserMessageId && (
-                <ToolActivityCard activities={toolActivities} />
+                <>
+                  <AiEditingTaskList activities={taskActivities} />
+                  <ToolActivityCard activities={toolActivities} />
+                </>
               )}
             </Fragment>
           ))}

@@ -89,6 +89,24 @@ export interface AiEditingToolActivity {
   progressPercent?: number | null
 }
 
+export type AiEditingTaskKind = 'analyze' | 'edit' | 'review'
+
+export interface AiEditingTask {
+  id: string
+  title: string
+  instruction: string
+  kind: AiEditingTaskKind
+  range?: { start: number; end: number }
+  mediaRefs?: string[]
+}
+
+export interface AiEditingTaskActivity extends AiEditingTask {
+  index: number
+  total: number
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  message?: string
+}
+
 export interface AiEditingResponse {
   reply: string
   toolCalls: AiEditingToolCall[]

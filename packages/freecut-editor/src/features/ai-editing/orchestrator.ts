@@ -17,6 +17,7 @@ import {
 import { buildAiEditingSystemPrompt } from './agent-prompt'
 import { getTimelineRevision } from './evidence'
 import { buildAgentWorkspaceDocument } from './workspace-document/build-workspace-document'
+import type { AgentWorkspaceDocument } from './edit-program/types'
 import { parseAiEditingResponse } from './response-parser'
 import { latestFailedEdit } from './latest-edit-result'
 import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
@@ -25,13 +26,8 @@ import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
 import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
 import { getAiEditingTool, listAiEditingTools } from './tool-registry'
-import type {
-  AiEditingObservation,
-  AiEditingRunProgress,
-  AiEditingToolActivity,
-  AiEditingToolCall,
-  AiEditingToolResult,
-} from './types'
+import type { AiEditingObservation, AiEditingToolCall, AiEditingToolResult } from './types'
+import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
 
 const MAX_TOOL_ROUNDS = 8
 const MAX_TOKENS = 4_096
@@ -83,26 +79,9 @@ async function saveTimelineAfterEdit(): Promise<void> {
   await timeline.saveTimeline(projectId)
 }
 
-export interface AiEditingRunResult {
-  reply: string
-  observations: AiEditingObservation[]
-  skillId?: string
-  plan: string[]
-  completed: boolean
-  completionNotes: string[]
-  timelineRevisionBefore: number
-  timelineRevisionAfter: number
-  production?: { blueprint: unknown; review: unknown }
-}
-
-export interface AiEditingRunOptions {
-  history: LlmMessage[]
-  signal?: AbortSignal
-  onToken?: (delta: string, fullText: string) => void
-  onToolActivity?: (activity: AiEditingToolActivity) => void
-  onRunProgress?: (progress: AiEditingRunProgress) => void
-  adapter?: LlmAdapter
-  reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
+async function currentWorkspace(options: AiEditingRunOptions): Promise<AgentWorkspaceDocument> {
+  const workspace = await buildAgentWorkspaceDocument()
+  return options.scopeWorkspace?.(workspace) ?? workspace
 }
 
 function reportRunProgress(
@@ -151,7 +130,7 @@ async function executeToolCall(
   const validation = tool.validate(call.args)
   if (!validation.ok) return toolError(tool.id, validation.error)
 
-  const activityId = `${callIndex}-${tool.id}`
+  const activityId = `${options.activityScope ?? 'turn'}-${callIndex}-${tool.id}`
   const tracksProgress = tool.execution === 'async' || tool.risk === 'analysis'
   options.onToolActivity?.({
     id: activityId,
@@ -266,8 +245,9 @@ async function buildJsonFallbackMessages(
   userText: string,
   history: LlmMessage[],
   observations: AiEditingObservation[],
+  options: AiEditingRunOptions,
 ): Promise<LlmMessage[]> {
-  const messages = await buildInitialMessages(userText, history, await buildAgentWorkspaceDocument(), 'json')
+  const messages = await buildInitialMessages(userText, history, await currentWorkspace(options), 'json')
   if (observations.length > 0) {
     messages.push({
       role: 'user',
@@ -282,6 +262,7 @@ async function runJsonToolLoop(
   options: AiEditingRunOptions,
   adapter: LlmAdapter,
   initialRaw?: string,
+  maxRounds = MAX_TOOL_ROUNDS,
 ): Promise<AiEditingRunResult> {
   const observations: AiEditingObservation[] = []
   let reply = ''
@@ -289,7 +270,7 @@ async function runJsonToolLoop(
   let rawFromPreviousRequest = initialRaw
   let finished = false
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+  for (let round = 0; round < maxRounds; round += 1) {
     reportRunProgress(
       options,
       round === 0 ? '正在理解需求并规划剪辑' : '正在根据执行结果继续规划',
@@ -308,7 +289,7 @@ async function runJsonToolLoop(
     reportRunProgress(options, '正在检查剪辑方案', round === 0 ? 72 : Math.min(94, 84 + round * 2))
     const parsed = parseAiEditingResponse(raw)
     if (!parsed) {
-      if (round === MAX_TOOL_ROUNDS - 1) {
+      if (round === maxRounds - 1) {
         throw new Error('助手这次没有按约定返回剪辑操作，已自动重试多次。请再试一次。')
       }
       messages.push({ role: 'assistant', content: raw })
@@ -338,7 +319,7 @@ async function runJsonToolLoop(
       role: 'user',
       content: renderPrompt(toolResultsPrompt, {
         OBSERVATIONS: serializeForModel(roundObservations),
-        PROJECT_EVIDENCE: JSON.stringify(await buildAgentWorkspaceDocument()),
+        PROJECT_EVIDENCE: JSON.stringify(await currentWorkspace(options)),
       }),
     })
   }
@@ -359,6 +340,7 @@ async function runNativeToolLoop(
   userText: string,
   options: AiEditingRunOptions,
   adapter: NativeToolCallingLlmAdapter,
+  maxRounds = MAX_TOOL_ROUNDS,
 ): Promise<AiEditingRunResult> {
   const catalog = createNativeToolCatalog()
   const observations: AiEditingObservation[] = []
@@ -366,7 +348,7 @@ async function runNativeToolLoop(
   let callIndex = 0
   let finished = false
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+  for (let round = 0; round < maxRounds; round += 1) {
     reportRunProgress(
       options,
       round === 0 ? '正在理解需求并规划剪辑' : '正在根据执行结果继续规划',
@@ -382,17 +364,20 @@ async function runNativeToolLoop(
     })
     if (response.mode === 'fallback') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations),
+        await buildJsonFallbackMessages(userText, options.history, observations, options),
         options,
         adapter,
+        undefined,
+        maxRounds,
       )
     }
     if (response.mode === 'json') {
       return runJsonToolLoop(
-        await buildJsonFallbackMessages(userText, options.history, observations),
+        await buildJsonFallbackMessages(userText, options.history, observations, options),
         options,
         adapter,
         response.content,
+        maxRounds,
       )
     }
 
@@ -430,7 +415,7 @@ async function runNativeToolLoop(
     messages.push({
       role: 'user',
       content: renderPrompt(nativeContinuePrompt, {
-        PROJECT_EVIDENCE: JSON.stringify(await buildAgentWorkspaceDocument()),
+        PROJECT_EVIDENCE: JSON.stringify(await currentWorkspace(options)),
       }),
     })
   }
@@ -446,13 +431,14 @@ async function runNativeToolLoop(
   }
 }
 
-export async function runAiEditingTurn(
+export async function runSingleAiEditingTurn(
   userText: string,
   options: AiEditingRunOptions,
+  config: { evidence?: unknown; maxToolRounds?: number } = {},
 ): Promise<AiEditingRunResult> {
   const adapter = options.adapter ?? getAiEditingAdapter()
   reportRunProgress(options, '正在读取当前编辑空间', 6)
-  const evidence = await buildAgentWorkspaceDocument()
+  const evidence = config.evidence ?? await buildAgentWorkspaceDocument()
   reportRunProgress(options, '正在整理轨道、素材和上下文', 18)
   const timelineRevisionBefore = getTimelineRevision()
   let result: AiEditingRunResult
@@ -463,6 +449,7 @@ export async function runAiEditingTurn(
       userText,
       options,
       adapter,
+      config.maxToolRounds,
     )
   } else {
     reportRunProgress(options, '正在准备剪辑需求', 26)
@@ -470,6 +457,8 @@ export async function runAiEditingTurn(
       await buildInitialMessages(userText, options.history, evidence, 'json'),
       options,
       adapter,
+      undefined,
+      config.maxToolRounds,
     )
   }
   const failedEdit = latestFailedEdit(result.observations)
