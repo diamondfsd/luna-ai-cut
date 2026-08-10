@@ -76,3 +76,12 @@ export interface AiEditingAssistantGenerateResult {
   content: string
   toolCalls: AiEditingAssistantToolCall[]
 }
+
+export interface AiEditingAssistantRequestStatus {
+  requestId: string
+  attempt: number
+  maxAttempts: number
+  state: 'waiting' | 'retrying' | 'streaming'
+  previewText?: string
+  previewKind?: 'reasoning' | 'content'
+}

@@ -183,6 +183,8 @@ export function VideoEditorPage() {
     window.luna.aiEditingAssistant.generate(input), [])
   const handleCancelAiAssistant = useCallback((requestId: string) =>
     window.luna.aiEditingAssistant.cancel(requestId), [])
+  const handleAiAssistantStatus = useCallback((callback: Parameters<typeof window.luna.aiEditingAssistant.onStatus>[0]) =>
+    window.luna.aiEditingAssistant.onStatus(callback), [])
 
   return (
     <div className="video-editor-page">
@@ -201,6 +203,7 @@ export function VideoEditorPage() {
           onSaveAiAssistantConfig={handleSaveAiAssistantConfig}
           onGenerateAiAssistant={handleGenerateAiAssistant}
           onCancelAiAssistant={handleCancelAiAssistant}
+          onAiAssistantStatus={handleAiAssistantStatus}
         />
       </Suspense>
       <WorkspaceImportDialog

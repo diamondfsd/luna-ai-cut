@@ -162,6 +162,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     saveConfig: (input) => ipcRenderer.invoke('ai-editing-assistant:save-config', input),
     generate: (input) => ipcRenderer.invoke('ai-editing-assistant:generate', input),
     cancel: (requestId: string) => ipcRenderer.invoke('ai-editing-assistant:cancel', requestId),
+    onStatus: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: import('../src/shared/types').AiEditingAssistantRequestStatus) => callback(status)
+      ipcRenderer.on('ai-editing-assistant:status', listener)
+      return () => ipcRenderer.removeListener('ai-editing-assistant:status', listener)
+    },
   },
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),

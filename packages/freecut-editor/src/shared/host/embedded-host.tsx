@@ -89,11 +89,21 @@ export interface EmbeddedAiAssistantGenerateResult {
   toolCalls: EmbeddedAiAssistantToolCall[]
 }
 
+export interface EmbeddedAiAssistantRequestStatus {
+  requestId: string
+  attempt: number
+  maxAttempts: number
+  state: 'waiting' | 'retrying' | 'streaming'
+  previewText?: string
+  previewKind?: 'reasoning' | 'content'
+}
+
 export interface EmbeddedAiAssistantBridge {
   getConfig(): Promise<EmbeddedAiAssistantConfig>
   saveConfig(input: EmbeddedAiAssistantConfigInput): Promise<EmbeddedAiAssistantConfig>
   generate(input: EmbeddedAiAssistantGenerateInput): Promise<EmbeddedAiAssistantGenerateResult>
   cancel(requestId: string): Promise<void>
+  onStatus(callback: (status: EmbeddedAiAssistantRequestStatus) => void): () => void
 }
 
 export interface EmbeddedHostBridge {

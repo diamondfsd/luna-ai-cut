@@ -237,6 +237,9 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             thinkingLabel: progress.label,
             thinkingPercent: progress.percent,
             thinkingCeiling: progress.ceiling ?? progress.percent,
+            ...(progress.previewText === undefined
+              ? {}
+              : { streamingText: progress.previewText }),
           })
         },
         onToolActivity: (activity) => {

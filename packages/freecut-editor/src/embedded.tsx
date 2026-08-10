@@ -14,6 +14,7 @@ import {
   type EmbeddedAiAssistantConfigInput,
   type EmbeddedAiAssistantGenerateInput,
   type EmbeddedAiAssistantGenerateResult,
+  type EmbeddedAiAssistantBridge,
 } from './shared/host/embedded-host'
 import './index.css'
 
@@ -36,6 +37,7 @@ export interface FreeCutEditorProps {
     input: EmbeddedAiAssistantGenerateInput,
   ) => Promise<EmbeddedAiAssistantGenerateResult>
   onCancelAiAssistant?: (requestId: string) => Promise<void>
+  onAiAssistantStatus?: EmbeddedAiAssistantBridge['onStatus']
 }
 
 export function FreeCutEditor({
@@ -46,6 +48,7 @@ export function FreeCutEditor({
   onSaveAiAssistantConfig,
   onGenerateAiAssistant,
   onCancelAiAssistant,
+  onAiAssistantStatus,
 }: FreeCutEditorProps) {
   const [ready, setReady] = useState(false)
   const hostBridge = useMemo(
@@ -57,12 +60,14 @@ export function FreeCutEditor({
         onGetAiAssistantConfig &&
         onSaveAiAssistantConfig &&
         onGenerateAiAssistant &&
-        onCancelAiAssistant
+        onCancelAiAssistant &&
+        onAiAssistantStatus
           ? {
               getConfig: onGetAiAssistantConfig,
               saveConfig: onSaveAiAssistantConfig,
               generate: onGenerateAiAssistant,
               cancel: onCancelAiAssistant,
+              onStatus: onAiAssistantStatus,
             }
           : undefined,
     }),
@@ -74,6 +79,7 @@ export function FreeCutEditor({
       onSaveAiAssistantConfig,
       onGenerateAiAssistant,
       onCancelAiAssistant,
+      onAiAssistantStatus,
     ],
   )
 

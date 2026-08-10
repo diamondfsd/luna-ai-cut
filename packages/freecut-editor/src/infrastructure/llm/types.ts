@@ -23,6 +23,14 @@ export interface LlmLoadProgress {
   percent: number
 }
 
+export interface LlmRequestStatus {
+  attempt: number
+  maxAttempts: number
+  state: 'waiting' | 'retrying' | 'streaming'
+  previewText?: string
+  previewKind?: 'reasoning' | 'content'
+}
+
 export interface LlmGenerateOptions {
   /** Hard cap on generated tokens. Adapters pick a sensible default. */
   maxTokens?: number
@@ -39,6 +47,8 @@ export interface LlmGenerateOptions {
    * accumulated output so far. Fired on the main thread.
    */
   onToken?: (delta: string, text: string) => void
+  /** Reports remote request attempts so callers can show useful waiting feedback. */
+  onStatus?: (status: LlmRequestStatus) => void
 }
 
 export interface LlmAdapter {

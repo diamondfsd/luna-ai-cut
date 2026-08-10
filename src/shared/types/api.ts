@@ -36,6 +36,7 @@ import type {
   AiEditingAssistantConfigInput,
   AiEditingAssistantGenerateInput,
   AiEditingAssistantGenerateResult,
+  AiEditingAssistantRequestStatus,
   WorkspaceVisualAnalysisRequest,
   WorkspaceVisualAnalysisResult,
 } from './aiEditing'
@@ -300,6 +301,7 @@ export interface LunaApi {
     saveConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfig>
     generate(input: AiEditingAssistantGenerateInput): Promise<AiEditingAssistantGenerateResult>
     cancel(requestId: string): Promise<void>
+    onStatus(callback: (status: AiEditingAssistantRequestStatus) => void): () => void
   }
   workspace: {
     chooseMediaFiles(): Promise<string[]>

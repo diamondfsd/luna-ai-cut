@@ -86,6 +86,15 @@ declare module '@freecut/embedded' {
     toolCalls: EmbeddedAiAssistantToolCall[]
   }
 
+  export interface EmbeddedAiAssistantRequestStatus {
+    requestId: string
+    attempt: number
+    maxAttempts: number
+    state: 'waiting' | 'retrying' | 'streaming'
+    previewText?: string
+    previewKind?: 'reasoning' | 'content'
+  }
+
   export interface FreeCutEditorProps {
     onRequestMediaImport?: (importFiles: ImportMediaFiles) => void
     onTranscribeMedia?: (
@@ -101,6 +110,9 @@ declare module '@freecut/embedded' {
     onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
     onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>
     onCancelAiAssistant?: (requestId: string) => Promise<void>
+    onAiAssistantStatus?: (
+      callback: (status: EmbeddedAiAssistantRequestStatus) => void,
+    ) => () => void
   }
 
   export const FreeCutEditor: ComponentType<FreeCutEditorProps>

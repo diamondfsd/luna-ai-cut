@@ -3,7 +3,14 @@
  * and the registry from here — never a concrete worker/adapter module.
  */
 
-export type { LlmAdapter, LlmGenerateOptions, LlmLoadProgress, LlmMessage, LlmRole } from './types'
+export type {
+  LlmAdapter,
+  LlmGenerateOptions,
+  LlmLoadProgress,
+  LlmMessage,
+  LlmRequestStatus,
+  LlmRole,
+} from './types'
 export {
   DEFAULT_LLM_ADAPTER_ID,
   getDefaultLlmAdapter,
