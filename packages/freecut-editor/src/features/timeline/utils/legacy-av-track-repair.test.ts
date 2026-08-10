@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vite-plus/test'
 import type { ItemKeyframes } from '@freecut/types/keyframe'
-import type { AdjustmentItem, AudioItem, SubtitleSegmentItem, VideoItem } from '@freecut/types/timeline'
+import type { AdjustmentItem, AudioItem, TextItem, VideoItem } from '@freecut/types/timeline'
 import {
   makeTimelineAudioItem,
   makeTimelineTrack as makeTrack,
@@ -32,13 +32,15 @@ describe('repairLegacyAvTrackLayout', () => {
   it('does not reinterpret subtitle tracks as video tracks', () => {
     const subtitle = {
       id: 'subtitle-1',
-      type: 'subtitle',
+      type: 'text',
+      textRole: 'caption',
       trackId: 'track-s1',
       from: 0,
       durationInFrames: 30,
       label: 'Transcript',
-      cues: [],
-    } satisfies SubtitleSegmentItem
+      text: 'Transcript',
+      color: '#fff',
+    } satisfies TextItem
     const tracks = [
       makeTrack({ id: 'track-s1', name: 'S1', kind: 'subtitle', order: -1 }),
       makeTrack({ id: 'track-v1', name: 'V1', kind: 'video', order: 0 }),
@@ -57,7 +59,7 @@ describe('repairLegacyAvTrackLayout', () => {
       name: 'S1',
       kind: 'subtitle',
     })
-    expect(result.items[0]).toMatchObject({ trackId: 'track-s1', type: 'subtitle' })
+    expect(result.items[0]).toMatchObject({ trackId: 'track-s1', type: 'text' })
   })
 
   it('splits legacy video audio onto paired tracks and preserves standalone audio tracks', () => {

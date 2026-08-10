@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TimelineItem as TimelineItemType } from '@freecut/types/timeline'
-import { useTimelineStore } from '../../stores/timeline-store'
 import { useMediaLibraryStore } from '@freecut/features/timeline/deps/media-library-store'
 import {
   importMediaLibraryService,
@@ -36,7 +35,6 @@ type TranscriptProgress = NonNullable<
 export interface CaptionDialogState {
   canManageCaptions: boolean
   canExtractEmbeddedSubtitles: boolean
-  hasConsolidatablePerCueCaptions: boolean
   mediaHasTranscript: boolean
   transcriptStatus: string
   transcriptProgress: TranscriptProgress | null
@@ -50,7 +48,6 @@ export interface CaptionDialogState {
   markCaptionEnded: () => void
   markCaptionStopRequested: () => void
   handleExtractEmbeddedSubtitles: (() => Promise<void>) | undefined
-  handleConsolidateCaptionsToSegment: (() => Promise<void>) | undefined
 }
 
 export function useCaptionDialogState({
@@ -158,45 +155,6 @@ export function useCaptionDialogState({
     }
   }, [mediaForItem])
 
-  const hasConsolidatablePerCueCaptions = useTimelineStore(
-    useCallback(
-      (s) =>
-        item.isReversed !== true &&
-        s.items.some(
-          (other) =>
-            other.type === 'text' &&
-            (other.captionSource?.type === 'embedded-subtitles' ||
-              other.captionSource?.type === 'subtitle-import') &&
-            other.captionSource.clipId === item.id,
-        ),
-      [item.id, item.isReversed],
-    ),
-  )
-
-  const handleConsolidateCaptionsToSegment = useCallback(async () => {
-    const mediaStore = useMediaLibraryStore.getState()
-    try {
-      const { subtitleSidecarService } =
-        await import('@freecut/features/timeline/deps/subtitle-sidecar-service')
-      const result = subtitleSidecarService.consolidatePerCueCaptionsToSegments({
-        clipId: item.id,
-      })
-      mediaStore.showNotification?.({
-        type: 'success',
-        message:
-          result.segmentsCreated > 0
-            ? `Consolidated ${result.cuesConsolidated} caption${result.cuesConsolidated === 1 ? '' : 's'} into ${result.segmentsCreated} segment${result.segmentsCreated === 1 ? '' : 's'}.`
-            : 'No per-cue captions found for this clip.',
-      })
-    } catch (error) {
-      mediaStore.showNotification?.({
-        type: 'error',
-        message:
-          error instanceof Error ? error.message : 'Failed to consolidate captions to segment.',
-      })
-    }
-  }, [item.id])
-
   const openDialog = useCallback(() => {
     captionStopRequestedRef.current = false
     setDialogError(null)
@@ -219,7 +177,6 @@ export function useCaptionDialogState({
   return {
     canManageCaptions,
     canExtractEmbeddedSubtitles,
-    hasConsolidatablePerCueCaptions,
     mediaHasTranscript,
     transcriptStatus,
     transcriptProgress,
@@ -234,9 +191,6 @@ export function useCaptionDialogState({
     markCaptionStopRequested,
     handleExtractEmbeddedSubtitles: canExtractEmbeddedSubtitles
       ? handleExtractEmbeddedSubtitles
-      : undefined,
-    handleConsolidateCaptionsToSegment: hasConsolidatablePerCueCaptions
-      ? handleConsolidateCaptionsToSegment
       : undefined,
   }
 }

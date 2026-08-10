@@ -103,24 +103,22 @@ describe('linked items', () => {
     expect(expandItemIdsWithAttachedCaptions(items, ['video-1'])).toEqual(['video-1', 'caption-1'])
   })
 
-  it('attaches subtitle segments by source clip without linking subtitle-only drags back to media', () => {
+  it('attaches caption text by source clip without linking caption-only drags back to media', () => {
     const items = [
       makeItem({ id: 'video-1', type: 'video' }),
       makeItem({
         id: 'subtitle-1',
-        type: 'subtitle',
+        type: 'text',
+        textRole: 'caption',
         trackId: 'subtitle-track',
-        source: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
-        cues: [{ id: 'cue-1', startSeconds: 0, endSeconds: 1, text: 'Hello' }],
+        captionSource: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
+        text: 'Hello',
         color: '#fff',
       }),
     ]
 
     expect(getAttachedCaptionItemIds(items, 'video-1')).toEqual(['subtitle-1'])
-    expect(expandItemIdsWithAttachedCaptions(items, ['video-1'])).toEqual([
-      'video-1',
-      'subtitle-1',
-    ])
+    expect(expandItemIdsWithAttachedCaptions(items, ['video-1'])).toEqual(['video-1', 'subtitle-1'])
     expect(expandItemIdsWithAttachedCaptions(items, ['subtitle-1'])).toEqual(['subtitle-1'])
   })
 

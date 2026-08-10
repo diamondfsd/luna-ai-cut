@@ -36,8 +36,6 @@ import {
   normalizeTrack,
   roundDuration,
   roundFrame,
-  trimSubtitleCuesAtEnd,
-  trimSubtitleCuesAtStart,
 } from './items-store-normalize'
 import {
   buildItemsMediaDependencyIds,
@@ -317,9 +315,9 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
         item.id === id
           ? (() => {
               const nextItem = normalizeFrameFields({
-              ...item,
-              from: normalizedFrom,
-              ...(newTrackId && { trackId: newTrackId }),
+                ...item,
+                from: normalizedFrom,
+                ...(newTrackId && { trackId: newTrackId }),
               })
               assertItemTrackCompatibility(nextItem, state.tracks)
               return nextItem
@@ -452,19 +450,11 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
           timelineFps,
         )
 
-        // Subtitle segments: re-anchor cues to the new `from` and drop cues
-        // that no longer fall inside the visible window.
-        const cueUpdate =
-          item.type === 'subtitle'
-            ? trimSubtitleCuesAtStart(item, clampedAmount, timelineFps)
-            : null
-
         return {
           ...item,
           from: roundFrame(newFrom),
           durationInFrames: roundDuration(newDuration),
           ...sourceUpdate,
-          ...(cueUpdate ?? {}),
         } as typeof item
       })
       return withItemIndexes(nextItems, state)
@@ -503,15 +493,10 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
           timelineFps,
         )
 
-        // Subtitle segments: drop or truncate cues past the new end.
-        const cueUpdate =
-          item.type === 'subtitle' ? trimSubtitleCuesAtEnd(item, newDuration, timelineFps) : null
-
         return {
           ...item,
           durationInFrames: roundDuration(newDuration),
           ...sourceUpdate,
-          ...(cueUpdate ?? {}),
         } as typeof item
       })
       return withItemIndexes(nextItems, state)
@@ -553,43 +538,6 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
       from: splitAt,
       durationInFrames: rightDuration,
     } as TimelineItem
-
-    // Subtitle segments own their full cue list — partition it at the split
-    // point so neither half references cues outside its window. Cues are
-    // segment-relative seconds (start = 0 at item.from), so we partition
-    // against `leftDuration / fps`.
-    if (item.type === 'subtitle') {
-      const timelineFps = useTimelineSettingsStore.getState().fps
-      const splitSeconds = leftDuration / timelineFps
-      const leftCues: typeof item.cues = []
-      const rightCues: typeof item.cues = []
-      for (const cue of item.cues) {
-        const startsBeforeSplit = cue.startSeconds < splitSeconds
-        const endsAfterSplit = cue.endSeconds > splitSeconds
-        if (startsBeforeSplit && !endsAfterSplit) {
-          // Wholly in the left half.
-          leftCues.push(cue)
-        } else if (!startsBeforeSplit) {
-          // Wholly in the right half — rebase to the new segment's `from`.
-          rightCues.push({
-            ...cue,
-            startSeconds: cue.startSeconds - splitSeconds,
-            endSeconds: cue.endSeconds - splitSeconds,
-          })
-        } else {
-          // Straddles the cut. Truncate left to splitSeconds, rebase right.
-          leftCues.push({ ...cue, endSeconds: splitSeconds })
-          rightCues.push({
-            ...cue,
-            id: `${cue.id}-r`,
-            startSeconds: 0,
-            endSeconds: cue.endSeconds - splitSeconds,
-          })
-        }
-      }
-      ;(leftItem as typeof item).cues = leftCues
-      ;(rightItem as typeof item).cues = rightCues
-    }
 
     // Handle sourceStart/sourceEnd for media items (accounting for speed)
     if (isMediaItem(item)) {

@@ -1,5 +1,5 @@
 /**
- * Text item and subtitle segment rendering.
+ * Text item rendering.
  *
  * Geometry (wrapping, line positions, baselines, alignment, background) comes
  * from the shared {@link layoutTextBlock}; this module only paints the result
@@ -8,8 +8,7 @@
  * `fillText`/`strokeText` per line reproduces CSS — no per-character drawing.
  */
 
-import type { SubtitleSegmentItem, TextItem } from '@freecut/types/timeline'
-import { parseSubtitleCueText } from '@freecut/shared/utils/subtitle-cue-format'
+import type { TextItem } from '@freecut/types/timeline'
 import {
   layoutTextBlock,
   lineInkWidth,
@@ -473,78 +472,6 @@ export function renderTextItem(
   paintTextBlock(ctx, item, transform.width, transform.height, itemLeft, itemTop, rctx)
 
   ctx.restore()
-}
-
-/**
- * Render a {@link SubtitleSegmentItem}: find the active cue at the current
- * frame, then synthesize an ephemeral TextItem and reuse {@link renderTextItem}
- * so the export pipeline picks up font/shadow/stroke/wrap behavior with no
- * duplicated logic. Cues are stored segment-relative so we measure from
- * `frame - item.from`, not absolute timeline frames.
- */
-export function renderSubtitleSegmentItem(
-  ctx: OffscreenCanvasRenderingContext2D,
-  item: SubtitleSegmentItem,
-  transform: { x: number; y: number; width: number; height: number },
-  frame: number,
-  rctx: ItemRenderContext,
-): void {
-  const fps = rctx.canvasSettings.fps || 30
-  const secondsIntoSegment = (frame - item.from) / fps
-  const activeCue = findActiveSubtitleCue(item.cues, secondsIntoSegment)
-  if (!activeCue) return
-  const parsed = parseSubtitleCueText(activeCue.text)
-  if (parsed.isEmpty) return
-
-  const ephemeralText: TextItem = {
-    id: item.id,
-    type: 'text',
-    trackId: item.trackId,
-    from: item.from,
-    durationInFrames: item.durationInFrames,
-    label: item.label,
-    mediaId: item.mediaId,
-    text: parsed.plainText,
-    textSpans: parsed.spans,
-    fontSize: item.fontSize,
-    fontFamily: item.fontFamily,
-    fontWeight: item.fontWeight,
-    fontStyle: item.fontStyle,
-    underline: item.underline,
-    color: item.color,
-    backgroundColor: item.backgroundColor,
-    backgroundRadius: item.backgroundRadius,
-    textAlign: parsed.alignment?.textAlign ?? item.textAlign,
-    verticalAlign: parsed.alignment?.verticalAlign ?? item.verticalAlign,
-    lineHeight: item.lineHeight,
-    letterSpacing: item.letterSpacing,
-    textPadding: item.textPadding,
-    textShadow: item.textShadow,
-    stroke: item.stroke,
-    transform: item.transform,
-  }
-  renderTextItem(ctx, ephemeralText, transform, rctx)
-}
-
-function findActiveSubtitleCue<T extends { startSeconds: number; endSeconds: number }>(
-  cues: readonly T[],
-  seconds: number,
-): T | null {
-  if (cues.length === 0) return null
-  let lo = 0
-  let hi = cues.length - 1
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1
-    const cue = cues[mid]!
-    if (seconds < cue.startSeconds) {
-      hi = mid - 1
-    } else if (seconds >= cue.endSeconds) {
-      lo = mid + 1
-    } else {
-      return cue
-    }
-  }
-  return null
 }
 
 /**

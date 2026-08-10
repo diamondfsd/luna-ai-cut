@@ -382,10 +382,7 @@ export function buildStableDomTracks({
     items: track.items.filter(
       (
         item,
-      ): item is Exclude<
-        TimelineItem,
-        VideoItem | AudioItem | AdjustmentItem | ControllerItem
-      > => {
+      ): item is Exclude<TimelineItem, VideoItem | AudioItem | AdjustmentItem | ControllerItem> => {
         if (
           item.type === 'video' ||
           item.type === 'audio' ||
@@ -408,10 +405,10 @@ export function collectVisibleTextFontFamilies(visibleTracks: TimelineTrack[]): 
 
   for (const track of visibleTracks) {
     for (const item of track.items) {
-      if (item.type !== 'text' && item.type !== 'subtitle') continue
+      if (item.type !== 'text') continue
       const textItem = item as TextItem
       fontFamilies.add(textItem.fontFamily ?? 'Inter')
-      for (const span of item.type === 'text' ? (textItem.textSpans ?? []) : []) {
+      for (const span of textItem.textSpans ?? []) {
         fontFamilies.add(span.fontFamily ?? textItem.fontFamily ?? 'Inter')
       }
     }

@@ -16,12 +16,9 @@ function buildTransitionPairs(
 }
 
 function getCaptionOwnerClipId(item: ProjectItem): string | null {
-  if (item.type === 'subtitle') {
-    return item.source?.type === 'transcript' || item.source?.type === 'embedded-subtitles'
-      ? item.source.clipId
-      : null
+  if (item.type === 'text' && item.textRole === 'caption' && item.captionSource?.clipId) {
+    return item.captionSource.clipId
   }
-  if (item.type === 'text' && item.captionSource?.clipId) return item.captionSource.clipId
   return null
 }
 
@@ -110,9 +107,7 @@ export function repairOverlappingItems(
     }
     for (const group of byTrack.values()) group.sort((a, b) => a.from - b.from)
 
-    let collision:
-      | { current: ProjectItem; next: ProjectItem; currentEnd: number }
-      | undefined
+    let collision: { current: ProjectItem; next: ProjectItem; currentEnd: number } | undefined
     for (const group of byTrack.values()) {
       for (let i = 0; i < group.length && !collision; i += 1) {
         const current = group[i]!

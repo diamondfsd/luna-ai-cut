@@ -71,10 +71,8 @@ type CaptionActionsProps = ItemContextMenuSectionProps & {
   hasCaptions?: boolean
   isGeneratingCaptions?: boolean
   canExtractEmbeddedSubtitles?: boolean
-  canConsolidateCaptionsToSegment?: boolean
   onOpenCaptionDialog?: () => void
   onExtractEmbeddedSubtitles?: () => void
-  onConsolidateCaptionsToSegment?: () => void
 }
 
 type CompositionActionsProps = ItemContextMenuSectionProps & {
@@ -608,10 +606,8 @@ function CaptionActions({
   hasCaptions,
   isGeneratingCaptions,
   canExtractEmbeddedSubtitles,
-  canConsolidateCaptionsToSegment,
   onOpenCaptionDialog,
   onExtractEmbeddedSubtitles,
-  onConsolidateCaptionsToSegment,
 }: CaptionActionsProps) {
   const captionActionLabel = hasCaptions
     ? t('timeline.contextMenu.regenerateCaptions')
@@ -634,15 +630,6 @@ function CaptionActions({
         <>
           <ContextMenuItem onClick={onExtractEmbeddedSubtitles}>
             {t('timeline.contextMenu.extractEmbeddedSubtitles')}
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-        </>
-      )}
-
-      {canConsolidateCaptionsToSegment && onConsolidateCaptionsToSegment && (
-        <>
-          <ContextMenuItem onClick={onConsolidateCaptionsToSegment}>
-            {t('timeline.contextMenu.consolidateCaptionsToSegment')}
           </ContextMenuItem>
           <ContextMenuSeparator />
         </>

@@ -1,7 +1,7 @@
 /**
  * Top-level item dispatcher: resolves animated state, applies corner pin /
  * corner radius / opacity transforms, then delegates to the type-specific
- * renderer (video, image, text, subtitle, shape, composition).
+ * renderer (video, image, text, shape, composition).
  */
 
 import type {
@@ -10,7 +10,6 @@ import type {
   HtmlItem,
   LottieItem,
   ShapeItem,
-  SubtitleSegmentItem,
   TextItem,
   TimelineItem,
   VideoItem,
@@ -24,7 +23,10 @@ import {
   resolveCornerPinForSize,
   resolveCornerPinTargetRect,
 } from '@freecut/features/export/deps/composition-runtime'
-import { resolveAnimatedShapeItem, resolveAnimatedTextItem } from '@freecut/features/export/deps/keyframes'
+import {
+  resolveAnimatedShapeItem,
+  resolveAnimatedTextItem,
+} from '@freecut/features/export/deps/keyframes'
 import type { EffectSourceMask } from '../canvas-effects'
 import { applyMasks } from '../canvas-masks'
 import { renderShape } from '../canvas-shapes'
@@ -39,7 +41,7 @@ import { renderVideoItem } from './video'
 import { renderImageItem } from './image'
 import { renderLottieItem } from './lottie'
 import { renderHtmlItem } from './html'
-import { getTextRasterCacheKey, renderSubtitleSegmentItem, renderTextItem } from './text'
+import { getTextRasterCacheKey, renderTextItem } from './text'
 import { isTextMotionActive } from '@freecut/shared/typography/text-motion'
 import { renderCompositionItem } from './composition'
 import type { CornerPinWarpCacheEntry } from './types'
@@ -223,9 +225,6 @@ async function renderItemContent(
       renderTextItem(ctx, textItem, transform, rctx, motion)
       break
     }
-    case 'subtitle':
-      renderSubtitleSegmentItem(ctx, effectiveItem as SubtitleSegmentItem, transform, frame, rctx)
-      break
     case 'shape':
       renderShape(
         ctx,

@@ -10,12 +10,7 @@ import { buildMediaTimelineItems } from '@freecut/features/editor/deps/timeline-
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
 import type { TextItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { clipRef, idFromAgentRef } from '../workspace-document/build-workspace-document'
-import type {
-  AgentClipDraft,
-  AgentTransitionSpec,
-  EditProgram,
-  EditProgramDiff,
-} from './types'
+import type { AgentClipDraft, AgentTransitionSpec, EditProgram, EditProgramDiff } from './types'
 import { prepareHtmlInsert, prepareHtmlUpdate } from './html-compiler'
 import { compileTextPresentation, prepareEditableTextItem } from './text-compiler'
 import { compileVisualState } from './visual-compiler'
@@ -51,13 +46,12 @@ function mediaType(mimeType: string): 'video' | 'audio' | 'image' | null {
 
 function assertTrackCompatibility(
   trackId: string,
-  type: 'video' | 'audio' | 'image' | 'text' | 'subtitle',
+  type: 'video' | 'audio' | 'image' | 'text',
 ): void {
   const track = useTimelineStore.getState().tracks.find((candidate) => candidate.id === trackId)
   if (!track || track.isGroup) throw new Error('编辑程序引用了不存在的轨道。')
   if (track.locked) throw new Error(`轨道“${track.name}”已锁定。`)
-  const expected =
-    type === 'audio' ? 'audio' : type === 'text' || type === 'subtitle' ? 'subtitle' : 'video'
+  const expected = type === 'audio' ? 'audio' : type === 'text' ? 'subtitle' : 'video'
   if (getTrackKind(track) !== expected) throw new Error(`素材不能放入轨道“${track.name}”。`)
 }
 
@@ -112,9 +106,7 @@ async function prepareClipDraft(
   if (!blobUrl) throw new Error(`无法读取素材“${media.fileName}”。`)
   const sourceFps = media.fps > 0 ? media.fps : fps
   const sourceStart = secondsToFrames(draft.source?.in ?? 0, sourceFps)
-  const sourceEnd = draft.source
-    ? secondsToFrames(draft.source.out, sourceFps)
-    : undefined
+  const sourceEnd = draft.source ? secondsToFrames(draft.source.out, sourceFps) : undefined
   const from = secondsToFrames(draft.start, fps)
   const durationInFrames = Math.max(1, secondsToFrames(draft.duration, fps))
   let nextTracks = tracks
@@ -160,18 +152,23 @@ async function prepareClipDraft(
     const speed = Math.max(0.1, Math.min(10, sourceSpan / draft.duration))
     for (const builtItem of builtItems) builtItem.speed = speed
   }
-  Object.assign(item, compileVisualState({
+  Object.assign(
     item,
-    framing: draft.framing,
-    cameraMove: draft.cameraMove,
-    canvasWidth: canvas.width,
-    canvasHeight: canvas.height,
-  }))
+    compileVisualState({
+      item,
+      framing: draft.framing,
+      cameraMove: draft.cameraMove,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+    }),
+  )
   return { items: builtItems, tracks: nextTracks }
 }
 
 function assertNoCollisions(items: TimelineItem[], touchedIds: Set<string>): void {
-  const sorted = items.toSorted((left, right) => left.trackId.localeCompare(right.trackId) || left.from - right.from)
+  const sorted = items.toSorted(
+    (left, right) => left.trackId.localeCompare(right.trackId) || left.from - right.from,
+  )
   for (let index = 1; index < sorted.length; index += 1) {
     const left = sorted[index - 1]!
     const right = sorted[index]!
@@ -223,8 +220,9 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
   for (const operation of program.operations) {
     if (operation.type === 'replaceRange') {
       const targetTracks = new Set(
-        (operation.trackRefs ?? operation.clips.map((clip) => clip.trackRef))
-          .map((value) => idFromAgentRef(value, 'track')),
+        (operation.trackRefs ?? operation.clips.map((clip) => clip.trackRef)).map((value) =>
+          idFromAgentRef(value, 'track'),
+        ),
       )
       const start = secondsToFrames(operation.range.start, fps)
       const end = secondsToFrames(operation.range.end, fps)
@@ -255,7 +253,10 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
 
     if (operation.type === 'insertClip') {
       await appendDraft(operation.clip)
-      changedRanges.push({ start: operation.clip.start, end: operation.clip.start + operation.clip.duration })
+      changedRanges.push({
+        start: operation.clip.start,
+        end: operation.clip.start + operation.clip.duration,
+      })
       continue
     }
 
@@ -290,10 +291,7 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         if (reusableTrack) {
           textTrackId = reusableTrack.id
         } else {
-          const minOrder = virtualTracks.reduce(
-            (lowest, track) => Math.min(lowest, track.order),
-            0,
-          )
+          const minOrder = virtualTracks.reduce((lowest, track) => Math.min(lowest, track.order), 0)
           const textTrack = createClassicTrack({
             tracks: virtualTracks,
             kind: 'subtitle',
@@ -316,16 +314,18 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         label: operation.text.label ?? operation.text.text.slice(0, 40),
         ...(operation.text.role !== 'caption' ? { textStylePresetId: 'clean-title' } : {}),
       })
-      Object.assign(textItem, compileTextPresentation({
-        item: textItem,
-        style: operation.text.style,
-        spans: operation.text.spans,
-        box: operation.text.box,
-        canvas,
-      }))
-      const insertedTextItem: TimelineItem = operation.text.role === 'caption'
-        ? { ...textItem, textRole: 'caption' }
-        : textItem
+      Object.assign(
+        textItem,
+        compileTextPresentation({
+          item: textItem,
+          style: operation.text.style,
+          spans: operation.text.spans,
+          box: operation.text.box,
+          canvas,
+        }),
+      )
+      const insertedTextItem: TimelineItem =
+        operation.text.role === 'caption' ? { ...textItem, textRole: 'caption' } : textItem
       refs.set(operation.text.ref, insertedTextItem.id)
       insertItems.push(insertedTextItem)
       virtualItems.push(insertedTextItem)
@@ -367,7 +367,7 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       if (!item) throw new Error(`片段“${operation.clipRef}”已经被移除。`)
       const prepared = prepareHtmlUpdate(item, operation)
       const merged = prepared.item
-      virtualItems = virtualItems.map((candidate) => candidate.id === id ? merged : candidate)
+      virtualItems = virtualItems.map((candidate) => (candidate.id === id ? merged : candidate))
       updates.set(id, { ...updates.get(id), ...prepared.updates } as Partial<TimelineItem>)
       touchedIds.add(id)
       changedRanges.push({
@@ -395,13 +395,12 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       const nextTrackId = operation.changes.trackRef
         ? idFromAgentRef(operation.changes.trackRef, 'track')
         : item.trackId
-      const compatibilityType =
-        item.type === 'audio' || item.type === 'text' || item.type === 'subtitle'
-          ? item.type
-          : 'video'
+      const compatibilityType = item.type === 'audio' || item.type === 'text' ? item.type : 'video'
       assertTrackCompatibility(nextTrackId, compatibilityType)
       const next: Partial<TimelineItem> = {
-        ...(operation.changes.start !== undefined ? { from: secondsToFrames(operation.changes.start, fps) } : {}),
+        ...(operation.changes.start !== undefined
+          ? { from: secondsToFrames(operation.changes.start, fps) }
+          : {}),
         ...(operation.changes.duration !== undefined
           ? { durationInFrames: Math.max(1, secondsToFrames(operation.changes.duration, fps)) }
           : {}),
@@ -420,36 +419,49 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       }
       if (editableText) Object.assign(next, editableText.conversion)
       if (operation.changes.text !== undefined) {
-        Object.assign(next, { text: operation.changes.text, textSpans: undefined, spanLayout: undefined })
+        Object.assign(next, {
+          text: operation.changes.text,
+          textSpans: undefined,
+          spanLayout: undefined,
+        })
       }
       if (
         operation.changes.textStyle !== undefined ||
         operation.changes.textSpans !== undefined ||
         operation.changes.textBox !== undefined
       ) {
-        Object.assign(next, compileTextPresentation({
-          item: { ...editableText!.item, ...next } as TextItem,
-          style: operation.changes.textStyle,
-          spans: operation.changes.textSpans,
-          box: operation.changes.textBox,
-          canvas,
-        }))
+        Object.assign(
+          next,
+          compileTextPresentation({
+            item: { ...editableText!.item, ...next } as TextItem,
+            style: operation.changes.textStyle,
+            spans: operation.changes.textSpans,
+            box: operation.changes.textBox,
+            canvas,
+          }),
+        )
       }
       const candidate = { ...item, ...next } as TimelineItem
-      Object.assign(next, compileVisualState({
-        item: candidate,
-        framing: operation.changes.framing,
-        cameraMove: operation.changes.cameraMove,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-      }))
+      Object.assign(
+        next,
+        compileVisualState({
+          item: candidate,
+          framing: operation.changes.framing,
+          cameraMove: operation.changes.cameraMove,
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+        }),
+      )
       const merged = { ...item, ...next } as TimelineItem
-      virtualItems = virtualItems.map((candidateItem) => candidateItem.id === id ? merged : candidateItem)
+      virtualItems = virtualItems.map((candidateItem) =>
+        candidateItem.id === id ? merged : candidateItem,
+      )
       updates.set(id, { ...updates.get(id), ...next })
       touchedIds.add(id)
       changedRanges.push({
         start: Math.min(item.from, merged.from) / fps,
-        end: Math.max(item.from + item.durationInFrames, merged.from + merged.durationInFrames) / fps,
+        end:
+          Math.max(item.from + item.durationInFrames, merged.from + merged.durationInFrames) / fps,
       })
       continue
     }

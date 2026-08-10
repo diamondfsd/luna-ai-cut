@@ -111,7 +111,13 @@ describe('EditProgram', () => {
       solo: false,
       items: [],
     } satisfies TimelineTrack
-    const audioTrack = { ...videoTrack, id: 'audio-track', name: 'A1', kind: 'audio' as const, order: 1 }
+    const audioTrack = {
+      ...videoTrack,
+      id: 'audio-track',
+      name: 'A1',
+      kind: 'audio' as const,
+      order: 1,
+    }
     const occupiedAudio = {
       id: 'audio-existing',
       type: 'audio',
@@ -211,7 +217,7 @@ describe('EditProgram', () => {
     expect(subtitleTrack?.order).toBeLessThan(videoTrack.order)
   })
 
-  it('converts a legacy single-cue manual subtitle when applying keyword styles', async () => {
+  it('applies keyword styles directly to caption-marked text', async () => {
     const track = {
       id: 'subtitle-track',
       name: 'S1',
@@ -226,13 +232,13 @@ describe('EditProgram', () => {
     } satisfies TimelineTrack
     const subtitle = {
       id: 'manual-subtitle',
-      type: 'subtitle',
+      type: 'text',
+      textRole: 'caption',
       trackId: track.id,
       from: 0,
       durationInFrames: 90,
       label: 'AI Caption',
-      source: { type: 'manual' },
-      cues: [{ id: 'cue-1', startSeconds: 0, endSeconds: 3, text: 'AI陪宝宝创造' }],
+      text: 'AI陪宝宝创造',
       color: '#ffffff',
     } satisfies TimelineItem
     useItemsStore.setState({ tracks: [track], items: [subtitle] })
@@ -241,23 +247,23 @@ describe('EditProgram', () => {
       version: 1,
       baseRevision: 7,
       intent: '修改生成旁白样式',
-      operations: [{
-        type: 'updateClip',
-        clipRef: 'clip:manual-subtitle',
-        changes: {
-          textStyle: { fontSize: 80, fontWeight: 'bold' },
-          textSpans: [
-            { text: 'AI', color: '#ffcc00' },
-            { text: '陪宝宝创造', color: '#ffffff' },
-          ],
+      operations: [
+        {
+          type: 'updateClip',
+          clipRef: 'clip:manual-subtitle',
+          changes: {
+            textStyle: { fontSize: 80, fontWeight: 'bold' },
+            textSpans: [
+              { text: 'AI', color: '#ffcc00' },
+              { text: '陪宝宝创造', color: '#ffffff' },
+            ],
+          },
         },
-      }],
+      ],
     })
 
     expect(compiled.updates[0]?.updates).toMatchObject({
-      type: 'text',
       text: 'AI陪宝宝创造',
-      textRole: 'caption',
       fontSize: 80,
       fontWeight: 'bold',
       spanLayout: 'inline',
@@ -265,20 +271,22 @@ describe('EditProgram', () => {
   })
 
   it('reuses one dedicated text track for sequential plain text', async () => {
-    const tracks: TimelineTrack[] = [{
-      id: 'picture-track',
-      name: 'V1',
-      kind: 'video',
-      height: 72,
-      order: 0,
-      locked: false,
-      syncLock: true,
-      visible: true,
-      muted: false,
-      solo: false,
-      volume: 0,
-      items: [],
-    }]
+    const tracks: TimelineTrack[] = [
+      {
+        id: 'picture-track',
+        name: 'V1',
+        kind: 'video',
+        height: 72,
+        order: 0,
+        locked: false,
+        syncLock: true,
+        visible: true,
+        muted: false,
+        solo: false,
+        volume: 0,
+        items: [],
+      },
+    ]
     const picture = {
       ...imageItem(),
       trackId: 'picture-track',
@@ -390,27 +398,29 @@ describe('EditProgram', () => {
       version: 1,
       baseRevision: 7,
       intent: '制作左上角关键词高亮旁白',
-      operations: [{
-        type: 'insertText',
-        text: {
-          ref: 'narration',
-          text: 'AI陪宝宝做游戏',
-          start: 0,
-          duration: 3,
-          style: {
-            fontSize: 88,
-            fontWeight: 'bold',
-            color: '#ffffff',
-            textAlign: 'left',
-            verticalAlign: 'top',
+      operations: [
+        {
+          type: 'insertText',
+          text: {
+            ref: 'narration',
+            text: 'AI陪宝宝做游戏',
+            start: 0,
+            duration: 3,
+            style: {
+              fontSize: 88,
+              fontWeight: 'bold',
+              color: '#ffffff',
+              textAlign: 'left',
+              verticalAlign: 'top',
+            },
+            spans: [
+              { text: 'AI', color: '#ffcc00' },
+              { text: '陪宝宝做游戏', color: '#ffffff' },
+            ],
+            box: { left: 0.04, top: 0.05, width: 0.56, height: 0.2 },
           },
-          spans: [
-            { text: 'AI', color: '#ffcc00' },
-            { text: '陪宝宝做游戏', color: '#ffffff' },
-          ],
-          box: { left: 0.04, top: 0.05, width: 0.56, height: 0.2 },
         },
-      }],
+      ],
     })
 
     const item = compiled.insertItems[0]
@@ -435,17 +445,19 @@ describe('EditProgram', () => {
       version: 1,
       baseRevision: 7,
       intent: '制作特写',
-      operations: [{
-        type: 'insertClip',
-        clip: {
-          ref: 'shot-1',
-          mediaRef: 'media:ui',
-          trackRef: 'track:v1',
-          start: 0,
-          duration: 2,
-          framing: { mode: 'cover', pose: { center: [1.2, 0.5], zoom: 0.5 } },
+      operations: [
+        {
+          type: 'insertClip',
+          clip: {
+            ref: 'shot-1',
+            mediaRef: 'media:ui',
+            trackRef: 'track:v1',
+            start: 0,
+            duration: 2,
+            framing: { mode: 'cover', pose: { center: [1.2, 0.5], zoom: 0.5 } },
+          },
         },
-      }],
+      ],
     })
     expect(result.success).toBe(false)
   })
@@ -472,7 +484,9 @@ describe('EditProgram', () => {
     const sidebar = transformForPose({ ...common, pose: { center: [0.15, 0.5], zoom: 2.2 } })
     const timeline = transformForPose({ ...common, pose: { center: [0.5, 0.85], zoom: 1.9 } })
 
-    expect(new Set([`${top.x}:${top.y}`, `${sidebar.x}:${sidebar.y}`, `${timeline.x}:${timeline.y}`])).toHaveLength(3)
+    expect(
+      new Set([`${top.x}:${top.y}`, `${sidebar.x}:${sidebar.y}`, `${timeline.x}:${timeline.y}`]),
+    ).toHaveLength(3)
     expect(sidebar.width).not.toBe(top.width)
   })
 
@@ -490,10 +504,18 @@ describe('EditProgram', () => {
       canvasHeight: 1080,
     })
 
-    const layer = updates.motionLayers?.find((candidate) => candidate.sourcePresetId === 'ai-edit-program')
+    const layer = updates.motionLayers?.find(
+      (candidate) => candidate.sourcePresetId === 'ai-edit-program',
+    )
     expect(layer).toBeDefined()
-    expect(layer?.tracks.find((track) => track.property === 'x')?.keyframes.at(-1)?.value).not.toBe(0)
-    expect(layer?.tracks.find((track) => track.property === 'y')?.keyframes.at(-1)?.value).not.toBe(0)
-    expect(layer?.tracks.find((track) => track.property === 'width')?.keyframes.at(-1)?.value).toBeGreaterThan(1)
+    expect(layer?.tracks.find((track) => track.property === 'x')?.keyframes.at(-1)?.value).not.toBe(
+      0,
+    )
+    expect(layer?.tracks.find((track) => track.property === 'y')?.keyframes.at(-1)?.value).not.toBe(
+      0,
+    )
+    expect(
+      layer?.tracks.find((track) => track.property === 'width')?.keyframes.at(-1)?.value,
+    ).toBeGreaterThan(1)
   })
 })

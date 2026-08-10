@@ -106,25 +106,16 @@ const vectorPropertyKeyframesSchema = z.object({
 
 const linkedPropertyExpressionSchema = z.object({
   type: z.literal('link'),
-  targetProperty: z.union([
-    animatablePropertySchema,
-    z.enum(['position', 'scale', 'anchor']),
-  ]),
+  targetProperty: z.union([animatablePropertySchema, z.enum(['position', 'scale', 'anchor'])]),
   sourceItemId: z.string().min(1),
-  sourceProperty: z.union([
-    animatablePropertySchema,
-    z.enum(['position', 'scale', 'anchor']),
-  ]),
+  sourceProperty: z.union([animatablePropertySchema, z.enum(['position', 'scale', 'anchor'])]),
   enabled: z.boolean(),
   timeOffsetFrames: z.number(),
 })
 
 const propertyExpressionSchema = z.object({
   type: z.literal('expression'),
-  targetProperty: z.union([
-    animatablePropertySchema,
-    z.enum(['position', 'scale', 'anchor']),
-  ]),
+  targetProperty: z.union([animatablePropertySchema, z.enum(['position', 'scale', 'anchor'])]),
   source: z.string(),
   enabled: z.boolean(),
 })
@@ -155,7 +146,6 @@ const itemTypeSchema = z.enum([
   'composition',
   'adjustment',
   'controller',
-  'subtitle',
 ])
 
 const shapeTypeSchema = z.enum([
@@ -248,6 +238,13 @@ const captionSourceSchema = z.object({
   type: z.enum(['transcript', 'ai-captions', 'subtitle-import', 'embedded-subtitles']),
   clipId: z.string().min(1),
   mediaId: z.string().min(1),
+  fileName: z.string().optional(),
+  format: z.enum(['srt', 'vtt']).optional(),
+  importedAt: z.number().optional(),
+  trackNumber: z.number().int().nonnegative().optional(),
+  language: z.string().optional(),
+  trackName: z.string().optional(),
+  codecId: z.string().optional(),
 })
 
 // Mask schemas
@@ -463,12 +460,7 @@ const compositionControlSchema = z.object({
       id: z.string().min(1),
       name: z.string().min(1),
       targetItemId: z.string().min(1),
-      property: z.enum([
-        'text.text',
-        'text.color',
-        'shape.fillColor',
-        'shape.strokeColor',
-      ]),
+      property: z.enum(['text.text', 'text.color', 'shape.fillColor', 'shape.strokeColor']),
       kind: z.enum(['text', 'color']),
       defaultValue: z.string(),
     }),

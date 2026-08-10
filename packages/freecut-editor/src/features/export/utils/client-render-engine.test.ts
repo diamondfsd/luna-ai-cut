@@ -68,17 +68,18 @@ describe('nested transcript captions', () => {
 
     expect(tracks).toHaveLength(2)
     const transcriptTrack = tracks.find((track) =>
-      track.items.some((item) => item.type === 'subtitle'),
+      track.items.some((item) => item.type === 'text' && item.captionSource?.type === 'transcript'),
     )
     expect(transcriptTrack?.items).toEqual([
       expect.objectContaining({
-        type: 'subtitle',
-        source: expect.objectContaining({
+        type: 'text',
+        textRole: 'caption',
+        text: 'Nested phrase',
+        captionSource: expect.objectContaining({
           type: 'transcript',
           mediaId: 'media-1',
           clipId: 'nested-video',
         }),
-        cues: [expect.objectContaining({ text: 'Nested phrase' })],
       }),
     ])
   })

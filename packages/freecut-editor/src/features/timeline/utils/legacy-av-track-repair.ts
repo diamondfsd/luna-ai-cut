@@ -46,7 +46,7 @@ function getVideoLaneIndex(trackIndex: number, totalVideoTracks: number): number
 }
 
 function isVisualItem(item: TimelineItem): boolean {
-  return item.type !== 'audio' && item.type !== 'text' && item.type !== 'subtitle'
+  return item.type !== 'audio' && item.type !== 'text'
 }
 
 function inferTrackKinds(
@@ -55,9 +55,7 @@ function inferTrackKinds(
 ): Map<string, TrackKind> {
   const preliminaryKinds = sortedTracks.map((track) => {
     const trackItems = itemsByTrackId.get(track.id) ?? []
-    const hasSubtitleItems = trackItems.some(
-      (item) => item.type === 'text' || item.type === 'subtitle',
-    )
+    const hasSubtitleItems = trackItems.some((item) => item.type === 'text')
     const hasVisualItems = trackItems.some(isVisualItem)
     const hasAudioItems = trackItems.some((item) => item.type === 'audio')
 
@@ -102,11 +100,8 @@ export function needsLegacyAvTrackLayoutRepair(params: {
       return true
     }
 
-    const expectedKind = item.type === 'audio'
-      ? 'audio'
-      : item.type === 'text' || item.type === 'subtitle'
-        ? 'subtitle'
-        : 'video'
+    const expectedKind =
+      item.type === 'audio' ? 'audio' : item.type === 'text' ? 'subtitle' : 'video'
     return trackKind !== expectedKind
   })
 }
@@ -381,9 +376,7 @@ export function repairLegacyAvTrackLayout(params: LegacyAvRepairParams): LegacyA
     ...remainingAudioTrackSourceIds.filter((trackId) => !standaloneAudioTrackIds.includes(trackId)),
   ]
 
-  const subtitleTracks = sortedTracks.filter(
-    (track) => kindsByTrackId.get(track.id) === 'subtitle',
-  )
+  const subtitleTracks = sortedTracks.filter((track) => kindsByTrackId.get(track.id) === 'subtitle')
   const usedTrackIds = new Set(subtitleTracks.map((track) => track.id))
   const repairedTracks: TimelineTrack[] = subtitleTracks.map((track) => ({
     ...track,

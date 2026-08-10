@@ -96,7 +96,6 @@ export interface ProjectTimeline {
         | 'composition'
         | 'adjustment'
         | 'controller'
-        | 'subtitle'
       // Type-specific fields stored as optional for flexibility
       src?: string
       thumbnailUrl?: string
@@ -136,10 +135,11 @@ export interface ProjectTimeline {
         fileName?: string
         format?: 'srt' | 'vtt'
         importedAt?: number
+        trackNumber?: number
+        language?: string
+        trackName?: string
+        codecId?: string
       }
-      sourceLabel?: string
-      source?: import('./timeline').SubtitleSegmentSource
-      cues?: import('./timeline').SubtitleSegmentCue[]
       textStylePresetId?: TextStylePresetId
       textStyleScale?: number
       textSpans?: TextSpan[]

@@ -1,12 +1,4 @@
-import {
-  Suspense,
-  lazy,
-  memo,
-  useCallback,
-  useDeferredValue,
-  useMemo,
-  type ReactNode,
-} from 'react'
+import { Suspense, lazy, memo, useCallback, useDeferredValue, useMemo, type ReactNode } from 'react'
 import { Code2, Link2 } from 'lucide-react'
 import { perfMarkRender } from '@freecut/shared/logging/perf-marks'
 import type { TimelineItem } from '@freecut/types/timeline'
@@ -532,17 +524,6 @@ const StaticClipContent = memo(function StaticClipContent({ item }: { item: Time
         <div className="text-[10px] text-muted-foreground truncate">Text</div>
         <div className="text-xs font-medium truncate flex-1">
           {getTextItemPlainText(item) || 'Empty text'}
-        </div>
-      </div>
-    )
-  }
-
-  if (item.type === 'subtitle') {
-    const firstCueText = item.cues[0]?.text ?? ''
-    return (
-      <div className="absolute inset-0 flex items-center overflow-hidden px-2">
-        <div className="truncate text-xs font-medium">
-          {firstCueText}
         </div>
       </div>
     )

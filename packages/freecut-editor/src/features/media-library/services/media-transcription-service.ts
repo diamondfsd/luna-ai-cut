@@ -9,10 +9,14 @@ import { useSelectionStore } from '@freecut/shared/state/selection'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { joinTranscriptWords } from '@freecut/shared/utils/transcript-text'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
-import type { MediaTranscript, MediaTranscriptModel, MediaTranscriptSegment } from '@freecut/types/storage'
+import type {
+  MediaTranscript,
+  MediaTranscriptModel,
+  MediaTranscriptSegment,
+} from '@freecut/types/storage'
 import type {
   AudioItem,
-  SubtitleSegmentItem,
+  TextItem,
   TimelineTranscriptCaptionCue,
   TimelineItem,
   TimelineTrack,
@@ -25,7 +29,7 @@ import {
 } from '../transcription/registry'
 import { importMediaLibraryService } from './media-library-service-loader'
 import {
-  buildSubtitleSegmentForClip,
+  buildSubtitleTextItemsForClip,
   getCaptionStyleTemplateFromPreset,
   buildCaptionTrackAbove,
   type CaptionTextItemTemplate,
@@ -639,12 +643,7 @@ class MediaTranscriptionService {
     // an older transcript snapshot.
     const compositionsState = useCompositionsStore.getState()
     for (const composition of compositionsState.compositions) {
-      const synced = syncTranscriptCaptionItems(
-        composition.items,
-        mediaId,
-        transcript,
-        sourceCues,
-      )
+      const synced = syncTranscriptCaptionItems(composition.items, mediaId, transcript, sourceCues)
       if (synced.updatedClipCount === 0) continue
       compositionsState.updateComposition(composition.id, { items: synced.items })
       updatedClipCount += synced.updatedClipCount
@@ -661,9 +660,7 @@ class MediaTranscriptionService {
       return synced.updatedClipCount > 0 ? { ...stash, items: synced.items } : stash
     }
     const nextStashStack = navigationState.stashStack.map(syncStash)
-    const nextMainHolder = navigationState.mainHolder
-      ? syncStash(navigationState.mainHolder)
-      : null
+    const nextMainHolder = navigationState.mainHolder ? syncStash(navigationState.mainHolder) : null
     if (updatedStashedClipCount > 0) {
       useCompositionNavigationStore.setState({
         stashStack: nextStashStack,
@@ -739,7 +736,7 @@ class MediaTranscriptionService {
         )
       : new Set<string>()
     const plannedItems = timeline.items.filter((item) => !generatedCaptionIdsToRemove.has(item.id))
-    const insertedItems: SubtitleSegmentItem[] = []
+    const insertedItems: TextItem[] = []
 
     for (const clip of targetClips) {
       const clipRange = getCaptionRangeForClip(clip, transcript.segments, timeline.fps)
@@ -773,19 +770,16 @@ class MediaTranscriptionService {
         newTracks.sort((a, b) => a.order - b.order)
       }
 
-      const clipCaptionItem = buildSubtitleSegmentForClip({
+      const clipCaptionItems = buildSubtitleTextItemsForClip({
         trackId: targetTrack.id,
         cues: buildTimelineTranscriptCaptionCues(clip.id, transcript.segments),
         clip,
         timelineFps: timeline.fps,
         canvasWidth,
         canvasHeight,
-        label: 'Transcript',
-        source: {
-          type: 'transcript',
-          mediaId,
-          clipId: clip.id,
-        },
+        fileName: 'Transcript',
+        format: 'srt',
+        sourceType: 'transcript',
         styleTemplate: {
           ...definedCaptionStyleFields(defaultCaptionTemplate),
           ...definedCaptionStyleFields(previousAttachedStyle),
@@ -795,12 +789,12 @@ class MediaTranscriptionService {
         } as CaptionTextItemTemplate,
       })
 
-      if (!clipCaptionItem) {
+      if (clipCaptionItems.length === 0) {
         continue
       }
 
-      insertedItems.push(clipCaptionItem)
-      plannedItems.push(clipCaptionItem)
+      insertedItems.push(...clipCaptionItems)
+      plannedItems.push(...clipCaptionItems)
     }
 
     if (insertedItems.length === 0 && generatedCaptionIdsToRemove.size === 0) {
@@ -824,7 +818,10 @@ class MediaTranscriptionService {
         if (
           clip.transcriptCaptions &&
           insertedItems.some(
-            (item) => item.source.type === 'transcript' && item.source.clipId === clip.id,
+            (item) =>
+              item.textRole === 'caption' &&
+              item.captionSource?.type === 'transcript' &&
+              item.captionSource.clipId === clip.id,
           )
         ) {
           timeline.updateItem(clip.id, { transcriptCaptions: undefined } as Partial<TimelineItem>)

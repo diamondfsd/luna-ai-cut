@@ -916,8 +916,6 @@ export const TimelineItem = memo(function TimelineItem({
           onOpenCaptionDialog: caption.openDialog,
           canExtractEmbeddedSubtitles: caption.canExtractEmbeddedSubtitles,
           onExtractEmbeddedSubtitles: caption.handleExtractEmbeddedSubtitles,
-          canConsolidateCaptionsToSegment: caption.hasConsolidatablePerCueCaptions,
-          onConsolidateCaptionsToSegment: caption.handleConsolidateCaptionsToSegment,
         }}
         compositionActions={{
           isCompositionItem,

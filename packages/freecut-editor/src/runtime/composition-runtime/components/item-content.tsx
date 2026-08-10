@@ -4,7 +4,12 @@ import {
   useClockPlaybackRate,
 } from '@freecut/runtime/composition-runtime/deps/player'
 import { useDebugStore, useGizmoStore } from '@freecut/runtime/composition-runtime/deps/stores'
-import type { AudioItem, CompositionItem, TimelineItem, ShapeItem } from '@freecut/types/timeline'
+import {
+  type AudioItem,
+  type CompositionItem,
+  type TimelineItem,
+  type ShapeItem,
+} from '@freecut/types/timeline'
 import type { ResolvedAudioEqSettings } from '@freecut/types/audio'
 import type { TransformProperties } from '@freecut/types/transform'
 import { DebugOverlay } from './debug-overlay'
@@ -18,7 +23,6 @@ import { MediaOfflinePlaceholder } from './media-offline-placeholder'
 import { ItemVisualWrapper } from './item-visual-wrapper'
 import { isRenderableLottieSrc } from '@freecut/infrastructure/lottie/lottie-frame-provider'
 import { TextContent } from './text-content'
-import { SubtitleSegmentContent } from './subtitle-segment-content'
 import { ShapeContent } from './shape-content'
 import { VideoContent } from './video-content'
 import { useVideoConfig } from '../hooks/use-player-compat'
@@ -593,7 +597,6 @@ export const ItemContent = React.memo<ItemProps>(
     }
 
     if (item.type === 'text') {
-      // Use new ItemVisualWrapper for consolidated state and fixed DOM structure
       return (
         <ItemVisualWrapper item={item} masks={masks}>
           <TextContent item={item} />
@@ -655,14 +658,6 @@ export const ItemContent = React.memo<ItemProps>(
     // adjustment items render nothing visually (they apply effects to other items)
     if (item.type === 'adjustment') {
       return null
-    }
-
-    if (item.type === 'subtitle') {
-      return (
-        <ItemVisualWrapper item={item} masks={masks}>
-          <SubtitleSegmentContent item={item} />
-        </ItemVisualWrapper>
-      )
     }
 
     throw new Error(`Unknown item type: ${JSON.stringify(item)}`)
