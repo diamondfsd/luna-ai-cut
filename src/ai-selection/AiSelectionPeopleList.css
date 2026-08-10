@@ -17,5 +17,5 @@
 .ai-selection-person-inline-editor .ai-selection-face-group-cover { width: 100%; height: auto; aspect-ratio: 1; grid-column: 1 / -1; grid-row: 1; flex: 0 0 auto !important; border-radius: 5px; }
 .ai-selection-person-rename-input.ui-input { min-width: 0; height: 32px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-primary, #1d1d1f); font-size: 12px; box-shadow: none; }
 .ai-selection-person-rename-input.ui-input:focus { box-shadow: none; }
-.ai-selection-person-menu { width: 154px; padding: 6px; display: grid; gap: 2px; }
+.ai-selection-person-menu.ui-popover-content { width: 164px; padding: 6px; border-radius: 10px; display: grid; gap: 2px; box-sizing: border-box; }
 .ai-selection-person-menu .ui-btn { width: 100%; justify-content: flex-start; border: 0; }
