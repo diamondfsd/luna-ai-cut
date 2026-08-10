@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 
 import type { AiFaceGroup, AiSelectionItem } from '../shared/types'
-import { Button, Dialog } from '../ui'
+import { Button, Dialog, IconButton, Tooltip } from '../ui'
 import { AiFaceGroupCover } from './AiPeopleGroupCover'
 import { AiPersonIdentityAvatar } from './AiPersonIdentityAvatar'
 import './AiPersonMergeDialog.css'
@@ -47,19 +47,19 @@ export function AiPersonMergeDialog({ open, onOpenChange, group, groups, items, 
     </>}
   >
     <div className="ai-person-merge-body">
-      {mergedMembers.length > 0 && <section className="ai-person-merged-section">
-        <strong>已合并人物</strong>
-        <div className="ai-person-merged-list">{mergedMembers.map((member) => <div key={member.id}>
-          <AiPersonIdentityAvatar {...member} className="ai-person-merged-avatar" />
-          <span title={member.name}>{member.name}</span>
-          <Button variant="danger" size="mini" icon={<Trash2 size={14} />} aria-label={`移除 ${member.name}`} disabled={busy} onClick={() => void onUnmerge(member.id)}>移除</Button>
+      {mergedMembers.length > 0 && <section className="ai-person-merge-section ai-person-merged-section">
+        <strong className="ai-person-merge-section-title">已合并人物</strong>
+        <div className="ai-person-merge-card-grid">{mergedMembers.map((member) => <div key={member.id} className="ai-person-merge-card">
+          <span className="ai-person-merge-card-media"><AiPersonIdentityAvatar {...member} className="ai-person-merge-card-preview" /></span>
+          <span className="ai-person-merge-card-meta"><span className="ai-person-merge-card-name" title={member.name}>{member.name}</span></span>
+          <Tooltip content="移除这个人物"><IconButton variant="ghost" size="mini" className="ai-person-merge-remove" icon={<Trash2 size={15} />} aria-label={`移除 ${member.name}`} disabled={busy} onClick={() => void onUnmerge(member.id)} /></Tooltip>
         </div>)}</div>
       </section>}
-      <section className="ai-person-merge-candidates-section">
-        <strong>可合并人物</strong>
-        {candidates.length > 0 ? <div className="ai-person-merge-candidate-list">{candidates.map((candidate) => <Button key={candidate.id} variant="ghost" className={sourceGroupIds.includes(candidate.id) ? 'selected' : ''} aria-pressed={sourceGroupIds.includes(candidate.id)} onClick={() => toggleSourceGroup(candidate.id)}>
-          <AiFaceGroupCover group={candidate} item={itemsById.get(candidate.coverItemId)} showFaceBounds />
-          <span className="ai-person-merge-candidate-name" title={candidate.name}>{candidate.name}</span><strong className="ai-person-merge-candidate-count">{candidate.itemIds.length} 项</strong>
+      <section className="ai-person-merge-section ai-person-merge-candidates-section">
+        <strong className="ai-person-merge-section-title">可合并人物</strong>
+        {candidates.length > 0 ? <div className="ai-person-merge-card-grid">{candidates.map((candidate) => <Button key={candidate.id} variant="ghost" className={`ai-person-merge-card${sourceGroupIds.includes(candidate.id) ? ' selected' : ''}`} aria-label={`${candidate.name}，${candidate.itemIds.length} 项`} aria-pressed={sourceGroupIds.includes(candidate.id)} onClick={() => toggleSourceGroup(candidate.id)}>
+          <span className="ai-person-merge-card-media"><AiFaceGroupCover group={candidate} item={itemsById.get(candidate.coverItemId)} showFaceBounds /></span>
+          <span className="ai-person-merge-card-meta"><span className="ai-person-merge-card-name" title={candidate.name}>{candidate.name}</span><strong className="ai-person-merge-card-count">{candidate.itemIds.length} 项</strong></span>
         </Button>)}</div> : <span className="ai-person-merge-empty">没有可继续合并的人物</span>}
       </section>
     </div>

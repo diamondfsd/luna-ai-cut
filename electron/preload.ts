@@ -79,6 +79,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   getMockServerStatus: () => ipcRenderer.invoke('mock:status'),
   getCacheStats: () => ipcRenderer.invoke('cache:stats'),
   clearCache: () => ipcRenderer.invoke('cache:clear'),
+  migrateLocalStorage: () => ipcRenderer.invoke('storage:migrate'),
   listCustomLuts: () => ipcRenderer.invoke('settings:listCustomLuts'),
   deleteCustomLut: (filePath: string) => ipcRenderer.invoke('settings:deleteCustomLut', filePath),
   openWifiSettings: () => ipcRenderer.invoke('wifi:openSettings'),

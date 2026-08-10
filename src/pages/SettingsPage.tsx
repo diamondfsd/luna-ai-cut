@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Settings2, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
+import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import { Button, Dialog, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
@@ -27,9 +28,10 @@ interface DirectorySettingRowProps {
   path: string
   onOpen: () => void
   onChange: () => void | Promise<void>
+  onMigrate?: () => void
 }
 
-function DirectorySettingRow({ label, path, onOpen, onChange }: DirectorySettingRowProps) {
+function DirectorySettingRow({ label, path, onOpen, onChange, onMigrate }: DirectorySettingRowProps) {
   return (
     <article className="settings-row">
       <div className="settings-row-copy">
@@ -43,6 +45,11 @@ function DirectorySettingRow({ label, path, onOpen, onChange }: DirectorySetting
         <Button variant="primary" size="compact" onClick={() => void onChange()} icon={<FolderOpen size={15} />}>
           更改
         </Button>
+        {onMigrate && (
+          <Button variant="secondary" size="compact" onClick={onMigrate} icon={<ArrowRightLeft size={15} />}>
+            迁移
+          </Button>
+        )}
       </div>
     </article>
   )
@@ -66,6 +73,7 @@ export function SettingsPage({
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
   const [gpuPreviewConfirmOpen, setGpuPreviewConfirmOpen] = useState(false)
+  const [storageMigrationOpen, setStorageMigrationOpen] = useState(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -148,6 +156,7 @@ export function SettingsPage({
               path={settings?.baseDir ?? ''}
               onOpen={() => openDirectory(settings?.baseDir)}
               onChange={chooseBaseDir}
+              onMigrate={() => setStorageMigrationOpen(true)}
             />
             <DirectorySettingRow
               label="下载目录"
@@ -297,6 +306,12 @@ export function SettingsPage({
         onDefaultChange={handleDefaultWatermarkChange}
       />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
+      <StorageMigrationDialog
+        open={storageMigrationOpen}
+        onOpenChange={setStorageMigrationOpen}
+        settings={settings}
+        onMigrated={setSettings}
+      />
       <Dialog
         open={gpuPreviewConfirmOpen}
         onOpenChange={setGpuPreviewConfirmOpen}

@@ -47,6 +47,7 @@
     "test:model-loader": "node scripts/test-model-loader.mjs",
     "test:model-resources": "node scripts/test-model-resource-release.mjs",
     "test:downloads": "node scripts/test-resumable-download.mjs",
+    "test:storage-migration": "node --experimental-strip-types scripts/test-storage-migration.mjs",
     "test:resource-packs": "node scripts/test-runtime-resource-packs.mjs",
     "test:resources": "node scripts/test-runtime-resource-service.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
