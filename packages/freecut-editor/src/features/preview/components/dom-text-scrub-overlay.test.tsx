@@ -99,4 +99,30 @@ describe('DomTextScrubOverlay', () => {
     expect(seekToMock).toHaveBeenCalledOnce()
     expect(seekToMock).toHaveBeenLastCalledWith(20)
   })
+
+  it('cannot be made visible by player descendants while inactive', () => {
+    const { container } = render(
+      <DomTextScrubOverlay
+        playerRef={createRef<PlayerRef>()}
+        visible={false}
+        durationInFrames={120}
+        fps={30}
+        renderSize={{ width: 1920, height: 1080 }}
+        layoutSize={{ width: 1280, height: 720 }}
+        inputProps={{
+          fps: 30,
+          width: 1920,
+          height: 1080,
+          tracks: [],
+          transitions: [],
+          keyframes: [],
+        }}
+      />,
+    )
+
+    expect(container.querySelector('[data-dom-text-scrub-overlay]')).toHaveStyle({
+      display: 'none',
+      visibility: 'hidden',
+    })
+  })
 })
