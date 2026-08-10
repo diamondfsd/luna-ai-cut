@@ -1,0 +1,2 @@
+.ai-person-identity-avatar { position: relative; overflow: hidden; border-radius: 50%; background: var(--bg, #f5f6f8); display: grid; place-items: center; color: var(--text-secondary, #6e6e73); }
+.ai-person-identity-avatar img { position: absolute; max-width: none; object-fit: fill; }

@@ -65,10 +65,14 @@ function identityFace(item: AiSelectionItem, face: AiFaceDescriptor): face is Ai
     && faceBelongsToPerson(item, face))
 }
 
-function matchingIdentity(embeddings: number[][], identities: AiPersonIdentity[]): AiPersonIdentity | null {
+function matchingIdentity(groupId: string, embeddings: number[][], identities: AiPersonIdentity[]): AiPersonIdentity | null {
+  const sourceIdentity = identities.find((identity) => identity.sourceGroupId === groupId)
+  if (sourceIdentity) return sourceIdentity
+  const automaticIdentities = identities.filter((identity) => identity.automaticMatching)
+  if (automaticIdentities.length === 0) return null
   // Cross-task matches are stricter than local grouping so a single weak match cannot relabel a whole group.
   const requiredMatches = Math.max(1, Math.ceil(embeddings.length * FACE_IDENTITY_MATCH_RATIO))
-  return identities.map((identity) => {
+  return automaticIdentities.map((identity) => {
     const similarities = embeddings.map((embedding) => Math.max(
       -1,
       ...identity.samples.map((sample) => cosineSimilarity(sample, embedding)),
@@ -128,10 +132,11 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
     })
     .sort((left, right) => right.itemIds.length - left.itemIds.length || left.coverItemId.localeCompare(right.coverItemId))
     .map((group, index) => {
-      const identity = matchingIdentity(group.embeddings, identities)
+      const groupId = `face_${group.coverItemId}_${Math.round(group.coverBounds.x * 1000)}_${Math.round(group.coverBounds.y * 1000)}`
+      const identity = matchingIdentity(groupId, group.embeddings, identities)
       const coverItem = items.find((item) => item.id === group.coverItemId)
       return {
-        id: `face_${group.coverItemId}_${Math.round(group.coverBounds.x * 1000)}_${Math.round(group.coverBounds.y * 1000)}`,
+        id: groupId,
         identityId: identity?.id ?? null,
         name: identity?.name ?? `人物 ${index + 1}`,
         itemIds: group.itemIds,

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 
+import { squareCropAroundCenter } from '../src/shared/aiAvatarCrop'
 import type { AiSelectionSession } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 
@@ -17,7 +18,8 @@ export async function createAiSelectionPersonAvatar(
     || bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > 1 || bounds.y + bounds.height > 1) {
     throw new Error('头像选区无效，请重新选择')
   }
-  const filter = `crop=iw*${bounds.width}:ih*${bounds.height}:iw*${bounds.x}:ih*${bounds.y},scale=256:256:flags=lanczos`
+  const crop = squareCropAroundCenter(bounds, item.width ?? 1, item.height ?? 1)
+  const filter = `crop=iw*${crop.width}:ih*${crop.height}:iw*${crop.x}:ih*${crop.y},scale=256:256:flags=lanczos`
   const avatar = await new Promise<Buffer>((resolve, reject) => {
     execFile(getFfmpegPath(), ['-v', 'error', '-i', item.path, '-frames:v', '1', '-vf', filter, '-c:v', 'mjpeg', '-q:v', '3', '-f', 'image2pipe', 'pipe:1'], {
       encoding: 'buffer',

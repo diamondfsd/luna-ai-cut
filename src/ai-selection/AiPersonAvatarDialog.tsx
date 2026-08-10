@@ -3,11 +3,13 @@ import { ZoomIn, ZoomOut } from 'lucide-react'
 
 import { ThumbImage } from '../components/ThumbImage'
 import type { AiFaceGroup, AiSelectionItem } from '../shared/types'
+import { squareCropAroundCenter } from '../shared/aiAvatarCrop'
 import { Button, Dialog, IconButton } from '../ui'
 import './AiPersonAvatarDialog.css'
 
 type Bounds = { x: number; y: number; width: number; height: number }
 type CropDragMode = 'move' | 'tl' | 'tr' | 'bl' | 'br'
+const FACE_CONTEXT_SCALE = 2.4
 
 interface AiPersonAvatarDialogProps {
   open: boolean
@@ -16,18 +18,6 @@ interface AiPersonAvatarDialogProps {
   items: AiSelectionItem[]
   busy: boolean
   onSave: (itemId: string, bounds: Bounds) => Promise<boolean>
-}
-
-function initialCrop(face: Bounds, width: number, height: number): Bounds {
-  const sidePixels = Math.min(width, height, Math.max(face.width * width, face.height * height) * 1.8)
-  const cropWidth = sidePixels / width
-  const cropHeight = sidePixels / height
-  return {
-    x: Math.max(0, Math.min(1 - cropWidth, face.x + face.width / 2 - cropWidth / 2)),
-    y: Math.max(0, Math.min(1 - cropHeight, face.y + face.height / 2 - cropHeight / 2)),
-    width: cropWidth,
-    height: cropHeight,
-  }
 }
 
 export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, onSave }: AiPersonAvatarDialogProps) {
@@ -54,7 +44,7 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
     const height = Math.max(1, selected.item.height ?? 1)
     setSelectedId(selected.item.id)
     setPreviewSize({ width, height })
-    setCrop(initialCrop(selected.face, width, height))
+    setCrop(squareCropAroundCenter(selected.face, width, height, FACE_CONTEXT_SCALE))
   }, [candidates, group?.coverUrl, open])
 
   const selected = candidates.find(({ item }) => item.id === selectedId) ?? null
@@ -64,7 +54,7 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
     const height = Math.max(1, item.height ?? 1)
     setSelectedId(item.id)
     setPreviewSize({ width, height })
-    setCrop(initialCrop(face, width, height))
+    setCrop(squareCropAroundCenter(face, width, height, FACE_CONTEXT_SCALE))
   }
 
   function resizeCrop(scale: number): void {
@@ -168,7 +158,7 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
               const height = Math.max(1, event.currentTarget.naturalHeight)
               if (width === previewSize.width && height === previewSize.height) return
               setPreviewSize({ width, height })
-              setCrop(initialCrop(selected.face, width, height))
+              setCrop(squareCropAroundCenter(selected.face, width, height, FACE_CONTEXT_SCALE))
             }}
           />
           <div
