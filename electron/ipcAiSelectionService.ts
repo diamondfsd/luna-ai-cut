@@ -21,6 +21,7 @@ import {
   resumeAiSelection,
   restoreAiSelectionPerson,
   setAiSelectionPersonAvatar,
+  setAiSelectionFaceGroupingThreshold,
   setAiSelectionNotifier,
   startAiSelection,
   undoAiSelection,
@@ -49,6 +50,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('ai-selection:cancel', (_event, sessionId: string) => cancelAiSelection(sessionId))
   ipcMain.handle('ai-selection:apply-operation', (_event, sessionId: string, revision: number, operation: AiSelectionUserOperation) => applyAiSelectionOperation(sessionId, revision, operation))
   ipcMain.handle('ai-selection:analyze-people', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionPeople(sessionId, itemIds))
+  ipcMain.handle('ai-selection:set-face-grouping-threshold', (_event, sessionId: string, threshold: number) => setAiSelectionFaceGroupingThreshold(sessionId, threshold))
   ipcMain.handle('ai-selection:rename-person', (_event, sessionId: string, groupId: string, name: string) => renameAiSelectionPerson(sessionId, groupId, name))
   ipcMain.handle('ai-selection:set-person-avatar', (_event, sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => setAiSelectionPersonAvatar(sessionId, groupId, itemId, bounds))
   ipcMain.handle('ai-selection:merge-people', (_event, sessionId: string, targetGroupId: string, sourceGroupIds: string[]) => mergeAiSelectionPeople(sessionId, targetGroupId, sourceGroupIds))

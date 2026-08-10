@@ -1,7 +1,7 @@
 import type { AiFaceGroup, AiHiddenPerson, AiSelectionItem, AiSelectionSession } from '../src/shared/types'
 import { FACE_AVATAR_CONTEXT_SCALE, squareCropAroundCenter } from '../src/shared/aiAvatarCrop'
-import { buildFaceGroups, faceEmbeddingsForGroup } from './aiSelectionFaceGroups'
-import { createPersonIdentity, loadPeopleStore, savePeopleStore, type AiPersonIdentity } from './aiSelectionPeopleStore'
+import { buildFaceGroups, DEFAULT_FACE_GROUPING_THRESHOLD, faceEmbeddingsForGroup } from './aiSelectionFaceGroups'
+import { createPersonIdentity, loadPeopleStore, savePeopleStore, type AiPersonIdentity, type AiPersonSourceFace } from './aiSelectionPeopleStore'
 
 let identities: AiPersonIdentity[] = []
 
@@ -55,9 +55,9 @@ function effectiveIdentities(): AiPersonIdentity[] {
   })
 }
 
-export function buildGlobalFaceGroups(items: AiSelectionItem[]) {
+export function buildGlobalFaceGroups(items: AiSelectionItem[], faceGroupingThreshold = DEFAULT_FACE_GROUPING_THRESHOLD) {
   const hiddenRoots = new Set(identities.filter((identity) => rootIdentity(identity).hidden).map((identity) => rootIdentity(identity).id))
-  return buildFaceGroups(items, effectiveIdentities()).filter((group) => (
+  return buildFaceGroups(items, effectiveIdentities(), faceGroupingThreshold).filter((group) => (
     !group.identityId || !hiddenRoots.has(group.identityId)
   )).map((group) => ({
     ...group,
@@ -75,11 +75,25 @@ export function buildGlobalFaceGroups(items: AiSelectionItem[]) {
   }))
 }
 
+function sourceFaceForGroup(group: AiFaceGroup): AiPersonSourceFace | null {
+  const member = group.memberFaces.find((face) => face.itemId === group.coverItemId)
+  return member ? { itemId: member.itemId, bounds: { ...member.bounds } } : null
+}
+
+function sourceFaceMatchesGroup(sourceFace: AiPersonSourceFace, group: AiFaceGroup): boolean {
+  return group.memberFaces.some((face) => (
+    face.itemId === sourceFace.itemId
+    && Math.abs(face.bounds.x - sourceFace.bounds.x) < 0.0001
+    && Math.abs(face.bounds.y - sourceFace.bounds.y) < 0.0001
+  ))
+}
+
 function ensureIdentity(session: AiSelectionSession, groupId: string): AiPersonIdentity {
   const group = session.faceGroups.find((candidate) => candidate.id === groupId)
   if (!group) throw new Error('人物分组不存在')
   const existing = group.identityId ? identities.find((identity) => identity.id === group.identityId) : null
   if (existing) {
+    existing.sourceFace ??= sourceFaceForGroup(group)
     updateIdentityCover(existing, group, session.items)
     return existing
   }
@@ -88,7 +102,7 @@ function ensureIdentity(session: AiSelectionSession, groupId: string): AiPersonI
   const identity = createPersonIdentity(group.name, samples, group.id, {
     coverUrl: group.coverUrl,
     coverBounds: displayCoverBounds(session.items, group),
-  })
+  }, sourceFaceForGroup(group))
   identities.push(identity)
   return identity
 }
@@ -176,10 +190,12 @@ export async function restoreGlobalPerson(storeDir: string, personId: string): P
   await savePeopleStore(storeDir, identities)
 }
 
-function matchingLocalGroup(items: AiSelectionItem[], identity: AiPersonIdentity): AiFaceGroup | null {
+function matchingLocalGroup(items: AiSelectionItem[], identity: AiPersonIdentity, faceGroupingThreshold: number): AiFaceGroup | null {
   if (identity.samples.length === 0) return null
+  const groups = buildFaceGroups(items, [], faceGroupingThreshold)
+  if (identity.sourceFace) return groups.find((group) => sourceFaceMatchesGroup(identity.sourceFace!, group)) ?? null
   const identitySamples = new Set(identity.samples.map((sample) => sample.join(',')))
-  const candidates = buildFaceGroups(items).map((group) => {
+  const candidates = groups.map((group) => {
     const groupSamples = new Set(faceEmbeddingsForGroup(items, group).map((sample) => sample.join(',')))
     const overlap = [...identitySamples].filter((sample) => groupSamples.has(sample)).length
     return { group, overlap }
@@ -191,12 +207,25 @@ function matchingLocalGroup(items: AiSelectionItem[], identity: AiPersonIdentity
     : null
 }
 
-export async function reconcileGlobalPeopleSources(storeDir: string, items: AiSelectionItem[]): Promise<void> {
+export async function reconcileGlobalPeopleSources(
+  storeDir: string,
+  items: AiSelectionItem[],
+  previousGroups: AiFaceGroup[] = [],
+  faceGroupingThreshold = DEFAULT_FACE_GROUPING_THRESHOLD,
+): Promise<void> {
   let changed = false
   for (const identity of identities) {
-    const group = matchingLocalGroup(items, identity)
+    if (!identity.sourceFace) {
+      const previous = previousGroups.find((group) => group.id === identity.sourceGroupId)
+      const sourceFace = previous ? sourceFaceForGroup(previous) : null
+      if (sourceFace) {
+        identity.sourceFace = sourceFace
+        changed = true
+      }
+    }
+    const group = matchingLocalGroup(items, identity, faceGroupingThreshold)
     if (!group) continue
-    const sourceNeedsBinding = !identity.sourceGroupId && identity.confirmed && !identity.automaticMatching
+    const sourceNeedsBinding = identity.sourceGroupId !== group.id && identity.confirmed && !identity.automaticMatching
     const coverChanged = updateIdentityCover(identity, group, items, true)
     if (!sourceNeedsBinding && !coverChanged) continue
     if (sourceNeedsBinding) identity.sourceGroupId = group.id

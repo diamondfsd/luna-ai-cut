@@ -6,6 +6,7 @@ import * as path from 'node:path'
 import type { AiHiddenPerson, AiSelectionItem, AiSelectionProgress, AiSelectionSession, AiSelectionStartRequest, AiSelectionUserOperation, WorkspaceProject } from '../src/shared/types'
 import { normalizeSelectionTarget } from './aiSelectionAlgorithms'
 import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
+import { normalizeFaceGroupingThreshold } from './aiSelectionFaceGroups'
 import { readAiSelectionItemCache, writeAiSelectionItemCache } from './aiSelectionItemCache'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
@@ -14,6 +15,7 @@ import { createAiSelectionPersonAvatar } from './aiSelectionPersonAvatar'
 import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, renameGlobalPerson, restoreGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
 import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
+import { ensureVideoFaceGroupCoverFrames } from './aiSelectionVideoFaceFrames'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
 import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
@@ -27,23 +29,17 @@ let loaded = false
 let activeSessionId: string | null = null
 let activeController: AbortController | null = null
 let notify: Notify = () => undefined
-
 export function setAiSelectionNotifier(next: Notify): void {
   notify = next
 }
 function rootDir(): string { return path.join(app.getPath('userData'), '.luna-cache', ROOT_DIR) }
-
 function peopleStoreDir(): string { return path.join(app.getPath('userData'), 'people') }
-
 function sessionPath(id: string): string {
   if (!/^selection_[a-z0-9_-]+$/i.test(id)) throw new Error('选片任务标识无效')
   return path.join(rootDir(), 'sessions', `${id}.json`)
 }
-
 async function readCachedItem(id: string, preset: AiSelectionSession['preset']): Promise<AiSelectionItem | null> { return readAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, id, preset) }
-
 async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> { await writeAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, item, preset) }
-
 function publicSession(session: StoredSession): AiSelectionSession {
   const { undoStack, redoStack, ...value } = session
   return structuredClone({
@@ -80,8 +76,9 @@ async function ensureLoaded(): Promise<void> {
       if (parsed.schemaVersion !== 1 || parsed.analysisVersion !== ANALYSIS_VERSION || !parsed.id) continue
       parsed.undoStack ??= []
       parsed.redoStack ??= []
-      await reconcileGlobalPeopleSources(peopleStoreDir(), parsed.items)
-      parsed.faceGroups = buildGlobalFaceGroups(parsed.items)
+      parsed.faceGroupingThreshold = normalizeFaceGroupingThreshold(parsed.faceGroupingThreshold)
+      await reconcileGlobalPeopleSources(peopleStoreDir(), parsed.items, parsed.faceGroups, parsed.faceGroupingThreshold)
+      parsed.faceGroups = buildGlobalFaceGroups(parsed.items, parsed.faceGroupingThreshold)
       rebuildSelectionResult(parsed)
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
@@ -209,11 +206,11 @@ async function runSession(session: StoredSession): Promise<void> {
     // 人物与内容证据增量补充结果；保持进度可见，但不限制页面操作。
     try {
       await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
-      session.faceGroups = buildGlobalFaceGroups(session.items)
+      session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
       rebuildSelectionResult(session)
       await updateAndPersist(session)
       await analyzeVideoPeopleOnDemand(analysisContext(session), videos.map((item) => item.id), controller.signal)
-      session.faceGroups = buildGlobalFaceGroups(session.items)
+      session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
       rebuildSelectionResult(session)
     } catch (error) {
       if (abortLike(error)) throw error
@@ -265,6 +262,7 @@ export async function startAiSelection(request: AiSelectionStartRequest): Promis
     preset: request.preset,
     purpose: request.purpose ?? 'general',
     target,
+    faceGroupingThreshold: normalizeFaceGroupingThreshold(undefined),
     status: 'queued',
     phase: 'indexing',
     revision: 1,
@@ -301,7 +299,12 @@ export async function listAiSelectionSessions(): Promise<AiSelectionSession[]> {
 export async function getAiSelectionSession(id: string): Promise<AiSelectionSession | null> {
   await ensureLoaded()
   const session = sessions.get(id)
-  return session ? publicSession(session) : null
+  if (!session) return null
+  if (await ensureVideoFaceGroupCoverFrames(session.items, session.faceGroups, rootDir())) {
+    rebuildSelectionResult(session)
+    await updateAndPersist(session)
+  }
+  return publicSession(session)
 }
 
 export async function pauseAiSelection(id: string): Promise<AiSelectionSession> {
@@ -380,8 +383,20 @@ export async function analyzeAiSelectionPeople(id: string, itemIds: string[]): P
   await ensureLoaded()
   const session = requireSession(id)
   await analyzePeopleOnDemand(analysisContext(session), itemIds)
-  session.faceGroups = buildGlobalFaceGroups(session.items)
+  session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
   await updateAndPersist(session)
+  return publicSession(session)
+}
+
+export async function setAiSelectionFaceGroupingThreshold(id: string, threshold: number): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  const nextThreshold = normalizeFaceGroupingThreshold(threshold)
+  if (nextThreshold !== session.faceGroupingThreshold) {
+    session.faceGroupingThreshold = nextThreshold
+    rebuildSelectionResult(session)
+    await updateAndPersist(session)
+  }
   return publicSession(session)
 }
 
