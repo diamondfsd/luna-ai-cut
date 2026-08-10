@@ -407,11 +407,11 @@ export async function setAiSelectionPersonAvatar(id: string, groupId: string, it
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }
-
-export async function mergeAiSelectionPeople(id: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession> {
+export async function mergeAiSelectionPeople(id: string, targetGroupId: string, sourceGroupIds: string[]): Promise<AiSelectionSession> {
   await ensureLoaded()
+  if (!Array.isArray(sourceGroupIds) || sourceGroupIds.length === 0 || sourceGroupIds.some((sourceGroupId) => typeof sourceGroupId !== 'string')) throw new Error('请选择至少一个人物')
   const session = requireSession(id)
-  await mergeGlobalPeople(peopleStoreDir(), session, targetGroupId, sourceGroupId)
+  await mergeGlobalPeople(peopleStoreDir(), session, targetGroupId, sourceGroupIds)
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }

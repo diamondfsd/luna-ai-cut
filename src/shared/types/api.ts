@@ -255,7 +255,7 @@ export interface LunaApi {
     analyzePeople(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     renamePerson(sessionId: string, groupId: string, name: string): Promise<AiSelectionSession>
     setPersonAvatar(sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession>
-    mergePeople(sessionId: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession>
+    mergePeople(sessionId: string, targetGroupId: string, sourceGroupIds: string[]): Promise<AiSelectionSession>
     unmergePerson(sessionId: string, targetGroupId: string, memberIdentityId: string): Promise<AiSelectionSession>
     hidePerson(sessionId: string, groupId: string): Promise<AiSelectionSession>
     listHiddenPeople(): Promise<AiHiddenPerson[]>

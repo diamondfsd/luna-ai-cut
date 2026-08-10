@@ -51,7 +51,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('ai-selection:analyze-people', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionPeople(sessionId, itemIds))
   ipcMain.handle('ai-selection:rename-person', (_event, sessionId: string, groupId: string, name: string) => renameAiSelectionPerson(sessionId, groupId, name))
   ipcMain.handle('ai-selection:set-person-avatar', (_event, sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => setAiSelectionPersonAvatar(sessionId, groupId, itemId, bounds))
-  ipcMain.handle('ai-selection:merge-people', (_event, sessionId: string, targetGroupId: string, sourceGroupId: string) => mergeAiSelectionPeople(sessionId, targetGroupId, sourceGroupId))
+  ipcMain.handle('ai-selection:merge-people', (_event, sessionId: string, targetGroupId: string, sourceGroupIds: string[]) => mergeAiSelectionPeople(sessionId, targetGroupId, sourceGroupIds))
   ipcMain.handle('ai-selection:unmerge-person', (_event, sessionId: string, targetGroupId: string, memberIdentityId: string) => unmergeAiSelectionPerson(sessionId, targetGroupId, memberIdentityId))
   ipcMain.handle('ai-selection:hide-person', (_event, sessionId: string, groupId: string) => hideAiSelectionPerson(sessionId, groupId))
   ipcMain.handle('ai-selection:list-hidden-people', () => listAiSelectionHiddenPeople())

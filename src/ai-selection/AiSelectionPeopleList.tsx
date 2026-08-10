@@ -16,7 +16,7 @@ interface AiSelectionPeopleListProps {
   onSelect: (groupId: string) => void
   onRename: (groupId: string, name: string) => Promise<boolean>
   onSetAvatar: (groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => Promise<boolean>
-  onMerge: (targetGroupId: string, sourceGroupId: string) => Promise<boolean>
+  onMerge: (targetGroupId: string, sourceGroupIds: string[]) => Promise<boolean>
   onUnmerge: (targetGroupId: string, memberIdentityId: string) => Promise<boolean>
   onHide: (groupId: string) => Promise<boolean>
 }
@@ -78,7 +78,7 @@ function AiSelectionPersonMenu({ group, groups, items, busy, onSetAvatar, onMerg
       </PopoverContent>
     </Popover>
     <AiPersonAvatarDialog open={avatarOpen} onOpenChange={setAvatarOpen} group={group} items={items} busy={busy} onSave={(itemId, bounds) => onSetAvatar(group.id, itemId, bounds)} />
-    <AiPersonMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} group={group} groups={groups} items={items} busy={busy} onMerge={(sourceGroupId) => onMerge(group.id, sourceGroupId)} onUnmerge={(memberIdentityId) => onUnmerge(group.id, memberIdentityId)} />
+    <AiPersonMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} group={group} groups={groups} items={items} busy={busy} onMerge={(sourceGroupIds) => onMerge(group.id, sourceGroupIds)} onUnmerge={(memberIdentityId) => onUnmerge(group.id, memberIdentityId)} />
     <Dialog open={hideOpen} onOpenChange={setHideOpen} title="隐藏这个人物？" description="人物分组会暂时从所有选片结果中隐藏，照片和视频不会被删除。可随时从“已隐藏人物”恢复。" footer={<><Button variant="secondary" onClick={() => setHideOpen(false)}>取消</Button><Button variant="primary" disabled={busy} onClick={() => void hidePerson()}>隐藏人物</Button></>} />
   </>
 }

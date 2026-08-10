@@ -16,7 +16,7 @@ import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations
 import { buildFaceGroups, FACE_EMBEDDING_VERSION, faceEmbeddingsForGroup, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
 import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, restoreGlobalPerson, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
-import { squareCropAroundCenter } from '../src/shared/aiAvatarCrop.ts'
+import { FACE_AVATAR_CONTEXT_SCALE, squareCropAroundCenter } from '../src/shared/aiAvatarCrop.ts'
 import {
   countSimilarityGroups,
   matchesResultFilter,
@@ -275,7 +275,7 @@ assert.ok(Math.abs(portraitFaceBounds.x - 0.25) < 1e-9)
 assert.ok(Math.abs(portraitFaceBounds.y - 1 / 18) < 1e-9)
 assert.ok(Math.abs(portraitFaceBounds.width - 0.25) < 1e-9)
 assert.ok(Math.abs(portraitFaceBounds.height - 4 / 9) < 1e-9, '竖图的人脸框应补偿缩略图的上下裁切')
-const avatarCrop = squareCropAroundCenter({ x: 0.4, y: 0.3, width: 0.12, height: 0.3 }, 4000, 3000, 2.4)
+const avatarCrop = squareCropAroundCenter({ x: 0.4, y: 0.3, width: 0.12, height: 0.3 }, 4000, 3000, FACE_AVATAR_CONTEXT_SCALE)
 assert.ok(Math.abs(avatarCrop.width * 4000 - avatarCrop.height * 3000) < 1e-9, '头像裁切必须保持正方形，不拉伸人脸')
 assert.ok(avatarCrop.x >= 0 && avatarCrop.y >= 0 && avatarCrop.x + avatarCrop.width <= 1 && avatarCrop.y + avatarCrop.height <= 1, '头像裁切靠近边缘时仍应留在照片范围内')
 assert.ok(avatarCrop.height > 0.3, '头像默认选区应在识别框外保留足够留白')
@@ -346,10 +346,15 @@ const peopleStoreRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-ai-selecti
 try {
   const registeredIdentity = createPersonIdentity('人物 1', faceVector(127, 0))
   const secondIdentity = createPersonIdentity('人物 2', faceVector(0, 127))
+  const thirdIdentity = createPersonIdentity('人物 3', faceVector(-127, 0))
+  const faceItemsForMerge = [...faceItems, item('face-c', '2026-07-18T03:04:00.000Z', {
+    personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.48, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(-127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] },
+  })]
   registeredIdentity.automaticMatching = true
   secondIdentity.automaticMatching = true
+  thirdIdentity.automaticMatching = true
   registeredIdentity.avatarDataUrl = `data:image/jpeg;base64,${Buffer.from('avatar').toString('base64')}`
-  await savePeopleStore(peopleStoreRoot, [registeredIdentity, secondIdentity])
+  await savePeopleStore(peopleStoreRoot, [registeredIdentity, secondIdentity, thirdIdentity])
   const reloadedIdentities = await loadPeopleStore(peopleStoreRoot)
   assert.equal(reloadedIdentities[0].avatarDataUrl, registeredIdentity.avatarDataUrl, '人物头像 Base64 应随人物库持久化')
   const reusedGroups = buildFaceGroups([faceItems[1]], reloadedIdentities)
@@ -357,19 +362,22 @@ try {
   assert.equal(reusedGroups[0].coverUrl, registeredIdentity.avatarDataUrl, '重新分组后应继续使用持久化头像')
 
   await loadGlobalPeople(peopleStoreRoot)
-  const groupsBeforeMerge = buildGlobalFaceGroups(faceItems)
+  const groupsBeforeMerge = buildGlobalFaceGroups(faceItemsForMerge)
   const targetGroup = groupsBeforeMerge.find((group) => group.identityId === registeredIdentity.id)
   const sourceGroup = groupsBeforeMerge.find((group) => group.identityId === secondIdentity.id)
-  assert.ok(targetGroup && sourceGroup, '合并前应存在两个独立人物')
-  const peopleSession = { items: faceItems, faceGroups: groupsBeforeMerge }
-  await mergeGlobalPeople(peopleStoreRoot, peopleSession, targetGroup.id, sourceGroup.id)
-  const groupsAfterMerge = buildGlobalFaceGroups(faceItems)
+  const thirdGroup = groupsBeforeMerge.find((group) => group.identityId === thirdIdentity.id)
+  assert.ok(targetGroup && sourceGroup && thirdGroup, '合并前应存在三个独立人物')
+  const peopleSession = { items: faceItemsForMerge, faceGroups: groupsBeforeMerge }
+  await mergeGlobalPeople(peopleStoreRoot, peopleSession, targetGroup.id, [sourceGroup.id, thirdGroup.id])
+  const groupsAfterMerge = buildGlobalFaceGroups(faceItemsForMerge)
   assert.equal(groupsAfterMerge.length, 1, '合并后应作为一个人物参与分组')
-  assert.deepEqual(groupsAfterMerge[0].mergedMembers?.map((member) => member.id), [secondIdentity.id], '合并弹窗应能展示来源身份')
-  assert.equal(groupsAfterMerge[0].mergedMembers?.[0]?.coverUrl, faceItems[2].path, '合并人物应保留可辨认的人脸缩略图')
+  assert.deepEqual(new Set(groupsAfterMerge[0].mergedMembers?.map((member) => member.id)), new Set([secondIdentity.id, thirdIdentity.id]), '合并弹窗应能展示所有来源身份')
+  const secondMergedMember = groupsAfterMerge[0].mergedMembers?.find((member) => member.id === secondIdentity.id)
+  assert.equal(secondMergedMember?.coverUrl, faceItems[2].path, '合并人物应保留可辨认的人脸缩略图')
+  assert.ok((secondMergedMember?.coverBounds?.height ?? 0) > 0.25, '合并人物的缩略图应在人脸框外保留留白')
   await unmergeGlobalPerson(peopleStoreRoot, { ...peopleSession, faceGroups: groupsAfterMerge }, groupsAfterMerge[0].id, secondIdentity.id)
-  assert.equal(buildGlobalFaceGroups(faceItems).length, 2, '移除合并成员后应恢复两个独立人物')
-  const targetAfterUnmerge = buildGlobalFaceGroups(faceItems).find((group) => group.identityId === registeredIdentity.id)
+  assert.equal(buildGlobalFaceGroups(faceItemsForMerge).length, 2, '移除一个合并成员后应恢复为独立人物')
+  const targetAfterUnmerge = buildGlobalFaceGroups(faceItemsForMerge).find((group) => group.identityId === registeredIdentity.id)
   assert.ok(targetAfterUnmerge, '隐藏前应能找到目标人物')
   await hideGlobalPerson(peopleStoreRoot, { ...peopleSession, faceGroups: buildGlobalFaceGroups(faceItems) }, targetAfterUnmerge.id)
   assert.deepEqual(buildGlobalFaceGroups(faceItems).map((group) => group.identityId), [secondIdentity.id], '隐藏人物后应抑制相同人脸再次出现')
