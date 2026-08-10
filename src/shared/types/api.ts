@@ -261,7 +261,7 @@ export interface LunaApi {
   getDownloadedRecords(files: LunaFile[]): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>
-  startFileDrag(filePaths: string[]): void
+  startFileDrag(filePaths: string[], thumbnailUrl?: string | null): void
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
   readExifModel(localPath: string): Promise<string | null>

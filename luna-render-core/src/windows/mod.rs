@@ -64,6 +64,7 @@ pub(crate) fn export_video(
     fps: f64,
     total_frames: u64,
     bitrate: u64,
+    include_audio: bool,
     task: Option<&Arc<TaskState>>,
 ) -> Result<(), String> {
     let _com = ComGuard::start()?;
@@ -114,6 +115,7 @@ pub(crate) fn export_video(
         fps,
         total_frames,
         bitrate,
+        include_audio,
         hevc,
         task,
         &interop,

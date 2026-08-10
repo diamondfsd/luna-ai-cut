@@ -298,7 +298,7 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
                   onPreview={ctrl.handlePreviewClick}
                   onRevealPath={ctrl.revealFileByPath}
                   onRevealProgress={ctrl.revealDownloadedFile}
-                  onDragStart={isSelected && localPath ? () => window.luna.startFileDrag(selectedLocalPaths) : undefined}
+                  onDragStart={isSelected && localPath ? () => window.luna.startFileDrag(selectedLocalPaths, file.thumbnailUrl) : undefined}
                 />
               )
             })}
