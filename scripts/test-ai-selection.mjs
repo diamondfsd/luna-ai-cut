@@ -13,7 +13,7 @@ import {
 } from '../electron/aiSelectionAlgorithms.ts'
 import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
-import { buildFaceGroups, FACE_EMBEDDING_VERSION, faceEmbeddingsForGroup, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
+import { buildFaceGroups, DEFAULT_FACE_GROUPING_THRESHOLD, FACE_EMBEDDING_VERSION, faceEmbeddingsForGroup, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
 import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, restoreGlobalPerson, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
 import { FACE_AVATAR_CONTEXT_SCALE, squareCropAroundCenter } from '../src/shared/aiAvatarCrop.ts'
@@ -89,6 +89,7 @@ function item(id, capturedAt, overrides = {}) {
 }
 
 const dark = analyzeRgb(new Uint8Array(64 * 64 * 3), 64, 64)
+assert.equal(DEFAULT_FACE_GROUPING_THRESHOLD, 0.42, '人物分组默认阈值应使用验证后的预置')
 assert.equal(dark.quality.grade, 'review')
 assert.ok(dark.quality.reasons.includes('画面接近全黑'))
 assert.equal(dark.visualSignature.length, 48)
@@ -290,7 +291,7 @@ const uncertainIdentity = createPersonIdentity('已确认人物', faceVector(127
 const uncertainFaceGroups = buildFaceGroups([
   item('known-face', '2026-07-18T03:03:10.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
   item('uncertain-face', '2026-07-18T03:03:11.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.22, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(58, 116), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-], [uncertainIdentity])
+], [uncertainIdentity], 0.5)
 assert.equal(uncertainFaceGroups.length, 2, '没有足够相似证据的人脸应保持独立分组')
 assert.equal(uncertainFaceGroups.find((group) => group.itemIds.includes('uncertain-face'))?.identityId, null, '弱相似人脸不能被归入已确认人物')
 assert.equal(buildFaceGroups([
