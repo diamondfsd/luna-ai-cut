@@ -18,7 +18,18 @@ export interface AiEditingRunRecord {
   toolCalls: Array<{ id: string; ok: boolean; message: string; details?: string[] }>
   completed: boolean
   completionNotes: string[]
+  status?: 'running' | 'completed' | 'failed' | 'cancelled'
+  updatedAt?: number
+  phase?: string
+  events?: AiEditingRunEvent[]
   production?: { blueprint: unknown; review: unknown }
+}
+
+export interface AiEditingRunEvent {
+  at: number
+  type: string
+  message: string
+  data?: unknown
 }
 
 interface AiEditingRunsFile {
@@ -68,6 +79,28 @@ function sanitizeRecord(value: unknown): AiEditingRunRecord | null {
     ).slice(0, 64),
     completed: candidate.completed,
     completionNotes: candidate.completionNotes.filter((entry): entry is string => typeof entry === 'string').slice(0, 12),
+    ...(candidate.status === 'running' || candidate.status === 'completed' ||
+      candidate.status === 'failed' || candidate.status === 'cancelled'
+      ? { status: candidate.status }
+      : {}),
+    ...(typeof candidate.updatedAt === 'number' ? { updatedAt: candidate.updatedAt } : {}),
+    ...(typeof candidate.phase === 'string' ? { phase: candidate.phase } : {}),
+    ...(Array.isArray(candidate.events)
+      ? {
+          events: candidate.events.flatMap((entry) => {
+            if (!entry || typeof entry !== 'object') return []
+            const event = entry as Partial<AiEditingRunEvent>
+            if (typeof event.at !== 'number' || typeof event.type !== 'string' ||
+              typeof event.message !== 'string') return []
+            return [{
+              at: event.at,
+              type: event.type,
+              message: event.message,
+              ...('data' in event ? { data: event.data } : {}),
+            }]
+          }),
+        }
+      : {}),
     ...(candidate.production && typeof candidate.production === 'object' && !Array.isArray(candidate.production)
       ? { production: candidate.production as { blueprint: unknown; review: unknown } }
       : {}),
@@ -80,9 +113,11 @@ export async function saveAiEditingRun(projectId: string, record: AiEditingRunRe
     const runs = current?.version === VERSION && Array.isArray(current.runs)
       ? current.runs.map(sanitizeRecord).filter((entry): entry is AiEditingRunRecord => entry !== null)
       : []
+    const nextRecord = sanitizeRecord(record)
+    if (!nextRecord) throw new Error('Invalid AI editing run record')
     await writeJsonAtomic(requireWorkspaceRoot(), projectAiEditingRunsPath(projectId), {
       version: VERSION,
-      runs: [...runs, record].slice(-MAX_RUNS),
+      runs: [...runs.filter((entry) => entry.id !== record.id), nextRecord].slice(-MAX_RUNS),
     })
   } catch (error) {
     logger.error(`saveAiEditingRun(${projectId}) failed`, error)

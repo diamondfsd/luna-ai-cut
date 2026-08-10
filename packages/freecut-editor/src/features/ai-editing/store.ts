@@ -4,22 +4,14 @@ import {
   clearAiEditingConversation,
   loadAiEditingConversationState,
   resumeAiEditingConversation,
-  saveAiEditingRun,
   saveAiEditingConversationState,
-  type AiEditingConversationContext,
 } from '@freecut/infrastructure/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { getAiEditingAdapter, runAiEditingTurn } from './run-ai-editing-turn'
 import { getTimelineRevision } from './evidence'
 import {
   addAiEditingReferenceContext,
-  type AiEditingResourceReference,
 } from './resource-references'
-import type {
-  AiEditingObservation,
-  AiEditingTaskActivity,
-  AiEditingToolActivity,
-} from './types'
 import { prepareConversationContext } from './conversation-context'
 import {
   enqueueAiEditingConversationWrite,
@@ -28,56 +20,19 @@ import {
 import {
   conversationMessagesForModel,
   newAiEditingMessageId,
-  type AiEditingMessage,
 } from './conversation-messages'
+import { createAiEditingRunRecorder } from './run-recorder'
+import {
+  loadReasoningEffort,
+  REASONING_EFFORT_STORAGE_KEY,
+  REASONING_EFFORTS,
+} from './reasoning-effort'
+import type { AiEditingState } from './store-types'
 
 export type { AiEditingMessage } from './conversation-messages'
+export type { AiEditingReasoningEffort } from './reasoning-effort'
 
 const logger = createLogger('AiEditingStore')
-
-export type AiEditingPhase = 'idle' | 'loading' | 'thinking' | 'executing'
-export type AiEditingReasoningEffort = 'low' | 'high' | 'xhigh' | 'max'
-
-const REASONING_EFFORT_STORAGE_KEY = 'editor:aiEditingReasoningEffort'
-const REASONING_EFFORTS = new Set<AiEditingReasoningEffort>(['low', 'high', 'xhigh', 'max'])
-
-function loadReasoningEffort(): AiEditingReasoningEffort {
-  if (typeof window === 'undefined') return 'high'
-  try {
-    const stored = window.localStorage.getItem(REASONING_EFFORT_STORAGE_KEY)
-    return stored && REASONING_EFFORTS.has(stored as AiEditingReasoningEffort)
-      ? (stored as AiEditingReasoningEffort)
-      : 'high'
-  } catch {
-    return 'high'
-  }
-}
-
-interface AiEditingState {
-  supported: boolean
-  phase: AiEditingPhase
-  loadPercent: number
-  thinkingLabel: string
-  thinkingPercent: number
-  thinkingCeiling: number
-  error: string | null
-  streamingText: string
-  messages: AiEditingMessage[]
-  agentContext: AiEditingConversationContext | null
-  observations: AiEditingObservation[]
-  toolActivities: AiEditingToolActivity[]
-  taskActivities: AiEditingTaskActivity[]
-  reasoningEffort: AiEditingReasoningEffort
-  projectId: string | null
-  isRestoringConversation: boolean
-  isStartingNewConversation: boolean
-  restoreConversation: (projectId: string | null) => Promise<void>
-  submit: (text: string, references?: AiEditingResourceReference[]) => Promise<void>
-  setReasoningEffort: (effort: AiEditingReasoningEffort) => void
-  cancel: () => void
-  startNewConversation: () => Promise<void>
-  resumeConversation: (sessionId: string) => Promise<boolean>
-}
 
 let activeController: AbortController | null = null
 let conversationLoadGeneration = 0
@@ -148,10 +103,11 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
 
     const previousMessages = get().messages
     const storedContext = get().agentContext
+    const userMessageId = newAiEditingMessageId()
     const messages = [
       ...previousMessages,
       {
-        id: newAiEditingMessageId(),
+        id: userMessageId,
         role: 'user' as const,
         content: trimmed,
         createdAt: Date.now(),
@@ -184,11 +140,34 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     }
     if (get().projectId !== projectId) return
 
+    const timelineRevisionBefore = getTimelineRevision()
+    const runRecorder = createAiEditingRunRecorder({
+      id: userMessageId,
+      projectId,
+      request: trimmed,
+      timelineRevisionBefore,
+    })
+    let recorderSettled = false
+    try {
+      await runRecorder.start()
+    } catch (error) {
+      logger.warn('Failed to start AI editing run record', error)
+    }
+
+    const controller = new AbortController()
+    activeController = controller
+    runRecorder.trace({ type: 'model-loading', message: '正在准备剪辑模型。' })
     try {
       await adapter.load((progress) => {
         if (get().projectId === projectId) set({ loadPercent: progress.percent })
       })
     } catch (error) {
+      try {
+        await runRecorder.fail(error, 'model-loading')
+        recorderSettled = true
+      } catch (persistError) {
+        logger.warn('Failed to persist model loading failure', persistError)
+      }
       if (get().projectId === projectId) {
         set({
           phase: 'idle',
@@ -196,20 +175,28 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             error instanceof Error ? `无法准备剪辑助手：${error.message}` : '无法准备剪辑助手。',
         })
       }
+      if (activeController === controller) activeController = null
       return
     }
 
-    if (get().projectId !== projectId || get().isRestoringConversation) return
+    if (controller.signal.aborted || get().projectId !== projectId || get().isRestoringConversation) {
+      try {
+        await runRecorder.cancel()
+        recorderSettled = true
+      } catch (error) {
+        logger.warn('Failed to persist cancelled AI editing run', error)
+      }
+      if (activeController === controller) activeController = null
+      return
+    }
 
-    const controller = new AbortController()
-    activeController = controller
+    runRecorder.trace({ type: 'workspace-loading', message: '正在读取当前编辑空间。' })
     set({
       phase: 'thinking',
       thinkingLabel: '正在读取当前编辑空间',
       thinkingPercent: 3,
       thinkingCeiling: 6,
     })
-    const timelineRevisionBefore = getTimelineRevision()
     try {
       const preparedContext = await prepareConversationContext(
         conversationMessagesForModel(previousMessages),
@@ -218,6 +205,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           adapter,
           signal: controller.signal,
           onCompacting: () => {
+            runRecorder.trace({ type: 'conversation-compacting', message: '正在压缩较早的会话。' })
             if (get().projectId === projectId) {
               set({ thinkingLabel: '正在整理较早的会话', thinkingPercent: 5, thinkingCeiling: 10 })
             }
@@ -239,6 +227,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         adapter,
         reasoningEffort: get().reasoningEffort,
         signal: controller.signal,
+        onTraceEvent: (event) => runRecorder.trace(event),
         onToken: (_delta, fullText) => {
           if (!controller.signal.aborted && get().projectId === projectId) {
             set({ streamingText: fullText })
@@ -286,32 +275,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       })
       if (controller.signal.aborted || get().projectId !== projectId) return
       try {
-        await saveAiEditingRun(projectId, {
-          id: newAiEditingMessageId(),
-          createdAt: Date.now(),
-          request: trimmed,
-          ...(result.skillId ? { skillId: result.skillId } : {}),
-          plan: result.plan,
-          timelineRevisionBefore: result.timelineRevisionBefore,
-          timelineRevisionAfter: result.timelineRevisionAfter,
-          toolCalls: result.observations.map((observation) => ({
-            id: observation.toolId,
-            ok: observation.result.ok,
-            message: observation.result.message,
-            ...(observation.result.data &&
-              typeof observation.result.data === 'object' &&
-              Array.isArray((observation.result.data as { validationIssues?: unknown }).validationIssues)
-              ? {
-                  details: (observation.result.data as { validationIssues: unknown[] }).validationIssues
-                    .filter((entry): entry is string => typeof entry === 'string')
-                    .slice(0, 8),
-                }
-              : {}),
-          })),
-          completed: result.completed,
-          completionNotes: result.completionNotes,
-          ...(result.production ? { production: result.production } : {}),
-        })
+        await runRecorder.complete(result)
+        recorderSettled = true
       } catch (error) {
         logger.warn('Failed to persist AI editing run', error)
       }
@@ -349,17 +314,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       if (!controller.signal.aborted && get().projectId === projectId) {
         const message = error instanceof Error ? error.message : '剪辑助手暂时无法完成这次请求。'
         try {
-          await saveAiEditingRun(projectId, {
-            id: newAiEditingMessageId(),
-            createdAt: Date.now(),
-            request: trimmed,
-            plan: [],
-            timelineRevisionBefore,
-            timelineRevisionAfter: getTimelineRevision(),
-            toolCalls: [],
-            completed: false,
-            completionNotes: [message],
-          })
+          await runRecorder.fail(error, 'execution')
+          recorderSettled = true
         } catch (persistError) {
           logger.warn('Failed to persist unsuccessful AI editing run', persistError)
         }
@@ -370,6 +326,13 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         })
       }
     } finally {
+      if (!recorderSettled && controller.signal.aborted) {
+        try {
+          await runRecorder.cancel()
+        } catch (error) {
+          logger.warn('Failed to persist cancelled AI editing run', error)
+        }
+      }
       if (activeController === controller) activeController = null
     }
   },

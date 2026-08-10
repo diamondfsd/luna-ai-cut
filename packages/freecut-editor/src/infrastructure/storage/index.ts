@@ -187,6 +187,7 @@ export {
 } from '@freecut/infrastructure/storage/workspace-fs/ai-editing-skills'
 export {
   saveAiEditingRun,
+  type AiEditingRunEvent,
   type AiEditingRunRecord,
 } from '@freecut/infrastructure/storage/workspace-fs/ai-editing-runs'
 

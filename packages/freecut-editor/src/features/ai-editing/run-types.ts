@@ -19,6 +19,12 @@ export interface AiEditingRunResult {
   production?: { blueprint: unknown; review: unknown }
 }
 
+export interface AiEditingTraceEvent {
+  type: string
+  message: string
+  data?: unknown
+}
+
 export interface AiEditingRunOptions {
   history: LlmMessage[]
   signal?: AbortSignal
@@ -26,6 +32,7 @@ export interface AiEditingRunOptions {
   onToolActivity?: (activity: AiEditingToolActivity) => void
   onTaskActivity?: (activity: AiEditingTaskActivity) => void
   onRunProgress?: (progress: AiEditingRunProgress) => void
+  onTraceEvent?: (event: AiEditingTraceEvent) => void
   adapter?: LlmAdapter
   reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
   activityScope?: string
