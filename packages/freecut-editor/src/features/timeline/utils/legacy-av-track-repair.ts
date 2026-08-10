@@ -46,7 +46,7 @@ function getVideoLaneIndex(trackIndex: number, totalVideoTracks: number): number
 }
 
 function isVisualItem(item: TimelineItem): boolean {
-  return item.type !== 'audio'
+  return item.type !== 'audio' && item.type !== 'text' && item.type !== 'subtitle'
 }
 
 function inferTrackKinds(
@@ -55,9 +55,13 @@ function inferTrackKinds(
 ): Map<string, TrackKind> {
   const preliminaryKinds = sortedTracks.map((track) => {
     const trackItems = itemsByTrackId.get(track.id) ?? []
+    const hasSubtitleItems = trackItems.some(
+      (item) => item.type === 'text' || item.type === 'subtitle',
+    )
     const hasVisualItems = trackItems.some(isVisualItem)
     const hasAudioItems = trackItems.some((item) => item.type === 'audio')
 
+    if (hasSubtitleItems) return 'subtitle' as const
     if (hasVisualItems) return 'video' as const
     if (hasAudioItems) return 'audio' as const
     return getTrackKind(track)
@@ -98,7 +102,12 @@ export function needsLegacyAvTrackLayoutRepair(params: {
       return true
     }
 
-    return item.type === 'audio' ? trackKind !== 'audio' : trackKind !== 'video'
+    const expectedKind = item.type === 'audio'
+      ? 'audio'
+      : item.type === 'text' || item.type === 'subtitle'
+        ? 'subtitle'
+        : 'video'
+    return trackKind !== expectedKind
   })
 }
 
@@ -372,8 +381,14 @@ export function repairLegacyAvTrackLayout(params: LegacyAvRepairParams): LegacyA
     ...remainingAudioTrackSourceIds.filter((trackId) => !standaloneAudioTrackIds.includes(trackId)),
   ]
 
-  const usedTrackIds = new Set<string>()
-  const repairedTracks: TimelineTrack[] = []
+  const subtitleTracks = sortedTracks.filter(
+    (track) => kindsByTrackId.get(track.id) === 'subtitle',
+  )
+  const usedTrackIds = new Set(subtitleTracks.map((track) => track.id))
+  const repairedTracks: TimelineTrack[] = subtitleTracks.map((track) => ({
+    ...track,
+    kind: 'subtitle',
+  }))
   const repairedVideoTrackIdsByLane = new Map<number, string>()
   const repairedAudioTrackIdsByLane = new Map<number, string>()
   const repairedStandaloneAudioTrackIdsBySource = new Map<string, string>()

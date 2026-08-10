@@ -3,6 +3,9 @@ import type { AiEditingTool, AiEditingToolModule, AiEditingToolRegistryContext }
 type ToolModuleImport = { aiEditingToolModule?: AiEditingToolModule }
 
 const AGENT_TOOL_IDS = new Set([
+  'workflow.set_plan',
+  'skill.search',
+  'skill.read',
   'workspace.apply_edit_program',
   'analysis.request',
   'analysis.search_transcript',

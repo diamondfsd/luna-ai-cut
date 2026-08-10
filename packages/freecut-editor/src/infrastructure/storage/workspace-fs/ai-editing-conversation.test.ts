@@ -5,8 +5,10 @@ import {
   archiveAiEditingConversation,
   listAiEditingConversationHistory,
   loadAiEditingConversation,
+  loadAiEditingConversationState,
   resumeAiEditingConversation,
   saveAiEditingConversation,
+  saveAiEditingConversationState,
 } from './ai-editing-conversation'
 import { writeJsonAtomic } from './fs-primitives'
 import { projectAiEditingConversationPath } from './paths'
@@ -54,6 +56,25 @@ describe('AI editing conversation storage', () => {
     )
 
     expect(await loadAiEditingConversation('project-42')).toEqual([])
+  })
+
+  it('persists the incremental Agent context without removing visible messages', async () => {
+    const root = createRoot()
+    setWorkspaceRoot(asHandle(root))
+    const messages = [
+      { id: 'message-1', role: 'user' as const, content: '先设计脚本', createdAt: 100 },
+      { id: 'message-2', role: 'assistant' as const, content: '脚本方案', createdAt: 110 },
+    ]
+    const context = {
+      summary: '用户先请求设计脚本，助手已经给出方案。',
+      throughMessageId: 'message-2',
+      updatedAt: 120,
+    }
+
+    await saveAiEditingConversationState('project-42', { messages, context })
+
+    expect(await loadAiEditingConversationState('project-42')).toEqual({ messages, context })
+    expect(await loadAiEditingConversation('project-42')).toEqual(messages)
   })
 
   it('stores archived sessions separately and lists the newest session first', async () => {

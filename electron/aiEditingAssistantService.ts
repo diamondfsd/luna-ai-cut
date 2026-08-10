@@ -340,18 +340,19 @@ function extractToolResult(response: AiEditingAssistantStreamResult): AiEditingA
   if (rawToolCalls.length > MAX_TOOL_CALLS_PER_MESSAGE) {
     throw responseError('剪辑助手一次请求的操作过多，请重试。')
   }
-  const toolCalls = rawToolCalls.map((toolCall) => {
-    if (!validateToolCall({
+  const toolCalls = rawToolCalls.map((toolCall) => ({
+    ...toolCall,
+    valid: validateToolCall({
       id: toolCall.id,
       name: toolCall.name,
       arguments: toolCall.arguments,
-    })) {
-      throw responseError('剪辑助手返回的工具调用格式无效，请重试。')
-    }
-    return toolCall
-  })
+    }),
+  }))
+  if (toolCalls.some((toolCall) => !toolCall.valid)) {
+    return { mode: 'fallback', content, toolCalls: [] }
+  }
   if (!content && toolCalls.length === 0) throw responseError('剪辑助手没有返回内容，请重试。')
-  return { mode: 'tools', content, toolCalls }
+  return { mode: 'tools', content, toolCalls: toolCalls.map(({ valid: _valid, ...toolCall }) => toolCall) }
 }
 
 export async function getAiEditingAssistantConfig(): Promise<AiEditingAssistantConfig> {
