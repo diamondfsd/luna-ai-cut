@@ -9,11 +9,15 @@
 import { createLogger } from '@freecut/shared/logging/logger'
 
 import { readJson, removeEntry, writeJsonAtomic } from './fs-primitives'
-import { projectAiEditingConversationPath } from './paths'
+import {
+  projectAiEditingConversationHistoryPath,
+  projectAiEditingConversationPath,
+} from './paths'
 import { requireWorkspaceRoot } from './root'
 
 const logger = createLogger('WorkspaceFS:AiEditingConversation')
 const CONVERSATION_VERSION = 2
+const CONVERSATION_HISTORY_VERSION = 1
 
 export interface AiEditingConversationMessage {
   id: string
@@ -32,6 +36,18 @@ export interface AiEditingConversationReference {
 interface AiEditingConversationFile {
   version: typeof CONVERSATION_VERSION
   messages: AiEditingConversationMessage[]
+}
+
+export interface AiEditingConversationHistorySession {
+  id: string
+  createdAt: number
+  archivedAt: number
+  messages: AiEditingConversationMessage[]
+}
+
+interface AiEditingConversationHistoryFile {
+  version: typeof CONVERSATION_HISTORY_VERSION
+  sessions: AiEditingConversationHistorySession[]
 }
 
 function sanitizeMessage(value: unknown): AiEditingConversationMessage | null {
@@ -87,6 +103,46 @@ function sanitizeConversation(value: unknown): AiEditingConversationMessage[] {
     .filter((message): message is AiEditingConversationMessage => message !== null)
 }
 
+function sanitizeHistorySession(value: unknown): AiEditingConversationHistorySession | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Partial<AiEditingConversationHistorySession>
+  if (
+    typeof candidate.id !== 'string' ||
+    !candidate.id ||
+    typeof candidate.createdAt !== 'number' ||
+    !Number.isFinite(candidate.createdAt) ||
+    candidate.createdAt < 0 ||
+    typeof candidate.archivedAt !== 'number' ||
+    !Number.isFinite(candidate.archivedAt) ||
+    candidate.archivedAt < 0 ||
+    !Array.isArray(candidate.messages)
+  ) {
+    return null
+  }
+  const messages = candidate.messages
+    .map(sanitizeMessage)
+    .filter((message): message is AiEditingConversationMessage => message !== null)
+  if (messages.length === 0) return null
+  return {
+    id: candidate.id,
+    createdAt: candidate.createdAt,
+    archivedAt: candidate.archivedAt,
+    messages,
+  }
+}
+
+function sanitizeConversationHistory(value: unknown): AiEditingConversationHistorySession[] {
+  if (!value || typeof value !== 'object') return []
+  const candidate = value as Partial<AiEditingConversationHistoryFile>
+  if (candidate.version !== CONVERSATION_HISTORY_VERSION || !Array.isArray(candidate.sessions)) {
+    return []
+  }
+  return candidate.sessions
+    .map(sanitizeHistorySession)
+    .filter((session): session is AiEditingConversationHistorySession => session !== null)
+    .sort((left, right) => right.archivedAt - left.archivedAt)
+}
+
 export async function loadAiEditingConversation(
   projectId: string,
 ): Promise<AiEditingConversationMessage[]> {
@@ -124,5 +180,45 @@ export async function clearAiEditingConversation(projectId: string): Promise<voi
   } catch (error) {
     logger.error(`clearAiEditingConversation(${projectId}) failed`, error)
     throw new Error('Failed to clear AI editing conversation')
+  }
+}
+
+export async function listAiEditingConversationHistory(
+  projectId: string,
+): Promise<AiEditingConversationHistorySession[]> {
+  try {
+    const file = await readJson<unknown>(
+      requireWorkspaceRoot(),
+      projectAiEditingConversationHistoryPath(projectId),
+    )
+    return sanitizeConversationHistory(file)
+  } catch (error) {
+    logger.warn(`listAiEditingConversationHistory(${projectId}) failed`, error)
+    return []
+  }
+}
+
+export async function archiveAiEditingConversation(
+  projectId: string,
+  session: AiEditingConversationHistorySession,
+): Promise<void> {
+  const sanitizedSession = sanitizeHistorySession(session)
+  if (!sanitizedSession) {
+    throw new Error('Cannot archive an invalid AI editing conversation')
+  }
+  try {
+    const existing = await listAiEditingConversationHistory(projectId)
+    const file: AiEditingConversationHistoryFile = {
+      version: CONVERSATION_HISTORY_VERSION,
+      sessions: [sanitizedSession, ...existing.filter((entry) => entry.id !== sanitizedSession.id)],
+    }
+    await writeJsonAtomic(
+      requireWorkspaceRoot(),
+      projectAiEditingConversationHistoryPath(projectId),
+      file,
+    )
+  } catch (error) {
+    logger.error(`archiveAiEditingConversation(${projectId}) failed`, error)
+    throw new Error('Failed to archive AI editing conversation')
   }
 }

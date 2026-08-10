@@ -44,7 +44,6 @@ import {
   DEFAULT_CAPTIONING_INTERVAL_SECONDS,
   resolveCaptioningIntervalSec,
   type CaptioningIntervalUnit,
-  type VisualAnalysisIntensity,
 } from '@freecut/features/editor/deps/settings'
 import {
   useMediaLibraryStore,
@@ -67,7 +66,6 @@ import { VOICE_OPTIONS, type VoiceName } from '@freecut/infrastructure/audio/ui-
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@freecut/components/ui/select'
@@ -381,7 +379,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const maxUndoHistory = useSettingsStore((s) => s.maxUndoHistory)
   const captioningIntervalUnit = useSettingsStore((s) => s.captioningIntervalUnit)
   const captioningIntervalValue = useSettingsStore((s) => s.captioningIntervalValue)
-  const visualAnalysisIntensity = useSettingsStore((s) => s.visualAnalysisIntensity)
   const defaultCaptionStylePresetId = useSettingsStore((s) => s.defaultCaptionStylePresetId)
   const setSetting = useSettingsStore((s) => s.setSetting)
   const resetToDefaults = useSettingsStore((s) => s.resetToDefaults)
@@ -828,43 +825,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                               ),
                             })}
                           </p>
-                        </div>
-
-                        <Separator className="bg-white/8" />
-
-                        <div className="space-y-2">
-                          <div className="space-y-0.5">
-                            <Label className="text-sm">
-                              {t('settings.ai.visualAnalysisIntensity')}
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                              {t('settings.ai.visualAnalysisIntensityDescription')}
-                            </p>
-                          </div>
-                          <Select
-                            value={visualAnalysisIntensity}
-                            onValueChange={(value) =>
-                              setSetting(
-                                'visualAnalysisIntensity',
-                                value as VisualAnalysisIntensity,
-                              )
-                            }
-                          >
-                            <SelectTrigger className="w-40">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="light">
-                                {t('settings.ai.visualAnalysisLight')}
-                              </SelectItem>
-                              <SelectItem value="normal">
-                                {t('settings.ai.visualAnalysisNormal')}
-                              </SelectItem>
-                              <SelectItem value="strong">
-                                {t('settings.ai.visualAnalysisStrong')}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
                         </div>
 
                         <div className="space-y-2">

@@ -102,11 +102,6 @@
       "scene_one": "场景",
       "scene_other": "场景",
       "captionIntervalHint": "{{estimate}}。间隔越小场景越密集，但生成耗时越长。",
-      "visualAnalysisIntensity": "剪辑助手视频识别强度",
-      "visualAnalysisIntensityDescription": "控制剪辑助手的画面抽取频率和识别范围。更强会检查更多画面并识别更多内容，但耗时更长。",
-      "visualAnalysisLight": "轻",
-      "visualAnalysisNormal": "一般",
-      "visualAnalysisStrong": "强",
       "defaultCaptionStyle": "默认字幕样式",
       "defaultCaptionStyleDescription": "应用于由转录或 AI 字幕生成的字幕的样式。"
     },

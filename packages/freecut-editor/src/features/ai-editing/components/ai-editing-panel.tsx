@@ -3,8 +3,9 @@ import {
   Check,
   CircleAlert,
   Copy,
+  History,
   Loader2,
-  RotateCcw,
+  MessageSquarePlus,
   Settings2,
   LibraryBig,
   Sparkles,
@@ -20,6 +21,7 @@ import {
   resolveAiEditingRecordPaths,
 } from '../conversation-record-paths'
 import { AiEditingComposer } from './ai-editing-composer'
+import { AiEditingHistoryDialog } from './ai-editing-history-dialog'
 import { AiEditingMessageBubble } from './ai-editing-message'
 import { AiProviderDialog } from './ai-provider-dialog'
 import { AiEditingSkillsDialog } from './ai-editing-skills-dialog'
@@ -188,11 +190,13 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const setReasoningEffort = useAiEditingStore((state) => state.setReasoningEffort)
   const error = useAiEditingStore((state) => state.error)
   const isRestoringConversation = useAiEditingStore((state) => state.isRestoringConversation)
+  const isStartingNewConversation = useAiEditingStore((state) => state.isStartingNewConversation)
   const projectId = useAiEditingStore((state) => state.projectId)
   const submit = useAiEditingStore((state) => state.submit)
   const cancel = useAiEditingStore((state) => state.cancel)
-  const clear = useAiEditingStore((state) => state.clear)
+  const startNewConversation = useAiEditingStore((state) => state.startNewConversation)
 
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
   const [skillsDialogOpen, setSkillsDialogOpen] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
@@ -201,7 +205,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const scrollRef = useRef<HTMLDivElement>(null)
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const recordPathCopyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const busy = phase !== 'idle'
+  const busy = phase !== 'idle' || isStartingNewConversation
   const canChat = connectionState === 'ready' && !isRestoringConversation
   const activeUserMessageId = [...messages].reverse().find((message) => message.role === 'user')?.id
 
@@ -306,6 +310,17 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
             size="icon"
             variant="ghost"
             className="h-7 w-7"
+            onClick={() => setHistoryDialogOpen(true)}
+            disabled={!projectId}
+            aria-label="查看历史会话"
+            data-tooltip="查看历史会话"
+          >
+            <History className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
             onClick={() => setSkillsDialogOpen(true)}
             aria-label="管理剪辑技能"
             data-tooltip="管理剪辑技能"
@@ -317,8 +332,8 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
             variant="ghost"
             className="h-7 w-7"
             onClick={() => setProviderDialogOpen(true)}
-            aria-label="剪辑助手连接"
-            data-tooltip="剪辑助手连接"
+            aria-label="剪辑助手设置"
+            data-tooltip="剪辑助手设置"
           >
             <Settings2 className="h-3.5 w-3.5" />
           </Button>
@@ -326,11 +341,16 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
             size="icon"
             variant="ghost"
             className="h-7 w-7"
-            onClick={() => void clear()}
-            aria-label="清空剪辑助手记录"
-            data-tooltip="清空剪辑助手记录"
+            onClick={() => void startNewConversation()}
+            disabled={busy}
+            aria-label="新建会话"
+            data-tooltip="新建会话"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            {isStartingNewConversation ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+            )}
           </Button>
           {onClose && (
             <Button
@@ -397,7 +417,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
                   variant="outline"
                   className="h-auto min-h-7 whitespace-normal px-2 py-1 text-left text-[11px]"
                   onClick={() => send(suggestion)}
-                  disabled={!canChat}
+                  disabled={!canChat || busy}
                 >
                   {suggestion}
                 </Button>
@@ -452,6 +472,11 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         onReasoningEffortChange={setReasoningEffort}
         onSubmit={send}
         onCancel={cancel}
+      />
+      <AiEditingHistoryDialog
+        open={historyDialogOpen}
+        projectId={projectId}
+        onOpenChange={setHistoryDialogOpen}
       />
       <AiProviderDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
       <AiEditingSkillsDialog open={skillsDialogOpen} onOpenChange={setSkillsDialogOpen} />
