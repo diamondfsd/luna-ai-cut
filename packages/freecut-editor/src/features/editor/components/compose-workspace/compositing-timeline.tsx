@@ -19,7 +19,6 @@ import type { TFunction } from 'i18next'
 import {
   ChevronDown,
   ChevronRight,
-  Captions,
   Code2,
   ClipboardPaste,
   Blend,
@@ -3285,8 +3284,6 @@ function getMotionLayerTypeIcon(itemType: TimelineItem['type']): LucideIcon {
       return Crosshair
     case 'composition':
       return Layers
-    case 'subtitle':
-      return Captions
     default:
       return itemType satisfies never
   }
@@ -3715,9 +3712,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
   const wheelMotionViewportCommitTimerRef = useRef<number | null>(null)
   const wheelMotionPanAxisRef = useRef<'x' | 'y' | null>(null)
   const [motionScrollbarWidth, setMotionScrollbarWidth] = useState(0)
-  const [allPathVertexItemIds, setAllPathVertexItemIds] = useState<Set<string>>(
-    () => new Set(),
-  )
+  const [allPathVertexItemIds, setAllPathVertexItemIds] = useState<Set<string>>(() => new Set())
   const cancelQueuedMotionViewport = useCallback(() => {
     if (wheelMotionViewportCommitTimerRef.current !== null) {
       window.clearTimeout(wheelMotionViewportCommitTimerRef.current)
@@ -3760,9 +3755,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
   const maskEditingItemId = useMaskEditorStore((state) =>
     state.isEditing ? state.editingItemId : null,
   )
-  const selectedPathVertexIndices = useMaskEditorStore(
-    (state) => state.selectedVertexIndices,
-  )
+  const selectedPathVertexIndices = useMaskEditorStore((state) => state.selectedVertexIndices)
   const expandedLayerIds = useComposeUiStore(
     useCallback(
       (state) =>
@@ -4067,15 +4060,13 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
       }
       for (const target of preview.elements) {
         const rawLeft =
-          target.edgeInset +
-          ((target.frame - viewport.startFrame) / nextRange) * target.usableWidth
+          target.edgeInset + ((target.frame - viewport.startFrame) / nextRange) * target.usableWidth
         const clampX = (x: number) =>
           Math.max(target.edgeInset, Math.min(target.edgeInset + target.usableWidth, x))
         const left = target.clampToSurface ? clampX(rawLeft) : rawLeft
         target.element.style.left = `${left}px`
         if (target.frameSpan !== null) {
-          const rawRight =
-            rawLeft + (target.frameSpan / nextRange) * target.usableWidth
+          const rawRight = rawLeft + (target.frameSpan / nextRange) * target.usableWidth
           const right = target.clampToSurface ? clampX(rawRight) : rawRight
           target.element.style.width = `${Math.max(0, right - left)}px`
         }
@@ -4277,7 +4268,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
   const layerEntries = useMemo<LayerEntry[]>(
     () =>
       items
-        .filter((item) => item.type !== 'subtitle' && !hiddenLinkedAudioItemIds.has(item.id))
+        .filter((item) => !hiddenLinkedAudioItemIds.has(item.id))
         .map((item) => ({ item, track: trackById.get(item.trackId) }))
         .sort(
           (a, b) =>
@@ -5447,9 +5438,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
       const visibleRange = Math.max(1, viewport.endFrame - viewport.startFrame)
       const autoEdgeEndFrame = compositionEndFrame ?? durationInFrames
       const velocity =
-        visibleRange < autoEdgeEndFrame
-          ? getMotionPlayheadEdgeScrollVelocity(clientX, rect)
-          : 0
+        visibleRange < autoEdgeEndFrame ? getMotionPlayheadEdgeScrollVelocity(clientX, rect) : 0
       let keepScrolling = false
       if (velocity !== 0 && rect.width > 0) {
         const previousTimestamp = scrubAnimationTimeRef.current ?? timestamp - 1000 / 60
@@ -5472,8 +5461,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
           velocity < 0 && pannedViewport.startFrame <= Number.EPSILON * autoEdgeEndFrame * 4
             ? { startFrame: 0, endFrame: boundaryVisibleRange }
             : velocity > 0 &&
-                autoEdgeEndFrame - pannedViewport.endFrame <=
-                  Number.EPSILON * autoEdgeEndFrame * 4
+                autoEdgeEndFrame - pannedViewport.endFrame <= Number.EPSILON * autoEdgeEndFrame * 4
               ? {
                   startFrame: Math.max(0, autoEdgeEndFrame - boundaryVisibleRange),
                   endFrame: autoEdgeEndFrame,
@@ -6303,9 +6291,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
                     maskEditingItemId === item.id ? selectedPathVertexIndices : [],
                   showAllVertices: showAllPathVertices,
                   alwaysInclude:
-                    activeInlineCurve?.itemId === item.id
-                      ? activeInlineCurve.property
-                      : null,
+                    activeInlineCurve?.itemId === item.id ? activeInlineCurve.property : null,
                 })
                 const proceduralBands = getProceduralBands(
                   item.motionModifiers,

@@ -1,9 +1,5 @@
 import type { TextItem, TimelineItem } from '@freecut/types/timeline'
-import type {
-  AgentTextBox,
-  AgentTextSpan,
-  AgentTextStyle,
-} from './types'
+import type { AgentTextBox, AgentTextSpan, AgentTextStyle } from './types'
 
 function transformForTextBox(
   box: AgentTextBox,
@@ -31,9 +27,7 @@ export function compileTextPresentation(params: {
   const { item, style, spans, box, canvas } = params
   const updates: Partial<TextItem> = {
     ...(style ?? {}),
-    ...(box
-      ? { transform: { ...item.transform, ...transformForTextBox(box, canvas) } }
-      : {}),
+    ...(box ? { transform: { ...item.transform, ...transformForTextBox(box, canvas) } } : {}),
   }
 
   if (spans === null) {
@@ -51,27 +45,8 @@ export function compileTextPresentation(params: {
 export function prepareEditableTextItem(
   item: TimelineItem,
 ): { item: TextItem; conversion: Partial<TimelineItem> } | null {
-  if (item.type === 'text') return { item, conversion: {} }
-  if (item.type !== 'subtitle' || item.source.type !== 'manual' || item.cues.length !== 1) {
-    return null
-  }
-  const textItem = {
-    ...item,
-    type: 'text',
-    text: item.cues[0]!.text,
-    textRole: 'caption',
-  } as TextItem
-  return {
-    item: textItem,
-    conversion: {
-      type: 'text',
-      text: textItem.text,
-      textRole: 'caption',
-      source: undefined,
-      sourceLabel: undefined,
-      cues: undefined,
-    } as Partial<TimelineItem>,
-  }
+  if (item.type !== 'text') return null
+  return { item, conversion: {} }
 }
 
 export function textBoxFromItem(

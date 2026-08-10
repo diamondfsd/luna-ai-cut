@@ -74,6 +74,7 @@ export interface AgentClip {
   framing?: AgentFraming
   cameraMove?: AgentCameraMove
   text?: string
+  textRole?: 'caption'
   textStyle?: AgentTextStyle
   textSpans?: AgentTextSpan[]
   textBox?: AgentTextBox
@@ -83,7 +84,7 @@ export interface AgentClip {
 }
 
 export interface AgentSubtitleSummary {
-  source: 'manual' | 'transcript' | 'embedded-subtitles' | 'subtitle-import'
+  source: 'transcript' | 'ai-captions' | 'embedded-subtitles' | 'subtitle-import'
   cues: Array<{ start: number; end: number; text: string }>
 }
 

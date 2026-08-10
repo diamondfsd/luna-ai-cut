@@ -24,26 +24,20 @@ function createTrack(
 }
 
 describe('subtitle track normalization', () => {
-  it('moves mixed subtitle segments to dedicated top tracks without changing their timing', () => {
+  it('normalizes a text-only track to subtitle kind without changing timing', () => {
     const project = createBaseProject({
       tracks: [createTrack('video-track', 0, 'subtitle')],
       items: [
         {
-          id: 'video-1',
-          type: 'video',
-          trackId: 'video-track',
-          from: 0,
-          durationInFrames: 120,
-          label: 'Video',
-          src: 'video.mp4',
-        },
-        {
           id: 'subtitle-1',
-          type: 'subtitle',
+          type: 'text',
+          textRole: 'caption',
           trackId: 'video-track',
           from: 10,
           durationInFrames: 60,
           label: 'Subtitle',
+          text: 'Subtitle',
+          color: '#fff',
         },
       ],
       transitions: [],
@@ -57,10 +51,6 @@ describe('subtitle track normalization', () => {
     const subtitleTrack = migrated.tracks.find((track) => track.id === subtitle.trackId)!
 
     expect(subtitleTrack.kind).toBe('subtitle')
-    expect(migrated.tracks.find((track) => track.id === 'video-track')?.kind).toBe('video')
-    expect(subtitleTrack.order).toBeLessThan(
-      migrated.tracks.find((track) => track.id === 'video-track')!.order,
-    )
     expect(subtitle).toMatchObject({ from: 10, durationInFrames: 60 })
   })
 
@@ -74,13 +64,11 @@ describe('subtitle track normalization', () => {
       items: [
         {
           id: 'title-1',
-          type: 'text',
+          type: 'adjustment',
           trackId: 'video-track',
           from: 0,
           durationInFrames: 75,
           label: 'Title',
-          text: 'Title',
-          color: '#fff',
         },
         {
           id: 'video-1',
@@ -106,14 +94,14 @@ describe('subtitle track normalization', () => {
         },
         {
           id: 'subtitle-1',
-          type: 'subtitle',
+          type: 'text',
+          textRole: 'caption',
           trackId: 'subtitle-track',
           from: 15,
           durationInFrames: 60,
           label: 'Caption',
-          linkedGroupId: 'group-1',
-          source: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
-          cues: [{ id: 'cue-1', startSeconds: 0, endSeconds: 2, text: 'Caption' }],
+          captionSource: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
+          text: 'Caption',
           color: '#fff',
         },
       ],
@@ -170,14 +158,14 @@ describe('subtitle track normalization', () => {
         ...linkedItems,
         {
           id: 'subtitle-1',
-          type: 'subtitle',
+          type: 'text',
+          textRole: 'caption',
           trackId: 'subtitle-track',
           from: 15,
           durationInFrames: 60,
           label: 'Caption',
-          linkedGroupId: 'group-1',
-          source: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
-          cues: [{ id: 'cue-1', startSeconds: 0, endSeconds: 2, text: 'Caption' }],
+          captionSource: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
+          text: 'Caption',
           color: '#fff',
         },
         {

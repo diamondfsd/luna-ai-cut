@@ -3,7 +3,7 @@ import { getTrackKind, type TrackKind } from './classic-tracks'
 
 function getRequiredTrackKindForItemType(itemType: TimelineItem['type']): TrackKind {
   if (itemType === 'audio') return 'audio'
-  if (itemType === 'text' || itemType === 'subtitle') return 'subtitle'
+  if (itemType === 'text') return 'subtitle'
   if (itemType === 'html') return 'video'
   return 'video'
 }
@@ -25,7 +25,7 @@ export function getEffectiveTrackKindForItem(
       hasAudioItems = true
       continue
     }
-    if (item.type === 'text' || item.type === 'subtitle') {
+    if (item.type === 'text') {
       hasSubtitleItems = true
       continue
     }
@@ -46,7 +46,7 @@ export function assertItemTrackCompatibility(
   if (!track) return
   if (isTrackCompatibleWithItemType(track, [], item.type)) return
 
-  const itemLabel = item.type === 'text' || item.type === 'subtitle' ? '文字' : '素材'
+  const itemLabel = item.type === 'text' ? '文字' : '素材'
   throw new Error(`${itemLabel}不能放在“${track.name}”轨道。`)
 }
 

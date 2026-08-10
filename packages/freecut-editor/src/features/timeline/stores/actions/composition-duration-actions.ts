@@ -9,7 +9,6 @@ import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { getActiveCompositionId } from '../composition-navigation-active'
 import { useCompositionsStore } from '../compositions-store'
 import { useItemsStore } from '../items-store'
-import { trimSubtitleCuesAtStart } from '../items-store-normalize'
 import { useKeyframesStore } from '../keyframes-store'
 import { useMarkersStore } from '../markers-store'
 import { useTimelineSettingsStore } from '../timeline-settings-store'
@@ -179,16 +178,12 @@ export function trimCompositionToActiveRegion(): boolean {
         const trimAmount = inPoint - item.from
         const nextDuration = item.durationInFrames - trimAmount
         const sourceUpdate = calculateTrimSourceUpdate(item, 'start', trimAmount, nextDuration, fps)
-        const cueUpdate =
-          item.type === 'subtitle' ? trimSubtitleCuesAtStart(item, trimAmount, fps) : null
-
         headTrimByItemId.set(item.id, trimAmount)
         nextItems.push({
           ...item,
           from: 0,
           durationInFrames: nextDuration,
           ...sourceUpdate,
-          ...(cueUpdate ?? {}),
         } as TimelineItem)
       }
 

@@ -41,7 +41,6 @@ function cropEvidence(item: TimelineItem): AiTimelineClipEvidence['crop'] {
 
 function textEvidence(item: TimelineItem): string | undefined {
   if (item.type === 'text') return item.text.slice(0, 500)
-  if (item.type === 'subtitle') return `${item.cues.length} 条字幕`
   return undefined
 }
 

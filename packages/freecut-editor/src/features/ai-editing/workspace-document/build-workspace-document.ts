@@ -162,6 +162,7 @@ async function agentClip(item: TimelineItem, fps: number): Promise<AgentClip> {
     ...(textItem
       ? {
           text: textItem.text,
+          ...(textItem.textRole ? { textRole: textItem.textRole } : {}),
           textStyle: {
             fontSize: textItem.fontSize,
             fontFamily: textItem.fontFamily,
@@ -178,18 +179,22 @@ async function agentClip(item: TimelineItem, fps: number): Promise<AgentClip> {
             textPadding: textItem.textPadding,
           },
           ...(textItem.textSpans ? { textSpans: textItem.textSpans } : {}),
-          ...(textBoxFromItem(textItem, canvas) ? { textBox: textBoxFromItem(textItem, canvas) } : {}),
+          ...(textBoxFromItem(textItem, canvas)
+            ? { textBox: textBoxFromItem(textItem, canvas) }
+            : {}),
         }
       : {}),
-    ...(item.type === 'subtitle'
+    ...(textItem?.textRole === 'caption' && textItem.captionSource
       ? {
           subtitle: {
-            source: item.source.type,
-            cues: item.cues.slice(0, 40).map((cue) => ({
-              start: cue.startSeconds,
-              end: cue.endSeconds,
-              text: cue.text,
-            })),
+            source: textItem.captionSource.type,
+            cues: [
+              {
+                start: 0,
+                end: textItem.durationInFrames / fps,
+                text: textItem.text,
+              },
+            ],
           },
         }
       : {}),

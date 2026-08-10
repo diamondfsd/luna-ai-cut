@@ -5,10 +5,12 @@ import { useEditorStore } from '@freecut/shared/state/editor'
 import { useSelectionStore } from '@freecut/shared/state/selection'
 import { useItemsStore, useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import { useGizmoStore } from '@freecut/features/editor/deps/preview'
+import { TooltipProvider } from '@freecut/components/ui/tooltip'
 import type {
   AudioItem,
   CompositionItem,
   ControllerItem,
+  TextItem,
   TimelineItem,
   VideoItem,
 } from '@freecut/types/timeline'
@@ -20,6 +22,22 @@ const clipPanelTestState = vi.hoisted(() => ({
   latestLayoutX: null as number | null,
   nextIdleCallbackId: 1,
   idleCallbacks: new Map<number, IdleRequestCallback>(),
+}))
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: { defaultValue?: string }) => {
+      const translations: Record<string, string> = {
+        'editor.clipPanel.tabVideo': 'Video',
+        'editor.clipPanel.tabAudio': 'Audio',
+        'editor.clipPanel.tabEffects': 'Effects',
+        'editor.clipPanel.tabText': 'Text',
+        'editor.clipPanel.tabAnimation': 'Animation',
+        'editor.clipPanel.tabShape': 'Shape',
+      }
+      return translations[key] ?? options?.defaultValue ?? key
+    },
+  }),
 }))
 
 vi.mock('./layout-section', () => ({
@@ -61,6 +79,7 @@ vi.mock('./text-section', () => ({
   TextSection: () => <div>Text Body</div>,
   TextContentSection: () => <div>Text Content Body</div>,
   TextEffectsSection: () => <div>Text Effects Body</div>,
+  TextStyleSection: () => <div>Text Style Body</div>,
 }))
 
 vi.mock('./shape-section', () => ({
@@ -130,6 +149,19 @@ const NULL_OBJECT: ControllerItem = {
   durationInFrames: 90,
   label: 'Null Object',
   transform: { x: 0, y: 0, width: 100, height: 100, rotation: 0 },
+}
+
+const CAPTION_ITEM: TextItem = {
+  id: 'caption-1',
+  type: 'text',
+  textRole: 'caption',
+  captionSource: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
+  trackId: 'subtitle-track',
+  from: 0,
+  durationInFrames: 60,
+  label: 'Caption',
+  text: 'AI陪宝宝创造',
+  color: '#fff',
 }
 
 const TRANSFORM_REFERENCE = { x: 0, y: 0, width: 1920, height: 1080, rotation: 0 }
@@ -307,6 +339,26 @@ describe('ClipPanel inspector tabs', () => {
     expect(screen.getByRole('tab', { name: 'Effects' })).toHaveAttribute('data-state', 'active')
   })
 
+  it('opens caption text editing first and places content before layout controls', async () => {
+    resetStores([CAPTION_ITEM], [CAPTION_ITEM.id])
+    useEditorStore.getState().setClipInspectorTab('effects')
+
+    render(
+      <TooltipProvider>
+        <ClipPanel />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Text' })).toHaveAttribute('data-state', 'active')
+    const content = await screen.findByText('Text Content Body')
+    const layout = screen.getByText('Layout Body')
+    expect(content.compareDocumentPosition(layout) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    await waitFor(() => expect(useEditorStore.getState().clipInspectorTab).toBe('video'))
+
+    activateTab('Effects')
+    expect(screen.getByText('Effects Body')).toBeInTheDocument()
+  })
+
   it('falls back to the first valid tab and updates the remembered tab', async () => {
     useEditorStore.getState().setClipInspectorTab('video')
     resetStores([AUDIO_ITEM], [AUDIO_ITEM.id])
@@ -333,10 +385,7 @@ describe('ClipPanel inspector tabs', () => {
 
     render(<ClipPanel />)
 
-    expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute(
-      'data-state',
-      'active',
-    )
+    expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute('data-state', 'active')
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Properties',
       'Audio',

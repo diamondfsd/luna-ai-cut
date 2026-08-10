@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vite-plus/test'
-import type { AudioItem, ShapeItem, SubtitleSegmentItem, VideoItem } from '@freecut/types/timeline'
+import type { AudioItem, ShapeItem, VideoItem } from '@freecut/types/timeline'
 import {
   normalizeFrameFields,
   normalizeItemUpdates,
@@ -10,8 +10,6 @@ import {
   roundDuration,
   roundFrame,
   roundOptionalFrame,
-  trimSubtitleCuesAtEnd,
-  trimSubtitleCuesAtStart,
 } from './items-store-normalize'
 
 function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
@@ -383,76 +381,5 @@ describe('normalizeTrack', () => {
   it('leaves volume undefined for tracks that did not opt in', () => {
     const track = normalizeTrack({ id: 't1', name: 'A', order: 0 } as never)
     expect(track.volume).toBeUndefined()
-  })
-})
-
-describe('trimSubtitleCuesAtStart', () => {
-  function makeSegment(cues: SubtitleSegmentItem['cues']): SubtitleSegmentItem {
-    return {
-      id: 'sub-1',
-      type: 'subtitle',
-      trackId: 'track-1',
-      from: 0,
-      durationInFrames: 300,
-      label: 'sub',
-      cues,
-      source: { type: 'transcript', mediaId: 'media-1', clipId: 'clip-1' },
-      color: '#ffffff',
-    } as SubtitleSegmentItem
-  }
-
-  it('returns null when no trim is requested', () => {
-    const result = trimSubtitleCuesAtStart(
-      makeSegment([{ id: 'c1', startSeconds: 0, endSeconds: 1, text: 'a' }]),
-      0,
-      30,
-    )
-    expect(result).toBeNull()
-  })
-
-  it('drops cues entirely before the new boundary', () => {
-    const segment = makeSegment([
-      { id: 'gone', startSeconds: 0, endSeconds: 0.5, text: 'a' },
-      { id: 'keep', startSeconds: 1.5, endSeconds: 2, text: 'b' },
-    ])
-    const result = trimSubtitleCuesAtStart(segment, 30, 30)!
-    expect(result.cues.map((c) => c.id)).toEqual(['keep'])
-    expect(result.cues[0]!.startSeconds).toBe(0.5)
-    expect(result.cues[0]!.endSeconds).toBe(1)
-  })
-
-  it('clamps the start of cues that straddle the boundary', () => {
-    const segment = makeSegment([{ id: 'split', startSeconds: 0.4, endSeconds: 2, text: 'a' }])
-    const result = trimSubtitleCuesAtStart(segment, 30, 30)!
-    expect(result.cues).toHaveLength(1)
-    expect(result.cues[0]!.startSeconds).toBe(0)
-    expect(result.cues[0]!.endSeconds).toBe(1)
-  })
-})
-
-describe('trimSubtitleCuesAtEnd', () => {
-  function makeSegment(cues: SubtitleSegmentItem['cues']): SubtitleSegmentItem {
-    return {
-      id: 'sub-1',
-      type: 'subtitle',
-      trackId: 'track-1',
-      from: 0,
-      durationInFrames: 300,
-      label: 'sub',
-      cues,
-      source: { type: 'transcript', mediaId: 'media-1', clipId: 'clip-1' },
-      color: '#ffffff',
-    } as SubtitleSegmentItem
-  }
-
-  it('drops cues that start after the new duration and truncates straddlers', () => {
-    const segment = makeSegment([
-      { id: 'keep', startSeconds: 0, endSeconds: 0.5, text: 'a' },
-      { id: 'cut', startSeconds: 0.9, endSeconds: 2, text: 'b' },
-      { id: 'gone', startSeconds: 2, endSeconds: 3, text: 'c' },
-    ])
-    const result = trimSubtitleCuesAtEnd(segment, 30, 30)!
-    expect(result.cues.map((c) => c.id)).toEqual(['keep', 'cut'])
-    expect(result.cues.find((c) => c.id === 'cut')!.endSeconds).toBe(1)
   })
 })

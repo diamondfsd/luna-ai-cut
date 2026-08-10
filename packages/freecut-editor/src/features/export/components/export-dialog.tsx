@@ -398,16 +398,16 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     const reversedClipIds = new Set(
       items
         .filter(
-          (item) =>
-            (item.type === 'video' || item.type === 'audio') && item.isReversed === true,
+          (item) => (item.type === 'video' || item.type === 'audio') && item.isReversed === true,
         )
         .map((item) => item.id),
     )
     return items.some(
       (item) =>
-        (item.type === 'subtitle' &&
-          item.source.type === 'transcript' &&
-          !reversedClipIds.has(item.source.clipId)) ||
+        (item.type === 'text' &&
+          item.textRole === 'caption' &&
+          item.captionSource?.type === 'transcript' &&
+          !reversedClipIds.has(item.captionSource.clipId)) ||
         ((item.type === 'video' || item.type === 'audio') &&
           item.isReversed !== true &&
           item.transcriptCaptions?.enabled === true &&
@@ -656,7 +656,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   const handleStartExport = async () => {
     let directory = outputDirectory
     if (supportsDirectSave && !directory) {
-      directory = await exportFiles?.chooseDirectory() ?? null
+      directory = (await exportFiles?.chooseDirectory()) ?? null
       if (!directory) return
       setOutputDirectory(directory)
     }
@@ -791,11 +791,14 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   useEffect(() => {
     if (!open || !exportFiles) return
     let active = true
-    void exportFiles.getDirectory().then((directory) => {
-      if (active) setOutputDirectory(directory)
-    }).catch(() => {
-      if (active) setOutputDirectory(null)
-    })
+    void exportFiles
+      .getDirectory()
+      .then((directory) => {
+        if (active) setOutputDirectory(directory)
+      })
+      .catch(() => {
+        if (active) setOutputDirectory(null)
+      })
     return () => {
       active = false
     }
@@ -1361,10 +1364,12 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                           <Label htmlFor="frame-rate">{t('export.settings.frameRate')}</Label>
                           <Select
                             value={settings.fps === undefined ? 'project' : String(settings.fps)}
-                            onValueChange={(value) => setSettings((previous) => ({
-                              ...previous,
-                              fps: value === 'project' ? undefined : Number(value),
-                            }))}
+                            onValueChange={(value) =>
+                              setSettings((previous) => ({
+                                ...previous,
+                                fps: value === 'project' ? undefined : Number(value),
+                              }))
+                            }
                           >
                             <SelectTrigger id="frame-rate">
                               <SelectValue />
@@ -1374,7 +1379,9 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                                 {t('export.settings.frameRateProject', { fps })}
                               </SelectItem>
                               {[24, 25, 29.97, 30, 50, 60, 120].map((value) => (
-                                <SelectItem key={value} value={String(value)}>{value} fps</SelectItem>
+                                <SelectItem key={value} value={String(value)}>
+                                  {value} fps
+                                </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -1654,8 +1661,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                 </div>
                 <div className="flex items-center justify-between text-sm gap-2">
                   <span className="text-muted-foreground truncate">
-                    {status === 'preparing' &&
-                      (progressMessage ?? t('export.progress.preparing'))}
+                    {status === 'preparing' && (progressMessage ?? t('export.progress.preparing'))}
                     {status === 'rendering' && t('export.progress.rendering')}
                     {status === 'encoding' && t('export.progress.encoding')}
                     {status === 'finalizing' && t('export.progress.finalizing')}
