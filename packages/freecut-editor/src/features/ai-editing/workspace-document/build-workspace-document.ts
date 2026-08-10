@@ -7,6 +7,7 @@ import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/p
 import type { TimelineItem } from '@freecut/types/timeline'
 import { buildProjectEvidence } from '../evidence'
 import { hashHtmlSource } from '../edit-program/html-source'
+import { textBoxFromItem } from '../edit-program/text-compiler'
 import type {
   AgentCameraMove,
   AgentClip,
@@ -135,6 +136,8 @@ async function agentClip(item: TimelineItem, fps: number): Promise<AgentClip> {
   const framing = framingPose ? { mode: 'cover' as const, pose: framingPose } : undefined
   const sourceFps = item.sourceFps || fps
   const htmlItem = item.type === 'html' ? item : null
+  const textItem = item.type === 'text' ? item : null
+  const canvas = canvasSize()
   return {
     ref: clipRef(item.id),
     label: item.label,
@@ -156,7 +159,40 @@ async function agentClip(item: TimelineItem, fps: number): Promise<AgentClip> {
     ...(motionTrackEdge(item, 'x') || motionTrackEdge(item, 'width')
       ? { cameraMove: cameraMoveFromItem(item, framing) }
       : {}),
-    ...(item.type === 'text' ? { text: item.text } : {}),
+    ...(textItem
+      ? {
+          text: textItem.text,
+          textStyle: {
+            fontSize: textItem.fontSize,
+            fontFamily: textItem.fontFamily,
+            fontWeight: textItem.fontWeight,
+            fontStyle: textItem.fontStyle,
+            underline: textItem.underline,
+            color: textItem.color,
+            backgroundColor: textItem.backgroundColor,
+            backgroundRadius: textItem.backgroundRadius,
+            textAlign: textItem.textAlign,
+            verticalAlign: textItem.verticalAlign,
+            lineHeight: textItem.lineHeight,
+            letterSpacing: textItem.letterSpacing,
+            textPadding: textItem.textPadding,
+          },
+          ...(textItem.textSpans ? { textSpans: textItem.textSpans } : {}),
+          ...(textBoxFromItem(textItem, canvas) ? { textBox: textBoxFromItem(textItem, canvas) } : {}),
+        }
+      : {}),
+    ...(item.type === 'subtitle'
+      ? {
+          subtitle: {
+            source: item.source.type,
+            cues: item.cues.slice(0, 40).map((cue) => ({
+              start: cue.startSeconds,
+              end: cue.endSeconds,
+              text: cue.text,
+            })),
+          },
+        }
+      : {}),
     ...(htmlItem
       ? {
           html: {

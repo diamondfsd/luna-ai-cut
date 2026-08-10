@@ -29,7 +29,7 @@ import { getAiEditingTool } from './tool-registry'
 import type { AiEditingObservation, AiEditingToolCall, AiEditingToolResult } from './types'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
 
-const MAX_TOOL_ROUNDS = 4
+const MAX_TOOL_ROUNDS = 5
 const MAX_TOKENS = 4_096
 const MAX_TOOL_RESULT_CHARS = 8_000
 
@@ -107,7 +107,16 @@ async function executeToolCall(
   if (!tool) return toolError(call.id, '这个操作目前不可用。')
 
   const validation = tool.validate(call.args)
-  if (!validation.ok) return toolError(tool.id, validation.error)
+  if (!validation.ok) {
+    return {
+      toolId: tool.id,
+      result: {
+        ok: false,
+        message: validation.error,
+        ...(validation.details ? { data: { validationIssues: validation.details } } : {}),
+      },
+    }
+  }
 
   const activityId = `${options.activityScope ?? 'turn'}-${callIndex}-${tool.id}`
   const tracksProgress = tool.execution === 'async' || tool.risk === 'analysis'

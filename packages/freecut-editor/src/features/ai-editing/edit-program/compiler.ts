@@ -8,21 +8,19 @@ import {
 } from '@freecut/features/editor/deps/timeline-contract'
 import { buildMediaTimelineItems } from '@freecut/features/editor/deps/timeline-utils'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
-import type { EasingType } from '@freecut/types/keyframe'
-import type { MotionAnimationLayer, MotionLayerTrack } from '@freecut/types/motion'
-import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
-import type { TransformProperties } from '@freecut/types/transform'
+import type { TextItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { clipRef, idFromAgentRef } from '../workspace-document/build-workspace-document'
 import type {
-  AgentCameraMove,
   AgentClipDraft,
-  AgentFraming,
-  AgentFramingPose,
   AgentTransitionSpec,
   EditProgram,
   EditProgramDiff,
 } from './types'
 import { prepareHtmlInsert, prepareHtmlUpdate } from './html-compiler'
+import { compileTextPresentation, prepareEditableTextItem } from './text-compiler'
+import { compileVisualState } from './visual-compiler'
+
+export { compileVisualState, transformForPose } from './visual-compiler'
 
 interface CompiledTransition {
   between: [string, string]
@@ -49,119 +47,6 @@ function mediaType(mimeType: string): 'video' | 'audio' | 'image' | null {
   if (mimeType.startsWith('audio/')) return 'audio'
   if (mimeType.startsWith('image/')) return 'image'
   return null
-}
-
-function easing(value: AgentCameraMove['easing']): EasingType {
-  return value ?? 'ease-in-out'
-}
-
-export function transformForPose(params: {
-  pose: AgentFramingPose
-  mode: AgentFraming['mode']
-  sourceWidth: number
-  sourceHeight: number
-  canvasWidth: number
-  canvasHeight: number
-}): Required<Pick<TransformProperties, 'x' | 'y' | 'width' | 'height' | 'rotation'>> {
-  const scale = params.mode === 'cover'
-    ? Math.max(params.canvasWidth / params.sourceWidth, params.canvasHeight / params.sourceHeight)
-    : Math.min(params.canvasWidth / params.sourceWidth, params.canvasHeight / params.sourceHeight)
-  const width = params.sourceWidth * scale * params.pose.zoom
-  const height = params.sourceHeight * scale * params.pose.zoom
-  return {
-    x: (0.5 - params.pose.center[0]) * width,
-    y: (0.5 - params.pose.center[1]) * height,
-    width,
-    height,
-    rotation: params.pose.rotation ?? 0,
-  }
-}
-
-function motionTrack(
-  property: MotionLayerTrack['property'],
-  blend: MotionLayerTrack['blend'],
-  endFrame: number,
-  endValue: number,
-  motionEasing: EasingType,
-): MotionLayerTrack {
-  return {
-    property,
-    blend,
-    keyframes: [
-      { id: crypto.randomUUID(), frame: 0, value: blend === 'multiply' ? 1 : 0, easing: motionEasing },
-      { id: crypto.randomUUID(), frame: endFrame, value: endValue, easing: motionEasing },
-    ],
-  }
-}
-
-export function compileVisualState(params: {
-  item: TimelineItem
-  framing?: AgentFraming
-  cameraMove?: AgentCameraMove | null
-  canvasWidth: number
-  canvasHeight: number
-}): Partial<TimelineItem> {
-  if (params.item.type !== 'video' && params.item.type !== 'image') {
-    if (params.framing || params.cameraMove) throw new Error('只有画面片段可以设置取景和运镜。')
-    return {}
-  }
-  const sourceWidth = params.item.sourceWidth ?? params.canvasWidth
-  const sourceHeight = params.item.sourceHeight ?? params.canvasHeight
-  const mode = params.framing?.mode ?? 'cover'
-  const startPose = params.cameraMove?.from ?? params.framing?.pose
-  const transform = startPose
-    ? transformForPose({
-        pose: startPose,
-        mode,
-        sourceWidth,
-        sourceHeight,
-        canvasWidth: params.canvasWidth,
-        canvasHeight: params.canvasHeight,
-      })
-    : params.item.transform
-
-  const retainedLayers = (params.item.motionLayers ?? [])
-    .filter((layer) => layer.sourcePresetId !== 'ai-edit-program')
-  if (!params.cameraMove) {
-    return {
-      ...(transform ? { transform } : {}),
-      ...(params.cameraMove === null ? { motionLayers: retainedLayers } : {}),
-    }
-  }
-
-  const start = transformForPose({
-    pose: params.cameraMove.from,
-    mode,
-    sourceWidth,
-    sourceHeight,
-    canvasWidth: params.canvasWidth,
-    canvasHeight: params.canvasHeight,
-  })
-  const end = transformForPose({
-    pose: params.cameraMove.to,
-    mode,
-    sourceWidth,
-    sourceHeight,
-    canvasWidth: params.canvasWidth,
-    canvasHeight: params.canvasHeight,
-  })
-  const endFrame = Math.max(1, params.item.durationInFrames - 1)
-  const motionEasing = easing(params.cameraMove.easing)
-  const layer: MotionAnimationLayer = {
-    id: crypto.randomUUID(),
-    name: 'AI 运镜',
-    enabled: true,
-    source: 'built-in-preset',
-    sourcePresetId: 'ai-edit-program',
-    tracks: [
-      motionTrack('x', 'add', endFrame, end.x - start.x, motionEasing),
-      motionTrack('y', 'add', endFrame, end.y - start.y, motionEasing),
-      motionTrack('width', 'multiply', endFrame, end.width / start.width, motionEasing),
-      motionTrack('height', 'multiply', endFrame, end.height / start.height, motionEasing),
-      motionTrack('rotation', 'add', endFrame, end.rotation - start.rotation, motionEasing),
-    ],
-  }
-  return { transform: start, motionLayers: [...retainedLayers, layer] }
 }
 
 function assertTrackCompatibility(
@@ -431,23 +316,16 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         label: operation.text.label ?? operation.text.text.slice(0, 40),
         ...(operation.text.role !== 'caption' ? { textStylePresetId: 'clean-title' } : {}),
       })
-      const insertedTextItem: TimelineItem =
-        operation.text.role === 'caption'
-          ? ({
-              ...textItem,
-              type: 'subtitle',
-              source: { type: 'manual' },
-              sourceLabel: operation.text.label ?? 'AI Caption',
-              cues: [
-                {
-                  id: crypto.randomUUID(),
-                  startSeconds: 0,
-                  endSeconds: durationInFrames / fps,
-                  text: operation.text.text,
-                },
-              ],
-            } as TimelineItem)
-          : textItem
+      Object.assign(textItem, compileTextPresentation({
+        item: textItem,
+        style: operation.text.style,
+        spans: operation.text.spans,
+        box: operation.text.box,
+        canvas,
+      }))
+      const insertedTextItem: TimelineItem = operation.text.role === 'caption'
+        ? { ...textItem, textRole: 'caption' }
+        : textItem
       refs.set(operation.text.ref, insertedTextItem.id)
       insertItems.push(insertedTextItem)
       virtualItems.push(insertedTextItem)
@@ -531,9 +409,31 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         ...(operation.changes.label ? { label: operation.changes.label } : {}),
         ...(operation.changes.volumeDb !== undefined ? { volume: operation.changes.volumeDb } : {}),
       }
+      const hasTextChanges =
+        operation.changes.text !== undefined ||
+        operation.changes.textStyle !== undefined ||
+        operation.changes.textSpans !== undefined ||
+        operation.changes.textBox !== undefined
+      const editableText = hasTextChanges ? prepareEditableTextItem(item) : null
+      if (hasTextChanges && !editableText) {
+        throw new Error('只有普通文字或单句手动字幕可以修改文字内容和样式。')
+      }
+      if (editableText) Object.assign(next, editableText.conversion)
       if (operation.changes.text !== undefined) {
-        if (item.type !== 'text') throw new Error('只有文字片段可以修改文字内容。')
-        Object.assign(next, { text: operation.changes.text })
+        Object.assign(next, { text: operation.changes.text, textSpans: undefined, spanLayout: undefined })
+      }
+      if (
+        operation.changes.textStyle !== undefined ||
+        operation.changes.textSpans !== undefined ||
+        operation.changes.textBox !== undefined
+      ) {
+        Object.assign(next, compileTextPresentation({
+          item: { ...editableText!.item, ...next } as TextItem,
+          style: operation.changes.textStyle,
+          spans: operation.changes.textSpans,
+          box: operation.changes.textBox,
+          canvas,
+        }))
       }
       const candidate = { ...item, ...next } as TimelineItem
       Object.assign(next, compileVisualState({

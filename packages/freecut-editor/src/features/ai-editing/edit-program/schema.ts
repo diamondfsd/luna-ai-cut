@@ -39,6 +39,38 @@ const htmlDraftSchema = z.object({
   renderMode: z.enum(['static', 'animated']).optional(),
 })
 
+const textStyleSchema = z.object({
+  fontSize: z.number().finite().min(1).max(512).optional(),
+  fontFamily: z.string().min(1).max(200).optional(),
+  fontWeight: z.enum(['normal', 'medium', 'semibold', 'bold']).optional(),
+  fontStyle: z.enum(['normal', 'italic']).optional(),
+  underline: z.boolean().optional(),
+  color: z.string().min(1).max(100).optional(),
+  backgroundColor: z.string().min(1).max(100).optional(),
+  backgroundRadius: z.number().finite().min(0).max(500).optional(),
+  textAlign: z.enum(['left', 'center', 'right']).optional(),
+  verticalAlign: z.enum(['top', 'middle', 'bottom']).optional(),
+  lineHeight: z.number().finite().min(0.5).max(5).optional(),
+  letterSpacing: z.number().finite().min(-50).max(200).optional(),
+  textPadding: z.number().finite().min(0).max(500).optional(),
+})
+
+const textSpanSchema = z.object({
+  text: z.string().min(1).max(2_000),
+  color: z.string().min(1).max(100).optional(),
+  underline: z.boolean().optional(),
+})
+
+const textBoxSchema = z.object({
+  left: z.number().finite().min(0).max(1),
+  top: z.number().finite().min(0).max(1),
+  width: z.number().finite().positive().max(1),
+  height: z.number().finite().positive().max(1),
+}).refine(
+  (box) => box.left + box.width <= 1.000_001 && box.top + box.height <= 1.000_001,
+  '文字框必须位于画布范围内。',
+)
+
 const updateHtmlSchema = z.object({
   type: z.literal('updateHtml'),
   clipRef: ref('clip'),
@@ -95,6 +127,9 @@ const updateClipSchema = z.object({
     trackRef: ref('track').optional(),
     label: z.string().min(1).max(200).optional(),
     text: z.string().min(1).max(2_000).optional(),
+    textStyle: textStyleSchema.optional(),
+    textSpans: z.array(textSpanSchema).min(1).max(100).nullable().optional(),
+    textBox: textBoxSchema.optional(),
     framing: framingSchema.optional(),
     cameraMove: cameraMoveSchema.nullable().optional(),
     volumeDb: z.number().finite().min(-60).max(12).optional(),
@@ -109,6 +144,9 @@ const textDraftSchema = z.object({
   label: z.string().min(1).max(200).optional(),
   trackRef: ref('track').optional(),
   role: z.enum(['title', 'caption']).optional(),
+  style: textStyleSchema.optional(),
+  spans: z.array(textSpanSchema).min(1).max(100).optional(),
+  box: textBoxSchema.optional(),
 })
 
 export const editProgramSchema = z.object({

@@ -15,7 +15,7 @@ export interface AiEditingRunRecord {
   plan: string[]
   timelineRevisionBefore: number
   timelineRevisionAfter: number
-  toolCalls: Array<{ id: string; ok: boolean; message: string }>
+  toolCalls: Array<{ id: string; ok: boolean; message: string; details?: string[] }>
   completed: boolean
   completionNotes: string[]
   production?: { blueprint: unknown; review: unknown }
@@ -52,7 +52,18 @@ function sanitizeRecord(value: unknown): AiEditingRunRecord | null {
       typeof (entry as { id?: unknown }).id === 'string' &&
       typeof (entry as { ok?: unknown }).ok === 'boolean' &&
       typeof (entry as { message?: unknown }).message === 'string'
-      ? [{ id: (entry as { id: string }).id, ok: (entry as { ok: boolean }).ok, message: (entry as { message: string }).message }]
+      ? [{
+          id: (entry as { id: string }).id,
+          ok: (entry as { ok: boolean }).ok,
+          message: (entry as { message: string }).message,
+          ...(Array.isArray((entry as { details?: unknown }).details)
+            ? {
+                details: (entry as { details: unknown[] }).details
+                  .filter((detail): detail is string => typeof detail === 'string')
+                  .slice(0, 8),
+              }
+            : {}),
+        }]
       : [],
     ).slice(0, 64),
     completed: candidate.completed,

@@ -32,7 +32,7 @@ export interface AiEditingToolExecutionContext {
 
 export type AiEditingToolValidation =
   | { ok: true; value: Record<string, unknown> }
-  | { ok: false; error: string }
+  | { ok: false; error: string; details?: string[] }
 
 export interface AiEditingTool {
   id: string
