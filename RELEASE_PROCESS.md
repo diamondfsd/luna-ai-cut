@@ -180,7 +180,7 @@ git push origin main
 
 ## 原生模块热更新
 
-修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。推送 `hot/v*` tag 后，GitHub Actions 会构建 macOS ARM64、macOS x64 和 Windows x64 三个平台的原生模块与热更新包，并上传到 GitCode。
+修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。推送 `hot/v*` tag 后，GitHub Actions 只构建 macOS ARM64、macOS x64 和 Windows x64 三个平台的原生模块 artifact；三端产物下载、热更新打包和 GitCode 上传均在本机完成，避免 GitHub runner 到 GitCode 的慢速链路。
 
 原生热更新不要运行 `build-hot-update.sh`，避免三平台包就绪前先发布不含原生模块的通用 ZIP。确定下一个 build 号并提交代码与发布说明后，直接推送 `main` 和 tag：
 
@@ -190,7 +190,30 @@ git tag hot/v<版本号>-hot.<build号>
 git push origin hot/v<版本号>-hot.<build号>
 ```
 
-手动触发 `Publish Hot Update` workflow 也始终按原生热更新处理。原生热更新必须等待该 workflow 的三平台任务全部成功，并确认 GitCode 已包含三个带平台后缀的 ZIP、清单和发布说明后，再通知用户更新。
+手动触发 `Publish Hot Update` workflow 也始终按原生热更新处理。原生热更新必须等待该 workflow 的三平台任务全部成功，再执行以下本地发布步骤：
+
+```bash
+# 获取当前 tag 对应的成功运行 ID
+run_id="$(gh run list --workflow publish-hot-update.yml \
+  --branch hot/v<版本号>-hot.<build号> --limit 1 \
+  --json databaseId --jq '.[0].databaseId')"
+
+# 分别下载三个 artifact
+native_dir="$(mktemp -d /tmp/luna-hot-native.XXXXXX)"
+gh run download "$run_id" --name darwin-arm64 --dir "$native_dir/darwin-arm64"
+gh run download "$run_id" --name darwin-x64 --dir "$native_dir/darwin-x64"
+gh run download "$run_id" --name win32-x64 --dir "$native_dir/win32-x64"
+
+# 本地构建页面和主进程，生成并上传三端热更新包
+pnpm run build:app
+node scripts/publish-hot-update.mjs \
+  --version <版本号>-hot.<build号> \
+  --include-native \
+  --native-dir "$native_dir" \
+  --upload
+```
+
+`publish-hot-update.mjs` 会优先使用环境变量，未设置时自动读取 `scripts/deploy-release.conf`。上传完成后，确认 GitCode 已包含三个带平台后缀的 ZIP、清单和发布说明，再通知用户更新。
 
 ### v1.7.0-hot.4 发布执行记录
 
@@ -225,7 +248,9 @@ git push origin hot/v1.7.0-hot.4
 1. 在 macOS runner 构建 `darwin-arm64` 原生模块。
 2. 在 macOS runner 交叉构建 `darwin-x64` 原生模块。
 3. 在 Windows runner 构建 `win32-x64` 原生模块及 DXC 运行文件。
-4. 汇总三端原生模块，构建前端与主进程，并上传三个平台 ZIP、`renderer-1.7.0-hot.4.json` 和发布说明到 GitCode 的 `v1.7.0` Release。
+4. 将三个原生模块保存为 GitHub Actions artifact，不直接连接 GitCode。
+
+本机随后下载三个 artifact，执行 `pnpm run build:app`，再用 `publish-hot-update.mjs --include-native --upload` 生成并上传三个平台 ZIP、`renderer-1.7.0-hot.4.json` 和发布说明到 GitCode 的 `v1.7.0` Release。
 
 发布后必须确认 GitCode Release 至少新增以下文件：
 
