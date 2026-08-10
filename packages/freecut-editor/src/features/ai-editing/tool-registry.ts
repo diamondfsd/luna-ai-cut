@@ -6,6 +6,8 @@ const AGENT_TOOL_IDS = new Set([
   'workflow.set_plan',
   'skill.search',
   'skill.read',
+  'html.validate',
+  'html.read',
   'workspace.apply_edit_program',
   'analysis.request',
   'analysis.search_transcript',

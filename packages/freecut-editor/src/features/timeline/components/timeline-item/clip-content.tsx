@@ -7,7 +7,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react'
-import { Link2 } from 'lucide-react'
+import { Code2, Link2 } from 'lucide-react'
 import { perfMarkRender } from '@freecut/shared/logging/perf-marks'
 import type { TimelineItem } from '@freecut/types/timeline'
 import { useSettingsStore } from '@freecut/features/timeline/deps/settings'
@@ -544,6 +544,23 @@ const StaticClipContent = memo(function StaticClipContent({ item }: { item: Time
         <div className="truncate text-xs font-medium">
           {firstCueText}
         </div>
+      </div>
+    )
+  }
+
+  if (item.type === 'html') {
+    return (
+      <div className="absolute inset-0 flex min-w-0 items-center gap-2 overflow-hidden px-2">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-black/25 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-white/85">
+          <Code2 className="h-3 w-3" aria-hidden="true" />
+          HTML
+        </span>
+        <span className="min-w-0 truncate text-xs font-medium">
+          {item.label || (item.renderMode === 'animated' ? 'Animated HTML' : 'HTML layer')}
+        </span>
+        {item.renderMode === 'animated' && (
+          <span className="ml-auto shrink-0 text-[9px] uppercase text-white/65">Animated</span>
+        )}
       </div>
     )
   }

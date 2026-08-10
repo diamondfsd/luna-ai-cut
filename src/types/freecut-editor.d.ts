@@ -33,6 +33,21 @@ declare module '@freecut/embedded' {
     percent: number | null
   }
 
+  export interface EmbeddedHtmlRenderRequest {
+    html: string
+    css: string
+    width: number
+    height: number
+    timeMs: number
+  }
+
+  export interface EmbeddedHtmlRenderResult {
+    png: ArrayBuffer
+    width: number
+    height: number
+    warnings: string[]
+  }
+
   export interface EmbeddedAiAssistantConfig {
     baseUrl: string
     model: string
@@ -113,6 +128,9 @@ declare module '@freecut/embedded' {
     onAiAssistantStatus?: (
       callback: (status: EmbeddedAiAssistantRequestStatus) => void,
     ) => () => void
+    onRenderHtmlFrame?: (
+      request: EmbeddedHtmlRenderRequest,
+    ) => Promise<EmbeddedHtmlRenderResult>
   }
 
   export const FreeCutEditor: ComponentType<FreeCutEditorProps>

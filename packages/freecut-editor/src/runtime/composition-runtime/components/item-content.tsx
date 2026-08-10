@@ -12,6 +12,7 @@ import { CustomDecoderAudio } from './custom-decoder-audio'
 import { PitchCorrectedAudio } from './pitch-corrected-audio'
 import type { AudioPlaybackProps } from './audio-playback-props'
 import { GifPlayer } from './gif-player'
+import { HtmlContent } from './html-content'
 import { LottiePlayer } from './lottie-player'
 import { MediaOfflinePlaceholder } from './media-offline-placeholder'
 import { ItemVisualWrapper } from './item-visual-wrapper'
@@ -596,6 +597,14 @@ export const ItemContent = React.memo<ItemProps>(
       return (
         <ItemVisualWrapper item={item} masks={masks}>
           <TextContent item={item} />
+        </ItemVisualWrapper>
+      )
+    }
+
+    if (item.type === 'html') {
+      return (
+        <ItemVisualWrapper item={item} masks={masks}>
+          <HtmlContent item={item} />
         </ItemVisualWrapper>
       )
     }

@@ -6,6 +6,7 @@ import { useSelectionStore } from '@freecut/shared/state/selection'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
 import type { TimelineItem } from '@freecut/types/timeline'
 import { buildProjectEvidence } from '../evidence'
+import { hashHtmlSource } from '../edit-program/html-source'
 import type {
   AgentCameraMove,
   AgentClip,
@@ -129,10 +130,11 @@ function cameraMoveFromItem(
   }
 }
 
-function agentClip(item: TimelineItem, fps: number): AgentClip {
+async function agentClip(item: TimelineItem, fps: number): Promise<AgentClip> {
   const framingPose = poseFromTransform(item)
   const framing = framingPose ? { mode: 'cover' as const, pose: framingPose } : undefined
   const sourceFps = item.sourceFps || fps
+  const htmlItem = item.type === 'html' ? item : null
   return {
     ref: clipRef(item.id),
     label: item.label,
@@ -155,6 +157,16 @@ function agentClip(item: TimelineItem, fps: number): AgentClip {
       ? { cameraMove: cameraMoveFromItem(item, framing) }
       : {}),
     ...(item.type === 'text' ? { text: item.text } : {}),
+    ...(htmlItem
+      ? {
+          html: {
+            hash: await hashHtmlSource(htmlItem.html, htmlItem.css),
+            revision: htmlItem.sourceRevision,
+            viewport: htmlItem.viewport,
+            renderMode: htmlItem.renderMode,
+          },
+        }
+      : {}),
     ...(item.volume !== undefined ? { volumeDb: item.volume } : {}),
   }
 }
@@ -226,7 +238,7 @@ export async function buildAgentWorkspaceDocument(): Promise<AgentWorkspaceDocum
       visible: track.visible,
       muted: track.muted,
     })),
-    clips: timeline.items.map((item) => agentClip(item, evidence.fps)),
+    clips: await Promise.all(timeline.items.map((item) => agentClip(item, evidence.fps))),
     transitions: timeline.transitions.map((transition) => ({
       ref: `transition:${transition.id}`,
       between: [clipRef(transition.leftClipId), clipRef(transition.rightClipId)],

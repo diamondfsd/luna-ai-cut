@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronRight,
   Captions,
+  Code2,
   ClipboardPaste,
   Blend,
   Copy,
@@ -3270,6 +3271,8 @@ function getMotionLayerTypeIcon(itemType: TimelineItem['type']): LucideIcon {
       return Music
     case 'image':
       return ImageIcon
+    case 'html':
+      return Code2
     case 'lottie':
       return Sticker
     case 'text':

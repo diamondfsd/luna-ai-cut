@@ -4,6 +4,7 @@ import { getTrackKind, type TrackKind } from './classic-tracks'
 function getRequiredTrackKindForItemType(itemType: TimelineItem['type']): TrackKind {
   if (itemType === 'audio') return 'audio'
   if (itemType === 'text' || itemType === 'subtitle') return 'subtitle'
+  if (itemType === 'html') return 'video'
   return 'video'
 }
 

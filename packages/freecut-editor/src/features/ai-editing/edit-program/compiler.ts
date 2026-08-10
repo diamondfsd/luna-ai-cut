@@ -22,6 +22,7 @@ import type {
   EditProgram,
   EditProgramDiff,
 } from './types'
+import { prepareHtmlInsert, prepareHtmlUpdate } from './html-compiler'
 
 interface CompiledTransition {
   between: [string, string]
@@ -454,6 +455,46 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       changedRanges.push({
         start: operation.text.start,
         end: operation.text.start + operation.text.duration,
+      })
+      continue
+    }
+
+    if (operation.type === 'insertHtml') {
+      if (refs.has(operation.html.ref)) {
+        throw new Error(`编辑程序中的片段引用“${operation.html.ref}”重复。`)
+      }
+      const prepared = prepareHtmlInsert({
+        draft: operation.html,
+        fps,
+        canvas,
+        tracks: virtualTracks,
+        items: virtualItems,
+      })
+      const htmlItem = prepared.item
+      virtualTracks = prepared.tracks
+      refs.set(operation.html.ref, htmlItem.id)
+      insertItems.push(htmlItem)
+      virtualItems.push(htmlItem)
+      touchedIds.add(htmlItem.id)
+      changedRanges.push({
+        start: operation.html.start,
+        end: operation.html.start + operation.html.duration,
+      })
+      continue
+    }
+
+    if (operation.type === 'updateHtml') {
+      const id = resolveClipId(operation.clipRef)
+      const item = virtualItems.find((candidate) => candidate.id === id)
+      if (!item) throw new Error(`片段“${operation.clipRef}”已经被移除。`)
+      const prepared = prepareHtmlUpdate(item, operation)
+      const merged = prepared.item
+      virtualItems = virtualItems.map((candidate) => candidate.id === id ? merged : candidate)
+      updates.set(id, { ...updates.get(id), ...prepared.updates } as Partial<TimelineItem>)
+      touchedIds.add(id)
+      changedRanges.push({
+        start: item.from / fps,
+        end: (item.from + item.durationInFrames) / fps,
       })
       continue
     }
