@@ -130,6 +130,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   revealFile: (filePath: string) => ipcRenderer.invoke('files:reveal', filePath),
   openPath: (targetPath: string) => ipcRenderer.invoke('files:openPath', targetPath),
   startFileDrag: (filePaths: string[], thumbnailUrl?: string | null) => ipcRenderer.send('files:start-drag', filePaths, thumbnailUrl),
+  copyFilesToDirectory: (filePaths: string[]) => ipcRenderer.invoke('files:copy-to-directory', filePaths),
   openPhotosApp: () => ipcRenderer.invoke('files:openPhotosApp'),
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),

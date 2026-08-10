@@ -62,3 +62,9 @@ export interface CameraDeleteResult {
   deleted: string[]
   failed: CameraDeleteFailure[]
 }
+
+export interface FileCopyResult {
+  destinationDir: string
+  copiedCount: number
+  failedCount: number
+}

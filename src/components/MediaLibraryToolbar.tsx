@@ -38,7 +38,13 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
   const [projects, setProjects] = useState<WorkspaceProject[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [projectBusy, setProjectBusy] = useState(false)
+  const [copyingLocalFiles, setCopyingLocalFiles] = useState(false)
   const navigate = useNavigate()
+  const localFilePaths = isLocal
+    ? ctrl.selectedFiles
+      .map((file) => file.downloadFilePath ?? file.localPath ?? null)
+      .filter((filePath): filePath is string => filePath !== null)
+    : []
 
   const workspaceMedia = ctrl.selectedFiles
     .filter((file) => file.kind === 'image' || file.kind === 'video')
@@ -97,6 +103,26 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
     }
   }
 
+  async function copySelectedLocalFiles(): Promise<void> {
+    if (copyingLocalFiles || localFilePaths.length === 0) return
+    setCopyingLocalFiles(true)
+    try {
+      const result = await window.luna.copyFilesToDirectory(localFilePaths)
+      if (!result) return
+      if (result.copiedCount === 0) {
+        toast.error('没有文件被复制，请确认原文件和目标文件夹可用')
+      } else if (result.failedCount > 0) {
+        toast.success(`已复制 ${result.copiedCount} 个文件，${result.failedCount} 个未能复制`)
+      } else {
+        toast.success(`已复制 ${result.copiedCount} 个文件`)
+      }
+    } catch {
+      toast.error('复制失败，请确认目标文件夹可用后重试')
+    } finally {
+      setCopyingLocalFiles(false)
+    }
+  }
+
   async function handleAddToProject(): Promise<void> {
     if (!selectedProjectId || projectBusy) return
     setProjectBusy(true)
@@ -148,6 +174,9 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                       onClick={() => void openAddProjectDialog()}
                     >
                       添加到项目
+                    </Button>
+                    <Button variant="secondary" size="compact" disabled={localFilePaths.length === 0 || copyingLocalFiles} onClick={() => void copySelectedLocalFiles()}>
+                      {copyingLocalFiles ? '正在复制...' : '复制到文件夹'}
                     </Button>
                     <Button variant="danger" size="compact" onClick={() => ctrl.setShowDeleteDialog(true)}>
                       <Trash2 size={14} />
