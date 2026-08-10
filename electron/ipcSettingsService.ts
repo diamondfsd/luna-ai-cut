@@ -1,4 +1,5 @@
-import { dialog, ipcMain } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
+import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { AppSettings } from '../src/shared/types'
 import { deviceDefinitions } from './deviceDefaults'
@@ -8,10 +9,86 @@ import {
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
 import { deleteCustomLut, listCustomLuts } from './customLutLibraryService'
-import { migrateLocalStorage } from './storageMigrationService'
+import {
+  assertStorageTargetWritable,
+  createStorageMigrationPlan,
+  migrateLocalStorage,
+  type StorageMigrationSources,
+} from './storageMigrationService'
 import type { IpcContext } from './ipcContext'
 
 let storageMigrationInProgress = false
+
+async function directoryExists(directory: string): Promise<boolean> {
+  try {
+    return (await fs.lstat(directory)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+async function storageMigrationSources(settings: AppSettings): Promise<StorageMigrationSources> {
+  const legacyRoot = app.getPath('userData')
+  const currentCache = path.join(settings.baseDir, 'cache')
+  const currentLogs = path.join(settings.baseDir, 'logs')
+  const legacyCache = path.join(legacyRoot, 'cache')
+  const legacyPreviews = path.join(legacyRoot, 'cache_previews')
+  const legacyLogs = path.join(legacyRoot, 'logs')
+  const hasCurrentCache = await directoryExists(currentCache)
+  const hasCurrentLogs = await directoryExists(currentLogs)
+  const hasLegacyCache = await directoryExists(legacyCache)
+  const hasLegacyLogs = await directoryExists(legacyLogs)
+  const cacheSource = hasCurrentCache ? currentCache : (hasLegacyCache ? legacyCache : undefined)
+
+  return {
+    cacheSource,
+    previewCacheSource: !await directoryExists(path.join(cacheSource ?? currentCache, 'previews'))
+      && await directoryExists(legacyPreviews)
+      ? legacyPreviews
+      : undefined,
+    logSource: hasCurrentLogs ? currentLogs : (hasLegacyLogs ? legacyLogs : undefined),
+    legacyLogSource: hasCurrentLogs && hasLegacyLogs ? legacyLogs : undefined,
+  }
+}
+
+async function chooseWritableStorageTarget(
+  settings: AppSettings,
+  sources: StorageMigrationSources,
+): Promise<string | null> {
+  let defaultPath = path.dirname(settings.baseDir)
+  let retry = true
+  while (retry) {
+    const result = await dialog.showOpenDialog({
+      defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+      title: '选择新的本地存储位置',
+      buttonLabel: '迁移到这里',
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+
+    const targetDir = result.filePaths[0]
+    try {
+      const plan = createStorageMigrationPlan(settings, targetDir, sources)
+      await assertStorageTargetWritable(plan.targetDir)
+      return plan.targetDir
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '所选位置无法使用，请更换其他基础目录'
+      const response = await dialog.showMessageBox({
+        type: 'warning',
+        title: '无法使用此位置',
+        message,
+        detail: '迁移尚未开始，请更换其他基础目录。',
+        buttons: ['更换目录', '取消'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      retry = response.response === 0
+      if (!retry) return null
+      defaultPath = targetDir
+    }
+  }
+  return null
+}
 
 export function register(ctx: IpcContext): void {
   ipcMain.handle('settings:get', () => getSettings())
@@ -44,14 +121,10 @@ export function register(ctx: IpcContext): void {
     storageMigrationInProgress = true
     try {
       const settings = await getSettings()
-      const result = await dialog.showOpenDialog({
-        defaultPath: path.dirname(settings.baseDir),
-        properties: ['openDirectory', 'createDirectory'],
-        title: '选择新的本地存储位置',
-        buttonLabel: '迁移到这里',
-      })
-      if (result.canceled || result.filePaths.length === 0) return null
-      return migrateLocalStorage(settings, result.filePaths[0], saveSettings)
+      const sources = await storageMigrationSources(settings)
+      const targetDir = await chooseWritableStorageTarget(settings, sources)
+      if (!targetDir) return null
+      return migrateLocalStorage(settings, targetDir, saveSettings, sources)
     } finally {
       storageMigrationInProgress = false
     }

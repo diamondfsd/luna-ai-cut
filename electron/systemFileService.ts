@@ -2,7 +2,7 @@ import { shell } from 'electron'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
-import { cacheDir, previewCacheDir } from './settingsService'
+import { cacheDir, getSettings } from './settingsService'
 import type { CacheStats } from '../src/shared/types'
 
 async function openLocalPath(targetPath: string): Promise<void> {
@@ -101,17 +101,20 @@ async function walk(dir: string): Promise<{ files: number; bytes: number }> {
 }
 
 export async function getCacheStats(): Promise<CacheStats> {
-  const previewDir = await previewCacheDir()
-  const [oldStats, previewStats] = await Promise.all([walk(cacheDir()), walk(previewDir)])
-  return { dir: previewDir, files: oldStats.files + previewStats.files, bytes: oldStats.bytes + previewStats.bytes }
+  const settings = await getSettings()
+  const rootDir = cacheDir(settings.baseDir)
+  const cacheStats = await walk(rootDir)
+  return {
+    dir: rootDir,
+    files: cacheStats.files,
+    bytes: cacheStats.bytes,
+  }
 }
 
 export async function clearCache(): Promise<CacheStats> {
-  const previewDir = await previewCacheDir()
-  await Promise.all([
-    fs.rm(cacheDir(), { recursive: true, force: true }),
-    fs.rm(previewDir, { recursive: true, force: true }),
-  ])
-  await fs.mkdir(previewDir, { recursive: true })
+  const settings = await getSettings()
+  const rootDir = cacheDir(settings.baseDir)
+  await fs.rm(rootDir, { recursive: true, force: true })
+  await fs.mkdir(rootDir, { recursive: true })
   return getCacheStats()
 }

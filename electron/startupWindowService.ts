@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { currentBaseDir, logDirForBaseDir } from './settingsService'
 
 const STARTUP_READY_CHANNEL = 'luna:startup-ready'
 let startupWindow: BrowserWindow | null = null
@@ -23,7 +24,7 @@ function startupPage(failed = false): string {
 
 function writeStartupFailure(error: unknown): void {
   try {
-    const logDir = join(app.getPath('userData'), 'logs')
+    const logDir = logDirForBaseDir(currentBaseDir())
     mkdirSync(logDir, { recursive: true })
     const detail = error instanceof Error ? (error.stack || error.message) : String(error)
     appendFileSync(join(logDir, 'startup.log'), `[${new Date().toISOString()}] ${detail}\n`, 'utf8')
