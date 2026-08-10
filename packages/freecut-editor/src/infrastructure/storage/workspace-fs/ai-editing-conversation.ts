@@ -9,10 +9,7 @@
 import { createLogger } from '@freecut/shared/logging/logger'
 
 import { readJson, removeEntry, writeJsonAtomic } from './fs-primitives'
-import {
-  projectAiEditingConversationHistoryPath,
-  projectAiEditingConversationPath,
-} from './paths'
+import { projectAiEditingConversationHistoryPath, projectAiEditingConversationPath } from './paths'
 import { requireWorkspaceRoot } from './root'
 
 const logger = createLogger('WorkspaceFS:AiEditingConversation')
@@ -48,6 +45,21 @@ export interface AiEditingConversationHistorySession {
 interface AiEditingConversationHistoryFile {
   version: typeof CONVERSATION_HISTORY_VERSION
   sessions: AiEditingConversationHistorySession[]
+}
+
+async function writeConversationHistory(
+  projectId: string,
+  sessions: AiEditingConversationHistorySession[],
+): Promise<void> {
+  const file: AiEditingConversationHistoryFile = {
+    version: CONVERSATION_HISTORY_VERSION,
+    sessions,
+  }
+  await writeJsonAtomic(
+    requireWorkspaceRoot(),
+    projectAiEditingConversationHistoryPath(projectId),
+    file,
+  )
 }
 
 function sanitizeMessage(value: unknown): AiEditingConversationMessage | null {
@@ -208,17 +220,55 @@ export async function archiveAiEditingConversation(
   }
   try {
     const existing = await listAiEditingConversationHistory(projectId)
-    const file: AiEditingConversationHistoryFile = {
-      version: CONVERSATION_HISTORY_VERSION,
-      sessions: [sanitizedSession, ...existing.filter((entry) => entry.id !== sanitizedSession.id)],
-    }
-    await writeJsonAtomic(
-      requireWorkspaceRoot(),
-      projectAiEditingConversationHistoryPath(projectId),
-      file,
-    )
+    await writeConversationHistory(projectId, [
+      sanitizedSession,
+      ...existing.filter((entry) => entry.id !== sanitizedSession.id),
+    ])
   } catch (error) {
     logger.error(`archiveAiEditingConversation(${projectId}) failed`, error)
     throw new Error('Failed to archive AI editing conversation')
+  }
+}
+
+export async function resumeAiEditingConversation(
+  projectId: string,
+  sessionId: string,
+): Promise<AiEditingConversationMessage[]> {
+  try {
+    const history = await listAiEditingConversationHistory(projectId)
+    const target = history.find((session) => session.id === sessionId)
+    if (!target) throw new Error('Conversation session not found')
+
+    const currentMessages = await loadAiEditingConversation(projectId)
+    const currentSession: AiEditingConversationHistorySession | null =
+      currentMessages.length > 0
+        ? {
+            id: currentMessages[0]?.id ?? crypto.randomUUID(),
+            createdAt: currentMessages[0]?.createdAt ?? Date.now(),
+            archivedAt: Date.now(),
+            messages: currentMessages,
+          }
+        : null
+    const historyWithCurrent = [
+      ...(currentSession ? [currentSession] : []),
+      ...history.filter((session) => session.id !== currentSession?.id),
+    ]
+
+    // Preserve both conversations before replacing the current file. If the
+    // final cleanup fails, the resumed session is duplicated but not lost.
+    if (currentSession) await writeConversationHistory(projectId, historyWithCurrent)
+    await saveAiEditingConversation(projectId, target.messages)
+    try {
+      await writeConversationHistory(
+        projectId,
+        historyWithCurrent.filter((session) => session.id !== target.id),
+      )
+    } catch (error) {
+      logger.warn(`resumeAiEditingConversation(${projectId}) cleanup failed`, error)
+    }
+    return target.messages.map((message) => ({ ...message }))
+  } catch (error) {
+    logger.error(`resumeAiEditingConversation(${projectId}, ${sessionId}) failed`, error)
+    throw new Error('Failed to resume AI editing conversation')
   }
 }

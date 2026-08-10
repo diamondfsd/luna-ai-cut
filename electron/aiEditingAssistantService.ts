@@ -12,6 +12,13 @@ import type {
   AiEditingAssistantMessage,
   AiEditingAssistantToolCall,
 } from '../src/shared/types'
+import {
+  AI_EDITING_ASSISTANT_ATTEMPT_TIMEOUT_MS,
+  AI_EDITING_ASSISTANT_MAX_ATTEMPTS,
+  AiEditingAssistantAttemptTimeoutError,
+  runAiEditingAssistantRequestWithRetry,
+} from './aiEditingAssistantRetry'
+import { logMainInfo, logMainWarn } from './loggerService'
 
 const CONFIG_FILE = 'ai-editing-assistant.json'
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
@@ -248,7 +255,27 @@ function connectionError(error: unknown, controller: AbortController): Error {
     }
     return new Error(`剪辑助手连接失败（服务返回 ${error.status}）。请检查服务地址、模型和 API Key。`)
   }
+  if (error instanceof AiEditingAssistantAttemptTimeoutError) {
+    return new Error('剪辑助手响应超时，自动重试后仍未收到结果。请稍后重试。')
+  }
   return new Error('无法连接剪辑助手，请检查网络和服务地址。')
+}
+
+function shouldRetryRequest(error: unknown): boolean {
+  if (error instanceof AiEditingAssistantAttemptTimeoutError) return true
+  if (error instanceof Error && error.name === 'AiEditingAssistantResponseError') return true
+  if (error instanceof OpenAI.APIError) {
+    const status = error.status
+    return status === undefined || status === 408 || status === 409 || status === 429 || status >= 500
+  }
+  return !(error instanceof Error && error.name === 'AbortError')
+}
+
+function retryReason(error: unknown): string {
+  if (error instanceof AiEditingAssistantAttemptTimeoutError) return 'timeout'
+  if (error instanceof OpenAI.APIError) return `http-${error.status ?? 'unknown'}`
+  if (error instanceof Error && error.name === 'AiEditingAssistantResponseError') return 'invalid-response'
+  return 'connection-error'
 }
 
 function doesNotSupportJsonMode(error: unknown): boolean {
@@ -356,8 +383,13 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
   const model = normalizeModel(config.model)
   const controller = new AbortController()
   activeRequests.set(input.requestId, controller)
+  const startedAt = Date.now()
   try {
-    const client = new OpenAI({ apiKey, baseURL: normalizeBaseUrl(config.baseUrl) })
+    const client = new OpenAI({
+      apiKey,
+      baseURL: normalizeBaseUrl(config.baseUrl),
+      maxRetries: 0,
+    })
     const request = {
       model,
       messages: toChatMessages(input.messages),
@@ -367,33 +399,64 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
     }
     const mode = input.mode ?? 'auto'
     const tools = toChatTools(input)
+    logMainInfo('[AI剪辑] 模型请求开始', {
+      requestId: input.requestId,
+      model,
+      maxAttempts: AI_EDITING_ASSISTANT_MAX_ATTEMPTS,
+      attemptTimeoutMs: AI_EDITING_ASSISTANT_ATTEMPT_TIMEOUT_MS,
+    })
 
-    if (mode === 'auto' && tools.length > 0) {
-      try {
-        const response = await client.chat.completions.create({
-          ...request,
-          tools,
-          tool_choice: 'auto',
-        }, { signal: controller.signal })
-        return extractToolResult(response)
-      } catch (error) {
-        if (!doesNotSupportToolCalling(error)) throw error
-        return { mode: 'fallback', content: '', toolCalls: [] }
-      }
-    }
+    const result = await runAiEditingAssistantRequestWithRetry({
+      signal: controller.signal,
+      shouldRetry: shouldRetryRequest,
+      onRetry: (error, attempt, nextAttempt) => {
+        logMainWarn('[AI剪辑] 模型请求准备重试', {
+          requestId: input.requestId,
+          attempt,
+          nextAttempt,
+          reason: retryReason(error),
+        })
+      },
+      execute: async (attemptSignal, attempt) => {
+        logMainInfo('[AI剪辑] 模型请求尝试', { requestId: input.requestId, attempt })
+        if (mode === 'auto' && tools.length > 0) {
+          try {
+            const response = await client.chat.completions.create({
+              ...request,
+              tools,
+              tool_choice: 'auto',
+            }, { signal: attemptSignal })
+            return extractToolResult(response)
+          } catch (error) {
+            if (!doesNotSupportToolCalling(error)) throw error
+            return { mode: 'fallback' as const, content: '', toolCalls: [] }
+          }
+        }
 
-    let response
-    try {
-      response = await client.chat.completions.create({
-        ...request,
-        response_format: { type: 'json_object' },
-      }, { signal: controller.signal })
-    } catch (error) {
-      if (!doesNotSupportJsonMode(error)) throw error
-      response = await client.chat.completions.create(request, { signal: controller.signal })
-    }
-    return extractJsonResult(response)
+        let response
+        try {
+          response = await client.chat.completions.create({
+            ...request,
+            response_format: { type: 'json_object' },
+          }, { signal: attemptSignal })
+        } catch (error) {
+          if (!doesNotSupportJsonMode(error)) throw error
+          response = await client.chat.completions.create(request, { signal: attemptSignal })
+        }
+        return extractJsonResult(response)
+      },
+    })
+    logMainInfo('[AI剪辑] 模型请求完成', {
+      requestId: input.requestId,
+      durationMs: Date.now() - startedAt,
+    })
+    return result
   } catch (error) {
+    logMainWarn('[AI剪辑] 模型请求失败', {
+      requestId: input.requestId,
+      durationMs: Date.now() - startedAt,
+      reason: retryReason(error),
+    })
     if (error instanceof Error && error.name === 'AiEditingAssistantResponseError') throw error
     throw connectionError(error, controller)
   } finally {

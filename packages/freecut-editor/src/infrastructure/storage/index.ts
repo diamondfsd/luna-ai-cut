@@ -171,6 +171,7 @@ export {
   clearAiEditingConversation,
   listAiEditingConversationHistory,
   archiveAiEditingConversation,
+  resumeAiEditingConversation,
   type AiEditingConversationMessage,
   type AiEditingConversationHistorySession,
 } from '@freecut/infrastructure/storage/workspace-fs/ai-editing-conversation'
