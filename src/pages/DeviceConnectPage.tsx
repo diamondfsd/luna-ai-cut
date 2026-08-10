@@ -4,7 +4,7 @@ import { Cable, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, In
 import type { AppSettings, CameraConnectionMode, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { Alert, Button, ButtonGroup } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
-import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
+import { useStorageMigration } from '../hooks/useStorageMigration'
 import '../styles/wifi.css'
 import lunaIcon from '../../public/luna-icon.png'
 
@@ -39,7 +39,7 @@ export function DeviceConnectPage({
   const [mountedVolumes, setMountedVolumes] = useState<MountedCameraVolume[]>([])
   const [mountedVolumesLoading, setMountedVolumesLoading] = useState(false)
   const [mountedVolumesError, setMountedVolumesError] = useState<string | null>(null)
-  const [storageMigrationOpen, setStorageMigrationOpen] = useState(false)
+  const { migrating, migrate } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
   const deviceName = activeDevice?.name ?? '设备'
@@ -357,8 +357,8 @@ export function DeviceConnectPage({
                 <p>本地存储</p>
                 <strong title={settings?.baseDir}>{settings?.baseDir || '正在读取'}</strong>
               </div>
-              <Button variant="secondary" size="mini" icon={<HardDrive size={13} />} onClick={() => setStorageMigrationOpen(true)}>
-                迁移
+              <Button variant="secondary" size="mini" disabled={migrating} icon={<HardDrive size={13} />} onClick={() => void migrate()}>
+                {migrating ? '迁移中' : '迁移'}
               </Button>
             </div>
           </aside>
@@ -372,12 +372,6 @@ export function DeviceConnectPage({
           </HelpDialog>
         </div>
       </div>
-      <StorageMigrationDialog
-        open={storageMigrationOpen}
-        onOpenChange={setStorageMigrationOpen}
-        settings={settings}
-        onMigrated={onStorageMigrated}
-      />
     </section>
   )
 }

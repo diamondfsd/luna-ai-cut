@@ -73,7 +73,7 @@
 .ai-selection-stage-nav .ui-btn strong { min-width: 24px; color: var(--text-secondary, #6e6e73); text-align: right; font-size: 11px; }
 .ai-selection-stage-nav .ui-btn.active { background: color-mix(in srgb, var(--blue, #06c) 11%, white); color: var(--blue, #06c); }
 .ai-selection-face-group-list { margin-left: 10px; }
-.ai-selection-face-group-cover { position: relative; width: 26px; height: 26px; flex: 0 0 26px !important; overflow: hidden; border-radius: 50%; background: #e5e7ea; }
+.ai-selection-face-group-cover { position: relative; width: 26px; height: 26px; flex: 0 0 26px !important; overflow: hidden; background: #e5e7ea; }
 .ai-selection-face-group-cover img { position: absolute; max-width: none; object-fit: fill; }
 .ai-selection-browse-title { margin-top: 22px; }
 .ai-selection-tags-panel { margin-top: 22px; }
