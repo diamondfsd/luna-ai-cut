@@ -614,7 +614,7 @@ impl Compositor {
                         color.glow_strength.clamp(0.0, 100.0) as f32,
                         color.glow_radius.clamp(1.0, 100.0) as f32,
                         color.glow_threshold.clamp(0.0, 100.0) as f32,
-                        0.0,
+                        color.skin_smoothing.clamp(0.0, 100.0) as f32,
                     ],
                     grade_shadows_hue: color.grade_shadows_hue as f32,
                     grade_shadows_amount: color.grade_shadows_amount as f32,

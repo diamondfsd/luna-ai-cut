@@ -53,6 +53,7 @@ export interface RenderColorAdjustments {
   texture: number
   sharpen: number
   denoise: number
+  skinSmoothing: number
   glowStrength: number
   glowRadius: number
   glowThreshold: number

@@ -7,6 +7,7 @@ import { useStorageMigration } from '../hooks/useStorageMigration'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
+import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import { Button, Dialog, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
@@ -74,7 +75,7 @@ export function SettingsPage({
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
   const [gpuPreviewConfirmOpen, setGpuPreviewConfirmOpen] = useState(false)
-  const { migrating, migrate } = useStorageMigration(settings, setSettings)
+  const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, setSettings)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -322,6 +323,12 @@ export function SettingsPage({
             }}>仍然开启</Button>
           </>
         )}
+      />
+      <StorageMigrationDialog
+        migrating={migrating}
+        result={migrationResult}
+        restarting={restarting}
+        onRestart={() => void restart()}
       />
     </section>
   )

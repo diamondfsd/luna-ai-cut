@@ -2,7 +2,16 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     let raw = apply_restore_lut(input);
     var blurred = raw;
     var smoothing_mix = 0.0;
-    if (params.denoise > 100.0) {
+    let skin_smoothing = sat1(params.glow.w / 100.0);
+    if (skin_smoothing > 0.0) {
+        let statistics = beauty_statistics(tex_coord, skin_smoothing);
+        blurred = apply_restore_lut(statistics.rgb);
+        let local_detail = length(raw - blurred);
+        let surface_weight = 1.0 - smoothstep(0.002, 0.018, statistics.a);
+        let feature_protection = smoothstep(0.035, 0.12, local_detail);
+        let strength_curve = pow(skin_smoothing, 0.72);
+        smoothing_mix = strength_curve * 0.88 * surface_weight * (1.0 - feature_protection * 0.96);
+    } else if (params.denoise > 100.0) {
         blurred = apply_restore_lut(aperture_blur(tex_coord, (params.denoise - 100.0) / 100.0));
         smoothing_mix = 1.0;
     } else if (params.denoise > 0.0 || abs(params.texture) > 0.0 || abs(params.clarity) > 0.0 || abs(params.sharpen) > 0.0) {

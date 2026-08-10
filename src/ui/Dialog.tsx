@@ -71,6 +71,8 @@ export interface DialogProps {
   modal?: boolean
   /** 是否显示页面遮罩。 */
   showOverlay?: boolean
+  /** 是否显示右上角关闭按钮。 */
+  showCloseButton?: boolean
 }
 
 export function Dialog({
@@ -88,6 +90,7 @@ export function Dialog({
   closeOnMaskClick = true,
   modal = true,
   showOverlay = true,
+  showCloseButton = true,
 }: DialogProps) {
   const zRef = useRef<{ id: string; zIndex: number } | null>(null)
 
@@ -143,7 +146,7 @@ export function Dialog({
           )}
           {children}
           {!isFullscreen && footer && <DialogFooter>{footer}</DialogFooter>}
-          {!isFullscreen && (
+          {!isFullscreen && showCloseButton && (
             <RadixDialog.Close asChild>
               <button className="ui-dialog-close" aria-label="关闭">
                 <X size={18} />
