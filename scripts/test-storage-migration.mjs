@@ -70,7 +70,7 @@ try {
   assert.equal(await fs.readFile(path.join(targetDir, 'cache', 'previews', 'clip-preview.mp4'), 'utf8'), 'preview-data', '缓存应迁移到新的目录')
   assert.equal(await fs.readFile(path.join(targetDir, 'cache', 'metadata', 'clip.json'), 'utf8'), 'metadata-data', '素材信息缓存应迁移到新的目录')
   assert.equal(await fs.readFile(path.join(targetDir, 'cache', 'ai-selection', 'session.json'), 'utf8'), 'selection-data', '智能选片缓存应迁移到新的目录')
-  assert.equal(await fs.readFile(path.join(targetDir, 'logs', 'main.log'), 'utf8'), 'log-data', '日志应迁移到新的目录')
+  await assert.rejects(fs.access(path.join(targetDir, 'logs', 'main.log')), '运行日志不应参与迁移')
   assert.equal(migratedProject.dir, path.join(targetDir, 'workspace-projects', 'project-1'), '项目目录引用应更新')
   assert.equal(migratedProject.assets[0].path, newSourceFile, '项目素材引用应更新')
   assert.equal(migratedProject.creative.onlyYourColor.maskPath, newRemovalFile, '项目内的相关文件引用应更新')
@@ -82,7 +82,7 @@ try {
   await assert.rejects(fs.access(path.join(cacheDir, 'previews', 'clip-preview.mp4')), '迁移完成后旧缓存应被清理')
   await assert.rejects(fs.access(path.join(legacyMetadataDir, 'clip.json')), '迁移完成后旧素材信息缓存应被清理')
   await assert.rejects(fs.access(path.join(legacyAiSelectionDir, 'session.json')), '迁移完成后旧智能选片缓存应被清理')
-  await assert.rejects(fs.access(path.join(logDir, 'main.log')), '迁移完成后旧日志应被清理')
+  assert.equal(await fs.readFile(path.join(logDir, 'main.log'), 'utf8'), 'log-data', '运行日志应保留在原位置')
 
   const occupiedTarget = path.join(root, 'occupied')
   await fs.mkdir(path.join(occupiedTarget, 'localResources'), { recursive: true })

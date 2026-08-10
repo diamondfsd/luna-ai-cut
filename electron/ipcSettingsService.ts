@@ -31,16 +31,12 @@ async function directoryExists(directory: string): Promise<boolean> {
 async function storageMigrationSources(settings: AppSettings): Promise<StorageMigrationSources> {
   const legacyRoot = app.getPath('userData')
   const currentCache = path.join(settings.baseDir, 'cache')
-  const currentLogs = path.join(settings.baseDir, 'logs')
   const legacyCache = path.join(legacyRoot, 'cache')
   const legacyPreviews = path.join(legacyRoot, 'cache_previews')
   const legacyMetadata = path.join(legacyRoot, 'cache_metadata')
   const legacyAiSelection = path.join(legacyRoot, '.luna-cache', 'ai-selection')
-  const legacyLogs = path.join(legacyRoot, 'logs')
   const hasCurrentCache = await directoryExists(currentCache)
-  const hasCurrentLogs = await directoryExists(currentLogs)
   const hasLegacyCache = await directoryExists(legacyCache)
-  const hasLegacyLogs = await directoryExists(legacyLogs)
   const cacheSource = hasCurrentCache ? currentCache : (hasLegacyCache ? legacyCache : undefined)
 
   return {
@@ -57,8 +53,6 @@ async function storageMigrationSources(settings: AppSettings): Promise<StorageMi
       && await directoryExists(legacyAiSelection)
       ? legacyAiSelection
       : undefined,
-    logSource: hasCurrentLogs ? currentLogs : (hasLegacyLogs ? legacyLogs : undefined),
-    legacyLogSource: hasCurrentLogs && hasLegacyLogs ? legacyLogs : undefined,
   }
 }
 
