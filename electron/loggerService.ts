@@ -1,15 +1,15 @@
 import { app } from 'electron'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { currentBaseDir, logDirForBaseDir } from './settingsService'
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 
-const LOG_DIR = 'logs'
 const MAIN_PREFIX = 'main'
 const RENDERER_PREFIX = 'renderer'
 
 function logDir(): string {
-  return path.join(app.getPath('userData'), LOG_DIR)
+  return logDirForBaseDir(currentBaseDir())
 }
 
 function ensureDir(dir: string): void {
