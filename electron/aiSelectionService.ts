@@ -11,7 +11,7 @@ import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from '
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideoPeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
 import { createAiSelectionPersonAvatar } from './aiSelectionPersonAvatar'
-import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, renameGlobalPerson, restoreGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
+import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, renameGlobalPerson, restoreGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
 import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
@@ -80,6 +80,7 @@ async function ensureLoaded(): Promise<void> {
       if (parsed.schemaVersion !== 1 || parsed.analysisVersion !== ANALYSIS_VERSION || !parsed.id) continue
       parsed.undoStack ??= []
       parsed.redoStack ??= []
+      await reconcileGlobalPeopleSources(peopleStoreDir(), parsed.items)
       parsed.faceGroups = buildGlobalFaceGroups(parsed.items)
       rebuildSelectionResult(parsed)
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
@@ -398,7 +399,6 @@ export async function renameAiSelectionPerson(id: string, groupId: string, name:
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }
-
 export async function setAiSelectionPersonAvatar(id: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
