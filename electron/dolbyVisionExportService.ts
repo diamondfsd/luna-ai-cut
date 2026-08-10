@@ -271,7 +271,7 @@ export async function exportDolbyVisionWatermark(
     const videoTrack = `h265:${injectedHevc}#dv_profile=8,dv_bc=4,frame_rate=${fps},format=hvc1`
     const hasAudio = sourceProbe.streams?.some((stream) => stream.codec_type === 'audio')
     const muxArgs = ['--track', videoTrack]
-    if (hasAudio) muxArgs.push('--track', `mp4:${request.sourcePath}#track=audio`)
+    if (hasAudio && request.includeAudio !== false) muxArgs.push('--track', `mp4:${request.sourcePath}#track=audio`)
     muxArgs.push(partialOutput)
     await run(mp4mux, muxArgs, callbacks.signal)
     await repairHvccFromSps(partialOutput, encodedSps)

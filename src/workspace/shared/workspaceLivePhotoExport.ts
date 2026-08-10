@@ -123,6 +123,7 @@ export async function queueWorkspaceFormatsExport(
             layers: offsetVideoLayers(source.layers!, trimStart, trimEnd - trimStart),
             fps: resolved.fps,
             qualityPreset: resolved.qualityPreset,
+            includeAudio: resolved.includeAudio,
             exportTaskId: task.id,
             exportItemId: item.id,
             taskName,
@@ -155,6 +156,7 @@ export async function queueWorkspaceFormatsExport(
           layers: offsetVideoLayers(source.layers!, start, LIVE_DURATION),
           fps: resolved.fps,
           qualityPreset: resolved.qualityPreset ?? 'high',
+          includeAudio: resolved.includeAudio,
           renderTaskId: `workspace_live_render_${stamp}`,
           onProgress: async (videoPercent) => {
             const totalPercent = Math.min(89, Math.max(1, Math.round(videoPercent * 0.9)))
