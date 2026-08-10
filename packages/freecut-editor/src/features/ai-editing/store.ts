@@ -9,12 +9,16 @@ import {
   saveAiEditingConversation,
 } from '@freecut/infrastructure/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
-import { getAiEditingAdapter, runAiEditingTurn } from './orchestrator'
+import { getAiEditingAdapter, runAiEditingTurn } from './run-ai-editing-turn'
 import {
   addAiEditingReferenceContext,
   type AiEditingResourceReference,
 } from './resource-references'
-import type { AiEditingObservation, AiEditingToolActivity } from './types'
+import type {
+  AiEditingObservation,
+  AiEditingTaskActivity,
+  AiEditingToolActivity,
+} from './types'
 
 const logger = createLogger('AiEditingStore')
 
@@ -56,6 +60,7 @@ interface AiEditingState {
   messages: AiEditingMessage[]
   observations: AiEditingObservation[]
   toolActivities: AiEditingToolActivity[]
+  taskActivities: AiEditingTaskActivity[]
   reasoningEffort: AiEditingReasoningEffort
   projectId: string | null
   isRestoringConversation: boolean
@@ -114,6 +119,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
   messages: [],
   observations: [],
   toolActivities: [],
+  taskActivities: [],
   reasoningEffort: loadReasoningEffort(),
   projectId: null,
   isRestoringConversation: false,
@@ -137,6 +143,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       messages: [],
       observations: [],
       toolActivities: [],
+      taskActivities: [],
     })
     if (!projectId) return
 
@@ -180,6 +187,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       streamingText: '',
       observations: [],
       toolActivities: [],
+      taskActivities: [],
     })
     try {
       await enqueueConversationWrite(projectId, () =>
@@ -255,6 +263,17 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             return {
               toolActivities,
               phase: activity.status === 'running' ? 'executing' : state.phase,
+            }
+          })
+        },
+        onTaskActivity: (activity) => {
+          if (controller.signal.aborted || get().projectId !== projectId) return
+          set((state) => {
+            const existingIndex = state.taskActivities.findIndex((item) => item.id === activity.id)
+            return {
+              taskActivities: existingIndex === -1
+                ? [...state.taskActivities, activity]
+                : state.taskActivities.map((item, index) => index === existingIndex ? activity : item),
             }
           })
         },
@@ -344,6 +363,11 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           ? { ...activity, status: 'failed', message: '已停止本次操作。' }
           : activity,
       ),
+      taskActivities: state.taskActivities.map((activity) =>
+        activity.status === 'running'
+          ? { ...activity, status: 'failed', message: '已停止本次操作。' }
+          : activity,
+      ),
     }))
   },
 
@@ -358,6 +382,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         messages: [],
         observations: [],
         toolActivities: [],
+        taskActivities: [],
         streamingText: '',
         thinkingPercent: 0,
         thinkingCeiling: 0,
@@ -392,6 +417,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       messages: [],
       observations: [],
       toolActivities: [],
+      taskActivities: [],
       phase: 'idle',
       streamingText: '',
       thinkingPercent: 0,
@@ -426,6 +452,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         messages,
         observations: [],
         toolActivities: [],
+        taskActivities: [],
         phase: 'idle',
         streamingText: '',
         thinkingPercent: 0,
