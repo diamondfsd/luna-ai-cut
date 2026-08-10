@@ -1,8 +1,12 @@
 import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform, WatermarkPositioning } from '../../shared/types'
 import type { BorderSettings } from './editPipeline'
-import { DEFAULT_PIPELINE, HSL_CHANNELS, type EditPipeline } from './editPipeline'
+import { DEFAULT_PIPELINE, HSL_CHANNELS, type ColorMaskLayer, type EditPipeline } from './editPipeline'
 import { shouldSwapOrientation } from '../transform/cropGeometry'
-import { beautyLayerColorForRendering, beautyLayerOpacityForRendering } from '../beauty/beautyLayers'
+import {
+  beautyLayerColorForRendering,
+  beautyLayerOpacityForRendering,
+  beautySkinSmoothingForRendering,
+} from '../beauty/beautyLayers'
 
 export function pipelineColorToRenderColor(color: EditPipeline['color']): RenderColorAdjustments {
   return {
@@ -22,6 +26,7 @@ export function pipelineColorToRenderColor(color: EditPipeline['color']): Render
     texture: color.texture,
     sharpen: color.sharpen,
     denoise: color.denoise,
+    skinSmoothing: 0,
     glowStrength: color.glowStrength,
     glowRadius: color.glowRadius,
     glowThreshold: color.glowThreshold,
@@ -68,7 +73,7 @@ function renderColorWithLocalAdjustments(
   const combined = { ...global }
   const additive = [
     'exposure', 'brightness', 'contrast', 'saturation', 'vibrance', 'temperature', 'tint',
-    'highlights', 'shadows', 'whites', 'blacks', 'clarity', 'texture', 'sharpen', 'denoise',
+    'highlights', 'shadows', 'whites', 'blacks', 'clarity', 'texture', 'sharpen', 'denoise', 'skinSmoothing',
     'glowStrength',
     'curveLift', 'curveContrast', 'gradeShadowsAmount', 'gradeMidAmount', 'gradeHighlightsAmount',
   ] as const
@@ -106,6 +111,13 @@ function renderableAdjustmentMasks(pipeline: EditPipeline, isVideo: boolean) {
     .reverse()
 }
 
+function beautyRenderColor(pipeline: EditPipeline, layer: ColorMaskLayer): RenderColorAdjustments {
+  return {
+    ...pipelineColorToRenderColor(beautyLayerColorForRendering(pipeline, layer)),
+    skinSmoothing: beautySkinSmoothingForRendering(pipeline, layer),
+  }
+}
+
 export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline): PreviewLayer[] {
   return renderableAdjustmentMasks(pipeline, Boolean(base.isVideo)).map((layer) => ({
     ...base,
@@ -113,7 +125,7 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     blendMode: layer.blendMode,
     color: renderColorWithLocalAdjustments(
       base.color ?? pipelineColorToRenderColor(pipeline.color),
-      pipelineColorToRenderColor(beautyLayerColorForRendering(pipeline, layer)),
+      beautyRenderColor(pipeline, layer),
     ),
     maskPath: layer.path,
     maskOpacity: beautyLayerOpacityForRendering(pipeline, layer),
@@ -191,10 +203,7 @@ export function buildLocalColorPrecomposition(
       transform: inputBase.transform,
       positioning: undefined,
       // 预合成核心会把局部参数应用到上一层结果，因此这里只传当前蒙版自身的调整。
-      color: pipelineColorToRenderColor(beautyLayerColorForRendering(
-        pipeline,
-        adjustmentMasks[index],
-      )),
+      color: beautyRenderColor(pipeline, adjustmentMasks[index]),
       zIndex: index + 1,
     })),
   ]

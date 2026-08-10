@@ -146,14 +146,30 @@ try {
     { ...createDefaultPipeline(), beautyMasks: [smoothingFaceLayer] },
     smoothingFaceLayer,
   )
-  close(renderedSmoothingFace.denoise, 100, 'beauty smoothing must preserve the full slider range for rendering')
+  close(renderedSmoothingFace.denoise, 0, 'beauty smoothing must not enter the generic blur branch')
+  close(
+    beautyLayers.beautySkinSmoothingForRendering(
+      { ...createDefaultPipeline(), beautyMasks: [smoothingFaceLayer] },
+      smoothingFaceLayer,
+    ),
+    100,
+    'beauty smoothing must preserve the full slider range in its dedicated render parameter',
+  )
   const mediumSmoothingParameters = { ...smoothingParameters, smoothing: 50 }
   const mediumSmoothingFaceLayer = beautyLayers.createBeautyMaskLayer('face', { path: '/tmp/medium-smoothing-face.pgm', width: 1, height: 1 }, mediumSmoothingParameters)
   const renderedMediumSmoothingFace = beautyLayers.beautyLayerColorForRendering(
     { ...createDefaultPipeline(), beautyMasks: [mediumSmoothingFaceLayer] },
     mediumSmoothingFaceLayer,
   )
-  close(renderedMediumSmoothingFace.denoise, 59.46035575013605, 'beauty smoothing must remain visible at medium strength')
+  close(renderedMediumSmoothingFace.denoise, 0, 'medium beauty smoothing must not enter the generic blur branch')
+  close(
+    beautyLayers.beautySkinSmoothingForRendering(
+      { ...createDefaultPipeline(), beautyMasks: [mediumSmoothingFaceLayer] },
+      mediumSmoothingFaceLayer,
+    ),
+    50,
+    'beauty smoothing must use the slider value in its dedicated render parameter',
+  )
   const renderedBeautyAcne = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyAcneLayer)
   const renderedBeautySpot = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautySpotLayer)
   const renderedBeautyManual = beautyLayers.beautyLayerColorForRendering(
@@ -755,7 +771,8 @@ try {
   assert.equal(migratedBody.color.brightness, 0, 'legacy body brightening must not render as additive RGB brightness')
   close(migratedFace.color.exposure, 0.084, 'legacy face settings must use the stronger unified brightening algorithm')
   close(migratedBody.color.exposure, 0.03, 'legacy body settings must use the stronger unified brightening algorithm')
-  close(migratedFace.color.denoise, 38.491826849295826, 'legacy smoothing slider value must use the enhanced render mapping')
+  close(migratedFace.color.denoise, 0, 'legacy smoothing must not enter the generic blur branch')
+  close(migratedFace.color.skinSmoothing, 28, 'legacy smoothing must use the dedicated skin smoothing parameter')
   assert.equal(
     renderModule.buildLocalColorLayers(baseLayer, stressPipeline)[0].maskTrack,
     undefined,

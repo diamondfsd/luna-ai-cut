@@ -21,7 +21,7 @@ function renderColor(overrides = {}) {
   return {
     exposure: 0, black: 0, brightness: 0, contrast: 0, saturation: 0, vibrance: 0,
     temperature: 0, tint: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
-    clarity: 0, texture: 0, sharpen: 0, denoise: 0,
+    clarity: 0, texture: 0, sharpen: 0, denoise: 0, skinSmoothing: 0,
     glowStrength: 0, glowRadius: 35, glowThreshold: 65,
     gradeShadowsHue: 220, gradeShadowsAmount: 0, gradeMidHue: 35, gradeMidAmount: 0,
     gradeHighlightsHue: 42, gradeHighlightsAmount: 0, curveLift: 0, curveContrast: 0,
@@ -58,9 +58,10 @@ function writeSkinTexturePpmPixels() {
     for (let x = 0; x < width; x += 1) {
       const offset = (y * width + x) * 3
       const texture = ((x * 13 + y * 7) % 5 - 2) * 4
-      pixels[offset] = 158 + texture
-      pixels[offset + 1] = 116 + texture
-      pixels[offset + 2] = 102 + texture
+      const featureShade = x < width / 2 ? 0 : -48
+      pixels[offset] = 158 + featureShade + texture
+      pixels[offset + 1] = 116 + featureShade + texture
+      pixels[offset + 2] = 102 + featureShade + texture
     }
   }
   return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
@@ -336,11 +337,20 @@ try {
   ]))
   const beautySmoothing = await renderAndMatchExport('beauty-smoothing', composition([
     mediaLayer(skinTextureSourcePath),
-    localLayer(skinTextureSourcePath, fullMaskPath, { color: { denoise: 60 } }),
+    localLayer(skinTextureSourcePath, fullMaskPath, { color: { skinSmoothing: 60 } }),
   ]))
   assert.ok(
     pixelDifference(skinTextureBase, beautySmoothing).total > 0,
-    'beauty smoothing must execute the edge-aware denoise branch',
+    'beauty smoothing must execute its dedicated edge-aware branch',
+  )
+  assert.ok(
+    horizontalPixelDelta(beautySmoothing, 10, 16) < horizontalPixelDelta(skinTextureBase, 10, 16),
+    'beauty smoothing must reduce fine texture variation on flat skin',
+  )
+  assert.ok(
+    horizontalPixelDelta(beautySmoothing, width / 2 - 1, 16)
+      >= horizontalPixelDelta(skinTextureBase, width / 2 - 1, 16) * 0.8,
+    'beauty smoothing must preserve strong facial edges',
   )
   const beautyTexture = await renderAndMatchExport('beauty-texture', composition([
     mediaLayer(skinTextureSourcePath),
