@@ -1,32 +1,33 @@
-.ai-person-merge-dialog.ui-dialog-content { width: min(960px, calc(100vw - 48px)); height: min(720px, calc(100vh - 64px)); max-height: none; }
-.ai-person-merge-body { min-height: 0; height: 100%; padding: 18px 20px; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 18px; box-sizing: border-box; }
+.ai-person-merge-dialog.ui-dialog-content { width: min(1120px, calc(100vw - 48px)); height: min(860px, calc(100vh - 48px)); max-height: none; }
+.ai-person-merge-body { min-height: 0; height: 100%; padding: 20px 22px 28px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; box-sizing: border-box; overscroll-behavior: contain; }
 .ai-person-merge-body > section { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.ai-person-merge-candidates-section:only-child { grid-row: 1 / -1; }
-.ai-person-merge-body > section > strong { font-size: 13px; }
-.ai-person-merged-section { padding-bottom: 18px; border-bottom: 1px solid var(--border, #d9dce2); }
-.ai-person-merged-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 14px 12px; }
-.ai-person-merged-list > div { position: relative; min-width: 0; padding: 6px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-rows: 96px auto; gap: 7px; box-sizing: border-box; }
-.ai-person-merged-list > div > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.ai-person-merged-avatar { width: 96px; max-width: 100%; height: 96px; justify-self: center; border-radius: 5px; }
-.ai-person-merged-list .ui-btn-danger { position: absolute; top: 10px; right: 10px; min-width: 28px; padding: 2px; border-color: rgba(231, 76, 60, .84); background: rgba(255, 255, 255, .9); font-size: 0; }
+.ai-person-merge-body > section > strong { font-size: 13px; line-height: 20px; }
+.ai-person-merged-section { padding-bottom: 22px; border-bottom: 1px solid var(--border, #d9dce2); }
+.ai-person-merged-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+.ai-person-merged-list > div { position: relative; min-width: 0; padding: 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-rows: 144px auto; gap: 8px; box-sizing: border-box; background: rgba(255, 255, 255, .34); }
+.ai-person-merged-list > div > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary, #1d1d1f); font-size: 13px; line-height: 18px; }
+.ai-person-merged-avatar { width: 144px; max-width: 100%; height: 144px; justify-self: center; border-radius: 5px; }
+.ai-person-merged-list .ui-btn-danger { position: absolute; top: 12px; right: 12px; width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; border-color: rgba(231, 76, 60, .84); border-radius: 50%; background: rgba(255, 255, 255, .94); font-size: 0; }
+.ai-person-merged-list .ui-btn-danger .ui-btn-icon { width: 14px; height: 14px; }
 .ai-person-merge-empty { padding: 16px 8px; color: var(--text-secondary, #6e6e73); font-size: 12px; }
-.ai-person-merge-candidates-section { min-height: 0; }
-.ai-person-merge-candidate-list { min-height: 0; flex: 1 1 auto; padding: 0 2px 8px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); align-content: start; column-gap: 12px; row-gap: 16px; }
-.ai-person-merge-candidate-list > .ui-btn { min-width: 0; min-height: 176px; padding: 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; background: var(--surface, #fff); color: var(--text-primary, #1d1d1f); display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: start; align-items: center; gap: 8px 7px; text-align: left; white-space: normal; }
+.ai-person-merge-candidate-list { padding: 0 2px 2px; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); align-content: start; gap: 16px; }
+.ai-person-merge-candidate-list > .ui-btn { min-width: 0; min-height: 214px; padding: 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; background: var(--surface, #fff); color: var(--text-primary, #1d1d1f); display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) 20px; grid-template-areas: 'cover cover' 'name count'; align-content: start; align-items: center; gap: 8px; text-align: left; white-space: normal; }
 .ai-person-merge-candidate-list > .ui-btn:hover { border-color: color-mix(in srgb, var(--blue, #06c) 38%, white); background: color-mix(in srgb, var(--blue, #06c) 4%, white); color: var(--text-primary, #1d1d1f); }
 .ai-person-merge-candidate-list > .ui-btn.selected { border-color: var(--blue, #06c); background: color-mix(in srgb, var(--blue, #06c) 8%, white); color: var(--blue, #06c); box-shadow: inset 0 0 0 1px var(--blue, #06c); }
-.ai-person-merge-candidate-list .ui-btn-icon { width: 100%; height: auto; grid-column: 1 / -1; grid-row: 1; display: block; flex: 0 0 auto; }
-.ai-person-merge-candidate-list .ai-selection-face-group-cover { width: 100%; height: auto; aspect-ratio: 1; flex: 0 0 auto !important; border-radius: 5px; display: block; }
-.ai-person-merge-candidate-list > .ui-btn span:not(.ui-btn-icon):not(.ai-selection-face-group-cover) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.ai-person-merge-candidate-list > .ui-btn strong { color: var(--text-secondary, #6e6e73); font-size: 12px; }
+.ai-person-merge-candidate-list .ai-selection-face-group-cover { width: 100%; height: auto; aspect-ratio: 1; grid-area: cover; align-self: start; flex: 0 0 auto !important; border-radius: 5px; display: block; }
+.ai-person-merge-candidate-name { min-width: 0; grid-area: name; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary, #1d1d1f); font-size: 13px; line-height: 20px; }
+.ai-person-merge-candidate-count { grid-area: count; color: var(--text-secondary, #6e6e73); font-size: 12px; font-weight: 600; line-height: 20px; text-align: right; }
 
 @media (max-width: 680px) {
   .ai-person-merge-dialog.ui-dialog-content { width: min(560px, calc(100vw - 32px)); height: min(720px, calc(100vh - 32px)); }
-  .ai-person-merge-body { overflow-y: auto; grid-template-rows: auto auto; }
-  .ai-person-merge-candidate-list { flex: 0 0 auto; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .ai-person-merge-body { padding: 18px 16px 24px; }
+  .ai-person-merged-list { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+  .ai-person-merged-list > div { grid-template-rows: 120px auto; }
+  .ai-person-merged-avatar { width: 120px; height: 120px; }
+  .ai-person-merge-candidate-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
 
 @media (max-width: 430px) {
-  .ai-person-merge-body { padding: 14px; }
+  .ai-person-merge-body { padding: 14px 12px 20px; }
   .ai-person-merge-candidate-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

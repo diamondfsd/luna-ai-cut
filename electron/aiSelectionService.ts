@@ -9,12 +9,13 @@ import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { normalizeFaceGroupingThreshold } from './aiSelectionFaceGroups'
 import { readAiSelectionItemCache, writeAiSelectionItemCache } from './aiSelectionItemCache'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
-import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
+import { applyAiSelectionUserOperation, createAiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideoPeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
 import { createAiSelectionPersonAvatar } from './aiSelectionPersonAvatar'
 import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, renameGlobalPerson, restoreGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
 import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
+import { publicAiSelectionSession, restoreAiSelectionSnapshot, type StoredAiSelectionSession } from './aiSelectionSessionSnapshot'
 import { ensureVideoFaceGroupCoverFrames } from './aiSelectionVideoFaceFrames'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
@@ -22,7 +23,7 @@ import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
 
 const ANALYSIS_VERSION = 'selection-evidence-v6'
 const ROOT_DIR = 'ai-selection'
-interface StoredSession extends AiSelectionSession { undoStack: AiSelectionSnapshot[]; redoStack: AiSelectionSnapshot[] }
+type StoredSession = StoredAiSelectionSession
 type Notify = (event: 'progress' | 'session', payload: AiSelectionProgress | AiSelectionSession) => void
 const sessions = new Map<string, StoredSession>()
 let loaded = false
@@ -40,15 +41,7 @@ function sessionPath(id: string): string {
 }
 async function readCachedItem(id: string, preset: AiSelectionSession['preset']): Promise<AiSelectionItem | null> { return readAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, id, preset) }
 async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> { await writeAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, item, preset) }
-function publicSession(session: StoredSession): AiSelectionSession {
-  const { undoStack, redoStack, ...value } = session
-  return structuredClone({
-    ...value,
-    items: value.items.map((item) => ({ ...item, imageEmbedding: null, personEvidence: item.personEvidence ? { ...item.personEvidence, faces: item.personEvidence.faces?.map((face) => ({ ...face, embedding: null })) } : null })),
-    canUndo: undoStack.length > 0, canRedo: redoStack.length > 0,
-  })
-}
-
+function publicSession(session: StoredSession): AiSelectionSession { return publicAiSelectionSession(session) }
 function touch(session: StoredSession): void { session.revision += 1; session.updatedAt = new Date().toISOString(); refreshAiSelectionCounts(session) }
 
 async function persist(session: StoredSession): Promise<void> {
@@ -91,7 +84,7 @@ async function ensureLoaded(): Promise<void> {
 }
 
 function emitSession(session: StoredSession): void {
-  notify('session', publicSession(session))
+  notify('session', publicAiSelectionSession(session))
 }
 
 function emitProgress(session: StoredSession, currentLabel: string | null): void {
@@ -341,16 +334,6 @@ export async function cancelAiSelection(id: string): Promise<AiSelectionSession>
   return publicSession(session)
 }
 
-function restoreSnapshot(session: StoredSession, snapshot: AiSelectionSnapshot): void {
-  session.preset = snapshot.preset
-  session.purpose = snapshot.purpose
-  session.target = structuredClone(snapshot.target)
-  session.items = structuredClone(snapshot.items)
-  session.scenes = structuredClone(snapshot.scenes)
-  session.groups = structuredClone(snapshot.groups)
-  session.preferenceProfile = structuredClone(snapshot.preferenceProfile)
-}
-
 export async function applyAiSelectionOperation(id: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
@@ -367,7 +350,7 @@ export async function undoAiSelection(id: string): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
   const snapshot = session.undoStack.pop()
-  if (snapshot) { session.redoStack.push(createAiSelectionSnapshot(session)); restoreSnapshot(session, snapshot); await updateAndPersist(session) }
+  if (snapshot) { session.redoStack.push(createAiSelectionSnapshot(session)); restoreAiSelectionSnapshot(session, snapshot); await updateAndPersist(session) }
   return publicSession(session)
 }
 
@@ -375,7 +358,7 @@ export async function redoAiSelection(id: string): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
   const snapshot = session.redoStack.pop()
-  if (snapshot) { session.undoStack.push(createAiSelectionSnapshot(session)); restoreSnapshot(session, snapshot); await updateAndPersist(session) }
+  if (snapshot) { session.undoStack.push(createAiSelectionSnapshot(session)); restoreAiSelectionSnapshot(session, snapshot); await updateAndPersist(session) }
   return publicSession(session)
 }
 

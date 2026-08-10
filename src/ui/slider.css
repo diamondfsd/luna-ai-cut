@@ -1,0 +1,7 @@
+.ui-slider { position: relative; display: flex; width: 100%; height: 20px; align-items: center; touch-action: none; user-select: none; cursor: pointer; }
+.ui-slider[data-disabled] { cursor: not-allowed; opacity: .45; }
+.ui-slider-track { position: relative; flex: 1; height: 4px; overflow: hidden; border-radius: 999px; background: var(--border, #d9dce2); }
+.ui-slider-range { position: absolute; height: 100%; border-radius: inherit; background: var(--blue, #06c); }
+.ui-slider-thumb { display: block; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; outline: none; background: var(--blue, #06c); box-shadow: 0 1px 3px rgba(0, 0, 0, .22); cursor: grab; }
+.ui-slider-thumb:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue, #06c) 25%, transparent); }
+.ui-slider-thumb:active { cursor: grabbing; }
