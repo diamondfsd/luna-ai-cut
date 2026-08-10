@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Settings2, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
+import { useStorageMigration } from '../hooks/useStorageMigration'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
-import { Button, Input, toast } from '../ui'
+import { Button, Dialog, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
 interface SettingsPageProps {
@@ -27,9 +28,11 @@ interface DirectorySettingRowProps {
   path: string
   onOpen: () => void
   onChange: () => void | Promise<void>
+  onMigrate?: () => void
+  migrating?: boolean
 }
 
-function DirectorySettingRow({ label, path, onOpen, onChange }: DirectorySettingRowProps) {
+function DirectorySettingRow({ label, path, onOpen, onChange, onMigrate, migrating = false }: DirectorySettingRowProps) {
   return (
     <article className="settings-row">
       <div className="settings-row-copy">
@@ -43,6 +46,11 @@ function DirectorySettingRow({ label, path, onOpen, onChange }: DirectorySetting
         <Button variant="primary" size="compact" onClick={() => void onChange()} icon={<FolderOpen size={15} />}>
           更改
         </Button>
+        {onMigrate && (
+          <Button variant="secondary" size="compact" disabled={migrating} onClick={onMigrate} icon={<ArrowRightLeft size={15} />}>
+            {migrating ? '迁移中' : '迁移'}
+          </Button>
+        )}
       </div>
     </article>
   )
@@ -65,6 +73,8 @@ export function SettingsPage({
   const [logDir, setLogDir] = useState('')
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
+  const [gpuPreviewConfirmOpen, setGpuPreviewConfirmOpen] = useState(false)
+  const { migrating, migrate } = useStorageMigration(settings, setSettings)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -130,6 +140,12 @@ export function SettingsPage({
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
+  function saveGpuPreviewSetting(enabled: boolean): void {
+    const patch = { experimentalGpuPreview: enabled }
+    setSettings((current) => (current ? { ...current, ...patch } : current))
+    void window.luna.saveSettings(patch).then(setSettings)
+  }
+
   return (
     <section className="settings-surface">
       <div className="settings-list">
@@ -138,13 +154,15 @@ export function SettingsPage({
           <div className="settings-card">
             <DirectorySettingRow
               label="基础目录"
-              path={settings?.downloadDir ?? ''}
-              onOpen={() => openDirectory(settings?.downloadDir)}
+              path={settings?.baseDir ?? ''}
+              onOpen={() => openDirectory(settings?.baseDir)}
               onChange={chooseBaseDir}
+              onMigrate={() => void migrate()}
+              migrating={migrating}
             />
             <DirectorySettingRow
               label="下载目录"
-              path={settings?.localResourcesDir ?? (settings?.downloadDir ? `${settings.downloadDir}/localResources` : '')}
+              path={settings?.localResourcesDir ?? (settings?.baseDir ? `${settings.baseDir}/localResources` : '')}
               onOpen={() => openDirectory(settings?.localResourcesDir)}
               onChange={chooseLocalResourcesDir}
             />
@@ -157,13 +175,13 @@ export function SettingsPage({
             <article className="settings-row">
               <div className="settings-row-copy">
                 <span>LUT 目录</span>
-                <strong>{settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : '未设置')}</strong>
+                <strong>{settings?.lutDir || (settings?.baseDir ? `${settings.baseDir}/luts` : '未设置')}</strong>
               </div>
               <div className="settings-row-actions">
                 <Button variant="secondary" size="compact" onClick={() => setLutManagementOpen(true)} icon={<Settings2 size={15} />}>
                   管理
                 </Button>
-                <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : null))} icon={<FolderOpen size={15} />}>
+                <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.lutDir || (settings?.baseDir ? `${settings.baseDir}/luts` : null))} icon={<FolderOpen size={15} />}>
                   打开
                 </Button>
                 <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={async () => {
@@ -197,6 +215,27 @@ export function SettingsPage({
                 <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'}</em>
               </div>
               <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
+            </article>
+          </div>
+        </section>
+
+        <section className="settings-group">
+          <h2 className="settings-group-title">实验性功能</h2>
+          <div className="settings-card">
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>GPU 预览加速</span>
+                <em>减少预览和时间跳转时的等待；部分设备上可能存在显示兼容问题</em>
+              </div>
+              <Switch
+                checked={settings?.experimentalGpuPreview ?? false}
+                disabled={!settings}
+                ariaLabel="GPU 预览加速"
+                onCheckedChange={(enabled) => {
+                  if (enabled) setGpuPreviewConfirmOpen(true)
+                  else saveGpuPreviewSetting(false)
+                }}
+              />
             </article>
           </div>
         </section>
@@ -269,6 +308,21 @@ export function SettingsPage({
         onDefaultChange={handleDefaultWatermarkChange}
       />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
+      <Dialog
+        open={gpuPreviewConfirmOpen}
+        onOpenChange={setGpuPreviewConfirmOpen}
+        title="开启 GPU 预览加速？"
+        description="部分 Windows 设备可能出现黑屏、无法预览或画面异常。如果遇到这些情况，请返回设置关闭 GPU 预览加速。"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setGpuPreviewConfirmOpen(false)}>取消</Button>
+            <Button variant="primary" onClick={() => {
+              setGpuPreviewConfirmOpen(false)
+              saveGpuPreviewSetting(true)
+            }}>仍然开启</Button>
+          </>
+        )}
+      />
     </section>
   )
 }

@@ -3,21 +3,20 @@
  *
  * 职责：
  * - 任务 CRUD（创建/追加/更新/查询/取消）
- * - JSON 文件持久化（userData/.luna-cache/export-tasks.json）
+ * - JSON 文件持久化（基础目录/cache/export-tasks.json）
  * - 父任务自动聚合（recalcTask）
  *
  * ExportItemInput 只需 { id, sourcePath, outputPath }，
  * fileName/kind/destinationPath 由 service 自动推断。
  */
 
-import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, basename, extname } from 'node:path'
+import { currentBaseDir } from './settingsService'
 import type { ExportTaskRecord, ExportTaskItem, ExportItemUpdate, ExportItemInput } from '../src/shared/types/export'
 
 // ── 常量 ──
 
-const CACHE_DIR = '.luna-cache'
 const FILE_NAME = 'export-tasks.json'
 const MAX_TASKS = 200
 const PRUNE_DAYS = 30
@@ -31,7 +30,7 @@ let loaded = false
 // ── 文件路径 ──
 
 function filePath(): string {
-  const dir = join(app.getPath('userData'), CACHE_DIR)
+  const dir = join(currentBaseDir(), 'cache')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return join(dir, FILE_NAME)
 }

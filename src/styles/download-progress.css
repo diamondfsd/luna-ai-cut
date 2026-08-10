@@ -244,6 +244,8 @@
   font-size: 11px;
 }
 
+.dl-file-error { color: var(--danger, #d92d20); font-size: 11px; line-height: 1.35; }
+
 .dl-file-progress-track {
   height: 3px;
   border-radius: 999px;

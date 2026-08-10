@@ -11,7 +11,7 @@ import { detectInsta360ILog } from './iLogDetection'
 
 import { downloadToFile } from './fileDownloadService'
 import { safeName } from './filePathUtils'
-import { previewCacheDir } from './settingsService'
+import { currentBaseDir, previewCacheDir } from './settingsService'
 import type { LunaFile, MediaMetadata, MetadataEntry } from '../src/shared/types'
 import { readMediaDeviceInfo } from './exifReader'
 
@@ -19,7 +19,7 @@ const _require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
 
 // ─── EXIF 元数据缓存（持久化 JSON） ─────────────────────
-// 缓存文件以 source URL 的 MD5 命名，存放于 cache_metadata 目录
+// 缓存文件以 source URL 的 MD5 命名，存放于基础目录的 cache/metadata 目录
 // 同时记录源文件 mtime，源文件变更时自动失效
 
 interface MetadataCacheEntry {
@@ -31,7 +31,7 @@ interface MetadataCacheEntry {
 const METADATA_CACHE_VERSION = 3
 
 function metadataCacheDir(): string {
-  return path.join(app.getPath('userData'), 'cache_metadata')
+  return path.join(currentBaseDir(), 'cache', 'metadata')
 }
 
 function cacheKeyFor(file: LunaFile): string {

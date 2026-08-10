@@ -29,10 +29,16 @@ export async function writeAiSelectionItemCache(
 ): Promise<void> {
   if (item.error) return
   const destination = itemCachePath(cacheRoot, analysisVersion, item.id, preset)
+  const cachedItem = structuredClone(item)
+  cachedItem.state = 'undecided'
+  cachedItem.decisionSource = 'ai'
+  cachedItem.videoSegments = cachedItem.videoSegments.map((segment) => segment.decisionSource === 'user'
+    ? { ...segment, state: segment.status === 'usable' ? 'recommended' : 'undecided', decisionSource: 'ai' }
+    : segment)
   await fs.mkdir(path.dirname(destination), { recursive: true })
   const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
   try {
-    await fs.writeFile(temporary, `${JSON.stringify(item)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+    await fs.writeFile(temporary, `${JSON.stringify(cachedItem)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     await fs.rm(destination, { force: true })
     await fs.rename(temporary, destination)
   } finally {

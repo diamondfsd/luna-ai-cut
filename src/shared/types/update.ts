@@ -10,6 +10,10 @@ export interface HotUpdateManifest {
   version: string
   zipName: string
   minAppVersion: string
+  integrity?: {
+    sha256: string
+    sizeBytes: number
+  }
 }
 
 export interface HotUpdateCheckResult {

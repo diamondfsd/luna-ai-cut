@@ -3,9 +3,10 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 import { DEFAULT_DEVICE } from './deviceDefaults'
+import { migrateBaseDirectory } from './settingsMigration'
+import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
 import type { AppSettings } from '../src/shared/types'
 
-const SETTINGS_FILE = 'settings.json'
 const WORKSPACE_MEDIA_FILE_LIMIT = 2_000
 const WORKSPACE_MEDIA_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif', '.tiff', '.heic', '.heif',
@@ -56,39 +57,56 @@ function e2eWorkspaceMediaPaths(): string[] | null {
 }
 
 function settingsPath(): string {
-  return path.join(app.getPath('userData'), SETTINGS_FILE)
+  if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
+  return stableSettingsPath(app.getPath('appData'))
 }
 
-export function cacheDir(): string {
-  return path.join(app.getPath('userData'), 'cache')
+function legacyPath(): string {
+  return legacySettingsPath(app.getPath('userData'))
+}
+
+export function cacheDir(baseDir: string): string {
+  return path.join(baseDir, 'cache')
+}
+
+export function previewCacheDirForBaseDir(baseDir: string): string {
+  return path.join(cacheDir(baseDir), 'previews')
+}
+
+export function logDirForBaseDir(baseDir: string): string {
+  return path.join(baseDir, 'logs')
 }
 
 /** 获取有效的本地资源目录路径 */
 export function getLocalResourcesDir(settings: AppSettings): string {
-  return settings.localResourcesDir || path.join(settings.downloadDir, 'localResources')
+  return settings.localResourcesDir || path.join(settings.baseDir, 'localResources')
 }
 
 export async function previewCacheDir(): Promise<string> {
-  // 使用 userData 目录（C:\Users\<用户>\AppData\Roaming\luna-ai-cut），
-  // 不跟 downloadDir 走，避免 SD 卡/U 盘等不可写盘符导致 EPERM
-  return path.join(app.getPath('userData'), 'cache_previews')
+  return previewCacheDirForBaseDir((await getSettings()).baseDir)
 }
 
-function defaultDownloadDir(): string {
+function defaultBaseDir(): string {
   return path.join(app.getPath('pictures'), 'LunaAI-Cut')
 }
 
 function defaultExportDir(): string {
-  return path.join(defaultDownloadDir(), 'export')
+  return path.join(defaultBaseDir(), 'export')
+}
+
+export function currentBaseDir(): string {
+  const fallback = defaultBaseDir()
+  const saved = readStoredSettingsSync<StoredSettings>(settingsPath(), legacyPath()).value
+  return saved ? migrateBaseDirectory(saved, fallback).baseDir : fallback
 }
 
 function defaultSettings(): AppSettings {
-  const dl = defaultDownloadDir()
+  const baseDir = defaultBaseDir()
   return {
-    downloadDir: dl,
-    localResourcesDir: path.join(dl, 'localResources'),
+    baseDir,
+    localResourcesDir: path.join(baseDir, 'localResources'),
     exportDir: defaultExportDir(),
-    cacheDir: cacheDir(),
+    cacheDir: cacheDir(baseDir),
     cameraHost: DEFAULT_DEVICE.defaultHost,
     cameraConnectionMode: 'wireless',
     mountedCameraRoot: '',
@@ -107,20 +125,20 @@ function defaultSettings(): AppSettings {
   }
 }
 
-async function readSettingsFile(): Promise<Partial<AppSettings> | null> {
-  try {
-    return JSON.parse(await fs.readFile(settingsPath(), 'utf-8')) as Partial<AppSettings>
-  } catch {
-    return null
-  }
+type StoredSettings = Partial<AppSettings> & { downloadDir?: string }
+
+async function readSettingsFile() {
+  return readStoredSettings<StoredSettings>(settingsPath(), legacyPath())
 }
 
-function mergeSettings(saved: Partial<AppSettings> | null): AppSettings {
+function mergeSettings(saved: StoredSettings | null): AppSettings {
   const defaults = defaultSettings()
+  const savedSettings = migrateBaseDirectory(saved ?? {}, defaults.baseDir)
   const merged = {
     ...defaults,
-    ...(saved ?? {}),
-    cacheDir: cacheDir(),
+    ...savedSettings,
+    baseDir: savedSettings.baseDir,
+    cacheDir: cacheDir(savedSettings.baseDir),
   }
   merged.defaultWatermarkEnabled = typeof saved?.defaultWatermarkEnabled === 'boolean'
     ? saved.defaultWatermarkEnabled
@@ -144,17 +162,25 @@ function mergeSettings(saved: Partial<AppSettings> | null): AppSettings {
 }
 
 async function readSettingsWithoutWriting(): Promise<AppSettings> {
-  return mergeSettings(await readSettingsFile())
+  return mergeSettings((await readSettingsFile()).value)
 }
 
 export async function getSettings(): Promise<AppSettings> {
-  const saved = await readSettingsFile()
+  const stored = await readSettingsFile()
+  const saved = stored.value
   if (!saved) {
     const defaults = defaultSettings()
     await saveSettings(defaults)
     return defaults
   }
-  return mergeSettings(saved)
+  const merged = mergeSettings(saved)
+  if (stored.fromLegacyPath || (saved.downloadDir && !saved.baseDir)) await writeSettingsFile(merged)
+  return merged
+}
+
+async function writeSettingsFile(settings: AppSettings): Promise<void> {
+  await fs.mkdir(path.dirname(settingsPath()), { recursive: true })
+  await fs.writeFile(settingsPath(), JSON.stringify(settings, null, 2), 'utf-8')
 }
 
 export async function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
@@ -162,24 +188,23 @@ export async function saveSettings(partial: Partial<AppSettings>): Promise<AppSe
   const next = {
     ...current,
     ...partial,
-    cacheDir: cacheDir(),
   }
-  await fs.mkdir(path.dirname(settingsPath()), { recursive: true })
-  await fs.writeFile(settingsPath(), JSON.stringify(next, null, 2), 'utf-8')
+  next.cacheDir = cacheDir(next.baseDir)
+  await writeSettingsFile(next)
   return next
 }
 
-export async function chooseDownloadDir(): Promise<string | null> {
+export async function chooseBaseDir(): Promise<string | null> {
   const settings = await getSettings()
   const result = await dialog.showOpenDialog({
-    defaultPath: settings.downloadDir,
+    defaultPath: settings.baseDir,
     properties: ['openDirectory', 'createDirectory'],
-    title: '选择下载目录',
+    title: '选择基础目录',
   })
 
   if (result.canceled || result.filePaths.length === 0) return null
 
-  await saveSettings({ downloadDir: result.filePaths[0] })
+  await saveSettings({ baseDir: result.filePaths[0] })
   return result.filePaths[0]
 }
 

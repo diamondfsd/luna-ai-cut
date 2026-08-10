@@ -74,6 +74,11 @@ try {
   assert.ok(video?.previewUrl?.endsWith('LRV_20260721_120001.lrv'), 'video uses the related LRV preview')
   assert.equal(video?.downloadName, 'VID_20260721_120001.mp4', 'video download keeps the original file name')
   assert.equal(mounted.MOUNTED_CAMERA_CAPABILITIES.delete, true, 'mounted source deletion is enabled')
+  assert.deepEqual(
+    await mounted.resolveMountedCameraVolumes(),
+    [],
+    '未选择相机磁盘时不能自动扫描其他本地磁盘',
+  )
 
   const imagePath = path.join(mediaDir, image.name)
   const imageDelete = await mounted.deleteMountedCameraFiles(tempRoot, [image])

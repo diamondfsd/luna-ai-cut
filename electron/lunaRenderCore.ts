@@ -15,7 +15,7 @@ import {
   type RenderLayerTransform,
   cleanNativeInputValue,
 } from './lunaRenderCoreNormalize'
-import { logMainInfo } from './loggerService'
+import { getLogDir, logMainInfo } from './loggerService'
 
 const require = createRequire(import.meta.url)
 
@@ -249,7 +249,7 @@ function clearInitGuard(): void {
 
 function nativeLogPath(logPath?: string): string {
   if (logPath) return logPath
-  const logDir = join(app.getPath('userData'), 'logs')
+  const logDir = getLogDir()
   mkdirSync(logDir, { recursive: true })
   return join(logDir, 'luna-rc.log')
 }

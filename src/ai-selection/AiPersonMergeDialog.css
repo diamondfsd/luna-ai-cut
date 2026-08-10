@@ -1,11 +1,198 @@
-.ai-person-merge-dialog.ui-dialog-content { width: min(520px, 92vw); }
-.ai-person-merge-body { max-height: min(620px, 70vh); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
-.ai-person-merge-body > section { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.ai-person-merge-body > section > strong { font-size: 12px; }
-.ai-person-merged-list { display: flex; flex-direction: column; gap: 5px; }
-.ai-person-merged-list > div { min-height: 46px; padding: 5px 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-.ai-person-merged-list > div > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.ai-person-merged-avatar { width: 34px; height: 34px; overflow: hidden; border-radius: 50%; background: #e5e7ea; color: var(--text-secondary, #6e6e73); display: grid; place-items: center; }
-.ai-person-merged-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.ai-person-merge-empty { padding: 12px 8px; color: var(--text-secondary, #6e6e73); font-size: 11px; }
-.ai-person-merge-body .ai-selection-person-merge-list { max-height: 300px; padding: 0; }
+.merge-dialog.ui-dialog-content {
+  width: min(848px, calc(100vw - 48px));
+  height: auto;
+  max-height: min(760px, calc(100vh - 40px));
+}
+
+.merge-dialog.ui-dialog-content.is-medium {
+  width: min(592px, calc(100vw - 48px));
+}
+
+.merge-dialog.ui-dialog-content.is-compact {
+  width: min(456px, calc(100vw - 48px));
+}
+
+.merge-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px;
+  box-sizing: border-box;
+  scrollbar-gutter: stable;
+}
+
+.merge-dialog-section {
+  min-width: 0;
+}
+
+.merge-dialog-section + .merge-dialog-section {
+  margin-top: 28px;
+}
+
+.merge-dialog-section-merged {
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border, #d9dce2);
+}
+
+.merge-dialog-section-title {
+  margin: 0 0 12px;
+  color: var(--text-primary, #1d1d1f);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.merge-dialog-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 120px);
+  gap: 16px;
+  align-items: start;
+}
+
+.merge-dialog-card-wrap,
+.merge-dialog-card {
+  position: relative;
+  width: 120px;
+  height: 148px;
+  min-width: 120px;
+  min-height: 148px;
+  box-sizing: border-box;
+}
+
+.merge-dialog-card {
+  display: grid;
+  grid-template-rows: 120px 20px;
+  gap: 4px;
+  align-content: start;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border, #d9dce2);
+  border-radius: 7px;
+  background: var(--surface, #fff);
+  color: var(--text-primary, #1d1d1f);
+  text-align: left;
+}
+
+.merge-dialog-card-selectable.ui-btn {
+  display: grid;
+  align-items: start;
+  justify-content: stretch;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 7px;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.merge-dialog-card-selectable:hover {
+  border-color: var(--blue, #06c);
+}
+
+.merge-dialog-card-media {
+  display: block;
+  width: 100%;
+  height: 120px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--bg, #f5f6f8);
+}
+
+.merge-dialog-card-media .merge-dialog-avatar,
+.merge-dialog-card-media .ai-selection-face-group-cover {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border-radius: 0;
+  flex: none !important;
+}
+
+.merge-dialog-card-media .merge-dialog-avatar img,
+.merge-dialog-card-media .ai-selection-face-group-cover img {
+  border-radius: 0;
+}
+
+.merge-dialog-card-info {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  height: 20px;
+  gap: 4px;
+}
+
+.merge-dialog-card-name,
+.merge-dialog-card-count {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 20px;
+}
+
+.merge-dialog-card-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text-primary, #1d1d1f);
+  font-size: 13px;
+}
+
+.merge-dialog-card-count {
+  flex: 0 0 auto;
+  max-width: 38px;
+  color: var(--text-secondary, #6e6e73);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.merge-dialog-remove.ui-icon-btn {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  border: 1px solid rgba(231, 76, 60, .75);
+  background: rgba(255, 255, 255, .94);
+  color: #e74c3c;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+}
+
+.merge-dialog-remove.ui-icon-btn:hover,
+.merge-dialog-remove.ui-icon-btn:focus-visible {
+  background: #fff;
+  color: #c63429;
+}
+
+.merge-dialog-empty {
+  margin: 0;
+  padding: 18px 8px;
+  color: var(--text-secondary, #6e6e73);
+  font-size: 12px;
+}
+
+@media (max-width: 680px) {
+  .merge-dialog.ui-dialog-content {
+    width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+  }
+
+  .merge-dialog.ui-dialog-content.is-compact {
+    width: min(456px, calc(100vw - 32px));
+  }
+
+  .merge-dialog-body {
+    padding: 18px 16px 24px;
+  }
+
+  .merge-dialog-card-list {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  .merge-dialog-body {
+    padding: 14px 12px 20px;
+  }
+
+  .merge-dialog-card-list {
+    grid-template-columns: repeat(2, 120px);
+    gap: 10px;
+  }
+}

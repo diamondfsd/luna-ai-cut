@@ -76,10 +76,10 @@ export function useMediaLibraryTransferActions({
     ))
   }
 
-  async function restoreDownloadedRecords(nextFiles = files, downloadDir = settings?.downloadDir): Promise<void> {
-    if (!downloadDir || nextFiles.length === 0) return
+  async function restoreDownloadedRecords(nextFiles = files): Promise<void> {
+    if (!settings || nextFiles.length === 0) return
     try {
-      const records = await window.luna.getDownloadedRecords(nextFiles, downloadDir)
+      const records = await window.luna.getDownloadedRecords(nextFiles)
       const recordByName = new Map(records.map((record) => [record.fileName, record]))
       const fileNames = new Set(nextFiles.map((file) => file.name))
       const syncFile = (file: LunaFile): LunaFile => {
@@ -123,8 +123,8 @@ export function useMediaLibraryTransferActions({
     if (!settings || selectedFiles.length === 0) return
 
     let toDownload = selectedFiles
-    if (settings.downloadDir) {
-      const records = await window.luna.getDownloadedRecords(selectedFiles, settings.downloadDir)
+    {
+      const records = await window.luna.getDownloadedRecords(selectedFiles)
       const recordByName = new Map(records.map((record) => [record.fileName, record]))
       if (records.length > 0) {
         for (const record of records) {
@@ -184,8 +184,8 @@ export function useMediaLibraryTransferActions({
 
   async function downloadOne(file: LunaFile): Promise<void> {
     if (!settings) return
-    if (settings.downloadDir) {
-      const records = await window.luna.getDownloadedRecords([file], settings.downloadDir)
+    {
+      const records = await window.luna.getDownloadedRecords([file])
       const existing = records[0]
       if (existing) {
         markFileDownloaded(file.name, existing.path)

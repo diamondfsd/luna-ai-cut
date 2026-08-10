@@ -10,12 +10,12 @@ function safePathSegment(value: string, fallback: string): string {
   return value.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || fallback
 }
 
-function projectDirectory(downloadDir: string, projectId: string): string {
+function projectDirectory(baseDir: string, projectId: string): string {
   const safeProjectId = safePathSegment(projectId, '')
   if (!safeProjectId || safeProjectId !== projectId || projectId === '.' || projectId === '..') {
     throw new Error('项目标识无效')
   }
-  const root = path.resolve(downloadDir, PROJECTS_DIR)
+  const root = path.resolve(baseDir, PROJECTS_DIR)
   const directory = path.resolve(root, safeProjectId)
   const relative = path.relative(root, directory)
   if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
@@ -24,12 +24,12 @@ function projectDirectory(downloadDir: string, projectId: string): string {
   return directory
 }
 
-function maskDirectory(downloadDir: string, projectId: string): string {
-  return path.join(projectDirectory(downloadDir, projectId), MASKS_DIR)
+function maskDirectory(baseDir: string, projectId: string): string {
+  return path.join(projectDirectory(baseDir, projectId), MASKS_DIR)
 }
 
-async function resolveExistingMaskPath(downloadDir: string, projectId: string, filePath: string): Promise<string> {
-  const root = await fs.realpath(maskDirectory(downloadDir, projectId))
+async function resolveExistingMaskPath(baseDir: string, projectId: string, filePath: string): Promise<string> {
+  const root = await fs.realpath(maskDirectory(baseDir, projectId))
   const resolved = await fs.realpath(path.resolve(filePath))
   if (!resolved.startsWith(`${root}${path.sep}`)) {
     throw new Error('蒙版文件不属于当前项目')
@@ -75,7 +75,7 @@ function parsePgm(buffer: Buffer): { width: number; height: number; bytes: Uint8
 }
 
 export async function saveColorMask(
-  downloadDir: string,
+  baseDir: string,
   projectId: string,
   assetId: string,
   width: number,
@@ -88,9 +88,9 @@ export async function saveColorMask(
   const bytes = new Uint8Array(input)
   if (bytes.byteLength !== pixels) throw new Error('蒙版数据与尺寸不匹配')
 
-  const projectDir = projectDirectory(downloadDir, projectId)
+  const projectDir = projectDirectory(baseDir, projectId)
   await fs.access(path.join(projectDir, 'project.json'))
-  const masksDir = maskDirectory(downloadDir, projectId)
+  const masksDir = maskDirectory(baseDir, projectId)
   await fs.mkdir(masksDir, { recursive: true })
   const [realProjectDir, realMasksDir] = await Promise.all([fs.realpath(projectDir), fs.realpath(masksDir)])
   if (!realMasksDir.startsWith(`${realProjectDir}${path.sep}`)) throw new Error('蒙版目录不属于当前项目')
@@ -109,17 +109,17 @@ export async function saveColorMask(
 }
 
 export async function loadColorMask(
-  downloadDir: string,
+  baseDir: string,
   projectId: string,
   filePath: string,
 ): Promise<{ width: number; height: number; bytes: ArrayBuffer }> {
-  const parsed = parsePgm(await fs.readFile(await resolveExistingMaskPath(downloadDir, projectId, filePath)))
+  const parsed = parsePgm(await fs.readFile(await resolveExistingMaskPath(baseDir, projectId, filePath)))
   const bytes = parsed.bytes.buffer.slice(parsed.bytes.byteOffset, parsed.bytes.byteOffset + parsed.bytes.byteLength) as ArrayBuffer
   return { width: parsed.width, height: parsed.height, bytes }
 }
 
-export async function deleteColorMask(downloadDir: string, projectId: string, filePath: string): Promise<void> {
-  await fs.rm(await resolveExistingMaskPath(downloadDir, projectId, filePath), { force: true })
+export async function deleteColorMask(baseDir: string, projectId: string, filePath: string): Promise<void> {
+  await fs.rm(await resolveExistingMaskPath(baseDir, projectId, filePath), { force: true })
 }
 
 function collectPersistedMaskPaths(value: unknown, paths: Set<string>): void {
@@ -137,13 +137,13 @@ function collectPersistedMaskPaths(value: unknown, paths: Set<string>): void {
 }
 
 export async function cleanupUnreferencedColorMasks(
-  downloadDir: string,
+  baseDir: string,
   projectId: string,
   retainedPaths: string[],
   minimumAgeMs = DEFAULT_ORPHAN_GRACE_MS,
 ): Promise<{ deleted: number; retained: number }> {
-  const projectDir = projectDirectory(downloadDir, projectId)
-  const masksDir = maskDirectory(downloadDir, projectId)
+  const projectDir = projectDirectory(baseDir, projectId)
+  const masksDir = maskDirectory(baseDir, projectId)
   const project = JSON.parse(await fs.readFile(path.join(projectDir, 'project.json'), 'utf8')) as unknown
   const reachable = new Set<string>()
   collectPersistedMaskPaths(project, reachable)

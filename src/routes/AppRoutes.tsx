@@ -51,8 +51,8 @@ export function AppRoutes() {
   }, [])
 
   async function chooseBaseDir(): Promise<void> {
-    const dir = await window.luna.chooseDownloadDir()
-    if (dir) setSettings(await window.luna.saveSettings({ downloadDir: dir }))
+    const dir = await window.luna.chooseBaseDir()
+    if (dir) setSettings(await window.luna.saveSettings({ baseDir: dir }))
   }
 
   async function chooseLocalResourcesDir(): Promise<void> {
@@ -137,6 +137,7 @@ export function AppRoutes() {
               connectionMode={connectionMode}
               onConnectionModeChange={setConnectionMode}
               onChooseWiredCamera={chooseWiredCamera}
+              onStorageMigrated={setSettings}
             />
           )}
           {(cameraLibraryMounted || !showDeviceConnect) && (

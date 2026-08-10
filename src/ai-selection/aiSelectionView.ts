@@ -1,4 +1,4 @@
-import type { AiSelectionItem, AiSelectionState } from '../shared/types'
+import type { AiSelectionItem, AiSelectionSession, AiSelectionState } from '../shared/types'
 
 export type AiSelectionResultFilter = 'recommended' | 'attention' | 'kept' | 'rejected' | 'all'
 
@@ -26,4 +26,22 @@ export function stateLabel(state: AiSelectionState): string {
 
 export function countSimilarityGroups(items: AiSelectionItem[]): number {
   return new Set(items.map((item) => item.groupId).filter(Boolean)).size
+}
+
+export function aiSelectionAnalysisProgress(session: AiSelectionSession | null): { phaseCompleted: number; phaseTotal: number; overallCompleted: number; overallTotal: number } {
+  if (!session) return { phaseCompleted: 0, phaseTotal: 0, overallCompleted: 0, overallTotal: 0 }
+  const photos = session.items.filter((item) => item.kind === 'image')
+  const contentCompleted = photos.filter((item) => item.analysisState === 'failed' || Boolean(item.contentTagVersion || item.contentTagError)).length
+  const peopleCompleted = session.items.filter((item) => item.analysisState === 'failed' || Boolean(item.personEvidence) || item.semanticTags.includes('人物分析未完成')).length
+  const phase = session.phase === 'content'
+    ? { completed: contentCompleted, total: photos.length }
+    : session.phase === 'people'
+      ? { completed: peopleCompleted, total: session.items.length }
+      : { completed: session.counts.completed, total: session.counts.total }
+  return {
+    phaseCompleted: phase.completed,
+    phaseTotal: phase.total,
+    overallCompleted: session.counts.completed + contentCompleted + peopleCompleted,
+    overallTotal: session.counts.total + photos.length + session.items.length,
+  }
 }

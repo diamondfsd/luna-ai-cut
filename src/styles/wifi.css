@@ -283,6 +283,103 @@
   white-space: pre-wrap;
 }
 
+.device-connect-volumes {
+  display: grid;
+  gap: 10px;
+  margin-top: 28px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 22px;
+}
+
+.device-connect-volumes-header,
+.device-connect-storage {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.device-connect-volumes-header > div,
+.device-connect-storage > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.device-connect-volumes-header > div > span,
+.device-connect-volumes-empty,
+.device-connect-storage p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.device-connect-volumes-empty {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--parchment);
+  padding: 10px 12px;
+}
+
+.device-connect-volume-list {
+  display: grid;
+  gap: 7px;
+}
+
+.device-connect-volume {
+  width: 100%;
+  height: auto;
+  min-height: 48px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.device-connect-volume .ui-btn-icon {
+  align-self: flex-start;
+  margin-top: 1px;
+}
+
+.device-connect-volume > span:not(.ui-btn-icon) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.device-connect-volume > span:not(.ui-btn-icon),
+.device-connect-volume > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-connect-volume > span:not(.ui-btn-icon) {
+  font-weight: 600;
+}
+
+.device-connect-volume > small {
+  align-self: flex-end;
+  max-width: min(48%, 270px);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.device-connect-storage {
+  margin-top: 12px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 14px;
+}
+
+.device-connect-storage strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .device-connect-footer {
   display: flex;
   justify-content: flex-end;
@@ -368,5 +465,9 @@
 
   .device-connect-diagnostics-actions {
     justify-content: flex-start;
+  }
+
+  .device-connect-volumes-header {
+    align-items: flex-start;
   }
 }
