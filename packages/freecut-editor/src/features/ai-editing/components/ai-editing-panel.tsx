@@ -195,6 +195,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const submit = useAiEditingStore((state) => state.submit)
   const cancel = useAiEditingStore((state) => state.cancel)
   const startNewConversation = useAiEditingStore((state) => state.startNewConversation)
+  const resumeConversation = useAiEditingStore((state) => state.resumeConversation)
 
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
@@ -477,6 +478,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         open={historyDialogOpen}
         projectId={projectId}
         onOpenChange={setHistoryDialogOpen}
+        onResume={resumeConversation}
       />
       <AiProviderDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
       <AiEditingSkillsDialog open={skillsDialogOpen} onOpenChange={setSkillsDialogOpen} />

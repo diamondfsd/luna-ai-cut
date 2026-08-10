@@ -4,6 +4,7 @@ import {
   archiveAiEditingConversation,
   clearAiEditingConversation,
   loadAiEditingConversation,
+  resumeAiEditingConversation,
   saveAiEditingRun,
   saveAiEditingConversation,
 } from '@freecut/infrastructure/storage'
@@ -64,6 +65,7 @@ interface AiEditingState {
   setReasoningEffort: (effort: AiEditingReasoningEffort) => void
   cancel: () => void
   startNewConversation: () => Promise<void>
+  resumeConversation: (sessionId: string) => Promise<boolean>
 }
 
 let activeController: AbortController | null = null
@@ -84,19 +86,17 @@ function buildHistory(messages: AiEditingMessage[]): LlmMessage[] {
   }))
 }
 
-function enqueueConversationWrite(
-  projectId: string,
-  operation: () => Promise<void>,
-): Promise<void> {
+function enqueueConversationWrite<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
   const previous = conversationWrites.get(projectId) ?? Promise.resolve()
   const next = previous.catch(() => undefined).then(operation)
-  conversationWrites.set(projectId, next)
-  void next.then(
+  const completion = next.then(() => undefined)
+  conversationWrites.set(projectId, completion)
+  void completion.then(
     () => {
-      if (conversationWrites.get(projectId) === next) conversationWrites.delete(projectId)
+      if (conversationWrites.get(projectId) === completion) conversationWrites.delete(projectId)
     },
     () => {
-      if (conversationWrites.get(projectId) === next) conversationWrites.delete(projectId)
+      if (conversationWrites.get(projectId) === completion) conversationWrites.delete(projectId)
     },
   )
   return next
@@ -397,5 +397,46 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       isRestoringConversation: false,
       isStartingNewConversation: false,
     })
+  },
+
+  resumeConversation: async (sessionId) => {
+    if (
+      get().phase !== 'idle' ||
+      get().isStartingNewConversation ||
+      get().isRestoringConversation
+    ) {
+      return false
+    }
+    const projectId = get().projectId
+    if (!projectId) return false
+
+    activeController?.abort()
+    activeController = null
+    set({ isRestoringConversation: true, error: null })
+    try {
+      const messages = await enqueueConversationWrite(projectId, () =>
+        resumeAiEditingConversation(projectId, sessionId),
+      )
+      if (get().projectId !== projectId) return false
+      conversationLoadGeneration += 1
+      set({
+        messages,
+        observations: [],
+        toolActivities: [],
+        phase: 'idle',
+        streamingText: '',
+        thinkingPercent: 0,
+        thinkingCeiling: 0,
+        error: null,
+        isRestoringConversation: false,
+      })
+      return true
+    } catch (error) {
+      logger.warn('Failed to resume AI editing conversation', error)
+      if (get().projectId === projectId) {
+        set({ isRestoringConversation: false, error: '无法恢复这段历史会话，当前会话没有改变。' })
+      }
+      return false
+    }
   },
 }))
