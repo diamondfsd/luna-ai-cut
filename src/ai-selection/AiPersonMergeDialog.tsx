@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Trash2, UserRound } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 
 import type { AiFaceGroup, AiSelectionItem } from '../shared/types'
 import { Button, Dialog } from '../ui'
 import { AiFaceGroupCover } from './AiPeopleGroupCover'
+import { AiPersonIdentityAvatar } from './AiPersonIdentityAvatar'
 import './AiPersonMergeDialog.css'
 
 interface AiPersonMergeDialogProps {
@@ -41,7 +42,7 @@ export function AiPersonMergeDialog({ open, onOpenChange, group, groups, items, 
       <section>
         <strong>已合并</strong>
         {mergedMembers.length > 0 ? <div className="ai-person-merged-list">{mergedMembers.map((member) => <div key={member.id}>
-          <span className="ai-person-merged-avatar">{member.avatarDataUrl ? <img src={member.avatarDataUrl} alt="" /> : <UserRound size={18} />}</span>
+          <AiPersonIdentityAvatar {...member} className="ai-person-merged-avatar" />
           <span>{member.name}</span>
           <Button variant="danger" size="mini" icon={<Trash2 size={13} />} disabled={busy} onClick={() => void onUnmerge(member.id)}>移除</Button>
         </div>)}</div> : <span className="ai-person-merge-empty">当前没有已合并的人物</span>}

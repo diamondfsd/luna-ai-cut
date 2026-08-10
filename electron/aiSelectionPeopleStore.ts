@@ -7,7 +7,11 @@ export interface AiPersonIdentity {
   name: string
   samples: number[][]
   avatarDataUrl: string | null
+  coverUrl: string | null
+  coverBounds: { x: number; y: number; width: number; height: number } | null
   mergedIntoId: string | null
+  sourceGroupId: string | null
+  automaticMatching: boolean
   hidden: boolean
   confirmed: boolean
   createdAt: string
@@ -15,9 +19,13 @@ export interface AiPersonIdentity {
 }
 
 interface AiPeopleStore {
-  schemaVersion: 1 | 2 | 3 | 4
-  identities: Array<Omit<AiPersonIdentity, 'mergedIntoId' | 'hidden' | 'confirmed'> & {
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6
+  identities: Array<Omit<AiPersonIdentity, 'coverUrl' | 'coverBounds' | 'mergedIntoId' | 'sourceGroupId' | 'automaticMatching' | 'hidden' | 'confirmed'> & {
+    coverUrl?: string | null
+    coverBounds?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null
     mergedIntoId?: string | null
+    sourceGroupId?: string | null
+    automaticMatching?: boolean
     hidden?: boolean
     confirmed?: boolean
   }>
@@ -25,16 +33,35 @@ interface AiPeopleStore {
 
 const STORE_FILE = 'people.json'
 
+function validCoverBounds(value: AiPeopleStore['identities'][number]['coverBounds']): AiPersonIdentity['coverBounds'] {
+  if (!value || typeof value !== 'object') return null
+  const { x, y, width, height } = value
+  if (typeof x !== 'number' || !Number.isFinite(x)
+    || typeof y !== 'number' || !Number.isFinite(y)
+    || typeof width !== 'number' || !Number.isFinite(width)
+    || typeof height !== 'number' || !Number.isFinite(height)) return null
+  if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > 1 || y + height > 1) return null
+  return { x, y, width, height }
+}
+
 export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity[]> {
   try {
     const parsed = JSON.parse(await fs.readFile(path.join(rootDir, STORE_FILE), 'utf8')) as AiPeopleStore
-    if (![1, 2, 3, 4].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
+    if (![1, 2, 3, 4, 5, 6].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
     const identities = parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples)).map((identity) => ({
       ...identity,
       avatarDataUrl: typeof identity.avatarDataUrl === 'string' && identity.avatarDataUrl.startsWith('data:image/')
         ? identity.avatarDataUrl
         : null,
+      coverUrl: typeof identity.coverUrl === 'string' ? identity.coverUrl : null,
+      coverBounds: validCoverBounds(identity.coverBounds),
       mergedIntoId: typeof identity.mergedIntoId === 'string' ? identity.mergedIntoId : null,
+      sourceGroupId: typeof identity.sourceGroupId === 'string' ? identity.sourceGroupId : null,
+      // Naming a group must not be treated as a request to automatically merge
+      // every visually similar person. Existing data starts in the safe mode.
+      automaticMatching: identity.automaticMatching === true
+        || identity.hidden === true
+        || typeof identity.mergedIntoId === 'string',
       hidden: identity.hidden === true,
       // Older versions stored every automatic group globally. Only retain cross-task matching
       // for identities the user has actually confirmed through a person action.
@@ -74,7 +101,7 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
   const destination = path.join(rootDir, STORE_FILE)
   const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
   try {
-    const store: AiPeopleStore = { schemaVersion: 4, identities }
+    const store: AiPeopleStore = { schemaVersion: 6, identities }
     await fs.writeFile(temporary, `${JSON.stringify(store)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     try {
       await fs.rename(temporary, destination)
@@ -102,7 +129,12 @@ function rootIdentity(identity: AiPersonIdentity, byId: Map<string, AiPersonIden
   return current
 }
 
-export function createPersonIdentity(name: string, samples: number[] | number[][]): AiPersonIdentity {
+export function createPersonIdentity(
+  name: string,
+  samples: number[] | number[][],
+  sourceGroupId: string | null = null,
+  cover: Pick<AiPersonIdentity, 'coverUrl' | 'coverBounds'> = { coverUrl: null, coverBounds: null },
+): AiPersonIdentity {
   const now = new Date().toISOString()
   const normalized = Array.isArray(samples[0]) ? samples as number[][] : [samples as number[]]
   return {
@@ -110,7 +142,11 @@ export function createPersonIdentity(name: string, samples: number[] | number[][
     name,
     samples: normalized.map((sample) => [...sample]),
     avatarDataUrl: null,
+    coverUrl: cover.coverUrl,
+    coverBounds: cover.coverBounds ? { ...cover.coverBounds } : null,
     mergedIntoId: null,
+    sourceGroupId,
+    automaticMatching: false,
     hidden: false,
     confirmed: true,
     createdAt: now,

@@ -1,7 +1,6 @@
-import { UserRound } from 'lucide-react'
-
 import type { AiHiddenPerson } from '../shared/types'
 import { Button, Dialog } from '../ui'
+import { AiPersonIdentityAvatar } from './AiPersonIdentityAvatar'
 import './AiHiddenPeopleDialog.css'
 
 interface AiHiddenPeopleDialogProps {
@@ -23,7 +22,7 @@ export function AiHiddenPeopleDialog({ open, onOpenChange, people, busy, onResto
   >
     <div className="ai-hidden-people-list">
       {people.map((person) => <div key={person.id} className="ai-hidden-people-row">
-        <span className="ai-hidden-people-avatar">{person.avatarDataUrl ? <img src={person.avatarDataUrl} alt="" /> : <UserRound size={19} />}</span>
+        <AiPersonIdentityAvatar {...person} className="ai-hidden-people-avatar" />
         <strong title={person.name}>{person.name}</strong>
         <Button variant="secondary" size="mini" disabled={busy} onClick={() => void onRestore(person.id)}>恢复</Button>
       </div>)}

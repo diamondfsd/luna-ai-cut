@@ -176,14 +176,18 @@ export interface AiFaceGroup {
   coverUrl: string | null
   coverBounds: { x: number; y: number; width: number; height: number }
   memberFaces: Array<{ itemId: string; bounds: { x: number; y: number; width: number; height: number } }>
-  mergedMembers?: Array<{ id: string; name: string; avatarDataUrl: string | null }>
+  mergedMembers?: Array<AiPersonThumbnail>
 }
 
-export interface AiHiddenPerson {
+export interface AiPersonThumbnail {
   id: string
   name: string
   avatarDataUrl: string | null
+  coverUrl: string | null
+  coverBounds: { x: number; y: number; width: number; height: number } | null
 }
+
+export interface AiHiddenPerson extends AiPersonThumbnail {}
 
 export interface AiSelectionCounts {
   total: number
