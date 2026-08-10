@@ -99,6 +99,7 @@ export function AiSelectionPage() {
   const [filter, setFilter] = useState<AiSelectionResultFilter>('attention')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showFaceBoxes, setShowFaceBoxes] = useState(false)
+  const [copyingSelectedItems, setCopyingSelectedItems] = useState(false)
   const resultsContentRef = useRef<HTMLDivElement>(null)
   const filterRailRef = useRef<HTMLElement>(null)
   const sceneScrollFrameRef = useRef(0)
@@ -155,6 +156,10 @@ export function AiSelectionPage() {
     if (stage === 'review') return photos.filter((item) => matchesResultFilter(item, filter))
     return photos
   }, [activeGroup?.itemIds, activePeopleItemIds, filter, items, photos, sceneSections, stage])
+  const selectedVisibleItems = useMemo(
+    () => visibleItems.filter((item) => item.state === 'kept'),
+    [visibleItems],
+  )
   const focused = itemsById.get(focusedId) ?? null
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
   const peopleAnalysisActive = peopleAnalysis.running || (session?.status === 'analyzing' && session.phase === 'people')
@@ -173,6 +178,26 @@ export function AiSelectionPage() {
   function exportSelectedItems(): void {
     const paths = selectedItems.map((item) => item.path)
     if (paths.length > 0) showBatchExportModal(paths[0], paths)
+  }
+
+  async function copySelectedItems(): Promise<void> {
+    if (copyingSelectedItems || selectedVisibleItems.length === 0) return
+    setCopyingSelectedItems(true)
+    try {
+      const result = await window.luna.copyFilesToDirectory(selectedVisibleItems.map((item) => item.path))
+      if (!result) return
+      if (result.copiedCount === 0) {
+        toast.error('没有素材被复制，请确认原文件和目标文件夹可用')
+      } else if (result.failedCount > 0) {
+        toast.success(`已复制 ${result.copiedCount} 个素材，${result.failedCount} 个未能复制`)
+      } else {
+        toast.success(`已复制 ${result.copiedCount} 个素材`)
+      }
+    } catch {
+      toast.error('复制失败，请确认目标文件夹可用后重试')
+    } finally {
+      setCopyingSelectedItems(false)
+    }
   }
 
   function setItemState(item: AiSelectionItem, state: AiSelectionState): void {
@@ -413,7 +438,8 @@ export function AiSelectionPage() {
       <div className="ai-selection-sidebar-footer">
         {selectedItems.length > 0 && <span className="ai-selection-sidebar-footer-title">当前已选中 {selectedItems.length} 个素材</span>}
         <Button variant="secondary" disabled={!selectedItems.length} onClick={exportSelectedItems}>导出</Button>
-        <Button variant="primary" disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目</Button>
+        <Button variant="secondary" disabled={!selectedVisibleItems.length || copyingSelectedItems} onClick={() => void copySelectedItems()}>{copyingSelectedItems ? '正在复制...' : `复制到文件夹 (${selectedVisibleItems.length})`}</Button>
+        <Button variant="primary" className="ai-selection-create-project" disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目</Button>
       </div>
     </aside>
 

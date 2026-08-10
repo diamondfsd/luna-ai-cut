@@ -1,4 +1,4 @@
-import { app, ipcMain, nativeImage } from 'electron'
+import { app, dialog, ipcMain, nativeImage, type OpenDialogOptions } from 'electron'
 import { access, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -28,6 +28,7 @@ import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { detectInsta360ILog } from './iLogDetection'
 import { existingDragFiles } from './nativeFileDragService'
+import { copyLocalFilesToDirectory, sourcePathsForCopy } from './localFileCopyService'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
   const ext = path.extname(filePath).toLowerCase()
@@ -129,6 +130,20 @@ export function register(ctx: IpcContext): void {
     const files = existingDragFiles(requestedPaths)
     if (files.length === 0) return
     event.sender.startDrag({ file: files[0], files, icon: dragIcon(files, requestedThumbnailUrl) })
+  })
+  ipcMain.handle('files:copy-to-directory', async (_event, filePaths: unknown) => {
+    const sourcePaths = sourcePathsForCopy(filePaths)
+    if (sourcePaths.length === 0) throw new Error('请先选择素材')
+    const options: OpenDialogOptions = {
+      title: '选择复制目标文件夹',
+      properties: ['openDirectory', 'createDirectory'],
+    }
+    const parentWindow = ctx.win
+    const result = parentWindow
+      ? await dialog.showOpenDialog(parentWindow, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return null
+    return copyLocalFilesToDirectory(sourcePaths, result.filePaths[0])
   })
   ipcMain.handle('luna:cacheFile', async (_event, params: string | { sourceUrl: string; previewUrl?: string | null }) => {
     // 兼容旧格式（直接传 sourceUrl 字符串）
