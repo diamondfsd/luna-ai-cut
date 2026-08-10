@@ -9,8 +9,9 @@ import {
   analyzeAiSelectionVideos,
   cancelAiSelection,
   createProjectFromAiSelection,
-  deleteAiSelectionPerson,
   getAiSelectionSession,
+  hideAiSelectionPerson,
+  listAiSelectionHiddenPeople,
   listAiSelectionSessions,
   pauseAiSelection,
   mergeAiSelectionPeople,
@@ -18,6 +19,7 @@ import {
   renameAiSelectionPerson,
   removeAiSelectionSession,
   resumeAiSelection,
+  restoreAiSelectionPerson,
   setAiSelectionPersonAvatar,
   setAiSelectionNotifier,
   startAiSelection,
@@ -51,7 +53,9 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('ai-selection:set-person-avatar', (_event, sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => setAiSelectionPersonAvatar(sessionId, groupId, itemId, bounds))
   ipcMain.handle('ai-selection:merge-people', (_event, sessionId: string, targetGroupId: string, sourceGroupId: string) => mergeAiSelectionPeople(sessionId, targetGroupId, sourceGroupId))
   ipcMain.handle('ai-selection:unmerge-person', (_event, sessionId: string, targetGroupId: string, memberIdentityId: string) => unmergeAiSelectionPerson(sessionId, targetGroupId, memberIdentityId))
-  ipcMain.handle('ai-selection:delete-person', (_event, sessionId: string, groupId: string) => deleteAiSelectionPerson(sessionId, groupId))
+  ipcMain.handle('ai-selection:hide-person', (_event, sessionId: string, groupId: string) => hideAiSelectionPerson(sessionId, groupId))
+  ipcMain.handle('ai-selection:list-hidden-people', () => listAiSelectionHiddenPeople())
+  ipcMain.handle('ai-selection:restore-person', (_event, sessionId: string, personId: string) => restoreAiSelectionPerson(sessionId, personId))
   ipcMain.handle('ai-selection:analyze-content-tags', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionContentTags(sessionId, itemIds))
   ipcMain.handle('ai-selection:analyze-videos', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionVideos(sessionId, itemIds))
   ipcMain.handle('ai-selection:undo', (_event, sessionId: string) => undoAiSelection(sessionId))

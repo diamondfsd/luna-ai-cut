@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process'
-
-import type { AiSelectionItem, AiSelectionSession } from '../src/shared/types'
-import { buildFaceGroups, faceEmbeddingForGroup } from './aiSelectionFaceGroups'
-import { getFfmpegPath } from './ffmpeg/pipeline'
+import type { AiHiddenPerson, AiSelectionItem, AiSelectionSession } from '../src/shared/types'
+import { buildFaceGroups, faceEmbeddingsForGroup } from './aiSelectionFaceGroups'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore, type AiPersonIdentity } from './aiSelectionPeopleStore'
 
 let identities: AiPersonIdentity[] = []
@@ -25,7 +22,7 @@ function rootIdentity(identity: AiPersonIdentity): AiPersonIdentity {
 }
 
 function effectiveIdentities(): AiPersonIdentity[] {
-  return identities.filter((identity) => !identity.mergedIntoId).map((root) => {
+  return identities.filter((identity) => !identity.mergedIntoId && (identity.confirmed || identity.hidden)).map((root) => {
     const members = identities.filter((identity) => rootIdentity(identity).id === root.id)
     const samples = new Map(members.flatMap((identity) => identity.samples).map((sample) => [sample.join(','), sample]))
     return { ...root, samples: [...samples.values()] }
@@ -46,36 +43,14 @@ export function buildGlobalFaceGroups(items: AiSelectionItem[]) {
   }))
 }
 
-function nextDefaultName(): string {
-  const used = new Set(identities.map((identity) => identity.name))
-  for (let index = 1; ; index += 1) {
-    const name = `人物 ${index}`
-    if (!used.has(name)) return name
-  }
-}
-
-export async function registerGlobalPeople(storeDir: string, items: AiSelectionItem[]) {
-  const groups = buildGlobalFaceGroups(items)
-  let changed = false
-  for (const group of groups) {
-    if (group.identityId) continue
-    const sample = faceEmbeddingForGroup(items, group)
-    if (!sample) continue
-    identities.push(createPersonIdentity(nextDefaultName(), sample))
-    changed = true
-  }
-  if (changed) await savePeopleStore(storeDir, identities)
-  return changed ? buildGlobalFaceGroups(items) : groups
-}
-
 function ensureIdentity(session: AiSelectionSession, groupId: string): AiPersonIdentity {
   const group = session.faceGroups.find((candidate) => candidate.id === groupId)
   if (!group) throw new Error('人物分组不存在')
   const existing = group.identityId ? identities.find((identity) => identity.id === group.identityId) : null
   if (existing) return existing
-  const sample = faceEmbeddingForGroup(session.items, group)
-  if (!sample) throw new Error('这个人物缺少可复用的人脸信息，请重新分析后再试')
-  const identity = createPersonIdentity(group.name, sample)
+  const samples = faceEmbeddingsForGroup(session.items, group)
+  if (samples.length === 0) throw new Error('这个人物缺少可复用的人脸信息，请重新分析后再试')
+  const identity = createPersonIdentity(group.name, samples)
   identities.push(identity)
   return identity
 }
@@ -94,30 +69,11 @@ export async function setGlobalPersonAvatar(
   storeDir: string,
   session: AiSelectionSession,
   groupId: string,
-  itemId: string,
-  bounds: { x: number; y: number; width: number; height: number },
+  avatarDataUrl: string,
 ): Promise<void> {
-  const group = session.faceGroups.find((candidate) => candidate.id === groupId)
-  const item = session.items.find((candidate) => candidate.id === itemId)
-  if (!group || !item || item.kind !== 'image' || !group.itemIds.includes(itemId)) throw new Error('请选择当前人物的照片')
-  const values = [bounds.x, bounds.y, bounds.width, bounds.height]
-  if (!values.every(Number.isFinite) || bounds.width <= 0 || bounds.height <= 0
-    || bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > 1 || bounds.y + bounds.height > 1) {
-    throw new Error('头像选区无效，请重新选择')
-  }
-  const filter = `crop=iw*${bounds.width}:ih*${bounds.height}:iw*${bounds.x}:ih*${bounds.y},scale=256:256:flags=lanczos`
-  const avatar = await new Promise<Buffer>((resolve, reject) => {
-    execFile(getFfmpegPath(), ['-v', 'error', '-i', item.path, '-frames:v', '1', '-vf', filter, '-c:v', 'mjpeg', '-q:v', '3', '-f', 'image2pipe', 'pipe:1'], {
-      encoding: 'buffer',
-      maxBuffer: 1024 * 1024,
-    }, (error, stdout) => {
-      if (error) reject(new Error('头像生成失败，请重新选择'))
-      else resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout))
-    })
-  })
-  if (avatar.byteLength === 0 || avatar.byteLength > 512 * 1024) throw new Error('头像生成失败，请重新选择')
+  if (!avatarDataUrl.startsWith('data:image/jpeg;base64,')) throw new Error('头像生成失败，请重新选择')
   const identity = ensureIdentity(session, groupId)
-  identity.avatarDataUrl = `data:image/jpeg;base64,${avatar.toString('base64')}`
+  identity.avatarDataUrl = avatarDataUrl
   identity.updatedAt = new Date().toISOString()
   await savePeopleStore(storeDir, identities)
 }
@@ -145,6 +101,24 @@ export async function unmergeGlobalPerson(storeDir: string, session: AiSelection
 export async function hideGlobalPerson(storeDir: string, session: AiSelectionSession, groupId: string): Promise<void> {
   const identity = rootIdentity(ensureIdentity(session, groupId))
   identity.hidden = true
+  identity.confirmed = true
   identity.updatedAt = new Date().toISOString()
+  await savePeopleStore(storeDir, identities)
+}
+
+export function listHiddenGlobalPeople(): AiHiddenPerson[] {
+  return identities.filter((identity) => !identity.mergedIntoId && identity.hidden)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .map((identity) => ({ id: identity.id, name: identity.name, avatarDataUrl: identity.avatarDataUrl }))
+}
+
+export async function restoreGlobalPerson(storeDir: string, personId: string): Promise<void> {
+  const identity = identities.find((candidate) => candidate.id === personId)
+  if (!identity) throw new Error('已隐藏人物不存在')
+  const root = rootIdentity(identity)
+  if (!root.hidden) return
+  root.hidden = false
+  root.confirmed = true
+  root.updatedAt = new Date().toISOString()
   await savePeopleStore(storeDir, identities)
 }

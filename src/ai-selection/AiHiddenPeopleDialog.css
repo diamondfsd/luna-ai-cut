@@ -1,0 +1,7 @@
+.ai-hidden-people-dialog.ui-dialog-content { width: min(440px, calc(100vw - 40px)); }
+.ai-hidden-people-list { display: flex; flex-direction: column; gap: 8px; }
+.ai-hidden-people-row { min-width: 0; padding: 8px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.ai-hidden-people-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.ai-hidden-people-avatar { width: 32px; height: 32px; overflow: hidden; border-radius: 50%; background: var(--bg, #f5f6f8); display: grid; place-items: center; color: var(--text-secondary, #6e6e73); }
+.ai-hidden-people-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ai-hidden-people-empty { padding: 18px 4px; color: var(--text-secondary, #6e6e73); font-size: 12px; text-align: center; }

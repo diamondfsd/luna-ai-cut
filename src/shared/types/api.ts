@@ -23,6 +23,7 @@ import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOpt
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
 import type {
   AiSelectionProgress,
+  AiHiddenPerson,
   AiSelectionSession,
   AiSelectionStartRequest,
   AiSelectionUserOperation,
@@ -256,7 +257,9 @@ export interface LunaApi {
     setPersonAvatar(sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession>
     mergePeople(sessionId: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession>
     unmergePerson(sessionId: string, targetGroupId: string, memberIdentityId: string): Promise<AiSelectionSession>
-    deletePerson(sessionId: string, groupId: string): Promise<AiSelectionSession>
+    hidePerson(sessionId: string, groupId: string): Promise<AiSelectionSession>
+    listHiddenPeople(): Promise<AiHiddenPerson[]>
+    restorePerson(sessionId: string, personId: string): Promise<AiSelectionSession>
     analyzeContentTags(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     analyzeVideos(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     undo(sessionId: string): Promise<AiSelectionSession>
