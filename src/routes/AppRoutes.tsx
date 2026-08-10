@@ -135,6 +135,7 @@ export function AppRoutes() {
               connectionMode={connectionMode}
               onConnectionModeChange={setConnectionMode}
               onChooseWiredCamera={chooseWiredCamera}
+              onStorageMigrated={setSettings}
             />
           )}
           {(cameraLibraryMounted || !showDeviceConnect) && (

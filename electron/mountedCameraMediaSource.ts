@@ -132,9 +132,10 @@ export async function detectMountedCameraVolumes(): Promise<MountedCameraVolume[
 }
 
 export async function resolveMountedCameraVolumes(preferredRoot?: string): Promise<MountedCameraVolume[]> {
-  const detected = await detectMountedCameraVolumes()
   const preferred = preferredRoot ? await inspectVolume(preferredRoot, false) : null
-  const volumes = preferred ? [...detected, preferred] : detected
+  if (preferred) return [preferred]
+
+  const volumes = await detectMountedCameraVolumes()
   const unique = new Map<string, MountedCameraVolume>()
   for (const volume of volumes) {
     const mediaRootsKey = [...volume.mediaRoots].sort().join('\0')
