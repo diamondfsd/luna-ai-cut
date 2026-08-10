@@ -2,6 +2,11 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
+export interface AiPersonSourceFace {
+  itemId: string
+  bounds: { x: number; y: number; width: number; height: number }
+}
+
 export interface AiPersonIdentity {
   id: string
   name: string
@@ -11,6 +16,7 @@ export interface AiPersonIdentity {
   coverBounds: { x: number; y: number; width: number; height: number } | null
   mergedIntoId: string | null
   sourceGroupId: string | null
+  sourceFace: AiPersonSourceFace | null
   automaticMatching: boolean
   hidden: boolean
   confirmed: boolean
@@ -19,12 +25,13 @@ export interface AiPersonIdentity {
 }
 
 interface AiPeopleStore {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6
-  identities: Array<Omit<AiPersonIdentity, 'coverUrl' | 'coverBounds' | 'mergedIntoId' | 'sourceGroupId' | 'automaticMatching' | 'hidden' | 'confirmed'> & {
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  identities: Array<Omit<AiPersonIdentity, 'coverUrl' | 'coverBounds' | 'mergedIntoId' | 'sourceGroupId' | 'sourceFace' | 'automaticMatching' | 'hidden' | 'confirmed'> & {
     coverUrl?: string | null
     coverBounds?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null
     mergedIntoId?: string | null
     sourceGroupId?: string | null
+    sourceFace?: { itemId?: unknown; bounds?: unknown } | null
     automaticMatching?: boolean
     hidden?: boolean
     confirmed?: boolean
@@ -44,10 +51,16 @@ function validCoverBounds(value: AiPeopleStore['identities'][number]['coverBound
   return { x, y, width, height }
 }
 
+function validSourceFace(value: AiPeopleStore['identities'][number]['sourceFace']): AiPersonIdentity['sourceFace'] {
+  if (!value || typeof value !== 'object' || typeof value.itemId !== 'string' || !value.itemId) return null
+  const bounds = validCoverBounds(value.bounds as AiPeopleStore['identities'][number]['coverBounds'])
+  return bounds ? { itemId: value.itemId, bounds } : null
+}
+
 export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity[]> {
   try {
     const parsed = JSON.parse(await fs.readFile(path.join(rootDir, STORE_FILE), 'utf8')) as AiPeopleStore
-    if (![1, 2, 3, 4, 5, 6].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
+    if (![1, 2, 3, 4, 5, 6, 7].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
     const identities = parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples)).map((identity) => ({
       ...identity,
       avatarDataUrl: typeof identity.avatarDataUrl === 'string' && identity.avatarDataUrl.startsWith('data:image/')
@@ -57,6 +70,7 @@ export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity
       coverBounds: validCoverBounds(identity.coverBounds),
       mergedIntoId: typeof identity.mergedIntoId === 'string' ? identity.mergedIntoId : null,
       sourceGroupId: typeof identity.sourceGroupId === 'string' ? identity.sourceGroupId : null,
+      sourceFace: validSourceFace(identity.sourceFace),
       // Naming a group must not be treated as a request to automatically merge
       // every visually similar person. Existing data starts in the safe mode.
       automaticMatching: identity.automaticMatching === true
@@ -101,7 +115,7 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
   const destination = path.join(rootDir, STORE_FILE)
   const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
   try {
-    const store: AiPeopleStore = { schemaVersion: 6, identities }
+    const store: AiPeopleStore = { schemaVersion: 7, identities }
     await fs.writeFile(temporary, `${JSON.stringify(store)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     try {
       await fs.rename(temporary, destination)
@@ -134,6 +148,7 @@ export function createPersonIdentity(
   samples: number[] | number[][],
   sourceGroupId: string | null = null,
   cover: Pick<AiPersonIdentity, 'coverUrl' | 'coverBounds'> = { coverUrl: null, coverBounds: null },
+  sourceFace: AiPersonSourceFace | null = null,
 ): AiPersonIdentity {
   const now = new Date().toISOString()
   const normalized = Array.isArray(samples[0]) ? samples as number[][] : [samples as number[]]
@@ -146,6 +161,7 @@ export function createPersonIdentity(
     coverBounds: cover.coverBounds ? { ...cover.coverBounds } : null,
     mergedIntoId: null,
     sourceGroupId,
+    sourceFace: sourceFace ? { itemId: sourceFace.itemId, bounds: { ...sourceFace.bounds } } : null,
     automaticMatching: false,
     hidden: false,
     confirmed: true,

@@ -53,6 +53,8 @@ export interface AiFaceDescriptor {
   embeddingVersion?: string | null
   /** 视频人物取样所在时间；照片不设置。 */
   frameTime?: number
+  /** 视频人物取样帧的本地缩略图；照片不设置。 */
+  frameThumbnailUrl?: string
 }
 
 export interface AiVideoKeyframe {
@@ -175,7 +177,7 @@ export interface AiFaceGroup {
   coverItemId: string
   coverUrl: string | null
   coverBounds: { x: number; y: number; width: number; height: number }
-  memberFaces: Array<{ itemId: string; bounds: { x: number; y: number; width: number; height: number } }>
+  memberFaces: Array<{ itemId: string; bounds: { x: number; y: number; width: number; height: number }; frameTime?: number; frameThumbnailUrl?: string }>
   mergedMembers?: Array<AiPersonThumbnail>
 }
 
@@ -215,6 +217,7 @@ export interface AiSelectionSession {
   preset: AiSelectionPreset
   purpose: AiSelectionPurpose
   target: AiSelectionTarget
+  faceGroupingThreshold: number
   status: AiSelectionStatus
   phase: AiSelectionPhase
   revision: number

@@ -285,8 +285,21 @@ const uncertainFaceGroups = buildFaceGroups([
   item('known-face', '2026-07-18T03:03:10.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
   item('uncertain-face', '2026-07-18T03:03:11.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.22, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(58, 116), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
 ], [uncertainIdentity])
-assert.equal(uncertainFaceGroups.length, 1, '相近的人脸仍应形成本次任务的局部组')
-assert.equal(uncertainFaceGroups[0].identityId, null, '只有组内一张脸匹配时不能把整个组归入已确认人物')
+assert.equal(uncertainFaceGroups.length, 2, '没有足够相似证据的人脸应保持独立分组')
+assert.equal(uncertainFaceGroups.find((group) => group.itemIds.includes('uncertain-face'))?.identityId, null, '弱相似人脸不能被归入已确认人物')
+
+const chainFaceVector = (first, second, third) => [first, second, third, ...Array(125).fill(0)]
+const chainFaceGroups = buildFaceGroups([
+  item('chain-a-1', '2026-07-18T03:03:20.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: chainFaceVector(127, 0, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('chain-a-2', '2026-07-18T03:03:21.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: chainFaceVector(120, 30, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('chain-a-3', '2026-07-18T03:03:22.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: chainFaceVector(85, 95, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('chain-b-1', '2026-07-18T03:03:23.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: chainFaceVector(0, 110, 60), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('chain-b-2', '2026-07-18T03:03:24.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: chainFaceVector(0, 110, 60), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+])
+assert.deepEqual(chainFaceGroups.map((group) => group.itemIds), [
+  ['chain-a-1', 'chain-a-2', 'chain-a-3'],
+  ['chain-b-1', 'chain-b-2'],
+], '不能因一张过渡人脸把两个不同人物串成一个分组')
 
 const sampledVideoFace = item('sampled-video-face', '2026-07-18T03:04:00.000Z', {
   kind: 'video',
@@ -294,7 +307,7 @@ const sampledVideoFace = item('sampled-video-face', '2026-07-18T03:04:00.000Z', 
     ...faceEvidence('unknown', null),
     bounds: { x: 0, y: 0, width: 1, height: 1 },
     faces: [
-      { bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION, frameTime: 1 },
+      { bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION, frameTime: 1, frameThumbnailUrl: 'file:///tmp/sampled-video-face.jpg' },
       { bounds: { x: 0.35, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(125, 8), embeddingVersion: FACE_EMBEDDING_VERSION, frameTime: 5 },
     ],
   },
@@ -302,6 +315,8 @@ const sampledVideoFace = item('sampled-video-face', '2026-07-18T03:04:00.000Z', 
 const sampledVideoGroups = buildFaceGroups([sampledVideoFace])
 assert.equal(sampledVideoGroups.length, 1, '视频不同取样帧中的同一人物应合并')
 assert.deepEqual(sampledVideoGroups[0].itemIds, ['sampled-video-face'])
+assert.equal(sampledVideoGroups[0].coverUrl, 'file:///tmp/sampled-video-face.jpg', '视频人物封面应使用命中人脸的抽样帧')
+assert.deepEqual(sampledVideoGroups[0].coverBounds, { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, '视频人物封面应保留识别框位置')
 
 const globalIdentityGroups = buildFaceGroups(faceItems, [{
   id: 'person-global',
@@ -432,17 +447,17 @@ assert.deepEqual(smallFaceGroups[0].itemIds, ['small-face-a', 'small-face-b'])
 const poseVector = (first, second, third) => [first, second, third, ...Array(125).fill(0)]
 const poseGroups = buildFaceGroups([
   item('pose-front', '2026-07-18T03:10:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(127, 0, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-  item('pose-middle', '2026-07-18T03:11:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(60, 105, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-  item('pose-profile', '2026-07-18T03:12:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(0, 80, 100), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('pose-middle', '2026-07-18T03:11:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(78, 100, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('pose-profile', '2026-07-18T03:12:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(35, 80, 100), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
 ])
 assert.equal(poseGroups.length, 1, '同一人物的正脸、过渡角度和侧脸应通过组内相似样本归为一组')
 
 const widePoseGroups = buildFaceGroups([
   item('wide-pose-front', '2026-07-18T03:13:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(127, 0, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-  item('wide-pose-left-1', '2026-07-18T03:14:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 120, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-  item('wide-pose-left-2', '2026-07-18T03:15:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 120, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-  item('wide-pose-left-3', '2026-07-18T03:16:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 120, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-  item('wide-pose-right', '2026-07-18T03:17:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(48, 0, 120), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-left-1', '2026-07-18T03:14:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(85, 94, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-left-2', '2026-07-18T03:15:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(85, 94, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-left-3', '2026-07-18T03:16:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(85, 94, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('wide-pose-right', '2026-07-18T03:17:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(75, 60, 75), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
 ])
 assert.equal(widePoseGroups.length, 1, '同一人跨多个角度时不能因分组均值漂移而被拆散')
 
