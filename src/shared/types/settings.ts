@@ -49,3 +49,10 @@ export interface CacheStats {
   files: number
   bytes: number
 }
+
+export interface StorageMigrationResult {
+  settings: AppSettings
+  targetDir: string
+  movedDirectories: string[]
+  oldDataRemoved: boolean
+}

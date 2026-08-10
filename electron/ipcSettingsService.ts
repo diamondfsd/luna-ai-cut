@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
+import * as path from 'node:path'
 import type { AppSettings } from '../src/shared/types'
 import { deviceDefinitions } from './deviceDefaults'
 import {
@@ -7,8 +8,12 @@ import {
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
 import { deleteCustomLut, listCustomLuts } from './customLutLibraryService'
+import { migrateLocalStorage } from './storageMigrationService'
+import type { IpcContext } from './ipcContext'
 
-export function register(): void {
+let storageMigrationInProgress = false
+
+export function register(ctx: IpcContext): void {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
   ipcMain.handle('devices:list', () => deviceDefinitions())
@@ -25,4 +30,30 @@ export function register(): void {
   ipcMain.handle('mock:status', () => getMockStatus())
   ipcMain.handle('cache:stats', () => getCacheStats())
   ipcMain.handle('cache:clear', () => clearCache())
+  ipcMain.handle('storage:migrate', async () => {
+    if (storageMigrationInProgress) throw new Error('本地存储正在迁移，请等待完成')
+    if (
+      ctx.activeDownloadControllers.size > 0
+      || ctx.activeExportControllers.size > 0
+      || ctx.activeExportEncoders.size > 0
+      || ctx.activeNativeExportTasks.size > 0
+    ) {
+      throw new Error('请等待正在下载或导出的内容完成后再迁移')
+    }
+
+    storageMigrationInProgress = true
+    try {
+      const settings = await getSettings()
+      const result = await dialog.showOpenDialog({
+        defaultPath: path.dirname(settings.baseDir),
+        properties: ['openDirectory', 'createDirectory'],
+        title: '选择新的本地存储位置',
+        buttonLabel: '迁移到这里',
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      return migrateLocalStorage(settings, result.filePaths[0], saveSettings)
+    } finally {
+      storageMigrationInProgress = false
+    }
+  })
 }

@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { Cable, Check, CheckCircle2, Copy, FolderOpen, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Cable, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
 
-import type { AppSettings, CameraConnectionMode, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition } from '../shared/types'
+import type { AppSettings, CameraConnectionMode, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { Alert, Button, ButtonGroup } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
+import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import '../styles/wifi.css'
 import lunaIcon from '../../public/luna-icon.png'
 
@@ -12,10 +13,11 @@ interface DeviceConnectPageProps {
   connection: ConnectionStatus | null
   phase: DeviceConnectionPhase
   settings: AppSettings | null
-  onConnect: () => Promise<void>
+  onConnect: (rootPath?: string) => Promise<void>
   connectionMode: CameraConnectionMode
   onConnectionModeChange: (mode: CameraConnectionMode) => Promise<void>
   onChooseWiredCamera: () => Promise<void>
+  onStorageMigrated: (settings: AppSettings) => void
 }
 
 export function DeviceConnectPage({
@@ -27,12 +29,17 @@ export function DeviceConnectPage({
   connectionMode,
   onConnectionModeChange,
   onChooseWiredCamera,
+  onStorageMigrated,
 }: DeviceConnectPageProps) {
   const [connecting, setConnecting] = useState(false)
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false)
   const [diagnosticsRunning, setDiagnosticsRunning] = useState(false)
   const [diagnosticsResult, setDiagnosticsResult] = useState<string | null>(null)
   const [diagnosticsNotice, setDiagnosticsNotice] = useState<string | null>(null)
+  const [mountedVolumes, setMountedVolumes] = useState<MountedCameraVolume[]>([])
+  const [mountedVolumesLoading, setMountedVolumesLoading] = useState(false)
+  const [mountedVolumesError, setMountedVolumesError] = useState<string | null>(null)
+  const [storageMigrationOpen, setStorageMigrationOpen] = useState(false)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
   const deviceName = activeDevice?.name ?? '设备'
@@ -66,12 +73,49 @@ export function DeviceConnectPage({
       : '连接相机 Wi-Fi 后，即可浏览和下载相机素材')
   const statusLabel = isChecking ? '检测中' : isError ? '需要处理' : '等待连接'
 
+  const refreshMountedVolumes = useCallback(async (): Promise<void> => {
+    if (!isWired) {
+      setMountedVolumes([])
+      setMountedVolumesError(null)
+      return
+    }
+    setMountedVolumesLoading(true)
+    setMountedVolumesError(null)
+    try {
+      setMountedVolumes(await window.luna.cameraSource.detectMounted())
+    } catch (error) {
+      setMountedVolumes([])
+      setMountedVolumesError(error instanceof Error ? error.message : '无法读取已连接的相机磁盘')
+    } finally {
+      setMountedVolumesLoading(false)
+    }
+  }, [isWired])
+
+  useEffect(() => {
+    void refreshMountedVolumes()
+  }, [refreshMountedVolumes])
+
   async function handleConnect(): Promise<void> {
     setConnecting(true)
     try {
       await onConnect()
     } finally {
       setConnecting(false)
+    }
+  }
+
+  async function handleChooseWiredCamera(): Promise<void> {
+    await onChooseWiredCamera()
+    await refreshMountedVolumes()
+  }
+
+  async function handleConnectMountedVolume(volume: MountedCameraVolume): Promise<void> {
+    setConnecting(true)
+    try {
+      await onConnect(volume.rootPath)
+    } finally {
+      setConnecting(false)
+      await refreshMountedVolumes()
     }
   }
 
@@ -189,7 +233,7 @@ export function DeviceConnectPage({
                 {isWired ? '检测并连接' : isError ? '重新连接' : '开始连接'}
               </Button>
               {isWired ? (
-                <Button variant="secondary" onClick={() => void onChooseWiredCamera()} icon={<FolderOpen size={16} />}>
+                <Button variant="secondary" onClick={() => void handleChooseWiredCamera()} icon={<FolderOpen size={16} />}>
                   选择相机磁盘
                 </Button>
               ) : (
@@ -205,6 +249,51 @@ export function DeviceConnectPage({
                 ? '请在相机上选择磁盘或 U 盘模式；删除相机素材前会再次确认'
                 : '相机 Wi-Fi 可能无法访问互联网，素材导入后可切回常用网络'}</span>
             </p>
+
+            {isWired && (
+              <section className="device-connect-volumes" aria-label="已连接的相机磁盘">
+                <div className="device-connect-volumes-header">
+                  <div>
+                    <p className="device-connect-section-title">已检测到的相机磁盘</p>
+                    <span>选择一个磁盘后只访问其中的相机素材</span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="mini"
+                    disabled={mountedVolumesLoading || isChecking || connecting}
+                    onClick={() => void refreshMountedVolumes()}
+                    icon={<RefreshCw className={mountedVolumesLoading ? 'spin' : ''} size={13} />}
+                  >
+                    刷新
+                  </Button>
+                </div>
+                {mountedVolumesError && <Alert variant="error" message={mountedVolumesError} />}
+                {!mountedVolumesError && mountedVolumes.length === 0 && !mountedVolumesLoading && (
+                  <p className="device-connect-volumes-empty">还没有发现可读取的相机磁盘。请确认相机已选择磁盘或 U 盘模式，然后刷新。</p>
+                )}
+                {mountedVolumes.length > 0 && (
+                  <div className="device-connect-volume-list">
+                    {mountedVolumes.map((volume) => {
+                      const selected = settings?.mountedCameraRoot === volume.rootPath
+                      return (
+                        <Button
+                          key={volume.id}
+                          variant={selected ? 'primary' : 'secondary'}
+                          size="compact"
+                          className="device-connect-volume"
+                          disabled={connecting || isChecking}
+                          onClick={() => void handleConnectMountedVolume(volume)}
+                          icon={<HardDrive size={15} />}
+                        >
+                          <span>{volume.label} · {volume.mediaCount} 个素材</span>
+                          <small title={volume.rootPath}>{volume.rootPath}</small>
+                        </Button>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
 
             {isError && !isWired && (
               <div className="device-connect-diagnostics">
@@ -263,6 +352,15 @@ export function DeviceConnectPage({
                 </div>
               ))}
             </dl>
+            <div className="device-connect-storage">
+              <div>
+                <p>本地存储</p>
+                <strong title={settings?.baseDir}>{settings?.baseDir || '正在读取'}</strong>
+              </div>
+              <Button variant="secondary" size="mini" icon={<HardDrive size={13} />} onClick={() => setStorageMigrationOpen(true)}>
+                迁移
+              </Button>
+            </div>
           </aside>
         </div>
 
@@ -274,6 +372,12 @@ export function DeviceConnectPage({
           </HelpDialog>
         </div>
       </div>
+      <StorageMigrationDialog
+        open={storageMigrationOpen}
+        onOpenChange={setStorageMigrationOpen}
+        settings={settings}
+        onMigrated={onStorageMigrated}
+      />
     </section>
   )
 }

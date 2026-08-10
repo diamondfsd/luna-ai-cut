@@ -1,4 +1,4 @@
-import type { AppSettings, CacheStats, CustomLutFile } from './settings'
+import type { AppSettings, CacheStats, CustomLutFile, StorageMigrationResult } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
@@ -181,6 +181,7 @@ export interface LunaApi {
   getMockServerStatus(): Promise<MockServerStatus>
   getCacheStats(): Promise<CacheStats>
   clearCache(): Promise<CacheStats>
+  migrateLocalStorage(): Promise<StorageMigrationResult | null>
   listCustomLuts(): Promise<CustomLutFile[]>
   deleteCustomLut(filePath: string): Promise<void>
   openWifiSettings(): Promise<void>
