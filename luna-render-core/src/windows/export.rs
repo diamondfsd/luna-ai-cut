@@ -37,6 +37,7 @@ pub(crate) fn run(
     fps: f64,
     total_frames: u64,
     bitrate: u64,
+    include_audio: bool,
     hevc: bool,
     task: Option<&Arc<TaskState>>,
     interop: &InteropDevice,
@@ -74,15 +75,20 @@ pub(crate) fn run(
         writer,
     )?;
 
-    let duration = total_frames as f64 / fps;
-    let completed_output = mux_primary_audio(
-        ffmpeg_path,
-        ffprobe_path,
-        &temp_output,
-        output_path,
-        composition,
-        duration,
-    )?;
+    let completed_output = if include_audio {
+        let duration = total_frames as f64 / fps;
+        mux_primary_audio(
+            ffmpeg_path,
+            ffprobe_path,
+            &temp_output,
+            output_path,
+            composition,
+            duration,
+        )?
+    } else {
+        crate::logging::write("[Export:WinGPU] 音频已关闭，跳过音频合并");
+        temp_output
+    };
     if Path::new(output_path).exists() {
         std::fs::remove_file(output_path)
             .map_err(|error| format!("替换旧导出文件失败: {error}"))?;

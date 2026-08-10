@@ -212,4 +212,5 @@ pub struct ExportCompositionVideoInput {
     pub hardware: Option<bool>,
     pub task_id: Option<String>,
     pub quality_preset: Option<String>,
+    pub include_audio: Option<bool>,
 }

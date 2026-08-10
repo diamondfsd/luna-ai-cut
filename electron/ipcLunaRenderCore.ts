@@ -255,13 +255,14 @@ export function register(ctx: RegisterContext): void {
       qualityPreset?: string,
       exportTaskId?: string,
       exportItemId?: string,
+      includeAudio?: boolean,
     ) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       const renderTaskId = taskId ?? exportItemId ?? `composition_${Date.now()}`
       const progressExportId = exportItemId ?? renderTaskId
       const fileName = fileNameFromPath(outputPath)
-      rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition?.layers?.length ?? 0}`)
+      rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition?.layers?.length ?? 0} audio=${includeAudio !== false}`)
       if (exportTaskId && exportItemId) {
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
         _event.sender?.send('export:progress', {
@@ -304,6 +305,7 @@ export function register(ctx: RegisterContext): void {
           hardware,
           taskId: renderTaskId,
           qualityPreset,
+          includeAudio,
         })
         const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
           ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path

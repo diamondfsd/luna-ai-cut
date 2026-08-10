@@ -198,6 +198,7 @@ export async function queueWorkspaceMixedExport(
               layers: offsetVideoLayers(entry.plan.layers, startTime, duration),
               fps: resolved.fps,
               qualityPreset: resolved.qualityPreset ?? 'high',
+              includeAudio: resolved.includeAudio,
               renderTaskId,
               onProgress: async (progress) => {
                 const latestTask = await window.luna.exportTask.get(task.id)
@@ -262,6 +263,7 @@ export async function queueWorkspaceMixedExport(
               layers: offsetVideoLayers(entry.plan.layers, startTime, endTime - startTime),
               fps: resolved.fps,
               qualityPreset: resolved.qualityPreset ?? 'high',
+              includeAudio: resolved.includeAudio,
               exportTaskId: task.id,
               exportItemId: entry.id,
               taskName,
