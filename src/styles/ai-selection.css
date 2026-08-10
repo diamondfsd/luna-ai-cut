@@ -158,14 +158,6 @@
 .ai-selection-heading-loading .loading-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; white-space: nowrap; }
 .ai-selection-heading-loading .loading-indicator svg { width: 16px; height: 16px; flex: 0 0 auto; }
 .ai-selection-view-actions { flex: 0 0 auto; align-items: center !important; gap: 6px !important; }
-.ai-selection-person-dialog { padding: 18px 20px; }
-.ai-selection-person-merge-list { max-height: min(420px, 55vh); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
-.ai-selection-person-merge-list > button { min-height: 52px; padding: 6px 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-primary, #1d1d1f); cursor: pointer; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; text-align: left; }
-.ai-selection-person-merge-list > button:hover { background: color-mix(in srgb, var(--text-primary, #1d1d1f) 5%, white); }
-.ai-selection-person-merge-list > button.selected { border-color: color-mix(in srgb, var(--blue, #06c) 32%, white); background: color-mix(in srgb, var(--blue, #06c) 9%, white); color: var(--blue, #06c); }
-.ai-selection-person-merge-list .ai-selection-face-group-cover { width: 40px; height: 40px; }
-.ai-selection-person-merge-list > button span:not(.ai-selection-face-group-cover) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-selection-person-merge-list > button strong { color: var(--text-secondary, #6e6e73); font-size: 11px; }
 .ai-selection-people-progress { margin: 0 0 12px; padding: 12px 14px; border-top: 1px solid color-mix(in srgb, var(--blue, #06c) 24%, white); border-bottom: 1px solid color-mix(in srgb, var(--blue, #06c) 24%, white); background: color-mix(in srgb, var(--blue, #06c) 5%, white); display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px 12px; }
 .ai-selection-people-progress .loading-indicator { grid-row: 1 / 3; }
 .ai-selection-people-progress > div:not(.loading-indicator) { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }

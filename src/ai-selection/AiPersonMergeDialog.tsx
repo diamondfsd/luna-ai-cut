@@ -14,17 +14,23 @@ interface AiPersonMergeDialogProps {
   groups: AiFaceGroup[]
   items: AiSelectionItem[]
   busy: boolean
-  onMerge: (sourceGroupId: string) => Promise<boolean>
+  onMerge: (sourceGroupIds: string[]) => Promise<boolean>
   onUnmerge: (memberIdentityId: string) => Promise<boolean>
 }
 
 export function AiPersonMergeDialog({ open, onOpenChange, group, groups, items, busy, onMerge, onUnmerge }: AiPersonMergeDialogProps) {
-  const [sourceGroupId, setSourceGroupId] = useState('')
+  const [sourceGroupIds, setSourceGroupIds] = useState<string[]>([])
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
   const candidates = groups.filter((candidate) => candidate.id !== group?.id)
   const mergedMembers = group?.mergedMembers ?? []
 
-  useEffect(() => { if (!open) setSourceGroupId('') }, [open])
+  useEffect(() => { if (!open) setSourceGroupIds([]) }, [open])
+
+  function toggleSourceGroup(groupId: string): void {
+    setSourceGroupIds((current) => current.includes(groupId)
+      ? current.filter((candidate) => candidate !== groupId)
+      : [...current, groupId])
+  }
 
   return <Dialog
     open={open}
@@ -33,9 +39,9 @@ export function AiPersonMergeDialog({ open, onOpenChange, group, groups, items, 
     className="ai-person-merge-dialog"
     footer={<>
       <Button variant="secondary" onClick={() => onOpenChange(false)}>关闭</Button>
-      <Button variant="primary" disabled={busy || !sourceGroupId} onClick={async () => {
-        if (await onMerge(sourceGroupId)) setSourceGroupId('')
-      }}>合并所选人物</Button>
+      <Button variant="primary" disabled={busy || sourceGroupIds.length === 0} onClick={async () => {
+        if (await onMerge(sourceGroupIds)) setSourceGroupIds([])
+      }}>合并 {sourceGroupIds.length} 人</Button>
     </>}
   >
     <div className="ai-person-merge-body">
@@ -49,9 +55,9 @@ export function AiPersonMergeDialog({ open, onOpenChange, group, groups, items, 
       </section>
       <section>
         <strong>可合并人物</strong>
-        {candidates.length > 0 ? <div className="ai-selection-person-merge-list">{candidates.map((candidate) => <button key={candidate.id} type="button" className={sourceGroupId === candidate.id ? 'selected' : ''} onClick={() => setSourceGroupId(candidate.id)}>
-          <AiFaceGroupCover group={candidate} item={itemsById.get(candidate.coverItemId)} /><span>{candidate.name}</span><strong>{candidate.itemIds.length}</strong>
-        </button>)}</div> : <span className="ai-person-merge-empty">没有其他可合并人物</span>}
+        {candidates.length > 0 ? <div className="ai-selection-person-merge-list">{candidates.map((candidate) => <Button key={candidate.id} variant="ghost" className={sourceGroupIds.includes(candidate.id) ? 'selected' : ''} icon={<AiFaceGroupCover group={candidate} item={itemsById.get(candidate.coverItemId)} />} aria-pressed={sourceGroupIds.includes(candidate.id)} onClick={() => toggleSourceGroup(candidate.id)}>
+          <span>{candidate.name}</span><strong>{candidate.itemIds.length}</strong>
+        </Button>)}</div> : <span className="ai-person-merge-empty">没有其他可合并人物</span>}
       </section>
     </div>
   </Dialog>

@@ -180,7 +180,7 @@ export function useAiSelection() {
     analyzePeople,
     renamePerson: (groupId: string, name: string) => run(() => window.luna.aiSelection.renamePerson(session!.id, groupId, name)),
     setPersonAvatar: (groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => run(() => window.luna.aiSelection.setPersonAvatar(session!.id, groupId, itemId, bounds)),
-    mergePeople: (targetGroupId: string, sourceGroupId: string) => run(() => window.luna.aiSelection.mergePeople(session!.id, targetGroupId, sourceGroupId)),
+    mergePeople: (targetGroupId: string, sourceGroupIds: string[]) => run(() => window.luna.aiSelection.mergePeople(session!.id, targetGroupId, sourceGroupIds)),
     unmergePerson: (targetGroupId: string, memberIdentityId: string) => run(() => window.luna.aiSelection.unmergePerson(session!.id, targetGroupId, memberIdentityId)),
     hidePerson: async (groupId: string) => {
       const completed = await run(() => window.luna.aiSelection.hidePerson(session!.id, groupId))

@@ -3,13 +3,12 @@ import { ZoomIn, ZoomOut } from 'lucide-react'
 
 import { ThumbImage } from '../components/ThumbImage'
 import type { AiFaceGroup, AiSelectionItem } from '../shared/types'
-import { squareCropAroundCenter } from '../shared/aiAvatarCrop'
+import { FACE_AVATAR_CONTEXT_SCALE, squareCropAroundCenter } from '../shared/aiAvatarCrop'
 import { Button, Dialog, IconButton } from '../ui'
 import './AiPersonAvatarDialog.css'
 
 type Bounds = { x: number; y: number; width: number; height: number }
 type CropDragMode = 'move' | 'tl' | 'tr' | 'bl' | 'br'
-const FACE_CONTEXT_SCALE = 2.4
 
 interface AiPersonAvatarDialogProps {
   open: boolean
@@ -44,7 +43,7 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
     const height = Math.max(1, selected.item.height ?? 1)
     setSelectedId(selected.item.id)
     setPreviewSize({ width, height })
-    setCrop(squareCropAroundCenter(selected.face, width, height, FACE_CONTEXT_SCALE))
+    setCrop(squareCropAroundCenter(selected.face, width, height, FACE_AVATAR_CONTEXT_SCALE))
   }, [candidates, group?.coverUrl, open])
 
   const selected = candidates.find(({ item }) => item.id === selectedId) ?? null
@@ -54,7 +53,7 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
     const height = Math.max(1, item.height ?? 1)
     setSelectedId(item.id)
     setPreviewSize({ width, height })
-    setCrop(squareCropAroundCenter(face, width, height, FACE_CONTEXT_SCALE))
+    setCrop(squareCropAroundCenter(face, width, height, FACE_AVATAR_CONTEXT_SCALE))
   }
 
   function resizeCrop(scale: number): void {
@@ -158,7 +157,7 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
               const height = Math.max(1, event.currentTarget.naturalHeight)
               if (width === previewSize.width && height === previewSize.height) return
               setPreviewSize({ width, height })
-              setCrop(squareCropAroundCenter(selected.face, width, height, FACE_CONTEXT_SCALE))
+              setCrop(squareCropAroundCenter(selected.face, width, height, FACE_AVATAR_CONTEXT_SCALE))
             }}
           />
           <div

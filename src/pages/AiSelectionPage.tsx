@@ -435,7 +435,6 @@ export function AiSelectionPage() {
             </button>
           })}
           {stage === 'people' && <>
-            {session.faceGroups.length > 0 && <strong className="ai-selection-people-filter-heading">人物</strong>}
             <AiSelectionPeopleList
               groups={session.faceGroups} activeGroupId={activeFaceGroup?.id} items={items} busy={busy}
               onSelect={(groupId) => { setPeopleGroupKey(`person:${groupId}`); setFocusedId('') }}

@@ -1,17 +1,30 @@
 import type { AiFaceGroup, AiHiddenPerson, AiSelectionItem, AiSelectionSession } from '../src/shared/types'
+import { FACE_AVATAR_CONTEXT_SCALE, squareCropAroundCenter } from '../src/shared/aiAvatarCrop'
 import { buildFaceGroups, faceEmbeddingsForGroup } from './aiSelectionFaceGroups'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore, type AiPersonIdentity } from './aiSelectionPeopleStore'
 
 let identities: AiPersonIdentity[] = []
 
-function updateIdentityCover(identity: AiPersonIdentity, group: AiFaceGroup): boolean {
+function displayCoverBounds(items: AiSelectionItem[], group: AiFaceGroup): AiPersonIdentity['coverBounds'] {
+  const item = items.find((candidate) => candidate.id === group.coverItemId)
+  if (!item?.width || !item.height || group.coverUrl?.startsWith('data:image/')) return { ...group.coverBounds }
+  return squareCropAroundCenter(group.coverBounds, item.width, item.height, FACE_AVATAR_CONTEXT_SCALE)
+}
+
+function sameBounds(left: AiPersonIdentity['coverBounds'], right: AiPersonIdentity['coverBounds']): boolean {
+  return Boolean(left && right
+    && left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height)
+}
+
+function updateIdentityCover(identity: AiPersonIdentity, group: AiFaceGroup, items: AiSelectionItem[], replaceBounds = false): boolean {
   let changed = false
   if (!identity.coverUrl && group.coverUrl) {
     identity.coverUrl = group.coverUrl
     changed = true
   }
-  if (!identity.coverBounds) {
-    identity.coverBounds = { ...group.coverBounds }
+  const coverBounds = displayCoverBounds(items, group)
+  if ((replaceBounds || !identity.coverBounds) && !sameBounds(identity.coverBounds, coverBounds)) {
+    identity.coverBounds = coverBounds
     changed = true
   }
   return changed
@@ -67,14 +80,14 @@ function ensureIdentity(session: AiSelectionSession, groupId: string): AiPersonI
   if (!group) throw new Error('人物分组不存在')
   const existing = group.identityId ? identities.find((identity) => identity.id === group.identityId) : null
   if (existing) {
-    updateIdentityCover(existing, group)
+    updateIdentityCover(existing, group, session.items)
     return existing
   }
   const samples = faceEmbeddingsForGroup(session.items, group)
   if (samples.length === 0) throw new Error('这个人物缺少可复用的人脸信息，请重新分析后再试')
   const identity = createPersonIdentity(group.name, samples, group.id, {
     coverUrl: group.coverUrl,
-    coverBounds: group.coverBounds,
+    coverBounds: displayCoverBounds(session.items, group),
   })
   identities.push(identity)
   return identity
@@ -103,17 +116,21 @@ export async function setGlobalPersonAvatar(
   await savePeopleStore(storeDir, identities)
 }
 
-export async function mergeGlobalPeople(storeDir: string, session: AiSelectionSession, targetGroupId: string, sourceGroupId: string): Promise<void> {
-  if (targetGroupId === sourceGroupId) throw new Error('请选择另一个人物分组')
+export async function mergeGlobalPeople(storeDir: string, session: AiSelectionSession, targetGroupId: string, sourceGroupIds: string[]): Promise<void> {
+  const selectedIds = [...new Set(sourceGroupIds)].filter((groupId) => groupId !== targetGroupId)
+  if (selectedIds.length === 0) throw new Error('请选择另一个人物分组')
   const target = ensureIdentity(session, targetGroupId)
-  const source = ensureIdentity(session, sourceGroupId)
-  if (target.id === source.id) return
-  source.mergedIntoId = target.id
-  // Explicit merge is the only action that enables broad recognition matching.
+  const sources = selectedIds.map((groupId) => ensureIdentity(session, groupId)).filter((source) => source.id !== target.id)
+  if (sources.length === 0) return
+  // An explicit merge is the only action that enables broad recognition matching.
   target.automaticMatching = true
-  source.automaticMatching = true
-  source.updatedAt = new Date().toISOString()
-  target.updatedAt = source.updatedAt
+  const now = new Date().toISOString()
+  for (const source of sources) {
+    source.mergedIntoId = target.id
+    source.automaticMatching = true
+    source.updatedAt = now
+  }
+  target.updatedAt = now
   await savePeopleStore(storeDir, identities)
 }
 
@@ -180,7 +197,7 @@ export async function reconcileGlobalPeopleSources(storeDir: string, items: AiSe
     const group = matchingLocalGroup(items, identity)
     if (!group) continue
     const sourceNeedsBinding = !identity.sourceGroupId && identity.confirmed && !identity.automaticMatching
-    const coverChanged = updateIdentityCover(identity, group)
+    const coverChanged = updateIdentityCover(identity, group, items, true)
     if (!sourceNeedsBinding && !coverChanged) continue
     if (sourceNeedsBinding) identity.sourceGroupId = group.id
     identity.updatedAt = new Date().toISOString()

@@ -1,13 +1,15 @@
 .ai-selection-person-filter { position: relative; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 28px 24px 28px; align-items: center; gap: 1px; }
-.ai-selection-person-select.ui-btn { min-width: 0; width: 100%; padding: 0 5px; gap: 6px; }
-.ai-selection-person-select .ui-btn-icon { flex: 0 0 26px; }
+.ai-selection-person-select.ui-btn { min-width: 0; min-height: 42px; width: 100%; padding: 3px 5px; gap: 7px; }
+.ai-selection-person-select .ui-btn-icon { width: 36px; height: 36px; flex: 0 0 36px; }
+.ai-selection-person-select .ai-selection-face-group-cover { width: 36px; height: 36px; }
 .ai-selection-person-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-selection-person-count { min-width: 24px; color: var(--text-secondary, #6e6e73); font-size: 10px; font-weight: 600; line-height: 1; text-align: center; }
+.ai-selection-person-count { min-width: 24px; color: var(--text-secondary, #6e6e73); font-size: 11px; font-weight: 600; line-height: 1; text-align: center; }
 .ai-selection-person-rename-trigger.ui-icon-btn { opacity: .62; transition: opacity 120ms ease, background 120ms ease; }
 .ai-selection-person-rename-trigger.ui-icon-btn:hover, .ai-selection-person-rename-trigger.ui-icon-btn:focus-visible { opacity: 1; }
-.ai-selection-person-inline-editor { min-width: 0; height: 32px; grid-column: span 3; padding: 0 2px 0 5px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; background: var(--surface, #fff); display: grid; grid-template-columns: 26px minmax(0, 1fr) 28px; align-items: center; gap: 5px; box-sizing: border-box; }
+.ai-selection-person-inline-editor { min-width: 0; height: 42px; grid-column: span 3; padding: 2px 2px 2px 5px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; background: var(--surface, #fff); display: grid; grid-template-columns: 36px minmax(0, 1fr) 28px; align-items: center; gap: 6px; box-sizing: border-box; }
+.ai-selection-person-inline-editor .ai-selection-face-group-cover { width: 36px; height: 36px; }
 .ai-selection-person-inline-editor.active { border-color: color-mix(in srgb, var(--blue, #06c) 35%, white); background: color-mix(in srgb, var(--blue, #06c) 7%, white); }
-.ai-selection-person-rename-input.ui-input { min-width: 0; height: 26px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-primary, #1d1d1f); font-size: 12px; box-shadow: none; }
+.ai-selection-person-rename-input.ui-input { min-width: 0; height: 32px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-primary, #1d1d1f); font-size: 13px; box-shadow: none; }
 .ai-selection-person-rename-input.ui-input:focus { box-shadow: none; }
 .ai-selection-person-menu-trigger.ui-icon-btn { opacity: 0; transition: opacity 120ms ease, background 120ms ease; }
 .ai-selection-person-filter:hover .ai-selection-person-menu-trigger, .ai-selection-person-filter:focus-within .ai-selection-person-menu-trigger, .ai-selection-person-menu-trigger.is-open { opacity: 1; }
