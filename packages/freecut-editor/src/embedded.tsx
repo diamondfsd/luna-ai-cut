@@ -7,6 +7,7 @@ import {
   type ImportMediaFiles,
   type EmbeddedTranscriptResult,
   type EmbeddedVisualEvidence,
+  type EmbeddedVisualAnalysisIntensity,
   type EmbeddedMediaSource,
   type EmbeddedTaskProgress,
   type EmbeddedAiAssistantConfig,
@@ -24,11 +25,16 @@ export interface FreeCutEditorProps {
   ) => Promise<EmbeddedTranscriptResult>
   onAnalyzeMediaVisual?: (
     source: EmbeddedMediaSource,
+    intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => Promise<EmbeddedVisualEvidence>
   onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
-  onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
-  onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>
+  onSaveAiAssistantConfig?: (
+    input: EmbeddedAiAssistantConfigInput,
+  ) => Promise<EmbeddedAiAssistantConfig>
+  onGenerateAiAssistant?: (
+    input: EmbeddedAiAssistantGenerateInput,
+  ) => Promise<EmbeddedAiAssistantGenerateResult>
   onCancelAiAssistant?: (requestId: string) => Promise<void>
 }
 
@@ -47,14 +53,18 @@ export function FreeCutEditor({
       requestMediaImport: onRequestMediaImport,
       transcribeMedia: onTranscribeMedia,
       analyzeMediaVisual: onAnalyzeMediaVisual,
-      aiAssistant: onGetAiAssistantConfig && onSaveAiAssistantConfig && onGenerateAiAssistant && onCancelAiAssistant
-        ? {
-            getConfig: onGetAiAssistantConfig,
-            saveConfig: onSaveAiAssistantConfig,
-            generate: onGenerateAiAssistant,
-            cancel: onCancelAiAssistant,
-          }
-        : undefined,
+      aiAssistant:
+        onGetAiAssistantConfig &&
+        onSaveAiAssistantConfig &&
+        onGenerateAiAssistant &&
+        onCancelAiAssistant
+          ? {
+              getConfig: onGetAiAssistantConfig,
+              saveConfig: onSaveAiAssistantConfig,
+              generate: onGenerateAiAssistant,
+              cancel: onCancelAiAssistant,
+            }
+          : undefined,
     }),
     [
       onRequestMediaImport,

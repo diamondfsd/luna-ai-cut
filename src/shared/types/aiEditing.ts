@@ -1,9 +1,10 @@
+export type WorkspaceVisualAnalysisIntensity = 'light' | 'normal' | 'strong'
+
 export interface WorkspaceVisualAnalysisRequest {
   requestId: string
   filePath: string
   durationSeconds: number
-  /** Upper bound protects foreground analysis from a very long source. */
-  maxSamples?: number
+  intensity?: WorkspaceVisualAnalysisIntensity
 }
 
 export interface WorkspaceVisualEvidenceSample {
@@ -16,6 +17,7 @@ export interface WorkspaceVisualAnalysisResult {
   samples: WorkspaceVisualEvidenceSample[]
   models: Array<{ id: string; version: string }>
   sourceFingerprint: { size: number; modifiedAtMs: number }
+  intensity: WorkspaceVisualAnalysisIntensity
 }
 
 /** Public connection state. The API Key is kept in the app's local configuration file. */

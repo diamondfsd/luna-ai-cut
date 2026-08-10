@@ -4,6 +4,7 @@ import type {
   EmbeddedAiAssistantGenerateInput,
   EmbeddedMediaSource,
   EmbeddedTaskProgress,
+  EmbeddedVisualAnalysisIntensity,
   ImportMediaFiles,
 } from '@freecut/embedded'
 
@@ -17,8 +18,6 @@ const FreeCutEditor = lazy(async () => {
 })
 
 const IMPORTED_SOURCE_PATHS_STORAGE_KEY = 'luna.freecut.imported-source-paths.v1'
-const AI_VISUAL_ANALYSIS_SAMPLE_LIMIT = 4
-
 function mediaSourceKey(source: Pick<EmbeddedMediaSource, 'fileName' | 'fileSize' | 'fileLastModified'>): string {
   return `${source.fileName}\u0000${source.fileSize}\u0000${source.fileLastModified ?? ''}`
 }
@@ -153,6 +152,7 @@ export function VideoEditorPage() {
 
   const handleAnalyzeMediaVisual = useCallback(async (
     source: EmbeddedMediaSource,
+    intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => {
     const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
@@ -169,7 +169,7 @@ export function VideoEditorPage() {
         requestId,
         filePath,
         durationSeconds: Math.max(0.1, source.durationSeconds),
-        maxSamples: AI_VISUAL_ANALYSIS_SAMPLE_LIMIT,
+        intensity,
       })
     } finally {
       unsubscribe()

@@ -58,6 +58,14 @@ describe('settings-store', () => {
       expect(useSettingsStore.getState().autoSaveInterval).toBe(5)
     })
 
+    it('normalizes the video analysis intensity', () => {
+      useSettingsStore.getState().setSetting('visualAnalysisIntensity', 'strong')
+      expect(useSettingsStore.getState().visualAnalysisIntensity).toBe('strong')
+
+      useSettingsStore.getState().setSetting('visualAnalysisIntensity', 'unexpected' as never)
+      expect(useSettingsStore.getState().visualAnalysisIntensity).toBe('normal')
+    })
+
     it('does not affect other settings when changing one', () => {
       useSettingsStore.getState().setSetting('snapEnabled', false)
       expect(useSettingsStore.getState().showWaveforms).toBe(true)

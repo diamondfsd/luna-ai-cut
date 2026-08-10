@@ -8,7 +8,10 @@ import {
   normalizeSelectableWhisperModel,
 } from '@freecut/shared/utils/whisper-settings'
 import type { EditorDensityPresetName } from '@freecut/config/editor-layout'
-import { DEFAULT_EDITOR_DENSITY_PRESET, normalizeEditorDensityPreset } from '@freecut/config/editor-layout'
+import {
+  DEFAULT_EDITOR_DENSITY_PRESET,
+  normalizeEditorDensityPreset,
+} from '@freecut/config/editor-layout'
 import {
   HOTKEYS,
   normalizeHotkeyBinding,
@@ -56,6 +59,9 @@ interface AppSettings {
   // substring + fuzzy-prefix matching on caption text.
   captionSearchMode: CaptionSearchMode
 
+  // Editing assistant — controls local video frame coverage and tag recall.
+  visualAnalysisIntensity: VisualAnalysisIntensity
+
   // Caption style preset id applied automatically to captions generated from
   // transcripts / AI captioning (when not inheriting an existing caption's style).
   defaultCaptionStylePresetId: string
@@ -65,6 +71,13 @@ interface AppSettings {
 }
 
 export type CaptionSearchMode = 'keyword' | 'semantic'
+
+export type VisualAnalysisIntensity = 'light' | 'normal' | 'strong'
+
+function normalizeVisualAnalysisIntensity(value: unknown): VisualAnalysisIntensity {
+  if (value === 'light' || value === 'strong') return value
+  return 'normal'
+}
 
 function normalizeCaptionSearchMode(value: unknown): CaptionSearchMode {
   return value === 'semantic' ? 'semantic' : 'keyword'
@@ -165,6 +178,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   // Scene Browser defaults
   captionSearchMode: 'keyword',
 
+  // Editing assistant defaults
+  visualAnalysisIntensity: 'normal',
+
   // Caption styling default
   defaultCaptionStylePresetId: DEFAULT_CAPTION_STYLE_PRESET_ID,
 
@@ -213,6 +229,9 @@ export const useSettingsStore = create<SettingsStore>()(
           }
           if (key === 'defaultCaptionStylePresetId') {
             return { defaultCaptionStylePresetId: normalizeCaptionStylePresetId(value) }
+          }
+          if (key === 'visualAnalysisIntensity') {
+            return { visualAnalysisIntensity: normalizeVisualAnalysisIntensity(value) }
           }
           return { [key]: value }
         }),

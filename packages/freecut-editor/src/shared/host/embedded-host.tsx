@@ -26,7 +26,10 @@ export interface EmbeddedVisualEvidence {
   samples: Array<{ timeSeconds: number; tags: string[] }>
   models: Array<{ id: string; version: string }>
   sourceFingerprint: { size: number; modifiedAtMs: number }
+  intensity: EmbeddedVisualAnalysisIntensity
 }
+
+export type EmbeddedVisualAnalysisIntensity = 'light' | 'normal' | 'strong'
 
 export interface EmbeddedTaskProgress {
   label: string
@@ -102,6 +105,7 @@ export interface EmbeddedHostBridge {
   ) => Promise<EmbeddedTranscriptResult>
   analyzeMediaVisual?: (
     source: EmbeddedMediaSource,
+    intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => Promise<EmbeddedVisualEvidence>
   /** The remote model connection is implemented by the trusted Electron host. */

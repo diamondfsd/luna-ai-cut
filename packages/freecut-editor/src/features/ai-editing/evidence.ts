@@ -4,9 +4,15 @@ import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import { buildClipRefs } from '@freecut/features/editor/agent/tools'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { useSelectionStore } from '@freecut/shared/state/selection'
-import type { MediaMetadata, MediaTranscript } from '@freecut/types/storage'
+import { useSettingsStore } from '@freecut/features/editor/deps/settings'
+import type { MediaMetadata } from '@freecut/types/storage'
 import type { TimelineItem } from '@freecut/types/timeline'
 import { getAudioBeatEvidence } from './audio-beat-service'
+import {
+  buildTranscriptExcerpt,
+  countTranscriptTextUnits,
+  normalizeTranscriptSearchText,
+} from './transcript-evidence'
 import type { AiMediaEvidence, AiProjectEvidence, AiTimelineClipEvidence } from './types'
 
 const MAX_VISUAL_OBSERVATIONS = 24
@@ -21,10 +27,6 @@ function mediaKind(media: MediaMetadata): AiMediaEvidence['kind'] {
 
 function sourceFingerprint(media: MediaMetadata): string {
   return media.contentHash ?? `${media.fileSize}:${media.fileLastModified ?? media.updatedAt}`
-}
-
-function countWords(transcript: MediaTranscript): number {
-  return transcript.segments.reduce((count, segment) => count + (segment.words?.length ?? 0), 0)
 }
 
 function cropEvidence(item: TimelineItem): AiTimelineClipEvidence['crop'] {
@@ -43,7 +45,12 @@ function textEvidence(item: TimelineItem): string | undefined {
   return undefined
 }
 
-function buildTimelineEvidence(): { clips: AiTimelineClipEvidence[]; durationSeconds: number; fps: number; revision: number } {
+function buildTimelineEvidence(): {
+  clips: AiTimelineClipEvidence[]
+  durationSeconds: number
+  fps: number
+  revision: number
+} {
   const timeline = useTimelineStore.getState()
   const fps = timeline.fps > 0 ? timeline.fps : 30
   const selectedIds = new Set(useSelectionStore.getState().selectedItemIds)
@@ -78,9 +85,10 @@ function buildTimelineEvidence(): { clips: AiTimelineClipEvidence[]; durationSec
   return { clips, durationSeconds, fps, revision: timeline.changeVersion ?? 0 }
 }
 
-function evidenceTrackKind(
-  track: { name: string; kind?: string },
-): 'video' | 'audio' | 'subtitle' | 'other' {
+function evidenceTrackKind(track: {
+  name: string
+  kind?: string
+}): 'video' | 'audio' | 'subtitle' | 'other' {
   if (track.kind === 'video' || /^V\d+$/i.test(track.name)) return 'video'
   if (track.kind === 'audio' || /^A\d+$/i.test(track.name)) return 'audio'
   if (track.kind === 'subtitle' || /^S\d+$/i.test(track.name)) return 'subtitle'
@@ -148,9 +156,12 @@ async function buildMediaEvidence(media: MediaMetadata): Promise<AiMediaEvidence
   ])
   const captions = media.aiCaptions ?? []
   const beats = getAudioBeatEvidence(media.id)
-  const matchingVisualEvidence = editingEvidence?.sourceFingerprint === sourceFingerprint(media)
-    ? editingEvidence.visual?.samples ?? []
-    : []
+  const visualAnalysisIntensity = useSettingsStore.getState().visualAnalysisIntensity
+  const matchingVisualEvidence =
+    editingEvidence?.sourceFingerprint === sourceFingerprint(media) &&
+    editingEvidence.visual?.intensity === visualAnalysisIntensity
+      ? editingEvidence.visual.samples
+      : []
   return {
     mediaId: media.id,
     name: media.fileName,
@@ -177,14 +188,17 @@ async function buildMediaEvidence(media: MediaMetadata): Promise<AiMediaEvidence
       ? {
           transcript: {
             language: transcript.language,
-          segmentCount: transcript.segments.length,
-          wordCount: countWords(transcript),
-          updatedAt: transcript.updatedAt,
-          ...(transcript.provenance ? {
-            service: transcript.provenance.service,
-            modelId: transcript.provenance.modelId,
-            modelVersion: transcript.provenance.modelVersion,
-          } : {}),
+            segmentCount: transcript.segments.length,
+            wordCount: countTranscriptTextUnits(transcript),
+            excerpt: buildTranscriptExcerpt(transcript),
+            updatedAt: transcript.updatedAt,
+            ...(transcript.provenance
+              ? {
+                  service: transcript.provenance.service,
+                  modelId: transcript.provenance.modelId,
+                  modelVersion: transcript.provenance.modelVersion,
+                }
+              : {}),
           },
         }
       : {}),
@@ -196,19 +210,24 @@ export async function findTranscriptEvidence(
   query: string,
   mediaIds?: readonly string[],
 ): Promise<Array<{ mediaId: string; startSeconds: number; endSeconds: number; text: string }>> {
-  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const normalizedQuery = normalizeTranscriptSearchText(query)
   if (!normalizedQuery) return []
 
   const allowedIds = mediaIds ? new Set(mediaIds) : null
   const mediaItems = useMediaLibraryStore.getState().mediaItems
-  const matches: Array<{ mediaId: string; startSeconds: number; endSeconds: number; text: string }> = []
+  const matches: Array<{
+    mediaId: string
+    startSeconds: number
+    endSeconds: number
+    text: string
+  }> = []
 
   for (const media of mediaItems) {
     if (allowedIds && !allowedIds.has(media.id)) continue
     const transcript = await getTranscript(media.id).catch(() => undefined)
     if (!transcript) continue
     for (const segment of transcript.segments) {
-      if (!segment.text.toLocaleLowerCase().includes(normalizedQuery)) continue
+      if (!normalizeTranscriptSearchText(segment.text).includes(normalizedQuery)) continue
       matches.push({
         mediaId: media.id,
         startSeconds: segment.start,

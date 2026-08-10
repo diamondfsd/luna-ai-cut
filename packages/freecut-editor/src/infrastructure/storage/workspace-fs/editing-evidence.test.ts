@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it } from 'vite-plus/test'
-import '../../test-utils/logger-test-mocks'
+import '../test-utils/logger-test-mocks'
 
 import { setWorkspaceRoot } from './root'
 import { asHandle, createRoot } from './__tests__/in-memory-handle'
@@ -16,6 +16,7 @@ describe('editing evidence storage', () => {
     await saveVisualEditingEvidence('media-1', '1024:123', {
       models: [{ id: 'yolo26s-seg', version: 'v1' }],
       samples: [{ timeSeconds: 1.5, tags: ['人物', '室内'] }],
+      intensity: 'strong',
     })
 
     await expect(getEditingEvidence('media-1')).resolves.toEqual({
@@ -23,6 +24,7 @@ describe('editing evidence storage', () => {
       visual: {
         models: [{ id: 'yolo26s-seg', version: 'v1' }],
         samples: [{ timeSeconds: 1.5, tags: ['人物', '室内'] }],
+        intensity: 'strong',
       },
     })
   })

@@ -46,6 +46,7 @@ export interface AgentMedia {
       language?: string
       segmentCount: number
       wordCount: number
+      excerpt: Array<{ start: number; end: number; text: string }>
     }
     audioAnalysis: 'missing' | 'running' | 'ready' | 'unavailable'
   }

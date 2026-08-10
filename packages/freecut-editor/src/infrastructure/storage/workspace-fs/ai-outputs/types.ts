@@ -119,6 +119,7 @@ export interface EditingEvidencePayload {
   visual?: {
     samples: Array<{ timeSeconds: number; tags: string[] }>
     models: Array<{ id: string; version: string }>
+    intensity: 'light' | 'normal' | 'strong'
   }
 }
 

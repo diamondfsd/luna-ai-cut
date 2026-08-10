@@ -15,7 +15,7 @@ describe('RouteErrorScreen', () => {
   const writeText = vi.fn<() => Promise<void>>()
 
   beforeEach(async () => {
-    await i18n.changeLanguage('en')
+    await i18n.changeLanguage('zh')
     writeText.mockReset()
     writeText.mockResolvedValue()
     Object.defineProperty(navigator, 'clipboard', {
@@ -27,18 +27,18 @@ describe('RouteErrorScreen', () => {
   it('turns a missing project into a recovery path with copyable diagnostics', async () => {
     render(<RouteErrorScreen error={new ProjectNotFoundError('project-123')} reset={vi.fn()} />)
 
-    expect(screen.getByRole('heading', { name: "We couldn't find this project" })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '找不到此项目' })).toBeTruthy()
     expect(screen.queryByText('Project not found: project-123')).toBeNull()
-    expect(screen.getByRole('link', { name: 'Back to projects' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: '返回项目列表' }).getAttribute('href')).toBe(
       '/projects',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy error details' }))
+    fireEvent.click(screen.getByRole('button', { name: '复制错误详情' }))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledOnce())
     expect(writeText).toHaveBeenCalledWith(
       expect.stringContaining('Error: ProjectNotFoundError: Project not found: project-123'),
     )
-    expect(screen.getByRole('button', { name: 'Error details copied' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '已复制错误详情' })).toBeTruthy()
   })
 })
