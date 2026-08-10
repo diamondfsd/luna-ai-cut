@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import type {
   EmbeddedAiAssistantConfigInput,
   EmbeddedAiAssistantGenerateInput,
   EmbeddedMediaSource,
   EmbeddedTaskProgress,
   EmbeddedVisualAnalysisIntensity,
+  EmbeddedExportFile,
   ImportMediaFiles,
 } from '@freecut/embedded'
 
@@ -18,6 +19,7 @@ const FreeCutEditor = lazy(async () => {
 })
 
 const IMPORTED_SOURCE_PATHS_STORAGE_KEY = 'luna.freecut.imported-source-paths.v1'
+const EXPORT_WRITE_CHUNK_BYTES = 4 * 1024 * 1024
 function mediaSourceKey(source: Pick<EmbeddedMediaSource, 'fileName' | 'fileSize' | 'fileLastModified'>): string {
   return `${source.fileName}\u0000${source.fileSize}\u0000${source.fileLastModified ?? ''}`
 }
@@ -191,6 +193,38 @@ export function VideoEditorPage() {
     [],
   )
 
+  const saveExportBlob = useCallback(async (
+    directory: string,
+    file: EmbeddedExportFile,
+    signal?: AbortSignal,
+  ) => {
+    signal?.throwIfAborted()
+    const opened = await window.luna.freecutExport.openWriter(directory, file.fileName)
+    try {
+      for (let offset = 0; offset < file.data.size; offset += EXPORT_WRITE_CHUNK_BYTES) {
+        signal?.throwIfAborted()
+        const chunk = await file.data.slice(offset, offset + EXPORT_WRITE_CHUNK_BYTES).arrayBuffer()
+        await window.luna.freecutExport.writeWriter(opened.writerId, chunk)
+      }
+      signal?.throwIfAborted()
+      return await window.luna.freecutExport.closeWriter(opened.writerId)
+    } catch (error) {
+      await window.luna.freecutExport.abortWriter(opened.writerId).catch(() => undefined)
+      throw error
+    }
+  }, [])
+
+  const exportFiles = useMemo(() => ({
+    getDirectory: async () => (await window.luna.getSettings()).exportDir ?? null,
+    chooseDirectory: () => window.luna.chooseExportDir(),
+    saveFiles: async (directory: string, files: EmbeddedExportFile[], signal?: AbortSignal) => {
+      const saved = []
+      for (const file of files) saved.push(await saveExportBlob(directory, file, signal))
+      return saved
+    },
+    revealFile: (filePath: string) => window.luna.revealFile(filePath),
+  }), [saveExportBlob])
+
   return (
     <div className="video-editor-page">
       <Suspense
@@ -210,6 +244,7 @@ export function VideoEditorPage() {
           onCancelAiAssistant={handleCancelAiAssistant}
           onAiAssistantStatus={handleAiAssistantStatus}
           onRenderHtmlFrame={handleRenderHtmlFrame}
+          exportFiles={exportFiles}
         />
       </Suspense>
       <WorkspaceImportDialog

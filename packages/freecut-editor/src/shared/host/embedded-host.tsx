@@ -51,6 +51,27 @@ export interface EmbeddedHtmlRenderResult {
   warnings: string[]
 }
 
+export interface EmbeddedExportFile {
+  fileName: string
+  data: Blob
+}
+
+export interface EmbeddedExportSaveResult {
+  fileName: string
+  filePath: string
+}
+
+export interface EmbeddedExportBridge {
+  getDirectory(): Promise<string | null>
+  chooseDirectory(): Promise<string | null>
+  saveFiles(
+    directory: string,
+    files: EmbeddedExportFile[],
+    signal?: AbortSignal,
+  ): Promise<EmbeddedExportSaveResult[]>
+  revealFile(filePath: string): Promise<void>
+}
+
 export interface EmbeddedAiAssistantConfig {
   baseUrl: string
   model: string
@@ -136,6 +157,7 @@ export interface EmbeddedHostBridge {
   /** The remote model connection is implemented by the trusted Electron host. */
   aiAssistant?: EmbeddedAiAssistantBridge
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
+  exportFiles?: EmbeddedExportBridge
 }
 
 const EmbeddedHostContext = createContext<EmbeddedHostBridge>({})

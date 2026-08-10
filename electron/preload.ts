@@ -27,6 +27,7 @@ import type {
   WifiPortCheckOptions,
   ExportTaskRecord,
   FreecutWorkspaceApi,
+  FreecutExportApi,
   OriginalFileExportRequest,
 } from '../src/shared/types'
 import type { HtmlRenderApi } from './htmlRenderTypes'
@@ -71,6 +72,12 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     removeEntry: (path, recursive) => ipcRenderer.invoke('freecut-workspace:remove-entry', path, recursive),
     moveFile: (sourcePath, destinationPath) => ipcRenderer.invoke('freecut-workspace:move-file', sourcePath, destinationPath),
   } satisfies FreecutWorkspaceApi,
+  freecutExport: {
+    openWriter: (directory, fileName) => ipcRenderer.invoke('freecut-export:open-writer', directory, fileName),
+    writeWriter: (writerId, data) => ipcRenderer.invoke('freecut-export:write-writer', writerId, data),
+    closeWriter: (writerId) => ipcRenderer.invoke('freecut-export:close-writer', writerId),
+    abortWriter: (writerId) => ipcRenderer.invoke('freecut-export:abort-writer', writerId),
+  } satisfies FreecutExportApi,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   // 日志
   log: (level: string, message: string, meta?: unknown) => {

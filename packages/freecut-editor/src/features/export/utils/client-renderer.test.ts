@@ -64,6 +64,20 @@ describe('client-renderer export matrix', () => {
     expect(clientSettings.videoBitrate).toBe(2_400_000)
   })
 
+  it('uses an explicit output frame rate without changing the project rate input', () => {
+    const clientSettings = mapToClientSettings(
+      {
+        codec: 'h264',
+        quality: 'high',
+        resolution: { width: 1920, height: 1080 },
+        fps: 60,
+      },
+      30,
+    )
+
+    expect(clientSettings.fps).toBe(60)
+  })
+
   it('only falls back to codecs that match the selected container', () => {
     expect(selectFallbackVideoCodec(['avc'], 'webm')).toBeNull()
     expect(selectFallbackVideoCodec(['av1', 'avc'], 'webm')).toBe('av1')

@@ -187,11 +187,19 @@ export interface FreecutWorkspaceApi {
   moveFile(sourcePath: string[], destinationPath: string[]): Promise<void>
 }
 
+export interface FreecutExportApi {
+  openWriter(directory: string, fileName: string): Promise<{ writerId: string; filePath: string; fileName: string }>
+  writeWriter(writerId: string, data: ArrayBuffer): Promise<void>
+  closeWriter(writerId: string): Promise<{ filePath: string; fileName: string }>
+  abortWriter(writerId: string): Promise<void>
+}
+
 export interface LunaApi {
   environment?: {
     freecutStorage?: 'disk' | 'opfs'
   }
   freecutWorkspace: FreecutWorkspaceApi
+  freecutExport: FreecutExportApi
   startupReady(): void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>

@@ -6,6 +6,7 @@ import { ExportDialog } from './export-dialog'
 const mockStartExport = vi.fn()
 const mockCancelExport = vi.fn()
 const mockDownloadVideo = vi.fn()
+const mockRevealSavedFile = vi.fn()
 const mockResetState = vi.fn()
 const mockGetSupportedCodecs = vi.fn<(...args: unknown[]) => Promise<ClientCodec[]>>()
 
@@ -18,9 +19,12 @@ vi.mock('../hooks/use-client-render', () => ({
     status: 'idle',
     error: null,
     result: null,
+    savedFiles: [],
+    supportsDirectSave: false,
     startExport: mockStartExport,
     cancelExport: mockCancelExport,
     downloadVideo: mockDownloadVideo,
+    revealSavedFile: mockRevealSavedFile,
     resetState: mockResetState,
     getSupportedCodecs: mockGetSupportedCodecs,
     estimateFileSize: vi.fn(),
@@ -69,6 +73,7 @@ describe('ExportDialog', () => {
     mockStartExport.mockReset()
     mockCancelExport.mockReset()
     mockDownloadVideo.mockReset()
+    mockRevealSavedFile.mockReset()
     mockResetState.mockReset()
     mockGetSupportedCodecs.mockReset()
 
@@ -90,8 +95,8 @@ describe('ExportDialog', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Format')).toHaveTextContent('MP4')
-      expect(screen.getByLabelText('Codec')).toHaveTextContent('H.264')
+      expect(screen.getByLabelText('格式')).toHaveTextContent('MP4')
+      expect(screen.getByLabelText('编解码器')).toHaveTextContent('H.264')
     })
   })
 
@@ -104,13 +109,13 @@ describe('ExportDialog', () => {
       expect(mockGetSupportedCodecs).toHaveBeenCalled()
     })
 
-    fireEvent.keyDown(screen.getByLabelText('Format'), { key: 'ArrowDown' })
+    fireEvent.keyDown(screen.getByLabelText('格式'), { key: 'ArrowDown' })
 
     const webmOption = await screen.findByRole('option', { name: /WebM/i })
     expect(webmOption).toHaveAttribute('data-disabled')
 
-    fireEvent.keyDown(screen.getByLabelText('Format'), { key: 'Escape' })
-    fireEvent.keyDown(screen.getByLabelText('Codec'), { key: 'ArrowDown' })
+    fireEvent.keyDown(screen.getByLabelText('格式'), { key: 'Escape' })
+    fireEvent.keyDown(screen.getByLabelText('编解码器'), { key: 'ArrowDown' })
 
     const h265Option = await screen.findByRole('option', { name: /H\.265/i })
     expect(h265Option).toHaveAttribute('data-disabled')

@@ -262,6 +262,7 @@ function projectMatchesSource(context: SmartCopyContext, source: MediaMetadata):
     source.width === context.width,
     source.height === context.height,
     Math.abs(source.fps - context.fps) <= 0.01,
+    Math.abs(context.settings.fps - context.fps) <= 0.01,
     context.settings.resolution.width === source.width,
     context.settings.resolution.height === source.height,
   ].every(Boolean)

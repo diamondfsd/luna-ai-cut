@@ -48,6 +48,27 @@ declare module '@freecut/embedded' {
     warnings: string[]
   }
 
+  export interface EmbeddedExportFile {
+    fileName: string
+    data: Blob
+  }
+
+  export interface EmbeddedExportSaveResult {
+    fileName: string
+    filePath: string
+  }
+
+  export interface EmbeddedExportBridge {
+    getDirectory(): Promise<string | null>
+    chooseDirectory(): Promise<string | null>
+    saveFiles(
+      directory: string,
+      files: EmbeddedExportFile[],
+      signal?: AbortSignal,
+    ): Promise<EmbeddedExportSaveResult[]>
+    revealFile(filePath: string): Promise<void>
+  }
+
   export interface EmbeddedAiAssistantConfig {
     baseUrl: string
     model: string
@@ -131,6 +152,7 @@ declare module '@freecut/embedded' {
     onRenderHtmlFrame?: (
       request: EmbeddedHtmlRenderRequest,
     ) => Promise<EmbeddedHtmlRenderResult>
+    exportFiles?: EmbeddedExportBridge
   }
 
   export const FreeCutEditor: ComponentType<FreeCutEditorProps>
