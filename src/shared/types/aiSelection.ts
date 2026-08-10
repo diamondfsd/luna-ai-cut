@@ -179,6 +179,12 @@ export interface AiFaceGroup {
   mergedMembers?: Array<{ id: string; name: string; avatarDataUrl: string | null }>
 }
 
+export interface AiHiddenPerson {
+  id: string
+  name: string
+  avatarDataUrl: string | null
+}
+
 export interface AiSelectionCounts {
   total: number
   completed: number

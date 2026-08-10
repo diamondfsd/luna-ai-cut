@@ -1,0 +1,6 @@
+.ai-selection-person-filter { position: relative; display: flex; min-width: 0; align-items: center; gap: 2px; }
+.ai-selection-person-filter > .ui-btn { min-width: 0; flex: 1; }
+.ai-selection-person-menu-trigger.ui-icon-btn { width: 28px; flex: 0 0 28px; opacity: 0; transition: opacity 120ms ease; }
+.ai-selection-person-filter:hover .ai-selection-person-menu-trigger, .ai-selection-person-filter:focus-within .ai-selection-person-menu-trigger, .ai-selection-person-menu-trigger.is-open { opacity: 1; }
+.ai-selection-person-menu { width: 154px; padding: 6px; display: grid; gap: 2px; }
+.ai-selection-person-menu .ui-btn { width: 100%; justify-content: flex-start; border: 0; }

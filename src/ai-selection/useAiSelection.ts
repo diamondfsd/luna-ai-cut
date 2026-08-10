@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { AiSelectionPreset, AiSelectionPurpose, AiSelectionSession, AiSelectionSource, AiSelectionTarget, AiSelectionUserOperation } from '../shared/types'
+import type { AiHiddenPerson, AiSelectionPreset, AiSelectionPurpose, AiSelectionSession, AiSelectionSource, AiSelectionTarget, AiSelectionUserOperation } from '../shared/types'
 import { toast } from '../ui'
 
 interface IncomingSelectionState {
@@ -29,6 +29,7 @@ export function useAiSelection() {
   const startedIncoming = useRef(false)
   const [sessions, setSessions] = useState<AiSelectionSession[]>([])
   const [session, setSession] = useState<AiSelectionSession | null>(null)
+  const [hiddenPeople, setHiddenPeople] = useState<AiHiddenPerson[]>([])
   const [preset, setPreset] = useState<AiSelectionPreset>('balanced')
   const [purpose, setPurpose] = useState<AiSelectionPurpose>('general')
   const [target, setTarget] = useState<AiSelectionTarget>({ mode: 'preset', value: null })
@@ -42,11 +43,20 @@ export function useAiSelection() {
     setSession((current) => current?.id === next.id ? next : current)
   }, [])
 
+  const refreshHiddenPeople = useCallback(async (): Promise<void> => {
+    try {
+      setHiddenPeople(await window.luna.aiSelection.listHiddenPeople())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    }
+  }, [])
+
   useEffect(() => {
     void window.luna.aiSelection.listSessions().then((next) => {
       setSessions(next)
     }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => setLoadingSessions(false))
+    void refreshHiddenPeople()
     const offSession = window.luna.aiSelection.onSessionUpdated(upsert)
     const offProgress = window.luna.aiSelection.onProgress((progress) => {
       const active = peopleAnalysisRef.current
@@ -55,7 +65,7 @@ export function useAiSelection() {
       setPeopleAnalysis({ running: true, completed: active.completed, total: active.total, currentLabel: progress.currentLabel })
     })
     return () => { offSession(); offProgress() }
-  }, [upsert])
+  }, [refreshHiddenPeople, upsert])
 
   useEffect(() => {
     if (!incoming?.paths?.length || loadingSessions || startedIncoming.current) return
@@ -172,15 +182,25 @@ export function useAiSelection() {
     setPersonAvatar: (groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => run(() => window.luna.aiSelection.setPersonAvatar(session!.id, groupId, itemId, bounds)),
     mergePeople: (targetGroupId: string, sourceGroupId: string) => run(() => window.luna.aiSelection.mergePeople(session!.id, targetGroupId, sourceGroupId)),
     unmergePerson: (targetGroupId: string, memberIdentityId: string) => run(() => window.luna.aiSelection.unmergePerson(session!.id, targetGroupId, memberIdentityId)),
-    deletePerson: (groupId: string) => run(() => window.luna.aiSelection.deletePerson(session!.id, groupId)),
+    hidePerson: async (groupId: string) => {
+      const completed = await run(() => window.luna.aiSelection.hidePerson(session!.id, groupId))
+      if (completed) await refreshHiddenPeople()
+      return completed
+    },
+    restorePerson: async (personId: string) => {
+      const completed = await run(() => window.luna.aiSelection.restorePerson(session!.id, personId))
+      if (completed) await refreshHiddenPeople()
+      return completed
+    },
     analyzeContentTags: (itemIds: string[] = []) => run(() => window.luna.aiSelection.analyzeContentTags(session!.id, itemIds)),
     analyzeVideos: (itemIds: string[]) => run(() => window.luna.aiSelection.analyzeVideos(session!.id, itemIds)),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [session, busy])
+  }), [session, busy, refreshHiddenPeople])
 
   return {
     sessions,
     session,
+    hiddenPeople,
     preset,
     setPreset,
     purpose,
