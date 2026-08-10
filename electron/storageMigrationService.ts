@@ -31,6 +31,10 @@ export interface StorageMigrationSources {
   legacyLogSource?: string
 }
 
+export interface StorageMigrationOptions {
+  overwriteExisting?: boolean
+}
+
 function localResourcesDir(settings: AppSettings): string {
   return settings.localResourcesDir || path.join(settings.baseDir, 'localResources')
 }
@@ -163,6 +167,13 @@ async function pathExists(target: string): Promise<boolean> {
   }
 }
 
+export async function storageMigrationConflictLabels(plan: StorageMigrationPlan): Promise<string[]> {
+  const conflicts = await Promise.all(plan.directories.map(async (directory) => (
+    await directoryExists(directory.source) && await pathExists(directory.destination) ? directory.label : null
+  )))
+  return conflicts.filter((label): label is string => Boolean(label))
+}
+
 /** 在复制前确认目录可创建、写入和清理，避免迁移中途才发现目标磁盘不可用。 */
 export async function assertStorageTargetWritable(targetDir: string): Promise<void> {
   const target = path.resolve(targetDir)
@@ -201,6 +212,27 @@ async function directoryStats(directory: string): Promise<DirectoryStats> {
 
 function sameStats(left: DirectoryStats, right: DirectoryStats): boolean {
   return left.files === right.files && left.bytes === right.bytes
+}
+
+async function copiedDirectoryMatches(source: string, destination: string): Promise<boolean> {
+  const entries = await fs.readdir(source, { withFileTypes: true })
+  for (const entry of entries) {
+    const sourcePath = path.join(source, entry.name)
+    const destinationPath = path.join(destination, entry.name)
+    let destinationStats: Awaited<ReturnType<typeof fs.lstat>>
+    try {
+      destinationStats = await fs.lstat(destinationPath)
+    } catch {
+      return false
+    }
+    if (entry.isDirectory()) {
+      if (!destinationStats.isDirectory() || !await copiedDirectoryMatches(sourcePath, destinationPath)) return false
+      continue
+    }
+    const sourceStats = await fs.lstat(sourcePath)
+    if (destinationStats.isDirectory() || destinationStats.size !== sourceStats.size) return false
+  }
+  return true
 }
 
 function remapPath(value: string, mappings: StorageDirectory[]): string {
@@ -250,19 +282,22 @@ export async function migrateLocalStorage(
   targetDir: string,
   save: (patch: Partial<AppSettings>) => Promise<AppSettings>,
   sources: StorageMigrationSources = {},
+  options: StorageMigrationOptions = {},
 ): Promise<StorageMigrationResult> {
   const plan = createStorageMigrationPlan(settings, targetDir, sources)
   await assertStorageTargetWritable(plan.targetDir)
+  const overwriteExisting = options.overwriteExisting === true
   const existingDirectories = (await Promise.all(plan.directories.map(async (directory) => (
     comparablePath(directory.source) !== comparablePath(directory.destination) && await directoryExists(directory.source)
       ? directory
       : null
   )))).filter((directory): directory is StorageDirectory => Boolean(directory))
 
-  for (const directory of existingDirectories) {
-    if (await pathExists(directory.destination)) {
-      throw new Error(`新位置中已存在“${directory.label}”，请选择一个空目录`)
-    }
+  const existingDestinations = new Set((await Promise.all(existingDirectories.map(async (directory) => (
+    await pathExists(directory.destination) ? directory.key : null
+  )))).filter((key): key is StorageDirectoryKey => Boolean(key)))
+  if (existingDestinations.size > 0 && !overwriteExisting) {
+    throw new Error('新位置已有内容，请确认覆盖后继续')
   }
 
   const sourceStats = new Map<string, DirectoryStats>()
@@ -273,12 +308,11 @@ export async function migrateLocalStorage(
       await fs.mkdir(path.dirname(directory.destination), { recursive: true })
       await fs.cp(directory.source, directory.destination, {
         recursive: true,
-        force: false,
-        errorOnExist: true,
+        force: overwriteExisting,
+        errorOnExist: !overwriteExisting,
         dereference: false,
       })
-      const copiedStats = await directoryStats(directory.destination)
-      if (!sameStats(sourceStats.get(directory.key)!, copiedStats)) {
+      if (!await copiedDirectoryMatches(directory.source, directory.destination)) {
         throw new Error(`无法完整复制“${directory.label}”`)
       }
     }
@@ -315,7 +349,7 @@ export async function migrateLocalStorage(
       oldDataRemoved,
     }
   } catch (error) {
-    await removeCopiedDirectories(existingDirectories)
+    await removeCopiedDirectories(existingDirectories.filter((directory) => !existingDestinations.has(directory.key)))
     throw error
   }
 }
