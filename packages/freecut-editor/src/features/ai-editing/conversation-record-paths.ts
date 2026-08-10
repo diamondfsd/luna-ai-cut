@@ -1,11 +1,13 @@
 import { getNativeWorkspacePath } from '@freecut/infrastructure/storage/native-file-system'
 import {
+  projectAiEditingConversationHistoryPath,
   projectAiEditingConversationPath,
   projectAiEditingRunsPath,
 } from '@freecut/infrastructure/storage/workspace-fs/paths'
 
 export interface AiEditingRecordPaths {
   conversation: string
+  history: string
   runs: string
 }
 
@@ -24,6 +26,7 @@ export function getAiEditingRecordPaths(
 ): AiEditingRecordPaths {
   return {
     conversation: resolveWorkspacePath(workspacePath, projectAiEditingConversationPath(projectId)),
+    history: resolveWorkspacePath(workspacePath, projectAiEditingConversationHistoryPath(projectId)),
     runs: resolveWorkspacePath(workspacePath, projectAiEditingRunsPath(projectId)),
   }
 }
@@ -35,5 +38,5 @@ export async function resolveAiEditingRecordPaths(
 }
 
 export function formatAiEditingRecordPaths(paths: AiEditingRecordPaths): string {
-  return `对话记录：${paths.conversation}\n执行记录：${paths.runs}`
+  return `当前对话：${paths.conversation}\n历史会话：${paths.history}\n执行记录：${paths.runs}`
 }

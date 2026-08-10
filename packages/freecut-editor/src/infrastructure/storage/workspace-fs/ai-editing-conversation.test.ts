@@ -1,7 +1,12 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it } from 'vite-plus/test'
-import { loadAiEditingConversation, saveAiEditingConversation } from './ai-editing-conversation'
+import {
+  archiveAiEditingConversation,
+  listAiEditingConversationHistory,
+  loadAiEditingConversation,
+  saveAiEditingConversation,
+} from './ai-editing-conversation'
 import { writeJsonAtomic } from './fs-primitives'
 import { projectAiEditingConversationPath } from './paths'
 import { setWorkspaceRoot } from './root'
@@ -48,5 +53,27 @@ describe('AI editing conversation storage', () => {
     )
 
     expect(await loadAiEditingConversation('project-42')).toEqual([])
+  })
+
+  it('stores archived sessions separately and lists the newest session first', async () => {
+    const root = createRoot()
+    setWorkspaceRoot(asHandle(root))
+    await archiveAiEditingConversation('project-42', {
+      id: 'older-session',
+      createdAt: 1_723_456_789_000,
+      archivedAt: 1_723_456_790_000,
+      messages: [{ id: 'message-1', role: 'user', content: '整理开场片段', createdAt: 1_723_456_789_000 }],
+    })
+    await archiveAiEditingConversation('project-42', {
+      id: 'newer-session',
+      createdAt: 1_723_456_800_000,
+      archivedAt: 1_723_456_801_000,
+      messages: [{ id: 'message-2', role: 'assistant', content: '已完成。', createdAt: 1_723_456_800_000 }],
+    })
+
+    expect((await listAiEditingConversationHistory('project-42')).map((session) => session.id)).toEqual([
+      'newer-session',
+      'older-session',
+    ])
   })
 })

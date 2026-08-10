@@ -7,6 +7,7 @@ describe('AI editing record paths', () => {
   it('uses workspace-relative paths when the browser does not expose a local folder path', () => {
     expect(getAiEditingRecordPaths('project-42', null)).toEqual({
       conversation: 'projects/project-42/ai-editing-conversation.json',
+      history: 'projects/project-42/ai-editing-conversation-history.json',
       runs: 'projects/project-42/ai-editing-runs.json',
     })
   })
@@ -15,6 +16,8 @@ describe('AI editing record paths', () => {
     expect(getAiEditingRecordPaths('project-42', 'C:\\Users\\Luna\\workspace')).toEqual({
       conversation:
         'C:\\Users\\Luna\\workspace\\projects\\project-42\\ai-editing-conversation.json',
+      history:
+        'C:\\Users\\Luna\\workspace\\projects\\project-42\\ai-editing-conversation-history.json',
       runs: 'C:\\Users\\Luna\\workspace\\projects\\project-42\\ai-editing-runs.json',
     })
   })
@@ -23,11 +26,13 @@ describe('AI editing record paths', () => {
     expect(
       formatAiEditingRecordPaths({
         conversation: '/workspace/projects/project-42/ai-editing-conversation.json',
+        history: '/workspace/projects/project-42/ai-editing-conversation-history.json',
         runs: '/workspace/projects/project-42/ai-editing-runs.json',
       }),
     ).toBe(
       [
-        '对话记录：/workspace/projects/project-42/ai-editing-conversation.json',
+        '当前对话：/workspace/projects/project-42/ai-editing-conversation.json',
+        '历史会话：/workspace/projects/project-42/ai-editing-conversation-history.json',
         '执行记录：/workspace/projects/project-42/ai-editing-runs.json',
       ].join('\n'),
     )

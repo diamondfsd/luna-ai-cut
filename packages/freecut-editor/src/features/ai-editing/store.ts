@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { LlmMessage } from '@freecut/infrastructure/llm'
 import {
+  archiveAiEditingConversation,
   clearAiEditingConversation,
   loadAiEditingConversation,
   saveAiEditingRun,
@@ -57,11 +58,12 @@ interface AiEditingState {
   reasoningEffort: AiEditingReasoningEffort
   projectId: string | null
   isRestoringConversation: boolean
+  isStartingNewConversation: boolean
   restoreConversation: (projectId: string | null) => Promise<void>
   submit: (text: string, references?: AiEditingResourceReference[]) => Promise<void>
   setReasoningEffort: (effort: AiEditingReasoningEffort) => void
   cancel: () => void
-  clear: () => Promise<void>
+  startNewConversation: () => Promise<void>
 }
 
 let activeController: AbortController | null = null
@@ -115,6 +117,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
   reasoningEffort: loadReasoningEffort(),
   projectId: null,
   isRestoringConversation: false,
+  isStartingNewConversation: false,
 
   restoreConversation: async (projectId) => {
     const generation = ++conversationLoadGeneration
@@ -123,6 +126,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     set({
       projectId,
       isRestoringConversation: projectId !== null,
+      isStartingNewConversation: false,
       phase: 'idle',
       loadPercent: 0,
       thinkingLabel: '正在理解需求并规划剪辑',
@@ -144,7 +148,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
 
   submit: async (text, references = []) => {
     const trimmed = text.trim()
-    if (!trimmed || get().phase !== 'idle') return
+    if (!trimmed || get().phase !== 'idle' || get().isStartingNewConversation) return
     const projectId = get().projectId
     if (!projectId || get().isRestoringConversation) return
 
@@ -340,11 +344,47 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     }))
   },
 
-  clear: async () => {
+  startNewConversation: async () => {
+    if (get().phase !== 'idle' || get().isStartingNewConversation) return
     activeController?.abort()
     activeController = null
-    conversationLoadGeneration += 1
     const projectId = get().projectId
+    const messages = get().messages
+    if (!projectId) {
+      set({
+        messages: [],
+        observations: [],
+        toolActivities: [],
+        streamingText: '',
+        thinkingPercent: 0,
+        thinkingCeiling: 0,
+        error: null,
+      })
+      return
+    }
+
+    set({ isStartingNewConversation: true, error: null })
+    try {
+      await enqueueConversationWrite(projectId, async () => {
+        if (messages.length > 0) {
+          await archiveAiEditingConversation(projectId, {
+            id: messages[0]?.id ?? newId(),
+            createdAt: messages[0]?.createdAt ?? Date.now(),
+            archivedAt: Date.now(),
+            messages,
+          })
+        }
+        await clearAiEditingConversation(projectId)
+      })
+    } catch (error) {
+      logger.warn('Failed to archive AI editing conversation', error)
+      if (get().projectId === projectId) {
+        set({ isStartingNewConversation: false, error: '无法保存当前对话，未新建会话。' })
+      }
+      return
+    }
+    if (get().projectId !== projectId) return
+    conversationLoadGeneration += 1
     set({
       messages: [],
       observations: [],
@@ -355,13 +395,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       thinkingCeiling: 0,
       error: null,
       isRestoringConversation: false,
+      isStartingNewConversation: false,
     })
-    if (!projectId) return
-    try {
-      await enqueueConversationWrite(projectId, () => clearAiEditingConversation(projectId))
-    } catch (error) {
-      logger.warn('Failed to clear AI editing conversation', error)
-      if (get().projectId === projectId) set({ error: '无法清空本项目的对话记录。' })
-    }
   },
 }))

@@ -75,6 +75,8 @@ const PROJECT_MEDIA_LINKS_FILENAME = 'media-links.json'
 const PROJECT_RENDER_QUEUE_FILENAME = 'render-queue.json'
 /** Conversation history for the project's AI editing assistant. */
 const PROJECT_AI_EDITING_CONVERSATION_FILENAME = 'ai-editing-conversation.json'
+/** Archived conversation sessions for the project's AI editing assistant. */
+const PROJECT_AI_EDITING_CONVERSATION_HISTORY_FILENAME = 'ai-editing-conversation-history.json'
 const PROJECT_AI_EDITING_RUNS_FILENAME = 'ai-editing-runs.json'
 const AI_EDITING_SKILLS_FILENAME = 'ai-editing-skills.json'
 /** User-saved animation presets, scoped to a single project. */
@@ -147,6 +149,11 @@ export function projectRenderQueuePath(id: string): string[] {
 /** Segments for `projects/{id}/ai-editing-conversation.json`. */
 export function projectAiEditingConversationPath(id: string): string[] {
   return [...projectDir(id), PROJECT_AI_EDITING_CONVERSATION_FILENAME]
+}
+
+/** Segments for `projects/{id}/ai-editing-conversation-history.json`. */
+export function projectAiEditingConversationHistoryPath(id: string): string[] {
+  return [...projectDir(id), PROJECT_AI_EDITING_CONVERSATION_HISTORY_FILENAME]
 }
 
 /** Segments for the project's AI editing execution history. */

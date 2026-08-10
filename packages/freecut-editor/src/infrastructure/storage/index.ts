@@ -169,7 +169,10 @@ export {
   loadAiEditingConversation,
   saveAiEditingConversation,
   clearAiEditingConversation,
+  listAiEditingConversationHistory,
+  archiveAiEditingConversation,
   type AiEditingConversationMessage,
+  type AiEditingConversationHistorySession,
 } from '@freecut/infrastructure/storage/workspace-fs/ai-editing-conversation'
 export {
   loadAiEditingSkills,
