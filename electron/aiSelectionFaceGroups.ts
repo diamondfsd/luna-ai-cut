@@ -4,7 +4,7 @@ import type { AiPersonIdentity } from './aiSelectionPeopleStore'
 export const FACE_EMBEDDING_VERSION = 'sface-2021dec-int8-independent-box-v2'
 // Local grouping must be stricter than a one-off face match. A low threshold lets
 // several nearby embeddings form a chain and incorrectly collapse distinct people.
-export const DEFAULT_FACE_GROUPING_THRESHOLD = 0.5
+export const DEFAULT_FACE_GROUPING_THRESHOLD = 0.42
 const MIN_FACE_GROUPING_THRESHOLD = 0.4
 const MAX_FACE_GROUPING_THRESHOLD = 0.6
 const FACE_GROUP_SUPPORT_GAP = 0.06
