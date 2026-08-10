@@ -239,6 +239,8 @@ RELEASE_NOTES_v1.7.0-hot.4.md
 
 不要为本次版本上传 `renderer-1.7.0-hot.4.zip` 通用包。客户端会按当前平台优先选择最新的三端包。
 
+Intel Mac 由 Apple 芯片 runner 交叉编译。工作流会先下载并校验固定的 ONNX Runtime x64 构建，仅用于完成同一 Rust 包内辅助进程的链接；热更新归档仍只收集不依赖 ONNX Runtime 的 `luna-render-core.node`，不会重复下发安装包已有的辅助进程和运行库。
+
 ## 旧版发布说明归档
 
 当根目录下积累较多 `RELEASE_NOTES_*.md` 文件时，可以将其归档到 `old-release-log/` 目录下：
