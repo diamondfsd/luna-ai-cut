@@ -2,7 +2,13 @@ import type { AiFaceDescriptor, AiFaceGroup, AiSelectionItem } from '../src/shar
 import type { AiPersonIdentity } from './aiSelectionPeopleStore'
 
 export const FACE_EMBEDDING_VERSION = 'sface-2021dec-int8-independent-box-v2'
-const FACE_MEMBER_MATCH_THRESHOLD = 0.36
+// Local grouping must be stricter than a one-off face match. A low threshold lets
+// several nearby embeddings form a chain and incorrectly collapse distinct people.
+export const DEFAULT_FACE_GROUPING_THRESHOLD = 0.5
+const MIN_FACE_GROUPING_THRESHOLD = 0.4
+const MAX_FACE_GROUPING_THRESHOLD = 0.6
+const FACE_GROUP_SUPPORT_GAP = 0.06
+const FACE_GROUP_SUPPORT_MIN_MEMBERS = 3
 const FACE_IDENTITY_MATCH_THRESHOLD = 0.48
 const FACE_IDENTITY_MATCH_RATIO = 0.6
 const FACE_EMBEDDING_DIMENSION = 128
@@ -13,10 +19,21 @@ interface FaceObservation {
   bounds: AiFaceDescriptor['bounds']
   embedding: number[]
   frameTime?: number
+  frameThumbnailUrl?: string
 }
 
 interface WorkingGroup {
   observations: FaceObservation[]
+}
+
+interface GroupMatch {
+  strongest: number
+  secondStrongest: number
+}
+
+export function normalizeFaceGroupingThreshold(value: number | null | undefined): number {
+  if (!Number.isFinite(value)) return DEFAULT_FACE_GROUPING_THRESHOLD
+  return Number(Math.max(MIN_FACE_GROUPING_THRESHOLD, Math.min(MAX_FACE_GROUPING_THRESHOLD, value)).toFixed(2))
 }
 
 export function hasSufficientFacePixels(
@@ -41,8 +58,20 @@ export function cosineSimilarity(left: number[], right: number[]): number {
   return denominator > 0 ? dot / denominator : -1
 }
 
-function groupSimilarity(group: WorkingGroup, observation: FaceObservation): number {
-  return Math.max(...group.observations.map((entry) => cosineSimilarity(entry.embedding, observation.embedding)))
+function groupMatch(group: WorkingGroup, observation: FaceObservation): GroupMatch {
+  const similarities = group.observations
+    .map((entry) => cosineSimilarity(entry.embedding, observation.embedding))
+    .sort((left, right) => right - left)
+  return {
+    strongest: similarities[0] ?? -1,
+    secondStrongest: similarities[1] ?? -1,
+  }
+}
+
+function canJoinGroup(group: WorkingGroup, match: GroupMatch, threshold: number): boolean {
+  if (match.strongest < threshold) return false
+  return group.observations.length < FACE_GROUP_SUPPORT_MIN_MEMBERS
+    || match.secondStrongest >= Math.max(MIN_FACE_GROUPING_THRESHOLD - FACE_GROUP_SUPPORT_GAP, threshold - FACE_GROUP_SUPPORT_GAP)
 }
 
 function faceBelongsToPerson(item: AiSelectionItem, face: AiFaceDescriptor): boolean {
@@ -65,7 +94,13 @@ function identityFace(item: AiSelectionItem, face: AiFaceDescriptor): face is Ai
     && faceBelongsToPerson(item, face))
 }
 
-function matchingIdentity(groupId: string, embeddings: number[][], identities: AiPersonIdentity[]): AiPersonIdentity | null {
+function matchingIdentity(groupId: string, observations: FaceObservation[], embeddings: number[][], identities: AiPersonIdentity[]): AiPersonIdentity | null {
+  const anchoredIdentity = identities.find((identity) => identity.sourceFace && observations.some((observation) => (
+    observation.itemId === identity.sourceFace?.itemId
+    && Math.abs(observation.bounds.x - identity.sourceFace.bounds.x) < 0.0001
+    && Math.abs(observation.bounds.y - identity.sourceFace.bounds.y) < 0.0001
+  )))
+  if (anchoredIdentity) return anchoredIdentity
   const sourceIdentity = identities.find((identity) => identity.sourceGroupId === groupId)
   if (sourceIdentity) return sourceIdentity
   const automaticIdentities = identities.filter((identity) => identity.automaticMatching)
@@ -86,12 +121,17 @@ function matchingIdentity(groupId: string, embeddings: number[][], identities: A
     .sort((left, right) => right.matches - left.matches || right.similarity - left.similarity)[0]?.identity ?? null
 }
 
-export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonIdentity[] = []): AiFaceGroup[] {
+export function buildFaceGroups(
+  items: AiSelectionItem[],
+  identities: AiPersonIdentity[] = [],
+  faceGroupingThreshold: number = DEFAULT_FACE_GROUPING_THRESHOLD,
+): AiFaceGroup[] {
+  const groupingThreshold = normalizeFaceGroupingThreshold(faceGroupingThreshold)
   const itemOrder = new Map(items.map((item, index) => [item.id, index]))
   const observations: FaceObservation[] = items.flatMap((item) => (
     item.personEvidence?.faces?.flatMap((face) => (
       identityFace(item, face)
-        ? [{ itemId: item.id, bounds: face.bounds, embedding: face.embedding, frameTime: face.frameTime }]
+        ? [{ itemId: item.id, bounds: face.bounds, embedding: face.embedding, frameTime: face.frameTime, frameThumbnailUrl: face.frameThumbnailUrl }]
         : []
     )) ?? []
   ))
@@ -103,11 +143,12 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
         entry.itemId === observation.itemId
         && (entry.frameTime === undefined || observation.frameTime === undefined || entry.frameTime === observation.frameTime)
       )))
-      .map((group) => ({ group, similarity: groupSimilarity(group, observation) }))
-      // The group mean drifts when the same person appears across poses. Keep the
-      // official pairwise recognition threshold as the membership decision instead.
-      .filter((entry) => entry.similarity >= FACE_MEMBER_MATCH_THRESHOLD)
-      .sort((left, right) => right.similarity - left.similarity)[0]?.group
+      .map((group) => ({ group, match: groupMatch(group, observation) }))
+      .filter((entry) => canJoinGroup(entry.group, entry.match, groupingThreshold))
+      .sort((left, right) => (
+        right.match.strongest - left.match.strongest
+        || right.match.secondStrongest - left.match.secondStrongest
+      ))[0]?.group
     if (candidate) {
       candidate.observations.push(observation)
     } else {
@@ -126,14 +167,20 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
         itemIds,
         coverItemId: cover.itemId,
         coverBounds: cover.bounds,
-        memberFaces: ordered.map((observation) => ({ itemId: observation.itemId, bounds: observation.bounds })),
+        memberFaces: ordered.map((observation) => ({
+          itemId: observation.itemId,
+          bounds: observation.bounds,
+          frameTime: observation.frameTime,
+          frameThumbnailUrl: observation.frameThumbnailUrl,
+        })),
+        observations: group.observations,
         embeddings: group.observations.map((observation) => observation.embedding),
       }
     })
     .sort((left, right) => right.itemIds.length - left.itemIds.length || left.coverItemId.localeCompare(right.coverItemId))
     .map((group, index) => {
       const groupId = `face_${group.coverItemId}_${Math.round(group.coverBounds.x * 1000)}_${Math.round(group.coverBounds.y * 1000)}`
-      const identity = matchingIdentity(groupId, group.embeddings, identities)
+      const identity = matchingIdentity(groupId, group.observations, group.embeddings, identities)
       const coverItem = items.find((item) => item.id === group.coverItemId)
       return {
         id: groupId,
@@ -141,8 +188,10 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
         name: identity?.name ?? `人物 ${index + 1}`,
         itemIds: group.itemIds,
         coverItemId: group.coverItemId,
-        coverUrl: identity?.avatarDataUrl ?? coverItem?.thumbnailUrl ?? coverItem?.path ?? null,
-        coverBounds: identity?.avatarDataUrl || coverItem?.kind === 'video'
+        coverUrl: identity?.avatarDataUrl
+          ?? group.memberFaces.find((face) => face.itemId === group.coverItemId)?.frameThumbnailUrl
+          ?? coverItem?.thumbnailUrl ?? coverItem?.path ?? null,
+        coverBounds: identity?.avatarDataUrl
           ? { x: 0, y: 0, width: 1, height: 1 }
           : group.coverBounds,
         memberFaces: group.memberFaces,

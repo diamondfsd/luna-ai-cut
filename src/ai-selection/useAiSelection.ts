@@ -178,6 +178,7 @@ export function useAiSelection() {
     redo: () => run(() => window.luna.aiSelection.redo(session!.id)),
     apply: (operation: AiSelectionUserOperation) => run(() => window.luna.aiSelection.applyOperation(session!.id, session!.revision, operation)),
     analyzePeople,
+    setFaceGroupingThreshold: (threshold: number) => run(() => window.luna.aiSelection.setFaceGroupingThreshold(session!.id, threshold)),
     renamePerson: (groupId: string, name: string) => run(() => window.luna.aiSelection.renamePerson(session!.id, groupId, name)),
     setPersonAvatar: (groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => run(() => window.luna.aiSelection.setPersonAvatar(session!.id, groupId, itemId, bounds)),
     mergePeople: (targetGroupId: string, sourceGroupIds: string[]) => run(() => window.luna.aiSelection.mergePeople(session!.id, targetGroupId, sourceGroupIds)),

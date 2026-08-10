@@ -1,0 +1,1 @@
+.ai-selection-face-group-frame { position: absolute; z-index: 1; border: 2px solid var(--blue, #06c); border-radius: 3px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .82), 0 1px 3px rgba(0, 0, 0, .42); pointer-events: none; box-sizing: border-box; }

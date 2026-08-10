@@ -95,10 +95,13 @@
 .ai-selection-preferences .ui-btn-group > * { flex: 1; }
 .ai-selection-results { min-width: 0; min-height: 0; overflow: hidden; background: var(--bg, #f5f6f8); }
 .ai-selection-results.filtered { display: grid; grid-template-columns: 210px minmax(0, 1fr); }
+.ai-selection-results.filtered.people { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
 .ai-selection-results-content { min-width: 0; min-height: 0; height: 100%; padding: 14px; overflow: auto; }
 .ai-selection-filter-rail { min-width: 0; min-height: 0; padding: 16px 10px; overflow-y: auto; border-right: 1px solid var(--border, #d9dce2); background: var(--surface, #fff); }
+.ai-selection-people-filter-rail { padding-inline: 12px; }
 .ai-selection-filter-title { margin: 0 6px 10px; display: block; font-size: 12px; }
 .ai-selection-filter-list { display: flex; flex-direction: column; gap: 4px; }
+.ai-selection-filter-list.people { gap: 12px; }
 .ai-selection-filter-list .ui-btn { width: 100%; min-width: 0; justify-content: flex-start; border: 0; color: var(--text-primary, #1d1d1f); }
 .ai-selection-filter-list .ui-btn > span:not(.ui-btn-icon) { flex: 1; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .ai-selection-filter-list .ui-btn strong { min-width: 24px; color: var(--text-secondary, #6e6e73); text-align: right; font-size: 10px; }
@@ -221,6 +224,7 @@
 .ai-selection-error { padding: 8px; border-radius: 6px; background: #fff0f0; color: #b42318; font-size: 12px; }
 .ai-selection-no-result { min-height: 240px; color: var(--text-secondary, #6e6e73); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; font-size: 13px; }
 @media (max-width: 1280px) { .ai-selection-workflow li:not(:last-child)::after { width: 10px; margin-inline: 5px; } }
+@media (max-width: 1180px) { .ai-selection-results.filtered.people { grid-template-columns: 270px minmax(0, 1fr); } }
 @media (max-width: 1100px) { .ai-selection-layout { grid-template-columns: 230px minmax(0, 1fr); } }
 @media (max-width: 1050px) { .ai-selection-create-settings-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ai-selection-create-name, .ai-selection-create-target { grid-column: auto; } }
 @media (max-width: 900px) { .ai-selection-workflow { display: none; } }

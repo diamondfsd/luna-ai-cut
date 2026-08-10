@@ -416,10 +416,10 @@ export function AiSelectionPage() {
       </div>
     </aside>
 
-    <main className={`ai-selection-results${hasFilterRail ? ' filtered' : ''}`}>
-      {hasFilterRail && <aside ref={filterRailRef} className="ai-selection-filter-rail">
+    <main className={`ai-selection-results${hasFilterRail ? ' filtered' : ''}${stage === 'people' ? ' people' : ''}`}>
+      {hasFilterRail && <aside ref={filterRailRef} className={`ai-selection-filter-rail${stage === 'people' ? ' ai-selection-people-filter-rail' : ''}`}>
         <strong className="ai-selection-filter-title">{stage === 'scenes' ? '拍摄时段' : stage === 'compare' ? '相似组' : stage === 'people' ? '人物' : '复核范围'}</strong>
-        <div className={`ai-selection-filter-list${stage === 'compare' ? ' compare-covers' : ''}`}>
+        <div className={`ai-selection-filter-list${stage === 'compare' ? ' compare-covers' : ''}${stage === 'people' ? ' people' : ''}`}>
           {stage === 'scenes' && <div className="ai-selection-date-groups">{sceneDateGroups.map((dateGroup) => <section className="ai-selection-date-group" key={dateGroup.date}>
             <strong className="ai-selection-date-heading">{dateGroup.date}</strong>
             <div className="ai-selection-period-list">{dateGroup.scenes.map((scene) => {
@@ -464,7 +464,9 @@ export function AiSelectionPage() {
         canShowFaceBoxes={Boolean(activeFaceGroup || activeCoPhotoGroup)}
         showFaceBoxes={showFaceBoxes}
         canAnalyze={faceCandidateIds.length > 0}
+        faceGroupingThreshold={session.faceGroupingThreshold}
         onAnalyze={() => void controls.analyzePeople(faceCandidateIds)}
+        onFaceGroupingThresholdChange={controls.setFaceGroupingThreshold}
         onShowFaceBoxesChange={setShowFaceBoxes}
         onRestore={controls.restorePerson}
       />}

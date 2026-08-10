@@ -22,7 +22,7 @@ export function rebuildSelectionResult(session: AiSelectionSession): void {
     ...modifiedGroups,
     ...generatedGroups.filter((group) => !group.itemIds.some((id) => modifiedItemIds.has(id))),
   ]
-  session.faceGroups = buildGlobalFaceGroups(session.items)
+  session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
   applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
   for (const scene of session.scenes) {
     scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.flags.aiRecommended).length

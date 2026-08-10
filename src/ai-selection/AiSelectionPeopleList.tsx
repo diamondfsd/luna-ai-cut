@@ -115,7 +115,7 @@ function AiSelectionPersonRow({ group, groups, items, item, active, busy, onRena
 
   return <div className="ai-selection-person-filter">
     {editing ? <div className={`ai-selection-person-inline-editor${active ? ' active' : ''}`}>
-      <AiFaceGroupCover group={group} item={item} />
+      <AiFaceGroupCover group={group} item={item} showFaceBounds />
       <Input ref={inputRef} variant="compact" className="ai-selection-person-rename-input" value={renameValue} maxLength={40} disabled={busy} aria-label={`编辑 ${group.name} 的名称`} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return
         if (event.key === 'Enter') { event.preventDefault(); void saveName() }
@@ -123,15 +123,14 @@ function AiSelectionPersonRow({ group, groups, items, item, active, busy, onRena
       }} />
       <Tooltip content="保存名称"><IconButton variant="ghost" size="mini" icon={<Check size={15} />} aria-label="保存名称" disabled={busy || !renameValue.trim()} onClick={() => void saveName()} /></Tooltip>
     </div> : <>
-      <Button variant="ghost" size="compact" className={`ai-selection-person-select${active ? ' active' : ''}`} icon={<AiFaceGroupCover group={group} item={item} />} onClick={() => onSelect(group.id)}><span className="ai-selection-person-name">{group.name}</span></Button>
+      <Button variant="ghost" size="compact" className={`ai-selection-person-select${active ? ' active' : ''}`} icon={<AiFaceGroupCover group={group} item={item} showFaceBounds />} onClick={() => onSelect(group.id)}><span className="ai-selection-person-name">{group.name}</span><strong className="ai-selection-person-count">{group.itemIds.length}</strong></Button>
       <Tooltip content="编辑名称"><IconButton variant="ghost" size="mini" className="ai-selection-person-rename-trigger" icon={<Pencil size={14} />} aria-label={`编辑 ${group.name} 的名称`} disabled={busy} onClick={startRename} /></Tooltip>
+      <AiSelectionPersonMenu group={group} groups={groups} items={items} busy={busy} onSetAvatar={onSetAvatar} onMerge={onMerge} onUnmerge={onUnmerge} onHide={onHide} />
     </>}
-    {!editing && <strong className="ai-selection-person-count">{group.itemIds.length}</strong>}
-    <AiSelectionPersonMenu group={group} groups={groups} items={items} busy={busy} onSetAvatar={onSetAvatar} onMerge={onMerge} onUnmerge={onUnmerge} onHide={onHide} />
   </div>
 }
 
 export function AiSelectionPeopleList({ groups, activeGroupId, items, busy, onSelect, onRename, onSetAvatar, onMerge, onUnmerge, onHide }: AiSelectionPeopleListProps) {
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
-  return <>{groups.map((group) => <AiSelectionPersonRow key={group.id} group={group} groups={groups} items={items} item={itemsById.get(group.coverItemId)} active={activeGroupId === group.id} busy={busy} onSelect={onSelect} onRename={onRename} onSetAvatar={onSetAvatar} onMerge={onMerge} onUnmerge={onUnmerge} onHide={onHide} />)}</>
+  return <div className="ai-selection-people-grid">{groups.map((group) => <AiSelectionPersonRow key={group.id} group={group} groups={groups} items={items} item={itemsById.get(group.coverItemId)} active={activeGroupId === group.id} busy={busy} onSelect={onSelect} onRename={onRename} onSetAvatar={onSetAvatar} onMerge={onMerge} onUnmerge={onUnmerge} onHide={onHide} />)}</div>
 }

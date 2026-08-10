@@ -21,7 +21,9 @@ interface AiPersonMergeDialogProps {
 export function AiPersonMergeDialog({ open, onOpenChange, group, groups, items, busy, onMerge, onUnmerge }: AiPersonMergeDialogProps) {
   const [sourceGroupIds, setSourceGroupIds] = useState<string[]>([])
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
-  const candidates = groups.filter((candidate) => candidate.id !== group?.id)
+  // Merged members are not independent groups. Also keep merged roots out of the
+  // picker so every new merge starts from two standalone people.
+  const candidates = groups.filter((candidate) => candidate.id !== group?.id && !candidate.mergedMembers?.length)
   const mergedMembers = group?.mergedMembers ?? []
 
   useEffect(() => { if (!open) setSourceGroupIds([]) }, [open])
@@ -45,19 +47,19 @@ export function AiPersonMergeDialog({ open, onOpenChange, group, groups, items, 
     </>}
   >
     <div className="ai-person-merge-body">
-      <section>
-        <strong>已合并</strong>
-        {mergedMembers.length > 0 ? <div className="ai-person-merged-list">{mergedMembers.map((member) => <div key={member.id}>
+      {mergedMembers.length > 0 && <section className="ai-person-merged-section">
+        <strong>已合并人物</strong>
+        <div className="ai-person-merged-list">{mergedMembers.map((member) => <div key={member.id}>
           <AiPersonIdentityAvatar {...member} className="ai-person-merged-avatar" />
           <span>{member.name}</span>
           <Button variant="danger" size="mini" icon={<Trash2 size={13} />} disabled={busy} onClick={() => void onUnmerge(member.id)}>移除</Button>
-        </div>)}</div> : <span className="ai-person-merge-empty">当前没有已合并的人物</span>}
-      </section>
-      <section>
+        </div>)}</div>
+      </section>}
+      <section className="ai-person-merge-candidates-section">
         <strong>可合并人物</strong>
-        {candidates.length > 0 ? <div className="ai-selection-person-merge-list">{candidates.map((candidate) => <Button key={candidate.id} variant="ghost" className={sourceGroupIds.includes(candidate.id) ? 'selected' : ''} icon={<AiFaceGroupCover group={candidate} item={itemsById.get(candidate.coverItemId)} />} aria-pressed={sourceGroupIds.includes(candidate.id)} onClick={() => toggleSourceGroup(candidate.id)}>
+        {candidates.length > 0 ? <div className="ai-person-merge-candidate-list">{candidates.map((candidate) => <Button key={candidate.id} variant="ghost" className={sourceGroupIds.includes(candidate.id) ? 'selected' : ''} icon={<AiFaceGroupCover group={candidate} item={itemsById.get(candidate.coverItemId)} showFaceBounds />} aria-pressed={sourceGroupIds.includes(candidate.id)} onClick={() => toggleSourceGroup(candidate.id)}>
           <span>{candidate.name}</span><strong>{candidate.itemIds.length}</strong>
-        </Button>)}</div> : <span className="ai-person-merge-empty">没有其他可合并人物</span>}
+        </Button>)}</div> : <span className="ai-person-merge-empty">没有可继续合并的人物</span>}
       </section>
     </div>
   </Dialog>
