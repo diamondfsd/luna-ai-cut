@@ -43,6 +43,14 @@ function addAppFiles(zip) {
       zip.addLocalFile(join('electron', file), 'swift')
     }
   }
+  for (const file of readdirSync('.').filter((name) => name.startsWith('RELEASE_NOTES_v') && name.endsWith('.md'))) {
+    zip.addLocalFile(file)
+  }
+  if (existsSync('old-release-log')) {
+    for (const file of readdirSync('old-release-log').filter((name) => name.startsWith('RELEASE_NOTES_v') && name.endsWith('.md'))) {
+      zip.addLocalFile(join('old-release-log', file), 'old-release-log')
+    }
+  }
 }
 
 function sha256(path) {

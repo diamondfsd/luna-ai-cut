@@ -1,10 +1,10 @@
 import { app, ipcMain } from 'electron'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HotUpdateCheckResult } from './hotUpdater'
 import { applyHotUpdate, checkForHotUpdates, clearHotUpdate, getCurrentHotVersion } from './hotUpdater'
 import type { IpcContext } from './ipcContext'
 import { logMainError, logMainInfo } from './loggerService'
+import { listReleaseNotes } from './releaseNotesService'
 import { checkForUpdates } from './updateService'
 
 export function register(ctx: IpcContext): void {
@@ -51,43 +51,12 @@ export function register(ctx: IpcContext): void {
   })
 
   ipcMain.handle('release-notes:list', async (): Promise<Array<{ version: string; content: string }>> => {
-    const notesDir = app.isPackaged
-      ? join(process.resourcesPath)
-      : join(app.getAppPath())
-    const oldDir = join(notesDir, 'old-release-log')
-    const prefix = 'RELEASE_NOTES_v'
     try {
-      // 同时扫描根目录和 old-release-log/ 目录
-      const scanDirs = [notesDir]
-      if (existsSync(oldDir)) {
-        scanDirs.push(oldDir)
-      }
-
-      type FileEntry = { name: string; dir: string }
-      const files: FileEntry[] = []
-      for (const dir of scanDirs) {
-        const entries = readdirSync(dir)
-          .filter((file) => file.startsWith(prefix) && file.endsWith('.md'))
-          .map((file) => ({ name: file, dir }))
-        files.push(...entries)
-      }
-
-      files.sort((a, b) => {
-        const va = a.name.match(/(\d+)\.(\d+)\.(\d+)/)
-        const vb = b.name.match(/(\d+)\.(\d+)\.(\d+)/)
-        if (!va || !vb) return b.name.localeCompare(a.name)
-        for (let i = 1; i <= 3; i += 1) {
-          const diff = Number(vb[i]) - Number(va[i])
-          if (diff !== 0) return diff
-        }
-        return 0
-      })
-
-      return files.slice(0, 5).map(({ name, dir }) => {
-        const version = name.slice(prefix.length, -'.md'.length)
-        const content = readFileSync(join(dir, name), 'utf-8')
-        return { version, content }
-      })
+      const bundledRoot = app.isPackaged ? process.resourcesPath : app.getAppPath()
+      const searchRoots = app.isPackaged
+        ? [join(app.getPath('userData'), '.luna-hot'), bundledRoot]
+        : [bundledRoot]
+      return listReleaseNotes(searchRoots)
     } catch {
       return []
     }

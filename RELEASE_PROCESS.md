@@ -192,6 +192,53 @@ git push origin hot/v<版本号>-hot.<build号>
 
 手动触发 `Publish Hot Update` workflow 也始终按原生热更新处理。原生热更新必须等待该 workflow 的三平台任务全部成功，并确认 GitCode 已包含三个带平台后缀的 ZIP、清单和发布说明后，再通知用户更新。
 
+### v1.7.0-hot.4 发布执行记录
+
+本次变更范围以 `hot/v1.7.0-hot.3..main` 为准。该范围修改了 `luna-render-core/src/`、渲染桥接和导出参数，因此必须发布原生热更新，不能运行 `./scripts/build-hot-update.sh` 提前上传通用包。
+
+本次用户可见内容见 `RELEASE_NOTES_v1.7.0-hot.4.md`，主要包括：
+
+- AI 选片人物识别、人物合并、隐藏、头像和重新分析流程升级。
+- 本地资源目录迁移，以及设置、项目和素材保存可靠性改进。
+- 视频导出声音开关和 macOS、Windows 原生导出调整。
+- 图片自然美颜算法、素材拖放与复制、下载流程改进。
+- 帮助弹窗合并显示安装版与历次热更新日志。
+
+发布命令：
+
+```bash
+pnpm test:hot-update
+pnpm test:ai-selection
+pnpm test:storage-migration
+pnpm test:settings-storage
+pnpm run build:app
+
+git add -A
+git commit -m "chore: prepare v1.7.0-hot.4"
+git push origin main
+git tag hot/v1.7.0-hot.4
+git push origin hot/v1.7.0-hot.4
+```
+
+推送 tag 后，`Publish Hot Update` 工作流会检测到相对 `hot/v1.7.0-hot.3` 的 Rust 改动，并完成：
+
+1. 在 macOS runner 构建 `darwin-arm64` 原生模块。
+2. 在 macOS runner 交叉构建 `darwin-x64` 原生模块。
+3. 在 Windows runner 构建 `win32-x64` 原生模块及 DXC 运行文件。
+4. 汇总三端原生模块，构建前端与主进程，并上传三个平台 ZIP、`renderer-1.7.0-hot.4.json` 和发布说明到 GitCode 的 `v1.7.0` Release。
+
+发布后必须确认 GitCode Release 至少新增以下文件：
+
+```text
+renderer-1.7.0-hot.4-darwin-arm64.zip
+renderer-1.7.0-hot.4-darwin-x64.zip
+renderer-1.7.0-hot.4-win32-x64.zip
+renderer-1.7.0-hot.4.json
+RELEASE_NOTES_v1.7.0-hot.4.md
+```
+
+不要为本次版本上传 `renderer-1.7.0-hot.4.zip` 通用包。客户端会按当前平台优先选择最新的三端包。
+
 ## 旧版发布说明归档
 
 当根目录下积累较多 `RELEASE_NOTES_*.md` 文件时，可以将其归档到 `old-release-log/` 目录下：
