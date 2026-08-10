@@ -1,6 +1,8 @@
 # EditProgram 协议
 
-每轮都会直接获得完整的 `AgentWorkspaceDocument`。不要搜索编辑工具或逐步模拟鼠标操作。先理解轨道、片段、素材证据和用户目标，再用一次 `workspace.apply_edit_program` 提交完整改动。
+首轮会直接获得完整的 `AgentWorkspaceDocument`，每次提交后也会获得最新快照。不要搜索编辑工具或逐步模拟鼠标操作。先理解轨道、片段、素材证据和用户目标，再编写范围明确的编辑程序。
+
+局部修改用一份程序完成；整片制作或包含很多操作的任务，按叙事段落或连续时间范围分段提交。每次只提交最早尚未完成且可独立预览的一段，确认真实 diff 与新 revision 后再处理下一段。每个成功提交都是已经保存的检查点，后续失败时不得撤销或重复它。每次模型响应最多包含一次 `workspace.apply_edit_program`。
 
 ```ts
 interface EditProgram {
@@ -155,7 +157,7 @@ interface TransitionSpec {
 
 规则：
 
-- 制作类请求优先提交一份完整程序，不连续提交许多小程序。
+- 简单制作请求优先提交一份完整程序；复杂整片制作按连续时间范围形成少量、完整的检查点，避免一条操作一个程序。
 - 新片段使用局部 `ref`，现有片段使用 workspace 中的 `clip:` 引用。
 - `replaceRange` 删除指定轨道内与范围相交的原片段，再放入新片段。
 - 不得让任何两个片段在同一轨道上发生时间交叉；需要同期叠加时使用不同的同类型轨道。
@@ -170,4 +172,5 @@ interface TransitionSpec {
 - 单张图片可重复成为多个片段；用不同的 `center`、`zoom`、`from` 和 `to` 制作不同特写与运镜。
 - 不要声称取景已经不同，除非返回 workspace 中的实际 framing/cameraMove 不同。
 - 工具失败时，基于最新 workspace 修正整份程序，不得隐瞒失败。
+- 只有所有目标都完成后才调用 `workflow.finish(outcome=edited)`；仍有未完成范围时继续下一段，无法继续时以 `outcome=blocked` 如实结束。
 - HTML/CSS 源码本身是可序列化的声明式时间轴数据。不要输出或请求执行 JavaScript。

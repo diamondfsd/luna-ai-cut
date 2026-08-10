@@ -4,6 +4,7 @@ type ToolModuleImport = { aiEditingToolModule?: AiEditingToolModule }
 
 const AGENT_TOOL_IDS = new Set([
   'workflow.set_plan',
+  'workflow.finish',
   'skill.search',
   'skill.read',
   'html.validate',

@@ -1,7 +1,6 @@
 import { useTimelineCommandStore, useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import { addItemsOnNewTracks } from '@freecut/features/editor/deps/timeline-contract'
 import { compileEditProgram } from './compiler'
-import { buildAgentWorkspaceDocument } from '../workspace-document/build-workspace-document'
 import type { EditProgram, EditProgramApplyResult } from './types'
 
 export async function applyEditProgram(program: EditProgram): Promise<EditProgramApplyResult> {
@@ -14,7 +13,6 @@ export async function applyEditProgram(program: EditProgram): Promise<EditProgra
       revisionAfter: revisionBefore,
       diff: compiled.diff,
       warnings: compiled.warnings,
-      workspace: await buildAgentWorkspaceDocument(),
     }
   }
 
@@ -61,6 +59,5 @@ export async function applyEditProgram(program: EditProgram): Promise<EditProgra
     revisionAfter,
     diff: compiled.diff,
     warnings: compiled.warnings,
-    workspace: await buildAgentWorkspaceDocument(),
   }
 }
