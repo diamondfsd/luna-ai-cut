@@ -140,6 +140,7 @@ export interface AiMediaEvidence {
     language?: string
     segmentCount: number
     wordCount: number
+    excerpt: Array<{ startSeconds: number; endSeconds: number; text: string }>
     updatedAt: number
     service?: string
     modelId?: string

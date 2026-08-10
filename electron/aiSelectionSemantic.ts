@@ -8,6 +8,8 @@ import { segmentSpecializedInWorker } from './specializedSegmentationService'
 
 export const CONTENT_TAG_VERSION = AI_SELECTION_CONTENT_TAG_VERSION
 
+export type ContentTagSensitivity = 'strict' | 'balanced' | 'sensitive'
+
 const execFileAsync = promisify(execFile)
 const COCO_LABELS = [
   '人物', '自行车', '汽车', '摩托车', '飞机', '公交车', '火车', '卡车', '船只', '交通灯',
@@ -60,9 +62,14 @@ function coverageByClass(bytes: Buffer): Array<{ classId: number; coverage: numb
     .sort((a, b) => b.coverage - a.coverage)
 }
 
-function objectTags(bytes: Buffer): string[] {
+function objectTags(bytes: Buffer, sensitivity: ContentTagSensitivity): string[] {
+  const thresholds = sensitivity === 'strict'
+    ? { person: 0.025, object: 0.003 }
+    : sensitivity === 'sensitive'
+      ? { person: 0.008, object: 0.0004 }
+      : { person: 0.015, object: 0.001 }
   const detections = coverageByClass(bytes)
-    .filter((entry) => entry.coverage >= (entry.classId === 0 ? 0.015 : 0.001))
+    .filter((entry) => entry.coverage >= (entry.classId === 0 ? thresholds.person : thresholds.object))
     .slice(0, 8)
   const tags: string[] = detections.map((entry) => COCO_LABELS[entry.classId]).filter((label): label is typeof COCO_LABELS[number] => Boolean(label))
   if (detections.some(({ classId }) => classId >= 1 && classId <= 8)) tags.push('车辆')
@@ -73,9 +80,10 @@ function objectTags(bytes: Buffer): string[] {
   return tags
 }
 
-function sceneTags(bytes: Buffer): string[] {
+function sceneTags(bytes: Buffer, sensitivity: ContentTagSensitivity): string[] {
+  const threshold = sensitivity === 'strict' ? 0.025 : sensitivity === 'sensitive' ? 0.008 : 0.015
   const tags = coverageByClass(bytes)
-    .filter((entry) => entry.coverage >= 0.015 && ADE_LABELS.has(entry.classId))
+    .filter((entry) => entry.coverage >= threshold && ADE_LABELS.has(entry.classId))
     .slice(0, 6)
     .map((entry) => ADE_LABELS.get(entry.classId)!)
   const has = (...values: string[]): boolean => values.some((value) => tags.includes(value))
@@ -100,6 +108,7 @@ export async function analyzeContentTagsForFrame(
   filePath: string,
   frameTime: number | undefined,
   signal?: AbortSignal,
+  sensitivity: ContentTagSensitivity = 'balanced',
 ): Promise<string[]> {
   const [yoloModel, sceneModel] = await Promise.all([
     loadModel('yolo26s-seg', undefined, signal),
@@ -113,5 +122,5 @@ export async function analyzeContentTagsForFrame(
   const scene = await segmentSpecializedInWorker({
     backend: 'segformer-labels', modelPath: sceneModel.path, ...sceneInput, outputSize: 128,
   }, signal)
-  return [...new Set([...objectTags(yolo.bytes), ...sceneTags(scene.bytes)])]
+  return [...new Set([...objectTags(yolo.bytes, sensitivity), ...sceneTags(scene.bytes, sensitivity)])]
 }

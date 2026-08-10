@@ -54,9 +54,10 @@ function baseDimensions(
   const sourceHeight = item.sourceHeight
   if (!sourceWidth || !sourceHeight) return null
   const canvas = canvasSize()
-  const scale = mode === 'cover'
-    ? Math.max(canvas.width / sourceWidth, canvas.height / sourceHeight)
-    : Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight)
+  const scale =
+    mode === 'cover'
+      ? Math.max(canvas.width / sourceWidth, canvas.height / sourceHeight)
+      : Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight)
   return { width: sourceWidth * scale, height: sourceHeight * scale }
 }
 
@@ -74,15 +75,23 @@ function poseFromTransform(item: TimelineItem): AgentFramingPose | null {
   }
 }
 
-function motionTrackEdge(item: TimelineItem, property: 'x' | 'y' | 'width' | 'height' | 'rotation') {
-  const layer = item.motionLayers?.find((candidate) => candidate.sourcePresetId === 'ai-edit-program')
+function motionTrackEdge(
+  item: TimelineItem,
+  property: 'x' | 'y' | 'width' | 'height' | 'rotation',
+) {
+  const layer = item.motionLayers?.find(
+    (candidate) => candidate.sourcePresetId === 'ai-edit-program',
+  )
   const track = layer?.tracks.find((candidate) => candidate.property === property)
   if (!track || track.keyframes.length < 2) return null
   const sorted = track.keyframes.toSorted((left, right) => left.frame - right.frame)
   return { first: sorted[0]!, last: sorted.at(-1)! }
 }
 
-function cameraMoveFromItem(item: TimelineItem, framing: AgentFraming | undefined): AgentCameraMove | undefined {
+function cameraMoveFromItem(
+  item: TimelineItem,
+  framing: AgentFraming | undefined,
+): AgentCameraMove | undefined {
   if (!framing || !item.transform?.width || !item.transform.height) return undefined
   const x = motionTrackEdge(item, 'x')
   const y = motionTrackEdge(item, 'y')
@@ -98,8 +107,11 @@ function cameraMoveFromItem(item: TimelineItem, framing: AgentFraming | undefine
   const base = baseDimensions(item, framing.mode)
   if (!base) return undefined
   const trackEasing = x?.last.easing ?? y?.last.easing ?? width?.last.easing
-  const supportedEasing = trackEasing === 'ease-in' || trackEasing === 'ease-out' ||
-    trackEasing === 'ease-in-out' || trackEasing === 'linear'
+  const supportedEasing =
+    trackEasing === 'ease-in' ||
+    trackEasing === 'ease-out' ||
+    trackEasing === 'ease-in-out' ||
+    trackEasing === 'linear'
       ? trackEasing
       : 'linear'
   return {
@@ -130,7 +142,13 @@ function agentClip(item: TimelineItem, fps: number): AgentClip {
     duration: item.durationInFrames / fps,
     ...(item.mediaId ? { mediaRef: mediaRef(item.mediaId) } : {}),
     ...(item.sourceStart !== undefined && item.sourceEnd !== undefined
-      ? { source: { in: item.sourceStart / sourceFps, out: item.sourceEnd / sourceFps, speed: item.speed ?? 1 } }
+      ? {
+          source: {
+            in: item.sourceStart / sourceFps,
+            out: item.sourceEnd / sourceFps,
+            speed: item.speed ?? 1,
+          },
+        }
       : {}),
     ...(framing ? { framing } : {}),
     ...(motionTrackEdge(item, 'x') || motionTrackEdge(item, 'width')
@@ -162,7 +180,9 @@ export async function buildAgentWorkspaceDocument(): Promise<AgentWorkspaceDocum
     },
     viewport: {
       playhead: usePlaybackStore.getState().currentFrame / evidence.fps,
-      selectedClipRefs: timeline.items.filter((item) => selected.has(item.id)).map((item) => clipRef(item.id)),
+      selectedClipRefs: timeline.items
+        .filter((item) => selected.has(item.id))
+        .map((item) => clipRef(item.id)),
     },
     media: evidence.media.map((entry) => ({
       ref: mediaRef(entry.mediaId),
@@ -180,13 +200,21 @@ export async function buildAgentWorkspaceDocument(): Promise<AgentWorkspaceDocum
           ...(sample.action ? { action: sample.action } : {}),
         })),
         ...(entry.transcript
-          ? { transcript: {
-              language: entry.transcript.language,
-              segmentCount: entry.transcript.segmentCount,
-              wordCount: entry.transcript.wordCount,
-            } }
+          ? {
+              transcript: {
+                language: entry.transcript.language,
+                segmentCount: entry.transcript.segmentCount,
+                wordCount: entry.transcript.wordCount,
+                excerpt: entry.transcript.excerpt.map((segment) => ({
+                  start: segment.startSeconds,
+                  end: segment.endSeconds,
+                  text: segment.text,
+                })),
+              },
+            }
           : {}),
-        audioAnalysis: entry.audio.beatStatus === 'not-requested' ? 'missing' : entry.audio.beatStatus,
+        audioAnalysis:
+          entry.audio.beatStatus === 'not-requested' ? 'missing' : entry.audio.beatStatus,
       },
     })),
     tracks: evidence.tracks.map((track) => ({

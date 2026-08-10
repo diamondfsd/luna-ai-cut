@@ -23,7 +23,10 @@ declare module '@freecut/embedded' {
     samples: Array<{ timeSeconds: number; tags: string[] }>
     models: Array<{ id: string; version: string }>
     sourceFingerprint: { size: number; modifiedAtMs: number }
+    intensity: EmbeddedVisualAnalysisIntensity
   }
+
+  export type EmbeddedVisualAnalysisIntensity = 'light' | 'normal' | 'strong'
 
   export interface EmbeddedTaskProgress {
     label: string
@@ -91,6 +94,7 @@ declare module '@freecut/embedded' {
     ) => Promise<EmbeddedTranscriptResult>
     onAnalyzeMediaVisual?: (
       source: EmbeddedMediaSource,
+      intensity: EmbeddedVisualAnalysisIntensity,
       onProgress?: (progress: EmbeddedTaskProgress) => void,
     ) => Promise<EmbeddedVisualEvidence>
     onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>

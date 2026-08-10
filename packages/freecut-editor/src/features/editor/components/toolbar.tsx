@@ -30,7 +30,6 @@ import { ShortcutsDialog } from './shortcuts-dialog'
 import { WorkspaceSwitcher } from './workspace-switcher'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { cn } from '@freecut/shared/ui/cn'
-import { LanguageSwitcher } from '@freecut/shared/ui/language-switcher'
 import { useDebugStore } from '@freecut/features/editor/stores/debug-store'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 
@@ -118,7 +117,6 @@ export const Toolbar = memo(function Toolbar({
         </Button>
 
         <Separator orientation="vertical" className="h-5" />
-
       </div>
 
       <div className="flex min-w-0 flex-[0_1_18rem] items-center justify-center px-3">
@@ -136,8 +134,6 @@ export const Toolbar = memo(function Toolbar({
         {import.meta.env.DEV && import.meta.env.VITE_SHOW_DEBUG_PANEL !== 'false' && (
           <DebugPopover projectId={projectId} />
         )}
-
-        <LanguageSwitcher size="sm" align="end" side="bottom" />
 
         {onOpenRenderQueue && (
           <Button
