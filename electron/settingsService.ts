@@ -1,16 +1,19 @@
 import { app, dialog } from 'electron'
 import * as fs from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
 import * as path from 'node:path'
 
 import { DEFAULT_DEVICE } from './deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
+import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
 import type { AppSettings } from '../src/shared/types'
 
-const SETTINGS_FILE = 'settings.json'
-
 function settingsPath(): string {
-  return path.join(app.getPath('userData'), SETTINGS_FILE)
+  if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
+  return stableSettingsPath(app.getPath('appData'))
+}
+
+function legacyPath(): string {
+  return legacySettingsPath(app.getPath('userData'))
 }
 
 export function cacheDir(baseDir: string): string {
@@ -44,12 +47,8 @@ function defaultExportDir(): string {
 
 export function currentBaseDir(): string {
   const fallback = defaultBaseDir()
-  try {
-    const saved = JSON.parse(readFileSync(settingsPath(), 'utf8')) as StoredSettings
-    return migrateBaseDirectory(saved, fallback).baseDir
-  } catch {
-    return fallback
-  }
+  const saved = readStoredSettingsSync<StoredSettings>(settingsPath(), legacyPath()).value
+  return saved ? migrateBaseDirectory(saved, fallback).baseDir : fallback
 }
 
 function defaultSettings(): AppSettings {
@@ -79,12 +78,8 @@ function defaultSettings(): AppSettings {
 
 type StoredSettings = Partial<AppSettings> & { downloadDir?: string }
 
-async function readSettingsFile(): Promise<StoredSettings | null> {
-  try {
-    return JSON.parse(await fs.readFile(settingsPath(), 'utf-8')) as StoredSettings
-  } catch {
-    return null
-  }
+async function readSettingsFile() {
+  return readStoredSettings<StoredSettings>(settingsPath(), legacyPath())
 }
 
 function mergeSettings(saved: StoredSettings | null): AppSettings {
@@ -118,18 +113,19 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
 }
 
 async function readSettingsWithoutWriting(): Promise<AppSettings> {
-  return mergeSettings(await readSettingsFile())
+  return mergeSettings((await readSettingsFile()).value)
 }
 
 export async function getSettings(): Promise<AppSettings> {
-  const saved = await readSettingsFile()
+  const stored = await readSettingsFile()
+  const saved = stored.value
   if (!saved) {
     const defaults = defaultSettings()
     await saveSettings(defaults)
     return defaults
   }
   const merged = mergeSettings(saved)
-  if (saved.downloadDir && !saved.baseDir) await writeSettingsFile(merged)
+  if (stored.fromLegacyPath || (saved.downloadDir && !saved.baseDir)) await writeSettingsFile(merged)
   return merged
 }
 

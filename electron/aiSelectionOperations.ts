@@ -41,20 +41,20 @@ function learnPreference(session: AiSelectionSnapshot, item: AiSelectionItem, ke
   session.preferenceProfile.sampleCount += 1
 }
 
-export function applyAiSelectionUserOperation(session: AiSelectionSnapshot, operation: AiSelectionUserOperation): void {
+export function applyAiSelectionUserOperation(session: AiSelectionSnapshot, operation: AiSelectionUserOperation, applyRecommendations = true): void {
   if (operation.type === 'set-preset') {
     session.preset = operation.preset
-    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile, applyRecommendations)
     return
   }
   if (operation.type === 'set-purpose') {
     session.purpose = operation.purpose
-    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile, applyRecommendations)
     return
   }
   if (operation.type === 'set-target') {
     session.target = normalizeSelectionTarget(operation.target)
-    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile, applyRecommendations)
     return
   }
   if (operation.type === 'set-state') {

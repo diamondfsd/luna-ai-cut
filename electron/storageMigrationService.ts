@@ -3,7 +3,7 @@ import * as path from 'node:path'
 
 import type { AppSettings, StorageMigrationResult } from '../src/shared/types'
 
-type StorageDirectoryKey = 'projects' | 'downloads' | 'exports' | 'luts' | 'cache' | 'previews' | 'logs' | 'legacyLogs'
+type StorageDirectoryKey = 'projects' | 'downloads' | 'exports' | 'luts' | 'cache' | 'previews' | 'metadata' | 'aiSelection' | 'logs' | 'legacyLogs'
 
 interface StorageDirectory {
   key: StorageDirectoryKey
@@ -25,6 +25,8 @@ export interface StorageMigrationPlan {
 export interface StorageMigrationSources {
   cacheSource?: string
   previewCacheSource?: string
+  metadataCacheSource?: string
+  aiSelectionCacheSource?: string
   logSource?: string
   legacyLogSource?: string
 }
@@ -106,6 +108,18 @@ export function createStorageMigrationPlan(
         label: '预览缓存',
         source: path.resolve(sources.previewCacheSource),
         destination: path.join(target, 'cache', 'previews'),
+      }] : []),
+      ...(sources.metadataCacheSource ? [{
+        key: 'metadata' as const,
+        label: '素材信息缓存',
+        source: path.resolve(sources.metadataCacheSource),
+        destination: path.join(target, 'cache', 'metadata'),
+      }] : []),
+      ...(sources.aiSelectionCacheSource ? [{
+        key: 'aiSelection' as const,
+        label: '智能选片缓存',
+        source: path.resolve(sources.aiSelectionCacheSource),
+        destination: path.join(target, 'cache', 'ai-selection'),
       }] : []),
       {
         key: 'logs',
