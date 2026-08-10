@@ -135,6 +135,14 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedF
           />
         ) : null}
         <div className="export-settings-row">
+          <label className="export-settings-label">音频</label>
+          <Switch
+            checked={value.includeAudio !== false}
+            onCheckedChange={(enabled) => onChange({ ...value, includeAudio: enabled })}
+            ariaLabel="导出音频"
+          />
+        </div>
+        <div className="export-settings-row">
           <label className="export-settings-label">分辨率</label>
           <Select
             variant="compact"

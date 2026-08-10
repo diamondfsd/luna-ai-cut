@@ -103,7 +103,11 @@ export function MediaCard({
       className={['media-card', selected && 'selected', className].filter(Boolean).join(' ')}
       data-file-id={file.id}
       draggable={Boolean(onDragStart)}
-      onDragStart={onDragStart}
+      onDragStart={(event) => {
+        // Electron 接管拖出的文件；阻止 Chromium 同时开启默认拖拽会话。
+        event.preventDefault()
+        onDragStart?.()
+      }}
     >
       {showProgress && progress && (
         <button

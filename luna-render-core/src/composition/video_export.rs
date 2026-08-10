@@ -133,7 +133,11 @@ impl Task for ExportCompositionVideoTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        let mask_timeline_frames = self.input.composition.layers.iter()
+        let mask_timeline_frames = self
+            .input
+            .composition
+            .layers
+            .iter()
             .filter_map(|layer| layer.mask_timeline.as_ref())
             .map(|timeline| timeline.frames.len())
             .sum::<usize>();
@@ -162,6 +166,7 @@ impl Task for ExportCompositionVideoTask {
             .max(0.1);
         let total_frames = (duration * fps).round().max(1.0) as u64;
         let task = self.input.task_id.as_deref().map(register_task);
+        let include_audio = self.input.include_audio.unwrap_or(true);
         if let Some(ref state) = task {
             state
                 .total_frames
@@ -213,6 +218,7 @@ impl Task for ExportCompositionVideoTask {
                     fps,
                     total_frames,
                     bitrate_bps,
+                    include_audio,
                     task.as_ref(),
                 )
             });
@@ -265,6 +271,7 @@ impl Task for ExportCompositionVideoTask {
                     fps,
                     total_frames,
                     bitrate_bps,
+                    include_audio,
                     task.as_ref(),
                 )
             });
@@ -419,21 +426,25 @@ impl Task for ExportCompositionVideoTask {
                 stderr.trim()
             )));
         }
-        log_write(&format!(
-            "[Export:FFmpeg] fallback 编码完成，开始音频合并 temp={}",
-            fallback_temp.display()
-        ));
-        // 合并音频
-        let duration = total_frames as f64 / fps;
-        let completed_output = mux_primary_audio(
-            &self.input.ffmpeg_path,
-            &self.input.ffprobe_path,
-            &fallback_temp,
-            &self.input.output_path,
-            &self.input.composition,
-            duration,
-        )
-        .map_err(|e| napi::Error::from_reason(format!("音频合并失败: {}", e)))?;
+        let completed_output = if include_audio {
+            log_write(&format!(
+                "[Export:FFmpeg] fallback 编码完成，开始音频合并 temp={}",
+                fallback_temp.display()
+            ));
+            let duration = total_frames as f64 / fps;
+            mux_primary_audio(
+                &self.input.ffmpeg_path,
+                &self.input.ffprobe_path,
+                &fallback_temp,
+                &self.input.output_path,
+                &self.input.composition,
+                duration,
+            )
+            .map_err(|e| napi::Error::from_reason(format!("音频合并失败: {}", e)))?
+        } else {
+            log_write("[Export:FFmpeg] 音频已关闭，跳过音频合并");
+            fallback_temp
+        };
 
         // 重命名为最终文件
         if Path::new(&self.input.output_path).exists() {

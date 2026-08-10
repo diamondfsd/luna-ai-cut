@@ -49,6 +49,7 @@ interface LunaCompositionExportApi {
     qualityPreset?: string,
     exportTaskId?: string,
     exportItemId?: string,
+    includeAudio?: boolean,
   ): Promise<void>
   exportCompositionImage(
     outputPath: string,
@@ -625,6 +626,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
           resolved.qualityPreset,
           videoReportTaskId,
           videoReportItemId,
+          resolved.includeAudio,
         )
       } finally {
         stopLiveProgress = true

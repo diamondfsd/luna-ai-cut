@@ -271,6 +271,7 @@ pub(crate) fn export_video(
     fps: f64,
     total_frames: u64,
     bitrate: u64,
+    include_audio: bool,
     task: Option<&Arc<TaskState>>,
 ) -> Result<(), String> {
     let metal_device = compositor.metal_device_ptr()?;
@@ -503,15 +504,20 @@ pub(crate) fn export_video(
     for (texture_id, _, _) in static_textures.into_values() {
         let _ = compositor.release_texture(texture_id);
     }
-    let duration = total_frames as f64 / fps;
-    let completed_output = mux_primary_audio(
-        ffmpeg_path,
-        ffprobe_path,
-        &temp_output,
-        output_path,
-        composition,
-        duration,
-    )?;
+    let completed_output = if include_audio {
+        let duration = total_frames as f64 / fps;
+        mux_primary_audio(
+            ffmpeg_path,
+            ffprobe_path,
+            &temp_output,
+            output_path,
+            composition,
+            duration,
+        )?
+    } else {
+        crate::logging::write("[Export:MacGPU] 音频已关闭，跳过音频合并");
+        temp_output
+    };
     if Path::new(output_path).exists() {
         std::fs::remove_file(output_path).map_err(|e| format!("替换旧导出文件失败: {e}"))?;
     }

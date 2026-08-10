@@ -375,7 +375,7 @@ export function AiSelectionPage() {
       }}
       onRevealPath={() => undefined}
       onRevealProgress={() => undefined}
-      onDragStart={item.state === 'kept' ? () => window.luna.startFileDrag(selectedItems.map((candidate) => candidate.path)) : undefined}
+      onDragStart={item.state === 'kept' ? () => window.luna.startFileDrag(selectedItems.map((candidate) => candidate.path), item.thumbnailUrl) : undefined}
       overlay={<>{showFaceBoxes && <AiSelectionFaceOverlay item={item} faces={faceBoxesByItem.get(item.id) ?? []} />}<div className="ai-selection-card-badges">
         {isAiRecommended(item) && <span className="ai-selection-recommendation-badge"><Sparkles size={12} />AI 推荐</span>}
         {stage === 'scenes' && (groupsByItem.get(item.id)?.itemIds.length ?? 0) > 1 && <span className="ai-selection-group-badge"><Layers3 size={11} />{groupsByItem.get(item.id)?.itemIds.length}</span>}

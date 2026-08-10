@@ -21,6 +21,7 @@ interface LunaCompositionExportApi {
     qualityPreset?: string,
     exportTaskId?: string,
     exportItemId?: string,
+    includeAudio?: boolean,
   ): Promise<void>
 }
 
@@ -140,6 +141,7 @@ export async function queueColorRevealBatchExport(options: ColorRevealBatchExpor
         entry.resolved.qualityPreset,
         task.id,
         entry.itemId,
+        entry.resolved.includeAudio,
       ).catch(() => {
         // 失败状态由导出任务服务记录并展示，继续处理剩余素材。
       })

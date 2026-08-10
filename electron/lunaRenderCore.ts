@@ -356,6 +356,7 @@ export async function exportCompositionVideoAsync(input: {
   hardware?: boolean
   taskId?: string
   qualityPreset?: string
+  includeAudio?: boolean
 }): Promise<void> {
   await warmupRenderCore()
   return getNative().exportCompositionVideoAsync(cleanNativeInput({
@@ -368,6 +369,7 @@ export async function exportCompositionVideoAsync(input: {
     hardware: input.hardware,
     taskId: input.taskId,
     qualityPreset: input.qualityPreset,
+    includeAudio: input.includeAudio,
   }))
 }
 

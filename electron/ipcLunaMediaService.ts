@@ -88,14 +88,47 @@ function localSourcePath(sourceUrl: string): string | null {
   return sourceUrl
 }
 
+const MAX_DRAG_ICON_SIZE = 96
+
+function resizeDragIcon(image: Electron.NativeImage): Electron.NativeImage {
+  if (image.isEmpty()) return image
+  const { width, height } = image.getSize()
+  const scale = Math.min(1, MAX_DRAG_ICON_SIZE / Math.max(width, height))
+  if (scale === 1) return image
+  return image.resize({ width: Math.round(width * scale), height: Math.round(height * scale) })
+}
+
+function dragThumbnailPath(thumbnailUrl: unknown): string | null {
+  if (typeof thumbnailUrl !== 'string') return null
+  if (thumbnailUrl.startsWith('file:')) {
+    try {
+      return fileURLToPath(thumbnailUrl)
+    } catch {
+      return null
+    }
+  }
+  return path.isAbsolute(thumbnailUrl) ? thumbnailUrl : null
+}
+
+function dragIcon(files: string[], thumbnailUrl: unknown): Electron.NativeImage {
+  const thumbnailPath = dragThumbnailPath(thumbnailUrl)
+  const thumbnail = thumbnailPath ? nativeImage.createFromPath(thumbnailPath) : nativeImage.createEmpty()
+  if (!thumbnail.isEmpty()) return resizeDragIcon(thumbnail)
+
+  const sourceImage = nativeImage.createFromPath(files[0])
+  if (!sourceImage.isEmpty()) return resizeDragIcon(sourceImage)
+
+  const appIconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(app.getAppPath(), 'build', 'icon.png')
+  return resizeDragIcon(nativeImage.createFromPath(appIconPath))
+}
+
 export function register(ctx: IpcContext): void {
-  ipcMain.on('files:start-drag', (event, requestedPaths: unknown) => {
+  ipcMain.on('files:start-drag', (event, requestedPaths: unknown, requestedThumbnailUrl: unknown) => {
     const files = existingDragFiles(requestedPaths)
     if (files.length === 0) return
-    const iconPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'icon.png')
-      : path.join(app.getAppPath(), 'build', 'icon.png')
-    event.sender.startDrag({ file: files[0], files, icon: nativeImage.createFromPath(iconPath) })
+    event.sender.startDrag({ file: files[0], files, icon: dragIcon(files, requestedThumbnailUrl) })
   })
   ipcMain.handle('luna:cacheFile', async (_event, params: string | { sourceUrl: string; previewUrl?: string | null }) => {
     // 兼容旧格式（直接传 sourceUrl 字符串）
