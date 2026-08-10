@@ -103,31 +103,3 @@ jobs:
             luna-render-core/dxil.dll
             luna-render-core/DXC-LICENSE-*.txt
           if-no-files-found: error
-
-  publish:
-    needs: [detect, native]
-    if: always() && needs.detect.result == 'success' && (needs.detect.outputs.include_native == 'false' || needs.native.result == 'success')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build:app
-      - uses: actions/download-artifact@v4
-        if: needs.detect.outputs.include_native == 'true'
-        with:
-          path: .hot-native
-      - name: Publish hot update to GitCode
-        env:
-          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-        shell: bash
-        run: |
-          args=(--version "${{ needs.detect.outputs.version }}" --upload)
-          if [ "${{ needs.detect.outputs.include_native }}" = "true" ]; then
-            args+=(--include-native --native-dir .hot-native)
-          fi
-          node scripts/publish-hot-update.mjs "${args[@]}"
