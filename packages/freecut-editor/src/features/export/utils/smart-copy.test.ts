@@ -122,6 +122,11 @@ describe('smart copy eligibility', () => {
   })
 
   it('rejects frame-rate, resolution, and format changes', () => {
+    expect(
+      assessSmartCopyEligibility(context({
+        settings: { ...context().settings, fps: 60 },
+      })).reason,
+    ).toBe('project-mismatch')
     const conformedVideo: VideoItem = { ...video, durationInFrames: 600 }
     expect(
       assessSmartCopyEligibility(

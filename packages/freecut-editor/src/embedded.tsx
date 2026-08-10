@@ -17,6 +17,7 @@ import {
   type EmbeddedAiAssistantBridge,
   type EmbeddedHtmlRenderRequest,
   type EmbeddedHtmlRenderResult,
+  type EmbeddedExportBridge,
 } from './shared/host/embedded-host'
 import { setHtmlFrameProvider } from './features/export/utils/html-frame-provider'
 import './index.css'
@@ -42,6 +43,7 @@ export interface FreeCutEditorProps {
   onCancelAiAssistant?: (requestId: string) => Promise<void>
   onAiAssistantStatus?: EmbeddedAiAssistantBridge['onStatus']
   onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
+  exportFiles?: EmbeddedExportBridge
 }
 
 export function FreeCutEditor({
@@ -54,6 +56,7 @@ export function FreeCutEditor({
   onCancelAiAssistant,
   onAiAssistantStatus,
   onRenderHtmlFrame,
+  exportFiles,
 }: FreeCutEditorProps) {
   const [ready, setReady] = useState(false)
   const hostBridge = useMemo(
@@ -62,6 +65,7 @@ export function FreeCutEditor({
       transcribeMedia: onTranscribeMedia,
       analyzeMediaVisual: onAnalyzeMediaVisual,
       renderHtmlFrame: onRenderHtmlFrame,
+      exportFiles,
       aiAssistant:
         onGetAiAssistantConfig &&
         onSaveAiAssistantConfig &&
@@ -82,6 +86,7 @@ export function FreeCutEditor({
       onTranscribeMedia,
       onAnalyzeMediaVisual,
       onRenderHtmlFrame,
+      exportFiles,
       onGetAiAssistantConfig,
       onSaveAiAssistantConfig,
       onGenerateAiAssistant,
