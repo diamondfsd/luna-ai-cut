@@ -117,9 +117,9 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 
 ## 日常热更新发布
 
-当只需要推送增量修复（不涉及版本号变更、Electron 升级或原生模块变更）时，使用本地脚本生成一份平台无关的通用热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为平台无关的 JS，无需让 GitHub Actions 重复构建三份。
+当只需要推送增量修复，且当前正式版发布后从未通过热更新修改原生模块时，使用本地脚本生成一份平台无关的通用热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为平台无关的 JS，无需让 GitHub Actions 重复构建三份。
 
-纯前端/纯 JS 热更新只发布一个无平台后缀的通用 ZIP（例如 `renderer-1.6.5-hot.1.zip`）和发布说明。**不构建、不上传 macOS ARM64、macOS x64 或 Windows x64 平台包**；客户端直接从 GitCode Release 附件列表中选择最新的通用 ZIP，不依赖 `renderer-latest.json` 清单。
+纯前端/纯 JS 热更新只发布一个无平台后缀的通用 ZIP（例如 `renderer-1.6.5-hot.1.zip`）和发布说明。**不构建、不上传 macOS ARM64、macOS x64 或 Windows x64 平台包**；客户端直接从 GitCode Release 附件列表中选择最新的通用 ZIP，不依赖 `renderer-latest.json` 清单。此方式仅适用于从正式版 tag 到当前热更新均无原生改动的版本线。
 
 ### 1. 创建热更新发布说明
 
@@ -174,13 +174,13 @@ git commit -m "fix: xxx"
 git push origin main
 ```
 
-推送热更新 tag 后，GitHub Actions 会检查原生相关文件。已有热更新时与上一个热更新 tag 比较；当前正式版的第一个热更新则与对应正式版 tag（例如 `v1.6.5`）比较。没有修改 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/lunaRenderCore.ts` 时，只执行变更检测，不构建或上传任何平台包。
+推送热更新 tag 后，GitHub Actions 会从对应正式版 tag（例如 `v1.6.5`）开始检查原生相关文件。只要该版本线任意一次热更新修改过 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/lunaRenderCore.ts`，此后所有热更新都必须继续构建并发布三个平台包，保证跳过中间热更新的客户端也能获得最新原生模块。仅当整个版本线均无原生改动时，才跳过三端构建。
 
 > 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
 
 ## 原生模块热更新
 
-修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。推送 `hot/v*` tag 后，GitHub Actions 只构建 macOS ARM64、macOS x64 和 Windows x64 三个平台的原生模块 artifact；三端产物下载、热更新打包和 GitCode 上传均在本机完成，避免 GitHub runner 到 GitCode 的慢速链路。
+修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。同一正式版本线只要出现过一次原生热更新，后续热更新也全部按此流程发布。推送 `hot/v*` tag 后，GitHub Actions 只构建 macOS ARM64、macOS x64 和 Windows x64 三个平台的原生模块 artifact；三端产物下载、热更新打包和 GitCode 上传均在本机完成，避免 GitHub runner 到 GitCode 的慢速链路。
 
 原生热更新不要运行 `build-hot-update.sh`，避免三平台包就绪前先发布不含原生模块的通用 ZIP。确定下一个 build 号并提交代码与发布说明后，直接推送 `main` 和 tag：
 
@@ -217,7 +217,7 @@ node scripts/publish-hot-update.mjs \
 
 ### v1.7.0-hot.4 发布执行记录
 
-本次变更范围以 `hot/v1.7.0-hot.3..main` 为准。该范围修改了 `luna-render-core/src/`、渲染桥接和导出参数，因此必须发布原生热更新，不能运行 `./scripts/build-hot-update.sh` 提前上传通用包。
+本次变更范围以 `v1.7.0..main` 为准。该范围修改了 `luna-render-core/src/`、渲染桥接和导出参数，因此必须发布原生热更新，不能运行 `./scripts/build-hot-update.sh` 提前上传通用包。
 
 本次用户可见内容见 `RELEASE_NOTES_v1.7.0-hot.4.md`，主要包括：
 
