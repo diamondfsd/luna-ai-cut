@@ -32,7 +32,7 @@ interface GroupMatch {
 }
 
 export function normalizeFaceGroupingThreshold(value: number | null | undefined): number {
-  if (!Number.isFinite(value)) return DEFAULT_FACE_GROUPING_THRESHOLD
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_FACE_GROUPING_THRESHOLD
   return Number(Math.max(MIN_FACE_GROUPING_THRESHOLD, Math.min(MAX_FACE_GROUPING_THRESHOLD, value)).toFixed(2))
 }
 
@@ -95,11 +95,14 @@ function identityFace(item: AiSelectionItem, face: AiFaceDescriptor): face is Ai
 }
 
 function matchingIdentity(groupId: string, observations: FaceObservation[], embeddings: number[][], identities: AiPersonIdentity[]): AiPersonIdentity | null {
-  const anchoredIdentity = identities.find((identity) => identity.sourceFace && observations.some((observation) => (
-    observation.itemId === identity.sourceFace?.itemId
-    && Math.abs(observation.bounds.x - identity.sourceFace.bounds.x) < 0.0001
-    && Math.abs(observation.bounds.y - identity.sourceFace.bounds.y) < 0.0001
-  )))
+  const anchoredIdentity = identities.find((identity) => [
+    ...(identity.sourceFaces ?? []),
+    ...(identity.sourceFace ? [identity.sourceFace] : []),
+  ].some((sourceFace) => observations.some((observation) => (
+    observation.itemId === sourceFace.itemId
+    && Math.abs(observation.bounds.x - sourceFace.bounds.x) < 0.0001
+    && Math.abs(observation.bounds.y - sourceFace.bounds.y) < 0.0001
+  ))))
   if (anchoredIdentity) return anchoredIdentity
   const sourceIdentity = identities.find((identity) => identity.sourceGroupId === groupId)
   if (sourceIdentity) return sourceIdentity

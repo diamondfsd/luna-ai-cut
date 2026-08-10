@@ -17,6 +17,7 @@ export interface AiPersonIdentity {
   mergedIntoId: string | null
   sourceGroupId: string | null
   sourceFace: AiPersonSourceFace | null
+  sourceFaces: AiPersonSourceFace[]
   automaticMatching: boolean
   hidden: boolean
   confirmed: boolean
@@ -25,13 +26,14 @@ export interface AiPersonIdentity {
 }
 
 interface AiPeopleStore {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7
-  identities: Array<Omit<AiPersonIdentity, 'coverUrl' | 'coverBounds' | 'mergedIntoId' | 'sourceGroupId' | 'sourceFace' | 'automaticMatching' | 'hidden' | 'confirmed'> & {
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+  identities: Array<Omit<AiPersonIdentity, 'coverUrl' | 'coverBounds' | 'mergedIntoId' | 'sourceGroupId' | 'sourceFace' | 'sourceFaces' | 'automaticMatching' | 'hidden' | 'confirmed'> & {
     coverUrl?: string | null
     coverBounds?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null
     mergedIntoId?: string | null
     sourceGroupId?: string | null
     sourceFace?: { itemId?: unknown; bounds?: unknown } | null
+    sourceFaces?: Array<{ itemId?: unknown; bounds?: unknown }> | null
     automaticMatching?: boolean
     hidden?: boolean
     confirmed?: boolean
@@ -57,10 +59,26 @@ function validSourceFace(value: AiPeopleStore['identities'][number]['sourceFace'
   return bounds ? { itemId: value.itemId, bounds } : null
 }
 
+function sameSourceFace(left: AiPersonSourceFace, right: AiPersonSourceFace): boolean {
+  return left.itemId === right.itemId
+    && Math.abs(left.bounds.x - right.bounds.x) < 0.0001
+    && Math.abs(left.bounds.y - right.bounds.y) < 0.0001
+}
+
+function validSourceFaces(value: AiPeopleStore['identities'][number]['sourceFaces']): AiPersonSourceFace[] {
+  if (!Array.isArray(value)) return []
+  const sourceFaces: AiPersonSourceFace[] = []
+  for (const candidate of value) {
+    const sourceFace = validSourceFace(candidate)
+    if (sourceFace && !sourceFaces.some((existing) => sameSourceFace(existing, sourceFace))) sourceFaces.push(sourceFace)
+  }
+  return sourceFaces
+}
+
 export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity[]> {
   try {
     const parsed = JSON.parse(await fs.readFile(path.join(rootDir, STORE_FILE), 'utf8')) as AiPeopleStore
-    if (![1, 2, 3, 4, 5, 6, 7].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
+    if (![1, 2, 3, 4, 5, 6, 7, 8].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
     const identities = parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples)).map((identity) => ({
       ...identity,
       avatarDataUrl: typeof identity.avatarDataUrl === 'string' && identity.avatarDataUrl.startsWith('data:image/')
@@ -71,6 +89,7 @@ export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity
       mergedIntoId: typeof identity.mergedIntoId === 'string' ? identity.mergedIntoId : null,
       sourceGroupId: typeof identity.sourceGroupId === 'string' ? identity.sourceGroupId : null,
       sourceFace: validSourceFace(identity.sourceFace),
+      sourceFaces: validSourceFaces(identity.sourceFaces),
       // Naming a group must not be treated as a request to automatically merge
       // every visually similar person. Existing data starts in the safe mode.
       automaticMatching: identity.automaticMatching === true
@@ -84,7 +103,13 @@ export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity
         || typeof identity.mergedIntoId === 'string'
         || !/^人物 \d+$/.test(identity.name)
         || (typeof identity.avatarDataUrl === 'string' && identity.avatarDataUrl.startsWith('data:image/')),
-    }))
+    })).map((identity) => {
+      if (identity.sourceFace && !identity.sourceFaces.some((sourceFace) => sameSourceFace(sourceFace, identity.sourceFace!))) {
+        identity.sourceFaces.unshift(identity.sourceFace)
+      }
+      if (!identity.sourceFace) identity.sourceFace = identity.sourceFaces[0] ?? null
+      return identity
+    })
     const byId = new Map(identities.map((identity) => [identity.id, identity]))
     for (const identity of identities) {
       if (!identity.mergedIntoId || identity.mergedIntoId === identity.id || !byId.has(identity.mergedIntoId)) {
@@ -115,7 +140,7 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
   const destination = path.join(rootDir, STORE_FILE)
   const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
   try {
-    const store: AiPeopleStore = { schemaVersion: 7, identities }
+    const store: AiPeopleStore = { schemaVersion: 8, identities }
     await fs.writeFile(temporary, `${JSON.stringify(store)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     try {
       await fs.rename(temporary, destination)
@@ -162,6 +187,7 @@ export function createPersonIdentity(
     mergedIntoId: null,
     sourceGroupId,
     sourceFace: sourceFace ? { itemId: sourceFace.itemId, bounds: { ...sourceFace.bounds } } : null,
+    sourceFaces: sourceFace ? [{ itemId: sourceFace.itemId, bounds: { ...sourceFace.bounds } }] : [],
     automaticMatching: false,
     hidden: false,
     confirmed: true,

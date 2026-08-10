@@ -1,5 +1,5 @@
 .ai-selection-people-actions { flex-wrap: wrap; justify-content: flex-end; }
 .ai-selection-people-face-toggle { min-height: 32px; padding: 0 3px 0 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary, #6e6e73); font-size: 11px; white-space: nowrap; }
-.ai-selection-people-threshold { min-height: 32px; padding: 0 5px 0 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary, #6e6e73); font-size: 11px; white-space: nowrap; }
-.ai-selection-people-threshold .ui-input { width: 58px; min-width: 58px; height: 26px; padding-inline: 5px; border-color: transparent; background: transparent; color: var(--text-primary, #1d1d1f); text-align: right; font-variant-numeric: tabular-nums; }
-.ai-selection-people-threshold .ui-input:focus { border-color: var(--blue, #06c); background: var(--surface, #fff); }
+.ai-selection-people-threshold { width: 176px; min-height: 32px; padding: 0 8px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-columns: auto minmax(64px, 1fr) 30px; align-items: center; gap: 7px; color: var(--text-secondary, #6e6e73); font-size: 11px; white-space: nowrap; box-sizing: border-box; }
+.ai-selection-people-threshold .ui-slider { min-width: 0; }
+.ai-selection-people-threshold output { color: var(--text-primary, #1d1d1f); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }

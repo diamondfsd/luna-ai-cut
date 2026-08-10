@@ -287,6 +287,10 @@ const uncertainFaceGroups = buildFaceGroups([
 ], [uncertainIdentity])
 assert.equal(uncertainFaceGroups.length, 2, '没有足够相似证据的人脸应保持独立分组')
 assert.equal(uncertainFaceGroups.find((group) => group.itemIds.includes('uncertain-face'))?.identityId, null, '弱相似人脸不能被归入已确认人物')
+assert.equal(buildFaceGroups([
+  item('threshold-known-face', '2026-07-18T03:03:12.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('threshold-near-face', '2026-07-18T03:03:13.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.22, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(58, 116), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+], [], 0.44).length, 1, '降低人物分组阈值后应允许较分散的同一人样本合并')
 
 const chainFaceVector = (first, second, third) => [first, second, third, ...Array(125).fill(0)]
 const chainFaceGroups = buildFaceGroups([
@@ -356,6 +360,12 @@ const renamedGroups = buildFaceGroups(coPhotoIdentityItems, [renamedIdentity])
 assert.equal(renamedGroups.length, 2, '改名后不能把合照中的另一个人自动合并')
 assert.equal(renamedGroups.find((group) => group.identityId === renamedIdentity.id)?.name, '已命名人物')
 assert.equal(renamedGroups.find((group) => group.identityId !== renamedIdentity.id)?.identityId, null)
+const anchoredIdentity = createPersonIdentity('锚定名称', faceEmbeddingsForGroup(coPhotoIdentityItems, renamedSourceGroup), '历史分组标识', { coverUrl: null, coverBounds: null }, {
+  itemId: renamedSourceGroup.coverItemId,
+  bounds: renamedSourceGroup.coverBounds,
+})
+const anchoredGroups = buildFaceGroups(coPhotoIdentityItems, [anchoredIdentity], 0.44)
+assert.equal(anchoredGroups.find((group) => group.identityId === anchoredIdentity.id)?.name, '锚定名称', '分组 ID 变化后已命名人物应继续绑定到来源人脸')
 
 const peopleStoreRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-ai-selection-people-'))
 try {
@@ -416,9 +426,36 @@ try {
   const legacyRenamedIdentity = createPersonIdentity('已命名人物', faceEmbeddingsForGroup(coPhotoIdentityItems, renamedSourceGroup))
   await savePeopleStore(sourceRecoveryRoot, [legacyRenamedIdentity])
   await loadGlobalPeople(sourceRecoveryRoot)
-  await reconcileGlobalPeopleSources(sourceRecoveryRoot, coPhotoIdentityItems)
-  assert.equal((await loadPeopleStore(sourceRecoveryRoot))[0].sourceGroupId, renamedSourceGroup.id, '历史改名人物应找回原始分组，避免再次误合并')
-  assert.equal((await loadPeopleStore(sourceRecoveryRoot))[0].coverUrl, coPhotoIdentityItems[0].path, '历史人物应补全用于展示的人脸缩略图')
+  await reconcileGlobalPeopleSources(sourceRecoveryRoot, coPhotoIdentityItems, [renamedSourceGroup])
+  const recoveredIdentity = (await loadPeopleStore(sourceRecoveryRoot))[0]
+  assert.equal(recoveredIdentity.sourceGroupId, renamedSourceGroup.id, '历史改名人物应找回原始分组，避免再次误合并')
+  assert.deepEqual(recoveredIdentity.sourceFace, { itemId: renamedSourceGroup.coverItemId, bounds: renamedSourceGroup.coverBounds }, '历史改名人物应迁移为稳定的来源人脸锚点')
+  assert.equal(recoveredIdentity.coverUrl, coPhotoIdentityItems[0].path, '历史人物应补全用于展示的人脸缩略图')
+
+  const sessionRecoveryRoot = path.join(peopleStoreRoot, 'session-recovery')
+  await fs.mkdir(sessionRecoveryRoot)
+  const legacySessionGroup = {
+    ...renamedSourceGroup,
+    id: 'face_person_legacy_named',
+    identityId: 'person_legacy_named',
+    name: '保留的名称',
+    mergedMembers: [{
+      id: 'person_legacy_merged',
+      name: '已合并人物',
+      avatarDataUrl: null,
+      coverUrl: coPhotoIdentityItems[1].path,
+      coverBounds: renamedSourceGroup.coverBounds,
+    }],
+  }
+  await savePeopleStore(sessionRecoveryRoot, [createPersonIdentity('人物 1', faceVector(0, 127))])
+  await loadGlobalPeople(sessionRecoveryRoot)
+  await reconcileGlobalPeopleSources(sessionRecoveryRoot, coPhotoIdentityItems, [legacySessionGroup])
+  const sessionRecoveredPeople = await loadPeopleStore(sessionRecoveryRoot)
+  const sessionRecoveredIdentity = sessionRecoveredPeople.find((identity) => identity.id === legacySessionGroup.identityId)
+  assert.equal(sessionRecoveredIdentity?.name, '保留的名称', '旧任务中已修改的名称应迁移进全局人物库')
+  assert.deepEqual(sessionRecoveredIdentity?.sourceFaces, [{ itemId: renamedSourceGroup.coverItemId, bounds: renamedSourceGroup.coverBounds }], '旧任务中的人物来源应全部保存为稳定锚点')
+  assert.equal(sessionRecoveredPeople.find((identity) => identity.id === 'person_legacy_merged')?.mergedIntoId, legacySessionGroup.identityId, '旧任务中的合并成员应继续保留在目标人物下')
+  assert.equal(buildGlobalFaceGroups(coPhotoIdentityItems, 0.44).find((group) => group.identityId === legacySessionGroup.identityId)?.name, '保留的名称', '阈值变化后旧任务的自定义名称不应回退为默认名称')
 } finally {
   await fs.rm(peopleStoreRoot, { recursive: true, force: true })
 }
