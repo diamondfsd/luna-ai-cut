@@ -8,7 +8,7 @@ import { defineAiEditingTool } from './tool-utils'
 const applyWorkspaceEditProgram = defineAiEditingTool({
   id: 'workspace.apply_edit_program',
   title: '应用编辑程序',
-  description: '校验并原子执行一份声明式编辑程序，返回实际片段差异、最新版本和规范化编辑空间。',
+  description: '校验并原子执行一份声明式编辑程序，返回实际片段差异、警告和最新版本。',
   risk: 'edit',
   execution: 'async',
   inputSchema: editProgramToolInputSchema,

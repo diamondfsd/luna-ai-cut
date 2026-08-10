@@ -270,5 +270,4 @@ export interface EditProgramApplyResult {
   revisionAfter: number
   diff: EditProgramDiff
   warnings: string[]
-  workspace: AgentWorkspaceDocument
 }

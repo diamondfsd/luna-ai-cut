@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vite-plus/test'
 import { listAiEditingTools } from './tool-registry'
 
@@ -13,6 +11,7 @@ describe('AI editing tool surface', () => {
       'html.validate',
       'skill.read',
       'skill.search',
+      'workflow.finish',
       'workflow.set_plan',
       'workspace.apply_edit_program',
     ])

@@ -5,9 +5,6 @@ import {
   supportsNativeToolCalling,
   type NativeToolCallingLlmAdapter,
 } from '@freecut/infrastructure/llm/openai-chat-completions-llm-adapter'
-import { useProjectStore } from '@freecut/features/projects/stores/project-store'
-import { useTimelineCommandStore } from '@freecut/features/timeline/stores/timeline-command-store'
-import { useTimelineStore } from '@freecut/features/timeline/stores/timeline-store-facade'
 import {
   getEmbeddedHostBridge,
   type EmbeddedAiAssistantMessage,
@@ -22,37 +19,25 @@ import { latestFailedEdit } from './latest-edit-result'
 import { createNativeToolCatalog } from './native-tool-catalog'
 import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
+import missingFinishPrompt from './prompts/messages/missing-finish.md?raw'
 import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
 import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
-import { getAiEditingTool } from './tool-registry'
-import type { AiEditingObservation, AiEditingToolCall, AiEditingToolResult } from './types'
+import type { AiEditingObservation } from './types'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
+import { executeNativeToolCall, executeToolCall, serializeForModel } from './tool-execution'
+import {
+  declaredPlan,
+  defaultReply,
+  EDIT_PROGRAM_TOOL_ID,
+  FINISH_TOOL_ID,
+  hasCommittedEdit,
+  terminalState,
+  validateFinishObservation,
+} from './orchestration-results'
 
-const MAX_TOOL_ROUNDS = 5
+const MAX_TOOL_ROUNDS = 8
 const MAX_TOKENS = 4_096
-const MAX_TOOL_RESULT_CHARS = 8_000
-
-function toolError(toolId: string, message: string): AiEditingObservation {
-  return { toolId, result: { ok: false, message } }
-}
-
-function serializeForModel(value: unknown): string {
-  const text = JSON.stringify(value)
-  return text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}…` : text
-}
-
-async function yieldForUi(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0))
-}
-
-async function saveTimelineAfterEdit(): Promise<void> {
-  const timeline = useTimelineStore.getState()
-  if (!timeline.isDirty) return
-  const projectId = useProjectStore.getState().currentProject?.id
-  if (!projectId) throw new Error('当前项目不可用，无法保存剪辑结果。')
-  await timeline.saveTimeline(projectId)
-}
 
 async function currentWorkspace(options: AiEditingRunOptions): Promise<AgentWorkspaceDocument> {
   const workspace = await buildAgentWorkspaceDocument()
@@ -94,133 +79,12 @@ export function getAiEditingAdapter(): LlmAdapter {
   return getDefaultLlmAdapter()
 }
 
-async function executeToolCall(
-  call: AiEditingToolCall,
-  callIndex: number,
-  options: AiEditingRunOptions,
-  availableToolIds?: ReadonlySet<string>,
-): Promise<AiEditingObservation> {
-  if (availableToolIds && !availableToolIds.has(call.id)) {
-    return toolError(call.id, '这个操作不属于当前任务。')
-  }
-  const tool = getAiEditingTool(call.id)
-  if (!tool) return toolError(call.id, '这个操作目前不可用。')
-
-  const validation = tool.validate(call.args)
-  if (!validation.ok) {
-    return {
-      toolId: tool.id,
-      result: {
-        ok: false,
-        message: validation.error,
-        ...(validation.details ? { data: { validationIssues: validation.details } } : {}),
-      },
-    }
-  }
-
-  const activityId = `${options.activityScope ?? 'turn'}-${callIndex}-${tool.id}`
-  const tracksProgress = tool.execution === 'async' || tool.risk === 'analysis'
-  options.onToolActivity?.({
-    id: activityId,
-    toolId: tool.id,
-    title: tool.title,
-    status: 'running',
-    ...(tracksProgress
-      ? { progressLabel: `正在${tool.title}`, progressPercent: null }
-      : {}),
-  })
-  await yieldForUi()
-
-  const reportProgress = (progress: { label: string; percent: number | null }): void => {
-    const percent = progress.percent === null
-      ? null
-      : Math.max(0, Math.min(100, Math.round(progress.percent)))
-    options.onToolActivity?.({
-      id: activityId,
-      toolId: tool.id,
-      title: tool.title,
-      status: 'running',
-      progressLabel: progress.label,
-      progressPercent: percent,
-    })
-  }
-
-  let result: AiEditingToolResult
-  try {
-    if (tool.risk === 'edit' && tool.execution === 'sync') {
-      result = useTimelineCommandStore.getState().executeTransaction(
-        { type: 'AI_EDITING_TOOL', payload: { toolId: tool.id } },
-        () => {
-          const execution = tool.execute(validation.value, {
-            signal: options.signal,
-            reportProgress,
-          })
-          if (execution instanceof Promise) throw new Error('剪辑操作未能及时完成。')
-          return execution
-        },
-      )
-    } else {
-      result = await tool.execute(validation.value, {
-        signal: options.signal,
-        reportProgress,
-      })
-    }
-    if (result.ok && tool.risk === 'edit') await saveTimelineAfterEdit()
-  } catch (error) {
-    result = { ok: false, message: error instanceof Error ? error.message : '操作未能完成。' }
-  }
-
-  options.onToolActivity?.({
-    id: activityId,
-    toolId: tool.id,
-    title: tool.title,
-    status: result.ok ? 'succeeded' : 'failed',
-    message: result.message,
-    ...(tracksProgress && result.ok
-      ? { progressLabel: `${tool.title}已完成`, progressPercent: 100 }
-      : {}),
-  })
-  return { toolId: tool.id, result }
-}
-
-function defaultReply(observations: AiEditingObservation[]): string {
-  const edited = observations.some((observation) =>
-    observation.result.ok && getAiEditingTool(observation.toolId)?.risk === 'edit')
-  if (edited) return '已执行时间轴修改，请继续检查当前结果。'
-  return observations.length > 0 ? '已读取当前项目，但还没有完成实际修改。' : '尚未执行项目操作。'
-}
-
-function declaredPlan(observations: readonly AiEditingObservation[]): string[] {
-  const result = observations.findLast((entry) => entry.toolId === 'workflow.set_plan')?.result.data
-  if (!result || typeof result !== 'object' || !('steps' in result) || !Array.isArray(result.steps)) return []
-  return result.steps.filter((step): step is string => typeof step === 'string')
-}
-
 function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
   return messages.map((message) => ({ role: message.role, content: message.content }))
 }
 
-function parseNativeArguments(argumentsText: string): Record<string, unknown> | null {
-  try {
-    const value = JSON.parse(argumentsText) as unknown
-    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
-  } catch {
-    return null
-  }
-}
-
-async function executeNativeToolCall(
-  call: EmbeddedAiAssistantToolCall,
-  toolIdsByFunctionName: Map<string, string>,
-  callIndex: number,
-  options: AiEditingRunOptions,
-  availableToolIds?: ReadonlySet<string>,
-): Promise<AiEditingObservation> {
-  const toolId = toolIdsByFunctionName.get(call.name)
-  if (!toolId) return toolError(call.name, '这个操作目前不可用。')
-  const args = parseNativeArguments(call.arguments)
-  if (!args) return toolError(toolId, '操作参数无效，未执行此操作。')
-  return executeToolCall({ id: toolId, args }, callIndex, options, availableToolIds)
+function deferredCall(toolId: string, message: string): AiEditingObservation {
+  return { toolId, result: { ok: false, message } }
 }
 
 async function buildInitialMessages(
@@ -262,17 +126,18 @@ async function buildJsonFallbackMessages(
 
 async function runJsonToolLoop(
   messages: LlmMessage[],
+  userText: string,
   options: AiEditingRunOptions,
   adapter: LlmAdapter,
   initialRaw?: string,
   maxRounds = MAX_TOOL_ROUNDS,
   availableToolIds?: ReadonlySet<string>,
+  initialObservations: readonly AiEditingObservation[] = [],
 ): Promise<AiEditingRunResult> {
-  const observations: AiEditingObservation[] = []
+  const observations: AiEditingObservation[] = [...initialObservations]
   let reply = ''
   let callIndex = 0
   let rawFromPreviousRequest = initialRaw
-  let finished = false
 
   for (let round = 0; round < maxRounds; round += 1) {
     reportRunProgress(
@@ -281,14 +146,29 @@ async function runJsonToolLoop(
       round === 0 ? 32 : Math.min(88, 70 + round * 3),
       round === 0 ? 68 : Math.min(92, 82 + round * 2),
     )
-    const raw = rawFromPreviousRequest ?? await adapter.generate(messages, {
-      maxTokens: MAX_TOKENS,
-      temperature: 0,
-      reasoningEffort: options.reasoningEffort,
-      signal: options.signal,
-      onToken: options.onToken,
-      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
-    })
+    let raw: string
+    try {
+      raw = rawFromPreviousRequest ?? await adapter.generate(messages, {
+        maxTokens: MAX_TOKENS,
+        temperature: 0,
+        reasoningEffort: options.reasoningEffort,
+        signal: options.signal,
+        onToken: options.onToken,
+        onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
+      })
+    } catch (error) {
+      if (!hasCommittedEdit(observations)) throw error
+      const message = error instanceof Error ? error.message : '后续剪辑生成失败。'
+      return {
+        reply: `已保存前面完成的剪辑片段；后续处理失败：${message}`,
+        observations,
+        plan: [],
+        completed: false,
+        completionNotes: [message],
+        timelineRevisionBefore: 0,
+        timelineRevisionAfter: 0,
+      }
+    }
     rawFromPreviousRequest = undefined
     reportRunProgress(options, '正在检查处理结果', round === 0 ? 72 : Math.min(94, 84 + round * 2))
     const parsed = parseAiEditingResponse(raw)
@@ -303,37 +183,77 @@ async function runJsonToolLoop(
 
     reply = parsed.reply || reply
     if (parsed.toolCalls.length === 0) {
-      reportRunProgress(options, '处理结果已确认', 96)
-      finished = true
-      break
+      messages.push({ role: 'assistant', content: raw })
+      messages.push({ role: 'user', content: missingFinishPrompt.trim() })
+      continue
     }
 
     const roundObservations: AiEditingObservation[] = []
+    let editCallSeen = false
     for (const call of parsed.toolCalls.slice(0, 3)) {
       if (options.signal?.aborted) break
-      const observation = await executeToolCall(call, callIndex, options, availableToolIds)
+      let observation: AiEditingObservation
+      if (call.id === EDIT_PROGRAM_TOOL_ID && editCallSeen) {
+        observation = deferredCall(
+          call.id,
+          '同一轮只能提交一份编辑程序。请读取最新版本后再提交下一段。',
+        )
+      } else if (call.id === FINISH_TOOL_ID && editCallSeen) {
+        observation = deferredCall(
+          call.id,
+          '请先读取刚提交片段的实际结果，再判断是否完成。',
+        )
+      } else {
+        observation = await executeToolCall(call, callIndex, options, availableToolIds)
+      }
+      if (call.id === EDIT_PROGRAM_TOOL_ID) editCallSeen = true
+      observation = validateFinishObservation(observation, observations)
       callIndex += 1
       roundObservations.push(observation)
       observations.push(observation)
     }
     if (options.signal?.aborted) break
 
+    const terminal = terminalState(observations)
+    if (terminal.finished) {
+      reportRunProgress(options, '处理结果已确认', 96)
+      break
+    }
+
     messages.push({ role: 'assistant', content: raw })
+    messages[0] = {
+      role: 'system',
+      content: await buildAiEditingSystemPrompt(
+        await currentWorkspace(options),
+        'json',
+        userText,
+        availableToolIds,
+      ),
+    }
     messages.push({
       role: 'user',
       content: renderPrompt(toolResultsPrompt, {
         OBSERVATIONS: serializeForModel(roundObservations),
-        PROJECT_EVIDENCE: JSON.stringify(await currentWorkspace(options)),
       }),
     })
   }
 
+  const terminal = terminalState(observations)
+  const unfinishedReply = hasCommittedEdit(observations)
+    ? '已保存本轮完成的剪辑片段；剩余部分尚未在本轮操作上限内完成。'
+    : '本轮达到操作上限，尚未完成用户目标。'
   return {
-    reply: reply || defaultReply(observations),
+    reply: terminal.finished
+      ? terminal.outcome === 'responded'
+        ? reply || terminal.reply || defaultReply(observations)
+        : terminal.reply || reply || defaultReply(observations)
+      : unfinishedReply,
     observations,
     plan: [],
-    completed: finished && !options.signal?.aborted,
-    completionNotes: finished ? [] : ['本轮没有在操作上限内完成用户目标。'],
+    completed: terminal.completed && !options.signal?.aborted,
+    completionNotes: terminal.finished
+      ? terminal.completionNotes
+      : ['本轮没有在操作上限内完成用户目标。'],
     timelineRevisionBefore: 0,
     timelineRevisionAfter: 0,
   }
@@ -351,7 +271,6 @@ async function runNativeToolLoop(
   const observations: AiEditingObservation[] = []
   let reply = ''
   let callIndex = 0
-  let finished = false
 
   for (let round = 0; round < maxRounds; round += 1) {
     reportRunProgress(
@@ -360,31 +279,50 @@ async function runNativeToolLoop(
       round === 0 ? 32 : Math.min(88, 70 + round * 3),
       round === 0 ? 68 : Math.min(92, 82 + round * 2),
     )
-    const response = await adapter.generateWithTools(messages, catalog.definitions, {
-      maxTokens: MAX_TOKENS,
-      temperature: 0,
-      reasoningEffort: options.reasoningEffort,
-      signal: options.signal,
-      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
-    })
+    let response
+    try {
+      response = await adapter.generateWithTools(messages, catalog.definitions, {
+        maxTokens: MAX_TOKENS,
+        temperature: 0,
+        reasoningEffort: options.reasoningEffort,
+        signal: options.signal,
+        onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
+      })
+    } catch (error) {
+      if (!hasCommittedEdit(observations)) throw error
+      const message = error instanceof Error ? error.message : '后续剪辑生成失败。'
+      return {
+        reply: `已保存前面完成的剪辑片段；后续处理失败：${message}`,
+        observations,
+        plan: [],
+        completed: false,
+        completionNotes: [message],
+        timelineRevisionBefore: 0,
+        timelineRevisionAfter: 0,
+      }
+    }
     if (response.mode === 'fallback') {
       return runJsonToolLoop(
         await buildJsonFallbackMessages(userText, options.history, observations, options, availableToolIds),
+        userText,
         options,
         adapter,
         undefined,
         maxRounds,
         availableToolIds,
+        observations,
       )
     }
     if (response.mode === 'json') {
       return runJsonToolLoop(
         await buildJsonFallbackMessages(userText, options.history, observations, options, availableToolIds),
+        userText,
         options,
         adapter,
         response.content,
         maxRounds,
         availableToolIds,
+        observations,
       )
     }
 
@@ -392,26 +330,49 @@ async function runNativeToolLoop(
     if (response.content) reply = response.content
     if (response.toolCalls.length === 0) {
       if (response.content) options.onToken?.(response.content, response.content)
-      reportRunProgress(options, '处理结果已确认', 96)
-      finished = true
-      break
+      messages.push({ role: 'assistant', ...(response.content ? { content: response.content } : {}) })
+      messages.push({ role: 'user', content: missingFinishPrompt.trim() })
+      continue
     }
 
     const roundObservations: Array<{ call: EmbeddedAiAssistantToolCall; observation: AiEditingObservation }> = []
+    let editCallSeen = false
     for (const call of response.toolCalls) {
       if (options.signal?.aborted) break
-      const observation = await executeNativeToolCall(
-        call,
-        catalog.idsByFunctionName,
-        callIndex,
-        options,
-        availableToolIds,
-      )
+      const toolId = catalog.idsByFunctionName.get(call.name) ?? call.name
+      let observation: AiEditingObservation
+      if (toolId === EDIT_PROGRAM_TOOL_ID && editCallSeen) {
+        observation = deferredCall(
+          toolId,
+          '同一轮只能提交一份编辑程序。请读取最新版本后再提交下一段。',
+        )
+      } else if (toolId === FINISH_TOOL_ID && editCallSeen) {
+        observation = deferredCall(
+          toolId,
+          '请先读取刚提交片段的实际结果，再判断是否完成。',
+        )
+      } else {
+        observation = await executeNativeToolCall(
+          call,
+          catalog.idsByFunctionName,
+          callIndex,
+          options,
+          availableToolIds,
+        )
+      }
+      if (toolId === EDIT_PROGRAM_TOOL_ID) editCallSeen = true
+      observation = validateFinishObservation(observation, observations)
       callIndex += 1
       observations.push(observation)
       roundObservations.push({ call, observation })
     }
     if (options.signal?.aborted) break
+
+    const terminal = terminalState(observations)
+    if (terminal.finished) {
+      reportRunProgress(options, '处理结果已确认', 96)
+      break
+    }
 
     messages.push({
       role: 'assistant',
@@ -425,20 +386,37 @@ async function runNativeToolLoop(
         content: serializeForModel(observation),
       })
     }
+    messages[0] = {
+      role: 'system',
+      content: await buildAiEditingSystemPrompt(
+        await currentWorkspace(options),
+        'native',
+        userText,
+        availableToolIds,
+      ),
+    }
     messages.push({
       role: 'user',
-      content: renderPrompt(nativeContinuePrompt, {
-        PROJECT_EVIDENCE: JSON.stringify(await currentWorkspace(options)),
-      }),
+      content: nativeContinuePrompt.trim(),
     })
   }
 
+  const terminal = terminalState(observations)
+  const unfinishedReply = hasCommittedEdit(observations)
+    ? '已保存本轮完成的剪辑片段；剩余部分尚未在本轮操作上限内完成。'
+    : '本轮达到操作上限，尚未完成用户目标。'
   return {
-    reply: reply || defaultReply(observations),
+    reply: terminal.finished
+      ? terminal.outcome === 'responded'
+        ? reply || terminal.reply || defaultReply(observations)
+        : terminal.reply || reply || defaultReply(observations)
+      : unfinishedReply,
     observations,
     plan: [],
-    completed: finished && !options.signal?.aborted,
-    completionNotes: finished ? [] : ['本轮没有在操作上限内完成用户目标。'],
+    completed: terminal.completed && !options.signal?.aborted,
+    completionNotes: terminal.finished
+      ? terminal.completionNotes
+      : ['本轮没有在操作上限内完成用户目标。'],
     timelineRevisionBefore: 0,
     timelineRevisionAfter: 0,
   }
@@ -454,7 +432,9 @@ export async function runSingleAiEditingTurn(
   const evidence = config.evidence ?? await buildAgentWorkspaceDocument()
   reportRunProgress(options, '正在整理轨道、素材和上下文', 18)
   const timelineRevisionBefore = getTimelineRevision()
-  const availableToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
+  const availableToolIds = config.availableToolIds
+    ? new Set([...config.availableToolIds, FINISH_TOOL_ID])
+    : undefined
   let result: AiEditingRunResult
   if (supportsNativeToolCalling(adapter)) {
     reportRunProgress(options, '正在准备剪辑需求', 26)
@@ -476,6 +456,7 @@ export async function runSingleAiEditingTurn(
     reportRunProgress(options, '正在准备剪辑需求', 26)
     result = await runJsonToolLoop(
       await buildInitialMessages(userText, options.history, evidence, 'json', availableToolIds),
+      userText,
       options,
       adapter,
       undefined,
@@ -484,12 +465,15 @@ export async function runSingleAiEditingTurn(
     )
   }
   const failedEdit = latestFailedEdit(result.observations)
+  const committedBeforeFailure = Boolean(failedEdit && hasCommittedEdit(result.observations))
   return {
     ...result,
     ...(failedEdit
-      ? { reply: `编辑程序没有提交：${failedEdit.result.message}` }
-      : !result.completed
-        ? { reply: '本轮达到操作上限，尚未确认完成用户目标。请继续提出调整，助手会基于当前项目接着处理。' }
+      ? {
+          reply: committedBeforeFailure
+            ? `已保存前面完成的剪辑片段；后续片段没有提交：${failedEdit.result.message}`
+            : `编辑程序没有提交：${failedEdit.result.message}`,
+        }
       : {}),
     plan: declaredPlan(result.observations),
     completed: !failedEdit && result.completed,
