@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
 import { LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
 import { ThumbImage } from './ThumbImage'
+import './PreviewThumbnailStrip.css'
 
 interface PreviewThumbnailStripProps {
   filePathList: string[]
@@ -12,6 +13,26 @@ interface PreviewThumbnailStripProps {
   modifiedFileIds?: Set<string>
   /** 当前选中文件变化时回调 */
   onChange?: (filePath: string) => void
+}
+
+function localPathForDuration(cacheFilePath: string): string {
+  if (!cacheFilePath.startsWith('file:')) return cacheFilePath
+  try {
+    const localPath = decodeURIComponent(new URL(cacheFilePath).pathname)
+    return /^\/[a-zA-Z]:\//.test(localPath) ? localPath.slice(1) : localPath
+  } catch {
+    return cacheFilePath
+  }
+}
+
+function formatDuration(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const remainingSeconds = totalSeconds % 60
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
+    : `${minutes}:${String(remainingSeconds).padStart(2, '0')}`
 }
 
 function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThumbRef }: {
@@ -24,6 +45,18 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
   const btnRef = useRef<HTMLButtonElement>(null)
   const kind = mediaKindFromPath(filePath)
   const isLive = useLivePhotoWhenVisible(filePath, btnRef, '200px')
+  const durationRequestPathRef = useRef<string | null>(null)
+  const [duration, setDuration] = useState<number | null>(null)
+
+  const handleCacheReady = useCallback((cacheFilePath: string) => {
+    if (kind !== 'video') return
+    const localPath = localPathForDuration(cacheFilePath)
+    if (durationRequestPathRef.current === localPath) return
+    durationRequestPathRef.current = localPath
+    void window.luna.workspace.getVideoDuration(localPath)
+      .then(setDuration)
+      .catch(() => setDuration(null))
+  }, [kind])
 
   return (
     <button
@@ -38,7 +71,13 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
       title={fileNameFromPath(filePath)}
     >
       {isModified && <span className="preview-thumb-modified-dot" />}
-      <ThumbImage src={filePath} alt={fileNameFromPath(filePath)} loading="lazy" />
+      <ThumbImage
+        src={filePath}
+        alt={fileNameFromPath(filePath)}
+        loading="lazy"
+        onCacheReady={handleCacheReady}
+      />
+      {kind === 'video' && duration != null && <span className="preview-thumb-duration">{formatDuration(duration)}</span>}
       {kind === 'video' && <VideoPlayBadge size={16} />}
       {isLive && <LivePhotoBadge size={18} className="preview-thumb-live" />}
     </button>

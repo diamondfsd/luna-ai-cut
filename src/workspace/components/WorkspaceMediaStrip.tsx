@@ -11,11 +11,23 @@ import { ThumbImage } from '../../components/ThumbImage'
 import { WorkspaceMissingMedia } from './WorkspaceMissingMedia'
 import dolbyVisionLogo from '../../assets/logos/dolby-vision-vertical.png'
 import '../../styles/media-card-format-badge.css'
+import './WorkspaceMediaStrip.css'
 
 interface MediaFormatInfo {
   dolbyVision: boolean
   iLog: boolean
   raw: boolean
+  duration: number | null
+}
+
+function formatDuration(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const remainingSeconds = totalSeconds % 60
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
+    : `${minutes}:${String(remainingSeconds).padStart(2, '0')}`
 }
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
@@ -52,10 +64,13 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
 
     void Promise.all(missingItems.map(async (item) => {
       try {
-        const info = await window.luna.workspace.getMediaFormatInfo(item.path)
-        return [item.path, info] as const
+        const [info, duration] = await Promise.all([
+          window.luna.workspace.getMediaFormatInfo(item.path),
+          item.kind === 'video' ? window.luna.workspace.getVideoDuration(item.path).catch(() => null) : Promise.resolve(null),
+        ])
+        return [item.path, { ...info, duration }] as const
       } catch {
-        return [item.path, { dolbyVision: false, iLog: false, raw: false }] as const
+        return [item.path, { dolbyVision: false, iLog: false, raw: false, duration: null }] as const
       }
     })).then((entries) => {
       if (canceled) return
@@ -216,6 +231,7 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
                       unavailableFallback={<WorkspaceMissingMedia />}
                       onUnavailable={(filePath) => setBrokenPaths((current) => current.has(filePath) ? current : new Set(current).add(filePath))}
                     />}
+                {item.kind === 'video' && formatInfo?.duration != null && <span className="workspace-thumb-duration">{formatDuration(formatInfo.duration)}</span>}
                 {item.kind === 'video' && <VideoPlayBadge size={20} />}
                 {item.isLivePhoto && <LivePhotoBadge size={22} className="workspace-thumb-live-chip" />}
                 {formatInfo?.dolbyVision ? (

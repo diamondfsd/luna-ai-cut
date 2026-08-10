@@ -10,7 +10,7 @@ export interface CustomLutFile {
 }
 
 export interface AppSettings {
-  downloadDir: string
+  baseDir: string
   localResourcesDir?: string
   exportDir?: string
   cacheDir: string
@@ -48,4 +48,11 @@ export interface CacheStats {
   dir: string
   files: number
   bytes: number
+}
+
+export interface StorageMigrationResult {
+  settings: AppSettings
+  targetDir: string
+  movedDirectories: string[]
+  oldDataRemoved: boolean
 }

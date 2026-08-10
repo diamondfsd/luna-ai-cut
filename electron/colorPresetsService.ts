@@ -13,17 +13,17 @@ export interface ColorPresetData {
 const PRESETS_DIR = '_color-presets'
 const PRESETS_FILE = 'presets.json'
 
-function presetsDir(downloadDir: string): string {
-  return path.join(downloadDir, PRESETS_DIR)
+function presetsDir(baseDir: string): string {
+  return path.join(baseDir, PRESETS_DIR)
 }
 
-function presetsJsonPath(downloadDir: string): string {
-  return path.join(presetsDir(downloadDir), PRESETS_FILE)
+function presetsJsonPath(baseDir: string): string {
+  return path.join(presetsDir(baseDir), PRESETS_FILE)
 }
 
-async function readPresets(downloadDir: string): Promise<ColorPresetData[]> {
+async function readPresets(baseDir: string): Promise<ColorPresetData[]> {
   try {
-    const raw = await fs.readFile(presetsJsonPath(downloadDir), 'utf8')
+    const raw = await fs.readFile(presetsJsonPath(baseDir), 'utf8')
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed : []
   } catch {
@@ -31,21 +31,21 @@ async function readPresets(downloadDir: string): Promise<ColorPresetData[]> {
   }
 }
 
-async function writePresets(downloadDir: string, presets: ColorPresetData[]): Promise<void> {
-  await fs.mkdir(presetsDir(downloadDir), { recursive: true })
-  await fs.writeFile(presetsJsonPath(downloadDir), JSON.stringify(presets, null, 2), 'utf8')
+async function writePresets(baseDir: string, presets: ColorPresetData[]): Promise<void> {
+  await fs.mkdir(presetsDir(baseDir), { recursive: true })
+  await fs.writeFile(presetsJsonPath(baseDir), JSON.stringify(presets, null, 2), 'utf8')
 }
 
-export async function listColorPresets(downloadDir: string): Promise<ColorPresetData[]> {
-  return readPresets(downloadDir)
+export async function listColorPresets(baseDir: string): Promise<ColorPresetData[]> {
+  return readPresets(baseDir)
 }
 
 export async function saveColorPreset(
-  downloadDir: string,
+  baseDir: string,
   name: string,
   colorJson: string,
 ): Promise<ColorPresetData> {
-  const presets = await readPresets(downloadDir)
+  const presets = await readPresets(baseDir)
   const existingIndex = presets.findIndex((p) => p.name === name)
   const now = new Date().toISOString()
 
@@ -59,20 +59,20 @@ export async function saveColorPreset(
     presets.push(preset)
   }
 
-  await writePresets(downloadDir, presets)
+  await writePresets(baseDir, presets)
   return preset
 }
 
-export async function deleteColorPreset(downloadDir: string, id: string): Promise<void> {
-  const presets = (await readPresets(downloadDir)).filter((p) => p.id !== id)
-  await writePresets(downloadDir, presets)
+export async function deleteColorPreset(baseDir: string, id: string): Promise<void> {
+  const presets = (await readPresets(baseDir)).filter((p) => p.id !== id)
+  await writePresets(baseDir, presets)
 }
 
-export async function renameColorPreset(downloadDir: string, id: string, newName: string): Promise<void> {
-  const presets = await readPresets(downloadDir)
+export async function renameColorPreset(baseDir: string, id: string, newName: string): Promise<void> {
+  const presets = await readPresets(baseDir)
   const preset = presets.find((p) => p.id === id)
   if (!preset) throw new Error('预设不存在')
   preset.name = newName
   preset.updatedAt = new Date().toISOString()
-  await writePresets(downloadDir, presets)
+  await writePresets(baseDir, presets)
 }

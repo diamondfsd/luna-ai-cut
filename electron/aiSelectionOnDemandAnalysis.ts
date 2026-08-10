@@ -3,6 +3,7 @@ import * as path from 'node:path'
 import type { AiSelectionItem, AiSelectionSession } from '../src/shared/types'
 import { analyzePersonEvidence, analyzeVideoPeopleEvidence } from './aiSelectionPerson'
 import { FACE_EMBEDDING_VERSION } from './aiSelectionFaceGroups'
+import { ensureVideoFaceFrames } from './aiSelectionVideoFaceFrames'
 import { analyzeContentTags, CONTENT_TAG_VERSION } from './aiSelectionSemantic'
 import { refreshBasicSemanticTags } from './aiSelectionTags'
 import { analyzeVideoStory } from './aiSelectionVideo'
@@ -20,6 +21,7 @@ async function analyzePersonItem(context: AiSelectionAnalysisContext, item: AiSe
   item.personEvidence = item.kind === 'video'
     ? await analyzeVideoPeopleEvidence(item, signal)
     : await analyzePersonEvidence(item, signal)
+  if (item.kind === 'video') await ensureVideoFaceFrames(item, context.cacheRoot, undefined, signal)
   const evidenceTags = item.personEvidence.detected ? ['人物', '人像', '主体'] : ['无人像']
   if (item.personEvidence.faceCount > 0) evidenceTags.push('人脸')
   if (item.personEvidence.eyeState === 'closed') evidenceTags.push('闭眼', '建议复查')
@@ -52,7 +54,7 @@ export async function analyzeVideoPeopleOnDemand(
         await analyzePersonItem(context, item, signal)
       } catch (error) {
         signal?.throwIfAborted()
-        // 视频人物识别是尽力而为，不影响视频进入拍摄时段和任务完成。
+        item.semanticTags = [...new Set([...item.semanticTags, '人物分析未完成'])]
       }
       await context.update(item.name)
     }

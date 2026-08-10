@@ -3,79 +3,49 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import type {
-  AiSelectionItem,
-  AiSelectionProgress,
-  AiSelectionSession,
-  AiSelectionStartRequest,
-  AiSelectionUserOperation,
-  WorkspaceProject,
-} from '../src/shared/types'
+import type { AiHiddenPerson, AiSelectionItem, AiSelectionProgress, AiSelectionSession, AiSelectionStartRequest, AiSelectionUserOperation, WorkspaceProject } from '../src/shared/types'
 import { normalizeSelectionTarget } from './aiSelectionAlgorithms'
 import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
+import { normalizeFaceGroupingThreshold } from './aiSelectionFaceGroups'
 import { readAiSelectionItemCache, writeAiSelectionItemCache } from './aiSelectionItemCache'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
-import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
+import { applyAiSelectionUserOperation, createAiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideoPeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
-import { loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
+import { createAiSelectionPersonAvatar } from './aiSelectionPersonAvatar'
+import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, renameGlobalPerson, restoreGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
+import { prepareAiSelectionReanalysis, preserveAiSelectionUserDecisions } from './aiSelectionReanalysis'
 import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
-import { getSettings } from './settingsService'
+import { publicAiSelectionSession, restoreAiSelectionSnapshot, type StoredAiSelectionSession } from './aiSelectionSessionSnapshot'
+import { ensureVideoFaceGroupCoverFrames } from './aiSelectionVideoFaceFrames'
+import { currentBaseDir, getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
 import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
 
 const ANALYSIS_VERSION = 'selection-evidence-v6'
 const ROOT_DIR = 'ai-selection'
-interface StoredSession extends AiSelectionSession {
-  undoStack: AiSelectionSnapshot[]
-  redoStack: AiSelectionSnapshot[]
-}
+type StoredSession = StoredAiSelectionSession
 type Notify = (event: 'progress' | 'session', payload: AiSelectionProgress | AiSelectionSession) => void
 const sessions = new Map<string, StoredSession>()
 let loaded = false
 let activeSessionId: string | null = null
 let activeController: AbortController | null = null
 let notify: Notify = () => undefined
-
 export function setAiSelectionNotifier(next: Notify): void {
   notify = next
 }
-
-function rootDir(): string {
-  return path.join(app.getPath('userData'), '.luna-cache', ROOT_DIR)
-}
-
-function peopleStoreDir(): string {
-  return path.join(app.getPath('userData'), 'people')
-}
-
+function rootDir(): string { return path.join(currentBaseDir(), 'cache', ROOT_DIR) }
+function peopleStoreDir(): string { return path.join(app.getPath('userData'), 'people') }
 function sessionPath(id: string): string {
   if (!/^selection_[a-z0-9_-]+$/i.test(id)) throw new Error('选片任务标识无效')
   return path.join(rootDir(), 'sessions', `${id}.json`)
 }
-
-async function readCachedItem(id: string, preset: AiSelectionSession['preset']): Promise<AiSelectionItem | null> {
-  return readAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, id, preset)
-}
-
-async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> {
-  await writeAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, item, preset)
-}
-
-function publicSession(session: StoredSession): AiSelectionSession {
-  const { undoStack, redoStack, ...value } = session
-  return structuredClone({
-    ...value,
-    items: value.items.map((item) => ({ ...item, imageEmbedding: null, personEvidence: item.personEvidence ? { ...item.personEvidence, faces: item.personEvidence.faces?.map((face) => ({ ...face, embedding: null })) } : null })),
-    canUndo: undoStack.length > 0, canRedo: redoStack.length > 0,
-  })
-}
-
-function touch(session: StoredSession): void {
-  session.revision += 1
-  session.updatedAt = new Date().toISOString()
-  refreshAiSelectionCounts(session)
-}
+async function readCachedItem(id: string, preset: AiSelectionSession['preset']): Promise<AiSelectionItem | null> { return readAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, id, preset) }
+async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> { await writeAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, item, preset) }
+function publicSession(session: StoredSession): AiSelectionSession { return publicAiSelectionSession(session) }
+function touch(session: StoredSession): void { session.revision += 1; session.updatedAt = new Date().toISOString(); refreshAiSelectionCounts(session) }
+function recommendationsFinalized(session: AiSelectionSession): boolean { return session.status === 'ready' || session.status === 'completed' }
+function replaceAnalyzedItem(session: StoredSession, item: AiSelectionItem): void { const index = session.items.findIndex((candidate) => candidate.id === item.id); session.items.splice(index, 1, preserveAiSelectionUserDecisions(session.items[index], item)) }
 
 async function persist(session: StoredSession): Promise<void> {
   const destination = sessionPath(session.id)
@@ -102,8 +72,10 @@ async function ensureLoaded(): Promise<void> {
       if (parsed.schemaVersion !== 1 || parsed.analysisVersion !== ANALYSIS_VERSION || !parsed.id) continue
       parsed.undoStack ??= []
       parsed.redoStack ??= []
-      parsed.faceGroups = await registerGlobalPeople(peopleStoreDir(), parsed.items)
-      rebuildSelectionResult(parsed)
+      parsed.faceGroupingThreshold = normalizeFaceGroupingThreshold(parsed.faceGroupingThreshold)
+      await reconcileGlobalPeopleSources(peopleStoreDir(), parsed.items, parsed.faceGroups, parsed.faceGroupingThreshold)
+      parsed.faceGroups = buildGlobalFaceGroups(parsed.items, parsed.faceGroupingThreshold)
+      rebuildSelectionResult(parsed, recommendationsFinalized(parsed))
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
       sessions.set(parsed.id, parsed)
@@ -115,7 +87,7 @@ async function ensureLoaded(): Promise<void> {
 }
 
 function emitSession(session: StoredSession): void {
-  notify('session', publicSession(session))
+  notify('session', publicAiSelectionSession(session))
 }
 
 function emitProgress(session: StoredSession, currentLabel: string | null): void {
@@ -153,7 +125,7 @@ async function runSession(session: StoredSession): Promise<void> {
     session.counts.total = indexed.length
     const previousItems = new Map(session.items.map((item) => [item.id, item]))
     session.items = indexed.map((media) => previousItems.get(media.id) ?? pendingItem(media))
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     await updateAndPersist(session)
     const completed = new Set(session.items.filter((item) => item.analysisState !== 'pending').map((item) => item.id))
     const sizeCounts = new Map<number, number>()
@@ -178,7 +150,7 @@ async function runSession(session: StoredSession): Promise<void> {
       const analyzed = await Promise.all(batch.map(async (media): Promise<AiSelectionItem> => {
         try {
           const needsExactHash = (sizeCounts.get(media.bytes) ?? 0) > 1
-          const cached = await readCachedItem(media.id, session.preset)
+          const cached = session.forceReanalysis ? null : await readCachedItem(media.id, session.preset)
           const reusable = cached && (!needsExactHash || Boolean(cached.exactHash)) ? cached : null
           const item = reusable ?? await analyzeIndexedMedia(media, session.preset, needsExactHash, controller.signal, embeddingModel)
           if (!reusable) await writeCachedItem(item, session.preset)
@@ -188,14 +160,14 @@ async function runSession(session: StoredSession): Promise<void> {
           return failedItem(media, error)
         }
       }))
-      for (const item of analyzed) session.items.splice(session.items.findIndex((candidate) => candidate.id === item.id), 1, item)
-      rebuildSelectionResult(session)
+      for (const item of analyzed) replaceAnalyzedItem(session, item)
+      rebuildSelectionResult(session, recommendationsFinalized(session))
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
     controller.signal.throwIfAborted()
     session.phase = 'grouping'
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     session.phase = 'ranking'
     await updateAndPersist(session)
 
@@ -209,7 +181,7 @@ async function runSession(session: StoredSession): Promise<void> {
       const analyzed = await Promise.all(batch.map(async (media): Promise<AiSelectionItem> => {
         try {
           // Large videos never receive a full-file hash during the first pass.
-          const cached = await readCachedItem(media.id, session.preset)
+          const cached = session.forceReanalysis ? null : await readCachedItem(media.id, session.preset)
           const item = cached ?? await analyzeIndexedMedia(media, session.preset, false, controller.signal)
           if (!cached) await writeCachedItem(item, session.preset)
           return item
@@ -218,29 +190,30 @@ async function runSession(session: StoredSession): Promise<void> {
           return failedItem(media, error)
         }
       }))
-      for (const item of analyzed) session.items.splice(session.items.findIndex((candidate) => candidate.id === item.id), 1, item)
-      rebuildSelectionResult(session)
+      for (const item of analyzed) replaceAnalyzedItem(session, item)
+      rebuildSelectionResult(session, recommendationsFinalized(session))
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     session.phase = 'ranking'
     await updateAndPersist(session)
 
     // 人物与内容证据增量补充结果；保持进度可见，但不限制页面操作。
     try {
       await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
-      session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
-      rebuildSelectionResult(session)
+      session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
+      rebuildSelectionResult(session, recommendationsFinalized(session))
       await updateAndPersist(session)
       await analyzeVideoPeopleOnDemand(analysisContext(session), videos.map((item) => item.id), controller.signal)
-      session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
-      rebuildSelectionResult(session)
+      session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
     } catch (error) {
       if (abortLike(error)) throw error
     }
+    rebuildSelectionResult(session, true)
     session.phase = 'done'
     session.status = 'ready'
+    session.forceReanalysis = false
     await updateAndPersist(session)
   } catch (error) {
     if (!abortLike(error)) {
@@ -286,6 +259,7 @@ export async function startAiSelection(request: AiSelectionStartRequest): Promis
     preset: request.preset,
     purpose: request.purpose ?? 'general',
     target,
+    faceGroupingThreshold: normalizeFaceGroupingThreshold(undefined),
     status: 'queued',
     phase: 'indexing',
     revision: 1,
@@ -313,18 +287,20 @@ export async function startAiSelection(request: AiSelectionStartRequest): Promis
   void scheduleNext()
   return publicSession(session)
 }
-
 export async function listAiSelectionSessions(): Promise<AiSelectionSession[]> {
   await ensureLoaded()
   return [...sessions.values()].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).map(publicSession)
 }
-
 export async function getAiSelectionSession(id: string): Promise<AiSelectionSession | null> {
   await ensureLoaded()
   const session = sessions.get(id)
-  return session ? publicSession(session) : null
+  if (!session) return null
+  if (await ensureVideoFaceGroupCoverFrames(session.items, session.faceGroups, rootDir())) {
+    rebuildSelectionResult(session, recommendationsFinalized(session))
+    await updateAndPersist(session)
+  }
+  return publicSession(session)
 }
-
 export async function pauseAiSelection(id: string): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
@@ -335,7 +311,6 @@ export async function pauseAiSelection(id: string): Promise<AiSelectionSession> 
   }
   return publicSession(session)
 }
-
 export async function resumeAiSelection(id: string): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
@@ -347,7 +322,15 @@ export async function resumeAiSelection(id: string): Promise<AiSelectionSession>
   }
   return publicSession(session)
 }
-
+export async function reanalyzeAiSelection(id: string): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  if (activeSessionId === id) activeController?.abort()
+  prepareAiSelectionReanalysis(session)
+  await updateAndPersist(session)
+  void scheduleNext()
+  return publicSession(session)
+}
 export async function cancelAiSelection(id: string): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
@@ -358,17 +341,6 @@ export async function cancelAiSelection(id: string): Promise<AiSelectionSession>
   }
   return publicSession(session)
 }
-
-function restoreSnapshot(session: StoredSession, snapshot: AiSelectionSnapshot): void {
-  session.preset = snapshot.preset
-  session.purpose = snapshot.purpose
-  session.target = structuredClone(snapshot.target)
-  session.items = structuredClone(snapshot.items)
-  session.scenes = structuredClone(snapshot.scenes)
-  session.groups = structuredClone(snapshot.groups)
-  session.preferenceProfile = structuredClone(snapshot.preferenceProfile)
-}
-
 export async function applyAiSelectionOperation(id: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
@@ -376,39 +348,46 @@ export async function applyAiSelectionOperation(id: string, revision: number, op
   session.undoStack.push(createAiSelectionSnapshot(session))
   session.undoStack = session.undoStack.slice(-20)
   session.redoStack = []
-  applyAiSelectionUserOperation(session, operation)
+  applyAiSelectionUserOperation(session, operation, recommendationsFinalized(session))
   await updateAndPersist(session)
   return publicSession(session)
 }
-
 export async function undoAiSelection(id: string): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
   const snapshot = session.undoStack.pop()
-  if (snapshot) { session.redoStack.push(createAiSelectionSnapshot(session)); restoreSnapshot(session, snapshot); await updateAndPersist(session) }
+  if (snapshot) { session.redoStack.push(createAiSelectionSnapshot(session)); restoreAiSelectionSnapshot(session, snapshot); await updateAndPersist(session) }
   return publicSession(session)
 }
-
 export async function redoAiSelection(id: string): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
   const snapshot = session.redoStack.pop()
-  if (snapshot) { session.undoStack.push(createAiSelectionSnapshot(session)); restoreSnapshot(session, snapshot); await updateAndPersist(session) }
+  if (snapshot) { session.undoStack.push(createAiSelectionSnapshot(session)); restoreAiSelectionSnapshot(session, snapshot); await updateAndPersist(session) }
   return publicSession(session)
 }
-
 export async function analyzeAiSelectionPeople(id: string, itemIds: string[]): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
   await analyzePeopleOnDemand(analysisContext(session), itemIds)
-  session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
+  session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
   await updateAndPersist(session)
   return publicSession(session)
 }
-
+export async function setAiSelectionFaceGroupingThreshold(id: string, threshold: number): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  const nextThreshold = normalizeFaceGroupingThreshold(threshold)
+  if (nextThreshold !== session.faceGroupingThreshold) {
+    session.faceGroupingThreshold = nextThreshold
+    rebuildSelectionResult(session, recommendationsFinalized(session))
+    await updateAndPersist(session)
+  }
+  return publicSession(session)
+}
 async function persistPeopleAndRefreshSessions(): Promise<void> {
   for (const session of sessions.values()) {
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     await updateAndPersist(session)
   }
 }
@@ -420,19 +399,19 @@ export async function renameAiSelectionPerson(id: string, groupId: string, name:
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }
-
 export async function setAiSelectionPersonAvatar(id: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
-  await setGlobalPersonAvatar(peopleStoreDir(), session, groupId, itemId, bounds)
+  const avatarDataUrl = await createAiSelectionPersonAvatar(session, groupId, itemId, bounds)
+  await setGlobalPersonAvatar(peopleStoreDir(), session, groupId, avatarDataUrl)
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }
-
-export async function mergeAiSelectionPeople(id: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession> {
+export async function mergeAiSelectionPeople(id: string, targetGroupId: string, sourceGroupIds: string[]): Promise<AiSelectionSession> {
   await ensureLoaded()
+  if (!Array.isArray(sourceGroupIds) || sourceGroupIds.length === 0 || sourceGroupIds.some((sourceGroupId) => typeof sourceGroupId !== 'string')) throw new Error('请选择至少一个人物')
   const session = requireSession(id)
-  await mergeGlobalPeople(peopleStoreDir(), session, targetGroupId, sourceGroupId)
+  await mergeGlobalPeople(peopleStoreDir(), session, targetGroupId, sourceGroupIds)
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }
@@ -441,6 +420,27 @@ export async function unmergeAiSelectionPerson(id: string, targetGroupId: string
   await ensureLoaded()
   const session = requireSession(id)
   await unmergeGlobalPerson(peopleStoreDir(), session, targetGroupId, memberIdentityId)
+  await persistPeopleAndRefreshSessions()
+  return publicSession(session)
+}
+
+export async function hideAiSelectionPerson(id: string, groupId: string): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  await hideGlobalPerson(peopleStoreDir(), session, groupId)
+  await persistPeopleAndRefreshSessions()
+  return publicSession(session)
+}
+
+export async function listAiSelectionHiddenPeople(): Promise<AiHiddenPerson[]> {
+  await ensureLoaded()
+  return listHiddenGlobalPeople()
+}
+
+export async function restoreAiSelectionPerson(id: string, personId: string): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  await restoreGlobalPerson(peopleStoreDir(), personId)
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }
@@ -465,7 +465,7 @@ function analysisContext(session: StoredSession) {
     cacheRoot: rootDir(),
     writeCachedItem: (item: AiSelectionItem) => writeCachedItem(item, session.preset),
     update: (label?: string | null) => updateAndPersist(session, label),
-    rebuild: () => rebuildSelectionResult(session),
+    rebuild: () => rebuildSelectionResult(session, recommendationsFinalized(session)),
   }
 }
 
@@ -480,7 +480,7 @@ export async function createProjectFromAiSelection(id: string, name: string): Pr
   await updateAndPersist(session)
   try {
     const settings = await getSettings()
-    const project = await createWorkspaceProject(settings.downloadDir, name.trim() || session.name, assets)
+    const project = await createWorkspaceProject(settings.baseDir, name.trim() || session.name, assets)
     session.workspaceCreation = { status: 'created', projectId: project.id, error: null }
     session.status = 'completed'
     await updateAndPersist(session)

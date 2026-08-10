@@ -426,7 +426,7 @@ function recommendationReason(item: AiSelectionItem, group: AiSelectionGroup | u
   return reasons.filter((value): value is string => Boolean(value)).slice(0, 4).join(' · ')
 }
 
-export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelectionGroup[], preset: AiSelectionPreset, purpose: AiSelectionPurpose = 'general', targetSetting: AiSelectionTarget = { mode: 'preset', value: null }, preference?: AiSelectionPreferenceProfile): void {
+export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelectionGroup[], preset: AiSelectionPreset, purpose: AiSelectionPurpose = 'general', targetSetting: AiSelectionTarget = { mode: 'preset', value: null }, preference?: AiSelectionPreferenceProfile, applyRecommendations = true): void {
   targetSetting = normalizeSelectionTarget(targetSetting)
   const grouped = new Map(groups.flatMap((group) => group.itemIds.map((id) => [id, group] as const)))
   const tagFrequency = new Map<string, number>()
@@ -441,7 +441,6 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
     refreshScores(item, Boolean(grouped.get(item.id)), purpose, tagFrequency, preference)
     if (item.decisionSource === 'ai') item.state = 'undecided'
   }
-
   const candidates = items.filter((item) => {
     if (item.analysisState !== 'ready' || item.error || item.quality?.grade === 'review' || item.flags.closedEyes) return false
     if (item.kind === 'video') return false
@@ -468,17 +467,18 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
       if (best) chosen.add(best.id)
     }
   }
-
   for (const item of items) {
-    item.flags.aiRecommended = chosen.has(item.id)
+    const recommended = applyRecommendations && chosen.has(item.id)
+    item.flags.aiRecommended = recommended
     if (item.decisionSource === 'user') continue
+    if (!applyRecommendations) { item.state = 'undecided'; item.recommendationReason = null; continue }
     const group = grouped.get(item.id)
     if (item.quality?.grade === 'review' || item.error || item.flags.closedEyes) {
       item.state = 'undecided'
       item.recommendationReason = item.flags.closedEyes
         ? '检测到闭眼，需要确认'
         : item.quality?.reasons[0] ?? (item.error ? '素材分析失败' : '需要人工确认')
-    } else if (chosen.has(item.id)) {
+    } else if (recommended) {
       item.state = 'kept'
       item.recommendationReason = recommendationReason(item, group, purpose)
     } else if (group) {

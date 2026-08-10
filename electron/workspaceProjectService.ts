@@ -10,8 +10,8 @@ const MAX_PROJECT_ID_LENGTH = 100
 
 const projectOperations = new Map<string, Promise<void>>()
 
-function projectRoot(downloadDir: string): string {
-  return path.resolve(downloadDir, PROJECTS_DIR)
+function projectRoot(baseDir: string): string {
+  return path.resolve(baseDir, PROJECTS_DIR)
 }
 
 function safeDirName(value: string): string {
@@ -37,20 +37,20 @@ function assertContained(root: string, candidate: string): void {
   }
 }
 
-function projectDir(downloadDir: string, id: string): string {
+function projectDir(baseDir: string, id: string): string {
   validateProjectId(id)
-  const root = projectRoot(downloadDir)
+  const root = projectRoot(baseDir)
   const directory = path.resolve(root, id)
   assertContained(root, directory)
   return directory
 }
 
-function projectJsonPath(downloadDir: string, id: string): string {
-  return path.join(projectDir(downloadDir, id), PROJECT_FILE)
+function projectJsonPath(baseDir: string, id: string): string {
+  return path.join(projectDir(baseDir, id), PROJECT_FILE)
 }
 
-function removalDir(downloadDir: string, projectId: string): string {
-  return path.join(projectDir(downloadDir, projectId), 'removal')
+function removalDir(baseDir: string, projectId: string): string {
+  return path.join(projectDir(baseDir, projectId), 'removal')
 }
 
 function resolvedRemovalPath(directory: string, candidate: unknown): string | null {
@@ -144,9 +144,9 @@ function createId(name: string): string {
   return `${new Date().toISOString().replace(/[:.]/g, '-')}-${safeDirName(name)}`
 }
 
-async function ensureProjectDirectory(downloadDir: string, projectId: string): Promise<string> {
-  const root = projectRoot(downloadDir)
-  const directory = projectDir(downloadDir, projectId)
+async function ensureProjectDirectory(baseDir: string, projectId: string): Promise<string> {
+  const root = projectRoot(baseDir)
+  const directory = projectDir(baseDir, projectId)
   await fs.mkdir(root, { recursive: true })
   await fs.mkdir(directory, { recursive: true })
 
@@ -160,11 +160,11 @@ async function ensureProjectDirectory(downloadDir: string, projectId: string): P
 }
 
 async function withProjectOperation<T>(
-  downloadDir: string,
+  baseDir: string,
   projectId: string,
   operation: () => Promise<T>,
 ): Promise<T> {
-  const key = projectDir(downloadDir, projectId)
+  const key = projectDir(baseDir, projectId)
   const previous = projectOperations.get(key) ?? Promise.resolve()
   const result = previous.catch(() => undefined).then(operation)
   const tail = result.then(() => undefined, () => undefined)
@@ -201,8 +201,8 @@ async function readProject(filePath: string): Promise<WorkspaceProject | null> {
   }
 }
 
-async function writeProjectUnlocked(downloadDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
-  const directory = await ensureProjectDirectory(downloadDir, project.id)
+async function writeProjectUnlocked(baseDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
+  const directory = await ensureProjectDirectory(baseDir, project.id)
   const destination = path.join(directory, PROJECT_FILE)
   const temporary = path.join(
     directory,
@@ -220,17 +220,17 @@ async function writeProjectUnlocked(downloadDir: string, project: WorkspaceProje
   return project
 }
 
-async function writeProject(downloadDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
-  return withProjectOperation(downloadDir, project.id, () => writeProjectUnlocked(downloadDir, project))
+async function writeProject(baseDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
+  return withProjectOperation(baseDir, project.id, () => writeProjectUnlocked(baseDir, project))
 }
 
-export async function listWorkspaceProjects(downloadDir: string): Promise<WorkspaceProject[]> {
+export async function listWorkspaceProjects(baseDir: string): Promise<WorkspaceProject[]> {
   try {
-    const entries = await fs.readdir(projectRoot(downloadDir), { withFileTypes: true })
+    const entries = await fs.readdir(projectRoot(baseDir), { withFileTypes: true })
     const projects = await Promise.all(
       entries
         .filter((entry) => entry.isDirectory())
-        .map((entry) => readProject(projectJsonPath(downloadDir, entry.name))),
+        .map((entry) => readProject(projectJsonPath(baseDir, entry.name))),
     )
     return projects
       .filter((project): project is WorkspaceProject => Boolean(project))
@@ -241,7 +241,7 @@ export async function listWorkspaceProjects(downloadDir: string): Promise<Worksp
 }
 
 export async function createWorkspaceProject(
-  downloadDir: string,
+  baseDir: string,
   name: string,
   assets: WorkspaceProjectAsset[],
 ): Promise<WorkspaceProject> {
@@ -250,49 +250,49 @@ export async function createWorkspaceProject(
   const project: WorkspaceProject = {
     id,
     name: name.trim() || '未命名项目',
-    dir: projectDir(downloadDir, id),
+    dir: projectDir(baseDir, id),
     createdAt: now,
     updatedAt: now,
     assets: dedupeAssets([], assets),
   }
-  return writeProject(downloadDir, project)
+  return writeProject(baseDir, project)
 }
 
 export async function addAssetsToWorkspaceProject(
-  downloadDir: string,
+  baseDir: string,
   projectId: string,
   assets: WorkspaceMediaAsset[],
 ): Promise<WorkspaceProject> {
-  return withProjectOperation(downloadDir, projectId, async () => {
-    const project = await readProject(projectJsonPath(downloadDir, projectId))
+  return withProjectOperation(baseDir, projectId, async () => {
+    const project = await readProject(projectJsonPath(baseDir, projectId))
     if (!project) throw new Error('项目不存在')
     const next: WorkspaceProject = {
       ...project,
       updatedAt: new Date().toISOString(),
       assets: dedupeAssets(project.assets, assets),
     }
-    return writeProjectUnlocked(downloadDir, next)
+    return writeProjectUnlocked(baseDir, next)
   })
 }
 
-export async function saveWorkspaceProject(downloadDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
+export async function saveWorkspaceProject(baseDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
   const next = {
     ...project,
-    dir: projectDir(downloadDir, project.id),
+    dir: projectDir(baseDir, project.id),
     updatedAt: new Date().toISOString(),
   }
-  return withProjectOperation(downloadDir, project.id, async () => {
-    const current = await readProject(projectJsonPath(downloadDir, project.id))
-    const saved = await writeProjectUnlocked(downloadDir, next)
+  return withProjectOperation(baseDir, project.id, async () => {
+    const current = await readProject(projectJsonPath(baseDir, project.id))
+    const saved = await writeProjectUnlocked(baseDir, next)
     const retained = removalReferences(saved)
     const removed = [...removalReferences(current)].filter((filePath) => !retained.has(filePath))
-    await discardWorkspaceRemovalFiles(downloadDir, project.id, removed)
+    await discardWorkspaceRemovalFiles(baseDir, project.id, removed)
     return saved
   })
 }
 
-export async function discardWorkspaceRemovalFiles(downloadDir: string, projectId: string, filePaths: string[]): Promise<void> {
-  const directory = removalDir(downloadDir, projectId)
+export async function discardWorkspaceRemovalFiles(baseDir: string, projectId: string, filePaths: string[]): Promise<void> {
+  const directory = removalDir(baseDir, projectId)
   await Promise.all(filePaths.map(async (filePath) => {
     const resolved = resolvedRemovalPath(directory, filePath)
     if (!resolved) return
@@ -300,18 +300,18 @@ export async function discardWorkspaceRemovalFiles(downloadDir: string, projectI
   }))
 }
 
-export async function loadWorkspaceRemovalMask(downloadDir: string, projectId: string, filePath: string, expectedBytes: number): Promise<ArrayBuffer> {
+export async function loadWorkspaceRemovalMask(baseDir: string, projectId: string, filePath: string, expectedBytes: number): Promise<ArrayBuffer> {
   if (!Number.isInteger(expectedBytes) || expectedBytes <= 0 || expectedBytes > 1_048_576) throw new Error('消除蒙版尺寸无效')
-  const resolved = resolvedRemovalPath(removalDir(downloadDir, projectId), filePath)
+  const resolved = resolvedRemovalPath(removalDir(baseDir, projectId), filePath)
   if (!resolved || path.extname(resolved) !== '.mask') throw new Error('消除蒙版路径无效')
   const data = await fs.readFile(resolved)
   if (data.byteLength !== expectedBytes) throw new Error('消除蒙版文件损坏，请重新选择区域')
   return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
 }
 
-export async function deleteWorkspaceProject(downloadDir: string, projectId: string): Promise<void> {
-  await withProjectOperation(downloadDir, projectId, async () => {
-    const dir = projectDir(downloadDir, projectId)
+export async function deleteWorkspaceProject(baseDir: string, projectId: string): Promise<void> {
+  await withProjectOperation(baseDir, projectId, async () => {
+    const dir = projectDir(baseDir, projectId)
     const stats = await fs.lstat(dir).catch(() => null)
     if (stats?.isSymbolicLink()) throw new Error('项目目录无效')
     await fs.rm(dir, { recursive: true, force: true })
@@ -319,18 +319,18 @@ export async function deleteWorkspaceProject(downloadDir: string, projectId: str
 }
 
 export async function renameWorkspaceProject(
-  downloadDir: string,
+  baseDir: string,
   projectId: string,
   newName: string,
 ): Promise<WorkspaceProject> {
-  return withProjectOperation(downloadDir, projectId, async () => {
-    const project = await readProject(projectJsonPath(downloadDir, projectId))
+  return withProjectOperation(baseDir, projectId, async () => {
+    const project = await readProject(projectJsonPath(baseDir, projectId))
     if (!project) throw new Error('项目不存在')
     const next: WorkspaceProject = {
       ...project,
       name: newName.trim() || project.name,
       updatedAt: new Date().toISOString(),
     }
-    return writeProjectUnlocked(downloadDir, next)
+    return writeProjectUnlocked(baseDir, next)
   })
 }

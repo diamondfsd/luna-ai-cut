@@ -31,6 +31,12 @@ interface ImportResult {
   skipped: number
 }
 
+type ElectronFile = File & { path?: string }
+
+interface LutImportRenderCore {
+  importCubeFile(sourcePath: string, folderName: string, lutDir: string, targetName: string | undefined, metadata: { name: string }): Promise<{ path: string }>
+}
+
 /* ═══════════════════════════════════════════════
    Component
    ═══════════════════════════════════════════════ */
@@ -63,9 +69,9 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
 
   const resolveLutDir = useCallback(async (): Promise<string> => {
     try {
-      const s = await (window as any).luna?.getSettings?.()
+      const s = await window.luna.getSettings()
       if (s?.lutDir) return s.lutDir
-      if (s?.downloadDir) return `${s.downloadDir}/luts`
+      if (s?.baseDir) return `${s.baseDir}/luts`
     } catch { /* ignore */ }
     return ''
   }, [])
@@ -114,7 +120,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
           file,
           name: file.name,
           displayName: file.name.replace(/\.cube$/i, ''),
-          sourcePath: (file as any).path || file.name,
+          sourcePath: (file as ElectronFile).path || file.name,
           status: 'error',
           statusText: '不支持的文件格式',
           conflictAction: 'skip',
@@ -130,7 +136,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
         file,
         name: file.name,
         displayName: nameWithoutExt,
-        sourcePath: (file as any).path || file.name,
+        sourcePath: (file as ElectronFile).path || file.name,
         status: isDuplicate ? 'duplicate' : 'ready',
         statusText: isDuplicate ? '重复名称' : '正常',
         conflictAction: isDuplicate ? 'rename' : 'overwrite',
@@ -235,7 +241,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
     const lutDir = await resolveLutDir()
     if (!lutDir) { toast.error('未配置 LUT 目录'); setImporting(false); return }
 
-    const lrc = (window as unknown as { lunaRenderCore?: any }).lunaRenderCore
+    const lrc = (window as unknown as { lunaRenderCore?: LutImportRenderCore }).lunaRenderCore
     if (!lrc) { toast.error('渲染引擎未就绪'); setImporting(false); return }
 
     const toImport = fileEntries.filter(
@@ -252,7 +258,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
       )
 
       try {
-        const sourcePath = (entry.file as any).path
+        const sourcePath = (entry.file as ElectronFile).path
         if (!sourcePath) throw new Error('无法获取文件路径')
 
         // 如果显示名与原始文件名不同，用显示名作为目标名称

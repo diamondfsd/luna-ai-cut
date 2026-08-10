@@ -95,7 +95,30 @@ HOT_VERSION=$(resolve_build_number "$HOT_VERSION_ARG")
 FULL_VERSION="${PKG_VERSION}-hot.${HOT_VERSION}"
 ZIP_NAME="renderer-${FULL_VERSION}.zip"
 ZIP_PATH="${RELEASE_DIR}/${ZIP_NAME}"
+MANIFEST_NAME="renderer-${FULL_VERSION}.json"
+MANIFEST_PATH="${RELEASE_DIR}/${MANIFEST_NAME}"
 NOTES_NAME="RELEASE_NOTES_v${FULL_VERSION}.md"
+
+function write_hot_manifest() {
+  local zip_bytes zip_sha256
+  zip_bytes=$(wc -c < "$ZIP_PATH" | tr -d ' ')
+  zip_sha256=$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')
+  node --input-type=module -e "
+    import { writeFileSync } from 'node:fs';
+    writeFileSync('${MANIFEST_PATH}', JSON.stringify({
+      version: '${FULL_VERSION}',
+      minAppVersion: '${PKG_VERSION}',
+      packages: {
+        universal: {
+          zipName: '${ZIP_NAME}',
+          sha256: '${zip_sha256}',
+          sizeBytes: ${zip_bytes},
+          includesNative: false,
+        },
+      },
+    }, null, 2) + '\\n');
+  "
+}
 
 # ============================================================
 # 第一步：构建
@@ -178,6 +201,7 @@ if [ "$UPLOAD_ONLY" = false ]; then
   }
   console.log('  ✓ 文件结构正确，已排除 fonts/luts (' + entries.length + ' 个文件)');
   "
+  write_hot_manifest
   echo ""
   ok "热更新包构建完成: ${FULL_VERSION}"
   echo ""
@@ -189,6 +213,7 @@ fi
 if [ "$BUILD_ONLY" = true ]; then
   echo "  上传以下文件到 GitCode Release ${LATEST_TAG}:"
   echo "    - ${ZIP_PATH}"
+  echo "    - ${MANIFEST_PATH}"
   echo "    - ${NOTES_NAME}（存在时）"
   exit 0
 fi
@@ -211,6 +236,7 @@ if [ ! -f "$ZIP_PATH" ]; then
   err "请先构建（去掉 --upload-only）"
   exit 1
 fi
+write_hot_manifest
 # ── 确保 Release 存在 ──
 info "确保 Release ${LATEST_TAG} 存在..."
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API_BASE}/releases" \
@@ -274,6 +300,7 @@ function upload_asset() {
 
 # 上传 zip
 upload_asset "$ZIP_PATH"
+upload_asset "$MANIFEST_PATH"
 
 # 上传发布说明（如果存在）
 if [ -f "$NOTES_NAME" ]; then

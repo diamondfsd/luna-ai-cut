@@ -1,4 +1,4 @@
-import type { AppSettings, CacheStats, CustomLutFile } from './settings'
+import type { AppSettings, CacheStats, CustomLutFile, StorageMigrationResult } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
@@ -23,6 +23,7 @@ import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOpt
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
 import type {
   AiSelectionProgress,
+  AiHiddenPerson,
   AiSelectionSession,
   AiSelectionStartRequest,
   AiSelectionUserOperation,
@@ -199,7 +200,7 @@ export interface LunaApi {
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>
-  chooseDownloadDir(): Promise<string | null>
+  chooseBaseDir(): Promise<string | null>
   chooseLocalResourcesDir(): Promise<string | null>
   chooseExportDir(): Promise<string | null>
   chooseLutDir(): Promise<string | null>
@@ -212,6 +213,7 @@ export interface LunaApi {
   getMockServerStatus(): Promise<MockServerStatus>
   getCacheStats(): Promise<CacheStats>
   clearCache(): Promise<CacheStats>
+  migrateLocalStorage(): Promise<StorageMigrationResult | null>
   listCustomLuts(): Promise<CustomLutFile[]>
   deleteCustomLut(filePath: string): Promise<void>
   openWifiSettings(): Promise<void>
@@ -224,7 +226,7 @@ export interface LunaApi {
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>
   deleteCameraFiles(files: LunaFile[], host?: string): Promise<CameraDeleteResult>
   listSampleFiles(): Promise<LunaFile[]>
-  listDownloadedFiles(downloadDir?: string): Promise<LunaFile[]>
+  listDownloadedFiles(): Promise<LunaFile[]>
   listExportFiles(exportDir?: string): Promise<LunaFile[]>
   previewFile(file: LunaFile, files: LunaFile[]): Promise<PreviewResult>
   previewLivePhoto(sourceUrl: string): Promise<PreviewResult>
@@ -235,7 +237,7 @@ export interface LunaApi {
   resolveThumbnail(filePath: string, kind?: string): Promise<string | null>
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   detectILog(filePath: string): Promise<boolean>
-  downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
+  downloadFiles(files: LunaFile[]): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
   exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
@@ -248,9 +250,10 @@ export interface LunaApi {
     start(): Promise<LocalMediaShareStatus>
     stop(): Promise<LocalMediaShareStatus>
   }
-  getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
+  getDownloadedRecords(files: LunaFile[]): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>
+  startFileDrag(filePaths: string[]): void
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
   readExifModel(localPath: string): Promise<string | null>
@@ -280,13 +283,18 @@ export interface LunaApi {
     getSession(sessionId: string): Promise<AiSelectionSession | null>
     pause(sessionId: string): Promise<AiSelectionSession>
     resume(sessionId: string): Promise<AiSelectionSession>
+    reanalyze(sessionId: string): Promise<AiSelectionSession>
     cancel(sessionId: string): Promise<AiSelectionSession>
     applyOperation(sessionId: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession>
     analyzePeople(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
+    setFaceGroupingThreshold(sessionId: string, threshold: number): Promise<AiSelectionSession>
     renamePerson(sessionId: string, groupId: string, name: string): Promise<AiSelectionSession>
     setPersonAvatar(sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession>
-    mergePeople(sessionId: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession>
+    mergePeople(sessionId: string, targetGroupId: string, sourceGroupIds: string[]): Promise<AiSelectionSession>
     unmergePerson(sessionId: string, targetGroupId: string, memberIdentityId: string): Promise<AiSelectionSession>
+    hidePerson(sessionId: string, groupId: string): Promise<AiSelectionSession>
+    listHiddenPeople(): Promise<AiHiddenPerson[]>
+    restorePerson(sessionId: string, personId: string): Promise<AiSelectionSession>
     analyzeContentTags(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     analyzeVideos(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     undo(sessionId: string): Promise<AiSelectionSession>

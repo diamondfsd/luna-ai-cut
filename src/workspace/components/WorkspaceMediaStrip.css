@@ -1,0 +1,13 @@
+.workspace-thumb-duration {
+  position: absolute;
+  bottom: 7px;
+  left: 7px;
+  z-index: 2;
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+}

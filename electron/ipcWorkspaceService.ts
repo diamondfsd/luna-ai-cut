@@ -180,22 +180,22 @@ export function register(): void {
 
   ipcMain.handle('workspace:saveColorMask', async (_event, projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number) => {
     const settings = await getSettings()
-    return saveColorMask(settings.downloadDir, projectId, assetId, width, height, bytes, feather)
+    return saveColorMask(settings.baseDir, projectId, assetId, width, height, bytes, feather)
   })
 
   ipcMain.handle('workspace:loadColorMask', async (_event, projectId: string, filePath: string) => {
     const settings = await getSettings()
-    return loadColorMask(settings.downloadDir, projectId, filePath)
+    return loadColorMask(settings.baseDir, projectId, filePath)
   })
 
   ipcMain.handle('workspace:deleteColorMask', async (_event, projectId: string, filePath: string) => {
     const settings = await getSettings()
-    await deleteColorMask(settings.downloadDir, projectId, filePath)
+    await deleteColorMask(settings.baseDir, projectId, filePath)
   })
 
   ipcMain.handle('workspace:cleanupColorMasks', async (_event, projectId: string, retainedPaths: string[]) => {
     const settings = await getSettings()
-    return cleanupUnreferencedColorMasks(settings.downloadDir, projectId, retainedPaths)
+    return cleanupUnreferencedColorMasks(settings.baseDir, projectId, retainedPaths)
   })
 
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
@@ -268,12 +268,12 @@ export function register(): void {
   ipcMain.handle('workspace:discardObjectRemovalFiles', async (_event, projectId: string, filePaths: string[]) => {
     if (!Array.isArray(filePaths) || filePaths.length > 100 || filePaths.some((filePath) => typeof filePath !== 'string')) throw new Error('待清理的消除结果无效')
     const settings = await getSettings()
-    await discardWorkspaceRemovalFiles(settings.downloadDir, projectId, filePaths)
+    await discardWorkspaceRemovalFiles(settings.baseDir, projectId, filePaths)
   })
 
   ipcMain.handle('workspace:loadObjectRemovalMask', async (_event, projectId: string, filePath: string, expectedBytes: number) => {
     const settings = await getSettings()
-    return loadWorkspaceRemovalMask(settings.downloadDir, projectId, filePath, Math.round(Number(expectedBytes)))
+    return loadWorkspaceRemovalMask(settings.baseDir, projectId, filePath, Math.round(Number(expectedBytes)))
   })
 
   ipcMain.handle('workspace:removeObject', async (event, request: WorkspaceObjectRemovalRequest) => {
@@ -289,7 +289,7 @@ export function register(): void {
     watchSender(event.sender)
     try {
       const [settings, resolution] = await Promise.all([getSettings(), probeDisplayResolution(request.filePath)])
-      return await removeObject(request, settings.downloadDir, resolution.width, resolution.height, event.sender.id, task.controller.signal)
+      return await removeObject(request, settings.baseDir, resolution.width, resolution.height, event.sender.id, task.controller.signal)
     } finally {
       removalTasks.finish(task)
     }
@@ -703,30 +703,30 @@ export function register(): void {
   })
   ipcMain.handle('workspace:listProjects', async () => {
     const settings = await getSettings()
-    return listWorkspaceProjects(settings.downloadDir)
+    return listWorkspaceProjects(settings.baseDir)
   })
   ipcMain.handle('workspace:createProject', async (_event, name: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
-    return createWorkspaceProject(settings.downloadDir, name, assets)
+    return createWorkspaceProject(settings.baseDir, name, assets)
   })
   ipcMain.handle('workspace:addAssetsToProject', async (_event, projectId: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
-    return addAssetsToWorkspaceProject(settings.downloadDir, projectId, assets)
+    return addAssetsToWorkspaceProject(settings.baseDir, projectId, assets)
   })
 
   ipcMain.handle('workspace:saveProject', async (_event, project: WorkspaceProject) => {
     const settings = await getSettings()
-    return saveWorkspaceProject(settings.downloadDir, project)
+    return saveWorkspaceProject(settings.baseDir, project)
   })
 
   ipcMain.handle('workspace:deleteProject', async (_event, projectId: string) => {
     const settings = await getSettings()
-    return deleteWorkspaceProject(settings.downloadDir, projectId)
+    return deleteWorkspaceProject(settings.baseDir, projectId)
   })
 
   ipcMain.handle('workspace:renameProject', async (_event, projectId: string, newName: string) => {
     const settings = await getSettings()
-    return renameWorkspaceProject(settings.downloadDir, projectId, newName)
+    return renameWorkspaceProject(settings.baseDir, projectId, newName)
   })
 
   ipcMain.handle('workspace:copyFile', async (_event, sourcePath: string) => {
@@ -820,21 +820,21 @@ export function register(): void {
   // ── 调色预设 ──
   ipcMain.handle('workspace:listColorPresets', async () => {
     const settings = await getSettings()
-    return listColorPresets(settings.downloadDir)
+    return listColorPresets(settings.baseDir)
   })
 
   ipcMain.handle('workspace:saveColorPreset', async (_event, name: string, colorJson: string) => {
     const settings = await getSettings()
-    return saveColorPreset(settings.downloadDir, name, colorJson)
+    return saveColorPreset(settings.baseDir, name, colorJson)
   })
 
   ipcMain.handle('workspace:deleteColorPreset', async (_event, id: string) => {
     const settings = await getSettings()
-    return deleteColorPreset(settings.downloadDir, id)
+    return deleteColorPreset(settings.baseDir, id)
   })
 
   ipcMain.handle('workspace:renameColorPreset', async (_event, id: string, newName: string) => {
     const settings = await getSettings()
-    return renameColorPreset(settings.downloadDir, id, newName)
+    return renameColorPreset(settings.baseDir, id, newName)
   })
 }

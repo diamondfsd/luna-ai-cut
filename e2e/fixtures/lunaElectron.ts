@@ -42,18 +42,18 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
     const userDataDir = existingUserDataDir
       ? path.resolve(existingUserDataDir)
       : path.join(temporaryRoot, 'user-data')
-    const downloadDir = path.join(temporaryRoot, 'downloads')
+    const baseDir = path.join(temporaryRoot, 'downloads')
     const artifactDir = path.join(temporaryRoot, 'artifacts')
     await Promise.all([
       useExistingUserDataDir ? access(userDataDir) : mkdir(userDataDir, { recursive: true }),
-      mkdir(downloadDir, { recursive: true }),
+      mkdir(baseDir, { recursive: true }),
       mkdir(artifactDir, { recursive: true }),
     ])
     if (!useExistingUserDataDir) {
       await writeFile(path.join(userDataDir, 'settings.json'), `${JSON.stringify({
-        downloadDir,
-        localResourcesDir: path.join(downloadDir, 'localResources'),
-        exportDir: path.join(downloadDir, 'export'),
+        baseDir,
+        localResourcesDir: path.join(baseDir, 'localResources'),
+        exportDir: path.join(baseDir, 'export'),
         developerMode: false,
       }, null, 2)}\n`, 'utf8')
     }

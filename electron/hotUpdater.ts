@@ -15,19 +15,24 @@
  */
 
 import { app } from 'electron'
-import { cpSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { pipeline } from 'node:stream/promises'
-import AdmZip from 'adm-zip'
 import { canLoadHotUpdate, stableReleaseVersion } from '../src/shared/hotUpdateCompatibility'
+import { installHotUpdateArchive, type HotUpdateIntegrity } from './hotUpdateArchiveService'
 
 // ── 常量 ──
 
 const HOT_DIR = () => join(app.getPath('userData'), '.luna-hot')
 const VERSION_FILE = () => join(HOT_DIR(), 'version.json')
+const HOT_APP_FILES = [
+  'dist-electron/luna-appMain.js',
+  'dist-electron/preload.mjs',
+  'dist/index.html',
+]
 
 const GITCODE_API = 'https://api.gitcode.com/api/v5/repos/diamondfsd/luna-ai-cut-package-release'
 const GITCODE_DL = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download'
+let activeHotUpdate: Promise<void> | null = null
 
 function currentPlatformPackage(): string {
   if (process.platform === 'darwin') {
@@ -44,6 +49,7 @@ export interface HotUpdateManifest {
   version: string
   zipName: string
   minAppVersion: string
+  integrity?: HotUpdateIntegrity
   notesUrl?: string
 }
 
@@ -66,17 +72,16 @@ export function getCurrentHotVersion(): string | null {
     }
     const data = JSON.parse(readFileSync(path, 'utf-8'))
     const version = typeof data.version === 'string' ? data.version : null
+    if (!version) return null
+    if (!HOT_APP_FILES.every((file) => existsSync(join(HOT_DIR(), file)))) {
+      console.log('[hot-update] 本地热更新内容不完整，将重新下载')
+      return null
+    }
     return version
   } catch (err) {
     console.log(`[hot-update] getCurrentHotVersion: 读取失败`, err)
     return null
   }
-}
-
-/** 写入热更新版本号 */
-function writeCurrentHotVersion(version: string): void {
-  mkdirSync(HOT_DIR(), { recursive: true })
-  writeFileSync(VERSION_FILE(), JSON.stringify({ version, updatedAt: new Date().toISOString() }), 'utf-8')
 }
 
 // ── 版本比较 ──
@@ -142,6 +147,8 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
     const latest = hotZips[0]
     const version = latest.version
 
+    const integrity = await fetchHotUpdateIntegrity(releaseTag, version, latest.name, assets)
+
     // 查找对应的发布说明文件
     const notesAsset = assets.find(a =>
       a.name === `RELEASE_NOTES_v${version}.md`
@@ -151,10 +158,36 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
       version,
       zipName: latest.name,
       minAppVersion: releaseTag.replace(/^v/, ''),
+      integrity,
       notesUrl: notesAsset?.browser_download_url,
     }
   } catch {
     return null
+  }
+}
+
+async function fetchHotUpdateIntegrity(
+  releaseTag: string,
+  version: string,
+  zipName: string,
+  assets: Array<{ name: string }>,
+): Promise<HotUpdateIntegrity | undefined> {
+  const manifestName = `renderer-${version}.json`
+  if (!assets.some((asset) => asset.name === manifestName)) return undefined
+  try {
+    const response = await fetch(`${GITCODE_DL}/${releaseTag}/${manifestName}`)
+    if (!response.ok) return undefined
+    const manifest = await response.json() as {
+      version?: unknown
+      packages?: Record<string, { zipName?: unknown; sha256?: unknown; sizeBytes?: unknown }>
+    }
+    if (manifest.version !== version) return undefined
+    const entry = Object.values(manifest.packages ?? {}).find((candidate) => candidate.zipName === zipName)
+    if (!entry || typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)) return undefined
+    if (typeof entry.sizeBytes !== 'number' || !Number.isInteger(entry.sizeBytes) || entry.sizeBytes <= 0) return undefined
+    return { sha256: entry.sha256, sizeBytes: entry.sizeBytes }
+  } catch {
+    return undefined
   }
 }
 
@@ -215,105 +248,22 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
 /**
  * 下载热更新 zip 包并应用到 userData/.luna-hot/ 目录
  */
-export async function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> {
+export function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> {
+  if (activeHotUpdate) return activeHotUpdate
+  activeHotUpdate = applyHotUpdateOnce(info).finally(() => { activeHotUpdate = null })
+  return activeHotUpdate
+}
+
+async function applyHotUpdateOnce(info: HotUpdateCheckResult): Promise<void> {
   if (!canLoadHotUpdate(app.getVersion(), info.version)) {
     throw new Error('此热更新与当前安装版本不匹配')
   }
-  const hotDir = HOT_DIR()
-  const downloadTempDir = join(hotDir, '.download-temp')
-  const zipPath = join(downloadTempDir, 'hot-update.zip')
-  const extractDir = join(downloadTempDir, 'extract')
-
-  // 清理旧的临时目录
-  rmSync(downloadTempDir, { recursive: true, force: true })
-  mkdirSync(extractDir, { recursive: true })
-
-  // 1. 下载 zip
-  const res = await fetch(info.downloadUrl)
-  if (!res.ok) {
-    throw new Error(`下载热更新失败: HTTP ${res.status}`)
-  }
-
-  const fileStream = createWriteStream(zipPath)
-  await pipeline(res.body as unknown as NodeJS.ReadableStream, fileStream)
-
-  // 2. 解压
-  const zip = new AdmZip(zipPath)
-  zip.extractAllTo(extractDir, true)
-
-  // 3. 验证解压结果包含必要的文件
-  const expectedFiles = [
-    'dist-electron/luna-appMain.js',
-    'dist-electron/preload.mjs',
-    'dist/index.html',
-  ]
-  for (const file of expectedFiles) {
-    if (!existsSync(join(extractDir, file))) {
-      throw new Error(`热更新包缺少文件: ${file}`)
-    }
-  }
-
-  // 写入 package.json 标记 ESM，使热更新的 .js 文件能被 import() 正确加载
-  writeFileSync(
-    join(extractDir, 'package.json'),
-    JSON.stringify({ type: 'module', name: 'luna-ai-cut-hot', private: true }),
-    'utf-8',
-  )
-
-  // 4. 删除旧的热更新文件
-  const oldDistElectron = join(hotDir, 'dist-electron')
-  const oldDist = join(hotDir, 'dist')
-  const pendingNative = join(hotDir, 'pending-native')
-  if (existsSync(oldDistElectron)) {
-    rmSync(oldDistElectron, { recursive: true, force: true })
-  }
-  if (existsSync(oldDist)) {
-    rmSync(oldDist, { recursive: true, force: true })
-  }
-  // 原生模块不能在 Windows 的当前进程中覆盖：保留为 pending-native，
-  // 由下次启动的 bootstrap 在加载主进程代码前完成切换。
-  if (existsSync(pendingNative)) {
-    rmSync(pendingNative, { recursive: true, force: true })
-  }
-
-  // 5. 移动新文件
-  const extractEntries = readdirSync(extractDir)
-
-  const coreDirs = ['dist-electron', 'dist']
-  if (coreDirs.every(d => extractEntries.includes(d))) {
-    for (const entry of extractEntries) {
-      const src = join(extractDir, entry)
-      const dest = join(hotDir, entry)
-      copyRecursiveSync(src, dest)
-    }
-  } else if (extractEntries.length === 1) {
-    // 嵌套结构：一个顶层目录，里面包含 dist-electron/ + dist/
-    const singleDir = join(extractDir, extractEntries[0])
-    if (existsSync(singleDir) && existsSync(join(singleDir, 'dist-electron'))) {
-      for (const entry of readdirSync(singleDir)) {
-        const src = join(singleDir, entry)
-        const dest = join(hotDir, entry)
-        copyRecursiveSync(src, dest)
-      }
-    } else {
-      throw new Error('热更新包目录结构异常')
-    }
-  } else {
-    throw new Error('热更新包目录结构异常')
-  }
-
-  // 6. 写入版本信息
-  writeCurrentHotVersion(info.version)
-
-  // 7. 清理临时文件
-  rmSync(downloadTempDir, { recursive: true, force: true })
-}
-
-// ── 辅助函数 ──
-
-/** 递归复制文件 */
-function copyRecursiveSync(src: string, dest: string): void {
-  cpSync(src, dest, { recursive: true, force: true })
+  await installHotUpdateArchive(HOT_DIR(), {
+    version: info.version,
+    zipName: info.manifest.zipName,
+    downloadUrl: info.downloadUrl,
+    integrity: info.manifest.integrity,
+  })
 }
 
 /** 清理热更新，恢复到 asar 内置版本 */

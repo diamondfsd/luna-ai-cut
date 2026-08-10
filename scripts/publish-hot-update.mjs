@@ -4,7 +4,7 @@
  * Native modules are included only when --include-native is supplied.
  */
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import AdmZip from 'adm-zip'
 
@@ -50,7 +50,7 @@ function sha256(path) {
 }
 
 const packages = {}
-for (const platform of platforms) {
+for (const platform of includeNative ? platforms : ['universal']) {
   const zip = new AdmZip()
   addAppFiles(zip)
   if (includeNative) {
@@ -71,10 +71,15 @@ for (const platform of platforms) {
       }
     }
   }
-  const zipName = `renderer-${version}-${platform}.zip`
+  const zipName = includeNative ? `renderer-${version}-${platform}.zip` : `renderer-${version}.zip`
   const zipPath = join(releaseDir, zipName)
   zip.writeZip(zipPath)
-  packages[platform] = { zipName, sha256: sha256(zipPath), includesNative: includeNative }
+  packages[platform] = {
+    zipName,
+    sha256: sha256(zipPath),
+    sizeBytes: statSync(zipPath).size,
+    includesNative: includeNative,
+  }
   console.log(`[hot-update] 已生成 ${zipPath}`)
 }
 

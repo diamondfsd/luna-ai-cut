@@ -48,7 +48,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
     try {
       const s = await window.luna.getSettings()
       if (s?.lutDir) return s.lutDir
-      if (s?.downloadDir) return `${s.downloadDir}/luts`
+      if (s?.baseDir) return `${s.baseDir}/luts`
     } catch { /* ignore */ }
     return ''
   }

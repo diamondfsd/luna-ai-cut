@@ -10,14 +10,19 @@ import {
   cancelAiSelection,
   createProjectFromAiSelection,
   getAiSelectionSession,
+  hideAiSelectionPerson,
+  listAiSelectionHiddenPeople,
   listAiSelectionSessions,
   pauseAiSelection,
   mergeAiSelectionPeople,
   redoAiSelection,
+  reanalyzeAiSelection,
   renameAiSelectionPerson,
   removeAiSelectionSession,
   resumeAiSelection,
+  restoreAiSelectionPerson,
   setAiSelectionPersonAvatar,
+  setAiSelectionFaceGroupingThreshold,
   setAiSelectionNotifier,
   startAiSelection,
   undoAiSelection,
@@ -43,13 +48,18 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('ai-selection:get', (_event, sessionId: string) => getAiSelectionSession(sessionId))
   ipcMain.handle('ai-selection:pause', (_event, sessionId: string) => pauseAiSelection(sessionId))
   ipcMain.handle('ai-selection:resume', (_event, sessionId: string) => resumeAiSelection(sessionId))
+  ipcMain.handle('ai-selection:reanalyze', (_event, sessionId: string) => reanalyzeAiSelection(sessionId))
   ipcMain.handle('ai-selection:cancel', (_event, sessionId: string) => cancelAiSelection(sessionId))
   ipcMain.handle('ai-selection:apply-operation', (_event, sessionId: string, revision: number, operation: AiSelectionUserOperation) => applyAiSelectionOperation(sessionId, revision, operation))
   ipcMain.handle('ai-selection:analyze-people', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionPeople(sessionId, itemIds))
+  ipcMain.handle('ai-selection:set-face-grouping-threshold', (_event, sessionId: string, threshold: number) => setAiSelectionFaceGroupingThreshold(sessionId, threshold))
   ipcMain.handle('ai-selection:rename-person', (_event, sessionId: string, groupId: string, name: string) => renameAiSelectionPerson(sessionId, groupId, name))
   ipcMain.handle('ai-selection:set-person-avatar', (_event, sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => setAiSelectionPersonAvatar(sessionId, groupId, itemId, bounds))
-  ipcMain.handle('ai-selection:merge-people', (_event, sessionId: string, targetGroupId: string, sourceGroupId: string) => mergeAiSelectionPeople(sessionId, targetGroupId, sourceGroupId))
+  ipcMain.handle('ai-selection:merge-people', (_event, sessionId: string, targetGroupId: string, sourceGroupIds: string[]) => mergeAiSelectionPeople(sessionId, targetGroupId, sourceGroupIds))
   ipcMain.handle('ai-selection:unmerge-person', (_event, sessionId: string, targetGroupId: string, memberIdentityId: string) => unmergeAiSelectionPerson(sessionId, targetGroupId, memberIdentityId))
+  ipcMain.handle('ai-selection:hide-person', (_event, sessionId: string, groupId: string) => hideAiSelectionPerson(sessionId, groupId))
+  ipcMain.handle('ai-selection:list-hidden-people', () => listAiSelectionHiddenPeople())
+  ipcMain.handle('ai-selection:restore-person', (_event, sessionId: string, personId: string) => restoreAiSelectionPerson(sessionId, personId))
   ipcMain.handle('ai-selection:analyze-content-tags', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionContentTags(sessionId, itemIds))
   ipcMain.handle('ai-selection:analyze-videos', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionVideos(sessionId, itemIds))
   ipcMain.handle('ai-selection:undo', (_event, sessionId: string) => undoAiSelection(sessionId))

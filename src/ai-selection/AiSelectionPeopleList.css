@@ -1,0 +1,21 @@
+.ai-selection-people-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 10px; }
+.ai-selection-person-filter { position: relative; min-width: 0; }
+.ai-selection-people-grid .ai-selection-person-select.ui-btn { min-width: 0; width: 100%; min-height: 0; padding: 5px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-primary, #1d1d1f); display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: start; align-items: center; gap: 6px; text-align: left; white-space: normal; }
+.ai-selection-people-grid .ai-selection-person-select.ui-btn:hover { border-color: var(--border, #d9dce2); background: color-mix(in srgb, var(--text-primary, #1d1d1f) 4%, white); color: var(--text-primary, #1d1d1f); }
+.ai-selection-people-grid .ai-selection-person-select.ui-btn.active { border-color: color-mix(in srgb, var(--blue, #06c) 48%, white); background: color-mix(in srgb, var(--blue, #06c) 8%, white); color: var(--blue, #06c); }
+.ai-selection-people-grid .ai-selection-person-select .ui-btn-icon { width: 100%; height: auto; grid-column: 1 / -1; grid-row: 1; display: block; }
+.ai-selection-people-grid .ai-selection-person-select .ai-selection-face-group-cover { width: 100%; height: auto; aspect-ratio: 1; flex: 0 0 auto !important; border-radius: 5px; display: block; }
+.ai-selection-people-grid .ai-selection-person-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ai-selection-people-grid .ai-selection-person-count { min-width: 20px; color: var(--text-secondary, #6e6e73); font-size: 11px; font-weight: 600; line-height: 1; text-align: right; }
+.ai-selection-person-rename-trigger.ui-icon-btn, .ai-selection-person-menu-trigger.ui-icon-btn { position: absolute; top: 9px; width: 28px; height: 28px; border: 1px solid rgba(255, 255, 255, .62); background: rgba(255, 255, 255, .88); color: var(--text-primary, #1d1d1f); box-shadow: 0 1px 3px rgba(0, 0, 0, .14); transition: opacity 120ms ease, background 120ms ease; }
+.ai-selection-person-rename-trigger.ui-icon-btn { right: 40px; }
+.ai-selection-person-rename-trigger.ui-icon-btn, .ai-selection-person-menu-trigger.ui-icon-btn { opacity: 0; }
+.ai-selection-person-menu-trigger.ui-icon-btn { right: 9px; }
+.ai-selection-person-rename-trigger.ui-icon-btn:hover, .ai-selection-person-rename-trigger.ui-icon-btn:focus-visible, .ai-selection-person-menu-trigger.ui-icon-btn:hover, .ai-selection-person-menu-trigger.ui-icon-btn:focus-visible { background: white; color: var(--blue, #06c); }
+.ai-selection-person-filter:hover .ai-selection-person-rename-trigger, .ai-selection-person-filter:hover .ai-selection-person-menu-trigger, .ai-selection-person-filter:focus-within .ai-selection-person-rename-trigger, .ai-selection-person-filter:focus-within .ai-selection-person-menu-trigger, .ai-selection-person-menu-trigger.is-open { opacity: 1; }
+.ai-selection-person-inline-editor { min-width: 0; padding: 5px; border: 1px solid var(--blue, #06c); border-radius: 7px; background: color-mix(in srgb, var(--blue, #06c) 7%, white); display: grid; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: auto 32px; align-content: start; align-items: center; gap: 6px; box-sizing: border-box; }
+.ai-selection-person-inline-editor .ai-selection-face-group-cover { width: 100%; height: auto; aspect-ratio: 1; grid-column: 1 / -1; grid-row: 1; flex: 0 0 auto !important; border-radius: 5px; }
+.ai-selection-person-rename-input.ui-input { min-width: 0; height: 32px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-primary, #1d1d1f); font-size: 12px; box-shadow: none; }
+.ai-selection-person-rename-input.ui-input:focus { box-shadow: none; }
+.ai-selection-person-menu.ui-popover-content { width: 164px; padding: 6px; border-radius: 10px; display: grid; gap: 2px; box-sizing: border-box; }
+.ai-selection-person-menu .ui-btn { width: 100%; justify-content: flex-start; border: 0; }

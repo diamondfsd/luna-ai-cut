@@ -6,8 +6,9 @@ import { localThumbnailUrl, safeName } from './filePathUtils'
 import { downloadToFile, downloadToFileWithRetry, isAbortError } from './fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
-import { logMainWarn } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { recordDownloadedFileSource } from './mediaSourceManifestService'
+import { friendlyDownloadError, prepareDownloadDirectory } from './downloadDirectoryService'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -18,7 +19,7 @@ import type {
 
 export {
   cacheDir,
-  chooseDownloadDir,
+  chooseBaseDir,
   chooseExportDir,
   chooseLocalResourcesDir,
   getLocalResourcesDir,
@@ -53,7 +54,7 @@ export async function listExportFiles(exportDir: string): Promise<import('../src
         extension: entry.name.split('.').pop() || '',
         bytes: s.size, width: 0, height: 0,
         downloadFilePath: fullPath, localPath: fullPath,
-      } as any)
+      } as unknown as import('../src/shared/types').LunaFile)
     }
   } catch { /* ignore */ }
   return files
@@ -148,7 +149,7 @@ function logFinalDownloadSuccess(
   bytes: number | null | undefined,
   extra?: { copyFromUrl?: string },
 ): void {
-  console.log('[download] 下载成功', {
+  logMainInfo('[download] 下载成功', {
     fileName: file.name,
     sourceUrl: sourceUrlFor(file),
     destination,
@@ -158,18 +159,31 @@ function logFinalDownloadSuccess(
 }
 
 function logFinalDownloadCanceled(file: LunaFile, destination: string): void {
-  console.log('[download] 下载取消', {
+  logMainInfo('[download] 下载取消', {
     fileName: file.name,
     destination,
   })
 }
 
 function logFinalDownloadFailure(file: LunaFile, destination: string, error: string): void {
-  console.error('[download] 下载失败', {
+  logMainError('[download] 下载失败', {
     fileName: file.name,
     destination,
     reason: error,
   })
+}
+
+async function recordDownloadedSource(outputDir: string, destination: string, file: LunaFile): Promise<void> {
+  try {
+    await recordDownloadedFileSource(outputDir, destination, file)
+  } catch (error) {
+    logMainWarn('[download] 素材已下载，但来源信息保存失败', {
+      fileName: file.name,
+      destination,
+      code: error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined,
+      reason: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 
@@ -263,7 +277,7 @@ export async function previewFile(file: LunaFile): Promise<PreviewResult> {
  *
  * 这里只做轻量文件存在性检查，避免列表初始化阶段产生大量 I/O/ffprobe/缓存工作。
  */
-export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: string): Promise<void> {
+export async function resolveLocalThumbnails(files: LunaFile[], localResourcesDir: string): Promise<void> {
   if (files.length === 0) return
   const cacheDir = await previewCacheDir()
 
@@ -280,7 +294,7 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
   for (const file of files) {
     // --- 下载目录中已存在 ---
     try {
-      const dest = destinationFor(downloadDir, file)
+      const dest = destinationFor(localResourcesDir, file)
       const stats = await fs.stat(dest)
       if (stats.isFile()) {
         file.localPath = dest
@@ -411,7 +425,7 @@ export async function downloadFiles(
   signal?: AbortSignal,
 ): Promise<DownloadSummary> {
   const summary: DownloadSummary = { completed: [], failed: [], canceled: [] }
-  await fs.mkdir(outputDir, { recursive: true })
+  outputDir = await prepareDownloadDirectory(outputDir)
 
   for (const [index, file] of files.entries()) {
     if (signal?.aborted) {
@@ -427,7 +441,7 @@ export async function downloadFiles(
       const existingFinal = await fileSize(destination)
       const existingRaw = rawDestination ? await fileSize(rawDestination) : 0
       if (existingFinal > 0 && (!rawFile || existingRaw > 0)) {
-        await recordDownloadedFileSource(outputDir, destination, file)
+        await recordDownloadedSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
@@ -449,7 +463,7 @@ export async function downloadFiles(
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
       if (!rawFile && canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
-        await recordDownloadedFileSource(outputDir, destination, file)
+        await recordDownloadedSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
@@ -491,7 +505,7 @@ export async function downloadFiles(
             status: 'downloading',
           })
         }, signal)
-        await recordDownloadedFileSource(outputDir, rawDestination, rawFile)
+        await recordDownloadedSource(outputDir, rawDestination, rawFile)
       }
 
       onProgress({
@@ -505,7 +519,7 @@ export async function downloadFiles(
         status: 'done',
         destinationPath: destination,
       })
-      await recordDownloadedFileSource(outputDir, destination, file)
+      await recordDownloadedSource(outputDir, destination, file)
       summary.completed.push({ name: file.name, path: destination })
       logFinalDownloadSuccess(file, destination, totalBytes)
     } catch (error) {
@@ -528,7 +542,7 @@ export async function downloadFiles(
         break
       }
 
-      const message = error instanceof Error ? error.message : String(error)
+      const message = friendlyDownloadError(error)
       logFinalDownloadFailure(file, destination, message)
       onProgress({
         fileName: file.name,
@@ -539,6 +553,7 @@ export async function downloadFiles(
         percent: null,
         speedBps: 0,
         status: 'failed',
+        error: message,
       })
       summary.failed.push({ name: file.name, error: message })
     }

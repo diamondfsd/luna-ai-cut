@@ -73,7 +73,7 @@
 .ai-selection-stage-nav .ui-btn strong { min-width: 24px; color: var(--text-secondary, #6e6e73); text-align: right; font-size: 11px; }
 .ai-selection-stage-nav .ui-btn.active { background: color-mix(in srgb, var(--blue, #06c) 11%, white); color: var(--blue, #06c); }
 .ai-selection-face-group-list { margin-left: 10px; }
-.ai-selection-face-group-cover { position: relative; width: 26px; height: 26px; flex: 0 0 26px !important; overflow: hidden; border-radius: 50%; background: #e5e7ea; }
+.ai-selection-face-group-cover { position: relative; width: 26px; height: 26px; flex: 0 0 26px !important; overflow: hidden; background: #e5e7ea; }
 .ai-selection-face-group-cover img { position: absolute; max-width: none; object-fit: fill; }
 .ai-selection-browse-title { margin-top: 22px; }
 .ai-selection-tags-panel { margin-top: 22px; }
@@ -95,10 +95,13 @@
 .ai-selection-preferences .ui-btn-group > * { flex: 1; }
 .ai-selection-results { min-width: 0; min-height: 0; overflow: hidden; background: var(--bg, #f5f6f8); }
 .ai-selection-results.filtered { display: grid; grid-template-columns: 210px minmax(0, 1fr); }
+.ai-selection-results.filtered.people { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
 .ai-selection-results-content { min-width: 0; min-height: 0; height: 100%; padding: 14px; overflow: auto; }
 .ai-selection-filter-rail { min-width: 0; min-height: 0; padding: 16px 10px; overflow-y: auto; border-right: 1px solid var(--border, #d9dce2); background: var(--surface, #fff); }
+.ai-selection-people-filter-rail { padding-inline: 12px; }
 .ai-selection-filter-title { margin: 0 6px 10px; display: block; font-size: 12px; }
 .ai-selection-filter-list { display: flex; flex-direction: column; gap: 4px; }
+.ai-selection-filter-list.people { gap: 12px; }
 .ai-selection-filter-list .ui-btn { width: 100%; min-width: 0; justify-content: flex-start; border: 0; color: var(--text-primary, #1d1d1f); }
 .ai-selection-filter-list .ui-btn > span:not(.ui-btn-icon) { flex: 1; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .ai-selection-filter-list .ui-btn strong { min-width: 24px; color: var(--text-secondary, #6e6e73); text-align: right; font-size: 10px; }
@@ -158,14 +161,6 @@
 .ai-selection-heading-loading .loading-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; white-space: nowrap; }
 .ai-selection-heading-loading .loading-indicator svg { width: 16px; height: 16px; flex: 0 0 auto; }
 .ai-selection-view-actions { flex: 0 0 auto; align-items: center !important; gap: 6px !important; }
-.ai-selection-person-dialog { padding: 18px 20px; }
-.ai-selection-person-merge-list { max-height: min(420px, 55vh); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
-.ai-selection-person-merge-list > button { min-height: 52px; padding: 6px 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-primary, #1d1d1f); cursor: pointer; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; text-align: left; }
-.ai-selection-person-merge-list > button:hover { background: color-mix(in srgb, var(--text-primary, #1d1d1f) 5%, white); }
-.ai-selection-person-merge-list > button.selected { border-color: color-mix(in srgb, var(--blue, #06c) 32%, white); background: color-mix(in srgb, var(--blue, #06c) 9%, white); color: var(--blue, #06c); }
-.ai-selection-person-merge-list .ai-selection-face-group-cover { width: 40px; height: 40px; }
-.ai-selection-person-merge-list > button span:not(.ai-selection-face-group-cover) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-selection-person-merge-list > button strong { color: var(--text-secondary, #6e6e73); font-size: 11px; }
 .ai-selection-people-progress { margin: 0 0 12px; padding: 12px 14px; border-top: 1px solid color-mix(in srgb, var(--blue, #06c) 24%, white); border-bottom: 1px solid color-mix(in srgb, var(--blue, #06c) 24%, white); background: color-mix(in srgb, var(--blue, #06c) 5%, white); display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px 12px; }
 .ai-selection-people-progress .loading-indicator { grid-row: 1 / 3; }
 .ai-selection-people-progress > div:not(.loading-indicator) { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -194,7 +189,6 @@
 .ai-selection-card-badges > span { min-height: 24px; padding: 0 7px; border-radius: 5px; background: rgba(255,255,255,.94); display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 650; }
 .ai-selection-recommendation-badge { color: var(--blue, #06c); }
 .ai-selection-group-badge { color: var(--text-primary, #1d1d1f); }
-.ai-selection-card-badges > .ai-selection-attention-badge { width: 24px; padding: 0; border-radius: 50%; justify-content: center; color: #a46000; }
 .ai-selection-card-meta { padding: 7px 3px 3px; display: flex; flex-direction: column; gap: 2px; }
 .ai-selection-card-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .ai-selection-person-box { position: absolute; border: 2px solid #45d483; border-radius: 5px; box-shadow: 0 0 0 1px rgba(0,0,0,.25); pointer-events: none; }
@@ -229,6 +223,7 @@
 .ai-selection-error { padding: 8px; border-radius: 6px; background: #fff0f0; color: #b42318; font-size: 12px; }
 .ai-selection-no-result { min-height: 240px; color: var(--text-secondary, #6e6e73); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; font-size: 13px; }
 @media (max-width: 1280px) { .ai-selection-workflow li:not(:last-child)::after { width: 10px; margin-inline: 5px; } }
+@media (max-width: 1180px) { .ai-selection-results.filtered.people { grid-template-columns: 270px minmax(0, 1fr); } }
 @media (max-width: 1100px) { .ai-selection-layout { grid-template-columns: 230px minmax(0, 1fr); } }
 @media (max-width: 1050px) { .ai-selection-create-settings-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ai-selection-create-name, .ai-selection-create-target { grid-column: auto; } }
 @media (max-width: 900px) { .ai-selection-workflow { display: none; } }
