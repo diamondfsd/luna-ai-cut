@@ -165,6 +165,12 @@ const selectionItems = Array.from({ length: 20 }, (_, index) => item(`selection-
   perceptualHash: `${index.toString(16).padStart(16, '0')}`,
   luminanceHistogram: [0.05, 0.15, 0.3, 0.5],
 }))
+const analyzingSelectionItems = structuredClone(selectionItems)
+applySelectionPlan(analyzingSelectionItems, [], 'balanced', 'general', { mode: 'preset', value: null }, undefined, false)
+assert.equal(analyzingSelectionItems.filter((entry) => entry.state === 'kept').length, 0, '分析过程中不应自动选择临时推荐')
+assert.equal(analyzingSelectionItems.filter((entry) => entry.flags.aiRecommended).length, 0, '分析过程中不应发布临时推荐')
+applySelectionPlan(analyzingSelectionItems, [], 'balanced')
+assert.equal(analyzingSelectionItems.filter((entry) => entry.state === 'kept').length, 7, '分析完成后应一次性自动选择最终推荐')
 applySelectionPlan(selectionItems, [], 'balanced')
 assert.equal(selectionItems.filter((entry) => entry.state === 'kept').length, 7, 'AI 推荐素材应自动选中')
 assert.equal(selectionItems.filter((entry) => entry.flags.aiRecommended).length, 7)

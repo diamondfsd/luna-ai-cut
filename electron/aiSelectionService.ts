@@ -17,7 +17,7 @@ import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { publicAiSelectionSession, restoreAiSelectionSnapshot, type StoredAiSelectionSession } from './aiSelectionSessionSnapshot'
 import { ensureVideoFaceGroupCoverFrames } from './aiSelectionVideoFaceFrames'
-import { getSettings } from './settingsService'
+import { currentBaseDir, getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
 import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
 
@@ -33,7 +33,7 @@ let notify: Notify = () => undefined
 export function setAiSelectionNotifier(next: Notify): void {
   notify = next
 }
-function rootDir(): string { return path.join(app.getPath('userData'), '.luna-cache', ROOT_DIR) }
+function rootDir(): string { return path.join(currentBaseDir(), 'cache', ROOT_DIR) }
 function peopleStoreDir(): string { return path.join(app.getPath('userData'), 'people') }
 function sessionPath(id: string): string {
   if (!/^selection_[a-z0-9_-]+$/i.test(id)) throw new Error('选片任务标识无效')
@@ -43,6 +43,7 @@ async function readCachedItem(id: string, preset: AiSelectionSession['preset']):
 async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> { await writeAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, item, preset) }
 function publicSession(session: StoredSession): AiSelectionSession { return publicAiSelectionSession(session) }
 function touch(session: StoredSession): void { session.revision += 1; session.updatedAt = new Date().toISOString(); refreshAiSelectionCounts(session) }
+function recommendationsFinalized(session: AiSelectionSession): boolean { return session.status === 'ready' || session.status === 'completed' }
 
 async function persist(session: StoredSession): Promise<void> {
   const destination = sessionPath(session.id)
@@ -72,7 +73,7 @@ async function ensureLoaded(): Promise<void> {
       parsed.faceGroupingThreshold = normalizeFaceGroupingThreshold(parsed.faceGroupingThreshold)
       await reconcileGlobalPeopleSources(peopleStoreDir(), parsed.items, parsed.faceGroups, parsed.faceGroupingThreshold)
       parsed.faceGroups = buildGlobalFaceGroups(parsed.items, parsed.faceGroupingThreshold)
-      rebuildSelectionResult(parsed)
+      rebuildSelectionResult(parsed, recommendationsFinalized(parsed))
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
       sessions.set(parsed.id, parsed)
@@ -122,7 +123,7 @@ async function runSession(session: StoredSession): Promise<void> {
     session.counts.total = indexed.length
     const previousItems = new Map(session.items.map((item) => [item.id, item]))
     session.items = indexed.map((media) => previousItems.get(media.id) ?? pendingItem(media))
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     await updateAndPersist(session)
     const completed = new Set(session.items.filter((item) => item.analysisState !== 'pending').map((item) => item.id))
     const sizeCounts = new Map<number, number>()
@@ -158,13 +159,13 @@ async function runSession(session: StoredSession): Promise<void> {
         }
       }))
       for (const item of analyzed) session.items.splice(session.items.findIndex((candidate) => candidate.id === item.id), 1, item)
-      rebuildSelectionResult(session)
+      rebuildSelectionResult(session, recommendationsFinalized(session))
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
     controller.signal.throwIfAborted()
     session.phase = 'grouping'
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     session.phase = 'ranking'
     await updateAndPersist(session)
 
@@ -188,11 +189,11 @@ async function runSession(session: StoredSession): Promise<void> {
         }
       }))
       for (const item of analyzed) session.items.splice(session.items.findIndex((candidate) => candidate.id === item.id), 1, item)
-      rebuildSelectionResult(session)
+      rebuildSelectionResult(session, recommendationsFinalized(session))
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     session.phase = 'ranking'
     await updateAndPersist(session)
 
@@ -200,14 +201,14 @@ async function runSession(session: StoredSession): Promise<void> {
     try {
       await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
       session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
-      rebuildSelectionResult(session)
+      rebuildSelectionResult(session, recommendationsFinalized(session))
       await updateAndPersist(session)
       await analyzeVideoPeopleOnDemand(analysisContext(session), videos.map((item) => item.id), controller.signal)
       session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
-      rebuildSelectionResult(session)
     } catch (error) {
       if (abortLike(error)) throw error
     }
+    rebuildSelectionResult(session, true)
     session.phase = 'done'
     session.status = 'ready'
     await updateAndPersist(session)
@@ -294,7 +295,7 @@ export async function getAiSelectionSession(id: string): Promise<AiSelectionSess
   const session = sessions.get(id)
   if (!session) return null
   if (await ensureVideoFaceGroupCoverFrames(session.items, session.faceGroups, rootDir())) {
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     await updateAndPersist(session)
   }
   return publicSession(session)
@@ -341,7 +342,7 @@ export async function applyAiSelectionOperation(id: string, revision: number, op
   session.undoStack.push(createAiSelectionSnapshot(session))
   session.undoStack = session.undoStack.slice(-20)
   session.redoStack = []
-  applyAiSelectionUserOperation(session, operation)
+  applyAiSelectionUserOperation(session, operation, recommendationsFinalized(session))
   await updateAndPersist(session)
   return publicSession(session)
 }
@@ -377,7 +378,7 @@ export async function setAiSelectionFaceGroupingThreshold(id: string, threshold:
   const nextThreshold = normalizeFaceGroupingThreshold(threshold)
   if (nextThreshold !== session.faceGroupingThreshold) {
     session.faceGroupingThreshold = nextThreshold
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     await updateAndPersist(session)
   }
   return publicSession(session)
@@ -385,7 +386,7 @@ export async function setAiSelectionFaceGroupingThreshold(id: string, threshold:
 
 async function persistPeopleAndRefreshSessions(): Promise<void> {
   for (const session of sessions.values()) {
-    rebuildSelectionResult(session)
+    rebuildSelectionResult(session, recommendationsFinalized(session))
     await updateAndPersist(session)
   }
 }
@@ -463,7 +464,7 @@ function analysisContext(session: StoredSession) {
     cacheRoot: rootDir(),
     writeCachedItem: (item: AiSelectionItem) => writeCachedItem(item, session.preset),
     update: (label?: string | null) => updateAndPersist(session, label),
-    rebuild: () => rebuildSelectionResult(session),
+    rebuild: () => rebuildSelectionResult(session, recommendationsFinalized(session)),
   }
 }
 

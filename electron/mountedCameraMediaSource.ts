@@ -1,7 +1,9 @@
 import { dialog } from 'electron'
+import { execFile } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { promisify } from 'node:util'
 
 import { lunaMediaAdapter } from './deviceMedia'
 import { deviceDefinitionFor } from './deviceDefaults'
@@ -24,6 +26,8 @@ export const MOUNTED_CAMERA_CAPABILITIES: CameraMediaSourceCapabilities = {
   delete: true,
   watch: true,
 }
+
+const execFileAsync = promisify(execFile)
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)}G`
@@ -108,13 +112,27 @@ async function childDirectories(parent: string): Promise<string[]> {
   }
 }
 
+async function windowsRemovableVolumeRoots(): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType = 2' | Select-Object -ExpandProperty DeviceID",
+    ], { windowsHide: true, timeout: 3_000 })
+    return stdout
+      .split(/\r?\n/)
+      .map((value) => value.trim().toUpperCase())
+      .filter((value) => /^[A-Z]:$/.test(value))
+      .map((value) => `${value}\\`)
+  } catch {
+    return []
+  }
+}
+
 async function platformVolumeRoots(): Promise<string[]> {
   if (process.platform === 'darwin') return childDirectories('/Volumes')
-  if (process.platform === 'win32') {
-    const roots: string[] = []
-    for (let code = 68; code <= 90; code += 1) roots.push(`${String.fromCharCode(code)}:\\`)
-    return roots
-  }
+  if (process.platform === 'win32') return windowsRemovableVolumeRoots()
   const user = process.env.USER || process.env.LOGNAME || ''
   return [
     ...await childDirectories('/media'),
@@ -132,16 +150,9 @@ export async function detectMountedCameraVolumes(): Promise<MountedCameraVolume[
 }
 
 export async function resolveMountedCameraVolumes(preferredRoot?: string): Promise<MountedCameraVolume[]> {
-  const preferred = preferredRoot ? await inspectVolume(preferredRoot, false) : null
-  if (preferred) return [preferred]
-
-  const volumes = await detectMountedCameraVolumes()
-  const unique = new Map<string, MountedCameraVolume>()
-  for (const volume of volumes) {
-    const mediaRootsKey = [...volume.mediaRoots].sort().join('\0')
-    if (!unique.has(mediaRootsKey)) unique.set(mediaRootsKey, volume)
-  }
-  return [...unique.values()]
+  if (!preferredRoot) return []
+  const preferred = await inspectVolume(preferredRoot, false)
+  return preferred ? [preferred] : []
 }
 
 export async function chooseMountedCameraVolume(): Promise<MountedCameraVolume | null> {
@@ -166,7 +177,7 @@ export async function mountedCameraStatus(rootPath: string | undefined, deviceId
       host: '',
       httpOk: false,
       controlOk: false,
-      message: rootPath ? '相机磁盘已断开或无法读取' : '未检测到相机磁盘',
+      message: rootPath ? '相机磁盘已断开或无法读取' : '请先选择相机磁盘',
       deviceId,
       deviceName: device.name,
       capabilities: MOUNTED_CAMERA_CAPABILITIES,
@@ -199,7 +210,7 @@ export function mountedCameraVolumesStatus(
     host: '',
     httpOk: false,
     controlOk: false,
-    message: '未检测到包含 DCIM 的相机磁盘',
+    message: '请先选择相机磁盘',
     deviceId,
     deviceName: deviceDefinitionFor(deviceId).name,
     capabilities: MOUNTED_CAMERA_CAPABILITIES,

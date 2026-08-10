@@ -14,6 +14,8 @@ try {
   const lutDir = path.join(oldBaseDir, 'luts')
   const cacheDir = path.join(oldBaseDir, 'cache')
   const logDir = path.join(oldBaseDir, 'logs')
+  const legacyMetadataDir = path.join(root, 'legacy', 'cache_metadata')
+  const legacyAiSelectionDir = path.join(root, 'legacy', 'ai-selection')
   const projectDir = path.join(oldBaseDir, 'workspace-projects', 'project-1')
   const sourceFile = path.join(localResourcesDir, 'clip.mp4')
   const removalFile = path.join(projectDir, 'removal', 'mask.pgm')
@@ -25,6 +27,8 @@ try {
     fs.mkdir(lutDir, { recursive: true }),
     fs.mkdir(path.join(cacheDir, 'previews'), { recursive: true }),
     fs.mkdir(logDir, { recursive: true }),
+    fs.mkdir(legacyMetadataDir, { recursive: true }),
+    fs.mkdir(legacyAiSelectionDir, { recursive: true }),
   ])
   await Promise.all([
     fs.writeFile(sourceFile, 'downloaded-media'),
@@ -33,6 +37,8 @@ try {
     fs.writeFile(path.join(lutDir, 'favorite.cube'), 'TITLE "favorite"'),
     fs.writeFile(path.join(cacheDir, 'previews', 'clip-preview.mp4'), 'preview-data'),
     fs.writeFile(path.join(logDir, 'main.log'), 'log-data'),
+    fs.writeFile(path.join(legacyMetadataDir, 'clip.json'), 'metadata-data'),
+    fs.writeFile(path.join(legacyAiSelectionDir, 'session.json'), 'selection-data'),
     fs.writeFile(path.join(projectDir, 'project.json'), JSON.stringify({
       id: 'project-1',
       dir: projectDir,
@@ -48,7 +54,12 @@ try {
     cacheDir,
     cameraHost: '192.168.42.1',
   }
-  const result = await migrateLocalStorage(settings, targetDir, async (patch) => ({ ...settings, ...patch }))
+  const result = await migrateLocalStorage(
+    settings,
+    targetDir,
+    async (patch) => ({ ...settings, ...patch }),
+    { metadataCacheSource: legacyMetadataDir, aiSelectionCacheSource: legacyAiSelectionDir },
+  )
 
   const newSourceFile = path.join(targetDir, 'localResources', 'clip.mp4')
   const newRemovalFile = path.join(targetDir, 'workspace-projects', 'project-1', 'removal', 'mask.pgm')
@@ -57,6 +68,8 @@ try {
   assert.equal(await fs.readFile(path.join(targetDir, 'export', 'clip.mp4'), 'utf8'), 'exported-media', '导出内容应迁移到新的目录')
   assert.equal(await fs.readFile(path.join(targetDir, 'luts', 'favorite.cube'), 'utf8'), 'TITLE "favorite"', 'LUT 应迁移到新的目录')
   assert.equal(await fs.readFile(path.join(targetDir, 'cache', 'previews', 'clip-preview.mp4'), 'utf8'), 'preview-data', '缓存应迁移到新的目录')
+  assert.equal(await fs.readFile(path.join(targetDir, 'cache', 'metadata', 'clip.json'), 'utf8'), 'metadata-data', '素材信息缓存应迁移到新的目录')
+  assert.equal(await fs.readFile(path.join(targetDir, 'cache', 'ai-selection', 'session.json'), 'utf8'), 'selection-data', '智能选片缓存应迁移到新的目录')
   assert.equal(await fs.readFile(path.join(targetDir, 'logs', 'main.log'), 'utf8'), 'log-data', '日志应迁移到新的目录')
   assert.equal(migratedProject.dir, path.join(targetDir, 'workspace-projects', 'project-1'), '项目目录引用应更新')
   assert.equal(migratedProject.assets[0].path, newSourceFile, '项目素材引用应更新')
@@ -67,6 +80,8 @@ try {
   await assert.rejects(fs.access(sourceFile), '迁移完成后旧下载素材应被清理')
   await assert.rejects(fs.access(removalFile), '迁移完成后旧项目文件应被清理')
   await assert.rejects(fs.access(path.join(cacheDir, 'previews', 'clip-preview.mp4')), '迁移完成后旧缓存应被清理')
+  await assert.rejects(fs.access(path.join(legacyMetadataDir, 'clip.json')), '迁移完成后旧素材信息缓存应被清理')
+  await assert.rejects(fs.access(path.join(legacyAiSelectionDir, 'session.json')), '迁移完成后旧智能选片缓存应被清理')
   await assert.rejects(fs.access(path.join(logDir, 'main.log')), '迁移完成后旧日志应被清理')
 
   const occupiedTarget = path.join(root, 'occupied')
