@@ -10,6 +10,8 @@ export interface VideoExportSettings {
   resolution: VideoResolution
   frameRate: VideoFrameRate
   quality: VideoQuality
+  /** 是否保留源视频中的音频。 */
+  includeAudio: boolean
   /** 单视频工作台可同时选择多种输出；其他入口保持普通视频。 */
   exportFormats: VideoExportFormat[]
   /** 混合导出计划中是否包含图片素材和视频照片标记。 */
@@ -34,6 +36,7 @@ export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
   resolution: 'original',
   frameRate: 'original',
   quality: 'original',
+  includeAudio: true,
   exportFormats: ['video'],
   exportPhotos: true,
   liveStartTime: 0,
@@ -74,6 +77,8 @@ export interface DolbyVisionWatermarkExportRequest {
   sourcePath: string
   outputPath: string
   watermarkPath: string
+  /** 是否保留源视频中的音频。 */
+  includeAudio?: boolean
   positioning: {
     anchor: 'top-left' | 'top-center' | 'top-right' | 'center' | 'bottom-left' | 'bottom-center' | 'bottom-right'
     targetWidth: number

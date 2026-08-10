@@ -85,10 +85,11 @@ export function PreviewModal({
   const [livePhotoCount, setLivePhotoCount] = useState(0)
   const [exportConfig, setExportConfig] = useState<VideoExportSettings>(() => ({
     ...DEFAULT_VIDEO_EXPORT_SETTINGS,
-    autoRestoreILog: Boolean(enableILogRestoreOption),
+    autoRestoreILog: false,
   }))
   const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
   const [dolbyVisionChecking, setDolbyVisionChecking] = useState(false)
+  const [hasILogInExport, setHasILogInExport] = useState(false)
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
   const { cacheFilePath: resolvedPath } = useFileCache(currentFilePath)
@@ -132,6 +133,39 @@ export function PreviewModal({
       .map((path) => toLocalPath(path))
       .filter((path): path is string => path !== null && isVideoPath(path))
   }, [batchExportMode, exportList, stageSource])
+
+  useEffect(() => {
+    if (!enableILogRestoreOption) {
+      setHasILogInExport(false)
+      setExportConfig((current) => current.autoRestoreILog ? { ...current, autoRestoreILog: false } : current)
+      return
+    }
+
+    const videoPaths = exportList
+      .map((sourcePath) => toLocalPath(sourcePath))
+      .filter((sourcePath): sourcePath is string => sourcePath !== null && isVideoPath(sourcePath))
+
+    if (videoPaths.length === 0) {
+      setHasILogInExport(false)
+      setExportConfig((current) => current.autoRestoreILog ? { ...current, autoRestoreILog: false } : current)
+      return
+    }
+
+    let cancelled = false
+    setHasILogInExport(false)
+    setExportConfig((current) => current.autoRestoreILog ? { ...current, autoRestoreILog: false } : current)
+    void Promise.all(videoPaths.map((sourcePath) => window.luna.detectILog(sourcePath).catch(() => false)))
+      .then((results) => {
+        if (cancelled) return
+        const hasILog = results.some(Boolean)
+        setHasILogInExport(hasILog)
+        setExportConfig((current) => current.autoRestoreILog === hasILog
+          ? current
+          : { ...current, autoRestoreILog: hasILog })
+      })
+
+    return () => { cancelled = true }
+  }, [enableILogRestoreOption, exportList])
 
   useEffect(() => {
     if (previewOnly || !window.navigator.platform.includes('Mac')) {
@@ -330,7 +364,7 @@ export function PreviewModal({
                       onChange={setExportConfig}
                       dolbyVisionAvailable={dolbyVisionProbe?.eligible}
                       dolbyVisionChecking={dolbyVisionChecking}
-                      showILogRestore={enableILogRestoreOption}
+                      showILogRestore={hasILogInExport}
                     />
                   )}
                   <div className="batch-export-actions">

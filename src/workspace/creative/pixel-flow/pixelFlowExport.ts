@@ -23,6 +23,7 @@ interface LunaCompositionExportApi {
     qualityPreset?: string,
     exportTaskId?: string,
     exportItemId?: string,
+    includeAudio?: boolean,
   ): Promise<void>
 }
 
@@ -182,6 +183,9 @@ async function runImageLiveExport(
       true,
       `pixel_flow_live_render_${tempSuffix}`,
       resolved.qualityPreset ?? 'high',
+      undefined,
+      undefined,
+      resolved.includeAudio,
     )
     await Promise.all(entries.map((entry, index) => reportLiveEntry(task, entry, index, entries.length, 75, 'exporting')))
 
@@ -242,6 +246,7 @@ async function runVideoExport(
     resolved.qualityPreset,
     task.id,
     entry.id,
+    resolved.includeAudio,
   ).catch(async (error) => {
     const message = error instanceof Error ? error.message : '视频导出失败'
     await window.luna.exportTask.updateItem(task.id, entry.id, { status: 'failed', error: message }).catch(() => undefined)
