@@ -33,6 +33,8 @@ async function storageMigrationSources(settings: AppSettings): Promise<StorageMi
   const currentLogs = path.join(settings.baseDir, 'logs')
   const legacyCache = path.join(legacyRoot, 'cache')
   const legacyPreviews = path.join(legacyRoot, 'cache_previews')
+  const legacyMetadata = path.join(legacyRoot, 'cache_metadata')
+  const legacyAiSelection = path.join(legacyRoot, '.luna-cache', 'ai-selection')
   const legacyLogs = path.join(legacyRoot, 'logs')
   const hasCurrentCache = await directoryExists(currentCache)
   const hasCurrentLogs = await directoryExists(currentLogs)
@@ -45,6 +47,14 @@ async function storageMigrationSources(settings: AppSettings): Promise<StorageMi
     previewCacheSource: !await directoryExists(path.join(cacheSource ?? currentCache, 'previews'))
       && await directoryExists(legacyPreviews)
       ? legacyPreviews
+      : undefined,
+    metadataCacheSource: !await directoryExists(path.join(cacheSource ?? currentCache, 'metadata'))
+      && await directoryExists(legacyMetadata)
+      ? legacyMetadata
+      : undefined,
+    aiSelectionCacheSource: !await directoryExists(path.join(cacheSource ?? currentCache, 'ai-selection'))
+      && await directoryExists(legacyAiSelection)
+      ? legacyAiSelection
       : undefined,
     logSource: hasCurrentLogs ? currentLogs : (hasLegacyLogs ? legacyLogs : undefined),
     legacyLogSource: hasCurrentLogs && hasLegacyLogs ? legacyLogs : undefined,

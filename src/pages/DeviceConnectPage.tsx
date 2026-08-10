@@ -54,7 +54,7 @@ export function DeviceConnectPage({
   const connectionRows: Array<[string, string]> = isWired
     ? [
         ['连接方式', 'USB 数据线'],
-        ['相机磁盘', settings?.mountedCameraRoot || '自动检测'],
+        ['相机磁盘', settings?.mountedCameraRoot || '未选择'],
         ['相机端模式', '磁盘或 U 盘'],
       ]
     : [
@@ -67,9 +67,9 @@ export function DeviceConnectPage({
     ? isWired ? '正在查找相机磁盘' : '正在建立相机会话'
     : isError ? `${deviceName} 连接失败` : `准备连接 ${deviceName}`
   const statusDescription = isChecking
-    ? isWired ? '正在检测已挂载的相机磁盘和素材目录' : '正在检测相机服务并建立控制会话'
+    ? isWired ? '正在检查已选择的相机磁盘和素材目录' : '正在检测相机服务并建立控制会话'
     : connection?.message ?? (isWired
-      ? '连接数据线后，应用会自动查找相机磁盘'
+      ? '请选择相机磁盘后连接，即可浏览其中的相机素材'
       : '连接相机 Wi-Fi 后，即可浏览和下载相机素材')
   const statusLabel = isChecking ? '检测中' : isError ? '需要处理' : '等待连接'
 
@@ -227,7 +227,7 @@ export function DeviceConnectPage({
               <Button
                 variant="primary"
                 onClick={handleConnect}
-                disabled={connecting || isChecking}
+                disabled={connecting || isChecking || (isWired && !settings?.mountedCameraRoot)}
                 icon={connecting || isChecking ? <RefreshCw className="spin" size={16} /> : isWired ? <Cable size={16} /> : <Wifi size={16} />}
               >
                 {isWired ? '检测并连接' : isError ? '重新连接' : '开始连接'}

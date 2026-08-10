@@ -2,7 +2,7 @@ import type { AiSelectionSession } from '../src/shared/types'
 import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups } from './aiSelectionAlgorithms'
 import { buildGlobalFaceGroups } from './aiSelectionPeopleManager'
 
-export function rebuildSelectionResult(session: AiSelectionSession): void {
+export function rebuildSelectionResult(session: AiSelectionSession, applyRecommendations = true): void {
   const generatedScenes = buildShootingEvents(session.items)
   const existingModifiedScenes = session.scenes.filter((scene) => scene.userModified || scene.confirmation !== 'pending')
   const claimedSceneItems = new Set(existingModifiedScenes.flatMap((scene) => scene.itemIds))
@@ -23,7 +23,7 @@ export function rebuildSelectionResult(session: AiSelectionSession): void {
     ...generatedGroups.filter((group) => !group.itemIds.some((id) => modifiedItemIds.has(id))),
   ]
   session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
-  applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+  applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile, applyRecommendations)
   for (const scene of session.scenes) {
     scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.flags.aiRecommended).length
     scene.coverItemId = scene.itemIds.find((id) => session.items.find((item) => item.id === id)?.flags.aiRecommended) ?? scene.coverItemId
