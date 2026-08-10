@@ -22,6 +22,7 @@ export interface AiEditingRunProgress {
   percent: number
   /** UI may advance gradually to this bound while waiting for the next real event. */
   ceiling?: number
+  previewText?: string
 }
 
 export interface AiEditingToolExecutionContext {

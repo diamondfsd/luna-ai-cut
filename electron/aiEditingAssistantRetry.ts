@@ -13,7 +13,7 @@ export class AiEditingAssistantAttemptTimeoutError extends Error {
 }
 
 interface RetryOptions<T> {
-  execute: (signal: AbortSignal, attempt: number) => Promise<T>
+  execute: (signal: AbortSignal, attempt: number, reportActivity: () => void) => Promise<T>
   signal: AbortSignal
   shouldRetry: (error: unknown) => boolean
   onRetry?: (error: unknown, attempt: number, nextAttempt: number) => void
@@ -57,17 +57,22 @@ export async function runAiEditingAssistantRequestWithRetry<T>(options: RetryOpt
     let timedOut = false
     const cancelAttempt = (): void => attemptController.abort(abortReason(options.signal))
     options.signal.addEventListener('abort', cancelAttempt, { once: true })
-    const timeout = setTimeout(() => {
-      timedOut = true
-      attemptController.abort(new AiEditingAssistantAttemptTimeoutError(attemptTimeoutMs))
-    }, attemptTimeoutMs)
+    let timeout: ReturnType<typeof setTimeout>
+    const startTimeout = (): void => {
+      clearTimeout(timeout)
+      timeout = setTimeout(() => {
+        timedOut = true
+        attemptController.abort(new AiEditingAssistantAttemptTimeoutError(attemptTimeoutMs))
+      }, attemptTimeoutMs)
+    }
+    startTimeout()
     const cleanupAttempt = (): void => {
       clearTimeout(timeout)
       options.signal.removeEventListener('abort', cancelAttempt)
     }
 
     try {
-      return await options.execute(attemptController.signal, attempt)
+      return await options.execute(attemptController.signal, attempt, startTimeout)
     } catch (caught) {
       cleanupAttempt()
       if (options.signal.aborted) throw abortReason(options.signal)

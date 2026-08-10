@@ -25,6 +25,7 @@ import { AiEditingHistoryDialog } from './ai-editing-history-dialog'
 import { AiEditingMessageBubble } from './ai-editing-message'
 import { AiProviderDialog } from './ai-provider-dialog'
 import { AiEditingSkillsDialog } from './ai-editing-skills-dialog'
+import { AiEditingStreamPreview } from './ai-editing-stream-preview'
 
 const SUGGESTIONS = [
   '帮我查看当前时间轴内容',
@@ -121,10 +122,12 @@ const PhaseProgressCard = memo(function PhaseProgressCard({
   label,
   percent,
   ceiling,
+  previewText,
 }: {
   label: string
   percent: number | null
   ceiling?: number
+  previewText?: string
 }) {
   const [displayPercent, setDisplayPercent] = useState(percent)
 
@@ -168,6 +171,7 @@ const PhaseProgressCard = memo(function PhaseProgressCard({
           style={displayPercent === null ? undefined : { width: `${displayPercent}%` }}
         />
       </div>
+      {previewText && <AiEditingStreamPreview text={previewText} />}
     </section>
   )
 })
@@ -184,6 +188,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const thinkingLabel = useAiEditingStore((state) => state.thinkingLabel)
   const thinkingPercent = useAiEditingStore((state) => state.thinkingPercent)
   const thinkingCeiling = useAiEditingStore((state) => state.thinkingCeiling)
+  const streamingText = useAiEditingStore((state) => state.streamingText)
   const messages = useAiEditingStore((state) => state.messages)
   const toolActivities = useAiEditingStore((state) => state.toolActivities)
   const reasoningEffort = useAiEditingStore((state) => state.reasoningEffort)
@@ -449,6 +454,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
             label={thinkingLabel}
             percent={thinkingPercent}
             ceiling={thinkingCeiling}
+            previewText={streamingText}
           />
         )}
         {canChat &&

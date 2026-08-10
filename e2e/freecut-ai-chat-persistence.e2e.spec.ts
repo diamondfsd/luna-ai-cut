@@ -1,9 +1,10 @@
-import { _electron as electron } from '@playwright/test'
+import { _electron as electron, type Page } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
 
 import { expect, test } from './fixtures/lunaElectron'
+import { sendTextCompletion, sendToolCallCompletion } from './support/chatCompletionsStream'
 
 const USER_MESSAGE = '给这段生活日常加一个标题'
 const ASSISTANT_MARKDOWN = '**标题已经添加到时间轴。**'
@@ -11,6 +12,7 @@ const ASSISTANT_MESSAGE = '标题已经添加到时间轴。'
 const REFERENCED_USER_MESSAGE = '只检查我引用的资源'
 
 interface ChatCompletionsRequest {
+  stream?: unknown
   tool_choice?: unknown
   tools?: Array<{
     type?: unknown
@@ -67,37 +69,25 @@ async function startChatCompletionsMock(): Promise<{
         return
       }
       requestCount += 1
-      response.writeHead(200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify({
-        choices: [{
-          message: {
-            content: null,
-            tool_calls: [{
-              id: 'call_add_life_title',
-              type: 'function',
-              function: {
-                name: editProgramTool.function.name,
-                arguments: JSON.stringify({
-                  program: {
-                    version: 1,
-                    baseRevision: 0,
-                    intent: '添加生活日常标题',
-                    operations: [{
-                      type: 'insertText',
-                      text: { ref: 'life-title', text: '生活日常', start: 0, duration: 3, role: 'title' },
-                    }],
-                  },
-                }),
-              },
+      sendToolCallCompletion(response, {
+        id: 'call_add_life_title',
+        name: editProgramTool.function.name,
+        arguments: JSON.stringify({
+          program: {
+            version: 1,
+            baseRevision: 0,
+            intent: '添加生活日常标题',
+            operations: [{
+              type: 'insertText',
+              text: { ref: 'life-title', text: '生活日常', start: 0, duration: 3, role: 'title' },
             }],
           },
-        }],
-      }))
+        }),
+      })
       return
     }
     requestCount += 1
-    response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ choices: [{ message: { content: ASSISTANT_MARKDOWN } }] }))
+    sendTextCompletion(response, ASSISTANT_MARKDOWN)
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -118,6 +108,21 @@ function closeServer(server: Server): Promise<void> {
   })
 }
 
+async function ensureAssistantReady(page: Page) {
+  const input = page.getByPlaceholder('描述想要完成的剪辑')
+  if (!(await input.isVisible())) {
+    const openButton = page.getByRole('button', { name: '打开剪辑助手' })
+    if (await openButton.isVisible()) await openButton.click()
+  }
+  if (!(await input.isVisible())) {
+    await page.getByRole('button', { name: '剪辑助手设置' }).click()
+    await expect(page.getByRole('dialog', { name: '剪辑助手设置' })).toBeVisible()
+    await page.keyboard.press('Escape')
+  }
+  await expect(input).toBeEnabled()
+  return input
+}
+
 test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) => {
   const { app, page, runtimeErrors, temporaryRoot } = lunaApp
   const chatMock = await startChatCompletionsMock()
@@ -134,9 +139,7 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
       apiKey: 'e2e-placeholder-key',
     }), chatMock.baseUrl)
 
-    await page.getByRole('button', { name: '打开剪辑助手' }).click()
-    const input = page.getByPlaceholder('描述想要完成的剪辑')
-    await expect(input).toBeEnabled()
+    const input = await ensureAssistantReady(page)
     await input.fill(USER_MESSAGE)
     await page.getByRole('button', { name: '发送剪辑请求' }).click()
     await expect(page.getByText(USER_MESSAGE, { exact: true })).toBeVisible()
@@ -146,6 +149,7 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     await expect(page.locator('strong', { hasText: ASSISTANT_MESSAGE })).toBeVisible()
     expect(chatMock.requests).toHaveLength(2)
     expect(chatMock.requests[0]?.tool_choice).toBe('auto')
+    expect(chatMock.requests[0]?.stream).toBe(true)
     const firstRequest = chatMock.requests[0]
     const firstEditProgramTool = firstRequest?.tools?.find((tool) =>
       tool.type === 'function' && tool.function?.description?.includes('声明式编辑程序'),
@@ -227,7 +231,6 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
     await expect(relaunchedPage.locator('[data-project-card]')).toHaveCount(1)
     await relaunchedPage.locator('[data-project-card]').dblclick()
     await expect(relaunchedPage.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
-    await relaunchedPage.getByRole('button', { name: '打开剪辑助手' }).click()
     await expect(relaunchedPage.getByText(USER_MESSAGE, { exact: true })).toBeVisible()
     await expect(relaunchedPage.getByText(ASSISTANT_MESSAGE, { exact: true }).first()).toBeVisible()
     await expect(relaunchedPage.getByLabel('引用的编辑资源')).toBeVisible()

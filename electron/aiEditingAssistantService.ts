@@ -10,6 +10,7 @@ import type {
   AiEditingAssistantGenerateInput,
   AiEditingAssistantGenerateResult,
   AiEditingAssistantMessage,
+  AiEditingAssistantRequestStatus,
   AiEditingAssistantToolCall,
 } from '../src/shared/types'
 import {
@@ -18,6 +19,10 @@ import {
   AiEditingAssistantAttemptTimeoutError,
   runAiEditingAssistantRequestWithRetry,
 } from './aiEditingAssistantRetry'
+import {
+  consumeAiEditingAssistantStream,
+  type AiEditingAssistantStreamResult,
+} from './aiEditingAssistantStream'
 import { logMainInfo, logMainWarn } from './loggerService'
 
 const CONFIG_FILE = 'ai-editing-assistant.json'
@@ -323,28 +328,27 @@ function toChatTools(input: AiEditingAssistantGenerateInput): ChatCompletionTool
   }))
 }
 
-function extractJsonResult(response: OpenAI.Chat.Completions.ChatCompletion): AiEditingAssistantGenerateResult {
-  const content = response.choices[0]?.message.content?.trim()
+function extractJsonResult(response: AiEditingAssistantStreamResult): AiEditingAssistantGenerateResult {
+  const content = response.content.trim()
   if (!content) throw responseError('剪辑助手没有返回内容，请重试。')
   return { mode: 'json', content, toolCalls: [] }
 }
 
-function extractToolResult(response: OpenAI.Chat.Completions.ChatCompletion): AiEditingAssistantGenerateResult {
-  const message = response.choices[0]?.message
-  const content = typeof message?.content === 'string' ? message.content.trim() : ''
-  const rawToolCalls = message?.tool_calls ?? []
+function extractToolResult(response: AiEditingAssistantStreamResult): AiEditingAssistantGenerateResult {
+  const content = response.content.trim()
+  const rawToolCalls = response.toolCalls
   if (rawToolCalls.length > MAX_TOOL_CALLS_PER_MESSAGE) {
     throw responseError('剪辑助手一次请求的操作过多，请重试。')
   }
   const toolCalls = rawToolCalls.map((toolCall) => {
-    if (toolCall.type !== 'function' || !validateToolCall({
+    if (!validateToolCall({
       id: toolCall.id,
-      name: toolCall.function.name,
-      arguments: toolCall.function.arguments,
+      name: toolCall.name,
+      arguments: toolCall.arguments,
     })) {
       throw responseError('剪辑助手返回的工具调用格式无效，请重试。')
     }
-    return { id: toolCall.id, name: toolCall.function.name, arguments: toolCall.function.arguments }
+    return toolCall
   })
   if (!content && toolCalls.length === 0) throw responseError('剪辑助手没有返回内容，请重试。')
   return { mode: 'tools', content, toolCalls }
@@ -374,7 +378,10 @@ export async function saveAiEditingAssistantConfig(input: AiEditingAssistantConf
   return publicConfig(next)
 }
 
-export async function generateAiEditingAssistantResponse(input: AiEditingAssistantGenerateInput): Promise<AiEditingAssistantGenerateResult> {
+export async function generateAiEditingAssistantResponse(
+  input: AiEditingAssistantGenerateInput,
+  onStatus?: (status: AiEditingAssistantRequestStatus) => void,
+): Promise<AiEditingAssistantGenerateResult> {
   validateGenerateInput(input)
   if (activeRequests.has(input.requestId)) throw new Error('剪辑助手正在处理这个请求。')
 
@@ -384,6 +391,12 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
   const controller = new AbortController()
   activeRequests.set(input.requestId, controller)
   const startedAt = Date.now()
+  const reportStatus = (
+    attempt: number,
+    state: AiEditingAssistantRequestStatus['state'],
+    preview: Pick<AiEditingAssistantRequestStatus, 'previewText' | 'previewKind'> = {},
+  ): void => onStatus?.({ requestId: input.requestId, attempt,
+    maxAttempts: AI_EDITING_ASSISTANT_MAX_ATTEMPTS, state, ...preview })
   try {
     const client = new OpenAI({
       apiKey,
@@ -416,32 +429,49 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
           nextAttempt,
           reason: retryReason(error),
         })
+        reportStatus(nextAttempt, 'retrying', { previewText: '' })
       },
-      execute: async (attemptSignal, attempt) => {
+      execute: async (attemptSignal, attempt, reportActivity) => {
         logMainInfo('[AI剪辑] 模型请求尝试', { requestId: input.requestId, attempt })
+        reportStatus(attempt, 'waiting', { previewText: '' })
+        const consumeStream = async (
+          stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+        ): Promise<AiEditingAssistantStreamResult> => consumeAiEditingAssistantStream(stream, {
+          onActivity: reportActivity,
+          onPreview: (preview) => reportStatus(attempt, 'streaming', {
+            previewText: preview.text,
+            previewKind: preview.kind,
+          }),
+        })
         if (mode === 'auto' && tools.length > 0) {
           try {
-            const response = await client.chat.completions.create({
+            const stream = await client.chat.completions.create({
               ...request,
               tools,
               tool_choice: 'auto',
+              stream: true,
             }, { signal: attemptSignal })
-            return extractToolResult(response)
+            return extractToolResult(await consumeStream(stream))
           } catch (error) {
             if (!doesNotSupportToolCalling(error)) throw error
             return { mode: 'fallback' as const, content: '', toolCalls: [] }
           }
         }
 
-        let response
+        let response: AiEditingAssistantStreamResult
         try {
-          response = await client.chat.completions.create({
+          const stream = await client.chat.completions.create({
             ...request,
             response_format: { type: 'json_object' },
+            stream: true,
           }, { signal: attemptSignal })
+          response = await consumeStream(stream)
         } catch (error) {
           if (!doesNotSupportJsonMode(error)) throw error
-          response = await client.chat.completions.create(request, { signal: attemptSignal })
+          const stream = await client.chat.completions.create({ ...request, stream: true }, {
+            signal: attemptSignal,
+          })
+          response = await consumeStream(stream)
         }
         return extractJsonResult(response)
       },

@@ -52,6 +52,9 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
       void bridge.cancel(requestId)
     }
     signal?.addEventListener('abort', cancel, { once: true })
+    const unsubscribe = bridge.onStatus((status) => {
+      if (status.requestId === requestId) options.onStatus?.(status)
+    })
     try {
       const result = await bridge.generate({
         requestId,
@@ -67,6 +70,7 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
       options.onToken?.(text, text)
       return text
     } finally {
+      unsubscribe()
       signal?.removeEventListener('abort', cancel)
     }
   }
@@ -88,6 +92,9 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
       void bridge.cancel(requestId)
     }
     signal?.addEventListener('abort', cancel, { once: true })
+    const unsubscribe = bridge.onStatus((status) => {
+      if (status.requestId === requestId) options.onStatus?.(status)
+    })
     try {
       const result = await bridge.generate({
         requestId,
@@ -101,6 +108,7 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
       if (signal?.aborted) throw abortedError()
       return result
     } finally {
+      unsubscribe()
       signal?.removeEventListener('abort', cancel)
     }
   }

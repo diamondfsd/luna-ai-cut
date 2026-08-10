@@ -1,4 +1,4 @@
-import type { LlmAdapter, LlmMessage } from '@freecut/infrastructure/llm'
+import type { LlmAdapter, LlmMessage, LlmRequestStatus } from '@freecut/infrastructure/llm'
 import { getDefaultLlmAdapter } from '@freecut/infrastructure/llm'
 import {
   openAiChatCompletionsLlmAdapter,
@@ -110,6 +110,7 @@ function reportRunProgress(
   label: string,
   percent: number,
   ceiling?: number,
+  previewText?: string,
 ): void {
   options.onRunProgress?.({
     label,
@@ -117,7 +118,21 @@ function reportRunProgress(
     ...(ceiling === undefined
       ? {}
       : { ceiling: Math.max(percent, Math.min(100, Math.round(ceiling))) }),
+    ...(previewText === undefined ? {} : { previewText }),
   })
+}
+
+function reportModelRequestStatus(
+  options: AiEditingRunOptions,
+  status: LlmRequestStatus,
+  percent: number,
+): void {
+  const label = status.state === 'streaming'
+    ? `${status.previewKind === 'reasoning' ? '正在整理剪辑思路' : '正在生成剪辑方案'}（第 ${status.attempt}/${status.maxAttempts} 次）`
+    : status.state === 'retrying' || status.attempt > 1
+      ? `正在重新尝试获取剪辑方案（第 ${status.attempt}/${status.maxAttempts} 次）`
+      : `正在等待剪辑方案（第 ${status.attempt}/${status.maxAttempts} 次）`
+  reportRunProgress(options, label, percent, Math.max(percent, 68), status.previewText)
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
@@ -287,6 +302,7 @@ async function runJsonToolLoop(
       reasoningEffort: options.reasoningEffort,
       signal: options.signal,
       onToken: options.onToken,
+      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
     })
     rawFromPreviousRequest = undefined
     reportRunProgress(options, '正在检查剪辑方案', round === 0 ? 72 : Math.min(94, 84 + round * 2))
@@ -362,6 +378,7 @@ async function runNativeToolLoop(
       temperature: 0,
       reasoningEffort: options.reasoningEffort,
       signal: options.signal,
+      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
     })
     if (response.mode === 'fallback') {
       return runJsonToolLoop(

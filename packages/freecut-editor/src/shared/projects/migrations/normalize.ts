@@ -60,6 +60,8 @@ function separateSubtitleTracks(
   tracks: ProjectTimeline['tracks'],
   items: ProjectTimeline['items'],
 ): { tracks: ProjectTimeline['tracks']; items: ProjectTimeline['items'] } {
+  const isTextTrackItem = (item: ProjectTimeline['items'][number]): boolean =>
+    item.type === 'text' || item.type === 'subtitle'
   const itemsByTrackId = new Map<string, ProjectTimeline['items']>()
   for (const item of items) {
     const trackItems = itemsByTrackId.get(item.trackId)
@@ -71,7 +73,7 @@ function separateSubtitleTracks(
     const trackItems = itemsByTrackId.get(track.id) ?? []
     return (
       (trackItems.length === 0 && track.kind === 'subtitle') ||
-      (trackItems.length > 0 && trackItems.every((item) => item.type === 'subtitle'))
+      (trackItems.length > 0 && trackItems.every(isTextTrackItem))
     )
   })
   const subtitleTrackIds = new Set(subtitleTracks.map((track) => track.id))

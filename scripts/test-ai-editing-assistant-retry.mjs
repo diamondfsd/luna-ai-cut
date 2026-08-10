@@ -59,6 +59,21 @@ await assert.rejects(
 )
 assert.equal(attempts, 2)
 
+const activeStream = await runAiEditingAssistantRequestWithRetry({
+  signal: new AbortController().signal,
+  attemptTimeoutMs: 100,
+  retryDelayMs: 1,
+  shouldRetry: () => true,
+  execute: async (_signal, _attempt, reportActivity) => {
+    for (let index = 0; index < 3; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      reportActivity()
+    }
+    return 'stream-complete'
+  },
+})
+assert.equal(activeStream, 'stream-complete')
+
 attempts = 0
 const cancellation = new AbortController()
 const cancelledRequest = runAiEditingAssistantRequestWithRetry({
