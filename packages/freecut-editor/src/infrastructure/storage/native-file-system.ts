@@ -38,13 +38,7 @@ function notFound(message: string): DOMException {
 }
 
 function invalidName(name: string): void {
-  if (
-    !name
-    || name === '.'
-    || name === '..'
-    || name.includes('/')
-    || name.includes('\\')
-  ) {
+  if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
     throw new TypeError('Invalid workspace entry name')
   }
 }
@@ -120,7 +114,10 @@ class NativeFileHandle implements FileSystemFileHandle, NativeHandleInternals {
   }
 
   async createSyncAccessHandle(): Promise<FileSystemSyncAccessHandle> {
-    throw new DOMException('Synchronous access is unavailable for native workspace files', 'NotSupportedError')
+    throw new DOMException(
+      'Synchronous access is unavailable for native workspace files',
+      'NotSupportedError',
+    )
   }
 
   async move(parent: FileSystemDirectoryHandle, newName: string): Promise<void> {
@@ -132,7 +129,10 @@ class NativeFileHandle implements FileSystemFileHandle, NativeHandleInternals {
 
   async isSameEntry(other: FileSystemHandle): Promise<boolean> {
     try {
-      return JSON.stringify(this.__freecutWorkspacePath) === JSON.stringify(pathOf(other as FileSystemFileHandle))
+      return (
+        JSON.stringify(this.__freecutWorkspacePath) ===
+        JSON.stringify(pathOf(other as FileSystemFileHandle))
+      )
     } catch {
       return false
     }
@@ -155,12 +155,19 @@ class NativeDirectoryHandle implements NativeHandleInternals {
     return this.__freecutWorkspacePath.at(-1) ?? this.rootName
   }
 
-  async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle> {
+  async getDirectoryHandle(
+    name: string,
+    options?: { create?: boolean },
+  ): Promise<FileSystemDirectoryHandle> {
     invalidName(name)
     const segments = [...this.__freecutWorkspacePath, name]
     const exists = await this.api.getEntry(segments, 'directory', options?.create === true)
     if (!exists) throw notFound(`Directory not found: ${name}`)
-    return new NativeDirectoryHandle(this.api, this.rootName, segments) as unknown as FileSystemDirectoryHandle
+    return new NativeDirectoryHandle(
+      this.api,
+      this.rootName,
+      segments,
+    ) as unknown as FileSystemDirectoryHandle
   }
 
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle> {
@@ -173,10 +180,7 @@ class NativeDirectoryHandle implements NativeHandleInternals {
 
   async removeEntry(name: string, options?: { recursive?: boolean }): Promise<void> {
     invalidName(name)
-    await this.api.removeEntry(
-      [...this.__freecutWorkspacePath, name],
-      options?.recursive === true,
-    )
+    await this.api.removeEntry([...this.__freecutWorkspacePath, name], options?.recursive === true)
   }
 
   async queryPermission(): Promise<PermissionState> {
@@ -191,9 +195,15 @@ class NativeDirectoryHandle implements NativeHandleInternals {
     const entries = await this.api.list(this.__freecutWorkspacePath)
     if (!entries) throw notFound(`Directory not found: ${this.name}`)
     for (const entry of entries) {
-      yield [entry.name, entry.kind === 'directory'
-        ? new NativeDirectoryHandle(this.api, this.rootName, [...this.__freecutWorkspacePath, entry.name])
-        : new NativeFileHandle(this.api, [...this.__freecutWorkspacePath, entry.name])]
+      yield [
+        entry.name,
+        entry.kind === 'directory'
+          ? new NativeDirectoryHandle(this.api, this.rootName, [
+              ...this.__freecutWorkspacePath,
+              entry.name,
+            ])
+          : new NativeFileHandle(this.api, [...this.__freecutWorkspacePath, entry.name]),
+      ]
     }
   }
 
@@ -209,9 +219,7 @@ class NativeDirectoryHandle implements NativeHandleInternals {
     return this.entries()
   }
 
-  async resolve(
-    possibleDescendant: FileSystemHandle,
-  ): Promise<string[] | null> {
+  async resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null> {
     try {
       const descendantPath = pathOf(possibleDescendant as FileSystemDirectoryHandle)
       if (descendantPath.length < this.__freecutWorkspacePath.length) return null
@@ -226,7 +234,10 @@ class NativeDirectoryHandle implements NativeHandleInternals {
 
   async isSameEntry(other: FileSystemHandle): Promise<boolean> {
     try {
-      return JSON.stringify(this.__freecutWorkspacePath) === JSON.stringify(pathOf(other as FileSystemDirectoryHandle))
+      return (
+        JSON.stringify(this.__freecutWorkspacePath) ===
+        JSON.stringify(pathOf(other as FileSystemDirectoryHandle))
+      )
     } catch {
       return false
     }
@@ -238,4 +249,16 @@ export async function getNativeWorkspaceRoot(): Promise<FileSystemDirectoryHandl
   if (!bridge) return null
   const root = await bridge.ensureRoot()
   return new NativeDirectoryHandle(bridge, root.name, []) as unknown as FileSystemDirectoryHandle
+}
+
+/**
+ * Returns the native workspace root location when Electron owns the workspace.
+ * Browser File System Access handles intentionally do not expose a full local
+ * path, so callers must use workspace-relative paths in that environment.
+ */
+export async function getNativeWorkspacePath(): Promise<string | null> {
+  const bridge = (window as NativeWorkspaceWindow).luna?.freecutWorkspace
+  if (!bridge) return null
+  const root = await bridge.ensureRoot()
+  return root.path
 }
