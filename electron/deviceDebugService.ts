@@ -6,7 +6,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { app } from 'electron'
 
-import { logMainInfo } from './loggerService'
+import { getLogDir, logMainInfo } from './loggerService'
 import type { IDeviceDebugProtocol } from './deviceDebugProtocol'
 
 // ============================================================
@@ -14,10 +14,7 @@ import type { IDeviceDebugProtocol } from './deviceDebugProtocol'
 // ============================================================
 
 let logStream: fs.WriteStream | null = null
-
-function logDir(): string {
-  return path.join(app.getPath('userData'), 'logs')
-}
+let logStreamPath: string | null = null
 
 function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true })
@@ -26,7 +23,7 @@ function ensureDir(dir: string): void {
 function logFilePath(): string {
   const date = new Date().toISOString().slice(0, 10)
   const version = app.getVersion()
-  return path.join(logDir(), `device-debug-log-${date}-${version}.log`)
+  return path.join(getLogDir(), `device-debug-log-${date}-${version}.log`)
 }
 
 function timestamp(): string {
@@ -38,11 +35,13 @@ function timestamp(): string {
 }
 
 function ensureLogStream(): void {
-  if (logStream) return
-
   try {
-    ensureDir(logDir())
     const filePath = logFilePath()
+    if (logStream && logStreamPath === filePath) return
+    logStream?.end()
+    logStream = null
+    logStreamPath = null
+    ensureDir(path.dirname(filePath))
 
     // 健壮性：如果目标路径是目录（如之前 bug 遗留），先删掉再创建文件
     try {
@@ -58,6 +57,7 @@ function ensureLogStream(): void {
     logStream = null
 
     logStream = fs.createWriteStream(filePath, { flags: 'a' })
+    logStreamPath = filePath
     logStream.on('error', (err) => {
       console.error('[DeviceDebug] 日志流错误:', err)
     })
@@ -66,6 +66,7 @@ function ensureLogStream(): void {
   } catch (err) {
     console.error('[DeviceDebug] 创建日志流失败:', err)
     logStream = null
+    logStreamPath = null
   }
 }
 
@@ -96,6 +97,7 @@ export function closeDeviceDebugLog(): void {
   if (logStream) {
     logStream.end()
     logStream = null
+    logStreamPath = null
   }
 }
 

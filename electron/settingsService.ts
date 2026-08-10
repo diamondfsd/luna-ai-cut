@@ -1,5 +1,6 @@
 import { app, dialog } from 'electron'
 import * as fs from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import * as path from 'node:path'
 
 import { DEFAULT_DEVICE } from './deviceDefaults'
@@ -12,8 +13,16 @@ function settingsPath(): string {
   return path.join(app.getPath('userData'), SETTINGS_FILE)
 }
 
-export function cacheDir(): string {
-  return path.join(app.getPath('userData'), 'cache')
+export function cacheDir(baseDir: string): string {
+  return path.join(baseDir, 'cache')
+}
+
+export function previewCacheDirForBaseDir(baseDir: string): string {
+  return path.join(cacheDir(baseDir), 'previews')
+}
+
+export function logDirForBaseDir(baseDir: string): string {
+  return path.join(baseDir, 'logs')
 }
 
 /** 获取有效的本地资源目录路径 */
@@ -22,9 +31,7 @@ export function getLocalResourcesDir(settings: AppSettings): string {
 }
 
 export async function previewCacheDir(): Promise<string> {
-  // 使用 userData 目录（C:\Users\<用户>\AppData\Roaming\luna-ai-cut），
-  // 不跟 baseDir 走，避免 SD 卡/U 盘等不可写盘符导致 EPERM
-  return path.join(app.getPath('userData'), 'cache_previews')
+  return previewCacheDirForBaseDir((await getSettings()).baseDir)
 }
 
 function defaultBaseDir(): string {
@@ -35,13 +42,23 @@ function defaultExportDir(): string {
   return path.join(defaultBaseDir(), 'export')
 }
 
+export function currentBaseDir(): string {
+  const fallback = defaultBaseDir()
+  try {
+    const saved = JSON.parse(readFileSync(settingsPath(), 'utf8')) as StoredSettings
+    return migrateBaseDirectory(saved, fallback).baseDir
+  } catch {
+    return fallback
+  }
+}
+
 function defaultSettings(): AppSettings {
   const baseDir = defaultBaseDir()
   return {
     baseDir,
     localResourcesDir: path.join(baseDir, 'localResources'),
     exportDir: defaultExportDir(),
-    cacheDir: cacheDir(),
+    cacheDir: cacheDir(baseDir),
     cameraHost: DEFAULT_DEVICE.defaultHost,
     cameraConnectionMode: 'wireless',
     mountedCameraRoot: '',
@@ -77,7 +94,7 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
     ...defaults,
     ...savedSettings,
     baseDir: savedSettings.baseDir,
-    cacheDir: cacheDir(),
+    cacheDir: cacheDir(savedSettings.baseDir),
   }
   merged.defaultWatermarkEnabled = typeof saved?.defaultWatermarkEnabled === 'boolean'
     ? saved.defaultWatermarkEnabled
@@ -126,8 +143,8 @@ export async function saveSettings(partial: Partial<AppSettings>): Promise<AppSe
   const next = {
     ...current,
     ...partial,
-    cacheDir: cacheDir(),
   }
+  next.cacheDir = cacheDir(next.baseDir)
   await writeSettingsFile(next)
   return next
 }

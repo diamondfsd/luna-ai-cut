@@ -3,7 +3,7 @@ import * as path from 'node:path'
 
 import type { AppSettings, StorageMigrationResult } from '../src/shared/types'
 
-type StorageDirectoryKey = 'projects' | 'downloads' | 'exports' | 'luts'
+type StorageDirectoryKey = 'projects' | 'downloads' | 'exports' | 'luts' | 'cache' | 'previews' | 'logs' | 'legacyLogs'
 
 interface StorageDirectory {
   key: StorageDirectoryKey
@@ -20,6 +20,13 @@ interface DirectoryStats {
 export interface StorageMigrationPlan {
   targetDir: string
   directories: StorageDirectory[]
+}
+
+export interface StorageMigrationSources {
+  cacheSource?: string
+  previewCacheSource?: string
+  logSource?: string
+  legacyLogSource?: string
 }
 
 function localResourcesDir(settings: AppSettings): string {
@@ -54,7 +61,11 @@ function assertTargetDirectory(sourceBaseDir: string, targetDir: string): void {
   }
 }
 
-export function createStorageMigrationPlan(settings: AppSettings, targetDir: string): StorageMigrationPlan {
+export function createStorageMigrationPlan(
+  settings: AppSettings,
+  targetDir: string,
+  sources: StorageMigrationSources = {},
+): StorageMigrationPlan {
   assertTargetDirectory(settings.baseDir, targetDir)
   const target = path.resolve(targetDir)
   const plan: StorageMigrationPlan = {
@@ -84,6 +95,30 @@ export function createStorageMigrationPlan(settings: AppSettings, targetDir: str
         source: path.resolve(lutDir(settings)),
         destination: path.join(target, 'luts'),
       },
+      {
+        key: 'cache',
+        label: '缓存',
+        source: path.resolve(sources.cacheSource ?? path.join(settings.baseDir, 'cache')),
+        destination: path.join(target, 'cache'),
+      },
+      ...(sources.previewCacheSource ? [{
+        key: 'previews' as const,
+        label: '预览缓存',
+        source: path.resolve(sources.previewCacheSource),
+        destination: path.join(target, 'cache', 'previews'),
+      }] : []),
+      {
+        key: 'logs',
+        label: '日志',
+        source: path.resolve(sources.logSource ?? path.join(settings.baseDir, 'logs')),
+        destination: path.join(target, 'logs'),
+      },
+      ...(sources.legacyLogSource ? [{
+        key: 'legacyLogs' as const,
+        label: '历史日志',
+        source: path.resolve(sources.legacyLogSource),
+        destination: path.join(target, 'logs', '历史日志'),
+      }] : []),
     ],
   }
   for (const directory of plan.directories) {
@@ -111,6 +146,24 @@ async function pathExists(target: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/** 在复制前确认目录可创建、写入和清理，避免迁移中途才发现目标磁盘不可用。 */
+export async function assertStorageTargetWritable(targetDir: string): Promise<void> {
+  const target = path.resolve(targetDir)
+  const probeDir = path.join(target, `.luna-storage-check-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  const probeFile = path.join(probeDir, 'write-check.tmp')
+  try {
+    await fs.mkdir(target, { recursive: true })
+    await fs.mkdir(probeDir)
+    await fs.writeFile(probeFile, 'Luna AI Cut storage check', { flag: 'wx' })
+    await fs.rm(probeFile)
+    await fs.rmdir(probeDir)
+  } catch {
+    throw new Error('所选位置无法写入，请更换其他基础目录')
+  } finally {
+    await fs.rm(probeDir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 
@@ -182,8 +235,10 @@ export async function migrateLocalStorage(
   settings: AppSettings,
   targetDir: string,
   save: (patch: Partial<AppSettings>) => Promise<AppSettings>,
+  sources: StorageMigrationSources = {},
 ): Promise<StorageMigrationResult> {
-  const plan = createStorageMigrationPlan(settings, targetDir)
+  const plan = createStorageMigrationPlan(settings, targetDir, sources)
+  await assertStorageTargetWritable(plan.targetDir)
   const existingDirectories = (await Promise.all(plan.directories.map(async (directory) => (
     comparablePath(directory.source) !== comparablePath(directory.destination) && await directoryExists(directory.source)
       ? directory
