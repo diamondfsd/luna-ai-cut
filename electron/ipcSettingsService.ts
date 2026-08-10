@@ -13,6 +13,7 @@ import {
   assertStorageTargetWritable,
   createStorageMigrationPlan,
   migrateLocalStorage,
+  storageMigrationConflictLabels,
   type StorageMigrationSources,
 } from './storageMigrationService'
 import type { IpcContext } from './ipcContext'
@@ -61,10 +62,15 @@ async function storageMigrationSources(settings: AppSettings): Promise<StorageMi
   }
 }
 
+interface StorageMigrationTarget {
+  targetDir: string
+  overwriteExisting: boolean
+}
+
 async function chooseWritableStorageTarget(
   settings: AppSettings,
   sources: StorageMigrationSources,
-): Promise<string | null> {
+): Promise<StorageMigrationTarget | null> {
   let defaultPath = path.dirname(settings.baseDir)
   let retry = true
   while (retry) {
@@ -80,7 +86,22 @@ async function chooseWritableStorageTarget(
     try {
       const plan = createStorageMigrationPlan(settings, targetDir, sources)
       await assertStorageTargetWritable(plan.targetDir)
-      return plan.targetDir
+      const conflicts = await storageMigrationConflictLabels(plan)
+      if (conflicts.length === 0) return { targetDir: plan.targetDir, overwriteExisting: false }
+
+      const response = await dialog.showMessageBox({
+        type: 'warning',
+        title: '目标位置已有内容',
+        message: `新位置已包含${conflicts.map((label) => `“${label}”`).join('、')}`,
+        detail: '继续后会合并文件夹；同名文件将被全部覆盖，且无法恢复。',
+        buttons: ['全部覆盖', '重新选择', '取消'],
+        defaultId: 1,
+        cancelId: 2,
+      })
+      if (response.response === 0) return { targetDir: plan.targetDir, overwriteExisting: true }
+      retry = response.response === 1
+      if (!retry) return null
+      defaultPath = targetDir
     } catch (error) {
       const message = error instanceof Error ? error.message : '所选位置无法使用，请更换其他基础目录'
       const response = await dialog.showMessageBox({
@@ -132,9 +153,9 @@ export function register(ctx: IpcContext): void {
     try {
       const settings = await getSettings()
       const sources = await storageMigrationSources(settings)
-      const targetDir = await chooseWritableStorageTarget(settings, sources)
-      if (!targetDir) return null
-      return migrateLocalStorage(settings, targetDir, saveSettings, sources)
+      const target = await chooseWritableStorageTarget(settings, sources)
+      if (!target) return null
+      return migrateLocalStorage(settings, target.targetDir, saveSettings, sources, target)
     } finally {
       storageMigrationInProgress = false
     }

@@ -86,11 +86,25 @@ try {
 
   const occupiedTarget = path.join(root, 'occupied')
   await fs.mkdir(path.join(occupiedTarget, 'localResources'), { recursive: true })
+  const occupiedSourceFile = path.join(occupiedTarget, 'localResources', 'clip.mp4')
+  const preservedFile = path.join(occupiedTarget, 'localResources', 'keep.txt')
+  await fs.writeFile(occupiedSourceFile, 'older-media')
+  await fs.writeFile(preservedFile, 'keep-me')
   await assert.rejects(
     () => migrateLocalStorage(result.settings, occupiedTarget, async (patch) => ({ ...result.settings, ...patch })),
-    /已存在“已下载素材”/,
-    '目标目录已有内容时不能覆盖',
+    /确认覆盖/,
+    '未确认时不能覆盖目标目录已有内容',
   )
+  const merged = await migrateLocalStorage(
+    result.settings,
+    occupiedTarget,
+    async (patch) => ({ ...result.settings, ...patch }),
+    {},
+    { overwriteExisting: true },
+  )
+  assert.equal(await fs.readFile(occupiedSourceFile, 'utf8'), 'downloaded-media', '确认覆盖后同名素材应替换为迁移内容')
+  assert.equal(await fs.readFile(preservedFile, 'utf8'), 'keep-me', '目标目录中不重名的文件应保留')
+  assert.equal(merged.oldDataRemoved, true, '合并迁移后应清理旧位置')
 
   const nonWritableTarget = path.join(root, 'not-a-directory')
   await fs.writeFile(nonWritableTarget, 'file')
