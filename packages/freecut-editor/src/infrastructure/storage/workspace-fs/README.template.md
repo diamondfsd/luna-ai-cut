@@ -19,6 +19,7 @@ normal tools. AI coding agents can read them directly without a browser.
 |       |-- project.json       <- timeline, settings, keyframes, markers, transitions
 |       |-- thumbnail.jpg
 |       |-- media-links.json   <- which media this project uses
+|       |-- ai-editing-conversation.json <- editing assistant chat history
 |       `-- ai-editing-runs.json <- editing assistant plans and completion checks
 |-- media/
 |   `-- <mediaId>/

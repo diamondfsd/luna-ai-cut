@@ -7,7 +7,22 @@ import { cn } from '@freecut/shared/ui/cn'
 import { describeAiEditingReference } from '../resource-references'
 import type { AiEditingMessage } from '../store'
 
-function ReferenceIcon({ kind }: { kind: NonNullable<AiEditingMessage['references']>[number]['kind'] }) {
+function formatMessageTimestamp(createdAt: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(createdAt))
+}
+
+function ReferenceIcon({
+  kind,
+}: {
+  kind: NonNullable<AiEditingMessage['references']>[number]['kind']
+}) {
   if (kind === 'project') return <FolderKanban className="h-3 w-3" aria-hidden="true" />
   if (kind === 'media') return <FileVideo className="h-3 w-3" aria-hidden="true" />
   return <Clapperboard className="h-3 w-3" aria-hidden="true" />
@@ -42,18 +57,37 @@ export const AiEditingMessageBubble = memo(function AiEditingMessageBubble({
   const isUser = message.role === 'user'
   return (
     <div className={cn('group flex', isUser ? 'justify-end' : 'justify-start')}>
-      <div className={cn('relative max-w-[88%] rounded-lg px-2.5 py-1.5 pr-8 text-xs leading-relaxed', isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-foreground')}>
+      <div
+        className={cn(
+          'relative max-w-[88%] rounded-lg px-2.5 py-1.5 pr-8 text-xs leading-relaxed',
+          isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-foreground',
+        )}
+      >
         <div className={markdownClassName}>
           <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
             {message.content}
           </ReactMarkdown>
         </div>
+        <time
+          className={cn(
+            'mt-1 block text-[10px] tabular-nums opacity-60',
+            isUser ? 'text-primary-foreground' : 'text-muted-foreground',
+          )}
+          dateTime={new Date(message.createdAt).toISOString()}
+        >
+          {formatMessageTimestamp(message.createdAt)}
+        </time>
         {message.references && message.references.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1" aria-label="引用的编辑资源">
             {message.references.map((reference) => (
               <span
                 key={`${reference.kind}:${reference.id}`}
-                className={cn('inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]', isUser ? 'border-primary-foreground/30 bg-primary-foreground/10' : 'border-border bg-background/50')}
+                className={cn(
+                  'inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]',
+                  isUser
+                    ? 'border-primary-foreground/30 bg-primary-foreground/10'
+                    : 'border-border bg-background/50',
+                )}
                 title={describeAiEditingReference(reference)}
               >
                 <ReferenceIcon kind={reference.kind} />
@@ -65,7 +99,12 @@ export const AiEditingMessageBubble = memo(function AiEditingMessageBubble({
         <Button
           size="icon"
           variant="ghost"
-          className={cn('absolute right-1 top-1 h-6 w-6 opacity-55 transition-opacity hover:opacity-100 focus-visible:opacity-100', isUser ? 'text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground' : 'text-muted-foreground')}
+          className={cn(
+            'absolute right-1 top-1 h-6 w-6 opacity-55 transition-opacity hover:opacity-100 focus-visible:opacity-100',
+            isUser
+              ? 'text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground'
+              : 'text-muted-foreground',
+          )}
           onClick={() => onCopy(message)}
           aria-label={copied ? '已复制聊天记录' : '复制聊天记录'}
           data-tooltip={copied ? '已复制' : '复制'}

@@ -13,12 +13,13 @@ import { projectAiEditingConversationPath } from './paths'
 import { requireWorkspaceRoot } from './root'
 
 const logger = createLogger('WorkspaceFS:AiEditingConversation')
-const CONVERSATION_VERSION = 1
+const CONVERSATION_VERSION = 2
 
 export interface AiEditingConversationMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  createdAt: number
   references?: AiEditingConversationReference[]
 }
 
@@ -40,7 +41,10 @@ function sanitizeMessage(value: unknown): AiEditingConversationMessage | null {
     typeof candidate.id !== 'string' ||
     !candidate.id ||
     (candidate.role !== 'user' && candidate.role !== 'assistant') ||
-    typeof candidate.content !== 'string'
+    typeof candidate.content !== 'string' ||
+    typeof candidate.createdAt !== 'number' ||
+    !Number.isFinite(candidate.createdAt) ||
+    candidate.createdAt < 0
   ) {
     return null
   }
@@ -49,6 +53,7 @@ function sanitizeMessage(value: unknown): AiEditingConversationMessage | null {
     id: candidate.id,
     role: candidate.role,
     content: candidate.content,
+    createdAt: candidate.createdAt,
     ...(references.length > 0 ? { references } : {}),
   }
 }
@@ -59,7 +64,9 @@ function sanitizeReferences(value: unknown): AiEditingConversationReference[] {
     if (!entry || typeof entry !== 'object') return []
     const candidate = entry as Partial<AiEditingConversationReference>
     if (
-      (candidate.kind !== 'project' && candidate.kind !== 'media' && candidate.kind !== 'timeline-clip') ||
+      (candidate.kind !== 'project' &&
+        candidate.kind !== 'media' &&
+        candidate.kind !== 'timeline-clip') ||
       typeof candidate.id !== 'string' ||
       !candidate.id ||
       typeof candidate.label !== 'string' ||
@@ -80,9 +87,14 @@ function sanitizeConversation(value: unknown): AiEditingConversationMessage[] {
     .filter((message): message is AiEditingConversationMessage => message !== null)
 }
 
-export async function loadAiEditingConversation(projectId: string): Promise<AiEditingConversationMessage[]> {
+export async function loadAiEditingConversation(
+  projectId: string,
+): Promise<AiEditingConversationMessage[]> {
   try {
-    const file = await readJson<unknown>(requireWorkspaceRoot(), projectAiEditingConversationPath(projectId))
+    const file = await readJson<unknown>(
+      requireWorkspaceRoot(),
+      projectAiEditingConversationPath(projectId),
+    )
     return sanitizeConversation(file)
   } catch (error) {
     logger.warn(`loadAiEditingConversation(${projectId}) failed`, error)
