@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, CheckCircle2, CircleAlert, Grid2X2, Images, Layers3, ListChecks, Pause, Play, Settings2, Sparkles, Square, Users } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Grid2X2, Images, Layers3, ListChecks, Pause, Play, RefreshCw, Settings2, Sparkles, Square, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AiSelectionTaskPicker } from '../ai-selection/AiSelectionTaskPicker'
@@ -10,7 +10,7 @@ import { AiSelectionPeopleList } from '../ai-selection/AiSelectionPeopleList'
 import { AiSelectionSettingsDialog } from '../ai-selection/AiSelectionSettingsDialog'
 import { buildCoPhotoGroups } from '../ai-selection/aiCoPhotoGroups'
 import { faceBoxesForGroups } from '../ai-selection/aiFaceOverlayGroups'
-import { isAiRecommended, isReviewItem, matchesResultFilter, type AiSelectionResultFilter } from '../ai-selection/aiSelectionView'
+import { aiSelectionAnalysisProgress, isAiRecommended, matchesResultFilter, type AiSelectionResultFilter } from '../ai-selection/aiSelectionView'
 import { useAiSelection } from '../ai-selection/useAiSelection'
 import { MediaCard } from '../components/MediaCard'
 import { ThumbImage } from '../components/ThumbImage'
@@ -158,8 +158,9 @@ export function AiSelectionPage() {
   const focused = itemsById.get(focusedId) ?? null
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
   const peopleAnalysisActive = peopleAnalysis.running || (session?.status === 'analyzing' && session.phase === 'people')
-  const completedPercent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
-  const percent = running ? Math.min(96, completedPercent) : completedPercent
+  const analysisProgress = aiSelectionAnalysisProgress(session)
+  const completedPercent = analysisProgress.overallTotal ? Math.round(analysisProgress.overallCompleted / analysisProgress.overallTotal * 100) : 0
+  const percent = running ? Math.min(96, completedPercent) : 100
 
   async function createProject(): Promise<void> {
     if (!session) return
@@ -378,7 +379,6 @@ export function AiSelectionPage() {
       overlay={<>{showFaceBoxes && <AiSelectionFaceOverlay item={item} faces={faceBoxesByItem.get(item.id) ?? []} />}<div className="ai-selection-card-badges">
         {isAiRecommended(item) && <span className="ai-selection-recommendation-badge"><Sparkles size={12} />AI 推荐</span>}
         {stage === 'scenes' && (groupsByItem.get(item.id)?.itemIds.length ?? 0) > 1 && <span className="ai-selection-group-badge"><Layers3 size={11} />{groupsByItem.get(item.id)?.itemIds.length}</span>}
-        {isReviewItem(item) && <span className="ai-selection-attention-badge" aria-label="需要复核"><CircleAlert size={13} /></span>}
       </div></>}
     />
   }
@@ -388,7 +388,7 @@ export function AiSelectionPage() {
       <div className="ai-selection-sidebar-scroll">
         <Button variant="ghost" size="compact" icon={<ArrowLeft size={15} />} onClick={closeSession}>任务列表</Button>
         <div className="ai-selection-sidebar-heading"><Sparkles size={18} /><strong>{session.name}</strong></div>
-        <div className="ai-selection-sidebar-status">{statusLabel(session.status, session.phase)} · {session.counts.completed}/{session.counts.total || '—'}</div>
+        <div className="ai-selection-sidebar-status">{statusLabel(session.status, session.phase)} · {analysisProgress.phaseCompleted}/{analysisProgress.phaseTotal || '—'}</div>
         {running && <div className="ai-selection-progress" aria-label={`整理进度 ${percent}%`}><span style={{ width: `${percent}%` }} /></div>}
         <nav className="ai-selection-stage-nav" aria-label="选片流程">{stages.map((entry) => {
           const Icon = entry.icon
@@ -398,6 +398,7 @@ export function AiSelectionPage() {
         <section className="ai-selection-sidebar-section">
           <Button variant="secondary" size="compact" icon={<Settings2 size={14} />} onClick={() => setSettingsOpen(true)}>选片设置</Button>
           <div className="ai-selection-sidebar-controls">
+            <Button variant="secondary" size="compact" icon={<RefreshCw size={14} />} disabled={busy} onClick={controls.reanalyze}>重新分析</Button>
             {running ? <Button variant="secondary" size="compact" icon={<Pause size={14} />} onClick={controls.pause}>暂停</Button> : !['ready', 'completed'].includes(session.status) && <Button variant="secondary" size="compact" icon={<Play size={14} />} onClick={controls.resume}>继续</Button>}
             {!['ready', 'completed'].includes(session.status) && <Button variant="ghost" size="compact" icon={<Square size={12} />} onClick={controls.cancel}>取消</Button>}
           </div>

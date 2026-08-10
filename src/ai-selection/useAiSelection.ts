@@ -173,6 +173,7 @@ export function useAiSelection() {
   const controls = useMemo(() => ({
     pause: () => run(() => window.luna.aiSelection.pause(session!.id)),
     resume: () => run(() => window.luna.aiSelection.resume(session!.id)),
+    reanalyze: () => run(() => window.luna.aiSelection.reanalyze(session!.id)),
     cancel: () => run(() => window.luna.aiSelection.cancel(session!.id)),
     undo: () => run(() => window.luna.aiSelection.undo(session!.id)),
     redo: () => run(() => window.luna.aiSelection.redo(session!.id)),

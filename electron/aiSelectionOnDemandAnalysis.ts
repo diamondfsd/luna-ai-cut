@@ -54,7 +54,7 @@ export async function analyzeVideoPeopleOnDemand(
         await analyzePersonItem(context, item, signal)
       } catch (error) {
         signal?.throwIfAborted()
-        // 视频人物识别是尽力而为，不影响视频进入拍摄时段和任务完成。
+        item.semanticTags = [...new Set([...item.semanticTags, '人物分析未完成'])]
       }
       await context.update(item.name)
     }

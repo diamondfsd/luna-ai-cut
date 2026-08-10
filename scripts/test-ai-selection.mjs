@@ -13,11 +13,14 @@ import {
 } from '../electron/aiSelectionAlgorithms.ts'
 import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
+import { readAiSelectionItemCache, writeAiSelectionItemCache } from '../electron/aiSelectionItemCache.ts'
+import { prepareAiSelectionReanalysis, preserveAiSelectionUserDecisions } from '../electron/aiSelectionReanalysis.ts'
 import { buildFaceGroups, DEFAULT_FACE_GROUPING_THRESHOLD, FACE_EMBEDDING_VERSION, faceEmbeddingsForGroup, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
 import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, restoreGlobalPerson, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
 import { FACE_AVATAR_CONTEXT_SCALE, squareCropAroundCenter } from '../src/shared/aiAvatarCrop.ts'
 import {
+  aiSelectionAnalysisProgress,
   countSimilarityGroups,
   matchesResultFilter,
 } from '../src/ai-selection/aiSelectionView.ts'
@@ -166,6 +169,31 @@ const selectionItems = Array.from({ length: 20 }, (_, index) => item(`selection-
   perceptualHash: `${index.toString(16).padStart(16, '0')}`,
   luminanceHistogram: [0.05, 0.15, 0.3, 0.5],
 }))
+const peopleProgress = aiSelectionAnalysisProgress({
+  phase: 'people',
+  counts: { total: 3, completed: 3 },
+  items: [
+    item('people-ready', '2026-07-18T01:01:00.000Z', { personEvidence: { detected: false } }),
+    item('people-skipped', '2026-07-18T01:01:01.000Z', { semanticTags: ['人物分析未完成'] }),
+    item('people-pending', '2026-07-18T01:01:02.000Z'),
+  ],
+})
+assert.deepEqual([peopleProgress.phaseCompleted, peopleProgress.phaseTotal], [2, 3], '人物阶段应显示独立的实际处理进度')
+const manuallyKept = item('manual-reanalysis', '2026-07-18T01:01:03.000Z', { state: 'kept', decisionSource: 'user', personEvidence: { detected: true } })
+const reanalysisSession = { status: 'ready', phase: 'done', error: '旧错误', items: [manuallyKept, item('ai-reanalysis', '2026-07-18T01:01:04.000Z', { state: 'kept' })] }
+prepareAiSelectionReanalysis(reanalysisSession)
+assert.deepEqual([reanalysisSession.status, reanalysisSession.phase, reanalysisSession.forceReanalysis], ['queued', 'indexing', true])
+assert.deepEqual(reanalysisSession.items.map((entry) => [entry.analysisState, entry.state]), [['pending', 'kept'], ['pending', 'undecided']], '重新分析应重置 AI 结果并保留人工选择')
+const refreshedManualItem = preserveAiSelectionUserDecisions(reanalysisSession.items[0], item('manual-reanalysis', '2026-07-18T01:01:03.000Z'))
+assert.deepEqual([refreshedManualItem.state, refreshedManualItem.decisionSource], ['kept', 'user'], '新分析结果不能覆盖人工选择')
+const itemCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-ai-selection-item-cache-'))
+try {
+  await writeAiSelectionItemCache(itemCacheDir, 'test-v1', item('media_abc', '2026-07-18T01:01:05.000Z', { state: 'kept', decisionSource: 'user' }), 'balanced')
+  const cachedManualItem = await readAiSelectionItemCache(itemCacheDir, 'test-v1', 'media_abc', 'balanced')
+  assert.deepEqual([cachedManualItem?.state, cachedManualItem?.decisionSource], ['undecided', 'ai'], '共享分析缓存不能保存任务中的人工选择')
+} finally {
+  await fs.rm(itemCacheDir, { recursive: true, force: true })
+}
 const analyzingSelectionItems = structuredClone(selectionItems)
 applySelectionPlan(analyzingSelectionItems, [], 'balanced', 'general', { mode: 'preset', value: null }, undefined, false)
 assert.equal(analyzingSelectionItems.filter((entry) => entry.state === 'kept').length, 0, '分析过程中不应自动选择临时推荐')

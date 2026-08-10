@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, EyeOff, GitMerge, Image as ImageIcon, MoreHorizontal, Pencil } from 'lucide-react'
 
 import type { AiFaceGroup, AiSelectionItem } from '../shared/types'
-import { Button, Dialog, IconButton, Input, Popover, PopoverContent, PopoverTrigger, Tooltip } from '../ui'
+import { Button, IconButton, Input, Popover, PopoverContent, PopoverTrigger, toast, Tooltip } from '../ui'
 import { AiFaceGroupCover } from './AiPeopleGroupCover'
 import { AiPersonAvatarDialog } from './AiPersonAvatarDialog'
 import { AiPersonMergeDialog } from './AiPersonMergeDialog'
@@ -36,7 +36,6 @@ function AiSelectionPersonMenu({ group, groups, items, busy, onSetAvatar, onMerg
   const [menuOpen, setMenuOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [mergeOpen, setMergeOpen] = useState(false)
-  const [hideOpen, setHideOpen] = useState(false)
   const closeTimerRef = useRef<number | null>(null)
 
   useEffect(() => () => {
@@ -54,7 +53,8 @@ function AiSelectionPersonMenu({ group, groups, items, busy, onSetAvatar, onMerg
   }
 
   async function hidePerson(): Promise<void> {
-    if (await onHide(group.id)) setHideOpen(false)
+    setMenuOpen(false)
+    if (await onHide(group.id)) toast.success(`已隐藏「${group.name}」`)
   }
 
   return <>
@@ -74,12 +74,11 @@ function AiSelectionPersonMenu({ group, groups, items, busy, onSetAvatar, onMerg
       <PopoverContent className="ai-selection-person-menu" align="end" sideOffset={4} onPointerEnter={keepMenuOpen} onPointerLeave={closeMenuSoon}>
         <Button variant="ghost" size="compact" icon={<ImageIcon size={14} />} onClick={() => { setMenuOpen(false); setAvatarOpen(true) }}>换头像</Button>
         <Button variant="ghost" size="compact" icon={<GitMerge size={14} />} disabled={groups.length < 2 && !group.mergedMembers?.length} onClick={() => { setMenuOpen(false); setMergeOpen(true) }}>合并人物</Button>
-        <Button variant="ghost" size="compact" icon={<EyeOff size={14} />} onClick={() => { setMenuOpen(false); setHideOpen(true) }}>隐藏人物</Button>
+        <Button variant="ghost" size="compact" icon={<EyeOff size={14} />} onClick={() => void hidePerson()}>隐藏人物</Button>
       </PopoverContent>
     </Popover>
     <AiPersonAvatarDialog open={avatarOpen} onOpenChange={setAvatarOpen} group={group} items={items} busy={busy} onSave={(itemId, bounds) => onSetAvatar(group.id, itemId, bounds)} />
     <AiPersonMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} group={group} groups={groups} items={items} busy={busy} onMerge={(sourceGroupIds) => onMerge(group.id, sourceGroupIds)} onUnmerge={(memberIdentityId) => onUnmerge(group.id, memberIdentityId)} />
-    <Dialog open={hideOpen} onOpenChange={setHideOpen} title="隐藏这个人物？" description="人物分组会暂时从所有选片结果中隐藏，照片和视频不会被删除。可随时从“已隐藏人物”恢复。" footer={<><Button variant="secondary" onClick={() => setHideOpen(false)}>取消</Button><Button variant="primary" disabled={busy} onClick={() => void hidePerson()}>隐藏人物</Button></>} />
   </>
 }
 

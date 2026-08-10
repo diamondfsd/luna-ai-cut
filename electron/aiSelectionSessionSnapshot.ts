@@ -4,10 +4,12 @@ import type { AiSelectionSnapshot } from './aiSelectionOperations'
 export interface StoredAiSelectionSession extends AiSelectionSession {
   undoStack: AiSelectionSnapshot[]
   redoStack: AiSelectionSnapshot[]
+  forceReanalysis?: boolean
 }
 
 export function publicAiSelectionSession(session: StoredAiSelectionSession): AiSelectionSession {
-  const { undoStack, redoStack, ...value } = session
+  const { undoStack, redoStack, forceReanalysis, ...value } = session
+  void forceReanalysis
   return structuredClone({
     ...value,
     items: value.items.map((item) => ({ ...item, imageEmbedding: null, personEvidence: item.personEvidence ? { ...item.personEvidence, faces: item.personEvidence.faces?.map((face) => ({ ...face, embedding: null })) } : null })),
