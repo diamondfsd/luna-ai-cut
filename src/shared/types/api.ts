@@ -251,6 +251,7 @@ export interface LunaApi {
     getSession(sessionId: string): Promise<AiSelectionSession | null>
     pause(sessionId: string): Promise<AiSelectionSession>
     resume(sessionId: string): Promise<AiSelectionSession>
+    reanalyze(sessionId: string): Promise<AiSelectionSession>
     cancel(sessionId: string): Promise<AiSelectionSession>
     applyOperation(sessionId: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession>
     analyzePeople(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>

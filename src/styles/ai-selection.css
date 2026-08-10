@@ -189,7 +189,6 @@
 .ai-selection-card-badges > span { min-height: 24px; padding: 0 7px; border-radius: 5px; background: rgba(255,255,255,.94); display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 650; }
 .ai-selection-recommendation-badge { color: var(--blue, #06c); }
 .ai-selection-group-badge { color: var(--text-primary, #1d1d1f); }
-.ai-selection-card-badges > .ai-selection-attention-badge { width: 24px; padding: 0; border-radius: 50%; justify-content: center; color: #a46000; }
 .ai-selection-card-meta { padding: 7px 3px 3px; display: flex; flex-direction: column; gap: 2px; }
 .ai-selection-card-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .ai-selection-person-box { position: absolute; border: 2px solid #45d483; border-radius: 5px; box-shadow: 0 0 0 1px rgba(0,0,0,.25); pointer-events: none; }
