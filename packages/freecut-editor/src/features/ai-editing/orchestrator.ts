@@ -5,11 +5,16 @@ import {
   supportsNativeToolCalling,
   type NativeToolCallingLlmAdapter,
 } from '@freecut/infrastructure/llm/openai-chat-completions-llm-adapter'
+import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import {
-  getEmbeddedHostBridge,
-  type EmbeddedAiAssistantMessage,
-  type EmbeddedAiAssistantToolCall,
-} from '@freecut/shared/host/embedded-host'
+  JsonAgentDriver,
+  NativeAgentDriver,
+  runAgentHarness,
+  type AgentHarnessDriver,
+  type AgentHarnessEvent,
+  type AgentHarnessResult,
+  type AgentHarnessToolCall,
+} from './agent-harness'
 import {
   clearTimelineCodingSession,
   startTimelineCodingSession,
@@ -25,11 +30,7 @@ import {
   isConfirmedPlanExecutionRequest,
   toNativeMessages,
 } from './orchestration-messages'
-import {
-  reportModelRequestStatus,
-  reportRunProgress,
-  traceRun as trace,
-} from './orchestration-progress'
+import { reportModelRequestStatus, reportRunProgress, traceRun } from './orchestration-progress'
 import {
   declaredPlan,
   defaultReply,
@@ -44,7 +45,7 @@ import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
 import { parseAiEditingResponse } from './response-parser'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
-import { executeNativeToolCall, executeToolCall, serializeForModel } from './tool-execution'
+import { executeToolCall, serializeForModel } from './tool-execution'
 import type { AiEditingObservation } from './types'
 
 const MAX_TOOL_ROUNDS = 20
@@ -90,7 +91,7 @@ function unfinishedResult(
       ? '剪辑源码尚未成功发布到时间轴。'
       : hasUnfinalizedEdit(observations)
         ? '已发布当前阶段，但剪辑工程尚未最终提交。'
-      : '本轮没有在操作上限内完成用户目标。'
+        : '本轮没有在操作上限内完成用户目标。'
   return loopResult({
     reply: reply || (signal?.aborted ? '已停止本次处理。' : defaultReply(observations)),
     observations,
@@ -99,300 +100,191 @@ function unfinishedResult(
   })
 }
 
-function completedEditResult(
-  _reply: string,
+function completedResult(
+  reply: string,
   observations: AiEditingObservation[],
 ): AiEditingRunResult {
   return loopResult({
-    reply: defaultReply(observations),
+    reply: hasCommittedEdit(observations) ? defaultReply(observations) : reply,
     observations,
     completed: true,
   })
 }
 
-async function runJsonToolLoop(
-  messages: LlmMessage[],
-  userText: string,
+function handleHarnessEvent(
   options: AiEditingRunOptions,
-  adapter: LlmAdapter,
-  initialRaw?: string,
-  maxRounds = MAX_TOOL_ROUNDS,
-  availableToolIds?: ReadonlySet<string>,
-  initialObservations: readonly AiEditingObservation[] = [],
-  requiresTimelineCommit = false,
-): Promise<AiEditingRunResult> {
-  const observations: AiEditingObservation[] = [...initialObservations]
-  let reply = ''
-  let callIndex = observations.length
-  let rawFromPreviousRequest = initialRaw
-
-  for (let round = 0; round < maxRounds; round += 1) {
-    trace(options, 'model-request', `请求模型处理第 ${round + 1} 轮。`, {
-      protocol: 'json',
-      round: round + 1,
-      messageCount: messages.length,
+  event: AgentHarnessEvent<AiEditingObservation>,
+): void {
+  const round = event.round + 1
+  if (event.type === 'model-request') {
+    traceRun(options, 'model-request', `请求模型处理第 ${round} 轮。`, {
+      protocol: event.protocol,
+      round,
+      messageCount: event.messageCount,
     })
     reportRunProgress(
       options,
-      round === 0 ? '正在理解需求' : '正在根据执行结果继续处理',
-      round === 0 ? 32 : Math.min(90, 68 + round * 2),
-      round === 0 ? 68 : Math.min(94, 80 + round * 2),
+      event.round === 0 ? '正在理解需求' : '正在根据执行结果继续处理',
+      event.round === 0 ? 32 : Math.min(90, 68 + event.round * 2),
+      event.round === 0 ? 68 : Math.min(94, 80 + event.round * 2),
     )
-    let raw: string
-    try {
-      raw =
-        rawFromPreviousRequest ??
-        (await adapter.generate(messages, {
-          maxTokens: MAX_TOKENS,
-          temperature: 0,
-          reasoningEffort: options.reasoningEffort,
-          signal: options.signal,
-          onToken: options.onToken,
-          onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
-        }))
-    } catch (error) {
-      trace(options, 'model-error', '模型请求失败。', {
-        round: round + 1,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      if (!hasCommittedEdit(observations)) throw error
-      return completedEditResult(reply, observations)
-    }
-    rawFromPreviousRequest = undefined
-    trace(options, 'model-response', `模型返回第 ${round + 1} 轮结果。`, {
-      protocol: 'json',
-      round: round + 1,
-      raw,
-    })
-    reportRunProgress(options, '正在检查处理结果', Math.min(95, 72 + round * 2))
-    const parsed = parseAiEditingResponse(raw)
-    if (!parsed) {
-      trace(options, 'protocol-error', '模型返回内容无法解析为工具协议。', {
-        round: round + 1,
-      })
-      if (round === maxRounds - 1) {
-        throw new Error('助手这次没有按约定返回处理结果，已自动重试多次。请再试一次。')
-      }
-      messages.push({ role: 'assistant', content: raw })
-      messages.push({ role: 'user', content: invalidJsonPrompt.trim() })
-      continue
-    }
-
-    reply = parsed.reply || reply
-    if (parsed.toolCalls.length === 0) {
-      if (
-        !requiresTimelineCommit &&
-        parsed.reply.trim() &&
-        !isDeferredTextReply(parsed.reply) &&
-        !hasUnpublishedSourceWork(observations) &&
-        !hasUnfinalizedEdit(observations)
-      ) {
-        return loopResult({ reply: parsed.reply, observations, completed: true })
-      }
-      messages.push({ role: 'assistant', content: raw })
-      messages.push({ role: 'user', content: pendingWorkPrompt.trim() })
-      continue
-    }
-
-    const roundObservations: AiEditingObservation[] = []
-    for (const call of parsed.toolCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND)) {
-      if (options.signal?.aborted) break
-      trace(options, 'tool-start', `开始执行工具 ${call.id}。`, {
-        round: round + 1,
-        toolId: call.id,
-        arguments: call.args,
-      })
-      const observation = await executeToolCall(call, callIndex, options, availableToolIds)
-      callIndex += 1
-      observations.push(observation)
-      roundObservations.push(observation)
-      trace(options, 'tool-result', `工具 ${observation.toolId} 执行结束。`, {
-        round: round + 1,
-        toolId: observation.toolId,
-        result: observation.result,
-      })
-      if (hasCommittedEdit(observations)) {
-        reportRunProgress(options, '剪辑工程已发布', 96)
-        return completedEditResult(reply, observations)
-      }
-    }
-    if (options.signal?.aborted) break
-
-    messages.push({ role: 'assistant', content: raw })
-    messages[0] = {
-      role: 'system',
-      content: await buildTurnSystemPrompt(
-        userText,
-        options.history,
-        await currentWorkspace(options),
-        'json',
-        availableToolIds,
-      ),
-    }
-    messages.push({
-      role: 'user',
-      content: renderPrompt(toolResultsPrompt, {
-        OBSERVATIONS: serializeForModel(roundObservations),
-      }),
-    })
+    return
   }
-
-  return unfinishedResult(reply, observations, options.signal)
+  if (event.type === 'model-response') {
+    traceRun(options, 'model-response', `模型返回第 ${round} 轮结果。`, {
+      protocol: event.protocol,
+      round,
+      step: event.step,
+    })
+    reportRunProgress(options, '正在检查处理结果', Math.min(95, 72 + event.round * 2))
+    return
+  }
+  if (event.type === 'model-error') {
+    traceRun(options, 'model-error', '模型请求失败。', {
+      round,
+      error: event.error instanceof Error ? event.error.message : String(event.error),
+    })
+    return
+  }
+  if (event.type === 'protocol-error') {
+    traceRun(options, 'protocol-error', '模型返回内容无法解析为工具协议。', { round })
+    return
+  }
+  if (event.type === 'tool-start') {
+    traceRun(options, 'tool-start', `开始执行工具 ${event.call.toolId}。`, {
+      round,
+      toolId: event.call.toolId,
+      arguments: event.call.input,
+    })
+    return
+  }
+  traceRun(options, 'tool-result', `工具 ${event.exchange.call.toolId} 执行结束。`, {
+    round,
+    toolId: event.exchange.call.toolId,
+    result: event.exchange.observation.result,
+  })
+  if (hasCommittedEdit([event.exchange.observation])) {
+    reportRunProgress(options, '剪辑工程已发布', 96)
+  }
 }
 
-async function runNativeToolLoop(
-  messages: EmbeddedAiAssistantMessage[],
+async function executeHarnessTool(
+  call: AgentHarnessToolCall,
+  callIndex: number,
+  options: AiEditingRunOptions,
+  availableToolIds?: ReadonlySet<string>,
+): Promise<AiEditingObservation> {
+  return executeToolCall(
+    { id: call.toolId, args: call.input as Record<string, unknown> },
+    callIndex,
+    options,
+    availableToolIds,
+  )
+}
+
+async function runDriver(
+  driver: AgentHarnessDriver<AiEditingObservation>,
   userText: string,
   options: AiEditingRunOptions,
-  adapter: NativeToolCallingLlmAdapter,
-  maxRounds = MAX_TOOL_ROUNDS,
-  availableToolIds?: ReadonlySet<string>,
-  requiresTimelineCommit = false,
-): Promise<AiEditingRunResult> {
-  const catalog = createNativeToolCatalog(availableToolIds)
-  const observations: AiEditingObservation[] = []
-  let reply = ''
-  let callIndex = 0
-
-  for (let round = 0; round < maxRounds; round += 1) {
-    trace(options, 'model-request', `请求模型处理第 ${round + 1} 轮。`, {
-      protocol: 'native',
-      round: round + 1,
-      messageCount: messages.length,
-    })
-    reportRunProgress(
+  config: {
+    maxRounds: number
+    availableToolIds?: ReadonlySet<string>
+    initialObservations?: readonly AiEditingObservation[]
+    requiresTimelineCommit: boolean
+    continuationPrompt: string
+  },
+): Promise<AgentHarnessResult<AiEditingObservation>> {
+  return runAgentHarness({
+    driver,
+    maxRounds: config.maxRounds,
+    maxToolCallsPerRound: MAX_TOOL_CALLS_PER_ROUND,
+    initialObservations: config.initialObservations,
+    signal: options.signal,
+    protocolRepairPrompt: invalidJsonPrompt.trim(),
+    continuationPrompt: config.continuationPrompt,
+    instructions: async () => buildTurnSystemPrompt(
+      userText,
+      options.history,
+      await currentWorkspace(options),
+      driver.protocol === 'native' ? 'native' : 'json',
+      config.availableToolIds,
+      config.requiresTimelineCommit,
+    ),
+    executeTool: (call, index) => executeHarnessTool(
+      call,
+      index,
       options,
-      round === 0 ? '正在理解需求' : '正在根据执行结果继续处理',
-      round === 0 ? 32 : Math.min(90, 68 + round * 2),
-      round === 0 ? 68 : Math.min(94, 80 + round * 2),
-    )
-    let response
-    try {
-      response = await adapter.generateWithTools(messages, catalog.definitions, {
-        maxTokens: MAX_TOKENS,
-        temperature: 0,
-        reasoningEffort: options.reasoningEffort,
-        signal: options.signal,
-        onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
-      })
-    } catch (error) {
-      trace(options, 'model-error', '模型请求失败。', {
-        round: round + 1,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      if (!hasCommittedEdit(observations)) throw error
-      return completedEditResult(reply, observations)
-    }
-    trace(options, 'model-response', `模型返回第 ${round + 1} 轮结果。`, {
-      protocol: 'native',
-      round: round + 1,
-      mode: response.mode,
-      content: 'content' in response ? response.content : undefined,
-      toolCalls: 'toolCalls' in response ? response.toolCalls : undefined,
-    })
-    if (response.mode === 'fallback' || response.mode === 'json') {
-      const fallbackMessages = await buildJsonFallbackMessages(
-        userText,
-        options.history,
-        observations,
-        options,
-        availableToolIds,
-      )
-      return runJsonToolLoop(
-        fallbackMessages,
-        userText,
-        options,
-        adapter,
-        response.mode === 'json' ? response.content : undefined,
-        maxRounds,
-        availableToolIds,
-        observations,
-        requiresTimelineCommit,
-      )
-    }
+      config.availableToolIds,
+    ),
+    canCompleteFromText: ({ output, observations }) =>
+      !config.requiresTimelineCommit &&
+      Boolean(output.content.trim()) &&
+      !isDeferredTextReply(output.content) &&
+      !hasUnpublishedSourceWork(observations) &&
+      !hasUnfinalizedEdit(observations),
+    shouldStopAfterTool: hasCommittedEdit,
+    canRecoverFromModelError: hasCommittedEdit,
+    onTextCompletion: (content) => options.onToken?.(content, content),
+    onEvent: (event) => handleHarnessEvent(options, event),
+  })
+}
 
-    reportRunProgress(options, '正在检查处理结果', Math.min(95, 72 + round * 2))
-    if (response.content) reply = response.content
-    if (response.toolCalls.length === 0) {
-      if (
-        !requiresTimelineCommit &&
-        response.content?.trim() &&
-        !isDeferredTextReply(response.content) &&
-        !hasUnpublishedSourceWork(observations) &&
-        !hasUnfinalizedEdit(observations)
-      ) {
-        options.onToken?.(response.content, response.content)
-        return loopResult({ reply: response.content, observations, completed: true })
-      }
-      messages.push({
-        role: 'assistant',
-        ...(response.content ? { content: response.content } : {}),
-      })
-      messages.push({ role: 'user', content: pendingWorkPrompt.trim() })
-      continue
-    }
+function toRunResult(
+  result: AgentHarnessResult<AiEditingObservation>,
+  signal?: AbortSignal,
+): AiEditingRunResult {
+  return result.status === 'completed'
+    ? completedResult(result.reply, result.observations)
+    : unfinishedResult(result.reply, result.observations, signal)
+}
 
-    const selectedCalls = response.toolCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND)
-    const roundObservations: Array<{
-      call: EmbeddedAiAssistantToolCall
-      observation: AiEditingObservation
-    }> = []
-    for (const call of selectedCalls) {
-      if (options.signal?.aborted) break
-      const toolId = catalog.idsByFunctionName.get(call.name) ?? call.name
-      trace(options, 'tool-start', `开始执行工具 ${toolId}。`, {
-        round: round + 1,
-        toolId,
-        arguments: call.arguments,
-      })
-      const observation = await executeNativeToolCall(
-        call,
-        catalog.idsByFunctionName,
-        callIndex,
-        options,
-        availableToolIds,
-      )
-      callIndex += 1
-      observations.push(observation)
-      roundObservations.push({ call, observation })
-      trace(options, 'tool-result', `工具 ${observation.toolId} 执行结束。`, {
-        round: round + 1,
-        toolId: observation.toolId,
-        result: observation.result,
-      })
-      if (hasCommittedEdit(observations)) {
-        reportRunProgress(options, '剪辑工程已发布', 96)
-        return completedEditResult(reply, observations)
-      }
-    }
-    if (options.signal?.aborted) break
+async function createJsonDriver(
+  adapter: LlmAdapter,
+  messages: LlmMessage[],
+  options: AiEditingRunOptions,
+  initialRaw?: string,
+): Promise<JsonAgentDriver<AiEditingObservation>> {
+  return new JsonAgentDriver({
+    adapter,
+    messages,
+    parse: parseAiEditingResponse,
+    renderToolResults: (observations) => renderPrompt(toolResultsPrompt, {
+      OBSERVATIONS: serializeForModel(observations),
+    }),
+    requestOptions: (round) => ({
+      maxTokens: MAX_TOKENS,
+      temperature: 0,
+      reasoningEffort: options.reasoningEffort,
+      signal: options.signal,
+      onToken: options.onToken,
+      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
+    }),
+    initialRaw,
+  })
+}
 
-    messages.push({
-      role: 'assistant',
-      ...(response.content ? { content: response.content } : {}),
-      toolCalls: selectedCalls,
-    })
-    for (const { call, observation } of roundObservations) {
-      messages.push({
-        role: 'tool',
-        toolCallId: call.id,
-        content: serializeForModel(observation),
-      })
-    }
-    messages[0] = {
-      role: 'system',
-      content: await buildTurnSystemPrompt(
-        userText,
-        options.history,
-        await currentWorkspace(options),
-        'native',
-        availableToolIds,
-      ),
-    }
-    messages.push({ role: 'user', content: nativeContinuePrompt.trim() })
-  }
-
-  return unfinishedResult(reply, observations, options.signal)
+function createNativeDriver(
+  adapter: NativeToolCallingLlmAdapter,
+  messages: LlmMessage[],
+  options: AiEditingRunOptions,
+  availableToolIds?: ReadonlySet<string>,
+): NativeAgentDriver<AiEditingObservation> {
+  const catalog = createNativeToolCatalog(availableToolIds)
+  return new NativeAgentDriver({
+    adapter,
+    messages: toNativeMessages(messages),
+    tools: catalog.definitions,
+    toolIdsByFunctionName: catalog.idsByFunctionName,
+    serializeObservation: serializeForModel,
+    toolContinuationPrompt: nativeContinuePrompt.trim(),
+    requestOptions: (round) => ({
+      maxTokens: MAX_TOKENS,
+      temperature: 0,
+      reasoningEffort: options.reasoningEffort,
+      signal: options.signal,
+      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
+    }),
+  })
 }
 
 export async function runSingleAiEditingTurn(
@@ -404,45 +296,80 @@ export async function runSingleAiEditingTurn(
   const codingSession = await startTimelineCodingSession()
   try {
     const adapter = options.adapter ?? getAiEditingAdapter()
+    const maxRounds = config.maxToolRounds ?? MAX_TOOL_ROUNDS
+    const availableToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
+    const requiresTimelineCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
+      isConfirmedPlanExecutionRequest(userText, options.history)
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
     const evidence = config.evidence ?? (await codingSession.promptContext())
     reportRunProgress(options, '正在整理项目结构和上下文', 18)
-    const availableToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
-    const requiresTimelineCommit = isConfirmedPlanExecutionRequest(userText, options.history)
-    let result: AiEditingRunResult
+    reportRunProgress(options, '正在准备剪辑需求', 26)
+
+    let harnessResult: AgentHarnessResult<AiEditingObservation>
     if (supportsNativeToolCalling(adapter)) {
-      reportRunProgress(options, '正在准备剪辑需求', 26)
-      result = await runNativeToolLoop(
-        toNativeMessages(
-          await buildInitialMessages(
-            userText,
-            options.history,
-            evidence,
-            'native',
-            availableToolIds,
-          ),
-        ),
+      const nativeMessages = await buildInitialMessages(
         userText,
-        options,
-        adapter,
-        config.maxToolRounds,
+        options.history,
+        evidence,
+        'native',
         availableToolIds,
         requiresTimelineCommit,
       )
-    } else {
-      reportRunProgress(options, '正在准备剪辑需求', 26)
-      result = await runJsonToolLoop(
-        await buildInitialMessages(userText, options.history, evidence, 'json', availableToolIds),
+      harnessResult = await runDriver(
+        createNativeDriver(adapter, nativeMessages, options, availableToolIds),
         userText,
         options,
-        adapter,
-        undefined,
-        config.maxToolRounds,
+        {
+          maxRounds,
+          availableToolIds,
+          requiresTimelineCommit,
+          continuationPrompt: pendingWorkPrompt.trim(),
+        },
+      )
+      if (harnessResult.status === 'fallback') {
+        const fallbackMessages = await buildJsonFallbackMessages(
+          userText,
+          options.history,
+          harnessResult.observations,
+          options,
+          availableToolIds,
+        )
+        harnessResult = await runDriver(
+          await createJsonDriver(adapter, fallbackMessages, options, harnessResult.fallbackContent),
+          userText,
+          options,
+          {
+            maxRounds,
+            availableToolIds,
+            initialObservations: harnessResult.observations,
+            requiresTimelineCommit,
+            continuationPrompt: pendingWorkPrompt.trim(),
+          },
+        )
+      }
+    } else {
+      const jsonMessages = await buildInitialMessages(
+        userText,
+        options.history,
+        evidence,
+        'json',
         availableToolIds,
-        [],
         requiresTimelineCommit,
+      )
+      harnessResult = await runDriver(
+        await createJsonDriver(adapter, jsonMessages, options),
+        userText,
+        options,
+        {
+          maxRounds,
+          availableToolIds,
+          requiresTimelineCommit,
+          continuationPrompt: pendingWorkPrompt.trim(),
+        },
       )
     }
+
+    const result = toRunResult(harnessResult, options.signal)
     const failedEdit = latestFailedEdit(result.observations)
     const failureMessage = failedEdit ? failedEditMessage(failedEdit) : undefined
     return {

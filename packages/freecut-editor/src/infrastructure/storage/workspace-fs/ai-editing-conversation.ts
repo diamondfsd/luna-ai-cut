@@ -30,9 +30,16 @@ export interface AiEditingConversationContext {
   updatedAt: number
 }
 
+export interface AiEditingConversationWorkflow {
+  kind: 'awaiting-plan-confirmation'
+  planMessageId: string
+  updatedAt: number
+}
+
 export interface AiEditingConversationState {
   messages: AiEditingConversationMessage[]
   context: AiEditingConversationContext | null
+  workflow: AiEditingConversationWorkflow | null
 }
 
 export interface AiEditingConversationReference {
@@ -45,6 +52,7 @@ interface AiEditingConversationFile {
   version: typeof CONVERSATION_VERSION
   messages: AiEditingConversationMessage[]
   context?: AiEditingConversationContext
+  workflow?: AiEditingConversationWorkflow
 }
 
 export interface AiEditingConversationHistorySession {
@@ -133,20 +141,42 @@ function sanitizeContext(value: unknown): AiEditingConversationContext | null {
   }
 }
 
+function sanitizeWorkflow(value: unknown): AiEditingConversationWorkflow | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Partial<AiEditingConversationWorkflow>
+  if (
+    candidate.kind !== 'awaiting-plan-confirmation' ||
+    typeof candidate.planMessageId !== 'string' || !candidate.planMessageId ||
+    typeof candidate.updatedAt !== 'number' || !Number.isFinite(candidate.updatedAt)
+  ) return null
+  return {
+    kind: candidate.kind,
+    planMessageId: candidate.planMessageId,
+    updatedAt: candidate.updatedAt,
+  }
+}
+
 function sanitizeConversation(value: unknown): AiEditingConversationState {
-  if (!value || typeof value !== 'object') return { messages: [], context: null }
+  if (!value || typeof value !== 'object') {
+    return { messages: [], context: null, workflow: null }
+  }
   const candidate = value as Partial<AiEditingConversationFile>
   if (candidate.version !== CONVERSATION_VERSION || !Array.isArray(candidate.messages)) {
-    return { messages: [], context: null }
+    return { messages: [], context: null, workflow: null }
   }
   const messages = candidate.messages
     .map(sanitizeMessage)
     .filter((message): message is AiEditingConversationMessage => message !== null)
   const context = sanitizeContext(candidate.context)
+  const workflow = sanitizeWorkflow(candidate.workflow)
   return {
     messages,
     context: context && messages.some((message) => message.id === context.throughMessageId)
       ? context
+      : null,
+    workflow: workflow && messages.some((message) =>
+      message.id === workflow.planMessageId && message.role === 'assistant')
+      ? workflow
       : null,
   }
 }
@@ -208,7 +238,7 @@ export async function loadAiEditingConversationState(
     return sanitizeConversation(file)
   } catch (error) {
     logger.warn(`loadAiEditingConversation(${projectId}) failed`, error)
-    return { messages: [], context: null }
+    return { messages: [], context: null, workflow: null }
   }
 }
 
@@ -216,7 +246,7 @@ export async function saveAiEditingConversation(
   projectId: string,
   messages: AiEditingConversationMessage[],
 ): Promise<void> {
-  await saveAiEditingConversationState(projectId, { messages, context: null })
+  await saveAiEditingConversationState(projectId, { messages, context: null, workflow: null })
 }
 
 export async function saveAiEditingConversationState(
@@ -228,6 +258,7 @@ export async function saveAiEditingConversationState(
       version: CONVERSATION_VERSION,
       messages: state.messages.map((message) => ({ ...message })),
       ...(state.context ? { context: { ...state.context } } : {}),
+      ...(state.workflow ? { workflow: { ...state.workflow } } : {}),
     }
     await writeJsonAtomic(requireWorkspaceRoot(), projectAiEditingConversationPath(projectId), file)
   } catch (error) {

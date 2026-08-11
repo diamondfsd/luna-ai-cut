@@ -32,6 +32,60 @@ projects/{projectId}/
 │   └── tests/
 ```
 
+## Runtime Architecture
+
+The built-in agent is split into policy-free harness mechanics and Luna-specific editing policy:
+
+```text
+AI editing store
+  -> conversation context manager
+  -> orchestrator (composition root)
+     -> agent harness runtime
+        -> model driver (native tools or JSON compatibility)
+        -> tool executor -> registry -> editing workspace/compiler
+        -> completion policy
+        -> trace/progress event sink
+```
+
+- `agent-harness/runtime.ts` owns the bounded model/tool loop, cancellation, protocol recovery,
+  fallback, event emission, and stop conditions. It does not import timeline stores or provider APIs.
+- `agent-harness/native-driver.ts` translates the neutral loop into native function calls. Tool names,
+  argument decoding, assistant tool-call messages, and tool outputs stay in this driver.
+- `agent-harness/json-driver.ts` keeps local and OpenAI-compatible models usable when native function
+  calling is unavailable. JSON is a compatibility transport, not the agent's domain model.
+- `agent-harness/context-manager.ts` owns context-window policy through a replaceable compactor. The
+  current compactor creates a durable semantic summary while retaining recent messages verbatim.
+- `orchestrator.ts` assembles the workspace prompt, driver, tool executor, completion policy, and UI
+  event mapping. It must not grow a second provider-specific loop.
+- The Zustand store owns UI state and durable conversation checkpoints; it does not decide tool-loop
+  mechanics or inspect provider responses.
+
+The runtime follows the tool loop documented by the OpenAI Responses API: send the available tools,
+execute every returned call in the application, append tool outputs, and continue until the model
+returns a final answer or the host completion policy stops the run. See the official
+[function calling guide](https://developers.openai.com/api/docs/guides/function-calling).
+
+### Context and compaction
+
+There are three distinct context layers and they must not be collapsed into one message array:
+
+1. **Instructions** are rebuilt from current workspace state before each model request.
+2. **Working context** contains the current turn's model outputs, tool calls, and tool results.
+3. **Durable conversation context** contains user-visible turns plus a persisted compaction
+   checkpoint for older turns.
+
+The current Chat Completions/local-model transports use semantic-summary compaction through
+`AgentContextCompactor`. A future Responses driver should preserve the complete `response.output`
+items, including reasoning and tool-call items, and replace the summary compactor with server-side
+`context_management` or the standalone compact endpoint. The compact output is opaque canonical
+state and must be persisted and replayed as-is rather than rewritten into a human summary. See the
+official [conversation state](https://developers.openai.com/api/docs/guides/conversation-state) and
+[compaction](https://developers.openai.com/api/docs/guides/compaction) guides.
+
+This split deliberately keeps provider state out of the editing tools. Adding a Responses driver,
+another hosted provider, or a stronger local model only requires a driver and, when appropriate, a
+context compactor; the workspace and completion policies remain unchanged.
+
 `project.json` stores an `aiEditingPublication` marker beside the compiled timeline. It records the
 published source commit, semantic build fingerprint, revisions, and receipt in the same project
 update as the timeline.
@@ -150,8 +204,9 @@ Complete it as a desired-state compiler:
 6. Detect manual drift of AI-managed entities explicitly. Either preserve the user edit and report a
    structured conflict, or restore source intent according to an explicit ownership policy; never
    silently infer ownership from time range alone.
-7. Apply the already-built semantic artifact after a final revision comparison. Publication must not
-   invoke a second compiler that reads different live state.
+7. Keep extending the prepared-build boundary to a complete immutable compiler input. Publication
+   already fingerprints, diffs, and applies one prepared artifact without invoking a second source
+   compilation; the remaining work is removing all live-store reads from that artifact's compiler.
 
 Until the pure compiler exists, changed source may rebuild all source-owned entities. This is correct
 but produces a larger diff than a true entity-level desired-state compiler.
@@ -189,9 +244,11 @@ capture live revision R
 ```
 
 Checking, building, testing, diffing, and Git source commits cannot access live timeline mutation
-APIs. `timeline.commit` is the only live write boundary. A checkout deduplicates in-flight publication
-in memory, while the project publication marker provides cross-process idempotency for an unchanged
-commit at the published revision.
+APIs. `timeline.commit` is the only live write boundary. Publication prepares one build artifact and
+uses that exact artifact for its semantic diff, fingerprint, and final apply. If the production
+baseline changes, the prepared artifact is rejected as stale. A checkout deduplicates in-flight
+publication in memory, while the project publication marker provides cross-process idempotency for
+an unchanged commit at the published revision.
 
 If the live revision differs from the checkout revision, publish returns a structured conflict and no
 timeline data changes. The source commit remains durable. A later turn can create a fresh projection,
