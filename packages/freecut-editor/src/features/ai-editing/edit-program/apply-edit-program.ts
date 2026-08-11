@@ -1,12 +1,18 @@
-import { useTimelineCommandStore, useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
+import {
+  useTimelineCommandStore,
+  useTimelineStore,
+} from '@freecut/features/editor/deps/timeline-store'
 import { addItemsOnNewTracks } from '@freecut/features/editor/deps/timeline-contract'
 import { compileEditProgram } from './compiler'
 import type { EditProgram, EditProgramApplyResult } from './types'
 import { assertSingleShotInsert } from './single-shot-policy'
 
-export async function applyEditProgram(program: EditProgram): Promise<EditProgramApplyResult> {
+export async function applyEditProgram(
+  program: EditProgram,
+  options: { enforceSingleShot?: boolean } = {},
+): Promise<EditProgramApplyResult> {
   const compiled = await compileEditProgram(program)
-  assertSingleShotInsert(compiled.insertItems)
+  if (options.enforceSingleShot !== false) assertSingleShotInsert(compiled.insertItems)
   const revisionBefore = useTimelineStore.getState().changeVersion ?? 0
   if (program.mode === 'preview') {
     return {
@@ -18,9 +24,9 @@ export async function applyEditProgram(program: EditProgram): Promise<EditProgra
     }
   }
 
-  useTimelineCommandStore.getState().executeTransaction(
-    { type: 'AI_EDIT_PROGRAM', payload: { intent: program.intent } },
-    () => {
+  useTimelineCommandStore
+    .getState()
+    .executeTransaction({ type: 'AI_EDIT_PROGRAM', payload: { intent: program.intent } }, () => {
       if ((useTimelineStore.getState().changeVersion ?? 0) !== program.baseRevision) {
         throw new Error('时间轴在编辑程序提交前已发生变化，本次修改没有执行。')
       }
@@ -40,19 +46,20 @@ export async function applyEditProgram(program: EditProgram): Promise<EditProgra
         )
         if (existing) current.removeTransition(existing.id)
         if (!change.draft) continue
-        const added = useTimelineStore.getState().addTransition(
-          change.between[0],
-          change.between[1],
-          'crossfade',
-          Math.max(1, Math.round(change.draft.duration * current.fps)),
-          change.draft.presentation,
-          change.draft.direction,
-          change.draft.alignment ?? 0.5,
-        )
+        const added = useTimelineStore
+          .getState()
+          .addTransition(
+            change.between[0],
+            change.between[1],
+            'crossfade',
+            Math.max(1, Math.round(change.draft.duration * current.fps)),
+            change.draft.presentation,
+            change.draft.direction,
+            change.draft.alignment ?? 0.5,
+          )
         if (!added) throw new Error('转场不符合相邻关系或素材余量要求，本次修改已回滚。')
       }
-    },
-  )
+    })
 
   const revisionAfter = useTimelineStore.getState().changeVersion ?? revisionBefore
   return {

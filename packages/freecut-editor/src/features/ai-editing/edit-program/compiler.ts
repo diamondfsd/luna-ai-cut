@@ -11,7 +11,16 @@ import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/p
 import type { TextItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { clipRef, idFromAgentRef } from '../workspace-document/build-workspace-document'
 import type { AgentClipDraft, AgentTransitionSpec, EditProgram, EditProgramDiff } from './types'
+import { resolveAiLinkedAudioPlacement } from './audio-placement'
 import { prepareHtmlInsert, prepareHtmlUpdate } from './html-compiler'
+import {
+  assertNoSourceCollisions,
+  collectDesiredSourceRefs,
+  indexOwnedSourceRefs,
+  removeOwnedSourceRef as reconcileOwnedSourceRef,
+  sourceOwnedItems,
+  tagSourceOwnedItems,
+} from './source-reconciliation'
 import { compileTextPresentation, prepareEditableTextItem } from './text-compiler'
 import { compileVisualState } from './visual-compiler'
 
@@ -53,36 +62,6 @@ function assertTrackCompatibility(
   if (track.locked) throw new Error(`轨道“${track.name}”已锁定。`)
   const expected = type === 'audio' ? 'audio' : type === 'text' ? 'subtitle' : 'video'
   if (getTrackKind(track) !== expected) throw new Error(`素材不能放入轨道“${track.name}”。`)
-}
-
-export function resolveAiLinkedAudioPlacement(params: {
-  tracks: TimelineTrack[]
-  items: TimelineItem[]
-  from: number
-  durationInFrames: number
-}): { tracks: TimelineTrack[]; trackId: string } {
-  const end = params.from + params.durationInFrames
-  const reusableTrack = params.tracks
-    .filter((track) => !track.isGroup && !track.locked && getTrackKind(track) === 'audio')
-    .filter((track) =>
-      params.items.every(
-        (item) =>
-          item.trackId !== track.id ||
-          item.from + item.durationInFrames <= params.from ||
-          item.from >= end,
-      ),
-    )
-    .sort((left, right) => left.order - right.order)[0]
-
-  if (reusableTrack) return { tracks: params.tracks, trackId: reusableTrack.id }
-
-  const maxOrder = params.tracks.reduce((highest, track) => Math.max(highest, track.order), 0)
-  const audioTrack = createClassicTrack({
-    tracks: params.tracks,
-    kind: 'audio',
-    order: maxOrder + 1,
-  })
-  return { tracks: [...params.tracks, audioTrack], trackId: audioTrack.id }
 }
 
 async function prepareClipDraft(
@@ -165,19 +144,7 @@ async function prepareClipDraft(
   return { items: builtItems, tracks: nextTracks }
 }
 
-function assertNoCollisions(items: TimelineItem[], touchedIds: Set<string>): void {
-  const sorted = items.toSorted(
-    (left, right) => left.trackId.localeCompare(right.trackId) || left.from - right.from,
-  )
-  for (let index = 1; index < sorted.length; index += 1) {
-    const left = sorted[index - 1]!
-    const right = sorted[index]!
-    if (left.trackId !== right.trackId) continue
-    if (left.from + left.durationInFrames <= right.from) continue
-    if (!touchedIds.has(left.id) && !touchedIds.has(right.id)) continue
-    throw new Error(`片段“${left.label}”与“${right.label}”在同一轨道发生重叠。`)
-  }
-}
+export { resolveAiLinkedAudioPlacement }
 
 export async function compileEditProgram(program: EditProgram): Promise<CompiledEditProgram> {
   const timeline = useTimelineStore.getState()
@@ -199,6 +166,32 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
   const refs = new Map<string, string>(timeline.items.map((item) => [clipRef(item.id), item.id]))
   const touchedIds = new Set<string>()
   const changedRanges: EditProgramDiff['changedRanges'] = []
+  const desiredSourceRefs = collectDesiredSourceRefs(program)
+  indexOwnedSourceRefs(program, timeline.items, refs)
+
+  const markRemoved = (item: TimelineItem): void => {
+    if (removeIds.has(item.id)) return
+    removeIds.add(item.id)
+    touchedIds.add(item.id)
+    if (item.aiEditingSource?.role === 'primary') refs.delete(item.aiEditingSource.ref)
+    changedRanges.push({
+      start: item.from / fps,
+      end: (item.from + item.durationInFrames) / fps,
+    })
+  }
+
+  const removeOwnedSourceRef = (sourceRef: string): boolean => {
+    const result = reconcileOwnedSourceRef({ program, sourceRef, items: virtualItems, markRemoved })
+    virtualItems = result.items
+    return result.removed
+  }
+
+  for (const item of sourceOwnedItems(program, virtualItems)) {
+    const source = item.aiEditingSource!
+    if (!desiredSourceRefs.has(source.ref)) {
+      removeOwnedSourceRef(source.ref)
+    }
+  }
 
   const resolveClipId = (value: string): string => {
     const id = refs.get(value)
@@ -206,8 +199,12 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
     return id
   }
   const appendDraft = async (draft: AgentClipDraft) => {
-    if (refs.has(draft.ref)) throw new Error(`编辑程序中的片段引用“${draft.ref}”重复。`)
+    const replacedOwnedItem = removeOwnedSourceRef(draft.ref)
+    if (!replacedOwnedItem && refs.has(draft.ref)) {
+      throw new Error(`编辑程序中的片段引用“${draft.ref}”重复。`)
+    }
     const prepared = await prepareClipDraft(draft, fps, canvas, virtualTracks, virtualItems)
+    tagSourceOwnedItems(program, draft.ref, prepared.items)
     const item = prepared.items[0]
     if (!item) throw new Error('无法创建时间线片段。')
     virtualTracks = prepared.tracks
@@ -229,13 +226,11 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       for (const item of virtualItems) {
         if (!targetTracks.has(item.trackId)) continue
         if (item.from >= end || item.from + item.durationInFrames <= start) continue
-        removeIds.add(item.id)
-        touchedIds.add(item.id)
+        markRemoved(item)
         if (item.linkedGroupId) {
           for (const linkedItem of virtualItems) {
             if (linkedItem.linkedGroupId !== item.linkedGroupId) continue
-            removeIds.add(linkedItem.id)
-            touchedIds.add(linkedItem.id)
+            markRemoved(linkedItem)
           }
         }
       }
@@ -261,7 +256,8 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
     }
 
     if (operation.type === 'insertText') {
-      if (refs.has(operation.text.ref)) {
+      const replacedOwnedItem = removeOwnedSourceRef(operation.text.ref)
+      if (!replacedOwnedItem && refs.has(operation.text.ref)) {
         throw new Error(`编辑程序中的片段引用“${operation.text.ref}”重复。`)
       }
       const startFrame = secondsToFrames(operation.text.start, fps)
@@ -326,6 +322,7 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
       )
       const insertedTextItem: TimelineItem =
         operation.text.role === 'caption' ? { ...textItem, textRole: 'caption' } : textItem
+      tagSourceOwnedItems(program, operation.text.ref, [insertedTextItem])
       refs.set(operation.text.ref, insertedTextItem.id)
       insertItems.push(insertedTextItem)
       virtualItems.push(insertedTextItem)
@@ -338,7 +335,8 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
     }
 
     if (operation.type === 'insertHtml') {
-      if (refs.has(operation.html.ref)) {
+      const replacedOwnedItem = removeOwnedSourceRef(operation.html.ref)
+      if (!replacedOwnedItem && refs.has(operation.html.ref)) {
         throw new Error(`编辑程序中的片段引用“${operation.html.ref}”重复。`)
       }
       const prepared = prepareHtmlInsert({
@@ -349,6 +347,7 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
         items: virtualItems,
       })
       const htmlItem = prepared.item
+      tagSourceOwnedItems(program, operation.html.ref, [htmlItem])
       virtualTracks = prepared.tracks
       refs.set(operation.html.ref, htmlItem.id)
       insertItems.push(htmlItem)
@@ -378,7 +377,9 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
     }
 
     if (operation.type === 'removeClip') {
-      const id = resolveClipId(operation.clipRef)
+      const existingId = refs.get(operation.clipRef)
+      if (!existingId && program.sourceProjectId) continue
+      const id = existingId ?? resolveClipId(operation.clipRef)
       const item = virtualItems.find((candidate) => candidate.id === id)
       if (!item) throw new Error(`片段“${operation.clipRef}”已经被移除。`)
       removeIds.add(id)
@@ -473,7 +474,7 @@ export async function compileEditProgram(program: EditProgram): Promise<Compiled
     transitions.push({ between, draft: operation.transition })
   }
 
-  assertNoCollisions(virtualItems, touchedIds)
+  assertNoSourceCollisions(virtualItems, touchedIds)
   return {
     program,
     removeIds: [...removeIds],

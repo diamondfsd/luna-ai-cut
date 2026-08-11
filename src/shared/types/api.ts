@@ -41,6 +41,7 @@ import type {
   WorkspaceVisualAnalysisRequest,
   WorkspaceVisualAnalysisResult,
 } from './aiEditing'
+import type { AiEditingSourceGitApi } from './aiEditingSourceGit'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
 export interface WorkspaceSegmentationRequest {
@@ -319,6 +320,7 @@ export interface LunaApi {
     cancel(requestId: string): Promise<void>
     onStatus(callback: (status: AiEditingAssistantRequestStatus) => void): () => void
   }
+  aiEditingSourceGit: AiEditingSourceGitApi
   workspace: {
     chooseMediaFiles(): Promise<string[]>
     chooseMediaDirectory(): Promise<string[]>

@@ -66,6 +66,12 @@ type BaseTimelineItem = {
   compositionId?: string // Reference to a sub-composition for compound wrappers
   originId?: string // Tracks lineage - items from same split share this for stable React keys
   linkedGroupId?: string // Links paired timeline items like synced video/audio companions
+  /** Stable ownership used to reconcile declarative AI editing source across sessions. */
+  aiEditingSource?: {
+    projectId: string
+    ref: string
+    role: 'primary' | 'linked'
+  }
   // Trim properties for media items
   trimStart?: number // Frames trimmed from start of source media
   trimEnd?: number // Frames trimmed from end of source media

@@ -38,6 +38,9 @@ resources/dolby-vision/
 .dolby-tools-cache/
 .dxc-cache/
 docs/
+!packages/freecut-editor/docs/
+packages/freecut-editor/docs/*
+!packages/freecut-editor/docs/ai-editing-coding-agent-harness.md
 
 # Local deploy config
 scripts/deploy-release.conf

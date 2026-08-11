@@ -5,11 +5,20 @@ import directingAndEditingMarkdown from '../prompts/skills/foundations/directing
 import reviewAndRefinementMarkdown from '../prompts/skills/foundations/review-and-refinement.md?raw'
 import type { AiEditingSkill } from './types'
 
-function readFrontmatter(markdown: string): { name: string; description: string; instructions: string } {
+function readFrontmatter(markdown: string): {
+  name: string
+  description: string
+  instructions: string
+} {
   const match = markdown.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/)
   const frontmatter = match?.[1] ?? ''
-  const valueFor = (key: string) => frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1]?.trim() ?? ''
-  return { name: valueFor('name'), description: valueFor('description'), instructions: match?.[2]?.trim() ?? markdown.trim() }
+  const valueFor = (key: string) =>
+    frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1]?.trim() ?? ''
+  return {
+    name: valueFor('name'),
+    description: valueFor('description'),
+    instructions: match?.[2]?.trim() ?? markdown.trim(),
+  }
 }
 
 function builtInProductShowcase(): AiEditingSkill {
@@ -24,7 +33,16 @@ function builtInProductShowcase(): AiEditingSkill {
       'analysis.request',
       'analysis.search_transcript',
       'audio.analyze_beats',
-      'workspace.apply_edit_program',
+      'workspace.list',
+      'workspace.read',
+      'workspace.search',
+      'workspace.patch',
+      'timeline.check',
+      'timeline.build',
+      'timeline.test',
+      'timeline.diff',
+      'git.commit',
+      'timeline.commit',
     ],
     requiresFinishedVideo: true,
     source: 'built-in',
@@ -44,7 +62,16 @@ function builtInProductUiLaunch(): AiEditingSkill {
       'analysis.request',
       'analysis.search_transcript',
       'audio.analyze_beats',
-      'workspace.apply_edit_program',
+      'workspace.list',
+      'workspace.read',
+      'workspace.search',
+      'workspace.patch',
+      'timeline.check',
+      'timeline.build',
+      'timeline.test',
+      'timeline.diff',
+      'git.commit',
+      'timeline.commit',
     ],
     requiresFinishedVideo: true,
     source: 'built-in',
