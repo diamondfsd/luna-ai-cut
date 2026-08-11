@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-初始交接改动已由提交 `3be633cc` 落入当前分支。本次续作尚未提交，工作树中包含跨用户轮次 Agent 工作消息持久化、完整轮次压缩、流式 usage 兼容降级和 `workspace.exec` 修正。
+初始交接改动已由提交 `3be633cc` 落入当前分支。本次续作尚未提交，工作树中包含跨用户轮次 Agent 工作消息持久化、稳定工具目录、结构化素材/源码读取工具、完整轮次压缩和流式 usage 兼容降级。
 
 已完成验证：
 
@@ -17,7 +17,7 @@
 
 续作验证：
 
-- FreeCut 定向测试 20 项通过，覆盖可重放 transcript、完整 tool exchange、整轮压缩、会话存储和 `workspace.exec`。
+- FreeCut 定向测试覆盖可重放 transcript、完整 tool exchange、整轮压缩、会话存储和结构化工具契约。
 - `pnpm test:ai-editing-stream` 与 `pnpm test:ai-editing-retry` 通过。
 - `pnpm run typecheck:freecut` 与 `pnpm run build:app` 通过；构建仍只有现存警告。
 
@@ -29,41 +29,38 @@
 - AI 使用 `source.read`、`source.replace`、`source.create`、`source.remove` 修改文件。
 - `source.replace` 使用原文匹配作为乐观并发控制；原文变化时失败，Agent 再读取并重试，不依赖 Git revision 校验。
 - Git 只负责查看变更和提交，不作为人工编辑与 AI 编辑同步的额外协议。
-- 工具定义按需加载，避免把全部工具 JSON Schema 放进每次模型请求。
+- 当前工具数量有限，完整工具定义固定放入稳定 system 前缀；同一轮 Native 调用复用同一份函数目录。
 - 对话只在真实输入 token 达到模型上下文窗口 80% 时压缩，不使用字符数或消息数量估算。
 
 ## 已完成改动
 
-### 1. 工具按需加载
+### 1. 稳定完整工具目录
 
-新增 `tool.load`，模型初始只拿到精简工具目录和 `tool.load` 的完整定义。模型先根据目录选择工具 ID，再加载最多 6 个工具的完整参数定义。后续原生工具调用轮次会根据已加载集合动态更新 tools。
+已删除 `tool.load` 和延迟加载器。模型从首轮开始获得当前任务允许的完整工具定义；定义只位于稳定 system 提示词和 Native 函数目录，本轮仓库摘要与用户请求追加在历史消息之后，不会污染可缓存前缀。
 
 关键文件：
 
-- `packages/freecut-editor/src/features/ai-editing/deferred-tool-loader.ts`
-- `packages/freecut-editor/src/features/ai-editing/tools/tool-loader-tools.ts`
+- `packages/freecut-editor/src/features/ai-editing/tool-set.ts`
 - `packages/freecut-editor/src/features/ai-editing/agent-prompt.ts`
 - `packages/freecut-editor/src/features/ai-editing/orchestration-drivers.ts`
 - `packages/freecut-editor/src/features/ai-editing/orchestrator.ts`
 
-### 2. 查询和 Git 工具整合
+### 2. 结构化素材、源码和 Git 工具
 
-原来的 `workspace.list/read/search` 以及 `git.status/diff/log/branch` 已从 Agent 工具清单移除，合并为一个 `workspace.exec`。
+已删除自由命令式的 `workspace.exec`。常用读取能力固定为显式参数工具：
 
-`workspace.exec` 不是系统 shell，而是跨平台 TypeScript 命令分发器，目前只支持：
+- `media.list`：按名称和类型分页列出项目素材与分析状态。
+- `media.read`：按素材 ID 批量读取受限数量的画面证据，并报告失效 ID。
+- `workspace.list` / `workspace.search`：结构化浏览和固定文本搜索虚拟工程。
+- `git.status` / `git.diff` / `git.log`：只读检查剪辑源码仓库。
+- `project.inspect` / `timeline.inspect_context`：读取时间轴总览和指定范围上下文。
 
-- `ls`
-- `rg`
-- `sed -n`
-- `wc`
-- 只读的 `git status/diff/log/branch`
-
-源码写入仍强制走专用 `source.*` 工具，提交仍走 `git.commit`。因此 Windows 不依赖 Bash、macOS 路径或外部命令。
+源码读取和写入仍强制走专用 `source.*` 工具，提交仍走 `git.commit`。所有工具直接操作虚拟工作区，不依赖系统 Shell。
 
 关键文件：
 
-- `packages/freecut-editor/src/features/ai-editing/workspace-command.ts`
 - `packages/freecut-editor/src/features/ai-editing/tools/coding-workspace-tools.ts`
+- `packages/freecut-editor/src/features/ai-editing/tools/project-tools.ts`
 - `packages/freecut-editor/src/features/ai-editing/tool-registry.ts`
 
 ### 3. 模型上下文窗口配置
@@ -182,18 +179,14 @@ stream_options: { include_usage: true }
 
 如果产品要求“每次模型接口调用的完整请求和完整响应原文都可查看”，需要在 driver 收到结果后追加专用响应记录，并注意不要在日志中写入 API Key。
 
-### P1：`workspace.exec` 命令帮助和路径规范仍需加强
-
-当前只支持有限命令，不支持 `cat`。`ls`/`rg` 已统一去除目录末尾 `/`，`wc -l` 已修正为标准换行计数。命令错误结果仍可补充可调用示例，`rg` 分页与正则语义仍需完善。
-
-### P1：工具按需加载需要真实任务回归
+### P1：稳定工具目录需要真实任务回归
 
 需要确认以下场景：
 
-- 原生 function calling 下先 `tool.load` 再调用新工具。
-- JSON fallback 下加载后，下一轮提示包含新增完整定义。
+- 原生 function calling 首轮可直接选择任意允许工具，后续轮次目录保持不变。
+- JSON fallback 使用 system 前缀中的同一份完整定义。
 - `availableToolIds` 限制生效，不能加载任务范围外工具。
-- 工具加载失败后模型能根据目录选择正确 ID，不陷入重复调用。
+- 模型优先使用 `media.list/media.read`，不再尝试 Shell 命令或用 `source.read` 读取素材投影。
 
 ### P2：模型设置读取有一次额外调用
 
@@ -203,19 +196,19 @@ stream_options: { include_usage: true }
 
 1. 用真实模型服务完成一次简单聊天和一次多工具编辑，确认 usage、缓存占比及调用记录展示。
 2. 处理不支持 `stream_options` 的兼容服务商降级策略。
-3. 设计并实现跨用户轮次的完整 Agent message 持久化，这是当前上下文稳定性的核心缺口。
-4. 让压缩器以完整 tool exchange 为边界处理 Agent message，而不是只压缩展示聊天。
+3. 用较大的真实项目回归 `media.list/media.read` 的分页、批量限制和上下文体积。
+4. 检查多轮对话的 system/tool 前缀缓存命中率是否保持稳定。
 5. 补齐完整响应原文记录。
-6. 回归 `tool.load`、`workspace.exec`、JSON fallback 和 Windows 路径行为。
+6. 回归 Native/JSON fallback、结构化工具 allowlist 和 Windows 路径行为。
 
 ## 工作树范围
 
-当前 `git diff --stat` 为 33 个已跟踪文件发生变化，另有 5 个新增源文件和本交接文档。主要新增文件：
+当前工作树包含此前续作和本轮结构化工具改造。主要新增文件：
 
 - `electron/aiEditingAssistantConfig.ts`
-- `packages/freecut-editor/src/features/ai-editing/deferred-tool-loader.ts`
 - `packages/freecut-editor/src/features/ai-editing/orchestration-drivers.ts`
-- `packages/freecut-editor/src/features/ai-editing/tools/tool-loader-tools.ts`
-- `packages/freecut-editor/src/features/ai-editing/workspace-command.ts`
+- `packages/freecut-editor/src/features/ai-editing/tool-set.ts`
+- `packages/freecut-editor/src/features/ai-editing/tools/project-tools.test.ts`
+- `packages/freecut-editor/src/features/ai-editing/tools/coding-workspace-tools.test.ts`
 
 交接前不要覆盖或回退当前工作树；这些改动尚未形成提交。

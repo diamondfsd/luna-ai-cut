@@ -86,7 +86,7 @@ const searchTranscript = defineAiEditingTool({
       mediaIds: {
         type: 'array',
         items: { type: 'string' },
-        description: '可选的素材范围，使用 workspace.media[].ref。',
+        description: '可选的素材范围，使用 media.list 返回的 id。',
       },
     },
     ['query'],
@@ -119,7 +119,7 @@ const readTranscript = defineAiEditingTool({
       mediaIds: {
         type: 'array',
         items: { type: 'string' },
-        description: '要读取口播的素材，使用 workspace.media[].ref。',
+        description: '要读取口播的素材，使用 media.list 返回的 id。',
       },
       cursor: { type: 'integer', minimum: 0 },
       limit: { type: 'integer', minimum: 1, maximum: MAX_TRANSCRIPT_PAGE_SIZE },
@@ -155,7 +155,7 @@ const requestAnalysis = defineAiEditingTool({
       mediaIds: {
         type: 'array',
         items: { type: 'string' },
-        description: '要分析的素材，使用 workspace.media[].ref。',
+        description: '要分析的素材，使用 media.list 返回的 id。',
       },
       kind: { type: 'string', enum: ['transcript', 'visual'] },
     },

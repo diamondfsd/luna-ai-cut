@@ -7,6 +7,11 @@ export interface NormalizedTextBox {
   height: number
 }
 
+export interface NormalizedTextAnchor {
+  x: number
+  y: number
+}
+
 interface CanvasSize {
   width: number
   height: number
@@ -29,7 +34,7 @@ export function normalizedTextBoxFromTransform(
 export function transformFromNormalizedTextBox(
   box: NormalizedTextBox,
   canvas: CanvasSize,
-): Pick<TransformProperties, 'x' | 'y' | 'width' | 'height'> {
+): { x: number; y: number; width: number; height: number } {
   const width = box.width * canvas.width
   const height = box.height * canvas.height
   return {
@@ -49,4 +54,12 @@ export function isNormalizedTextBox(value: unknown): value is NormalizedTextBox 
   return left >= 0 && top >= 0 && width > 0 && height > 0 &&
     left <= 1 && top <= 1 && width <= 1 && height <= 1 &&
     left + width <= 1.000_001 && top + height <= 1.000_001
+}
+
+export function isNormalizedTextAnchor(value: unknown): value is NormalizedTextAnchor {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const anchor = value as Record<string, unknown>
+  return typeof anchor.x === 'number' && Number.isFinite(anchor.x) &&
+    typeof anchor.y === 'number' && Number.isFinite(anchor.y) &&
+    anchor.x >= 0 && anchor.x <= 1 && anchor.y >= 0 && anchor.y <= 1
 }

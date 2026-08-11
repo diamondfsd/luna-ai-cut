@@ -53,15 +53,11 @@ function currentTurnUserMessage(
   userText: string,
   history: readonly LlmMessage[],
   evidence: unknown,
-  protocol: 'native' | 'json',
-  activeToolIds: ReadonlySet<string>,
   requiresEditCommit: boolean,
 ): string {
   return [
     buildAiEditingTurnContext(
       evidence,
-      protocol,
-      activeToolIds,
       executionDirectiveForTurn(userText, history, requiresEditCommit),
     ),
     `用户本轮请求：\n${userText}`,
@@ -104,15 +100,14 @@ export async function buildInitialNativeMessages(
   userText: string,
   history: EmbeddedAiAssistantMessage[],
   evidence: unknown,
-  candidateToolIds: ReadonlySet<string>,
-  activeToolIds: ReadonlySet<string>,
+  availableToolIds: ReadonlySet<string>,
   requiresEditCommit = false,
 ): Promise<EmbeddedAiAssistantMessage[]> {
   const textHistory = replayMessagesForJson(history)
   return [
     {
       role: 'system',
-      content: await buildAiEditingSystemPrompt('native', candidateToolIds),
+      content: await buildAiEditingSystemPrompt('native', availableToolIds),
     },
     ...history,
     {
@@ -121,8 +116,6 @@ export async function buildInitialNativeMessages(
         userText,
         textHistory,
         evidence,
-        'native',
-        activeToolIds,
         requiresEditCommit,
       ),
     },
@@ -134,14 +127,13 @@ export async function buildInitialMessages(
   history: LlmMessage[],
   evidence: unknown,
   protocol: 'native' | 'json',
-  candidateToolIds: ReadonlySet<string>,
-  activeToolIds: ReadonlySet<string>,
+  availableToolIds: ReadonlySet<string>,
   requiresEditCommit = false,
 ): Promise<LlmMessage[]> {
   return [
     {
       role: 'system',
-      content: await buildAiEditingSystemPrompt(protocol, candidateToolIds),
+      content: await buildAiEditingSystemPrompt(protocol, availableToolIds),
     },
     ...history,
     {
@@ -150,8 +142,6 @@ export async function buildInitialMessages(
         userText,
         history,
         evidence,
-        protocol,
-        activeToolIds,
         requiresEditCommit,
       ),
     },

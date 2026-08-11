@@ -15,6 +15,7 @@ import {
   type TransitionsSource,
 } from './project-source-schema'
 import {
+  isNormalizedTextAnchor,
   isNormalizedTextBox,
   normalizedTextBoxFromTransform,
   transformFromNormalizedTextBox,
@@ -26,6 +27,15 @@ interface SourceReader {
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
+}
+
+function omitObjectKeys<T extends object, K extends keyof T>(
+  value: T,
+  keys: readonly K[],
+): Omit<T, K> {
+  const result: Partial<T> = { ...value }
+  for (const key of keys) delete result[key]
+  return result as Omit<T, K>
 }
 
 function sourceKey(id: string): string {
@@ -76,22 +86,29 @@ function sourceClipFromProject(
 ): ProjectSourceClip {
   if (clip.type !== 'text') return clip as unknown as ProjectSourceClip
   const { transform, ...rest } = clip
-  const {
-    x: _x,
-    y: _y,
-    width: _width,
-    height: _height,
-    anchorX: _anchorX,
-    anchorY: _anchorY,
-    ...presentationTransform
-  } = transform ?? {}
+  const presentationTransform = omitObjectKeys(
+    transform ?? {},
+    TEXT_LAYOUT_TRANSFORM_FIELDS,
+  )
   const textBox = normalizedTextBoxFromTransform(transform, canvas)
   if (!isNormalizedTextBox(textBox)) {
     throw new Error(`文字“${clip.label}”的文字框必须完整位于画布范围内。`)
   }
+  const textAnchor = transform?.anchorX !== undefined || transform?.anchorY !== undefined
+    ? {
+        x: (transform.anchorX ?? (transform.width ?? canvas.width) / 2) /
+          (transform.width ?? canvas.width),
+        y: (transform.anchorY ?? (transform.height ?? canvas.height) / 2) /
+          (transform.height ?? canvas.height),
+      }
+    : undefined
+  if (textAnchor && !isNormalizedTextAnchor(textAnchor)) {
+    throw new Error(`文字“${clip.label}”的旋转锚点必须位于文字框范围内。`)
+  }
   return {
     ...rest,
     textBox,
+    ...(textAnchor ? { textAnchor } : {}),
     ...(Object.keys(presentationTransform).length > 0
       ? { transform: presentationTransform }
       : {}),
@@ -110,6 +127,9 @@ function projectClipFromSource(
   if (!isNormalizedTextBox(clip.textBox)) {
     throw new Error(`文字片段的 textBox 必须使用 0 到 1 的画布归一化坐标：${path}`)
   }
+  if ('textAnchor' in clip && !isNormalizedTextAnchor(clip.textAnchor)) {
+    throw new Error(`文字片段的 textAnchor 必须使用 0 到 1 的文字框归一化坐标：${path}`)
+  }
   if ('transform' in clip && !isObject(clip.transform)) {
     throw new Error(`文字片段的 transform 必须是对象：${path}`)
   }
@@ -122,12 +142,19 @@ function projectClipFromSource(
       )
     }
   }
-  const { textBox, transform, ...rest } = clip
+  const { textBox, textAnchor, transform, ...rest } = clip
+  const layoutTransform = transformFromNormalizedTextBox(textBox, canvas)
   return {
     ...rest,
     transform: {
       ...(isObject(transform) ? transform : {}),
-      ...transformFromNormalizedTextBox(textBox, canvas),
+      ...layoutTransform,
+      ...(isNormalizedTextAnchor(textAnchor)
+        ? {
+            anchorX: textAnchor.x * layoutTransform.width,
+            anchorY: textAnchor.y * layoutTransform.height,
+          }
+        : {}),
     },
   } as ProjectTimeline['items'][number]
 }
@@ -200,15 +227,14 @@ function splitSequence(
     kind: 'animations',
     keyframes: timeline.keyframes ?? [],
   } satisfies AnimationsSource)
-  const {
-    tracks: _tracks,
-    items: _items,
-    transitions: _transitions,
-    keyframes: _keyframes,
-    compositions: _compositions,
-    topLevelSequenceIds: _topLevelSequenceIds,
-    ...state
-  } = timeline
+  const state = omitObjectKeys(timeline, [
+    'tracks',
+    'items',
+    'transitions',
+    'keyframes',
+    'compositions',
+    'topLevelSequenceIds',
+  ])
   files[`${root}/sequence.json`] = json({
     version: PROJECT_SOURCE_VERSION,
     kind: 'sequence',
@@ -237,13 +263,12 @@ export function projectToSourceFiles(project: Project): Record<string, string> {
     const componentFiles = splitSequence(root, component.id, componentTimeline, component)
     Object.assign(files, componentFiles)
     const sequence = JSON.parse(componentFiles[`${root}/sequence.json`]!) as SequenceSource
-    const {
-      tracks: _tracks,
-      items: _items,
-      transitions: _transitions,
-      keyframes: _keyframes,
-      ...state
-    } = component
+    const state = omitObjectKeys(component, [
+      'tracks',
+      'items',
+      'transitions',
+      'keyframes',
+    ])
     const componentPath = `${root}/component.json`
     files[componentPath] = json({
       version: PROJECT_SOURCE_VERSION,

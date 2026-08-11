@@ -1,6 +1,6 @@
 import type { Project, ProjectTimeline } from '@freecut/types/project'
 import type { TextItem, TimelineItem } from '@freecut/types/timeline'
-import type { NormalizedTextBox } from './normalized-text-layout'
+import type { NormalizedTextAnchor, NormalizedTextBox } from './normalized-text-layout'
 
 export const PROJECT_SOURCE_VERSION = 3 as const
 export const PROJECT_SOURCE_SEGMENT_SECONDS = 30
@@ -55,6 +55,8 @@ type TextSourceTransform = Omit<
 export type ProjectSourceTextClip = Omit<TextItem, 'transform'> & {
   /** Normalized canvas box. All values and box edges must remain within 0..1. */
   textBox: NormalizedTextBox
+  /** Optional rotation anchor normalized within textBox. Defaults to its center. */
+  textAnchor?: NormalizedTextAnchor
   /** Presentation only. Pixel layout and anchor fields are forbidden for text source. */
   transform?: TextSourceTransform
 }
