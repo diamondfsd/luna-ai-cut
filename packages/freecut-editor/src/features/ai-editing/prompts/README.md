@@ -4,7 +4,7 @@ This directory is the single source of truth for model-facing instructions used 
 
 - `agent-system.md`: stable autonomous-agent identity and behavior contract.
 - `protocols/`: transport-specific response and tool-calling instructions.
-- `protocols/edit-program.md`: complete declarative editing data contract.
+- `protocols/coding-workspace.md`: shared-worktree editing and completion protocol.
 - `examples/`: goal-oriented EditProgram examples, not fixed workflows.
 - `skills/foundations/`: general editing judgment exposed through the skill tools.
 - `skills/`: optional domain knowledge searched and read by the Agent when the current task needs it. Skills can be enabled, disabled, or extended by users.

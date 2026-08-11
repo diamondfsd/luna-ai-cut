@@ -72,6 +72,11 @@ import {
   getRootTimelineSnapshot,
   type TimelineSnapshotLike,
 } from './actions/shared'
+import {
+  ensureProjectSource,
+  readProjectSource,
+  writeProjectSource,
+} from '@freecut/features/project-source/project-source-worktree'
 
 const logger = createLogger('TimelineStore')
 
@@ -956,6 +961,13 @@ export async function saveTimeline(projectId: string): Promise<void> {
       height: project.metadata?.height,
     })
 
+    const updatedAt = Date.now()
+    await writeProjectSource({
+      ...project,
+      timeline: sanitizedTimeline,
+      updatedAt,
+    })
+
     // Generate thumbnail — prefer capturing the existing preview canvas
     // (near-free: reuses the already-initialized scrub renderer with cached
     // media + GPU pipeline) and fall back to a full renderSingleFrame only
@@ -1046,7 +1058,6 @@ export async function saveTimeline(projectId: string): Promise<void> {
     // thumbnail work above is preserved. Writing a full record from the
     // pre-await `project` snapshot would clobber those newer fields.
     // Clear the deprecated inline thumbnail field when using thumbnailId.
-    const updatedAt = Date.now()
     await updateProject(projectId, {
       timeline: sanitizedTimeline,
       ...(thumbnailId && { thumbnailId, thumbnail: undefined }),
@@ -1289,12 +1300,17 @@ async function loadTimelineOnce(
     const sanitizedTimeline = repairedLegacyLayouts.project.timeline
       ? sanitizeTimelineEphemeralFields(repairedLegacyLayouts.project.timeline)
       : { timeline: repairedLegacyLayouts.project.timeline, cleaned: false }
-    const project = sanitizedTimeline.cleaned
+    const storedProject = sanitizedTimeline.cleaned
       ? {
           ...repairedLegacyLayouts.project,
           timeline: sanitizedTimeline.timeline,
         }
       : repairedLegacyLayouts.project
+
+    const hasProjectSource = await ensureProjectSource(storedProject)
+    const project = hasProjectSource
+      ? (await readProjectSource(projectId)) ?? storedProject
+      : storedProject
 
     // Log migration activity
     if (migrationResult.migrated || repairedLegacyLayouts.repaired || sanitizedTimeline.cleaned) {

@@ -1,7 +1,6 @@
 import * as nodeFs from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { randomUUID } from 'node:crypto'
 import git from 'isomorphic-git'
 import type {
   AiEditingSourceBranches,
@@ -11,23 +10,40 @@ import type {
   AiEditingSourceEntry,
   AiEditingSourceGitApi,
   AiEditingSourceInitialFiles,
+  AiEditingSourceReplaceInput,
+  AiEditingSourceReplaceResult,
   AiEditingSourceStatus,
   AiEditingSourceStatusEntry,
 } from '../src/shared/types'
 import {
   ensurePlainDirectory,
-  MAX_CHANGE_BATCH_BYTES,
   sourceContentBytes,
   validateBranchName,
   validateProjectId,
   validateSourcePath,
 } from './aiEditingSourceGitPaths.ts'
 import { AI_EDITING_GIT_AUTHOR, setupAiEditingSourceRepository } from './aiEditingSourceGitSetup.ts'
+import {
+  applySourceChangesTransaction,
+  resolveSourceWritablePath,
+} from './aiEditingSourceGitMutation.ts'
 
 const WORKSPACE_DIRECTORY = 'freecut-workspace'
 const PROJECTS_DIRECTORY = 'projects'
 const SOURCE_DIRECTORY = 'editing-source'
 const MAX_INITIAL_SOURCE_FILES = 2_000
+
+function countOccurrences(content: string, text: string): number {
+  let count = 0
+  let offset = 0
+  while (offset <= content.length) {
+    const index = content.indexOf(text, offset)
+    if (index < 0) return count
+    count += 1
+    offset = index + text.length
+  }
+  return count
+}
 
 function changeFromStatus(head: number, workdir: number): AiEditingSourceStatusEntry['change'] {
   if (head === 0) return 'added'
@@ -77,7 +93,7 @@ export class AiEditingSourceGitService {
       repositoryPath: this.repositoryPath,
       files,
       resolveWritablePath: (sourcePath, createdDirectories) =>
-        this.resolveWritablePath(sourcePath, createdDirectories),
+        resolveSourceWritablePath(this.repositoryPath, sourcePath, createdDirectories),
     })
   }
 
@@ -145,106 +161,65 @@ export class AiEditingSourceGitService {
     await this.applyChanges([{ path: sourcePath, content }])
   }
 
-  async remove(sourcePath: string): Promise<void> {
-    await this.applyChanges([{ path: sourcePath, content: null }])
+  create(sourcePath: string, content: string): Promise<void> {
+    return this.enqueueMutation(async () => {
+      const safePath = validateSourcePath(sourcePath)
+      sourceContentBytes(content)
+      try {
+        await this.readNow(safePath)
+        throw new Error('SOURCE_EXISTS: 源码文件已经存在')
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith('SOURCE_EXISTS:')) throw error
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      await applySourceChangesTransaction(this.repositoryPath, [{ path: safePath, content }])
+    })
+  }
+
+  replace(input: AiEditingSourceReplaceInput): Promise<AiEditingSourceReplaceResult> {
+    return this.enqueueMutation(async () => {
+      if (!input || typeof input !== 'object' || typeof input.oldText !== 'string' ||
+        input.oldText.length === 0 || typeof input.newText !== 'string') {
+        throw new Error('SOURCE_REPLACE_INVALID: 替换内容无效')
+      }
+      const sourcePath = validateSourcePath(input.path)
+      const current = await this.readNow(sourcePath)
+      const replacements = countOccurrences(current, input.oldText)
+      if (replacements === 0) {
+        throw new Error('SOURCE_CHANGED: 原文已经变化，请重新读取文件')
+      }
+      if (!input.replaceAll && replacements > 1) {
+        throw new Error(`SOURCE_AMBIGUOUS: 原文在文件中出现 ${replacements} 次，请提供更完整的上下文`)
+      }
+      const content = input.replaceAll
+        ? current.split(input.oldText).join(input.newText)
+        : current.replace(input.oldText, input.newText)
+      if (content === current) return { changed: false, content, replacements }
+      sourceContentBytes(content)
+      await applySourceChangesTransaction(this.repositoryPath, [{ path: sourcePath, content }])
+      return { changed: true, content, replacements: input.replaceAll ? replacements : 1 }
+    })
+  }
+
+  remove(sourcePath: string, expectedContent?: string): Promise<void> {
+    return this.enqueueMutation(async () => {
+      const safePath = validateSourcePath(sourcePath)
+      await this.requireRepository()
+      if (expectedContent !== undefined) {
+        const current = await this.readNow(safePath)
+        if (current !== expectedContent) {
+          throw new Error('SOURCE_CHANGED: 原文已经变化，请重新读取文件')
+        }
+      }
+      await applySourceChangesTransaction(this.repositoryPath, [{ path: safePath, content: null }])
+    })
   }
 
   async applyChanges(changes: AiEditingSourceChange[]): Promise<void> {
-    return this.enqueueMutation(() => this.applyChangesTransaction(changes))
-  }
-
-  private async applyChangesTransaction(changes: AiEditingSourceChange[]): Promise<void> {
-    await this.requireRepository()
-    if (!Array.isArray(changes) || changes.length === 0 || changes.length > 500) {
-      throw new Error('源码改动批次无效')
-    }
-    let batchBytes = 0
-    const normalized = changes.map((change) => {
-      if (
-        !change ||
-        typeof change !== 'object' ||
-        (change.content !== null && typeof change.content !== 'string')
-      ) {
-        throw new Error('源码改动无效')
-      }
-      if (change.content !== null) batchBytes += sourceContentBytes(change.content)
-      return { path: validateSourcePath(change.path), content: change.content }
+    return this.enqueueMutation(async () => {
+      await this.requireRepository()
+      await applySourceChangesTransaction(this.repositoryPath, changes)
     })
-    if (batchBytes > MAX_CHANGE_BATCH_BYTES) throw new Error('源码改动批次超出大小限制')
-    if (new Set(normalized.map((change) => change.path)).size !== normalized.length) {
-      throw new Error('源码改动路径重复')
-    }
-
-    const transactionDirectory = path.join(this.repositoryPath, '.git', 'luna-editing-transactions')
-    await ensurePlainDirectory(transactionDirectory, true)
-    const transactionRoot = path.join(transactionDirectory, randomUUID())
-    const snapshots: Array<{ target: string; backup: string; existed: boolean }> = []
-    const createdDirectories = new Set<string>()
-    let appliedCount = 0
-    let preserveTransaction = false
-    try {
-      await fs.mkdir(transactionRoot)
-      for (const [index, change] of normalized.entries()) {
-        const target = await this.inspectBatchTarget(change.path)
-        let existed = false
-        try {
-          const stat = await fs.lstat(target)
-          if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('剪辑源码路径类型无效')
-          existed = true
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        }
-        if (change.content === null && !existed) throw new Error('要删除的剪辑源码不存在')
-        const backup = path.join(transactionRoot, `${index}.backup`)
-        if (existed) await fs.copyFile(target, backup)
-        if (change.content !== null) {
-          await fs.writeFile(path.join(transactionRoot, `${index}.next`), change.content, {
-            encoding: 'utf8',
-            mode: 0o600,
-          })
-        }
-        snapshots.push({ target, backup, existed })
-      }
-
-      for (const [index, change] of normalized.entries()) {
-        const snapshot = snapshots[index]!
-        if (change.content === null) {
-          await fs.rm(snapshot.target)
-        } else {
-          const destination = await this.resolveWritablePath(change.path, createdDirectories)
-          await fs.rename(path.join(transactionRoot, `${index}.next`), destination)
-        }
-        appliedCount += 1
-      }
-    } catch (error) {
-      let rollbackFailed = false
-      for (const snapshot of snapshots.slice(0, appliedCount).reverse()) {
-        try {
-          if (snapshot.existed) {
-            await fs.mkdir(path.dirname(snapshot.target), { recursive: true })
-            await fs.copyFile(snapshot.backup, snapshot.target)
-          } else {
-            await fs.rm(snapshot.target, { force: true })
-          }
-        } catch {
-          rollbackFailed = true
-        }
-      }
-      for (const directory of [...createdDirectories].sort(
-        (left, right) => right.length - left.length,
-      )) {
-        await fs.rmdir(directory).catch(() => undefined)
-      }
-      if (rollbackFailed) {
-        preserveTransaction = true
-        throw new Error('源码改动失败且无法完整恢复', { cause: error })
-      }
-      throw error
-    } finally {
-      if (!preserveTransaction) {
-        await fs.rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined)
-      }
-    }
   }
 
   async diff(): Promise<AiEditingSourceDiffEntry[]> {
@@ -310,14 +285,19 @@ export class AiEditingSourceGitService {
     })
   }
 
-  commit(message: string): Promise<string> {
+  commit(message: string, sourcePaths?: string[]): Promise<string> {
     return this.enqueueMutation(async () => {
       await this.requireRepository()
       const trimmedMessage = typeof message === 'string' ? message.trim() : ''
       if (!trimmedMessage || trimmedMessage.length > 500) throw new Error('提交说明无效')
+      const paths = sourcePaths?.map((sourcePath) => validateSourcePath(sourcePath))
+      if (paths && (paths.length === 0 || paths.length > 500 || new Set(paths).size !== paths.length)) {
+        throw new Error('提交文件列表无效')
+      }
       const sourceStatus = await this.statusNow()
       if (sourceStatus.clean) throw new Error('没有需要提交的剪辑源码改动')
-      await this.stageAll()
+      if (paths) await this.stagePaths(paths)
+      else await this.stageAll()
       return git.commit({
         fs: nodeFs,
         dir: this.repositoryPath,
@@ -376,52 +356,21 @@ export class AiEditingSourceGitService {
     return realTarget
   }
 
-  private async inspectBatchTarget(sourcePath: string): Promise<string> {
-    const segments = sourcePath.split('/')
-    let current = this.repositoryPath
-    for (const segment of segments.slice(0, -1)) {
-      current = path.join(current, segment)
-      try {
-        const stat = await fs.lstat(current)
-        if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('剪辑源码目录无效')
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') break
-        throw error
-      }
-    }
-    return path.join(this.repositoryPath, ...segments)
-  }
-
-  private async resolveWritablePath(
-    sourcePath: string,
-    createdDirectories?: Set<string>,
-  ): Promise<string> {
-    const segments = sourcePath.split('/')
-    let parent = this.repositoryPath
-    for (const segment of segments.slice(0, -1)) {
-      parent = path.join(parent, segment)
-      try {
-        await fs.lstat(parent)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') createdDirectories?.add(parent)
-        else throw error
-      }
-      await ensurePlainDirectory(parent, true)
-    }
-    const target = path.join(parent, segments.at(-1)!)
-    try {
-      const stat = await fs.lstat(target)
-      if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('剪辑源码路径类型无效')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-    return target
-  }
-
   private async stageAll(): Promise<void> {
     const rows = await git.statusMatrix({ fs: nodeFs, dir: this.repositoryPath })
     for (const [sourcePath, head, workdir, stage] of rows) {
       if (head === stage && workdir === stage) continue
+      if (workdir === 0)
+        await git.remove({ fs: nodeFs, dir: this.repositoryPath, filepath: sourcePath })
+      else await git.add({ fs: nodeFs, dir: this.repositoryPath, filepath: sourcePath })
+    }
+  }
+
+  private async stagePaths(sourcePaths: readonly string[]): Promise<void> {
+    const requested = new Set(sourcePaths)
+    const rows = await git.statusMatrix({ fs: nodeFs, dir: this.repositoryPath })
+    for (const [sourcePath, head, workdir, stage] of rows) {
+      if (!requested.has(sourcePath) || (head === stage && workdir === stage)) continue
       if (workdir === 0)
         await git.remove({ fs: nodeFs, dir: this.repositoryPath, filepath: sourcePath })
       else await git.add({ fs: nodeFs, dir: this.repositoryPath, filepath: sourcePath })
@@ -478,15 +427,20 @@ export function createAiEditingSourceGitApi(baseDir: string): AiEditingSourceGit
     status: async (projectId) => serviceFor(projectId).status(),
     list: async (projectId, sourceDirectory) => serviceFor(projectId).list(sourceDirectory),
     read: async (projectId, sourcePath) => serviceFor(projectId).read(sourcePath),
+    create: async (projectId, sourcePath, content) =>
+      serviceFor(projectId).create(sourcePath, content),
+    replace: async (projectId, input) => serviceFor(projectId).replace(input),
     write: async (projectId, sourcePath, content) =>
       serviceFor(projectId).write(sourcePath, content),
-    remove: async (projectId, sourcePath) => serviceFor(projectId).remove(sourcePath),
+    remove: async (projectId, sourcePath, expectedContent) =>
+      serviceFor(projectId).remove(sourcePath, expectedContent),
     applyChanges: async (projectId, changes) => serviceFor(projectId).applyChanges(changes),
     diff: async (projectId) => serviceFor(projectId).diff(),
     log: async (projectId, limit) => serviceFor(projectId).log(limit),
     branches: async (projectId) => serviceFor(projectId).branches(),
     createBranch: async (projectId, name) => serviceFor(projectId).createBranch(name),
     checkout: async (projectId, name) => serviceFor(projectId).checkout(name),
-    commit: async (projectId, message) => serviceFor(projectId).commit(message),
+    commit: async (projectId, message, sourcePaths) =>
+      serviceFor(projectId).commit(message, sourcePaths),
   }
 }

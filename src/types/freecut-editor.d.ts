@@ -136,15 +136,17 @@ declare module '@freecut/embedded' {
     status(projectId: string): Promise<{ branch: string | null; clean: boolean; entries: Array<{ path: string; change: 'added' | 'modified' | 'deleted' }> }>
     list(projectId: string, sourceDirectory?: string): Promise<Array<{ path: string; name: string; type: 'file' | 'directory' }>>
     read(projectId: string, sourcePath: string): Promise<string>
+    create(projectId: string, sourcePath: string, content: string): Promise<void>
+    replace(projectId: string, input: { path: string; oldText: string; newText: string; replaceAll?: boolean }): Promise<{ changed: boolean; content: string; replacements: number }>
     write(projectId: string, sourcePath: string, content: string): Promise<void>
-    remove(projectId: string, sourcePath: string): Promise<void>
-    applyChanges(projectId: string, changes: Array<{ path: string; content: string | null }>): Promise<void>
+    remove(projectId: string, sourcePath: string, expectedContent?: string): Promise<void>
+    applyChanges(projectId: string, changes: Array<{ path: string; content: string | null; expectedContent?: string | null }>): Promise<void>
     diff(projectId: string): Promise<Array<{ path: string; change: 'added' | 'modified' | 'deleted'; before: string | null; after: string | null }>>
     log(projectId: string, limit?: number): Promise<Array<{ oid: string; message: string; author: { name: string; email: string; timestamp: number } }>>
     branches(projectId: string): Promise<{ current: string | null; names: string[] }>
     createBranch(projectId: string, name: string): Promise<void>
     checkout(projectId: string, name: string): Promise<void>
-    commit(projectId: string, message: string): Promise<string>
+    commit(projectId: string, message: string, sourcePaths?: string[]): Promise<string>
   }
 
   export interface FreeCutEditorProps {

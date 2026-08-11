@@ -8,7 +8,6 @@ import {
 } from '@freecut/infrastructure/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { getAiEditingAdapter, runAiEditingTurn } from './run-ai-editing-turn'
-import { getTimelineRevision } from './evidence'
 import {
   addAiEditingReferenceContext,
 } from './resource-references'
@@ -131,12 +130,10 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     }
     if (get().projectId !== projectId) return
 
-    const timelineRevisionBefore = getTimelineRevision()
     const runRecorder = createAiEditingRunRecorder({
       id: userMessageId,
       projectId,
       request: trimmed,
-      timelineRevisionBefore,
     })
     let recorderSettled = false
     try {
@@ -291,7 +288,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         assistantMessageId,
         assistantReply,
         completed: result.completed,
-        changedTimeline: result.timelineRevisionAfter !== result.timelineRevisionBefore,
+        changedTimeline: result.changedProject,
       })
       try {
         await enqueueAiEditingConversationWrite(projectId, () =>

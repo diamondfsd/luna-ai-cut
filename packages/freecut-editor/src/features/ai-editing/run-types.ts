@@ -14,9 +14,8 @@ export interface AiEditingRunResult {
   skillId?: string
   plan: string[]
   completed: boolean
+  changedProject: boolean
   completionNotes: string[]
-  timelineRevisionBefore: number
-  timelineRevisionAfter: number
   production?: { blueprint: unknown; review: unknown }
 }
 

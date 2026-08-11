@@ -13,11 +13,17 @@ export function register(): void {
   ipcMain.handle('ai-editing-source-git:read', (_event, projectId, sourcePath) =>
     sourceGit.read(projectId, sourcePath),
   )
+  ipcMain.handle('ai-editing-source-git:create', (_event, projectId, sourcePath, content) =>
+    sourceGit.create(projectId, sourcePath, content),
+  )
+  ipcMain.handle('ai-editing-source-git:replace', (_event, projectId, input) =>
+    sourceGit.replace(projectId, input),
+  )
   ipcMain.handle('ai-editing-source-git:write', (_event, projectId, sourcePath, content) =>
     sourceGit.write(projectId, sourcePath, content),
   )
-  ipcMain.handle('ai-editing-source-git:remove', (_event, projectId, sourcePath) =>
-    sourceGit.remove(projectId, sourcePath),
+  ipcMain.handle('ai-editing-source-git:remove', (_event, projectId, sourcePath, expectedContent) =>
+    sourceGit.remove(projectId, sourcePath, expectedContent),
   )
   ipcMain.handle('ai-editing-source-git:apply-changes', (_event, projectId, changes) =>
     sourceGit.applyChanges(projectId, changes),
@@ -35,7 +41,7 @@ export function register(): void {
   ipcMain.handle('ai-editing-source-git:checkout', (_event, projectId, name) =>
     sourceGit.checkout(projectId, name),
   )
-  ipcMain.handle('ai-editing-source-git:commit', (_event, projectId, message) =>
-    sourceGit.commit(projectId, message),
+  ipcMain.handle('ai-editing-source-git:commit', (_event, projectId, message, sourcePaths) =>
+    sourceGit.commit(projectId, message, sourcePaths),
   )
 }

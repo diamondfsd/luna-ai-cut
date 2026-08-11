@@ -1,29 +1,15 @@
 import { z } from 'zod'
-import { isEditingSourceFile } from '../coding-workspace/durable-source-repository'
-import { summarizeTimelineProgram, type TimelineProgramDiff } from '../coding-workspace/timeline-session'
-import type { EditProgram } from '../edit-program/types'
+import { summarizeTimelineProgram } from '../coding-workspace/timeline-session'
+import type { Project } from '@freecut/types/project'
 import type { AiEditingToolModule } from '../types'
 import { getTimelineCodingSession } from '../coding-workspace/session-registry'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
 
-function summarizeBuild(artifact: EditProgram) {
+function summarizeBuild(artifact: Project) {
   return {
-    baseRevision: artifact.baseRevision,
-    sourceProjectId: artifact.sourceProjectId,
-    intent: artifact.intent,
+    projectId: artifact.id,
+    projectName: artifact.name,
     ...summarizeTimelineProgram(artifact),
-  }
-}
-
-function summarizeDiff(diff: TimelineProgramDiff) {
-  return {
-    operationCount: diff.operationCount,
-    operationTypes: diff.operationTypes,
-    changedRanges: diff.changedRanges,
-    createdCount: diff.created.length,
-    updatedCount: diff.updated.length,
-    removedCount: diff.removed.length,
-    transitionsChanged: diff.transitionsChanged,
   }
 }
 
@@ -80,12 +66,14 @@ const readFile = defineAiEditingTool({
       ok: true,
       message: `已读取 ${path}。`,
       data: {
-        ...file,
-        content: lines.slice(startIndex, endIndex).join('\n'),
+        path: file.path,
+        kind: file.kind,
+        size: file.size,
         startLine: startIndex + 1,
         endLine: endIndex,
         totalLines: lines.length,
         ...(endIndex < lines.length ? { nextLine: endIndex + 1 } : {}),
+        content: lines.slice(startIndex, endIndex).join('\n'),
       },
     }
   },
@@ -119,86 +107,6 @@ const searchFiles = defineAiEditingTool({
     message: '搜索完成。',
     data: getTimelineCodingSession().workspace.search(args),
   }),
-})
-
-const patchOperationSchema = z.discriminatedUnion('op', [
-  z.strictObject({
-    op: z.literal('write'),
-    path: z.string(),
-    content: z.string(),
-    expectedContent: z.string().optional(),
-  }),
-  z.strictObject({
-    op: z.literal('replace'),
-    path: z.string(),
-    oldText: z.string().min(1),
-    newText: z.string(),
-    replaceAll: z.boolean().optional(),
-  }),
-  z.strictObject({
-    op: z.literal('delete'),
-    path: z.string(),
-    expectedContent: z.string().optional(),
-  }),
-])
-const patchSchema = z
-  .strictObject({
-    expectedRevision: z.number().int().min(0).optional(),
-    operations: z.array(patchOperationSchema).min(1).max(100),
-  })
-  .superRefine((value, context) => {
-    value.operations.forEach((operation, index) => {
-      if (!isEditingSourceFile(operation.path)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['operations', index, 'path'],
-          message: '这个路径是只读项目投影。',
-        })
-      }
-    })
-  })
-const patchJsonSchema = z.toJSONSchema(patchSchema)
-
-const patchFiles = defineAiEditingTool({
-  id: 'workspace.patch',
-  title: '修改剪辑源码',
-  description: '原子创建、替换或删除源码文件；不能修改素材与当前时间轴证据。',
-  risk: 'edit',
-  execution: 'async',
-  inputSchema: {
-    type: 'object',
-    properties: patchJsonSchema.properties ?? {},
-    required: patchJsonSchema.required,
-    additionalProperties: false,
-  },
-  schema: patchSchema,
-  summarize: ({ operations }) => `修改 ${operations.length} 处剪辑源码`,
-  execute: async (args) => ({
-    ok: true,
-    message: '剪辑源码已修改并保存。',
-    data: await getTimelineCodingSession().applyPatch(args),
-  }),
-})
-
-const workspaceStatus = defineAiEditingTool({
-  id: 'workspace.status',
-  title: '查看源码状态',
-  description: '查看当前分支、生产基线版本和未提交源码文件。',
-  risk: 'read',
-  inputSchema: objectSchema({}),
-  schema: z.strictObject({}),
-  summarize: () => '查看剪辑源码状态',
-  execute: async () => {
-    const session = getTimelineCodingSession()
-    return {
-      ok: true,
-      message: '已读取源码状态。',
-      data: {
-        workspace: session.workspace.status(),
-        git: await session.repository.status(),
-      },
-    }
-  },
 })
 
 const gitStatus = defineAiEditingTool({
@@ -273,7 +181,7 @@ const gitBranch = defineAiEditingTool({
 const gitCommit = defineAiEditingTool({
   id: 'git.commit',
   title: '提交剪辑源码',
-  description: '把模块化剪辑源码提交到内部 Git 历史；不会修改真实时间轴。',
+  description: '检查当前工程并把模块化剪辑源码提交到 Git 历史，作为本轮编辑的完成检查点。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema({ message: { type: 'string', minLength: 1, maxLength: 200 } }, [
@@ -288,134 +196,39 @@ const gitCommit = defineAiEditingTool({
   }),
 })
 
-const timelineCommand = (id: 'timeline.check' | 'timeline.build' | 'timeline.diff') =>
-  defineAiEditingTool({
-    id,
-    title:
-      id === 'timeline.check'
-        ? '检查剪辑源码'
-        : id === 'timeline.build'
-          ? '构建剪辑工程'
-          : '查看时间轴差异',
-    description:
-      id === 'timeline.check'
-        ? '解析模块、引用和组件并进行类型检查，不修改真实时间轴。'
-        : id === 'timeline.build'
-          ? '把完整源码编译成时间轴程序，不修改真实时间轴。'
-          : '查看构建产物将影响的操作类型和时间范围。',
-    risk: 'read',
-    execution: 'async',
-    inputSchema: objectSchema({}),
-    schema: z.strictObject({}),
-    summarize: () => id,
-    execute: async () => {
-      const session = getTimelineCodingSession()
-      if (id === 'timeline.check') {
-        const result = await session.check()
-        const ok = !result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
-        return { ok, message: ok ? '命令执行通过。' : '命令发现需要修正的源码。', data: result }
-      }
-      if (id === 'timeline.build') {
-        const result = await session.build()
-        const ok = !result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
-        return {
-          ok,
-          message: ok ? '命令执行通过。' : '命令发现需要修正的源码。',
-          data: {
-            diagnostics: result.diagnostics,
-            ...(result.artifact ? { build: summarizeBuild(result.artifact) } : {}),
-          },
-        }
-      }
-      const result = await session.diff()
-      const ok = !result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
-      return {
-        ok,
-        message: ok ? '命令执行通过。' : '命令发现需要修正的源码。',
-        data: {
-          diagnostics: result.diagnostics,
-          ...(result.diff ? { diff: summarizeDiff(result.diff) } : {}),
-        },
-      }
-    },
-  })
-
-const testTimeline = defineAiEditingTool({
-  id: 'timeline.test',
-  title: '验收剪辑工程',
-  description: '构建完整剪辑工程，并运行 tests 目录中的有界验收规则。',
+const checkTimeline = defineAiEditingTool({
+  id: 'timeline.check',
+  title: '检查剪辑源码',
+  description: '完整解析工程源码和引用，返回编译错误或项目摘要。',
   risk: 'read',
   execution: 'async',
   inputSchema: objectSchema({}),
   schema: z.strictObject({}),
-  summarize: () => '验收剪辑工程',
+  summarize: () => '检查剪辑源码',
   execute: async () => {
-    const result = await getTimelineCodingSession().test()
+    const result = await getTimelineCodingSession().check()
+    const ok = !result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
     return {
-      ok: result.passed,
-      message: result.passed ? '剪辑工程验收通过。' : '剪辑工程有未通过的验收项。',
-      data: result,
+      ok,
+      message: ok ? '剪辑源码检查通过。' : '剪辑源码需要修正。',
+      data: {
+        diagnostics: result.diagnostics,
+        ...(result.artifact ? { project: summarizeBuild(result.artifact) } : {}),
+      },
     }
   },
 })
-
-const timelinePublication = (id: 'timeline.publish_stage' | 'timeline.commit') => {
-  const isStage = id === 'timeline.publish_stage'
-  return defineAiEditingTool({
-    id,
-    title: isStage ? '阶段发布剪辑工程' : '最终提交剪辑工程',
-    description: isStage
-      ? '把指定 Git 源码提交对应的构建发布到真实时间轴，并继续当前处理流程。'
-      : '把指定 Git 源码提交对应的构建发布到真实时间轴，并结束当前编辑任务。',
-    risk: 'edit',
-    execution: 'async',
-    inputSchema: objectSchema({ commitId: { type: 'string', minLength: 1 } }, ['commitId']),
-    schema: z.strictObject({ commitId: z.string().min(1).max(200) }),
-    summarize: ({ commitId }) =>
-      `${isStage ? '阶段发布' : '最终提交'}源码版本 ${commitId.slice(0, 12)}`,
-    execute: async ({ commitId }) => {
-      const result = await getTimelineCodingSession().publish(commitId)
-      return {
-        ok: result.ok,
-        message: result.ok
-          ? isStage
-            ? '当前阶段已发布到时间轴，可继续处理。'
-            : '剪辑工程已最终提交到时间轴。'
-          : isStage
-            ? '当前阶段未能发布。'
-            : '剪辑工程未能最终提交。',
-        data: result.ok
-          ? {
-              ok: true,
-              commitId: result.commitId,
-              revisionBefore: result.revisionBefore,
-              revisionAfter: result.revisionAfter,
-              diff: summarizeDiff(result.diff),
-              diagnostics: result.diagnostics,
-            }
-          : result,
-      }
-    },
-  })
-}
 
 export const aiEditingToolModule: AiEditingToolModule = {
   createTools: () => [
     listFiles,
     readFile,
     searchFiles,
-    patchFiles,
-    workspaceStatus,
     gitStatus,
     gitDiff,
     gitLog,
     gitBranch,
     gitCommit,
-    timelineCommand('timeline.check'),
-    timelineCommand('timeline.build'),
-    testTimeline,
-    timelineCommand('timeline.diff'),
-    timelinePublication('timeline.publish_stage'),
-    timelinePublication('timeline.commit'),
+    checkTimeline,
   ],
 }

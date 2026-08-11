@@ -4,7 +4,7 @@ import { projectAiEditingRunsPath } from './paths'
 import { requireWorkspaceRoot } from './root'
 
 const logger = createLogger('WorkspaceFS:AiEditingRuns')
-const VERSION = 1
+const VERSION = 2
 const MAX_RUNS = 50
 
 export interface AiEditingRunRecord {
@@ -13,8 +13,7 @@ export interface AiEditingRunRecord {
   request: string
   skillId?: string
   plan: string[]
-  timelineRevisionBefore: number
-  timelineRevisionAfter: number
+  changedProject: boolean
   toolCalls: Array<{ id: string; ok: boolean; message: string; details?: string[] }>
   completed: boolean
   completionNotes: string[]
@@ -44,8 +43,7 @@ function sanitizeRecord(value: unknown): AiEditingRunRecord | null {
     typeof candidate.id !== 'string' ||
     typeof candidate.createdAt !== 'number' ||
     typeof candidate.request !== 'string' ||
-    typeof candidate.timelineRevisionBefore !== 'number' ||
-    typeof candidate.timelineRevisionAfter !== 'number' ||
+    typeof candidate.changedProject !== 'boolean' ||
     typeof candidate.completed !== 'boolean' ||
     !Array.isArray(candidate.plan) ||
     !Array.isArray(candidate.toolCalls) ||
@@ -57,8 +55,7 @@ function sanitizeRecord(value: unknown): AiEditingRunRecord | null {
     request: candidate.request,
     ...(typeof candidate.skillId === 'string' ? { skillId: candidate.skillId } : {}),
     plan: candidate.plan.filter((entry): entry is string => typeof entry === 'string').slice(0, 12),
-    timelineRevisionBefore: candidate.timelineRevisionBefore,
-    timelineRevisionAfter: candidate.timelineRevisionAfter,
+    changedProject: candidate.changedProject,
     toolCalls: candidate.toolCalls.flatMap((entry) => entry && typeof entry === 'object' &&
       typeof (entry as { id?: unknown }).id === 'string' &&
       typeof (entry as { ok?: unknown }).ok === 'boolean' &&

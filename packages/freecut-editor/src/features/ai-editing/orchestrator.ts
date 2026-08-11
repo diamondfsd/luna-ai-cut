@@ -19,7 +19,6 @@ import {
   clearTimelineCodingSession,
   startTimelineCodingSession,
 } from './coding-workspace/session-registry'
-import { getTimelineRevision } from './evidence'
 import { failedEditMessage, latestFailedEdit } from './latest-edit-result'
 import { createNativeToolCatalog } from './native-tool-catalog'
 import {
@@ -35,8 +34,8 @@ import {
   declaredPlan,
   defaultReply,
   hasCommittedEdit,
-  hasUnfinalizedEdit,
-  hasUnpublishedSourceWork,
+  hasSourceChanges,
+  hasUncommittedSourceWork,
 } from './orchestration-results'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
 import pendingWorkPrompt from './prompts/messages/missing-finish.md?raw'
@@ -74,9 +73,8 @@ function loopResult(input: {
     observations: input.observations,
     plan: [],
     completed: input.completed,
+    changedProject: hasSourceChanges(input.observations),
     completionNotes: input.completionNotes ?? [],
-    timelineRevisionBefore: 0,
-    timelineRevisionAfter: 0,
   }
 }
 
@@ -87,11 +85,9 @@ function unfinishedResult(
 ): AiEditingRunResult {
   const note = signal?.aborted
     ? '用户停止了本次处理。'
-    : hasUnpublishedSourceWork(observations)
-      ? '剪辑源码尚未成功发布到时间轴。'
-      : hasUnfinalizedEdit(observations)
-        ? '已发布当前阶段，但剪辑工程尚未最终提交。'
-        : '本轮没有在操作上限内完成用户目标。'
+    : hasUncommittedSourceWork(observations)
+      ? '剪辑源码尚未提交。'
+      : '本轮没有在操作上限内完成用户目标。'
   return loopResult({
     reply: reply || (signal?.aborted ? '已停止本次处理。' : defaultReply(observations)),
     observations,
@@ -164,7 +160,7 @@ function handleHarnessEvent(
     result: event.exchange.observation.result,
   })
   if (hasCommittedEdit([event.exchange.observation])) {
-    reportRunProgress(options, '剪辑工程已发布', 96)
+    reportRunProgress(options, '剪辑工程已保存', 96)
   }
 }
 
@@ -190,7 +186,7 @@ async function runDriver(
     maxRounds: number
     availableToolIds?: ReadonlySet<string>
     initialObservations?: readonly AiEditingObservation[]
-    requiresTimelineCommit: boolean
+    requiresEditCommit: boolean
     continuationPrompt: string
   },
 ): Promise<AgentHarnessResult<AiEditingObservation>> {
@@ -208,7 +204,7 @@ async function runDriver(
       await currentWorkspace(options),
       driver.protocol === 'native' ? 'native' : 'json',
       config.availableToolIds,
-      config.requiresTimelineCommit,
+      config.requiresEditCommit,
     ),
     executeTool: (call, index) => executeHarnessTool(
       call,
@@ -217,11 +213,10 @@ async function runDriver(
       config.availableToolIds,
     ),
     canCompleteFromText: ({ output, observations }) =>
-      !config.requiresTimelineCommit &&
+      !config.requiresEditCommit &&
       Boolean(output.content.trim()) &&
       !isDeferredTextReply(output.content) &&
-      !hasUnpublishedSourceWork(observations) &&
-      !hasUnfinalizedEdit(observations),
+      !hasUncommittedSourceWork(observations),
     shouldStopAfterTool: hasCommittedEdit,
     canRecoverFromModelError: hasCommittedEdit,
     onTextCompletion: (content) => options.onFinalText?.(content),
@@ -297,13 +292,12 @@ export async function runSingleAiEditingTurn(
   options: AiEditingRunOptions,
   config: { evidence?: unknown; maxToolRounds?: number; availableToolIds?: readonly string[] } = {},
 ): Promise<AiEditingRunResult> {
-  const timelineRevisionBefore = getTimelineRevision()
   const codingSession = await startTimelineCodingSession()
   try {
     const adapter = options.adapter ?? getAiEditingAdapter()
     const maxRounds = config.maxToolRounds ?? MAX_TOOL_ROUNDS
     const availableToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
-    const requiresTimelineCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
+    const requiresEditCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
       isConfirmedPlanExecutionRequest(userText, options.history)
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
     const evidence = config.evidence ?? (await codingSession.promptContext())
@@ -318,7 +312,7 @@ export async function runSingleAiEditingTurn(
         evidence,
         'native',
         availableToolIds,
-        requiresTimelineCommit,
+        requiresEditCommit,
       )
       harnessResult = await runDriver(
         createNativeDriver(adapter, nativeMessages, options, availableToolIds),
@@ -327,7 +321,7 @@ export async function runSingleAiEditingTurn(
         {
           maxRounds,
           availableToolIds,
-          requiresTimelineCommit,
+          requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
       )
@@ -347,7 +341,7 @@ export async function runSingleAiEditingTurn(
             maxRounds,
             availableToolIds,
             initialObservations: harnessResult.observations,
-            requiresTimelineCommit,
+            requiresEditCommit,
             continuationPrompt: pendingWorkPrompt.trim(),
           },
         )
@@ -359,7 +353,7 @@ export async function runSingleAiEditingTurn(
         evidence,
         'json',
         availableToolIds,
-        requiresTimelineCommit,
+        requiresEditCommit,
       )
       harnessResult = await runDriver(
         await createJsonDriver(adapter, jsonMessages, options),
@@ -368,7 +362,7 @@ export async function runSingleAiEditingTurn(
         {
           maxRounds,
           availableToolIds,
-          requiresTimelineCommit,
+          requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
       )
@@ -380,15 +374,13 @@ export async function runSingleAiEditingTurn(
     return {
       ...result,
       reply: failureMessage
-        ? `剪辑工程没有发布：${failureMessage}`
+        ? `剪辑工程没有完成：${failureMessage}`
         : result.completed
           ? result.reply
           : defaultReply(result.observations),
       plan: declaredPlan(result.observations),
       completed: !failedEdit && result.completed,
       completionNotes: failureMessage ? [failureMessage] : result.completionNotes,
-      timelineRevisionBefore,
-      timelineRevisionAfter: getTimelineRevision(),
     }
   } finally {
     clearTimelineCodingSession(codingSession)
