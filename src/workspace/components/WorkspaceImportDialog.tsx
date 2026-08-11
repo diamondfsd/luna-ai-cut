@@ -1,4 +1,4 @@
-import { FolderOpen, FolderTree, Plus } from 'lucide-react'
+import { FolderOpen, FolderTree, Loader2, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { MediaGallery } from '../../components/MediaGallery'
@@ -158,7 +158,13 @@ export function WorkspaceImportDialog({
               </Button>
             )}
             <Button variant="secondary" size="compact" onClick={() => onOpenChange(false)} disabled={importing}>取消</Button>
-            <Button variant="primary" size="compact" icon={<Plus size={14} />} disabled={controller.selectedFiles.length === 0 || importing} onClick={() => void handleImport()}>
+            <Button
+              variant="primary"
+              size="compact"
+              icon={importing ? <Loader2 size={14} className="workspace-import-spinner" /> : <Plus size={14} />}
+              disabled={controller.selectedFiles.length === 0 || importing}
+              onClick={() => void handleImport()}
+            >
               {importing ? (creatingProject ? '创建中' : '导入中') : (creatingProject ? '创建并编辑' : '导入素材')}
             </Button>
           </>

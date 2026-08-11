@@ -28,6 +28,7 @@ export interface AiEditingTraceEvent {
 export interface AiEditingRunOptions {
   history: LlmMessage[]
   signal?: AbortSignal
+  /** Cumulative final-answer Markdown, updated while the model is streaming. */
   onFinalText?: (text: string) => void
   onToolActivity?: (activity: AiEditingToolActivity) => void
   onTaskActivity?: (activity: AiEditingTaskActivity) => void

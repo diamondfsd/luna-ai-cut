@@ -50,15 +50,14 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
   private readonly callsById = new Map<string, EmbeddedAiAssistantToolCall>()
 
   constructor(private readonly options: NativeAgentDriverOptions<TObservation>) {
-    this.messages = options.messages
+    this.messages = structuredClone(options.messages)
   }
 
   get messageCount(): number {
     return this.messages.length
   }
 
-  async request(input: { round: number; instructions: string }): Promise<AgentHarnessModelStep> {
-    this.replaceInstructions(input.instructions)
+  async request(input: { round: number }): Promise<AgentHarnessModelStep> {
     const requestOptions = this.options.requestOptions(input.round)
     this.options.onRequest?.({
       protocol: 'native',
@@ -106,6 +105,10 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
     this.messages.push({ role: 'user', content: continuationPrompt })
   }
 
+  recordUserPrompt(prompt: string): void {
+    this.messages.push({ role: 'user', content: prompt })
+  }
+
   recordToolResults(
     output: AgentHarnessModelOutput,
     exchanges: readonly AgentHarnessToolExchange<TObservation>[],
@@ -128,14 +131,5 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
     if (this.options.toolContinuationPrompt) {
       this.messages.push({ role: 'user', content: this.options.toolContinuationPrompt })
     }
-  }
-
-  private replaceInstructions(instructions: string): void {
-    const first = this.messages[0]
-    if (first?.role === 'system') {
-      first.content = instructions
-      return
-    }
-    this.messages.unshift({ role: 'system', content: instructions })
   }
 }

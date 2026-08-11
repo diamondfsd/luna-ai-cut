@@ -24,6 +24,7 @@ const AGENT_TOOL_IDS = new Set([
   'git.commit',
   'timeline.check',
   'analysis.request',
+  'analysis.read_transcript',
   'analysis.search_transcript',
   'audio.analyze_beats',
 ])

@@ -24,8 +24,6 @@ import { createNativeToolCatalog } from './native-tool-catalog'
 import {
   buildInitialMessages,
   buildJsonFallbackMessages,
-  buildTurnSystemPrompt,
-  currentWorkspace,
   isConfirmedPlanExecutionRequest,
   toNativeMessages,
 } from './orchestration-messages'
@@ -36,8 +34,10 @@ import {
   hasCommittedEdit,
   hasSourceChanges,
   hasUncommittedSourceWork,
+  incompleteReply,
 } from './orchestration-results'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
+import finalizationPrompt from './prompts/messages/finalize.md?raw'
 import pendingWorkPrompt from './prompts/messages/missing-finish.md?raw'
 import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
 import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
@@ -45,16 +45,48 @@ import { renderPrompt } from './prompts/render-prompt'
 import { parseAiEditingResponse } from './response-parser'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
 import { executeToolCall, serializeForModel } from './tool-execution'
+import { getAiEditingTool } from './tool-registry'
 import type { AiEditingObservation } from './types'
 
 const MAX_TOOL_ROUNDS = 20
 const MAX_TOOL_CALLS_PER_ROUND = 8
 const MAX_TOKENS = 8_192
+const MAX_CONSECUTIVE_DUPLICATE_READS = 2
+const MAX_TRANSCRIPT_SEARCH_CALLS = 6
 
 function isDeferredTextReply(reply: string): boolean {
   const text = reply.trim()
   if (text.length >= 120) return false
   return /(我来帮你|我会帮你|接下来.{0,12}(给你|提供)|直接给你.{0,12}(方案|脚本)|马上.{0,12}(开始|给你))/.test(text)
+}
+
+function normalizedJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizedJson)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, normalizedJson(entry)]),
+  )
+}
+
+function readToolCallKey(call: AgentHarnessToolCall): string | null {
+  if (getAiEditingTool(call.toolId)?.risk !== 'read') return null
+  return `${call.toolId}:${JSON.stringify(normalizedJson(call.input))}`
+}
+
+function repeatedReadCount(observation: AiEditingObservation | undefined): number {
+  const data = observation?.result.data
+  if (!data || typeof data !== 'object') return 0
+  const count = (data as { consecutiveDuplicateReadCount?: unknown }).consecutiveDuplicateReadCount
+  return typeof count === 'number' ? count : 0
+}
+
+function exhaustedToolBudgetRounds(observation: AiEditingObservation | undefined): number {
+  const data = observation?.result.data
+  if (!data || typeof data !== 'object') return 0
+  const count = (data as { exhaustedToolBudgetRounds?: unknown }).exhaustedToolBudgetRounds
+  return typeof count === 'number' ? count : 0
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
@@ -88,8 +120,16 @@ function unfinishedResult(
     : hasUncommittedSourceWork(observations)
       ? '剪辑源码尚未提交。'
       : '本轮没有在操作上限内完成用户目标。'
+  const partialReply = reply.trim()
+  const canKeepPartialReply = partialReply.length >= 20 &&
+    !isDeferredTextReply(partialReply) &&
+    partialReply !== defaultReply(observations)
   return loopResult({
-    reply: reply || (signal?.aborted ? '已停止本次处理。' : defaultReply(observations)),
+    reply: signal?.aborted
+      ? '已停止本次处理。'
+      : canKeepPartialReply
+        ? `${partialReply}\n\n> 本次处理未完成：${note}`
+        : incompleteReply(observations, note),
     observations,
     completed: false,
     completionNotes: [note],
@@ -113,6 +153,7 @@ function handleHarnessEvent(
 ): void {
   const round = event.round + 1
   if (event.type === 'model-request') {
+    options.onFinalText?.('')
     traceRun(options, 'model-request', `请求模型处理第 ${round} 轮。`, {
       protocol: event.protocol,
       round,
@@ -136,6 +177,7 @@ function handleHarnessEvent(
     return
   }
   if (event.type === 'model-error') {
+    options.onFinalText?.('')
     traceRun(options, 'model-error', '模型请求失败。', {
       round,
       error: event.error instanceof Error ? event.error.message : String(event.error),
@@ -143,10 +185,12 @@ function handleHarnessEvent(
     return
   }
   if (event.type === 'protocol-error') {
+    options.onFinalText?.('')
     traceRun(options, 'protocol-error', '模型返回内容无法解析为工具协议。', { round })
     return
   }
   if (event.type === 'tool-start') {
+    options.onFinalText?.('')
     traceRun(options, 'tool-start', `开始执行工具 ${event.call.toolId}。`, {
       round,
       toolId: event.call.toolId,
@@ -167,9 +211,69 @@ function handleHarnessEvent(
 async function executeHarnessTool(
   call: AgentHarnessToolCall,
   callIndex: number,
+  round: number,
   options: AiEditingRunOptions,
   availableToolIds?: ReadonlySet<string>,
+  duplicateGuard?: {
+    key: string | null
+    consecutiveCount: number
+    transcriptSearchCount: number
+    lastBudgetExhaustedRound: number
+    budgetExhaustedRounds: number
+  },
 ): Promise<AiEditingObservation> {
+  if (duplicateGuard && call.toolId === 'analysis.search_transcript') {
+    duplicateGuard.transcriptSearchCount += 1
+    if (duplicateGuard.transcriptSearchCount > MAX_TRANSCRIPT_SEARCH_CALLS) {
+      if (duplicateGuard.lastBudgetExhaustedRound !== round) {
+        duplicateGuard.lastBudgetExhaustedRound = round
+        duplicateGuard.budgetExhaustedRounds += 1
+      }
+      const message = '本次请求的字幕关键词查询次数已达上限。请读取完整口播或使用已有证据，并立即完成最终答复，不要继续猜测关键词。'
+      options.onToolActivity?.({
+        id: `${options.activityScope ?? 'turn'}-${callIndex}-${call.toolId}`,
+        toolId: call.toolId,
+        title: getAiEditingTool(call.toolId)?.title ?? call.toolId,
+        status: 'failed',
+        message,
+      })
+      return {
+        toolId: call.toolId,
+        result: {
+          ok: false,
+          message,
+          data: { exhaustedToolBudgetRounds: duplicateGuard.budgetExhaustedRounds },
+        },
+      }
+    }
+  }
+
+  const key = readToolCallKey(call)
+  if (duplicateGuard && key && key === duplicateGuard.key) {
+    duplicateGuard.consecutiveCount += 1
+    const tool = getAiEditingTool(call.toolId)
+    const message = '这个查询与上一次完全相同，项目状态没有变化。请直接使用已有结果继续处理。'
+    options.onToolActivity?.({
+      id: `${options.activityScope ?? 'turn'}-${callIndex}-${call.toolId}`,
+      toolId: call.toolId,
+      title: tool?.title ?? call.toolId,
+      status: 'failed',
+      message,
+    })
+    return {
+      toolId: call.toolId,
+      result: {
+        ok: false,
+        message,
+        data: { consecutiveDuplicateReadCount: duplicateGuard.consecutiveCount },
+      },
+    }
+  }
+
+  if (duplicateGuard) {
+    duplicateGuard.key = key
+    duplicateGuard.consecutiveCount = 0
+  }
   return executeToolCall(
     { id: call.toolId, args: call.input as Record<string, unknown> },
     callIndex,
@@ -180,7 +284,6 @@ async function executeHarnessTool(
 
 async function runDriver(
   driver: AgentHarnessDriver<AiEditingObservation>,
-  userText: string,
   options: AiEditingRunOptions,
   config: {
     maxRounds: number
@@ -190,6 +293,13 @@ async function runDriver(
     continuationPrompt: string
   },
 ): Promise<AgentHarnessResult<AiEditingObservation>> {
+  const duplicateGuard = {
+    key: null as string | null,
+    consecutiveCount: 0,
+    transcriptSearchCount: 0,
+    lastBudgetExhaustedRound: -1,
+    budgetExhaustedRounds: 0,
+  }
   return runAgentHarness({
     driver,
     maxRounds: config.maxRounds,
@@ -198,19 +308,14 @@ async function runDriver(
     signal: options.signal,
     protocolRepairPrompt: invalidJsonPrompt.trim(),
     continuationPrompt: config.continuationPrompt,
-    instructions: async () => buildTurnSystemPrompt(
-      userText,
-      options.history,
-      await currentWorkspace(options),
-      driver.protocol === 'native' ? 'native' : 'json',
-      config.availableToolIds,
-      config.requiresEditCommit,
-    ),
-    executeTool: (call, index) => executeHarnessTool(
+    finalizationPrompt: finalizationPrompt.trim(),
+    executeTool: (call, index, round) => executeHarnessTool(
       call,
       index,
+      round,
       options,
       config.availableToolIds,
+      duplicateGuard,
     ),
     canCompleteFromText: ({ output, observations }) =>
       !config.requiresEditCommit &&
@@ -218,6 +323,9 @@ async function runDriver(
       !isDeferredTextReply(output.content) &&
       !hasUncommittedSourceWork(observations),
     shouldStopAfterTool: hasCommittedEdit,
+    shouldFinalizeAfterTool: (observations) =>
+      repeatedReadCount(observations.at(-1)) >= MAX_CONSECUTIVE_DUPLICATE_READS ||
+      exhaustedToolBudgetRounds(observations.at(-1)) >= 2,
     canRecoverFromModelError: hasCommittedEdit,
     onTextCompletion: (content) => options.onFinalText?.(content),
     onEvent: (event) => handleHarnessEvent(options, event),
@@ -279,7 +387,12 @@ function createNativeDriver(
       temperature: 0,
       reasoningEffort: options.reasoningEffort,
       signal: options.signal,
-      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
+      onStatus: (status) => reportModelRequestStatus(
+        options,
+        status,
+        round === 0 ? 32 : 70,
+        true,
+      ),
     }),
     onRequest: (request) => {
       traceRun(options, 'model-context', `已保存第 ${request.round} 次模型调用的完整上下文。`, request)
@@ -316,7 +429,6 @@ export async function runSingleAiEditingTurn(
       )
       harnessResult = await runDriver(
         createNativeDriver(adapter, nativeMessages, options, availableToolIds),
-        userText,
         options,
         {
           maxRounds,
@@ -327,15 +439,12 @@ export async function runSingleAiEditingTurn(
       )
       if (harnessResult.status === 'fallback') {
         const fallbackMessages = await buildJsonFallbackMessages(
-          userText,
-          options.history,
+          nativeMessages,
           harnessResult.observations,
-          options,
           availableToolIds,
         )
         harnessResult = await runDriver(
           await createJsonDriver(adapter, fallbackMessages, options, harnessResult.fallbackContent),
-          userText,
           options,
           {
             maxRounds,
@@ -357,7 +466,6 @@ export async function runSingleAiEditingTurn(
       )
       harnessResult = await runDriver(
         await createJsonDriver(adapter, jsonMessages, options),
-        userText,
         options,
         {
           maxRounds,
@@ -375,14 +483,13 @@ export async function runSingleAiEditingTurn(
       ...result,
       reply: failureMessage
         ? `剪辑工程没有完成：${failureMessage}`
-        : result.completed
-          ? result.reply
-          : defaultReply(result.observations),
+        : result.reply,
       plan: declaredPlan(result.observations),
       completed: !failedEdit && result.completed,
       completionNotes: failureMessage ? [failureMessage] : result.completionNotes,
     }
   } finally {
+    await codingSession.finalizeRenderer()
     clearTimelineCodingSession(codingSession)
   }
 }

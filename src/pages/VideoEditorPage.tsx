@@ -6,11 +6,13 @@ import type {
   EmbeddedTaskProgress,
   EmbeddedVisualAnalysisIntensity,
   EmbeddedExportFile,
+  EmbeddedMediaImportSource,
   ImportMediaFiles,
 } from '@freecut/embedded'
 
 import { LoadingIndicator } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
 import './VideoEditorPage.css'
 
 const FreeCutEditor = lazy(async () => {
@@ -67,11 +69,16 @@ function findImportedSourcePath(
 export function VideoEditorPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const pendingImportRef = useRef<ImportMediaFiles | null>(null)
+  const finishImportRequestRef = useRef<(() => void) | null>(null)
   const importedSourcePathsRef = useRef(new Map<string, string>())
 
   const handleRequestMediaImport = useCallback((importFiles: ImportMediaFiles) => {
     pendingImportRef.current = importFiles
     setImportDialogOpen(true)
+    return new Promise<void>((resolve) => {
+      finishImportRequestRef.current?.()
+      finishImportRequestRef.current = resolve
+    })
   }, [])
 
   const handleImportPaths = useCallback(async (paths: string[]) => {
@@ -79,45 +86,62 @@ export function VideoEditorPage() {
     if (!importFiles) throw new Error('导入任务已取消')
 
     const uniquePaths = [...new Set(paths)]
-    const files: File[] = []
-    const importedSources: Array<{
-      source: Pick<EmbeddedMediaSource, 'fileName' | 'fileSize' | 'fileLastModified'>
-      filePath: string
-    }> = []
-    for (const filePath of uniquePaths) {
-      const source = await window.luna.workspace.readMediaFile(filePath)
-      files.push(new File([source.bytes], source.name, {
-        type: source.mimeType,
-        lastModified: source.lastModified,
-      }))
-      importedSources.push({
-        source: {
-          fileName: source.name,
-          fileSize: source.bytes.byteLength,
-          fileLastModified: source.lastModified,
-        },
-        filePath,
-      })
-    }
-    for (const source of importedSources) {
-      for (const key of [mediaSourceKey(source.source), mediaSourceFallbackKey(source.source)]) {
-        importedSourcePathsRef.current.set(key, source.filePath)
-        saveImportedSourcePath(key, source.filePath)
+    const sources = await Promise.all(
+      uniquePaths.map((filePath) => window.luna.workspace.inspectMediaFile(filePath)),
+    )
+    for (const source of sources) {
+      const identity = {
+        fileName: source.name,
+        fileSize: source.size,
+        fileLastModified: source.lastModified,
+      }
+      for (const key of [mediaSourceKey(identity), mediaSourceFallbackKey(identity)]) {
+        importedSourcePathsRef.current.set(key, source.path)
+        saveImportedSourcePath(key, source.path)
       }
     }
-    await importFiles(files)
+    await importFiles(sources)
   }, [])
+
+  const handleDescribeDroppedMediaFiles = useCallback(async (files: File[]) => {
+    const paths = files
+      .map((file) => window.luna.workspace.getPathForFile(file))
+      .filter((filePath) => filePath.length > 0)
+    return Promise.all([...new Set(paths)].map((filePath) =>
+      window.luna.workspace.inspectMediaFile(filePath)))
+  }, [])
+
+  const handleInspectNativeMediaFile = useCallback(
+    (filePath: string): Promise<EmbeddedMediaImportSource> =>
+      window.luna.workspace.inspectMediaFile(filePath),
+    [],
+  )
+
+  const handleReadNativeMediaFile = useCallback(
+    (filePath: string) => window.luna.workspace.readMediaFile(filePath),
+    [],
+  )
+
+  const handleResolveNativeMediaUrl = useCallback(
+    (filePath: string) => filePathToPreviewUrl(filePath) ?? filePath,
+    [],
+  )
 
   const handleImportDialogOpenChange = useCallback((open: boolean) => {
     setImportDialogOpen(open)
-    if (!open) pendingImportRef.current = null
+    if (!open) {
+      pendingImportRef.current = null
+      finishImportRequestRef.current?.()
+      finishImportRequestRef.current = null
+    }
   }, [])
 
   const handleTranscribeMedia = useCallback(async (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => {
-    const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
+    const filePath = source.nativePath
+      ?? findImportedSourcePath(importedSourcePathsRef.current, source)
       ?? findImportedSourcePath(loadImportedSourcePaths(), source)
     if (!filePath) throw new Error('这段素材需要重新导入后才能使用本地口播识别。')
     if (!Number.isFinite(source.durationSeconds) || source.durationSeconds <= 0) {
@@ -157,7 +181,8 @@ export function VideoEditorPage() {
     intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => {
-    const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
+    const filePath = source.nativePath
+      ?? findImportedSourcePath(importedSourcePathsRef.current, source)
       ?? findImportedSourcePath(loadImportedSourcePaths(), source)
       ?? await window.luna.freecutWorkspace.getMediaSourcePath(source.mediaId)
     if (!filePath) throw new Error('这段素材没有可用的原始文件，无法进行本地画面分析。')
@@ -236,6 +261,10 @@ export function VideoEditorPage() {
       >
         <FreeCutEditor
           onRequestMediaImport={handleRequestMediaImport}
+          onDescribeDroppedMediaFiles={handleDescribeDroppedMediaFiles}
+          onInspectNativeMediaFile={handleInspectNativeMediaFile}
+          onReadNativeMediaFile={handleReadNativeMediaFile}
+          onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
           onTranscribeMedia={handleTranscribeMedia}
           onAnalyzeMediaVisual={handleAnalyzeMediaVisual}
           onGetAiAssistantConfig={handleGetAiAssistantConfig}

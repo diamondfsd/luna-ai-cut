@@ -34,13 +34,16 @@ const ToolActivityRow = memo(function ToolActivityRow({
       {status}
       <div className="min-w-0 flex-1">
         <p className="text-foreground">{activity.title}</p>
-        {activity.progressPercent !== undefined && (
+        {activity.progressPercent === null && activity.progressLabel && (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {activity.progressLabel}
+          </p>
+        )}
+        {activity.progressPercent !== undefined && activity.progressPercent !== null && (
           <div className="mt-1.5 space-y-1">
             <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
               <span className="min-w-0 truncate">{activity.progressLabel ?? '正在处理'}</span>
-              {activity.progressPercent !== null && (
-                <span className="shrink-0 tabular-nums">{activity.progressPercent}%</span>
-              )}
+              <span className="shrink-0 tabular-nums">{activity.progressPercent}%</span>
             </div>
             <div
               className="h-1 overflow-hidden rounded-full bg-secondary"
@@ -48,19 +51,11 @@ const ToolActivityRow = memo(function ToolActivityRow({
               aria-label={activity.progressLabel ?? activity.title}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={activity.progressPercent ?? undefined}
+              aria-valuenow={activity.progressPercent}
             >
               <div
-                className={
-                  activity.progressPercent === null
-                    ? 'h-full w-full animate-pulse bg-primary/55'
-                    : 'h-full bg-primary transition-[width] duration-200'
-                }
-                style={
-                  activity.progressPercent === null
-                    ? undefined
-                    : { width: `${activity.progressPercent}%` }
-                }
+                className="h-full bg-primary transition-[width] duration-200"
+                style={{ width: `${activity.progressPercent}%` }}
               />
             </div>
           </div>

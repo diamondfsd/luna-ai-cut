@@ -1,10 +1,23 @@
 declare module '@freecut/embedded' {
   import type { ComponentType } from 'react'
 
-  export type ImportMediaFiles = (files: File[]) => Promise<void>
+  export interface EmbeddedMediaImportSource {
+    path: string
+    name: string
+    mimeType: string
+    size: number
+    lastModified: number
+  }
+
+  export interface EmbeddedNativeMediaFile extends Omit<EmbeddedMediaImportSource, 'path' | 'size'> {
+    bytes: ArrayBuffer
+  }
+
+  export type ImportMediaFiles = (sources: EmbeddedMediaImportSource[]) => Promise<void>
 
   export interface EmbeddedMediaSource {
     mediaId: string
+    nativePath?: string
     fileName: string
     fileSize: number
     fileLastModified?: number
@@ -150,7 +163,11 @@ declare module '@freecut/embedded' {
   }
 
   export interface FreeCutEditorProps {
-    onRequestMediaImport?: (importFiles: ImportMediaFiles) => void
+    onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
+    onDescribeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
+    onInspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
+    onReadNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
+    onResolveNativeMediaUrl?: (filePath: string) => string
     onTranscribeMedia?: (
       source: EmbeddedMediaSource,
       onProgress?: (progress: EmbeddedTaskProgress) => void,

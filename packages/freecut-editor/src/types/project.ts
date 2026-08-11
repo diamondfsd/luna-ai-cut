@@ -83,6 +83,7 @@ export interface ProjectTimeline {
       from: number
       durationInFrames: number
       label: string
+      /** Raw MediaMetadata.id. Tool-facing references such as `media:<id>` are not valid here. */
       mediaId?: string
       originId?: string // Tracks lineage for stable React keys
       linkedGroupId?: string

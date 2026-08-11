@@ -1,4 +1,4 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import type {
   AppSettings,
   DeviceDebugApi,
@@ -200,6 +200,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     chooseMediaDirectory: () => ipcRenderer.invoke('workspace:chooseMediaDirectory'),
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
+    inspectMediaFile: (filePath: string) => ipcRenderer.invoke('workspace:inspectMediaFile', filePath),
     readMediaFile: (filePath: string) => ipcRenderer.invoke('workspace:readMediaFile', filePath),
     loadTrimThumbnailCache: (videoPath: string, duration: number) => ipcRenderer.invoke('workspace:loadTrimThumbnailCache', videoPath, duration),
     saveTrimThumbnailCache: (videoPath: string, duration: number, bytes: ArrayBuffer) => ipcRenderer.invoke('workspace:saveTrimThumbnailCache', videoPath, duration, bytes),

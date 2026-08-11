@@ -52,6 +52,20 @@ export function defaultReply(observations: readonly AiEditingObservation[]): str
   return observations.length > 0 ? '已完成项目检查。' : '尚未执行项目操作。'
 }
 
+export function incompleteReply(
+  observations: readonly AiEditingObservation[],
+  fallback: string,
+): string {
+  const failures = observations.filter((observation) => !observation.result.ok)
+  const failure = failures.findLast((observation) => {
+    const data = observation.result.data
+    return !data ||
+      typeof data !== 'object' ||
+      !('consecutiveDuplicateReadCount' in data)
+  }) ?? failures.at(-1)
+  return `这次没有完成你的请求：${failure?.result.message || fallback}`
+}
+
 export function declaredPlan(observations: readonly AiEditingObservation[]): string[] {
   const result = observations.findLast((entry) => entry.toolId === 'workflow.set_plan')?.result.data
   if (

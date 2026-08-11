@@ -11,6 +11,8 @@ import type { MediaMetadata } from '@freecut/types/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { deleteHandle, getHandle, saveHandle } from '@freecut/infrastructure/storage/handles-db'
 import { mapWithConcurrency } from '@freecut/shared/utils/async-utils'
+import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
+import { createNativeMediaFileHandle } from '@freecut/shared/host/native-media-file-handle'
 
 import { requireWorkspaceRoot } from './root'
 import {
@@ -28,7 +30,7 @@ type SerializedMedia = Omit<MediaMetadata, 'fileHandle'>
 
 async function stashFileHandle(media: MediaMetadata): Promise<SerializedMedia> {
   const { fileHandle, ...rest } = media
-  if (fileHandle) {
+  if (fileHandle && !media.nativePath) {
     await saveHandle({
       kind: 'media',
       id: media.id,
@@ -47,6 +49,18 @@ async function stashFileHandle(media: MediaMetadata): Promise<SerializedMedia> {
 }
 
 async function restoreFileHandle(serialized: SerializedMedia): Promise<MediaMetadata> {
+  if (serialized.nativePath) {
+    return {
+      ...serialized,
+      fileHandle: createNativeMediaFileHandle({
+        path: serialized.nativePath,
+        name: serialized.fileName,
+        mimeType: serialized.mimeType,
+        size: serialized.fileSize,
+        lastModified: serialized.fileLastModified ?? 0,
+      }),
+    }
+  }
   const record = await getHandle('media', serialized.id)
   if (record) {
     return {
@@ -95,6 +109,26 @@ export type MediaHandleValidation =
  * (one stat per file). Do NOT call in hot paths.
  */
 export async function validateMediaHandle(mediaId: string): Promise<MediaHandleValidation> {
+  const root = requireWorkspaceRoot()
+  const serialized = await readJson<SerializedMedia>(root, mediaMetadataPath(mediaId))
+  if (serialized?.nativePath) {
+    const inspect = getEmbeddedHostBridge().inspectNativeMediaFile
+    if (!inspect) return { kind: 'missing' }
+    try {
+      const source = await inspect(serialized.nativePath)
+      if (source.size !== serialized.fileSize) {
+        return {
+          kind: 'changed',
+          currentSize: source.size,
+          currentMtime: source.lastModified,
+        }
+      }
+      return { kind: 'ok' }
+    } catch {
+      return { kind: 'missing' }
+    }
+  }
+
   const record = await getHandle('media', mediaId)
   if (!record) return { kind: 'no-handle' }
 

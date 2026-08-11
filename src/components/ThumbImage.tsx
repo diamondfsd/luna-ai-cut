@@ -77,7 +77,11 @@ export function ThumbImage({ src, preloadMargin = 300, preloadBottom, unavailabl
     if (visible) return
     const el = imgRef.current
     if (!el) return
-    let scrollRoot = el.parentElement
+    // A media card may use content-visibility, which can leave its inner image
+    // without layout while offscreen. Observe the stable outer card so entering
+    // the viewport always starts thumbnail loading.
+    const observationTarget = el.closest<HTMLElement>('.media-card') ?? el
+    let scrollRoot = observationTarget.parentElement
     while (scrollRoot && scrollRoot !== document.body) {
       const style = window.getComputedStyle(scrollRoot)
       if (/(auto|scroll)/.test(`${style.overflowX} ${style.overflowY}`)) break
@@ -91,7 +95,7 @@ export function ThumbImage({ src, preloadMargin = 300, preloadBottom, unavailabl
       bottom: window.innerHeight,
       left: 0,
     }
-    const rect = el.getBoundingClientRect()
+    const rect = observationTarget.getBoundingClientRect()
     const topMargin = preloadBottom == null ? preloadMargin : 0
     const rightMargin = preloadBottom == null ? preloadMargin : 0
     const bottomMargin = preloadBottom ?? preloadMargin
@@ -111,7 +115,7 @@ export function ThumbImage({ src, preloadMargin = 300, preloadBottom, unavailabl
       },
       { root: scrollRoot, rootMargin: `${topMargin}px ${rightMargin}px ${bottomMargin}px ${leftMargin}px` },
     )
-    observer.observe(el)
+    observer.observe(observationTarget)
     return () => observer.disconnect()
   }, [preloadBottom, preloadMargin, visible])
 

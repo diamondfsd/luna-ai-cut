@@ -18,9 +18,11 @@ export async function runAgentHarness<TObservation>(
   const observations = [...(options.initialObservations ?? [])]
   let reply = ''
   let callIndex = observations.length
+  let forceFinalization = false
 
-  for (let round = 0; round < options.maxRounds; round += 1) {
+  for (let round = 0; round <= options.maxRounds; round += 1) {
     if (options.signal?.aborted) break
+    const finalizationRound = forceFinalization || round === options.maxRounds
     options.onEvent?.({
       type: 'model-request',
       round,
@@ -30,10 +32,7 @@ export async function runAgentHarness<TObservation>(
 
     let step
     try {
-      step = await options.driver.request({
-        round,
-        instructions: await options.instructions(),
-      })
+      step = await options.driver.request({ round })
     } catch (error) {
       options.onEvent?.({
         type: 'model-error',
@@ -67,8 +66,15 @@ export async function runAgentHarness<TObservation>(
         round,
         protocol: options.driver.protocol,
       })
-      if (round === options.maxRounds - 1) throw new AgentHarnessProtocolError()
-      options.driver.recordProtocolError(step.raw, options.protocolRepairPrompt)
+      if (finalizationRound) throw new AgentHarnessProtocolError()
+      const shouldFinalizeNext = round === options.maxRounds - 1
+      options.driver.recordProtocolError(
+        step.raw,
+        shouldFinalizeNext
+          ? `${options.protocolRepairPrompt}\n\n${options.finalizationPrompt}`
+          : options.protocolRepairPrompt,
+      )
+      if (shouldFinalizeNext) forceFinalization = true
       continue
     }
 
@@ -79,15 +85,24 @@ export async function runAgentHarness<TObservation>(
         options.onTextCompletion?.(output.content)
         return { status: 'completed', reply: output.content, observations }
       }
-      options.driver.recordContinuation(output, options.continuationPrompt)
+      if (finalizationRound) return { status: 'exhausted', reply, observations }
+      options.driver.recordContinuation(
+        output,
+        round === options.maxRounds - 1
+          ? options.finalizationPrompt
+          : options.continuationPrompt,
+      )
       continue
     }
 
+    if (finalizationRound) return { status: 'exhausted', reply, observations }
+
     const exchanges: AgentHarnessToolExchange<TObservation>[] = []
+    let finalizeAfterTool = false
     for (const call of output.toolCalls.slice(0, options.maxToolCallsPerRound)) {
       if (options.signal?.aborted) break
       options.onEvent?.({ type: 'tool-start', round, call })
-      const observation = await options.executeTool(call, callIndex)
+      const observation = await options.executeTool(call, callIndex, round)
       callIndex += 1
       observations.push(observation)
       const exchange = { call, observation }
@@ -96,9 +111,17 @@ export async function runAgentHarness<TObservation>(
       if (options.shouldStopAfterTool(observations)) {
         return { status: 'completed', reply, observations }
       }
+      if (options.shouldFinalizeAfterTool?.(observations)) {
+        finalizeAfterTool = true
+        break
+      }
     }
     if (options.signal?.aborted) break
     options.driver.recordToolResults(output, exchanges)
+    if (finalizeAfterTool || round === options.maxRounds - 1) {
+      options.driver.recordUserPrompt(options.finalizationPrompt)
+      forceFinalization = true
+    }
   }
 
   return { status: 'exhausted', reply, observations }

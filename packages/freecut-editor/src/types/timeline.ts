@@ -62,6 +62,7 @@ type BaseTimelineItem = {
   from: number // Start frame (Composition convention)
   durationInFrames: number // Duration in frames (Composition convention)
   label: string
+  /** Raw MediaMetadata.id. Tool-facing references such as `media:<id>` are not valid here. */
   mediaId?: string
   compositionId?: string // Reference to a sub-composition for compound wrappers
   originId?: string // Tracks lineage - items from same split share this for stable React keys

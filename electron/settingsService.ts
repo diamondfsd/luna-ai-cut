@@ -325,11 +325,12 @@ export async function chooseWorkspaceMediaDirectory(): Promise<string[]> {
   return mediaPaths
 }
 
-export async function readWorkspaceMediaFile(filePath: string): Promise<{
+export async function inspectWorkspaceMediaFile(filePath: string): Promise<{
+  path: string
   name: string
   mimeType: string
+  size: number
   lastModified: number
-  bytes: ArrayBuffer
 }> {
   if (!path.isAbsolute(filePath)) throw new Error('素材路径无效')
 
@@ -339,11 +340,27 @@ export async function readWorkspaceMediaFile(filePath: string): Promise<{
   const stat = await fs.lstat(filePath)
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('素材文件无效')
 
-  const bytes = await fs.readFile(filePath)
   return {
+    path: filePath,
     name: path.basename(filePath),
     mimeType: WORKSPACE_MEDIA_MIME_TYPES[extension] ?? 'application/octet-stream',
+    size: stat.size,
     lastModified: stat.mtimeMs,
+  }
+}
+
+export async function readWorkspaceMediaFile(filePath: string): Promise<{
+  name: string
+  mimeType: string
+  lastModified: number
+  bytes: ArrayBuffer
+}> {
+  const source = await inspectWorkspaceMediaFile(filePath)
+  const bytes = await fs.readFile(filePath)
+  return {
+    name: source.name,
+    mimeType: source.mimeType,
+    lastModified: source.lastModified,
     bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
   }
 }

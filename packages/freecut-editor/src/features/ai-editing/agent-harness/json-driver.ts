@@ -35,7 +35,7 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
   private initialRaw: string | undefined
 
   constructor(private readonly options: JsonAgentDriverOptions<TObservation>) {
-    this.messages = options.messages
+    this.messages = structuredClone(options.messages)
     this.initialRaw = options.initialRaw
   }
 
@@ -43,8 +43,7 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
     return this.messages.length
   }
 
-  async request(input: { round: number; instructions: string }): Promise<AgentHarnessModelStep> {
-    this.replaceInstructions(input.instructions)
+  async request(input: { round: number }): Promise<AgentHarnessModelStep> {
     let raw = this.initialRaw
     if (raw === undefined) {
       const requestOptions = this.options.requestOptions(input.round)
@@ -83,6 +82,10 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
     this.messages.push({ role: 'user', content: continuationPrompt })
   }
 
+  recordUserPrompt(prompt: string): void {
+    this.messages.push({ role: 'user', content: prompt })
+  }
+
   recordToolResults(
     output: AgentHarnessModelOutput,
     exchanges: readonly AgentHarnessToolExchange<TObservation>[],
@@ -92,14 +95,5 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
       role: 'user',
       content: this.options.renderToolResults(exchanges.map(({ observation }) => observation)),
     })
-  }
-
-  private replaceInstructions(instructions: string): void {
-    const first = this.messages[0]
-    if (first?.role === 'system') {
-      first.content = instructions
-      return
-    }
-    this.messages.unshift({ role: 'system', content: instructions })
   }
 }

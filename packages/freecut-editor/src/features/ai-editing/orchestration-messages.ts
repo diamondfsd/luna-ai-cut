@@ -1,10 +1,8 @@
 import type { LlmMessage } from '@freecut/infrastructure/llm'
 import type { EmbeddedAiAssistantMessage } from '@freecut/shared/host/embedded-host'
-import { buildAiEditingSystemPrompt } from './agent-prompt'
-import { getTimelineCodingSession } from './coding-workspace/session-registry'
+import { buildAiEditingSystemPrompt, buildJsonToolFallbackPrompt } from './agent-prompt'
 import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
-import type { AiEditingRunOptions } from './run-types'
 import { serializeForModel } from './tool-execution'
 import type { AiEditingObservation } from './types'
 
@@ -47,11 +45,6 @@ function appendExecutionDirective(
   return requiresEditCommit || isConfirmedPlanExecutionRequest(userText, history)
     ? `${systemPrompt}\n\n${CONFIRMED_PLAN_EXECUTION_DIRECTIVE}`
     : systemPrompt
-}
-
-export async function currentWorkspace(_options: AiEditingRunOptions): Promise<unknown> {
-  void _options
-  return getTimelineCodingSession().promptContext()
 }
 
 export function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
@@ -99,21 +92,13 @@ export async function buildInitialMessages(
   ]
 }
 
-export async function buildJsonFallbackMessages(
-  userText: string,
-  history: LlmMessage[],
+export function buildJsonFallbackMessages(
+  initialMessages: LlmMessage[],
   observations: AiEditingObservation[],
-  options: AiEditingRunOptions,
   availableToolIds?: ReadonlySet<string>,
-): Promise<LlmMessage[]> {
-  const messages = await buildInitialMessages(
-    userText,
-    history,
-    await currentWorkspace(options),
-    'json',
-    availableToolIds,
-    options.turnIntent?.kind === 'execute-approved-plan',
-  )
+): LlmMessage[] {
+  const messages = structuredClone(initialMessages)
+  messages.push({ role: 'user', content: buildJsonToolFallbackPrompt(availableToolIds) })
   if (observations.length > 0) {
     messages.push({
       role: 'user',

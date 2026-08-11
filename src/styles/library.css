@@ -178,7 +178,15 @@
   background: var(--canvas);
   color: var(--ink);
   content-visibility: auto;
-  contain-intrinsic-size: 1000px;
+  contain-intrinsic-size: auto 220px;
+}
+
+.media-grid.card-size-medium .media-card {
+  contain-intrinsic-size: auto 145px;
+}
+
+.media-grid.card-size-small .media-card {
+  contain-intrinsic-size: auto 100px;
 }
 
 .media-card.selected {

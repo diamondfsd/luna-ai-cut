@@ -12,10 +12,73 @@ import type { AiEditingToolModule } from '../types'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
 import { mediaIdsFromToolInput } from './media-reference'
 
+const DEFAULT_TRANSCRIPT_PAGE_SIZE = 24
+const MAX_TRANSCRIPT_PAGE_SIZE = 30
+const MAX_TRANSCRIPT_PAGE_CHARS = 3_500
+
+async function readTranscriptPage(
+  mediaIds: readonly string[],
+  cursor = 0,
+  limit = DEFAULT_TRANSCRIPT_PAGE_SIZE,
+): Promise<{
+  cursor: number
+  nextCursor: number | null
+  totalSegments: number
+  missingMediaIds: string[]
+  segments: Array<{
+    mediaRef: string
+    startSeconds: number
+    endSeconds: number
+    text: string
+  }>
+}> {
+  const entries: Array<{
+    mediaRef: string
+    startSeconds: number
+    endSeconds: number
+    text: string
+  }> = []
+  const missingMediaIds: string[] = []
+  for (const mediaId of mediaIds) {
+    const transcript = await mediaTranscriptionService.getTranscript(mediaId).catch(() => undefined)
+    if (!transcript) {
+      missingMediaIds.push(mediaId)
+      continue
+    }
+    for (const segment of transcript.segments) {
+      const text = segment.text.trim()
+      if (!text) continue
+      entries.push({
+        mediaRef: `media:${mediaId}`,
+        startSeconds: segment.start,
+        endSeconds: segment.end,
+        text,
+      })
+    }
+  }
+
+  const segments: typeof entries = []
+  let chars = 0
+  for (const entry of entries.slice(cursor)) {
+    if (segments.length >= limit) break
+    if (segments.length > 0 && chars + entry.text.length > MAX_TRANSCRIPT_PAGE_CHARS) break
+    segments.push(entry)
+    chars += entry.text.length
+  }
+  const nextCursor = cursor + segments.length
+  return {
+    cursor,
+    nextCursor: nextCursor < entries.length ? nextCursor : null,
+    totalSegments: entries.length,
+    missingMediaIds,
+    segments,
+  }
+}
+
 const searchTranscript = defineAiEditingTool({
   id: 'analysis.search_transcript',
   title: '查找口播内容',
-  description: '按说出的词或短语查找时间点。只返回带时间的文字识别结果。',
+  description: '按已经知道的明确原话查找时间点。不要用它猜词或遍历字幕；理解完整口播请读取字幕。',
   risk: 'read',
   inputSchema: objectSchema(
     {
@@ -42,6 +105,42 @@ const searchTranscript = defineAiEditingTool({
           ? `找到 ${matches.length} 处口播内容。`
           : `未在已识别口播中匹配“${args.query}”；这不代表素材没有口播。`,
       data: matches,
+    }
+  },
+})
+
+const readTranscript = defineAiEditingTool({
+  id: 'analysis.read_transcript',
+  title: '读取素材口播',
+  description: '按素材读取完整的带时间口播，可分页。用于理解实际内容和编写脚本。',
+  risk: 'read',
+  inputSchema: objectSchema(
+    {
+      mediaIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '要读取口播的素材，使用 workspace.media[].ref。',
+      },
+      cursor: { type: 'integer', minimum: 0 },
+      limit: { type: 'integer', minimum: 1, maximum: MAX_TRANSCRIPT_PAGE_SIZE },
+    },
+    ['mediaIds'],
+  ),
+  schema: z.object({
+    mediaIds: z.array(z.string()).min(1),
+    cursor: z.number().int().min(0).optional(),
+    limit: z.number().int().min(1).max(MAX_TRANSCRIPT_PAGE_SIZE).optional(),
+  }),
+  summarize: (args) => `读取 ${args.mediaIds.length} 个素材的口播`,
+  execute: async (args) => {
+    const mediaIds = mediaIdsFromToolInput(args.mediaIds)
+    const page = await readTranscriptPage(mediaIds, args.cursor, args.limit)
+    return {
+      ok: page.segments.length > 0,
+      message: page.segments.length > 0
+        ? `已读取 ${page.segments.length}/${page.totalSegments} 段实际口播。`
+        : '这些素材还没有可读取的口播内容。',
+      data: page,
     }
   },
 })
@@ -104,6 +203,7 @@ const requestAnalysis = defineAiEditingTool({
             const result = await host.transcribeMedia(
               {
                 mediaId: item.id,
+                nativePath: item.nativePath,
                 fileName: item.fileName,
                 fileSize: item.fileSize,
                 fileLastModified: item.fileLastModified,
@@ -156,6 +256,13 @@ const requestAnalysis = defineAiEditingTool({
           ok: completed > 0,
           message:
             completed > 0 ? `已完成 ${completed} 个素材的本地口播识别。` : '没有可识别口播的素材。',
+          ...(completed > 0
+            ? {
+                data: {
+                  transcript: await readTranscriptPage(eligibleMedia.map((item) => item.id)),
+                },
+              }
+            : {}),
         }
       }
 
@@ -173,7 +280,11 @@ const requestAnalysis = defineAiEditingTool({
         })
         reportItemProgress(index, eligibleMedia.length, item.fileName, '口播识别完成', 100)
       }
-      return { ok: true, message: '口播识别已完成。' }
+      return {
+        ok: true,
+        message: '口播识别已完成，并已附带实际口播内容。',
+        data: { transcript: await readTranscriptPage(eligibleMedia.map((item) => item.id)) },
+      }
     }
 
     const eligibleMedia = media.filter(
@@ -183,13 +294,15 @@ const requestAnalysis = defineAiEditingTool({
     const host = getEmbeddedHostBridge()
     if (host.analyzeMediaVisual) {
       const intensity = useSettingsStore.getState().visualAnalysisIntensity
-      let completed = 0
+      let analyzed = 0
+      let withEvidence = 0
       for (const [index, item] of eligibleMedia.entries()) {
         context?.signal?.throwIfAborted()
         reportItemProgress(index, eligibleMedia.length, item.fileName, '正在准备画面理解', 0)
         const result = await host.analyzeMediaVisual(
           {
             mediaId: item.id,
+            nativePath: item.nativePath,
             fileName: item.fileName,
             fileSize: item.fileSize,
             fileLastModified: item.fileLastModified,
@@ -213,13 +326,27 @@ const requestAnalysis = defineAiEditingTool({
           models: result.models,
           intensity: result.intensity,
         })
-        completed += 1
-        reportItemProgress(index, eligibleMedia.length, item.fileName, '画面理解完成', 100)
+        analyzed += 1
+        if (result.samples.length > 0) withEvidence += 1
+        reportItemProgress(
+          index,
+          eligibleMedia.length,
+          item.fileName,
+          result.samples.length > 0 ? '画面理解完成' : '画面理解未产生结果',
+          100,
+        )
       }
       return {
-        ok: completed > 0,
+        ok: withEvidence > 0,
         message:
-          completed > 0 ? `已完成 ${completed} 个素材的本地画面分析。` : '没有可分析画面的素材。',
+          withEvidence > 0
+            ? `已分析 ${analyzed} 个素材，其中 ${withEvidence} 个产生了可用画面描述。`
+            : `已尝试分析 ${analyzed} 个素材，但没有产生可用画面描述。`,
+        data: {
+          analyzed,
+          withEvidence,
+          withoutEvidence: analyzed - withEvidence,
+        },
       }
     }
 
@@ -240,5 +367,5 @@ const requestAnalysis = defineAiEditingTool({
 })
 
 export const aiEditingToolModule: AiEditingToolModule = {
-  createTools: () => [searchTranscript, requestAnalysis],
+  createTools: () => [searchTranscript, readTranscript, requestAnalysis],
 }

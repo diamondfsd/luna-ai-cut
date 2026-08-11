@@ -324,6 +324,14 @@ export interface LunaApi {
   workspace: {
     chooseMediaFiles(): Promise<string[]>
     chooseMediaDirectory(): Promise<string[]>
+    getPathForFile(file: File): string
+    inspectMediaFile(filePath: string): Promise<{
+      path: string
+      name: string
+      mimeType: string
+      size: number
+      lastModified: number
+    }>
     readMediaFile(filePath: string): Promise<{
       name: string
       mimeType: string

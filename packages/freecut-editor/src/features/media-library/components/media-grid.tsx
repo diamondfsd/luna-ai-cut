@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Upload, AlertTriangle } from 'lucide-react'
+import { Loader2, AlertTriangle } from 'lucide-react'
 import { createLogger } from '@freecut/shared/logging/logger'
 
 const logger = createLogger('MediaGrid')
@@ -25,10 +25,8 @@ import {
 } from '@freecut/components/ui/alert-dialog'
 
 import { GRID_MIN_SIZE_PX, GRID_GAP_BY_SIZE } from './media-grid-constants'
-import {
-  showMediaFilePicker,
-  getSupportedMediaFormatLabels,
-} from '@freecut/features/media-library/utils/media-file-picker'
+import { showMediaFilePicker } from '@freecut/features/media-library/utils/media-file-picker'
+import { MediaImportEmptyState } from './media-import-empty-state'
 
 interface MediaGridProps {
   onMediaSelect?: (mediaId: string) => void
@@ -36,6 +34,9 @@ interface MediaGridProps {
   itemSize?: number
   /** When provided, renders these items instead of pulling from the store */
   items?: MediaMetadata[]
+  /** Uses the panel's canonical import path for the empty state. */
+  onImport?: () => void
+  isImporting?: boolean
 }
 
 interface MediaGridBaseProps extends MediaGridProps {
@@ -55,6 +56,8 @@ const MediaGridBase = memo(function MediaGridBase({
   layout,
   itemSize = 3,
   items,
+  onImport,
+  isImporting = false,
 }: MediaGridBaseProps) {
   const { t } = useTranslation()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -70,7 +73,6 @@ const MediaGridBase = memo(function MediaGridBase({
   const deleteMedia = useMediaLibraryStore((s) => s.deleteMedia)
   const deleteMediaBatch = useMediaLibraryStore((s) => s.deleteMediaBatch)
   const relinkMedia = useMediaLibraryStore((s) => s.relinkMedia)
-  const importMedia = useMediaLibraryStore((s) => s.importMedia)
   const setSourcePreviewMediaId = useEditorStore((s) => s.setSourcePreviewMediaId)
   const selectedMediaIdSet = useMemo(() => new Set(selectedMediaIds), [selectedMediaIds])
   const brokenMediaIdSet = useMemo(() => new Set(brokenMediaIds), [brokenMediaIds])
@@ -193,15 +195,6 @@ const MediaGridBase = memo(function MediaGridBase({
     [relinkMedia],
   )
 
-  // Handle click on empty state to open file picker
-  const handleEmptyStateClick = useCallback(async () => {
-    try {
-      await importMedia()
-    } catch (error) {
-      logger.error('Import failed:', error)
-    }
-  }, [importMedia])
-
   const cardHandlersById = useMemo(
     () =>
       new Map(
@@ -242,36 +235,7 @@ const MediaGridBase = memo(function MediaGridBase({
           </div>
         </div>
       ) : !items && filteredItems.length === 0 ? (
-        <div className="flex items-center justify-center py-24">
-          <button
-            type="button"
-            className="text-center max-w-md rounded-xl border border-dashed border-border/80 p-6 transition-colors hover:border-primary/60 hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            onClick={handleEmptyStateClick}
-          >
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full border-2 border-dashed border-border flex items-center justify-center bg-secondary transition-colors">
-              <Upload className="w-10 h-10 text-muted-foreground" />
-            </div>
-            <p className="text-base font-bold text-foreground mb-2 tracking-wide">
-              {t('media.grid.emptyTitle')}
-            </p>
-            <p className="text-sm text-muted-foreground font-light mb-4">
-              {t('media.grid.emptyHint')}
-            </p>
-            <span className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground mb-4">
-              {t('media.grid.importButton')}
-            </span>
-            <div className="flex flex-wrap justify-center gap-2">
-              {getSupportedMediaFormatLabels().map((label) => (
-                <span
-                  key={label}
-                  className="px-2 py-0.5 bg-secondary border border-border rounded text-xs font-mono text-muted-foreground"
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-          </button>
-        </div>
+        <MediaImportEmptyState importing={isImporting} onImport={onImport ?? (() => undefined)} />
       ) : (
         <div
           className={

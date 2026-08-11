@@ -27,6 +27,7 @@ export {
   chooseMockMediaDir,
   chooseWorkspaceMediaFiles,
   chooseWorkspaceMediaDirectory,
+  inspectWorkspaceMediaFile,
   readWorkspaceMediaFile,
   getSettings,
   previewCacheDir,

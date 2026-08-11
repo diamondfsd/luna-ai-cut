@@ -37,19 +37,41 @@ function jsonObjectCandidates(raw: string): string[] {
   return candidates
 }
 
-function parseValue(value: unknown): AiEditingResponse | null {
+function parseToolCall(value: unknown): AiEditingToolCall | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const candidate = value as { reply?: unknown; toolCalls?: unknown }
+  const call = value as { id?: unknown; args?: unknown }
+  if (
+    typeof call.id !== 'string' ||
+    !call.args ||
+    typeof call.args !== 'object' ||
+    Array.isArray(call.args)
+  ) {
+    return null
+  }
+  return { id: call.id, args: call.args as Record<string, unknown> }
+}
+
+function parseValue(value: unknown, depth = 0): AiEditingResponse | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const candidate = value as { reply?: unknown; toolCalls?: unknown; json?: unknown }
+
+  if (depth < 2 && typeof candidate.json === 'string') {
+    try {
+      return parseValue(JSON.parse(candidate.json), depth + 1)
+    } catch {
+      return null
+    }
+  }
+
+  const singleCall = parseToolCall(value)
+  if (singleCall) return { reply: '', toolCalls: [singleCall] }
   if (typeof candidate.reply !== 'string' || !Array.isArray(candidate.toolCalls)) return null
 
   const toolCalls: AiEditingToolCall[] = []
   for (const toolCall of candidate.toolCalls) {
-    if (!toolCall || typeof toolCall !== 'object' || Array.isArray(toolCall)) return null
-    const call = toolCall as { id?: unknown; args?: unknown }
-    if (typeof call.id !== 'string' || !call.args || typeof call.args !== 'object' || Array.isArray(call.args)) {
-      return null
-    }
-    toolCalls.push({ id: call.id, args: call.args as Record<string, unknown> })
+    const parsed = parseToolCall(toolCall)
+    if (!parsed) return null
+    toolCalls.push(parsed)
   }
 
   return { reply: candidate.reply, toolCalls }

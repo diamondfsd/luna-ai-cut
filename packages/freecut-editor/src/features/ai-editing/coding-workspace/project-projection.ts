@@ -14,6 +14,14 @@ function safeRefId(ref: string): string {
   return safe || 'unknown'
 }
 
+function mediaIdFromRef(ref: string): string {
+  const prefix = 'media:'
+  if (!ref.startsWith(prefix) || ref.length === prefix.length) {
+    throw new Error(`素材引用“${ref}”格式无效。`)
+  }
+  return ref.slice(prefix.length)
+}
+
 function assignMediaFileIds(workspace: AgentWorkspaceDocument): Map<string, string> {
   const result = new Map<string, string>()
   const used = new Set<string>()
@@ -114,6 +122,7 @@ export function projectAgentWorkspaceToFiles(
 
   const mediaFileIds = assignMediaFileIds(workspace)
   const mediaIndex = workspace.media.map((media) => ({
+    id: mediaIdFromRef(media.ref),
     ref: media.ref,
     name: media.name,
     kind: media.kind,
@@ -131,6 +140,7 @@ export function projectAgentWorkspaceToFiles(
       path: `media/${id}.json`,
       content: json({
         version: 1,
+        id: mediaIdFromRef(media.ref),
         ref: media.ref,
         name: media.name,
         kind: media.kind,

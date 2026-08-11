@@ -520,11 +520,8 @@ const StaticClipContent = memo(function StaticClipContent({ item }: { item: Time
 
   if (item.type === 'text') {
     return (
-      <div className="absolute inset-0 flex flex-col px-2 py-1 overflow-hidden">
-        <div className="text-[10px] text-muted-foreground truncate">Text</div>
-        <div className="text-xs font-medium truncate flex-1">
-          {getTextItemPlainText(item) || 'Empty text'}
-        </div>
+      <div className="absolute inset-0 flex items-center overflow-hidden px-2">
+        <div className="min-w-0 truncate text-xs font-medium">{getTextItemPlainText(item)}</div>
       </div>
     )
   }

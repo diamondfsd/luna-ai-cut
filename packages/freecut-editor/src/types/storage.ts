@@ -49,6 +49,8 @@ export interface MediaMetadata {
    * Stored in IndexedDB - requires permission re-request on new sessions
    */
   fileHandle?: FileSystemFileHandle
+  /** Absolute source path supplied by the Electron host for linked local media. */
+  nativePath?: string
   /**
    * OPFS path (when storageType === 'opfs')
    * Format: content/{shard1}/{shard2}/{uuid}/data

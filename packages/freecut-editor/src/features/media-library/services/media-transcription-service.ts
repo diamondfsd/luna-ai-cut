@@ -89,6 +89,52 @@ interface EnableTranscriptCaptionsResult {
   removedItemCount: number
 }
 
+function hasSameCaptionPlacement(left: CaptionableClip, right: CaptionableClip): boolean {
+  return (
+    left.mediaId === right.mediaId &&
+    left.from === right.from &&
+    left.durationInFrames === right.durationInFrames &&
+    (left.sourceStart ?? 0) === (right.sourceStart ?? 0) &&
+    left.sourceEnd === right.sourceEnd &&
+    left.sourceFps === right.sourceFps &&
+    (left.speed ?? 1) === (right.speed ?? 1) &&
+    (left.isReversed ?? false) === (right.isReversed ?? false)
+  )
+}
+
+function canonicalCaptionClip(
+  clips: readonly CaptionableClip[],
+  clip: CaptionableClip,
+): CaptionableClip {
+  if (clip.type === 'video') return clip
+  return (
+    clips.find(
+      (candidate) =>
+        candidate.type === 'video' &&
+        clip.linkedGroupId !== undefined &&
+        candidate.linkedGroupId === clip.linkedGroupId,
+    ) ??
+    clips.find(
+      (candidate) => candidate.type === 'video' && hasSameCaptionPlacement(candidate, clip),
+    ) ??
+    clip
+  )
+}
+
+function uniqueCaptionOwners(
+  allClips: readonly CaptionableClip[],
+  clips: readonly CaptionableClip[],
+): CaptionableClip[] {
+  return Array.from(
+    new Map(
+      clips.map((clip) => {
+        const owner = canonicalCaptionClip(allClips, clip)
+        return [owner.id, owner] as const
+      }),
+    ).values(),
+  )
+}
+
 function definedCaptionStyleFields(
   template: Partial<CaptionTextItemTemplate> | undefined,
 ): Partial<CaptionTextItemTemplate> {
@@ -349,6 +395,7 @@ class MediaTranscriptionService {
   })
   private activeJob: QueuedTranscriptionJob | null = null
   private queue: QueuedTranscriptionJob[] = []
+  private captionMutationTail: Promise<void> = Promise.resolve()
   private readonly transcriptChangeListeners = new Set<(mediaId: string) => void>()
 
   getTranscript = getTranscript
@@ -706,6 +753,20 @@ class MediaTranscriptionService {
     mediaId: string,
     options: InsertTranscriptAsCaptionsOptions = {},
   ): Promise<InsertTranscriptAsCaptionsResult> {
+    const pending = this.captionMutationTail.then(() =>
+      this.insertTranscriptAsCaptionsNow(mediaId, options),
+    )
+    this.captionMutationTail = pending.then(
+      () => undefined,
+      () => undefined,
+    )
+    return pending
+  }
+
+  private async insertTranscriptAsCaptionsNow(
+    mediaId: string,
+    options: InsertTranscriptAsCaptionsOptions,
+  ): Promise<InsertTranscriptAsCaptionsResult> {
     const transcript = await getTranscript(mediaId)
     if (!transcript) {
       throw new Error('No transcript found for this media item')
@@ -737,6 +798,7 @@ class MediaTranscriptionService {
       : new Set<string>()
     const plannedItems = timeline.items.filter((item) => !generatedCaptionIdsToRemove.has(item.id))
     const insertedItems: TextItem[] = []
+    let skippedExistingCaptions = false
 
     for (const clip of targetClips) {
       const clipRange = getCaptionRangeForClip(clip, transcript.segments, timeline.fps)
@@ -744,9 +806,15 @@ class MediaTranscriptionService {
         continue
       }
 
-      const existingGeneratedCaptions = options.replaceExisting
-        ? findReplaceableCaptionItemsForClip(timeline.items, clip, 'transcript')
-        : []
+      const existingGeneratedCaptions = findReplaceableCaptionItemsForClip(
+        timeline.items,
+        clip,
+        'transcript',
+      )
+      if (!options.replaceExisting && existingGeneratedCaptions.length > 0) {
+        skippedExistingCaptions = true
+        continue
+      }
       const previousAttachedStyle = clip.transcriptCaptions?.style
       const preferredTrackId = this.resolvePreferredCaptionTrackId(
         newTracks,
@@ -798,6 +866,9 @@ class MediaTranscriptionService {
     }
 
     if (insertedItems.length === 0 && generatedCaptionIdsToRemove.size === 0) {
+      if (skippedExistingCaptions) {
+        return { insertedItemCount: 0, removedItemCount: 0 }
+      }
       throw new Error('Transcript does not overlap the selected clip source range')
     }
 
@@ -947,7 +1018,10 @@ class MediaTranscriptionService {
 
     if (clipIds && clipIds.length > 0) {
       const requestedClipIds = new Set(clipIds)
-      return matchingClips.filter((clip) => requestedClipIds.has(clip.id))
+      return uniqueCaptionOwners(
+        matchingClips,
+        matchingClips.filter((clip) => requestedClipIds.has(clip.id)),
+      )
     }
 
     const selectedClips = selection.selectedItemIds
@@ -955,7 +1029,7 @@ class MediaTranscriptionService {
       .filter((clip): clip is CaptionableClip => clip !== undefined)
 
     if (selectedClips.length > 0) {
-      return selectedClips
+      return uniqueCaptionOwners(matchingClips, selectedClips)
     }
 
     if (matchingClips.length === 1) {
@@ -966,7 +1040,7 @@ class MediaTranscriptionService {
       (clip) => playheadFrame >= clip.from && playheadFrame < clip.from + clip.durationInFrames,
     )
     if (clipAtPlayhead) {
-      return [clipAtPlayhead]
+      return uniqueCaptionOwners(matchingClips, [clipAtPlayhead])
     }
 
     return []

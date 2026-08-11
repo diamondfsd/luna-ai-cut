@@ -35,3 +35,14 @@ export async function buildAiEditingSystemPrompt(
     REPOSITORY_CONTEXT: JSON.stringify(evidence),
   })
 }
+
+export function buildJsonToolFallbackPrompt(
+  availableToolIds?: ReadonlySet<string>,
+): string {
+  return [
+    '宿主通知：当前模型接口不支持原生函数调用。从这条消息开始改用下面的 JSON 工具协议；既有系统指令、用户请求和历史保持不变。',
+    jsonToolsProtocol.trim(),
+    '可用工具及完整参数：',
+    toolCatalog(availableToolIds, true),
+  ].join('\n\n')
+}
