@@ -42,8 +42,9 @@ function appendExecutionDirective(
   systemPrompt: string,
   userText: string,
   history: readonly LlmMessage[],
+  requiresTimelineCommit = false,
 ): string {
-  return isConfirmedPlanExecutionRequest(userText, history)
+  return requiresTimelineCommit || isConfirmedPlanExecutionRequest(userText, history)
     ? `${systemPrompt}\n\n${CONFIRMED_PLAN_EXECUTION_DIRECTIVE}`
     : systemPrompt
 }
@@ -63,11 +64,13 @@ export async function buildTurnSystemPrompt(
   evidence: unknown,
   protocol: 'native' | 'json',
   availableToolIds?: ReadonlySet<string>,
+  requiresTimelineCommit = false,
 ): Promise<string> {
   return appendExecutionDirective(
     await buildAiEditingSystemPrompt(evidence, protocol, userText, availableToolIds),
     userText,
     history,
+    requiresTimelineCommit,
   )
 }
 
@@ -77,6 +80,7 @@ export async function buildInitialMessages(
   evidence: unknown,
   protocol: 'native' | 'json',
   availableToolIds?: ReadonlySet<string>,
+  requiresTimelineCommit = false,
 ): Promise<LlmMessage[]> {
   return [
     {
@@ -87,6 +91,7 @@ export async function buildInitialMessages(
         evidence,
         protocol,
         availableToolIds,
+        requiresTimelineCommit,
       ),
     },
     ...history,
@@ -107,6 +112,7 @@ export async function buildJsonFallbackMessages(
     await currentWorkspace(options),
     'json',
     availableToolIds,
+    options.turnIntent?.kind === 'execute-approved-plan',
   )
   if (observations.length > 0) {
     messages.push({

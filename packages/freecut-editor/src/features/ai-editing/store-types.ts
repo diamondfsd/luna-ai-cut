@@ -1,4 +1,7 @@
-import type { AiEditingConversationContext } from '@freecut/infrastructure/storage'
+import type {
+  AiEditingConversationContext,
+  AiEditingConversationWorkflow,
+} from '@freecut/infrastructure/storage'
 import type { AiEditingMessage } from './conversation-messages'
 import type { AiEditingReasoningEffort } from './reasoning-effort'
 import type { AiEditingResourceReference } from './resource-references'
@@ -21,6 +24,7 @@ export interface AiEditingState {
   streamingText: string
   messages: AiEditingMessage[]
   agentContext: AiEditingConversationContext | null
+  conversationWorkflow: AiEditingConversationWorkflow | null
   observations: AiEditingObservation[]
   toolActivities: AiEditingToolActivity[]
   taskActivities: AiEditingTaskActivity[]

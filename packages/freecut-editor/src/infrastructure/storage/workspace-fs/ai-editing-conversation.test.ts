@@ -71,10 +71,40 @@ describe('AI editing conversation storage', () => {
       updatedAt: 120,
     }
 
-    await saveAiEditingConversationState('project-42', { messages, context })
+    await saveAiEditingConversationState('project-42', { messages, context, workflow: null })
 
-    expect(await loadAiEditingConversationState('project-42')).toEqual({ messages, context })
+    expect(await loadAiEditingConversationState('project-42')).toEqual({
+      messages,
+      context,
+      workflow: null,
+    })
     expect(await loadAiEditingConversation('project-42')).toEqual(messages)
+  })
+
+  it('persists a pending plan workflow only when it references an assistant message', async () => {
+    const root = createRoot()
+    setWorkspaceRoot(asHandle(root))
+    const messages = [
+      { id: 'request', role: 'user' as const, content: '设计脚本', createdAt: 100 },
+      { id: 'plan', role: 'assistant' as const, content: '完整剪辑脚本方案', createdAt: 110 },
+    ]
+    const workflow = {
+      kind: 'awaiting-plan-confirmation' as const,
+      planMessageId: 'plan',
+      updatedAt: 120,
+    }
+
+    await saveAiEditingConversationState('project-42', {
+      messages,
+      context: null,
+      workflow,
+    })
+
+    expect(await loadAiEditingConversationState('project-42')).toEqual({
+      messages,
+      context: null,
+      workflow,
+    })
   })
 
   it('stores archived sessions separately and lists the newest session first', async () => {

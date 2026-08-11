@@ -14,6 +14,10 @@ import {
 } from './resource-references'
 import { prepareConversationContext } from './conversation-context'
 import {
+  nextConversationWorkflow,
+  resolveAiEditingTurnIntent,
+} from './conversation-intent'
+import {
   enqueueAiEditingConversationWrite,
   waitForAiEditingConversationWrites,
 } from './conversation-writes'
@@ -28,6 +32,7 @@ import {
   REASONING_EFFORTS,
 } from './reasoning-effort'
 import type { AiEditingState } from './store-types'
+import { createEmptyConversationState } from './store-state'
 
 export type { AiEditingMessage } from './conversation-messages'
 export type { AiEditingReasoningEffort } from './reasoning-effort'
@@ -39,18 +44,7 @@ let conversationLoadGeneration = 0
 
 export const useAiEditingStore = create<AiEditingState>((set, get) => ({
   supported: getAiEditingAdapter().isSupported(),
-  phase: 'idle',
-  loadPercent: 0,
-  thinkingLabel: '正在理解需求',
-  thinkingPercent: 0,
-  thinkingCeiling: 0,
-  error: null,
-  streamingText: '',
-  messages: [],
-  agentContext: null,
-  observations: [],
-  toolActivities: [],
-  taskActivities: [],
+  ...createEmptyConversationState(),
   reasoningEffort: loadReasoningEffort(),
   projectId: null,
   isRestoringConversation: false,
@@ -61,21 +55,10 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     activeController?.abort()
     activeController = null
     set({
+      ...createEmptyConversationState(),
       projectId,
       isRestoringConversation: projectId !== null,
       isStartingNewConversation: false,
-      phase: 'idle',
-      loadPercent: 0,
-      thinkingLabel: '正在理解需求',
-      thinkingPercent: 0,
-      thinkingCeiling: 0,
-      error: null,
-      streamingText: '',
-      messages: [],
-      agentContext: null,
-      observations: [],
-      toolActivities: [],
-      taskActivities: [],
     })
     if (!projectId) return
 
@@ -85,6 +68,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     set({
       messages: conversation.messages,
       agentContext: conversation.context,
+      conversationWorkflow: conversation.workflow,
       isRestoringConversation: false,
     })
   },
@@ -103,6 +87,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
 
     const previousMessages = get().messages
     const storedContext = get().agentContext
+    const storedWorkflow = get().conversationWorkflow
+    const turnIntent = resolveAiEditingTurnIntent(trimmed, previousMessages, storedWorkflow)
     const userMessageId = newAiEditingMessageId()
     const messages = [
       ...previousMessages,
@@ -129,7 +115,11 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     })
     try {
       await enqueueAiEditingConversationWrite(projectId, () =>
-        saveAiEditingConversationState(projectId, { messages, context: storedContext }),
+        saveAiEditingConversationState(projectId, {
+          messages,
+          context: storedContext,
+          workflow: storedWorkflow,
+        }),
       )
     } catch (error) {
       logger.warn('Failed to persist AI editing conversation', error)
@@ -217,6 +207,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           saveAiEditingConversationState(projectId, {
             messages,
             context: preparedContext.context,
+            workflow: storedWorkflow,
           }),
         )
         if (get().projectId !== projectId || controller.signal.aborted) return
@@ -272,6 +263,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             }
           })
         },
+        turnIntent,
       })
       if (controller.signal.aborted || get().projectId !== projectId) return
       try {
@@ -280,20 +272,32 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       } catch (error) {
         logger.warn('Failed to persist AI editing run', error)
       }
+      const assistantMessageId = newAiEditingMessageId()
+      const assistantReply = result.reply || '已完成分析。'
       const nextMessages = [
         ...get().messages,
         {
-          id: newAiEditingMessageId(),
+          id: assistantMessageId,
           role: 'assistant' as const,
-          content: result.reply || '已完成分析。',
+          content: assistantReply,
           createdAt: Date.now(),
         },
       ]
+      const nextWorkflow = nextConversationWorkflow({
+        previous: storedWorkflow,
+        intent: turnIntent,
+        userText: trimmed,
+        assistantMessageId,
+        assistantReply,
+        completed: result.completed,
+        changedTimeline: result.timelineRevisionAfter !== result.timelineRevisionBefore,
+      })
       try {
         await enqueueAiEditingConversationWrite(projectId, () =>
           saveAiEditingConversationState(projectId, {
             messages: nextMessages,
             context: preparedContext.context,
+            workflow: nextWorkflow,
           }),
         )
       } catch (error) {
@@ -306,6 +310,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       if (get().projectId !== projectId) return
       set({
         messages: nextMessages,
+        conversationWorkflow: nextWorkflow,
         observations: result.observations,
         streamingText: '',
         phase: 'idle',
@@ -375,17 +380,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     const projectId = get().projectId
     const messages = get().messages
     if (!projectId) {
-      set({
-        messages: [],
-        agentContext: null,
-        observations: [],
-        toolActivities: [],
-        taskActivities: [],
-        streamingText: '',
-        thinkingPercent: 0,
-        thinkingCeiling: 0,
-        error: null,
-      })
+      set(createEmptyConversationState())
       return
     }
 
@@ -412,16 +407,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     if (get().projectId !== projectId) return
     conversationLoadGeneration += 1
     set({
-      messages: [],
-      agentContext: null,
-      observations: [],
-      toolActivities: [],
-      taskActivities: [],
-      phase: 'idle',
-      streamingText: '',
-      thinkingPercent: 0,
-      thinkingCeiling: 0,
-      error: null,
+      ...createEmptyConversationState(),
       isRestoringConversation: false,
       isStartingNewConversation: false,
     })
@@ -448,16 +434,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       if (get().projectId !== projectId) return false
       conversationLoadGeneration += 1
       set({
+        ...createEmptyConversationState(),
         messages,
-        agentContext: null,
-        observations: [],
-        toolActivities: [],
-        taskActivities: [],
-        phase: 'idle',
-        streamingText: '',
-        thinkingPercent: 0,
-        thinkingCeiling: 0,
-        error: null,
         isRestoringConversation: false,
       })
       return true

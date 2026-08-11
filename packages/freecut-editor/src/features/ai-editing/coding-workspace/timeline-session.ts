@@ -398,7 +398,7 @@ export class TimelineCodingSession {
         return pendingResult
       }
 
-      const prepared = await this.workingCopy.diff(this.workspace)
+      const prepared = await this.workingCopy.prepare(this.workspace)
       if (
         prepared.artifact === undefined ||
         prepared.diff === undefined ||
@@ -443,7 +443,10 @@ export class TimelineCodingSession {
         }
       }
 
-      const result = await this.workingCopy.commit({ commitId, workspace: this.workspace })
+      const result = await this.workingCopy.commitPrepared(
+        { commitId, workspace: this.workspace },
+        prepared,
+      )
       if (!result.ok) return result
       const publication = createTimelineBuildPublication({
         sourceCommitId: commitId,

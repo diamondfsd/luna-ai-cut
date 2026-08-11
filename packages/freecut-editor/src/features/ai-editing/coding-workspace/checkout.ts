@@ -119,6 +119,17 @@ export interface CodingWorkspaceCommitInput<TWorkspace> {
   workspace: TWorkspace
 }
 
+export interface CodingWorkspacePreparedCommit<
+  TSource,
+  TWorkspace,
+  TArtifact,
+  TDiff,
+  TRevision extends string | number,
+> extends CodingWorkspaceDiffResult<TArtifact, TDiff, TRevision> {
+  readonly base: CodingWorkspaceSnapshot<TSource, TRevision>
+  readonly workspace: TWorkspace
+}
+
 export class CodingWorkspaceWorkingCopy<
   TSource,
   TWorkspace,
@@ -160,18 +171,32 @@ export class CodingWorkspaceWorkingCopy<
   }
 
   async check(workspace: TWorkspace): Promise<CodingWorkspaceCheckResult<TRevision>> {
+    return this.checkAt(this.baseline, workspace)
+  }
+
+  private async checkAt(
+    base: CodingWorkspaceSnapshot<TSource, TRevision>,
+    workspace: TWorkspace,
+  ): Promise<CodingWorkspaceCheckResult<TRevision>> {
     try {
-      return await this.adapter.check({ base: this.baseline, workspace })
+      return await this.adapter.check({ base, workspace })
     } catch (error) {
       return { diagnostics: diagnosticsFromError<TRevision>({ stage: 'check', error }) }
     }
   }
 
   async build(workspace: TWorkspace): Promise<CodingWorkspaceBuildResult<TArtifact, TRevision>> {
-    const checked = await this.check(workspace)
+    return this.buildAt(this.baseline, workspace)
+  }
+
+  private async buildAt(
+    base: CodingWorkspaceSnapshot<TSource, TRevision>,
+    workspace: TWorkspace,
+  ): Promise<CodingWorkspaceBuildResult<TArtifact, TRevision>> {
+    const checked = await this.checkAt(base, workspace)
     if (hasErrorDiagnostics(checked.diagnostics)) return checked
     try {
-      const built = await this.adapter.build({ base: this.baseline, workspace })
+      const built = await this.adapter.build({ base, workspace })
       return { ...built, diagnostics: [...checked.diagnostics, ...built.diagnostics] }
     } catch (error) {
       return {
@@ -186,21 +211,36 @@ export class CodingWorkspaceWorkingCopy<
   async diff(
     workspace: TWorkspace,
   ): Promise<CodingWorkspaceDiffResult<TArtifact, TDiff, TRevision>> {
-    const built = await this.build(workspace)
-    if (built.artifact === undefined || hasErrorDiagnostics(built.diagnostics)) return built
+    const prepared = await this.prepare(workspace)
+    const { base: _base, workspace: _workspace, ...result } = prepared
+    return result
+  }
+
+  async prepare(
+    workspace: TWorkspace,
+  ): Promise<CodingWorkspacePreparedCommit<TSource, TWorkspace, TArtifact, TDiff, TRevision>> {
+    const base = this.baseline
+    const built = await this.buildAt(base, workspace)
+    if (built.artifact === undefined || hasErrorDiagnostics(built.diagnostics)) {
+      return { base, workspace, ...built }
+    }
     try {
       const result = await this.adapter.diff({
-        base: this.baseline,
+        base,
         workspace,
         artifact: built.artifact,
       })
       return {
+        base,
+        workspace,
         ...built,
         diff: result.diff,
         diagnostics: [...built.diagnostics, ...(result.diagnostics ?? [])],
       }
     } catch (error) {
       return {
+        base,
+        workspace,
         ...built,
         diagnostics: [
           ...built.diagnostics,
@@ -212,6 +252,20 @@ export class CodingWorkspaceWorkingCopy<
 
   commit(
     input: CodingWorkspaceCommitInput<TWorkspace>,
+  ): Promise<CodingWorkspaceCommitResult<TArtifact, TDiff, TRevision, TReceipt>> {
+    return this.startCommit(input)
+  }
+
+  commitPrepared(
+    input: CodingWorkspaceCommitInput<TWorkspace>,
+    prepared: CodingWorkspacePreparedCommit<TSource, TWorkspace, TArtifact, TDiff, TRevision>,
+  ): Promise<CodingWorkspaceCommitResult<TArtifact, TDiff, TRevision, TReceipt>> {
+    return this.startCommit(input, prepared)
+  }
+
+  private startCommit(
+    input: CodingWorkspaceCommitInput<TWorkspace>,
+    prepared?: CodingWorkspacePreparedCommit<TSource, TWorkspace, TArtifact, TDiff, TRevision>,
   ): Promise<CodingWorkspaceCommitResult<TArtifact, TDiff, TRevision, TReceipt>> {
     const previous = this.commits.get(input.commitId)
     if (previous) return previous
@@ -227,7 +281,7 @@ export class CodingWorkspaceWorkingCopy<
     }
 
     this.activeCommitId = input.commitId
-    const pending = this.performCommit(input).finally(() => {
+    const pending = this.performCommit(input, prepared).finally(() => {
       if (this.activeCommitId === input.commitId) this.activeCommitId = undefined
     })
     this.commits.set(input.commitId, pending)
@@ -236,9 +290,16 @@ export class CodingWorkspaceWorkingCopy<
 
   private async performCommit(
     input: CodingWorkspaceCommitInput<TWorkspace>,
+    supplied?: CodingWorkspacePreparedCommit<TSource, TWorkspace, TArtifact, TDiff, TRevision>,
   ): Promise<CodingWorkspaceCommitResult<TArtifact, TDiff, TRevision, TReceipt>> {
     const base = this.baseline
-    const prepared = await this.diff(input.workspace)
+    if (
+      supplied &&
+      (supplied.workspace !== input.workspace || supplied.base !== base)
+    ) {
+      return this.commitStateFailure(input.commitId, 'PREPARED_BUILD_STALE')
+    }
+    const prepared = supplied ?? (await this.prepare(input.workspace))
     if (
       prepared.artifact === undefined ||
       prepared.diff === undefined ||
@@ -291,9 +352,12 @@ export class CodingWorkspaceWorkingCopy<
 
   private commitStateFailure(
     commitId: string,
-    code: 'COMMIT_IN_PROGRESS',
+    code: 'COMMIT_IN_PROGRESS' | 'PREPARED_BUILD_STALE',
   ): CodingWorkspaceCommitFailure<TRevision> {
-    const message = '这个剪辑工程工作区正在提交另一份修改。'
+    const message =
+      code === 'COMMIT_IN_PROGRESS'
+        ? '这个剪辑工程工作区正在提交另一份修改。'
+        : '剪辑源码或生产基线已变化，请重新构建后再发布。'
     return {
       ok: false,
       commitId,
