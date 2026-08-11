@@ -14,7 +14,7 @@ async function waitForLunaWindow(app: import('@playwright/test').ElectronApplica
 }
 
 test('FreeCut 项目在 Electron 重启后仍可打开', async ({ lunaApp }) => {
-  const { app, page, runtimeErrors, temporaryRoot } = lunaApp
+  const { app, page, runtimeErrors, temporaryRoot, workspaceDir } = lunaApp
 
   await page.getByRole('link', { name: '剪辑', exact: true }).click()
   await page.getByRole('link', { name: /^(创建第一个项目|新建项目)$/ }).click()
@@ -22,7 +22,7 @@ test('FreeCut 项目在 Electron 重启后仍可打开', async ({ lunaApp }) => 
   await expect.poll(() => page.evaluate(() => window.location.origin)).toBe('luna://app')
   await page.evaluate(() => localStorage.setItem('freecut-persistence-e2e', 'stored'))
   await expect.poll(async () => {
-    const projectRoot = path.join(temporaryRoot, 'user-data', 'freecut-workspace', 'projects')
+    const projectRoot = path.join(workspaceDir, 'projects')
     const entries = await readdir(projectRoot, { withFileTypes: true }).catch(() => [])
     return entries.filter((entry) => entry.isDirectory()).length
   }).toBe(1)

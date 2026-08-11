@@ -233,8 +233,8 @@ async function ensureAssistantReady(page: Page) {
   return input
 }
 
-async function findProjectDirectory(userDataDir: string): Promise<string> {
-  const root = path.join(userDataDir, 'freecut-workspace', 'projects')
+async function findProjectDirectory(workspaceDir: string): Promise<string> {
+  const root = path.join(workspaceDir, 'projects')
   const entries = await readdir(root, { withFileTypes: true })
   const project = entries.find((entry) => entry.isDirectory())
   if (!project) throw new Error('E2E project directory was not created')
@@ -252,7 +252,7 @@ test(
   '同一 AI run 分阶段发布两次并保持 Git 与时间轴连续',
   async ({ lunaApp }) => {
     test.setTimeout(180_000)
-    const { page, runtimeErrors, userDataDir } = lunaApp
+    const { page, runtimeErrors, workspaceDir } = lunaApp
     const mock = await startStagedPublishMock()
     try {
       await page.getByRole('link', { name: '剪辑', exact: true }).click()
@@ -269,7 +269,7 @@ test(
       await page.getByRole('button', { name: '发送剪辑请求' }).click()
 
       await mock.waitForSecondStageRequest()
-      const projectDirectory = await findProjectDirectory(userDataDir)
+      const projectDirectory = await findProjectDirectory(workspaceDir)
       const firstPublication = JSON.parse(
         await readFile(path.join(projectDirectory, 'project.json'), 'utf8'),
       ) as StoredProject

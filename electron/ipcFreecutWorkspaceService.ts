@@ -1,8 +1,9 @@
-import { app, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { mkdir, readFile, readdir, lstat, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { FreecutWorkspaceEntry } from '../src/shared/types'
+import { currentBaseDir } from './settingsService'
 
 const WORKSPACE_DIRECTORY = 'freecut-workspace'
 const NON_SOURCE_MEDIA_FILES = new Set([
@@ -11,10 +12,10 @@ const NON_SOURCE_MEDIA_FILES = new Set([
   'thumbnail.meta.json',
   'source.link.json',
 ])
-const writers = new Map<string, { targetPath: string; temporaryPath: string; tail: Promise<void> }>()
+const writers = new Map<string, { targetPath: string; temporaryPath: string; rootPath: string; tail: Promise<void> }>()
 
 function workspaceRoot(): string {
-  return path.join(app.getPath('userData'), WORKSPACE_DIRECTORY)
+  return path.join(currentBaseDir(), WORKSPACE_DIRECTORY)
 }
 
 function validateSegments(segments: string[]): void {
@@ -30,9 +31,9 @@ function validateSegments(segments: string[]): void {
   }
 }
 
-function resolveWorkspacePath(segments: string[]): string {
+function resolveWorkspacePath(segments: string[], root = workspaceRoot()): string {
   validateSegments(segments)
-  return path.join(workspaceRoot(), ...segments)
+  return path.join(root, ...segments)
 }
 
 async function findMediaSourcePath(mediaId: string): Promise<string | null> {
@@ -49,16 +50,16 @@ async function findMediaSourcePath(mediaId: string): Promise<string | null> {
   return source ? path.join(mediaPath, source.name) : null
 }
 
-function ensureContained(candidate: string): void {
-  const root = path.resolve(workspaceRoot())
+function ensureContained(candidate: string, rootPath = workspaceRoot()): void {
+  const root = path.resolve(rootPath)
   const relative = path.relative(root, path.resolve(candidate))
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error('工作区路径无效')
   }
 }
 
-async function ensureParent(filePath: string): Promise<void> {
-  ensureContained(filePath)
+async function ensureParent(filePath: string, rootPath = workspaceRoot()): Promise<void> {
+  ensureContained(filePath, rootPath)
   await mkdir(path.dirname(filePath), { recursive: true })
 }
 
@@ -135,14 +136,15 @@ export function register(): void {
   })
 
   ipcMain.handle('freecut-workspace:open-writer', async (_event, segments: string[]) => {
-    const targetPath = resolveWorkspacePath(segments)
-    await ensureParent(targetPath)
+    const rootPath = workspaceRoot()
+    const targetPath = resolveWorkspacePath(segments, rootPath)
+    await ensureParent(targetPath, rootPath)
     const temporaryPath = path.join(
       path.dirname(targetPath),
       `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`,
     )
     const writerId = randomUUID()
-    writers.set(writerId, { targetPath, temporaryPath, tail: Promise.resolve() })
+    writers.set(writerId, { targetPath, temporaryPath, rootPath, tail: Promise.resolve() })
     return writerId
   })
 
@@ -155,7 +157,7 @@ export function register(): void {
     if (!writer) throw new Error('工作区写入任务不存在')
     try {
       await enqueueWriter(writerId, async () => {
-        await ensureParent(writer.targetPath)
+        await ensureParent(writer.targetPath, writer.rootPath)
         await rename(writer.temporaryPath, writer.targetPath)
       })
     } finally {
@@ -173,15 +175,17 @@ export function register(): void {
   })
 
   ipcMain.handle('freecut-workspace:remove-entry', async (_event, segments: string[], recursive: boolean) => {
-    const targetPath = resolveWorkspacePath(segments)
-    ensureContained(targetPath)
+    const rootPath = workspaceRoot()
+    const targetPath = resolveWorkspacePath(segments, rootPath)
+    ensureContained(targetPath, rootPath)
     await rm(targetPath, { recursive, force: true })
   })
 
   ipcMain.handle('freecut-workspace:move-file', async (_event, source: string[], destination: string[]) => {
-    const sourcePath = resolveWorkspacePath(source)
-    const destinationPath = resolveWorkspacePath(destination)
-    await ensureParent(destinationPath)
+    const rootPath = workspaceRoot()
+    const sourcePath = resolveWorkspacePath(source, rootPath)
+    const destinationPath = resolveWorkspacePath(destination, rootPath)
+    await ensureParent(destinationPath, rootPath)
     await rename(sourcePath, destinationPath)
   })
 }

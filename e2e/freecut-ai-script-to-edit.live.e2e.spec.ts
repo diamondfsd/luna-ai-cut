@@ -4,11 +4,6 @@ import path from 'node:path'
 import { expect, test } from './fixtures/lunaElectronLive'
 
 const projectId = process.env.LUNA_E2E_PROJECT_ID ?? 'Dag9toSB'
-const userDataDir = process.env.LUNA_E2E_EXISTING_USER_DATA_DIR
-  ?? '/Users/zhouchao/Library/Application Support/luna-ai-cut'
-const projectDir = path.join(userDataDir, 'freecut-workspace', 'projects', projectId)
-const runsFile = path.join(projectDir, 'ai-editing-runs.json')
-const projectFile = path.join(projectDir, 'project.json')
 
 const scriptRequest = '我最近给我家宝宝做了一个 AI-agent， 可以通过语音聊天告诉AI， 会帮助她做一个简单的小游戏， 现在我想做个抖音视频， 帮我设计下脚本呢'
 const editRequest = '可以IA 就按这个来'
@@ -46,22 +41,23 @@ interface StoredProject {
   }
 }
 
-async function readRuns(): Promise<StoredRun[]> {
+async function readRuns(runsFile: string): Promise<StoredRun[]> {
   const stored = JSON.parse(await readFile(runsFile, 'utf8')) as { runs?: StoredRun[] }
   return stored.runs ?? []
 }
 
-async function readProject(): Promise<StoredProject> {
+async function readProject(projectFile: string): Promise<StoredProject> {
   return JSON.parse(await readFile(projectFile, 'utf8')) as StoredProject
 }
 
 async function waitForRunOrAssistantError(
   assistant: import('@playwright/test').Locator,
+  runsFile: string,
   expectedRunCount: number,
   timeout: number,
 ): Promise<void> {
   await Promise.race([
-    expect.poll(async () => (await readRuns()).length, { timeout }).toBe(expectedRunCount),
+    expect.poll(async () => (await readRuns(runsFile)).length, { timeout }).toBe(expectedRunCount),
     assistant.getByRole('alert').waitFor({ state: 'visible', timeout }).then(async () => {
       throw new Error(`剪辑助手报错：${await assistant.getByRole('alert').innerText()}`)
     }),
@@ -73,6 +69,10 @@ test.setTimeout(20 * 60_000)
 
 test('连续三轮完成脚本、剪辑和旁白可视化样式调整', async ({ lunaLiveApp }) => {
   const { page, runtimeErrors } = lunaLiveApp
+  const settings = await page.evaluate(() => window.luna.getSettings())
+  const projectDir = path.join(settings.baseDir, 'freecut-workspace', 'projects', projectId)
+  const runsFile = path.join(projectDir, 'ai-editing-runs.json')
+  const projectFile = path.join(projectDir, 'project.json')
   await page.getByRole('link', { name: '剪辑', exact: true }).click()
   const projectCard = page.locator(`[data-project-card][data-project-id="${projectId}"]`)
   await expect(projectCard).toBeVisible()
@@ -88,21 +88,21 @@ test('连续三轮完成脚本、剪辑和旁白可视化样式调整', async ({
 
   const input = page.getByPlaceholder('描述想要完成的剪辑')
   const send = page.getByRole('button', { name: '发送剪辑请求' })
-  const initialRunCount = (await readRuns()).length
+  const initialRunCount = (await readRuns(runsFile)).length
 
   await input.fill(scriptRequest)
   await send.click()
-  await waitForRunOrAssistantError(assistant, initialRunCount + 1, 7 * 60_000)
+  await waitForRunOrAssistantError(assistant, runsFile, initialRunCount + 1, 7 * 60_000)
   await expect(input).toBeEnabled({ timeout: 7 * 60_000 })
-  const scriptRun = (await readRuns()).at(-1)!
+  const scriptRun = (await readRuns(runsFile)).at(-1)!
   expect(scriptRun).toMatchObject({ request: scriptRequest, completed: true, plan: [], toolCalls: [] })
   expect(scriptRun.timelineRevisionAfter).toBe(scriptRun.timelineRevisionBefore)
 
   await input.fill(editRequest)
   await send.click()
-  await waitForRunOrAssistantError(assistant, initialRunCount + 2, 12 * 60_000)
+  await waitForRunOrAssistantError(assistant, runsFile, initialRunCount + 2, 12 * 60_000)
   await expect(input).toBeEnabled({ timeout: 12 * 60_000 })
-  const editRun = (await readRuns()).at(-1)!
+  const editRun = (await readRuns(runsFile)).at(-1)!
   expect(editRun.request).toBe(editRequest)
   expect(editRun.completed).toBe(true)
   expect(editRun.plan).toEqual([])
@@ -110,7 +110,7 @@ test('连续三轮完成脚本、剪辑和旁白可视化样式调整', async ({
   expect(editRun.completionNotes).toEqual([])
   await expect(page.locator('[data-timeline-item]')).not.toHaveCount(0)
 
-  const projectAfterEdit = await readProject()
+  const projectAfterEdit = await readProject(projectFile)
   const changedTimeline = editRun.timelineRevisionAfter > editRun.timelineRevisionBefore
   if (changedTimeline) {
     expect(editRun.toolCalls.some(
@@ -135,9 +135,9 @@ test('连续三轮完成脚本、剪辑和旁白可视化样式调整', async ({
 
   await input.fill(styleRequest)
   await send.click()
-  await waitForRunOrAssistantError(assistant, initialRunCount + 3, 7 * 60_000)
+  await waitForRunOrAssistantError(assistant, runsFile, initialRunCount + 3, 7 * 60_000)
   await expect(input).toBeEnabled({ timeout: 7 * 60_000 })
-  const styleRun = (await readRuns()).at(-1)!
+  const styleRun = (await readRuns(runsFile)).at(-1)!
   expect(styleRun).toMatchObject({ request: styleRequest, completed: true, plan: [] })
   const changedStyle = styleRun.timelineRevisionAfter > styleRun.timelineRevisionBefore
   if (changedStyle) {
@@ -152,10 +152,10 @@ test('连续三轮完成脚本、剪辑和旁白可视化样式调整', async ({
 
   const narrationIds = new Set(narrationBeforeStyle.map((item) => item.id))
   await expect.poll(async () => {
-    const project = await readProject()
+    const project = await readProject(projectFile)
     return project.timeline.items.filter((item) => narrationIds.has(item.id) && item.type === 'text')
   }, { timeout: 30_000 }).toHaveLength(narrationBeforeStyle.length)
-  const projectAfterStyle = await readProject()
+  const projectAfterStyle = await readProject(projectFile)
   const styledNarration = projectAfterStyle.timeline.items.filter(
     (item) => narrationIds.has(item.id) && item.type === 'text',
   )

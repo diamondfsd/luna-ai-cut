@@ -10,6 +10,13 @@ import {
 } from '@freecut/components/ui/dialog'
 import { ScrollArea } from '@freecut/components/ui/scroll-area'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@freecut/components/ui/select'
+import {
   listAiEditingRuns,
   type AiEditingRunEvent,
   type AiEditingRunRecord,
@@ -43,6 +50,15 @@ function formatTimestamp(value: number): string {
   return new Intl.DateTimeFormat(undefined, {
     month: '2-digit',
     day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(value))
+}
+
+function formatTime(value: number): string {
+  return new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -89,7 +105,9 @@ function modelCalls(run: AiEditingRunRecord): ModelCall[] {
     const protocol = eventProtocol(event)
     const response = events.slice(index + 1).find(
       (candidate) =>
-        candidate.type === 'model-response' && eventRound(candidate) === round,
+        candidate.type === 'model-response' &&
+        eventRound(candidate) === round &&
+        (protocol === null || eventProtocol(candidate) === protocol),
     )
     const usageEvent = events.slice(index + 1).find(
       (candidate) => candidate.type === 'model-usage' &&
@@ -179,24 +197,24 @@ export function AiEditingModelContextDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="freecut-app dark flex h-[82vh] w-[86vw] max-w-none flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="shrink-0 border-b border-border px-6 py-5 pr-14">
+      <DialogContent className="freecut-app dark flex h-[80vh] w-[90vw] max-w-none flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12">
           <DialogTitle>模型上下文</DialogTitle>
-          <DialogDescription>查看每次模型调用实际使用的完整消息、工具和返回内容。</DialogDescription>
+          <DialogDescription className="text-xs">查看每次模型调用的消息、工具、返回内容和用量。</DialogDescription>
         </DialogHeader>
-        <div className="grid min-h-0 flex-1 grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)]">
           <aside className="min-h-0 border-r border-border bg-muted/20">
-            <div className="border-b border-border px-4 py-3">
+            <div className="border-b border-border px-3 py-2">
               <p className="text-xs font-medium text-foreground">执行记录</p>
             </div>
-            <ScrollArea className="h-[calc(100%-2.75rem)]">
+            <ScrollArea className="h-[calc(100%-2rem)]">
               {loading ? (
                 <div className="flex min-h-24 items-center justify-center gap-2 px-4 text-xs text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   正在读取记录
                 </div>
               ) : runs.length > 0 ? (
-                <div className="space-y-1 p-2">
+                <div className="space-y-0.5 p-1.5">
                   {runs.map((run) => {
                     const callCount = modelCalls(run).length
                     return (
@@ -205,7 +223,7 @@ export function AiEditingModelContextDialog({
                         type="button"
                         variant="ghost"
                         className={cn(
-                          'h-auto min-h-16 w-full items-start justify-start whitespace-normal px-3 py-2 text-left hover:bg-background/80',
+                          'h-auto min-h-12 w-full items-start justify-start whitespace-normal px-2 py-1.5 text-left hover:bg-background/80',
                           selectedRunId === run.id && 'bg-background text-foreground',
                         )}
                         onClick={() => {
@@ -214,7 +232,7 @@ export function AiEditingModelContextDialog({
                           setCopied(false)
                         }}
                       >
-                        <span className="min-w-0 space-y-1">
+                        <span className="min-w-0 space-y-0.5">
                           <span className="block truncate text-xs font-medium">{run.request}</span>
                           <span className="block text-[11px] text-muted-foreground">
                             {formatTimestamp(run.createdAt)} · {callCount} 次调用
@@ -236,32 +254,34 @@ export function AiEditingModelContextDialog({
           <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             {selectedRun ? (
               <>
-                <div className="shrink-0 border-b border-border px-5 py-3">
-                  <p className="truncate text-sm font-medium text-foreground">{selectedRun.request}</p>
+                <div className="shrink-0 border-b border-border px-4 py-2">
+                  <p className="truncate text-xs font-medium text-foreground">{selectedRun.request}</p>
                   {calls.length > 0 ? (
-                    <div className="mt-2 flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 flex-wrap gap-1.5">
-                        {calls.map((call, index) => (
-                          <Button
-                            key={call.key}
-                            type="button"
-                            size="sm"
-                            variant={selectedCall?.key === call.key ? 'secondary' : 'ghost'}
-                            className="h-7 px-2 text-[11px]"
-                            onClick={() => {
-                              setSelectedCallKey(call.key)
-                              setCopied(false)
-                            }}
-                          >
-                            第 {index + 1} 次 · {formatTimestamp(call.at)}
-                          </Button>
-                        ))}
-                      </div>
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <Select
+                        value={selectedCall?.key}
+                        onValueChange={(value) => {
+                          setSelectedCallKey(value)
+                          setCopied(false)
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-48 px-2 text-[11px] shadow-none">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {calls.map((call, index) => (
+                            <SelectItem key={call.key} value={call.key} className="text-xs">
+                              第 {index + 1} 次 · {formatTime(call.at)}
+                              {call.usage ? ` · ${formatTokens(call.usage.totalTokens)}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="h-7 shrink-0 gap-1.5 px-2 text-[11px]"
+                        className="h-7 shrink-0 gap-1 px-2 text-[11px]"
                         onClick={() => void copyCall()}
                       >
                         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -273,7 +293,7 @@ export function AiEditingModelContextDialog({
                 {selectedCall ? (
                   <ScrollArea className="min-h-0 flex-1">
                     {selectedCall.usage ? (
-                      <div className="grid grid-cols-5 gap-px border-b border-border bg-border">
+                      <div className="flex h-9 items-center gap-4 overflow-x-auto border-b border-border px-4">
                         {[
                           ['输入', formatTokens(selectedCall.usage.promptTokens)],
                           ['输出', formatTokens(selectedCall.usage.completionTokens)],
@@ -281,14 +301,14 @@ export function AiEditingModelContextDialog({
                           ['缓存', formatTokens(selectedCall.usage.cachedTokens)],
                           ['缓存占比', `${selectedCall.usage.cachePercent.toFixed(2)}%`],
                         ].map(([label, value]) => (
-                          <div key={label} className="bg-background px-4 py-3">
-                            <p className="text-[10px] text-muted-foreground">{label}</p>
-                            <p className="mt-1 font-mono text-xs text-foreground">{value}</p>
+                          <div key={label} className="flex shrink-0 items-baseline gap-1.5">
+                            <span className="text-[10px] text-muted-foreground">{label}</span>
+                            <span className="font-mono text-[11px] text-foreground">{value}</span>
                           </div>
                         ))}
                       </div>
                     ) : null}
-                    <pre className="w-full min-w-0 whitespace-pre-wrap break-words p-5 font-mono text-[11px] leading-relaxed text-foreground">
+                    <pre className="w-full min-w-0 whitespace-pre-wrap break-words p-4 font-mono text-[11px] leading-5 text-foreground">
                       {displayCall(selectedCall)}
                     </pre>
                   </ScrollArea>

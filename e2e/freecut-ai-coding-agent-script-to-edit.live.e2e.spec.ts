@@ -169,7 +169,7 @@ test.use({
 test.setTimeout(20 * 60_000)
 
 test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', async ({ lunaApp }) => {
-  const { page, runtimeErrors, userDataDir } = lunaApp
+  const { page, runtimeErrors, workspaceDir } = lunaApp
   const config = JSON.parse(await readFile(AI_CONFIG_FILE, 'utf8')) as AiConfig
   const proxy = await startLiveModelProxy(config)
   let proxyConfigSaved = false
@@ -187,8 +187,7 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
     await projectCard.dblclick()
     await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
     const projectDirectory = path.join(
-      userDataDir,
-      'freecut-workspace',
+      workspaceDir,
       'projects',
       SOURCE_PROJECT_ID,
     )

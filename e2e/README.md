@@ -4,7 +4,7 @@ Electron E2E uses Playwright Test and the shared `lunaElectron` fixture.
 
 ## Shared Workspace Mode
 
-Shared workspace mode lets the developer and Codex test the same FreeCut project together. It launches the application with the current Electron user-data directory, so the project list, media library, and project files are the same ones visible to the developer.
+Shared workspace mode lets the developer and Codex test the same FreeCut project together. It launches the application with the current Electron user-data directory and uses that profile's configured base directory, so the project list, media library, and project files are the same ones visible to the developer.
 
 Enable it only for a named, agreed user action:
 
@@ -16,8 +16,8 @@ pnpm exec playwright test e2e/freecut-current-project-drag.e2e.spec.ts --workers
 
 In this mode:
 
-- Playwright opens and operates the real project data under `freecut-workspace/`.
-- The fixture requires the user-data directory to exist and never overwrites `settings.json`.
+- Playwright opens and operates the real project data under `<baseDir>/freecut-workspace/`.
+- The fixture requires the user-data directory to exist, resolves `<baseDir>` from its settings, and never overwrites `settings.json`.
 - Each test must name its project ID, perform the agreed UI action, and verify the corresponding disk state such as `project.json`.
 - The action is intentionally retained for the developer to inspect. Do not add automatic cleanup, deletion, export, or overwrite steps unless the developer has explicitly requested them.
 - Temporary files are limited to Playwright logs and failure evidence. They are separate from the user-data directory and are removed after a successful run.

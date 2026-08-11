@@ -81,8 +81,8 @@ async function ensureAssistantReady(page: Page) {
   return input
 }
 
-async function findProjectDirectory(userDataDir: string): Promise<string> {
-  const root = path.join(userDataDir, 'freecut-workspace', 'projects')
+async function findProjectDirectory(workspaceDir: string): Promise<string> {
+  const root = path.join(workspaceDir, 'projects')
   const entries = await readdir(root, { withFileTypes: true })
   const project = entries.find((entry) => entry.isDirectory())
   if (!project) throw new Error('E2E project directory was not created')
@@ -91,7 +91,7 @@ async function findProjectDirectory(userDataDir: string): Promise<string> {
 
 /** AI-TASK-P0-SEQUENTIAL: simulated, AI-owned. */
 test('AI-TASK-P0-SEQUENTIAL 复杂剪辑按独立任务逐项完成', async ({ lunaApp }) => {
-  const { page, runtimeErrors, userDataDir } = lunaApp
+  const { page, runtimeErrors, workspaceDir } = lunaApp
   const mock = await startTaskModeMock()
   try {
     await page.getByRole('link', { name: '剪辑', exact: true }).click()
@@ -118,7 +118,7 @@ test('AI-TASK-P0-SEQUENTIAL 复杂剪辑按独立任务逐项完成', async ({ l
     expect(JSON.stringify(secondWorkerMessages)).not.toContain('tool_calls')
     expect(secondWorkerMessages[1]?.content).toContain('片头标题已经完成')
 
-    const projectDirectory = await findProjectDirectory(userDataDir)
+    const projectDirectory = await findProjectDirectory(workspaceDir)
     await expect.poll(async () => {
       const runs = JSON.parse(await readFile(path.join(projectDirectory, 'ai-editing-runs.json'), 'utf8')) as {
         runs?: Array<{ plan?: string[]; completed?: boolean }>

@@ -12,10 +12,9 @@ test.skip(
 )
 
 test('打开现有项目并将媒体拖入视频轨道', async ({ lunaApp }) => {
-  const { page, runtimeErrors, userDataDir } = lunaApp
+  const { page, runtimeErrors, workspaceDir } = lunaApp
   const projectFile = path.join(
-    userDataDir,
-    'freecut-workspace',
+    workspaceDir,
     'projects',
     projectId,
     'project.json',

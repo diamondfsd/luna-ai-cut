@@ -4,11 +4,6 @@ import path from 'node:path'
 import { expect, test } from './fixtures/lunaElectronLive'
 
 const projectId = process.env.LUNA_E2E_PROJECT_ID ?? 'J4ANiM2O'
-const userDataDir = process.env.LUNA_E2E_EXISTING_USER_DATA_DIR
-  ?? '/Users/zhouchao/Library/Application Support/luna-ai-cut'
-const projectDir = path.join(userDataDir, 'freecut-workspace', 'projects', projectId)
-const projectFile = path.join(projectDir, 'project.json')
-const runsFile = path.join(projectDir, 'ai-editing-runs.json')
 
 interface StoredItem {
   id: string
@@ -39,11 +34,11 @@ interface StoredRuns {
   runs?: StoredRun[]
 }
 
-async function readProject(): Promise<StoredProject> {
+async function readProject(projectFile: string): Promise<StoredProject> {
   return JSON.parse(await readFile(projectFile, 'utf8')) as StoredProject
 }
 
-async function readRuns(): Promise<StoredRun[]> {
+async function readRuns(runsFile: string): Promise<StoredRun[]> {
   return (JSON.parse(await readFile(runsFile, 'utf8')) as StoredRuns).runs ?? []
 }
 
@@ -79,6 +74,10 @@ test.setTimeout(15 * 60_000)
 
 test('真实剪辑助手可连续完成成片、文字调整和镜头调整', async ({ lunaLiveApp }) => {
   const { page, runtimeErrors } = lunaLiveApp
+  const settings = await page.evaluate(() => window.luna.getSettings())
+  const projectDir = path.join(settings.baseDir, 'freecut-workspace', 'projects', projectId)
+  const projectFile = path.join(projectDir, 'project.json')
+  const runsFile = path.join(projectDir, 'ai-editing-runs.json')
   await page.getByRole('link', { name: '剪辑', exact: true }).click()
   const projectCard = page.locator(`[data-project-card][data-project-id="${projectId}"]`)
   await expect(projectCard).toBeVisible()
@@ -88,16 +87,16 @@ test('真实剪辑助手可连续完成成片、文字调整和镜头调整', as
 
   const input = page.getByPlaceholder('描述想要完成的剪辑')
   const send = page.getByRole('button', { name: '发送剪辑请求' })
-  const initialRunCount = (await readRuns()).length
+  const initialRunCount = (await readRuns(runsFile)).length
 
   const sendTurn = async (prompt: string, expectedRunCount: number): Promise<StoredRun> => {
     await expect(input).toBeEnabled()
     await input.fill(prompt)
     await send.click()
-    await expect.poll(async () => (await readRuns()).length, { timeout: 7 * 60_000 })
+    await expect.poll(async () => (await readRuns(runsFile)).length, { timeout: 7 * 60_000 })
       .toBe(expectedRunCount)
     await expect(input).toBeEnabled({ timeout: 7 * 60_000 })
-    const run = (await readRuns()).at(-1)!
+    const run = (await readRuns(runsFile)).at(-1)!
     expect(run.request).toBe(prompt)
     expect(run.completed).toBe(true)
     expect(run.timelineRevisionAfter).toBeGreaterThan(run.timelineRevisionBefore)
@@ -112,7 +111,7 @@ test('真实剪辑助手可连续完成成片、文字调整和镜头调整', as
     '每个镜头必须有明显不同的取景中心、缩放比例和运镜起止状态。保留开场、中段、收尾三段简洁文字。',
   ].join('\n')
   await sendTurn(firstPrompt, initialRunCount + 1)
-  const firstProject = await readProject()
+  const firstProject = await readProject(projectFile)
   const firstVisuals = visualItems(firstProject)
   expect(firstVisuals.length).toBeGreaterThanOrEqual(4)
   expect(textItems(firstProject).length).toBeGreaterThanOrEqual(3)
@@ -127,7 +126,7 @@ test('真实剪辑助手可连续完成成片、文字调整和镜头调整', as
     '文字要保持短促，时间位置沿用当前开场、中段和收尾结构。',
   ].join('\n')
   await sendTurn(secondPrompt, initialRunCount + 2)
-  const secondProject = await readProject()
+  const secondProject = await readProject(projectFile)
   expect(textItems(secondProject).map((item) => item.text)).toEqual(expect.arrayContaining([
     '一个人做剪辑软件',
     'DAY 1 · UI 重构',
@@ -143,7 +142,7 @@ test('真实剪辑助手可连续完成成片、文字调整和镜头调整', as
     '每个镜头使用不同的推近或横移方向，避免四段使用相同 transform 或相同运镜参数。',
   ].join('\n')
   await sendTurn(thirdPrompt, initialRunCount + 3)
-  const thirdProject = await readProject()
+  const thirdProject = await readProject(projectFile)
   expect(textSignature(thirdProject)).toBe(secondTextSignature)
   expect(visualSignature(thirdProject)).not.toBe(secondVisualSignature)
   const thirdVisuals = visualItems(thirdProject)

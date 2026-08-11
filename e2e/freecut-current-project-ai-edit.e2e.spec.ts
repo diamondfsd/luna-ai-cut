@@ -40,8 +40,9 @@ interface AiEditingRunsFile {
 
 test('用当前项目的剪辑助手制作 UI 重构主题短片', async ({ lunaLiveApp }) => {
   const { page, runtimeErrors } = lunaLiveApp
+  const settings = await page.evaluate(() => window.luna.getSettings())
   const projectFile = path.join(
-    process.env.LUNA_E2E_EXISTING_USER_DATA_DIR ?? '/Users/zhouchao/Library/Application Support/luna-ai-cut',
+    settings.baseDir,
     'freecut-workspace',
     'projects',
     projectId,
