@@ -22,6 +22,7 @@ const AGENT_TOOL_IDS = new Set([
   'timeline.build',
   'timeline.test',
   'timeline.diff',
+  'timeline.publish_stage',
   'timeline.commit',
   'analysis.request',
   'analysis.search_transcript',

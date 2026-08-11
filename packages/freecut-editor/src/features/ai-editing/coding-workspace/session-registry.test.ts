@@ -20,7 +20,7 @@ describe('timeline coding session registry', () => {
     mocks.create.mockReset()
   })
 
-  it('prevents concurrent checkouts from capturing two production snapshots', async () => {
+  it('prevents concurrent sessions from creating two production baselines', async () => {
     let resolveSession: (session: unknown) => void = () => undefined
     const session = { id: 'session-1' }
     mocks.create.mockReturnValue(
@@ -38,7 +38,7 @@ describe('timeline coding session registry', () => {
     expect(mocks.create).toHaveBeenCalledTimes(1)
   })
 
-  it('allows retry after checkout creation fails', async () => {
+  it('allows retry after working-copy creation fails', async () => {
     const session = { id: 'session-2' }
     mocks.create.mockRejectedValueOnce(new Error('capture failed')).mockResolvedValueOnce(session)
 

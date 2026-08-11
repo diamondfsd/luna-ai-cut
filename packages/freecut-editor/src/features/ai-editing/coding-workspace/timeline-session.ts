@@ -3,6 +3,7 @@ import type { EditOperation, EditProgram, EditProgramApplyResult } from '../edit
 import { getTimelineRevision } from '../evidence'
 import { buildAgentWorkspaceDocument } from '../workspace-document/build-workspace-document'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
+import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import { runTimelineAcceptance, type TimelineAcceptanceMetrics } from './acceptance'
 import {
   createTimelineBuildPublication,
@@ -11,9 +12,9 @@ import {
   type TimelineBuildStateStore,
 } from './build-state'
 import {
-  createCodingWorkspaceCheckout,
+  createCodingWorkspaceWorkingCopy,
   type CodingWorkspaceAdapter,
-  type CodingWorkspaceCheckout,
+  type CodingWorkspaceWorkingCopy,
 } from './checkout'
 import type { CodingWorkspaceDiagnostic } from './diagnostics'
 import { DurableEditingSourceRepository } from './durable-source-repository'
@@ -72,7 +73,7 @@ export type TimelineTestResult =
       metrics: TimelineAcceptanceMetrics
     }
 
-export type TimelineCheckout = CodingWorkspaceCheckout<
+export type TimelineWorkingCopy = CodingWorkspaceWorkingCopy<
   TimelineSourceSnapshot,
   VirtualEditingWorkspace,
   EditProgram,
@@ -81,7 +82,45 @@ export type TimelineCheckout = CodingWorkspaceCheckout<
   EditProgramApplyResult
 >
 
-type TimelineCommitSuccess = Extract<Awaited<ReturnType<TimelineCheckout['commit']>>, { ok: true }>
+/** @deprecated Use TimelineWorkingCopy. */
+export type TimelineCheckout = TimelineWorkingCopy
+
+type TimelineCommitSuccess = Extract<
+  Awaited<ReturnType<TimelineWorkingCopy['commit']>>,
+  { ok: true }
+>
+
+function sourceSnapshotFromWorkspace(
+  workspace: Awaited<ReturnType<typeof buildAgentWorkspaceDocument>>,
+): TimelineSourceSnapshot {
+  return {
+    project: workspace.project,
+    counts: {
+      media: workspace.media.length,
+      tracks: workspace.tracks.length,
+      clips: workspace.clips.length,
+      transitions: workspace.transitions.length,
+    },
+  }
+}
+
+function advanceTimelineSourceSnapshot(base: TimelineSourceSnapshot): TimelineSourceSnapshot {
+  const timeline = useTimelineStore.getState()
+  const fps = timeline.fps > 0 ? timeline.fps : base.project.fps
+  const duration = timeline.items.reduce(
+    (maximum, item) => Math.max(maximum, (item.from + item.durationInFrames) / fps),
+    0,
+  )
+  return {
+    project: { ...base.project, fps, duration },
+    counts: {
+      media: base.counts.media,
+      tracks: timeline.tracks.length,
+      clips: timeline.items.length,
+      transitions: timeline.transitions.length,
+    },
+  }
+}
 
 function sourceDiagnostic(
   error: unknown,
@@ -139,7 +178,7 @@ class TimelineCodingAdapter implements CodingWorkspaceAdapter<
   number,
   EditProgramApplyResult
 > {
-  private capturedProjection?: {
+  private initialProjection?: {
     projectId: string
     revision: number
     files: VirtualFileInput[]
@@ -147,28 +186,20 @@ class TimelineCodingAdapter implements CodingWorkspaceAdapter<
 
   async capture() {
     const workspace = await buildAgentWorkspaceDocument()
-    this.capturedProjection = {
+    this.initialProjection = {
       projectId: workspace.project.id,
       revision: workspace.revision,
       files: projectAgentWorkspaceToFiles(workspace),
     }
     return {
       revision: workspace.revision,
-      source: {
-        project: workspace.project,
-        counts: {
-          media: workspace.media.length,
-          tracks: workspace.tracks.length,
-          clips: workspace.clips.length,
-          transitions: workspace.transitions.length,
-        },
-      },
+      source: sourceSnapshotFromWorkspace(workspace),
     }
   }
 
-  takeProjection() {
-    if (!this.capturedProjection) throw new Error('剪辑源码工作区尚未创建。')
-    return this.capturedProjection
+  takeInitialProjection() {
+    if (!this.initialProjection) throw new Error('剪辑源码工作区尚未创建。')
+    return this.initialProjection
   }
 
   async check(input: {
@@ -222,13 +253,22 @@ class TimelineCodingAdapter implements CodingWorkspaceAdapter<
     }
   }
 
-  async commit(input: { expectedRevision: number; artifact: EditProgram }) {
+  async commit(input: {
+    expectedRevision: number
+    base: { source: TimelineSourceSnapshot }
+    artifact: EditProgram
+  }) {
     const actualRevision = getTimelineRevision()
     if (actualRevision !== input.expectedRevision) {
       return { status: 'conflict' as const, actualRevision }
     }
     const result = await applyEditProgram(input.artifact, { enforceSingleShot: false })
-    return { status: 'committed' as const, revision: result.revisionAfter, receipt: result }
+    return {
+      status: 'committed' as const,
+      revision: result.revisionAfter,
+      source: advanceTimelineSourceSnapshot(input.base.source),
+      receipt: result,
+    }
   }
 }
 
@@ -242,14 +282,14 @@ export class TimelineCodingSession {
   constructor(
     readonly workspace: VirtualEditingWorkspace,
     readonly repository: DurableEditingSourceRepository,
-    private readonly checkout: TimelineCheckout,
+    private readonly workingCopy: TimelineWorkingCopy,
     private readonly buildState: TimelineBuildStateStore = new ProjectTimelineBuildStateStore(),
   ) {}
 
   static async create(): Promise<TimelineCodingSession> {
     const adapter = new TimelineCodingAdapter()
-    const checkout = await createCodingWorkspaceCheckout(adapter)
-    const projection = adapter.takeProjection()
+    const workingCopy = await createCodingWorkspaceWorkingCopy(adapter)
+    const projection = adapter.takeInitialProjection()
     const bridge = getEmbeddedHostBridge().editingSourceGit
     if (!bridge) throw new Error('当前环境无法保存剪辑源码。')
     const repository = await DurableEditingSourceRepository.open({
@@ -258,7 +298,7 @@ export class TimelineCodingSession {
       projectedFiles: projection.files,
       bridge,
     })
-    return new TimelineCodingSession(repository.workspace, repository, checkout)
+    return new TimelineCodingSession(repository.workspace, repository, workingCopy)
   }
 
   applyPatch(patch: VirtualFilePatch) {
@@ -266,15 +306,15 @@ export class TimelineCodingSession {
   }
 
   check() {
-    return this.checkout.check(this.workspace)
+    return this.workingCopy.check(this.workspace)
   }
 
   build() {
-    return this.checkout.build(this.workspace)
+    return this.workingCopy.build(this.workspace)
   }
 
   async test(): Promise<TimelineTestResult> {
-    const built = await this.checkout.build(this.workspace)
+    const built = await this.workingCopy.build(this.workspace)
     if (
       built.artifact === undefined ||
       built.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
@@ -289,16 +329,16 @@ export class TimelineCodingSession {
   }
 
   diff() {
-    return this.checkout.diff(this.workspace)
+    return this.workingCopy.diff(this.workspace)
   }
 
   async promptContext() {
     const sourceStatus = await this.repository.status()
     return {
       kind: 'luna-editing-source-repository',
-      checkoutRevision: this.checkout.captured.revision,
-      project: this.checkout.captured.source.project,
-      counts: this.checkout.captured.source.counts,
+      baselineRevision: this.workingCopy.baseline.revision,
+      project: this.workingCopy.baseline.source.project,
+      counts: this.workingCopy.baseline.source.counts,
       repository: {
         branch: sourceStatus.branch,
         headCommitId: sourceStatus.headCommitId,
@@ -318,14 +358,31 @@ export class TimelineCodingSession {
 
   async publish(commitId: string) {
     return this.repository.runAtCleanHead(commitId, async () => {
-      if (this.pendingPublication?.commitId === commitId) {
+      if (this.pendingPublication) {
+        if (this.pendingPublication.commitId !== commitId) {
+          return {
+            ok: false as const,
+            commitId,
+            diagnostics: [
+              {
+                code: 'PUBLICATION_PERSISTENCE_PENDING',
+                message: '上一个剪辑版本尚未保存完成，请先重试上一次发布。',
+                severity: 'error' as const,
+                stage: 'commit' as const,
+                retryable: true,
+                details: { pendingCommitId: this.pendingPublication.commitId },
+              },
+            ],
+          }
+        }
         await this.buildState.save(this.repository.projectId, this.pendingPublication.publication)
-        const result = this.pendingPublication.result
+        const pendingResult = this.pendingPublication.result
+        this.workspace.markClean(pendingResult.revisionAfter)
         this.pendingPublication = undefined
-        return result
+        return pendingResult
       }
 
-      const prepared = await this.checkout.diff(this.workspace)
+      const prepared = await this.workingCopy.diff(this.workspace)
       if (
         prepared.artifact === undefined ||
         prepared.diff === undefined ||
@@ -356,7 +413,7 @@ export class TimelineCodingSession {
             ],
           }
         }
-        if (this.checkout.captured.revision === previous.revisionAfter) {
+        if (this.workingCopy.baseline.revision === previous.revisionAfter) {
           return {
             ok: true as const,
             commitId,
@@ -370,7 +427,7 @@ export class TimelineCodingSession {
         }
       }
 
-      const result = await this.checkout.commit({ commitId, workspace: this.workspace })
+      const result = await this.workingCopy.commit({ commitId, workspace: this.workspace })
       if (!result.ok) return result
       const publication = createTimelineBuildPublication({
         sourceCommitId: commitId,
@@ -379,6 +436,7 @@ export class TimelineCodingSession {
       })
       this.pendingPublication = { commitId, publication, result }
       await this.buildState.save(this.repository.projectId, publication)
+      this.workspace.markClean(result.revisionAfter)
       this.pendingPublication = undefined
       return result
     })

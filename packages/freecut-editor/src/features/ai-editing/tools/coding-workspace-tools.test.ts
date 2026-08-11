@@ -1,4 +1,13 @@
-import { describe, expect, it } from 'vite-plus/test'
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+
+const harness = vi.hoisted(() => ({
+  publish: vi.fn(async (commitId: string) => ({ ok: true, commitId, revisionAfter: 2 })),
+}))
+
+vi.mock('../coding-workspace/session-registry', () => ({
+  getTimelineCodingSession: () => ({ publish: harness.publish }),
+}))
+
 import { aiEditingToolModule } from './coding-workspace-tools'
 
 function tools() {
@@ -6,6 +15,10 @@ function tools() {
 }
 
 describe('coding workspace tools', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('exports the generic workspace, Git, and timeline command surface', () => {
     expect(tools().map((tool) => tool.id)).toEqual([
       'workspace.list',
@@ -22,6 +35,7 @@ describe('coding workspace tools', () => {
       'timeline.build',
       'timeline.test',
       'timeline.diff',
+      'timeline.publish_stage',
       'timeline.commit',
     ])
   })
@@ -31,9 +45,20 @@ describe('coding workspace tools', () => {
 
     expect(byId.get('workspace.patch')?.risk).toBe('edit')
     expect(byId.get('git.commit')?.risk).toBe('edit')
+    expect(byId.get('timeline.publish_stage')?.risk).toBe('edit')
     expect(byId.get('timeline.commit')?.risk).toBe('edit')
     expect(byId.get('timeline.build')?.risk).toBe('read')
     expect(byId.get('timeline.test')?.risk).toBe('read')
+  })
+
+  it('publishes stage and final commits through the active coding session', async () => {
+    const byId = new Map(tools().map((tool) => [tool.id, tool]))
+
+    await byId.get('timeline.publish_stage')!.execute({ commitId: 'stage-commit' }, {} as never)
+    await byId.get('timeline.commit')!.execute({ commitId: 'stage-commit' }, {} as never)
+
+    expect(harness.publish).toHaveBeenNthCalledWith(1, 'stage-commit')
+    expect(harness.publish).toHaveBeenNthCalledWith(2, 'stage-commit')
   })
 
   it('rejects patches to read-only projection files and unknown fields', () => {

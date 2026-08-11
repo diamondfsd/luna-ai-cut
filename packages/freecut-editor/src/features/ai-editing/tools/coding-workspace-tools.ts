@@ -160,7 +160,7 @@ const patchFiles = defineAiEditingTool({
 const workspaceStatus = defineAiEditingTool({
   id: 'workspace.status',
   title: '查看源码状态',
-  description: '查看当前分支、checkout revision 和未提交源码文件。',
+  description: '查看当前分支、生产基线版本和未提交源码文件。',
   risk: 'read',
   inputSchema: objectSchema({}),
   schema: z.strictObject({}),
@@ -317,24 +317,36 @@ const testTimeline = defineAiEditingTool({
   },
 })
 
-const commitTimeline = defineAiEditingTool({
-  id: 'timeline.commit',
-  title: '发布剪辑工程',
-  description: '把指定 Git 源码提交对应的构建作为一次事务发布到真实时间轴。',
-  risk: 'edit',
-  execution: 'async',
-  inputSchema: objectSchema({ commitId: { type: 'string', minLength: 1 } }, ['commitId']),
-  schema: z.strictObject({ commitId: z.string().min(1).max(200) }),
-  summarize: ({ commitId }) => `发布源码版本 ${commitId.slice(0, 12)}`,
-  execute: async ({ commitId }) => {
-    const result = await getTimelineCodingSession().publish(commitId)
-    return {
-      ok: result.ok,
-      message: result.ok ? '剪辑工程已发布到时间轴。' : '剪辑工程未能发布。',
-      data: result,
-    }
-  },
-})
+const timelinePublication = (id: 'timeline.publish_stage' | 'timeline.commit') => {
+  const isStage = id === 'timeline.publish_stage'
+  return defineAiEditingTool({
+    id,
+    title: isStage ? '阶段发布剪辑工程' : '最终提交剪辑工程',
+    description: isStage
+      ? '把指定 Git 源码提交对应的构建发布到真实时间轴，并继续当前处理流程。'
+      : '把指定 Git 源码提交对应的构建发布到真实时间轴，并结束当前编辑任务。',
+    risk: 'edit',
+    execution: 'async',
+    inputSchema: objectSchema({ commitId: { type: 'string', minLength: 1 } }, ['commitId']),
+    schema: z.strictObject({ commitId: z.string().min(1).max(200) }),
+    summarize: ({ commitId }) =>
+      `${isStage ? '阶段发布' : '最终提交'}源码版本 ${commitId.slice(0, 12)}`,
+    execute: async ({ commitId }) => {
+      const result = await getTimelineCodingSession().publish(commitId)
+      return {
+        ok: result.ok,
+        message: result.ok
+          ? isStage
+            ? '当前阶段已发布到时间轴，可继续处理。'
+            : '剪辑工程已最终提交到时间轴。'
+          : isStage
+            ? '当前阶段未能发布。'
+            : '剪辑工程未能最终提交。',
+        data: result,
+      }
+    },
+  })
+}
 
 export const aiEditingToolModule: AiEditingToolModule = {
   createTools: () => [
@@ -352,6 +364,7 @@ export const aiEditingToolModule: AiEditingToolModule = {
     timelineCommand('timeline.build'),
     testTimeline,
     timelineCommand('timeline.diff'),
-    commitTimeline,
+    timelinePublication('timeline.publish_stage'),
+    timelinePublication('timeline.commit'),
   ],
 }

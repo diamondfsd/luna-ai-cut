@@ -35,6 +35,7 @@ const MAX_TOOL_DESCRIPTION_LENGTH = 8_000
 const MAX_TOOL_SCHEMA_LENGTH = 32_000
 const MAX_TOOL_ARGUMENT_LENGTH = 50_000
 const MAX_TOOL_CALLS_PER_MESSAGE = 3
+const MAX_OUTPUT_TOKENS = 8_192
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/
 const TOOL_CALL_ID_PATTERN = /^[\x21-\x7E]{1,256}$/
 const REASONING_EFFORTS = new Set(['low', 'high', 'xhigh', 'max'])
@@ -242,7 +243,7 @@ function validateGenerateInput(input: AiEditingAssistantGenerateInput): void {
     throw new Error('生成参数无效，请重试。')
   }
   validateTools(input)
-  if (!Number.isInteger(input.maxTokens) || input.maxTokens < 64 || input.maxTokens > 4_096) {
+  if (!Number.isInteger(input.maxTokens) || input.maxTokens < 64 || input.maxTokens > MAX_OUTPUT_TOKENS) {
     throw new Error('生成长度无效，请重试。')
   }
   if (!Number.isFinite(input.temperature) || input.temperature < 0 || input.temperature > 2) {
@@ -352,7 +353,15 @@ function extractToolResult(response: AiEditingAssistantStreamResult): AiEditingA
     return { mode: 'fallback', content, toolCalls: [] }
   }
   if (!content && toolCalls.length === 0) throw responseError('剪辑助手没有返回内容，请重试。')
-  return { mode: 'tools', content, toolCalls: toolCalls.map(({ valid: _valid, ...toolCall }) => toolCall) }
+  return {
+    mode: 'tools',
+    content,
+    toolCalls: toolCalls.map(({ id, name, arguments: toolArguments }) => ({
+      id,
+      name,
+      arguments: toolArguments,
+    })),
+  }
 }
 
 export async function getAiEditingAssistantConfig(): Promise<AiEditingAssistantConfig> {

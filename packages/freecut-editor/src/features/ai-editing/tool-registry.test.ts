@@ -24,6 +24,7 @@ describe('AI editing tool surface', () => {
       'timeline.check',
       'timeline.commit',
       'timeline.diff',
+      'timeline.publish_stage',
       'timeline.test',
       'workflow.set_plan',
       'workspace.list',

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
+import * as nodeFs from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import git from 'isomorphic-git'
 
 import {
   createAiEditingSourceGitApi,
@@ -103,6 +105,25 @@ try {
     ['luna-project.json', 'segments'],
   )
   await assert.rejects(service.commit('Empty commit'), /没有需要提交/)
+
+  await fs.writeFile(path.join(repositoryPath, 'luna-project.json'), '{"staged":true}\n')
+  await git.add({
+    fs: nodeFs,
+    dir: repositoryPath,
+    filepath: 'luna-project.json',
+  })
+  await fs.writeFile(path.join(repositoryPath, 'luna-project.json'), '{"version":1}\n')
+  assert.deepEqual(await service.status(), {
+    branch: 'main',
+    clean: false,
+    entries: [{ path: 'luna-project.json', change: 'modified' }],
+  })
+  await git.add({
+    fs: nodeFs,
+    dir: repositoryPath,
+    filepath: 'luna-project.json',
+  })
+  assert.equal((await service.status()).clean, true)
 
   await service.applyChanges([
     { path: 'luna-project.json', content: '{"version":2}\n' },

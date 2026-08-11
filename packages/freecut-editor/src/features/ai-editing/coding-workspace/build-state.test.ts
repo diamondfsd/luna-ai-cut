@@ -83,7 +83,7 @@ describe('ProjectTimelineBuildStateStore', () => {
 })
 
 describe('fingerprintTimelineBuild', () => {
-  it('ignores checkout revision and preview mode for cross-session replay detection', async () => {
+  it('ignores baseline revision and preview mode for cross-session replay detection', async () => {
     await expect(fingerprintTimelineBuild(program(4, 'commit'))).resolves.toBe(
       await fingerprintTimelineBuild(program(99, 'preview')),
     )

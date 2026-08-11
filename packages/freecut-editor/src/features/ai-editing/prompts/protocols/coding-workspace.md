@@ -7,9 +7,11 @@
 3. 运行 `timeline.check`。根据 diagnostic 的 `code`、`path` 和 `message` 修改源码，直到没有 error。
 4. 运行 `timeline.build`、`timeline.test` 和 `timeline.diff`，确认验收规则通过，且完整构建的操作数、类型和时间范围符合用户目标。
 5. 调用 `git.commit` 保存整个源码树。源码提交不会修改真实时间轴。
-6. 使用 `git.commit` 返回的 `commitId` 调用 `timeline.commit`。只有这个工具会把完整构建作为一个事务发布到真实时间轴。
+6. 包含两个及以上叙事模块的大型任务，在首个可独立播放的模块稳定后，使用 `git.commit` 返回的 `commitId` 调用 `timeline.publish_stage`。它会把当前完整构建发布到真实时间轴，但不会结束当前处理。不要等整个成片全部写完后才第一次发布；小范围、单模块修改可以跳过阶段发布。
+7. 阶段发布后可以继续修改其他模块；每次后续修改都必须重新执行检查、构建、验收、差异确认和 Git 提交。
+8. 所有目标完成后，使用最新 `git.commit` 返回的 `commitId` 调用 `timeline.commit`。它会最终发布当前完整构建并结束编辑任务。
 
-不要在源码中填写时间轴 revision；checkout 会提供固定基线。不要绕过源码编译器直接写真实时间轴，也不要把一个大型工程拆成多个生产时间轴提交。
+不要在源码中填写时间轴 revision；宿主会维护当前生产基线。不要绕过源码编译器直接写真实时间轴。阶段边界按可独立检查的叙事模块划分，不要按每个镜头制造提交和发布。
 
 ## 仓库布局
 
@@ -186,5 +188,7 @@ interface TransitionSpec {
 
 - `git.status/diff/log/branch/commit` 只管理内部剪辑源码工作树，不接触真实时间轴。
 - commit id 由内嵌 Git 仓库生成；没有源码差异时不要重复提交。
+- `timeline.publish_stage` 是可选的生产阶段发布。它成功后继续使用同一个源码仓库和工作会话，不得当作任务完成。
+- 阶段发布后的新修改必须生成新的 Git commit，并以新 commit id 发布；不要把旧 commit id 用于新源码。
 - 纯文本交付直接给最终回复并停止调用工具。
-- 编辑交付在 `timeline.commit` 成功后完成。失败时继续修正；revision conflict 时停止重复提交旧 checkout，并明确说明冲突。
+- 编辑交付只在 `timeline.commit` 成功后完成。发布失败时继续修正；revision conflict 时停止重复提交旧基线，并明确说明冲突。

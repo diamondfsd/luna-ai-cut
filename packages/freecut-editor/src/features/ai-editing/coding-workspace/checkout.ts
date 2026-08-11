@@ -43,8 +43,12 @@ export interface CodingWorkspaceCommitRequest<
   artifact: TArtifact
 }
 
-export type CodingWorkspaceAdapterCommitResult<TRevision extends string | number, TReceipt> =
-  | { status: 'committed'; revision: TRevision; receipt: TReceipt }
+export type CodingWorkspaceAdapterCommitResult<
+  TRevision extends string | number,
+  TReceipt,
+  TSource = unknown,
+> =
+  | { status: 'committed'; revision: TRevision; source: TSource; receipt: TReceipt }
   | { status: 'conflict'; actualRevision: TRevision }
 
 export interface CodingWorkspaceAdapter<
@@ -55,7 +59,7 @@ export interface CodingWorkspaceAdapter<
   TRevision extends string | number = number,
   TReceipt = undefined,
 > {
-  /** The only production read before commit. It creates the immutable checkout base. */
+  /** Creates the initial production baseline for this long-lived working copy. */
   capture(): Promise<CodingWorkspaceSnapshot<TSource, TRevision>>
   check(input: {
     base: CodingWorkspaceSnapshot<TSource, TRevision>
@@ -73,7 +77,10 @@ export interface CodingWorkspaceAdapter<
   /** Must atomically compare expectedRevision and write, keyed idempotently by commitId. */
   commit(
     input: CodingWorkspaceCommitRequest<TSource, TWorkspace, TArtifact, TRevision>,
-  ): Promise<CodingWorkspaceAdapterCommitResult<TRevision, TReceipt>>
+  ): Promise<
+    | { status: 'committed'; revision: TRevision; source: TSource; receipt: TReceipt }
+    | { status: 'conflict'; actualRevision: TRevision }
+  >
 }
 
 export interface CodingWorkspaceCommitSuccess<
@@ -112,7 +119,7 @@ export interface CodingWorkspaceCommitInput<TWorkspace> {
   workspace: TWorkspace
 }
 
-export class CodingWorkspaceCheckout<
+export class CodingWorkspaceWorkingCopy<
   TSource,
   TWorkspace,
   TArtifact,
@@ -120,13 +127,12 @@ export class CodingWorkspaceCheckout<
   TRevision extends string | number = number,
   TReceipt = undefined,
 > {
-  readonly captured: CodingWorkspaceSnapshot<TSource, TRevision>
+  private baselineValue: CodingWorkspaceSnapshot<TSource, TRevision>
   private readonly commits = new Map<
     string,
     Promise<CodingWorkspaceCommitResult<TArtifact, TDiff, TRevision, TReceipt>>
   >()
   private activeCommitId: string | undefined
-  private committedId: string | undefined
   private conflict: CodingWorkspaceDiagnostic<TRevision> | undefined
 
   constructor(
@@ -138,14 +144,18 @@ export class CodingWorkspaceCheckout<
       TRevision,
       TReceipt
     >,
-    captured: CodingWorkspaceSnapshot<TSource, TRevision>,
+    baseline: CodingWorkspaceSnapshot<TSource, TRevision>,
   ) {
-    this.captured = captured
+    this.baselineValue = baseline
+  }
+
+  get baseline(): CodingWorkspaceSnapshot<TSource, TRevision> {
+    return this.baselineValue
   }
 
   async check(workspace: TWorkspace): Promise<CodingWorkspaceCheckResult<TRevision>> {
     try {
-      return await this.adapter.check({ base: this.captured, workspace })
+      return await this.adapter.check({ base: this.baseline, workspace })
     } catch (error) {
       return { diagnostics: diagnosticsFromError<TRevision>({ stage: 'check', error }) }
     }
@@ -155,7 +165,7 @@ export class CodingWorkspaceCheckout<
     const checked = await this.check(workspace)
     if (hasErrorDiagnostics(checked.diagnostics)) return checked
     try {
-      const built = await this.adapter.build({ base: this.captured, workspace })
+      const built = await this.adapter.build({ base: this.baseline, workspace })
       return { ...built, diagnostics: [...checked.diagnostics, ...built.diagnostics] }
     } catch (error) {
       return {
@@ -174,7 +184,7 @@ export class CodingWorkspaceCheckout<
     if (built.artifact === undefined || hasErrorDiagnostics(built.diagnostics)) return built
     try {
       const result = await this.adapter.diff({
-        base: this.captured,
+        base: this.baseline,
         workspace,
         artifact: built.artifact,
       })
@@ -199,9 +209,6 @@ export class CodingWorkspaceCheckout<
   ): Promise<CodingWorkspaceCommitResult<TArtifact, TDiff, TRevision, TReceipt>> {
     const previous = this.commits.get(input.commitId)
     if (previous) return previous
-    if (this.committedId) {
-      return Promise.resolve(this.commitStateFailure(input.commitId, 'CHECKOUT_ALREADY_COMMITTED'))
-    }
     if (this.conflict) {
       return Promise.resolve({
         ok: false,
@@ -224,6 +231,7 @@ export class CodingWorkspaceCheckout<
   private async performCommit(
     input: CodingWorkspaceCommitInput<TWorkspace>,
   ): Promise<CodingWorkspaceCommitResult<TArtifact, TDiff, TRevision, TReceipt>> {
+    const base = this.baseline
     const prepared = await this.diff(input.workspace)
     if (
       prepared.artifact === undefined ||
@@ -236,14 +244,14 @@ export class CodingWorkspaceCheckout<
     try {
       const result = await this.adapter.commit({
         commitId: input.commitId,
-        expectedRevision: this.captured.revision,
-        base: this.captured,
+        expectedRevision: base.revision,
+        base,
         workspace: input.workspace,
         artifact: prepared.artifact,
       })
       if (result.status === 'conflict') {
         this.conflict = revisionConflictDiagnostic({
-          expectedRevision: this.captured.revision,
+          expectedRevision: base.revision,
           actualRevision: result.actualRevision,
         })
         return {
@@ -252,11 +260,11 @@ export class CodingWorkspaceCheckout<
           diagnostics: [...prepared.diagnostics, this.conflict],
         }
       }
-      this.committedId = input.commitId
+      this.baselineValue = { revision: result.revision, source: result.source }
       return {
         ok: true,
         commitId: input.commitId,
-        revisionBefore: this.captured.revision,
+        revisionBefore: base.revision,
         revisionAfter: result.revision,
         artifact: prepared.artifact,
         diff: prepared.diff,
@@ -277,12 +285,9 @@ export class CodingWorkspaceCheckout<
 
   private commitStateFailure(
     commitId: string,
-    code: 'CHECKOUT_ALREADY_COMMITTED' | 'COMMIT_IN_PROGRESS',
+    code: 'COMMIT_IN_PROGRESS',
   ): CodingWorkspaceCommitFailure<TRevision> {
-    const message =
-      code === 'CHECKOUT_ALREADY_COMMITTED'
-        ? '这个剪辑工程工作区已经提交。'
-        : '这个剪辑工程工作区正在提交另一份修改。'
+    const message = '这个剪辑工程工作区正在提交另一份修改。'
     return {
       ok: false,
       commitId,
@@ -290,14 +295,14 @@ export class CodingWorkspaceCheckout<
         {
           ...operationFailureDiagnostic({ stage: 'commit', error: new Error(message) }),
           code,
-          retryable: code === 'COMMIT_IN_PROGRESS',
+          retryable: true,
         } as CodingWorkspaceDiagnostic<TRevision>,
       ],
     }
   }
 }
 
-export async function createCodingWorkspaceCheckout<
+export async function createCodingWorkspaceWorkingCopy<
   TSource,
   TWorkspace,
   TArtifact,
@@ -306,7 +311,13 @@ export async function createCodingWorkspaceCheckout<
   TReceipt = undefined,
 >(
   adapter: CodingWorkspaceAdapter<TSource, TWorkspace, TArtifact, TDiff, TRevision, TReceipt>,
-): Promise<CodingWorkspaceCheckout<TSource, TWorkspace, TArtifact, TDiff, TRevision, TReceipt>> {
-  const captured = await adapter.capture()
-  return new CodingWorkspaceCheckout(adapter, captured)
+): Promise<CodingWorkspaceWorkingCopy<TSource, TWorkspace, TArtifact, TDiff, TRevision, TReceipt>> {
+  const baseline = await adapter.capture()
+  return new CodingWorkspaceWorkingCopy(adapter, baseline)
 }
+
+/** @deprecated Use CodingWorkspaceWorkingCopy. */
+export { CodingWorkspaceWorkingCopy as CodingWorkspaceCheckout }
+
+/** @deprecated Use createCodingWorkspaceWorkingCopy. */
+export const createCodingWorkspaceCheckout = createCodingWorkspaceWorkingCopy

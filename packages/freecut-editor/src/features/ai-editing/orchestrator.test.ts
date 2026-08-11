@@ -26,7 +26,7 @@ vi.mock('./tool-execution', () => ({
   executeToolCall: vi.fn(async (call: { id: string }) => ({
     toolId: call.id,
     result:
-      call.id === 'timeline.commit'
+      call.id === 'timeline.commit' || call.id === 'timeline.publish_stage'
         ? { ok: true, message: '已发布。', data: { ok: true, revisionAfter: 2 } }
         : call.id === 'workspace.patch'
           ? { ok: true, message: '已修改。', data: { changed: true } }
@@ -98,6 +98,38 @@ describe('AI editing coding-agent orchestration', () => {
     expect(result.completed).toBe(true)
     expect(result.reply).toBe('剪辑已完成。')
     expect(result.observations[0]?.toolId).toBe('timeline.commit')
+  })
+
+  it('continues after a stage publication and completes only after the final commit', async () => {
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse('阶段结果已可见。', [
+          { id: 'timeline.publish_stage', args: { commitId: 'source-commit' } },
+        ]),
+      )
+      .mockResolvedValueOnce(jsonResponse('阶段发布后误以为已经完成。', []))
+      .mockResolvedValueOnce(
+        jsonResponse('剪辑已完成。', [
+          { id: 'timeline.commit', args: { commitId: 'source-commit' } },
+        ]),
+      )
+    const editingAdapter = adapter('')
+    editingAdapter.generate = generate
+
+    const result = await runSingleAiEditingTurn(
+      '执行剪辑',
+      { history: [], adapter: editingAdapter },
+      { maxToolRounds: 3 },
+    )
+
+    expect(generate).toHaveBeenCalledTimes(3)
+    expect(harness.start).toHaveBeenCalledTimes(1)
+    expect(result.completed).toBe(true)
+    expect(result.observations.map((observation) => observation.toolId)).toEqual([
+      'timeline.publish_stage',
+      'timeline.commit',
+    ])
   })
 
   it('does not accept final prose while authored source remains unpublished', async () => {

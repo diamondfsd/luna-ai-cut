@@ -68,7 +68,7 @@ function bytesToHex(bytes: ArrayBuffer): string {
 }
 
 /**
- * Fingerprint the semantic build input. The checkout revision and preview mode
+ * Fingerprint the semantic build input. The working-copy baseline and preview mode
  * are intentionally excluded so a reopened session recognizes the same source build.
  */
 export async function fingerprintTimelineBuild(program: EditProgram): Promise<string> {

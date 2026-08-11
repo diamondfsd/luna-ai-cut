@@ -90,7 +90,7 @@ export class AiEditingSourceGitService {
     await this.requireRepository()
     const rows = await git.statusMatrix({ fs: nodeFs, dir: this.repositoryPath })
     const entries = rows
-      .filter(([, head, workdir]) => head !== workdir)
+      .filter(([, head, workdir, stage]) => head !== workdir || head !== stage)
       .map(([sourcePath, head, workdir]) => ({
         path: sourcePath,
         change: changeFromStatus(head, workdir),
