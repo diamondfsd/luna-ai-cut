@@ -31,6 +31,13 @@ export interface LlmRequestStatus {
   previewKind?: 'reasoning' | 'content'
 }
 
+export interface LlmTokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cachedTokens: number
+}
+
 export interface LlmGenerateOptions {
   /** Hard cap on generated tokens. Adapters pick a sensible default. */
   maxTokens?: number
@@ -47,6 +54,8 @@ export interface LlmGenerateOptions {
    * accumulated output so far. Fired on the main thread.
    */
   onToken?: (delta: string, text: string) => void
+  /** Actual token usage returned by the model provider, when available. */
+  onUsage?: (usage: LlmTokenUsage) => void
   /** Reports remote request attempts so callers can show useful waiting feedback. */
   onStatus?: (status: LlmRequestStatus) => void
 }

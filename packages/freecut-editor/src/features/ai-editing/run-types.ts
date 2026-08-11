@@ -1,4 +1,4 @@
-import type { LlmAdapter, LlmMessage } from '@freecut/infrastructure/llm'
+import type { LlmAdapter, LlmMessage, LlmTokenUsage } from '@freecut/infrastructure/llm'
 import type { AgentWorkspaceDocument } from './edit-program/types'
 import type { AiEditingTurnIntent } from './conversation-intent'
 import type {
@@ -34,6 +34,7 @@ export interface AiEditingRunOptions {
   onTaskActivity?: (activity: AiEditingTaskActivity) => void
   onRunProgress?: (progress: AiEditingRunProgress) => void
   onTraceEvent?: (event: AiEditingTraceEvent) => void
+  onModelUsage?: (usage: LlmTokenUsage) => void
   adapter?: LlmAdapter
   reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
   activityScope?: string

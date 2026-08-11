@@ -24,33 +24,39 @@ export interface PreparedAgentContext {
 }
 
 interface AgentContextManagerOptions {
-  maxRawMessages?: number
-  maxRawChars?: number
+  contextWindowTokens: number
+  lastPromptTokens?: number | null
+  compactionThresholdRatio?: number
   recentMessagesToKeep?: number
   maxCompactionMessages?: number
-  maxCompactionChars?: number
 }
 
 const DEFAULTS = {
-  maxRawMessages: 24,
-  maxRawChars: 60_000,
+  compactionThresholdRatio: 0.8,
   recentMessagesToKeep: 12,
   maxCompactionMessages: 32,
-  maxCompactionChars: 120_000,
 } as const
-
-function messageChars(messages: readonly LlmMessage[]): number {
-  return messages.reduce((total, message) => total + message.content.length, 0)
-}
 
 export class AgentContextManager {
   private readonly limits: Required<AgentContextManagerOptions>
 
   constructor(
     private readonly compactor: AgentContextCompactor,
-    options: AgentContextManagerOptions = {},
+    options: AgentContextManagerOptions,
   ) {
-    this.limits = { ...DEFAULTS, ...options }
+    this.limits = {
+      ...DEFAULTS,
+      ...options,
+      lastPromptTokens: options.lastPromptTokens ?? null,
+    }
+    if (!Number.isSafeInteger(this.limits.contextWindowTokens) ||
+      this.limits.contextWindowTokens < 16 * 1024) {
+      throw new Error('模型记忆长度无效。')
+    }
+    if (this.limits.compactionThresholdRatio <= 0 ||
+      this.limits.compactionThresholdRatio >= 1) {
+      throw new Error('会话整理阈值无效。')
+    }
   }
 
   async prepare(
@@ -60,18 +66,15 @@ export class AgentContextManager {
   ): Promise<PreparedAgentContext> {
     let checkpoint = storedCheckpoint
     let pending = this.messagesAfterCheckpoint(messages, checkpoint)
-    let notified = false
-
-    while (
-      pending.length > this.limits.maxRawMessages ||
-      messageChars(pending) > this.limits.maxRawChars
-    ) {
-      const count = this.compactionCount(pending)
-      if (count === 0) break
-      if (!notified) {
-        options.onCompacting?.()
-        notified = true
-      }
+    const compactionThreshold = Math.floor(
+      this.limits.contextWindowTokens * this.limits.compactionThresholdRatio,
+    )
+    const shouldCompact = this.limits.lastPromptTokens !== null &&
+      this.limits.lastPromptTokens !== undefined &&
+      this.limits.lastPromptTokens >= compactionThreshold
+    const count = shouldCompact ? this.compactionCount(pending) : 0
+    if (count > 0) {
+      options.onCompacting?.()
       const compacting = pending.slice(0, count)
       const summary = (await this.compactor.compact({
         previousSummary: checkpoint?.summary ?? null,
@@ -103,18 +106,15 @@ export class AgentContextManager {
   }
 
   private compactionCount(messages: readonly AgentConversationMessage[]): number {
-    let count = Math.min(
+    const preferredCount = Math.min(
       messages.length - this.limits.recentMessagesToKeep,
       this.limits.maxCompactionMessages,
     )
+    let count = preferredCount > 0
+      ? preferredCount
+      : Math.min(messages.length - 2, this.limits.maxCompactionMessages)
     if (count <= 0) return 0
     while (count > 0 && messages[count - 1]?.role !== 'assistant') count -= 1
-    while (
-      count > 1 &&
-      messageChars(messages.slice(0, count)) > this.limits.maxCompactionChars
-    ) {
-      count -= 2
-    }
     return count
   }
 

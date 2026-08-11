@@ -4,7 +4,12 @@ import { useTimelineStore } from '@freecut/features/timeline/stores/timeline-sto
 import type { EmbeddedAiAssistantToolCall } from '@freecut/shared/host/embedded-host'
 import type { AiEditingRunOptions } from './run-types'
 import { getAiEditingTool } from './tool-registry'
-import type { AiEditingObservation, AiEditingToolCall, AiEditingToolResult } from './types'
+import type {
+  AiEditingLoadedTools,
+  AiEditingObservation,
+  AiEditingToolCall,
+  AiEditingToolResult,
+} from './types'
 
 const MAX_TOOL_RESULT_CHARS = 8_000
 
@@ -34,9 +39,10 @@ export async function executeToolCall(
   callIndex: number,
   options: AiEditingRunOptions,
   availableToolIds?: ReadonlySet<string>,
+  loadTools?: (toolIds: readonly string[]) => AiEditingLoadedTools,
 ): Promise<AiEditingObservation> {
   if (availableToolIds && !availableToolIds.has(call.id)) {
-    return toolError(call.id, '这个操作不属于当前任务。')
+    return toolError(call.id, '这个工具尚未加载，请先使用工具目录加载后再调用。')
   }
   const tool = getAiEditingTool(call.id)
   if (!tool) return toolError(call.id, '这个操作目前不可用。')
@@ -84,13 +90,21 @@ export async function executeToolCall(
       result = useTimelineCommandStore.getState().executeTransaction(
         { type: 'AI_EDITING_TOOL', payload: { toolId: tool.id } },
         () => {
-          const execution = tool.execute(validation.value, { signal: options.signal, reportProgress })
+          const execution = tool.execute(validation.value, {
+            signal: options.signal,
+            reportProgress,
+            loadTools,
+          })
           if (execution instanceof Promise) throw new Error('剪辑操作未能及时完成。')
           return execution
         },
       )
     } else {
-      result = await tool.execute(validation.value, { signal: options.signal, reportProgress })
+      result = await tool.execute(validation.value, {
+        signal: options.signal,
+        reportProgress,
+        loadTools,
+      })
     }
     if (result.ok && tool.risk === 'edit' && !persistsProjectSource(tool.id)) {
       await saveTimelineAfterEdit()
@@ -118,6 +132,7 @@ export async function executeNativeToolCall(
   callIndex: number,
   options: AiEditingRunOptions,
   availableToolIds?: ReadonlySet<string>,
+  loadTools?: (toolIds: readonly string[]) => AiEditingLoadedTools,
 ): Promise<AiEditingObservation> {
   const toolId = toolIdsByFunctionName.get(call.name)
   if (!toolId) return toolError(call.name, '这个操作目前不可用。')
@@ -129,5 +144,5 @@ export async function executeNativeToolCall(
   } catch {
     return toolError(toolId, '操作参数无效，未执行此操作。')
   }
-  return executeToolCall({ id: toolId, args }, callIndex, options, availableToolIds)
+  return executeToolCall({ id: toolId, args }, callIndex, options, availableToolIds, loadTools)
 }

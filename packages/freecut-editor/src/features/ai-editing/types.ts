@@ -29,6 +29,20 @@ export interface AiEditingRunProgress {
 export interface AiEditingToolExecutionContext {
   signal?: AbortSignal
   reportProgress(progress: AiEditingToolProgress): void
+  loadTools?(toolIds: readonly string[]): AiEditingLoadedTools
+}
+
+export interface AiEditingLoadedToolDefinition {
+  id: string
+  title: string
+  description: string
+  risk: AiEditingToolRisk
+  inputSchema: AiEditingTool['inputSchema']
+}
+
+export interface AiEditingLoadedTools {
+  loaded: AiEditingLoadedToolDefinition[]
+  alreadyLoaded: string[]
 }
 
 export type AiEditingToolValidation =

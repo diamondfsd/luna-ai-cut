@@ -252,7 +252,7 @@ async function readSequenceParts(
     throw new Error(`工程序列附属文件无效：${path}`)
   }
   return {
-    ...(source.state as ProjectTimeline),
+    ...(source.state as unknown as ProjectTimeline),
     tracks,
     items,
     transitions: transitionFile.transitions as NonNullable<ProjectTimeline['transitions']>,

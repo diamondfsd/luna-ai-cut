@@ -253,7 +253,7 @@ export class TimelineCodingSession {
     await this.waitForBackgroundProjection()
     await this.refreshRenderer()
     this.projectionApplied = this.projectionRequested
-    const result = await this.repository.commit(message, this.changedSourcePaths)
+    const result = await this.repository.commit(message, [...this.changedSourcePaths])
     this.changedSourcePaths.clear()
     return result
   }

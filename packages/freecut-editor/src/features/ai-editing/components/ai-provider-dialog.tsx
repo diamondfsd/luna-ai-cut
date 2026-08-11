@@ -31,6 +31,7 @@ interface AiProviderDialogProps {
 const EMPTY_CONFIG: EmbeddedAiAssistantConfig = {
   baseUrl: 'https://api.openai.com/v1',
   model: '',
+  contextWindowTokens: 256 * 1024,
   hasApiKey: false,
 }
 
@@ -41,6 +42,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
   const [section, setSection] = useState<AiAssistantSettingsSection>('connection')
   const [baseUrl, setBaseUrl] = useState(EMPTY_CONFIG.baseUrl)
   const [model, setModel] = useState('')
+  const [contextWindowK, setContextWindowK] = useState('256')
   const [apiKey, setApiKey] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -64,6 +66,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
       setConfig(next)
       setBaseUrl(next.baseUrl)
       setModel(next.model)
+      setContextWindowK(String(next.contextWindowTokens / 1024))
       setApiKey('')
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : '无法读取剪辑助手连接。')
@@ -87,6 +90,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
       const next = await bridge.saveConfig({
         baseUrl,
         model,
+        contextWindowTokens: Math.round(Number(contextWindowK) * 1024),
         ...(apiKey.trim() ? { apiKey } : {}),
       })
       setConfig(next)
@@ -105,7 +109,12 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
     setSaving(true)
     setError(null)
     try {
-      const next = await bridge.saveConfig({ baseUrl, model, clearApiKey: true })
+      const next = await bridge.saveConfig({
+        baseUrl,
+        model,
+        contextWindowTokens: Math.round(Number(contextWindowK) * 1024),
+        clearApiKey: true,
+      })
       setConfig(next)
       setApiKey('')
     } catch (reason) {
@@ -179,6 +188,22 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
                       spellCheck={false}
                       disabled={loading || saving}
                     />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ai-assistant-context-window">模型记忆长度（K）</Label>
+                    <Input
+                      id="ai-assistant-context-window"
+                      type="number"
+                      min={16}
+                      max={2048}
+                      step={1}
+                      value={contextWindowK}
+                      onChange={(event) => setContextWindowK(event.target.value)}
+                      disabled={loading || saving}
+                    />
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      默认 256K，使用量接近 80% 时才会整理较早内容。
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-3">

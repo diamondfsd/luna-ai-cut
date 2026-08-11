@@ -1,14 +1,11 @@
-import type { LlmAdapter, LlmMessage } from '@freecut/infrastructure/llm'
+import type { LlmAdapter } from '@freecut/infrastructure/llm'
 import { getDefaultLlmAdapter } from '@freecut/infrastructure/llm'
 import {
   openAiChatCompletionsLlmAdapter,
   supportsNativeToolCalling,
-  type NativeToolCallingLlmAdapter,
 } from '@freecut/infrastructure/llm/openai-chat-completions-llm-adapter'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import {
-  JsonAgentDriver,
-  NativeAgentDriver,
   runAgentHarness,
   type AgentHarnessDriver,
   type AgentHarnessEvent,
@@ -20,14 +17,14 @@ import {
   startTimelineCodingSession,
 } from './coding-workspace/session-registry'
 import { failedEditMessage, latestFailedEdit } from './latest-edit-result'
-import { createNativeToolCatalog } from './native-tool-catalog'
+import { DeferredToolLoader } from './deferred-tool-loader'
+import { createJsonDriver, createNativeDriver } from './orchestration-drivers'
 import {
   buildInitialMessages,
   buildJsonFallbackMessages,
   isConfirmedPlanExecutionRequest,
-  toNativeMessages,
 } from './orchestration-messages'
-import { reportModelRequestStatus, reportRunProgress, traceRun } from './orchestration-progress'
+import { reportRunProgress, traceRun } from './orchestration-progress'
 import {
   declaredPlan,
   defaultReply,
@@ -39,18 +36,13 @@ import {
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
 import finalizationPrompt from './prompts/messages/finalize.md?raw'
 import pendingWorkPrompt from './prompts/messages/missing-finish.md?raw'
-import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
-import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
-import { renderPrompt } from './prompts/render-prompt'
-import { parseAiEditingResponse } from './response-parser'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
-import { executeToolCall, serializeForModel } from './tool-execution'
+import { executeToolCall } from './tool-execution'
 import { getAiEditingTool } from './tool-registry'
 import type { AiEditingObservation } from './types'
 
 const MAX_TOOL_ROUNDS = 20
 const MAX_TOOL_CALLS_PER_ROUND = 8
-const MAX_TOKENS = 8_192
 const MAX_CONSECUTIVE_DUPLICATE_READS = 2
 const MAX_TRANSCRIPT_SEARCH_CALLS = 6
 
@@ -213,7 +205,7 @@ async function executeHarnessTool(
   callIndex: number,
   round: number,
   options: AiEditingRunOptions,
-  availableToolIds?: ReadonlySet<string>,
+  toolLoader: DeferredToolLoader,
   duplicateGuard?: {
     key: string | null
     consecutiveCount: number
@@ -278,7 +270,8 @@ async function executeHarnessTool(
     { id: call.toolId, args: call.input as Record<string, unknown> },
     callIndex,
     options,
-    availableToolIds,
+    toolLoader.activeToolIds,
+    (toolIds) => toolLoader.load(toolIds),
   )
 }
 
@@ -287,7 +280,7 @@ async function runDriver(
   options: AiEditingRunOptions,
   config: {
     maxRounds: number
-    availableToolIds?: ReadonlySet<string>
+    toolLoader: DeferredToolLoader
     initialObservations?: readonly AiEditingObservation[]
     requiresEditCommit: boolean
     continuationPrompt: string
@@ -314,7 +307,7 @@ async function runDriver(
       index,
       round,
       options,
-      config.availableToolIds,
+      config.toolLoader,
       duplicateGuard,
     ),
     canCompleteFromText: ({ output, observations }) =>
@@ -341,65 +334,6 @@ function toRunResult(
     : unfinishedResult(result.reply, result.observations, signal)
 }
 
-async function createJsonDriver(
-  adapter: LlmAdapter,
-  messages: LlmMessage[],
-  options: AiEditingRunOptions,
-  initialRaw?: string,
-): Promise<JsonAgentDriver<AiEditingObservation>> {
-  return new JsonAgentDriver({
-    adapter,
-    messages,
-    parse: parseAiEditingResponse,
-    renderToolResults: (observations) => renderPrompt(toolResultsPrompt, {
-      OBSERVATIONS: serializeForModel(observations),
-    }),
-    requestOptions: (round) => ({
-      maxTokens: MAX_TOKENS,
-      temperature: 0,
-      reasoningEffort: options.reasoningEffort,
-      signal: options.signal,
-      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
-    }),
-    onRequest: (request) => {
-      traceRun(options, 'model-context', `已保存第 ${request.round} 次模型调用的完整上下文。`, request)
-    },
-    initialRaw,
-  })
-}
-
-function createNativeDriver(
-  adapter: NativeToolCallingLlmAdapter,
-  messages: LlmMessage[],
-  options: AiEditingRunOptions,
-  availableToolIds?: ReadonlySet<string>,
-): NativeAgentDriver<AiEditingObservation> {
-  const catalog = createNativeToolCatalog(availableToolIds)
-  return new NativeAgentDriver({
-    adapter,
-    messages: toNativeMessages(messages),
-    tools: catalog.definitions,
-    toolIdsByFunctionName: catalog.idsByFunctionName,
-    serializeObservation: serializeForModel,
-    toolContinuationPrompt: nativeContinuePrompt.trim(),
-    requestOptions: (round) => ({
-      maxTokens: MAX_TOKENS,
-      temperature: 0,
-      reasoningEffort: options.reasoningEffort,
-      signal: options.signal,
-      onStatus: (status) => reportModelRequestStatus(
-        options,
-        status,
-        round === 0 ? 32 : 70,
-        true,
-      ),
-    }),
-    onRequest: (request) => {
-      traceRun(options, 'model-context', `已保存第 ${request.round} 次模型调用的完整上下文。`, request)
-    },
-  })
-}
-
 export async function runSingleAiEditingTurn(
   userText: string,
   options: AiEditingRunOptions,
@@ -409,7 +343,8 @@ export async function runSingleAiEditingTurn(
   try {
     const adapter = options.adapter ?? getAiEditingAdapter()
     const maxRounds = config.maxToolRounds ?? MAX_TOOL_ROUNDS
-    const availableToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
+    const allowedToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
+    const toolLoader = new DeferredToolLoader(allowedToolIds)
     const requiresEditCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
       isConfirmedPlanExecutionRequest(userText, options.history)
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
@@ -424,15 +359,16 @@ export async function runSingleAiEditingTurn(
         options.history,
         evidence,
         'native',
-        availableToolIds,
+        toolLoader.candidateToolIds,
+        toolLoader.activeToolIds,
         requiresEditCommit,
       )
       harnessResult = await runDriver(
-        createNativeDriver(adapter, nativeMessages, options, availableToolIds),
+        createNativeDriver(adapter, nativeMessages, options, toolLoader),
         options,
         {
           maxRounds,
-          availableToolIds,
+          toolLoader,
           requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
@@ -441,14 +377,15 @@ export async function runSingleAiEditingTurn(
         const fallbackMessages = await buildJsonFallbackMessages(
           nativeMessages,
           harnessResult.observations,
-          availableToolIds,
+          toolLoader.candidateToolIds,
+          toolLoader.activeToolIds,
         )
         harnessResult = await runDriver(
-          await createJsonDriver(adapter, fallbackMessages, options, harnessResult.fallbackContent),
+          createJsonDriver(adapter, fallbackMessages, options, harnessResult.fallbackContent),
           options,
           {
             maxRounds,
-            availableToolIds,
+            toolLoader,
             initialObservations: harnessResult.observations,
             requiresEditCommit,
             continuationPrompt: pendingWorkPrompt.trim(),
@@ -461,15 +398,16 @@ export async function runSingleAiEditingTurn(
         options.history,
         evidence,
         'json',
-        availableToolIds,
+        toolLoader.candidateToolIds,
+        toolLoader.activeToolIds,
         requiresEditCommit,
       )
       harnessResult = await runDriver(
-        await createJsonDriver(adapter, jsonMessages, options),
+        createJsonDriver(adapter, jsonMessages, options),
         options,
         {
           maxRounds,
-          availableToolIds,
+          toolLoader,
           requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },

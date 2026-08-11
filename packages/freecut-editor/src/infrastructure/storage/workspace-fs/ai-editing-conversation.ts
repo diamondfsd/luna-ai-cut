@@ -40,6 +40,7 @@ export interface AiEditingConversationState {
   messages: AiEditingConversationMessage[]
   context: AiEditingConversationContext | null
   workflow: AiEditingConversationWorkflow | null
+  lastPromptTokens?: number | null
 }
 
 export interface AiEditingConversationReference {
@@ -53,6 +54,7 @@ interface AiEditingConversationFile {
   messages: AiEditingConversationMessage[]
   context?: AiEditingConversationContext
   workflow?: AiEditingConversationWorkflow
+  lastPromptTokens?: number
 }
 
 export interface AiEditingConversationHistorySession {
@@ -169,6 +171,10 @@ function sanitizeConversation(value: unknown): AiEditingConversationState {
     .filter((message): message is AiEditingConversationMessage => message !== null)
   const context = sanitizeContext(candidate.context)
   const workflow = sanitizeWorkflow(candidate.workflow)
+  const lastPromptTokens = typeof candidate.lastPromptTokens === 'number' &&
+    Number.isSafeInteger(candidate.lastPromptTokens) && candidate.lastPromptTokens >= 0
+    ? candidate.lastPromptTokens
+    : null
   return {
     messages,
     context: context && messages.some((message) => message.id === context.throughMessageId)
@@ -178,6 +184,7 @@ function sanitizeConversation(value: unknown): AiEditingConversationState {
       message.id === workflow.planMessageId && message.role === 'assistant')
       ? workflow
       : null,
+    ...(lastPromptTokens === null ? {} : { lastPromptTokens }),
   }
 }
 
@@ -246,7 +253,12 @@ export async function saveAiEditingConversation(
   projectId: string,
   messages: AiEditingConversationMessage[],
 ): Promise<void> {
-  await saveAiEditingConversationState(projectId, { messages, context: null, workflow: null })
+  await saveAiEditingConversationState(projectId, {
+    messages,
+    context: null,
+    workflow: null,
+    lastPromptTokens: null,
+  })
 }
 
 export async function saveAiEditingConversationState(
@@ -259,6 +271,9 @@ export async function saveAiEditingConversationState(
       messages: state.messages.map((message) => ({ ...message })),
       ...(state.context ? { context: { ...state.context } } : {}),
       ...(state.workflow ? { workflow: { ...state.workflow } } : {}),
+      ...(typeof state.lastPromptTokens === 'number'
+        ? { lastPromptTokens: state.lastPromptTokens }
+        : {}),
     }
     await writeJsonAtomic(requireWorkspaceRoot(), projectAiEditingConversationPath(projectId), file)
   } catch (error) {

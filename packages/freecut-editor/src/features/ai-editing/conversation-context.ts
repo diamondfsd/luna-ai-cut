@@ -11,6 +11,8 @@ interface ConversationMessage extends LlmMessage {
 
 interface PrepareConversationContextOptions {
   adapter: LlmAdapter
+  contextWindowTokens: number
+  lastPromptTokens: number | null
   signal?: AbortSignal
   onCompacting?: () => void
 }
@@ -27,6 +29,10 @@ export async function prepareConversationContext(
 ): Promise<PreparedConversationContext> {
   const result = await new AgentContextManager(
     createLlmContextCompactor(options.adapter),
+    {
+      contextWindowTokens: options.contextWindowTokens,
+      lastPromptTokens: options.lastPromptTokens,
+    },
   ).prepare(messages, storedContext, options)
   return { history: result.history, context: result.checkpoint }
 }

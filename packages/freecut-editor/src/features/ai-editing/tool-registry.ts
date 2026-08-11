@@ -3,6 +3,7 @@ import type { AiEditingTool, AiEditingToolModule, AiEditingToolRegistryContext }
 type ToolModuleImport = { aiEditingToolModule?: AiEditingToolModule }
 
 const AGENT_TOOL_IDS = new Set([
+  'tool.load',
   'workflow.set_plan',
   'skill.search',
   'skill.read',
@@ -10,17 +11,11 @@ const AGENT_TOOL_IDS = new Set([
   'docs.read',
   'html.validate',
   'html.read',
-  'workspace.list',
-  'workspace.read',
-  'workspace.search',
+  'workspace.exec',
   'source.read',
   'source.replace',
   'source.create',
   'source.remove',
-  'git.status',
-  'git.diff',
-  'git.log',
-  'git.branch',
   'git.commit',
   'timeline.check',
   'analysis.request',
