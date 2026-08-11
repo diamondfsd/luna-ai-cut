@@ -29,7 +29,7 @@ describe('AI editing message prefix', () => {
       candidates,
     )
     const previousExchange: LlmMessage[] = [
-      ...first.slice(1),
+      first.at(-1)!,
       { role: 'assistant', content: '这是一个完整的剪辑方案和分镜安排。' },
     ]
     const second = await buildInitialMessages(
@@ -41,16 +41,19 @@ describe('AI editing message prefix', () => {
       true,
     )
 
-    expect(second.slice(0, first.length + 1)).toEqual([
+    expect(second.slice(0, previousExchange.length + 1)).toEqual([
       first[0],
       ...previousExchange,
     ])
+    expect(previousExchange[0]).toEqual({ role: 'user', content: '先给我一个剪辑方案' })
     expect(second[0]).toEqual(first[0])
     expect(second[0]?.content).toContain('source.read')
     expect(second[0]?.content).toContain('读取源码文件')
     expect(second[0]?.content).not.toContain('tool.load')
-    expect(second.at(-1)?.content).toContain('"headCommitId":"second"')
-    expect(second.at(-1)?.content).not.toContain('读取源码文件')
-    expect(second.at(-1)?.content).toContain('用户已确认上一条剪辑方案')
+    expect(second.at(-2)).toMatchObject({ role: 'system' })
+    expect(second.at(-2)?.content).toContain('"headCommitId":"second"')
+    expect(second.at(-2)?.content).not.toContain('读取源码文件')
+    expect(second.at(-2)?.content).toContain('用户已确认上一条剪辑方案')
+    expect(second.at(-1)).toEqual({ role: 'user', content: '好的，按这个方案来' })
   })
 })
