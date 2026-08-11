@@ -37,23 +37,56 @@ function jsonObjectCandidates(raw: string): string[] {
   return candidates
 }
 
-function parseToolCall(value: unknown): AiEditingToolCall | null {
+function objectRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const call = value as { id?: unknown; args?: unknown }
-  if (
-    typeof call.id !== 'string' ||
-    !call.args ||
-    typeof call.args !== 'object' ||
-    Array.isArray(call.args)
-  ) {
+  return value as Record<string, unknown>
+}
+
+function parseArguments(value: unknown): Record<string, unknown> | null {
+  const record = objectRecord(value)
+  if (record) return record
+  if (typeof value !== 'string') return null
+  try {
+    return objectRecord(JSON.parse(value))
+  } catch {
     return null
   }
-  return { id: call.id, args: call.args as Record<string, unknown> }
+}
+
+function parseToolCall(value: unknown): AiEditingToolCall | null {
+  const call = objectRecord(value)
+  if (!call) return null
+  const fn = objectRecord(call.function)
+  const id = typeof fn?.name === 'string'
+    ? fn.name
+    : typeof call.id === 'string'
+      ? call.id
+      : typeof call.name === 'string'
+        ? call.name
+        : null
+  if (!id) return null
+
+  const explicitArgs = parseArguments(fn?.arguments ?? call.args ?? call.arguments ?? call.input)
+  if (explicitArgs) return { id, args: explicitArgs }
+
+  const args = Object.fromEntries(
+    Object.entries(call).filter(([key]) =>
+      !['id', 'name', 'type', 'function', 'args', 'arguments', 'input'].includes(key),
+    ),
+  )
+  return Object.keys(args).length > 0 ? { id, args } : null
 }
 
 function parseValue(value: unknown, depth = 0): AiEditingResponse | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const candidate = value as { reply?: unknown; toolCalls?: unknown; json?: unknown }
+  const candidate = value as {
+    reply?: unknown
+    content?: unknown
+    toolCalls?: unknown
+    tool_calls?: unknown
+    calls?: unknown
+    json?: unknown
+  }
 
   if (depth < 2 && typeof candidate.json === 'string') {
     try {
@@ -65,16 +98,25 @@ function parseValue(value: unknown, depth = 0): AiEditingResponse | null {
 
   const singleCall = parseToolCall(value)
   if (singleCall) return { reply: '', toolCalls: [singleCall] }
-  if (typeof candidate.reply !== 'string' || !Array.isArray(candidate.toolCalls)) return null
+  const reply = typeof candidate.reply === 'string'
+    ? candidate.reply
+    : typeof candidate.content === 'string'
+      ? candidate.content
+      : ''
+  const rawToolCalls = candidate.toolCalls ?? candidate.tool_calls ?? candidate.calls
+  if (rawToolCalls === undefined) {
+    return reply ? { reply, toolCalls: [] } : null
+  }
+  if (!Array.isArray(rawToolCalls)) return null
 
   const toolCalls: AiEditingToolCall[] = []
-  for (const toolCall of candidate.toolCalls) {
+  for (const toolCall of rawToolCalls) {
     const parsed = parseToolCall(toolCall)
     if (!parsed) return null
     toolCalls.push(parsed)
   }
 
-  return { reply: candidate.reply, toolCalls }
+  return reply || toolCalls.length > 0 ? { reply, toolCalls } : null
 }
 
 /**

@@ -49,19 +49,16 @@ function executionDirectiveForTurn(
     : undefined
 }
 
-function currentTurnUserMessage(
+function currentTurnContextMessage(
   userText: string,
   history: readonly LlmMessage[],
   evidence: unknown,
   requiresEditCommit: boolean,
 ): string {
-  return [
-    buildAiEditingTurnContext(
-      evidence,
-      executionDirectiveForTurn(userText, history, requiresEditCommit),
-    ),
-    `用户本轮请求：\n${userText}`,
-  ].join('\n\n')
+  return buildAiEditingTurnContext(
+    evidence,
+    executionDirectiveForTurn(userText, history, requiresEditCommit),
+  )
 }
 
 export function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
@@ -111,14 +108,15 @@ export async function buildInitialNativeMessages(
     },
     ...history,
     {
-      role: 'user',
-      content: currentTurnUserMessage(
+      role: 'system',
+      content: currentTurnContextMessage(
         userText,
         textHistory,
         evidence,
         requiresEditCommit,
       ),
     },
+    { role: 'user', content: userText },
   ]
 }
 
@@ -137,14 +135,15 @@ export async function buildInitialMessages(
     },
     ...history,
     {
-      role: 'user',
-      content: currentTurnUserMessage(
+      role: 'system',
+      content: currentTurnContextMessage(
         userText,
         history,
         evidence,
         requiresEditCommit,
       ),
     },
+    { role: 'user', content: userText },
   ]
 }
 
