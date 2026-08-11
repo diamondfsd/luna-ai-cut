@@ -39,56 +39,38 @@ const SUGGESTIONS = [
 const PhaseProgressCard = memo(function PhaseProgressCard({
   label,
   percent,
-  ceiling,
   reasoningText,
 }: {
   label: string
   percent: number | null
-  ceiling?: number
   reasoningText?: string
 }) {
-  const [displayPercent, setDisplayPercent] = useState(percent)
-
-  useEffect(() => {
-    setDisplayPercent(percent)
-  }, [percent])
-
-  useEffect(() => {
-    if (percent === null || ceiling === undefined || ceiling <= percent) return
-    const timer = window.setInterval(() => {
-      setDisplayPercent((current) => {
-        if (current === null || current >= ceiling) return current
-        return Math.min(ceiling, current + 1)
-      })
-    }, 1_200)
-    return () => window.clearInterval(timer)
-  }, [ceiling, percent])
-
   return (
     <section className="rounded-lg border border-border bg-secondary/30 p-2.5" aria-live="polite">
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span>{label}</span>
-        {displayPercent !== null && (
-          <span className="tabular-nums">{Math.round(displayPercent)}%</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {percent === null && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />}
+          <span>{label}</span>
+        </span>
+        {percent !== null && (
+          <span className="tabular-nums">{Math.round(percent)}%</span>
         )}
       </div>
-      <div
-        className="mt-1.5 h-1 overflow-hidden rounded-full bg-secondary"
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={displayPercent ?? undefined}
-      >
+      {percent !== null && (
         <div
-          className={
-            percent === null
-              ? 'h-full w-full animate-pulse bg-primary/55'
-              : 'h-full bg-primary transition-[width] duration-200'
-          }
-          style={displayPercent === null ? undefined : { width: `${displayPercent}%` }}
-        />
-      </div>
+          className="mt-1.5 h-1 overflow-hidden rounded-full bg-secondary"
+          role="progressbar"
+          aria-label={label}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      )}
       {reasoningText && <AiEditingStreamPreview text={reasoningText} />}
     </section>
   )
@@ -104,8 +86,6 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const phase = useAiEditingStore((state) => state.phase)
   const loadPercent = useAiEditingStore((state) => state.loadPercent)
   const thinkingLabel = useAiEditingStore((state) => state.thinkingLabel)
-  const thinkingPercent = useAiEditingStore((state) => state.thinkingPercent)
-  const thinkingCeiling = useAiEditingStore((state) => state.thinkingCeiling)
   const reasoningText = useAiEditingStore((state) => state.reasoningText)
   const draftAssistantText = useAiEditingStore((state) => state.draftAssistantText)
   const messages = useAiEditingStore((state) => state.messages)
@@ -136,7 +116,6 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const canChat = connectionState === 'ready' && !isRestoringConversation
   const activeUserMessage = messages.findLast((message) => message.role === 'user')
   const activeUserMessageId = activeUserMessage?.id
-  const runningToolActivity = toolActivities.findLast((activity) => activity.status === 'running')
 
   useEffect(() => {
     const bridge = getEmbeddedHostBridge().aiAssistant
@@ -402,18 +381,8 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         {canChat && phase === 'thinking' && !draftAssistantText && (
           <PhaseProgressCard
             label={thinkingLabel}
-            percent={thinkingPercent}
-            ceiling={thinkingCeiling}
+            percent={null}
             reasoningText={reasoningText}
-          />
-        )}
-        {canChat && phase === 'executing' && (
-          <PhaseProgressCard
-            label={
-              runningToolActivity?.progressLabel ??
-              (runningToolActivity ? `正在${runningToolActivity.title}` : '正在检查结果')
-            }
-            percent={runningToolActivity?.progressPercent ?? null}
           />
         )}
         {canChat && error && (

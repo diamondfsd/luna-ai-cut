@@ -5,6 +5,8 @@ import { i18nReady } from './i18n'
 import {
   EmbeddedHostProvider,
   type ImportMediaFiles,
+  type EmbeddedMediaImportSource,
+  type EmbeddedNativeMediaFile,
   type EmbeddedTranscriptResult,
   type EmbeddedVisualEvidence,
   type EmbeddedVisualAnalysisIntensity,
@@ -23,8 +25,18 @@ import {
 import { setHtmlFrameProvider } from './features/export/utils/html-frame-provider'
 import './index.css'
 
+export type {
+  EmbeddedMediaImportSource,
+  EmbeddedNativeMediaFile,
+  ImportMediaFiles,
+} from './shared/host/embedded-host'
+
 export interface FreeCutEditorProps {
-  onRequestMediaImport?: (importFiles: ImportMediaFiles) => void
+  onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
+  onDescribeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
+  onInspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
+  onReadNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
+  onResolveNativeMediaUrl?: (filePath: string) => string
   onTranscribeMedia?: (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
@@ -50,6 +62,10 @@ export interface FreeCutEditorProps {
 
 export function FreeCutEditor({
   onRequestMediaImport,
+  onDescribeDroppedMediaFiles,
+  onInspectNativeMediaFile,
+  onReadNativeMediaFile,
+  onResolveNativeMediaUrl,
   onTranscribeMedia,
   onAnalyzeMediaVisual,
   onGetAiAssistantConfig,
@@ -65,6 +81,10 @@ export function FreeCutEditor({
   const hostBridge = useMemo(
     () => ({
       requestMediaImport: onRequestMediaImport,
+      describeDroppedMediaFiles: onDescribeDroppedMediaFiles,
+      inspectNativeMediaFile: onInspectNativeMediaFile,
+      readNativeMediaFile: onReadNativeMediaFile,
+      resolveNativeMediaUrl: onResolveNativeMediaUrl,
       transcribeMedia: onTranscribeMedia,
       analyzeMediaVisual: onAnalyzeMediaVisual,
       renderHtmlFrame: onRenderHtmlFrame,
@@ -87,6 +107,10 @@ export function FreeCutEditor({
     }),
     [
       onRequestMediaImport,
+      onDescribeDroppedMediaFiles,
+      onInspectNativeMediaFile,
+      onReadNativeMediaFile,
+      onResolveNativeMediaUrl,
       onTranscribeMedia,
       onAnalyzeMediaVisual,
       onRenderHtmlFrame,

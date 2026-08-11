@@ -47,6 +47,10 @@ type SourceStatus =
   | 'changed'
 
 async function resolveSourceStatus(media: MediaMetadata): Promise<SourceStatus> {
+  if (media.nativePath) {
+    const validation = await validateMediaHandle(media.id)
+    return validation.kind === 'ok' ? 'linked' : validation.kind === 'changed' ? 'changed' : 'unavailable'
+  }
   const hasWorkspaceCopy = await hasMediaSource(media.id)
 
   if (media.storageType === 'handle') {

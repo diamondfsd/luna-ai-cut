@@ -31,6 +31,7 @@ function builtInProductShowcase(): AiEditingSkill {
     triggers: ['成片', '短视频', '产品更新', '原型', 'UI', '产品展示'],
     toolIds: [
       'analysis.request',
+      'analysis.read_transcript',
       'analysis.search_transcript',
       'audio.analyze_beats',
       'docs.search',
@@ -61,6 +62,7 @@ function builtInProductUiLaunch(): AiEditingSkill {
     triggers: ['UI重构', 'UI 重构', '挑战一个人做出剪映', '界面短片', '界面成片', '产品原型成片'],
     toolIds: [
       'analysis.request',
+      'analysis.read_transcript',
       'analysis.search_transcript',
       'audio.analyze_beats',
       'docs.search',

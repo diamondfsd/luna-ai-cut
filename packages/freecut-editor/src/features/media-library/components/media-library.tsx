@@ -25,7 +25,6 @@ import {
   Loader2,
   Copy,
   Check,
-  Upload,
   Sparkles,
   FileText,
   FileJson,
@@ -33,6 +32,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { useEmbeddedHost } from '@freecut/shared/host/embedded-host'
+import { createNativeMediaFileHandle } from '@freecut/shared/host/native-media-file-handle'
 
 const logger = createLogger('MediaLibrary')
 import { Button } from '@freecut/components/ui/button'
@@ -74,7 +74,6 @@ import { frameInterpolationService } from '../services/frame-interpolation-servi
 import { upscaleService } from '../services/upscale-service'
 import { cancelMediaTranscriptionJob } from '../services/media-transcription-runner'
 import { importMediaAnalysisService } from '../services/media-analysis-service-loader'
-import { getSupportedMediaFormatLabels } from '../utils/media-file-picker'
 import { getSharedProxyKey } from '../utils/proxy-key'
 import { getMediaType } from '../utils/validation'
 import { getProjectBrokenMediaIds } from '@freecut/features/media-library/utils/broken-media'
@@ -84,6 +83,8 @@ import { useMediaLibraryMarquee } from './use-media-library-marquee'
 import { useMediaLibraryDragDrop } from './use-media-library-drag-drop'
 import { useMediaTaskProgress } from './use-media-task-progress'
 import { useMediaLibraryDeletion } from './use-media-library-deletion'
+import { MediaImportDropOverlay } from './media-import-empty-state'
+import type { ExtractedMediaFileEntry } from '../utils/file-drop'
 
 function CopyButton({ text }: { text: string }) {
   const { t } = useTranslation()
@@ -177,18 +178,6 @@ interface MediaLibraryProps {
   onMediaSelect?: (mediaId: string) => void
 }
 
-function createImportedFileHandle(file: File): FileSystemFileHandle {
-  const handle = {
-    kind: 'file',
-    name: file.name,
-    getFile: async () => file,
-    queryPermission: async () => 'granted',
-    requestPermission: async () => 'granted',
-    isSameEntry: async (other: FileSystemHandle) => other === handle,
-  }
-  return handle as unknown as FileSystemFileHandle
-}
-
 /**
  * Per-item rows shown when a background-task progress bar is expanded. A single row carries no
  * more information than the aggregate bar above it, so one row renders nothing.
@@ -210,9 +199,11 @@ function renderTaskDetailRows(
 
 export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaLibraryProps) {
   const { t } = useTranslation()
-  const { requestMediaImport } = useEmbeddedHost()
+  const { requestMediaImport, describeDroppedMediaFiles } = useEmbeddedHost()
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const importInFlightRef = useRef(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [openGroups, setOpenGroups] = useState<Set<string>>(
     () => new Set(['video', 'audio', 'image', 'gif', 'lottie']),
   )
@@ -359,37 +350,58 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
     deleteMediaBatch,
   })
 
-  // Import files by copying them into the workspace-backed media store.
-  const handleImport = async () => {
-    if (requestMediaImport) {
-      requestMediaImport(async (files) => {
-        await importHandles(files.map(createImportedFileHandle), { storageMode: 'copy' })
-      })
-      return
-    }
-
+  const runImport = useCallback(async (operation: () => Promise<unknown>) => {
+    if (importInFlightRef.current) return
+    importInFlightRef.current = true
+    setIsImporting(true)
     try {
-      await importMedia({ storageMode: 'copy' })
+      await operation()
+    } finally {
+      importInFlightRef.current = false
+      setIsImporting(false)
+    }
+  }, [])
+
+  // Picker, empty state, and host integration all share this import path.
+  const handleImport = useCallback(async () => {
+    try {
+      await runImport(async () => {
+        if (requestMediaImport) {
+          await requestMediaImport(async (sources) => {
+            await importHandles(sources.map(createNativeMediaFileHandle), { storageMode: 'link' })
+          })
+          return
+        }
+
+        await importMedia({ storageMode: 'link' })
+      })
     } catch (error) {
       logger.error('Import failed:', error)
     }
-  }
+  }, [importHandles, importMedia, requestMediaImport, runImport])
 
   // Import files from drag-drop handles - memoized to prevent MediaGrid re-renders
-  const handleImportHandles = useCallback(
-    async (handles: FileSystemFileHandle[]) => {
+  const handleImportEntries = useCallback(
+    async (entries: ExtractedMediaFileEntry[]) => {
       try {
-        await importHandles(handles)
+        await runImport(async () => {
+          if (describeDroppedMediaFiles) {
+            const sources = await describeDroppedMediaFiles(entries.map((entry) => entry.file))
+            await importHandles(sources.map(createNativeMediaFileHandle), { storageMode: 'link' })
+            return
+          }
+          await importHandles(entries.map((entry) => entry.handle), { storageMode: 'link' })
+        })
       } catch (error) {
         logger.error('Import failed:', error)
       }
     },
-    [importHandles],
+    [describeDroppedMediaFiles, importHandles, runImport],
   )
 
   // Panel-level drag/drop handling so the drop zone covers the full panel height.
   const { isDragging, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } =
-    useMediaLibraryDragDrop({ showNotification, importHandles: handleImportHandles })
+    useMediaLibraryDragDrop({ showNotification, importEntries: handleImportEntries })
 
   // Count of items currently generating proxies
   const currentProjectBrokenMediaIds = useMemo(
@@ -480,12 +492,16 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
           type="button"
           variant="editorAction"
           size="sm"
-          onClick={handleImport}
-          disabled={!currentProjectId}
+          onClick={() => void handleImport()}
+          disabled={!currentProjectId || isImporting}
           className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
         >
-          <FolderOpen className="h-3.5 w-3.5" />
-          {t('media.library.import')}
+          {isImporting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <FolderOpen className="h-3.5 w-3.5" />
+          )}
+          {isImporting ? t('media.grid.importingButton') : t('media.library.import')}
         </Button>
 
         <div className="group relative min-w-0 flex-1">
@@ -728,40 +744,17 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
 
           {/* Loading / empty state when no groups to show */}
           {mediaGroups.length === 0 && (
-            <EmptyMediaGrid onMediaSelect={onMediaSelect} itemSize={mediaItemSize} />
+            <EmptyMediaGrid
+              onMediaSelect={onMediaSelect}
+              itemSize={mediaItemSize}
+              onImport={() => void handleImport()}
+              isImporting={isImporting}
+            />
           )}
         </div>
 
         {/* Drag overlay — absolute sibling, always covers the visible viewport */}
-        {isDragging && (
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 border-2 border-dashed border-primary z-50 flex items-center justify-center pointer-events-none">
-            <div className="absolute top-2 left-2 w-6 h-6 border-l-2 border-t-2 border-primary" />
-            <div className="absolute top-2 right-2 w-6 h-6 border-r-2 border-t-2 border-primary" />
-            <div className="absolute bottom-2 left-2 w-6 h-6 border-l-2 border-b-2 border-primary" />
-            <div className="absolute bottom-2 right-2 w-6 h-6 border-r-2 border-b-2 border-primary" />
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center bg-primary/20 border-2 border-primary">
-                <Upload className="w-7 h-7 text-primary animate-bounce" />
-              </div>
-              <p className="text-base font-bold tracking-wide text-primary">
-                {t('media.library.dropFilesHere')}
-              </p>
-              <div className="flex flex-wrap justify-center gap-2 mt-2">
-                {getSupportedMediaFormatLabels().map((label) => (
-                  <span
-                    key={label}
-                    className="px-2 py-0.5 bg-secondary border border-border rounded text-xs font-mono text-muted-foreground"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-primary to-transparent animate-scan" />
-            </div>
-          </div>
-        )}
+        {isDragging && <MediaImportDropOverlay />}
       </div>
 
       {/* Background AI analysis status */}

@@ -136,8 +136,8 @@ export interface MediaLibraryActions {
   loadMediaItems: () => Promise<void>
   /**
    * Import media using file picker.
-   * Defaults to copying into FreeCut's workspace-backed media store. Use
-   * storageMode='link' to reference files directly on the user's disk.
+   * Local files are always referenced directly from their source path.
+   * The storage option remains temporarily for source compatibility and is ignored.
    */
   importMedia: (options?: { storageMode?: 'copy' | 'link' }) => Promise<MediaMetadata[]>
   /**
@@ -157,7 +157,7 @@ export interface MediaLibraryActions {
     attribution?: MediaAttribution
   }) => Promise<MediaMetadata | null>
   /**
-   * Import media from file handles (for drag-drop). Defaults to copy mode.
+   * Import media from file handles (for drag-drop). Local files always use link mode.
    */
   importHandles: (
     handles: FileSystemFileHandle[],

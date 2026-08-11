@@ -19,7 +19,7 @@ function reasoningDelta(delta: unknown): string {
   return typeof candidate.reasoning === 'string' ? candidate.reasoning : ''
 }
 
-function previewTail(value: string): string {
+function reasoningPreview(value: string): string {
   return value.slice(-MAX_PREVIEW_LENGTH)
 }
 
@@ -53,9 +53,9 @@ export async function consumeAiEditingAssistantStream(
     }
 
     if (content) {
-      options.onPreview?.({ text: previewTail(content), kind: 'content' })
+      options.onPreview?.({ text: content, kind: 'content' })
     } else if (reasoning) {
-      options.onPreview?.({ text: previewTail(reasoning), kind: 'reasoning' })
+      options.onPreview?.({ text: reasoningPreview(reasoning), kind: 'reasoning' })
     }
   }
 

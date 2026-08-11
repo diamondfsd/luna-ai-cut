@@ -1,13 +1,23 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react'
 
-export type ImportMediaFiles = (files: File[]) => Promise<void>
+export interface EmbeddedMediaImportSource {
+  path: string
+  name: string
+  mimeType: string
+  size: number
+  lastModified: number
+}
 
-/**
- * Identity supplied to an embedded host without exposing its local path or
- * source bytes. The host can resolve this against the files it imported.
- */
+export interface EmbeddedNativeMediaFile extends Omit<EmbeddedMediaImportSource, 'path' | 'size'> {
+  bytes: ArrayBuffer
+}
+
+export type ImportMediaFiles = (sources: EmbeddedMediaImportSource[]) => Promise<void>
+
+/** Media identity supplied to host-side analysis without transferring source bytes. */
 export interface EmbeddedMediaSource {
   mediaId: string
+  nativePath?: string
   fileName: string
   fileSize: number
   fileLastModified?: number
@@ -199,7 +209,11 @@ export interface EmbeddedAiEditingSourceGitBridge {
 }
 
 export interface EmbeddedHostBridge {
-  requestMediaImport?: (importFiles: ImportMediaFiles) => void
+  requestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
+  describeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
+  inspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
+  readNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
+  resolveNativeMediaUrl?: (filePath: string) => string
   /** Runs the host's local speech model. It never receives an editor path. */
   transcribeMedia?: (
     source: EmbeddedMediaSource,

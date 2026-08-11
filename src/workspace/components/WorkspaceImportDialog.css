@@ -79,3 +79,12 @@
   color: var(--muted);
   font-size: 12px;
 }
+.workspace-import-spinner {
+  animation: workspace-import-spin 0.8s linear infinite;
+}
+
+@keyframes workspace-import-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

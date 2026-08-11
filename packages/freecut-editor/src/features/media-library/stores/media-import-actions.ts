@@ -7,6 +7,10 @@ import { getSharedProxyKey } from '../utils/proxy-key'
 import { hasMediaFilePickerSupport, showMediaFilePicker } from '../utils/media-file-picker'
 import { createLogger, createOperationId } from '@freecut/shared/logging/logger'
 import { useMediaPreparationStore } from './media-preparation-store'
+import {
+  nativeMediaSourceForHandle,
+  resolveNativeMediaFileHandle,
+} from '@freecut/shared/host/native-media-file-handle'
 
 const logger = createLogger('MediaImport')
 
@@ -24,7 +28,7 @@ const IMPORT_PROCESSING_CONCURRENCY = 2
 interface ImportTask {
   handle: FileSystemFileHandle
   tempId: string
-  file: File
+  file: ImportFileDescriptor
 }
 
 interface CompletedImportTask extends ImportTask {
@@ -33,9 +37,16 @@ interface CompletedImportTask extends ImportTask {
 
 type ImportStorageMode = 'copy' | 'link'
 
+interface ImportFileDescriptor {
+  name: string
+  size: number
+  lastModified: number
+  type: string
+}
+
 function buildOptimisticMediaItem(
   handle: FileSystemFileHandle,
-  file: File,
+  file: ImportFileDescriptor,
   tempId: string,
   storageMode: ImportStorageMode,
 ): MediaMetadata {
@@ -45,6 +56,7 @@ function buildOptimisticMediaItem(
     id: tempId,
     storageType: storageMode === 'link' ? 'handle' : 'workspace',
     fileHandle: storageMode === 'link' ? handle : undefined,
+    nativePath: nativeMediaSourceForHandle(handle)?.path,
     fileName: file.name,
     fileSize: file.size,
     fileLastModified: file.lastModified,
@@ -301,13 +313,22 @@ export function createImportActions(
   ): Promise<ImportTask[]> => {
     const importTasks: ImportTask[] = []
 
-    for (const handle of handles) {
-      if (!handle) continue
+    for (const candidateHandle of handles) {
+      if (!candidateHandle) continue
       const tempId = crypto.randomUUID()
 
-      let file: File
+      const handle = await resolveNativeMediaFileHandle(candidateHandle)
+      const nativeSource = nativeMediaSourceForHandle(handle)
+      let file: ImportFileDescriptor
       try {
-        file = await handle.getFile()
+        file = nativeSource
+          ? {
+              name: nativeSource.name,
+              size: nativeSource.size,
+              lastModified: nativeSource.lastModified,
+              type: nativeSource.mimeType,
+            }
+          : await handle.getFile()
       } catch (error) {
         // getFile() can fail if permission is denied or file is missing —
         // remove the placeholder that was about to be inserted and skip.
@@ -391,7 +412,7 @@ export function createImportActions(
       fileCount: handles.length,
     })
 
-    const storageMode = options?.storageMode ?? 'copy'
+    const storageMode: ImportStorageMode = 'link'
     const serviceModulePromise = loadMediaLibraryService()
     const importTasks = await createOptimisticImportTasks(handles, storageMode)
     const importResults = await runImportTasks(
@@ -422,7 +443,7 @@ export function createImportActions(
   }
 
   return {
-    importMedia: async (options) => {
+    importMedia: async (_options) => {
       const { currentProjectId } = get()
 
       if (!currentProjectId) {
@@ -455,7 +476,7 @@ export function createImportActions(
 
         // Create optimistic placeholders for all files immediately
         const serviceModulePromise = loadMediaLibraryService()
-        const storageMode = options?.storageMode ?? 'copy'
+        const storageMode: ImportStorageMode = 'link'
         const importTasks = await createOptimisticImportTasks(handles, storageMode)
         const importResults = await runImportTasks(
           importTasks,
@@ -622,7 +643,7 @@ export function createImportActions(
       importHandlesInternal(handles, {
         includeDuplicatesInResults: true,
         waitForPreparation: true,
-        storageMode: 'copy',
+        storageMode: 'link',
       }),
   }
 }

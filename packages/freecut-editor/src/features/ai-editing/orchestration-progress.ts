@@ -31,6 +31,7 @@ export function reportModelRequestStatus(
   options: AiEditingRunOptions,
   status: LlmRequestStatus,
   percent: number,
+  streamFinalContent = false,
 ): void {
   const attemptLabel =
     status.state === 'retrying' || status.attempt > 1
@@ -41,5 +42,10 @@ export function reportModelRequestStatus(
     status.state === 'streaming' && status.previewKind === 'reasoning'
       ? status.previewText ?? ''
       : null
+  if (status.state === 'waiting' || status.state === 'retrying') {
+    options.onFinalText?.('')
+  } else if (streamFinalContent && status.previewKind === 'content') {
+    options.onFinalText?.(status.previewText ?? '')
+  }
   reportRunProgress(options, label, percent, Math.max(percent, 68), reasoningText)
 }

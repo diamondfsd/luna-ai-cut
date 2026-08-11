@@ -5,7 +5,7 @@ import type { AppSettings } from '../src/shared/types'
 import { deviceDefinitions } from './deviceDefaults'
 import {
   chooseBaseDir, chooseLocalResourcesDir, chooseExportDir, chooseLutDir, chooseMockMediaDir,
-  chooseWorkspaceMediaDirectory, chooseWorkspaceMediaFiles, readWorkspaceMediaFile,
+  chooseWorkspaceMediaDirectory, chooseWorkspaceMediaFiles, inspectWorkspaceMediaFile, readWorkspaceMediaFile,
   getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
@@ -135,6 +135,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('settings:chooseMockMediaDir', () => chooseMockMediaDir())
   ipcMain.handle('workspace:chooseMediaFiles', () => chooseWorkspaceMediaFiles())
   ipcMain.handle('workspace:chooseMediaDirectory', () => chooseWorkspaceMediaDirectory())
+  ipcMain.handle('workspace:inspectMediaFile', (_event, filePath: string) => inspectWorkspaceMediaFile(filePath))
   ipcMain.handle('workspace:readMediaFile', (_event, filePath: string) => readWorkspaceMediaFile(filePath))
   ipcMain.handle('mock:start', (_event, s?: Partial<AppSettings>) => startMockServer(s))
   ipcMain.handle('mock:stop', () => stopMockServer())

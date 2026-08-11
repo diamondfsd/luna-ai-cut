@@ -51,9 +51,10 @@ export interface AgentHarnessToolExchange<TObservation> {
 export interface AgentHarnessDriver<TObservation> {
   readonly protocol: string
   readonly messageCount: number
-  request(input: { round: number; instructions: string }): Promise<AgentHarnessModelStep>
+  request(input: { round: number }): Promise<AgentHarnessModelStep>
   recordProtocolError(raw: string, repairPrompt: string): void
   recordContinuation(output: AgentHarnessModelOutput, continuationPrompt: string): void
+  recordUserPrompt(prompt: string): void
   recordToolResults(
     output: AgentHarnessModelOutput,
     exchanges: readonly AgentHarnessToolExchange<TObservation>[],
@@ -87,13 +88,14 @@ export interface RunAgentHarnessOptions<TObservation> {
   signal?: AbortSignal
   protocolRepairPrompt: string
   continuationPrompt: string
-  instructions(): Promise<string>
-  executeTool(call: AgentHarnessToolCall, callIndex: number): Promise<TObservation>
+  finalizationPrompt: string
+  executeTool(call: AgentHarnessToolCall, callIndex: number, round: number): Promise<TObservation>
   canCompleteFromText(input: {
     output: AgentHarnessModelOutput
     observations: readonly TObservation[]
   }): boolean
   shouldStopAfterTool(observations: readonly TObservation[]): boolean
+  shouldFinalizeAfterTool?(observations: readonly TObservation[]): boolean
   canRecoverFromModelError(observations: readonly TObservation[]): boolean
   onTextCompletion?(content: string): void
   onEvent?(event: AgentHarnessEvent<TObservation>): void
