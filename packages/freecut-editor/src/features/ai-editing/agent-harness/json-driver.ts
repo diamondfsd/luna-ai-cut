@@ -3,6 +3,7 @@ import type { AiEditingResponse } from '../types'
 import type {
   AgentHarnessDriver,
   AgentHarnessModelOutput,
+  AgentHarnessModelRequest,
   AgentHarnessModelStep,
   AgentHarnessToolExchange,
 } from './types'
@@ -13,7 +14,19 @@ interface JsonAgentDriverOptions<TObservation> {
   parse(raw: string): AiEditingResponse | null
   renderToolResults(observations: readonly TObservation[]): string
   requestOptions(round: number): LlmGenerateOptions
+  onRequest?(request: AgentHarnessModelRequest): void
   initialRaw?: string
+}
+
+function generationParameters(options: LlmGenerateOptions): AgentHarnessModelRequest['generation'] {
+  return {
+    ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    ...(options.topP === undefined ? {} : { topP: options.topP }),
+    ...(options.reasoningEffort === undefined
+      ? {}
+      : { reasoningEffort: options.reasoningEffort }),
+  }
 }
 
 export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObservation> {
@@ -32,10 +45,17 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
 
   async request(input: { round: number; instructions: string }): Promise<AgentHarnessModelStep> {
     this.replaceInstructions(input.instructions)
-    const raw = this.initialRaw ?? await this.options.adapter.generate(
-      this.messages,
-      this.options.requestOptions(input.round),
-    )
+    let raw = this.initialRaw
+    if (raw === undefined) {
+      const requestOptions = this.options.requestOptions(input.round)
+      this.options.onRequest?.({
+        protocol: 'json',
+        round: input.round + 1,
+        messages: structuredClone(this.messages),
+        generation: generationParameters(requestOptions),
+      })
+      raw = await this.options.adapter.generate(this.messages, requestOptions)
+    }
     this.initialRaw = undefined
     const parsed = this.options.parse(raw)
     if (!parsed) return { kind: 'protocol-error', raw }

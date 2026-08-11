@@ -22,7 +22,8 @@ export interface AiEditingRunProgress {
   percent: number
   /** UI may advance gradually to this bound while waiting for the next real event. */
   ceiling?: number
-  previewText?: string
+  /** Only model reasoning belongs in the progress surface; final content is rendered as Markdown. */
+  reasoningText?: string | null
 }
 
 export interface AiEditingToolExecutionContext {

@@ -8,6 +8,7 @@ import type {
 import type {
   AgentHarnessDriver,
   AgentHarnessModelOutput,
+  AgentHarnessModelRequest,
   AgentHarnessModelStep,
   AgentHarnessToolExchange,
 } from './types'
@@ -20,6 +21,18 @@ interface NativeAgentDriverOptions<TObservation> {
   serializeObservation(observation: TObservation): string
   toolContinuationPrompt?: string
   requestOptions(round: number): LlmGenerateOptions
+  onRequest?(request: AgentHarnessModelRequest): void
+}
+
+function generationParameters(options: LlmGenerateOptions): AgentHarnessModelRequest['generation'] {
+  return {
+    ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    ...(options.topP === undefined ? {} : { topP: options.topP }),
+    ...(options.reasoningEffort === undefined
+      ? {}
+      : { reasoningEffort: options.reasoningEffort }),
+  }
 }
 
 function parseArguments(value: string): unknown {
@@ -46,10 +59,18 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
 
   async request(input: { round: number; instructions: string }): Promise<AgentHarnessModelStep> {
     this.replaceInstructions(input.instructions)
+    const requestOptions = this.options.requestOptions(input.round)
+    this.options.onRequest?.({
+      protocol: 'native',
+      round: input.round + 1,
+      messages: structuredClone(this.messages),
+      tools: structuredClone(this.options.tools),
+      generation: generationParameters(requestOptions),
+    })
     const response = await this.options.adapter.generateWithTools(
       this.messages,
       this.options.tools,
-      this.options.requestOptions(input.round),
+      requestOptions,
     )
     if (response.mode === 'fallback' || response.mode === 'json') {
       return {

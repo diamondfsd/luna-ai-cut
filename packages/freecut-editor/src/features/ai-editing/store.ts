@@ -108,7 +108,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       thinkingPercent: 0,
       thinkingCeiling: 0,
       error: null,
-      streamingText: '',
+      reasoningText: '',
+      draftAssistantText: '',
       observations: [],
       toolActivities: [],
       taskActivities: [],
@@ -219,9 +220,9 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         reasoningEffort: get().reasoningEffort,
         signal: controller.signal,
         onTraceEvent: (event) => runRecorder.trace(event),
-        onToken: (_delta, fullText) => {
+        onFinalText: (content) => {
           if (!controller.signal.aborted && get().projectId === projectId) {
-            set({ streamingText: fullText })
+            set({ draftAssistantText: content, reasoningText: '' })
           }
         },
         onRunProgress: (progress) => {
@@ -231,9 +232,9 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             thinkingLabel: progress.label,
             thinkingPercent: progress.percent,
             thinkingCeiling: progress.ceiling ?? progress.percent,
-            ...(progress.previewText === undefined
+            ...(progress.reasoningText === undefined
               ? {}
-              : { streamingText: progress.previewText }),
+              : { reasoningText: progress.reasoningText ?? '' }),
           })
         },
         onToolActivity: (activity) => {
@@ -303,7 +304,12 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       } catch (error) {
         logger.warn('Failed to persist AI editing conversation', error)
         if (get().projectId === projectId) {
-          set({ phase: 'idle', streamingText: '', error: '无法保存本项目的对话记录。' })
+          set({
+            phase: 'idle',
+            reasoningText: '',
+            draftAssistantText: '',
+            error: '无法保存本项目的对话记录。',
+          })
         }
         return
       }
@@ -312,7 +318,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         messages: nextMessages,
         conversationWorkflow: nextWorkflow,
         observations: result.observations,
-        streamingText: '',
+        reasoningText: '',
+        draftAssistantText: '',
         phase: 'idle',
       })
     } catch (error) {
@@ -326,7 +333,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         }
         set({
           phase: 'idle',
-          streamingText: '',
+          reasoningText: '',
+          draftAssistantText: '',
           error: message,
         })
       }
@@ -357,7 +365,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     activeController = null
     set((state) => ({
       phase: 'idle',
-      streamingText: '',
+      reasoningText: '',
+      draftAssistantText: '',
       thinkingPercent: 0,
       thinkingCeiling: 0,
       toolActivities: state.toolActivities.map((activity) =>

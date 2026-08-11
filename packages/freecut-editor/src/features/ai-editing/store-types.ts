@@ -21,7 +21,8 @@ export interface AiEditingState {
   thinkingPercent: number
   thinkingCeiling: number
   error: string | null
-  streamingText: string
+  reasoningText: string
+  draftAssistantText: string
   messages: AiEditingMessage[]
   agentContext: AiEditingConversationContext | null
   conversationWorkflow: AiEditingConversationWorkflow | null
