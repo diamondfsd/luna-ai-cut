@@ -8,12 +8,67 @@ import type { AiEditingRunOptions } from './run-types'
 import { serializeForModel } from './tool-execution'
 import type { AiEditingObservation } from './types'
 
+const CONFIRMED_PLAN_EXECUTION_DIRECTIVE = [
+  '宿主判定：用户已确认上一条剪辑方案。',
+  '本轮是实际修改项目的执行请求，必须使用剪辑源码工具完成工程修改，并以成功的 timeline.commit 结束。',
+  '不要再次只提供文本建议或重复脚本。',
+].join('')
+
+function normalizedConfirmation(text: string): string {
+  return text
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\s，,。.!！、;；:：]/g, '')
+}
+
+function hasDeliveredEditingPlan(history: readonly LlmMessage[]): boolean {
+  const previousAssistant = history.findLast((message) => message.role === 'assistant')
+  if (!previousAssistant || previousAssistant.content.trim().length < 20) return false
+  return /(脚本|方案|分镜|镜头|画面|剪辑|节奏|开场|收尾)/.test(previousAssistant.content)
+}
+
+export function isConfirmedPlanExecutionRequest(
+  userText: string,
+  history: readonly LlmMessage[],
+): boolean {
+  if (!hasDeliveredEditingPlan(history)) return false
+  const text = normalizedConfirmation(userText)
+  if (!text || /[?？]|怎么样|好不好|是否|能不能/.test(userText)) return false
+  if (/^(ok|okay|好的?|可以|行|没问题)$/.test(text)) return true
+  return /^(?:(?:ok|okay|好的?|可以|行|没问题))?(?:就)?(?:按照|按|照|依照|采用|用)(?:这个|此|刚才的|上面的)?(?:方案|脚本|分镜)?(?:来|执行|做|剪|开始)?(?:吧|了|就行)?$/.test(text)
+}
+
+function appendExecutionDirective(
+  systemPrompt: string,
+  userText: string,
+  history: readonly LlmMessage[],
+): string {
+  return isConfirmedPlanExecutionRequest(userText, history)
+    ? `${systemPrompt}\n\n${CONFIRMED_PLAN_EXECUTION_DIRECTIVE}`
+    : systemPrompt
+}
+
 export async function currentWorkspace(_options: AiEditingRunOptions): Promise<unknown> {
+  void _options
   return getTimelineCodingSession().promptContext()
 }
 
 export function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
   return messages.map((message) => ({ role: message.role, content: message.content }))
+}
+
+export async function buildTurnSystemPrompt(
+  userText: string,
+  history: readonly LlmMessage[],
+  evidence: unknown,
+  protocol: 'native' | 'json',
+  availableToolIds?: ReadonlySet<string>,
+): Promise<string> {
+  return appendExecutionDirective(
+    await buildAiEditingSystemPrompt(evidence, protocol, userText, availableToolIds),
+    userText,
+    history,
+  )
 }
 
 export async function buildInitialMessages(
@@ -26,7 +81,13 @@ export async function buildInitialMessages(
   return [
     {
       role: 'system',
-      content: await buildAiEditingSystemPrompt(evidence, protocol, userText, availableToolIds),
+      content: await buildTurnSystemPrompt(
+        userText,
+        history,
+        evidence,
+        protocol,
+        availableToolIds,
+      ),
     },
     ...history,
     { role: 'user', content: userText },

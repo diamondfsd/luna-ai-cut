@@ -356,6 +356,22 @@ export class TimelineCodingSession {
     return this.repository.commit(message)
   }
 
+  private async synchronizeLiveProjection(publishedRevision: number): Promise<void> {
+    const capturedWorkspace = await buildAgentWorkspaceDocument()
+    const liveWorkspace = {
+      ...capturedWorkspace,
+      revision: Math.max(capturedWorkspace.revision, publishedRevision),
+    }
+    this.workingCopy.synchronizeBaseline({
+      revision: liveWorkspace.revision,
+      source: sourceSnapshotFromWorkspace(liveWorkspace),
+    })
+    this.repository.refreshProjection(
+      liveWorkspace.revision,
+      projectAgentWorkspaceToFiles(liveWorkspace),
+    )
+  }
+
   async publish(commitId: string) {
     return this.repository.runAtCleanHead(commitId, async () => {
       if (this.pendingPublication) {
@@ -377,7 +393,7 @@ export class TimelineCodingSession {
         }
         await this.buildState.save(this.repository.projectId, this.pendingPublication.publication)
         const pendingResult = this.pendingPublication.result
-        this.workspace.markClean(pendingResult.revisionAfter)
+        await this.synchronizeLiveProjection(pendingResult.revisionAfter)
         this.pendingPublication = undefined
         return pendingResult
       }
@@ -436,7 +452,7 @@ export class TimelineCodingSession {
       })
       this.pendingPublication = { commitId, publication, result }
       await this.buildState.save(this.repository.projectId, publication)
-      this.workspace.markClean(result.revisionAfter)
+      await this.synchronizeLiveProjection(result.revisionAfter)
       this.pendingPublication = undefined
       return result
     })

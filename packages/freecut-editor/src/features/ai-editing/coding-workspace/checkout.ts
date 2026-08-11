@@ -153,6 +153,12 @@ export class CodingWorkspaceWorkingCopy<
     return this.baselineValue
   }
 
+  synchronizeBaseline(snapshot: CodingWorkspaceSnapshot<TSource, TRevision>): void {
+    if (this.activeCommitId) throw new Error('Cannot synchronize a baseline while committing.')
+    this.baselineValue = snapshot
+    this.conflict = undefined
+  }
+
   async check(workspace: TWorkspace): Promise<CodingWorkspaceCheckResult<TRevision>> {
     try {
       return await this.adapter.check({ base: this.baseline, workspace })

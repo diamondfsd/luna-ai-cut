@@ -2,7 +2,7 @@
 
 ## 工作流
 
-1. 用 `workspace.list` 查看目录，用 `workspace.search` 定位素材、台词或已有片段，用 `workspace.read` 按行分页读取需要的文件。
+1. 用 `workspace.list` 查看目录（根目录省略 `path`，或使用 `""` / `"."`），用 `workspace.search` 定位素材、台词或已有片段，用 `workspace.read` 按行分页读取需要的文件。同一轮批量调用互不依赖的读取；先搜索，再只读取命中的素材和证据；同一 run 内不要重复读取未变化的文件。
 2. 用 `workspace.patch` 原子修改可写源码。大型作品按开场、主体、结果、结尾等真实叙事职责拆分 segment，不按每个镜头提交。
 3. 运行 `timeline.check`。根据 diagnostic 的 `code`、`path` 和 `message` 修改源码，直到没有 error。
 4. 运行 `timeline.build`、`timeline.test` 和 `timeline.diff`，确认验收规则通过，且完整构建的操作数、类型和时间范围符合用户目标。

@@ -1,11 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 const harness = vi.hoisted(() => ({
-  publish: vi.fn(async (commitId: string) => ({ ok: true, commitId, revisionAfter: 2 })),
+  publish: vi.fn(async (commitId: string) => ({
+    ok: true,
+    commitId,
+    revisionBefore: 1,
+    revisionAfter: 2,
+    diff: {
+      operationCount: 0,
+      operationTypes: {},
+      changedRanges: [],
+      created: [],
+      updated: [],
+      removed: [],
+      transitionsChanged: 0,
+    },
+    diagnostics: [],
+  })),
+  build: vi.fn(async () => ({
+    artifact: {
+      version: 1,
+      baseRevision: 3,
+      sourceProjectId: 'project-1',
+      intent: 'Build a short video',
+      operations: [{
+        type: 'insertText',
+        text: { ref: 'title', text: 'Title', start: 0, duration: 2 },
+      }],
+    },
+    diagnostics: [],
+  })),
 }))
 
 vi.mock('../coding-workspace/session-registry', () => ({
-  getTimelineCodingSession: () => ({ publish: harness.publish }),
+  getTimelineCodingSession: () => ({ publish: harness.publish, build: harness.build }),
 }))
 
 import { aiEditingToolModule } from './coding-workspace-tools'
@@ -59,6 +87,25 @@ describe('coding workspace tools', () => {
 
     expect(harness.publish).toHaveBeenNthCalledWith(1, 'stage-commit')
     expect(harness.publish).toHaveBeenNthCalledWith(2, 'stage-commit')
+  })
+
+  it('returns a bounded build summary instead of the complete artifact', async () => {
+    const build = tools().find((tool) => tool.id === 'timeline.build')!
+
+    const result = await build.execute({}, {} as never)
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        diagnostics: [],
+        build: {
+          baseRevision: 3,
+          operationCount: 1,
+          operationTypes: { insertText: 1 },
+        },
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain('"operations"')
   })
 
   it('rejects patches to read-only projection files and unknown fields', () => {

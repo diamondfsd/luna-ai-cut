@@ -31,7 +31,7 @@ describe('VirtualEditingWorkspace', () => {
   it('lists the module roots without loading file contents', () => {
     const workspace = createWorkspace()
 
-    expect(workspace.list().entries).toEqual([
+    const rootEntries = [
       { path: 'components', type: 'directory', kind: 'components' },
       { path: 'evidence', type: 'directory', kind: 'evidence' },
       { path: 'manifest.json', type: 'file', kind: 'manifest', size: 44 },
@@ -39,7 +39,9 @@ describe('VirtualEditingWorkspace', () => {
       { path: 'segments', type: 'directory', kind: 'segments' },
       { path: 'sequences', type: 'directory', kind: 'sequences' },
       { path: 'tests', type: 'directory', kind: 'tests' },
-    ])
+    ]
+    expect(workspace.list().entries).toEqual(rootEntries)
+    expect(workspace.list({ path: '.' }).entries).toEqual(rootEntries)
     expect(workspace.list({ path: 'evidence', recursive: true }).entries).toEqual([
       { path: 'evidence/transcripts', type: 'directory', kind: 'evidence' },
       { path: 'evidence/transcripts/camera-1.json', type: 'file', kind: 'evidence', size: 26 },
@@ -168,6 +170,34 @@ describe('VirtualEditingWorkspace', () => {
       dirty: false,
       changes: [],
     })
+  })
+
+  it('refreshes read-only evidence without replacing dirty source files', () => {
+    const workspace = createWorkspace()
+    workspace.applyPatch({
+      operations: [{ op: 'write', path: 'manifest.json', content: '{"intent":"updated"}' }],
+    })
+
+    workspace.refreshReadOnlyProjection(8, [
+      { path: 'media/index.json', content: '{"items":["new"]}' },
+      { path: 'evidence/timeline/sequence.json', content: '{"baselineRevision":8}' },
+    ])
+
+    expect(workspace.sourceRevision).toBe(8)
+    expect(workspace.read('manifest.json').content).toBe('{"intent":"updated"}')
+    expect(workspace.read('media/index.json').content).toBe('{"items":["new"]}')
+    expect(workspace.read('evidence/timeline/sequence.json').content)
+      .toBe('{"baselineRevision":8}')
+    expect(workspace.status().changes).toEqual([{ path: 'manifest.json', status: 'modified' }])
+  })
+
+  it('does not allow a projection refresh to overwrite editing source', () => {
+    const workspace = createWorkspace()
+
+    expectErrorCode(
+      () => workspace.refreshReadOnlyProjection(8, [{ path: 'manifest.json', content: '{}' }]),
+      'INVALID_PATH',
+    )
   })
 
   it('rejects traversal, absolute, non-module, and non-JSON paths', () => {

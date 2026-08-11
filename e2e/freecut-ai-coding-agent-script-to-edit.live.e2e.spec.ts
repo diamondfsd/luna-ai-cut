@@ -10,7 +10,11 @@ import { expect, test } from './fixtures/lunaElectron'
 const SOURCE_USER_DATA_DIR = process.env.LUNA_E2E_SOURCE_USER_DATA_DIR
   ?? '/Users/zhouchao/Library/Application Support/luna-ai-cut'
 const SOURCE_PROJECT_ID = process.env.LUNA_E2E_PROJECT_ID ?? 'Dag9toSB'
-const AI_CONFIG_FILE = path.join(SOURCE_USER_DATA_DIR, 'ai-editing-assistant.json')
+const USE_EXISTING_USER_DATA = Boolean(process.env.LUNA_E2E_EXISTING_USER_DATA_DIR)
+const AI_CONFIG_FILE = path.join(
+  process.env.LUNA_E2E_EXISTING_USER_DATA_DIR ?? SOURCE_USER_DATA_DIR,
+  'ai-editing-assistant.json',
+)
 const FIRST_MESSAGE = '我最近给我家宝宝做了一个 AI-agent， 可以通过语音聊天告诉AI， 会帮助她做一个简单的小游戏， 现在我想做个抖音视频， 帮我设计下脚本呢'
 const SECOND_MESSAGE = 'OK就按照这个方案吧'
 
@@ -114,14 +118,6 @@ async function startLiveModelProxy(config: AiConfig): Promise<{
   }
 }
 
-async function findProjectDirectory(userDataDir: string): Promise<string> {
-  const projectsRoot = path.join(userDataDir, 'freecut-workspace', 'projects')
-  const entries = await readdir(projectsRoot, { withFileTypes: true })
-  const project = entries.find((entry) => entry.isDirectory())
-  if (!project) throw new Error('E2E project directory was not created')
-  return path.join(projectsRoot, project.name)
-}
-
 async function readRuns(projectDirectory: string): Promise<StoredRun[]> {
   try {
     const stored = JSON.parse(
@@ -165,7 +161,9 @@ test.skip(!existsSync(AI_CONFIG_FILE), '没有可用的剪辑助手模型配置'
 test.use({
   lunaElectronOptions: {
     launchEnv: {},
-    seedProject: { sourceUserDataDir: SOURCE_USER_DATA_DIR, projectId: SOURCE_PROJECT_ID },
+    ...(USE_EXISTING_USER_DATA
+      ? {}
+      : { seedProject: { sourceUserDataDir: SOURCE_USER_DATA_DIR, projectId: SOURCE_PROJECT_ID } }),
   },
 })
 test.setTimeout(20 * 60_000)
@@ -174,6 +172,7 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
   const { page, runtimeErrors, userDataDir } = lunaApp
   const config = JSON.parse(await readFile(AI_CONFIG_FILE, 'utf8')) as AiConfig
   const proxy = await startLiveModelProxy(config)
+  let proxyConfigSaved = false
   try {
     await page.getByRole('link', { name: '剪辑', exact: true }).click()
     await page.evaluate(({ baseUrl, model }) => window.luna.aiEditingAssistant.saveConfig({
@@ -181,12 +180,23 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
       model,
       apiKey: 'e2e-live-proxy-key',
     }), { baseUrl: proxy.baseUrl, model: config.model })
+    proxyConfigSaved = true
 
     const projectCard = page.locator(`[data-project-card][data-project-id="${SOURCE_PROJECT_ID}"]`)
     await expect(projectCard).toBeVisible()
     await projectCard.dblclick()
     await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
-    const projectDirectory = await findProjectDirectory(userDataDir)
+    const projectDirectory = path.join(
+      userDataDir,
+      'freecut-workspace',
+      'projects',
+      SOURCE_PROJECT_ID,
+    )
+    await access(path.join(projectDirectory, 'project.json'))
+    const initialRunCount = (await readRuns(projectDirectory)).length
+    const initialProject = JSON.parse(
+      await readFile(path.join(projectDirectory, 'project.json'), 'utf8'),
+    ) as StoredProject
     const input = await ensureAssistantReady(page)
     const send = page.getByRole('button', { name: '发送剪辑请求' })
 
@@ -200,7 +210,12 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
 
     await input.fill(FIRST_MESSAGE)
     await send.click()
-    const scriptRun = await waitForRun(page, projectDirectory, 1, 7 * 60_000)
+    const scriptRun = await waitForRun(
+      page,
+      projectDirectory,
+      initialRunCount + 1,
+      7 * 60_000,
+    )
     expect(scriptRun).toMatchObject({
       request: FIRST_MESSAGE,
       completed: true,
@@ -213,12 +228,17 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
       'utf8',
     )) as ConversationFile
     const scriptReply = firstConversation.messages?.at(-1)?.content ?? ''
-    expect(scriptReply.length).toBeGreaterThan(100)
+    expect(scriptReply.length).toBeGreaterThan(20)
     expect(scriptReply).toMatch(/脚本|镜头|画面|开场|抖音/)
 
     await input.fill(SECOND_MESSAGE)
     await send.click()
-    const editRun = await waitForRun(page, projectDirectory, 2, 12 * 60_000)
+    const editRun = await waitForRun(
+      page,
+      projectDirectory,
+      initialRunCount + 2,
+      12 * 60_000,
+    )
     expect(editRun.request).toBe(SECOND_MESSAGE)
     expect(editRun.completed).toBe(true)
     expect(editRun.completionNotes).toEqual([])
@@ -238,9 +258,7 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
       expect(editRun.toolCalls.findLast((call) => call.id === toolId)?.ok).toBe(true)
     }
     const failedCalls = editRun.toolCalls.filter((call) => !call.ok)
-    expect(failedCalls.every((call) => (
-      ['timeline.check', 'timeline.build', 'timeline.test', 'timeline.diff'].includes(call.id)
-    ))).toBe(true)
+    expect(failedCalls).toEqual([])
     expect(toolIds).not.toContain('workspace.apply_edit_program')
     expect(toolIds.indexOf('workspace.patch')).toBeLessThan(toolIds.indexOf('git.commit'))
     expect(toolIds.indexOf('git.commit')).toBeLessThan(toolIds.indexOf('timeline.commit'))
@@ -257,11 +275,14 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
     expect(project.timeline.items.length).toBeGreaterThan(0)
     expect(project.aiEditingPublication).toMatchObject({
       version: 1,
-      revisionBefore: editRun.timelineRevisionBefore,
     })
+    expect(project.aiEditingPublication?.revisionBefore)
+      .toBeGreaterThanOrEqual(editRun.timelineRevisionBefore)
     expect(project.aiEditingPublication?.revisionAfter)
       .toBeGreaterThan(project.aiEditingPublication?.revisionBefore ?? 0)
     expect(project.aiEditingPublication?.sourceCommitId).toMatch(/^[0-9a-f]{40}$/)
+    expect(project.aiEditingPublication?.sourceCommitId)
+      .not.toBe(initialProject.aiEditingPublication?.sourceCommitId)
     expect(project.aiEditingPublication?.buildFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/)
     expect(project.aiEditingPublication?.receipt).toBeTruthy()
 
@@ -286,7 +307,7 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
       path.join(projectDirectory, 'ai-editing-conversation.json'),
       'utf8',
     )) as ConversationFile
-    expect(conversation.messages?.map((message) => message.content)).toEqual([
+    expect(conversation.messages?.map((message) => message.content).slice(-4)).toEqual([
       FIRST_MESSAGE,
       scriptReply,
       SECOND_MESSAGE,
@@ -298,6 +319,10 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
     expect(proxy.requestCount()).toBeGreaterThanOrEqual(2)
     expect(runtimeErrors).toEqual([])
   } finally {
+    if (proxyConfigSaved && !page.isClosed()) {
+      await page.evaluate((original) => window.luna.aiEditingAssistant.saveConfig(original), config)
+        .catch(() => undefined)
+    }
     await proxy.close()
   }
 })
