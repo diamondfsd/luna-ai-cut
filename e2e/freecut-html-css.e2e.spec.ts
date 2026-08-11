@@ -144,8 +144,8 @@ async function ensureAssistantReady(page: Page) {
   return input
 }
 
-async function findProjectFile(userDataDir: string): Promise<string> {
-  const projectsRoot = path.join(userDataDir, 'freecut-workspace', 'projects')
+async function findProjectFile(workspaceDir: string): Promise<string> {
+  const projectsRoot = path.join(workspaceDir, 'projects')
   const entries = await readdir(projectsRoot, { withFileTypes: true })
   const project = entries.find((entry) => entry.isDirectory())
   if (!project) throw new Error('HTML/CSS E2E 项目目录尚未创建。')
@@ -154,7 +154,7 @@ async function findProjectFile(userDataDir: string): Promise<string> {
 
 test('剪辑助手创建的 HTML/CSS 可预览、编辑、动画并安全导出', async ({ lunaApp }) => {
   test.setTimeout(180_000)
-  const { page, runtimeErrors, userDataDir } = lunaApp
+  const { page, runtimeErrors, workspaceDir } = lunaApp
   const mock = await startHtmlEditingMock()
 
   try {
@@ -237,7 +237,7 @@ test('剪辑助手创建的 HTML/CSS 可预览、编辑、动画并安全导出'
       'data-html-e2e-script-executed',
     )).toBeNull()
 
-    const projectFile = await findProjectFile(userDataDir)
+    const projectFile = await findProjectFile(workspaceDir)
     const itemId = await timelineItem.getAttribute('data-item-id')
     expect(itemId).toBeTruthy()
     await expect.poll(async () => {

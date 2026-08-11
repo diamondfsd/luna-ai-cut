@@ -14,6 +14,8 @@ export interface LunaElectronApp {
   runtimeErrors: string[]
   temporaryRoot: string
   userDataDir: string
+  baseDir: string
+  workspaceDir: string
 }
 
 export interface LunaElectronOptions {
@@ -36,11 +38,12 @@ interface MediaLinks {
 }
 
 async function seedProject(
-  userDataDir: string,
+  baseDir: string,
   seed: NonNullable<LunaElectronOptions['seedProject']>,
 ): Promise<void> {
-  const sourceWorkspace = path.join(seed.sourceUserDataDir, 'freecut-workspace')
-  const targetWorkspace = path.join(userDataDir, 'freecut-workspace')
+  const sourceBaseDir = await configuredBaseDir(seed.sourceUserDataDir)
+  const sourceWorkspace = path.join(sourceBaseDir, 'freecut-workspace')
+  const targetWorkspace = path.join(baseDir, 'freecut-workspace')
   const sourceProject = path.join(sourceWorkspace, 'projects', seed.projectId)
   const targetProject = path.join(targetWorkspace, 'projects', seed.projectId)
   const sourceIndex = JSON.parse(
@@ -74,6 +77,22 @@ async function seedProject(
   }))
 }
 
+async function configuredBaseDir(userDataDir: string): Promise<string> {
+  const settingsPaths = [
+    path.join(userDataDir, 'settings.json'),
+    path.join(path.dirname(userDataDir), 'LunaAI-Cut', 'settings.json'),
+  ]
+  for (const settingsPath of settingsPaths) {
+    try {
+      const settings = JSON.parse(await readFile(settingsPath, 'utf8')) as { baseDir?: unknown }
+      if (typeof settings.baseDir === 'string' && settings.baseDir.length > 0) return path.resolve(settings.baseDir)
+    } catch {
+      // Try the next known settings location.
+    }
+  }
+  return path.resolve(userDataDir)
+}
+
 async function waitForMainWindow(app: ElectronApplication): Promise<Page> {
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
@@ -96,7 +115,10 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
     const userDataDir = existingUserDataDir
       ? path.resolve(existingUserDataDir)
       : path.join(temporaryRoot, 'user-data')
-    const baseDir = path.join(temporaryRoot, 'downloads')
+    const baseDir = useExistingUserDataDir
+      ? await configuredBaseDir(userDataDir)
+      : path.join(temporaryRoot, 'downloads')
+    const workspaceDir = path.join(baseDir, 'freecut-workspace')
     const artifactDir = path.join(temporaryRoot, 'artifacts')
     await Promise.all([
       useExistingUserDataDir ? access(userDataDir) : mkdir(userDataDir, { recursive: true }),
@@ -115,7 +137,7 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
       if (useExistingUserDataDir) {
         throw new Error('seedProject requires the fixture-managed isolated user data directory')
       }
-      await seedProject(userDataDir, lunaElectronOptions.seedProject)
+      await seedProject(baseDir, lunaElectronOptions.seedProject)
     }
 
     let app: ElectronApplication | undefined
@@ -142,7 +164,7 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
         if (message.type() === 'error') runtimeErrors.push(message.text())
       })
       await page.waitForLoadState('domcontentloaded')
-      await use({ app, page, runtimeErrors, temporaryRoot, userDataDir })
+      await use({ app, page, runtimeErrors, temporaryRoot, userDataDir, baseDir, workspaceDir })
     } finally {
       const failed = testInfo.status !== testInfo.expectedStatus
       const page = app?.windows().find((candidate) => !candidate.isClosed())

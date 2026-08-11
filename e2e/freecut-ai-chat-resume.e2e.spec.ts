@@ -106,8 +106,8 @@ async function startResumeChatMock(): Promise<{
   }
 }
 
-async function findProjectDirectory(userDataDir: string): Promise<string> {
-  const projectsRoot = path.join(userDataDir, 'freecut-workspace', 'projects')
+async function findProjectDirectory(workspaceDir: string): Promise<string> {
+  const projectsRoot = path.join(workspaceDir, 'projects')
   const entries = await readdir(projectsRoot, { withFileTypes: true })
   const project = entries.find((entry) => entry.isDirectory())
   if (!project) throw new Error('E2E project directory was not created')
@@ -139,7 +139,7 @@ async function ensureAssistantReady(page: Page) {
  * Covers history restore, continued context, visible automatic retry, and disk persistence.
  */
 test('AI-CHAT-P0-RESUME-CONTINUE 恢复历史会话后可自动重试并继续交流', async ({ lunaApp }) => {
-  const { page, runtimeErrors, userDataDir } = lunaApp
+  const { page, runtimeErrors, workspaceDir } = lunaApp
   const chatMock = await startResumeChatMock()
 
   try {
@@ -192,7 +192,7 @@ test('AI-CHAT-P0-RESUME-CONTINUE 恢复历史会话后可自动重试并继续�
     chatMock.releaseRetriedContinuation()
     await expect(page.getByText(REPLY_C, { exact: true })).toBeVisible()
 
-    const projectDirectory = await findProjectDirectory(userDataDir)
+    const projectDirectory = await findProjectDirectory(workspaceDir)
     await expect.poll(async () => {
       const current = JSON.parse(await readFile(
         path.join(projectDirectory, 'ai-editing-conversation.json'),
