@@ -1,6 +1,9 @@
 import type { LlmMessage } from '@freecut/infrastructure/llm'
 import type { EmbeddedAiAssistantMessage } from '@freecut/shared/host/embedded-host'
-import { buildAiEditingSystemPrompt, buildJsonToolFallbackPrompt } from './agent-prompt'
+import {
+  buildAiEditingSystemPrompt,
+  buildAiEditingTurnContext,
+} from './agent-prompt'
 import fallbackProgressPrompt from './prompts/messages/fallback-progress.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
 import { serializeForModel } from './tool-execution'
@@ -36,42 +39,94 @@ export function isConfirmedPlanExecutionRequest(
   return /^(?:(?:ok|okay|好的?|可以|行|没问题))?(?:就)?(?:按照|按|照|依照|采用|用)(?:这个|此|刚才的|上面的)?(?:方案|脚本|分镜)?(?:来|执行|做|剪|开始)?(?:吧|了|就行)?$/.test(text)
 }
 
-function appendExecutionDirective(
-  systemPrompt: string,
+function executionDirectiveForTurn(
   userText: string,
   history: readonly LlmMessage[],
   requiresEditCommit = false,
-): string {
+): string | undefined {
   return requiresEditCommit || isConfirmedPlanExecutionRequest(userText, history)
-    ? `${systemPrompt}\n\n${CONFIRMED_PLAN_EXECUTION_DIRECTIVE}`
-    : systemPrompt
+    ? CONFIRMED_PLAN_EXECUTION_DIRECTIVE
+    : undefined
+}
+
+function currentTurnUserMessage(
+  userText: string,
+  history: readonly LlmMessage[],
+  evidence: unknown,
+  protocol: 'native' | 'json',
+  activeToolIds: ReadonlySet<string>,
+  requiresEditCommit: boolean,
+): string {
+  return [
+    buildAiEditingTurnContext(
+      evidence,
+      protocol,
+      activeToolIds,
+      executionDirectiveForTurn(userText, history, requiresEditCommit),
+    ),
+    `用户本轮请求：\n${userText}`,
+  ].join('\n\n')
 }
 
 export function toNativeMessages(messages: LlmMessage[]): EmbeddedAiAssistantMessage[] {
   return messages.map((message) => ({ role: message.role, content: message.content }))
 }
 
-export async function buildTurnSystemPrompt(
+export function replayMessagesForJson(
+  messages: readonly EmbeddedAiAssistantMessage[],
+): LlmMessage[] {
+  return messages.map((message) => {
+    if (message.role === 'tool') {
+      return {
+        role: 'user' as const,
+        content: `工具调用 ${message.toolCallId} 的执行结果：\n${message.content}`,
+      }
+    }
+    if (message.role !== 'assistant' || !message.toolCalls?.length) {
+      return { role: message.role, content: message.content ?? '' } as LlmMessage
+    }
+    const calls = message.toolCalls.map((call) => ({
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+    }))
+    return {
+      role: 'assistant',
+      content: [
+        message.content ?? '',
+        `已请求工具调用：\n${JSON.stringify(calls)}`,
+      ].filter(Boolean).join('\n\n'),
+    }
+  })
+}
+
+export async function buildInitialNativeMessages(
   userText: string,
-  history: readonly LlmMessage[],
+  history: EmbeddedAiAssistantMessage[],
   evidence: unknown,
-  protocol: 'native' | 'json',
   candidateToolIds: ReadonlySet<string>,
   activeToolIds: ReadonlySet<string>,
   requiresEditCommit = false,
-): Promise<string> {
-  return appendExecutionDirective(
-    await buildAiEditingSystemPrompt(
-      evidence,
-      protocol,
-      userText,
-      candidateToolIds,
-      activeToolIds,
-    ),
-    userText,
-    history,
-    requiresEditCommit,
-  )
+): Promise<EmbeddedAiAssistantMessage[]> {
+  const textHistory = replayMessagesForJson(history)
+  return [
+    {
+      role: 'system',
+      content: await buildAiEditingSystemPrompt('native', candidateToolIds),
+    },
+    ...history,
+    {
+      role: 'user',
+      content: currentTurnUserMessage(
+        userText,
+        textHistory,
+        evidence,
+        'native',
+        activeToolIds,
+        requiresEditCommit,
+      ),
+    },
+  ]
 }
 
 export async function buildInitialMessages(
@@ -86,32 +141,28 @@ export async function buildInitialMessages(
   return [
     {
       role: 'system',
-      content: await buildTurnSystemPrompt(
+      content: await buildAiEditingSystemPrompt(protocol, candidateToolIds),
+    },
+    ...history,
+    {
+      role: 'user',
+      content: currentTurnUserMessage(
         userText,
         history,
         evidence,
         protocol,
-        candidateToolIds,
         activeToolIds,
         requiresEditCommit,
       ),
     },
-    ...history,
-    { role: 'user', content: userText },
   ]
 }
 
 export function buildJsonFallbackMessages(
   initialMessages: LlmMessage[],
   observations: AiEditingObservation[],
-  candidateToolIds: ReadonlySet<string>,
-  activeToolIds: ReadonlySet<string>,
 ): LlmMessage[] {
-  const messages = structuredClone(initialMessages)
-  messages.push({
-    role: 'user',
-    content: buildJsonToolFallbackPrompt(candidateToolIds, activeToolIds),
-  })
+  const messages = [...initialMessages]
   if (observations.length > 0) {
     messages.push({
       role: 'user',

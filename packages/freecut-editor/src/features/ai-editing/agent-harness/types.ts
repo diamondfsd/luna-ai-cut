@@ -38,6 +38,14 @@ export interface AgentHarnessModelOutput {
   toolCalls: AgentHarnessToolCall[]
 }
 
+export type AgentReplayMessage = EmbeddedAiAssistantMessage
+
+export interface AiEditingAgentTurn {
+  id: string
+  protocol: 'native' | 'json'
+  messages: AgentReplayMessage[]
+}
+
 export type AgentHarnessModelStep =
   | { kind: 'output'; output: AgentHarnessModelOutput }
   | { kind: 'protocol-error'; raw: string }
@@ -49,15 +57,18 @@ export interface AgentHarnessToolExchange<TObservation> {
 }
 
 export interface AgentHarnessDriver<TObservation> {
-  readonly protocol: string
+  readonly protocol: 'native' | 'json'
   readonly messageCount: number
+  readonly replayMessages: AgentReplayMessage[]
   request(input: { round: number }): Promise<AgentHarnessModelStep>
   recordProtocolError(raw: string, repairPrompt: string): void
   recordContinuation(output: AgentHarnessModelOutput, continuationPrompt: string): void
+  recordFinalOutput(output: AgentHarnessModelOutput): void
   recordUserPrompt(prompt: string): void
   recordToolResults(
     output: AgentHarnessModelOutput,
     exchanges: readonly AgentHarnessToolExchange<TObservation>[],
+    continueAfterTools?: boolean,
   ): void
 }
 
@@ -77,6 +88,8 @@ export interface AgentHarnessResult<TObservation> {
   status: 'completed' | 'exhausted' | 'fallback'
   reply: string
   observations: TObservation[]
+  protocol: 'native' | 'json'
+  replayMessages: AgentReplayMessage[]
   fallbackContent?: string
 }
 

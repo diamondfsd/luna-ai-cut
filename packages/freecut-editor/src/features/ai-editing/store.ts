@@ -1,7 +1,5 @@
 import { create } from 'zustand'
 import {
-  archiveAiEditingConversation,
-  clearAiEditingConversation,
   loadAiEditingConversationState,
   resumeAiEditingConversation,
   saveAiEditingConversationState,
@@ -9,10 +7,9 @@ import {
 import { createLogger } from '@freecut/shared/logging/logger'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { getAiEditingAdapter, runAiEditingTurn } from './run-ai-editing-turn'
-import {
-  addAiEditingReferenceContext,
-} from './resource-references'
+import { addAiEditingReferenceContext } from './resource-references'
 import { prepareConversationContext } from './conversation-context'
+import { archiveAndClearAiEditingConversation } from './conversation-session-actions'
 import {
   nextConversationWorkflow,
   resolveAiEditingTurnIntent,
@@ -21,10 +18,7 @@ import {
   enqueueAiEditingConversationWrite,
   waitForAiEditingConversationWrites,
 } from './conversation-writes'
-import {
-  conversationMessagesForModel,
-  newAiEditingMessageId,
-} from './conversation-messages'
+import { newAiEditingMessageId } from './conversation-messages'
 import { createAiEditingRunRecorder } from './run-recorder'
 import {
   loadReasoningEffort,
@@ -36,7 +30,6 @@ import { createEmptyConversationState } from './store-state'
 
 export type { AiEditingMessage } from './conversation-messages'
 export type { AiEditingReasoningEffort } from './reasoning-effort'
-
 const logger = createLogger('AiEditingStore')
 
 let activeController: AbortController | null = null
@@ -67,6 +60,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     if (generation !== conversationLoadGeneration || get().projectId !== projectId) return
     set({
       messages: conversation.messages,
+      agentTurns: conversation.agentTurns,
+      loadedToolIds: conversation.loadedToolIds,
       agentContext: conversation.context,
       conversationWorkflow: conversation.workflow,
       lastPromptTokens: conversation.lastPromptTokens ?? null,
@@ -87,6 +82,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     }
 
     const previousMessages = get().messages
+    const previousAgentTurns = get().agentTurns
+    const storedLoadedToolIds = get().loadedToolIds
     const storedContext = get().agentContext
     const storedWorkflow = get().conversationWorkflow
     const storedPromptTokens = get().lastPromptTokens
@@ -120,6 +117,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       await enqueueAiEditingConversationWrite(projectId, () =>
         saveAiEditingConversationState(projectId, {
           messages,
+          agentTurns: previousAgentTurns,
+          loadedToolIds: storedLoadedToolIds,
           context: storedContext,
           workflow: storedWorkflow,
           lastPromptTokens: storedPromptTokens,
@@ -193,7 +192,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       const contextWindowTokens = (await getEmbeddedHostBridge().aiAssistant?.getConfig())
         ?.contextWindowTokens ?? 256 * 1024
       const preparedContext = await prepareConversationContext(
-        conversationMessagesForModel(previousMessages),
+        previousAgentTurns,
         storedContext,
         {
           adapter,
@@ -212,6 +211,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         await enqueueAiEditingConversationWrite(projectId, () =>
           saveAiEditingConversationState(projectId, {
             messages,
+            agentTurns: previousAgentTurns,
+            loadedToolIds: storedLoadedToolIds,
             context: preparedContext.context,
             workflow: storedWorkflow,
             lastPromptTokens: null,
@@ -223,6 +224,9 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       let runPromptTokens: number | null = null
       const result = await runAiEditingTurn(addAiEditingReferenceContext(trimmed, references), {
         history: preparedContext.history,
+        agentHistory: preparedContext.agentHistory,
+        loadedToolIds: storedLoadedToolIds,
+        preferredProtocol: previousAgentTurns.at(-1)?.protocol,
         adapter,
         reasoningEffort: get().reasoningEffort,
         signal: controller.signal,
@@ -234,6 +238,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           void enqueueAiEditingConversationWrite(projectId, () =>
             saveAiEditingConversationState(projectId, {
               messages: get().messages,
+              agentTurns: get().agentTurns,
+              loadedToolIds: get().loadedToolIds,
               context: preparedContext.context,
               workflow: storedWorkflow,
               lastPromptTokens: runPromptTokens,
@@ -304,6 +310,10 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           createdAt: Date.now(),
         },
       ]
+      const nextAgentTurns = [
+        ...previousAgentTurns,
+        { ...result.agentTurn, createdAt: Date.now() },
+      ]
       const nextWorkflow = nextConversationWorkflow({
         previous: storedWorkflow,
         intent: turnIntent,
@@ -317,6 +327,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         await enqueueAiEditingConversationWrite(projectId, () =>
           saveAiEditingConversationState(projectId, {
             messages: nextMessages,
+            agentTurns: nextAgentTurns,
+            loadedToolIds: result.loadedToolIds,
             context: preparedContext.context,
             workflow: nextWorkflow,
             lastPromptTokens: runPromptTokens ?? get().lastPromptTokens,
@@ -337,6 +349,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       if (get().projectId !== projectId) return
       set({
         messages: nextMessages,
+        agentTurns: nextAgentTurns,
+        loadedToolIds: result.loadedToolIds,
         conversationWorkflow: nextWorkflow,
         lastPromptTokens: runPromptTokens ?? get().lastPromptTokens,
         observations: result.observations,
@@ -417,17 +431,17 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
 
     set({ isStartingNewConversation: true, error: null })
     try {
-      await enqueueAiEditingConversationWrite(projectId, async () => {
-        if (messages.length > 0) {
-          await archiveAiEditingConversation(projectId, {
-            id: messages[0]?.id ?? newAiEditingMessageId(),
-            createdAt: messages[0]?.createdAt ?? Date.now(),
-            archivedAt: Date.now(),
-            messages,
-          })
-        }
-        await clearAiEditingConversation(projectId)
-      })
+      const state = get()
+      await enqueueAiEditingConversationWrite(projectId, () =>
+        archiveAndClearAiEditingConversation(projectId, {
+          messages,
+          agentTurns: state.agentTurns,
+          loadedToolIds: state.loadedToolIds,
+          context: state.agentContext,
+          workflow: state.conversationWorkflow,
+          lastPromptTokens: state.lastPromptTokens,
+        }),
+      )
     } catch (error) {
       logger.warn('Failed to archive AI editing conversation', error)
       if (get().projectId === projectId) {
@@ -459,14 +473,19 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     activeController = null
     set({ isRestoringConversation: true, error: null })
     try {
-      const messages = await enqueueAiEditingConversationWrite(projectId, () =>
+      const conversation = await enqueueAiEditingConversationWrite(projectId, () =>
         resumeAiEditingConversation(projectId, sessionId),
       )
       if (get().projectId !== projectId) return false
       conversationLoadGeneration += 1
       set({
         ...createEmptyConversationState(),
-        messages,
+        messages: conversation.messages,
+        agentTurns: conversation.agentTurns,
+        loadedToolIds: conversation.loadedToolIds,
+        agentContext: conversation.context,
+        conversationWorkflow: conversation.workflow,
+        lastPromptTokens: conversation.lastPromptTokens ?? null,
         isRestoringConversation: false,
       })
       return true

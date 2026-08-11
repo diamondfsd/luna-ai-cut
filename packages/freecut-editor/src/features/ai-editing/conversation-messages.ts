@@ -1,7 +1,4 @@
-import {
-  addAiEditingReferenceContext,
-  type AiEditingResourceReference,
-} from './resource-references'
+import type { AiEditingResourceReference } from './resource-references'
 
 export interface AiEditingMessage {
   id: string
@@ -13,14 +10,4 @@ export interface AiEditingMessage {
 
 export function newAiEditingMessageId(): string {
   return crypto.randomUUID()
-}
-
-export function conversationMessagesForModel(messages: readonly AiEditingMessage[]) {
-  return messages.map((message) => ({
-    id: message.id,
-    role: message.role,
-    content: message.role === 'user'
-      ? addAiEditingReferenceContext(message.content, message.references ?? [])
-      : message.content,
-  }))
 }

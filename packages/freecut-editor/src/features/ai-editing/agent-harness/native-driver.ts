@@ -16,6 +16,7 @@ import type {
 interface NativeAgentDriverOptions<TObservation> {
   adapter: NativeToolCallingLlmAdapter
   messages: EmbeddedAiAssistantMessage[]
+  replayFromIndex?: number
   getTools(): {
     definitions: EmbeddedAiAssistantToolDefinition[]
     idsByFunctionName: ReadonlyMap<string, string>
@@ -50,13 +51,19 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
   readonly protocol = 'native'
   private readonly messages: EmbeddedAiAssistantMessage[]
   private readonly callsById = new Map<string, EmbeddedAiAssistantToolCall>()
+  private readonly replayFromIndex: number
 
   constructor(private readonly options: NativeAgentDriverOptions<TObservation>) {
     this.messages = structuredClone(options.messages)
+    this.replayFromIndex = options.replayFromIndex ?? this.messages.length
   }
 
   get messageCount(): number {
     return this.messages.length
+  }
+
+  get replayMessages(): EmbeddedAiAssistantMessage[] {
+    return structuredClone(this.messages.slice(this.replayFromIndex))
   }
 
   async request(input: { round: number }): Promise<AgentHarnessModelStep> {
@@ -108,6 +115,14 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
     this.messages.push({ role: 'user', content: continuationPrompt })
   }
 
+  recordFinalOutput(output: AgentHarnessModelOutput): void {
+    if (!output.content) return
+    this.messages.push({
+      role: 'assistant',
+      content: output.content,
+    })
+  }
+
   recordUserPrompt(prompt: string): void {
     this.messages.push({ role: 'user', content: prompt })
   }
@@ -115,6 +130,7 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
   recordToolResults(
     output: AgentHarnessModelOutput,
     exchanges: readonly AgentHarnessToolExchange<TObservation>[],
+    continueAfterTools = true,
   ): void {
     const toolCalls = exchanges
       .map(({ call }) => this.callsById.get(call.callId))
@@ -131,7 +147,7 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
         content: this.options.serializeObservation(observation),
       })
     }
-    if (this.options.toolContinuationPrompt) {
+    if (continueAfterTools && this.options.toolContinuationPrompt) {
       this.messages.push({ role: 'user', content: this.options.toolContinuationPrompt })
     }
   }

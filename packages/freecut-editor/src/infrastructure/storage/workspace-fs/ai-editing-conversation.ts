@@ -11,10 +11,20 @@ import { createLogger } from '@freecut/shared/logging/logger'
 import { readJson, removeEntry, writeJsonAtomic } from './fs-primitives'
 import { projectAiEditingConversationHistoryPath, projectAiEditingConversationPath } from './paths'
 import { requireWorkspaceRoot } from './root'
+import {
+  sanitizeAgentTurn,
+  sanitizeLoadedToolIds,
+  type AiEditingAgentTurn,
+} from './ai-editing-agent-conversation'
+export type {
+  AiEditingAgentMessage,
+  AiEditingAgentToolCall,
+  AiEditingAgentTurn,
+} from './ai-editing-agent-conversation'
 
 const logger = createLogger('WorkspaceFS:AiEditingConversation')
-const CONVERSATION_VERSION = 2
-const CONVERSATION_HISTORY_VERSION = 1
+const CONVERSATION_VERSION = 3
+const CONVERSATION_HISTORY_VERSION = 2
 
 export interface AiEditingConversationMessage {
   id: string
@@ -38,6 +48,8 @@ export interface AiEditingConversationWorkflow {
 
 export interface AiEditingConversationState {
   messages: AiEditingConversationMessage[]
+  agentTurns: AiEditingAgentTurn[]
+  loadedToolIds: string[]
   context: AiEditingConversationContext | null
   workflow: AiEditingConversationWorkflow | null
   lastPromptTokens?: number | null
@@ -52,6 +64,8 @@ export interface AiEditingConversationReference {
 interface AiEditingConversationFile {
   version: typeof CONVERSATION_VERSION
   messages: AiEditingConversationMessage[]
+  agentTurns: AiEditingAgentTurn[]
+  loadedToolIds: string[]
   context?: AiEditingConversationContext
   workflow?: AiEditingConversationWorkflow
   lastPromptTokens?: number
@@ -62,6 +76,11 @@ export interface AiEditingConversationHistorySession {
   createdAt: number
   archivedAt: number
   messages: AiEditingConversationMessage[]
+  agentTurns: AiEditingAgentTurn[]
+  loadedToolIds: string[]
+  context: AiEditingConversationContext | null
+  workflow: AiEditingConversationWorkflow | null
+  lastPromptTokens?: number | null
 }
 
 interface AiEditingConversationHistoryFile {
@@ -160,15 +179,21 @@ function sanitizeWorkflow(value: unknown): AiEditingConversationWorkflow | null 
 
 function sanitizeConversation(value: unknown): AiEditingConversationState {
   if (!value || typeof value !== 'object') {
-    return { messages: [], context: null, workflow: null }
+    return { messages: [], agentTurns: [], loadedToolIds: [], context: null, workflow: null }
   }
   const candidate = value as Partial<AiEditingConversationFile>
   if (candidate.version !== CONVERSATION_VERSION || !Array.isArray(candidate.messages)) {
-    return { messages: [], context: null, workflow: null }
+    return { messages: [], agentTurns: [], loadedToolIds: [], context: null, workflow: null }
   }
   const messages = candidate.messages
     .map(sanitizeMessage)
     .filter((message): message is AiEditingConversationMessage => message !== null)
+  const agentTurns = Array.isArray(candidate.agentTurns)
+    ? candidate.agentTurns
+      .map(sanitizeAgentTurn)
+      .filter((turn): turn is AiEditingAgentTurn => turn !== null)
+    : []
+  const loadedToolIds = sanitizeLoadedToolIds(candidate.loadedToolIds)
   const context = sanitizeContext(candidate.context)
   const workflow = sanitizeWorkflow(candidate.workflow)
   const lastPromptTokens = typeof candidate.lastPromptTokens === 'number' &&
@@ -177,7 +202,9 @@ function sanitizeConversation(value: unknown): AiEditingConversationState {
     : null
   return {
     messages,
-    context: context && messages.some((message) => message.id === context.throughMessageId)
+    agentTurns,
+    loadedToolIds,
+    context: context && agentTurns.some((turn) => turn.id === context.throughMessageId)
       ? context
       : null,
     workflow: workflow && messages.some((message) =>
@@ -200,7 +227,9 @@ function sanitizeHistorySession(value: unknown): AiEditingConversationHistorySes
     typeof candidate.archivedAt !== 'number' ||
     !Number.isFinite(candidate.archivedAt) ||
     candidate.archivedAt < 0 ||
-    !Array.isArray(candidate.messages)
+    !Array.isArray(candidate.messages) ||
+    !Array.isArray(candidate.agentTurns) ||
+    !Array.isArray(candidate.loadedToolIds)
   ) {
     return null
   }
@@ -208,11 +237,30 @@ function sanitizeHistorySession(value: unknown): AiEditingConversationHistorySes
     .map(sanitizeMessage)
     .filter((message): message is AiEditingConversationMessage => message !== null)
   if (messages.length === 0) return null
+  const agentTurns = candidate.agentTurns
+    .map(sanitizeAgentTurn)
+    .filter((turn): turn is AiEditingAgentTurn => turn !== null)
+  const context = sanitizeContext(candidate.context)
+  const workflow = sanitizeWorkflow(candidate.workflow)
+  const lastPromptTokens = typeof candidate.lastPromptTokens === 'number' &&
+    Number.isSafeInteger(candidate.lastPromptTokens) && candidate.lastPromptTokens >= 0
+    ? candidate.lastPromptTokens
+    : null
   return {
     id: candidate.id,
     createdAt: candidate.createdAt,
     archivedAt: candidate.archivedAt,
     messages,
+    agentTurns,
+    loadedToolIds: sanitizeLoadedToolIds(candidate.loadedToolIds),
+    context: context && agentTurns.some((turn) => turn.id === context.throughMessageId)
+      ? context
+      : null,
+    workflow: workflow && messages.some((message) =>
+      message.id === workflow.planMessageId && message.role === 'assistant')
+      ? workflow
+      : null,
+    ...(lastPromptTokens === null ? {} : { lastPromptTokens }),
   }
 }
 
@@ -245,7 +293,7 @@ export async function loadAiEditingConversationState(
     return sanitizeConversation(file)
   } catch (error) {
     logger.warn(`loadAiEditingConversation(${projectId}) failed`, error)
-    return { messages: [], context: null, workflow: null }
+    return { messages: [], agentTurns: [], loadedToolIds: [], context: null, workflow: null }
   }
 }
 
@@ -255,6 +303,8 @@ export async function saveAiEditingConversation(
 ): Promise<void> {
   await saveAiEditingConversationState(projectId, {
     messages,
+    agentTurns: [],
+    loadedToolIds: [],
     context: null,
     workflow: null,
     lastPromptTokens: null,
@@ -269,6 +319,8 @@ export async function saveAiEditingConversationState(
     const file: AiEditingConversationFile = {
       version: CONVERSATION_VERSION,
       messages: state.messages.map((message) => ({ ...message })),
+      agentTurns: structuredClone(state.agentTurns),
+      loadedToolIds: [...state.loadedToolIds],
       ...(state.context ? { context: { ...state.context } } : {}),
       ...(state.workflow ? { workflow: { ...state.workflow } } : {}),
       ...(typeof state.lastPromptTokens === 'number'
@@ -329,13 +381,14 @@ export async function archiveAiEditingConversation(
 export async function resumeAiEditingConversation(
   projectId: string,
   sessionId: string,
-): Promise<AiEditingConversationMessage[]> {
+): Promise<AiEditingConversationState> {
   try {
     const history = await listAiEditingConversationHistory(projectId)
     const target = history.find((session) => session.id === sessionId)
     if (!target) throw new Error('Conversation session not found')
 
-    const currentMessages = await loadAiEditingConversation(projectId)
+    const current = await loadAiEditingConversationState(projectId)
+    const currentMessages = current.messages
     const currentSession: AiEditingConversationHistorySession | null =
       currentMessages.length > 0
         ? {
@@ -343,6 +396,11 @@ export async function resumeAiEditingConversation(
             createdAt: currentMessages[0]?.createdAt ?? Date.now(),
             archivedAt: Date.now(),
             messages: currentMessages,
+            agentTurns: current.agentTurns,
+            loadedToolIds: current.loadedToolIds,
+            context: current.context,
+            workflow: current.workflow,
+            lastPromptTokens: current.lastPromptTokens,
           }
         : null
     const historyWithCurrent = [
@@ -353,7 +411,14 @@ export async function resumeAiEditingConversation(
     // Preserve both conversations before replacing the current file. If the
     // final cleanup fails, the resumed session is duplicated but not lost.
     if (currentSession) await writeConversationHistory(projectId, historyWithCurrent)
-    await saveAiEditingConversation(projectId, target.messages)
+    await saveAiEditingConversationState(projectId, {
+      messages: target.messages,
+      agentTurns: target.agentTurns,
+      loadedToolIds: target.loadedToolIds,
+      context: target.context,
+      workflow: target.workflow,
+      lastPromptTokens: target.lastPromptTokens,
+    })
     try {
       await writeConversationHistory(
         projectId,
@@ -362,7 +427,14 @@ export async function resumeAiEditingConversation(
     } catch (error) {
       logger.warn(`resumeAiEditingConversation(${projectId}) cleanup failed`, error)
     }
-    return target.messages.map((message) => ({ ...message }))
+    return {
+      messages: target.messages.map((message) => ({ ...message })),
+      agentTurns: structuredClone(target.agentTurns),
+      loadedToolIds: [...target.loadedToolIds],
+      context: target.context ? { ...target.context } : null,
+      workflow: target.workflow ? { ...target.workflow } : null,
+      lastPromptTokens: target.lastPromptTokens ?? null,
+    }
   } catch (error) {
     logger.error(`resumeAiEditingConversation(${projectId}, ${sessionId}) failed`, error)
     throw new Error('Failed to resume AI editing conversation')

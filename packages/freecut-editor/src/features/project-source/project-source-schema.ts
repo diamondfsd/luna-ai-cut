@@ -1,6 +1,8 @@
 import type { Project, ProjectTimeline } from '@freecut/types/project'
+import type { TextItem, TimelineItem } from '@freecut/types/timeline'
+import type { NormalizedTextBox } from './normalized-text-layout'
 
-export const PROJECT_SOURCE_VERSION = 2 as const
+export const PROJECT_SOURCE_VERSION = 3 as const
 export const PROJECT_SOURCE_SEGMENT_SECONDS = 30
 export const PROJECT_SOURCE_MAX_CLIPS_PER_SEGMENT = 32
 
@@ -42,8 +44,22 @@ export interface ClipSegmentSource {
   kind: 'clip-segment'
   trackId: string
   window: number
-  clips: ProjectTimeline['items']
+  clips: ProjectSourceClip[]
 }
+
+type TextSourceTransform = Omit<
+  NonNullable<TextItem['transform']>,
+  'x' | 'y' | 'width' | 'height' | 'anchorX' | 'anchorY'
+>
+
+export type ProjectSourceTextClip = Omit<TextItem, 'transform'> & {
+  /** Normalized canvas box. All values and box edges must remain within 0..1. */
+  textBox: NormalizedTextBox
+  /** Presentation only. Pixel layout and anchor fields are forbidden for text source. */
+  transform?: TextSourceTransform
+}
+
+export type ProjectSourceClip = Exclude<TimelineItem, TextItem> | ProjectSourceTextClip
 
 export interface TransitionsSource {
   version: typeof PROJECT_SOURCE_VERSION

@@ -25,19 +25,28 @@ function reasoningPreview(value: string): string {
   return value.slice(-MAX_PREVIEW_LENGTH)
 }
 
-function tokenCount(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? Math.floor(value)
-    : 0
+function tokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined
 }
 
 function normalizeUsage(usage: ChatCompletionChunk['usage']): AiEditingAssistantTokenUsage | undefined {
   if (!usage) return undefined
+  const promptTokens = tokenCount(usage.prompt_tokens)
+  const completionTokens = tokenCount(usage.completion_tokens)
+  const totalTokens = tokenCount(usage.total_tokens)
+  if (promptTokens === undefined || completionTokens === undefined || totalTokens === undefined) {
+    return undefined
+  }
+  const cachedValue = usage.prompt_tokens_details?.cached_tokens
+  const cachedTokens = cachedValue === undefined ? 0 : tokenCount(cachedValue)
+  if (cachedTokens === undefined || cachedTokens > promptTokens) return undefined
   return {
-    promptTokens: tokenCount(usage.prompt_tokens),
-    completionTokens: tokenCount(usage.completion_tokens),
-    totalTokens: tokenCount(usage.total_tokens),
-    cachedTokens: tokenCount(usage.prompt_tokens_details?.cached_tokens),
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cachedTokens,
   }
 }
 

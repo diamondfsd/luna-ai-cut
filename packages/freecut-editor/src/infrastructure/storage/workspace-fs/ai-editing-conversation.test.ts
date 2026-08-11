@@ -40,7 +40,7 @@ describe('AI editing conversation storage', () => {
         (await readFileText(root, 'projects', 'project-42', 'ai-editing-conversation.json')) ??
           '{}',
       ),
-    ).toMatchObject({ version: 2, messages })
+    ).toMatchObject({ version: 3, messages, agentTurns: [], loadedToolIds: [] })
   })
 
   it('rejects messages that do not have a valid creation time', async () => {
@@ -50,8 +50,10 @@ describe('AI editing conversation storage', () => {
       root as unknown as FileSystemDirectoryHandle,
       projectAiEditingConversationPath('project-42'),
       {
-        version: 2,
+        version: 3,
         messages: [{ id: 'message-1', role: 'assistant', content: '已完成。' }],
+        agentTurns: [],
+        loadedToolIds: [],
       },
     )
 
@@ -70,11 +72,28 @@ describe('AI editing conversation storage', () => {
       throughMessageId: 'message-2',
       updatedAt: 120,
     }
+    const agentTurns = [{
+      id: 'message-2',
+      protocol: 'json' as const,
+      createdAt: 100,
+      messages: [
+        { role: 'user' as const, content: '先设计脚本' },
+        { role: 'assistant' as const, content: '脚本方案' },
+      ],
+    }]
 
-    await saveAiEditingConversationState('project-42', { messages, context, workflow: null })
+    await saveAiEditingConversationState('project-42', {
+      messages,
+      agentTurns,
+      loadedToolIds: ['source.read'],
+      context,
+      workflow: null,
+    })
 
     expect(await loadAiEditingConversationState('project-42')).toEqual({
       messages,
+      agentTurns,
+      loadedToolIds: ['source.read'],
       context,
       workflow: null,
     })
@@ -96,14 +115,49 @@ describe('AI editing conversation storage', () => {
 
     await saveAiEditingConversationState('project-42', {
       messages,
+      agentTurns: [],
+      loadedToolIds: [],
       context: null,
       workflow,
     })
 
     expect(await loadAiEditingConversationState('project-42')).toEqual({
       messages,
+      agentTurns: [],
+      loadedToolIds: [],
       context: null,
       workflow,
+    })
+  })
+
+  it('drops a replay turn with a tool call that has no matching result', async () => {
+    const root = createRoot()
+    setWorkspaceRoot(asHandle(root))
+    await writeJsonAtomic(
+      root as unknown as FileSystemDirectoryHandle,
+      projectAiEditingConversationPath('project-42'),
+      {
+        version: 3,
+        messages: [],
+        loadedToolIds: ['source.read'],
+        agentTurns: [{
+          id: 'broken-turn',
+          protocol: 'native',
+          createdAt: 100,
+          messages: [
+            { role: 'user', content: '读取源码' },
+            {
+              role: 'assistant',
+              toolCalls: [{ id: 'call-1', name: 'source_read', arguments: '{}' }],
+            },
+          ],
+        }],
+      },
+    )
+
+    expect(await loadAiEditingConversationState('project-42')).toMatchObject({
+      agentTurns: [],
+      loadedToolIds: ['source.read'],
     })
   })
 
@@ -117,6 +171,7 @@ describe('AI editing conversation storage', () => {
       messages: [
         { id: 'message-1', role: 'user', content: '整理开场片段', createdAt: 1_723_456_789_000 },
       ],
+      agentTurns: [], loadedToolIds: [], context: null, workflow: null,
     })
     await archiveAiEditingConversation('project-42', {
       id: 'newer-session',
@@ -125,6 +180,7 @@ describe('AI editing conversation storage', () => {
       messages: [
         { id: 'message-2', role: 'assistant', content: '已完成。', createdAt: 1_723_456_800_000 },
       ],
+      agentTurns: [], loadedToolIds: [], context: null, workflow: null,
     })
 
     expect(
@@ -142,17 +198,31 @@ describe('AI editing conversation storage', () => {
       { id: 'archived-message', role: 'user' as const, content: '继续旧问题', createdAt: 100 },
       { id: 'archived-reply', role: 'assistant' as const, content: '旧回答', createdAt: 110 },
     ]
+    const archivedAgentTurns = [{
+      id: 'archived-turn',
+      protocol: 'json' as const,
+      createdAt: 100,
+      messages: [
+        { role: 'user' as const, content: '继续旧问题' },
+        { role: 'assistant' as const, content: '旧回答' },
+      ],
+    }]
     await saveAiEditingConversation('project-42', currentMessages)
     await archiveAiEditingConversation('project-42', {
       id: 'archived-message',
       createdAt: 100,
       archivedAt: 150,
       messages: archivedMessages,
+      agentTurns: archivedAgentTurns,
+      loadedToolIds: ['source.read'],
+      context: null,
+      workflow: null,
     })
 
-    expect(await resumeAiEditingConversation('project-42', 'archived-message')).toEqual(
-      archivedMessages,
-    )
+    const resumed = await resumeAiEditingConversation('project-42', 'archived-message')
+    expect(resumed.messages).toEqual(archivedMessages)
+    expect(resumed.agentTurns).toEqual(archivedAgentTurns)
+    expect(resumed.loadedToolIds).toEqual(['source.read'])
     expect(await loadAiEditingConversation('project-42')).toEqual(archivedMessages)
     const history = await listAiEditingConversationHistory('project-42')
     expect(history).toHaveLength(1)
@@ -171,6 +241,7 @@ describe('AI editing conversation storage', () => {
       createdAt: 100,
       archivedAt: 150,
       messages: archivedMessages,
+      agentTurns: [], loadedToolIds: [], context: null, workflow: null,
     })
 
     await resumeAiEditingConversation('project-42', 'archived-message')

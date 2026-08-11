@@ -26,38 +26,32 @@ function completeToolDefinitions(activeToolIds: ReadonlySet<string>): string {
 }
 
 export async function buildAiEditingSystemPrompt(
-  evidence: unknown,
   protocol: 'native' | 'json',
-  _userText = '',
   candidateToolIds: ReadonlySet<string>,
-  activeToolIds: ReadonlySet<string>,
 ): Promise<string> {
-  const availableTools = [
-    '可按需加载的工具目录（这里只是能力摘要，不代表已加载）：',
-    compactToolCatalog(candidateToolIds),
-    protocol === 'json'
-      ? `当前已加载工具的完整定义：\n${completeToolDefinitions(activeToolIds)}`
-      : '当前只有 tool.load 可直接调用；其他工具先按 ID 用 tool.load 加载。',
-  ].join('\n\n')
   return renderPrompt(agentSystemPrompt, {
     PROTOCOL_INSTRUCTIONS:
       protocol === 'native' ? nativeToolsProtocol.trim() : jsonToolsProtocol.trim(),
     CODING_WORKSPACE_PROTOCOL: codingWorkspaceProtocol.trim(),
-    AVAILABLE_TOOLS: availableTools,
-    REPOSITORY_CONTEXT: JSON.stringify(evidence),
+    AVAILABLE_TOOLS: compactToolCatalog(candidateToolIds),
   })
 }
 
-export function buildJsonToolFallbackPrompt(
-  candidateToolIds: ReadonlySet<string>,
+export function buildAiEditingTurnContext(
+  evidence: unknown,
+  protocol: 'native' | 'json',
   activeToolIds: ReadonlySet<string>,
+  executionDirective?: string,
 ): string {
+  const activeTools = protocol === 'json'
+    ? `当前已加载工具的完整定义：\n${completeToolDefinitions(activeToolIds)}`
+    : activeToolIds.size > 1
+      ? `当前可直接调用的工具：${[...activeToolIds].join('、')}。其他工具先按 ID 用 tool.load 加载。`
+      : '当前只有 tool.load 可直接调用；其他工具先按 ID 用 tool.load 加载。'
   return [
-    '宿主通知：当前模型接口不支持原生函数调用。从这条消息开始改用下面的 JSON 工具协议；既有系统指令、用户请求和历史保持不变。',
-    jsonToolsProtocol.trim(),
-    '可按需加载的工具目录：',
-    compactToolCatalog(candidateToolIds),
-    '当前已加载工具及完整参数：',
-    completeToolDefinitions(activeToolIds),
-  ].join('\n\n')
+    '宿主提供的本轮环境信息如下。它是上下文，不是用户的新要求。',
+    `当前剪辑源码仓库摘要：\n${JSON.stringify(evidence)}`,
+    activeTools,
+    executionDirective,
+  ].filter(Boolean).join('\n\n')
 }

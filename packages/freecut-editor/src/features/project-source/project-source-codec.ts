@@ -8,11 +8,17 @@ import {
   type ComponentIndexSource,
   type ComponentSource,
   type ProjectManifestSource,
+  type ProjectSourceClip,
   type SequencePartsSource,
   type SequenceSource,
   type TrackSource,
   type TransitionsSource,
 } from './project-source-schema'
+import {
+  isNormalizedTextBox,
+  normalizedTextBoxFromTransform,
+  transformFromNormalizedTextBox,
+} from './normalized-text-layout'
 
 interface SourceReader {
   read(path: string): Promise<string>
@@ -54,18 +60,90 @@ function stringArray(value: unknown, path: string): string[] {
   return value as string[]
 }
 
+interface SourceCanvas {
+  width: number
+  height: number
+  fps: number
+}
+
+const TEXT_LAYOUT_TRANSFORM_FIELDS = [
+  'x', 'y', 'width', 'height', 'anchorX', 'anchorY',
+] as const
+
+function sourceClipFromProject(
+  clip: ProjectTimeline['items'][number],
+  canvas: SourceCanvas,
+): ProjectSourceClip {
+  if (clip.type !== 'text') return clip as unknown as ProjectSourceClip
+  const { transform, ...rest } = clip
+  const {
+    x: _x,
+    y: _y,
+    width: _width,
+    height: _height,
+    anchorX: _anchorX,
+    anchorY: _anchorY,
+    ...presentationTransform
+  } = transform ?? {}
+  const textBox = normalizedTextBoxFromTransform(transform, canvas)
+  if (!isNormalizedTextBox(textBox)) {
+    throw new Error(`文字“${clip.label}”的文字框必须完整位于画布范围内。`)
+  }
+  return {
+    ...rest,
+    textBox,
+    ...(Object.keys(presentationTransform).length > 0
+      ? { transform: presentationTransform }
+      : {}),
+  } as ProjectSourceClip
+}
+
+function projectClipFromSource(
+  clip: Record<string, unknown>,
+  canvas: SourceCanvas,
+  path: string,
+): ProjectTimeline['items'][number] {
+  if (clip.type !== 'text') {
+    if ('textBox' in clip) throw new Error(`只有文字片段可以使用 textBox：${path}`)
+    return clip as ProjectTimeline['items'][number]
+  }
+  if (!isNormalizedTextBox(clip.textBox)) {
+    throw new Error(`文字片段的 textBox 必须使用 0 到 1 的画布归一化坐标：${path}`)
+  }
+  if ('transform' in clip && !isObject(clip.transform)) {
+    throw new Error(`文字片段的 transform 必须是对象：${path}`)
+  }
+  const sourceTransform = clip.transform
+  if (isObject(sourceTransform)) {
+    const layoutField = TEXT_LAYOUT_TRANSFORM_FIELDS.find((field) => field in sourceTransform)
+    if (layoutField) {
+      throw new Error(
+        `文字片段不能使用 transform.${layoutField}：请改用 0 到 1 的 textBox：${path}`,
+      )
+    }
+  }
+  const { textBox, transform, ...rest } = clip
+  return {
+    ...rest,
+    transform: {
+      ...(isObject(transform) ? transform : {}),
+      ...transformFromNormalizedTextBox(textBox, canvas),
+    },
+  } as ProjectTimeline['items'][number]
+}
+
 function splitSequence(
   root: string,
   id: string,
   timeline: ProjectTimeline,
-  fps: number,
+  canvas: SourceCanvas,
 ): Record<string, string> {
   const files: Record<string, string> = {}
   const trackPaths = timeline.tracks.map((track) => {
     const trackRoot = `${root}/tracks/${sourceKey(track.id)}`
     const path = `${trackRoot}/track.json`
     const windows = new Map<number, ProjectTimeline['items']>()
-    const windowFrames = Math.max(1, Math.round(fps * PROJECT_SOURCE_SEGMENT_SECONDS))
+    const windowFrames = Math.max(1, Math.round(canvas.fps * PROJECT_SOURCE_SEGMENT_SECONDS))
     for (const clip of timeline.items.filter((item) => item.trackId === track.id)) {
       const window = Math.max(0, Math.floor(clip.from / windowFrames))
       windows.set(window, [...(windows.get(window) ?? []), clip])
@@ -97,7 +175,7 @@ function splitSequence(
           kind: 'clip-segment',
           trackId: track.id,
           window,
-          clips: pageClips,
+          clips: pageClips.map((clip) => sourceClipFromProject(clip, canvas)),
         } satisfies ClipSegmentSource)
         segments.push({ path: segmentPath, startFrame, endFrame, clipCount: pageClips.length })
       }
@@ -145,7 +223,7 @@ function splitSequence(
 
 export function projectToSourceFiles(project: Project): Record<string, string> {
   const timeline = project.timeline ?? { tracks: [], items: [] }
-  const files = splitSequence('sequences/main', 'main', timeline, project.metadata.fps)
+  const files = splitSequence('sequences/main', 'main', timeline, project.metadata)
   const componentEntries: ComponentIndexSource['components'] = []
 
   for (const component of timeline.compositions ?? []) {
@@ -156,7 +234,7 @@ export function projectToSourceFiles(project: Project): Record<string, string> {
       transitions: component.transitions,
       keyframes: component.keyframes,
     }
-    const componentFiles = splitSequence(root, component.id, componentTimeline, component.fps)
+    const componentFiles = splitSequence(root, component.id, componentTimeline, component)
     Object.assign(files, componentFiles)
     const sequence = JSON.parse(componentFiles[`${root}/sequence.json`]!) as SequenceSource
     const {
@@ -209,6 +287,7 @@ async function readSequenceParts(
   reader: SourceReader,
   source: SequencePartsSource,
   path: string,
+  canvas: SourceCanvas,
 ): Promise<ProjectTimeline> {
   if (!isObject(source.state) || typeof source.transitions !== 'string' ||
     typeof source.animations !== 'string') {
@@ -243,7 +322,9 @@ async function readSequenceParts(
         !Number.isFinite(clip.durationInFrames) || clip.durationInFrames <= 0,
       )
       if (invalidClip) throw new Error(`工程片段字段无效：${segmentPath}`)
-      items.push(...(segment.clips as ProjectTimeline['items']))
+      items.push(...segment.clips.map((clip) =>
+        projectClipFromSource(clip as Record<string, unknown>, canvas, segmentPath),
+      ))
     }
   }
   const transitionFile = parseObject(await reader.read(source.transitions), source.transitions)
@@ -260,13 +341,17 @@ async function readSequenceParts(
   }
 }
 
-async function readSequence(reader: SourceReader, path: string): Promise<ProjectTimeline> {
+async function readSequence(
+  reader: SourceReader,
+  path: string,
+  canvas: SourceCanvas,
+): Promise<ProjectTimeline> {
   const source = parseObject(await reader.read(path), path) as unknown as SequenceSource
   if (source.version !== PROJECT_SOURCE_VERSION || source.kind !== 'sequence' ||
     typeof source.id !== 'string' || !Array.isArray(source.tracks)) {
     throw new Error(`工程序列版本无效：${path}`)
   }
-  return readSequenceParts(reader, source, path)
+  return readSequenceParts(reader, source, path, canvas)
 }
 
 export async function projectFromSourceFiles(reader: SourceReader): Promise<Project> {
@@ -276,7 +361,8 @@ export async function projectFromSourceFiles(reader: SourceReader): Promise<Proj
     typeof manifest.main !== 'string' || typeof manifest.components !== 'string') {
     throw new Error('当前工作树不是可渲染的视频工程源码。')
   }
-  const timeline = await readSequence(reader, manifest.main)
+  const manifestProject = manifest.project as Project
+  const timeline = await readSequence(reader, manifest.main, manifestProject.metadata)
   const indexPath = manifest.components
   const index = parseObject(await reader.read(indexPath), indexPath) as unknown as ComponentIndexSource
   if (index.version !== PROJECT_SOURCE_VERSION || index.kind !== 'component-index' ||
@@ -294,7 +380,8 @@ export async function projectFromSourceFiles(reader: SourceReader): Promise<Proj
       source.id !== entry.id || !isObject(source.state) || !Array.isArray(source.tracks)) {
       throw new Error(`工程合成文件无效：${entry.path}`)
     }
-    const sequence = await readSequenceParts(reader, source, entry.path)
+    const componentState = source.state as NonNullable<ProjectTimeline['compositions']>[number]
+    const sequence = await readSequenceParts(reader, source, entry.path, componentState)
     compositions.push({
       ...(source.state as NonNullable<ProjectTimeline['compositions']>[number]),
       id: source.id,

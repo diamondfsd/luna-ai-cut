@@ -24,6 +24,7 @@ import {
   consumeAiEditingAssistantStream,
   type AiEditingAssistantStreamResult,
 } from './aiEditingAssistantStream'
+import { runStreamWithUsageFallback } from './aiEditingAssistantStreamUsage'
 import { logMainInfo, logMainWarn } from './loggerService'
 
 export {
@@ -318,6 +319,7 @@ export async function generateAiEditingAssistantResponse(
       attemptTimeoutMs: AI_EDITING_ASSISTANT_ATTEMPT_TIMEOUT_MS,
     })
 
+    let streamUsageSupported = true
     const result = await runAiEditingAssistantRequestWithRetry({
       signal: controller.signal,
       shouldRetry: shouldRetryRequest,
@@ -335,23 +337,39 @@ export async function generateAiEditingAssistantResponse(
         reportStatus(attempt, 'waiting', { previewText: '' })
         const consumeStream = async (
           stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+          onChunk: () => void,
         ): Promise<AiEditingAssistantStreamResult> => consumeAiEditingAssistantStream(stream, {
-          onActivity: reportActivity,
+          onActivity: () => {
+            onChunk()
+            reportActivity()
+          },
           onPreview: (preview) => reportStatus(attempt, 'streaming', {
             previewText: preview.text,
             previewKind: preview.kind,
           }),
         })
+        const requestStream = async (
+          parameters: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, 'stream' | 'stream_options'>,
+        ): Promise<AiEditingAssistantStreamResult> => runStreamWithUsageFallback({
+          includeUsage: streamUsageSupported,
+          createStream: (includeUsage) => client.chat.completions.create({
+            ...parameters,
+            stream: true,
+            ...(includeUsage ? { stream_options: { include_usage: true } } : {}),
+          }, { signal: attemptSignal }),
+          consumeStream,
+          onUnsupported: () => {
+            streamUsageSupported = false
+          },
+        })
         if (mode === 'auto' && tools.length > 0) {
           try {
-            const stream = await client.chat.completions.create({
+            const response = await requestStream({
               ...request,
               tools,
               tool_choice: 'auto',
-              stream: true,
-              stream_options: { include_usage: true },
-            }, { signal: attemptSignal })
-            return extractToolResult(await consumeStream(stream))
+            })
+            return extractToolResult(response)
           } catch (error) {
             if (!doesNotSupportToolCalling(error)) throw error
             return { mode: 'fallback' as const, content: '', toolCalls: [] }
@@ -360,23 +378,15 @@ export async function generateAiEditingAssistantResponse(
 
         let response: AiEditingAssistantStreamResult
         try {
-          const stream = await client.chat.completions.create({
+          response = await requestStream({
             ...request,
             response_format: { type: 'json_object' },
-            stream: true,
-            stream_options: { include_usage: true },
-          }, { signal: attemptSignal })
-          response = await consumeStream(stream)
+          })
         } catch (error) {
           if (!doesNotSupportJsonMode(error)) throw error
-          const stream = await client.chat.completions.create({
+          response = await requestStream({
             ...request,
-            stream: true,
-            stream_options: { include_usage: true },
-          }, {
-            signal: attemptSignal,
           })
-          response = await consumeStream(stream)
         }
         return extractJsonResult(response)
       },
