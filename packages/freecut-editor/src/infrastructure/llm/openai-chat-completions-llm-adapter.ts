@@ -65,6 +65,7 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
         reasoningEffort: options.reasoningEffort ?? 'high',
       })
       if (signal?.aborted) throw abortedError()
+      if (result.usage) options.onUsage?.(result.usage)
       const text = result.content
       if (!text) throw new Error('剪辑助手没有返回内容，请重试。')
       options.onToken?.(text, text)
@@ -106,6 +107,7 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
         reasoningEffort: options.reasoningEffort ?? 'high',
       })
       if (signal?.aborted) throw abortedError()
+      if (result.usage) options.onUsage?.(result.usage)
       return result
     } finally {
       unsubscribe()

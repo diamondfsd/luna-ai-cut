@@ -24,12 +24,14 @@ export interface WorkspaceVisualAnalysisResult {
 export interface AiEditingAssistantConfig {
   baseUrl: string
   model: string
+  contextWindowTokens: number
   hasApiKey: boolean
 }
 
 export interface AiEditingAssistantConfigInput {
   baseUrl: string
   model: string
+  contextWindowTokens: number
   /** Supplying a key replaces it; omitting it preserves the stored key. */
   apiKey?: string
   clearApiKey?: boolean
@@ -54,6 +56,13 @@ export interface AiEditingAssistantToolCall {
   arguments: string
 }
 
+export interface AiEditingAssistantTokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cachedTokens: number
+}
+
 export type AiEditingAssistantMessage =
   | { role: 'system' | 'user'; content: string }
   | { role: 'assistant'; content?: string; toolCalls?: AiEditingAssistantToolCall[] }
@@ -75,6 +84,8 @@ export interface AiEditingAssistantGenerateResult {
   mode: 'tools' | 'json' | 'fallback'
   content: string
   toolCalls: AiEditingAssistantToolCall[]
+  /** Some OpenAI-compatible providers do not return usage for streaming requests. */
+  usage?: AiEditingAssistantTokenUsage
 }
 
 export interface AiEditingAssistantRequestStatus {

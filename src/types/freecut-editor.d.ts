@@ -85,12 +85,14 @@ declare module '@freecut/embedded' {
   export interface EmbeddedAiAssistantConfig {
     baseUrl: string
     model: string
+    contextWindowTokens: number
     hasApiKey: boolean
   }
 
   export interface EmbeddedAiAssistantConfigInput {
     baseUrl: string
     model: string
+    contextWindowTokens: number
     apiKey?: string
     clearApiKey?: boolean
   }
@@ -110,6 +112,13 @@ declare module '@freecut/embedded' {
     id: string
     name: string
     arguments: string
+  }
+
+  export interface EmbeddedAiAssistantTokenUsage {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    cachedTokens: number
   }
 
   export type EmbeddedAiAssistantMessage =
@@ -133,6 +142,7 @@ declare module '@freecut/embedded' {
     mode: 'tools' | 'json' | 'fallback'
     content: string
     toolCalls: EmbeddedAiAssistantToolCall[]
+    usage?: EmbeddedAiAssistantTokenUsage
   }
 
   export interface EmbeddedAiAssistantRequestStatus {

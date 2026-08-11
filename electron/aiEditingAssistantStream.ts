@@ -1,10 +1,12 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
+import type { AiEditingAssistantTokenUsage } from '../src/shared/types'
 
 const MAX_PREVIEW_LENGTH = 4_000
 
 export interface AiEditingAssistantStreamResult {
   content: string
   toolCalls: Array<{ id: string; name: string; arguments: string }>
+  usage?: AiEditingAssistantTokenUsage
 }
 
 export interface AiEditingAssistantStreamPreview {
@@ -23,6 +25,22 @@ function reasoningPreview(value: string): string {
   return value.slice(-MAX_PREVIEW_LENGTH)
 }
 
+function tokenCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : 0
+}
+
+function normalizeUsage(usage: ChatCompletionChunk['usage']): AiEditingAssistantTokenUsage | undefined {
+  if (!usage) return undefined
+  return {
+    promptTokens: tokenCount(usage.prompt_tokens),
+    completionTokens: tokenCount(usage.completion_tokens),
+    totalTokens: tokenCount(usage.total_tokens),
+    cachedTokens: tokenCount(usage.prompt_tokens_details?.cached_tokens),
+  }
+}
+
 export async function consumeAiEditingAssistantStream(
   stream: AsyncIterable<ChatCompletionChunk>,
   options: {
@@ -32,10 +50,12 @@ export async function consumeAiEditingAssistantStream(
 ): Promise<AiEditingAssistantStreamResult> {
   let content = ''
   let reasoning = ''
+  let usage: AiEditingAssistantTokenUsage | undefined
   const toolCalls = new Map<number, { id: string; name: string; arguments: string }>()
 
   for await (const chunk of stream) {
     options.onActivity?.()
+    usage = normalizeUsage(chunk.usage) ?? usage
     const delta = chunk.choices[0]?.delta
     if (!delta) continue
 
@@ -64,5 +84,6 @@ export async function consumeAiEditingAssistantStream(
     toolCalls: [...toolCalls.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, toolCall]) => toolCall),
+    ...(usage ? { usage } : {}),
   }
 }

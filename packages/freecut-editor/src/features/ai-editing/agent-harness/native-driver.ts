@@ -16,8 +16,10 @@ import type {
 interface NativeAgentDriverOptions<TObservation> {
   adapter: NativeToolCallingLlmAdapter
   messages: EmbeddedAiAssistantMessage[]
-  tools: EmbeddedAiAssistantToolDefinition[]
-  toolIdsByFunctionName: ReadonlyMap<string, string>
+  getTools(): {
+    definitions: EmbeddedAiAssistantToolDefinition[]
+    idsByFunctionName: ReadonlyMap<string, string>
+  }
   serializeObservation(observation: TObservation): string
   toolContinuationPrompt?: string
   requestOptions(round: number): LlmGenerateOptions
@@ -59,16 +61,17 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
 
   async request(input: { round: number }): Promise<AgentHarnessModelStep> {
     const requestOptions = this.options.requestOptions(input.round)
+    const tools = this.options.getTools()
     this.options.onRequest?.({
       protocol: 'native',
       round: input.round + 1,
       messages: structuredClone(this.messages),
-      tools: structuredClone(this.options.tools),
+      tools: structuredClone(tools.definitions),
       generation: generationParameters(requestOptions),
     })
     const response = await this.options.adapter.generateWithTools(
       this.messages,
-      this.options.tools,
+      tools.definitions,
       requestOptions,
     )
     if (response.mode === 'fallback' || response.mode === 'json') {
@@ -86,7 +89,7 @@ export class NativeAgentDriver<TObservation> implements AgentHarnessDriver<TObse
         raw: response.content,
         toolCalls: response.toolCalls.map((call) => ({
           callId: call.id,
-          toolId: this.options.toolIdsByFunctionName.get(call.name) ?? call.name,
+          toolId: tools.idsByFunctionName.get(call.name) ?? call.name,
           input: parseArguments(call.arguments),
         })),
       },

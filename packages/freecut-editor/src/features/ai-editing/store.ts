@@ -7,6 +7,7 @@ import {
   saveAiEditingConversationState,
 } from '@freecut/infrastructure/storage'
 import { createLogger } from '@freecut/shared/logging/logger'
+import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { getAiEditingAdapter, runAiEditingTurn } from './run-ai-editing-turn'
 import {
   addAiEditingReferenceContext,
@@ -68,6 +69,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       messages: conversation.messages,
       agentContext: conversation.context,
       conversationWorkflow: conversation.workflow,
+      lastPromptTokens: conversation.lastPromptTokens ?? null,
       isRestoringConversation: false,
     })
   },
@@ -87,6 +89,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     const previousMessages = get().messages
     const storedContext = get().agentContext
     const storedWorkflow = get().conversationWorkflow
+    const storedPromptTokens = get().lastPromptTokens
     const turnIntent = resolveAiEditingTurnIntent(trimmed, previousMessages, storedWorkflow)
     const userMessageId = newAiEditingMessageId()
     const messages = [
@@ -119,6 +122,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           messages,
           context: storedContext,
           workflow: storedWorkflow,
+          lastPromptTokens: storedPromptTokens,
         }),
       )
     } catch (error) {
@@ -186,11 +190,15 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       thinkingCeiling: 6,
     })
     try {
+      const contextWindowTokens = (await getEmbeddedHostBridge().aiAssistant?.getConfig())
+        ?.contextWindowTokens ?? 256 * 1024
       const preparedContext = await prepareConversationContext(
         conversationMessagesForModel(previousMessages),
         storedContext,
         {
           adapter,
+          contextWindowTokens,
+          lastPromptTokens: storedPromptTokens,
           signal: controller.signal,
           onCompacting: () => {
             runRecorder.trace({ type: 'conversation-compacting', message: '正在压缩较早的会话。' })
@@ -206,17 +214,32 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             messages,
             context: preparedContext.context,
             workflow: storedWorkflow,
+            lastPromptTokens: null,
           }),
         )
         if (get().projectId !== projectId || controller.signal.aborted) return
-        set({ agentContext: preparedContext.context })
+        set({ agentContext: preparedContext.context, lastPromptTokens: null })
       }
+      let runPromptTokens: number | null = null
       const result = await runAiEditingTurn(addAiEditingReferenceContext(trimmed, references), {
         history: preparedContext.history,
         adapter,
         reasoningEffort: get().reasoningEffort,
         signal: controller.signal,
         onTraceEvent: (event) => runRecorder.trace(event),
+        onModelUsage: (usage) => {
+          if (controller.signal.aborted || get().projectId !== projectId) return
+          runPromptTokens = Math.max(runPromptTokens ?? 0, usage.promptTokens)
+          set({ lastPromptTokens: runPromptTokens })
+          void enqueueAiEditingConversationWrite(projectId, () =>
+            saveAiEditingConversationState(projectId, {
+              messages: get().messages,
+              context: preparedContext.context,
+              workflow: storedWorkflow,
+              lastPromptTokens: runPromptTokens,
+            }),
+          ).catch((error) => logger.warn('Failed to persist model token usage', error))
+        },
         onFinalText: (content) => {
           if (!controller.signal.aborted && get().projectId === projectId) {
             set({ draftAssistantText: content, reasoningText: '' })
@@ -296,6 +319,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             messages: nextMessages,
             context: preparedContext.context,
             workflow: nextWorkflow,
+            lastPromptTokens: runPromptTokens ?? get().lastPromptTokens,
           }),
         )
       } catch (error) {
@@ -314,6 +338,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       set({
         messages: nextMessages,
         conversationWorkflow: nextWorkflow,
+        lastPromptTokens: runPromptTokens ?? get().lastPromptTokens,
         observations: result.observations,
         reasoningText: '',
         draftAssistantText: '',

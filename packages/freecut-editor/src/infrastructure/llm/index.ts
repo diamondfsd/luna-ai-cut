@@ -10,6 +10,7 @@ export type {
   LlmMessage,
   LlmRequestStatus,
   LlmRole,
+  LlmTokenUsage,
 } from './types'
 export {
   DEFAULT_LLM_ADAPTER_ID,

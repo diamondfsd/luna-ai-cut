@@ -28,6 +28,15 @@ interface ModelCall {
   at: number
   request: unknown
   response?: unknown
+  usage?: ModelUsage
+}
+
+interface ModelUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cachedTokens: number
+  cachePercent: number
 }
 
 function formatTimestamp(value: number): string {
@@ -47,27 +56,68 @@ function eventRound(event: AiEditingRunEvent): number | null {
   return typeof round === 'number' ? round : null
 }
 
+function eventProtocol(event: AiEditingRunEvent): string | null {
+  if (!event.data || typeof event.data !== 'object') return null
+  const protocol = (event.data as { protocol?: unknown }).protocol
+  return typeof protocol === 'string' ? protocol : null
+}
+
+function eventUsage(event: AiEditingRunEvent): ModelUsage | null {
+  if (event.type !== 'model-usage' || !event.data || typeof event.data !== 'object') return null
+  const data = event.data as Partial<ModelUsage>
+  if (
+    typeof data.promptTokens !== 'number' ||
+    typeof data.completionTokens !== 'number' ||
+    typeof data.totalTokens !== 'number' ||
+    typeof data.cachedTokens !== 'number' ||
+    typeof data.cachePercent !== 'number'
+  ) return null
+  return {
+    promptTokens: data.promptTokens,
+    completionTokens: data.completionTokens,
+    totalTokens: data.totalTokens,
+    cachedTokens: data.cachedTokens,
+    cachePercent: data.cachePercent,
+  }
+}
+
 function modelCalls(run: AiEditingRunRecord): ModelCall[] {
   const events = run.events ?? []
   return events.flatMap((event, index) => {
     if (event.type !== 'model-context') return []
     const round = eventRound(event) ?? index + 1
+    const protocol = eventProtocol(event)
     const response = events.slice(index + 1).find(
       (candidate) =>
         candidate.type === 'model-response' && eventRound(candidate) === round,
     )
+    const usageEvent = events.slice(index + 1).find(
+      (candidate) => candidate.type === 'model-usage' &&
+        eventRound(candidate) === round &&
+        (protocol === null || eventProtocol(candidate) === protocol),
+    )
+    const usage = usageEvent ? eventUsage(usageEvent) : null
     return [{
       key: `${run.id}-${index}`,
       round,
       at: event.at,
       request: event.data,
       ...(response ? { response: response.data } : {}),
+      ...(usage ? { usage } : {}),
     }]
   })
 }
 
 function displayCall(call: ModelCall): string {
-  return `${JSON.stringify({ request: call.request, response: call.response ?? null }, null, 2)}\n`
+  return `${JSON.stringify({
+    usage: call.usage ?? null,
+    request: call.request,
+    response: call.response ?? null,
+  }, null, 2)}\n`
+}
+
+function formatTokens(value: number): string {
+  return new Intl.NumberFormat().format(value)
 }
 
 export function AiEditingModelContextDialog({
@@ -222,6 +272,22 @@ export function AiEditingModelContextDialog({
                 </div>
                 {selectedCall ? (
                   <ScrollArea className="min-h-0 flex-1">
+                    {selectedCall.usage ? (
+                      <div className="grid grid-cols-5 gap-px border-b border-border bg-border">
+                        {[
+                          ['输入', formatTokens(selectedCall.usage.promptTokens)],
+                          ['输出', formatTokens(selectedCall.usage.completionTokens)],
+                          ['总计', formatTokens(selectedCall.usage.totalTokens)],
+                          ['缓存', formatTokens(selectedCall.usage.cachedTokens)],
+                          ['缓存占比', `${selectedCall.usage.cachePercent.toFixed(2)}%`],
+                        ].map(([label, value]) => (
+                          <div key={label} className="bg-background px-4 py-3">
+                            <p className="text-[10px] text-muted-foreground">{label}</p>
+                            <p className="mt-1 font-mono text-xs text-foreground">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     <pre className="w-full min-w-0 whitespace-pre-wrap break-words p-5 font-mono text-[11px] leading-relaxed text-foreground">
                       {displayCall(selectedCall)}
                     </pre>

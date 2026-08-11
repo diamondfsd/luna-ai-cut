@@ -2,12 +2,12 @@
 
 ## 最短工作流
 
-1. 用 `workspace.list` 查看目录，用 `workspace.search` 定位相关素材、证据或源码。
+1. 用 `workspace.exec` 执行 `ls` 查看目录、执行 `rg` 定位相关素材、证据或源码；需要按行查看时执行 `sed -n 开始行,结束行p 路径`。
 2. 不熟悉属性格式时用 `docs.search` 和 `docs.read` 查看当前 TypeScript 定义。
 3. 用 `source.read` 读取要修改文件的当前原文。
 4. 用 `source.replace` 精确替换唯一原文。失败时重新读取该文件后再修改。
 5. 新建或删除模块时分别使用 `source.create`、`source.remove`，并维护引用它的索引文件。
-6. 用 `timeline.check` 确认完整工程可编译，用 `git.diff` 检查实际变化。
+6. 用 `timeline.check` 确认完整工程可编译，用 `workspace.exec` 执行 `git diff` 检查实际变化。
 7. 所有目标完成后调用 `git.commit`。提交成功就是本轮编辑完成，不需要额外发布。
 
 只读取与任务有关的文件。互不依赖的查询可以同一轮执行；写操作有依赖时按顺序执行。工具返回失败时根据最新原文和错误信息修正，不重复发送相同参数。
@@ -43,4 +43,4 @@ docs/        # 只读，当前 TypeScript 类型与格式说明
 
 ## 完成条件
 
-纯文本任务直接输出最终正文。编辑任务必须具备可编译的工程、符合目标的 `git.diff` 和一次成功的 `git.commit`。不要制造阶段发布、时间轴 revision 或第二次最终提交。
+纯文本任务直接输出最终正文。编辑任务必须具备可编译的工程、符合目标的 `git diff` 查询结果和一次成功的 `git.commit`。不要制造阶段发布、时间轴 revision 或第二次最终提交。

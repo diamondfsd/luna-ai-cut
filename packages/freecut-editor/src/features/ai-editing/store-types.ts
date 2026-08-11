@@ -26,6 +26,7 @@ export interface AiEditingState {
   messages: AiEditingMessage[]
   agentContext: AiEditingConversationContext | null
   conversationWorkflow: AiEditingConversationWorkflow | null
+  lastPromptTokens: number | null
   observations: AiEditingObservation[]
   toolActivities: AiEditingToolActivity[]
   taskActivities: AiEditingTaskActivity[]

@@ -1,18 +1,19 @@
-import { app } from 'electron'
-import * as fs from 'node:fs/promises'
-import path from 'node:path'
 import OpenAI from 'openai'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 import type {
-  AiEditingAssistantConfig,
-  AiEditingAssistantConfigInput,
   AiEditingAssistantGenerateInput,
   AiEditingAssistantGenerateResult,
   AiEditingAssistantMessage,
   AiEditingAssistantRequestStatus,
   AiEditingAssistantToolCall,
 } from '../src/shared/types'
+import {
+  normalizeBaseUrl,
+  normalizeModel,
+  readAssistantConfig,
+  requireApiKey,
+} from './aiEditingAssistantConfig'
 import {
   AI_EDITING_ASSISTANT_ATTEMPT_TIMEOUT_MS,
   AI_EDITING_ASSISTANT_MAX_ATTEMPTS,
@@ -25,11 +26,14 @@ import {
 } from './aiEditingAssistantStream'
 import { logMainInfo, logMainWarn } from './loggerService'
 
-const CONFIG_FILE = 'ai-editing-assistant.json'
-const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
-const MAX_MESSAGE_COUNT = 48
-const MAX_MESSAGE_LENGTH = 100_000
-const MAX_TOTAL_MESSAGE_LENGTH = 500_000
+export {
+  getAiEditingAssistantConfig,
+  saveAiEditingAssistantConfig,
+} from './aiEditingAssistantConfig'
+
+const MAX_MESSAGE_COUNT = 512
+const MAX_MESSAGE_LENGTH = 2_000_000
+const MAX_TOTAL_MESSAGE_LENGTH = 8_000_000
 const MAX_TOOL_COUNT = 48
 const MAX_TOOL_DESCRIPTION_LENGTH = 8_000
 const MAX_TOOL_SCHEMA_LENGTH = 32_000
@@ -40,98 +44,6 @@ const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/
 const TOOL_CALL_ID_PATTERN = /^[\x21-\x7E]{1,256}$/
 const REASONING_EFFORTS = new Set(['low', 'high', 'xhigh', 'max'])
 const activeRequests = new Map<string, AbortController>()
-
-interface StoredAssistantConfig {
-  schemaVersion: 2
-  baseUrl: string
-  model: string
-  apiKey?: string
-}
-
-function configPath(): string {
-  return path.join(app.getPath('userData'), CONFIG_FILE)
-}
-
-function emptyConfig(): StoredAssistantConfig {
-  return { schemaVersion: 2, baseUrl: DEFAULT_BASE_URL, model: '' }
-}
-
-function publicConfig(config: StoredAssistantConfig): AiEditingAssistantConfig {
-  return {
-    baseUrl: config.baseUrl,
-    model: config.model,
-    hasApiKey: typeof config.apiKey === 'string' && config.apiKey.length > 0,
-  }
-}
-
-function normalizeBaseUrl(value: string): string {
-  const raw = value.trim()
-  if (!raw || raw.length > 500) throw new Error('请输入有效的服务地址。')
-
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    throw new Error('请输入有效的服务地址。')
-  }
-  if (url.username || url.password || url.search || url.hash) {
-    throw new Error('服务地址不能包含账号、查询参数或片段。')
-  }
-  const localHost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && localHost)) {
-    throw new Error('服务地址需要使用 HTTPS；本机服务可使用 HTTP。')
-  }
-  return url.toString().replace(/\/+$/, '')
-}
-
-function normalizeModel(value: string): string {
-  const model = value.trim()
-  if (!model || model.length > 128 || /[\r\n]/.test(model)) throw new Error('请输入有效的模型名称。')
-  return model
-}
-
-function normalizeApiKey(value: string): string {
-  const apiKey = value.trim()
-  if (!apiKey || apiKey.length > 1_024 || /[\r\n]/.test(apiKey)) throw new Error('请输入有效的 API Key。')
-  return apiKey
-}
-
-async function readConfig(): Promise<StoredAssistantConfig> {
-  try {
-    const parsed = JSON.parse(await fs.readFile(configPath(), 'utf8')) as Partial<StoredAssistantConfig>
-    if (typeof parsed.baseUrl !== 'string' || typeof parsed.model !== 'string') {
-      return emptyConfig()
-    }
-    return {
-      schemaVersion: 2,
-      baseUrl: normalizeBaseUrl(parsed.baseUrl),
-      model: parsed.model.trim(),
-      ...(typeof parsed.apiKey === 'string' && parsed.apiKey.trim()
-        ? { apiKey: normalizeApiKey(parsed.apiKey) }
-        : {}),
-    }
-  } catch {
-    return emptyConfig()
-  }
-}
-
-async function writeConfig(config: StoredAssistantConfig): Promise<void> {
-  const target = configPath()
-  const temporary = `${target}.${process.pid}.${Date.now()}.tmp`
-  await fs.mkdir(path.dirname(target), { recursive: true })
-  try {
-    await fs.writeFile(temporary, `${JSON.stringify(config)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
-    await fs.rename(temporary, target)
-    await fs.chmod(target, 0o600).catch(() => undefined)
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => undefined)
-  }
-}
-
-function requireApiKey(config: StoredAssistantConfig): string {
-  if (!config.apiKey) throw new Error('请先配置剪辑助手模型连接。')
-  return config.apiKey
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -332,7 +244,7 @@ function toChatTools(input: AiEditingAssistantGenerateInput): ChatCompletionTool
 function extractJsonResult(response: AiEditingAssistantStreamResult): AiEditingAssistantGenerateResult {
   const content = response.content.trim()
   if (!content) throw responseError('剪辑助手没有返回内容，请重试。')
-  return { mode: 'json', content, toolCalls: [] }
+  return { mode: 'json', content, toolCalls: [], ...(response.usage ? { usage: response.usage } : {}) }
 }
 
 function extractToolResult(response: AiEditingAssistantStreamResult): AiEditingAssistantGenerateResult {
@@ -350,7 +262,7 @@ function extractToolResult(response: AiEditingAssistantStreamResult): AiEditingA
     }),
   }))
   if (toolCalls.some((toolCall) => !toolCall.valid)) {
-    return { mode: 'fallback', content, toolCalls: [] }
+    return { mode: 'fallback', content, toolCalls: [], ...(response.usage ? { usage: response.usage } : {}) }
   }
   if (!content && toolCalls.length === 0) throw responseError('剪辑助手没有返回内容，请重试。')
   return {
@@ -361,31 +273,8 @@ function extractToolResult(response: AiEditingAssistantStreamResult): AiEditingA
       name,
       arguments: toolArguments,
     })),
+    ...(response.usage ? { usage: response.usage } : {}),
   }
-}
-
-export async function getAiEditingAssistantConfig(): Promise<AiEditingAssistantConfig> {
-  return publicConfig(await readConfig())
-}
-
-export async function saveAiEditingAssistantConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfig> {
-  const current = await readConfig()
-  const next: StoredAssistantConfig = {
-    schemaVersion: 2,
-    baseUrl: normalizeBaseUrl(input.baseUrl),
-    model: normalizeModel(input.model),
-  }
-
-  if (input.clearApiKey) {
-    if (input.apiKey?.trim()) throw new Error('请只选择保存新的 API Key 或清除已保存的 API Key。')
-  } else if (input.apiKey !== undefined) {
-    next.apiKey = normalizeApiKey(input.apiKey)
-  } else if (current.apiKey) {
-    next.apiKey = current.apiKey
-  }
-
-  await writeConfig(next)
-  return publicConfig(next)
 }
 
 export async function generateAiEditingAssistantResponse(
@@ -395,7 +284,7 @@ export async function generateAiEditingAssistantResponse(
   validateGenerateInput(input)
   if (activeRequests.has(input.requestId)) throw new Error('剪辑助手正在处理这个请求。')
 
-  const config = await readConfig()
+  const config = await readAssistantConfig()
   const apiKey = requireApiKey(config)
   const model = normalizeModel(config.model)
   const controller = new AbortController()
@@ -460,6 +349,7 @@ export async function generateAiEditingAssistantResponse(
               tools,
               tool_choice: 'auto',
               stream: true,
+              stream_options: { include_usage: true },
             }, { signal: attemptSignal })
             return extractToolResult(await consumeStream(stream))
           } catch (error) {
@@ -474,11 +364,16 @@ export async function generateAiEditingAssistantResponse(
             ...request,
             response_format: { type: 'json_object' },
             stream: true,
+            stream_options: { include_usage: true },
           }, { signal: attemptSignal })
           response = await consumeStream(stream)
         } catch (error) {
           if (!doesNotSupportJsonMode(error)) throw error
-          const stream = await client.chat.completions.create({ ...request, stream: true }, {
+          const stream = await client.chat.completions.create({
+            ...request,
+            stream: true,
+            stream_options: { include_usage: true },
+          }, {
             signal: attemptSignal,
           })
           response = await consumeStream(stream)

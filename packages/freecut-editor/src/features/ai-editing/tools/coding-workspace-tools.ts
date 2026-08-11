@@ -1,8 +1,9 @@
-import { z } from 'zod'
-import { summarizeTimelineProgram } from '../coding-workspace/timeline-session'
 import type { Project } from '@freecut/types/project'
-import type { AiEditingToolModule } from '../types'
+import { z } from 'zod'
 import { getTimelineCodingSession } from '../coding-workspace/session-registry'
+import { summarizeTimelineProgram } from '../coding-workspace/timeline-session'
+import type { AiEditingToolModule } from '../types'
+import { executeWorkspaceCommand } from '../workspace-command'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
 
 function summarizeBuild(artifact: Project) {
@@ -13,169 +14,33 @@ function summarizeBuild(artifact: Project) {
   }
 }
 
-const listFiles = defineAiEditingTool({
-  id: 'workspace.list',
-  title: '列出剪辑源码文件',
-  description: '列出虚拟剪辑仓库中的目录或文件，不读取文件正文。',
+const executeCommand = defineAiEditingTool({
+  id: 'workspace.exec',
+  title: '执行工作区查询命令',
+  description: '在当前剪辑工作区执行受限只读命令。支持 ls、rg、sed、wc，以及 git status/diff/log/branch；不支持写文件或运行宿主脚本。',
   risk: 'read',
-  inputSchema: objectSchema({
-    path: { type: 'string' },
-    recursive: { type: 'boolean' },
-    cursor: { type: 'integer', minimum: 0, maximum: 10_000 },
-    limit: { type: 'integer', minimum: 1, maximum: 200 },
-  }),
-  schema: z.strictObject({
-    path: z.string().optional(),
-    recursive: z.boolean().optional(),
-    cursor: z.number().int().min(0).max(10_000).optional(),
-    limit: z.number().int().min(1).max(200).optional(),
-  }),
-  summarize: ({ path }) => `列出 ${path || '仓库根目录'}`,
-  execute: (args) => ({
-    ok: true,
-    message: '已列出剪辑源码文件。',
-    data: getTimelineCodingSession().workspace.list(args),
-  }),
-})
-
-const readFile = defineAiEditingTool({
-  id: 'workspace.read',
-  title: '读取剪辑源码文件',
-  description: '按路径和行号分页读取一个 JSON 源码、素材或证据文件。',
-  risk: 'read',
+  execution: 'async',
   inputSchema: objectSchema(
     {
-      path: { type: 'string' },
-      startLine: { type: 'integer', minimum: 1 },
-      lineCount: { type: 'integer', minimum: 1, maximum: 400 },
-    },
-    ['path'],
-  ),
-  schema: z.strictObject({
-    path: z.string().min(1),
-    startLine: z.number().int().min(1).optional(),
-    lineCount: z.number().int().min(1).max(400).optional(),
-  }),
-  summarize: ({ path }) => `读取 ${path}`,
-  execute: ({ path, startLine = 1, lineCount = 200 }) => {
-    const file = getTimelineCodingSession().workspace.read(path)
-    const lines = file.content.split('\n')
-    const startIndex = Math.min(startLine - 1, lines.length)
-    const endIndex = Math.min(startIndex + lineCount, lines.length)
-    return {
-      ok: true,
-      message: `已读取 ${path}。`,
-      data: {
-        path: file.path,
-        kind: file.kind,
-        size: file.size,
-        startLine: startIndex + 1,
-        endLine: endIndex,
-        totalLines: lines.length,
-        ...(endIndex < lines.length ? { nextLine: endIndex + 1 } : {}),
-        content: lines.slice(startIndex, endIndex).join('\n'),
+      argv: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 20,
+        items: { type: 'string', minLength: 1, maxLength: 512 },
+        description: '结构化命令参数，例如 ["rg","-n","mediaId","sequences"]。',
       },
-    }
-  },
-})
-
-const searchFiles = defineAiEditingTool({
-  id: 'workspace.search',
-  title: '搜索剪辑源码',
-  description: '在源码、素材索引和内容证据中搜索文字，返回带文件与行号的有界结果。',
-  risk: 'read',
-  inputSchema: objectSchema(
-    {
-      query: { type: 'string' },
-      path: { type: 'string' },
-      caseSensitive: { type: 'boolean' },
-      cursor: { type: 'integer', minimum: 0, maximum: 10_000 },
-      limit: { type: 'integer', minimum: 1, maximum: 200 },
     },
-    ['query'],
+    ['argv'],
   ),
   schema: z.strictObject({
-    query: z.string().min(1),
-    path: z.string().optional(),
-    caseSensitive: z.boolean().optional(),
-    cursor: z.number().int().min(0).max(10_000).optional(),
-    limit: z.number().int().min(1).max(200).optional(),
+    argv: z.array(z.string().min(1).max(512)).min(1).max(20),
   }),
-  summarize: ({ query }) => `搜索“${query}”`,
-  execute: (args) => ({
+  summarize: ({ argv }) => argv.join(' '),
+  execute: async ({ argv }) => ({
     ok: true,
-    message: '搜索完成。',
-    data: getTimelineCodingSession().workspace.search(args),
+    message: '工作区命令执行完成。',
+    data: await executeWorkspaceCommand(argv),
   }),
-})
-
-const gitStatus = defineAiEditingTool({
-  id: 'git.status',
-  title: '查看源码仓库状态',
-  description: '查看内部剪辑源码仓库的当前分支、HEAD 和未提交文件。',
-  risk: 'read',
-  inputSchema: objectSchema({}),
-  schema: z.strictObject({}),
-  summarize: () => '查看源码仓库状态',
-  execute: async () => ({
-    ok: true,
-    message: '已读取源码仓库状态。',
-    data: await getTimelineCodingSession().repository.status(),
-  }),
-})
-
-const gitDiff = defineAiEditingTool({
-  id: 'git.diff',
-  title: '查看源码差异',
-  description: '查看当前工作树相对 Git HEAD 的源码文件差异。',
-  risk: 'read',
-  inputSchema: objectSchema({}),
-  schema: z.strictObject({}),
-  summarize: () => '查看源码差异',
-  execute: async () => ({
-    ok: true,
-    message: '已生成源码差异。',
-    data: await getTimelineCodingSession().repository.diff(),
-  }),
-})
-
-const gitLog = defineAiEditingTool({
-  id: 'git.log',
-  title: '查看源码历史',
-  description: '读取当前剪辑源码分支的有界提交历史。',
-  risk: 'read',
-  inputSchema: objectSchema({ limit: { type: 'integer', minimum: 1, maximum: 200 } }),
-  schema: z.strictObject({ limit: z.number().int().min(1).max(200).optional() }),
-  summarize: () => '查看源码历史',
-  execute: async ({ limit }) => ({
-    ok: true,
-    message: '已读取源码历史。',
-    data: await getTimelineCodingSession().repository.log(limit),
-  }),
-})
-
-const gitBranch = defineAiEditingTool({
-  id: 'git.branch',
-  title: '管理源码分支',
-  description: '列出内部剪辑源码分支，或从当前版本创建一个分支。',
-  risk: 'edit',
-  inputSchema: objectSchema({
-    name: { type: 'string', minLength: 1, maxLength: 120 },
-  }),
-  schema: z.strictObject({
-    name: z.string().trim().min(1).max(120).optional(),
-  }),
-  summarize: ({ name }) => (name ? `创建源码分支 ${name}` : '列出源码分支'),
-  execute: async ({ name }) => {
-    const repository = getTimelineCodingSession().repository
-    const data =
-      typeof name === 'string' ? await repository.createBranch(name) : await repository.branches()
-    return {
-      ok: true,
-      message: typeof name === 'string' ? '源码分支已创建。' : '已列出源码分支。',
-      data,
-    }
-  },
 })
 
 const gitCommit = defineAiEditingTool({
@@ -220,15 +85,5 @@ const checkTimeline = defineAiEditingTool({
 })
 
 export const aiEditingToolModule: AiEditingToolModule = {
-  createTools: () => [
-    listFiles,
-    readFile,
-    searchFiles,
-    gitStatus,
-    gitDiff,
-    gitLog,
-    gitBranch,
-    gitCommit,
-    checkTimeline,
-  ],
+  createTools: () => [executeCommand, gitCommit, checkTimeline],
 }

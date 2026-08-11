@@ -56,11 +56,18 @@ export async function buildTurnSystemPrompt(
   history: readonly LlmMessage[],
   evidence: unknown,
   protocol: 'native' | 'json',
-  availableToolIds?: ReadonlySet<string>,
+  candidateToolIds: ReadonlySet<string>,
+  activeToolIds: ReadonlySet<string>,
   requiresEditCommit = false,
 ): Promise<string> {
   return appendExecutionDirective(
-    await buildAiEditingSystemPrompt(evidence, protocol, userText, availableToolIds),
+    await buildAiEditingSystemPrompt(
+      evidence,
+      protocol,
+      userText,
+      candidateToolIds,
+      activeToolIds,
+    ),
     userText,
     history,
     requiresEditCommit,
@@ -72,7 +79,8 @@ export async function buildInitialMessages(
   history: LlmMessage[],
   evidence: unknown,
   protocol: 'native' | 'json',
-  availableToolIds?: ReadonlySet<string>,
+  candidateToolIds: ReadonlySet<string>,
+  activeToolIds: ReadonlySet<string>,
   requiresEditCommit = false,
 ): Promise<LlmMessage[]> {
   return [
@@ -83,7 +91,8 @@ export async function buildInitialMessages(
         history,
         evidence,
         protocol,
-        availableToolIds,
+        candidateToolIds,
+        activeToolIds,
         requiresEditCommit,
       ),
     },
@@ -95,10 +104,14 @@ export async function buildInitialMessages(
 export function buildJsonFallbackMessages(
   initialMessages: LlmMessage[],
   observations: AiEditingObservation[],
-  availableToolIds?: ReadonlySet<string>,
+  candidateToolIds: ReadonlySet<string>,
+  activeToolIds: ReadonlySet<string>,
 ): LlmMessage[] {
   const messages = structuredClone(initialMessages)
-  messages.push({ role: 'user', content: buildJsonToolFallbackPrompt(availableToolIds) })
+  messages.push({
+    role: 'user',
+    content: buildJsonToolFallbackPrompt(candidateToolIds, activeToolIds),
+  })
   if (observations.length > 0) {
     messages.push({
       role: 'user',
