@@ -33,6 +33,7 @@ import {
   declaredPlan,
   defaultReply,
   hasCommittedEdit,
+  hasUnfinalizedEdit,
   hasUnpublishedSourceWork,
 } from './orchestration-results'
 import invalidJsonPrompt from './prompts/messages/invalid-json.md?raw'
@@ -80,6 +81,8 @@ function unfinishedResult(
     ? '用户停止了本次处理。'
     : hasUnpublishedSourceWork(observations)
       ? '剪辑源码尚未成功发布到时间轴。'
+      : hasUnfinalizedEdit(observations)
+        ? '已发布当前阶段，但剪辑工程尚未最终提交。'
       : '本轮没有在操作上限内完成用户目标。'
   return loopResult({
     reply: reply || (signal?.aborted ? '已停止本次处理。' : defaultReply(observations)),
@@ -169,7 +172,11 @@ async function runJsonToolLoop(
 
     reply = parsed.reply || reply
     if (parsed.toolCalls.length === 0) {
-      if (parsed.reply.trim() && !hasUnpublishedSourceWork(observations)) {
+      if (
+        parsed.reply.trim() &&
+        !hasUnpublishedSourceWork(observations) &&
+        !hasUnfinalizedEdit(observations)
+      ) {
         return loopResult({ reply: parsed.reply, observations, completed: true })
       }
       messages.push({ role: 'assistant', content: raw })
@@ -294,7 +301,11 @@ async function runNativeToolLoop(
     reportRunProgress(options, '正在检查处理结果', Math.min(95, 72 + round * 2))
     if (response.content) reply = response.content
     if (response.toolCalls.length === 0) {
-      if (response.content?.trim() && !hasUnpublishedSourceWork(observations)) {
+      if (
+        response.content?.trim() &&
+        !hasUnpublishedSourceWork(observations) &&
+        !hasUnfinalizedEdit(observations)
+      ) {
         options.onToken?.(response.content, response.content)
         return loopResult({ reply: response.content, observations, completed: true })
       }

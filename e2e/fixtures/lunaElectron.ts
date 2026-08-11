@@ -1,6 +1,6 @@
 import { _electron as electron, test as base, type ElectronApplication, type Page } from '@playwright/test'
 import { createWriteStream } from 'node:fs'
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -18,6 +18,60 @@ export interface LunaElectronApp {
 
 export interface LunaElectronOptions {
   launchEnv: Record<string, string>
+  seedProject?: {
+    sourceUserDataDir: string
+    projectId: string
+  }
+}
+
+interface WorkspaceIndex {
+  version: string
+  updatedAt: number
+  projects: Array<{ id: string; name: string; updatedAt: number }>
+}
+
+interface MediaLinks {
+  version: string
+  mediaIds: Array<{ id: string; addedAt: number }>
+}
+
+async function seedProject(
+  userDataDir: string,
+  seed: NonNullable<LunaElectronOptions['seedProject']>,
+): Promise<void> {
+  const sourceWorkspace = path.join(seed.sourceUserDataDir, 'freecut-workspace')
+  const targetWorkspace = path.join(userDataDir, 'freecut-workspace')
+  const sourceProject = path.join(sourceWorkspace, 'projects', seed.projectId)
+  const targetProject = path.join(targetWorkspace, 'projects', seed.projectId)
+  const sourceIndex = JSON.parse(
+    await readFile(path.join(sourceWorkspace, 'index.json'), 'utf8'),
+  ) as WorkspaceIndex
+  const projectEntry = sourceIndex.projects.find((project) => project.id === seed.projectId)
+  if (!projectEntry) throw new Error(`Seed project ${seed.projectId} is missing from workspace index`)
+
+  await mkdir(targetProject, { recursive: true })
+  await Promise.all([
+    cp(path.join(sourceProject, 'project.json'), path.join(targetProject, 'project.json')),
+    cp(path.join(sourceProject, 'media-links.json'), path.join(targetProject, 'media-links.json')),
+    cp(path.join(sourceWorkspace, '.freecut-workspace.json'), path.join(targetWorkspace, '.freecut-workspace.json')),
+  ])
+  await writeFile(path.join(targetWorkspace, 'index.json'), `${JSON.stringify({
+    ...sourceIndex,
+    updatedAt: Date.now(),
+    projects: [{ ...projectEntry, updatedAt: Date.now() }],
+  }, null, 2)}\n`, 'utf8')
+
+  const mediaLinks = JSON.parse(
+    await readFile(path.join(sourceProject, 'media-links.json'), 'utf8'),
+  ) as MediaLinks
+  await Promise.all(mediaLinks.mediaIds.map(async ({ id }) => {
+    const targetMedia = path.join(targetWorkspace, 'media', id)
+    await mkdir(path.dirname(targetMedia), { recursive: true })
+    await cp(path.join(sourceWorkspace, 'media', id), targetMedia, {
+      recursive: true,
+      force: true,
+    })
+  }))
 }
 
 async function waitForMainWindow(app: ElectronApplication): Promise<Page> {
@@ -56,6 +110,12 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
         exportDir: path.join(baseDir, 'export'),
         developerMode: false,
       }, null, 2)}\n`, 'utf8')
+    }
+    if (lunaElectronOptions.seedProject) {
+      if (useExistingUserDataDir) {
+        throw new Error('seedProject requires the fixture-managed isolated user data directory')
+      }
+      await seedProject(userDataDir, lunaElectronOptions.seedProject)
     }
 
     let app: ElectronApplication | undefined

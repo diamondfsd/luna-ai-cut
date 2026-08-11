@@ -1,12 +1,27 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vite-plus/test'
-import { defaultReply, hasCommittedEdit, hasUnpublishedSourceWork } from './orchestration-results'
+import {
+  defaultReply,
+  hasCommittedEdit,
+  hasUnfinalizedEdit,
+  hasUnpublishedSourceWork,
+} from './orchestration-results'
 import type { AiEditingObservation } from './types'
 
 const committedEdit: AiEditingObservation = {
   toolId: 'timeline.commit',
   result: { ok: true, message: '已发布', data: { ok: true, revisionAfter: 2 } },
+}
+
+const stagedEdit: AiEditingObservation = {
+  toolId: 'timeline.publish_stage',
+  result: { ok: true, message: '阶段已发布', data: { ok: true, revisionAfter: 2 } },
+}
+
+const patch: AiEditingObservation = {
+  toolId: 'workspace.patch',
+  result: { ok: true, message: '已修改', data: { changed: true } },
 }
 
 describe('AI editing coding-agent results', () => {
@@ -15,15 +30,19 @@ describe('AI editing coding-agent results', () => {
     expect(
       hasCommittedEdit([{ toolId: 'git.commit', result: { ok: true, message: '源码已提交' } }]),
     ).toBe(false)
+    expect(hasCommittedEdit([stagedEdit])).toBe(false)
   })
 
-  it('tracks source patches until the build is published', () => {
-    const patch: AiEditingObservation = {
-      toolId: 'workspace.patch',
-      result: { ok: true, message: '已修改', data: { changed: true } },
-    }
+  it('tracks source changes relative to the latest stage publication', () => {
     expect(hasUnpublishedSourceWork([patch])).toBe(true)
+    expect(hasUnpublishedSourceWork([patch, stagedEdit])).toBe(false)
+    expect(hasUnpublishedSourceWork([patch, stagedEdit, patch])).toBe(true)
     expect(hasUnpublishedSourceWork([patch, committedEdit])).toBe(false)
+  })
+
+  it('keeps a stage publication open until the final timeline commit', () => {
+    expect(hasUnfinalizedEdit([stagedEdit])).toBe(true)
+    expect(hasUnfinalizedEdit([stagedEdit, committedEdit])).toBe(false)
   })
 
   it('reports source-only work separately from a published timeline', () => {

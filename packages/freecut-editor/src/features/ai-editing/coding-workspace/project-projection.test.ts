@@ -57,7 +57,7 @@ describe('projectAgentWorkspaceToFiles', () => {
     expect(paths).toContain('evidence/transcripts/m1.json')
     expect(
       files.find((file) => file.path === 'evidence/timeline/sequence.json')?.content,
-    ).toContain('"checkoutRevision": 7')
+    ).toContain('"baselineRevision": 7')
   })
 
   it('bounds large timeline snapshot files by clip count', () => {

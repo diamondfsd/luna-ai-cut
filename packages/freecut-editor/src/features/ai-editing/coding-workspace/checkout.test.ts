@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vite-plus/test'
 import {
-  createCodingWorkspaceCheckout,
+  createCodingWorkspaceWorkingCopy,
   type CodingWorkspaceAdapter,
   type CodingWorkspaceAdapterCommitResult,
 } from './checkout'
@@ -28,7 +28,10 @@ interface Receipt {
 function fakeAdapter(input?: { invalid?: boolean; buildDelay?: Promise<void> }) {
   let revision = 4
   let source: Source = { clips: ['opening'] }
-  const commitResults = new Map<string, CodingWorkspaceAdapterCommitResult<number, Receipt>>()
+  const commitResults = new Map<
+    string,
+    CodingWorkspaceAdapterCommitResult<number, Receipt, Source>
+  >()
   const capture = vi.fn(async () => ({ revision, source: structuredClone(source) }))
   const check = vi.fn(async () => ({
     diagnostics: input?.invalid
@@ -63,7 +66,7 @@ function fakeAdapter(input?: { invalid?: boolean; buildDelay?: Promise<void> }) 
       commitId: string
       expectedRevision: number
       artifact: Artifact
-    }): Promise<CodingWorkspaceAdapterCommitResult<number, Receipt>> => {
+    }): Promise<CodingWorkspaceAdapterCommitResult<number, Receipt, Source>> => {
       const cached = commitResults.get(commitId)
       if (cached) return cached
       if (expectedRevision !== revision) return { status: 'conflict', actualRevision: revision }
@@ -72,6 +75,7 @@ function fakeAdapter(input?: { invalid?: boolean; buildDelay?: Promise<void> }) 
       const result = {
         status: 'committed' as const,
         revision,
+        source: structuredClone(source),
         receipt: { saved: source.clips.length },
       }
       commitResults.set(commitId, result)
@@ -103,27 +107,27 @@ function fakeAdapter(input?: { invalid?: boolean; buildDelay?: Promise<void> }) 
 
 const dirtyWorkspace = { files: { 'segments/opening.json': 'opening', 'segments/end.json': 'end' } }
 
-describe('CodingWorkspaceCheckout', () => {
+describe('CodingWorkspaceWorkingCopy', () => {
   it('captures the production source once and keeps all preparation isolated', async () => {
     const fake = fakeAdapter()
-    const checkout = await createCodingWorkspaceCheckout(fake.adapter)
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
 
-    expect(checkout.captured).toEqual({ revision: 4, source: { clips: ['opening'] } })
-    expect((await checkout.check(dirtyWorkspace)).diagnostics).toEqual([])
-    expect(await checkout.build(dirtyWorkspace)).toMatchObject({
+    expect(workingCopy.baseline).toEqual({ revision: 4, source: { clips: ['opening'] } })
+    expect((await workingCopy.check(dirtyWorkspace)).diagnostics).toEqual([])
+    expect(await workingCopy.build(dirtyWorkspace)).toMatchObject({
       artifact: { clips: ['opening', 'end'] },
     })
-    expect(await checkout.diff(dirtyWorkspace)).toMatchObject({ diff: { added: ['end'] } })
+    expect(await workingCopy.diff(dirtyWorkspace)).toMatchObject({ diff: { added: ['end'] } })
     expect(fake.capture).toHaveBeenCalledTimes(1)
     expect(fake.commit).not.toHaveBeenCalled()
     expect(fake.production()).toEqual({ revision: 4, source: { clips: ['opening'] } })
   })
 
-  it('runs the compiler pipeline and atomically commits against the captured revision', async () => {
+  it('runs the compiler pipeline and atomically commits against the baseline revision', async () => {
     const fake = fakeAdapter()
-    const checkout = await createCodingWorkspaceCheckout(fake.adapter)
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
 
-    const result = await checkout.commit({ commitId: 'commit-1', workspace: dirtyWorkspace })
+    const result = await workingCopy.commit({ commitId: 'commit-1', workspace: dirtyWorkspace })
 
     expect(result).toMatchObject({
       ok: true,
@@ -139,14 +143,18 @@ describe('CodingWorkspaceCheckout', () => {
       revision: 5,
       source: { clips: ['opening', 'end'] },
     })
+    expect(workingCopy.baseline).toEqual(fake.production())
   })
 
   it('returns a structured conflict without overwriting an external edit', async () => {
     const fake = fakeAdapter()
-    const checkout = await createCodingWorkspaceCheckout(fake.adapter)
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
     fake.externalEdit()
 
-    const result = await checkout.commit({ commitId: 'stale-commit', workspace: dirtyWorkspace })
+    const result = await workingCopy.commit({
+      commitId: 'stale-commit',
+      workspace: dirtyWorkspace,
+    })
 
     expect(result).toMatchObject({
       ok: false,
@@ -164,7 +172,7 @@ describe('CodingWorkspaceCheckout', () => {
       source: { clips: ['opening', 'user-change'] },
     })
 
-    const repeated = await checkout.commit({
+    const repeated = await workingCopy.commit({
       commitId: 'another-stale-commit',
       workspace: dirtyWorkspace,
     })
@@ -181,13 +189,16 @@ describe('CodingWorkspaceCheckout', () => {
       releaseBuild = resolve
     })
     const fake = fakeAdapter({ buildDelay })
-    const checkout = await createCodingWorkspaceCheckout(fake.adapter)
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
 
-    const first = checkout.commit({ commitId: 'same-commit', workspace: dirtyWorkspace })
-    const concurrent = checkout.commit({ commitId: 'same-commit', workspace: dirtyWorkspace })
+    const first = workingCopy.commit({ commitId: 'same-commit', workspace: dirtyWorkspace })
+    const concurrent = workingCopy.commit({ commitId: 'same-commit', workspace: dirtyWorkspace })
     releaseBuild()
     const [firstResult, concurrentResult] = await Promise.all([first, concurrent])
-    const repeated = await checkout.commit({ commitId: 'same-commit', workspace: dirtyWorkspace })
+    const repeated = await workingCopy.commit({
+      commitId: 'same-commit',
+      workspace: dirtyWorkspace,
+    })
 
     expect(firstResult).toBe(concurrentResult)
     expect(repeated).toBe(firstResult)
@@ -195,11 +206,67 @@ describe('CodingWorkspaceCheckout', () => {
     expect(fake.production().revision).toBe(5)
   })
 
+  it('advances the baseline and publishes consecutive phases from one working copy', async () => {
+    const fake = fakeAdapter()
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
+    const firstWorkspace = {
+      files: { 'segments/opening.json': 'opening', 'segments/middle.json': 'middle' },
+    }
+    const secondWorkspace = {
+      files: {
+        'segments/opening.json': 'opening',
+        'segments/middle.json': 'middle',
+        'segments/end.json': 'end',
+      },
+    }
+
+    const first = await workingCopy.commit({ commitId: 'phase-1', workspace: firstWorkspace })
+    const second = await workingCopy.commit({ commitId: 'phase-2', workspace: secondWorkspace })
+
+    expect(first).toMatchObject({ ok: true, revisionBefore: 4, revisionAfter: 5 })
+    expect(second).toMatchObject({
+      ok: true,
+      revisionBefore: 5,
+      revisionAfter: 6,
+      diff: { added: ['end'] },
+    })
+    expect(fake.commit).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ commitId: 'phase-2', expectedRevision: 5 }),
+    )
+    expect(workingCopy.baseline).toEqual({
+      revision: 6,
+      source: { clips: ['opening', 'middle', 'end'] },
+    })
+  })
+
+  it('keeps the advanced baseline unchanged when a later phase conflicts', async () => {
+    const fake = fakeAdapter()
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
+    await workingCopy.commit({ commitId: 'phase-1', workspace: dirtyWorkspace })
+    const baselineAfterFirst = structuredClone(workingCopy.baseline)
+    fake.externalEdit()
+
+    const conflicted = await workingCopy.commit({
+      commitId: 'phase-2',
+      workspace: { files: { ...dirtyWorkspace.files, 'segments/credits.json': 'credits' } },
+    })
+
+    expect(conflicted).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'SOURCE_REVISION_CONFLICT', expectedRevision: 5, actualRevision: 6 }],
+    })
+    expect(workingCopy.baseline).toEqual(baselineAfterFirst)
+  })
+
   it('does not build or commit a workspace that fails checking', async () => {
     const fake = fakeAdapter({ invalid: true })
-    const checkout = await createCodingWorkspaceCheckout(fake.adapter)
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
 
-    const result = await checkout.commit({ commitId: 'invalid-commit', workspace: dirtyWorkspace })
+    const result = await workingCopy.commit({
+      commitId: 'invalid-commit',
+      workspace: dirtyWorkspace,
+    })
 
     expect(result).toMatchObject({
       ok: false,
@@ -216,10 +283,10 @@ describe('CodingWorkspaceCheckout', () => {
       releaseBuild = resolve
     })
     const fake = fakeAdapter({ buildDelay })
-    const checkout = await createCodingWorkspaceCheckout(fake.adapter)
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
 
-    const first = checkout.commit({ commitId: 'commit-a', workspace: dirtyWorkspace })
-    const second = await checkout.commit({ commitId: 'commit-b', workspace: dirtyWorkspace })
+    const first = workingCopy.commit({ commitId: 'commit-a', workspace: dirtyWorkspace })
+    const second = await workingCopy.commit({ commitId: 'commit-b', workspace: dirtyWorkspace })
     releaseBuild()
     await first
 

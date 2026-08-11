@@ -5,7 +5,7 @@ import type { TimelineBuildPublication, TimelineBuildStateStore } from './build-
 import {
   summarizeTimelineProgram,
   TimelineCodingSession,
-  type TimelineCheckout,
+  type TimelineWorkingCopy,
   type TimelineProgramDiff,
 } from './timeline-session'
 import { VirtualEditingWorkspace } from './virtual-files'
@@ -83,28 +83,38 @@ function createReceipt(revisionBefore: number, revisionAfter: number): EditProgr
 }
 
 function createCheckout(input: { program: EditProgram; receipt: EditProgramApplyResult }) {
-  const diff = createDiff()
+  let currentProgram = input.program
+  let currentReceipt = input.receipt
+  const baseline = { revision: input.program.baseRevision, source: {} }
   const commit = vi.fn(async ({ commitId }: { commitId: string }) => ({
     ok: true as const,
     commitId,
-    revisionBefore: input.receipt.revisionBefore,
-    revisionAfter: input.receipt.revisionAfter,
-    artifact: input.program,
-    diff,
-    receipt: input.receipt,
+    revisionBefore: currentReceipt.revisionBefore,
+    revisionAfter: currentReceipt.revisionAfter,
+    artifact: currentProgram,
+    diff: createDiff(),
+    receipt: currentReceipt,
     diagnostics: [],
   }))
   return {
     checkout: {
-      captured: { revision: input.program.baseRevision, source: {} },
+      baseline,
       diff: vi.fn(async () => ({
-        artifact: input.program,
-        diff,
+        artifact: currentProgram,
+        diff: createDiff(),
         diagnostics: [],
       })),
-      commit,
-    } as unknown as TimelineCheckout,
+      commit: async (args: { commitId: string }) => {
+        const result = await commit(args)
+        baseline.revision = result.revisionAfter
+        return result
+      },
+    } as unknown as TimelineWorkingCopy,
     commit,
+    advance(program: EditProgram, receipt: EditProgramApplyResult) {
+      currentProgram = program
+      currentReceipt = receipt
+    },
   }
 }
 
@@ -236,6 +246,34 @@ describe('TimelineCodingSession publish replay protection', () => {
     expect(buildState.publication).toMatchObject({ sourceCommitId: 'source-commit-1' })
   })
 
+  it('blocks a later phase until the previous publication receipt is durable', async () => {
+    const buildState = new MemoryBuildStateStore()
+    buildState.failNextSave = true
+    const workspace = createWorkspace()
+    const workingCopy = createCheckout({
+      program: createProgram(4),
+      receipt: createReceipt(4, 5),
+    })
+    const session = new TimelineCodingSession(
+      workspace,
+      createRepository(workspace),
+      workingCopy.checkout,
+      buildState,
+    )
+    await expect(session.publish('source-commit-1')).rejects.toThrow('disk full')
+    workingCopy.advance(createProgram(5, 'Build credits'), createReceipt(5, 6))
+
+    await expect(session.publish('source-commit-2')).resolves.toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'PUBLICATION_PERSISTENCE_PENDING', retryable: true }],
+    })
+    expect(workingCopy.commit).toHaveBeenCalledTimes(1)
+    await expect(session.publish('source-commit-1')).resolves.toMatchObject({
+      ok: true,
+      revisionAfter: 5,
+    })
+  })
+
   it('publishes a new source commit even when its semantic build is unchanged', async () => {
     const buildState = new MemoryBuildStateStore()
     const firstWorkspace = createWorkspace()
@@ -266,6 +304,37 @@ describe('TimelineCodingSession publish replay protection', () => {
       revisionAfter: 6,
     })
     expect(nextCheckout.commit).toHaveBeenCalledTimes(1)
+  })
+
+  it('publishes consecutive phases with the same session, repository, and workspace', async () => {
+    const buildState = new MemoryBuildStateStore()
+    const workspace = createWorkspace()
+    const repository = createRepository(workspace)
+    const checkout = createCheckout({ program: createProgram(4), receipt: createReceipt(4, 5) })
+    const session = new TimelineCodingSession(
+      workspace,
+      repository,
+      checkout.checkout,
+      buildState,
+    )
+
+    await session.publish('source-commit-1')
+    expect(workspace.sourceRevision).toBe(5)
+    workspace.applyPatch({
+      operations: [{ op: 'write', path: 'manifest.json', content: '{"phase":2}' }],
+    })
+    checkout.advance(createProgram(5, 'Build credits'), createReceipt(5, 6))
+
+    await expect(session.publish('source-commit-2')).resolves.toMatchObject({
+      ok: true,
+      revisionBefore: 5,
+      revisionAfter: 6,
+    })
+    expect(session.workspace).toBe(workspace)
+    expect(session.repository).toBe(repository)
+    expect(workspace.sourceRevision).toBe(6)
+    expect(workspace.dirty).toBe(false)
+    expect(checkout.commit).toHaveBeenCalledTimes(2)
   })
 
   it('rejects a changed build under an already-published source commit', async () => {

@@ -1,7 +1,7 @@
 import type { EmbeddedAiEditingSourceGitBridge } from '@freecut/shared/host/embedded-host'
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { DurableEditingSourceRepository } from './durable-source-repository'
-import { TimelineCodingSession, type TimelineCheckout } from './timeline-session'
+import { TimelineCodingSession, type TimelineWorkingCopy } from './timeline-session'
 import type { VirtualFileInput } from './virtual-files'
 
 type SourceChange = { path: string; content: string | null }
@@ -261,10 +261,10 @@ describe('DurableEditingSourceRepository', () => {
       }
     })
     const checkout = {
-      captured: { revision: 4, source: {} },
+      baseline: { revision: 4, source: {} },
       diff: vi.fn(async () => ({ artifact, diff, diagnostics: [] })),
       commit,
-    } as unknown as TimelineCheckout
+    } as unknown as TimelineWorkingCopy
     const buildState = { load: vi.fn(async () => null), save: vi.fn(async () => undefined) }
     const session = new TimelineCodingSession(
       repository.workspace,

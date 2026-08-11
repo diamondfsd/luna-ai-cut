@@ -99,7 +99,7 @@ export function projectAgentWorkspaceToFiles(
       version: 1,
       kind: 'timeline-snapshot-sequence',
       readOnly: true,
-      checkoutRevision: workspace.revision,
+      baselineRevision: workspace.revision,
       project: workspace.project,
       tracks: workspace.tracks,
       segments: segmentFiles,
