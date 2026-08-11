@@ -32,10 +32,15 @@ export function reportModelRequestStatus(
   status: LlmRequestStatus,
   percent: number,
 ): void {
-  const label = status.state === 'streaming'
-    ? `${status.previewKind === 'reasoning' ? '正在整理剪辑思路' : '正在生成剪辑方案'}（第 ${status.attempt}/${status.maxAttempts} 次）`
-    : status.state === 'retrying' || status.attempt > 1
-      ? `正在重新尝试获取剪辑方案（第 ${status.attempt}/${status.maxAttempts} 次）`
-      : `正在等待剪辑方案（第 ${status.attempt}/${status.maxAttempts} 次）`
+  const attemptLabel =
+    status.state === 'retrying' || status.attempt > 1
+      ? `（第 ${status.attempt}/${status.maxAttempts} 次）`
+      : ''
+  const label =
+    status.state === 'streaming'
+      ? `${status.previewKind === 'reasoning' ? '正在整理剪辑思路' : '正在生成剪辑方案'}${attemptLabel}`
+      : status.state === 'retrying' || status.attempt > 1
+        ? `正在重新尝试获取剪辑方案${attemptLabel}`
+        : '正在等待剪辑方案'
   reportRunProgress(options, label, percent, Math.max(percent, 68), status.previewText)
 }

@@ -64,6 +64,8 @@ export interface AgentTrack {
 
 export interface AgentClip {
   ref: AgentClipRef
+  /** Stable ref from the modular editing source when this clip is source-owned. */
+  sourceRef?: string
   label: string
   type: string
   trackRef: AgentTrackRef
@@ -251,6 +253,8 @@ export type EditOperation =
 export interface EditProgram {
   version: 1
   baseRevision: number
+  /** Enables desired-state reconciliation for clips owned by this source project. */
+  sourceProjectId?: string
   intent: string
   mode?: 'preview' | 'commit'
   operations: EditOperation[]

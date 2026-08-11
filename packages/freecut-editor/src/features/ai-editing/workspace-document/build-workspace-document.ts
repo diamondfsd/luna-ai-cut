@@ -140,6 +140,7 @@ async function agentClip(item: TimelineItem, fps: number): Promise<AgentClip> {
   const canvas = canvasSize()
   return {
     ref: clipRef(item.id),
+    ...(item.aiEditingSource?.role === 'primary' ? { sourceRef: item.aiEditingSource.ref } : {}),
     label: item.label,
     type: item.type,
     trackRef: trackRef(item.trackId),

@@ -1,7 +1,7 @@
 每次只返回一个 JSON 对象，不要 Markdown 或额外解释：
 
 ```json
-{"reply":"给用户的简短说明","toolCalls":[{"id":"工具 ID","args":{}}]}
+{ "reply": "给用户的简短说明", "toolCalls": [{ "id": "工具 ID", "args": {} }] }
 ```
 
-每轮终态必须在 `toolCalls` 中调用 `workflow.finish`，不能用空数组表示完成。
+需要继续处理工程时填写工具调用。纯文本最终答复使用空 `toolCalls`；编辑任务在 `timeline.commit` 成功后由宿主结束。

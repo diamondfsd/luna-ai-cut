@@ -142,6 +142,57 @@ export interface EmbeddedAiAssistantBridge {
   onStatus(callback: (status: EmbeddedAiAssistantRequestStatus) => void): () => void
 }
 
+export interface EmbeddedAiEditingSourceGitBridge {
+  ensure(
+    projectId: string,
+    initialFiles?: Record<string, string>,
+  ): Promise<{ created: boolean; head: string | null }>
+  status(projectId: string): Promise<{
+    branch: string | null
+    clean: boolean
+    entries: Array<{ path: string; change: 'added' | 'modified' | 'deleted' }>
+  }>
+  list(
+    projectId: string,
+    sourceDirectory?: string,
+  ): Promise<
+    Array<{
+      path: string
+      name: string
+      type: 'file' | 'directory'
+    }>
+  >
+  read(projectId: string, sourcePath: string): Promise<string>
+  write(projectId: string, sourcePath: string, content: string): Promise<void>
+  remove(projectId: string, sourcePath: string): Promise<void>
+  applyChanges(
+    projectId: string,
+    changes: Array<{ path: string; content: string | null }>,
+  ): Promise<void>
+  diff(projectId: string): Promise<
+    Array<{
+      path: string
+      change: 'added' | 'modified' | 'deleted'
+      before: string | null
+      after: string | null
+    }>
+  >
+  log(
+    projectId: string,
+    limit?: number,
+  ): Promise<
+    Array<{
+      oid: string
+      message: string
+      author: { name: string; email: string; timestamp: number }
+    }>
+  >
+  branches(projectId: string): Promise<{ current: string | null; names: string[] }>
+  createBranch(projectId: string, name: string): Promise<void>
+  checkout(projectId: string, name: string): Promise<void>
+  commit(projectId: string, message: string): Promise<string>
+}
+
 export interface EmbeddedHostBridge {
   requestMediaImport?: (importFiles: ImportMediaFiles) => void
   /** Runs the host's local speech model. It never receives an editor path. */
@@ -156,6 +207,7 @@ export interface EmbeddedHostBridge {
   ) => Promise<EmbeddedVisualEvidence>
   /** The remote model connection is implemented by the trusted Electron host. */
   aiAssistant?: EmbeddedAiAssistantBridge
+  editingSourceGit?: EmbeddedAiEditingSourceGitBridge
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
 }

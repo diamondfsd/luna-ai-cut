@@ -2,18 +2,35 @@ import { describe, expect, it } from 'vite-plus/test'
 import { listAiEditingTools } from './tool-registry'
 
 describe('AI editing tool surface', () => {
-  it('exposes one editing surface plus bounded evidence acquisition', () => {
-    expect(listAiEditingTools().map((tool) => tool.id).toSorted()).toEqual([
+  it('exposes the coding workspace plus bounded legacy and evidence tools', () => {
+    expect(
+      listAiEditingTools()
+        .map((tool) => tool.id)
+        .toSorted(),
+    ).toEqual([
       'analysis.request',
       'analysis.search_transcript',
       'audio.analyze_beats',
+      'git.branch',
+      'git.commit',
+      'git.diff',
+      'git.log',
+      'git.status',
       'html.read',
       'html.validate',
       'skill.read',
       'skill.search',
-      'workflow.finish',
+      'timeline.build',
+      'timeline.check',
+      'timeline.commit',
+      'timeline.diff',
+      'timeline.test',
       'workflow.set_plan',
-      'workspace.apply_edit_program',
+      'workspace.list',
+      'workspace.patch',
+      'workspace.read',
+      'workspace.search',
+      'workspace.status',
     ])
   })
 })

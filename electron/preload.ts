@@ -29,6 +29,7 @@ import type {
   FreecutWorkspaceApi,
   FreecutExportApi,
   OriginalFileExportRequest,
+  AiEditingSourceGitApi,
 } from '../src/shared/types'
 import type { HtmlRenderApi } from './htmlRenderTypes'
 
@@ -178,6 +179,21 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       return () => ipcRenderer.removeListener('ai-editing-assistant:status', listener)
     },
   },
+  aiEditingSourceGit: {
+    ensure: (projectId, initialFiles) => ipcRenderer.invoke('ai-editing-source-git:ensure', projectId, initialFiles),
+    status: (projectId) => ipcRenderer.invoke('ai-editing-source-git:status', projectId),
+    list: (projectId, sourceDirectory) => ipcRenderer.invoke('ai-editing-source-git:list', projectId, sourceDirectory),
+    read: (projectId, sourcePath) => ipcRenderer.invoke('ai-editing-source-git:read', projectId, sourcePath),
+    write: (projectId, sourcePath, content) => ipcRenderer.invoke('ai-editing-source-git:write', projectId, sourcePath, content),
+    remove: (projectId, sourcePath) => ipcRenderer.invoke('ai-editing-source-git:remove', projectId, sourcePath),
+    applyChanges: (projectId, changes) => ipcRenderer.invoke('ai-editing-source-git:apply-changes', projectId, changes),
+    diff: (projectId) => ipcRenderer.invoke('ai-editing-source-git:diff', projectId),
+    log: (projectId, limit) => ipcRenderer.invoke('ai-editing-source-git:log', projectId, limit),
+    branches: (projectId) => ipcRenderer.invoke('ai-editing-source-git:branches', projectId),
+    createBranch: (projectId, name) => ipcRenderer.invoke('ai-editing-source-git:create-branch', projectId, name),
+    checkout: (projectId, name) => ipcRenderer.invoke('ai-editing-source-git:checkout', projectId, name),
+    commit: (projectId, message) => ipcRenderer.invoke('ai-editing-source-git:commit', projectId, message),
+  } satisfies AiEditingSourceGitApi,
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     chooseMediaDirectory: () => ipcRenderer.invoke('workspace:chooseMediaDirectory'),

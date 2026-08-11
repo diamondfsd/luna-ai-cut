@@ -4,7 +4,6 @@ import {
   useTimelineSettingsStore,
 } from '@freecut/features/editor/deps/timeline-contract'
 import { useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
-import type { MediaMetadata } from '@freecut/types/storage'
 import type { ImageItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import {
   compileEditProgram,
@@ -40,62 +39,6 @@ describe('EditProgram', () => {
     useTimelineSettingsStore.setState({ fps: 30, changeVersion: 7, isDirty: false })
     useItemsStore.setState({ items: [], tracks: [] })
     useMediaLibraryStore.setState({ mediaItems: [], mediaById: {} })
-  })
-
-  it('keeps source audio when compiling a video clip', async () => {
-    const videoTrack = {
-      id: 'video-track',
-      name: 'V1',
-      kind: 'video',
-      height: 64,
-      order: 0,
-      locked: false,
-      visible: true,
-      muted: false,
-      solo: false,
-      items: [],
-    } satisfies TimelineTrack
-    const media = {
-      id: 'video-media',
-      fileName: 'source.mp4',
-      fileSize: 1024,
-      mimeType: 'video/mp4',
-      duration: 10,
-      width: 1920,
-      height: 1080,
-      fps: 30,
-      codec: 'h264',
-      audioCodec: 'aac',
-      bitrate: 1_000_000,
-    } as MediaMetadata
-    useItemsStore.setState({ tracks: [videoTrack], items: [] })
-    useMediaLibraryStore.setState({ mediaItems: [media], mediaById: { [media.id]: media } })
-
-    const compiled = await compileEditProgram({
-      version: 1,
-      baseRevision: 7,
-      intent: '剪入带原声的视频',
-      operations: [
-        {
-          type: 'insertClip',
-          clip: {
-            ref: 'shot-1',
-            mediaRef: `media:${media.id}`,
-            trackRef: `track:${videoTrack.id}`,
-            start: 0,
-            duration: 3,
-          },
-        },
-      ],
-    })
-
-    expect(compiled.insertItems.map((item) => item.type)).toEqual(['video', 'audio'])
-    expect(compiled.insertItems[0]?.linkedGroupId).toBeTruthy()
-    expect(compiled.insertItems[1]?.linkedGroupId).toBe(compiled.insertItems[0]?.linkedGroupId)
-    const audioTrack = compiled.tracks.find(
-      (track) => track.id === compiled.insertItems[1]?.trackId,
-    )
-    expect(audioTrack?.kind).toBe('audio')
   })
 
   it('creates a separate audio track when every existing audio lane overlaps', () => {

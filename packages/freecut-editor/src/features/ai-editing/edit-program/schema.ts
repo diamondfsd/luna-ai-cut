@@ -61,26 +61,30 @@ const textSpanSchema = z.object({
   underline: z.boolean().optional(),
 })
 
-const textBoxSchema = z.object({
-  left: z.number().finite().min(0).max(1),
-  top: z.number().finite().min(0).max(1),
-  width: z.number().finite().positive().max(1),
-  height: z.number().finite().positive().max(1),
-}).refine(
-  (box) => box.left + box.width <= 1.000_001 && box.top + box.height <= 1.000_001,
-  '文字框必须位于画布范围内。',
-)
+const textBoxSchema = z
+  .object({
+    left: z.number().finite().min(0).max(1),
+    top: z.number().finite().min(0).max(1),
+    width: z.number().finite().positive().max(1),
+    height: z.number().finite().positive().max(1),
+  })
+  .refine(
+    (box) => box.left + box.width <= 1.000_001 && box.top + box.height <= 1.000_001,
+    '文字框必须位于画布范围内。',
+  )
 
 const updateHtmlSchema = z.object({
   type: z.literal('updateHtml'),
   clipRef: ref('clip'),
   expectedRevision: z.number().int().min(1),
-  changes: z.object({
-    html: z.string().min(1).max(500_000).optional(),
-    css: z.string().max(500_000).optional(),
-    viewport: htmlViewportSchema.optional(),
-    renderMode: z.enum(['static', 'animated']).optional(),
-  }).refine((changes) => Object.keys(changes).length > 0, 'HTML 修改不能为空。'),
+  changes: z
+    .object({
+      html: z.string().min(1).max(500_000).optional(),
+      css: z.string().max(500_000).optional(),
+      viewport: htmlViewportSchema.optional(),
+      renderMode: z.enum(['static', 'animated']).optional(),
+    })
+    .refine((changes) => Object.keys(changes).length > 0, 'HTML 修改不能为空。'),
 })
 
 const clipDraftSchema = z.object({
@@ -90,7 +94,8 @@ const clipDraftSchema = z.object({
   start: finiteNonNegative,
   duration: z.number().finite().positive().max(86_400),
   label: z.string().min(1).max(200).optional(),
-  source: z.object({ in: finiteNonNegative, out: z.number().finite().positive() })
+  source: z
+    .object({ in: finiteNonNegative, out: z.number().finite().positive() })
     .refine((source) => source.out > source.in, '素材终点必须晚于起点。')
     .optional(),
   framing: framingSchema.optional(),
@@ -111,7 +116,8 @@ const transitionSchema = z.object({
 
 const replaceRangeSchema = z.object({
   type: z.literal('replaceRange'),
-  range: z.object({ start: finiteNonNegative, end: z.number().finite().positive() })
+  range: z
+    .object({ start: finiteNonNegative, end: z.number().finite().positive() })
     .refine((range) => range.end > range.start, '替换范围终点必须晚于起点。'),
   trackRefs: z.array(ref('track')).min(1).max(20).optional(),
   clips: z.array(clipDraftSchema).max(100),
@@ -121,19 +127,21 @@ const replaceRangeSchema = z.object({
 const updateClipSchema = z.object({
   type: z.literal('updateClip'),
   clipRef: ref('clip'),
-  changes: z.object({
-    start: finiteNonNegative.optional(),
-    duration: z.number().finite().positive().max(86_400).optional(),
-    trackRef: ref('track').optional(),
-    label: z.string().min(1).max(200).optional(),
-    text: z.string().min(1).max(2_000).optional(),
-    textStyle: textStyleSchema.optional(),
-    textSpans: z.array(textSpanSchema).min(1).max(100).nullable().optional(),
-    textBox: textBoxSchema.optional(),
-    framing: framingSchema.optional(),
-    cameraMove: cameraMoveSchema.nullable().optional(),
-    volumeDb: z.number().finite().min(-60).max(12).optional(),
-  }).refine((changes) => Object.keys(changes).length > 0, '片段修改不能为空。'),
+  changes: z
+    .object({
+      start: finiteNonNegative.optional(),
+      duration: z.number().finite().positive().max(86_400).optional(),
+      trackRef: ref('track').optional(),
+      label: z.string().min(1).max(200).optional(),
+      text: z.string().min(1).max(2_000).optional(),
+      textStyle: textStyleSchema.optional(),
+      textSpans: z.array(textSpanSchema).min(1).max(100).nullable().optional(),
+      textBox: textBoxSchema.optional(),
+      framing: framingSchema.optional(),
+      cameraMove: cameraMoveSchema.nullable().optional(),
+      volumeDb: z.number().finite().min(-60).max(12).optional(),
+    })
+    .refine((changes) => Object.keys(changes).length > 0, '片段修改不能为空。'),
 })
 
 const textDraftSchema = z.object({
@@ -152,22 +160,28 @@ const textDraftSchema = z.object({
 export const editProgramSchema = z.object({
   version: z.literal(1),
   baseRevision: z.number().int().min(0),
+  sourceProjectId: z.string().min(1).max(100).optional(),
   intent: z.string().min(1).max(500),
   mode: z.enum(['preview', 'commit']).optional(),
-  operations: z.array(z.discriminatedUnion('type', [
-    replaceRangeSchema,
-    z.object({ type: z.literal('insertClip'), clip: clipDraftSchema }),
-    z.object({ type: z.literal('insertText'), text: textDraftSchema }),
-    z.object({ type: z.literal('insertHtml'), html: htmlDraftSchema }),
-    updateHtmlSchema,
-    updateClipSchema,
-    z.object({ type: z.literal('removeClip'), clipRef: ref('clip') }),
-    z.object({
-      type: z.literal('setTransition'),
-      between: z.tuple([z.string().min(1), z.string().min(1)]),
-      transition: transitionSpecSchema.nullable(),
-    }),
-  ])).min(1).max(100),
+  operations: z
+    .array(
+      z.discriminatedUnion('type', [
+        replaceRangeSchema,
+        z.object({ type: z.literal('insertClip'), clip: clipDraftSchema }),
+        z.object({ type: z.literal('insertText'), text: textDraftSchema }),
+        z.object({ type: z.literal('insertHtml'), html: htmlDraftSchema }),
+        updateHtmlSchema,
+        updateClipSchema,
+        z.object({ type: z.literal('removeClip'), clipRef: ref('clip') }),
+        z.object({
+          type: z.literal('setTransition'),
+          between: z.tuple([z.string().min(1), z.string().min(1)]),
+          transition: transitionSpecSchema.nullable(),
+        }),
+      ]),
+    )
+    .min(1)
+    .max(2_000),
 })
 
 const editProgramToolSchema = z.object({ program: editProgramSchema })

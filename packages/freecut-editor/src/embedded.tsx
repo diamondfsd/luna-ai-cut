@@ -15,6 +15,7 @@ import {
   type EmbeddedAiAssistantGenerateInput,
   type EmbeddedAiAssistantGenerateResult,
   type EmbeddedAiAssistantBridge,
+  type EmbeddedAiEditingSourceGitBridge,
   type EmbeddedHtmlRenderRequest,
   type EmbeddedHtmlRenderResult,
   type EmbeddedExportBridge,
@@ -42,6 +43,7 @@ export interface FreeCutEditorProps {
   ) => Promise<EmbeddedAiAssistantGenerateResult>
   onCancelAiAssistant?: (requestId: string) => Promise<void>
   onAiAssistantStatus?: EmbeddedAiAssistantBridge['onStatus']
+  editingSourceGit?: EmbeddedAiEditingSourceGitBridge
   onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
 }
@@ -55,6 +57,7 @@ export function FreeCutEditor({
   onGenerateAiAssistant,
   onCancelAiAssistant,
   onAiAssistantStatus,
+  editingSourceGit,
   onRenderHtmlFrame,
   exportFiles,
 }: FreeCutEditorProps) {
@@ -80,6 +83,7 @@ export function FreeCutEditor({
               onStatus: onAiAssistantStatus,
             }
           : undefined,
+      editingSourceGit,
     }),
     [
       onRequestMediaImport,
@@ -92,6 +96,7 @@ export function FreeCutEditor({
       onGenerateAiAssistant,
       onCancelAiAssistant,
       onAiAssistantStatus,
+      editingSourceGit,
     ],
   )
 
