@@ -6,8 +6,8 @@ import type { LlmMessage } from '@freecut/infrastructure/llm'
 vi.mock('./tool-registry', () => ({
   listAiEditingTools: () => [
     {
-      id: 'tool.load', title: '加载工具', description: '加载工具定义', risk: 'read',
-      inputSchema: { type: 'object' },
+      id: 'media.list', title: '列出项目素材', description: '读取项目素材摘要', risk: 'read',
+      inputSchema: { type: 'object', properties: { limit: { type: 'integer' } } },
     },
     {
       id: 'source.read', title: '读取源码', description: '读取源码文件', risk: 'read',
@@ -20,14 +20,13 @@ import { buildInitialMessages } from './orchestration-messages'
 
 describe('AI editing message prefix', () => {
   it('replays the exact previous request before appending volatile turn context', async () => {
-    const candidates = new Set(['source.read'])
+    const candidates = new Set(['media.list', 'source.read'])
     const first = await buildInitialMessages(
       '先给我一个剪辑方案',
       [],
       { headCommitId: 'first', dirty: false },
       'json',
       candidates,
-      new Set(['tool.load']),
     )
     const previousExchange: LlmMessage[] = [
       ...first.slice(1),
@@ -39,7 +38,6 @@ describe('AI editing message prefix', () => {
       { headCommitId: 'second', dirty: true },
       'json',
       candidates,
-      new Set(['tool.load', 'source.read']),
       true,
     )
 
@@ -48,8 +46,11 @@ describe('AI editing message prefix', () => {
       ...previousExchange,
     ])
     expect(second[0]).toEqual(first[0])
+    expect(second[0]?.content).toContain('source.read')
+    expect(second[0]?.content).toContain('读取源码文件')
+    expect(second[0]?.content).not.toContain('tool.load')
     expect(second.at(-1)?.content).toContain('"headCommitId":"second"')
-    expect(second.at(-1)?.content).toContain('source.read')
+    expect(second.at(-1)?.content).not.toContain('读取源码文件')
     expect(second.at(-1)?.content).toContain('用户已确认上一条剪辑方案')
   })
 })

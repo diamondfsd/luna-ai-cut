@@ -2,8 +2,8 @@ import type { Project } from '@freecut/types/project'
 import { z } from 'zod'
 import { getTimelineCodingSession } from '../coding-workspace/session-registry'
 import { summarizeTimelineProgram } from '../coding-workspace/timeline-session'
+import { validateVirtualDirectoryPath } from '../coding-workspace/virtual-files-path'
 import type { AiEditingToolModule } from '../types'
-import { executeWorkspaceCommand } from '../workspace-command'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
 
 function summarizeBuild(artifact: Project) {
@@ -14,32 +14,119 @@ function summarizeBuild(artifact: Project) {
   }
 }
 
-const executeCommand = defineAiEditingTool({
-  id: 'workspace.exec',
-  title: '执行工作区查询命令',
-  description: '在当前剪辑工作区执行受限只读命令。支持 ls、rg、sed、wc，以及 git status/diff/log/branch；不支持写文件或运行宿主脚本。',
+function validDirectoryPath(path: string): boolean {
+  try {
+    validateVirtualDirectoryPath(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const directoryPathSchema = z.string()
+  .max(500)
+  .transform((path) => path !== '' && !path.startsWith('/') ? path.replace(/\/+$/, '') : path)
+  .refine(validDirectoryPath, '工程目录无效。')
+
+const listWorkspace = defineAiEditingTool({
+  id: 'workspace.list',
+  title: '列出工程文件',
+  description: '结构化列出剪辑源码或只读投影目录。素材发现优先使用 media.list。',
   risk: 'read',
-  execution: 'async',
   inputSchema: objectSchema(
     {
-      argv: {
-        type: 'array',
-        minItems: 1,
-        maxItems: 20,
-        items: { type: 'string', minLength: 1, maxLength: 512 },
-        description: '结构化命令参数，例如 ["rg","-n","mediaId","sequences"]。',
-      },
+      path: { type: 'string', maxLength: 500 },
+      recursive: { type: 'boolean' },
+      cursor: { type: 'integer', minimum: 0, maximum: 10_000 },
+      limit: { type: 'integer', minimum: 1, maximum: 200 },
     },
-    ['argv'],
   ),
   schema: z.strictObject({
-    argv: z.array(z.string().min(1).max(512)).min(1).max(20),
+    path: directoryPathSchema.optional(),
+    recursive: z.boolean().optional(),
+    cursor: z.number().int().min(0).max(10_000).optional(),
+    limit: z.number().int().min(1).max(200).optional(),
   }),
-  summarize: ({ argv }) => argv.join(' '),
-  execute: async ({ argv }) => ({
+  summarize: ({ path }) => `列出 ${path || '工程根目录'}`,
+  execute: (args) => ({
     ok: true,
-    message: '工作区命令执行完成。',
-    data: await executeWorkspaceCommand(argv),
+    message: '已列出工程文件。',
+    data: getTimelineCodingSession().workspace.list(args),
+  }),
+})
+
+const searchWorkspace = defineAiEditingTool({
+  id: 'workspace.search',
+  title: '搜索工程内容',
+  description: '按固定文本搜索工程文件并返回路径和行号。素材内容优先使用 media.read。',
+  risk: 'read',
+  inputSchema: objectSchema({
+    query: { type: 'string', minLength: 1, maxLength: 200 },
+    path: { type: 'string', maxLength: 500 },
+    caseSensitive: { type: 'boolean' },
+    cursor: { type: 'integer', minimum: 0, maximum: 10_000 },
+    limit: { type: 'integer', minimum: 1, maximum: 100 },
+  }, ['query']),
+  schema: z.strictObject({
+    query: z.string().min(1).max(200),
+    path: directoryPathSchema.optional(),
+    caseSensitive: z.boolean().optional(),
+    cursor: z.number().int().min(0).max(10_000).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
+  summarize: ({ query }) => `搜索“${query}”`,
+  execute: (args) => ({
+    ok: true,
+    message: '已搜索工程内容。',
+    data: getTimelineCodingSession().workspace.search(args),
+  }),
+})
+
+const gitStatus = defineAiEditingTool({
+  id: 'git.status',
+  title: '查看源码状态',
+  description: '查看当前分支、提交和未提交源码文件。',
+  risk: 'read',
+  execution: 'async',
+  inputSchema: objectSchema({}),
+  schema: z.strictObject({}),
+  summarize: () => '查看源码状态',
+  execute: async () => ({
+    ok: true,
+    message: '已读取源码状态。',
+    data: await getTimelineCodingSession().repository.status(),
+  }),
+})
+
+const gitDiff = defineAiEditingTool({
+  id: 'git.diff',
+  title: '核对源码改动',
+  description: '读取当前剪辑源码相对最近提交的完整差异。',
+  risk: 'read',
+  execution: 'async',
+  inputSchema: objectSchema({}),
+  schema: z.strictObject({}),
+  summarize: () => '核对源码改动',
+  execute: async () => ({
+    ok: true,
+    message: '已读取源码改动。',
+    data: await getTimelineCodingSession().repository.diff(),
+  }),
+})
+
+const gitLog = defineAiEditingTool({
+  id: 'git.log',
+  title: '查看源码历史',
+  description: '按数量读取最近的剪辑源码提交。',
+  risk: 'read',
+  execution: 'async',
+  inputSchema: objectSchema({ limit: { type: 'integer', minimum: 1, maximum: 50 } }),
+  schema: z.strictObject({ limit: z.number().int().min(1).max(50).optional() }),
+  summarize: () => '查看源码历史',
+  execute: async ({ limit = 20 }) => ({
+    ok: true,
+    message: '已读取源码历史。',
+    data: await getTimelineCodingSession().repository.log(limit),
   }),
 })
 
@@ -85,5 +172,13 @@ const checkTimeline = defineAiEditingTool({
 })
 
 export const aiEditingToolModule: AiEditingToolModule = {
-  createTools: () => [executeCommand, gitCommit, checkTimeline],
+  createTools: () => [
+    listWorkspace,
+    searchWorkspace,
+    gitStatus,
+    gitDiff,
+    gitLog,
+    gitCommit,
+    checkTimeline,
+  ],
 }

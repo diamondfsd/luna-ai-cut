@@ -11,7 +11,7 @@ const inspectBeats = defineAiEditingTool({
   description: '读取已分析音乐的 BPM 和节拍时间点。',
   risk: 'read',
   inputSchema: objectSchema({
-    mediaId: { type: 'string', description: '音乐素材，使用 workspace.media[].ref。' },
+    mediaId: { type: 'string', description: '音乐素材，使用 media.list 返回的 id。' },
     startSeconds: { type: 'number', minimum: 0, description: '可选的起始时间。' },
     endSeconds: { type: 'number', minimum: 0, description: '可选的结束时间。' },
   }, ['mediaId']),
@@ -42,7 +42,7 @@ const analyzeBeats = defineAiEditingTool({
   description: '使用本地音频分析识别 BPM 和节拍时间点。',
   risk: 'analysis',
   inputSchema: objectSchema({
-    mediaId: { type: 'string', description: '音乐素材，使用 workspace.media[].ref。' },
+    mediaId: { type: 'string', description: '音乐素材，使用 media.list 返回的 id。' },
   }, ['mediaId']),
   schema: z.object({ mediaId: z.string().min(1) }),
   summarize: () => '分析音乐节拍',

@@ -2,7 +2,7 @@ import type { LlmAdapter, LlmMessage } from '@freecut/infrastructure/llm'
 import type { NativeToolCallingLlmAdapter } from '@freecut/infrastructure/llm/openai-chat-completions-llm-adapter'
 import type { EmbeddedAiAssistantMessage } from '@freecut/shared/host/embedded-host'
 import { JsonAgentDriver, NativeAgentDriver } from './agent-harness'
-import type { DeferredToolLoader } from './deferred-tool-loader'
+import type { AiEditingToolSet } from './tool-set'
 import { createNativeToolCatalog } from './native-tool-catalog'
 import { reportModelRequestStatus, traceRun } from './orchestration-progress'
 import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
@@ -67,13 +67,14 @@ export function createNativeDriver(
   adapter: NativeToolCallingLlmAdapter,
   messages: EmbeddedAiAssistantMessage[],
   options: AiEditingRunOptions,
-  toolLoader: DeferredToolLoader,
+  toolSet: AiEditingToolSet,
 ): NativeAgentDriver<AiEditingObservation> {
+  const tools = createNativeToolCatalog(toolSet.availableToolIds)
   return new NativeAgentDriver({
     adapter,
     messages,
     replayFromIndex: Math.max(0, messages.length - 1),
-    getTools: () => createNativeToolCatalog(toolLoader.activeToolIds),
+    getTools: () => tools,
     serializeObservation: serializeForModel,
     toolContinuationPrompt: nativeContinuePrompt.trim(),
     requestOptions: (round) => ({

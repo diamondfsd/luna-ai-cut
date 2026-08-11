@@ -18,7 +18,7 @@ import {
   startTimelineCodingSession,
 } from './coding-workspace/session-registry'
 import { failedEditMessage, latestFailedEdit } from './latest-edit-result'
-import { DeferredToolLoader } from './deferred-tool-loader'
+import { AiEditingToolSet } from './tool-set'
 import { createJsonDriver, createNativeDriver } from './orchestration-drivers'
 import {
   buildInitialMessages,
@@ -220,7 +220,7 @@ async function executeHarnessTool(
   callIndex: number,
   round: number,
   options: AiEditingRunOptions,
-  toolLoader: DeferredToolLoader,
+  toolSet: AiEditingToolSet,
   duplicateGuard?: {
     key: string | null
     consecutiveCount: number
@@ -285,8 +285,7 @@ async function executeHarnessTool(
     { id: call.toolId, args: call.input as Record<string, unknown> },
     callIndex,
     options,
-    toolLoader.activeToolIds,
-    (toolIds) => toolLoader.load(toolIds),
+    toolSet.availableToolIds,
   )
 }
 
@@ -295,7 +294,7 @@ async function runDriver(
   options: AiEditingRunOptions,
   config: {
     maxRounds: number
-    toolLoader: DeferredToolLoader
+    toolSet: AiEditingToolSet
     initialObservations?: readonly AiEditingObservation[]
     requiresEditCommit: boolean
     continuationPrompt: string
@@ -322,7 +321,7 @@ async function runDriver(
       index,
       round,
       options,
-      config.toolLoader,
+      config.toolSet,
       duplicateGuard,
     ),
     canCompleteFromText: ({ output, observations }) =>
@@ -365,7 +364,7 @@ export async function runSingleAiEditingTurn(
     const adapter = options.adapter ?? getAiEditingAdapter()
     const maxRounds = config.maxToolRounds ?? MAX_TOOL_ROUNDS
     const allowedToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
-    const toolLoader = new DeferredToolLoader(allowedToolIds, options.loadedToolIds)
+    const toolSet = new AiEditingToolSet(allowedToolIds)
     const requiresEditCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
       isConfirmedPlanExecutionRequest(userText, options.history)
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
@@ -379,16 +378,15 @@ export async function runSingleAiEditingTurn(
         userText,
         options.agentHistory ?? [],
         evidence,
-        toolLoader.candidateToolIds,
-        toolLoader.activeToolIds,
+        toolSet.availableToolIds,
         requiresEditCommit,
       )
       harnessResult = await runDriver(
-        createNativeDriver(adapter, nativeMessages, options, toolLoader),
+        createNativeDriver(adapter, nativeMessages, options, toolSet),
         options,
         {
           maxRounds,
-          toolLoader,
+          toolSet,
           requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
@@ -401,8 +399,7 @@ export async function runSingleAiEditingTurn(
             : options.history,
           evidence,
           'json',
-          toolLoader.candidateToolIds,
-          toolLoader.activeToolIds,
+          toolSet.availableToolIds,
           requiresEditCommit,
         )
         const fallbackMessages = buildJsonFallbackMessages(
@@ -420,7 +417,7 @@ export async function runSingleAiEditingTurn(
           options,
           {
             maxRounds,
-            toolLoader,
+            toolSet,
             initialObservations: harnessResult.observations,
             requiresEditCommit,
             continuationPrompt: pendingWorkPrompt.trim(),
@@ -435,8 +432,7 @@ export async function runSingleAiEditingTurn(
           : options.history,
         evidence,
         'json',
-        toolLoader.candidateToolIds,
-        toolLoader.activeToolIds,
+        toolSet.availableToolIds,
         requiresEditCommit,
       )
       harnessResult = await runDriver(
@@ -444,14 +440,14 @@ export async function runSingleAiEditingTurn(
         options,
         {
           maxRounds,
-          toolLoader,
+          toolSet,
           requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
       )
     }
 
-    const result = toRunResult(harnessResult, [...toolLoader.activeToolIds], options.signal)
+    const result = toRunResult(harnessResult, [...toolSet.availableToolIds], options.signal)
     const failedEdit = latestFailedEdit(result.observations)
     const failureMessage = failedEdit ? failedEditMessage(failedEdit) : undefined
     return {

@@ -5,7 +5,6 @@ import type { EmbeddedAiAssistantToolCall } from '@freecut/shared/host/embedded-
 import type { AiEditingRunOptions } from './run-types'
 import { getAiEditingTool } from './tool-registry'
 import type {
-  AiEditingLoadedTools,
   AiEditingObservation,
   AiEditingToolCall,
   AiEditingToolResult,
@@ -39,10 +38,9 @@ export async function executeToolCall(
   callIndex: number,
   options: AiEditingRunOptions,
   availableToolIds?: ReadonlySet<string>,
-  loadTools?: (toolIds: readonly string[]) => AiEditingLoadedTools,
 ): Promise<AiEditingObservation> {
   if (availableToolIds && !availableToolIds.has(call.id)) {
-    return toolError(call.id, '这个工具尚未加载，请先使用工具目录加载后再调用。')
+    return toolError(call.id, '这个工具不在当前可用范围内，请从系统提供的工具中选择。')
   }
   const tool = getAiEditingTool(call.id)
   if (!tool) return toolError(call.id, '这个操作目前不可用。')
@@ -93,7 +91,6 @@ export async function executeToolCall(
           const execution = tool.execute(validation.value, {
             signal: options.signal,
             reportProgress,
-            loadTools,
           })
           if (execution instanceof Promise) throw new Error('剪辑操作未能及时完成。')
           return execution
@@ -103,7 +100,6 @@ export async function executeToolCall(
       result = await tool.execute(validation.value, {
         signal: options.signal,
         reportProgress,
-        loadTools,
       })
     }
     if (result.ok && tool.risk === 'edit' && !persistsProjectSource(tool.id)) {
@@ -132,7 +128,6 @@ export async function executeNativeToolCall(
   callIndex: number,
   options: AiEditingRunOptions,
   availableToolIds?: ReadonlySet<string>,
-  loadTools?: (toolIds: readonly string[]) => AiEditingLoadedTools,
 ): Promise<AiEditingObservation> {
   const toolId = toolIdsByFunctionName.get(call.name)
   if (!toolId) return toolError(call.name, '这个操作目前不可用。')
@@ -144,5 +139,5 @@ export async function executeNativeToolCall(
   } catch {
     return toolError(toolId, '操作参数无效，未执行此操作。')
   }
-  return executeToolCall({ id: toolId, args }, callIndex, options, availableToolIds, loadTools)
+  return executeToolCall({ id: toolId, args }, callIndex, options, availableToolIds)
 }

@@ -14,6 +14,7 @@ import type {
   AgentClipRef,
   AgentFraming,
   AgentFramingPose,
+  AgentMedia,
   AgentMediaRef,
   AgentTrackRef,
   AgentWorkspaceDocument,
@@ -37,6 +38,50 @@ export function idFromAgentRef(value: string, prefix: 'media' | 'track' | 'clip'
     throw new Error(`引用“${value}”不符合 ${prefix} 规范。`)
   }
   return value.slice(expected.length)
+}
+
+function agentMediaEntries(
+  evidence: Awaited<ReturnType<typeof buildProjectEvidence>>,
+): AgentMedia[] {
+  const mediaById = useMediaLibraryStore.getState().mediaById
+  return evidence.media.map((entry) => ({
+    ref: mediaRef(entry.mediaId),
+    name: entry.name,
+    kind: entry.kind,
+    duration: entry.durationSeconds,
+    ...(mediaById[entry.mediaId]?.width ? { width: mediaById[entry.mediaId]!.width } : {}),
+    ...(mediaById[entry.mediaId]?.height ? { height: mediaById[entry.mediaId]!.height } : {}),
+    ...(mediaById[entry.mediaId]?.audioCodec ? { hasAudio: true } : {}),
+    evidence: {
+      visual: entry.visual.map((sample) => ({
+        time: sample.timeSeconds,
+        description: sample.description,
+        subjects: sample.subjects,
+        ...(sample.action ? { action: sample.action } : {}),
+      })),
+      ...(entry.transcript
+        ? {
+            transcript: {
+              language: entry.transcript.language,
+              segmentCount: entry.transcript.segmentCount,
+              wordCount: entry.transcript.wordCount,
+              excerpt: entry.transcript.excerpt.map((segment) => ({
+                start: segment.startSeconds,
+                end: segment.endSeconds,
+                text: segment.text,
+              })),
+            },
+          }
+        : {}),
+      audioAnalysis:
+        entry.audio.beatStatus === 'not-requested' ? 'missing' : entry.audio.beatStatus,
+    },
+  }))
+}
+
+/** Builds only the media catalog, without hashing clips or projecting the timeline. */
+export async function buildAgentMediaCatalog() {
+  return agentMediaEntries(await buildProjectEvidence())
 }
 
 function canvasSize(): { width: number; height: number } {
@@ -219,7 +264,6 @@ export async function buildAgentWorkspaceDocument(): Promise<AgentWorkspaceDocum
   const project = useProjectStore.getState().currentProject
   const canvas = canvasSize()
   const selected = new Set(useSelectionStore.getState().selectedItemIds)
-  const mediaById = useMediaLibraryStore.getState().mediaById
 
   return {
     schemaVersion: 1,
@@ -238,39 +282,7 @@ export async function buildAgentWorkspaceDocument(): Promise<AgentWorkspaceDocum
         .filter((item) => selected.has(item.id))
         .map((item) => clipRef(item.id)),
     },
-    media: evidence.media.map((entry) => ({
-      ref: mediaRef(entry.mediaId),
-      name: entry.name,
-      kind: entry.kind,
-      duration: entry.durationSeconds,
-      ...(mediaById[entry.mediaId]?.width ? { width: mediaById[entry.mediaId]!.width } : {}),
-      ...(mediaById[entry.mediaId]?.height ? { height: mediaById[entry.mediaId]!.height } : {}),
-      ...(mediaById[entry.mediaId]?.audioCodec ? { hasAudio: true } : {}),
-      evidence: {
-        visual: entry.visual.map((sample) => ({
-          time: sample.timeSeconds,
-          description: sample.description,
-          subjects: sample.subjects,
-          ...(sample.action ? { action: sample.action } : {}),
-        })),
-        ...(entry.transcript
-          ? {
-              transcript: {
-                language: entry.transcript.language,
-                segmentCount: entry.transcript.segmentCount,
-                wordCount: entry.transcript.wordCount,
-                excerpt: entry.transcript.excerpt.map((segment) => ({
-                  start: segment.startSeconds,
-                  end: segment.endSeconds,
-                  text: segment.text,
-                })),
-              },
-            }
-          : {}),
-        audioAnalysis:
-          entry.audio.beatStatus === 'not-requested' ? 'missing' : entry.audio.beatStatus,
-      },
-    })),
+    media: agentMediaEntries(evidence),
     tracks: evidence.tracks.map((track) => ({
       ref: trackRef(track.id),
       name: track.name,

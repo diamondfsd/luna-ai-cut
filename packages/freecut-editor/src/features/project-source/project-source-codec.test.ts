@@ -17,14 +17,21 @@ function makeProject(): Project {
       tracks: [{
         id: 'subtitle', name: 'S1', kind: 'subtitle', height: 40, locked: false,
         visible: true, muted: false, solo: false, order: -1,
+      }, {
+        id: 'video', name: 'V1', kind: 'video', height: 60, locked: false,
+        visible: true, muted: false, solo: false, order: 0,
       }],
       items: [{
         id: 'text-1', trackId: 'subtitle', type: 'text', label: '字幕',
         from: 0, durationInFrames: 90, text: '归一化字幕',
         transform: {
           x: 0, y: 367.2, width: 1536, height: 129.6,
-          rotation: 4, opacity: 0.9,
+          anchorX: 384, anchorY: 97.2, rotation: 4, opacity: 0.9,
         },
+      }, {
+        id: 'video-1', trackId: 'video', type: 'video', label: '画中画',
+        from: 0, durationInFrames: 90, src: 'media:test',
+        transform: { x: 320, y: -180, width: 640, height: 360 },
       }],
       compositions: [{
         id: 'component-1',
@@ -74,17 +81,42 @@ describe('project source normalized text layout', () => {
     const componentClip = segments.find(
       ({ value }) => value.clips[0]?.id === 'component-text',
     )!.value.clips[0]!
+    const videoClip = segments.find(({ value }) => value.clips[0]?.id === 'video-1')!
+      .value.clips[0]!
 
-    expect(mainClip.textBox).toEqual({ left: 0.1, top: 0.78, width: 0.8, height: 0.12 })
+    expect(mainClip.textBox).toEqual({
+      left: expect.closeTo(0.1),
+      top: expect.closeTo(0.78),
+      width: expect.closeTo(0.8),
+      height: expect.closeTo(0.12),
+    })
     expect(mainClip.transform).toEqual({ rotation: 4, opacity: 0.9 })
-    expect(componentClip.textBox).toEqual({ left: 0.2, top: 0.3, width: 0.5, height: 0.2 })
+    expect(mainClip.textAnchor).toEqual({ x: 0.25, y: 0.75 })
+    expect(componentClip.textBox).toEqual({
+      left: expect.closeTo(0.2),
+      top: expect.closeTo(0.3),
+      width: expect.closeTo(0.5),
+      height: expect.closeTo(0.2),
+    })
+    expect(videoClip.transform).toEqual({ x: 320, y: -180, width: 640, height: 360 })
+    expect(videoClip).not.toHaveProperty('textBox')
 
     const restored = await projectFromSourceFiles(reader(files))
     expect(restored.timeline?.items[0]?.transform).toMatchObject({
-      x: 0, y: 367.2, width: 1536, height: 129.6, rotation: 4, opacity: 0.9,
+      x: expect.closeTo(0),
+      y: expect.closeTo(367.2),
+      width: expect.closeTo(1536),
+      height: expect.closeTo(129.6),
+      anchorX: expect.closeTo(384),
+      anchorY: expect.closeTo(97.2),
+      rotation: 4,
+      opacity: 0.9,
     })
     expect(restored.timeline?.compositions?.[0]?.items[0]?.transform).toMatchObject({
       x: -50, y: -100, width: 500, height: 200,
+    })
+    expect(restored.timeline?.items.find((item) => item.id === 'video-1')?.transform).toEqual({
+      x: 320, y: -180, width: 640, height: 360,
     })
   })
 
