@@ -208,6 +208,10 @@ export class DurableEditingSourceRepository {
         message,
         sourcePaths ? [...sourcePaths] : undefined,
       )
+      const status = await this.readStatus()
+      if (!status.clean || status.headCommitId !== commitId) {
+        throw new Error('剪辑源码提交后仍有未保存的文件，请重新检查工程状态。')
+      }
       this.workspace.markClean()
       return { commitId, created: true }
     })

@@ -1,17 +1,16 @@
 import type { TextItem, TimelineItem } from '@freecut/types/timeline'
 import type { AgentTextBox, AgentTextSpan, AgentTextStyle } from './types'
+import {
+  normalizedTextBoxFromTransform,
+  transformFromNormalizedTextBox,
+} from '@freecut/features/project-source/normalized-text-layout'
 
 function transformForTextBox(
   box: AgentTextBox,
   canvas: { width: number; height: number },
 ): NonNullable<TextItem['transform']> {
-  const width = box.width * canvas.width
-  const height = box.height * canvas.height
   return {
-    x: box.left * canvas.width + width / 2 - canvas.width / 2,
-    y: box.top * canvas.height + height / 2 - canvas.height / 2,
-    width,
-    height,
+    ...transformFromNormalizedTextBox(box, canvas),
     rotation: 0,
     opacity: 1,
   }
@@ -53,12 +52,5 @@ export function textBoxFromItem(
   item: TextItem,
   canvas: { width: number; height: number },
 ): AgentTextBox | undefined {
-  const transform = item.transform
-  if (!transform?.width || !transform.height) return undefined
-  return {
-    left: (canvas.width / 2 + (transform.x ?? 0) - transform.width / 2) / canvas.width,
-    top: (canvas.height / 2 + (transform.y ?? 0) - transform.height / 2) / canvas.height,
-    width: transform.width / canvas.width,
-    height: transform.height / canvas.height,
-  }
+  return normalizedTextBoxFromTransform(item.transform, canvas)
 }

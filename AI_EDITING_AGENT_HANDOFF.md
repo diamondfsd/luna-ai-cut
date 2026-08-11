@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-本轮改动尚未提交。工作树中包含 AI 剪辑 Agent 的工具按需加载、工作区命令整合、上下文窗口配置、真实 token 用量记录和按真实用量触发压缩等改动。
+初始交接改动已由提交 `3be633cc` 落入当前分支。本次续作尚未提交，工作树中包含跨用户轮次 Agent 工作消息持久化、完整轮次压缩、流式 usage 兼容降级和 `workspace.exec` 修正。
 
 已完成验证：
 
@@ -14,6 +14,12 @@
 - `pnpm run build:app` 通过。
 - 构建仅有现存的动态导入和大 chunk 警告，没有新增编译错误。
 - 按要求未启动 Electron，也未执行 UI/E2E 或 AI Editing 测试。
+
+续作验证：
+
+- FreeCut 定向测试 20 项通过，覆盖可重放 transcript、完整 tool exchange、整轮压缩、会话存储和 `workspace.exec`。
+- `pnpm test:ai-editing-stream` 与 `pnpm test:ai-editing-retry` 通过。
+- `pnpm run typecheck:freecut` 与 `pnpm run build:app` 通过；构建仍只有现存警告。
 
 ## 目标架构
 
@@ -154,25 +160,18 @@ stream_options: { include_usage: true }
 
 ## 尚未完成和已知风险
 
-### P0：跨轮 Agent 工作上下文仍不完整
+### 已完成：跨轮 Agent 工作上下文
 
-当前同一轮内部会持续追加 assistant tool call、tool result 和 continuation message，不会反复改写历史消息。但一轮结束后，`ai-editing-conversation.json` 仍只保存最终的 user/assistant 聊天消息。
+会话文件已升级到 v3，UI 聊天消息与 `agentTurns` 分开存储。每轮保存可重放的 assistant tool calls、对应 tool results、continuation/final output 和 `loadedToolIds`；下一轮 native 原样复用，JSON 使用稳定文本化转换。归档与恢复会搬运完整状态。
 
-因此下一轮会恢复用户目标和最终答复，但不会恢复上一轮的工具调用、工具结果、已加载工具集合、读取过的证据以及失败重试过程。模型仍可能在第二轮重新读取源码和素材证据。
-
-建议下一步：
-
-- 为每个用户轮次持久化完整、追加式的 Agent message 序列。
-- 下一轮请求复用上一轮完整 response output，包括 assistant tool calls 和对应 tool results。
-- UI 聊天消息与模型工作消息分开存储，前者用于展示，后者用于稳定上下文和前缀缓存。
-- 压缩必须以完整工具交换为边界，不能截断 assistant tool call 与 tool result。
+压缩现在只以完整用户轮次为边界，保留最近两轮，不能截断 tool exchange。旧 v2 开发期测试会话按项目策略不迁移。
 
 ### P0：需要真实服务商联调 usage
 
 尚未用实际模型接口验证 `stream_options.include_usage`。OpenAI SDK 支持该字段，但部分兼容服务商可能：
 
 - 完全不返回 usage：当前行为是不记录、不压缩。
-- 不支持 `stream_options` 并直接报错：当前没有针对该字段的兼容降级。
+  - 不支持 `stream_options` 并直接报错：现已对明确的 400/422 参数不兼容错误降级重发；普通请求错误或已收到 chunk 后的错误不会重发。
 - 返回 usage 但不返回 `cached_tokens`：当前缓存 token 记为 0。
 
 接手后应至少用当前配置的真实服务商完成一次含多轮工具调用的会话，并检查 `ai-editing-runs.json` 是否逐轮出现 `model-usage`。
@@ -185,7 +184,7 @@ stream_options: { include_usage: true }
 
 ### P1：`workspace.exec` 命令帮助和路径规范仍需加强
 
-当前只支持有限命令，不支持 `cat`。此前实际会话中模型尝试过 `cat`，也出现过目录路径末尾带 `/` 导致读取失败。提示词已经列出支持命令，但命令错误结果最好同时返回可调用示例；路径入口也可统一去除无意义的尾部斜杠。
+当前只支持有限命令，不支持 `cat`。`ls`/`rg` 已统一去除目录末尾 `/`，`wc -l` 已修正为标准换行计数。命令错误结果仍可补充可调用示例，`rg` 分页与正则语义仍需完善。
 
 ### P1：工具按需加载需要真实任务回归
 

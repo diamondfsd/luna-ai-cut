@@ -1,6 +1,8 @@
 import type { LlmAdapter, LlmMessage, LlmTokenUsage } from '@freecut/infrastructure/llm'
 import type { AgentWorkspaceDocument } from './edit-program/types'
 import type { AiEditingTurnIntent } from './conversation-intent'
+import type { AiEditingAgentTurn } from './agent-harness'
+import type { AgentReplayMessage } from './agent-harness'
 import type {
   AiEditingObservation,
   AiEditingRunProgress,
@@ -16,6 +18,8 @@ export interface AiEditingRunResult {
   completed: boolean
   changedProject: boolean
   completionNotes: string[]
+  agentTurn: AiEditingAgentTurn
+  loadedToolIds: string[]
   production?: { blueprint: unknown; review: unknown }
 }
 
@@ -27,6 +31,10 @@ export interface AiEditingTraceEvent {
 
 export interface AiEditingRunOptions {
   history: LlmMessage[]
+  agentHistory?: AgentReplayMessage[]
+  loadedToolIds?: string[]
+  /** Reuse a protocol already negotiated by an earlier turn in this conversation. */
+  preferredProtocol?: 'native' | 'json'
   signal?: AbortSignal
   /** Cumulative final-answer Markdown, updated while the model is streaming. */
   onFinalText?: (text: string) => void

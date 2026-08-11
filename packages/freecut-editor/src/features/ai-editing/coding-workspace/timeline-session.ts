@@ -21,6 +21,7 @@ import {
 import { projectAgentWorkspaceToFiles } from './project-projection'
 import { getAiEditingDocumentationFiles } from '../documentation/catalog'
 import { VirtualEditingWorkspace } from './virtual-files'
+import { validateAiEditingTimelineSource } from './timeline-source-validation'
 
 export interface TimelineProgramSummary {
   operationCount: number
@@ -83,6 +84,7 @@ export class TimelineCodingSession {
     readonly repository: DurableEditingSourceRepository,
     private renderedProject: Project,
     private readonly availableMediaIds: ReadonlySet<string>,
+    private readonly mediaHasAudioById: ReadonlyMap<string, boolean>,
   ) {}
 
   static async create(): Promise<TimelineCodingSession> {
@@ -113,27 +115,35 @@ export class TimelineCodingSession {
     const availableMediaIds = new Set(
       workspaceDocument.media.map((media) => idFromAgentRef(media.ref, 'media')),
     )
+    const mediaHasAudioById = new Map(
+      workspaceDocument.media.map((media) => [
+        idFromAgentRef(media.ref, 'media'),
+        media.hasAudio === true,
+      ]),
+    )
     const session = new TimelineCodingSession(
       repository.workspace,
       repository,
       liveProject,
       availableMediaIds,
+      mediaHasAudioById,
     )
     const compiled = await session.compileProject()
     session.renderedProject = compiled
     return session
   }
 
-  private async compileProject(): Promise<Project> {
+  private async compileProject(validateSemantics = false): Promise<Project> {
     const project = await projectFromSourceFiles({
       read: async (path) => (await this.repository.readSource(path)).content,
     })
     validateMediaIds(project, this.availableMediaIds)
+    if (validateSemantics) validateAiEditingTimelineSource(project, this.mediaHasAudioById)
     return project
   }
 
-  private async refreshRenderer(): Promise<Project> {
-    const project = await this.compileProject()
+  private async refreshRenderer(validateSemantics = false): Promise<Project> {
+    const project = await this.compileProject(validateSemantics)
     await hydrateTimelineStoresFromProject(project)
     await updateProject(project.id, {
       name: project.name,
@@ -219,7 +229,7 @@ export class TimelineCodingSession {
   async check(): Promise<TimelineBuildResult> {
     try {
       await this.waitForBackgroundProjection()
-      const artifact = await this.refreshRenderer()
+      const artifact = await this.refreshRenderer(true)
       this.projectionApplied = this.projectionRequested
       return { artifact, diagnostics: [] }
     } catch (error) {
@@ -251,9 +261,9 @@ export class TimelineCodingSession {
   async commitSource(message: string) {
     if (this.changedSourcePaths.size === 0) throw new Error('本轮没有需要提交的剪辑源码改动。')
     await this.waitForBackgroundProjection()
-    await this.refreshRenderer()
+    await this.refreshRenderer(true)
     this.projectionApplied = this.projectionRequested
-    const result = await this.repository.commit(message, [...this.changedSourcePaths])
+    const result = await this.repository.commit(message)
     this.changedSourcePaths.clear()
     return result
   }

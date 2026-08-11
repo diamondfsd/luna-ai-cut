@@ -9,5 +9,7 @@ export type {
   AgentHarnessResult,
   AgentHarnessToolCall,
   AgentHarnessToolExchange,
+  AgentReplayMessage,
+  AiEditingAgentTurn,
   RunAgentHarnessOptions,
 } from './types'

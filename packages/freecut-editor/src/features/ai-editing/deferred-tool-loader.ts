@@ -20,13 +20,19 @@ export class DeferredToolLoader {
   readonly candidateToolIds: ReadonlySet<string>
   readonly activeToolIds = new Set<string>([TOOL_LOADER_ID])
 
-  constructor(allowedToolIds?: ReadonlySet<string>) {
+  constructor(
+    allowedToolIds?: ReadonlySet<string>,
+    initialActiveToolIds: readonly string[] = [],
+  ) {
     this.candidateToolIds = new Set(
       listAiEditingTools()
         .filter((tool) => tool.id !== TOOL_LOADER_ID)
         .filter((tool) => !allowedToolIds || allowedToolIds.has(tool.id))
         .map((tool) => tool.id),
     )
+    for (const toolId of initialActiveToolIds) {
+      if (this.candidateToolIds.has(toolId)) this.activeToolIds.add(toolId)
+    }
   }
 
   load(toolIds: readonly string[]): AiEditingLoadedTools {

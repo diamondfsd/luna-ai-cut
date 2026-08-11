@@ -33,6 +33,14 @@ docs/        # 只读，当前 TypeScript 类型与格式说明
 
 轨道属性和片段正文分开保存。`track.json` 引用 segment；片段按 30 秒窗口分组，每页最多 32 个。详细顶层结构查询 `docs/types/project-source-schema.ts`，片段字段查询 `docs/types/project.ts` 及它引用的类型文件。
 
+## 时间轴硬性约束
+
+- 音频和视频必须放在独立轨道。`media/index.json` 中 `hasAudio: true` 的视频只要没有明确要求静音，就必须同时创建 video 与 audio 片段；两者使用相同的 `mediaId`、`from`、`durationInFrames`、源区间和 `linkedGroupId`。`volume: 0` 表示 0 dB 的正常音量，不是静音；确实不要原声时在 video 上设置 `embeddedAudioMuted: true`。
+- 文字片段的位置和尺寸只能写 `textBox: { left, top, width, height }`，四个字段都是相对画布的 `0..1` 归一化值，且整个框必须位于画布内。例如底部字幕可用 `{ "left": 0.1, "top": 0.78, "width": 0.8, "height": 0.12 }`。文字的 `transform` 只用于旋转、透明度等非布局属性，禁止写 `x/y/width/height/anchorX/anchorY`，也不要使用不存在的 `scale`。
+- 当前不要直接修改文字的空间关键帧（`animations.json` 中的 `x/y/width/height/anchorX/anchorY`）；静态文字布局统一使用 `textBox`，需要文字动画时优先使用非空间属性或现有动画能力。
+- 轨道 `order` 越小，渲染层级越靠上。字幕文字必须放在 `kind: "subtitle"` 的可见轨道，并确保该轨道的 `order` 小于与它时间重叠的视频轨道，否则文字会被视频遮住。
+- `git.commit` 会提交当前剪辑源码的完整变更，以保证提交本身可独立还原。提交前必须检查 `git diff`，保留并理解本轮开始前已经存在的相关修改。
+
 ## 协同编辑
 
 - 人工编辑和 Agent 编辑同一套文件，源码修改成功后时间轴立即刷新。

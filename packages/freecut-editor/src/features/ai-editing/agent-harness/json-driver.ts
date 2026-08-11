@@ -11,6 +11,7 @@ import type {
 interface JsonAgentDriverOptions<TObservation> {
   adapter: LlmAdapter
   messages: LlmMessage[]
+  replayFromIndex?: number
   parse(raw: string): AiEditingResponse | null
   renderToolResults(observations: readonly TObservation[]): string
   requestOptions(round: number): LlmGenerateOptions
@@ -33,14 +34,20 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
   readonly protocol = 'json'
   private readonly messages: LlmMessage[]
   private initialRaw: string | undefined
+  private readonly replayFromIndex: number
 
   constructor(private readonly options: JsonAgentDriverOptions<TObservation>) {
     this.messages = structuredClone(options.messages)
     this.initialRaw = options.initialRaw
+    this.replayFromIndex = options.replayFromIndex ?? this.messages.length
   }
 
   get messageCount(): number {
     return this.messages.length
+  }
+
+  get replayMessages(): LlmMessage[] {
+    return structuredClone(this.messages.slice(this.replayFromIndex))
   }
 
   async request(input: { round: number }): Promise<AgentHarnessModelStep> {
@@ -82,6 +89,10 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
     this.messages.push({ role: 'user', content: continuationPrompt })
   }
 
+  recordFinalOutput(output: AgentHarnessModelOutput): void {
+    this.messages.push({ role: 'assistant', content: output.raw })
+  }
+
   recordUserPrompt(prompt: string): void {
     this.messages.push({ role: 'user', content: prompt })
   }
@@ -89,6 +100,7 @@ export class JsonAgentDriver<TObservation> implements AgentHarnessDriver<TObserv
   recordToolResults(
     output: AgentHarnessModelOutput,
     exchanges: readonly AgentHarnessToolExchange<TObservation>[],
+    _continueAfterTools = true,
   ): void {
     this.messages.push({ role: 'assistant', content: output.raw })
     this.messages.push({

@@ -11,6 +11,7 @@ import {
   type AgentHarnessEvent,
   type AgentHarnessResult,
   type AgentHarnessToolCall,
+  type AiEditingAgentTurn,
 } from './agent-harness'
 import {
   clearTimelineCodingSession,
@@ -21,8 +22,10 @@ import { DeferredToolLoader } from './deferred-tool-loader'
 import { createJsonDriver, createNativeDriver } from './orchestration-drivers'
 import {
   buildInitialMessages,
+  buildInitialNativeMessages,
   buildJsonFallbackMessages,
   isConfirmedPlanExecutionRequest,
+  replayMessagesForJson,
 } from './orchestration-messages'
 import { reportRunProgress, traceRun } from './orchestration-progress'
 import {
@@ -91,6 +94,8 @@ function loopResult(input: {
   observations: AiEditingObservation[]
   completed: boolean
   completionNotes?: string[]
+  agentTurn: AiEditingAgentTurn
+  loadedToolIds: string[]
 }): AiEditingRunResult {
   return {
     reply: input.reply,
@@ -99,12 +104,16 @@ function loopResult(input: {
     completed: input.completed,
     changedProject: hasSourceChanges(input.observations),
     completionNotes: input.completionNotes ?? [],
+    agentTurn: input.agentTurn,
+    loadedToolIds: input.loadedToolIds,
   }
 }
 
 function unfinishedResult(
   reply: string,
   observations: AiEditingObservation[],
+  agentTurn: AiEditingAgentTurn,
+  loadedToolIds: string[],
   signal?: AbortSignal,
 ): AiEditingRunResult {
   const note = signal?.aborted
@@ -125,17 +134,23 @@ function unfinishedResult(
     observations,
     completed: false,
     completionNotes: [note],
+    agentTurn,
+    loadedToolIds,
   })
 }
 
 function completedResult(
   reply: string,
   observations: AiEditingObservation[],
+  agentTurn: AiEditingAgentTurn,
+  loadedToolIds: string[],
 ): AiEditingRunResult {
   return loopResult({
     reply: hasCommittedEdit(observations) ? defaultReply(observations) : reply,
     observations,
     completed: true,
+    agentTurn,
+    loadedToolIds,
   })
 }
 
@@ -327,11 +342,17 @@ async function runDriver(
 
 function toRunResult(
   result: AgentHarnessResult<AiEditingObservation>,
+  loadedToolIds: string[],
   signal?: AbortSignal,
 ): AiEditingRunResult {
+  const agentTurn: AiEditingAgentTurn = {
+    id: crypto.randomUUID(),
+    protocol: result.protocol,
+    messages: result.replayMessages,
+  }
   return result.status === 'completed'
-    ? completedResult(result.reply, result.observations)
-    : unfinishedResult(result.reply, result.observations, signal)
+    ? completedResult(result.reply, result.observations, agentTurn, loadedToolIds)
+    : unfinishedResult(result.reply, result.observations, agentTurn, loadedToolIds, signal)
 }
 
 export async function runSingleAiEditingTurn(
@@ -344,7 +365,7 @@ export async function runSingleAiEditingTurn(
     const adapter = options.adapter ?? getAiEditingAdapter()
     const maxRounds = config.maxToolRounds ?? MAX_TOOL_ROUNDS
     const allowedToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
-    const toolLoader = new DeferredToolLoader(allowedToolIds)
+    const toolLoader = new DeferredToolLoader(allowedToolIds, options.loadedToolIds)
     const requiresEditCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
       isConfirmedPlanExecutionRequest(userText, options.history)
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
@@ -353,12 +374,11 @@ export async function runSingleAiEditingTurn(
     reportRunProgress(options, '正在准备剪辑需求', 26)
 
     let harnessResult: AgentHarnessResult<AiEditingObservation>
-    if (supportsNativeToolCalling(adapter)) {
-      const nativeMessages = await buildInitialMessages(
+    if (options.preferredProtocol !== 'json' && supportsNativeToolCalling(adapter)) {
+      const nativeMessages = await buildInitialNativeMessages(
         userText,
-        options.history,
+        options.agentHistory ?? [],
         evidence,
-        'native',
         toolLoader.candidateToolIds,
         toolLoader.activeToolIds,
         requiresEditCommit,
@@ -374,14 +394,29 @@ export async function runSingleAiEditingTurn(
         },
       )
       if (harnessResult.status === 'fallback') {
-        const fallbackMessages = await buildJsonFallbackMessages(
-          nativeMessages,
-          harnessResult.observations,
+        const jsonInitialMessages = await buildInitialMessages(
+          userText,
+          options.agentHistory
+            ? replayMessagesForJson(options.agentHistory)
+            : options.history,
+          evidence,
+          'json',
           toolLoader.candidateToolIds,
           toolLoader.activeToolIds,
+          requiresEditCommit,
+        )
+        const fallbackMessages = buildJsonFallbackMessages(
+          jsonInitialMessages,
+          harnessResult.observations,
         )
         harnessResult = await runDriver(
-          createJsonDriver(adapter, fallbackMessages, options, harnessResult.fallbackContent),
+          createJsonDriver(
+            adapter,
+            fallbackMessages,
+            options,
+            harnessResult.fallbackContent,
+            Math.max(0, jsonInitialMessages.length - 1),
+          ),
           options,
           {
             maxRounds,
@@ -395,7 +430,9 @@ export async function runSingleAiEditingTurn(
     } else {
       const jsonMessages = await buildInitialMessages(
         userText,
-        options.history,
+        options.agentHistory
+          ? replayMessagesForJson(options.agentHistory)
+          : options.history,
         evidence,
         'json',
         toolLoader.candidateToolIds,
@@ -414,7 +451,7 @@ export async function runSingleAiEditingTurn(
       )
     }
 
-    const result = toRunResult(harnessResult, options.signal)
+    const result = toRunResult(harnessResult, [...toolLoader.activeToolIds], options.signal)
     const failedEdit = latestFailedEdit(result.observations)
     const failureMessage = failedEdit ? failedEditMessage(failedEdit) : undefined
     return {

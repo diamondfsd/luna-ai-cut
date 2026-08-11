@@ -14,6 +14,11 @@ function format(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
+function normalizeDirectoryPath(path: string | undefined): string | undefined {
+  if (!path || !path.endsWith('/')) return path
+  return path.replace(/\/+$/, '') || path
+}
+
 function positionals(args: readonly string[], allowedFlags: ReadonlySet<string>): string[] {
   const values: string[] = []
   let optionsEnded = false
@@ -36,7 +41,7 @@ function runList(args: readonly string[]): string {
   const paths = positionals(args, new Set(['-R', '--recursive', '-a', '-l', '-la', '-al']))
   if (paths.length > 1) commandError('ls 最多接收一个目录')
   const result = getTimelineCodingSession().workspace.list({
-    path: paths[0],
+    path: normalizeDirectoryPath(paths[0]),
     recursive,
     limit: 200,
   })
@@ -56,7 +61,7 @@ function runSearch(args: readonly string[]): string {
   if (values.length < 1 || values.length > 2) commandError('rg 需要查询文字，可选一个目录')
   const result = getTimelineCodingSession().workspace.search({
     query: values[0]!,
-    path: values[1],
+    path: normalizeDirectoryPath(values[1]),
     caseSensitive,
     limit: 200,
   })
@@ -87,7 +92,7 @@ function runCount(args: readonly string[]): string {
   if (paths.length !== 1) commandError('wc 需要一个文件路径')
   const content = getTimelineCodingSession().workspace.read(paths[0]!).content
   const count = lineMode
-    ? content.split('\n').length
+    ? content.match(/\n/g)?.length ?? 0
     : wordMode
       ? content.trim().split(/\s+/).filter(Boolean).length
       : byteMode

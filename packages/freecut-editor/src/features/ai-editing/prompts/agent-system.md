@@ -26,10 +26,6 @@
 
 {{CODING_WORKSPACE_PROTOCOL}}
 
-## 可用能力
+## 可按需加载的能力
 
 {{AVAILABLE_TOOLS}}
-
-## 剪辑源码仓库摘要
-
-{{REPOSITORY_CONTEXT}}
