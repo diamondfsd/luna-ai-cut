@@ -38,7 +38,6 @@ export function createAiEditingRunRecorder(input: {
   id: string
   projectId: string
   request: string
-  timelineRevisionBefore: number
 }): AiEditingRunRecorder {
   let events: AiEditingRunEvent[] = []
   let record: AiEditingRunRecord = {
@@ -47,8 +46,7 @@ export function createAiEditingRunRecorder(input: {
     updatedAt: Date.now(),
     request: input.request,
     plan: [],
-    timelineRevisionBefore: input.timelineRevisionBefore,
-    timelineRevisionAfter: input.timelineRevisionBefore,
+    changedProject: false,
     toolCalls: [],
     completed: false,
     completionNotes: [],
@@ -70,18 +68,10 @@ export function createAiEditingRunRecorder(input: {
       message: event.message,
       ...('data' in event ? { data: event.data } : {}),
     }]
-    const data = event.data
-    const resultData = data && typeof data === 'object'
-      ? (data as { result?: { data?: { revisionAfter?: unknown } } }).result?.data
-      : undefined
-    const revisionAfter = typeof resultData?.revisionAfter === 'number'
-      ? resultData.revisionAfter
-      : record.timelineRevisionAfter
     record = {
       ...record,
       updatedAt: Date.now(),
       phase: event.type,
-      timelineRevisionAfter: revisionAfter,
       events,
     }
   }
@@ -105,8 +95,7 @@ export function createAiEditingRunRecorder(input: {
         ...record,
         ...(result.skillId ? { skillId: result.skillId } : {}),
         plan: result.plan,
-        timelineRevisionBefore: result.timelineRevisionBefore,
-        timelineRevisionAfter: result.timelineRevisionAfter,
+        changedProject: result.changedProject,
         toolCalls: toolCalls(result),
         completed: result.completed,
         completionNotes: result.completionNotes,
@@ -120,7 +109,6 @@ export function createAiEditingRunRecorder(input: {
       append({ type: 'failed', message, data: { phase } })
       record = {
         ...record,
-        timelineRevisionAfter: record.timelineRevisionAfter,
         completed: false,
         completionNotes: [message],
         status: 'failed',

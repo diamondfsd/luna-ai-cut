@@ -10,7 +10,7 @@ import type { AiEditingObservation } from './types'
 
 const CONFIRMED_PLAN_EXECUTION_DIRECTIVE = [
   '宿主判定：用户已确认上一条剪辑方案。',
-  '本轮是实际修改项目的执行请求，必须使用剪辑源码工具完成工程修改，并以成功的 timeline.commit 结束。',
+  '本轮是实际修改项目的执行请求，必须使用剪辑源码工具完成工程修改，并以成功的 git.commit 结束。',
   '不要再次只提供文本建议或重复脚本。',
 ].join('')
 
@@ -42,9 +42,9 @@ function appendExecutionDirective(
   systemPrompt: string,
   userText: string,
   history: readonly LlmMessage[],
-  requiresTimelineCommit = false,
+  requiresEditCommit = false,
 ): string {
-  return requiresTimelineCommit || isConfirmedPlanExecutionRequest(userText, history)
+  return requiresEditCommit || isConfirmedPlanExecutionRequest(userText, history)
     ? `${systemPrompt}\n\n${CONFIRMED_PLAN_EXECUTION_DIRECTIVE}`
     : systemPrompt
 }
@@ -64,13 +64,13 @@ export async function buildTurnSystemPrompt(
   evidence: unknown,
   protocol: 'native' | 'json',
   availableToolIds?: ReadonlySet<string>,
-  requiresTimelineCommit = false,
+  requiresEditCommit = false,
 ): Promise<string> {
   return appendExecutionDirective(
     await buildAiEditingSystemPrompt(evidence, protocol, userText, availableToolIds),
     userText,
     history,
-    requiresTimelineCommit,
+    requiresEditCommit,
   )
 }
 
@@ -80,7 +80,7 @@ export async function buildInitialMessages(
   evidence: unknown,
   protocol: 'native' | 'json',
   availableToolIds?: ReadonlySet<string>,
-  requiresTimelineCommit = false,
+  requiresEditCommit = false,
 ): Promise<LlmMessage[]> {
   return [
     {
@@ -91,7 +91,7 @@ export async function buildInitialMessages(
         evidence,
         protocol,
         availableToolIds,
-        requiresTimelineCommit,
+        requiresEditCommit,
       ),
     },
     ...history,

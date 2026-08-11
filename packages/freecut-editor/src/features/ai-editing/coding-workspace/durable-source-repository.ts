@@ -7,7 +7,7 @@ import {
   type VirtualFilePatchResult,
 } from './virtual-files'
 
-const SOURCE_FILE_PATTERN = /^(manifest\.json|(?:sequences|segments|components|tests)\/.+\.json)$/
+const SOURCE_FILE_PATTERN = /^(manifest\.json|(?:sequences|components)\/.+\.json)$/
 const MAX_SOURCE_FILES = 2_000
 
 export function isEditingSourceFile(path: string): boolean {
@@ -60,6 +60,13 @@ export interface DurableSourceStatus {
   entries: Array<{ path: string; change: 'added' | 'modified' | 'deleted' }>
 }
 
+export interface DurableSourceReplaceInput {
+  path: string
+  oldText: string
+  newText: string
+  replaceAll?: boolean
+}
+
 export class DurableEditingSourceRepository {
   private mutationTail: Promise<void> = Promise.resolve()
 
@@ -102,6 +109,41 @@ export class DurableEditingSourceRepository {
         })
         await this.bridge.applyChanges(this.projectId, changes)
       })
+    })
+  }
+
+  async readSource(path: string): Promise<{ path: string; content: string; size: number }> {
+    if (!isEditingSourceFile(path)) throw new Error('只能读取剪辑源码文件。')
+    await this.mutationTail
+    const content = await this.bridge.read(this.projectId, path)
+    this.workspace.refreshWritableFile(path, content)
+    return { path, content, size: content.length }
+  }
+
+  replaceSource(input: DurableSourceReplaceInput) {
+    if (!isEditingSourceFile(input.path)) throw new Error('只能修改剪辑源码文件。')
+    return this.enqueueMutation(async () => {
+      const result = await this.bridge.replace(this.projectId, input)
+      this.workspace.refreshWritableFile(input.path, result.content)
+      return { path: input.path, ...result }
+    })
+  }
+
+  createSource(path: string, content: string) {
+    if (!isEditingSourceFile(path)) throw new Error('只能创建剪辑源码文件。')
+    return this.enqueueMutation(async () => {
+      await this.bridge.create(this.projectId, path, content)
+      this.workspace.refreshWritableFile(path, content)
+      return { path, size: content.length }
+    })
+  }
+
+  removeSource(path: string, expectedContent: string) {
+    if (!isEditingSourceFile(path)) throw new Error('只能删除剪辑源码文件。')
+    return this.enqueueMutation(async () => {
+      await this.bridge.remove(this.projectId, path, expectedContent)
+      this.workspace.refreshWritableFile(path, null)
+      return { path, removed: true }
     })
   }
 
@@ -159,9 +201,13 @@ export class DurableEditingSourceRepository {
     return this.enqueueMutation(() => this.bridge.createBranch(this.projectId, name))
   }
 
-  commit(message: string): Promise<{ commitId: string; created: true }> {
+  commit(message: string, sourcePaths?: readonly string[]): Promise<{ commitId: string; created: true }> {
     return this.enqueueMutation(async () => {
-      const commitId = await this.bridge.commit(this.projectId, message)
+      const commitId = await this.bridge.commit(
+        this.projectId,
+        message,
+        sourcePaths ? [...sourcePaths] : undefined,
+      )
       this.workspace.markClean()
       return { commitId, created: true }
     })

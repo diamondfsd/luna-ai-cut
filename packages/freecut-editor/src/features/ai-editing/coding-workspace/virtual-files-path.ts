@@ -28,7 +28,10 @@ export function validateVirtualFilePath(path: string): VirtualFileKind {
   const parts = path.split('/')
   const root = parts[0]
   if (root === undefined) invalidPath(path)
-  if (!directorySet.has(root) || parts.length < 2 || !path.endsWith('.json')) invalidPath(path)
+  const validExtension = root === 'docs'
+    ? path.endsWith('.md') || path.endsWith('.ts')
+    : path.endsWith('.json')
+  if (!directorySet.has(root) || parts.length < 2 || !validExtension) invalidPath(path)
   return root as VirtualEditingDirectory
 }
 

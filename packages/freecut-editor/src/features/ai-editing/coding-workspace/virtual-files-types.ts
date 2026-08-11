@@ -1,10 +1,9 @@
 export const VIRTUAL_EDITING_DIRECTORIES = [
   'sequences',
-  'segments',
   'components',
   'media',
   'evidence',
-  'tests',
+  'docs',
 ] as const
 
 export type VirtualEditingDirectory = (typeof VIRTUAL_EDITING_DIRECTORIES)[number]

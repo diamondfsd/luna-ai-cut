@@ -2,11 +2,7 @@ import type { AiEditingObservation } from './types'
 
 const TIMELINE_OUTCOME_TOOL_IDS = new Set([
   'timeline.check',
-  'timeline.build',
-  'timeline.test',
-  'timeline.diff',
-  'timeline.publish_stage',
-  'timeline.commit',
+  'git.commit',
 ])
 
 export function latestFailedEdit(

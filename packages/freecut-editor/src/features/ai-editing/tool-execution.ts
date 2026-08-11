@@ -25,6 +25,10 @@ async function saveTimelineAfterEdit(): Promise<void> {
   await timeline.saveTimeline(projectId)
 }
 
+function persistsProjectSource(toolId: string): boolean {
+  return toolId.startsWith('source.') || toolId.startsWith('git.')
+}
+
 export async function executeToolCall(
   call: AiEditingToolCall,
   callIndex: number,
@@ -88,7 +92,9 @@ export async function executeToolCall(
     } else {
       result = await tool.execute(validation.value, { signal: options.signal, reportProgress })
     }
-    if (result.ok && tool.risk === 'edit') await saveTimelineAfterEdit()
+    if (result.ok && tool.risk === 'edit' && !persistsProjectSource(tool.id)) {
+      await saveTimelineAfterEdit()
+    }
   } catch (error) {
     result = { ok: false, message: error instanceof Error ? error.message : '操作未能完成。' }
   }

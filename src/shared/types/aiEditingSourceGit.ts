@@ -37,6 +37,21 @@ export interface AiEditingSourceChange {
   path: string
   /** `null` removes an existing source file. */
   content: string | null
+  /** Omit for an unconditional write, `null` to require absence, or text to require exact content. */
+  expectedContent?: string | null
+}
+
+export interface AiEditingSourceReplaceInput {
+  path: string
+  oldText: string
+  newText: string
+  replaceAll?: boolean
+}
+
+export interface AiEditingSourceReplaceResult {
+  changed: boolean
+  content: string
+  replacements: number
 }
 
 export interface AiEditingSourceGitApi {
@@ -47,13 +62,18 @@ export interface AiEditingSourceGitApi {
   status(projectId: string): Promise<AiEditingSourceStatus>
   list(projectId: string, sourceDirectory?: string): Promise<AiEditingSourceEntry[]>
   read(projectId: string, sourcePath: string): Promise<string>
+  create(projectId: string, sourcePath: string, content: string): Promise<void>
+  replace(
+    projectId: string,
+    input: AiEditingSourceReplaceInput,
+  ): Promise<AiEditingSourceReplaceResult>
   write(projectId: string, sourcePath: string, content: string): Promise<void>
-  remove(projectId: string, sourcePath: string): Promise<void>
+  remove(projectId: string, sourcePath: string, expectedContent?: string): Promise<void>
   applyChanges(projectId: string, changes: AiEditingSourceChange[]): Promise<void>
   diff(projectId: string): Promise<AiEditingSourceDiffEntry[]>
   log(projectId: string, limit?: number): Promise<AiEditingSourceCommit[]>
   branches(projectId: string): Promise<AiEditingSourceBranches>
   createBranch(projectId: string, name: string): Promise<void>
   checkout(projectId: string, name: string): Promise<void>
-  commit(projectId: string, message: string): Promise<string>
+  commit(projectId: string, message: string, sourcePaths?: string[]): Promise<string>
 }

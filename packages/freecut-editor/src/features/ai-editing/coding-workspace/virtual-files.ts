@@ -330,6 +330,22 @@ export class VirtualEditingWorkspace {
     this.baseline = new Map(this.files)
   }
 
+  refreshWritableFile(path: string, content: string | null): void {
+    const kind = validateVirtualFilePath(path)
+    if (kind === 'media' || kind === 'evidence' || kind === 'docs') {
+      throw new VirtualFilesError('INVALID_PATH', `Read-only file cannot be refreshed: ${path}`)
+    }
+    const current = this.files.get(path)
+    if (content === null) {
+      if (current === undefined) return
+      this.files.delete(path)
+    } else {
+      if (current === content) return
+      this.files.set(path, content)
+    }
+    this.revisionValue += 1
+  }
+
   refreshReadOnlyProjection(sourceRevision: number, files: readonly VirtualFileInput[]): void {
     if (!Number.isInteger(sourceRevision) || sourceRevision < 0) {
       throw new VirtualFilesError(
@@ -340,7 +356,7 @@ export class VirtualEditingWorkspace {
     const projected = new Map<string, string>()
     for (const file of files) {
       const kind = validateVirtualFilePath(file.path)
-      if (kind !== 'media' && kind !== 'evidence') {
+      if (kind !== 'media' && kind !== 'evidence' && kind !== 'docs') {
         throw new VirtualFilesError(
           'INVALID_PATH',
           `Read-only projection cannot replace source file: ${file.path}`,
@@ -353,7 +369,7 @@ export class VirtualEditingWorkspace {
     }
 
     const isReadOnlyPath = (path: string): boolean =>
-      path.startsWith('media/') || path.startsWith('evidence/')
+      path.startsWith('media/') || path.startsWith('evidence/') || path.startsWith('docs/')
     const nextFiles = new Map([...this.files].filter(([path]) => !isReadOnlyPath(path)))
     const nextBaseline = new Map([...this.baseline].filter(([path]) => !isReadOnlyPath(path)))
     for (const [path, content] of projected) {
