@@ -15,7 +15,7 @@ export function reportRunProgress(
   label: string,
   percent: number,
   ceiling?: number,
-  previewText?: string,
+  reasoningText?: string | null,
 ): void {
   options.onRunProgress?.({
     label,
@@ -23,7 +23,7 @@ export function reportRunProgress(
     ...(ceiling === undefined
       ? {}
       : { ceiling: Math.max(percent, Math.min(100, Math.round(ceiling))) }),
-    ...(previewText === undefined ? {} : { previewText }),
+    ...(reasoningText === undefined ? {} : { reasoningText }),
   })
 }
 
@@ -36,11 +36,10 @@ export function reportModelRequestStatus(
     status.state === 'retrying' || status.attempt > 1
       ? `（第 ${status.attempt}/${status.maxAttempts} 次）`
       : ''
-  const label =
-    status.state === 'streaming'
-      ? `${status.previewKind === 'reasoning' ? '正在整理剪辑思路' : '正在生成剪辑方案'}${attemptLabel}`
-      : status.state === 'retrying' || status.attempt > 1
-        ? `正在重新尝试获取剪辑方案${attemptLabel}`
-        : '正在等待剪辑方案'
-  reportRunProgress(options, label, percent, Math.max(percent, 68), status.previewText)
+  const label = `思考中${attemptLabel}`
+  const reasoningText =
+    status.state === 'streaming' && status.previewKind === 'reasoning'
+      ? status.previewText ?? ''
+      : null
+  reportRunProgress(options, label, percent, Math.max(percent, 68), reasoningText)
 }

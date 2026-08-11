@@ -187,6 +187,7 @@ export {
   type StoredAiEditingCustomSkill,
 } from '@freecut/infrastructure/storage/workspace-fs/ai-editing-skills'
 export {
+  listAiEditingRuns,
   saveAiEditingRun,
   type AiEditingRunEvent,
   type AiEditingRunRecord,

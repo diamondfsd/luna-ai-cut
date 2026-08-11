@@ -29,7 +29,7 @@ export interface AiEditingTraceEvent {
 export interface AiEditingRunOptions {
   history: LlmMessage[]
   signal?: AbortSignal
-  onToken?: (delta: string, fullText: string) => void
+  onFinalText?: (text: string) => void
   onToolActivity?: (activity: AiEditingToolActivity) => void
   onTaskActivity?: (activity: AiEditingTaskActivity) => void
   onRunProgress?: (progress: AiEditingRunProgress) => void

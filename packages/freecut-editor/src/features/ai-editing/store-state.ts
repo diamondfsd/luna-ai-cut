@@ -8,7 +8,8 @@ type ResettableConversationState = Pick<
   | 'thinkingPercent'
   | 'thinkingCeiling'
   | 'error'
-  | 'streamingText'
+  | 'reasoningText'
+  | 'draftAssistantText'
   | 'messages'
   | 'agentContext'
   | 'conversationWorkflow'
@@ -25,7 +26,8 @@ export function createEmptyConversationState(): ResettableConversationState {
     thinkingPercent: 0,
     thinkingCeiling: 0,
     error: null,
-    streamingText: '',
+    reasoningText: '',
+    draftAssistantText: '',
     messages: [],
     agentContext: null,
     conversationWorkflow: null,

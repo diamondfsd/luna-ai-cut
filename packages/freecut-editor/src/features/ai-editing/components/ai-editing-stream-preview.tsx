@@ -23,7 +23,7 @@ export const AiEditingStreamPreview = memo(function AiEditingStreamPreview({
   return (
     <pre
       className="mt-2 max-h-20 overflow-hidden whitespace-pre-wrap break-words border-t border-border/70 pt-2 font-sans text-[11px] leading-5 text-foreground/75"
-      aria-label="剪辑助手实时输出"
+      aria-label="剪辑助手思考过程"
     >
       {output}
     </pre>

@@ -124,3 +124,20 @@ export async function saveAiEditingRun(projectId: string, record: AiEditingRunRe
     throw new Error('Failed to save AI editing run')
   }
 }
+
+export async function listAiEditingRuns(projectId: string): Promise<AiEditingRunRecord[]> {
+  try {
+    const current = await readJson<AiEditingRunsFile>(
+      requireWorkspaceRoot(),
+      projectAiEditingRunsPath(projectId),
+    )
+    if (current?.version !== VERSION || !Array.isArray(current.runs)) return []
+    return current.runs
+      .map(sanitizeRecord)
+      .filter((entry): entry is AiEditingRunRecord => entry !== null)
+      .sort((left, right) => right.createdAt - left.createdAt)
+  } catch (error) {
+    logger.error(`listAiEditingRuns(${projectId}) failed`, error)
+    throw new Error('Failed to load AI editing runs')
+  }
+}

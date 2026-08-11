@@ -1,7 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Check,
-  CircleAlert,
+  BrainCircuit,
   Copy,
   History,
   Loader2,
@@ -15,7 +15,6 @@ import { Button } from '@freecut/components/ui/button'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { describeAiEditingReference } from '../resource-references'
 import { useAiEditingStore, type AiEditingMessage } from '../store'
-import type { AiEditingToolActivity } from '../types'
 import {
   formatAiEditingRecordPaths,
   resolveAiEditingRecordPaths,
@@ -23,10 +22,12 @@ import {
 import { AiEditingComposer } from './ai-editing-composer'
 import { AiEditingHistoryDialog } from './ai-editing-history-dialog'
 import { AiEditingMessageBubble } from './ai-editing-message'
+import { AiEditingModelContextDialog } from './ai-editing-model-context-dialog'
 import { AiProviderDialog } from './ai-provider-dialog'
 import { AiEditingSkillsDialog } from './ai-editing-skills-dialog'
 import { AiEditingStreamPreview } from './ai-editing-stream-preview'
 import { AiEditingTaskList } from './ai-editing-task-list'
+import { AiEditingToolActivityCard } from './ai-editing-tool-activity-card'
 
 const SUGGESTIONS = [
   '帮我查看当前时间轴内容',
@@ -35,100 +36,16 @@ const SUGGESTIONS = [
   '把选中的片段做得更紧凑一些',
 ]
 
-const ToolActivityRow = memo(function ToolActivityRow({
-  activity,
-}: {
-  activity: AiEditingToolActivity
-}) {
-  const status =
-    activity.status === 'running' ? (
-      <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
-    ) : activity.status === 'succeeded' ? (
-      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-    ) : (
-      <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-    )
-  return (
-    <li className="flex items-start gap-2 py-1.5 text-xs">
-      {status}
-      <div className="min-w-0 flex-1">
-        <p className="text-foreground">{activity.title}</p>
-        {activity.progressPercent !== undefined && (
-          <div className="mt-1.5 space-y-1">
-            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-              <span className="min-w-0 truncate">{activity.progressLabel ?? '正在处理'}</span>
-              {activity.progressPercent !== null && (
-                <span className="shrink-0 tabular-nums">{activity.progressPercent}%</span>
-              )}
-            </div>
-            <div
-              className="h-1 overflow-hidden rounded-full bg-secondary"
-              role="progressbar"
-              aria-label={activity.progressLabel ?? activity.title}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={activity.progressPercent ?? undefined}
-            >
-              <div
-                className={
-                  activity.progressPercent === null
-                    ? 'h-full w-full animate-pulse bg-primary/55'
-                    : 'h-full bg-primary transition-[width] duration-200'
-                }
-                style={
-                  activity.progressPercent === null
-                    ? undefined
-                    : { width: `${activity.progressPercent}%` }
-                }
-              />
-            </div>
-          </div>
-        )}
-        {activity.message && (
-          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-            {activity.message}
-          </p>
-        )}
-      </div>
-    </li>
-  )
-})
-
-const ToolActivityCard = memo(function ToolActivityCard({
-  activities,
-}: {
-  activities: AiEditingToolActivity[]
-}) {
-  if (activities.length === 0) return null
-  return (
-    <section
-      className="rounded-lg border border-primary/25 bg-primary/5 p-2.5"
-      aria-label="剪辑执行过程"
-      aria-live="polite"
-    >
-      <div className="flex items-center gap-2">
-        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <p className="text-xs font-medium text-foreground">本次剪辑操作</p>
-      </div>
-      <ol className="mt-1.5 divide-y divide-border/70">
-        {activities.map((activity) => (
-          <ToolActivityRow key={activity.id} activity={activity} />
-        ))}
-      </ol>
-    </section>
-  )
-})
-
 const PhaseProgressCard = memo(function PhaseProgressCard({
   label,
   percent,
   ceiling,
-  previewText,
+  reasoningText,
 }: {
   label: string
   percent: number | null
   ceiling?: number
-  previewText?: string
+  reasoningText?: string
 }) {
   const [displayPercent, setDisplayPercent] = useState(percent)
 
@@ -172,7 +89,7 @@ const PhaseProgressCard = memo(function PhaseProgressCard({
           style={displayPercent === null ? undefined : { width: `${displayPercent}%` }}
         />
       </div>
-      {previewText && <AiEditingStreamPreview text={previewText} />}
+      {reasoningText && <AiEditingStreamPreview text={reasoningText} />}
     </section>
   )
 })
@@ -189,7 +106,8 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const thinkingLabel = useAiEditingStore((state) => state.thinkingLabel)
   const thinkingPercent = useAiEditingStore((state) => state.thinkingPercent)
   const thinkingCeiling = useAiEditingStore((state) => state.thinkingCeiling)
-  const streamingText = useAiEditingStore((state) => state.streamingText)
+  const reasoningText = useAiEditingStore((state) => state.reasoningText)
+  const draftAssistantText = useAiEditingStore((state) => state.draftAssistantText)
   const messages = useAiEditingStore((state) => state.messages)
   const toolActivities = useAiEditingStore((state) => state.toolActivities)
   const taskActivities = useAiEditingStore((state) => state.taskActivities)
@@ -205,6 +123,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const resumeConversation = useAiEditingStore((state) => state.resumeConversation)
 
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
+  const [modelContextDialogOpen, setModelContextDialogOpen] = useState(false)
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
   const [skillsDialogOpen, setSkillsDialogOpen] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
@@ -215,7 +134,9 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const recordPathCopyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const busy = phase !== 'idle' || isStartingNewConversation
   const canChat = connectionState === 'ready' && !isRestoringConversation
-  const activeUserMessageId = [...messages].reverse().find((message) => message.role === 'user')?.id
+  const activeUserMessage = messages.findLast((message) => message.role === 'user')
+  const activeUserMessageId = activeUserMessage?.id
+  const runningToolActivity = toolActivities.findLast((activity) => activity.status === 'running')
 
   useEffect(() => {
     const bridge = getEmbeddedHostBridge().aiAssistant
@@ -246,7 +167,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, taskActivities, toolActivities, phase])
+  }, [messages, taskActivities, toolActivities, phase, reasoningText, draftAssistantText])
 
   useEffect(
     () => () => {
@@ -324,6 +245,17 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
             data-tooltip="查看历史会话"
           >
             <History className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            onClick={() => setModelContextDialogOpen(true)}
+            disabled={!projectId}
+            aria-label="查看模型上下文"
+            data-tooltip="查看模型上下文"
+          >
+            <BrainCircuit className="h-3.5 w-3.5" />
           </Button>
           <Button
             size="icon"
@@ -445,28 +377,45 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
               {message.id === activeUserMessageId && (
                 <>
                   <AiEditingTaskList activities={taskActivities} />
-                  <ToolActivityCard activities={toolActivities} />
+                  <AiEditingToolActivityCard activities={toolActivities} />
                 </>
               )}
             </Fragment>
           ))}
 
+        {canChat && draftAssistantText && activeUserMessage && (
+          <AiEditingMessageBubble
+            message={{
+              id: `draft-${activeUserMessage.id}`,
+              role: 'assistant',
+              content: draftAssistantText,
+              createdAt: activeUserMessage.createdAt,
+            }}
+            copied={false}
+            onCopy={(entry) => void copyMessage(entry)}
+          />
+        )}
+
         {canChat && phase === 'loading' && (
           <PhaseProgressCard label="正在准备剪辑助手" percent={loadPercent} />
         )}
-        {canChat && phase === 'thinking' && (
+        {canChat && phase === 'thinking' && !draftAssistantText && (
           <PhaseProgressCard
             label={thinkingLabel}
             percent={thinkingPercent}
             ceiling={thinkingCeiling}
-            previewText={streamingText}
+            reasoningText={reasoningText}
           />
         )}
-        {canChat &&
-          phase === 'executing' &&
-          !toolActivities.some((activity) => activity.status === 'running') && (
-            <PhaseProgressCard label="正在检查结果并继续完成剪辑" percent={null} />
-          )}
+        {canChat && phase === 'executing' && (
+          <PhaseProgressCard
+            label={
+              runningToolActivity?.progressLabel ??
+              (runningToolActivity ? `正在${runningToolActivity.title}` : '正在检查结果')
+            }
+            percent={runningToolActivity?.progressPercent ?? null}
+          />
+        )}
         {canChat && error && (
           <div
             role="alert"
@@ -490,6 +439,11 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         projectId={projectId}
         onOpenChange={setHistoryDialogOpen}
         onResume={resumeConversation}
+      />
+      <AiEditingModelContextDialog
+        open={modelContextDialogOpen}
+        projectId={projectId}
+        onOpenChange={setModelContextDialogOpen}
       />
       <AiProviderDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
       <AiEditingSkillsDialog open={skillsDialogOpen} onOpenChange={setSkillsDialogOpen} />

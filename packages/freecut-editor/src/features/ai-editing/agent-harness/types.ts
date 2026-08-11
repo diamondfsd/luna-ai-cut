@@ -1,3 +1,31 @@
+import type { LlmMessage } from '@freecut/infrastructure/llm'
+import type {
+  EmbeddedAiAssistantMessage,
+  EmbeddedAiAssistantToolDefinition,
+} from '@freecut/shared/host/embedded-host'
+
+export type AgentHarnessModelRequest =
+  | {
+      protocol: 'json'
+      round: number
+      messages: LlmMessage[]
+      generation: AgentHarnessGenerationParameters
+    }
+  | {
+      protocol: 'native'
+      round: number
+      messages: EmbeddedAiAssistantMessage[]
+      tools: EmbeddedAiAssistantToolDefinition[]
+      generation: AgentHarnessGenerationParameters
+    }
+
+export interface AgentHarnessGenerationParameters {
+  maxTokens?: number
+  temperature?: number
+  topP?: number
+  reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
+}
+
 export interface AgentHarnessToolCall {
   callId: string
   toolId: string

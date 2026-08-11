@@ -224,7 +224,7 @@ async function runDriver(
       !hasUnfinalizedEdit(observations),
     shouldStopAfterTool: hasCommittedEdit,
     canRecoverFromModelError: hasCommittedEdit,
-    onTextCompletion: (content) => options.onToken?.(content, content),
+    onTextCompletion: (content) => options.onFinalText?.(content),
     onEvent: (event) => handleHarnessEvent(options, event),
   })
 }
@@ -256,9 +256,11 @@ async function createJsonDriver(
       temperature: 0,
       reasoningEffort: options.reasoningEffort,
       signal: options.signal,
-      onToken: options.onToken,
       onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
     }),
+    onRequest: (request) => {
+      traceRun(options, 'model-context', `已保存第 ${request.round} 次模型调用的完整上下文。`, request)
+    },
     initialRaw,
   })
 }
@@ -284,6 +286,9 @@ function createNativeDriver(
       signal: options.signal,
       onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
     }),
+    onRequest: (request) => {
+      traceRun(options, 'model-context', `已保存第 ${request.round} 次模型调用的完整上下文。`, request)
+    },
   })
 }
 
