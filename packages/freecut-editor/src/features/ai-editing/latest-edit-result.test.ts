@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vite-plus/test'
-import { latestFailedEdit } from './latest-edit-result'
+import { failedEditMessage, latestFailedEdit } from './latest-edit-result'
 import type { AiEditingObservation } from './types'
 
 function editResult(
@@ -36,5 +36,31 @@ describe('latest edit result', () => {
         editResult(false, '阶段发布失败', 'timeline.publish_stage'),
       ])?.result.message,
     ).toBe('阶段发布失败')
+  })
+
+  it('reports a build failure that occurs after a successful stage publication', () => {
+    const buildFailure: AiEditingObservation = {
+      toolId: 'timeline.build',
+      result: {
+        ok: false,
+        message: '命令发现需要修正的源码。',
+        data: {
+          diagnostics: [{
+            code: 'BUILD_FAILED',
+            severity: 'error',
+            message: '时间轴在生成编辑程序后已发生变化，请基于最新编辑空间重新生成。',
+          }],
+        },
+      },
+    }
+    const failed = latestFailedEdit([
+      editResult(true, '当前阶段已发布', 'timeline.publish_stage'),
+      buildFailure,
+    ])
+
+    expect(failed).toBe(buildFailure)
+    expect(failedEditMessage(failed!)).toBe(
+      '时间轴在生成编辑程序后已发生变化，请基于最新编辑空间重新生成。',
+    )
   })
 })

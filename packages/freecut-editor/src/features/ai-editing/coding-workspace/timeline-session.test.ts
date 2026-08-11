@@ -39,7 +39,8 @@ function createRepository(workspace: VirtualEditingWorkspace) {
     projectId: 'project-1',
     workspace,
     runAtCleanHead: async <T>(_commitId: string, operation: () => Promise<T>) => operation(),
-  } as DurableEditingSourceRepository
+    refreshProjection: (sourceRevision: number) => workspace.markClean(sourceRevision),
+  } as unknown as DurableEditingSourceRepository
 }
 
 function createProgram(baseRevision: number, intent = 'Build title'): EditProgram {
@@ -99,6 +100,10 @@ function createCheckout(input: { program: EditProgram; receipt: EditProgramApply
   return {
     checkout: {
       baseline,
+      synchronizeBaseline: (snapshot: { revision: number; source: object }) => {
+        baseline.revision = snapshot.revision
+        baseline.source = snapshot.source
+      },
       diff: vi.fn(async () => ({
         artifact: currentProgram,
         diff: createDiff(),

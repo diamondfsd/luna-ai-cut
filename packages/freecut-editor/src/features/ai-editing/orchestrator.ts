@@ -10,18 +10,19 @@ import {
   type EmbeddedAiAssistantMessage,
   type EmbeddedAiAssistantToolCall,
 } from '@freecut/shared/host/embedded-host'
-import { buildAiEditingSystemPrompt } from './agent-prompt'
 import {
   clearTimelineCodingSession,
   startTimelineCodingSession,
 } from './coding-workspace/session-registry'
 import { getTimelineRevision } from './evidence'
-import { latestFailedEdit } from './latest-edit-result'
+import { failedEditMessage, latestFailedEdit } from './latest-edit-result'
 import { createNativeToolCatalog } from './native-tool-catalog'
 import {
   buildInitialMessages,
   buildJsonFallbackMessages,
+  buildTurnSystemPrompt,
   currentWorkspace,
+  isConfirmedPlanExecutionRequest,
   toNativeMessages,
 } from './orchestration-messages'
 import {
@@ -49,6 +50,12 @@ import type { AiEditingObservation } from './types'
 const MAX_TOOL_ROUNDS = 20
 const MAX_TOOL_CALLS_PER_ROUND = 8
 const MAX_TOKENS = 8_192
+
+function isDeferredTextReply(reply: string): boolean {
+  const text = reply.trim()
+  if (text.length >= 120) return false
+  return /(我来帮你|我会帮你|接下来.{0,12}(给你|提供)|直接给你.{0,12}(方案|脚本)|马上.{0,12}(开始|给你))/.test(text)
+}
 
 export function getAiEditingAdapter(): LlmAdapter {
   if (getEmbeddedHostBridge().aiAssistant) return openAiChatCompletionsLlmAdapter
@@ -93,11 +100,11 @@ function unfinishedResult(
 }
 
 function completedEditResult(
-  reply: string,
+  _reply: string,
   observations: AiEditingObservation[],
 ): AiEditingRunResult {
   return loopResult({
-    reply: reply || defaultReply(observations),
+    reply: defaultReply(observations),
     observations,
     completed: true,
   })
@@ -112,6 +119,7 @@ async function runJsonToolLoop(
   maxRounds = MAX_TOOL_ROUNDS,
   availableToolIds?: ReadonlySet<string>,
   initialObservations: readonly AiEditingObservation[] = [],
+  requiresTimelineCommit = false,
 ): Promise<AiEditingRunResult> {
   const observations: AiEditingObservation[] = [...initialObservations]
   let reply = ''
@@ -173,7 +181,9 @@ async function runJsonToolLoop(
     reply = parsed.reply || reply
     if (parsed.toolCalls.length === 0) {
       if (
+        !requiresTimelineCommit &&
         parsed.reply.trim() &&
+        !isDeferredTextReply(parsed.reply) &&
         !hasUnpublishedSourceWork(observations) &&
         !hasUnfinalizedEdit(observations)
       ) {
@@ -211,10 +221,11 @@ async function runJsonToolLoop(
     messages.push({ role: 'assistant', content: raw })
     messages[0] = {
       role: 'system',
-      content: await buildAiEditingSystemPrompt(
+      content: await buildTurnSystemPrompt(
+        userText,
+        options.history,
         await currentWorkspace(options),
         'json',
-        userText,
         availableToolIds,
       ),
     }
@@ -236,6 +247,7 @@ async function runNativeToolLoop(
   adapter: NativeToolCallingLlmAdapter,
   maxRounds = MAX_TOOL_ROUNDS,
   availableToolIds?: ReadonlySet<string>,
+  requiresTimelineCommit = false,
 ): Promise<AiEditingRunResult> {
   const catalog = createNativeToolCatalog(availableToolIds)
   const observations: AiEditingObservation[] = []
@@ -295,6 +307,7 @@ async function runNativeToolLoop(
         maxRounds,
         availableToolIds,
         observations,
+        requiresTimelineCommit,
       )
     }
 
@@ -302,7 +315,9 @@ async function runNativeToolLoop(
     if (response.content) reply = response.content
     if (response.toolCalls.length === 0) {
       if (
+        !requiresTimelineCommit &&
         response.content?.trim() &&
+        !isDeferredTextReply(response.content) &&
         !hasUnpublishedSourceWork(observations) &&
         !hasUnfinalizedEdit(observations)
       ) {
@@ -366,10 +381,11 @@ async function runNativeToolLoop(
     }
     messages[0] = {
       role: 'system',
-      content: await buildAiEditingSystemPrompt(
+      content: await buildTurnSystemPrompt(
+        userText,
+        options.history,
         await currentWorkspace(options),
         'native',
-        userText,
         availableToolIds,
       ),
     }
@@ -392,6 +408,7 @@ export async function runSingleAiEditingTurn(
     const evidence = config.evidence ?? (await codingSession.promptContext())
     reportRunProgress(options, '正在整理项目结构和上下文', 18)
     const availableToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
+    const requiresTimelineCommit = isConfirmedPlanExecutionRequest(userText, options.history)
     let result: AiEditingRunResult
     if (supportsNativeToolCalling(adapter)) {
       reportRunProgress(options, '正在准备剪辑需求', 26)
@@ -410,6 +427,7 @@ export async function runSingleAiEditingTurn(
         adapter,
         config.maxToolRounds,
         availableToolIds,
+        requiresTimelineCommit,
       )
     } else {
       reportRunProgress(options, '正在准备剪辑需求', 26)
@@ -421,15 +439,22 @@ export async function runSingleAiEditingTurn(
         undefined,
         config.maxToolRounds,
         availableToolIds,
+        [],
+        requiresTimelineCommit,
       )
     }
     const failedEdit = latestFailedEdit(result.observations)
+    const failureMessage = failedEdit ? failedEditMessage(failedEdit) : undefined
     return {
       ...result,
-      ...(failedEdit ? { reply: `剪辑工程没有发布：${failedEdit.result.message}` } : {}),
+      reply: failureMessage
+        ? `剪辑工程没有发布：${failureMessage}`
+        : result.completed
+          ? result.reply
+          : defaultReply(result.observations),
       plan: declaredPlan(result.observations),
       completed: !failedEdit && result.completed,
-      completionNotes: failedEdit ? [failedEdit.result.message] : result.completionNotes,
+      completionNotes: failureMessage ? [failureMessage] : result.completionNotes,
       timelineRevisionBefore,
       timelineRevisionAfter: getTimelineRevision(),
     }

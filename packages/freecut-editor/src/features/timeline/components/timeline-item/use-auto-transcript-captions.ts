@@ -10,6 +10,24 @@ interface UseAutoTranscriptCaptionsParams {
   isBroken: boolean
 }
 
+export function shouldAutoInsertTranscriptCaptions({
+  item,
+  caption,
+  hasTimelineCaptions,
+  isBroken,
+}: UseAutoTranscriptCaptionsParams): boolean {
+  return (
+    !item.aiEditingSource &&
+    caption.canManageCaptions &&
+    caption.mediaHasTranscript &&
+    !hasTimelineCaptions &&
+    !(item.transcriptCaptions?.type === 'transcript' && item.transcriptCaptions.enabled === false) &&
+    !isBroken &&
+    (item.type === 'video' || item.type === 'audio') &&
+    Boolean(item.mediaId)
+  )
+}
+
 /**
  * Auto-enables transcript-backed captions for a video/audio clip the first time
  * its media has a transcript and no captions yet. Runs once per item+media pair
@@ -23,29 +41,25 @@ export function useAutoTranscriptCaptions({
   isBroken,
 }: UseAutoTranscriptCaptionsParams): void {
   const attemptRef = useRef<string | null>(null)
+  const mediaId = item.mediaId
+  const eligible = shouldAutoInsertTranscriptCaptions({
+    item,
+    caption,
+    hasTimelineCaptions,
+    isBroken,
+  })
 
   useEffect(() => {
-    if (
-      !caption.canManageCaptions ||
-      !caption.mediaHasTranscript ||
-      hasTimelineCaptions ||
-      (item.transcriptCaptions?.type === 'transcript' &&
-        item.transcriptCaptions.enabled === false) ||
-      isBroken ||
-      (item.type !== 'video' && item.type !== 'audio') ||
-      !item.mediaId
-    ) {
-      return
-    }
+    if (!eligible || !mediaId) return
 
-    const attemptKey = `${item.id}:${item.mediaId}`
+    const attemptKey = `${item.id}:${mediaId}`
     if (attemptRef.current === attemptKey) {
       return
     }
     attemptRef.current = attemptKey
 
     void mediaTranscriptionService
-      .insertTranscriptAsCaptions(item.mediaId, {
+      .insertTranscriptAsCaptions(mediaId, {
         clipIds: [item.id],
         replaceExisting: false,
         selectUpdatedClips: false,
@@ -53,14 +67,5 @@ export function useAutoTranscriptCaptions({
       .catch(() => {
         // Keep this silent: the explicit Generate Captions action remains the user-facing fallback.
       })
-  }, [
-    caption.canManageCaptions,
-    caption.mediaHasTranscript,
-    hasTimelineCaptions,
-    isBroken,
-    item.id,
-    item.mediaId,
-    item.transcriptCaptions,
-    item.type,
-  ])
+  }, [eligible, item.id, mediaId])
 }

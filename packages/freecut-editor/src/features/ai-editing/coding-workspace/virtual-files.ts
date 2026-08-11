@@ -74,7 +74,7 @@ function countOccurrences(content: string, text: string): number {
   if (text === '') return 0
   let count = 0
   let offset = 0
-  while (true) {
+  for (;;) {
     const index = content.indexOf(text, offset)
     if (index < 0) return count
     count += 1
@@ -328,6 +328,42 @@ export class VirtualEditingWorkspace {
     }
     this.sourceRevisionValue = sourceRevision
     this.baseline = new Map(this.files)
+  }
+
+  refreshReadOnlyProjection(sourceRevision: number, files: readonly VirtualFileInput[]): void {
+    if (!Number.isInteger(sourceRevision) || sourceRevision < 0) {
+      throw new VirtualFilesError(
+        'REVISION_CONFLICT',
+        'Source revision must be a non-negative integer.',
+      )
+    }
+    const projected = new Map<string, string>()
+    for (const file of files) {
+      const kind = validateVirtualFilePath(file.path)
+      if (kind !== 'media' && kind !== 'evidence') {
+        throw new VirtualFilesError(
+          'INVALID_PATH',
+          `Read-only projection cannot replace source file: ${file.path}`,
+        )
+      }
+      if (projected.has(file.path)) {
+        throw new VirtualFilesError('DUPLICATE_FILE', `Duplicate virtual file: ${file.path}`)
+      }
+      projected.set(file.path, file.content)
+    }
+
+    const isReadOnlyPath = (path: string): boolean =>
+      path.startsWith('media/') || path.startsWith('evidence/')
+    const nextFiles = new Map([...this.files].filter(([path]) => !isReadOnlyPath(path)))
+    const nextBaseline = new Map([...this.baseline].filter(([path]) => !isReadOnlyPath(path)))
+    for (const [path, content] of projected) {
+      nextFiles.set(path, content)
+      nextBaseline.set(path, content)
+    }
+    if (compareFiles(this.files, nextFiles).length > 0) this.revisionValue += 1
+    this.sourceRevisionValue = sourceRevision
+    this.files = nextFiles
+    this.baseline = nextBaseline
   }
 
   private getChanges(): VirtualFileChange[] {

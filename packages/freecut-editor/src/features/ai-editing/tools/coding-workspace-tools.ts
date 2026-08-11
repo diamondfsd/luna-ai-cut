@@ -1,8 +1,31 @@
 import { z } from 'zod'
 import { isEditingSourceFile } from '../coding-workspace/durable-source-repository'
+import { summarizeTimelineProgram, type TimelineProgramDiff } from '../coding-workspace/timeline-session'
+import type { EditProgram } from '../edit-program/types'
 import type { AiEditingToolModule } from '../types'
 import { getTimelineCodingSession } from '../coding-workspace/session-registry'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
+
+function summarizeBuild(artifact: EditProgram) {
+  return {
+    baseRevision: artifact.baseRevision,
+    sourceProjectId: artifact.sourceProjectId,
+    intent: artifact.intent,
+    ...summarizeTimelineProgram(artifact),
+  }
+}
+
+function summarizeDiff(diff: TimelineProgramDiff) {
+  return {
+    operationCount: diff.operationCount,
+    operationTypes: diff.operationTypes,
+    changedRanges: diff.changedRanges,
+    createdCount: diff.created.length,
+    updatedCount: diff.updated.length,
+    removedCount: diff.removed.length,
+    transitionsChanged: diff.transitionsChanged,
+  }
+}
 
 const listFiles = defineAiEditingTool({
   id: 'workspace.list',
@@ -287,14 +310,33 @@ const timelineCommand = (id: 'timeline.check' | 'timeline.build' | 'timeline.dif
     summarize: () => id,
     execute: async () => {
       const session = getTimelineCodingSession()
-      const result =
-        id === 'timeline.check'
-          ? await session.check()
-          : id === 'timeline.build'
-            ? await session.build()
-            : await session.diff()
+      if (id === 'timeline.check') {
+        const result = await session.check()
+        const ok = !result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
+        return { ok, message: ok ? '命令执行通过。' : '命令发现需要修正的源码。', data: result }
+      }
+      if (id === 'timeline.build') {
+        const result = await session.build()
+        const ok = !result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
+        return {
+          ok,
+          message: ok ? '命令执行通过。' : '命令发现需要修正的源码。',
+          data: {
+            diagnostics: result.diagnostics,
+            ...(result.artifact ? { build: summarizeBuild(result.artifact) } : {}),
+          },
+        }
+      }
+      const result = await session.diff()
       const ok = !result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')
-      return { ok, message: ok ? '命令执行通过。' : '命令发现需要修正的源码。', data: result }
+      return {
+        ok,
+        message: ok ? '命令执行通过。' : '命令发现需要修正的源码。',
+        data: {
+          diagnostics: result.diagnostics,
+          ...(result.diff ? { diff: summarizeDiff(result.diff) } : {}),
+        },
+      }
     },
   })
 
@@ -342,7 +384,16 @@ const timelinePublication = (id: 'timeline.publish_stage' | 'timeline.commit') =
           : isStage
             ? '当前阶段未能发布。'
             : '剪辑工程未能最终提交。',
-        data: result,
+        data: result.ok
+          ? {
+              ok: true,
+              commitId: result.commitId,
+              revisionBefore: result.revisionBefore,
+              revisionAfter: result.revisionAfter,
+              diff: summarizeDiff(result.diff),
+              diagnostics: result.diagnostics,
+            }
+          : result,
       }
     },
   })

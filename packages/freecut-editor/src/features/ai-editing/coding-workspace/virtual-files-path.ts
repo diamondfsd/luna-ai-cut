@@ -33,7 +33,7 @@ export function validateVirtualFilePath(path: string): VirtualFileKind {
 }
 
 export function validateVirtualDirectoryPath(path = ''): string {
-  if (path === '') return path
+  if (path === '' || path === '.') return ''
   assertCommonPathRules(path)
   const root = path.split('/')[0]
   if (root === undefined) invalidPath(path)

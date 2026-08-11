@@ -259,6 +259,22 @@ describe('CodingWorkspaceWorkingCopy', () => {
     expect(workingCopy.baseline).toEqual(baselineAfterFirst)
   })
 
+  it('synchronizes to a newer live baseline after a completed publication', async () => {
+    const fake = fakeAdapter()
+    const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)
+    await workingCopy.commit({ commitId: 'phase-1', workspace: dirtyWorkspace })
+
+    workingCopy.synchronizeBaseline({
+      revision: 7,
+      source: { clips: ['opening', 'middle', 'derived-caption'] },
+    })
+
+    expect(workingCopy.baseline).toEqual({
+      revision: 7,
+      source: { clips: ['opening', 'middle', 'derived-caption'] },
+    })
+  })
+
   it('does not build or commit a workspace that fails checking', async () => {
     const fake = fakeAdapter({ invalid: true })
     const workingCopy = await createCodingWorkspaceWorkingCopy(fake.adapter)

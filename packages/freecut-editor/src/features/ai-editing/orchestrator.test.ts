@@ -81,6 +81,45 @@ describe('AI editing coding-agent orchestration', () => {
     expect(result.completionNotes).toContain('本轮没有在操作上限内完成用户目标。')
   })
 
+  it('does not treat a short promise to provide the answer as the final text delivery', async () => {
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse('好的，我来帮你设计，直接给你完整的脚本方案。', []))
+      .mockResolvedValueOnce(jsonResponse('开场先用孩子的原声，再切到爸爸写代码的画面。', []))
+    const editingAdapter = adapter('')
+    editingAdapter.generate = generate
+
+    const result = await runSingleAiEditingTurn(
+      '只设计脚本',
+      { history: [], adapter: editingAdapter },
+      { maxToolRounds: 2 },
+    )
+
+    expect(generate).toHaveBeenCalledTimes(2)
+    expect(result.completed).toBe(true)
+    expect(result.reply).toContain('开场')
+  })
+
+  it('does not accept prose as completion after the user confirms an editing plan', async () => {
+    const editingAdapter = adapter(jsonResponse('脚本已经完成，可以照着拍摄和剪辑。', []))
+
+    const result = await runSingleAiEditingTurn(
+      'OK就按照这个方案吧',
+      {
+        history: [
+          { role: 'user', content: '帮我设计一个抖音视频脚本' },
+          { role: 'assistant', content: '脚本方案：开场用宝宝原声，再切换到游戏画面，最后展示完成效果。' },
+        ],
+        adapter: editingAdapter,
+      },
+      { maxToolRounds: 1 },
+    )
+
+    expect(editingAdapter.generate).toHaveBeenCalledTimes(1)
+    expect(result.completed).toBe(false)
+    expect(result.completionNotes).toContain('本轮没有在操作上限内完成用户目标。')
+  })
+
   it('completes editing immediately after a successful timeline commit', async () => {
     const result = await runSingleAiEditingTurn(
       '执行剪辑',
@@ -96,7 +135,7 @@ describe('AI editing coding-agent orchestration', () => {
     )
 
     expect(result.completed).toBe(true)
-    expect(result.reply).toBe('剪辑已完成。')
+    expect(result.reply).toBe('剪辑工程已构建并发布到时间轴。')
     expect(result.observations[0]?.toolId).toBe('timeline.commit')
   })
 
@@ -126,6 +165,7 @@ describe('AI editing coding-agent orchestration', () => {
     expect(generate).toHaveBeenCalledTimes(3)
     expect(harness.start).toHaveBeenCalledTimes(1)
     expect(result.completed).toBe(true)
+    expect(result.reply).toBe('剪辑工程已构建并发布到时间轴。')
     expect(result.observations.map((observation) => observation.toolId)).toEqual([
       'timeline.publish_stage',
       'timeline.commit',

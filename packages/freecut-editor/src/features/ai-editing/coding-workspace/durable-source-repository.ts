@@ -110,6 +110,13 @@ export class DurableEditingSourceRepository {
     return this.readStatus()
   }
 
+  refreshProjection(sourceRevision: number, files: readonly VirtualFileInput[]): void {
+    this.workspace.refreshReadOnlyProjection(
+      sourceRevision,
+      files.filter((file) => !isEditingSourceFile(file.path)),
+    )
+  }
+
   runAtCleanHead<T>(commitId: string, operation: () => Promise<T>): Promise<T> {
     return this.enqueueMutation(async () => {
       const status = await this.readStatus()
