@@ -16,6 +16,21 @@ function toolError(toolId: string, message: string): AiEditingObservation {
   return { toolId, result: { ok: false, message } }
 }
 
+function structuredToolError(error: unknown): AiEditingToolResult {
+  const message = error instanceof Error ? error.message : '操作未能完成。'
+  const code = message.match(/\b(SOURCE_[A-Z_]+)\b/)?.[1] ?? 'TOOL_EXECUTION_FAILED'
+  return {
+    ok: false,
+    message,
+    data: {
+      error: {
+        code,
+        retryable: code === 'SOURCE_REVISION_MISMATCH',
+      },
+    },
+  }
+}
+
 export function serializeForModel(value: unknown): string {
   const text = JSON.stringify(value)
   return text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}…` : text
@@ -106,7 +121,7 @@ export async function executeToolCall(
       await saveTimelineAfterEdit()
     }
   } catch (error) {
-    result = { ok: false, message: error instanceof Error ? error.message : '操作未能完成。' }
+    result = structuredToolError(error)
   }
 
   options.onToolActivity?.({

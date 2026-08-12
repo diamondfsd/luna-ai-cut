@@ -67,6 +67,12 @@ export interface DurableSourceReplaceInput {
   replaceAll?: boolean
 }
 
+export interface DurableSourceChange {
+  path: string
+  content: string | null
+  expectedRevision: string | null
+}
+
 export class DurableEditingSourceRepository {
   private mutationTail: Promise<void> = Promise.resolve()
 
@@ -138,12 +144,35 @@ export class DurableEditingSourceRepository {
     })
   }
 
-  removeSource(path: string, expectedContent: string) {
+  removeSource(path: string, expectedRevision: string) {
     if (!isEditingSourceFile(path)) throw new Error('只能删除剪辑源码文件。')
     return this.enqueueMutation(async () => {
-      await this.bridge.remove(this.projectId, path, expectedContent)
+      await this.bridge.remove(this.projectId, path, expectedRevision)
       this.workspace.refreshWritableFile(path, null)
       return { path, removed: true }
+    })
+  }
+
+  applySourceChanges(changes: DurableSourceChange[]) {
+    if (changes.some((change) => !isEditingSourceFile(change.path))) {
+      throw new Error('只能修改剪辑源码文件。')
+    }
+    return this.enqueueMutation(async () => {
+      await this.bridge.applyChanges(this.projectId, changes.map((change) => ({
+        path: change.path,
+        content: change.content,
+        ...(change.expectedRevision === null
+          ? { expectedContent: null }
+          : { expectedRevision: change.expectedRevision }),
+      })))
+      for (const change of changes) this.workspace.refreshWritableFile(change.path, change.content)
+      return {
+        changed: changes.length > 0,
+        changes: changes.map((change) => ({
+          path: change.path,
+          operation: change.content === null ? 'removed' as const : 'written' as const,
+        })),
+      }
     })
   }
 

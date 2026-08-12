@@ -9,6 +9,7 @@ import {
   createAiEditingSourceGitApi,
   createAiEditingSourceGitService,
 } from '../electron/aiEditingSourceGitService.ts'
+import { sourceContentRevision } from '../electron/aiEditingSourceGitMutation.ts'
 
 const testRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-editing-source-git-'))
 const projectId = 'Dag9toSB'
@@ -100,6 +101,28 @@ try {
   assert.match(gitConfig, /editing-agent@luna\.local/)
   assert.deepEqual(await service.status(), { branch: 'main', clean: true, entries: [] })
   assert.equal(await service.read('luna-project.json'), '{"version":1}\n')
+
+  await service.create('segments/trailing-newline.json', '{"text":"keep-newline"}\n')
+  await service.remove(
+    'segments/trailing-newline.json',
+    sourceContentRevision('{"text":"keep-newline"}\n'),
+  )
+  await assert.rejects(service.read('segments/trailing-newline.json'), /ENOENT/)
+
+  const beforeAtomicRevisionFailure = await service.read('luna-project.json')
+  await assert.rejects(
+    service.applyChanges([
+      {
+        path: 'luna-project.json',
+        content: '{"version":99}\n',
+        expectedRevision: '0'.repeat(64),
+      },
+      { path: 'segments/must-not-exist.json', content: '{}\n', expectedContent: null },
+    ]),
+    /SOURCE_REVISION_MISMATCH/,
+  )
+  assert.equal(await service.read('luna-project.json'), beforeAtomicRevisionFailure)
+  await assert.rejects(service.read('segments/must-not-exist.json'), /ENOENT/)
   assert.deepEqual(
     (await service.list()).map((entry) => entry.name),
     ['luna-project.json', 'segments'],

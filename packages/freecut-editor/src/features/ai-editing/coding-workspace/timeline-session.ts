@@ -16,6 +16,7 @@ import {
 import type { CodingWorkspaceDiagnostic } from './diagnostics'
 import {
   DurableEditingSourceRepository,
+  type DurableSourceChange,
   type DurableSourceReplaceInput,
 } from './durable-source-repository'
 import { projectAgentWorkspaceToFiles } from './project-projection'
@@ -219,9 +220,16 @@ export class TimelineCodingSession {
     return result
   }
 
-  async removeSource(path: string, expectedContent: string) {
-    const result = await this.repository.removeSource(path, expectedContent)
+  async removeSource(path: string, expectedRevision: string) {
+    const result = await this.repository.removeSource(path, expectedRevision)
     this.changedSourcePaths.add(path)
+    this.scheduleRendererRefresh()
+    return result
+  }
+
+  async applySourceChanges(changes: DurableSourceChange[]) {
+    const result = await this.repository.applySourceChanges(changes)
+    for (const change of changes) this.changedSourcePaths.add(change.path)
     this.scheduleRendererRefresh()
     return result
   }

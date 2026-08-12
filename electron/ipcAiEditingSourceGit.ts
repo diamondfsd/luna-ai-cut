@@ -36,8 +36,8 @@ export function register(): void {
   ipcMain.handle('ai-editing-source-git:write', (_event, projectId, sourcePath, content) =>
     sourceGitApi().write(projectId, sourcePath, content),
   )
-  ipcMain.handle('ai-editing-source-git:remove', (_event, projectId, sourcePath, expectedContent) =>
-    sourceGitApi().remove(projectId, sourcePath, expectedContent),
+  ipcMain.handle('ai-editing-source-git:remove', (_event, projectId, sourcePath, expectedRevision) =>
+    sourceGitApi().remove(projectId, sourcePath, expectedRevision),
   )
   ipcMain.handle('ai-editing-source-git:apply-changes', (_event, projectId, changes) =>
     sourceGitApi().applyChanges(projectId, changes),

@@ -3,6 +3,7 @@ import type { AiEditingConversationWorkflow } from '@freecut/infrastructure/stor
 
 export type AiEditingTurnIntent =
   | { kind: 'conversation' }
+  | { kind: 'execute-edit' }
   | {
       kind: 'execute-approved-plan'
       planMessageId?: string
@@ -45,11 +46,18 @@ export function isEditingPlanRequest(text: string): boolean {
     /(设计|写|做|出|给|规划|整理|想)/.test(text)
 }
 
+export function isDirectEditingRequest(text: string): boolean {
+  const editAction = /(删除|移除|去掉|改成|替换|添加|增加|调整|修改|剪掉|裁掉|放到|挪到|生成|制作|创建)/
+  const editTarget = /(字幕|旁白|音轨|音乐|声音|视频|画面|镜头|片段|时间轴|轨道|转场|滤镜|工程)/
+  return editAction.test(text) && editTarget.test(text) && !/[?？]|能不能|可不可以|是否/.test(text)
+}
+
 export function resolveAiEditingTurnIntent(
   userText: string,
   history: readonly ConversationMessage[],
   workflow: AiEditingConversationWorkflow | null = null,
 ): AiEditingTurnIntent {
+  if (isDirectEditingRequest(userText)) return { kind: 'execute-edit' }
   if (!isPlanConfirmation(userText)) return CONVERSATION_INTENT
 
   const previousAssistant = latestAssistantMessage(history)
@@ -91,7 +99,7 @@ export function nextConversationWorkflow(input: {
   now?: number
 }): AiEditingConversationWorkflow | null {
   if (!input.completed) return input.previous
-  if (input.intent.kind === 'execute-approved-plan' || input.changedTimeline) return null
+  if (input.intent.kind !== 'conversation' || input.changedTimeline) return null
   if (
     isEditingPlanRequest(input.userText) &&
     looksLikeDeliveredEditingPlan(input.assistantReply)

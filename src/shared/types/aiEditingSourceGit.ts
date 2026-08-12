@@ -39,6 +39,8 @@ export interface AiEditingSourceChange {
   content: string | null
   /** Omit for an unconditional write, `null` to require absence, or text to require exact content. */
   expectedContent?: string | null
+  /** SHA-256 of the expected current content. Prefer this for model-driven edits. */
+  expectedRevision?: string
 }
 
 export interface AiEditingSourceReplaceInput {
@@ -68,7 +70,7 @@ export interface AiEditingSourceGitApi {
     input: AiEditingSourceReplaceInput,
   ): Promise<AiEditingSourceReplaceResult>
   write(projectId: string, sourcePath: string, content: string): Promise<void>
-  remove(projectId: string, sourcePath: string, expectedContent?: string): Promise<void>
+  remove(projectId: string, sourcePath: string, expectedRevision?: string): Promise<void>
   applyChanges(projectId: string, changes: AiEditingSourceChange[]): Promise<void>
   diff(projectId: string): Promise<AiEditingSourceDiffEntry[]>
   log(projectId: string, limit?: number): Promise<AiEditingSourceCommit[]>

@@ -18,6 +18,11 @@ import {
   startTimelineCodingSession,
 } from './coding-workspace/session-registry'
 import { failedEditMessage, latestFailedEdit } from './latest-edit-result'
+import {
+  editFailureKey,
+  MAX_REPEATED_EDIT_FAILURES,
+  repeatedEditFailureCount,
+} from './edit-failure-guard'
 import { AiEditingToolSet } from './tool-set'
 import { createJsonDriver, createNativeDriver } from './orchestration-drivers'
 import {
@@ -227,6 +232,7 @@ async function executeHarnessTool(
     transcriptSearchCount: number
     lastBudgetExhaustedRound: number
     budgetExhaustedRounds: number
+    editFailureCounts: Map<string, number>
   },
 ): Promise<AiEditingObservation> {
   if (duplicateGuard && call.toolId === 'analysis.search_transcript') {
@@ -281,12 +287,24 @@ async function executeHarnessTool(
     duplicateGuard.key = key
     duplicateGuard.consecutiveCount = 0
   }
-  return executeToolCall(
+  const observation = await executeToolCall(
     { id: call.toolId, args: call.input as Record<string, unknown> },
     callIndex,
     options,
     toolSet.availableToolIds,
   )
+  const failureKey = editFailureKey(call, observation)
+  if (duplicateGuard && failureKey) {
+    const count = (duplicateGuard.editFailureCounts.get(failureKey) ?? 0) + 1
+    duplicateGuard.editFailureCounts.set(failureKey, count)
+    if (count >= MAX_REPEATED_EDIT_FAILURES) {
+      const data = observation.result.data && typeof observation.result.data === 'object'
+        ? observation.result.data as Record<string, unknown>
+        : {}
+      observation.result.data = { ...data, repeatedEditFailureCount: count }
+    }
+  }
+  return observation
 }
 
 async function runDriver(
@@ -306,6 +324,7 @@ async function runDriver(
     transcriptSearchCount: 0,
     lastBudgetExhaustedRound: -1,
     budgetExhaustedRounds: 0,
+    editFailureCounts: new Map<string, number>(),
   }
   return runAgentHarness({
     driver,
@@ -332,6 +351,7 @@ async function runDriver(
     shouldStopAfterTool: hasCommittedEdit,
     shouldFinalizeAfterTool: (observations) =>
       repeatedReadCount(observations.at(-1)) >= MAX_CONSECUTIVE_DUPLICATE_READS ||
+      repeatedEditFailureCount(observations.at(-1)) >= MAX_REPEATED_EDIT_FAILURES ||
       exhaustedToolBudgetRounds(observations.at(-1)) >= 2,
     canRecoverFromModelError: hasCommittedEdit,
     onTextCompletion: (content) => options.onFinalText?.(content),
@@ -366,6 +386,7 @@ export async function runSingleAiEditingTurn(
     const allowedToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
     const toolSet = new AiEditingToolSet(allowedToolIds)
     const requiresEditCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
+      options.turnIntent?.kind === 'execute-edit' ||
       isConfirmedPlanExecutionRequest(userText, options.history)
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
     const evidence = config.evidence ?? (await codingSession.promptContext())
