@@ -41,6 +41,7 @@ export interface AiEditingAssistantConfigInput {
 
 export interface AiEditingAssistantConfigTestResult {
   config: AiEditingAssistantConfig
+  connected: boolean
   nativeToolCalling: boolean
   message: string
 }

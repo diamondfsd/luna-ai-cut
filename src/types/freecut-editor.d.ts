@@ -101,6 +101,7 @@ declare module '@freecut/embedded' {
 
   export interface EmbeddedAiAssistantConfigTestResult {
     config: EmbeddedAiAssistantConfig
+    connected: boolean
     nativeToolCalling: boolean
     message: string
   }

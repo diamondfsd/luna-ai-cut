@@ -51,6 +51,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
   const [testing, setTesting] = useState(false)
   const [nativeToolCalling, setNativeToolCalling] = useState(false)
   const [testMessage, setTestMessage] = useState<string | null>(null)
+  const [testConnected, setTestConnected] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   const visualAnalysisIntensity = useSettingsStore((state) => state.visualAnalysisIntensity)
   const setSetting = useSettingsStore((state) => state.setSetting)
@@ -75,6 +76,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
       setApiKey('')
       setNativeToolCalling(next.nativeToolCalling)
       setTestMessage(null)
+      setTestConnected(null)
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : '无法读取剪辑助手连接。')
     }).finally(() => {
@@ -117,6 +119,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
     setTesting(true)
     setError(null)
     setTestMessage(null)
+    setTestConnected(null)
     try {
       const result = await bridge.testConfig({
         baseUrl,
@@ -129,8 +132,10 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
       setNativeToolCalling(result.nativeToolCalling)
       setApiKey('')
       setTestMessage(result.message)
+      setTestConnected(result.connected)
     } catch (reason) {
       setNativeToolCalling(false)
+      setTestConnected(false)
       setError(reason instanceof Error ? reason.message : '测试未通过，已关闭原生工具调用。')
     } finally {
       setTesting(false)
@@ -161,7 +166,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="freecut-app dark flex h-[80vh] w-[80vw] max-w-none flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="freecut-app dark flex h-[min(720px,85vh)] w-[min(760px,92vw)] max-w-none flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border px-6 py-5 pr-14">
           <DialogTitle>剪辑助手设置</DialogTitle>
           <DialogDescription>管理剪辑助手的模型连接和素材识别方式。</DialogDescription>
@@ -169,7 +174,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
         <Tabs
           value={section}
           onValueChange={(value) => setSection(value as AiAssistantSettingsSection)}
-          className="grid min-h-0 flex-1 grid-cols-[13rem_minmax(0,1fr)]"
+          className="grid min-h-0 flex-1 grid-cols-[10.5rem_minmax(0,1fr)]"
         >
           <aside className="min-h-0 border-r border-border bg-muted/20 px-3 py-4">
             <TabsList
@@ -188,7 +193,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
           <div className="min-h-0 min-w-0 overflow-hidden">
             <TabsContent value="connection" className="m-0 h-full min-h-0">
               <ScrollArea className="h-full">
-                <form className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-6 p-8" onSubmit={(event) => {
+                <form className="mx-auto flex min-h-full w-full max-w-xl flex-col gap-5 p-6" onSubmit={(event) => {
                   event.preventDefault()
                   void save()
                 }}>
@@ -243,7 +248,21 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-3">
                       <Label htmlFor="ai-assistant-api-key">API Key</Label>
-                      <span className="text-xs text-muted-foreground">{config.hasApiKey ? '已保存' : '未保存'}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{config.hasApiKey ? '已保存' : '未保存'}</span>
+                        {config.hasApiKey && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-destructive hover:text-destructive"
+                            onClick={() => void clearApiKey()}
+                            disabled={loading || saving || testing}
+                          >
+                            清除
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <Input
                       id="ai-assistant-api-key"
@@ -265,35 +284,34 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
                         开启后使用模型自带的工具调用能力；关闭时使用兼容模式。
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <Switch
-                        id="ai-assistant-native-tools"
-                        checked={nativeToolCalling}
-                        onCheckedChange={setNativeToolCalling}
-                        disabled={loading || saving || testing}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void testConnection()}
-                        disabled={loading || saving || testing}
-                      >
-                        {testing && <Loader2 className="h-4 w-4 animate-spin" />}
-                        测试
-                      </Button>
-                    </div>
+                    <Switch
+                      id="ai-assistant-native-tools"
+                      checked={nativeToolCalling}
+                      onCheckedChange={setNativeToolCalling}
+                      disabled={loading || saving || testing}
+                    />
                   </div>
-                  {testMessage && <p className="text-sm leading-relaxed text-muted-foreground">{testMessage}</p>}
+                  {testMessage && (
+                    <p className={testConnected
+                      ? 'rounded-md bg-emerald-500/10 px-3 py-2 text-sm leading-relaxed text-emerald-400'
+                      : 'rounded-md bg-destructive/10 px-3 py-2 text-sm leading-relaxed text-destructive'}>
+                      {testMessage}
+                    </p>
+                  )}
                   {error && <p className="text-sm leading-relaxed text-destructive">{error}</p>}
-                  <DialogFooter className="mt-auto border-t border-border pt-5 sm:space-x-0">
-                    {config.hasApiKey && (
-                      <Button type="button" variant="outline" onClick={() => void clearApiKey()} disabled={loading || saving || testing}>
-                        清除 Key
-                      </Button>
-                    )}
+                  <DialogFooter className="mt-auto border-t border-border pt-5 sm:space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void testConnection()}
+                      disabled={loading || saving || testing}
+                    >
+                      {testing && <Loader2 className="h-4 w-4 animate-spin" />}
+                      测试连接
+                    </Button>
                     <Button type="submit" disabled={loading || saving || testing}>
                       {(loading || saving) && <Loader2 className="h-4 w-4 animate-spin" />}
-                      保存
+                      保存设置
                     </Button>
                   </DialogFooter>
                 </form>

@@ -24,6 +24,8 @@ import { getAiEditingDocumentationFiles } from '../documentation/catalog'
 import { VirtualEditingWorkspace, type VirtualFileInput } from './virtual-files'
 import { validateAiEditingTimelineSource } from './timeline-source-validation'
 
+const RENDERER_REFRESH_DEBOUNCE_MS = 1_000
+
 export interface TimelineProgramSummary {
   operationCount: number
   operationTypes: Record<string, number>
@@ -79,6 +81,7 @@ export class TimelineCodingSession {
   private projectionAttempted = 0
   private projectionApplied = 0
   private projectionWorker: Promise<void> | null = null
+  private projectionTimer: ReturnType<typeof setTimeout> | null = null
   private requestedSnapshot: readonly VirtualFileInput[] | null = null
 
   constructor(
@@ -176,7 +179,11 @@ export class TimelineCodingSession {
   private scheduleRendererRefresh(): void {
     this.projectionRequested += 1
     this.requestedSnapshot = this.repository.sourceSnapshot()
-    this.ensureProjectionWorker()
+    if (this.projectionTimer) clearTimeout(this.projectionTimer)
+    this.projectionTimer = setTimeout(() => {
+      this.projectionTimer = null
+      this.ensureProjectionWorker()
+    }, RENDERER_REFRESH_DEBOUNCE_MS)
   }
 
   private ensureProjectionWorker(): void {
@@ -215,6 +222,11 @@ export class TimelineCodingSession {
   }
 
   private async waitForBackgroundProjection(): Promise<void> {
+    if (this.projectionTimer) {
+      clearTimeout(this.projectionTimer)
+      this.projectionTimer = null
+      this.ensureProjectionWorker()
+    }
     while (this.projectionWorker) await this.projectionWorker
   }
 

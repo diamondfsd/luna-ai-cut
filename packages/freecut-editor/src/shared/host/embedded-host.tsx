@@ -101,6 +101,7 @@ export interface EmbeddedAiAssistantConfigInput {
 
 export interface EmbeddedAiAssistantConfigTestResult {
   config: EmbeddedAiAssistantConfig
+  connected: boolean
   nativeToolCalling: boolean
   message: string
 }
