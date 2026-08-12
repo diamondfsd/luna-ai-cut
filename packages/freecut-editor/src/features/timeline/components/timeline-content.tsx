@@ -714,7 +714,7 @@ export const TimelineContent = memo(function TimelineContent({
     tracks.find((track) => getTrackKind(track) === 'video')?.id ?? firstTrackId
   const bottomZoneAnchorTrackId =
     [...tracks].reverse().find((track) => getTrackKind(track) === 'audio')?.id ?? lastTrackId
-  const videoZoneHeight = 24
+  const videoZoneHeight = subtitleTracks.length > 0 ? 0 : 24
   const audioZoneHeight = 24
 
   // PERFORMANCE: Don't subscribe to items directly - it causes ALL tracks to re-render
@@ -936,7 +936,8 @@ export const TimelineContent = memo(function TimelineContent({
     (node: HTMLDivElement | null) => {
       containerRef.current = node
       if (scrollRef) {
-        ;(scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+        const mutableScrollRef = scrollRef as React.MutableRefObject<HTMLDivElement | null>
+        mutableScrollRef.current = node
       }
       if (node) {
         const tracksViewportHeight = tracksContainerRef.current?.clientHeight ?? node.clientHeight

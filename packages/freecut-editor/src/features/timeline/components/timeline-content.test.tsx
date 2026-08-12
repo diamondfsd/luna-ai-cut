@@ -87,7 +87,11 @@ vi.mock('./timeline-guidelines', () => ({
 }))
 
 vi.mock('./timeline-media-drop-zone', () => ({
-  TimelineMediaDropZone: () => null,
+  TimelineMediaDropZone: ({ height, zone }: { height: number; zone: string }) => (
+    height > 0
+      ? <div data-testid={`timeline-${zone}-drop-zone`} style={{ height: `${height}px` }} />
+      : null
+  ),
 }))
 
 vi.mock('./track-row-frame', () => ({
@@ -109,6 +113,19 @@ const VIDEO_TRACK: TimelineTrack = {
   muted: false,
   solo: false,
   order: 0,
+  items: [],
+}
+
+const SUBTITLE_TRACK: TimelineTrack = {
+  id: 'track-subtitle-1',
+  name: '字幕',
+  kind: 'subtitle',
+  height: 40,
+  locked: false,
+  visible: true,
+  muted: false,
+  solo: false,
+  order: -1,
   items: [],
 }
 
@@ -213,6 +230,18 @@ describe('TimelineContent playback selection behavior', () => {
     expect(getAllByTestId('unified-timeline-preview-scrubber')).toHaveLength(1)
     expect(getByTestId('unified-timeline-preview-scrubber')).toBeInTheDocument()
     expect(container.querySelector('.timeline-container')).toHaveClass('isolate')
+  })
+
+  it('does not reserve a video drop-zone gap below subtitle tracks', () => {
+    const { queryByTestId, rerender } = render(
+      <TimelineContent duration={10} tracks={[SUBTITLE_TRACK, VIDEO_TRACK]} />,
+    )
+
+    expect(queryByTestId('timeline-video-drop-zone')).not.toBeInTheDocument()
+
+    rerender(<TimelineContent duration={10} tracks={[VIDEO_TRACK]} />)
+
+    expect(queryByTestId('timeline-video-drop-zone')).toHaveStyle({ height: '24px' })
   })
 
   it('hides the hover preview overlay when the setting is disabled', () => {

@@ -201,12 +201,31 @@ try {
 
   await service.createBranch('agent/variant')
   assert.deepEqual(await service.branches(), { current: 'main', names: ['agent/variant', 'main'] })
+
+  await service.write('luna-project.json', '{"uncommitted":true}\n')
+  await service.write('notes/uncommitted.txt', 'remove during reset\n')
+  const preservedProjectFile = path.join(repositoryPath, '..', 'media-preserved.json')
+  await fs.writeFile(preservedProjectFile, '{"preserved":true}\n')
+  const reset = await service.resetToInitial()
+  assert.equal(reset.changed, true)
+  assert.equal(reset.initialCommitId, initialized.head)
+  assert.match(reset.commitId, /^[a-f0-9]{40}$/)
+  assert.equal(await service.read('luna-project.json'), '{"version":1}\n')
+  assert.equal(
+    await service.read('segments/001-opening.segment.json'),
+    '{"title":"opening"}\n',
+  )
+  await assert.rejects(service.read('notes/review.txt'), /ENOENT/)
+  await assert.rejects(service.read('notes/uncommitted.txt'), /ENOENT/)
+  assert.equal(await fs.readFile(preservedProjectFile, 'utf8'), '{"preserved":true}\n')
+  assert.deepEqual(await service.status(), { branch: 'main', clean: true, entries: [] })
+  assert.equal((await service.resetToInitial()).changed, false)
   await service.checkout('agent/variant')
   await service.write('luna-project.json', '{"version":3,"variant":true}\n')
   await assert.rejects(service.checkout('main'), /请先提交或撤销/)
   await service.commit('Create agent variant')
   await service.checkout('main')
-  assert.equal(await service.read('luna-project.json'), '{"version":2}\n')
+  assert.equal(await service.read('luna-project.json'), '{"version":1}\n')
   assert.deepEqual(await service.branches(), { current: 'main', names: ['agent/variant', 'main'] })
 
   const outsidePath = path.join(testRoot, 'outside.json')
@@ -239,7 +258,7 @@ try {
     'luna-project.json': 'must-not-overwrite',
   })
   assert.equal(ensuredAgain.created, false)
-  assert.equal(await service.read('luna-project.json'), '{"version":2}\n')
+  assert.equal(await service.read('luna-project.json'), '{"version":1}\n')
 
   if (process.platform !== 'win32') {
     const transactionDirectory = path.join(repositoryPath, '.git', 'luna-editing-transactions')

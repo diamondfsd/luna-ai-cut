@@ -194,6 +194,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     branches: (projectId) => ipcRenderer.invoke('ai-editing-source-git:branches', projectId),
     createBranch: (projectId, name) => ipcRenderer.invoke('ai-editing-source-git:create-branch', projectId, name),
     checkout: (projectId, name) => ipcRenderer.invoke('ai-editing-source-git:checkout', projectId, name),
+    resetToInitial: (projectId) =>
+      ipcRenderer.invoke('ai-editing-source-git:reset-to-initial', projectId),
     commit: (projectId, message, sourcePaths) =>
       ipcRenderer.invoke('ai-editing-source-git:commit', projectId, message, sourcePaths),
   } satisfies AiEditingSourceGitApi,
