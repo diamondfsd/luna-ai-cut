@@ -38,7 +38,7 @@ export function createJsonDriver(
   messages: LlmMessage[],
   options: AiEditingRunOptions,
   initialRaw?: string,
-  replayFromIndex = Math.max(0, messages.length - 1),
+  replayFromIndex = Math.max(0, messages.length - 2),
 ): JsonAgentDriver<AiEditingObservation> {
   return new JsonAgentDriver({
     adapter,
@@ -73,7 +73,7 @@ export function createNativeDriver(
   return new NativeAgentDriver({
     adapter,
     messages,
-    replayFromIndex: Math.max(0, messages.length - 1),
+    replayFromIndex: Math.max(0, messages.length - 2),
     getTools: () => tools,
     serializeObservation: serializeForModel,
     toolContinuationPrompt: nativeContinuePrompt.trim(),

@@ -433,7 +433,7 @@ export async function runSingleAiEditingTurn(
             fallbackMessages,
             options,
             harnessResult.fallbackContent,
-            Math.max(0, jsonInitialMessages.length - 1),
+            Math.max(0, jsonInitialMessages.length - 2),
           ),
           options,
           {

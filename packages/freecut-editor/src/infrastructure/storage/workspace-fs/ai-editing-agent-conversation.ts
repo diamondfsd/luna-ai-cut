@@ -83,7 +83,7 @@ export function sanitizeAgentTurn(value: unknown): AiEditingAgentTurn | null {
   const messages = candidate.messages.map(sanitizeAgentMessage)
   if (
     messages.length === 0 || messages.some((message) => message === null) ||
-    messages[0]?.role !== 'user' ||
+    !messages.some((message) => message?.role === 'user') ||
     !hasCompleteToolExchanges(messages as AiEditingAgentMessage[])
   ) return null
   return {

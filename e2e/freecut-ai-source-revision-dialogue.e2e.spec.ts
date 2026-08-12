@@ -154,6 +154,7 @@ function withTracks(sequence: string, tracks: string[]): string {
 
 async function startDialogueMock(): Promise<{
   baseUrl: string
+  requests: ChatRequest[]
   waitForPreview(): Promise<void>
   releaseAfterPreview(): void
   close(): Promise<void>
@@ -161,6 +162,7 @@ async function startDialogueMock(): Promise<{
   let requestIndex = 0
   let notifyPreview: (() => void) | undefined
   let releasePreview: (() => void) | undefined
+  const requests: ChatRequest[] = []
   const previewReached = new Promise<void>((resolve) => { notifyPreview = resolve })
   const previewGate = new Promise<void>((resolve) => { releasePreview = resolve })
   const server = createServer(async (request, response) => {
@@ -169,6 +171,7 @@ async function startDialogueMock(): Promise<{
       return
     }
     const payload = await requestBody(request)
+    requests.push(payload)
     const index = requestIndex++
 
     if (index === 0) {
@@ -263,6 +266,7 @@ async function startDialogueMock(): Promise<{
   if (!address || typeof address === 'string') throw new Error('Unable to start dialogue mock')
   return {
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    requests,
     waitForPreview: () => previewReached,
     releaseAfterPreview: () => releasePreview?.(),
     close: () => closeServer(server),
@@ -320,6 +324,8 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     await input.fill(CONFIRM_REQUEST)
     await page.getByRole('button', { name: '发送剪辑请求' }).click()
     await mock.waitForPreview()
+    expect(mock.requests[1]?.messages?.slice(0, mock.requests[0]?.messages?.length))
+      .toEqual(mock.requests[0]?.messages)
     await expect(page.locator('[data-timeline-item]').filter({ hasText: '给宝宝做了一个 AI 玩伴' }))
       .toHaveCount(1)
     await expect.poll(async () => {
