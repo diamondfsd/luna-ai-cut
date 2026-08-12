@@ -56,6 +56,14 @@ function parseArguments(value: unknown): Record<string, unknown> | null {
 function parseToolCall(value: unknown): AiEditingToolCall | null {
   const call = objectRecord(value)
   if (!call) return null
+  const entries = Object.entries(call)
+  if (entries.length === 1) {
+    const [toolId, shorthandArgs] = entries[0]!
+    const args = objectRecord(shorthandArgs)
+    if (/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+$/.test(toolId) && args) {
+      return { id: toolId, args }
+    }
+  }
   const fn = objectRecord(call.function)
   const id = typeof fn?.name === 'string'
     ? fn.name

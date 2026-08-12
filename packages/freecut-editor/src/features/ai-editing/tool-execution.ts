@@ -37,10 +37,12 @@ export function serializeForModel(value: unknown): string {
 }
 
 export function serializeToolResultsForModel(observations: readonly AiEditingObservation[]): string {
-  return serializeForModel(observations.map((observation) => ({
-    id: observation.toolId,
-    result: observation.result,
-  })))
+  return serializeForModel({
+    toolResults: observations.map((observation) => ({
+      id: observation.toolId,
+      result: observation.result,
+    })),
+  })
 }
 
 async function saveTimelineAfterEdit(): Promise<void> {

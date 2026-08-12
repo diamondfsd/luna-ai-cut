@@ -5,7 +5,6 @@ import { JsonAgentDriver, NativeAgentDriver } from './agent-harness'
 import type { AiEditingToolSet } from './tool-set'
 import { createNativeToolCatalog } from './native-tool-catalog'
 import { reportModelRequestStatus, traceRun } from './orchestration-progress'
-import nativeContinuePrompt from './prompts/messages/native-continue.md?raw'
 import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
 import { parseAiEditingResponse } from './response-parser'
@@ -81,7 +80,6 @@ export function createNativeDriver(
     replayFromIndex: Math.max(0, messages.length - 2),
     getTools: () => tools,
     serializeObservation: serializeForModel,
-    toolContinuationPrompt: nativeContinuePrompt.trim(),
     requestOptions: (round) => ({
       maxTokens: MAX_TOKENS,
       temperature: 0,
