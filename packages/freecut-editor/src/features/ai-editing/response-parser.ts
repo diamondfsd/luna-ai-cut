@@ -61,6 +61,8 @@ function parseToolCall(value: unknown): AiEditingToolCall | null {
     ? fn.name
     : typeof call.id === 'string'
       ? call.id
+      : typeof call.toolId === 'string'
+        ? call.toolId
       : typeof call.name === 'string'
         ? call.name
         : null
@@ -71,7 +73,7 @@ function parseToolCall(value: unknown): AiEditingToolCall | null {
 
   const args = Object.fromEntries(
     Object.entries(call).filter(([key]) =>
-      !['id', 'name', 'type', 'function', 'args', 'arguments', 'input'].includes(key),
+      !['id', 'toolId', 'name', 'type', 'function', 'args', 'arguments', 'input'].includes(key),
     ),
   )
   return Object.keys(args).length > 0 ? { id, args } : null

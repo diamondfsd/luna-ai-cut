@@ -40,6 +40,18 @@ describe('parseAiEditingResponse', () => {
     })
   })
 
+  it('accepts toolId when a model mirrors the tool-result field name', () => {
+    const response = parseAiEditingResponse(JSON.stringify({
+      toolId: 'skill.read',
+      args: { name: '创意决策' },
+    }))
+
+    expect(response).toEqual({
+      reply: '',
+      toolCalls: [{ id: 'skill.read', args: { name: '创意决策' } }],
+    })
+  })
+
   it('keeps usable tool calls when the reply key is malformed', () => {
     const response = parseAiEditingResponse(JSON.stringify({
       '"reply":"': '读取工程结构和类型定义',

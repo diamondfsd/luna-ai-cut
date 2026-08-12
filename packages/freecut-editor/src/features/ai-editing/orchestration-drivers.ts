@@ -10,7 +10,7 @@ import toolResultsPrompt from './prompts/messages/tool-results.md?raw'
 import { renderPrompt } from './prompts/render-prompt'
 import { parseAiEditingResponse } from './response-parser'
 import type { AiEditingRunOptions } from './run-types'
-import { serializeForModel } from './tool-execution'
+import { serializeForModel, serializeToolResultsForModel } from './tool-execution'
 import type { AiEditingObservation } from './types'
 
 const MAX_TOKENS = 8_192
@@ -46,7 +46,7 @@ export function createJsonDriver(
     replayFromIndex,
     parse: parseAiEditingResponse,
     renderToolResults: (observations) => renderPrompt(toolResultsPrompt, {
-      OBSERVATIONS: serializeForModel(observations),
+      OBSERVATIONS: serializeToolResultsForModel(observations),
     }),
     requestOptions: (round) => ({
       maxTokens: MAX_TOKENS,
