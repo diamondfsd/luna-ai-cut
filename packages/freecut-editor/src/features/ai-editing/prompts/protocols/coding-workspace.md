@@ -6,7 +6,7 @@
 2. 常用视频、音频和文字剪辑直接使用下方格式经验；只有需要未列出的类型或扩展属性时才用 `docs.search` 和 `docs.read`。
 3. 用 `source.read` 读取要修改文件的当前原文。
 4. 用 `source.replace` 精确替换唯一原文。失败时重新读取该文件后再修改。
-5. 单个新模块使用 `source.create` 一次完成命名、创建和内容写入；同时创建多个模块或涉及模块及其索引的多文件改动使用 `source.apply_changes`，新文件使用 `revision: null`。删除单个模块使用 `source.remove`，删除前用 `source.read` 获取 `revision`。每批最多 4 个文件且每次响应只调用一次写入工具；大型修改先写片段文件，最后更新轨道和序列索引。
+5. 单个新文件用 `source.create`。需要同时修改多个相关文件时使用 `source.apply_changes`；新文件使用 `revision: null`，已有文件使用最近读取的 `revision`。每批最多 4 个文件且每次响应只调用一次写入工具。
 6. 用 `timeline.check` 确认完整工程可编译，用 `git.diff` 检查实际变化。
 7. 所有目标完成后调用 `git.commit`。提交成功就是本轮编辑完成，不需要额外发布。
 
@@ -31,31 +31,30 @@ evidence/    # 只读
 docs/        # 只读，当前 TypeScript 类型与格式说明
 ```
 
-轨道属性和片段正文分开保存。`track.json` 引用 segment；片段按 30 秒窗口分组，每页最多 32 个。详细顶层结构查询 `docs/types/project-source-schema.ts`，片段字段查询 `docs/types/project.ts` 及它引用的类型文件。
+轨道属性和片段正文分开保存。系统自动扫描 `tracks/*/track.json` 发现轨道，自动扫描每条轨道的 `segments/*.json` 发现片段；不要在其他文件维护轨道或片段路径索引。片段按 30 秒窗口分组，每页最多 32 个。详细顶层结构查询 `docs/types/project-source-schema.ts`，片段字段查询 `docs/types/project.ts` 及它引用的类型文件。
 
 ## 常用剪辑格式经验
 
-以下是稳定的基础格式，可以直接使用，不需要先查询 `docs/`。所有源码文件均为 JSON，当前 `version` 为 `3`。
+以下是稳定的基础格式，可以直接使用，不需要先查询 `docs/`。所有源码文件均为 JSON，当前 `version` 为 `4`。
 
-`sequence.json` 通过路径引用轨道；保留文件中已有的 `state`、`transitions` 和 `animations`：
+`sequence.json` 不保存轨道清单；保留文件中已有的 `state`、`transitions` 和 `animations`：
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "kind": "sequence",
   "id": "main",
   "state": {},
-  "tracks": ["sequences/main/tracks/id-video/track.json"],
   "transitions": "sequences/main/transitions.json",
   "animations": "sequences/main/animations.json"
 }
 ```
 
-每条轨道由 `track.json` 和它引用的 segment 组成。`track.items` 固定为空；真实片段只写在 segment 的 `clips` 中。`kind` 常用值为 `video`、`audio`、`subtitle`，`order` 越小层级越靠上：
+每条轨道由 `track.json` 和同目录下自动发现的 segment 组成。`track.items` 固定为空；真实片段只写在 segment 的 `clips` 中。`kind` 常用值为 `video`、`audio`、`subtitle`，`order` 越小层级越靠上：
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "kind": "track",
   "track": {
     "id": "id-video",
@@ -68,21 +67,15 @@ docs/        # 只读，当前 TypeScript 类型与格式说明
     "solo": false,
     "order": 1,
     "items": []
-  },
-  "segments": [{
-    "path": "sequences/main/tracks/id-video/segments/w000000-p01.json",
-    "startFrame": 0,
-    "endFrame": 150,
-    "clipCount": 1
-  }]
+  }
 }
 ```
 
-segment 的 `trackId` 必须与所属轨道一致，`startFrame` 是片段中最小的 `from`，`endFrame` 是最大的 `from + durationInFrames`，`clipCount` 等于 `clips.length`：
+segment 的 `trackId` 必须与所属轨道一致：
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "kind": "clip-segment",
   "trackId": "id-video",
   "window": 0,
@@ -148,7 +141,7 @@ segment 的 `trackId` 必须与所属轨道一致，`startFrame` 是片段中最
 
 带原声的视频通常建立一对 video/audio 片段：二者 `mediaId`、`from`、`durationInFrames`、`sourceStart`、`sourceEnd`、`sourceDuration`、`sourceFps` 和 `linkedGroupId` 相同；video 写 `embeddedAudioMuted: true`，声音由独立 audio 片段承载。无独立 audio 片段且需要视频原声时，不要设置 `embeddedAudioMuted: true`。
 
-创建、删除或移动片段时，同时更新 `sequence.json` 的轨道路径、`track.json` 的 `segments` 索引和 segment 内容。使用 `source.apply_changes` 分批写入，每批最多 4 个文件；每次响应只提交一批并等待结果，先写 segment 等未被引用的叶子文件，最后更新 `track.json` 和 `sequence.json` 索引。使用 image、HTML、Lottie、shape、composition、效果、转场、动画关键帧、复杂文字样式或未在上述骨架出现的字段时，再查询相应 `docs/` 定义。
+创建、删除或移动片段时只修改对应的 segment 文件；新增轨道时在 `tracks/id-<track-id>/track.json` 创建轨道文件。目录扫描会自动更新渲染内容，不要修改 `sequence.json` 或 `track.json` 来登记路径。使用 `source.apply_changes` 分批写入时每批最多 4 个文件。使用 image、HTML、Lottie、shape、composition、效果、转场、动画关键帧、复杂文字样式或未在上述骨架出现的字段时，再查询相应 `docs/` 定义。
 
 ## 时间轴硬性约束
 
@@ -164,7 +157,7 @@ segment 的 `trackId` 必须与所属轨道一致，`startFrame` 是片段中最
 - `source.replace` 的 `oldText` 必须来自最近一次 `source.read`，并且在文件中唯一匹配。
 - `source.remove` 的 `revision` 必须来自最近一次 `source.read`，不要回传完整文件原文。
 - `source.apply_changes` 中已有文件使用最近读取的 `revision`，新文件使用 `revision: null`；任一版本不匹配时整批不会生效。
-- 大型修改拆成多个 `source.apply_changes` 批次，每批最多 4 个文件。一个模型响应只调用一次写入工具，拿到结果后再生成下一批，避免等待完整工程内容全部生成。中间批次暂时不能预览是正常情况，不要为此重试或通知用户。
+- 大型修改拆成多个 `source.apply_changes` 批次，每批最多 4 个文件。一个模型响应只调用一次写入工具，拿到结果后再生成下一批。轨道和片段会从目录自动发现，不要创建或更新路径索引。
 - `SOURCE_CHANGED` 或找不到原文表示人工或其他操作已修改文件；重新读取并合并意图。
 - `SOURCE_AMBIGUOUS` 表示原文出现多次；扩大 `oldText` 上下文，不要盲目使用全局替换。
 - 不要回退、覆盖或删除不属于当前任务的变更。

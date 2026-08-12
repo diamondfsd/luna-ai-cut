@@ -20,7 +20,7 @@ components/
     tracks/...
 ```
 
-每个 `track.json` 只保存轨道属性和 segment 引用。片段按 30 秒窗口分文件，同一窗口每页最多 32 个片段。创建、删除或移动片段时必须同步维护 `track.json` 的 `segments` 索引。
+每个 `track.json` 只保存轨道属性。系统从 `tracks/*/track.json` 自动发现轨道，从各轨道的 `segments/*.json` 自动发现片段，不维护路径索引。片段按 30 秒窗口分文件，同一窗口每页最多 32 个片段。
 
 文字片段的画布位置和尺寸使用 `textBox`，格式为 `{ left, top, width, height }`。所有值均为 `0..1` 的画布归一化比例，并且 `left + width <= 1`、`top + height <= 1`。自定义旋转锚点使用归一化的 `textAnchor: { x, y }`。文字源码禁止在 `transform` 中使用 `x/y/width/height/anchorX/anchorY`；这些是渲染器内部字段，不属于剪辑源码布局协议。
 

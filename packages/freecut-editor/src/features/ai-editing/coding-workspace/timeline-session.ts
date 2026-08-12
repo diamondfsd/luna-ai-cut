@@ -150,6 +150,20 @@ export class TimelineCodingSession {
         if (content === undefined) throw new Error(`剪辑源码文件不存在：${path}`)
         return content
       },
+      list: async (directory) => {
+        const prefix = directory ? `${directory}/` : ''
+        const entries = new Map<string, 'file' | 'directory'>()
+        for (const path of files.keys()) {
+          if (!path.startsWith(prefix)) continue
+          const remainder = path.slice(prefix.length)
+          if (!remainder) continue
+          const separator = remainder.indexOf('/')
+          const name = separator < 0 ? remainder : remainder.slice(0, separator)
+          entries.set(`${prefix}${name}`, separator < 0 ? 'file' : 'directory')
+        }
+        return [...entries].map(([path, type]) => ({ path, type }))
+          .sort((left, right) => left.path.localeCompare(right.path))
+      },
     })
     validateMediaIds(project, this.availableMediaIds)
     if (validateSemantics) validateAiEditingTimelineSource(project, this.mediaHasAudioById)
@@ -180,15 +194,15 @@ export class TimelineCodingSession {
   private scheduleRendererRefresh(): void {
     this.projectionRequested += 1
     this.requestedSnapshot = this.repository.sourceSnapshot()
-    const replacedPendingTimer = Boolean(this.projectionTimer)
-    if (this.projectionTimer) clearTimeout(this.projectionTimer)
+    const timerAlreadyPending = Boolean(this.projectionTimer)
     logAiEditingDiagnostic('info', 'preview.scheduled', {
       request: this.projectionRequested,
       debounceMs: RENDERER_REFRESH_DEBOUNCE_MS,
       sourceFiles: this.requestedSnapshot.length,
       changedPaths: [...this.changedSourcePaths],
-      replacedPendingTimer,
+      timerAlreadyPending,
     })
+    if (this.projectionTimer) return
     this.projectionTimer = setTimeout(() => {
       this.projectionTimer = null
       logAiEditingDiagnostic('info', 'preview.debounce-fired', {
@@ -242,6 +256,9 @@ export class TimelineCodingSession {
               logAiEditingDiagnostic('info', 'preview.applied', {
                 request: target,
                 durationMs: Math.round(performance.now() - startedAt),
+                trackCount: project.timeline?.tracks.length ?? 0,
+                itemCount: project.timeline?.items.length ?? 0,
+                durationSeconds: project.duration,
               })
             }
           }

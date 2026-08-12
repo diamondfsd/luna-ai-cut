@@ -133,7 +133,7 @@ const MAX_SOURCE_CHANGES_PER_BATCH = 4
 const applySourceChanges = defineAiEditingTool({
   id: 'source.apply_changes',
   title: '批量创建或修改工程源码',
-  description: '一次原子调用同时命名并写入、修改或删除最多 4 个源码文件；新文件使用 revision: null 和完整 content，已有文件使用 source.read 返回的 revision；整批全部成功或全部不生效。大型修改分批调用，每次响应只调用一次。',
+  description: '一次原子调用同时命名并写入、修改或删除最多 4 个相关源码文件。轨道和片段由目录自动发现，不需要维护路径索引。新文件使用 revision: null 和完整 content，已有文件使用 source.read 返回的 revision；整批全部成功或全部不生效。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema(

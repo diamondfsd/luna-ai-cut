@@ -12,6 +12,7 @@
 
 import type { Project } from '@freecut/types/project'
 import { createLogger } from '@freecut/shared/logging/logger'
+import { ensureProjectSource } from '@freecut/features/project-source/project-source-worktree'
 import { getHandle, saveHandle, deleteHandle } from '@freecut/infrastructure/storage/handles-db'
 
 import { requireWorkspaceRoot } from './root'
@@ -242,6 +243,7 @@ export async function createProject(project: Project): Promise<Project> {
       name: project.name,
       updatedAt: project.updatedAt,
     })
+    await ensureProjectSource(project)
     return project
   } catch (error) {
     logger.error('createProject failed', error)

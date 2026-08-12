@@ -104,5 +104,6 @@ export async function readProjectSource(projectId: string): Promise<Project | nu
   if (!bridge) return null
   return projectFromSourceFiles({
     read: (path) => bridge.read(projectId, path),
+    list: (directory) => bridge.list(projectId, directory),
   })
 }
