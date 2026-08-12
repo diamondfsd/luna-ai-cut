@@ -36,6 +36,13 @@ export function serializeForModel(value: unknown): string {
   return text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}…` : text
 }
 
+export function serializeToolResultsForModel(observations: readonly AiEditingObservation[]): string {
+  return serializeForModel(observations.map((observation) => ({
+    id: observation.toolId,
+    result: observation.result,
+  })))
+}
+
 async function saveTimelineAfterEdit(): Promise<void> {
   const timeline = useTimelineStore.getState()
   if (!timeline.isDirty) return
