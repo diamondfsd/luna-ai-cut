@@ -25,29 +25,12 @@ export async function listAiEditingSkills(): Promise<AiEditingSkill[]> {
   ]
 }
 
-export function searchAiEditingSkills(query: string, skills: readonly AiEditingSkill[]): AiEditingSkill[] {
-  const normalized = query.trim().toLocaleLowerCase()
-  if (!normalized) return []
-  return skills
-    .filter((skill) => skill.enabled)
-    .map((skill) => ({
-      skill,
-      score: [skill.name, skill.description, ...skill.triggers].reduce((score, candidate) => {
-        const normalizedCandidate = candidate.trim().toLocaleLowerCase()
-        if (!normalizedCandidate) return score
-        if (normalized === normalizedCandidate) return score + 100
-        if (normalized.includes(normalizedCandidate)) return score + normalizedCandidate.length
-        if (normalizedCandidate.includes(normalized)) return score + normalized.length
-        return score
-      }, 0),
-    }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))
-    .map((entry) => entry.skill)
-}
-
-export async function readAiEditingSkill(id: string): Promise<AiEditingSkill | null> {
-  return (await listAiEditingSkills()).find((skill) => skill.enabled && skill.id === id) ?? null
+export async function readAiEditingSkill(name: string): Promise<AiEditingSkill | null> {
+  const normalized = name.trim().toLocaleLowerCase()
+  const matches = (await listAiEditingSkills()).filter(
+    (skill) => skill.enabled && skill.name.trim().toLocaleLowerCase() === normalized,
+  )
+  return matches.length === 1 ? matches[0] ?? null : null
 }
 
 export async function updateAiEditingSkillEnabled(id: string, enabled: boolean): Promise<void> {
@@ -69,6 +52,12 @@ export async function updateAiEditingSkillEnabled(id: string, enabled: boolean):
 export async function addAiEditingCustomSkill(input: AiEditingCustomSkillInput): Promise<void> {
   const settings = await loadAiEditingSkills()
   const next = customSkill(input)
+  const normalizedName = next.name.toLocaleLowerCase()
+  const nameExists = [
+    ...BUILT_IN_AI_EDITING_SKILLS,
+    ...settings.customSkills,
+  ].some((skill) => skill.name.trim().toLocaleLowerCase() === normalizedName)
+  if (nameExists) throw new Error('Skill name already exists')
   await saveAiEditingSkills({ ...settings, customSkills: [...settings.customSkills, next] })
 }
 
