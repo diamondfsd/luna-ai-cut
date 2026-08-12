@@ -80,4 +80,56 @@ assert.deepEqual((await consumeAiEditingAssistantStream(missingCacheUsageChunks(
   cachedTokens: 0,
 })
 
+const jsonReplyChunks = [
+  '```json\n{\n  "re',
+  'ply": "# 剪辑方案\\n\\n- 第一段\\n- 引用：\\"画面\\"\\n- 图标：\\u',
+  '4F60\\u597D",\n  "toolCalls": [{"id":"source.create","args":{"content":"',
+  '# 不应显示\\n非常大的源码参数',
+  '"}}]}\n```',
+]
+
+async function* chunkedJsonReply() {
+  for (const content of jsonReplyChunks) yield { choices: [{ delta: { content } }] }
+}
+
+const jsonReplyPreviews = []
+const jsonReplyResult = await consumeAiEditingAssistantStream(chunkedJsonReply(), {
+  contentPreviewMode: 'json-reply',
+  onPreview: (preview) => jsonReplyPreviews.push(preview),
+})
+
+assert.deepEqual(jsonReplyPreviews, [
+  { text: '# 剪辑方案\n\n- 第一段\n- 引用："画面"\n- 图标：', kind: 'content' },
+  { text: '# 剪辑方案\n\n- 第一段\n- 引用："画面"\n- 图标：你好', kind: 'content' },
+  { text: '# 剪辑方案\n\n- 第一段\n- 引用："画面"\n- 图标：你好', kind: 'content' },
+  { text: '# 剪辑方案\n\n- 第一段\n- 引用："画面"\n- 图标：你好', kind: 'content' },
+])
+assert.equal(jsonReplyResult.content, jsonReplyChunks.join('').trim())
+assert.ok(jsonReplyPreviews.every(({ text }) => !text.includes('source.create')))
+assert.ok(jsonReplyPreviews.every(({ text }) => !text.includes('不应显示')))
+
+async function* incompleteJsonReply() {
+  yield { choices: [{ delta: { content: '{"toolCalls":[],' } }] }
+  yield { choices: [{ delta: { content: '"reply":"正文末尾\\' } }] }
+}
+
+const incompletePreviews = []
+const incompleteResult = await consumeAiEditingAssistantStream(incompleteJsonReply(), {
+  contentPreviewMode: 'json-reply',
+  onPreview: (preview) => incompletePreviews.push(preview),
+})
+assert.deepEqual(incompletePreviews, [{ text: '正文末尾', kind: 'content' }])
+assert.equal(incompleteResult.content, '{"toolCalls":[],"reply":"正文末尾\\')
+
+async function* jsonWithoutReply() {
+  yield { choices: [{ delta: { content: '{"toolCalls":[{"args":{"content":"源码"}}]}' } }] }
+}
+
+let leakedPreview = false
+await consumeAiEditingAssistantStream(jsonWithoutReply(), {
+  contentPreviewMode: 'json-reply',
+  onPreview: () => { leakedPreview = true },
+})
+assert.equal(leakedPreview, false)
+
 console.log('AI editing assistant stream tests passed')
