@@ -77,6 +77,7 @@ describe('AI editing conversation storage', () => {
       protocol: 'json' as const,
       createdAt: 100,
       messages: [
+        { role: 'system' as const, content: '首轮项目上下文' },
         { role: 'user' as const, content: '先设计脚本' },
         { role: 'assistant' as const, content: '脚本方案' },
       ],

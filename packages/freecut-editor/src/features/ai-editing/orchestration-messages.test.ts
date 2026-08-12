@@ -28,24 +28,24 @@ describe('AI editing message prefix', () => {
       'json',
       candidates,
     )
-    const previousExchange: LlmMessage[] = [
-      first.at(-1)!,
+    const previousTurn: LlmMessage[] = [
+      ...first.slice(1),
       { role: 'assistant', content: '这是一个完整的剪辑方案和分镜安排。' },
     ]
     const second = await buildInitialMessages(
       '好的，按这个方案来',
-      previousExchange,
+      previousTurn,
       { headCommitId: 'second', dirty: true },
       'json',
       candidates,
       true,
     )
 
-    expect(second.slice(0, previousExchange.length + 1)).toEqual([
-      first[0],
-      ...previousExchange,
+    expect(second.slice(0, first.length + 1)).toEqual([
+      ...first,
+      previousTurn.at(-1),
     ])
-    expect(previousExchange[0]).toEqual({ role: 'user', content: '先给我一个剪辑方案' })
+    expect(previousTurn.at(-2)).toEqual({ role: 'user', content: '先给我一个剪辑方案' })
     expect(second[0]).toEqual(first[0])
     expect(second[0]?.content).toContain('source.read')
     expect(second[0]?.content).toContain('读取源码文件')
