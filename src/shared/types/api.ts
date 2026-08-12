@@ -204,6 +204,7 @@ export interface LunaApi {
   freecutExport: FreecutExportApi
   startupReady(): void
   log: (level: string, message: string, meta?: unknown) => void
+  logAiEditing: (level: 'info' | 'warn' | 'error', event: string, details?: Record<string, unknown>) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
   getLogDir: () => Promise<string>
   clearLogs: () => Promise<void>

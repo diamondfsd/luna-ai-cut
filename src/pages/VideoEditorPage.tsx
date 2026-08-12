@@ -276,6 +276,7 @@ export function VideoEditorPage() {
           onCancelAiAssistant={handleCancelAiAssistant}
           onAiAssistantStatus={handleAiAssistantStatus}
           editingSourceGit={window.luna.aiEditingSourceGit}
+          onAiEditingLog={window.luna.logAiEditing}
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}
         />

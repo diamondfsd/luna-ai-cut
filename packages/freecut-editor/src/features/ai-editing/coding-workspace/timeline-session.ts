@@ -23,6 +23,7 @@ import { projectAgentWorkspaceToFiles } from './project-projection'
 import { getAiEditingDocumentationFiles } from '../documentation/catalog'
 import { VirtualEditingWorkspace, type VirtualFileInput } from './virtual-files'
 import { validateAiEditingTimelineSource } from './timeline-source-validation'
+import { logAiEditingDiagnostic } from '../diagnostic-log'
 
 const RENDERER_REFRESH_DEBOUNCE_MS = 1_000
 
@@ -179,9 +180,20 @@ export class TimelineCodingSession {
   private scheduleRendererRefresh(): void {
     this.projectionRequested += 1
     this.requestedSnapshot = this.repository.sourceSnapshot()
+    const replacedPendingTimer = Boolean(this.projectionTimer)
     if (this.projectionTimer) clearTimeout(this.projectionTimer)
+    logAiEditingDiagnostic('info', 'preview.scheduled', {
+      request: this.projectionRequested,
+      debounceMs: RENDERER_REFRESH_DEBOUNCE_MS,
+      sourceFiles: this.requestedSnapshot.length,
+      changedPaths: [...this.changedSourcePaths],
+      replacedPendingTimer,
+    })
     this.projectionTimer = setTimeout(() => {
       this.projectionTimer = null
+      logAiEditingDiagnostic('info', 'preview.debounce-fired', {
+        request: this.projectionRequested,
+      })
       this.ensureProjectionWorker()
     }, RENDERER_REFRESH_DEBOUNCE_MS)
   }
@@ -201,19 +213,46 @@ export class TimelineCodingSession {
     while (this.projectionAttempted < this.projectionRequested) {
       const target = this.projectionRequested
       const snapshot = this.requestedSnapshot
+      const startedAt = performance.now()
+      logAiEditingDiagnostic('info', 'preview.compile-start', {
+        request: target,
+        sourceFiles: snapshot?.length ?? 0,
+      })
       try {
         if (snapshot) {
           const project = await this.compileProject(true, snapshot)
-          if (target === this.projectionRequested) {
+          if (target !== this.projectionRequested) {
+            logAiEditingDiagnostic('info', 'preview.skipped-stale', {
+              request: target,
+              latestRequest: this.projectionRequested,
+              durationMs: Math.round(performance.now() - startedAt),
+            })
+          } else {
             await hydrateTimelineStoresFromProject(project)
-            if (target === this.projectionRequested) {
+            if (target !== this.projectionRequested) {
+              logAiEditingDiagnostic('info', 'preview.skipped-stale', {
+                request: target,
+                latestRequest: this.projectionRequested,
+                durationMs: Math.round(performance.now() - startedAt),
+              })
+            } else {
               await this.persistProject(project)
               this.renderedProject = project
               this.projectionApplied = target
+              logAiEditingDiagnostic('info', 'preview.applied', {
+                request: target,
+                durationMs: Math.round(performance.now() - startedAt),
+              })
             }
           }
         }
-      } catch {
+      } catch (error) {
+        logAiEditingDiagnostic('warn', 'preview.rejected', {
+          request: target,
+          durationMs: Math.round(performance.now() - startedAt),
+          reason: error instanceof Error ? error.message : String(error),
+          retainedRequest: this.projectionApplied,
+        })
         // Multi-file edits can be temporarily incomplete. Keep the last valid
         // preview and retry automatically after the next source mutation.
       }
@@ -232,13 +271,33 @@ export class TimelineCodingSession {
 
   async finalizeRenderer(): Promise<void> {
     await this.waitForBackgroundProjection()
-    if (this.projectionApplied >= this.projectionRequested) return
+    if (this.projectionApplied >= this.projectionRequested) {
+      logAiEditingDiagnostic('info', 'preview.finalized', {
+        request: this.projectionRequested,
+        alreadyApplied: true,
+      })
+      return
+    }
+    const startedAt = performance.now()
+    logAiEditingDiagnostic('info', 'preview.final-apply-start', {
+      request: this.projectionRequested,
+    })
     try {
       const snapshot = this.requestedSnapshot ?? this.repository.sourceSnapshot()
       const project = await this.applyPreview(snapshot, true)
       await this.persistProject(project)
       this.projectionApplied = this.projectionRequested
-    } catch {
+      logAiEditingDiagnostic('info', 'preview.final-applied', {
+        request: this.projectionRequested,
+        durationMs: Math.round(performance.now() - startedAt),
+      })
+    } catch (error) {
+      logAiEditingDiagnostic('warn', 'preview.final-rejected', {
+        request: this.projectionRequested,
+        durationMs: Math.round(performance.now() - startedAt),
+        reason: error instanceof Error ? error.message : String(error),
+        retainedRequest: this.projectionApplied,
+      })
       // Validation and commit report actionable source errors. Turn cleanup
       // must never replace the assistant's result with a preview error.
     }

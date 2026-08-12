@@ -84,6 +84,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)
   },
+  logAiEditing: (level, event, details) => {
+    ipcRenderer.send('ai-editing:log', level, event, details)
+  },
   logExport: (message: string, meta?: unknown) => {
     return ipcRenderer.invoke('log:export', message, meta)
   },

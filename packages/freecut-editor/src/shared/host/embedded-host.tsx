@@ -257,6 +257,11 @@ export interface EmbeddedHostBridge {
   /** The remote model connection is implemented by the trusted Electron host. */
   aiAssistant?: EmbeddedAiAssistantBridge
   editingSourceGit?: EmbeddedAiEditingSourceGitBridge
+  logAiEditing?: (
+    level: 'info' | 'warn' | 'error',
+    event: string,
+    details?: Record<string, unknown>,
+  ) => void
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
 }

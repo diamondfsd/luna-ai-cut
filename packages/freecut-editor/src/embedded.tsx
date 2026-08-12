@@ -4,6 +4,7 @@ import { App } from './app'
 import { i18nReady } from './i18n'
 import {
   EmbeddedHostProvider,
+  type EmbeddedHostBridge,
   type ImportMediaFiles,
   type EmbeddedMediaImportSource,
   type EmbeddedNativeMediaFile,
@@ -60,6 +61,7 @@ export interface FreeCutEditorProps {
   onCancelAiAssistant?: (requestId: string) => Promise<void>
   onAiAssistantStatus?: EmbeddedAiAssistantBridge['onStatus']
   editingSourceGit?: EmbeddedAiEditingSourceGitBridge
+  onAiEditingLog?: EmbeddedHostBridge['logAiEditing']
   onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
 }
@@ -79,6 +81,7 @@ export function FreeCutEditor({
   onCancelAiAssistant,
   onAiAssistantStatus,
   editingSourceGit,
+  onAiEditingLog,
   onRenderHtmlFrame,
   exportFiles,
 }: FreeCutEditorProps) {
@@ -111,6 +114,7 @@ export function FreeCutEditor({
             }
           : undefined,
       editingSourceGit,
+      logAiEditing: onAiEditingLog,
     }),
     [
       onRequestMediaImport,
@@ -129,6 +133,7 @@ export function FreeCutEditor({
       onCancelAiAssistant,
       onAiAssistantStatus,
       editingSourceGit,
+      onAiEditingLog,
     ],
   )
 

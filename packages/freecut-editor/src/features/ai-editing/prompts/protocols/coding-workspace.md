@@ -6,7 +6,7 @@
 2. 常用视频、音频和文字剪辑直接使用下方格式经验；只有需要未列出的类型或扩展属性时才用 `docs.search` 和 `docs.read`。
 3. 用 `source.read` 读取要修改文件的当前原文。
 4. 用 `source.replace` 精确替换唯一原文。失败时重新读取该文件后再修改。
-5. 新建或删除模块时分别使用 `source.create`、`source.remove`；删除前使用 `source.read` 获取 `revision`。涉及模块及其索引的多文件改动使用 `source.apply_changes`，每批最多 4 个文件且每次响应只调用一次写入工具；大型修改先写片段文件，最后更新轨道和序列索引。
+5. 单个新模块使用 `source.create` 一次完成命名、创建和内容写入；同时创建多个模块或涉及模块及其索引的多文件改动使用 `source.apply_changes`，新文件使用 `revision: null`。删除单个模块使用 `source.remove`，删除前用 `source.read` 获取 `revision`。每批最多 4 个文件且每次响应只调用一次写入工具；大型修改先写片段文件，最后更新轨道和序列索引。
 6. 用 `timeline.check` 确认完整工程可编译，用 `git.diff` 检查实际变化。
 7. 所有目标完成后调用 `git.commit`。提交成功就是本轮编辑完成，不需要额外发布。
 
