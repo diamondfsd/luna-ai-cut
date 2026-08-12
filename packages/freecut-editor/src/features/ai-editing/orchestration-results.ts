@@ -69,16 +69,3 @@ export function incompleteReply(
   }) ?? failures.at(-1)
   return `这次没有完成你的请求：${failure?.result.message || fallback}`
 }
-
-export function declaredPlan(observations: readonly AiEditingObservation[]): string[] {
-  const result = observations.findLast((entry) => entry.toolId === 'workflow.set_plan')?.result.data
-  if (
-    !result ||
-    typeof result !== 'object' ||
-    !('steps' in result) ||
-    !Array.isArray(result.steps)
-  ) {
-    return []
-  }
-  return result.steps.filter((step): step is string => typeof step === 'string')
-}
