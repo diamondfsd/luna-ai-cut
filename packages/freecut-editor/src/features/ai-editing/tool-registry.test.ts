@@ -10,6 +10,12 @@ describe('AI editing tool registry', () => {
     expect(ids).toContain('workspace.list')
     expect(ids).toContain('workspace.search')
     expect(ids).toContain('git.diff')
+    expect(ids).toContain('skill.read')
+    expect(getAiEditingTool('skill.search')).toBeUndefined()
+    expect(getAiEditingTool('skill.read')?.inputSchema).toMatchObject({
+      required: ['name'],
+      properties: { name: { type: 'string' } },
+    })
     expect(getAiEditingTool('tool.load')).toBeUndefined()
     expect(getAiEditingTool('workspace.exec')).toBeUndefined()
   })

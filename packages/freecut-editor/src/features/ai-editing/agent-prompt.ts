@@ -1,4 +1,5 @@
 import { listAiEditingTools } from './tool-registry'
+import { listAiEditingSkills } from './skills/service'
 import agentSystemPrompt from './prompts/agent-system.md?raw'
 import jsonToolsProtocol from './prompts/protocols/json-tools.md?raw'
 import nativeToolsProtocol from './prompts/protocols/native-tools.md?raw'
@@ -19,6 +20,14 @@ function completeToolDefinitions(toolIds: ReadonlySet<string>): string {
     .join('\n\n')
 }
 
+async function availableSkills(): Promise<string> {
+  const skills = (await listAiEditingSkills()).filter((skill) => skill.enabled)
+  if (skills.length === 0) return '当前没有已启用的技能。'
+  return skills
+    .map((skill) => `- ${skill.name}: ${skill.description}`)
+    .join('\n')
+}
+
 export async function buildAiEditingSystemPrompt(
   protocol: 'native' | 'json',
   availableToolIds: ReadonlySet<string>,
@@ -27,6 +36,7 @@ export async function buildAiEditingSystemPrompt(
     PROTOCOL_INSTRUCTIONS:
       protocol === 'native' ? nativeToolsProtocol.trim() : jsonToolsProtocol.trim(),
     CODING_WORKSPACE_PROTOCOL: codingWorkspaceProtocol.trim(),
+    AVAILABLE_SKILLS: await availableSkills(),
     AVAILABLE_TOOLS: completeToolDefinitions(availableToolIds),
   })
 }
