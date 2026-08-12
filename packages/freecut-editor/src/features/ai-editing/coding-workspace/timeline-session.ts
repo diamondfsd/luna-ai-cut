@@ -21,7 +21,7 @@ import {
 } from './durable-source-repository'
 import { projectAgentWorkspaceToFiles } from './project-projection'
 import { getAiEditingDocumentationFiles } from '../documentation/catalog'
-import { VirtualEditingWorkspace } from './virtual-files'
+import { VirtualEditingWorkspace, type VirtualFileInput } from './virtual-files'
 import { validateAiEditingTimelineSource } from './timeline-source-validation'
 
 export interface TimelineProgramSummary {
@@ -79,6 +79,7 @@ export class TimelineCodingSession {
   private projectionAttempted = 0
   private projectionApplied = 0
   private projectionWorker: Promise<void> | null = null
+  private requestedSnapshot: readonly VirtualFileInput[] | null = null
 
   constructor(
     readonly workspace: VirtualEditingWorkspace,
@@ -134,18 +135,34 @@ export class TimelineCodingSession {
     return session
   }
 
-  private async compileProject(validateSemantics = false): Promise<Project> {
+  private async compileProject(
+    validateSemantics = false,
+    snapshot: readonly VirtualFileInput[] = this.repository.sourceSnapshot(),
+  ): Promise<Project> {
+    const files = new Map(snapshot.map((file) => [file.path, file.content]))
     const project = await projectFromSourceFiles({
-      read: async (path) => (await this.repository.readSource(path)).content,
+      read: async (path) => {
+        const content = files.get(path)
+        if (content === undefined) throw new Error(`剪辑源码文件不存在：${path}`)
+        return content
+      },
     })
     validateMediaIds(project, this.availableMediaIds)
     if (validateSemantics) validateAiEditingTimelineSource(project, this.mediaHasAudioById)
     return project
   }
 
-  private async refreshRenderer(validateSemantics = false): Promise<Project> {
-    const project = await this.compileProject(validateSemantics)
+  private async applyPreview(
+    snapshot: readonly VirtualFileInput[],
+    validateSemantics = false,
+  ): Promise<Project> {
+    const project = await this.compileProject(validateSemantics, snapshot)
     await hydrateTimelineStoresFromProject(project)
+    this.renderedProject = project
+    return project
+  }
+
+  private async persistProject(project: Project): Promise<void> {
     await updateProject(project.id, {
       name: project.name,
       description: project.description,
@@ -154,12 +171,11 @@ export class TimelineCodingSession {
       timeline: project.timeline,
       updatedAt: Date.now(),
     })
-    this.renderedProject = project
-    return project
   }
 
   private scheduleRendererRefresh(): void {
     this.projectionRequested += 1
+    this.requestedSnapshot = this.repository.sourceSnapshot()
     this.ensureProjectionWorker()
   }
 
@@ -177,9 +193,19 @@ export class TimelineCodingSession {
   private async runProjectionWorker(): Promise<void> {
     while (this.projectionAttempted < this.projectionRequested) {
       const target = this.projectionRequested
+      const snapshot = this.requestedSnapshot
       try {
-        await this.refreshRenderer()
-        this.projectionApplied = target
+        if (snapshot) {
+          const project = await this.compileProject(true, snapshot)
+          if (target === this.projectionRequested) {
+            await hydrateTimelineStoresFromProject(project)
+            if (target === this.projectionRequested) {
+              await this.persistProject(project)
+              this.renderedProject = project
+              this.projectionApplied = target
+            }
+          }
+        }
       } catch {
         // Multi-file edits can be temporarily incomplete. Keep the last valid
         // preview and retry automatically after the next source mutation.
@@ -196,7 +222,9 @@ export class TimelineCodingSession {
     await this.waitForBackgroundProjection()
     if (this.projectionApplied >= this.projectionRequested) return
     try {
-      await this.refreshRenderer()
+      const snapshot = this.requestedSnapshot ?? this.repository.sourceSnapshot()
+      const project = await this.applyPreview(snapshot, true)
+      await this.persistProject(project)
       this.projectionApplied = this.projectionRequested
     } catch {
       // Validation and commit report actionable source errors. Turn cleanup
@@ -237,7 +265,8 @@ export class TimelineCodingSession {
   async check(): Promise<TimelineBuildResult> {
     try {
       await this.waitForBackgroundProjection()
-      const artifact = await this.refreshRenderer(true)
+      const snapshot = this.repository.sourceSnapshot()
+      const artifact = await this.applyPreview(snapshot, true)
       this.projectionApplied = this.projectionRequested
       return { artifact, diagnostics: [] }
     } catch (error) {
@@ -269,9 +298,11 @@ export class TimelineCodingSession {
   async commitSource(message: string) {
     if (this.changedSourcePaths.size === 0) throw new Error('本轮没有需要提交的剪辑源码改动。')
     await this.waitForBackgroundProjection()
-    await this.refreshRenderer(true)
+    const snapshot = this.repository.sourceSnapshot()
+    const project = await this.applyPreview(snapshot, true)
     this.projectionApplied = this.projectionRequested
     const result = await this.repository.commit(message)
+    await this.persistProject(project)
     this.changedSourcePaths.clear()
     return result
   }

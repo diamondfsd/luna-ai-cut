@@ -126,6 +126,10 @@ export class DurableEditingSourceRepository {
     return { path, content, size: content.length }
   }
 
+  sourceSnapshot(): VirtualFileInput[] {
+    return this.workspace.snapshot().filter((file) => isEditingSourceFile(file.path))
+  }
+
   replaceSource(input: DurableSourceReplaceInput) {
     if (!isEditingSourceFile(input.path)) throw new Error('只能修改剪辑源码文件。')
     return this.enqueueMutation(async () => {
