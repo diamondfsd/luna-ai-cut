@@ -128,10 +128,12 @@ const sourceChange = z.strictObject({
   content: z.string().nullable(),
 })
 
+const MAX_SOURCE_CHANGES_PER_BATCH = 4
+
 const applySourceChanges = defineAiEditingTool({
   id: 'source.apply_changes',
   title: '批量修改工程源码',
-  description: '使用 source.read 返回的 revision 原子写入或删除多个源码文件；新文件使用 revision: null；整批全部成功或全部不生效。',
+  description: '使用 source.read 返回的 revision 原子写入或删除最多 4 个源码文件；新文件使用 revision: null；整批全部成功或全部不生效。大型修改分批调用，每次响应只调用一次。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema(
@@ -139,7 +141,7 @@ const applySourceChanges = defineAiEditingTool({
       changes: {
         type: 'array',
         minItems: 1,
-        maxItems: 100,
+        maxItems: MAX_SOURCE_CHANGES_PER_BATCH,
         items: {
           type: 'object',
           properties: {
@@ -154,7 +156,9 @@ const applySourceChanges = defineAiEditingTool({
     },
     ['changes'],
   ),
-  schema: z.strictObject({ changes: z.array(sourceChange).min(1).max(100) }),
+  schema: z.strictObject({
+    changes: z.array(sourceChange).min(1).max(MAX_SOURCE_CHANGES_PER_BATCH),
+  }),
   summarize: ({ changes }) => `批量修改 ${(changes as unknown[]).length} 个源码文件`,
   execute: async ({ changes }) => ({
     ok: true,

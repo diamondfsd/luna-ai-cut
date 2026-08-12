@@ -56,6 +56,12 @@ export interface AiEditingSourceReplaceResult {
   replacements: number
 }
 
+export interface AiEditingSourceResetResult {
+  changed: boolean
+  initialCommitId: string
+  commitId: string
+}
+
 export interface AiEditingSourceGitApi {
   ensure(
     projectId: string,
@@ -77,5 +83,6 @@ export interface AiEditingSourceGitApi {
   branches(projectId: string): Promise<AiEditingSourceBranches>
   createBranch(projectId: string, name: string): Promise<void>
   checkout(projectId: string, name: string): Promise<void>
+  resetToInitial(projectId: string): Promise<AiEditingSourceResetResult>
   commit(projectId: string, message: string, sourcePaths?: string[]): Promise<string>
 }

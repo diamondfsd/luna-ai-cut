@@ -169,6 +169,7 @@ declare module '@freecut/embedded' {
     branches(projectId: string): Promise<{ current: string | null; names: string[] }>
     createBranch(projectId: string, name: string): Promise<void>
     checkout(projectId: string, name: string): Promise<void>
+    resetToInitial(projectId: string): Promise<{ changed: boolean; initialCommitId: string; commitId: string }>
     commit(projectId: string, message: string, sourcePaths?: string[]): Promise<string>
   }
 

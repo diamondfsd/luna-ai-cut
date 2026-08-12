@@ -219,7 +219,7 @@ export const Timeline = memo(function Timeline({
   )
 
   const { handleTrackResizeStart, handleTrackResizeReset } = useTrackHeightResize()
-  const videoZoneHeight = 24
+  const videoZoneHeight = subtitleTracks.length > 0 ? 0 : 24
   const audioZoneHeight = 24
   const getTrackStackOffset = useCallback(
     (sectionTracks: typeof visibleTracks, dropIndex: number, leadingOffset = 0) => {

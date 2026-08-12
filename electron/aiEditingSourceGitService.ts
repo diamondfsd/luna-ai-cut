@@ -27,6 +27,7 @@ import {
   applySourceChangesTransaction,
   resolveSourceWritablePath,
 } from './aiEditingSourceGitMutation.ts'
+import { resetEditingSourceToInitial } from './aiEditingSourceGitReset.ts'
 
 const WORKSPACE_DIRECTORY = 'freecut-workspace'
 const PROJECTS_DIRECTORY = 'projects'
@@ -283,6 +284,13 @@ export class AiEditingSourceGitService {
     })
   }
 
+  resetToInitial(): Promise<{ changed: boolean; initialCommitId: string; commitId: string }> {
+    return this.enqueueMutation(async () => {
+      await this.requireRepository()
+      return resetEditingSourceToInitial(this.repositoryPath)
+    })
+  }
+
   commit(message: string, sourcePaths?: string[]): Promise<string> {
     return this.enqueueMutation(async () => {
       await this.requireRepository()
@@ -438,6 +446,7 @@ export function createAiEditingSourceGitApi(baseDir: string): AiEditingSourceGit
     branches: async (projectId) => serviceFor(projectId).branches(),
     createBranch: async (projectId, name) => serviceFor(projectId).createBranch(name),
     checkout: async (projectId, name) => serviceFor(projectId).checkout(name),
+    resetToInitial: async (projectId) => serviceFor(projectId).resetToInitial(),
     commit: async (projectId, message, sourcePaths) =>
       serviceFor(projectId).commit(message, sourcePaths),
   }

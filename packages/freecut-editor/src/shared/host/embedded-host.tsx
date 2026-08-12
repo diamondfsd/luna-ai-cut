@@ -189,10 +189,15 @@ export interface EmbeddedAiEditingSourceGitBridge {
     input: { path: string; oldText: string; newText: string; replaceAll?: boolean },
   ): Promise<{ changed: boolean; content: string; replacements: number }>
   write(projectId: string, sourcePath: string, content: string): Promise<void>
-  remove(projectId: string, sourcePath: string, expectedContent?: string): Promise<void>
+  remove(projectId: string, sourcePath: string, expectedRevision?: string): Promise<void>
   applyChanges(
     projectId: string,
-    changes: Array<{ path: string; content: string | null; expectedContent?: string | null }>,
+    changes: Array<{
+      path: string
+      content: string | null
+      expectedContent?: string | null
+      expectedRevision?: string
+    }>,
   ): Promise<void>
   diff(projectId: string): Promise<
     Array<{
@@ -215,6 +220,11 @@ export interface EmbeddedAiEditingSourceGitBridge {
   branches(projectId: string): Promise<{ current: string | null; names: string[] }>
   createBranch(projectId: string, name: string): Promise<void>
   checkout(projectId: string, name: string): Promise<void>
+  resetToInitial(projectId: string): Promise<{
+    changed: boolean
+    initialCommitId: string
+    commitId: string
+  }>
   commit(projectId: string, message: string, sourcePaths?: string[]): Promise<string>
 }
 

@@ -180,50 +180,57 @@ async function startDialogueMock(): Promise<{
       return
     }
     if (index === 2) {
-      const sequence = readResult(payload, 'sequences/main/sequence.json')
       callTool(response, payload, index, 'source.apply_changes', {
         changes: [
-          {
-            path: 'sequences/main/sequence.json', revision: sequence.revision,
-            content: withTracks(sequence.content, [subtitleTrackPath, videoTrackPath, audioTrackPath]),
-          },
-          { path: subtitleTrackPath, revision: null, content: subtitleTrack },
           { path: subtitleSegmentPath, revision: null, content: subtitleSegment },
-          { path: audioTrackPath, revision: null, content: audioTrack('音频') },
           { path: audioSegmentPath, revision: null, content: emptyAudioSegment },
-          { path: videoTrackPath, revision: null, content: videoTrack },
           { path: videoSegmentPath, revision: null, content: emptyVideoSegment },
+          { path: subtitleTrackPath, revision: null, content: subtitleTrack },
         ],
       })
       return
     }
     if (index === 3) {
+      const sequence = readResult(payload, 'sequences/main/sequence.json')
+      callTool(response, payload, index, 'source.apply_changes', {
+        changes: [
+          { path: audioTrackPath, revision: null, content: audioTrack('音频') },
+          { path: videoTrackPath, revision: null, content: videoTrack },
+          {
+            path: 'sequences/main/sequence.json', revision: sequence.revision,
+            content: withTracks(sequence.content, [subtitleTrackPath, videoTrackPath, audioTrackPath]),
+          },
+        ],
+      })
+      return
+    }
+    if (index === 4) {
       notifyPreview?.()
       await previewGate
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (index === 4) {
+    if (index === 5) {
       callTool(response, payload, index, 'git.commit', { message: 'Create initial scripted edit' })
       return
     }
-    if (index === 5) {
+    if (index === 6) {
       callTool(response, payload, index, 'source.read', { path: 'sequences/main/sequence.json' })
       return
     }
-    if (index === 6) {
+    if (index === 7) {
       callTool(response, payload, index, 'source.read', { path: subtitleTrackPath })
       return
     }
-    if (index === 7) {
+    if (index === 8) {
       callTool(response, payload, index, 'source.read', { path: subtitleSegmentPath })
       return
     }
-    if (index === 8) {
+    if (index === 9) {
       callTool(response, payload, index, 'source.read', { path: audioTrackPath })
       return
     }
-    if (index === 9) {
+    if (index === 10) {
       const sequence = readResult(payload, 'sequences/main/sequence.json')
       const subtitleTrackResult = readResult(payload, subtitleTrackPath)
       const subtitleSegmentResult = readResult(payload, subtitleSegmentPath)
@@ -241,11 +248,11 @@ async function startDialogueMock(): Promise<{
       })
       return
     }
-    if (index === 10) {
+    if (index === 11) {
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (index === 11) {
+    if (index === 12) {
       callTool(response, payload, index, 'git.commit', { message: 'Replace subtitles with narration track' })
       return
     }
@@ -302,9 +309,14 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     const input = assistant.getByRole('textbox')
     await expect(input).toBeEnabled({ timeout: 30_000 })
 
-    await send(page, SCRIPT_REQUEST)
     const directory = await projectDirectory(workspaceDir)
     const projectFile = path.join(directory, 'project.json')
+    const sourceRoot = path.join(directory, 'editing-source')
+    await send(page, SCRIPT_REQUEST)
+    const initialSequence = await readFile(
+      path.join(sourceRoot, 'sequences/main/sequence.json'),
+      'utf8',
+    )
     await input.fill(CONFIRM_REQUEST)
     await page.getByRole('button', { name: '发送剪辑请求' }).click()
     await mock.waitForPreview()
@@ -340,7 +352,6 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     expect(narrationRun.toolCalls.filter((call) => call.id === 'source.apply_changes')).toHaveLength(1)
     expect(narrationRun.toolCalls.at(-1)).toMatchObject({ id: 'git.commit', ok: true })
 
-    const sourceRoot = path.join(directory, 'editing-source')
     const sequence = JSON.parse(await readFile(path.join(sourceRoot, 'sequences/main/sequence.json'), 'utf8')) as {
       tracks: string[]
     }
@@ -353,6 +364,32 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     await expect(readFile(path.join(sourceRoot, subtitleSegmentPath), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT',
     })
+
+    await assistant.getByRole('button', { name: '重置测试项目' }).click()
+    const resetDialog = page.getByRole('dialog', { name: '重置测试项目' })
+    await expect(resetDialog).toBeVisible()
+    await resetDialog.getByRole('button', { name: '恢复初始状态' }).click()
+    await expect(resetDialog).toBeHidden({ timeout: 30_000 })
+    await expect(page.locator('[data-timeline-item]')).toHaveCount(0)
+    await expect.poll(async () => {
+      const resetProject = JSON.parse(await readFile(projectFile, 'utf8')) as {
+        timeline?: { tracks?: unknown[]; items?: unknown[] }
+      }
+      return {
+        tracks: resetProject.timeline?.tracks?.length,
+        items: resetProject.timeline?.items?.length,
+      }
+    }).toEqual({ tracks: 0, items: 0 })
+    expect(await readFile(path.join(sourceRoot, 'sequences/main/sequence.json'), 'utf8'))
+      .toBe(initialSequence)
+    expect(await runs(directory)).toHaveLength(3)
+    await expect(input).toHaveValue('')
+    await expect(assistant.getByText(SCRIPT_REQUEST)).toHaveCount(0)
+    await assistant.getByRole('button', { name: '查看历史会话' }).click()
+    await expect(page.getByRole('dialog', { name: '历史会话' }).getByRole('button', {
+      name: '我最近给我家宝宝做了一个 AI-agent',
+    }))
+      .toBeVisible()
     expect(runtimeErrors).toEqual([])
   } finally {
     mock.releaseAfterPreview()

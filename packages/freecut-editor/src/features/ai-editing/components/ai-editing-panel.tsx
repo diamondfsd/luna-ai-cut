@@ -6,6 +6,7 @@ import {
   History,
   Loader2,
   MessageSquarePlus,
+  RotateCcw,
   Settings2,
   LibraryBig,
   Sparkles,
@@ -25,6 +26,7 @@ import { AiEditingMessageBubble } from './ai-editing-message'
 import { AiEditingModelContextDialog } from './ai-editing-model-context-dialog'
 import { AiProviderDialog } from './ai-provider-dialog'
 import { AiEditingSkillsDialog } from './ai-editing-skills-dialog'
+import { AiEditingResetDialog } from './ai-editing-reset-dialog'
 import { AiEditingStreamPreview } from './ai-editing-stream-preview'
 import { AiEditingTaskList } from './ai-editing-task-list'
 import { AiEditingToolActivityCard } from './ai-editing-tool-activity-card'
@@ -106,6 +108,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
   const [modelContextDialogOpen, setModelContextDialogOpen] = useState(false)
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
   const [skillsDialogOpen, setSkillsDialogOpen] = useState(false)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const [copiedRecordPaths, setCopiedRecordPaths] = useState(false)
@@ -199,6 +202,17 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
           <span className="text-xs font-medium text-foreground">剪辑助手</span>
         </div>
         <div className="flex items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            onClick={() => setResetDialogOpen(true)}
+            disabled={!projectId || busy || isRestoringConversation}
+            aria-label="重置测试项目"
+            data-tooltip="重置测试项目"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
           <Button
             size="icon"
             variant="ghost"
@@ -416,6 +430,12 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
       />
       <AiProviderDialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen} />
       <AiEditingSkillsDialog open={skillsDialogOpen} onOpenChange={setSkillsDialogOpen} />
+      <AiEditingResetDialog
+        open={resetDialogOpen}
+        projectId={projectId}
+        onOpenChange={setResetDialogOpen}
+        onResetConversation={startNewConversation}
+      />
     </div>
   )
 })

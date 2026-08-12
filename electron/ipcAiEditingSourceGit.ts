@@ -55,6 +55,9 @@ export function register(): void {
   ipcMain.handle('ai-editing-source-git:checkout', (_event, projectId, name) =>
     sourceGitApi().checkout(projectId, name),
   )
+  ipcMain.handle('ai-editing-source-git:reset-to-initial', (_event, projectId) =>
+    sourceGitApi().resetToInitial(projectId),
+  )
   ipcMain.handle('ai-editing-source-git:commit', (_event, projectId, message, sourcePaths) =>
     sourceGitApi().commit(projectId, message, sourcePaths),
   )
