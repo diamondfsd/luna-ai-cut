@@ -29,7 +29,6 @@ import {
 } from './orchestration-messages'
 import { reportRunProgress, traceRun } from './orchestration-progress'
 import {
-  declaredPlan,
   defaultReply,
   hasCommittedEdit,
   hasSourceChanges,
@@ -410,7 +409,7 @@ export async function runSingleAiEditingTurn(
       reply: failureMessage
         ? `剪辑工程没有完成：${failureMessage}`
         : result.reply,
-      plan: declaredPlan(result.observations),
+      plan: [],
       completed: !failedEdit && result.completed,
       completionNotes: failureMessage ? [failureMessage] : result.completionNotes,
     }

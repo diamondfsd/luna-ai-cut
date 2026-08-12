@@ -7,7 +7,6 @@ const AGENT_TOOL_IDS = new Set([
   'timeline.inspect_context',
   'media.list',
   'media.read',
-  'workflow.set_plan',
   'result.read',
   'skill.read',
   'docs.search',

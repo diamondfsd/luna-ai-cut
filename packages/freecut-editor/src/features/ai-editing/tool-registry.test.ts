@@ -19,5 +19,6 @@ describe('AI editing tool registry', () => {
     })
     expect(getAiEditingTool('tool.load')).toBeUndefined()
     expect(getAiEditingTool('workspace.exec')).toBeUndefined()
+    expect(getAiEditingTool('workflow.set_plan')).toBeUndefined()
   })
 })
