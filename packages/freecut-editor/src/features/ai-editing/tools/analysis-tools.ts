@@ -12,9 +12,33 @@ import type { AiEditingToolModule } from '../types'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
 import { mediaIdsFromToolInput } from './media-reference'
 
-const DEFAULT_TRANSCRIPT_PAGE_SIZE = 24
-const MAX_TRANSCRIPT_PAGE_SIZE = 30
-const MAX_TRANSCRIPT_PAGE_CHARS = 3_500
+const DEFAULT_TRANSCRIPT_PAGE_SIZE = 60
+const MAX_TRANSCRIPT_PAGE_SIZE = 60
+const MAX_TRANSCRIPT_PAGE_CHARS = 8_000
+
+interface TranscriptPageEntry {
+  mediaRef: string
+  startSeconds: number
+  endSeconds: number
+  text: string
+}
+
+export function paginateTranscriptEntries(
+  entries: readonly TranscriptPageEntry[],
+  cursor = 0,
+  limit = DEFAULT_TRANSCRIPT_PAGE_SIZE,
+): { segments: TranscriptPageEntry[]; nextCursor: number | null } {
+  const segments: TranscriptPageEntry[] = []
+  let chars = 0
+  for (const entry of entries.slice(cursor)) {
+    if (segments.length >= limit) break
+    if (segments.length > 0 && chars + entry.text.length > MAX_TRANSCRIPT_PAGE_CHARS) break
+    segments.push(entry)
+    chars += entry.text.length
+  }
+  const nextCursor = cursor + segments.length
+  return { segments, nextCursor: nextCursor < entries.length ? nextCursor : null }
+}
 
 async function readTranscriptPage(
   mediaIds: readonly string[],
@@ -32,12 +56,7 @@ async function readTranscriptPage(
     text: string
   }>
 }> {
-  const entries: Array<{
-    mediaRef: string
-    startSeconds: number
-    endSeconds: number
-    text: string
-  }> = []
+  const entries: TranscriptPageEntry[] = []
   const missingMediaIds: string[] = []
   for (const mediaId of mediaIds) {
     const transcript = await mediaTranscriptionService.getTranscript(mediaId).catch(() => undefined)
@@ -57,21 +76,13 @@ async function readTranscriptPage(
     }
   }
 
-  const segments: typeof entries = []
-  let chars = 0
-  for (const entry of entries.slice(cursor)) {
-    if (segments.length >= limit) break
-    if (segments.length > 0 && chars + entry.text.length > MAX_TRANSCRIPT_PAGE_CHARS) break
-    segments.push(entry)
-    chars += entry.text.length
-  }
-  const nextCursor = cursor + segments.length
+  const page = paginateTranscriptEntries(entries, cursor, limit)
   return {
     cursor,
-    nextCursor: nextCursor < entries.length ? nextCursor : null,
+    nextCursor: page.nextCursor,
     totalSegments: entries.length,
     missingMediaIds,
-    segments,
+    segments: page.segments,
   }
 }
 

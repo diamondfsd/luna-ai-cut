@@ -20,7 +20,8 @@ export function hasSourceChanges(observations: readonly AiEditingObservation[]):
       observation.toolId === 'source.replace' ||
       observation.toolId === 'source.create' ||
       observation.toolId === 'source.remove' ||
-      observation.toolId === 'source.apply_changes'
+      observation.toolId === 'source.apply_changes' ||
+      observation.toolId === 'timeline.compose_source'
     ),
   )
 }
@@ -35,7 +36,8 @@ export function hasUncommittedSourceWork(observations: readonly AiEditingObserva
       observation.toolId === 'source.replace' ||
       observation.toolId === 'source.create' ||
       observation.toolId === 'source.remove' ||
-      observation.toolId === 'source.apply_changes'
+      observation.toolId === 'source.apply_changes' ||
+      observation.toolId === 'timeline.compose_source'
     ) {
       if (!data || typeof data !== 'object' || (data as { changed?: unknown }).changed !== false) {
         unpublished = true

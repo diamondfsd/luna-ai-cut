@@ -350,6 +350,10 @@ export class TimelineCodingSession {
     return result
   }
 
+  async currentProject(): Promise<Project> {
+    return this.compileProject(false)
+  }
+
   async check(): Promise<TimelineBuildResult> {
     try {
       await this.waitForBackgroundProjection()
