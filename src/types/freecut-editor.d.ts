@@ -87,6 +87,7 @@ declare module '@freecut/embedded' {
     model: string
     contextWindowTokens: number
     hasApiKey: boolean
+    nativeToolCalling: boolean
   }
 
   export interface EmbeddedAiAssistantConfigInput {
@@ -95,6 +96,13 @@ declare module '@freecut/embedded' {
     contextWindowTokens: number
     apiKey?: string
     clearApiKey?: boolean
+    nativeToolCalling?: boolean
+  }
+
+  export interface EmbeddedAiAssistantConfigTestResult {
+    config: EmbeddedAiAssistantConfig
+    nativeToolCalling: boolean
+    message: string
   }
 
   export interface EmbeddedAiAssistantToolDefinition {
@@ -190,6 +198,7 @@ declare module '@freecut/embedded' {
     ) => Promise<EmbeddedVisualEvidence>
     onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
     onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
+    onTestAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfigTestResult>
     onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>
     onCancelAiAssistant?: (requestId: string) => Promise<void>
     onAiAssistantStatus?: (

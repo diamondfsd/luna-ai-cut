@@ -189,8 +189,8 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       thinkingCeiling: 6,
     })
     try {
-      const contextWindowTokens = (await getEmbeddedHostBridge().aiAssistant?.getConfig())
-        ?.contextWindowTokens ?? 256 * 1024
+      const assistantConfig = await getEmbeddedHostBridge().aiAssistant?.getConfig()
+      const contextWindowTokens = assistantConfig?.contextWindowTokens ?? 256 * 1024
       const preparedContext = await prepareConversationContext(
         previousAgentTurns,
         storedContext,
@@ -226,7 +226,9 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         history: preparedContext.history,
         agentHistory: preparedContext.agentHistory,
         loadedToolIds: storedLoadedToolIds,
-        preferredProtocol: previousAgentTurns.at(-1)?.protocol,
+        preferredProtocol: assistantConfig?.nativeToolCalling
+          ? previousAgentTurns.at(-1)?.protocol
+          : 'json',
         adapter,
         reasoningEffort: get().reasoningEffort,
         signal: controller.signal,

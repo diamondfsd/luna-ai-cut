@@ -163,6 +163,7 @@ test('剪辑助手创建的 HTML/CSS 可预览、编辑、动画并安全导出'
       baseUrl,
       model: 'freecut-html-e2e',
       apiKey: 'e2e-placeholder-key',
+      nativeToolCalling: true,
     }), mock.baseUrl)
     await page.getByRole('link', { name: /^(创建第一个项目|新建项目)$/ }).click()
     await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()

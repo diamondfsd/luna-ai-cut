@@ -19,6 +19,7 @@ export interface StoredAssistantConfig {
   model: string
   contextWindowTokens: number
   apiKey?: string
+  nativeToolCalling?: boolean
 }
 
 function configPath(): string {
@@ -40,6 +41,7 @@ function publicConfig(config: StoredAssistantConfig): AiEditingAssistantConfig {
     model: config.model,
     contextWindowTokens: config.contextWindowTokens,
     hasApiKey: typeof config.apiKey === 'string' && config.apiKey.length > 0,
+    nativeToolCalling: config.nativeToolCalling === true,
   }
 }
 
@@ -102,6 +104,9 @@ export async function readAssistantConfig(): Promise<StoredAssistantConfig> {
       ...(typeof parsed.apiKey === 'string' && parsed.apiKey.trim()
         ? { apiKey: normalizeApiKey(parsed.apiKey) }
         : {}),
+      ...(typeof parsed.nativeToolCalling === 'boolean'
+        ? { nativeToolCalling: parsed.nativeToolCalling }
+        : {}),
     }
   } catch {
     return emptyConfig()
@@ -143,6 +148,7 @@ export async function saveAiEditingAssistantConfig(
     baseUrl: normalizeBaseUrl(input.baseUrl),
     model: normalizeModel(input.model),
     contextWindowTokens: normalizeContextWindowTokens(input.contextWindowTokens),
+    nativeToolCalling: input.nativeToolCalling === true,
   }
 
   if (input.clearApiKey) {
@@ -153,6 +159,15 @@ export async function saveAiEditingAssistantConfig(
     next.apiKey = current.apiKey
   }
 
+  await writeConfig(next)
+  return publicConfig(next)
+}
+
+export async function saveNativeToolCallingCapability(
+  nativeToolCalling: boolean,
+): Promise<AiEditingAssistantConfig> {
+  const current = await readAssistantConfig()
+  const next = { ...current, nativeToolCalling }
   await writeConfig(next)
   return publicConfig(next)
 }

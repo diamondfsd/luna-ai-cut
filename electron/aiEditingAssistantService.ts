@@ -13,6 +13,8 @@ import {
   normalizeModel,
   readAssistantConfig,
   requireApiKey,
+  saveAiEditingAssistantConfig,
+  saveNativeToolCallingCapability,
 } from './aiEditingAssistantConfig'
 import {
   AI_EDITING_ASSISTANT_ATTEMPT_TIMEOUT_MS,
@@ -31,6 +33,52 @@ export {
   getAiEditingAssistantConfig,
   saveAiEditingAssistantConfig,
 } from './aiEditingAssistantConfig'
+
+const CAPABILITY_PROBE_TOOL = 'luna_capability_probe'
+
+export async function testAiEditingAssistantConfig(
+  input: import('../src/shared/types').AiEditingAssistantConfigInput,
+): Promise<import('../src/shared/types').AiEditingAssistantConfigTestResult> {
+  let nativeToolCalling = false
+  let message = '测试未通过，已关闭原生工具调用。'
+  try {
+    await saveAiEditingAssistantConfig(input)
+    const config = await readAssistantConfig()
+    const client = new OpenAI({
+      apiKey: requireApiKey(config),
+      baseURL: normalizeBaseUrl(config.baseUrl),
+      maxRetries: 0,
+    })
+    const response = await client.chat.completions.create({
+      model: normalizeModel(config.model),
+      messages: [{
+        role: 'user',
+        content: 'Call the provided capability probe tool exactly once.',
+      }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: CAPABILITY_PROBE_TOOL,
+          description: 'Reports native tool-calling support.',
+          parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+      }],
+      tool_choice: { type: 'function', function: { name: CAPABILITY_PROBE_TOOL } },
+      max_tokens: 64,
+      temperature: 0,
+    }, { signal: AbortSignal.timeout(20_000) })
+    nativeToolCalling = response.choices[0]?.message.tool_calls?.some(
+      (call) => call.type === 'function' && call.function.name === CAPABILITY_PROBE_TOOL,
+    ) ?? false
+    message = nativeToolCalling
+      ? '连接正常，已开启原生工具调用。'
+      : '连接正常，当前模型不支持原生工具调用，已自动关闭。'
+  } catch {
+    // A failed test must leave the persisted capability disabled as well.
+  }
+  const savedConfig = await saveNativeToolCallingCapability(nativeToolCalling)
+  return { config: savedConfig, nativeToolCalling, message }
+}
 
 const MAX_MESSAGE_COUNT = 512
 const MAX_MESSAGE_LENGTH = 2_000_000

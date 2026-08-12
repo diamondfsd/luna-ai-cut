@@ -206,6 +206,8 @@ export function VideoEditorPage() {
   const handleGetAiAssistantConfig = useCallback(() => window.luna.aiEditingAssistant.getConfig(), [])
   const handleSaveAiAssistantConfig = useCallback((input: EmbeddedAiAssistantConfigInput) =>
     window.luna.aiEditingAssistant.saveConfig(input), [])
+  const handleTestAiAssistantConfig = useCallback((input: EmbeddedAiAssistantConfigInput) =>
+    window.luna.aiEditingAssistant.testConfig(input), [])
   const handleGenerateAiAssistant = useCallback((input: EmbeddedAiAssistantGenerateInput) =>
     window.luna.aiEditingAssistant.generate(input), [])
   const handleCancelAiAssistant = useCallback((requestId: string) =>
@@ -269,6 +271,7 @@ export function VideoEditorPage() {
           onAnalyzeMediaVisual={handleAnalyzeMediaVisual}
           onGetAiAssistantConfig={handleGetAiAssistantConfig}
           onSaveAiAssistantConfig={handleSaveAiAssistantConfig}
+          onTestAiAssistantConfig={handleTestAiAssistantConfig}
           onGenerateAiAssistant={handleGenerateAiAssistant}
           onCancelAiAssistant={handleCancelAiAssistant}
           onAiAssistantStatus={handleAiAssistantStatus}

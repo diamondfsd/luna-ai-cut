@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@freecut/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@freecut/components/ui/tabs'
+import { Switch } from '@freecut/components/ui/switch'
 import { useSettingsStore, type VisualAnalysisIntensity } from '@freecut/features/editor/deps/settings'
 import { getEmbeddedHostBridge, type EmbeddedAiAssistantConfig } from '@freecut/shared/host/embedded-host'
 
@@ -33,6 +34,7 @@ const EMPTY_CONFIG: EmbeddedAiAssistantConfig = {
   model: '',
   contextWindowTokens: 256 * 1024,
   hasApiKey: false,
+  nativeToolCalling: false,
 }
 
 type AiAssistantSettingsSection = 'connection' | 'analysis'
@@ -46,6 +48,9 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
   const [apiKey, setApiKey] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [nativeToolCalling, setNativeToolCalling] = useState(false)
+  const [testMessage, setTestMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const visualAnalysisIntensity = useSettingsStore((state) => state.visualAnalysisIntensity)
   const setSetting = useSettingsStore((state) => state.setSetting)
@@ -68,6 +73,8 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
       setModel(next.model)
       setContextWindowK(String(next.contextWindowTokens / 1024))
       setApiKey('')
+      setNativeToolCalling(next.nativeToolCalling)
+      setTestMessage(null)
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : '无法读取剪辑助手连接。')
     }).finally(() => {
@@ -92,6 +99,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
         model,
         contextWindowTokens: Math.round(Number(contextWindowK) * 1024),
         ...(apiKey.trim() ? { apiKey } : {}),
+        nativeToolCalling,
       })
       setConfig(next)
       setApiKey('')
@@ -100,6 +108,32 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
       setError(reason instanceof Error ? reason.message : '无法保存剪辑助手连接。')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const testConnection = async (): Promise<void> => {
+    const bridge = getEmbeddedHostBridge().aiAssistant
+    if (!bridge) return
+    setTesting(true)
+    setError(null)
+    setTestMessage(null)
+    try {
+      const result = await bridge.testConfig({
+        baseUrl,
+        model,
+        contextWindowTokens: Math.round(Number(contextWindowK) * 1024),
+        ...(apiKey.trim() ? { apiKey } : {}),
+        nativeToolCalling,
+      })
+      setConfig(result.config)
+      setNativeToolCalling(result.nativeToolCalling)
+      setApiKey('')
+      setTestMessage(result.message)
+    } catch (reason) {
+      setNativeToolCalling(false)
+      setError(reason instanceof Error ? reason.message : '测试未通过，已关闭原生工具调用。')
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -114,6 +148,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
         model,
         contextWindowTokens: Math.round(Number(contextWindowK) * 1024),
         clearApiKey: true,
+        nativeToolCalling,
       })
       setConfig(next)
       setApiKey('')
@@ -173,7 +208,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      disabled={loading || saving}
+                      disabled={loading || saving || testing}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -186,7 +221,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      disabled={loading || saving}
+                      disabled={loading || saving || testing}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -199,7 +234,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
                       step={1}
                       value={contextWindowK}
                       onChange={(event) => setContextWindowK(event.target.value)}
-                      disabled={loading || saving}
+                      disabled={loading || saving || testing}
                     />
                     <p className="text-xs leading-relaxed text-muted-foreground">
                       默认 256K，使用量接近 80% 时才会整理较早内容。
@@ -220,17 +255,43 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      disabled={loading || saving}
+                      disabled={loading || saving || testing}
                     />
                   </div>
+                  <div className="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="ai-assistant-native-tools">原生工具调用</Label>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        开启后使用模型自带的工具调用能力；关闭时使用兼容模式。
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <Switch
+                        id="ai-assistant-native-tools"
+                        checked={nativeToolCalling}
+                        onCheckedChange={setNativeToolCalling}
+                        disabled={loading || saving || testing}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void testConnection()}
+                        disabled={loading || saving || testing}
+                      >
+                        {testing && <Loader2 className="h-4 w-4 animate-spin" />}
+                        测试
+                      </Button>
+                    </div>
+                  </div>
+                  {testMessage && <p className="text-sm leading-relaxed text-muted-foreground">{testMessage}</p>}
                   {error && <p className="text-sm leading-relaxed text-destructive">{error}</p>}
                   <DialogFooter className="mt-auto border-t border-border pt-5 sm:space-x-0">
                     {config.hasApiKey && (
-                      <Button type="button" variant="outline" onClick={() => void clearApiKey()} disabled={loading || saving}>
+                      <Button type="button" variant="outline" onClick={() => void clearApiKey()} disabled={loading || saving || testing}>
                         清除 Key
                       </Button>
                     )}
-                    <Button type="submit" disabled={loading || saving}>
+                    <Button type="submit" disabled={loading || saving || testing}>
                       {(loading || saving) && <Loader2 className="h-4 w-4 animate-spin" />}
                       保存
                     </Button>

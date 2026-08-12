@@ -97,6 +97,7 @@ test('AI-TASK-P0-SEQUENTIAL 复杂剪辑按独立任务逐项完成', async ({ l
     await page.getByRole('link', { name: '剪辑', exact: true }).click()
     await page.evaluate((baseUrl) => window.luna.aiEditingAssistant.saveConfig({
       baseUrl, model: 'freecut-task-e2e', apiKey: 'e2e-placeholder-key',
+      nativeToolCalling: true,
     }), mock.baseUrl)
     await page.getByRole('link', { name: /^(创建第一个项目|新建项目)$/ }).click()
     await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()

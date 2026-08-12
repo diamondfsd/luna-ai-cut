@@ -14,6 +14,7 @@ import {
   type EmbeddedTaskProgress,
   type EmbeddedAiAssistantConfig,
   type EmbeddedAiAssistantConfigInput,
+  type EmbeddedAiAssistantConfigTestResult,
   type EmbeddedAiAssistantGenerateInput,
   type EmbeddedAiAssistantGenerateResult,
   type EmbeddedAiAssistantBridge,
@@ -50,6 +51,9 @@ export interface FreeCutEditorProps {
   onSaveAiAssistantConfig?: (
     input: EmbeddedAiAssistantConfigInput,
   ) => Promise<EmbeddedAiAssistantConfig>
+  onTestAiAssistantConfig?: (
+    input: EmbeddedAiAssistantConfigInput,
+  ) => Promise<EmbeddedAiAssistantConfigTestResult>
   onGenerateAiAssistant?: (
     input: EmbeddedAiAssistantGenerateInput,
   ) => Promise<EmbeddedAiAssistantGenerateResult>
@@ -70,6 +74,7 @@ export function FreeCutEditor({
   onAnalyzeMediaVisual,
   onGetAiAssistantConfig,
   onSaveAiAssistantConfig,
+  onTestAiAssistantConfig,
   onGenerateAiAssistant,
   onCancelAiAssistant,
   onAiAssistantStatus,
@@ -92,12 +97,14 @@ export function FreeCutEditor({
       aiAssistant:
         onGetAiAssistantConfig &&
         onSaveAiAssistantConfig &&
+        onTestAiAssistantConfig &&
         onGenerateAiAssistant &&
         onCancelAiAssistant &&
         onAiAssistantStatus
           ? {
               getConfig: onGetAiAssistantConfig,
               saveConfig: onSaveAiAssistantConfig,
+              testConfig: onTestAiAssistantConfig,
               generate: onGenerateAiAssistant,
               cancel: onCancelAiAssistant,
               onStatus: onAiAssistantStatus,
@@ -117,6 +124,7 @@ export function FreeCutEditor({
       exportFiles,
       onGetAiAssistantConfig,
       onSaveAiAssistantConfig,
+      onTestAiAssistantConfig,
       onGenerateAiAssistant,
       onCancelAiAssistant,
       onAiAssistantStatus,
