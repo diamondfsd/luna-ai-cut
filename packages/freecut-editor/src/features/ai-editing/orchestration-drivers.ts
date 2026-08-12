@@ -53,7 +53,12 @@ export function createJsonDriver(
       temperature: 0,
       reasoningEffort: options.reasoningEffort,
       signal: options.signal,
-      onStatus: (status) => reportModelRequestStatus(options, status, round === 0 ? 32 : 70),
+      onStatus: (status) => reportModelRequestStatus(
+        options,
+        status,
+        round === 0 ? 32 : 70,
+        true,
+      ),
       onUsage: (usage) => reportUsage(options, 'json', round + 1, usage),
     }),
     onRequest: (request) => {

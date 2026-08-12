@@ -395,6 +395,7 @@ export async function generateAiEditingAssistantResponse(
         const consumeStream = async (
           stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
           onChunk: () => void,
+          contentPreviewMode: 'raw' | 'json-reply',
         ): Promise<AiEditingAssistantStreamResult> => consumeAiEditingAssistantStream(stream, {
           onActivity: () => {
             onChunk()
@@ -404,9 +405,11 @@ export async function generateAiEditingAssistantResponse(
             previewText: preview.text,
             previewKind: preview.kind,
           }),
+          contentPreviewMode,
         })
         const requestStream = async (
           parameters: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, 'stream' | 'stream_options'>,
+          contentPreviewMode: 'raw' | 'json-reply' = 'raw',
         ): Promise<AiEditingAssistantStreamResult> => runStreamWithUsageFallback({
           includeUsage: streamUsageSupported,
           createStream: (includeUsage) => client.chat.completions.create({
@@ -414,7 +417,7 @@ export async function generateAiEditingAssistantResponse(
             stream: true,
             ...(includeUsage ? { stream_options: { include_usage: true } } : {}),
           }, { signal: attemptSignal }),
-          consumeStream,
+          consumeStream: (stream, onChunk) => consumeStream(stream, onChunk, contentPreviewMode),
           onUnsupported: () => {
             streamUsageSupported = false
           },
@@ -438,12 +441,12 @@ export async function generateAiEditingAssistantResponse(
           response = await requestStream({
             ...request,
             response_format: { type: 'json_object' },
-          })
+          }, 'json-reply')
         } catch (error) {
           if (!doesNotSupportJsonMode(error)) throw error
           response = await requestStream({
             ...request,
-          })
+          }, 'json-reply')
         }
         return extractJsonResult(response)
       },
