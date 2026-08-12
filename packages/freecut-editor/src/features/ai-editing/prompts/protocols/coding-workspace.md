@@ -2,13 +2,12 @@
 
 ## 最短工作流
 
-1. 用 `media.list` 查找项目素材，用 `media.read` 读取画面证据；用 `workspace.list` 查看工程目录，用 `workspace.search` 按文本定位源码。
-2. 常用视频、音频和文字剪辑直接使用下方格式经验；只有需要未列出的类型或扩展属性时才用 `docs.search` 和 `docs.read`。
-3. 用 `source.read` 读取要修改文件的当前原文。
-4. 用 `source.replace` 精确替换唯一原文。失败时重新读取该文件后再修改。
-5. 单个新文件用 `source.create`。需要同时修改多个相关文件时使用 `source.apply_changes`；新文件使用 `revision: null`，已有文件使用最近读取的 `revision`。每批最多 4 个文件且每次响应只调用一次写入工具。
-6. 用 `timeline.check` 确认完整工程可编译，用 `git.diff` 检查实际变化。
-7. 所有目标完成后调用 `git.commit`。提交成功就是本轮编辑完成，不需要额外发布。
+1. 用 `media.list` 查找项目素材，用 `media.read` 批量读取紧凑证据。只有必须掌握逐段原话和精确时间时才读取完整口播。
+2. 空时间轴的常规首剪直接调用 `timeline.compose_source`，一次提交镜头顺序、素材秒数区间、原声选择和可选字幕。不要读取默认轨道，也不要手写三个 segment。
+3. 只有高层工具无法表达任务或需要合并已有内容时，才用 `workspace.list` / `workspace.search` 定位源码，用 `source.read` 获取现有文件版本，再使用底层源码工具。
+4. 底层修改涉及多个相关文件时优先使用 `source.apply_changes`，不要把可原子完成的修改拆成多次 `source.create`。
+5. 用 `timeline.check` 确认完整工程可编译，用 `git.diff` 检查实际变化。
+6. 所有目标完成后调用 `git.commit`。提交成功就是本轮编辑完成，不需要额外发布。
 
 只读取与任务有关的文件。互不依赖的查询可以同一轮执行；写操作有依赖时按顺序执行。工具返回失败时根据最新原文和错误信息修正，不重复发送相同参数。
 
@@ -33,7 +32,7 @@ docs/        # 只读，当前 TypeScript 类型与格式说明
 
 轨道属性和片段正文分开保存。系统自动扫描 `tracks/*/track.json` 发现轨道，自动扫描每条轨道的 `segments/*.json` 发现片段；不要在其他文件维护轨道或片段路径索引。片段按 30 秒窗口分组，每页最多 32 个。详细顶层结构查询 `docs/types/project-source-schema.ts`，片段字段查询 `docs/types/project.ts` 及它引用的类型文件。
 
-新项目默认已有 `id-video`、`id-audio`、`id-subtitle` 三条基础轨道，文件分别位于 `sequences/main/tracks/id-video/track.json`、`sequences/main/tracks/id-audio/track.json`、`sequences/main/tracks/id-subtitle/track.json`。编辑前查看现有目录并直接复用，不能每轮重复创建；确实需要额外层级或独立用途时再新增轨道。
+新项目默认已有 `id-video`、`id-audio`、`id-subtitle` 三条基础轨道，文件分别位于 `sequences/main/tracks/id-video/track.json`、`sequences/main/tracks/id-audio/track.json`、`sequences/main/tracks/id-subtitle/track.json`。仓库摘要为 clean 的空时间轴可以直接信任这些路径，不要重复读取确认；确实需要额外层级、已有内容合并或独立用途时再检查工程并新增轨道。
 
 ## 常用剪辑格式经验
 

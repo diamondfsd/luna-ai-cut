@@ -1,7 +1,10 @@
 import { createServer, type Server } from 'node:http'
+import { execFile } from 'node:child_process'
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
+import { promisify } from 'node:util'
 import type { Page } from '@playwright/test'
+import ffmpegPath from 'ffmpeg-static'
 
 import { expect, test } from './fixtures/lunaElectron'
 import { sendTextCompletion, sendToolCallCompletion } from './support/chatCompletionsStream'
@@ -19,6 +22,8 @@ interface ToolResult {
   id?: string
   result?: { data?: Record<string, unknown> }
 }
+
+const execFileAsync = promisify(execFile)
 
 interface StoredRun {
   request: string
@@ -40,19 +45,6 @@ function jsonSource(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
 }
 
-const subtitleSegment = jsonSource({
-  version: 4,
-  kind: 'clip-segment',
-  trackId: 'id-subtitle',
-  window: 0,
-  clips: [{
-    id: 'e2e-title', type: 'text', trackId: 'id-subtitle', from: 0,
-    durationInFrames: 150, label: '开场字幕', text: '给宝宝做了一个 AI 玩伴',
-    color: '#ffffff', fontSize: 48, textAlign: 'center',
-    textBox: { left: 0.1, top: 0.4, width: 0.8, height: 0.2 },
-  }],
-})
-
 function audioTrack(name: string): string {
   return jsonSource({
     version: 4,
@@ -63,14 +55,6 @@ function audioTrack(name: string): string {
     },
   })
 }
-
-const emptyAudioSegment = jsonSource({
-  version: 4, kind: 'clip-segment', trackId: 'id-audio', window: 0, clips: [],
-})
-
-const emptyVideoSegment = jsonSource({
-  version: 4, kind: 'clip-segment', trackId: 'id-video', window: 0, clips: [],
-})
 
 async function requestBody(request: AsyncIterable<Uint8Array>): Promise<ChatRequest> {
   const chunks: Buffer[] = []
@@ -125,6 +109,7 @@ async function startDialogueMock(): Promise<{
   let requestIndex = 0
   let dialoguePhase = 0
   const sourceReads = new Map<string, { content: string; revision: string }>()
+  let mediaId: string | undefined
   let notifyPreview: (() => void) | undefined
   let releasePreview: (() => void) | undefined
   const requests: ChatRequest[] = []
@@ -139,10 +124,18 @@ async function startDialogueMock(): Promise<{
     requests.push(payload)
     const index = requestIndex++
     for (const result of toolResults(payload)) {
-      const data = result.id === 'source.read' ? result.result?.data : undefined
-      if (typeof data?.path === 'string' && typeof data.content === 'string' &&
-        typeof data.revision === 'string') {
-        sourceReads.set(data.path, { content: data.content, revision: data.revision })
+      const resultData = result.result?.data
+      const sourceData = result.id === 'source.read' ? resultData : undefined
+      if (typeof sourceData?.path === 'string' && typeof sourceData.content === 'string' &&
+        typeof sourceData.revision === 'string') {
+        sourceReads.set(sourceData.path, {
+          content: sourceData.content,
+          revision: sourceData.revision,
+        })
+      }
+      if (result.id === 'media.list' && Array.isArray(resultData?.items)) {
+        const first = resultData.items[0] as { id?: unknown } | undefined
+        if (typeof first?.id === 'string') mediaId = first.id
       }
     }
 
@@ -152,43 +145,55 @@ async function startDialogueMock(): Promise<{
     }
     if (dialoguePhase === 0) {
       dialoguePhase += 1
-      callTool(response, payload, index, 'source.apply_changes', {
-        changes: [
-          { path: subtitleSegmentPath, revision: null, content: subtitleSegment },
-          { path: audioSegmentPath, revision: null, content: emptyAudioSegment },
-          { path: videoSegmentPath, revision: null, content: emptyVideoSegment },
-        ],
-      })
+      callTool(response, payload, index, 'media.list', { limit: 20, cursor: 0 })
       return
     }
     if (dialoguePhase === 1) {
+      if (!mediaId) throw new Error('Missing imported media ID')
+      dialoguePhase += 1
+      callTool(response, payload, index, 'timeline.compose_source', {
+        clips: [{
+          mediaId, sourceStartSeconds: 0, sourceEndSeconds: 3,
+          caption: { text: '给宝宝做了一个 AI 玩伴' },
+        }],
+        includeOriginalAudio: true,
+        replaceExisting: true,
+      })
+      return
+    }
+    if (dialoguePhase === 2) {
       dialoguePhase += 1
       notifyPreview?.()
       await previewGate
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (dialoguePhase === 2) {
-      dialoguePhase += 1
-      callTool(response, payload, index, 'git.commit', { message: 'Create initial scripted edit' })
-      return
-    }
     if (dialoguePhase === 3) {
       dialoguePhase += 1
-      sendTextCompletion(response, '已按方案完成初版剪辑。')
+      callTool(response, payload, index, 'git.diff', {})
       return
     }
     if (dialoguePhase === 4) {
       dialoguePhase += 1
-      callTool(response, payload, index, 'source.read', { path: subtitleSegmentPath })
+      callTool(response, payload, index, 'git.commit', { message: 'Create initial scripted edit' })
       return
     }
     if (dialoguePhase === 5) {
       dialoguePhase += 1
-      callTool(response, payload, index, 'source.read', { path: audioTrackPath })
+      sendTextCompletion(response, '已按方案完成初版剪辑。')
       return
     }
     if (dialoguePhase === 6) {
+      dialoguePhase += 1
+      callTool(response, payload, index, 'source.read', { path: subtitleSegmentPath })
+      return
+    }
+    if (dialoguePhase === 7) {
+      dialoguePhase += 1
+      callTool(response, payload, index, 'source.read', { path: audioTrackPath })
+      return
+    }
+    if (dialoguePhase === 8) {
       const subtitleSegmentResult = sourceReads.get(subtitleSegmentPath)
       const audioTrackResult = sourceReads.get(audioTrackPath)
       if (!subtitleSegmentResult || !audioTrackResult) {
@@ -203,17 +208,17 @@ async function startDialogueMock(): Promise<{
       })
       return
     }
-    if (dialoguePhase === 7) {
+    if (dialoguePhase === 9) {
       dialoguePhase += 1
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (dialoguePhase === 8) {
+    if (dialoguePhase === 10) {
       dialoguePhase += 1
       callTool(response, payload, index, 'git.commit', { message: 'Replace subtitles with narration track' })
       return
     }
-    if (dialoguePhase === 9) {
+    if (dialoguePhase === 11) {
       dialoguePhase += 1
       sendTextCompletion(response, '已移除字幕并改为独立旁白轨。')
       return
@@ -255,9 +260,17 @@ async function send(page: Page, message: string): Promise<void> {
 
 test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白', async ({ lunaApp }) => {
   test.setTimeout(180_000)
-  const { page, runtimeErrors, workspaceDir } = lunaApp
+  const { app, page, runtimeErrors, workspaceDir, temporaryRoot } = lunaApp
   const mock = await startDialogueMock()
   try {
+    if (!ffmpegPath) throw new Error('测试视频生成工具不可用')
+    const videoPath = path.join(temporaryRoot, 'ai-source-dialogue.mp4')
+    await execFileAsync(ffmpegPath, [
+      '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
+      '-t', '4', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-c:a', 'aac',
+      '-shortest', '-movflags', '+faststart', '-y', videoPath,
+    ])
     await page.getByRole('link', { name: '剪辑', exact: true }).click()
     await page.evaluate((baseUrl) => window.luna.aiEditingAssistant.saveConfig({
       baseUrl, model: 'source-revision-e2e', apiKey: 'e2e-placeholder-key',
@@ -266,6 +279,15 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     }), mock.baseUrl)
     await page.getByRole('link', { name: /^(创建第一个项目|新建项目)$/ }).click()
     await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
+    await app.evaluate(({ dialog }, selectedPath) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] })
+    }, videoPath)
+    await page.getByRole('button', { name: '导入', exact: true }).click()
+    const importDialog = page.getByRole('dialog')
+    await expect(importDialog.getByRole('heading', { name: '导入本地素材' })).toBeVisible()
+    await importDialog.getByRole('button', { name: '选择本地文件' }).click()
+    await expect(importDialog).toBeHidden({ timeout: 30_000 })
+    await expect(page.locator('[data-media-id]')).toHaveCount(1, { timeout: 30_000 })
     const assistant = page.getByRole('complementary', { name: '剪辑助手' })
     if (!(await assistant.isVisible())) {
       await page.getByRole('button', { name: /^(打开|关闭)剪辑助手$/ }).click()
@@ -316,6 +338,15 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     expect((await runs(directory)).at(-1)).toMatchObject({
       request: CONFIRM_REQUEST, status: 'completed', completed: true, changedProject: true,
     })
+    const initialRun = (await runs(directory)).at(-1)!
+    expect(initialRun.toolCalls.map((call) => call.id)).toEqual([
+      'media.list', 'timeline.compose_source', 'timeline.check', 'git.diff', 'git.commit',
+    ])
+    expect(initialRun.toolCalls.filter((call) => !call.ok)).toEqual([])
+    expect(JSON.parse(await readFile(path.join(sourceRoot, videoSegmentPath), 'utf8')).clips)
+      .toHaveLength(1)
+    expect(JSON.parse(await readFile(path.join(sourceRoot, audioSegmentPath), 'utf8')).clips)
+      .toHaveLength(1)
 
     await send(page, NARRATION_REQUEST)
     await expect.poll(async () => (await runs(directory)).length).toBe(3)

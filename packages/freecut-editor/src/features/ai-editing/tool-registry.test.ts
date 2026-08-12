@@ -10,6 +10,7 @@ describe('AI editing tool registry', () => {
     expect(ids).toContain('workspace.list')
     expect(ids).toContain('workspace.search')
     expect(ids).toContain('git.diff')
+    expect(ids).toContain('timeline.compose_source')
     expect(ids).toContain('skill.read')
     expect(getAiEditingTool('skill.search')).toBeUndefined()
     expect(getAiEditingTool('skill.read')?.inputSchema).toMatchObject({

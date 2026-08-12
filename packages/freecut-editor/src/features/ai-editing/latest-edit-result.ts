@@ -5,6 +5,7 @@ const TIMELINE_OUTCOME_TOOL_IDS = new Set([
   'source.create',
   'source.remove',
   'source.apply_changes',
+  'timeline.compose_source',
   'timeline.check',
   'git.commit',
 ])

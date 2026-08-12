@@ -166,7 +166,30 @@ const readMediaEvidence = defineAiEditingTool({
     const mediaById = new Map((await buildProjectEvidence()).media.map((item) => [item.mediaId, item]))
     const media = requestedMediaIds.flatMap((mediaId) => {
       const item = mediaById.get(mediaId)
-      return item ? [{ ...item, visual: item.visual.slice(0, visualLimit) }] : []
+      if (!item) return []
+      return [{
+        mediaId: item.mediaId,
+        name: item.name,
+        kind: item.kind,
+        durationSeconds: item.durationSeconds,
+        visual: item.visual.slice(0, visualLimit).map((sample) => ({
+          timeSeconds: sample.timeSeconds,
+          description: sample.description,
+          ...(sample.action ? { action: sample.action } : {}),
+          ...(sample.subjects.length > 0
+            ? { subjects: [...new Set(sample.subjects)].slice(0, 6) }
+            : {}),
+        })),
+        ...(item.transcript ? {
+          transcript: {
+            language: item.transcript.language,
+            segmentCount: item.transcript.segmentCount,
+            wordCount: item.transcript.wordCount,
+            excerpt: item.transcript.excerpt,
+          },
+        } : {}),
+        audio: { beatStatus: item.audio.beatStatus },
+      }]
     })
     const foundIds = new Set(media.map((item) => item.mediaId))
     const missingMediaIds = requestedMediaIds.filter((mediaId) => !foundIds.has(mediaId))
@@ -175,7 +198,7 @@ const readMediaEvidence = defineAiEditingTool({
       message: media.length > 0
         ? `已读取 ${media.length} 个素材的分析证据${missingMediaIds.length > 0 ? `，另有 ${missingMediaIds.length} 个素材未找到` : ''}。`
         : '没有找到指定素材。',
-      data: { requestedMediaIds, missingMediaIds, media },
+      data: { missingMediaIds, media },
     }
   },
 })

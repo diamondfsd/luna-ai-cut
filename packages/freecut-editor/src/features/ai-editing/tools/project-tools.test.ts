@@ -57,8 +57,8 @@ describe('project media tools', () => {
   it('reads evidence by raw IDs and media references', async () => {
     mocks.buildProjectEvidence.mockResolvedValue({
       media: [
-        { mediaId: 'video-1', name: 'One', visual: [] },
-        { mediaId: 'video-2', name: 'Two', visual: [] },
+        { mediaId: 'video-1', name: 'One', kind: 'video', durationSeconds: 10, sourceFingerprint: 'private', visualModels: [{ id: 'm', version: '1' }], visual: [], audio: { beatStatus: 'ready' } },
+        { mediaId: 'video-2', name: 'Two', kind: 'video', durationSeconds: 20, sourceFingerprint: 'private', visual: [], audio: { beatStatus: 'not-requested' } },
       ],
     })
 
@@ -66,18 +66,17 @@ describe('project media tools', () => {
 
     expect(result.ok).toBe(true)
     expect(result.data).toEqual({
-      requestedMediaIds: ['video-1', 'video-2'],
       missingMediaIds: [],
       media: [
-        { mediaId: 'video-1', name: 'One', visual: [] },
-        { mediaId: 'video-2', name: 'Two', visual: [] },
+        { mediaId: 'video-1', name: 'One', kind: 'video', durationSeconds: 10, visual: [], audio: { beatStatus: 'ready' } },
+        { mediaId: 'video-2', name: 'Two', kind: 'video', durationSeconds: 20, visual: [], audio: { beatStatus: 'not-requested' } },
       ],
     })
   })
 
   it('reports missing IDs instead of silently treating a partial read as complete', async () => {
     mocks.buildProjectEvidence.mockResolvedValue({
-      media: [{ mediaId: 'video-1', name: 'One', visual: [] }],
+      media: [{ mediaId: 'video-1', name: 'One', kind: 'video', durationSeconds: 10, visual: [], audio: { beatStatus: 'ready' } }],
     })
 
     const result = await tool('media.read').execute({

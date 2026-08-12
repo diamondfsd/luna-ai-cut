@@ -26,6 +26,7 @@ const AGENT_TOOL_IDS = new Set([
   'git.diff',
   'git.log',
   'timeline.check',
+  'timeline.compose_source',
   'analysis.request',
   'analysis.read_transcript',
   'analysis.search_transcript',
