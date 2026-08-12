@@ -23,6 +23,8 @@ function closeServer(server: Server): Promise<void> {
 }
 
 async function startCapabilityMock() {
+  const connectionRequests: ChatRequest[] = []
+  const capabilityRequests: ChatRequest[] = []
   const editingRequests: ChatRequest[] = []
   const server = createServer(async (request, response) => {
     if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
@@ -31,6 +33,7 @@ async function startCapabilityMock() {
     }
     const payload = await readRequestBody(request)
     if (payload.tool_choice) {
+      capabilityRequests.push(payload)
       const message = payload.model === 'native-supported'
         ? {
             role: 'assistant',
@@ -53,6 +56,19 @@ async function startCapabilityMock() {
       }))
       return
     }
+    if (payload.stream !== true) {
+      connectionRequests.push(payload)
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'connection-result',
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1_000),
+        model: payload.model,
+        choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'OK' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }))
+      return
+    }
     editingRequests.push(payload)
     sendTextCompletion(response, JSON.stringify({ reply: '兼容模式已响应', toolCalls: [] }))
   })
@@ -61,6 +77,8 @@ async function startCapabilityMock() {
   if (!address || typeof address === 'string') throw new Error('Capability mock did not start')
   return {
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    connectionRequests,
+    capabilityRequests,
     editingRequests,
     close: () => closeServer(server),
   }
@@ -82,13 +100,14 @@ test('原生工具调用测试自动更新开关并控制首轮协议', async ({
     await dialog.getByLabel('API Key').fill('e2e-placeholder-key')
 
     await dialog.getByLabel('模型', { exact: true }).fill('native-supported')
-    await dialog.getByRole('button', { name: '测试' }).click()
+    await dialog.getByRole('button', { name: '测试连接' }).click()
     await expect(nativeSwitch).toBeChecked()
-    await expect(dialog.getByText('连接正常，已开启原生工具调用。')).toBeVisible()
+    await expect(dialog.getByText('连接成功，已开启原生工具调用。')).toBeVisible()
 
     await dialog.getByLabel('模型', { exact: true }).fill('native-unsupported')
-    await dialog.getByRole('button', { name: '测试' }).click()
+    await dialog.getByRole('button', { name: '测试连接' }).click()
     await expect(nativeSwitch).not.toBeChecked()
+    await expect(dialog.getByText('连接成功，当前模型将使用兼容模式。')).toBeVisible()
     await expect.poll(() => page.evaluate(() => window.luna.aiEditingAssistant.getConfig()))
       .toMatchObject({ model: 'native-unsupported', nativeToolCalling: false })
     await page.keyboard.press('Escape')
@@ -101,6 +120,8 @@ test('原生工具调用测试自动更新开关并控制首轮协议', async ({
     await expect(assistant.getByText('兼容模式已响应', { exact: true })).toBeVisible()
 
     expect(mock.editingRequests).toHaveLength(1)
+    expect(mock.connectionRequests).toHaveLength(2)
+    expect(mock.capabilityRequests).toHaveLength(2)
     expect(mock.editingRequests[0]?.tools).toBeUndefined()
     expect(runtimeErrors).toEqual([])
   } finally {

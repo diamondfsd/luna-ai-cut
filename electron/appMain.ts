@@ -30,7 +30,7 @@ import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow, registerRendererProtocol } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
-import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
+import { cancelExportTask, resetRenderCompatibilityBlock } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './localMediaShareService'
@@ -239,14 +239,6 @@ function createWindow(): void {
   })
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
-    setTimeout(() => {
-      void warmupRenderCore().then(
-        () => logMainInfo('[LRC] 后台预热完成'),
-        (error) => logMainWarn('[LRC] 后台预热失败，将在首次使用时重试', {
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      )
-    }, 200)
     setTimeout(() => startSegmentationModelPrefetch(), 1_000)
   })
 }

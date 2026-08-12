@@ -160,7 +160,7 @@ segment 的 `trackId` 必须与所属轨道一致，`startFrame` 是片段中最
 
 ## 协同编辑
 
-- 人工编辑和 Agent 编辑同一套文件，源码修改成功后时间轴立即刷新。
+- 人工编辑和 Agent 编辑同一套文件。
 - `source.replace` 的 `oldText` 必须来自最近一次 `source.read`，并且在文件中唯一匹配。
 - `source.remove` 的 `revision` 必须来自最近一次 `source.read`，不要回传完整文件原文。
 - `source.apply_changes` 中已有文件使用最近读取的 `revision`，新文件使用 `revision: null`；任一版本不匹配时整批不会生效。
