@@ -2,7 +2,7 @@ import type { Project, ProjectTimeline } from '@freecut/types/project'
 import type { TextItem, TimelineItem } from '@freecut/types/timeline'
 import type { NormalizedTextAnchor, NormalizedTextBox } from './normalized-text-layout'
 
-export const PROJECT_SOURCE_VERSION = 3 as const
+export const PROJECT_SOURCE_VERSION = 4 as const
 export const PROJECT_SOURCE_SEGMENT_SECONDS = 30
 export const PROJECT_SOURCE_MAX_CLIPS_PER_SEGMENT = 32
 
@@ -22,7 +22,6 @@ export interface SequenceSource {
     ProjectTimeline,
     'tracks' | 'items' | 'transitions' | 'keyframes' | 'compositions' | 'topLevelSequenceIds'
   >
-  tracks: string[]
   transitions: string
   animations: string
 }
@@ -31,12 +30,6 @@ export interface TrackSource {
   version: typeof PROJECT_SOURCE_VERSION
   kind: 'track'
   track: ProjectTimeline['tracks'][number]
-  segments: Array<{
-    path: string
-    startFrame: number
-    endFrame: number
-    clipCount: number
-  }>
 }
 
 export interface ClipSegmentSource {
@@ -90,14 +83,12 @@ export interface ComponentSource {
     NonNullable<ProjectTimeline['compositions']>[number],
     'tracks' | 'items' | 'transitions' | 'keyframes'
   >
-  tracks: string[]
   transitions: string
   animations: string
 }
 
 export interface SequencePartsSource {
   state: unknown
-  tracks: string[]
   transitions: string
   animations: string
 }

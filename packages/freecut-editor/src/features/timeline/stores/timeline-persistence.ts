@@ -77,6 +77,7 @@ import {
   readProjectSource,
   writeProjectSource,
 } from '@freecut/features/project-source/project-source-worktree'
+import { isAiEditingSourceWriteOwned } from '@freecut/features/project-source/project-source-write-ownership'
 
 const logger = createLogger('TimelineStore')
 
@@ -962,11 +963,13 @@ export async function saveTimeline(projectId: string): Promise<void> {
     })
 
     const updatedAt = Date.now()
-    await writeProjectSource({
-      ...project,
-      timeline: sanitizedTimeline,
-      updatedAt,
-    })
+    if (!isAiEditingSourceWriteOwned()) {
+      await writeProjectSource({
+        ...project,
+        timeline: sanitizedTimeline,
+        updatedAt,
+      })
+    }
 
     // Generate thumbnail — prefer capturing the existing preview canvas
     // (near-free: reuses the already-initialized scrub renderer with cached
@@ -1259,8 +1262,7 @@ export function loadTimeline(
     ? timelineLoadQueueTail.catch(() => undefined)
     : Promise.resolve()
 
-  let pendingLoad: Promise<void>
-  pendingLoad = queueStart
+  const pendingLoad: Promise<void> = queueStart
     .then(() => loadTimelineOnce(projectId, options))
     .finally(() => {
       if (inFlightTimelineLoads.get(loadKey) === pendingLoad) {

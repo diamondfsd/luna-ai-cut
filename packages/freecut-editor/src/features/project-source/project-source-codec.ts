@@ -23,6 +23,10 @@ import {
 
 interface SourceReader {
   read(path: string): Promise<string>
+  list(directory: string): Promise<Array<{
+    path: string
+    type: 'file' | 'directory'
+  }>>
 }
 
 function json(value: unknown): string {
@@ -39,7 +43,8 @@ function omitObjectKeys<T extends object, K extends keyof T>(
 }
 
 function sourceKey(id: string): string {
-  return `id-${encodeURIComponent(id)}`
+  const encoded = encodeURIComponent(id)
+  return encoded.startsWith('id-') ? encoded : `id-${encoded}`
 }
 
 function segmentPage(value: number): string {
@@ -68,6 +73,25 @@ function stringArray(value: unknown, path: string): string[] {
     throw new Error(`工程源码引用无效：${path}`)
   }
   return value as string[]
+}
+
+function parentDirectory(path: string): string {
+  const separator = path.lastIndexOf('/')
+  return separator < 0 ? '' : path.slice(0, separator)
+}
+
+function directories(entries: Array<{ path: string; type: 'file' | 'directory' }>): string[] {
+  return entries
+    .filter((entry) => entry.type === 'directory')
+    .map((entry) => entry.path)
+    .sort((left, right) => left.localeCompare(right))
+}
+
+async function listJsonFiles(reader: SourceReader, directory: string): Promise<string[]> {
+  return (await reader.list(directory))
+    .filter((entry) => entry.type === 'file' && entry.path.endsWith('.json'))
+    .map((entry) => entry.path)
+    .sort((left, right) => left.localeCompare(right))
 }
 
 interface SourceCanvas {
@@ -166,7 +190,7 @@ function splitSequence(
   canvas: SourceCanvas,
 ): Record<string, string> {
   const files: Record<string, string> = {}
-  const trackPaths = timeline.tracks.map((track) => {
+  timeline.tracks.forEach((track) => {
     const trackRoot = `${root}/tracks/${sourceKey(track.id)}`
     const path = `${trackRoot}/track.json`
     const windows = new Map<number, ProjectTimeline['items']>()
@@ -175,12 +199,6 @@ function splitSequence(
       const window = Math.max(0, Math.floor(clip.from / windowFrames))
       windows.set(window, [...(windows.get(window) ?? []), clip])
     }
-    const segments: Array<{
-      path: string
-      startFrame: number
-      endFrame: number
-      clipCount: number
-    }> = []
     for (const [window, clips] of [...windows].sort(([left], [right]) => left - right)) {
       const sorted = clips.toSorted(
         (left, right) => left.from - right.from || left.id.localeCompare(right.id),
@@ -189,14 +207,6 @@ function splitSequence(
         const page = Math.floor(offset / PROJECT_SOURCE_MAX_CLIPS_PER_SEGMENT) + 1
         const pageClips = sorted.slice(offset, offset + PROJECT_SOURCE_MAX_CLIPS_PER_SEGMENT)
         const segmentPath = `${trackRoot}/segments/w${segmentPage(window)}-p${String(page).padStart(2, '0')}.json`
-        const startFrame = pageClips.reduce(
-          (minimum, clip) => Math.min(minimum, clip.from),
-          Number.POSITIVE_INFINITY,
-        )
-        const endFrame = pageClips.reduce(
-          (maximum, clip) => Math.max(maximum, clip.from + clip.durationInFrames),
-          0,
-        )
         files[segmentPath] = json({
           version: PROJECT_SOURCE_VERSION,
           kind: 'clip-segment',
@@ -204,16 +214,13 @@ function splitSequence(
           window,
           clips: pageClips.map((clip) => sourceClipFromProject(clip, canvas)),
         } satisfies ClipSegmentSource)
-        segments.push({ path: segmentPath, startFrame, endFrame, clipCount: pageClips.length })
       }
     }
     files[path] = json({
       version: PROJECT_SOURCE_VERSION,
       kind: 'track',
       track,
-      segments,
     } satisfies TrackSource)
-    return path
   })
   const transitionsPath = `${root}/transitions.json`
   const animationsPath = `${root}/animations.json`
@@ -240,7 +247,6 @@ function splitSequence(
     kind: 'sequence',
     id,
     state,
-    tracks: trackPaths,
     transitions: transitionsPath,
     animations: animationsPath,
   } satisfies SequenceSource)
@@ -275,7 +281,6 @@ export function projectToSourceFiles(project: Project): Record<string, string> {
       kind: 'component',
       id: component.id,
       state,
-      tracks: sequence.tracks,
       transitions: sequence.transitions,
       animations: sequence.animations,
     } satisfies ComponentSource)
@@ -320,21 +325,31 @@ async function readSequenceParts(
   }
   const tracks = [] as ProjectTimeline['tracks']
   const items = [] as ProjectTimeline['items']
-  for (const trackPath of stringArray(source.tracks, path)) {
+  const root = parentDirectory(path)
+  const rootEntries = await reader.list(root)
+  const tracksRoot = `${root}/tracks`
+  const trackRoots = rootEntries.some(
+    (entry) => entry.type === 'directory' && entry.path === tracksRoot,
+  )
+    ? directories(await reader.list(tracksRoot))
+    : []
+  for (const trackRoot of trackRoots) {
+    const trackPath = `${trackRoot}/track.json`
     const trackFile = parseObject(await reader.read(trackPath), trackPath)
     if (trackFile.version !== PROJECT_SOURCE_VERSION || trackFile.kind !== 'track' ||
-      !isObject(trackFile.track) || typeof trackFile.track.id !== 'string' ||
-      !Array.isArray(trackFile.segments)) {
+      !isObject(trackFile.track) || typeof trackFile.track.id !== 'string') {
       throw new Error(`工程轨道文件无效：${trackPath}`)
     }
     const track = trackFile.track as unknown as ProjectTimeline['tracks'][number]
     tracks.push(track)
-    for (const segmentEntry of trackFile.segments) {
-      if (!segmentEntry || typeof segmentEntry !== 'object' ||
-        typeof (segmentEntry as { path?: unknown }).path !== 'string') {
-        throw new Error(`工程片段索引无效：${trackPath}`)
-      }
-      const segmentPath = (segmentEntry as { path: string }).path
+    const trackEntries = await reader.list(trackRoot)
+    const hasSegmentsDirectory = trackEntries.some(
+      (entry) => entry.type === 'directory' && entry.path === `${trackRoot}/segments`,
+    )
+    const segmentPaths = hasSegmentsDirectory
+      ? await listJsonFiles(reader, `${trackRoot}/segments`)
+      : []
+    for (const segmentPath of segmentPaths) {
       const segment = parseObject(await reader.read(segmentPath), segmentPath)
       if (segment.version !== PROJECT_SOURCE_VERSION || segment.kind !== 'clip-segment' ||
         segment.trackId !== track.id || !Array.isArray(segment.clips)) {
@@ -373,7 +388,7 @@ async function readSequence(
 ): Promise<ProjectTimeline> {
   const source = parseObject(await reader.read(path), path) as unknown as SequenceSource
   if (source.version !== PROJECT_SOURCE_VERSION || source.kind !== 'sequence' ||
-    typeof source.id !== 'string' || !Array.isArray(source.tracks)) {
+    typeof source.id !== 'string') {
     throw new Error(`工程序列版本无效：${path}`)
   }
   return readSequenceParts(reader, source, path, canvas)
@@ -402,7 +417,7 @@ export async function projectFromSourceFiles(reader: SourceReader): Promise<Proj
     }
     const source = parseObject(await reader.read(entry.path), entry.path) as unknown as ComponentSource
     if (source.version !== PROJECT_SOURCE_VERSION || source.kind !== 'component' ||
-      source.id !== entry.id || !isObject(source.state) || !Array.isArray(source.tracks)) {
+      source.id !== entry.id || !isObject(source.state)) {
       throw new Error(`工程合成文件无效：${entry.path}`)
     }
     const componentState = source.state as NonNullable<ProjectTimeline['compositions']>[number]

@@ -5,6 +5,7 @@ import {
   supportsNativeToolCalling,
 } from '@freecut/infrastructure/llm/openai-chat-completions-llm-adapter'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
+import { acquireAiEditingSourceWriteOwnership } from '@freecut/features/project-source/project-source-write-ownership'
 import {
   runAgentHarness,
   type AgentHarnessDriver,
@@ -295,8 +296,10 @@ export async function runSingleAiEditingTurn(
   options: AiEditingRunOptions,
   config: { evidence?: unknown; maxToolRounds?: number; availableToolIds?: readonly string[] } = {},
 ): Promise<AiEditingRunResult> {
-  const codingSession = await startTimelineCodingSession()
+  const releaseSourceWriteOwnership = acquireAiEditingSourceWriteOwnership()
+  let codingSession: Awaited<ReturnType<typeof startTimelineCodingSession>> | null = null
   try {
+    codingSession = await startTimelineCodingSession()
     const adapter = options.adapter ?? getAiEditingAdapter()
     const maxRounds = config.maxToolRounds ?? MAX_TOOL_ROUNDS
     const allowedToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
@@ -412,7 +415,11 @@ export async function runSingleAiEditingTurn(
       completionNotes: failureMessage ? [failureMessage] : result.completionNotes,
     }
   } finally {
-    await codingSession.finalizeRenderer()
-    clearTimelineCodingSession(codingSession)
+    try {
+      if (codingSession) await codingSession.finalizeRenderer()
+    } finally {
+      clearTimelineCodingSession(codingSession ?? undefined)
+      releaseSourceWriteOwnership()
+    }
   }
 }

@@ -65,14 +65,51 @@ function clipSegments(files: Record<string, string>): Array<{
 }
 
 function reader(files: Record<string, string>) {
-  return { read: async (path: string) => {
-    const content = files[path]
-    if (content === undefined) throw new Error(`missing ${path}`)
-    return content
-  } }
+  return {
+    read: async (path: string) => {
+      const content = files[path]
+      if (content === undefined) throw new Error(`missing ${path}`)
+      return content
+    },
+    list: async (directory: string) => {
+      const prefix = directory ? `${directory}/` : ''
+      const entries = new Map<string, 'file' | 'directory'>()
+      for (const path of Object.keys(files)) {
+        if (!path.startsWith(prefix)) continue
+        const remainder = path.slice(prefix.length)
+        if (!remainder) continue
+        const separator = remainder.indexOf('/')
+        const name = separator < 0 ? remainder : remainder.slice(0, separator)
+        entries.set(`${prefix}${name}`, separator < 0 ? 'file' : 'directory')
+      }
+      return [...entries].map(([path, type]) => ({ path, type }))
+    },
+  }
 }
 
 describe('project source normalized text layout', () => {
+  it('discovers tracks and clip segments from the directory tree', async () => {
+    const files = projectToSourceFiles(makeProject())
+
+    expect(JSON.parse(files['sequences/main/sequence.json']!)).not.toHaveProperty('tracks')
+    expect(JSON.parse(files['sequences/main/tracks/id-video/track.json']!))
+      .not.toHaveProperty('segments')
+
+    const restored = await projectFromSourceFiles(reader(files))
+    expect(restored.timeline?.tracks.map((track) => track.id)).toEqual(['subtitle', 'video'])
+    expect(restored.timeline?.items.map((item) => item.id)).toEqual(['text-1', 'video-1'])
+  })
+
+  it('does not duplicate the id prefix in generated track paths', () => {
+    const project = makeProject()
+    project.timeline!.tracks[1]!.id = 'id-video'
+    project.timeline!.items[1]!.trackId = 'id-video'
+
+    const files = projectToSourceFiles(project)
+    expect(files).toHaveProperty('sequences/main/tracks/id-video/track.json')
+    expect(files).not.toHaveProperty('sequences/main/tracks/id-id-video/track.json')
+  })
+
   it('writes textBox in 0..1 and restores internal pixel transforms', async () => {
     const files = projectToSourceFiles(makeProject())
     const segments = clipSegments(files)

@@ -16,7 +16,7 @@ interface ChatRequest {
 }
 
 interface ToolResult {
-  toolId?: string
+  id?: string
   result?: { data?: Record<string, unknown> }
 }
 
@@ -41,17 +41,16 @@ function jsonSource(value: unknown): string {
 }
 
 const subtitleTrack = jsonSource({
-  version: 3,
+  version: 4,
   kind: 'track',
   track: {
     id: 'e2e-subtitle', name: '字幕', kind: 'subtitle', height: 40,
     locked: false, visible: true, muted: false, solo: false, order: 0, items: [],
   },
-  segments: [{ path: subtitleSegmentPath, startFrame: 0, endFrame: 150, clipCount: 1 }],
 })
 
 const subtitleSegment = jsonSource({
-  version: 3,
+  version: 4,
   kind: 'clip-segment',
   trackId: 'e2e-subtitle',
   window: 0,
@@ -65,32 +64,30 @@ const subtitleSegment = jsonSource({
 
 function audioTrack(name: string): string {
   return jsonSource({
-    version: 3,
+    version: 4,
     kind: 'track',
     track: {
       id: 'e2e-audio', name, kind: 'audio', height: 60,
       locked: false, visible: true, muted: false, solo: false, order: 1, items: [],
     },
-    segments: [{ path: audioSegmentPath, startFrame: 0, endFrame: 0, clipCount: 0 }],
   })
 }
 
 const emptyAudioSegment = jsonSource({
-  version: 3, kind: 'clip-segment', trackId: 'e2e-audio', window: 0, clips: [],
+  version: 4, kind: 'clip-segment', trackId: 'e2e-audio', window: 0, clips: [],
 })
 
 const videoTrack = jsonSource({
-  version: 3,
+  version: 4,
   kind: 'track',
   track: {
     id: 'e2e-video', name: '视频', kind: 'video', height: 80,
     locked: false, visible: true, muted: false, solo: false, order: 1, items: [],
   },
-  segments: [{ path: videoSegmentPath, startFrame: 0, endFrame: 0, clipCount: 0 }],
 })
 
 const emptyVideoSegment = jsonSource({
-  version: 3, kind: 'clip-segment', trackId: 'e2e-video', window: 0, clips: [],
+  version: 4, kind: 'clip-segment', trackId: 'e2e-video', window: 0, clips: [],
 })
 
 async function requestBody(request: AsyncIterable<Uint8Array>): Promise<ChatRequest> {
@@ -136,22 +133,6 @@ function toolResults(payload: ChatRequest): ToolResult[] {
   }) ?? []
 }
 
-function readResult(payload: ChatRequest, pathValue: string): { content: string; revision: string } {
-  const result = toolResults(payload).findLast((entry) => (
-    entry.toolId === 'source.read' && entry.result?.data?.path === pathValue
-  ))?.result?.data
-  if (typeof result?.content !== 'string' || typeof result.revision !== 'string') {
-    throw new Error(`Missing source.read result for ${pathValue}`)
-  }
-  return { content: result.content, revision: result.revision }
-}
-
-function withTracks(sequence: string, tracks: string[]): string {
-  const value = JSON.parse(sequence) as Record<string, unknown>
-  value.tracks = tracks
-  return jsonSource(value)
-}
-
 async function startDialogueMock(): Promise<{
   baseUrl: string
   requests: ChatRequest[]
@@ -160,6 +141,8 @@ async function startDialogueMock(): Promise<{
   close(): Promise<void>
 }> {
   let requestIndex = 0
+  let dialoguePhase = 0
+  const sourceReads = new Map<string, { content: string; revision: string }>()
   let notifyPreview: (() => void) | undefined
   let releasePreview: (() => void) | undefined
   const requests: ChatRequest[] = []
@@ -173,16 +156,20 @@ async function startDialogueMock(): Promise<{
     const payload = await requestBody(request)
     requests.push(payload)
     const index = requestIndex++
+    for (const result of toolResults(payload)) {
+      const data = result.id === 'source.read' ? result.result?.data : undefined
+      if (typeof data?.path === 'string' && typeof data.content === 'string' &&
+        typeof data.revision === 'string') {
+        sourceReads.set(data.path, { content: data.content, revision: data.revision })
+      }
+    }
 
     if (index === 0) {
       sendTextCompletion(response, '脚本方案：开场展示宝宝提出需求，中段展示 AI 生成游戏，结尾保留温馨互动。')
       return
     }
-    if (index === 1) {
-      callTool(response, payload, index, 'source.read', { path: 'sequences/main/sequence.json' })
-      return
-    }
-    if (index === 2) {
+    if (dialoguePhase === 0) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'source.apply_changes', {
         changes: [
           { path: subtitleSegmentPath, revision: null, content: subtitleSegment },
@@ -193,57 +180,58 @@ async function startDialogueMock(): Promise<{
       })
       return
     }
-    if (index === 3) {
-      const sequence = readResult(payload, 'sequences/main/sequence.json')
+    if (dialoguePhase === 1) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'source.apply_changes', {
         changes: [
           { path: audioTrackPath, revision: null, content: audioTrack('音频') },
           { path: videoTrackPath, revision: null, content: videoTrack },
-          {
-            path: 'sequences/main/sequence.json', revision: sequence.revision,
-            content: withTracks(sequence.content, [subtitleTrackPath, videoTrackPath, audioTrackPath]),
-          },
         ],
       })
       return
     }
-    if (index === 4) {
+    if (dialoguePhase === 2) {
+      dialoguePhase += 1
       notifyPreview?.()
       await previewGate
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (index === 5) {
+    if (dialoguePhase === 3) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'git.commit', { message: 'Create initial scripted edit' })
       return
     }
-    if (index === 6) {
-      callTool(response, payload, index, 'source.read', { path: 'sequences/main/sequence.json' })
+    if (dialoguePhase === 4) {
+      dialoguePhase += 1
+      sendTextCompletion(response, '已按方案完成初版剪辑。')
       return
     }
-    if (index === 7) {
+    if (dialoguePhase === 5) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'source.read', { path: subtitleTrackPath })
       return
     }
-    if (index === 8) {
+    if (dialoguePhase === 6) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'source.read', { path: subtitleSegmentPath })
       return
     }
-    if (index === 9) {
+    if (dialoguePhase === 7) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'source.read', { path: audioTrackPath })
       return
     }
-    if (index === 10) {
-      const sequence = readResult(payload, 'sequences/main/sequence.json')
-      const subtitleTrackResult = readResult(payload, subtitleTrackPath)
-      const subtitleSegmentResult = readResult(payload, subtitleSegmentPath)
-      const audioTrackResult = readResult(payload, audioTrackPath)
+    if (dialoguePhase === 8) {
+      const subtitleTrackResult = sourceReads.get(subtitleTrackPath)
+      const subtitleSegmentResult = sourceReads.get(subtitleSegmentPath)
+      const audioTrackResult = sourceReads.get(audioTrackPath)
+      if (!subtitleTrackResult || !subtitleSegmentResult || !audioTrackResult) {
+        throw new Error('Missing source.read results for narration update')
+      }
+      dialoguePhase += 1
       callTool(response, payload, index, 'source.apply_changes', {
         changes: [
-          {
-            path: 'sequences/main/sequence.json', revision: sequence.revision,
-            content: withTracks(sequence.content, [videoTrackPath, audioTrackPath]),
-          },
           { path: subtitleTrackPath, revision: subtitleTrackResult.revision, content: null },
           { path: subtitleSegmentPath, revision: subtitleSegmentResult.revision, content: null },
           { path: audioTrackPath, revision: audioTrackResult.revision, content: audioTrack('旁白') },
@@ -251,12 +239,19 @@ async function startDialogueMock(): Promise<{
       })
       return
     }
-    if (index === 11) {
+    if (dialoguePhase === 9) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (index === 12) {
+    if (dialoguePhase === 10) {
+      dialoguePhase += 1
       callTool(response, payload, index, 'git.commit', { message: 'Replace subtitles with narration track' })
+      return
+    }
+    if (dialoguePhase === 11) {
+      dialoguePhase += 1
+      sendTextCompletion(response, '已移除字幕并改为独立旁白轨。')
       return
     }
     response.writeHead(500).end(JSON.stringify({ error: { message: `Unexpected request ${index}` } }))
@@ -359,10 +354,10 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     expect(narrationRun.toolCalls.filter((call) => call.id === 'source.apply_changes')).toHaveLength(1)
     expect(narrationRun.toolCalls.at(-1)).toMatchObject({ id: 'git.commit', ok: true })
 
-    const sequence = JSON.parse(await readFile(path.join(sourceRoot, 'sequences/main/sequence.json'), 'utf8')) as {
-      tracks: string[]
-    }
-    expect(sequence.tracks).toEqual([videoTrackPath, audioTrackPath])
+    expect(JSON.parse(await readFile(
+      path.join(sourceRoot, 'sequences/main/sequence.json'),
+      'utf8',
+    ))).not.toHaveProperty('tracks')
     expect(JSON.parse(await readFile(path.join(sourceRoot, audioTrackPath), 'utf8')).track.name)
       .toBe('旁白')
     await expect(readFile(path.join(sourceRoot, subtitleTrackPath), 'utf8')).rejects.toMatchObject({
