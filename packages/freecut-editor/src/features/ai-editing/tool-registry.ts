@@ -20,6 +20,7 @@ const AGENT_TOOL_IDS = new Set([
   'source.replace',
   'source.create',
   'source.remove',
+  'source.apply_changes',
   'git.commit',
   'git.status',
   'git.diff',

@@ -5,6 +5,13 @@ import type { AiEditingToolModule } from '../types'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
 
 const sourcePath = z.string().min(1).refine(isEditingSourceFile, '这个路径不是可编辑源码文件。')
+const sourceRevision = z.string().regex(/^[a-f0-9]{64}$/, '源码版本无效，请重新读取文件。')
+
+async function contentRevision(content: string): Promise<string> {
+  const bytes = new TextEncoder().encode(content)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 const readSource = defineAiEditingTool({
   id: 'source.read',
@@ -40,6 +47,7 @@ const readSource = defineAiEditingTool({
         startLine: startIndex + 1,
         endLine: endIndex,
         totalLines: lines.length,
+        revision: await contentRevision(file.content),
         ...(endIndex < lines.length ? { nextLine: endIndex + 1 } : {}),
         content: lines.slice(startIndex, endIndex).join('\n'),
       },
@@ -98,22 +106,67 @@ const createSource = defineAiEditingTool({
 const removeSource = defineAiEditingTool({
   id: 'source.remove',
   title: '删除工程源码',
-  description: '校验完整原文后从真实工作树删除源码文件。',
+  description: '使用 source.read 返回的 revision 校验版本后删除源码文件。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema(
-    { path: { type: 'string' }, oldText: { type: 'string', minLength: 1 } },
-    ['path', 'oldText'],
+    { path: { type: 'string' }, revision: { type: 'string', pattern: '^[a-f0-9]{64}$' } },
+    ['path', 'revision'],
   ),
-  schema: z.strictObject({ path: sourcePath, oldText: z.string().min(1) }),
+  schema: z.strictObject({ path: sourcePath, revision: sourceRevision }),
   summarize: ({ path }) => `删除 ${path}`,
-  execute: async ({ path, oldText }) => ({
+  execute: async ({ path, revision }) => ({
     ok: true,
     message: '原文校验通过，工程源码文件已删除。',
-    data: await getTimelineCodingSession().removeSource(path, oldText),
+    data: await getTimelineCodingSession().removeSource(path, revision),
+  }),
+})
+
+const sourceChange = z.strictObject({
+  path: sourcePath,
+  revision: sourceRevision.nullable(),
+  content: z.string().nullable(),
+})
+
+const applySourceChanges = defineAiEditingTool({
+  id: 'source.apply_changes',
+  title: '批量修改工程源码',
+  description: '使用 source.read 返回的 revision 原子写入或删除多个源码文件；新文件使用 revision: null；整批全部成功或全部不生效。',
+  risk: 'edit',
+  execution: 'async',
+  inputSchema: objectSchema(
+    {
+      changes: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+            revision: { type: ['string', 'null'], pattern: '^[a-f0-9]{64}$' },
+            content: { type: ['string', 'null'] },
+          },
+          required: ['path', 'revision', 'content'],
+          additionalProperties: false,
+        },
+      },
+    },
+    ['changes'],
+  ),
+  schema: z.strictObject({ changes: z.array(sourceChange).min(1).max(100) }),
+  summarize: ({ changes }) => `批量修改 ${(changes as unknown[]).length} 个源码文件`,
+  execute: async ({ changes }) => ({
+    ok: true,
+    message: '工程源码已完成原子批量修改。',
+    data: await getTimelineCodingSession().applySourceChanges(changes.map((change) => ({
+      path: change.path,
+      content: change.content,
+      expectedRevision: change.revision,
+    }))),
   }),
 })
 
 export const aiEditingToolModule: AiEditingToolModule = {
-  createTools: () => [readSource, replaceSource, createSource, removeSource],
+  createTools: () => [readSource, replaceSource, createSource, removeSource, applySourceChanges],
 }

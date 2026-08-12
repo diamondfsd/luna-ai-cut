@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { AiEditingSourceChange } from '../src/shared/types'
 import {
   ensurePlainDirectory,
@@ -23,6 +23,10 @@ async function inspectTarget(repositoryPath: string, sourcePath: string): Promis
     }
   }
   return path.join(repositoryPath, ...segments)
+}
+
+export function sourceContentRevision(content: string): string {
+  return createHash('sha256').update(content, 'utf8').digest('hex')
 }
 
 export async function resolveSourceWritablePath(
@@ -67,10 +71,15 @@ function normalizeChanges(changes: AiEditingSourceChange[]) {
       typeof change.expectedContent !== 'string') {
       throw new Error('源码原文约束无效')
     }
+    if (change.expectedRevision !== undefined &&
+      !/^[a-f0-9]{64}$/.test(change.expectedRevision)) {
+      throw new Error('源码版本约束无效')
+    }
     return {
       path: validateSourcePath(change.path),
       content: change.content,
       ...('expectedContent' in change ? { expectedContent: change.expectedContent } : {}),
+      ...('expectedRevision' in change ? { expectedRevision: change.expectedRevision } : {}),
     }
   })
   if (batchBytes > MAX_CHANGE_BATCH_BYTES) throw new Error('源码改动批次超出大小限制')
@@ -111,6 +120,13 @@ export async function applySourceChangesTransaction(
         if (!existed) throw new Error(`SOURCE_CHANGED: 文件已经不存在：${change.path}`)
         if (await fs.readFile(target, 'utf8') !== change.expectedContent) {
           throw new Error(`SOURCE_CHANGED: 文件原文已经变化：${change.path}`)
+        }
+      }
+      if (typeof change.expectedRevision === 'string') {
+        if (!existed) throw new Error(`SOURCE_REVISION_MISMATCH: 文件已经不存在：${change.path}`)
+        const current = await fs.readFile(target, 'utf8')
+        if (sourceContentRevision(current) !== change.expectedRevision) {
+          throw new Error(`SOURCE_REVISION_MISMATCH: 文件版本已经变化：${change.path}`)
         }
       }
       if (change.content === null && !existed) throw new Error('要删除的剪辑源码不存在')

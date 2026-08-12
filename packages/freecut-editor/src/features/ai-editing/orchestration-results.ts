@@ -19,7 +19,8 @@ export function hasSourceChanges(observations: readonly AiEditingObservation[]):
     observation.result.ok && (
       observation.toolId === 'source.replace' ||
       observation.toolId === 'source.create' ||
-      observation.toolId === 'source.remove'
+      observation.toolId === 'source.remove' ||
+      observation.toolId === 'source.apply_changes'
     ),
   )
 }
@@ -33,7 +34,8 @@ export function hasUncommittedSourceWork(observations: readonly AiEditingObserva
     if (
       observation.toolId === 'source.replace' ||
       observation.toolId === 'source.create' ||
-      observation.toolId === 'source.remove'
+      observation.toolId === 'source.remove' ||
+      observation.toolId === 'source.apply_changes'
     ) {
       if (!data || typeof data !== 'object' || (data as { changed?: unknown }).changed !== false) {
         unpublished = true

@@ -6,7 +6,7 @@
 2. 不熟悉属性格式时用 `docs.search` 和 `docs.read` 查看当前 TypeScript 定义。
 3. 用 `source.read` 读取要修改文件的当前原文。
 4. 用 `source.replace` 精确替换唯一原文。失败时重新读取该文件后再修改。
-5. 新建或删除模块时分别使用 `source.create`、`source.remove`，并维护引用它的索引文件。
+5. 新建或删除模块时分别使用 `source.create`、`source.remove`；删除前使用 `source.read` 获取 `revision`。涉及模块及其索引的多文件改动使用 `source.apply_changes` 原子提交。
 6. 用 `timeline.check` 确认完整工程可编译，用 `git.diff` 检查实际变化。
 7. 所有目标完成后调用 `git.commit`。提交成功就是本轮编辑完成，不需要额外发布。
 
@@ -45,6 +45,8 @@ docs/        # 只读，当前 TypeScript 类型与格式说明
 
 - 人工编辑和 Agent 编辑同一套文件，源码修改成功后时间轴立即刷新。
 - `source.replace` 的 `oldText` 必须来自最近一次 `source.read`，并且在文件中唯一匹配。
+- `source.remove` 的 `revision` 必须来自最近一次 `source.read`，不要回传完整文件原文。
+- `source.apply_changes` 中已有文件使用最近读取的 `revision`，新文件使用 `revision: null`；任一版本不匹配时整批不会生效。
 - `SOURCE_CHANGED` 或找不到原文表示人工或其他操作已修改文件；重新读取并合并意图。
 - `SOURCE_AMBIGUOUS` 表示原文出现多次；扩大 `oldText` 上下文，不要盲目使用全局替换。
 - 不要回退、覆盖或删除不属于当前任务的变更。

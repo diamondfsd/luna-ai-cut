@@ -201,17 +201,15 @@ export class AiEditingSourceGitService {
     })
   }
 
-  remove(sourcePath: string, expectedContent?: string): Promise<void> {
+  remove(sourcePath: string, expectedRevision?: string): Promise<void> {
     return this.enqueueMutation(async () => {
       const safePath = validateSourcePath(sourcePath)
       await this.requireRepository()
-      if (expectedContent !== undefined) {
-        const current = await this.readNow(safePath)
-        if (current !== expectedContent) {
-          throw new Error('SOURCE_CHANGED: 原文已经变化，请重新读取文件')
-        }
-      }
-      await applySourceChangesTransaction(this.repositoryPath, [{ path: safePath, content: null }])
+      await applySourceChangesTransaction(this.repositoryPath, [{
+        path: safePath,
+        content: null,
+        ...(expectedRevision ? { expectedRevision } : {}),
+      }])
     })
   }
 
@@ -432,8 +430,8 @@ export function createAiEditingSourceGitApi(baseDir: string): AiEditingSourceGit
     replace: async (projectId, input) => serviceFor(projectId).replace(input),
     write: async (projectId, sourcePath, content) =>
       serviceFor(projectId).write(sourcePath, content),
-    remove: async (projectId, sourcePath, expectedContent) =>
-      serviceFor(projectId).remove(sourcePath, expectedContent),
+    remove: async (projectId, sourcePath, expectedRevision) =>
+      serviceFor(projectId).remove(sourcePath, expectedRevision),
     applyChanges: async (projectId, changes) => serviceFor(projectId).applyChanges(changes),
     diff: async (projectId) => serviceFor(projectId).diff(),
     log: async (projectId, limit) => serviceFor(projectId).log(limit),
