@@ -171,6 +171,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   aiEditingAssistant: {
     getConfig: () => ipcRenderer.invoke('ai-editing-assistant:get-config'),
     saveConfig: (input) => ipcRenderer.invoke('ai-editing-assistant:save-config', input),
+    testConfig: (input) => ipcRenderer.invoke('ai-editing-assistant:test-config', input),
     generate: (input) => ipcRenderer.invoke('ai-editing-assistant:generate', input),
     cancel: (requestId: string) => ipcRenderer.invoke('ai-editing-assistant:cancel', requestId),
     onStatus: (callback) => {

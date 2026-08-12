@@ -26,6 +26,7 @@ export interface AiEditingAssistantConfig {
   model: string
   contextWindowTokens: number
   hasApiKey: boolean
+  nativeToolCalling: boolean
 }
 
 export interface AiEditingAssistantConfigInput {
@@ -35,6 +36,13 @@ export interface AiEditingAssistantConfigInput {
   /** Supplying a key replaces it; omitting it preserves the stored key. */
   apiKey?: string
   clearApiKey?: boolean
+  nativeToolCalling?: boolean
+}
+
+export interface AiEditingAssistantConfigTestResult {
+  config: AiEditingAssistantConfig
+  nativeToolCalling: boolean
+  message: string
 }
 
 export interface AiEditingAssistantToolDefinition {

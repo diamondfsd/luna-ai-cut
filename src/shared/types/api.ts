@@ -35,6 +35,7 @@ import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } fr
 import type {
   AiEditingAssistantConfig,
   AiEditingAssistantConfigInput,
+  AiEditingAssistantConfigTestResult,
   AiEditingAssistantGenerateInput,
   AiEditingAssistantGenerateResult,
   AiEditingAssistantRequestStatus,
@@ -316,6 +317,7 @@ export interface LunaApi {
   aiEditingAssistant: {
     getConfig(): Promise<AiEditingAssistantConfig>
     saveConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfig>
+    testConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfigTestResult>
     generate(input: AiEditingAssistantGenerateInput): Promise<AiEditingAssistantGenerateResult>
     cancel(requestId: string): Promise<void>
     onStatus(callback: (status: AiEditingAssistantRequestStatus) => void): () => void

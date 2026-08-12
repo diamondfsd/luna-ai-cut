@@ -87,6 +87,7 @@ export interface EmbeddedAiAssistantConfig {
   model: string
   contextWindowTokens: number
   hasApiKey: boolean
+  nativeToolCalling: boolean
 }
 
 export interface EmbeddedAiAssistantConfigInput {
@@ -95,6 +96,13 @@ export interface EmbeddedAiAssistantConfigInput {
   contextWindowTokens: number
   apiKey?: string
   clearApiKey?: boolean
+  nativeToolCalling?: boolean
+}
+
+export interface EmbeddedAiAssistantConfigTestResult {
+  config: EmbeddedAiAssistantConfig
+  nativeToolCalling: boolean
+  message: string
 }
 
 export interface EmbeddedAiAssistantToolDefinition {
@@ -157,6 +165,7 @@ export interface EmbeddedAiAssistantRequestStatus {
 export interface EmbeddedAiAssistantBridge {
   getConfig(): Promise<EmbeddedAiAssistantConfig>
   saveConfig(input: EmbeddedAiAssistantConfigInput): Promise<EmbeddedAiAssistantConfig>
+  testConfig(input: EmbeddedAiAssistantConfigInput): Promise<EmbeddedAiAssistantConfigTestResult>
   generate(input: EmbeddedAiAssistantGenerateInput): Promise<EmbeddedAiAssistantGenerateResult>
   cancel(requestId: string): Promise<void>
   onStatus(callback: (status: EmbeddedAiAssistantRequestStatus) => void): () => void

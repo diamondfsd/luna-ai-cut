@@ -10,12 +10,16 @@ import {
   generateAiEditingAssistantResponse,
   getAiEditingAssistantConfig,
   saveAiEditingAssistantConfig,
+  testAiEditingAssistantConfig,
 } from './aiEditingAssistantService'
 
 export function register(): void {
   ipcMain.handle('ai-editing-assistant:get-config', () => getAiEditingAssistantConfig())
   ipcMain.handle('ai-editing-assistant:save-config', (_event, input: AiEditingAssistantConfigInput) =>
     saveAiEditingAssistantConfig(input),
+  )
+  ipcMain.handle('ai-editing-assistant:test-config', (_event, input: AiEditingAssistantConfigInput) =>
+    testAiEditingAssistantConfig(input),
   )
   ipcMain.handle('ai-editing-assistant:generate', (event, input: AiEditingAssistantGenerateInput) =>
     generateAiEditingAssistantResponse(input, (status: AiEditingAssistantRequestStatus) => {

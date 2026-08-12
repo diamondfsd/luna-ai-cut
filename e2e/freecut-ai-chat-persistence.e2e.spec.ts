@@ -137,6 +137,7 @@ test('剪辑助手对话会随 FreeCut 项目重启恢复', async ({ lunaApp }) 
       baseUrl,
       model: 'freecut-e2e',
       apiKey: 'e2e-placeholder-key',
+      nativeToolCalling: true,
     }), chatMock.baseUrl)
 
     const input = await ensureAssistantReady(page)

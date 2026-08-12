@@ -179,6 +179,7 @@ test('真实 Coding Agent 可从脚本讨论继续完成模块化剪辑工程', 
       baseUrl,
       model,
       apiKey: 'e2e-live-proxy-key',
+      nativeToolCalling: true,
     }), { baseUrl: proxy.baseUrl, model: config.model })
     proxyConfigSaved = true
 

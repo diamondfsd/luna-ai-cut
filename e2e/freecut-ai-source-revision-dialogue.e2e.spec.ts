@@ -303,6 +303,7 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     await page.evaluate((baseUrl) => window.luna.aiEditingAssistant.saveConfig({
       baseUrl, model: 'source-revision-e2e', apiKey: 'e2e-placeholder-key',
       contextWindowTokens: 256 * 1024,
+      nativeToolCalling: true,
     }), mock.baseUrl)
     await page.getByRole('link', { name: /^(创建第一个项目|新建项目)$/ }).click()
     await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
