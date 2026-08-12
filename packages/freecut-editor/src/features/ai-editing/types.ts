@@ -29,6 +29,11 @@ export interface AiEditingRunProgress {
 export interface AiEditingToolExecutionContext {
   signal?: AbortSignal
   reportProgress(progress: AiEditingToolProgress): void
+  readToolResult?(input: {
+    resultId: string
+    offset?: number
+    maxChars?: number
+  }): AiEditingToolResult
 }
 
 export type AiEditingToolValidation =

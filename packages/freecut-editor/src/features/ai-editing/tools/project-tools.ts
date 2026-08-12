@@ -146,14 +146,14 @@ const readMediaEvidence = defineAiEditingTool({
   risk: 'read',
   inputSchema: objectSchema({
     mediaIds: {
-      type: 'array', minItems: 1, maxItems: 6, uniqueItems: true,
+      type: 'array', minItems: 1, uniqueItems: true,
       items: { type: 'string', minLength: 1 },
-      description: 'media.list 返回的素材 ID，最多 6 个。',
+      description: 'media.list 返回的素材 ID。',
     },
     visualLimit: { type: 'integer', minimum: 1, maximum: 12, description: '每个素材最多返回的画面采样数，默认 8。' },
   }, ['mediaIds']),
   schema: z.strictObject({
-    mediaIds: z.array(z.string().trim().min(1)).min(1).max(6)
+    mediaIds: z.array(z.string().trim().min(1)).min(1)
       .refine((values) => {
         const normalized = mediaIdsFromToolInput(values)
         return normalized.every(Boolean) && new Set(normalized).size === normalized.length

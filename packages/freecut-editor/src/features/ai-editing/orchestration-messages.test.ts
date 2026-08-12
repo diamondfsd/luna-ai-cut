@@ -19,7 +19,7 @@ vi.mock('./tool-registry', () => ({
 import { buildInitialMessages } from './orchestration-messages'
 
 describe('AI editing message prefix', () => {
-  it('replays the exact previous request before appending volatile turn context', async () => {
+  it('builds project context once and only appends later user turns', async () => {
     const candidates = new Set(['media.list', 'source.read'])
     const first = await buildInitialMessages(
       '先给我一个剪辑方案',
@@ -38,7 +38,6 @@ describe('AI editing message prefix', () => {
       { headCommitId: 'second', dirty: true },
       'json',
       candidates,
-      true,
     )
 
     expect(second.slice(0, first.length + 1)).toEqual([
@@ -50,10 +49,11 @@ describe('AI editing message prefix', () => {
     expect(second[0]?.content).toContain('source.read')
     expect(second[0]?.content).toContain('读取源码文件')
     expect(second[0]?.content).not.toContain('tool.load')
-    expect(second.at(-2)).toMatchObject({ role: 'system' })
-    expect(second.at(-2)?.content).toContain('"headCommitId":"second"')
-    expect(second.at(-2)?.content).not.toContain('读取源码文件')
-    expect(second.at(-2)?.content).toContain('用户已确认上一条剪辑方案')
+    expect(first[1]).toMatchObject({ role: 'system' })
+    expect(first[1]?.content).toContain('"headCommitId":"first"')
+    expect(second).toHaveLength(1 + previousTurn.length + 1)
+    expect(second.filter((message) => message.role === 'system')).toHaveLength(2)
+    expect(second.map((message) => message.content).join('\n')).not.toContain('"headCommitId":"second"')
     expect(second.at(-1)).toEqual({ role: 'user', content: '好的，按这个方案来' })
   })
 })

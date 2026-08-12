@@ -29,7 +29,6 @@ import {
   buildInitialMessages,
   buildInitialNativeMessages,
   buildJsonFallbackMessages,
-  isConfirmedPlanExecutionRequest,
   replayMessagesForJson,
 } from './orchestration-messages'
 import { reportRunProgress, traceRun } from './orchestration-progress'
@@ -46,6 +45,7 @@ import finalizationPrompt from './prompts/messages/finalize.md?raw'
 import pendingWorkPrompt from './prompts/messages/missing-finish.md?raw'
 import type { AiEditingRunOptions, AiEditingRunResult } from './run-types'
 import { executeToolCall } from './tool-execution'
+import { ToolResultStore } from './tool-result-store'
 import { getAiEditingTool } from './tool-registry'
 import type { AiEditingObservation } from './types'
 
@@ -226,6 +226,7 @@ async function executeHarnessTool(
   round: number,
   options: AiEditingRunOptions,
   toolSet: AiEditingToolSet,
+  resultStore: ToolResultStore,
   duplicateGuard?: {
     key: string | null
     consecutiveCount: number
@@ -292,6 +293,7 @@ async function executeHarnessTool(
     callIndex,
     options,
     toolSet.availableToolIds,
+    resultStore,
   )
   const failureKey = editFailureKey(call, observation)
   if (duplicateGuard && failureKey) {
@@ -313,6 +315,7 @@ async function runDriver(
   config: {
     maxRounds: number
     toolSet: AiEditingToolSet
+    resultStore: ToolResultStore
     initialObservations?: readonly AiEditingObservation[]
     requiresEditCommit: boolean
     continuationPrompt: string
@@ -341,6 +344,7 @@ async function runDriver(
       round,
       options,
       config.toolSet,
+      config.resultStore,
       duplicateGuard,
     ),
     canCompleteFromText: ({ output, observations }) =>
@@ -385,9 +389,9 @@ export async function runSingleAiEditingTurn(
     const maxRounds = config.maxToolRounds ?? MAX_TOOL_ROUNDS
     const allowedToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
     const toolSet = new AiEditingToolSet(allowedToolIds)
+    const resultStore = new ToolResultStore()
     const requiresEditCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
-      options.turnIntent?.kind === 'execute-edit' ||
-      isConfirmedPlanExecutionRequest(userText, options.history)
+      options.turnIntent?.kind === 'execute-edit'
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
     const evidence = config.evidence ?? (await codingSession.promptContext())
     reportRunProgress(options, '正在整理项目结构和上下文', 18)
@@ -400,14 +404,21 @@ export async function runSingleAiEditingTurn(
         options.agentHistory ?? [],
         evidence,
         toolSet.availableToolIds,
-        requiresEditCommit,
       )
       harnessResult = await runDriver(
-        createNativeDriver(adapter, nativeMessages, options, toolSet),
+        createNativeDriver(
+          adapter,
+          nativeMessages,
+          options,
+          toolSet,
+          resultStore,
+          1 + (options.agentHistory?.length ?? 0),
+        ),
         options,
         {
           maxRounds,
           toolSet,
+          resultStore,
           requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
@@ -421,24 +432,28 @@ export async function runSingleAiEditingTurn(
           evidence,
           'json',
           toolSet.availableToolIds,
-          requiresEditCommit,
         )
         const fallbackMessages = buildJsonFallbackMessages(
           jsonInitialMessages,
           harnessResult.observations,
+          resultStore,
         )
         harnessResult = await runDriver(
           createJsonDriver(
             adapter,
             fallbackMessages,
             options,
+            resultStore,
             harnessResult.fallbackContent,
-            Math.max(0, jsonInitialMessages.length - 2),
+            1 + (options.agentHistory
+              ? replayMessagesForJson(options.agentHistory).length
+              : options.history.length),
           ),
           options,
           {
             maxRounds,
             toolSet,
+            resultStore,
             initialObservations: harnessResult.observations,
             requiresEditCommit,
             continuationPrompt: pendingWorkPrompt.trim(),
@@ -454,14 +469,23 @@ export async function runSingleAiEditingTurn(
         evidence,
         'json',
         toolSet.availableToolIds,
-        requiresEditCommit,
       )
       harnessResult = await runDriver(
-        createJsonDriver(adapter, jsonMessages, options),
+        createJsonDriver(
+          adapter,
+          jsonMessages,
+          options,
+          resultStore,
+          undefined,
+          1 + (options.agentHistory
+            ? replayMessagesForJson(options.agentHistory).length
+            : options.history.length),
+        ),
         options,
         {
           maxRounds,
           toolSet,
+          resultStore,
           requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
