@@ -260,6 +260,23 @@ describe('createProjectObject', () => {
 
     expect(project.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
   })
+
+  it('starts with reusable video, audio, and subtitle tracks', () => {
+    const project = createProjectObject({
+      name: 'Ready to edit',
+      width: 1920,
+      height: 1080,
+      fps: 30,
+    })
+
+    expect(project.timeline?.tracks.map(({ id, kind, order }) => ({ id, kind, order }))).toEqual([
+      { id: 'id-subtitle', kind: 'subtitle', order: 0 },
+      { id: 'id-video', kind: 'video', order: 1 },
+      { id: 'id-audio', kind: 'audio', order: 2 },
+    ])
+    expect(project.timeline?.items).toEqual([])
+    expect(project.timeline?.zoomLevel).toBe(0.25)
+  })
 })
 
 describe('formatProjectUpgradeBackupName', () => {

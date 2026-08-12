@@ -1098,7 +1098,10 @@ export async function saveTimeline(projectId: string): Promise<void> {
  * dialog side effects. {@link loadTimeline} calls this after reading +
  * migrating from storage; it then runs media validation on top.
  */
-export async function hydrateTimelineStoresFromProject(project: Project): Promise<void> {
+export async function hydrateTimelineStoresFromProject(
+  project: Project,
+  options: { preserveZoom?: boolean } = {},
+): Promise<void> {
   // Unwind the outgoing runtime context before replacing any live domain
   // stores. If a Motion composition is active and root items are loaded first,
   // resetToRoot() mistakes those freshly loaded root items for composition
@@ -1200,10 +1203,8 @@ export async function hydrateTimelineStoresFromProject(project: Project): Promis
       )
 
     // Restore zoom and playback
-    if (t.zoomLevel !== undefined) {
-      useZoomStore.getState().setZoomLevel(t.zoomLevel)
-    } else {
-      useZoomStore.getState().setZoomLevel(1)
+    if (!options.preserveZoom) {
+      useZoomStore.getState().setZoomLevelSynchronized(t.zoomLevel ?? 1)
     }
     if (t.currentFrame !== undefined) {
       usePlaybackStore.getState().setCurrentFrame(t.currentFrame)
@@ -1223,7 +1224,7 @@ export async function hydrateTimelineStoresFromProject(project: Project): Promis
     useCompositionsStore.getState().setCompositions([])
     useSequencesStore.getState().reset()
     useTimelineSettingsStore.getState().setScrollPosition(0)
-    useZoomStore.getState().setZoomLevel(1)
+    if (!options.preserveZoom) useZoomStore.getState().setZoomLevelSynchronized(0.25)
     usePlaybackStore.getState().setCurrentFrame(0)
     usePlaybackStore.getState().setBusAudioEq(undefined)
   }

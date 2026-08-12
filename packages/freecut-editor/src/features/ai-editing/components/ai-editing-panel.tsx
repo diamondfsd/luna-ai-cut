@@ -87,7 +87,6 @@ interface AiEditingPanelProps {
 export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditingPanelProps) {
   const phase = useAiEditingStore((state) => state.phase)
   const loadPercent = useAiEditingStore((state) => state.loadPercent)
-  const thinkingLabel = useAiEditingStore((state) => state.thinkingLabel)
   const reasoningText = useAiEditingStore((state) => state.reasoningText)
   const draftAssistantText = useAiEditingStore((state) => state.draftAssistantText)
   const messages = useAiEditingStore((state) => state.messages)
@@ -392,9 +391,9 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         {canChat && phase === 'loading' && (
           <PhaseProgressCard label="正在准备剪辑助手" percent={loadPercent} />
         )}
-        {canChat && phase === 'thinking' && !draftAssistantText && (
+        {canChat && (phase === 'thinking' || phase === 'executing') && (
           <PhaseProgressCard
-            label={thinkingLabel}
+            label="剪辑助手处理中"
             percent={null}
             reasoningText={reasoningText}
           />
