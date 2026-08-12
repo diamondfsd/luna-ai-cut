@@ -206,6 +206,11 @@ declare module '@freecut/embedded' {
       callback: (status: EmbeddedAiAssistantRequestStatus) => void,
     ) => () => void
     editingSourceGit?: EmbeddedAiEditingSourceGitBridge
+    onAiEditingLog?: (
+      level: 'info' | 'warn' | 'error',
+      event: string,
+      details?: Record<string, unknown>,
+    ) => void
     onRenderHtmlFrame?: (
       request: EmbeddedHtmlRenderRequest,
     ) => Promise<EmbeddedHtmlRenderResult>

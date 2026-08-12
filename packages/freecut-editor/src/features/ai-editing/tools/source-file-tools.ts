@@ -86,8 +86,8 @@ const replaceSource = defineAiEditingTool({
 
 const createSource = defineAiEditingTool({
   id: 'source.create',
-  title: '创建工程源码',
-  description: '在真实工作树创建一个不存在的模块文件，不覆盖已有文件。',
+  title: '创建并写入工程源码',
+  description: '一次调用同时命名、创建并写入一个不存在的模块文件，不覆盖已有文件；同时创建多个文件时改用 source.apply_changes。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema(
@@ -132,8 +132,8 @@ const MAX_SOURCE_CHANGES_PER_BATCH = 4
 
 const applySourceChanges = defineAiEditingTool({
   id: 'source.apply_changes',
-  title: '批量修改工程源码',
-  description: '使用 source.read 返回的 revision 原子写入或删除最多 4 个源码文件；新文件使用 revision: null；整批全部成功或全部不生效。大型修改分批调用，每次响应只调用一次。',
+  title: '批量创建或修改工程源码',
+  description: '一次原子调用同时命名并写入、修改或删除最多 4 个源码文件；新文件使用 revision: null 和完整 content，已有文件使用 source.read 返回的 revision；整批全部成功或全部不生效。大型修改分批调用，每次响应只调用一次。',
   risk: 'edit',
   execution: 'async',
   inputSchema: objectSchema(

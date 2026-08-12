@@ -11,6 +11,11 @@ import type {
   AiEditingToolResult,
 } from './types'
 import { VirtualFilesError } from './coding-workspace/virtual-files-types'
+import {
+  logAiEditingDiagnostic,
+  summarizeToolArguments,
+  summarizeToolResult,
+} from './diagnostic-log'
 
 function toolError(toolId: string, message: string): AiEditingObservation {
   return { toolId, result: { ok: false, message } }
@@ -67,15 +72,35 @@ export async function executeToolCall(
   availableToolIds?: ReadonlySet<string>,
   resultStore?: ToolResultStore,
 ): Promise<AiEditingObservation> {
+  const startedAt = performance.now()
+  const logFinished = (result: AiEditingToolResult): void => {
+    logAiEditingDiagnostic(result.ok ? 'info' : 'warn', 'tool.complete', {
+      callIndex,
+      toolId: call.id,
+      durationMs: Math.round(performance.now() - startedAt),
+      result: summarizeToolResult(result),
+    })
+  }
+  logAiEditingDiagnostic('info', 'tool.start', {
+    callIndex,
+    toolId: call.id,
+    args: summarizeToolArguments(call.args),
+  })
   if (availableToolIds && !availableToolIds.has(call.id)) {
-    return toolError(call.id, '这个工具不在当前可用范围内，请从系统提供的工具中选择。')
+    const observation = toolError(call.id, '这个工具不在当前可用范围内，请从系统提供的工具中选择。')
+    logFinished(observation.result)
+    return observation
   }
   const tool = getAiEditingTool(call.id)
-  if (!tool) return toolError(call.id, '这个操作目前不可用。')
+  if (!tool) {
+    const observation = toolError(call.id, '这个操作目前不可用。')
+    logFinished(observation.result)
+    return observation
+  }
 
   const validation = tool.validate(call.args)
   if (!validation.ok) {
-    return {
+    const observation: AiEditingObservation = {
       toolId: tool.id,
       result: {
         ok: false,
@@ -83,6 +108,8 @@ export async function executeToolCall(
         ...(validation.details ? { data: { validationIssues: validation.details } } : {}),
       },
     }
+    logFinished(observation.result)
+    return observation
   }
 
   const activityId = `${options.activityScope ?? 'turn'}-${callIndex}-${tool.id}`
@@ -155,6 +182,7 @@ export async function executeToolCall(
       ? { progressLabel: `${tool.title}已完成`, progressPercent: 100 }
       : {}),
   })
+  logFinished(result)
   return { toolId: tool.id, result }
 }
 
@@ -166,14 +194,29 @@ export async function executeNativeToolCall(
   availableToolIds?: ReadonlySet<string>,
 ): Promise<AiEditingObservation> {
   const toolId = toolIdsByFunctionName.get(call.name)
-  if (!toolId) return toolError(call.name, '这个操作目前不可用。')
+  if (!toolId) {
+    const observation = toolError(call.name, '这个操作目前不可用。')
+    logAiEditingDiagnostic('warn', 'tool.rejected', {
+      callIndex,
+      toolName: call.name,
+      reason: observation.result.message,
+    })
+    return observation
+  }
   let args: Record<string, unknown>
   try {
     const value = JSON.parse(call.arguments) as unknown
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error()
     args = value as Record<string, unknown>
   } catch {
-    return toolError(toolId, '操作参数无效，未执行此操作。')
+    const observation = toolError(toolId, '操作参数无效，未执行此操作。')
+    logAiEditingDiagnostic('warn', 'tool.rejected', {
+      callIndex,
+      toolId,
+      arguments: { characters: call.arguments.length },
+      reason: observation.result.message,
+    })
+    return observation
   }
   return executeToolCall({ id: toolId, args }, callIndex, options, availableToolIds)
 }
