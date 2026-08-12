@@ -46,7 +46,6 @@ function createDriver(responses: EmbeddedAiAssistantGenerateResult[]) {
 
 function run(driver: NativeAgentDriver<Observation>, input: {
   executeTool?: (toolId: string) => Promise<Observation>
-  shouldStopAfterTool?: (observations: readonly Observation[]) => boolean
 }) {
   return runAgentHarness({
     driver,
@@ -56,9 +55,6 @@ function run(driver: NativeAgentDriver<Observation>, input: {
     continuationPrompt: 'continue',
     finalizationPrompt: 'finish',
     executeTool: (call) => input.executeTool?.(call.toolId) ?? Promise.resolve({ value: call.toolId }),
-    canCompleteFromText: ({ output }) => Boolean(output.content),
-    shouldStopAfterTool: input.shouldStopAfterTool ?? (() => false),
-    canRecoverFromModelError: () => false,
   })
 }
 
@@ -78,7 +74,7 @@ describe('runAgentHarness replay transcript', () => {
     ])
   })
 
-  it('records a complete executed exchange before stopping early', async () => {
+  it('returns every tool result to the model and waits for its final response', async () => {
     const driver = createDriver([
       {
         mode: 'tools',
@@ -88,15 +84,13 @@ describe('runAgentHarness replay transcript', () => {
           { id: 'call-2', name: 'read_source', arguments: '{"path":"timeline.ts"}' },
         ],
       },
+      { mode: 'tools', content: 'Finished after tools.', toolCalls: [] },
     ])
     const executeTool = vi.fn(async (toolId: string) => ({ value: `${toolId}:ok` }))
 
-    const result = await run(driver, {
-      executeTool,
-      shouldStopAfterTool: () => true,
-    })
+    const result = await run(driver, { executeTool })
 
-    expect(executeTool).toHaveBeenCalledTimes(1)
+    expect(executeTool).toHaveBeenCalledTimes(2)
     expect(result.status).toBe('completed')
     expect(result.replayMessages).toEqual([
       { role: 'user', content: 'current request' },
@@ -104,9 +98,13 @@ describe('runAgentHarness replay transcript', () => {
         role: 'assistant',
         toolCalls: [
           { id: 'call-1', name: 'commit_source', arguments: '{"message":"save"}' },
+          { id: 'call-2', name: 'read_source', arguments: '{"path":"timeline.ts"}' },
         ],
       },
       { role: 'tool', toolCallId: 'call-1', content: '{"value":"git.commit:ok"}' },
+      { role: 'tool', toolCallId: 'call-2', content: '{"value":"source.read:ok"}' },
+      { role: 'user', content: 'continue after tools' },
+      { role: 'assistant', content: 'Finished after tools.' },
     ])
   })
 

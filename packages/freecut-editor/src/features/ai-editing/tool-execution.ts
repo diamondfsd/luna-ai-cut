@@ -10,6 +10,7 @@ import type {
   AiEditingToolCall,
   AiEditingToolResult,
 } from './types'
+import { VirtualFilesError } from './coding-workspace/virtual-files-types'
 
 function toolError(toolId: string, message: string): AiEditingObservation {
   return { toolId, result: { ok: false, message } }
@@ -17,14 +18,18 @@ function toolError(toolId: string, message: string): AiEditingObservation {
 
 function structuredToolError(error: unknown): AiEditingToolResult {
   const message = error instanceof Error ? error.message : '操作未能完成。'
-  const code = message.match(/\b(SOURCE_[A-Z_]+)\b/)?.[1] ?? 'TOOL_EXECUTION_FAILED'
+  const code = error instanceof VirtualFilesError
+    ? `SOURCE_${error.code}`
+    : 'TOOL_EXECUTION_FAILED'
   return {
     ok: false,
     message,
     data: {
       error: {
         code,
-        retryable: code === 'SOURCE_REVISION_MISMATCH',
+        retryable: error instanceof VirtualFilesError && (
+          error.code === 'REVISION_CONFLICT' || error.code === 'CONTENT_CONFLICT'
+        ),
       },
     },
   }

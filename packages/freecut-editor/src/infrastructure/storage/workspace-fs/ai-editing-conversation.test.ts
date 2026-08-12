@@ -88,7 +88,6 @@ describe('AI editing conversation storage', () => {
       agentTurns,
       loadedToolIds: ['source.read'],
       context,
-      workflow: null,
     })
 
     expect(await loadAiEditingConversationState('project-42')).toEqual({
@@ -96,39 +95,8 @@ describe('AI editing conversation storage', () => {
       agentTurns,
       loadedToolIds: ['source.read'],
       context,
-      workflow: null,
     })
     expect(await loadAiEditingConversation('project-42')).toEqual(messages)
-  })
-
-  it('persists a pending plan workflow only when it references an assistant message', async () => {
-    const root = createRoot()
-    setWorkspaceRoot(asHandle(root))
-    const messages = [
-      { id: 'request', role: 'user' as const, content: '设计脚本', createdAt: 100 },
-      { id: 'plan', role: 'assistant' as const, content: '完整剪辑脚本方案', createdAt: 110 },
-    ]
-    const workflow = {
-      kind: 'awaiting-plan-confirmation' as const,
-      planMessageId: 'plan',
-      updatedAt: 120,
-    }
-
-    await saveAiEditingConversationState('project-42', {
-      messages,
-      agentTurns: [],
-      loadedToolIds: [],
-      context: null,
-      workflow,
-    })
-
-    expect(await loadAiEditingConversationState('project-42')).toEqual({
-      messages,
-      agentTurns: [],
-      loadedToolIds: [],
-      context: null,
-      workflow,
-    })
   })
 
   it('drops a replay turn with a tool call that has no matching result', async () => {
@@ -172,7 +140,7 @@ describe('AI editing conversation storage', () => {
       messages: [
         { id: 'message-1', role: 'user', content: '整理开场片段', createdAt: 1_723_456_789_000 },
       ],
-      agentTurns: [], loadedToolIds: [], context: null, workflow: null,
+      agentTurns: [], loadedToolIds: [], context: null,
     })
     await archiveAiEditingConversation('project-42', {
       id: 'newer-session',
@@ -181,7 +149,7 @@ describe('AI editing conversation storage', () => {
       messages: [
         { id: 'message-2', role: 'assistant', content: '已完成。', createdAt: 1_723_456_800_000 },
       ],
-      agentTurns: [], loadedToolIds: [], context: null, workflow: null,
+      agentTurns: [], loadedToolIds: [], context: null,
     })
 
     expect(
@@ -217,7 +185,6 @@ describe('AI editing conversation storage', () => {
       agentTurns: archivedAgentTurns,
       loadedToolIds: ['source.read'],
       context: null,
-      workflow: null,
     })
 
     const resumed = await resumeAiEditingConversation('project-42', 'archived-message')
@@ -242,7 +209,7 @@ describe('AI editing conversation storage', () => {
       createdAt: 100,
       archivedAt: 150,
       messages: archivedMessages,
-      agentTurns: [], loadedToolIds: [], context: null, workflow: null,
+      agentTurns: [], loadedToolIds: [], context: null,
     })
 
     await resumeAiEditingConversation('project-42', 'archived-message')

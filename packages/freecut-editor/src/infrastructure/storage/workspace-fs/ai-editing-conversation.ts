@@ -40,18 +40,11 @@ export interface AiEditingConversationContext {
   updatedAt: number
 }
 
-export interface AiEditingConversationWorkflow {
-  kind: 'awaiting-plan-confirmation'
-  planMessageId: string
-  updatedAt: number
-}
-
 export interface AiEditingConversationState {
   messages: AiEditingConversationMessage[]
   agentTurns: AiEditingAgentTurn[]
   loadedToolIds: string[]
   context: AiEditingConversationContext | null
-  workflow: AiEditingConversationWorkflow | null
   lastPromptTokens?: number | null
 }
 
@@ -67,7 +60,6 @@ interface AiEditingConversationFile {
   agentTurns: AiEditingAgentTurn[]
   loadedToolIds: string[]
   context?: AiEditingConversationContext
-  workflow?: AiEditingConversationWorkflow
   lastPromptTokens?: number
 }
 
@@ -79,7 +71,6 @@ export interface AiEditingConversationHistorySession {
   agentTurns: AiEditingAgentTurn[]
   loadedToolIds: string[]
   context: AiEditingConversationContext | null
-  workflow: AiEditingConversationWorkflow | null
   lastPromptTokens?: number | null
 }
 
@@ -162,28 +153,13 @@ function sanitizeContext(value: unknown): AiEditingConversationContext | null {
   }
 }
 
-function sanitizeWorkflow(value: unknown): AiEditingConversationWorkflow | null {
-  if (!value || typeof value !== 'object') return null
-  const candidate = value as Partial<AiEditingConversationWorkflow>
-  if (
-    candidate.kind !== 'awaiting-plan-confirmation' ||
-    typeof candidate.planMessageId !== 'string' || !candidate.planMessageId ||
-    typeof candidate.updatedAt !== 'number' || !Number.isFinite(candidate.updatedAt)
-  ) return null
-  return {
-    kind: candidate.kind,
-    planMessageId: candidate.planMessageId,
-    updatedAt: candidate.updatedAt,
-  }
-}
-
 function sanitizeConversation(value: unknown): AiEditingConversationState {
   if (!value || typeof value !== 'object') {
-    return { messages: [], agentTurns: [], loadedToolIds: [], context: null, workflow: null }
+    return { messages: [], agentTurns: [], loadedToolIds: [], context: null }
   }
   const candidate = value as Partial<AiEditingConversationFile>
   if (candidate.version !== CONVERSATION_VERSION || !Array.isArray(candidate.messages)) {
-    return { messages: [], agentTurns: [], loadedToolIds: [], context: null, workflow: null }
+    return { messages: [], agentTurns: [], loadedToolIds: [], context: null }
   }
   const messages = candidate.messages
     .map(sanitizeMessage)
@@ -195,7 +171,6 @@ function sanitizeConversation(value: unknown): AiEditingConversationState {
     : []
   const loadedToolIds = sanitizeLoadedToolIds(candidate.loadedToolIds)
   const context = sanitizeContext(candidate.context)
-  const workflow = sanitizeWorkflow(candidate.workflow)
   const lastPromptTokens = typeof candidate.lastPromptTokens === 'number' &&
     Number.isSafeInteger(candidate.lastPromptTokens) && candidate.lastPromptTokens >= 0
     ? candidate.lastPromptTokens
@@ -206,10 +181,6 @@ function sanitizeConversation(value: unknown): AiEditingConversationState {
     loadedToolIds,
     context: context && agentTurns.some((turn) => turn.id === context.throughMessageId)
       ? context
-      : null,
-    workflow: workflow && messages.some((message) =>
-      message.id === workflow.planMessageId && message.role === 'assistant')
-      ? workflow
       : null,
     ...(lastPromptTokens === null ? {} : { lastPromptTokens }),
   }
@@ -241,7 +212,6 @@ function sanitizeHistorySession(value: unknown): AiEditingConversationHistorySes
     .map(sanitizeAgentTurn)
     .filter((turn): turn is AiEditingAgentTurn => turn !== null)
   const context = sanitizeContext(candidate.context)
-  const workflow = sanitizeWorkflow(candidate.workflow)
   const lastPromptTokens = typeof candidate.lastPromptTokens === 'number' &&
     Number.isSafeInteger(candidate.lastPromptTokens) && candidate.lastPromptTokens >= 0
     ? candidate.lastPromptTokens
@@ -255,10 +225,6 @@ function sanitizeHistorySession(value: unknown): AiEditingConversationHistorySes
     loadedToolIds: sanitizeLoadedToolIds(candidate.loadedToolIds),
     context: context && agentTurns.some((turn) => turn.id === context.throughMessageId)
       ? context
-      : null,
-    workflow: workflow && messages.some((message) =>
-      message.id === workflow.planMessageId && message.role === 'assistant')
-      ? workflow
       : null,
     ...(lastPromptTokens === null ? {} : { lastPromptTokens }),
   }
@@ -293,7 +259,7 @@ export async function loadAiEditingConversationState(
     return sanitizeConversation(file)
   } catch (error) {
     logger.warn(`loadAiEditingConversation(${projectId}) failed`, error)
-    return { messages: [], agentTurns: [], loadedToolIds: [], context: null, workflow: null }
+    return { messages: [], agentTurns: [], loadedToolIds: [], context: null }
   }
 }
 
@@ -306,7 +272,6 @@ export async function saveAiEditingConversation(
     agentTurns: [],
     loadedToolIds: [],
     context: null,
-    workflow: null,
     lastPromptTokens: null,
   })
 }
@@ -322,7 +287,6 @@ export async function saveAiEditingConversationState(
       agentTurns: structuredClone(state.agentTurns),
       loadedToolIds: [...state.loadedToolIds],
       ...(state.context ? { context: { ...state.context } } : {}),
-      ...(state.workflow ? { workflow: { ...state.workflow } } : {}),
       ...(typeof state.lastPromptTokens === 'number'
         ? { lastPromptTokens: state.lastPromptTokens }
         : {}),
@@ -399,7 +363,6 @@ export async function resumeAiEditingConversation(
             agentTurns: current.agentTurns,
             loadedToolIds: current.loadedToolIds,
             context: current.context,
-            workflow: current.workflow,
             lastPromptTokens: current.lastPromptTokens,
           }
         : null
@@ -416,7 +379,6 @@ export async function resumeAiEditingConversation(
       agentTurns: target.agentTurns,
       loadedToolIds: target.loadedToolIds,
       context: target.context,
-      workflow: target.workflow,
       lastPromptTokens: target.lastPromptTokens,
     })
     try {
@@ -432,7 +394,6 @@ export async function resumeAiEditingConversation(
       agentTurns: structuredClone(target.agentTurns),
       loadedToolIds: [...target.loadedToolIds],
       context: target.context ? { ...target.context } : null,
-      workflow: target.workflow ? { ...target.workflow } : null,
       lastPromptTokens: target.lastPromptTokens ?? null,
     }
   } catch (error) {

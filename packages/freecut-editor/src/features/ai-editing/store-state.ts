@@ -14,7 +14,6 @@ type ResettableConversationState = Pick<
   | 'agentTurns'
   | 'loadedToolIds'
   | 'agentContext'
-  | 'conversationWorkflow'
   | 'lastPromptTokens'
   | 'observations'
   | 'toolActivities'
@@ -35,7 +34,6 @@ export function createEmptyConversationState(): ResettableConversationState {
     agentTurns: [],
     loadedToolIds: [],
     agentContext: null,
-    conversationWorkflow: null,
     lastPromptTokens: null,
     observations: [],
     toolActivities: [],
