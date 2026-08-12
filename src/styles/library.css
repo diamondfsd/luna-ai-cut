@@ -478,9 +478,13 @@
 /* 拖拽框选 */
 .gallery-drag-select {
   position: absolute;
+  display: none;
+  left: 0;
+  top: 0;
   border: 1px solid var(--blue);
   background: rgba(0, 102, 204, 0.08);
   border-radius: 4px;
   pointer-events: none;
   z-index: 10;
+  will-change: transform, width, height;
 }

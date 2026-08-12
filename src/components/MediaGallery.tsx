@@ -1,5 +1,5 @@
 import { CalendarDays, FileQuestion, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { MediaCard } from './MediaCard'
 import { useMediaLib } from '../pages/useMediaLibraryController'
@@ -33,13 +33,34 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
   const dateNavScrollFrameRef = useRef(0)
   const navigationTargetRef = useRef<string | null>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
-  const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const dragCurrentRef = useRef<{ x: number; y: number } | null>(null)
+  const dragFrameRef = useRef(0)
+  const dragOverlayRef = useRef<HTMLDivElement>(null)
+  const dragCardsRef = useRef<Array<{
+    element: HTMLElement
+    id: string
+    rect: DOMRect
+  }>>([])
+  const dragSelectedIdsRef = useRef<Set<string>>(new Set())
   const [dateNavCollapsed, setDateNavCollapsed] = useState(false)
   const [activeDateGroup, setActiveDateGroup] = useState<string | null>(ctrl.firstGroup)
   const groupSignature = ctrl.groups.map(([group]) => group).join('\0')
   const selectedLocalPaths = useMemo(() => ctrl.selectedFiles
     .map((file) => file.downloadFilePath ?? file.localPath)
     .filter((filePath): filePath is string => Boolean(filePath)), [ctrl.selectedFiles])
+
+  const clearDragPreview = useCallback(() => {
+    window.cancelAnimationFrame(dragFrameRef.current)
+    dragFrameRef.current = 0
+    dragOverlayRef.current?.style.setProperty('display', 'none')
+    for (const { element } of dragCardsRef.current) {
+      element.classList.remove('drag-selected')
+    }
+    dragCardsRef.current = []
+    dragSelectedIdsRef.current = new Set()
+  }, [])
+
+  useEffect(() => clearDragPreview, [clearDragPreview])
 
   useEffect(() => {
     setActiveDateGroup(ctrl.firstGroup)
@@ -163,54 +184,76 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
     if (e.button !== 0) return
     if ((e.target as HTMLElement).closest('.media-card, .section-actions, .media-date-nav')) return
     dragStartRef.current = { x: e.clientX, y: e.clientY }
+    dragCurrentRef.current = { x: e.clientX, y: e.clientY }
+    const gallery = galleryRef.current
+    dragCardsRef.current = gallery
+      ? [...gallery.querySelectorAll<HTMLElement>('.media-card')]
+          .map((element) => ({
+            element,
+            id: element.dataset.fileId ?? '',
+            rect: element.getBoundingClientRect(),
+          }))
+          .filter(({ id }) => id.length > 0)
+      : []
     galleryRef.current?.setPointerCapture(e.pointerId)
+  }
+
+  function updateDragPreview(): void {
+    dragFrameRef.current = 0
+    const start = dragStartRef.current
+    const current = dragCurrentRef.current
+    const gallery = galleryRef.current
+    const overlay = dragOverlayRef.current
+    if (!start || !current || !gallery || !overlay) return
+
+    const rect = gallery.getBoundingClientRect()
+    const left = Math.min(start.x, current.x) - rect.left + gallery.scrollLeft
+    const top = Math.min(start.y, current.y) - rect.top + gallery.scrollTop
+    const width = Math.abs(current.x - start.x)
+    const height = Math.abs(current.y - start.y)
+    overlay.style.display = 'block'
+    overlay.style.transform = `translate3d(${left}px, ${top}px, 0)`
+    overlay.style.width = `${width}px`
+    overlay.style.height = `${height}px`
+
+    const dragBounds = {
+      left: Math.min(start.x, current.x),
+      right: Math.max(start.x, current.x),
+      top: Math.min(start.y, current.y),
+      bottom: Math.max(start.y, current.y),
+    }
+
+    const selectedIds = new Set<string>()
+    for (const { element, id, rect: cardRect } of dragCardsRef.current) {
+      const overlaps =
+        cardRect.left < dragBounds.right &&
+        cardRect.right > dragBounds.left &&
+        cardRect.top < dragBounds.bottom &&
+        cardRect.bottom > dragBounds.top
+      element.classList.toggle('drag-selected', overlaps)
+      if (overlaps) selectedIds.add(id)
+    }
+    dragSelectedIdsRef.current = selectedIds
   }
 
   function handlePointerMove(e: React.PointerEvent): void {
     if (!dragStartRef.current) return
-    const gallery = galleryRef.current
-    if (!gallery) return
-
-    const rect = gallery.getBoundingClientRect()
-    const left = Math.min(dragStartRef.current.x, e.clientX) - rect.left + gallery.scrollLeft
-    const top = Math.min(dragStartRef.current.y, e.clientY) - rect.top + gallery.scrollTop
-    const width = Math.abs(e.clientX - dragStartRef.current.x)
-    const height = Math.abs(e.clientY - dragStartRef.current.y)
-    setDragRect({ left, top, width, height })
-
-    const dragBounds = {
-      left: Math.min(dragStartRef.current.x, e.clientX),
-      right: Math.max(dragStartRef.current.x, e.clientX),
-      top: Math.min(dragStartRef.current.y, e.clientY),
-      bottom: Math.max(dragStartRef.current.y, e.clientY),
-    }
-
-    const cards = gallery.querySelectorAll<HTMLElement>('.media-card')
-    for (const card of cards) {
-      const cr = card.getBoundingClientRect()
-      const overlaps =
-        cr.left < dragBounds.right &&
-        cr.right > dragBounds.left &&
-        cr.top < dragBounds.bottom &&
-        cr.bottom > dragBounds.top
-      card.classList.toggle('drag-selected', overlaps)
+    dragCurrentRef.current = { x: e.clientX, y: e.clientY }
+    if (dragFrameRef.current === 0) {
+      dragFrameRef.current = window.requestAnimationFrame(updateDragPreview)
     }
   }
 
   function handlePointerUp(): void {
     if (!dragStartRef.current) return
-    dragStartRef.current = null
-    setDragRect(null)
-
-    const gallery = galleryRef.current
-    if (!gallery) return
-
-    const dragSelectedIds = new Set<string>()
-    const cards = gallery.querySelectorAll<HTMLElement>('.media-card.drag-selected')
-    for (const card of cards) {
-      dragSelectedIds.add(card.dataset.fileId ?? '')
-      card.classList.remove('drag-selected')
+    if (dragFrameRef.current !== 0) {
+      window.cancelAnimationFrame(dragFrameRef.current)
+      updateDragPreview()
     }
+    dragStartRef.current = null
+    dragCurrentRef.current = null
+    const dragSelectedIds = dragSelectedIdsRef.current
+    clearDragPreview()
 
     if (dragSelectedIds.size > 0) {
       const toggled = new Set(ctrl.selected)
@@ -312,17 +355,7 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
         </section>
       )}
 
-      {dragRect && (
-        <div
-          className="gallery-drag-select"
-          style={{
-            left: dragRect.left,
-            top: dragRect.top,
-            width: dragRect.width,
-            height: dragRect.height,
-          }}
-        />
-      )}
+      <div ref={dragOverlayRef} className="gallery-drag-select" />
       </div>
     </div>
   )

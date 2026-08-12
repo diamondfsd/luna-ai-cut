@@ -3,7 +3,7 @@ import { i18n } from '@freecut/i18n'
 import type { Project } from '@freecut/types/project'
 import type { TimelineTrack } from '@freecut/types/timeline'
 
-const DEFAULT_TIMELINE_ZOOM_LEVEL = 0.25
+const DEFAULT_TIMELINE_ZOOM_LEVEL = 0.125
 
 function createInitialTimelineTracks(): TimelineTrack[] {
   return [

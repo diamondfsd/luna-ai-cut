@@ -1224,7 +1224,7 @@ export async function hydrateTimelineStoresFromProject(
     useCompositionsStore.getState().setCompositions([])
     useSequencesStore.getState().reset()
     useTimelineSettingsStore.getState().setScrollPosition(0)
-    if (!options.preserveZoom) useZoomStore.getState().setZoomLevelSynchronized(0.25)
+    if (!options.preserveZoom) useZoomStore.getState().setZoomLevelSynchronized(0.125)
     usePlaybackStore.getState().setCurrentFrame(0)
     usePlaybackStore.getState().setBusAudioEq(undefined)
   }

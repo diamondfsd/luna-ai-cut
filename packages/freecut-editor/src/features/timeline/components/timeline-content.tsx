@@ -59,7 +59,11 @@ import { useMarkersStore } from '../stores/markers-store'
 import { useTransitionsStore } from '../stores/transitions-store'
 import { getFilteredItemSnapEdges } from '../utils/timeline-snap-utils'
 import { expandSelectionWithLinkedItems } from '../utils/linked-items'
-import { getTimelineWidth, getZoomToFitLevel } from '../utils/timeline-layout'
+import {
+  getTimelineContentDuration,
+  getTimelineWidth,
+  getZoomToFitLevel,
+} from '../utils/timeline-layout'
 import { DENSE_TIMELINE_TRACK_ITEM_THRESHOLD } from '../utils/timeline-dom-density'
 import {
   getAnchoredZoomScrollLeft,
@@ -722,7 +726,9 @@ export const TimelineContent = memo(function TimelineContent({
 
   // O(1) pre-computed value from items store instead of O(n) reduce on every change
   const furthestItemEndFrame = useItemsStore((s) => s.maxItemEndFrame)
-  const maxTimelineFrame = Math.floor(Math.max(furthestItemEndFrame / fps, 10) * fps)
+  const maxTimelineFrame = Math.floor(
+    getTimelineContentDuration(furthestItemEndFrame / fps) * fps,
+  )
   // NOTE: Don't subscribe to currentFrame here - it would cause re-renders every frame!
   // Use refs to access it in callbacks instead (see currentFrameRef below)
   const selectItems = useSelectionStore((s) => s.selectItems)
@@ -1499,8 +1505,9 @@ export const TimelineContent = memo(function TimelineContent({
     // Convert furthest item end from frames to seconds
     const furthestItemEnd = furthestItemEndFrame / fps
 
-    // Use actual content end, with minimum of 10 seconds for empty timelines
-    const contentDuration = Math.max(furthestItemEnd, 10)
+    // Empty projects start with one minute of working room. Once content exists,
+    // preserve the existing minimum for very short edits.
+    const contentDuration = getTimelineContentDuration(furthestItemEnd)
 
     // Keep the visible fit behavior, but leave extra space after the project end
     // so the user can still scroll a bit farther to the right when needed.

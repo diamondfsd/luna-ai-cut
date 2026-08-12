@@ -1,6 +1,8 @@
 import { ZOOM_MAX, ZOOM_MIN } from '../constants'
 
 const TIMELINE_ZOOM_TO_FIT_RIGHT_PADDING_PX = 50
+export const EMPTY_TIMELINE_DURATION_SECONDS = 60
+const MIN_CONTENT_TIMELINE_DURATION_SECONDS = 10
 
 const TIMELINE_RIGHT_SCROLL_ROOM_MIN_PX = 240
 const TIMELINE_RIGHT_SCROLL_ROOM_MAX_PX = 480
@@ -20,8 +22,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
+export function getTimelineContentDuration(furthestItemEndSeconds: number): number {
+  if (furthestItemEndSeconds <= 0) {
+    return EMPTY_TIMELINE_DURATION_SECONDS
+  }
+
+  return Math.max(furthestItemEndSeconds, MIN_CONTENT_TIMELINE_DURATION_SECONDS)
+}
+
 export function getZoomToFitLevel(containerWidth: number, contentDurationSeconds: number): number {
-  const duration = Math.max(10, contentDurationSeconds)
+  const duration = Math.max(MIN_CONTENT_TIMELINE_DURATION_SECONDS, contentDurationSeconds)
   const targetWidth = Math.max(0, containerWidth - TIMELINE_ZOOM_TO_FIT_RIGHT_PADDING_PX)
   return clamp(targetWidth / (duration * 100), ZOOM_MIN, ZOOM_MAX)
 }
