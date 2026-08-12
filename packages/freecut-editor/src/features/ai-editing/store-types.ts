@@ -1,7 +1,6 @@
 import type {
   AiEditingConversationContext,
   AiEditingAgentTurn,
-  AiEditingConversationWorkflow,
 } from '@freecut/infrastructure/storage'
 import type { AiEditingMessage } from './conversation-messages'
 import type { AiEditingReasoningEffort } from './reasoning-effort'
@@ -28,7 +27,6 @@ export interface AiEditingState {
   agentTurns: AiEditingAgentTurn[]
   loadedToolIds: string[]
   agentContext: AiEditingConversationContext | null
-  conversationWorkflow: AiEditingConversationWorkflow | null
   lastPromptTokens: number | null
   observations: AiEditingObservation[]
   toolActivities: AiEditingToolActivity[]

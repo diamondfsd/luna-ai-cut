@@ -47,8 +47,7 @@ export async function runAgentHarness<TObservation>(
         protocol: options.driver.protocol,
         error,
       })
-      if (!options.canRecoverFromModelError(observations)) throw error
-      return result({ status: 'completed', reply, observations })
+      throw error
     }
 
     options.onEvent?.({
@@ -88,7 +87,7 @@ export async function runAgentHarness<TObservation>(
     const output: AgentHarnessModelOutput = step.output
     if (output.content) reply = output.content
     if (output.toolCalls.length === 0) {
-      if (options.canCompleteFromText({ output, observations })) {
+      if (output.content.trim()) {
         options.driver.recordFinalOutput(output)
         options.onTextCompletion?.(output.content)
         return result({ status: 'completed', reply: output.content, observations })
@@ -109,8 +108,6 @@ export async function runAgentHarness<TObservation>(
     if (finalizationRound) return result({ status: 'exhausted', reply, observations })
 
     const exchanges: AgentHarnessToolExchange<TObservation>[] = []
-    let finalizeAfterTool = false
-    let stopAfterTool = false
     for (const call of output.toolCalls.slice(0, options.maxToolCallsPerRound)) {
       if (options.signal?.aborted) break
       options.onEvent?.({ type: 'tool-start', round, call })
@@ -120,21 +117,10 @@ export async function runAgentHarness<TObservation>(
       const exchange = { call, observation }
       exchanges.push(exchange)
       options.onEvent?.({ type: 'tool-result', round, exchange })
-      if (options.shouldStopAfterTool(observations)) {
-        stopAfterTool = true
-        break
-      }
-      if (options.shouldFinalizeAfterTool?.(observations)) {
-        finalizeAfterTool = true
-        break
-      }
     }
     if (options.signal?.aborted) break
-    options.driver.recordToolResults(output, exchanges, !stopAfterTool)
-    if (stopAfterTool) {
-      return result({ status: 'completed', reply, observations })
-    }
-    if (finalizeAfterTool || round === options.maxRounds - 1) {
+    options.driver.recordToolResults(output, exchanges)
+    if (round === options.maxRounds - 1) {
       options.driver.recordUserPrompt(options.finalizationPrompt)
       forceFinalization = true
     }

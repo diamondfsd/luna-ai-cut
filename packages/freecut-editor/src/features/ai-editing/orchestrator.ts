@@ -18,11 +18,6 @@ import {
   startTimelineCodingSession,
 } from './coding-workspace/session-registry'
 import { failedEditMessage, latestFailedEdit } from './latest-edit-result'
-import {
-  editFailureKey,
-  MAX_REPEATED_EDIT_FAILURES,
-  repeatedEditFailureCount,
-} from './edit-failure-guard'
 import { AiEditingToolSet } from './tool-set'
 import { createJsonDriver, createNativeDriver } from './orchestration-drivers'
 import {
@@ -51,14 +46,6 @@ import type { AiEditingObservation } from './types'
 
 const MAX_TOOL_ROUNDS = 20
 const MAX_TOOL_CALLS_PER_ROUND = 8
-const MAX_CONSECUTIVE_DUPLICATE_READS = 2
-const MAX_TRANSCRIPT_SEARCH_CALLS = 6
-
-function isDeferredTextReply(reply: string): boolean {
-  const text = reply.trim()
-  if (text.length >= 120) return false
-  return /(我来帮你|我会帮你|接下来.{0,12}(给你|提供)|直接给你.{0,12}(方案|脚本)|马上.{0,12}(开始|给你))/.test(text)
-}
 
 function normalizedJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizedJson)
@@ -73,20 +60,6 @@ function normalizedJson(value: unknown): unknown {
 function readToolCallKey(call: AgentHarnessToolCall): string | null {
   if (getAiEditingTool(call.toolId)?.risk !== 'read') return null
   return `${call.toolId}:${JSON.stringify(normalizedJson(call.input))}`
-}
-
-function repeatedReadCount(observation: AiEditingObservation | undefined): number {
-  const data = observation?.result.data
-  if (!data || typeof data !== 'object') return 0
-  const count = (data as { consecutiveDuplicateReadCount?: unknown }).consecutiveDuplicateReadCount
-  return typeof count === 'number' ? count : 0
-}
-
-function exhaustedToolBudgetRounds(observation: AiEditingObservation | undefined): number {
-  const data = observation?.result.data
-  if (!data || typeof data !== 'object') return 0
-  const count = (data as { exhaustedToolBudgetRounds?: unknown }).exhaustedToolBudgetRounds
-  return typeof count === 'number' ? count : 0
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
@@ -128,7 +101,6 @@ function unfinishedResult(
       : '本轮没有在操作上限内完成用户目标。'
   const partialReply = reply.trim()
   const canKeepPartialReply = partialReply.length >= 20 &&
-    !isDeferredTextReply(partialReply) &&
     partialReply !== defaultReply(observations)
   return loopResult({
     reply: signal?.aborted
@@ -223,45 +195,14 @@ function handleHarnessEvent(
 async function executeHarnessTool(
   call: AgentHarnessToolCall,
   callIndex: number,
-  round: number,
   options: AiEditingRunOptions,
   toolSet: AiEditingToolSet,
   resultStore: ToolResultStore,
   duplicateGuard?: {
     key: string | null
     consecutiveCount: number
-    transcriptSearchCount: number
-    lastBudgetExhaustedRound: number
-    budgetExhaustedRounds: number
-    editFailureCounts: Map<string, number>
   },
 ): Promise<AiEditingObservation> {
-  if (duplicateGuard && call.toolId === 'analysis.search_transcript') {
-    duplicateGuard.transcriptSearchCount += 1
-    if (duplicateGuard.transcriptSearchCount > MAX_TRANSCRIPT_SEARCH_CALLS) {
-      if (duplicateGuard.lastBudgetExhaustedRound !== round) {
-        duplicateGuard.lastBudgetExhaustedRound = round
-        duplicateGuard.budgetExhaustedRounds += 1
-      }
-      const message = '本次请求的字幕关键词查询次数已达上限。请读取完整口播或使用已有证据，并立即完成最终答复，不要继续猜测关键词。'
-      options.onToolActivity?.({
-        id: `${options.activityScope ?? 'turn'}-${callIndex}-${call.toolId}`,
-        toolId: call.toolId,
-        title: getAiEditingTool(call.toolId)?.title ?? call.toolId,
-        status: 'failed',
-        message,
-      })
-      return {
-        toolId: call.toolId,
-        result: {
-          ok: false,
-          message,
-          data: { exhaustedToolBudgetRounds: duplicateGuard.budgetExhaustedRounds },
-        },
-      }
-    }
-  }
-
   const key = readToolCallKey(call)
   if (duplicateGuard && key && key === duplicateGuard.key) {
     duplicateGuard.consecutiveCount += 1
@@ -288,25 +229,13 @@ async function executeHarnessTool(
     duplicateGuard.key = key
     duplicateGuard.consecutiveCount = 0
   }
-  const observation = await executeToolCall(
+  return executeToolCall(
     { id: call.toolId, args: call.input as Record<string, unknown> },
     callIndex,
     options,
     toolSet.availableToolIds,
     resultStore,
   )
-  const failureKey = editFailureKey(call, observation)
-  if (duplicateGuard && failureKey) {
-    const count = (duplicateGuard.editFailureCounts.get(failureKey) ?? 0) + 1
-    duplicateGuard.editFailureCounts.set(failureKey, count)
-    if (count >= MAX_REPEATED_EDIT_FAILURES) {
-      const data = observation.result.data && typeof observation.result.data === 'object'
-        ? observation.result.data as Record<string, unknown>
-        : {}
-      observation.result.data = { ...data, repeatedEditFailureCount: count }
-    }
-  }
-  return observation
 }
 
 async function runDriver(
@@ -317,17 +246,12 @@ async function runDriver(
     toolSet: AiEditingToolSet
     resultStore: ToolResultStore
     initialObservations?: readonly AiEditingObservation[]
-    requiresEditCommit: boolean
     continuationPrompt: string
   },
 ): Promise<AgentHarnessResult<AiEditingObservation>> {
   const duplicateGuard = {
     key: null as string | null,
     consecutiveCount: 0,
-    transcriptSearchCount: 0,
-    lastBudgetExhaustedRound: -1,
-    budgetExhaustedRounds: 0,
-    editFailureCounts: new Map<string, number>(),
   }
   return runAgentHarness({
     driver,
@@ -338,26 +262,14 @@ async function runDriver(
     protocolRepairPrompt: invalidJsonPrompt.trim(),
     continuationPrompt: config.continuationPrompt,
     finalizationPrompt: finalizationPrompt.trim(),
-    executeTool: (call, index, round) => executeHarnessTool(
+    executeTool: (call, index) => executeHarnessTool(
       call,
       index,
-      round,
       options,
       config.toolSet,
       config.resultStore,
       duplicateGuard,
     ),
-    canCompleteFromText: ({ output, observations }) =>
-      !config.requiresEditCommit &&
-      Boolean(output.content.trim()) &&
-      !isDeferredTextReply(output.content) &&
-      !hasUncommittedSourceWork(observations),
-    shouldStopAfterTool: hasCommittedEdit,
-    shouldFinalizeAfterTool: (observations) =>
-      repeatedReadCount(observations.at(-1)) >= MAX_CONSECUTIVE_DUPLICATE_READS ||
-      repeatedEditFailureCount(observations.at(-1)) >= MAX_REPEATED_EDIT_FAILURES ||
-      exhaustedToolBudgetRounds(observations.at(-1)) >= 2,
-    canRecoverFromModelError: hasCommittedEdit,
     onTextCompletion: (content) => options.onFinalText?.(content),
     onEvent: (event) => handleHarnessEvent(options, event),
   })
@@ -390,8 +302,6 @@ export async function runSingleAiEditingTurn(
     const allowedToolIds = config.availableToolIds ? new Set(config.availableToolIds) : undefined
     const toolSet = new AiEditingToolSet(allowedToolIds)
     const resultStore = new ToolResultStore()
-    const requiresEditCommit = options.turnIntent?.kind === 'execute-approved-plan' ||
-      options.turnIntent?.kind === 'execute-edit'
     reportRunProgress(options, '正在读取剪辑源码仓库', 6)
     const evidence = config.evidence ?? (await codingSession.promptContext())
     reportRunProgress(options, '正在整理项目结构和上下文', 18)
@@ -419,7 +329,6 @@ export async function runSingleAiEditingTurn(
           maxRounds,
           toolSet,
           resultStore,
-          requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
       )
@@ -455,7 +364,6 @@ export async function runSingleAiEditingTurn(
             toolSet,
             resultStore,
             initialObservations: harnessResult.observations,
-            requiresEditCommit,
             continuationPrompt: pendingWorkPrompt.trim(),
           },
         )
@@ -486,7 +394,6 @@ export async function runSingleAiEditingTurn(
           maxRounds,
           toolSet,
           resultStore,
-          requiresEditCommit,
           continuationPrompt: pendingWorkPrompt.trim(),
         },
       )

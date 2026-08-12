@@ -11,10 +11,6 @@ import { addAiEditingReferenceContext } from './resource-references'
 import { prepareConversationContext } from './conversation-context'
 import { archiveAndClearAiEditingConversation } from './conversation-session-actions'
 import {
-  nextConversationWorkflow,
-  resolveAiEditingTurnIntent,
-} from './conversation-intent'
-import {
   enqueueAiEditingConversationWrite,
   waitForAiEditingConversationWrites,
 } from './conversation-writes'
@@ -63,7 +59,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       agentTurns: conversation.agentTurns,
       loadedToolIds: conversation.loadedToolIds,
       agentContext: conversation.context,
-      conversationWorkflow: conversation.workflow,
       lastPromptTokens: conversation.lastPromptTokens ?? null,
       isRestoringConversation: false,
     })
@@ -85,9 +80,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     const previousAgentTurns = get().agentTurns
     const storedLoadedToolIds = get().loadedToolIds
     const storedContext = get().agentContext
-    const storedWorkflow = get().conversationWorkflow
     const storedPromptTokens = get().lastPromptTokens
-    const turnIntent = resolveAiEditingTurnIntent(trimmed, previousMessages, storedWorkflow)
     const userMessageId = newAiEditingMessageId()
     const messages = [
       ...previousMessages,
@@ -120,7 +113,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           agentTurns: previousAgentTurns,
           loadedToolIds: storedLoadedToolIds,
           context: storedContext,
-          workflow: storedWorkflow,
           lastPromptTokens: storedPromptTokens,
         }),
       )
@@ -214,7 +206,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             agentTurns: previousAgentTurns,
             loadedToolIds: storedLoadedToolIds,
             context: preparedContext.context,
-            workflow: storedWorkflow,
             lastPromptTokens: null,
           }),
         )
@@ -243,7 +234,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
               agentTurns: get().agentTurns,
               loadedToolIds: get().loadedToolIds,
               context: preparedContext.context,
-              workflow: storedWorkflow,
               lastPromptTokens: runPromptTokens,
             }),
           ).catch((error) => logger.warn('Failed to persist model token usage', error))
@@ -292,7 +282,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             }
           })
         },
-        turnIntent,
       })
       if (controller.signal.aborted || get().projectId !== projectId) return
       try {
@@ -316,15 +305,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         ...previousAgentTurns,
         { ...result.agentTurn, createdAt: Date.now() },
       ]
-      const nextWorkflow = nextConversationWorkflow({
-        previous: storedWorkflow,
-        intent: turnIntent,
-        userText: trimmed,
-        assistantMessageId,
-        assistantReply,
-        completed: result.completed,
-        changedTimeline: result.changedProject,
-      })
       try {
         await enqueueAiEditingConversationWrite(projectId, () =>
           saveAiEditingConversationState(projectId, {
@@ -332,7 +312,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
             agentTurns: nextAgentTurns,
             loadedToolIds: result.loadedToolIds,
             context: preparedContext.context,
-            workflow: nextWorkflow,
             lastPromptTokens: runPromptTokens ?? get().lastPromptTokens,
           }),
         )
@@ -353,7 +332,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         messages: nextMessages,
         agentTurns: nextAgentTurns,
         loadedToolIds: result.loadedToolIds,
-        conversationWorkflow: nextWorkflow,
         lastPromptTokens: runPromptTokens ?? get().lastPromptTokens,
         observations: result.observations,
         reasoningText: '',
@@ -440,7 +418,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
           agentTurns: state.agentTurns,
           loadedToolIds: state.loadedToolIds,
           context: state.agentContext,
-          workflow: state.conversationWorkflow,
           lastPromptTokens: state.lastPromptTokens,
         }),
       )
@@ -486,7 +463,6 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
         agentTurns: conversation.agentTurns,
         loadedToolIds: conversation.loadedToolIds,
         agentContext: conversation.context,
-        conversationWorkflow: conversation.workflow,
         lastPromptTokens: conversation.lastPromptTokens ?? null,
         isRestoringConversation: false,
       })

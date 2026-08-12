@@ -103,13 +103,6 @@ export interface RunAgentHarnessOptions<TObservation> {
   continuationPrompt: string
   finalizationPrompt: string
   executeTool(call: AgentHarnessToolCall, callIndex: number, round: number): Promise<TObservation>
-  canCompleteFromText(input: {
-    output: AgentHarnessModelOutput
-    observations: readonly TObservation[]
-  }): boolean
-  shouldStopAfterTool(observations: readonly TObservation[]): boolean
-  shouldFinalizeAfterTool?(observations: readonly TObservation[]): boolean
-  canRecoverFromModelError(observations: readonly TObservation[]): boolean
   onTextCompletion?(content: string): void
   onEvent?(event: AgentHarnessEvent<TObservation>): void
 }
