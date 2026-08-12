@@ -3,12 +3,20 @@
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  EMPTY_TIMELINE_DURATION_SECONDS,
   getContentBoundedEdgeScrollLeft,
+  getTimelineContentDuration,
   getTimelineWidth,
   getZoomToFitLevel,
 } from './timeline-layout'
 
 describe('timeline layout helpers', () => {
+  it('gives an empty project one minute of timeline working room', () => {
+    expect(getTimelineContentDuration(0)).toBe(EMPTY_TIMELINE_DURATION_SECONDS)
+    expect(getTimelineContentDuration(4)).toBe(10)
+    expect(getTimelineContentDuration(75)).toBe(75)
+  })
+
   it('keeps zoom-to-fit framing unchanged', () => {
     expect(getZoomToFitLevel(1000, 10)).toBeCloseTo(0.95)
   })

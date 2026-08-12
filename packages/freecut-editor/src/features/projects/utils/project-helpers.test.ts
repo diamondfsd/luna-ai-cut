@@ -275,7 +275,7 @@ describe('createProjectObject', () => {
       { id: 'id-audio', kind: 'audio', order: 2 },
     ])
     expect(project.timeline?.items).toEqual([])
-    expect(project.timeline?.zoomLevel).toBe(0.25)
+    expect(project.timeline?.zoomLevel).toBe(0.125)
   })
 })
 

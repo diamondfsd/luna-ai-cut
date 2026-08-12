@@ -24,6 +24,17 @@ test('从 Luna 导航创建项目并打开内嵌 FreeCut 剪辑器', async ({ lu
 
   await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
   await expect(page.getByRole('application', { name: 'FreeCut 视频编辑器' })).toBeVisible()
+  const timelineViewport = page.locator('[data-timeline-scroll-container]')
+  const rulerSurface = page.locator('[data-timeline-committed-surface="ruler"]')
+  await expect.poll(async () => {
+    const [viewportWidth, rulerWidth] = await Promise.all([
+      timelineViewport.evaluate((element) => element.clientWidth),
+      rulerSurface.evaluate((element) => element.getBoundingClientRect().width),
+    ])
+    const trailingRoom = Math.max(240, Math.min(480, viewportWidth * 0.35))
+    const pixelsPerSecond = (rulerWidth - trailingRoom) / 60
+    return viewportWidth / pixelsPerSecond
+  }).toBeGreaterThanOrEqual(55)
   expect(runtimeErrors).toEqual([])
 })
 

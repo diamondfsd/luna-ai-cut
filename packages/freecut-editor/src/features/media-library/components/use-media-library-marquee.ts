@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { MediaMetadata } from '@freecut/types/storage'
-import { useMarqueeSelection, type MarqueeItem } from '@freecut/shared/marquee/use-marquee-selection'
+import {
+  useMarqueeSelection,
+  type MarqueeItem,
+  type ResolvedMarqueeItem,
+} from '@freecut/shared/marquee/use-marquee-selection'
 
 interface UseMediaLibraryMarqueeParams {
   compositions: ReadonlyArray<{ id: string }>
@@ -26,6 +30,7 @@ export function useMediaLibraryMarquee({
   setSelection,
 }: UseMediaLibraryMarqueeParams) {
   const previewAssetIdsRef = useRef<string[]>([])
+  const assetElementsRef = useRef<Map<string, HTMLElement>>(new Map())
 
   const setPreviewAssetIds = useCallback(
     (ids: string[]) => {
@@ -41,15 +46,12 @@ export function useMediaLibraryMarquee({
           continue
         }
 
-        if (previousId.startsWith('media:')) {
-          container
-            .querySelector(`[data-media-id="${previousId.slice('media:'.length)}"]`)
-            ?.classList.remove('media-marquee-preview')
-        } else if (previousId.startsWith('composition:')) {
-          container
-            .querySelector(`[data-composition-id="${previousId.slice('composition:'.length)}"]`)
-            ?.classList.remove('composition-marquee-preview')
-        }
+        const element = assetElementsRef.current.get(previousId)
+        element?.classList.remove(
+          previousId.startsWith('media:')
+            ? 'media-marquee-preview'
+            : 'composition-marquee-preview',
+        )
       }
 
       const previousIds = new Set(previewAssetIdsRef.current)
@@ -58,15 +60,10 @@ export function useMediaLibraryMarquee({
           continue
         }
 
-        if (id.startsWith('media:')) {
-          container
-            .querySelector(`[data-media-id="${id.slice('media:'.length)}"]`)
-            ?.classList.add('media-marquee-preview')
-        } else if (id.startsWith('composition:')) {
-          container
-            .querySelector(`[data-composition-id="${id.slice('composition:'.length)}"]`)
-            ?.classList.add('composition-marquee-preview')
-        }
+        const element = assetElementsRef.current.get(id)
+        element?.classList.add(
+          id.startsWith('media:') ? 'media-marquee-preview' : 'composition-marquee-preview',
+        )
       }
 
       previewAssetIdsRef.current = ids
@@ -84,41 +81,49 @@ export function useMediaLibraryMarquee({
     () => [
       ...compositions.map((composition) => ({
         id: `composition:${composition.id}`,
-        getBoundingRect: () => {
-          const element = scrollContainerRef.current?.querySelector(
-            `[data-composition-id="${composition.id}"]`,
-          )
-          if (!element) return null
-          const rect = element.getBoundingClientRect()
-          return {
-            left: rect.left,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.bottom,
-            width: rect.width,
-            height: rect.height,
-          }
-        },
+        getBoundingRect: () => null,
       })),
       ...filteredMediaItems.map((media) => ({
         id: `media:${media.id}`,
-        getBoundingRect: () => {
-          const element = scrollContainerRef.current?.querySelector(`[data-media-id="${media.id}"]`)
-          if (!element) return null
-          const rect = element.getBoundingClientRect()
-          return {
-            left: rect.left,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.bottom,
-            width: rect.width,
-            height: rect.height,
-          }
-        },
+        getBoundingRect: () => null,
       })),
     ],
-    [compositions, filteredMediaItems, scrollContainerRef],
+    [compositions, filteredMediaItems],
   )
+
+  const resolveItems = useCallback((): ResolvedMarqueeItem[] => {
+    const container = scrollContainerRef.current
+    if (!container) return []
+
+    const elements = new Map<string, HTMLElement>()
+    const resolvedItems: ResolvedMarqueeItem[] = []
+
+    for (const element of container.querySelectorAll<HTMLElement>(
+      '[data-media-id], [data-composition-id]',
+    )) {
+      const mediaId = element.dataset.mediaId
+      const compositionId = element.dataset.compositionId
+      if (!mediaId && !compositionId) continue
+
+      const id = mediaId ? `media:${mediaId}` : `composition:${compositionId}`
+      const rect = element.getBoundingClientRect()
+      elements.set(id, element)
+      resolvedItems.push({
+        id,
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        },
+      })
+    }
+
+    assetElementsRef.current = elements
+    return resolvedItems
+  }, [scrollContainerRef])
   const committedSelectionIds = useMemo(
     () => [
       ...selectedCompositionIds.map((id) => `composition:${id}`),
@@ -130,11 +135,11 @@ export function useMediaLibraryMarquee({
   const { marquee } = useMarqueeSelection({
     containerRef: scrollContainerRef as React.RefObject<HTMLElement>,
     items: marqueeItems,
+    resolveItems,
     enabled: marqueeItems.length > 0,
     onPreviewSelectionChange: setPreviewAssetIds,
     committedSelectionIds,
     commitSelectionOnMouseUp: true,
-    liveCommitThrottleMs: 66,
     onSelectionChange: (ids) => {
       const nextMediaIds: string[] = []
       const nextCompositionIds: string[] = []
