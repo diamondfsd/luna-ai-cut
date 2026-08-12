@@ -167,6 +167,12 @@ export class VirtualEditingWorkspace {
     return this.getChanges().length > 0
   }
 
+  snapshot(): VirtualFileInput[] {
+    return [...this.files.entries()]
+      .map(([path, content]) => ({ path, content }))
+      .sort((left, right) => left.path.localeCompare(right.path))
+  }
+
   list(input: VirtualFileListInput = {}): VirtualFileListResult {
     const path = validateVirtualDirectoryPath(input.path)
     const entries = listEntries(this.files, path, input.recursive ?? false)

@@ -152,8 +152,17 @@ function withTracks(sequence: string, tracks: string[]): string {
   return jsonSource(value)
 }
 
-async function startDialogueMock(): Promise<{ baseUrl: string; close(): Promise<void> }> {
+async function startDialogueMock(): Promise<{
+  baseUrl: string
+  waitForPreview(): Promise<void>
+  releaseAfterPreview(): void
+  close(): Promise<void>
+}> {
   let requestIndex = 0
+  let notifyPreview: (() => void) | undefined
+  let releasePreview: (() => void) | undefined
+  const previewReached = new Promise<void>((resolve) => { notifyPreview = resolve })
+  const previewGate = new Promise<void>((resolve) => { releasePreview = resolve })
   const server = createServer(async (request, response) => {
     if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
       response.writeHead(404).end()
@@ -189,6 +198,8 @@ async function startDialogueMock(): Promise<{ baseUrl: string; close(): Promise<
       return
     }
     if (index === 3) {
+      notifyPreview?.()
+      await previewGate
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
@@ -243,7 +254,12 @@ async function startDialogueMock(): Promise<{ baseUrl: string; close(): Promise<
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('Unable to start dialogue mock')
-  return { baseUrl: `http://127.0.0.1:${address.port}/v1`, close: () => closeServer(server) }
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    waitForPreview: () => previewReached,
+    releaseAfterPreview: () => releasePreview?.(),
+    close: () => closeServer(server),
+  }
 }
 
 async function projectDirectory(workspaceDir: string): Promise<string> {
@@ -261,7 +277,7 @@ async function runs(directory: string): Promise<StoredRun[]> {
 }
 
 async function send(page: Page, message: string): Promise<void> {
-  const input = page.getByPlaceholder('描述想要完成的剪辑')
+  const input = page.getByRole('complementary', { name: '剪辑助手' }).getByRole('textbox')
   await input.fill(message)
   await page.getByRole('button', { name: '发送剪辑请求' }).click()
   await expect(input).toBeEnabled({ timeout: 60_000 })
@@ -279,13 +295,32 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     }), mock.baseUrl)
     await page.getByRole('link', { name: /^(创建第一个项目|新建项目)$/ }).click()
     await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
-    const input = page.getByPlaceholder('描述想要完成的剪辑')
-    if (!(await input.isVisible())) await page.getByRole('button', { name: '打开剪辑助手' }).click()
-    await expect(input).toBeEnabled()
+    const assistant = page.getByRole('complementary', { name: '剪辑助手' })
+    if (!(await assistant.isVisible())) {
+      await page.getByRole('button', { name: /^(打开|关闭)剪辑助手$/ }).click()
+    }
+    const input = assistant.getByRole('textbox')
+    await expect(input).toBeEnabled({ timeout: 30_000 })
 
     await send(page, SCRIPT_REQUEST)
-    await send(page, CONFIRM_REQUEST)
     const directory = await projectDirectory(workspaceDir)
+    const projectFile = path.join(directory, 'project.json')
+    await input.fill(CONFIRM_REQUEST)
+    await page.getByRole('button', { name: '发送剪辑请求' }).click()
+    await mock.waitForPreview()
+    await expect(page.locator('[data-timeline-item]').filter({ hasText: '给宝宝做了一个 AI 玩伴' }))
+      .toHaveCount(1)
+    await expect.poll(async () => {
+      const projectDuringPreview = JSON.parse(await readFile(projectFile, 'utf8')) as {
+        timeline?: { items?: Array<{ text?: string }> }
+      }
+      return projectDuringPreview.timeline?.items?.some(
+        (item) => item.text === '给宝宝做了一个 AI 玩伴',
+      ) ?? false
+    }).toBe(true)
+    await expect(input).toBeDisabled()
+    mock.releaseAfterPreview()
+    await expect(input).toBeEnabled({ timeout: 60_000 })
     await expect.poll(async () => (await runs(directory)).length).toBe(2)
     expect((await runs(directory)).at(-1)).toMatchObject({
       request: CONFIRM_REQUEST, status: 'completed', completed: true, changedProject: true,
@@ -320,6 +355,7 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     })
     expect(runtimeErrors).toEqual([])
   } finally {
+    mock.releaseAfterPreview()
     await mock.close()
   }
 })
