@@ -52,6 +52,23 @@ describe('parseAiEditingResponse', () => {
     })
   })
 
+  it('accepts a single tool name used as the response key', () => {
+    const response = parseAiEditingResponse(JSON.stringify({
+      'media.read': {
+        mediaIds: ['media-1'],
+        visualLimit: 4,
+      },
+    }))
+
+    expect(response).toEqual({
+      reply: '',
+      toolCalls: [{
+        id: 'media.read',
+        args: { mediaIds: ['media-1'], visualLimit: 4 },
+      }],
+    })
+  })
+
   it('keeps usable tool calls when the reply key is malformed', () => {
     const response = parseAiEditingResponse(JSON.stringify({
       '"reply":"': '读取工程结构和类型定义',
