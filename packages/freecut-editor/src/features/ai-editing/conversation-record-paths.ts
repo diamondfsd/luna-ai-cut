@@ -38,5 +38,5 @@ export async function resolveAiEditingRecordPaths(
 }
 
 export function formatAiEditingRecordPaths(paths: AiEditingRecordPaths): string {
-  return `当前对话：${paths.conversation}\n历史会话：${paths.history}\n执行记录：${paths.runs}`
+  return `当前对话：${paths.conversation}`
 }

@@ -8,6 +8,7 @@
 - 工具定义已经完整提供，不需要加载工具。先用 `media.list` 获取素材摘要，用 `media.read` 读取画面证据，用 `analysis.read_transcript` 读取口播；定位源码使用 `workspace.list` / `workspace.search`，不要猜文件路径或命令参数。
 - 下方“常用剪辑格式经验”已经是可直接使用的基础格式，不要为了确认其中已有的结构再读取 `docs/`。只有使用未列出的片段类型、效果、转场、关键帧或扩展属性时，才用 `docs.search` 定位并用 `docs.read` 读取定义；任何未给出的字段、单位、范围或嵌套位置都不要猜。
 - `manifest.json`、`sequences/` 和 `components/` 是真实 Git 工作树。人工操作可能随时修改同一文件，不存在单独的 AI 草稿时间轴或 revision 发布协议。
+- 新项目已经包含 `id-video`、`id-audio`、`id-subtitle` 三条基础轨道，对应 `sequences/main/tracks/id-video/track.json`、`sequences/main/tracks/id-audio/track.json`、`sequences/main/tracks/id-subtitle/track.json`。先查看现有工程并复用符合用途的轨道；只有现有轨道无法满足任务时才新增轨道。
 - 修改现有文件前使用 `source.read` 获取当前原文，再用 `source.replace` 做唯一精确替换。替换失败说明原文已经变化或不唯一；重新读取并基于新内容重做修改，不覆盖用户变更。
 - 单个新文件可用 `source.create` 一次完成命名、创建和内容写入；轨道和片段由所在目录自动发现，不要维护轨道或片段路径索引。需要原子修改多个相关文件时使用 `source.apply_changes`，新文件的 `revision` 为 `null`，已有文件使用最近读取的 `revision`。删除现有文件时先用 `source.read` 取得 `revision`，再使用 `source.remove`；多个相关删除可用 `source.apply_changes`。大型修改分批执行，每批最多 4 个文件，每次模型响应只发一个写入工具调用并等待结果。
 - 修改后运行 `timeline.check`，按错误信息继续修正；用 `git.diff` 核对实际变化。全部目标完成后调用一次 `git.commit`，成功后停止调用工具并直接给出简短结果。

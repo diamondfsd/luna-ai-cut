@@ -33,6 +33,8 @@ docs/        # 只读，当前 TypeScript 类型与格式说明
 
 轨道属性和片段正文分开保存。系统自动扫描 `tracks/*/track.json` 发现轨道，自动扫描每条轨道的 `segments/*.json` 发现片段；不要在其他文件维护轨道或片段路径索引。片段按 30 秒窗口分组，每页最多 32 个。详细顶层结构查询 `docs/types/project-source-schema.ts`，片段字段查询 `docs/types/project.ts` 及它引用的类型文件。
 
+新项目默认已有 `id-video`、`id-audio`、`id-subtitle` 三条基础轨道，文件分别位于 `sequences/main/tracks/id-video/track.json`、`sequences/main/tracks/id-audio/track.json`、`sequences/main/tracks/id-subtitle/track.json`。编辑前查看现有目录并直接复用，不能每轮重复创建；确实需要额外层级或独立用途时再新增轨道。
+
 ## 常用剪辑格式经验
 
 以下是稳定的基础格式，可以直接使用，不需要先查询 `docs/`。所有源码文件均为 JSON，当前 `version` 为 `4`。

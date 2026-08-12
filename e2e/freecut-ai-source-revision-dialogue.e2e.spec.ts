@@ -29,33 +29,24 @@ interface StoredRun {
   completionNotes: string[]
 }
 
-const subtitleTrackPath = 'sequences/main/tracks/e2e-subtitle/track.json'
-const subtitleSegmentPath = 'sequences/main/tracks/e2e-subtitle/segments/w000000-p01.json'
-const audioTrackPath = 'sequences/main/tracks/e2e-audio/track.json'
-const audioSegmentPath = 'sequences/main/tracks/e2e-audio/segments/w000000-p01.json'
-const videoTrackPath = 'sequences/main/tracks/e2e-video/track.json'
-const videoSegmentPath = 'sequences/main/tracks/e2e-video/segments/w000000-p01.json'
+const subtitleTrackPath = 'sequences/main/tracks/id-subtitle/track.json'
+const subtitleSegmentPath = 'sequences/main/tracks/id-subtitle/segments/w000000-p01.json'
+const audioTrackPath = 'sequences/main/tracks/id-audio/track.json'
+const audioSegmentPath = 'sequences/main/tracks/id-audio/segments/w000000-p01.json'
+const videoTrackPath = 'sequences/main/tracks/id-video/track.json'
+const videoSegmentPath = 'sequences/main/tracks/id-video/segments/w000000-p01.json'
 
 function jsonSource(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
 }
 
-const subtitleTrack = jsonSource({
-  version: 4,
-  kind: 'track',
-  track: {
-    id: 'e2e-subtitle', name: '字幕', kind: 'subtitle', height: 40,
-    locked: false, visible: true, muted: false, solo: false, order: 0, items: [],
-  },
-})
-
 const subtitleSegment = jsonSource({
   version: 4,
   kind: 'clip-segment',
-  trackId: 'e2e-subtitle',
+  trackId: 'id-subtitle',
   window: 0,
   clips: [{
-    id: 'e2e-title', type: 'text', trackId: 'e2e-subtitle', from: 0,
+    id: 'e2e-title', type: 'text', trackId: 'id-subtitle', from: 0,
     durationInFrames: 150, label: '开场字幕', text: '给宝宝做了一个 AI 玩伴',
     color: '#ffffff', fontSize: 48, textAlign: 'center',
     textBox: { left: 0.1, top: 0.4, width: 0.8, height: 0.2 },
@@ -67,27 +58,18 @@ function audioTrack(name: string): string {
     version: 4,
     kind: 'track',
     track: {
-      id: 'e2e-audio', name, kind: 'audio', height: 60,
+      id: 'id-audio', name, kind: 'audio', height: 60,
       locked: false, visible: true, muted: false, solo: false, order: 1, items: [],
     },
   })
 }
 
 const emptyAudioSegment = jsonSource({
-  version: 4, kind: 'clip-segment', trackId: 'e2e-audio', window: 0, clips: [],
-})
-
-const videoTrack = jsonSource({
-  version: 4,
-  kind: 'track',
-  track: {
-    id: 'e2e-video', name: '视频', kind: 'video', height: 80,
-    locked: false, visible: true, muted: false, solo: false, order: 1, items: [],
-  },
+  version: 4, kind: 'clip-segment', trackId: 'id-audio', window: 0, clips: [],
 })
 
 const emptyVideoSegment = jsonSource({
-  version: 4, kind: 'clip-segment', trackId: 'e2e-video', window: 0, clips: [],
+  version: 4, kind: 'clip-segment', trackId: 'id-video', window: 0, clips: [],
 })
 
 async function requestBody(request: AsyncIterable<Uint8Array>): Promise<ChatRequest> {
@@ -175,81 +157,63 @@ async function startDialogueMock(): Promise<{
           { path: subtitleSegmentPath, revision: null, content: subtitleSegment },
           { path: audioSegmentPath, revision: null, content: emptyAudioSegment },
           { path: videoSegmentPath, revision: null, content: emptyVideoSegment },
-          { path: subtitleTrackPath, revision: null, content: subtitleTrack },
         ],
       })
       return
     }
     if (dialoguePhase === 1) {
       dialoguePhase += 1
-      callTool(response, payload, index, 'source.apply_changes', {
-        changes: [
-          { path: audioTrackPath, revision: null, content: audioTrack('音频') },
-          { path: videoTrackPath, revision: null, content: videoTrack },
-        ],
-      })
-      return
-    }
-    if (dialoguePhase === 2) {
-      dialoguePhase += 1
       notifyPreview?.()
       await previewGate
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (dialoguePhase === 3) {
+    if (dialoguePhase === 2) {
       dialoguePhase += 1
       callTool(response, payload, index, 'git.commit', { message: 'Create initial scripted edit' })
       return
     }
-    if (dialoguePhase === 4) {
+    if (dialoguePhase === 3) {
       dialoguePhase += 1
       sendTextCompletion(response, '已按方案完成初版剪辑。')
       return
     }
-    if (dialoguePhase === 5) {
-      dialoguePhase += 1
-      callTool(response, payload, index, 'source.read', { path: subtitleTrackPath })
-      return
-    }
-    if (dialoguePhase === 6) {
+    if (dialoguePhase === 4) {
       dialoguePhase += 1
       callTool(response, payload, index, 'source.read', { path: subtitleSegmentPath })
       return
     }
-    if (dialoguePhase === 7) {
+    if (dialoguePhase === 5) {
       dialoguePhase += 1
       callTool(response, payload, index, 'source.read', { path: audioTrackPath })
       return
     }
-    if (dialoguePhase === 8) {
-      const subtitleTrackResult = sourceReads.get(subtitleTrackPath)
+    if (dialoguePhase === 6) {
       const subtitleSegmentResult = sourceReads.get(subtitleSegmentPath)
       const audioTrackResult = sourceReads.get(audioTrackPath)
-      if (!subtitleTrackResult || !subtitleSegmentResult || !audioTrackResult) {
+      if (!subtitleSegmentResult || !audioTrackResult) {
         throw new Error('Missing source.read results for narration update')
       }
       dialoguePhase += 1
       callTool(response, payload, index, 'source.apply_changes', {
         changes: [
-          { path: subtitleTrackPath, revision: subtitleTrackResult.revision, content: null },
           { path: subtitleSegmentPath, revision: subtitleSegmentResult.revision, content: null },
           { path: audioTrackPath, revision: audioTrackResult.revision, content: audioTrack('旁白') },
         ],
       })
       return
     }
-    if (dialoguePhase === 9) {
+    if (dialoguePhase === 7) {
       dialoguePhase += 1
       callTool(response, payload, index, 'timeline.check', {})
       return
     }
-    if (dialoguePhase === 10) {
+    if (dialoguePhase === 8) {
       dialoguePhase += 1
       callTool(response, payload, index, 'git.commit', { message: 'Replace subtitles with narration track' })
       return
     }
-    if (dialoguePhase === 11) {
+    if (dialoguePhase === 9) {
       dialoguePhase += 1
       sendTextCompletion(response, '已移除字幕并改为独立旁白轨。')
       return
@@ -312,18 +276,31 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     const directory = await projectDirectory(workspaceDir)
     const projectFile = path.join(directory, 'project.json')
     const sourceRoot = path.join(directory, 'editing-source')
+    await expect.poll(async () => Promise.all(
+      [subtitleTrackPath, videoTrackPath, audioTrackPath].map(async (sourcePath) =>
+        JSON.parse(await readFile(path.join(sourceRoot, sourcePath), 'utf8')).kind,
+      ),
+    )).toEqual(['track', 'track', 'track'])
     await send(page, SCRIPT_REQUEST)
     const initialSequence = await readFile(
       path.join(sourceRoot, 'sequences/main/sequence.json'),
       'utf8',
     )
     await input.fill(CONFIRM_REQUEST)
+    const zoomSlider = page.locator('.timeline-header-zoom-controls').getByRole('slider')
+    const initialZoomSliderValue = await zoomSlider.getAttribute('aria-valuenow')
+    await zoomSlider.press('ArrowRight')
+    await expect.poll(() => zoomSlider.getAttribute('aria-valuenow'))
+      .not.toBe(initialZoomSliderValue)
+    const userZoomSliderValue = await zoomSlider.getAttribute('aria-valuenow')
     await page.getByRole('button', { name: '发送剪辑请求' }).click()
     await mock.waitForPreview()
     expect(mock.requests[1]?.messages?.slice(0, mock.requests[0]?.messages?.length))
       .toEqual(mock.requests[0]?.messages)
     await expect(page.locator('[data-timeline-item]').filter({ hasText: '给宝宝做了一个 AI 玩伴' }))
       .toHaveCount(1)
+    await expect(assistant.getByText('剪辑助手处理中')).toBeVisible()
+    await expect.poll(() => zoomSlider.getAttribute('aria-valuenow')).toBe(userZoomSliderValue)
     await expect.poll(async () => {
       const projectDuringPreview = JSON.parse(await readFile(projectFile, 'utf8')) as {
         timeline?: { items?: Array<{ text?: string }> }
@@ -360,9 +337,8 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
     ))).not.toHaveProperty('tracks')
     expect(JSON.parse(await readFile(path.join(sourceRoot, audioTrackPath), 'utf8')).track.name)
       .toBe('旁白')
-    await expect(readFile(path.join(sourceRoot, subtitleTrackPath), 'utf8')).rejects.toMatchObject({
-      code: 'ENOENT',
-    })
+    expect(JSON.parse(await readFile(path.join(sourceRoot, subtitleTrackPath), 'utf8')).track.id)
+      .toBe('id-subtitle')
     await expect(readFile(path.join(sourceRoot, subtitleSegmentPath), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT',
     })
@@ -381,7 +357,7 @@ test('按实际对话确认剪辑后可原子删除字幕并改为独立旁白',
         tracks: resetProject.timeline?.tracks?.length,
         items: resetProject.timeline?.items?.length,
       }
-    }).toEqual({ tracks: 0, items: 0 })
+    }).toEqual({ tracks: 3, items: 0 })
     expect(await readFile(path.join(sourceRoot, 'sequences/main/sequence.json'), 'utf8'))
       .toBe(initialSequence)
     expect(await runs(directory)).toHaveLength(3)

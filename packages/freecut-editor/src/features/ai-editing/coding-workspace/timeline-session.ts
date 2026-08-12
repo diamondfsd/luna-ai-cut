@@ -175,7 +175,7 @@ export class TimelineCodingSession {
     validateSemantics = false,
   ): Promise<Project> {
     const project = await this.compileProject(validateSemantics, snapshot)
-    await hydrateTimelineStoresFromProject(project)
+    await hydrateTimelineStoresFromProject(project, { preserveZoom: true })
     this.renderedProject = project
     return project
   }
@@ -242,7 +242,7 @@ export class TimelineCodingSession {
               durationMs: Math.round(performance.now() - startedAt),
             })
           } else {
-            await hydrateTimelineStoresFromProject(project)
+            await hydrateTimelineStoresFromProject(project, { preserveZoom: true })
             if (target !== this.projectionRequested) {
               logAiEditingDiagnostic('info', 'preview.skipped-stale', {
                 request: target,
