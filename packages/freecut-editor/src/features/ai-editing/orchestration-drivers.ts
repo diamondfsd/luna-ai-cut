@@ -10,6 +10,7 @@ import { renderPrompt } from './prompts/render-prompt'
 import { parseAiEditingResponse } from './response-parser'
 import type { AiEditingRunOptions } from './run-types'
 import { serializeForModel, serializeToolResultsForModel } from './tool-execution'
+import type { ToolResultStore } from './tool-result-store'
 import type { AiEditingObservation } from './types'
 
 const MAX_TOKENS = 8_192
@@ -36,8 +37,9 @@ export function createJsonDriver(
   adapter: LlmAdapter,
   messages: LlmMessage[],
   options: AiEditingRunOptions,
+  resultStore: ToolResultStore,
   initialRaw?: string,
-  replayFromIndex = Math.max(0, messages.length - 2),
+  replayFromIndex = Math.max(0, messages.length - 1),
 ): JsonAgentDriver<AiEditingObservation> {
   return new JsonAgentDriver({
     adapter,
@@ -45,7 +47,7 @@ export function createJsonDriver(
     replayFromIndex,
     parse: parseAiEditingResponse,
     renderToolResults: (observations) => renderPrompt(toolResultsPrompt, {
-      OBSERVATIONS: serializeToolResultsForModel(observations),
+      OBSERVATIONS: serializeToolResultsForModel(observations, resultStore),
     }),
     requestOptions: (round) => ({
       maxTokens: MAX_TOKENS,
@@ -72,14 +74,16 @@ export function createNativeDriver(
   messages: EmbeddedAiAssistantMessage[],
   options: AiEditingRunOptions,
   toolSet: AiEditingToolSet,
+  resultStore: ToolResultStore,
+  replayFromIndex = Math.max(0, messages.length - 1),
 ): NativeAgentDriver<AiEditingObservation> {
   const tools = createNativeToolCatalog(toolSet.availableToolIds)
   return new NativeAgentDriver({
     adapter,
     messages,
-    replayFromIndex: Math.max(0, messages.length - 2),
+    replayFromIndex,
     getTools: () => tools,
-    serializeObservation: serializeForModel,
+    serializeObservation: (observation) => serializeForModel(resultStore.forModel(observation)),
     requestOptions: (round) => ({
       maxTokens: MAX_TOKENS,
       temperature: 0,

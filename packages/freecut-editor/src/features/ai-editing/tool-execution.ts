@@ -3,14 +3,13 @@ import { useTimelineCommandStore } from '@freecut/features/timeline/stores/timel
 import { useTimelineStore } from '@freecut/features/timeline/stores/timeline-store-facade'
 import type { EmbeddedAiAssistantToolCall } from '@freecut/shared/host/embedded-host'
 import type { AiEditingRunOptions } from './run-types'
+import { ToolResultStore } from './tool-result-store'
 import { getAiEditingTool } from './tool-registry'
 import type {
   AiEditingObservation,
   AiEditingToolCall,
   AiEditingToolResult,
 } from './types'
-
-const MAX_TOOL_RESULT_CHARS = 8_000
 
 function toolError(toolId: string, message: string): AiEditingObservation {
   return { toolId, result: { ok: false, message } }
@@ -32,16 +31,15 @@ function structuredToolError(error: unknown): AiEditingToolResult {
 }
 
 export function serializeForModel(value: unknown): string {
-  const text = JSON.stringify(value)
-  return text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}…` : text
+  return JSON.stringify(value)
 }
 
-export function serializeToolResultsForModel(observations: readonly AiEditingObservation[]): string {
+export function serializeToolResultsForModel(
+  observations: readonly AiEditingObservation[],
+  resultStore: ToolResultStore,
+): string {
   return serializeForModel({
-    toolResults: observations.map((observation) => ({
-      id: observation.toolId,
-      result: observation.result,
-    })),
+    toolResults: observations.map((observation) => resultStore.forModel(observation)),
   })
 }
 
@@ -62,6 +60,7 @@ export async function executeToolCall(
   callIndex: number,
   options: AiEditingRunOptions,
   availableToolIds?: ReadonlySet<string>,
+  resultStore?: ToolResultStore,
 ): Promise<AiEditingObservation> {
   if (availableToolIds && !availableToolIds.has(call.id)) {
     return toolError(call.id, '这个工具不在当前可用范围内，请从系统提供的工具中选择。')
@@ -115,6 +114,10 @@ export async function executeToolCall(
           const execution = tool.execute(validation.value, {
             signal: options.signal,
             reportProgress,
+            readToolResult: (input) => resultStore?.read(input) ?? {
+              ok: false,
+              message: '这项详细结果已不可用，请重新执行原工具。',
+            },
           })
           if (execution instanceof Promise) throw new Error('剪辑操作未能及时完成。')
           return execution
@@ -124,6 +127,10 @@ export async function executeToolCall(
       result = await tool.execute(validation.value, {
         signal: options.signal,
         reportProgress,
+        readToolResult: (input) => resultStore?.read(input) ?? {
+          ok: false,
+          message: '这项详细结果已不可用，请重新执行原工具。',
+        },
       })
     }
     if (result.ok && tool.risk === 'edit' && !persistsProjectSource(tool.id)) {
