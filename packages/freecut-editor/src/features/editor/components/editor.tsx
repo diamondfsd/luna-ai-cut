@@ -10,7 +10,6 @@ import { Toolbar } from './toolbar'
 import { MediaSidebar } from './media-sidebar'
 import { PropertiesSidebar } from './properties-sidebar'
 import { PreviewArea } from './preview-area'
-import { AiEditingDock } from '@freecut/features/ai-editing/components/ai-editing-dock'
 import { MotionPreviewArea, MotionTimelineDock } from './compose-workspace/compose-layout'
 import { InteractionLockRegion } from './interaction-lock-region'
 import {
@@ -383,7 +382,6 @@ export const LoadedEditor = memo(function LoadedEditor({
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
   const [renderQueueOpen, setRenderQueueOpen] = useState(false)
-  const [aiEditingOpen, setAiEditingOpen] = useState(true)
   const renderQueueActiveCount = useRenderQueueStore(
     (s) => s.jobs.filter((j) => j.status === 'queued' || j.status === 'rendering').length,
   )
@@ -410,10 +408,6 @@ export const LoadedEditor = memo(function LoadedEditor({
 
   useEffect(() => {
     rememberLastEditorProjectId(projectId)
-  }, [projectId])
-
-  useEffect(() => {
-    setAiEditingOpen(true)
   }, [projectId])
 
   // Initialize transition chain subscription (pre-computes chains from timeline data)
@@ -807,8 +801,6 @@ export const LoadedEditor = memo(function LoadedEditor({
                         <Suspense fallback={null}>
                           <LazyTimeline
                             duration={timelineDuration}
-                            aiEditingOpen={aiEditingOpen}
-                            onAiEditingOpenChange={setAiEditingOpen}
                           />
                         </Suspense>
                       )}
@@ -829,7 +821,6 @@ export const LoadedEditor = memo(function LoadedEditor({
           </InteractionLockRegion>
         )}
 
-        {aiEditingOpen && <AiEditingDock onClose={() => setAiEditingOpen(false)} />}
       </div>
 
       <Suspense fallback={null}>

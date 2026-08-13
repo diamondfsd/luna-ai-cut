@@ -80,8 +80,6 @@ const TRACK_SIZE_OPTIONS = [
 
 interface TimelineProps {
   duration: number // Total timeline duration in seconds
-  aiEditingOpen?: boolean
-  onAiEditingOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -96,8 +94,6 @@ interface TimelineProps {
  */
 export const Timeline = memo(function Timeline({
   duration,
-  aiEditingOpen,
-  onAiEditingOpenChange,
 }: TimelineProps) {
   const { t } = useTranslation()
   const editorDensity = useSettingsStore((s) => s.editorDensity)
@@ -692,8 +688,6 @@ export const Timeline = memo(function Timeline({
         onZoomOut={zoomHandlers?.handleZoomOut}
         onZoomToFit={zoomHandlers?.handleZoomToFit}
         leadingContent={<SequenceTabs compact />}
-        aiEditingOpen={aiEditingOpen}
-        onAiEditingOpenChange={onAiEditingOpenChange}
       />
 
       {/* Composition Breadcrumbs - shown when inside a sub-composition */}

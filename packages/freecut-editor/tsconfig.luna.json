@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/__tests__/**",
+    "src/features/ai-editing/**",
+    "src/features/editor/agent/**",
+    "src/features/editor/components/agent-chat-panel.tsx"
+  ]
 }
