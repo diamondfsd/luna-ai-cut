@@ -51,7 +51,6 @@ import { ZOOM_MIN, ZOOM_MAX, SLIP_SLIDE_TOOLS_ENABLED } from '../constants'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { useResolvedHotkeys, useSettingsStore } from '@freecut/features/timeline/deps/settings'
 import { MicRecordControl } from './mic-record-control'
-import { AiEditingTimelineControl } from '@freecut/features/ai-editing/components/ai-editing-timeline-control'
 import './timeline-header.css'
 
 interface TimelineHeaderProps {
@@ -60,8 +59,6 @@ interface TimelineHeaderProps {
   onZoomOut?: () => void
   onZoomToFit?: () => void
   leadingContent?: ReactNode
-  aiEditingOpen?: boolean
-  onAiEditingOpenChange?: (open: boolean) => void
 }
 
 function getTimelineHeaderButtonClass(active = false): string {
@@ -479,8 +476,6 @@ export const TimelineHeader = memo(function TimelineHeader({
   onZoomOut,
   onZoomToFit,
   leadingContent,
-  aiEditingOpen,
-  onAiEditingOpenChange,
 }: TimelineHeaderProps) {
   const { t } = useTranslation()
   const hotkeys = useResolvedHotkeys()
@@ -891,10 +886,6 @@ export const TimelineHeader = memo(function TimelineHeader({
       </div>
 
       <div className="flex items-center gap-1">
-        <AiEditingTimelineControl
-          open={aiEditingOpen}
-          onOpenChange={onAiEditingOpenChange}
-        />
         <TimelineZoomControls
           onZoomChange={onZoomChange}
           onZoomIn={onZoomIn}
