@@ -245,19 +245,21 @@ const composeSource = defineAiEditingTool({
           label: { type: 'string' },
           caption: {
             type: 'object', additionalProperties: false,
+            description: '该镜头对应的字幕。存在旁白时默认提供；用背景色保证可读性，并可用 spans 对少量重点词应用同一强调色。',
             properties: {
-              text: { type: 'string' },
+              text: { type: 'string', description: '忠于实际语音并按自然语义分段的完整字幕原文。' },
               style: {
                 type: 'object', additionalProperties: false,
                 properties: {
                   color: { type: 'string' }, fontSize: { type: 'number' },
                   textAlign: { type: 'string', enum: ['left', 'center', 'right'] },
-                  backgroundColor: { type: 'string' }, backgroundRadius: { type: 'number' },
+                  backgroundColor: { type: 'string', description: '与当前画面形成清晰对比的字幕背景色，建议包含适当透明度。' }, backgroundRadius: { type: 'number' },
                   textPadding: { type: 'number' },
                 },
               },
               spans: {
                 type: 'array', maxItems: 20,
+                description: '按原文顺序拆分的文字片段；仅给重点词设置强调色，所有片段文字拼接后应与 text 完全一致，同一成片保持一种强调色。',
                 items: {
                   type: 'object', additionalProperties: false,
                   properties: {
