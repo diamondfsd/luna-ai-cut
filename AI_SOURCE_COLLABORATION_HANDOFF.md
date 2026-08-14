@@ -14,7 +14,7 @@ FreeCut 不维护第二套 Agent loop，不维护自己的业务提示词，不�
 | --- | --- | --- |
 | Harness runtime | 启动官方 `dsh web`、创建会话、调用 OpenAI 兼容模型、继续工具循环、提供官方 Web UI | electron/deepseekHarnessService.ts、scripts/build-deepseek-harness-web.mjs |
 | FreeCut 插件 | 注册工程源码工具并把执行权交给宿主 capability | scripts/deepseek-harness-freecut-plugin.mjs |
-| Renderer capability | 校验参数、读写工程源码、校验时间轴、重新加载编辑器 | packages/freecut-editor/src/features/project-source/project-source-tools.ts |
+| Renderer capability | 校验参数、通过时间轴 Store 执行结构化编辑、保存并回读工程源码 | packages/freecut-editor/src/features/project-source/project-source-tools.ts、project-source-ai-tools.ts |
 | Electron bridge | 保存连接配置、转发 Harness 事件和源码工具请求 | electron/deepseekHarnessConfig.ts、electron/ipcDeepSeekHarness.ts |
 | 右侧面板 | 独立可调宽度的 iframe 面板，复用 Harness 官方对话区；FreeCut 只提供连接配置弹窗 | packages/freecut-editor/src/features/editor/components/deepseek-harness-dock.tsx、packages/freecut-editor/src/features/editor/components/deepseek-harness-panel.tsx |
 
@@ -23,19 +23,23 @@ FreeCut 不维护第二套 Agent loop，不维护自己的业务提示词，不�
 - source.tree
 - source.read
 - source.search
-- source.apply_changes
 - source.check
 - source.diff
+- project.inspect
+- timeline.inspect_context
+- timeline.trim / timeline.split / timeline.move / timeline.remove
+- timeline.set_properties / timeline.set_transform / timeline.set_audio
+- timeline.add_text / timeline.add_keyframe / timeline.add_transition
+- timeline.validate
 
 工具结果会回传 Harness，由 Harness 决定下一次模型请求或最终答复。宿主不会在工具成功后自行宣布完成。
 
-源码写入仍受以下确定性约束保护：
+AI 剪辑不暴露原始源码写入工具，所有编辑都经过现有时间轴动作和保存入口：
 
-- 路径、参数、扩展名和大小限制。
-- expectedContent 并发保护。
-- 批量写入后重新解析源码；校验失败时回滚。
-- 成功后通过现有时间轴加载入口刷新编辑器。
-- 写入期间使用源码写入所有权，避免与人工写入并发。
+- 时间和持续时间统一使用秒，工具层转换为时间轴帧。
+- 删除、切分、转场和关键帧复用编辑器已有级联与修复逻辑。
+- 每次编辑保存后回读工程源码，并再次检查时间轴引用完整性。
+- source.* 仅用于只读诊断和查看源码差异，模型不能借此绕过时间轴工具改 JSON。
 
 ## 连接配置
 

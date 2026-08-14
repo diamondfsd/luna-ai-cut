@@ -56,32 +56,6 @@ const sourceTools = [
     },
   },
   {
-    name: 'source.apply_changes',
-    description: '按期望内容原子地修改当前剪辑工程源码，并在成功后重新加载时间轴。',
-    parameters: {
-      type: 'object',
-      properties: {
-        changes: {
-          type: 'array',
-          minItems: 1,
-          maxItems: 20,
-          items: {
-            type: 'object',
-            properties: {
-              path: { type: 'string' },
-              content: { oneOf: [{ type: 'string' }, { type: 'null' }] },
-              expectedContent: { oneOf: [{ type: 'string' }, { type: 'null' }] },
-            },
-            required: ['path', 'content', 'expectedContent'],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ['changes'],
-      additionalProperties: false,
-    },
-  },
-  {
     name: 'source.check',
     description: '解析并校验当前剪辑工程源码，确认时间轴结构完整。',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -93,8 +67,205 @@ const sourceTools = [
   },
 ]
 
+const timelineTools = [
+  {
+    name: 'project.inspect',
+    description: '读取当前剪辑项目的结构化总览：轨道、片段 ID、时间范围、素材 ID、音量和转场。先调用它再规划剪辑操作。',
+    parameters: {
+      type: 'object',
+      properties: { limit: { type: 'integer', minimum: 1, maximum: 200 } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.inspect_context',
+    description: '读取指定时间范围内的片段和转场，用于在局部剪辑前确认目标 ID。时间单位是秒。',
+    parameters: {
+      type: 'object',
+      properties: {
+        fromSeconds: { type: 'number', minimum: 0 },
+        toSeconds: { type: 'number', minimum: 0 },
+        trackId: { type: 'string' },
+        limit: { type: 'integer', minimum: 1, maximum: 200 },
+      },
+      required: ['fromSeconds', 'toSeconds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.trim',
+    description: '按时间轴上的绝对秒数裁剪片段。startSeconds 和 endSeconds 表示片段在成片时间轴上的新边界，至少提供一个。',
+    parameters: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        startSeconds: { type: 'number', minimum: 0 },
+        endSeconds: { type: 'number', minimum: 0 },
+      },
+      required: ['itemId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.split',
+    description: '在指定的绝对时间点切分一个片段。切分点必须位于片段内部且不能落在已有转场区域。',
+    parameters: {
+      type: 'object',
+      properties: { itemId: { type: 'string' }, atSeconds: { type: 'number', minimum: 0 } },
+      required: ['itemId', 'atSeconds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.move',
+    description: '移动片段到新的绝对时间位置，可选地移动到另一条轨道。时间单位是秒，轨道必须已存在。',
+    parameters: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        toSeconds: { type: 'number', minimum: 0 },
+        trackId: { type: 'string' },
+      },
+      required: ['itemId', 'toSeconds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.remove',
+    description: '删除一个或多个片段，并由编辑器同时清理相关转场、关键帧和成对音视频引用。',
+    parameters: {
+      type: 'object',
+      properties: {
+        itemIds: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string' } },
+      },
+      required: ['itemIds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.set_properties',
+    description: '修改片段的少量常用参数：名称、文字、音量、速度和淡入淡出。不要用它修改时间位置或轨道归属。',
+    parameters: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        label: { type: 'string', maxLength: 200 },
+        text: { type: 'string', maxLength: 10000 },
+        volume: { type: 'number', minimum: -60, maximum: 12 },
+        speed: { type: 'number', minimum: 0.1, maximum: 10 },
+        fadeIn: { type: 'number', minimum: 0 },
+        fadeOut: { type: 'number', minimum: 0 },
+      },
+      required: ['itemId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.set_transform',
+    description: '修改片段画面变换：位置、宽高、旋转、透明度、翻转和圆角。位置与尺寸使用画布像素。',
+    parameters: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        x: { type: 'number' },
+        y: { type: 'number' },
+        width: { type: 'number', exclusiveMinimum: 0 },
+        height: { type: 'number', exclusiveMinimum: 0 },
+        rotation: { type: 'number' },
+        opacity: { type: 'number', minimum: 0, maximum: 1 },
+        flipHorizontal: { type: 'boolean' },
+        flipVertical: { type: 'boolean' },
+        cornerRadius: { type: 'number', minimum: 0 },
+      },
+      required: ['itemId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.set_audio',
+    description: '修改视频或音频片段的音量、淡入淡出和变调参数。音量单位是 dB。',
+    parameters: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        volume: { type: 'number', minimum: -60, maximum: 12 },
+        fadeIn: { type: 'number', minimum: 0 },
+        fadeOut: { type: 'number', minimum: 0 },
+        pitchSemitones: { type: 'number', minimum: -12, maximum: 12 },
+      },
+      required: ['itemId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.add_text',
+    description: '在时间轴顶部新增一条文字图层。时间单位是秒；文字会放在独立字幕轨道，不覆盖现有片段。',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', minLength: 1, maxLength: 10000 },
+        startSeconds: { type: 'number', minimum: 0 },
+        durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+        label: { type: 'string', maxLength: 200 },
+        stylePresetId: { type: 'string' },
+      },
+      required: ['text', 'startSeconds', 'durationSeconds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.add_keyframe',
+    description: '为片段增加一个标量关键帧。atSeconds 是相对片段起点的时间，属性名使用内置属性名。',
+    parameters: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        property: { type: 'string', enum: ['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'opacity', 'cornerRadius', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom', 'cropSoftness', 'volume', 'textStyleScale', 'fontSize', 'lineHeight', 'textPadding', 'textShadowOffsetX', 'textShadowOffsetY', 'textShadowBlur', 'strokeWidth', 'trimPathStart', 'trimPathEnd', 'trimPathOffset', 'taperStartWidth', 'taperEndWidth', 'taperStartLength', 'taperEndLength'] },
+        atSeconds: { type: 'number', minimum: 0 },
+        value: { type: 'number' },
+        easing: { type: 'string', enum: ['linear', 'ease-in', 'ease-out', 'ease-in-out'] },
+      },
+      required: ['itemId', 'property', 'atSeconds', 'value'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.add_transition',
+    description: '在同一轨道上相邻的两个片段之间添加转场。当前支持 crossfade，durationSeconds 使用秒。',
+    parameters: {
+      type: 'object',
+      properties: {
+        leftItemId: { type: 'string' },
+        rightItemId: { type: 'string' },
+        durationSeconds: { type: 'number', exclusiveMinimum: 0 },
+        presentation: { type: 'string', maxLength: 100 },
+      },
+      required: ['leftItemId', 'rightItemId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.validate',
+    description: '检查当前时间轴的轨道、片段、转场和关键帧引用。完成一组剪辑后调用它确认工程仍然完整。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+]
+
+const allTools = [...sourceTools, ...timelineTools]
+
+const EDITING_GUIDANCE = `
+你正在操作 Luna AI Cut 的视频剪辑工程。时间轴是用户可以继续手工编辑的真实工程。
+
+- 开始任务时先调用 project.inspect；只需要局部信息时调用 timeline.inspect_context，先确认片段 ID、轨道和时间范围。
+- 剪辑操作必须使用 timeline.* 工具。时间位置和持续时间使用秒；关键帧的 atSeconds 是相对于片段起点的秒数。
+- 不要直接编辑源码 JSON，不要使用 shell 或文件工具绕过时间轴工具。源码读取工具只用于诊断和确认，不是常规剪辑入口。
+- 每次编辑工具都会保存工程并返回操作前后的摘要。遇到失败时读取最新上下文后再决定下一步，不要重复提交完全相同的调用。
+- 完成一组编辑后调用 timeline.validate；只有校验通过并且目标确实已经反映在结果中，才能向用户说明已经完成。
+- 保留已有音视频的关联、转场和关键帧；删除片段应优先使用 timeline.remove，让编辑器完成级联清理。
+`.trim()
+
 export const name = 'luna-freecut-project-source'
-export const inject = ['tools', 'workspaceRegistry', 'agents', 'agentPresets', 'webServer']
+export const inject = ['tools', 'systemPrompt', 'workspaceRegistry', 'agents', 'agentPresets', 'webServer']
 
 function abortableSignal(signal) {
   const controller = new AbortController()
@@ -167,7 +338,7 @@ async function initializeProjectWorkspace(ctx, config) {
 
 export async function apply(ctx, config) {
   validateConfig(config)
-  for (const definition of sourceTools) {
+  for (const definition of allTools) {
     ctx.tools.register({
       ...definition,
       output: {
@@ -176,7 +347,9 @@ export async function apply(ctx, config) {
           return [{ type: 'text', text: typeof value?.message === 'string' ? value.message : JSON.stringify(value) ?? String(value) }]
         },
       },
-      timeoutMs: definition.name === 'source.apply_changes' ? 120_000 : 30_000,
+      timeoutMs: definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context') && definition.name !== 'timeline.validate'
+        ? 120_000
+        : 30_000,
       async execute(args, exec) {
         exec.signal.throwIfAborted()
         const result = await executeSourceTool(config, definition.name, args, exec.signal)
@@ -187,6 +360,11 @@ export async function apply(ctx, config) {
   }
 
   await ctx.effect(async () => {
+    const disposePrompt = ctx.systemPrompt.section({
+      name: 'luna-freecut: timeline editing',
+      order: 120,
+      text: EDITING_GUIDANCE,
+    })
     const untapIndex = ctx.webServer.tapIndex(html => markEmbeddedUi(html, config.cwd))
     let handle
     try {
@@ -197,6 +375,7 @@ export async function apply(ctx, config) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
     }
     return async () => {
+      disposePrompt()
       untapIndex()
       if (handle !== undefined) await handle.dispose()
     }
