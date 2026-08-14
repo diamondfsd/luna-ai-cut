@@ -10,6 +10,7 @@ import { createSnapshotStore } from '../contract/store.ts'
 import type { SessionsPort, SessionsPortList } from '../contract/sessions-port.ts'
 import type { IWorkspaces } from '../contract/workspaces.ts'
 import { WorkspaceManager, type WorkspaceListPhase } from './manager.ts'
+import { lunaFreeCutProjectPath } from '../embedding.ts'
 
 /** Workspace list plus the two-baseline readiness and default-target projection. */
 export interface WorkspaceListState {
@@ -117,10 +118,9 @@ export class WorkspaceRuntime implements IWorkspaces {
 
   /**
    * Follow the first complete Workspace/Session baseline and select a default
-   * session exactly once. A restored current session wins; otherwise the most
-   * recent Workspace is connected (reusing or creating its blank session).
-   * Later explicit clears stay cleared instead of retriggering this startup
-   * policy. A failed connect may retry on the next baseline projection.
+   * session exactly once. The embedded FreeCut view targets its host project;
+   * the standalone WebUI preserves its restored-current, then recent-workspace
+   * policy. Later explicit clears stay cleared instead of retriggering startup.
    * @returns disposer for the baseline subscription; late work cannot navigate after disposal.
    */
   startInitialSelection(): () => void {
@@ -135,8 +135,15 @@ export class WorkspaceRuntime implements IWorkspaces {
       const workspace = this.list.getSnapshot()
       if (!workspace.baselinesReady) return
       const current = this.sessions.list.getSnapshot().current
-      const target = workspace.recentWorkspaceId
-      if (current !== undefined || target === undefined) {
+      const embeddedPath = lunaFreeCutProjectPath()
+      const target = embeddedPath === undefined
+        ? workspace.recentWorkspaceId
+        : workspace.items.find(item => item.path === embeddedPath)?.workspaceId
+      const currentWorkspace = current === undefined
+        ? undefined
+        : workspace.items.find(item => item.sessionIds.includes(current))
+      const currentIsTarget = target !== undefined && currentWorkspace?.workspaceId === target
+      if ((embeddedPath === undefined && current !== undefined) || (embeddedPath !== undefined && currentIsTarget) || target === undefined) {
         state = 'done'
         return
       }
@@ -144,7 +151,7 @@ export class WorkspaceRuntime implements IWorkspaces {
       void this.connectWorkspace(target).then(
         (sessionId) => {
           if (disposed) return
-          if (this.sessions.list.getSnapshot().current === undefined) {
+          if (embeddedPath !== undefined || this.sessions.list.getSnapshot().current === undefined) {
             this.sessions.open(sessionId)
           }
           state = 'done'

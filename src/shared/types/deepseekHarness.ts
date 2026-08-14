@@ -2,6 +2,7 @@ export interface DeepSeekHarnessConfig {
   baseUrl: string
   model: string
   contextWindowTokens: number
+  maxOutputTokens: number
   hasApiKey: boolean
 }
 
@@ -9,6 +10,7 @@ export interface DeepSeekHarnessConfigInput {
   baseUrl: string
   model: string
   contextWindowTokens: number
+  maxOutputTokens: number
   apiKey?: string
   clearApiKey?: boolean
 }

@@ -21,12 +21,14 @@ import {
 import './deepseek-harness-panel.css'
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 262_144
+const DEFAULT_MAX_OUTPUT_TOKENS = 131_072
 
 interface SettingsForm {
   baseUrl: string
   model: string
   apiKey: string
   contextWindowTokens: string
+  maxOutputTokens: string
 }
 
 function emptyForm(): SettingsForm {
@@ -35,6 +37,7 @@ function emptyForm(): SettingsForm {
     model: '',
     apiKey: '',
     contextWindowTokens: String(DEFAULT_CONTEXT_WINDOW_TOKENS),
+    maxOutputTokens: String(DEFAULT_MAX_OUTPUT_TOKENS),
   }
 }
 
@@ -44,6 +47,7 @@ function formFromConfig(config: EmbeddedDeepSeekHarnessConfig): SettingsForm {
     model: config.model,
     apiKey: '',
     contextWindowTokens: String(config.contextWindowTokens || DEFAULT_CONTEXT_WINDOW_TOKENS),
+    maxOutputTokens: String(config.maxOutputTokens || DEFAULT_MAX_OUTPUT_TOKENS),
   }
 }
 
@@ -52,10 +56,15 @@ function buildConfigInput(form: SettingsForm): EmbeddedDeepSeekHarnessConfigInpu
   if (!Number.isSafeInteger(contextWindowTokens) || contextWindowTokens < 16_384) {
     throw new Error('模型记忆长度至少为 16K。')
   }
+  const maxOutputTokens = Number(form.maxOutputTokens)
+  if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > DEFAULT_MAX_OUTPUT_TOKENS) {
+    throw new Error('单次输出长度应在 1 到 131072 之间。')
+  }
   return {
     baseUrl: form.baseUrl,
     model: form.model,
     contextWindowTokens,
+    maxOutputTokens,
     ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
   }
 }
@@ -135,6 +144,11 @@ const HarnessSettingsDialog = memo(function HarnessSettingsDialog({
           <div className="deepseek-harness-config-field">
             <Label htmlFor="deepseek-harness-context-window">记忆长度</Label>
             <Input id="deepseek-harness-context-window" type="number" min={16_384} max={2_097_152} step={16_384} value={form.contextWindowTokens} onChange={(event) => updateField('contextWindowTokens', event.target.value)} />
+          </div>
+          <div className="deepseek-harness-config-field">
+            <Label htmlFor="deepseek-harness-max-output-tokens">单次输出长度</Label>
+            <Input id="deepseek-harness-max-output-tokens" type="number" min={1} max={DEFAULT_MAX_OUTPUT_TOKENS} step={1} value={form.maxOutputTokens} onChange={(event) => updateField('maxOutputTokens', event.target.value)} />
+            <p className="text-xs text-muted-foreground">范围为 1 到 131072，过大的值会被 DeepSeek 接口拒绝。</p>
           </div>
           {message && (
             <div className={cn('flex items-start gap-2 rounded-md px-3 py-2 text-xs', message.kind === 'error' ? 'deepseek-harness-config-error' : 'deepseek-harness-config-success')} role="status">

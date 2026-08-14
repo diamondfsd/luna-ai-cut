@@ -11,14 +11,18 @@ import type {
 const CONFIG_FILE = 'deepseek-harness.json'
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 262_144
+const DEFAULT_MAX_OUTPUT_TOKENS = 131_072
 const MIN_CONTEXT_WINDOW_TOKENS = 16_384
 const MAX_CONTEXT_WINDOW_TOKENS = 2_097_152
+const MIN_MAX_OUTPUT_TOKENS = 1
+const MAX_MAX_OUTPUT_TOKENS = 131_072
 
 interface StoredConfig {
   schemaVersion: 1
   baseUrl: string
   model: string
   contextWindowTokens: number
+  maxOutputTokens: number
   apiKey?: string
 }
 
@@ -32,6 +36,7 @@ function emptyConfig(): StoredConfig {
     baseUrl: DEFAULT_BASE_URL,
     model: '',
     contextWindowTokens: DEFAULT_CONTEXT_WINDOW_TOKENS,
+    maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
   }
 }
 
@@ -40,6 +45,7 @@ function publicConfig(config: StoredConfig): EmbeddedDeepSeekHarnessConfig {
     baseUrl: config.baseUrl,
     model: config.model,
     contextWindowTokens: config.contextWindowTokens,
+    maxOutputTokens: config.maxOutputTokens,
     hasApiKey: Boolean(config.apiKey),
   }
 }
@@ -88,6 +94,15 @@ function normalizeContextWindowTokens(value: unknown): number {
   return value as number
 }
 
+function normalizeMaxOutputTokens(value: unknown): number {
+  if (!Number.isSafeInteger(value)
+    || (value as number) < MIN_MAX_OUTPUT_TOKENS
+    || (value as number) > MAX_MAX_OUTPUT_TOKENS) {
+    throw new Error('单次输出长度应在 1 到 131072 之间。')
+  }
+  return value as number
+}
+
 export async function readDeepSeekHarnessConfig(): Promise<StoredConfig> {
   try {
     const parsed = JSON.parse(await fs.readFile(configPath(), 'utf8')) as Partial<StoredConfig>
@@ -99,6 +114,9 @@ export async function readDeepSeekHarnessConfig(): Promise<StoredConfig> {
       contextWindowTokens: parsed.contextWindowTokens === undefined
         ? DEFAULT_CONTEXT_WINDOW_TOKENS
         : normalizeContextWindowTokens(parsed.contextWindowTokens),
+      maxOutputTokens: parsed.maxOutputTokens === undefined
+        ? DEFAULT_MAX_OUTPUT_TOKENS
+        : normalizeMaxOutputTokens(parsed.maxOutputTokens),
       ...(typeof parsed.apiKey === 'string' && parsed.apiKey.trim()
         ? { apiKey: normalizeApiKey(parsed.apiKey) }
         : {}),
@@ -134,6 +152,7 @@ export async function saveDeepSeekHarnessConfig(
     baseUrl: normalizeHarnessBaseUrl(input.baseUrl),
     model: normalizeModel(input.model),
     contextWindowTokens: normalizeContextWindowTokens(input.contextWindowTokens),
+    maxOutputTokens: normalizeMaxOutputTokens(input.maxOutputTokens),
   }
   if (input.clearApiKey) {
     if (input.apiKey?.trim()) throw new Error('请只选择保存新的 API Key 或清除已保存的 API Key。')
@@ -153,8 +172,9 @@ export async function testDeepSeekHarnessConfig(
   const baseUrl = normalizeHarnessBaseUrl(input.baseUrl)
   const model = normalizeModel(input.model)
   const contextWindowTokens = normalizeContextWindowTokens(input.contextWindowTokens)
+  const maxOutputTokens = normalizeMaxOutputTokens(input.maxOutputTokens)
   const apiKey = input.apiKey === undefined ? current.apiKey : normalizeApiKey(input.apiKey)
-  const config = publicConfig({ schemaVersion: 1, baseUrl, model, contextWindowTokens, ...(apiKey ? { apiKey } : {}) })
+  const config = publicConfig({ schemaVersion: 1, baseUrl, model, contextWindowTokens, maxOutputTokens, ...(apiKey ? { apiKey } : {}) })
   if (!apiKey) return { config, connected: false, message: '请先填写 API Key。' }
 
   try {

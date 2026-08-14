@@ -1,7 +1,10 @@
 // DeepSeek Harness plugin for the FreeCut project-source capability.
 // The Harness owns the conversation, prompt assembly, agent loop, and UI.
 // This plugin only registers typed tools and forwards their structured calls
-// to the Electron host over a private loopback endpoint.
+// to the Electron host over a private loopback endpoint. The WebUI receives a
+// small host marker so its embedded-mode source changes stay scoped to FreeCut.
+
+import { randomUUID } from 'node:crypto'
 
 const RESULT_SCHEMA = {
   type: 'object',
@@ -91,7 +94,7 @@ const sourceTools = [
 ]
 
 export const name = 'luna-freecut-project-source'
-export const inject = ['tools']
+export const inject = ['tools', 'workspaceRegistry', 'agents', 'agentPresets', 'webServer']
 
 function abortableSignal(signal) {
   const controller = new AbortController()
@@ -121,10 +124,49 @@ async function executeSourceTool(config, name, args, signal) {
   }
 }
 
-export function apply(ctx, config) {
-  if (!config || typeof config.endpoint !== 'string' || typeof config.token !== 'string' || typeof config.projectId !== 'string') {
-    throw new Error('luna-freecut-project-source: endpoint, token and projectId are required')
+function validateConfig(config) {
+  if (!config || typeof config.endpoint !== 'string' || typeof config.token !== 'string' || typeof config.projectId !== 'string'
+    || typeof config.cwd !== 'string' || typeof config.model !== 'string') {
+    throw new Error('luna-freecut-project-source: endpoint, token, projectId, cwd and model are required')
   }
+}
+
+function escapeAttribute(value) {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
+
+function markEmbeddedUi(html, cwd) {
+  if (html.includes('data-luna-freecut')) return html
+  return html.replace(/<html\b/i, `<html data-luna-freecut data-luna-freecut-cwd="${escapeAttribute(cwd)}"`)
+}
+
+async function initializeProjectWorkspace(ctx, config) {
+  let workspace = await ctx.workspaceRegistry.resolveByPath(config.cwd)
+  if (workspace === undefined) workspace = await ctx.workspaceRegistry.create(config.cwd)
+
+  // A workspace with any persisted session is already usable: the client can
+  // resume it, and its normal connect flow creates a blank session when needed.
+  // Only the first run needs a host-owned blank session to make the workspace
+  // immediately selectable by the WebUI's startup policy.
+  if (workspace.sessionIds.length > 0) return undefined
+
+  const handle = await ctx.agents.create({
+    sessionId: randomUUID(),
+    agentOptions: { provider: 'deepseek-official', model: config.model },
+    meta: { cwd: workspace.path, agentPreset: 'luna-freecut' },
+    setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'luna-freecut').then(() => undefined),
+  })
+  try {
+    await workspace.attachSession(handle.agent.id)
+    return handle
+  } catch (error) {
+    await handle.dispose()
+    throw error
+  }
+}
+
+export async function apply(ctx, config) {
+  validateConfig(config)
   for (const definition of sourceTools) {
     ctx.tools.register({
       ...definition,
@@ -143,4 +185,20 @@ export function apply(ctx, config) {
       },
     })
   }
+
+  await ctx.effect(async () => {
+    const untapIndex = ctx.webServer.tapIndex(html => markEmbeddedUi(html, config.cwd))
+    let handle
+    try {
+      handle = await initializeProjectWorkspace(ctx, config)
+    } catch (error) {
+      // The UI can still open its workspace picker when startup initialization
+      // fails; retain the diagnostic without taking down the Web server.
+      ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+    }
+    return async () => {
+      untapIndex()
+      if (handle !== undefined) await handle.dispose()
+    }
+  }, 'luna-freecut: WebUI adaptation')
 }

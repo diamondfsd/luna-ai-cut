@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import { isLunaFreeCutEmbedded } from '@deepseek-ai/dsh-client-runtime/client'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
@@ -91,6 +92,7 @@ export function AppFrame({
   renderSlot,
 }: AppFrameProps) {
   const panels = useStore(s => s)
+  const embedded = isLunaFreeCutEmbedded()
   const detailsSession = useSessions((s) => {
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
@@ -135,11 +137,17 @@ export function AppFrame({
   // absorbs the squeeze.
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
-  const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
-  const sidebarPreference = sidebarCollapsed
+  const sidebarCollapsed = embedded || (narrow ? !panels.narrowExpanded : panels.sidebar === 0)
+  const sidebarPreference = embedded ? 0 : sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
-  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  const solvedCols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  // The shared solver keeps a 56px rail for a normal collapsed sidebar. The
+  // FreeCut dock has no sidebar affordance at all, so reclaim that track for
+  // the conversation column while keeping the details column unchanged.
+  const cols = embedded
+    ? { ...solvedCols, sidebar: 0, center: solvedCols.center + solvedCols.sidebar }
+    : solvedCols
   const colsRef = useRef(cols)
   colsRef.current = cols
 
@@ -167,6 +175,7 @@ export function AppFrame({
       className={css.frame}
       style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}
       data-sidebar-collapsed={sidebarCollapsed || undefined}
+      data-luna-freecut-shell={embedded || undefined}
       data-details-collapsed={cols.details === 0 || undefined}
       data-dragging={dragging || undefined}
     >
@@ -176,7 +185,7 @@ export function AppFrame({
             component sees its rendered state as owner params decided here
             (collapsed follows the resolved rail, so a derived auto-collapse
             renders the rail UI too). */}
-        {renderSlot('sidebar', {
+        {!embedded && renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
           width: cols.sidebar,
         })}

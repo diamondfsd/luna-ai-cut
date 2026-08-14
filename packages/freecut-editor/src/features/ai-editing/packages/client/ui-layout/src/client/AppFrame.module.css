@@ -29,6 +29,10 @@
   border-right: 1px solid var(--dsw-alias-border-l1);
 }
 
+.frame[data-luna-freecut-shell] .sidebarCol {
+  border-right: none;
+}
+
 .centerCol {
   min-width: 0;
   display: flex;
