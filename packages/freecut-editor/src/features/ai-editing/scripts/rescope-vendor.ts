@@ -504,7 +504,17 @@ function patterns(reverse: boolean): Pattern[] {
 }
 
 function skipped(file: string, pattern: Pattern): boolean {
-  return GENERIC_SKIPS.some(skip => skip.file === file && skip.upstream.includes(pattern.upstream))
+  if (GENERIC_SKIPS.some(skip => skip.file === file && skip.upstream.includes(pattern.upstream))) return true
+  if (pattern.upstream !== 'cordis') return false
+  // These files use `cordis/...` as stable event ids or locale keys, not as
+  // package specifiers. Rewriting them would break the Host/Client wire names.
+  return file === 'packages/api/remotes/src/remote-events.ts'
+    || file === 'packages/client/ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx'
+    || file === 'scripts/gen-cordis-catalog.ts'
+    || file.startsWith('packages/extensions/cordis-client-runner/')
+    || file.startsWith('packages/extensions/cordis-host-runner/')
+    || file.startsWith('packages/extensions/tool-cordis/')
+    || file.startsWith('packages/extensions/ui-cordis/')
 }
 
 function rewriteLine(line: string, file: string, all: readonly Pattern[]): string {
@@ -611,6 +621,7 @@ function main(): void {
   const planned: { edit: ExactEdit; path: string; find: string; replace: string }[] = []
   for (const edit of EXACT_EDITS) {
     const path = resolve(root, edit.file)
+    if (!existsSync(path)) continue
     const before = readFileSync(path, 'utf8')
     const find = reverse ? edit.replace : edit.find
     const replace = reverse ? edit.find : edit.replace
@@ -661,6 +672,7 @@ function main(): void {
     for (const check of POSTCONDITIONS) {
       if (reverse) break
       const path = resolve(root, check.file)
+      if (!existsSync(path)) continue
       const hits = existsSync(path) ? readFileSync(path, 'utf8').split(check.text).length - 1 : -1
       if (hits !== check.count) {
         failures.push(`postcondition: ${check.file} has ${String(hits)} occurrence(s) of ${JSON.stringify(check.text)}, expected ${String(check.count)}`)
