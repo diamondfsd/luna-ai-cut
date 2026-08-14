@@ -22,6 +22,8 @@ describe('editor-store', () => {
     localStorage.removeItem('editor:workspaceTimelineSize:color')
     localStorage.removeItem('editor:workspaceTimelineSize:animate')
     localStorage.removeItem('editor:propertiesFullColumn')
+    localStorage.removeItem('editor:aiSidebarOpen')
+    localStorage.removeItem('editor:aiSidebarWidth')
 
     // Reset store to defaults between tests
     useEditorStore.setState({
@@ -29,6 +31,8 @@ describe('editor-store', () => {
       workspace: 'edit',
       leftSidebarOpen: true,
       rightSidebarOpen: true,
+      aiSidebarOpen: true,
+      aiSidebarWidth: 380,
       keyframeEditorShortcutScopeActive: false,
       activeTab: 'media',
       clipInspectorTab: 'video',
@@ -78,6 +82,21 @@ describe('editor-store', () => {
 
     useEditorStore.getState().toggleRightSidebar()
     expect(useEditorStore.getState().rightSidebarOpen).toBe(true)
+  })
+
+  it('keeps the AI sidebar open state and width independent', () => {
+    expect(useEditorStore.getState().aiSidebarOpen).toBe(true)
+    expect(useEditorStore.getState().aiSidebarWidth).toBe(380)
+
+    useEditorStore.getState().toggleAiSidebar()
+    useEditorStore.getState().setAiSidebarWidth(480)
+
+    expect(useEditorStore.getState().aiSidebarOpen).toBe(false)
+    expect(useEditorStore.getState().aiSidebarWidth).toBe(480)
+    expect(useEditorStore.getState().rightSidebarOpen).toBe(true)
+    expect(useEditorStore.getState().rightSidebarWidth).toBe(340)
+    expect(localStorage.getItem('editor:aiSidebarOpen')).toBe('false')
+    expect(localStorage.getItem('editor:aiSidebarWidth')).toBe('480')
   })
 
   it('sets active tab', () => {

@@ -5,6 +5,7 @@ import {
   projectFromSourceFiles,
   projectToSourceFiles,
 } from './project-source-codec'
+import { PROJECT_SOURCE_AGENTS_TEMPLATE } from './project-source-agents-template'
 
 type SourceBridge = NonNullable<ReturnType<typeof getEmbeddedHostBridge>['editingSourceGit']>
 
@@ -80,9 +81,19 @@ function sourceVersion(content: string): number | null {
 export async function ensureProjectSource(project: Project): Promise<boolean> {
   const bridge = getEmbeddedHostBridge().editingSourceGit
   if (!bridge) return false
-  const desired = projectToSourceFiles(project)
+  const desired = {
+    ...projectToSourceFiles(project),
+    'AGENTS.md': PROJECT_SOURCE_AGENTS_TEMPLATE,
+  }
   const ensured = await bridge.ensure(project.id, desired)
   if (ensured.created) return true
+
+  try {
+    await bridge.read(project.id, 'AGENTS.md')
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('ENOENT')) throw error
+    await bridge.create(project.id, 'AGENTS.md', PROJECT_SOURCE_AGENTS_TEMPLATE)
+  }
 
   const manifest = await bridge.read(project.id, 'manifest.json')
   if (sourceVersion(manifest) !== PROJECT_SOURCE_VERSION) {

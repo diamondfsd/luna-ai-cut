@@ -4,7 +4,6 @@ import { App } from './app'
 import { i18nReady } from './i18n'
 import {
   EmbeddedHostProvider,
-  type EmbeddedHostBridge,
   type ImportMediaFiles,
   type EmbeddedMediaImportSource,
   type EmbeddedNativeMediaFile,
@@ -13,18 +12,17 @@ import {
   type EmbeddedVisualAnalysisIntensity,
   type EmbeddedMediaSource,
   type EmbeddedTaskProgress,
-  type EmbeddedAiAssistantConfig,
-  type EmbeddedAiAssistantConfigInput,
-  type EmbeddedAiAssistantConfigTestResult,
-  type EmbeddedAiAssistantGenerateInput,
-  type EmbeddedAiAssistantGenerateResult,
-  type EmbeddedAiAssistantBridge,
   type EmbeddedAiEditingSourceGitBridge,
+  type EmbeddedDeepSeekHarnessBridge,
+  type EmbeddedDeepSeekHarnessConfig,
+  type EmbeddedDeepSeekHarnessConfigInput,
+  type EmbeddedDeepSeekHarnessConfigTestResult,
   type EmbeddedHtmlRenderRequest,
   type EmbeddedHtmlRenderResult,
   type EmbeddedExportBridge,
 } from './shared/host/embedded-host'
 import { setHtmlFrameProvider } from './features/export/utils/html-frame-provider'
+import { executeProjectSourceTool } from './features/project-source/project-source-tools'
 import './index.css'
 
 export type {
@@ -48,20 +46,17 @@ export interface FreeCutEditorProps {
     intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => Promise<EmbeddedVisualEvidence>
-  onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
-  onSaveAiAssistantConfig?: (
-    input: EmbeddedAiAssistantConfigInput,
-  ) => Promise<EmbeddedAiAssistantConfig>
-  onTestAiAssistantConfig?: (
-    input: EmbeddedAiAssistantConfigInput,
-  ) => Promise<EmbeddedAiAssistantConfigTestResult>
-  onGenerateAiAssistant?: (
-    input: EmbeddedAiAssistantGenerateInput,
-  ) => Promise<EmbeddedAiAssistantGenerateResult>
-  onCancelAiAssistant?: (requestId: string) => Promise<void>
-  onAiAssistantStatus?: EmbeddedAiAssistantBridge['onStatus']
+  onGetDeepSeekHarnessConfig?: () => Promise<EmbeddedDeepSeekHarnessConfig>
+  onSaveDeepSeekHarnessConfig?: (
+    input: EmbeddedDeepSeekHarnessConfigInput,
+  ) => Promise<EmbeddedDeepSeekHarnessConfig>
+  onTestDeepSeekHarnessConfig?: (
+    input: EmbeddedDeepSeekHarnessConfigInput,
+  ) => Promise<EmbeddedDeepSeekHarnessConfigTestResult>
+  onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
+  onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
+  onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
   editingSourceGit?: EmbeddedAiEditingSourceGitBridge
-  onAiEditingLog?: EmbeddedHostBridge['logAiEditing']
   onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
 }
@@ -74,14 +69,13 @@ export function FreeCutEditor({
   onResolveNativeMediaUrl,
   onTranscribeMedia,
   onAnalyzeMediaVisual,
-  onGetAiAssistantConfig,
-  onSaveAiAssistantConfig,
-  onTestAiAssistantConfig,
-  onGenerateAiAssistant,
-  onCancelAiAssistant,
-  onAiAssistantStatus,
+  onGetDeepSeekHarnessConfig,
+  onSaveDeepSeekHarnessConfig,
+  onTestDeepSeekHarnessConfig,
+  onGetDeepSeekHarnessWebUrl,
+  onDeepSeekHarnessWebState,
+  onDeepSeekHarnessSourceToolRequest,
   editingSourceGit,
-  onAiEditingLog,
   onRenderHtmlFrame,
   exportFiles,
 }: FreeCutEditorProps) {
@@ -97,24 +91,23 @@ export function FreeCutEditor({
       analyzeMediaVisual: onAnalyzeMediaVisual,
       renderHtmlFrame: onRenderHtmlFrame,
       exportFiles,
-      aiAssistant:
-        onGetAiAssistantConfig &&
-        onSaveAiAssistantConfig &&
-        onTestAiAssistantConfig &&
-        onGenerateAiAssistant &&
-        onCancelAiAssistant &&
-        onAiAssistantStatus
+      deepseekHarness:
+        onGetDeepSeekHarnessConfig &&
+        onSaveDeepSeekHarnessConfig &&
+        onTestDeepSeekHarnessConfig &&
+        onGetDeepSeekHarnessWebUrl &&
+        onDeepSeekHarnessWebState &&
+        onDeepSeekHarnessSourceToolRequest
           ? {
-              getConfig: onGetAiAssistantConfig,
-              saveConfig: onSaveAiAssistantConfig,
-              testConfig: onTestAiAssistantConfig,
-              generate: onGenerateAiAssistant,
-              cancel: onCancelAiAssistant,
-              onStatus: onAiAssistantStatus,
+              getConfig: onGetDeepSeekHarnessConfig,
+              saveConfig: onSaveDeepSeekHarnessConfig,
+              testConfig: onTestDeepSeekHarnessConfig,
+              getWebUrl: onGetDeepSeekHarnessWebUrl,
+              onWebState: onDeepSeekHarnessWebState,
+              onSourceToolRequest: onDeepSeekHarnessSourceToolRequest,
             }
           : undefined,
       editingSourceGit,
-      logAiEditing: onAiEditingLog,
     }),
     [
       onRequestMediaImport,
@@ -126,16 +119,16 @@ export function FreeCutEditor({
       onAnalyzeMediaVisual,
       onRenderHtmlFrame,
       exportFiles,
-      onGetAiAssistantConfig,
-      onSaveAiAssistantConfig,
-      onTestAiAssistantConfig,
-      onGenerateAiAssistant,
-      onCancelAiAssistant,
-      onAiAssistantStatus,
+      onGetDeepSeekHarnessConfig,
+      onSaveDeepSeekHarnessConfig,
+      onTestDeepSeekHarnessConfig,
+      onGetDeepSeekHarnessWebUrl,
+      onDeepSeekHarnessWebState,
+      onDeepSeekHarnessSourceToolRequest,
       editingSourceGit,
-      onAiEditingLog,
     ],
   )
+
 
   useEffect(() => {
     if (!onRenderHtmlFrame) {
@@ -154,6 +147,13 @@ export function FreeCutEditor({
     })
     return () => setHtmlFrameProvider(undefined)
   }, [onRenderHtmlFrame])
+
+  useEffect(() => {
+    if (!onDeepSeekHarnessSourceToolRequest) return undefined
+    return onDeepSeekHarnessSourceToolRequest((request) =>
+      executeProjectSourceTool(request.name, request.args, request.projectId),
+    )
+  }, [onDeepSeekHarnessSourceToolRequest])
 
   useEffect(() => {
     document.body.classList.add('freecut-active')

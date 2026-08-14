@@ -69,6 +69,10 @@ export class AiEditingSourceGitService {
     )
   }
 
+  get rootPath(): string {
+    return this.repositoryPath
+  }
+
   ensureRepository(
     initialFiles: AiEditingSourceInitialFiles = {},
   ): Promise<{ created: boolean; head: string | null }> {
@@ -429,6 +433,7 @@ export function createAiEditingSourceGitApi(baseDir: string): AiEditingSourceGit
     return service
   }
   return {
+    root: async (projectId) => serviceFor(projectId).rootPath,
     ensure: async (projectId, initialFiles) => serviceFor(projectId).ensureRepository(initialFiles),
     status: async (projectId) => serviceFor(projectId).status(),
     list: async (projectId, sourceDirectory) => serviceFor(projectId).list(sourceDirectory),

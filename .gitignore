@@ -35,6 +35,7 @@ __pycache__/
 resources/ffmpeg/
 .ffmpeg-cache/
 resources/dolby-vision/
+resources/node-runtime/
 .dolby-tools-cache/
 .dxc-cache/
 docs/

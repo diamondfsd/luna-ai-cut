@@ -13,7 +13,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { i18n } from '@freecut/i18n'
 import { Button } from '@freecut/components/ui/button'
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Settings2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
 import {
   useCompositionNavigationStore,
   useCompositionsStore,
@@ -301,7 +301,6 @@ export const PropertiesSidebar = memo(function PropertiesSidebar() {
                     <ChevronDown className="w-3 h-3" />
                   )}
                 </Button>
-                <Settings2 className="w-3 h-3 shrink-0 text-muted-foreground" />
                 <h2 className="min-w-0 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                   <span className="shrink-0 uppercase tracking-wide">
                     {headerLabel}
@@ -392,8 +391,10 @@ export const PropertiesSidebar = memo(function PropertiesSidebar() {
           and size when toggling (mirrors the always-present arrow on the left
           sidebar rail). Edge-attached rounded tab keeps it discoverable. */}
       {!rightSidebarOpen && (
-        <button
+        <Button
           onClick={toggleRightSidebar}
+          variant="ghost"
+          size="icon"
           className="absolute right-0 top-2 z-10 flex items-center justify-center rounded-l-md border border-r-0 border-border bg-secondary/50 hover:bg-secondary transition-colors"
           style={{
             width: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
@@ -404,7 +405,7 @@ export const PropertiesSidebar = memo(function PropertiesSidebar() {
           aria-label={t('editor.propertiesSidebar.showPanel')}
         >
           <ChevronLeft className="w-3.5 h-3.5 text-muted-foreground" />
-        </button>
+        </Button>
       )}
     </>
   )

@@ -9,6 +9,7 @@ import path from 'node:path'
 import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './crashDiagnostics'
 import { cameraPathsForFiles } from './cameraDeletePaths'
+import { disposeDeepSeekHarness } from './deepseekHarnessService'
 
 import {
   getLocalResourcesDir,
@@ -269,6 +270,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  void disposeDeepSeekHarness()
   resetRenderCompatibilityBlock()
   abortAllExports()
   stopSegmentationModelPrefetch()

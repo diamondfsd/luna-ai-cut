@@ -1,0 +1,37 @@
+.deepseek-harness-panel {
+  min-width: 0;
+  background: var(--background);
+}
+
+.deepseek-harness-panel__toolbar {
+  min-height: 44px;
+}
+
+.deepseek-harness-panel__webview {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.deepseek-harness-config-form {
+  display: grid;
+  gap: 14px;
+}
+
+.deepseek-harness-config-field {
+  display: grid;
+  gap: 6px;
+}
+
+.deepseek-harness-config-error {
+  border: 1px solid hsl(var(--destructive) / 0.4);
+  background: hsl(var(--destructive) / 0.1);
+  color: hsl(var(--destructive));
+}
+
+.deepseek-harness-config-success {
+  border: 1px solid hsl(142 71% 45% / 0.35);
+  background: hsl(142 71% 45% / 0.1);
+  color: hsl(142 71% 45%);
+}

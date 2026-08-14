@@ -9,6 +9,12 @@ const indexedDbMocks = vi.hoisted(() => ({
   saveThumbnail: vi.fn(),
 }))
 
+const projectSourceMocks = vi.hoisted(() => ({
+  ensureProjectSource: vi.fn(),
+  readProjectSource: vi.fn(),
+  writeProjectSource: vi.fn(),
+}))
+
 const playbackMocks = vi.hoisted(() => ({
   currentFrame: 0,
   busAudioEq: undefined,
@@ -65,6 +71,8 @@ vi.mock('@freecut/infrastructure/storage', async (importOriginal) => {
   }
 })
 
+vi.mock('@freecut/features/project-source/project-source-worktree', () => projectSourceMocks)
+
 vi.mock('@freecut/shared/state/playback', () => ({
   usePlaybackStore: {
     getState: () => playbackMocks,
@@ -117,6 +125,9 @@ import type { ProjectTimeline } from '@freecut/types/project'
 describe('TimelineStoreFacade', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    projectSourceMocks.ensureProjectSource.mockReset()
+    projectSourceMocks.readProjectSource.mockReset()
+    projectSourceMocks.writeProjectSource.mockReset()
     playbackMocks.currentFrame = 0
     playbackMocks.busAudioEq = undefined
     playbackMocks.masterBusDb = 0
@@ -135,7 +146,7 @@ describe('TimelineStoreFacade', () => {
     })
     // Reset all domain stores
     useItemsStore.getState().setItems([])
-    useItemsStore.getState().setTracks([])
+    useItemsStore.setState({ tracks: [] })
     useTransitionsStore.getState().setTransitions([])
     useKeyframesStore.getState().setKeyframes([])
     useMarkersStore.getState().setMarkers([])
@@ -624,6 +635,72 @@ describe('TimelineStoreFacade', () => {
   })
 
   describe('saveTimeline', () => {
+    it('uses the source tree round-trip as the project.json snapshot', async () => {
+      indexedDbMocks.getProject.mockResolvedValue({
+        id: 'project-1',
+        metadata: { fps: 30, width: 1920, height: 1080 },
+      })
+      projectSourceMocks.writeProjectSource.mockResolvedValue(true)
+
+      const sourceTrack = {
+        id: 'source-track',
+        name: 'Source Video',
+        kind: 'video' as const,
+        height: 80,
+        locked: false,
+        visible: true,
+        muted: false,
+        solo: false,
+        order: 0,
+        items: [],
+      }
+      const compiledTimeline = {
+        tracks: [sourceTrack],
+        items: [],
+        markers: [{ id: 'source-marker', frame: 12, color: '#00ff00' }],
+      }
+      projectSourceMocks.readProjectSource.mockResolvedValue({
+        id: 'project-1',
+        name: 'Project',
+        description: '',
+        createdAt: 1,
+        updatedAt: 1,
+        duration: 0,
+        metadata: { fps: 30, width: 1920, height: 1080 },
+        timeline: compiledTimeline,
+      })
+
+      useItemsStore.getState().setTracks([
+        {
+          id: 'store-track',
+          name: 'Store Video',
+          height: 80,
+          locked: false,
+          visible: true,
+          muted: false,
+          solo: false,
+          order: 0,
+          items: [],
+        },
+      ])
+
+      await useTimelineStore.getState().saveTimeline('project-1')
+
+      expect(projectSourceMocks.writeProjectSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'project-1',
+          timeline: expect.objectContaining({
+            tracks: [expect.objectContaining({ id: 'store-track' })],
+          }),
+        }),
+      )
+      expect(projectSourceMocks.readProjectSource).toHaveBeenCalledWith('project-1')
+      expect(indexedDbMocks.updateProject).toHaveBeenCalledWith(
+        'project-1',
+        expect.objectContaining({ timeline: compiledTimeline }),
+      )
+    })
+
     it('persists full transition metadata', async () => {
       indexedDbMocks.getProject.mockResolvedValue({
         id: 'project-1',

@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import type { EditorState, EditorActions, TrackSizePreset } from './types'
 import {
+  clampAiEditorSidebarWidth,
   EDITOR_LAYOUT,
+  getAiEditorSidebarBounds,
   getLeftEditorSidebarBounds,
   getRightEditorSidebarBounds,
 } from '@freecut/config/editor-layout'
@@ -19,6 +21,8 @@ const LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH = 288
 const WORKSPACE_STORAGE_KEY = 'editor:workspace'
 const TRACK_SIZE_PRESET_STORAGE_KEY = 'editor:trackSizePreset'
 const TRACK_PREVIEW_COLLAPSED_STORAGE_KEY = 'editor:trackPreviewCollapsed'
+const AI_SIDEBAR_OPEN_STORAGE_KEY = 'editor:aiSidebarOpen'
+const AI_SIDEBAR_WIDTH_STORAGE_KEY = 'editor:aiSidebarWidth'
 
 function loadTrackSizePreset(): TrackSizePreset {
   try {
@@ -38,6 +42,27 @@ function loadTrackPreviewCollapsed(): boolean {
   } catch {
     return false
   }
+}
+
+function loadAiSidebarOpen(): boolean {
+  try {
+    return localStorage.getItem(AI_SIDEBAR_OPEN_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+function loadAiSidebarWidth(): number {
+  try {
+    const raw = localStorage.getItem(AI_SIDEBAR_WIDTH_STORAGE_KEY)
+    if (raw !== null) {
+      const parsed = Number(raw)
+      if (Number.isFinite(parsed)) return clampAiEditorSidebarWidth(parsed)
+    }
+  } catch {
+    /* noop */
+  }
+  return EDITOR_LAYOUT.aiSidebarDefaultWidth
 }
 
 function workspaceLayoutStorageKey(workspace: EditorWorkspaceId): string {
@@ -204,6 +229,8 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
   clipInspectorTab: initialWorkspaceLayout.clipInspectorTab,
   sidebarWidth: initialWorkspaceLayout.sidebarWidth,
   rightSidebarWidth: initialWorkspaceLayout.rightSidebarWidth,
+  aiSidebarOpen: loadAiSidebarOpen(),
+  aiSidebarWidth: loadAiSidebarWidth(),
   timelineHeight: 250,
   sourcePreviewMediaId: null,
   mediaSkimPreviewMediaId: null,
@@ -239,6 +266,24 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
     set({ transcriptEditorShortcutScopeActive: active }),
   toggleLeftSidebar: () => set((state) => ({ leftSidebarOpen: !state.leftSidebarOpen })),
   toggleRightSidebar: () => set((state) => ({ rightSidebarOpen: !state.rightSidebarOpen })),
+  setAiSidebarOpen: (open) => {
+    try {
+      localStorage.setItem(AI_SIDEBAR_OPEN_STORAGE_KEY, String(open))
+    } catch {
+      /* noop */
+    }
+    set({ aiSidebarOpen: open })
+  },
+  toggleAiSidebar: () =>
+    set((state) => {
+      const next = !state.aiSidebarOpen
+      try {
+        localStorage.setItem(AI_SIDEBAR_OPEN_STORAGE_KEY, String(next))
+      } catch {
+        /* noop */
+      }
+      return { aiSidebarOpen: next }
+    }),
   setWorkspace: (workspace) =>
     set((state) => {
       if (state.workspace === workspace) return state
@@ -298,6 +343,15 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
       return { rightSidebarWidth: width }
     })
   },
+  setAiSidebarWidth: (width) => {
+    const nextWidth = clampAiEditorSidebarWidth(width)
+    try {
+      localStorage.setItem(AI_SIDEBAR_WIDTH_STORAGE_KEY, String(nextWidth))
+    } catch {
+      /* noop */
+    }
+    set({ aiSidebarWidth: nextWidth })
+  },
   syncSidebarLayout: (layout) =>
     set((currentState) => ({
       sidebarWidth: normalizeSidebarWidth(
@@ -317,6 +371,15 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
           rightSidebarMaxWidth: layout.rightSidebarMaxWidth,
         }),
         LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH,
+      ),
+      aiSidebarWidth: normalizeSidebarWidth(
+        currentState.aiSidebarWidth,
+        layout.aiSidebarDefaultWidth,
+        getAiEditorSidebarBounds({
+          aiSidebarMinWidth: layout.aiSidebarMinWidth,
+          aiSidebarMaxWidth: layout.aiSidebarMaxWidth,
+        }),
+        layout.aiSidebarDefaultWidth,
       ),
     })),
   setTimelineHeight: (height) => set({ timelineHeight: height }),

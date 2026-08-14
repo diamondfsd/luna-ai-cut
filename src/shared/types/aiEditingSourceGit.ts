@@ -63,6 +63,7 @@ export interface AiEditingSourceResetResult {
 }
 
 export interface AiEditingSourceGitApi {
+  root(projectId: string): Promise<string>
   ensure(
     projectId: string,
     initialFiles?: AiEditingSourceInitialFiles,
