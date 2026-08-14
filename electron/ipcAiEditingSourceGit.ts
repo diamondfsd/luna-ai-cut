@@ -17,6 +17,7 @@ function sourceGitApi(): SourceGitApi {
 }
 
 export function register(): void {
+  ipcMain.handle('ai-editing-source-git:root', (_event, projectId) => sourceGitApi().root(projectId))
   ipcMain.handle('ai-editing-source-git:ensure', (_event, projectId, initialFiles) =>
     sourceGitApi().ensure(projectId, initialFiles),
   )

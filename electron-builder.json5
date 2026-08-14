@@ -25,6 +25,16 @@
       "filter": ["**/*"]
     },
     {
+      "from": "dist/deepseek-harness",
+      "to": "deepseek-harness",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/node-runtime",
+      "to": "node-runtime",
+      "filter": ["**/*"]
+    },
+    {
       "from": "resources/ffmpeg",
       "to": "ffmpeg",
       "filter": ["**/*"]

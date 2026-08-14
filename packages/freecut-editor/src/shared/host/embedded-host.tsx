@@ -1,4 +1,13 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react'
+export type {
+  EmbeddedDeepSeekHarnessBridge,
+  EmbeddedDeepSeekHarnessConfig,
+  EmbeddedDeepSeekHarnessConfigInput,
+  EmbeddedDeepSeekHarnessConfigTestResult,
+  EmbeddedDeepSeekHarnessSourceToolRequest,
+  EmbeddedDeepSeekHarnessWebState,
+} from './deepseek-harness'
+import type { EmbeddedDeepSeekHarnessBridge } from './deepseek-harness'
 
 export interface EmbeddedMediaImportSource {
   path: string
@@ -82,97 +91,8 @@ export interface EmbeddedExportBridge {
   revealFile(filePath: string): Promise<void>
 }
 
-export interface EmbeddedAiAssistantConfig {
-  baseUrl: string
-  model: string
-  contextWindowTokens: number
-  hasApiKey: boolean
-  nativeToolCalling: boolean
-}
-
-export interface EmbeddedAiAssistantConfigInput {
-  baseUrl: string
-  model: string
-  contextWindowTokens: number
-  apiKey?: string
-  clearApiKey?: boolean
-  nativeToolCalling?: boolean
-}
-
-export interface EmbeddedAiAssistantConfigTestResult {
-  config: EmbeddedAiAssistantConfig
-  connected: boolean
-  nativeToolCalling: boolean
-  message: string
-}
-
-export interface EmbeddedAiAssistantToolDefinition {
-  name: string
-  description: string
-  parameters: {
-    type: 'object'
-    properties: Record<string, unknown>
-    required?: string[]
-    additionalProperties?: boolean
-  }
-}
-
-export interface EmbeddedAiAssistantToolCall {
-  id: string
-  name: string
-  arguments: string
-}
-
-export interface EmbeddedAiAssistantTokenUsage {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  cachedTokens: number
-}
-
-export type EmbeddedAiAssistantMessage =
-  | { role: 'system' | 'user'; content: string }
-  | { role: 'assistant'; content?: string; toolCalls?: EmbeddedAiAssistantToolCall[] }
-  | { role: 'tool'; toolCallId: string; content: string }
-
-export interface EmbeddedAiAssistantGenerateInput {
-  requestId: string
-  messages: EmbeddedAiAssistantMessage[]
-  mode?: 'auto' | 'json'
-  tools?: EmbeddedAiAssistantToolDefinition[]
-  maxTokens: number
-  temperature: number
-  reasoningEffort: EmbeddedAiAssistantReasoningEffort
-}
-
-export type EmbeddedAiAssistantReasoningEffort = 'low' | 'high' | 'xhigh' | 'max'
-
-export interface EmbeddedAiAssistantGenerateResult {
-  mode: 'tools' | 'json' | 'fallback'
-  content: string
-  toolCalls: EmbeddedAiAssistantToolCall[]
-  usage?: EmbeddedAiAssistantTokenUsage
-}
-
-export interface EmbeddedAiAssistantRequestStatus {
-  requestId: string
-  attempt: number
-  maxAttempts: number
-  state: 'waiting' | 'retrying' | 'streaming'
-  previewText?: string
-  previewKind?: 'reasoning' | 'content'
-}
-
-export interface EmbeddedAiAssistantBridge {
-  getConfig(): Promise<EmbeddedAiAssistantConfig>
-  saveConfig(input: EmbeddedAiAssistantConfigInput): Promise<EmbeddedAiAssistantConfig>
-  testConfig(input: EmbeddedAiAssistantConfigInput): Promise<EmbeddedAiAssistantConfigTestResult>
-  generate(input: EmbeddedAiAssistantGenerateInput): Promise<EmbeddedAiAssistantGenerateResult>
-  cancel(requestId: string): Promise<void>
-  onStatus(callback: (status: EmbeddedAiAssistantRequestStatus) => void): () => void
-}
-
 export interface EmbeddedAiEditingSourceGitBridge {
+  root(projectId: string): Promise<string>
   ensure(
     projectId: string,
     initialFiles?: Record<string, string>,
@@ -254,14 +174,9 @@ export interface EmbeddedHostBridge {
     intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => Promise<EmbeddedVisualEvidence>
-  /** The remote model connection is implemented by the trusted Electron host. */
-  aiAssistant?: EmbeddedAiAssistantBridge
+  /** DeepSeek Harness owns the conversation, model loop, and tool execution. */
+  deepseekHarness?: EmbeddedDeepSeekHarnessBridge
   editingSourceGit?: EmbeddedAiEditingSourceGitBridge
-  logAiEditing?: (
-    level: 'info' | 'warn' | 'error',
-    event: string,
-    details?: Record<string, unknown>,
-  ) => void
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
 }

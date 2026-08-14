@@ -82,88 +82,52 @@ declare module '@freecut/embedded' {
     revealFile(filePath: string): Promise<void>
   }
 
-  export interface EmbeddedAiAssistantConfig {
+  export interface EmbeddedDeepSeekHarnessConfig {
     baseUrl: string
     model: string
     contextWindowTokens: number
     hasApiKey: boolean
-    nativeToolCalling: boolean
   }
 
-  export interface EmbeddedAiAssistantConfigInput {
+  export interface EmbeddedDeepSeekHarnessConfigInput {
     baseUrl: string
     model: string
     contextWindowTokens: number
     apiKey?: string
     clearApiKey?: boolean
-    nativeToolCalling?: boolean
   }
 
-  export interface EmbeddedAiAssistantConfigTestResult {
-    config: EmbeddedAiAssistantConfig
+  export interface EmbeddedDeepSeekHarnessConfigTestResult {
+    config: EmbeddedDeepSeekHarnessConfig
     connected: boolean
-    nativeToolCalling: boolean
     message: string
   }
 
-  export interface EmbeddedAiAssistantToolDefinition {
-    name: string
-    description: string
-    parameters: {
-      type: 'object'
-      properties: Record<string, unknown>
-      required?: string[]
-      additionalProperties?: boolean
-    }
+  export interface EmbeddedDeepSeekHarnessWebState {
+    projectId: string
+    status: 'starting' | 'ready' | 'error'
+    url?: string
+    error?: string
   }
 
-  export interface EmbeddedAiAssistantToolCall {
-    id: string
-    name: string
-    arguments: string
-  }
-
-  export interface EmbeddedAiAssistantTokenUsage {
-    promptTokens: number
-    completionTokens: number
-    totalTokens: number
-    cachedTokens: number
-  }
-
-  export type EmbeddedAiAssistantMessage =
-    | { role: 'system' | 'user'; content: string }
-    | { role: 'assistant'; content?: string; toolCalls?: EmbeddedAiAssistantToolCall[] }
-    | { role: 'tool'; toolCallId: string; content: string }
-
-  export interface EmbeddedAiAssistantGenerateInput {
+  export interface EmbeddedDeepSeekHarnessSourceToolRequest {
     requestId: string
-    messages: EmbeddedAiAssistantMessage[]
-    mode?: 'auto' | 'json'
-    tools?: EmbeddedAiAssistantToolDefinition[]
-    maxTokens: number
-    temperature: number
-    reasoningEffort: EmbeddedAiAssistantReasoningEffort
+    projectId: string
+    name: string
+    args: Record<string, unknown>
   }
 
-  export type EmbeddedAiAssistantReasoningEffort = 'low' | 'high' | 'xhigh' | 'max'
-
-  export interface EmbeddedAiAssistantGenerateResult {
-    mode: 'tools' | 'json' | 'fallback'
-    content: string
-    toolCalls: EmbeddedAiAssistantToolCall[]
-    usage?: EmbeddedAiAssistantTokenUsage
-  }
-
-  export interface EmbeddedAiAssistantRequestStatus {
-    requestId: string
-    attempt: number
-    maxAttempts: number
-    state: 'waiting' | 'retrying' | 'streaming'
-    previewText?: string
-    previewKind?: 'reasoning' | 'content'
+  export interface EmbeddedDeepSeekHarnessBridge {
+    getConfig(): Promise<EmbeddedDeepSeekHarnessConfig>
+    saveConfig(input: EmbeddedDeepSeekHarnessConfigInput): Promise<EmbeddedDeepSeekHarnessConfig>
+    testConfig(input: EmbeddedDeepSeekHarnessConfigInput): Promise<EmbeddedDeepSeekHarnessConfigTestResult>
+    getWebUrl(projectId: string): Promise<string>
+    onWebState(callback: (state: EmbeddedDeepSeekHarnessWebState) => void): () => void
+    onSourceToolRequest(callback: (request: EmbeddedDeepSeekHarnessSourceToolRequest) => Promise<unknown>): () => void
   }
 
   export interface EmbeddedAiEditingSourceGitBridge {
+    root(projectId: string): Promise<string>
     ensure(projectId: string, initialFiles?: Record<string, string>): Promise<{ created: boolean; head: string | null }>
     status(projectId: string): Promise<{ branch: string | null; clean: boolean; entries: Array<{ path: string; change: 'added' | 'modified' | 'deleted' }> }>
     list(projectId: string, sourceDirectory?: string): Promise<Array<{ path: string; name: string; type: 'file' | 'directory' }>>
@@ -197,20 +161,13 @@ declare module '@freecut/embedded' {
       intensity: EmbeddedVisualAnalysisIntensity,
       onProgress?: (progress: EmbeddedTaskProgress) => void,
     ) => Promise<EmbeddedVisualEvidence>
-    onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
-    onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
-    onTestAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfigTestResult>
-    onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>
-    onCancelAiAssistant?: (requestId: string) => Promise<void>
-    onAiAssistantStatus?: (
-      callback: (status: EmbeddedAiAssistantRequestStatus) => void,
-    ) => () => void
+    onGetDeepSeekHarnessConfig?: () => Promise<EmbeddedDeepSeekHarnessConfig>
+    onSaveDeepSeekHarnessConfig?: (input: EmbeddedDeepSeekHarnessConfigInput) => Promise<EmbeddedDeepSeekHarnessConfig>
+    onTestDeepSeekHarnessConfig?: (input: EmbeddedDeepSeekHarnessConfigInput) => Promise<EmbeddedDeepSeekHarnessConfigTestResult>
+    onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
+    onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
+    onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
     editingSourceGit?: EmbeddedAiEditingSourceGitBridge
-    onAiEditingLog?: (
-      level: 'info' | 'warn' | 'error',
-      event: string,
-      details?: Record<string, unknown>,
-    ) => void
     onRenderHtmlFrame?: (
       request: EmbeddedHtmlRenderRequest,
     ) => Promise<EmbeddedHtmlRenderResult>

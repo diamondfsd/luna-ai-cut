@@ -73,6 +73,11 @@ const LazyColorTimelineNavigator = lazy(() =>
     default: ColorTimelineNavigator,
   })),
 )
+const LazyDeepSeekHarnessDock = lazy(() =>
+  import('./deepseek-harness-dock').then(({ DeepSeekHarnessDock }) => ({
+    default: DeepSeekHarnessDock,
+  })),
+)
 const EDITOR_PROJECT_ROUTE_ID = '/editor/$projectId'
 
 function workspaceTimelineSizeStorageKey(workspace: EditorWorkspaceId): string {
@@ -705,7 +710,7 @@ export const LoadedEditor = memo(function LoadedEditor({
       </InteractionLockRegion>
 
       {/* Main Layout: upper workspace + full-width timeline in Edit */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="relative flex-1 flex overflow-hidden">
         {/* Left Sidebar - Media Library (full column mode) */}
         {mediaFullColumn && !hidesDefaultSidebars && (
           <InteractionLockRegion locked={isMaskEditingActive}>
@@ -820,6 +825,13 @@ export const LoadedEditor = memo(function LoadedEditor({
             </ErrorBoundary>
           </InteractionLockRegion>
         )}
+
+        {/* AI is a separate full-height dock. It does not share the properties
+            sidebar's open state or width so both panels remain independently
+            adjustable. */}
+        <Suspense fallback={null}>
+          <LazyDeepSeekHarnessDock projectId={projectId} />
+        </Suspense>
 
       </div>
 

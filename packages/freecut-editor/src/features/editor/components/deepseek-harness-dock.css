@@ -1,0 +1,40 @@
+.deepseek-harness-dock {
+  flex: 0 0 auto;
+  min-width: 0;
+  background: hsl(var(--background));
+}
+
+.deepseek-harness-dock__content {
+  min-width: 0;
+}
+
+.deepseek-harness-dock__resize-handle {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  transition: background-color 120ms ease;
+}
+
+.deepseek-harness-dock__resize-handle:hover,
+.deepseek-harness-dock__resize-handle[data-resizing='true'] {
+  background: hsl(var(--primary) / 0.5);
+}
+
+.deepseek-harness-dock__reveal {
+  position: absolute;
+  z-index: 20;
+  top: 8px;
+  right: 0;
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background: hsl(var(--secondary) / 0.5);
+}
+
+.deepseek-harness-dock__reveal:hover {
+  background: hsl(var(--secondary));
+}

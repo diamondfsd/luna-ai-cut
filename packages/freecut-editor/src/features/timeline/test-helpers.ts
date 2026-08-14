@@ -101,12 +101,12 @@ export function makeTwoVideoTwoAudioTimelineTracks(height = 80): TimelineTrack[]
 export function resetTimelineItemsTestState() {
   useTimelineSettingsStore.setState({ fps: 30 })
   useItemsStore.getState().setItems([])
-  useItemsStore.getState().setTracks([])
+  useItemsStore.setState({ tracks: [] })
 }
 
 export function resetTimelineCompositionTestState() {
-  useItemsStore.getState().setTracks([])
   useItemsStore.getState().setItems([])
+  useItemsStore.setState({ tracks: [] })
   useTransitionsStore.getState().setTransitions([])
   useKeyframesStore.getState().setKeyframes([])
   useCompositionsStore.getState().setCompositions([])

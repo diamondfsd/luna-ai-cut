@@ -30,6 +30,9 @@ import type {
   FreecutExportApi,
   OriginalFileExportRequest,
   AiEditingSourceGitApi,
+  DeepSeekHarnessApi,
+  DeepSeekHarnessConfigInput,
+  DeepSeekHarnessSourceToolRequest,
 } from '../src/shared/types'
 import type { HtmlRenderApi } from './htmlRenderTypes'
 
@@ -83,9 +86,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   // 日志
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)
-  },
-  logAiEditing: (level, event, details) => {
-    ipcRenderer.send('ai-editing:log', level, event, details)
   },
   logExport: (message: string, meta?: unknown) => {
     return ipcRenderer.invoke('log:export', message, meta)
@@ -171,19 +171,33 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   connectWifi: (options: WifiConnectOptions) => ipcRenderer.invoke('wifiDebug:connect', options),
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
-  aiEditingAssistant: {
-    getConfig: () => ipcRenderer.invoke('ai-editing-assistant:get-config'),
-    saveConfig: (input) => ipcRenderer.invoke('ai-editing-assistant:save-config', input),
-    testConfig: (input) => ipcRenderer.invoke('ai-editing-assistant:test-config', input),
-    generate: (input) => ipcRenderer.invoke('ai-editing-assistant:generate', input),
-    cancel: (requestId: string) => ipcRenderer.invoke('ai-editing-assistant:cancel', requestId),
-    onStatus: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, status: import('../src/shared/types').AiEditingAssistantRequestStatus) => callback(status)
-      ipcRenderer.on('ai-editing-assistant:status', listener)
-      return () => ipcRenderer.removeListener('ai-editing-assistant:status', listener)
+  deepseekHarness: {
+    getConfig: () => ipcRenderer.invoke('deepseek-harness:get-config'),
+    saveConfig: (input: DeepSeekHarnessConfigInput) => ipcRenderer.invoke('deepseek-harness:save-config', input),
+    testConfig: (input: DeepSeekHarnessConfigInput) => ipcRenderer.invoke('deepseek-harness:test-config', input),
+    getWebUrl: (projectId: string) => ipcRenderer.invoke('deepseek-harness:get-web-url', projectId),
+    onWebState: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, state: import('../src/shared/types').DeepSeekHarnessWebState) => callback(state)
+      ipcRenderer.on('deepseek-harness:web-state', listener)
+      return () => ipcRenderer.removeListener('deepseek-harness:web-state', listener)
     },
-  },
+    onSourceToolRequest: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, request: DeepSeekHarnessSourceToolRequest) => {
+        void callback(request).then(
+          (result) => ipcRenderer.send('deepseek-harness:source-tool-response', { requestId: request.requestId, ok: true, result }),
+          (error: unknown) => ipcRenderer.send('deepseek-harness:source-tool-response', {
+            requestId: request.requestId,
+            ok: false,
+            error: error instanceof Error ? error.message : '源码工具调用失败。',
+          }),
+        )
+      }
+      ipcRenderer.on('deepseek-harness:source-tool-request', listener)
+      return () => ipcRenderer.removeListener('deepseek-harness:source-tool-request', listener)
+    },
+  } satisfies DeepSeekHarnessApi,
   aiEditingSourceGit: {
+    root: (projectId) => ipcRenderer.invoke('ai-editing-source-git:root', projectId),
     ensure: (projectId, initialFiles) => ipcRenderer.invoke('ai-editing-source-git:ensure', projectId, initialFiles),
     status: (projectId) => ipcRenderer.invoke('ai-editing-source-git:status', projectId),
     list: (projectId, sourceDirectory) => ipcRenderer.invoke('ai-editing-source-git:list', projectId, sourceDirectory),

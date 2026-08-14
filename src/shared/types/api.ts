@@ -33,16 +33,11 @@ import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type {
-  AiEditingAssistantConfig,
-  AiEditingAssistantConfigInput,
-  AiEditingAssistantConfigTestResult,
-  AiEditingAssistantGenerateInput,
-  AiEditingAssistantGenerateResult,
-  AiEditingAssistantRequestStatus,
   WorkspaceVisualAnalysisRequest,
   WorkspaceVisualAnalysisResult,
 } from './aiEditing'
 import type { AiEditingSourceGitApi } from './aiEditingSourceGit'
+import type { DeepSeekHarnessApi } from './deepseekHarness'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
 export interface WorkspaceSegmentationRequest {
@@ -204,7 +199,6 @@ export interface LunaApi {
   freecutExport: FreecutExportApi
   startupReady(): void
   log: (level: string, message: string, meta?: unknown) => void
-  logAiEditing: (level: 'info' | 'warn' | 'error', event: string, details?: Record<string, unknown>) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
   getLogDir: () => Promise<string>
   clearLogs: () => Promise<void>
@@ -315,14 +309,7 @@ export interface LunaApi {
     onProgress(callback: (progress: AiSelectionProgress) => void): () => void
     onSessionUpdated(callback: (session: AiSelectionSession) => void): () => void
   }
-  aiEditingAssistant: {
-    getConfig(): Promise<AiEditingAssistantConfig>
-    saveConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfig>
-    testConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfigTestResult>
-    generate(input: AiEditingAssistantGenerateInput): Promise<AiEditingAssistantGenerateResult>
-    cancel(requestId: string): Promise<void>
-    onStatus(callback: (status: AiEditingAssistantRequestStatus) => void): () => void
-  }
+  deepseekHarness: DeepSeekHarnessApi
   aiEditingSourceGit: AiEditingSourceGitApi
   workspace: {
     chooseMediaFiles(): Promise<string[]>

@@ -1,7 +1,5 @@
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import type {
-  EmbeddedAiAssistantConfigInput,
-  EmbeddedAiAssistantGenerateInput,
   EmbeddedMediaSource,
   EmbeddedTaskProgress,
   EmbeddedVisualAnalysisIntensity,
@@ -203,17 +201,17 @@ export function VideoEditorPage() {
     }
   }, [])
 
-  const handleGetAiAssistantConfig = useCallback(() => window.luna.aiEditingAssistant.getConfig(), [])
-  const handleSaveAiAssistantConfig = useCallback((input: EmbeddedAiAssistantConfigInput) =>
-    window.luna.aiEditingAssistant.saveConfig(input), [])
-  const handleTestAiAssistantConfig = useCallback((input: EmbeddedAiAssistantConfigInput) =>
-    window.luna.aiEditingAssistant.testConfig(input), [])
-  const handleGenerateAiAssistant = useCallback((input: EmbeddedAiAssistantGenerateInput) =>
-    window.luna.aiEditingAssistant.generate(input), [])
-  const handleCancelAiAssistant = useCallback((requestId: string) =>
-    window.luna.aiEditingAssistant.cancel(requestId), [])
-  const handleAiAssistantStatus = useCallback((callback: Parameters<typeof window.luna.aiEditingAssistant.onStatus>[0]) =>
-    window.luna.aiEditingAssistant.onStatus(callback), [])
+  const handleGetDeepSeekHarnessConfig = useCallback(() => window.luna.deepseekHarness.getConfig(), [])
+  const handleSaveDeepSeekHarnessConfig = useCallback((input: Parameters<typeof window.luna.deepseekHarness.saveConfig>[0]) =>
+    window.luna.deepseekHarness.saveConfig(input), [])
+  const handleTestDeepSeekHarnessConfig = useCallback((input: Parameters<typeof window.luna.deepseekHarness.testConfig>[0]) =>
+    window.luna.deepseekHarness.testConfig(input), [])
+  const handleGetDeepSeekHarnessWebUrl = useCallback((projectId: string) =>
+    window.luna.deepseekHarness.getWebUrl(projectId), [])
+  const handleDeepSeekHarnessWebState = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onWebState>[0]) =>
+    window.luna.deepseekHarness.onWebState(callback), [])
+  const handleDeepSeekHarnessSourceToolRequest = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onSourceToolRequest>[0]) =>
+    window.luna.deepseekHarness.onSourceToolRequest(callback), [])
   const handleRenderHtmlFrame = useCallback(
     (request: Parameters<typeof window.lunaHtmlRenderer.render>[0]) =>
       window.lunaHtmlRenderer.render(request),
@@ -269,14 +267,13 @@ export function VideoEditorPage() {
           onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
           onTranscribeMedia={handleTranscribeMedia}
           onAnalyzeMediaVisual={handleAnalyzeMediaVisual}
-          onGetAiAssistantConfig={handleGetAiAssistantConfig}
-          onSaveAiAssistantConfig={handleSaveAiAssistantConfig}
-          onTestAiAssistantConfig={handleTestAiAssistantConfig}
-          onGenerateAiAssistant={handleGenerateAiAssistant}
-          onCancelAiAssistant={handleCancelAiAssistant}
-          onAiAssistantStatus={handleAiAssistantStatus}
+          onGetDeepSeekHarnessConfig={handleGetDeepSeekHarnessConfig}
+          onSaveDeepSeekHarnessConfig={handleSaveDeepSeekHarnessConfig}
+          onTestDeepSeekHarnessConfig={handleTestDeepSeekHarnessConfig}
+          onGetDeepSeekHarnessWebUrl={handleGetDeepSeekHarnessWebUrl}
+          onDeepSeekHarnessWebState={handleDeepSeekHarnessWebState}
+          onDeepSeekHarnessSourceToolRequest={handleDeepSeekHarnessSourceToolRequest}
           editingSourceGit={window.luna.aiEditingSourceGit}
-          onAiEditingLog={window.luna.logAiEditing}
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}
         />

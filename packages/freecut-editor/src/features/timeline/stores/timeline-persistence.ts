@@ -963,12 +963,27 @@ export async function saveTimeline(projectId: string): Promise<void> {
     })
 
     const updatedAt = Date.now()
+    let projectJsonTimeline = sanitizedTimeline
     if (!isAiEditingSourceWriteOwned()) {
-      await writeProjectSource({
+      const sourceProject = {
         ...project,
         timeline: sanitizedTimeline,
         updatedAt,
-      })
+      }
+      const sourceWritten = await writeProjectSource(sourceProject)
+
+      // project-source is the authoring format when the host exposes it. Read
+      // the compiled result back before writing project.json so normalization
+      // and source-specific representations cannot leave two timelines that
+      // differ subtly. Without a source bridge, project.json remains the
+      // standalone workspace format.
+      if (sourceWritten) {
+        const compiledSourceProject = await readProjectSource(projectId)
+        if (!compiledSourceProject?.timeline) {
+          throw new Error(`Project source did not produce a timeline: ${projectId}`)
+        }
+        projectJsonTimeline = compiledSourceProject.timeline
+      }
     }
 
     // Generate thumbnail — prefer capturing the existing preview canvas
@@ -1062,7 +1077,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
     // pre-await `project` snapshot would clobber those newer fields.
     // Clear the deprecated inline thumbnail field when using thumbnailId.
     await updateProject(projectId, {
-      timeline: sanitizedTimeline,
+      timeline: projectJsonTimeline,
       ...(thumbnailId && { thumbnailId, thumbnail: undefined }),
       updatedAt,
     })

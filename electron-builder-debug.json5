@@ -21,6 +21,16 @@
       "filter": ["dovi_tool", "dovi_tool.exe", "mp4mux", "mp4mux.exe"]
     },
     {
+      "from": "dist/deepseek-harness",
+      "to": "deepseek-harness",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/node-runtime",
+      "to": "node-runtime",
+      "filter": ["**/*"]
+    },
+    {
       "from": "luna-render-core/luna-render-core.node",
       "to": "luna-render-core/luna-render-core.node"
     },
