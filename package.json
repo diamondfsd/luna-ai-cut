@@ -18,6 +18,7 @@
   "scripts": {
     "predev": "node scripts/build-native.mjs && node scripts/copy-dolby-tools.mjs && pnpm run build:harness-runtime",
     "build:harness-runtime": "node scripts/build-deepseek-harness-web.mjs",
+    "update:deepseek-harness": "node scripts/update-deepseek-harness.mjs",
     "prepare:node-runtime": "node scripts/prepare-node-runtime.mjs",
     "dev": "vite",
     "build": "node scripts/build-native.mjs && tsc && vite build && pnpm run build:harness-runtime && pnpm run prepare:node-runtime && node scripts/copy-ffmpeg.mjs && node scripts/copy-dolby-tools.mjs && electron-builder",
