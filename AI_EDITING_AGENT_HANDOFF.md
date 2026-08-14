@@ -23,11 +23,11 @@
 
 ## 目标架构
 
-剪辑助手应被视为一个对视频工程源码执行编码工作的内置 Agent：
+剪辑助手应被视为一个对视频工程执行结构化编辑工作的内置 Agent：
 
-- 人工编辑与 AI 编辑操作同一套项目源码，渲染层直接依赖这套源码。
-- AI 使用 `source.read`、`source.replace`、`source.create`、`source.remove` 修改文件。
-- `source.replace` 使用原文匹配作为乐观并发控制；原文变化时失败，Agent 再读取并重试，不依赖 Git revision 校验。
+- 人工编辑与 AI 编辑操作同一套时间轴状态，渲染层直接依赖这套工程。
+- AI 先通过 `project.inspect` 或 `timeline.inspect_context` 读取结构化上下文，再调用 `timeline.*` 工具编辑。
+- AI 不直接修改源码 JSON；时间轴工具负责参数校验、级联关系、保存和回读校验。
 - Git 只负责查看变更和提交，不作为人工编辑与 AI 编辑同步的额外协议。
 - 当前工具数量有限，完整工具定义固定放入稳定 system 前缀；同一轮 Native 调用复用同一份函数目录。
 - 对话只在真实输入 token 达到模型上下文窗口 80% 时压缩，不使用字符数或消息数量估算。

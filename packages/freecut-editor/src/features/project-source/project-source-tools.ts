@@ -1,11 +1,8 @@
 import { z } from 'zod'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
-import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import { readProjectSource } from '@freecut/features/project-source/project-source-worktree'
-import {
-  acquireAiEditingSourceWriteOwnership,
-} from '@freecut/features/project-source/project-source-write-ownership'
+import { TIMELINE_AI_TOOLS } from './project-source-ai-tools'
 export interface ProjectSourceJsonSchema {
   type: 'object'
   properties: Record<string, unknown>
@@ -153,45 +150,6 @@ const sourceSearch = tool({
   },
 })
 
-const sourceApplyChanges = tool({
-  name: 'source.apply_changes',
-  description: '按 expectedContent 原子修改工程源码，并校验源码可以重新编译成时间轴。修改成功后重新加载编辑器。',
-  inputSchema: schema({
-    changes: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 20,
-      items: { type: 'object', properties: { path: { type: 'string' }, content: { type: ['string', 'null'] }, expectedContent: { type: ['string', 'null'] } }, required: ['path', 'content', 'expectedContent'], additionalProperties: false },
-    },
-  }, ['changes']),
-  schema: z.object({ changes: z.array(z.object({ path: z.string().min(1), content: z.string().nullable(), expectedContent: z.string().nullable() })).min(1).max(20) }),
-  execute: async (args) => {
-    for (const change of args.changes) {
-      if (!isEditableSourcePath(change.path)) {
-        throw new Error(`不允许修改 ${change.path}，只能修改 manifest、sequences 和 components 下的 JSON 源码。`)
-      }
-    }
-    const projectId = currentProjectId()
-    const source = bridge()
-    const release = acquireAiEditingSourceWriteOwnership()
-    try {
-      await source.applyChanges(projectId, args.changes)
-      try {
-        const compiled = await readProjectSource(projectId)
-        if (!compiled?.timeline) throw new Error('源码没有生成有效的时间轴。')
-      } catch (error) {
-        const rollback = args.changes.map((change) => ({ path: change.path, content: change.expectedContent, expectedContent: change.content }))
-        await source.applyChanges(projectId, rollback)
-        throw error
-      }
-      await useTimelineStore.getState().loadTimeline(projectId)
-      return { ok: true, message: `已应用 ${args.changes.length} 个源码文件的修改，并重新加载时间轴。`, data: { paths: args.changes.map((change) => change.path) } }
-    } finally {
-      release()
-    }
-  },
-})
-
 const sourceCheck = tool({
   name: 'source.check',
   description: '解析并校验当前工程源码，确认引用关系和时间轴结构完整。',
@@ -224,7 +182,14 @@ const sourceDiff = tool({
   },
 })
 
-export const PROJECT_SOURCE_TOOLS: readonly ProjectSourceTool[] = [sourceTree, sourceRead, sourceSearch, sourceApplyChanges, sourceCheck, sourceDiff]
+export const PROJECT_SOURCE_TOOLS: readonly ProjectSourceTool[] = [
+  sourceTree,
+  sourceRead,
+  sourceSearch,
+  sourceCheck,
+  sourceDiff,
+  ...TIMELINE_AI_TOOLS,
+]
 
 /** Renderer-side capability adapter used by the DeepSeek Harness plugin. */
 export async function executeProjectSourceTool(

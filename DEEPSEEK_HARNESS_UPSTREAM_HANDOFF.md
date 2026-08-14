@@ -126,7 +126,7 @@ pnpm run lint
 - 用户消息原样传递给模型。
 - FreeCut 工具结果会返回 Harness，由模型决定下一步。
 - 工具成功后宿主不会根据文案自行宣告任务完成。
-- `source.apply_changes` 的路径校验、并发保护、失败回滚和时间轴刷新仍然有效。
+- FreeCut 的源码插件不再暴露原始源码写入能力；剪辑编辑统一经过结构化 `timeline.*` 工具，工具结果仍必须回传 Harness，由模型决定下一步。
 - 上游依赖更新没有破坏生产包中的 `resources/deepseek-harness/`。
 
 ## 交接结论
