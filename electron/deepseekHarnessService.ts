@@ -251,7 +251,13 @@ async function readDocument(filePath: string): Promise<Record<string, unknown>> 
   }
 }
 
-async function ensureWebPatch(home: string): Promise<void> {
+async function ensureWebPatch(home: string, config: {
+  cwd: string
+  endpoint: string
+  token: string
+  projectId: string
+  model: string
+}): Promise<void> {
   const patchPath = path.join(home, 'cordis.patch.yml')
   let patches: unknown[] = []
   try {
@@ -261,33 +267,70 @@ async function ensureWebPatch(home: string): Promise<void> {
     // The home patch is a generated deployment override. A malformed or
     // missing file should not prevent the embedded Web profile from starting.
   }
-  const retained = patches.filter((entry) =>
-    !entry || typeof entry !== 'object' || Array.isArray(entry) || (entry as Record<string, unknown>).id !== 'ui-jobs')
+  const retained = patches.filter((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return true
+    const record = entry as Record<string, unknown>
+    if (record.id === 'ui-jobs' || record.id === 'luna-freecut') return false
+    const inserted = record.insert
+    return !Array.isArray(inserted) || !inserted.some((row) =>
+      row && typeof row === 'object' && !Array.isArray(row) && (row as Record<string, unknown>).id === 'luna-freecut')
+  })
   retained.push({ id: 'ui-jobs', disabled: true })
+  retained.push({
+    insert: [{
+      id: 'luna-freecut',
+      name: sourcePluginPath().replaceAll('\\', '\\\\'),
+      config: {
+        ...config,
+      },
+    }],
+  })
   await writePrivateDocument(patchPath, retained)
 }
 
-async function prepareHarnessHome(config: Awaited<ReturnType<typeof readDeepSeekHarnessConfig>>, projectId: string, token: string, endpoint: string): Promise<void> {
+async function prepareHarnessHome(
+  config: Awaited<ReturnType<typeof readDeepSeekHarnessConfig>>,
+  projectId: string,
+  token: string,
+  endpoint: string,
+  cwd: string,
+): Promise<void> {
   const home = dshHome()
   const settingsPath = path.join(home, 'settings.yaml')
   const currentSettings = await readDocument(settingsPath)
   currentSettings['llm-deepseek'] = {
     ...(currentSettings['llm-deepseek'] as Record<string, unknown> | undefined),
     baseURL: config.baseUrl,
-    models: [{ id: config.model, name: config.model, contextWindow: config.contextWindowTokens }],
+    maxTokens: config.maxOutputTokens,
+    models: [{
+      id: config.model,
+      name: config.model,
+      contextWindow: config.contextWindowTokens,
+      maxTokens: config.maxOutputTokens,
+    }],
   }
   currentSettings['agent-default-model'] = { provider: 'deepseek-official', model: config.model }
   currentSettings['agent-presets'] = { default: 'luna-freecut' }
+  const existingTheme = currentSettings['ui-theme']
+  const existingPreference = existingTheme && typeof existingTheme === 'object' && !Array.isArray(existingTheme)
+    ? (existingTheme as Record<string, unknown>).preference
+    : undefined
+  currentSettings['ui-theme'] = {
+    ...(existingTheme && typeof existingTheme === 'object' && !Array.isArray(existingTheme) ? existingTheme : {}),
+    preference: existingPreference === 'light' || existingPreference === 'dark' || existingPreference === 'system'
+      ? existingPreference
+      : 'dark',
+  }
   await writePrivateDocument(settingsPath, currentSettings)
-  await ensureWebPatch(home)
+  await ensureWebPatch(home, { cwd, endpoint, token, projectId, model: config.model })
   await writePrivateDocument(path.join(home, '.credentials.yaml'), { DEEPSEEK_API_KEY: requireDeepSeekHarnessApiKey(config) })
 
   const presetDir = path.join(home, '.agent-presets', 'luna-freecut')
   await fs.mkdir(presetDir, { recursive: true, mode: 0o700 })
   const standard = await fs.readFile(standardPresetPath(), 'utf8')
-  const pluginPath = sourcePluginPath().replaceAll('\\', '\\\\')
-  const preset = `${standard.trimEnd()}\n\n- id: luna-freecut-source\n  name: ${JSON.stringify(pluginPath)}\n  config:\n    endpoint: ${JSON.stringify(endpoint)}\n    token: ${JSON.stringify(token)}\n    projectId: ${JSON.stringify(projectId)}\n\n`
-  await fs.writeFile(path.join(presetDir, 'agent.cordis.yml'), preset, { encoding: 'utf8', mode: 0o600 })
+  // FreeCut's plugin is mounted by the Web profile patch so it can also
+  // register the default workspace before the first browser session exists.
+  await fs.writeFile(path.join(presetDir, 'agent.cordis.yml'), standard, { encoding: 'utf8', mode: 0o600 })
   await fs.writeFile(path.join(presetDir, 'preset.yml'), 'name: Luna AI Cut\ndescription: 当前项目源码编辑能力\n', { encoding: 'utf8', mode: 0o600 })
 }
 
@@ -323,9 +366,9 @@ async function startRuntime(projectId: string, generation: number): Promise<stri
   const apiKey = requireDeepSeekHarnessApiKey(config)
   const endpoint = await ensureSourceToolServer()
   const token = randomUUID()
-  await prepareHarnessHome({ ...config, apiKey }, projectId, token, endpoint)
-  if (generation !== runtimeGeneration) throw new Error('DeepSeek Harness Web 启动已取消。')
   const cwd = projectSourceRoot(projectId)
+  await prepareHarnessHome({ ...config, apiKey }, projectId, token, endpoint, cwd)
+  if (generation !== runtimeGeneration) throw new Error('DeepSeek Harness Web 启动已取消。')
   const child = spawn(harnessNodeExecutable(), [cliEntry(), 'web', '--host', '127.0.0.1', '--port', '0'], {
     cwd,
     env: {
@@ -369,7 +412,7 @@ async function startRuntime(projectId: string, generation: number): Promise<stri
       await terminateChild(child)
       throw new Error('DeepSeek Harness Web 启动已取消。')
     }
-    runtime = { projectId, key: `${projectId}\u0000${config.baseUrl}\u0000${config.model}\u0000${config.contextWindowTokens}`, process: child, token, url }
+    runtime = { projectId, key: `${projectId}\u0000${config.baseUrl}\u0000${config.model}\u0000${config.contextWindowTokens}\u0000${config.maxOutputTokens}`, process: child, token, url }
     child.once('close', () => {
       if (runtime?.process === child) {
         runtime = undefined
@@ -423,7 +466,7 @@ export function testDeepSeekHarnessPublicConfig(
 export async function getDeepSeekHarnessWebUrl(projectId: string): Promise<string> {
   const config = await readDeepSeekHarnessConfig()
   requireDeepSeekHarnessApiKey(config)
-  const key = `${projectId}\u0000${config.baseUrl}\u0000${config.model}\u0000${config.contextWindowTokens}`
+  const key = `${projectId}\u0000${config.baseUrl}\u0000${config.model}\u0000${config.contextWindowTokens}\u0000${config.maxOutputTokens}`
   if (runtime?.key === key && runtime.process.exitCode === null) return runtime.url
   await stopRuntime()
   if (!startingRuntime) {

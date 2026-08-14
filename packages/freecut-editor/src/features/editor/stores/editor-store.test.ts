@@ -22,7 +22,7 @@ describe('editor-store', () => {
     localStorage.removeItem('editor:workspaceTimelineSize:color')
     localStorage.removeItem('editor:workspaceTimelineSize:animate')
     localStorage.removeItem('editor:propertiesFullColumn')
-    localStorage.removeItem('editor:aiSidebarOpen')
+    localStorage.removeItem('editor:aiSidebarOpen:v2')
     localStorage.removeItem('editor:aiSidebarWidth')
 
     // Reset store to defaults between tests
@@ -95,7 +95,7 @@ describe('editor-store', () => {
     expect(useEditorStore.getState().aiSidebarWidth).toBe(480)
     expect(useEditorStore.getState().rightSidebarOpen).toBe(true)
     expect(useEditorStore.getState().rightSidebarWidth).toBe(340)
-    expect(localStorage.getItem('editor:aiSidebarOpen')).toBe('false')
+    expect(localStorage.getItem('editor:aiSidebarOpen:v2')).toBe('false')
     expect(localStorage.getItem('editor:aiSidebarWidth')).toBe('480')
   })
 

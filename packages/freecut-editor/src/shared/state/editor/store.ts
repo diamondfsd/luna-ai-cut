@@ -21,7 +21,9 @@ const LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH = 288
 const WORKSPACE_STORAGE_KEY = 'editor:workspace'
 const TRACK_SIZE_PRESET_STORAGE_KEY = 'editor:trackSizePreset'
 const TRACK_PREVIEW_COLLAPSED_STORAGE_KEY = 'editor:trackPreviewCollapsed'
-const AI_SIDEBAR_OPEN_STORAGE_KEY = 'editor:aiSidebarOpen'
+// Reset the first-run state after the AI dock was introduced; the legacy key
+// could leave the newly integrated chat panel permanently collapsed.
+const AI_SIDEBAR_OPEN_STORAGE_KEY = 'editor:aiSidebarOpen:v2'
 const AI_SIDEBAR_WIDTH_STORAGE_KEY = 'editor:aiSidebarWidth'
 
 function loadTrackSizePreset(): TrackSizePreset {

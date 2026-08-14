@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionId, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import { SessionRuntime } from '../src/client/sessions/service.ts'
 import { WorkspaceManager } from '../src/client/workspaces/manager.ts'
@@ -522,6 +522,23 @@ describe('WorkspaceRuntime', () => {
 })
 
 describe('startInitialSelection', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubEmbeddedProject(path: string): void {
+    const attributes = new Map([
+      ['data-luna-freecut', ''],
+      ['data-luna-freecut-cwd', path],
+    ])
+    vi.stubGlobal('document', {
+      documentElement: {
+        hasAttribute: (name: string) => attributes.has(name),
+        getAttribute: (name: string) => attributes.get(name) ?? null,
+      },
+    })
+  }
+
   function bench() {
     const ctx = new Context()
     const api = new FakeApiClient()
@@ -571,6 +588,29 @@ describe('startInitialSelection', () => {
     expect(noRecent.api.callsOf('session.create')).toHaveLength(0)
     expect(() => noRecent.workspaces.startInitialSelection()).toThrow(/already started/)
     stopEmpty()
+  })
+
+  it('opens the host project Workspace in embedded mode instead of the restored current session', async () => {
+    stubEmbeddedProject('/w/project')
+    const b = bench()
+    b.api.onList = () => Promise.resolve(ok({
+      items: [{ sessionId: sid('s-other'), updatedAt: 1, running: false, blank: false }] as never[],
+    }))
+    await b.sessions.refresh()
+    b.sessions.open(sid('s-other'))
+    b.api.onWorkspaceList = () => Promise.resolve(ok({
+      items: [
+        workspace('other', [sid('s-other')], '2026-02-02T00:00:00.000Z'),
+        workspace('project', [], '2026-01-01T00:00:00.000Z'),
+      ] as never[],
+    }))
+    b.api.onCreate = () => Promise.resolve(ok({ sessionId: sid('s-project') }))
+    const stop = b.workspaces.startInitialSelection()
+    await b.workspaces.refresh()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(b.api.callsOf('session.create')).toEqual([{ workspaceId: 'project' }])
+    expect(b.sessions.list.getSnapshot().current).toBe('s-project')
+    stop()
   })
 
   it('a failed connect returns to waiting and retries on the next list change', async () => {

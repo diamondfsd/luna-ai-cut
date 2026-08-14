@@ -86,6 +86,7 @@ declare module '@freecut/embedded' {
     baseUrl: string
     model: string
     contextWindowTokens: number
+    maxOutputTokens: number
     hasApiKey: boolean
   }
 
@@ -93,6 +94,7 @@ declare module '@freecut/embedded' {
     baseUrl: string
     model: string
     contextWindowTokens: number
+    maxOutputTokens: number
     apiKey?: string
     clearApiKey?: boolean
   }
