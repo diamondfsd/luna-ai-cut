@@ -256,7 +256,12 @@ export const DeepSeekHarnessPanel = memo(function DeepSeekHarnessPanel({
           <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setSettingsOpen(true)}><Settings2 className="h-3.5 w-3.5" />配置连接</Button>
         </div>
       ) : webUrl ? (
-        <iframe className="deepseek-harness-panel__webview min-h-0 flex-1" src={webUrl} title="DeepSeek Harness" />
+        <iframe
+          className="deepseek-harness-panel__webview min-h-0 flex-1"
+          src={webUrl}
+          title="DeepSeek Harness"
+          allow="clipboard-read; clipboard-write"
+        />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
           {error ? <p className="deepseek-harness-config-error rounded-md px-3 py-2" role="alert">{error}</p> : <Loader2 className="h-5 w-5 animate-spin" aria-label="正在打开 AI 助手" />}
