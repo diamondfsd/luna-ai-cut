@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { readProjectSource } from '@freecut/features/project-source/project-source-worktree'
+import { MEDIA_AI_TOOLS } from './project-source-media-tools'
 import { TIMELINE_AI_TOOLS } from './project-source-ai-tools'
 export interface ProjectSourceJsonSchema {
   type: 'object'
@@ -188,6 +189,7 @@ export const PROJECT_SOURCE_TOOLS: readonly ProjectSourceTool[] = [
   sourceSearch,
   sourceCheck,
   sourceDiff,
+  ...MEDIA_AI_TOOLS,
   ...TIMELINE_AI_TOOLS,
 ]
 

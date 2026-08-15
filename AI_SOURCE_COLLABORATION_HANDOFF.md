@@ -25,6 +25,10 @@ FreeCut 不维护第二套 Agent loop，不维护自己的业务提示词，不�
 - source.search
 - source.check
 - source.diff
+- media.list
+- media.read
+- media.analyze
+- media.search_transcript
 - project.inspect
 - timeline.inspect_context
 - timeline.trim / timeline.split / timeline.move / timeline.remove
@@ -40,6 +44,7 @@ AI 剪辑不暴露原始源码写入工具，所有编辑都经过现有时间�
 - 删除、切分、转场和关键帧复用编辑器已有级联与修复逻辑。
 - 每次编辑保存后回读工程源码，并再次检查时间轴引用完整性。
 - source.* 仅用于只读诊断和查看源码差异，模型不能借此绕过时间轴工具改 JSON。
+- media.list 只读取当前项目已关联素材的元数据；media.read 读取已生成的本地画面理解和带时间点字幕；media.analyze 显式触发本地口播识别或视频抽帧理解。它们不向模型返回本地路径、文件句柄或原始素材内容。
 
 ## 连接配置
 
