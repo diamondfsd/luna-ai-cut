@@ -163,6 +163,7 @@ export interface EmbeddedAiEditingSourceGitBridge {
 
 export interface EmbeddedHostBridge {
   requestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
+  revealFile?: (filePath: string) => Promise<void>
   describeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
   inspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
   readNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>

@@ -153,6 +153,7 @@ declare module '@freecut/embedded' {
 
   export interface FreeCutEditorProps {
     onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
+    onRevealFile?: (filePath: string) => Promise<void>
     onDescribeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
     onInspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
     onReadNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>

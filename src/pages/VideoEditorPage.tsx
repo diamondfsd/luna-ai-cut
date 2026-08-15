@@ -79,6 +79,8 @@ export function VideoEditorPage() {
     })
   }, [])
 
+  const handleRevealFile = useCallback((filePath: string) => window.luna.revealFile(filePath), [])
+
   const handleImportPaths = useCallback(async (paths: string[]) => {
     const importFiles = pendingImportRef.current
     if (!importFiles) throw new Error('导入任务已取消')
@@ -261,6 +263,7 @@ export function VideoEditorPage() {
       >
         <FreeCutEditor
           onRequestMediaImport={handleRequestMediaImport}
+          onRevealFile={handleRevealFile}
           onDescribeDroppedMediaFiles={handleDescribeDroppedMediaFiles}
           onInspectNativeMediaFile={handleInspectNativeMediaFile}
           onReadNativeMediaFile={handleReadNativeMediaFile}
