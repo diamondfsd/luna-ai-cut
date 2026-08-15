@@ -28,7 +28,7 @@ import {
 } from '../src/shared/lrcInitGuardRecovery'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
-import { appIconPath, createMainWindow } from './windowService'
+import { activateMainWindow, appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
@@ -295,6 +295,8 @@ app.on('activate', () => {
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
+  } else if (win && !win.isDestroyed()) {
+    activateMainWindow(win)
   }
 })
 
