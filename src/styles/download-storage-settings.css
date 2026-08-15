@@ -1,0 +1,17 @@
+.download-storage-setting-row .settings-row-copy em {
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.download-storage-setting-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .download-storage-setting-row {
+    align-items: start;
+  }
+}

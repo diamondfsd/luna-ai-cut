@@ -10,6 +10,7 @@ import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import { Button, Dialog, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
+import '../styles/download-storage-settings.css'
 
 interface SettingsPageProps {
   activeDevice?: DeviceDefinition
@@ -75,6 +76,8 @@ export function SettingsPage({
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
   const [gpuPreviewConfirmOpen, setGpuPreviewConfirmOpen] = useState(false)
+  const [organizeDownloadsDialogOpen, setOrganizeDownloadsDialogOpen] = useState(false)
+  const [organizingDownloads, setOrganizingDownloads] = useState(false)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, setSettings)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -147,6 +150,37 @@ export function SettingsPage({
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
+  async function saveDownloadOrganizationSetting(enabled: boolean): Promise<void> {
+    if (!settings) return
+    const previous = settings.organizeDownloadsByDate ?? false
+    setSettings((current) => (current ? { ...current, organizeDownloadsByDate: enabled } : current))
+    try {
+      setSettings(await window.luna.saveSettings({ organizeDownloadsByDate: enabled }))
+    } catch (error) {
+      setSettings((current) => (current ? { ...current, organizeDownloadsByDate: previous } : current))
+      toast.error(error instanceof Error ? error.message : '下载设置保存失败')
+    }
+  }
+
+  async function organizeOldDownloads(): Promise<void> {
+    setOrganizingDownloads(true)
+    try {
+      const result = await window.luna.organizeDownloadedFiles()
+      if (result.failed > 0) {
+        toast.error(`已整理 ${result.moved} 个文件，${result.failed} 个文件整理失败`)
+      } else if (result.moved > 0) {
+        toast.success(`已整理 ${result.moved} 个文件${result.skipped > 0 ? `，${result.skipped} 个文件保留原处` : ''}`)
+      } else {
+        toast.success(result.skipped > 0 ? `没有需要移动的文件，${result.skipped} 个文件保留原处` : '没有发现可整理的旧下载')
+      }
+      setOrganizeDownloadsDialogOpen(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '旧下载整理失败')
+    } finally {
+      setOrganizingDownloads(false)
+    }
+  }
+
   return (
     <section className="settings-surface">
       <div className="settings-list">
@@ -167,6 +201,31 @@ export function SettingsPage({
               onOpen={() => openDirectory(settings?.localResourcesDir)}
               onChange={chooseLocalResourcesDir}
             />
+            <article className="settings-row download-storage-setting-row">
+              <div className="settings-row-copy">
+                <span>按日期分文件夹</span>
+                <em>{settings?.organizeDownloadsByDate ? '新下载会放入拍摄日期文件夹' : '新下载直接保存在下载目录中'}</em>
+              </div>
+              <div className="download-storage-setting-actions">
+                {settings?.organizeDownloadsByDate && (
+                  <Button
+                    variant="secondary"
+                    size="compact"
+                    disabled={organizingDownloads}
+                    onClick={() => setOrganizeDownloadsDialogOpen(true)}
+                    icon={<ArrowRightLeft size={15} />}
+                  >
+                    {organizingDownloads ? '整理中' : '整理旧下载'}
+                  </Button>
+                )}
+                <Switch
+                  checked={settings?.organizeDownloadsByDate ?? false}
+                  disabled={!settings || organizingDownloads}
+                  ariaLabel="按日期分文件夹"
+                  onCheckedChange={(enabled) => void saveDownloadOrganizationSetting(enabled)}
+                />
+              </div>
+            </article>
             <DirectorySettingRow
               label="导出目录"
               path={settings?.exportDir ?? ''}
@@ -321,6 +380,22 @@ export function SettingsPage({
               setGpuPreviewConfirmOpen(false)
               saveGpuPreviewSetting(true)
             }}>仍然开启</Button>
+          </>
+        )}
+      />
+      <Dialog
+        open={organizeDownloadsDialogOpen}
+        onOpenChange={(open) => {
+          if (!organizingDownloads) setOrganizeDownloadsDialogOpen(open)
+        }}
+        title="整理旧下载？"
+        description="应用会把下载目录根目录中的媒体文件移入 YYYY-MM-DD 文件夹。无法识别拍摄日期或遇到同名文件的项目会保留原处。"
+        footer={(
+          <>
+            <Button variant="secondary" disabled={organizingDownloads} onClick={() => setOrganizeDownloadsDialogOpen(false)}>取消</Button>
+            <Button variant="primary" disabled={organizingDownloads} onClick={() => void organizeOldDownloads()}>
+              {organizingDownloads ? '整理中' : '开始整理'}
+            </Button>
           </>
         )}
       />

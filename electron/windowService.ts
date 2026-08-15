@@ -12,6 +12,14 @@ interface MainWindowOptions {
   abortExports: () => void
 }
 
+export function activateMainWindow(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  if (!win.isVisible()) win.show()
+  win.focus()
+  if (process.platform === 'darwin') app.focus({ steal: true })
+}
+
 export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   let forceQuitAfterTaskCancel = false
   const win = new BrowserWindow({
@@ -20,6 +28,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     height: 820,
     minWidth: 1040,
     minHeight: 680,
+    show: false,
     icon: options.iconPath,
     autoHideMenuBar: true,
     webPreferences: {
@@ -34,6 +43,8 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   win.on('page-title-updated', (event) => {
     event.preventDefault()
   })
+
+  win.once('ready-to-show', () => activateMainWindow(win))
 
   win.on('close', (event) => {
     const hasDownloadTasks = options.hasActiveDownloads()

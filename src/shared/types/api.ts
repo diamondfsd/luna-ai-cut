@@ -4,7 +4,7 @@ import type { CameraDeleteResult, FileCopyResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
 import type { CustomWatermarkAsset, WatermarkSettings } from './watermark'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest, VideoExportSettings } from './video'
-import type { DownloadProgress, DownloadRecord, DownloadSummary } from './download'
+import type { DownloadOrganizationResult, DownloadProgress, DownloadRecord, DownloadSummary } from './download'
 import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord, OriginalFileExportRequest } from './export'
 import type { MockServerStatus } from './mock'
 import type {
@@ -181,6 +181,7 @@ export interface LunaApi {
   getMockServerStatus(): Promise<MockServerStatus>
   getCacheStats(): Promise<CacheStats>
   clearCache(): Promise<CacheStats>
+  organizeDownloadedFiles(): Promise<DownloadOrganizationResult>
   migrateLocalStorage(): Promise<StorageMigrationResult | null>
   listCustomLuts(): Promise<CustomLutFile[]>
   deleteCustomLut(filePath: string): Promise<void>

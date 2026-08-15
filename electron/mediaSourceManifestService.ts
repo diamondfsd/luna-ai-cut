@@ -30,6 +30,14 @@ function manifestPath(dir: string): string {
   return path.join(dir, MANIFEST_FILE)
 }
 
+function manifestKey(outputDir: string, filePath: string): string {
+  const relative = path.isAbsolute(filePath) ? path.relative(outputDir, filePath) : filePath
+  if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
+    return path.basename(filePath)
+  }
+  return relative.split(path.sep).join('/')
+}
+
 async function readManifest(dir: string): Promise<SourceManifest> {
   try {
     const raw = await fs.readFile(manifestPath(dir), 'utf8')
@@ -93,14 +101,29 @@ export async function recordDownloadedFileSource(outputDir: string, destination:
   await withManifestWrite(outputDir, async () => {
     const fileName = path.basename(destination)
     const manifest = await readManifest(outputDir)
-    manifest.files[fileName] = normalizeRecord(fileName, file)
+    manifest.files[manifestKey(outputDir, destination)] = normalizeRecord(fileName, file)
+    await writeManifest(outputDir, manifest)
+  })
+}
+
+export async function moveSourceRecord(outputDir: string, sourcePath: string, targetPath: string): Promise<void> {
+  await withManifestWrite(outputDir, async () => {
+    const sourceKey = manifestKey(outputDir, sourcePath)
+    const targetKey = manifestKey(outputDir, targetPath)
+    if (sourceKey === targetKey) return
+    const manifest = await readManifest(outputDir)
+    const record = manifest.files[sourceKey]
+    if (!record) return
+    delete manifest.files[sourceKey]
+    manifest.files[targetKey] = { ...record, fileName: path.basename(targetPath) }
     await writeManifest(outputDir, manifest)
   })
 }
 
 export async function applySourceMetadataToFile(outputDir: string, file: LunaFile): Promise<LunaFile> {
   const manifest = await readManifest(outputDir)
-  const record = manifest.files[path.basename(file.downloadFilePath ?? file.localPath ?? file.downloadName)]
+  const filePath = file.downloadFilePath ?? file.localPath ?? file.downloadName
+  const record = manifest.files[manifestKey(outputDir, filePath)]
   if (!record) return file
   return {
     ...file,
@@ -116,7 +139,7 @@ export async function applySourceMetadataToFile(outputDir: string, file: LunaFil
 
 export async function readSourceRecord(outputDir: string, fileName: string): Promise<SourceRecord | null> {
   const manifest = await readManifest(outputDir)
-  return manifest.files[fileName] ?? null
+  return manifest.files[manifestKey(outputDir, fileName)] ?? null
 }
 
 export function withSourceMetadata<T extends LunaFile | DownloadRecord>(item: T, record: SourceRecord | null): T {

@@ -16,7 +16,7 @@ import { collectLunaNetworkDiagnostics } from './networkDiagnostics'
 export function register(): void {
   ipcMain.handle('downloads:records', async (_event, files: LunaFile[]) => {
     const settings = await getSettings()
-    return getDownloadedRecords(files, getLocalResourcesDir(settings))
+    return getDownloadedRecords(files, getLocalResourcesDir(settings), settings.organizeDownloadsByDate ?? false)
   })
 
   ipcMain.handle('wifi:openSettings', () => openWifiSettings())

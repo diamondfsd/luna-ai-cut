@@ -2,7 +2,8 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 import { lunaMediaAdapter } from './deviceMedia'
-import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
+import { labelsFor, localThumbnailUrl } from './filePathUtils'
+import { findDownloadedPath } from './downloadStorageService'
 import { readSourceRecord, withSourceMetadata } from './mediaSourceManifestService'
 import { logMainWarn } from './loggerService'
 import type { DownloadRecord, LunaFile } from '../src/shared/types'
@@ -11,28 +12,16 @@ function isGeneratedLivePreviewName(name: string): boolean {
   return name.toLowerCase().endsWith('.live.mp4')
 }
 
-function destinationFor(localResourcesDir: string, file: LunaFile): string {
-  return path.join(localResourcesDir, safeName(file.downloadName))
-}
-
-async function hasDownloadedRawCompanion(file: LunaFile, outputDir: string): Promise<boolean> {
-  if (!file.rawCompanion) return true
-  try {
-    return (await fs.stat(path.join(outputDir, safeName(file.rawCompanion.downloadName)))).isFile()
-  } catch {
-    return false
-  }
-}
-
-export async function getDownloadedRecords(files: LunaFile[], outputDir: string): Promise<DownloadRecord[]> {
+export async function getDownloadedRecords(files: LunaFile[], outputDir: string, preferDate = false): Promise<DownloadRecord[]> {
   const records: DownloadRecord[] = []
 
   for (const file of files) {
-    const destination = destinationFor(outputDir, file)
+    const destination = await findDownloadedPath(outputDir, file, preferDate)
+    if (!destination) continue
     try {
       const stats = await fs.stat(destination)
-      if (stats.isFile() && await hasDownloadedRawCompanion(file, outputDir)) {
-        const record = await readSourceRecord(outputDir, path.basename(destination))
+      if (stats.isFile()) {
+        const record = await readSourceRecord(outputDir, destination)
         records.push(withSourceMetadata({ fileName: file.name, path: destination, bytes: stats.size, downloadedAt: stats.mtime.toISOString() }, record))
       }
     } catch {
@@ -56,7 +45,7 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
     const labels = labelsFor(timestamp)
     const fileUrl = localThumbnailUrl(filePath)
 
-    const sourceRecord = await readSourceRecord(outputDir, name)
+    const sourceRecord = await readSourceRecord(outputDir, filePath)
     files.push(withSourceMetadata({
       id: filePath,
       name,
@@ -89,13 +78,18 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
     }, sourceRecord))
   }
 
-  try {
-    const entries = await fs.readdir(outputDir, { withFileTypes: true })
+  async function walk(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
-      const entryPath = path.join(outputDir, entry.name)
-      if (entry.isFile()) await appendFile(entryPath)
+      const entryPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) await walk(entryPath)
+      else if (entry.isFile()) await appendFile(entryPath)
     }
+  }
+
+  try {
+    await walk(outputDir)
   } catch (err) {
     logMainWarn(`[listDownloadedFiles] 读取失败`, { outputDir, error: err instanceof Error ? err.message : String(err) })
     return []

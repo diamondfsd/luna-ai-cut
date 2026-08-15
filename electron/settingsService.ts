@@ -68,6 +68,7 @@ function defaultSettings(): AppSettings {
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
     experimentalGpuPreview: false,
+    organizeDownloadsByDate: false,
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,
@@ -106,6 +107,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.experimentalGpuPreview = typeof saved?.experimentalGpuPreview === 'boolean'
     ? saved.experimentalGpuPreview
     : defaults.experimentalGpuPreview
+  merged.organizeDownloadsByDate = typeof saved?.organizeDownloadsByDate === 'boolean'
+    ? saved.organizeDownloadsByDate
+    : defaults.organizeDownloadsByDate
   if (!merged.localResourcesDir) {
     merged.localResourcesDir = getLocalResourcesDir(merged)
   }
