@@ -56,6 +56,7 @@
     "test:resource-packs": "node scripts/test-runtime-resource-packs.mjs",
     "test:resources": "node scripts/test-runtime-resource-service.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
+    "test:deepseek-harness": "node --experimental-strip-types scripts/test-deepseek-harness-defaults.mjs",
     "test:hot-update": "node scripts/test-hot-update-compatibility.mjs && node scripts/test-hot-update-archive.mjs",
     "test:landing": "node scripts/test-landing-platform.mjs",
     "test:local-share": "node --experimental-strip-types scripts/test-local-media-share.mjs",

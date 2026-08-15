@@ -7,6 +7,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { parse, stringify } from 'yaml'
 import { createAiEditingSourceGitService } from './aiEditingSourceGitService'
+import { withEmbeddedHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
 import type {
   EmbeddedDeepSeekHarnessConfig,
@@ -297,7 +298,7 @@ async function prepareHarnessHome(
 ): Promise<void> {
   const home = dshHome()
   const settingsPath = path.join(home, 'settings.yaml')
-  const currentSettings = await readDocument(settingsPath)
+  const currentSettings = withEmbeddedHarnessDefaults(await readDocument(settingsPath))
   currentSettings['llm-deepseek'] = {
     ...(currentSettings['llm-deepseek'] as Record<string, unknown> | undefined),
     baseURL: config.baseUrl,

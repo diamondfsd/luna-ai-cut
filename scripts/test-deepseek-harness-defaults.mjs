@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict'
+import { withEmbeddedHarnessDefaults } from '../electron/deepseekHarnessDefaults.ts'
+
+const defaults = withEmbeddedHarnessDefaults({ 'ui-theme': { preference: 'dark' } })
+assert.deepEqual(defaults.locale, { preference: 'zh' })
+assert.deepEqual(defaults.permission, { defaultPreset: 'workspace-write' })
+assert.deepEqual(defaults['ui-theme'], { preference: 'dark' })
+
+const explicit = withEmbeddedHarnessDefaults({
+  locale: { preference: 'en', custom: true },
+  permission: { defaultPreset: 'read-only', custom: true },
+})
+assert.deepEqual(explicit.locale, { preference: 'en', custom: true })
+assert.deepEqual(explicit.permission, { defaultPreset: 'read-only', custom: true })
+
+const original = { locale: { preference: 'invalid' } }
+withEmbeddedHarnessDefaults(original)
+assert.deepEqual(original, { locale: { preference: 'invalid' } })
+
+console.log('DeepSeek Harness embedded defaults passed.')

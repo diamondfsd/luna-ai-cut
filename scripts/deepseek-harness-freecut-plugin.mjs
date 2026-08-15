@@ -67,6 +67,57 @@ const sourceTools = [
   },
 ]
 
+const mediaTools = [
+  {
+    name: 'media.list',
+    description: '读取当前剪辑项目已关联素材的结构化信息，包括文件名、媒体类型、时长、尺寸、帧率、大小、编码和音频情况。不返回本地路径、文件句柄或素材内容。',
+    parameters: {
+      type: 'object',
+      properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'media.read',
+    description: '按素材 ID 读取已经生成的画面理解和带时间点的口播字幕。画面理解来自本地模型抽帧；没有完成分析时明确返回暂无结果，不会猜测内容。',
+    parameters: {
+      type: 'object',
+      properties: {
+        mediaIds: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'string' } },
+      },
+      required: ['mediaIds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'media.analyze',
+    description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 对视频或图片抽帧并生成带时间点的画面描述。分析结果会保存，之后用 media.read 读取。',
+    parameters: {
+      type: 'object',
+      properties: {
+        mediaIds: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'string' } },
+        kind: { type: 'string', enum: ['transcript', 'visual'] },
+        intensity: { type: 'string', enum: ['light', 'normal', 'strong'] },
+      },
+      required: ['mediaIds', 'kind'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'media.search_transcript',
+    description: '在已生成的素材字幕中搜索词语或短语，返回命中的素材 ID、时间范围和原文。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', minLength: 1 },
+        mediaIds: { type: 'array', maxItems: 12, items: { type: 'string' } },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  },
+]
+
 const timelineTools = [
   {
     name: 'project.inspect',
@@ -251,12 +302,14 @@ const timelineTools = [
   },
 ]
 
-const allTools = [...sourceTools, ...timelineTools]
+const allTools = [...sourceTools, ...mediaTools, ...timelineTools]
 
 const EDITING_GUIDANCE = `
 你正在操作 Luna AI Cut 的视频剪辑工程。时间轴是用户可以继续手工编辑的真实工程。
 
-- 开始任务时先调用 project.inspect；只需要局部信息时调用 timeline.inspect_context，先确认片段 ID、轨道和时间范围。
+- 开始剪辑前先调用 media.list 读取项目素材，再调用 project.inspect 读取时间轴；时间轴为空时也要先根据 media.list 的素材信息规划下一步。
+- 需要了解画面或口播时，先用 media.read 读取已有证据；没有证据时，调用 media.analyze，并在完成后再次调用 media.read。media.analyze 的 visual 会由本地模型抽帧理解画面，transcript 会由本地模型识别口播。
+- 需要按台词定位内容时使用 media.search_transcript；返回的时间范围可用于后续时间轴规划。
 - 剪辑操作必须使用 timeline.* 工具。时间位置和持续时间使用秒；关键帧的 atSeconds 是相对于片段起点的秒数。
 - 不要直接编辑源码 JSON，不要使用 shell 或文件工具绕过时间轴工具。源码读取工具只用于诊断和确认，不是常规剪辑入口。
 - 每次编辑工具都会保存工程并返回操作前后的摘要。遇到失败时读取最新上下文后再决定下一步，不要重复提交完全相同的调用。
@@ -347,7 +400,7 @@ export async function apply(ctx, config) {
           return [{ type: 'text', text: typeof value?.message === 'string' ? value.message : JSON.stringify(value) ?? String(value) }]
         },
       },
-      timeoutMs: definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context') && definition.name !== 'timeline.validate'
+      timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context') && definition.name !== 'timeline.validate') || definition.name === 'media.analyze'
         ? 120_000
         : 30_000,
       async execute(args, exec) {
