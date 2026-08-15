@@ -386,7 +386,7 @@ export function register(ctx: IpcContext): void {
     try {
       return await downloadFiles(files, localResourcesDir, (progress: DownloadProgress) => {
         ctx.win?.webContents.send('download:progress', progress)
-      }, controller.signal)
+      }, controller.signal, settings.organizeDownloadsByDate ?? false)
     } finally {
       ctx.activeDownloadControllers.delete(controller)
     }

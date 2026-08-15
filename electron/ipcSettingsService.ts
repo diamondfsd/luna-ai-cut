@@ -5,7 +5,7 @@ import type { AppSettings } from '../src/shared/types'
 import { deviceDefinitions } from './deviceDefaults'
 import {
   chooseBaseDir, chooseLocalResourcesDir, chooseExportDir, chooseLutDir, chooseMockMediaDir, chooseWorkspaceMediaFiles,
-  getSettings, saveSettings, getCacheStats, clearCache,
+  getLocalResourcesDir, getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
 import { deleteCustomLut, listCustomLuts } from './customLutLibraryService'
@@ -16,6 +16,7 @@ import {
   storageMigrationConflictLabels,
   type StorageMigrationSources,
 } from './storageMigrationService'
+import { organizeDownloadedFiles } from './downloadStorageService'
 import type { IpcContext } from './ipcContext'
 
 let storageMigrationInProgress = false
@@ -132,6 +133,11 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('mock:status', () => getMockStatus())
   ipcMain.handle('cache:stats', () => getCacheStats())
   ipcMain.handle('cache:clear', () => clearCache())
+  ipcMain.handle('downloads:organize', async () => {
+    if (ctx.activeDownloadControllers.size > 0) throw new Error('请等待正在下载的内容完成后再整理')
+    const settings = await getSettings()
+    return organizeDownloadedFiles(getLocalResourcesDir(settings))
+  })
   ipcMain.handle('storage:migrate', async () => {
     if (storageMigrationInProgress) throw new Error('本地存储正在迁移，请等待完成')
     if (
