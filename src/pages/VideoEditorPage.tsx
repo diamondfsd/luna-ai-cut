@@ -98,7 +98,7 @@ export function VideoEditorPage() {
         saveImportedSourcePath(key, source.path)
       }
     }
-    await importFiles(sources)
+    await importFiles(sources, { background: true })
   }, [])
 
   const handleDescribeDroppedMediaFiles = useCallback(async (files: File[]) => {

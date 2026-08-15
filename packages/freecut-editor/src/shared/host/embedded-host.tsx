@@ -21,7 +21,10 @@ export interface EmbeddedNativeMediaFile extends Omit<EmbeddedMediaImportSource,
   bytes: ArrayBuffer
 }
 
-export type ImportMediaFiles = (sources: EmbeddedMediaImportSource[]) => Promise<void>
+export type ImportMediaFiles = (
+  sources: EmbeddedMediaImportSource[],
+  options?: { background?: boolean },
+) => Promise<void>
 
 /** Media identity supplied to host-side analysis without transferring source bytes. */
 export interface EmbeddedMediaSource {

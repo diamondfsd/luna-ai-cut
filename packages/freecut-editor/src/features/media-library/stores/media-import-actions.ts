@@ -82,6 +82,12 @@ function removeImportPlaceholder(set: Set, tempId: string): void {
   }))
 }
 
+function clearImportPlaceholders(set: Set, importTasks: ImportTask[]): void {
+  for (const task of importTasks) {
+    removeImportPlaceholder(set, task.tempId)
+  }
+}
+
 /**
  * Drop the optimistic placeholder and guarantee the resolved media record is
  * visible in the library exactly once.
@@ -395,6 +401,7 @@ export function createImportActions(
       includeDuplicatesInResults?: boolean
       waitForPreparation?: boolean
       storageMode?: ImportStorageMode
+      background?: boolean
     },
   ): Promise<MediaMetadata[]> => {
     const { currentProjectId } = get()
@@ -415,35 +422,51 @@ export function createImportActions(
     const storageMode: ImportStorageMode = 'link'
     const serviceModulePromise = loadMediaLibraryService()
     const importTasks = await createOptimisticImportTasks(handles, storageMode)
-    const importResults = await runImportTasks(
-      importTasks,
-      currentProjectId,
-      serviceModulePromise,
-      storageMode,
-    )
 
-    const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
-      processImportResults(importResults, importTasks, set, options)
+    const finishImport = async (): Promise<MediaMetadata[]> => {
+      const importResults = await runImportTasks(
+        importTasks,
+        currentProjectId,
+        serviceModulePromise,
+        storageMode,
+      )
 
-    showImportNotifications(importedCount, duplicateNames, unsupportedCodecFiles, failedCount, get)
+      const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
+        processImportResults(importResults, importTasks, set, options)
 
-    if (options?.waitForPreparation && results.length > 0) {
-      const { mediaLibraryService } = await serviceModulePromise
-      await mediaLibraryService.waitForMediaPreparation(results.map((media) => media.id))
+      showImportNotifications(importedCount, duplicateNames, unsupportedCodecFiles, failedCount, get)
+
+      if (options?.waitForPreparation && results.length > 0) {
+        const { mediaLibraryService } = await serviceModulePromise
+        await mediaLibraryService.waitForMediaPreparation(results.map((media) => media.id))
+      }
+
+      event.success({
+        imported: importedCount,
+        duplicates: duplicateNames.length,
+        failed: failedCount,
+        unsupportedCodecs: unsupportedCodecFiles.length,
+      })
+
+      return results
     }
 
-    event.success({
-      imported: importedCount,
-      duplicates: duplicateNames.length,
-      failed: failedCount,
-      unsupportedCodecs: unsupportedCodecFiles.length,
-    })
+    if (options?.background) {
+      void finishImport().catch((error) => {
+        const importError = error instanceof Error ? error : new Error(String(error))
+        clearImportPlaceholders(set, importTasks)
+        set({ error: importError.message })
+        event.failure(importError)
+        logger.error('Background import failed', importError)
+      })
+      return []
+    }
 
-    return results
+    return finishImport()
   }
 
   return {
-    importMedia: async (_options) => {
+    importMedia: async () => {
       const { currentProjectId } = get()
 
       if (!currentProjectId) {

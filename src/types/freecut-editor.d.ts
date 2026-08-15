@@ -13,7 +13,10 @@ declare module '@freecut/embedded' {
     bytes: ArrayBuffer
   }
 
-  export type ImportMediaFiles = (sources: EmbeddedMediaImportSource[]) => Promise<void>
+  export type ImportMediaFiles = (
+    sources: EmbeddedMediaImportSource[],
+    options?: { background?: boolean },
+  ) => Promise<void>
 
   export interface EmbeddedMediaSource {
     mediaId: string

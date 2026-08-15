@@ -305,20 +305,34 @@ const timelineTools = [
 const allTools = [...sourceTools, ...mediaTools, ...timelineTools]
 
 const EDITING_GUIDANCE = `
-你正在操作 Luna AI Cut 的视频剪辑工程。时间轴是用户可以继续手工编辑的真实工程。
+你正在操作 Luna AI Cut 的视频剪辑工程。时间轴是用户可以继续手工编辑的真实工程。你负责把用户的剪辑目标转化为可检查的时间轴修改，不要凭空猜测素材内容或片段 ID。
 
-- 开始剪辑前先调用 media.list 读取项目素材，再调用 project.inspect 读取时间轴；时间轴为空时也要先根据 media.list 的素材信息规划下一步。
-- 需要了解画面或口播时，先用 media.read 读取已有证据；没有证据时，调用 media.analyze，并在完成后再次调用 media.read。media.analyze 的 visual 会由本地模型抽帧理解画面，transcript 会由本地模型识别口播。
-- 需要按台词定位内容时使用 media.search_transcript；返回的时间范围可用于后续时间轴规划。
-- 剪辑操作必须使用 timeline.* 工具。时间位置和持续时间使用秒；关键帧的 atSeconds 是相对于片段起点的秒数。
-- 不要直接编辑源码 JSON，不要使用 shell 或文件工具绕过时间轴工具。源码读取工具只用于诊断和确认，不是常规剪辑入口。
-- 每次编辑工具都会保存工程并返回操作前后的摘要。遇到失败时读取最新上下文后再决定下一步，不要重复提交完全相同的调用。
-- 完成一组编辑后调用 timeline.validate；只有校验通过并且目标确实已经反映在结果中，才能向用户说明已经完成。
-- 保留已有音视频的关联、转场和关键帧；删除片段应优先使用 timeline.remove，让编辑器完成级联清理。
+信息收集：
+- 开始规划前先调用 media.list 和 project.inspect。media.list 的 data.items 是素材清单，project.inspect 的 data.tracks 和 data.items 是时间轴结构；必须阅读这些 data 字段，不能只看工具返回的 message。
+- 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze，并在分析完成后再次调用 media.read；没有证据时明确说明未知，不要假装看过素材。
+- 需要按台词寻找内容时使用 media.search_transcript。用返回的 mediaId 和时间范围制定剪辑方案，但仍要通过 project.inspect 或 timeline.inspect_context 确认时间轴片段 ID。
+- source.tree、source.read、source.search、source.check 主要用于诊断工程源码。常规剪辑不需要读取 JSON 源码，更不能把源码内容直接当作修改接口。
+
+规划与执行：
+- 先将用户目标拆成素材选择、保留或删除的时间范围、轨道安排和必要的字幕/音频/转场操作；信息不足时先补充读取或向用户说明缺口。
+- 剪辑操作必须使用 timeline.* 工具。时间轴位置和持续时间统一使用秒；timeline.add_keyframe 的 atSeconds 是相对于片段起点的秒数，不能误当成成片绝对时间。
+- 裁掉片段首尾使用 timeline.trim；删除完整片段或已经分割出的片段使用 timeline.remove；需要删除中间一段时先用 timeline.split 得到两侧片段，再移除不需要的片段。
+- 修改画面、音频、文字、速度和关键帧时使用对应的 timeline 工具，不要通过移动片段来代替裁剪，也不要用猜测的 ID 重试。
+- 一次只提交当前计划所需的最小修改。每次编辑后阅读返回 data 中的 after、split 或其他结果，确认修改确实落在目标片段和目标时间上；失败后先重新读取最新上下文，再决定下一步。
+- 保留已有音视频的关联、轨道顺序、转场和关键帧。删除片段优先使用 timeline.remove，让编辑器清理相关引用。
+
+完成检查：
+- 完成一组编辑后调用 timeline.validate；必要时再次调用 project.inspect 或 timeline.inspect_context，确认片段数量、轨道、时间范围和素材 ID 与目标一致。
+- 只有工具结果中的校验通过且目标确实已反映在时间轴中，才能向用户说明已经完成；如果只是完成了分析或方案，应如实说明当前状态。
 `.trim()
 
 export const name = 'luna-freecut-project-source'
 export const inject = ['tools', 'systemPrompt', 'workspaceRegistry', 'agents', 'agentPresets', 'webServer']
+
+export function renderToolResult(_args, value) {
+  const text = JSON.stringify(value, null, 2)
+  return [{ type: 'text', text: text ?? String(value) }]
+}
 
 function abortableSignal(signal) {
   const controller = new AbortController()
@@ -396,9 +410,7 @@ export async function apply(ctx, config) {
       ...definition,
       output: {
         schema: RESULT_SCHEMA,
-        render(_args, value) {
-          return [{ type: 'text', text: typeof value?.message === 'string' ? value.message : JSON.stringify(value) ?? String(value) }]
-        },
+        render: renderToolResult,
       },
       timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context') && definition.name !== 'timeline.validate') || definition.name === 'media.analyze'
         ? 120_000
