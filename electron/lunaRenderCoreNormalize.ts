@@ -22,6 +22,7 @@ export interface RenderColorAdjustments {
   texture: number
   sharpen: number
   denoise: number
+  skinSmoothing: number
   glowStrength: number
   glowRadius: number
   glowThreshold: number
@@ -88,6 +89,7 @@ export function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderC
     texture: color?.texture ?? 0,
     sharpen: color?.sharpen ?? 0,
     denoise: color?.denoise ?? 0,
+    skinSmoothing: color?.skinSmoothing ?? 0,
     glowStrength: color?.glowStrength ?? 0,
     glowRadius: color?.glowRadius ?? 35,
     glowThreshold: color?.glowThreshold ?? 65,
@@ -116,7 +118,7 @@ export function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderC
 const REQUIRED_COLOR_NUMBER_FIELDS = [
   'exposure', 'black', 'brightness', 'contrast', 'saturation', 'vibrance',
   'temperature', 'tint', 'highlights', 'shadows', 'whites', 'blacks',
-  'clarity', 'texture', 'sharpen', 'denoise',
+  'clarity', 'texture', 'sharpen', 'denoise', 'skinSmoothing',
   'glowStrength', 'glowRadius', 'glowThreshold',
   'gradeShadowsHue', 'gradeShadowsAmount', 'gradeMidHue', 'gradeMidAmount',
   'gradeHighlightsHue', 'gradeHighlightsAmount', 'curveLift', 'curveContrast',

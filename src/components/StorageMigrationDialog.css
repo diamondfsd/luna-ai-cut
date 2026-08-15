@@ -1,0 +1,44 @@
+.storage-migration-dialog.ui-dialog-content {
+  width: min(460px, 92vw);
+}
+
+.storage-migration-dialog-body {
+  display: flex;
+  min-height: 112px;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 22px 24px;
+}
+
+.storage-migration-dialog-body > .ui-loading {
+  justify-items: center;
+}
+
+.storage-migration-dialog-success {
+  flex: 0 0 auto;
+  color: var(--blue);
+}
+
+.storage-migration-dialog-body > div {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.storage-migration-dialog-body strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.storage-migration-dialog-body span,
+.storage-migration-dialog-body p {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.storage-migration-dialog-body p {
+  margin: 2px 0 0;
+}

@@ -21,6 +21,22 @@ const upload = args.has('--upload')
 const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version
 const versionPattern = new RegExp(`^${packageVersion.replaceAll('.', '\\.')}-hot\\.\\d+$`)
 
+function loadLocalConfig() {
+  const configPath = join('scripts', 'deploy-release.conf')
+  if (!existsSync(configPath)) return
+  for (const line of readFileSync(configPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?(GITCODE_TOKEN|GITCODE_OWNER|GITCODE_REPO)=(.*)$/)
+    if (!match || process.env[match[1]]) continue
+    let value = match[2].trim()
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1)
+    }
+    process.env[match[1]] = value
+  }
+}
+
+if (upload) loadLocalConfig()
+
 if (!version || !versionPattern.test(version)) {
   throw new Error(`--version 必须是 ${packageVersion}-hot.N`)
 }
@@ -41,6 +57,14 @@ function addAppFiles(zip) {
   if (existsSync('electron')) {
     for (const file of readdirSync('electron').filter((name) => name.endsWith('.swift'))) {
       zip.addLocalFile(join('electron', file), 'swift')
+    }
+  }
+  for (const file of readdirSync('.').filter((name) => name.startsWith('RELEASE_NOTES_v') && name.endsWith('.md'))) {
+    zip.addLocalFile(file)
+  }
+  if (existsSync('old-release-log')) {
+    for (const file of readdirSync('old-release-log').filter((name) => name.startsWith('RELEASE_NOTES_v') && name.endsWith('.md'))) {
+      zip.addLocalFile(join('old-release-log', file), 'old-release-log')
     }
   }
 }
@@ -90,7 +114,7 @@ writeFileSync(manifestPath, JSON.stringify({ version, minAppVersion: packageVers
 if (!upload) process.exit(0)
 
 const token = process.env.GITCODE_TOKEN
-if (!token) throw new Error('上传需要 GITCODE_TOKEN')
+if (!token) throw new Error('上传需要 GITCODE_TOKEN 或 scripts/deploy-release.conf')
 const owner = process.env.GITCODE_OWNER ?? 'diamondfsd'
 const repo = process.env.GITCODE_REPO ?? 'luna-ai-cut-package-release'
 const tag = `v${packageVersion}`

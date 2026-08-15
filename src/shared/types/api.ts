@@ -1,10 +1,10 @@
 import type { AppSettings, CacheStats, CustomLutFile, StorageMigrationResult } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
-import type { CameraDeleteResult, LunaFile } from './media'
+import type { CameraDeleteResult, FileCopyResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
 import type { CustomWatermarkAsset, WatermarkSettings } from './watermark'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest, VideoExportSettings } from './video'
-import type { DownloadProgress, DownloadRecord, DownloadSummary } from './download'
+import type { DownloadOrganizationResult, DownloadProgress, DownloadRecord, DownloadSummary } from './download'
 import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord, OriginalFileExportRequest } from './export'
 import type { MockServerStatus } from './mock'
 import type {
@@ -218,6 +218,7 @@ export interface LunaApi {
   getMockServerStatus(): Promise<MockServerStatus>
   getCacheStats(): Promise<CacheStats>
   clearCache(): Promise<CacheStats>
+  organizeDownloadedFiles(): Promise<DownloadOrganizationResult>
   migrateLocalStorage(): Promise<StorageMigrationResult | null>
   listCustomLuts(): Promise<CustomLutFile[]>
   deleteCustomLut(filePath: string): Promise<void>
@@ -259,6 +260,7 @@ export interface LunaApi {
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>
   startFileDrag(filePaths: string[], thumbnailUrl?: string | null): void
+  copyFilesToDirectory(filePaths: string[]): Promise<FileCopyResult | null>
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
   readExifModel(localPath: string): Promise<string | null>

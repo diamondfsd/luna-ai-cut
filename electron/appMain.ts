@@ -29,9 +29,9 @@ import {
 } from '../src/shared/lrcInitGuardRecovery'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
-import { appIconPath, createMainWindow, registerRendererProtocol } from './windowService'
+import { activateMainWindow, appIconPath, createMainWindow, registerRendererProtocol } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
-import { cancelExportTask, resetRenderCompatibilityBlock } from './lunaRenderCore'
+import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './localMediaShareService'
@@ -42,6 +42,9 @@ import type {
 } from '../src/shared/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+const e2eUserDataDir = process.env.LUNA_E2E_USER_DATA_DIR
+if (!app.isPackaged && e2eUserDataDir) app.setPath('userData', path.resolve(e2eUserDataDir))
 
 installCrashDiagnostics()
 
@@ -240,6 +243,14 @@ function createWindow(): void {
   })
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
+    setTimeout(() => {
+      void warmupRenderCore().then(
+        () => logMainInfo('[LRC] 后台预热完成'),
+        (error) => logMainWarn('[LRC] 后台预热失败，将在首次使用时重试', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
+    }, 200)
     setTimeout(() => startSegmentationModelPrefetch(), 1_000)
   })
 }
@@ -286,6 +297,8 @@ app.on('activate', () => {
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
+  } else if (win && !win.isDestroyed()) {
+    activateMainWindow(win)
   }
 })
 

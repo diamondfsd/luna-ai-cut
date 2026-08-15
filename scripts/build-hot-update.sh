@@ -170,6 +170,14 @@ if [ "$UPLOAD_ONLY" = false ]; then
     }
     console.log('  ✓ 已添加 ' + swiftFiles.length + ' 个 Swift 文件');
   }
+  for (const f of require('fs').readdirSync('.').filter(f => f.startsWith('RELEASE_NOTES_v') && f.endsWith('.md'))) {
+    zip.addLocalFile(f);
+  }
+  if (require('fs').existsSync('old-release-log')) {
+    for (const f of require('fs').readdirSync('old-release-log').filter(f => f.startsWith('RELEASE_NOTES_v') && f.endsWith('.md'))) {
+      zip.addLocalFile('old-release-log/' + f, 'old-release-log');
+    }
+  }
   zip.writeZip('${ZIP_PATH}');
   console.log('  ✓ zip 已创建');
   "

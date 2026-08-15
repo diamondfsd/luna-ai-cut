@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { app } from 'electron'
-import { access, mkdtemp, rename, rm } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, rename, rm } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import path from 'node:path'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest } from '../src/shared/types'
@@ -201,6 +201,7 @@ export async function exportDolbyVisionWatermark(
 ): Promise<void> {
   assertRequest(request)
   await Promise.all([access(request.sourcePath), access(request.watermarkPath)])
+  await mkdir(path.dirname(request.outputPath), { recursive: true })
   const sourceProbe = await ffprobe(request.sourcePath)
   const eligibility = parseDolbyVisionProbe(sourceProbe)
   if (!eligibility.eligible) throw new Error(eligibility.reason || '该视频不支持 Dolby Vision 保真导出')

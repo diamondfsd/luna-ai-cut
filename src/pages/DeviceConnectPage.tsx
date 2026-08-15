@@ -4,6 +4,7 @@ import { Cable, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, In
 import type { AppSettings, CameraConnectionMode, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { Alert, Button, ButtonGroup } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
+import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import { useStorageMigration } from '../hooks/useStorageMigration'
 import '../styles/wifi.css'
 import lunaIcon from '../../public/luna-icon.png'
@@ -39,7 +40,7 @@ export function DeviceConnectPage({
   const [mountedVolumes, setMountedVolumes] = useState<MountedCameraVolume[]>([])
   const [mountedVolumesLoading, setMountedVolumesLoading] = useState(false)
   const [mountedVolumesError, setMountedVolumesError] = useState<string | null>(null)
-  const { migrating, migrate } = useStorageMigration(settings, onStorageMigrated)
+  const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
   const deviceName = activeDevice?.name ?? '设备'
@@ -372,6 +373,12 @@ export function DeviceConnectPage({
           </HelpDialog>
         </div>
       </div>
+      <StorageMigrationDialog
+        migrating={migrating}
+        result={migrationResult}
+        restarting={restarting}
+        onRestart={() => void restart()}
+      />
     </section>
   )
 }

@@ -28,3 +28,9 @@ export interface DownloadSummary {
   failed: Array<{ name: string; error: string }>
   canceled: Array<{ name: string }>
 }
+
+export interface DownloadOrganizationResult {
+  moved: number
+  skipped: number
+  failed: number
+}

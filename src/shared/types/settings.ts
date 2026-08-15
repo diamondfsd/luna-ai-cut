@@ -42,6 +42,8 @@ export interface AppSettings {
   workspacePreviewQuality?: WorkspacePreviewQuality
   /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
   experimentalGpuPreview?: boolean
+  /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
+  organizeDownloadsByDate?: boolean
 }
 
 export interface CacheStats {
