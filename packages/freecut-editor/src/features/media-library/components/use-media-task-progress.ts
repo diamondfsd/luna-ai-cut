@@ -162,7 +162,7 @@ export function useMediaTaskProgress() {
   const activePreparationTasks = useMemo(
     () =>
       [...preparationTasks.values()].filter(
-        (task) => task.type !== 'import' && (task.status === 'queued' || task.status === 'running'),
+        (task) => task.status === 'queued' || task.status === 'running',
       ),
     [preparationTasks],
   )

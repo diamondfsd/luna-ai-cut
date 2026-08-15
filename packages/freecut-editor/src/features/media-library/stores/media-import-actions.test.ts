@@ -251,6 +251,58 @@ describe('createImportActions', () => {
     expect([...useMediaPreparationStore.getState().tasks.values()]).toEqual([])
   })
 
+  it('returns after queuing a background import while keeping the placeholder visible', async () => {
+    const file = new File(['video'], 'clip.mp4', { type: 'video/mp4' })
+    const handle = createHandle(file)
+    const imported = makeMedia({ id: 'imported-1', fileName: 'clip.mp4' })
+    let resolveImport!: (metadata: MediaMetadata) => void
+    mediaLibraryServiceMocks.importMediaWithHandle.mockReturnValue(
+      new Promise<MediaMetadata>((resolve) => {
+        resolveImport = resolve
+      }),
+    )
+
+    const harness = createImportActionsHarness()
+    await expect(harness.actions.importHandles([handle], { background: true })).resolves.toEqual([])
+
+    expect(harness.currentState.importingIds).toHaveLength(1)
+    expect(harness.currentState.mediaItems[0]).toMatchObject({
+      fileName: 'clip.mp4',
+      codec: 'importing...',
+    })
+
+    resolveImport(imported)
+    await flushMicrotasks()
+
+    expect(harness.currentState.mediaItems).toEqual([imported])
+    expect(harness.currentState.importingIds).toEqual([])
+  })
+
+  it('cleans up placeholders when a background import fails unexpectedly', async () => {
+    const file = new File(['video'], 'clip.mp4', { type: 'video/mp4' })
+    const handle = createHandle(file)
+    mediaLibraryServiceMocks.importMediaWithHandle.mockResolvedValue(makeMedia())
+
+    const loadService = await import('./media-library-service-access')
+    let rejectService!: (error: Error) => void
+    vi.mocked(loadService.loadMediaLibraryService).mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectService = reject
+      }),
+    )
+
+    const harness = createImportActionsHarness()
+    await expect(harness.actions.importHandles([handle], { background: true })).resolves.toEqual([])
+    expect(harness.currentState.importingIds).toHaveLength(1)
+
+    rejectService(new Error('Service unavailable'))
+    await flushMicrotasks()
+
+    expect(harness.currentState.mediaItems).toEqual([])
+    expect(harness.currentState.importingIds).toEqual([])
+    expect(harness.currentState.error).toBe('Service unavailable')
+  })
+
   it('processes dropped files with bounded parallelism while preserving result order', async () => {
     const firstFile = new File(['video-1'], 'first.mp4', { type: 'video/mp4' })
     const secondFile = new File(['video-2'], 'second.mp4', { type: 'video/mp4' })

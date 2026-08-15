@@ -161,7 +161,7 @@ export interface MediaLibraryActions {
    */
   importHandles: (
     handles: FileSystemFileHandle[],
-    options?: { storageMode?: 'copy' | 'link' },
+    options?: { storageMode?: 'copy' | 'link'; background?: boolean },
   ) => Promise<MediaMetadata[]>
   /**
    * Import media for direct placement flows.

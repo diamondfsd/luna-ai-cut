@@ -367,8 +367,11 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
     try {
       await runImport(async () => {
         if (requestMediaImport) {
-          await requestMediaImport(async (sources) => {
-            await importHandles(sources.map(createNativeMediaFileHandle), { storageMode: 'link' })
+          await requestMediaImport(async (sources, options) => {
+            await importHandles(sources.map(createNativeMediaFileHandle), {
+              storageMode: 'link',
+              background: options?.background,
+            })
           })
           return
         }
