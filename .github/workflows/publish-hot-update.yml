@@ -33,18 +33,15 @@ jobs:
           fi
           version="${GITHUB_REF_NAME#hot/v}"
           base_version="${version%%-hot.*}"
-          previous="$(git tag --list "hot/v${base_version}-hot.*" --sort=-creatordate | grep -vx "$GITHUB_REF_NAME" | head -1 || true)"
-          if [ -z "$previous" ]; then
-            previous="v${base_version}"
-          fi
+          release_tag="v${base_version}"
           include_native=true
-          if git rev-parse "$previous" >/dev/null 2>&1 && git diff --quiet "$previous" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
+          if git rev-parse "$release_tag" >/dev/null 2>&1 && git diff --quiet "$release_tag" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
             include_native=false
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "include_native=$include_native" >> "$GITHUB_OUTPUT"
           if [ "$include_native" = "false" ]; then
-            echo "No native changes detected since ${previous}. The uploaded universal JS hot-update package is sufficient; no platform packages will be built." >> "$GITHUB_STEP_SUMMARY"
+            echo "No native changes detected since ${release_tag}. The uploaded universal JS hot-update package is sufficient; no platform packages will be built." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   native:
@@ -75,6 +72,20 @@ jobs:
       - run: pnpm run init:rust
         env:
           CROSS_TARGET: ${{ matrix.cross_target }}
+      - name: Prepare ONNX Runtime for macOS x64 cross-compile
+        if: matrix.platform == 'darwin-x64'
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/onnxruntime-osx-x86_64-1.23.2.tgz"
+          runtime_root="$RUNNER_TEMP/onnxruntime-osx-x86_64-1.23.2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-x86_64-1.23.2.tgz"
+          echo "d10359e16347b57d9959f7e80a225a5b4a66ed7d7e007274a15cae86836485a6  $archive" | shasum -a 256 --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          cp "$runtime_root"/lib/*.dylib luna-render-core/
+          echo "ORT_LIB_LOCATION=$runtime_root/lib" >> "$GITHUB_ENV"
+          echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
       - name: Build native module
         shell: bash
         env:
@@ -89,31 +100,3 @@ jobs:
             luna-render-core/dxil.dll
             luna-render-core/DXC-LICENSE-*.txt
           if-no-files-found: error
-
-  publish:
-    needs: [detect, native]
-    if: always() && needs.detect.result == 'success' && (needs.detect.outputs.include_native == 'false' || needs.native.result == 'success')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build:app
-      - uses: actions/download-artifact@v4
-        if: needs.detect.outputs.include_native == 'true'
-        with:
-          path: .hot-native
-      - name: Publish hot update to GitCode
-        env:
-          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-        shell: bash
-        run: |
-          args=(--version "${{ needs.detect.outputs.version }}" --upload)
-          if [ "${{ needs.detect.outputs.include_native }}" = "true" ]; then
-            args+=(--include-native --native-dir .hot-native)
-          fi
-          node scripts/publish-hot-update.mjs "${args[@]}"

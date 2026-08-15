@@ -28,7 +28,7 @@ export const DEFAULT_BEAUTY_PARAMETERS: BeautyParameters = {
   faceWhitening: 0,
   skinWhitening: 0,
   skinWarmth: 0,
-  smoothing: 18,
+  smoothing: 54,
   texture: 10,
   acneRemoval: 0,
   spotRemoval: 0,
@@ -45,11 +45,6 @@ function clampParameter(value: number): number {
 
 function normalizedExposure(value: number): number {
   return Number(value.toFixed(4))
-}
-
-function smoothingForRendering(value: number): number {
-  const normalized = clampParameter(value) / 100
-  return Math.pow(normalized, 0.75) * 100
 }
 
 export function beautyLayers(pipeline: EditPipeline): {
@@ -192,9 +187,16 @@ function faceColorForRendering(parameters: BeautyParameters): EditPipeline['colo
   return {
     ...faceColor(parameters),
     ...skinWhiteningColorForRendering(parameters.skinWhitening + parameters.faceWhitening, parameters.skinWarmth ?? 0),
-    denoise: smoothingForRendering(parameters.smoothing),
+    denoise: 0,
     texture: parameters.texture * 0.35,
   }
+}
+
+export function beautySkinSmoothingForRendering(
+  pipeline: EditPipeline,
+  layer: ColorMaskLayer,
+): number {
+  return layer.id === BEAUTY_FACE_LAYER_ID ? beautyParameters(pipeline).smoothing : 0
 }
 
 function bodyColorForRendering(parameters: BeautyParameters): EditPipeline['color'] {

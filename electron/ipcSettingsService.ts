@@ -6,7 +6,7 @@ import { deviceDefinitions } from './deviceDefaults'
 import {
   chooseBaseDir, chooseLocalResourcesDir, chooseExportDir, chooseLutDir, chooseMockMediaDir,
   chooseWorkspaceMediaDirectory, chooseWorkspaceMediaFiles, inspectWorkspaceMediaFile, readWorkspaceMediaFile,
-  getSettings, saveSettings, getCacheStats, clearCache,
+  getLocalResourcesDir, getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
 import { deleteCustomLut, listCustomLuts } from './customLutLibraryService'
@@ -17,6 +17,7 @@ import {
   storageMigrationConflictLabels,
   type StorageMigrationSources,
 } from './storageMigrationService'
+import { organizeDownloadedFiles } from './downloadStorageService'
 import type { IpcContext } from './ipcContext'
 
 let storageMigrationInProgress = false
@@ -32,16 +33,12 @@ async function directoryExists(directory: string): Promise<boolean> {
 async function storageMigrationSources(settings: AppSettings): Promise<StorageMigrationSources> {
   const legacyRoot = app.getPath('userData')
   const currentCache = path.join(settings.baseDir, 'cache')
-  const currentLogs = path.join(settings.baseDir, 'logs')
   const legacyCache = path.join(legacyRoot, 'cache')
   const legacyPreviews = path.join(legacyRoot, 'cache_previews')
   const legacyMetadata = path.join(legacyRoot, 'cache_metadata')
   const legacyAiSelection = path.join(legacyRoot, '.luna-cache', 'ai-selection')
-  const legacyLogs = path.join(legacyRoot, 'logs')
   const hasCurrentCache = await directoryExists(currentCache)
-  const hasCurrentLogs = await directoryExists(currentLogs)
   const hasLegacyCache = await directoryExists(legacyCache)
-  const hasLegacyLogs = await directoryExists(legacyLogs)
   const cacheSource = hasCurrentCache ? currentCache : (hasLegacyCache ? legacyCache : undefined)
 
   return {
@@ -58,8 +55,6 @@ async function storageMigrationSources(settings: AppSettings): Promise<StorageMi
       && await directoryExists(legacyAiSelection)
       ? legacyAiSelection
       : undefined,
-    logSource: hasCurrentLogs ? currentLogs : (hasLegacyLogs ? legacyLogs : undefined),
-    legacyLogSource: hasCurrentLogs && hasLegacyLogs ? legacyLogs : undefined,
   }
 }
 
@@ -142,6 +137,11 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('mock:status', () => getMockStatus())
   ipcMain.handle('cache:stats', () => getCacheStats())
   ipcMain.handle('cache:clear', () => clearCache())
+  ipcMain.handle('downloads:organize', async () => {
+    if (ctx.activeDownloadControllers.size > 0) throw new Error('请等待正在下载的内容完成后再整理')
+    const settings = await getSettings()
+    return organizeDownloadedFiles(getLocalResourcesDir(settings))
+  })
   ipcMain.handle('storage:migrate', async () => {
     if (storageMigrationInProgress) throw new Error('本地存储正在迁移，请等待完成')
     if (

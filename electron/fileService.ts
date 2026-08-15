@@ -9,6 +9,7 @@ import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailSe
 import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { recordDownloadedFileSource } from './mediaSourceManifestService'
 import { friendlyDownloadError, prepareDownloadDirectory } from './downloadDirectoryService'
+import { downloadDestinationFor, findDownloadedPath } from './downloadStorageService'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -63,10 +64,6 @@ export async function listExportFiles(exportDir: string): Promise<import('../src
 
 function partialPathFor(destination: string): string {
   return `${destination}.tmp`
-}
-
-function destinationFor(localResourcesDir: string, file: LunaFile): string {
-  return path.join(localResourcesDir, safeName(file.downloadName))
 }
 
 async function fileSize(filePath: string): Promise<number> {
@@ -295,9 +292,8 @@ export async function resolveLocalThumbnails(files: LunaFile[], localResourcesDi
   for (const file of files) {
     // --- 下载目录中已存在 ---
     try {
-      const dest = destinationFor(localResourcesDir, file)
-      const stats = await fs.stat(dest)
-      if (stats.isFile()) {
+      const dest = await findDownloadedPath(localResourcesDir, file, true)
+      if (dest) {
         file.localPath = dest
         file.downloadFilePath = dest
       }
@@ -424,6 +420,7 @@ export async function downloadFiles(
   outputDir: string,
   onProgress: (progress: DownloadProgress) => void,
   signal?: AbortSignal,
+  organizeByDate = false,
 ): Promise<DownloadSummary> {
   const summary: DownloadSummary = { completed: [], failed: [], canceled: [] }
   outputDir = await prepareDownloadDirectory(outputDir)
@@ -434,9 +431,9 @@ export async function downloadFiles(
       break
     }
 
-    const destination = destinationFor(outputDir, file)
+    const destination = downloadDestinationFor(outputDir, file, organizeByDate)
     const rawFile = rawCompanionAsFile(file)
-    const rawDestination = rawFile ? destinationFor(outputDir, rawFile) : null
+    const rawDestination = rawFile ? downloadDestinationFor(outputDir, rawFile, organizeByDate) : null
     const totalBytes = downloadTotalBytes(file)
     try {
       const existingFinal = await fileSize(destination)
