@@ -156,13 +156,13 @@ const mediaTools = [
   },
   {
     name: 'media.analyze',
-    description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 对视频或图片抽帧并生成带时间点的画面描述。分析结果会保存，之后用 media.read 读取。',
+    description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 对视频或图片抽帧并生成带时间点的画面描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面证据时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
     parameters: {
       type: 'object',
       properties: {
         mediaIds: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'string' } },
         kind: { type: 'string', enum: ['transcript', 'visual'] },
-        intensity: { type: 'string', enum: ['light', 'normal', 'strong'] },
+        intensity: { type: 'string', enum: ['light', 'normal', 'strong'], default: 'light' },
       },
       required: ['mediaIds', 'kind'],
       additionalProperties: false,
@@ -309,7 +309,7 @@ const timelineTools = [
   },
   {
     name: 'timeline.set_transform',
-    description: '修改片段画面变换。x/y 是画布内中心点的 0 到 1 归一化坐标（0.5 表示居中）；width/height 是占画布的 0 到 1 比例；cornerRadius 是相对画布短边的 0 到 1 比例。旋转使用角度，透明度使用 0 到 1。不要传入像素位置或尺寸。',
+    description: '修改片段画面变换。x/y 是画布内中心点的 0 到 1 归一化坐标（0.5 表示居中）；width/height 是占画布的 0 到 1 比例；cornerRadius 是相对画布短边的 0 到 1 比例。旋转使用角度，透明度使用 0 到 1。文字片段的 width/height 只是文字框大小，不会自动改变字号；需要同步调整字号时，在同一次调用中传 fontSizeRatio（字号占画布短边的比例，例如 0.08）。不要传入像素位置或尺寸。',
     parameters: {
       type: 'object',
       properties: {
@@ -323,6 +323,7 @@ const timelineTools = [
         flipHorizontal: { type: 'boolean' },
         flipVertical: { type: 'boolean' },
         cornerRadius: { type: 'number', minimum: 0, maximum: 1, description: '相对画布短边的归一化圆角比例。' },
+        fontSizeRatio: { type: 'number', exclusiveMinimum: 0, maximum: 1, description: '仅适用于文字片段；字号占画布短边的比例，例如 0.08。文字框宽高不会自动改变字号。' },
       },
       required: ['itemId'],
       additionalProperties: false,
@@ -346,7 +347,7 @@ const timelineTools = [
   },
   {
     name: 'timeline.add_text',
-    description: '在时间轴顶部新增一条文字图层。时间单位是秒；优先放入按轨道顺序最近的空闲字幕轨道，所有字幕轨道都冲突或不存在时才创建新的字幕轨道。未指定样式时文字水平居中并位于画面底部，带半透明黑色背景；指定 stylePresetId 时使用对应预设。',
+    description: '在时间轴顶部新增一条文字图层。时间单位是秒；优先放入按轨道顺序最近的空闲字幕轨道，所有字幕轨道都冲突或不存在时才创建新的字幕轨道。未指定样式时文字水平居中并位于画面底部，背景色透明；指定 stylePresetId 时使用对应预设。',
     parameters: {
       type: 'object',
       properties: {
@@ -394,6 +395,93 @@ const timelineTools = [
     },
   },
   {
+    name: 'timeline.add_media_batch',
+    description: '一次将多个素材按给定顺序放入时间轴。适合已经确定多个素材和时间范围的剪辑；工具会逐项校验并返回所有新片段 ID。后续依赖这些 ID 的转场请等待本工具结果后再调用。',
+    parameters: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              mediaId: { type: 'string' },
+              startSeconds: { type: 'number', minimum: 0 },
+              durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+              sourceStartSeconds: { type: 'number', minimum: 0 },
+              sourceEndSeconds: { type: 'number', exclusiveMinimum: 0 },
+              trackId: { type: 'string' },
+              linkAudio: { type: 'boolean' },
+            },
+            required: ['mediaId', 'startSeconds'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['items'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.add_text_batch',
+    description: '一次按给定顺序添加多条字幕或文字图层。适合已经确定多条字幕内容和时间范围的剪辑；未指定样式时每条文字都没有背景色。',
+    parameters: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', minLength: 1, maxLength: 10000 },
+              startSeconds: { type: 'number', minimum: 0 },
+              durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+              label: { type: 'string', maxLength: 200 },
+              stylePresetId: { type: 'string' },
+            },
+            required: ['text', 'startSeconds', 'durationSeconds'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['items'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'timeline.add_transition_batch',
+    description: '一次按给定顺序添加多条转场。适合已经从 project.inspect 或前一批素材结果确认了相邻片段 ID 的剪辑；每条转场都必须满足同轨道、相邻且有足够素材余量。',
+    parameters: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              leftItemId: { type: 'string' },
+              rightItemId: { type: 'string' },
+              durationSeconds: { type: 'number', exclusiveMinimum: 0 },
+              presentation: { type: 'string', minLength: 1, maxLength: 100 },
+              direction: { type: 'string', enum: ['from-left', 'from-right', 'from-top', 'from-bottom'] },
+              alignment: { type: 'number', minimum: 0, maximum: 1 },
+            },
+            required: ['leftItemId', 'rightItemId'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['items'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'timeline.list_transitions',
     description: '列出当前编辑器已注册且可渲染的转场预设、分类、方向和默认时长。添加转场前先用它确认 presentation 和 direction。',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -401,6 +489,22 @@ const timelineTools = [
 ]
 
 const allTools = [...memoryTools, ...sourceTools, ...mediaTools, ...timelineTools]
+
+const PARALLEL_SAFE_TOOL_NAMES = new Set([
+  'memory.read',
+  'memory.search',
+  'media.list',
+  'media.read',
+  'media.search_transcript',
+  'source.tree',
+  'source.read',
+  'source.search',
+  'source.check',
+  'source.diff',
+  'project.inspect',
+  'timeline.inspect_context',
+  'timeline.list_transitions',
+])
 
 const EDITING_GUIDANCE = `
 你正在操作 Luna AI Cut 的视频剪辑工程。时间轴是用户可以继续手工编辑的真实工程。你负责把用户的剪辑目标转化为可检查的时间轴修改，不要凭空猜测素材内容或片段 ID。
@@ -421,7 +525,7 @@ const EDITING_GUIDANCE = `
 信息收集：
 - 开始规划前先调用 media.list 和 project.inspect。media.list 的 data.items 是素材清单，project.inspect 的 data.tracks 和 data.items 是时间轴结构；必须阅读这些 data 字段，不能只看工具返回的 message。
 - 需要更改画布比例或尺寸时使用 project.set_canvas：常用比例传 aspectRatio（例如 9:16），精确尺寸同时传 width 和 height；不要直接编辑工程源码 JSON。
-- 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze，并在分析完成后再次调用 media.read；没有证据时明确说明未知，不要假装看过素材。
+- 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze；初次粗选素材优先使用 intensity=light，只有需要更密集的场景证据时才使用 normal 或 strong，并在分析完成后再次调用 media.read；没有证据时明确说明未知，不要假装看过素材。
 - 需要按台词寻找内容时使用 media.search_transcript。用返回的 mediaId 和时间范围制定剪辑方案，但仍要通过 project.inspect 或 timeline.inspect_context 确认时间轴片段 ID。
 - source.tree、source.read、source.search、source.check 主要用于诊断工程源码。常规剪辑不需要读取 JSON 源码，更不能把源码内容直接当作修改接口。
 
@@ -430,10 +534,12 @@ const EDITING_GUIDANCE = `
 - 剪辑操作必须使用 timeline.* 工具。时间轴位置和持续时间统一使用秒；timeline.add_keyframe 的 atSeconds 是相对于片段起点的秒数，不能误当成成片绝对时间。
 - 画面位置和图层尺寸统一使用 0 到 1 的归一化值：timeline.set_transform 的 x/y 是画布中心点坐标，width/height 是画布比例；timeline.add_keyframe 的空间属性也遵循同一规则。不要向工具传入像素位置或尺寸；project.set_canvas 的 width/height 是输出画布分辨率，仍使用像素。
 - 将素材加入时间轴使用 timeline.add_media，不要直接编辑工程源码 JSON。mediaId 必须来自 media.list；startSeconds 是成片时间轴上的绝对位置；需要只取素材的一段时，同时传 sourceStartSeconds 和 sourceEndSeconds，工具会直接创建这个源范围，不要先加入整段再调用 timeline.trim；trackId 只有在需要指定轨道时才传入。
+- 同一轮已经确定多个素材、字幕或转场时，优先分别使用 timeline.add_media_batch、timeline.add_text_batch、timeline.add_transition_batch，一次提交同类操作；批量工具返回结果后再规划依赖新片段 ID 的下一批操作。
 - 添加转场前先调用 timeline.list_transitions，presentation 只能使用返回的已注册预设；需要方向的预设再传 direction，未传 presentation 时默认使用 fade。
 - 裁掉片段首尾使用 timeline.trim；删除完整片段或已经分割出的片段使用 timeline.remove；需要删除中间一段时先用 timeline.split 得到两侧片段，再移除不需要的片段。
 - 修改画面、音频、文字、速度和关键帧时使用对应的 timeline 工具，不要通过移动片段来代替裁剪，也不要用猜测的 ID 重试。
-- 一次只提交当前计划所需的最小修改。每次编辑后阅读返回 data 中的 after、split 或其他结果，确认修改确实落在目标片段和目标时间上；失败后先重新读取最新上下文，再决定下一步。
+- 一次只提交当前计划所需的最小修改；同类编辑尽量批量提交，不要在每个小操作前后重复调用 todo_write。每次编辑后阅读返回 data 中的 after、split 或其他结果，确认修改确实落在目标片段和目标时间上；失败后先重新读取最新上下文，再决定下一步。
+- 文字片段调整 width/height 只会改变文字框，不会改变字号；需要让文字变大或变小时，在同一次 timeline.set_transform 调用中传 fontSizeRatio。未指定 stylePresetId 的 timeline.add_text 背景色透明；需要有色背景时必须明确指定样式预设。
 - 保留已有音视频的关联、轨道顺序、转场和关键帧。删除片段优先使用 timeline.remove，让编辑器清理相关引用。
 
 完成检查：
@@ -528,6 +634,7 @@ export async function apply(ctx, config) {
         schema: RESULT_SCHEMA,
         render: renderToolResult,
       },
+      isConcurrencySafe: () => PARALLEL_SAFE_TOOL_NAMES.has(definition.name),
       timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context')) || definition.name === 'media.analyze'
         ? 120_000
         : 30_000,

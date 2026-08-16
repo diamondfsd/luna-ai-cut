@@ -865,7 +865,7 @@ const timelineSetProperties = tool({
 
 const timelineSetTransform = tool({
   name: 'timeline.set_transform',
-  description: '修改片段画面变换。x/y 是画布内中心点的 0 到 1 归一化坐标（0.5 表示居中）；width/height 是占画布的 0 到 1 比例；cornerRadius 是相对画布短边的 0 到 1 比例。旋转使用角度，透明度使用 0 到 1。',
+  description: '修改片段画面变换。x/y 是画布内中心点的 0 到 1 归一化坐标（0.5 表示居中）；width/height 是占画布的 0 到 1 比例；cornerRadius 是相对画布短边的 0 到 1 比例。旋转使用角度，透明度使用 0 到 1。文字片段的 width/height 只是文字框大小，不会自动改变字号；需要同步调整字号时，在同一次调用中传 fontSizeRatio（字号占画布短边的比例，例如 0.08）。',
   inputSchema: schema({
     itemId: { type: 'string' },
     x: { type: 'number', minimum: 0, maximum: 1, description: '画布内中心点的归一化横坐标，0.5 为水平居中。' },
@@ -877,6 +877,7 @@ const timelineSetTransform = tool({
     flipHorizontal: { type: 'boolean' },
     flipVertical: { type: 'boolean' },
     cornerRadius: { type: 'number', minimum: 0, maximum: 1, description: '相对画布短边的归一化圆角比例。' },
+    fontSizeRatio: { type: 'number', exclusiveMinimum: 0, maximum: 1, description: '仅适用于文字片段；字号占画布短边的比例，例如 0.08。文字框宽高不会自动改变字号。' },
   }, ['itemId']),
   schema: z.object({
     itemId: z.string().min(1),
@@ -889,6 +890,7 @@ const timelineSetTransform = tool({
     flipHorizontal: z.boolean().optional(),
     flipVertical: z.boolean().optional(),
     cornerRadius: z.number().min(0).max(1).optional(),
+    fontSizeRatio: z.number().positive().max(1).optional(),
   }).refine((args) => Object.entries(args).some(([key, value]) => key !== 'itemId' && value !== undefined), { message: '至少提供一个变换参数' }),
   execute: async (args, signal) => {
     const project = useProjectStore.getState().currentProject
@@ -896,7 +898,10 @@ const timelineSetTransform = tool({
     signal?.throwIfAborted()
     return saveItemEdit('修改画面变换', args.itemId, (item) => {
       if (item.type === 'audio' || item.type === 'adjustment') throw new Error('该片段类型没有可修改的画面变换。')
-      const { itemId, x, y, width, height, cornerRadius, ...transform } = args
+      const { itemId, x, y, width, height, cornerRadius, fontSizeRatio, ...transform } = args
+      if (fontSizeRatio !== undefined && item.type !== 'text') {
+        throw new Error('fontSizeRatio 只适用于文字片段。')
+      }
       timeline().updateItemTransform(itemId, {
         ...transform,
         ...(x !== undefined ? { x: (x - 0.5) * project.metadata.width } : {}),
@@ -907,6 +912,11 @@ const timelineSetTransform = tool({
           ? { cornerRadius: cornerRadius * Math.min(project.metadata.width, project.metadata.height) }
           : {}),
       })
+      if (fontSizeRatio !== undefined) {
+        timeline().updateItem(itemId, {
+          fontSize: Math.round(fontSizeRatio * Math.min(project.metadata.width, project.metadata.height)),
+        })
+      }
     }, signal)
   },
 })
@@ -1002,9 +1012,9 @@ const timelineAddText = tool({
       ? baseItem
       : {
           ...baseItem,
-          backgroundColor: 'rgba(0, 0, 0, 0.55)',
-          backgroundRadius: 4,
-          textPadding: 12,
+          backgroundColor: undefined,
+          backgroundRadius: 0,
+          textPadding: 0,
           verticalAlign: 'middle' as const,
           transform: {
             ...baseItem.transform,
@@ -1116,6 +1126,153 @@ const timelineAddTransition = tool({
   },
 })
 
+async function executeTimelineBatch(
+  operation: string,
+  operationTool: ProjectSourceTool,
+  items: readonly Record<string, unknown>[],
+  signal?: AbortSignal,
+): Promise<ProjectSourceToolResult> {
+  const projectId = currentProjectId()
+  const beforeSnapshot = captureSnapshot()
+  const results: unknown[] = []
+  try {
+    for (const [index, item] of items.entries()) {
+      signal?.throwIfAborted()
+      const validation = operationTool.validate(item)
+      if (!validation.ok) throw new Error(`${operation}第 ${index + 1} 项参数无效：${validation.error}`)
+      const result = await operationTool.execute(validation.value, signal)
+      if (!result.ok) throw new Error(result.message)
+      const data = result.data
+      if (data && typeof data === 'object' && !Array.isArray(data) && 'before' in data) {
+        results.push((data as { before: unknown }).before)
+      } else {
+        results.push(data)
+      }
+    }
+    return {
+      ok: true,
+      message: `已批量${operation} ${items.length} 项，并保存到当前剪辑项目。`,
+      data: { operations: results, after: projectSummary() },
+    }
+  } catch (error) {
+    restoreSnapshot(beforeSnapshot)
+    try {
+      await timeline().saveTimeline(projectId)
+    } catch {
+      // Preserve the original batch error; the in-memory state is restored.
+    }
+    throw error
+  }
+}
+
+const timelineAddMediaBatch = tool({
+  name: 'timeline.add_media_batch',
+  description: '一次将多个素材按给定顺序放入时间轴。适合已经确定多个素材和时间范围的剪辑；工具会逐项校验并返回所有新片段 ID。后续依赖这些 ID 的转场请等待本工具结果后再调用。',
+  inputSchema: schema({
+    items: {
+      type: 'array',
+      minItems: 1,
+      maxItems: MAX_EDIT_ITEMS,
+      items: {
+        type: 'object',
+        properties: {
+          mediaId: { type: 'string' },
+          startSeconds: { type: 'number', minimum: 0 },
+          durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+          sourceStartSeconds: { type: 'number', minimum: 0 },
+          sourceEndSeconds: { type: 'number', exclusiveMinimum: 0 },
+          trackId: { type: 'string' },
+          linkAudio: { type: 'boolean' },
+        },
+        required: ['mediaId', 'startSeconds'],
+        additionalProperties: false,
+      },
+    },
+  }, ['items']),
+  schema: z.object({
+    items: z.array(z.object({
+      mediaId: z.string().min(1),
+      startSeconds: z.number().min(0),
+      durationSeconds: z.number().positive().max(3600).optional(),
+      sourceStartSeconds: z.number().min(0).optional(),
+      sourceEndSeconds: z.number().positive().optional(),
+      trackId: z.string().min(1).optional(),
+      linkAudio: z.boolean().optional(),
+    })).min(1).max(MAX_EDIT_ITEMS),
+  }),
+  execute: async (args, signal) => executeTimelineBatch('添加素材', timelineAddMedia, args.items, signal),
+})
+
+const timelineAddTextBatch = tool({
+  name: 'timeline.add_text_batch',
+  description: '一次按给定顺序添加多条字幕或文字图层。适合已经确定多条字幕内容和时间范围的剪辑；未指定样式时每条文字都没有背景色。',
+  inputSchema: schema({
+    items: {
+      type: 'array',
+      minItems: 1,
+      maxItems: MAX_EDIT_ITEMS,
+      items: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', minLength: 1, maxLength: 10000 },
+          startSeconds: { type: 'number', minimum: 0 },
+          durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+          label: { type: 'string', maxLength: 200 },
+          stylePresetId: { type: 'string' },
+        },
+        required: ['text', 'startSeconds', 'durationSeconds'],
+        additionalProperties: false,
+      },
+    },
+  }, ['items']),
+  schema: z.object({
+    items: z.array(z.object({
+      text: z.string().min(1).max(10000),
+      startSeconds: z.number().min(0),
+      durationSeconds: z.number().positive().max(3600),
+      label: z.string().max(200).optional(),
+      stylePresetId: z.string().optional(),
+    })).min(1).max(MAX_EDIT_ITEMS),
+  }),
+  execute: async (args, signal) => executeTimelineBatch('添加文字', timelineAddText, args.items, signal),
+})
+
+const timelineAddTransitionBatch = tool({
+  name: 'timeline.add_transition_batch',
+  description: '一次按给定顺序添加多条转场。适合已经从 project.inspect 或前一批素材结果确认了相邻片段 ID 的剪辑；每条转场都必须满足同轨道、相邻且有足够素材余量。',
+  inputSchema: schema({
+    items: {
+      type: 'array',
+      minItems: 1,
+      maxItems: MAX_EDIT_ITEMS,
+      items: {
+        type: 'object',
+        properties: {
+          leftItemId: { type: 'string' },
+          rightItemId: { type: 'string' },
+          durationSeconds: { type: 'number', exclusiveMinimum: 0 },
+          presentation: { type: 'string', minLength: 1, maxLength: 100 },
+          direction: { type: 'string', enum: TRANSITION_DIRECTIONS },
+          alignment: { type: 'number', minimum: 0, maximum: 1 },
+        },
+        required: ['leftItemId', 'rightItemId'],
+        additionalProperties: false,
+      },
+    },
+  }, ['items']),
+  schema: z.object({
+    items: z.array(z.object({
+      leftItemId: z.string().min(1),
+      rightItemId: z.string().min(1),
+      durationSeconds: z.number().positive().optional(),
+      presentation: z.string().trim().min(1).max(100).optional(),
+      direction: z.enum(TRANSITION_DIRECTIONS).optional(),
+      alignment: z.number().min(0).max(1).optional(),
+    })).min(1).max(MAX_EDIT_ITEMS),
+  }),
+  execute: async (args, signal) => executeTimelineBatch('添加转场', timelineAddTransition, args.items, signal),
+})
+
 const timelineListTransitions = tool({
   name: 'timeline.list_transitions',
   description: '列出当前编辑器已注册且可渲染的转场预设、分类、方向和默认时长。添加转场前先用它确认 presentation 和 direction。',
@@ -1156,4 +1313,7 @@ export const TIMELINE_AI_TOOLS: readonly ProjectSourceTool[] = [
   timelineAddKeyframe,
   timelineListTransitions,
   timelineAddTransition,
+  timelineAddMediaBatch,
+  timelineAddTextBatch,
+  timelineAddTransitionBatch,
 ]

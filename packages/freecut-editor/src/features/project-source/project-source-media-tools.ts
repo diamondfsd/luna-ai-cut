@@ -237,11 +237,11 @@ const mediaRead = tool({
 
 const mediaAnalyze = tool({
   name: 'media.analyze',
-  description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 对视频或图片抽帧并生成带时间点的画面描述。分析结果会保存，之后用 media.read 读取。',
+  description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 对视频或图片抽帧并生成带时间点的画面描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面证据时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
   inputSchema: schema({
     mediaIds: { type: 'array', minItems: 1, maxItems: MAX_MEDIA_SELECTION, items: { type: 'string' } },
     kind: { type: 'string', enum: ['transcript', 'visual'] },
-    intensity: { type: 'string', enum: VISUAL_ANALYSIS_INTENSITIES },
+    intensity: { type: 'string', enum: VISUAL_ANALYSIS_INTENSITIES, default: 'light' },
   }, ['mediaIds', 'kind']),
   schema: z.object({
     mediaIds: z.array(z.string().min(1)).min(1).max(MAX_MEDIA_SELECTION),
@@ -295,8 +295,8 @@ const mediaAnalyze = tool({
       }
       if (host.analyzeMediaVisual) {
           const result = signal
-            ? await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'normal', undefined, signal)
-            : await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'normal')
+            ? await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'light', undefined, signal)
+            : await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'light')
           signal?.throwIfAborted()
           await saveVisualEditingEvidence(media.id, sourceFingerprint(media), {
           samples: result.samples,

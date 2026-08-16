@@ -147,7 +147,7 @@ components/
 |---|---|---|
 | `media.list` | 可选 `limit`，最大 500 | 获取素材 ID、文件名、类型、时长、尺寸、帧率、编码和音频情况。 |
 | `media.read` | `mediaIds`，最多 12 个 | 读取已经生成的画面理解和带时间点的字幕证据。 |
-| `media.analyze` | `mediaIds`、`kind`、可选 `intensity` | 生成分析结果；`kind` 为 `transcript` 或 `visual`，画面分析强度为 `light`、`normal`、`strong`。结果会保存，之后用 `media.read` 读取。 |
+| `media.analyze` | `mediaIds`、`kind`、可选 `intensity` | 生成分析结果；`kind` 为 `transcript` 或 `visual`。`visual` 未指定 `intensity` 时默认使用较快的 `light`，也可传 `normal` 或 `strong` 获取更密集的画面证据。结果会保存，之后用 `media.read` 读取。 |
 | `media.search_transcript` | `query`，可选 `mediaIds` | 在已生成的字幕中搜索词语或短语，返回素材 ID、时间范围和原文。 |
 
 推荐的素材证据流程：
@@ -202,9 +202,12 @@ media.read
 | 工具 | 关键参数 | 用途 |
 |---|---|---|
 | `timeline.set_properties` | `itemId`，可选 `label`、`text`、`volume`、`speed`、`fadeIn`、`fadeOut` | 修改名称、文字、音量、速度和淡入淡出。不能用它改时间位置或轨道。 |
-| `timeline.set_transform` | `itemId`，可选 `x`、`y`、`width`、`height`、`rotation`、`opacity`、翻转和 `cornerRadius` | 修改画面位置、尺寸、旋转、透明度、翻转和圆角。位置和尺寸使用归一化值，不是像素。 |
+| `timeline.set_transform` | `itemId`，可选 `x`、`y`、`width`、`height`、`fontSizeRatio`、`rotation`、`opacity`、翻转和 `cornerRadius` | 修改画面位置、尺寸、旋转、透明度、翻转和圆角。位置和尺寸使用归一化值，不是像素。文字片段的文字框宽高不会自动改变字号；需要同步调整时传 `fontSizeRatio`，它表示字号占画布短边的比例。 |
 | `timeline.set_audio` | `itemId`，可选 `volume`、`fadeIn`、`fadeOut`、`pitchSemitones` | 修改视频或音频的音量、淡入淡出和变调。 |
-| `timeline.add_text` | `text`、`startSeconds`、`durationSeconds`，可选 `label`、`stylePresetId` | 添加文字图层。默认居中、位于画面底部并带半透明黑色背景；工具会自动选择空闲字幕轨道。 |
+| `timeline.add_text` | `text`、`startSeconds`、`durationSeconds`，可选 `label`、`stylePresetId` | 添加文字图层。默认居中、位于画面底部且背景透明；工具会自动选择空闲字幕轨道。 |
+| `timeline.add_media_batch` | `items` | 一次添加多段素材，返回所有新片段 ID，适合一轮已经确定的多个素材。 |
+| `timeline.add_text_batch` | `items` | 一次添加多条字幕或文字图层，未指定样式时背景透明。 |
+| `timeline.add_transition_batch` | `items` | 一次添加多条已经确认相邻片段之间的转场。 |
 | `timeline.add_keyframe` | `itemId`、`property`、`atSeconds`、`value`，可选 `easing` | 为画面、文字、音频或路径属性增加一个标量关键帧。时间相对片段起点。 |
 
 #### 转场

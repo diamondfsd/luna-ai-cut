@@ -54,7 +54,8 @@ Luna AI Cut 的剪辑上下文分为三层：
 ## 常用操作规则
 
 - `timeline.add_media` 的 `mediaId` 必须来自 `media.list`。不传 `trackId` 时由工具选择最近的可用轨道；只有确实需要指定已有轨道时才传入。
-- `timeline.add_text` 不需要 `trackId`：工具优先选择按轨道顺序最近的空闲字幕轨道，全部冲突或不存在时才创建。未指定样式时文字水平居中、位于画面底部，并带半透明黑色背景。
+- `timeline.add_text` 不需要 `trackId`：工具优先选择按轨道顺序最近的空闲字幕轨道，全部冲突或不存在时才创建。未指定样式时文字水平居中、位于画面底部，背景色透明；需要有色背景时必须明确指定样式预设。
+- 同一轮已经确定多个素材、字幕或转场时，优先分别使用 `timeline.add_media_batch`、`timeline.add_text_batch`、`timeline.add_transition_batch`，一次提交同类操作；批量工具返回结果后再规划依赖新片段 ID 的下一批操作。
 - 添加转场前先调用 `timeline.list_transitions`；`timeline.add_transition.presentation` 必须是返回的已注册预设，方向按预设支持情况传入，时长使用秒。
 - 删除中间一段时先用 `timeline.split`，再用 `timeline.remove` 删除不需要的片段。删除片段优先使用工具，让编辑器同步清理关联的音视频、转场和关键帧。
 - 每次工具返回后读取其中的结构化结果，确认修改落在目标片段和时间范围；不要凭猜测的 ID 重试。
