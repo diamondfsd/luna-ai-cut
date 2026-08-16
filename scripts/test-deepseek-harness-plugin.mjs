@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict'
-import { renderToolResult } from './deepseek-harness-freecut-plugin.mjs'
+import {
+  FREECUT_MEMORY_TOOL_NAMES,
+  renderToolResult,
+} from './deepseek-harness-freecut-plugin.mjs'
+
+assert.deepEqual(FREECUT_MEMORY_TOOL_NAMES, [
+  'memory.read',
+  'memory.search',
+  'memory.update',
+  'memory.remove',
+])
 
 const result = {
   ok: true,
