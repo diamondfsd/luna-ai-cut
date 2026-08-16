@@ -279,7 +279,7 @@ const timelineTools = [
   },
   {
     name: 'timeline.add_text',
-    description: '在时间轴顶部新增一条文字图层。时间单位是秒；文字会放在独立字幕轨道，不覆盖现有片段。',
+    description: '在时间轴顶部新增一条文字图层。时间单位是秒；优先放入按轨道顺序最近的空闲字幕轨道，所有字幕轨道都冲突或不存在时才创建新的字幕轨道。未指定样式时文字水平居中并位于画面底部，带半透明黑色背景；指定 stylePresetId 时使用对应预设。',
     parameters: {
       type: 'object',
       properties: {

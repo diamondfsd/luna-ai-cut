@@ -684,7 +684,7 @@ const timelineSetAudio = tool({
 
 const timelineAddText = tool({
   name: 'timeline.add_text',
-  description: '在时间轴顶部新增一条文字图层。时间单位是秒；文字会放在独立字幕轨道，不覆盖现有片段。',
+  description: '在时间轴顶部新增一条文字图层。时间单位是秒；优先放入按轨道顺序最近的空闲字幕轨道，所有字幕轨道都冲突或不存在时才创建新的字幕轨道。',
   inputSchema: schema({
     text: { type: 'string', minLength: 1, maxLength: 10000 },
     startSeconds: { type: 'number', minimum: 0 },
@@ -707,13 +707,30 @@ const timelineAddText = tool({
       ? TEXT_STYLE_PRESETS.find((candidate) => candidate.id === args.stylePresetId)
       : undefined
     if (args.stylePresetId && !preset) throw new Error(`没有找到文字样式 ${args.stylePresetId}。`)
-    const minOrder = state.tracks.reduce((lowest, track) => Math.min(lowest, track.order), 0)
-    const track = createClassicTrack({ tracks: state.tracks, kind: 'subtitle', order: minOrder - 1 })
-    const item = createTextTemplateItem({
+    const from = secondsToFrame(args.startSeconds, state.fps)
+    const durationInFrames = Math.max(1, secondsToFrame(args.durationSeconds, state.fps))
+    const to = from + durationInFrames
+    const track = state.tracks
+      .filter((candidate) => !candidate.isGroup && !candidate.locked && getTrackKind(candidate) === 'subtitle')
+      .toSorted((left, right) => left.order - right.order)
+      .find((candidate) => !state.items.some((item) =>
+        item.trackId === candidate.id &&
+        item.from < to &&
+        item.from + item.durationInFrames > from,
+      ))
+    const nextTracks = track
+      ? state.tracks
+      : (() => {
+          const minOrder = state.tracks.reduce((lowest, candidate) => Math.min(lowest, candidate.order), 0)
+          const newTrack = createClassicTrack({ tracks: state.tracks, kind: 'subtitle', order: minOrder - 1 })
+          return [...state.tracks, newTrack]
+        })()
+    const targetTrack = track ?? nextTracks[nextTracks.length - 1]!
+    const baseItem = createTextTemplateItem({
       placement: {
-        trackId: track.id,
-        from: secondsToFrame(args.startSeconds, state.fps),
-        durationInFrames: Math.max(1, secondsToFrame(args.durationSeconds, state.fps)),
+        trackId: targetTrack.id,
+        from,
+        durationInFrames,
         canvasWidth: project.metadata.width,
         canvasHeight: project.metadata.height,
         fps: state.fps,
@@ -722,8 +739,24 @@ const timelineAddText = tool({
       text: args.text,
       textStylePresetId: args.stylePresetId as TextStylePresetId | undefined,
     })
-    state.addItemOnNewTrack(item, [...state.tracks, track])
-    return saveTimelineEdit('添加文字图层', { item: itemSummary(item, [...state.tracks, track], state.fps) })
+    const item = args.stylePresetId
+      ? baseItem
+      : {
+          ...baseItem,
+          backgroundColor: 'rgba(0, 0, 0, 0.55)',
+          backgroundRadius: 4,
+          textPadding: 12,
+          verticalAlign: 'middle' as const,
+          transform: {
+            ...baseItem.transform,
+            y: Math.round(project.metadata.height * 0.36),
+            width: Math.round(project.metadata.width * 0.7),
+            height: Math.round(project.metadata.height * 0.16),
+          },
+        }
+    if (track) state.addItem(item)
+    else state.addItemOnNewTrack(item, nextTracks)
+    return saveTimelineEdit('添加文字图层', { item: itemSummary(item, nextTracks, state.fps) })
   },
 })
 
