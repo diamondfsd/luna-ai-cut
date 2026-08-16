@@ -129,6 +129,19 @@ const timelineTools = [
     },
   },
   {
+    name: 'project.set_canvas',
+    description: '修改当前剪辑项目的画布尺寸并保存。使用 aspectRatio 传入预设比例（例如 9:16）；需要精确尺寸时同时传入 width 和 height，二者只能选择一种方式。',
+    parameters: {
+      type: 'object',
+      properties: {
+        aspectRatio: { type: 'string', enum: ['16:9', '4:3', '2.35:1', '2:1', '1.85:1', '9:16', '3:4', '1:1', '1:2'] },
+        width: { type: 'integer', minimum: 2 },
+        height: { type: 'integer', minimum: 2 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'timeline.inspect_context',
     description: '读取指定时间范围内的片段和转场，用于在局部剪辑前确认目标 ID。时间单位是秒。',
     parameters: {
@@ -325,6 +338,7 @@ const EDITING_GUIDANCE = `
 
 信息收集：
 - 开始规划前先调用 media.list 和 project.inspect。media.list 的 data.items 是素材清单，project.inspect 的 data.tracks 和 data.items 是时间轴结构；必须阅读这些 data 字段，不能只看工具返回的 message。
+- 需要更改画布比例或尺寸时使用 project.set_canvas：常用比例传 aspectRatio（例如 9:16），精确尺寸同时传 width 和 height；不要直接编辑工程源码 JSON。
 - 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze，并在分析完成后再次调用 media.read；没有证据时明确说明未知，不要假装看过素材。
 - 需要按台词寻找内容时使用 media.search_transcript。用返回的 mediaId 和时间范围制定剪辑方案，但仍要通过 project.inspect 或 timeline.inspect_context 确认时间轴片段 ID。
 - source.tree、source.read、source.search、source.check 主要用于诊断工程源码。常规剪辑不需要读取 JSON 源码，更不能把源码内容直接当作修改接口。

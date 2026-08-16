@@ -38,15 +38,22 @@ const harness = vi.hoisted(() => {
     splitItem: vi.fn(),
     setTracks: vi.fn(),
     addItems: vi.fn(),
+    markDirty: vi.fn(),
     saveTimeline: vi.fn(),
   }
   const resolveMediaUrl = vi.fn(async () => 'blob:media-2')
+  const project = { id: 'project-1', name: 'Demo', duration: 99, metadata: { width: 1920, height: 1080 } }
+  const updateProject = vi.fn(async (_id: string, updates: Partial<typeof project.metadata>) => {
+    project.metadata = { ...project.metadata, ...updates }
+    return project
+  })
   return {
     state,
     media,
     mediaLibraryService,
     resolveMediaUrl,
-    project: { id: 'project-1', name: 'Demo', duration: 99, metadata: { width: 1920, height: 1080 } },
+    project,
+    updateProject,
   }
 })
 
@@ -54,10 +61,12 @@ vi.mock('@freecut/shared/host/embedded-host', () => ({
   getEmbeddedHostBridge: () => ({ editingSourceGit: {} }),
 }))
 vi.mock('@freecut/features/editor/deps/projects', () => ({
-  useProjectStore: { getState: () => ({ currentProject: harness.project }) },
+  useProjectStore: { getState: () => ({ currentProject: harness.project, updateProject: harness.updateProject }) },
 }))
 vi.mock('@freecut/features/editor/deps/timeline-store', () => ({
   useTimelineStore: { getState: () => harness.state },
+  captureSnapshot: vi.fn(() => ({})),
+  useTimelineCommandStore: { getState: () => ({ addUndoEntry: vi.fn() }) },
 }))
 vi.mock('@freecut/features/media-library/services/media-library-service-loader', () => ({
   importMediaLibraryService: vi.fn(async () => ({ mediaLibraryService: harness.mediaLibraryService })),
@@ -84,6 +93,7 @@ describe('timeline AI tools', () => {
     harness.state.tracks = [{ id: 'track-video', name: 'V1', kind: 'video', order: 0, locked: false, visible: true, muted: false }]
     harness.state.items[0]!.from = 0
     harness.state.items[0]!.durationInFrames = 300
+    harness.project.metadata = { width: 1920, height: 1080 }
   })
 
   it('returns a bounded, semantic project summary', async () => {
@@ -94,6 +104,17 @@ describe('timeline AI tools', () => {
       items: [{ id: 'clip-1', fromSeconds: 0, toSeconds: 10, mediaId: 'media-1' }],
     })
     expect(result.data).toMatchObject({ project: { durationSeconds: 10 } })
+  })
+
+  it('changes the project canvas through the metadata update flow', async () => {
+    const result = await getTool('project.set_canvas').execute({ aspectRatio: '9:16' })
+
+    expect(harness.updateProject).toHaveBeenCalledWith('project-1', { width: 1080, height: 1920 })
+    expect(result.data).toMatchObject({
+      operation: '修改画布尺寸',
+      before: { width: 1920, height: 1080 },
+      after: { width: 1080, height: 1920, aspectRatio: '9:16' },
+    })
   })
 
   it('requires explicit trim boundaries', () => {

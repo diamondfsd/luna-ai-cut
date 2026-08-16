@@ -16,6 +16,11 @@ import {
 } from '@freecut/features/timeline/utils/dropped-media'
 import { planTrackMediaDropPlacements } from '@freecut/features/timeline/utils/track-media-drop'
 import { createTextTemplateItem } from '@freecut/features/timeline/utils/generated-layer-items'
+import {
+  CANVAS_ASPECT_RATIO_PRESETS,
+  resizeCanvasToAspectRatio,
+} from '@freecut/shared/projects/canvas-aspect-ratio'
+import { commitProjectMetadataChange } from '@freecut/features/editor/utils/project-metadata-history'
 import { readProjectSource } from './project-source-worktree'
 import type {
   ProjectSourceJsonSchema,
@@ -58,6 +63,7 @@ const ANIMATABLE_PROPERTIES = [
   'taperEndLength',
 ] as const
 const EASING_TYPES = ['linear', 'ease-in', 'ease-out', 'ease-in-out'] as const
+const CANVAS_ASPECT_RATIO_IDS = CANVAS_ASPECT_RATIO_PRESETS.map((preset) => preset.id) as [string, ...string[]]
 
 type TimelineState = ReturnType<typeof useTimelineStore.getState>
 
@@ -300,6 +306,71 @@ const projectInspect = tool({
   inputSchema: schema({ limit: { type: 'integer', minimum: 1, maximum: MAX_INSPECT_ITEMS } }),
   schema: z.object({ limit: z.number().int().min(1).max(MAX_INSPECT_ITEMS).optional() }),
   execute: async (args) => ({ ok: true, message: '已读取当前剪辑项目。', data: projectSummary(args.limit) }),
+})
+
+const projectSetCanvas = tool({
+  name: 'project.set_canvas',
+  description: '修改当前剪辑项目的画布尺寸并保存。使用 aspectRatio 传入预设比例（例如 9:16）；需要精确尺寸时同时传入 width 和 height，二者只能选择一种方式。',
+  inputSchema: schema({
+    aspectRatio: { type: 'string', enum: CANVAS_ASPECT_RATIO_IDS },
+    width: { type: 'integer', minimum: 2 },
+    height: { type: 'integer', minimum: 2 },
+  }),
+  schema: z.object({
+    aspectRatio: z.enum(CANVAS_ASPECT_RATIO_IDS).optional(),
+    width: z.number().int().min(2).optional(),
+    height: z.number().int().min(2).optional(),
+  }).superRefine((args, context) => {
+    const hasExplicitSize = args.width !== undefined || args.height !== undefined
+    if (args.aspectRatio === undefined && (args.width === undefined || args.height === undefined)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: '请提供 aspectRatio，或同时提供 width 和 height' })
+    }
+    if (args.aspectRatio !== undefined && hasExplicitSize) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'aspectRatio 与 width/height 只能选择一种方式' })
+    }
+  }),
+  execute: async (args) => {
+    const project = useProjectStore.getState().currentProject
+    if (!project) throw new Error('当前没有打开的剪辑项目。')
+
+    const nextSize = args.aspectRatio
+      ? resizeCanvasToAspectRatio(
+          project.metadata,
+          CANVAS_ASPECT_RATIO_PRESETS.find((preset) => preset.id === args.aspectRatio)!.ratio,
+        )
+      : { width: args.width!, height: args.height! }
+    const before = {
+      width: project.metadata.width,
+      height: project.metadata.height,
+    }
+
+    await commitProjectMetadataChange({
+      project,
+      updates: nextSize,
+      command: {
+        type: 'UPDATE_PROJECT_METADATA',
+        payload: { fields: ['width', 'height'], operation: 'set-canvas' },
+      },
+      updateProject: useProjectStore.getState().updateProject,
+      markDirty: useTimelineStore.getState().markDirty,
+    })
+
+    const updatedProject = useProjectStore.getState().currentProject
+    if (!updatedProject) throw new Error('画布尺寸更新后没有找到当前项目。')
+    return {
+      ok: true,
+      message: `画布已调整为 ${updatedProject.metadata.width}x${updatedProject.metadata.height}。`,
+      data: {
+        operation: '修改画布尺寸',
+        before,
+        after: {
+          width: updatedProject.metadata.width,
+          height: updatedProject.metadata.height,
+          ...(args.aspectRatio ? { aspectRatio: args.aspectRatio } : {}),
+        },
+      },
+    }
+  },
 })
 
 const timelineInspectContext = tool({
@@ -736,6 +807,7 @@ const timelineValidate = tool({
 
 export const TIMELINE_AI_TOOLS: readonly ProjectSourceTool[] = [
   projectInspect,
+  projectSetCanvas,
   timelineInspectContext,
   timelineAddMedia,
   timelineTrim,
