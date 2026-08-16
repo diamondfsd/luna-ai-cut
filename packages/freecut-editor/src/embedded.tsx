@@ -14,9 +14,6 @@ import {
   type EmbeddedTaskProgress,
   type EmbeddedAiEditingSourceGitBridge,
   type EmbeddedDeepSeekHarnessBridge,
-  type EmbeddedDeepSeekHarnessConfig,
-  type EmbeddedDeepSeekHarnessConfigInput,
-  type EmbeddedDeepSeekHarnessConfigTestResult,
   type EmbeddedHtmlRenderRequest,
   type EmbeddedHtmlRenderResult,
   type EmbeddedExportBridge,
@@ -47,13 +44,6 @@ export interface FreeCutEditorProps {
     intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
   ) => Promise<EmbeddedVisualEvidence>
-  onGetDeepSeekHarnessConfig?: () => Promise<EmbeddedDeepSeekHarnessConfig>
-  onSaveDeepSeekHarnessConfig?: (
-    input: EmbeddedDeepSeekHarnessConfigInput,
-  ) => Promise<EmbeddedDeepSeekHarnessConfig>
-  onTestDeepSeekHarnessConfig?: (
-    input: EmbeddedDeepSeekHarnessConfigInput,
-  ) => Promise<EmbeddedDeepSeekHarnessConfigTestResult>
   onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
   onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
   onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
@@ -71,9 +61,6 @@ export function FreeCutEditor({
   onResolveNativeMediaUrl,
   onTranscribeMedia,
   onAnalyzeMediaVisual,
-  onGetDeepSeekHarnessConfig,
-  onSaveDeepSeekHarnessConfig,
-  onTestDeepSeekHarnessConfig,
   onGetDeepSeekHarnessWebUrl,
   onDeepSeekHarnessWebState,
   onDeepSeekHarnessSourceToolRequest,
@@ -95,16 +82,10 @@ export function FreeCutEditor({
       renderHtmlFrame: onRenderHtmlFrame,
       exportFiles,
       deepseekHarness:
-        onGetDeepSeekHarnessConfig &&
-        onSaveDeepSeekHarnessConfig &&
-        onTestDeepSeekHarnessConfig &&
         onGetDeepSeekHarnessWebUrl &&
         onDeepSeekHarnessWebState &&
         onDeepSeekHarnessSourceToolRequest
           ? {
-              getConfig: onGetDeepSeekHarnessConfig,
-              saveConfig: onSaveDeepSeekHarnessConfig,
-              testConfig: onTestDeepSeekHarnessConfig,
               getWebUrl: onGetDeepSeekHarnessWebUrl,
               onWebState: onDeepSeekHarnessWebState,
               onSourceToolRequest: onDeepSeekHarnessSourceToolRequest,
@@ -123,9 +104,6 @@ export function FreeCutEditor({
       onAnalyzeMediaVisual,
       onRenderHtmlFrame,
       exportFiles,
-      onGetDeepSeekHarnessConfig,
-      onSaveDeepSeekHarnessConfig,
-      onTestDeepSeekHarnessConfig,
       onGetDeepSeekHarnessWebUrl,
       onDeepSeekHarnessWebState,
       onDeepSeekHarnessSourceToolRequest,

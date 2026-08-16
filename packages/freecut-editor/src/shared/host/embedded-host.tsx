@@ -1,9 +1,6 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react'
 export type {
   EmbeddedDeepSeekHarnessBridge,
-  EmbeddedDeepSeekHarnessConfig,
-  EmbeddedDeepSeekHarnessConfigInput,
-  EmbeddedDeepSeekHarnessConfigTestResult,
   EmbeddedDeepSeekHarnessSourceToolRequest,
   EmbeddedDeepSeekHarnessWebState,
 } from './deepseek-harness'

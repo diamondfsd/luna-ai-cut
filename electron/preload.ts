@@ -32,7 +32,6 @@ import type {
   OriginalFileExportRequest,
   AiEditingSourceGitApi,
   DeepSeekHarnessApi,
-  DeepSeekHarnessConfigInput,
   DeepSeekHarnessSourceToolRequest,
 } from '../src/shared/types'
 import type { HtmlRenderApi } from './htmlRenderTypes'
@@ -175,9 +174,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
   deepseekHarness: {
-    getConfig: () => ipcRenderer.invoke('deepseek-harness:get-config'),
-    saveConfig: (input: DeepSeekHarnessConfigInput) => ipcRenderer.invoke('deepseek-harness:save-config', input),
-    testConfig: (input: DeepSeekHarnessConfigInput) => ipcRenderer.invoke('deepseek-harness:test-config', input),
     getWebUrl: (projectId: string) => ipcRenderer.invoke('deepseek-harness:get-web-url', projectId),
     onWebState: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, state: import('../src/shared/types').DeepSeekHarnessWebState) => callback(state)

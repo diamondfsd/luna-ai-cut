@@ -29,7 +29,7 @@ packages/freecut-editor/src/features/ai-editing/
 | 上游同步配置 | `deepseek-harness.upstream.json` |
 | 上游三方同步 | `scripts/update-deepseek-harness.mjs` |
 | Electron 主进程服务 | `electron/deepseekHarnessService.ts` |
-| Electron 配置与 IPC | `electron/deepseekHarnessConfig.ts`、`electron/ipcDeepSeekHarness.ts` |
+| Electron 启动与 IPC | `electron/deepseekHarnessService.ts`、`electron/ipcDeepSeekHarness.ts` |
 | Renderer 端面板 | `packages/freecut-editor/src/features/editor/components/deepseek-harness-*.tsx` |
 | FreeCut 工程源码能力 | `packages/freecut-editor/src/features/project-source/` |
 
@@ -46,7 +46,7 @@ pnpm run build:harness-runtime
 当前副本不是纯粹的官方快照。最近的集成提交包括：
 
 - 删除原有 FreeCut 自己维护的 AI Agent loop 和相关工具实现。
-- 增加 DeepSeek Harness 的 Electron 启动、配置、IPC 和生命周期管理。
+- 增加 DeepSeek Harness 的 Electron 启动、IPC 和生命周期管理，并复用 Harness 原生设置页。
 - 增加 `luna-freecut-project-source` 插件，把源码工具请求转发给 FreeCut 宿主。
 - 增加 Harness Web runtime 的打包适配。
 - 对官方 Harness 的提示词、工具、会话及页面行为做过本地调整。
