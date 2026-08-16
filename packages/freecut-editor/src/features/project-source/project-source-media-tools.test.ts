@@ -155,4 +155,21 @@ describe('project media AI tools', () => {
       expect.objectContaining({ samples: resultEvidence.samples, models: resultEvidence.models, intensity: 'strong' }),
     )
   })
+
+  it('uses the fast visual analysis intensity when it is omitted', async () => {
+    const resultEvidence = {
+      samples: [{ timeSeconds: 1, tags: ['人物'] }],
+      models: [{ id: 'luna-vision', version: '1' }],
+      sourceFingerprint: { size: 1000, modifiedAtMs: 1 },
+      intensity: 'light',
+    } satisfies EmbeddedVisualEvidence
+    harness.host.analyzeMediaVisual = vi.fn(async () => resultEvidence)
+
+    await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
+
+    expect(harness.host.analyzeMediaVisual).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaId: 'media-1' }),
+      'light',
+    )
+  })
 })

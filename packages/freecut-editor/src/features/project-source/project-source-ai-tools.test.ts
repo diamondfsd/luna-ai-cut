@@ -43,6 +43,10 @@ const harness = vi.hoisted(() => {
     addItem: vi.fn(),
     addItemOnNewTrack: vi.fn(),
     addItems: vi.fn(),
+    updateItem: vi.fn((id: string, updates: Record<string, unknown>) => {
+      const item = state.items.find((candidate) => candidate.id === id)
+      if (item) Object.assign(item, updates)
+    }),
     updateItemTransform: vi.fn((id: string, updates: Record<string, unknown>) => {
       const item = state.items.find((candidate) => candidate.id === id)
       if (item) item.transform = { ...item.transform, ...updates }
@@ -52,6 +56,8 @@ const harness = vi.hoisted(() => {
     saveTimeline: vi.fn(),
   }
   const resolveMediaUrl = vi.fn(async () => 'blob:media-2')
+  const captureSnapshot = vi.fn(() => ({}))
+  const restoreSnapshot = vi.fn()
   const project = { id: 'project-1', name: 'Demo', duration: 99, metadata: { width: 1920, height: 1080 } }
   const updateProject = vi.fn(async (_id: string, updates: Partial<typeof project.metadata>) => {
     project.metadata = { ...project.metadata, ...updates }
@@ -62,6 +68,8 @@ const harness = vi.hoisted(() => {
     media,
     mediaLibraryService,
     resolveMediaUrl,
+    captureSnapshot,
+    restoreSnapshot,
     project,
     updateProject,
   }
@@ -75,7 +83,8 @@ vi.mock('@freecut/features/editor/deps/projects', () => ({
 }))
 vi.mock('@freecut/features/editor/deps/timeline-store', () => ({
   useTimelineStore: { getState: () => harness.state },
-  captureSnapshot: vi.fn(() => ({})),
+  captureSnapshot: harness.captureSnapshot,
+  restoreSnapshot: harness.restoreSnapshot,
   useTimelineCommandStore: { getState: () => ({ addUndoEntry: vi.fn() }) },
 }))
 vi.mock('@freecut/features/media-library/services/media-library-service-loader', () => ({
@@ -147,9 +156,9 @@ describe('timeline AI tools', () => {
       trackId: 'track-subtitle',
       from: 60,
       durationInFrames: 90,
-      backgroundColor: 'rgba(0, 0, 0, 0.55)',
-      backgroundRadius: 4,
-      textPadding: 12,
+      backgroundColor: undefined,
+      backgroundRadius: 0,
+      textPadding: 0,
       transform: expect.objectContaining({
         x: 0,
         y: 389,
@@ -225,6 +234,37 @@ describe('timeline AI tools', () => {
     })
   })
 
+  it('accepts multiple media placements in one batch tool call', async () => {
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    const result = await getTool('timeline.add_media_batch').execute({
+      items: [
+        { mediaId: harness.media.id, startSeconds: 12 },
+        { mediaId: harness.media.id, startSeconds: 20 },
+      ],
+    })
+
+    expect(harness.state.addItems).toHaveBeenCalledTimes(2)
+    expect(result.data).toMatchObject({
+      operations: [{ mediaId: 'media-2' }, { mediaId: 'media-2' }],
+      after: { items: [{ id: 'clip-1' }] },
+    })
+  })
+
+  it('restores the original timeline when a batch item is invalid', async () => {
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    await expect(getTool('timeline.add_media_batch').execute({
+      items: [
+        { mediaId: harness.media.id, startSeconds: 12 },
+        { mediaId: harness.media.id, startSeconds: 20, sourceStartSeconds: 3, sourceEndSeconds: 2 },
+      ],
+    })).rejects.toThrow('sourceEndSeconds 必须大于 sourceStartSeconds')
+
+    expect(harness.restoreSnapshot).toHaveBeenCalled()
+    expect(harness.state.addItems).toHaveBeenCalledTimes(1)
+  })
+
   it('adds only the requested source range without a follow-up trim', async () => {
     harness.state.saveTimeline.mockResolvedValue(undefined)
 
@@ -277,6 +317,31 @@ describe('timeline AI tools', () => {
       height: 432,
       cornerRadius: 108,
     })
+  })
+
+  it('changes a text box and its font size together when requested', async () => {
+    const textItem = {
+      ...harness.state.items[0]!,
+      id: 'text-1',
+      type: 'text' as const,
+      text: '标题',
+      fontSize: 60,
+    }
+    harness.state.items.push(textItem)
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    await getTool('timeline.set_transform').execute({
+      itemId: 'text-1',
+      width: 0.85,
+      height: 0.35,
+      fontSizeRatio: 0.08,
+    })
+
+    expect(harness.state.updateItemTransform).toHaveBeenCalledWith('text-1', {
+      width: 1632,
+      height: 378,
+    })
+    expect(harness.state.updateItem).toHaveBeenCalledWith('text-1', { fontSize: 86 })
   })
 
   it('validates normalized keyframe values and converts them before storing', async () => {
