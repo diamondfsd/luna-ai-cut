@@ -139,6 +139,7 @@ export function VideoEditorPage() {
   const handleTranscribeMedia = useCallback(async (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
   ) => {
     const filePath = source.nativePath
       ?? findImportedSourcePath(importedSourcePathsRef.current, source)
@@ -149,6 +150,12 @@ export function VideoEditorPage() {
     }
 
     const requestId = crypto.randomUUID()
+    const abort = (): void => {
+      void window.luna.workspace.cancelSubtitleTranscription(requestId)
+    }
+    signal?.throwIfAborted()
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
     const unsubscribe = window.luna.onWorkspaceSubtitleProgress((progress) => {
       if (progress.requestId !== requestId) return
       onProgress?.({ label: progress.label, percent: progress.percent })
@@ -172,6 +179,7 @@ export function VideoEditorPage() {
         sourceFingerprint: result.sourceFingerprint,
       }
     } finally {
+      signal?.removeEventListener('abort', abort)
       unsubscribe()
     }
   }, [])
@@ -180,6 +188,7 @@ export function VideoEditorPage() {
     source: EmbeddedMediaSource,
     intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
   ) => {
     const filePath = source.nativePath
       ?? findImportedSourcePath(importedSourcePathsRef.current, source)
@@ -187,6 +196,12 @@ export function VideoEditorPage() {
       ?? await window.luna.freecutWorkspace.getMediaSourcePath(source.mediaId)
     if (!filePath) throw new Error('这段素材没有可用的原始文件，无法进行本地画面分析。')
     const requestId = crypto.randomUUID()
+    const abort = (): void => {
+      void window.luna.workspace.cancelSegmentation(requestId)
+    }
+    signal?.throwIfAborted()
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
     const unsubscribe = window.luna.onWorkspaceSegmentationProgress((progress) => {
       if (progress.requestId !== requestId) return
       onProgress?.({ label: progress.label, percent: progress.percent })
@@ -199,6 +214,7 @@ export function VideoEditorPage() {
         intensity,
       })
     } finally {
+      signal?.removeEventListener('abort', abort)
       unsubscribe()
     }
   }, [])
@@ -209,6 +225,8 @@ export function VideoEditorPage() {
     window.luna.deepseekHarness.onWebState(callback), [])
   const handleDeepSeekHarnessSourceToolRequest = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onSourceToolRequest>[0]) =>
     window.luna.deepseekHarness.onSourceToolRequest(callback), [])
+  const handleDeepSeekHarnessSourceToolCancel = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onSourceToolCancel>[0]) =>
+    window.luna.deepseekHarness.onSourceToolCancel(callback), [])
   const handleRenderHtmlFrame = useCallback(
     (request: Parameters<typeof window.lunaHtmlRenderer.render>[0]) =>
       window.lunaHtmlRenderer.render(request),
@@ -268,6 +286,7 @@ export function VideoEditorPage() {
           onGetDeepSeekHarnessWebUrl={handleGetDeepSeekHarnessWebUrl}
           onDeepSeekHarnessWebState={handleDeepSeekHarnessWebState}
           onDeepSeekHarnessSourceToolRequest={handleDeepSeekHarnessSourceToolRequest}
+          onDeepSeekHarnessSourceToolCancel={handleDeepSeekHarnessSourceToolCancel}
           editingSourceGit={window.luna.aiEditingSourceGit}
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}

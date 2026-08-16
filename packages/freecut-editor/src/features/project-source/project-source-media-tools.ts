@@ -38,14 +38,14 @@ function tool<S extends z.ZodType>(input: {
   description: string
   inputSchema: ProjectSourceJsonSchema
   schema: S
-  execute: (args: z.infer<S>) => Promise<ProjectSourceToolResult>
+  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectSourceToolResult>
 }): ProjectSourceTool {
   return {
     name: input.name,
     description: input.description,
     inputSchema: input.inputSchema,
     validate: (args) => validate(args, input.schema),
-    execute: (args) => input.execute(args as z.infer<S>),
+    execute: (args, signal) => input.execute(args as z.infer<S>, signal),
   }
 }
 
@@ -248,7 +248,7 @@ const mediaAnalyze = tool({
     kind: z.enum(['transcript', 'visual']),
     intensity: z.enum(VISUAL_ANALYSIS_INTENSITIES).optional(),
   }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const requested = new Set(args.mediaIds)
     const mediaItems = await projectMedia()
     const found = mediaItems.filter((media) => requested.has(media.id))
@@ -267,6 +267,7 @@ const mediaAnalyze = tool({
       : { mediaAnalysisService: undefined }
 
     for (const media of found) {
+      signal?.throwIfAborted()
       const mediaType = getMediaType(media.mimeType)
       if (args.kind === 'transcript') {
         if (mediaType !== 'video' && mediaType !== 'audio') {
@@ -274,11 +275,15 @@ const mediaAnalyze = tool({
           continue
         }
         if (host.transcribeMedia) {
-          const result = await host.transcribeMedia(mediaSource(media))
+          const result = signal
+            ? await host.transcribeMedia(mediaSource(media), undefined, signal)
+            : await host.transcribeMedia(mediaSource(media))
+          signal?.throwIfAborted()
           await mediaTranscriptionService!.adoptTranscript(transcriptFromHostResult(media, result))
         } else {
           const { runMediaTranscriptionJob } = await import('@freecut/features/media-library/services/media-transcription-runner')
           await runMediaTranscriptionJob(media.id)
+          signal?.throwIfAborted()
         }
         completedIds.push(media.id)
         continue
@@ -289,8 +294,11 @@ const mediaAnalyze = tool({
         continue
       }
       if (host.analyzeMediaVisual) {
-        const result = await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'normal')
-        await saveVisualEditingEvidence(media.id, sourceFingerprint(media), {
+          const result = signal
+            ? await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'normal', undefined, signal)
+            : await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'normal')
+          signal?.throwIfAborted()
+          await saveVisualEditingEvidence(media.id, sourceFingerprint(media), {
           samples: result.samples,
           models: result.models,
           intensity: result.intensity,
@@ -298,6 +306,7 @@ const mediaAnalyze = tool({
       } else {
         await mediaAnalysisService!.analyzeMedia(media)
       }
+      signal?.throwIfAborted()
       completedIds.push(media.id)
     }
 
@@ -320,14 +329,16 @@ const searchTranscript = tool({
     mediaIds: { type: 'array', maxItems: MAX_MEDIA_SELECTION, items: { type: 'string' } },
   }, ['query']),
   schema: z.object({
-    query: z.string().min(1),
+    query: z.string().trim().min(1),
     mediaIds: z.array(z.string().min(1)).max(MAX_MEDIA_SELECTION).optional(),
   }),
-  execute: async (args) => {
-    const query = args.query.trim().toLocaleLowerCase()
+  execute: async (args, signal) => {
+    signal?.throwIfAborted()
+    const query = args.query.toLocaleLowerCase()
     const allowedIds = args.mediaIds ? new Set(args.mediaIds) : undefined
     const matches: Array<Record<string, unknown>> = []
     for (const media of await projectMedia()) {
+      signal?.throwIfAborted()
       if (allowedIds && !allowedIds.has(media.id)) continue
       const transcript = await getTranscript(media.id).catch(() => undefined)
       for (const segment of transcript?.segments ?? []) {

@@ -103,6 +103,7 @@ declare module '@freecut/embedded' {
     getWebUrl(projectId: string): Promise<string>
     onWebState(callback: (state: EmbeddedDeepSeekHarnessWebState) => void): () => void
     onSourceToolRequest(callback: (request: EmbeddedDeepSeekHarnessSourceToolRequest) => Promise<unknown>): () => void
+    onSourceToolCancel(callback: (requestId: string) => void): () => void
   }
 
   export interface EmbeddedAiEditingSourceGitBridge {
@@ -136,15 +137,18 @@ declare module '@freecut/embedded' {
     onTranscribeMedia?: (
       source: EmbeddedMediaSource,
       onProgress?: (progress: EmbeddedTaskProgress) => void,
+      signal?: AbortSignal,
     ) => Promise<EmbeddedTranscriptResult>
     onAnalyzeMediaVisual?: (
       source: EmbeddedMediaSource,
       intensity: EmbeddedVisualAnalysisIntensity,
       onProgress?: (progress: EmbeddedTaskProgress) => void,
+      signal?: AbortSignal,
     ) => Promise<EmbeddedVisualEvidence>
     onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
     onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
     onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
+    onDeepSeekHarnessSourceToolCancel?: EmbeddedDeepSeekHarnessBridge['onSourceToolCancel']
     editingSourceGit?: EmbeddedAiEditingSourceGitBridge
     onRenderHtmlFrame?: (
       request: EmbeddedHtmlRenderRequest,

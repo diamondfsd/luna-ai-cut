@@ -170,11 +170,13 @@ export interface EmbeddedHostBridge {
   transcribeMedia?: (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
   ) => Promise<EmbeddedTranscriptResult>
   analyzeMediaVisual?: (
     source: EmbeddedMediaSource,
     intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
   ) => Promise<EmbeddedVisualEvidence>
   /** DeepSeek Harness owns the conversation, model loop, and tool execution. */
   deepseekHarness?: EmbeddedDeepSeekHarnessBridge

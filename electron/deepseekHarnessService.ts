@@ -28,7 +28,10 @@ interface PendingSourceToolRequest {
   senderId: number
   resolve: (value: unknown) => void
   reject: (reason?: unknown) => void
+  timeout: ReturnType<typeof setTimeout>
 }
+
+const SOURCE_TOOL_REQUEST_TIMEOUT_MS = 130_000
 
 const listeners = new Set<(state: EmbeddedDeepSeekHarnessWebState) => void>()
 const pendingSourceToolRequests = new Map<string, PendingSourceToolRequest>()
@@ -134,11 +137,14 @@ function requestSourceTool(
   projectId: string,
   name: string,
   args: Record<string, unknown>,
+  requestId: string,
 ): Promise<unknown> {
-  const requestId = randomUUID()
   const target = sourceToolTarget()
   return new Promise((resolve, reject) => {
-    pendingSourceToolRequests.set(requestId, { senderId: target.id, resolve, reject })
+    const timeout = setTimeout(() => {
+      cancelDeepSeekHarnessSourceToolRequest(target.id, requestId, '源码工具调用超时。')
+    }, SOURCE_TOOL_REQUEST_TIMEOUT_MS)
+    pendingSourceToolRequests.set(requestId, { senderId: target.id, resolve, reject, timeout })
     try {
       target.send('deepseek-harness:source-tool-request', {
         requestId,
@@ -147,6 +153,7 @@ function requestSourceTool(
         args,
       } satisfies EmbeddedDeepSeekHarnessSourceToolRequest)
     } catch (error) {
+      clearTimeout(timeout)
       pendingSourceToolRequests.delete(requestId)
       reject(error)
     }
@@ -154,6 +161,7 @@ function requestSourceTool(
 }
 
 function jsonResponse(response: ServerResponse, status: number, payload: unknown): void {
+  if (response.destroyed || response.writableEnded) return
   const body = JSON.stringify(payload)
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   response.end(body)
@@ -184,16 +192,32 @@ async function handleSourceToolRequest(request: IncomingMessage, response: Serve
   }
   try {
     const body = await readRequestBody(request)
+    const requestId = body.requestId
     const projectId = body.projectId
     const name = body.name
     const args = body.args
-    if (typeof projectId !== 'string' || !projectId || typeof name !== 'string' || !name
+    if (typeof requestId !== 'string' || !requestId || requestId.length > 128
+      || typeof projectId !== 'string' || !projectId || typeof name !== 'string' || !name
       || !args || typeof args !== 'object' || Array.isArray(args)) {
       throw new Error('源码工具请求参数无效。')
     }
-    const result = await requestSourceTool(projectId, name, args as Record<string, unknown>)
-    jsonResponse(response, 200, { ok: true, result })
+    let cancelled = false
+    const cancel = (): void => {
+      if (cancelled || response.writableEnded) return
+      cancelled = true
+      cancelDeepSeekHarnessSourceToolRequest(undefined, requestId, '源码工具调用已取消。')
+    }
+    request.once('aborted', cancel)
+    response.once('close', cancel)
+    try {
+      const result = await requestSourceTool(projectId, name, args as Record<string, unknown>, requestId)
+      jsonResponse(response, 200, { ok: true, result })
+    } finally {
+      request.removeListener('aborted', cancel)
+      response.removeListener('close', cancel)
+    }
   } catch (error) {
+    if (response.destroyed || response.writableEnded) return
     jsonResponse(response, 400, {
       ok: false,
       error: error instanceof Error ? error.message : '源码工具调用失败。',
@@ -345,8 +369,15 @@ async function stopRuntime(): Promise<void> {
   runtime = undefined
   startingRuntime = undefined
   startingRuntimeGeneration = undefined
-  for (const pending of pendingSourceToolRequests.values()) pending.reject(new Error('DeepSeek Harness 已关闭。'))
-  pendingSourceToolRequests.clear()
+  for (const [requestId, pending] of pendingSourceToolRequests) {
+    clearTimeout(pending.timeout)
+    pendingSourceToolRequests.delete(requestId)
+    pending.reject(new Error('DeepSeek Harness 已关闭。'))
+    const target = webContents.fromId(pending.senderId)
+    if (target && !target.isDestroyed()) {
+      target.send('deepseek-harness:source-tool-cancel', { requestId })
+    }
+  }
   const children = new Set<ChildProcess>()
   if (current) children.add(current.process)
   if (startingChild) children.add(startingChild)
@@ -431,8 +462,25 @@ export function resolveDeepSeekHarnessSourceToolResponse(
   const pending = pendingSourceToolRequests.get(payload.requestId)
   if (!pending || pending.senderId !== senderId) return
   pendingSourceToolRequests.delete(payload.requestId)
+  clearTimeout(pending.timeout)
   if (payload.ok) pending.resolve(payload.result)
   else pending.reject(new Error(payload.error || '源码工具调用失败。'))
+}
+
+export function cancelDeepSeekHarnessSourceToolRequest(
+  senderId: number | undefined,
+  requestId: string,
+  message = '源码工具调用已取消。',
+): void {
+  const pending = pendingSourceToolRequests.get(requestId)
+  if (!pending || (senderId !== undefined && pending.senderId !== senderId)) return
+  pendingSourceToolRequests.delete(requestId)
+  clearTimeout(pending.timeout)
+  pending.reject(new Error(message))
+  const target = webContents.fromId(pending.senderId)
+  if (target && !target.isDestroyed()) {
+    target.send('deepseek-harness:source-tool-cancel', { requestId })
+  }
 }
 
 export async function getDeepSeekHarnessWebUrl(projectId: string): Promise<string> {

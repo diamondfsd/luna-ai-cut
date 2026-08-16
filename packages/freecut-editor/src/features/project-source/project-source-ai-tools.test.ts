@@ -115,6 +115,9 @@ describe('timeline AI tools', () => {
       project: { id: 'project-1', name: 'Demo', fps: 30 },
       items: [{ id: 'clip-1', fromSeconds: 0, toSeconds: 10, mediaId: 'media-1' }],
     })
+    expect(result.data).toMatchObject({
+      items: [{ transform: { x: 0.5, y: 0.5, width: 1, height: 1, opacity: 1 } }],
+    })
     expect(result.data).toMatchObject({ project: { durationSeconds: 10 } })
   })
 
@@ -307,5 +310,20 @@ describe('timeline AI tools', () => {
     })
 
     expect(harness.state.addKeyframe).toHaveBeenCalledWith('clip-1', 'cropLeft', 60, 480, undefined)
+  })
+
+  it('keeps trim path offsets in degrees instead of normalized units', () => {
+    expect(getTool('timeline.add_keyframe').validate({
+      itemId: 'clip-1',
+      property: 'trimPathOffset',
+      atSeconds: 0,
+      value: 360,
+    })).toMatchObject({ ok: true })
+    expect(getTool('timeline.add_keyframe').validate({
+      itemId: 'clip-1',
+      property: 'trimPathOffset',
+      atSeconds: 0,
+      value: 361,
+    })).toMatchObject({ ok: false })
   })
 })

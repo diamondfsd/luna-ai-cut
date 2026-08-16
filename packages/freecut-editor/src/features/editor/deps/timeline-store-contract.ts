@@ -15,7 +15,8 @@ export {
 } from '@freecut/features/timeline/stores/composition-navigation-store'
 export { useTimelineCommandStore } from '@freecut/features/timeline/stores/timeline-command-store'
 export { execute as executeTimelineCommand } from '@freecut/features/timeline/stores/actions/shared'
-export { captureSnapshot } from '@freecut/features/timeline/stores/commands/snapshot'
+export { captureSnapshot, restoreSnapshot } from '@freecut/features/timeline/stores/commands/snapshot'
+export type { TimelineSnapshot } from '@freecut/features/timeline/stores/commands/types'
 export { rateStretchItemWithoutHistory } from '@freecut/features/timeline/stores/actions/item-edit-actions'
 export {
   addCompositionControl,

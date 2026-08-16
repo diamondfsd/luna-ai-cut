@@ -38,15 +38,18 @@ export interface FreeCutEditorProps {
   onTranscribeMedia?: (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
   ) => Promise<EmbeddedTranscriptResult>
   onAnalyzeMediaVisual?: (
     source: EmbeddedMediaSource,
     intensity: EmbeddedVisualAnalysisIntensity,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
   ) => Promise<EmbeddedVisualEvidence>
   onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
   onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
   onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
+  onDeepSeekHarnessSourceToolCancel?: EmbeddedDeepSeekHarnessBridge['onSourceToolCancel']
   editingSourceGit?: EmbeddedAiEditingSourceGitBridge
   onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
@@ -64,6 +67,7 @@ export function FreeCutEditor({
   onGetDeepSeekHarnessWebUrl,
   onDeepSeekHarnessWebState,
   onDeepSeekHarnessSourceToolRequest,
+  onDeepSeekHarnessSourceToolCancel,
   editingSourceGit,
   onRenderHtmlFrame,
   exportFiles,
@@ -85,10 +89,12 @@ export function FreeCutEditor({
         onGetDeepSeekHarnessWebUrl &&
         onDeepSeekHarnessWebState &&
         onDeepSeekHarnessSourceToolRequest
+        && onDeepSeekHarnessSourceToolCancel
           ? {
               getWebUrl: onGetDeepSeekHarnessWebUrl,
               onWebState: onDeepSeekHarnessWebState,
               onSourceToolRequest: onDeepSeekHarnessSourceToolRequest,
+              onSourceToolCancel: onDeepSeekHarnessSourceToolCancel,
             }
           : undefined,
       editingSourceGit,
@@ -107,6 +113,7 @@ export function FreeCutEditor({
       onGetDeepSeekHarnessWebUrl,
       onDeepSeekHarnessWebState,
       onDeepSeekHarnessSourceToolRequest,
+      onDeepSeekHarnessSourceToolCancel,
       editingSourceGit,
     ],
   )
@@ -131,11 +138,24 @@ export function FreeCutEditor({
   }, [onRenderHtmlFrame])
 
   useEffect(() => {
-    if (!onDeepSeekHarnessSourceToolRequest) return undefined
-    return onDeepSeekHarnessSourceToolRequest((request) =>
-      executeProjectSourceTool(request.name, request.args, request.projectId),
-    )
-  }, [onDeepSeekHarnessSourceToolRequest])
+    if (!onDeepSeekHarnessSourceToolRequest || !onDeepSeekHarnessSourceToolCancel) return undefined
+    const controllers = new Map<string, AbortController>()
+    const unsubscribeRequest = onDeepSeekHarnessSourceToolRequest((request) => {
+      const controller = new AbortController()
+      controllers.set(request.requestId, controller)
+      return executeProjectSourceTool(request.name, request.args, request.projectId, controller.signal)
+        .finally(() => controllers.delete(request.requestId))
+    })
+    const unsubscribeCancel = onDeepSeekHarnessSourceToolCancel((requestId) => {
+      controllers.get(requestId)?.abort(new DOMException('源码工具调用已取消。', 'AbortError'))
+    })
+    return () => {
+      unsubscribeRequest()
+      unsubscribeCancel()
+      for (const controller of controllers.values()) controller.abort()
+      controllers.clear()
+    }
+  }, [onDeepSeekHarnessSourceToolCancel, onDeepSeekHarnessSourceToolRequest])
 
   useEffect(() => {
     document.body.classList.add('freecut-active')

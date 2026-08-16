@@ -52,4 +52,10 @@ describe('project source tools', () => {
     expect(result.data).toMatchObject({ path: 'manifest.json', startLine: 1, endLine: 1 })
     expect((result.data as { content: string }).content).toContain('1:')
   })
+
+  it('rejects an inverted source read range', () => {
+    expect(getTool('source.read').validate({ path: 'manifest.json', startLine: 4, endLine: 2 })).toMatchObject({
+      ok: false,
+    })
+  })
 })
