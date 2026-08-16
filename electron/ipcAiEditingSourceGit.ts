@@ -1,4 +1,6 @@
 import { ipcMain } from 'electron'
+import * as nodeFs from 'node:fs'
+import * as path from 'node:path'
 import { createAiEditingSourceGitApi } from './aiEditingSourceGitService'
 import { currentBaseDir } from './settingsService'
 
@@ -6,6 +8,122 @@ type SourceGitApi = ReturnType<typeof createAiEditingSourceGitApi>
 
 let sourceGitBaseDir = ''
 let sourceGit: SourceGitApi | null = null
+
+type SourceWatcher = { close: () => void }
+
+const sourceWatchers = new Map<string, SourceWatcher>()
+
+function watchKey(senderId: number, projectId: string): string {
+  return `${senderId}:${projectId}`
+}
+
+function isManagedSourcePath(sourcePath: string): boolean {
+  return sourcePath === 'manifest.json' ||
+    sourcePath.startsWith('sequences/') ||
+    sourcePath.startsWith('components/')
+}
+
+function createSourceWatcher(root: string, onChanged: (paths: string[]) => void): SourceWatcher {
+  const watchers = new Map<string, nodeFs.FSWatcher>()
+  const pendingPaths = new Set<string>()
+  let pendingUnknownPath = false
+  let flushTimer: NodeJS.Timeout | undefined
+  let closed = false
+
+  const flush = () => {
+    flushTimer = undefined
+    if (closed) return
+    const paths = pendingUnknownPath ? [] : [...pendingPaths].sort()
+    pendingPaths.clear()
+    pendingUnknownPath = false
+    onChanged(paths)
+  }
+
+  const queueChange = (sourcePath?: string) => {
+    if (closed) return
+    if (sourcePath) {
+      if (!isManagedSourcePath(sourcePath)) return
+      pendingPaths.add(sourcePath)
+    } else {
+      pendingUnknownPath = true
+    }
+    if (flushTimer) clearTimeout(flushTimer)
+    flushTimer = setTimeout(flush, 180)
+  }
+
+  const removeWatchersUnder = (directory: string) => {
+    for (const [watchedDirectory, watcher] of watchers) {
+      if (watchedDirectory === directory || watchedDirectory.startsWith(`${directory}${path.sep}`)) {
+        watcher.close()
+        watchers.delete(watchedDirectory)
+      }
+    }
+  }
+
+  const watchDirectory = (directory: string) => {
+    if (closed || watchers.has(directory)) return
+
+    let entries: nodeFs.Dirent[]
+    try {
+      entries = nodeFs.readdirSync(directory, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    try {
+      const watcher = nodeFs.watch(directory, { persistent: false }, (_eventType, filename) => {
+        if (closed) return
+        const name = filename?.toString()
+        if (!name) {
+          queueChange()
+          return
+        }
+
+        const target = path.join(directory, name)
+        const relative = path.relative(root, target).split(path.sep).join('/')
+        try {
+          const stat = nodeFs.statSync(target)
+          if (stat.isDirectory()) watchDirectory(target)
+          else queueChange(relative)
+        } catch {
+          removeWatchersUnder(target)
+          queueChange(relative)
+        }
+      })
+      watcher.on('error', () => {
+        watcher.close()
+        watchers.delete(directory)
+      })
+      watchers.set(directory, watcher)
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (entry.name === '.git' || !entry.isDirectory()) continue
+      watchDirectory(path.join(directory, entry.name))
+    }
+  }
+
+  watchDirectory(root)
+
+  return {
+    close: () => {
+      if (closed) return
+      closed = true
+      if (flushTimer) clearTimeout(flushTimer)
+      for (const watcher of watchers.values()) watcher.close()
+      watchers.clear()
+      pendingPaths.clear()
+    },
+  }
+}
+
+function stopSourceWatcher(senderId: number, projectId: string): void {
+  const key = watchKey(senderId, projectId)
+  sourceWatchers.get(key)?.close()
+  sourceWatchers.delete(key)
+}
 
 function sourceGitApi(): SourceGitApi {
   const baseDir = currentBaseDir()
@@ -18,6 +136,25 @@ function sourceGitApi(): SourceGitApi {
 
 export function register(): void {
   ipcMain.handle('ai-editing-source-git:root', (_event, projectId) => sourceGitApi().root(projectId))
+  ipcMain.handle('ai-editing-source-git:watch', async (event, projectId: string) => {
+    stopSourceWatcher(event.sender.id, projectId)
+    const root = await sourceGitApi().root(projectId)
+    const watcher = createSourceWatcher(root, (paths) => {
+      if (event.sender.isDestroyed()) {
+        stopSourceWatcher(event.sender.id, projectId)
+        return
+      }
+      event.sender.send('ai-editing-source-git:changed', { projectId, paths })
+    })
+    const key = watchKey(event.sender.id, projectId)
+    sourceWatchers.set(key, watcher)
+    event.sender.once('destroyed', () => {
+      if (sourceWatchers.get(key) === watcher) stopSourceWatcher(event.sender.id, projectId)
+    })
+  })
+  ipcMain.handle('ai-editing-source-git:unwatch', (event, projectId: string) => {
+    stopSourceWatcher(event.sender.id, projectId)
+  })
   ipcMain.handle('ai-editing-source-git:ensure', (_event, projectId, initialFiles) =>
     sourceGitApi().ensure(projectId, initialFiles),
   )

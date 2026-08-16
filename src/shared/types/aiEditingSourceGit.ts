@@ -64,6 +64,7 @@ export interface AiEditingSourceResetResult {
 
 export interface AiEditingSourceGitApi {
   root(projectId: string): Promise<string>
+  onChanged?(projectId: string, callback: (paths: string[]) => void): () => void
   ensure(
     projectId: string,
     initialFiles?: AiEditingSourceInitialFiles,
