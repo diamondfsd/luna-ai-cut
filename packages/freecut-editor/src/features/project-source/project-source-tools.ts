@@ -26,7 +26,7 @@ export interface ProjectSourceTool {
   readonly description: string
   readonly inputSchema: ProjectSourceJsonSchema
   validate(args: unknown): ProjectSourceValidation
-  execute(args: Record<string, unknown>): Promise<ProjectSourceToolResult>
+  execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<ProjectSourceToolResult>
 }
 
 const MAX_FILES = 500
@@ -76,14 +76,14 @@ function tool<S extends z.ZodType>(input: {
   description: string
   inputSchema: ProjectSourceJsonSchema
   schema: S
-  execute: (args: z.infer<S>) => Promise<ProjectSourceToolResult>
+  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectSourceToolResult>
 }): ProjectSourceTool {
   return {
     name: input.name,
     description: input.description,
     inputSchema: input.inputSchema,
     validate: (args) => validate(args, input.schema),
-    execute: (args) => input.execute(args as z.infer<S>),
+    execute: (args, signal) => input.execute(args as z.infer<S>, signal),
   }
 }
 
@@ -106,7 +106,7 @@ const sourceTree = tool({
   name: 'source.tree',
   description: '列出工程源码文件。AGENTS.md 是工作区说明；JSON 文件包含 manifest、序列、轨道和片段数据。',
   inputSchema: schema({ prefix: { type: 'string', description: '可选的目录前缀。' } }),
-  schema: z.object({ prefix: z.string().optional() }),
+  schema: z.object({ prefix: z.string().trim().optional() }),
   execute: async (args) => {
     const files = await allFiles(args.prefix)
     return { ok: true, message: `找到 ${files.length} 个源码文件。`, data: { files } }
@@ -117,7 +117,14 @@ const sourceRead = tool({
   name: 'source.read',
   description: '读取指定源码文件。返回带行号的内容；不要一次读取整个工程。',
   inputSchema: schema({ path: { type: 'string' }, startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 } }, ['path']),
-  schema: z.object({ path: z.string().min(1), startLine: z.number().int().min(1).optional(), endLine: z.number().int().min(1).optional() }),
+  schema: z.object({
+    path: z.string().trim().min(1),
+    startLine: z.number().int().min(1).optional(),
+    endLine: z.number().int().min(1).optional(),
+  }).refine(
+    (args) => args.startLine === undefined || args.endLine === undefined || args.endLine >= args.startLine,
+    { message: 'endLine 必须大于或等于 startLine' },
+  ),
   execute: async (args) => {
     if (!isReadableSourcePath(args.path)) throw new Error('只能读取工程源码 JSON 文件或根目录 AGENTS.md。')
     const content = await bridge().read(currentProjectId(), args.path)
@@ -135,7 +142,7 @@ const sourceSearch = tool({
   name: 'source.search',
   description: '在工程源码和 AGENTS.md 中搜索文本，返回文件路径和行号。',
   inputSchema: schema({ query: { type: 'string' }, prefix: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: MAX_SEARCH_RESULTS } }, ['query']),
-  schema: z.object({ query: z.string().min(1), prefix: z.string().optional(), limit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).optional() }),
+  schema: z.object({ query: z.string().trim().min(1), prefix: z.string().trim().optional(), limit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).optional() }),
   execute: async (args) => {
     const results: Array<{ path: string; line: number; text: string }> = []
     for (const path of await allFiles(args.prefix)) {
@@ -198,7 +205,9 @@ export async function executeProjectSourceTool(
   name: string,
   args: Record<string, unknown>,
   expectedProjectId?: string,
+  signal?: AbortSignal,
 ): Promise<ProjectSourceToolResult> {
+  signal?.throwIfAborted()
   const activeProjectId = currentProjectId()
   if (expectedProjectId !== undefined && expectedProjectId !== activeProjectId) {
     throw new Error('项目已经切换，请重新打开 AI 助手后再继续。')
@@ -207,5 +216,5 @@ export async function executeProjectSourceTool(
   if (!tool) throw new Error(`未知的工程源码能力：${name}`)
   const validation = tool.validate(args)
   if (!validation.ok) throw new Error(validation.error)
-  return tool.execute(validation.value)
+  return tool.execute(validation.value, signal)
 }

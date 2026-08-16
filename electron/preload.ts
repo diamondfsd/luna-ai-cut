@@ -194,6 +194,13 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       ipcRenderer.on('deepseek-harness:source-tool-request', listener)
       return () => ipcRenderer.removeListener('deepseek-harness:source-tool-request', listener)
     },
+    onSourceToolCancel: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { requestId: string }) => {
+        if (typeof payload?.requestId === 'string') callback(payload.requestId)
+      }
+      ipcRenderer.on('deepseek-harness:source-tool-cancel', listener)
+      return () => ipcRenderer.removeListener('deepseek-harness:source-tool-cancel', listener)
+    },
   } satisfies DeepSeekHarnessApi,
   aiEditingSourceGit: {
     root: (projectId) => ipcRenderer.invoke('ai-editing-source-git:root', projectId),

@@ -21,6 +21,8 @@ import {
   resizeCanvasToAspectRatio,
 } from '@freecut/shared/projects/canvas-aspect-ratio'
 import { commitProjectMetadataChange } from '@freecut/features/editor/utils/project-metadata-history'
+import { captureSnapshot, restoreSnapshot, type TimelineSnapshot } from '@freecut/features/editor/deps/timeline-store'
+import { transitionRegistry } from '@freecut/shared/timeline/transitions'
 import { readProjectSource } from './project-source-worktree'
 import type {
   ProjectSourceJsonSchema,
@@ -63,6 +65,7 @@ const ANIMATABLE_PROPERTIES = [
   'taperEndLength',
 ] as const
 const EASING_TYPES = ['linear', 'ease-in', 'ease-out', 'ease-in-out'] as const
+const TRANSITION_DIRECTIONS = ['from-left', 'from-right', 'from-top', 'from-bottom'] as const
 const CANVAS_ASPECT_RATIO_IDS = CANVAS_ASPECT_RATIO_PRESETS.map((preset) => preset.id) as [string, ...string[]]
 const NORMALIZED_KEYFRAME_PROPERTIES = new Set([
   'x',
@@ -112,14 +115,14 @@ function tool<S extends z.ZodType>(input: {
   description: string
   inputSchema: ProjectSourceJsonSchema
   schema: S
-  execute: (args: z.infer<S>) => Promise<ProjectSourceToolResult>
+  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectSourceToolResult>
 }): ProjectSourceTool {
   return {
     name: input.name,
     description: input.description,
     inputSchema: input.inputSchema,
     validate: (args) => validate(args, input.schema),
-    execute: (args) => input.execute(args as z.infer<S>),
+    execute: (args, signal) => input.execute(args as z.infer<S>, signal),
   }
 }
 
@@ -157,6 +160,33 @@ function roundSeconds(frames: number, fps: number): number {
 
 function roundDurationSeconds(seconds: number): number {
   return Math.round(seconds * 1000) / 1000
+}
+
+function roundNormalized(value: number): number {
+  return Math.round(value * 10000) / 10000
+}
+
+function normalizedTransformSummary(item: TimelineItem): Record<string, unknown> | undefined {
+  const transform = item.transform
+  const canvas = useProjectStore.getState().currentProject?.metadata
+  if (!transform || !canvas || canvas.width <= 0 || canvas.height <= 0) return undefined
+  const width = transform.width ?? canvas.width
+  const height = transform.height ?? canvas.height
+  return {
+    x: roundNormalized(0.5 + (transform.x ?? 0) / canvas.width),
+    y: roundNormalized(0.5 + (transform.y ?? 0) / canvas.height),
+    width: roundNormalized(width / canvas.width),
+    height: roundNormalized(height / canvas.height),
+    rotation: transform.rotation ?? 0,
+    opacity: transform.opacity ?? 1,
+    ...(transform.anchorX !== undefined ? { anchorX: roundNormalized(transform.anchorX / width) } : {}),
+    ...(transform.anchorY !== undefined ? { anchorY: roundNormalized(transform.anchorY / height) } : {}),
+    ...(transform.cornerRadius !== undefined
+      ? { cornerRadius: roundNormalized(transform.cornerRadius / Math.min(canvas.width, canvas.height)) }
+      : {}),
+    ...(transform.flipHorizontal !== undefined ? { flipHorizontal: transform.flipHorizontal } : {}),
+    ...(transform.flipVertical !== undefined ? { flipVertical: transform.flipVertical } : {}),
+  }
 }
 
 function getAiSourceDimensions(item: TimelineItem, project: { metadata: { width: number; height: number } }) {
@@ -230,6 +260,7 @@ function convertNormalizedKeyframeValue(
 
 function itemSummary(item: TimelineItem, tracks: readonly TimelineTrack[], fps: number): Record<string, unknown> {
   const track = tracks.find((candidate) => candidate.id === item.trackId)
+  const transform = normalizedTransformSummary(item)
   return {
     id: item.id,
     type: item.type,
@@ -244,6 +275,7 @@ function itemSummary(item: TimelineItem, tracks: readonly TimelineTrack[], fps: 
     ...(item.sourceEnd !== undefined ? { sourceEnd: item.sourceEnd } : {}),
     ...(item.speed !== undefined ? { speed: item.speed } : {}),
     ...(item.volume !== undefined ? { volume: item.volume } : {}),
+    ...(transform ? { transform } : {}),
     ...(item.type === 'text' ? { text: item.text } : {}),
   }
 }
@@ -352,6 +384,9 @@ function validateTimelineState(state: TimelineState): string[] {
     if (!left || !right || left.trackId !== right.trackId || left.trackId !== transition.trackId) {
       issues.push(`转场 ${transition.id} 的片段关系无效。`)
     }
+    if (!transitionRegistry.has(transition.presentation)) {
+      issues.push(`转场 ${transition.id} 使用了未注册的预设 ${transition.presentation}。`)
+    }
   }
   for (const keyframes of state.keyframes) {
     if (!itemIds.has(keyframes.itemId)) issues.push(`关键帧引用了不存在的片段 ${keyframes.itemId}。`)
@@ -359,40 +394,68 @@ function validateTimelineState(state: TimelineState): string[] {
   return issues
 }
 
-async function saveTimelineEdit(operation: string, before: Record<string, unknown>): Promise<ProjectSourceToolResult> {
-  const state = timeline()
-  const issues = validateTimelineState(state)
-  if (issues.length > 0) throw new Error(`编辑结果未通过时间轴检查：${issues.join('；')}`)
-
-  if (!getEmbeddedHostBridge().editingSourceGit) {
-    throw new Error('当前运行环境不支持工程源码编辑。')
-  }
+async function saveTimelineEdit(
+  operation: string,
+  before: Record<string, unknown>,
+  beforeSnapshot?: TimelineSnapshot,
+  signal?: AbortSignal,
+): Promise<ProjectSourceToolResult> {
   const projectId = currentProjectId()
-  await state.saveTimeline(projectId)
-  const compiled = await readProjectSource(projectId)
-  if (!compiled?.timeline) {
-    throw new Error('编辑结果没有成功写回当前工程。')
-  }
-  return {
-    ok: true,
-    message: `已完成${operation}，并保存到当前剪辑项目。`,
-    data: {
-      operation,
-      before,
-      after: projectSummary(),
-      validation: { ok: true, issueCount: 0 },
-    },
+  try {
+    signal?.throwIfAborted()
+    const state = timeline()
+    const issues = validateTimelineState(state)
+    if (issues.length > 0) throw new Error(`编辑结果未通过时间轴检查：${issues.join('；')}`)
+
+    if (!getEmbeddedHostBridge().editingSourceGit) {
+      throw new Error('当前运行环境不支持工程源码编辑。')
+    }
+    await state.saveTimeline(projectId)
+    signal?.throwIfAborted()
+    const compiled = await readProjectSource(projectId)
+    if (!compiled?.timeline) {
+      throw new Error('编辑结果没有成功写回当前工程。')
+    }
+    signal?.throwIfAborted()
+    return {
+      ok: true,
+      message: `已完成${operation}，并保存到当前剪辑项目。`,
+      data: {
+        operation,
+        before,
+        after: projectSummary(),
+        validation: { ok: true, issueCount: 0 },
+      },
+    }
+  } catch (error) {
+    if (beforeSnapshot) {
+      restoreSnapshot(beforeSnapshot)
+      try {
+        await timeline().saveTimeline(projectId)
+      } catch {
+        // Preserve the original tool error. The in-memory timeline is restored;
+        // the next normal project save can retry the source rollback.
+      }
+    }
+    throw error
   }
 }
 
-async function saveItemEdit(operation: string, itemId: string, mutate: (item: TimelineItem) => void): Promise<ProjectSourceToolResult> {
+async function saveItemEdit(
+  operation: string,
+  itemId: string,
+  mutate: (item: TimelineItem) => void,
+  signal?: AbortSignal,
+): Promise<ProjectSourceToolResult> {
   const beforeItem = requireItem(itemId)
   const before = itemSummary(beforeItem, timeline().tracks, timeline().fps)
+  const beforeSnapshot = captureSnapshot()
+  signal?.throwIfAborted()
   const beforeSerialized = JSON.stringify(beforeItem)
   mutate(beforeItem)
   const afterItem = requireItem(itemId)
   if (beforeSerialized === JSON.stringify(afterItem)) throw new Error('没有产生可保存的变化。')
-  return saveTimelineEdit(operation, { item: before })
+  return saveTimelineEdit(operation, { item: before }, beforeSnapshot, signal)
 }
 
 const projectInspect = tool({
@@ -424,9 +487,11 @@ const projectSetCanvas = tool({
       context.addIssue({ code: z.ZodIssueCode.custom, message: 'aspectRatio 与 width/height 只能选择一种方式' })
     }
   }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error('当前没有打开的剪辑项目。')
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
 
     const nextSize = args.aspectRatio
       ? resizeCanvasToAspectRatio(
@@ -439,16 +504,22 @@ const projectSetCanvas = tool({
       height: project.metadata.height,
     }
 
-    await commitProjectMetadataChange({
-      project,
-      updates: nextSize,
-      command: {
-        type: 'UPDATE_PROJECT_METADATA',
-        payload: { fields: ['width', 'height'], operation: 'set-canvas' },
-      },
-      updateProject: useProjectStore.getState().updateProject,
-      markDirty: useTimelineStore.getState().markDirty,
-    })
+    try {
+      await commitProjectMetadataChange({
+        project,
+        updates: nextSize,
+        command: {
+          type: 'UPDATE_PROJECT_METADATA',
+          payload: { fields: ['width', 'height'], operation: 'set-canvas' },
+        },
+        updateProject: useProjectStore.getState().updateProject,
+        markDirty: useTimelineStore.getState().markDirty,
+      })
+      signal?.throwIfAborted()
+    } catch (error) {
+      restoreSnapshot(beforeSnapshot)
+      throw error
+    }
 
     const updatedProject = useProjectStore.getState().currentProject
     if (!updatedProject) throw new Error('画布尺寸更新后没有找到当前项目。')
@@ -499,7 +570,7 @@ const timelineTrim = tool({
     startSeconds: z.number().min(0).optional(),
     endSeconds: z.number().min(0).optional(),
   }).refine((args) => args.startSeconds !== undefined || args.endSeconds !== undefined, { message: '至少提供 startSeconds 或 endSeconds' }),
-  execute: async (args) => saveItemEdit('裁剪片段', args.itemId, (item) => {
+  execute: async (args, signal) => saveItemEdit('裁剪片段', args.itemId, (item) => {
     const state = timeline()
     const nextStart = args.startSeconds === undefined ? item.from : secondsToFrame(args.startSeconds, state.fps)
     const nextEnd = args.endSeconds === undefined
@@ -509,7 +580,7 @@ const timelineTrim = tool({
     if (args.startSeconds !== undefined) state.trimItemStart(item.id, nextStart - item.from)
     const current = requireItem(item.id)
     if (args.endSeconds !== undefined) state.trimItemEnd(item.id, nextEnd - (current.from + current.durationInFrames))
-  }),
+  }, signal),
 })
 
 const timelineSplit = tool({
@@ -517,9 +588,11 @@ const timelineSplit = tool({
   description: '在指定的绝对时间点切分一个片段。切分点必须位于片段内部且不能落在已有转场区域。',
   inputSchema: schema({ itemId: { type: 'string' }, atSeconds: { type: 'number', minimum: 0 } }, ['itemId', 'atSeconds']),
   schema: z.object({ itemId: z.string().min(1), atSeconds: z.number().min(0) }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const state = timeline()
     const item = requireItem(args.itemId)
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
     const splitFrame = secondsToFrame(args.atSeconds, state.fps)
     if (splitFrame <= item.from || splitFrame >= item.from + item.durationInFrames) {
       throw new Error('切分点必须位于片段内部。')
@@ -534,7 +607,7 @@ const timelineSplit = tool({
       candidate.from === splitFrame,
     )
     if (!rightItem) throw new Error('切分点无效，或落在了转场区域内。')
-    const saved = await saveTimelineEdit('切分片段', { item: itemSummary(item, state.tracks, state.fps) })
+    const saved = await saveTimelineEdit('切分片段', { item: itemSummary(item, state.tracks, state.fps) }, beforeSnapshot, signal)
     return {
       ...saved,
       data: { ...(saved.data as Record<string, unknown>), split: {
@@ -550,13 +623,13 @@ const timelineMove = tool({
   description: '移动片段到新的绝对时间位置，可选地移动到另一条轨道。时间单位是秒，轨道必须已存在。',
   inputSchema: schema({ itemId: { type: 'string' }, toSeconds: { type: 'number', minimum: 0 }, trackId: { type: 'string' } }, ['itemId', 'toSeconds']),
   schema: z.object({ itemId: z.string().min(1), toSeconds: z.number().min(0), trackId: z.string().optional() }),
-  execute: async (args) => saveItemEdit('移动片段', args.itemId, (item) => {
+  execute: async (args, signal) => saveItemEdit('移动片段', args.itemId, (item) => {
     const state = timeline()
     const nextTrack = args.trackId ? state.tracks.find((track) => track.id === args.trackId) : undefined
     if (args.trackId && !nextTrack) throw new Error(`没有找到轨道 ${args.trackId}。`)
     if (nextTrack?.locked) throw new Error('目标轨道已锁定，无法移动片段。')
     state.moveItem(item.id, secondsToFrame(args.toSeconds, state.fps), args.trackId)
-  }),
+  }, signal),
 })
 
 const timelineAddMedia = tool({
@@ -594,13 +667,22 @@ const timelineAddMedia = tool({
         message: 'sourceEndSeconds 必须大于 sourceStartSeconds',
       })
     }
+    if (hasStart && args.durationSeconds !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '指定源范围时不要同时提供 durationSeconds，时间轴时长会由源范围自动计算',
+      })
+    }
   }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const state = timeline()
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error('当前没有打开的剪辑项目。')
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
 
     const media = await requireProjectMedia(args.mediaId)
+    signal?.throwIfAborted()
     const mediaType = getMediaType(media.mimeType)
     if (mediaType === 'unknown') throw new Error(`素材 ${media.fileName} 的类型不支持放入时间轴。`)
 
@@ -630,12 +712,17 @@ const timelineAddMedia = tool({
         })()
 
     const preferredKind = mediaType === 'audio' ? 'audio' : 'video'
-    const targetTrack = args.trackId
+    let planningTracks = state.tracks
+    let targetTrack = args.trackId
       ? state.tracks.find((track) => track.id === args.trackId)
       : state.tracks.find((track) => !track.locked && getTrackKind(track) === preferredKind)
         ?? state.tracks.find((track) => !track.locked)
+    if (!targetTrack && !args.trackId && state.tracks.length === 0) {
+      targetTrack = createClassicTrack({ tracks: state.tracks, kind: preferredKind, order: 0 })
+      planningTracks = [targetTrack]
+    }
     if (!targetTrack) {
-      throw new Error(args.trackId ? `没有找到轨道 ${args.trackId}。` : '没有可用于放置素材的轨道。')
+      throw new Error(args.trackId ? `没有找到轨道 ${args.trackId}。` : '没有可用于放置素材的未锁定轨道。')
     }
     if (targetTrack.locked) throw new Error(`目标轨道 ${targetTrack.name} 已锁定，无法放入素材。`)
 
@@ -654,7 +741,7 @@ const timelineAddMedia = tool({
         hasLinkedAudio: mediaType === 'video' && linkAudio && !!media.audioCodec,
       }],
       dropFrame: secondsToFrame(args.startSeconds, state.fps),
-      tracks: state.tracks,
+      tracks: planningTracks,
       existingItems: state.items,
       dropTargetTrackId: targetTrack.id,
     })
@@ -719,7 +806,7 @@ const timelineAddMedia = tool({
             },
           }
         : {}),
-    })
+    }, beforeSnapshot, signal)
   },
 })
 
@@ -728,13 +815,15 @@ const timelineRemove = tool({
   description: '删除一个或多个片段，并由编辑器同时清理相关转场、关键帧和成对音视频引用。',
   inputSchema: schema({ itemIds: { type: 'array', minItems: 1, maxItems: MAX_EDIT_ITEMS, items: { type: 'string' } } }, ['itemIds']),
   schema: z.object({ itemIds: z.array(z.string().min(1)).min(1).max(MAX_EDIT_ITEMS) }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const state = timeline()
     const before = args.itemIds.map((itemId) => itemSummary(requireItem(itemId), state.tracks, state.fps))
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
     state.removeItems(args.itemIds)
     const remaining = new Set(state.items.map((item) => item.id))
     if (before.every((item) => remaining.has(String(item.id)))) throw new Error('没有删除任何片段。')
-    return saveTimelineEdit('删除片段', { items: before })
+    return saveTimelineEdit('删除片段', { items: before }, beforeSnapshot, signal)
   },
 })
 
@@ -759,7 +848,7 @@ const timelineSetProperties = tool({
     fadeIn: z.number().min(0).optional(),
     fadeOut: z.number().min(0).optional(),
   }).refine((args) => Object.values(args).some((value) => value !== undefined && value !== args.itemId), { message: '至少提供一个要修改的参数' }),
-  execute: async (args) => saveItemEdit('修改片段参数', args.itemId, (item) => {
+  execute: async (args, signal) => saveItemEdit('修改片段参数', args.itemId, (item) => {
     if (args.text !== undefined && item.type !== 'text') throw new Error('只有文字片段可以修改文字内容。')
     if (args.volume !== undefined && item.type !== 'audio' && item.type !== 'video') throw new Error('只有音频或视频片段可以修改音量。')
     const updates: Partial<TimelineItem> = {
@@ -771,7 +860,7 @@ const timelineSetProperties = tool({
       ...(args.fadeOut !== undefined ? { fadeOut: args.fadeOut } : {}),
     }
     timeline().updateItem(item.id, updates)
-  }),
+  }, signal),
 })
 
 const timelineSetTransform = tool({
@@ -801,9 +890,10 @@ const timelineSetTransform = tool({
     flipVertical: z.boolean().optional(),
     cornerRadius: z.number().min(0).max(1).optional(),
   }).refine((args) => Object.entries(args).some(([key, value]) => key !== 'itemId' && value !== undefined), { message: '至少提供一个变换参数' }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error('当前没有打开的剪辑项目。')
+    signal?.throwIfAborted()
     return saveItemEdit('修改画面变换', args.itemId, (item) => {
       if (item.type === 'audio' || item.type === 'adjustment') throw new Error('该片段类型没有可修改的画面变换。')
       const { itemId, x, y, width, height, cornerRadius, ...transform } = args
@@ -817,7 +907,7 @@ const timelineSetTransform = tool({
           ? { cornerRadius: cornerRadius * Math.min(project.metadata.width, project.metadata.height) }
           : {}),
       })
-    })
+    }, signal)
   },
 })
 
@@ -838,7 +928,7 @@ const timelineSetAudio = tool({
     fadeOut: z.number().min(0).optional(),
     pitchSemitones: z.number().min(-12).max(12).optional(),
   }).refine((args) => Object.entries(args).some(([key, value]) => key !== 'itemId' && value !== undefined), { message: '至少提供一个音频参数' }),
-  execute: async (args) => saveItemEdit('修改音频参数', args.itemId, (item) => {
+  execute: async (args, signal) => saveItemEdit('修改音频参数', args.itemId, (item) => {
     if (item.type !== 'audio' && item.type !== 'video') throw new Error('只有视频或音频片段可以修改音频参数。')
     timeline().updateItem(item.id, {
       ...(args.volume !== undefined ? { volume: args.volume } : {}),
@@ -846,7 +936,7 @@ const timelineSetAudio = tool({
       ...(args.fadeOut !== undefined ? { audioFadeOut: args.fadeOut } : {}),
       ...(args.pitchSemitones !== undefined ? { audioPitchSemitones: args.pitchSemitones } : {}),
     })
-  }),
+  }, signal),
 })
 
 const timelineAddText = tool({
@@ -866,10 +956,12 @@ const timelineAddText = tool({
     label: z.string().max(200).optional(),
     stylePresetId: z.string().optional(),
   }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const state = timeline()
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error('当前没有打开的剪辑项目。')
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
     const preset = args.stylePresetId
       ? TEXT_STYLE_PRESETS.find((candidate) => candidate.id === args.stylePresetId)
       : undefined
@@ -923,18 +1015,18 @@ const timelineAddText = tool({
         }
     if (track) state.addItem(item)
     else state.addItemOnNewTrack(item, nextTracks)
-    return saveTimelineEdit('添加文字图层', { item: itemSummary(item, nextTracks, state.fps) })
+    return saveTimelineEdit('添加文字图层', { item: itemSummary(item, nextTracks, state.fps) }, beforeSnapshot, signal)
   },
 })
 
 const timelineAddKeyframe = tool({
   name: 'timeline.add_keyframe',
-  description: '为片段增加一个标量关键帧。atSeconds 是相对片段起点的时间。x/y/width/height/anchorX/anchorY/cornerRadius、crop 边界和柔化、fontSize/textPadding/textShadowOffsetX/textShadowOffsetY/textShadowBlur/strokeWidth、trimPath 和 taper 属性的 value 统一使用 0 到 1 的归一化值，不要传入像素；x/y 的 0.5 表示居中，文字阴影偏移的 0.5 表示无偏移。crop 相对于素材源尺寸，文字和描边尺寸相对于画布短边。旋转使用角度，透明度使用 0 到 1，行高和文字样式缩放使用倍数，音量使用 dB。',
+  description: '为片段增加一个标量关键帧。atSeconds 是相对片段起点的时间。x/y/width/height/anchorX/anchorY/cornerRadius、crop 边界和柔化、fontSize/textPadding/textShadowOffsetX/textShadowOffsetY/textShadowBlur/strokeWidth、trimPathStart/trimPathEnd 和 taper 属性的 value 统一使用 0 到 1 的归一化值，不要传入像素；x/y 的 0.5 表示居中，文字阴影偏移的 0.5 表示无偏移。trimPathOffset 是 -360 到 360 的角度。crop 相对于素材源尺寸，文字和描边尺寸相对于画布短边。旋转使用角度，透明度使用 0 到 1，行高和文字样式缩放使用倍数，音量使用 dB。',
   inputSchema: schema({
     itemId: { type: 'string' },
     property: { type: 'string', enum: ANIMATABLE_PROPERTIES },
     atSeconds: { type: 'number', minimum: 0 },
-    value: { type: 'number', description: '空间和尺寸属性（包括文字、描边、裁剪和路径比例）必须使用 0 到 1 的归一化值，不要传入像素；x/y 与文字阴影偏移的 0.5 表示中心/无偏移。' },
+    value: { type: 'number', description: '空间、尺寸、文字、描边、裁剪和 trimPath/taper 比例属性使用 0 到 1；trimPathOffset 使用 -360 到 360 的角度；不要传入像素。x/y 与文字阴影偏移的 0.5 表示中心/无偏移。' },
     easing: { type: 'string', enum: EASING_TYPES },
   }, ['itemId', 'property', 'atSeconds', 'value']),
   schema: z.object({
@@ -947,12 +1039,17 @@ const timelineAddKeyframe = tool({
     if (NORMALIZED_KEYFRAME_PROPERTIES.has(args.property) && (args.value < 0 || args.value > 1)) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: `${args.property} 的关键帧值必须在 0 到 1 之间` })
     }
+    if (args.property === 'trimPathOffset' && (args.value < -360 || args.value > 360)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'trimPathOffset 的关键帧值必须在 -360 到 360 度之间' })
+    }
   }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const state = timeline()
     const item = requireItem(args.itemId)
     const project = useProjectStore.getState().currentProject
     if (!project) throw new Error('当前没有打开的剪辑项目。')
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
     const frame = secondsToFrame(args.atSeconds, state.fps)
     if (frame >= item.durationInFrames) throw new Error('关键帧时间必须位于片段内部。')
     const value = NORMALIZED_KEYFRAME_PROPERTIES.has(args.property)
@@ -966,40 +1063,81 @@ const timelineAddKeyframe = tool({
       args.easing as EasingType | undefined,
     )
     if (!keyframeId) throw new Error('关键帧没有成功创建，可能已经存在相同时间点的关键帧。')
-    return saveTimelineEdit('添加关键帧', { itemId: item.id, property: args.property, atSeconds: args.atSeconds, value: args.value })
+    return saveTimelineEdit('添加关键帧', { itemId: item.id, property: args.property, atSeconds: args.atSeconds, value: args.value }, beforeSnapshot, signal)
   },
 })
 
 const timelineAddTransition = tool({
   name: 'timeline.add_transition',
-  description: '在同一轨道上相邻的两个片段之间添加转场。当前支持 crossfade，durationSeconds 使用秒。',
+  description: '在同一轨道上相邻的两个片段之间添加转场。presentation 必须是已注册的转场预设，默认使用 fade；需要方向的预设可传 direction，durationSeconds 使用秒。先调用 timeline.list_transitions 查看可用预设。',
   inputSchema: schema({
     leftItemId: { type: 'string' },
     rightItemId: { type: 'string' },
     durationSeconds: { type: 'number', exclusiveMinimum: 0 },
-    presentation: { type: 'string', maxLength: 100 },
+    presentation: { type: 'string', minLength: 1, maxLength: 100 },
+    direction: { type: 'string', enum: TRANSITION_DIRECTIONS },
+    alignment: { type: 'number', minimum: 0, maximum: 1 },
   }, ['leftItemId', 'rightItemId']),
   schema: z.object({
     leftItemId: z.string().min(1),
     rightItemId: z.string().min(1),
     durationSeconds: z.number().positive().optional(),
-    presentation: z.string().max(100).optional(),
+    presentation: z.string().trim().min(1).max(100).optional(),
+    direction: z.enum(TRANSITION_DIRECTIONS).optional(),
+    alignment: z.number().min(0).max(1).optional(),
   }),
-  execute: async (args) => {
+  execute: async (args, signal) => {
     const state = timeline()
     const left = requireItem(args.leftItemId)
     const right = requireItem(args.rightItemId)
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
     if (left.trackId !== right.trackId) throw new Error('转场两侧的片段必须位于同一轨道。')
+    const presentation = args.presentation ?? 'fade'
+    const definition = transitionRegistry.getDefinition(presentation)
+    if (!definition) throw new Error(`没有找到已注册的转场预设 ${presentation}。请先调用 timeline.list_transitions。`)
+    if (args.direction && !definition.hasDirection) {
+      throw new Error(`转场预设 ${presentation} 不支持方向参数。`)
+    }
+    if (args.direction && !definition.directions?.includes(args.direction)) {
+      throw new Error(`转场预设 ${presentation} 不支持方向 ${args.direction}。`)
+    }
     const added = state.addTransition(
       left.id,
       right.id,
       'crossfade',
       args.durationSeconds === undefined ? undefined : secondsToFrame(args.durationSeconds, state.fps),
-      args.presentation as TransitionPresentation | undefined,
+      presentation as TransitionPresentation,
+      args.direction,
+      args.alignment,
     )
     if (!added) throw new Error('转场无法添加，请确认两个片段相邻并且有足够的素材余量。')
-    return saveTimelineEdit('添加转场', { leftItemId: left.id, rightItemId: right.id })
+    return saveTimelineEdit('添加转场', { leftItemId: left.id, rightItemId: right.id, presentation }, beforeSnapshot, signal)
   },
+})
+
+const timelineListTransitions = tool({
+  name: 'timeline.list_transitions',
+  description: '列出当前编辑器已注册且可渲染的转场预设、分类、方向和默认时长。添加转场前先用它确认 presentation 和 direction。',
+  inputSchema: schema({}),
+  schema: z.object({}),
+  execute: async () => ({
+    ok: true,
+    message: `当前有 ${transitionRegistry.size} 个可用转场预设。`,
+    data: {
+      transitions: transitionRegistry.getDefinitions().map((definition) => ({
+        id: definition.id,
+        label: definition.label,
+        description: definition.description,
+        category: definition.category,
+        hasDirection: definition.hasDirection,
+        ...(definition.directions ? { directions: definition.directions } : {}),
+        defaultDurationFrames: definition.defaultDuration,
+        minDurationFrames: definition.minDuration,
+        maxDurationFrames: definition.maxDuration,
+      })),
+    },
+  }),
 })
 
 const timelineValidate = tool({
@@ -1028,6 +1166,7 @@ export const TIMELINE_AI_TOOLS: readonly ProjectSourceTool[] = [
   timelineSetAudio,
   timelineAddText,
   timelineAddKeyframe,
+  timelineListTransitions,
   timelineAddTransition,
   timelineValidate,
 ]

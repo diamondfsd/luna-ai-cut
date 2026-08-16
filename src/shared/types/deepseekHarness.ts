@@ -16,4 +16,5 @@ export interface DeepSeekHarnessApi {
   getWebUrl(projectId: string): Promise<string>
   onWebState(callback: (state: DeepSeekHarnessWebState) => void): () => void
   onSourceToolRequest(callback: (request: DeepSeekHarnessSourceToolRequest) => Promise<unknown>): () => void
+  onSourceToolCancel(callback: (requestId: string) => void): () => void
 }

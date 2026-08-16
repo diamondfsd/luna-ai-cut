@@ -16,4 +16,5 @@ export interface EmbeddedDeepSeekHarnessBridge {
   getWebUrl(projectId: string): Promise<string>
   onWebState(callback: (state: EmbeddedDeepSeekHarnessWebState) => void): () => void
   onSourceToolRequest(callback: (request: EmbeddedDeepSeekHarnessSourceToolRequest) => Promise<unknown>): () => void
+  onSourceToolCancel(callback: (requestId: string) => void): () => void
 }
