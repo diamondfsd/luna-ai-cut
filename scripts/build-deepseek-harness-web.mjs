@@ -7,8 +7,28 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const harnessRoot = join(root, 'packages/freecut-editor/src/features/ai-editing')
+const layoutRoot = join(harnessRoot, 'packages/client/ui-layout')
+const settingsGeneralRoot = join(harnessRoot, 'packages/client/ui-settings-general')
 const output = join(root, 'dist/deepseek-harness')
 const plugin = join(root, 'scripts/deepseek-harness-freecut-plugin.mjs')
+
+// The deployed Web runtime consumes workspace client bundles from lib/.
+// Rebuild them first so source changes cannot be hidden by stale ignored output.
+const bin = (name) => join(harnessRoot, 'node_modules/.bin', process.platform === 'win32' ? `${name}.cmd` : name)
+for (const clientRoot of [layoutRoot, settingsGeneralRoot]) {
+  const clientTypes = spawnSync(bin('tsc'), ['-b', 'tsconfig.json'], {
+    cwd: clientRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  })
+  if (clientTypes.status !== 0) process.exit(clientTypes.status ?? 1)
+  const clientBuild = spawnSync(bin('tsdown'), ['--env.DSH_BUILD_FACE', 'client'], {
+    cwd: clientRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  })
+  if (clientBuild.status !== 0) process.exit(clientBuild.status ?? 1)
+}
 
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })

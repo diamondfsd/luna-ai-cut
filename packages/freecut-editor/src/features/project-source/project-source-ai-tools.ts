@@ -6,7 +6,15 @@ import { TEXT_STYLE_PRESETS, type TextStylePresetId } from '@freecut/shared/typo
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
-import { createClassicTrack } from '@freecut/features/timeline/utils/classic-tracks'
+import { resolveMediaUrl } from '@freecut/features/timeline/deps/media-library-resolver'
+import { importMediaLibraryService } from '@freecut/features/media-library/services/media-library-service-loader'
+import { getMediaType } from '@freecut/features/media-library/utils/validation'
+import { createClassicTrack, getTrackKind } from '@freecut/features/timeline/utils/classic-tracks'
+import {
+  buildDroppedMediaTimelineItems,
+  getDroppedMediaDurationInFrames,
+} from '@freecut/features/timeline/utils/dropped-media'
+import { planTrackMediaDropPlacements } from '@freecut/features/timeline/utils/track-media-drop'
 import { createTextTemplateItem } from '@freecut/features/timeline/utils/generated-layer-items'
 import { readProjectSource } from './project-source-worktree'
 import type {
@@ -87,6 +95,14 @@ function currentProjectId(): string {
   const projectId = useProjectStore.getState().currentProject?.id
   if (!projectId) throw new Error('当前没有打开的剪辑项目。')
   return projectId
+}
+
+async function requireProjectMedia(mediaId: string) {
+  const { mediaLibraryService } = await importMediaLibraryService()
+  const media = (await mediaLibraryService.getMediaForProject(currentProjectId()))
+    .find((candidate) => candidate.id === mediaId)
+  if (!media) throw new Error(`没有找到素材 ${mediaId}。请先调用 media.list 获取当前项目的素材 ID。`)
+  return media
 }
 
 function timeline(): TimelineState {
@@ -377,6 +393,111 @@ const timelineMove = tool({
   }),
 })
 
+const timelineAddMedia = tool({
+  name: 'timeline.add_media',
+  description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置，trackId 可选，durationSeconds 可选。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
+  inputSchema: schema({
+    mediaId: { type: 'string' },
+    startSeconds: { type: 'number', minimum: 0 },
+    durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+    trackId: { type: 'string' },
+    linkAudio: { type: 'boolean' },
+  }, ['mediaId', 'startSeconds']),
+  schema: z.object({
+    mediaId: z.string().min(1),
+    startSeconds: z.number().min(0),
+    durationSeconds: z.number().positive().max(3600).optional(),
+    trackId: z.string().min(1).optional(),
+    linkAudio: z.boolean().optional(),
+  }),
+  execute: async (args) => {
+    const state = timeline()
+    const project = useProjectStore.getState().currentProject
+    if (!project) throw new Error('当前没有打开的剪辑项目。')
+
+    const media = await requireProjectMedia(args.mediaId)
+    const mediaType = getMediaType(media.mimeType)
+    if (mediaType === 'unknown') throw new Error(`素材 ${media.fileName} 的类型不支持放入时间轴。`)
+
+    const preferredKind = mediaType === 'audio' ? 'audio' : 'video'
+    const targetTrack = args.trackId
+      ? state.tracks.find((track) => track.id === args.trackId)
+      : state.tracks.find((track) => !track.locked && getTrackKind(track) === preferredKind)
+        ?? state.tracks.find((track) => !track.locked)
+    if (!targetTrack) {
+      throw new Error(args.trackId ? `没有找到轨道 ${args.trackId}。` : '没有可用于放置素材的轨道。')
+    }
+    if (targetTrack.locked) throw new Error(`目标轨道 ${targetTrack.name} 已锁定，无法放入素材。`)
+
+    const linkAudio = args.linkAudio ?? true
+    const durationInFrames = args.durationSeconds === undefined
+      ? getDroppedMediaDurationInFrames(media, mediaType, state.fps)
+      : Math.max(1, secondsToFrame(args.durationSeconds, state.fps))
+    const { plannedItems, tracks: workingTracks } = planTrackMediaDropPlacements({
+      entries: [{
+        payload: media,
+        label: media.fileName,
+        mediaType,
+        durationInFrames,
+        hasLinkedAudio: mediaType === 'video' && linkAudio && !!media.audioCodec,
+      }],
+      dropFrame: secondsToFrame(args.startSeconds, state.fps),
+      tracks: state.tracks,
+      existingItems: state.items,
+      dropTargetTrackId: targetTrack.id,
+    })
+    const planned = plannedItems[0]
+    if (!planned) throw new Error('没有找到目标轨道上的可用位置，素材没有加入时间轴。')
+
+    const lockedPlacement = planned.placements.find((placement) =>
+      state.tracks.find((track) => track.id === placement.trackId)?.locked,
+    )
+    if (lockedPlacement) throw new Error('素材需要使用的联动轨道已锁定，无法加入时间轴。')
+
+    const blobUrl = await resolveMediaUrl(media.id)
+    if (!blobUrl) throw new Error(`素材 ${media.fileName} 当前无法读取，未加入时间轴。`)
+    const primaryPlacement = planned.placements.find((placement) => placement.mediaType !== 'audio') ?? planned.placements[0]!
+    const linkedAudioPlacement = planned.placements.find((placement) => placement.mediaType === 'audio')
+    const items = buildDroppedMediaTimelineItems({
+      media,
+      mediaId: media.id,
+      mediaType,
+      label: media.fileName,
+      timelineFps: state.fps,
+      blobUrl,
+      thumbnailUrl: null,
+      canvasWidth: project.metadata.width,
+      canvasHeight: project.metadata.height,
+      placement: {
+        primary: {
+          trackId: primaryPlacement.trackId,
+          from: primaryPlacement.from,
+          durationInFrames: primaryPlacement.durationInFrames,
+        },
+        linkedAudio: linkedAudioPlacement
+          ? {
+              trackId: linkedAudioPlacement.trackId,
+              from: linkedAudioPlacement.from,
+              durationInFrames: linkedAudioPlacement.durationInFrames,
+            }
+          : undefined,
+      },
+      linkVideoAudio: planned.linkVideoAudio,
+    })
+
+    if (workingTracks !== state.tracks) state.setTracks(workingTracks)
+    state.addItems(items)
+    return saveTimelineEdit('添加素材到时间轴', {
+      mediaId: media.id,
+      fileName: media.fileName,
+      requestedStartSeconds: args.startSeconds,
+      actualStartSeconds: roundSeconds(primaryPlacement.from, state.fps),
+      trackId: primaryPlacement.trackId,
+      itemIds: items.map((item) => item.id),
+    })
+  },
+})
+
 const timelineRemove = tool({
   name: 'timeline.remove',
   description: '删除一个或多个片段，并由编辑器同时清理相关转场、关键帧和成对音视频引用。',
@@ -616,6 +737,7 @@ const timelineValidate = tool({
 export const TIMELINE_AI_TOOLS: readonly ProjectSourceTool[] = [
   projectInspect,
   timelineInspectContext,
+  timelineAddMedia,
   timelineTrim,
   timelineSplit,
   timelineMove,

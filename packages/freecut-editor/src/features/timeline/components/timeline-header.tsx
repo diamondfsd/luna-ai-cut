@@ -46,6 +46,7 @@ import { useTimelineCommandStore } from '../stores/timeline-command-store'
 import { useZoomStore } from '../stores/zoom-store'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { useEditorStore } from '@freecut/shared/state/editor'
+import deepseekHarnessIconUrl from './deepseek-harness-icon.svg'
 import { useSelectionStore } from '@freecut/shared/state/selection'
 import { ZOOM_MIN, ZOOM_MAX, SLIP_SLIDE_TOOLS_ENABLED } from '../constants'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
@@ -140,6 +141,8 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
   const settledZoomLevel = useZoomStore((state) => state.contentLevel)
   const zoomIn = useZoomStore((state) => state.zoomIn)
   const zoomOut = useZoomStore((state) => state.zoomOut)
+  const aiSidebarOpen = useEditorStore((state) => state.aiSidebarOpen)
+  const setAiSidebarOpen = useEditorStore((state) => state.setAiSidebarOpen)
   const beginZoomGesture = useZoomStore((state) => state.beginZoomGesture)
   const endZoomGesture = useZoomStore((state) => state.endZoomGesture)
   const setZoomImmediate = useZoomStore((state) => state.setZoomLevelImmediate)
@@ -456,6 +459,28 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
         data-tooltip={t('timeline.header.zoomToFitTooltip')}
       >
         <Maximize2 className="w-3.5 h-3.5" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        style={btnSize}
+        className="timeline-header-ai-button"
+        onClick={() => setAiSidebarOpen(!aiSidebarOpen)}
+        aria-label={t(
+          aiSidebarOpen ? 'timeline.header.closeAiAssistant' : 'timeline.header.openAiAssistant',
+        )}
+        aria-pressed={aiSidebarOpen}
+        data-tooltip={t(
+          aiSidebarOpen ? 'timeline.header.closeAiAssistant' : 'timeline.header.openAiAssistant',
+        )}
+      >
+        <img
+          src={deepseekHarnessIconUrl}
+          alt=""
+          aria-hidden="true"
+          className="h-4 w-4 rounded-[3px]"
+        />
       </Button>
     </div>
   )

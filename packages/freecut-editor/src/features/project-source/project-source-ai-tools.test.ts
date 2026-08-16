@@ -1,6 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const harness = vi.hoisted(() => {
+  const media = {
+    id: 'media-2',
+    storageType: 'workspace',
+    fileName: 'B-roll.mp4',
+    fileSize: 1024,
+    mimeType: 'video/mp4',
+    duration: 4,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    codec: 'h264',
+    bitrate: 1000,
+    tags: [],
+  }
+  const mediaLibraryService = {
+    getMediaForProject: vi.fn(async () => [media]),
+  }
   const state = {
     fps: 30,
     tracks: [{ id: 'track-video', name: 'V1', kind: 'video', order: 0, locked: false, visible: true, muted: false }],
@@ -19,9 +36,18 @@ const harness = vi.hoisted(() => {
     trimItemStart: vi.fn(),
     trimItemEnd: vi.fn(),
     splitItem: vi.fn(),
+    setTracks: vi.fn(),
+    addItems: vi.fn(),
     saveTimeline: vi.fn(),
   }
-  return { state, project: { id: 'project-1', name: 'Demo', duration: 99, metadata: { width: 1920, height: 1080 } } }
+  const resolveMediaUrl = vi.fn(async () => 'blob:media-2')
+  return {
+    state,
+    media,
+    mediaLibraryService,
+    resolveMediaUrl,
+    project: { id: 'project-1', name: 'Demo', duration: 99, metadata: { width: 1920, height: 1080 } },
+  }
 })
 
 vi.mock('@freecut/shared/host/embedded-host', () => ({
@@ -32,6 +58,12 @@ vi.mock('@freecut/features/editor/deps/projects', () => ({
 }))
 vi.mock('@freecut/features/editor/deps/timeline-store', () => ({
   useTimelineStore: { getState: () => harness.state },
+}))
+vi.mock('@freecut/features/media-library/services/media-library-service-loader', () => ({
+  importMediaLibraryService: vi.fn(async () => ({ mediaLibraryService: harness.mediaLibraryService })),
+}))
+vi.mock('@freecut/features/timeline/deps/media-library-resolver', () => ({
+  resolveMediaUrl: harness.resolveMediaUrl,
 }))
 vi.mock('@freecut/features/project-source/project-source-worktree', () => ({
   readProjectSource: vi.fn(async () => ({ timeline: { items: [], tracks: [] } })),
@@ -49,6 +81,7 @@ describe('timeline AI tools', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     harness.state.items.splice(1)
+    harness.state.tracks = [{ id: 'track-video', name: 'V1', kind: 'video', order: 0, locked: false, visible: true, muted: false }]
     harness.state.items[0]!.from = 0
     harness.state.items[0]!.durationInFrames = 300
   })
@@ -96,6 +129,35 @@ describe('timeline AI tools', () => {
       operation: '裁剪片段',
       before: { item: { fromSeconds: 0, toSeconds: 10 } },
       after: { items: [{ id: 'clip-1', fromSeconds: 2, toSeconds: 10 }] },
+    })
+  })
+
+  it('adds a media asset through timeline actions and persists the placement', async () => {
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    const result = await getTool('timeline.add_media').execute({
+      mediaId: harness.media.id,
+      startSeconds: 12,
+    })
+
+    expect(harness.mediaLibraryService.getMediaForProject).toHaveBeenCalledWith('project-1')
+    expect(harness.resolveMediaUrl).toHaveBeenCalledWith('media-2')
+    expect(harness.state.addItems).toHaveBeenCalledTimes(1)
+    expect(harness.state.addItems.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({
+        mediaId: 'media-2',
+        trackId: 'track-video',
+        from: 360,
+        durationInFrames: 120,
+      }),
+    ])
+    expect(harness.state.saveTimeline).toHaveBeenCalledWith('project-1')
+    expect(result.data).toMatchObject({
+      operation: '添加素材到时间轴',
+      before: {
+        mediaId: 'media-2',
+        actualStartSeconds: 12,
+      },
     })
   })
 })

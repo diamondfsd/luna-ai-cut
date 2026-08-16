@@ -1,12 +1,10 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
-import { Button } from '@freecut/components/ui/button'
-import { ChevronLeft, GripVertical } from 'lucide-react'
+import { GripVertical } from 'lucide-react'
 import { useSettingsStore } from '@freecut/features/editor/deps/settings'
 import { useEditorStore } from '@freecut/shared/state/editor'
 import {
   clampAiEditorSidebarWidth,
-  EDITOR_LAYOUT_CSS_VALUES,
   getAiEditorSidebarBounds,
   getEditorLayout,
 } from '@freecut/config/editor-layout'
@@ -110,9 +108,6 @@ export const DeepSeekHarnessDock = memo(function DeepSeekHarnessDock({ projectId
             ? { duration: 0 }
             : { type: 'tween', duration: aiSidebarOpen ? 0.26 : 0.2, ease: [0.32, 0.72, 0, 1] }
         }
-        onAnimationComplete={() => {
-          if (!aiSidebarOpen) setContentVisible(false)
-        }}
       >
         {contentVisible && (
           <div className="deepseek-harness-dock__content h-full" style={{ width: aiSidebarWidth }}>
@@ -139,24 +134,6 @@ export const DeepSeekHarnessDock = memo(function DeepSeekHarnessDock({ projectId
           </div>
         )}
       </motion.div>
-
-      {!aiSidebarOpen && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="deepseek-harness-dock__reveal"
-          style={{
-            width: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-            height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-          }}
-          onClick={() => setAiSidebarOpen(true)}
-          data-tooltip="打开 AI 助手"
-          data-tooltip-side="left"
-          aria-label="打开 AI 助手"
-        >
-          <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
-        </Button>
-      )}
     </>
   )
 })

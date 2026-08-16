@@ -137,17 +137,12 @@ export function AppFrame({
   // absorbs the squeeze.
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
-  const sidebarCollapsed = embedded || (narrow ? !panels.narrowExpanded : panels.sidebar === 0)
-  const sidebarPreference = embedded ? 0 : sidebarCollapsed
+  const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
+  const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
   const solvedCols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
-  // The shared solver keeps a 56px rail for a normal collapsed sidebar. The
-  // FreeCut dock has no sidebar affordance at all, so reclaim that track for
-  // the conversation column while keeping the details column unchanged.
-  const cols = embedded
-    ? { ...solvedCols, sidebar: 0, center: solvedCols.center + solvedCols.sidebar }
-    : solvedCols
+  const cols = solvedCols
   const colsRef = useRef(cols)
   colsRef.current = cols
 
@@ -185,7 +180,7 @@ export function AppFrame({
             component sees its rendered state as owner params decided here
             (collapsed follows the resolved rail, so a derived auto-collapse
             renders the rail UI too). */}
-        {!embedded && renderSlot('sidebar', {
+        {renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
           width: cols.sidebar,
         })}
