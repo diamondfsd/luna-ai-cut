@@ -37,6 +37,8 @@ const harness = vi.hoisted(() => {
     trimItemEnd: vi.fn(),
     splitItem: vi.fn(),
     setTracks: vi.fn(),
+    addItem: vi.fn(),
+    addItemOnNewTrack: vi.fn(),
     addItems: vi.fn(),
     markDirty: vi.fn(),
     saveTimeline: vi.fn(),
@@ -115,6 +117,34 @@ describe('timeline AI tools', () => {
       before: { width: 1920, height: 1080 },
       after: { width: 1080, height: 1920, aspectRatio: '9:16' },
     })
+  })
+
+  it('reuses the nearest available subtitle track for text', async () => {
+    const subtitleTrack = { id: 'track-subtitle', name: 'S1', kind: 'subtitle', order: -1, locked: false, visible: true, muted: false }
+    harness.state.tracks = [subtitleTrack, ...harness.state.tracks]
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    await getTool('timeline.add_text').execute({
+      text: '你好，世界',
+      startSeconds: 2,
+      durationSeconds: 3,
+    })
+
+    expect(harness.state.addItem).toHaveBeenCalledWith(expect.objectContaining({
+      trackId: 'track-subtitle',
+      from: 60,
+      durationInFrames: 90,
+      backgroundColor: 'rgba(0, 0, 0, 0.55)',
+      backgroundRadius: 4,
+      textPadding: 12,
+      transform: expect.objectContaining({
+        x: 0,
+        y: 389,
+        width: 1344,
+        height: 173,
+      }),
+    }))
+    expect(harness.state.addItemOnNewTrack).not.toHaveBeenCalled()
   })
 
   it('requires explicit trim boundaries', () => {
