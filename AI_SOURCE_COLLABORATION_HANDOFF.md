@@ -4,7 +4,7 @@
 
 ## 目标
 
-在剪辑详情页右侧嵌入 DeepSeek Harness。Harness 负责会话、上下文、模型请求、工具调用循环以及何时结束；FreeCut 只负责提供受约束的工程源码能力、保存模型连接配置和展示事件。
+在剪辑详情页右侧嵌入 DeepSeek Harness。Harness 负责会话、上下文、模型请求、工具调用循环以及何时结束；FreeCut 只负责提供受约束的工程源码能力和展示事件，模型与凭据设置由 Harness 原生设置页管理。
 
 FreeCut 不维护第二套 Agent loop，也不根据用户或模型的自然语言判断意图、确认、执行或完成。项目级工具说明和剪辑流程提示词由 FreeCut Harness 插件注入 Harness 的 system prompt，最终仍由模型决定何时读取、规划、编辑和收尾。
 
@@ -15,8 +15,8 @@ FreeCut 不维护第二套 Agent loop，也不根据用户或模型的自然语�
 | Harness runtime | 启动官方 `dsh web`、创建会话、调用 OpenAI 兼容模型、继续工具循环、提供官方 Web UI | electron/deepseekHarnessService.ts、scripts/build-deepseek-harness-web.mjs |
 | FreeCut 插件 | 注册工程源码工具并把执行权交给宿主 capability | scripts/deepseek-harness-freecut-plugin.mjs |
 | Renderer capability | 校验参数、通过时间轴 Store 执行结构化编辑、保存并回读工程源码 | packages/freecut-editor/src/features/project-source/project-source-tools.ts、project-source-ai-tools.ts |
-| Electron bridge | 保存连接配置、转发 Harness 事件和源码工具请求 | electron/deepseekHarnessConfig.ts、electron/ipcDeepSeekHarness.ts |
-| 右侧面板 | 独立可调宽度的 iframe 面板，复用 Harness 官方对话区；FreeCut 只提供连接配置弹窗 | packages/freecut-editor/src/features/editor/components/deepseek-harness-dock.tsx、packages/freecut-editor/src/features/editor/components/deepseek-harness-panel.tsx |
+| Electron bridge | 启动 Harness、转发事件和源码工具请求 | electron/deepseekHarnessService.ts、electron/ipcDeepSeekHarness.ts |
+| 右侧面板 | 独立可调宽度的 iframe 面板，复用 Harness 官方对话区；工具栏设置按钮打开 Harness 原生模型设置页 | packages/freecut-editor/src/features/editor/components/deepseek-harness-dock.tsx、packages/freecut-editor/src/features/editor/components/deepseek-harness-panel.tsx |
 
 ## 已注册工具
 
@@ -48,16 +48,9 @@ AI 剪辑不暴露原始源码写入工具，所有编辑都经过现有时间�
 - source.* 仅用于只读诊断和查看源码差异，模型不能借此绕过时间轴工具改 JSON。
 - media.list 只读取当前项目已关联素材的元数据；media.read 读取已生成的本地画面理解和带时间点字幕；media.analyze 显式触发本地口播识别或视频抽帧理解。它们不向模型返回本地路径、文件句柄或原始素材内容。
 
-## 连接配置
+## Harness 设置
 
-右侧 AI 面板支持：
-
-- Base URL
-- API Key
-- Model
-- Context Window
-
-API Key 只保存在 Electron 主进程的本地配置文件中，Renderer 只能读取 hasApiKey。Base URL 只允许 HTTPS；本机调试服务允许 HTTP。
+右侧 AI 面板的设置按钮会打开 Harness 原生的“模型”设置页。Base URL、API Key、模型目录和模型容量都由 Harness 写入自己的 `settings.yaml` 与凭据存储，FreeCut 不再维护第二套连接配置或复制 API Key。
 
 ## 运行时构建
 

@@ -10,19 +10,11 @@ import { createAiEditingSourceGitService } from './aiEditingSourceGitService'
 import { withEmbeddedHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
 import type {
-  EmbeddedDeepSeekHarnessConfig,
-  EmbeddedDeepSeekHarnessConfigInput,
-  EmbeddedDeepSeekHarnessConfigTestResult,
   EmbeddedDeepSeekHarnessSourceToolRequest,
   EmbeddedDeepSeekHarnessWebState,
 } from '../packages/freecut-editor/src/shared/host/deepseek-harness'
-import {
-  getDeepSeekHarnessConfig,
-  readDeepSeekHarnessConfig,
-  requireDeepSeekHarnessApiKey,
-  saveDeepSeekHarnessConfig,
-  testDeepSeekHarnessConfig,
-} from './deepseekHarnessConfig'
+
+const DEFAULT_HARNESS_MODEL = 'deepseek-v4-flash'
 
 interface HarnessRuntime {
   projectId: string
@@ -252,6 +244,15 @@ async function readDocument(filePath: string): Promise<Record<string, unknown>> 
   }
 }
 
+function configuredAgentModel(settings: Record<string, unknown>): string {
+  const selection = settings['agent-default-model']
+  if (selection && typeof selection === 'object' && !Array.isArray(selection)) {
+    const model = (selection as Record<string, unknown>).model
+    if (typeof model === 'string' && model.trim()) return model.trim()
+  }
+  return DEFAULT_HARNESS_MODEL
+}
+
 async function ensureWebPatch(home: string, config: {
   cwd: string
   endpoint: string
@@ -290,7 +291,6 @@ async function ensureWebPatch(home: string, config: {
 }
 
 async function prepareHarnessHome(
-  config: Awaited<ReturnType<typeof readDeepSeekHarnessConfig>>,
   projectId: string,
   token: string,
   endpoint: string,
@@ -299,19 +299,11 @@ async function prepareHarnessHome(
   const home = dshHome()
   const settingsPath = path.join(home, 'settings.yaml')
   const currentSettings = withEmbeddedHarnessDefaults(await readDocument(settingsPath))
-  currentSettings['llm-deepseek'] = {
-    ...(currentSettings['llm-deepseek'] as Record<string, unknown> | undefined),
-    baseURL: config.baseUrl,
-    maxTokens: config.maxOutputTokens,
-    models: [{
-      id: config.model,
-      name: config.model,
-      contextWindow: config.contextWindowTokens,
-      maxTokens: config.maxOutputTokens,
-    }],
+  const existingPresets = currentSettings['agent-presets']
+  currentSettings['agent-presets'] = {
+    ...(existingPresets && typeof existingPresets === 'object' && !Array.isArray(existingPresets) ? existingPresets : {}),
+    default: 'luna-freecut',
   }
-  currentSettings['agent-default-model'] = { provider: 'deepseek-official', model: config.model }
-  currentSettings['agent-presets'] = { default: 'luna-freecut' }
   const existingTheme = currentSettings['ui-theme']
   const existingPreference = existingTheme && typeof existingTheme === 'object' && !Array.isArray(existingTheme)
     ? (existingTheme as Record<string, unknown>).preference
@@ -323,8 +315,7 @@ async function prepareHarnessHome(
       : 'dark',
   }
   await writePrivateDocument(settingsPath, currentSettings)
-  await ensureWebPatch(home, { cwd, endpoint, token, projectId, model: config.model })
-  await writePrivateDocument(path.join(home, '.credentials.yaml'), { DEEPSEEK_API_KEY: requireDeepSeekHarnessApiKey(config) })
+  await ensureWebPatch(home, { cwd, endpoint, token, projectId, model: configuredAgentModel(currentSettings) })
 
   const presetDir = path.join(home, '.agent-presets', 'luna-freecut')
   await fs.mkdir(presetDir, { recursive: true, mode: 0o700 })
@@ -363,12 +354,10 @@ async function stopRuntime(): Promise<void> {
 }
 
 async function startRuntime(projectId: string, generation: number): Promise<string> {
-  const config = await readDeepSeekHarnessConfig()
-  const apiKey = requireDeepSeekHarnessApiKey(config)
   const endpoint = await ensureSourceToolServer()
   const token = randomUUID()
   const cwd = projectSourceRoot(projectId)
-  await prepareHarnessHome({ ...config, apiKey }, projectId, token, endpoint, cwd)
+  await prepareHarnessHome(projectId, token, endpoint, cwd)
   if (generation !== runtimeGeneration) throw new Error('DeepSeek Harness Web 启动已取消。')
   const child = spawn(harnessNodeExecutable(), [cliEntry(), 'web', '--host', '127.0.0.1', '--port', '0'], {
     cwd,
@@ -413,7 +402,7 @@ async function startRuntime(projectId: string, generation: number): Promise<stri
       await terminateChild(child)
       throw new Error('DeepSeek Harness Web 启动已取消。')
     }
-    runtime = { projectId, key: `${projectId}\u0000${config.baseUrl}\u0000${config.model}\u0000${config.contextWindowTokens}\u0000${config.maxOutputTokens}`, process: child, token, url }
+    runtime = { projectId, key: projectId, process: child, token, url }
     child.once('close', () => {
       if (runtime?.process === child) {
         runtime = undefined
@@ -446,28 +435,8 @@ export function resolveDeepSeekHarnessSourceToolResponse(
   else pending.reject(new Error(payload.error || '源码工具调用失败。'))
 }
 
-export async function getDeepSeekHarnessPublicConfig(): Promise<EmbeddedDeepSeekHarnessConfig> {
-  return getDeepSeekHarnessConfig()
-}
-
-export async function saveDeepSeekHarnessPublicConfig(
-  input: EmbeddedDeepSeekHarnessConfigInput,
-): Promise<EmbeddedDeepSeekHarnessConfig> {
-  const result = await saveDeepSeekHarnessConfig(input)
-  await stopRuntime()
-  return result
-}
-
-export function testDeepSeekHarnessPublicConfig(
-  input: EmbeddedDeepSeekHarnessConfigInput,
-): Promise<EmbeddedDeepSeekHarnessConfigTestResult> {
-  return testDeepSeekHarnessConfig(input)
-}
-
 export async function getDeepSeekHarnessWebUrl(projectId: string): Promise<string> {
-  const config = await readDeepSeekHarnessConfig()
-  requireDeepSeekHarnessApiKey(config)
-  const key = `${projectId}\u0000${config.baseUrl}\u0000${config.model}\u0000${config.contextWindowTokens}\u0000${config.maxOutputTokens}`
+  const key = projectId
   if (runtime?.key === key && runtime.process.exitCode === null) return runtime.url
   await stopRuntime()
   if (!startingRuntime) {

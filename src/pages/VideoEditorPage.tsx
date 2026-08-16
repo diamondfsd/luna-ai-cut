@@ -203,11 +203,6 @@ export function VideoEditorPage() {
     }
   }, [])
 
-  const handleGetDeepSeekHarnessConfig = useCallback(() => window.luna.deepseekHarness.getConfig(), [])
-  const handleSaveDeepSeekHarnessConfig = useCallback((input: Parameters<typeof window.luna.deepseekHarness.saveConfig>[0]) =>
-    window.luna.deepseekHarness.saveConfig(input), [])
-  const handleTestDeepSeekHarnessConfig = useCallback((input: Parameters<typeof window.luna.deepseekHarness.testConfig>[0]) =>
-    window.luna.deepseekHarness.testConfig(input), [])
   const handleGetDeepSeekHarnessWebUrl = useCallback((projectId: string) =>
     window.luna.deepseekHarness.getWebUrl(projectId), [])
   const handleDeepSeekHarnessWebState = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onWebState>[0]) =>
@@ -270,9 +265,6 @@ export function VideoEditorPage() {
           onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
           onTranscribeMedia={handleTranscribeMedia}
           onAnalyzeMediaVisual={handleAnalyzeMediaVisual}
-          onGetDeepSeekHarnessConfig={handleGetDeepSeekHarnessConfig}
-          onSaveDeepSeekHarnessConfig={handleSaveDeepSeekHarnessConfig}
-          onTestDeepSeekHarnessConfig={handleTestDeepSeekHarnessConfig}
           onGetDeepSeekHarnessWebUrl={handleGetDeepSeekHarnessWebUrl}
           onDeepSeekHarnessWebState={handleDeepSeekHarnessWebState}
           onDeepSeekHarnessSourceToolRequest={handleDeepSeekHarnessSourceToolRequest}
