@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  isLegacyProjectSourceAgentsTemplate,
-  PROJECT_SOURCE_AGENTS_TEMPLATE,
-} from './project-source-agents-template'
+import { PROJECT_SOURCE_AGENTS_TEMPLATE } from './project-source-agents-template'
 
 describe('project source AGENTS template', () => {
   it('documents structured editing tools and their unit boundaries', () => {
@@ -20,10 +17,5 @@ describe('project source AGENTS template', () => {
     expect(PROJECT_SOURCE_AGENTS_TEMPLATE).toContain('当前用户明确要求 > 当前项目临时要求')
     expect(PROJECT_SOURCE_AGENTS_TEMPLATE).toContain('不能在工程源码目录创建 `user-preferences.md`')
     expect(PROJECT_SOURCE_AGENTS_TEMPLATE).not.toContain('所有时间轴编辑都应落在本目录允许的 JSON 源码文件中')
-  })
-
-  it('only marks the generated legacy template for automatic refresh', () => {
-    expect(isLegacyProjectSourceAgentsTemplate(PROJECT_SOURCE_AGENTS_TEMPLATE)).toBe(false)
-    expect(isLegacyProjectSourceAgentsTemplate(`${PROJECT_SOURCE_AGENTS_TEMPLATE}\n自定义说明`)).toBe(false)
   })
 })

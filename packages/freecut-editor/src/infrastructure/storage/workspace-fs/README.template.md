@@ -13,14 +13,12 @@ normal tools. AI coding agents can read them directly without a browser.
 |-- README.md                  <- this file
 |-- .freecut-workspace.json    <- marker + schema version
 |-- index.json                 <- fast project list
-|-- ai-editing-skills.json     <- enabled editing skills and custom style guides
 |-- projects/
 |   `-- <projectId>/
 |       |-- project.json       <- timeline, settings, keyframes, markers, transitions
 |       |-- thumbnail.jpg
 |       |-- media-links.json   <- which media this project uses
-|       |-- ai-editing-conversation.json <- editing assistant chat history
-|       `-- ai-editing-runs.json <- editing assistant plans and completion checks
+|       `-- project-source/    <- structured source files for AI and manual edits
 |-- media/
 |   `-- <mediaId>/
 |       |-- metadata.json      <- codec, duration, resolution, etc.
