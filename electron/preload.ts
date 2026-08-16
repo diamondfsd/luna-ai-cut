@@ -201,6 +201,22 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   } satisfies DeepSeekHarnessApi,
   aiEditingSourceGit: {
     root: (projectId) => ipcRenderer.invoke('ai-editing-source-git:root', projectId),
+    onChanged: (projectId, callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: { projectId: string; paths: string[] },
+      ) => {
+        if (payload.projectId === projectId) callback(payload.paths)
+      }
+      ipcRenderer.on('ai-editing-source-git:changed', listener)
+      void ipcRenderer.invoke('ai-editing-source-git:watch', projectId).catch(() => {
+        ipcRenderer.removeListener('ai-editing-source-git:changed', listener)
+      })
+      return () => {
+        ipcRenderer.removeListener('ai-editing-source-git:changed', listener)
+        void ipcRenderer.invoke('ai-editing-source-git:unwatch', projectId).catch(() => undefined)
+      }
+    },
     ensure: (projectId, initialFiles) => ipcRenderer.invoke('ai-editing-source-git:ensure', projectId, initialFiles),
     status: (projectId) => ipcRenderer.invoke('ai-editing-source-git:status', projectId),
     list: (projectId, sourceDirectory) => ipcRenderer.invoke('ai-editing-source-git:list', projectId, sourceDirectory),

@@ -133,6 +133,7 @@ declare module '@freecut/embedded' {
 
   export interface EmbeddedAiEditingSourceGitBridge {
     root(projectId: string): Promise<string>
+    onChanged?: (projectId: string, callback: (paths: string[]) => void) => () => void
     ensure(projectId: string, initialFiles?: Record<string, string>): Promise<{ created: boolean; head: string | null }>
     status(projectId: string): Promise<{ branch: string | null; clean: boolean; entries: Array<{ path: string; change: 'added' | 'modified' | 'deleted' }> }>
     list(projectId: string, sourceDirectory?: string): Promise<Array<{ path: string; name: string; type: 'file' | 'directory' }>>

@@ -63,6 +63,7 @@ import {
   useSubtitleScanProgressStore,
 } from '@freecut/features/editor/deps/media-library'
 import { IoDragReadout } from '@freecut/shared/timeline/io-range'
+import { useEmbeddedHost } from '@freecut/shared/host/embedded-host'
 const logger = createLogger('Editor')
 const LazyTimeline = lazy(() => importTimeline().then(({ Timeline }) => ({ default: Timeline })))
 const LazyColorGradingDock = lazy(() =>
@@ -383,6 +384,7 @@ export const LoadedEditor = memo(function LoadedEditor({
   migration,
 }: EditorProps) {
   const { t } = useTranslation()
+  const embeddedHost = useEmbeddedHost()
   const router = useRouter()
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
@@ -491,10 +493,53 @@ export const LoadedEditor = memo(function LoadedEditor({
     // Load timeline from IndexedDB - single source of truth for all timeline state
     const { loadTimeline } = useTimelineStore.getState()
     let cancelled = false
+    let initialLoadComplete = false
+    let sourceUnsubscribe: (() => void) | undefined
+    let sourceReloadRequested = false
+    let sourceReloadPromise: Promise<void> | null = null
+
+    const reloadFromSource = async (): Promise<void> => {
+      if (cancelled) return
+      if (!initialLoadComplete) {
+        sourceReloadRequested = true
+        return
+      }
+      if (sourceReloadPromise) return sourceReloadPromise
+      sourceReloadPromise = (async () => {
+        do {
+          sourceReloadRequested = false
+          if (cancelled) return
+          if (useTimelineStore.getState().isDirty) {
+            logger.warn('外部工程源码发生变化，但当前时间轴存在未保存修改，暂不重新加载')
+            return
+          }
+          await loadTimeline(projectId, { allowProjectUpgrade: migration.requiresUpgrade })
+        } while (!cancelled && sourceReloadRequested)
+      })().finally(() => {
+        sourceReloadPromise = null
+      })
+      return sourceReloadPromise
+    }
+
+    const sourceChangeListener = embeddedHost.editingSourceGit?.onChanged
+    if (sourceChangeListener) {
+      sourceUnsubscribe = sourceChangeListener(projectId, () => {
+        if (cancelled) return
+        sourceReloadRequested = true
+        void reloadFromSource().catch((error) => {
+          logger.error('Failed to reload timeline after source change:', error)
+        })
+      })
+    }
 
     void (async () => {
       try {
         await loadTimeline(projectId, { allowProjectUpgrade: migration.requiresUpgrade })
+        initialLoadComplete = true
+
+        if (sourceReloadRequested) {
+          await reloadFromSource()
+        }
 
         if (cancelled || !migration.requiresUpgrade || hasRefreshedMigrationStateRef.current) {
           return
@@ -516,6 +561,7 @@ export const LoadedEditor = memo(function LoadedEditor({
     // Cleanup: clear project context, stop playback, and release blob URLs when leaving editor
     return () => {
       cancelled = true
+      sourceUnsubscribe?.()
       const cleanupPlaybackStore = usePlaybackStore.getState()
       cleanupPlaybackStore.setPreviewFrame(null)
       useMediaLibraryStore.getState().setCurrentProject(null)
@@ -534,6 +580,7 @@ export const LoadedEditor = memo(function LoadedEditor({
     project.width,
     projectId,
     router,
+    embeddedHost.editingSourceGit,
   ])
 
   useEffect(() => {
