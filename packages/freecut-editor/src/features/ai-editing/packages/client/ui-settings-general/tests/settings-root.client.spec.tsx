@@ -162,26 +162,6 @@ describe('SettingsPanel close paths', () => {
 })
 
 describe('SettingsPanel navigation', () => {
-  it('opens the native Models section for an embedded parent request', () => {
-    const originalParent = Object.getOwnPropertyDescriptor(window, 'parent')
-    const embeddedParent = {} as Window
-    Object.defineProperty(window, 'parent', { configurable: true, value: embeddedParent })
-    try {
-      mount()
-      act(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-          source: embeddedParent,
-          data: { type: 'luna-freecut:open-settings', section: 'models' },
-        }))
-      })
-      expect(screen.getByRole('dialog')).toBeTruthy()
-      expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe('true')
-      expect(screen.getByTestId('section-models')).toBeTruthy()
-    } finally {
-      if (originalParent) Object.defineProperty(window, 'parent', originalParent)
-    }
-  })
-
   it('projects rows, marks the first active, and renders only that section', () => {
     mount()
     openPanel()

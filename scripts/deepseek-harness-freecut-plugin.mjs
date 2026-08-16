@@ -144,6 +144,22 @@ const timelineTools = [
     },
   },
   {
+    name: 'timeline.add_media',
+    description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置，trackId 可选，durationSeconds 可选。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
+    parameters: {
+      type: 'object',
+      properties: {
+        mediaId: { type: 'string' },
+        startSeconds: { type: 'number', minimum: 0 },
+        durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+        trackId: { type: 'string' },
+        linkAudio: { type: 'boolean' },
+      },
+      required: ['mediaId', 'startSeconds'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'timeline.trim',
     description: '按时间轴上的绝对秒数裁剪片段。startSeconds 和 endSeconds 表示片段在成片时间轴上的新边界，至少提供一个。',
     parameters: {
@@ -316,6 +332,7 @@ const EDITING_GUIDANCE = `
 规划与执行：
 - 先将用户目标拆成素材选择、保留或删除的时间范围、轨道安排和必要的字幕/音频/转场操作；信息不足时先补充读取或向用户说明缺口。
 - 剪辑操作必须使用 timeline.* 工具。时间轴位置和持续时间统一使用秒；timeline.add_keyframe 的 atSeconds 是相对于片段起点的秒数，不能误当成成片绝对时间。
+- 将素材加入时间轴使用 timeline.add_media，不要直接编辑工程源码 JSON。mediaId 必须来自 media.list；startSeconds 是成片时间轴上的绝对位置，trackId 只有在需要指定轨道时才传入。
 - 裁掉片段首尾使用 timeline.trim；删除完整片段或已经分割出的片段使用 timeline.remove；需要删除中间一段时先用 timeline.split 得到两侧片段，再移除不需要的片段。
 - 修改画面、音频、文字、速度和关键帧时使用对应的 timeline 工具，不要通过移动片段来代替裁剪，也不要用猜测的 ID 重试。
 - 一次只提交当前计划所需的最小修改。每次编辑后阅读返回 data 中的 after、split 或其他结果，确认修改确实落在目标片段和目标时间上；失败后先重新读取最新上下文，再决定下一步。

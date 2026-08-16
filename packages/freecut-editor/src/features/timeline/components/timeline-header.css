@@ -40,6 +40,21 @@
   color: var(--muted-foreground);
 }
 
+.editor-toolbar-theme .timeline-header-ai-button {
+  border: 0;
+  border-radius: 5px;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--foreground);
+}
+
+.editor-toolbar-theme .timeline-header-ai-button:hover:not(:disabled),
+.editor-toolbar-theme .timeline-header-ai-button[aria-pressed='true'],
+.editor-toolbar-theme .timeline-header-ai-button[aria-pressed='true']:hover:not(:disabled) {
+  background-color: transparent;
+  color: var(--foreground);
+}
+
 .editor-toolbar-theme .timeline-header-symbol {
   color: currentColor;
 }

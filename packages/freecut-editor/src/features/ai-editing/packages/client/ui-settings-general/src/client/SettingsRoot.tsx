@@ -115,26 +115,6 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
     setOpen(true)
   }, [])
 
-  // FreeCut embeds the Harness in an iframe. Its outer toolbar can request
-  // this native settings surface without duplicating the credential form.
-  useEffect(() => {
-    const onMessage = (event: MessageEvent): void => {
-      if (window.parent === window || event.source !== window.parent) return
-      const data = event.data
-      if (data === null || typeof data !== 'object' || Array.isArray(data)) return
-      const message = data as { type?: unknown; section?: unknown }
-      if (message.type !== 'luna-freecut:open-settings') return
-      setActiveId(message.section === 'models' ? 'models' : undefined)
-      setOpen(true)
-    }
-    window.addEventListener('message', onMessage)
-    const parent = window.parent
-    if (parent !== window && typeof parent.postMessage === 'function') {
-      parent.postMessage({ type: 'luna-freecut:settings-ready' }, '*')
-    }
-    return () => { window.removeEventListener('message', onMessage) }
-  }, [])
-
   // The ledger tick keeps the nav rows fresh: registrants re-register with
   // freshly localized text on locale change, and the trigger/header/close
   // seats re-render through their own outlets' subscriptions.
