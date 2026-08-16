@@ -30,6 +30,9 @@ const harness = vi.hoisted(() => {
       label: '采访',
       mediaId: 'media-1',
       volume: 0,
+      sourceWidth: 1920,
+      sourceHeight: 1080,
+      transform: { x: 0, y: 0, width: 1920, height: 1080, rotation: 0, opacity: 1 },
     }],
     transitions: [],
     keyframes: [],
@@ -40,6 +43,11 @@ const harness = vi.hoisted(() => {
     addItem: vi.fn(),
     addItemOnNewTrack: vi.fn(),
     addItems: vi.fn(),
+    updateItemTransform: vi.fn((id: string, updates: Record<string, unknown>) => {
+      const item = state.items.find((candidate) => candidate.id === id)
+      if (item) item.transform = { ...item.transform, ...updates }
+    }),
+    addKeyframe: vi.fn(() => 'keyframe-1'),
     markDirty: vi.fn(),
     saveTimeline: vi.fn(),
   }
@@ -95,6 +103,8 @@ describe('timeline AI tools', () => {
     harness.state.tracks = [{ id: 'track-video', name: 'V1', kind: 'video', order: 0, locked: false, visible: true, muted: false }]
     harness.state.items[0]!.from = 0
     harness.state.items[0]!.durationInFrames = 300
+    harness.state.items[0]!.transform = { x: 0, y: 0, width: 1920, height: 1080, rotation: 0, opacity: 1 }
+    harness.state.keyframes = []
     harness.project.metadata = { width: 1920, height: 1080 }
   })
 
@@ -210,5 +220,92 @@ describe('timeline AI tools', () => {
         actualStartSeconds: 12,
       },
     })
+  })
+
+  it('adds only the requested source range without a follow-up trim', async () => {
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    const result = await getTool('timeline.add_media').execute({
+      mediaId: harness.media.id,
+      startSeconds: 12,
+      sourceStartSeconds: 1,
+      sourceEndSeconds: 2.5,
+    })
+
+    expect(harness.state.addItems.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({
+        trackId: 'track-video',
+        from: 360,
+        durationInFrames: 45,
+        sourceStart: 30,
+        sourceEnd: 75,
+        sourceDuration: 120,
+        sourceFps: 30,
+      }),
+    ])
+    expect(result.data).toMatchObject({
+      before: {
+        sourceRange: {
+          startSeconds: 1,
+          endSeconds: 2.5,
+          sourceStart: 30,
+          sourceEnd: 75,
+        },
+      },
+    })
+  })
+
+  it('converts normalized transform values to the editor transform units', async () => {
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    await getTool('timeline.set_transform').execute({
+      itemId: 'clip-1',
+      x: 0.5,
+      y: 0.75,
+      width: 0.8,
+      height: 0.4,
+      cornerRadius: 0.1,
+    })
+
+    expect(harness.state.updateItemTransform).toHaveBeenCalledWith('clip-1', {
+      x: 0,
+      y: 270,
+      width: 1536,
+      height: 432,
+      cornerRadius: 108,
+    })
+  })
+
+  it('validates normalized keyframe values and converts them before storing', async () => {
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    expect(getTool('timeline.add_keyframe').validate({
+      itemId: 'clip-1',
+      property: 'width',
+      atSeconds: 0,
+      value: 2,
+    })).toMatchObject({ ok: false })
+
+    await getTool('timeline.add_keyframe').execute({
+      itemId: 'clip-1',
+      property: 'width',
+      atSeconds: 1,
+      value: 0.5,
+    })
+
+    expect(harness.state.addKeyframe).toHaveBeenCalledWith('clip-1', 'width', 30, 960, undefined)
+  })
+
+  it('uses source-relative normalized values for crop keyframes', async () => {
+    harness.state.saveTimeline.mockResolvedValue(undefined)
+
+    await getTool('timeline.add_keyframe').execute({
+      itemId: 'clip-1',
+      property: 'cropLeft',
+      atSeconds: 2,
+      value: 0.25,
+    })
+
+    expect(harness.state.addKeyframe).toHaveBeenCalledWith('clip-1', 'cropLeft', 60, 480, undefined)
   })
 })
