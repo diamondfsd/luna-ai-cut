@@ -164,37 +164,6 @@ export {
   saveRenderQueue,
 } from '@freecut/infrastructure/storage/workspace-fs/render-queue'
 
-// Project-scoped AI editing assistant conversation history
-export {
-  loadAiEditingConversation,
-  loadAiEditingConversationState,
-  saveAiEditingConversation,
-  saveAiEditingConversationState,
-  clearAiEditingConversation,
-  listAiEditingConversationHistory,
-  archiveAiEditingConversation,
-  resumeAiEditingConversation,
-  type AiEditingConversationMessage,
-  type AiEditingAgentMessage,
-  type AiEditingAgentTurn,
-  type AiEditingAgentToolCall,
-  type AiEditingConversationContext,
-  type AiEditingConversationState,
-  type AiEditingConversationHistorySession,
-} from '@freecut/infrastructure/storage/workspace-fs/ai-editing-conversation'
-export {
-  loadAiEditingSkills,
-  saveAiEditingSkills,
-  type AiEditingSkillsSettings,
-  type StoredAiEditingCustomSkill,
-} from '@freecut/infrastructure/storage/workspace-fs/ai-editing-skills'
-export {
-  listAiEditingRuns,
-  saveAiEditingRun,
-  type AiEditingRunEvent,
-  type AiEditingRunRecord,
-} from '@freecut/infrastructure/storage/workspace-fs/ai-editing-runs'
-
 // Soft-delete / trash for projects
 export {
   softDeleteProject,
