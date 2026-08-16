@@ -130,7 +130,7 @@ const timelineTools = [
   },
   {
     name: 'project.set_canvas',
-    description: '修改当前剪辑项目的画布尺寸并保存。使用 aspectRatio 传入预设比例（例如 9:16）；需要精确尺寸时同时传入 width 和 height，二者只能选择一种方式。',
+    description: '修改当前剪辑项目的输出画布尺寸并保存。使用 aspectRatio 传入预设比例（例如 9:16）；需要精确输出分辨率时同时传入 width 和 height，二者只能选择一种方式。这里的 width/height 是输出分辨率像素，图层位置和尺寸不要使用像素。',
     parameters: {
       type: 'object',
       properties: {
@@ -158,13 +158,15 @@ const timelineTools = [
   },
   {
     name: 'timeline.add_media',
-    description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置，trackId 可选，durationSeconds 可选。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
+    description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置；sourceStartSeconds 和 sourceEndSeconds 可直接指定素材源文件要使用的范围，不需要先添加整段再裁剪；durationSeconds 可选，用于指定时间轴上的持续时长。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
     parameters: {
       type: 'object',
       properties: {
         mediaId: { type: 'string' },
         startSeconds: { type: 'number', minimum: 0 },
         durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+        sourceStartSeconds: { type: 'number', minimum: 0 },
+        sourceEndSeconds: { type: 'number', exclusiveMinimum: 0 },
         trackId: { type: 'string' },
         linkAudio: { type: 'boolean' },
       },
@@ -242,20 +244,20 @@ const timelineTools = [
   },
   {
     name: 'timeline.set_transform',
-    description: '修改片段画面变换：位置、宽高、旋转、透明度、翻转和圆角。位置与尺寸使用画布像素。',
+    description: '修改片段画面变换。x/y 是画布内中心点的 0 到 1 归一化坐标（0.5 表示居中）；width/height 是占画布的 0 到 1 比例；cornerRadius 是相对画布短边的 0 到 1 比例。旋转使用角度，透明度使用 0 到 1。不要传入像素位置或尺寸。',
     parameters: {
       type: 'object',
       properties: {
         itemId: { type: 'string' },
-        x: { type: 'number' },
-        y: { type: 'number' },
-        width: { type: 'number', exclusiveMinimum: 0 },
-        height: { type: 'number', exclusiveMinimum: 0 },
+        x: { type: 'number', minimum: 0, maximum: 1, description: '画布内中心点的归一化横坐标，0.5 为水平居中。' },
+        y: { type: 'number', minimum: 0, maximum: 1, description: '画布内中心点的归一化纵坐标，0.5 为垂直居中。' },
+        width: { type: 'number', exclusiveMinimum: 0, maximum: 1, description: '占画布宽度的归一化比例。' },
+        height: { type: 'number', exclusiveMinimum: 0, maximum: 1, description: '占画布高度的归一化比例。' },
         rotation: { type: 'number' },
         opacity: { type: 'number', minimum: 0, maximum: 1 },
         flipHorizontal: { type: 'boolean' },
         flipVertical: { type: 'boolean' },
-        cornerRadius: { type: 'number', minimum: 0 },
+        cornerRadius: { type: 'number', minimum: 0, maximum: 1, description: '相对画布短边的归一化圆角比例。' },
       },
       required: ['itemId'],
       additionalProperties: false,
@@ -295,14 +297,14 @@ const timelineTools = [
   },
   {
     name: 'timeline.add_keyframe',
-    description: '为片段增加一个标量关键帧。atSeconds 是相对片段起点的时间，属性名使用内置属性名。',
+    description: '为片段增加一个标量关键帧。atSeconds 是相对片段起点的时间。x/y/width/height/anchorX/anchorY/cornerRadius、crop 边界和柔化、fontSize/textPadding/textShadowOffsetX/textShadowOffsetY/textShadowBlur/strokeWidth、trimPath 和 taper 属性的 value 统一使用 0 到 1 的归一化值，不要传入像素；x/y 的 0.5 表示居中，文字阴影偏移的 0.5 表示无偏移。crop 相对于素材源尺寸，文字和描边尺寸相对于画布短边。旋转使用角度，透明度使用 0 到 1，行高和文字样式缩放使用倍数，音量使用 dB。',
     parameters: {
       type: 'object',
       properties: {
         itemId: { type: 'string' },
         property: { type: 'string', enum: ['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'opacity', 'cornerRadius', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom', 'cropSoftness', 'volume', 'textStyleScale', 'fontSize', 'lineHeight', 'textPadding', 'textShadowOffsetX', 'textShadowOffsetY', 'textShadowBlur', 'strokeWidth', 'trimPathStart', 'trimPathEnd', 'trimPathOffset', 'taperStartWidth', 'taperEndWidth', 'taperStartLength', 'taperEndLength'] },
         atSeconds: { type: 'number', minimum: 0 },
-        value: { type: 'number' },
+        value: { type: 'number', description: '空间和尺寸属性（包括文字、描边、裁剪和路径比例）必须使用 0 到 1 的归一化值，不要传入像素；x/y 与文字阴影偏移的 0.5 表示中心/无偏移。' },
         easing: { type: 'string', enum: ['linear', 'ease-in', 'ease-out', 'ease-in-out'] },
       },
       required: ['itemId', 'property', 'atSeconds', 'value'],
@@ -346,7 +348,8 @@ const EDITING_GUIDANCE = `
 规划与执行：
 - 先将用户目标拆成素材选择、保留或删除的时间范围、轨道安排和必要的字幕/音频/转场操作；信息不足时先补充读取或向用户说明缺口。
 - 剪辑操作必须使用 timeline.* 工具。时间轴位置和持续时间统一使用秒；timeline.add_keyframe 的 atSeconds 是相对于片段起点的秒数，不能误当成成片绝对时间。
-- 将素材加入时间轴使用 timeline.add_media，不要直接编辑工程源码 JSON。mediaId 必须来自 media.list；startSeconds 是成片时间轴上的绝对位置，trackId 只有在需要指定轨道时才传入。
+- 画面位置和图层尺寸统一使用 0 到 1 的归一化值：timeline.set_transform 的 x/y 是画布中心点坐标，width/height 是画布比例；timeline.add_keyframe 的空间属性也遵循同一规则。不要向工具传入像素位置或尺寸；project.set_canvas 的 width/height 是输出画布分辨率，仍使用像素。
+- 将素材加入时间轴使用 timeline.add_media，不要直接编辑工程源码 JSON。mediaId 必须来自 media.list；startSeconds 是成片时间轴上的绝对位置；需要只取素材的一段时，同时传 sourceStartSeconds 和 sourceEndSeconds，工具会直接创建这个源范围，不要先加入整段再调用 timeline.trim；trackId 只有在需要指定轨道时才传入。
 - 裁掉片段首尾使用 timeline.trim；删除完整片段或已经分割出的片段使用 timeline.remove；需要删除中间一段时先用 timeline.split 得到两侧片段，再移除不需要的片段。
 - 修改画面、音频、文字、速度和关键帧时使用对应的 timeline 工具，不要通过移动片段来代替裁剪，也不要用猜测的 ID 重试。
 - 一次只提交当前计划所需的最小修改。每次编辑后阅读返回 data 中的 after、split 或其他结果，确认修改确实落在目标片段和目标时间上；失败后先重新读取最新上下文，再决定下一步。
