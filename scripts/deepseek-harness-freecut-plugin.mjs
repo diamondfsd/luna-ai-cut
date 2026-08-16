@@ -17,6 +17,71 @@ const RESULT_SCHEMA = {
   additionalProperties: true,
 }
 
+// User memory is a host-owned capability. Its data is stored in Luna's
+// private application directory, so it is available across projects without
+// becoming part of any project's source tree.
+const memoryTools = [
+  {
+    name: 'memory.read',
+    description: '读取已经保存的用户长期剪辑偏好。默认返回有限条目；可按记忆 ID、范围或视频类型筛选。不会读取项目文件。',
+    parameters: {
+      type: 'object',
+      properties: {
+        memoryIds: { type: 'array', maxItems: 50, items: { type: 'string' } },
+        scope: { type: 'string', enum: ['global', 'video-type'] },
+        videoType: { type: 'string', maxLength: 200 },
+        limit: { type: 'integer', minimum: 1, maximum: 500 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'memory.search',
+    description: '搜索用户长期剪辑偏好。query 是明确的检索词或主题；不搜索当前项目源码，也不把搜索结果当作当前任务要求。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', minLength: 1, maxLength: 200 },
+        scope: { type: 'string', enum: ['global', 'video-type'] },
+        videoType: { type: 'string', maxLength: 200 },
+        limit: { type: 'integer', minimum: 1, maximum: 500 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'memory.update',
+    description: '新增或更新一条用户长期剪辑偏好。只有确认这是跨项目可复用的用户偏好时才使用；一次性任务要求和当前项目规则不要保存到这里。更新已有记录时必须传 memoryId。',
+    parameters: {
+      type: 'object',
+      properties: {
+        memoryId: { type: 'string' },
+        scope: { type: 'string', enum: ['global', 'video-type'] },
+        videoType: { type: 'string', maxLength: 200 },
+        topic: { type: 'string', minLength: 1, maxLength: 2000 },
+        preference: { type: 'string', minLength: 1, maxLength: 2000 },
+        evidence: { type: 'string', maxLength: 1000 },
+      },
+      required: ['scope', 'topic', 'preference'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'memory.remove',
+    description: '移除指定的用户长期剪辑偏好。必须使用 memory.read 或 memory.search 返回的记忆 ID；不会根据自然语言猜测要删除哪条记录。',
+    parameters: {
+      type: 'object',
+      properties: {
+        memoryIds: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string' } },
+      },
+      required: ['memoryIds'],
+      additionalProperties: false,
+    },
+  },
+]
+
+export const FREECUT_MEMORY_TOOL_NAMES = memoryTools.map(tool => tool.name)
+
 const sourceTools = [
   {
     name: 'source.tree',
@@ -333,17 +398,25 @@ const timelineTools = [
     description: '列出当前编辑器已注册且可渲染的转场预设、分类、方向和默认时长。添加转场前先用它确认 presentation 和 direction。',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
-  {
-    name: 'timeline.validate',
-    description: '检查当前时间轴的轨道、片段、转场和关键帧引用。完成一组剪辑后调用它确认工程仍然完整。',
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
-  },
 ]
 
-const allTools = [...sourceTools, ...mediaTools, ...timelineTools]
+const allTools = [...memoryTools, ...sourceTools, ...mediaTools, ...timelineTools]
 
 const EDITING_GUIDANCE = `
 你正在操作 Luna AI Cut 的视频剪辑工程。时间轴是用户可以继续手工编辑的真实工程。你负责把用户的剪辑目标转化为可检查的时间轴修改，不要凭空猜测素材内容或片段 ID。
+
+上下文层级：
+- 当前用户在本轮对话中的明确要求，只对当前任务有效，优先级最高；不要把它自动写入用户记忆。
+- 当前项目的 AGENTS.md 是项目级规则，描述这个项目应该如何剪辑。它由 Harness 作为工作区说明加载；不要把项目规则改写成用户长期偏好。
+- memory.* 工具管理跨项目的用户长期偏好。它不读取或写入项目目录，当前任务上下文也不通过它保存。
+- 冲突时按“当前用户明确要求 > 当前项目临时要求 > 项目 AGENTS.md > 用户长期偏好 > 默认规则”处理。长期偏好只是默认值，不能覆盖当前明确要求。
+
+记忆工作流：
+- 开始规划前，先调用 memory.search（无 query 可读取有限的全部偏好），并阅读 data.entries；它只提供默认倾向，不是本轮用户要求。
+- 只有当用户明确表达跨项目、可复用的偏好，或明确确认某项纠正以后都应如此时，才调用 memory.update。模型负责判断这是否值得长期保存，宿主不根据用户或模型文案猜测意图。
+- 更新前先用 memory.search 找已有记录；找到对应记录时传 memoryId 更新，避免重复创建。topic、preference 和 evidence 使用用户能理解的描述。
+- 一次性时长、比例、素材选择、当前项目安排和本轮临时要求不要保存。项目专属规则放在项目 AGENTS.md，不要写入用户记忆。
+- 删除记忆必须先用 memory.read 或 memory.search 获取准确的 memoryId，再调用 memory.remove；不要根据相似文案猜测删除目标。
 
 信息收集：
 - 开始规划前先调用 media.list 和 project.inspect。media.list 的 data.items 是素材清单，project.inspect 的 data.tracks 和 data.items 是时间轴结构；必须阅读这些 data 字段，不能只看工具返回的 message。
@@ -364,7 +437,7 @@ const EDITING_GUIDANCE = `
 - 保留已有音视频的关联、轨道顺序、转场和关键帧。删除片段优先使用 timeline.remove，让编辑器清理相关引用。
 
 完成检查：
-- 完成一组编辑后调用 timeline.validate；必要时再次调用 project.inspect 或 timeline.inspect_context，确认片段数量、轨道、时间范围和素材 ID 与目标一致。
+- 完成一组编辑后再次调用 project.inspect 或 timeline.inspect_context，确认片段数量、轨道、时间范围和素材 ID 与目标一致；编辑工具保存前会执行内部时间轴结构校验。
 - 只有工具结果中的校验通过且目标确实已反映在时间轴中，才能向用户说明已经完成；如果只是完成了分析或方案，应如实说明当前状态。
 `.trim()
 
@@ -455,7 +528,7 @@ export async function apply(ctx, config) {
         schema: RESULT_SCHEMA,
         render: renderToolResult,
       },
-      timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context') && definition.name !== 'timeline.validate') || definition.name === 'media.analyze'
+      timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context')) || definition.name === 'media.analyze'
         ? 120_000
         : 30_000,
       async execute(args, exec) {

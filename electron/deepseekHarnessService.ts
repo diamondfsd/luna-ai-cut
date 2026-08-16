@@ -9,6 +9,7 @@ import { parse, stringify } from 'yaml'
 import { createAiEditingSourceGitService } from './aiEditingSourceGitService'
 import { withEmbeddedHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
+import { createUserMemoryStore } from './userMemoryService'
 import type {
   EmbeddedDeepSeekHarnessSourceToolRequest,
   EmbeddedDeepSeekHarnessWebState,
@@ -43,6 +44,7 @@ let runtimeGeneration = 0
 let rendererId: number | undefined
 let sourceToolServer: Server | undefined
 let sourceToolEndpoint: string | undefined
+let userMemoryStore: ReturnType<typeof createUserMemoryStore> | undefined
 
 function appRoot(): string {
   return process.env.APP_ROOT ?? path.resolve(__dirname, '..')
@@ -113,6 +115,29 @@ function dshHome(): string {
   // Keep Harness history and credentials in the same private application data
   // directory as the FreeCut configuration, never in the project source tree.
   return path.join(app.getPath('userData'), 'deepseek-harness')
+}
+
+function userMemoryRoot(): string {
+  // User preferences are private application data and must never live in a
+  // project source worktree. They apply across all Luna AI Cut projects.
+  return path.join(app.getPath('userData'), 'user-memory')
+}
+
+async function executeUserMemoryTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  userMemoryStore ??= createUserMemoryStore(userMemoryRoot())
+  const store = userMemoryStore
+  switch (name) {
+    case 'memory.read':
+      return store.read(args as unknown as Parameters<typeof store.read>[0])
+    case 'memory.search':
+      return store.search(args as unknown as Parameters<typeof store.search>[0])
+    case 'memory.update':
+      return store.update(args as unknown as Parameters<typeof store.update>[0])
+    case 'memory.remove':
+      return store.remove(args as unknown as Parameters<typeof store.remove>[0])
+    default:
+      throw new Error(`未知的用户记忆能力：${name}`)
+  }
 }
 
 function projectSourceRoot(projectId: string): string {
@@ -210,7 +235,9 @@ async function handleSourceToolRequest(request: IncomingMessage, response: Serve
     request.once('aborted', cancel)
     response.once('close', cancel)
     try {
-      const result = await requestSourceTool(projectId, name, args as Record<string, unknown>, requestId)
+      const result = name.startsWith('memory.')
+        ? await executeUserMemoryTool(name, args as Record<string, unknown>)
+        : await requestSourceTool(projectId, name, args as Record<string, unknown>, requestId)
       jsonResponse(response, 200, { ok: true, result })
     } finally {
       request.removeListener('aborted', cancel)

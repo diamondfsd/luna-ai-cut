@@ -34,7 +34,6 @@ FreeCut 不维护第二套 Agent loop，也不根据用户或模型的自然语�
 - timeline.trim / timeline.split / timeline.move / timeline.remove
 - timeline.set_properties / timeline.set_transform / timeline.set_audio
 - timeline.add_text / timeline.add_keyframe / timeline.add_transition
-- timeline.validate
 
 工具结果会回传 Harness，由 Harness 决定下一次模型请求或最终答复。宿主不会在工具成功后自行宣布完成。
 

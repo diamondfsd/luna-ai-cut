@@ -45,6 +45,7 @@ describe('project source tools', () => {
 
   it('does not expose a raw source mutation tool', () => {
     expect(PROJECT_SOURCE_TOOLS.some((tool) => tool.name === 'source.apply_changes')).toBe(false)
+    expect(PROJECT_SOURCE_TOOLS.some((tool) => tool.name === 'timeline.validate')).toBe(false)
   })
 
   it('returns a bounded, structured source read', async () => {

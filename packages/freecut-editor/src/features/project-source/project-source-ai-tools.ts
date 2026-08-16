@@ -1140,18 +1140,6 @@ const timelineListTransitions = tool({
   }),
 })
 
-const timelineValidate = tool({
-  name: 'timeline.validate',
-  description: '检查当前时间轴的轨道、片段、转场和关键帧引用。完成一组剪辑后调用它确认工程仍然完整。',
-  inputSchema: schema({}),
-  schema: z.object({}),
-  execute: async () => {
-    const issues = validateTimelineState(timeline())
-    if (issues.length > 0) return { ok: false, message: `时间轴检查发现 ${issues.length} 个问题。`, data: { issues } }
-    return { ok: true, message: '时间轴检查通过。', data: { issues: [], itemCount: timeline().items.length, trackCount: timeline().tracks.length } }
-  },
-})
-
 export const TIMELINE_AI_TOOLS: readonly ProjectSourceTool[] = [
   projectInspect,
   projectSetCanvas,
@@ -1168,5 +1156,4 @@ export const TIMELINE_AI_TOOLS: readonly ProjectSourceTool[] = [
   timelineAddKeyframe,
   timelineListTransitions,
   timelineAddTransition,
-  timelineValidate,
 ]

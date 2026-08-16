@@ -5,7 +5,10 @@ import {
   projectFromSourceFiles,
   projectToSourceFiles,
 } from './project-source-codec'
-import { PROJECT_SOURCE_AGENTS_TEMPLATE } from './project-source-agents-template'
+import {
+  isLegacyProjectSourceAgentsTemplate,
+  PROJECT_SOURCE_AGENTS_TEMPLATE,
+} from './project-source-agents-template'
 
 type SourceBridge = NonNullable<ReturnType<typeof getEmbeddedHostBridge>['editingSourceGit']>
 
@@ -89,7 +92,14 @@ export async function ensureProjectSource(project: Project): Promise<boolean> {
   if (ensured.created) return true
 
   try {
-    await bridge.read(project.id, 'AGENTS.md')
+    const agentsContent = await bridge.read(project.id, 'AGENTS.md')
+    if (isLegacyProjectSourceAgentsTemplate(agentsContent)) {
+      await bridge.applyChanges(project.id, [{
+        path: 'AGENTS.md',
+        content: PROJECT_SOURCE_AGENTS_TEMPLATE,
+        expectedContent: agentsContent,
+      }])
+    }
   } catch (error) {
     if (!(error instanceof Error) || !error.message.includes('ENOENT')) throw error
     await bridge.create(project.id, 'AGENTS.md', PROJECT_SOURCE_AGENTS_TEMPLATE)
