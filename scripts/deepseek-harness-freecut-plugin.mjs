@@ -42,7 +42,7 @@ const memoryTools = [
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', minLength: 1, maxLength: 200 },
+        query: { type: 'string', maxLength: 200 },
         scope: { type: 'string', enum: ['global', 'video-type'] },
         videoType: { type: 'string', maxLength: 200 },
         limit: { type: 'integer', minimum: 1, maximum: 500 },
