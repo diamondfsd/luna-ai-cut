@@ -2,12 +2,15 @@ import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, 
 import { LrcRender } from './LrcRender'
 import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
 import { NativeGpuVideoPreview } from './NativeGpuVideoPreview'
+import { WebGpuStaticImagePreview } from './WebGpuStaticImagePreview'
+import { WebGpuVideoPreview } from './WebGpuVideoPreview'
 import { PreviewStageError } from './PreviewStageError'
 import { useApp } from '../context/AppContext'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls, toast } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
+import { canUseWebGpuVideoComposition, canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
 import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
@@ -21,6 +24,8 @@ import type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
 import './PreviewStage.css'
 
 const PREVIEW_LOADING_TIMEOUT_MS = 12_000
+// Keep the legacy geometry exports available to workspace helpers.
+// eslint-disable-next-line react-refresh/only-export-components
 export { buildLayers, calcAspectRatio } from './previewStageGeometry'
 export type { MediaResolution } from './previewStageGeometry'
 export type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
@@ -44,7 +49,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [nativePreviewFailed, setNativePreviewFailed] = useState(false)
   const gpuPreviewEnabled = settings?.experimentalGpuPreview ?? false
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
   const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
@@ -57,7 +61,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
   const resolution = usePreviewResolution(layoutUrl)
-  useEffect(() => setNativePreviewFailed(false), [gpuPreviewEnabled])
   // 暴露给父组件的视频控制 API
   useImperativeHandle(ref, () => ({
     seek: (time: number) => {
@@ -121,11 +124,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       setCurrentTime(0)
       setDuration(0)
     }
-  }, [livePlaying, isDisplayVideo])
+  }, [isDisplayVideo, livePlaying, onPlayStateChange])
 
   useEffect(() => {
     let canceled = false
-    setNativePreviewFailed(false)
     setLivePlaying(false)
     setLiveVideoUrl(null)
     if (!isLivePhoto || !url) return
@@ -319,7 +321,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const layers = useMemo(() => {
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
-  }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
+  }, [buildAdjustedLayers, displayUrl, resolution, pending])
   const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
     isDisplayVideo,
     layers,
@@ -331,7 +333,18 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     && !useCompositionVideoRenderer
     && !cropActive
     && viewScale === 'fit'
-    && !nativePreviewFailed
+  const useWebGpuVideoPreview = isDisplayVideo
+    && gpuPreviewEnabled
+    && !livePlaying
+    && !useCompositionVideoRenderer
+    && !cropActive
+    && viewScale === 'fit'
+    && canUseWebGpuVideoComposition(layers)
+  const useWebGpuStaticPreview = !isDisplayVideo
+    && gpuPreviewEnabled
+    && !cropActive
+    && viewScale === 'fit'
+    && canUseWebGpuStaticImageComposition(layers)
   const primaryVideoLayer = layers.find((layer) => layer.isVideo)
   const compositionTime = primaryVideoLayer
     ? compositionTimeForVideoLayer(primaryVideoLayer, currentTime)
@@ -410,7 +423,39 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          {useNativeGpuPreview && previewCanvas ? (
+          {useWebGpuStaticPreview && previewCanvas ? (
+            <WebGpuStaticImagePreview
+              layers={layers}
+              canvasWidth={previewCanvas.width}
+              canvasHeight={previewCanvas.height}
+              maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
+              onError={(reason) => {
+                handleRenderFailure(reason)
+              }}
+              onRender={handleRender}
+              interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
+              viewportKey={viewportKey}
+              imageScale={viewScale === 'fit' ? null : viewScale / 100}
+              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
+              onViewportChange={syncCanvasMetrics}
+            />
+          ) : useWebGpuVideoPreview && previewCanvas ? (
+            <WebGpuVideoPreview
+              layers={layers}
+              canvasWidth={previewCanvas.width}
+              canvasHeight={previewCanvas.height}
+              maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
+              playing={playing}
+              onError={handleRenderFailure}
+              onRender={handleRender}
+              onVideoElement={handleVideoElement}
+              interactiveImageLayerIndexes={cropActive ? [] : [0]}
+              viewportKey={viewportKey}
+              imageScale={viewScale === 'fit' ? null : viewScale / 100}
+              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
+              onViewportChange={syncCanvasMetrics}
+            />
+          ) : useNativeGpuPreview && previewCanvas ? (
             <NativeGpuVideoPreview
               layers={layers}
               canvasWidth={previewCanvas.width}
@@ -420,10 +465,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               time={compositionTime}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
-              onFallback={(reason) => {
-                console.warn('[PreviewStage] native GPU preview fallback', { reason })
+              onError={(reason) => {
                 handleRenderFailure(reason)
-                setNativePreviewFailed(true)
               }}
             />
           ) : isDisplayVideo && !useCompositionVideoRenderer ? (

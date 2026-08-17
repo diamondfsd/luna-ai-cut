@@ -49,7 +49,7 @@ interface NativeGpuVideoPreviewProps {
   seekRevision?: number
   className?: string
   onVideoElement?: (element: HTMLMediaElement | null) => void
-  onFallback: (reason: string) => void
+  onError: (reason: string) => void
   onRender?: () => void
 }
 
@@ -84,7 +84,7 @@ async function waitForRenderedFrame(
   isActive: () => boolean = () => true,
 ): Promise<boolean> {
   // Windows 首次创建 D3D12 管线并加载多个 LUT/水印时可能需要数秒。
-  // 会话仍在正常渲染时不应过早销毁并回退。
+  // 会话仍在正常渲染时不应过早结束，只在确实出错时上报。
   const deadline = performance.now() + 15000
   while (performance.now() < deadline) {
     if (!isActive()) return false
@@ -110,7 +110,7 @@ export function NativeGpuVideoPreview({
   seekRevision = 0,
   className,
   onVideoElement,
-  onFallback,
+  onError,
   onRender,
 }: NativeGpuVideoPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -123,11 +123,11 @@ export function NativeGpuVideoPreview({
   const compositionRef = useRef<CompositionInput | null>(null)
   const compositionUpdateRef = useRef(0)
   const seekUpdateRef = useRef(0)
-  const callbackRef = useRef({ onFallback, onRender, onVideoElement })
+  const callbackRef = useRef({ onError, onRender, onVideoElement })
   const playbackRef = useRef({ playing, time, primaryLayer: layers.find((layer) => layer.isVideo) })
   const [initialBounds, setInitialBounds] = useState<NativePreviewBounds | null>(null)
   const primaryLayer = layers.find((layer) => layer.isVideo)
-  callbackRef.current = { onFallback, onRender, onVideoElement }
+  callbackRef.current = { onError, onRender, onVideoElement }
   playbackRef.current = { playing, time, primaryLayer }
   activeRef.current = active
   const primarySource = primaryLayer
@@ -186,7 +186,7 @@ export function NativeGpuVideoPreview({
         void Promise.all(commands)
           .catch((error: unknown) => {
             if (sessionRef.current === sessionId) {
-              callbackRef.current.onFallback(
+              callbackRef.current.onError(
                 error instanceof Error ? error.message : String(error),
               )
             }
@@ -221,7 +221,7 @@ export function NativeGpuVideoPreview({
     if (!initialBounds) return
     const api = nativePreviewApi()
     if (!api) {
-      callbackRef.current.onFallback('当前版本未加载原生预览能力')
+      callbackRef.current.onError('当前版本未加载原生预览能力')
       return
     }
     let cancelled = false
@@ -265,7 +265,7 @@ export function NativeGpuVideoPreview({
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+          callbackRef.current.onError(error instanceof Error ? error.message : String(error))
         }
       })
 
@@ -304,7 +304,7 @@ export function NativeGpuVideoPreview({
       .then(() => api.setNativePreviewVisible(sessionId, true))
       .catch((error: unknown) => {
         if (sessionRef.current === sessionId) {
-          callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+          callbackRef.current.onError(error instanceof Error ? error.message : String(error))
         }
       })
   }, [active])
@@ -335,7 +335,7 @@ export function NativeGpuVideoPreview({
         if (rendered && isActive()) callbackRef.current.onRender?.()
       } catch (error: unknown) {
         if (isActive()) {
-          callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+          callbackRef.current.onError(error instanceof Error ? error.message : String(error))
         }
       }
     })()
@@ -358,7 +358,7 @@ export function NativeGpuVideoPreview({
       : api.pauseNativePreview(sessionId, playbackTime)
     void command.catch((error: unknown) => {
       if (sessionRef.current === sessionId) {
-        callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+        callbackRef.current.onError(error instanceof Error ? error.message : String(error))
       }
     })
     if (playing && playbackElement) {
@@ -378,7 +378,7 @@ export function NativeGpuVideoPreview({
       : api.seekNativePreview(sessionId, time)
     void command.catch((error: unknown) => {
       if (sessionRef.current === sessionId) {
-        callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+        callbackRef.current.onError(error instanceof Error ? error.message : String(error))
       }
     })
     // Time changes every animation frame; seek only for an explicit replay or scrub action.
@@ -426,7 +426,7 @@ export function NativeGpuVideoPreview({
           if (rendered && isActive()) callbackRef.current.onRender?.()
         } catch (error: unknown) {
           if (isActive()) {
-            callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+          callbackRef.current.onError(error instanceof Error ? error.message : String(error))
           }
         }
       })()

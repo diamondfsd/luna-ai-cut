@@ -1,3 +1,7 @@
+import { WEBGPU_FLAGS } from './webgpu/constants'
+import { formatWebGpuError, WebGpuRuntime } from './webgpu/runtime'
+import { getWebGpuSourceDimensions, type WebGpuImageSource } from './webgpu/source'
+
 export interface ColorGradeAdjustments {
   exposure: number
   brightness: number
@@ -29,23 +33,6 @@ export const DEFAULT_COLOR_GRADE: ColorGradeAdjustments = {
 export interface WebGpuRenderStats {
   submitMs: number
 }
-
-type GpuImageSource =
-  | HTMLVideoElement
-  | HTMLImageElement
-  | HTMLCanvasElement
-  | OffscreenCanvas
-  | ImageBitmap
-  | VideoFrame
-
-// Electron 43 implements WebGPU but does not expose the enum objects in every
-// renderer configuration. The WebGPU bit values are stable by specification.
-const GPU_FRAGMENT_STAGE = 0x2
-const GPU_BUFFER_COPY_DST = 0x8
-const GPU_BUFFER_UNIFORM = 0x40
-const GPU_TEXTURE_COPY_DST = 0x2
-const GPU_TEXTURE_BINDING = 0x4
-const GPU_TEXTURE_RENDER_ATTACHMENT = 0x10
 
 const COLOR_GRADE_SHADER = /* wgsl */ `
 struct VertexOutput {
@@ -136,22 +123,9 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
 }
 `
 
-function getSourceDimensions(source: GpuImageSource): { width: number; height: number } {
-  if (source instanceof HTMLVideoElement) {
-    return { width: source.videoWidth, height: source.videoHeight }
-  }
-  if (typeof VideoFrame !== 'undefined' && source instanceof VideoFrame) {
-    return { width: source.displayWidth, height: source.displayHeight }
-  }
-  if (source instanceof HTMLImageElement) {
-    return { width: source.naturalWidth, height: source.naturalHeight }
-  }
-  const sizedSource = source as HTMLCanvasElement | OffscreenCanvas | ImageBitmap
-  return { width: sizedSource.width, height: sizedSource.height }
-}
-
 export class WebGpuColorRenderer {
   readonly canvas: HTMLCanvasElement
+  private runtime: WebGpuRuntime | null = null
   private device: GPUDevice | null = null
   private context: GPUCanvasContext | null = null
   private format: GPUTextureFormat | null = null
@@ -177,61 +151,67 @@ export class WebGpuColorRenderer {
     return this.device ? 'WebGPU device' : '未初始化'
   }
 
-  async initialize(onDeviceLost?: (reason: string) => void): Promise<void> {
-    if (!navigator.gpu) throw new Error('当前 Electron 环境没有可用的 WebGPU')
-
-    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
-    if (!adapter) throw new Error('没有找到可用的 GPU 适配器')
-
-    this.device = await adapter.requestDevice()
-    void this.device.lost.then((info) => {
-      onDeviceLost?.(info.message || `设备已丢失（${info.reason}）`)
+  async initialize(options: {
+    onDeviceLost?: (message: string) => void
+    onError?: (message: string) => void
+  } = {}): Promise<void> {
+    const runtime = await WebGpuRuntime.create({
+      onDeviceLost: (message) => options.onDeviceLost?.(message),
+      onUncapturedError: (message) => options.onError?.(message),
     })
 
-    const context = this.canvas.getContext('webgpu')
-    if (!context) throw new Error('无法创建 WebGPU 画布上下文')
-    this.context = context
-    this.format = navigator.gpu.getPreferredCanvasFormat()
-    this.context.configure({ device: this.device, format: this.format, alphaMode: 'opaque' })
+    try {
+      const context = this.canvas.getContext('webgpu')
+      if (!context) throw new Error('无法创建 WebGPU 画布上下文')
 
-    const module = this.device.createShaderModule({
-      label: 'webgpu-color-grade-test',
-      code: COLOR_GRADE_SHADER,
-    })
-    const layout = this.device.createBindGroupLayout({
-      label: 'webgpu-color-grade-test-layout',
-      entries: [
-        { binding: 0, visibility: GPU_FRAGMENT_STAGE, sampler: { type: 'filtering' } },
-        { binding: 1, visibility: GPU_FRAGMENT_STAGE, texture: { sampleType: 'float' } },
-        { binding: 2, visibility: GPU_FRAGMENT_STAGE, buffer: { type: 'uniform' } },
-      ],
-    })
-    this.pipeline = this.device.createRenderPipeline({
-      label: 'webgpu-color-grade-test-pipeline',
-      layout: this.device.createPipelineLayout({ bindGroupLayouts: [layout] }),
-      vertex: { module, entryPoint: 'vertexMain' },
-      fragment: {
-        module,
-        entryPoint: 'fragmentMain',
-        targets: [{ format: this.format }],
-      },
-      primitive: { topology: 'triangle-list' },
-    })
-    this.sampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
-    this.uniformBuffer = this.device.createBuffer({
-      label: 'webgpu-color-grade-test-uniforms',
-      size: 48,
-      usage: GPU_BUFFER_UNIFORM | GPU_BUFFER_COPY_DST,
-    })
-    this.bindGroup = null
+      this.runtime = runtime
+      this.device = runtime.device
+      this.context = context
+      this.format = runtime.capabilities.preferredCanvasFormat
+      this.context.configure({ device: this.device, format: this.format, alphaMode: 'opaque' })
+
+      const module = this.device.createShaderModule({
+        label: 'webgpu-color-grade-test',
+        code: COLOR_GRADE_SHADER,
+      })
+      const layout = this.device.createBindGroupLayout({
+        label: 'webgpu-color-grade-test-layout',
+        entries: [
+          { binding: 0, visibility: WEBGPU_FLAGS.fragmentStage, sampler: { type: 'filtering' } },
+          { binding: 1, visibility: WEBGPU_FLAGS.fragmentStage, texture: { sampleType: 'float' } },
+          { binding: 2, visibility: WEBGPU_FLAGS.fragmentStage, buffer: { type: 'uniform' } },
+        ],
+      })
+      this.pipeline = this.device.createRenderPipeline({
+        label: 'webgpu-color-grade-test-pipeline',
+        layout: this.device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+        vertex: { module, entryPoint: 'vertexMain' },
+        fragment: {
+          module,
+          entryPoint: 'fragmentMain',
+          targets: [{ format: this.format }],
+        },
+        primitive: { topology: 'triangle-list' },
+      })
+      this.sampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+      this.uniformBuffer = this.device.createBuffer({
+        label: 'webgpu-color-grade-test-uniforms',
+        size: 48,
+        usage: WEBGPU_FLAGS.bufferUniform | WEBGPU_FLAGS.bufferCopyDst,
+      })
+      this.bindGroup = null
+    } catch (error) {
+      runtime.destroy()
+      throw new Error(formatWebGpuError(error))
+    }
   }
 
-  render(source: GpuImageSource, adjustments: ColorGradeAdjustments): WebGpuRenderStats {
+  render(source: WebGpuImageSource, adjustments: ColorGradeAdjustments): WebGpuRenderStats {
     if (!this.device || !this.context || !this.pipeline || !this.sampler || !this.uniformBuffer) {
       throw new Error('WebGPU 尚未初始化')
     }
 
-    const dimensions = getSourceDimensions(source)
+    const dimensions = getWebGpuSourceDimensions(source)
     if (dimensions.width < 2 || dimensions.height < 2) {
       throw new Error('媒体尺寸无效')
     }
@@ -293,7 +273,8 @@ export class WebGpuColorRenderer {
     this.uniformBuffer = null
     this.inputView = null
     this.bindGroup = null
-    this.device?.destroy()
+    this.runtime?.destroy()
+    this.runtime = null
     this.device = null
     this.context = null
     this.pipeline = null
@@ -307,7 +288,7 @@ export class WebGpuColorRenderer {
       label: 'webgpu-color-grade-test-input',
       size: { width, height },
       format: 'rgba8unorm',
-      usage: GPU_TEXTURE_BINDING | GPU_TEXTURE_COPY_DST | GPU_TEXTURE_RENDER_ATTACHMENT,
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst | WEBGPU_FLAGS.textureRenderAttachment,
     })
     this.inputView = this.inputTexture.createView()
     this.inputWidth = width

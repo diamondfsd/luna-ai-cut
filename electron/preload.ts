@@ -478,6 +478,7 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:destroyNativePreviewSession', sessionId),
   prepareRuntimeResource: (kind: 'fonts' | 'luts') => ipcRenderer.invoke('lrc:prepareRuntimeResource', kind),
   resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
+  readLutFile: (filePath: string) => ipcRenderer.invoke('lrc:readWebGpuLut', filePath),
   loadTexture: (data: Buffer, width: number, height: number) =>
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>
