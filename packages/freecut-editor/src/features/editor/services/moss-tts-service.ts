@@ -28,6 +28,7 @@ interface ProgressInfo {
   type: 'progress'
   requestId: string
   stage?: string
+  progress?: number
 }
 
 interface ResponseInfo {
@@ -50,11 +51,13 @@ interface GenerateSpeechOptions {
   text: string
   voice: MossTtsVoice
   speed: number
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string, fraction?: number, phase?: MossGenerationPhase) => void
 }
 
+type MossGenerationPhase = 'preparing-model' | 'generating'
+
 interface PendingRequest<T> {
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string, fraction?: number) => void
   reject: (reason?: unknown) => void
   resolve: (value: T) => void
 }
@@ -351,7 +354,7 @@ class MossTtsService {
       }
 
       if (payload.type === 'progress') {
-        request.onProgress?.(payload.stage || 'Preparing MOSS Nano...')
+        request.onProgress?.(payload.stage || 'Preparing MOSS Nano...', payload.progress)
         return
       }
 
@@ -410,7 +413,7 @@ class MossTtsService {
   private async requestWorker(
     action: 'warmup' | 'synthesize' | 'dispose',
     payload: Record<string, unknown>,
-    onProgress?: (stage: string) => void,
+    onProgress?: (stage: string, fraction?: number) => void,
   ): Promise<ResponseInfo['data']> {
     await this.ensureWorkerLoaded(onProgress)
 
@@ -432,13 +435,17 @@ class MossTtsService {
     })
   }
 
-  private async ensurePrepared(onProgress?: (stage: string) => void): Promise<void> {
+  private async ensurePrepared(onProgress?: (stage: string, fraction?: number) => void): Promise<void> {
     if (this.preparedPromise) {
       return this.preparedPromise
     }
 
     this.upsertRuntime('loading')
-    this.preparedPromise = this.requestWorker('warmup', {}, onProgress)
+    this.preparedPromise = this.requestWorker(
+      'warmup',
+      {},
+      onProgress ? (stage, fraction) => onProgress(stage, fraction) : undefined,
+    )
       .then(() => {
         this.upsertRuntime('ready')
       })
@@ -510,18 +517,20 @@ class MossTtsService {
     })
 
     return this.withGenerationLock(async () => {
-      await this.ensurePrepared(onProgress)
+      await this.ensurePrepared(
+        onProgress ? (stage, fraction) => onProgress(stage, fraction, 'preparing-model') : undefined,
+      )
       this.incrementJobs()
 
       try {
-        onProgress?.('Generating multilingual speech in worker...')
+        onProgress?.('Generating multilingual speech in worker...', undefined, 'generating')
         const response = await this.requestWorker(
           'synthesize',
           {
             text: trimmedText,
             voiceName: voice,
           },
-          onProgress,
+          onProgress ? (stage, fraction) => onProgress(stage, fraction, 'generating') : undefined,
         )
 
         const audioChunks = response?.audioChunks ?? []

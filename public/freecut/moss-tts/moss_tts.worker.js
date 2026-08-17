@@ -89,10 +89,19 @@ async function getRuntime({ requestId, threadCount = 4, warmup = false }) {
       const ensured = await store.ensureExternalBrowserOnnxModels({
         key: MODEL_STORE_KEY,
         onProgress: (info) => {
+          const repositories = Array.isArray(store.MODEL_REPOS) ? store.MODEL_REPOS : [];
+          const repositoryIndex = repositories.findIndex((repo) => repo.repoId === info?.repoId);
+          const fileProgress = Number(info?.fileIndex) / Number(info?.fileCount);
+          const progress = info?.phase === 'reuse'
+            ? 1
+            : repositoryIndex >= 0 && Number.isFinite(fileProgress)
+              ? (repositoryIndex + Math.min(1, Math.max(0, fileProgress))) / Math.max(1, repositories.length)
+              : undefined;
           postToMain({
             type: 'progress',
             requestId,
             stage: info?.message || 'Preparing MOSS Nano...',
+            progress,
           });
         },
       });

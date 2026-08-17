@@ -52,7 +52,7 @@ built-in/
 
 ## 当前可用工具范围
 
-技能注册不会创建新的时间轴工具。大师技能使用 FreeCut 插件已经注册的工具；技能可以调用已注册的 `luna.audio.generateSpeech` 和 `luna.audio.generateMusic` 生成音频素材，但是否将返回的 `mediaId` 放入时间轴仍由模型结合完整会话判断。
+技能注册不会创建新的时间轴工具。大师技能使用 FreeCut 插件已经注册的工具；技能可以调用已注册的 `luna.audio.startSpeech` 和 `luna.audio.startMusic` 提交音频任务，并使用 `luna.audio.getTask` 轮询到 `completed` 后取得 `mediaId`；是否将结果放入时间轴仍由模型结合完整会话判断。
 
 提示词按当前项目已有工具设计：
 

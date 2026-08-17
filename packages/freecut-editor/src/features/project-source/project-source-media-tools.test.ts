@@ -43,11 +43,12 @@ const harness = vi.hoisted(() => {
     generateSpeechFile,
     generateMusicFile,
     host,
+    currentProjectId: 'project-1',
   }
 })
 
 vi.mock('@freecut/features/editor/deps/projects', () => ({
-  useProjectStore: { getState: () => ({ currentProject: { id: 'project-1' } }) },
+  useProjectStore: { getState: () => ({ currentProject: { id: harness.currentProjectId } }) },
 }))
 vi.mock('@freecut/features/media-library/services/media-library-service-loader', () => ({
   importMediaLibraryService: vi.fn(async () => ({
@@ -79,6 +80,7 @@ vi.mock('@freecut/features/editor/services/musicgen-service', () => ({
 }))
 
 import { MEDIA_AI_TOOLS } from './project-source-media-tools'
+import { __audioTaskTestUtils } from './project-source-audio-tasks'
 
 function getTool(name: string) {
   const tool = MEDIA_AI_TOOLS.find((entry) => entry.name === name)
@@ -89,6 +91,8 @@ function getTool(name: string) {
 describe('project media AI tools', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    __audioTaskTestUtils.clear()
+    harness.currentProjectId = 'project-1'
     for (const item of harness.items) delete item.aiCaptions
     harness.getTranscript.mockResolvedValue(undefined)
     harness.analyzeMediaVisual.mockResolvedValue({ captions: [], intensity: 'light' })
@@ -214,18 +218,21 @@ describe('project media AI tools', () => {
     })
   })
 
-  it('generates speech with MOSS and saves the result to the project media library', async () => {
-    const result = await getTool('audio.generate_speech').execute({
+  it('submits a MOSS speech task and exposes the saved media after completion', async () => {
+    const submitted = await getTool('audio.start_speech').execute({
       text: '欢迎来到日落海边。',
       voice: 'Xiaoyu',
       speed: 1.25,
     })
+    const taskId = (submitted.data as { taskId: string }).taskId
+    const result = await waitForTask(taskId)
 
-    expect(harness.generateSpeechFile).toHaveBeenCalledWith({
+    expect(harness.generateSpeechFile).toHaveBeenCalledWith(expect.objectContaining({
       text: '欢迎来到日落海边。',
       voice: 'Xiaoyu',
       speed: 1.25,
-    })
+      onProgress: expect.any(Function),
+    }))
     expect(harness.importGeneratedAudio).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'speech.wav' }),
       'project-1',
@@ -242,28 +249,29 @@ describe('project media AI tools', () => {
     })
   })
 
-  it('generates music with MusicGen, saves it, and forwards cancellation', async () => {
-    const signal = new AbortController().signal
-    const result = await getTool('audio.generate_music').execute({
+  it('submits a MusicGen task and exposes progress and the saved media after completion', async () => {
+    const result = await getTool('audio.start_music').execute({
       prompt: '温暖舒缓的日落氛围音乐，不要人声。',
       model: 'musicgen-small',
       durationSeconds: 12,
       guidanceScale: 4,
-    }, signal)
-
-    expect(harness.generateMusicFile).toHaveBeenCalledWith({
-      prompt: '温暖舒缓的日落氛围音乐，不要人声。',
-      model: 'musicgen-small',
-      durationSeconds: 12,
-      guidanceScale: 4,
-      signal,
     })
+    const taskId = (result.data as { taskId: string }).taskId
+    const completed = await waitForTask(taskId)
+
+    expect(harness.generateMusicFile).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: '温暖舒缓的日落氛围音乐，不要人声。',
+      model: 'musicgen-small',
+      durationSeconds: 12,
+      guidanceScale: 4,
+      onProgress: expect.any(Function),
+    }))
     expect(harness.importGeneratedAudio).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'music.wav' }),
       'project-1',
       { tags: ['ai-generated', 'musicgen', 'musicgen-model:musicgen-small', 'musicgen-target:12s'] },
     )
-    expect(result.data).toMatchObject({
+    expect(completed.data).toMatchObject({
       mediaId: 'generated-audio-1',
       fileName: 'music.wav',
       durationSeconds: 2.75,
@@ -275,17 +283,47 @@ describe('project media AI tools', () => {
     })
   })
 
-  it('rejects invalid audio generation parameters before invoking a model', () => {
-    expect(getTool('audio.generate_speech').validate({
+  it('rejects invalid audio task parameters before invoking a model', () => {
+    expect(getTool('audio.start_speech').validate({
       text: 'hello',
       voice: 'unknown',
       speed: 1,
     })).toMatchObject({ ok: false })
-    expect(getTool('audio.generate_music').validate({
+    expect(getTool('audio.start_music').validate({
       prompt: 'music',
       durationSeconds: 1,
     })).toMatchObject({ ok: false })
     expect(harness.generateSpeechFile).not.toHaveBeenCalled()
     expect(harness.generateMusicFile).not.toHaveBeenCalled()
   })
+
+  it('keeps model failures queryable as a failed task', async () => {
+    harness.generateMusicFile.mockRejectedValueOnce(new Error('模型下载失败'))
+    const submitted = await getTool('audio.start_music').execute({ prompt: '测试音乐' })
+    const taskId = (submitted.data as { taskId: string }).taskId
+    const result = await waitForTask(taskId)
+
+    expect(result.ok).toBe(true)
+    expect(result.data).toMatchObject({ status: 'failed', error: '模型下载失败' })
+  })
+
+  it('does not reveal a task after the active project changes', async () => {
+    harness.generateMusicFile.mockImplementationOnce(() => new Promise(() => {}))
+    const submitted = await getTool('audio.start_music').execute({ prompt: '保持等待' })
+    const taskId = (submitted.data as { taskId: string }).taskId
+    harness.currentProjectId = 'project-2'
+
+    await expect(getTool('audio.get_task').execute({ taskId })).rejects.toThrow('没有找到当前项目中的音频生成任务')
+    harness.currentProjectId = 'project-1'
+  })
 })
+
+async function waitForTask(taskId: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const result = await getTool('audio.get_task').execute({ taskId })
+    const data = result.data as { status: string }
+    if (data.status === 'completed' || data.status === 'failed') return result
+  }
+  throw new Error(`音频任务 ${taskId} 未在测试时间内完成。`)
+}

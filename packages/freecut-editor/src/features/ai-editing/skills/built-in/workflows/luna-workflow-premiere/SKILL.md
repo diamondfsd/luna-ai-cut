@@ -19,4 +19,4 @@ description: Premiere Pro 工作流映射技能。用户提到 Premiere、PR、�
 
 ## 音频与色彩
 
-用 `luna.timeline.setAudio` 处理对白、音乐、环境声和淡入淡出；需要配音或音乐时使用 `luna.audio.generateSpeech` / `luna.audio.generateMusic`。Lumetri/HSL 没有专用 Harness 工具时只输出校色方案，不声称已经调色。
+用 `luna.timeline.setAudio` 处理对白、音乐、环境声和淡入淡出；需要配音或音乐时使用 `luna.audio.startSpeech` / `luna.audio.startMusic`，并用 `luna.audio.getTask` 查询到完成后再使用 `mediaId`。Lumetri/HSL 没有专用 Harness 工具时只输出校色方案，不声称已经调色。

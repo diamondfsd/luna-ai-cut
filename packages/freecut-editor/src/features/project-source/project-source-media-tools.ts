@@ -6,21 +6,12 @@ import { getMediaType } from '@freecut/features/media-library/utils/validation'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import type { EmbeddedTranscriptResult } from '@freecut/shared/host/embedded-host'
 import type { MediaMetadata, MediaTranscript } from '@freecut/types/storage'
-import {
-  MOSS_TTS_VOICE_OPTIONS,
-  mossTtsService,
-  type MossTtsVoice,
-} from '@freecut/features/editor/services/moss-tts-service'
-import {
-  DEFAULT_MUSICGEN_MODEL,
-  musicgenService,
-} from '@freecut/features/editor/services/musicgen-service'
-import { MUSICGEN_MODEL_IDS } from '@freecut/shared/utils/musicgen-models'
 import type {
   ProjectSourceJsonSchema,
   ProjectSourceTool,
   ProjectSourceToolResult,
 } from './project-source-tools'
+import { AUDIO_TASK_TOOLS } from './project-source-audio-tasks'
 
 const MAX_MEDIA_ITEMS = 500
 const MAX_MEDIA_SELECTION = 12
@@ -28,14 +19,6 @@ const MAX_VISUAL_OBSERVATIONS = 24
 const MAX_TRANSCRIPT_SEGMENTS = 200
 const MAX_TRANSCRIPT_MATCHES = 40
 const VISUAL_ANALYSIS_INTENSITIES = ['light', 'normal', 'strong'] as const
-const MAX_GENERATED_SPEECH_TEXT_LENGTH = 10_000
-const MAX_GENERATED_MUSIC_PROMPT_LENGTH = 1_000
-const MUSICGEN_MIN_DURATION_SECONDS = 2
-const MUSICGEN_MAX_DURATION_SECONDS = 30
-const MOSS_TTS_VOICE_VALUES = MOSS_TTS_VOICE_OPTIONS.map((option) => option.value) as [
-  MossTtsVoice,
-  ...MossTtsVoice[],
-]
 
 function schema(
   properties: Record<string, unknown>,
@@ -77,27 +60,6 @@ async function projectMedia(): Promise<MediaMetadata[]> {
   const project = currentProject()
   const { mediaLibraryService } = await importMediaLibraryService()
   return mediaLibraryService.getMediaForProject(project.id)
-}
-
-async function saveGeneratedAudio(file: File, tags: string[]): Promise<MediaMetadata> {
-  const project = currentProject()
-  const { mediaLibraryService } = await importMediaLibraryService()
-  return mediaLibraryService.importGeneratedAudio(file, project.id, { tags })
-}
-
-function generatedAudioData(
-  media: MediaMetadata,
-  engine: 'moss-tts' | 'musicgen',
-  details: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    mediaId: media.id,
-    fileName: media.fileName,
-    durationSeconds: round(media.duration),
-    mediaType: 'audio',
-    engine,
-    ...details,
-  }
 }
 
 function round(value: number): number {
@@ -336,95 +298,6 @@ const mediaAnalyze = tool({
   },
 })
 
-const audioGenerateSpeech = tool({
-  name: 'audio.generate_speech',
-  description: '使用本地 MOSS TTS 生成语音，并自动保存到当前项目素材库。返回 mediaId；需要放入时间轴时，再调用 timeline.add_media。',
-  inputSchema: schema({
-    text: { type: 'string', minLength: 1, maxLength: MAX_GENERATED_SPEECH_TEXT_LENGTH },
-    voice: { type: 'string', enum: MOSS_TTS_VOICE_VALUES, default: MOSS_TTS_VOICE_VALUES[0] },
-    speed: { type: 'number', minimum: 0.5, maximum: 2, default: 1 },
-  }, ['text']),
-  schema: z.object({
-    text: z.string().trim().min(1).max(MAX_GENERATED_SPEECH_TEXT_LENGTH),
-    voice: z.enum(MOSS_TTS_VOICE_VALUES).default(MOSS_TTS_VOICE_VALUES[0]),
-    speed: z.number().min(0.5).max(2).default(1),
-  }),
-  execute: async (args, signal) => {
-    signal?.throwIfAborted()
-    const result = await mossTtsService.generateSpeechFile({
-      text: args.text,
-      voice: args.voice,
-      speed: args.speed,
-    })
-    signal?.throwIfAborted()
-    const media = await saveGeneratedAudio(result.file, [
-      'ai-generated',
-      'moss-tts',
-      'tts-engine:moss',
-      `moss-voice:${args.voice}`,
-    ])
-    return {
-      ok: true,
-      message: '已生成语音并保存到当前项目素材库。',
-      data: generatedAudioData(media, 'moss-tts', {
-        voice: args.voice,
-        speed: args.speed,
-      }),
-    }
-  },
-})
-
-const audioGenerateMusic = tool({
-  name: 'audio.generate_music',
-  description: '使用本地 MusicGen 生成背景音乐，并自动保存到当前项目素材库。返回 mediaId；需要放入时间轴时，再调用 timeline.add_media。',
-  inputSchema: schema({
-    prompt: { type: 'string', minLength: 1, maxLength: MAX_GENERATED_MUSIC_PROMPT_LENGTH },
-    model: { type: 'string', enum: MUSICGEN_MODEL_IDS, default: DEFAULT_MUSICGEN_MODEL },
-    durationSeconds: {
-      type: 'number',
-      minimum: MUSICGEN_MIN_DURATION_SECONDS,
-      maximum: MUSICGEN_MAX_DURATION_SECONDS,
-      default: 8,
-    },
-    guidanceScale: { type: 'number', minimum: 0, maximum: 10, default: 3 },
-  }, ['prompt']),
-  schema: z.object({
-    prompt: z.string().trim().min(1).max(MAX_GENERATED_MUSIC_PROMPT_LENGTH),
-    model: z.enum(MUSICGEN_MODEL_IDS).default(DEFAULT_MUSICGEN_MODEL),
-    durationSeconds: z.number()
-      .min(MUSICGEN_MIN_DURATION_SECONDS)
-      .max(MUSICGEN_MAX_DURATION_SECONDS)
-      .default(8),
-    guidanceScale: z.number().min(0).max(10).default(3),
-  }),
-  execute: async (args, signal) => {
-    signal?.throwIfAborted()
-    const result = await musicgenService.generateMusicFile({
-      prompt: args.prompt,
-      model: args.model,
-      durationSeconds: args.durationSeconds,
-      guidanceScale: args.guidanceScale,
-      signal,
-    })
-    signal?.throwIfAborted()
-    const media = await saveGeneratedAudio(result.file, [
-      'ai-generated',
-      'musicgen',
-      `musicgen-model:${args.model}`,
-      `musicgen-target:${args.durationSeconds}s`,
-    ])
-    return {
-      ok: true,
-      message: '已生成背景音乐并保存到当前项目素材库。',
-      data: generatedAudioData(media, 'musicgen', {
-        model: args.model,
-        targetDurationSeconds: args.durationSeconds,
-        guidanceScale: args.guidanceScale,
-      }),
-    }
-  },
-})
-
 const searchTranscript = tool({
   name: 'media.search_transcript',
   description: '在已生成的素材字幕中搜索词语或短语，返回命中的素材 ID、时间范围和原文。',
@@ -471,6 +344,5 @@ export const MEDIA_AI_TOOLS: readonly ProjectSourceTool[] = [
   mediaRead,
   mediaAnalyze,
   searchTranscript,
-  audioGenerateSpeech,
-  audioGenerateMusic,
+  ...AUDIO_TASK_TOOLS,
 ]

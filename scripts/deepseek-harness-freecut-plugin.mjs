@@ -187,8 +187,8 @@ const mediaTools = [
 
 const audioTools = [
   {
-    name: 'audio.generate_speech',
-    description: '使用本地 MOSS TTS 生成语音并自动保存到当前项目素材库。返回 mediaId；需要放入时间轴时，再调用 timeline.add_media。',
+    name: 'audio.start_speech',
+    description: '提交本地 MOSS TTS 语音生成任务。模型下载和生成会在后台进行，立即返回 taskId；必须使用 audio.get_task 查询，直到 status 为 completed 后才可读取 mediaId 并加入时间轴。',
     parameters: {
       type: 'object',
       properties: {
@@ -205,8 +205,8 @@ const audioTools = [
     },
   },
   {
-    name: 'audio.generate_music',
-    description: '使用本地 MusicGen 生成背景音乐并自动保存到当前项目素材库。返回 mediaId；需要放入时间轴时，再调用 timeline.add_media。',
+    name: 'audio.start_music',
+    description: '提交本地 MusicGen 背景音乐生成任务。模型下载和生成会在后台进行，立即返回 taskId；必须使用 audio.get_task 查询，直到 status 为 completed 后才可读取 mediaId 并加入时间轴。',
     parameters: {
       type: 'object',
       properties: {
@@ -216,6 +216,18 @@ const audioTools = [
         guidanceScale: { type: 'number', minimum: 0, maximum: 10, default: 3 },
       },
       required: ['prompt'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'audio.get_task',
+    description: '查询当前项目的音频生成任务。只有 status 为 completed 且返回 mediaId 时，生成结果才可以加入时间轴；failed 时读取 error。',
+    parameters: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', minLength: 1 },
+      },
+      required: ['taskId'],
       additionalProperties: false,
     },
   },
@@ -574,7 +586,7 @@ const EDITING_GUIDANCE = `
 - 需要更改画布比例或尺寸时使用 project.set_canvas：常用比例传 aspectRatio（例如 9:16），精确尺寸同时传 width 和 height；不要直接编辑工程源码 JSON。
 - 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze；初次粗选素材优先使用 intensity=light，只有需要更密集的场景证据时才使用 normal 或 strong，并在分析完成后再次调用 media.read；没有证据时明确说明未知，不要假装看过素材。
 - 需要按台词寻找内容时使用 media.search_transcript。用返回的 mediaId 和时间范围制定剪辑方案，但仍要通过 project.inspect 或 timeline.inspect_context 确认时间轴片段 ID。
-- 需要生成配音时使用 audio.generate_speech，传入要朗读的 text；需要生成背景音乐时使用 audio.generate_music，传入音乐描述和目标时长。这两个工具都会把生成结果保存到当前项目素材库并返回 mediaId；是否加入时间轴由你根据用户目标决定，加入时调用 timeline.add_media，不要把生成和加入时间轴混成宿主侧流程。
+- 需要生成配音时使用 audio.start_speech，生成背景音乐时使用 audio.start_music。它们只提交后台任务并返回 taskId，不代表音频已经生成；必须循环调用 audio.get_task，直到 status 为 completed 或 failed。只有 completed 且存在 mediaId 时才可调用 timeline.add_media；failed 时读取 error，不要自行猜测失败原因。
 - source.tree、source.read、source.search、source.check 主要用于诊断工程源码。常规剪辑不需要读取 JSON 源码，更不能把源码内容直接当作修改接口。
 
 规划与执行：
@@ -619,6 +631,7 @@ ${SCRIPT_API_REFERENCE}
 - 所有时间使用秒；画面位置和图层尺寸遵循 SDK 方法说明中的单位。
 - 长视频优先调用一次批量分析或批量读取能力，再在脚本内循环筛选，最后使用批量时间轴能力提交结果；不要为每一帧制造一轮模型调用。
 - 每个重要编辑阶段都读取返回值并检查 data；脚本返回一个简短、结构化的结果，供下一轮模型判断。
+- 音频任务查询可以在脚本内使用 await new Promise(resolve => setTimeout(resolve, 2000)) 等待；不要因为第一次返回 queued 或 preparing-model 就当作失败，也不要把 taskId 当作 mediaId。
 - 不要直接修改工程源码 JSON。所有工程读取和修改都通过 luna SDK 完成。
 - edit.run_script 的执行结果会返回模型；宿主不会根据脚本文案替模型判断任务是否完成。
 

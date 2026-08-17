@@ -31,8 +31,9 @@ export const SCRIPT_API = Object.freeze({
     searchTranscript: 'media.search_transcript',
   }),
   audio: Object.freeze({
-    generateSpeech: 'audio.generate_speech',
-    generateMusic: 'audio.generate_music',
+    startSpeech: 'audio.start_speech',
+    startMusic: 'audio.start_music',
+    getTask: 'audio.get_task',
   }),
   project: Object.freeze({
     inspect: 'project.inspect',

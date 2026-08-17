@@ -41,9 +41,11 @@ interface GenerateMusicOptions {
   model?: MusicgenModelId
   durationSeconds: number
   guidanceScale?: number
-  onProgress?: (stage: string, fraction?: number) => void
+  onProgress?: (stage: string, fraction?: number, phase?: MusicGenerationPhase) => void
   signal?: AbortSignal
 }
+
+type MusicGenerationPhase = 'preparing-model' | 'generating'
 
 interface MusicgenRuntime {
   tokenizer: MusicgenTokenizer
@@ -173,7 +175,7 @@ class MusicgenService {
 
   private async ensureRuntime(
     model: MusicgenModelId,
-    onProgress?: (stage: string, fraction?: number) => void,
+    onProgress?: (stage: string, fraction?: number, phase?: MusicGenerationPhase) => void,
   ): Promise<MusicgenRuntime> {
     const existingPromise = this.runtimePromises.get(model)
     if (existingPromise) {
@@ -189,7 +191,7 @@ class MusicgenService {
       const loadVerb = cached ? 'Loading' : 'Downloading'
       const downloadCache: DownloadProgressCache = new Map()
 
-      onProgress?.('Loading MusicGen tokenizer...')
+      onProgress?.('Loading MusicGen tokenizer...', undefined, 'preparing-model')
       const previousRemoteHost = module.env.remoteHost
       const previousRemotePathTemplate = module.env.remotePathTemplate
       module.env.remoteHost = MODELSCOPE_REMOTE_HOST
@@ -206,6 +208,8 @@ class MusicgenService {
           cached
             ? `Loading ${config.label} from cache...`
             : `Downloading ${config.label} (${config.downloadLabel})...`,
+          undefined,
+          'preparing-model',
         )
         runtimeModel = await module.MusicgenForConditionalGeneration.from_pretrained(
           config.modelId,
@@ -222,6 +226,7 @@ class MusicgenService {
                 onProgress?.(
                   `${loadVerb} ${config.label} (${Math.round(downloadProgress.fraction * 100)}%)...`,
                   downloadProgress.fraction,
+                  'preparing-model',
                 )
               }
             },
@@ -339,13 +344,13 @@ class MusicgenService {
           throw new DOMException('Music generation cancelled.', 'AbortError')
         }
 
-        onProgress?.('Preparing prompt...')
+        onProgress?.('Preparing prompt...', undefined, 'generating')
         const inputs = runtime.tokenizer(trimmedPrompt)
 
         const maxNewTokens = getMusicgenMaxNewTokens(model, clampedDuration)
         let tokenCount = 0
 
-        onProgress?.('Generating music...', 0)
+        onProgress?.('Generating music...', 0, 'generating')
         const streamer = {
           put: () => {
             if (signal?.aborted) {
@@ -353,7 +358,7 @@ class MusicgenService {
             }
             tokenCount++
             const fraction = Math.min(tokenCount / maxNewTokens, 1)
-            onProgress?.(`Generating music... ${Math.round(fraction * 100)}%`, fraction)
+            onProgress?.(`Generating music... ${Math.round(fraction * 100)}%`, fraction, 'generating')
           },
           end: () => {
             /* done */
@@ -367,7 +372,7 @@ class MusicgenService {
           streamer: streamer as never,
         })
 
-        onProgress?.('Encoding WAV...')
+        onProgress?.('Encoding WAV...', undefined, 'generating')
         const sampleRate =
           (runtime.model.config as { audio_encoder?: { sampling_rate?: number } }).audio_encoder
             ?.sampling_rate ?? 32000
