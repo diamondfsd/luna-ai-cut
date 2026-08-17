@@ -1,3 +1,5 @@
+import { MODELSCOPE_DEFAULT_REVISION } from './model-sources'
+
 const MB = 1024 * 1024
 
 export const MUSICGEN_MODEL_IDS = ['musicgen-small'] as const
@@ -8,6 +10,7 @@ export interface MusicgenModelDefinition {
   id: MusicgenModelId
   label: string
   modelId: string
+  revision: string
   downloadLabel: string
   estimatedBytes: number
   cacheMatchFragments: readonly string[]
@@ -24,9 +27,10 @@ const MUSICGEN_MODEL_DEFINITIONS: Record<MusicgenModelId, MusicgenModelDefinitio
     id: 'musicgen-small',
     label: 'MusicGen Small',
     modelId: 'Xenova/musicgen-small',
+    revision: MODELSCOPE_DEFAULT_REVISION,
     downloadLabel: '~742 MB',
     estimatedBytes: 742 * MB,
-    cacheMatchFragments: ['/xenova/musicgen-small/'],
+    cacheMatchFragments: ['modelscope.cn/models/xenova/musicgen-small/'],
     defaultDurationSeconds: 8,
     minDurationSeconds: 2,
     maxDurationSeconds: 30,

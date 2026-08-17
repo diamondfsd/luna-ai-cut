@@ -123,6 +123,14 @@ describe('local-model-cache', () => {
             new Response(new Uint8Array(21), {
               headers: { 'content-length': '21' },
             }),
+          'https://www.modelscope.cn/models/LiquidAI/LFM2.5-VL-450M-ONNX/resolve/master/config.json':
+            new Response(new Uint8Array(10), {
+              headers: { 'content-length': '10' },
+            }),
+          'https://www.modelscope.cn/models/Xenova/musicgen-small/resolve/master/config.json':
+            new Response(new Uint8Array(11), {
+              headers: { 'content-length': '11' },
+            }),
           'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/ort-wasm-simd-threaded.wasm':
             new Response(new Uint8Array(7), {
               headers: { 'content-length': '7' },
@@ -180,11 +188,11 @@ describe('local-model-cache', () => {
         id: 'lfm',
         label: SCENE_VERIFICATION_MODEL_LABELS.lfm,
         cacheName: TRANSFORMERS_CACHE_NAME,
-        exists: false,
-        downloaded: false,
-        entryCount: 0,
-        totalBytes: 0,
-        sizeStatus: 'unavailable',
+        exists: true,
+        downloaded: true,
+        entryCount: 1,
+        totalBytes: 10,
+        sizeStatus: 'exact',
         inspectionState: 'ready',
       }),
     )
@@ -193,11 +201,11 @@ describe('local-model-cache', () => {
         id: 'musicgen-small',
         label: MUSICGEN_MODEL_OPTIONS[0]!.label,
         cacheName: TRANSFORMERS_CACHE_NAME,
-        exists: false,
-        downloaded: false,
-        entryCount: 0,
-        totalBytes: 0,
-        sizeStatus: 'unavailable',
+        exists: true,
+        downloaded: true,
+        entryCount: 1,
+        totalBytes: 11,
+        sizeStatus: 'exact',
         inspectionState: 'ready',
       }),
     )
@@ -252,17 +260,17 @@ describe('local-model-cache', () => {
     expect(lfmSummary).toEqual(
       expect.objectContaining({
         id: 'lfm',
-        downloaded: false,
-        entryCount: 0,
-        totalBytes: 0,
+        downloaded: true,
+        entryCount: 1,
+        totalBytes: 10,
       }),
     )
     expect(musicgenSummary).toEqual(
       expect.objectContaining({
         id: 'musicgen-small',
-        downloaded: false,
-        entryCount: 0,
-        totalBytes: 0,
+        downloaded: true,
+        entryCount: 1,
+        totalBytes: 11,
       }),
     )
   })

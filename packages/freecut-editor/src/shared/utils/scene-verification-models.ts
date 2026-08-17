@@ -14,7 +14,7 @@ export const SCENE_VERIFICATION_MODEL_CACHE_MATCH_FRAGMENTS: Record<
   readonly string[]
 > = {
   gemma: ['/onnx-community/gemma-4-e4b-it-onnx/'],
-  lfm: ['/liquidai/lfm2.5-vl-450m-onnx/'],
+  lfm: ['modelscope.cn/models/liquidai/lfm2.5-vl-450m-onnx/'],
 }
 
 export const SCENE_VERIFICATION_MODEL_CACHE_DESCRIPTIONS: Record<SceneVerificationModelId, string> =

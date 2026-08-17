@@ -2,11 +2,11 @@
   const MANAGED_SCHEME = 'managed://';
   const DEFAULT_EXTERNAL_MODEL_KEY = 'browser-onnx-external';
   const INTERNAL_ROOT_DIR_NAME = 'nano-reader-browser-model-store';
-  const HF_API_BASE = 'https://huggingface.co/api/models/';
-  const HF_RESOLVE_BASE = 'https://huggingface.co/';
+  const MODELSCOPE_RESOLVE_BASE = 'https://www.modelscope.cn/models/';
+  const MODELSCOPE_DEFAULT_REVISION = 'master';
   const MODEL_REPOS = [
     {
-      repoId: 'OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX',
+      repoId: 'openmoss/MOSS-TTS-Nano-100M-ONNX',
       localDirName: 'MOSS-TTS-Nano-100M-ONNX',
       requiredFiles: [
         'browser_poc_manifest.json',
@@ -22,7 +22,7 @@
       ]
     },
     {
-      repoId: 'OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX',
+      repoId: 'openmoss/MOSS-Audio-Tokenizer-Nano-ONNX',
       localDirName: 'MOSS-Audio-Tokenizer-Nano-ONNX',
       requiredFiles: [
         'codec_browser_onnx_meta.json',
@@ -246,62 +246,15 @@
     });
   }
 
-  async function fetchRepoTree(repoId, accessToken = '') {
-    const url = `${HF_API_BASE}${repoId}/tree/main?recursive=1`;
-    const response = await fetchWithOptionalToken(url, accessToken);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Hugging Face repo tree for ${repoId} (status=${response.status}).`);
-    }
-    const data = await response.json();
-    if (!Array.isArray(data)) {
-      throw new Error(`Unexpected Hugging Face repo tree response for ${repoId}.`);
-    }
-    return data;
-  }
-
-  function buildRemotePathMap(treeRows, requiredFiles, repoId) {
-    const fileMap = new Map();
-    for (const row of treeRows) {
-      const pathValue = String(row?.path || '');
-      if (!pathValue || String(row?.type || '').toLowerCase() === 'directory') {
-        continue;
-      }
-      const fileName = pathValue.split('/').pop();
-      if (!requiredFiles.includes(fileName)) {
-        continue;
-      }
-      const current = fileMap.get(fileName);
-      if (!current || pathValue.length < current.length) {
-        fileMap.set(fileName, pathValue);
-      }
-    }
-    for (const fileName of requiredFiles) {
-      if (!fileMap.has(fileName)) {
-        throw new Error(`Required file ${fileName} was not found in Hugging Face repo ${repoId}.`);
-      }
-    }
-    return fileMap;
-  }
-
   function buildResolveUrl(repoId, remotePath) {
     const encodedPath = normalizeRelativePath(remotePath).split('/').map(encodeURIComponent).join('/');
-    return `${HF_RESOLVE_BASE}${repoId}/resolve/main/${encodedPath}?download=1`;
+    return `${MODELSCOPE_RESOLVE_BASE}${repoId}/resolve/${MODELSCOPE_DEFAULT_REVISION}/${encodedPath}?download=1`;
   }
 
   async function downloadRepoFiles(destinationHandle, repoSpec, onProgress = null, accessToken = '') {
-    if (typeof onProgress === 'function') {
-      onProgress({
-        phase: 'tree',
-        repoId: repoSpec.repoId,
-        message: `Scanning ${repoSpec.repoId}...`
-      });
-    }
-    const treeRows = await fetchRepoTree(repoSpec.repoId, accessToken);
-    const remotePathMap = buildRemotePathMap(treeRows, repoSpec.requiredFiles, repoSpec.repoId);
     const totalFiles = repoSpec.requiredFiles.length;
     for (let index = 0; index < repoSpec.requiredFiles.length; index += 1) {
       const fileName = repoSpec.requiredFiles[index];
-      const remotePath = remotePathMap.get(fileName);
       const destinationPath = `${repoSpec.localDirName}/${fileName}`;
       if (typeof onProgress === 'function') {
         onProgress({
@@ -314,7 +267,10 @@
           message: `Downloading ${fileName} (${index + 1}/${totalFiles})...`
         });
       }
-      const response = await fetchWithOptionalToken(buildResolveUrl(repoSpec.repoId, remotePath), accessToken);
+      const response = await fetchWithOptionalToken(
+        buildResolveUrl(repoSpec.repoId, fileName),
+        accessToken
+      );
       if (!response.ok) {
         throw new Error(
           `Failed to download ${fileName} from ${repoSpec.repoId} (status=${response.status}).`

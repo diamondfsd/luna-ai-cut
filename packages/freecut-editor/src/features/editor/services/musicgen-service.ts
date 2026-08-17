@@ -16,6 +16,10 @@ import {
   updateDownloadProgress,
   type DownloadProgressCache,
 } from '@freecut/shared/utils/download-progress'
+import {
+  MODELSCOPE_REMOTE_HOST,
+  MODELSCOPE_REMOTE_PATH_TEMPLATE,
+} from '@freecut/shared/utils/model-sources'
 
 const logger = createLogger('MusicgenService')
 
@@ -186,32 +190,47 @@ class MusicgenService {
       const downloadCache: DownloadProgressCache = new Map()
 
       onProgress?.('Loading MusicGen tokenizer...')
-      const tokenizer = await module.AutoTokenizer.from_pretrained(config.modelId)
+      const previousRemoteHost = module.env.remoteHost
+      const previousRemotePathTemplate = module.env.remotePathTemplate
+      module.env.remoteHost = MODELSCOPE_REMOTE_HOST
+      module.env.remotePathTemplate = MODELSCOPE_REMOTE_PATH_TEMPLATE
 
-      onProgress?.(
-        cached
-          ? `Loading ${config.label} from cache...`
-          : `Downloading ${config.label} (${config.downloadLabel})...`,
-      )
-      const runtimeModel = await module.MusicgenForConditionalGeneration.from_pretrained(
-        config.modelId,
-        {
-          device: 'webgpu',
-          dtype: MUSICGEN_DTYPE_CONFIG,
-          progress_callback: (progress: ProgressInfo) => {
-            if (progress.status !== 'progress' && progress.status !== 'download') {
-              return
-            }
-            const downloadProgress = updateDownloadProgress(progress, downloadCache)
-            if (downloadProgress) {
-              onProgress?.(
-                `${loadVerb} ${config.label} (${Math.round(downloadProgress.fraction * 100)}%)...`,
-                downloadProgress.fraction,
-              )
-            }
+      let tokenizer: MusicgenTokenizer
+      let runtimeModel: MusicgenModelInstance
+      try {
+        tokenizer = await module.AutoTokenizer.from_pretrained(config.modelId, {
+          revision: config.revision,
+        })
+
+        onProgress?.(
+          cached
+            ? `Loading ${config.label} from cache...`
+            : `Downloading ${config.label} (${config.downloadLabel})...`,
+        )
+        runtimeModel = await module.MusicgenForConditionalGeneration.from_pretrained(
+          config.modelId,
+          {
+            revision: config.revision,
+            device: 'webgpu',
+            dtype: MUSICGEN_DTYPE_CONFIG,
+            progress_callback: (progress: ProgressInfo) => {
+              if (progress.status !== 'progress' && progress.status !== 'download') {
+                return
+              }
+              const downloadProgress = updateDownloadProgress(progress, downloadCache)
+              if (downloadProgress) {
+                onProgress?.(
+                  `${loadVerb} ${config.label} (${Math.round(downloadProgress.fraction * 100)}%)...`,
+                  downloadProgress.fraction,
+                )
+              }
+            },
           },
-        },
-      )
+        )
+      } finally {
+        module.env.remoteHost = previousRemoteHost
+        module.env.remotePathTemplate = previousRemotePathTemplate
+      }
 
       this.upsertRuntime(model, 'ready')
       return {

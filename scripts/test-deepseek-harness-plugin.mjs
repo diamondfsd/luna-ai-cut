@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  FREECUT_AUDIO_TOOL_NAMES,
   FREECUT_MEMORY_TOOL_NAMES,
   renderToolResult,
 } from './deepseek-harness-freecut-plugin.mjs'
@@ -14,6 +15,11 @@ assert.deepEqual(FREECUT_MEMORY_TOOL_NAMES, [
   'memory.search',
   'memory.update',
   'memory.remove',
+])
+
+assert.deepEqual(FREECUT_AUDIO_TOOL_NAMES, [
+  'audio.generate_speech',
+  'audio.generate_music',
 ])
 
 const result = {
