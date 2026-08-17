@@ -1,0 +1,4 @@
+interface:
+  display_name: "叙事结构与镜头组织"
+  short_description: "叙事结构、镜头覆盖与故事组织方法指导和时间轴执行建议"
+  default_prompt: "使用 $luna-technique-story-structure 设计这次剪辑的故事和镜头结构"

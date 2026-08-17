@@ -54,6 +54,11 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
                 调试
               </NavLink>
             )}
+            {import.meta.env.DEV && (
+              <NavLink to="/webgpu-color-test" className={({ isActive }) => (isActive ? 'active' : '')}>
+                WebGPU 调色
+              </NavLink>
+            )}
             {/*
             {(import.meta.env.DEV || hiddenDevMode) && (
               <NavLink to="/device-debug" className={({ isActive }) => (isActive ? 'active' : '')}>

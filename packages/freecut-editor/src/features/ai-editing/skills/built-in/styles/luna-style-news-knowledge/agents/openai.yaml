@@ -1,0 +1,4 @@
+interface:
+  display_name: "资讯与知识口播"
+  short_description: "新闻、教程、知识口播的结构、字幕和 B-roll 方案"
+  default_prompt: "使用 $luna-style-news-knowledge 设计这段知识口播视频"

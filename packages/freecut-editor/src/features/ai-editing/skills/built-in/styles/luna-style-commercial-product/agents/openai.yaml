@@ -1,0 +1,4 @@
+interface:
+  display_name: "商业产品与广告风格"
+  short_description: "商业产品、广告和带货视频的镜头及信息结构设计方案与实操建议"
+  default_prompt: "使用 $luna-style-commercial-product 设计这段产品视频"

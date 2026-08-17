@@ -34,8 +34,10 @@ description: LunaAiCut 的 AI 剪辑大师总控技能。负责理解创作需�
 - 一个风格作为主结构，负责故事、镜头和总体节奏。
 - 零个或多个辅助风格只提供局部规则，例如用“情绪化蒙太奇”的收尾方式，或用“口播”的字幕方式。
 - 风格不是不可修改的模板。当前用户要求可以覆盖风格默认值。
-- 当前内置风格技能名称包括：`luna-style-travel-vlog`、`luna-style-cinematic-documentary`、`luna-style-fast-beat`、`luna-style-family-documentary`、`luna-style-talking-head` 和 `luna-style-emotional-montage`。
-- `shared/creative-brief.md` 和 `shared/editing-contract.md` 会由 FreeCut 的技能加载器合并到本技能中；不要依赖项目路径重新寻找它们。
+- 当前内置风格技能名称包括：`luna-style-travel-vlog`、`luna-style-cinematic-documentary`、`luna-style-fast-beat`、`luna-style-family-documentary`、`luna-style-talking-head`、`luna-style-emotional-montage`、`luna-style-social-short`、`luna-style-commercial-product`、`luna-style-music-video`、`luna-style-news-knowledge`、`luna-style-ambient-cinematic` 和 `luna-style-sports-action`。
+- 需要通用剪辑方法时，可加载 `luna-technique-story-structure`、`luna-technique-cutting-rhythm`、`luna-technique-audio-design`、`luna-technique-color-look`、`luna-technique-motion-graphics` 或 `luna-technique-retiming-transitions`。
+- 用户提到剪映、Premiere Pro 或 After Effects 的具体工作流时，可加载 `luna-workflow-capcut`、`luna-workflow-premiere` 或 `luna-workflow-after-effects`，只把软件概念映射到当前真实工具。
+- `shared/creative-brief.md`、`shared/editing-contract.md` 和 `shared/research-sources.md` 会由 FreeCut 的技能加载器合并到本技能中；不要依赖项目路径重新寻找它们。
 - 组合风格时，向用户说明主风格和辅助风格的作用，不要只说“已套用风格”。
 - 如果用户要求的风格没有对应技能，先把它拆成可观察的属性，例如镜头长短、留白、字幕密度、声音优先级和色彩方向，再使用最接近的技能。
 - 不承诺复刻具体导演、电影或创作者的个人风格。将这类表达转换成通用的、可描述的创作属性。
@@ -78,7 +80,7 @@ description: LunaAiCut 的 AI 剪辑大师总控技能。负责理解创作需�
 - 声音：说明原声、环境声、音乐和人声的优先级。
 - 字幕：说明是否需要、使用哪些文本、如何避开主体。
 
-如果当前没有音乐节拍工具，不要声称已经完成音乐卡点。如果当前没有 TTS 工具，不要声称已经生成配音；可以提出配音方案或明确当前能力不足。
+如果用户需要配音或背景音乐，调用 `audio.generate_speech` 或 `audio.generate_music`。生成工具只负责生成并保存音频，返回新的 `mediaId`；是否调用 `timeline.add_media` 加入时间轴、加入哪条轨道以及如何混音，由你结合完整会话和工具结果判断。没有可靠节拍时间点或节拍分析结果时，不要声称已经完成自动卡点。
 
 ### 第五步：执行时间轴编辑
 
@@ -98,7 +100,7 @@ description: LunaAiCut 的 AI 剪辑大师总控技能。负责理解创作需�
 - 使用了什么主风格和辅助风格。
 - 选择了哪些素材和故事结构。
 - 做了哪些时间轴、字幕和音频修改。
-- 哪些能力当前没有执行，例如 TTS 或节拍分析。
+- 哪些能力当前没有执行，例如自动节拍分析或当前没有对应工具的专用效果。
 - 用户下一步可以怎样继续修改。
 
 不要输出工具内部术语作为用户文案，也不要宣称没有证据支持的“识别成功”“情绪理解成功”或“已卡点”。

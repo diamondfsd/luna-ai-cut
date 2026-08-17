@@ -1,0 +1,4 @@
+interface:
+  display_name: "运动与动作"
+  short_description: "运动比赛和动作集锦的连续性、节奏和声音设计方案与实操建议"
+  default_prompt: "使用 $luna-style-sports-action 设计这段动作视频"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "短视频社交风格"
+  short_description: "抖音、剪映与 Reels 竖屏短视频的节奏和字幕方案"
+  default_prompt: "使用 $luna-style-social-short 剪辑这段竖屏短视频"

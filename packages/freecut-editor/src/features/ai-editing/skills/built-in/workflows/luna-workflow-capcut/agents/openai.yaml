@@ -1,0 +1,4 @@
+interface:
+  display_name: "剪映工作流映射"
+  short_description: "将剪映关键帧、画中画、变速和卡点思路映射到 Luna"
+  default_prompt: "使用 $luna-workflow-capcut 将剪映思路映射到当前项目"
