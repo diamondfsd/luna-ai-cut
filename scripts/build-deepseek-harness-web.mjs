@@ -11,6 +11,7 @@ const layoutRoot = join(harnessRoot, 'packages/client/ui-layout')
 const settingsGeneralRoot = join(harnessRoot, 'packages/client/ui-settings-general')
 const output = join(root, 'dist/deepseek-harness')
 const plugin = join(root, 'scripts/deepseek-harness-freecut-plugin.mjs')
+const builtInSkills = join(root, 'packages/freecut-editor/src/features/ai-editing/skills/built-in')
 
 // The deployed Web runtime consumes workspace client bundles from lib/.
 // Rebuild them first so source changes cannot be hidden by stale ignored output.
@@ -84,4 +85,6 @@ for (const packageRoot of ['vendor', 'packages']) {
 }
 
 await cp(plugin, join(output, 'luna-freecut-plugin.mjs'))
+await cp(join(root, 'scripts/deepseek-harness-built-in-skills.mjs'), join(output, 'deepseek-harness-built-in-skills.mjs'))
+await cp(builtInSkills, join(output, 'skills/built-in'), { recursive: true, dereference: true })
 console.log(`DeepSeek Harness Web runtime prepared at ${output}`)
