@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import type {
   EmbeddedMediaSource,
   EmbeddedTaskProgress,
-  EmbeddedVisualAnalysisIntensity,
   EmbeddedExportFile,
   EmbeddedMediaImportSource,
   ImportMediaFiles,
@@ -184,41 +183,6 @@ export function VideoEditorPage() {
     }
   }, [])
 
-  const handleAnalyzeMediaVisual = useCallback(async (
-    source: EmbeddedMediaSource,
-    intensity: EmbeddedVisualAnalysisIntensity,
-    onProgress?: (progress: EmbeddedTaskProgress) => void,
-    signal?: AbortSignal,
-  ) => {
-    const filePath = source.nativePath
-      ?? findImportedSourcePath(importedSourcePathsRef.current, source)
-      ?? findImportedSourcePath(loadImportedSourcePaths(), source)
-      ?? await window.luna.freecutWorkspace.getMediaSourcePath(source.mediaId)
-    if (!filePath) throw new Error('这段素材没有可用的原始文件，无法进行本地画面分析。')
-    const requestId = crypto.randomUUID()
-    const abort = (): void => {
-      void window.luna.workspace.cancelSegmentation(requestId)
-    }
-    signal?.throwIfAborted()
-    if (signal?.aborted) abort()
-    else signal?.addEventListener('abort', abort, { once: true })
-    const unsubscribe = window.luna.onWorkspaceSegmentationProgress((progress) => {
-      if (progress.requestId !== requestId) return
-      onProgress?.({ label: progress.label, percent: progress.percent })
-    })
-    try {
-      return await window.luna.workspace.analyzeVisualEvidence({
-        requestId,
-        filePath,
-        durationSeconds: Math.max(0.1, source.durationSeconds),
-        intensity,
-      })
-    } finally {
-      signal?.removeEventListener('abort', abort)
-      unsubscribe()
-    }
-  }, [])
-
   const handleGetDeepSeekHarnessWebUrl = useCallback((projectId: string) =>
     window.luna.deepseekHarness.getWebUrl(projectId), [])
   const handleDeepSeekHarnessWebState = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onWebState>[0]) =>
@@ -282,7 +246,6 @@ export function VideoEditorPage() {
           onReadNativeMediaFile={handleReadNativeMediaFile}
           onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
           onTranscribeMedia={handleTranscribeMedia}
-          onAnalyzeMediaVisual={handleAnalyzeMediaVisual}
           onGetDeepSeekHarnessWebUrl={handleGetDeepSeekHarnessWebUrl}
           onDeepSeekHarnessWebState={handleDeepSeekHarnessWebState}
           onDeepSeekHarnessSourceToolRequest={handleDeepSeekHarnessSourceToolRequest}

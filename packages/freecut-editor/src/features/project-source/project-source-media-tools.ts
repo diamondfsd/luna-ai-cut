@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { getEditingEvidence, getTranscript, saveVisualEditingEvidence } from '@freecut/infrastructure/storage'
+import { getTranscript } from '@freecut/infrastructure/storage'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { importMediaLibraryService } from '@freecut/features/media-library/services/media-library-service-loader'
 import { getMediaType } from '@freecut/features/media-library/utils/validation'
@@ -92,35 +92,23 @@ function wordCount(transcript: MediaTranscript): number {
   return transcript.segments.reduce((count, segment) => count + (segment.words?.length ?? 0), 0)
 }
 
-function visualObservations(
-  media: MediaMetadata,
-  editingEvidence: Awaited<ReturnType<typeof getEditingEvidence>>,
-): Array<Record<string, unknown>> {
-  const captions = (media.aiCaptions ?? []).slice(0, MAX_VISUAL_OBSERVATIONS).map((caption) => ({
+function visualObservations(media: MediaMetadata): Array<Record<string, unknown>> {
+  return (media.aiCaptions ?? []).slice(0, MAX_VISUAL_OBSERVATIONS).map((caption) => ({
     timeSeconds: caption.timeSec,
     description: caption.text,
     subjects: caption.sceneData?.subjects ?? [],
+    ...(caption.sceneData?.shotType ? { shotType: caption.sceneData.shotType } : {}),
     ...(caption.sceneData?.action ? { action: caption.sceneData.action } : {}),
+    ...(caption.sceneData?.setting ? { setting: caption.sceneData.setting } : {}),
+    ...(caption.sceneData?.lighting ? { lighting: caption.sceneData.lighting } : {}),
+    ...(caption.sceneData?.timeOfDay ? { timeOfDay: caption.sceneData.timeOfDay } : {}),
+    ...(caption.sceneData?.weather ? { weather: caption.sceneData.weather } : {}),
   }))
-  const localSamples = editingEvidence?.sourceFingerprint === sourceFingerprint(media)
-    ? (editingEvidence.visual?.samples ?? []).slice(0, MAX_VISUAL_OBSERVATIONS).map((sample) => ({
-        timeSeconds: sample.timeSeconds,
-        description: sample.tags.join('、'),
-        subjects: sample.tags,
-      }))
-    : []
-  return [...captions, ...localSamples].slice(0, MAX_VISUAL_OBSERVATIONS)
 }
 
 async function readMediaEvidence(media: MediaMetadata): Promise<Record<string, unknown>> {
-  const [transcript, editingEvidence] = await Promise.all([
-    getTranscript(media.id).catch(() => undefined),
-    getEditingEvidence(media.id).catch(() => undefined),
-  ])
-  const visual = visualObservations(media, editingEvidence)
-  const matchingVisualEvidence = editingEvidence?.sourceFingerprint === sourceFingerprint(media)
-    ? editingEvidence.visual
-    : undefined
+  const transcript = await getTranscript(media.id).catch(() => undefined)
+  const visual = visualObservations(media)
 
   return {
     ...mediaSummary(media),
@@ -128,7 +116,7 @@ async function readMediaEvidence(media: MediaMetadata): Promise<Record<string, u
     visual: {
       status: visual.length > 0 ? 'ready' : 'not-requested',
       samples: visual,
-      ...(matchingVisualEvidence ? { models: matchingVisualEvidence.models } : {}),
+      ...(visual.length > 0 ? { model: 'lfm-2.5-vl' } : {}),
     },
     transcript: transcript
       ? {
@@ -213,7 +201,7 @@ const mediaList = tool({
 
 const mediaRead = tool({
   name: 'media.read',
-  description: '按素材 ID 读取已经生成的画面理解和带时间点的口播字幕。画面理解来自本地模型抽帧；没有完成分析时明确返回暂无结果，不会猜测内容。',
+  description: '按素材 ID 读取已经生成的画面理解和带时间点的口播字幕。画面理解来自 LFM2.5-VL-450M 的场景描述；没有完成分析时明确返回暂无结果，不会猜测内容。',
   inputSchema: schema({
     mediaIds: { type: 'array', minItems: 1, maxItems: MAX_MEDIA_SELECTION, items: { type: 'string' } },
   }, ['mediaIds']),
@@ -237,7 +225,7 @@ const mediaRead = tool({
 
 const mediaAnalyze = tool({
   name: 'media.analyze',
-  description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 对视频或图片抽帧并生成带时间点的画面描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面证据时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
+  description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 使用 LFM2.5-VL-450M 对视频或图片抽帧并生成带时间点的场景描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面描述时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
   inputSchema: schema({
     mediaIds: { type: 'array', minItems: 1, maxItems: MAX_MEDIA_SELECTION, items: { type: 'string' } },
     kind: { type: 'string', enum: ['transcript', 'visual'] },
@@ -262,9 +250,9 @@ const mediaAnalyze = tool({
     const { mediaTranscriptionService } = args.kind === 'transcript'
       ? await import('@freecut/features/media-library/services/media-transcription-service')
       : { mediaTranscriptionService: undefined }
-    const { mediaAnalysisService } = args.kind === 'visual' && !host.analyzeMediaVisual
-      ? await import('@freecut/features/media-library/services/media-analysis-service-loader').then((module) => module.importMediaAnalysisService())
-      : { mediaAnalysisService: undefined }
+    const { analyzeMediaVisual } = args.kind === 'visual'
+      ? await import('@freecut/features/media-library/services/media-visual-analysis-service')
+      : { analyzeMediaVisual: undefined }
 
     for (const media of found) {
       signal?.throwIfAborted()
@@ -293,19 +281,7 @@ const mediaAnalyze = tool({
         skippedIds.push(media.id)
         continue
       }
-      if (host.analyzeMediaVisual) {
-          const result = signal
-            ? await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'light', undefined, signal)
-            : await host.analyzeMediaVisual(mediaSource(media), args.intensity ?? 'light')
-          signal?.throwIfAborted()
-          await saveVisualEditingEvidence(media.id, sourceFingerprint(media), {
-          samples: result.samples,
-          models: result.models,
-          intensity: result.intensity,
-        })
-      } else {
-        await mediaAnalysisService!.analyzeMedia(media)
-      }
+      await analyzeMediaVisual!(media, args.intensity ?? 'light', signal)
       signal?.throwIfAborted()
       completedIds.push(media.id)
     }

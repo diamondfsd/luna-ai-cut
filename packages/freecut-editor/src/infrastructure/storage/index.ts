@@ -136,10 +136,6 @@ export { deleteScenes } from '@freecut/infrastructure/storage/workspace-fs/scene
 
 // Generic AI-output envelope (use these directly for new AI services)
 export { readAiOutput } from '@freecut/infrastructure/storage/workspace-fs/ai-outputs'
-export {
-  getEditingEvidence,
-  saveVisualEditingEvidence,
-} from '@freecut/infrastructure/storage/workspace-fs/editing-evidence'
 
 // Orphan cache sweep
 export {

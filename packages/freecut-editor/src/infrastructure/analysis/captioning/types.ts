@@ -52,6 +52,11 @@ export interface CaptioningOptions {
   signal?: AbortSignal
   sampleIntervalSec?: number
   /**
+   * Optional explicit frame times for focused analysis. When provided, the
+   * video captioner uses these times instead of generating an interval.
+   */
+  sampleTimesSec?: readonly number[]
+  /**
    * Optional persistence hook invoked once per captioned frame with the
    * JPEG the provider already captured for VLM inference. Return a
    * workspace-relative path to stash on `MediaCaption.thumbRelPath`;

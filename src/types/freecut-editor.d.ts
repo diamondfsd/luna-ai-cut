@@ -35,15 +35,6 @@ declare module '@freecut/embedded' {
     sourceFingerprint: { size: number; modifiedAtMs: number }
   }
 
-  export interface EmbeddedVisualEvidence {
-    samples: Array<{ timeSeconds: number; tags: string[] }>
-    models: Array<{ id: string; version: string }>
-    sourceFingerprint: { size: number; modifiedAtMs: number }
-    intensity: EmbeddedVisualAnalysisIntensity
-  }
-
-  export type EmbeddedVisualAnalysisIntensity = 'light' | 'normal' | 'strong'
-
   export interface EmbeddedTaskProgress {
     label: string
     percent: number | null
@@ -139,12 +130,6 @@ declare module '@freecut/embedded' {
       onProgress?: (progress: EmbeddedTaskProgress) => void,
       signal?: AbortSignal,
     ) => Promise<EmbeddedTranscriptResult>
-    onAnalyzeMediaVisual?: (
-      source: EmbeddedMediaSource,
-      intensity: EmbeddedVisualAnalysisIntensity,
-      onProgress?: (progress: EmbeddedTaskProgress) => void,
-      signal?: AbortSignal,
-    ) => Promise<EmbeddedVisualEvidence>
     onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
     onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
     onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
