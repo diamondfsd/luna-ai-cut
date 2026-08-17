@@ -98,7 +98,7 @@
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
       config:
-        root: !!js dshHomePath('sessions')
+        root: !!js process.env.DSH_SESSION_ROOT ?? dshHomePath('sessions')
 
     # Durable image bytes live outside the append-only session log. Messages
     # keep content-addressed references that this shared backend resolves for

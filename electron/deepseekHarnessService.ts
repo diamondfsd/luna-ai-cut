@@ -20,6 +20,7 @@ const DEFAULT_HARNESS_MODEL = 'deepseek-v4-flash'
 interface HarnessRuntime {
   projectId: string
   key: string
+  home: string
   process: ChildProcess
   token: string
   url: string
@@ -111,10 +112,18 @@ function harnessNodeExecutable(): string {
   throw new Error('当前安装包缺少 DeepSeek Harness 所需的 Node.js 22 运行时。')
 }
 
+function harnessHomeForBaseDir(baseDir: string): string {
+  return path.join(baseDir, 'deepseek-harness')
+}
+
+function harnessSessionRootForBaseDir(baseDir: string): string {
+  return path.join(harnessHomeForBaseDir(baseDir), 'sessions')
+}
+
 function dshHome(): string {
-  // Keep Harness history and credentials in the same private application data
-  // directory as the FreeCut configuration, never in the project source tree.
-  return path.join(app.getPath('userData'), 'deepseek-harness')
+  // Keep Harness settings, credentials, and session indexes beside the rest of
+  // the user's configured local data, never in the project source tree.
+  return harnessHomeForBaseDir(currentBaseDir())
 }
 
 function userMemoryRoot(): string {
@@ -138,10 +147,6 @@ async function executeUserMemoryTool(name: string, args: Record<string, unknown>
     default:
       throw new Error(`未知的用户记忆能力：${name}`)
   }
-}
-
-function projectSourceRoot(projectId: string): string {
-  return createAiEditingSourceGitService(currentBaseDir(), projectId).rootPath
 }
 
 function emitState(state: EmbeddedDeepSeekHarnessWebState): void {
@@ -346,8 +351,8 @@ async function prepareHarnessHome(
   token: string,
   endpoint: string,
   cwd: string,
+  home: string,
 ): Promise<void> {
-  const home = dshHome()
   const settingsPath = path.join(home, 'settings.yaml')
   const currentSettings = withEmbeddedHarnessDefaults(await readDocument(settingsPath))
   const existingPresets = currentSettings['agent-presets']
@@ -414,14 +419,20 @@ async function stopRuntime(): Promise<void> {
 async function startRuntime(projectId: string, generation: number): Promise<string> {
   const endpoint = await ensureSourceToolServer()
   const token = randomUUID()
-  const cwd = projectSourceRoot(projectId)
-  await prepareHarnessHome(projectId, token, endpoint, cwd)
+  const baseDir = currentBaseDir()
+  const home = harnessHomeForBaseDir(baseDir)
+  const sessionRoot = harnessSessionRootForBaseDir(baseDir)
+  const cwd = createAiEditingSourceGitService(baseDir, projectId).rootPath
+  await prepareHarnessHome(projectId, token, endpoint, cwd, home)
+  await fs.mkdir(sessionRoot, { recursive: true, mode: 0o700 })
+  if (home !== dshHome()) throw new Error('DeepSeek Harness Web 启动已取消。')
   if (generation !== runtimeGeneration) throw new Error('DeepSeek Harness Web 启动已取消。')
   const child = spawn(harnessNodeExecutable(), [cliEntry(), 'web', '--host', '127.0.0.1', '--port', '0'], {
     cwd,
     env: {
       ...process.env,
-      DSH_HOME: dshHome(),
+      DSH_HOME: home,
+      DSH_SESSION_ROOT: sessionRoot,
       DSH_TELEMETRY_DISABLED: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -460,7 +471,7 @@ async function startRuntime(projectId: string, generation: number): Promise<stri
       await terminateChild(child)
       throw new Error('DeepSeek Harness Web 启动已取消。')
     }
-    runtime = { projectId, key: projectId, process: child, token, url }
+    runtime = { projectId, key: projectId, home, process: child, token, url }
     child.once('close', () => {
       if (runtime?.process === child) {
         runtime = undefined
@@ -512,7 +523,8 @@ export function cancelDeepSeekHarnessSourceToolRequest(
 
 export async function getDeepSeekHarnessWebUrl(projectId: string): Promise<string> {
   const key = projectId
-  if (runtime?.key === key && runtime.process.exitCode === null) return runtime.url
+  const home = dshHome()
+  if (runtime?.key === key && runtime.home === home && runtime.process.exitCode === null) return runtime.url
   await stopRuntime()
   if (!startingRuntime) {
     const generation = runtimeGeneration
