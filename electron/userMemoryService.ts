@@ -145,9 +145,13 @@ function boundedLimit(value: number | undefined): number {
   return value
 }
 
-function boundedQuery(value: string | undefined): string | undefined {
+function optionalQuery(value: unknown): string | undefined {
   if (value === undefined) return undefined
-  return text(value, 'query', USER_MEMORY_MAX_QUERY_LENGTH).toLocaleLowerCase()
+  if (typeof value !== 'string') throw new Error('query 必须是文本。')
+  const result = value.trim()
+  if (!result) return undefined
+  if (result.length > USER_MEMORY_MAX_QUERY_LENGTH) throw new Error('query 太长了，请缩短后再搜索。')
+  return result.toLocaleLowerCase()
 }
 
 function boundedMemoryIds(value: unknown): string[] | undefined {
@@ -163,9 +167,7 @@ function normalizeFilterArgs(value: unknown, includeQuery: boolean): UserMemoryS
   if (!isRecord(value)) throw new Error('用户偏好查询参数无效。')
   const scope = value.scope === undefined ? undefined : scopeOf(value.scope)
   const videoType = value.videoType === undefined ? undefined : text(value.videoType, 'videoType', 200)
-  const query = includeQuery && value.query !== undefined
-    ? text(value.query, 'query', USER_MEMORY_MAX_QUERY_LENGTH).toLocaleLowerCase()
-    : undefined
+  const query = includeQuery ? optionalQuery(value.query) : undefined
   if (scope === 'global' && videoType !== undefined) throw new Error('global 查询不能提供 videoType。')
   return {
     ...(query !== undefined ? { query } : {}),
@@ -219,10 +221,11 @@ export function createUserMemoryStore(rootDirectory: string) {
 
   async function search(rawArgs: UserMemorySearchArgs = {}): Promise<UserMemoryToolResult> {
     const args = normalizeFilterArgs(rawArgs, true)
-    const query = boundedQuery(args.query)
     return serialize(async () => {
       const document = await readDocument()
-      const filtered = document.entries.filter((entry) => matches(entry, { ...args, query }))
+      const filtered = document.entries
+        .filter((entry) => matches(entry, args))
+        .sort((left, right) => right.createdAt - left.createdAt)
       const limit = boundedLimit(args.limit)
       return {
         ok: true,
@@ -246,6 +249,7 @@ export function createUserMemoryStore(rootDirectory: string) {
       const filtered = document.entries
         .filter((entry) => ids === undefined || ids.has(entry.id))
         .filter((entry) => matches(entry, args))
+        .sort((left, right) => right.createdAt - left.createdAt)
       const limit = boundedLimit(args.limit)
       return {
         ok: true,

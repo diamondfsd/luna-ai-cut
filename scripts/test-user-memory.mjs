@@ -29,6 +29,17 @@ try {
   ])
   const serializedRead = await store.read()
   assert.equal(serializedRead.data.total, 4)
+  const expectedRecentOrder = [...serializedRead.data.entries]
+    .sort((left, right) => right.createdAt - left.createdAt)
+    .map((entry) => entry.id)
+  assert.deepEqual(serializedRead.data.entries.map((entry) => entry.id), expectedRecentOrder)
+
+  const defaultSearch = await store.search()
+  const emptyQuerySearch = await store.search({ query: '  ' })
+  assert.deepEqual(
+    emptyQuerySearch.data.entries.map((entry) => entry.id),
+    defaultSearch.data.entries.map((entry) => entry.id),
+  )
 
   const searched = await store.search({ query: '9:16' })
   assert.equal(searched.data.entries.length, 1)
