@@ -184,6 +184,44 @@ const mediaTools = [
   },
 ]
 
+const audioTools = [
+  {
+    name: 'audio.generate_speech',
+    description: '使用本地 MOSS TTS 生成语音并自动保存到当前项目素材库。返回 mediaId；需要放入时间轴时，再调用 timeline.add_media。',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', minLength: 1, maxLength: 10000 },
+        voice: {
+          type: 'string',
+          enum: ['Junhao', 'Zhiming', 'Weiguo', 'Xiaoyu', 'Yuewen', 'Lingyu', 'Trump', 'Ava', 'Bella', 'Adam', 'Nathan', 'Soyo', 'Saki', 'Mortis', 'Umiri', 'Mei', 'Anon', 'Arisa'],
+          default: 'Junhao',
+        },
+        speed: { type: 'number', minimum: 0.5, maximum: 2, default: 1 },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'audio.generate_music',
+    description: '使用本地 MusicGen 生成背景音乐并自动保存到当前项目素材库。返回 mediaId；需要放入时间轴时，再调用 timeline.add_media。',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', minLength: 1, maxLength: 1000 },
+        model: { type: 'string', enum: ['musicgen-small'], default: 'musicgen-small' },
+        durationSeconds: { type: 'number', minimum: 2, maximum: 30, default: 8 },
+        guidanceScale: { type: 'number', minimum: 0, maximum: 10, default: 3 },
+      },
+      required: ['prompt'],
+      additionalProperties: false,
+    },
+  },
+]
+
+export const FREECUT_AUDIO_TOOL_NAMES = audioTools.map(tool => tool.name)
+
 const timelineTools = [
   {
     name: 'project.inspect',
@@ -489,7 +527,7 @@ const timelineTools = [
   },
 ]
 
-const allTools = [...memoryTools, ...sourceTools, ...mediaTools, ...timelineTools]
+const allTools = [...memoryTools, ...sourceTools, ...mediaTools, ...audioTools, ...timelineTools]
 
 const PARALLEL_SAFE_TOOL_NAMES = new Set([
   'memory.read',
@@ -528,6 +566,7 @@ const EDITING_GUIDANCE = `
 - 需要更改画布比例或尺寸时使用 project.set_canvas：常用比例传 aspectRatio（例如 9:16），精确尺寸同时传 width 和 height；不要直接编辑工程源码 JSON。
 - 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze；初次粗选素材优先使用 intensity=light，只有需要更密集的场景证据时才使用 normal 或 strong，并在分析完成后再次调用 media.read；没有证据时明确说明未知，不要假装看过素材。
 - 需要按台词寻找内容时使用 media.search_transcript。用返回的 mediaId 和时间范围制定剪辑方案，但仍要通过 project.inspect 或 timeline.inspect_context 确认时间轴片段 ID。
+- 需要生成配音时使用 audio.generate_speech，传入要朗读的 text；需要生成背景音乐时使用 audio.generate_music，传入音乐描述和目标时长。这两个工具都会把生成结果保存到当前项目素材库并返回 mediaId；是否加入时间轴由你根据用户目标决定，加入时调用 timeline.add_media，不要把生成和加入时间轴混成宿主侧流程。
 - source.tree、source.read、source.search、source.check 主要用于诊断工程源码。常规剪辑不需要读取 JSON 源码，更不能把源码内容直接当作修改接口。
 
 规划与执行：
@@ -637,7 +676,7 @@ export async function apply(ctx, config) {
         render: renderToolResult,
       },
       isConcurrencySafe: () => PARALLEL_SAFE_TOOL_NAMES.has(definition.name),
-      timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context')) || definition.name === 'media.analyze'
+      timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context')) || definition.name === 'media.analyze' || definition.name.startsWith('audio.generate_')
         ? 120_000
         : 30_000,
       async execute(args, exec) {

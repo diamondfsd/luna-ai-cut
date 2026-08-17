@@ -20,17 +20,42 @@ const harness = vi.hoisted(() => {
     updatedAt: 1,
   }))
   const getMediaForProject = vi.fn(async () => items)
+  const importGeneratedAudio = vi.fn()
   const getTranscript = vi.fn()
   const analyzeMediaVisual = vi.fn()
+  const generateSpeechFile = vi.fn()
+  const generateMusicFile = vi.fn()
   const host = {}
-  return { items, getMediaForProject, getTranscript, analyzeMediaVisual, host }
+  const generatedAudio = {
+    ...items[2],
+    id: 'generated-audio-1',
+    fileName: 'generated-audio.wav',
+    mimeType: 'audio/wav',
+    duration: 2.75,
+  } as MediaMetadata
+  return {
+    items,
+    generatedAudio,
+    getMediaForProject,
+    importGeneratedAudio,
+    getTranscript,
+    analyzeMediaVisual,
+    generateSpeechFile,
+    generateMusicFile,
+    host,
+  }
 })
 
 vi.mock('@freecut/features/editor/deps/projects', () => ({
   useProjectStore: { getState: () => ({ currentProject: { id: 'project-1' } }) },
 }))
 vi.mock('@freecut/features/media-library/services/media-library-service-loader', () => ({
-  importMediaLibraryService: vi.fn(async () => ({ mediaLibraryService: { getMediaForProject: harness.getMediaForProject } })),
+  importMediaLibraryService: vi.fn(async () => ({
+    mediaLibraryService: {
+      getMediaForProject: harness.getMediaForProject,
+      importGeneratedAudio: harness.importGeneratedAudio,
+    },
+  })),
 }))
 vi.mock('@freecut/infrastructure/storage', () => ({
   getTranscript: harness.getTranscript,
@@ -40,6 +65,17 @@ vi.mock('@freecut/shared/host/embedded-host', () => ({
 }))
 vi.mock('@freecut/features/media-library/services/media-visual-analysis-service', () => ({
   analyzeMediaVisual: harness.analyzeMediaVisual,
+}))
+vi.mock('@freecut/features/editor/services/moss-tts-service', () => ({
+  MOSS_TTS_VOICE_OPTIONS: [
+    { value: 'Junhao', label: 'Junhao (ZH, M)' },
+    { value: 'Xiaoyu', label: 'Xiaoyu (ZH, F)' },
+  ],
+  mossTtsService: { generateSpeechFile: harness.generateSpeechFile },
+}))
+vi.mock('@freecut/features/editor/services/musicgen-service', () => ({
+  DEFAULT_MUSICGEN_MODEL: 'musicgen-small',
+  musicgenService: { generateMusicFile: harness.generateMusicFile },
 }))
 
 import { MEDIA_AI_TOOLS } from './project-source-media-tools'
@@ -56,6 +92,20 @@ describe('project media AI tools', () => {
     for (const item of harness.items) delete item.aiCaptions
     harness.getTranscript.mockResolvedValue(undefined)
     harness.analyzeMediaVisual.mockResolvedValue({ captions: [], intensity: 'light' })
+    harness.importGeneratedAudio.mockImplementation(async (file: File) => ({
+      ...harness.generatedAudio,
+      fileName: file.name,
+    }))
+    harness.generateSpeechFile.mockResolvedValue({
+      blob: new Blob(['speech'], { type: 'audio/wav' }),
+      file: new File(['speech'], 'speech.wav', { type: 'audio/wav' }),
+      duration: 2.5,
+    })
+    harness.generateMusicFile.mockResolvedValue({
+      blob: new Blob(['music'], { type: 'audio/wav' }),
+      file: new File(['music'], 'music.wav', { type: 'audio/wav' }),
+      duration: 8,
+    })
   })
 
   it('lists all seven project media items with editing metadata', async () => {
@@ -162,5 +212,80 @@ describe('project media AI tools', () => {
         weather: '晴朗',
       }] } }],
     })
+  })
+
+  it('generates speech with MOSS and saves the result to the project media library', async () => {
+    const result = await getTool('audio.generate_speech').execute({
+      text: '欢迎来到日落海边。',
+      voice: 'Xiaoyu',
+      speed: 1.25,
+    })
+
+    expect(harness.generateSpeechFile).toHaveBeenCalledWith({
+      text: '欢迎来到日落海边。',
+      voice: 'Xiaoyu',
+      speed: 1.25,
+    })
+    expect(harness.importGeneratedAudio).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'speech.wav' }),
+      'project-1',
+      { tags: ['ai-generated', 'moss-tts', 'tts-engine:moss', 'moss-voice:Xiaoyu'] },
+    )
+    expect(result.data).toMatchObject({
+      mediaId: 'generated-audio-1',
+      fileName: 'speech.wav',
+      durationSeconds: 2.75,
+      mediaType: 'audio',
+      engine: 'moss-tts',
+      voice: 'Xiaoyu',
+      speed: 1.25,
+    })
+  })
+
+  it('generates music with MusicGen, saves it, and forwards cancellation', async () => {
+    const signal = new AbortController().signal
+    const result = await getTool('audio.generate_music').execute({
+      prompt: '温暖舒缓的日落氛围音乐，不要人声。',
+      model: 'musicgen-small',
+      durationSeconds: 12,
+      guidanceScale: 4,
+    }, signal)
+
+    expect(harness.generateMusicFile).toHaveBeenCalledWith({
+      prompt: '温暖舒缓的日落氛围音乐，不要人声。',
+      model: 'musicgen-small',
+      durationSeconds: 12,
+      guidanceScale: 4,
+      signal,
+    })
+    expect(harness.importGeneratedAudio).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'music.wav' }),
+      'project-1',
+      { tags: ['ai-generated', 'musicgen', 'musicgen-model:musicgen-small', 'musicgen-target:12s'] },
+    )
+    expect(result.data).toMatchObject({
+      mediaId: 'generated-audio-1',
+      fileName: 'music.wav',
+      durationSeconds: 2.75,
+      mediaType: 'audio',
+      engine: 'musicgen',
+      model: 'musicgen-small',
+      targetDurationSeconds: 12,
+      guidanceScale: 4,
+    })
+  })
+
+  it('rejects invalid audio generation parameters before invoking a model', () => {
+    expect(getTool('audio.generate_speech').validate({
+      text: 'hello',
+      voice: 'unknown',
+      speed: 1,
+    })).toMatchObject({ ok: false })
+    expect(getTool('audio.generate_music').validate({
+      prompt: 'music',
+      durationSeconds: 1,
+    })).toMatchObject({ ok: false })
+    expect(harness.generateSpeechFile).not.toHaveBeenCalled()
+    expect(harness.generateMusicFile).not.toHaveBeenCalled()
   })
 })

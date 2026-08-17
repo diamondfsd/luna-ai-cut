@@ -1,7 +1,7 @@
 /**
  * Web Worker for LFM-2.5-VL scene cut verification.
  *
- * Loads LFM2.5-VL-450M-ONNX via @huggingface/transformers (bundled by Vite).
+ * Loads the latest LFM2.5-VL-450M-ONNX ModelScope files via Transformers.js.
  * Runs inside a Worker so that model loading and inference don't block the
  * main thread.
  *
@@ -26,12 +26,20 @@ import {
   LFM_SCENE_CAPTION_PROMPT,
   parseSceneCaptionResponse,
 } from './captioning/scene-caption-format'
+import {
+  LFM_SCENE_MODEL_ID,
+  MODELSCOPE_DEFAULT_REVISION,
+  MODELSCOPE_REMOTE_HOST,
+  MODELSCOPE_REMOTE_PATH_TEMPLATE,
+} from '@freecut/shared/utils/model-sources'
 
-const MODEL_ID = 'LiquidAI/LFM2.5-VL-450M-ONNX'
+const MODEL_ID = LFM_SCENE_MODEL_ID
 
 // Configure transformers.js for browser worker context
 env.useBrowserCache = true
 env.allowLocalModels = false
+env.remoteHost = MODELSCOPE_REMOTE_HOST
+env.remotePathTemplate = MODELSCOPE_REMOTE_PATH_TEMPLATE
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let processor: any = null
@@ -61,11 +69,14 @@ async function loadModel(): Promise<void> {
     post({ type: 'progress', stage: 'loading-model', percent: 5 })
 
     let lastPct = 5
-    const loadedProcessor = await AutoProcessor.from_pretrained(MODEL_ID)
+    const loadedProcessor = await AutoProcessor.from_pretrained(MODEL_ID, {
+      revision: MODELSCOPE_DEFAULT_REVISION,
+    })
 
     if (disposed || thisGen !== loadGeneration) return
 
     const loadedModel = await AutoModelForImageTextToText.from_pretrained(MODEL_ID, {
+      revision: MODELSCOPE_DEFAULT_REVISION,
       dtype: {
         vision_encoder: 'fp16',
         embed_tokens: 'fp16',

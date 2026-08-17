@@ -13,6 +13,7 @@ describe('musicgen-models', () => {
     const definition = getMusicgenModelDefinition(DEFAULT_MUSICGEN_MODEL)
 
     expect(definition.modelId).toBe('Xenova/musicgen-small')
+    expect(definition.revision).toBe('master')
     expect(MUSICGEN_MODEL_OPTIONS[0]).toMatchObject({
       value: 'musicgen-small',
       label: 'MusicGen Small',
