@@ -14,6 +14,15 @@
 
 没有证据时，用“当前没有足够分析结果”描述事实，不要用文件名、用户形容词或旧的片段 ID 推断素材内容。
 
+## 剪辑执行路径
+
+风格由模型结合完整会话、项目规则、素材证据和已加载的风格技能自行判断，不再经过额外的风格协议或计划工具。
+
+1. 先调用 `media.list` 和 `project.inspect`，需要看画面或台词时再调用 `media.read` / `media.analyze`。
+2. 在模型内部确定镜头顺序、源时间范围、节奏、声音和字幕策略后，直接调用现有 `timeline.*` 工具。
+3. 已经确定多条同类操作时，优先调用 `timeline.add_media_batch`、`timeline.add_text_batch` 或 `timeline.add_transition_batch`，减少往返。
+4. 每次写入后阅读返回的 `data`，完成一组编辑后再次调用 `project.inspect`；工具结果必须交回模型继续判断。
+
 ## 时间轴工具规则
 
 - 正常剪辑必须使用 `timeline.*` 和 `project.*` 工具，不能直接改工程 JSON。
