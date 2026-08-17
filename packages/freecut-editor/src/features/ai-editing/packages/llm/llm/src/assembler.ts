@@ -22,6 +22,11 @@ interface PartialBlock {
   block?: ContentBlock
 }
 
+/** Keep tool-result correlation valid when an adapter emits an empty id. */
+function toolCallId(value: CallId | undefined, index: number): CallId {
+  return value !== undefined && String(value).length > 0 ? value : CallId(`call-${index}`)
+}
+
 /**
  * Incrementally assembles raw {@link StreamChunk}s into complete
  * {@link ContentBlock}s and a final assistant {@link Message}.
@@ -67,7 +72,7 @@ export class BlockAssembler {
       case 'tool-call-delta': {
         const partial = this.ensure(chunk.index, 'tool-call')
         if (partial.block) return // closed by block-end; ignore stragglers
-        partial.toolCallId = chunk.id
+        partial.toolCallId = toolCallId(chunk.id, chunk.index)
         if (chunk.name) partial.toolCallName = chunk.name
         partial.toolCallArguments += chunk.argumentsDelta
         return
@@ -104,13 +109,16 @@ export class BlockAssembler {
   }
 
   private assemble(partial: PartialBlock, index: number): ContentBlock {
-    if (partial.block) return partial.block
+    if (partial.block) {
+      if (partial.block.type !== 'tool-call') return partial.block
+      return { ...partial.block, id: toolCallId(partial.block.id, index) }
+    }
     switch (partial.blockType) {
       case 'text': return { type: 'text', text: partial.text }
       case 'reasoning': return { type: 'reasoning', text: partial.text }
       case 'tool-call': return {
         type: 'tool-call',
-        id: partial.toolCallId ?? CallId(`call-${index}`),
+        id: toolCallId(partial.toolCallId, index),
         name: partial.toolCallName ?? '',
         arguments: partial.toolCallArguments,
       }

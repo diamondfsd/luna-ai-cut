@@ -374,7 +374,7 @@ export function WebGpuColorGradeTestPage() {
 
       <section className="webgpu-grade-info-grid">
         <InfoItem icon={<Zap size={16} />} label="渲染路径" value="媒体 → WebGPU shader → 画布" />
-        <InfoItem icon={<Film size={16} />} label="视频路径" value="Mediabunny / WebCodecs / MP4" />
+        <InfoItem icon={<Film size={16} />} label="视频路径" value="WebGPU / H.264 / MP4" />
         <InfoItem icon={<ImageIcon size={16} />} label="当前输入" value={source ? `${source.kind === 'image' ? '图片' : '视频'} · ${formatBytes(source.file.size)}` : '未选择'} />
         <InfoItem icon={<CheckCircle2 size={16} />} label="设备状态" value={gpuStatus.state === 'ready' ? 'GPU 加速可用' : gpuStatus.message} />
       </section>
