@@ -3,6 +3,11 @@ import {
   FREECUT_MEMORY_TOOL_NAMES,
   renderToolResult,
 } from './deepseek-harness-freecut-plugin.mjs'
+import {
+  BUILT_IN_SKILL_NAMES,
+  loadBuiltInSkills,
+  registerBuiltInSkills,
+} from './deepseek-harness-built-in-skills.mjs'
 
 assert.deepEqual(FREECUT_MEMORY_TOOL_NAMES, [
   'memory.read',
@@ -27,4 +32,21 @@ assert.deepEqual(JSON.parse(rendered[0].text), result)
 assert.match(rendered[0].text, /clip-1/)
 assert.match(rendered[0].text, /media-1/)
 
+const loadedSkills = await loadBuiltInSkills()
+assert.deepEqual(loadedSkills.map(skill => skill.name), BUILT_IN_SKILL_NAMES)
+assert.ok(loadedSkills.every(skill => skill.source === 'bundled'))
+assert.ok(loadedSkills.every(skill => skill.provider === 'luna-freecut-built-in'))
+const master = loadedSkills.find(skill => skill.name === 'luna-editing-master')
+assert.ok(master)
+assert.match(master.content, /创作需求简报/)
+assert.match(master.content, /AI 剪辑执行契约/)
+
+const registeredSkills = []
+const registeredNames = await registerBuiltInSkills({
+  skills: { register: skill => registeredSkills.push(skill) },
+})
+assert.deepEqual(registeredNames, BUILT_IN_SKILL_NAMES)
+assert.deepEqual(registeredSkills.map(skill => skill.name), BUILT_IN_SKILL_NAMES)
+
 console.log('DeepSeek Harness FreeCut tool result rendering passed.')
+console.log('DeepSeek Harness built-in editing skills registration passed.')

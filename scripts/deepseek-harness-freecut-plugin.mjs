@@ -5,6 +5,7 @@
 // small host marker so its embedded-mode source changes stay scoped to FreeCut.
 
 import { randomUUID } from 'node:crypto'
+import { registerBuiltInSkills } from './deepseek-harness-built-in-skills.mjs'
 
 const RESULT_SCHEMA = {
   type: 'object',
@@ -548,7 +549,7 @@ const EDITING_GUIDANCE = `
 `.trim()
 
 export const name = 'luna-freecut-project-source'
-export const inject = ['tools', 'systemPrompt', 'workspaceRegistry', 'agents', 'agentPresets', 'webServer']
+export const inject = ['tools', 'systemPrompt', 'skills', 'workspaceRegistry', 'agents', 'agentPresets', 'webServer']
 
 export function renderToolResult(_args, value) {
   const text = JSON.stringify(value, null, 2)
@@ -627,6 +628,7 @@ async function initializeProjectWorkspace(ctx, config) {
 
 export async function apply(ctx, config) {
   validateConfig(config)
+  await registerBuiltInSkills(ctx)
   for (const definition of allTools) {
     ctx.tools.register({
       ...definition,
