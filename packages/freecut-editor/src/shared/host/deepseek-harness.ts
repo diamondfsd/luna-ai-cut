@@ -5,7 +5,7 @@ export interface EmbeddedDeepSeekHarnessWebState {
   error?: string
 }
 
-export interface EmbeddedDeepSeekHarnessSourceToolRequest {
+export interface EmbeddedDeepSeekHarnessToolRequest {
   requestId: string
   projectId: string
   name: string
@@ -15,6 +15,6 @@ export interface EmbeddedDeepSeekHarnessSourceToolRequest {
 export interface EmbeddedDeepSeekHarnessBridge {
   getWebUrl(projectId: string): Promise<string>
   onWebState(callback: (state: EmbeddedDeepSeekHarnessWebState) => void): () => void
-  onSourceToolRequest(callback: (request: EmbeddedDeepSeekHarnessSourceToolRequest) => Promise<unknown>): () => void
-  onSourceToolCancel(callback: (requestId: string) => void): () => void
+  onToolRequest(callback: (request: EmbeddedDeepSeekHarnessToolRequest) => Promise<unknown>): () => void
+  onToolCancel(callback: (requestId: string) => void): () => void
 }

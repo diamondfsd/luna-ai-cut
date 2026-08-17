@@ -32,7 +32,6 @@ import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segm
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
-import type { AiEditingSourceGitApi } from './aiEditingSourceGit'
 import type { DeepSeekHarnessApi } from './deepseekHarness'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
@@ -308,7 +307,6 @@ export interface LunaApi {
     onSessionUpdated(callback: (session: AiSelectionSession) => void): () => void
   }
   deepseekHarness: DeepSeekHarnessApi
-  aiEditingSourceGit: AiEditingSourceGitApi
   workspace: {
     chooseMediaFiles(): Promise<string[]>
     chooseMediaDirectory(): Promise<string[]>

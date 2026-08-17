@@ -5,7 +5,7 @@ export interface DeepSeekHarnessWebState {
   error?: string
 }
 
-export interface DeepSeekHarnessSourceToolRequest {
+export interface DeepSeekHarnessToolRequest {
   requestId: string
   projectId: string
   name: string
@@ -15,6 +15,6 @@ export interface DeepSeekHarnessSourceToolRequest {
 export interface DeepSeekHarnessApi {
   getWebUrl(projectId: string): Promise<string>
   onWebState(callback: (state: DeepSeekHarnessWebState) => void): () => void
-  onSourceToolRequest(callback: (request: DeepSeekHarnessSourceToolRequest) => Promise<unknown>): () => void
-  onSourceToolCancel(callback: (requestId: string) => void): () => void
+  onToolRequest(callback: (request: DeepSeekHarnessToolRequest) => Promise<unknown>): () => void
+  onToolCancel(callback: (requestId: string) => void): () => void
 }

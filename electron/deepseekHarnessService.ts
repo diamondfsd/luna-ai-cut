@@ -6,12 +6,11 @@ import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { parse, stringify } from 'yaml'
-import { createAiEditingSourceGitService } from './aiEditingSourceGitService'
 import { withEmbeddedHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
 import { createUserMemoryStore } from './userMemoryService'
 import type {
-  EmbeddedDeepSeekHarnessSourceToolRequest,
+  EmbeddedDeepSeekHarnessToolRequest,
   EmbeddedDeepSeekHarnessWebState,
 } from '../packages/freecut-editor/src/shared/host/deepseek-harness'
 
@@ -26,25 +25,25 @@ interface HarnessRuntime {
   url: string
 }
 
-interface PendingSourceToolRequest {
+interface PendingToolRequest {
   senderId: number
   resolve: (value: unknown) => void
   reject: (reason?: unknown) => void
   timeout: ReturnType<typeof setTimeout>
 }
 
-const SOURCE_TOOL_REQUEST_TIMEOUT_MS = 130_000
+const TOOL_REQUEST_TIMEOUT_MS = 130_000
 
 const listeners = new Set<(state: EmbeddedDeepSeekHarnessWebState) => void>()
-const pendingSourceToolRequests = new Map<string, PendingSourceToolRequest>()
+const pendingToolRequests = new Map<string, PendingToolRequest>()
 let runtime: HarnessRuntime | undefined
 let startingRuntime: Promise<string> | undefined
 let startingRuntimeGeneration: number | undefined
 let startingChild: ChildProcess | undefined
 let runtimeGeneration = 0
 let rendererId: number | undefined
-let sourceToolServer: Server | undefined
-let sourceToolEndpoint: string | undefined
+let toolServer: Server | undefined
+let toolEndpoint: string | undefined
 let userMemoryStore: ReturnType<typeof createUserMemoryStore> | undefined
 
 function appRoot(): string {
@@ -81,7 +80,7 @@ function standardPresetPath(): string {
   return found
 }
 
-function sourcePluginPath(): string {
+function pluginPath(): string {
   const candidates = [
     path.join(appRoot(), 'scripts/deepseek-harness-freecut-plugin.mjs'),
     path.join(appRoot(), 'dist/deepseek-harness/luna-freecut-plugin.mjs'),
@@ -122,13 +121,13 @@ function harnessSessionRootForBaseDir(baseDir: string): string {
 
 function dshHome(): string {
   // Keep Harness settings, credentials, and session indexes beside the rest of
-  // the user's configured local data, never in the project source tree.
+  // the user's configured local data, never in a project directory.
   return harnessHomeForBaseDir(currentBaseDir())
 }
 
 function userMemoryRoot(): string {
   // User preferences are private application data and must never live in a
-  // project source worktree. They apply across all Luna AI Cut projects.
+  // project directory. They apply across all Luna AI Cut projects.
   return path.join(app.getPath('userData'), 'user-memory')
 }
 
@@ -153,7 +152,7 @@ function emitState(state: EmbeddedDeepSeekHarnessWebState): void {
   for (const listener of listeners) listener(state)
 }
 
-function sourceToolTarget(): Electron.WebContents {
+function toolTarget(): Electron.WebContents {
   if (rendererId !== undefined) {
     const target = webContents.fromId(rendererId)
     if (target && !target.isDestroyed()) return target
@@ -163,28 +162,28 @@ function sourceToolTarget(): Electron.WebContents {
   return target
 }
 
-function requestSourceTool(
+function requestTool(
   projectId: string,
   name: string,
   args: Record<string, unknown>,
   requestId: string,
 ): Promise<unknown> {
-  const target = sourceToolTarget()
+  const target = toolTarget()
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      cancelDeepSeekHarnessSourceToolRequest(target.id, requestId, '源码工具调用超时。')
-    }, SOURCE_TOOL_REQUEST_TIMEOUT_MS)
-    pendingSourceToolRequests.set(requestId, { senderId: target.id, resolve, reject, timeout })
+      cancelDeepSeekHarnessToolRequest(target.id, requestId, '剪辑能力调用超时。')
+    }, TOOL_REQUEST_TIMEOUT_MS)
+    pendingToolRequests.set(requestId, { senderId: target.id, resolve, reject, timeout })
     try {
-      target.send('deepseek-harness:source-tool-request', {
+      target.send('deepseek-harness:tool-request', {
         requestId,
         projectId,
         name,
         args,
-      } satisfies EmbeddedDeepSeekHarnessSourceToolRequest)
+      } satisfies EmbeddedDeepSeekHarnessToolRequest)
     } catch (error) {
       clearTimeout(timeout)
-      pendingSourceToolRequests.delete(requestId)
+      pendingToolRequests.delete(requestId)
       reject(error)
     }
   })
@@ -203,15 +202,15 @@ async function readRequestBody(request: IncomingMessage): Promise<Record<string,
   for await (const chunk of request as unknown as AsyncIterable<Buffer>) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     size += buffer.byteLength
-    if (size > 2_000_000) throw new Error('源码工具请求过大。')
+    if (size > 2_000_000) throw new Error('剪辑能力请求过大。')
     chunks.push(buffer)
   }
   const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('源码工具请求格式无效。')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('剪辑能力请求格式无效。')
   return value as Record<string, unknown>
 }
 
-async function handleSourceToolRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+async function handleToolRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
   if (request.method !== 'POST') {
     jsonResponse(response, 405, { ok: false, error: 'method not allowed' })
     return
@@ -229,20 +228,20 @@ async function handleSourceToolRequest(request: IncomingMessage, response: Serve
     if (typeof requestId !== 'string' || !requestId || requestId.length > 128
       || typeof projectId !== 'string' || !projectId || typeof name !== 'string' || !name
       || !args || typeof args !== 'object' || Array.isArray(args)) {
-      throw new Error('源码工具请求参数无效。')
+      throw new Error('剪辑能力请求参数无效。')
     }
     let cancelled = false
     const cancel = (): void => {
       if (cancelled || response.writableEnded) return
       cancelled = true
-      cancelDeepSeekHarnessSourceToolRequest(undefined, requestId, '源码工具调用已取消。')
+      cancelDeepSeekHarnessToolRequest(undefined, requestId, '剪辑能力调用已取消。')
     }
     request.once('aborted', cancel)
     response.once('close', cancel)
     try {
       const result = name.startsWith('memory.')
         ? await executeUserMemoryTool(name, args as Record<string, unknown>)
-        : await requestSourceTool(projectId, name, args as Record<string, unknown>, requestId)
+        : await requestTool(projectId, name, args as Record<string, unknown>, requestId)
       jsonResponse(response, 200, { ok: true, result })
     } finally {
       request.removeListener('aborted', cancel)
@@ -252,29 +251,29 @@ async function handleSourceToolRequest(request: IncomingMessage, response: Serve
     if (response.destroyed || response.writableEnded) return
     jsonResponse(response, 400, {
       ok: false,
-      error: error instanceof Error ? error.message : '源码工具调用失败。',
+      error: error instanceof Error ? error.message : '剪辑能力调用失败。',
     })
   }
 }
 
-async function ensureSourceToolServer(): Promise<string> {
-  if (sourceToolEndpoint) return sourceToolEndpoint
-  sourceToolServer = createServer((request, response) => {
+async function ensureToolServer(): Promise<string> {
+  if (toolEndpoint) return toolEndpoint
+  toolServer = createServer((request, response) => {
     const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
-    if (pathname !== '/source-tool') {
+    if (pathname !== '/capability') {
       jsonResponse(response, 404, { ok: false, error: 'not found' })
       return
     }
-    void handleSourceToolRequest(request, response)
+    void handleToolRequest(request, response)
   })
   await new Promise<void>((resolve, reject) => {
-    sourceToolServer?.once('error', reject)
-    sourceToolServer?.listen(0, '127.0.0.1', resolve)
+    toolServer?.once('error', reject)
+    toolServer?.listen(0, '127.0.0.1', resolve)
   })
-  const address = sourceToolServer.address()
-  if (!address || typeof address === 'string') throw new Error('无法启动源码工具通道。')
-  sourceToolEndpoint = `http://127.0.0.1:${String(address.port)}/source-tool`
-  return sourceToolEndpoint
+  const address = toolServer.address()
+  if (!address || typeof address === 'string') throw new Error('无法启动剪辑能力通道。')
+  toolEndpoint = `http://127.0.0.1:${String(address.port)}/capability`
+  return toolEndpoint
 }
 
 async function writePrivateDocument(filePath: string, value: unknown): Promise<void> {
@@ -337,7 +336,7 @@ async function ensureWebPatch(home: string, config: {
   retained.push({
     insert: [{
       id: 'luna-freecut',
-      name: sourcePluginPath().replaceAll('\\', '\\\\'),
+      name: pluginPath().replaceAll('\\', '\\\\'),
       config: {
         ...config,
       },
@@ -379,7 +378,7 @@ async function prepareHarnessHome(
   // FreeCut's plugin is mounted by the Web profile patch so it can also
   // register the default workspace before the first browser session exists.
   await fs.writeFile(path.join(presetDir, 'agent.cordis.yml'), standard, { encoding: 'utf8', mode: 0o600 })
-  await fs.writeFile(path.join(presetDir, 'preset.yml'), 'name: Luna AI Cut\ndescription: 当前项目源码编辑能力\n', { encoding: 'utf8', mode: 0o600 })
+  await fs.writeFile(path.join(presetDir, 'preset.yml'), 'name: Luna AI Cut\ndescription: 当前项目脚本编辑能力\n', { encoding: 'utf8', mode: 0o600 })
 }
 
 async function terminateChild(child: ChildProcess): Promise<void> {
@@ -401,13 +400,13 @@ async function stopRuntime(): Promise<void> {
   runtime = undefined
   startingRuntime = undefined
   startingRuntimeGeneration = undefined
-  for (const [requestId, pending] of pendingSourceToolRequests) {
+  for (const [requestId, pending] of pendingToolRequests) {
     clearTimeout(pending.timeout)
-    pendingSourceToolRequests.delete(requestId)
+    pendingToolRequests.delete(requestId)
     pending.reject(new Error('DeepSeek Harness 已关闭。'))
     const target = webContents.fromId(pending.senderId)
     if (target && !target.isDestroyed()) {
-      target.send('deepseek-harness:source-tool-cancel', { requestId })
+      target.send('deepseek-harness:tool-cancel', { requestId })
     }
   }
   const children = new Set<ChildProcess>()
@@ -417,14 +416,14 @@ async function stopRuntime(): Promise<void> {
 }
 
 async function startRuntime(projectId: string, generation: number): Promise<string> {
-  const endpoint = await ensureSourceToolServer()
+  const endpoint = await ensureToolServer()
   const token = randomUUID()
   const baseDir = currentBaseDir()
   const home = harnessHomeForBaseDir(baseDir)
   const sessionRoot = harnessSessionRootForBaseDir(baseDir)
-  const cwd = createAiEditingSourceGitService(baseDir, projectId).rootPath
-  await prepareHarnessHome(projectId, token, endpoint, cwd, home)
   await fs.mkdir(sessionRoot, { recursive: true, mode: 0o700 })
+  const cwd = sessionRoot
+  await prepareHarnessHome(projectId, token, endpoint, cwd, home)
   if (home !== dshHome()) throw new Error('DeepSeek Harness Web 启动已取消。')
   if (generation !== runtimeGeneration) throw new Error('DeepSeek Harness Web 启动已取消。')
   const child = spawn(harnessNodeExecutable(), [cliEntry(), 'web', '--host', '127.0.0.1', '--port', '0'], {
@@ -493,31 +492,31 @@ export function setDeepSeekHarnessRenderer(senderId: number): void {
   rendererId = senderId
 }
 
-export function resolveDeepSeekHarnessSourceToolResponse(
+export function resolveDeepSeekHarnessToolResponse(
   senderId: number,
   payload: { requestId: string; ok: boolean; result?: unknown; error?: string },
 ): void {
-  const pending = pendingSourceToolRequests.get(payload.requestId)
+  const pending = pendingToolRequests.get(payload.requestId)
   if (!pending || pending.senderId !== senderId) return
-  pendingSourceToolRequests.delete(payload.requestId)
+  pendingToolRequests.delete(payload.requestId)
   clearTimeout(pending.timeout)
   if (payload.ok) pending.resolve(payload.result)
-  else pending.reject(new Error(payload.error || '源码工具调用失败。'))
+  else pending.reject(new Error(payload.error || '剪辑能力调用失败。'))
 }
 
-export function cancelDeepSeekHarnessSourceToolRequest(
+export function cancelDeepSeekHarnessToolRequest(
   senderId: number | undefined,
   requestId: string,
-  message = '源码工具调用已取消。',
+  message = '剪辑能力调用已取消。',
 ): void {
-  const pending = pendingSourceToolRequests.get(requestId)
+  const pending = pendingToolRequests.get(requestId)
   if (!pending || (senderId !== undefined && pending.senderId !== senderId)) return
-  pendingSourceToolRequests.delete(requestId)
+  pendingToolRequests.delete(requestId)
   clearTimeout(pending.timeout)
   pending.reject(new Error(message))
   const target = webContents.fromId(pending.senderId)
   if (target && !target.isDestroyed()) {
-    target.send('deepseek-harness:source-tool-cancel', { requestId })
+    target.send('deepseek-harness:tool-cancel', { requestId })
   }
 }
 
@@ -547,10 +546,10 @@ export function onDeepSeekHarnessWebState(listener: (state: EmbeddedDeepSeekHarn
 
 export async function disposeDeepSeekHarness(): Promise<void> {
   await stopRuntime()
-  if (sourceToolServer) {
-    await new Promise<void>((resolve) => sourceToolServer?.close(() => resolve()))
-    sourceToolServer = undefined
-    sourceToolEndpoint = undefined
+  if (toolServer) {
+    await new Promise<void>((resolve) => toolServer?.close(() => resolve()))
+    toolServer = undefined
+    toolEndpoint = undefined
   }
   rendererId = undefined
 }

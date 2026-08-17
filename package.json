@@ -85,7 +85,6 @@
     "@techstark/opencv-js": "5.0.0-release.1",
     "adm-zip": "^0.5.17",
     "exifr": "^7.1.3",
-    "isomorphic-git": "^1.41.2",
     "lucide-react": "^1.21.0",
     "mediabunny": "1.50.8",
     "opencc-js": "1.4.1",

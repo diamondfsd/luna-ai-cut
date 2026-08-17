@@ -30,9 +30,8 @@ import type {
   FreecutWorkspaceApi,
   FreecutExportApi,
   OriginalFileExportRequest,
-  AiEditingSourceGitApi,
   DeepSeekHarnessApi,
-  DeepSeekHarnessSourceToolRequest,
+  DeepSeekHarnessToolRequest,
 } from '../src/shared/types'
 import type { HtmlRenderApi } from './htmlRenderTypes'
 
@@ -180,65 +179,28 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       ipcRenderer.on('deepseek-harness:web-state', listener)
       return () => ipcRenderer.removeListener('deepseek-harness:web-state', listener)
     },
-    onSourceToolRequest: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, request: DeepSeekHarnessSourceToolRequest) => {
+    onToolRequest: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, request: DeepSeekHarnessToolRequest) => {
         void callback(request).then(
-          (result) => ipcRenderer.send('deepseek-harness:source-tool-response', { requestId: request.requestId, ok: true, result }),
-          (error: unknown) => ipcRenderer.send('deepseek-harness:source-tool-response', {
+          (result) => ipcRenderer.send('deepseek-harness:tool-response', { requestId: request.requestId, ok: true, result }),
+          (error: unknown) => ipcRenderer.send('deepseek-harness:tool-response', {
             requestId: request.requestId,
             ok: false,
-            error: error instanceof Error ? error.message : '源码工具调用失败。',
+            error: error instanceof Error ? error.message : '剪辑能力调用失败。',
           }),
         )
       }
-      ipcRenderer.on('deepseek-harness:source-tool-request', listener)
-      return () => ipcRenderer.removeListener('deepseek-harness:source-tool-request', listener)
+      ipcRenderer.on('deepseek-harness:tool-request', listener)
+      return () => ipcRenderer.removeListener('deepseek-harness:tool-request', listener)
     },
-    onSourceToolCancel: (callback) => {
+    onToolCancel: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: { requestId: string }) => {
         if (typeof payload?.requestId === 'string') callback(payload.requestId)
       }
-      ipcRenderer.on('deepseek-harness:source-tool-cancel', listener)
-      return () => ipcRenderer.removeListener('deepseek-harness:source-tool-cancel', listener)
+      ipcRenderer.on('deepseek-harness:tool-cancel', listener)
+      return () => ipcRenderer.removeListener('deepseek-harness:tool-cancel', listener)
     },
   } satisfies DeepSeekHarnessApi,
-  aiEditingSourceGit: {
-    root: (projectId) => ipcRenderer.invoke('ai-editing-source-git:root', projectId),
-    onChanged: (projectId, callback) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: { projectId: string; paths: string[] },
-      ) => {
-        if (payload.projectId === projectId) callback(payload.paths)
-      }
-      ipcRenderer.on('ai-editing-source-git:changed', listener)
-      void ipcRenderer.invoke('ai-editing-source-git:watch', projectId).catch(() => {
-        ipcRenderer.removeListener('ai-editing-source-git:changed', listener)
-      })
-      return () => {
-        ipcRenderer.removeListener('ai-editing-source-git:changed', listener)
-        void ipcRenderer.invoke('ai-editing-source-git:unwatch', projectId).catch(() => undefined)
-      }
-    },
-    ensure: (projectId, initialFiles) => ipcRenderer.invoke('ai-editing-source-git:ensure', projectId, initialFiles),
-    status: (projectId) => ipcRenderer.invoke('ai-editing-source-git:status', projectId),
-    list: (projectId, sourceDirectory) => ipcRenderer.invoke('ai-editing-source-git:list', projectId, sourceDirectory),
-    read: (projectId, sourcePath) => ipcRenderer.invoke('ai-editing-source-git:read', projectId, sourcePath),
-    create: (projectId, sourcePath, content) => ipcRenderer.invoke('ai-editing-source-git:create', projectId, sourcePath, content),
-    replace: (projectId, input) => ipcRenderer.invoke('ai-editing-source-git:replace', projectId, input),
-    write: (projectId, sourcePath, content) => ipcRenderer.invoke('ai-editing-source-git:write', projectId, sourcePath, content),
-    remove: (projectId, sourcePath, expectedRevision) => ipcRenderer.invoke('ai-editing-source-git:remove', projectId, sourcePath, expectedRevision),
-    applyChanges: (projectId, changes) => ipcRenderer.invoke('ai-editing-source-git:apply-changes', projectId, changes),
-    diff: (projectId) => ipcRenderer.invoke('ai-editing-source-git:diff', projectId),
-    log: (projectId, limit) => ipcRenderer.invoke('ai-editing-source-git:log', projectId, limit),
-    branches: (projectId) => ipcRenderer.invoke('ai-editing-source-git:branches', projectId),
-    createBranch: (projectId, name) => ipcRenderer.invoke('ai-editing-source-git:create-branch', projectId, name),
-    checkout: (projectId, name) => ipcRenderer.invoke('ai-editing-source-git:checkout', projectId, name),
-    resetToInitial: (projectId) =>
-      ipcRenderer.invoke('ai-editing-source-git:reset-to-initial', projectId),
-    commit: (projectId, message, sourcePaths) =>
-      ipcRenderer.invoke('ai-editing-source-git:commit', projectId, message, sourcePaths),
-  } satisfies AiEditingSourceGitApi,
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     chooseMediaDirectory: () => ipcRenderer.invoke('workspace:chooseMediaDirectory'),

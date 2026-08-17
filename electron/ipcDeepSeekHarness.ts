@@ -1,9 +1,9 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import {
-  cancelDeepSeekHarnessSourceToolRequest,
+  cancelDeepSeekHarnessToolRequest,
   getDeepSeekHarnessWebUrl,
   onDeepSeekHarnessWebState,
-  resolveDeepSeekHarnessSourceToolResponse,
+  resolveDeepSeekHarnessToolResponse,
   setDeepSeekHarnessRenderer,
 } from './deepseekHarnessService'
 
@@ -17,17 +17,17 @@ export function register(): void {
     setDeepSeekHarnessRenderer(event.sender.id)
     return getDeepSeekHarnessWebUrl(projectId)
   })
-  ipcMain.on('deepseek-harness:source-tool-response', (event, payload) => {
-    if (!isSourceToolResponse(payload)) return
-    resolveDeepSeekHarnessSourceToolResponse(event.sender.id, payload)
+  ipcMain.on('deepseek-harness:tool-response', (event, payload) => {
+    if (!isToolResponse(payload)) return
+    resolveDeepSeekHarnessToolResponse(event.sender.id, payload)
   })
-  ipcMain.on('deepseek-harness:source-tool-cancel', (event, payload) => {
-    if (!isSourceToolCancel(payload)) return
-    cancelDeepSeekHarnessSourceToolRequest(event.sender.id, payload.requestId)
+  ipcMain.on('deepseek-harness:tool-cancel', (event, payload) => {
+    if (!isToolCancel(payload)) return
+    cancelDeepSeekHarnessToolRequest(event.sender.id, payload.requestId)
   })
 }
 
-function isSourceToolResponse(value: unknown): value is {
+function isToolResponse(value: unknown): value is {
   requestId: string
   ok: boolean
   result?: unknown
@@ -41,7 +41,7 @@ function isSourceToolResponse(value: unknown): value is {
     && (payload.error === undefined || typeof payload.error === 'string')
 }
 
-function isSourceToolCancel(value: unknown): value is { requestId: string } {
+function isToolCancel(value: unknown): value is { requestId: string } {
   if (!value || typeof value !== 'object') return false
   const requestId = (value as Record<string, unknown>).requestId
   return typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128

@@ -10,7 +10,7 @@ https://github.com/deepseek-ai/deepseek-harness
 
 当前副本没有作为 Git submodule、Git subtree 或 npm 依赖接入，因此本项目 Git 历史不会自动记录它对应的上游提交，也没有现成的 `git pull` 更新方式。
 
-后续如果直接把官方仓库内容覆盖到本地目录，会覆盖 FreeCut 为集成 Harness 增加的插件、Electron 通信、源码工具和构建适配代码；如果只更新少数文件，又容易漏掉上游新增、删除或依赖变化。
+后续如果直接把官方仓库内容覆盖到本地目录，会覆盖 FreeCut 为集成 Harness 增加的插件、Electron 通信、脚本能力通道和构建适配代码；如果只更新少数文件，又容易漏掉上游新增、删除或依赖变化。
 
 ## 当前代码位置
 
@@ -25,13 +25,13 @@ packages/freecut-editor/src/features/ai-editing/
 | 内容 | 文件 |
 | --- | --- |
 | 构建 Harness Web runtime | `scripts/build-deepseek-harness-web.mjs` |
-| FreeCut 工程源码插件 | `scripts/deepseek-harness-freecut-plugin.mjs` |
+| FreeCut 剪辑脚本插件 | `scripts/deepseek-harness-freecut-plugin.mjs` |
 | 上游同步配置 | `deepseek-harness.upstream.json` |
 | 上游三方同步 | `scripts/update-deepseek-harness.mjs` |
 | Electron 主进程服务 | `electron/deepseekHarnessService.ts` |
 | Electron 启动与 IPC | `electron/deepseekHarnessService.ts`、`electron/ipcDeepSeekHarness.ts` |
 | Renderer 端面板 | `packages/freecut-editor/src/features/editor/components/deepseek-harness-*.tsx` |
-| FreeCut 工程源码能力 | `packages/freecut-editor/src/features/project-source/` |
+| FreeCut 剪辑能力适配器 | `packages/freecut-editor/src/features/project-source/` |
 
 构建时会执行：
 
@@ -47,7 +47,7 @@ pnpm run build:harness-runtime
 
 - 删除原有 FreeCut 自己维护的 AI Agent loop 和相关工具实现。
 - 增加 DeepSeek Harness 的 Electron 启动、IPC 和生命周期管理，并复用 Harness 原生设置页。
-- 增加 `luna-freecut-project-source` 插件，把源码工具请求转发给 FreeCut 宿主。
+- 增加 `luna-freecut-script-editing` 插件，把脚本 SDK 能力请求转发给 FreeCut 宿主。
 - 增加 Harness Web runtime 的打包适配。
 - 对官方 Harness 的提示词、工具、会话及页面行为做过本地调整。
 - 对 vendored Cordis 等依赖做过本地重命名、构建和运行时适配；这些改动的记录在 `packages/freecut-editor/src/features/ai-editing/vendor/README.md`。
@@ -126,7 +126,7 @@ pnpm run lint
 - 用户消息原样传递给模型。
 - FreeCut 工具结果会返回 Harness，由模型决定下一步。
 - 工具成功后宿主不会根据文案自行宣告任务完成。
-- FreeCut 的源码插件不再暴露原始源码写入能力；剪辑编辑统一经过结构化 `timeline.*` 工具，工具结果仍必须回传 Harness，由模型决定下一步。
+- FreeCut 插件不暴露项目文件写入能力；剪辑编辑统一经过脚本 SDK 的结构化 `timeline.*` 能力，结果仍必须回传 Harness，由模型决定下一步。
 - 上游依赖更新没有破坏生产包中的 `resources/deepseek-harness/`。
 
 ## 交接结论

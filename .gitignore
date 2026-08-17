@@ -41,7 +41,6 @@ resources/node-runtime/
 docs/
 !packages/freecut-editor/docs/
 packages/freecut-editor/docs/*
-!packages/freecut-editor/docs/ai-editing-coding-agent-harness.md
 # These are FreeCut source files, not generated documentation or build output.
 !packages/freecut-editor/src/routes/docs/
 !packages/freecut-editor/src/routes/docs/index.tsx

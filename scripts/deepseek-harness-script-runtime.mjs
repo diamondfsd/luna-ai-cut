@@ -17,13 +17,6 @@ export const SCRIPT_API = Object.freeze({
     update: 'memory.update',
     remove: 'memory.remove',
   }),
-  source: Object.freeze({
-    tree: 'source.tree',
-    read: 'source.read',
-    search: 'source.search',
-    check: 'source.check',
-    diff: 'source.diff',
-  }),
   media: Object.freeze({
     list: 'media.list',
     read: 'media.read',

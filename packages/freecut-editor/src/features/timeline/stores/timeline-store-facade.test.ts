@@ -9,12 +9,6 @@ const indexedDbMocks = vi.hoisted(() => ({
   saveThumbnail: vi.fn(),
 }))
 
-const projectSourceMocks = vi.hoisted(() => ({
-  ensureProjectSource: vi.fn(),
-  readProjectSource: vi.fn(),
-  writeProjectSource: vi.fn(),
-}))
-
 const playbackMocks = vi.hoisted(() => ({
   currentFrame: 0,
   busAudioEq: undefined,
@@ -34,6 +28,7 @@ const playbackMocks = vi.hoisted(() => ({
 const zoomMocks = vi.hoisted(() => ({
   level: 1,
   setZoomLevel: vi.fn(),
+  setZoomLevelSynchronized: vi.fn(),
 }))
 
 const exportMocks = vi.hoisted(() => {
@@ -70,8 +65,6 @@ vi.mock('@freecut/infrastructure/storage', async (importOriginal) => {
     ...indexedDbMocks,
   }
 })
-
-vi.mock('@freecut/features/project-source/project-source-worktree', () => projectSourceMocks)
 
 vi.mock('@freecut/shared/state/playback', () => ({
   usePlaybackStore: {
@@ -125,9 +118,6 @@ import type { ProjectTimeline } from '@freecut/types/project'
 describe('TimelineStoreFacade', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    projectSourceMocks.ensureProjectSource.mockReset()
-    projectSourceMocks.readProjectSource.mockReset()
-    projectSourceMocks.writeProjectSource.mockReset()
     playbackMocks.currentFrame = 0
     playbackMocks.busAudioEq = undefined
     playbackMocks.masterBusDb = 0
@@ -635,16 +625,14 @@ describe('TimelineStoreFacade', () => {
   })
 
   describe('saveTimeline', () => {
-    it('uses the source tree round-trip as the project.json snapshot', async () => {
+    it('persists the current timeline directly to project.json', async () => {
       indexedDbMocks.getProject.mockResolvedValue({
         id: 'project-1',
         metadata: { fps: 30, width: 1920, height: 1080 },
       })
-      projectSourceMocks.writeProjectSource.mockResolvedValue(true)
-
-      const sourceTrack = {
-        id: 'source-track',
-        name: 'Source Video',
+      const storeTrack = {
+        id: 'store-track',
+        name: 'Store Video',
         kind: 'video' as const,
         height: 80,
         locked: false,
@@ -654,50 +642,17 @@ describe('TimelineStoreFacade', () => {
         order: 0,
         items: [],
       }
-      const compiledTimeline = {
-        tracks: [sourceTrack],
-        items: [],
-        markers: [{ id: 'source-marker', frame: 12, color: '#00ff00' }],
-      }
-      projectSourceMocks.readProjectSource.mockResolvedValue({
-        id: 'project-1',
-        name: 'Project',
-        description: '',
-        createdAt: 1,
-        updatedAt: 1,
-        duration: 0,
-        metadata: { fps: 30, width: 1920, height: 1080 },
-        timeline: compiledTimeline,
-      })
-
-      useItemsStore.getState().setTracks([
-        {
-          id: 'store-track',
-          name: 'Store Video',
-          height: 80,
-          locked: false,
-          visible: true,
-          muted: false,
-          solo: false,
-          order: 0,
-          items: [],
-        },
-      ])
+      useItemsStore.getState().setTracks([storeTrack])
 
       await useTimelineStore.getState().saveTimeline('project-1')
 
-      expect(projectSourceMocks.writeProjectSource).toHaveBeenCalledWith(
+      expect(indexedDbMocks.updateProject).toHaveBeenCalledWith(
+        'project-1',
         expect.objectContaining({
-          id: 'project-1',
           timeline: expect.objectContaining({
             tracks: [expect.objectContaining({ id: 'store-track' })],
           }),
         }),
-      )
-      expect(projectSourceMocks.readProjectSource).toHaveBeenCalledWith('project-1')
-      expect(indexedDbMocks.updateProject).toHaveBeenCalledWith(
-        'project-1',
-        expect.objectContaining({ timeline: compiledTimeline }),
       )
     })
 
@@ -826,7 +781,18 @@ describe('TimelineStoreFacade', () => {
         id: 'project-1',
         metadata: { fps: 30, width: 1920, height: 1080 },
         timeline: {
-          tracks: [],
+          tracks: [{
+            id: 'root-track',
+            name: 'V1',
+            kind: 'video',
+            order: 0,
+            height: 80,
+            locked: false,
+            visible: true,
+            muted: false,
+            solo: false,
+            items: [],
+          }],
           items: [],
           currentFrame: 0,
           zoomLevel: 1,
@@ -836,6 +802,19 @@ describe('TimelineStoreFacade', () => {
           markers: [],
         },
       })
+
+      useItemsStore.getState().setTracks([{
+        id: 'root-track',
+        name: 'V1',
+        kind: 'video',
+        order: 0,
+        height: 80,
+        locked: false,
+        visible: true,
+        muted: false,
+        solo: false,
+        items: [],
+      }])
 
       useCompositionsStore.getState().setCompositions([
         {
@@ -878,7 +857,18 @@ describe('TimelineStoreFacade', () => {
         {
           id: 'comp-b',
           name: 'Comp B',
-          tracks: [],
+          tracks: [{
+            id: 'track-b',
+            name: 'V1',
+            kind: 'video',
+            order: 0,
+            height: 80,
+            locked: false,
+            visible: true,
+            muted: false,
+            solo: false,
+            items: [],
+          }],
           items: [],
           transitions: [],
           keyframes: [],
@@ -999,7 +989,18 @@ describe('TimelineStoreFacade', () => {
         {
           id: 'comp-b',
           name: 'Comp B',
-          tracks: [],
+          tracks: [{
+            id: 'track-b',
+            name: 'V1',
+            kind: 'video',
+            order: 0,
+            height: 80,
+            locked: false,
+            visible: true,
+            muted: false,
+            solo: false,
+            items: [],
+          }],
           items: [],
           transitions: [],
           keyframes: [],

@@ -3,7 +3,6 @@ import type { AnimatableProperty, EasingType } from '@freecut/types/keyframe'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import type { TransitionPresentation } from '@freecut/types/transition'
 import { TEXT_STYLE_PRESETS, type TextStylePresetId } from '@freecut/shared/typography/text-style-presets'
-import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import { resolveMediaUrl } from '@freecut/features/timeline/deps/media-library-resolver'
@@ -23,11 +22,10 @@ import {
 import { commitProjectMetadataChange } from '@freecut/features/editor/utils/project-metadata-history'
 import { captureSnapshot, restoreSnapshot, type TimelineSnapshot } from '@freecut/features/editor/deps/timeline-store'
 import { transitionRegistry } from '@freecut/shared/timeline/transitions'
-import { readProjectSource } from './project-source-worktree'
 import type {
-  ProjectSourceJsonSchema,
-  ProjectSourceTool,
-  ProjectSourceToolResult,
+  ProjectEditingJsonSchema,
+  ProjectEditingTool,
+  ProjectEditingToolResult,
 } from './project-source-tools'
 
 const MAX_INSPECT_ITEMS = 200
@@ -99,7 +97,7 @@ type TimelineState = ReturnType<typeof useTimelineStore.getState>
 function schema(
   properties: Record<string, unknown>,
   required: string[] = [],
-): ProjectSourceJsonSchema {
+): ProjectEditingJsonSchema {
   return { type: 'object', properties, required, additionalProperties: false }
 }
 
@@ -113,10 +111,10 @@ function validate<S extends z.ZodType>(input: unknown, value: S) {
 function tool<S extends z.ZodType>(input: {
   name: string
   description: string
-  inputSchema: ProjectSourceJsonSchema
+  inputSchema: ProjectEditingJsonSchema
   schema: S
-  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectSourceToolResult>
-}): ProjectSourceTool {
+  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectEditingToolResult>
+}): ProjectEditingTool {
   return {
     name: input.name,
     description: input.description,
@@ -399,7 +397,7 @@ async function saveTimelineEdit(
   before: Record<string, unknown>,
   beforeSnapshot?: TimelineSnapshot,
   signal?: AbortSignal,
-): Promise<ProjectSourceToolResult> {
+): Promise<ProjectEditingToolResult> {
   const projectId = currentProjectId()
   try {
     signal?.throwIfAborted()
@@ -407,15 +405,8 @@ async function saveTimelineEdit(
     const issues = validateTimelineState(state)
     if (issues.length > 0) throw new Error(`编辑结果未通过时间轴检查：${issues.join('；')}`)
 
-    if (!getEmbeddedHostBridge().editingSourceGit) {
-      throw new Error('当前运行环境不支持工程源码编辑。')
-    }
     await state.saveTimeline(projectId)
     signal?.throwIfAborted()
-    const compiled = await readProjectSource(projectId)
-    if (!compiled?.timeline) {
-      throw new Error('编辑结果没有成功写回当前工程。')
-    }
     signal?.throwIfAborted()
     return {
       ok: true,
@@ -446,7 +437,7 @@ async function saveItemEdit(
   itemId: string,
   mutate: (item: TimelineItem) => void,
   signal?: AbortSignal,
-): Promise<ProjectSourceToolResult> {
+): Promise<ProjectEditingToolResult> {
   const beforeItem = requireItem(itemId)
   const before = itemSummary(beforeItem, timeline().tracks, timeline().fps)
   const beforeSnapshot = captureSnapshot()
@@ -1128,10 +1119,10 @@ const timelineAddTransition = tool({
 
 async function executeTimelineBatch(
   operation: string,
-  operationTool: ProjectSourceTool,
+  operationTool: ProjectEditingTool,
   items: readonly Record<string, unknown>[],
   signal?: AbortSignal,
-): Promise<ProjectSourceToolResult> {
+): Promise<ProjectEditingToolResult> {
   const projectId = currentProjectId()
   const beforeSnapshot = captureSnapshot()
   const results: unknown[] = []
@@ -1297,7 +1288,7 @@ const timelineListTransitions = tool({
   }),
 })
 
-export const TIMELINE_AI_TOOLS: readonly ProjectSourceTool[] = [
+export const TIMELINE_AI_TOOLS: readonly ProjectEditingTool[] = [
   projectInspect,
   projectSetCanvas,
   timelineInspectContext,

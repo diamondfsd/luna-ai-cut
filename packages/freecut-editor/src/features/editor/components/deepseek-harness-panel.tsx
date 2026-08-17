@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useState } from 'react'
-import { FolderOpen, Loader2, X } from 'lucide-react'
+import { memo, useEffect, useState } from 'react'
+import { Loader2, X } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
 import {
   getEmbeddedHostBridge,
@@ -15,8 +15,6 @@ export const DeepSeekHarnessPanel = memo(function DeepSeekHarnessPanel({
 }) {
   const hostBridge = getEmbeddedHostBridge()
   const bridge = hostBridge.deepseekHarness
-  const sourceBridge = hostBridge.editingSourceGit
-  const revealFile = hostBridge.revealFile
   const [webUrl, setWebUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,12 +57,6 @@ export const DeepSeekHarnessPanel = memo(function DeepSeekHarnessPanel({
     }
   }, [bridge, projectId])
 
-  const handleOpenSourceDirectory = useCallback(async () => {
-    if (!sourceBridge || !revealFile) return
-    const sourceRoot = await sourceBridge.root(projectId)
-    await revealFile(sourceRoot)
-  }, [projectId, revealFile, sourceBridge])
-
   if (!bridge) {
     return <div className="deepseek-harness-panel flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">AI 助手不可用。</div>
   }
@@ -72,18 +64,6 @@ export const DeepSeekHarnessPanel = memo(function DeepSeekHarnessPanel({
   return (
     <div className="deepseek-harness-panel flex h-full min-h-0 flex-col">
       <div className="deepseek-harness-panel__toolbar flex shrink-0 items-center justify-end gap-1 border-b border-border px-2 py-1.5">
-        {sourceBridge && revealFile && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => void handleOpenSourceDirectory()}
-            aria-label="打开项目源码目录"
-            data-tooltip="打开项目源码目录"
-          >
-            <FolderOpen className="h-4 w-4" />
-          </Button>
-        )}
         {onClose && (
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="关闭 AI 助手" data-tooltip="关闭 AI 助手">
             <X className="h-4 w-4" />
