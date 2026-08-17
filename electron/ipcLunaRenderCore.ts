@@ -27,6 +27,7 @@ import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
 import { loadRuntimeResource } from './runtimeResourceService'
 import { embedJpegSourceMetadata, embedVideoSourceMetadata } from './exportSourceMetadata'
 import { registerNativePreviewIpc } from './nativePreviewIpc'
+import { readWebGpuLutFile } from './webGpuLutService'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -120,6 +121,10 @@ export function register(ctx: RegisterContext): void {
     resetRenderCompatibilityBlock()
     logMainInfo('[LRC] 已解除渲染兼容保护，等待重新检测')
   })
+
+  ipcMain.handle('lrc:readWebGpuLut', safe('readWebGpuLut', async (_event: IpcMainInvokeEvent, filePath: string) => {
+    return readWebGpuLutFile(filePath)
+  }))
 
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
     await warmupRenderCore(logPath)

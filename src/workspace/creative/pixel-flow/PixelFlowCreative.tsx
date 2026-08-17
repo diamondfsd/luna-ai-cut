@@ -1,7 +1,6 @@
 import { ArrowLeft, Play, ScanLine } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { LrcRender } from '../../../components/LrcRender'
 import { NativeGpuVideoPreview } from '../../../components/NativeGpuVideoPreview'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { type PixelFlowSubjectDirection, type PreviewLayer, type WorkspacePixelFlowState } from '../../../shared/types'
@@ -63,7 +62,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [mediaDuration, setMediaDuration] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [gpuFallback, setGpuFallback] = useState(false)
   const [seekRevision, setSeekRevision] = useState(0)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const saveTimerRef = useRef<number | null>(null)
@@ -100,7 +98,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setMediaDuration(null)
     setCurrentTime(0)
     setPlaying(false)
-    setGpuFallback(false)
     setSeekRevision((revision) => revision + 1)
     attemptedAssetRef.current = null
     depthBuildRef.current = null
@@ -426,9 +423,18 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     <div className="pixel-flow-preview">
       {activeAsset ? <div className={`pixel-flow-stage${sourceSize ? sourceSize.width > sourceSize.height ? ' is-landscape' : ' is-portrait' : ''}`}>
         <div className="pixel-flow-render-surface">
-          {previewLayers.length > 0 && gpuPreviewSize && (gpuFallback
-            ? <LrcRender className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} maxSide={1080} compositionTime={currentTime} interactiveImageLayerIndexes={[]} onError={handleError} />
-            : <NativeGpuVideoPreview className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} playing={playing} time={currentTime} seekRevision={seekRevision} onFallback={() => setGpuFallback(true)} />)}
+          {previewLayers.length > 0 && gpuPreviewSize && (
+            <NativeGpuVideoPreview
+              className="pixel-flow-canvas"
+              layers={previewLayers}
+              canvasWidth={gpuPreviewSize.width}
+              canvasHeight={gpuPreviewSize.height}
+              playing={playing}
+              time={currentTime}
+              seekRevision={seekRevision}
+              onError={handleError}
+            />
+          )}
         </div>
         {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>生成中</span></div>}
         <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={playbackDuration} playing={playing} disabled={!playbackReady} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />

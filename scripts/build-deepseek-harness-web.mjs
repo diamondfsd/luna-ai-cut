@@ -14,8 +14,19 @@ const plugin = join(root, 'scripts/deepseek-harness-freecut-plugin.mjs')
 const scriptRuntime = join(root, 'scripts/deepseek-harness-script-runtime.mjs')
 const builtInSkills = join(root, 'packages/freecut-editor/src/features/ai-editing/skills/built-in')
 
-// The deployed Web runtime consumes workspace client bundles from lib/.
-// Rebuild them first so source changes cannot be hidden by stale ignored output.
+// The deployed Web runtime consumes workspace bundles from lib/.
+// Rebuild host and client output first so source changes cannot be hidden by
+// stale ignored output in a fresh worktree.
+const harnessHostBuild = spawnSync('pnpm', [
+  '--dir', harnessRoot,
+  'run', 'build:lib:host',
+], {
+  cwd: root,
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+})
+if (harnessHostBuild.status !== 0) process.exit(harnessHostBuild.status ?? 1)
+
 const bin = (name) => join(harnessRoot, 'node_modules/.bin', process.platform === 'win32' ? `${name}.cmd` : name)
 for (const clientRoot of [layoutRoot, settingsGeneralRoot]) {
   const clientTypes = spawnSync(bin('tsc'), ['-b', 'tsconfig.json'], {

@@ -6,6 +6,8 @@ import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
+import { canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
+import { renderStaticImageCompositionToBlob, type WebGpuImageExportFormat } from '../lib/webgpu/static-image-export'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -46,6 +48,27 @@ function outputPath(exportDir: string, fileName: string): string {
 
 function fileNameFromPath(path: string): string {
   return path.split(/[/\\]/).pop() || 'export'
+}
+
+async function writeBlobToExportDirectory(
+  exportDir: string,
+  fileName: string,
+  blob: Blob,
+): Promise<{ path: string; name: string }> {
+  const opened = await window.luna.freecutExport.openWriter(exportDir, fileName)
+  try {
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    const chunkSize = 8 * 1024 * 1024
+    for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+      const chunk = bytes.slice(offset, Math.min(offset + chunkSize, bytes.byteLength))
+      await window.luna.freecutExport.writeWriter(opened.writerId, chunk.buffer)
+    }
+    const closed = await window.luna.freecutExport.closeWriter(opened.writerId)
+    return { path: closed.filePath, name: closed.fileName }
+  } catch (error) {
+    await window.luna.freecutExport.abortWriter(opened.writerId).catch(() => undefined)
+    throw error
+  }
 }
 
 function baseNameFromPath(path: string): string {
@@ -210,6 +233,51 @@ export async function exportPreviewImage(params: {
 }): Promise<{ path: string; name: string }> {
   const path = outputPath(params.exportDir, params.fileName)
   const composition = buildCompositionFromPreviewLayers(params.layers, params.width, params.height)
+  if (canUseWebGpuStaticImageComposition(params.layers)) {
+    if (params.exportTaskId && params.exportItemId) {
+      await window.luna.exportTask.updateItem(params.exportTaskId, params.exportItemId, {
+        status: 'exporting',
+        progress: 0,
+      }).catch(() => undefined)
+      emitLocalExportProgress({
+        exportId: params.exportItemId,
+        taskId: params.exportTaskId,
+        taskName: '图片导出',
+        fileName: params.fileName,
+        index: 0,
+        totalFiles: 1,
+        percent: 0,
+        status: 'exporting',
+        destinationPath: path,
+      })
+    }
+    const blob = await renderStaticImageCompositionToBlob({
+      composition,
+      format: params.format as WebGpuImageExportFormat,
+      quality: params.quality,
+    })
+    const result = await writeBlobToExportDirectory(params.exportDir, params.fileName, blob)
+    if (params.exportTaskId && params.exportItemId) {
+      await window.luna.exportTask.updateItem(params.exportTaskId, params.exportItemId, {
+        status: 'done',
+        progress: 100,
+        destinationPath: result.path,
+      }).catch(() => undefined)
+      emitLocalExportProgress({
+        exportId: params.exportItemId,
+        taskId: params.exportTaskId,
+        taskName: '图片导出',
+        fileName: result.name,
+        index: 0,
+        totalFiles: 1,
+        percent: 100,
+        status: 'done',
+        destinationPath: result.path,
+      })
+    }
+    return result
+  }
+  // 复杂图层会在对应 WebGPU 阶段完成后接入；这里不是 WebGPU 失败回退。
   await lrc().exportCompositionImage(path, composition, params.format, params.quality, params.exportTaskId, params.exportItemId)
   return { path, name: params.fileName }
 }
@@ -354,7 +422,7 @@ export async function exportPreviewLivePhoto(params: {
   try {
     // Step 1: 调用导出图片方法
     emitProgress(5, 'exporting')
-    await exportPreviewImage({
+    const imageResult = await exportPreviewImage({
       exportDir: outputDir,
       fileName: tempImageName,
       width: params.width,
@@ -383,7 +451,7 @@ export async function exportPreviewLivePhoto(params: {
       imagePath: tempImagePath, videoPath: tempVideoPath,
     })
     const result = await window.luna.workspace.exportRenderedLivePhoto(
-      params.name, tempImagePath, tempVideoPath, params.appleLivePhoto,
+      params.name, imageResult.path, tempVideoPath, params.appleLivePhoto,
     )
 
     if (taskId && itemId) {

@@ -40,7 +40,7 @@ export interface AppSettings {
   lutDir?: string
   /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
   workspacePreviewQuality?: WorkspacePreviewQuality
-  /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
+  /** 实验性 GPU 预览；默认关闭，由用户主动启用。 */
   experimentalGpuPreview?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean

@@ -95,8 +95,13 @@ export function WebGpuColorGradeTestPage() {
     rendererRef.current = nextRenderer
     let disposed = false
 
-    void nextRenderer.initialize((message) => {
-      if (!disposed) setGpuStatus({ state: 'error', message })
+    void nextRenderer.initialize({
+      onDeviceLost: (message) => {
+        if (!disposed) setGpuStatus({ state: 'error', message })
+      },
+      onError: (message) => {
+        if (!disposed) setError(message)
+      },
     }).then(() => {
       if (!disposed) {
         setRenderer(nextRenderer)

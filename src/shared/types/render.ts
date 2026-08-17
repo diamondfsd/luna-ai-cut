@@ -165,9 +165,9 @@ export interface PreviewLayer {
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** i-Log 技术还原 LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径。 */
   restoreLutId?: string
-  /** 创意 3D LUT 文件路径（传给 Rust 自行加载解析） */
+  /** 创意 3D LUT 文件路径。 */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -260,6 +260,8 @@ export interface CompositionLayer {
   source: {
     path: string
     sourceType?: 'auto' | 'image' | 'video' | string
+    /** 视频解码源的稳定标识；不同时间点的同一路径必须使用不同纹理。 */
+    key?: string
     time?: {
       offset?: number
       start?: number
@@ -290,9 +292,9 @@ export interface CompositionLayer {
   pixelFlow?: RenderPixelFlow
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** i-Log 技术还原 LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径。 */
   restoreLutId?: string
-  /** 创意 3D LUT 文件路径 */
+  /** 创意 3D LUT 文件路径。 */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -325,9 +327,9 @@ export interface RenderLayer {
   maskFeather?: number
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** i-Log 技术还原 LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径。 */
   restoreLutId?: string
-  /** 创意 3D LUT 文件路径 */
+  /** 创意 3D LUT 文件路径。 */
   lutId?: string
   lutIntensity?: number
 }

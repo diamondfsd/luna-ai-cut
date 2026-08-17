@@ -17,6 +17,15 @@ function toLocalPath(path: string): string {
   return decodeURI(path.slice(7))
 }
 
+/** 与多层预览的解码源复用规则保持一致。 */
+export function compositionSourceKey(layer: PreviewLayer): string {
+  const path = toLocalPath(layer.filePath)
+  if (!layer.isVideo) return `image_${path}`
+  return layer.videoSourceKey
+    ? `shared_${layer.videoSourceKey}_${path}`
+    : `v_${path}_${layer.videoTime ?? 0}`
+}
+
 export function buildCompositionFromPreviewLayers(
   layers: PreviewLayer[],
   width?: number,
@@ -49,6 +58,7 @@ export function buildCompositionFromPreviewLayers(
       source: {
         path: toLocalPath(layer.filePath),
         sourceType: layerSourceType(layer),
+        key: compositionSourceKey(layer),
         time: layer.isVideo
           ? {
               start: layer.videoTime ?? 0,
