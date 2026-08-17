@@ -20,7 +20,7 @@ description: 短视频社交风格技能。用户提到抖音、剪映、Reels�
 
 - 优先动作起点、动作落点、表情变化、产品细节和画面结构变化。
 - 字幕短、对比清楚、留出阅读时间；口播时字幕跟随转写，不写未经证实的事实。
-- 音乐推动段落，口播和关键原声优先；需要新声音时使用 `audio.generate_speech` 或 `audio.generate_music`。
+- 音乐推动段落，口播和关键原声优先；需要新声音时使用 `luna.audio.generateSpeech` 或 `luna.audio.generateMusic`。
 - 用户明确要求卡点且有节拍证据时使用 `luna-technique-cutting-rhythm`；没有节拍分析时只按段落和动作组织。
 
 ## 检查

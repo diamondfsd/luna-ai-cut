@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { registerBuiltInSkills } from './deepseek-harness-built-in-skills.mjs'
+import { runEditScript, SCRIPT_API } from './deepseek-harness-script-runtime.mjs'
 
 const RESULT_SCHEMA = {
   type: 'object',
@@ -529,21 +530,28 @@ const timelineTools = [
 
 const allTools = [...memoryTools, ...sourceTools, ...mediaTools, ...audioTools, ...timelineTools]
 
-const PARALLEL_SAFE_TOOL_NAMES = new Set([
-  'memory.read',
-  'memory.search',
-  'media.list',
-  'media.read',
-  'media.search_transcript',
-  'source.tree',
-  'source.read',
-  'source.search',
-  'source.check',
-  'source.diff',
-  'project.inspect',
-  'timeline.inspect_context',
-  'timeline.list_transitions',
-])
+const SCRIPT_METHOD_NAMES = new Map(
+  Object.entries(SCRIPT_API).flatMap(([namespace, methods]) =>
+    Object.entries(methods).map(([method, name]) => [name, `luna.${namespace}.${method}`]),
+  ),
+)
+
+function scriptMethodName(name) {
+  return SCRIPT_METHOD_NAMES.get(name) || name
+}
+
+function scriptDescription(description) {
+  let result = description
+  for (const name of [...SCRIPT_METHOD_NAMES.keys()].sort((left, right) => right.length - left.length)) {
+    result = result.replaceAll(name, scriptMethodName(name))
+  }
+  return result
+}
+
+const SCRIPT_API_REFERENCE = allTools.map((definition) => {
+  const properties = definition.parameters?.properties ?? {}
+  return `- ${scriptMethodName(definition.name)}(args): ${scriptDescription(definition.description)}\n  参数：${JSON.stringify(properties)}`
+}).join('\n')
 
 const EDITING_GUIDANCE = `
 你正在操作 Luna AI Cut 的视频剪辑工程。时间轴是用户可以继续手工编辑的真实工程。你负责把用户的剪辑目标转化为可检查的时间轴修改，不要凭空猜测素材内容或片段 ID。
@@ -587,41 +595,64 @@ const EDITING_GUIDANCE = `
 - 只有工具结果中的校验通过且目标确实已反映在时间轴中，才能向用户说明已经完成；如果只是完成了分析或方案，应如实说明当前状态。
 `.trim()
 
+const SCRIPT_EDITING_GUIDANCE = `
+你正在操作 Luna AI Cut 的视频剪辑工程。模型唯一可调用的编辑能力是 edit.run_script；不要尝试直接调用任何 media、timeline、project、source、audio 或 memory 能力。
+
+脚本格式必须是 ESM 模块，并导出一个默认异步函数：
+
+export default async function main(luna) {
+  const media = await luna.media.list()
+  const selected = media.data.items.filter((item) => item.mediaType === 'video')
+  await luna.timeline.addMediaBatch({ items: selected.map((item, index) => ({
+    mediaId: item.id,
+    startSeconds: index * 3,
+    durationSeconds: 3,
+  })) })
+  return { selected: selected.length }
+}
+
+脚本支持完整 Node.js JavaScript 语法，包括变量、循环、条件、函数、数组、对象、Promise、async/await 和 Node.js 标准库。脚本中的剪辑 SDK 方法如下：
+
+${SCRIPT_API_REFERENCE}
+
+脚本约定：
+- 所有时间使用秒；画面位置和图层尺寸遵循 SDK 方法说明中的单位。
+- 长视频优先调用一次批量分析或批量读取能力，再在脚本内循环筛选，最后使用批量时间轴能力提交结果；不要为每一帧制造一轮模型调用。
+- 每个重要编辑阶段都读取返回值并检查 data；脚本返回一个简短、结构化的结果，供下一轮模型判断。
+- 不要直接修改工程源码 JSON。所有工程读取和修改都通过 luna SDK 完成。
+- edit.run_script 的执行结果会返回模型；宿主不会根据脚本文案替模型判断任务是否完成。
+
+以下是现有编辑能力对应的详细行为说明。它们只能通过上面的 luna SDK 方法调用：
+
+${scriptDescription(EDITING_GUIDANCE)}
+`.trim()
+
+const SCRIPT_TOOL = {
+  name: 'edit.run_script',
+  description: '执行一段 Luna AI Cut 剪辑脚本。脚本是唯一的编辑入口；脚本必须导出 default async function main(luna)，通过 luna SDK 读取素材、分析内容、修改时间轴、生成音频或检查结果。脚本支持完整 Node.js JavaScript 语法。执行结果会返回模型，模型根据结果决定是否继续生成或修订脚本。',
+  parameters: {
+    type: 'object',
+    properties: {
+      code: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 500_000,
+        description: '完整的 ESM 剪辑脚本，必须导出 default async function main(luna)。',
+      },
+    },
+    required: ['code'],
+    additionalProperties: false,
+  },
+}
+
+export const FREECUT_EXPOSED_TOOL_NAMES = [SCRIPT_TOOL.name]
+
 export const name = 'luna-freecut-project-source'
 export const inject = ['tools', 'systemPrompt', 'skills', 'workspaceRegistry', 'agents', 'agentPresets', 'webServer']
 
 export function renderToolResult(_args, value) {
   const text = JSON.stringify(value, null, 2)
   return [{ type: 'text', text: text ?? String(value) }]
-}
-
-function abortableSignal(signal) {
-  const controller = new AbortController()
-  const abort = () => controller.abort(signal.reason)
-  if (signal.aborted) abort()
-  else signal.addEventListener('abort', abort, { once: true })
-  return { controller, dispose: () => signal.removeEventListener('abort', abort) }
-}
-
-async function executeSourceTool(config, name, args, signal) {
-  const { controller, dispose } = abortableSignal(signal)
-  const requestId = randomUUID()
-  try {
-    const response = await fetch(config.endpoint, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${config.token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ requestId, projectId: config.projectId, name, args }),
-      signal: controller.signal,
-    })
-    const payload = await response.json()
-    if (!response.ok || !payload?.ok) throw new Error(payload?.error || `源码工具返回了 ${response.status}。`)
-    return payload.result
-  } finally {
-    dispose()
-  }
 }
 
 function validateConfig(config) {
@@ -668,31 +699,26 @@ async function initializeProjectWorkspace(ctx, config) {
 export async function apply(ctx, config) {
   validateConfig(config)
   await registerBuiltInSkills(ctx)
-  for (const definition of allTools) {
-    ctx.tools.register({
-      ...definition,
-      output: {
-        schema: RESULT_SCHEMA,
-        render: renderToolResult,
-      },
-      isConcurrencySafe: () => PARALLEL_SAFE_TOOL_NAMES.has(definition.name),
-      timeoutMs: (definition.name.startsWith('timeline.') && !definition.name.endsWith('inspect_context')) || definition.name === 'media.analyze' || definition.name.startsWith('audio.generate_')
-        ? 120_000
-        : 30_000,
-      async execute(args, exec) {
-        exec.signal.throwIfAborted()
-        const result = await executeSourceTool(config, definition.name, args, exec.signal)
-        exec.signal.throwIfAborted()
-        return result
-      },
-    })
-  }
+  ctx.tools.register({
+    ...SCRIPT_TOOL,
+    output: {
+      schema: RESULT_SCHEMA,
+      render: renderToolResult,
+    },
+    timeoutMs: 30 * 60 * 1000,
+    async execute(args, exec) {
+      exec.signal.throwIfAborted()
+      const result = await runEditScript(config, { code: args.code, signal: exec.signal })
+      exec.signal.throwIfAborted()
+      return result
+    },
+  })
 
   await ctx.effect(async () => {
     const disposePrompt = ctx.systemPrompt.section({
-      name: 'luna-freecut: timeline editing',
+      name: 'luna-freecut: script editing',
       order: 120,
-      text: EDITING_GUIDANCE,
+      text: SCRIPT_EDITING_GUIDANCE,
     })
     const untapIndex = ctx.webServer.tapIndex(html => markEmbeddedUi(html, config.cwd))
     let handle

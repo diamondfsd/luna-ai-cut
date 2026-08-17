@@ -11,11 +11,11 @@ description: 叙事与镜头结构技能。用户要求讲故事、整理素材�
 
 ## 工作流
 
-1. 先调用 `media.list` 和 `project.inspect`，需要判断画面或台词时读取 `media.read`；证据不足再分析。
+1. 先调用 `luna.media.list` 和 `luna.project.inspect`，需要判断画面或台词时读取 `luna.media.read`；证据不足再分析。
 2. 把素材分成建立环境、人物/主体、动作、细节、反应、结果和收尾，不按文件名猜内容。
 3. 先写内部镜头表：镜头角色、来源范围、预计时长、前后关系、声音主导和字幕需求。
-4. 用 `timeline.add_media_batch` 批量加入已经确定的镜头；依赖新片段 ID 的操作等待结果后再做。
-5. 每组写入后调用 `project.inspect` 或 `timeline.inspect_context` 复核时间范围和轨道。
+4. 用 `luna.timeline.addMediaBatch` 批量加入已经确定的镜头；依赖新片段 ID 的操作等待结果后再做。
+5. 每组写入后调用 `luna.project.inspect` 或 `luna.timeline.inspectContext` 复核时间范围和轨道。
 
 ## 结构模板
 

@@ -13,8 +13,8 @@ description: 动效与图形技能。用户要求标题动画、关键帧、缓�
 
 ## 可执行路径
 
-1. 用 `timeline.add_text` 或 `timeline.add_text_batch` 创建文字；用 `timeline.set_transform` 设置初始状态。
-2. 用 `timeline.add_keyframe` 创建位置、尺寸、旋转、透明度或字号变化；`atSeconds` 使用片段内相对秒数。
+1. 用 `luna.timeline.addText` 或 `luna.timeline.addTextBatch` 创建文字；用 `luna.timeline.setTransform` 设置初始状态。
+2. 用 `luna.timeline.addKeyframe` 创建位置、尺寸、旋转、透明度或字号变化；`atSeconds` 使用片段内相对秒数。
 3. 使用 `linear`、`ease-in`、`ease-out` 或 `ease-in-out`，根据动作目的选择，不默认所有动画都弹跳。
 4. 写入后读取返回数据，检查文字没有越界、遮挡主体或短到无法阅读。
 

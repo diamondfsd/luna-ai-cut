@@ -1,0 +1,4 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state.
+2026-08-17-script-only-editing-runtime.md: f2a366e0b2a9cd4afd4140d15fa1939ccfc02004
+2026-08-17-script-only-editing-runtime.zh.md: 7d1ffbfc7f248dae3054242c77db33a96751a92e

@@ -11,9 +11,9 @@ description: After Effects 动效工作流映射技能。用户提到 AE、合�
 
 ## 当前工具映射
 
-- 位置、缩放、旋转、透明度 -> `timeline.set_transform` 和 `timeline.add_keyframe`。
-- 关键帧缓动 -> `timeline.add_keyframe.easing`，只使用工具实际支持的 easing。
-- 文字动画 -> `timeline.add_text`、`timeline.set_transform`、`timeline.add_keyframe`；字号使用 `fontSizeRatio`，不要传像素。
+- 位置、缩放、旋转、透明度 -> `luna.timeline.setTransform` 和 `luna.timeline.addKeyframe`。
+- 关键帧缓动 -> `luna.timeline.addKeyframe.easing`，只使用工具实际支持的 easing。
+- 文字动画 -> `luna.timeline.addText`、`luna.timeline.setTransform`、`luna.timeline.addKeyframe`；字号使用 `fontSizeRatio`，不要传像素。
 - 画中画和叠加 -> 独立轨道加归一化变换，先检查遮挡和安全区域。
 - 遮罩、Track Matte、Motion Tracking、复杂粒子、Motion Blur -> 当前没有对应 Harness 工具时只输出设计参数和人工执行步骤。
 

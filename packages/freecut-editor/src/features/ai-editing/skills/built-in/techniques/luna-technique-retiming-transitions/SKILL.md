@@ -9,7 +9,7 @@ description: 变速与转场技能。用户要求速度变化、慢动作、快�
 
 - 变速服务于注意力和动作，不用变速掩盖素材选择问题。
 - 慢动作保留动作起点、关键姿态和结果；快放优先作用于等待、移动和重复段落。
-- 当前时间轴支持用 `timeline.set_properties.speed` 修改片段速度；需要速度段落时先 `timeline.split`，再分别设置速度。
+- 当前时间轴支持用 `luna.timeline.setProperties.speed` 修改片段速度；需要速度段落时先 `luna.timeline.split`，再分别设置速度。
 - 当前没有独立冻结帧工具时，不要声称完成冻结帧；可用停留镜头或给用户方案。
 
 ## 转场选择
@@ -22,9 +22,9 @@ description: 变速与转场技能。用户要求速度变化、慢动作、快�
 
 ## 执行顺序
 
-1. 用 `timeline.inspect_context` 确认片段邻接、时长和轨道。
-2. 先 `timeline.trim` 或 `timeline.split`，再调整速度。
-3. 添加转场前调用 `timeline.list_transitions`，只使用返回的真实预设。
+1. 用 `luna.timeline.inspectContext` 确认片段邻接、时长和轨道。
+2. 先 `luna.timeline.trim` 或 `luna.timeline.split`，再调整速度。
+3. 添加转场前调用 `luna.timeline.listTransitions`，只使用返回的真实预设。
 4. 复核转场时长、素材余量、黑帧和音视频关联。
 
 ## 质量标准

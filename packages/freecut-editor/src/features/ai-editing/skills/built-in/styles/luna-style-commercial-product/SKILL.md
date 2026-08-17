@@ -25,4 +25,4 @@ description: 商业产品与广告风格技能。用户要求产品展示、带�
 
 ## 执行边界
 
-用 `media.read` 和 `media.search_transcript` 确认产品画面和文案，用 `timeline.add_media_batch`、`timeline.add_text_batch` 和 `timeline.set_audio` 执行已确认的安排。调色、三维包装、跟踪和复杂合成没有对应工具时只输出方案。
+用 `luna.media.read` 和 `luna.media.searchTranscript` 确认产品画面和文案，用 `luna.timeline.addMediaBatch`、`luna.timeline.addTextBatch` 和 `luna.timeline.setAudio` 执行已确认的安排。调色、三维包装、跟踪和复杂合成没有对应工具时只输出方案。

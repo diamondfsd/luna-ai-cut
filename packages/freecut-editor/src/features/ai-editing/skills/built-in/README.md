@@ -52,16 +52,16 @@ built-in/
 
 ## 当前可用工具范围
 
-技能注册不会创建新的时间轴工具。大师技能使用 FreeCut 插件已经注册的工具；技能可以调用已注册的 `audio.generate_speech` 和 `audio.generate_music` 生成音频素材，但是否将返回的 `mediaId` 放入时间轴仍由模型结合完整会话判断。
+技能注册不会创建新的时间轴工具。大师技能使用 FreeCut 插件已经注册的工具；技能可以调用已注册的 `luna.audio.generateSpeech` 和 `luna.audio.generateMusic` 生成音频素材，但是否将返回的 `mediaId` 放入时间轴仍由模型结合完整会话判断。
 
 提示词按当前项目已有工具设计：
 
-- 读取素材：`media.list`、`media.read`、`media.analyze`、`media.search_transcript`
-- 读取项目：`project.inspect`、`timeline.inspect_context`
-- 修改项目：`project.set_canvas`、`timeline.add_media`、`timeline.add_media_batch`、`timeline.trim`、`timeline.split`、`timeline.move`、`timeline.remove`
-- 修改画面和声音：`timeline.set_properties`、`timeline.set_transform`、`timeline.set_audio`、`timeline.add_keyframe`
-- 文字和转场：`timeline.add_text`、`timeline.add_text_batch`、`timeline.list_transitions`、`timeline.add_transition`、`timeline.add_transition_batch`
-- 长期偏好：`memory.read`、`memory.search`、`memory.update`、`memory.remove`
+- 读取素材：`luna.media.list`、`luna.media.read`、`luna.media.analyze`、`luna.media.searchTranscript`
+- 读取项目：`luna.project.inspect`、`luna.timeline.inspectContext`
+- 修改项目：`luna.project.setCanvas`、`luna.timeline.addMedia`、`luna.timeline.addMediaBatch`、`luna.timeline.trim`、`luna.timeline.split`、`luna.timeline.move`、`luna.timeline.remove`
+- 修改画面和声音：`luna.timeline.setProperties`、`luna.timeline.setTransform`、`luna.timeline.setAudio`、`luna.timeline.addKeyframe`
+- 文字和转场：`luna.timeline.addText`、`luna.timeline.addTextBatch`、`luna.timeline.listTransitions`、`luna.timeline.addTransition`、`luna.timeline.addTransitionBatch`
+- 长期偏好：`luna.memory.read`、`luna.memory.search`、`luna.memory.update`、`luna.memory.remove`
 
 当前没有独立的音乐节拍分析、人物身份识别或语义检索工具。遇到这些需求时，主 Agent 必须诚实说明当前证据或工具不足；风格提示词不能伪造不存在的能力。
 
