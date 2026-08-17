@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { EmbeddedVisualEvidence } from '@freecut/shared/host/embedded-host'
 import type { MediaMetadata } from '@freecut/types/storage'
 
 const harness = vi.hoisted(() => {
@@ -22,14 +21,9 @@ const harness = vi.hoisted(() => {
   }))
   const getMediaForProject = vi.fn(async () => items)
   const getTranscript = vi.fn()
-  const getEditingEvidence = vi.fn()
-  const saveVisualEditingEvidence = vi.fn()
-  const host = {
-    analyzeMediaVisual: undefined as
-      | ((source: unknown, intensity: string) => Promise<EmbeddedVisualEvidence>)
-      | undefined,
-  }
-  return { items, getMediaForProject, getTranscript, getEditingEvidence, saveVisualEditingEvidence, host }
+  const analyzeMediaVisual = vi.fn()
+  const host = {}
+  return { items, getMediaForProject, getTranscript, analyzeMediaVisual, host }
 })
 
 vi.mock('@freecut/features/editor/deps/projects', () => ({
@@ -40,11 +34,12 @@ vi.mock('@freecut/features/media-library/services/media-library-service-loader',
 }))
 vi.mock('@freecut/infrastructure/storage', () => ({
   getTranscript: harness.getTranscript,
-  getEditingEvidence: harness.getEditingEvidence,
-  saveVisualEditingEvidence: harness.saveVisualEditingEvidence,
 }))
 vi.mock('@freecut/shared/host/embedded-host', () => ({
   getEmbeddedHostBridge: () => harness.host,
+}))
+vi.mock('@freecut/features/media-library/services/media-visual-analysis-service', () => ({
+  analyzeMediaVisual: harness.analyzeMediaVisual,
 }))
 
 import { MEDIA_AI_TOOLS } from './project-source-media-tools'
@@ -58,9 +53,9 @@ function getTool(name: string) {
 describe('project media AI tools', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    for (const item of harness.items) delete item.aiCaptions
     harness.getTranscript.mockResolvedValue(undefined)
-    harness.getEditingEvidence.mockResolvedValue(undefined)
-    harness.host.analyzeMediaVisual = undefined
+    harness.analyzeMediaVisual.mockResolvedValue({ captions: [], intensity: 'light' })
   })
 
   it('lists all seven project media items with editing metadata', async () => {
@@ -84,7 +79,7 @@ describe('project media AI tools', () => {
     expect(harness.getMediaForProject).toHaveBeenCalledWith('project-1')
   })
 
-  it('reads local visual observations and timestamped transcript segments', async () => {
+  it('reads LFM visual observations and timestamped transcript segments', async () => {
     harness.items[0]!.aiCaptions = [{
       timeSec: 2,
       text: '人物正在镜头前讲话',
@@ -100,15 +95,6 @@ describe('project media AI tools', () => {
       createdAt: 1,
       updatedAt: 2,
     })
-    harness.getEditingEvidence.mockResolvedValue({
-      sourceFingerprint: '1000:1',
-      visual: {
-        samples: [{ timeSeconds: 4, tags: ['室内', '人物'] }],
-        models: [{ id: 'luna-vision', version: '1' }],
-        intensity: 'normal',
-      },
-    })
-
     const result = await getTool('media.read').execute({ mediaIds: ['media-1'] })
     expect(result.data).toMatchObject({
       items: [{
@@ -117,7 +103,6 @@ describe('project media AI tools', () => {
           status: 'ready',
           samples: [
             { timeSeconds: 2, description: '人物正在镜头前讲话', subjects: ['人物'], action: '讲话' },
-            { timeSeconds: 4, description: '室内、人物', subjects: ['室内', '人物'] },
           ],
         },
         transcript: {
@@ -129,15 +114,7 @@ describe('project media AI tools', () => {
     })
   })
 
-  it('asks the host local vision model for frame observations and persists them', async () => {
-    const resultEvidence = {
-      samples: [{ timeSeconds: 1, tags: ['人物', '户外'] }],
-      models: [{ id: 'luna-vision', version: '1' }],
-      sourceFingerprint: { size: 1000, modifiedAtMs: 1 },
-      intensity: 'strong',
-    } satisfies EmbeddedVisualEvidence
-    harness.host.analyzeMediaVisual = vi.fn(async () => resultEvidence)
-
+  it('runs the focused LFM visual analysis service and persists captions', async () => {
     const result = await getTool('media.analyze').execute({
       mediaIds: ['media-1'],
       kind: 'visual',
@@ -145,31 +122,45 @@ describe('project media AI tools', () => {
     })
 
     expect(result.data).toMatchObject({ kind: 'visual', completedIds: ['media-1'] })
-    expect(harness.host.analyzeMediaVisual).toHaveBeenCalledWith(
-      expect.objectContaining({ mediaId: 'media-1', fileName: 'camera-a.mp4', durationSeconds: 12.3456 }),
+    expect(harness.analyzeMediaVisual).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'media-1', fileName: 'camera-a.mp4', duration: 12.3456 }),
       'strong',
-    )
-    expect(harness.saveVisualEditingEvidence).toHaveBeenCalledWith(
-      'media-1',
-      '1000:1',
-      expect.objectContaining({ samples: resultEvidence.samples, models: resultEvidence.models, intensity: 'strong' }),
+      undefined,
     )
   })
 
-  it('uses the fast visual analysis intensity when it is omitted', async () => {
-    const resultEvidence = {
-      samples: [{ timeSeconds: 1, tags: ['人物'] }],
-      models: [{ id: 'luna-vision', version: '1' }],
-      sourceFingerprint: { size: 1000, modifiedAtMs: 1 },
-      intensity: 'light',
-    } satisfies EmbeddedVisualEvidence
-    harness.host.analyzeMediaVisual = vi.fn(async () => resultEvidence)
-
+  it('passes the fast visual intensity to the LFM analysis service when omitted', async () => {
     await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
 
-    expect(harness.host.analyzeMediaVisual).toHaveBeenCalledWith(
-      expect.objectContaining({ mediaId: 'media-1' }),
+    expect(harness.analyzeMediaVisual).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'media-1' }),
       'light',
+      undefined,
     )
+  })
+
+  it('exposes structured LFM scene fields through media.read', async () => {
+    harness.items[0]!.aiCaptions = [{
+      timeSec: 1,
+      text: 'A sunset over the sea',
+      sceneData: {
+        subjects: ['海面'],
+        setting: '海边',
+        lighting: '暖色夕阳',
+        timeOfDay: '日落',
+        weather: '晴朗',
+      },
+    }]
+
+    const result = await getTool('media.read').execute({ mediaIds: ['media-1'] })
+    expect(result.data).toMatchObject({
+      items: [{ visual: { samples: [{
+        timeSeconds: 1,
+        setting: '海边',
+        lighting: '暖色夕阳',
+        timeOfDay: '日落',
+        weather: '晴朗',
+      }] } }],
+    })
   })
 })

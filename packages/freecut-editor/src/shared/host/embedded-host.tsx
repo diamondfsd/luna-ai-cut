@@ -23,7 +23,7 @@ export type ImportMediaFiles = (
   options?: { background?: boolean },
 ) => Promise<void>
 
-/** Media identity supplied to host-side analysis without transferring source bytes. */
+/** Media identity supplied to host-side tasks without transferring source bytes. */
 export interface EmbeddedMediaSource {
   mediaId: string
   nativePath?: string
@@ -40,15 +40,6 @@ export interface EmbeddedTranscriptResult {
   model: { id: string; version: string }
   sourceFingerprint: { size: number; modifiedAtMs: number }
 }
-
-export interface EmbeddedVisualEvidence {
-  samples: Array<{ timeSeconds: number; tags: string[] }>
-  models: Array<{ id: string; version: string }>
-  sourceFingerprint: { size: number; modifiedAtMs: number }
-  intensity: EmbeddedVisualAnalysisIntensity
-}
-
-export type EmbeddedVisualAnalysisIntensity = 'light' | 'normal' | 'strong'
 
 export interface EmbeddedTaskProgress {
   label: string
@@ -172,12 +163,6 @@ export interface EmbeddedHostBridge {
     onProgress?: (progress: EmbeddedTaskProgress) => void,
     signal?: AbortSignal,
   ) => Promise<EmbeddedTranscriptResult>
-  analyzeMediaVisual?: (
-    source: EmbeddedMediaSource,
-    intensity: EmbeddedVisualAnalysisIntensity,
-    onProgress?: (progress: EmbeddedTaskProgress) => void,
-    signal?: AbortSignal,
-  ) => Promise<EmbeddedVisualEvidence>
   /** DeepSeek Harness owns the conversation, model loop, and tool execution. */
   deepseekHarness?: EmbeddedDeepSeekHarnessBridge
   editingSourceGit?: EmbeddedAiEditingSourceGitBridge

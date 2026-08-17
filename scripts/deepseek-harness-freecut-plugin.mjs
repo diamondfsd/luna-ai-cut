@@ -157,7 +157,7 @@ const mediaTools = [
   },
   {
     name: 'media.analyze',
-    description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 对视频或图片抽帧并生成带时间点的画面描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面证据时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
+    description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 使用 LFM2.5-VL-450M 对视频或图片抽帧并生成带时间点的场景描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面描述时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
     parameters: {
       type: 'object',
       properties: {

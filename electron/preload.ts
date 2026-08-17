@@ -264,7 +264,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
     segmentInstances: (request: import('../src/shared/types').WorkspaceInstanceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentInstances', request),
     analyzeBeauty: (request: import('../src/shared/types').WorkspaceBeautyAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeBeauty', request),
-    analyzeVisualEvidence: (request: import('../src/shared/types').WorkspaceVisualAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeVisualEvidence', request),
     transcribeSubtitles: (request: import('../src/shared/types').WorkspaceSubtitleTranscriptionRequest) => ipcRenderer.invoke('workspace:transcribeSubtitles', request),
     cancelSubtitleTranscription: (requestId: string) => ipcRenderer.invoke('workspace:cancelSubtitleTranscription', requestId),
     chooseSubtitleFont: () => ipcRenderer.invoke('workspace:chooseSubtitleFont'),

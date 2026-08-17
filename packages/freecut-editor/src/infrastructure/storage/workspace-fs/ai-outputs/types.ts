@@ -21,7 +21,7 @@ import type {
  * 3. (Optional) Add a thin wrapper in `workspace-fs/` that calls
  *    `readAiOutput/writeAiOutput` with that kind.
  */
-export type AiOutputKind = 'transcript' | 'captions' | 'scenes' | 'editing-evidence'
+export type AiOutputKind = 'transcript' | 'captions' | 'scenes'
 
 /**
  * Typed payload per kind. Matches the `data` field on `AiOutput<T>`.
@@ -31,7 +31,6 @@ export interface AiOutputPayloads {
   transcript: TranscriptPayload
   captions: CaptionsPayload
   scenes: ScenesPayload
-  'editing-evidence': EditingEvidencePayload
 }
 
 /**
@@ -111,16 +110,6 @@ export interface ScenesPayload {
   sampleIntervalMs?: number
   verificationModel?: string
   cuts: SceneCutPayload[]
-}
-
-/** Compact, model-produced facts that can safely ground an editing assistant. */
-export interface EditingEvidencePayload {
-  sourceFingerprint: string
-  visual?: {
-    samples: Array<{ timeSeconds: number; tags: string[] }>
-    models: Array<{ id: string; version: string }>
-    intensity: 'light' | 'normal' | 'strong'
-  }
 }
 
 /* ───────────────── Conversions ───────────────── */

@@ -8,8 +8,6 @@ import {
   type EmbeddedMediaImportSource,
   type EmbeddedNativeMediaFile,
   type EmbeddedTranscriptResult,
-  type EmbeddedVisualEvidence,
-  type EmbeddedVisualAnalysisIntensity,
   type EmbeddedMediaSource,
   type EmbeddedTaskProgress,
   type EmbeddedAiEditingSourceGitBridge,
@@ -40,12 +38,6 @@ export interface FreeCutEditorProps {
     onProgress?: (progress: EmbeddedTaskProgress) => void,
     signal?: AbortSignal,
   ) => Promise<EmbeddedTranscriptResult>
-  onAnalyzeMediaVisual?: (
-    source: EmbeddedMediaSource,
-    intensity: EmbeddedVisualAnalysisIntensity,
-    onProgress?: (progress: EmbeddedTaskProgress) => void,
-    signal?: AbortSignal,
-  ) => Promise<EmbeddedVisualEvidence>
   onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
   onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
   onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
@@ -63,7 +55,6 @@ export function FreeCutEditor({
   onReadNativeMediaFile,
   onResolveNativeMediaUrl,
   onTranscribeMedia,
-  onAnalyzeMediaVisual,
   onGetDeepSeekHarnessWebUrl,
   onDeepSeekHarnessWebState,
   onDeepSeekHarnessSourceToolRequest,
@@ -82,7 +73,6 @@ export function FreeCutEditor({
       readNativeMediaFile: onReadNativeMediaFile,
       resolveNativeMediaUrl: onResolveNativeMediaUrl,
       transcribeMedia: onTranscribeMedia,
-      analyzeMediaVisual: onAnalyzeMediaVisual,
       renderHtmlFrame: onRenderHtmlFrame,
       exportFiles,
       deepseekHarness:
@@ -107,7 +97,6 @@ export function FreeCutEditor({
       onReadNativeMediaFile,
       onResolveNativeMediaUrl,
       onTranscribeMedia,
-      onAnalyzeMediaVisual,
       onRenderHtmlFrame,
       exportFiles,
       onGetDeepSeekHarnessWebUrl,

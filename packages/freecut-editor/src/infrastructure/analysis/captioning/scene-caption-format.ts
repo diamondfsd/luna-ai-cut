@@ -26,6 +26,9 @@ export const LFM_SCENE_CAPTION_PROMPT =
   'Rules:\n' +
   '- "caption" must be one detailed natural sentence.\n' +
   '- Describe the visible subject, action, setting, lighting, time of day, and weather when clearly visible.\n' +
+  '- Judge the whole frame first: prioritize dominant landscapes, sky, buildings, and lighting over tiny details.\n' +
+  '- Only list a subject when its shape is clearly visible; do not turn an ambiguous highlight, shadow, or distant shape into an object.\n' +
+  '- When warm low-angle light and a low sun are visible, use "sunset" for timeOfDay.\n' +
   `- "shotType" is optional and must be one of: ${CANONICAL_SHOT_SIZES.join(', ')}.\n` +
   '- If shot size is not unmistakable, use null.\n' +
   '- If time of day or weather is unclear, use null.\n' +
