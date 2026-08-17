@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-初始交接改动已由提交 `3be633cc` 落入当前分支。本次续作尚未提交，工作树中包含跨用户轮次 Agent 工作消息持久化、稳定工具目录、结构化素材/源码读取工具、完整轮次压缩和流式 usage 兼容降级。
+初始交接改动已由提交 `3be633cc` 落入当前分支。本次续作尚未提交，工作树中包含跨用户轮次 Agent 工作消息持久化、DeepSeek Harness 脚本编辑入口、完整轮次压缩和流式 usage 兼容降级。
 
 已完成验证：
 
@@ -26,10 +26,10 @@
 剪辑助手应被视为一个对视频工程执行结构化编辑工作的内置 Agent：
 
 - 人工编辑与 AI 编辑操作同一套时间轴状态，渲染层直接依赖这套工程。
-- AI 先通过 `project.inspect` 或 `timeline.inspect_context` 读取结构化上下文，再调用 `timeline.*` 工具编辑。
-- AI 不直接修改源码 JSON；时间轴工具负责参数校验、级联关系、保存和回读校验。
-- Git 只负责查看变更和提交，不作为人工编辑与 AI 编辑同步的额外协议。
-- 当前工具数量有限，完整工具定义固定放入稳定 system 前缀；同一轮 Native 调用复用同一份函数目录。
+- AI 唯一可调用的编辑入口是 `edit.run_script`，通过脚本中的 `luna.*` SDK 读取素材、分析内容和编辑时间轴。
+- 脚本支持变量、循环、判断、函数和 `async/await`，适合长视频抽帧结果筛选、批量剪辑和异步音频任务轮询。
+- AI 不直接修改 `project.json` 或任何源码文件；能力适配器负责参数校验、级联关系、保存和结构化结果返回。
+- 工具结果必须返回模型，由模型决定继续、修订还是结束；宿主不根据自然语言自行推进工作流。
 - 对话只在真实输入 token 达到模型上下文窗口 80% 时压缩，不使用字符数或消息数量估算。
 
 ## 已完成改动
@@ -45,17 +45,16 @@
 - `packages/freecut-editor/src/features/ai-editing/orchestration-drivers.ts`
 - `packages/freecut-editor/src/features/ai-editing/orchestrator.ts`
 
-### 2. 结构化素材、源码和 Git 工具
+### 2. Harness 脚本编辑入口
 
-已删除自由命令式的 `workspace.exec`。常用读取能力固定为显式参数工具：
+模型从首轮开始只获得 `edit.run_script`。脚本由独立 Node.js 运行时执行，使用 `luna.*` SDK 调用宿主能力：
 
-- `media.list`：按名称和类型分页列出项目素材与分析状态。
-- `media.read`：按素材 ID 批量读取受限数量的画面证据，并报告失效 ID。
-- `workspace.list` / `workspace.search`：结构化浏览和固定文本搜索虚拟工程。
-- `git.status` / `git.diff` / `git.log`：只读检查剪辑源码仓库。
-- `project.inspect` / `timeline.inspect_context`：读取时间轴总览和指定范围上下文。
+- `luna.media`：读取素材、画面分析和字幕证据。
+- `luna.project`：读取项目状态和画布设置。
+- `luna.timeline`：执行单项或批量时间轴编辑。
+- `luna.audio`：提交配音/音乐后台任务并查询状态。
 
-源码读取和写入仍强制走专用 `source.*` 工具，提交仍走 `git.commit`。所有工具直接操作虚拟工作区，不依赖系统 Shell。
+所有项目状态最终直接保存到 `project.json`，不再维护源码树、源码工具或 AI 专用 Git 工作树。
 
 关键文件：
 
@@ -186,7 +185,7 @@ stream_options: { include_usage: true }
 - 原生 function calling 首轮可直接选择任意允许工具，后续轮次目录保持不变。
 - JSON fallback 使用 system 前缀中的同一份完整定义。
 - `availableToolIds` 限制生效，不能加载任务范围外工具。
-- 模型优先使用 `media.list/media.read`，不再尝试 Shell 命令或用 `source.read` 读取素材投影。
+- 模型优先在 `edit.run_script` 中使用 `luna.media.list()` 和 `luna.media.read()`，不尝试 Shell 命令或直接读取项目文件。
 
 ### P2：模型设置读取有一次额外调用
 

@@ -13,9 +13,9 @@ import {
 } from '@freecut/features/editor/services/musicgen-service'
 import { MUSICGEN_MODEL_IDS } from '@freecut/shared/utils/musicgen-models'
 import type {
-  ProjectSourceJsonSchema,
-  ProjectSourceTool,
-  ProjectSourceToolResult,
+  ProjectEditingJsonSchema,
+  ProjectEditingTool,
+  ProjectEditingToolResult,
 } from './project-source-tools'
 
 const MAX_GENERATED_SPEECH_TEXT_LENGTH = 10_000
@@ -55,7 +55,7 @@ interface AudioTask {
 function schema(
   properties: Record<string, unknown>,
   required: string[] = [],
-): ProjectSourceJsonSchema {
+): ProjectEditingJsonSchema {
   return { type: 'object', properties, required, additionalProperties: false }
 }
 
@@ -69,10 +69,10 @@ function validate<S extends z.ZodType>(input: unknown, value: S) {
 function tool<S extends z.ZodType>(input: {
   name: string
   description: string
-  inputSchema: ProjectSourceJsonSchema
+  inputSchema: ProjectEditingJsonSchema
   schema: S
-  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectSourceToolResult>
-}): ProjectSourceTool {
+  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectEditingToolResult>
+}): ProjectEditingTool {
   return {
     name: input.name,
     description: input.description,
@@ -317,7 +317,7 @@ const audioGetTask = tool({
   },
 })
 
-export const AUDIO_TASK_TOOLS: readonly ProjectSourceTool[] = [
+export const AUDIO_TASK_TOOLS: readonly ProjectEditingTool[] = [
   audioStartSpeech,
   audioStartMusic,
   audioGetTask,

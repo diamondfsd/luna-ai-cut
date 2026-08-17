@@ -63,7 +63,7 @@ export const BUILT_IN_SKILL_NAMES = Object.freeze([
 const SCRIPT_ONLY_GUIDANCE = [
   '## 脚本执行方式',
   '',
-  '模型唯一的编辑入口是 `edit.run_script`。所有项目读取、素材分析、记忆读写、音频生成、时间轴修改和结果复核，都必须写在同一段 ESM 剪辑脚本中，通过 `luna.*` SDK 方法完成。不要直接调用单个素材、时间轴或源码工具。',
+  '模型唯一的编辑入口是 `edit.run_script`。所有项目读取、素材分析、记忆读写、音频生成、时间轴修改和结果复核，都必须写在同一段 ESM 剪辑脚本中，通过 `luna.*` SDK 方法完成。不要直接调用单个素材、时间轴或其他编辑能力。',
   '',
   '脚本必须导出 `default async function main(luna)`。脚本可以使用完整 JavaScript 语法，在本地完成循环、条件判断、数组筛选和批量操作。每个脚本阶段读取 SDK 返回的结构化结果，并返回简短结果供模型继续判断。',
 ].join('\n')

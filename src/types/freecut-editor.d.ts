@@ -83,7 +83,7 @@ declare module '@freecut/embedded' {
     error?: string
   }
 
-  export interface EmbeddedDeepSeekHarnessSourceToolRequest {
+  export interface EmbeddedDeepSeekHarnessToolRequest {
     requestId: string
     projectId: string
     name: string
@@ -93,29 +93,8 @@ declare module '@freecut/embedded' {
   export interface EmbeddedDeepSeekHarnessBridge {
     getWebUrl(projectId: string): Promise<string>
     onWebState(callback: (state: EmbeddedDeepSeekHarnessWebState) => void): () => void
-    onSourceToolRequest(callback: (request: EmbeddedDeepSeekHarnessSourceToolRequest) => Promise<unknown>): () => void
-    onSourceToolCancel(callback: (requestId: string) => void): () => void
-  }
-
-  export interface EmbeddedAiEditingSourceGitBridge {
-    root(projectId: string): Promise<string>
-    onChanged?: (projectId: string, callback: (paths: string[]) => void) => () => void
-    ensure(projectId: string, initialFiles?: Record<string, string>): Promise<{ created: boolean; head: string | null }>
-    status(projectId: string): Promise<{ branch: string | null; clean: boolean; entries: Array<{ path: string; change: 'added' | 'modified' | 'deleted' }> }>
-    list(projectId: string, sourceDirectory?: string): Promise<Array<{ path: string; name: string; type: 'file' | 'directory' }>>
-    read(projectId: string, sourcePath: string): Promise<string>
-    create(projectId: string, sourcePath: string, content: string): Promise<void>
-    replace(projectId: string, input: { path: string; oldText: string; newText: string; replaceAll?: boolean }): Promise<{ changed: boolean; content: string; replacements: number }>
-    write(projectId: string, sourcePath: string, content: string): Promise<void>
-    remove(projectId: string, sourcePath: string, expectedRevision?: string): Promise<void>
-    applyChanges(projectId: string, changes: Array<{ path: string; content: string | null; expectedContent?: string | null; expectedRevision?: string }>): Promise<void>
-    diff(projectId: string): Promise<Array<{ path: string; change: 'added' | 'modified' | 'deleted'; before: string | null; after: string | null }>>
-    log(projectId: string, limit?: number): Promise<Array<{ oid: string; message: string; author: { name: string; email: string; timestamp: number } }>>
-    branches(projectId: string): Promise<{ current: string | null; names: string[] }>
-    createBranch(projectId: string, name: string): Promise<void>
-    checkout(projectId: string, name: string): Promise<void>
-    resetToInitial(projectId: string): Promise<{ changed: boolean; initialCommitId: string; commitId: string }>
-    commit(projectId: string, message: string, sourcePaths?: string[]): Promise<string>
+    onToolRequest(callback: (request: EmbeddedDeepSeekHarnessToolRequest) => Promise<unknown>): () => void
+    onToolCancel(callback: (requestId: string) => void): () => void
   }
 
   export interface FreeCutEditorProps {
@@ -132,9 +111,8 @@ declare module '@freecut/embedded' {
     ) => Promise<EmbeddedTranscriptResult>
     onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
     onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
-    onDeepSeekHarnessSourceToolRequest?: EmbeddedDeepSeekHarnessBridge['onSourceToolRequest']
-    onDeepSeekHarnessSourceToolCancel?: EmbeddedDeepSeekHarnessBridge['onSourceToolCancel']
-    editingSourceGit?: EmbeddedAiEditingSourceGitBridge
+    onDeepSeekHarnessToolRequest?: EmbeddedDeepSeekHarnessBridge['onToolRequest']
+    onDeepSeekHarnessToolCancel?: EmbeddedDeepSeekHarnessBridge['onToolCancel']
     onRenderHtmlFrame?: (
       request: EmbeddedHtmlRenderRequest,
     ) => Promise<EmbeddedHtmlRenderResult>

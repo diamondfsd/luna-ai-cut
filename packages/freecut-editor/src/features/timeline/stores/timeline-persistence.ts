@@ -72,12 +72,6 @@ import {
   getRootTimelineSnapshot,
   type TimelineSnapshotLike,
 } from './actions/shared'
-import {
-  ensureProjectSource,
-  readProjectSource,
-  writeProjectSource,
-} from '@freecut/features/project-source/project-source-worktree'
-import { isAiEditingSourceWriteOwned } from '@freecut/features/project-source/project-source-write-ownership'
 
 const logger = createLogger('TimelineStore')
 
@@ -963,28 +957,6 @@ export async function saveTimeline(projectId: string): Promise<void> {
     })
 
     const updatedAt = Date.now()
-    let projectJsonTimeline = sanitizedTimeline
-    if (!isAiEditingSourceWriteOwned()) {
-      const sourceProject = {
-        ...project,
-        timeline: sanitizedTimeline,
-        updatedAt,
-      }
-      const sourceWritten = await writeProjectSource(sourceProject)
-
-      // project-source is the authoring format when the host exposes it. Read
-      // the compiled result back before writing project.json so normalization
-      // and source-specific representations cannot leave two timelines that
-      // differ subtly. Without a source bridge, project.json remains the
-      // standalone workspace format.
-      if (sourceWritten) {
-        const compiledSourceProject = await readProjectSource(projectId)
-        if (!compiledSourceProject?.timeline) {
-          throw new Error(`Project source did not produce a timeline: ${projectId}`)
-        }
-        projectJsonTimeline = compiledSourceProject.timeline
-      }
-    }
 
     // Generate thumbnail — prefer capturing the existing preview canvas
     // (near-free: reuses the already-initialized scrub renderer with cached
@@ -1077,7 +1049,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
     // pre-await `project` snapshot would clobber those newer fields.
     // Clear the deprecated inline thumbnail field when using thumbnailId.
     await updateProject(projectId, {
-      timeline: projectJsonTimeline,
+      timeline: sanitizedTimeline,
       ...(thumbnailId && { thumbnailId, thumbnail: undefined }),
       updatedAt,
     })
@@ -1325,10 +1297,7 @@ async function loadTimelineOnce(
         }
       : repairedLegacyLayouts.project
 
-    const hasProjectSource = await ensureProjectSource(storedProject)
-    const project = hasProjectSource
-      ? (await readProjectSource(projectId)) ?? storedProject
-      : storedProject
+    const project = storedProject
 
     // Log migration activity
     if (migrationResult.migrated || repairedLegacyLayouts.repaired || sanitizedTimeline.cleaned) {

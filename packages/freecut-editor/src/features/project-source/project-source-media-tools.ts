@@ -7,9 +7,9 @@ import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import type { EmbeddedTranscriptResult } from '@freecut/shared/host/embedded-host'
 import type { MediaMetadata, MediaTranscript } from '@freecut/types/storage'
 import type {
-  ProjectSourceJsonSchema,
-  ProjectSourceTool,
-  ProjectSourceToolResult,
+  ProjectEditingJsonSchema,
+  ProjectEditingTool,
+  ProjectEditingToolResult,
 } from './project-source-tools'
 import { AUDIO_TASK_TOOLS } from './project-source-audio-tasks'
 
@@ -23,7 +23,7 @@ const VISUAL_ANALYSIS_INTENSITIES = ['light', 'normal', 'strong'] as const
 function schema(
   properties: Record<string, unknown>,
   required: string[] = [],
-): ProjectSourceJsonSchema {
+): ProjectEditingJsonSchema {
   return { type: 'object', properties, required, additionalProperties: false }
 }
 
@@ -37,10 +37,10 @@ function validate<S extends z.ZodType>(input: unknown, value: S) {
 function tool<S extends z.ZodType>(input: {
   name: string
   description: string
-  inputSchema: ProjectSourceJsonSchema
+  inputSchema: ProjectEditingJsonSchema
   schema: S
-  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectSourceToolResult>
-}): ProjectSourceTool {
+  execute: (args: z.infer<S>, signal?: AbortSignal) => Promise<ProjectEditingToolResult>
+}): ProjectEditingTool {
   return {
     name: input.name,
     description: input.description,
@@ -339,7 +339,7 @@ const searchTranscript = tool({
   },
 })
 
-export const MEDIA_AI_TOOLS: readonly ProjectSourceTool[] = [
+export const MEDIA_AI_TOOLS: readonly ProjectEditingTool[] = [
   mediaList,
   mediaRead,
   mediaAnalyze,

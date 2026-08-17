@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react'
 export type {
   EmbeddedDeepSeekHarnessBridge,
-  EmbeddedDeepSeekHarnessSourceToolRequest,
+  EmbeddedDeepSeekHarnessToolRequest,
   EmbeddedDeepSeekHarnessWebState,
 } from './deepseek-harness'
 import type { EmbeddedDeepSeekHarnessBridge } from './deepseek-harness'
@@ -82,74 +82,6 @@ export interface EmbeddedExportBridge {
   revealFile(filePath: string): Promise<void>
 }
 
-export interface EmbeddedAiEditingSourceGitBridge {
-  root(projectId: string): Promise<string>
-  onChanged?: (projectId: string, callback: (paths: string[]) => void) => () => void
-  ensure(
-    projectId: string,
-    initialFiles?: Record<string, string>,
-  ): Promise<{ created: boolean; head: string | null }>
-  status(projectId: string): Promise<{
-    branch: string | null
-    clean: boolean
-    entries: Array<{ path: string; change: 'added' | 'modified' | 'deleted' }>
-  }>
-  list(
-    projectId: string,
-    sourceDirectory?: string,
-  ): Promise<
-    Array<{
-      path: string
-      name: string
-      type: 'file' | 'directory'
-    }>
-  >
-  read(projectId: string, sourcePath: string): Promise<string>
-  create(projectId: string, sourcePath: string, content: string): Promise<void>
-  replace(
-    projectId: string,
-    input: { path: string; oldText: string; newText: string; replaceAll?: boolean },
-  ): Promise<{ changed: boolean; content: string; replacements: number }>
-  write(projectId: string, sourcePath: string, content: string): Promise<void>
-  remove(projectId: string, sourcePath: string, expectedRevision?: string): Promise<void>
-  applyChanges(
-    projectId: string,
-    changes: Array<{
-      path: string
-      content: string | null
-      expectedContent?: string | null
-      expectedRevision?: string
-    }>,
-  ): Promise<void>
-  diff(projectId: string): Promise<
-    Array<{
-      path: string
-      change: 'added' | 'modified' | 'deleted'
-      before: string | null
-      after: string | null
-    }>
-  >
-  log(
-    projectId: string,
-    limit?: number,
-  ): Promise<
-    Array<{
-      oid: string
-      message: string
-      author: { name: string; email: string; timestamp: number }
-    }>
-  >
-  branches(projectId: string): Promise<{ current: string | null; names: string[] }>
-  createBranch(projectId: string, name: string): Promise<void>
-  checkout(projectId: string, name: string): Promise<void>
-  resetToInitial(projectId: string): Promise<{
-    changed: boolean
-    initialCommitId: string
-    commitId: string
-  }>
-  commit(projectId: string, message: string, sourcePaths?: string[]): Promise<string>
-}
-
 export interface EmbeddedHostBridge {
   requestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
   revealFile?: (filePath: string) => Promise<void>
@@ -165,7 +97,6 @@ export interface EmbeddedHostBridge {
   ) => Promise<EmbeddedTranscriptResult>
   /** DeepSeek Harness owns the conversation, model loop, and tool execution. */
   deepseekHarness?: EmbeddedDeepSeekHarnessBridge
-  editingSourceGit?: EmbeddedAiEditingSourceGitBridge
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
 }

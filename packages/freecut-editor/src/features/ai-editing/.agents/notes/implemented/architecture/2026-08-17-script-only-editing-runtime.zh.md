@@ -10,9 +10,9 @@ Status: implemented
 
 ## 决策
 
-嵌入式 FreeCut Harness 只暴露一个编辑工具 `edit.run_script`。模型提供一个导出 `default async function main(luna)` 的 ESM 模块，Harness 在独立 Node.js 进程中执行它。脚本通过 `luna` SDK 读取项目、分析素材、生成音频、修改时间轴、检查源码和读写记忆。
+嵌入式 FreeCut Harness 只暴露一个编辑工具 `edit.run_script`。模型提供一个导出 `default async function main(luna)` 的 ESM 模块，Harness 在独立 Node.js 进程中执行它。脚本通过 `luna` SDK 读取项目、分析素材、生成音频、修改时间轴和读写记忆。
 
-现有的 `media.*`、`timeline.*`、`project.*`、`audio.*`、`source.*` 和 `memory.*` 实现继续作为渲染器或宿主能力存在，但位于 SDK 桥接之后，不再注册到 Harness 的面向模型工具注册表中。脚本方法使用 camelCase，宿主通道继续分发现有的内部能力名称。
+现有的 `media.*`、`timeline.*`、`project.*`、`audio.*` 和 `memory.*` 实现继续作为渲染器或宿主能力存在，但位于 SDK 桥接之后，不再注册到 Harness 的面向模型工具注册表中。脚本方法使用 camelCase，宿主通道继续分发现有的内部能力名称。
 
 脚本结果以结构化工具结果返回模型。宿主不读取脚本文案或结果措辞来分类意图、推进工作流状态或宣告完成。构建流程会把脚本运行时复制到嵌入式 Harness 插件旁边，因此开发环境和打包环境使用相同的模块布局。
 
@@ -26,4 +26,4 @@ Status: implemented
 
 ## 考虑过的替代方案
 
-直接向模型注册所有编辑能力被否决，因为复杂流程需要大量模型往返，面向模型的契约也会被低层宿主操作牵着走。受限 JavaScript 解释器被否决，因为产品明确要求完整 JavaScript 和 Node.js 标准库能力。让脚本直接修改 project-source JSON 被否决，因为这会绕过现有经过校验的编辑能力实现，并重复维护工程源码协议。
+直接向模型注册所有编辑能力被否决，因为复杂流程需要大量模型往返，面向模型的契约也会被低层宿主操作牵着走。受限 JavaScript 解释器被否决，因为产品明确要求完整 JavaScript 和 Node.js 标准库能力。让脚本直接修改 `project.json` 被否决，因为这会绕过现有经过校验的编辑能力实现，并破坏 Store 与持久化边界。

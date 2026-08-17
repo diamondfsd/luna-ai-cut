@@ -75,9 +75,6 @@ const harness = vi.hoisted(() => {
   }
 })
 
-vi.mock('@freecut/shared/host/embedded-host', () => ({
-  getEmbeddedHostBridge: () => ({ editingSourceGit: {} }),
-}))
 vi.mock('@freecut/features/editor/deps/projects', () => ({
   useProjectStore: { getState: () => ({ currentProject: harness.project, updateProject: harness.updateProject }) },
 }))
@@ -93,10 +90,6 @@ vi.mock('@freecut/features/media-library/services/media-library-service-loader',
 vi.mock('@freecut/features/timeline/deps/media-library-resolver', () => ({
   resolveMediaUrl: harness.resolveMediaUrl,
 }))
-vi.mock('@freecut/features/project-source/project-source-worktree', () => ({
-  readProjectSource: vi.fn(async () => ({ timeline: { items: [], tracks: [] } })),
-}))
-
 import { TIMELINE_AI_TOOLS } from './project-source-ai-tools'
 
 function getTool(name: string) {

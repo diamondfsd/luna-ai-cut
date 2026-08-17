@@ -10,9 +10,9 @@ Complex edits require repeated analysis, branching, iteration and batch timeline
 
 ## Decision
 
-The embedded FreeCut Harness exposes one editing tool, `edit.run_script`. The model provides an ESM module exporting `default async function main(luna)`, and the Harness runs it in a separate Node.js process. The script receives the `luna` SDK and uses it for project inspection, media analysis, audio generation, timeline edits, source checks and memory operations.
+The embedded FreeCut Harness exposes one editing tool, `edit.run_script`. The model provides an ESM module exporting `default async function main(luna)`, and the Harness runs it in a separate Node.js process. The script receives the `luna` SDK and uses it for project inspection, media analysis, audio generation, timeline edits and memory operations.
 
-Existing `media.*`, `timeline.*`, `project.*`, `audio.*`, `source.*` and `memory.*` implementations remain renderer or host capabilities behind the SDK bridge. They are not registered in the Harness model-facing tool registry. Script method names use camelCase, while the host bridge continues to dispatch the existing internal capability names.
+Existing `media.*`, `timeline.*`, `project.*`, `audio.*` and `memory.*` implementations remain renderer or host capabilities behind the SDK bridge. They are not registered in the Harness model-facing tool registry. Script method names use camelCase, while the host bridge continues to dispatch the existing internal capability names.
 
 Script results are returned as structured tool results to the model. The host does not inspect script text or result wording to classify intent, advance workflow state or declare completion. The build copies the script runtime beside the embedded Harness plugin so development and packaged execution use the same module layout.
 
@@ -26,4 +26,4 @@ Script results are returned as structured tool results to the model. The host do
 
 ## Alternatives considered
 
-Registering every editing capability directly with the model was rejected because complex workflows require repeated model round trips and make the model-facing contract mirror low-level host operations. A restricted JavaScript interpreter was rejected because the product explicitly requires complete JavaScript and Node.js standard-library access. Directly editing project-source JSON from scripts was rejected because it would bypass the existing validated editor capability implementations and duplicate the project-source protocol.
+Registering every editing capability directly with the model was rejected because complex workflows require repeated model round trips and make the model-facing contract mirror low-level host operations. A restricted JavaScript interpreter was rejected because the product explicitly requires complete JavaScript and Node.js standard-library access. Directly editing `project.json` from scripts was rejected because it would bypass the existing validated editor capability implementations and cross the Store/persistence boundary.
