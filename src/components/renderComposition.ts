@@ -89,6 +89,7 @@ export function buildCompositionFromPreviewLayers(
       reveal: layer.reveal,
       color: layer.color,
       maskPath: layer.maskPath ? toLocalPath(layer.maskPath) : undefined,
+      maskProjectId: layer.maskProjectId,
       maskOpacity: layer.maskOpacity,
       maskInverted: layer.maskInverted,
       maskFeather: layer.maskFeather,

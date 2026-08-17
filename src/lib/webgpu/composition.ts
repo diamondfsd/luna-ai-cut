@@ -1,8 +1,18 @@
 import type { CompositionInput, CompositionLayer, RenderColorAdjustments } from '../../shared/types'
 import { WEBGPU_FLAGS } from './constants'
+import {
+  buildWebGpuColorCurveLut,
+  normalizeWebGpuHslChannels,
+  webGpuColorCurveCacheKey,
+  WEBGPU_CURVE_LUT_WIDTH,
+} from './color-grade'
 import { identityWebGpuLut, parseWebGpuLut, type WebGpuLutData } from './cube-lut'
+import { encodeWebGpuMaskTexture, type WebGpuMaskSource } from './mask'
 import { formatWebGpuError, WebGpuRuntime } from './runtime'
 import { getWebGpuSourceDimensions, type WebGpuImageSource } from './source'
+import { hasRasterizableWebGpuLayerContent, rasterizeWebGpuLayer } from './layer-rasterizer'
+import { maskTimelineSampleAt } from '../../workspace/mask/maskTimeline'
+import { maskTrackTransformAt } from '../../workspace/mask/maskTrack'
 
 export interface WebGpuCompositionRenderStats {
   submitMs: number
@@ -13,6 +23,7 @@ export interface WebGpuCompositionRendererOptions {
   resolveImage: (path: string) => Promise<WebGpuImageSource>
   resolveSource?: (layer: CompositionLayer) => Promise<WebGpuImageSource>
   resolveLut?: (path: string) => Promise<string>
+  resolveMask?: (layer: CompositionLayer, path: string) => Promise<WebGpuMaskSource>
   onDeviceLost?: (message: string) => void
   onError?: (message: string) => void
 }
@@ -29,9 +40,39 @@ interface CachedLutTexture extends WebGpuLutData {
   view: GPUTextureView
 }
 
+interface CachedCurveTexture {
+  texture: GPUTexture
+  view: GPUTextureView
+  key: string
+}
+
+interface CachedMaskTexture {
+  texture: GPUTexture
+  view: GPUTextureView
+  width: number
+  height: number
+}
+
+interface ResolvedMask {
+  path: string
+  opacity: number
+  inverted: boolean
+  feather: number
+  transform: {
+    translateX: number
+    translateY: number
+    scale: number
+    rotation: number
+  }
+}
+
+const HIDDEN_MASK = Symbol('hidden-mask')
+
 type SupportedBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
 
 const BLEND_MODES: SupportedBlendMode[] = ['normal', 'multiply', 'screen', 'add']
+const LAYER_UNIFORM_FLOATS = 26 * 4
+const LAYER_UNIFORM_BYTES = LAYER_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT
 
 function paddedLutData(lut: WebGpuLutData): { data: Uint8Array; bytesPerRow: number } {
   const rowBytes = lut.size * 4
@@ -62,7 +103,15 @@ struct LayerUniforms {
   style: vec4f,
   color: vec4f,
   range: vec4f,
+  detail: vec4f,
+  detailExtra: vec4f,
+  grading: vec4f,
+  gradingExtra: vec4f,
+  levels: vec4f,
   extra: vec4f,
+  hsl: array<vec4f, 12>,
+  mask: vec4f,
+  maskTransform: vec4f,
 };
 
 @group(0) @binding(0) var sourceSampler: sampler;
@@ -70,6 +119,8 @@ struct LayerUniforms {
 @group(0) @binding(2) var<uniform> layer: LayerUniforms;
 @group(0) @binding(3) var lutTexture: texture_3d<f32>;
 @group(0) @binding(4) var restoreLutTexture: texture_3d<f32>;
+@group(0) @binding(5) var curveTexture: texture_2d<f32>;
+@group(0) @binding(6) var maskTexture: texture_2d<f32>;
 
 @vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
@@ -104,11 +155,131 @@ fn luminance(c: vec3f) -> f32 {
   return dot(c, vec3f(0.2126, 0.7152, 0.0722));
 }
 
-fn applyColor(cIn: vec3f) -> vec3f {
+fn rgb2hsv(c: vec3f) -> vec3f {
+  let maxChannel = max(c.r, max(c.g, c.b));
+  let minChannel = min(c.r, min(c.g, c.b));
+  let delta = maxChannel - minChannel;
+  var hue = 0.0;
+  if (delta > 0.00001) {
+    if (maxChannel == c.r) {
+      hue = (c.g - c.b) / delta;
+      if (hue < 0.0) { hue = hue + 6.0; }
+    } else if (maxChannel == c.g) {
+      hue = (c.b - c.r) / delta + 2.0;
+    } else {
+      hue = (c.r - c.g) / delta + 4.0;
+    }
+    hue = hue / 6.0;
+  }
+  return vec3f(hue, select(0.0, delta / maxChannel, maxChannel > 0.00001), maxChannel);
+}
+
+fn hsv2rgb(hsv: vec3f) -> vec3f {
+  let hue = fract(hsv.x);
+  let p = abs(fract(vec3f(hue) + vec3f(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+  return hsv.z * mix(vec3f(1.0), clamp(p - vec3f(1.0), vec3f(0.0), vec3f(1.0)), hsv.y);
+}
+
+fn sampleSource(uv: vec2f) -> vec3f {
+  return textureSampleLevel(sourceTexture, sourceSampler, uv, 0.0).rgb;
+}
+
+fn blurSource(uv: vec2f, radius: f32) -> vec3f {
+  let texel = vec2f(1.0) / vec2f(textureDimensions(sourceTexture, 0));
+  let offset = texel * max(radius, 0.25);
+  var total = vec3f(0.0);
+  total = total + sampleSource(uv + vec2f(-offset.x, -offset.y));
+  total = total + sampleSource(uv + vec2f(0.0, -offset.y));
+  total = total + sampleSource(uv + vec2f(offset.x, -offset.y));
+  total = total + sampleSource(uv + vec2f(-offset.x, 0.0));
+  total = total + sampleSource(uv);
+  total = total + sampleSource(uv + vec2f(offset.x, 0.0));
+  total = total + sampleSource(uv + vec2f(-offset.x, offset.y));
+  total = total + sampleSource(uv + vec2f(0.0, offset.y));
+  total = total + sampleSource(uv + vec2f(offset.x, offset.y));
+  return total / 9.0;
+}
+
+fn applySpatialDetail(cIn: vec3f, uv: vec2f) -> vec3f {
+  let detail = layer.detail;
+  let detailExtra = layer.detailExtra;
+  let denoise = clamp((detailExtra.x + detailExtra.y) / 100.0, 0.0, 1.0);
+  let localContrast = detail.y / 100.0 * 0.7 + detail.z / 100.0 * 0.35;
+  let sharpen = clamp(detail.w / 100.0, 0.0, 2.0) * 0.65;
+  let glow = clamp(detailExtra.z / 100.0, 0.0, 1.0);
+  if (denoise <= 0.0001 && abs(localContrast) <= 0.0001 && sharpen <= 0.0001 && glow <= 0.0001) {
+    return cIn;
+  }
+
+  let blurred = blurSource(uv, max(detailExtra.w / 18.0, 0.25));
+  var c = mix(cIn, blurred, denoise);
+  c = c + (cIn - blurred) * (localContrast + sharpen);
+  if (glow > 0.0001) {
+    let threshold = clamp(layer.grading.x / 100.0, 0.0, 0.99);
+    let bright = max(blurred - vec3f(threshold), vec3f(0.0));
+    c = c + bright * glow * 0.6;
+  }
+  return c;
+}
+
+fn sampleCurve(value: f32) -> vec4f {
+  let width = ${WEBGPU_CURVE_LUT_WIDTH}.0;
+  let u = (clamp(value, 0.0, 1.0) * (width - 1.0) + 0.5) / width;
+  return textureSampleLevel(curveTexture, sourceSampler, vec2f(u, 0.5), 0.0);
+}
+
+fn applyLevels(cIn: vec3f) -> vec3f {
+  let black = clamp(layer.levels.y, 0.0, 0.99);
+  let white = max(black + 0.001, layer.levels.w);
+  let gray = clamp(layer.levels.z, 0.05, 0.99);
+  let gamma = log(0.5) / log(gray);
+  var c = clamp((cIn - vec3f(black)) / vec3f(white - black), vec3f(0.0), vec3f(1.0));
+  c = pow(c, vec3f(gamma));
+  return c;
+}
+
+fn applyWheel(cIn: vec3f, hue: f32, amount: f32, mask: f32) -> vec3f {
+  let strength = clamp(abs(amount) / 100.0, 0.0, 1.0) * mask;
+  if (strength <= 0.0001) { return cIn; }
+  let tintColor = hsv2rgb(vec3f(fract(hue / 360.0), 1.0, 1.0));
+  var tintTarget = tintColor;
+  if (amount < 0.0) { tintTarget = vec3f(1.0) - tintTarget; }
+  return mix(cIn, cIn * mix(vec3f(1.0), tintTarget, clamp(abs(amount) / 100.0, 0.0, 1.0)), mask);
+}
+
+fn hueDistance(left: f32, right: f32) -> f32 {
+  let direct = abs(left - right);
+  return min(direct, 360.0 - direct);
+}
+
+fn applyHslChannel(cIn: vec3f, params: vec4f) -> vec3f {
+  if (abs(params.y) + abs(params.z) + abs(params.w) <= 0.0001) { return cIn; }
+  var hsv = rgb2hsv(cIn);
+  if (hsv.y <= 0.0001) { return cIn; }
+  let distance = hueDistance(hsv.x * 360.0, params.x);
+  let weight = 1.0 - smoothstep(0.0, 45.0, distance);
+  if (weight <= 0.0001) { return cIn; }
+  hsv.x = fract(hsv.x + params.y / 360.0 * weight);
+  hsv.y = clamp(hsv.y * (1.0 + params.z / 100.0 * weight), 0.0, 1.0);
+  hsv.z = clamp(hsv.z + params.w / 100.0 * weight, 0.0, 1.0);
+  return hsv2rgb(hsv);
+}
+
+fn applyHsl(cIn: vec3f) -> vec3f {
+  var c = cIn;
+  for (var index = 0u; index < 12u; index = index + 1u) {
+    c = applyHslChannel(c, layer.hsl[index]);
+  }
+  return c;
+}
+
+fn applyColor(cIn: vec3f, uv: vec2f) -> vec3f {
   let tone = layer.style;
   let color = layer.color;
   let range = layer.range;
-  var c = cIn * exp2(tone.y);
+  let grading = layer.grading;
+  let gradingExtra = layer.gradingExtra;
+  var c = applySpatialDetail(cIn, uv) * exp2(tone.y);
   let bounded = clamp(c, vec3f(0.0), vec3f(1.0));
   let midtoneWeight = bounded * (vec3f(1.0) - bounded);
   c = c + midtoneWeight * (tone.z / 100.0) * 1.1;
@@ -139,6 +310,26 @@ fn applyColor(cIn: vec3f) -> vec3f {
   let minChannel = min(c.r, min(c.g, c.b));
   let chroma = maxChannel - minChannel;
   c = mix(vec3f(luminance(c)), c, 1.0 + color.w / 100.0 * (1.0 - clamp(chroma, 0.0, 1.0)));
+  c = applyLevels(c);
+
+  let gradeShadowMask = 1.0 - smoothstep(0.0, 0.5, luminance(c));
+  let gradeHighlightMask = smoothstep(0.5, 1.0, luminance(c));
+  let gradeMidtoneMask = max(0.0, 1.0 - gradeShadowMask - gradeHighlightMask);
+  c = applyWheel(c, grading.y, grading.z, gradeShadowMask);
+  c = applyWheel(c, grading.w, gradingExtra.x, gradeMidtoneMask);
+  c = applyWheel(c, gradingExtra.y, gradingExtra.z, gradeHighlightMask);
+
+  let curveLift = gradingExtra.w / 100.0;
+  c = c + vec3f(curveLift);
+  c = (c - vec3f(0.5)) * (1.0 + layer.levels.x / 100.0) + vec3f(0.5);
+  let redCurve = sampleCurve(c.r).r;
+  let greenCurve = sampleCurve(c.g).g;
+  let blueCurve = sampleCurve(c.b).b;
+  c = vec3f(redCurve, greenCurve, blueCurve);
+  let currentLuma = luminance(c);
+  let targetLuma = sampleCurve(currentLuma).a;
+  c = c + vec3f(targetLuma - currentLuma);
+  c = applyHsl(c);
   c = c + vec3f(layer.extra.x / 100.0);
   return clamp(c, vec3f(0.0), vec3f(1.0));
 }
@@ -160,16 +351,163 @@ fn applyLut(cIn: vec3f) -> vec3f {
   return mix(c, sampleLut(lutTexture, c, size), intensity);
 }
 
+fn sampleMask(uv: vec2f) -> f32 {
+  let dimensions = vec2f(textureDimensions(maskTexture, 0));
+  let translated = (uv - vec2f(0.5) - layer.maskTransform.xy) * dimensions;
+  let angle = layer.maskTransform.w;
+  let cosine = cos(angle);
+  let sine = sin(angle);
+  let unrotated = vec2f(
+    cosine * translated.x + sine * translated.y,
+    -sine * translated.x + cosine * translated.y,
+  );
+  let maskUv = unrotated / max(layer.maskTransform.z, 0.0001) / dimensions + vec2f(0.5);
+  if (maskUv.x < 0.0 || maskUv.x > 1.0 || maskUv.y < 0.0 || maskUv.y > 1.0) {
+    return 0.0;
+  }
+  let sampled = textureSampleLevel(maskTexture, sourceSampler, maskUv, 0.0);
+  let inverted = layer.mask.y > 0.5;
+  let original = select(sampled.r, 1.0 - sampled.r, inverted);
+  let feather = layer.mask.z;
+  if (feather < 0.5) { return original; }
+  let distance = select(sampled.g, sampled.b, inverted) * 100.0;
+  return max(original, 1.0 - smoothstep(0.0, feather, distance));
+}
+
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
-  return vec4f(applyLut(applyColor(sampled.rgb)), sampled.a * layer.style.x);
+  var maskValue = 1.0;
+  if (layer.mask.w > 0.5) {
+    maskValue = clamp(sampleMask(input.uv) * layer.mask.x, 0.0, 1.0);
+  }
+  let adjusted = applyLut(applyColor(sampled.rgb, input.uv));
+  let isLocalColor = layer.mask.w > 1.5;
+  let color = select(mix(sampled.rgb, adjusted, maskValue), adjusted, isLocalColor);
+  let alpha = sampled.a * layer.style.x * select(1.0, maskValue, isLocalColor);
+  return vec4f(color, alpha);
 }
 `
 
 function colorValue(color: RenderColorAdjustments | undefined, key: keyof RenderColorAdjustments): number {
   const value = color?.[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function createLayerUniforms(
+  layer: CompositionLayer,
+  targetRect: [number, number, number, number],
+  sourceRect: [number, number, number, number],
+  luts: { creative: CachedLutTexture; restore: CachedLutTexture | null },
+  mask: ResolvedMask | null,
+): Float32Array {
+  const transform = layer.transform
+  const color = layer.color
+  const uniforms = new Float32Array(LAYER_UNIFORM_FLOATS)
+  uniforms.set(targetRect, 0)
+  uniforms.set(sourceRect, 4)
+  uniforms.set([
+    transform?.scale ?? 1,
+    ((transform?.orientation ?? 0) + (transform?.rotate ?? 0)) * Math.PI / 180,
+    transform?.flipH ? 1 : 0,
+    transform?.flipV ? 1 : 0,
+  ], 8)
+  uniforms.set([
+    layer.opacity ?? 1,
+    colorValue(color, 'exposure'),
+    colorValue(color, 'brightness'),
+    colorValue(color, 'contrast'),
+  ], 12)
+  uniforms.set([
+    colorValue(color, 'saturation'),
+    colorValue(color, 'temperature'),
+    colorValue(color, 'tint'),
+    colorValue(color, 'vibrance'),
+  ], 16)
+  uniforms.set([
+    colorValue(color, 'highlights'),
+    colorValue(color, 'shadows'),
+    colorValue(color, 'whites'),
+    colorValue(color, 'blacks'),
+  ], 20)
+  uniforms.set([
+    colorValue(color, 'black'),
+    colorValue(color, 'clarity'),
+    colorValue(color, 'texture'),
+    colorValue(color, 'sharpen'),
+  ], 24)
+  uniforms.set([
+    colorValue(color, 'denoise'),
+    colorValue(color, 'skinSmoothing'),
+    colorValue(color, 'glowStrength'),
+    colorValue(color, 'glowRadius'),
+  ], 28)
+  uniforms.set([
+    colorValue(color, 'glowThreshold'),
+    colorValue(color, 'gradeShadowsHue'),
+    colorValue(color, 'gradeShadowsAmount'),
+    colorValue(color, 'gradeMidHue'),
+  ], 32)
+  uniforms.set([
+    colorValue(color, 'gradeMidAmount'),
+    colorValue(color, 'gradeHighlightsHue'),
+    colorValue(color, 'gradeHighlightsAmount'),
+    colorValue(color, 'curveLift'),
+  ], 36)
+  uniforms.set([
+    colorValue(color, 'curveContrast'),
+    colorValue(color, 'levelsBlack'),
+    colorValue(color, 'levelsGray') || 0.5,
+    colorValue(color, 'levelsWhite') || 1,
+  ], 40)
+  uniforms.set([
+    colorValue(color, 'black'),
+    layer.lutId ? Math.max(0, Math.min(100, layer.lutIntensity ?? 100)) / 100 : 0,
+    luts.creative.size,
+    luts.restore?.size ?? 0,
+  ], 44)
+  uniforms.set(normalizeWebGpuHslChannels(color?.hslChannels), 48)
+  uniforms.set([
+    mask?.opacity ?? 1,
+    mask?.inverted ? 1 : 0,
+    mask?.feather ?? 0,
+    mask ? (layer.layerType === 'local-color' ? 2 : 1) : 0,
+  ], 96)
+  uniforms.set([
+    mask?.transform.translateX ?? 0,
+    mask?.transform.translateY ?? 0,
+    mask?.transform.scale ?? 1,
+    mask?.transform.rotation ?? 0,
+  ], 100)
+  return uniforms
+}
+
+function maskTimeForLayer(layer: CompositionLayer, time: number): number {
+  const sourceTime = layer.source.time
+  return Math.max(0, (sourceTime?.start ?? 0) + time - (sourceTime?.offset ?? 0))
+}
+
+function resolveMaskForLayer(layer: CompositionLayer, time: number): ResolvedMask | typeof HIDDEN_MASK | null {
+  const maskTime = maskTimeForLayer(layer, time)
+  const timelineSample = maskTimelineSampleAt(layer.maskTimeline, maskTime)
+  if (layer.maskTimeline && !timelineSample?.path) return HIDDEN_MASK
+  const path = timelineSample?.path ?? layer.maskPath
+  if (!path) return null
+  const transform = timelineSample?.transform ?? (layer.maskTrack
+    ? maskTrackTransformAt(layer.maskTrack, maskTime)
+    : undefined)
+  return {
+    path,
+    opacity: Math.max(0, Math.min(1, layer.maskOpacity ?? 1)),
+    inverted: layer.maskInverted ?? false,
+    feather: Math.max(0, Math.min(100, layer.maskFeather ?? 0)),
+    transform: {
+      translateX: transform?.translateX ?? 0,
+      translateY: transform?.translateY ?? 0,
+      scale: Math.max(0.0001, transform?.scale ?? 1),
+      rotation: transform?.rotation ?? 0,
+    },
+  }
 }
 
 function sourceRectForLayer(
@@ -250,6 +588,16 @@ function blendState(mode: SupportedBlendMode): GPUBlendState {
   }
 }
 
+interface PreparedCompositionDraw {
+  source: CachedImageTexture
+  lut: CachedLutTexture
+  restoreLut: CachedLutTexture
+  curve: CachedCurveTexture
+  mask: CachedMaskTexture
+  uniforms: Float32Array
+  pipeline: GPURenderPipeline
+}
+
 export class WebGpuCompositionRenderer {
   readonly canvas: HTMLCanvasElement
 
@@ -261,13 +609,19 @@ export class WebGpuCompositionRenderer {
   private uniformBuffers: GPUBuffer[] = []
   private pipelines = new Map<SupportedBlendMode, GPURenderPipeline>()
   private imageTextures = new Map<string, CachedImageTexture>()
+  private rasterizedLayerTextures = new Map<string, CachedImageTexture>()
   private videoTextures = new Map<string, CachedImageTexture>()
   private lutTextures = new Map<string, CachedLutTexture>()
+  private curveTextures = new Map<string, CachedCurveTexture>()
+  private maskTextures = new Map<string, CachedMaskTexture>()
   private identityLut: CachedLutTexture | null = null
+  private identityCurve: CachedCurveTexture | null = null
+  private identityMask: CachedMaskTexture | null = null
   private lastSubmitPromise: Promise<void> = Promise.resolve()
   private resolveImage: ((path: string) => Promise<WebGpuImageSource>) | null = null
   private resolveSource: ((layer: CompositionLayer) => Promise<WebGpuImageSource>) | null = null
   private resolveLut: ((path: string) => Promise<string>) | null = null
+  private resolveMask: ((layer: CompositionLayer, path: string) => Promise<WebGpuMaskSource>) | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -275,6 +629,10 @@ export class WebGpuCompositionRenderer {
 
   get isReady(): boolean {
     return this.runtime !== null && this.context !== null && this.pipelines.size === BLEND_MODES.length
+  }
+
+  get capabilities() {
+    return this.runtime?.capabilities ?? null
   }
 
   async initialize(options: WebGpuCompositionRendererOptions): Promise<void> {
@@ -292,6 +650,7 @@ export class WebGpuCompositionRenderer {
       this.resolveImage = options.resolveImage
       this.resolveSource = options.resolveSource ?? null
       this.resolveLut = options.resolveLut ?? null
+      this.resolveMask = options.resolveMask ?? null
       this.context.configure({ device: this.device, format: this.format, alphaMode: 'premultiplied' })
 
       const module = this.device.createShaderModule({ label: 'webgpu-composition', code: COMPOSITION_SHADER })
@@ -300,9 +659,11 @@ export class WebGpuCompositionRenderer {
         entries: [
           { binding: 0, visibility: WEBGPU_FLAGS.fragmentStage, sampler: { type: 'filtering' } },
           { binding: 1, visibility: WEBGPU_FLAGS.fragmentStage, texture: { sampleType: 'float' } },
-          { binding: 2, visibility: WEBGPU_FLAGS.fragmentStage, buffer: { type: 'uniform' } },
+          { binding: 2, visibility: WEBGPU_FLAGS.vertexStage | WEBGPU_FLAGS.fragmentStage, buffer: { type: 'uniform' } },
           { binding: 3, visibility: WEBGPU_FLAGS.fragmentStage, texture: { sampleType: 'float', viewDimension: '3d' } },
           { binding: 4, visibility: WEBGPU_FLAGS.fragmentStage, texture: { sampleType: 'float', viewDimension: '3d' } },
+          { binding: 5, visibility: WEBGPU_FLAGS.fragmentStage, texture: { sampleType: 'float' } },
+          { binding: 6, visibility: WEBGPU_FLAGS.fragmentStage, texture: { sampleType: 'float' } },
         ],
       })
       const pipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [layout] })
@@ -335,100 +696,69 @@ export class WebGpuCompositionRenderer {
 
     this.setCanvasSize(composition.canvas.width, composition.canvas.height)
     const layers = [...composition.layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-    const draws: Array<{
-      source: CachedImageTexture
-      lut: CachedLutTexture
-      restoreLut: CachedLutTexture
-      targetRect: [number, number, number, number]
-      sourceRect: [number, number, number, number]
-      uniforms: Float32Array
-      pipeline: GPURenderPipeline
-    }> = []
-    let renderedLayers = 0
-    const start = performance.now()
+    const groupedInputs = new Map<string, CompositionLayer[]>()
+    const groupedOutputs = new Map<string, CompositionLayer>()
+    const topLevelLayers: CompositionLayer[] = []
     for (const layer of layers) {
-      if (layer.activeStart != null && time < layer.activeStart) continue
-      if (layer.activeEnd != null && time >= layer.activeEnd) continue
-      if ((layer.layerType ?? 'media') !== 'media') {
-        throw new Error('当前 WebGPU 合成渲染器仅支持媒体图层')
+      if (!layer.precomposeGroup) {
+        topLevelLayers.push(layer)
+      } else if (layer.precomposeRole === 'input') {
+        const inputs = groupedInputs.get(layer.precomposeGroup) ?? []
+        inputs.push(layer)
+        groupedInputs.set(layer.precomposeGroup, inputs)
+      } else if (layer.precomposeRole === 'output') {
+        groupedOutputs.set(layer.precomposeGroup, layer)
       }
-      const source = await this.getLayerTexture(layer)
-      const targetRect = destinationRectForLayer(
-        layer,
-        source.width,
-        source.height,
-        composition.canvas.width,
-        composition.canvas.height,
-      )
-      const sourceRect = sourceRectForLayer(
-        layer,
-        source.width,
-        source.height,
-        composition.canvas.width,
-        composition.canvas.height,
-      )
-      const luts = await this.getLayerLuts(layer)
-      const transform = layer.transform
-      const uniforms = new Float32Array([
-        ...targetRect,
-        ...sourceRect,
-        transform?.scale ?? 1,
-        ((transform?.orientation ?? 0) + (transform?.rotate ?? 0)) * Math.PI / 180,
-        transform?.flipH ? 1 : 0,
-        transform?.flipV ? 1 : 0,
-        layer.opacity ?? 1,
-        colorValue(layer.color, 'exposure'),
-        colorValue(layer.color, 'brightness'),
-        colorValue(layer.color, 'contrast'),
-        colorValue(layer.color, 'saturation'),
-        colorValue(layer.color, 'temperature'),
-        colorValue(layer.color, 'tint'),
-        colorValue(layer.color, 'vibrance'),
-        colorValue(layer.color, 'highlights'),
-        colorValue(layer.color, 'shadows'),
-        colorValue(layer.color, 'whites'),
-        colorValue(layer.color, 'blacks'),
-        colorValue(layer.color, 'black'),
-        layer.lutId ? Math.max(0, Math.min(100, layer.lutIntensity ?? 100)) / 100 : 0,
-        luts.creative.size,
-        luts.restore?.size ?? 0,
-      ])
-      const mode = (layer.blendMode ?? 'normal') as SupportedBlendMode
-      const pipeline = this.pipelines.get(BLEND_MODES.includes(mode) ? mode : 'normal')!
-      draws.push({ source, lut: luts.creative, restoreLut: luts.restore ?? luts.creative, targetRect, sourceRect, uniforms, pipeline })
     }
+    for (const output of groupedOutputs.values()) topLevelLayers.push(output)
+    topLevelLayers.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
 
     const encoder = this.device.createCommandEncoder({ label: 'webgpu-composition-frame' })
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.context.getCurrentTexture().createView(),
-        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
-    })
-
-    for (const [index, draw] of draws.entries()) {
-      const uniformBuffer = this.ensureUniformBuffer(index)
-      this.device.queue.writeBuffer(uniformBuffer, 0, draw.uniforms)
-      const bindGroup = this.device.createBindGroup({
-        layout: draw.pipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: this.sampler },
-          { binding: 1, resource: draw.source.view },
-          { binding: 2, resource: { buffer: uniformBuffer } },
-          { binding: 3, resource: draw.lut.view },
-          { binding: 4, resource: draw.restoreLut.view },
-        ],
-      })
-      pass.setPipeline(draw.pipeline)
-      pass.setBindGroup(0, bindGroup)
-      pass.draw(6)
-      renderedLayers += 1
+    const transientTextures: GPUTexture[] = []
+    let uniformOffset = 0
+    const draws: PreparedCompositionDraw[] = []
+    let renderedLayers = 0
+    const start = performance.now()
+    for (const layer of topLevelLayers) {
+      if (layer.activeStart != null && time < layer.activeStart) continue
+      if (layer.activeEnd != null && time >= layer.activeEnd) continue
+      let sourceOverride: CachedImageTexture | undefined
+      if (layer.precomposeGroup) {
+        const inputs = groupedInputs.get(layer.precomposeGroup)
+        if (!inputs) continue
+        const groupResult = await this.renderPrecomposeGroup(
+          inputs,
+          composition.canvas.width,
+          composition.canvas.height,
+          time,
+          encoder,
+          uniformOffset,
+          transientTextures,
+        )
+        uniformOffset += groupResult.uniformCount
+        sourceOverride = groupResult.texture
+      }
+      const draw = await this.prepareDraw(
+        layer,
+        composition.canvas.width,
+        composition.canvas.height,
+        time,
+        sourceOverride,
+      )
+      if (draw === HIDDEN_MASK) continue
+      draws.push(draw)
     }
-    pass.end()
+    renderedLayers += this.encodeDrawPass(
+      encoder,
+      this.context.getCurrentTexture().createView(),
+      draws,
+      uniformOffset,
+    )
     this.device.queue.submit([encoder.finish()])
-    this.lastSubmitPromise = this.device.queue.onSubmittedWorkDone()
+    const submitted = this.device.queue.onSubmittedWorkDone()
+    this.lastSubmitPromise = submitted.then(() => {
+      for (const texture of transientTextures) texture.destroy()
+    })
     return { submitMs: performance.now() - start, layerCount: renderedLayers }
   }
 
@@ -454,13 +784,23 @@ export class WebGpuCompositionRenderer {
 
   destroy(): void {
     for (const image of this.imageTextures.values()) image.texture.destroy()
+    for (const layer of this.rasterizedLayerTextures.values()) layer.texture.destroy()
     for (const video of this.videoTextures.values()) video.texture.destroy()
     for (const lut of this.lutTextures.values()) lut.texture.destroy()
+    for (const curve of this.curveTextures.values()) curve.texture.destroy()
+    for (const mask of this.maskTextures.values()) mask.texture.destroy()
     this.identityLut?.texture.destroy()
+    this.identityCurve?.texture.destroy()
+    this.identityMask?.texture.destroy()
     this.imageTextures.clear()
+    this.rasterizedLayerTextures.clear()
     this.videoTextures.clear()
     this.lutTextures.clear()
+    this.curveTextures.clear()
+    this.maskTextures.clear()
     this.identityLut = null
+    this.identityCurve = null
+    this.identityMask = null
     for (const buffer of this.uniformBuffers) buffer.destroy()
     this.uniformBuffers = []
     this.runtime?.destroy()
@@ -472,6 +812,7 @@ export class WebGpuCompositionRenderer {
     this.resolveImage = null
     this.resolveSource = null
     this.resolveLut = null
+    this.resolveMask = null
     this.pipelines.clear()
   }
 
@@ -481,6 +822,139 @@ export class WebGpuCompositionRenderer {
     this.canvas.width = width
     this.canvas.height = height
     this.context.configure({ device: this.device, format: this.format, alphaMode: 'premultiplied' })
+  }
+
+  private async prepareDraw(
+    layer: CompositionLayer,
+    canvasWidth: number,
+    canvasHeight: number,
+    time: number,
+    sourceOverride?: CachedImageTexture,
+  ): Promise<PreparedCompositionDraw | typeof HIDDEN_MASK> {
+    const layerType = layer.layerType ?? 'media'
+    const isLocalColorInput = layerType === 'local-color' && layer.precomposeRole === 'input'
+    const canUseImageSource = layerType === 'media'
+      || isLocalColorInput
+      || ((layerType === 'logo' || layerType === 'decoration') && Boolean(layer.source.path))
+    if (!sourceOverride && !canUseImageSource && !hasRasterizableWebGpuLayerContent(layer)) {
+      throw new Error('当前图层缺少可显示内容')
+    }
+
+    const resolvedMask = resolveMaskForLayer(layer, time)
+    if (resolvedMask === HIDDEN_MASK) return HIDDEN_MASK
+    const rasterized = !sourceOverride && !canUseImageSource
+    const source = sourceOverride
+      ?? (rasterized
+        ? await this.getRasterizedLayerTexture(layer, canvasWidth, canvasHeight)
+        : await this.getLayerTexture(layer))
+    const layoutLayer = sourceOverride || rasterized
+      ? { ...layer, fit: 'stretch' as const, sourceRect: { x: 0, y: 0, w: 1, h: 1 } }
+      : layer
+    const targetRect = destinationRectForLayer(
+      layoutLayer,
+      source.width,
+      source.height,
+      canvasWidth,
+      canvasHeight,
+    )
+    const sourceRect = sourceRectForLayer(
+      layoutLayer,
+      source.width,
+      source.height,
+      canvasWidth,
+      canvasHeight,
+    )
+    const luts = await this.getLayerLuts(layer)
+    const curve = this.getLayerCurve(layer.color)
+    const mask = resolvedMask
+      ? await this.getMaskTexture(layer, resolvedMask.path)
+      : this.getIdentityMask()
+    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, luts, resolvedMask)
+    const mode = (layer.blendMode ?? 'normal') as SupportedBlendMode
+    const pipeline = this.pipelines.get(BLEND_MODES.includes(mode) ? mode : 'normal')!
+    return {
+      source,
+      lut: luts.creative,
+      restoreLut: luts.restore ?? luts.creative,
+      curve,
+      mask,
+      uniforms,
+      pipeline,
+    }
+  }
+
+  private async renderPrecomposeGroup(
+    layers: CompositionLayer[],
+    width: number,
+    height: number,
+    time: number,
+    encoder: GPUCommandEncoder,
+    uniformOffset: number,
+    transientTextures: GPUTexture[],
+  ): Promise<{ texture: CachedImageTexture; uniformCount: number }> {
+    if (!this.device || !this.format) throw new Error('WebGPU 合成渲染器尚未初始化')
+    const texture = this.device.createTexture({
+      label: 'webgpu-composition-precompose',
+      size: { width, height },
+      format: this.format,
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureRenderAttachment,
+    })
+    transientTextures.push(texture)
+    const draws: PreparedCompositionDraw[] = []
+    for (const layer of [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
+      if (layer.activeStart != null && time < layer.activeStart) continue
+      if (layer.activeEnd != null && time >= layer.activeEnd) continue
+      const draw = await this.prepareDraw(layer, width, height, time)
+      if (draw !== HIDDEN_MASK) draws.push(draw)
+    }
+    const uniformCount = this.encodeDrawPass(
+      encoder,
+      texture.createView(),
+      draws,
+      uniformOffset,
+    )
+    return {
+      texture: { texture, view: texture.createView(), width, height },
+      uniformCount,
+    }
+  }
+
+  private encodeDrawPass(
+    encoder: GPUCommandEncoder,
+    targetView: GPUTextureView,
+    draws: PreparedCompositionDraw[],
+    uniformOffset: number,
+  ): number {
+    if (!this.device || !this.sampler) throw new Error('WebGPU 合成渲染器尚未初始化')
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: targetView,
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+    })
+    for (const [index, draw] of draws.entries()) {
+      const uniformBuffer = this.ensureUniformBuffer(uniformOffset + index)
+      this.device.queue.writeBuffer(uniformBuffer, 0, draw.uniforms)
+      const bindGroup = this.device.createBindGroup({
+        layout: draw.pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: this.sampler },
+          { binding: 1, resource: draw.source.view },
+          { binding: 2, resource: { buffer: uniformBuffer } },
+          { binding: 3, resource: draw.lut.view },
+          { binding: 4, resource: draw.restoreLut.view },
+          { binding: 5, resource: draw.curve.view },
+          { binding: 6, resource: draw.mask.view },
+        ],
+      })
+      pass.setPipeline(draw.pipeline)
+      pass.setBindGroup(0, bindGroup)
+      pass.draw(6)
+    }
+    pass.end()
+    return draws.length
   }
 
   private async getImageTexture(path: string): Promise<CachedImageTexture> {
@@ -494,7 +968,7 @@ export class WebGpuCompositionRenderer {
       label: `webgpu-composition-image:${path}`,
       size: { width, height },
       format: 'rgba8unorm',
-      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst,
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst | WEBGPU_FLAGS.textureRenderAttachment,
     })
     this.device.queue.copyExternalImageToTexture(
       { source, flipY: false },
@@ -503,6 +977,38 @@ export class WebGpuCompositionRenderer {
     )
     const entry = { texture, view: texture.createView(), width, height }
     this.imageTextures.set(path, entry)
+    return entry
+  }
+
+  private async getRasterizedLayerTexture(
+    layer: CompositionLayer,
+    canvasWidth: number,
+    canvasHeight: number,
+  ): Promise<CachedImageTexture> {
+    if (!this.device) throw new Error('WebGPU 图层渲染器尚未初始化')
+    const key = `${canvasWidth}x${canvasHeight}:${JSON.stringify(layer)}`
+    const cached = this.rasterizedLayerTextures.get(key)
+    if (cached) return cached
+
+    const rasterized = await rasterizeWebGpuLayer(layer, canvasWidth, canvasHeight)
+    const texture = this.device.createTexture({
+      label: `webgpu-composition-layer:${layer.layerType ?? 'unknown'}`,
+      size: { width: rasterized.width, height: rasterized.height },
+      format: 'rgba8unorm',
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst | WEBGPU_FLAGS.textureRenderAttachment,
+    })
+    this.device.queue.copyExternalImageToTexture(
+      { source: rasterized.canvas, flipY: false },
+      { texture },
+      { width: rasterized.width, height: rasterized.height },
+    )
+    const entry = {
+      texture,
+      view: texture.createView(),
+      width: rasterized.width,
+      height: rasterized.height,
+    }
+    this.rasterizedLayerTextures.set(key, entry)
     return entry
   }
 
@@ -524,7 +1030,7 @@ export class WebGpuCompositionRenderer {
         label: `webgpu-composition-video:${sourceKey}`,
         size: { width, height },
         format: 'rgba8unorm',
-        usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst,
+        usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst | WEBGPU_FLAGS.textureRenderAttachment,
       })
       cached = { texture, view: texture.createView(), width, height }
       this.videoTextures.set(sourceKey, cached)
@@ -546,6 +1052,80 @@ export class WebGpuCompositionRenderer {
       ? await this.getLutTexture(layer.restoreLutId)
       : null
     return { creative, restore }
+  }
+
+  private getLayerCurve(color: RenderColorAdjustments | undefined): CachedCurveTexture {
+    if (!this.device) throw new Error('WebGPU 合成渲染器尚未初始化')
+    const key = webGpuColorCurveCacheKey(color?.curve)
+    if (key === 'identity' && this.identityCurve) return this.identityCurve
+    const cached = this.curveTextures.get(key)
+    if (cached) return cached
+
+    const texture = this.device.createTexture({
+      label: `webgpu-composition-curve:${key}`,
+      size: { width: WEBGPU_CURVE_LUT_WIDTH, height: 1 },
+      format: 'rgba8unorm',
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst,
+    })
+    this.device.queue.writeTexture(
+      { texture },
+      buildWebGpuColorCurveLut(color?.curve),
+      { bytesPerRow: WEBGPU_CURVE_LUT_WIDTH * 4, rowsPerImage: 1 },
+      { width: WEBGPU_CURVE_LUT_WIDTH, height: 1, depthOrArrayLayers: 1 },
+    )
+    const entry: CachedCurveTexture = { key, texture, view: texture.createView() }
+    if (key === 'identity') this.identityCurve = entry
+    else this.curveTextures.set(key, entry)
+    return entry
+  }
+
+  private async getMaskTexture(layer: CompositionLayer, path: string): Promise<CachedMaskTexture> {
+    if (!this.device || !this.resolveMask) throw new Error('WebGPU 合成渲染器缺少蒙版加载器')
+    const key = `${layer.maskProjectId ?? ''}\u0000${path}`
+    const cached = this.maskTextures.get(key)
+    if (cached) return cached
+
+    const source = await this.resolveMask(layer, path)
+    const encoded = encodeWebGpuMaskTexture(source)
+    const texture = this.device.createTexture({
+      label: `webgpu-composition-mask:${key}`,
+      size: { width: source.width, height: source.height },
+      format: 'rgba8unorm',
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst,
+    })
+    this.device.queue.writeTexture(
+      { texture },
+      encoded.data,
+      { bytesPerRow: encoded.bytesPerRow, rowsPerImage: source.height },
+      { width: source.width, height: source.height, depthOrArrayLayers: 1 },
+    )
+    const entry = {
+      texture,
+      view: texture.createView(),
+      width: source.width,
+      height: source.height,
+    }
+    this.maskTextures.set(key, entry)
+    return entry
+  }
+
+  private getIdentityMask(): CachedMaskTexture {
+    if (this.identityMask) return this.identityMask
+    if (!this.device) throw new Error('WebGPU 合成渲染器尚未初始化')
+    const texture = this.device.createTexture({
+      label: 'webgpu-composition-mask:identity',
+      size: { width: 1, height: 1 },
+      format: 'rgba8unorm',
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst,
+    })
+    this.device.queue.writeTexture(
+      { texture },
+      new Uint8Array([255, 255, 255, 255, ...new Array<number>(252).fill(0)]),
+      { bytesPerRow: 256, rowsPerImage: 1 },
+      { width: 1, height: 1, depthOrArrayLayers: 1 },
+    )
+    this.identityMask = { texture, view: texture.createView(), width: 1, height: 1 }
+    return this.identityMask
   }
 
   private async getLutTexture(path: string): Promise<CachedLutTexture> {
@@ -603,7 +1183,7 @@ export class WebGpuCompositionRenderer {
     if (existing) return existing
     const buffer = this.device.createBuffer({
       label: `webgpu-composition-uniforms-${index}`,
-      size: 112,
+      size: LAYER_UNIFORM_BYTES,
       usage: WEBGPU_FLAGS.bufferUniform | WEBGPU_FLAGS.bufferCopyDst,
     })
     this.uniformBuffers[index] = buffer

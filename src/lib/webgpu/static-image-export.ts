@@ -2,6 +2,7 @@ import type { CompositionInput } from '../../shared/types'
 import { filePathToPreviewUrl } from '../fileUtils'
 import { WebGpuCompositionRenderer } from './composition'
 import { readWebGpuLut } from './lut-source'
+import { loadWebGpuMask } from './mask-source'
 
 export type WebGpuImageExportFormat = 'jpeg' | 'png' | 'webp'
 
@@ -39,6 +40,7 @@ export async function renderStaticImageCompositionToBlob(params: {
         return image
       },
       resolveLut: readWebGpuLut,
+      resolveMask: loadWebGpuMask,
     })
     await renderer.render(params.composition)
     return await renderer.toBlob(params.format, params.quality)

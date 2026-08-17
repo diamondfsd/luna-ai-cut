@@ -283,6 +283,8 @@ export interface CompositionLayer {
   reveal?: CompositionReveal
   color?: RenderColorAdjustments
   maskPath?: string
+  /** 工作区蒙版所在项目，用于通过受限 IPC 读取蒙版数据。 */
+  maskProjectId?: string
   maskOpacity?: number
   maskInverted?: boolean
   maskFeather?: number
