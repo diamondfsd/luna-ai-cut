@@ -12,14 +12,14 @@ description: 资讯与知识口播风格技能。用户要求新闻、教程、�
 3. 证据、例子或步骤。
 4. 转折、限制条件和结论。
 
-先调用 `media.analyze(kind=transcript)` 或读取已有转写，再按句子边界处理。删除重复和无意义停顿时保持原意，不把模型推断写成新闻事实。
+先调用 `luna.media.analyze(kind=transcript)` 或读取已有转写，再按句子边界处理。删除重复和无意义停顿时保持原意，不把模型推断写成新闻事实。
 
 ## 画面与字幕
 
 - 主讲人脸部、嘴部和手势优先可见；B-roll 只在解释或补充台词时使用。
 - 字幕跟随可靠时间点，每行保持易读，重点词不能破坏句子理解。
-- 需要补充配音时用 `audio.generate_speech`，生成结果保存后再由模型决定是否入轴。
-- 人声优先于音乐和环境声；用 `timeline.set_audio` 和 `timeline.set_properties` 做有限调整。
+- 需要补充配音时用 `luna.audio.generateSpeech`，生成结果保存后再由模型决定是否入轴。
+- 人声优先于音乐和环境声；用 `luna.timeline.setAudio` 和 `luna.timeline.setProperties` 做有限调整。
 
 ## 检查
 

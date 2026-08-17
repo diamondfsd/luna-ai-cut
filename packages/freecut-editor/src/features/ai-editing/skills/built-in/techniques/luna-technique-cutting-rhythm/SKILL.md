@@ -29,7 +29,7 @@ description: 剪辑节奏与镜头连接技能。用户要求快切、慢下来�
 
 ## 执行和检查
 
-- 用 `timeline.trim`、`timeline.split` 和 `timeline.add_media_batch` 执行已确认的切点；需要转场时先 `timeline.list_transitions` 再 `timeline.add_transition_batch`。
-- 用 `timeline.set_audio` 处理声音桥接所需的音量和淡入淡出；不要用宿主代码猜测应该添加哪种转场。
+- 用 `luna.timeline.trim`、`luna.timeline.split` 和 `luna.timeline.addMediaBatch` 执行已确认的切点；需要转场时先 `luna.timeline.listTransitions` 再 `luna.timeline.addTransitionBatch`。
+- 用 `luna.timeline.setAudio` 处理声音桥接所需的音量和淡入淡出；不要用宿主代码猜测应该添加哪种转场。
 - 检查黑帧、过短镜头、动作断裂、字幕来不及阅读和音乐盖住对白。
 - 用户说“慢一点”时优先减少切点、保留动作过程或延长转场，不自动更换画幅和风格。

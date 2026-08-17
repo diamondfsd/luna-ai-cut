@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  FREECUT_EXPOSED_TOOL_NAMES,
   FREECUT_AUDIO_TOOL_NAMES,
   FREECUT_MEMORY_TOOL_NAMES,
   renderToolResult,
@@ -21,6 +22,8 @@ assert.deepEqual(FREECUT_AUDIO_TOOL_NAMES, [
   'audio.generate_speech',
   'audio.generate_music',
 ])
+
+assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, ['edit.run_script'])
 
 const result = {
   ok: true,
@@ -48,6 +51,9 @@ assert.ok(master)
 assert.match(master.content, /创作需求简报/)
 assert.match(master.content, /AI 剪辑执行契约/)
 assert.match(master.content, /剪辑资料来源与使用边界/)
+assert.match(master.content, /edit\.run_script/)
+assert.match(master.content, /luna\.media\.list/)
+assert.doesNotMatch(master.content, /调用 `media\.list`/)
 
 const registeredSkills = []
 const registeredNames = await registerBuiltInSkills({

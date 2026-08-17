@@ -7,7 +7,7 @@ description: 音乐视频风格技能。用户要求 MV、歌曲剪辑、音乐�
 
 ## 工作顺序
 
-1. 确认使用哪首音乐；没有明确候选时先调用 `media.list`。
+1. 确认使用哪首音乐；没有明确候选时先调用 `luna.media.list`。
 2. 区分前奏、主歌、副歌、桥段和尾奏；没有可靠音乐结构证据时只描述为暂定段落。
 3. 按动作、颜色、人物姿态、地点或道具建立视觉母题，让重复带来变化。
 4. 用强拍、动作落点或段落变化安排切点；没有节拍分析时不声称完成自动卡点。
@@ -21,4 +21,4 @@ description: 音乐视频风格技能。用户要求 MV、歌曲剪辑、音乐�
 
 ## 工具路径
 
-需要生成音乐时使用 `audio.generate_music`，取得 `mediaId` 后再由模型判断是否调用 `timeline.add_media`。使用 `timeline.add_media_batch`、`timeline.trim`、`timeline.split` 和 `timeline.add_transition_batch` 执行剪辑；用 `timeline.set_audio` 保持人声和音乐层级。
+需要生成音乐时使用 `luna.audio.generateMusic`，取得 `mediaId` 后再由模型判断是否调用 `luna.timeline.addMedia`。使用 `luna.timeline.addMediaBatch`、`luna.timeline.trim`、`luna.timeline.split` 和 `luna.timeline.addTransitionBatch` 执行剪辑；用 `luna.timeline.setAudio` 保持人声和音乐层级。
