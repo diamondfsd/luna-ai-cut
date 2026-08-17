@@ -19,8 +19,9 @@ assert.deepEqual(FREECUT_MEMORY_TOOL_NAMES, [
 ])
 
 assert.deepEqual(FREECUT_AUDIO_TOOL_NAMES, [
-  'audio.generate_speech',
-  'audio.generate_music',
+  'audio.start_speech',
+  'audio.start_music',
+  'audio.get_task',
 ])
 
 assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, ['edit.run_script'])

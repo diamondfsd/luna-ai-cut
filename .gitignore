@@ -42,6 +42,11 @@ docs/
 !packages/freecut-editor/docs/
 packages/freecut-editor/docs/*
 !packages/freecut-editor/docs/ai-editing-coding-agent-harness.md
+# These are FreeCut source files, not generated documentation or build output.
+!packages/freecut-editor/src/routes/docs/
+!packages/freecut-editor/src/routes/docs/index.tsx
+!packages/freecut-editor/src/routes/docs/$slug.tsx
+!packages/freecut-editor/docs/freecut-source-build-verification.md
 
 # Local deploy config
 scripts/deploy-release.conf
@@ -50,6 +55,8 @@ scripts/deploy-release.conf
 test-resources/
 test-results/
 dist*
+# The GPU effect registry imports this source module; `dist*` must not hide it.
+!packages/freecut-editor/src/infrastructure/gpu-effects/effects/distort.ts
 release*/
 
 # Worktrees

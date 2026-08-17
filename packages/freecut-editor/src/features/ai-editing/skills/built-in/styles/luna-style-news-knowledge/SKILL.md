@@ -18,7 +18,7 @@ description: 资讯与知识口播风格技能。用户要求新闻、教程、�
 
 - 主讲人脸部、嘴部和手势优先可见；B-roll 只在解释或补充台词时使用。
 - 字幕跟随可靠时间点，每行保持易读，重点词不能破坏句子理解。
-- 需要补充配音时用 `luna.audio.generateSpeech`，生成结果保存后再由模型决定是否入轴。
+- 需要补充配音时用 `luna.audio.startSpeech`，通过 `luna.audio.getTask` 查询完成并取得 `mediaId` 后，再由模型决定是否入轴。
 - 人声优先于音乐和环境声；用 `luna.timeline.setAudio` 和 `luna.timeline.setProperties` 做有限调整。
 
 ## 检查

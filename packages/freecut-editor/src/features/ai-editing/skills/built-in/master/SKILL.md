@@ -80,7 +80,7 @@ description: LunaAiCut 的 AI 剪辑大师总控技能。负责理解创作需�
 - 声音：说明原声、环境声、音乐和人声的优先级。
 - 字幕：说明是否需要、使用哪些文本、如何避开主体。
 
-如果用户需要配音或背景音乐，调用 `luna.audio.generateSpeech` 或 `luna.audio.generateMusic`。生成工具只负责生成并保存音频，返回新的 `mediaId`；是否调用 `luna.timeline.addMedia` 加入时间轴、加入哪条轨道以及如何混音，由你结合完整会话和工具结果判断。没有可靠节拍时间点或节拍分析结果时，不要声称已经完成自动卡点。
+如果用户需要配音或背景音乐，调用 `luna.audio.startSpeech` 或 `luna.audio.startMusic` 提交后台任务，然后循环调用 `luna.audio.getTask` 查询状态。只有任务 `completed` 且返回新的 `mediaId` 时，才可调用 `luna.timeline.addMedia` 加入时间轴；加入哪条轨道以及如何混音，由你结合完整会话和工具结果判断。没有可靠节拍时间点或节拍分析结果时，不要声称已经完成自动卡点。
 
 ### 第五步：执行时间轴编辑
 

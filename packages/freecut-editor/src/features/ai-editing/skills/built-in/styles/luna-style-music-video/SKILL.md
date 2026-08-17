@@ -21,4 +21,4 @@ description: 音乐视频风格技能。用户要求 MV、歌曲剪辑、音乐�
 
 ## 工具路径
 
-需要生成音乐时使用 `luna.audio.generateMusic`，取得 `mediaId` 后再由模型判断是否调用 `luna.timeline.addMedia`。使用 `luna.timeline.addMediaBatch`、`luna.timeline.trim`、`luna.timeline.split` 和 `luna.timeline.addTransitionBatch` 执行剪辑；用 `luna.timeline.setAudio` 保持人声和音乐层级。
+需要生成音乐时使用 `luna.audio.startMusic`，通过 `luna.audio.getTask` 查询到 `completed` 并取得 `mediaId` 后，再由模型判断是否调用 `luna.timeline.addMedia`。使用 `luna.timeline.addMediaBatch`、`luna.timeline.trim`、`luna.timeline.split` 和 `luna.timeline.addTransitionBatch` 执行剪辑；用 `luna.timeline.setAudio` 保持人声和音乐层级。
