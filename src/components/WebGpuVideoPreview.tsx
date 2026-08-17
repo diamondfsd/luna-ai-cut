@@ -4,6 +4,7 @@ import type { PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { WebGpuCompositionRenderer } from '../lib/webgpu/composition'
 import { readWebGpuLut } from '../lib/webgpu/lut-source'
+import { loadWebGpuMask } from '../lib/webgpu/mask-source'
 import { compositionSourceKey, buildCompositionFromPreviewLayers } from './renderComposition'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
@@ -247,6 +248,7 @@ export function WebGpuVideoPreview({
         return image
       },
       resolveLut: readWebGpuLut,
+      resolveMask: loadWebGpuMask,
       resolveSource: async (layer) => {
         if (layer.source.sourceType !== 'video' || !layer.source.key) {
           throw new Error('WebGPU 视频源尚未准备好')

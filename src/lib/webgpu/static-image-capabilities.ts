@@ -1,42 +1,19 @@
 import type { PreviewLayer } from '../../shared/types'
 import { isWebGpuAvailable } from './runtime'
 
-function hasUnsupportedColor(color: PreviewLayer['color']): boolean {
-  if (!color) return false
-
-  const unsupportedNumericValues = [
-    color.black,
-    color.clarity,
-    color.texture,
-    color.sharpen,
-    color.denoise,
-    color.skinSmoothing,
-    color.glowStrength,
-    color.gradeShadowsAmount,
-    color.gradeMidAmount,
-    color.gradeHighlightsAmount,
-    color.curveLift,
-    color.curveContrast,
-    color.levelsBlack,
-    color.levelsGray - 0.5,
-    color.levelsWhite - 1,
-  ]
-  if (unsupportedNumericValues.some((value) => Math.abs(value ?? 0) > 0.0001)) return true
-
-  if (color.hslChannels?.some((channel) => (
-    Math.abs(channel.hueShift) > 0.0001
-    || Math.abs(channel.saturation) > 0.0001
-    || Math.abs(channel.luminance) > 0.0001
-  ))) return true
-
-  return Boolean(color.curve && Object.values(color.curve).some((points) => points.length > 0))
-}
-
 function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
-  return (layer.layerType ?? 'media') !== 'media'
-    || Boolean(layer.maskPath)
-    || Boolean(layer.maskProjectId)
-    || Boolean(layer.maskTimeline)
+  const isMediaLayer = (layer.layerType ?? 'media') === 'media'
+  const isLocalColorInput = layer.layerType === 'local-color' && layer.precomposeRole === 'input'
+  const isRasterizableLayer = layer.layerType === 'shape'
+    || layer.layerType === 'text'
+    || layer.layerType === 'logo'
+    || layer.layerType === 'decoration'
+  const hasContent = isRasterizableLayer && Boolean(
+    layer.layerType === 'shape'
+      || layer.filePath
+      || typeof layer.content === 'string',
+  )
+  return (!isMediaLayer && !isLocalColorInput && !(isRasterizableLayer && hasContent))
     || Boolean(layer.pixelStretch)
     || Boolean(layer.pixelFlow)
     || Boolean(layer.reveal)
@@ -44,12 +21,12 @@ function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
     || Boolean(layer.transform?.crop)
     || Math.abs(layer.transform?.translateX ?? 0) > 0.0001
     || Math.abs(layer.transform?.translateY ?? 0) > 0.0001
-    || hasUnsupportedColor(layer.color)
 }
 
 /**
- * Reports whether the current first-pass renderer preserves all layer data.
- * Unsupported structures stay on their pre-migration stage until implemented.
+ * Reports whether the current renderer preserves all supported media-layer data.
+ * Non-media layers stay on their pre-migration stage until their source pipeline
+ * is available in the WebGPU composition renderer.
  */
 export function canUseWebGpuStaticImageComposition(layers: PreviewLayer[]): boolean {
   return isWebGpuAvailable()

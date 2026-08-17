@@ -1,5 +1,11 @@
 export interface WebGpuRuntimeCapabilities {
   preferredCanvasFormat: GPUTextureFormat
+  adapterInfo: {
+    vendor: string
+    architecture: string
+    device: string
+    description: string
+  }
   features: string[]
   limits: {
     maxTextureDimension1D: number
@@ -78,6 +84,7 @@ export class WebGpuRuntime {
 
     return new WebGpuRuntime(adapter, device, {
       preferredCanvasFormat: navigator.gpu.getPreferredCanvasFormat(),
+      adapterInfo: adapterInfoFor(adapter),
       features: Array.from(adapter.features, String),
       limits: {
         maxTextureDimension1D: device.limits.maxTextureDimension1D,
@@ -93,6 +100,16 @@ export class WebGpuRuntime {
     this.destroyed = true
     this.device.removeEventListener('uncapturederror', this.onUncapturedError)
     this.device.destroy()
+  }
+}
+
+function adapterInfoFor(adapter: GPUAdapter): WebGpuRuntimeCapabilities['adapterInfo'] {
+  const info = (adapter as GPUAdapter & { info?: GPUAdapterInfo }).info
+  return {
+    vendor: info?.vendor ?? '',
+    architecture: info?.architecture ?? '',
+    device: info?.device ?? '',
+    description: info?.description ?? '',
   }
 }
 

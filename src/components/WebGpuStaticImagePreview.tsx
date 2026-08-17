@@ -4,6 +4,7 @@ import type { PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { WebGpuCompositionRenderer } from '../lib/webgpu/composition'
 import { readWebGpuLut } from '../lib/webgpu/lut-source'
+import { loadWebGpuMask } from '../lib/webgpu/mask-source'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './LrcRender.css'
@@ -87,6 +88,7 @@ export function WebGpuStaticImagePreview({
         return image
       },
       resolveLut: readWebGpuLut,
+      resolveMask: loadWebGpuMask,
       onDeviceLost: (message) => callbacksRef.current.onError?.(message),
       onError: (message) => callbacksRef.current.onError?.(message),
     }).then(() => {
