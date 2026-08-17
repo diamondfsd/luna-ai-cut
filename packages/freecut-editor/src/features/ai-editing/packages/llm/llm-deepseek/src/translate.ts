@@ -23,6 +23,11 @@ interface OpenBlock {
   name?: string
 }
 
+/** Keep tool-call correlation valid when a provider sends an empty id. */
+function toolCallId(value: string | undefined, index: number): CallId {
+  return value !== undefined && value.length > 0 ? CallId(value) : CallId(`call-${index}`)
+}
+
 /**
  * Map the wire finish_reason vocabulary to the harness FinishReason.
  * @param reason - the wire `finish_reason` string.
@@ -68,7 +73,7 @@ function closeBlock(block: OpenBlock): ContentBlock {
     case 'reasoning': return { type: 'reasoning', text: block.text }
     case 'tool-call': return {
       type: 'tool-call',
-      id: CallId(block.callId ?? ''),
+      id: toolCallId(block.callId, block.index),
       name: block.name ?? '',
       arguments: block.text,
     }
@@ -163,7 +168,7 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
         yield {
           type: 'tool-call-delta',
           index: block.index,
-          id: CallId(block.callId ?? ''),
+          id: toolCallId(block.callId, block.index),
           ...block.name !== undefined ? { name: block.name } : {},
           argumentsDelta: fragment,
         }

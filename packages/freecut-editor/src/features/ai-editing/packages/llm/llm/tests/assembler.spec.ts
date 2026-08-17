@@ -110,6 +110,14 @@ describe('BlockAssembler', () => {
     ])
   })
 
+  it('replaces an empty tool-call id with the generated fallback', () => {
+    const assembler = new BlockAssembler()
+    assembler.push({ type: 'tool-call-delta', index: 2, id: CallId(''), argumentsDelta: '{}' })
+    expect(assembler.blocks()).toEqual([
+      { type: 'tool-call', id: CallId('call-2'), name: '', arguments: '{}' },
+    ])
+  })
+
   it('exposes usage via the getter when a usage chunk was received', () => {
     const assembler = new BlockAssembler()
     assembler.push({ type: 'text-delta', index: 0, text: 'msg' })

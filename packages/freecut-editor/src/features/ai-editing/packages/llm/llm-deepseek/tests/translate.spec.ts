@@ -312,7 +312,7 @@ describe('mapUsage', () => {
 })
 
 describe('translate: defensive tool-call branches', () => {
-  it('handles deltas that never carry id or name (empty-string fallbacks)', async () => {
+  it('handles deltas that never carry id or name with a non-empty fallback id', async () => {
     const chunks = await collect(translate(feed(
       firstChunk,
       // Hypothetical lenient wire: argument fragments with no id/name at all.
@@ -322,10 +322,25 @@ describe('translate: defensive tool-call branches', () => {
     )))
     expect(chunks).toEqual([
       { type: 'block-start', index: 0, blockType: 'tool-call' },
-      { type: 'tool-call-delta', index: 0, id: '', argumentsDelta: '{}' },
-      { type: 'block-end', index: 0, block: { type: 'tool-call', id: '', name: '', arguments: '{}' } },
+      { type: 'tool-call-delta', index: 0, id: 'call-0', argumentsDelta: '{}' },
+      { type: 'block-end', index: 0, block: { type: 'tool-call', id: 'call-0', name: '', arguments: '{}' } },
       { type: 'finish', reason: { kind: 'tool-calls' } },
     ])
+  })
+
+  it('replaces an empty wire id with a stable fallback id', async () => {
+    const chunks = await collect(translate(feed(
+      firstChunk,
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: '', function: { arguments: '{}' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      DONE,
+    )))
+    expect(chunks).toContainEqual({ type: 'tool-call-delta', index: 0, id: 'call-0', argumentsDelta: '{}' })
+    expect(chunks).toContainEqual({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: 'call-0', name: '', arguments: '{}' },
+    })
   })
 
   it('handles tool_call deltas with a function object but no arguments field', async () => {

@@ -14,7 +14,7 @@ export interface WebGpuVideoExportResult {
   mimeType: string
   duration: number
   frameCount: number
-  codec: 'avc' | 'vp9'
+  codec: 'avc'
   audioCopied: boolean
 }
 
@@ -32,13 +32,11 @@ export async function exportColorGradedVideo(params: {
     BufferTarget,
     EncodedAudioPacketSource,
     Input,
-    InputVideoTrack,
     Mp4OutputFormat,
     Output,
     VideoSample,
     VideoSampleSink,
     VideoSampleSource,
-    WebMOutputFormat,
     canEncodeVideo,
   } = mediabunny
 
@@ -61,9 +59,6 @@ export async function exportColorGradedVideo(params: {
     checkCancelled()
 
     const videoTrack = await input.getPrimaryVideoTrack()
-    if (!(videoTrack instanceof InputVideoTrack) && !videoTrack) {
-      throw new Error('文件中没有可导出的视频轨道')
-    }
     if (!videoTrack) throw new Error('文件中没有可导出的视频轨道')
 
     const width = videoTrack.displayWidth
@@ -74,17 +69,12 @@ export async function exportColorGradedVideo(params: {
     const totalFrames = Math.max(1, Math.ceil(duration * fps))
     const bitrate = Math.max(4_000_000, Math.min(35_000_000, width * height * fps * 0.12))
 
-    let codec: 'avc' | 'vp9' = 'avc'
     if (!(await canEncodeVideo('avc', { width, height, bitrate }))) {
-      if (!(await canEncodeVideo('vp9', { width, height, bitrate }))) {
-        throw new Error('当前环境没有可用的视频编码器')
-      }
-      codec = 'vp9'
+      throw new Error('当前 Electron 没有可用的 H.264 WebCodecs 编码器')
     }
-    const mimeType = codec === 'avc' ? 'video/mp4' : 'video/webm'
-    const format = codec === 'avc'
-      ? new Mp4OutputFormat({ fastStart: 'in-memory' })
-      : new WebMOutputFormat()
+    const codec = 'avc' as const
+    const mimeType = 'video/mp4'
+    const format = new Mp4OutputFormat({ fastStart: 'in-memory' })
     const target = new BufferTarget()
     output = new Output({ format, target })
     const videoSource = new VideoSampleSource({
@@ -109,7 +99,7 @@ export async function exportColorGradedVideo(params: {
       progress: 8,
       currentFrame: 0,
       totalFrames,
-      message: `${width} x ${height}，${fps.toFixed(2)} FPS，${codec.toUpperCase()} 编码${audioCopied ? '，保留音频' : ''}`,
+      message: `${width} x ${height}，${fps.toFixed(2)} FPS，H.264 编码${audioCopied ? '，保留音频' : ''}`,
     })
     checkCancelled()
     await output.start()
@@ -189,8 +179,7 @@ export async function exportColorGradedVideo(params: {
     completed = true
 
     if (!target.buffer) throw new Error('编码器没有生成输出文件')
-    const extension = codec === 'avc' ? 'mp4' : 'webm'
-    const filename = `${stripExtension(params.file.name)}-webgpu-grade.${extension}`
+    const filename = `${stripExtension(params.file.name)}-webgpu-grade.mp4`
     const blob = new Blob([target.buffer], { type: mimeType })
     params.onProgress({
       phase: 'finalizing',
@@ -218,9 +207,13 @@ async function copyAudioPackets(params: {
   const sink = new (await import('mediabunny')).EncodedPacketSink(params.audioTrack)
   const decoderConfig = await params.audioTrack.getDecoderConfig()
   const metadata = decoderConfig ? { decoderConfig } : undefined
+  const firstTimestamp = await params.audioTrack.getFirstTimestamp()
   for await (const packet of sink.packets()) {
     if (params.signal?.aborted) throw new DOMException('音频导出已取消', 'AbortError')
-    await params.audioSource.add(packet.clone({ timestamp: packet.timestamp }), metadata)
+    await params.audioSource.add(
+      packet.clone({ timestamp: Math.max(0, packet.timestamp - firstTimestamp) }),
+      metadata,
+    )
     params.onProgress('复制音频包')
   }
   params.audioSource.close()

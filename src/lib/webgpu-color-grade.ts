@@ -45,6 +45,7 @@ const GPU_BUFFER_COPY_DST = 0x8
 const GPU_BUFFER_UNIFORM = 0x40
 const GPU_TEXTURE_COPY_DST = 0x2
 const GPU_TEXTURE_BINDING = 0x4
+const GPU_TEXTURE_RENDER_ATTACHMENT = 0x10
 
 const COLOR_GRADE_SHADER = /* wgsl */ `
 struct VertexOutput {
@@ -306,7 +307,7 @@ export class WebGpuColorRenderer {
       label: 'webgpu-color-grade-test-input',
       size: { width, height },
       format: 'rgba8unorm',
-      usage: GPU_TEXTURE_BINDING | GPU_TEXTURE_COPY_DST,
+      usage: GPU_TEXTURE_BINDING | GPU_TEXTURE_COPY_DST | GPU_TEXTURE_RENDER_ATTACHMENT,
     })
     this.inputView = this.inputTexture.createView()
     this.inputWidth = width
