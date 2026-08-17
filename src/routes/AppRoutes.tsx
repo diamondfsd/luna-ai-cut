@@ -20,6 +20,7 @@ import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { VideoEditorPage } from '../pages/VideoEditorPage'
+import { WebGpuColorGradeTestPage } from '../pages/WebGpuColorGradeTestPage'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
@@ -95,6 +96,7 @@ export function AppRoutes() {
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
     ['/device-debug', debugVisible],
+    ['/webgpu-color-test', debugVisible],
   ]
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
 
@@ -202,6 +204,10 @@ export function AppRoutes() {
 
         <AppRoute path="/device-debug" preserve={false}>
           <DeviceDebugPage />
+        </AppRoute>
+
+        <AppRoute path="/webgpu-color-test" preserve={false}>
+          <WebGpuColorGradeTestPage />
         </AppRoute>
 
         <PreviewModalHost />

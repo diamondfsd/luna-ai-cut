@@ -1,0 +1,4 @@
+interface:
+  display_name: "Premiere 工作流映射"
+  short_description: "将 Premiere 素材整理、三点剪辑和修剪思路映射到 Luna"
+  default_prompt: "使用 $luna-workflow-premiere 将 Premiere 思路映射到当前项目"

@@ -12,11 +12,27 @@ const BUILT_IN_SKILL_SPECS = [
   'styles/fast-beat/SKILL.md',
   'styles/talking-head/SKILL.md',
   'styles/travel-vlog/SKILL.md',
+  'techniques/luna-technique-story-structure/SKILL.md',
+  'techniques/luna-technique-cutting-rhythm/SKILL.md',
+  'techniques/luna-technique-audio-design/SKILL.md',
+  'techniques/luna-technique-color-look/SKILL.md',
+  'techniques/luna-technique-motion-graphics/SKILL.md',
+  'techniques/luna-technique-retiming-transitions/SKILL.md',
+  'styles/luna-style-social-short/SKILL.md',
+  'styles/luna-style-commercial-product/SKILL.md',
+  'styles/luna-style-music-video/SKILL.md',
+  'styles/luna-style-news-knowledge/SKILL.md',
+  'styles/luna-style-ambient-cinematic/SKILL.md',
+  'styles/luna-style-sports-action/SKILL.md',
+  'workflows/luna-workflow-capcut/SKILL.md',
+  'workflows/luna-workflow-premiere/SKILL.md',
+  'workflows/luna-workflow-after-effects/SKILL.md',
 ]
 
 const SHARED_FILES = [
   'shared/creative-brief.md',
   'shared/editing-contract.md',
+  'shared/research-sources.md',
 ]
 
 export const BUILT_IN_SKILL_NAMES = Object.freeze([
@@ -27,6 +43,21 @@ export const BUILT_IN_SKILL_NAMES = Object.freeze([
   'luna-style-fast-beat',
   'luna-style-talking-head',
   'luna-style-travel-vlog',
+  'luna-technique-story-structure',
+  'luna-technique-cutting-rhythm',
+  'luna-technique-audio-design',
+  'luna-technique-color-look',
+  'luna-technique-motion-graphics',
+  'luna-technique-retiming-transitions',
+  'luna-style-social-short',
+  'luna-style-commercial-product',
+  'luna-style-music-video',
+  'luna-style-news-knowledge',
+  'luna-style-ambient-cinematic',
+  'luna-style-sports-action',
+  'luna-workflow-capcut',
+  'luna-workflow-premiere',
+  'luna-workflow-after-effects',
 ])
 
 function skillRootCandidates() {
@@ -99,7 +130,7 @@ export async function loadBuiltInSkills() {
   const sharedInstructions = [
     '## Harness 已加载的通用剪辑契约',
     '',
-    '以下两部分是本技能的通用执行依据。它们已经随本次技能加载，不需要通过项目路径再次寻找。',
+    '以下共享资料是本技能的通用执行依据。它们已经随本次技能加载，不需要通过项目路径再次寻找。',
     '',
     ...shared.flatMap((content, index) => [
       content,

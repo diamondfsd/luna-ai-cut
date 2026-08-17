@@ -1,0 +1,461 @@
+.webgpu-grade-page {
+  min-height: 100%;
+  padding: 28px 32px 48px;
+  color: var(--ink);
+  background: var(--parchment);
+}
+
+.webgpu-grade-header,
+.webgpu-grade-toolbar,
+.webgpu-grade-layout,
+.webgpu-grade-info-grid,
+.webgpu-grade-export-status {
+  width: min(1480px, 100%);
+  margin-inline: auto;
+}
+
+.webgpu-grade-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.webgpu-grade-eyebrow,
+.webgpu-grade-panel-kicker {
+  margin: 0 0 6px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.webgpu-grade-header h1,
+.webgpu-grade-panel-heading h2,
+.webgpu-grade-export-heading h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.webgpu-grade-header h1 {
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1.12;
+}
+
+.webgpu-grade-subtitle {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.webgpu-grade-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  max-width: 360px;
+  padding: 9px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.webgpu-grade-status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #9aa0a6;
+}
+
+.webgpu-grade-status.is-ready .webgpu-grade-status-dot {
+  background: #2b9e55;
+}
+
+.webgpu-grade-status.is-error .webgpu-grade-status-dot {
+  background: #d94a4a;
+}
+
+.webgpu-grade-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 52px;
+  margin-bottom: 16px;
+}
+
+.webgpu-grade-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.webgpu-grade-file-input {
+  display: none;
+}
+
+.webgpu-grade-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 350px);
+  gap: 16px;
+  align-items: start;
+}
+
+.webgpu-grade-preview-panel,
+.webgpu-grade-controls-panel,
+.webgpu-grade-export-status {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.webgpu-grade-preview-panel {
+  min-width: 0;
+  overflow: hidden;
+  background: #111214;
+  color: #f5f5f7;
+}
+
+.webgpu-grade-controls-panel,
+.webgpu-grade-export-status {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.webgpu-grade-controls-panel {
+  min-width: 0;
+  padding: 20px;
+}
+
+.webgpu-grade-panel-heading,
+.webgpu-grade-export-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.webgpu-grade-preview-panel .webgpu-grade-panel-heading {
+  align-items: center;
+  padding: 18px 20px 16px;
+}
+
+.webgpu-grade-panel-heading h2,
+.webgpu-grade-export-heading h2 {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webgpu-grade-resolution {
+  flex: 0 0 auto;
+  color: #a9adb4;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.webgpu-grade-canvas-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  padding: 0 20px 20px;
+  background: #08090a;
+}
+
+.webgpu-grade-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(68vh, 760px);
+  object-fit: contain;
+  opacity: 0;
+}
+
+.webgpu-grade-canvas.has-media {
+  opacity: 1;
+}
+
+.webgpu-grade-source-video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.webgpu-grade-empty.ui-btn {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: min(360px, calc(100% - 40px));
+  min-height: 150px;
+  border: 1px dashed #555a62;
+  border-radius: 8px;
+  background: transparent;
+  color: #a9adb4;
+}
+
+.webgpu-grade-empty.ui-btn:hover {
+  border-color: var(--blue-on-dark);
+  background: rgba(41, 151, 255, 0.08);
+  color: #f5f5f7;
+}
+
+.webgpu-grade-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #2b2d32;
+}
+
+.webgpu-grade-metric {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 7px;
+  min-width: 0;
+  padding: 12px 16px 14px;
+  border-right: 1px solid #2b2d32;
+}
+
+.webgpu-grade-metric:last-child {
+  border-right: 0;
+}
+
+.webgpu-grade-metric-icon {
+  grid-row: span 2;
+  color: var(--blue-on-dark);
+}
+
+.webgpu-grade-metric-label {
+  overflow: hidden;
+  color: #9297a0;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webgpu-grade-metric strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webgpu-grade-sliders {
+  display: grid;
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.webgpu-grade-slider-row {
+  min-width: 0;
+}
+
+.webgpu-grade-slider-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.webgpu-grade-slider-label output {
+  min-width: 42px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.webgpu-grade-controls-panel .ui-slider {
+  width: 100%;
+}
+
+.webgpu-grade-info-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--hairline);
+}
+
+.webgpu-grade-info-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.webgpu-grade-info-icon {
+  flex: 0 0 auto;
+  color: var(--blue);
+}
+
+.webgpu-grade-info-item div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.webgpu-grade-info-item span:not(.webgpu-grade-info-icon) {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.webgpu-grade-info-item strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webgpu-grade-export-status {
+  margin-top: 16px;
+  padding: 18px 20px;
+}
+
+.webgpu-grade-export-heading {
+  align-items: center;
+}
+
+.webgpu-grade-export-heading strong {
+  color: var(--blue);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.webgpu-grade-progress-track {
+  height: 6px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #dfe3e8;
+}
+
+.webgpu-grade-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 120ms ease-out;
+}
+
+.webgpu-grade-export-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.webgpu-grade-error {
+  width: min(1480px, 100%);
+  margin: 16px auto 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(196, 52, 52, 0.32);
+  border-radius: 8px;
+  background: rgba(255, 245, 245, 0.92);
+  color: #a52f2f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 980px) {
+  .webgpu-grade-page {
+    padding-inline: 20px;
+  }
+
+  .webgpu-grade-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webgpu-grade-controls-panel {
+    order: -1;
+  }
+
+  .webgpu-grade-sliders {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+}
+
+@media (max-width: 680px) {
+  .webgpu-grade-page {
+    padding: 20px 14px 32px;
+  }
+
+  .webgpu-grade-header {
+    display: grid;
+    gap: 14px;
+  }
+
+  .webgpu-grade-status {
+    max-width: none;
+  }
+
+  .webgpu-grade-toolbar-spacer {
+    display: none;
+  }
+
+  .webgpu-grade-toolbar > .ui-btn {
+    flex: 1 1 calc(50% - 10px);
+  }
+
+  .webgpu-grade-canvas-wrap {
+    min-height: 230px;
+    padding: 0 10px 10px;
+  }
+
+  .webgpu-grade-preview-panel .webgpu-grade-panel-heading,
+  .webgpu-grade-controls-panel,
+  .webgpu-grade-export-status {
+    padding-inline: 14px;
+  }
+
+  .webgpu-grade-resolution {
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .webgpu-grade-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .webgpu-grade-metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .webgpu-grade-metric:nth-child(-n + 2) {
+    border-bottom: 1px solid #2b2d32;
+  }
+
+  .webgpu-grade-sliders,
+  .webgpu-grade-info-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webgpu-grade-info-grid {
+    gap: 1px;
+  }
+}
+
