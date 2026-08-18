@@ -14,6 +14,7 @@ import type { CompositionInputProps } from '@freecut/types/export'
 import type { ItemEffect } from '@freecut/types/effects'
 import type { ItemKeyframes } from '@freecut/types/keyframe'
 import type { TimelineItem } from '@freecut/types/timeline'
+import type { Transition } from '@freecut/types/transition'
 import type { ResolvedTransform } from '@freecut/types/transform'
 import type { CaptureOptions } from '@freecut/shared/state/playback'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
@@ -172,6 +173,8 @@ interface UsePreviewRendererControllerParams {
   getPreviewPathVerticesOverride: PreviewPathVerticesOverride
   getLivePlaybackFrame: () => number | null
   getLiveItemSnapshot: (itemId: string) => TimelineItem | undefined
+  getLiveTransitionItemSnapshot: (itemId: string) => TimelineItem | undefined
+  getLiveTransitionSnapshot: (transitionId: string) => Transition | undefined
   getLiveKeyframes: (itemId: string) => ItemKeyframes | undefined
   clearTransitionPlaybackSession: () => void
   resetResolveRetryState: () => void
@@ -246,6 +249,8 @@ export function usePreviewRendererController({
   getPreviewPathVerticesOverride,
   getLivePlaybackFrame,
   getLiveItemSnapshot,
+  getLiveTransitionItemSnapshot,
+  getLiveTransitionSnapshot,
   getLiveKeyframes,
   clearTransitionPlaybackSession,
   resetResolveRetryState,
@@ -472,6 +477,8 @@ export function usePreviewRendererController({
             getPreviewCornerPinOverride,
             getPreviewPathVerticesOverride,
             getLiveItemSnapshot,
+            getLiveTransitionItemSnapshot,
+            getLiveTransitionSnapshot,
             getLiveKeyframes,
           },
         )
@@ -500,6 +507,8 @@ export function usePreviewRendererController({
     fastScrubInputProps,
     fastScrubRendererStructureKey,
     getLiveItemSnapshot,
+    getLiveTransitionItemSnapshot,
+    getLiveTransitionSnapshot,
     getLiveKeyframes,
     getPreviewCornerPinOverride,
     getPreviewEffectsOverride,
@@ -537,6 +546,8 @@ export function usePreviewRendererController({
             getPreviewCornerPinOverride,
             getPreviewPathVerticesOverride,
             getLiveItemSnapshot,
+            getLiveTransitionItemSnapshot,
+            getLiveTransitionSnapshot,
             getLiveKeyframes,
             renderText: !domTextScrubOverlayEnabled,
           })
@@ -562,6 +573,8 @@ export function usePreviewRendererController({
       fastScrubRendererStructureKey,
       domTextScrubOverlayEnabled,
       getLiveItemSnapshot,
+      getLiveTransitionItemSnapshot,
+      getLiveTransitionSnapshot,
       getLiveKeyframes,
       getPreviewCornerPinOverride,
       getPreviewEffectsOverride,
@@ -616,6 +629,8 @@ export function usePreviewRendererController({
               getPreviewCornerPinOverride,
               getPreviewPathVerticesOverride,
               getLiveItemSnapshot,
+              getLiveTransitionItemSnapshot,
+              getLiveTransitionSnapshot,
               getLiveKeyframes,
               renderText: !domTextScrubOverlayEnabled,
             },
@@ -710,6 +725,8 @@ export function usePreviewRendererController({
       fastScrubRendererStructureKey,
       fps,
       getLiveItemSnapshot,
+      getLiveTransitionItemSnapshot,
+      getLiveTransitionSnapshot,
       getLiveKeyframes,
       getPreviewCornerPinOverride,
       getPreviewEffectsOverride,

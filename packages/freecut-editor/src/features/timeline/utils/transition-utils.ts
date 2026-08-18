@@ -5,9 +5,10 @@
  * between clips using a cut-centered, handle-based model.
  *
  * CUT-CENTERED MODEL:
- * Transitions stay attached to the cut between adjacent clips.
- * Clip timeline positions do not move. Instead, the transition consumes hidden
- * source handles from the outgoing clip tail and incoming clip head.
+ * Transitions stay attached to the cut between adjacent clips. Normally the
+ * transition consumes hidden source handles from the outgoing clip tail and
+ * incoming clip head. Two untrimmed finite-source clips use an overlap
+ * fallback handled by the transition action.
  *
  * COMPOSITION RULES:
  * 1. Transition duration must be < min(leftClipDuration, rightClipDuration)
@@ -70,13 +71,71 @@ export function getMaxTransitionDurationForHandles(
   return best
 }
 
+function canUseOverlapTransitionFallback(leftClip: TimelineItem, rightClip: TimelineItem): boolean {
+  const isFiniteSourceClip = (clip: TimelineItem) =>
+    clip.type === 'video' || clip.type === 'composition'
+  return isFiniteSourceClip(leftClip) && isFiniteSourceClip(rightClip)
+}
+
+/**
+ * Adjacent finite-source clips with no spare handles can still accept a
+ * transition by moving the incoming clip left to create a real overlap.
+ * Images are intentionally excluded because they already have infinite
+ * handles and use the cut-centered model.
+ */
+export function shouldUseOverlapTransitionFallback(
+  leftClip: TimelineItem,
+  rightClip: TimelineItem,
+  timelineFps: number = 30,
+): boolean {
+  const leftEnd = leftClip.from + leftClip.durationInFrames
+  if (!areFramesAligned(leftEnd, rightClip.from)) return false
+  if (!canUseOverlapTransitionFallback(leftClip, rightClip)) return false
+  return (
+    getAvailableHandle(leftClip, 'end', timelineFps) < 1 &&
+    getAvailableHandle(rightClip, 'start', timelineFps) < 1
+  )
+}
+
+/**
+ * Return the duration that can be applied at an adjacent cut. If source
+ * handles are unavailable, the duration is still valid when the clips can be
+ * converted to a legacy overlap transition by moving the incoming clip.
+ */
+export function getMaxTransitionDurationAtCut(
+  leftClip: TimelineItem,
+  rightClip: TimelineItem,
+  alignment: number | undefined,
+  timelineFps: number = 30,
+): number {
+  const maxByClipDuration = Math.floor(
+    Math.min(leftClip.durationInFrames, rightClip.durationInFrames) - 1,
+  )
+  if (maxByClipDuration < 1) return 0
+
+  const maxByHandles = getMaxTransitionDurationForHandles(
+    leftClip,
+    rightClip,
+    alignment,
+    timelineFps,
+  )
+  return maxByHandles > 0 || !shouldUseOverlapTransitionFallback(
+    leftClip,
+    rightClip,
+    timelineFps,
+  )
+    ? maxByHandles
+    : maxByClipDuration
+}
+
 /**
  * Check if a transition can be added between two clips.
  * Validates: same track, adjacency, clip types, duration limits, and handle availability.
  *
- * Adjacent clips must have enough hidden handle footage to support the requested
- * transition portions around the cut. Existing legacy overlap transitions remain
- * valid as long as their clips still overlap.
+ * Adjacent clips normally need hidden handle footage to support the requested
+ * transition portions around the cut. Two untrimmed finite-source clips use an
+ * overlap fallback, and existing legacy overlap transitions remain valid as
+ * long as their clips still overlap.
  */
 export function canAddTransition(
   leftClip: TimelineItem,
@@ -117,7 +176,13 @@ export function canAddTransition(
   const leftHandle = getAvailableHandle(leftClip, 'end', timelineFps)
   const rightHandle = getAvailableHandle(rightClip, 'start', timelineFps)
 
-  if (isAdjacent) {
+  const usesOverlapFallback = shouldUseOverlapTransitionFallback(
+    leftClip,
+    rightClip,
+    timelineFps,
+  )
+
+  if (isAdjacent && !usesOverlapFallback) {
     const portions = calculateTransitionPortions(durationInFrames, alignment)
     const outgoingTailFrames = portions.rightPortion
     const incomingHeadFrames = portions.leftPortion

@@ -22,6 +22,7 @@ import type {
   ShapeItem,
   TimelineTrack,
 } from '@freecut/types/timeline'
+import type { Transition } from '@freecut/types/transition'
 import {
   LottieExportProvider,
   isRenderableLottieSrc,
@@ -642,6 +643,8 @@ export async function createCompositionRenderer(
     getPreviewCornerPinOverride?: (itemId: string) => TimelineItem['cornerPin'] | undefined
     getPreviewPathVerticesOverride?: PreviewPathVerticesOverride
     getLiveItemSnapshot?: (itemId: string) => TimelineItem | undefined
+    getLiveTransitionItemSnapshot?: (itemId: string) => TimelineItem | undefined
+    getLiveTransitionSnapshot?: (transitionId: string) => Transition | undefined
     getLiveKeyframes?: (itemId: string) => ItemKeyframes | undefined
     domVideoElementProvider?: (itemId: string) => HTMLVideoElement | null
     useProxyMedia?: boolean
@@ -679,6 +682,8 @@ export async function createCompositionRenderer(
   const getPreviewCornerPinOverride = options.getPreviewCornerPinOverride
   const getPreviewPathVerticesOverride = options.getPreviewPathVerticesOverride
   const getLiveItemSnapshot = options.getLiveItemSnapshot
+  const getLiveTransitionItemSnapshot = options.getLiveTransitionItemSnapshot
+  const getLiveTransitionSnapshot = options.getLiveTransitionSnapshot
   const getLiveKeyframes = options.getLiveKeyframes
   const domVideoElementProvider = options.domVideoElementProvider
   const hasDom = typeof document !== 'undefined'
@@ -775,7 +780,8 @@ export async function createCompositionRenderer(
   const getCurrentKeyframes = (itemId: string): ItemKeyframes | undefined =>
     getLiveKeyframes?.(itemId) ?? keyframesMap.get(itemId)
   const getCurrentItem = <TItem extends TimelineItem>(item: TItem): TItem => {
-    const liveItem = getLiveItemSnapshot?.(item.id)
+    const liveItem =
+      getLiveTransitionItemSnapshot?.(item.id) ?? getLiveItemSnapshot?.(item.id)
     const current = liveItem && liveItem.type === item.type ? (liveItem as TItem) : item
     if (current.type !== 'video') {
       return current
@@ -797,13 +803,18 @@ export async function createCompositionRenderer(
   let liveTransitionRenderPlanRevision = -1
   let liveTransitionRenderPlan = renderPlan
   const getCurrentRenderPlan = () => {
-    if (!getLiveItemSnapshot || liveTransitionRenderPlanRevision === frameSceneRevision) {
+    if (
+      (!getLiveItemSnapshot && !getLiveTransitionItemSnapshot && !getLiveTransitionSnapshot) ||
+      liveTransitionRenderPlanRevision === frameSceneRevision
+    ) {
       return liveTransitionRenderPlan
     }
 
     liveTransitionRenderPlan = resolveLiveTransitionRenderPlan({
       renderPlan,
-      transitions,
+      transitions: transitions.map(
+        (transition) => getLiveTransitionSnapshot?.(transition.id) ?? transition,
+      ),
       getCurrentItem,
     })
     liveTransitionRenderPlanRevision = frameSceneRevision

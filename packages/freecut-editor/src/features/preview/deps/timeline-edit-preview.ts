@@ -4,8 +4,11 @@
  */
 
 export {
+  useLinkedEditPreviewStore,
   useRollingEditPreviewStore,
   useRippleEditPreviewStore,
   useSlipEditPreviewStore,
   useSlideEditPreviewStore,
+  useTransitionResizePreviewStore,
+  useTrimPreviewStore,
 } from './timeline-contract'

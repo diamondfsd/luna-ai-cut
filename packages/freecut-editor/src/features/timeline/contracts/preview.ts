@@ -13,6 +13,9 @@ export { useRollingEditPreviewStore } from '../stores/rolling-edit-preview-store
 export { useRippleEditPreviewStore } from '../stores/ripple-edit-preview-store'
 export { useSlipEditPreviewStore } from '../stores/slip-edit-preview-store'
 export { useSlideEditPreviewStore } from '../stores/slide-edit-preview-store'
+export { useLinkedEditPreviewStore } from '../stores/linked-edit-preview-store'
+export { useTransitionResizePreviewStore } from '../stores/transition-resize-preview-store'
+export { useTrimPreviewStore } from '../stores/trim-preview-store'
 export { resolveEffectiveTrackStates } from '../utils/group-utils'
 export { findBestCanvasDropPlacement } from '../utils/drop-placement'
 export {
