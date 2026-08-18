@@ -176,6 +176,7 @@ interface UsePreviewRendererControllerParams {
   getLiveTransitionItemSnapshot: (itemId: string) => TimelineItem | undefined
   getLiveTransitionSnapshot: (transitionId: string) => Transition | undefined
   getLiveKeyframes: (itemId: string) => ItemKeyframes | undefined
+  getPreviewVideoDecodeMaxDimension: () => number | undefined
   clearTransitionPlaybackSession: () => void
   resetResolveRetryState: () => void
   setCaptureFrame: (fn: ((options?: CaptureOptions) => Promise<string | null>) | null) => void
@@ -252,6 +253,7 @@ export function usePreviewRendererController({
   getLiveTransitionItemSnapshot,
   getLiveTransitionSnapshot,
   getLiveKeyframes,
+  getPreviewVideoDecodeMaxDimension,
   clearTransitionPlaybackSession,
   resetResolveRetryState,
   setCaptureFrame,
@@ -480,6 +482,7 @@ export function usePreviewRendererController({
             getLiveTransitionItemSnapshot,
             getLiveTransitionSnapshot,
             getLiveKeyframes,
+            getPreviewVideoDecodeMaxDimension,
           },
         )
         liveScopeCaptureCanvasRef.current = offscreen
@@ -510,6 +513,7 @@ export function usePreviewRendererController({
     getLiveTransitionItemSnapshot,
     getLiveTransitionSnapshot,
     getLiveKeyframes,
+    getPreviewVideoDecodeMaxDimension,
     getPreviewCornerPinOverride,
     getPreviewEffectsOverride,
     getPreviewPathVerticesOverride,
@@ -549,6 +553,7 @@ export function usePreviewRendererController({
             getLiveTransitionItemSnapshot,
             getLiveTransitionSnapshot,
             getLiveKeyframes,
+            getPreviewVideoDecodeMaxDimension,
             renderText: !domTextScrubOverlayEnabled,
           })
           if ('warmGpuPipeline' in renderer) {
@@ -576,6 +581,7 @@ export function usePreviewRendererController({
       getLiveTransitionItemSnapshot,
       getLiveTransitionSnapshot,
       getLiveKeyframes,
+      getPreviewVideoDecodeMaxDimension,
       getPreviewCornerPinOverride,
       getPreviewEffectsOverride,
       getPreviewPathVerticesOverride,
@@ -632,6 +638,7 @@ export function usePreviewRendererController({
               getLiveTransitionItemSnapshot,
               getLiveTransitionSnapshot,
               getLiveKeyframes,
+              getPreviewVideoDecodeMaxDimension,
               renderText: !domTextScrubOverlayEnabled,
             },
           )
@@ -728,6 +735,7 @@ export function usePreviewRendererController({
       getLiveTransitionItemSnapshot,
       getLiveTransitionSnapshot,
       getLiveKeyframes,
+      getPreviewVideoDecodeMaxDimension,
       getPreviewCornerPinOverride,
       getPreviewEffectsOverride,
       getPreviewPathVerticesOverride,
