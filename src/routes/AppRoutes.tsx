@@ -21,8 +21,9 @@ import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { VideoEditorPage } from '../pages/VideoEditorPage'
 import { WebGpuColorGradeTestPage } from '../pages/WebGpuColorGradeTestPage'
+import { WebGpuCompositionTestPage } from '../pages/WebGpuCompositionTestPage'
+import { WebGpuDiagnosticsPage } from '../pages/WebGpuDiagnosticsPage'
 import type { CacheStats } from '../shared/types'
-import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
 export function AppRoutes() {
   const { settings, setSettings, connection, hiddenDevMode } = useApp()
@@ -45,7 +46,6 @@ export function AppRoutes() {
 
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [pagesKey, setPagesKey] = useState(0)
-  const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -97,6 +97,8 @@ export function AppRoutes() {
     ['/ble-debug', debugVisible],
     ['/device-debug', debugVisible],
     ['/webgpu-color-test', debugVisible],
+    ['/webgpu-composition-test', debugVisible],
+    ['/webgpu-diagnostics', debugVisible],
   ]
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
 
@@ -163,8 +165,6 @@ export function AppRoutes() {
 
         <AppRoute path="/workspace">
           <WorkspacePage
-            creativeModeId={creativeModeId}
-            onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
           />
         </AppRoute>
@@ -208,6 +208,14 @@ export function AppRoutes() {
 
         <AppRoute path="/webgpu-color-test" preserve={false}>
           <WebGpuColorGradeTestPage />
+        </AppRoute>
+
+        <AppRoute path="/webgpu-composition-test" preserve={false}>
+          <WebGpuCompositionTestPage />
+        </AppRoute>
+
+        <AppRoute path="/webgpu-diagnostics" preserve={false}>
+          <WebGpuDiagnosticsPage />
         </AppRoute>
 
         <PreviewModalHost />

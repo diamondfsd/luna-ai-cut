@@ -3,22 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 import { buildBorderLayer } from './buildBorderLayer'
 import { findFramePreset, framePresetDefaultSettings, FRAME_PRESETS } from './borderPresets'
 import type { CompositionInput } from '../../shared/types'
+import { compositionSourceType, renderWebGpuCompositionToDataUrl } from '../../lib/webgpu/static-image-export'
 import { DEFAULT_PIPELINE } from '../shared/editPipeline'
 import { pipelineColorToRenderColor } from '../shared/renderLayerPipeline'
 
 const THUMB_CACHE = new Map<string, string>()
-
-interface BorderThumbnailRenderCore {
-  renderCompositionFrame: (
-    composition: CompositionInput,
-    time: number,
-    maxSide?: number,
-  ) => Promise<{ width: number; height: number; data: Uint8Array | ArrayBuffer }>
-}
-
-function getLrc(): BorderThumbnailRenderCore | null {
-  return (window as unknown as { lunaRenderCore?: BorderThumbnailRenderCore }).lunaRenderCore ?? null
-}
 
 async function renderBorderThumb(
   sourcePath: string,
@@ -27,9 +16,6 @@ async function renderBorderThumb(
   const cacheKey = `border-thumb::${presetId}::${sourcePath}`
   const cached = THUMB_CACHE.get(cacheKey)
   if (cached) return cached
-
-  const lrc = getLrc()
-  if (!lrc) throw new Error('渲染引擎未初始化')
 
   const preset = findFramePreset(presetId)
   if (!preset) throw new Error(`预设 ${presetId} 未找到`)
@@ -56,7 +42,7 @@ async function renderBorderThumb(
     canvas: { width: 220, height: 138 },
     layers: [
       {
-        source: { path: sourcePath },
+        source: { path: sourcePath, sourceType: compositionSourceType(sourcePath), key: `border:${sourcePath}` },
         rect: { x: 0, y: 0, w: 1, h: 1 },
         fit: 'cover',
         opacity: 1,
@@ -64,7 +50,7 @@ async function renderBorderThumb(
       },
       ...borderLayers.map((l) => ({
         layerType: l.layerType,
-        source: { path: l.filePath },
+        source: { path: l.filePath, sourceType: compositionSourceType(l.filePath), key: `border:${l.filePath}` },
         rect: { x: l.dstX, y: l.dstY, w: l.dstW, h: l.dstH },
         fit: l.fit ?? 'cover',
         opacity: l.opacity,
@@ -89,18 +75,7 @@ async function renderBorderThumb(
     ],
   }
 
-  const result = await lrc.renderCompositionFrame(composition, 0, 220)
-
-  // Convert RGBA buffer → data URL
-  const canvas = document.createElement('canvas')
-  canvas.width = result.width
-  canvas.height = result.height
-  const ctx = canvas.getContext('2d')!
-  const imageData = ctx.createImageData(result.width, result.height)
-  const data = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data)
-  imageData.data.set(data)
-  ctx.putImageData(imageData, 0, 0)
-  const url = canvas.toDataURL('image/jpeg', 0.85)
+  const url = await renderWebGpuCompositionToDataUrl({ composition, quality: 85 })
   THUMB_CACHE.set(cacheKey, url)
   return url
 }
@@ -120,7 +95,7 @@ interface BorderItemProps {
   name?: string
   active?: boolean
   onClick?: () => void
-  /** 父组件传来的源文件路径（传给 Rust 渲染带边框的缩略图） */
+  /** 父组件传来的源文件路径（用于生成 WebGPU 边框缩略图） */
   mediaPath: string | null
   /** 隐藏底部的名称文本 */
   hideName?: boolean
@@ -155,7 +130,7 @@ export function BorderItem({ presetId, name = '', active, onClick, mediaPath, hi
     return () => observer.disconnect()
   }, [visible])
 
-  // 源图就绪 → 调用 Rust 渲染带边框的缩略图
+  // 源图就绪 → 调用 WebGPU 渲染带边框的缩略图
   useEffect(() => {
     if (!visible || !mediaPath) return
     let cancelled = false

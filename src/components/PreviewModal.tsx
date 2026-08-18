@@ -126,6 +126,9 @@ export function PreviewModal({
   const hasVideoInBatch = batchExportMode
     ? (filePathList ?? []).some((fp) => isVideoPath(fp))
     : isVideoPath(currentFilePath)
+  const hasImageInBatch = batchExportMode
+    ? (filePathList ?? []).some((fp) => !isVideoPath(fp))
+    : !isVideoPath(currentFilePath)
 
   const dolbyVisionProbePaths = useMemo(() => {
     const candidates = batchExportMode ? exportList : (stageSource ? [stageSource] : [])
@@ -277,7 +280,7 @@ export function PreviewModal({
       await exportBatchFiles(
         sources,
         settings.exportDir,
-        hasVideoInBatch ? exportConfig : null,
+        exportConfig,
         { appleLivePhoto: exportAppleLivePhoto },
       )
       toast.success(`已加入导出队列 (${sources.length} 个文件)`)
@@ -286,7 +289,7 @@ export function PreviewModal({
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, watermarkSettings])
+  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {
@@ -358,10 +361,11 @@ export function PreviewModal({
               />
               {!previewOnly && (
                 <>
-                  {hasVideoInBatch && (
+                  {(hasVideoInBatch || hasImageInBatch) && (
                     <ExportSettingsPanel
                       value={exportConfig}
                       onChange={setExportConfig}
+                      outputAvailability={{ video: hasVideoInBatch, photo: hasImageInBatch, live: false }}
                       dolbyVisionAvailable={dolbyVisionProbe?.eligible}
                       dolbyVisionChecking={dolbyVisionChecking}
                       showILogRestore={hasILogInExport}

@@ -1,0 +1,70 @@
+.webgpu-composition-test-page {
+  min-height: 100vh;
+  padding: 40px;
+  color: #172536;
+  background: #f4f7fa;
+}
+
+.webgpu-composition-test-page header,
+.webgpu-composition-test-stage,
+.webgpu-composition-test-status {
+  width: min(900px, 100%);
+  margin: 0 auto;
+}
+
+.webgpu-composition-test-page header {
+  margin-bottom: 24px;
+}
+
+.webgpu-composition-test-eyebrow {
+  margin: 0 0 8px;
+  color: #0066cc;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.webgpu-composition-test-page h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.webgpu-composition-test-page header p:last-child {
+  margin: 8px 0 0;
+  color: #536273;
+}
+
+.webgpu-composition-test-stage {
+  overflow: hidden;
+  border: 1px solid #c8d3df;
+  background: #dce5ed;
+}
+
+.webgpu-composition-test-stage canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+.webgpu-composition-test-status {
+  margin-top: 12px;
+  color: #536273;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.webgpu-composition-test-status.is-ready {
+  color: #1d7a4a;
+}
+
+.webgpu-composition-test-status.is-error {
+  color: #b42318;
+}
+
+@media (max-width: 640px) {
+  .webgpu-composition-test-page {
+    padding: 24px 16px;
+  }
+}

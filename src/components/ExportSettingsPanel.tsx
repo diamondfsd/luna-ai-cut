@@ -1,11 +1,11 @@
 import { useCallback } from 'react'
 import { Select, Input, Switch } from '../ui'
-import type { PreviewLayer, VideoExportFormat, VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
+import type { ImageExportFormat, PreviewLayer, VideoExportFormat, VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
 import { lockDolbyVisionExportSettings } from '../shared/types'
 import { LivePhotoExportControls } from './LivePhotoExportControls'
 import './ExportSettingsPanel.css'
 
-export type { VideoExportSettings, VideoResolution, VideoFrameRate, VideoQuality }
+export type { ImageExportFormat, VideoExportSettings, VideoResolution, VideoFrameRate, VideoQuality }
 
 export { DEFAULT_VIDEO_EXPORT_SETTINGS as DEFAULT_EXPORT_CONFIG } from '../shared/types'
 
@@ -53,6 +53,12 @@ const QUALITY_OPTIONS = [
   { value: 'custom', label: '自定义' },
 ]
 
+const IMAGE_FORMAT_OPTIONS = [
+  { value: 'jpeg', label: 'JPEG' },
+  { value: 'png', label: 'PNG' },
+  { value: 'webp', label: 'WebP' },
+]
+
 /**
  * 导出设置面板
  *
@@ -79,6 +85,11 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedF
 
   const handleQualityChange = useCallback(
     (v: string) => onChange({ ...value, quality: v as VideoQuality }),
+    [value, onChange],
+  )
+
+  const handleImageFormatChange = useCallback(
+    (v: string) => onChange({ ...value, imageFormat: v as ImageExportFormat }),
     [value, onChange],
   )
 
@@ -134,6 +145,19 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedF
             onChange={onChange}
           />
         ) : null}
+        {outputAvailability?.photo && (
+          <div className="export-settings-row">
+            <label className="export-settings-label">图片格式</label>
+            <Select
+              variant="compact"
+              options={IMAGE_FORMAT_OPTIONS}
+              value={value.imageFormat ?? 'jpeg'}
+              onValueChange={handleImageFormatChange}
+              disabled={locked}
+              ariaLabel="图片格式"
+            />
+          </div>
+        )}
         <div className="export-settings-row">
           <label className="export-settings-label">音频</label>
           <Switch

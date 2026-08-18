@@ -80,6 +80,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     writeWriter: (writerId, data) => ipcRenderer.invoke('freecut-export:write-writer', writerId, data),
     closeWriter: (writerId) => ipcRenderer.invoke('freecut-export:close-writer', writerId),
     abortWriter: (writerId) => ipcRenderer.invoke('freecut-export:abort-writer', writerId),
+    embedJpegSourceMetadata: (outputPath, sourcePath) => ipcRenderer.invoke('freecut-export:embed-jpeg-source-metadata', outputPath, sourcePath),
   } satisfies FreecutExportApi,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   // 日志
@@ -146,7 +147,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   exportFiles: (files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),
   cancelExports: () => ipcRenderer.invoke('luna:cancelExports'),
-  cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
   getExportTasks: () => ipcRenderer.invoke('export-task:list'),
   getExportTask: (taskId: string) => ipcRenderer.invoke('export-task:get', taskId),
   clearExportTasks: () => ipcRenderer.invoke('export-task:clear'),
@@ -419,84 +419,9 @@ const deviceDebugApi: DeviceDebugApi = {
   },
 }
 
-interface CompositionInput {
-  version?: number
-  canvas: { width: number; height: number; fps?: number; duration?: number }
-  layers: Array<{
-    id?: string
-    source: {
-      path: string
-      sourceType?: string
-      time?: { offset?: number; start?: number; duration?: number; loopEnabled?: boolean }
-    }
-    rect: { x: number; y: number; w: number; h: number }
-    fit?: string
-    opacity?: number
-    zIndex?: number
-    color?: unknown
-    transform?: unknown
-    positioning?: unknown
-  }>
-}
-
 const lunaRenderCoreApi = {
-  init: () => ipcRenderer.invoke('lrc:init'),
-  getNativePreviewCapabilities: () => ipcRenderer.invoke('lrc:getNativePreviewCapabilities'),
-  createNativePreviewSession: (composition: CompositionInput, bounds: unknown) =>
-    ipcRenderer.invoke('lrc:createNativePreviewSession', composition, bounds),
-  updateNativePreviewComposition: (sessionId: number, composition: CompositionInput) =>
-    ipcRenderer.invoke('lrc:updateNativePreviewComposition', sessionId, composition),
-  setNativePreviewBounds: (sessionId: number, bounds: unknown) =>
-    ipcRenderer.invoke('lrc:setNativePreviewBounds', sessionId, bounds),
-  setNativePreviewVisible: (sessionId: number, visible: boolean) =>
-    ipcRenderer.invoke('lrc:setNativePreviewVisible', sessionId, visible),
-  playNativePreview: (sessionId: number, time: number) =>
-    ipcRenderer.invoke('lrc:playNativePreview', sessionId, time),
-  pauseNativePreview: (sessionId: number, time: number) =>
-    ipcRenderer.invoke('lrc:pauseNativePreview', sessionId, time),
-  seekNativePreview: (sessionId: number, time: number) =>
-    ipcRenderer.invoke('lrc:seekNativePreview', sessionId, time),
-  getNativePreviewSessionStats: (sessionId: number) =>
-    ipcRenderer.invoke('lrc:getNativePreviewSessionStats', sessionId),
-  destroyNativePreviewSession: (sessionId: number) =>
-    ipcRenderer.invoke('lrc:destroyNativePreviewSession', sessionId),
   prepareRuntimeResource: (kind: 'fonts' | 'luts') => ipcRenderer.invoke('lrc:prepareRuntimeResource', kind),
-  resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
-  loadTexture: (data: Buffer, width: number, height: number) =>
-    ipcRenderer.invoke('lrc:loadTexture', data, width, height),
-  updateTexture: (textureId: number, data: Buffer) =>
-    ipcRenderer.invoke('lrc:updateTexture', textureId, data),
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[], compositionTime?: number) =>
-    ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers, compositionTime),
-  releaseTexture: (textureId: number) =>
-    ipcRenderer.invoke('lrc:releaseTexture', textureId),
-  renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) =>
-    ipcRenderer.invoke('lrc:renderCompositionFrame', composition, time, maxSide),
-  renderCompositionFrameAsync: (composition: CompositionInput, time: number, maxSide?: number) =>
-    ipcRenderer.invoke('lrc:renderCompositionFrameAsync', composition, time, maxSide),
-  exportCompositionVideo: (
-    outputPath: string,
-    composition: CompositionInput,
-    fps: number | null,
-    duration: number | null,
-    hardware: boolean,
-    taskId?: string,
-    qualityPreset?: string,
-    exportTaskId?: string,
-    exportItemId?: string,
-    includeAudio?: boolean,
-  ) => ipcRenderer.invoke('lrc:exportCompositionVideo', outputPath, composition, fps, duration, hardware, taskId, qualityPreset, exportTaskId, exportItemId, includeAudio),
-  cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
-  getExportTaskProgress: (taskId: string) => ipcRenderer.invoke('lrc:getExportTaskProgress', taskId),
-  resolveRenderSource: (originalPath: string, cacheDir: string) => ipcRenderer.invoke('lrc:resolveRenderSource', originalPath, cacheDir),
-  exportCompositionImage: (
-    outputPath: string,
-    composition: CompositionInput,
-    format: string,
-    quality: number,
-    exportTaskId?: string,
-    exportItemId?: string,
-  ) => ipcRenderer.invoke('lrc:exportCompositionImage', outputPath, composition, format, quality, exportTaskId, exportItemId),
+  readLutFile: (filePath: string) => ipcRenderer.invoke('lrc:readWebGpuLut', filePath),
   listCubeFiles: (dirPath: string) => ipcRenderer.invoke('lrc:listCubeFiles', dirPath),
   importCubeFile: (sourcePath: string, categoryName: string, lutDir: string, targetName?: string, meta?: { name?: string; description?: string }) =>
     ipcRenderer.invoke('lrc:importCubeFile', sourcePath, categoryName, lutDir, targetName, meta),

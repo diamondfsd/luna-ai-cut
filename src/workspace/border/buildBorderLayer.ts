@@ -184,7 +184,7 @@ export interface BuildBorderLayerOptions {
   mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'restoreLutId' | 'lutId' | 'lutIntensity' | 'isVideo' | 'maskPath' | 'maskOpacity' | 'maskInverted' | 'maskFeather'>
 }
 
-/** JSON 预设直接转换为 wgpu 原生层，不在浏览器中进行任何栅格化。 */
+/** JSON 预设直接转换为 WebGPU 图层，不在浏览器中预先栅格化。 */
 export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, mediaPath, mediaLayerStyle }: BuildBorderLayerOptions): PreviewLayer[] {
   if (!border.enabled) return []
   const preset = FRAME_PRESETS.find((item) => item.id === border.presetId) ?? FRAME_PRESETS[0]

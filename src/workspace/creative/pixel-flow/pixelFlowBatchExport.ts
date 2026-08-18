@@ -78,6 +78,7 @@ export async function queuePixelFlowBatchExport(options: PixelFlowBatchExportOpt
   const queuedCount = await queuePixelFlowExports(prepared.map((item) => {
     const layers = [buildPixelFlowLayer({
       asset: item.asset,
+      maskProjectId: options.project.id,
       maskPath: item.state.depthMaskPath!,
       playbackDuration: item.playbackDuration,
       pipeline: normalizeCreativePipeline((item.asset as { pipeline?: unknown }).pipeline),

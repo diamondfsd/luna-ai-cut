@@ -1,8 +1,6 @@
 import type { CustomWatermarkAsset, WatermarkPosition, WatermarkSettings } from './watermark'
 import type { CameraConnectionMode } from './cameraMediaSource'
 
-export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
-
 export interface CustomLutFile {
   filePath: string
   fileName: string
@@ -38,10 +36,6 @@ export interface AppSettings {
   workspaceImportDir?: string
   /** 扩展 LUT 滤镜目录路径（.cube 文件目录树，按文件夹分组） */
   lutDir?: string
-  /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
-  workspacePreviewQuality?: WorkspacePreviewQuality
-  /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
-  experimentalGpuPreview?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean
 }

@@ -38,7 +38,6 @@ resources/dolby-vision/
 resources/node-runtime/
 resources/python-runtime/
 .dolby-tools-cache/
-.dxc-cache/
 docs/
 !packages/freecut-editor/docs/
 packages/freecut-editor/docs/*
@@ -77,9 +76,6 @@ luna-render-core/luna-asr-worker
 luna-render-core/luna-asr-worker.exe
 luna-render-core/luna-punctuation-worker
 luna-render-core/luna-punctuation-worker.exe
-luna-render-core/dxcompiler.dll
-luna-render-core/dxil.dll
-luna-render-core/DXC-LICENSE-*.txt
 luna-render-core/ASR-LICENSE-*.txt
 worktrees/
 *com*.jpg

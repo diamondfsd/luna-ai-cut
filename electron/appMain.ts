@@ -22,16 +22,10 @@ import { GoUltraClient } from './goUltraProtocol'
 import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
 import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDefaults'
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
-import {
-  LRC_INIT_GUARD_FILE,
-  LRC_INIT_RECOVERY_FILE,
-  shouldRecoverLrcInitGuard,
-} from '../src/shared/lrcInitGuardRecovery'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { activateMainWindow, appIconPath, createMainWindow, registerRendererProtocol } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
-import { cancelExportTask, resetRenderCompatibilityBlock } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './localMediaShareService'
@@ -72,7 +66,6 @@ const goUltraClients = new Map<string, GoUltraClient>()
 const activeDownloadControllers = new Set<AbortController>()
 const activeExportControllers = new Map<string, AbortController>()
 const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
-const activeNativeExportTasks = new Set<string>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
 const videoFrameRateTasks = new Map<string, Promise<number | null>>()
 const enqueuePreviewTask = createPreviewTaskQueue(2)
@@ -89,32 +82,6 @@ function stopAllKeepAlive(): void {
     client.close()
   }
   goUltraClients.clear()
-}
-
-function recoverLegacyRenderInitGuardOnce(): void {
-  const userData = app.getPath('userData')
-  const guardPath = join(userData, LRC_INIT_GUARD_FILE)
-  const recoveryPath = join(userData, LRC_INIT_RECOVERY_FILE)
-  if (!shouldRecoverLrcInitGuard({
-    packaged: app.isPackaged,
-    guardExists: existsSync(guardPath),
-    recoveryAttempted: existsSync(recoveryPath),
-  })) return
-
-  try {
-    mkdirSync(userData, { recursive: true })
-    writeFileSync(recoveryPath, JSON.stringify({ attemptedAt: new Date().toISOString() }), 'utf8')
-    resetRenderCompatibilityBlock()
-    if (existsSync(guardPath)) {
-      logMainWarn('[LRC] 旧初始化保护自动恢复失败，继续保持兼容保护')
-      return
-    }
-    logMainInfo('[LRC] 已自动清理旧初始化保护，本次启动重新检测显卡')
-  } catch (error) {
-    logMainWarn('[LRC] 无法记录初始化保护恢复状态，继续保持兼容保护', {
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
 }
 
 function clientKey(host: string, controlPort: number): string {
@@ -251,12 +218,7 @@ function createWindow(): void {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 function abortAllExports() {
-  // 取消原生 Rust 导出任务（macOS/Windows GPU 路径 + FFmpeg fallback）
-  for (const taskId of activeNativeExportTasks) {
-    try { cancelExportTask(taskId) } catch { /* ignore */ }
-  }
-  activeNativeExportTasks.clear()
-  // 杀掉 FFmpeg 子进程（旧导出路径）
+  // 终止仍在主进程中运行的编码进程。
   for (const encoder of activeExportEncoders.values()) encoder.kill()
   activeExportEncoders.clear()
 }
@@ -274,7 +236,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void disposeDeepSeekHarness()
-  resetRenderCompatibilityBlock()
   abortAllExports()
   stopSegmentationModelPrefetch()
   shutdownSpecializedSegmentationWorker()
@@ -307,7 +268,6 @@ function registerIpc(): void {
     activeDownloadControllers,
     activeExportControllers,
     activeExportEncoders,
-    activeNativeExportTasks,
     previewCacheTasks,
     videoFrameRateTasks,
     enqueuePreviewTask,
@@ -317,7 +277,7 @@ function registerIpc(): void {
   } as const
   const ipcModules = import.meta.glob('./ipc*.ts', { eager: true })
   for (const [, mod] of Object.entries(ipcModules)) {
-    const fn = (mod as any).register
+    const fn = (mod as { register?: (context: unknown) => void }).register
     if (typeof fn === 'function') fn(ctx)
   }
 
@@ -542,7 +502,6 @@ app.whenReady().then(async () => {
   if (!VITE_DEV_SERVER_URL) registerRendererProtocol(RENDERER_DIST)
   initLogger()
   logMainInfo('应用启动', { codeSource: process.env.LUNA_BOOT_SOURCE ?? 'unknown' })
-  recoverLegacyRenderInitGuardOnce()
   // 打印系统信息
   logMainInfo('[系统信息]', {
     platform: process.platform,

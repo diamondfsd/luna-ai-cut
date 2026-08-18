@@ -290,13 +290,13 @@ interface TextLayer extends BaseLayer {
 }
 ```
 
-渲染前由前端或 Rust 替换成：
+渲染前由前端或 WebGPU renderer 替换成：
 
 ```text
 Luna Ultra · 24mm · f/2.8 · 1/500s · ISO 100
 ```
 
-建议最终由 Rust 负责模板解析，保证预览与导出一致。
+建议最终由共享的 WebGPU composition 层负责模板解析，保证预览与导出一致。
 
 ---
 
@@ -418,9 +418,9 @@ interface GroupLayer extends BaseLayer {
 }
 ```
 
-Rust 侧可以使用 `serde` 的 tagged enum：
+TypeScript renderer 侧可以使用 tagged union：
 
-```rust
+```typescript
 #[serde(tag = "type")]
 enum CompositionLayer {
     #[serde(rename = "media")]
@@ -1246,9 +1246,9 @@ interface FrameEditorState {
 
 ---
 
-# 十三、Rust 渲染顺序
+# 十三、WebGPU 渲染顺序
 
-Rust 中按 `zIndex` 排序后：
+WebGPU renderer 中按 `zIndex` 排序后：
 
 ```text
 1. group 不直接渲染
@@ -1261,7 +1261,7 @@ Rust 中按 `zIndex` 排序后：
 
 实际依然严格按照 `zIndex` 绘制，不需要固定类型顺序。
 
-```rust
+```typescript
 layers.sort_by_key(|layer| layer.z_index());
 ```
 
@@ -1287,4 +1287,4 @@ render_decoration_layer()
 
 主体图片和视频渲染逻辑仍然复用你现在的 `media` 渲染链路。
 
-最终建议是：**把你现有的图片/视频层升级为 `MediaLayer`，再新增 Shape、Text、Logo、Decoration 四种层。边框预设只保存一组层，不单独侵入主素材层。**这样后面所有视觉边框都只是配置数据，而不是新增 Rust 特效代码。
+最终建议是：**把你现有的图片/视频层升级为 `MediaLayer`，再新增 Shape、Text、Logo、Decoration 四种层。边框预设只保存一组层，不单独侵入主素材层。**这样后面所有视觉边框都只是配置数据，而不是新增 native 特效代码。

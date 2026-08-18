@@ -275,6 +275,7 @@ export interface FreecutExportApi {
   writeWriter(writerId: string, data: ArrayBuffer): Promise<void>
   closeWriter(writerId: string): Promise<{ filePath: string; fileName: string }>
   abortWriter(writerId: string): Promise<void>
+  embedJpegSourceMetadata(outputPath: string, sourcePath: string): Promise<boolean>
 }
 
 export interface LunaApi {
@@ -333,7 +334,6 @@ export interface LunaApi {
   cancelDownloads(): Promise<void>
   exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
-  cancelExportTask(taskId: string): Promise<void>
   getExportTasks(): Promise<ExportTaskRecord[]>
   getExportTask(taskId: string): Promise<ExportTaskRecord | null>
   clearExportTasks(): Promise<void>

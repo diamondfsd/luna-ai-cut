@@ -1,6 +1,5 @@
-import { resolveExportConfig } from '../../../components/previewStageExport'
-import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
-import type { CompositionInput, VideoExportSettings, WorkspaceMediaAsset } from '../../../shared/types'
+import { exportPreviewVideo, resolveExportConfig } from '../../../components/previewStageExport'
+import type { VideoExportSettings, WorkspaceMediaAsset } from '../../../shared/types'
 import type { EditPipeline } from '../../shared/editPipeline'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
@@ -9,21 +8,6 @@ import { canUseLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import { colorRevealCreativeDuration, colorRevealTransitionMax, IMAGE_CREATIVE_DURATION } from './colorRevealConfig'
 import { buildColorRevealLayers } from './colorRevealLayers'
-
-interface LunaCompositionExportApi {
-  exportCompositionVideo(
-    outputPath: string,
-    composition: CompositionInput,
-    fps: number | null,
-    duration: number | null,
-    hardware: boolean,
-    taskId?: string,
-    qualityPreset?: string,
-    exportTaskId?: string,
-    exportItemId?: string,
-    includeAudio?: boolean,
-  ): Promise<void>
-}
 
 export interface ColorRevealExportSource {
   asset: WorkspaceMediaAsset
@@ -42,12 +26,6 @@ interface ColorRevealBatchExportOptions {
   stageMode: 'two' | 'three'
 }
 
-function renderApi(): LunaCompositionExportApi {
-  const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
-  if (!api) throw new Error('渲染引擎未初始化')
-  return api
-}
-
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
 }
@@ -57,7 +35,6 @@ function outputBaseName(name: string): string {
 }
 
 export async function queueColorRevealBatchExport(options: ColorRevealBatchExportOptions): Promise<number> {
-  const api = renderApi()
   const stamp = Date.now()
   const entries = await Promise.all(options.sources.map(async ({ asset, pipeline }, index) => {
     const isImage = asset.kind === 'image'
@@ -102,18 +79,13 @@ export async function queueColorRevealBatchExport(options: ColorRevealBatchExpor
       stageMode: options.stageMode,
       forExport: true,
     })
-    const composition = buildCompositionFromPreviewLayers(effectLayers, resolved.width, resolved.height, {
-      fps: resolved.fps ?? undefined,
-      duration: creativeDuration,
-    })
-    composition.canvas.duration = creativeDuration
     const itemId = `color_reveal_${stamp}_${index}`
     const fileName = `${outputBaseName(asset.name)}-color-reveal-${stamp}-${index + 1}.mp4`
     return {
       asset,
       itemId,
       path: outputPath(options.exportDir, fileName),
-      composition,
+      layers: effectLayers,
       creativeDuration,
       resolved,
     }
@@ -131,18 +103,20 @@ export async function queueColorRevealBatchExport(options: ColorRevealBatchExpor
       const currentTask = await window.luna.exportTask.get(task.id).catch(() => null)
       const itemStatus = currentTask?.items.find((item) => item.id === entry.itemId)?.status
       if (itemStatus === 'canceled') continue
-      await api.exportCompositionVideo(
-        entry.path,
-        entry.composition,
-        entry.resolved.fps,
-        entry.creativeDuration,
-        true,
-        entry.itemId,
-        entry.resolved.qualityPreset,
-        task.id,
-        entry.itemId,
-        entry.resolved.includeAudio,
-      ).catch(() => {
+      await exportPreviewVideo({
+        exportDir: options.exportDir,
+        fileName: entry.path.split(/[/\\]/).pop() || `${entry.itemId}.mp4`,
+        width: entry.resolved.width,
+        height: entry.resolved.height,
+        layers: entry.layers,
+        qualityPreset: entry.resolved.qualityPreset,
+        fps: entry.resolved.fps,
+        duration: entry.creativeDuration,
+        includeAudio: entry.resolved.includeAudio,
+        exportTaskId: task.id,
+        exportItemId: entry.itemId,
+        taskName: '色彩还原',
+      }).catch(() => {
         // 失败状态由导出任务服务记录并展示，继续处理剩余素材。
       })
     }

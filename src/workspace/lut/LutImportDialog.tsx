@@ -241,8 +241,8 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
     const lutDir = await resolveLutDir()
     if (!lutDir) { toast.error('未配置 LUT 目录'); setImporting(false); return }
 
-    const lrc = (window as unknown as { lunaRenderCore?: LutImportRenderCore }).lunaRenderCore
-    if (!lrc) { toast.error('渲染引擎未就绪'); setImporting(false); return }
+    const renderResources = (window as unknown as { lunaRenderCore?: LutImportRenderCore }).lunaRenderCore
+    if (!renderResources) { toast.error('渲染引擎未就绪'); setImporting(false); return }
 
     const toImport = fileEntries.filter(
       (f) => f.status === 'ready' || (f.status === 'duplicate' && f.conflictAction !== 'skip'),
@@ -270,7 +270,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
           targetName = `${originalBase}_${Date.now()}`
         }
 
-        const result = await lrc.importCubeFile(sourcePath, folderName, lutDir, targetName, {
+        const result = await renderResources.importCubeFile(sourcePath, folderName, lutDir, targetName, {
           name: entry.displayName,
         })
         lastImportedPath = result.path

@@ -3,7 +3,7 @@
  *
  * 通过 IPC 扫描目录获取 .cube 文件（内置 + 外部），
  * IPC 端已自动加载同目录下的 .cube.meta.json 获取名称/描述。
- * 所有路径均为绝对路径，直接传给 Rust。
+ * 所有路径均为绝对路径，交给 WebGPU LUT 管线使用。
  */
 import type { LutFileInfo } from './builtinLuts'
 
@@ -18,10 +18,10 @@ class LutManagerClass {
     const results: LutFileInfo[] = []
 
     try {
-      const lrc = getLrc()
-      if (lrc) {
+      const renderResources = getRenderResources()
+      if (renderResources) {
         // listCubeFiles 内部会扫描内置 + 外部目录，外部目录为空则只返回内置
-        const entries = await lrc.listCubeFiles(externalDir || '')
+        const entries = await renderResources.listCubeFiles(externalDir || '')
         console.log('[LutManager] listCubeFiles 扫描结果:', JSON.stringify(entries, null, 2))
         for (const entry of entries) {
           const cat = entry.relDir ? entry.relDir.replace(/\\/g, '/') : '未分类'
@@ -54,7 +54,7 @@ type LunaRenderCore = {
   listCubeFiles: (dir: string) => Promise<Array<{ path: string; name: string; relDir: string; description?: string; isBuiltin: boolean }>>
 }
 
-function getLrc(): LunaRenderCore | null {
+function getRenderResources(): LunaRenderCore | null {
   return (window as unknown as { lunaRenderCore?: LunaRenderCore }).lunaRenderCore ?? null
 }
 

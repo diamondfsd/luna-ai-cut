@@ -2,13 +2,13 @@
 
 ## 基本概念
 
-Rust 渲染引擎将每一层视为一张**平面纹理**，通过 wgpu GPU 合成到输出画布上。层可以是视频帧、静态图片，或 base64 编码的图片数据。
+WebGPU Composition renderer 将每一层视为一张**平面纹理**，合成到输出画布上。层可以是视频帧、静态图片，或 base64 编码的图片数据。
 
 ---
 
 ## 层数据格式（TypeScript）
 
-### 1. `PreviewLayer` — 前端传给 Rust 的层描述
+### 1. `PreviewLayer` — 前端传给 WebGPU renderer 的层描述
 
 ```typescript
 interface PreviewLayer {
@@ -134,17 +134,17 @@ const layers: PreviewLayer[] = [
 ## 层合成规则
 
 1. **按 zIndex 升序合成**，大的在上层
-2. **坐标归一化** 0-1，Rust 内部按输出分辨率换算像素
+2. **坐标归一化** 0-1，renderer 内部按输出分辨率换算像素
 3. **适配方式** `fit: 'cover'`：源图等比缩放填满 dst 区域，多余裁切
-4. **视频层**：Rust 保持 ffmpeg pipe 按帧读取，逐帧更新纹理
+4. **视频层**：renderer 从媒体元素或解码帧读取对应时间点，逐帧更新纹理
 5. **base64 层**：ffmpeg pipe:0 解码 → GPU 纹理，每帧重新加载（不缓存）
 6. **positioning**：自动锚点定位，水印按画布比例保持不变形
 
 ---
 
-## Rust 端对应结构（简化）
+## WebGPU Composition renderer 对应结构（简化）
 
-```rust
+```typescript
 struct PreviewLayerInput {
     file_path: String,
     is_video: bool,

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Builds platform hot-update archives and optionally uploads them to GitCode.
- * Native modules are included only when --include-native is supplied.
+ * Builds the renderer hot-update archive and optionally uploads it to GitCode.
+ * Native AI workers remain part of the installed application and are not
+ * replaced by a renderer-only hot update.
  */
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
@@ -15,8 +16,6 @@ const valueAfter = (flag) => {
 }
 
 const version = valueAfter('--version')
-const nativeDir = valueAfter('--native-dir') ?? '.hot-native'
-const includeNative = args.has('--include-native')
 const upload = args.has('--upload')
 const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version
 const versionPattern = new RegExp(`^${packageVersion.replaceAll('.', '\\.')}-hot\\.\\d+$`)
@@ -45,7 +44,6 @@ if (!existsSync('dist/index.html') || !existsSync('dist-electron/luna-appMain.js
 }
 
 const releaseDir = join('release', packageVersion, 'hot-update')
-const platforms = ['darwin-arm64', 'darwin-x64', 'win32-x64']
 mkdirSync(releaseDir, { recursive: true })
 
 function addAppFiles(zip) {
@@ -73,39 +71,20 @@ function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-const packages = {}
-for (const platform of includeNative ? platforms : ['universal']) {
-  const zip = new AdmZip()
-  addAppFiles(zip)
-  if (includeNative) {
-    const nativePath = join(nativeDir, platform, 'luna-render-core.node')
-    if (!existsSync(nativePath)) throw new Error(`缺少 ${platform} 原生模块: ${nativePath}`)
-    zip.addLocalFile(nativePath, 'pending-native')
-    if (platform === 'win32-x64') {
-      for (const file of [
-        'dxcompiler.dll',
-        'dxil.dll',
-        'DXC-LICENSE-MIT.txt',
-        'DXC-LICENSE-LLVM.txt',
-        'DXC-LICENSE-MS.txt',
-      ]) {
-        const runtimePath = join(nativeDir, platform, file)
-        if (!existsSync(runtimePath)) throw new Error(`缺少 ${platform} DXC 运行文件: ${runtimePath}`)
-        zip.addLocalFile(runtimePath, 'pending-native')
-      }
-    }
-  }
-  const zipName = includeNative ? `renderer-${version}-${platform}.zip` : `renderer-${version}.zip`
-  const zipPath = join(releaseDir, zipName)
-  zip.writeZip(zipPath)
-  packages[platform] = {
+const zip = new AdmZip()
+addAppFiles(zip)
+const zipName = `renderer-${version}.zip`
+const zipPath = join(releaseDir, zipName)
+zip.writeZip(zipPath)
+const packages = {
+  universal: {
     zipName,
     sha256: sha256(zipPath),
     sizeBytes: statSync(zipPath).size,
-    includesNative: includeNative,
-  }
-  console.log(`[hot-update] 已生成 ${zipPath}`)
+    includesNative: false,
+  },
 }
+console.log(`[hot-update] 已生成 ${zipPath}`)
 
 const manifestPath = join(releaseDir, `renderer-${version}.json`)
 const notesPath = `RELEASE_NOTES_v${version}.md`
