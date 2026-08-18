@@ -41,8 +41,19 @@ export function canUseWebGpuVideoComposition(layers: PreviewLayer[]): boolean {
     && layers.every((layer) => !hasUnsupportedLayerData(layer))
 }
 
-export function canUseWebGpuSingleVideoComposition(layers: PreviewLayer[]): boolean {
-  return canUseWebGpuVideoComposition(layers)
-    && layers.length === 1
-    && layers[0]?.isVideo === true
+function canUseWebGpuVideoExportLayer(layer: PreviewLayer): boolean {
+  const layerType = layer.layerType ?? 'media'
+  if (layerType === 'media' || (layerType === 'local-color' && layer.precomposeRole === 'input')) return true
+  return (layerType === 'logo' || layerType === 'decoration') && Boolean(layer.filePath)
+}
+
+/**
+ * Worker-safe video export capability. DOM rasterization (text and shapes) is
+ * intentionally excluded because OffscreenCanvas workers do not expose the
+ * document/font loading APIs used by the shared layer rasterizer.
+ */
+export function canUseWebGpuVideoExportComposition(layers: PreviewLayer[]): boolean {
+  return isWebGpuAvailable()
+    && layers.some((layer) => layer.isVideo)
+    && layers.every((layer) => !hasUnsupportedLayerData(layer) && canUseWebGpuVideoExportLayer(layer))
 }

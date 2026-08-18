@@ -140,7 +140,7 @@ WebGPU 不代表必然比 wgpu 更省资源。两者在不同平台可能仍使�
 
 ### M9：WebGPU 视频导出
 
-状态：第一阶段完成，继续扩展能力矩阵
+状态：第二阶段完成，继续扩展能力矩阵
 
 使用 Worker + OffscreenCanvas + WebGPU + WebCodecs/Mediabunny：
 
@@ -150,7 +150,9 @@ Mediabunny/WebCodecs decode -> VideoFrame -> WebGPU render -> WebCodecs encode -
 
 当前第一阶段：满足能力矩阵的单视频图层通过 Worker + OffscreenCanvas + WebGPU Composition renderer 逐帧渲染，并由 Mediabunny/WebCodecs 编码为 H.264 MP4；支持源音频包复制、导出进度、取消、设备丢失和编码器不可用错误。导出文件仍由主线程通过受限分块写入器落盘，不在 React 主线程逐帧执行长时间导出。
 
-当前限制：只支持一个视频图层，不支持静态叠加层、复杂时间线求值、完整音频重新编码、长视频内存控制和 4K 压力验证；这些能力需要后续按能力矩阵逐项接入，WebGPU 导出路径失败时不回退到 Rust/wgpu。
+当前第二阶段：导出协议已支持全部图片/视频源；多个视频图层按合成时间读取对应帧，静态图片图层通过 Worker 内的 `ImageBitmap` 加载并参与 WebGPU 合成，支持图层的起始时间、偏移和持续时长。文字和形状仍因依赖 DOM 栅格化而不进入 Worker 导出能力矩阵。WebGPU 导出路径失败时不回退到 Rust/wgpu。
+
+当前限制：完整音频重新编码、长视频内存控制和 4K 压力验证仍待补齐；这些能力需要后续按能力矩阵逐项接入。
 
 验收：导出任务状态、进度、取消、音画同步和输出文件均通过 Electron 行为测试及长视频压测。
 
@@ -206,7 +208,7 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - [x] 继续 M8：PNG/JPEG/WebP 格式、静态图片高分辨率和 WebGPU 路径验收
 - [ ] 继续 M8：透明背景、复杂图层高分辨率、实际 EXIF、取消和磁盘空间错误验收
 - [x] M9 第一阶段：单视频图层通过 WebGPU Worker 导出 MP4
-- [ ] 继续 M9：多视频图层、静态叠加层和时间线帧求值
+- [x] M9 第二阶段：多视频图层、静态叠加层和时间线帧求值
 - [ ] 继续 M9：完整音频处理、长视频内存控制和 4K 压测
 - [ ] 开始 M10-M11：删除原生预览和 Rust/wgpu
 
@@ -224,6 +226,7 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - Electron Playwright 验证页成功生成 WebGPU 能力与帧耗时 JSON 基线，包含适配器信息、限制、首帧、平均值、P95 和错误记录
 - Electron Playwright 真实工作台已验证图片导出队列生成 JPEG，任务通过 WebGPU 图片导出路径并写入非空文件
 - Electron Playwright 真实工作台已验证单视频图层通过 WebGPU Worker 导出非空 MP4，并由 FFmpeg 成功解码首帧；测试显式关闭水印以保持 M9 第一阶段的单层能力边界
+- Electron Playwright 真实工作台已验证视频与静态水印图层通过 WebGPU Worker 导出非空 MP4，并由 FFmpeg 成功解码首帧；同时确认默认 WebGPU 预览和图片导出路径正常
 - `git diff --check`
 
 当前待验证：

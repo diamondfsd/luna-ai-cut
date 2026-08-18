@@ -58,9 +58,9 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
   await lunaApp.page.locator('.workspace-tool-rail button[aria-label="水印"]').click()
   const watermarkSwitch = lunaApp.page.getByRole('switch', { name: '启用水印' })
   await expect(watermarkSwitch).toBeVisible()
-  if (await watermarkSwitch.getAttribute('data-state') !== 'unchecked') {
+  if (await watermarkSwitch.getAttribute('data-state') !== 'checked') {
     await watermarkSwitch.click()
-    await expect(watermarkSwitch).toHaveAttribute('data-state', 'unchecked')
+    await expect(watermarkSwitch).toHaveAttribute('data-state', 'checked')
   }
 
   const canvas = lunaApp.page.locator('.preview-canvas-wrapper canvas[data-renderer="webgpu"]')
