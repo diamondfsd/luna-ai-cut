@@ -10,19 +10,21 @@ import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './WebGpuVideoPreview.css'
 
-interface WebGpuVideoPreviewProps {
+export interface WebGpuVideoPreviewProps {
   layers: PreviewLayer[]
   canvasWidth: number
   canvasHeight: number
   maxSide?: number
   playing?: boolean
+  /** Static compositions can drive time-dependent shader effects explicitly. */
+  compositionTime?: number
   time?: number
   seekRevision?: number
   className?: string
   onError?: (error: string) => void
   onReady?: () => void
   onRender?: () => void
-  onVideoElement?: (element: HTMLMediaElement | null) => void
+  onVideoElement?: (element: HTMLVideoElement | null) => void
   interactiveImageLayerIndexes?: readonly number[]
   viewportKey?: string
   maxImageScale?: number
@@ -85,6 +87,7 @@ export function WebGpuVideoPreview({
   canvasHeight,
   maxSide,
   playing = false,
+  compositionTime,
   time,
   seekRevision = 0,
   className,
@@ -155,13 +158,16 @@ export function WebGpuVideoPreview({
   }, [])
 
   const compositionTimeForCurrentFrame = useCallback(() => {
+    if (compositionTime != null && Number.isFinite(compositionTime)) {
+      return Math.max(0, compositionTime)
+    }
     const primary = layersRef.current.find((layer) => layer.isVideo)
     if (!primary) return null
     const primaryKey = compositionSourceKey(primary)
     const primaryVideo = videoElementsRef.current.get(primaryKey)
     if (!primaryVideo || !Number.isFinite(primaryVideo.currentTime)) return null
     return compositionTimeForVideoLayer(primary, primaryVideo.currentTime)
-  }, [])
+  }, [compositionTime])
 
   const syncVideoTimes = useCallback(() => {
     const primary = layersRef.current.find((layer) => layer.isVideo)
@@ -196,14 +202,14 @@ export function WebGpuVideoPreview({
     const renderer = rendererRef.current
     if (!renderer || destroyedRef.current) return
     const videoLayers = layersRef.current.filter((layer) => layer.isVideo)
-    if (videoLayers.length === 0) return
     const requiredKeys = new Set(videoLayers.map(compositionSourceKey))
     for (const key of requiredKeys) {
       const video = videoElementsRef.current.get(key)
       if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return
     }
     const compositionTime = compositionTimeForCurrentFrame()
-    if (compositionTime == null) return
+    if (compositionTime == null && videoLayers.length > 0) return
+    const renderTime = compositionTime ?? 0
     if (renderingRef.current) {
       queuedRenderRef.current = true
       return
@@ -214,7 +220,7 @@ export function WebGpuVideoPreview({
     queuedRenderRef.current = false
     const revision = renderRevisionRef.current
     try {
-      await renderer.render(compositionRef.current, compositionTime)
+      await renderer.render(compositionRef.current, renderTime)
       await renderer.waitForGpu()
       if (!destroyedRef.current && revision === renderRevisionRef.current) {
         callbacksRef.current.onRender?.()
@@ -236,8 +242,7 @@ export function WebGpuVideoPreview({
 
   useEffect(() => {
     const canvas = canvasRef.current
-    const primaryVideo = primarySourceKey ? videoElementsRef.current.get(primarySourceKey) : null
-    if (!canvas || !primaryVideo) return
+    if (!canvas) return
     destroyedRef.current = false
     const renderer = new WebGpuCompositionRenderer(canvas)
     rendererRef.current = renderer
@@ -283,9 +288,7 @@ export function WebGpuVideoPreview({
       for (const video of videoElements.values()) video.pause()
       callbacksRef.current.onVideoElement?.(null)
     }
-    // The first render already has video refs attached. Additional source changes
-    // are handled by the source and event effects below without recreating the GPU device.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Source elements are attached separately; the renderer can also render image-only compositions.
   }, [])
 
   useEffect(() => {
@@ -383,7 +386,7 @@ export function WebGpuVideoPreview({
   useEffect(() => {
     renderRevisionRef.current += 1
     if (ready && !fatalError) void renderFrame()
-  }, [canvasHeight, canvasWidth, fatalError, layers, maxSide, ready, renderFrame])
+  }, [canvasHeight, canvasWidth, compositionTime, fatalError, layers, maxSide, ready, renderFrame])
 
   useEffect(() => {
     callbacksRef.current.onViewportChange?.()
