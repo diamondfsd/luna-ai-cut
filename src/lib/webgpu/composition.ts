@@ -178,6 +178,50 @@ fn sourceUvIsValid(uv: vec2f) -> bool {
   return local.x >= 0.0 && local.x <= 1.0 && local.y >= 0.0 && local.y <= 1.0;
 }
 
+fn samplePremultipliedSource(uv: vec2f) -> vec4f {
+  let sampled = textureSampleLevel(
+    sourceTexture,
+    sourceSampler,
+    clamp(uv, vec2f(0.0), vec2f(1.0)),
+    0.0,
+  );
+  return vec4f(sampled.rgb * sampled.a, sampled.a);
+}
+
+// Small watermarks are minified heavily in the workbench. A single bilinear
+// sample preserves sharpness but aliases transparent diagonals and fine text.
+// Resolve the covered source footprint with premultiplied-alpha taps so the
+// transparent edge does not turn into a dark halo.
+fn sampleLayerSource(uv: vec2f) -> vec4f {
+  let direct = textureSampleLevel(sourceTexture, sourceSampler, uv, 0.0);
+  let sourceSize = vec2f(textureDimensions(sourceTexture, 0));
+  let derivativeX = dpdx(uv);
+  let derivativeY = dpdy(uv);
+  let footprintX = length(derivativeX * sourceSize);
+  let footprintY = length(derivativeY * sourceSize);
+  if (layer.shape.y <= 0.5) {
+    return direct;
+  }
+
+  if (max(footprintX, footprintY) <= 1.25) {
+    return direct;
+  }
+
+  let offsetX = derivativeX * 0.5;
+  let offsetY = derivativeY * 0.5;
+  var sum = samplePremultipliedSource(uv - offsetX - offsetY);
+  sum += samplePremultipliedSource(uv - offsetY);
+  sum += samplePremultipliedSource(uv + offsetX - offsetY);
+  sum += samplePremultipliedSource(uv - offsetX);
+  sum += samplePremultipliedSource(uv);
+  sum += samplePremultipliedSource(uv + offsetX);
+  sum += samplePremultipliedSource(uv - offsetX + offsetY);
+  sum += samplePremultipliedSource(uv + offsetY);
+  sum += samplePremultipliedSource(uv + offsetX + offsetY);
+  let alpha = sum.a / 9.0;
+  return vec4f((sum.rgb / 9.0) / max(alpha, 0.0001), alpha);
+}
+
 fn roundedRectDistanceWithAspect(local: vec2f, radius: f32, aspect: f32) -> f32 {
   let safeAspect = max(aspect, 0.0001);
   let point = abs(local - vec2f(0.5)) * vec2f(safeAspect, 1.0);
@@ -950,7 +994,7 @@ fn fragmentFastMain(input: VertexOutput) -> @location(0) vec4f {
   if (!sourceUvIsValid(input.uv)) {
     discard;
   }
-  let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
+  let sampled = sampleLayerSource(input.uv);
   return vec4f(sampled.rgb, sampled.a * layer.style.x * layerCoverage(input.localPosition));
 }
 
@@ -963,7 +1007,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   if (!sourceUvIsValid(input.uv)) {
     discard;
   }
-  let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
+  let sampled = sampleLayerSource(input.uv);
   var maskValue = 1.0;
   if (layer.mask.w > 0.5) {
     maskValue = clamp(sampleMask(input.uv) * layer.mask.x, 0.0, 1.0);
@@ -1365,7 +1409,8 @@ function createLayerUniforms(
     Math.max(0, Math.min(0.49, layer.shadowMask?.insetX ?? 0)),
     Math.max(0, Math.min(0.49, layer.shadowMask?.insetY ?? 0)),
   ], 168)
-  uniforms.set([Math.max(0.0001, targetAspect), 0, 0, 0], 172)
+  // shape.y marks positioned image layers, currently used by watermark AA.
+  uniforms.set([Math.max(0.0001, targetAspect), layer.positioning ? 1 : 0, 0, 0], 172)
   return uniforms
 }
 
