@@ -5,6 +5,7 @@ test('renders rasterized shape and text layers through WebGPU', async ({ lunaApp
   await page.evaluate(() => {
     window.location.hash = '#/settings'
   })
+  await page.getByRole('button', { name: '连接与维护' }).click()
   const secretTrigger = page.getByTitle('相机地址')
   await expect(secretTrigger).toBeVisible()
   await secretTrigger.click({ clickCount: 5, delay: 50 })

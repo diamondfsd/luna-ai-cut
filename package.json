@@ -19,7 +19,9 @@
   "homepage": "https://github.com/diamondfsd/luna-ai-cut#readme",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/build-native.mjs && node scripts/copy-dolby-tools.mjs && pnpm run build:harness-runtime && pnpm run prepare:python-runtime",
+    "predev": "node scripts/prepare-dev.mjs",
+    "prepare:dev": "node scripts/prepare-dev.mjs",
+    "prepare:dev:force": "node scripts/prepare-dev.mjs --force",
     "build:harness-runtime": "node scripts/ensure-deepseek-harness-deps.mjs && node scripts/build-deepseek-harness-web.mjs",
     "update:deepseek-harness": "node scripts/update-deepseek-harness.mjs",
     "prepare:python-runtime": "node scripts/prepare-python-runtime.mjs",

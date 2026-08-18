@@ -144,6 +144,8 @@ export interface PreviewLayer {
   videoDuration?: number
   /** 纹理在目标区域内的适配方式；cover-scale 保留完整纹理并用基础缩放填满区域 */
   fit?: 'cover' | 'cover-scale' | 'stretch'
+  /** 背景媒体层的空间模糊半径，单位为源纹理像素。 */
+  blurRadius?: number
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number
@@ -174,6 +176,10 @@ export interface PreviewLayer {
   shape?: 'rectangle' | 'rounded-rectangle' | 'line' | 'circle'
   fillColor?: string
   cornerRadius?: number
+  /** 形状边缘向外的软化范围，使用图层局部归一化坐标。 */
+  feather?: number
+  /** 阴影覆盖范围；用于在形状内边界之外生成渐变阴影。 */
+  shadowMask?: { insetX: number; insetY: number }
   strokeColor?: string
   strokeWidth?: number
   content?: string
@@ -273,6 +279,8 @@ export interface CompositionLayer {
   /** 从源纹理采样的归一化区域；省略时使用完整源图。 */
   sourceRect?: { x: number; y: number; w: number; h: number }
   fit?: 'cover' | 'contain' | 'stretch' | string
+  /** 背景媒体层的空间模糊半径，单位为源纹理像素。 */
+  blurRadius?: number
   opacity?: number
   blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   zIndex?: number
@@ -303,6 +311,10 @@ export interface CompositionLayer {
   shape?: 'rectangle' | 'rounded-rectangle' | 'line' | 'circle'
   fillColor?: string
   cornerRadius?: number
+  /** 形状边缘向外的软化范围，使用图层局部归一化坐标。 */
+  feather?: number
+  /** 阴影覆盖范围；用于在形状内边界之外生成渐变阴影。 */
+  shadowMask?: { insetX: number; insetY: number }
   strokeColor?: string
   strokeWidth?: number
   content?: string

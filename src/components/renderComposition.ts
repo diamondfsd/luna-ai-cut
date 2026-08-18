@@ -78,6 +78,7 @@ export function buildCompositionFromPreviewLayers(
       // here and let the renderer inverse-map the output crop after rotation.
       sourceRect: { x: layer.srcX, y: layer.srcY, w: layer.srcW, h: layer.srcH },
       fit: layer.fit ?? 'cover',
+      blurRadius: layer.blurRadius,
       opacity: layer.opacity ?? 1,
       blendMode: layer.blendMode,
       zIndex: layer.zIndex ?? index,
@@ -108,6 +109,8 @@ export function buildCompositionFromPreviewLayers(
       shape: layer.shape,
       fillColor: layer.fillColor,
       cornerRadius: layer.cornerRadius,
+      feather: layer.feather,
+      shadowMask: layer.shadowMask,
       strokeColor: layer.strokeColor,
       strokeWidth: layer.strokeWidth,
       content: layer.content,

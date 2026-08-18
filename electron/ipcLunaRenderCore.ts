@@ -1,7 +1,7 @@
 /**
  * IPC 处理器 — Luna Render Core
  */
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
@@ -9,11 +9,10 @@ import { join, extname, basename } from 'node:path'
 import { getLogDir, logMainError, logMainInfo } from './loggerService'
 import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
 import { loadRuntimeResource } from './runtimeResourceService'
-import { getSettings } from './settingsService'
 import { readWebGpuLutFile } from './webGpuLutService'
 
 async function runtimeResourceCacheRoot(): Promise<string> {
-  return join((await getSettings()).baseDir, 'cache', 'resource-packs')
+  return join(app.getPath('userData'), 'resource-packs')
 }
 
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
