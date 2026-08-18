@@ -18,6 +18,12 @@ interface WorkerScope {
   postMessage(message: WebGpuVideoExportWorkerResponse, transfer?: Transferable[]): void
 }
 
+interface PendingChunkAck {
+  resolve: () => void
+  reject: (error: Error) => void
+  cleanup: () => void
+}
+
 interface VideoSourceState {
   source: WebGpuVideoExportSourceMessage
   input: MediabunnyInput
@@ -29,6 +35,8 @@ interface VideoSourceState {
 
 const workerScope = globalThis as unknown as WorkerScope
 let activeController: AbortController | null = null
+let nextChunkId = 1
+const pendingChunkAcks = new Map<number, PendingChunkAck>()
 
 function post(message: WebGpuVideoExportWorkerResponse, transfer?: Transferable[]): void {
   workerScope.postMessage(message, transfer)
@@ -40,6 +48,50 @@ function abortError(): DOMException {
 
 function checkCanceled(signal: AbortSignal): void {
   if (signal.aborted) throw abortError()
+}
+
+function rejectPendingChunkAcks(error: Error): void {
+  for (const [id, pending] of pendingChunkAcks) {
+    pendingChunkAcks.delete(id)
+    pending.cleanup()
+    pending.reject(error)
+  }
+}
+
+function acknowledgeChunk(id: number, errorMessage?: string): void {
+  const pending = pendingChunkAcks.get(id)
+  if (!pending) return
+  pendingChunkAcks.delete(id)
+  pending.cleanup()
+  if (errorMessage) {
+    pending.reject(new Error(errorMessage))
+  } else {
+    pending.resolve()
+  }
+}
+
+function postOutputChunk(data: Uint8Array, signal: AbortSignal): Promise<void> {
+  checkCanceled(signal)
+  const id = nextChunkId
+  nextChunkId += 1
+  const bytes = data.slice()
+  const buffer = bytes.buffer
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      if (!pendingChunkAcks.delete(id)) return
+      signal.removeEventListener('abort', onAbort)
+      reject(abortError())
+    }
+    pendingChunkAcks.set(id, { resolve, reject, cleanup: () => signal.removeEventListener('abort', onAbort) })
+    signal.addEventListener('abort', onAbort, { once: true })
+    try {
+      post({ type: 'chunk', id, data: buffer }, [buffer])
+    } catch (error) {
+      pendingChunkAcks.delete(id)
+      signal.removeEventListener('abort', onAbort)
+      reject(error instanceof Error ? error : new Error(String(error)))
+    }
+  })
 }
 
 function postProgress(
@@ -94,6 +146,9 @@ async function copyAudioPackets(params: {
   mediabunny: MediabunnyModule
   audioTrack: Awaited<ReturnType<MediabunnyInput['getPrimaryAudioTrack']>>
   audioSource: InstanceType<MediabunnyModule['EncodedAudioPacketSource']>
+  sourceStart: number
+  outputOffset: number
+  duration: number
   signal: AbortSignal
 }): Promise<void> {
   if (!params.audioTrack) return
@@ -102,8 +157,12 @@ async function copyAudioPackets(params: {
   const firstTimestamp = await params.audioTrack.getFirstTimestamp()
   for await (const packet of sink.packets()) {
     checkCanceled(params.signal)
+    const sourceTimestamp = packet.timestamp - firstTimestamp
+    const outputTimestamp = sourceTimestamp - params.sourceStart + params.outputOffset
+    const outputEnd = outputTimestamp + packet.duration
+    if (outputEnd <= 0 || outputTimestamp >= params.duration) continue
     await params.audioSource.add(
-      packet.clone({ timestamp: Math.max(0, packet.timestamp - firstTimestamp) }),
+      packet.clone({ timestamp: Math.max(0, outputTimestamp) }),
       decoderConfig ? { decoderConfig } : undefined,
     )
   }
@@ -149,7 +208,7 @@ function closeFrames(frames: Map<string, VideoFrame>): void {
 async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSignal): Promise<void> {
   const mediabunny: MediabunnyModule = await import('mediabunny')
   const {
-    BufferTarget,
+    AppendOnlyStreamTarget,
     EncodedAudioPacketSource,
     Mp4OutputFormat,
     Output,
@@ -201,10 +260,13 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
   let completed = false
   let runtimeError: Error | null = null
   const currentFrames = new Map<string, VideoFrame>()
+  const primaryTiming = primaryLayer.source.time
 
   try {
-    const format = new Mp4OutputFormat({ fastStart: 'in-memory' })
-    const target = new BufferTarget()
+    const format = new Mp4OutputFormat({ fastStart: 'fragmented' })
+    const target = new AppendOnlyStreamTarget(new WritableStream<Uint8Array>({
+      write: (chunk) => postOutputChunk(chunk, signal),
+    }))
     output = new Output({ format, target })
     const videoSource = new VideoSampleSource({
       codec: 'avc',
@@ -226,7 +288,15 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     await output.start()
 
     const audioTask = audioSource && audioTrack
-      ? copyAudioPackets({ mediabunny, audioTrack, audioSource, signal })
+      ? copyAudioPackets({
+          mediabunny,
+          audioTrack,
+          audioSource,
+          sourceStart: primaryTiming?.start ?? 0,
+          outputOffset: primaryTiming?.offset ?? 0,
+          duration,
+          signal,
+        })
       : null
     renderer = new WebGpuCompositionRenderer(new OffscreenCanvas(message.width, message.height))
     await renderer.initialize({
@@ -303,15 +373,14 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     checkCanceled(signal)
     await output.finalize()
     completed = true
-    if (!target.buffer) throw new Error('编码器没有生成输出文件')
     post({
       type: 'done',
-      buffer: target.buffer,
       duration,
       frameCount,
       audioCopied,
-    }, [target.buffer])
+    })
   } finally {
+    rejectPendingChunkAcks(abortError())
     closeFrames(currentFrames)
     renderer?.destroy()
     for (const bitmap of imageBitmaps.values()) bitmap.close()
@@ -321,8 +390,13 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
 }
 
 workerScope.onmessage = (event) => {
+  if (event.data.type === 'chunk-ack') {
+    acknowledgeChunk(event.data.id, event.data.error)
+    return
+  }
   if (event.data.type === 'cancel') {
     activeController?.abort()
+    rejectPendingChunkAcks(abortError())
     return
   }
   if (activeController) return
