@@ -1,5 +1,5 @@
 import type { CompositionInput } from '../../shared/types'
-import { filePathToPreviewUrl } from '../fileUtils'
+import { filePathToPreviewUrl, isVideoPath } from '../fileUtils'
 import { WebGpuCompositionRenderer } from './composition'
 import { readWebGpuLut } from './lut-source'
 import { loadWebGpuMask } from './mask-source'
@@ -17,6 +17,29 @@ function loadImage(path: string): Promise<HTMLImageElement> {
   })
 }
 
+function loadVideo(path: string): Promise<HTMLVideoElement> {
+  const url = filePathToPreviewUrl(path) ?? path
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    video.muted = true
+    video.playsInline = true
+    video.preload = 'auto'
+    video.onloadeddata = () => resolve(video)
+    video.onerror = () => reject(new Error(`视频加载失败: ${path}`))
+    video.src = url
+    video.load()
+  })
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('无法读取 WebGPU 缩略图'))
+    reader.readAsDataURL(blob)
+  })
+}
+
 /**
  * 用与静态预览相同的 WebGPU composition renderer 生成图片 Blob。
  * 文件保存由调用方负责，以便复用现有导出目录和任务协议。
@@ -29,6 +52,7 @@ export async function renderStaticImageCompositionToBlob(params: {
   const canvas = document.createElement('canvas')
   const renderer = new WebGpuCompositionRenderer(canvas)
   const imageCache = new Map<string, HTMLImageElement>()
+  const videoCache = new Map<string, HTMLVideoElement>()
 
   try {
     await renderer.initialize({
@@ -39,6 +63,16 @@ export async function renderStaticImageCompositionToBlob(params: {
         imageCache.set(path, image)
         return image
       },
+      resolveSource: async (layer) => {
+        if (layer.source.sourceType !== 'video' || !layer.source.key) {
+          throw new Error(`WebGPU 缩略图源不是视频: ${layer.source.path}`)
+        }
+        const cached = videoCache.get(layer.source.key)
+        if (cached) return cached
+        const video = await loadVideo(layer.source.path)
+        videoCache.set(layer.source.key, video)
+        return video
+      },
       resolveLut: readWebGpuLut,
       resolveMask: loadWebGpuMask,
     })
@@ -47,5 +81,29 @@ export async function renderStaticImageCompositionToBlob(params: {
   } finally {
     renderer.destroy()
     imageCache.clear()
+    for (const video of videoCache.values()) {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+    videoCache.clear()
   }
+}
+
+/** Render a composition into a data URL for UI thumbnails. */
+export async function renderWebGpuCompositionToDataUrl(params: {
+  composition: CompositionInput
+  quality?: number
+}): Promise<string> {
+  const blob = await renderStaticImageCompositionToBlob({
+    composition: params.composition,
+    format: 'jpeg',
+    quality: params.quality ?? 85,
+  })
+  return blobToDataUrl(blob)
+}
+
+/** Mark manually assembled media layers with the source type expected by WebGPU. */
+export function compositionSourceType(path: string): 'image' | 'video' {
+  return isVideoPath(path) ? 'video' : 'image'
 }
