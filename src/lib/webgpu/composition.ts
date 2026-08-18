@@ -72,7 +72,7 @@ const HIDDEN_MASK = Symbol('hidden-mask')
 type SupportedBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
 
 const BLEND_MODES: SupportedBlendMode[] = ['normal', 'multiply', 'screen', 'add']
-const LAYER_UNIFORM_FLOATS = 32 * 4
+const LAYER_UNIFORM_FLOATS = 40 * 4
 const LAYER_UNIFORM_BYTES = LAYER_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT
 
 function paddedLutData(lut: WebGpuLutData): { data: Uint8Array; bytesPerRow: number } {
@@ -120,6 +120,11 @@ struct LayerUniforms {
   pixelFlowDepth: vec4f,
   pixelFlowScale: vec4f,
   pixelFlowFinish: vec4f,
+  pixelStretch: vec4f,
+  pixelStretchExtra: vec4f,
+  pixelStretchCenter: vec4f,
+  pixelStretchPathMeta: vec4f,
+  pixelStretchPathData: array<vec4f, 4>,
 };
 
 @group(0) @binding(0) var sourceSampler: sampler;
@@ -252,7 +257,9 @@ fn applyWheel(cIn: vec3f, hue: f32, amount: f32, mask: f32) -> vec3f {
   if (strength <= 0.0001) { return cIn; }
   let tintColor = hsv2rgb(vec3f(fract(hue / 360.0), 1.0, 1.0));
   var tintTarget = tintColor;
-  if (amount < 0.0) { tintTarget = vec3f(1.0) - tintTarget; }
+  if (amount < 0.0) {
+    tintTarget = vec3f(1.0) - tintTarget;
+  }
   return mix(cIn, cIn * mix(vec3f(1.0), tintTarget, clamp(abs(amount) / 100.0, 0.0, 1.0)), mask);
 }
 
@@ -262,7 +269,9 @@ fn hueDistance(left: f32, right: f32) -> f32 {
 }
 
 fn applyHslChannel(cIn: vec3f, params: vec4f) -> vec3f {
-  if (abs(params.y) + abs(params.z) + abs(params.w) <= 0.0001) { return cIn; }
+  if (abs(params.y) + abs(params.z) + abs(params.w) <= 0.0001) {
+    return cIn;
+  }
   var hsv = rgb2hsv(cIn);
   if (hsv.y <= 0.0001) { return cIn; }
   let distance = hueDistance(hsv.x * 360.0, params.x);
@@ -515,6 +524,305 @@ fn pixelFlowEffect(uv: vec2f, source: vec4f, localPosition: vec2f) -> vec4f {
   return vec4f(clamp(lit, vec3f(0.0), vec3f(1.35)) * alpha, alpha);
 }
 
+fn pixelStretchMask(uv: vec2f) -> f32 {
+  let value = textureSampleLevel(maskTexture, sourceSampler, uv, 0.0).r;
+  return select(value, 1.0 - value, layer.mask.y > 0.5);
+}
+
+fn pixelStretchPathControl(index: i32) -> vec2f {
+  let scalarIndex = index * 2;
+  let first = scalarIndex / 4;
+  let offset = scalarIndex % 4;
+  if (offset == 0) { return layer.pixelStretchPathData[first].xy; }
+  return layer.pixelStretchPathData[first].zw;
+}
+
+fn pixelStretchPathPoint(t: f32) -> vec2f {
+  let segment = select(0, 1, t >= 0.5);
+  let localT = select(t * 2.0, (t - 0.5) * 2.0, segment == 1);
+  let base = segment * 3;
+  let p0 = pixelStretchPathControl(base);
+  let p1 = pixelStretchPathControl(base + 1);
+  let p2 = pixelStretchPathControl(base + 2);
+  let p3 = pixelStretchPathControl(base + 3);
+  let inverseT = 1.0 - localT;
+  return inverseT * inverseT * inverseT * p0
+    + 3.0 * inverseT * inverseT * localT * p1
+    + 3.0 * inverseT * localT * localT * p2
+    + localT * localT * localT * p3;
+}
+
+fn pixelStretchPathDerivative(t: f32) -> vec2f {
+  let segment = select(0, 1, t >= 0.5);
+  let localT = select(t * 2.0, (t - 0.5) * 2.0, segment == 1);
+  let base = segment * 3;
+  let p0 = pixelStretchPathControl(base);
+  let p1 = pixelStretchPathControl(base + 1);
+  let p2 = pixelStretchPathControl(base + 2);
+  let p3 = pixelStretchPathControl(base + 3);
+  let inverseT = 1.0 - localT;
+  return 6.0 * (inverseT * inverseT * (p1 - p0)
+    + 2.0 * inverseT * localT * (p2 - p1)
+    + localT * localT * (p3 - p2));
+}
+
+fn pixelStretchPathSecondDerivative(t: f32) -> vec2f {
+  let segment = select(0, 1, t >= 0.5);
+  let localT = select(t * 2.0, (t - 0.5) * 2.0, segment == 1);
+  let base = segment * 3;
+  let p0 = pixelStretchPathControl(base);
+  let p1 = pixelStretchPathControl(base + 1);
+  let p2 = pixelStretchPathControl(base + 2);
+  let p3 = pixelStretchPathControl(base + 3);
+  return 24.0 * mix(p2 - 2.0 * p1 + p0, p3 - 2.0 * p2 + p1, localT);
+}
+
+fn pixelStretchSampleSeed(rangeT: f32, horizontal: bool) -> vec2f {
+  let inverseT = 1.0 - rangeT;
+  let start = select(layer.pixelStretch.w, layer.pixelStretch.z, horizontal);
+  let along = inverseT * inverseT * inverseT * start
+    + 3.0 * inverseT * inverseT * rangeT * layer.pixelStretchCenter.z
+    + 3.0 * inverseT * rangeT * rangeT * layer.pixelStretchCenter.w
+    + rangeT * rangeT * rangeT * layer.pixelStretchExtra.y;
+  let across = mix(layer.pixelStretchExtra.z, layer.pixelStretchExtra.w, rangeT);
+  return select(vec2f(across, along), vec2f(along, across), horizontal);
+}
+
+fn pixelStretchSeedValid(seed: vec2f) -> bool {
+  return seed.x >= 0.0 && seed.x <= 1.0 && seed.y >= 0.0 && seed.y <= 1.0
+    && pixelStretchMask(seed) >= 0.5;
+}
+
+fn pixelStretchSCurvePoint(t: f32, originX: f32, amplitude: f32, aspect: f32) -> vec2f {
+  let y = mix(-0.12, 1.12, t);
+  let x = originX - amplitude * sin(t * 6.28318530718);
+  return vec2f((x - originX) * aspect, y);
+}
+
+fn pixelStretchEffect(uv: vec2f) -> vec4f {
+  if (layer.pixelStretch.x <= 0.5) {
+    let sampled = textureSampleLevel(sourceTexture, sourceSampler, uv, 0.0);
+    return sampled;
+  }
+  let stretchMode = layer.pixelStretch.x;
+  let isSCurve = stretchMode > 2.5 && stretchMode < 4.5;
+  if (!isSCurve && pixelStretchMask(uv) > 0.5) {
+    return vec4f(0.0);
+  }
+  let amount = clamp(layer.pixelStretch.y / 100.0, 0.0, 1.0);
+  let origin = vec2f(layer.pixelStretch.z, layer.pixelStretch.w);
+  let sourceSize = vec2f(textureDimensions(sourceTexture, 0));
+  let aspect = max(sourceSize.x / max(sourceSize.y, 1.0), 0.0001);
+  let center = layer.pixelStretchCenter.xy;
+  let rotation = layer.pixelStretchExtra.x * 0.017453292519943;
+  let rotationCos = cos(rotation);
+  let rotationSin = sin(rotation);
+  let rotatedDelta = (uv - center) * vec2f(aspect, 1.0);
+  let unrotatedDelta = vec2f(
+    rotatedDelta.x * rotationCos + rotatedDelta.y * rotationSin,
+    -rotatedDelta.x * rotationSin + rotatedDelta.y * rotationCos,
+  );
+  let effectCoord = center + unrotatedDelta / vec2f(aspect, 1.0);
+  let lineEnd = layer.pixelStretchExtra.y;
+  let controlStart = layer.pixelStretchCenter.z;
+  let controlEnd = layer.pixelStretchCenter.w;
+  let sampleStart = layer.pixelStretchExtra.z;
+  let sampleEnd = layer.pixelStretchExtra.w;
+  let isHorizontal = stretchMode < 1.5
+    || (stretchMode > 4.5 && stretchMode < 5.5)
+    || (stretchMode > 6.5 && stretchMode < 7.5);
+  let isVertical = (stretchMode > 1.5 && stretchMode < 2.5)
+    || (stretchMode > 5.5 && stretchMode < 6.5)
+    || stretchMode > 7.5;
+  var seed = vec2f(origin.x, uv.y);
+  var sampleRangeT = 0.5;
+  var edgeCoverage = 1.0;
+
+  if (layer.pixelStretchPathMeta.x > 0.5) {
+    let position = effectCoord * vec2f(aspect, 1.0);
+    var bestT = 0.0;
+    var bestPoint = pixelStretchPathPoint(0.0) * vec2f(aspect, 1.0);
+    var bestDistance = dot(position - bestPoint, position - bestPoint);
+    for (var index = 1; index < 32; index = index + 1) {
+      let pathT = f32(index) / 31.0;
+      let point = pixelStretchPathPoint(pathT) * vec2f(aspect, 1.0);
+      let distance = dot(position - point, position - point);
+      if (distance < bestDistance) {
+        bestT = pathT;
+        bestPoint = point;
+        bestDistance = distance;
+      }
+    }
+    let coarseStep = 1.0 / 31.0;
+    let refineStart = max(0.0, bestT - coarseStep);
+    let refineEnd = min(1.0, bestT + coarseStep);
+    for (var index = 0; index < 6; index = index + 1) {
+      let point = pixelStretchPathPoint(bestT) * vec2f(aspect, 1.0);
+      let derivative = pixelStretchPathDerivative(bestT) * vec2f(aspect, 1.0);
+      let secondDerivative = pixelStretchPathSecondDerivative(bestT) * vec2f(aspect, 1.0);
+      let delta = point - position;
+      let denominator = dot(derivative, derivative) + dot(delta, secondDerivative);
+      if (abs(denominator) > 0.0000001) {
+        bestT = clamp(bestT - dot(delta, derivative) / denominator, refineStart, refineEnd);
+      }
+    }
+    bestPoint = pixelStretchPathPoint(bestT) * vec2f(aspect, 1.0);
+    let pathStart = pixelStretchPathPoint(0.0) * vec2f(aspect, 1.0);
+    let pathStartDelta = pixelStretchPathDerivative(0.0) * vec2f(aspect, 1.0);
+    let pathStartFallback = (pixelStretchPathPoint(0.01) - pixelStretchPathPoint(0.0)) * vec2f(aspect, 1.0);
+    let pathStartTangent = select(
+      pathStartFallback / max(length(pathStartFallback), 0.000001),
+      pathStartDelta / max(length(pathStartDelta), 0.000001),
+      dot(pathStartDelta, pathStartDelta) > 0.0000001,
+    );
+    let pathEnd = pixelStretchPathPoint(1.0) * vec2f(aspect, 1.0);
+    let pathEndDelta = pixelStretchPathDerivative(1.0) * vec2f(aspect, 1.0);
+    let pathEndFallback = (pixelStretchPathPoint(1.0) - pixelStretchPathPoint(0.99)) * vec2f(aspect, 1.0);
+    let pathEndTangent = select(
+      pathEndFallback / max(length(pathEndFallback), 0.000001),
+      pathEndDelta / max(length(pathEndDelta), 0.000001),
+      dot(pathEndDelta, pathEndDelta) > 0.0000001,
+    );
+    if (dot(position - pathStart, pathStartTangent) < 0.0) {
+      bestT = 0.0;
+      bestPoint = pathStart;
+    } else if (dot(position - pathEnd, pathEndTangent) > 0.0) {
+      bestT = 1.0;
+      bestPoint = pathEnd;
+    }
+    let tangentDelta = pixelStretchPathDerivative(bestT) * vec2f(aspect, 1.0);
+    if (dot(tangentDelta, tangentDelta) < 0.0000001) {
+      return vec4f(0.0);
+    }
+    let tangent = normalize(tangentDelta);
+    let normal = vec2f(-tangent.y, tangent.x);
+    let signedDistance = dot(position - bestPoint, normal);
+    let fullWidth = mix(layer.pixelStretchPathMeta.y, layer.pixelStretchPathMeta.z, bestT);
+    let halfWidth = max(0.0005, fullWidth * 0.5);
+    var distanceFromCenterline = abs(signedDistance);
+    if ((bestT <= 0.00001 && dot(position - bestPoint, tangent) < 0.0)
+      || (bestT >= 0.99999 && dot(position - bestPoint, tangent) > 0.0)) {
+      distanceFromCenterline = length(position - bestPoint);
+    }
+    let edgeDistance = halfWidth - distanceFromCenterline;
+    let edgeAA = max(1.5 / max(sourceSize.y, 1.0), 0.00001);
+    if (edgeDistance < -edgeAA) {
+      return vec4f(0.0);
+    }
+    edgeCoverage = smoothstep(-edgeAA, edgeAA, edgeDistance);
+    sampleRangeT = clamp(signedDistance / fullWidth + 0.5, 0.0, 1.0);
+    seed = pixelStretchSampleSeed(sampleRangeT, isHorizontal);
+  } else if (isHorizontal) {
+    let rangeMin = min(sampleStart, sampleEnd);
+    let rangeMax = max(sampleStart, sampleEnd);
+    let crossDistance = min(effectCoord.y - rangeMin, rangeMax - effectCoord.y);
+    let crossAA = max(1.5 / max(sourceSize.y, 1.0), 0.00001);
+    if (crossDistance < -crossAA) {
+      return vec4f(0.0);
+    }
+    edgeCoverage = smoothstep(-crossAA, crossAA, crossDistance);
+    let rangeDelta = sampleEnd - sampleStart;
+    let safeRangeDelta = select(min(rangeDelta, -0.0001), max(rangeDelta, 0.0001), rangeDelta >= 0.0);
+    sampleRangeT = clamp((effectCoord.y - sampleStart) / safeRangeDelta, 0.0, 1.0);
+    seed = pixelStretchSampleSeed(sampleRangeT, true);
+    let sampleX = seed.x;
+    var directionDistance = 2.0 - abs(effectCoord.x - sampleX);
+    if (stretchMode < 1.5) {
+      directionDistance = min(directionDistance, effectCoord.x - sampleX);
+    } else if (stretchMode > 4.5 && stretchMode < 5.5) {
+      directionDistance = min(directionDistance, sampleX - effectCoord.x);
+    }
+    let directionAA = max(1.5 / max(sourceSize.x, 1.0), 0.00001);
+    if (directionDistance < -directionAA) {
+      return vec4f(0.0);
+    }
+    edgeCoverage *= smoothstep(-directionAA, directionAA, directionDistance);
+  } else if (isVertical) {
+    let rangeMin = min(sampleStart, sampleEnd);
+    let rangeMax = max(sampleStart, sampleEnd);
+    let crossDistance = min(effectCoord.x - rangeMin, rangeMax - effectCoord.x);
+    let crossAA = max(1.5 / max(sourceSize.x, 1.0), 0.00001);
+    if (crossDistance < -crossAA) {
+      return vec4f(0.0);
+    }
+    edgeCoverage = smoothstep(-crossAA, crossAA, crossDistance);
+    let rangeDelta = sampleEnd - sampleStart;
+    let safeRangeDelta = select(min(rangeDelta, -0.0001), max(rangeDelta, 0.0001), rangeDelta >= 0.0);
+    sampleRangeT = clamp((effectCoord.x - sampleStart) / safeRangeDelta, 0.0, 1.0);
+    seed = pixelStretchSampleSeed(sampleRangeT, false);
+    let sampleY = seed.y;
+    var directionDistance = 2.0 - abs(effectCoord.y - sampleY);
+    if (stretchMode > 1.5 && stretchMode < 2.5) {
+      directionDistance = min(directionDistance, effectCoord.y - sampleY);
+    } else if (stretchMode > 5.5 && stretchMode < 6.5) {
+      directionDistance = min(directionDistance, sampleY - effectCoord.y);
+    }
+    let directionAA = max(1.5 / max(sourceSize.y, 1.0), 0.00001);
+    if (directionDistance < -directionAA) {
+      return vec4f(0.0);
+    }
+    edgeCoverage *= smoothstep(-directionAA, directionAA, directionDistance);
+  } else {
+    let position = vec2f((uv.x - origin.x) * aspect, uv.y);
+    let amplitude = mix(0.22, 0.38, amount);
+    let halfWidth = mix(0.055, 0.10, amount);
+    var bestT = 0.0;
+    var bestPoint = pixelStretchSCurvePoint(0.0, origin.x, amplitude, aspect);
+    var bestDistance = dot(position - bestPoint, position - bestPoint);
+    for (var index = 1; index < 64; index = index + 1) {
+      let t = f32(index) / 63.0;
+      let point = pixelStretchSCurvePoint(t, origin.x, amplitude, aspect);
+      let distance = dot(position - point, position - point);
+      if (distance < bestDistance) {
+        bestT = t;
+        bestPoint = point;
+        bestDistance = distance;
+      }
+    }
+    if (bestDistance > halfWidth * halfWidth || (stretchMode > 3.5 && bestT < 0.76)) {
+      return vec4f(0.0);
+    }
+    let before = pixelStretchSCurvePoint(max(0.0, bestT - 0.01), origin.x, amplitude, aspect);
+    let after = pixelStretchSCurvePoint(min(1.0, bestT + 0.01), origin.x, amplitude, aspect);
+    let tangent = normalize(after - before);
+    let normal = vec2f(-tangent.y, tangent.x);
+    let signedDistance = dot(position - bestPoint, normal);
+    seed = vec2f(origin.x, origin.y + signedDistance / halfWidth * 0.5);
+  }
+
+  var validSeed = pixelStretchSeedValid(seed);
+  if (!validSeed && layer.pixelStretchPathMeta.w > 0.5 && (isHorizontal || isVertical)) {
+    for (var index = 1; index <= 48; index = index + 1) {
+      let offset = f32(index) / 48.0;
+      let beforeT = max(0.0, sampleRangeT - offset);
+      let beforeSeed = pixelStretchSampleSeed(beforeT, isHorizontal);
+      if (pixelStretchSeedValid(beforeSeed)) {
+        seed = beforeSeed;
+        validSeed = true;
+        break;
+      }
+      let afterT = min(1.0, sampleRangeT + offset);
+      let afterSeed = pixelStretchSampleSeed(afterT, isHorizontal);
+      if (pixelStretchSeedValid(afterSeed)) {
+        seed = afterSeed;
+        validSeed = true;
+        break;
+      }
+    }
+  }
+  if (!validSeed) {
+    return vec4f(0.0);
+  }
+  let seedPixel = clamp(floor(seed * sourceSize), vec2f(0.0), sourceSize - vec2f(1.0));
+  let seedCenter = (seedPixel + vec2f(0.5)) / sourceSize;
+  let quarterTurn = round(rotation / 1.57079632679) * 1.57079632679;
+  let needsRotationFilter = abs(rotation - quarterTurn) > 0.0001;
+  let stretched = textureSampleLevel(sourceTexture, sourceSampler, select(seedCenter, seed, needsRotationFilter), 0.0);
+  let adjusted = applyLut(applyColor(stretched.rgb, seed));
+  let alpha = stretched.a * layer.style.x * edgeCoverage;
+  return vec4f(adjusted, alpha);
+}
+
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let revealProgress = clamp(layer.reveal.x, 0.0, 1.0);
@@ -532,6 +840,11 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   var alpha = sampled.a * layer.style.x * select(1.0, maskValue, isLocalColor);
   if (layer.pixelFlow.x > 0.5) {
     let effect = pixelFlowEffect(input.uv, vec4f(color, alpha), input.localPosition);
+    color = effect.rgb;
+    alpha = effect.a;
+  }
+  if (layer.pixelStretch.x > 0.5) {
+    let effect = pixelStretchEffect(input.uv);
     color = effect.rgb;
     alpha = effect.a;
   }
@@ -680,6 +993,63 @@ function createLayerUniforms(
     Math.max(0, Math.min(2, pixelFlow?.colorTransition ?? 0)),
     0,
   ], 124)
+  const pixelStretch = layer.pixelStretch
+  const stretchMode = pixelStretch?.mode === 'right'
+    ? 1
+    : pixelStretch?.mode === 'down'
+      ? 2
+      : pixelStretch?.mode === 'swirl'
+        ? 3
+        : pixelStretch?.mode === 'swirl-front'
+          ? 4
+          : pixelStretch?.mode === 'left'
+            ? 5
+            : pixelStretch?.mode === 'up'
+              ? 6
+              : pixelStretch?.mode === 'horizontal'
+                ? 7
+                : pixelStretch?.mode === 'vertical' ? 8 : 0
+  const stretchHorizontal = stretchMode === 1 || stretchMode === 5 || stretchMode === 7
+  const stretchOriginX = Math.max(0, Math.min(1, pixelStretch?.originX ?? 0.5))
+  const stretchOriginY = Math.max(0, Math.min(1, pixelStretch?.originY ?? 0.5))
+  const stretchLineEnd = Math.max(0, Math.min(1, pixelStretch?.lineEnd ?? (stretchHorizontal ? stretchOriginX : stretchOriginY)))
+  const stretchSampleStart = Math.max(0, Math.min(1, pixelStretch?.sampleStart ?? 0))
+  const stretchSampleEnd = Math.max(0, Math.min(1, pixelStretch?.sampleEnd ?? 1))
+  const stretchControlStart = Math.max(0, Math.min(1, pixelStretch?.controlStart ?? (stretchHorizontal ? stretchOriginX : stretchOriginY)))
+  const stretchControlEnd = Math.max(0, Math.min(1, pixelStretch?.controlEnd ?? stretchLineEnd))
+  const pathPoints = pixelStretch?.pathPoints
+  const hasPath = Array.isArray(pathPoints) && pathPoints.length === 14
+  const pathData = new Float32Array(16)
+  if (hasPath) {
+    for (let index = 0; index < 14; index += 1) {
+      pathData[index] = Math.max(-2, Math.min(3, pathPoints[index]))
+    }
+  }
+  uniforms.set([
+    stretchMode,
+    Math.max(0, Math.min(100, pixelStretch?.intensity ?? 0)),
+    stretchOriginX,
+    stretchOriginY,
+  ], 128)
+  uniforms.set([
+    Math.max(-180, Math.min(180, pixelStretch?.angle ?? 0)),
+    stretchLineEnd,
+    stretchSampleStart,
+    stretchSampleEnd,
+  ], 132)
+  uniforms.set([
+    Math.max(0, Math.min(1, pixelStretch?.centerX ?? 0.5)),
+    Math.max(0, Math.min(1, pixelStretch?.centerY ?? 0.5)),
+    stretchControlStart,
+    stretchControlEnd,
+  ], 136)
+  uniforms.set([
+    hasPath ? 1 : 0,
+    Math.max(0.001, Math.min(2, pixelStretch?.pathStartWidth ?? 0.2)),
+    Math.max(0.001, Math.min(2, pixelStretch?.pathEndWidth ?? 0.1)),
+    pixelStretch?.fillSampleGaps ? 1 : 0,
+  ], 140)
+  uniforms.set(pathData, 144)
   return uniforms
 }
 
@@ -914,6 +1284,11 @@ export class WebGpuCompositionRenderer {
       context.configure({ device: this.device, format: this.format, alphaMode: 'premultiplied' })
 
       const module = this.device.createShaderModule({ label: 'webgpu-composition', code: COMPOSITION_SHADER })
+      const compilationInfo = await module.getCompilationInfo()
+      const shaderErrors = compilationInfo.messages.filter((message) => message.type === 'error')
+      if (shaderErrors.length > 0) {
+        throw new Error(shaderErrors.map((message) => `${message.lineNum}:${message.linePos} ${message.message}`).join('\n'))
+      }
       const layout = this.device.createBindGroupLayout({
         label: 'webgpu-composition-layout',
         entries: [

@@ -7,6 +7,7 @@ function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
   const isLocalColorOutput = layer.layerType === 'local-color'
     && layer.precomposeRole === 'output'
     && Boolean(layer.precomposeGroup)
+  const isPixelStretchLayer = layer.layerType === 'pixel-stretch' && Boolean(layer.pixelStretch)
   const isRasterizableLayer = layer.layerType === 'shape'
     || layer.layerType === 'text'
     || layer.layerType === 'logo'
@@ -16,8 +17,7 @@ function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
       || layer.filePath
       || typeof layer.content === 'string',
   )
-  return (!isMediaLayer && !isLocalColorInput && !isLocalColorOutput && !(isRasterizableLayer && hasContent))
-    || Boolean(layer.pixelStretch)
+  return (!isMediaLayer && !isLocalColorInput && !isLocalColorOutput && !isPixelStretchLayer && !(isRasterizableLayer && hasContent))
 }
 
 /**
