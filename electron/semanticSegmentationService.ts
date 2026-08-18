@@ -1,10 +1,10 @@
 import { execFile } from 'node:child_process'
 import { app } from 'electron'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { getFfmpegPath } from './ffmpeg/pipeline'
+import { createCurrentModelWorkDirectory } from './modelWorkDirectory'
 import { parseSemanticWorkerOutput, type SemanticSegmentationResult } from './semanticWorkerProtocol'
 
 const GUIDE_MAX_EDGE = 2048
@@ -63,7 +63,7 @@ export async function segmentSemanticInWorker(
   input: SemanticSegmentationInput,
   signal?: AbortSignal,
 ): Promise<SemanticSegmentationResult> {
-  const directory = await mkdtemp(join(tmpdir(), 'luna-semantic-'))
+  const directory = await createCurrentModelWorkDirectory('luna-semantic')
   const inputPath = join(directory, 'input.rgb')
   const guidePath = join(directory, 'guide.rgb')
   const outputPath = join(directory, 'output.mask')

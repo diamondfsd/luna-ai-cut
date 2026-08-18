@@ -74,9 +74,9 @@ vi.mock('@freecut/features/editor/services/moss-tts-service', () => ({
   ],
   mossTtsService: { generateSpeechFile: harness.generateSpeechFile },
 }))
-vi.mock('@freecut/features/editor/services/musicgen-service', () => ({
-  DEFAULT_MUSICGEN_MODEL: 'musicgen-small',
-  musicgenService: { generateMusicFile: harness.generateMusicFile },
+vi.mock('@freecut/features/editor/services/stable-audio-3-service', () => ({
+  DEFAULT_STABLE_AUDIO_MODEL: 'small-music',
+  stableAudio3Service: { generateMusicFile: harness.generateMusicFile },
 }))
 
 import { MEDIA_AI_TOOLS } from './project-source-media-tools'
@@ -286,10 +286,10 @@ describe('project media AI tools', () => {
     })
   })
 
-  it('submits a MusicGen task and exposes progress and the saved media after completion', async () => {
+  it('submits a Stable Audio 3 task and exposes progress and the saved media after completion', async () => {
     const result = await getTool('audio.start_music').execute({
       prompt: '温暖舒缓的日落氛围音乐，不要人声。',
-      model: 'musicgen-small',
+      model: 'small-music',
       durationSeconds: 12,
       guidanceScale: 4,
     })
@@ -298,7 +298,7 @@ describe('project media AI tools', () => {
 
     expect(harness.generateMusicFile).toHaveBeenCalledWith(expect.objectContaining({
       prompt: '温暖舒缓的日落氛围音乐，不要人声。',
-      model: 'musicgen-small',
+      model: 'small-music',
       durationSeconds: 12,
       guidanceScale: 4,
       onProgress: expect.any(Function),
@@ -306,21 +306,26 @@ describe('project media AI tools', () => {
     expect(harness.importGeneratedAudio).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'music.wav' }),
       'project-1',
-      { tags: ['ai-generated', 'musicgen', 'musicgen-model:musicgen-small', 'musicgen-target:12s'] },
+      { tags: ['ai-generated', 'stable-audio-3', 'stable-audio-model:small-music', 'stable-audio-target:12s'] },
     )
     expect(completed.data).toMatchObject({
       mediaId: 'generated-audio-1',
       fileName: 'music.wav',
       durationSeconds: 2.75,
       mediaType: 'audio',
-      engine: 'musicgen',
-      model: 'musicgen-small',
+      engine: 'stable-audio-3',
+      model: 'small-music',
       targetDurationSeconds: 12,
       guidanceScale: 4,
     })
   })
 
   it('rejects invalid audio task parameters before invoking a model', () => {
+    expect(getTool('audio.start_music').validate({
+      prompt: '脚步声',
+      model: 'small-sfx',
+      durationSeconds: 4,
+    })).toMatchObject({ ok: true })
     expect(getTool('audio.start_speech').validate({
       text: 'hello',
       voice: 'unknown',

@@ -201,6 +201,17 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       return () => ipcRenderer.removeListener('deepseek-harness:tool-cancel', listener)
     },
   } satisfies DeepSeekHarnessApi,
+  stableAudio3: {
+    getStatus: () => ipcRenderer.invoke('stable-audio-3:get-status'),
+    generate: (request) => ipcRenderer.invoke('stable-audio-3:generate', request),
+    cancel: (requestId) => ipcRenderer.invoke('stable-audio-3:cancel', requestId),
+    unload: () => ipcRenderer.invoke('stable-audio-3:unload'),
+    onProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').StableAudio3Progress): void => callback(progress)
+      ipcRenderer.on('stable-audio-3:progress', listener)
+      return () => ipcRenderer.off('stable-audio-3:progress', listener)
+    },
+  },
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     chooseMediaDirectory: () => ipcRenderer.invoke('workspace:chooseMediaDirectory'),

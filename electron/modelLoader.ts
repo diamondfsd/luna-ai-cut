@@ -1,10 +1,10 @@
-import { app } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { AI_SELECTION_MODELS, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AiSelectionModelId, type SamSegmentationModelId, type SegmentationModelId, type SingleFileSegmentationModelId } from '../src/shared/segmentationModels'
 import { loadVerifiedModelFile } from './modelFileService'
 import { SharedLoadRegistry } from './sharedLoadRegistry'
 import { hasCachedModelFiles } from './modelCacheStatus'
+import { getSettings, modelCacheDirForBaseDir } from './settingsService'
 
 export type ModelId = SingleFileSegmentationModelId | AiSelectionModelId
 
@@ -75,7 +75,7 @@ async function loadModelFile(
 async function loadModelOnce(id: ModelId, onProgress?: (progress: ModelLoadProgress) => void, signal?: AbortSignal): Promise<LoadedModel> {
   const definition = MODEL_REGISTRY[id]
   if (!definition) throw new Error(`未知模型: ${id}`)
-  const modelDir = path.join(app.getPath('userData'), 'models', id)
+  const modelDir = path.join(modelCacheDirForBaseDir((await getSettings()).baseDir), id)
   await mkdir(modelDir, { recursive: true })
   const modelPath = await loadModelFile(modelDir, definition, onProgress, signal)
   await writeFile(path.join(modelDir, 'model.json'), JSON.stringify({ id, ...definition }, null, 2), 'utf8')
@@ -93,7 +93,7 @@ export function loadModel(id: ModelId, onProgress?: (progress: ModelLoadProgress
 async function loadSamModelOnce(id: SamSegmentationModelId, onProgress?: (progress: ModelLoadProgress) => void, signal?: AbortSignal): Promise<LoadedSamModel> {
   const definition = SAM_MODELS.find((model) => model.id === id)
   if (!definition) throw new Error(`未知点选模型: ${id}`)
-  const modelDir = path.join(app.getPath('userData'), 'models', definition.id)
+  const modelDir = path.join(modelCacheDirForBaseDir((await getSettings()).baseDir), definition.id)
   await mkdir(modelDir, { recursive: true })
   const totalBytes = definition.sizeBytes
   const visionEncoderPath = await loadModelFile(modelDir, definition.files.visionEncoder, (progress) => {
@@ -130,7 +130,7 @@ export function loadSamModel(id: SamSegmentationModelId, onProgress?: (progress:
 export async function getModelCacheStatus(id: SegmentationModelId): Promise<ModelCacheStatus> {
   const semanticDefinition = MODEL_REGISTRY[id as ModelId]
   if (semanticDefinition) {
-    const modelDir = path.join(app.getPath('userData'), 'models', id)
+    const modelDir = path.join(modelCacheDirForBaseDir((await getSettings()).baseDir), id)
     return {
       modelId: id,
       cached: await hasCachedModelFiles(modelDir, [semanticDefinition]),
@@ -139,7 +139,7 @@ export async function getModelCacheStatus(id: SegmentationModelId): Promise<Mode
   }
   const samDefinition = SAM_MODELS.find((model) => model.id === id)
   if (!samDefinition) throw new Error(`未知模型: ${id}`)
-  const modelDir = path.join(app.getPath('userData'), 'models', id)
+  const modelDir = path.join(modelCacheDirForBaseDir((await getSettings()).baseDir), id)
   return {
     modelId: id,
     cached: await hasCachedModelFiles(modelDir, Object.values(samDefinition.files)),

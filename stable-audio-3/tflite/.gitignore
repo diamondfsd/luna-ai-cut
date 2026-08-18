@@ -1,0 +1,21 @@
+# Model weights — pulled from ModelScope at runtime, never committed here.
+# The SentencePiece tokenizer is downloaded with the other model files.
+*.tflite
+
+# Generated audio — anywhere on the tree, including output/.
+*.wav
+*.mp3
+output/
+
+# LoRA adapter library (user .safetensors, scanned by the gradio dropdown) and
+# the LoRA-merged DiT cache (patched multi-GB copies, regenerated on demand).
+loras/
+lora_cache/
+lora-cache/
+
+# Python virtualenv created by install.sh
+.venv/
+
+# Python bytecode caches
+__pycache__/
+*.pyc

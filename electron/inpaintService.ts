@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { WorkspaceObjectRemovalRequest, WorkspaceObjectRemovalResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { INPAINT_MODEL } from './inpaintModelService'
 import { compositeInpaintRegion, createInpaintMaskJobs, createInpaintRefinementJobs, dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, modelRadiusForSourcePixels, prepareInpaintInputs, type InpaintMaskJob } from './inpaintMask'
 import { inpaintWorkerService } from './inpaintWorkerService'
+import { createModelWorkDirectory } from './modelWorkDirectory'
 import { fileSha256 } from './resumableDownloadService'
 
 const MAX_PIXELS = 100_000_000
@@ -82,7 +82,7 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, baseD
   if (width * height > MAX_PIXELS) throw new Error('图片尺寸过大，暂不支持消除')
   const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
   if (maskBytes.byteLength !== request.maskWidth * request.maskHeight || !maskBytes.some((value) => value >= 16)) throw new Error('请先选择要消除的区域')
-  const directory = await mkdtemp(path.join(tmpdir(), 'luna-inpaint-'))
+  const directory = await createModelWorkDirectory(baseDir, 'luna-inpaint')
   try {
     signal?.throwIfAborted()
     const original = await runProcess(getFfmpegPath(), ['-v', 'error', '-i', request.filePath, '-vf', `scale=${width}:${height}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { signal })

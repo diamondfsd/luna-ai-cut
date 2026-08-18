@@ -27,14 +27,15 @@ import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
 import { loadRuntimeResource } from './runtimeResourceService'
 import { embedJpegSourceMetadata, embedVideoSourceMetadata } from './exportSourceMetadata'
 import { registerNativePreviewIpc } from './nativePreviewIpc'
+import { getSettings } from './settingsService'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
   activeNativeExportTasks: Set<string>
 }
 
-function runtimeResourceCacheRoot(): string {
-  return join(app.getPath('userData'), 'resource-packs')
+async function runtimeResourceCacheRoot(): Promise<string> {
+  return join((await getSettings()).baseDir, 'cache', 'resource-packs')
 }
 
 function relativePackPath(value: string, root: 'fonts' | 'luts'): string | null {
@@ -67,14 +68,14 @@ async function resolveRuntimePaths<T>(value: T): Promise<T> {
         : item
       if (existsSync(localPath)) output[key] = localPath
       else if (relative) {
-        const root = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.fonts)
+        const root = await loadRuntimeResource(await runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.fonts)
         output[key] = joinPackPath(root, relative)
       } else output[key] = item
     } else if ((key === 'lutId' || key === 'restoreLutId') && typeof item === 'string') {
       const relative = relativePackPath(item, 'luts')
       if (existsSync(item) || !relative) output[key] = item
       else {
-        const root = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
+        const root = await loadRuntimeResource(await runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
         output[key] = joinPackPath(root, relative)
       }
     } else {
@@ -133,7 +134,7 @@ export function register(ctx: RegisterContext): void {
   ipcMain.handle('lrc:prepareRuntimeResource', safe('prepareRuntimeResource',
     async (_event: IpcMainInvokeEvent, kind: 'fonts' | 'luts') => {
       if (kind !== 'fonts' && kind !== 'luts') throw new Error('未知运行时资源类型')
-      await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS[kind])
+      await loadRuntimeResource(await runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS[kind])
     },
   ))
 
@@ -375,7 +376,7 @@ export function register(ctx: RegisterContext): void {
         join(process.env.VITE_PUBLIC || join(process.env.APP_ROOT || join(import.meta.dirname, '..'), 'public'), 'luts'),
       ].find((p) => { try { return statSync(p).isDirectory() } catch { return false } }) || ''
       if (!builtinDir) {
-        builtinDir = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
+        builtinDir = await loadRuntimeResource(await runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
       }
 
       async function scanDir(dir: string, baseDir: string): Promise<void> {

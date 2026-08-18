@@ -1,7 +1,7 @@
 import { app } from 'electron'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createCurrentModelWorkDirectory } from './modelWorkDirectory'
 import {
   SpecializedWorkerClient,
   type SpecializedWorkerLaunch,
@@ -82,7 +82,7 @@ async function segmentSpecializedWithWorker(
   sessionReused: boolean
   executionBackend: 'onnx-cpu'
 }> {
-  const directory = await mkdtemp(join(tmpdir(), 'luna-specialized-'))
+  const directory = await createCurrentModelWorkDirectory('luna-specialized')
   const inputPath = join(directory, 'input.rgb')
   const outputPath = join(directory, 'output.mask')
   try {
@@ -177,7 +177,7 @@ async function extractFloatOutputInWorker(
   dimension: number,
   signal?: AbortSignal,
 ): Promise<number[]> {
-  const directory = await mkdtemp(join(tmpdir(), 'luna-embedding-'))
+  const directory = await createCurrentModelWorkDirectory('luna-embedding')
   const inputPath = join(directory, 'input.rgb')
   const outputPath = join(directory, 'output.embedding')
   try {
