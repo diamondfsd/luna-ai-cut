@@ -141,14 +141,6 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               setReady(true)
               readyRef.current = true
               onReady?.()
-              void lrc.getNativePreviewCapabilities?.().then((capabilities) => {
-                perfLog(
-                  `native preview decoder=${capabilities.decoder}`
-                  + ` hardware=${capabilities.systemHardwareDecode}`
-                  + ` externalTexture=${capabilities.externalGpuTexture}`
-                  + ` directPresent=${capabilities.directGpuPresentation}`,
-                )
-              }).catch(() => {})
             }
           })
           .catch((error: Error) => {

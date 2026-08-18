@@ -24,6 +24,7 @@ interface WebGpuStaticImagePreviewProps {
   imageScale?: number | null
   onImageScaleChange?: (scale: number | null) => void
   onViewportChange?: () => void
+  time?: number
 }
 
 function loadImage(path: string): Promise<HTMLImageElement> {
@@ -52,6 +53,7 @@ export function WebGpuStaticImagePreview({
   imageScale,
   onImageScaleChange,
   onViewportChange,
+  time = 0,
 }: WebGpuStaticImagePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<WebGpuCompositionRenderer | null>(null)
@@ -122,7 +124,7 @@ export function WebGpuStaticImagePreview({
       composition.canvas.width = Math.max(1, Math.round(composition.canvas.width * scale))
       composition.canvas.height = Math.max(1, Math.round(composition.canvas.height * scale))
     }
-    void renderer.render(composition).then(async () => {
+    void renderer.render(composition, time).then(async () => {
       await renderer.waitForGpu()
       if (destroyedRef.current || revision !== renderRevisionRef.current) return
       callbacksRef.current.onRender?.()
@@ -132,7 +134,7 @@ export function WebGpuStaticImagePreview({
       setFatalError(message)
       callbacksRef.current.onError?.(message)
     })
-  }, [canvasHeight, canvasWidth, fatalError, layers, maxSide, ready])
+  }, [canvasHeight, canvasWidth, fatalError, layers, maxSide, ready, time])
 
   useEffect(() => {
     callbacksRef.current.onViewportChange?.()

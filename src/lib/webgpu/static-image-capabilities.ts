@@ -15,7 +15,6 @@ function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
   )
   return (!isMediaLayer && !isLocalColorInput && !(isRasterizableLayer && hasContent))
     || Boolean(layer.pixelStretch)
-    || Boolean(layer.pixelFlow)
     || Boolean(layer.transform?.crop)
     || Math.abs(layer.transform?.translateX ?? 0) > 0.0001
     || Math.abs(layer.transform?.translateY ?? 0) > 0.0001

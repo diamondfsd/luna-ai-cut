@@ -3,9 +3,7 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-mod preview;
 
-pub(crate) use preview::{NativePreviewRuntime, PreviewBounds};
 
 use crate::composition::{
     bind_layer_mask_texture, composition_layers, mux_primary_audio, retain_layer_mask_textures,

@@ -458,25 +458,6 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
-  getNativePreviewCapabilities: () => ipcRenderer.invoke('lrc:getNativePreviewCapabilities'),
-  createNativePreviewSession: (composition: CompositionInput, bounds: unknown) =>
-    ipcRenderer.invoke('lrc:createNativePreviewSession', composition, bounds),
-  updateNativePreviewComposition: (sessionId: number, composition: CompositionInput) =>
-    ipcRenderer.invoke('lrc:updateNativePreviewComposition', sessionId, composition),
-  setNativePreviewBounds: (sessionId: number, bounds: unknown) =>
-    ipcRenderer.invoke('lrc:setNativePreviewBounds', sessionId, bounds),
-  setNativePreviewVisible: (sessionId: number, visible: boolean) =>
-    ipcRenderer.invoke('lrc:setNativePreviewVisible', sessionId, visible),
-  playNativePreview: (sessionId: number, time: number) =>
-    ipcRenderer.invoke('lrc:playNativePreview', sessionId, time),
-  pauseNativePreview: (sessionId: number, time: number) =>
-    ipcRenderer.invoke('lrc:pauseNativePreview', sessionId, time),
-  seekNativePreview: (sessionId: number, time: number) =>
-    ipcRenderer.invoke('lrc:seekNativePreview', sessionId, time),
-  getNativePreviewSessionStats: (sessionId: number) =>
-    ipcRenderer.invoke('lrc:getNativePreviewSessionStats', sessionId),
-  destroyNativePreviewSession: (sessionId: number) =>
-    ipcRenderer.invoke('lrc:destroyNativePreviewSession', sessionId),
   prepareRuntimeResource: (kind: 'fonts' | 'luts') => ipcRenderer.invoke('lrc:prepareRuntimeResource', kind),
   resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
   readLutFile: (filePath: string) => ipcRenderer.invoke('lrc:readWebGpuLut', filePath),

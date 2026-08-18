@@ -72,7 +72,7 @@ const HIDDEN_MASK = Symbol('hidden-mask')
 type SupportedBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
 
 const BLEND_MODES: SupportedBlendMode[] = ['normal', 'multiply', 'screen', 'add']
-const LAYER_UNIFORM_FLOATS = 27 * 4
+const LAYER_UNIFORM_FLOATS = 32 * 4
 const LAYER_UNIFORM_BYTES = LAYER_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT
 
 function paddedLutData(lut: WebGpuLutData): { data: Uint8Array; bytesPerRow: number } {
@@ -115,6 +115,11 @@ struct LayerUniforms {
   mask: vec4f,
   maskTransform: vec4f,
   reveal: vec4f,
+  pixelFlow: vec4f,
+  pixelFlowGeometry: vec4f,
+  pixelFlowDepth: vec4f,
+  pixelFlowScale: vec4f,
+  pixelFlowFinish: vec4f,
 };
 
 @group(0) @binding(0) var sourceSampler: sampler;
@@ -378,6 +383,138 @@ fn sampleMask(uv: vec2f) -> f32 {
   return max(original, 1.0 - smoothstep(0.0, feather, distance));
 }
 
+fn pixelFlowHash(cell: vec2f) -> f32 {
+  return fract(sin(dot(cell, vec2f(12.9898, 78.233))) * 43758.5453);
+}
+
+fn pixelFlowLuma(color: vec3f) -> f32 {
+  return dot(color, vec3f(0.2126, 0.7152, 0.0722));
+}
+
+fn pixelFlowSource(uv: vec2f) -> vec3f {
+  return textureSampleLevel(sourceTexture, sourceSampler, clamp(uv, vec2f(0.0), vec2f(1.0)), 0.0).rgb;
+}
+
+fn pixelFlowRegions(uv: vec2f) -> vec3f {
+  if (layer.pixelFlowDepth.y > 0.5) {
+    let depth = textureSampleLevel(maskTexture, sourceSampler, clamp(uv, vec2f(0.0), vec2f(1.0)), 0.0).r;
+    let sky = 1.0 - smoothstep(0.22, 0.4, depth);
+    let subject = smoothstep(0.66, 0.84, depth);
+    return vec3f(sky, max(0.0, 1.0 - sky - subject), subject);
+  }
+  let sky = 1.0 - smoothstep(0.34, 0.56, uv.y);
+  return vec3f(sky, 1.0 - sky, 0.0);
+}
+
+fn pixelFlowDirectionCoord(uv: vec2f, sourceSize: vec2f) -> f32 {
+  let direction = layer.pixelFlowScale.z;
+  if (direction < 0.5) { return uv.y; }
+  if (direction < 1.5) { return 1.0 - uv.y; }
+  if (direction < 2.5) { return uv.x; }
+  if (direction < 3.5) { return 1.0 - uv.x; }
+  let offset = (uv - vec2f(0.5)) * sourceSize;
+  let radial = clamp(length(offset) / max(1.0, length(sourceSize * 0.5)), 0.0, 1.0);
+  return select(radial, 1.0 - radial, direction > 4.5);
+}
+
+fn pixelFlowArrival(uv: vec2f, cellIndex: vec2f, sourceSize: vec2f, cellPx: f32) -> vec4f {
+  let regions = pixelFlowRegions(uv);
+  let columnNoise = pixelFlowHash(vec2f(cellIndex.x * 1.37 + 19.0, 7.0));
+  let coarse = pixelFlowHash(floor(cellIndex / vec2f(4.0, 7.0)) + vec2f(31.0, 13.0));
+  let speed = mix(0.78, 1.32, layer.pixelFlowGeometry.x);
+  let luma = pixelFlowLuma(pixelFlowSource(uv));
+  let backgroundCoord = uv.y;
+  let subjectCoord = pixelFlowDirectionCoord(uv, sourceSize);
+  let highlightAdvance = smoothstep(0.46, 0.88, luma) * 0.055;
+  let skyArrival = 0.005 + uv.y * 0.22 / speed + columnNoise * 0.09;
+  let backgroundArrival = 0.11 + backgroundCoord * 0.47 / speed + columnNoise * 0.06 + coarse * 0.065 - highlightAdvance;
+  let subjectArrival = 0.17 + subjectCoord * 0.48 / speed + columnNoise * 0.055 + coarse * 0.05
+    + layer.pixelFlowGeometry.w * 0.14 - highlightAdvance;
+  let arrival = dot(regions, vec3f(skyArrival, backgroundArrival, subjectArrival));
+  return vec4f(clamp(arrival, 0.0, 0.92), regions);
+}
+
+fn pixelFlowPulse(progress: f32, arrival: f32, regions: vec3f) -> f32 {
+  let lengthValue = layer.pixelFlowGeometry.y;
+  let tail = dot(regions, vec3f(
+    mix(0.11, 0.24, lengthValue),
+    mix(0.11, 0.27, lengthValue),
+    mix(0.1, 0.24, lengthValue),
+  ));
+  let elapsed = progress - arrival;
+  return smoothstep(-0.012, 0.018, elapsed) * (1.0 - smoothstep(tail * 0.3, tail, elapsed));
+}
+
+fn pixelFlowVisible(color: vec3f) -> f32 {
+  let peak = max(color.r, max(color.g, color.b));
+  return smoothstep(0.0015, 0.01, max(pixelFlowLuma(color), peak * 0.78));
+}
+
+fn pixelFlowColor(color: vec3f, filterStrength: f32) -> vec3f {
+  let luma = pixelFlowLuma(color);
+  let contrasted = (color - vec3f(0.5)) * (1.0 + filterStrength * 0.14) + vec3f(0.5);
+  let saturated = vec3f(luma) + (contrasted - vec3f(luma)) * (1.24 + filterStrength * 0.58);
+  let tealShadows = vec3f(-0.02, 0.032, 0.05) * (1.0 - smoothstep(0.24, 0.7, luma));
+  let warmHighlights = vec3f(0.055, 0.018, -0.014) * smoothstep(0.5, 0.92, luma);
+  return clamp(saturated + tealShadows + warmHighlights, vec3f(0.0), vec3f(1.45));
+}
+
+fn pixelFlowBloom(uv: vec2f, radius: vec2f, filterStrength: f32) -> vec3f {
+  let tap = (sampleSource(uv) * smoothstep(0.42, 0.9, max(pixelFlowLuma(sampleSource(uv)), max(sampleSource(uv).r, max(sampleSource(uv).g, sampleSource(uv).b)) * 0.68)));
+  var bloom = tap * 0.28;
+  bloom += pixelFlowSource(uv + vec2f(radius.x, 0.0)) * 0.12;
+  bloom += pixelFlowSource(uv - vec2f(radius.x, 0.0)) * 0.12;
+  bloom += pixelFlowSource(uv + vec2f(0.0, radius.y)) * 0.12;
+  bloom += pixelFlowSource(uv - vec2f(0.0, radius.y)) * 0.12;
+  return pixelFlowColor(bloom, filterStrength);
+}
+
+fn pixelFlowEffect(uv: vec2f, source: vec4f, localPosition: vec2f) -> vec4f {
+  if (layer.pixelFlow.x <= 0.5) {
+    return source;
+  }
+  let sourceSize = vec2f(textureDimensions(sourceTexture, 0));
+  let cellPx = max(2.0, max(sourceSize.x, sourceSize.y) / max(24.0, layer.pixelFlow.z));
+  let cellIndex = floor(uv * sourceSize / cellPx);
+  let cellUv = clamp((cellIndex + vec2f(0.5)) * cellPx / sourceSize, vec2f(0.0), vec2f(1.0));
+  let cell = pixelFlowArrival(cellUv, cellIndex, sourceSize, cellPx);
+  let progress = clamp(layer.pixelFlow.y, 0.0, 1.0);
+  let duration = max(0.1, layer.pixelFlowDepth.x);
+  let color = applyLut(applyColor(source.rgb, uv));
+  let gray = pixelFlowLuma(color);
+  let initial = clamp(vec3f(gray + layer.pixelFlowScale.y * 0.5), vec3f(0.0), vec3f(1.0));
+  let reveal = smoothstep(cell.x - 0.018, cell.x + clamp(layer.pixelFlowFinish.z / duration * 0.55, 0.025, 0.18), progress);
+  let base = mix(initial, color, max(reveal, smoothstep(0.94, 1.0, progress)));
+  let random = pixelFlowHash(cellIndex * vec2f(5.37, 3.11) + vec2f(71.0, 29.0));
+  let group = pixelFlowHash(floor(cellIndex / vec2f(2.0, 5.0)) + vec2f(11.0, 83.0));
+  let strength = layer.pixelFlowGeometry.z;
+  let gate = smoothstep(mix(0.42, 0.2, strength), mix(0.5, 0.28, strength), random * 0.72 + group * 0.28);
+  let pulse = pixelFlowPulse(progress, cell.x, cell.yzw) * gate * cell.y;
+  let visibility = pixelFlowVisible(pixelFlowSource(cellUv));
+  let rain = pixelFlowColor(pixelFlowSource(cellUv), layer.pixelFlowFinish.y);
+  let blockOffset = fract(uv * sourceSize / cellPx) - vec2f(0.5);
+  let blockDistance = max(abs(blockOffset.x), abs(blockOffset.y));
+  let blockShape = 1.0 - smoothstep(0.32, 0.5, blockDistance);
+  let emission = rain * pulse * strength * visibility * blockShape;
+  var lit = vec3f(1.0) - (vec3f(1.0) - base) * (vec3f(1.0) - clamp(emission, vec3f(0.0), vec3f(0.94)));
+  let surfacePx = cellPx * max(1.0, layer.pixelFlow.w / 4.0);
+  let surfaceIndex = floor(uv * sourceSize / surfacePx);
+  let surfaceUv = clamp((surfaceIndex + vec2f(0.5)) * surfacePx / sourceSize, vec2f(0.0), vec2f(1.0));
+  let surface = pixelFlowArrival(surfaceUv, surfaceIndex, sourceSize, surfacePx);
+  let surfaceRegion = surface.z + surface.w;
+  let surfacePulse = pixelFlowPulse(progress, surface.x, surface.yzw) * surfaceRegion;
+  let surfaceColor = pixelFlowColor(pixelFlowSource(surfaceUv), layer.pixelFlowFinish.y);
+  let surfaceOffset = fract(uv * sourceSize / surfacePx) - vec2f(0.5);
+  let surfaceShape = 1.0 - smoothstep(0.22, 0.5, max(abs(surfaceOffset.x), abs(surfaceOffset.y)));
+  let surfaceLight = surfaceColor * surfacePulse * strength * surfaceShape * pixelFlowVisible(pixelFlowSource(surfaceUv)) * 1.8;
+  lit = vec3f(1.0) - (vec3f(1.0) - lit) * (vec3f(1.0) - clamp(surfaceLight, vec3f(0.0), vec3f(1.0)));
+  let bloomStrength = layer.pixelFlowFinish.x;
+  let bloom = pixelFlowBloom(uv, vec2f(cellPx) / sourceSize * mix(0.8, 1.65, bloomStrength), layer.pixelFlowFinish.y);
+  lit += bloom * bloomStrength * (reveal * 0.025 + pulse * 0.13 + surfacePulse * 0.08);
+  let alpha = source.a * layer.style.x;
+  return vec4f(clamp(lit, vec3f(0.0), vec3f(1.35)) * alpha, alpha);
+}
+
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let revealProgress = clamp(layer.reveal.x, 0.0, 1.0);
@@ -392,13 +529,18 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let adjusted = applyLut(applyColor(sampled.rgb, input.uv));
   let isLocalColor = layer.mask.w > 1.5;
   var color = select(mix(sampled.rgb, adjusted, maskValue), adjusted, isLocalColor);
+  var alpha = sampled.a * layer.style.x * select(1.0, maskValue, isLocalColor);
+  if (layer.pixelFlow.x > 0.5) {
+    let effect = pixelFlowEffect(input.uv, vec4f(color, alpha), input.localPosition);
+    color = effect.rgb;
+    alpha = effect.a;
+  }
   if (revealProgress > 0.001 && revealProgress < 0.999) {
     let edgeDistance = revealProgress - input.localPosition.x;
     let edgeWidth = max(fwidth(input.localPosition.x) * 1.5, 0.001);
     let edgeAlpha = (1.0 - smoothstep(0.0, edgeWidth, edgeDistance)) * 0.28;
     color = mix(color, vec3f(1.0), clamp(edgeAlpha, 0.0, 1.0));
   }
-  let alpha = sampled.a * layer.style.x * select(1.0, maskValue, isLocalColor);
   return vec4f(color, alpha);
 }
 `
@@ -415,6 +557,7 @@ function createLayerUniforms(
   luts: { creative: CachedLutTexture; restore: CachedLutTexture | null },
   mask: ResolvedMask | null,
   revealProgress: number,
+  time: number,
 ): Float32Array {
   const transform = layer.transform
   const color = layer.color
@@ -495,6 +638,43 @@ function createLayerUniforms(
     mask?.transform.rotation ?? 0,
   ], 100)
   uniforms.set([Math.max(0, Math.min(1, revealProgress)), 0, 0, 0], 104)
+  const pixelFlow = layer.pixelFlow
+  const pixelFlowDuration = Math.max(0.1, pixelFlow?.duration ?? 0.1)
+  const pixelFlowProgress = pixelFlow?.progress ?? Math.max(0, Math.min(1, time / pixelFlowDuration))
+  const subjectDirection = pixelFlow?.subjectDirection === 'up'
+    ? 1
+    : pixelFlow?.subjectDirection === 'right'
+      ? 2
+      : pixelFlow?.subjectDirection === 'left'
+        ? 3
+        : pixelFlow?.subjectDirection === 'outward'
+          ? 4
+          : pixelFlow?.subjectDirection === 'inward' ? 5 : 0
+  uniforms.set([
+    pixelFlow ? 1 : 0,
+    Math.max(0, Math.min(1, pixelFlowProgress)),
+    Math.max(24, Math.min(500, pixelFlow?.pixelCount ?? 24)),
+    Math.max(1, Math.min(32, pixelFlow?.lightWidth ?? 1)),
+  ], 108)
+  uniforms.set([
+    Math.max(0, Math.min(1, (pixelFlow?.rainSpeed ?? 0) / 100)),
+    Math.max(0, Math.min(1, (pixelFlow?.rainLength ?? 0) / 100)),
+    Math.max(0, Math.min(1, (pixelFlow?.flowStrength ?? 0) / 100)),
+    Math.max(0, Math.min(1, (pixelFlow?.subjectDelay ?? 0) / 100)),
+  ], 112)
+  uniforms.set([pixelFlowDuration, pixelFlow?.segmented ? 1 : 0, 0, 0], 116)
+  uniforms.set([
+    Math.max(0, Math.min(1, (pixelFlow?.initialSaturation ?? 0) / 100)),
+    Math.max(-1, Math.min(1, (pixelFlow?.initialBrightness ?? 0) / 100)),
+    subjectDirection,
+    0,
+  ], 120)
+  uniforms.set([
+    Math.max(0, Math.min(1, (pixelFlow?.bloomStrength ?? 0) / 100)),
+    Math.max(0, Math.min(1, (pixelFlow?.filterStrength ?? 0) / 100)),
+    Math.max(0, Math.min(2, pixelFlow?.colorTransition ?? 0)),
+    0,
+  ], 124)
   return uniforms
 }
 
@@ -950,7 +1130,7 @@ export class WebGpuCompositionRenderer {
     const revealProgress = layer.reveal
       ? compositionRevealProgress(layer.reveal, time)
       : 1
-    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, luts, resolvedMask, revealProgress)
+    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, luts, resolvedMask, revealProgress, time)
     const mode = (layer.blendMode ?? 'normal') as SupportedBlendMode
     const pipeline = this.pipelines.get(BLEND_MODES.includes(mode) ? mode : 'normal')!
     return {

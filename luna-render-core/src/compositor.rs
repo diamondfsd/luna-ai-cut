@@ -251,7 +251,6 @@ pub struct Compositor {
     textures: HashMap<u32, TextureEntry>,
     next_texture_id: u32,
     pub max_texture_size: u32,
-    backend: wgpu::Backend,
 
     output_texture: Option<(wgpu::Texture, u32, u32)>,
 
@@ -312,11 +311,10 @@ impl Compositor {
         crate::logging::init(path);
         log!("Creating wgpu instance...");
         let selected = init::select_gpu(log_path)?;
-        let (device, queue, info, backend) = (
+        let (device, queue, info) = (
             selected.device,
             selected.queue,
             selected.info,
-            selected.backend,
         );
         log!(
             "GPU adapter selected: name={} type={:?} vendor={} device={} backend={:?}",
@@ -324,7 +322,7 @@ impl Compositor {
             info.device_type,
             info.vendor,
             info.device,
-            backend
+            info.backend
         );
         let max_texture_size = device.limits().max_texture_dimension_2d;
         log!(
@@ -413,7 +411,6 @@ impl Compositor {
             textures: initial_textures,
             next_texture_id: 1,
             max_texture_size,
-            backend,
             output_texture: None,
             texture_cache: HashMap::new(),
             unavailable_optional_assets: std::collections::HashSet::new(),
@@ -443,10 +440,6 @@ impl Compositor {
         self.render_impl(canvas_width, canvas_height, layers, true, false)
     }
 
-    #[cfg(target_os = "windows")]
-    pub(crate) fn backend(&self) -> wgpu::Backend {
-        self.backend
-    }
 }
 
 /// 根据层的 positioning、画布尺寸和源图尺寸，计算层在画布上的显示像素尺寸，

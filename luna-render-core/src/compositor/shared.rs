@@ -29,7 +29,6 @@ impl Compositor {
             textures,
             next_texture_id: 1,
             max_texture_size: shared.max_texture_size,
-            backend: shared.backend,
             output_texture: None,
             texture_cache: HashMap::new(),
             unavailable_optional_assets: std::collections::HashSet::new(),

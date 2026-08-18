@@ -1,7 +1,8 @@
 import { ArrowLeft, Play, ScanLine } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { NativeGpuVideoPreview } from '../../../components/NativeGpuVideoPreview'
+import { WebGpuStaticImagePreview } from '../../../components/WebGpuStaticImagePreview'
+import { WebGpuVideoPreview } from '../../../components/WebGpuVideoPreview'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { type PixelFlowSubjectDirection, type PreviewLayer, type WorkspacePixelFlowState } from '../../../shared/types'
 import { Button, LoadingIndicator, VideoControls, toast } from '../../../ui'
@@ -424,16 +425,27 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       {activeAsset ? <div className={`pixel-flow-stage${sourceSize ? sourceSize.width > sourceSize.height ? ' is-landscape' : ' is-portrait' : ''}`}>
         <div className="pixel-flow-render-surface">
           {previewLayers.length > 0 && gpuPreviewSize && (
-            <NativeGpuVideoPreview
-              className="pixel-flow-canvas"
-              layers={previewLayers}
-              canvasWidth={gpuPreviewSize.width}
-              canvasHeight={gpuPreviewSize.height}
-              playing={playing}
-              time={currentTime}
-              seekRevision={seekRevision}
-              onError={handleError}
-            />
+            activeAsset.kind === 'video' ? (
+              <WebGpuVideoPreview
+                className="pixel-flow-canvas"
+                layers={previewLayers}
+                canvasWidth={gpuPreviewSize.width}
+                canvasHeight={gpuPreviewSize.height}
+                playing={playing}
+                time={currentTime}
+                seekRevision={seekRevision}
+                onError={handleError}
+              />
+            ) : (
+              <WebGpuStaticImagePreview
+                className="pixel-flow-canvas"
+                layers={previewLayers}
+                canvasWidth={gpuPreviewSize.width}
+                canvasHeight={gpuPreviewSize.height}
+                time={currentTime}
+                onError={handleError}
+              />
+            )
           )}
         </div>
         {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>生成中</span></div>}

@@ -8,11 +8,11 @@ import { expect, test } from './fixtures/lunaElectron'
 
 const execFileAsync = promisify(execFile)
 
-test('Windows 工作台预览使用 WebGPU 且可以返回项目列表', async ({ lunaApp }) => {
+test('Windows 工作台 WebGPU 预览且可以返回项目列表', async ({ lunaApp }) => {
   test.skip(process.platform !== 'win32', '验证 Windows WebGPU 工作台预览')
   if (!ffmpegPath) throw new Error('测试视频生成工具不可用')
 
-  const videoPath = path.join(lunaApp.temporaryRoot, 'workspace-native-preview.mp4')
+  const videoPath = path.join(lunaApp.temporaryRoot, 'workspace-webgpu-preview.mp4')
   await execFileAsync(ffmpegPath, [
     '-f', 'lavfi',
     '-i', 'testsrc2=size=960x540:rate=30',
@@ -37,7 +37,7 @@ test('Windows 工作台预览使用 WebGPU 且可以返回项目列表', async (
     }).luna
     await api.workspace.createProject('GPU 预览 E2E', [{
       id: 'gpu-preview-video',
-      name: 'workspace-native-preview.mp4',
+      name: 'workspace-webgpu-preview.mp4',
       path: sourcePath,
       kind: 'video',
     }])
