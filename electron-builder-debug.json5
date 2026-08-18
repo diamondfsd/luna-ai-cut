@@ -26,11 +26,6 @@
       "filter": ["**/*"]
     },
     {
-      "from": "resources/node-runtime",
-      "to": "node-runtime",
-      "filter": ["**/*"]
-    },
-    {
       "from": "resources/python-runtime",
       "to": "python-runtime",
       "filter": [
