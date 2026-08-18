@@ -81,6 +81,7 @@ vi.mock('@freecut/features/editor/services/musicgen-service', () => ({
 
 import { MEDIA_AI_TOOLS } from './project-source-media-tools'
 import { __audioTaskTestUtils } from './project-source-audio-tasks'
+import { __mediaAnalysisTaskTestUtils } from './project-source-media-tasks'
 
 function getTool(name: string) {
   const tool = MEDIA_AI_TOOLS.find((entry) => entry.name === name)
@@ -92,6 +93,7 @@ describe('project media AI tools', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     __audioTaskTestUtils.clear()
+    __mediaAnalysisTaskTestUtils.clear()
     harness.currentProjectId = 'project-1'
     for (const item of harness.items) delete item.aiCaptions
     harness.getTranscript.mockResolvedValue(undefined)
@@ -168,29 +170,64 @@ describe('project media AI tools', () => {
     })
   })
 
-  it('runs the focused LFM visual analysis service and persists captions', async () => {
-    const result = await getTool('media.analyze').execute({
+  it('submits a visual analysis task and exposes its completed result', async () => {
+    const submitted = await getTool('media.analyze').execute({
       mediaIds: ['media-1'],
       kind: 'visual',
       intensity: 'strong',
     })
+    const taskId = (submitted.data as { taskId: string }).taskId
+    const result = await waitForMediaTask(taskId)
 
-    expect(result.data).toMatchObject({ kind: 'visual', completedIds: ['media-1'] })
+    expect(result.data).toMatchObject({ status: 'completed', kind: 'visual', completedIds: ['media-1'] })
     expect(harness.analyzeMediaVisual).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'media-1', fileName: 'camera-a.mp4', duration: 12.3456 }),
       'strong',
-      undefined,
+      expect.any(AbortSignal),
     )
   })
 
   it('passes the fast visual intensity to the LFM analysis service when omitted', async () => {
-    await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
+    const submitted = await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
+    await waitForMediaTask((submitted.data as { taskId: string }).taskId)
 
     expect(harness.analyzeMediaVisual).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'media-1' }),
       'light',
-      undefined,
+      expect.any(AbortSignal),
     )
+  })
+
+  it('reuses an active task for the same media request', async () => {
+    harness.analyzeMediaVisual.mockImplementationOnce(() => new Promise(() => {}))
+    const first = await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
+    const second = await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
+
+    expect((second.data as { taskId: string }).taskId).toBe((first.data as { taskId: string }).taskId)
+  })
+
+  it('does not expose an analysis task after the active project changes', async () => {
+    harness.analyzeMediaVisual.mockImplementationOnce(() => new Promise(() => {}))
+    const submitted = await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
+    const taskId = (submitted.data as { taskId: string }).taskId
+    harness.currentProjectId = 'project-2'
+
+    await expect(getTool('media.get_analysis_task').execute({ taskId })).rejects.toThrow('没有找到当前项目中的素材分析任务')
+    harness.currentProjectId = 'project-1'
+  })
+
+  it('keeps analysis failures queryable instead of rejecting the submission', async () => {
+    harness.analyzeMediaVisual.mockRejectedValueOnce(new Error('视觉模型不可用'))
+    const submitted = await getTool('media.analyze').execute({ mediaIds: ['media-1'], kind: 'visual' })
+    const result = await waitForMediaTask((submitted.data as { taskId: string }).taskId)
+
+    expect(result.ok).toBe(true)
+    expect(result.data).toMatchObject({
+      status: 'failed',
+      failedIds: ['media-1'],
+      failures: [{ mediaId: 'media-1', error: '视觉模型不可用' }],
+      error: '视觉模型不可用',
+    })
   })
 
   it('exposes structured LFM scene fields through media.read', async () => {
@@ -326,4 +363,14 @@ async function waitForTask(taskId: string) {
     if (data.status === 'completed' || data.status === 'failed') return result
   }
   throw new Error(`音频任务 ${taskId} 未在测试时间内完成。`)
+}
+
+async function waitForMediaTask(taskId: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const result = await getTool('media.get_analysis_task').execute({ taskId })
+    const data = result.data as { status: string }
+    if (data.status === 'completed' || data.status === 'failed') return result
+  }
+  throw new Error(`素材分析任务 ${taskId} 未在测试时间内完成。`)
 }

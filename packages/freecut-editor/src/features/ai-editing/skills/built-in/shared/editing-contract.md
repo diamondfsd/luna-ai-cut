@@ -9,7 +9,7 @@
 1. 读取适用的长期偏好，但把它们当作默认倾向。
 2. 调用 `luna.media.list` 获取真实素材 ID、类型、时长和媒体状态。
 3. 调用 `luna.project.inspect` 获取当前画布、轨道、片段和转场。
-4. 需要按画面或口播选素材时，先调用 `luna.media.read`；证据不足再调用 `luna.media.analyze`。
+4. 需要按画面或口播选素材时，先调用 `luna.media.read`；证据不足再调用 `luna.media.analyze`。分析会立即返回 `taskId`，必须用 `luna.media.getAnalysisTask` 查询到 `completed` 或 `failed`，完成后再调用 `luna.media.read`。
 5. 对局部时间轴编辑，在调用写入工具前使用 `luna.timeline.inspectContext` 重新确认片段 ID 和时间范围。
 
 没有证据时，用“当前没有足够分析结果”描述事实，不要用文件名、用户形容词或旧的片段 ID 推断素材内容。
@@ -18,7 +18,7 @@
 
 风格由模型结合完整会话、项目规则、素材证据和已加载的风格技能自行判断，不再经过额外的风格协议或计划工具。
 
-1. 先调用 `luna.media.list` 和 `luna.project.inspect`，需要看画面或台词时再调用 `luna.media.read` / `luna.media.analyze`。
+1. 先调用 `luna.media.list` 和 `luna.project.inspect`，需要看画面或台词时再调用 `luna.media.read` / `luna.media.analyze`；分析任务提交后用 `luna.media.getAnalysisTask` 轮询，不能把 `taskId` 当作素材 ID。
 2. 在模型内部确定镜头顺序、源时间范围、节奏、声音和字幕策略后，在脚本中调用对应的 luna.timeline 方法。
 3. 已经确定多条同类操作时，优先调用 `luna.timeline.addMediaBatch`、`luna.timeline.addTextBatch` 或 `luna.timeline.addTransitionBatch`，减少往返。
 4. 每次写入后阅读返回的 `data`，完成一组编辑后再次调用 `luna.project.inspect`；工具结果必须交回模型继续判断。

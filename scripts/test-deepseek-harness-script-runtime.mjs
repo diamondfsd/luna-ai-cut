@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import { runEditScript, SCRIPT_API } from './deepseek-harness-script-runtime.mjs'
 
 assert.equal('source' in SCRIPT_API, false)
+assert.deepEqual(Object.keys(SCRIPT_API.media), ['list', 'read', 'analyze', 'getAnalysisTask', 'searchTranscript'])
 assert.deepEqual(Object.keys(SCRIPT_API.audio), ['startSpeech', 'startMusic', 'getTask'])
 
 const requests = []

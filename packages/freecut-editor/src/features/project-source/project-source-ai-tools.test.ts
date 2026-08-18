@@ -239,6 +239,10 @@ describe('timeline AI tools', () => {
 
     expect(harness.state.addItems).toHaveBeenCalledTimes(2)
     expect(result.data).toMatchObject({
+      items: [
+        { id: expect.any(String), mediaId: 'media-2', startSeconds: 12, endSeconds: 16, durationSeconds: 4, trackId: 'track-video' },
+        { id: expect.any(String), mediaId: 'media-2', startSeconds: 20, endSeconds: 24, durationSeconds: 4, trackId: 'track-video' },
+      ],
       operations: [{ mediaId: 'media-2' }, { mediaId: 'media-2' }],
       after: { items: [{ id: 'clip-1' }] },
     })

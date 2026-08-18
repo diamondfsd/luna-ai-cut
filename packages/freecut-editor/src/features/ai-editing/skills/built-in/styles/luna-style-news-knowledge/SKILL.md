@@ -12,7 +12,7 @@ description: 资讯与知识口播风格技能。用户要求新闻、教程、�
 3. 证据、例子或步骤。
 4. 转折、限制条件和结论。
 
-先调用 `luna.media.analyze(kind=transcript)` 或读取已有转写，再按句子边界处理。删除重复和无意义停顿时保持原意，不把模型推断写成新闻事实。
+先调用 `luna.media.analyze(kind=transcript)`，用 `luna.media.getAnalysisTask` 查询到完成后读取转写，或直接读取已有转写，再按句子边界处理。删除重复和无意义停顿时保持原意，不把模型推断写成新闻事实。
 
 ## 画面与字幕
 

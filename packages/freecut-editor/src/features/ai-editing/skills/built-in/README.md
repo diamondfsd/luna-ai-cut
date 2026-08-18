@@ -56,7 +56,7 @@ built-in/
 
 提示词按当前项目已有工具设计：
 
-- 读取素材：`luna.media.list`、`luna.media.read`、`luna.media.analyze`、`luna.media.searchTranscript`
+- 读取素材：`luna.media.list`、`luna.media.read`、`luna.media.analyze`、`luna.media.getAnalysisTask`、`luna.media.searchTranscript`
 - 读取项目：`luna.project.inspect`、`luna.timeline.inspectContext`
 - 修改项目：`luna.project.setCanvas`、`luna.timeline.addMedia`、`luna.timeline.addMediaBatch`、`luna.timeline.trim`、`luna.timeline.split`、`luna.timeline.move`、`luna.timeline.remove`
 - 修改画面和声音：`luna.timeline.setProperties`、`luna.timeline.setTransform`、`luna.timeline.setAudio`、`luna.timeline.addKeyframe`

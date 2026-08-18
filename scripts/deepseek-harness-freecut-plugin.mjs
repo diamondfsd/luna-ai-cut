@@ -107,7 +107,7 @@ const mediaTools = [
   },
   {
     name: 'media.analyze',
-    description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 使用 LFM2.5-VL-450M 对视频或图片抽帧并生成带时间点的场景描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面描述时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
+    description: '提交本地素材分析任务：transcript 识别口播字幕，visual 使用 LFM2.5-VL-450M 对视频或图片抽帧并生成带时间点的场景描述。调用会立即返回 taskId；必须使用 media.get_analysis_task 查询到 completed 或 failed，完成后再用 media.read 读取结果。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面描述时再传 normal 或 strong。',
     parameters: {
       type: 'object',
       properties: {
@@ -116,6 +116,16 @@ const mediaTools = [
         intensity: { type: 'string', enum: ['light', 'normal', 'strong'], default: 'light' },
       },
       required: ['mediaIds', 'kind'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'media.get_analysis_task',
+    description: '查询当前项目的素材分析任务。任务完成后读取 completedIds、skippedIds 和 failedIds；只有 status 为 completed 时才使用 media.read 获取已保存的分析结果，failed 时读取 error 和 failures。',
+    parameters: {
+      type: 'object',
+      properties: { taskId: { type: 'string', minLength: 1 } },
+      required: ['taskId'],
       additionalProperties: false,
     },
   },
@@ -224,7 +234,7 @@ const timelineTools = [
   },
   {
     name: 'timeline.add_media',
-    description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置；sourceStartSeconds 和 sourceEndSeconds 可直接指定素材源文件要使用的范围，不需要先添加整段再裁剪；指定源范围时不要同时传 durationSeconds，时间轴时长会自动按源范围计算。没有指定源范围时 durationSeconds 可选。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
+    description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置；视频可以用 sourceStartSeconds 和 sourceEndSeconds 直接指定素材源文件范围，不需要先添加整段再裁剪；图片不要传源时间范围，应使用 durationSeconds 指定停留时长。指定源范围时不要同时传 durationSeconds，时间轴时长会自动按源范围计算。没有指定源范围时 durationSeconds 可选。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
     parameters: {
       type: 'object',
       properties: {
@@ -397,7 +407,7 @@ const timelineTools = [
   },
   {
     name: 'timeline.add_media_batch',
-    description: '一次将多个素材按给定顺序放入时间轴。适合已经确定多个素材和时间范围的剪辑；工具会逐项校验并返回所有新片段 ID。后续依赖这些 ID 的转场请等待本工具结果后再调用。',
+    description: '一次将多个素材按给定顺序放入时间轴。适合已经确定多个素材和时间范围的剪辑；返回 data.items 中每个素材对应的主视频或图片片段 ID、素材 ID、起止时间和联动音频片段 ID，同时保留 operations 明细。后续依赖这些 ID 的转场请等待本工具结果后再调用。',
     parameters: {
       type: 'object',
       properties: {
@@ -533,7 +543,7 @@ const EDITING_GUIDANCE = `
 信息收集：
 - 开始规划前先调用 media.list 和 project.inspect。media.list 的 data.items 是素材清单，project.inspect 的 data.tracks 和 data.items 是时间轴结构；必须阅读这些 data 字段，不能只看工具返回的 message。
 - 需要更改画布比例或尺寸时使用 project.set_canvas：常用比例传 aspectRatio（例如 9:16），精确尺寸同时传 width 和 height；不要直接编辑项目文件。
-- 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze；初次粗选素材优先使用 intensity=light，只有需要更密集的场景证据时才使用 normal 或 strong，并在分析完成后再次调用 media.read；没有证据时明确说明未知，不要假装看过素材。
+- 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze；它会立即返回 taskId，不代表分析已经完成。随后循环调用 media.get_analysis_task，直到 status 为 completed 或 failed；完成后再次调用 media.read。初次粗选素材优先使用 intensity=light，只有需要更密集的场景证据时才使用 normal 或 strong；没有证据时明确说明未知，不要假装看过素材。
 - 需要按台词寻找内容时使用 media.search_transcript。用返回的 mediaId 和时间范围制定剪辑方案，但仍要通过 project.inspect 或 timeline.inspect_context 确认时间轴片段 ID。
 - 需要生成配音时使用 audio.start_speech，生成背景音乐时使用 audio.start_music。它们只提交后台任务并返回 taskId，不代表音频已经生成；必须循环调用 audio.get_task，直到 status 为 completed 或 failed。只有 completed 且存在 mediaId 时才可调用 timeline.add_media；failed 时读取 error，不要自行猜测失败原因。
 
@@ -541,7 +551,7 @@ const EDITING_GUIDANCE = `
 - 先将用户目标拆成素材选择、保留或删除的时间范围、轨道安排和必要的字幕/音频/转场操作；信息不足时先补充读取或向用户说明缺口。
 - 剪辑操作必须使用 timeline.* 工具。时间轴位置和持续时间统一使用秒；timeline.add_keyframe 的 atSeconds 是相对于片段起点的秒数，不能误当成成片绝对时间。
 - 画面位置和图层尺寸统一使用 0 到 1 的归一化值：timeline.set_transform 的 x/y 是画布中心点坐标，width/height 是画布比例；timeline.add_keyframe 的空间属性也遵循同一规则。不要向工具传入像素位置或尺寸；project.set_canvas 的 width/height 是输出画布分辨率，仍使用像素。
-- 将素材加入时间轴使用 timeline.add_media，不要直接编辑项目文件。mediaId 必须来自 media.list；startSeconds 是成片时间轴上的绝对位置；需要只取素材的一段时，同时传 sourceStartSeconds 和 sourceEndSeconds，工具会直接创建这个源范围，不要先加入整段再调用 timeline.trim；trackId 只有在需要指定轨道时才传入。
+- 将素材加入时间轴使用 timeline.add_media，不要直接编辑项目文件。mediaId 必须来自 media.list；startSeconds 是成片时间轴上的绝对位置；视频需要只取素材的一段时，同时传 sourceStartSeconds 和 sourceEndSeconds，图片不要传源时间范围而应使用 durationSeconds；工具会直接创建视频源范围，不要先加入整段再调用 timeline.trim；trackId 只有在需要指定轨道时才传入。
 - 同一轮已经确定多个素材、字幕或转场时，优先分别使用 timeline.add_media_batch、timeline.add_text_batch、timeline.add_transition_batch，一次提交同类操作；批量工具返回结果后再规划依赖新片段 ID 的下一批操作。
 - 添加转场前先调用 timeline.list_transitions，presentation 只能使用返回的已注册预设；需要方向的预设再传 direction，未传 presentation 时默认使用 fade。
 - 裁掉片段首尾使用 timeline.trim；删除完整片段或已经分割出的片段使用 timeline.remove；需要删除中间一段时先用 timeline.split 得到两侧片段，再移除不需要的片段。
@@ -577,9 +587,9 @@ ${SCRIPT_API_REFERENCE}
 
 脚本约定：
 - 所有时间使用秒；画面位置和图层尺寸遵循 SDK 方法说明中的单位。
-- 长视频优先调用一次批量分析或批量读取能力，再在脚本内循环筛选，最后使用批量时间轴能力提交结果；不要为每一帧制造一轮模型调用。
+- 长视频优先调用一次批量分析或批量读取能力，再在脚本内循环筛选，最后使用批量时间轴能力提交结果；media.analyze 返回 taskId 后使用 media.get_analysis_task 轮询，不要为每个素材或每一帧制造一轮模型调用。
 - 每个重要编辑阶段都读取返回值并检查 data；脚本返回一个简短、结构化的结果，供下一轮模型判断。
-- 音频任务查询可以在脚本内使用 await new Promise(resolve => setTimeout(resolve, 2000)) 等待；不要因为第一次返回 queued 或 preparing-model 就当作失败，也不要把 taskId 当作 mediaId。
+- 媒体和音频任务查询可以在脚本内使用 await new Promise(resolve => setTimeout(resolve, 2000)) 等待；不要因为第一次返回 queued、analyzing 或 preparing-model 就当作失败，也不要把 taskId 当作 mediaId。
 - 不要直接修改项目文件。所有项目读取和修改都通过 luna SDK 完成。
 - edit.run_script 的执行结果会返回模型；宿主不会根据脚本文案替模型判断任务是否完成。
 

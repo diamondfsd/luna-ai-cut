@@ -55,7 +55,7 @@ description: LunaAiCut 的 AI 剪辑大师总控技能。负责理解创作需�
 - 需要时调用 `luna.memory.search`，只把结果当作默认倾向。
 - 阅读项目级规则。
 - 调用 `luna.media.list` 和 `luna.project.inspect`。
-- 如果要依据画面、人物、场景或台词选择镜头，调用 `luna.media.read`；证据不足时调用 `luna.media.analyze`。
+- 如果要依据画面、人物、场景或台词选择镜头，调用 `luna.media.read`；证据不足时调用 `luna.media.analyze`，然后用 `luna.media.getAnalysisTask` 查询到完成，最后再次调用 `luna.media.read`。
 
 ### 第三步：选择风格
 

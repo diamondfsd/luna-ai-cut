@@ -7,7 +7,7 @@ description: Premiere Pro 工作流映射技能。用户提到 Premiere、PR、�
 
 ## 素材整理
 
-先用 `luna.media.list` 建立真实素材清单，再用 `luna.media.read`、`luna.media.analyze` 和字幕搜索形成 selects。按事件、人物、场景和声音角色整理内部镜头表，不按文件名猜内容。
+先用 `luna.media.list` 建立真实素材清单，再用 `luna.media.read`、`luna.media.analyze` 和 `luna.media.getAnalysisTask` 获取画面证据，并结合字幕搜索形成 selects。按事件、人物、场景和声音角色整理内部镜头表，不按文件名猜内容。
 
 ## 时间轴概念映射
 

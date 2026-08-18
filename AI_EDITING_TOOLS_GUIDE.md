@@ -22,14 +22,14 @@ Luna AI Cut 的模型编辑入口只有 `edit.run_script`。模型负责理解�
 脚本 SDK 命名空间包括：
 
 - `luna.memory`：读取和维护跨项目用户偏好。
-- `luna.media`：列出素材、读取已有证据、触发内容分析、搜索字幕。
+- `luna.media`：列出素材、读取已有证据、提交内容分析任务、查询分析任务、搜索字幕。
 - `luna.project`：查看项目和修改画布。
 - `luna.timeline`：检查、添加、裁剪、切分、移动、删除片段，设置画面/音频/文字/关键帧/转场，并执行批量编辑。
 - `luna.audio`：提交配音或音乐后台任务，以及查询任务状态。
 
 ## 长任务
 
-音频生成和模型分析可能持续较长时间。提交任务返回 `taskId` 不代表已经生成媒体；脚本应等待一段时间后循环查询状态。只有状态为 `completed` 且返回有效 `mediaId` 时，才把结果加入时间轴；`failed` 时读取结构化错误并返回给模型。
+音频生成和素材分析可能持续较长时间。提交任务返回 `taskId` 不代表已经生成媒体或保存分析结果；脚本应等待一段时间后循环查询对应的任务状态。素材分析使用 `media.get_analysis_task`，完成后再用 `media.read` 读取证据；音频任务只有状态为 `completed` 且返回有效 `mediaId` 时，才把结果加入时间轴；`failed` 时读取结构化错误并返回给模型。
 
 ## 编辑原则
 
@@ -47,6 +47,7 @@ Luna AI Cut 的模型编辑入口只有 `edit.run_script`。模型负责理解�
 - `scripts/deepseek-harness-script-runtime.mjs`：隔离执行脚本、转发 SDK 请求和处理脚本生命周期。
 - `packages/freecut-editor/src/features/project-source/project-source-tools.ts`：能力注册、参数校验和执行入口。
 - `packages/freecut-editor/src/features/project-source/project-source-media-tools.ts`：素材证据能力。
+- `packages/freecut-editor/src/features/project-source/project-source-media-tasks.ts`：素材分析后台任务和状态查询。
 - `packages/freecut-editor/src/features/project-source/project-source-ai-tools.ts`：项目和时间轴能力。
 - `packages/freecut-editor/src/features/project-source/project-source-audio-tasks.ts`：异步音频任务能力。
 - `packages/freecut-editor/src/infrastructure/storage/workspace-fs/projects.ts`：`project.json` 持久化。
