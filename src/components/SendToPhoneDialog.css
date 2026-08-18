@@ -1,16 +1,73 @@
 .send-to-phone-dialog.ui-dialog-content {
-  width: min(400px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
 }
 
 .send-to-phone-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 24px 28px;
+}
+
+.send-to-phone-layout {
+  display: grid;
+  min-height: 0;
+  height: 100%;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  align-items: stretch;
+  gap: 28px;
+}
+
+.send-to-phone-qr-panel {
   display: flex;
-  min-height: 310px;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 10px;
-  padding: 24px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 12px;
   text-align: center;
+}
+
+.send-to-phone-qr-panel > span,
+.send-to-phone-share-heading > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.send-to-phone-share-panel {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+  padding: 4px 0 0 24px;
+  border-left: 1px solid var(--hairline);
+}
+
+.send-to-phone-share-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.send-to-phone-share-heading > strong {
+  font-size: 15px;
+}
+
+.send-to-phone-share-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 .send-to-phone-qr {
@@ -30,6 +87,88 @@
 .send-to-phone-body > span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.send-to-phone-directories {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 0;
+  max-height: none;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  padding-top: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-top: 1px solid var(--hairline);
+  text-align: left;
+}
+
+.send-to-phone-directory-empty {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.send-to-phone-directories[data-dragging='true'] {
+  background: #eef6ff;
+}
+
+.send-to-phone-directory {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0 3px 8px;
+  border-left: 2px solid var(--blue);
+}
+
+.send-to-phone-directory > svg {
+  flex: 0 0 auto;
+  color: var(--blue);
+}
+
+.send-to-phone-directory > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .send-to-phone-dialog.ui-dialog-content {
+    width: min(500px, calc(100vw - 32px));
+  }
+
+  .send-to-phone-layout {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .send-to-phone-qr-panel {
+    min-height: 250px;
+  }
+
+  .send-to-phone-share-panel {
+    height: auto;
+    overflow: visible;
+    padding: 18px 0 0;
+    border-top: 1px solid var(--hairline);
+    border-left: 0;
+  }
+
+  .send-to-phone-directories {
+    flex: 0 1 auto;
+    max-height: 240px;
+  }
 }
 
 .send-to-phone-trigger {

@@ -28,7 +28,7 @@ import {
 } from '../src/shared/lrcInitGuardRecovery'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
-import { activateMainWindow, appIconPath, createMainWindow } from './windowService'
+import { activateMainWindow, appIconPath, createMainWindow, getMainWindowCloseBehavior, setMainWindowCloseBehavior } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
@@ -239,6 +239,7 @@ function createWindow(): void {
       for (const [, controller] of activeExportControllers) controller.abort()
       activeExportControllers.clear()
     },
+    getWindowCloseBehavior: getMainWindowCloseBehavior,
   })
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
@@ -544,7 +545,7 @@ function createAppMenu(): void {
   Menu.setApplicationMenu(menu)
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initLogger()
   logMainInfo('应用启动', { codeSource: process.env.LUNA_BOOT_SOURCE ?? 'unknown' })
   recoverLegacyRenderInitGuardOnce()
@@ -561,6 +562,8 @@ app.whenReady().then(() => {
   createAppMenu()
   registerIpc()
   scheduleUpdateCheck()
+  const settings = await getSettings()
+  setMainWindowCloseBehavior(settings.windowCloseBehavior)
   createWindow()
 
   // 设置窗口标题（含版本号，有热更新则追加 hot build 号）

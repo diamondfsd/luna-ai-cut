@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { Check, X, CircleAlert, FolderOpen } from 'lucide-react'
 
-import { IconButton } from '../ui'
+import { ButtonGroup, IconButton } from '../ui'
 import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
+
+export type PreviewQuality = 'proxy' | 'original'
 
 interface PreviewModalHeaderProps {
   filePath: string
@@ -11,6 +13,9 @@ interface PreviewModalHeaderProps {
   onClose: () => void
   onSetInspectorOpen?: (open: boolean) => void
   onToggleSelected?: () => void
+  previewQuality?: PreviewQuality
+  onPreviewQualityChange?: (quality: PreviewQuality) => void
+  showOriginalOption?: boolean
 }
 
 function mediaLabel(filePath: string): string {
@@ -27,6 +32,9 @@ export function PreviewModalHeader({
   onClose,
   onSetInspectorOpen,
   onToggleSelected,
+  previewQuality,
+  onPreviewQualityChange,
+  showOriginalOption = false,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
     () => filePath.startsWith('file://') ? decodeURIComponent(new URL(filePath).pathname) : filePath,
@@ -44,6 +52,18 @@ export function PreviewModalHeader({
         <h2>{fileNameFromPath(filePath)}</h2>
       </div>
       <div className="preview-actions">
+        {showOriginalOption && previewQuality && onPreviewQualityChange && (
+          <ButtonGroup
+            className="camera-preview-quality"
+            ariaLabel="预览画质"
+            value={previewQuality}
+            onChange={onPreviewQualityChange}
+            options={[
+              { value: 'proxy', label: '流畅' },
+              { value: 'original', label: '原画' },
+            ]}
+          />
+        )}
         {onToggleSelected && selected !== undefined && (
           <IconButton
             variant="light"

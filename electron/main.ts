@@ -103,7 +103,15 @@ function readHotVersion(filePath: string): string | null {
   }
 }
 
-app.whenReady().then(async () => {
-  installStartupExperience()
-  await boot()
-}).catch(failStartup)
+const singleInstanceLock = app.requestSingleInstanceLock()
+if (!singleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    app.emit('activate')
+  })
+  app.whenReady().then(async () => {
+    installStartupExperience()
+    await boot()
+  }).catch(failStartup)
+}

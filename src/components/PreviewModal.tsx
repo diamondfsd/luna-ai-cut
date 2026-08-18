@@ -4,7 +4,7 @@ import { buildExportLayers, exportBatchFiles, type BatchExportSource } from './p
 import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
 import { HtmlPreview } from './HtmlPreview'
 import { MediaInspector } from './MediaInspector'
-import { PreviewModalHeader } from './PreviewModalHeader'
+import { PreviewModalHeader, type PreviewQuality } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
@@ -32,6 +32,7 @@ interface PreviewModalProps {
   onFilePathChange?: (filePath: string) => void
   isFileSelected?: (filePath: string) => boolean
   onSetFileSelected?: (filePath: string, selected: boolean) => void
+  originalVideoUrls?: Record<string, string>
   onClose: () => void
 }
 
@@ -60,6 +61,7 @@ export function PreviewModal({
   onFilePathChange,
   isFileSelected,
   onSetFileSelected,
+  originalVideoUrls,
   onClose,
 }: PreviewModalProps) {
   // ── 当前预览文件路径 ──
@@ -90,14 +92,35 @@ export function PreviewModal({
   const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
   const [dolbyVisionChecking, setDolbyVisionChecking] = useState(false)
   const [hasILogInExport, setHasILogInExport] = useState(false)
+  const [previewQuality, setPreviewQuality] = useState<PreviewQuality>('proxy')
+
+  const originalVideoUrl = originalVideoUrls?.[currentFilePath] ?? null
+  const canUseOriginalPreview = Boolean(originalVideoUrl)
+  const useOriginalPreview = canUseOriginalPreview && previewQuality === 'original'
+  const selectedSourcePath = useOriginalPreview ? originalVideoUrl : currentFilePath
+
+  useEffect(() => {
+    setPreviewQuality('proxy')
+  }, [currentFilePath])
+
+  useEffect(() => {
+    if (!canUseOriginalPreview) setPreviewQuality('proxy')
+  }, [canUseOriginalPreview])
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
-  const { cacheFilePath: resolvedPath } = useFileCache(currentFilePath)
+  const { cacheFilePath: resolvedPath } = useFileCache(useOriginalPreview ? null : currentFilePath)
 
-  const isRemoteSource = isHttpPath(currentFilePath)
-  const activeSourcePath = isRemoteSource ? resolvedPath : currentFilePath
-  const displaySource = activeSourcePath ? (filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath) : null
+  const isRemoteSource = isHttpPath(selectedSourcePath)
+  const activeSourcePath = useOriginalPreview
+    ? originalVideoUrl
+    : isRemoteSource
+      ? resolvedPath
+      : selectedSourcePath
+  const displaySource = activeSourcePath
+    ? (isHttpPath(activeSourcePath) ? activeSourcePath : filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath)
+    : null
   const stageSource = toLocalPath(activeSourcePath)
+  const htmlMediaPath = activeSourcePath && isHttpPath(activeSourcePath) ? null : stageSource
   const proxyPreview = proxyPreviewPaths?.includes(currentFilePath) ?? false
   const currentSelected = selectionOverrides.get(currentFilePath) ?? isFileSelected?.(currentFilePath)
   const exportList = useMemo(
@@ -304,6 +327,9 @@ export function PreviewModal({
           filePath={currentFilePath}
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
+          previewQuality={previewQuality}
+          onPreviewQualityChange={setPreviewQuality}
+          showOriginalOption={canUseOriginalPreview}
           selected={currentSelected}
           onToggleSelected={onSetFileSelected && currentSelected !== undefined ? () => {
             const nextSelected = !currentSelected
@@ -319,8 +345,8 @@ export function PreviewModal({
               <div className="preview-stage">
                 <HtmlPreview
                   url={displaySource}
-                  mediaPath={stageSource}
-                  proxyPreview={proxyPreview}
+                  mediaPath={htmlMediaPath}
+                  proxyPreview={proxyPreview && !useOriginalPreview}
                   watermarkLayer={lightweightPreview ? watermarkLayers[0] : undefined}
                   watermarkSettings={lightweightPreview ? watermarkSettings : undefined}
                   watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled && watermarkSettings.sourceKind === 'custom')}

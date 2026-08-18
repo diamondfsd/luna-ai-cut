@@ -1,0 +1,21 @@
+.camera-preview-quality.ui-btn-group {
+  gap: 4px;
+}
+
+.camera-preview-quality .ui-btn-group-btn {
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.camera-preview-quality .ui-btn-group-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.camera-preview-quality .ui-btn-group-btn.active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
