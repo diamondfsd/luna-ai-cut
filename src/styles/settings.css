@@ -227,15 +227,6 @@
   font-weight: 600;
 }
 
-.settings-model-dialog.ui-dialog-content {
-  width: min(760px, 94vw);
-}
-
-.settings-model-dialog-body {
-  min-height: 0;
-  padding: 16px 20px 22px;
-}
-
 @media (max-width: 760px) {
   .settings-surface {
     padding: 24px 16px 56px;
