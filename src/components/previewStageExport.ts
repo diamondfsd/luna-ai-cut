@@ -61,6 +61,13 @@ export function resolveImageExportFormat(settings?: VideoExportSettings | null):
   return settings?.imageFormat ?? 'jpeg'
 }
 
+export function imageExportFormatFromPath(sourcePath: string): ImageExportFormat {
+  const extension = fileNameFromPath(sourcePath).match(/(\.[^.]+)$/)?.[1].toLowerCase()
+  if (extension === '.png') return 'png'
+  if (extension === '.webp') return 'webp'
+  return 'jpeg'
+}
+
 export function imageExportExtension(format: ImageExportFormat): string {
   return format === 'jpeg' ? '.jpg' : `.${format}`
 }
@@ -265,8 +272,8 @@ export async function exportPreviewImage(params: {
     )
     await ensureExportActive(params.exportTaskId, params.exportItemId)
     const sourcePath = composition.layers.find((layer) => layer.layerType === 'media')?.source.path
-    if (params.format === 'jpeg' && sourcePath) {
-      await window.luna.freecutExport.embedJpegSourceMetadata(result.path, sourcePath).catch(() => false)
+    if (sourcePath) {
+      await window.luna.freecutExport.preserveSourceMetadata(result.path, sourcePath).catch(() => false)
     }
     if (params.exportTaskId && params.exportItemId) {
       await window.luna.exportTask.updateItem(params.exportTaskId, params.exportItemId, {
@@ -360,7 +367,7 @@ export async function exportPreviewVideo(params: {
         width: params.width,
         height: params.height,
         fps: params.fps ?? null,
-        qualityPreset: params.qualityPreset ?? 'high',
+        qualityPreset: params.qualityPreset ?? 'original',
         includeAudio: params.includeAudio !== false,
         exportTaskId: taskId,
         exportItemId: itemId,
@@ -401,6 +408,10 @@ export async function exportPreviewVideo(params: {
     const closed = await window.luna.freecutExport.closeWriter(opened.writerId)
     webGpuWriterId = null
     const written = { path: closed.filePath, name: closed.fileName }
+    const sourcePath = composition.layers.find((layer) => layer.layerType === 'media')?.source.path
+    if (sourcePath) {
+      await window.luna.freecutExport.preserveSourceMetadata(written.path, sourcePath).catch(() => false)
+    }
     await ensureExportActive(taskId, itemId)
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, {
@@ -526,6 +537,10 @@ export async function exportPreviewLivePhoto(params: {
     const result = await window.luna.workspace.exportRenderedLivePhoto(
       params.name, imageResult.path, tempVideoPath, params.appleLivePhoto,
     )
+    const sourcePath = params.imageLayers.find((layer) => layer.layerType === 'media')?.filePath
+    if (sourcePath) {
+      await window.luna.freecutExport.preserveSourceMetadata(result.path, sourcePath).catch(() => false)
+    }
 
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, {
@@ -566,6 +581,7 @@ interface BatchExportEntry {
   index: number
   kind: 'image' | 'video'
   isLivePhoto?: boolean
+  imageFormat?: ImageExportFormat
 }
 
 async function runWithConcurrency<T>(
@@ -662,6 +678,7 @@ async function runBatchExportQueue(
                     exportTaskId: taskId,
                     exportItemId: entry.id,
                   })
+                  await window.luna.freecutExport.preserveSourceMetadata(entry.outputPath, entry.sourcePath, { rewriteImageMetadata: false, rewriteVideoMetadata: false }).catch(() => false)
                 } else {
                   await exportPreviewLivePhoto({
                     name: baseName, exportDir, width: videoRes.width, height: videoRes.height,
@@ -712,6 +729,7 @@ async function runBatchExportQueue(
                   exportTaskId: taskId,
                   exportItemId: entry.id,
                 })
+                await window.luna.freecutExport.preserveSourceMetadata(entry.outputPath, entry.sourcePath, { rewriteImageMetadata: false, rewriteVideoMetadata: false }).catch(() => false)
               } else {
                 await exportPreviewLivePhoto({
                   name: baseName,
@@ -744,6 +762,7 @@ async function runBatchExportQueue(
           exportTaskId: taskId,
           exportItemId: entry.id,
         })
+        await window.luna.freecutExport.preserveSourceMetadata(entry.outputPath, entry.sourcePath, { rewriteImageMetadata: false, rewriteVideoMetadata: false }).catch(() => false)
         return
       }
 
@@ -768,6 +787,8 @@ async function runBatchExportQueue(
             exportTaskId: taskId,
             exportItemId: entry.id,
           })
+          // Dolby Vision 输出也迁移源视频标签；主进程会验证 DOVI 配置仍然存在。
+          await window.luna.freecutExport.preserveSourceMetadata(entry.outputPath, entry.sourcePath).catch(() => false)
           return
         }
         await exportPreviewVideo({
@@ -776,7 +797,7 @@ async function runBatchExportQueue(
           width: resolved.width,
           height: resolved.height,
           layers: exportLayers,
-          qualityPreset: resolved.qualityPreset ?? 'high',
+          qualityPreset: resolved.qualityPreset ?? 'original',
           fps: resolved.fps,
           includeAudio: resolved.includeAudio,
           exportTaskId: taskId,
@@ -794,7 +815,7 @@ async function runBatchExportQueue(
         width: resolved.width,
         height: resolved.height,
         layers: exportLayers,
-        format: resolveImageExportFormat(exportConfig),
+        format: entry.imageFormat ?? resolveImageExportFormat(exportConfig),
         quality: 100,
         exportTaskId: taskId,
         exportItemId: entry.id,
@@ -843,7 +864,7 @@ export async function exportBatchFiles(
   sources: Array<string | BatchExportSource>,
   exportDir: string,
   exportConfig?: VideoExportSettings | null,
-  options?: { appleLivePhoto?: boolean },
+  options?: { appleLivePhoto?: boolean; preserveSourceFormat?: boolean },
 ): Promise<{ taskId: string; items: Array<{ id: string; outputPath: string }> }> {
   const sourceItems = sources.map((source) => (
     typeof source === 'string' ? { sourcePath: source } : source
@@ -855,7 +876,9 @@ export async function exportBatchFiles(
     const fp = source.sourcePath
     const baseName = source.outputBaseName || baseNameFromPath(fp)
     const isVid = isVideoPathCached(fp)
-    const imageFormat = resolveImageExportFormat(exportConfig)
+    const imageFormat = options?.preserveSourceFormat && !isVid
+      ? imageExportFormatFromPath(fp)
+      : resolveImageExportFormat(exportConfig)
     const canPassthrough = Boolean(source.passthrough) && (
       isVid
         ? usesOriginalVideoSettings(exportConfig)
@@ -872,6 +895,7 @@ export async function exportBatchFiles(
       passthrough: canPassthrough,
       index,
       kind: isVid ? 'video' : 'image',
+      imageFormat: isVid ? undefined : imageFormat,
     }
   })
 

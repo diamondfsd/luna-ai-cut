@@ -278,6 +278,23 @@ function MetadataSection({ section, metaMap }: { section: SectionDef; metaMap: M
   )
 }
 
+function MetadataGroupView({ name, entries }: { name: string; entries: Array<{ key: string; value: string }> }) {
+  if (entries.length === 0) return null
+  return (
+    <section>
+      <span className="eyebrow">{name}</span>
+      <dl>
+        {entries.map((entry) => (
+          <div key={`${name}-${entry.key}`}>
+            <dt>{entry.key}</dt>
+            <dd title={entry.value}>{entry.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
+
 // ─── Component ─────────────────────────────────────────
 
 export function MediaInspector({ filePath, proxyPreview = false, onToggleCollapse, header }: MediaInspectorProps) {
@@ -370,7 +387,7 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
           </div>
           <div>
             <dt>拍摄时间</dt>
-            <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? null)}</dd>
+            <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('creation_time') ?? metaMap.get('ModifyDate') ?? null)}</dd>
           </div>
           {kind === 'video' && (metaMap.get('Make') || metaMap.get('Model')) && (
             <div>
@@ -443,17 +460,19 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
             )
           )}
         </>
-      ) : (
-        /* ── 视频参数（数据来自 getMediaMetadata → ffprobe） ── */
+      ) : metadataLoading ? (
         <section>
-          <span className="eyebrow">视频参数</span>
-          <dl>
-            {metaMap.get('时长') && <div><dt>时长</dt><dd>{metaMap.get('时长')}</dd></div>}
-            {!proxyPreview && metaMap.get('分辨率') && <div><dt>分辨率</dt><dd>{metaMap.get('分辨率')}</dd></div>}
-            {!proxyPreview && metaMap.get('帧率') && <div><dt>帧率</dt><dd>{metaMap.get('帧率')}</dd></div>}
-            {!proxyPreview && metaMap.get('码率') && <div><dt>码率</dt><dd>{metaMap.get('码率')}</dd></div>}
-            {!proxyPreview && metaMap.get('视频编码') && <div><dt>编码</dt><dd>{metaMap.get('视频编码')}</dd></div>}
-          </dl>
+          <span className="eyebrow">视频信息</span>
+          <Loader2 className="spin" size={18} />
+        </section>
+      ) : mediaMetadata?.groups.some((group) => group.name !== '文件' && group.entries.length > 0) ? (
+        mediaMetadata.groups
+          .filter((group) => group.name !== '文件')
+          .map((group) => <MetadataGroupView key={group.name} name={group.name} entries={group.entries} />)
+      ) : (
+        <section>
+          <span className="eyebrow">视频信息</span>
+          <p className="metadata-empty">暂无扩展信息</p>
         </section>
       )}
     </aside>

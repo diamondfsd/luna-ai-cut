@@ -32,7 +32,7 @@ interface VideoStream {
 
 interface MediaProbeJson {
   streams?: Array<VideoStream & { codec_type?: string }>
-  format?: { duration?: string; bit_rate?: string; tags?: Record<string, string> }
+  format?: { duration?: string; bit_rate?: string; size?: string; tags?: Record<string, string> }
 }
 
 function toolPath(name: 'dovi_tool' | 'mp4mux'): string {
@@ -107,8 +107,6 @@ export function parseDolbyVisionProbe(probe: MediaProbeJson): DolbyVisionProbeRe
   const stream = videoStream(probe)
   if (!stream) return { eligible: false, reason: '未找到视频轨道' }
   const dovi = stream.side_data_list?.find((item) => item.side_data_type === 'DOVI configuration record')
-  const brands = probe.format?.tags?.compatible_brands?.toLowerCase() ?? ''
-  const containerMarkedDolbyVision = brands.includes('dby1')
   const profile = Number(dovi?.dv_profile)
   const compatibilityId = Number(dovi?.dv_bl_signal_compatibility_id)
   const baseValid = stream.codec_name === 'hevc'
@@ -120,9 +118,8 @@ export function parseDolbyVisionProbe(probe: MediaProbeJson): DolbyVisionProbeRe
   const detailedDolbyVisionMatch = profile === 8
     && compatibilityId === 4
     && Number(dovi?.rpu_present_flag) === 1
-  // 与媒体列表保持一致：旧版 ffprobe 可能不返回 DOVI side data，
-  // 此时使用容器的 dby1 兼容品牌标记识别 Dolby Vision。
-  const eligible = baseValid && (detailedDolbyVisionMatch || (!dovi && containerMarkedDolbyVision))
+  // dby1 只是容器兼容品牌，普通 HDR/HEVC 文件也可能带有该标记，不能单独作为 Dolby Vision 依据。
+  const eligible = baseValid && detailedDolbyVisionMatch
   return {
     eligible,
     profile: Number.isFinite(profile) ? profile : undefined,
@@ -209,7 +206,12 @@ export async function exportDolbyVisionWatermark(
   const fps = frameRateNumber(sourceVideo.avg_frame_rate || sourceVideo.r_frame_rate)
   if (!fps || !eligibility.width || !eligibility.height) throw new Error('无法读取原视频规格')
   const duration = Number(sourceVideo.duration ?? sourceProbe.format?.duration) || 0
-  const bitrate = resolveDolbyVisionBitrate(sourceVideo.bit_rate, sourceProbe.format?.bit_rate)
+  const bitrate = resolveDolbyVisionBitrate(
+    sourceVideo.bit_rate,
+    sourceProbe.format?.bit_rate,
+    sourceProbe.format?.size,
+    sourceVideo.duration ?? sourceProbe.format?.duration,
+  )
   const ffmpeg = getFfmpegPath()
   const dovi = await executable('dovi_tool')
   const mp4mux = await executable('mp4mux')

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { prepareDownloadDirectory } from './downloadDirectoryService'
 import { safeName } from './filePathUtils'
 import { getSettings } from './fileService'
-import { embedJpegSourceMetadata } from './exportSourceMetadata'
+import { embedJpegSourceMetadata, preserveExportSourceMetadata } from './exportSourceMetadata'
 
 const MAX_EXPORT_CHUNK_BYTES = 8 * 1024 * 1024
 
@@ -189,5 +189,15 @@ export function register(): void {
       throw new Error('导出文件路径无效')
     }
     return embedJpegSourceMetadata(resolvedOutputPath, sourcePath)
+  })
+
+  ipcMain.handle('freecut-export:preserve-source-metadata', async (_event, outputPath: string, sourcePath: string, options?: { rewriteImageMetadata?: boolean; rewriteVideoMetadata?: boolean }) => {
+    if (typeof outputPath !== 'string' || typeof sourcePath !== 'string') throw new Error('媒体来源信息无效')
+    const exportDirectory = await allowedExportDirectory(path.dirname(outputPath))
+    const resolvedOutputPath = path.resolve(outputPath)
+    if (path.dirname(resolvedOutputPath) !== path.resolve(exportDirectory)) {
+      throw new Error('导出文件路径无效')
+    }
+    return preserveExportSourceMetadata(resolvedOutputPath, sourcePath, options)
   })
 }

@@ -2,7 +2,8 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { localThumbnailUrl, safeName } from './filePathUtils'
+import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
+import { lunaMediaAdapter } from './deviceMedia'
 import { downloadToFile, downloadToFileWithRetry, isAbortError } from './fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
@@ -49,11 +50,16 @@ export async function listExportFiles(exportDir: string): Promise<import('../src
       if (entry.name.startsWith('.') || !entry.isFile()) continue
       const fullPath = join(exportDir, entry.name)
       const s = await stat(fullPath)
+      const timestamp = lunaMediaAdapter.capturedAt(entry.name) ?? s.mtime
+      const labels = labelsFor(timestamp)
+      const kind = lunaMediaAdapter.mediaKind(entry.name)
       files.push({
         id: entry.name, name: entry.name, downloadName: entry.name,
-        url: '', sourceUrl: '', kind: 'image',
-        extension: entry.name.split('.').pop() || '',
+        url: '', sourceUrl: '', kind,
+        extension: lunaMediaAdapter.extensionOf(entry.name),
         bytes: s.size, width: 0, height: 0,
+        dateText: labels.dateText, timeText: labels.timeText, capturedAt: labels.capturedAt,
+        groupDay: labels.groupDay, groupHour: labels.groupHour,
         downloadFilePath: fullPath, localPath: fullPath,
       } as unknown as import('../src/shared/types').LunaFile)
     }

@@ -85,7 +85,6 @@ export function PreviewModal({
   const [livePhotoCount, setLivePhotoCount] = useState(0)
   const [exportConfig, setExportConfig] = useState<VideoExportSettings>(() => ({
     ...DEFAULT_VIDEO_EXPORT_SETTINGS,
-    imageFormat: 'png',
     autoRestoreILog: false,
   }))
   const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
@@ -282,7 +281,7 @@ export function PreviewModal({
         sources,
         settings.exportDir,
         exportConfig,
-        { appleLivePhoto: exportAppleLivePhoto },
+        { appleLivePhoto: exportAppleLivePhoto, preserveSourceFormat: true },
       )
       toast.success(`已加入导出队列 (${sources.length} 个文件)`)
     } catch (err) {
@@ -366,6 +365,7 @@ export function PreviewModal({
                     <ExportSettingsPanel
                       value={exportConfig}
                       onChange={setExportConfig}
+                      audioAvailable={hasVideoInBatch}
                       dolbyVisionAvailable={dolbyVisionProbe?.eligible}
                       dolbyVisionChecking={dolbyVisionChecking}
                       showILogRestore={hasILogInExport}

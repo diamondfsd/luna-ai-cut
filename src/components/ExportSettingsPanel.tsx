@@ -22,6 +22,7 @@ interface ExportSettingsPanelProps {
   }
   allowedFormats?: VideoExportFormat[]
   outputAvailability?: { video: boolean; photo: boolean; live: boolean }
+  audioAvailable?: boolean
   dolbyVisionAvailable?: boolean
   dolbyVisionChecking?: boolean
   showILogRestore?: boolean
@@ -71,8 +72,9 @@ const IMAGE_FORMAT_OPTIONS = [
  * <ExportSettingsPanel value={config} onChange={setConfig} />
  * ```
  */
-export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedFormats, outputAvailability, dolbyVisionAvailable, dolbyVisionChecking, showILogRestore }: ExportSettingsPanelProps) {
+export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedFormats, outputAvailability, audioAvailable, dolbyVisionAvailable, dolbyVisionChecking, showILogRestore }: ExportSettingsPanelProps) {
   const locked = Boolean(value.dolbyVision)
+  const showAudio = audioAvailable ?? outputAvailability?.video ?? true
   const handleResolutionChange = useCallback(
     (v: string) => onChange({ ...value, resolution: v as VideoResolution }),
     [value, onChange],
@@ -158,14 +160,16 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedF
             />
           </div>
         )}
-        <div className="export-settings-row">
-          <label className="export-settings-label">音频</label>
-          <Switch
-            checked={value.includeAudio !== false}
-            onCheckedChange={(enabled) => onChange({ ...value, includeAudio: enabled })}
-            ariaLabel="导出音频"
-          />
-        </div>
+        {showAudio && (
+          <div className="export-settings-row">
+            <label className="export-settings-label">音频</label>
+            <Switch
+              checked={value.includeAudio !== false}
+              onCheckedChange={(enabled) => onChange({ ...value, includeAudio: enabled })}
+              ariaLabel="导出音频"
+            />
+          </div>
+        )}
         <div className="export-settings-row">
           <label className="export-settings-label">分辨率</label>
           <Select
