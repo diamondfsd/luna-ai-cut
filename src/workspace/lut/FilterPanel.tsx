@@ -136,11 +136,11 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
 
   // 删除 LUT（仅用户导入的 LUT 可删除）
   const handleDeleteLut = useCallback(async (lut: LutFileInfo) => {
-    const lrc = (window as unknown as { lunaRenderCore?: { deleteCubeFile?: (path: string, builtin: boolean) => Promise<void> } }).lunaRenderCore
-    if (!lrc?.deleteCubeFile || lut.isBuiltin || deletingLutPath) return
+    const renderResources = (window as unknown as { lunaRenderCore?: { deleteCubeFile?: (path: string, builtin: boolean) => Promise<void> } }).lunaRenderCore
+    if (!renderResources?.deleteCubeFile || lut.isBuiltin || deletingLutPath) return
     setDeletingLutPath(lut.filePath)
     try {
-      await lrc.deleteCubeFile(lut.filePath, Boolean(lut.isBuiltin))
+      await renderResources.deleteCubeFile(lut.filePath, Boolean(lut.isBuiltin))
       lutManager.clearCache()
       await refreshLuts()
       // 如果删除的是当前激活的 LUT，取消选中

@@ -1,5 +1,5 @@
 /**
- * luna-render-core 层类型（统一，匹配 Rust PreviewLayerInput）
+ * WebGPU 合成层类型（统一，供预览和导出复用）
  * 所有坐标均为归一化 [0, 1]
  */
 
@@ -15,7 +15,7 @@ export interface WatermarkPositioning {
   marginY?: number
 }
 
-/** 统一层描述 — Rust 渲染层输入 */
+/** 统一层描述 — WebGPU 合成层输入 */
 export interface RenderCurvePoint {
   x: number
   y: number
@@ -163,11 +163,11 @@ export interface PreviewLayer {
   pixelStretch?: RenderPixelStretch
   pixelFlow?: RenderPixelFlow
   transform?: RenderLayerTransform
-  /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
+  /** 水印相对定位：有则 WebGPU renderer 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** i-Log 技术还原 LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径。 */
   restoreLutId?: string
-  /** 创意 3D LUT 文件路径（传给 Rust 自行加载解析） */
+  /** 创意 3D LUT 文件路径。 */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -260,6 +260,8 @@ export interface CompositionLayer {
   source: {
     path: string
     sourceType?: 'auto' | 'image' | 'video' | string
+    /** 视频解码源的稳定标识；不同时间点的同一路径必须使用不同纹理。 */
+    key?: string
     time?: {
       offset?: number
       start?: number
@@ -281,6 +283,8 @@ export interface CompositionLayer {
   reveal?: CompositionReveal
   color?: RenderColorAdjustments
   maskPath?: string
+  /** 工作区蒙版所在项目，用于通过受限 IPC 读取蒙版数据。 */
+  maskProjectId?: string
   maskOpacity?: number
   maskInverted?: boolean
   maskFeather?: number
@@ -290,9 +294,9 @@ export interface CompositionLayer {
   pixelFlow?: RenderPixelFlow
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** i-Log 技术还原 LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径。 */
   restoreLutId?: string
-  /** 创意 3D LUT 文件路径 */
+  /** 创意 3D LUT 文件路径。 */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -325,9 +329,9 @@ export interface RenderLayer {
   maskFeather?: number
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** i-Log 技术还原 LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径。 */
   restoreLutId?: string
-  /** 创意 3D LUT 文件路径 */
+  /** 创意 3D LUT 文件路径。 */
   lutId?: string
   lutIntensity?: number
 }

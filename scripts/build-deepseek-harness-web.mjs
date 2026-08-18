@@ -280,8 +280,19 @@ async function pruneBundledDependencies() {
   console.log(`DeepSeek Harness dependencies pruned: ${removed}, ${(before / 1024 / 1024).toFixed(1)} MiB -> ${(after / 1024 / 1024).toFixed(1)} MiB`)
 }
 
-// The deployed Web runtime consumes workspace client bundles from lib/.
-// Rebuild them first so source changes cannot be hidden by stale ignored output.
+// The deployed Web runtime consumes workspace bundles from lib/.
+// Rebuild host and client output first so source changes cannot be hidden by
+// stale ignored output in a fresh worktree.
+const harnessHostBuild = spawnSync('pnpm', [
+  '--dir', harnessRoot,
+  'run', 'build:lib:host',
+], {
+  cwd: root,
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+})
+if (harnessHostBuild.status !== 0) process.exit(harnessHostBuild.status ?? 1)
+
 const bin = (name) => join(harnessRoot, 'node_modules/.bin', process.platform === 'win32' ? `${name}.cmd` : name)
 for (const clientRoot of [layoutRoot, settingsGeneralRoot]) {
   const clientTypes = spawnSync(bin('tsc'), ['-b', 'tsconfig.json'], {

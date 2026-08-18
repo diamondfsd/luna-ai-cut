@@ -1,8 +1,0 @@
-.preview-canvas-wrapper .native-gpu-video-preview {
-  display: block;
-  max-width: 100%;
-  max-height: calc(100% - 42px);
-  margin-bottom: 42px;
-  background: transparent;
-  pointer-events: none;
-}

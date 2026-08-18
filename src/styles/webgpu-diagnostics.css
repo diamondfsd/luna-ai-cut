@@ -1,0 +1,61 @@
+.webgpu-diagnostics-page {
+  min-height: 100vh;
+  padding: 40px;
+  color: #172536;
+  background: #f4f7fa;
+}
+
+.webgpu-diagnostics-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  width: min(1000px, 100%);
+  margin: 0 auto 24px;
+}
+
+.webgpu-diagnostics-eyebrow {
+  margin: 0 0 8px;
+  color: #0066cc;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.webgpu-diagnostics-header h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.webgpu-diagnostics-header p:last-child {
+  margin: 8px 0 0;
+  color: #536273;
+}
+
+.webgpu-diagnostics-output,
+.webgpu-diagnostics-error {
+  width: min(1000px, 100%);
+  margin: 0 auto;
+  overflow: auto;
+  border: 1px solid #c8d3df;
+  background: #ffffff;
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.webgpu-diagnostics-error {
+  color: #b42318;
+}
+
+@media (max-width: 640px) {
+  .webgpu-diagnostics-page {
+    padding: 24px 16px;
+  }
+
+  .webgpu-diagnostics-header {
+    flex-direction: column;
+  }
+}

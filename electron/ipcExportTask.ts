@@ -2,7 +2,7 @@
  * ipcExportTask.ts — 导出任务记录 IPC 通道
  *
  * 统一暴露给前端的任务记录 CRUD 接口。
- * 前端的 export:progress 事件仍由具体导出 handler（如 ipcLunaRenderCore）负责，
+ * 前端的 export:progress 事件由 WebGPU 导出流程负责，
  * 此处只处理持久化任务的增删改查。
  */
 import { ipcMain } from 'electron'

@@ -2,10 +2,7 @@
 name = "luna-render-core"
 version = "0.1.0"
 edition = "2021"
-description = "Luna AI Cut Native Render Core — wgpu-based compositor for video watermark rendering"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
+description = "Luna AI Cut native AI and media worker binaries"
 
 [[bin]]
 name = "sam-segmentation-worker"
@@ -28,41 +25,9 @@ name = "luna-punctuation-worker"
 path = "src/bin/luna_punctuation_worker.rs"
 
 [dependencies]
-napi = { version = "2", features = ["full"] }
-napi-derive = "2"
-wgpu = "30"
-# 图片解码已迁移至 ffmpeg pipe，不再使用 image crate
-bytemuck = { version = "1", features = ["derive"] }
-pollster = "0.3"
-chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-swash = "0.2"
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs", "tls-native", "api-23"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6.4"
-objc2-metal = "0.3.2"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.62", features = [
-    "Win32_Graphics_Direct3D",
-    "Win32_Graphics_Direct3D11",
-    "Win32_Graphics_Direct3D11on12",
-    "Win32_Graphics_Direct3D12",
-    "Win32_Graphics_Dxgi",
-    "Win32_Graphics_Dxgi_Common",
-    "Win32_Media_MediaFoundation",
-    "Win32_Foundation",
-    "Win32_System_Com",
-    "Win32_System_Com_StructuredStorage",
-    "Win32_System_Variant",
-    "Win32_UI_WindowsAndMessaging",
-] }
-
-[build-dependencies]
-napi-build = "2"
-cc = "1"
 
 [profile.release]
 lto = true

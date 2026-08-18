@@ -148,7 +148,6 @@ export function register(ctx: IpcContext): void {
       ctx.activeDownloadControllers.size > 0
       || ctx.activeExportControllers.size > 0
       || ctx.activeExportEncoders.size > 0
-      || ctx.activeNativeExportTasks.size > 0
     ) {
       throw new Error('请等待正在下载或导出的内容完成后再迁移')
     }

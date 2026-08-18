@@ -8,7 +8,7 @@
  *    改动此文件意味着需要发布完整安装包，丧失热更新优势。
  */
 import { app, protocol } from 'electron'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
@@ -49,13 +49,11 @@ async function boot(): Promise<void> {
   const versionFile = join(hotDir, 'version.json')
   const hotMain = join(hotDir, 'dist-electron', 'luna-appMain.js')
 
-  activatePendingNativeUpdate(hotDir)
-
   // 检查是否有有效的热更新版本
   let hotVersion = readHotVersion(versionFile)
 
   // 热更新只能覆盖完全相同的稳定安装版。Beta/RC 必须使用安装包内置代码，
-  // 避免旧热更新同时替换主进程、页面和原生模块。
+  // 避免旧热更新同时替换主进程、页面和安装包内的 worker。
   const appVersion = app.getVersion()
   if (hotVersion && !canLoadHotUpdate(appVersion, hotVersion)) {
     console.log(`[hot-update] 热更新 ${hotVersion} 与安装版本 ${appVersion} 不兼容，丢弃旧热更新`)
@@ -84,36 +82,6 @@ async function boot(): Promise<void> {
   // 加载 asar 内置的 fallback 版本
   process.env.LUNA_BOOT_SOURCE = 'bundled'
   await import('./appMain.ts')
-}
-
-/**
- * 原生模块在运行中的 Windows 进程内会被锁定，因此热更新先下载到
- * pending-native；新进程在加载热更新主进程前再移动到实际加载位置。
- */
-function activatePendingNativeUpdate(hotDir: string): void {
-  const pending = join(hotDir, 'pending-native', 'luna-render-core.node')
-  if (!existsSync(pending)) return
-
-  const targetDir = join(hotDir, 'luna-render-core')
-  const target = join(targetDir, 'luna-render-core.node')
-  mkdirSync(targetDir, { recursive: true })
-  rmSync(target, { force: true })
-  renameSync(pending, target)
-  for (const file of [
-    'dxcompiler.dll',
-    'dxil.dll',
-    'DXC-LICENSE-MIT.txt',
-    'DXC-LICENSE-LLVM.txt',
-    'DXC-LICENSE-MS.txt',
-  ]) {
-    const pendingRuntime = join(hotDir, 'pending-native', file)
-    if (!existsSync(pendingRuntime)) continue
-    const targetRuntime = join(targetDir, file)
-    rmSync(targetRuntime, { force: true })
-    renameSync(pendingRuntime, targetRuntime)
-  }
-  rmSync(join(hotDir, 'pending-native'), { recursive: true, force: true })
-  console.log('[hot-update] 已切换原生渲染模块')
 }
 
 function readHotVersion(filePath: string): string | null {

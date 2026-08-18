@@ -20,11 +20,9 @@ import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel, type LivePhotoSelection } from '../trim/TrimPanel'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { RemovalPanel } from '../removal/RemovalPanel'
-import { WorkspaceCreativePanel } from '../creative/WorkspaceCreativeFactory'
-import type { CreativeModeId } from '../creative/creativeCatalog'
 import { BeautyPanel } from '../beauty/BeautyPanel'
 
-export type WorkspaceTool = 'smart' | 'beauty' | 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal'
+export type WorkspaceTool = 'smart' | 'beauty' | 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -97,7 +95,6 @@ const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: ReactElemen
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
   { value: 'border', label: '边框', icon: <Image size={22} strokeWidth={1.8} /> },
-  { value: 'creative', label: '创意', icon: <Sparkles size={22} /> },
 ]
 const AI_TOOL_ITEM = { value: 'smart' as const, label: 'AI 工具', icon: <Sparkles size={22} /> }
 
@@ -110,7 +107,6 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'filter') return '滤镜'
   if (tool === 'beauty') return '美颜'
   if (tool === 'removal') return '对象消除'
-  if (tool === 'creative') return '创意'
   return '调色与蒙版'
 }
 
@@ -127,10 +123,9 @@ interface WorkspaceEditSidebarProps {
   onToggleMarkerPreview: (marker: Extract<EditPipeline['outputMarkers'][number], { kind: 'video' | 'live' }>) => void
   allowWatermark: boolean
   runtimeResourceLoading?: { fonts: boolean; luts: boolean }
-  onOpenCreative: (modeId: CreativeModeId) => void
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimSeek, livePhotoSelection, onLivePhotoSelectionChange, activeMarkerId, onActiveMarkerChange, playingMarkerId, onToggleMarkerPreview, allowWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimSeek, livePhotoSelection, onLivePhotoSelectionChange, activeMarkerId, onActiveMarkerChange, playingMarkerId, onToggleMarkerPreview, allowWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -175,7 +170,6 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
     trim: isTrimModified(edit.pipeline.trim) || edit.pipeline.outputMarkers.length > 0,
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
-    creative: false,
     mask: edit.pipeline.colorMasks.length > 0,
     removal: Boolean(mediaCtx.currentProject?.assets[mediaCtx.activeIndex]?.removal?.operations.length),
   }), [edit.pipeline, mediaCtx.activeIndex, mediaCtx.currentProject?.assets])
@@ -304,7 +298,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
             </span>
           )}
         </header>
-        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}${activeTool === 'creative' ? ' is-creative-panel' : ''}`}>
+        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}`}>
           {activeTool === 'smart' ? (
             <SmartOptimizePanel
               mediaKind={mediaCtx.activeMedia?.kind ?? null}
@@ -313,8 +307,6 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
               onComposition={() => void autoComposition.apply()}
               onColor={() => void autoColor.apply()}
             />
-          ) : activeTool === 'creative' ? (
-            <WorkspaceCreativePanel onSelect={onOpenCreative} />
           ) : activeTool === 'filter' ? (
             <FilterPanel
               restoreLutId={edit.pipeline.logRestore.activeId}

@@ -19,8 +19,6 @@
   justify-content: flex-end;
 }
 
-.workspace-preview-quality { width: 76px; min-width: 76px; }
-
 .workspace-toolbar-left,
 .workspace-toolbar-actions {
   align-self: center;

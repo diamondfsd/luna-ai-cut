@@ -17,6 +17,15 @@ function toLocalPath(path: string): string {
   return decodeURI(path.slice(7))
 }
 
+/** 与多层预览的解码源复用规则保持一致。 */
+export function compositionSourceKey(layer: PreviewLayer): string {
+  const path = toLocalPath(layer.filePath)
+  if (!layer.isVideo) return `image_${path}`
+  return layer.videoSourceKey
+    ? `shared_${layer.videoSourceKey}_${path}`
+    : `v_${path}_${layer.videoTime ?? 0}`
+}
+
 export function buildCompositionFromPreviewLayers(
   layers: PreviewLayer[],
   width?: number,
@@ -49,6 +58,7 @@ export function buildCompositionFromPreviewLayers(
       source: {
         path: toLocalPath(layer.filePath),
         sourceType: layerSourceType(layer),
+        key: compositionSourceKey(layer),
         time: layer.isVideo
           ? {
               start: layer.videoTime ?? 0,
@@ -64,12 +74,18 @@ export function buildCompositionFromPreviewLayers(
         w: layer.dstW,
         h: layer.dstH,
       },
-      sourceRect: {
-        x: layer.srcX,
-        y: layer.srcY,
-        w: layer.srcW,
-        h: layer.srcH,
-      },
+      sourceRect: (() => {
+        const crop = layer.transform?.crop
+        if (!crop) {
+          return { x: layer.srcX, y: layer.srcY, w: layer.srcW, h: layer.srcH }
+        }
+        return {
+          x: layer.srcX + layer.srcW * crop.x,
+          y: layer.srcY + layer.srcH * crop.y,
+          w: layer.srcW * crop.w,
+          h: layer.srcH * crop.h,
+        }
+      })(),
       fit: layer.fit ?? 'cover',
       opacity: layer.opacity ?? 1,
       blendMode: layer.blendMode,
@@ -79,6 +95,7 @@ export function buildCompositionFromPreviewLayers(
       reveal: layer.reveal,
       color: layer.color,
       maskPath: layer.maskPath ? toLocalPath(layer.maskPath) : undefined,
+      maskProjectId: layer.maskProjectId,
       maskOpacity: layer.maskOpacity,
       maskInverted: layer.maskInverted,
       maskFeather: layer.maskFeather,

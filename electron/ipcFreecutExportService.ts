@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { prepareDownloadDirectory } from './downloadDirectoryService'
 import { safeName } from './filePathUtils'
 import { getSettings } from './fileService'
+import { embedJpegSourceMetadata } from './exportSourceMetadata'
 
 const MAX_EXPORT_CHUNK_BYTES = 8 * 1024 * 1024
 
@@ -178,5 +179,15 @@ export function register(): void {
     writers.delete(writerId)
     await writer.tail.catch(() => undefined)
     await rm(writer.temporaryPath, { force: true }).catch(() => undefined)
+  })
+
+  ipcMain.handle('freecut-export:embed-jpeg-source-metadata', async (_event, outputPath: string, sourcePath: string) => {
+    if (typeof outputPath !== 'string' || typeof sourcePath !== 'string') throw new Error('图片来源信息无效')
+    const exportDirectory = await allowedExportDirectory(path.dirname(outputPath))
+    const resolvedOutputPath = path.resolve(outputPath)
+    if (path.dirname(resolvedOutputPath) !== path.resolve(exportDirectory)) {
+      throw new Error('导出文件路径无效')
+    }
+    return embedJpegSourceMetadata(resolvedOutputPath, sourcePath)
   })
 }
