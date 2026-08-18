@@ -85,7 +85,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let range = grade.range;
   var c = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0).rgb;
 
-  // Keep these operations close to the Rust color shader so the test page is
+  // Keep these operations close to the shared WebGPU color pipeline so the test page is
   // useful as a first approximation of the eventual WebGPU render path.
   c = c * exp2(tone.x);
   let bounded = clamp(c, vec3f(0.0), vec3f(1.0));

@@ -2,16 +2,16 @@
 
 ## 目标
 
-将工作台调色预览切换到 `src/components/PreviewStage.tsx`，并把调色、旋转、翻转、裁切等渲染参数作为 `PreviewLayer` 的一部分传入 Rust/wgpu 渲染核心统一处理。
+将工作台调色预览切换到 `src/components/PreviewStage.tsx`，并把调色、旋转、翻转、裁切等渲染参数作为 `PreviewLayer` 的一部分传入 WebGPU Composition renderer 统一处理。
 
-本次迁移不再使用当前 LUT 方案，也不在前端预烘焙调色结果。前端只负责把工作台的 `EditPipeline` 转换为 layer 上的结构化数据，实际像素处理、几何变换、裁切和合成都由 Rust/wgpu 完成。
+本次迁移不再使用当前 LUT 方案，也不在前端预烘焙调色结果。前端只负责把工作台的 `EditPipeline` 转换为 layer 上的结构化数据，实际像素处理、几何变换、裁切和合成都由 WebGPU renderer 完成。
 
 ## 核心原则
 
 1. 调色参数直接进入 layer。
 2. 旋转、翻转、裁切参数直接进入 layer。
 3. `PreviewStage` 只负责构建预览图层和布局，不负责调色算法、像素变换或裁切渲染。
-4. Rust/wgpu 作为唯一渲染执行层，预览和导出必须复用同一套 layer 输入。
+4. WebGPU renderer 作为唯一画面渲染执行层，预览和导出必须复用同一套 layer 输入。
 5. 主媒体 layer 默认带调色和 transform 参数，水印、贴纸等额外 layer 默认不继承主媒体调色和裁切。
 6. 不继续扩展 `bakeAndGetLut`、`colorLutKey`、WebGL LUT shader、WebGL transform shader 等旧链路。
 7. 编辑工作台旧渲染链路必须删除，不保留兼容入口。包括 `ImagePreview`、编辑侧 WebGL renderer、编辑侧 LUT 预烘焙链路和编辑侧 native canvas 过渡封装。
@@ -58,7 +58,7 @@ audio?: RenderLayerAudio
 keyframes?: RenderLayerKeyframe[]
 ```
 
-不允许把多视频布局逻辑写死在工作台页面或 PreviewStage 中。页面只负责生成 layer 列表，Rust/wgpu 负责按 layer 描述渲染。
+不允许把多视频布局逻辑写死在工作台页面或 PreviewStage 中。页面只负责生成 layer 列表，WebGPU renderer 负责按 layer 描述渲染。
 
 ## 数据结构
 
@@ -159,7 +159,7 @@ export interface PreviewLayer {
 
 ## 调色算法
 
-工作台调色算法参考 `/Users/zhouchao/projects/darktable/webgl-color-lab/src/colorEngine/shaders` 的模块顺序和核心公式，但不直接运行 GLSL。Rust/wgpu 使用 WGSL 重写并在同一个 layer shader 中执行：
+工作台调色算法参考 `/Users/zhouchao/projects/darktable/webgl-color-lab/src/colorEngine/shaders` 的模块顺序和核心公式，但不直接运行 GLSL。WebGPU 使用 WGSL 在同一个 layer shader 中执行：
 
 1. detail 采样：邻域 blur、detail、denoise、local contrast、sharpen。
 2. exposure：`(c - black) * exp2(exposure)`。
@@ -170,11 +170,11 @@ export interface PreviewLayer {
 7. curve：rgb、luminance、red、green、blue 五通道曲线。
 8. HSL：全局 hue 和目标色带 sat/lum。
 
-所有调色、裁切、旋转、缩放、翻转都在 Rust/wgpu 层完成。前端不再生成 LUT，也不再用 WebGL shader 预览编辑结果。
+所有调色、裁切、旋转、缩放、翻转都在 WebGPU 层完成。前端不再生成 LUT，也不再用 WebGL shader 预览编辑结果。
 
-WGSL 不使用运行时 include。Rust 侧通过 `include_str!` 和 `concat!` 在编译期拼接 shader 文件：
+WGSL 不使用运行时 include。WebGPU renderer 在构建管线时加载对应 shader 源码：
 
-```rust
+```typescript
 const SHADER: &str = concat!(
     include_str!("shaders/vertex.wgsl"),
     include_str!("shaders/params.wgsl"),
@@ -332,7 +332,7 @@ const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previ
 
 因此对比原图时，主媒体 layer 会收到默认调色参数。
 
-裁切编辑态使用 `edit.previewPipeline` / `edit.activeTransform` 中的 draft 数据。只要 `displayPipeline` 包含当前 draft，`PreviewStage` 就把 draft transform 放到主媒体 layer，Rust/wgpu 输出与最终导出保持一致。
+裁切编辑态使用 `edit.previewPipeline` / `edit.activeTransform` 中的 draft 数据。只要 `displayPipeline` 包含当前 draft，`PreviewStage` 就把 draft transform 放到主媒体 layer，WebGPU 预览输出与最终导出保持一致。
 
 ## IPC 和 Native Wrapper 改造
 
@@ -399,13 +399,13 @@ function normalizeTransform(transform?: Partial<RenderLayerTransform>): RenderLa
 }
 ```
 
-对于没有调色或 transform 的 layer，可传默认值，或在 Rust 层用 `Option` 判断。推荐在 Electron wrapper 层补齐默认值，Rust 层拿到稳定结构。
+对于没有调色或 transform 的 layer，可传默认值，或在 renderer 层用可选字段判断。推荐在 Composition renderer 入口补齐默认值，GPU 管线拿到稳定结构。
 
-## Rust/wgpu 改造
+## WebGPU Composition renderer 实现
 
-Rust 入参结构增加 `color` 和 `transform` 字段，与 TypeScript 的 `RenderColorAdjustments` / `RenderLayerTransform` 对齐。
+Composition renderer 入参结构增加 `color` 和 `transform` 字段，与 TypeScript 的 `RenderColorAdjustments` / `RenderLayerTransform` 对齐。
 
-wgpu 渲染阶段按 layer 处理：
+WebGPU 渲染阶段按 layer 处理：
 
 1. 根据该 layer 的 `transform` 计算源纹理 UV。
 2. 应用 `crop`，只采样裁切区域。
@@ -421,7 +421,7 @@ transform 执行语义：
 - `orientation` 表示 90 度方向旋转，用于左旋/右旋按钮。
 - `rotate` 表示用户微调旋转角度，单位为度。
 - `flipH` / `flipV` 在同一套源 UV 变换中处理。
-- 超出源图采样范围的区域由 Rust/wgpu 统一决定填充策略，默认使用透明或黑色背景，但预览和导出必须一致。
+- 超出源图采样范围的区域由 WebGPU 统一决定填充策略，默认使用透明或黑色背景，但预览和导出必须一致。
 
 第一批调色建议实现：
 
@@ -502,17 +502,17 @@ rg "ImagePreview|useCanvasEngine|useNativeCanvasEngine|workspace/renderer|bakeAn
 4. 扩展 `lunaRenderCore.ts` 的 normalize 逻辑。
 5. 确认预览和导出都传同一份 transform 数据。
 
-### 第四步：Rust/wgpu 实现基础 transform
+### 第四步：WebGPU 实现基础 transform
 
-1. Rust 输入 struct 增加调色字段。
-2. Rust 输入 struct 增加 transform 字段。
-3. wgpu shader 增加 per-layer transform 数据。
+1. TypeScript 输入类型增加调色字段。
+2. TypeScript 输入类型增加 transform 字段。
+3. WebGPU shader 增加 per-layer transform 数据。
 4. 实现 crop、orientation、rotate、flipH、flipV。
 5. 对齐预览和导出。
 
-### 第五步：Rust/wgpu 实现基础调色
+### 第五步：WebGPU 实现基础调色
 
-1. wgpu shader 增加基础调色 uniform/storage 数据。
+1. WebGPU shader 增加基础调色 uniform/storage 数据。
 2. 实现第一批基础调色参数。
 3. 对齐预览和导出。
 
@@ -544,7 +544,7 @@ pnpm run build:app
 2. 切换素材后预览刷新。
 3. 调色滑块改变后，主媒体 layer 的 `color` 字段变化。
 4. 裁切、90 度旋转、微调旋转、水平翻转、垂直翻转改变后，主媒体 layer 的 `transform` 字段变化。
-5. Rust/wgpu 输出产生对应视觉和几何变化。
+5. WebGPU 输出产生对应视觉和几何变化。
 6. 按住空格或点击“对比”时恢复默认调色和默认 transform。
 7. 图片、视频、Live Photo 至少不回退到 LUT 或 WebGL transform 链路。
 8. 导出和预览使用相同 layer 调色和 transform 数据。

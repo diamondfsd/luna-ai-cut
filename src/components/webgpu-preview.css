@@ -1,4 +1,4 @@
-.lrc-render-interactive {
+.webgpu-render-interactive {
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -6,6 +6,6 @@
   will-change: transform;
 }
 
-.lrc-render-interactive.is-dragging {
+.webgpu-render-interactive.is-dragging {
   cursor: grabbing;
 }

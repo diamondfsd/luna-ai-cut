@@ -174,50 +174,15 @@ git commit -m "fix: xxx"
 git push origin main
 ```
 
-推送热更新 tag 后，GitHub Actions 会从对应正式版 tag（例如 `v1.6.5`）开始检查原生相关文件。只要该版本线任意一次热更新修改过 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/lunaRenderCore.ts`，此后所有热更新都必须继续构建并发布三个平台包，保证跳过中间热更新的客户端也能获得最新原生模块。仅当整个版本线均无原生改动时，才跳过三端构建。
+推送热更新 tag 后，GitHub Actions 只构建并上传平台无关的 renderer ZIP。画面渲染和导出由 WebGPU 完成，Rust 侧仅保留随安装包发布的 AI/语音 worker，因此不再有 native compositor 热更新分支。
 
 > 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
 
-## 原生模块热更新
-
-修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。同一正式版本线只要出现过一次原生热更新，后续热更新也全部按此流程发布。推送 `hot/v*` tag 后，GitHub Actions 只构建 macOS ARM64、macOS x64 和 Windows x64 三个平台的原生模块 artifact；三端产物下载、热更新打包和 GitCode 上传均在本机完成，避免 GitHub runner 到 GitCode 的慢速链路。
-
-原生热更新不要运行 `build-hot-update.sh`，避免三平台包就绪前先发布不含原生模块的通用 ZIP。确定下一个 build 号并提交代码与发布说明后，直接推送 `main` 和 tag：
-
-```bash
-git push origin main
-git tag hot/v<版本号>-hot.<build号>
-git push origin hot/v<版本号>-hot.<build号>
-```
-
-手动触发 `Publish Hot Update` workflow 也始终按原生热更新处理。原生热更新必须等待该 workflow 的三平台任务全部成功，再执行以下本地发布步骤：
-
-```bash
-# 获取当前 tag 对应的成功运行 ID
-run_id="$(gh run list --workflow publish-hot-update.yml \
-  --branch hot/v<版本号>-hot.<build号> --limit 1 \
-  --json databaseId --jq '.[0].databaseId')"
-
-# 分别下载三个 artifact
-native_dir="$(mktemp -d /tmp/luna-hot-native.XXXXXX)"
-gh run download "$run_id" --name darwin-arm64 --dir "$native_dir/darwin-arm64"
-gh run download "$run_id" --name darwin-x64 --dir "$native_dir/darwin-x64"
-gh run download "$run_id" --name win32-x64 --dir "$native_dir/win32-x64"
-
-# 本地构建页面和主进程，生成并上传三端热更新包
-pnpm run build:app
-node scripts/publish-hot-update.mjs \
-  --version <版本号>-hot.<build号> \
-  --include-native \
-  --native-dir "$native_dir" \
-  --upload
-```
-
-`publish-hot-update.mjs` 会优先使用环境变量，未设置时自动读取 `scripts/deploy-release.conf`。上传完成后，确认 GitCode 已包含三个带平台后缀的 ZIP、清单和发布说明，再通知用户更新。
+`publish-hot-update.mjs` 会优先使用环境变量，未设置时自动读取 `scripts/deploy-release.conf`。上传完成后，确认 GitCode 已包含通用 ZIP、清单和发布说明，再通知用户更新。
 
 ### v1.7.0-hot.4 发布执行记录
 
-本次变更范围以 `v1.7.0..main` 为准。该范围修改了 `luna-render-core/src/`、渲染桥接和导出参数，因此必须发布原生热更新，不能运行 `./scripts/build-hot-update.sh` 提前上传通用包。
+本次记录属于旧版 native compositor 发布流程，仅保留历史说明；当前流程统一使用 WebGPU renderer 热更新。
 
 本次用户可见内容见 `RELEASE_NOTES_v1.7.0-hot.4.md`，主要包括：
 
@@ -243,28 +208,13 @@ git tag hot/v1.7.0-hot.4
 git push origin hot/v1.7.0-hot.4
 ```
 
-推送 tag 后，`Publish Hot Update` 工作流会检测到相对 `hot/v1.7.0-hot.3` 的 Rust 改动，并完成：
-
-1. 在 macOS runner 构建 `darwin-arm64` 原生模块。
-2. 在 macOS runner 交叉构建 `darwin-x64` 原生模块。
-3. 在 Windows runner 构建 `win32-x64` 原生模块及 DXC 运行文件。
-4. 将三个原生模块保存为 GitHub Actions artifact，不直接连接 GitCode。
-
-本机随后下载三个 artifact，执行 `pnpm run build:app`，再用 `publish-hot-update.mjs --include-native --upload` 生成并上传三个平台 ZIP、`renderer-1.7.0-hot.4.json` 和发布说明到 GitCode 的 `v1.7.0` Release。
-
-发布后必须确认 GitCode Release 至少新增以下文件：
+发布后确认 GitCode Release 至少新增以下文件：
 
 ```text
-renderer-1.7.0-hot.4-darwin-arm64.zip
-renderer-1.7.0-hot.4-darwin-x64.zip
-renderer-1.7.0-hot.4-win32-x64.zip
+renderer-1.7.0-hot.4.zip
 renderer-1.7.0-hot.4.json
 RELEASE_NOTES_v1.7.0-hot.4.md
 ```
-
-不要为本次版本上传 `renderer-1.7.0-hot.4.zip` 通用包。客户端会按当前平台优先选择最新的三端包。
-
-Intel Mac 由 Apple 芯片 runner 交叉编译。工作流会先下载并校验固定的 ONNX Runtime x64 构建，仅用于完成同一 Rust 包内辅助进程的链接；热更新归档仍只收集不依赖 ONNX Runtime 的 `luna-render-core.node`，不会重复下发安装包已有的辅助进程和运行库。
 
 ## 旧版发布说明归档
 

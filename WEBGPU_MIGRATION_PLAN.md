@@ -150,7 +150,7 @@ Mediabunny/WebCodecs decode -> VideoFrame -> WebGPU render -> WebCodecs encode -
 
 当前第一阶段：满足能力矩阵的单视频图层通过 Worker + OffscreenCanvas + WebGPU Composition renderer 逐帧渲染，并由 Mediabunny/WebCodecs 编码为 H.264 MP4；支持源音频包复制、导出进度、取消、设备丢失和编码器不可用错误。导出文件仍由主线程通过受限分块写入器落盘，不在 React 主线程逐帧执行长时间导出。
 
-当前第二阶段：导出协议已支持全部图片/视频源；多个视频图层按合成时间读取对应帧，静态图片图层通过 Worker 内的 `ImageBitmap` 加载并参与 WebGPU 合成，支持图层的起始时间、偏移和持续时长。文字和形状仍因依赖 DOM 栅格化而不进入 Worker 导出能力矩阵。WebGPU 导出路径失败时不回退到 Rust/wgpu。
+当前第二阶段：导出协议已支持全部图片/视频源；多个视频图层按合成时间读取对应帧，静态图片图层通过 Worker 内的 `ImageBitmap` 加载并参与 WebGPU 合成，支持图层的起始时间、偏移和持续时长。文字和形状由 Worker 内的 `OffscreenCanvas` 栅格化后参与 WebGPU 合成。WebGPU 导出路径失败时不回退到 Rust 渲染器。
 
 当前补充：视频输出改为 fragmented MP4 分片流式写入主进程临时文件，Worker 与文件写入器之间使用 ACK 背压和取消边界；音频包按主视频图层的起始时间、偏移和合成时长裁剪后复制。这样不会再把完整输出文件积存在 Worker 的 `ArrayBuffer` 中。
 
@@ -168,9 +168,9 @@ WebGPU 工作台预览稳定后，移除旧的原生预览组件、session、mac
 
 ### M11：删除 Rust/wgpu
 
-状态：待开始
+状态：已完成
 
-确认所有画面渲染路径完成切换后，删除：
+所有画面渲染路径已完成切换，已删除：
 
 - `luna-render-core` 的 `wgpu` 依赖和 lockfile 依赖
 - compositor 及其 GPU texture、LUT、mask、preview、render 模块
@@ -179,7 +179,7 @@ WebGPU 工作台预览稳定后，移除旧的原生预览组件、session、mac
 
 保留仍被 AI、ONNX、inpaint 或其他原生功能使用的 Rust 模块。
 
-验收：代码、构建脚本、测试和文档扫描不再存在可执行的 Rust/wgpu 画面渲染路径。
+验收：Rust crate、构建脚本、测试和发布配置不再包含可执行的 Rust/wgpu 画面渲染路径；AI/ONNX/语音 worker 仍保留并可独立构建。
 
 ## 每阶段通用质量门
 
@@ -214,7 +214,7 @@ WebGPU 工作台预览稳定后，移除旧的原生预览组件、session、mac
 - [x] M9 稳定性：分片流式输出、音频时间裁剪和取消背压
 - [ ] 继续 M9：非 AAC 音频重编码、长视频内存和 4K 压测
 - [x] M10：删除原生预览 surface、session、位置同步和 Electron IPC；Pixel Flow 预览接入 WebGPU
-- [ ] M11：删除 Rust/wgpu 画面渲染路径
+- [x] M11：删除 Rust/wgpu 画面渲染路径
 
 ## 当前验证记录
 
@@ -232,9 +232,10 @@ WebGPU 工作台预览稳定后，移除旧的原生预览组件、session、mac
 - Electron Playwright 真实工作台已验证单视频图层通过 WebGPU Worker 导出非空 MP4，并由 FFmpeg 成功解码首帧；测试显式关闭水印以保持 M9 第一阶段的单层能力边界
 - Electron Playwright 真实工作台已验证视频与静态水印图层通过 WebGPU Worker 导出非空 MP4，并由 FFmpeg 成功解码首帧；同时确认默认 WebGPU 预览和图片导出路径正常
 - `git diff --check`
+- `cargo check --release`（`luna-render-core` AI/语音 worker）
 
 当前待验证：
 
 - 在隔离的 Electron 用户数据目录中，用真实工作台项目验证完整调色预览、图片导出和视频预览的画面一致性。
 - 在 macOS Apple Silicon、macOS Intel、Windows Intel/NVIDIA/AMD 上分别运行 M0 诊断页，收集设备矩阵和性能快照；当前 `pnpm dev` 已能启动迁移工作区的 Electron 窗口，5173 被占用时会自动使用下一个端口。
-- 在隔离的真实工作台项目中验收调色、蒙版、相框文字/形状、图片导出和视频预览；M10 前不删除原生预览或 Rust/wgpu。
+- 在隔离的真实工作台项目中继续验收调色、蒙版、相框文字/形状、图片导出和视频预览；Rust/wgpu 画面渲染路径已删除。

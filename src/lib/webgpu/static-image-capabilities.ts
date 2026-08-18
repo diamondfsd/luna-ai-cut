@@ -8,6 +8,7 @@ function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
     && layer.precomposeRole === 'output'
     && Boolean(layer.precomposeGroup)
   const isPixelStretchLayer = layer.layerType === 'pixel-stretch' && Boolean(layer.pixelStretch)
+  const isPixelFlowLayer = layer.layerType === 'pixel-flow' && Boolean(layer.pixelFlow)
   const isRasterizableLayer = layer.layerType === 'shape'
     || layer.layerType === 'text'
     || layer.layerType === 'logo'
@@ -17,7 +18,12 @@ function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
       || layer.filePath
       || typeof layer.content === 'string',
   )
-  return (!isMediaLayer && !isLocalColorInput && !isLocalColorOutput && !isPixelStretchLayer && !(isRasterizableLayer && hasContent))
+  return (!isMediaLayer
+    && !isLocalColorInput
+    && !isLocalColorOutput
+    && !isPixelStretchLayer
+    && !isPixelFlowLayer
+    && !(isRasterizableLayer && hasContent))
 }
 
 /**
@@ -36,14 +42,20 @@ export function canUseWebGpuStaticImageComposition(layers: PreviewLayer[]): bool
 
 export function canUseWebGpuVideoComposition(layers: PreviewLayer[]): boolean {
   return isWebGpuAvailable()
-    && layers.some((layer) => layer.isVideo)
+    && layers.length > 0
     && layers.every((layer) => !hasUnsupportedLayerData(layer))
 }
 
 function canUseWebGpuVideoExportLayer(layer: PreviewLayer): boolean {
   const layerType = layer.layerType ?? 'media'
-  if (layerType === 'media' || (layerType === 'local-color' && layer.precomposeRole === 'input')) return true
-  return (layerType === 'logo' || layerType === 'decoration') && Boolean(layer.filePath)
+  if (layerType === 'media'
+    || layerType === 'pixel-flow' && Boolean(layer.pixelFlow)
+    || layerType === 'pixel-stretch' && Boolean(layer.pixelStretch)
+    || layerType === 'local-color' && Boolean(layer.precomposeRole && layer.precomposeGroup)) return true
+  if (layerType === 'shape') return true
+  if (layerType === 'text') return typeof layer.content === 'string'
+  return (layerType === 'logo' || layerType === 'decoration')
+    && (Boolean(layer.filePath) || typeof layer.content === 'string')
 }
 
 /**
@@ -53,6 +65,6 @@ function canUseWebGpuVideoExportLayer(layer: PreviewLayer): boolean {
  */
 export function canUseWebGpuVideoExportComposition(layers: PreviewLayer[]): boolean {
   return isWebGpuAvailable()
-    && layers.some((layer) => layer.isVideo)
+    && layers.length > 0
     && layers.every((layer) => !hasUnsupportedLayerData(layer) && canUseWebGpuVideoExportLayer(layer))
 }

@@ -99,7 +99,7 @@ export function FilterItem({
     return () => observer.disconnect()
   }, [visible])
 
-  // 源缩略图就绪 → 调用 Rust 渲染带 LUT 的缩略图
+    // 源缩略图就绪 → 调用 WebGPU 渲染带 LUT 的缩略图
   useEffect(() => {
     const sourcePath = cacheFilePath || thumbnailRef.current
     if (!sourcePath || !filePath) {

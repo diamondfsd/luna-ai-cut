@@ -2,12 +2,12 @@ import { ArrowDown, ArrowLeft, ArrowUp, Download, Minus, Move, Plus, RotateCcw }
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
-import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
+import { WebGpuMultiLayerVideoPreview } from '../../../components/WebGpuMultiLayerVideoPreview'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../../../shared/types'
 import type { CompositionInput, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
-import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
+import { emitLocalExportProgress, exportPreviewVideo, resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
@@ -38,30 +38,6 @@ const DEFAULT_WATERMARK_STYLE = LUNA_WATERMARK_OPTIONS[0]?.value ?? 'luna_ultra_
 
 // 导出设置已迁移至 ExportSettingsPanel + 弹窗
 
-interface LunaCompositionExportApi {
-  exportCompositionVideo(
-    outputPath: string,
-    composition: CompositionInput,
-    fps: number | null,
-    duration: number | null,
-    hardware: boolean,
-    taskId?: string,
-    qualityPreset?: string,
-    exportTaskId?: string,
-    exportItemId?: string,
-    includeAudio?: boolean,
-  ): Promise<void>
-  exportCompositionImage(
-    outputPath: string,
-    composition: CompositionInput,
-    format: string,
-    quality: number,
-    exportTaskId?: string,
-    exportItemId?: string,
-  ): Promise<void>
-  getExportTaskProgress?(taskId: string): Promise<[number | bigint, number | bigint] | null>
-}
-
 type ExportFormat = 'video' | 'live' | 'appleLive'
 
 const isMac = window.navigator.platform.includes('Mac')
@@ -75,10 +51,6 @@ const EXPORT_FORMATS: Array<{ key: ExportFormat; label: string }> = [
 
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 /** 每格视频底部 Logo 宽度（占画布宽比例） */
@@ -166,12 +138,6 @@ function buildTripleStitchComposition(
     },
     layers: [...mediaLayers, ...logoLayers],
   }
-}
-
-function compositionApi(): LunaCompositionExportApi {
-  const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
-  if (!api) throw new Error('渲染引擎未初始化')
-  return api
 }
 
 export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
@@ -331,6 +297,15 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
 
     return [...mediaLayers, ...logoLayers]
   }, [slotSources, slotEdits, watermarkInfo, previewPlayback.seekTime])
+  const exportLayers = useMemo(() => previewLayers.map((layer, index) => {
+    if (!layer.isVideo || index >= slotSources.length) return layer
+    return {
+      ...layer,
+      videoTime: slotEdits[index]?.startTime ?? 0,
+      videoOffset: 0,
+      videoDuration: EXPORT_DURATION,
+    }
+  }), [previewLayers, slotEdits, slotSources.length])
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
   const activeSource = slotSources[activeSlot]
   const activeDuration = activeSource?.duration
@@ -540,21 +515,9 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       const stamp = Date.now()
       const baseName = `triple-stitch-${stamp}`
       const videoFileName = `${baseName}.mp4`
-      const videoPath = outputPath(exportDir, videoFileName)
+      let videoPath = outputPath(exportDir, videoFileName)
 
       const resolved = resolveExportConfig(config, CANVAS_WIDTH, CANVAS_HEIGHT)
-      const scaledComposition: CompositionInput = {
-        ...composition,
-        canvas: {
-          ...composition.canvas,
-          width: resolved.width,
-          height: resolved.height,
-          fps: resolved.fps ?? composition.canvas.fps,
-        },
-      }
-
-      const api = compositionApi()
-
       const videoTaskId = `triple_stitch_video_${stamp}`
 
       // 子任务列表：只展示用户勾选的格式，中间视频不暴露
@@ -598,40 +561,27 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       // Step 1: 导出视频（用户选了视频 → 展示进度；仅作为 Live 中间素材 → 静默渲染）
       const videoReportTaskId = exportFormats.has('video') ? task.id : undefined
       const videoReportItemId = exportFormats.has('video') ? videoTaskId : undefined
-      let stopLiveProgress = false
-      const liveProgressWatcher = liveItemIds.length > 0 ? (async () => {
-        await reportLiveProgress(1)
-        let lastProgress = 1
-        while (!stopLiveProgress) {
-          const progress = await api.getExportTaskProgress?.(videoTaskId).catch(() => null)
-          if (progress) {
-            const currentFrame = Number(progress[0])
-            const totalFrames = Number(progress[1])
-            if (totalFrames > 0) {
-              const nextProgress = Math.max(1, Math.min(60, Math.floor((currentFrame / totalFrames) * 60)))
-              if (nextProgress > lastProgress) {
-                lastProgress = nextProgress
-                await reportLiveProgress(nextProgress)
-              }
-            }
+      await reportLiveProgress(1)
+      const renderedVideo = await exportPreviewVideo({
+        exportDir,
+        fileName: videoFileName,
+        width: resolved.width,
+        height: resolved.height,
+        layers: exportLayers,
+        qualityPreset: resolved.qualityPreset,
+        fps: resolved.fps,
+        duration: EXPORT_DURATION,
+        includeAudio: resolved.includeAudio,
+        exportTaskId: videoReportTaskId,
+        exportItemId: videoReportItemId,
+        taskName: '三拼创意导出',
+        onProgress: async (progress) => {
+          if (liveItemIds.length > 0) {
+            await reportLiveProgress(Math.max(1, Math.min(60, Math.floor(progress * 0.6))))
           }
-          await wait(300)
-        }
-      })() : null
-      try {
-        await api.exportCompositionVideo(
-          videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
-          true,
-          videoTaskId,
-          resolved.qualityPreset,
-          videoReportTaskId,
-          videoReportItemId,
-          resolved.includeAudio,
-        )
-      } finally {
-        stopLiveProgress = true
-        await liveProgressWatcher?.catch(() => {})
-      }
+        },
+      })
+      videoPath = renderedVideo.path
       if (liveItemIds.length > 0) await reportLiveProgress(60)
 
       // Live 与 Apple Live 共享同一个视频和同一张封面，缓存文件在封装后继续保留。
@@ -703,7 +653,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       </header>
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board ui-video-controls-host">
-          <MultipleLayerVideoPreviewLrcRender
+          <WebGpuMultiLayerVideoPreview
             className="triple-stitch-canvas"
             layers={previewLayers}
             canvasWidth={CANVAS_WIDTH}

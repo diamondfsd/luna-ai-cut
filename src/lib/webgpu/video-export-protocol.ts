@@ -9,10 +9,25 @@ export interface WebGpuVideoExportSourceMessage {
   fileName: string
 }
 
+export interface WebGpuVideoExportLutMessage {
+  path: string
+  text: string
+}
+
+export interface WebGpuVideoExportMaskMessage {
+  projectId: string
+  path: string
+  width: number
+  height: number
+  bytes: ArrayBuffer
+}
+
 export interface WebGpuVideoExportStartMessage {
   type: 'start'
   composition: CompositionInput
   sources: WebGpuVideoExportSourceMessage[]
+  luts: WebGpuVideoExportLutMessage[]
+  masks: WebGpuVideoExportMaskMessage[]
   width: number
   height: number
   fps: number | null

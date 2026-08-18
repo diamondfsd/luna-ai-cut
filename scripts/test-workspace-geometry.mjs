@@ -11,7 +11,6 @@ const pixelStretchStateSource = await readFile(new URL('../src/workspace/creativ
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
 const videoOutputMarkersSource = await readFile(new URL('../src/workspace/trim/videoOutputMarkers.ts', import.meta.url), 'utf8')
 const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
-const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
   module: ts.ModuleKind.ES2020,
   target: ts.ScriptTarget.ES2020,
@@ -231,7 +230,7 @@ close(geometry.frameAspect(sourceAspect, 0) * resized.w / resized.h, 1, 'locked 
 assert.equal(geometry.isCropInsideImage(resized, sourceAspect, 0, 0), true)
 
 const rotatedPoint = geometry.framePointToSourceUv({ x: 0.25, y: 0.5 }, sourceAspect, 0, 30)
-assert.ok(rotatedPoint.y > 0.5, 'CPU rotation matches shader inverse rotation direction')
+assert.ok(rotatedPoint.y > 0.5, 'rotation matches the WebGPU inverse source transform')
 
 const sourcePoint = { x: 0.18, y: 0.72 }
 const framePoint = geometry.sourceUvToFramePoint(sourcePoint, sourceAspect, 90, -12.5)
@@ -243,16 +242,6 @@ const rect = geometry.containRect(1000, 1000, 16 / 9)
 close(rect.width, 1000, 'contain rect width')
 close(rect.height, 562.5, 'contain rect height')
 close(rect.y, 218.75, 'contain rect vertical center')
-
-assert.match(
-  shaderSource,
-  /radians_value\s*=\s*\(params\.orientation\s*\+\s*params\.rotate\)/,
-  'WGSL must combine orientation and fine rotation before inverse source sampling',
-)
-assert.match(shaderSource, /centered\.x\s*\*\s*c\s*\+\s*centered\.y\s*\*\s*s/, 'WGSL x rotation must match CPU inverse transform')
-assert.match(shaderSource, /-centered\.x\s*\*\s*s\s*\+\s*centered\.y\s*\*\s*c/, 'WGSL y rotation must match CPU inverse transform')
-assert.match(shaderSource, /if\s*\(params\.flip_h\s*>\s*0\.5\)[\s\S]*?centered\.x\s*=\s*-centered\.x/, 'WGSL must apply horizontal flip in source space')
-assert.match(shaderSource, /if\s*\(params\.flip_v\s*>\s*0\.5\)[\s\S]*?centered\.y\s*=\s*-centered\.y/, 'WGSL must apply vertical flip in source space')
 
 const mask = new Uint8Array([
   0, 0, 0, 0,
@@ -316,7 +305,6 @@ for (const shape of ['arc', 'cape', 's-curve']) {
   close(incoming.x * outgoing.y - incoming.y * outgoing.x, 0, `${shape} keeps a smooth tangent at the curve join`)
   assert.ok(incoming.x * outgoing.x + incoming.y * outgoing.y > 0, `${shape} does not reverse direction at the curve join`)
 }
-assert.match(shaderSource, /cubic_flow_path_derivative\(best_t\)/, 'pixel stretch uses the analytic curve tangent instead of segmented samples')
 const customFlowPoints = Array.from({ length: 7 }, (_, index) => ({ x: index / 10, y: index / 20 }))
 assert.equal(pixelStretchPath.buildPixelStretchFlowPath({ shape: 'custom', preset: 'right', length: 70, curve: 60, aspect: 1, bounds: flowBounds, customPoints: customFlowPoints }), customFlowPoints, 'custom flow keeps the edited points')
 const horizontalLayers = pixelStretch.buildPixelStretchLayers({

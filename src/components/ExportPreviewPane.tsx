@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { PreviewLayer, VideoExportSettings } from '../shared/types'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
-import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
+import { WebGpuMultiLayerVideoPreview } from './WebGpuMultiLayerVideoPreview'
 import './ExportPreviewPane.css'
 
 const LIVE_DURATION = 3
@@ -161,7 +161,7 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
         <span>{formatTime(exportStart)} – {formatTime(exportEnd)}</span>
       </div>
       <div className="export-preview-frame">
-        <MultipleLayerVideoPreviewLrcRender
+        <WebGpuMultiLayerVideoPreview
           className="export-preview-canvas"
           layers={previewLayers}
           canvasWidth={source.outputSize.width}

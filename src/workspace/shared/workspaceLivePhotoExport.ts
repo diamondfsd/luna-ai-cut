@@ -157,7 +157,13 @@ export async function queueWorkspaceFormatsExport(
           fps: resolved.fps,
           qualityPreset: resolved.qualityPreset ?? 'high',
           includeAudio: resolved.includeAudio,
-          renderTaskId: `workspace_live_render_${stamp}`,
+          shouldCancel: async () => {
+            const latestTask = await window.luna.exportTask.get(task.id)
+            return liveFormats.every((format) => {
+              const item = items.find((candidate) => candidate.format === format)
+              return Boolean(item && latestTask?.items.find((candidate) => candidate.id === item.id)?.status === 'canceled')
+            })
+          },
           onProgress: async (videoPercent) => {
             const totalPercent = Math.min(89, Math.max(1, Math.round(videoPercent * 0.9)))
             await Promise.all(liveFormats.map((format) => report(format, totalPercent, 'exporting')))

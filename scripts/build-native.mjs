@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 自动构建 Rust Native Core，支持交叉编译
+ * 自动构建 Rust AI/语音 worker，支持交叉编译
  *
  * 默认构建当前主机平台。要交叉编译，设置 CROSS_TARGET：
  *
@@ -15,7 +15,6 @@ import { chmodSync, copyFileSync, existsSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
-import { prepareDxcRuntime } from './prepare-dxc.mjs'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
@@ -37,14 +36,6 @@ const targetArch = targetLower.includes('aarch64')
       ? 'x64'
       : process.arch
 
-const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
-const prefix = isWin ? '' : 'lib'
-const libName = `${prefix}luna_render_core${ext}`
-
-if (isWin) {
-  await prepareDxcRuntime({ rootDir: root, outputDir: rcDir, arch: targetArch })
-}
-
 function prepareMacArtifact(filePath, onnxRuntimePolicy) {
   if (!isMac || process.platform !== 'darwin') return
 
@@ -60,7 +51,7 @@ function prepareMacArtifact(filePath, onnxRuntimePolicy) {
     process.exit(1)
   }
   if (onnxRuntimePolicy === 'forbidden' && linksOnnxRuntime) {
-    console.error(`[build-native] ❌ render core must not link ONNX Runtime: ${filePath}`)
+    console.error(`[build-native] ❌ worker must not link ONNX Runtime: ${filePath}`)
     process.exit(1)
   }
 
@@ -159,7 +150,7 @@ const rustcBin = cargoBin !== 'cargo'
 // ── cargo build ──
 const buildArgs = target ? ['build', '--release', '--target', target] : ['build', '--release']
 
-console.log('[build-native] cargo build...', cargoBin, buildArgs.join(' '))
+console.log('[build-native] cargo build worker binaries...', cargoBin, buildArgs.join(' '))
 const build = spawnSync(cargoBin, buildArgs, {
   cwd: rcDir,
   stdio: 'inherit',
@@ -224,16 +215,6 @@ for (const runtimeDir of runtimeDirs) {
     console.log('[build-native] ✅', runtimeDest)
   }
 }
-
-// ── 复制原生产物 ──
-const src = target
-  ? join(rcDir, 'target', target, 'release', libName)
-  : join(rcDir, 'target', 'release', libName)
-
-const dest = join(rcDir, 'luna-render-core.node')
-copyFileSync(src, dest)
-prepareMacArtifact(dest, 'forbidden')
-console.log('[build-native] ✅', dest)
 
 for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker']) {
   const workerName = isWin ? `${baseName}.exe` : baseName

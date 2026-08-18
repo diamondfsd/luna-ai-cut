@@ -2,17 +2,19 @@ import type { CompositionLayer } from '../../shared/types'
 import { filePathToPreviewUrl } from '../fileUtils'
 
 export interface WebGpuRasterizedLayer {
-  canvas: HTMLCanvasElement
+  canvas: HTMLCanvasElement | OffscreenCanvas
   width: number
   height: number
 }
+
+type RasterContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
 function finiteNumber(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
 function roundedRect(
-  context: CanvasRenderingContext2D,
+  context: RasterContext,
   x: number,
   y: number,
   width: number,
@@ -33,7 +35,7 @@ function roundedRect(
 }
 
 function drawShape(
-  context: CanvasRenderingContext2D,
+  context: RasterContext,
   layer: CompositionLayer,
   width: number,
   height: number,
@@ -68,7 +70,7 @@ function drawShape(
 }
 
 function wrapText(
-  context: CanvasRenderingContext2D,
+  context: RasterContext,
   text: string,
   maxWidth: number,
 ): string[] {
@@ -94,7 +96,7 @@ function wrapText(
 }
 
 function drawText(
-  context: CanvasRenderingContext2D,
+  context: RasterContext,
   layer: CompositionLayer,
   width: number,
   height: number,
@@ -130,7 +132,10 @@ function drawText(
 const loadedFonts = new Map<string, Promise<void>>()
 
 async function loadLayerFont(layer: CompositionLayer): Promise<void> {
-  if (!layer.fontFile || typeof FontFace === 'undefined' || !document.fonts) return
+  const fontSet = typeof document !== 'undefined'
+    ? document.fonts
+    : (globalThis as typeof globalThis & { fonts?: FontFaceSet }).fonts
+  if (!layer.fontFile || typeof FontFace === 'undefined' || !fontSet) return
   const family = layer.fontFamily?.trim()
   if (!family) return
   const fontUrl = filePathToPreviewUrl(layer.fontFile) ?? layer.fontFile
@@ -147,7 +152,7 @@ async function loadLayerFont(layer: CompositionLayer): Promise<void> {
         weight: String(Math.max(100, Math.min(900, Math.round(finiteNumber(layer.fontWeight, 400))))),
       })
       await font.load()
-      document.fonts.add(font)
+      fontSet.add(font)
     } catch {
       // The browser or platform font loader may reject local resource URLs.
       // Canvas will use the declared family or its fallback in that case.
@@ -165,10 +170,12 @@ export async function rasterizeWebGpuLayer(
 ): Promise<WebGpuRasterizedLayer> {
   const width = Math.max(1, Math.round(Math.abs(layer.rect.w) * canvasWidth))
   const height = Math.max(1, Math.round(Math.abs(layer.rect.h) * canvasHeight))
-  const canvas = document.createElement('canvas')
+  const canvas = typeof document !== 'undefined'
+    ? document.createElement('canvas')
+    : new OffscreenCanvas(width, height)
   canvas.width = width
   canvas.height = height
-  const context = canvas.getContext('2d')
+  const context = canvas.getContext('2d') as RasterContext | null
   if (!context) throw new Error('无法创建图层绘制画布')
 
   context.clearRect(0, 0, width, height)

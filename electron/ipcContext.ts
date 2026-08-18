@@ -12,7 +12,6 @@ export interface IpcContext {
   activeDownloadControllers: Set<AbortController>
   activeExportControllers: Map<string, AbortController>
   activeExportEncoders: Map<string, ChildProcessWithoutNullStreams>
-  activeNativeExportTasks: Set<string>
   previewCacheTasks: Map<string, Promise<boolean>>
   videoFrameRateTasks: Map<string, Promise<number | null>>
   enqueuePreviewTask: <T>(run: () => Promise<T>, priority?: number) => Promise<T>

@@ -244,7 +244,6 @@ export interface LunaApi {
   cancelDownloads(): Promise<void>
   exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
-  cancelExportTask(taskId: string): Promise<void>
   getExportTasks(): Promise<ExportTaskRecord[]>
   getExportTask(taskId: string): Promise<ExportTaskRecord | null>
   clearExportTasks(): Promise<void>

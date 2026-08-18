@@ -7,7 +7,7 @@ import { readWebGpuLut } from '../lib/webgpu/lut-source'
 import { loadWebGpuMask } from '../lib/webgpu/mask-source'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
-import './LrcRender.css'
+import './webgpu-preview.css'
 
 interface WebGpuStaticImagePreviewProps {
   layers: PreviewLayer[]

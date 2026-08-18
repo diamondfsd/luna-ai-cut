@@ -1,4 +1,4 @@
-import type { CompositionInput, PreviewLayer } from '../shared/types'
+import type { PreviewLayer } from '../shared/types'
 import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import type { ImageExportFormat, VideoExportSettings, VideoResolution, VideoFrameRate, VideoQuality } from '../shared/types'
 import { buildLayers } from './PreviewStage'
@@ -12,37 +12,6 @@ import { exportVideoWithWebGpuWorker } from '../lib/webgpu/video-export'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
-const EXPORT_STATUS_POLL_MS = 1000
-
-interface LunaRenderCoreApi {
-  exportCompositionVideo(
-    outputPath: string,
-    composition: CompositionInput,
-    fps: number | null,
-    duration: number | null,
-    hardware: boolean,
-    taskId?: string,
-    qualityPreset?: string,
-    exportTaskId?: string,
-    exportItemId?: string,
-    includeAudio?: boolean,
-  ): Promise<void>
-  exportCompositionImage(
-    outputPath: string,
-    composition: CompositionInput,
-    format: string,
-    quality: number,
-    exportTaskId?: string,
-    exportItemId?: string,
-  ): Promise<void>
-}
-
-function lrc(): LunaRenderCoreApi {
-  const api = (window as unknown as { lunaRenderCore?: LunaRenderCoreApi }).lunaRenderCore
-  if (!api) throw new Error('渲染引擎未初始化')
-  return api
-}
-
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
 }
@@ -143,7 +112,7 @@ export function resolveExportResolution(
   }
 }
 
-/** 根据帧率预设解析数值，'original' 返回 null（由 Rust 决定） */
+/** 根据帧率预设解析数值，'original' 返回 null（由源视频确定） */
 export function resolveExportFps(frameRate: VideoFrameRate): number | null {
   if (frameRate === 'original' || frameRate === undefined) return null
   const num = parseFloat(frameRate as string)
@@ -151,9 +120,9 @@ export function resolveExportFps(frameRate: VideoFrameRate): number | null {
 }
 
 /**
- * 根据质量预设映射到 Rust QualityPreset 字符串
+ * 根据质量预设映射到 WebGPU 视频编码器使用的质量字符串
  *
- * Rust 侧定义:
+ * WebGPU worker 侧定义:
  * - 'small'       → ~12 Mbps
  * - 'standard'    → ~24 Mbps
  * - 'high'        → ~50 Mbps
@@ -170,7 +139,7 @@ export function resolveExportQualityPreset(
     case 'high': return 'high'
     case 'custom':
       if (customBitrate && customBitrate > 0) {
-        // mbps → kbps，发给 Rust 的 "custom:50000k" 格式
+        // mbps → kbps，传给 WebGPU worker 的 "custom:50000k" 格式
         return `custom:${customBitrate * 1000}k`
       }
       return 'original-like'
@@ -179,7 +148,7 @@ export function resolveExportQualityPreset(
 }
 
 /**
- * 将 UI 导出配置统一解析为 Rust 导出参数
+ * 将 UI 导出配置统一解析为 WebGPU 导出参数
  */
 export function resolveExportConfig(
   config: VideoExportSettings | undefined | null,
@@ -244,10 +213,6 @@ export function emitLocalExportProgress(progress: {
   backend?: 'webgpu'
 }): void {
   window.dispatchEvent(new CustomEvent('luna:export-progress-local', { detail: progress }))
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 export async function exportPreviewImage(params: {
@@ -324,9 +289,7 @@ export async function exportPreviewImage(params: {
     }
     return result
   }
-  // 复杂图层会在对应 WebGPU 阶段完成后接入；这里不是 WebGPU 失败回退。
-  await lrc().exportCompositionImage(path, composition, params.format, params.quality, params.exportTaskId, params.exportItemId)
-  return { path, name: params.fileName }
+  throw new Error('当前图层包含暂不支持的图片导出内容')
 }
 
 export async function exportPreviewVideo(params: {
@@ -340,6 +303,8 @@ export async function exportPreviewVideo(params: {
   fps?: number | null
   /** 是否保留源视频中的音频。 */
   includeAudio?: boolean
+  /** 静态图层生成视频时使用的合成时长。 */
+  duration?: number | null
   /** 导出任务 ID（写入任务记录） */
   exportTaskId?: string
   /** 子任务 ID */
@@ -347,11 +312,11 @@ export async function exportPreviewVideo(params: {
   taskName?: string
   index?: number
   totalFiles?: number
-  /** 仅用于读取原生逐帧进度，不会额外创建导出记录。 */
-  renderTaskId?: string
+  /** 没有导出子任务时，由调用方提供临时任务的取消检查。 */
+  shouldCancel?: () => Promise<boolean>
   onProgress?: (percent: number) => void | Promise<void>
 }): Promise<{ path: string; name: string }> {
-  if (!params.layers.some((layer) => layer.isVideo)) throw new Error('未找到视频图层')
+  if (params.layers.length === 0) throw new Error('未找到可导出的图层')
 
   const path = outputPath(params.exportDir, params.fileName)
   const taskId = params.exportTaskId
@@ -359,36 +324,38 @@ export async function exportPreviewVideo(params: {
   const taskName = params.taskName ?? '导出任务'
   const index = params.index ?? 0
   const totalFiles = params.totalFiles ?? 1
-  const renderTaskId = params.renderTaskId ?? itemId
-  if (canUseWebGpuVideoExportComposition(params.layers)) {
-    let webGpuWriterId: string | null = null
-    let destinationPath = path
-    try {
-      const composition = buildCompositionFromPreviewLayers(
-        params.layers,
-        params.width,
-        params.height,
-        { fps: params.fps ?? undefined },
-      )
-      const opened = await window.luna.freecutExport.openWriter(params.exportDir, params.fileName)
-      webGpuWriterId = opened.writerId
-      destinationPath = opened.filePath
-      if (taskId && itemId) {
-        await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: 0 }).catch(() => {})
-        emitLocalExportProgress({
-          exportId: itemId,
-          taskId,
-          taskName,
-          fileName: params.fileName,
-          index,
-          totalFiles,
-          percent: 0,
-          status: 'exporting',
-          destinationPath,
-          backend: 'webgpu',
-        })
-      }
-      await exportVideoWithWebGpuWorker({
+  if (!canUseWebGpuVideoExportComposition(params.layers)) {
+    throw new Error('当前图层包含暂不支持的视频导出内容')
+  }
+
+  let webGpuWriterId: string | null = null
+  let destinationPath = path
+  try {
+    const composition = buildCompositionFromPreviewLayers(
+      params.layers,
+      params.width,
+      params.height,
+      { fps: params.fps ?? undefined, duration: params.duration },
+    )
+    const opened = await window.luna.freecutExport.openWriter(params.exportDir, params.fileName)
+    webGpuWriterId = opened.writerId
+    destinationPath = opened.filePath
+    if (taskId && itemId) {
+      await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: 0 }).catch(() => {})
+      emitLocalExportProgress({
+        exportId: itemId,
+        taskId,
+        taskName,
+        fileName: params.fileName,
+        index,
+        totalFiles,
+        percent: 0,
+        status: 'exporting',
+        destinationPath,
+        backend: 'webgpu',
+      })
+    }
+    await exportVideoWithWebGpuWorker({
         composition,
         width: params.width,
         height: params.height,
@@ -397,6 +364,7 @@ export async function exportPreviewVideo(params: {
         includeAudio: params.includeAudio !== false,
         exportTaskId: taskId,
         exportItemId: itemId,
+        shouldCancel: params.shouldCancel,
         onChunk: async (data) => {
           await ensureExportActive(taskId, itemId)
           const bytes = new Uint8Array(data)
@@ -428,125 +396,60 @@ export async function exportPreviewVideo(params: {
             })
           }
         },
+    })
+    await ensureExportActive(taskId, itemId)
+    const closed = await window.luna.freecutExport.closeWriter(opened.writerId)
+    webGpuWriterId = null
+    const written = { path: closed.filePath, name: closed.fileName }
+    await ensureExportActive(taskId, itemId)
+    if (taskId && itemId) {
+      await window.luna.exportTask.updateItem(taskId, itemId, {
+        status: 'done',
+        progress: 100,
+        destinationPath: written.path,
+      }).catch(() => {})
+      emitLocalExportProgress({
+        exportId: itemId,
+        taskId,
+        taskName,
+        fileName: written.name,
+        index,
+        totalFiles,
+        percent: 100,
+        status: 'done',
+        destinationPath: written.path,
+        backend: 'webgpu',
       })
-      await ensureExportActive(taskId, itemId)
-      const closed = await window.luna.freecutExport.closeWriter(opened.writerId)
-      webGpuWriterId = null
-      const written = { path: closed.filePath, name: closed.fileName }
-      await ensureExportActive(taskId, itemId)
-      if (taskId && itemId) {
-        await window.luna.exportTask.updateItem(taskId, itemId, {
-          status: 'done',
-          progress: 100,
-          destinationPath: written.path,
-        }).catch(() => {})
-        emitLocalExportProgress({
-          exportId: itemId,
-          taskId,
-          taskName,
-          fileName: written.name,
-          index,
-          totalFiles,
-          percent: 100,
-          status: 'done',
-          destinationPath: written.path,
-          backend: 'webgpu',
-        })
-      }
-      return written
-    } catch (error) {
-      if (webGpuWriterId) {
-        await window.luna.freecutExport.abortWriter(webGpuWriterId).catch(() => {})
-        webGpuWriterId = null
-      }
-      const message = error instanceof Error ? error.message : String(error)
-      const canceled = message === '视频导出已取消' || (error instanceof Error && error.name === 'AbortError')
-      if (taskId && itemId) {
-        await window.luna.exportTask.updateItem(taskId, itemId, {
-          status: canceled ? 'canceled' : 'failed',
-          error: message,
-        }).catch(() => {})
-        emitLocalExportProgress({
-          exportId: itemId,
-          taskId,
-          taskName,
-          fileName: params.fileName,
-          index,
-          totalFiles,
-          percent: 100,
-          status: canceled ? 'canceled' : 'failed',
-          destinationPath,
-          error: message,
-          backend: 'webgpu',
-        })
-      }
-      throw error
     }
-  }
-  const emitVideoProgress = (percent: number, status: 'exporting' | 'done' | 'failed', error?: string) => {
-    if (!taskId || !itemId) return
-    emitLocalExportProgress({ exportId: itemId, taskId, taskName, fileName: params.fileName, index, totalFiles, percent, status, destinationPath: path, error })
-  }
-  let stopProgressWatcher = false
-  let lastPercent = 0
-  const progressWatcher = renderTaskId && (params.onProgress || (taskId && itemId)) ? (async () => {
-    while (!stopProgressWatcher) {
-      const progress = await renderCoreProgress(renderTaskId).catch(() => null)
-      if (progress) {
-        const currentFrame = Number(progress[0])
-        const totalFrames = Number(progress[1])
-        if (totalFrames > 1) {
-          const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
-          if (percent > lastPercent) {
-            lastPercent = percent
-            await params.onProgress?.(percent)
-            if (taskId && itemId) {
-              await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
-              emitVideoProgress(percent, 'exporting')
-            }
-          }
-        }
-      }
-      await wait(500)
-    }
-  })() : null
-
-  try {
-    const exportFps = params.fps ?? null
-    const composition = buildCompositionFromPreviewLayers(
-      params.layers,
-      params.width,
-      params.height,
-      { fps: exportFps ?? undefined },
-    )
-    await lrc().exportCompositionVideo(
-      path,
-      composition,
-      exportFps,
-      null,
-      true,
-      renderTaskId,
-      params.qualityPreset ?? 'high',
-      taskId,
-      itemId,
-      params.includeAudio !== false,
-    )
-    if (taskId && itemId) {
-      await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
-      emitVideoProgress(100, 'done')
-    }
+    return written
   } catch (error) {
+    if (webGpuWriterId) {
+      await window.luna.freecutExport.abortWriter(webGpuWriterId).catch(() => {})
+      webGpuWriterId = null
+    }
     const message = error instanceof Error ? error.message : String(error)
+    const canceled = message === '视频导出已取消' || (error instanceof Error && error.name === 'AbortError')
     if (taskId && itemId) {
-      await window.luna.exportTask.updateItem(taskId, itemId, { status: 'failed', error: message }).catch(() => {})
-      emitVideoProgress(100, 'failed', message)
+      await window.luna.exportTask.updateItem(taskId, itemId, {
+        status: canceled ? 'canceled' : 'failed',
+        error: message,
+      }).catch(() => {})
+      emitLocalExportProgress({
+        exportId: itemId,
+        taskId,
+        taskName,
+        fileName: params.fileName,
+        index,
+        totalFiles,
+        percent: 100,
+        status: canceled ? 'canceled' : 'failed',
+        destinationPath,
+        error: message,
+        backend: 'webgpu',
+      })
     }
     throw error
-  } finally {
-    stopProgressWatcher = true
-    await progressWatcher?.catch(() => {})
   }
-  return { path, name: params.fileName }
 }
 
 export async function exportPreviewLivePhoto(params: {
@@ -678,58 +581,6 @@ async function runWithConcurrency<T>(
     }
   })
   await Promise.all(workers)
-}
-
-function renderCoreProgress(taskId: string): Promise<[number | bigint, number | bigint] | null> {
-  const api = (window as unknown as {
-    lunaRenderCore?: { getExportTaskProgress?: (taskId: string) => Promise<[number | bigint, number | bigint] | null> }
-  }).lunaRenderCore
-  return api?.getExportTaskProgress?.(taskId) ?? Promise.resolve(null)
-}
-
-async function waitForExportItem(
-  taskId: string,
-  taskName: string,
-  entry: BatchExportEntry,
-  totalFiles: number,
-): Promise<void> {
-  let lastPercent = 0
-  for (;;) {
-    const progress = await renderCoreProgress(entry.id).catch(() => null)
-    if (progress) {
-      const currentFrame = Number(progress[0])
-      const totalFrames = Number(progress[1])
-      if (totalFrames > 1) {
-        const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
-        if (percent > lastPercent) {
-          lastPercent = percent
-          await window.luna.exportTask.updateItem(taskId, entry.id, {
-            status: 'exporting',
-            progress: percent,
-          }).catch(() => {})
-          emitLocalExportProgress({
-            exportId: entry.id,
-            taskId,
-            taskName,
-            fileName: fileNameFromPath(entry.outputPath),
-            index: entry.index,
-            totalFiles,
-            percent,
-            status: 'exporting',
-            destinationPath: entry.outputPath,
-          })
-        }
-      }
-    }
-
-    const task = await window.luna.exportTask.get(taskId)
-    const item = task?.items.find((candidate) => candidate.id === entry.id)
-    if (!item) return
-    if (item.status === 'done') return
-    if (item.status === 'failed') throw new Error(item.error || '导出失败')
-    if (item.status === 'canceled') throw new Error('导出已取消')
-    await wait(EXPORT_STATUS_POLL_MS)
-  }
 }
 
 async function runBatchExportQueue(
@@ -934,7 +785,6 @@ async function runBatchExportQueue(
           index: entry.index,
           totalFiles: entries.length,
         })
-        await waitForExportItem(taskId, taskName, entry, entries.length)
         return
       }
 
@@ -987,7 +837,7 @@ async function runBatchExportQueue(
  * - 后台按图片/视频并发限制执行导出
  * - 返回 taskId 和 items 信息
  *
- * PreviewModal 等 UI 组件调用此方法，不直接处理 lrc 细节。
+ * PreviewModal 等 UI 组件调用此方法，不直接处理渲染后端细节。
  */
 export async function exportBatchFiles(
   sources: Array<string | BatchExportSource>,

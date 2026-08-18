@@ -3,7 +3,7 @@ import { memo } from 'react'
 import type { PreviewLayer } from '../shared/types'
 import { WebGpuVideoPreview } from './WebGpuVideoPreview'
 
-export interface MultipleLayerVideoPreviewLrcRenderProps {
+export interface WebGpuMultiLayerVideoPreviewProps {
   layers: PreviewLayer[]
   className?: string
   canvasWidth?: number
@@ -11,7 +11,7 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   maxSide?: number
   playing?: boolean
   compositionTime?: number
-  /** Kept for call-site compatibility; WebGPU manages source resolution directly. */
+  /** WebGPU manages source resolution directly. */
   decodeQuality?: number
   onError?: (error: string) => void
   onReady?: () => void
@@ -24,15 +24,11 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   viewportKey?: string
 }
 
-/**
- * Compatibility name for creative callers while the shared implementation is WebGPU.
- * The component no longer creates native textures or calls the Rust renderer.
- */
-export const MultipleLayerVideoPreviewLrcRender = memo(function MultipleLayerVideoPreviewLrcRender({
+export const WebGpuMultiLayerVideoPreview = memo(function WebGpuMultiLayerVideoPreview({
   canvasWidth = 1440,
   canvasHeight = 810,
   ...props
-}: MultipleLayerVideoPreviewLrcRenderProps) {
+}: WebGpuMultiLayerVideoPreviewProps) {
   return (
     <WebGpuVideoPreview
       {...props}
