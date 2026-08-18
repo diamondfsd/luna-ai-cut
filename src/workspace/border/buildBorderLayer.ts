@@ -77,7 +77,9 @@ function originalBlurColor(
     clarity: 0,
     texture: 0,
     sharpen: 0,
-    denoise: 100 + blurRadius * 100,
+    denoise: 100,
+    // 预览/导出通过 blurRadius 传入明确的空间模糊半径；保留该值作为旧调用方的后备半径。
+    glowRadius: blurRadius,
     gradeShadowsHue: 0,
     gradeShadowsAmount: 0,
     gradeMidHue: 0,
@@ -229,9 +231,10 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     let layerOpacity = layer.opacity ?? 1
     let layerCornerRadius = 'cornerRadius' in layer ? layer.cornerRadius : undefined
     let layerFeather = layer.type === 'shape' ? layer.feather : undefined
+    let layerShadowMask: PreviewLayer['shadowMask']
     if (isBlurredPhotoCard && layer.id === 'photo-shadow' && scaledPhotoRect) {
       const minCanvasSide = Math.max(1, Math.min(canvasWidth, canvasHeight))
-      const spreadPixels = minCanvasSide * (0.01 + border.shadowBlur / 100 * 0.06) * 2
+      const spreadPixels = minCanvasSide * (0.01 + border.shadowBlur / 100 * 0.06)
       const spreadX = spreadPixels / Math.max(1, canvasWidth)
       const spreadY = spreadPixels / Math.max(1, canvasHeight)
       layerRect = {
@@ -240,12 +243,16 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         w: scaledPhotoRect.w + spreadX * 2,
         h: scaledPhotoRect.h + spreadY * 2,
       }
-      layerOpacity = clamp(border.shadowStrength / 100 * 2, 0, 1)
+      layerOpacity = clamp(border.shadowStrength / 100 * 0.38, 0, 1)
       const photoRadius = photoLayer && 'cornerRadius' in photoLayer ? photoLayer.cornerRadius ?? 0 : 0
       const photoMinSide = Math.min(scaledPhotoRect.w * canvasWidth, scaledPhotoRect.h * canvasHeight)
       const shadowMinSide = Math.min(layerRect.w * canvasWidth, layerRect.h * canvasHeight)
       layerCornerRadius = (photoRadius * photoMinSide + spreadPixels) / Math.max(1, shadowMinSide)
       layerFeather = spreadPixels / Math.max(1, shadowMinSide)
+      layerShadowMask = {
+        insetX: spreadX / Math.max(0.0001, layerRect.w),
+        insetY: spreadY / Math.max(0.0001, layerRect.h),
+      }
     }
     const isBlurredPhotoShadow = isBlurredPhotoCard && layer.id === 'photo-shadow'
     const h = isBlurredPhotoShadow ? layerRect.h * scale : Math.min(1, layerRect.h * scale)
@@ -268,25 +275,40 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         layerType: 'media',
         layoutRole: isBlurBackground ? 'background' : 'content',
         filePath: mediaPath,
+        isVideo: isVideoMedia || mediaLayerStyle?.isVideo === true,
+        blurRadius: isBlurBackground ? layer.blurRadius : undefined,
         restoreLutId: isBlurBackground ? undefined : mediaLayerStyle?.restoreLutId,
         lutId: isBlurBackground ? undefined : mediaLayerStyle?.lutId,
         lutIntensity: isBlurBackground ? undefined : mediaLayerStyle?.lutIntensity,
         fit: layer.fit === 'cover-scale' ? 'cover-scale' : 'cover',
         cornerRadius: layerCornerRadius,
-        srcX: layer.crop?.x ?? 0,
-        srcY: layer.crop?.y ?? 0,
-        srcW: layer.crop?.w ?? 1,
-        srcH: layer.crop?.h ?? 1,
-        transform: {
-          crop: baseTransform?.crop ?? null,
-          orientation: baseTransform?.orientation ?? 0,
-          rotate: baseTransform?.rotate ?? 0,
-          flipH: baseTransform?.flipH ?? false,
-          flipV: baseTransform?.flipV ?? false,
-          scale: (baseTransform?.scale ?? 1) * border.mediaScale / 100,
-          translateX: border.mediaOffsetX / 100,
-          translateY: border.mediaOffsetY / 100,
-        },
+        srcX: isBlurBackground ? 0 : layer.crop?.x ?? 0,
+        srcY: isBlurBackground ? 0 : layer.crop?.y ?? 0,
+        srcW: isBlurBackground ? 1 : layer.crop?.w ?? 1,
+        srcH: isBlurBackground ? 1 : layer.crop?.h ?? 1,
+        // The soft background is an independent full-frame copy of the source.
+        // Reusing the foreground crop/zoom makes the rasterized blur texture
+        // transparent outside that crop, which creates directional smears at
+        // the half-resolution blur boundary.
+        transform: isBlurBackground
+          ? {
+              crop: null,
+              orientation: baseTransform?.orientation ?? 0,
+              rotate: 0,
+              flipH: false,
+              flipV: false,
+              scale: 1,
+            }
+          : {
+              crop: baseTransform?.crop ?? null,
+              orientation: baseTransform?.orientation ?? 0,
+              rotate: baseTransform?.rotate ?? 0,
+              flipH: baseTransform?.flipH ?? false,
+              flipV: baseTransform?.flipV ?? false,
+              scale: (baseTransform?.scale ?? 1) * border.mediaScale / 100,
+              translateX: border.mediaOffsetX / 100,
+              translateY: border.mediaOffsetY / 100,
+            },
       }]
     }
     if (layer.type === 'shape') return [{
@@ -295,9 +317,10 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
       shape: layer.shape,
       fillColor: layer.id === 'background' ? border.backgroundColor : layer.fill?.color,
       cornerRadius: layerCornerRadius,
+      feather: layerFeather,
+      shadowMask: layerShadowMask,
       strokeColor: layer.stroke?.color,
-      // 正值仍是描边像素；负值作为内部标记，表示连续软边的归一化宽度。
-      strokeWidth: layerFeather ? -layerFeather : layer.stroke?.width,
+      strokeWidth: layer.stroke?.width,
     }]
     if (layer.type === 'logo' && layer.source?.path) {
       const logo = getBorderLogo(layer.source.path)
