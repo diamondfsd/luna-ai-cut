@@ -1,6 +1,6 @@
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import type { VideoExportSettings, VideoResolution, VideoFrameRate, VideoQuality } from '../shared/types'
+import type { ImageExportFormat, VideoExportSettings, VideoResolution, VideoFrameRate, VideoQuality } from '../shared/types'
 import { buildLayers } from './PreviewStage'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
@@ -85,6 +85,24 @@ async function writeBlobToExportDirectory(
 
 function baseNameFromPath(path: string): string {
   return fileNameFromPath(path).replace(/\.[^.]+$/, '')
+}
+
+export function resolveImageExportFormat(settings?: VideoExportSettings | null): ImageExportFormat {
+  return settings?.imageFormat ?? 'jpeg'
+}
+
+export function imageExportExtension(format: ImageExportFormat): string {
+  return format === 'jpeg' ? '.jpg' : `.${format}`
+}
+
+function sourceMatchesImageFormat(sourcePath: string, format: ImageExportFormat): boolean {
+  const extension = fileNameFromPath(sourcePath).match(/(\.[^.]+)$/)?.[1].toLowerCase()
+  if (format === 'jpeg') return extension === '.jpg' || extension === '.jpeg'
+  return extension === imageExportExtension(format)
+}
+
+function usesOriginalImageSettings(settings?: VideoExportSettings | null): boolean {
+  return !settings || settings.resolution === 'original' || settings.resolution === undefined
 }
 
 function exportCanvasFor(resolution: { width: number; height: number }): { width: number; height: number } {
@@ -635,6 +653,7 @@ async function runBatchExportQueue(
       }).catch(() => {})
       const res = await window.luna.workspace.getMediaResolution(entry.sourcePath)
       const outputSize = entry.outputSize ?? res
+      const resolved = resolveExportConfig(exportConfig, outputSize.width, outputSize.height)
       const exportLayers = entry.layers ?? buildExportLayers(entry.sourcePath, res)
       const fileName = fileNameFromPath(entry.outputPath)
 
@@ -776,7 +795,6 @@ async function runBatchExportQueue(
           })
           return
         }
-        const resolved = resolveExportConfig(exportConfig, outputSize.width, outputSize.height)
         await exportPreviewVideo({
           exportDir,
           fileName,
@@ -799,10 +817,10 @@ async function runBatchExportQueue(
       await exportPreviewImage({
         exportDir,
         fileName,
-        width: outputSize.width,
-        height: outputSize.height,
+        width: resolved.width,
+        height: resolved.height,
         layers: exportLayers,
-        format: 'jpeg',
+        format: resolveImageExportFormat(exportConfig),
         quality: 100,
         exportTaskId: taskId,
         exportItemId: entry.id,
@@ -863,17 +881,21 @@ export async function exportBatchFiles(
     const fp = source.sourcePath
     const baseName = source.outputBaseName || baseNameFromPath(fp)
     const isVid = isVideoPathCached(fp)
-    const passthrough = Boolean(source.passthrough)
-      && (!isVid || usesOriginalVideoSettings(exportConfig))
+    const imageFormat = resolveImageExportFormat(exportConfig)
+    const canPassthrough = Boolean(source.passthrough) && (
+      isVid
+        ? usesOriginalVideoSettings(exportConfig)
+        : usesOriginalImageSettings(exportConfig) && sourceMatchesImageFormat(fp, imageFormat)
+    )
     const sourceExt = fileNameFromPath(fp).match(/(\.[^.]+)$/)?.[1]
-    const ext = passthrough && sourceExt ? sourceExt : isVid ? '.mp4' : '.jpg'
+    const ext = canPassthrough && sourceExt ? sourceExt : isVid ? '.mp4' : imageExportExtension(imageFormat)
     return {
       id: `batch_${baseName}_${stamp}_${Math.random().toString(36).slice(2, 6)}`,
       sourcePath: fp,
       outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_${stamp}${ext}`,
       layers: snapshotPreviewLayers(source.layers),
       outputSize: source.outputSize,
-      passthrough,
+      passthrough: canPassthrough,
       index,
       kind: isVid ? 'video' : 'image',
     }
