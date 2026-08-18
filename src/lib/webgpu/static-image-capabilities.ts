@@ -4,6 +4,9 @@ import { isWebGpuAvailable } from './runtime'
 function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
   const isMediaLayer = (layer.layerType ?? 'media') === 'media'
   const isLocalColorInput = layer.layerType === 'local-color' && layer.precomposeRole === 'input'
+  const isLocalColorOutput = layer.layerType === 'local-color'
+    && layer.precomposeRole === 'output'
+    && Boolean(layer.precomposeGroup)
   const isRasterizableLayer = layer.layerType === 'shape'
     || layer.layerType === 'text'
     || layer.layerType === 'logo'
@@ -13,11 +16,8 @@ function hasUnsupportedLayerData(layer: PreviewLayer): boolean {
       || layer.filePath
       || typeof layer.content === 'string',
   )
-  return (!isMediaLayer && !isLocalColorInput && !(isRasterizableLayer && hasContent))
+  return (!isMediaLayer && !isLocalColorInput && !isLocalColorOutput && !(isRasterizableLayer && hasContent))
     || Boolean(layer.pixelStretch)
-    || Boolean(layer.transform?.crop)
-    || Math.abs(layer.transform?.translateX ?? 0) > 0.0001
-    || Math.abs(layer.transform?.translateY ?? 0) > 0.0001
 }
 
 /**
