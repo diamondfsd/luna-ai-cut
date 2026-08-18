@@ -278,6 +278,7 @@ function dolbyVisionInfo(stream: VideoProbeStream | undefined, format: VideoProb
 interface VideoProbeResult {
   frameRate: number | null
   duration: number | null
+  videoBitrate: number | null
   dolbyVision: boolean | null
   dolbyVisionProfile: number | null
   iLog: boolean | null
@@ -287,7 +288,7 @@ export async function getVideoFrameRate(
   file: Pick<LunaFile, 'kind' | 'downloadFilePath' | 'localPath' | 'cacheFilePath' | 'sourceUrl' | 'url'>,
   cachedPath?: string | null,
 ): Promise<VideoProbeResult> {
-  if (file.kind !== 'video') return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
+  if (file.kind !== 'video') return { frameRate: null, duration: null, videoBitrate: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
 
   let sourcePath: string | null = null
   const candidates = [
@@ -311,7 +312,7 @@ export async function getVideoFrameRate(
   if (!sourcePath && isFileUrl(sourceUrl)) {
     sourcePath = fileURLToPath(sourceUrl)
   }
-  if (!sourcePath) return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
+  if (!sourcePath) return { frameRate: null, duration: null, videoBitrate: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
 
   try {
     const [{ stdout }, iLog] = await Promise.all([
@@ -329,9 +330,13 @@ export async function getVideoFrameRate(
     const frameRate = parseFrameRate(videoStream?.avg_frame_rate)
       ?? parseFrameRate(videoStream?.r_frame_rate)
     const duration = data.format?.duration ? Math.round(Number(data.format.duration)) : null
-    return { frameRate, duration, ...dolbyVisionInfo(videoStream, data.format), iLog }
+    const numericBitrate = Number(videoStream?.bit_rate)
+    const videoBitrate = Number.isFinite(numericBitrate) && numericBitrate > 0
+      ? Math.round(numericBitrate)
+      : null
+    return { frameRate, duration, videoBitrate, ...dolbyVisionInfo(videoStream, data.format), iLog }
   } catch {
-    return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
+    return { frameRate: null, duration: null, videoBitrate: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
   }
 }
 

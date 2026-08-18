@@ -115,12 +115,19 @@ export async function exportVideoWithWebGpuWorker(params: {
 }): Promise<WebGpuVideoExportResult> {
   const descriptors = sourceDescriptors(params.composition)
   const sources = await Promise.all(descriptors.map(async (descriptor): Promise<WebGpuVideoExportSourceMessage> => {
-    const source = await window.luna.workspace.readMediaFile(localMediaPath(descriptor.path))
+    const filePath = localMediaPath(descriptor.path)
+    const [source, formatInfo] = await Promise.all([
+      window.luna.workspace.readMediaFile(filePath),
+      descriptor.sourceType === 'video'
+        ? window.luna.workspace.getMediaFormatInfo(filePath).catch(() => null)
+        : Promise.resolve(null),
+    ])
     return {
       ...descriptor,
       bytes: source.bytes,
       mimeType: source.mimeType,
       fileName: source.name,
+      sourceBitrate: formatInfo?.videoBitrate ?? undefined,
     }
   }))
   const [luts, masks, fonts] = await Promise.all([
