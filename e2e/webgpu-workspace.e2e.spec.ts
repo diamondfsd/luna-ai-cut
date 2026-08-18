@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -54,6 +55,34 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
     const target = element as HTMLCanvasElement
     return target.toDataURL('image/png').length
   }), { timeout: 30_000 }).toBeGreaterThan(1_000)
+
+  const webGpuExportPromise = lunaApp.page.evaluate(() => new Promise<boolean>((resolve) => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<{ backend?: string; status?: string }>).detail
+      if (detail?.backend !== 'webgpu' || detail.status !== 'exporting') return
+      window.removeEventListener('luna:export-progress-local', handle)
+      resolve(true)
+    }
+    window.addEventListener('luna:export-progress-local', handle)
+    window.setTimeout(() => {
+      window.removeEventListener('luna:export-progress-local', handle)
+      resolve(false)
+    }, 30_000)
+  }))
+  await lunaApp.page.getByRole('button', { name: '导出', exact: true }).click()
+  await expect(lunaApp.page.getByRole('dialog', { name: '导出设置' })).toBeVisible()
+  await lunaApp.page.getByRole('button', { name: '确认导出', exact: true }).click()
+  await expect.poll(() => webGpuExportPromise, { timeout: 30_000 }).toBe(true)
+
+  const exportDir = path.join(lunaApp.baseDir, 'export')
+  await expect.poll(async () => {
+    const names = await readdir(exportDir).catch(() => [])
+    return names.some((name) => name.endsWith('.jpg'))
+  }, { timeout: 30_000 }).toBe(true)
+  const exportedName = (await readdir(exportDir)).find((name) => name.endsWith('.jpg'))
+  expect(exportedName).toBeTruthy()
+  const exportedFile = path.join(exportDir, exportedName!)
+  expect((await stat(exportedFile)).size).toBeGreaterThan(1_000)
 
   await lunaApp.page.locator('.workspace-thumb[data-media-index="1"]').click()
   await expect(canvas).toBeVisible({ timeout: 30_000 })
