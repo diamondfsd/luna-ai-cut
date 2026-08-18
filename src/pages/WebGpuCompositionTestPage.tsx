@@ -41,6 +41,17 @@ const TEST_COMPOSITION: CompositionInput = {
       zIndex: 2,
     },
     {
+      id: 'blurred-accent',
+      layerType: 'shape',
+      source: { path: '' },
+      rect: { x: 0.72, y: 0.05, w: 0.18, h: 0.18 },
+      shape: 'circle',
+      fillColor: '#68b8e8',
+      blurRadius: 18,
+      opacity: 0.9,
+      zIndex: 2,
+    },
+    {
       id: 'title',
       layerType: 'text',
       source: { path: '' },

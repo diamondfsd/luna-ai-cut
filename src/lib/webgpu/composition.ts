@@ -74,7 +74,8 @@ const HIDDEN_MASK = Symbol('hidden-mask')
 type SupportedBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
 
 const BLEND_MODES: SupportedBlendMode[] = ['normal', 'multiply', 'screen', 'add']
-const LAYER_UNIFORM_FLOATS = 42 * 4
+const BLUR_BUFFER_SCALE = 0.5
+const LAYER_UNIFORM_FLOATS = 44 * 4
 const LAYER_UNIFORM_BYTES = LAYER_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT
 
 function paddedLutData(lut: WebGpuLutData): { data: Uint8Array; bytesPerRow: number } {
@@ -129,6 +130,8 @@ struct LayerUniforms {
   pixelStretchPathData: array<vec4f, 4>,
   crop: vec4f,
   geometry: vec4f,
+  effects: vec4f,
+  shape: vec4f,
 };
 
 @group(0) @binding(0) var sourceSampler: sampler;
@@ -175,6 +178,56 @@ fn sourceUvIsValid(uv: vec2f) -> bool {
   return local.x >= 0.0 && local.x <= 1.0 && local.y >= 0.0 && local.y <= 1.0;
 }
 
+fn roundedRectDistanceWithAspect(local: vec2f, radius: f32, aspect: f32) -> f32 {
+  let safeAspect = max(aspect, 0.0001);
+  let point = abs(local - vec2f(0.5)) * vec2f(safeAspect, 1.0);
+  let halfSize = vec2f(0.5 * safeAspect, 0.5);
+  let clampedRadius = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
+  let corner = point - (halfSize - vec2f(clampedRadius));
+  return length(max(corner, vec2f(0.0))) + min(max(corner.x, corner.y), 0.0) - clampedRadius;
+}
+
+fn roundedRectCoverage(local: vec2f) -> f32 {
+  let distance = roundedRectDistanceWithAspect(local, layer.geometry.z, layer.shape.x);
+  let feather = max(layer.geometry.w, 0.0);
+  let edgeWidth = max(max(fwidth(distance) * 1.5, feather), 0.0001);
+  return 1.0 - smoothstep(0.0, edgeWidth, distance);
+}
+
+fn layerCoverage(local: vec2f) -> f32 {
+  let outer = roundedRectCoverage(local);
+  if (layer.effects.y <= 0.5) {
+    return outer;
+  }
+
+  let radius = clamp(layer.geometry.z, 0.0, 0.5);
+  let inset = clamp(layer.effects.zw, vec2f(0.0), vec2f(0.49));
+  let innerSize = max(vec2f(1.0) - inset * 2.0, vec2f(0.0001));
+  let innerLocal = (local - inset) / innerSize;
+  let outerAspect = max(layer.shape.x, 0.0001);
+  let innerAspect = outerAspect * innerSize.x / innerSize.y;
+  let insetDistance = max(inset.x * outerAspect, inset.y);
+  let innerRadius = max(0.0, layer.geometry.z - insetDistance);
+  let innerDistance = roundedRectDistanceWithAspect(innerLocal, innerRadius, innerAspect);
+  let fadeX = max(inset.x * outerAspect, 0.0001);
+  let fadeY = max(inset.y, 0.0001);
+  let distanceFromCenter = abs(local - vec2f(0.5));
+  let axisWeight = distanceFromCenter.x / max(distanceFromCenter.x + distanceFromCenter.y, 0.0001);
+  let fadeWidth = mix(fadeY, fadeX, axisWeight);
+  // Keep the shadow outside the photo and use a Gaussian falloff instead of
+  // a solid ring. Three sigma fit inside the expanded layer so the blur does
+  // not get hard-clipped at a single canvas edge.
+  let outsideDistance = max(innerDistance, 0.0);
+  let sigma = max(fadeWidth / 3.2, 0.0001);
+  let gaussianFade = exp(-0.5 * (outsideDistance / sigma) * (outsideDistance / sigma));
+  let outsideShadow = select(0.0, gaussianFade, innerDistance > 0.0);
+  let outerDistance = roundedRectDistanceWithAspect(local, radius, outerAspect);
+  let outerInsideDistance = max(-outerDistance, 0.0);
+  let outerFadeWidth = max(fadeWidth * 0.7, fwidth(outerDistance) * 2.0);
+  let outerFade = smoothstep(0.0, outerFadeWidth, outerInsideDistance);
+  return outer * outerFade * outsideShadow;
+}
+
 fn luminance(c: vec3f) -> f32 {
   return dot(c, vec3f(0.2126, 0.7152, 0.0722));
 }
@@ -210,24 +263,32 @@ fn sampleSource(uv: vec2f) -> vec3f {
 
 fn blurSource(uv: vec2f, radius: f32) -> vec3f {
   let texel = vec2f(1.0) / vec2f(textureDimensions(sourceTexture, 0));
-  let offset = texel * max(radius, 0.25);
+  // 13 weighted taps approximate a small separable Gaussian while keeping
+  // the background layer cheap enough for realtime video preview.
+  let step = texel * max(radius * 0.75, 0.5);
+  let outer = step * 2.0;
   var total = vec3f(0.0);
-  total = total + sampleSource(uv + vec2f(-offset.x, -offset.y));
-  total = total + sampleSource(uv + vec2f(0.0, -offset.y));
-  total = total + sampleSource(uv + vec2f(offset.x, -offset.y));
-  total = total + sampleSource(uv + vec2f(-offset.x, 0.0));
-  total = total + sampleSource(uv);
-  total = total + sampleSource(uv + vec2f(offset.x, 0.0));
-  total = total + sampleSource(uv + vec2f(-offset.x, offset.y));
-  total = total + sampleSource(uv + vec2f(0.0, offset.y));
-  total = total + sampleSource(uv + vec2f(offset.x, offset.y));
-  return total / 9.0;
+  total = total + sampleSource(uv) * 0.24;
+  total = total + sampleSource(uv + vec2f(-step.x, 0.0)) * 0.11;
+  total = total + sampleSource(uv + vec2f(step.x, 0.0)) * 0.11;
+  total = total + sampleSource(uv + vec2f(0.0, -step.y)) * 0.11;
+  total = total + sampleSource(uv + vec2f(0.0, step.y)) * 0.11;
+  total = total + sampleSource(uv + vec2f(-step.x, -step.y)) * 0.055;
+  total = total + sampleSource(uv + vec2f(step.x, -step.y)) * 0.055;
+  total = total + sampleSource(uv + vec2f(-step.x, step.y)) * 0.055;
+  total = total + sampleSource(uv + vec2f(step.x, step.y)) * 0.055;
+  total = total + sampleSource(uv + vec2f(-outer.x, 0.0)) * 0.025;
+  total = total + sampleSource(uv + vec2f(outer.x, 0.0)) * 0.025;
+  total = total + sampleSource(uv + vec2f(0.0, -outer.y)) * 0.025;
+  total = total + sampleSource(uv + vec2f(0.0, outer.y)) * 0.025;
+  return total;
 }
 
 fn applySpatialDetail(cIn: vec3f, uv: vec2f) -> vec3f {
   let detail = layer.detail;
   let detailExtra = layer.detailExtra;
-  let denoise = clamp((detailExtra.x + detailExtra.y) / 100.0, 0.0, 1.0);
+  let hasExplicitBlur = layer.effects.x > 0.0001;
+  let denoise = select(clamp((detailExtra.x + detailExtra.y) / 100.0, 0.0, 1.0), 1.0, hasExplicitBlur);
   let localContrast = detail.y / 100.0 * 0.7 + detail.z / 100.0 * 0.35;
   let sharpen = clamp(detail.w / 100.0, 0.0, 2.0) * 0.65;
   let glow = clamp(detailExtra.z / 100.0, 0.0, 1.0);
@@ -235,7 +296,8 @@ fn applySpatialDetail(cIn: vec3f, uv: vec2f) -> vec3f {
     return cIn;
   }
 
-  let blurred = blurSource(uv, max(detailExtra.w / 18.0, 0.25));
+  let blurRadius = select(detailExtra.w / 18.0, layer.effects.x, layer.effects.x > 0.0001);
+  let blurred = blurSource(uv, max(blurRadius, 0.25));
   var c = mix(cIn, blurred, denoise);
   c = c + (cIn - blurred) * (localContrast + sharpen);
   if (glow > 0.0001) {
@@ -362,9 +424,55 @@ fn applyColor(cIn: vec3f, uv: vec2f) -> vec3f {
   return clamp(c, vec3f(0.0), vec3f(1.0));
 }
 
+// Tetrahedral interpolation adapted from the open-source Flashback RAW editor
+// shader. Trilinear filtering can change slope at LUT cell boundaries; this
+// chooses one of the six tetrahedra in the cell and keeps the color gradient
+// continuous, which is especially visible in skin tones and low-saturation
+// footage.
+fn lutTexel(texture: texture_3d<f32>, r: u32, g: u32, b: u32) -> vec3f {
+  return textureLoad(texture, vec3i(i32(r), i32(g), i32(b)), 0).rgb;
+}
+
 fn sampleLut(texture: texture_3d<f32>, color: vec3f, size: f32) -> vec3f {
-  let coords = (clamp(color, vec3f(0.0), vec3f(1.0)) * (size - 1.0) + vec3f(0.5)) / size;
-  return textureSampleLevel(texture, sourceSampler, coords, 0.0).rgb;
+  let maxIndex = u32(max(size - 1.0, 1.0));
+  let scaled = clamp(color, vec3f(0.0), vec3f(1.0)) * f32(maxIndex);
+  let r0 = min(u32(scaled.x), maxIndex - 1u);
+  let g0 = min(u32(scaled.y), maxIndex - 1u);
+  let b0 = min(u32(scaled.z), maxIndex - 1u);
+  let rx = scaled.x - f32(r0);
+  let gx = scaled.y - f32(g0);
+  let bx = scaled.z - f32(b0);
+  let c000 = lutTexel(texture, r0, g0, b0);
+  let c111 = lutTexel(texture, r0 + 1u, g0 + 1u, b0 + 1u);
+
+  if (rx >= gx && gx >= bx) {
+    let c100 = lutTexel(texture, r0 + 1u, g0, b0);
+    let c110 = lutTexel(texture, r0 + 1u, g0 + 1u, b0);
+    return (1.0 - rx) * c000 + (rx - gx) * c100 + (gx - bx) * c110 + bx * c111;
+  }
+  if (rx >= bx && bx > gx) {
+    let c100 = lutTexel(texture, r0 + 1u, g0, b0);
+    let c101 = lutTexel(texture, r0 + 1u, g0, b0 + 1u);
+    return (1.0 - rx) * c000 + (rx - bx) * c100 + (bx - gx) * c101 + gx * c111;
+  }
+  if (gx > rx && rx >= bx) {
+    let c010 = lutTexel(texture, r0, g0 + 1u, b0);
+    let c110 = lutTexel(texture, r0 + 1u, g0 + 1u, b0);
+    return (1.0 - gx) * c000 + (gx - rx) * c010 + (rx - bx) * c110 + bx * c111;
+  }
+  if (bx > rx && rx >= gx) {
+    let c001 = lutTexel(texture, r0, g0, b0 + 1u);
+    let c101 = lutTexel(texture, r0 + 1u, g0, b0 + 1u);
+    return (1.0 - bx) * c000 + (bx - rx) * c001 + (rx - gx) * c101 + gx * c111;
+  }
+  if (gx >= bx && bx > rx) {
+    let c010 = lutTexel(texture, r0, g0 + 1u, b0);
+    let c011 = lutTexel(texture, r0, g0 + 1u, b0 + 1u);
+    return (1.0 - gx) * c000 + (gx - bx) * c010 + (bx - rx) * c011 + rx * c111;
+  }
+  let c001 = lutTexel(texture, r0, g0, b0 + 1u);
+  let c011 = lutTexel(texture, r0, g0 + 1u, b0 + 1u);
+  return (1.0 - bx) * c000 + (bx - gx) * c001 + (gx - rx) * c011 + rx * c111;
 }
 
 fn applyLut(cIn: vec3f) -> vec3f {
@@ -843,7 +951,7 @@ fn fragmentFastMain(input: VertexOutput) -> @location(0) vec4f {
     discard;
   }
   let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
-  return vec4f(sampled.rgb, sampled.a * layer.style.x);
+  return vec4f(sampled.rgb, sampled.a * layer.style.x * layerCoverage(input.localPosition));
 }
 
 @fragment
@@ -863,7 +971,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let adjusted = applyLut(applyColor(sampled.rgb, input.uv));
   let isLocalColor = layer.mask.w > 1.5;
   var color = select(mix(sampled.rgb, adjusted, maskValue), adjusted, isLocalColor);
-  var alpha = sampled.a * layer.style.x * select(1.0, maskValue, isLocalColor);
+  var alpha = sampled.a * layer.style.x * select(1.0, maskValue, isLocalColor) * layerCoverage(input.localPosition);
   if (layer.pixelFlow.x > 0.5) {
     let effect = pixelFlowEffect(input.uv, vec4f(color, alpha), input.localPosition);
     color = effect.rgb;
@@ -881,6 +989,128 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
     color = mix(color, vec3f(1.0), clamp(edgeAlpha, 0.0, 1.0));
   }
   return vec4f(color, alpha);
+}
+`
+
+// Dual-Kawase blur adapted from the production kernels used by PixiJS and
+// cosmic-comp. The source is progressively downsampled and then reconstructed
+// with a weighted upsample. This keeps large background blurs smooth without
+// the sparse-sample trails produced by a fixed fast Gaussian kernel.
+const DUAL_KAWASE_SHADER = /* wgsl */ `
+struct KawaseUniforms {
+  sourceSize: vec2f,
+  offset: f32,
+  _padding: f32,
+};
+
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+};
+
+@group(0) @binding(0) var blurSampler: sampler;
+@group(0) @binding(1) var blurTexture: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> blur: KawaseUniforms;
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+  var positions = array<vec2f, 6>(
+    vec2f(0.0, 0.0),
+    vec2f(1.0, 0.0),
+    vec2f(0.0, 1.0),
+    vec2f(0.0, 1.0),
+    vec2f(1.0, 0.0),
+    vec2f(1.0, 1.0)
+  );
+  let position = positions[vertexIndex];
+  var output: VertexOutput;
+  output.position = vec4f(position.x * 2.0 - 1.0, 1.0 - position.y * 2.0, 0.0, 1.0);
+  output.uv = position;
+  return output;
+}
+
+fn normalizeBlur(color: vec4f, weight: f32) -> vec4f {
+  if (color.a <= 0.0001) {
+    return vec4f(0.0);
+  }
+  let alpha = color.a / weight;
+  let unpremultiplied = color.rgb / max(color.a, 0.0001);
+  return vec4f(unpremultiplied, alpha);
+}
+
+@fragment
+fn fragmentDownMain(input: VertexOutput) -> @location(0) vec4f {
+  let halfPixel = vec2f(0.5, 0.5) / max(blur.sourceSize, vec2f(1.0)) * blur.offset;
+  var color = textureSampleLevel(blurTexture, blurSampler, input.uv, 0.0) * 4.0;
+  color += textureSampleLevel(blurTexture, blurSampler, input.uv - halfPixel, 0.0);
+  color += textureSampleLevel(blurTexture, blurSampler, input.uv + halfPixel, 0.0);
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(halfPixel.x, -halfPixel.y),
+    0.0,
+  );
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv - vec2f(halfPixel.x, -halfPixel.y),
+    0.0,
+  );
+  return normalizeBlur(color, 8.0);
+}
+
+@fragment
+fn fragmentUpMain(input: VertexOutput) -> @location(0) vec4f {
+  let halfPixel = vec2f(0.5, 0.5) / max(blur.sourceSize, vec2f(1.0)) * blur.offset;
+  var color = textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(-halfPixel.x * 2.0, 0.0),
+    0.0,
+  );
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(-halfPixel.x, halfPixel.y),
+    0.0,
+  ) * 2.0;
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(0.0, halfPixel.y * 2.0),
+    0.0,
+  );
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(halfPixel.x, halfPixel.y),
+    0.0,
+  ) * 2.0;
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(halfPixel.x * 2.0, 0.0),
+    0.0,
+  );
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(halfPixel.x, -halfPixel.y),
+    0.0,
+  ) * 2.0;
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(0.0, -halfPixel.y * 2.0),
+    0.0,
+  );
+  color += textureSampleLevel(
+    blurTexture,
+    blurSampler,
+    input.uv + vec2f(-halfPixel.x, -halfPixel.y),
+    0.0,
+  ) * 2.0;
+  return normalizeBlur(color, 12.0);
 }
 `
 
@@ -916,6 +1146,10 @@ function canUseFastCompositionPath(
     && !layer.pixelFlow
     && !layer.pixelStretch
     && !layer.reveal
+    && !(layer.blurRadius && layer.blurRadius > 0)
+    && !(layer.cornerRadius && layer.cornerRadius > 0)
+    && !(layer.feather && layer.feather > 0)
+    && !layer.shadowMask
     && !hasColorAdjustments(layer.color)
 }
 
@@ -926,6 +1160,9 @@ function createLayerUniforms(
   sourceCrop: [number, number, number, number],
   sourceAspect: number,
   frameAspect: number,
+  targetAspect: number,
+  canvasWidth: number,
+  canvasHeight: number,
   luts: { creative: CachedLutTexture; restore: CachedLutTexture | null },
   mask: ResolvedMask | null,
   revealProgress: number,
@@ -1110,7 +1347,25 @@ function createLayerUniforms(
   ], 140)
   uniforms.set(pathData, 144)
   uniforms.set(sourceCrop, 160)
-  uniforms.set([frameAspect, sourceAspect, 0, 0], 164)
+  // Preset radii are fractions of the displayed layer's shorter pixel side.
+  // Convert that physical radius back to the shader's y-normalized space so
+  // a landscape and portrait layer keep the same radius on both axes.
+  const targetWidthPixels = Math.max(0.0001, targetRect[2] * canvasWidth)
+  const targetHeightPixels = Math.max(0.0001, targetRect[3] * canvasHeight)
+  const cornerRadiusScale = Math.min(targetWidthPixels, targetHeightPixels) / targetHeightPixels
+  uniforms.set([
+    frameAspect,
+    sourceAspect,
+    Math.max(0, Math.min(0.5, layer.cornerRadius ?? 0)) * cornerRadiusScale,
+    Math.max(0, layer.feather ?? 0) * cornerRadiusScale,
+  ], 164)
+  uniforms.set([
+    Math.max(0, layer.blurRadius ?? 0),
+    layer.shadowMask ? 1 : 0,
+    Math.max(0, Math.min(0.49, layer.shadowMask?.insetX ?? 0)),
+    Math.max(0, Math.min(0.49, layer.shadowMask?.insetY ?? 0)),
+  ], 168)
+  uniforms.set([Math.max(0.0001, targetAspect), 0, 0, 0], 172)
   return uniforms
 }
 
@@ -1314,6 +1569,8 @@ export class WebGpuCompositionRenderer {
   private context: GPUCanvasContext | null = null
   private format: GPUTextureFormat | null = null
   private sampler: GPUSampler | null = null
+  private blurDownPipeline: GPURenderPipeline | null = null
+  private blurUpPipeline: GPURenderPipeline | null = null
   private uniformBuffers: GPUBuffer[] = []
   private pipelines = new Map<SupportedBlendMode, GPURenderPipeline>()
   private fastPipelines = new Map<SupportedBlendMode, GPURenderPipeline>()
@@ -1342,6 +1599,8 @@ export class WebGpuCompositionRenderer {
       && this.context !== null
       && this.pipelines.size === BLEND_MODES.length
       && this.fastPipelines.size === BLEND_MODES.length
+      && this.blurDownPipeline !== null
+      && this.blurUpPipeline !== null
   }
 
   get capabilities() {
@@ -1410,7 +1669,49 @@ export class WebGpuCompositionRenderer {
           primitive: { topology: 'triangle-list' },
         }))
       }
-      this.sampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+      const blurModule = this.device.createShaderModule({ label: 'webgpu-composition-dual-kawase-blur', code: DUAL_KAWASE_SHADER })
+      const blurCompilationInfo = await blurModule.getCompilationInfo()
+      const blurShaderErrors = blurCompilationInfo.messages.filter((message) => message.type === 'error')
+      if (blurShaderErrors.length > 0) {
+        throw new Error(blurShaderErrors.map((message) => `${message.lineNum}:${message.linePos} ${message.message}`).join('\n'))
+      }
+      const blurLayout = this.device.createBindGroupLayout({
+        label: 'webgpu-composition-dual-kawase-blur-layout',
+        entries: [
+          { binding: 0, visibility: WEBGPU_FLAGS.fragmentStage, sampler: { type: 'filtering' } },
+          { binding: 1, visibility: WEBGPU_FLAGS.fragmentStage, texture: { sampleType: 'float' } },
+          { binding: 2, visibility: WEBGPU_FLAGS.fragmentStage, buffer: { type: 'uniform' } },
+        ],
+      })
+      const blurPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [blurLayout] })
+      this.blurDownPipeline = this.device.createRenderPipeline({
+        label: 'webgpu-composition-dual-kawase-down',
+        layout: blurPipelineLayout,
+        vertex: { module: blurModule, entryPoint: 'vertexMain' },
+        fragment: {
+          module: blurModule,
+          entryPoint: 'fragmentDownMain',
+          targets: [{ format: this.format }],
+        },
+        primitive: { topology: 'triangle-list' },
+      })
+      this.blurUpPipeline = this.device.createRenderPipeline({
+        label: 'webgpu-composition-dual-kawase-up',
+        layout: blurPipelineLayout,
+        vertex: { module: blurModule, entryPoint: 'vertexMain' },
+        fragment: {
+          module: blurModule,
+          entryPoint: 'fragmentUpMain',
+          targets: [{ format: this.format }],
+        },
+        primitive: { topology: 'triangle-list' },
+      })
+      this.sampler = this.device.createSampler({
+        addressModeU: 'clamp-to-edge',
+        addressModeV: 'clamp-to-edge',
+        magFilter: 'linear',
+        minFilter: 'linear',
+      })
     } catch (error) {
       runtime.destroy()
       throw new Error(formatWebGpuError(error))
@@ -1418,7 +1719,7 @@ export class WebGpuCompositionRenderer {
   }
 
   async render(composition: CompositionInput, time = 0): Promise<WebGpuCompositionRenderStats> {
-    if (!this.device || !this.context || !this.sampler || !this.format) {
+    if (!this.device || !this.context || !this.sampler || !this.format || !this.blurDownPipeline || !this.blurUpPipeline) {
       throw new Error('WebGPU 合成渲染器尚未初始化')
     }
     if (!this.resolveImage) throw new Error('WebGPU 合成渲染器缺少图片加载器')
@@ -1445,6 +1746,7 @@ export class WebGpuCompositionRenderer {
 
     const encoder = this.device.createCommandEncoder({ label: 'webgpu-composition-frame' })
     const transientTextures: GPUTexture[] = []
+    const transientBuffers: GPUBuffer[] = []
     let uniformOffset = 0
     const draws: PreparedCompositionDraw[] = []
     let renderedLayers = 0
@@ -1468,15 +1770,33 @@ export class WebGpuCompositionRenderer {
         uniformOffset += groupResult.uniformCount
         sourceOverride = groupResult.texture
       }
-      const draw = await this.prepareDraw(
-        layer,
-        composition.canvas.width,
-        composition.canvas.height,
-        time,
-        sourceOverride,
-      )
-      if (draw === HIDDEN_MASK) continue
-      draws.push(draw)
+      if (layer.blurRadius && layer.blurRadius > 0) {
+        const blurred = await this.prepareBlurredLayer(
+          layer,
+          composition.canvas.width,
+          composition.canvas.height,
+          time,
+          encoder,
+          uniformOffset,
+          transientTextures,
+          transientBuffers,
+          sourceOverride,
+        )
+        if (blurred) {
+          draws.push(blurred.draw)
+          uniformOffset += blurred.uniformCount
+        }
+      } else {
+        const draw = await this.prepareDraw(
+          layer,
+          composition.canvas.width,
+          composition.canvas.height,
+          time,
+          sourceOverride,
+        )
+        if (draw === HIDDEN_MASK) continue
+        draws.push(draw)
+      }
     }
     renderedLayers += this.encodeDrawPass(
       encoder,
@@ -1488,6 +1808,7 @@ export class WebGpuCompositionRenderer {
     const submitted = this.device.queue.onSubmittedWorkDone()
     this.lastSubmitPromise = submitted.then(() => {
       for (const texture of transientTextures) texture.destroy()
+      for (const buffer of transientBuffers) buffer.destroy()
     })
     return { submitMs: performance.now() - start, layerCount: renderedLayers }
   }
@@ -1541,6 +1862,8 @@ export class WebGpuCompositionRenderer {
     this.device = null
     this.context = null
     this.sampler = null
+    this.blurDownPipeline = null
+    this.blurUpPipeline = null
     this.format = null
     this.resolveImage = null
     this.resolveSource = null
@@ -1602,6 +1925,10 @@ export class WebGpuCompositionRenderer {
       canvasWidth,
       canvasHeight,
     )
+    const targetAspect = Math.max(
+      0.0001,
+      (targetRect[2] * canvasWidth) / Math.max(targetRect[3] * canvasHeight, 0.0001),
+    )
     const sourceAspect = Math.max(
       0.0001,
       (source.width * sourceRect[2]) / Math.max(source.height * sourceRect[3], 0.0001),
@@ -1617,7 +1944,7 @@ export class WebGpuCompositionRenderer {
     const revealProgress = layer.reveal
       ? compositionRevealProgress(layer.reveal, time)
       : 1
-    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, sourceCrop, sourceAspect, frameAspect, luts, resolvedMask, revealProgress, time)
+    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, sourceCrop, sourceAspect, frameAspect, targetAspect, canvasWidth, canvasHeight, luts, resolvedMask, revealProgress, time)
     const mode = (layer.blendMode ?? 'normal') as SupportedBlendMode
     const normalizedMode = BLEND_MODES.includes(mode) ? mode : 'normal'
     const pipelineMap = canUseFastCompositionPath(layer, resolvedMask)
@@ -1633,6 +1960,189 @@ export class WebGpuCompositionRenderer {
       uniforms,
       pipeline,
     }
+  }
+
+  private createTransientTexture(width: number, height: number, label: string): CachedImageTexture {
+    if (!this.device || !this.format) throw new Error('WebGPU 合成渲染器尚未初始化')
+    const texture = this.device.createTexture({
+      label,
+      size: { width, height },
+      format: this.format,
+      usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureRenderAttachment,
+    })
+    return { texture, view: texture.createView(), width, height }
+  }
+
+  private encodeDualKawasePass(
+    encoder: GPUCommandEncoder,
+    source: CachedImageTexture,
+    target: CachedImageTexture,
+    sourceWidth: number,
+    sourceHeight: number,
+    direction: 'down' | 'up',
+    transientBuffers: GPUBuffer[],
+  ): void {
+    if (!this.device || !this.sampler || !this.blurDownPipeline || !this.blurUpPipeline) {
+      throw new Error('WebGPU 合成渲染器尚未初始化')
+    }
+    const pipeline = direction === 'down' ? this.blurDownPipeline : this.blurUpPipeline
+    const uniformBuffer = this.device.createBuffer({
+      label: `webgpu-composition-dual-kawase-${direction}-uniforms`,
+      size: 16,
+      usage: WEBGPU_FLAGS.bufferUniform | WEBGPU_FLAGS.bufferCopyDst,
+    })
+    transientBuffers.push(uniformBuffer)
+    this.device.queue.writeBuffer(
+      uniformBuffer,
+      0,
+      new Float32Array([Math.max(1, sourceWidth), Math.max(1, sourceHeight), 1, 0]),
+    )
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: target.view,
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+    })
+    const bindGroup = this.device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.sampler },
+        { binding: 1, resource: source.view },
+        { binding: 2, resource: { buffer: uniformBuffer } },
+      ],
+    })
+    pass.setPipeline(pipeline)
+    pass.setBindGroup(0, bindGroup)
+    pass.draw(6)
+    pass.end()
+  }
+
+  private async prepareBlurredLayer(
+    layer: CompositionLayer,
+    canvasWidth: number,
+    canvasHeight: number,
+    time: number,
+    encoder: GPUCommandEncoder,
+    uniformOffset: number,
+    transientTextures: GPUTexture[],
+    transientBuffers: GPUBuffer[],
+    sourceOverride?: CachedImageTexture,
+  ): Promise<{ draw: PreparedCompositionDraw; uniformCount: number } | null> {
+    const sourceLayer: CompositionLayer = {
+      ...layer,
+      blurRadius: undefined,
+      color: undefined,
+      restoreLutId: undefined,
+      lutId: undefined,
+      lutIntensity: undefined,
+      opacity: 1,
+      blendMode: 'normal',
+    }
+    const sourceDraw = await this.prepareDraw(sourceLayer, canvasWidth, canvasHeight, time, sourceOverride)
+    if (sourceDraw === HIDDEN_MASK) return null
+
+    const blurWidth = Math.max(1, Math.round(canvasWidth * BLUR_BUFFER_SCALE))
+    const blurHeight = Math.max(1, Math.round(canvasHeight * BLUR_BUFFER_SCALE))
+    const sourceTexture = this.createTransientTexture(blurWidth, blurHeight, 'webgpu-composition-blur-source')
+    transientTextures.push(sourceTexture.texture)
+    this.encodeDrawPass(encoder, sourceTexture.view, [sourceDraw], uniformOffset)
+
+    const blurStrength = Math.max(1, layer.blurRadius ?? 0)
+    const levelCount = Math.max(1, Math.min(3, Math.ceil(blurStrength / 12)))
+    const downsampled: CachedImageTexture[] = []
+    let current = sourceTexture
+    let currentWidth = blurWidth
+    let currentHeight = blurHeight
+    for (let level = 0; level < levelCount; level += 1) {
+      const target = this.createTransientTexture(
+        Math.max(1, Math.ceil(currentWidth / 2)),
+        Math.max(1, Math.ceil(currentHeight / 2)),
+        `webgpu-composition-dual-kawase-down-${level}`,
+      )
+      downsampled.push(target)
+      transientTextures.push(target.texture)
+      this.encodeDualKawasePass(
+        encoder,
+        current,
+        target,
+        currentWidth,
+        currentHeight,
+        'down',
+        transientBuffers,
+      )
+      current = target
+      currentWidth = target.width
+      currentHeight = target.height
+    }
+
+    for (let level = downsampled.length - 2; level >= 0; level -= 1) {
+      const target = downsampled[level]
+      this.encodeDualKawasePass(
+        encoder,
+        current,
+        target,
+        currentWidth,
+        currentHeight,
+        'up',
+        transientBuffers,
+      )
+      current = target
+      currentWidth = target.width
+      currentHeight = target.height
+    }
+
+    const blurredTexture = this.createTransientTexture(blurWidth, blurHeight, 'webgpu-composition-dual-kawase-output')
+    transientTextures.push(blurredTexture.texture)
+    this.encodeDualKawasePass(
+      encoder,
+      current,
+      blurredTexture,
+      currentWidth,
+      currentHeight,
+      'up',
+      transientBuffers,
+    )
+
+    const outputLayer: CompositionLayer = {
+      ...layer,
+      layerType: 'media',
+      rect: { x: 0, y: 0, w: 1, h: 1 },
+      sourceRect: { x: 0, y: 0, w: 1, h: 1 },
+      fit: 'stretch',
+      transform: {
+        crop: null,
+        orientation: 0,
+        rotate: 0,
+        flipH: false,
+        flipV: false,
+        scale: 1,
+        translateX: 0,
+        translateY: 0,
+      },
+      blurRadius: undefined,
+      color: undefined,
+      restoreLutId: undefined,
+      lutId: undefined,
+      lutIntensity: undefined,
+      maskPath: undefined,
+      maskProjectId: undefined,
+      maskOpacity: undefined,
+      maskInverted: undefined,
+      maskFeather: undefined,
+      maskTrack: undefined,
+      maskTimeline: undefined,
+      pixelStretch: undefined,
+      pixelFlow: undefined,
+      reveal: undefined,
+      cornerRadius: undefined,
+      feather: undefined,
+      shadowMask: undefined,
+    }
+    const outputDraw = await this.prepareDraw(outputLayer, canvasWidth, canvasHeight, time, blurredTexture)
+    if (outputDraw === HIDDEN_MASK) return null
+    return { draw: outputDraw, uniformCount: 1 }
   }
 
   private async renderPrecomposeGroup(
