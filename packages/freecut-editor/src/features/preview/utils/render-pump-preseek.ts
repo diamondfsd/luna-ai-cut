@@ -4,6 +4,12 @@ import {
 } from '@freecut/features/preview/deps/composition-runtime'
 import { timelineToSourceFrames } from '@freecut/features/preview/deps/timeline-utils'
 import type { CompositionItem, TimelineItem, TimelineTrack, VideoItem } from '@freecut/types/timeline'
+import type { ResolvedTransitionWindow } from '@freecut/shared/timeline/transitions/transition-planner'
+import {
+  getSourceFrameRampOffset,
+  resolveAATransitionRamps,
+  resolveTransitionRenderTimelineSpan,
+} from '../../export/utils/render-span'
 
 /** Minimal sub-composition shape preseek needs to see inside compound clips. */
 export interface PreseekSubComposition {
@@ -242,6 +248,80 @@ export function collectClipVideoSourceTimesBySrcForFrame(
     const sourceTime = getVideoItemSourceTimeSeconds(item, timelineFrame, timelineFps, options)
     if (sourceTime === null) continue
     appendSourceTimeBySrc(bySource, item.src, sourceTime)
+  }
+
+  return bySource
+}
+
+/**
+ * Collect the exact source times used by the transition renderer. A transition
+ * can render an incoming clip before that clip's natural `from` frame, so the
+ * ordinary visible-track collector cannot register its decode dependency.
+ * Keeping this calculation next to the regular preseek helpers makes the
+ * active preview gate follow the same expanded span and A-A ramp as renderFrame.
+ */
+export function collectTransitionVideoSourceTimesBySrcForFrame(
+  window: ResolvedTransitionWindow<TimelineItem>,
+  timelineFrame: number,
+  timelineFps: number,
+  options: RenderPumpSourceTimeOptions = {},
+): Map<string, number[]> {
+  const bySource = new Map<string, number[]>()
+  const transitionSpan = {
+    transitionStart: window.startFrame,
+    transitionEnd: window.endFrame,
+  }
+  const ramps = resolveAATransitionRamps(
+    window.leftClip,
+    window.rightClip,
+    transitionSpan,
+    timelineFps,
+  )
+
+  for (const clip of [window.leftClip, window.rightClip]) {
+    if (clip.type !== 'video') continue
+    const src = resolvePreseekVideoSrc(clip, options)
+    if (!src) continue
+    const ramp =
+      ramps === null
+        ? undefined
+        : clip.id === window.leftClip.id
+          ? ramps.left
+          : ramps.right
+    const span = resolveTransitionRenderTimelineSpan(clip, transitionSpan, timelineFps, ramp)
+    if (timelineFrame < span.from || timelineFrame >= span.from + span.durationInFrames) continue
+
+    const sourceFps = options.requireExplicitSourceFps
+      ? clip.sourceFps
+      : (clip.sourceFps ?? options.resolvedMediaFps ?? timelineFps)
+    if (!Number.isFinite(sourceFps) || !sourceFps || sourceFps <= 0) continue
+
+    const localFrame = timelineFrame - span.from
+    const sourceStart = span.sourceStart ?? clip.sourceStart ?? clip.trimStart ?? 0
+    const speed = clip.speed ?? 1
+    const sourceFramesNeeded = (clip.durationInFrames * speed * sourceFps) / timelineFps
+    const reverseSourceEnd = clip.sourceEnd ?? sourceStart + sourceFramesNeeded
+    const rampOffset = span.sourceTimeRamp
+      ? getSourceFrameRampOffset(span.sourceTimeRamp, timelineFrame)
+      : 0
+    const unclampedSourceTime = clip.isReversed
+      ? (reverseSourceEnd - localFrame * speed * (sourceFps / timelineFps) - 1) / sourceFps
+      : sourceStart / sourceFps + (localFrame * speed) / timelineFps + rampOffset / sourceFps
+    const lastFrame =
+      clip.sourceDuration !== undefined &&
+      Number.isFinite(clip.sourceDuration) &&
+      clip.sourceDuration > 0
+        ? Math.max(0, clip.sourceDuration - 1)
+        : null
+    const maxSourceTime = lastFrame === null ? Number.POSITIVE_INFINITY : (lastFrame + 1e-4) / sourceFps
+    const sourceTime = getVideoTargetTimeSeconds(
+      0,
+      sourceFps,
+      Math.min(Math.max(0, unclampedSourceTime), maxSourceTime) * sourceFps,
+      1,
+      sourceFps,
+    )
+    appendSourceTimeBySrc(bySource, src, Math.max(0, sourceTime))
   }
 
   return bySource

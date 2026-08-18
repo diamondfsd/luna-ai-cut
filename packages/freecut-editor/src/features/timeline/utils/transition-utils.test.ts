@@ -11,6 +11,7 @@ import {
   clampRollingTrimDeltaToPreserveTransition,
   clampSlideDeltaToPreserveTransitions,
   clampSlipDeltaToPreserveTransitions,
+  getMaxTransitionDurationAtCut,
   getMaxTransitionDurationForHandles,
 } from './transition-utils'
 
@@ -104,13 +105,14 @@ describe('transition-utils', () => {
     expect(getMaxTransitionDurationForHandles(left, right, 0.5, 30)).toBe(14)
   })
 
-  it('rejects transition when adjacent clips have no spare handle', () => {
+  it('allows adjacent untrimmed clips by falling back to an overlap transition', () => {
     const left = createVideoClip('A', 0, 100, 0, 100, 100)
     const right = createVideoClip('B', 100, 100, 0, 100, 100)
 
     const result = canAddTransition(left, right, 30)
-    expect(result.canAdd).toBe(false)
-    expect(result.reason).toContain('Insufficient handle')
+    expect(result.canAdd).toBe(true)
+    expect(getMaxTransitionDurationForHandles(left, right, 0.5)).toBe(0)
+    expect(getMaxTransitionDurationAtCut(left, right, 0.5)).toBe(99)
   })
 
   it('allows transition for image clips (infinite handle)', () => {

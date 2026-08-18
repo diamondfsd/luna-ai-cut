@@ -14,6 +14,7 @@ import type { CompositionInputProps } from '@freecut/types/export'
 import type { ItemEffect } from '@freecut/types/effects'
 import type { ItemKeyframes } from '@freecut/types/keyframe'
 import type { TimelineItem } from '@freecut/types/timeline'
+import type { Transition } from '@freecut/types/transition'
 import type { ResolvedTransform } from '@freecut/types/transform'
 import type { CaptureOptions } from '@freecut/shared/state/playback'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
@@ -172,7 +173,10 @@ interface UsePreviewRendererControllerParams {
   getPreviewPathVerticesOverride: PreviewPathVerticesOverride
   getLivePlaybackFrame: () => number | null
   getLiveItemSnapshot: (itemId: string) => TimelineItem | undefined
+  getLiveTransitionItemSnapshot: (itemId: string) => TimelineItem | undefined
+  getLiveTransitionSnapshot: (transitionId: string) => Transition | undefined
   getLiveKeyframes: (itemId: string) => ItemKeyframes | undefined
+  getPreviewVideoDecodeMaxDimension: () => number | undefined
   clearTransitionPlaybackSession: () => void
   resetResolveRetryState: () => void
   setCaptureFrame: (fn: ((options?: CaptureOptions) => Promise<string | null>) | null) => void
@@ -246,7 +250,10 @@ export function usePreviewRendererController({
   getPreviewPathVerticesOverride,
   getLivePlaybackFrame,
   getLiveItemSnapshot,
+  getLiveTransitionItemSnapshot,
+  getLiveTransitionSnapshot,
   getLiveKeyframes,
+  getPreviewVideoDecodeMaxDimension,
   clearTransitionPlaybackSession,
   resetResolveRetryState,
   setCaptureFrame,
@@ -472,7 +479,10 @@ export function usePreviewRendererController({
             getPreviewCornerPinOverride,
             getPreviewPathVerticesOverride,
             getLiveItemSnapshot,
+            getLiveTransitionItemSnapshot,
+            getLiveTransitionSnapshot,
             getLiveKeyframes,
+            getPreviewVideoDecodeMaxDimension,
           },
         )
         liveScopeCaptureCanvasRef.current = offscreen
@@ -500,7 +510,10 @@ export function usePreviewRendererController({
     fastScrubInputProps,
     fastScrubRendererStructureKey,
     getLiveItemSnapshot,
+    getLiveTransitionItemSnapshot,
+    getLiveTransitionSnapshot,
     getLiveKeyframes,
+    getPreviewVideoDecodeMaxDimension,
     getPreviewCornerPinOverride,
     getPreviewEffectsOverride,
     getPreviewPathVerticesOverride,
@@ -537,7 +550,10 @@ export function usePreviewRendererController({
             getPreviewCornerPinOverride,
             getPreviewPathVerticesOverride,
             getLiveItemSnapshot,
+            getLiveTransitionItemSnapshot,
+            getLiveTransitionSnapshot,
             getLiveKeyframes,
+            getPreviewVideoDecodeMaxDimension,
             renderText: !domTextScrubOverlayEnabled,
           })
           if ('warmGpuPipeline' in renderer) {
@@ -562,7 +578,10 @@ export function usePreviewRendererController({
       fastScrubRendererStructureKey,
       domTextScrubOverlayEnabled,
       getLiveItemSnapshot,
+      getLiveTransitionItemSnapshot,
+      getLiveTransitionSnapshot,
       getLiveKeyframes,
+      getPreviewVideoDecodeMaxDimension,
       getPreviewCornerPinOverride,
       getPreviewEffectsOverride,
       getPreviewPathVerticesOverride,
@@ -616,7 +635,10 @@ export function usePreviewRendererController({
               getPreviewCornerPinOverride,
               getPreviewPathVerticesOverride,
               getLiveItemSnapshot,
+              getLiveTransitionItemSnapshot,
+              getLiveTransitionSnapshot,
               getLiveKeyframes,
+              getPreviewVideoDecodeMaxDimension,
               renderText: !domTextScrubOverlayEnabled,
             },
           )
@@ -710,7 +732,10 @@ export function usePreviewRendererController({
       fastScrubRendererStructureKey,
       fps,
       getLiveItemSnapshot,
+      getLiveTransitionItemSnapshot,
+      getLiveTransitionSnapshot,
       getLiveKeyframes,
+      getPreviewVideoDecodeMaxDimension,
       getPreviewCornerPinOverride,
       getPreviewEffectsOverride,
       getPreviewPathVerticesOverride,

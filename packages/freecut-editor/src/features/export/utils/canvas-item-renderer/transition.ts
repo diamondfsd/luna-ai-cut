@@ -27,6 +27,7 @@ import type {
   TransitionParticipantRenderState,
 } from './types'
 import { applyAnimatedCropToItem, log } from './shared'
+import { logPreviewDiagnostic } from '@freecut/features/preview/utils/preview-diagnostic-log'
 import {
   getGpuShapeUnsupportedReason,
   prepareGpuMediaParticipant,
@@ -332,17 +333,43 @@ async function renderTransitionParticipantToTexture(
       )
       if (rendered) {
         logTransitionGpuParticipantPath(participant, prepared.media.kind, 'gpu-direct')
+        logPreviewDiagnostic('transition_gpu_participant', {
+          frame,
+          itemId: participant.item.id,
+          itemType: participant.item.type,
+          mediaKind: prepared.media.kind,
+          path: 'gpu-direct',
+          sourceWidth: prepared.media.sourceWidth,
+          sourceHeight: prepared.media.sourceHeight,
+        })
         return true
       }
       logTransitionGpuParticipantPath(participant, prepared.media.kind, 'canvas-rasterize', {
+        reason: 'direct-render-failed',
+      })
+      logPreviewDiagnostic('transition_gpu_participant', {
+        frame,
+        itemId: participant.item.id,
+        itemType: participant.item.type,
+        mediaKind: prepared.media.kind,
+        path: 'canvas-rasterize',
         reason: 'direct-render-failed',
       })
     } finally {
       prepared.media.close?.()
     }
   } else {
+    const reason = getTransitionParticipantCanvasReason(participant, rctx)
     logTransitionGpuParticipantPath(participant, null, 'canvas-rasterize', {
-      reason: getTransitionParticipantCanvasReason(participant, rctx),
+      reason,
+    })
+    logPreviewDiagnostic('transition_gpu_participant', {
+      frame,
+      itemId: participant.item.id,
+      itemType: participant.item.type,
+      mediaKind: null,
+      path: 'canvas-rasterize',
+      reason,
     })
   }
 
