@@ -31,6 +31,15 @@
       "filter": ["**/*"]
     },
     {
+      "from": "resources/python-runtime",
+      "to": "python-runtime",
+      "filter": [
+        "**/*",
+        "!**/__pycache__/**",
+        "!**/*.pyc"
+      ]
+    },
+    {
       "from": "stable-audio-3/tflite",
       "to": "stable-audio-3/tflite",
       "filter": [
@@ -39,6 +48,18 @@
         "!models/tokenizer.model",
         "!output/**",
         "!.venv/**",
+        "!**/__pycache__/**",
+        "!**/*.pyc"
+      ]
+    },
+    {
+      "from": "moss-tts",
+      "to": "moss-tts",
+      "filter": [
+        "python/**/*",
+        "licenses/**/*",
+        "MODEL-LICENSE.md",
+        "README.md",
         "!**/__pycache__/**",
         "!**/*.pyc"
       ]

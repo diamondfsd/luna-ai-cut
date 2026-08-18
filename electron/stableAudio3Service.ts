@@ -1,10 +1,8 @@
 import { app } from 'electron'
-import { createHash } from 'node:crypto'
-import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { execFile as execFileCallback, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { cpus } from 'node:os'
-import { promisify } from 'node:util'
 import type {
   StableAudio3GenerationRequest,
   StableAudio3GenerationResult,
@@ -15,10 +13,9 @@ import type {
 } from '../src/shared/types'
 import { getSettings } from './settingsService'
 import { logMainInfo, logMainWarn } from './loggerService'
+import { hasPythonRuntime, resolvePythonCommand } from './pythonRuntime'
 
-const execFile = promisify(execFileCallback)
 const RUNTIME_FOLDER = 'stable-audio-3'
-const PYTHON_REQUIREMENTS = 'requirements-luna.txt'
 const MODEL_ROOT_ENV = 'SA3_MODEL_ROOT'
 const WORK_ROOT_ENV = 'SA3_WORK_ROOT'
 const DOWNLOAD_ROOT_ENV = 'SA3_DOWNLOAD_ROOT'
@@ -27,8 +24,6 @@ const LORA_ROOT_ENV = 'SA3_LORA_ROOT'
 const LORA_CACHE_ROOT_ENV = 'SA3_LORA_CACHE_ROOT'
 const LOG_ROOT_ENV = 'SA3_LOG_ROOT'
 const CACHE_ROOT_ENV = 'SA3_CACHE_ROOT'
-const MODEL_SOURCE_REVISION = '18feee20effaa4c3a32104d952318f64f2d5f290'
-
 const MODEL_FILES: Record<StableAudio3ModelId, { label: string; ditBytes: number }> = {
   'small-music': { label: '背景音乐', ditBytes: 1_838_758_544 },
   'small-sfx': { label: '音效', ditBytes: 1_838_758_544 },
@@ -62,10 +57,6 @@ function isModelId(value: unknown): value is StableAudio3ModelId {
 
 function abortError(): DOMException {
   return new DOMException('Stable Audio generation cancelled.', 'AbortError')
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  return access(filePath).then(() => true).catch(() => false)
 }
 
 function cacheRootForBaseDir(baseDir: string): string {
@@ -152,6 +143,8 @@ function runtimeEnvironment(root: string): NodeJS.ProcessEnv {
     [LORA_CACHE_ROOT_ENV]: paths.loraCache,
     [LOG_ROOT_ENV]: paths.logs,
     SA3_JSONL: '1',
+    PYTHONNOUSERSITE: '1',
+    PYTHONDONTWRITEBYTECODE: '1',
   }
 }
 
@@ -165,84 +158,6 @@ function sourceRoot(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, RUNTIME_FOLDER, 'tflite')
     : path.join(appRoot, RUNTIME_FOLDER, 'tflite')
-}
-
-function pythonPath(venvRoot: string): string {
-  return process.platform === 'win32'
-    ? path.join(venvRoot, 'Scripts', 'python.exe')
-    : path.join(venvRoot, 'bin', 'python')
-}
-
-async function sha256File(filePath: string): Promise<string> {
-  const hash = createHash('sha256')
-  hash.update(await readFile(filePath))
-  return hash.digest('hex')
-}
-
-async function runCommand(command: string, args: string[], cwd: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env: runtimeEnvironment(cwd),
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
-    let stderr = ''
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(stderr.trim() || `${command} exited with code ${code ?? 'unknown'}`))
-    })
-  })
-}
-
-async function findPython(): Promise<{ command: string; args: string[] }> {
-  const candidates = process.platform === 'win32'
-    ? [{ command: 'py', args: ['-3'] }, { command: 'python', args: [] }]
-    : [{ command: 'python3', args: [] }, { command: 'python', args: [] }]
-  for (const candidate of candidates) {
-    try {
-      await execFile(candidate.command, [...candidate.args, '--version'])
-      return candidate
-    } catch {
-      // Try the next platform-provided Python launcher.
-    }
-  }
-  throw new Error('未找到 Python 3。请安装 Python 3.10 或更高版本后重试。')
-}
-
-async function ensurePythonEnvironment(root: string, report: (stage: string) => void): Promise<string> {
-  const runtimeRoot = path.join(root, 'runtime')
-  const venvRoot = path.join(runtimeRoot, 'venv')
-  const venvPython = pythonPath(venvRoot)
-  const requirements = path.join(sourceRoot(), PYTHON_REQUIREMENTS)
-  const marker = path.join(runtimeRoot, 'environment.json')
-  await mkdir(runtimeRoot, { recursive: true })
-  const requirementsHash = await sha256File(requirements)
-  const markerValue = await readFile(marker, 'utf8')
-    .then((text) => JSON.parse(text) as { requirementsSha256?: string; modelSourceRevision?: string })
-    .catch(() => null)
-  const environmentReady = await fileExists(venvPython)
-    && markerValue?.requirementsSha256 === requirementsHash
-    && markerValue?.modelSourceRevision === MODEL_SOURCE_REVISION
-  if (environmentReady) return venvPython
-
-  const systemPython = await findPython()
-  if (!await fileExists(venvPython)) {
-    report('正在准备本地音频环境。')
-    await runCommand(systemPython.command, [...systemPython.args, '-m', 'venv', venvRoot], root)
-  }
-  report('正在安装本地音频依赖。')
-  await runCommand(venvPython, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-r', requirements], root)
-  await writeFile(marker, JSON.stringify({
-    python: venvPython,
-    requirementsSha256: requirementsHash,
-    modelSourceRevision: MODEL_SOURCE_REVISION,
-  }, null, 2), 'utf8')
-  return venvPython
 }
 
 class StableAudio3Runtime {
@@ -359,10 +274,10 @@ class StableAudio3Runtime {
     this.pending.clear()
   }
 
-  private async ensureProcess(root: string, report: (stage: string) => void): Promise<void> {
+  private async ensureProcess(root: string): Promise<void> {
     if (this.process && this.processRoot === root && this.readyPromise) return this.readyPromise
     if (this.process) await this.unload()
-    const python = await ensurePythonEnvironment(root, report)
+    const python = await resolvePythonCommand()
     const script = path.join(sourceRoot(), 'scripts', 'luna_service.py')
     const paths = runtimePaths(root)
     await mkdir(root, { recursive: true })
@@ -371,7 +286,7 @@ class StableAudio3Runtime {
       this.readyResolve = resolve
       this.readyReject = reject
     })
-    const child = spawn(python, [script], {
+    const child = spawn(python.command, [...python.args, script], {
       cwd: root,
       env: {
         ...runtimeEnvironment(root),
@@ -394,13 +309,7 @@ class StableAudio3Runtime {
     }
     const settings = await getSettings()
     const root = cacheRootForBaseDir(settings.baseDir)
-    const report = (stage: string) => listener?.({
-      requestId: request.requestId,
-      model: request.model,
-      stage,
-      fraction: null,
-    })
-    await this.ensureProcess(root, report)
+    await this.ensureProcess(root)
     if (!this.process) throw new Error('Stable Audio 服务未启动。')
     const outputPath = path.join(runtimePaths(root).output, `${request.requestId}.wav`)
     if (!isPathInside(runtimePaths(root).output, outputPath)) {
@@ -438,7 +347,7 @@ class StableAudio3Runtime {
   async status(): Promise<StableAudio3Status> {
     const settings = await getSettings()
     const root = cacheRootForBaseDir(settings.baseDir)
-    const environment = await fileExists(pythonPath(path.join(root, 'runtime', 'venv')))
+    const environment = await hasPythonRuntime()
       ? 'ready'
       : 'missing-python'
     const models: StableAudio3ModelStatus[] = await Promise.all(
@@ -455,7 +364,7 @@ class StableAudio3Runtime {
       }),
     )
     return {
-      supported: environment !== 'missing-python' || await findPython().then(() => true).catch(() => false),
+      supported: environment !== 'missing-python',
       environment,
       cacheRoot: root,
       models,

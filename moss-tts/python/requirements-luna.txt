@@ -1,0 +1,4 @@
+# Minimal CPU runtime for Luna's MOSS-TTS-Nano service.
+numpy==2.5.2
+onnxruntime==1.29.0
+sentencepiece==0.2.2
