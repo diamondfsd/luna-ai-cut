@@ -1,4 +1,5 @@
 import { chmod, cp, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { chmodSync } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -45,6 +46,7 @@ const archiveName = target === 'win32' ? `${nodeName}.zip` : `${nodeName}.tar.gz
 const archiveUrl = `https://nodejs.org/dist/${NODE_VERSION}/${archiveName}`
 
 function run7za(argumentsList) {
+  if (process.platform !== 'win32') chmodSync(path7za, 0o755)
   const result = spawnSync(path7za, argumentsList, { stdio: 'inherit' })
   if (result.status !== 0) throw new Error(`解压 Node.js runtime 失败（${String(result.status ?? '未知错误')}）。`)
 }

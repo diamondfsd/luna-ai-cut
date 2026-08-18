@@ -163,6 +163,7 @@ async function sha256(filePath) {
 async function extractArchive(archivePath, temporary) {
   const extracted = join(temporary, 'extracted')
   await mkdir(extracted, { recursive: true })
+  if (process.platform !== 'win32') await chmod(path7za, 0o755)
   await run(path7za, ['x', archivePath, `-o${extracted}`, '-y'], { inherit: true })
   const tarFile = (await readdir(extracted, { withFileTypes: true }))
     .find((entry) => entry.isFile() && entry.name.endsWith('.tar'))

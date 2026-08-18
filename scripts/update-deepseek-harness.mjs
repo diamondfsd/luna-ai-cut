@@ -113,9 +113,14 @@ function resolveRemoteRef(ref) {
   return `refs/heads/${ref}`
 }
 
-function resolveRemoteCommit(config) {
+function upstreamRepository(config) {
+  const override = process.env.LUNA_DEEPSEEK_HARNESS_REPOSITORY
+  return typeof override === 'string' && override.length > 0 ? override : config.repository
+}
+
+function resolveRemoteCommit(config, repository) {
   const remoteRef = resolveRemoteRef(config.ref)
-  const result = gitProcess(['ls-remote', '--exit-code', config.repository, remoteRef], repoRoot, { timeout: 30_000 })
+  const result = gitProcess(['ls-remote', '--exit-code', repository, remoteRef], repoRoot, { timeout: 30_000 })
   if (result.error) throw new SyncError(`无法查询上游提交：${result.error.message}`)
   if (result.status !== 0) {
     const stderr = (result.stderr || '').trim()
@@ -274,8 +279,9 @@ async function main() {
   const mode = modes[0] === '--check' ? 'check' : modes[0] === '--dry-run' ? 'dry-run' : 'apply'
   const config = await readConfig()
   assertHarnessClean()
-  const { commit: latestCommit, remoteRef } = resolveRemoteCommit(config)
-  console.log(`DeepSeek Harness upstream: ${config.repository} ${remoteRef}`)
+  const repository = upstreamRepository(config)
+  const { commit: latestCommit, remoteRef } = resolveRemoteCommit(config, repository)
+  console.log(`DeepSeek Harness upstream: ${repository} ${remoteRef}`)
   console.log(`DeepSeek Harness synced:  ${config.syncedCommit}`)
   console.log(`DeepSeek Harness remote:   ${latestCommit}`)
 
@@ -286,7 +292,7 @@ async function main() {
     git(['config', 'user.name', 'Luna Harness Sync'], tempRoot)
     git(['config', 'user.email', 'luna-harness-sync@localhost'], tempRoot)
     if (latestCommit !== config.syncedCommit) {
-      git(['remote', 'add', 'upstream', config.repository], tempRoot)
+      git(['remote', 'add', 'upstream', repository], tempRoot)
       const fetchArgs = [
         'fetch',
         '--no-tags',
