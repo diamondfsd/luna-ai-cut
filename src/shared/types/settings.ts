@@ -3,6 +3,8 @@ import type { CameraConnectionMode } from './cameraMediaSource'
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
 
+export type WindowCloseBehavior = 'quit' | 'hide'
+
 export interface CustomLutFile {
   filePath: string
   fileName: string
@@ -44,6 +46,12 @@ export interface AppSettings {
   experimentalGpuPreview?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean
+  /** 手机分享时额外公开的目录，只扫描目录本身和下一层子目录。 */
+  localMediaShareDirectories?: string[]
+  /** 手机分享时拖入的文件路径，应用重启后会继续尝试共享。 */
+  localMediaShareFiles?: string[]
+  /** 点击窗口关闭按钮时退出应用，还是只隐藏窗口。 */
+  windowCloseBehavior?: WindowCloseBehavior
 }
 
 export interface CacheStats {

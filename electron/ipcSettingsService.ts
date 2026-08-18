@@ -17,6 +17,7 @@ import {
   type StorageMigrationSources,
 } from './storageMigrationService'
 import { organizeDownloadedFiles } from './downloadStorageService'
+import { setMainWindowCloseBehavior } from './windowService'
 import type { IpcContext } from './ipcContext'
 
 let storageMigrationInProgress = false
@@ -118,7 +119,11 @@ async function chooseWritableStorageTarget(
 
 export function register(ctx: IpcContext): void {
   ipcMain.handle('settings:get', () => getSettings())
-  ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
+  ipcMain.handle('settings:save', async (_event, settings: Partial<AppSettings>) => {
+    const next = await saveSettings(settings)
+    setMainWindowCloseBehavior(next.windowCloseBehavior)
+    return next
+  })
   ipcMain.handle('devices:list', () => deviceDefinitions())
   ipcMain.handle('settings:chooseBaseDir', () => chooseBaseDir())
   ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
