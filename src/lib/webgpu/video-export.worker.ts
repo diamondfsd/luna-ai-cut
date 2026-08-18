@@ -332,6 +332,7 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     `${mask.projectId}\u0000${mask.path}`,
     mask,
   ]))
+  const fontSources = new Map(message.fonts.map((font) => [font.path, font]))
 
   try {
     const format = new Mp4OutputFormat({ fastStart: 'fragmented' })
@@ -388,6 +389,11 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
         const frame = currentFrames.get(sourceKeyForLayer(layer))
         if (!frame) throw new Error(`视频帧尚未准备好: ${layer.source.path}`)
         return frame
+      },
+      resolveFont: async (path) => {
+        const source = fontSources.get(path)
+        if (!source) throw new Error(`字幕字体尚未传入: ${path}`)
+        return new Blob([source.bytes], { type: source.mimeType })
       },
       resolveLut: async (path) => {
         const text = lutTexts.get(path)

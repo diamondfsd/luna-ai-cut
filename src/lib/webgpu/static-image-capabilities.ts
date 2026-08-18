@@ -59,9 +59,9 @@ function canUseWebGpuVideoExportLayer(layer: PreviewLayer): boolean {
 }
 
 /**
- * Worker-safe video export capability. DOM rasterization (text and shapes) is
- * intentionally excluded because OffscreenCanvas workers do not expose the
- * document/font loading APIs used by the shared layer rasterizer.
+ * Worker-safe video export capability. Text and shape layers are rasterized
+ * with OffscreenCanvas in the export worker; font bytes are sent with the job
+ * so custom subtitle fonts do not depend on the renderer document.
  */
 export function canUseWebGpuVideoExportComposition(layers: PreviewLayer[]): boolean {
   return isWebGpuAvailable()

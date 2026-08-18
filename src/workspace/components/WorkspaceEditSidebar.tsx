@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Crop, Eraser, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, ScanFace, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, Captions, Check, Crop, Eraser, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, ScanFace, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 
 import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
@@ -21,8 +21,9 @@ import { TrimPanel, type LivePhotoSelection } from '../trim/TrimPanel'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { RemovalPanel } from '../removal/RemovalPanel'
 import { BeautyPanel } from '../beauty/BeautyPanel'
+import { SubtitlePanel } from '../subtitles/SubtitlePanel'
 
-export type WorkspaceTool = 'smart' | 'beauty' | 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal'
+export type WorkspaceTool = 'smart' | 'beauty' | 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal' | 'subtitles'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -93,6 +94,7 @@ const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: ReactElemen
   { value: 'removal', label: '对象消除', icon: <Eraser size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
+  { value: 'subtitles', label: '字幕', icon: <Captions size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
   { value: 'border', label: '边框', icon: <Image size={22} strokeWidth={1.8} /> },
 ]
@@ -102,6 +104,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'smart') return 'AI 工具'
   if (tool === 'crop') return '裁剪工具'
   if (tool === 'trim') return '截取'
+  if (tool === 'subtitles') return '字幕'
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
@@ -160,6 +163,10 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
     if (!beautyAllowed && edit.activeTool === 'beauty') setActiveTool('color')
   }, [beautyAllowed, edit.activeTool, setActiveTool])
 
+  useEffect(() => {
+    if (edit.activeTool === 'subtitles' && mediaCtx.activeMedia?.kind !== 'video') setActiveTool('color')
+  }, [edit.activeTool, mediaCtx.activeMedia?.kind, setActiveTool])
+
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
     smart: false,
@@ -172,6 +179,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
     border: isBorderModified(edit.pipeline.border),
     mask: edit.pipeline.colorMasks.length > 0,
     removal: Boolean(mediaCtx.currentProject?.assets[mediaCtx.activeIndex]?.removal?.operations.length),
+    subtitles: Boolean(mediaCtx.currentProject?.assets[mediaCtx.activeIndex]?.subtitles?.cues.length),
   }), [edit.pipeline, mediaCtx.activeIndex, mediaCtx.currentProject?.assets])
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
@@ -298,7 +306,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
             </span>
           )}
         </header>
-        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}`}>
+        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}${activeTool === 'subtitles' ? ' is-subtitle-panel' : ''}`}>
           {activeTool === 'smart' ? (
             <SmartOptimizePanel
               mediaKind={mediaCtx.activeMedia?.kind ?? null}
@@ -327,6 +335,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
             <BeautyPanel duration={duration} />
           ) : activeTool === 'removal' ? (
             <RemovalPanel />
+          ) : activeTool === 'subtitles' ? (
+            <SubtitlePanel duration={duration} trim={edit.pipeline.trim} onSeek={onTrimSeek} />
           ) : activeTool === 'crop' ? (
             <>
               <Accordion
@@ -434,7 +444,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                   size="compact"
                   icon={resourceLoading ? <Loader2 className="spin" size={20} /> : item.icon}
                   aria-label={item.label}
-                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || ((item.value === 'beauty' || item.value === 'removal') && mediaCtx.activeMedia?.kind !== 'image') || (item.value === 'trim' && mediaCtx.activeMedia?.kind !== 'video')}
+                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || ((item.value === 'beauty' || item.value === 'removal') && mediaCtx.activeMedia?.kind !== 'image') || ((item.value === 'trim' || item.value === 'subtitles') && mediaCtx.activeMedia?.kind !== 'video')}
                   onClick={() => {
                     mask.setEditing(item.value === 'mask')
                     edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)
