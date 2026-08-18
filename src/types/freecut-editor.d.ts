@@ -121,3 +121,7 @@ declare module '@freecut/embedded' {
 
   export const FreeCutEditor: ComponentType<FreeCutEditorProps>
 }
+
+declare module '@freecut/app/debug' {
+  export function initializeDebugUtils(): void | Promise<void>
+}
