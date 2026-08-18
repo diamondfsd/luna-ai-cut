@@ -55,6 +55,13 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
   await expect(project).toBeVisible()
   await project.click()
   await expect(lunaApp.page.getByRole('button', { name: '创意', exact: true })).toHaveCount(0)
+  await lunaApp.page.locator('.workspace-tool-rail button[aria-label="水印"]').click()
+  const watermarkSwitch = lunaApp.page.getByRole('switch', { name: '启用水印' })
+  await expect(watermarkSwitch).toBeVisible()
+  if (await watermarkSwitch.getAttribute('data-state') !== 'unchecked') {
+    await watermarkSwitch.click()
+    await expect(watermarkSwitch).toHaveAttribute('data-state', 'unchecked')
+  }
 
   const canvas = lunaApp.page.locator('.preview-canvas-wrapper canvas[data-renderer="webgpu"]')
   await expect(canvas).toBeVisible({ timeout: 30_000 })
@@ -109,6 +116,38 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
     const target = element as HTMLCanvasElement
     return target.toDataURL('image/png').length
   }), { timeout: 30_000 }).toBeGreaterThan(1_000)
+
+  const webGpuVideoExportPromise = lunaApp.page.evaluate(() => new Promise<boolean>((resolve) => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<{ backend?: string; status?: string; fileName?: string }>).detail
+      if (detail?.backend !== 'webgpu' || detail.status !== 'exporting' || !detail.fileName?.endsWith('.mp4')) return
+      window.removeEventListener('luna:export-progress-local', handle)
+      resolve(true)
+    }
+    window.addEventListener('luna:export-progress-local', handle)
+    window.setTimeout(() => {
+      window.removeEventListener('luna:export-progress-local', handle)
+      resolve(false)
+    }, 90_000)
+  }))
+  await lunaApp.page.getByRole('button', { name: '导出', exact: true }).click()
+  const videoExportDialog = lunaApp.page.getByRole('dialog', { name: '导出设置' })
+  await expect(videoExportDialog).toBeVisible()
+  const videoResolutionRow = videoExportDialog.locator('.export-settings-row').filter({ hasText: '分辨率' })
+  await videoResolutionRow.getByRole('combobox').click()
+  await lunaApp.page.getByRole('option', { name: '1080p', exact: true }).click()
+  await lunaApp.page.getByRole('button', { name: '确认导出', exact: true }).click()
+  await expect.poll(() => webGpuVideoExportPromise, { timeout: 90_000 }).toBe(true)
+
+  await expect.poll(async () => {
+    const names = await readdir(exportDir).catch(() => [])
+    return names.some((name) => name.endsWith('.mp4'))
+  }, { timeout: 90_000 }).toBe(true)
+  const exportedVideoName = (await readdir(exportDir)).find((name) => name.endsWith('.mp4'))
+  expect(exportedVideoName).toBeTruthy()
+  const exportedVideoFile = path.join(exportDir, exportedVideoName!)
+  expect((await stat(exportedVideoFile)).size).toBeGreaterThan(1_000)
+  await execFileAsync(ffmpegPath, ['-v', 'error', '-i', exportedVideoFile, '-frames:v', '1', '-f', 'null', '-'])
 
   expect(lunaApp.runtimeErrors).toEqual([])
 })
