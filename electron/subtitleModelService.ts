@@ -3,7 +3,7 @@ import path from 'node:path'
 import { SUBTITLE_ASR_MODEL, SUBTITLE_PUNCTUATION_MODEL, SUBTITLE_VAD_MODEL } from '../src/shared/subtitleModels'
 import { loadVerifiedModelFile, type ModelFileProgress } from './modelFileService'
 import { hasCachedModelFiles } from './modelCacheStatus'
-import { getSettings, modelCacheDirForBaseDir } from './settingsService'
+import { getSettings, modelDirForBaseDir } from './settingsService'
 
 export interface SubtitleModelPaths {
   asr: string
@@ -16,7 +16,7 @@ let pending: Promise<SubtitleModelPaths> | null = null
 export const SUBTITLE_MODEL_SET = [SUBTITLE_ASR_MODEL, SUBTITLE_VAD_MODEL, SUBTITLE_PUNCTUATION_MODEL] as const
 
 export async function getSubtitleModelsCacheStatus(): Promise<{ cached: boolean; sizeBytes: number }> {
-  const root = modelCacheDirForBaseDir((await getSettings()).baseDir)
+  const root = modelDirForBaseDir((await getSettings()).baseDir)
   const cached = await Promise.all(SUBTITLE_MODEL_SET.map(async (definition) => {
     const modelDir = path.join(root, definition.id)
     return hasCachedModelFiles(modelDir, [definition])
@@ -33,7 +33,7 @@ export async function loadSubtitleModels(
 ): Promise<SubtitleModelPaths> {
   if (!pending) {
     pending = (async () => {
-      const root = modelCacheDirForBaseDir((await getSettings()).baseDir)
+      const root = modelDirForBaseDir((await getSettings()).baseDir)
       const asrDir = path.join(root, SUBTITLE_ASR_MODEL.id)
       const vadDir = path.join(root, SUBTITLE_VAD_MODEL.id)
       const punctuationDir = path.join(root, SUBTITLE_PUNCTUATION_MODEL.id)

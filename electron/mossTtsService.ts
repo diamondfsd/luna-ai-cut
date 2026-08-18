@@ -103,6 +103,10 @@ function cacheRootForBaseDir(baseDir: string): string {
   return path.resolve(baseDir, 'cache', RUNTIME_FOLDER)
 }
 
+function modelRootForBaseDir(baseDir: string): string {
+  return path.resolve(baseDir, 'models', RUNTIME_FOLDER)
+}
+
 function runtimePaths(root: string): {
   downloads: string
   temp: string
@@ -135,7 +139,7 @@ function runtimePaths(root: string): {
   }
 }
 
-function runtimeEnvironment(root: string): NodeJS.ProcessEnv {
+function runtimeEnvironment(root: string, modelRoot: string): NodeJS.ProcessEnv {
   const paths = runtimePaths(root)
   return {
     ...process.env,
@@ -152,7 +156,7 @@ function runtimeEnvironment(root: string): NodeJS.ProcessEnv {
     USERPROFILE: paths.pythonHome,
     APPDATA: paths.pythonAppData,
     LOCALAPPDATA: paths.pythonLocalAppData,
-    MOSS_MODEL_ROOT: path.join(root, 'models'),
+    MOSS_MODEL_ROOT: modelRoot,
     MOSS_OUTPUT_ROOT: paths.output,
     MOSS_CACHE_ROOT: root,
     MOSS_LOG_ROOT: paths.logs,
@@ -179,8 +183,7 @@ async function isModelFileCached(filePath: string, expectedBytes: number): Promi
   return (await stat(filePath).catch(() => null))?.size === expectedBytes
 }
 
-async function ensureModels(root: string, report: (stage: string, fraction: number, loaded: number, total: number) => void, signal?: AbortSignal): Promise<void> {
-  const modelRoot = path.join(root, 'models')
+async function ensureModels(modelRoot: string, report: (stage: string, fraction: number, loaded: number, total: number) => void, signal?: AbortSignal): Promise<void> {
   const totalBytes = ESTIMATED_MODEL_BYTES
   const cachedManifest = await readFile(path.join(modelRoot, 'manifest.json'), 'utf8')
     .then((text) => JSON.parse(text) as { ttsRevision?: string; codecRevision?: string; sourceRevision?: string })
@@ -189,7 +192,7 @@ async function ensureModels(root: string, report: (stage: string, fraction: numb
     cachedManifest?.ttsRevision === TTS_MODEL_REVISION
     && cachedManifest.codecRevision === CODEC_MODEL_REVISION
     && cachedManifest.sourceRevision === SOURCE_REVISION
-    && await modelsCached(root)
+    && await modelsCached(modelRoot)
   ) {
     report('preparing-model', 1, totalBytes, totalBytes)
     return
@@ -219,9 +222,9 @@ async function ensureModels(root: string, report: (stage: string, fraction: numb
   }, null, 2), 'utf8')
 }
 
-async function modelsCached(root: string): Promise<boolean> {
+async function modelsCached(modelRoot: string): Promise<boolean> {
   return Promise.all(MOSS_MODEL_FILES.map(async (definition) => isModelFileCached(
-    path.join(root, 'models', definition.directory, definition.fileName),
+    path.join(modelRoot, definition.directory, definition.fileName),
     definition.sizeBytes,
   ))).then((values) => values.every(Boolean))
 }
@@ -337,17 +340,19 @@ class MossTtsRuntime {
 
   private async ensureProcess(
     root: string,
+    modelRoot: string,
     report: (stage: string, fraction?: number, loaded?: number, total?: number) => void,
     signal: AbortSignal,
   ): Promise<void> {
     if (this.process && this.processRoot === root && this.readyPromise) return this.readyPromise
     if (this.process) await this.unload()
     const python = await resolvePythonCommand()
-    await ensureModels(root, (stage, fraction, loaded, total) => report(stage, fraction, loaded, total), signal)
+    await ensureModels(modelRoot, (stage, fraction, loaded, total) => report(stage, fraction, loaded, total), signal)
     signal.throwIfAborted()
     const script = path.join(sourceRoot(), 'scripts', 'luna_service.py')
     const paths = runtimePaths(root)
     await mkdir(root, { recursive: true })
+    await mkdir(modelRoot, { recursive: true })
     await Promise.all(Object.values(paths).map((directory) => mkdir(directory, { recursive: true })))
     this.readyPromise = new Promise<void>((resolve, reject) => {
       this.readyResolve = resolve
@@ -355,7 +360,7 @@ class MossTtsRuntime {
     })
     const child = spawn(python.command, [...python.args, script], {
       cwd: root,
-      env: runtimeEnvironment(root),
+      env: runtimeEnvironment(root, modelRoot),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     })
@@ -368,6 +373,7 @@ class MossTtsRuntime {
     if (this.pending.has(request.requestId)) throw new Error('语音任务编号已在使用。')
     const settings = await getSettings()
     const root = cacheRootForBaseDir(settings.baseDir)
+    const modelRoot = modelRootForBaseDir(settings.baseDir)
     const controller = new AbortController()
     let rejectPending: (error: unknown) => void = () => {}
     const pending = new Promise<MossTtsGenerationResult>((resolve, reject) => {
@@ -389,7 +395,7 @@ class MossTtsRuntime {
     }
     void (async () => {
       try {
-        await this.ensureProcess(root, report, controller.signal)
+        await this.ensureProcess(root, modelRoot, report, controller.signal)
         controller.signal.throwIfAborted()
         if (!this.process) throw new Error('MOSS 服务未启动。')
         const outputPath = path.join(runtimePaths(root).output, `${request.requestId}.wav`)
@@ -407,12 +413,12 @@ class MossTtsRuntime {
   async prepare(listener?: ProgressListener): Promise<void> {
     if (this.pending.size > 0) throw new Error('当前正在生成语音，请完成后再准备模型。')
     const settings = await getSettings()
-    const root = cacheRootForBaseDir(settings.baseDir)
+    const modelRoot = modelRootForBaseDir(settings.baseDir)
     if (!(await hasPythonRuntime())) throw new Error('当前环境无法使用 MOSS 语音。')
     await resolvePythonCommand()
     const requestId = `prepare_${Date.now()}`
     const controller = new AbortController()
-    await ensureModels(root, (stage, fraction, loaded, total) => {
+    await ensureModels(modelRoot, (stage, fraction, loaded, total) => {
       listener?.({
         requestId,
         stage,
@@ -447,14 +453,15 @@ class MossTtsRuntime {
   async status(): Promise<MossTtsStatus> {
     const settings = await getSettings()
     const root = cacheRootForBaseDir(settings.baseDir)
+    const modelRoot = modelRootForBaseDir(settings.baseDir)
     const environment = await hasPythonRuntime()
-      ? (await modelsCached(root) ? 'ready' : 'missing-model')
+      ? (await modelsCached(modelRoot) ? 'ready' : 'missing-model')
       : 'missing-python'
     return {
       supported: environment !== 'missing-python',
       environment,
       cacheRoot: root,
-      modelCached: await modelsCached(root),
+      modelCached: await modelsCached(modelRoot),
       estimatedBytes: ESTIMATED_MODEL_BYTES,
     }
   }
