@@ -5,7 +5,8 @@ import { useTimelineStore } from '../stores/timeline-store'
 import { useItemsStore } from '../stores/items-store'
 import { pixelsToTimeNow } from '@freecut/features/timeline/utils/zoom-conversions'
 import type { TimelineState, TimelineActions } from '../types'
-import { getMaxTransitionDurationForHandles } from '../utils/transition-utils'
+import { getMaxTransitionDurationAtCut } from '../utils/transition-utils'
+import { useTransitionResizePreviewStore } from '../stores/transition-resize-preview-store'
 
 type ResizeHandle = 'left' | 'right'
 
@@ -49,7 +50,7 @@ export function useTransitionResize(transition: Transition) {
       return Math.max(1, Math.max(transition.durationInFrames, legacyMax))
     }
 
-    const handleMax = getMaxTransitionDurationForHandles(
+    const handleMax = getMaxTransitionDurationAtCut(
       leftClip,
       rightClip,
       transition.alignment,
@@ -94,13 +95,20 @@ export function useTransitionResize(transition: Transition) {
         Math.min(maxDuration, resizeStateRef.current.initialDuration + deltaFrames),
       )
       const clampedDelta = newDuration - resizeStateRef.current.initialDuration
+      const previewStore = useTransitionResizePreviewStore.getState()
+      if (
+        previewStore.transitionId !== transition.id ||
+        previewStore.durationInFrames !== newDuration
+      ) {
+        previewStore.setPreview(transition.id, newDuration)
+      }
 
       setResizeState((prev) => ({
         ...prev,
         currentDelta: clampedDelta,
       }))
     },
-    [pixelsToTime, fps, maxDuration],
+    [pixelsToTime, fps, maxDuration, transition.id],
   )
 
   // Mouse up handler - commits changes to store
@@ -119,6 +127,7 @@ export function useTransitionResize(transition: Transition) {
       if (currentDelta !== 0) {
         updateTransition(transition.id, { durationInFrames: newDuration })
       }
+      useTransitionResizePreviewStore.getState().clear()
       setResizeState({
         isResizing: false,
         handle: null,
@@ -147,11 +156,15 @@ export function useTransitionResize(transition: Transition) {
         initialDuration: transition.durationInFrames,
         currentDelta: 0,
       })
+      useTransitionResizePreviewStore.getState().setPreview(
+        transition.id,
+        transition.durationInFrames,
+      )
 
       document.body.style.cursor = 'ew-resize'
       document.body.style.userSelect = 'none'
     },
-    [transition.durationInFrames],
+    [transition.durationInFrames, transition.id],
   )
 
   // Add/remove global listeners with capture to intercept events first
@@ -171,9 +184,12 @@ export function useTransitionResize(transition: Transition) {
         document.removeEventListener('mousemove', handleMouseMove, { capture: true })
         document.removeEventListener('mouseup', handleMouseUp, { capture: true })
         document.removeEventListener('click', preventClick, { capture: true })
+        if (useTransitionResizePreviewStore.getState().transitionId === transition.id) {
+          useTransitionResizePreviewStore.getState().clear()
+        }
       }
     }
-  }, [resizeState.isResizing, handleMouseMove, handleMouseUp])
+  }, [resizeState.isResizing, handleMouseMove, handleMouseUp, transition.id])
 
   return {
     isResizing: resizeState.isResizing,

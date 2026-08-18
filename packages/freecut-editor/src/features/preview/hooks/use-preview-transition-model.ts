@@ -5,6 +5,7 @@ import type { ResolvedTransitionWindow } from '@freecut/shared/timeline/transiti
 import { resolveTransitionWindows } from '@freecut/shared/timeline/transitions/transition-planner'
 import { shouldForceContinuousPreviewOverlay } from '../hooks/use-gpu-effects-overlay'
 import { useCompositionsStore } from '@freecut/features/preview/deps/timeline-store'
+import { useTransitionResizePreviewStore } from '@freecut/features/preview/deps/timeline-edit-preview'
 import { hasCornerPin } from '@freecut/features/preview/deps/composition-runtime'
 
 interface UsePreviewTransitionModelParams {
@@ -37,12 +38,41 @@ function formatTransitionFingerprint(
   ].join(':')
 }
 
+function formatTransitionStructureFingerprint(
+  transition: NonNullable<CompositionInputProps['transitions']>[number],
+): string {
+  return [
+    transition.id,
+    transition.type,
+    transition.leftClipId,
+    transition.rightClipId,
+    transition.trackId ?? '',
+    transition.presentation ?? '',
+    transition.direction ?? '',
+    transition.timing ?? '',
+  ].join(':')
+}
+
 export function usePreviewTransitionModel({
   fps,
   transitions,
   fastScrubScaledTracks,
   fastScrubPreviewItems,
 }: UsePreviewTransitionModelParams) {
+  const resizePreviewTransitionId = useTransitionResizePreviewStore((s) => s.transitionId)
+  const resizePreviewDuration = useTransitionResizePreviewStore((s) => s.durationInFrames)
+  const effectiveTransitions = useMemo(() => {
+    if (!transitions || resizePreviewTransitionId === null || resizePreviewDuration === null) {
+      return transitions
+    }
+
+    return transitions.map((transition) =>
+      transition.id === resizePreviewTransitionId
+        ? { ...transition, durationInFrames: resizePreviewDuration }
+        : transition,
+    )
+  }, [resizePreviewDuration, resizePreviewTransitionId, transitions])
+
   const {
     playbackTransitionFingerprint,
     playbackTransitionWindows,
@@ -53,13 +83,14 @@ export function usePreviewTransitionModel({
     playbackTransitionPrerenderRunwayFrames,
     playbackTransitionComplexStartFrames,
     playbackTransitionOverlayWindows,
+    playbackTransitionStructureFingerprint,
   } = useMemo(() => {
     return buildPreviewTransitionData({
       fps,
-      transitions,
+      transitions: effectiveTransitions,
       fastScrubScaledTracks,
     })
-  }, [fastScrubScaledTracks, fps, transitions])
+  }, [effectiveTransitions, fastScrubScaledTracks, fps])
 
   const transitionWindowUsesDomProvider = useCallback(
     (window: ResolvedTransitionWindow<TimelineItem> | null) => {
@@ -135,6 +166,7 @@ export function usePreviewTransitionModel({
 
   return {
     playbackTransitionFingerprint,
+    playbackTransitionStructureFingerprint,
     playbackTransitionWindows,
     playbackTransitionLookaheadFrames,
     playbackTransitionCooldownFrames,
@@ -160,6 +192,9 @@ export function buildPreviewTransitionData({
   const safeTransitions = transitions ?? []
   const playbackTransitionFingerprint = safeTransitions
     .map((transition) => formatTransitionFingerprint(transition))
+    .join('|')
+  const playbackTransitionStructureFingerprint = safeTransitions
+    .map((transition) => formatTransitionStructureFingerprint(transition))
     .join('|')
 
   const clipMap = new Map<string, TimelineItem>()
@@ -214,6 +249,7 @@ export function buildPreviewTransitionData({
 
   return {
     playbackTransitionFingerprint,
+    playbackTransitionStructureFingerprint,
     playbackTransitionWindows,
     playbackTransitionLookaheadFrames,
     playbackTransitionCooldownFrames,
