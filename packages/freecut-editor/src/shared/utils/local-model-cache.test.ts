@@ -11,7 +11,6 @@ import {
   SCENE_VERIFICATION_MODEL_IDS,
   SCENE_VERIFICATION_MODEL_LABELS,
 } from './scene-verification-models'
-import { MUSICGEN_MODEL_IDS, MUSICGEN_MODEL_OPTIONS } from './musicgen-models'
 
 type CacheEntries = Record<string, Response>
 type CacheMap = Record<string, CacheEntries>
@@ -127,10 +126,6 @@ describe('local-model-cache', () => {
             new Response(new Uint8Array(10), {
               headers: { 'content-length': '10' },
             }),
-          'https://www.modelscope.cn/models/Xenova/musicgen-small/resolve/master/config.json':
-            new Response(new Uint8Array(11), {
-              headers: { 'content-length': '11' },
-            }),
           'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/ort-wasm-simd-threaded.wasm':
             new Response(new Uint8Array(7), {
               headers: { 'content-length': '7' },
@@ -147,11 +142,10 @@ describe('local-model-cache', () => {
   it('inspects configured local model caches without creating missing caches', async () => {
     const summaries = await inspectAllLocalModelCaches()
 
-    expect(summaries).toHaveLength(8)
+    expect(summaries).toHaveLength(7)
     expect(summaries.map((summary) => summary.id)).toEqual([
       'whisper',
       ...SCENE_VERIFICATION_MODEL_IDS,
-      ...MUSICGEN_MODEL_IDS,
       'kokoro-tts',
       'parakeet',
       'supertonic-tts',
@@ -198,19 +192,6 @@ describe('local-model-cache', () => {
     )
     expect(summaries).toContainEqual(
       expect.objectContaining({
-        id: 'musicgen-small',
-        label: MUSICGEN_MODEL_OPTIONS[0]!.label,
-        cacheName: TRANSFORMERS_CACHE_NAME,
-        exists: true,
-        downloaded: true,
-        entryCount: 1,
-        totalBytes: 11,
-        sizeStatus: 'exact',
-        inspectionState: 'ready',
-      }),
-    )
-    expect(summaries).toContainEqual(
-      expect.objectContaining({
         id: 'kokoro-tts',
         cacheName: TRANSFORMERS_CACHE_NAME,
         exists: true,
@@ -235,7 +216,6 @@ describe('local-model-cache', () => {
     const whisperSummary = summaries.find((summary) => summary.id === 'whisper')
     const gemmaSummary = summaries.find((summary) => summary.id === 'gemma')
     const lfmSummary = summaries.find((summary) => summary.id === 'lfm')
-    const musicgenSummary = summaries.find((summary) => summary.id === 'musicgen-small')
 
     expect(whisperSummary).toEqual(
       expect.objectContaining({
@@ -263,14 +243,6 @@ describe('local-model-cache', () => {
         downloaded: true,
         entryCount: 1,
         totalBytes: 10,
-      }),
-    )
-    expect(musicgenSummary).toEqual(
-      expect.objectContaining({
-        id: 'musicgen-small',
-        downloaded: true,
-        entryCount: 1,
-        totalBytes: 11,
       }),
     )
   })

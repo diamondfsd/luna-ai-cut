@@ -1,8 +1,8 @@
-import { app } from 'electron'
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { SUBTITLE_ASR_MODEL, SUBTITLE_PUNCTUATION_MODEL, SUBTITLE_VAD_MODEL } from '../src/shared/subtitleModels'
 import { loadVerifiedModelFile, type ModelFileProgress } from './modelFileService'
+import { getSettings, modelCacheDirForBaseDir } from './settingsService'
 
 export interface SubtitleModelPaths {
   asr: string
@@ -18,7 +18,7 @@ export async function loadSubtitleModels(
 ): Promise<SubtitleModelPaths> {
   if (!pending) {
     pending = (async () => {
-      const root = path.join(app.getPath('userData'), 'models')
+      const root = modelCacheDirForBaseDir((await getSettings()).baseDir)
       const asrDir = path.join(root, SUBTITLE_ASR_MODEL.id)
       const vadDir = path.join(root, SUBTITLE_VAD_MODEL.id)
       const punctuationDir = path.join(root, SUBTITLE_PUNCTUATION_MODEL.id)

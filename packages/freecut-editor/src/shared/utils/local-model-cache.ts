@@ -5,11 +5,6 @@ import {
   SCENE_VERIFICATION_MODEL_LABELS,
   type SceneVerificationModelId,
 } from './scene-verification-models'
-import {
-  MUSICGEN_MODEL_IDS,
-  getMusicgenModelDefinition,
-  type MusicgenModelId,
-} from './musicgen-models'
 import { ONNX_MODEL_CACHE_NAME } from './onnx-model-cache'
 
 export const TRANSFORMERS_CACHE_NAME = 'transformers-cache'
@@ -19,7 +14,6 @@ const KOKORO_TTS_CACHE_MATCH_FRAGMENTS = ['/onnx-community/kokoro-82m-v1.0-onnx/
 export type LocalModelCacheId =
   | 'whisper'
   | SceneVerificationModelId
-  | MusicgenModelId
   | 'kokoro-tts'
   | 'parakeet'
   | 'supertonic-tts'
@@ -52,20 +46,6 @@ const SCENE_VERIFICATION_MODEL_CACHE_DEFINITIONS: LocalModelCacheDefinition[] =
     matchPathFragments: [...SCENE_VERIFICATION_MODEL_CACHE_MATCH_FRAGMENTS[id]],
   }))
 
-const MUSICGEN_MODEL_CACHE_DEFINITIONS: LocalModelCacheDefinition[] = MUSICGEN_MODEL_IDS.map(
-  (id) => {
-    const definition = getMusicgenModelDefinition(id)
-
-    return {
-      id,
-      label: definition.label,
-      description: `${definition.label} model files and tokenizers.`,
-      cacheName: TRANSFORMERS_CACHE_NAME,
-      matchPathFragments: [...definition.cacheMatchFragments],
-    }
-  },
-)
-
 export const LOCAL_MODEL_CACHE_DEFINITIONS: LocalModelCacheDefinition[] = [
   {
     id: 'whisper',
@@ -75,7 +55,6 @@ export const LOCAL_MODEL_CACHE_DEFINITIONS: LocalModelCacheDefinition[] = [
     matchPathFragments: WHISPER_CACHE_MATCH_FRAGMENTS,
   },
   ...SCENE_VERIFICATION_MODEL_CACHE_DEFINITIONS,
-  ...MUSICGEN_MODEL_CACHE_DEFINITIONS,
   {
     id: 'kokoro-tts',
     label: 'Kokoro TTS',

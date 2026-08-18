@@ -165,9 +165,9 @@
       "collapseMusicGeneration": "折叠音乐生成",
       "expandMusicGeneration": "展开音乐生成",
       "musicGenerationInfo": "音乐生成信息",
-      "musicgenDescription": "通过 Transformers.js 使用 Xenova 的浏览器版 MusicGen 模型。首次下载较大，之后会缓存在本地。",
-      "musicgenPromptHint": "请描述流派、情绪、速度和乐器。较短的片段会完成得更快。",
-      "musicgenUnsupported": "此浏览器不支持 WebGPU. MusicGen 需要 Chrome 113+, Edge 113+ 或 Safari 26+.",
+      "stableAudioDescription": "使用 Stable Audio 3 在电脑本地生成背景音乐或音效。首次使用会准备本地环境并下载模型，之后会复用基础目录中的缓存。",
+      "stableAudioPromptHint": "选择背景音乐或音效，再描述想要的内容、情绪、节奏和声音特点。",
+      "stableAudioUnsupported": "当前应用无法启动本地音频环境，请先安装 Python 3.10 或更高版本。",
       "prompt": "提示词",
       "presets": "预设",
       "musicPromptPlaceholder": "描述你想生成的音乐类型...",
@@ -182,7 +182,7 @@
       "progressPreparingMusic": "正在准备本地音乐生成...",
       "errors": {
         "describeMusic": "请描述你想生成的音乐。",
-        "musicgenUnsupported": "MusicGen 需要 WebGPU. 请尝试 Chrome 113+, Edge 113+ 或 Safari 26+.",
+        "stableAudioUnsupported": "当前应用无法启动本地音频环境，请先安装 Python 3.10 或更高版本。",
         "generateMusicFailed": "无法生成音乐。",
         "saveAudioFailed": "无法将音频保存到媒体库。"
       },

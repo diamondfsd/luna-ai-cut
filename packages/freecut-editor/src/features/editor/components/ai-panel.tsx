@@ -35,7 +35,11 @@ import {
 } from '@freecut/components/ui/select'
 import { Slider } from '@freecut/components/ui/slider'
 import { Textarea } from '@freecut/components/ui/textarea'
-import { getMusicgenModelDefinition } from '@freecut/shared/utils/musicgen-models'
+import {
+  getStableAudioModelDefinition,
+  STABLE_AUDIO_MODEL_OPTIONS,
+  type StableAudioModelId,
+} from '@freecut/shared/utils/stable-audio-models'
 import { useMediaPlaybackControls } from '@freecut/shared/media/use-media-playback-controls'
 import {
   getStoredTtsEngine,
@@ -75,11 +79,9 @@ import {
   type SupertonicTtsVoice,
 } from '../services/supertonic-tts-service'
 import {
-  DEFAULT_MUSICGEN_MODEL,
-  MUSICGEN_MODEL_OPTIONS,
-  musicgenService,
-  type MusicgenModelId,
-} from '../services/musicgen-service'
+  DEFAULT_STABLE_AUDIO_MODEL,
+  stableAudio3Service,
+} from '../services/stable-audio-3-service'
 import { insertGeneratedAudioOnNewTrack } from '../utils/insert-generated-audio'
 import { getLanguageDisplayName, insertTextAtCursor } from '../utils/tts-ui-helpers'
 
@@ -241,8 +243,8 @@ export const AiPanel = memo(function AiPanel() {
   const [ttsSectionOpen, setTtsSectionOpen] = useState(true)
 
   const [musicPrompt, setMusicPrompt] = useState(() => t(MUSIC_PROMPT_PRESETS[0]!.promptKey))
-  const [musicModel] = useState<MusicgenModelId>(DEFAULT_MUSICGEN_MODEL)
-  const currentMusicModel = useMemo(() => getMusicgenModelDefinition(musicModel), [musicModel])
+  const [musicModel, setMusicModel] = useState<StableAudioModelId>(DEFAULT_STABLE_AUDIO_MODEL)
+  const currentMusicModel = useMemo(() => getStableAudioModelDefinition(musicModel), [musicModel])
   const [musicDuration, setMusicDuration] = useState(currentMusicModel.defaultDurationSeconds)
   const [isMusicGenerating, setIsMusicGenerating] = useState(false)
   const [musicProgress, setMusicProgress] = useState<string | null>(null)
@@ -300,7 +302,7 @@ export const AiPanel = memo(function AiPanel() {
       : ttsEngine === 'moss'
         ? isMossSupported
         : isSupertonicSupported
-  const isMusicSupported = musicgenService.isSupported()
+  const isMusicSupported = stableAudio3Service.isSupported()
   const trimmedTtsText = ttsText.trim()
   const trimmedMusicPrompt = musicPrompt.trim()
 
@@ -476,7 +478,7 @@ export const AiPanel = memo(function AiPanel() {
       return null
     }
     if (!isMusicSupported) {
-      setMusicError(t('editor.aiPanel.errors.musicgenUnsupported'))
+      setMusicError(t('editor.aiPanel.errors.stableAudioUnsupported'))
       return null
     }
 
@@ -489,7 +491,7 @@ export const AiPanel = memo(function AiPanel() {
     setMusicProgressPct(null)
 
     try {
-      const { blob, file, duration } = await musicgenService.generateMusicFile({
+      const { blob, file, duration } = await stableAudio3Service.generateMusicFile({
         prompt: trimmedMusicPrompt,
         model: musicModel,
         durationSeconds: musicDuration,
@@ -504,7 +506,7 @@ export const AiPanel = memo(function AiPanel() {
       generationUrlsRef.current.add(objectUrl)
 
       const modelLabel =
-        MUSICGEN_MODEL_OPTIONS.find((option) => option.value === musicModel)?.label ?? musicModel
+        STABLE_AUDIO_MODEL_OPTIONS.find((option) => option.value === musicModel)?.label ?? musicModel
       const generation: AudioGeneration = {
         id: crypto.randomUUID(),
         file,
@@ -518,9 +520,9 @@ export const AiPanel = memo(function AiPanel() {
         details: `${modelLabel} / target ${musicDuration}s / ${duration > 0 ? `${duration.toFixed(1)}s` : '-'} / ${formatBytes(blob.size)}`,
         tags: [
           'ai-generated',
-          'musicgen',
-          `musicgen-model:${musicModel}`,
-          `musicgen-target:${musicDuration}s`,
+          'stable-audio-3',
+          `stable-audio-model:${musicModel}`,
+          `stable-audio-target:${musicDuration}s`,
         ],
         savedMediaId: null,
         saving: false,
@@ -996,29 +998,29 @@ export const AiPanel = memo(function AiPanel() {
                 >
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      WebGPU
+                      CPU
                     </span>
                     <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                       Local
                     </span>
                   </div>
                   <p className="leading-relaxed text-muted-foreground">
-                    {t('editor.aiPanel.musicgenDescription')}
+                    {t('editor.aiPanel.stableAudioDescription')}
                   </p>
                   <table className="w-full text-[11px]">
                     <tbody>
-                      {MUSICGEN_MODEL_OPTIONS.map((option) => (
+                      {STABLE_AUDIO_MODEL_OPTIONS.map((option) => (
                         <tr key={option.value} className="border-t border-border/50">
                           <td className="py-1 pr-2 font-medium text-foreground">{option.label}</td>
                           <td className="py-1 text-right text-muted-foreground">
-                            {option.downloadLabel}
+                            {formatBytes(option.estimatedBytes)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                   <p className="leading-relaxed text-muted-foreground">
-                    {t('editor.aiPanel.musicgenPromptHint')}
+                    {t('editor.aiPanel.stableAudioPromptHint')}
                   </p>
                 </PopoverContent>
               </Popover>
@@ -1028,7 +1030,7 @@ export const AiPanel = memo(function AiPanel() {
           <CollapsibleContent className="space-y-4 pt-3">
             {!isMusicSupported && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-                {t('editor.aiPanel.musicgenUnsupported')}
+                {t('editor.aiPanel.stableAudioUnsupported')}
               </div>
             )}
 
@@ -1067,6 +1069,22 @@ export const AiPanel = memo(function AiPanel() {
             </div>
 
             <div className="flex items-center gap-2">
+              <Select
+                value={musicModel}
+                onValueChange={(value) => setMusicModel(value as StableAudioModelId)}
+                disabled={isMusicGenerating}
+              >
+                <SelectTrigger className="h-7 w-28 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STABLE_AUDIO_MODEL_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <SliderInput
                 label={t('editor.aiPanel.length')}
                 value={musicDuration}

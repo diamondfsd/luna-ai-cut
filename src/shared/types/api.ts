@@ -64,6 +64,58 @@ export interface WorkspaceInstanceSegmentationResult {
   }
 }
 
+export type StableAudio3ModelId = 'small-music' | 'small-sfx'
+
+export interface StableAudio3Progress {
+  requestId: string
+  model: StableAudio3ModelId
+  stage: string
+  fraction: number | null
+  file?: string
+  loadedBytes?: number
+  totalBytes?: number
+}
+
+export interface StableAudio3ModelStatus {
+  id: StableAudio3ModelId
+  label: string
+  estimatedBytes: number
+  cached: boolean
+}
+
+export interface StableAudio3Status {
+  supported: boolean
+  environment: 'missing-python' | 'preparing' | 'ready' | 'error'
+  cacheRoot: string
+  models: StableAudio3ModelStatus[]
+  errorMessage?: string
+}
+
+export interface StableAudio3GenerationRequest {
+  requestId: string
+  model: StableAudio3ModelId
+  prompt: string
+  durationSeconds: number
+  guidanceScale?: number
+  seed?: number
+}
+
+export interface StableAudio3GenerationResult {
+  requestId: string
+  model: StableAudio3ModelId
+  fileName: string
+  durationSeconds: number
+  bytes: Uint8Array
+}
+
+export interface StableAudio3Api {
+  getStatus(): Promise<StableAudio3Status>
+  generate(request: StableAudio3GenerationRequest): Promise<StableAudio3GenerationResult>
+  cancel(requestId: string): Promise<void>
+  unload(): Promise<void>
+  onProgress(callback: (progress: StableAudio3Progress) => void): () => void
+}
+
 export interface WorkspaceSegmentationProgress {
   requestId: string
   phase: 'model' | 'preparing' | 'recognizing'
@@ -307,6 +359,7 @@ export interface LunaApi {
     onSessionUpdated(callback: (session: AiSelectionSession) => void): () => void
   }
   deepseekHarness: DeepSeekHarnessApi
+  stableAudio3: StableAudio3Api
   workspace: {
     chooseMediaFiles(): Promise<string[]>
     chooseMediaDirectory(): Promise<string[]>

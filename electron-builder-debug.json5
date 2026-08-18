@@ -31,6 +31,19 @@
       "filter": ["**/*"]
     },
     {
+      "from": "stable-audio-3/tflite",
+      "to": "stable-audio-3/tflite",
+      "filter": [
+        "**/*",
+        "!models/**/*.tflite",
+        "!models/tokenizer.model",
+        "!output/**",
+        "!.venv/**",
+        "!**/__pycache__/**",
+        "!**/*.pyc"
+      ]
+    },
+    {
       "from": "luna-render-core/luna-render-core.node",
       "to": "luna-render-core/luna-render-core.node"
     },

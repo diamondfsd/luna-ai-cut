@@ -7,11 +7,11 @@ import {
   type MossTtsVoice,
 } from '@freecut/features/editor/services/moss-tts-service'
 import {
-  DEFAULT_MUSICGEN_MODEL,
-  musicgenService,
-  type MusicgenModelId,
-} from '@freecut/features/editor/services/musicgen-service'
-import { MUSICGEN_MODEL_IDS } from '@freecut/shared/utils/musicgen-models'
+  DEFAULT_STABLE_AUDIO_MODEL,
+  stableAudio3Service,
+  type StableAudioModelId,
+} from '@freecut/features/editor/services/stable-audio-3-service'
+import { STABLE_AUDIO_MODEL_IDS } from '@freecut/shared/utils/stable-audio-models'
 import type {
   ProjectEditingJsonSchema,
   ProjectEditingTool,
@@ -20,8 +20,8 @@ import type {
 
 const MAX_GENERATED_SPEECH_TEXT_LENGTH = 10_000
 const MAX_GENERATED_MUSIC_PROMPT_LENGTH = 1_000
-const MUSICGEN_MIN_DURATION_SECONDS = 2
-const MUSICGEN_MAX_DURATION_SECONDS = 30
+const STABLE_AUDIO_MIN_DURATION_SECONDS = 2
+const STABLE_AUDIO_MAX_DURATION_SECONDS = 30
 const MOSS_TTS_VOICE_VALUES = MOSS_TTS_VOICE_OPTIONS.map((option) => option.value) as [
   MossTtsVoice,
   ...MossTtsVoice[],
@@ -218,24 +218,24 @@ const audioStartSpeech = tool({
 
 const audioStartMusic = tool({
   name: 'audio.start_music',
-  description: '提交本地 MusicGen 背景音乐生成任务。模型下载和生成会在后台进行，立即返回 taskId；必须使用 audio.get_task 查询，直到 status 为 completed 后才可读取 mediaId 并加入时间轴。',
+  description: '提交本地 Stable Audio 3 音频生成任务。模型准备和生成会在后台进行，立即返回 taskId；必须使用 audio.get_task 查询，直到 status 为 completed 后才可读取 mediaId 并加入时间轴。模型 small-music 用于背景音乐，small-sfx 用于音效。',
   inputSchema: schema({
     prompt: { type: 'string', minLength: 1, maxLength: MAX_GENERATED_MUSIC_PROMPT_LENGTH },
-    model: { type: 'string', enum: MUSICGEN_MODEL_IDS, default: DEFAULT_MUSICGEN_MODEL },
+    model: { type: 'string', enum: STABLE_AUDIO_MODEL_IDS, default: DEFAULT_STABLE_AUDIO_MODEL },
     durationSeconds: {
       type: 'number',
-      minimum: MUSICGEN_MIN_DURATION_SECONDS,
-      maximum: MUSICGEN_MAX_DURATION_SECONDS,
+      minimum: STABLE_AUDIO_MIN_DURATION_SECONDS,
+      maximum: STABLE_AUDIO_MAX_DURATION_SECONDS,
       default: 8,
     },
     guidanceScale: { type: 'number', minimum: 0, maximum: 10, default: 3 },
   }, ['prompt']),
   schema: z.object({
     prompt: z.string().trim().min(1).max(MAX_GENERATED_MUSIC_PROMPT_LENGTH),
-    model: z.enum(MUSICGEN_MODEL_IDS).default(DEFAULT_MUSICGEN_MODEL),
+    model: z.enum(STABLE_AUDIO_MODEL_IDS).default(DEFAULT_STABLE_AUDIO_MODEL),
     durationSeconds: z.number()
-      .min(MUSICGEN_MIN_DURATION_SECONDS)
-      .max(MUSICGEN_MAX_DURATION_SECONDS)
+      .min(STABLE_AUDIO_MIN_DURATION_SECONDS)
+      .max(STABLE_AUDIO_MAX_DURATION_SECONDS)
       .default(8),
     guidanceScale: z.number().min(0).max(10).default(3),
   }),
@@ -253,7 +253,7 @@ const audioStartMusic = tool({
       createdAt: now,
       updatedAt: now,
       details: {
-        engine: 'musicgen',
+        engine: 'stable-audio-3',
         mediaType: 'audio',
         model: args.model,
         targetDurationSeconds: args.durationSeconds,
@@ -263,10 +263,10 @@ const audioStartMusic = tool({
     tasks.set(task.id, task)
 
     runTask(task, async () => {
-      updateTask(task, { status: 'preparing-model', stage: '正在准备 MusicGen 模型。', progress: 0 })
-      const result = await musicgenService.generateMusicFile({
+      updateTask(task, { status: 'preparing-model', stage: '正在准备 Stable Audio 3 模型。', progress: 0 })
+      const result = await stableAudio3Service.generateMusicFile({
         prompt: args.prompt,
-        model: args.model as MusicgenModelId,
+        model: args.model as StableAudioModelId,
         durationSeconds: args.durationSeconds,
         guidanceScale: args.guidanceScale,
         onProgress: (stage, fraction, phase) => {
@@ -280,9 +280,9 @@ const audioStartMusic = tool({
       updateTask(task, { status: 'saving', stage: '正在保存生成的音乐。', progress: null })
       const media = await saveGeneratedAudio(result.file, projectId, [
         'ai-generated',
-        'musicgen',
-        `musicgen-model:${args.model}`,
-        `musicgen-target:${args.durationSeconds}s`,
+        'stable-audio-3',
+        `stable-audio-model:${args.model}`,
+        `stable-audio-target:${args.durationSeconds}s`,
       ])
       updateTask(task, {
         status: 'completed',

@@ -165,12 +165,12 @@ const audioTools = [
   },
   {
     name: 'audio.start_music',
-    description: '提交本地 MusicGen 背景音乐生成任务。模型下载和生成会在后台进行，立即返回 taskId；必须使用 audio.get_task 查询，直到 status 为 completed 后才可读取 mediaId 并加入时间轴。',
+    description: '提交本地 Stable Audio 3 音频生成任务。模型准备和生成会在后台进行，立即返回 taskId；必须使用 audio.get_task 查询，直到 status 为 completed 后才可读取 mediaId 并加入时间轴。模型 small-music 用于背景音乐，small-sfx 用于音效。',
     parameters: {
       type: 'object',
       properties: {
         prompt: { type: 'string', minLength: 1, maxLength: 1000 },
-        model: { type: 'string', enum: ['musicgen-small'], default: 'musicgen-small' },
+        model: { type: 'string', enum: ['small-music', 'small-sfx'], default: 'small-music' },
         durationSeconds: { type: 'number', minimum: 2, maximum: 30, default: 8 },
         guidanceScale: { type: 'number', minimum: 0, maximum: 10, default: 3 },
       },

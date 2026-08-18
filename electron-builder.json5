@@ -40,6 +40,19 @@
       "filter": ["**/*"]
     },
     {
+      "from": "stable-audio-3/tflite",
+      "to": "stable-audio-3/tflite",
+      "filter": [
+        "**/*",
+        "!models/**/*.tflite",
+        "!models/tokenizer.model",
+        "!output/**",
+        "!.venv/**",
+        "!**/__pycache__/**",
+        "!**/*.pyc"
+      ]
+    },
+    {
       "from": "resources/dolby-vision",
       "to": "dolby-vision",
       "filter": ["dovi_tool", "dovi_tool.exe", "mp4mux", "mp4mux.exe"]

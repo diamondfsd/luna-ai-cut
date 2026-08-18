@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
 import { app } from 'electron'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { createCurrentModelWorkDirectory } from './modelWorkDirectory'
 
 interface SamSegmentationInput {
   visionEncoderPath: string
@@ -40,7 +40,7 @@ export function segmentSamInWorker(input: SamSegmentationInput, signal?: AbortSi
 }
 
 async function runSamWorker(input: SamSegmentationInput, signal?: AbortSignal): Promise<SamSegmentationResult> {
-  const directory = await mkdtemp(join(tmpdir(), 'luna-sam-'))
+  const directory = await createCurrentModelWorkDirectory('luna-sam')
   const inputPath = join(directory, 'input.rgb')
   const outputPath = join(directory, 'output.mask')
   try {

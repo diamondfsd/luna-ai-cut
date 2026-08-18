@@ -135,7 +135,7 @@ Runs on-device in the browser — nothing is uploaded.
 - Scene detection with fast histogram or frame-accurate adaptive content analysis and optional model verification
 - Scene Browser for searching captioned media and reusing detected moments
 - Local Kokoro text-to-speech voiceovers
-- Local MusicGen music generation with presets, progress, and cancellation
+- Local Stable Audio 3 music and sound-effect generation with presets, progress, and cancellation
 - Local model cache controls and unload controls in settings
 
 ### Projects & Storage
