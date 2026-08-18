@@ -40,6 +40,7 @@ import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
 import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
+import { buildSubtitleLayers } from '../workspace/subtitles/subtitleLayers'
 import {
   queueWorkspaceMixedExport,
   summarizeWorkspaceMixedExport,
@@ -425,12 +426,21 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
       : layers
   }, [activeSourcePath, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
 
+  const subtitleLayer = useMemo(() => {
+    if (!finalCanvasSize || media.activeMedia?.kind !== 'video') return []
+    const track = media.currentProject?.assets[media.activeIndex]?.subtitles
+    return buildSubtitleLayers(track, finalCanvasSize, {
+      startMs: Math.round((edit.pipeline.trim?.startTime ?? 0) * 1_000),
+      endMs: Math.round((edit.pipeline.trim?.endTime ?? activeTrimDuration) * 1_000),
+    })
+  }, [activeTrimDuration, edit.pipeline.trim?.endTime, edit.pipeline.trim?.startTime, finalCanvasSize, media.activeIndex, media.activeMedia?.kind, media.currentProject?.assets])
+
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
     () => edit.cropActive || mask.editing
       ? []
-      : [...placeWatermarkOnFramedContent(watermarkLayer, borderLayer), ...borderLayer],
-    [edit.cropActive, mask.editing, watermarkLayer, borderLayer],
+      : [...placeWatermarkOnFramedContent(watermarkLayer, borderLayer), ...borderLayer, ...subtitleLayer],
+    [edit.cropActive, mask.editing, watermarkLayer, borderLayer, subtitleLayer],
   )
 
   // ── Initialize pipeline / reset crop/trim when active asset changes ──
@@ -713,7 +723,7 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
           : null
         const untrimmedPipeline = isVideoPath(asset.path) ? mergePipeline(pipeline, { trim: null }) : pipeline
-        const layers = buildWorkspaceExportLayers(sourcePath, resolution, untrimmedPipeline, borderMeta, true)
+        const layers = buildWorkspaceExportLayers(sourcePath, resolution, untrimmedPipeline, borderMeta, true, projectAsset?.subtitles)
         const outputSize = outputSizeForTransform(resolution, untrimmedPipeline.transform)
 
         if (!isVideoPath(asset.path)) {

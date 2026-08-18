@@ -488,6 +488,7 @@ export interface LunaApi {
     transcribeSubtitles(request: WorkspaceSubtitleTranscriptionRequest): Promise<WorkspaceSubtitleTranscriptionResult>
     cancelSubtitleTranscription(requestId: string): Promise<void>
     chooseSubtitleFont(): Promise<WorkspaceSubtitleFontAsset | null>
+    readSubtitleFontFile(filePath: string): Promise<{ name: string; mimeType: string; bytes: ArrayBuffer }>
     exportSubtitlesSrt(request: { sourcePath: string; track: WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }): Promise<{ path: string } | null>
     cancelSegmentation(requestId: string): Promise<boolean>
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>

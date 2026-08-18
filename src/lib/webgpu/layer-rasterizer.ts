@@ -9,6 +9,8 @@ export interface WebGpuRasterizedLayer {
 
 type RasterContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
+export type WebGpuFontResolver = (filePath: string) => Promise<Blob>
+
 function finiteNumber(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
@@ -131,15 +133,15 @@ function drawText(
 
 const loadedFonts = new Map<string, Promise<void>>()
 
-async function loadLayerFont(layer: CompositionLayer): Promise<void> {
+async function loadLayerFont(layer: CompositionLayer, resolveFont?: WebGpuFontResolver): Promise<void> {
   const fontSet = typeof document !== 'undefined'
     ? document.fonts
     : (globalThis as typeof globalThis & { fonts?: FontFaceSet }).fonts
-  if (!layer.fontFile || typeof FontFace === 'undefined' || !fontSet) return
+  const fontFile = layer.fontFile
+  if (!fontFile || typeof FontFace === 'undefined' || !fontSet) return
   const family = layer.fontFamily?.trim()
   if (!family) return
-  const fontUrl = filePathToPreviewUrl(layer.fontFile) ?? layer.fontFile
-  const key = `${family}\u0000${layer.fontFile}\u0000${layer.fontWeight ?? 400}`
+  const key = `${family}\u0000${fontFile}\u0000${layer.fontWeight ?? 400}`
   const existing = loadedFonts.get(key)
   if (existing) {
     await existing
@@ -147,7 +149,20 @@ async function loadLayerFont(layer: CompositionLayer): Promise<void> {
   }
 
   const loading = (async () => {
+    let objectUrl: string | null = null
     try {
+      let fontUrl = fontFile.startsWith('fonts/')
+        ? fontFile
+        : filePathToPreviewUrl(fontFile) ?? fontFile
+      if (resolveFont) {
+        try {
+          const source = await resolveFont(fontFile)
+          objectUrl = URL.createObjectURL(source)
+          fontUrl = objectUrl
+        } catch {
+          // Missing imported fonts fall back to the declared family below.
+        }
+      }
       const font = new FontFace(family, `url("${fontUrl.replaceAll('"', '%22')}")`, {
         weight: String(Math.max(100, Math.min(900, Math.round(finiteNumber(layer.fontWeight, 400))))),
       })
@@ -156,6 +171,8 @@ async function loadLayerFont(layer: CompositionLayer): Promise<void> {
     } catch {
       // The browser or platform font loader may reject local resource URLs.
       // Canvas will use the declared family or its fallback in that case.
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   })()
   loadedFonts.set(key, loading)
@@ -167,6 +184,7 @@ export async function rasterizeWebGpuLayer(
   layer: CompositionLayer,
   canvasWidth: number,
   canvasHeight: number,
+  options?: { resolveFont?: WebGpuFontResolver },
 ): Promise<WebGpuRasterizedLayer> {
   const width = Math.max(1, Math.round(Math.abs(layer.rect.w) * canvasWidth))
   const height = Math.max(1, Math.round(Math.abs(layer.rect.h) * canvasHeight))
@@ -183,7 +201,7 @@ export async function rasterizeWebGpuLayer(
   if (layer.layerType === 'shape') {
     drawShape(context, layer, width, height)
   } else if (layer.layerType === 'text' || layer.layerType === 'logo' || layer.layerType === 'decoration') {
-    await loadLayerFont(layer)
+    await loadLayerFont(layer, options?.resolveFont)
     drawText(context, layer, width, height)
   }
 
