@@ -128,11 +128,13 @@ WebGPU 不代表必然比 wgpu 更省资源。两者在不同平台可能仍使�
 
 ### M8：WebGPU 图片导出
 
-状态：待开始
+状态：第一步已完成，待补齐完整导出验收
 
 使用 offscreen render target 渲染，再通过 `copyTextureToBuffer` 或 `convertToBlob` 输出。主进程继续负责路径、文件写入和元数据，不再调用 Rust/wgpu 生成像素。
 
-验收：格式、质量、输出分辨率、透明背景、水印、元数据和导出取消均可用。
+当前实现：满足能力矩阵的静态图片导出已从工作台导出队列进入 WebGPU Composition renderer，使用受限分块写入器保存结果；任务取消会在渲染和写入边界检查并清理临时文件，JPEG 导出通过主进程保留源图 EXIF。当前工作台 E2E 已验证真实 JPEG 文件生成和 WebGPU 导出路径。
+
+仍待验收：PNG/JPEG/WebP 全格式和质量矩阵、透明背景、水印与高分辨率输出、含实际 EXIF 的原图元数据保留，以及大文件取消和磁盘空间错误。
 
 ### M9：WebGPU 视频导出
 
@@ -196,7 +198,9 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - [x] M5：蒙版纹理、羽化、变换和时间线代码（待 Electron 实机验收）
 - [x] M6：基础形状与文字纹理栅格化（待真实工作台验收）
 - [ ] M7：创意效果和转场（暂缓，创意模式入口已移除）
-- [ ] 开始 M8-M9：图片和视频导出
+- [x] M8：静态图片 WebGPU 导出第一步（工作台队列、分块写入、取消边界和 JPEG 来源信息）
+- [ ] 继续 M8：完整格式、透明背景、高分辨率和导出取消验收
+- [ ] 开始 M9：WebGPU 视频导出
 - [ ] 开始 M10-M11：删除原生预览和 Rust/wgpu
 
 ## 当前验证记录
@@ -211,6 +215,7 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - Electron Playwright 验证页成功提交形状、圆角、圆形、描边和文字图层，画布生成非空 PNG，且无 renderer pageerror/error console
 - Electron Playwright 验证页成功验证 WebGPU `reveal` 半程裁剪：左侧像素可见、右侧像素保持底图，且无 renderer pageerror/error console
 - Electron Playwright 验证页成功生成 WebGPU 能力与帧耗时 JSON 基线，包含适配器信息、限制、首帧、平均值、P95 和错误记录
+- Electron Playwright 真实工作台已验证图片导出队列生成 JPEG，任务通过 WebGPU 图片导出路径并写入非空文件
 - `git diff --check`
 
 当前待验证：

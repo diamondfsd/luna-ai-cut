@@ -50,19 +50,31 @@ function fileNameFromPath(path: string): string {
   return path.split(/[/\\]/).pop() || 'export'
 }
 
+async function ensureExportActive(exportTaskId?: string, exportItemId?: string): Promise<void> {
+  if (!exportTaskId || !exportItemId) return
+  const task = await window.luna.exportTask.get(exportTaskId).catch(() => undefined)
+  const item = task?.items.find((candidate) => candidate.id === exportItemId)
+  if (task?.status === 'canceled' || item?.status === 'canceled') throw new Error('导出已取消')
+}
+
 async function writeBlobToExportDirectory(
   exportDir: string,
   fileName: string,
   blob: Blob,
+  exportTaskId?: string,
+  exportItemId?: string,
 ): Promise<{ path: string; name: string }> {
+  await ensureExportActive(exportTaskId, exportItemId)
   const opened = await window.luna.freecutExport.openWriter(exportDir, fileName)
   try {
     const bytes = new Uint8Array(await blob.arrayBuffer())
     const chunkSize = 8 * 1024 * 1024
     for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+      await ensureExportActive(exportTaskId, exportItemId)
       const chunk = bytes.slice(offset, Math.min(offset + chunkSize, bytes.byteLength))
       await window.luna.freecutExport.writeWriter(opened.writerId, chunk.buffer)
     }
+    await ensureExportActive(exportTaskId, exportItemId)
     const closed = await window.luna.freecutExport.closeWriter(opened.writerId)
     return { path: closed.filePath, name: closed.fileName }
   } catch (error) {
@@ -210,6 +222,7 @@ export function emitLocalExportProgress(progress: {
   status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
   destinationPath?: string
   error?: string
+  backend?: 'webgpu'
 }): void {
   window.dispatchEvent(new CustomEvent('luna:export-progress-local', { detail: progress }))
 }
@@ -234,6 +247,7 @@ export async function exportPreviewImage(params: {
   const path = outputPath(params.exportDir, params.fileName)
   const composition = buildCompositionFromPreviewLayers(params.layers, params.width, params.height)
   if (canUseWebGpuStaticImageComposition(params.layers)) {
+    await ensureExportActive(params.exportTaskId, params.exportItemId)
     if (params.exportTaskId && params.exportItemId) {
       await window.luna.exportTask.updateItem(params.exportTaskId, params.exportItemId, {
         status: 'exporting',
@@ -249,6 +263,7 @@ export async function exportPreviewImage(params: {
         percent: 0,
         status: 'exporting',
         destinationPath: path,
+        backend: 'webgpu',
       })
     }
     const blob = await renderStaticImageCompositionToBlob({
@@ -256,7 +271,19 @@ export async function exportPreviewImage(params: {
       format: params.format as WebGpuImageExportFormat,
       quality: params.quality,
     })
-    const result = await writeBlobToExportDirectory(params.exportDir, params.fileName, blob)
+    await ensureExportActive(params.exportTaskId, params.exportItemId)
+    const result = await writeBlobToExportDirectory(
+      params.exportDir,
+      params.fileName,
+      blob,
+      params.exportTaskId,
+      params.exportItemId,
+    )
+    await ensureExportActive(params.exportTaskId, params.exportItemId)
+    const sourcePath = composition.layers.find((layer) => layer.layerType === 'media')?.source.path
+    if (params.format === 'jpeg' && sourcePath) {
+      await window.luna.freecutExport.embedJpegSourceMetadata(result.path, sourcePath).catch(() => false)
+    }
     if (params.exportTaskId && params.exportItemId) {
       await window.luna.exportTask.updateItem(params.exportTaskId, params.exportItemId, {
         status: 'done',
@@ -273,6 +300,7 @@ export async function exportPreviewImage(params: {
         percent: 100,
         status: 'done',
         destinationPath: result.path,
+        backend: 'webgpu',
       })
     }
     return result

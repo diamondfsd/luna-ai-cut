@@ -81,6 +81,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     writeWriter: (writerId, data) => ipcRenderer.invoke('freecut-export:write-writer', writerId, data),
     closeWriter: (writerId) => ipcRenderer.invoke('freecut-export:close-writer', writerId),
     abortWriter: (writerId) => ipcRenderer.invoke('freecut-export:abort-writer', writerId),
+    embedJpegSourceMetadata: (outputPath, sourcePath) => ipcRenderer.invoke('freecut-export:embed-jpeg-source-metadata', outputPath, sourcePath),
   } satisfies FreecutExportApi,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   // 日志
