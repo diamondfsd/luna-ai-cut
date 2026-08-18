@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Check, X, CircleAlert, FolderOpen } from 'lucide-react'
+import { Check, X, CircleAlert, Download, FolderOpen } from 'lucide-react'
 
 import { ButtonGroup, IconButton } from '../ui'
 import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
@@ -16,6 +16,7 @@ interface PreviewModalHeaderProps {
   previewQuality?: PreviewQuality
   onPreviewQualityChange?: (quality: PreviewQuality) => void
   showOriginalOption?: boolean
+  onDownload?: () => void
 }
 
 function mediaLabel(filePath: string): string {
@@ -35,6 +36,7 @@ export function PreviewModalHeader({
   previewQuality,
   onPreviewQualityChange,
   showOriginalOption = false,
+  onDownload,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
     () => filePath.startsWith('file://') ? decodeURIComponent(new URL(filePath).pathname) : filePath,
@@ -89,6 +91,14 @@ export function PreviewModalHeader({
             icon={<FolderOpen size={16} />}
             onClick={handleRevealInFolder}
             title="在文件夹中显示"
+          />
+        )}
+        {onDownload && (
+          <IconButton
+            variant="light"
+            icon={<Download size={16} />}
+            onClick={onDownload}
+            title="下载当前素材"
           />
         )}
         <IconButton variant="light" icon={<X size={18} />} onClick={onClose} title="关闭" />
