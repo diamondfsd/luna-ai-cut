@@ -115,7 +115,6 @@ function defaultSettings(): AppSettings {
     developerMode: false,
     defaultWatermarkEnabled: true,
     defaultWatermarkPosition: 'bottom-center',
-    workspacePreviewQuality: 'balanced',
     organizeDownloadsByDate: false,
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
@@ -134,6 +133,7 @@ async function readSettingsFile() {
 function mergeSettings(saved: StoredSettings | null): AppSettings {
   const defaults = defaultSettings()
   const savedSettings = migrateBaseDirectory(saved ?? {}, defaults.baseDir)
+  delete (savedSettings as Record<string, unknown>).workspacePreviewQuality
   const merged = {
     ...defaults,
     ...savedSettings,

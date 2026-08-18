@@ -7,7 +7,6 @@ import {
   type WorkspaceProject,
   type WorkspaceProjectAsset,
 } from '../shared/types'
-import type { WorkspacePreviewQuality } from '../shared/types/settings'
 import { useApp } from '../context/AppContext'
 import { ErrorBoundary, toast } from '../ui'
 import { ExportSettingsDialog } from '../components/ExportSettingsDialog'
@@ -47,7 +46,6 @@ import {
   type WorkspaceMixedExportPlanItem,
 } from '../workspace/shared/workspaceMixedExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
-import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
 import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspace/removal/removalOperations'
 import { beautyClipboardSettings } from '../workspace/beauty/beautyLayers'
@@ -119,7 +117,7 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
-  const { settings, setSettings } = useApp()
+  const { settings } = useApp()
   const defaultPipelineRef = useRef(createWorkspaceDefaultPipeline(settings))
   defaultPipelineRef.current = createWorkspaceDefaultPipeline(settings)
   const settingsReady = settings !== null
@@ -138,7 +136,6 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
   const [fitScalePercent, setFitScalePercent] = useState(100)
-  const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const pasteInProgressRef = useRef(false)
   const colorResetNoticeRef = useRef(new Set<string>())
@@ -177,21 +174,6 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
       setRuntimeResourceLoading({ fonts: false, luts: false })
     }
   }, [pageActive])
-
-  useEffect(() => {
-    setPreviewQuality(normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
-  }, [settings?.workspacePreviewQuality])
-
-  function changePreviewQuality(quality: WorkspacePreviewQuality): void {
-    const previous = previewQuality
-    setPreviewQuality(quality)
-    void window.luna.saveSettings({ workspacePreviewQuality: quality })
-      .then(setSettings)
-      .catch(() => {
-        setPreviewQuality(previous)
-        toast.error('无法保存预览清晰度')
-      })
-  }
 
   // ── 截取（Trim）状态 ──
   const [trimCurrentTime, setTrimCurrentTime] = useState(0)
@@ -982,8 +964,6 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
         viewScale={viewScale}
         onViewScaleChange={setViewScale}
         fitScalePercent={fitScalePercent}
-        previewQuality={previewQuality}
-        onPreviewQualityChange={changePreviewQuality}
       />
 
       {/* ── 预览组件 ── */}
@@ -1015,7 +995,6 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
         onViewScaleChange={setViewScale}
         onFitScaleChange={setFitScalePercent}
         viewportKey={media.activeMedia?.path}
-        previewMaxSide={workspacePreviewMaxSide(previewQuality)}
         onPlayStateChange={handlePlayStateChange}
       />
 
