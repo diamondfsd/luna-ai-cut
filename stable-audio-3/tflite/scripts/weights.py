@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Callable
 
 REPO_ID = "stabilityai/stable-audio-3-optimized"
-MODEL_REVISION = "18feee20effaa4c3a32104d952318f64f2d5f290"
+MODEL_REVISION = "cbf2601200b531a8304eb21a360a1a5ba371a10c"
 MODELSCOPE_BASE = (
     f"https://www.modelscope.cn/models/{REPO_ID}/resolve/{MODEL_REVISION}"
 )

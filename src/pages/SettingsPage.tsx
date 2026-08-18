@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, Cpu, FolderOpen, Settings2, Trash2, Wrench } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useStorageMigration } from '../hooks/useStorageMigration'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
+import { WatermarkManagement } from '../components/WatermarkManagement'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
+import { ModelManager } from '../components/ModelManager'
 import { Button, Dialog, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 import '../styles/download-storage-settings.css'
@@ -33,6 +34,20 @@ interface DirectorySettingRowProps {
   onMigrate?: () => void
   migrating?: boolean
 }
+
+type SettingsSectionId = 'storage' | 'editing' | 'models' | 'maintenance'
+
+const SETTINGS_SECTIONS: Array<{
+  id: SettingsSectionId
+  label: string
+  description: string
+  icon: typeof FolderOpen
+}> = [
+  { id: 'storage', label: '文件与存储', description: '目录和下载选项', icon: FolderOpen },
+  { id: 'editing', label: '编辑默认值', description: '水印等默认设置', icon: Settings2 },
+  { id: 'models', label: '模型管理', description: 'AI 模型下载与状态', icon: Cpu },
+  { id: 'maintenance', label: '连接与维护', description: '设备、缓存和日志', icon: Wrench },
+]
 
 function DirectorySettingRow({ label, path, onOpen, onChange, onMigrate, migrating = false }: DirectorySettingRowProps) {
   return (
@@ -73,10 +88,10 @@ export function SettingsPage({
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
-  const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
   const [organizeDownloadsDialogOpen, setOrganizeDownloadsDialogOpen] = useState(false)
   const [organizingDownloads, setOrganizingDownloads] = useState(false)
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('storage')
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, setSettings)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -176,9 +191,40 @@ export function SettingsPage({
 
   return (
     <section className="settings-surface">
-      <div className="settings-list">
-        <section className="settings-group">
-          <h2 className="settings-group-title">文件与存储</h2>
+      <div className="settings-layout">
+        <aside className="settings-sidebar">
+          <div className="settings-sidebar-heading">
+            <span>应用设置</span>
+            <strong>设置</strong>
+          </div>
+          <nav className="settings-nav" aria-label="设置分组">
+            {SETTINGS_SECTIONS.map(({ id, label, description, icon: Icon }) => (
+              <Button
+                key={id}
+                variant="ghost"
+                className={`settings-nav-item${activeSection === id ? ' active' : ''}`}
+                icon={<Icon size={17} />}
+                aria-current={activeSection === id ? 'page' : undefined}
+                onClick={() => setActiveSection(id)}
+              >
+                <span className="settings-nav-copy">
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </span>
+              </Button>
+            ))}
+          </nav>
+        </aside>
+
+        <main className="settings-main">
+          <header className="settings-content-header">
+            <span>设置</span>
+            <h1>{SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}</h1>
+            <p>{SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.description}</p>
+          </header>
+
+          {activeSection === 'storage' && (
+            <section className="settings-group" aria-label="文件与存储">
           <div className="settings-card">
             <DirectorySettingRow
               label="基础目录"
@@ -257,23 +303,23 @@ export function SettingsPage({
               </div>
             </article>
           </div>
-        </section>
+            </section>
+          )}
 
-        <section className="settings-group">
-          <h2 className="settings-group-title">编辑默认值</h2>
-          <div className="settings-card">
-            <article className="settings-row">
-              <div className="settings-row-copy">
-                <span>水印</span>
-                <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'}</em>
-              </div>
-              <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
-            </article>
-          </div>
-        </section>
+          {activeSection === 'editing' && (
+            <section className="settings-group" aria-label="编辑默认值">
+              <WatermarkManagement settings={settings} onDefaultChange={handleDefaultWatermarkChange} />
+            </section>
+          )}
 
-        <section className="settings-group">
-          <h2 className="settings-group-title">连接与维护</h2>
+          {activeSection === 'models' && (
+            <section className="settings-group" aria-label="模型管理">
+              <ModelManager />
+            </section>
+          )}
+
+          {activeSection === 'maintenance' && (
+            <section className="settings-group" aria-label="连接与维护">
           <div className="settings-card">
             <article className="settings-row">
               <div className="settings-row-copy">
@@ -331,14 +377,10 @@ export function SettingsPage({
               </div>
             </article>
           </div>
-        </section>
+            </section>
+          )}
+        </main>
       </div>
-      <WatermarkManagementDialog
-        open={watermarkDialogOpen}
-        onOpenChange={setWatermarkDialogOpen}
-        settings={settings}
-        onDefaultChange={handleDefaultWatermarkChange}
-      />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
       <Dialog
         open={organizeDownloadsDialogOpen}

@@ -1,0 +1,282 @@
+.model-manager {
+  display: grid;
+  gap: 14px;
+}
+
+.model-manager-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.model-manager-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-manager-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.model-manager-heading {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.model-manager-heading strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.model-manager-heading span,
+.model-manager-heading small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.model-manager-heading small {
+  font-size: 12px;
+}
+
+.model-manager-state {
+  min-height: 104px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.model-manager-checkbox,
+.model-manager-checkbox-placeholder {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  border: 1px solid #c7cbd1;
+  border-radius: 4px;
+  background: var(--canvas);
+  color: #fff;
+}
+
+.model-manager-checkbox {
+  padding: 0;
+  cursor: pointer;
+}
+
+.model-manager-checkbox:hover {
+  border-color: var(--blue);
+}
+
+.model-manager-checkbox[data-state='checked'] {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.model-manager-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.model-manager-checkbox-placeholder {
+  visibility: hidden;
+}
+
+.model-manager-table {
+  min-width: 900px;
+  table-layout: fixed;
+}
+
+.model-manager-table th,
+.model-manager-table td {
+  padding: 8px 10px;
+}
+
+.model-manager-table-name,
+.model-manager-table-source,
+.model-manager-table-status {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.model-manager-table-name strong,
+.model-manager-table-name span,
+.model-manager-table-source strong,
+.model-manager-table-source span,
+.model-manager-table-status small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-manager-table-name strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.model-manager-table-name span,
+.model-manager-table-source span,
+.model-manager-table-status small,
+.model-manager-table-muted,
+.model-manager-error {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.model-manager-table-name span {
+  color: color-mix(in srgb, var(--muted) 82%, transparent);
+}
+
+.model-manager-table-source strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.model-manager-table-source span,
+.model-manager-table-status small {
+  font-size: 11px;
+}
+
+.model-manager-table-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.model-manager-table-status-line strong {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.model-manager-ready,
+.model-manager-unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.model-manager-ready {
+  color: #248a3d;
+}
+
+.model-manager-unavailable {
+  color: var(--muted);
+}
+
+.model-manager-progress {
+  display: grid;
+  gap: 5px;
+}
+
+.model-manager-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 14%, var(--canvas));
+}
+
+.model-manager-progress-track span {
+  display: block;
+  height: 100%;
+  min-width: 3%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 180ms ease;
+}
+
+.model-manager-progress-track span:not([style]) {
+  width: 35%;
+  animation: model-manager-progress 1.2s ease-in-out infinite;
+}
+
+.model-manager-error {
+  color: #a15c00;
+  overflow-wrap: anywhere;
+}
+
+.model-manager-source-list {
+  display: grid;
+  gap: 4px;
+}
+
+.model-manager-source-list code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.model-manager-source-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.model-manager-source-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.model-manager-spin {
+  animation: model-manager-spin 900ms linear infinite;
+}
+
+@keyframes model-manager-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes model-manager-progress {
+  0%, 100% { transform: translateX(-100%); }
+  50% { transform: translateX(190%); }
+}
+
+@media (max-width: 640px) {
+  .model-manager-header {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .model-manager-header-actions {
+    justify-content: flex-start;
+  }
+
+  .model-manager-header .ui-btn {
+    justify-self: start;
+  }
+
+  .model-manager-table {
+    min-width: 820px;
+  }
+}

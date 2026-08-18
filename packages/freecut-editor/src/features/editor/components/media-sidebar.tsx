@@ -1082,7 +1082,7 @@ export const MediaSidebar = memo(function MediaSidebar() {
 
             {/* AI Tab */}
             <div
-              className={`min-h-0 flex-1 overflow-hidden ${activeTab === 'ai' ? 'block' : 'hidden'}`}
+              className={`min-h-0 flex-1 flex-col overflow-hidden ${activeTab === 'ai' ? 'flex' : 'hidden'}`}
             >
               {aiTabActivated && (
                 <Suspense fallback={null}>

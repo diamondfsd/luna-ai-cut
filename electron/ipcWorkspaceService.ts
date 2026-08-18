@@ -33,7 +33,7 @@ import {
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
-import { automaticSegmentationTarget, isSamSegmentationModel, modelForSegmentationRequest, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
+import { AI_SELECTION_MODELS, automaticSegmentationTarget, isSamSegmentationModel, modelForSegmentationRequest, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId, type SegmentationModelPreparationId } from '../src/shared/segmentationModels'
 import { segmentSamInWorker } from './samSegmentationService'
 import { prepareSemanticRefinementGuide, segmentSemanticInWorker } from './semanticSegmentationService'
 import { segmentSpecializedInWorker } from './specializedSegmentationService'
@@ -364,14 +364,19 @@ export function register(): void {
   ipcMain.handle('workspace:getSegmentationModelStatus', async (_event, modelId: SegmentationModelId) => {
     return getModelCacheStatus(modelId)
   })
-  ipcMain.handle('workspace:prepareSegmentationModels', async (_event, modelIds: SegmentationModelId[]) => {
+  ipcMain.handle('workspace:prepareSegmentationModels', async (_event, modelIds: SegmentationModelPreparationId[]) => {
     if (!Array.isArray(modelIds)) throw new Error('自动选择模型列表无效')
-    const availableModelIds = new Set<SegmentationModelId>([
+    const availableModelIds = new Set<SegmentationModelPreparationId>([
       ...SEGMENTATION_MODELS.map((model) => model.id),
       ...SPECIALIZED_SEGMENTATION_MODELS.map((model) => model.id),
+      ...AI_SELECTION_MODELS.map((model) => model.id),
+      ...SAM_MODELS.map((model) => model.id),
     ])
     const uniqueModelIds = [...new Set(modelIds)].filter((modelId) => availableModelIds.has(modelId))
-    for (const modelId of uniqueModelIds) await loadModel(modelId as ModelId)
+    for (const modelId of uniqueModelIds) {
+      if (SAM_MODELS.some((model) => model.id === modelId)) await loadSamModel(modelId as typeof SAM_MODELS[number]['id'], undefined)
+      else await loadModel(modelId as ModelId)
+    }
   })
   ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
