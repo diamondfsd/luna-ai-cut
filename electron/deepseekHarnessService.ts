@@ -25,6 +25,12 @@ interface HarnessRuntime {
   url: string
 }
 
+interface HarnessNodeCommand {
+  executable: string
+  args: string[]
+  env: Partial<NodeJS.ProcessEnv>
+}
+
 interface PendingToolRequest {
   senderId: number
   resolve: (value: unknown) => void
@@ -91,24 +97,21 @@ function pluginPath(): string {
   return found
 }
 
-function harnessNodeExecutable(): string {
+function harnessNodeCommand(): HarnessNodeCommand {
   const override = process.env.LUNA_HARNESS_NODE_PATH
-  if (override && existsSync(override)) return override
-
-  if (!app.isPackaged) {
-    const pnpmNode = process.env.npm_node_execpath
-    if (pnpmNode && existsSync(pnpmNode)) return pnpmNode
-    // Electron 30 embeds Node 20, while the official Harness requires Node 22.
-    return 'node'
+  if (override && existsSync(override)) {
+    return {
+      executable: override,
+      args: ['--expose-internals'],
+      env: {},
+    }
   }
 
-  const packagedNode = path.join(
-    process.resourcesPath,
-    'node-runtime',
-    process.platform === 'win32' ? 'node.exe' : path.join('bin', 'node'),
-  )
-  if (existsSync(packagedNode)) return packagedNode
-  throw new Error('当前安装包缺少 DeepSeek Harness 所需的 Node.js 22 运行时。')
+  return {
+    executable: process.execPath,
+    args: ['--expose-internals'],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  }
 }
 
 function harnessHomeForBaseDir(baseDir: string): string {
@@ -426,10 +429,20 @@ async function startRuntime(projectId: string, generation: number): Promise<stri
   await prepareHarnessHome(projectId, token, endpoint, cwd, home)
   if (home !== dshHome()) throw new Error('DeepSeek Harness Web 启动已取消。')
   if (generation !== runtimeGeneration) throw new Error('DeepSeek Harness Web 启动已取消。')
-  const child = spawn(harnessNodeExecutable(), [cliEntry(), 'web', '--host', '127.0.0.1', '--port', '0'], {
+  const nodeCommand = harnessNodeCommand()
+  const child = spawn(nodeCommand.executable, [
+    ...nodeCommand.args,
+    cliEntry(),
+    'web',
+    '--host',
+    '127.0.0.1',
+    '--port',
+    '0',
+  ], {
     cwd,
     env: {
       ...process.env,
+      ...nodeCommand.env,
       DSH_HOME: home,
       DSH_SESSION_ROOT: sessionRoot,
       DSH_TELEMETRY_DISABLED: '1',
