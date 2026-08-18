@@ -23,11 +23,6 @@ import { Textarea } from '@freecut/components/ui/textarea'
 import { useMediaPlaybackControls } from '@freecut/shared/media/use-media-playback-controls'
 import { SliderInput } from '@freecut/shared/ui/property-controls'
 import {
-  getStoredTtsEngine,
-  setStoredTtsEngine,
-  type StoredTtsEngine,
-} from '@freecut/shared/utils/tts-settings'
-import {
   importMediaLibraryService,
   useMediaLibraryStore,
 } from '@freecut/features/editor/deps/media-library'
@@ -41,30 +36,13 @@ import { useTtsGenerateDialogStore } from '@freecut/shared/state/tts-generate-di
 import type { AudioItem } from '@freecut/types/timeline'
 import type { MediaMetadata } from '@freecut/types/storage'
 import {
-  KOKORO_TTS_BEST_MODEL,
-  KOKORO_TTS_VOICE_OPTIONS,
-  kokoroTtsService,
-  type KokoroTtsModel,
-  type KokoroTtsVoice,
-} from '@freecut/features/editor/services/kokoro-tts-service'
-import {
   MOSS_TTS_SUPPORTED_LANGUAGES,
   MOSS_TTS_VOICE_OPTIONS,
   getMossTtsVoiceOption,
   mossTtsService,
   type MossTtsVoice,
 } from '@freecut/features/editor/services/moss-tts-service'
-import {
-  SUPERTONIC_TTS_EXPRESSIVE_TAG_OPTIONS,
-  SUPERTONIC_TTS_LANGUAGE_OPTIONS,
-  SUPERTONIC_TTS_SUPPORTED_LANGUAGES,
-  SUPERTONIC_TTS_VOICE_OPTIONS,
-  supertonicTtsService,
-  type SupertonicTtsLanguageSelection,
-  type SupertonicTtsVoice,
-} from '@freecut/features/editor/services/supertonic-tts-service'
 import { i18n } from '@freecut/i18n'
-import { getLanguageDisplayName, insertTextAtCursor } from '../utils/tts-ui-helpers'
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -235,13 +213,7 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
   const showNotification = useMediaLibraryStore((state) => state.showNotification)
 
   const [text, setText] = useState('')
-  const [engine, setEngine] = useState<StoredTtsEngine>(() => getStoredTtsEngine())
-  const [kokoroVoice, setKokoroVoice] = useState<KokoroTtsVoice>('af_heart')
   const [mossVoice, setMossVoice] = useState<MossTtsVoice>('Xiaoyu')
-  const [supertonicVoice, setSupertonicVoice] = useState<SupertonicTtsVoice>('M3')
-  const [supertonicLanguage, setSupertonicLanguage] =
-    useState<SupertonicTtsLanguageSelection>('auto')
-  const model: KokoroTtsModel = KOKORO_TTS_BEST_MODEL
   const [speed, setSpeed] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isInserting, setIsInserting] = useState(false)
@@ -266,17 +238,12 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
         resultUrlRef.current = null
       }
       setText(initialText)
-      setEngine(getStoredTtsEngine())
       setError(null)
       setProgress(null)
       setResult(null)
       setInserted(false)
     }
   }, [isOpen, initialText])
-
-  useEffect(() => {
-    setStoredTtsEngine(engine)
-  }, [engine])
 
   // Cleanup blob URL when dialog closes
   useEffect(() => {
@@ -289,28 +256,19 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
     }
   }, [isOpen, inserted])
 
-  const isKokoroSupported = kokoroTtsService.isSupported()
   const isMossSupported = mossTtsService.isSupported()
-  const isSupertonicSupported = supertonicTtsService.isSupported()
-  const supportsNativeSpeed = engine === 'kokoro' || engine === 'supertonic'
-  const speedMin = engine === 'supertonic' ? 0.8 : 0.5
-  const speedMax = engine === 'supertonic' ? 1.3 : 2
+  const speedMin = 0.5
+  const speedMax = 2
 
   useEffect(() => {
     setSpeed((current) => Math.min(speedMax, Math.max(speedMin, current)))
   }, [speedMax, speedMin])
 
-  const effectiveSpeed = supportsNativeSpeed ? speed : 1
-  const isTtsSupported =
-    engine === 'kokoro'
-      ? isKokoroSupported
-      : engine === 'moss'
-        ? isMossSupported
-        : isSupertonicSupported
+  const effectiveSpeed = speed
+  const isTtsSupported = isMossSupported
   const trimmedText = text.trim()
-  const voice = engine === 'kokoro' ? kokoroVoice : engine === 'moss' ? mossVoice : supertonicVoice
+  const voice = mossVoice
   const mossLanguagesLabel = MOSS_TTS_SUPPORTED_LANGUAGES.join(', ')
-  const supertonicLanguagesLabel = SUPERTONIC_TTS_SUPPORTED_LANGUAGES.join(', ')
 
   const handleGenerate = useCallback(async () => {
     if (!currentProjectId) {
@@ -322,16 +280,7 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
       return
     }
     if (!isTtsSupported) {
-      setError(
-        engine === 'kokoro'
-          ? t('editor.tts.errors.kokoroUnsupported')
-          : engine === 'moss'
-            ? t('editor.tts.errors.mossUnsupported')
-            : t('editor.tts.errors.supertonicUnsupported', {
-                defaultValue:
-                  'This browser cannot run the local Supertonic TTS runtime. Try a recent Chrome or Edge browser.',
-              }),
-      )
+      setError(t('editor.tts.errors.mossUnsupported'))
       return
     }
 
@@ -353,29 +302,12 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
       const onProgress = (msg: string) => {
         if (sessionIdRef.current === thisSession) setProgress(msg)
       }
-      const result =
-        engine === 'kokoro'
-          ? await kokoroTtsService.generateSpeechFile({
-              text: trimmedText,
-              voice: kokoroVoice,
-              speed: effectiveSpeed,
-              model,
-              onProgress,
-            })
-          : engine === 'moss'
-            ? await mossTtsService.generateSpeechFile({
-                text: trimmedText,
-                voice: mossVoice,
-                speed: effectiveSpeed,
-                onProgress,
-              })
-            : await supertonicTtsService.generateSpeechFile({
-                text: trimmedText,
-                voice: supertonicVoice,
-                language: supertonicLanguage,
-                speed: effectiveSpeed,
-                onProgress,
-              })
+      const result = await mossTtsService.generateSpeechFile({
+        text: trimmedText,
+        voice: mossVoice,
+        speed: effectiveSpeed,
+        onProgress,
+      })
 
       const { blob, file, duration } = result
 
@@ -387,33 +319,9 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
       const objectUrl = URL.createObjectURL(blob)
       resultUrlRef.current = objectUrl
 
-      const voiceLabel =
-        engine === 'kokoro'
-          ? (KOKORO_TTS_VOICE_OPTIONS.find((option) => option.value === kokoroVoice)?.label ??
-            kokoroVoice)
-          : engine === 'moss'
-            ? getMossTtsVoiceOption(mossVoice).label
-            : (SUPERTONIC_TTS_VOICE_OPTIONS.find((option) => option.value === supertonicVoice)
-                ?.label ?? supertonicVoice)
-      const modelLabel =
-        engine === 'kokoro' ? 'Best' : engine === 'moss' ? 'Multilingual Nano' : 'Supertonic 3'
-      const tags =
-        engine === 'kokoro'
-          ? [
-              'ai-generated',
-              'kokoro-tts',
-              'tts-engine:kokoro',
-              `kokoro-quality:${model}`,
-              `kokoro-voice:${kokoroVoice}`,
-            ]
-          : engine === 'moss'
-            ? ['ai-generated', 'moss-tts', 'tts-engine:moss', `moss-voice:${mossVoice}`]
-            : [
-                'ai-generated',
-                'supertonic-tts',
-                'tts-engine:supertonic',
-                `supertonic-voice:${supertonicVoice}`,
-              ]
+      const voiceLabel = getMossTtsVoiceOption(mossVoice).label
+      const modelLabel = 'Multilingual Nano'
+      const tags = ['ai-generated', 'moss-tts', 'tts-engine:moss', `moss-voice:${mossVoice}`]
 
       setResult({ file, objectUrl, duration, voice: voiceLabel, model: modelLabel, tags })
       setProgress(null)
@@ -433,14 +341,9 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
   }, [
     currentProjectId,
     effectiveSpeed,
-    engine,
     inserted,
     isTtsSupported,
-    kokoroVoice,
-    model,
     mossVoice,
-    supertonicLanguage,
-    supertonicVoice,
     trimmedText,
     t,
   ])
@@ -512,21 +415,15 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
         <div className="space-y-4">
           {!isTtsSupported && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-              {engine === 'kokoro'
-                ? t('editor.tts.kokoroUnsupported')
-                : engine === 'moss'
-                  ? t('editor.tts.mossUnsupported')
-                  : t('editor.tts.supertonicUnsupported', {
-                      defaultValue:
-                        'This browser cannot run the local Supertonic TTS runtime. Try a recent Chrome or Edge browser.',
-                    })}
+              {t('editor.tts.mossUnsupported')}
             </div>
           )}
 
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between gap-2">
                 <Label>{t('editor.tts.engine')}</Label>
+                <span className="text-xs text-muted-foreground">{t('editor.tts.mossOption')}</span>
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
@@ -539,113 +436,34 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-80 space-y-2 p-3">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium">Kokoro</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {t('editor.tts.kokoroDescription')}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
                       <p className="text-xs font-medium">MOSS Nano</p>
                       <p className="text-[11px] text-muted-foreground">
                         {t('editor.tts.supportedLanguages', { languages: mossLanguagesLabel })}
                       </p>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium">Supertonic 3</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {t('editor.tts.supportedLanguages', {
-                          languages: supertonicLanguagesLabel,
-                        })}
-                      </p>
-                    </div>
                   </PopoverContent>
                 </Popover>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>{t('editor.tts.voice')}</Label>
               <Select
-                value={engine}
-                onValueChange={(value) => setEngine(value as StoredTtsEngine)}
+                value={voice}
+                onValueChange={(value) => setMossVoice(value as MossTtsVoice)}
                 disabled={isGenerating || isInserting}
               >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="kokoro" className="text-xs">
-                    {t('editor.tts.kokoroOption')}
-                  </SelectItem>
-                  <SelectItem value="moss" className="text-xs">
-                    {t('editor.tts.mossOption')}
-                  </SelectItem>
-                  <SelectItem value="supertonic" className="text-xs">
-                    {t('editor.tts.supertonicOption', {
-                      defaultValue: 'Supertonic 3 (31 languages, local ONNX)',
-                    })}
-                  </SelectItem>
+                <SelectContent className="max-h-72">
+                  {MOSS_TTS_VOICE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3">
-              <div className="space-y-1.5">
-                <Label>{t('editor.tts.voice')}</Label>
-                <Select
-                  value={voice}
-                  onValueChange={(value) => {
-                    if (engine === 'kokoro') {
-                      setKokoroVoice(value as KokoroTtsVoice)
-                    } else if (engine === 'moss') {
-                      setMossVoice(value as MossTtsVoice)
-                    } else {
-                      setSupertonicVoice(value as SupertonicTtsVoice)
-                    }
-                  }}
-                  disabled={isGenerating || isInserting}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    {(engine === 'kokoro'
-                      ? KOKORO_TTS_VOICE_OPTIONS
-                      : engine === 'moss'
-                        ? MOSS_TTS_VOICE_OPTIONS
-                        : SUPERTONIC_TTS_VOICE_OPTIONS
-                    ).map((option) => (
-                      <SelectItem key={option.value} value={option.value} className="text-xs">
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {engine === 'supertonic' && (
-                <div className="space-y-1.5">
-                  <Label>{t('editor.tts.language', { defaultValue: 'Language' })}</Label>
-                  <Select
-                    value={supertonicLanguage}
-                    onValueChange={(value) =>
-                      setSupertonicLanguage(value as SupertonicTtsLanguageSelection)
-                    }
-                    disabled={isGenerating || isInserting}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-72">
-                      {SUPERTONIC_TTS_LANGUAGE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="text-xs">
-                          {getLanguageDisplayName(
-                            option.value,
-                            option.label,
-                            i18n.language,
-                            t('editor.tts.autoDetectLanguage', { defaultValue: 'Auto detect' }),
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
             </div>
           </div>
 
@@ -661,48 +479,19 @@ export const TtsGenerateDialog = memo(function TtsGenerateDialog() {
               className="min-h-28 resize-y bg-secondary/30 text-sm"
               disabled={isGenerating || isInserting}
             />
-            {engine === 'supertonic' && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-muted-foreground">
-                  {t('editor.tts.expressiveTags', { defaultValue: 'Expressive tags' })}
-                </span>
-                {SUPERTONIC_TTS_EXPRESSIVE_TAG_OPTIONS.map((tag) => (
-                  <Button
-                    key={tag.value}
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="h-6 px-2 text-[11px]"
-                    onClick={() =>
-                      insertTextAtCursor({
-                        input: textareaRef.current,
-                        insertText: tag.value,
-                        setText,
-                        text,
-                      })
-                    }
-                    disabled={isGenerating || isInserting}
-                  >
-                    {tag.label}
-                  </Button>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Speed */}
-          {supportsNativeSpeed && (
-            <SliderInput
-              label={t('editor.tts.speed')}
-              value={speed}
-              onChange={setSpeed}
-              min={speedMin}
-              max={speedMax}
-              step={0.05}
-              unit="x"
-              disabled={isGenerating || isInserting}
-            />
-          )}
+          <SliderInput
+            label={t('editor.tts.speed')}
+            value={speed}
+            onChange={setSpeed}
+            min={speedMin}
+            max={speedMax}
+            step={0.05}
+            unit="x"
+            disabled={isGenerating || isInserting}
+          />
 
           {/* Progress */}
           {progress && (
