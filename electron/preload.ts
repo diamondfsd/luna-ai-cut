@@ -212,6 +212,17 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       return () => ipcRenderer.off('stable-audio-3:progress', listener)
     },
   },
+  mossTts: {
+    getStatus: () => ipcRenderer.invoke('moss-tts:get-status'),
+    generate: (request) => ipcRenderer.invoke('moss-tts:generate', request),
+    cancel: (requestId) => ipcRenderer.invoke('moss-tts:cancel', requestId),
+    unload: () => ipcRenderer.invoke('moss-tts:unload'),
+    onProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').MossTtsProgress): void => callback(progress)
+      ipcRenderer.on('moss-tts:progress', listener)
+      return () => ipcRenderer.off('moss-tts:progress', listener)
+    },
+  },
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     chooseMediaDirectory: () => ipcRenderer.invoke('workspace:chooseMediaDirectory'),

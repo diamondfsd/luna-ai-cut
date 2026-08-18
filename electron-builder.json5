@@ -35,6 +35,15 @@
       "filter": ["**/*"]
     },
     {
+      "from": "resources/python-runtime",
+      "to": "python-runtime",
+      "filter": [
+        "**/*",
+        "!**/__pycache__/**",
+        "!**/*.pyc"
+      ]
+    },
+    {
       "from": "resources/ffmpeg",
       "to": "ffmpeg",
       "filter": ["**/*"]
@@ -48,6 +57,18 @@
         "!models/tokenizer.model",
         "!output/**",
         "!.venv/**",
+        "!**/__pycache__/**",
+        "!**/*.pyc"
+      ]
+    },
+    {
+      "from": "moss-tts",
+      "to": "moss-tts",
+      "filter": [
+        "python/**/*",
+        "licenses/**/*",
+        "MODEL-LICENSE.md",
+        "README.md",
         "!**/__pycache__/**",
         "!**/*.pyc"
       ]

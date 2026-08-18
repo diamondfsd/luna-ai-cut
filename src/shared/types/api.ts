@@ -116,6 +116,45 @@ export interface StableAudio3Api {
   onProgress(callback: (progress: StableAudio3Progress) => void): () => void
 }
 
+export interface MossTtsProgress {
+  requestId: string
+  stage: string
+  fraction: number | null
+  loadedBytes?: number
+  totalBytes?: number
+}
+
+export interface MossTtsStatus {
+  supported: boolean
+  environment: 'missing-python' | 'missing-model' | 'ready'
+  cacheRoot: string
+  modelCached: boolean
+  estimatedBytes: number
+}
+
+export interface MossTtsGenerationRequest {
+  requestId: string
+  text: string
+  voice: string
+  speed: number
+  referenceAudioPath?: string
+}
+
+export interface MossTtsGenerationResult {
+  requestId: string
+  fileName: string
+  durationSeconds: number
+  bytes: Uint8Array
+}
+
+export interface MossTtsApi {
+  getStatus(): Promise<MossTtsStatus>
+  generate(request: MossTtsGenerationRequest): Promise<MossTtsGenerationResult>
+  cancel(requestId: string): Promise<void>
+  unload(): Promise<void>
+  onProgress(callback: (progress: MossTtsProgress) => void): () => void
+}
+
 export interface WorkspaceSegmentationProgress {
   requestId: string
   phase: 'model' | 'preparing' | 'recognizing'
@@ -360,6 +399,7 @@ export interface LunaApi {
   }
   deepseekHarness: DeepSeekHarnessApi
   stableAudio3: StableAudio3Api
+  mossTts: MossTtsApi
   workspace: {
     chooseMediaFiles(): Promise<string[]>
     chooseMediaDirectory(): Promise<string[]>

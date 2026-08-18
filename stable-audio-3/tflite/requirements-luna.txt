@@ -1,5 +1,5 @@
 # Minimal dependencies for Luna's local Stable Audio 3 service.
 # The standalone web UI and external model-platform clients are intentionally not required.
-ai_edge_litert>=1.0
-numpy>=1.24
-sentencepiece>=0.2
+ai-edge-litert==2.2.0
+numpy==2.5.2
+sentencepiece==0.2.2

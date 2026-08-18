@@ -35,7 +35,6 @@ runtime cache data is placed below the user's configured base directory:
         ├── models/                   # Stable Audio weights
         ├── downloads/                # resumable files and pip/uv caches
         ├── runtime/
-        │   ├── venv/                 # Python virtual environment
         │   ├── home/                 # HOME/USERPROFILE for third-party packages
         │   ├── appdata/              # Windows application data cache
         │   ├── localappdata/         # Windows local application data cache
@@ -46,7 +45,7 @@ runtime cache data is placed below the user's configured base directory:
         ├── loras/
         └── logs/
 
-The Python process receives explicit cache and home environment variables,
+The packaged Python process receives explicit cache and home environment variables,
 including HOME, USERPROFILE, APPDATA, LOCALAPPDATA, TMPDIR, TEMP, TMP,
 PIP_CACHE_DIR, XDG_CACHE_HOME, PYTHONPYCACHEPREFIX, HF_HOME,
 GRADIO_TEMP_DIR, and UV_CACHE_DIR.
@@ -55,12 +54,14 @@ cache directory is used for Stable Audio runtime data.
 
 ## Runtime dependencies
 
-The application installs only the following small set of Python dependencies
-into the base-directory virtual environment:
+The application package includes a portable CPython runtime and the following
+dependencies. End users do not need to install Python or create a virtual
+environment:
 
-    ai_edge_litert
-    numpy
-    sentencepiece
+    ai-edge-litert==2.2.0
+    numpy==2.5.2
+    sentencepiece==0.2.2
+    onnxruntime==1.29.0
 
 Model weights remain external, so the application package itself does not
 include the multi-gigabyte TFLite files.
