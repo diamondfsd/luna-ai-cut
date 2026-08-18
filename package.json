@@ -45,6 +45,7 @@
     "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",
     "test:original-export": "node scripts/test-original-file-export.mjs",
     "test:export-metadata": "node scripts/test-export-source-metadata.mjs",
+    "test:video-metadata": "node scripts/test-video-metadata-transfer.mjs",
     "test:wired-camera": "node scripts/test-mounted-camera-source.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs && node --experimental-strip-types scripts/test-instance-stroke-selection.mjs",
     "test:mask:tracking": "pnpm run build:app && node scripts/test-mask-tracking-worker.mjs",

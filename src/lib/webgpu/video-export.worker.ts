@@ -33,6 +33,8 @@ interface VideoSourceState {
   duration: number
 }
 
+type EncodableVideoCodec = 'avc' | 'hevc'
+
 const workerScope = globalThis as unknown as WorkerScope
 let activeController: AbortController | null = null
 let nextChunkId = 1
@@ -116,7 +118,19 @@ function bitrateForPreset(
   width: number,
   height: number,
   fps: number,
+  sourceBitrate: number,
 ): number {
+  const originalBitrate = qualityPreset === 'original' || qualityPreset === 'source'
+    ? sourceBitrate
+    : 0
+  const customBitrate = /^custom:(\d+(?:\.\d+)?)k$/.exec(qualityPreset)
+  const requestedBitrate = customBitrate
+    ? Number(customBitrate[1]) * 1000
+    : originalBitrate
+  if (Number.isFinite(requestedBitrate) && requestedBitrate > 0) {
+    return Math.max(4_000_000, Math.min(80_000_000, Math.round(requestedBitrate)))
+  }
+
   const multiplier = qualityPreset === 'small'
     ? 0.06
     : qualityPreset === 'standard'
@@ -250,9 +264,21 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
   const packetStats = primaryState ? await primaryState.track.computePacketStats(60) : null
   const fps = Math.max(1, Math.min(120, message.fps ?? (packetStats?.averagePacketRate || 30)))
   const totalFrames = Math.max(1, Math.ceil(duration * fps))
-  const bitrate = bitrateForPreset(message.qualityPreset, message.width, message.height, fps)
-  if (!(await canEncodeVideo('avc', { width: message.width, height: message.height, bitrate }))) {
-    throw new Error('当前 Electron 没有可用的视频编码器')
+  const sourceBitrate = packetStats?.averageBitrate ?? 0
+  const sourceCodec = primaryState ? await primaryState.track.getCodec() : null
+  let outputCodec: EncodableVideoCodec = sourceCodec === 'hevc' ? 'hevc' : 'avc'
+  const bitrate = bitrateForPreset(message.qualityPreset, message.width, message.height, fps, sourceBitrate)
+  const encoderOptions = {
+    width: message.width,
+    height: message.height,
+    bitrate,
+    hardwareAcceleration: 'prefer-hardware' as const,
+  }
+  if (!(await canEncodeVideo(outputCodec, encoderOptions))) {
+    if (outputCodec !== 'hevc' || !(await canEncodeVideo('avc', encoderOptions))) {
+      throw new Error('当前 Electron 没有可用的视频编码器')
+    }
+    outputCodec = 'avc'
   }
 
   let output: InstanceType<typeof Output> | null = null
@@ -274,11 +300,12 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     }))
     output = new Output({ format, target })
     const videoSource = new VideoSampleSource({
-      codec: 'avc',
+      codec: outputCodec,
       bitrate,
       bitrateMode: 'variable',
       keyFrameInterval: 2,
       latencyMode: 'quality',
+      hardwareAcceleration: 'prefer-hardware',
     })
     output.addVideoTrack(videoSource, { frameRate: fps })
 

@@ -14,6 +14,7 @@ import { safeName } from './filePathUtils'
 import { currentBaseDir, previewCacheDir } from './settingsService'
 import type { LunaFile, MediaMetadata, MetadataEntry } from '../src/shared/types'
 import { readMediaDeviceInfo } from './exifReader'
+import { lunaMediaAdapter } from './deviceMedia'
 
 const _require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
@@ -28,7 +29,7 @@ interface MetadataCacheEntry {
   data: MediaMetadata
 }
 
-const METADATA_CACHE_VERSION = 3
+const METADATA_CACHE_VERSION = 4
 
 function metadataCacheDir(): string {
   return path.join(currentBaseDir(), 'cache', 'metadata')
@@ -170,17 +171,98 @@ function parseFrameRate(value: string | undefined): number | null {
 
 interface VideoProbeStream {
   codec_type: string
+  codec_name?: string
+  codec_long_name?: string
+  profile?: string
+  codec_tag_string?: string
+  width?: number
+  height?: number
+  pix_fmt?: string
+  color_range?: string
+  color_space?: string
+  color_transfer?: string
+  color_primaries?: string
+  chroma_location?: string
+  sample_aspect_ratio?: string
+  display_aspect_ratio?: string
   avg_frame_rate?: string
   r_frame_rate?: string
+  duration?: string
+  bit_rate?: string
+  nb_frames?: string
+  sample_rate?: string
+  channels?: number
+  channel_layout?: string
+  bits_per_sample?: number
+  tags?: Record<string, string>
+  disposition?: Record<string, number>
   side_data_list?: Array<{
     side_data_type?: string
     dv_profile?: number | string
+    dv_bl_signal_compatibility_id?: number | string
+    [key: string]: unknown
   }>
 }
 
 interface VideoProbeFormat {
   duration?: string
+  format_name?: string
+  format_long_name?: string
+  bit_rate?: string
+  size?: string
+  nb_streams?: number
   tags?: Record<string, string>
+}
+
+interface VideoProbeChapter {
+  id?: number | string
+  start_time?: string
+  end_time?: string
+  tags?: Record<string, string>
+}
+
+function probeTagValue(tags: Record<string, string> | undefined, key: string): string | undefined {
+  if (!tags) return undefined
+  const expected = key.toLowerCase()
+  return Object.entries(tags).find(([name]) => name.toLowerCase() === expected)?.[1]
+}
+
+function firstVideoTag(data: { streams?: VideoProbeStream[]; format?: VideoProbeFormat }, key: string): string | undefined {
+  return data.streams?.map((stream) => probeTagValue(stream.tags, key)).find(Boolean)
+    ?? probeTagValue(data.format?.tags, key)
+}
+
+function validProbeDate(value: string | undefined): Date | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatBitrate(value: string | undefined): string | null {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? `${(numeric / 1_000_000).toFixed(1)} Mbps` : null
+}
+
+function formatFrameRate(value: string | undefined): string | null {
+  const rate = parseFrameRate(value)
+  return rate === null ? null : `${rate} fps`
+}
+
+function appendProbeTags(entries: MetadataEntry[], tags: Record<string, string> | undefined, prefix: string): void {
+  for (const [key, value] of Object.entries(tags ?? {})) {
+    if (!value || key.toLowerCase() === 'creation_time') continue
+    entries.push({ key: `${prefix}${key}`, value: formatMetadataValue(value) })
+  }
+}
+
+function appendSideData(entries: MetadataEntry[], sideDataList: VideoProbeStream['side_data_list']): void {
+  for (const sideData of sideDataList ?? []) {
+    const type = sideData.side_data_type ?? '附加信息'
+    const details = Object.entries(sideData)
+      .filter(([key, value]) => key !== 'side_data_type' && value !== undefined && value !== null)
+      .map(([key, value]) => `${key}: ${formatMetadataValue(value)}`)
+    if (details.length > 0) entries.push({ key: `附加信息 · ${type}`, value: details.join('; ') })
+  }
 }
 
 function dolbyVisionInfo(stream: VideoProbeStream | undefined, format: VideoProbeFormat | undefined): { dolbyVision: boolean; dolbyVisionProfile: number | null } {
@@ -296,64 +378,88 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
         '-print_format', 'json',
         '-show_streams',
         '-show_format',
+        '-show_chapters',
         sourcePath,
       ], { encoding: 'utf-8' })
       const data = JSON.parse(stdout) as {
-        streams?: Array<{
-          codec_type: string
-          codec_name?: string
-          width?: number
-          height?: number
-          avg_frame_rate?: string
-          r_frame_rate?: string
-          bit_rate?: string
-        }>
-        format?: {
-          duration?: string
-          bit_rate?: string
-          size?: string
-        }
+        streams?: VideoProbeStream[]
+        chapters?: VideoProbeChapter[]
+        format?: VideoProbeFormat
       }
 
       const videoStream = data.streams?.find((s) => s.codec_type === 'video')
       if (!videoStream) return cacheReturn(file, sourcePath, { groups: [] })
 
-      const entries: MetadataEntry[] = []
       const deviceInfo = await readMediaDeviceInfo(sourcePath)
-      if (deviceInfo?.make) entries.push({ key: 'Make', value: deviceInfo.make })
-      if (deviceInfo?.model) entries.push({ key: 'Model', value: deviceInfo.model })
-      if (deviceInfo?.firmware) entries.push({ key: 'FirmwareVersion', value: deviceInfo.firmware })
-
-      if (videoStream.width && videoStream.height) {
-        entries.push({ key: '分辨率', value: `${videoStream.width} x ${videoStream.height}` })
+      const formatTags = data.format?.tags ?? {}
+      const sourceNameDate = lunaMediaAdapter.capturedAt(path.basename(sourcePath))
+      const metadataDate = validProbeDate(firstVideoTag(data, 'creation_time'))
+      const captureDate = metadataDate ?? sourceNameDate
+      const videoEntries: MetadataEntry[] = []
+      if (deviceInfo?.make || probeTagValue(formatTags, 'make')) {
+        videoEntries.push({ key: 'Make', value: deviceInfo?.make || probeTagValue(formatTags, 'make')! })
       }
-
+      if (deviceInfo?.model || probeTagValue(formatTags, 'model')) {
+        videoEntries.push({ key: 'Model', value: deviceInfo?.model || probeTagValue(formatTags, 'model')! })
+      }
+      if (deviceInfo?.firmware || probeTagValue(formatTags, 'firmware')) {
+        videoEntries.push({ key: 'FirmwareVersion', value: deviceInfo?.firmware || probeTagValue(formatTags, 'firmware')! })
+      }
+      if (deviceInfo?.serialNumber || probeTagValue(formatTags, 'serial_number')) {
+        videoEntries.push({ key: 'SerialNumber', value: deviceInfo?.serialNumber || probeTagValue(formatTags, 'serial_number')! })
+      }
+      if (videoStream.width && videoStream.height) videoEntries.push({ key: '分辨率', value: `${videoStream.width} x ${videoStream.height}` })
       const fps = parseFrameRate(videoStream.avg_frame_rate)
         ?? parseFrameRate(videoStream.r_frame_rate)
-      if (fps !== null) {
-        entries.push({ key: '帧率', value: `${fps} fps` })
+      if (fps !== null) videoEntries.push({ key: '帧率', value: `${fps} fps` })
+      const videoDuration = Number(videoStream.duration ?? data.format?.duration)
+      if (Number.isFinite(videoDuration) && videoDuration > 0) {
+        const seconds = Math.round(videoDuration)
+        videoEntries.push({ key: '时长', value: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` })
+      }
+      if (videoStream.codec_name) videoEntries.push({ key: '视频编码', value: videoStream.codec_name.toUpperCase() })
+      if (videoStream.codec_long_name) videoEntries.push({ key: '编码描述', value: videoStream.codec_long_name })
+      if (videoStream.profile) videoEntries.push({ key: '编码配置', value: videoStream.profile })
+      if (videoStream.codec_tag_string) videoEntries.push({ key: '封装标识', value: videoStream.codec_tag_string })
+      if (videoStream.pix_fmt) videoEntries.push({ key: '像素格式', value: videoStream.pix_fmt })
+      if (videoStream.sample_aspect_ratio) videoEntries.push({ key: '采样宽高比', value: videoStream.sample_aspect_ratio })
+      if (videoStream.display_aspect_ratio) videoEntries.push({ key: '显示宽高比', value: videoStream.display_aspect_ratio })
+      if (videoStream.color_range) videoEntries.push({ key: '色彩范围', value: videoStream.color_range })
+      if (videoStream.color_space) videoEntries.push({ key: '色彩空间', value: videoStream.color_space })
+      if (videoStream.color_transfer) videoEntries.push({ key: '色彩传输', value: videoStream.color_transfer })
+      if (videoStream.color_primaries) videoEntries.push({ key: '色彩原色', value: videoStream.color_primaries })
+      if (videoStream.chroma_location) videoEntries.push({ key: '色度位置', value: videoStream.chroma_location })
+      if (formatFrameRate(videoStream.avg_frame_rate)) videoEntries.push({ key: '平均帧率', value: formatFrameRate(videoStream.avg_frame_rate)! })
+      if (videoStream.nb_frames) videoEntries.push({ key: '帧数', value: videoStream.nb_frames })
+      if (formatBitrate(videoStream.bit_rate ?? data.format?.bit_rate)) videoEntries.push({ key: '码率', value: formatBitrate(videoStream.bit_rate ?? data.format?.bit_rate)! })
+      appendProbeTags(videoEntries, videoStream.tags, '标签 · ')
+      appendSideData(videoEntries, videoStream.side_data_list)
+
+      const audioEntries: MetadataEntry[] = []
+      for (const [audioIndex, audioStream] of (data.streams ?? []).filter((stream) => stream.codec_type === 'audio').entries()) {
+        const prefix = audioIndex === 0 ? '' : `轨道 ${audioIndex + 1} `
+        if (audioStream.codec_name) audioEntries.push({ key: `${prefix}音频编码`, value: audioStream.codec_name.toUpperCase() })
+        if (audioStream.profile) audioEntries.push({ key: `${prefix}编码配置`, value: audioStream.profile })
+        if (audioStream.sample_rate) audioEntries.push({ key: `${prefix}采样率`, value: `${audioStream.sample_rate} Hz` })
+        if (audioStream.channels) audioEntries.push({ key: `${prefix}声道数`, value: String(audioStream.channels) })
+        if (audioStream.channel_layout) audioEntries.push({ key: `${prefix}声道布局`, value: audioStream.channel_layout })
+        if (audioStream.bits_per_sample) audioEntries.push({ key: `${prefix}采样位深`, value: `${audioStream.bits_per_sample} bit` })
+        if (formatBitrate(audioStream.bit_rate)) audioEntries.push({ key: `${prefix}码率`, value: formatBitrate(audioStream.bit_rate)! })
+        if (audioStream.duration) audioEntries.push({ key: `${prefix}时长`, value: `${Number(audioStream.duration).toFixed(3)} 秒` })
+        appendProbeTags(audioEntries, audioStream.tags, `${prefix}标签 · `)
       }
 
-      if (videoStream.codec_name) {
-        entries.push({ key: '视频编码', value: videoStream.codec_name.toUpperCase() })
+      const containerEntries: MetadataEntry[] = []
+      if (data.format?.format_long_name) containerEntries.push({ key: '格式', value: data.format.format_long_name })
+      if (data.format?.format_name) containerEntries.push({ key: '格式标识', value: data.format.format_name })
+      if (data.format?.nb_streams !== undefined) containerEntries.push({ key: '轨道数', value: String(data.format.nb_streams) })
+      if (formatBitrate(data.format?.bit_rate)) containerEntries.push({ key: '总码率', value: formatBitrate(data.format?.bit_rate)! })
+      for (const [key, value] of Object.entries(formatTags)) {
+        if (key.toLowerCase() === 'creation_time' || !value) continue
+        containerEntries.push({ key: `标签 · ${key}`, value })
       }
 
-      // 码率（ffprobe 可能返回 "N/A" 或空字符串）
-      const bitRateRaw = videoStream.bit_rate || data.format?.bit_rate || ''
-      const bitRateNum = Number(bitRateRaw)
-      if (bitRateNum > 0) {
-        const mbps = (bitRateNum / 1_000_000).toFixed(1)
-        entries.push({ key: '码率', value: `${mbps} Mbps` })
-      }
-
-      if (data.format?.duration) {
-        const secs = Math.round(Number(data.format.duration))
-        const m = Math.floor(secs / 60)
-        const s = secs % 60
-        entries.push({ key: '时长', value: `${m}:${String(s).padStart(2, '0')}` })
-      }
-
-      // 文件大小：ffprobe format.size 或 fs.stat 兜底
+      const entries: MetadataEntry[] = []
       let fileSizeBytes: number | null = null
       const formatSize = Number(data.format?.size)
       if (formatSize > 0) {
@@ -365,16 +471,26 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
         entries.push({ key: 'size', value: String(fileSizeBytes) })
         entries.push({ key: '文件大小', value: `${(fileSizeBytes / 1_000_000).toFixed(1)} MB` })
       }
-
-      // 拍摄时间：文件 mtime 兜底
+      if (captureDate) entries.push({ key: 'DateTimeOriginal', value: captureDate.toISOString() })
       try {
         const stat = await fs.stat(sourcePath)
         const ts = stat.mtimeMs
-        // 追加为可被 enrichedFile 捕获的元数据
         entries.push({ key: 'ModifyDate', value: new Date(ts).toISOString() })
       } catch { /* ignore */ }
 
-      return cacheReturn(file, sourcePath, { groups: [{ name: '视频', entries }] })
+      const groups: Array<{ name: string; entries: MetadataEntry[] }> = [{ name: '文件', entries }]
+      if (videoEntries.length > 0) groups.push({ name: '视频', entries: videoEntries })
+      if (audioEntries.length > 0) groups.push({ name: '音频', entries: audioEntries })
+      if (containerEntries.length > 0) groups.push({ name: '容器', entries: containerEntries })
+      for (const [index, chapter] of (data.chapters ?? []).entries()) {
+        const chapterEntries: MetadataEntry[] = [{ key: '编号', value: String(chapter.id ?? index + 1) }]
+        if (chapter.start_time) chapterEntries.push({ key: '开始', value: `${Number(chapter.start_time).toFixed(3)} 秒` })
+        if (chapter.end_time) chapterEntries.push({ key: '结束', value: `${Number(chapter.end_time).toFixed(3)} 秒` })
+        const title = probeTagValue(chapter.tags, 'title')
+        if (title) chapterEntries.push({ key: '标题', value: title })
+        groups.push({ name: `章节 ${index + 1}`, entries: chapterEntries })
+      }
+      return cacheReturn(file, sourcePath, { groups })
     } catch {
       return cacheReturn(file, sourcePath, { groups: [] })
     }

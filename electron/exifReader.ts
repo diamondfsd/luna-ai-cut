@@ -8,6 +8,7 @@ export interface MediaDeviceInfo {
   make: string
   model: string
   firmware?: string
+  serialNumber?: string
 }
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.insv', '.lrv'])
@@ -22,7 +23,12 @@ async function readStandardVideoDeviceInfo(localPath: string): Promise<MediaDevi
   const make = tags.make?.trim() ?? ''
   const model = tags.model?.trim() ?? ''
   if (!make && !model) return null
-  return { make, model, firmware: tags.firmware?.trim() || undefined }
+  return {
+    make,
+    model,
+    firmware: tags.firmware?.trim() || undefined,
+    serialNumber: (tags.serial_number ?? tags.serialnumber)?.trim() || undefined,
+  }
 }
 
 async function readInsta360VideoDeviceInfo(localPath: string): Promise<MediaDeviceInfo | null> {
@@ -37,7 +43,8 @@ async function readInsta360VideoDeviceInfo(localPath: string): Promise<MediaDevi
     const model = /Insta360\s+(Luna Ultra|GO Ultra)/i.exec(searchable)?.[1] ?? null
     if (!model) return null
     const firmware = /\bv\d+\.\d+(?:\.\d+)+\b/i.exec(searchable)?.[0]
-    return { make: 'Insta360', model, firmware }
+    const serialNumber = /\bBTLB[A-Z0-9]{8,}\b/i.exec(searchable)?.[0]
+    return { make: 'Insta360', model, firmware, serialNumber }
   } finally {
     await handle.close()
   }

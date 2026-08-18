@@ -276,6 +276,7 @@ export interface FreecutExportApi {
   closeWriter(writerId: string): Promise<{ filePath: string; fileName: string }>
   abortWriter(writerId: string): Promise<void>
   embedJpegSourceMetadata(outputPath: string, sourcePath: string): Promise<boolean>
+  preserveSourceMetadata(outputPath: string, sourcePath: string, options?: { rewriteImageMetadata?: boolean; rewriteVideoMetadata?: boolean }): Promise<boolean>
 }
 
 export interface LunaApi {
