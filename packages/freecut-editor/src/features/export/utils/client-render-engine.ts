@@ -77,6 +77,7 @@ import { doesMaskAffectTrack } from '@freecut/shared/utils/mask-scope'
 import type { FrameInvalidationRequest } from '@freecut/shared/utils/frame-invalidation'
 import { collectReachableCompositionIdsFromTracks } from '@freecut/features/export/deps/timeline-compositions'
 import { appendVirtualTranscriptCaptionTrack } from '@freecut/features/export/deps/caption-items'
+import { logPreviewDiagnostic } from '@freecut/features/preview/utils/preview-diagnostic-log'
 
 // Item renderer
 import {
@@ -97,6 +98,7 @@ import {
   type WorkerLoadedImage,
   type ItemRenderContext,
   type SubCompRenderData,
+  type PreviewFramePendingInfo,
 } from './canvas-item-renderer'
 import { ScrubbingCache } from '@freecut/features/export/deps/preview'
 import {
@@ -170,6 +172,7 @@ export function selectPreviewVideoSource(options: {
   sourceTime?: number
   toleranceSeconds?: number
   getCachedPredecodedBitmap?: ItemRenderContext['getCachedPredecodedBitmap']
+  getPreviewVideoDecodeMaxDimension?: ItemRenderContext['getPreviewVideoDecodeMaxDimension']
   getCachedActivePreviewFallbackBitmap?: ItemRenderContext['getCachedActivePreviewFallbackBitmap']
   isActivePreviewSourceTarget?: ItemRenderContext['isActivePreviewSourceTarget']
 }): string | null {
@@ -177,7 +180,12 @@ export function selectPreviewVideoSource(options: {
   if (options.sourceTime !== undefined) {
     for (const src of candidates) {
       if (
-        options.getCachedPredecodedBitmap?.(src, options.sourceTime, options.toleranceSeconds) ||
+        options.getCachedPredecodedBitmap?.(
+          src,
+          options.sourceTime,
+          options.toleranceSeconds,
+          options.getPreviewVideoDecodeMaxDimension?.(),
+        ) ||
         options.getCachedActivePreviewFallbackBitmap?.(
           src,
           options.sourceTime,
@@ -650,6 +658,7 @@ export async function createCompositionRenderer(
     useProxyMedia?: boolean
     renderText?: boolean
     htmlFrameProvider?: HtmlFrameProvider
+    getPreviewVideoDecodeMaxDimension?: () => number | undefined
   } = {},
 ) {
   const { fps, transitions = [], backgroundColor = '#000000', keyframes = [] } = composition
@@ -686,6 +695,7 @@ export async function createCompositionRenderer(
   const getLiveTransitionSnapshot = options.getLiveTransitionSnapshot
   const getLiveKeyframes = options.getLiveKeyframes
   const domVideoElementProvider = options.domVideoElementProvider
+  const getPreviewVideoDecodeMaxDimension = options.getPreviewVideoDecodeMaxDimension
   const hasDom = typeof document !== 'undefined'
   const previewStrictDecode = executionPolicy.usesStrictPreviewDecode
 
@@ -734,6 +744,7 @@ export async function createCompositionRenderer(
   let lastRenderedFrame: number | null = null
   let lastRenderAborted = false
   let activePreviewFramePending = false
+  let activePreviewPendingDetails: PreviewFramePendingInfo[] = []
   let activePreviewFallbackUsed = false
   let nonBlockingVideoFrameToleranceSeconds: number | undefined
   let liveDomVideoPlaybackActive = Boolean(domVideoElementProvider)
@@ -1231,7 +1242,10 @@ export async function createCompositionRenderer(
     mediabunnyDisabledItems,
     mediabunnyFailureCountByItem,
     allowPredecodedVideoFrames: executionPolicy.allowsPredecodedVideoFrames,
-    workerPredecodeWaitMs: undefined,
+    // Give the two participants in an active transition a bounded chance to
+    // arrive from the worker before the strict preview path holds the front
+    // buffer. Export and comparison renderers keep their own defaults.
+    workerPredecodeWaitMs: renderMode === 'preview' ? 32 : undefined,
     getResolvedVideoSource: (item, sourceTime, toleranceSeconds) => {
       const registeredSource = videoSourceByItemId.get(item.id)
       if (renderMode !== 'preview') {
@@ -1249,6 +1263,7 @@ export async function createCompositionRenderer(
         sourceTime,
         toleranceSeconds,
         getCachedPredecodedBitmap: itemRenderContext.getCachedPredecodedBitmap,
+        getPreviewVideoDecodeMaxDimension,
         getCachedActivePreviewFallbackBitmap:
           itemRenderContext.getCachedActivePreviewFallbackBitmap,
         isActivePreviewSourceTarget: itemRenderContext.isActivePreviewSourceTarget,
@@ -1291,9 +1306,11 @@ export async function createCompositionRenderer(
       },
     },
     domVideoElementProvider,
+    getPreviewVideoDecodeMaxDimension,
   }
-  itemRenderContext.markActivePreviewFramePending = () => {
+  itemRenderContext.markActivePreviewFramePending = (details) => {
     activePreviewFramePending = true
+    if (details) activePreviewPendingDetails.push(details)
   }
   itemRenderContext.markActivePreviewFallbackUsed = () => {
     activePreviewFallbackUsed = true
@@ -1967,6 +1984,7 @@ export async function createCompositionRenderer(
       const scrubPerfStartMs = scrubPerfStart()
       lastRenderAborted = false
       activePreviewFramePending = false
+      activePreviewPendingDetails = []
       activePreviewFallbackUsed = false
       itemRenderContext.previewRootTimelineFrame = frame
       const isSupersededActivePreviewFrame = () =>
@@ -1975,6 +1993,10 @@ export async function createCompositionRenderer(
       const abortActivePreviewRender = () => {
         if (!lastRenderAborted) {
           recordScrubPerf(frame, 'aborted', scrubPerfStartMs)
+          logPreviewDiagnostic('render_frame_aborted_internal', {
+            frame,
+            pendingItems: activePreviewPendingDetails.slice(0, 8),
+          })
         }
         lastRenderAborted = true
       }
@@ -1982,12 +2004,19 @@ export async function createCompositionRenderer(
         abortActivePreviewRender()
         return
       }
-      if (
-        itemRenderContext.isActivePreviewFrameCurrent?.(frame) &&
-        itemRenderContext.isActivePreviewFrameDecodeReady?.(frame) === false
-      ) {
-        abortActivePreviewRender()
-        return
+      // Do not abort the whole frame while the worker is still decoding. This
+      // gate made paused transition scrubs different from playback: playback
+      // can composite the same frame from pinned DOM video participants while
+      // worker decode is warming. Each video item still marks the frame pending
+      // when neither a DOM frame nor a worker frame is available, so a partial
+      // frame cannot be committed.
+      if (itemRenderContext.isActivePreviewFrameCurrent?.(frame)) {
+        const decodeReady = itemRenderContext.isActivePreviewFrameDecodeReady?.(frame) ?? true
+        logPreviewDiagnostic(
+          decodeReady ? 'active_frame_decode_ready' : 'active_frame_decode_pending',
+          { frame, decodeReady, renderMode },
+          { dedupKey: `active-frame:${frame}:${decodeReady}`, minIntervalMs: 20 },
+        )
       }
       // 3-tier cache lookup (preview only)
       // Tier 1 (GPU texture) → Tier 3 (RAM ImageBitmap) → miss → full render
@@ -2066,6 +2095,39 @@ export async function createCompositionRenderer(
         frameSceneRevision,
       )
       const { activeTransitions, transitionClipIds } = frameScene.transitionFrameState
+      if (
+        renderMode === 'preview' &&
+        (activeTransitions.length > 0 || frame % 30 === 0)
+      ) {
+        logPreviewDiagnostic(
+          'preview_frame_scene',
+          {
+            frame,
+            renderMode,
+            activeTransitions: activeTransitions.map((activeTransition) => ({
+              transitionId: activeTransition.transition.id,
+              presentation: activeTransition.transition.presentation,
+              progress: Number(activeTransition.progress.toFixed(4)),
+              transitionStart: activeTransition.transitionStart,
+              transitionEnd: activeTransition.transitionEnd,
+              cutPoint: activeTransition.cutPoint,
+              leftClipId: activeTransition.leftClip.id,
+              rightClipId: activeTransition.rightClip.id,
+              leftClipType: activeTransition.leftClip.type,
+              rightClipType: activeTransition.rightClip.type,
+            })),
+            transitionClipIds: [...transitionClipIds],
+          },
+          { dedupKey: `preview-scene:${frame}`, minIntervalMs: 10 },
+        )
+      }
+      // Transition participants must use the same decoded-frame source for
+      // playback and paused scrubbing. The GPU transition path consumes
+      // ImageBitmap/VideoFrame sources directly; disabling the DOM source here
+      // prevents a failed GPU attempt from silently switching back to a second
+      // rendering chain for the same transition.
+      itemRenderContext.preferGpuVideoSource =
+        renderMode === 'preview' && activeTransitions.length > 0
 
       // Debug: Log transition state at key frames (only in development)
       if (
@@ -2150,6 +2212,31 @@ export async function createCompositionRenderer(
             itemRenderContext.gpuMaskCombinePipeline = gpu.maskCombine
           }
         }
+      }
+      if (
+        renderMode === 'preview' &&
+        (activeTransitions.length > 0 || frame % 30 === 0)
+      ) {
+        logPreviewDiagnostic(
+          'preview_webgpu_capabilities',
+          {
+            frame,
+            activeTransitionCount: activeTransitions.length,
+            hasAnyGpuEffects,
+            preferGpuVideoSource: itemRenderContext.preferGpuVideoSource === true,
+            gpuEffectsReady: Boolean(itemRenderContext.gpuPipeline),
+            gpuTransitionReady: Boolean(itemRenderContext.gpuTransitionPipeline),
+            gpuMediaReady: Boolean(itemRenderContext.gpuMediaPipeline),
+            gpuMediaBlendReady: Boolean(itemRenderContext.gpuMediaBlendPipeline),
+            gpuShapeReady: Boolean(itemRenderContext.gpuShapePipeline),
+            gpuTextReady: Boolean(itemRenderContext.gpuTextPipeline),
+            gpuMaskCombineReady: Boolean(itemRenderContext.gpuMaskCombinePipeline),
+            gpuTexturePoolReady: Boolean(gpu.texturePool),
+            allowPredecodedVideoFrames: itemRenderContext.allowPredecodedVideoFrames,
+            decodeMaxDimension: getPreviewVideoDecodeMaxDimension?.() ?? null,
+          },
+          { dedupKey: `preview-gpu:${frame}`, minIntervalMs: 10 },
+        )
       }
       if (isSupersededActivePreviewFrame()) {
         abortActivePreviewRender()
@@ -2418,14 +2505,49 @@ export async function createCompositionRenderer(
                 gpu.texturePool,
               )
               if (renderedToTexture) {
+                logPreviewDiagnostic('preview_transition_result', {
+                  frame,
+                  transitionId: task.transition.transition.id,
+                  path: 'gpu-texture',
+                  gpuTransitionReady: true,
+                  gpuMediaReady: Boolean(itemRenderContext.gpuMediaPipeline),
+                })
                 return {
                   gpuTexture: transitionTexture,
                   poolCanvases: [],
                 } satisfies RenderedTaskResult
               }
+              logPreviewDiagnostic('preview_transition_result', {
+                frame,
+                transitionId: task.transition.transition.id,
+                path: 'canvas-fallback',
+                reason: 'gpu-transition-render-returned-false',
+                gpuTransitionReady: true,
+                gpuMediaReady: Boolean(itemRenderContext.gpuMediaPipeline),
+              })
               gpu.texturePool.release(transitionTexture)
             }
+            if (!useGpuCompositor && itemRenderContext.gpuTransitionPipeline) {
+              logPreviewDiagnostic('preview_transition_result', {
+                frame,
+                transitionId: task.transition.transition.id,
+                path: 'canvas-transition',
+                reason: 'gpu-texture-compositor-not-enabled',
+                gpuTransitionReady: true,
+                gpuMediaReady: Boolean(itemRenderContext.gpuMediaPipeline),
+              })
+            }
             // Transitions: render to a dedicated canvas
+            if (!itemRenderContext.gpuTransitionPipeline) {
+              logPreviewDiagnostic('preview_transition_result', {
+                frame,
+                transitionId: task.transition.transition.id,
+                path: 'canvas-fallback',
+                reason: 'gpu-transition-pipeline-unavailable',
+                gpuEffectsReady: Boolean(itemRenderContext.gpuPipeline),
+                gpuMediaReady: Boolean(itemRenderContext.gpuMediaPipeline),
+              })
+            }
             return renderTransitionFallbackCanvas(task)
           } finally {
             if (taskStartMs >= 0) {
@@ -2475,6 +2597,14 @@ export async function createCompositionRenderer(
         }
 
         if (isSupersededActivePreviewFrame() || activePreviewFramePending) {
+          logPreviewDiagnostic('preview_frame_not_presented', {
+            frame,
+            reason: isSupersededActivePreviewFrame() ? 'superseded' : 'video-frame-pending',
+            pendingItems: activePreviewPendingDetails.slice(0, 12),
+            activeTransitionCount: activeTransitions.length,
+            gpuEffectsReady: Boolean(itemRenderContext.gpuPipeline),
+            gpuTransitionReady: Boolean(itemRenderContext.gpuTransitionPipeline),
+          })
           for (const result of results) {
             if (!result) continue
             for (const pooledCanvas of result.poolCanvases) {
@@ -2525,6 +2655,22 @@ export async function createCompositionRenderer(
       }
 
       ctx.drawImage(finalCompositeSource, 0, 0)
+
+      if (
+        renderMode === 'preview' &&
+        (activeTransitions.length > 0 || frame % 30 === 0)
+      ) {
+        logPreviewDiagnostic('preview_frame_presented', {
+          frame,
+          activeTransitionCount: activeTransitions.length,
+          useGpuCompositor,
+          gpuEffectsReady: Boolean(itemRenderContext.gpuPipeline),
+          gpuTransitionReady: Boolean(itemRenderContext.gpuTransitionPipeline),
+          gpuMediaReady: Boolean(itemRenderContext.gpuMediaPipeline),
+          activePreviewFallbackUsed,
+          output: 'composition-canvas',
+        })
+      }
 
       // Release content canvas back to pool
       canvasPool.release(contentCanvas)
@@ -2782,21 +2928,41 @@ export async function createCompositionRenderer(
      * compilation cost. Safe to call multiple times — no-ops if already warm.
      */
     async warmGpuPipeline(): Promise<void> {
-      const pipeline = await gpu.ensureEffects()
-      if (pipeline) {
-        gpu.ensureTransition()
-        gpu.ensureMedia()
-        gpu.ensureMediaBlend()
-        gpu.ensureShape()
-        gpu.ensureText()
-        gpu.ensureMaskCombine()
-        itemRenderContext.gpuPipeline = pipeline
-        itemRenderContext.gpuTransitionPipeline = gpu.transition
-        itemRenderContext.gpuMediaPipeline = gpu.media
-        itemRenderContext.gpuMediaBlendPipeline = gpu.mediaBlend
-        itemRenderContext.gpuShapePipeline = gpu.shape
-        itemRenderContext.gpuTextPipeline = gpu.text
-        itemRenderContext.gpuMaskCombinePipeline = gpu.maskCombine
+      const startedAt = performance.now()
+      try {
+        const pipeline = await gpu.ensureEffects()
+        if (pipeline) {
+          gpu.ensureTransition()
+          gpu.ensureMedia()
+          gpu.ensureMediaBlend()
+          gpu.ensureShape()
+          gpu.ensureText()
+          gpu.ensureMaskCombine()
+          itemRenderContext.gpuPipeline = pipeline
+          itemRenderContext.gpuTransitionPipeline = gpu.transition
+          itemRenderContext.gpuMediaPipeline = gpu.media
+          itemRenderContext.gpuMediaBlendPipeline = gpu.mediaBlend
+          itemRenderContext.gpuShapePipeline = gpu.shape
+          itemRenderContext.gpuTextPipeline = gpu.text
+          itemRenderContext.gpuMaskCombinePipeline = gpu.maskCombine
+        }
+        logPreviewDiagnostic('preview_webgpu_warm_result', {
+          available: Boolean(pipeline),
+          effectsReady: Boolean(itemRenderContext.gpuPipeline),
+          transitionReady: Boolean(itemRenderContext.gpuTransitionPipeline),
+          mediaReady: Boolean(itemRenderContext.gpuMediaPipeline),
+          mediaBlendReady: Boolean(itemRenderContext.gpuMediaBlendPipeline),
+          shapeReady: Boolean(itemRenderContext.gpuShapePipeline),
+          textReady: Boolean(itemRenderContext.gpuTextPipeline),
+          maskCombineReady: Boolean(itemRenderContext.gpuMaskCombinePipeline),
+          durationMs: Math.round(performance.now() - startedAt),
+        })
+      } catch (error) {
+        logPreviewDiagnostic('preview_webgpu_warm_failed', {
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Math.round(performance.now() - startedAt),
+        })
+        throw error
       }
     },
 

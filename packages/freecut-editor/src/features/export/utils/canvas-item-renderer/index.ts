@@ -15,6 +15,7 @@ export type {
   WorkerLoadedImage,
   ItemRenderContext,
   SubCompRenderData,
+  PreviewFramePendingInfo,
   GpuTextTextureCacheEntry,
   GpuBitmapMaskTextureCacheEntry,
 } from './types'

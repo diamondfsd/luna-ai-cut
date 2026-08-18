@@ -430,6 +430,40 @@ describe('renderVideoItem', () => {
     expect(markActivePreviewFramePending).toHaveBeenCalledOnce()
   })
 
+  it('uses a settling DOM participant for an active transition scrub', async () => {
+    const transitionVideo = {
+      readyState: 4,
+      videoWidth: 1920,
+      videoHeight: 1080,
+      // Frame 12 is 0.4s; this is inside the transition DOM tolerance but
+      // outside the old active-scrub half-frame threshold.
+      currentTime: 0.8,
+      dataset: {},
+    } as HTMLVideoElement
+    const ctx = createCanvasContext()
+    const renderContext = createRenderContext({
+      videoElements: new Map([[item.id, transitionVideo]]),
+      domVideoElementProvider: vi.fn(() => transitionVideo),
+      getCachedPredecodedBitmap: vi.fn(() => null),
+      getCachedActivePreviewFallbackBitmap: vi.fn(() => null),
+      isActivePreviewFrameCurrent: vi.fn(() => true),
+      isActivePreviewFrameSuperseded: vi.fn(() => false),
+      isActivePreviewSourceTarget: vi.fn(() => true),
+      isActivePreviewTargetSuperseded: vi.fn(() => false),
+      isRenderingTransition: true,
+    })
+
+    await expect(renderVideoItem(ctx, item, transform, 12, renderContext)).resolves.toBe(true)
+
+    expect(ctx.drawImage).toHaveBeenCalledWith(
+      transitionVideo,
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+    )
+  })
+
   it('prefers a nearby worker frame over a nested DOM seek during reverse delivery', async () => {
     const nearbyWorkerBitmap = { width: 480, height: 270 } as ImageBitmap
     const staleDomVideo = {

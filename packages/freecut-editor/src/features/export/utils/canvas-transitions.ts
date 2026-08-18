@@ -14,6 +14,7 @@ import '@freecut/shared/timeline/transitions'
 import { transitionRegistry } from '@freecut/shared/timeline/transitions/registry'
 import { createLogger } from '@freecut/shared/logging/logger'
 import type { TransitionPipeline } from '@freecut/infrastructure/gpu-transitions'
+import { logPreviewDiagnostic } from '@freecut/features/preview/utils/preview-diagnostic-log'
 
 const log = createLogger('CanvasTransitions')
 
@@ -526,12 +527,39 @@ export function renderTransition(
       transition.properties,
     )
     if (result) {
+      logPreviewDiagnostic('transition_render_path', {
+        frame: activeTransition.transitionStart + Math.round(
+          activeTransition.progress * activeTransition.durationInFrames,
+        ),
+        presentation,
+        path: 'webgpu-canvas',
+        gpuTransitionId: renderer.gpuTransitionId,
+        progress: Number(progress.toFixed(4)),
+      })
       ctx.drawImage(result, 0, 0)
       return
     }
+    logPreviewDiagnostic('transition_render_path', {
+      frame: activeTransition.transitionStart + Math.round(
+        activeTransition.progress * activeTransition.durationInFrames,
+      ),
+      presentation,
+      path: 'gpu-failed-then-fallback',
+      gpuTransitionId: renderer.gpuTransitionId,
+      progress: Number(progress.toFixed(4)),
+    })
   }
 
   if (renderer?.renderCanvas) {
+    logPreviewDiagnostic('transition_render_path', {
+      frame: activeTransition.transitionStart + Math.round(
+        activeTransition.progress * activeTransition.durationInFrames,
+      ),
+      presentation,
+      path: 'registry-canvas',
+      gpuAvailable: Boolean(gpuTransitionPipeline),
+      progress: Number(progress.toFixed(4)),
+    })
     renderer.renderCanvas(
       ctx,
       leftCanvas,
@@ -545,6 +573,15 @@ export function renderTransition(
   }
 
   // Built-in fallback
+  logPreviewDiagnostic('transition_render_path', {
+    frame: activeTransition.transitionStart + Math.round(
+      activeTransition.progress * activeTransition.durationInFrames,
+    ),
+    presentation,
+    path: CANVAS_FALLBACK_PRESENTATIONS.has(presentation ?? '') ? 'builtin' : 'cut',
+    gpuAvailable: Boolean(gpuTransitionPipeline),
+    progress: Number(progress.toFixed(4)),
+  })
   switch (presentation) {
     case 'fade':
       renderFadeTransition(ctx, leftCanvas, rightCanvas, progress, canvas)

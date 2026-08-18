@@ -90,6 +90,22 @@ export type RenderItemDelegate = (
   preCornerPinMasks?: EffectSourceMask[],
 ) => Promise<void>
 
+export interface PreviewFramePendingInfo {
+  itemId?: string
+  frame?: number
+  sourceTime?: number
+  reason?: string
+  isTransitionParticipant?: boolean
+  hasDomVideo?: boolean
+  domReadyState?: number
+  domCurrentTime?: number
+  domDrift?: number | null
+  domDriftThreshold?: number | null
+  hasMediabunny?: boolean
+  hasExtractor?: boolean
+  hasFallbackVideoElement?: boolean
+}
+
 /**
  * Bundles the mutable/shared state that the item-level renderers need from the
  * composition renderer.  This replaces the closure captures that existed when
@@ -133,10 +149,15 @@ export interface ItemRenderContext {
   ensureVideoItemReady?: (itemId: string, item?: VideoItem) => Promise<boolean>
   /** Permit isolated comparison renders to consume exact worker-predecoded frames. */
   allowPredecodedVideoFrames?: boolean
+  /** Prefer decoded GPU media sources for transition participants over DOM drawing. */
+  preferGpuVideoSource?: boolean
+  /** Current active-scrub decode ceiling. Undefined keeps native resolution. */
+  getPreviewVideoDecodeMaxDimension?: () => number | undefined
   getCachedPredecodedBitmap?: (
     src: string,
     timestamp: number,
     toleranceSeconds?: number,
+    maxDimension?: number,
   ) => ImageBitmap | null
   getCachedActivePreviewFallbackBitmap?: (
     src: string,
@@ -148,6 +169,7 @@ export interface ItemRenderContext {
     timestamp: number,
     toleranceSeconds?: number,
     maxWaitMs?: number,
+    maxDimension?: number,
   ) => Promise<ImageBitmap | null>
   isActivePreviewTargetSuperseded?: (
     src: string,
@@ -162,7 +184,7 @@ export interface ItemRenderContext {
     timestamp: number,
     toleranceSeconds?: number,
   ) => boolean
-  markActivePreviewFramePending?: () => void
+  markActivePreviewFramePending?: (details?: PreviewFramePendingInfo) => void
   markActivePreviewFallbackUsed?: () => void
   previewRootTimelineFrame?: number
   reverseVideoFrameCache?: ReverseVideoFrameCache

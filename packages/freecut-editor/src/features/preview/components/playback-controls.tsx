@@ -4,6 +4,13 @@ import { i18n } from '@freecut/i18n'
 import { Button } from '@freecut/components/ui/button'
 import { Separator } from '@freecut/components/ui/separator'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@freecut/components/ui/select'
+import {
   Play,
   Pause,
   SkipBack,
@@ -14,9 +21,10 @@ import {
   Camera,
   Loader2,
 } from 'lucide-react'
-import { usePlaybackStore } from '@freecut/shared/state/playback'
+import { usePlaybackStore, type PreviewQuality } from '@freecut/shared/state/playback'
 import { usePreviewBridgeStore } from '@freecut/shared/state/preview-bridge'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
+import { logPreviewDiagnostic } from '../utils/preview-diagnostic-log'
 import {
   importMediaLibraryService,
   useMediaLibraryStore,
@@ -111,6 +119,8 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
   const setCurrentFrame = usePlaybackStore((s) => s.setCurrentFrame)
   const setPreviewFrame = usePlaybackStore((s) => s.setPreviewFrame)
   const toggleUseProxy = usePlaybackStore((s) => s.toggleUseProxy)
+  const previewQuality = usePlaybackStore((s) => s.previewQuality)
+  const setPreviewQuality = usePlaybackStore((s) => s.setPreviewQuality)
   const setDisplayedFrame = usePreviewBridgeStore((s) => s.setDisplayedFrame)
 
   // Note: Automatic playback loop is now handled by Composition Player
@@ -213,6 +223,14 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
       toast.error(i18n.t('preview.controls.frameDownloadedNotSaved', { message }))
     } finally {
       setIsSavingFrame(false)
+    }
+  }
+
+  const handlePreviewQualityChange = (value: string) => {
+    const quality = Number(value) as PreviewQuality
+    if (quality === 1 || quality === 0.5 || quality === 0.33 || quality === 0.25) {
+      setPreviewQuality(quality)
+      logPreviewDiagnostic('preview_quality_changed', { quality })
     }
   }
 
@@ -340,6 +358,34 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
         >
           <Zap className="w-3.5 h-3.5" />
         </Button>
+      </div>
+
+      {/* Decode quality — the active scrub path is reduced one step further. */}
+      <div className="hidden @min-[560px]:flex items-center gap-1 flex-shrink-0">
+        <Separator orientation="vertical" className="h-4 flex-shrink-0" />
+        <Select value={String(previewQuality)} onValueChange={handlePreviewQualityChange}>
+          <SelectTrigger
+            className="h-7 w-[88px] border-transparent bg-transparent px-1.5 text-[11px] shadow-none"
+            aria-label={t('preview.controls.previewQuality')}
+            data-tooltip={t('preview.controls.previewQuality')}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value="1" className="text-xs">
+              {t('preview.controls.previewQualityFull')}
+            </SelectItem>
+            <SelectItem value="0.5" className="text-xs">
+              {t('preview.controls.previewQualityHalf')}
+            </SelectItem>
+            <SelectItem value="0.33" className="text-xs">
+              {t('preview.controls.previewQualityThird')}
+            </SelectItem>
+            <SelectItem value="0.25" className="text-xs">
+              {t('preview.controls.previewQualityQuarter')}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </>
   )

@@ -14,6 +14,14 @@ import './styles/responsive.css'
 // 尽早初始化渲染进程日志系统，以捕获所有 console 输出
 initRendererLogger()
 
+// Keep the embedded FreeCut editor's development diagnostics available from
+// the desktop application's real renderer entry point as well.
+if (import.meta.env.DEV) {
+  void import('@freecut/app/debug')
+    .then(({ initializeDebugUtils }) => initializeDebugUtils())
+    .catch((error) => console.warn('[FreeCut] failed to initialize debug utilities', error))
+}
+
 document.title = `Luna AI Cut v${__APP_VERSION__}`
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
