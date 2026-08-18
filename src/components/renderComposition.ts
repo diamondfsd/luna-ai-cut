@@ -74,12 +74,18 @@ export function buildCompositionFromPreviewLayers(
         w: layer.dstW,
         h: layer.dstH,
       },
-      sourceRect: {
-        x: layer.srcX,
-        y: layer.srcY,
-        w: layer.srcW,
-        h: layer.srcH,
-      },
+      sourceRect: (() => {
+        const crop = layer.transform?.crop
+        if (!crop) {
+          return { x: layer.srcX, y: layer.srcY, w: layer.srcW, h: layer.srcH }
+        }
+        return {
+          x: layer.srcX + layer.srcW * crop.x,
+          y: layer.srcY + layer.srcH * crop.y,
+          w: layer.srcW * crop.w,
+          h: layer.srcH * crop.h,
+        }
+      })(),
       fit: layer.fit ?? 'cover',
       opacity: layer.opacity ?? 1,
       blendMode: layer.blendMode,

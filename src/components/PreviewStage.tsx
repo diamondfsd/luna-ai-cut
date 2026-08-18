@@ -1,6 +1,4 @@
 import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { LrcRender } from './LrcRender'
-import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
 import { WebGpuStaticImagePreview } from './WebGpuStaticImagePreview'
 import { WebGpuVideoPreview } from './WebGpuVideoPreview'
 import { PreviewStageError } from './PreviewStageError'
@@ -8,7 +6,6 @@ import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls, toast } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
-import { canUseWebGpuVideoComposition, canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
 import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { usePreviewResolution } from './usePreviewResolution'
 import {
@@ -316,15 +313,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, pending])
-  const useWebGpuVideoPreview = isDisplayVideo
-    && !livePlaying
-    && !cropActive
-    && viewScale === 'fit'
-    && canUseWebGpuVideoComposition(layers)
-  const useWebGpuStaticPreview = !isDisplayVideo
-    && !cropActive
-    && viewScale === 'fit'
-    && canUseWebGpuStaticImageComposition(layers)
+  const useWebGpuVideoPreview = isDisplayVideo && Boolean(previewCanvas)
+  const useWebGpuStaticPreview = !isDisplayVideo && Boolean(previewCanvas)
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current
     const wrapper = wrapperRef.current
@@ -430,37 +420,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
               onViewportChange={syncCanvasMetrics}
             />
-          ) : isDisplayVideo ? (
-            <MultipleLayerVideoPreviewLrcRender
-              layers={layers}
-              canvasWidth={previewCanvas?.width}
-              canvasHeight={previewCanvas?.height}
-              maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
-              playing={playing}
-              onError={handleRenderFailure}
-              onRender={handleRender}
-              onVideoElement={handleVideoElement}
-              imageScale={viewScale === 'fit' ? null : viewScale / 100}
-              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
-              interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
-              viewportKey={viewportKey}
-            />
-          ) : (
-            <LrcRender
-              layers={layers}
-              canvasWidth={previewCanvas?.width}
-              canvasHeight={previewCanvas?.height}
-              maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
-              interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
-              viewportKey={viewportKey}
-              imageScale={viewScale === 'fit' ? null : viewScale / 100}
-              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
-              onViewportChange={syncCanvasMetrics}
-              onError={handleRenderFailure}
-              onRender={handleRender}
-              onVideoElement={handleVideoElement}
-            />
-          )}
+          ) : null}
         </div>
       )}
       {renderOverlay?.()}

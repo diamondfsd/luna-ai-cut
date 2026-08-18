@@ -1,7 +1,7 @@
 import { ArrowLeft, Download, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
-import { LrcRender } from '../../../components/LrcRender'
+import { WebGpuStaticImagePreview } from '../../../components/WebGpuStaticImagePreview'
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
 import type { MediaMetadata, PreviewLayer, WorkspaceOnlyYourColorState } from '../../../shared/types'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
@@ -452,7 +452,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
     <header className="only-your-color-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>只有你的色彩</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="only-your-color-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
     <div className="only-your-color-preview">
       {activeAsset && !isImage ? <div className="only-your-color-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>只有你的色彩目前支持图片素材</span></div>
-        : previewLayers.length && outputSize ? <div className={`only-your-color-stage${pointPicking ? ' is-point-picking' : ''}`} data-effect-rendered={activeMaskPath && effectRenderedMaskPath === activeMaskPath ? 'true' : 'false'} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} onRender={handleEffectRender} />{!showOriginal && pointPicking && <span className="only-your-color-point-hint">点击要保留色彩的主体</span>}</div>
+        : previewLayers.length && outputSize ? <div className={`only-your-color-stage${pointPicking ? ' is-point-picking' : ''}`} data-effect-rendered={activeMaskPath && effectRenderedMaskPath === activeMaskPath ? 'true' : 'false'} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><WebGpuStaticImagePreview className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} onRender={handleEffectRender} />{!showOriginal && pointPicking && <span className="only-your-color-point-hint">点击要保留色彩的主体</span>}</div>
           : activeAsset && isImage ? <img className="only-your-color-source-fallback" src={assetSourceUrl(activeAsset)} alt="" />
             : <div className="only-your-color-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要突出色彩主体的图片</span></div>}
     </div>

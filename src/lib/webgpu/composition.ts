@@ -148,7 +148,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     centered.x * sin(angle) + centered.y * cos(angle)
   ) * max(layer.transform.x, 0.0001);
   let localPosition = rotated + vec2f(0.5, 0.5);
-  let canvasPosition = layer.rect.xy + localPosition * layer.rect.zw;
+  let canvasPosition = layer.rect.xy + localPosition * layer.rect.zw + layer.reveal.yz;
 
   var output: VertexOutput;
   output.position = vec4f(canvasPosition.x * 2.0 - 1.0, 1.0 - canvasPosition.y * 2.0, 0.0, 1.0);
@@ -637,7 +637,12 @@ function createLayerUniforms(
     mask?.transform.scale ?? 1,
     mask?.transform.rotation ?? 0,
   ], 100)
-  uniforms.set([Math.max(0, Math.min(1, revealProgress)), 0, 0, 0], 104)
+  uniforms.set([
+    Math.max(0, Math.min(1, revealProgress)),
+    transform?.translateX ?? 0,
+    transform?.translateY ?? 0,
+    0,
+  ], 104)
   const pixelFlow = layer.pixelFlow
   const pixelFlowDuration = Math.max(0.1, pixelFlow?.duration ?? 0.1)
   const pixelFlowProgress = pixelFlow?.progress ?? Math.max(0, Math.min(1, time / pixelFlowDuration))
