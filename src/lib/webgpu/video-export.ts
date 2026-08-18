@@ -2,6 +2,7 @@ import type { CompositionInput } from '../../shared/types'
 import type {
   WebGpuVideoExportLutMessage,
   WebGpuVideoExportMaskMessage,
+  WebGpuVideoExportFontMessage,
   WebGpuVideoExportProgressMessage,
   WebGpuVideoExportStartMessage,
   WebGpuVideoExportSourceMessage,
@@ -66,6 +67,35 @@ function maskDescriptors(composition: CompositionInput): Array<{ projectId: stri
   return [...descriptors.values()]
 }
 
+function fontPaths(composition: CompositionInput): string[] {
+  return [...new Set(composition.layers.flatMap((layer) => (
+    layer.fontFile && (layer.layerType === 'text' || layer.layerType === 'logo' || layer.layerType === 'decoration')
+      ? [layer.fontFile]
+      : []
+  )))]
+}
+
+async function fontSources(composition: CompositionInput): Promise<WebGpuVideoExportFontMessage[]> {
+  const sources = await Promise.all(fontPaths(composition).map(async (fontPath): Promise<WebGpuVideoExportFontMessage | null> => {
+    try {
+      if (fontPath.startsWith('fonts/')) {
+        const response = await fetch(fontPath)
+        if (!response.ok) return null
+        return {
+          path: fontPath,
+          mimeType: response.headers.get('content-type') || (fontPath.endsWith('.otf') ? 'font/otf' : 'font/ttf'),
+          bytes: await response.arrayBuffer(),
+        }
+      }
+      const source = await window.luna.workspace.readSubtitleFontFile(fontPath)
+      return { path: fontPath, mimeType: source.mimeType, bytes: source.bytes }
+    } catch {
+      return null
+    }
+  }))
+  return sources.filter((source): source is WebGpuVideoExportFontMessage => source !== null)
+}
+
 function isCanceledTask(itemId: string, task: Awaited<ReturnType<typeof window.luna.exportTask.get>>): boolean {
   return task?.status === 'canceled' || task?.items.find((item) => item.id === itemId)?.status === 'canceled'
 }
@@ -93,7 +123,7 @@ export async function exportVideoWithWebGpuWorker(params: {
       fileName: source.name,
     }
   }))
-  const [luts, masks] = await Promise.all([
+  const [luts, masks, fonts] = await Promise.all([
     Promise.all(lutPaths(params.composition).map(async (path): Promise<WebGpuVideoExportLutMessage> => ({
       path,
       text: await readWebGpuLut(path),
@@ -108,6 +138,7 @@ export async function exportVideoWithWebGpuWorker(params: {
         bytes,
       }
     })),
+    fontSources(params.composition),
   ])
   const worker = new Worker(new URL('./video-export.worker.ts', import.meta.url), { type: 'module' })
   let cancelTimer: number | null = null
@@ -181,6 +212,7 @@ export async function exportVideoWithWebGpuWorker(params: {
         sources,
         luts,
         masks,
+        fonts,
         width: params.width,
         height: params.height,
         fps: params.fps,
@@ -190,6 +222,7 @@ export async function exportVideoWithWebGpuWorker(params: {
       worker.postMessage(start, [
         ...sources.map((source) => source.bytes),
         ...masks.map((mask) => mask.bytes),
+        ...fonts.map((font) => font.bytes),
       ])
     })
     return result

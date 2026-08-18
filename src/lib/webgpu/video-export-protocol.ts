@@ -22,12 +22,19 @@ export interface WebGpuVideoExportMaskMessage {
   bytes: ArrayBuffer
 }
 
+export interface WebGpuVideoExportFontMessage {
+  path: string
+  mimeType: string
+  bytes: ArrayBuffer
+}
+
 export interface WebGpuVideoExportStartMessage {
   type: 'start'
   composition: CompositionInput
   sources: WebGpuVideoExportSourceMessage[]
   luts: WebGpuVideoExportLutMessage[]
   masks: WebGpuVideoExportMaskMessage[]
+  fonts: WebGpuVideoExportFontMessage[]
   width: number
   height: number
   fps: number | null
