@@ -261,6 +261,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     transcribeSubtitles: (request: import('../src/shared/types').WorkspaceSubtitleTranscriptionRequest) => ipcRenderer.invoke('workspace:transcribeSubtitles', request),
     cancelSubtitleTranscription: (requestId: string) => ipcRenderer.invoke('workspace:cancelSubtitleTranscription', requestId),
     chooseSubtitleFont: () => ipcRenderer.invoke('workspace:chooseSubtitleFont'),
+    readSubtitleFontFile: (filePath: string) => ipcRenderer.invoke('workspace:readSubtitleFontFile', filePath),
     exportSubtitlesSrt: (request: { sourcePath: string; track: import('../src/shared/types').WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }) => ipcRenderer.invoke('workspace:exportSubtitlesSrt', request),
     cancelSegmentation: (requestId: string) => ipcRenderer.invoke('workspace:cancelSegmentation', requestId),
     trackMask: (request: WorkspaceMaskTrackingRequest) => ipcRenderer.invoke('workspace:trackMask', request),

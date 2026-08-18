@@ -50,7 +50,7 @@
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs && node --experimental-strip-types scripts/test-instance-stroke-selection.mjs",
     "test:mask:tracking": "pnpm run build:app && node scripts/test-mask-tracking-worker.mjs",
     "test:semantic-worker": "node scripts/test-semantic-worker-protocol.mjs",
-    "test:subtitles": "node --experimental-strip-types scripts/test-subtitle-protocol.mjs && node --experimental-strip-types scripts/test-subtitle-segmentation.mjs",
+    "test:subtitles": "node --experimental-strip-types scripts/test-subtitle-protocol.mjs && node --experimental-strip-types scripts/test-subtitle-segmentation.mjs && node --experimental-strip-types scripts/test-subtitle-track.mjs && node scripts/test-workspace-subtitle-storage.mjs",
     "test:e2e": "pnpm run build:app && playwright test",
     "test:model-loader": "node scripts/test-model-loader.mjs",
     "test:model-resources": "node scripts/test-model-resource-release.mjs",

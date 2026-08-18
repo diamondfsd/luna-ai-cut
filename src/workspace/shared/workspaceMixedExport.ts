@@ -38,11 +38,15 @@ function fileName(path: string): string {
 }
 
 function offsetVideoLayers(layers: PreviewLayer[], startTime: number, duration: number): PreviewLayer[] {
-  return layers.map((layer) => layer.isVideo ? {
+  return layers.map((layer) => ({
     ...layer,
-    videoTime: (layer.videoTime ?? 0) + startTime,
-    videoDuration: duration,
-  } : layer)
+    ...(layer.isVideo ? {
+      videoTime: (layer.videoTime ?? 0) + startTime,
+      videoDuration: duration,
+    } : {}),
+    ...(layer.activeStart != null ? { activeStart: layer.activeStart - startTime } : {}),
+    ...(layer.activeEnd != null ? { activeEnd: layer.activeEnd - startTime } : {}),
+  }))
 }
 
 function selectedEntries(

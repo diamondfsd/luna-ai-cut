@@ -10,7 +10,7 @@ import { identityWebGpuLut, parseWebGpuLut, type WebGpuLutData } from './cube-lu
 import { encodeWebGpuMaskTexture, type WebGpuMaskSource } from './mask'
 import { formatWebGpuError, WebGpuRuntime } from './runtime'
 import { getWebGpuSourceDimensions, type WebGpuImageSource } from './source'
-import { hasRasterizableWebGpuLayerContent, rasterizeWebGpuLayer } from './layer-rasterizer'
+import { hasRasterizableWebGpuLayerContent, rasterizeWebGpuLayer, type WebGpuFontResolver } from './layer-rasterizer'
 import { maskTimelineSampleAt } from '../../workspace/mask/maskTimeline'
 import { maskTrackTransformAt } from '../../workspace/mask/maskTrack'
 import { compositionRevealProgress } from '../revealProgress'
@@ -23,6 +23,7 @@ export interface WebGpuCompositionRenderStats {
 export interface WebGpuCompositionRendererOptions {
   resolveImage: (path: string) => Promise<WebGpuImageSource>
   resolveSource?: (layer: CompositionLayer) => Promise<WebGpuImageSource>
+  resolveFont?: WebGpuFontResolver
   resolveLut?: (path: string) => Promise<string>
   resolveMask?: (layer: CompositionLayer, path: string) => Promise<WebGpuMaskSource>
   onDeviceLost?: (message: string) => void
@@ -1291,6 +1292,7 @@ export class WebGpuCompositionRenderer {
   private lastSubmitPromise: Promise<void> = Promise.resolve()
   private resolveImage: ((path: string) => Promise<WebGpuImageSource>) | null = null
   private resolveSource: ((layer: CompositionLayer) => Promise<WebGpuImageSource>) | null = null
+  private resolveFont: WebGpuFontResolver | null = null
   private resolveLut: ((path: string) => Promise<string>) | null = null
   private resolveMask: ((layer: CompositionLayer, path: string) => Promise<WebGpuMaskSource>) | null = null
 
@@ -1323,6 +1325,7 @@ export class WebGpuCompositionRenderer {
       this.format = runtime.capabilities.preferredCanvasFormat
       this.resolveImage = options.resolveImage
       this.resolveSource = options.resolveSource ?? null
+      this.resolveFont = options.resolveFont ?? null
       this.resolveLut = options.resolveLut ?? null
       this.resolveMask = options.resolveMask ?? null
       context.configure({ device: this.device, format: this.format, alphaMode: 'premultiplied' })
@@ -1504,6 +1507,7 @@ export class WebGpuCompositionRenderer {
     this.format = null
     this.resolveImage = null
     this.resolveSource = null
+    this.resolveFont = null
     this.resolveLut = null
     this.resolveMask = null
     this.pipelines.clear()
@@ -1691,7 +1695,9 @@ export class WebGpuCompositionRenderer {
     const cached = this.rasterizedLayerTextures.get(key)
     if (cached) return cached
 
-    const rasterized = await rasterizeWebGpuLayer(layer, canvasWidth, canvasHeight)
+    const rasterized = await rasterizeWebGpuLayer(layer, canvasWidth, canvasHeight, {
+      resolveFont: this.resolveFont ?? undefined,
+    })
     const texture = this.device.createTexture({
       label: `webgpu-composition-layer:${layer.layerType ?? 'unknown'}`,
       size: { width: rasterized.width, height: rasterized.height },

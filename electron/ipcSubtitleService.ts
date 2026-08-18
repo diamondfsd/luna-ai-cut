@@ -1,12 +1,21 @@
 import { app, dialog, ipcMain } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleTranscriptionRequest } from '../src/shared/types'
 import { transcribeVideo } from './subtitleTranscriptionService'
 
 const tasks = new Map<string, AbortController>()
 const MAX_FONT_BYTES = 30 * 1024 * 1024
+
+function subtitleFontDirectory(): string {
+  return path.join(app.getPath('userData'), 'subtitle-fonts')
+}
+
+function isContainedPath(root: string, target: string): boolean {
+  const relative = path.relative(root, target)
+  return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
 
 function validFontHeader(bytes: Buffer, extension: string): boolean {
   if (bytes.length < 4) return false
@@ -33,7 +42,7 @@ async function chooseSubtitleFont(): Promise<WorkspaceSubtitleFontAsset | null> 
   const bytes = await readFile(sourcePath)
   if (!validFontHeader(bytes, extension)) throw new Error('字体文件格式无效，请选择标准 OTF 或 TTF 桌面字体')
   const sha256 = createHash('sha256').update(bytes).digest('hex')
-  const fontDirectory = path.join(app.getPath('userData'), 'subtitle-fonts')
+  const fontDirectory = subtitleFontDirectory()
   const destination = path.join(fontDirectory, `${sha256}${extension}`)
   await mkdir(fontDirectory, { recursive: true })
   const destinationExists = await stat(destination)
@@ -62,6 +71,24 @@ async function chooseSubtitleFont(): Promise<WorkspaceSubtitleFontAsset | null> 
   }
 }
 
+async function readSubtitleFontFile(filePath: string): Promise<{ name: string; mimeType: string; bytes: ArrayBuffer }> {
+  if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) throw new Error('字幕字体路径无效')
+  const fontDirectory = path.resolve(subtitleFontDirectory())
+  const resolvedPath = path.resolve(filePath)
+  if (!isContainedPath(fontDirectory, resolvedPath)) throw new Error('字幕字体路径无效')
+  const extension = path.extname(resolvedPath).toLowerCase()
+  if (extension !== '.otf' && extension !== '.ttf') throw new Error('字幕字体格式无效')
+  const sourceStat = await lstat(resolvedPath)
+  if (!sourceStat.isFile() || sourceStat.isSymbolicLink() || sourceStat.size <= 0 || sourceStat.size > MAX_FONT_BYTES) throw new Error('字幕字体文件无效')
+  const bytes = await readFile(resolvedPath)
+  if (!validFontHeader(bytes, extension)) throw new Error('字幕字体文件格式无效')
+  return {
+    name: path.basename(resolvedPath),
+    mimeType: extension === '.otf' ? 'font/otf' : 'font/ttf',
+    bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  }
+}
+
 export function register(): void {
   ipcMain.handle('workspace:transcribeSubtitles', async (event, request: WorkspaceSubtitleTranscriptionRequest) => {
     if (tasks.size > 0) throw new Error('已有字幕识别任务正在进行')
@@ -84,6 +111,7 @@ export function register(): void {
   })
 
   ipcMain.handle('workspace:chooseSubtitleFont', () => chooseSubtitleFont())
+  ipcMain.handle('workspace:readSubtitleFontFile', (_event, filePath: string) => readSubtitleFontFile(filePath))
 
   app.once('before-quit', () => {
     for (const controller of tasks.values()) controller.abort()
