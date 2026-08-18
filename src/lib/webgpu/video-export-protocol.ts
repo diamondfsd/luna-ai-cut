@@ -24,7 +24,16 @@ export interface WebGpuVideoExportCancelMessage {
   type: 'cancel'
 }
 
-export type WebGpuVideoExportWorkerMessage = WebGpuVideoExportStartMessage | WebGpuVideoExportCancelMessage
+export interface WebGpuVideoExportChunkAckMessage {
+  type: 'chunk-ack'
+  id: number
+  error?: string
+}
+
+export type WebGpuVideoExportWorkerMessage =
+  | WebGpuVideoExportStartMessage
+  | WebGpuVideoExportCancelMessage
+  | WebGpuVideoExportChunkAckMessage
 
 export interface WebGpuVideoExportProgressMessage {
   type: 'progress'
@@ -37,10 +46,15 @@ export interface WebGpuVideoExportProgressMessage {
 
 export interface WebGpuVideoExportDoneMessage {
   type: 'done'
-  buffer: ArrayBuffer
   duration: number
   frameCount: number
   audioCopied: boolean
+}
+
+export interface WebGpuVideoExportChunkMessage {
+  type: 'chunk'
+  id: number
+  data: ArrayBuffer
 }
 
 export interface WebGpuVideoExportErrorMessage {
@@ -51,5 +65,6 @@ export interface WebGpuVideoExportErrorMessage {
 
 export type WebGpuVideoExportWorkerResponse =
   | WebGpuVideoExportProgressMessage
+  | WebGpuVideoExportChunkMessage
   | WebGpuVideoExportDoneMessage
   | WebGpuVideoExportErrorMessage

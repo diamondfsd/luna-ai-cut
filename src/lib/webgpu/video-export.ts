@@ -7,7 +7,6 @@ import type {
 } from './video-export-protocol'
 
 export interface WebGpuVideoExportResult {
-  blob: Blob
   duration: number
   frameCount: number
   audioCopied: boolean
@@ -40,7 +39,6 @@ function isCanceledTask(itemId: string, task: Awaited<ReturnType<typeof window.l
 }
 
 export async function exportVideoWithWebGpuWorker(params: {
-  sourcePath: string
   composition: CompositionInput
   width: number
   height: number
@@ -49,6 +47,7 @@ export async function exportVideoWithWebGpuWorker(params: {
   includeAudio: boolean
   exportTaskId?: string
   exportItemId?: string
+  onChunk: (chunk: ArrayBuffer) => void | Promise<void>
   onProgress?: (progress: WebGpuVideoExportProgressMessage) => void | Promise<void>
 }): Promise<WebGpuVideoExportResult> {
   const descriptors = sourceDescriptors(params.composition)
@@ -68,18 +67,38 @@ export async function exportVideoWithWebGpuWorker(params: {
 
   try {
     const result = await new Promise<WebGpuVideoExportResult>((resolve, reject) => {
+      let settled = false
       const onMessage = (event: MessageEvent<WebGpuVideoExportWorkerResponse>) => {
         const message = event.data
         if (message.type === 'progress') {
           void params.onProgress?.(message)
           return
         }
+        if (message.type === 'chunk') {
+          void Promise.resolve(params.onChunk(message.data))
+            .then(() => {
+              worker.postMessage({ type: 'chunk-ack', id: message.id })
+            })
+            .catch((error: unknown) => {
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              worker.postMessage({ type: 'chunk-ack', id: message.id, error: errorMessage })
+              if (!settled) {
+                settled = true
+                reject(error)
+                worker.postMessage({ type: 'cancel' })
+              }
+            })
+          return
+        }
         if (message.type === 'error') {
+          if (settled) return
+          settled = true
           reject(Object.assign(new Error(message.message), { name: message.canceled ? 'AbortError' : 'Error' }))
           return
         }
+        if (settled) return
+        settled = true
         resolve({
-          blob: new Blob([message.buffer], { type: 'video/mp4' }),
           duration: message.duration,
           frameCount: message.frameCount,
           audioCopied: message.audioCopied,

@@ -31,9 +31,13 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
     execFileAsync(ffmpegPath, [
       '-f', 'lavfi',
       '-i', 'testsrc2=size=640x360:rate=30',
+      '-f', 'lavfi',
+      '-i', 'sine=frequency=440:sample_rate=48000',
       '-t', '2',
       '-pix_fmt', 'yuv420p',
       '-c:v', 'libx264',
+      '-c:a', 'aac',
+      '-shortest',
       '-movflags', '+faststart',
       '-y', videoPath,
     ]),
@@ -148,6 +152,8 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
   const exportedVideoFile = path.join(exportDir, exportedVideoName!)
   expect((await stat(exportedVideoFile)).size).toBeGreaterThan(1_000)
   await execFileAsync(ffmpegPath, ['-v', 'error', '-i', exportedVideoFile, '-frames:v', '1', '-f', 'null', '-'])
+  await execFileAsync(ffmpegPath, ['-v', 'error', '-i', exportedVideoFile, '-map', '0:a:0', '-t', '0.1', '-f', 'null', '-'])
+  expect((await readdir(exportDir)).some((name) => name.endsWith('.tmp'))).toBe(false)
 
   expect(lunaApp.runtimeErrors).toEqual([])
 })

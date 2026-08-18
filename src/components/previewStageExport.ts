@@ -361,6 +361,8 @@ export async function exportPreviewVideo(params: {
   const totalFiles = params.totalFiles ?? 1
   const renderTaskId = params.renderTaskId ?? itemId
   if (canUseWebGpuVideoExportComposition(params.layers)) {
+    let webGpuWriterId: string | null = null
+    let destinationPath = path
     try {
       const composition = buildCompositionFromPreviewLayers(
         params.layers,
@@ -368,8 +370,9 @@ export async function exportPreviewVideo(params: {
         params.height,
         { fps: params.fps ?? undefined },
       )
-      const sourcePath = params.layers.find((layer) => layer.isVideo)?.filePath
-      if (!sourcePath) throw new Error('未找到视频素材')
+      const opened = await window.luna.freecutExport.openWriter(params.exportDir, params.fileName)
+      webGpuWriterId = opened.writerId
+      destinationPath = opened.filePath
       if (taskId && itemId) {
         await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: 0 }).catch(() => {})
         emitLocalExportProgress({
@@ -381,12 +384,11 @@ export async function exportPreviewVideo(params: {
           totalFiles,
           percent: 0,
           status: 'exporting',
-          destinationPath: path,
+          destinationPath,
           backend: 'webgpu',
         })
       }
-      const result = await exportVideoWithWebGpuWorker({
-        sourcePath,
+      await exportVideoWithWebGpuWorker({
         composition,
         width: params.width,
         height: params.height,
@@ -395,6 +397,16 @@ export async function exportPreviewVideo(params: {
         includeAudio: params.includeAudio !== false,
         exportTaskId: taskId,
         exportItemId: itemId,
+        onChunk: async (data) => {
+          await ensureExportActive(taskId, itemId)
+          const bytes = new Uint8Array(data)
+          const chunkSize = 4 * 1024 * 1024
+          for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+            await ensureExportActive(taskId, itemId)
+            const chunk = bytes.slice(offset, Math.min(offset + chunkSize, bytes.byteLength))
+            await window.luna.freecutExport.writeWriter(opened.writerId, chunk.buffer)
+          }
+        },
         onProgress: async (progress) => {
           await params.onProgress?.(progress.progress)
           if (taskId && itemId) {
@@ -411,20 +423,16 @@ export async function exportPreviewVideo(params: {
               totalFiles,
               percent: progress.progress,
               status: 'exporting',
-              destinationPath: path,
+              destinationPath,
               backend: 'webgpu',
             })
           }
         },
       })
       await ensureExportActive(taskId, itemId)
-      const written = await writeBlobToExportDirectory(
-        params.exportDir,
-        params.fileName,
-        result.blob,
-        taskId,
-        itemId,
-      )
+      const closed = await window.luna.freecutExport.closeWriter(opened.writerId)
+      webGpuWriterId = null
+      const written = { path: closed.filePath, name: closed.fileName }
       await ensureExportActive(taskId, itemId)
       if (taskId && itemId) {
         await window.luna.exportTask.updateItem(taskId, itemId, {
@@ -447,6 +455,10 @@ export async function exportPreviewVideo(params: {
       }
       return written
     } catch (error) {
+      if (webGpuWriterId) {
+        await window.luna.freecutExport.abortWriter(webGpuWriterId).catch(() => {})
+        webGpuWriterId = null
+      }
       const message = error instanceof Error ? error.message : String(error)
       const canceled = message === '视频导出已取消' || (error instanceof Error && error.name === 'AbortError')
       if (taskId && itemId) {
@@ -463,7 +475,7 @@ export async function exportPreviewVideo(params: {
           totalFiles,
           percent: 100,
           status: canceled ? 'canceled' : 'failed',
-          destinationPath: path,
+          destinationPath,
           error: message,
           backend: 'webgpu',
         })
