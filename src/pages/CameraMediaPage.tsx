@@ -153,6 +153,10 @@ export function CameraMediaPage() {
             const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
             if (file && controller.selected.has(file.id) !== selected) controller.toggleFile(file)
           }}
+          onDownload={(filePath) => {
+            const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
+            if (file) void controller.downloadOne(file)
+          }}
           onClose={() => {
             controller.setPreviewFile(null)
             controller.setPreviewFiles([])

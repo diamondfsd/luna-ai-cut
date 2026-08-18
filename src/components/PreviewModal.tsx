@@ -33,6 +33,7 @@ interface PreviewModalProps {
   isFileSelected?: (filePath: string) => boolean
   onSetFileSelected?: (filePath: string, selected: boolean) => void
   originalVideoUrls?: Record<string, string>
+  onDownload?: (filePath: string) => void
   onClose: () => void
 }
 
@@ -62,6 +63,7 @@ export function PreviewModal({
   isFileSelected,
   onSetFileSelected,
   originalVideoUrls,
+  onDownload,
   onClose,
 }: PreviewModalProps) {
   // ── 当前预览文件路径 ──
@@ -336,6 +338,7 @@ export function PreviewModal({
             setSelectionOverrides((current) => new Map(current).set(currentFilePath, nextSelected))
             onSetFileSelected(currentFilePath, nextSelected)
           } : undefined}
+          onDownload={onDownload ? () => onDownload(currentFilePath) : undefined}
           onClose={onClose}
         />
 
