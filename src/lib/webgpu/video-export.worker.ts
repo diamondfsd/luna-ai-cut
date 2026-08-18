@@ -12,6 +12,7 @@ type MediabunnyModule = typeof import('mediabunny')
 type MediabunnyInput = InstanceType<MediabunnyModule['Input']>
 type MediabunnyVideoTrack = NonNullable<Awaited<ReturnType<MediabunnyInput['getPrimaryVideoTrack']>>>
 type MediabunnyVideoSink = InstanceType<MediabunnyModule['VideoSampleSink']>
+type MediabunnyVideoSampleIterator = ReturnType<MediabunnyVideoSink['samplesAtTimestamps']>
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<WebGpuVideoExportWorkerMessage>) => void) | null
@@ -31,6 +32,7 @@ interface VideoSourceState {
   sink: MediabunnyVideoSink
   firstTimestamp: number
   duration: number
+  sampleIterator?: MediabunnyVideoSampleIterator
 }
 
 /**
@@ -312,6 +314,19 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
   let runtimeError: Error | null = null
   const currentFrames = new Map<string, VideoFrame>()
   const primaryTiming = primaryLayer?.source.time
+  for (const [key, layers] of videoLayersByKey) {
+    const state = videoStates.get(key)
+    const layer = layers[0]
+    if (!state || !layer) continue
+
+    // Keep one decoder alive for the whole export. Calling getSample() for every
+    // frame creates a new seek/decode pipeline and repeats work from the last keyframe.
+    state.sampleIterator = state.sink.samplesAtTimestamps((async function* () {
+      for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+        yield state.firstTimestamp + sourceTimeForLayer(layer, frameIndex / fps)
+      }
+    })())
+  }
   const lutTexts = new Map(message.luts.map((lut) => [lut.path, lut.text]))
   const maskSources = new Map(message.masks.map((mask) => [
     `${mask.projectId}\u0000${mask.path}`,
@@ -401,13 +416,11 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
       const samples: Array<Awaited<ReturnType<MediabunnyVideoSink['getSample']>>> = []
       closeFrames(currentFrames)
 
-      for (const [key, layers] of videoLayersByKey) {
+      for (const [key] of videoLayersByKey) {
         const state = videoStates.get(key)
         if (!state) throw new Error(`视频源尚未准备好: ${key}`)
-        const layer = layers[0]
-        if (!layer) continue
-        const sourceTimestamp = state.firstTimestamp + sourceTimeForLayer(layer, compositionTime)
-        const sample = await state.sink.getSample(sourceTimestamp)
+        const sampleResult = await state.sampleIterator?.next()
+        const sample = sampleResult && !sampleResult.done ? sampleResult.value : null
         if (!sample) continue
         samples.push(sample)
         currentFrames.set(key, sample.toVideoFrame())
@@ -455,7 +468,10 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     closeFrames(currentFrames)
     renderer?.destroy()
     for (const bitmap of imageBitmaps.values()) bitmap.close()
-    for (const state of videoStates.values()) state.input.dispose()
+    for (const state of videoStates.values()) {
+      await state.sampleIterator?.return()
+      state.input.dispose()
+    }
     await videoEncodeQueue?.drain().catch(() => undefined)
     if (output && !completed) await output.cancel().catch(() => undefined)
   }
