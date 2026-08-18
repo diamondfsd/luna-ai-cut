@@ -33,6 +33,27 @@ interface VideoSourceState {
   duration: number
 }
 
+/**
+ * Keep one encoded frame in flight while the next frame is decoded and rendered.
+ * Awaiting every add() inline serializes GPU composition and HEVC encoding.
+ */
+class VideoEncodeQueue {
+  private pending: Promise<void> | null = null
+
+  constructor(private readonly source: InstanceType<MediabunnyModule['VideoSampleSource']>) {}
+
+  async add(sample: InstanceType<MediabunnyModule['VideoSample']>): Promise<void> {
+    const previous = this.pending
+    this.pending = this.source.add(sample).finally(() => sample.close())
+    if (previous) await previous
+  }
+
+  async drain(): Promise<void> {
+    await this.pending
+    this.pending = null
+  }
+}
+
 type EncodableVideoCodec = 'avc' | 'hevc'
 
 const workerScope = globalThis as unknown as WorkerScope
@@ -202,7 +223,10 @@ async function createVideoSourceStates(
         source,
         input,
         track,
-        sink: new mediabunny.VideoSampleSink(track),
+        sink: new mediabunny.VideoSampleSink(track, {
+          hardwareAcceleration: 'prefer-hardware',
+          optimizeForLatency: true,
+        }),
         firstTimestamp: await track.getFirstTimestamp(),
         duration: await track.computeDuration(),
       })
@@ -282,6 +306,7 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
   }
 
   let output: InstanceType<typeof Output> | null = null
+  let videoEncodeQueue: VideoEncodeQueue | null = null
   let renderer: WebGpuCompositionRenderer | null = null
   let completed = false
   let runtimeError: Error | null = null
@@ -307,6 +332,7 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
       latencyMode: 'quality',
       hardwareAcceleration: 'prefer-hardware',
     })
+    videoEncodeQueue = new VideoEncodeQueue(videoSource)
     output.addVideoTrack(videoSource, { frameRate: fps })
 
     const audioTrack = message.includeAudio && primaryState
@@ -402,12 +428,8 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
           timestamp: compositionTime,
           duration: 1 / fps,
         })
-        try {
-          postProgress('rendering', 10 + (frameCount / totalFrames) * 82, frameCount, totalFrames, `渲染并编码第 ${frameCount + 1} 帧`)
-          await videoSource.add(outputSample)
-        } finally {
-          outputSample.close()
-        }
+        postProgress('rendering', 10 + (frameCount / totalFrames) * 82, frameCount, totalFrames, `渲染并编码第 ${frameCount + 1} 帧`)
+        await videoEncodeQueue.add(outputSample)
       } finally {
         closeFrames(currentFrames)
         for (const sample of samples) sample?.close()
@@ -417,6 +439,7 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
 
     checkCanceled(signal)
     postProgress('finalizing', 94, frameCount, totalFrames, '等待编码和音频完成')
+    await videoEncodeQueue.drain()
     if (audioTask) await audioTask
     checkCanceled(signal)
     await output.finalize()
@@ -433,6 +456,7 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     renderer?.destroy()
     for (const bitmap of imageBitmaps.values()) bitmap.close()
     for (const state of videoStates.values()) state.input.dispose()
+    await videoEncodeQueue?.drain().catch(() => undefined)
     if (output && !completed) await output.cancel().catch(() => undefined)
   }
 }

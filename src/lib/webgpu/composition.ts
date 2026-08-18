@@ -824,6 +824,16 @@ fn pixelStretchEffect(uv: vec2f) -> vec4f {
 }
 
 @fragment
+fn fragmentFastMain(input: VertexOutput) -> @location(0) vec4f {
+  let revealProgress = clamp(layer.reveal.x, 0.0, 1.0);
+  if (input.localPosition.x >= revealProgress) {
+    discard;
+  }
+  let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
+  return vec4f(sampled.rgb, sampled.a * layer.style.x);
+}
+
+@fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let revealProgress = clamp(layer.reveal.x, 0.0, 1.0);
   if (input.localPosition.x >= revealProgress) {
@@ -861,6 +871,36 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
 function colorValue(color: RenderColorAdjustments | undefined, key: keyof RenderColorAdjustments): number {
   const value = color?.[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function hasColorAdjustments(color: RenderColorAdjustments | undefined): boolean {
+  if (!color) return false
+  for (const [key, value] of Object.entries(color)) {
+    if (key === 'levelsGray' && value === 0.5) continue
+    if (key === 'levelsWhite' && value === 1) continue
+    if (key === 'hslChannels') {
+      if (Array.isArray(value) && value.some((channel) => (
+        channel && typeof channel === 'object'
+          && Object.values(channel).some((entry) => typeof entry === 'number' && Math.abs(entry) > 0.0001)
+      ))) return true
+      continue
+    }
+    if (typeof value === 'number' && Math.abs(value) > 0.0001) return true
+  }
+  return false
+}
+
+function canUseFastCompositionPath(
+  layer: CompositionLayer,
+  resolvedMask: ResolvedMask | null,
+): boolean {
+  return !resolvedMask
+    && !layer.lutId
+    && !layer.restoreLutId
+    && !layer.pixelFlow
+    && !layer.pixelStretch
+    && !layer.reveal
+    && !hasColorAdjustments(layer.color)
 }
 
 function createLayerUniforms(
@@ -1238,6 +1278,7 @@ export class WebGpuCompositionRenderer {
   private sampler: GPUSampler | null = null
   private uniformBuffers: GPUBuffer[] = []
   private pipelines = new Map<SupportedBlendMode, GPURenderPipeline>()
+  private fastPipelines = new Map<SupportedBlendMode, GPURenderPipeline>()
   private imageTextures = new Map<string, CachedImageTexture>()
   private rasterizedLayerTextures = new Map<string, CachedImageTexture>()
   private videoTextures = new Map<string, CachedImageTexture>()
@@ -1258,7 +1299,10 @@ export class WebGpuCompositionRenderer {
   }
 
   get isReady(): boolean {
-    return this.runtime !== null && this.context !== null && this.pipelines.size === BLEND_MODES.length
+    return this.runtime !== null
+      && this.context !== null
+      && this.pipelines.size === BLEND_MODES.length
+      && this.fastPipelines.size === BLEND_MODES.length
   }
 
   get capabilities() {
@@ -1310,6 +1354,17 @@ export class WebGpuCompositionRenderer {
           fragment: {
             module,
             entryPoint: 'fragmentMain',
+            targets: [{ format: this.format, blend: blendState(mode) }],
+          },
+          primitive: { topology: 'triangle-list' },
+        }))
+        this.fastPipelines.set(mode, this.device.createRenderPipeline({
+          label: `webgpu-composition-fast-${mode}`,
+          layout: pipelineLayout,
+          vertex: { module, entryPoint: 'vertexMain' },
+          fragment: {
+            module,
+            entryPoint: 'fragmentFastMain',
             targets: [{ format: this.format, blend: blendState(mode) }],
           },
           primitive: { topology: 'triangle-list' },
@@ -1452,6 +1507,7 @@ export class WebGpuCompositionRenderer {
     this.resolveLut = null
     this.resolveMask = null
     this.pipelines.clear()
+    this.fastPipelines.clear()
   }
 
   private setCanvasSize(width: number, height: number): void {
@@ -1512,7 +1568,11 @@ export class WebGpuCompositionRenderer {
       : 1
     const uniforms = createLayerUniforms(layer, targetRect, sourceRect, luts, resolvedMask, revealProgress, time)
     const mode = (layer.blendMode ?? 'normal') as SupportedBlendMode
-    const pipeline = this.pipelines.get(BLEND_MODES.includes(mode) ? mode : 'normal')!
+    const normalizedMode = BLEND_MODES.includes(mode) ? mode : 'normal'
+    const pipelineMap = canUseFastCompositionPath(layer, resolvedMask)
+      ? this.fastPipelines
+      : this.pipelines
+    const pipeline = pipelineMap.get(normalizedMode)!
     return {
       source,
       lut: luts.creative,
