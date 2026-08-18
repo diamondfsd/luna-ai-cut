@@ -28,7 +28,7 @@ import type {
   AiSelectionStartRequest,
   AiSelectionUserOperation,
 } from './aiSelection'
-import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
+import type { AutomaticSegmentationTargetId, SegmentationModelId, SegmentationModelPreparationId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
@@ -153,6 +153,37 @@ export interface MossTtsApi {
   cancel(requestId: string): Promise<void>
   unload(): Promise<void>
   onProgress(callback: (progress: MossTtsProgress) => void): () => void
+}
+
+export type ManagedModelCategory = 'segmentation' | 'selection' | 'subtitle' | 'removal' | 'audio' | 'tts'
+
+export interface ManagedModelInfo {
+  id: string
+  name: string
+  description: string
+  category: ManagedModelCategory
+  sizeBytes: number
+  /** 实际下载候选地址，按首选源和备用镜像顺序排列。 */
+  downloadUrls: string[]
+}
+
+export interface ManagedModelStatus extends ManagedModelInfo {
+  cached: boolean
+  available: boolean
+}
+
+export interface ManagedModelProgress {
+  modelId: string
+  stage: string
+  completedBytes: number
+  totalBytes: number
+  fraction: number | null
+}
+
+export interface ModelManagerApi {
+  list(): Promise<ManagedModelStatus[]>
+  prepare(modelId: string): Promise<ManagedModelStatus>
+  onProgress(callback: (progress: ManagedModelProgress) => void): () => void
 }
 
 export interface WorkspaceSegmentationProgress {
@@ -400,6 +431,7 @@ export interface LunaApi {
   deepseekHarness: DeepSeekHarnessApi
   stableAudio3: StableAudio3Api
   mossTts: MossTtsApi
+  modelManager: ModelManagerApi
   workspace: {
     chooseMediaFiles(): Promise<string[]>
     chooseMediaDirectory(): Promise<string[]>
@@ -433,7 +465,7 @@ export interface LunaApi {
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>
-    prepareSegmentationModels(modelIds: SegmentationModelId[]): Promise<void>
+    prepareSegmentationModels(modelIds: SegmentationModelPreparationId[]): Promise<void>
     segmentImage(request: WorkspaceSegmentationRequest): Promise<{
       requestId: string
       width: number

@@ -43,7 +43,7 @@ export interface LoadedSamModel {
 }
 
 export interface ModelCacheStatus {
-  modelId: SegmentationModelId
+  modelId: SegmentationModelId | AiSelectionModelId
   cached: boolean
   sizeBytes: number
 }
@@ -127,7 +127,7 @@ export function loadSamModel(id: SamSegmentationModelId, onProgress?: (progress:
   })
 }
 
-export async function getModelCacheStatus(id: SegmentationModelId): Promise<ModelCacheStatus> {
+export async function getModelCacheStatus(id: SegmentationModelId | AiSelectionModelId): Promise<ModelCacheStatus> {
   const semanticDefinition = MODEL_REGISTRY[id as ModelId]
   if (semanticDefinition) {
     const modelDir = path.join(modelCacheDirForBaseDir((await getSettings()).baseDir), id)

@@ -73,6 +73,10 @@ const MOSS_MODEL_FILES: readonly MossModelFile[] = [
 
 const ESTIMATED_MODEL_BYTES = MOSS_MODEL_FILES.reduce((total, file) => total + file.sizeBytes, 0)
 
+export function mossTtsModelDownloadUrls(): string[] {
+  return MOSS_MODEL_FILES.map((file) => file.url)
+}
+
 type ProgressListener = (progress: MossTtsProgress) => void
 type PendingRequest = {
   request: MossTtsGenerationRequest
@@ -398,6 +402,25 @@ class MossTtsRuntime {
       }
     })()
     return pending
+  }
+
+  async prepare(listener?: ProgressListener): Promise<void> {
+    if (this.pending.size > 0) throw new Error('当前正在生成语音，请完成后再准备模型。')
+    const settings = await getSettings()
+    const root = cacheRootForBaseDir(settings.baseDir)
+    if (!(await hasPythonRuntime())) throw new Error('当前环境无法使用 MOSS 语音。')
+    await resolvePythonCommand()
+    const requestId = `prepare_${Date.now()}`
+    const controller = new AbortController()
+    await ensureModels(root, (stage, fraction, loaded, total) => {
+      listener?.({
+        requestId,
+        stage,
+        fraction: Math.max(0, Math.min(1, fraction)),
+        loadedBytes: loaded,
+        totalBytes: total,
+      })
+    }, controller.signal)
   }
 
   cancel(requestId: string): void {
