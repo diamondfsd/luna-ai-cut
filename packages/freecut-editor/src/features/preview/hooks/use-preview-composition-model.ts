@@ -4,16 +4,26 @@ import type { AudioEqSettings } from '@freecut/types/audio'
 import type { ItemEffect } from '@freecut/types/effects'
 import type { ItemKeyframes } from '@freecut/types/keyframe'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
+import type { Transition } from '@freecut/types/transition'
 import type { ResolvedTransform } from '@freecut/types/transform'
 import { blobUrlManager } from '@freecut/infrastructure/browser/blob-url-manager'
 import { isColorGradeEffectType } from '@freecut/infrastructure/gpu-effects'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { resolveEffectiveTrackStates } from '@freecut/features/preview/deps/timeline-utils'
-import { useCompositionsStore, useItemsStore } from '@freecut/features/preview/deps/timeline-store'
+import {
+  useCompositionsStore,
+  useItemsStore,
+  useTransitionsStore,
+} from '@freecut/features/preview/deps/timeline-store'
 import { appendVirtualTranscriptCaptionTrack } from '@freecut/features/preview/deps/caption-items'
 import { useCornerPinStore } from '../stores/corner-pin-store'
 import { useGizmoStore, type ItemPreview } from '../stores/gizmo-store'
 import { useMaskEditorStore } from '../stores/mask-editor-store'
+import {
+  useLinkedEditPreviewStore,
+  useTransitionResizePreviewStore,
+  useTrimPreviewStore,
+} from '@freecut/features/preview/deps/timeline-edit-preview'
 import { resolveGizmoWorldPreviewAsLocal } from '../utils/gizmo-world-preview'
 import { resolveProxyUrl } from '../utils/media-resolver'
 import {
@@ -157,6 +167,33 @@ export function mergeLiveItemPresentation(
   } as TimelineItem
 }
 
+/**
+ * Transition participants need live timing and source-span fields while a
+ * trim handle is moving. Keep the renderer's resolved media URLs, which are
+ * not stored in the timeline item, and merge the rest of the current item.
+ */
+export function mergeLiveTransitionItem(
+  item: TimelineItem,
+  liveItem: TimelineItem | undefined,
+): TimelineItem {
+  if (!liveItem || liveItem.id !== item.id || liveItem.type !== item.type) return item
+
+  return {
+    ...item,
+    ...liveItem,
+    ...('src' in item ? { src: item.src } : {}),
+    ...('audioSrc' in item ? { audioSrc: item.audioSrc } : {}),
+  } as TimelineItem
+}
+
+export function mergeLiveItemEditPreview(
+  item: TimelineItem,
+  update: { id: string; from?: number; durationInFrames?: number; sourceStart?: number; sourceEnd?: number; speed?: number; hidden?: boolean } | null | undefined,
+): TimelineItem {
+  if (!update || update.id !== item.id) return item
+  return { ...item, ...update } as TimelineItem
+}
+
 export function usePreviewCompositionBaseModel({
   tracks,
   itemsByTrackId,
@@ -287,6 +324,10 @@ export function usePreviewCompositionModel({
   }, [fastScrubScaledTracks])
   const fastScrubLiveItemsByIdRef = useRef<Map<string, TimelineItem>>(fastScrubLiveItemsById)
   fastScrubLiveItemsByIdRef.current = fastScrubLiveItemsById
+  const transitionClipIdsRef = useRef<Set<string>>(new Set())
+  transitionClipIdsRef.current = new Set(
+    (transitions ?? []).flatMap((transition) => [transition.leftClipId, transition.rightClipId]),
+  )
 
   const fastScrubKeyframesByItemId = useMemo(
     () => new Map(keyframes.map((entry) => [entry.itemId, entry])),
@@ -326,10 +367,48 @@ export function usePreviewCompositionModel({
     const item = fastScrubLiveItemsByIdRef.current.get(itemId)
     if (!item) return undefined
     const liveItem = useItemsStore.getState().itemById[itemId]
+    const trimPreview = useTrimPreviewStore.getState()
+    const editPreview =
+      trimPreview.itemId === itemId
+        ? trimPreview.update
+        : useLinkedEditPreviewStore.getState().updatesById[itemId]
     return mergeLiveItemPreview(
-      mergeLiveItemPresentation(item, liveItem),
+      mergeLiveItemEditPreview(mergeLiveItemPresentation(item, liveItem), editPreview),
       useGizmoStore.getState().preview?.[itemId],
     )
+  }, [])
+
+  const getLiveTransitionItemSnapshot = useCallback((itemId: string) => {
+    if (!transitionClipIdsRef.current.has(itemId)) return undefined
+    const item = fastScrubLiveItemsByIdRef.current.get(itemId)
+    if (!item) return undefined
+    const liveItem = useItemsStore.getState().itemById[itemId]
+    const trimPreview = useTrimPreviewStore.getState()
+    const editPreview =
+      trimPreview.itemId === itemId
+        ? trimPreview.update
+        : useLinkedEditPreviewStore.getState().updatesById[itemId]
+    return mergeLiveItemPreview(
+      mergeLiveItemEditPreview(mergeLiveTransitionItem(item, liveItem), editPreview),
+      useGizmoStore.getState().preview?.[itemId],
+    )
+  }, [])
+
+  const getLiveTransitionSnapshot = useCallback((transitionId: string): Transition | undefined => {
+    const transition = useTransitionsStore
+      .getState()
+      .transitions.find((candidate) => candidate.id === transitionId)
+    if (!transition) return undefined
+
+    const resizePreview = useTransitionResizePreviewStore.getState()
+    if (
+      resizePreview.transitionId !== transitionId ||
+      resizePreview.durationInFrames === null
+    ) {
+      return transition
+    }
+
+    return { ...transition, durationInFrames: resizePreview.durationInFrames }
   }, [])
 
   const getLiveKeyframes = useCallback((itemId: string) => {
@@ -355,6 +434,8 @@ export function usePreviewCompositionModel({
     getPreviewCornerPinOverride,
     getPreviewPathVerticesOverride,
     getLiveItemSnapshot,
+    getLiveTransitionItemSnapshot,
+    getLiveTransitionSnapshot,
     getLiveKeyframes,
   }
 }

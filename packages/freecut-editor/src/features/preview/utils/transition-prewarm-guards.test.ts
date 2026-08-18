@@ -64,11 +64,10 @@ describe('selectUpcomingTransitionStartFrame', () => {
 })
 
 describe('shouldUsePausedTransitionOverlay', () => {
-  it('enables paused transition overlay only without playback, preview frame, or forced fast overlay', () => {
+  it('enables paused transition overlay for a transition target during scrubbing', () => {
     expect(
       shouldUsePausedTransitionOverlay({
         isPlaying: false,
-        previewFrame: null,
         forceFastScrubOverlay: false,
         hasActiveTransition: true,
       }),
@@ -79,7 +78,6 @@ describe('shouldUsePausedTransitionOverlay', () => {
     expect(
       shouldUsePausedTransitionOverlay({
         isPlaying: true,
-        previewFrame: null,
         forceFastScrubOverlay: false,
         hasActiveTransition: true,
       }),
@@ -87,15 +85,6 @@ describe('shouldUsePausedTransitionOverlay', () => {
     expect(
       shouldUsePausedTransitionOverlay({
         isPlaying: false,
-        previewFrame: 10,
-        forceFastScrubOverlay: false,
-        hasActiveTransition: true,
-      }),
-    ).toBe(false)
-    expect(
-      shouldUsePausedTransitionOverlay({
-        isPlaying: false,
-        previewFrame: null,
         forceFastScrubOverlay: true,
         hasActiveTransition: true,
       }),
@@ -103,7 +92,6 @@ describe('shouldUsePausedTransitionOverlay', () => {
     expect(
       shouldUsePausedTransitionOverlay({
         isPlaying: false,
-        previewFrame: null,
         forceFastScrubOverlay: false,
         hasActiveTransition: false,
       }),
