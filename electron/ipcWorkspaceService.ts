@@ -207,7 +207,7 @@ export function register(): void {
       ? path.join(path.dirname(filePath), `${path.basename(filePath, extension)}.dng`)
       : null
     const raw = rawPath ? await fs.promises.access(rawPath).then(() => true).catch(() => false) : false
-    if (!VIDEO_EXTENSIONS.has(extension)) return { dolbyVision: false, iLog: false, raw }
+    if (!VIDEO_EXTENSIONS.has(extension)) return { dolbyVision: false, iLog: false, raw, videoBitrate: null }
 
     const info = await getVideoFrameRate({
       kind: 'video',
@@ -217,7 +217,12 @@ export function register(): void {
       localPath: filePath,
       cacheFilePath: null,
     }, filePath)
-    return { dolbyVision: info.dolbyVision === true, iLog: info.iLog === true, raw }
+    return {
+      dolbyVision: info.dolbyVision === true,
+      iLog: info.iLog === true,
+      raw,
+      videoBitrate: info.videoBitrate,
+    }
   })
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
