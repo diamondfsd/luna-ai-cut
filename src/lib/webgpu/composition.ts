@@ -674,7 +674,7 @@ interface PreparedCompositionDraw {
 }
 
 export class WebGpuCompositionRenderer {
-  readonly canvas: HTMLCanvasElement
+  readonly canvas: HTMLCanvasElement | OffscreenCanvas
 
   private runtime: WebGpuRuntime | null = null
   private device: GPUDevice | null = null
@@ -698,7 +698,7 @@ export class WebGpuCompositionRenderer {
   private resolveLut: ((path: string) => Promise<string>) | null = null
   private resolveMask: ((layer: CompositionLayer, path: string) => Promise<WebGpuMaskSource>) | null = null
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement | OffscreenCanvas) {
     this.canvas = canvas
   }
 
@@ -716,7 +716,7 @@ export class WebGpuCompositionRenderer {
       onUncapturedError: (message) => options.onError?.(message),
     })
     try {
-      const context = this.canvas.getContext('webgpu')
+      const context = this.canvas.getContext('webgpu') as GPUCanvasContext | null
       if (!context) throw new Error('无法创建 WebGPU 画布上下文')
       this.runtime = runtime
       this.device = runtime.device
@@ -726,7 +726,7 @@ export class WebGpuCompositionRenderer {
       this.resolveSource = options.resolveSource ?? null
       this.resolveLut = options.resolveLut ?? null
       this.resolveMask = options.resolveMask ?? null
-      this.context.configure({ device: this.device, format: this.format, alphaMode: 'premultiplied' })
+      context.configure({ device: this.device, format: this.format, alphaMode: 'premultiplied' })
 
       const module = this.device.createShaderModule({ label: 'webgpu-composition', code: COMPOSITION_SHADER })
       const layout = this.device.createBindGroupLayout({
@@ -844,11 +844,14 @@ export class WebGpuCompositionRenderer {
   async toBlob(format: 'png' | 'jpeg' | 'webp', quality = 100): Promise<Blob> {
     await this.waitForGpu()
     const mimeType = format === 'png' ? 'image/png' : `image/${format}`
-    const blob = await new Promise<Blob | null>((resolve) => this.canvas.toBlob(
-      resolve,
-      mimeType,
-      Math.max(0, Math.min(1, quality / 100)),
-    ))
+    const normalizedQuality = Math.max(0, Math.min(1, quality / 100))
+    const blob = 'convertToBlob' in this.canvas
+      ? await this.canvas.convertToBlob({ type: mimeType, quality: normalizedQuality })
+      : await new Promise<Blob | null>((resolve) => (this.canvas as HTMLCanvasElement).toBlob(
+        resolve,
+        mimeType,
+        normalizedQuality,
+      ))
     if (!blob) throw new Error('无法读取 WebGPU 合成画面')
     return blob
   }

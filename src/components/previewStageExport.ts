@@ -6,8 +6,9 @@ import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
-import { canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
+import { canUseWebGpuSingleVideoComposition, canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
 import { renderStaticImageCompositionToBlob, type WebGpuImageExportFormat } from '../lib/webgpu/static-image-export'
+import { exportVideoWithWebGpuWorker } from '../lib/webgpu/video-export'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -359,6 +360,117 @@ export async function exportPreviewVideo(params: {
   const index = params.index ?? 0
   const totalFiles = params.totalFiles ?? 1
   const renderTaskId = params.renderTaskId ?? itemId
+  if (canUseWebGpuSingleVideoComposition(params.layers)) {
+    try {
+      const composition = buildCompositionFromPreviewLayers(
+        params.layers,
+        params.width,
+        params.height,
+        { fps: params.fps ?? undefined },
+      )
+      const sourcePath = params.layers.find((layer) => layer.isVideo)?.filePath
+      if (!sourcePath) throw new Error('未找到视频素材')
+      if (taskId && itemId) {
+        await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: 0 }).catch(() => {})
+        emitLocalExportProgress({
+          exportId: itemId,
+          taskId,
+          taskName,
+          fileName: params.fileName,
+          index,
+          totalFiles,
+          percent: 0,
+          status: 'exporting',
+          destinationPath: path,
+          backend: 'webgpu',
+        })
+      }
+      const result = await exportVideoWithWebGpuWorker({
+        sourcePath,
+        composition,
+        width: params.width,
+        height: params.height,
+        fps: params.fps ?? null,
+        qualityPreset: params.qualityPreset ?? 'high',
+        includeAudio: params.includeAudio !== false,
+        exportTaskId: taskId,
+        exportItemId: itemId,
+        onProgress: async (progress) => {
+          await params.onProgress?.(progress.progress)
+          if (taskId && itemId) {
+            await window.luna.exportTask.updateItem(taskId, itemId, {
+              status: 'exporting',
+              progress: progress.progress,
+            }).catch(() => {})
+            emitLocalExportProgress({
+              exportId: itemId,
+              taskId,
+              taskName,
+              fileName: params.fileName,
+              index,
+              totalFiles,
+              percent: progress.progress,
+              status: 'exporting',
+              destinationPath: path,
+              backend: 'webgpu',
+            })
+          }
+        },
+      })
+      await ensureExportActive(taskId, itemId)
+      const written = await writeBlobToExportDirectory(
+        params.exportDir,
+        params.fileName,
+        result.blob,
+        taskId,
+        itemId,
+      )
+      await ensureExportActive(taskId, itemId)
+      if (taskId && itemId) {
+        await window.luna.exportTask.updateItem(taskId, itemId, {
+          status: 'done',
+          progress: 100,
+          destinationPath: written.path,
+        }).catch(() => {})
+        emitLocalExportProgress({
+          exportId: itemId,
+          taskId,
+          taskName,
+          fileName: written.name,
+          index,
+          totalFiles,
+          percent: 100,
+          status: 'done',
+          destinationPath: written.path,
+          backend: 'webgpu',
+        })
+      }
+      return written
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const canceled = message === '视频导出已取消' || (error instanceof Error && error.name === 'AbortError')
+      if (taskId && itemId) {
+        await window.luna.exportTask.updateItem(taskId, itemId, {
+          status: canceled ? 'canceled' : 'failed',
+          error: message,
+        }).catch(() => {})
+        emitLocalExportProgress({
+          exportId: itemId,
+          taskId,
+          taskName,
+          fileName: params.fileName,
+          index,
+          totalFiles,
+          percent: 100,
+          status: canceled ? 'canceled' : 'failed',
+          destinationPath: path,
+          error: message,
+          backend: 'webgpu',
+        })
+      }
+      throw error
+    }
+  }
   const emitVideoProgress = (percent: number, status: 'exporting' | 'done' | 'failed', error?: string) => {
     if (!taskId || !itemId) return
     emitLocalExportProgress({ exportId: itemId, taskId, taskName, fileName: params.fileName, index, totalFiles, percent, status, destinationPath: path, error })
