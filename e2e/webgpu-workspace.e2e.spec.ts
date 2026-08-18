@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -8,6 +8,13 @@ import ffmpegPath from 'ffmpeg-static'
 import { expect, test } from './fixtures/lunaElectron'
 
 const execFileAsync = promisify(execFile)
+
+function readPngSize(bytes: Buffer): { width: number; height: number } {
+  if (bytes.length < 24 || bytes.readUInt32BE(0) !== 0x89504e47 || bytes.readUInt32BE(4) !== 0x0d0a1a0a) {
+    throw new Error('导出文件不是有效 PNG')
+  }
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+}
 
 test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaApp }) => {
   if (!ffmpegPath) throw new Error('测试媒体生成工具不可用')
@@ -70,19 +77,27 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
     }, 30_000)
   }))
   await lunaApp.page.getByRole('button', { name: '导出', exact: true }).click()
-  await expect(lunaApp.page.getByRole('dialog', { name: '导出设置' })).toBeVisible()
+  const exportDialog = lunaApp.page.getByRole('dialog', { name: '导出设置' })
+  await expect(exportDialog).toBeVisible()
+  const imageFormatRow = exportDialog.locator('.export-settings-row').filter({ hasText: '图片格式' })
+  await imageFormatRow.getByRole('combobox', { name: '图片格式' }).click()
+  await lunaApp.page.getByRole('option', { name: 'PNG', exact: true }).click()
+  const resolutionRow = exportDialog.locator('.export-settings-row').filter({ hasText: '分辨率' })
+  await resolutionRow.getByRole('combobox').click()
+  await lunaApp.page.getByRole('option', { name: '4K', exact: true }).click()
   await lunaApp.page.getByRole('button', { name: '确认导出', exact: true }).click()
   await expect.poll(() => webGpuExportPromise, { timeout: 30_000 }).toBe(true)
 
   const exportDir = path.join(lunaApp.baseDir, 'export')
   await expect.poll(async () => {
     const names = await readdir(exportDir).catch(() => [])
-    return names.some((name) => name.endsWith('.jpg'))
+    return names.some((name) => name.endsWith('.png'))
   }, { timeout: 30_000 }).toBe(true)
-  const exportedName = (await readdir(exportDir)).find((name) => name.endsWith('.jpg'))
+  const exportedName = (await readdir(exportDir)).find((name) => name.endsWith('.png'))
   expect(exportedName).toBeTruthy()
   const exportedFile = path.join(exportDir, exportedName!)
   expect((await stat(exportedFile)).size).toBeGreaterThan(1_000)
+  expect(readPngSize(await readFile(exportedFile))).toEqual({ width: 3840, height: 2160 })
 
   await lunaApp.page.locator('.workspace-thumb[data-media-index="1"]').click()
   await expect(canvas).toBeVisible({ timeout: 30_000 })

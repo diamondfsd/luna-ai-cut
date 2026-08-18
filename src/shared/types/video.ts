@@ -6,6 +6,8 @@ export type VideoQuality = 'original' | 'low' | 'medium' | 'high' | 'custom'
 
 export type VideoExportFormat = 'video' | 'google-live' | 'apple-live'
 
+export type ImageExportFormat = 'jpeg' | 'png' | 'webp'
+
 export interface VideoExportSettings {
   resolution: VideoResolution
   frameRate: VideoFrameRate
@@ -16,6 +18,8 @@ export interface VideoExportSettings {
   exportFormats: VideoExportFormat[]
   /** 混合导出计划中是否包含图片素材和视频照片标记。 */
   exportPhotos: boolean
+  /** 图片导出格式；未设置时按 JPEG 处理，兼容历史配置。 */
+  imageFormat?: ImageExportFormat
   /** Live 图在裁剪后视频中的 3 秒片段起点。 */
   liveStartTime: number
   /** Live 图封面相对于 3 秒片段起点的时间。 */
@@ -39,6 +43,7 @@ export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
   includeAudio: true,
   exportFormats: ['video'],
   exportPhotos: true,
+  imageFormat: 'jpeg',
   liveStartTime: 0,
   liveCoverTime: 1.5,
   trimStartTime: 0,

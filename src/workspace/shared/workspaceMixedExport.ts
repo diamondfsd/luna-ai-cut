@@ -2,7 +2,9 @@ import {
   emitLocalExportProgress,
   exportPreviewImage,
   exportPreviewVideo,
+  imageExportExtension,
   resolveExportConfig,
+  resolveImageExportFormat,
 } from '../../components/previewStageExport'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
 
@@ -67,7 +69,7 @@ function selectedEntries(
         id: `mixed_${item.id}_photo_${stamp}`,
         plan: item,
         format: 'photo',
-        outputPath: joinPath(exportDir, `${item.outputBaseName}_${stamp}.jpg`),
+        outputPath: joinPath(exportDir, `${item.outputBaseName}_${stamp}${imageExportExtension(resolveImageExportFormat(config))}`),
         label: '照片',
       }]
     }
@@ -286,7 +288,7 @@ export async function queueWorkspaceMixedExport(
               width: resolved.width,
               height: resolved.height,
               layers,
-              format: 'jpeg',
+              format: resolveImageExportFormat(config),
               quality: 100,
               exportTaskId: task.id,
               exportItemId: entry.id,

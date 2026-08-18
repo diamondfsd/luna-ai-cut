@@ -31,6 +31,8 @@ interface SelectProps {
   fullWidth?: boolean
   /** 禁用状态 */
   disabled?: boolean
+  /** 无可见文字标签时提供可访问名称 */
+  ariaLabel?: string
   /** 额外 class */
   className?: string
   /** 下拉内容额外 class */
@@ -60,6 +62,7 @@ export function Select({
   onValueChange,
   fullWidth,
   disabled,
+  ariaLabel,
   className,
   contentClassName,
 }: SelectProps) {
@@ -72,7 +75,7 @@ export function Select({
     >
       <RadixSelect.Trigger
         className={cx('ui-select-trigger', `ui-select-${variant}`, fullWidth && 'ui-select-full', className)}
-        aria-label={placeholder}
+        aria-label={ariaLabel ?? placeholder}
       >
         {icon && <span className="ui-select-icon">{icon}</span>}
         <RadixSelect.Value placeholder={placeholder} />
