@@ -1,11 +1,18 @@
 import type { CompositionInput } from '../../shared/types'
 
-export interface WebGpuVideoExportStartMessage {
-  type: 'start'
+export interface WebGpuVideoExportSourceMessage {
+  path: string
+  key: string
+  sourceType: 'image' | 'video'
   bytes: ArrayBuffer
   mimeType: string
   fileName: string
+}
+
+export interface WebGpuVideoExportStartMessage {
+  type: 'start'
   composition: CompositionInput
+  sources: WebGpuVideoExportSourceMessage[]
   width: number
   height: number
   fps: number | null

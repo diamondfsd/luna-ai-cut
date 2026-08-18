@@ -2,6 +2,7 @@ import type { CompositionInput } from '../../shared/types'
 import type {
   WebGpuVideoExportProgressMessage,
   WebGpuVideoExportStartMessage,
+  WebGpuVideoExportSourceMessage,
   WebGpuVideoExportWorkerResponse,
 } from './video-export-protocol'
 
@@ -21,6 +22,19 @@ function localMediaPath(filePath: string): string {
   }
 }
 
+function sourceDescriptors(composition: CompositionInput): Array<Pick<WebGpuVideoExportSourceMessage, 'path' | 'key' | 'sourceType'>> {
+  const descriptors = new Map<string, Pick<WebGpuVideoExportSourceMessage, 'path' | 'key' | 'sourceType'>>()
+  for (const layer of composition.layers) {
+    const sourceType = layer.source.sourceType === 'video' ? 'video' : 'image'
+    const key = layer.source.key ?? layer.source.path
+    const descriptorKey = `${sourceType}\u0000${key}`
+    if (!descriptors.has(descriptorKey)) {
+      descriptors.set(descriptorKey, { path: layer.source.path, key, sourceType })
+    }
+  }
+  return [...descriptors.values()]
+}
+
 function isCanceledTask(itemId: string, task: Awaited<ReturnType<typeof window.luna.exportTask.get>>): boolean {
   return task?.status === 'canceled' || task?.items.find((item) => item.id === itemId)?.status === 'canceled'
 }
@@ -37,7 +51,17 @@ export async function exportVideoWithWebGpuWorker(params: {
   exportItemId?: string
   onProgress?: (progress: WebGpuVideoExportProgressMessage) => void | Promise<void>
 }): Promise<WebGpuVideoExportResult> {
-  const source = await window.luna.workspace.readMediaFile(localMediaPath(params.sourcePath))
+  const descriptors = sourceDescriptors(params.composition)
+  if (descriptors.length === 0) throw new Error('WebGPU 视频导出缺少媒体源')
+  const sources = await Promise.all(descriptors.map(async (descriptor): Promise<WebGpuVideoExportSourceMessage> => {
+    const source = await window.luna.workspace.readMediaFile(localMediaPath(descriptor.path))
+    return {
+      ...descriptor,
+      bytes: source.bytes,
+      mimeType: source.mimeType,
+      fileName: source.name,
+    }
+  }))
   const worker = new Worker(new URL('./video-export.worker.ts', import.meta.url), { type: 'module' })
   let cancelTimer: number | null = null
   let cancelRequested = false
@@ -79,17 +103,15 @@ export async function exportVideoWithWebGpuWorker(params: {
 
       const start: WebGpuVideoExportStartMessage = {
         type: 'start',
-        bytes: source.bytes,
-        mimeType: source.mimeType,
-        fileName: source.name,
         composition: params.composition,
+        sources,
         width: params.width,
         height: params.height,
         fps: params.fps,
         qualityPreset: params.qualityPreset,
         includeAudio: params.includeAudio,
       }
-      worker.postMessage(start, [source.bytes])
+      worker.postMessage(start, sources.map((source) => source.bytes))
     })
     return result
   } finally {

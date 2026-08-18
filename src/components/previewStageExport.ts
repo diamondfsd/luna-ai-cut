@@ -6,7 +6,7 @@ import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
-import { canUseWebGpuSingleVideoComposition, canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
+import { canUseWebGpuVideoExportComposition, canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
 import { renderStaticImageCompositionToBlob, type WebGpuImageExportFormat } from '../lib/webgpu/static-image-export'
 import { exportVideoWithWebGpuWorker } from '../lib/webgpu/video-export'
 
@@ -360,7 +360,7 @@ export async function exportPreviewVideo(params: {
   const index = params.index ?? 0
   const totalFiles = params.totalFiles ?? 1
   const renderTaskId = params.renderTaskId ?? itemId
-  if (canUseWebGpuSingleVideoComposition(params.layers)) {
+  if (canUseWebGpuVideoExportComposition(params.layers)) {
     try {
       const composition = buildCompositionFromPreviewLayers(
         params.layers,

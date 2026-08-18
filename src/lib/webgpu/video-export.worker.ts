@@ -1,16 +1,30 @@
+import type { CompositionLayer } from '../../shared/types'
 import { WebGpuCompositionRenderer } from './composition'
 import type {
   WebGpuVideoExportProgressMessage,
+  WebGpuVideoExportSourceMessage,
   WebGpuVideoExportStartMessage,
   WebGpuVideoExportWorkerMessage,
   WebGpuVideoExportWorkerResponse,
 } from './video-export-protocol'
 
 type MediabunnyModule = typeof import('mediabunny')
+type MediabunnyInput = InstanceType<MediabunnyModule['Input']>
+type MediabunnyVideoTrack = NonNullable<Awaited<ReturnType<MediabunnyInput['getPrimaryVideoTrack']>>>
+type MediabunnyVideoSink = InstanceType<MediabunnyModule['VideoSampleSink']>
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<WebGpuVideoExportWorkerMessage>) => void) | null
   postMessage(message: WebGpuVideoExportWorkerResponse, transfer?: Transferable[]): void
+}
+
+interface VideoSourceState {
+  source: WebGpuVideoExportSourceMessage
+  input: MediabunnyInput
+  track: MediabunnyVideoTrack
+  sink: MediabunnyVideoSink
+  firstTimestamp: number
+  duration: number
 }
 
 const workerScope = globalThis as unknown as WorkerScope
@@ -61,9 +75,24 @@ function bitrateForPreset(
   return Math.max(4_000_000, Math.min(80_000_000, Math.round(width * height * fps * multiplier)))
 }
 
+function sourceKeyForLayer(layer: CompositionLayer): string {
+  return layer.source.key ?? layer.source.path
+}
+
+function sourceTimeForLayer(layer: CompositionLayer, compositionTime: number): number {
+  const timing = layer.source.time
+  const start = timing?.start ?? 0
+  const offset = timing?.offset ?? 0
+  const elapsed = Math.max(0, compositionTime - offset)
+  const boundedElapsed = timing?.duration != null && Number.isFinite(timing.duration)
+    ? Math.min(elapsed, Math.max(0, timing.duration - 0.001))
+    : elapsed
+  return start + boundedElapsed
+}
+
 async function copyAudioPackets(params: {
   mediabunny: MediabunnyModule
-  audioTrack: Awaited<ReturnType<InstanceType<MediabunnyModule['Input']>['getPrimaryAudioTrack']>>
+  audioTrack: Awaited<ReturnType<MediabunnyInput['getPrimaryAudioTrack']>>
   audioSource: InstanceType<MediabunnyModule['EncodedAudioPacketSource']>
   signal: AbortSignal
 }): Promise<void> {
@@ -81,18 +110,50 @@ async function copyAudioPackets(params: {
   params.audioSource.close()
 }
 
+async function createVideoSourceStates(
+  mediabunny: MediabunnyModule,
+  message: WebGpuVideoExportStartMessage,
+  signal: AbortSignal,
+): Promise<Map<string, VideoSourceState>> {
+  const states = new Map<string, VideoSourceState>()
+  for (const source of message.sources.filter((candidate) => candidate.sourceType === 'video')) {
+    checkCanceled(signal)
+    const input = new mediabunny.Input({
+      formats: mediabunny.ALL_FORMATS,
+      source: new mediabunny.BlobSource(new Blob([source.bytes], { type: source.mimeType })),
+    })
+    try {
+      const track = await input.getPrimaryVideoTrack()
+      if (!track) throw new Error(`视频源没有视频轨道: ${source.fileName}`)
+      states.set(source.key, {
+        source,
+        input,
+        track,
+        sink: new mediabunny.VideoSampleSink(track),
+        firstTimestamp: await track.getFirstTimestamp(),
+        duration: await track.computeDuration(),
+      })
+    } catch (error) {
+      input.dispose()
+      throw error
+    }
+  }
+  return states
+}
+
+function closeFrames(frames: Map<string, VideoFrame>): void {
+  for (const frame of frames.values()) frame.close()
+  frames.clear()
+}
+
 async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSignal): Promise<void> {
   const mediabunny: MediabunnyModule = await import('mediabunny')
   const {
-    ALL_FORMATS,
-    BlobSource,
     BufferTarget,
     EncodedAudioPacketSource,
-    Input,
     Mp4OutputFormat,
     Output,
     VideoSample,
-    VideoSampleSink,
     VideoSampleSource,
     canEncodeVideo,
   } = mediabunny
@@ -100,28 +161,48 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
   postProgress('preparing', 2, 0, 0, '准备视频导出')
   checkCanceled(signal)
 
-  const input = new Input({
-    formats: ALL_FORMATS,
-    source: new BlobSource(new Blob([message.bytes], { type: message.mimeType })),
-  })
+  const videoStates = await createVideoSourceStates(mediabunny, message, signal)
+  const videoLayersByKey = new Map<string, CompositionLayer[]>()
+  for (const layer of message.composition.layers) {
+    if (layer.source.sourceType !== 'video') continue
+    const key = sourceKeyForLayer(layer)
+    const layers = videoLayersByKey.get(key) ?? []
+    layers.push(layer)
+    videoLayersByKey.set(key, layers)
+  }
+  const primaryLayer = message.composition.layers.find((layer) => layer.source.sourceType === 'video')
+  if (!primaryLayer) throw new Error('WebGPU 视频导出缺少视频图层')
+  const primaryKey = sourceKeyForLayer(primaryLayer)
+  const primaryState = videoStates.get(primaryKey)
+  if (!primaryState) throw new Error(`视频源尚未传入: ${primaryKey}`)
+
+  const imageSources = new Map(
+    message.sources
+      .filter((source) => source.sourceType === 'image')
+      .map((source) => [source.path, source]),
+  )
+  const imageBitmaps = new Map<string, ImageBitmap>()
+  const inputDuration = primaryState.duration
+  const duration = message.composition.canvas.duration != null
+    && Number.isFinite(message.composition.canvas.duration)
+    && message.composition.canvas.duration > 0
+    ? message.composition.canvas.duration
+    : inputDuration
+  const packetStats = await primaryState.track.computePacketStats(60)
+  const fps = Math.max(1, Math.min(120, message.fps ?? (packetStats.averagePacketRate || 30)))
+  const totalFrames = Math.max(1, Math.ceil(duration * fps))
+  const bitrate = bitrateForPreset(message.qualityPreset, message.width, message.height, fps)
+  if (!(await canEncodeVideo('avc', { width: message.width, height: message.height, bitrate }))) {
+    throw new Error('当前 Electron 没有可用的视频编码器')
+  }
+
   let output: InstanceType<typeof Output> | null = null
   let renderer: WebGpuCompositionRenderer | null = null
   let completed = false
-  let currentFrame: VideoFrame | null = null
   let runtimeError: Error | null = null
+  const currentFrames = new Map<string, VideoFrame>()
 
   try {
-    const videoTrack = await input.getPrimaryVideoTrack()
-    if (!videoTrack) throw new Error('文件中没有可导出的视频轨道')
-    const duration = await videoTrack.computeDuration()
-    const packetStats = await videoTrack.computePacketStats(60)
-    const fps = Math.max(1, Math.min(120, message.fps ?? (packetStats.averagePacketRate || 30)))
-    const totalFrames = Math.max(1, Math.ceil(duration * fps))
-    const bitrate = bitrateForPreset(message.qualityPreset, message.width, message.height, fps)
-    if (!(await canEncodeVideo('avc', { width: message.width, height: message.height, bitrate }))) {
-      throw new Error('当前 Electron 没有可用的视频编码器')
-    }
-
     const format = new Mp4OutputFormat({ fastStart: 'in-memory' })
     const target = new BufferTarget()
     output = new Output({ format, target })
@@ -134,64 +215,84 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     })
     output.addVideoTrack(videoSource, { frameRate: fps })
 
-    const audioTrack = message.includeAudio ? await input.getPrimaryAudioTrack() : null
+    const audioTrack = message.includeAudio ? await primaryState.input.getPrimaryAudioTrack() : null
     const audioCodec = audioTrack ? await audioTrack.getCodec() : null
     const audioCopied = Boolean(audioTrack && audioCodec && format.getSupportedAudioCodecs().includes(audioCodec))
     const audioSource = audioCopied ? new EncodedAudioPacketSource(audioCodec!) : null
     if (audioSource) output.addAudioTrack(audioSource)
 
-    postProgress('preparing', 8, 0, totalFrames, `${message.width} x ${message.height}，${fps.toFixed(2)} FPS`)
+    postProgress('preparing', 8, 0, totalFrames, `${message.width} x ${message.height}，${fps.toFixed(2)} FPS，${videoStates.size} 个视频源`)
     checkCanceled(signal)
     await output.start()
 
     const audioTask = audioSource && audioTrack
       ? copyAudioPackets({ mediabunny, audioTrack, audioSource, signal })
       : null
-    const videoSink = new VideoSampleSink(videoTrack)
-    const firstTimestamp = await videoTrack.getFirstTimestamp()
     renderer = new WebGpuCompositionRenderer(new OffscreenCanvas(message.width, message.height))
     await renderer.initialize({
-      resolveImage: async () => {
-        throw new Error('当前 WebGPU 视频导出不支持静态图层')
+      resolveImage: async (path) => {
+        const cached = imageBitmaps.get(path)
+        if (cached) return cached
+        const source = imageSources.get(path)
+        if (!source) throw new Error(`静态图层源尚未传入: ${path}`)
+        const bitmap = await createImageBitmap(new Blob([source.bytes], { type: source.mimeType }))
+        imageBitmaps.set(path, bitmap)
+        return bitmap
       },
-      resolveSource: async () => {
-        if (!currentFrame) throw new Error('视频帧尚未准备好')
-        return currentFrame
+      resolveSource: async (layer) => {
+        const frame = currentFrames.get(sourceKeyForLayer(layer))
+        if (!frame) throw new Error(`视频帧尚未准备好: ${layer.source.path}`)
+        return frame
       },
       onDeviceLost: (error) => { runtimeError = new Error(error) },
       onError: (error) => { runtimeError = new Error(error) },
     })
 
+    postProgress('decoding', 10, 0, totalFrames, '开始按合成时间读取视频')
     let frameCount = 0
-    postProgress('decoding', 10, 0, totalFrames, '开始逐帧读取视频')
-    for await (const sample of videoSink.samples()) {
+    for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
       checkCanceled(signal)
       if (runtimeError) throw runtimeError
-      if (sample.timestamp + sample.duration <= firstTimestamp) {
-        sample.close()
+      const compositionTime = frameIndex / fps
+      const samples: Array<Awaited<ReturnType<MediabunnyVideoSink['getSample']>>> = []
+      closeFrames(currentFrames)
+
+      for (const [key, layers] of videoLayersByKey) {
+        const state = videoStates.get(key)
+        if (!state) throw new Error(`视频源尚未准备好: ${key}`)
+        const layer = layers[0]
+        if (!layer) continue
+        const sourceTimestamp = state.firstTimestamp + sourceTimeForLayer(layer, compositionTime)
+        const sample = await state.sink.getSample(sourceTimestamp)
+        if (!sample) continue
+        samples.push(sample)
+        currentFrames.set(key, sample.toVideoFrame())
+      }
+
+      const primaryFrame = currentFrames.get(primaryKey)
+      if (!primaryFrame) {
+        closeFrames(currentFrames)
+        for (const sample of samples) sample?.close()
         continue
       }
 
-      currentFrame = sample.toVideoFrame()
       try {
-        const compositionTime = Math.max(0, sample.timestamp - firstTimestamp)
         await renderer.render(message.composition, compositionTime)
         await renderer.waitForGpu()
         if (runtimeError) throw runtimeError
         const outputSample = new VideoSample(renderer.canvas, {
           timestamp: compositionTime,
-          duration: sample.duration || 1 / fps,
+          duration: 1 / fps,
         })
         try {
           postProgress('rendering', 10 + (frameCount / totalFrames) * 82, frameCount, totalFrames, `渲染并编码第 ${frameCount + 1} 帧`)
-          await videoSource.add(outputSample, sample.encodeOptions)
+          await videoSource.add(outputSample)
         } finally {
           outputSample.close()
         }
       } finally {
-        currentFrame.close()
-        currentFrame = null
-        sample.close()
+        closeFrames(currentFrames)
+        for (const sample of samples) sample?.close()
       }
       frameCount += 1
     }
@@ -211,10 +312,11 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
       audioCopied,
     }, [target.buffer])
   } finally {
-    currentFrame?.close()
+    closeFrames(currentFrames)
     renderer?.destroy()
+    for (const bitmap of imageBitmaps.values()) bitmap.close()
+    for (const state of videoStates.values()) state.input.dispose()
     if (output && !completed) await output.cancel().catch(() => undefined)
-    input.dispose()
   }
 }
 
