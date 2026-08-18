@@ -53,7 +53,6 @@ pub(super) struct SelectedGpu {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
     pub(super) info: wgpu::AdapterInfo,
-    pub(super) backend: wgpu::Backend,
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -70,13 +69,7 @@ pub(super) fn select_gpu(log_path: Option<&str>) -> Result<SelectedGpu, String> 
     .map_err(|error| format!("No suitable GPU adapter: {error}"))?;
     let info = adapter.get_info();
     let (device, queue) = request_device(&adapter)?;
-    let backend = info.backend;
-    Ok(SelectedGpu {
-        device,
-        queue,
-        info,
-        backend,
-    })
+    Ok(SelectedGpu { device, queue, info })
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -152,7 +145,6 @@ pub(super) fn select_gpu(log_path: Option<&str>) -> Result<SelectedGpu, String> 
                     device,
                     queue,
                     info,
-                    backend: wgpu::Backend::Dx12,
                 });
             }
             Err(error) => crate::logging::write(&format!(
@@ -180,7 +172,6 @@ pub(super) fn select_gpu(log_path: Option<&str>) -> Result<SelectedGpu, String> 
                     device,
                     queue,
                     info,
-                    backend: wgpu::Backend::Gl,
                 });
             }
             Err(error) => crate::logging::write(&format!(

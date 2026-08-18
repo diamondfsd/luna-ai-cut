@@ -116,11 +116,11 @@ WebGPU 不代表必然比 wgpu 更省资源。两者在不同平台可能仍使�
 
 ### M7：创意效果和转场
 
-状态：暂缓（创意模式入口已下线）
+状态：部分完成（Pixel Flow 预览已迁移，其他创意效果待后续接入）
 
 先迁移 blur、sharpen、vignette、grayscale、invert、sepia、RGB split、pixelate，再迁移 pixel stretch、pixel flow、glow、distortion、color reveal、only your color 和转场。
 
-当前策略：先不开放创意模式，`src/workspace/creative` 保留为后续迁移参考；通用 `CompositionReveal` WebGPU 能力暂保留，但不作为当前工作台入口。
+当前策略：Pixel Flow 已使用 WebGPU Composition renderer，视频和图片预览共用同一套 fragment 参数；其他创意效果仍保留为后续迁移参考。通用 `CompositionReveal` WebGPU 能力暂保留，但不作为当前工作台入口。
 
 每类效果独立 pipeline，使用纹理池复用中间结果，不将所有效果堆进单个 fragment shader。
 
@@ -160,9 +160,9 @@ Mediabunny/WebCodecs decode -> VideoFrame -> WebGPU render -> WebCodecs encode -
 
 ### M10：替换原生预览和 IPC
 
-状态：待开始
+状态：已完成，待跨平台 Electron 验收
 
-WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native preview session、macOS/Windows 原生 preview surface、位置同步和对应 Electron IPC。
+WebGPU 工作台预览稳定后，移除旧的原生预览组件、session、macOS/Windows 原生画面 surface、位置同步和对应 Electron IPC。该项已完成：工作台和 Pixel Flow 统一使用 WebGPU 合成预览，Pixel Flow 的视频/图片效果参数由 WebGPU fragment pass 驱动。
 
 验收：预览只依赖 HTML canvas 和 WebGPU，不再创建 Rust 原生画面 surface。
 
@@ -205,7 +205,7 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - [x] M5：完整调色参数链路（曲线、色轮、levels、HSL、细节和光晕）代码
 - [x] M5：蒙版纹理、羽化、变换和时间线代码（待 Electron 实机验收）
 - [x] M6：基础形状与文字纹理栅格化（待真实工作台验收）
-- [ ] M7：创意效果和转场（暂缓，创意模式入口已移除）
+- [ ] M7：创意效果和转场（Pixel Flow 预览已完成，其他效果待迁移）
 - [x] M8：静态图片 WebGPU 导出第一步（工作台队列、分块写入、取消边界和 JPEG 来源信息）
 - [x] 继续 M8：PNG/JPEG/WebP 格式、静态图片高分辨率和 WebGPU 路径验收
 - [ ] 继续 M8：透明背景、复杂图层高分辨率、实际 EXIF、取消和磁盘空间错误验收
@@ -213,7 +213,8 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - [x] M9 第二阶段：多视频图层、静态叠加层和时间线帧求值
 - [x] M9 稳定性：分片流式输出、音频时间裁剪和取消背压
 - [ ] 继续 M9：非 AAC 音频重编码、长视频内存和 4K 压测
-- [ ] 开始 M10-M11：删除原生预览和 Rust/wgpu
+- [x] M10：删除原生预览 surface、session、位置同步和 Electron IPC；Pixel Flow 预览接入 WebGPU
+- [ ] M11：删除 Rust/wgpu 画面渲染路径
 
 ## 当前验证记录
 

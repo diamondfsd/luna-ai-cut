@@ -6,7 +6,6 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         cc::Build::new()
             .file("src/macos/av_bridge.m")
-            .file("src/macos/preview_surface.m")
             .flag("-fobjc-arc")
             .flag("-fblocks")
             .compile("luna_av_bridge");
@@ -23,7 +22,6 @@ fn main() {
             println!("cargo:rustc-link-lib=framework={framework}");
         }
         println!("cargo:rerun-if-changed=src/macos/av_bridge.m");
-        println!("cargo:rerun-if-changed=src/macos/preview_surface.m");
     }
 
     // Windows 原生链路通过 windows-rs 直接链接 D3D11On12 与 Media Foundation。

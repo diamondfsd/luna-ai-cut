@@ -16,6 +16,8 @@ interface WebGpuVideoPreviewProps {
   canvasHeight: number
   maxSide?: number
   playing?: boolean
+  time?: number
+  seekRevision?: number
   className?: string
   onError?: (error: string) => void
   onReady?: () => void
@@ -83,6 +85,8 @@ export function WebGpuVideoPreview({
   canvasHeight,
   maxSide,
   playing = false,
+  time,
+  seekRevision = 0,
   className,
   onError,
   onReady,
@@ -345,6 +349,19 @@ export function WebGpuVideoPreview({
     }
     void renderFrame()
   }, [fatalError, playing, ready, renderFrame, syncVideoTimes])
+
+  useEffect(() => {
+    if (seekRevision === 0) return
+    const primary = primarySourceKeyRef.current
+      ? videoElementsRef.current.get(primarySourceKeyRef.current)
+      : null
+    if (!primary || time == null || !Number.isFinite(time)) return
+    if (Math.abs(primary.currentTime - time) > 0.01) {
+      primary.currentTime = Math.max(0, time)
+    }
+    syncVideoTimes()
+    void renderFrame()
+  }, [renderFrame, seekRevision, syncVideoTimes, time])
 
   useEffect(() => {
     if (!ready || fatalError) return

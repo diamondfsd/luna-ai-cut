@@ -1,7 +1,6 @@
 import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { LrcRender } from './LrcRender'
 import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
-import { NativeGpuVideoPreview } from './NativeGpuVideoPreview'
 import { WebGpuStaticImagePreview } from './WebGpuStaticImagePreview'
 import { WebGpuVideoPreview } from './WebGpuVideoPreview'
 import { PreviewStageError } from './PreviewStageError'
@@ -11,8 +10,6 @@ import { LivePhotoBadge, VideoControls, toast } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
 import { canUseWebGpuVideoComposition, canUseWebGpuStaticImageComposition } from '../lib/webgpu/static-image-capabilities'
 import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
-import { requiresCompositionVideoRenderer } from './previewRendererSelection'
-import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { usePreviewResolution } from './usePreviewResolution'
 import {
   buildLayers,
@@ -30,7 +27,7 @@ export type { MediaResolution } from './previewStageGeometry'
 export type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
+    { url, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -319,19 +316,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, pending])
-  const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
-    isDisplayVideo,
-    layers,
-    keepCompositionVideoRenderer,
-  )
-  const useNativeGpuPreview = isDisplayVideo
-    && !livePlaying
-    && !useCompositionVideoRenderer
-    && !cropActive
-    && viewScale === 'fit'
   const useWebGpuVideoPreview = isDisplayVideo
     && !livePlaying
-    && !useCompositionVideoRenderer
     && !cropActive
     && viewScale === 'fit'
     && canUseWebGpuVideoComposition(layers)
@@ -339,11 +325,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     && !cropActive
     && viewScale === 'fit'
     && canUseWebGpuStaticImageComposition(layers)
-  const primaryVideoLayer = layers.find((layer) => layer.isVideo)
-  const compositionTime = primaryVideoLayer
-    ? compositionTimeForVideoLayer(primaryVideoLayer, currentTime)
-    : Math.max(0, currentTime)
-
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current
     const wrapper = wrapperRef.current
@@ -449,21 +430,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
               onViewportChange={syncCanvasMetrics}
             />
-          ) : useNativeGpuPreview && previewCanvas ? (
-            <NativeGpuVideoPreview
-              layers={layers}
-              canvasWidth={previewCanvas.width}
-              canvasHeight={previewCanvas.height}
-              active={active}
-              playing={playing}
-              time={compositionTime}
-              onRender={handleRender}
-              onVideoElement={handleVideoElement}
-              onError={(reason) => {
-                handleRenderFailure(reason)
-              }}
-            />
-          ) : isDisplayVideo && !useCompositionVideoRenderer ? (
+          ) : isDisplayVideo ? (
             <MultipleLayerVideoPreviewLrcRender
               layers={layers}
               canvasWidth={previewCanvas?.width}
@@ -484,7 +451,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
-              compositionTime={compositionTime}
               interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
               viewportKey={viewportKey}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}

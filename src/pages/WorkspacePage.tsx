@@ -402,8 +402,6 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
       border: { ...visiblePipeline.border, enabled: false },
     })
   }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
-  const keepCompositionVideoRenderer = false
-
   const finalCanvasSize = useMemo(() => {
     if (!watermarkMediaSize) return null
     return outputSizeForTransform(
@@ -1018,7 +1016,6 @@ function WorkspacePageInner({ pageActive }: WorkspacePageProps) {
         onFitScaleChange={setFitScalePercent}
         viewportKey={media.activeMedia?.path}
         previewMaxSide={workspacePreviewMaxSide(previewQuality)}
-        keepCompositionVideoRenderer={keepCompositionVideoRenderer}
         onPlayStateChange={handlePlayStateChange}
       />
 

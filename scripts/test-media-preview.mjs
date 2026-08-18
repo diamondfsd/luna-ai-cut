@@ -6,9 +6,7 @@ import ts from 'typescript'
 const source = await readFile(new URL('../src/components/htmlPreviewGeometry.ts', import.meta.url), 'utf8')
 const watermarkGeometrySource = await readFile(new URL('../src/shared/watermarkGeometry.ts', import.meta.url), 'utf8')
 const watermarkLibrarySource = await readFile(new URL('../src/shared/watermarkLibrary.ts', import.meta.url), 'utf8')
-const rendererSelectionSource = await readFile(new URL('../src/components/previewRendererSelection.ts', import.meta.url), 'utf8')
 const previewLayerTimingSource = await readFile(new URL('../src/components/previewLayerTiming.ts', import.meta.url), 'utf8')
-const nativePreviewOcclusionSource = await readFile(new URL('../src/components/nativePreviewOcclusion.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -33,14 +31,6 @@ const watermarkLibraryCompiled = ts.transpileModule(watermarkLibrarySource, {
   },
 }).outputText
 const watermarkLibrary = await import(`data:text/javascript;base64,${Buffer.from(watermarkLibraryCompiled).toString('base64')}`)
-const rendererSelectionCompiled = ts.transpileModule(rendererSelectionSource, {
-  compilerOptions: {
-    module: ts.ModuleKind.ES2020,
-    target: ts.ScriptTarget.ES2020,
-    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
-  },
-}).outputText
-const rendererSelection = await import(`data:text/javascript;base64,${Buffer.from(rendererSelectionCompiled).toString('base64')}`)
 const previewLayerTimingCompiled = ts.transpileModule(previewLayerTimingSource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -49,14 +39,6 @@ const previewLayerTimingCompiled = ts.transpileModule(previewLayerTimingSource, 
   },
 }).outputText
 const previewLayerTiming = await import(`data:text/javascript;base64,${Buffer.from(previewLayerTimingCompiled).toString('base64')}`)
-const nativePreviewOcclusionCompiled = ts.transpileModule(nativePreviewOcclusionSource, {
-  compilerOptions: {
-    module: ts.ModuleKind.ES2020,
-    target: ts.ScriptTarget.ES2020,
-    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
-  },
-}).outputText
-const nativePreviewOcclusion = await import(`data:text/javascript;base64,${Buffer.from(nativePreviewOcclusionCompiled).toString('base64')}`)
 
 function close(actual, expected, message) {
   assert.ok(Math.abs(actual - expected) < 0.0001, `${message}: expected ${expected}, got ${actual}`)
@@ -183,60 +165,9 @@ assert.equal(
   'a symbols-only query behaves like an empty search',
 )
 
-const videoLayer = { filePath: '/tmp/video.mp4', isVideo: true }
-assert.equal(
-  rendererSelection.requiresCompositionVideoRenderer(true, [videoLayer]),
-  false,
-  'ordinary video preview keeps the direct frame-upload renderer',
-)
-assert.equal(
-  rendererSelection.requiresCompositionVideoRenderer(true, [
-    videoLayer,
-    { filePath: '', activeStart: 1, activeEnd: 2 },
-  ]),
-  false,
-  'timed subtitle layers keep the continuous video decoder',
-)
 close(
   previewLayerTiming.compositionTimeForVideoLayer({ videoTime: 4.4, videoOffset: 0 }, 5.5),
   1.1,
   'subtitle timing uses output-relative composition time',
 )
-assert.equal(
-  rendererSelection.requiresCompositionVideoRenderer(true, [videoLayer], true),
-  true,
-  'comparing a masked video keeps the composition renderer while effects are bypassed',
-)
-assert.equal(
-  rendererSelection.requiresCompositionVideoRenderer(true, [
-    videoLayer,
-    { ...videoLayer, layerType: 'local-color', maskPath: '/tmp/mask.pgm' },
-  ]),
-  true,
-  'masked video preview uses the composition renderer that loads linear mask textures',
-)
-assert.equal(
-  rendererSelection.requiresCompositionVideoRenderer(false, [
-    { filePath: '/tmp/image.jpg' },
-    { filePath: '/tmp/image.jpg', layerType: 'local-color', maskPath: '/tmp/mask.pgm' },
-  ]),
-  false,
-  'image preview remains on the existing image renderer',
-)
-assert.equal(
-  nativePreviewOcclusion.shouldShowNativePreview(false, true, false),
-  false,
-  'native GPU preview hides when its preserved route becomes inactive',
-)
-assert.equal(
-  nativePreviewOcclusion.shouldShowNativePreview(true, false, false),
-  false,
-  'native GPU preview hides when its canvas has no visible bounds',
-)
-assert.equal(
-  nativePreviewOcclusion.shouldShowNativePreview(true, true, false),
-  true,
-  'native GPU preview returns when the workspace is active and visible',
-)
-
 console.log('media preview geometry tests passed')

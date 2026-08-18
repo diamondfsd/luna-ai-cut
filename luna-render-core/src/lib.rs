@@ -7,7 +7,6 @@ mod logging;
 #[cfg(target_os = "macos")]
 mod macos;
 mod media;
-mod native_preview;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -20,7 +19,6 @@ use compositor::Compositor;
 use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi::{Env, Task};
 use napi_derive::napi;
-pub use native_preview::*;
 
 // ── 跨模块日志宏 ──
 macro_rules! log {
@@ -70,14 +68,6 @@ pub(crate) fn lock_preview<T>(
     f: impl FnOnce(&mut Compositor) -> Result<T, String>,
 ) -> napi::Result<T> {
     lock_compositor(&COMPOSITOR_PREVIEW, "preview", f)
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn current_preview_backend() -> Option<wgpu::Backend> {
-    COMPOSITOR_PREVIEW
-        .lock()
-        .ok()
-        .and_then(|guard| guard.as_ref().map(Compositor::backend))
 }
 
 pub(crate) fn lock_export<T>(

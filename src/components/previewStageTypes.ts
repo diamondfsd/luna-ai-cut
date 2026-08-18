@@ -28,6 +28,5 @@ export interface PreviewStageProps {
   onFitScaleChange?: (scale: number) => void
   viewportKey?: string
   previewMaxSide?: number
-  keepCompositionVideoRenderer?: boolean
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }

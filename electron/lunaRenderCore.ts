@@ -114,16 +114,6 @@ export interface RenderPreviewOutput {
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
   initCompositorAsync(logPath?: string): Promise<void>
-  getNativePreviewCapabilities(): NativePreviewCapabilities
-  createNativePreviewSession(input: unknown): Promise<number>
-  updateNativePreviewComposition(sessionId: number, composition: unknown): void
-  setNativePreviewBounds(sessionId: number, bounds: NativePreviewBounds): void
-  setNativePreviewVisible(sessionId: number, visible: boolean): void
-  playNativePreview(sessionId: number, time: number): void
-  pauseNativePreview(sessionId: number, time: number): void
-  seekNativePreview(sessionId: number, time: number): void
-  getNativePreviewSessionStats(sessionId: number): NativePreviewSessionStats
-  destroyNativePreviewSession(sessionId: number): Promise<void>
   loadTexture(data: Buffer, width: number, height: number): number
   updateTexture(textureId: number, data: Buffer): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[], compositionTime?: number): Buffer
@@ -140,31 +130,6 @@ interface LunaRenderCoreNative {
   exportCompositionImageAsync(input: unknown): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
-}
-
-export interface NativePreviewCapabilities {
-  platform: string
-  decoder: string
-  systemHardwareDecode: boolean
-  externalGpuTexture: boolean
-  directGpuPresentation: boolean
-}
-
-export interface NativePreviewBounds {
-  x: number
-  y: number
-  width: number
-  height: number
-  scaleFactor: number
-}
-
-export interface NativePreviewSessionStats {
-  renderedFrames: number
-  renderErrors: number
-  lastRenderError?: string | null
-  currentTime: number
-  cacheHits: number
-  cacheMisses: number
 }
 
 let native: LunaRenderCoreNative | null = null

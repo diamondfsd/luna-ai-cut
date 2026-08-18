@@ -10,12 +10,6 @@ const PREVIEW_HARD_MAX_SIDE = 3840
 
 export interface LunaRenderCore {
   init: () => Promise<void>
-  getNativePreviewCapabilities?: () => Promise<{
-    decoder: string
-    systemHardwareDecode: boolean
-    externalGpuTexture: boolean
-    directGpuPresentation: boolean
-  }>
   loadTexture: (data: Buffer, width: number, height: number) => Promise<number>
   updateTexture: (textureId: number, data: Buffer) => Promise<void>
   renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[], compositionTime?: number) => Promise<Buffer>
