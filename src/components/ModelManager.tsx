@@ -319,7 +319,6 @@ export function ModelManager() {
       <div className="model-manager-header">
         <div className="model-manager-heading">
           <strong>本地模型</strong>
-          <span>统一查看和下载剪辑功能所需的模型，模型会保存到当前基础目录。</span>
           {!loading && models.length > 0 && (
             <small>已下载 {downloadedCount} / {models.length} 个模型</small>
           )}

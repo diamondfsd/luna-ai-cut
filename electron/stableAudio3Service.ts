@@ -78,6 +78,10 @@ function cacheRootForBaseDir(baseDir: string): string {
   return path.resolve(baseDir, 'cache', RUNTIME_FOLDER)
 }
 
+function modelRootForBaseDir(baseDir: string): string {
+  return path.resolve(baseDir, 'models', RUNTIME_FOLDER)
+}
+
 function runtimePaths(root: string): {
   downloads: string
   temp: string
@@ -124,7 +128,7 @@ function runtimePaths(root: string): {
   }
 }
 
-function runtimeEnvironment(root: string): NodeJS.ProcessEnv {
+function runtimeEnvironment(root: string, modelRoot: string): NodeJS.ProcessEnv {
   const paths = runtimePaths(root)
   return {
     ...process.env,
@@ -150,9 +154,9 @@ function runtimeEnvironment(root: string): NodeJS.ProcessEnv {
     NUMBA_CACHE_DIR: paths.numbaCache,
     UV_CACHE_DIR: paths.uvCache,
     [CACHE_ROOT_ENV]: root,
-    [MODEL_ROOT_ENV]: root,
+    [MODEL_ROOT_ENV]: modelRoot,
     [WORK_ROOT_ENV]: root,
-    [DOWNLOAD_ROOT_ENV]: paths.downloads,
+    [DOWNLOAD_ROOT_ENV]: path.join(modelRoot, 'downloads'),
     [OUTPUT_ROOT_ENV]: paths.output,
     [LORA_ROOT_ENV]: paths.loras,
     [LORA_CACHE_ROOT_ENV]: paths.loraCache,
@@ -293,13 +297,14 @@ class StableAudio3Runtime {
     this.pending.clear()
   }
 
-  private async ensureProcess(root: string): Promise<void> {
+  private async ensureProcess(root: string, modelRoot: string): Promise<void> {
     if (this.process && this.processRoot === root && this.readyPromise) return this.readyPromise
     if (this.process) await this.unload()
     const python = await resolvePythonCommand()
     const script = path.join(sourceRoot(), 'scripts', 'luna_service.py')
     const paths = runtimePaths(root)
     await mkdir(root, { recursive: true })
+    await mkdir(path.join(modelRoot, 'downloads'), { recursive: true })
     await Promise.all(Object.values(paths).map((directory) => mkdir(directory, { recursive: true })))
     this.readyPromise = new Promise<void>((resolve, reject) => {
       this.readyResolve = resolve
@@ -308,7 +313,7 @@ class StableAudio3Runtime {
     const child = spawn(python.command, [...python.args, script], {
       cwd: root,
       env: {
-        ...runtimeEnvironment(root),
+        ...runtimeEnvironment(root, modelRoot),
         PYTHONUNBUFFERED: '1',
         SA3_THREADS: String(Math.min(8, Math.max(1, cpus().length))),
       },
@@ -328,7 +333,8 @@ class StableAudio3Runtime {
     }
     const settings = await getSettings()
     const root = cacheRootForBaseDir(settings.baseDir)
-    await this.ensureProcess(root)
+    const modelRoot = modelRootForBaseDir(settings.baseDir)
+    await this.ensureProcess(root, modelRoot)
     if (!this.process) throw new Error('Stable Audio 服务未启动。')
     const outputPath = path.join(runtimePaths(root).output, `${request.requestId}.wav`)
     if (!isPathInside(runtimePaths(root).output, outputPath)) {
@@ -356,7 +362,8 @@ class StableAudio3Runtime {
     const requestId = `prepare_${model}_${Date.now()}`
     const settings = await getSettings()
     const root = cacheRootForBaseDir(settings.baseDir)
-    await this.ensureProcess(root)
+    const modelRoot = modelRootForBaseDir(settings.baseDir)
+    await this.ensureProcess(root, modelRoot)
     if (!this.process) throw new Error('Stable Audio 服务未启动。')
     const pending = new Promise<void>((resolve, reject) => {
       this.pending.set(requestId, { request: { model }, resolve: () => resolve(), reject, listener })
@@ -389,14 +396,15 @@ class StableAudio3Runtime {
   async status(): Promise<StableAudio3Status> {
     const settings = await getSettings()
     const root = cacheRootForBaseDir(settings.baseDir)
+    const modelRoot = modelRootForBaseDir(settings.baseDir)
     const environment = await hasPythonRuntime()
       ? 'ready'
       : 'missing-python'
     const models: StableAudio3ModelStatus[] = await Promise.all(
       (Object.keys(MODEL_FILES) as StableAudio3ModelId[]).map(async (id) => {
-        const ditPath = path.join(root, 'models', 'tflite', id === 'small-music' ? 'sa3-sm-music' : 'sa3-sm-sfx', 'dit_fp32.tflite')
+        const ditPath = path.join(modelRoot, 'models', 'tflite', id === 'small-music' ? 'sa3-sm-music' : 'sa3-sm-sfx', 'dit_fp32.tflite')
         const cached = (await stat(ditPath).catch(() => null))?.size === MODEL_FILES[id].ditBytes
-          && (await stat(path.join(root, 'models', 'tokenizer.model')).catch(() => null))?.size === 4_241_003
+          && (await stat(path.join(modelRoot, 'models', 'tokenizer.model')).catch(() => null))?.size === 4_241_003
         return {
           id,
           label: MODEL_FILES[id].label,

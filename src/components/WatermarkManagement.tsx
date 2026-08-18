@@ -87,7 +87,9 @@ export function WatermarkManagement({ settings, onDefaultChange }: WatermarkMana
           <div className="watermark-management-grid">
             {assets.map((asset) => (
               <article key={asset.id} className="watermark-management-item">
-                <img src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
+                <div className="watermark-management-preview" role="img" aria-label={`水印预览：${asset.fileName}`}>
+                  <img src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
+                </div>
                 <span title={asset.fileName}>{asset.fileName}</span>
                 <IconButton
                   className="watermark-management-delete"

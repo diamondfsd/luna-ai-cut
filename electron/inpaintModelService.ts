@@ -4,7 +4,7 @@ import { mkdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { DEFAULT_INPAINT_MODEL } from '../src/shared/inpaintModels'
 import { loadVerifiedModelFile, type ModelFileProgress } from './modelFileService'
-import { getSettings, modelCacheDirForBaseDir } from './settingsService'
+import { getSettings, modelDirForBaseDir } from './settingsService'
 
 export const INPAINT_MODEL = DEFAULT_INPAINT_MODEL
 
@@ -25,7 +25,7 @@ async function verifiedLocalModel(candidate: string | undefined): Promise<string
 }
 
 export async function getInpaintModelCacheStatus(): Promise<{ cached: boolean; sizeBytes: number }> {
-  const modelDir = path.join(modelCacheDirForBaseDir((await getSettings()).baseDir), INPAINT_MODEL.id)
+  const modelDir = path.join(modelDirForBaseDir((await getSettings()).baseDir), INPAINT_MODEL.id)
   const candidates = [
     process.env.LUNA_LAMA_MODEL_PATH,
     path.join(modelDir, INPAINT_MODEL.fileName),
@@ -41,7 +41,7 @@ export async function loadInpaintModel(
   signal?: AbortSignal,
   onProgress?: (progress: ModelFileProgress) => void,
 ): Promise<string> {
-  const modelDir = path.join(modelCacheDirForBaseDir((await getSettings()).baseDir), INPAINT_MODEL.id)
+  const modelDir = path.join(modelDirForBaseDir((await getSettings()).baseDir), INPAINT_MODEL.id)
   const local = await verifiedLocalModel(process.env.LUNA_LAMA_MODEL_PATH)
     ?? await verifiedLocalModel(path.join(modelDir, INPAINT_MODEL.fileName))
   if (local) return local

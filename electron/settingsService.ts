@@ -69,8 +69,8 @@ export function cacheDir(baseDir: string): string {
   return path.join(baseDir, 'cache')
 }
 
-export function modelCacheDirForBaseDir(baseDir: string): string {
-  return path.join(cacheDir(baseDir), 'models')
+export function modelDirForBaseDir(baseDir: string): string {
+  return path.join(baseDir, 'models')
 }
 
 export function previewCacheDirForBaseDir(baseDir: string): string {
