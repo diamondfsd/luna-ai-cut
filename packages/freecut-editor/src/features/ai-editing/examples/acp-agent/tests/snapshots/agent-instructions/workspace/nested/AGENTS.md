@@ -1,1 +1,1 @@
-AGENTS.canonical.md
+/Users/zhouchao/projects/luna-ai-cut/worktrees/luna-webgpu-fixed/packages/freecut-editor/src/features/ai-editing/examples/acp-agent/tests/snapshots/agent-instructions/workspace/nested/AGENTS.canonical.md

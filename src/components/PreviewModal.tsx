@@ -85,6 +85,7 @@ export function PreviewModal({
   const [livePhotoCount, setLivePhotoCount] = useState(0)
   const [exportConfig, setExportConfig] = useState<VideoExportSettings>(() => ({
     ...DEFAULT_VIDEO_EXPORT_SETTINGS,
+    imageFormat: 'png',
     autoRestoreILog: false,
   }))
   const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
@@ -365,7 +366,6 @@ export function PreviewModal({
                     <ExportSettingsPanel
                       value={exportConfig}
                       onChange={setExportConfig}
-                      outputAvailability={{ video: hasVideoInBatch, photo: hasImageInBatch, live: false }}
                       dolbyVisionAvailable={dolbyVisionProbe?.eligible}
                       dolbyVisionChecking={dolbyVisionChecking}
                       showILogRestore={hasILogInExport}

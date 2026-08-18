@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
   "ref": "master",
-  "syncedCommit": "47f943859bef60e4160492346772ded9b24f765a",
+  "syncedCommit": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
   "path": "packages/freecut-editor/src/features/ai-editing"
 }
