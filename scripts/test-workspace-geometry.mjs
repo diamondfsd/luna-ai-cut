@@ -9,7 +9,6 @@ const autoColorSource = await readFile(new URL('../src/workspace/color/autoColor
 const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchLayers.ts', import.meta.url), 'utf8')
 const pixelStretchStateSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchState.ts', import.meta.url), 'utf8')
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
-const previewQualitySource = await readFile(new URL('../src/workspace/shared/workspacePreviewQuality.ts', import.meta.url), 'utf8')
 const videoOutputMarkersSource = await readFile(new URL('../src/workspace/trim/videoOutputMarkers.ts', import.meta.url), 'utf8')
 const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
@@ -27,7 +26,6 @@ const autoColorCompiled = ts.transpileModule(autoColorSource.replace(/import[^\n
 const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\n/, '')}`, { compilerOptions }).outputText
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
-const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText
 const videoOutputMarkersCompiled = ts.transpileModule(videoOutputMarkersSource, { compilerOptions }).outputText
 const aiSelectionWorkspaceAssetsCompiled = ts.transpileModule(aiSelectionWorkspaceAssetsSource, { compilerOptions }).outputText
 
@@ -37,7 +35,6 @@ const autoColor = await import(`data:text/javascript;base64,${Buffer.from(autoCo
 const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
 const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchStateCompiled).toString('base64')}`)
 const pixelStretchPath = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchPathCompiled).toString('base64')}`)
-const previewQuality = await import(`data:text/javascript;base64,${Buffer.from(previewQualityCompiled).toString('base64')}`)
 const videoOutputMarkers = await import(`data:text/javascript;base64,${Buffer.from(videoOutputMarkersCompiled).toString('base64')}`)
 const aiSelectionWorkspaceAssets = await import(`data:text/javascript;base64,${Buffer.from(aiSelectionWorkspaceAssetsCompiled).toString('base64')}`)
 
@@ -53,12 +50,6 @@ function cropClose(actual, expected, message) {
 }
 
 const sourceAspect = 16 / 9
-
-assert.equal(previewQuality.workspacePreviewMaxSide('smooth'), 960, 'smooth preview is capped at 960px')
-assert.equal(previewQuality.workspacePreviewMaxSide('balanced'), 1440, 'balanced preview is capped at 1440px')
-assert.equal(previewQuality.workspacePreviewMaxSide('high'), 2160, 'high preview is capped at 2160px')
-assert.equal(previewQuality.workspacePreviewMaxSide('original'), 3840, 'original preview never exceeds 4K')
-assert.equal(previewQuality.normalizeWorkspacePreviewQuality('unexpected'), 'balanced', 'invalid preview quality falls back to balanced')
 
 assert.deepEqual(videoOutputMarkers.normalizeVideoOutputMarkers(undefined), [], 'projects default to no output markers')
 assert.deepEqual(

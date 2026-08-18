@@ -66,7 +66,7 @@ WebGPU 不代表必然比 wgpu 更省资源。两者在不同平台可能仍使�
 
 输入继续使用现有 `PreviewLayer`/`CompositionInput` 适配后的结构，不创建只服务测试页的新协议。
 
-当前实现：`WebGpuCompositionRenderer` 已支持纯静态 media 图层、图层排序、sourceRect、cover/contain/stretch、opacity、基础 blend、旋转/翻转和基础调色；`PreviewStage` 默认按设备能力和图层能力矩阵接入 WebGPU，复杂图层自动保留兼容路径，不再提供实验性 GPU 预览开关。
+当前实现：`WebGpuCompositionRenderer` 已支持纯静态 media 图层、图层排序、sourceRect、cover/contain/stretch、opacity、基础 blend、旋转/翻转和基础调色；`PreviewStage` 默认按设备能力和图层能力矩阵接入 WebGPU，复杂图层自动保留兼容路径，不再提供实验性 GPU 预览开关。工作台预览清晰度由 WebGPU 路径统一处理，不再保留用户可配置的清晰度档位。
 
 图片导出已经接入现有导出任务和分块写入协议。第一步只打开能够完整保留参数的静态媒体层；LUT、蒙版、裁剪、平移、曲线、高级调色、水印定位等能力列入后续 WebGPU 阶段，不以旧渲染器作为 WebGPU 失败回退。Live Photo 合并使用写入器返回的实际图片路径。
 

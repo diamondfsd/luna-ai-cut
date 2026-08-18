@@ -1,7 +1,6 @@
 import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
-import { Button, IconButton, Select, Tooltip, toast } from '../../ui'
-import type { WorkspacePreviewQuality } from '../../shared/types/settings'
+import { Button, IconButton, Tooltip, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -25,8 +24,6 @@ interface WorkspacePreviewToolbarProps {
   viewScale: WorkspaceViewScale
   onViewScaleChange: (scale: WorkspaceViewScale) => void
   fitScalePercent: number
-  previewQuality: WorkspacePreviewQuality
-  onPreviewQualityChange: (quality: WorkspacePreviewQuality) => void
 }
 
 export function WorkspacePreviewToolbar({
@@ -42,8 +39,6 @@ export function WorkspacePreviewToolbar({
   viewScale,
   onViewScaleChange,
   fitScalePercent,
-  previewQuality,
-  onPreviewQualityChange,
 }: WorkspacePreviewToolbarProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
@@ -117,19 +112,6 @@ export function WorkspacePreviewToolbar({
         )}
       </div>
       <div className="workspace-toolbar-group workspace-toolbar-actions">
-        <Select
-          className="workspace-preview-quality"
-          variant="compact"
-          placeholder="预览清晰度，原图最高 4K"
-          value={previewQuality}
-          options={[
-            { value: 'smooth', label: '流畅' },
-            { value: 'balanced', label: '平衡' },
-            { value: 'high', label: '高清' },
-            { value: 'original', label: '原图' },
-          ]}
-          onValueChange={(value) => onPreviewQualityChange(value as WorkspacePreviewQuality)}
-        />
         <div className="workspace-zoom-control" aria-label={`预览缩放，当前 ${currentScalePercent}%`}>
           <Tooltip content={`缩小（当前 ${currentScalePercent}%）`}>
             <IconButton variant="ghost" size="mini" icon={<Minus size={14} />} onClick={() => changeScale(-10)} aria-label="缩小预览" />
