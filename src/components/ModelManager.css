@@ -1,0 +1,306 @@
+.model-manager {
+  display: grid;
+  gap: 20px;
+}
+
+.model-manager-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.model-manager-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-manager-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.model-manager-heading {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.model-manager-heading strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.model-manager-heading span,
+.model-manager-heading small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.model-manager-heading small {
+  font-size: 12px;
+}
+
+.model-manager-state {
+  min-height: 104px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.model-manager-group {
+  display: grid;
+  gap: 9px;
+}
+
+.model-manager-group h3 {
+  margin: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.model-manager-items {
+  display: grid;
+  gap: 8px;
+}
+
+.model-manager-item {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--canvas);
+}
+
+.model-manager-item-main {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.model-manager-checkbox,
+.model-manager-checkbox-placeholder {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  border: 1px solid #c7cbd1;
+  border-radius: 5px;
+  background: var(--canvas);
+  color: #fff;
+}
+
+.model-manager-checkbox {
+  padding: 0;
+  cursor: pointer;
+}
+
+.model-manager-checkbox:hover {
+  border-color: var(--blue);
+}
+
+.model-manager-checkbox[data-state='checked'] {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.model-manager-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.model-manager-checkbox-placeholder {
+  visibility: hidden;
+}
+
+.model-manager-item-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.model-manager-item-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.model-manager-item-title strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.model-manager-item-copy p,
+.model-manager-item-copy small,
+.model-manager-error {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.model-manager-item-copy small {
+  color: color-mix(in srgb, var(--muted) 82%, transparent);
+  font-size: 11px;
+}
+
+.model-manager-ready,
+.model-manager-unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.model-manager-ready {
+  color: #248a3d;
+}
+
+.model-manager-unavailable {
+  color: var(--muted);
+}
+
+.model-manager-progress {
+  display: grid;
+  gap: 5px;
+}
+
+.model-manager-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 14%, var(--canvas));
+}
+
+.model-manager-progress-track span {
+  display: block;
+  height: 100%;
+  min-width: 3%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 180ms ease;
+}
+
+.model-manager-progress-track span:not([style]) {
+  width: 35%;
+  animation: model-manager-progress 1.2s ease-in-out infinite;
+}
+
+.model-manager-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.model-manager-progress-meta span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-manager-error {
+  color: #a15c00;
+  overflow-wrap: anywhere;
+}
+
+.model-manager-source.ui-accordion {
+  border-top-color: var(--hairline);
+}
+
+.model-manager-source .ui-accordion-header {
+  padding: 8px 0 2px;
+}
+
+.model-manager-source .ui-accordion-title {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.model-manager-source .ui-accordion-title small {
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.model-manager-source .ui-accordion-chevron {
+  color: var(--muted);
+}
+
+.model-manager-source .ui-accordion-body {
+  gap: 5px;
+  padding: 5px 0 2px;
+}
+
+.model-manager-source-list {
+  display: grid;
+  gap: 4px;
+}
+
+.model-manager-source-list code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.model-manager-spin {
+  animation: model-manager-spin 900ms linear infinite;
+}
+
+@keyframes model-manager-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes model-manager-progress {
+  0%, 100% { transform: translateX(-100%); }
+  50% { transform: translateX(190%); }
+}
+
+@media (max-width: 640px) {
+  .model-manager-header {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .model-manager-header-actions {
+    justify-content: flex-start;
+  }
+
+  .model-manager-header .ui-btn {
+    justify-self: start;
+  }
+
+  .model-manager-item-main {
+    grid-template-columns: 22px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .model-manager-item-main > .ui-btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

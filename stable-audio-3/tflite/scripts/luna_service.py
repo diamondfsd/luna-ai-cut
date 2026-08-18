@@ -173,6 +173,32 @@ def run_job(job: Job) -> None:
     })
 
 
+def prepare_model(job: Job) -> None:
+    request = job.request
+    request_id = str(request.get("requestId", ""))
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id):
+        raise ValueError("Invalid audio request id")
+    model = str(request.get("model", "small-music"))
+    if model not in MODEL_MAP:
+        raise ValueError(f"Unsupported Stable Audio model: {model}")
+
+    progress(job, "preparing-model", 0.0)
+    ensure_model(
+        model,
+        verbose=False,
+        on_progress=lambda file, loaded, total: progress(
+            job,
+            "downloading-model",
+            loaded / max(total, 1),
+            file,
+            loaded,
+            total,
+        ),
+    )
+    progress(job, "preparing-model", 1.0)
+    emit({"type": "prepared", "requestId": request_id, "model": model})
+
+
 def handle_command(command: dict[str, object]) -> bool:
     global active_job
     command_type = command.get("type")
@@ -185,7 +211,7 @@ def handle_command(command: dict[str, object]) -> bool:
         if active_job and active_job.request.get("requestId") == request_id:
             active_job.cancelled.set()
         return True
-    if command_type != "generate":
+    if command_type not in {"generate", "prepare"}:
         emit({"type": "error", "requestId": command.get("requestId"), "message": "Unknown service command"})
         return True
     if active_job is not None:
@@ -197,7 +223,10 @@ def handle_command(command: dict[str, object]) -> bool:
     def worker() -> None:
         global active_job
         try:
-            run_job(job)
+            if command_type == "prepare":
+                prepare_model(job)
+            else:
+                run_job(job)
         except Cancelled:
             emit({"type": "cancelled", "requestId": command.get("requestId")})
         except Exception as error:

@@ -29,11 +29,26 @@ const MODEL_FILES: Record<StableAudio3ModelId, { label: string; ditBytes: number
   'small-sfx': { label: '音效', ditBytes: 1_838_758_544 },
 }
 const SHARED_MODEL_BYTES = 1_001_631_971
+const STABLE_AUDIO_MODEL_SOURCE_BASE = 'https://www.modelscope.cn/models/stabilityai/stable-audio-3-optimized/resolve/cbf2601200b531a8304eb21a360a1a5ba371a10c'
+
+export function stableAudio3ModelDownloadUrls(model: StableAudio3ModelId): string[] {
+  const shared = [
+    `${STABLE_AUDIO_MODEL_SOURCE_BASE}/tokenizer.model`,
+    `${STABLE_AUDIO_MODEL_SOURCE_BASE}/tflite/t5gemma/encoder_fp16.tflite`,
+    `${STABLE_AUDIO_MODEL_SOURCE_BASE}/tflite/same-s/enc_fp32.tflite`,
+    `${STABLE_AUDIO_MODEL_SOURCE_BASE}/tflite/same-s/dec_fp32.tflite`,
+  ]
+  const dit = model === 'small-music' ? 'sa3-sm-music' : 'sa3-sm-sfx'
+  return [
+    ...shared,
+    `${STABLE_AUDIO_MODEL_SOURCE_BASE}/tflite/${dit}/dit_fp32.tflite`,
+  ]
+}
 
 type ProgressListener = (progress: StableAudio3Progress) => void
 type PendingRequest = {
-  request: StableAudio3GenerationRequest
-  resolve: (result: StableAudio3GenerationResult) => void
+  request: Pick<StableAudio3GenerationRequest, 'model'>
+  resolve: (result?: StableAudio3GenerationResult) => void
   reject: (error: unknown) => void
   listener?: ProgressListener
 }
@@ -230,6 +245,10 @@ class StableAudio3Runtime {
           bytes: new Uint8Array(bytes),
         }))
         .catch(pending.reject)
+      return
+    }
+    if (message.type === 'prepared') {
+      pending.resolve()
     }
   }
 
@@ -317,7 +336,12 @@ class StableAudio3Runtime {
     }
     await rm(outputPath, { force: true })
     const pending = new Promise<StableAudio3GenerationResult>((resolve, reject) => {
-      this.pending.set(request.requestId, { request, resolve, reject, listener })
+      this.pending.set(request.requestId, {
+        request,
+        resolve: (result) => resolve(result as StableAudio3GenerationResult),
+        reject,
+        listener,
+      })
     })
     try {
       this.process.stdin.write(JSON.stringify({ ...request, type: 'generate', outputPath }) + '\n')
@@ -326,6 +350,24 @@ class StableAudio3Runtime {
       throw error
     }
     return pending
+  }
+
+  async prepareModel(model: StableAudio3ModelId, listener?: ProgressListener): Promise<void> {
+    const requestId = `prepare_${model}_${Date.now()}`
+    const settings = await getSettings()
+    const root = cacheRootForBaseDir(settings.baseDir)
+    await this.ensureProcess(root)
+    if (!this.process) throw new Error('Stable Audio 服务未启动。')
+    const pending = new Promise<void>((resolve, reject) => {
+      this.pending.set(requestId, { request: { model }, resolve: () => resolve(), reject, listener })
+    })
+    try {
+      this.process.stdin.write(JSON.stringify({ type: 'prepare', requestId, model }) + '\n')
+    } catch (error) {
+      this.pending.delete(requestId)
+      throw error
+    }
+    await pending
   }
 
   cancel(requestId: string): void {

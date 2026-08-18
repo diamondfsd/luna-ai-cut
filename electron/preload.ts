@@ -224,6 +224,15 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       return () => ipcRenderer.off('moss-tts:progress', listener)
     },
   },
+  modelManager: {
+    list: () => ipcRenderer.invoke('model-manager:list'),
+    prepare: (modelId: string) => ipcRenderer.invoke('model-manager:prepare', modelId),
+    onProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').ManagedModelProgress): void => callback(progress)
+      ipcRenderer.on('model-manager:progress', listener)
+      return () => ipcRenderer.off('model-manager:progress', listener)
+    },
+  },
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     chooseMediaDirectory: () => ipcRenderer.invoke('workspace:chooseMediaDirectory'),
@@ -245,7 +254,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     isLivePhoto: (filePath: string) => ipcRenderer.invoke('workspace:isLivePhoto', filePath),
     readColorMetadata: (filePath: string) => ipcRenderer.invoke('workspace:readColorMetadata', filePath),
     getSegmentationModelStatus: (modelId: import('../src/shared/segmentationModels').SegmentationModelId) => ipcRenderer.invoke('workspace:getSegmentationModelStatus', modelId),
-    prepareSegmentationModels: (modelIds: import('../src/shared/segmentationModels').SegmentationModelId[]) => ipcRenderer.invoke('workspace:prepareSegmentationModels', modelIds),
+    prepareSegmentationModels: (modelIds: import('../src/shared/segmentationModels').SegmentationModelPreparationId[]) => ipcRenderer.invoke('workspace:prepareSegmentationModels', modelIds),
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
     segmentInstances: (request: import('../src/shared/types').WorkspaceInstanceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentInstances', request),
     analyzeBeauty: (request: import('../src/shared/types').WorkspaceBeautyAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeBeauty', request),

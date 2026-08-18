@@ -22,7 +22,7 @@ downloaded from the fixed ModelScope revision recorded in
 scripts/weights.py:
 
     https://www.modelscope.cn/models/stabilityai/stable-audio-3-optimized
-    revision: 18feee20effaa4c3a32104d952318f64f2d5f290
+    revision: cbf2601200b531a8304eb21a360a1a5ba371a10c
 
 All persistent model, environment, download, temporary, output, LoRA and
 runtime cache data is placed below the user's configured base directory:
