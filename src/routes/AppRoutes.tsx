@@ -24,7 +24,6 @@ import { WebGpuColorGradeTestPage } from '../pages/WebGpuColorGradeTestPage'
 import { WebGpuCompositionTestPage } from '../pages/WebGpuCompositionTestPage'
 import { WebGpuDiagnosticsPage } from '../pages/WebGpuDiagnosticsPage'
 import type { CacheStats } from '../shared/types'
-import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
 export function AppRoutes() {
   const { settings, setSettings, connection, hiddenDevMode } = useApp()
@@ -47,7 +46,6 @@ export function AppRoutes() {
 
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [pagesKey, setPagesKey] = useState(0)
-  const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -167,8 +165,6 @@ export function AppRoutes() {
 
         <AppRoute path="/workspace">
           <WorkspacePage
-            creativeModeId={creativeModeId}
-            onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
           />
         </AppRoute>

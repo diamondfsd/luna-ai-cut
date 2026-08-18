@@ -9,7 +9,7 @@ const MEMORY_SAMPLE_INTERVAL_MS = 250
 const VIDEO_LIMIT = Number.parseInt(process.env.LUNA_REAL_4K_VIDEO_LIMIT ?? '', 10)
 
 test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ lunaApp }, testInfo) => {
-  test.skip(process.platform !== 'win32', '验证 Windows 原生 GPU 预览')
+  test.skip(process.platform !== 'win32', '验证 Windows WebGPU 预览')
   test.setTimeout(240_000)
   const progressPath = path.join(lunaApp.temporaryRoot, 'artifacts', 'real-4k-progress.json')
   const recordProgress = async (stage: string) => {
@@ -35,7 +35,6 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
   await lunaApp.page.evaluate(async (assets) => {
     const api = (window as typeof window & {
       luna: {
-        saveSettings: (settings: { experimentalGpuPreview: boolean }) => Promise<unknown>
         workspace: {
           createProject: (
             name: string,
@@ -45,7 +44,6 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
         }
       }
     }).luna
-    await api.saveSettings({ experimentalGpuPreview: true })
     const project = await api.workspace.createProject(
       '真实 4K GPU 预览诊断',
       assets.map(({ id, name, path: sourcePath }) => ({
@@ -71,7 +69,7 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
   }).click()
   await recordProgress('project-opened-waiting-for-wgpu')
 
-  const preview = lunaApp.page.locator('canvas.native-gpu-video-preview')
+  const preview = lunaApp.page.locator('canvas[data-renderer="webgpu"]')
   const loading = lunaApp.page.locator('.preview-loading-overlay')
   const playback = lunaApp.page.locator('.ui-video-controls-button')
   const progress = lunaApp.page.getByRole('slider', { name: '视频进度' })

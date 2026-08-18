@@ -66,7 +66,7 @@ WebGPU 不代表必然比 wgpu 更省资源。两者在不同平台可能仍使�
 
 输入继续使用现有 `PreviewLayer`/`CompositionInput` 适配后的结构，不创建只服务测试页的新协议。
 
-当前实现：`WebGpuCompositionRenderer` 已支持纯静态 media 图层、图层排序、sourceRect、cover/contain/stretch、opacity、基础 blend、旋转/翻转和基础调色；`PreviewStage` 通过实验性 GPU 预览开关接入，复杂图层自动保留旧路径。
+当前实现：`WebGpuCompositionRenderer` 已支持纯静态 media 图层、图层排序、sourceRect、cover/contain/stretch、opacity、基础 blend、旋转/翻转和基础调色；`PreviewStage` 默认按设备能力和图层能力矩阵接入 WebGPU，复杂图层自动保留兼容路径，不再提供实验性 GPU 预览开关。
 
 图片导出已经接入现有导出任务和分块写入协议。第一步只打开能够完整保留参数的静态媒体层；LUT、蒙版、裁剪、平移、曲线、高级调色、水印定位等能力列入后续 WebGPU 阶段，不以旧渲染器作为 WebGPU 失败回退。Live Photo 合并使用写入器返回的实际图片路径。
 
@@ -116,9 +116,11 @@ WebGPU 不代表必然比 wgpu 更省资源。两者在不同平台可能仍使�
 
 ### M7：创意效果和转场
 
-状态：待开始
+状态：暂缓（创意模式入口已下线）
 
 先迁移 blur、sharpen、vignette、grayscale、invert、sepia、RGB split、pixelate，再迁移 pixel stretch、pixel flow、glow、distortion、color reveal、only your color 和转场。
+
+当前策略：先不开放创意模式，`src/workspace/creative` 保留为后续迁移参考；通用 `CompositionReveal` WebGPU 能力暂保留，但不作为当前工作台入口。
 
 每类效果独立 pipeline，使用纹理池复用中间结果，不将所有效果堆进单个 fragment shader。
 
@@ -193,7 +195,7 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - [x] M5：完整调色参数链路（曲线、色轮、levels、HSL、细节和光晕）代码
 - [x] M5：蒙版纹理、羽化、变换和时间线代码（待 Electron 实机验收）
 - [x] M6：基础形状与文字纹理栅格化（待真实工作台验收）
-- [ ] M7：创意效果和转场
+- [ ] M7：创意效果和转场（暂缓，创意模式入口已移除）
 - [ ] 开始 M8-M9：图片和视频导出
 - [ ] 开始 M10-M11：删除原生预览和 Rust/wgpu
 
@@ -207,6 +209,7 @@ WebGPU 工作台预览稳定后，移除 `NativeGpuVideoPreview`、native previe
 - `pnpm run build:app`
 - Electron 中直接实例化 WebGPU Composition renderer，普通蒙版和局部调色预合成均成功提交并生成 PNG；蒙版区域像素和非蒙版区域像素符合预期，未产生 uncaptured error
 - Electron Playwright 验证页成功提交形状、圆角、圆形、描边和文字图层，画布生成非空 PNG，且无 renderer pageerror/error console
+- Electron Playwright 验证页成功验证 WebGPU `reveal` 半程裁剪：左侧像素可见、右侧像素保持底图，且无 renderer pageerror/error console
 - Electron Playwright 验证页成功生成 WebGPU 能力与帧耗时 JSON 基线，包含适配器信息、限制、首帧、平均值、P95 和错误记录
 - `git diff --check`
 

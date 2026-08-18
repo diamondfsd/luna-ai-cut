@@ -23,8 +23,8 @@ async function createVideo(outputPath: string, pattern: string): Promise<void> {
   ])
 }
 
-test('Windows GPU 预览切换素材和暂停时内存保持有界', async ({ lunaApp }, testInfo) => {
-  test.skip(process.platform !== 'win32', '验证 Windows 原生预览资源生命周期')
+test('Windows WebGPU 预览切换素材和暂停时内存保持有界', async ({ lunaApp }, testInfo) => {
+  test.skip(process.platform !== 'win32', '验证 Windows WebGPU 预览资源生命周期')
 
   const videoA = path.join(lunaApp.temporaryRoot, 'gpu-preview-a.mp4')
   const videoB = path.join(lunaApp.temporaryRoot, 'gpu-preview-b.mp4')
@@ -36,7 +36,6 @@ test('Windows GPU 预览切换素材和暂停时内存保持有界', async ({ lu
   await lunaApp.page.evaluate(async ({ first, second }) => {
     const api = (window as typeof window & {
       luna: {
-        saveSettings: (settings: { experimentalGpuPreview: boolean }) => Promise<unknown>
         workspace: {
           createProject: (
             name: string,
@@ -45,7 +44,6 @@ test('Windows GPU 预览切换素材和暂停时内存保持有界', async ({ lu
         }
       }
     }).luna
-    await api.saveSettings({ experimentalGpuPreview: true })
     await api.workspace.createProject('GPU preview memory test', [
       { id: 'preview-a', name: 'gpu-preview-a.mp4', path: first, kind: 'video' },
       { id: 'preview-b', name: 'gpu-preview-b.mp4', path: second, kind: 'video' },
@@ -61,7 +59,7 @@ test('Windows GPU 预览切换素材和暂停时内存保持有界', async ({ lu
     hasText: 'GPU preview memory test',
   }).click()
 
-  const preview = lunaApp.page.locator('canvas.native-gpu-video-preview')
+  const preview = lunaApp.page.locator('canvas[data-renderer="webgpu"]')
   const thumbs = lunaApp.page.locator('.workspace-thumb')
   const playback = lunaApp.page.locator('.ui-video-controls-button')
   await expect(preview).toBeVisible({ timeout: 30_000 })

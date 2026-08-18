@@ -145,6 +145,7 @@ export function WebGpuStaticImagePreview({
   return (
     <canvas
       ref={canvasRef}
+      data-renderer="webgpu"
       className={[
         className,
         imageInteraction.interactive && 'lrc-render-interactive',
