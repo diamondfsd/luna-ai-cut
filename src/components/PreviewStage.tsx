@@ -5,7 +5,6 @@ import { NativeGpuVideoPreview } from './NativeGpuVideoPreview'
 import { WebGpuStaticImagePreview } from './WebGpuStaticImagePreview'
 import { WebGpuVideoPreview } from './WebGpuVideoPreview'
 import { PreviewStageError } from './PreviewStageError'
-import { useApp } from '../context/AppContext'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls, toast } from '../ui'
@@ -34,7 +33,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
-  const { settings } = useApp()
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   // ── 媒体分辨率 ──
@@ -49,7 +47,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const gpuPreviewEnabled = settings?.experimentalGpuPreview ?? false
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
   const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
@@ -328,20 +325,17 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     keepCompositionVideoRenderer,
   )
   const useNativeGpuPreview = isDisplayVideo
-    && gpuPreviewEnabled
     && !livePlaying
     && !useCompositionVideoRenderer
     && !cropActive
     && viewScale === 'fit'
   const useWebGpuVideoPreview = isDisplayVideo
-    && gpuPreviewEnabled
     && !livePlaying
     && !useCompositionVideoRenderer
     && !cropActive
     && viewScale === 'fit'
     && canUseWebGpuVideoComposition(layers)
   const useWebGpuStaticPreview = !isDisplayVideo
-    && gpuPreviewEnabled
     && !cropActive
     && viewScale === 'fit'
     && canUseWebGpuStaticImageComposition(layers)

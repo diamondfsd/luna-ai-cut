@@ -116,7 +116,6 @@ function defaultSettings(): AppSettings {
     defaultWatermarkEnabled: true,
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
-    experimentalGpuPreview: false,
     organizeDownloadsByDate: false,
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
@@ -153,9 +152,6 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   ].includes(String(saved?.defaultWatermarkPosition))
     ? saved?.defaultWatermarkPosition
     : defaults.defaultWatermarkPosition
-  merged.experimentalGpuPreview = typeof saved?.experimentalGpuPreview === 'boolean'
-    ? saved.experimentalGpuPreview
-    : defaults.experimentalGpuPreview
   merged.organizeDownloadsByDate = typeof saved?.organizeDownloadsByDate === 'boolean'
     ? saved.organizeDownloadsByDate
     : defaults.organizeDownloadsByDate

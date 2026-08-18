@@ -70,6 +70,21 @@ const TEST_COMPOSITION: CompositionInput = {
       opacity: 1,
       zIndex: 2,
     },
+    {
+      id: 'reveal-sample',
+      layerType: 'shape',
+      source: { path: '' },
+      rect: { x: 0.14, y: 0.72, w: 0.72, h: 0.1 },
+      shape: 'rectangle',
+      fillColor: '#ef5a67',
+      opacity: 1,
+      reveal: {
+        direction: 'left-to-right',
+        start: 0,
+        duration: 1,
+      },
+      zIndex: 3,
+    },
   ],
 }
 
@@ -103,7 +118,7 @@ export function WebGpuCompositionTestPage() {
         }
       },
     }).then(async () => {
-      const stats = await renderer.render(TEST_COMPOSITION)
+      const stats = await renderer.render(TEST_COMPOSITION, 0.5)
       await renderer.waitForGpu()
       if (disposed) return
       setStatus('ready')

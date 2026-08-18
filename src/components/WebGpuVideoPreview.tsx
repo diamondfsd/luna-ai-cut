@@ -378,6 +378,7 @@ export function WebGpuVideoPreview({
     <>
       <canvas
         ref={canvasRef}
+        data-renderer="webgpu"
         className={[className, imageInteraction.interactive && 'lrc-render-interactive', imageInteraction.dragging && 'is-dragging'].filter(Boolean).join(' ')}
         style={imageInteraction.style}
         onPointerDown={imageInteraction.onPointerDown}

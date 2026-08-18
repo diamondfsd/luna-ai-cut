@@ -8,8 +8,8 @@ import { expect, test } from './fixtures/lunaElectron'
 
 const execFileAsync = promisify(execFile)
 
-test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
-  test.skip(process.platform !== 'win32', '验证 Windows GPU 预览禁用策略')
+test('Windows 工作台预览使用 WebGPU 且可以返回项目列表', async ({ lunaApp }) => {
+  test.skip(process.platform !== 'win32', '验证 Windows WebGPU 工作台预览')
   if (!ffmpegPath) throw new Error('测试视频生成工具不可用')
 
   const videoPath = path.join(lunaApp.temporaryRoot, 'workspace-native-preview.mp4')
@@ -27,7 +27,6 @@ test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
   await lunaApp.page.evaluate(async (sourcePath) => {
     const api = (window as typeof window & {
       luna: {
-        saveSettings: (settings: { experimentalGpuPreview: boolean }) => Promise<unknown>
         workspace: {
           createProject: (
             name: string,
@@ -36,7 +35,6 @@ test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
         }
       }
     }).luna
-    await api.saveSettings({ experimentalGpuPreview: true })
     await api.workspace.createProject('GPU 预览 E2E', [{
       id: 'gpu-preview-video',
       name: 'workspace-native-preview.mp4',
@@ -48,11 +46,6 @@ test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
   await lunaApp.page.waitForLoadState('domcontentloaded')
 
   await lunaApp.page.evaluate(() => {
-    window.location.hash = '#/settings'
-  })
-  await expect(lunaApp.page.getByRole('switch', { name: 'GPU 预览加速' })).toHaveCount(0)
-
-  await lunaApp.page.evaluate(() => {
     window.location.hash = '#/workspace'
   })
 
@@ -60,7 +53,7 @@ test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
   await expect(project).toBeVisible()
   await project.click()
 
-  await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas')).toBeVisible({ timeout: 30_000 })
+  await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas[data-renderer="webgpu"]')).toBeVisible({ timeout: 30_000 })
   await expect(lunaApp.page.locator('canvas.native-gpu-video-preview')).toHaveCount(0)
 
   await lunaApp.page.getByRole('button', { name: '返回工作台' }).click()

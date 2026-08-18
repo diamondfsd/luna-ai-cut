@@ -1,4 +1,4 @@
-import type { CompositionInput, CompositionLayer, RenderColorAdjustments } from '../../shared/types'
+import type { CompositionInput, CompositionLayer, RenderColorAdjustments, WatermarkPositioning } from '../../shared/types'
 import { WEBGPU_FLAGS } from './constants'
 import {
   buildWebGpuColorCurveLut,
@@ -13,6 +13,7 @@ import { getWebGpuSourceDimensions, type WebGpuImageSource } from './source'
 import { hasRasterizableWebGpuLayerContent, rasterizeWebGpuLayer } from './layer-rasterizer'
 import { maskTimelineSampleAt } from '../../workspace/mask/maskTimeline'
 import { maskTrackTransformAt } from '../../workspace/mask/maskTrack'
+import { compositionRevealProgress } from '../revealProgress'
 
 export interface WebGpuCompositionRenderStats {
   submitMs: number
@@ -71,7 +72,7 @@ const HIDDEN_MASK = Symbol('hidden-mask')
 type SupportedBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
 
 const BLEND_MODES: SupportedBlendMode[] = ['normal', 'multiply', 'screen', 'add']
-const LAYER_UNIFORM_FLOATS = 26 * 4
+const LAYER_UNIFORM_FLOATS = 27 * 4
 const LAYER_UNIFORM_BYTES = LAYER_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT
 
 function paddedLutData(lut: WebGpuLutData): { data: Uint8Array; bytesPerRow: number } {
@@ -94,6 +95,7 @@ const COMPOSITION_SHADER = /* wgsl */ `
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
+  @location(1) localPosition: vec2f,
 };
 
 struct LayerUniforms {
@@ -112,6 +114,7 @@ struct LayerUniforms {
   hsl: array<vec4f, 12>,
   mask: vec4f,
   maskTransform: vec4f,
+  reveal: vec4f,
 };
 
 @group(0) @binding(0) var sourceSampler: sampler;
@@ -148,6 +151,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
   if (layer.transform.z > 0.5) { uv.x = 1.0 - uv.x; }
   if (layer.transform.w > 0.5) { uv.y = 1.0 - uv.y; }
   output.uv = layer.sourceRect.xy + uv * layer.sourceRect.zw;
+  output.localPosition = sourcePosition;
   return output;
 }
 
@@ -376,6 +380,10 @@ fn sampleMask(uv: vec2f) -> f32 {
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  let revealProgress = clamp(layer.reveal.x, 0.0, 1.0);
+  if (input.localPosition.x >= revealProgress) {
+    discard;
+  }
   let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
   var maskValue = 1.0;
   if (layer.mask.w > 0.5) {
@@ -383,7 +391,13 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   }
   let adjusted = applyLut(applyColor(sampled.rgb, input.uv));
   let isLocalColor = layer.mask.w > 1.5;
-  let color = select(mix(sampled.rgb, adjusted, maskValue), adjusted, isLocalColor);
+  var color = select(mix(sampled.rgb, adjusted, maskValue), adjusted, isLocalColor);
+  if (revealProgress > 0.001 && revealProgress < 0.999) {
+    let edgeDistance = revealProgress - input.localPosition.x;
+    let edgeWidth = max(fwidth(input.localPosition.x) * 1.5, 0.001);
+    let edgeAlpha = (1.0 - smoothstep(0.0, edgeWidth, edgeDistance)) * 0.28;
+    color = mix(color, vec3f(1.0), clamp(edgeAlpha, 0.0, 1.0));
+  }
   let alpha = sampled.a * layer.style.x * select(1.0, maskValue, isLocalColor);
   return vec4f(color, alpha);
 }
@@ -400,6 +414,7 @@ function createLayerUniforms(
   sourceRect: [number, number, number, number],
   luts: { creative: CachedLutTexture; restore: CachedLutTexture | null },
   mask: ResolvedMask | null,
+  revealProgress: number,
 ): Float32Array {
   const transform = layer.transform
   const color = layer.color
@@ -479,6 +494,7 @@ function createLayerUniforms(
     mask?.transform.scale ?? 1,
     mask?.transform.rotation ?? 0,
   ], 100)
+  uniforms.set([Math.max(0, Math.min(1, revealProgress)), 0, 0, 0], 104)
   return uniforms
 }
 
@@ -522,6 +538,7 @@ function sourceRectForLayer(
   let y = Math.max(0, Math.min(1, requested.y))
   let w = Math.max(0.0001, Math.min(1 - x, requested.w))
   let h = Math.max(0.0001, Math.min(1 - y, requested.h))
+  if (resolvePositioning(layer.positioning, canvasWidth, canvasHeight)) return [x, y, w, h]
   if (layer.fit === 'stretch' || layer.fit === 'cover-scale') return [x, y, w, h]
 
   const targetAspect = Math.max(
@@ -549,6 +566,53 @@ function destinationRectForLayer(
   canvasWidth: number,
   canvasHeight: number,
 ): [number, number, number, number] {
+  const positioning = resolvePositioning(layer.positioning, canvasWidth, canvasHeight)
+  if (positioning) {
+    const targetWidth = Math.max(0.0001, Math.min(1, positioning.targetWidth))
+    const canvasAspect = canvasWidth / Math.max(1, canvasHeight)
+    const sourceAspect = sourceWidth / Math.max(1, sourceHeight)
+    const targetHeight = Math.min(1, targetWidth * canvasAspect / Math.max(0.0001, sourceAspect))
+    const marginX = positioning.marginX ?? 0
+    const marginY = positioning.marginY ?? 0
+    let x = layer.rect.x
+    let y = layer.rect.y
+    switch (positioning.anchor) {
+      case 'top-left':
+        x = marginX
+        y = marginY
+        break
+      case 'top-center':
+        x = (1 - targetWidth) / 2
+        y = marginY
+        break
+      case 'top-right':
+        x = 1 - targetWidth - marginX
+        y = marginY
+        break
+      case 'bottom-left':
+        x = marginX
+        y = 1 - targetHeight - marginY
+        break
+      case 'bottom-center':
+        x = (1 - targetWidth) / 2
+        y = 1 - targetHeight - marginY
+        break
+      case 'bottom-right':
+        x = 1 - targetWidth - marginX
+        y = 1 - targetHeight - marginY
+        break
+      case 'center':
+        x = (1 - targetWidth) / 2
+        y = (1 - targetHeight) / 2
+        break
+    }
+    return [
+      Math.max(0, Math.min(1 - targetWidth, x)),
+      Math.max(0, Math.min(1 - targetHeight, y)),
+      targetWidth,
+      targetHeight,
+    ]
+  }
   if (layer.fit !== 'contain') return [layer.rect.x, layer.rect.y, layer.rect.w, layer.rect.h]
   const sourceAspect = Math.max(0.0001, sourceWidth / sourceHeight)
   const targetAspect = Math.max(
@@ -561,6 +625,17 @@ function destinationRectForLayer(
   }
   const width = layer.rect.h * sourceAspect
   return [layer.rect.x + (layer.rect.w - width) / 2, layer.rect.y, width, layer.rect.h]
+}
+
+function resolvePositioning(
+  positioning: CompositionLayer['positioning'],
+  canvasWidth: number,
+  canvasHeight: number,
+): WatermarkPositioning | null {
+  if (!positioning) return null
+  if ('anchor' in positioning) return positioning
+  const preferred = canvasWidth >= canvasHeight ? positioning.landscape : positioning.portrait
+  return preferred ?? positioning.landscape ?? positioning.portrait ?? null
 }
 
 function blendState(mode: SupportedBlendMode): GPUBlendState {
@@ -869,7 +944,10 @@ export class WebGpuCompositionRenderer {
     const mask = resolvedMask
       ? await this.getMaskTexture(layer, resolvedMask.path)
       : this.getIdentityMask()
-    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, luts, resolvedMask)
+    const revealProgress = layer.reveal
+      ? compositionRevealProgress(layer.reveal, time)
+      : 1
+    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, luts, resolvedMask, revealProgress)
     const mode = (layer.blendMode ?? 'normal') as SupportedBlendMode
     const pipeline = this.pipelines.get(BLEND_MODES.includes(mode) ? mode : 'normal')!
     return {
