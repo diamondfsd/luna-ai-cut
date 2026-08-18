@@ -134,7 +134,7 @@ Runs on-device in the browser — nothing is uploaded.
 - AI captioning with local vision-language providers and configurable sample cadence
 - Scene detection with fast histogram or frame-accurate adaptive content analysis and optional model verification
 - Scene Browser for searching captioned media and reusing detected moments
-- Local Kokoro text-to-speech voiceovers
+- Local MOSS multilingual text-to-speech voiceovers
 - Local Stable Audio 3 music and sound-effect generation with presets, progress, and cancellation
 - Local model cache controls and unload controls in settings
 
@@ -206,7 +206,7 @@ Brave may disable the File System Access API. To enable it:
 - [Tailwind CSS 4](https://tailwindcss.com/) + [Radix UI](https://www.radix-ui.com/) + shadcn-style components
 - [Mediabunny](https://mediabunny.dev/) for media decoding, metadata, and audio encoding support
 - [Transformers.js](https://huggingface.co/docs/transformers.js) for local browser AI models
-- [Kokoro.js](https://www.npmjs.com/package/kokoro-js) for WebGPU text-to-speech
+- MOSS-TTS-Nano for local multilingual text-to-speech
 - Web Workers and AudioWorklets for heavy media processing off the main thread
 
 ## Development
