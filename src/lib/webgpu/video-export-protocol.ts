@@ -7,6 +7,8 @@ export interface WebGpuVideoExportSourceMessage {
   bytes: ArrayBuffer
   mimeType: string
   fileName: string
+  /** 视频流在文件元数据中记录的平均码率，单位为 bit/s。 */
+  sourceBitrate?: number
 }
 
 export interface WebGpuVideoExportLutMessage {

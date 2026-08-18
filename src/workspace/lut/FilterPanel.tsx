@@ -10,6 +10,8 @@ import { ParamSlider } from '../components/ParamSlider'
 import { findLunaUltraRestoreLut, isLunaUltraRestoreLut, isLunaUltraTechnicalLut } from './lunaUltraRestoreLut'
 import './FilterPanel.css'
 
+const FILTER_THUMBNAIL_INTENSITY = 30
+
 interface FilterPanelProps {
   restoreLutId: string | null
   onRestoreChange: (lutId: string | null) => void
@@ -318,7 +320,9 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
                       deleting={deletingLutPath === lut.filePath}
                       onDelete={!lut.isBuiltin ? () => void handleDeleteLut(lut) : undefined}
                       mediaPath={mediaPath ?? null}
-                      intensity={intensity}
+                      // Category thumbnails are reference previews. They must not
+                      // be regenerated for every movement of the active LUT slider.
+                      intensity={FILTER_THUMBNAIL_INTENSITY}
                     />
                   ))}
                 </div>
