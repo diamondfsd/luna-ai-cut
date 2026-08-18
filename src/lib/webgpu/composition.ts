@@ -13,6 +13,7 @@ import { getWebGpuSourceDimensions, type WebGpuImageSource } from './source'
 import { hasRasterizableWebGpuLayerContent, rasterizeWebGpuLayer, type WebGpuFontResolver } from './layer-rasterizer'
 import { maskTimelineSampleAt } from '../../workspace/mask/maskTimeline'
 import { maskTrackTransformAt } from '../../workspace/mask/maskTrack'
+import { shouldSwapOrientation } from '../../workspace/transform/cropGeometry'
 import { compositionRevealProgress } from '../revealProgress'
 
 export interface WebGpuCompositionRenderStats {
@@ -73,7 +74,7 @@ const HIDDEN_MASK = Symbol('hidden-mask')
 type SupportedBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
 
 const BLEND_MODES: SupportedBlendMode[] = ['normal', 'multiply', 'screen', 'add']
-const LAYER_UNIFORM_FLOATS = 40 * 4
+const LAYER_UNIFORM_FLOATS = 42 * 4
 const LAYER_UNIFORM_BYTES = LAYER_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT
 
 function paddedLutData(lut: WebGpuLutData): { data: Uint8Array; bytesPerRow: number } {
@@ -126,6 +127,8 @@ struct LayerUniforms {
   pixelStretchCenter: vec4f,
   pixelStretchPathMeta: vec4f,
   pixelStretchPathData: array<vec4f, 4>,
+  crop: vec4f,
+  geometry: vec4f,
 };
 
 @group(0) @binding(0) var sourceSampler: sampler;
@@ -147,23 +150,29 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     vec2f(1.0, 1.0)
   );
   let sourcePosition = positions[vertexIndex];
-  let centered = sourcePosition - vec2f(0.5, 0.5);
+  let framePosition = layer.crop.xy + sourcePosition * layer.crop.zw;
+  var centered = (framePosition - vec2f(0.5, 0.5)) * vec2f(max(layer.geometry.x, 0.0001), 1.0);
+  centered = centered / max(layer.transform.x, 0.0001) - layer.reveal.yz;
   let angle = layer.transform.y;
-  let rotated = vec2f(
-    centered.x * cos(angle) - centered.y * sin(angle),
-    centered.x * sin(angle) + centered.y * cos(angle)
-  ) * max(layer.transform.x, 0.0001);
-  let localPosition = rotated + vec2f(0.5, 0.5);
-  let canvasPosition = layer.rect.xy + localPosition * layer.rect.zw + layer.reveal.yz;
+  let sourceCentered = vec2f(
+    centered.x * cos(angle) + centered.y * sin(angle),
+    -centered.x * sin(angle) + centered.y * cos(angle)
+  );
+  var sourceLocal = sourceCentered / vec2f(max(layer.geometry.y, 0.0001), 1.0) + vec2f(0.5, 0.5);
+  if (layer.transform.z > 0.5) { sourceLocal.x = 1.0 - sourceLocal.x; }
+  if (layer.transform.w > 0.5) { sourceLocal.y = 1.0 - sourceLocal.y; }
+  let canvasPosition = layer.rect.xy + sourcePosition * layer.rect.zw;
 
   var output: VertexOutput;
   output.position = vec4f(canvasPosition.x * 2.0 - 1.0, 1.0 - canvasPosition.y * 2.0, 0.0, 1.0);
-  var uv = sourcePosition;
-  if (layer.transform.z > 0.5) { uv.x = 1.0 - uv.x; }
-  if (layer.transform.w > 0.5) { uv.y = 1.0 - uv.y; }
-  output.uv = layer.sourceRect.xy + uv * layer.sourceRect.zw;
+  output.uv = layer.sourceRect.xy + sourceLocal * layer.sourceRect.zw;
   output.localPosition = sourcePosition;
   return output;
+}
+
+fn sourceUvIsValid(uv: vec2f) -> bool {
+  let local = (uv - layer.sourceRect.xy) / max(layer.sourceRect.zw, vec2f(0.0001));
+  return local.x >= 0.0 && local.x <= 1.0 && local.y >= 0.0 && local.y <= 1.0;
 }
 
 fn luminance(c: vec3f) -> f32 {
@@ -830,6 +839,9 @@ fn fragmentFastMain(input: VertexOutput) -> @location(0) vec4f {
   if (input.localPosition.x >= revealProgress) {
     discard;
   }
+  if (!sourceUvIsValid(input.uv)) {
+    discard;
+  }
   let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
   return vec4f(sampled.rgb, sampled.a * layer.style.x);
 }
@@ -838,6 +850,9 @@ fn fragmentFastMain(input: VertexOutput) -> @location(0) vec4f {
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let revealProgress = clamp(layer.reveal.x, 0.0, 1.0);
   if (input.localPosition.x >= revealProgress) {
+    discard;
+  }
+  if (!sourceUvIsValid(input.uv)) {
     discard;
   }
   let sampled = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
@@ -908,6 +923,9 @@ function createLayerUniforms(
   layer: CompositionLayer,
   targetRect: [number, number, number, number],
   sourceRect: [number, number, number, number],
+  sourceCrop: [number, number, number, number],
+  sourceAspect: number,
+  frameAspect: number,
   luts: { creative: CachedLutTexture; restore: CachedLutTexture | null },
   mask: ResolvedMask | null,
   revealProgress: number,
@@ -1091,6 +1109,8 @@ function createLayerUniforms(
     pixelStretch?.fillSampleGaps ? 1 : 0,
   ], 140)
   uniforms.set(pathData, 144)
+  uniforms.set(sourceCrop, 160)
+  uniforms.set([frameAspect, sourceAspect, 0, 0], 164)
   return uniforms
 }
 
@@ -1124,31 +1144,48 @@ function resolveMaskForLayer(layer: CompositionLayer, time: number): ResolvedMas
 
 function sourceRectForLayer(
   layer: CompositionLayer,
+): [number, number, number, number] {
+  const requested = layer.sourceRect ?? { x: 0, y: 0, w: 1, h: 1 }
+  const x = Math.max(0, Math.min(1, requested.x))
+  const y = Math.max(0, Math.min(1, requested.y))
+  const w = Math.max(0.0001, Math.min(1 - x, requested.w))
+  const h = Math.max(0.0001, Math.min(1 - y, requested.h))
+  return [x, y, w, h]
+}
+
+function sourceCropForLayer(
+  layer: CompositionLayer,
+  sourceRect: [number, number, number, number],
+  targetRect: [number, number, number, number],
   sourceWidth: number,
   sourceHeight: number,
   canvasWidth: number,
   canvasHeight: number,
 ): [number, number, number, number] {
-  const requested = layer.sourceRect ?? { x: 0, y: 0, w: 1, h: 1 }
+  const requested = layer.transform?.crop ?? { x: 0, y: 0, w: 1, h: 1 }
   let x = Math.max(0, Math.min(1, requested.x))
   let y = Math.max(0, Math.min(1, requested.y))
   let w = Math.max(0.0001, Math.min(1 - x, requested.w))
   let h = Math.max(0.0001, Math.min(1 - y, requested.h))
   if (resolvePositioning(layer.positioning, canvasWidth, canvasHeight)) return [x, y, w, h]
-  if (layer.fit === 'stretch' || layer.fit === 'cover-scale') return [x, y, w, h]
+  if (layer.fit === 'stretch' || layer.fit === 'cover-scale' || layer.fit === 'contain') return [x, y, w, h]
 
   const targetAspect = Math.max(
     0.0001,
-    (layer.rect.w * canvasWidth) / Math.max(layer.rect.h * canvasHeight, 0.0001),
+    (targetRect[2] * canvasWidth) / Math.max(targetRect[3] * canvasHeight, 0.0001),
   )
-  const sourceAspect = Math.max(0.0001, (sourceWidth * w) / Math.max(sourceHeight * h, 0.0001))
-  if (layer.fit === 'contain') return [x, y, w, h]
+  const rawSourceAspect = Math.max(
+    0.0001,
+    (sourceWidth * sourceRect[2]) / Math.max(sourceHeight * sourceRect[3], 0.0001),
+  )
+  const swapped = shouldSwapOrientation(layer.transform?.orientation ?? 0)
+  const sourceAspect = swapped ? 1 / rawSourceAspect : rawSourceAspect
   if (sourceAspect > targetAspect) {
-    const croppedWidth = h * targetAspect * sourceHeight / sourceWidth
+    const croppedWidth = h * targetAspect / sourceAspect
     x += (w - croppedWidth) / 2
     w = croppedWidth
   } else {
-    const croppedHeight = w / targetAspect * sourceWidth / sourceHeight
+    const croppedHeight = w * sourceAspect / targetAspect
     y += (h - croppedHeight) / 2
     h = croppedHeight
   }
@@ -1555,13 +1592,23 @@ export class WebGpuCompositionRenderer {
       canvasWidth,
       canvasHeight,
     )
-    const sourceRect = sourceRectForLayer(
+    const sourceRect = sourceRectForLayer(layoutLayer)
+    const sourceCrop = sourceCropForLayer(
       layoutLayer,
+      sourceRect,
+      targetRect,
       source.width,
       source.height,
       canvasWidth,
       canvasHeight,
     )
+    const sourceAspect = Math.max(
+      0.0001,
+      (source.width * sourceRect[2]) / Math.max(source.height * sourceRect[3], 0.0001),
+    )
+    const frameAspect = shouldSwapOrientation(layoutLayer.transform?.orientation ?? 0)
+      ? 1 / sourceAspect
+      : sourceAspect
     const luts = await this.getLayerLuts(layer)
     const curve = this.getLayerCurve(layer.color)
     const mask = resolvedMask
@@ -1570,7 +1617,7 @@ export class WebGpuCompositionRenderer {
     const revealProgress = layer.reveal
       ? compositionRevealProgress(layer.reveal, time)
       : 1
-    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, luts, resolvedMask, revealProgress, time)
+    const uniforms = createLayerUniforms(layer, targetRect, sourceRect, sourceCrop, sourceAspect, frameAspect, luts, resolvedMask, revealProgress, time)
     const mode = (layer.blendMode ?? 'normal') as SupportedBlendMode
     const normalizedMode = BLEND_MODES.includes(mode) ? mode : 'normal'
     const pipelineMap = canUseFastCompositionPath(layer, resolvedMask)
