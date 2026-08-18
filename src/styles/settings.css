@@ -1,29 +1,151 @@
 /* ====== 设置页面布局 ====== */
 
 .settings-surface {
-  min-height: calc(100vh - 96px);
+  min-height: 100%;
   background: var(--parchment);
   padding: 32px 24px 80px;
 }
 
-.settings-list {
+.settings-layout {
   display: grid;
-  max-width: 980px;
-  gap: 24px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: start;
+  gap: 40px;
+  width: min(1120px, 100%);
   margin: 0 auto;
+}
+
+.settings-sidebar {
+  position: sticky;
+  top: 24px;
+  display: grid;
+  gap: 22px;
+}
+
+.settings-sidebar-heading {
+  display: grid;
+  gap: 3px;
+  padding: 4px 12px;
+}
+
+.settings-sidebar-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-sidebar-heading strong {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.settings-nav {
+  display: grid;
+  gap: 5px;
+}
+
+.settings-nav-item.ui-btn {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  justify-content: start;
+  min-height: 62px;
+  gap: 11px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  white-space: normal;
+}
+
+.settings-nav-item.ui-btn:hover {
+  border-color: var(--hairline);
+  background: rgba(255, 255, 255, 0.48);
+  color: var(--ink);
+}
+
+.settings-nav-item.ui-btn.active {
+  border-color: color-mix(in srgb, var(--blue) 16%, var(--hairline));
+  background: color-mix(in srgb, var(--blue) 8%, var(--canvas));
+  color: var(--blue);
+}
+
+.settings-nav-item.ui-btn.active::before {
+  position: absolute;
+  left: -1px;
+  width: 3px;
+  height: 24px;
+  border-radius: 0 3px 3px 0;
+  background: var(--blue);
+  content: '';
+}
+
+.settings-nav-item.ui-btn > .ui-btn-icon {
+  color: inherit;
+}
+
+.settings-nav-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.settings-nav-copy strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-main {
+  display: grid;
+  min-width: 0;
+  gap: 24px;
+}
+
+.settings-content-header {
+  display: grid;
+  gap: 5px;
+  padding: 2px 2px 0;
+}
+
+.settings-content-header > span {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-content-header h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.settings-content-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .settings-group {
   display: grid;
   gap: 10px;
-}
-
-.settings-group-title {
-  margin: 0;
-  padding: 0 4px;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
 }
 
 .settings-card {
@@ -55,7 +177,7 @@
 }
 
 .settings-row-copy span {
-  color: var(--text);
+  color: var(--ink);
   font-size: 14px;
   font-weight: 600;
 }
@@ -103,4 +225,71 @@
   color: #248a3d;
   font-size: 11px;
   font-weight: 600;
+}
+
+.settings-model-dialog.ui-dialog-content {
+  width: min(760px, 94vw);
+}
+
+.settings-model-dialog-body {
+  min-height: 0;
+  padding: 16px 20px 22px;
+}
+
+@media (max-width: 760px) {
+  .settings-surface {
+    padding: 24px 16px 56px;
+  }
+
+  .settings-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .settings-sidebar {
+    position: static;
+    gap: 12px;
+  }
+
+  .settings-sidebar-heading {
+    padding-inline: 4px;
+  }
+
+  .settings-sidebar-heading strong {
+    font-size: 20px;
+  }
+
+  .settings-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-nav-item.ui-btn {
+    min-height: 58px;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .settings-row-actions,
+  .settings-row > .ui-btn {
+    justify-content: flex-start;
+  }
+
+  .settings-row-actions {
+    flex-wrap: wrap;
+  }
+
+  .settings-content-header h1 {
+    font-size: 22px;
+  }
 }

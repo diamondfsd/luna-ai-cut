@@ -203,6 +203,7 @@ export type AiSelectionModelId = typeof AI_SELECTION_MODELS[number]['id']
 export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
 export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
 export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId
+export type SegmentationModelPreparationId = SegmentationModelId | AiSelectionModelId
 export function modelForSegmentationRequest(
   targetId: AutomaticSegmentationTargetId | undefined,
   requestedModelId: SegmentationModelId | undefined,
