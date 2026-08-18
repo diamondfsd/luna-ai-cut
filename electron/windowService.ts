@@ -1,5 +1,21 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import path from 'node:path'
+import type { WindowCloseBehavior } from '../src/shared/types'
+
+let appQuitting = false
+let windowCloseBehavior: WindowCloseBehavior = 'quit'
+
+app.on('before-quit', () => {
+  appQuitting = true
+})
+
+export function setMainWindowCloseBehavior(behavior: WindowCloseBehavior | undefined): void {
+  windowCloseBehavior = behavior === 'hide' ? 'hide' : 'quit'
+}
+
+export function getMainWindowCloseBehavior(): WindowCloseBehavior {
+  return windowCloseBehavior
+}
 
 interface MainWindowOptions {
   devServerUrl: string | undefined
@@ -10,6 +26,7 @@ interface MainWindowOptions {
   hasActiveExports: () => boolean
   abortDownloads: () => void
   abortExports: () => void
+  getWindowCloseBehavior: () => WindowCloseBehavior
 }
 
 export function activateMainWindow(win: BrowserWindow): void {
@@ -49,7 +66,15 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   win.on('close', (event) => {
     const hasDownloadTasks = options.hasActiveDownloads()
     const hasExportTasks = options.hasActiveExports()
-    if (forceQuitAfterTaskCancel || (!hasDownloadTasks && !hasExportTasks)) return
+    if (forceQuitAfterTaskCancel) return
+
+    if (!hasDownloadTasks && !hasExportTasks) {
+      if (!appQuitting && options.getWindowCloseBehavior() === 'hide') {
+        event.preventDefault()
+        win.hide()
+      }
+      return
+    }
 
     event.preventDefault()
     const tasks = [

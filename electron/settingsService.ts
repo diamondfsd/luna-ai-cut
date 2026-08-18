@@ -69,6 +69,9 @@ function defaultSettings(): AppSettings {
     workspacePreviewQuality: 'balanced',
     experimentalGpuPreview: false,
     organizeDownloadsByDate: false,
+    localMediaShareDirectories: [],
+    localMediaShareFiles: [],
+    windowCloseBehavior: 'quit',
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,
@@ -110,6 +113,18 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.organizeDownloadsByDate = typeof saved?.organizeDownloadsByDate === 'boolean'
     ? saved.organizeDownloadsByDate
     : defaults.organizeDownloadsByDate
+  const savedShareDirectories = saved?.localMediaShareDirectories
+  merged.localMediaShareDirectories = Array.isArray(savedShareDirectories)
+    ? savedShareDirectories.filter((directory): directory is string => typeof directory === 'string' && directory.trim().length > 0)
+    : defaults.localMediaShareDirectories
+  const savedShareFiles = saved?.localMediaShareFiles
+  merged.localMediaShareFiles = Array.isArray(savedShareFiles)
+    ? savedShareFiles.filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0)
+    : defaults.localMediaShareFiles
+  const savedWindowCloseBehavior = saved?.windowCloseBehavior
+  merged.windowCloseBehavior = savedWindowCloseBehavior === 'hide' || savedWindowCloseBehavior === 'quit'
+    ? savedWindowCloseBehavior
+    : defaults.windowCloseBehavior
   if (!merged.localResourcesDir) {
     merged.localResourcesDir = getLocalResourcesDir(merged)
   }

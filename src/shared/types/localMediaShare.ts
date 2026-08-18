@@ -1,4 +1,4 @@
-export type LocalMediaShareSource = 'local' | 'export'
+export type LocalMediaShareSource = 'local' | 'export' | 'custom'
 
 export interface LocalMediaShareNetwork {
   id: string
@@ -14,5 +14,13 @@ export interface LocalMediaShareStatus {
   qrDataUrl: string | null
   localCount: number
   exportCount: number
+  customCount: number
+  sharedFileCount: number
   startedAt: number | null
+}
+
+export interface LocalMediaShareEntry {
+  kind: 'directory' | 'file'
+  path: string
+  name: string
 }

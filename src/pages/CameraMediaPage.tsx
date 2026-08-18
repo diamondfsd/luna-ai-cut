@@ -7,6 +7,7 @@ import { PreviewModal } from '../components/PreviewModal'
 import type { LunaFile } from '../shared/types'
 import { useMediaLibraryController, MediaLibraryCtx } from './useMediaLibraryController'
 import { Modal } from '../ui'
+import '../styles/camera-media-preview.css'
 import '../styles/library.css'
 
 function previewPath(file: LunaFile): string {
@@ -15,6 +16,31 @@ function previewPath(file: LunaFile): string {
 
 function usesProxyPreview(file: LunaFile): boolean {
   return !file.downloadFilePath && !file.localPath && Boolean(file.previewUrl) && previewPath(file) === file.previewUrl
+}
+
+function originalVideoPreviewUrls(
+  files: LunaFile[],
+  downloadProgress: ReturnType<typeof useMediaLibraryController>['downloadProgress'],
+): Record<string, string> {
+  return Object.fromEntries(
+    files.flatMap((file) => {
+      const filePath = previewPath(file)
+      const originalUrl = file.sourceUrl || file.url
+      const progress = downloadProgress.get(file.name)
+      const downloaded = Boolean(
+        file.downloadFilePath
+        || file.localPath
+        || progress?.status === 'done'
+        || progress?.status === 'exists',
+      )
+      if (
+        file.kind !== 'video'
+        || downloaded
+        || !originalUrl
+      ) return []
+      return [[filePath, originalUrl] as const]
+    }),
+  )
 }
 
 /** 格式化日期，年月日和星期之间加空格 */
@@ -40,6 +66,7 @@ export function CameraMediaPage() {
   const location = useLocation()
   const pageActive = location.pathname === '/library' || location.pathname === '/'
   const controller = useMediaLibraryController('camera')
+  const originalVideoUrls = originalVideoPreviewUrls(controller.filteredFiles, controller.downloadProgress)
 
   // 页面组件只管理滚动日期状态，其他状态通过 Context 共享给子组件
   const [currentDate, setCurrentDate] = useState(
@@ -117,6 +144,7 @@ export function CameraMediaPage() {
           filePath={previewPath(controller.previewFile)}
           filePathList={controller.filteredFiles.map(previewPath)}
           proxyPreviewPaths={controller.filteredFiles.filter(usesProxyPreview).map(previewPath)}
+          originalVideoUrls={originalVideoUrls}
           isFileSelected={(filePath) => {
             const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
             return Boolean(file && controller.selected.has(file.id))
