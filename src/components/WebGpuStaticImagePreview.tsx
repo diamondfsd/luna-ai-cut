@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { PreviewLayer } from '../shared/types'
+import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { WebGpuCompositionRenderer } from '../lib/webgpu/composition'
 import { readWebGpuLut } from '../lib/webgpu/lut-source'
@@ -59,6 +59,8 @@ export function WebGpuStaticImagePreview({
   const rendererRef = useRef<WebGpuCompositionRenderer | null>(null)
   const imageCacheRef = useRef(new Map<string, HTMLImageElement>())
   const renderRevisionRef = useRef(0)
+  const pendingRenderRef = useRef<{ composition: CompositionInput; time: number; revision: number } | null>(null)
+  const renderingRef = useRef(false)
   const destroyedRef = useRef(false)
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
@@ -73,6 +75,35 @@ export function WebGpuStaticImagePreview({
     imageScale,
     onImageScaleChange,
   })
+
+  const drainRenderQueue = useCallback(async () => {
+    if (renderingRef.current || destroyedRef.current) return
+    const renderer = rendererRef.current
+    if (!renderer) return
+
+    renderingRef.current = true
+    try {
+      while (!destroyedRef.current) {
+        const request = pendingRenderRef.current
+        if (!request) break
+        pendingRenderRef.current = null
+
+        await renderer.render(request.composition, request.time)
+        await renderer.waitForGpu()
+        if (destroyedRef.current || request.revision !== renderRevisionRef.current) continue
+        callbacksRef.current.onRender?.()
+      }
+    } catch (error: unknown) {
+      const request = pendingRenderRef.current
+      if (destroyedRef.current || (request && request.revision !== renderRevisionRef.current)) return
+      const message = error instanceof Error ? error.message : String(error)
+      setFatalError(message)
+      callbacksRef.current.onError?.(message)
+    } finally {
+      renderingRef.current = false
+      if (!destroyedRef.current && pendingRenderRef.current) void drainRenderQueue()
+    }
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -107,6 +138,7 @@ export function WebGpuStaticImagePreview({
     return () => {
       destroyedRef.current = true
       renderRevisionRef.current += 1
+      pendingRenderRef.current = null
       renderer.destroy()
       rendererRef.current = null
       imageCache.clear()
@@ -124,17 +156,9 @@ export function WebGpuStaticImagePreview({
       composition.canvas.width = Math.max(1, Math.round(composition.canvas.width * scale))
       composition.canvas.height = Math.max(1, Math.round(composition.canvas.height * scale))
     }
-    void renderer.render(composition, time).then(async () => {
-      await renderer.waitForGpu()
-      if (destroyedRef.current || revision !== renderRevisionRef.current) return
-      callbacksRef.current.onRender?.()
-    }).catch((error: unknown) => {
-      if (destroyedRef.current || revision !== renderRevisionRef.current) return
-      const message = error instanceof Error ? error.message : String(error)
-      setFatalError(message)
-      callbacksRef.current.onError?.(message)
-    })
-  }, [canvasHeight, canvasWidth, fatalError, layers, maxSide, ready, time])
+    pendingRenderRef.current = { composition, time, revision }
+    void drainRenderQueue()
+  }, [canvasHeight, canvasWidth, drainRenderQueue, fatalError, layers, maxSide, ready, time])
 
   useEffect(() => {
     callbacksRef.current.onViewportChange?.()

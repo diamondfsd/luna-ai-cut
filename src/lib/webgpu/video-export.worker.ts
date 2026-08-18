@@ -56,7 +56,7 @@ class VideoEncodeQueue {
   }
 }
 
-type EncodableVideoCodec = 'avc' | 'hevc'
+type EncodableVideoCodec = 'avc' | 'hevc' | 'vp9' | 'av1'
 
 const workerScope = globalThis as unknown as WorkerScope
 let activeController: AbortController | null = null
@@ -179,6 +179,47 @@ function sourceTimeForLayer(layer: CompositionLayer, compositionTime: number): n
   return start + boundedElapsed
 }
 
+/**
+ * Probe the same VideoSampleSource path used by the real export. A codec can
+ * pass isConfigSupported() and still fail once the track frame rate and the
+ * sample display size are attached, so the probe must submit one real sample.
+ */
+async function canEncodeVideoFrame(
+  mediabunny: MediabunnyModule,
+  codec: EncodableVideoCodec,
+  bitrate: number,
+  fps: number,
+  canvas: OffscreenCanvas,
+): Promise<boolean> {
+  const output = new mediabunny.Output({
+    format: new mediabunny.Mp4OutputFormat({ fastStart: false }),
+    target: new mediabunny.NullTarget(),
+  })
+  const source = new mediabunny.VideoSampleSource({
+    codec,
+    bitrate,
+    bitrateMode: 'variable',
+    keyFrameInterval: 2,
+    latencyMode: 'quality',
+  })
+  output.addVideoTrack(source, { frameRate: fps })
+  const sample = new mediabunny.VideoSample(canvas, {
+    timestamp: 0,
+    duration: 1 / fps,
+  })
+
+  try {
+    await output.start()
+    await source.add(sample)
+    return true
+  } catch {
+    return false
+  } finally {
+    sample.close()
+    await output.cancel().catch(() => undefined)
+  }
+}
+
 async function copyAudioPackets(params: {
   mediabunny: MediabunnyModule
   audioTrack: Awaited<ReturnType<MediabunnyInput['getPrimaryAudioTrack']>>
@@ -254,7 +295,6 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     Output,
     VideoSample,
     VideoSampleSource,
-    canEncodeVideo,
   } = mediabunny
 
   postProgress('preparing', 2, 0, 0, '准备视频导出')
@@ -290,21 +330,36 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
   const packetStats = primaryState ? await primaryState.track.computePacketStats(60) : null
   const fps = Math.max(1, Math.min(120, message.fps ?? (packetStats?.averagePacketRate || 30)))
   const totalFrames = Math.max(1, Math.ceil(duration * fps))
-  const sourceBitrate = packetStats?.averageBitrate ?? 0
-  const sourceCodec = primaryState ? await primaryState.track.getCodec() : null
-  let outputCodec: EncodableVideoCodec = sourceCodec === 'hevc' ? 'hevc' : 'avc'
-  const bitrate = bitrateForPreset(message.qualityPreset, message.width, message.height, fps, sourceBitrate)
-  const encoderOptions = {
-    width: message.width,
-    height: message.height,
-    bitrate,
-    hardwareAcceleration: 'prefer-hardware' as const,
+  let sourceBitrate = primaryState?.source.sourceBitrate ?? 0
+  if (!(sourceBitrate > 0) && primaryState) {
+    // Some containers do not store a video-stream bitrate. Only then scan all
+    // packet metadata; frame decoding still happens later in the render loop.
+    sourceBitrate = (await primaryState.track.computePacketStats()).averageBitrate
   }
-  if (!(await canEncodeVideo(outputCodec, encoderOptions))) {
-    if (outputCodec !== 'hevc' || !(await canEncodeVideo('avc', encoderOptions))) {
-      throw new Error('当前 Electron 没有可用的视频编码器')
+  const sourceCodec = primaryState ? await primaryState.track.getCodec() : null
+  const bitrate = bitrateForPreset(message.qualityPreset, message.width, message.height, fps, sourceBitrate)
+  const codecCandidates: EncodableVideoCodec[] = sourceCodec === 'hevc'
+    ? ['hevc', 'avc', 'vp9', 'av1']
+    : ['avc', 'hevc', 'vp9', 'av1']
+  const probeCanvas = new OffscreenCanvas(message.width, message.height)
+  const probeContext = probeCanvas.getContext('2d')
+  if (probeContext) {
+    probeContext.fillStyle = '#000'
+    probeContext.fillRect(0, 0, message.width, message.height)
+  }
+  let outputCodec: EncodableVideoCodec | null = null
+  if (probeContext) {
+    for (const candidate of codecCandidates) {
+      if (await canEncodeVideoFrame(mediabunny, candidate, bitrate, fps, probeCanvas)) {
+        outputCodec = candidate
+        break
+      }
     }
-    outputCodec = 'avc'
+  }
+  probeCanvas.width = 1
+  probeCanvas.height = 1
+  if (!outputCodec) {
+    throw new Error('当前环境暂时无法导出这个尺寸的视频，请降低导出分辨率后重试')
   }
 
   let output: InstanceType<typeof Output> | null = null
@@ -346,7 +401,6 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
       bitrateMode: 'variable',
       keyFrameInterval: 2,
       latencyMode: 'quality',
-      hardwareAcceleration: 'prefer-hardware',
     })
     videoEncodeQueue = new VideoEncodeQueue(videoSource)
     output.addVideoTrack(videoSource, { frameRate: fps })
