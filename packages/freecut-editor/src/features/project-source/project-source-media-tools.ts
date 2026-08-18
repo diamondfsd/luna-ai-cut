@@ -3,8 +3,6 @@ import { getTranscript } from '@freecut/infrastructure/storage'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { importMediaLibraryService } from '@freecut/features/media-library/services/media-library-service-loader'
 import { getMediaType } from '@freecut/features/media-library/utils/validation'
-import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
-import type { EmbeddedTranscriptResult } from '@freecut/shared/host/embedded-host'
 import type { MediaMetadata, MediaTranscript } from '@freecut/types/storage'
 import type {
   ProjectEditingJsonSchema,
@@ -12,6 +10,11 @@ import type {
   ProjectEditingToolResult,
 } from './project-source-tools'
 import { AUDIO_TASK_TOOLS } from './project-source-audio-tasks'
+import {
+  activeMediaAnalysisProjectId,
+  getMediaAnalysisTask,
+  startMediaAnalysisTask,
+} from './project-source-media-tasks'
 
 const MAX_MEDIA_ITEMS = 500
 const MAX_MEDIA_SELECTION = 12
@@ -139,42 +142,6 @@ async function readMediaEvidence(media: MediaMetadata): Promise<Record<string, u
   }
 }
 
-function mediaSource(media: MediaMetadata) {
-  return {
-    mediaId: media.id,
-    fileName: media.fileName,
-    fileSize: media.fileSize,
-    fileLastModified: media.fileLastModified,
-    mimeType: media.mimeType,
-    durationSeconds: media.duration,
-  }
-}
-
-function transcriptFromHostResult(media: MediaMetadata, result: EmbeddedTranscriptResult): MediaTranscript {
-  const now = Date.now()
-  return {
-    id: media.id,
-    mediaId: media.id,
-    model: 'parakeet-tdt-v3',
-    language: result.language,
-    quantization: 'hybrid',
-    text: result.cues.map((cue) => cue.text).join(' '),
-    segments: result.cues.map((cue) => ({
-      text: cue.text,
-      start: cue.startSeconds,
-      end: cue.endSeconds,
-    })),
-    createdAt: now,
-    updatedAt: now,
-    provenance: {
-      service: 'luna-subtitle-service',
-      modelId: result.model.id,
-      modelVersion: result.model.version,
-      sourceFingerprint: `${result.sourceFingerprint.size}:${result.sourceFingerprint.modifiedAtMs}`,
-    },
-  }
-}
-
 const mediaList = tool({
   name: 'media.list',
   description: '读取当前剪辑项目已关联素材的结构化信息，包括文件名、媒体类型、时长、尺寸、帧率、大小、编码和音频情况。不返回本地路径、文件句柄或素材内容。',
@@ -226,7 +193,7 @@ const mediaRead = tool({
 
 const mediaAnalyze = tool({
   name: 'media.analyze',
-  description: '使用本地模型分析指定素材：transcript 识别口播字幕，visual 使用 LFM2.5-VL-450M 对视频或图片抽帧并生成带时间点的场景描述。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面描述时再传 normal 或 strong。分析结果会保存，之后用 media.read 读取。',
+  description: '提交本地素材分析任务：transcript 识别口播字幕，visual 使用 LFM2.5-VL-450M 对视频或图片抽帧并生成带时间点的场景描述。调用会立即返回 taskId；必须使用 media.get_analysis_task 查询到 completed 或 failed，完成后再用 media.read 读取结果。visual 未指定 intensity 时默认使用较快的 light；需要更密集的画面描述时再传 normal 或 strong。',
   inputSchema: schema({
     mediaIds: { type: 'array', minItems: 1, maxItems: MAX_MEDIA_SELECTION, items: { type: 'string' } },
     kind: { type: 'string', enum: ['transcript', 'visual'] },
@@ -238,62 +205,37 @@ const mediaAnalyze = tool({
     intensity: z.enum(VISUAL_ANALYSIS_INTENSITIES).optional(),
   }),
   execute: async (args, signal) => {
+    signal?.throwIfAborted()
     const requested = new Set(args.mediaIds)
     const mediaItems = await projectMedia()
     const found = mediaItems.filter((media) => requested.has(media.id))
-    if (found.length === 0) {
-      return { ok: false, message: '没有找到要分析的素材。', data: { completedIds: [], missingIds: args.mediaIds } }
-    }
-
-    const host = getEmbeddedHostBridge()
-    const completedIds: string[] = []
-    const skippedIds: string[] = []
-    const { mediaTranscriptionService } = args.kind === 'transcript'
-      ? await import('@freecut/features/media-library/services/media-transcription-service')
-      : { mediaTranscriptionService: undefined }
-    const { analyzeMediaVisual } = args.kind === 'visual'
-      ? await import('@freecut/features/media-library/services/media-visual-analysis-service')
-      : { analyzeMediaVisual: undefined }
-
-    for (const media of found) {
-      signal?.throwIfAborted()
-      const mediaType = getMediaType(media.mimeType)
-      if (args.kind === 'transcript') {
-        if (mediaType !== 'video' && mediaType !== 'audio') {
-          skippedIds.push(media.id)
-          continue
-        }
-        if (host.transcribeMedia) {
-          const result = signal
-            ? await host.transcribeMedia(mediaSource(media), undefined, signal)
-            : await host.transcribeMedia(mediaSource(media))
-          signal?.throwIfAborted()
-          await mediaTranscriptionService!.adoptTranscript(transcriptFromHostResult(media, result))
-        } else {
-          const { runMediaTranscriptionJob } = await import('@freecut/features/media-library/services/media-transcription-runner')
-          await runMediaTranscriptionJob(media.id)
-          signal?.throwIfAborted()
-        }
-        completedIds.push(media.id)
-        continue
-      }
-
-      if (mediaType !== 'video' && mediaType !== 'image') {
-        skippedIds.push(media.id)
-        continue
-      }
-      await analyzeMediaVisual!(media, args.intensity ?? 'light', signal)
-      signal?.throwIfAborted()
-      completedIds.push(media.id)
-    }
-
-    const missingIds = args.mediaIds.filter((id) => !found.some((media) => media.id === id))
+    const task = startMediaAnalysisTask({
+      projectId: activeMediaAnalysisProjectId(),
+      mediaIds: args.mediaIds,
+      mediaItems: found,
+      kind: args.kind,
+      intensity: args.intensity ?? 'light',
+    })
     return {
-      ok: completedIds.length > 0,
-      message: completedIds.length > 0
-        ? `已完成 ${completedIds.length} 个素材的${args.kind === 'transcript' ? '口播识别' : '画面理解'}。`
-        : '没有完成可用的素材分析。',
-      data: { kind: args.kind, completedIds, skippedIds, missingIds },
+      ok: found.length > 0,
+      message: found.length > 0 ? '素材分析任务已提交，请查询 taskId。' : '没有找到要分析的素材。',
+      data: task,
+    }
+  },
+})
+
+const mediaGetAnalysisTask = tool({
+  name: 'media.get_analysis_task',
+  description: '查询当前项目的素材分析任务。任务完成后读取 completedIds、skippedIds 和 failedIds；只有 status 为 completed 时才使用 media.read 获取已保存的分析结果，failed 时读取 error 和 failures。',
+  inputSchema: schema({ taskId: { type: 'string', minLength: 1 } }, ['taskId']),
+  schema: z.object({ taskId: z.string().trim().min(1) }),
+  execute: async (args) => {
+    const task = getMediaAnalysisTask(args.taskId, activeMediaAnalysisProjectId())
+    const status = task.status
+    return {
+      ok: true,
+      message: status === 'completed' ? '素材分析任务已完成。' : status === 'failed' ? '素材分析任务失败。' : '素材分析任务仍在处理中。',
+      data: task,
     }
   },
 })
@@ -343,6 +285,7 @@ export const MEDIA_AI_TOOLS: readonly ProjectEditingTool[] = [
   mediaList,
   mediaRead,
   mediaAnalyze,
+  mediaGetAnalysisTask,
   searchTranscript,
   ...AUDIO_TASK_TOOLS,
 ]

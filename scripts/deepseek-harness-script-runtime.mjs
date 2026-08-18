@@ -21,6 +21,7 @@ export const SCRIPT_API = Object.freeze({
     list: 'media.list',
     read: 'media.read',
     analyze: 'media.analyze',
+    getAnalysisTask: 'media.get_analysis_task',
     searchTranscript: 'media.search_transcript',
   }),
   audio: Object.freeze({

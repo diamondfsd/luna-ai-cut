@@ -14,7 +14,7 @@ description: 声音设计与混音技能。用户要求配音、背景音乐、�
 
 ## 生成与加入素材
 
-1. 先用 `luna.media.list` 确认已有音频，用 `luna.media.read` 或 `luna.media.analyze(kind=transcript)` 获取对白证据。
+1. 先用 `luna.media.list` 确认已有音频，用 `luna.media.read` 或 `luna.media.analyze(kind=transcript)` 获取对白证据；提交分析后用 `luna.media.getAnalysisTask` 查询到完成，再读取字幕。
 2. 需要配音时调用 `luna.audio.startSpeech`，需要背景音乐时调用 `luna.audio.startMusic`；两者只提交后台任务，必须用 `luna.audio.getTask` 查询到 `completed` 后再使用 `mediaId`。
 3. 音频任务完成后，模型根据用户目标决定是否继续调用 `luna.timeline.addMedia`，不要把生成和入轴伪装成一个宿主工作流。
 4. 用 `luna.timeline.setAudio` 调音量、淡入、淡出和必要的音高；每次修改后检查时间轴。

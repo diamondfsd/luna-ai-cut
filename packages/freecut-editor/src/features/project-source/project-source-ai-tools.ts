@@ -625,7 +625,7 @@ const timelineMove = tool({
 
 const timelineAddMedia = tool({
   name: 'timeline.add_media',
-  description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置；sourceStartSeconds 和 sourceEndSeconds 可直接指定素材源文件要使用的范围，不需要先添加整段再裁剪；durationSeconds 可选，用于指定时间轴上的持续时长。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
+  description: '将当前项目素材库中的一个素材放入时间轴。mediaId 来自 media.list；startSeconds 是成片时间轴上的绝对位置；视频可以用 sourceStartSeconds 和 sourceEndSeconds 直接指定素材源文件范围，不需要先添加整段再裁剪；图片不要传源时间范围，应使用 durationSeconds 指定停留时长。位置被占用时会放到目标轨道最近的可用位置；视频默认保留联动音轨。',
   inputSchema: schema({
     mediaId: { type: 'string' },
     startSeconds: { type: 'number', minimum: 0 },
@@ -780,6 +780,10 @@ const timelineAddMedia = tool({
 
     if (workingTracks !== state.tracks) state.setTracks(workingTracks)
     state.addItems(items)
+    const primaryItem = items.find((item) => item.type !== 'audio') ?? items[0]
+    const linkedAudioItem = primaryItem?.type === 'audio'
+      ? undefined
+      : items.find((item) => item.type === 'audio')
     return saveTimelineEdit('添加素材到时间轴', {
       mediaId: media.id,
       fileName: media.fileName,
@@ -787,6 +791,14 @@ const timelineAddMedia = tool({
       actualStartSeconds: roundSeconds(primaryPlacement.from, state.fps),
       trackId: primaryPlacement.trackId,
       itemIds: items.map((item) => item.id),
+      ...(primaryItem
+        ? {
+            primaryItemId: primaryItem.id,
+            endSeconds: roundSeconds(primaryItem.from + primaryItem.durationInFrames, state.fps),
+            durationSeconds: roundSeconds(primaryItem.durationInFrames, state.fps),
+          }
+        : {}),
+      ...(linkedAudioItem ? { linkedAudioItemId: linkedAudioItem.id } : {}),
       ...(sourceRange
         ? {
             sourceRange: {
@@ -1140,10 +1152,30 @@ async function executeTimelineBatch(
         results.push(data)
       }
     }
+    const batchItems = operation === '添加素材'
+      ? results.flatMap((result) => {
+          if (!result || typeof result !== 'object' || Array.isArray(result)) return []
+          const item = result as Record<string, unknown>
+          if (typeof item.primaryItemId !== 'string') return []
+          return [{
+            id: item.primaryItemId,
+            mediaId: item.mediaId,
+            startSeconds: item.actualStartSeconds,
+            endSeconds: item.endSeconds,
+            durationSeconds: item.durationSeconds,
+            trackId: item.trackId,
+            ...(typeof item.linkedAudioItemId === 'string' ? { linkedAudioItemId: item.linkedAudioItemId } : {}),
+          }]
+        })
+      : undefined
     return {
       ok: true,
       message: `已批量${operation} ${items.length} 项，并保存到当前剪辑项目。`,
-      data: { operations: results, after: projectSummary() },
+      data: {
+        ...(batchItems ? { items: batchItems } : {}),
+        operations: results,
+        after: projectSummary(),
+      },
     }
   } catch (error) {
     restoreSnapshot(beforeSnapshot)
@@ -1158,7 +1190,7 @@ async function executeTimelineBatch(
 
 const timelineAddMediaBatch = tool({
   name: 'timeline.add_media_batch',
-  description: '一次将多个素材按给定顺序放入时间轴。适合已经确定多个素材和时间范围的剪辑；工具会逐项校验并返回所有新片段 ID。后续依赖这些 ID 的转场请等待本工具结果后再调用。',
+  description: '一次将多个素材按给定顺序放入时间轴。适合已经确定多个素材和时间范围的剪辑；返回 data.items 中每个素材对应的主视频或图片片段 ID、素材 ID、起止时间和联动音频片段 ID，同时保留 operations 明细。后续依赖这些 ID 的转场请等待本工具结果后再调用。',
   inputSchema: schema({
     items: {
       type: 'array',
