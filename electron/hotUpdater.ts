@@ -202,7 +202,7 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   if (!app.isPackaged) return null
 
   const appVersion = app.getVersion()
-  // 预发布安装包只能使用随安装包发布并验证过的代码与原生模块。
+  // 预发布安装包只能使用随安装包发布并验证过的代码与 AI worker。
   if (!stableReleaseVersion(appVersion)) return null
   const releaseTag = `v${appVersion}`
 

@@ -67,7 +67,7 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
   await lunaApp.page.locator('.workspace-project-open').filter({
     hasText: '真实 4K GPU 预览诊断',
   }).click()
-  await recordProgress('project-opened-waiting-for-wgpu')
+  await recordProgress('project-opened-waiting-for-webgpu')
 
   const preview = lunaApp.page.locator('canvas[data-renderer="webgpu"]')
   const loading = lunaApp.page.locator('.preview-loading-overlay')

@@ -354,6 +354,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     if (!activeAsset || !sourceSize) return []
     return [buildPixelFlowLayer({
       asset: activeAsset,
+      maskProjectId: projectId,
       maskPath: depthMaskPath ?? undefined,
       playbackDuration,
       pipeline: edit.pipeline,

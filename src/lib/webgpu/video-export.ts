@@ -1,10 +1,13 @@
 import type { CompositionInput } from '../../shared/types'
 import type {
+  WebGpuVideoExportLutMessage,
+  WebGpuVideoExportMaskMessage,
   WebGpuVideoExportProgressMessage,
   WebGpuVideoExportStartMessage,
   WebGpuVideoExportSourceMessage,
   WebGpuVideoExportWorkerResponse,
 } from './video-export-protocol'
+import { readWebGpuLut } from './lut-source'
 
 export interface WebGpuVideoExportResult {
   duration: number
@@ -24,11 +27,40 @@ function localMediaPath(filePath: string): string {
 function sourceDescriptors(composition: CompositionInput): Array<Pick<WebGpuVideoExportSourceMessage, 'path' | 'key' | 'sourceType'>> {
   const descriptors = new Map<string, Pick<WebGpuVideoExportSourceMessage, 'path' | 'key' | 'sourceType'>>()
   for (const layer of composition.layers) {
+    const layerType = layer.layerType ?? 'media'
+    const hasExternalSource = layerType === 'media'
+      || layerType === 'local-color'
+      || ((layerType === 'logo' || layerType === 'decoration') && Boolean(layer.source.path))
+    if (!hasExternalSource) continue
     const sourceType = layer.source.sourceType === 'video' ? 'video' : 'image'
     const key = layer.source.key ?? layer.source.path
     const descriptorKey = `${sourceType}\u0000${key}`
     if (!descriptors.has(descriptorKey)) {
       descriptors.set(descriptorKey, { path: layer.source.path, key, sourceType })
+    }
+  }
+  return [...descriptors.values()]
+}
+
+function lutPaths(composition: CompositionInput): string[] {
+  return [...new Set(composition.layers.flatMap((layer) => [
+    layer.lutId,
+    layer.restoreLutId,
+  ].filter((path): path is string => Boolean(path))))]
+}
+
+function maskDescriptors(composition: CompositionInput): Array<{ projectId: string; path: string }> {
+  const descriptors = new Map<string, { projectId: string; path: string }>()
+  for (const layer of composition.layers) {
+    const projectId = layer.maskProjectId
+    if (!projectId) continue
+    const paths = [
+      layer.maskPath,
+      ...(layer.maskTimeline?.frames.map((frame) => frame.path) ?? []),
+    ]
+    for (const path of paths) {
+      if (!path) continue
+      descriptors.set(`${projectId}\u0000${path}`, { projectId, path })
     }
   }
   return [...descriptors.values()]
@@ -47,11 +79,11 @@ export async function exportVideoWithWebGpuWorker(params: {
   includeAudio: boolean
   exportTaskId?: string
   exportItemId?: string
+  shouldCancel?: () => Promise<boolean>
   onChunk: (chunk: ArrayBuffer) => void | Promise<void>
   onProgress?: (progress: WebGpuVideoExportProgressMessage) => void | Promise<void>
 }): Promise<WebGpuVideoExportResult> {
   const descriptors = sourceDescriptors(params.composition)
-  if (descriptors.length === 0) throw new Error('WebGPU 视频导出缺少媒体源')
   const sources = await Promise.all(descriptors.map(async (descriptor): Promise<WebGpuVideoExportSourceMessage> => {
     const source = await window.luna.workspace.readMediaFile(localMediaPath(descriptor.path))
     return {
@@ -61,6 +93,22 @@ export async function exportVideoWithWebGpuWorker(params: {
       fileName: source.name,
     }
   }))
+  const [luts, masks] = await Promise.all([
+    Promise.all(lutPaths(params.composition).map(async (path): Promise<WebGpuVideoExportLutMessage> => ({
+      path,
+      text: await readWebGpuLut(path),
+    }))),
+    Promise.all(maskDescriptors(params.composition).map(async (descriptor): Promise<WebGpuVideoExportMaskMessage> => {
+      const source = await window.luna.workspace.loadColorMask(descriptor.projectId, descriptor.path)
+      const bytes = Uint8Array.from(new Uint8Array(source.bytes)).buffer
+      return {
+        ...descriptor,
+        width: source.width,
+        height: source.height,
+        bytes,
+      }
+    })),
+  ])
   const worker = new Worker(new URL('./video-export.worker.ts', import.meta.url), { type: 'module' })
   let cancelTimer: number | null = null
   let cancelRequested = false
@@ -110,13 +158,20 @@ export async function exportVideoWithWebGpuWorker(params: {
       worker.addEventListener('message', onMessage)
       worker.addEventListener('error', onError)
 
-      if (params.exportTaskId && params.exportItemId) {
+      if ((params.exportTaskId && params.exportItemId) || params.shouldCancel) {
         cancelTimer = window.setInterval(() => {
-          void window.luna.exportTask.get(params.exportTaskId!).then((task) => {
-            if (cancelRequested || !isCanceledTask(params.exportItemId!, task)) return
+          if (cancelRequested) return
+          void (async () => {
+            const canceled = params.shouldCancel
+              ? await params.shouldCancel()
+              : isCanceledTask(
+                  params.exportItemId!,
+                  await window.luna.exportTask.get(params.exportTaskId!),
+                )
+            if (cancelRequested || !canceled) return
             cancelRequested = true
             worker.postMessage({ type: 'cancel' })
-          }).catch(() => {})
+          })().catch(() => {})
         }, 250)
       }
 
@@ -124,13 +179,18 @@ export async function exportVideoWithWebGpuWorker(params: {
         type: 'start',
         composition: params.composition,
         sources,
+        luts,
+        masks,
         width: params.width,
         height: params.height,
         fps: params.fps,
         qualityPreset: params.qualityPreset,
         includeAudio: params.includeAudio,
       }
-      worker.postMessage(start, sources.map((source) => source.bytes))
+      worker.postMessage(start, [
+        ...sources.map((source) => source.bytes),
+        ...masks.map((mask) => mask.bytes),
+      ])
     })
     return result
   } finally {

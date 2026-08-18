@@ -14,89 +14,30 @@ permissions:
   contents: read
 
 jobs:
-  detect:
+  build:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.config.outputs.version }}
-      include_native: ${{ steps.config.outputs.include_native }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - id: config
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "include_native=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          version="${GITHUB_REF_NAME#hot/v}"
-          base_version="${version%%-hot.*}"
-          release_tag="v${base_version}"
-          include_native=true
-          if git rev-parse "$release_tag" >/dev/null 2>&1 && git diff --quiet "$release_tag" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
-            include_native=false
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "include_native=$include_native" >> "$GITHUB_OUTPUT"
-          if [ "$include_native" = "false" ]; then
-            echo "No native changes detected since ${release_tag}. The uploaded universal JS hot-update package is sufficient; no platform packages will be built." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-  native:
-    needs: detect
-    if: needs.detect.outputs.include_native == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            platform: darwin-arm64
-            cross_target: ''
-          - os: macos-latest
-            platform: darwin-x64
-            cross_target: x86_64-apple-darwin
-          - os: windows-latest
-            platform: win32-x64
-            cross_target: ''
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run init:rust
-        env:
-          CROSS_TARGET: ${{ matrix.cross_target }}
-      - name: Prepare ONNX Runtime for macOS x64 cross-compile
-        if: matrix.platform == 'darwin-x64'
+      - run: pnpm run build:app
+      - name: Build renderer hot-update archive
         shell: bash
         run: |
-          archive="$RUNNER_TEMP/onnxruntime-osx-x86_64-1.23.2.tgz"
-          runtime_root="$RUNNER_TEMP/onnxruntime-osx-x86_64-1.23.2"
-          curl --fail --location --retry 3 \
-            --output "$archive" \
-            "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-x86_64-1.23.2.tgz"
-          echo "d10359e16347b57d9959f7e80a225a5b4a66ed7d7e007274a15cae86836485a6  $archive" | shasum -a 256 --check
-          tar -xzf "$archive" -C "$RUNNER_TEMP"
-          cp "$runtime_root"/lib/*.dylib luna-render-core/
-          echo "ORT_LIB_LOCATION=$runtime_root/lib" >> "$GITHUB_ENV"
-          echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
-      - name: Build native module
-        shell: bash
-        env:
-          CROSS_TARGET: ${{ matrix.cross_target }}
-        run: node scripts/build-native.mjs
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#hot/v}"
+          fi
+          node scripts/publish-hot-update.mjs --version "$version"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}
-          path: |
-            luna-render-core/luna-render-core.node
-            luna-render-core/dxcompiler.dll
-            luna-render-core/dxil.dll
-            luna-render-core/DXC-LICENSE-*.txt
+          name: luna-ai-cut-renderer-hot-update
+          path: release/*/hot-update/renderer-*.zip
           if-no-files-found: error

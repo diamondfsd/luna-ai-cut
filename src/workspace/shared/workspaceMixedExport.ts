@@ -191,7 +191,6 @@ export async function queueWorkspaceMixedExport(
           const tempImagePath = joinPath(exportDir, tempImageName)
           try {
             await Promise.all(liveEntries.map((candidate) => report(candidate, entries.indexOf(candidate), 1, 'exporting')))
-            const renderTaskId = `mixed_live_${entry.plan.id}_${stamp}`
             await exportPreviewVideo({
               exportDir,
               fileName: tempVideoName,
@@ -201,14 +200,18 @@ export async function queueWorkspaceMixedExport(
               fps: resolved.fps,
               qualityPreset: resolved.qualityPreset ?? 'high',
               includeAudio: resolved.includeAudio,
-              renderTaskId,
+              shouldCancel: async () => {
+                const latestTask = await window.luna.exportTask.get(task.id)
+                return liveEntries.every((candidate) => (
+                  latestTask?.items.find((item) => item.id === candidate.id)?.status === 'canceled'
+                ))
+              },
               onProgress: async (progress) => {
                 const latestTask = await window.luna.exportTask.get(task.id)
                 const allCanceled = liveEntries.every((candidate) => (
                   latestTask?.items.find((item) => item.id === candidate.id)?.status === 'canceled'
                 ))
                 if (allCanceled) {
-                  await window.luna.cancelExportTask(renderTaskId).catch(() => {})
                   return
                 }
                 const percent = Math.min(85, Math.max(1, Math.round(progress * 0.85)))
@@ -271,11 +274,9 @@ export async function queueWorkspaceMixedExport(
               taskName,
               index,
               totalFiles: entries.length,
-              onProgress: async () => {
+              shouldCancel: async () => {
                 const latestTask = await window.luna.exportTask.get(task.id)
-                if (latestTask?.items.find((item) => item.id === entry.id)?.status === 'canceled') {
-                  await window.luna.cancelExportTask(entry.id).catch(() => {})
-                }
+                return latestTask?.items.find((item) => item.id === entry.id)?.status === 'canceled'
               },
             })
           } else {

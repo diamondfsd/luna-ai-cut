@@ -1,6 +1,5 @@
-import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
-import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
-import { DEFAULT_VIDEO_EXPORT_SETTINGS, type CompositionInput, type PreviewLayer, type VideoExportSettings, type WorkspaceMediaAsset } from '../../../shared/types'
+import { emitLocalExportProgress, exportPreviewVideo, resolveExportConfig } from '../../../components/previewStageExport'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS, type PreviewLayer, type VideoExportSettings, type WorkspaceMediaAsset } from '../../../shared/types'
 
 export const PIXEL_FLOW_LIVE_DURATION = 3
 export const PIXEL_FLOW_IMAGE_EXPORT_SETTINGS: VideoExportSettings = {
@@ -10,21 +9,6 @@ export const PIXEL_FLOW_IMAGE_EXPORT_SETTINGS: VideoExportSettings = {
   trimEndTime: PIXEL_FLOW_LIVE_DURATION,
   liveStartTime: 0,
   liveCoverTime: PIXEL_FLOW_LIVE_DURATION - 1 / 30,
-}
-
-interface LunaCompositionExportApi {
-  exportCompositionVideo(
-    outputPath: string,
-    composition: CompositionInput,
-    fps: number | null,
-    duration: number | null,
-    hardware: boolean,
-    taskId?: string,
-    qualityPreset?: string,
-    exportTaskId?: string,
-    exportItemId?: string,
-    includeAudio?: boolean,
-  ): Promise<void>
 }
 
 interface PixelFlowExportOptions {
@@ -56,14 +40,12 @@ interface PixelFlowExportTask {
   name: string
 }
 
-function renderApi(): LunaCompositionExportApi {
-  const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
-  if (!api) throw new Error('渲染引擎未初始化')
-  return api
-}
-
 function filePath(exportDir: string, name: string): string {
   return `${exportDir.replace(/[\\/]$/, '')}/${name}`
+}
+
+function fileNameFromPath(filePathValue: string): string {
+  return filePathValue.split(/[/\\]/).pop() || 'pixel-flow.mp4'
 }
 
 function outputBaseName(name: string): string {
@@ -165,28 +147,23 @@ async function runImageLiveExport(
 
   const baseName = outputBaseName(options.asset.name)
   const tempSuffix = entries[0].id.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const tempVideoPath = filePath(exportDir, `.${baseName}-${tempSuffix}.mp4`)
+  const tempVideoFileName = `.${baseName}-${tempSuffix}.mp4`
+  const tempVideoPath = filePath(exportDir, tempVideoFileName)
   const tempImagePath = filePath(exportDir, `.${baseName}-${tempSuffix}.jpg`)
   const resolved = resolveExportConfig(options.config, options.sourceSize.width, options.sourceSize.height)
-  const composition = buildCompositionFromPreviewLayers(options.layers, resolved.width, resolved.height, {
-    fps: resolved.fps ?? undefined,
-    duration: PIXEL_FLOW_LIVE_DURATION,
-  })
-  composition.canvas.duration = PIXEL_FLOW_LIVE_DURATION
   try {
     await Promise.all(entries.map((entry, index) => reportLiveEntry(task, entry, index, entries.length, 5, 'exporting')))
-    await renderApi().exportCompositionVideo(
-      tempVideoPath,
-      composition,
-      resolved.fps,
-      PIXEL_FLOW_LIVE_DURATION,
-      true,
-      `pixel_flow_live_render_${tempSuffix}`,
-      resolved.qualityPreset ?? 'high',
-      undefined,
-      undefined,
-      resolved.includeAudio,
-    )
+    await exportPreviewVideo({
+      exportDir,
+      fileName: tempVideoFileName,
+      width: resolved.width,
+      height: resolved.height,
+      layers: options.layers,
+      qualityPreset: resolved.qualityPreset ?? 'high',
+      fps: resolved.fps,
+      duration: PIXEL_FLOW_LIVE_DURATION,
+      includeAudio: resolved.includeAudio,
+    })
     await Promise.all(entries.map((entry, index) => reportLiveEntry(task, entry, index, entries.length, 75, 'exporting')))
 
     const coverTime = PIXEL_FLOW_LIVE_DURATION - 1 / 30
@@ -226,28 +203,26 @@ async function runVideoExport(
   options: PixelFlowExportOptions,
   task: PixelFlowExportTask,
   entry?: VideoExportEntry,
+  exportDir?: string,
 ): Promise<void> {
-  if (!entry || await itemCanceled(task.id, entry.id)) return
+  if (!entry || !exportDir || await itemCanceled(task.id, entry.id)) return
   const sourceDuration = options.playbackDuration
   const resolved = resolveExportConfig(options.config, options.sourceSize.width, options.sourceSize.height)
   const layers = options.layers.map((layer) => layer.isVideo ? { ...layer, videoDuration: sourceDuration } : layer)
-  const composition = buildCompositionFromPreviewLayers(layers, resolved.width, resolved.height, {
-    fps: resolved.fps ?? undefined,
+  await exportPreviewVideo({
+    exportDir,
+    fileName: fileNameFromPath(entry.outputPath),
+    width: resolved.width,
+    height: resolved.height,
+    layers,
+    qualityPreset: resolved.qualityPreset,
+    fps: resolved.fps,
     duration: sourceDuration,
-  })
-  composition.canvas.duration = sourceDuration
-  await renderApi().exportCompositionVideo(
-    entry.outputPath,
-    composition,
-    resolved.fps,
-    sourceDuration,
-    true,
-    entry.id,
-    resolved.qualityPreset,
-    task.id,
-    entry.id,
-    resolved.includeAudio,
-  ).catch(async (error) => {
+    includeAudio: resolved.includeAudio,
+    exportTaskId: task.id,
+    exportItemId: entry.id,
+    taskName: task.name,
+  }).catch(async (error) => {
     const message = error instanceof Error ? error.message : '视频导出失败'
     await window.luna.exportTask.updateItem(task.id, entry.id, { status: 'failed', error: message }).catch(() => undefined)
   })
@@ -268,7 +243,7 @@ export async function queuePixelFlowExports(exports: PixelFlowExportOptions[]): 
     for (const [index, options] of exports.entries()) {
       const plan = plans[index]
       try {
-        await runVideoExport(options, task, plan.video)
+        await runVideoExport(options, task, plan.video, exportDir)
       } catch (error) {
         if (plan.video && !await itemCanceled(task.id, plan.video.id)) {
           const message = error instanceof Error ? error.message : '视频导出失败'

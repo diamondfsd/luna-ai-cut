@@ -230,10 +230,9 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     videoLayersByKey.set(key, layers)
   }
   const primaryLayer = message.composition.layers.find((layer) => layer.source.sourceType === 'video')
-  if (!primaryLayer) throw new Error('WebGPU 视频导出缺少视频图层')
-  const primaryKey = sourceKeyForLayer(primaryLayer)
-  const primaryState = videoStates.get(primaryKey)
-  if (!primaryState) throw new Error(`视频源尚未传入: ${primaryKey}`)
+  const primaryKey = primaryLayer ? sourceKeyForLayer(primaryLayer) : null
+  const primaryState = primaryKey ? videoStates.get(primaryKey) : undefined
+  if (primaryLayer && !primaryState) throw new Error(`视频源尚未传入: ${primaryKey}`)
 
   const imageSources = new Map(
     message.sources
@@ -241,14 +240,15 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
       .map((source) => [source.path, source]),
   )
   const imageBitmaps = new Map<string, ImageBitmap>()
-  const inputDuration = primaryState.duration
+  const inputDuration = primaryState?.duration ?? 0
   const duration = message.composition.canvas.duration != null
     && Number.isFinite(message.composition.canvas.duration)
     && message.composition.canvas.duration > 0
     ? message.composition.canvas.duration
     : inputDuration
-  const packetStats = await primaryState.track.computePacketStats(60)
-  const fps = Math.max(1, Math.min(120, message.fps ?? (packetStats.averagePacketRate || 30)))
+  if (!(duration > 0)) throw new Error('WebGPU 视频导出缺少有效时长')
+  const packetStats = primaryState ? await primaryState.track.computePacketStats(60) : null
+  const fps = Math.max(1, Math.min(120, message.fps ?? (packetStats?.averagePacketRate || 30)))
   const totalFrames = Math.max(1, Math.ceil(duration * fps))
   const bitrate = bitrateForPreset(message.qualityPreset, message.width, message.height, fps)
   if (!(await canEncodeVideo('avc', { width: message.width, height: message.height, bitrate }))) {
@@ -260,7 +260,12 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
   let completed = false
   let runtimeError: Error | null = null
   const currentFrames = new Map<string, VideoFrame>()
-  const primaryTiming = primaryLayer.source.time
+  const primaryTiming = primaryLayer?.source.time
+  const lutTexts = new Map(message.luts.map((lut) => [lut.path, lut.text]))
+  const maskSources = new Map(message.masks.map((mask) => [
+    `${mask.projectId}\u0000${mask.path}`,
+    mask,
+  ]))
 
   try {
     const format = new Mp4OutputFormat({ fastStart: 'fragmented' })
@@ -277,7 +282,9 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
     })
     output.addVideoTrack(videoSource, { frameRate: fps })
 
-    const audioTrack = message.includeAudio ? await primaryState.input.getPrimaryAudioTrack() : null
+    const audioTrack = message.includeAudio && primaryState
+      ? await primaryState.input.getPrimaryAudioTrack()
+      : null
     const audioCodec = audioTrack ? await audioTrack.getCodec() : null
     const audioCopied = Boolean(audioTrack && audioCodec && format.getSupportedAudioCodecs().includes(audioCodec))
     const audioSource = audioCopied ? new EncodedAudioPacketSource(audioCodec!) : null
@@ -314,6 +321,20 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
         if (!frame) throw new Error(`视频帧尚未准备好: ${layer.source.path}`)
         return frame
       },
+      resolveLut: async (path) => {
+        const text = lutTexts.get(path)
+        if (text == null) throw new Error(`LUT 源尚未传入: ${path}`)
+        return text
+      },
+      resolveMask: async (layer, path) => {
+        const source = maskSources.get(`${layer.maskProjectId ?? ''}\u0000${path}`)
+        if (!source) throw new Error(`蒙版源尚未传入: ${path}`)
+        return {
+          width: source.width,
+          height: source.height,
+          bytes: new Uint8Array(source.bytes),
+        }
+      },
       onDeviceLost: (error) => { runtimeError = new Error(error) },
       onError: (error) => { runtimeError = new Error(error) },
     })
@@ -339,8 +360,8 @@ async function runExport(message: WebGpuVideoExportStartMessage, signal: AbortSi
         currentFrames.set(key, sample.toVideoFrame())
       }
 
-      const primaryFrame = currentFrames.get(primaryKey)
-      if (!primaryFrame) {
+      const primaryFrame = primaryKey ? currentFrames.get(primaryKey) : undefined
+      if (primaryState && !primaryFrame) {
         closeFrames(currentFrames)
         for (const sample of samples) sample?.close()
         continue

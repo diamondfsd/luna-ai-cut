@@ -2,7 +2,7 @@ import { ArrowLeft, Download, RotateCcw, WandSparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
-import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
+import { WebGpuMultiLayerVideoPreview } from '../../../components/WebGpuMultiLayerVideoPreview'
 import type { MediaMetadata, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, SegmentedControl, VideoControls, toast } from '../../../ui'
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
@@ -284,7 +284,7 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
             className={`color-reveal-stage ui-video-controls-host ${outputSize.width > outputSize.height ? 'is-landscape' : 'is-portrait'}`}
             style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }}
           >
-            <MultipleLayerVideoPreviewLrcRender
+            <WebGpuMultiLayerVideoPreview
               className="color-reveal-canvas"
               layers={previewLayers}
               canvasWidth={outputSize.width}

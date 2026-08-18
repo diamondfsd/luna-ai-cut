@@ -222,7 +222,7 @@ export function register(): void {
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
     // 统一使用 ffprobe（非阻塞，只读文件头），避免同步解码大图阻塞主进程。
-    // 同时读取 stream 与首帧，按 Rust 渲染层同样的规则处理视频 display matrix 和图片 Orientation。
+    // 同时读取 stream 与首帧，按 WebGPU 合成层同样的规则处理视频 display matrix 和图片 Orientation。
     try {
       const resolution = await probeDisplayResolution(filePath)
       return { width: resolution.width, height: resolution.height }

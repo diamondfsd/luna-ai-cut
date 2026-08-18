@@ -95,7 +95,7 @@ interface BorderItemProps {
   name?: string
   active?: boolean
   onClick?: () => void
-  /** 父组件传来的源文件路径（传给 Rust 渲染带边框的缩略图） */
+  /** 父组件传来的源文件路径（用于生成 WebGPU 边框缩略图） */
   mediaPath: string | null
   /** 隐藏底部的名称文本 */
   hideName?: boolean
@@ -130,7 +130,7 @@ export function BorderItem({ presetId, name = '', active, onClick, mediaPath, hi
     return () => observer.disconnect()
   }, [visible])
 
-  // 源图就绪 → 调用 Rust 渲染带边框的缩略图
+  // 源图就绪 → 调用 WebGPU 渲染带边框的缩略图
   useEffect(() => {
     if (!visible || !mediaPath) return
     let cancelled = false

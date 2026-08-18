@@ -51,7 +51,7 @@ function encodeDistanceChannel(distances: Float32Array, index: number): number {
 
 /**
  * Converts the grayscale PGM mask into R=mask, G=normal distance and
- * B=inverted distance, matching the native compositor's feathering data.
+ * B=inverted distance, matching the WebGPU composition feathering data.
  */
 export function encodeWebGpuMaskTexture(source: WebGpuMaskSource): WebGpuMaskTextureData {
   const width = Math.floor(source.width)
