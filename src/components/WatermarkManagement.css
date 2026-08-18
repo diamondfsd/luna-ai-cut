@@ -1,0 +1,191 @@
+.watermark-management {
+  display: grid;
+  gap: 28px;
+}
+
+.watermark-management-section {
+  display: grid;
+  gap: 14px;
+}
+
+.watermark-management-section + .watermark-management-section {
+  border-top: 1px solid var(--hairline);
+  padding-top: 24px;
+}
+
+.watermark-management-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.watermark-management-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.watermark-management-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.watermark-management-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.watermark-management-default {
+  width: min(420px, 100%);
+  box-sizing: border-box;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--canvas);
+}
+
+.watermark-management .wm-settings-header {
+  color: var(--ink);
+}
+
+.watermark-management .wm-settings-content {
+  margin-top: 8px;
+}
+
+.watermark-management .wm-source-selector,
+.watermark-management .wm-style-selector {
+  background: color-mix(in srgb, var(--ink) 6%, var(--canvas));
+}
+
+.watermark-management .wm-source-selector .ui-btn-group-btn,
+.watermark-management .wm-style-selector .ui-btn-group-btn {
+  color: var(--muted);
+}
+
+.watermark-management .wm-source-selector .ui-btn-group-btn:hover,
+.watermark-management .wm-style-selector .ui-btn-group-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, var(--canvas));
+}
+
+.watermark-management .wm-source-selector .ui-btn-group-btn.active,
+.watermark-management .wm-style-selector .ui-btn-group-btn.active {
+  background: color-mix(in srgb, var(--blue) 12%, var(--canvas));
+  color: var(--blue);
+}
+
+.watermark-management .wm-custom-empty {
+  border-color: var(--hairline);
+  background: color-mix(in srgb, var(--ink) 2%, var(--canvas));
+  color: var(--muted);
+}
+
+.watermark-management .wm-position-grid {
+  border-color: var(--hairline);
+  background: color-mix(in srgb, var(--ink) 3%, var(--canvas));
+}
+
+.watermark-management .wm-pos-cell.ui-btn {
+  background: color-mix(in srgb, var(--ink) 5%, var(--canvas));
+}
+
+.watermark-management .wm-pos-cell.ui-btn:hover {
+  background: color-mix(in srgb, var(--ink) 9%, var(--canvas));
+}
+
+.watermark-management .wm-pos-cell.ui-btn.active {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 12%, var(--canvas));
+}
+
+.watermark-management .wm-pos-dot {
+  background: color-mix(in srgb, var(--ink) 38%, var(--canvas));
+}
+
+.watermark-management .wm-pos-cell.active .wm-pos-dot {
+  background: var(--blue);
+}
+
+.watermark-management .wm-slider-label {
+  color: var(--ink);
+}
+
+.watermark-management .watermark-management-empty {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.watermark-management-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.watermark-management-item {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 82px auto;
+  gap: 7px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--canvas);
+}
+
+.watermark-management-item > img {
+  display: block;
+  width: 100%;
+  height: 82px;
+  object-fit: contain;
+}
+
+.watermark-management-item > span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watermark-management-delete.ui-icon-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.watermark-management-item:hover .watermark-management-delete,
+.watermark-management-item:focus-within .watermark-management-delete {
+  opacity: 1;
+}
+
+.watermark-management-delete.ui-icon-btn:hover {
+  color: #d33;
+}
+
+@media (max-width: 640px) {
+  .watermark-management-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .watermark-management-heading .ui-btn {
+    justify-self: start;
+  }
+
+  .watermark-management-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .watermark-management-delete.ui-icon-btn {
+    opacity: 1;
+  }
+}

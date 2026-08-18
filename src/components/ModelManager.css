@@ -1,6 +1,6 @@
 .model-manager {
   display: grid;
-  gap: 20px;
+  gap: 14px;
 }
 
 .model-manager-header {
@@ -61,48 +61,15 @@
   font-size: 13px;
 }
 
-.model-manager-group {
-  display: grid;
-  gap: 9px;
-}
-
-.model-manager-group h3 {
-  margin: 0 4px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.model-manager-items {
-  display: grid;
-  gap: 8px;
-}
-
-.model-manager-item {
-  display: grid;
-  gap: 10px;
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
-  padding: 14px 16px;
-  background: var(--canvas);
-}
-
-.model-manager-item-main {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-}
-
 .model-manager-checkbox,
 .model-manager-checkbox-placeholder {
   display: grid;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   place-items: center;
   border: 1px solid #c7cbd1;
-  border-radius: 5px;
+  border-radius: 4px;
   background: var(--canvas);
   color: #fff;
 }
@@ -130,27 +97,45 @@
   visibility: hidden;
 }
 
-.model-manager-item-copy {
+.model-manager-table {
+  min-width: 900px;
+  table-layout: fixed;
+}
+
+.model-manager-table th,
+.model-manager-table td {
+  padding: 8px 10px;
+}
+
+.model-manager-table-name,
+.model-manager-table-source,
+.model-manager-table-status {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 3px;
 }
 
-.model-manager-item-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
+.model-manager-table-name strong,
+.model-manager-table-name span,
+.model-manager-table-source strong,
+.model-manager-table-source span,
+.model-manager-table-status small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.model-manager-item-title strong {
+.model-manager-table-name strong {
   color: var(--ink);
   font-size: 14px;
   font-weight: 600;
 }
 
-.model-manager-item-copy p,
-.model-manager-item-copy small,
+.model-manager-table-name span,
+.model-manager-table-source span,
+.model-manager-table-status small,
+.model-manager-table-muted,
 .model-manager-error {
   margin: 0;
   color: var(--muted);
@@ -158,9 +143,34 @@
   line-height: 1.45;
 }
 
-.model-manager-item-copy small {
+.model-manager-table-name span {
   color: color-mix(in srgb, var(--muted) 82%, transparent);
+}
+
+.model-manager-table-source strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.model-manager-table-source span,
+.model-manager-table-status small {
   font-size: 11px;
+}
+
+.model-manager-table-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.model-manager-table-status-line strong {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .model-manager-ready,
@@ -206,51 +216,9 @@
   animation: model-manager-progress 1.2s ease-in-out infinite;
 }
 
-.model-manager-progress-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.model-manager-progress-meta span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .model-manager-error {
   color: #a15c00;
   overflow-wrap: anywhere;
-}
-
-.model-manager-source.ui-accordion {
-  border-top-color: var(--hairline);
-}
-
-.model-manager-source .ui-accordion-header {
-  padding: 8px 0 2px;
-}
-
-.model-manager-source .ui-accordion-title {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.model-manager-source .ui-accordion-title small {
-  color: color-mix(in srgb, var(--muted) 78%, transparent);
-  font-size: 10px;
-  font-weight: 400;
-}
-
-.model-manager-source .ui-accordion-chevron {
-  color: var(--muted);
-}
-
-.model-manager-source .ui-accordion-body {
-  gap: 5px;
-  padding: 5px 0 2px;
 }
 
 .model-manager-source-list {
@@ -265,6 +233,20 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
   line-height: 1.4;
+}
+
+.model-manager-source-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.model-manager-source-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .model-manager-spin {
@@ -294,13 +276,7 @@
     justify-self: start;
   }
 
-  .model-manager-item-main {
-    grid-template-columns: 22px minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .model-manager-item-main > .ui-btn {
-    grid-column: 2;
-    justify-self: start;
+  .model-manager-table {
+    min-width: 820px;
   }
 }

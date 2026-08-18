@@ -4,28 +4,20 @@ import { FolderOpen, Trash2 } from 'lucide-react'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { AppSettings, CustomWatermarkAsset, WatermarkPosition } from '../shared/types'
 import { addCustomWatermarkAssets } from '../shared/watermarkLibrary'
-import { Button, Dialog, IconButton, toast } from '../ui'
+import { Button, IconButton, LoadingIndicator, toast } from '../ui'
 import { WatermarkSettings } from './WatermarkSettings'
-import './WatermarkManagementDialog.css'
+import './WatermarkManagement.css'
 
-interface WatermarkManagementDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+interface WatermarkManagementProps {
   settings: AppSettings | null
   onDefaultChange: (watermark: { enabled: boolean; position: WatermarkPosition }) => void
 }
 
-export function WatermarkManagementDialog({
-  open,
-  onOpenChange,
-  settings,
-  onDefaultChange,
-}: WatermarkManagementDialogProps) {
+export function WatermarkManagement({ settings, onDefaultChange }: WatermarkManagementProps) {
   const [assets, setAssets] = useState<CustomWatermarkAsset[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!open) return
     let cancelled = false
     setLoading(true)
     window.luna.listCustomWatermarks()
@@ -35,7 +27,7 @@ export function WatermarkManagementDialog({
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [open])
+  }, [])
 
   async function handleAdd(): Promise<void> {
     const additions = await window.luna.chooseCustomWatermarks().catch((error) => {
@@ -57,17 +49,15 @@ export function WatermarkManagementDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="水印设置"
-      tone="dark"
-      className="watermark-management-dialog"
-      footer={<Button variant="primary" onClick={() => onOpenChange(false)}>完成</Button>}
-    >
-      <div className="ui-dialog-body watermark-management-body">
-        <section className="watermark-management-section">
-          <h3>默认水印</h3>
+    <div className="watermark-management">
+      <section className="watermark-management-section">
+        <div className="watermark-management-heading">
+          <div>
+            <h2>默认水印</h2>
+            <p>新建编辑项目时使用的水印设置</p>
+          </div>
+        </div>
+        <div className="watermark-management-default">
           <WatermarkSettings
             preferencesOnly
             title="默认开启"
@@ -80,36 +70,39 @@ export function WatermarkManagementDialog({
             }}
             onChange={onDefaultChange}
           />
-        </section>
+        </div>
+      </section>
 
-        <section className="watermark-management-section">
-          <div className="watermark-management-heading">
-            <h3>自定义水印</h3>
-            <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void handleAdd()}>
-              添加水印
-            </Button>
+      <section className="watermark-management-section">
+        <div className="watermark-management-heading">
+          <div>
+            <h2>自定义水印</h2>
+            <p>导入后可在编辑时选择使用</p>
           </div>
-          {loading ? <p className="watermark-management-empty">正在读取水印</p> : assets.length > 0 ? (
-            <div className="watermark-management-grid">
-              {assets.map((asset) => (
-                <article key={asset.id} className="watermark-management-card">
-                  <img src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
-                  <span title={asset.fileName}>{asset.fileName}</span>
-                  <IconButton
-                    className="watermark-management-delete"
-                    variant="light"
-                    size="mini"
-                    icon={<Trash2 size={14} />}
-                    onClick={() => void handleDelete(asset)}
-                    title={`删除 ${asset.fileName}`}
-                    aria-label={`删除 ${asset.fileName}`}
-                  />
-                </article>
-              ))}
-            </div>
-          ) : <p className="watermark-management-empty">暂无自定义水印</p>}
-        </section>
-      </div>
-    </Dialog>
+          <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void handleAdd()}>
+            添加水印
+          </Button>
+        </div>
+        {loading ? <div className="watermark-management-empty"><LoadingIndicator label="正在读取水印" /></div> : assets.length > 0 ? (
+          <div className="watermark-management-grid">
+            {assets.map((asset) => (
+              <article key={asset.id} className="watermark-management-item">
+                <img src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
+                <span title={asset.fileName}>{asset.fileName}</span>
+                <IconButton
+                  className="watermark-management-delete"
+                  variant="ghost"
+                  size="mini"
+                  icon={<Trash2 size={14} />}
+                  onClick={() => void handleDelete(asset)}
+                  title={`删除 ${asset.fileName}`}
+                  aria-label={`删除 ${asset.fileName}`}
+                />
+              </article>
+            ))}
+          </div>
+        ) : <div className="watermark-management-empty">暂无自定义水印</div>}
+      </section>
+    </div>
   )
 }
