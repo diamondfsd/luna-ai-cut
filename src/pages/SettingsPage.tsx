@@ -5,7 +5,7 @@ import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useStorageMigration } from '../hooks/useStorageMigration'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
+import { WatermarkManagement } from '../components/WatermarkManagement'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import { ModelManager } from '../components/ModelManager'
@@ -88,9 +88,7 @@ export function SettingsPage({
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
-  const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
-  const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [organizeDownloadsDialogOpen, setOrganizeDownloadsDialogOpen] = useState(false)
   const [organizingDownloads, setOrganizingDownloads] = useState(false)
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('storage')
@@ -310,31 +308,13 @@ export function SettingsPage({
 
           {activeSection === 'editing' && (
             <section className="settings-group" aria-label="编辑默认值">
-          <div className="settings-card">
-            <article className="settings-row">
-              <div className="settings-row-copy">
-                <span>水印</span>
-                <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'}</em>
-              </div>
-              <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
-            </article>
-          </div>
+              <WatermarkManagement settings={settings} onDefaultChange={handleDefaultWatermarkChange} />
             </section>
           )}
 
           {activeSection === 'models' && (
             <section className="settings-group" aria-label="模型管理">
-              <div className="settings-card">
-                <article className="settings-row">
-                  <div className="settings-row-copy">
-                    <span>本地模型</span>
-                    <em>查看并下载分割、检测、字幕、音乐和语音模型</em>
-                  </div>
-                  <Button variant="primary" size="compact" icon={<Cpu size={15} />} onClick={() => setModelDialogOpen(true)}>
-                    管理模型
-                  </Button>
-                </article>
-              </div>
+              <ModelManager />
             </section>
           )}
 
@@ -401,24 +381,7 @@ export function SettingsPage({
           )}
         </main>
       </div>
-      <WatermarkManagementDialog
-        open={watermarkDialogOpen}
-        onOpenChange={setWatermarkDialogOpen}
-        settings={settings}
-        onDefaultChange={handleDefaultWatermarkChange}
-      />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
-      <Dialog
-        open={modelDialogOpen}
-        onOpenChange={setModelDialogOpen}
-        title="模型管理"
-        description="按需下载本地模型。模型会保存到当前基础目录。"
-        className="settings-model-dialog"
-      >
-        <div className="ui-dialog-body settings-model-dialog-body">
-          {modelDialogOpen && <ModelManager />}
-        </div>
-      </Dialog>
       <Dialog
         open={organizeDownloadsDialogOpen}
         onOpenChange={(open) => {
