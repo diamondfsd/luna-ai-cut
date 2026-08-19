@@ -7,7 +7,7 @@ import {
   findCompatibleTrackForItemType,
 } from './track-item-compatibility'
 
-function makeTrack(id: string, order: number, kind: 'video' | 'audio' | 'subtitle'): TimelineTrack {
+function makeTrack(id: string, order: number, kind: 'video' | 'audio'): TimelineTrack {
   return {
     id,
     name: id,
@@ -23,30 +23,28 @@ function makeTrack(id: string, order: number, kind: 'video' | 'audio' | 'subtitl
 }
 
 describe('findCompatibleTrackForItemType', () => {
-  it('only places subtitle items on subtitle tracks', () => {
+  it('places text items on video tracks', () => {
     const tracks = [
-      makeTrack('subtitle-1', -1, 'subtitle'),
       makeTrack('video-1', 0, 'video'),
       makeTrack('audio-1', 1, 'audio'),
     ]
 
     expect(
-      findCompatibleTrackForItemType({ tracks, items: [], itemType: 'subtitle' })?.id,
-    ).toBe('subtitle-1')
+      findCompatibleTrackForItemType({ tracks, items: [], itemType: 'text' })?.id,
+    ).toBe('video-1')
     expect(
       findCompatibleTrackForItemType({
         tracks,
         items: [],
         itemType: 'video',
-        preferredTrackId: 'subtitle-1',
+        preferredTrackId: 'audio-1',
         allowPreferredTrackFallback: false,
       }),
     ).toBeNull()
   })
 
-  it('only places plain text on dedicated text tracks', () => {
+  it('falls back from an audio preference to a video track for text', () => {
     const tracks = [
-      makeTrack('subtitle-1', -1, 'subtitle'),
       makeTrack('video-1', 0, 'video'),
       makeTrack('audio-1', 1, 'audio'),
     ]
@@ -58,12 +56,11 @@ describe('findCompatibleTrackForItemType', () => {
         itemType: 'text',
         preferredTrackId: 'audio-1',
       })?.id,
-    ).toBe('subtitle-1')
+    ).toBe('video-1')
   })
 
   it('does not fall back when strict preferred track matching is requested', () => {
     const tracks = [
-      makeTrack('subtitle-1', -1, 'subtitle'),
       makeTrack('video-1', 0, 'video'),
       makeTrack('audio-1', 1, 'audio'),
     ]
@@ -91,11 +88,11 @@ describe('findCompatibleTrackForItemType', () => {
     } as TimelineItem
 
     expect(() => assertItemTrackCompatibility(item, [makeTrack('video-1', 0, 'video')]))
-      .toThrow('文字不能放在“video-1”轨道。')
+      .not.toThrow()
     expect(() => assertItemTrackCompatibility(
-      { ...item, trackId: 'subtitle-1' },
-      [makeTrack('subtitle-1', -1, 'subtitle')],
-    )).not.toThrow()
+      { ...item, trackId: 'audio-1' },
+      [makeTrack('audio-1', 1, 'audio')],
+    )).toThrow('文字不能放在“audio-1”轨道。')
   })
 
   it('treats hidden tracks as compatible by default', () => {

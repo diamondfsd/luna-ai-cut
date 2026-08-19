@@ -8,19 +8,14 @@ const DEFAULT_TIMELINE_ZOOM_LEVEL = 0.125
 function createInitialTimelineTracks(): TimelineTrack[] {
   return [
     {
-      id: 'id-subtitle', name: '字幕', kind: 'subtitle', height: 50,
+      id: 'id-video', name: '视频', kind: 'video', height: 80,
       locked: false, syncLock: true, visible: true, muted: false, solo: false,
       volume: 0, order: 0, items: [],
     },
     {
-      id: 'id-video', name: '视频', kind: 'video', height: 80,
-      locked: false, syncLock: true, visible: true, muted: false, solo: false,
-      volume: 0, order: 1, items: [],
-    },
-    {
       id: 'id-audio', name: '音频', kind: 'audio', height: 60,
       locked: false, syncLock: true, visible: true, muted: false, solo: false,
-      volume: 0, order: 2, items: [],
+      volume: 0, order: 1, items: [],
     },
   ]
 }

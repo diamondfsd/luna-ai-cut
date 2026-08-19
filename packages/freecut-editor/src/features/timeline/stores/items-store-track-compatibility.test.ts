@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it } from 'vite-plus/test'
 import type { TextItem, TimelineTrack } from '@freecut/types/timeline'
 import { useItemsStore } from './items-store'
 
-function makeTrack(id: string, kind: 'video' | 'audio' | 'subtitle', order: number): TimelineTrack {
+function makeTrack(id: string, kind: 'video' | 'audio', order: number): TimelineTrack {
   return {
     id,
-    name: kind === 'subtitle' ? 'S1' : kind === 'audio' ? 'A1' : 'V1',
+    name: kind === 'audio' ? 'A1' : 'V1',
     kind,
     order,
     height: 64,
@@ -37,33 +37,31 @@ describe('items store track compatibility', () => {
     useItemsStore.setState({ items: [], tracks: [] })
   })
 
-  it('rejects adding plain text to a video track', () => {
+  it('allows adding plain text to a video track', () => {
     useItemsStore.getState().setTracks([makeTrack('video-1', 'video', 0)])
 
-    expect(() => useItemsStore.getState()._addItem(makeText('video-1')))
-      .toThrow('文字不能放在“V1”轨道。')
-    expect(useItemsStore.getState().items).toEqual([])
+    expect(() => useItemsStore.getState()._addItem(makeText('video-1'))).not.toThrow()
+    expect(useItemsStore.getState().items).toHaveLength(1)
   })
 
-  it('allows plain text on a dedicated text track and blocks moving it to video', () => {
+  it('keeps text on video tracks and blocks moving it to audio', () => {
     useItemsStore.getState().setTracks([
-      makeTrack('text-1', 'subtitle', -1),
       makeTrack('video-1', 'video', 0),
+      makeTrack('audio-1', 'audio', 1),
     ])
-    useItemsStore.getState()._addItem(makeText('text-1'))
+    useItemsStore.getState()._addItem(makeText('video-1'))
 
-    expect(() => useItemsStore.getState()._moveItem('text-1', 10, 'video-1'))
-      .toThrow('文字不能放在“V1”轨道。')
-    expect(useItemsStore.getState().itemById['text-1']?.trackId).toBe('text-1')
+    expect(() => useItemsStore.getState()._moveItem('text-1', 10, 'audio-1'))
+      .toThrow('文字不能放在“A1”轨道。')
+    expect(useItemsStore.getState().itemById['text-1']?.trackId).toBe('video-1')
   })
 
-  it('rejects changing an occupied text track into a video track', () => {
-    const textTrack = makeTrack('text-1', 'subtitle', -1)
+  it('accepts a video track containing text', () => {
+    const textTrack = makeTrack('video-1', 'video', 0)
     useItemsStore.getState().setTracks([textTrack])
     useItemsStore.getState()._addItem(makeText(textTrack.id))
 
-    expect(() => useItemsStore.getState().setTracks([{ ...textTrack, kind: 'video', name: 'V1' }]))
-      .toThrow('文字不能放在“V1”轨道。')
+    expect(() => useItemsStore.getState().setTracks([{ ...textTrack, name: 'V2' }])).not.toThrow()
   })
 
   it('rejects removing the final video or audio track after initialization', () => {

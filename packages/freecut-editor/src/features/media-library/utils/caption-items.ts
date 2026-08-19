@@ -249,7 +249,7 @@ export function findCompatibleCaptionTrack(
     tracks,
     items,
     [{ startFrame, endFrame }],
-    'subtitle',
+    'video',
   )
 }
 
@@ -258,7 +258,7 @@ export function findCompatibleCaptionTrackForRanges(
   items: readonly TimelineItem[],
   ranges: ReadonlyArray<{ startFrame: number; endFrame: number }>,
 ): TimelineTrack | null {
-  return findCompatibleGeneratedTrackForRanges(tracks, items, ranges, 'subtitle')
+  return findCompatibleGeneratedTrackForRanges(tracks, items, ranges, 'video')
 }
 
 export function findCompatibleGeneratedTrackForRanges(
@@ -306,10 +306,6 @@ export function isGeneratedContentTrackCandidate(
   if (requiredKind === 'audio') {
     return effectiveKind === 'audio'
   }
-  if (requiredKind === 'subtitle') {
-    return effectiveKind === 'subtitle'
-  }
-
   return effectiveKind === 'video' || effectiveKind === null
 }
 
@@ -317,15 +313,15 @@ export function isCaptionTrackCandidate(
   track: TimelineTrack,
   items: readonly TimelineItem[],
 ): boolean {
-  return isGeneratedContentTrackCandidate(track, items, 'subtitle')
+  return isGeneratedContentTrackCandidate(track, items, 'video')
 }
 
 export function buildCaptionTrack(tracks: readonly TimelineTrack[]): TimelineTrack {
-  const minOrder = tracks.reduce((lowest, track) => Math.min(lowest, track.order), 0)
+  const maxOrder = tracks.reduce((highest, track) => Math.max(highest, track.order), -1)
   return {
     id: `track-captions-${Date.now()}`,
-    name: getNextClassicTrackName([...tracks], 'subtitle'),
-    kind: 'subtitle',
+    name: getNextClassicTrackName([...tracks], 'video'),
+    kind: 'video',
     height: DEFAULT_TRACK_HEIGHT,
     locked: false,
     syncLock: true,
@@ -333,28 +329,28 @@ export function buildCaptionTrack(tracks: readonly TimelineTrack[]): TimelineTra
     muted: false,
     solo: false,
     volume: 0,
-    order: minOrder - 1,
+    order: maxOrder + 1,
     items: [],
   }
 }
 
 /**
- * Build a captions track above both the reference track and every existing
- * timeline track so subtitle tracks always remain at the top.
+ * Build a video captions track above both the reference track and every
+ * existing timeline track so generated text remains visually on top.
  */
 export function buildCaptionTrackAbove(
   tracks: readonly TimelineTrack[],
   referenceOrder: number,
 ): TimelineTrack {
-  const minOrder = tracks.reduce(
-    (lowest, track) => Math.min(lowest, track.order),
-    Math.min(referenceOrder, 0),
-  )
+  const ordersStrictlyAbove = tracks.map((track) => track.order).filter((order) => order < referenceOrder)
+  const previousOrder =
+    ordersStrictlyAbove.length > 0 ? Math.max(...ordersStrictlyAbove) : referenceOrder - 2
+  const newOrder = (previousOrder + referenceOrder) / 2
 
   return {
     id: `track-captions-${Date.now()}`,
-    name: getNextClassicTrackName([...tracks], 'subtitle'),
-    kind: 'subtitle',
+    name: getNextClassicTrackName([...tracks], 'video'),
+    kind: 'video',
     height: DEFAULT_TRACK_HEIGHT,
     locked: false,
     syncLock: true,
@@ -362,7 +358,7 @@ export function buildCaptionTrackAbove(
     muted: false,
     solo: false,
     volume: 0,
-    order: minOrder - 1,
+    order: newOrder,
     items: [],
   }
 }
@@ -862,7 +858,7 @@ export function appendVirtualTranscriptCaptionTrack(
   const virtualTrack: TimelineTrack = {
     id: VIRTUAL_TRANSCRIPT_CAPTION_TRACK_ID,
     name: 'Transcript Captions',
-    kind: 'subtitle',
+    kind: 'video',
     height: 1,
     locked: true,
     syncLock: false,

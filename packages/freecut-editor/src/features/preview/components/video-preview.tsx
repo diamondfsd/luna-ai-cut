@@ -134,6 +134,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
   const [splitAfterRenderedFrame, setSplitAfterRenderedFrame] = useState<number | null>(null)
   const splitAfterRendererRef = useRef<CompositionRendererInstance | null>(null)
   const splitAfterInitPromiseRef = useRef<Promise<CompositionRendererInstance | null> | null>(null)
+  const splitAfterInitGenerationRef = useRef(0)
   const splitAfterCanvasRef = useRef<OffscreenCanvas | null>(null)
   const splitAfterRendererStructureKeyRef = useRef<string | null>(null)
   const splitAfterRenderInFlightRef = useRef(false)
@@ -319,6 +320,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
     proxyReadyCount,
     blobUrlVersion,
     project,
+    playerSize,
   })
   const domTextScrubOverlayPlan = useMemo(
     () => buildDomTextScrubOverlayPlan(fastScrubScaledTracks, fastScrubScaledKeyframes),
@@ -406,6 +408,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
   )
 
   const disposeSplitAfterRenderer = useCallback(() => {
+    splitAfterInitGenerationRef.current += 1
     splitAfterInitPromiseRef.current = null
     splitAfterRendererStructureKeyRef.current = null
     splitAfterCanvasRef.current = null
@@ -445,7 +448,9 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
       if (splitAfterRendererRef.current) return splitAfterRendererRef.current
       if (splitAfterInitPromiseRef.current) return splitAfterInitPromiseRef.current
 
-      splitAfterInitPromiseRef.current = (async () => {
+      const initGeneration = splitAfterInitGenerationRef.current
+      let initPromise!: Promise<CompositionRendererInstance | null>
+      initPromise = (async () => {
         try {
           const canvas = new OffscreenCanvas(renderSize.width, renderSize.height)
           const ctx = canvas.getContext('2d')
@@ -454,7 +459,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
           const { createCompositionRenderer } = await importCompositionRenderer()
           const renderer = await createCompositionRenderer(fastScrubInputProps, canvas, ctx, {
             mode: 'preview',
-            useProxyMedia: true,
+            useProxyMedia: useProxy,
             getPreviewTransformOverride,
             getPreviewEffectsOverride: getPreviewEffectsOverrideWithGradeApplied,
             getPreviewCornerPinOverride,
@@ -463,6 +468,10 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
             getLiveKeyframes,
             renderText: !domTextScrubOverlayPlan.enabled,
           })
+          if (splitAfterInitGenerationRef.current !== initGeneration) {
+            renderer.dispose()
+            return null
+          }
 
           splitAfterCanvasRef.current = canvas
           splitAfterRendererRef.current = renderer
@@ -472,16 +481,21 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
           }
           return renderer
         } catch {
-          splitAfterCanvasRef.current = null
-          splitAfterRendererRef.current = null
-          splitAfterRendererStructureKeyRef.current = null
+          if (splitAfterInitGenerationRef.current === initGeneration) {
+            splitAfterCanvasRef.current = null
+            splitAfterRendererRef.current = null
+            splitAfterRendererStructureKeyRef.current = null
+          }
           return null
         } finally {
-          splitAfterInitPromiseRef.current = null
+          if (splitAfterInitPromiseRef.current === initPromise) {
+            splitAfterInitPromiseRef.current = null
+          }
         }
       })()
+      splitAfterInitPromiseRef.current = initPromise
 
-      return splitAfterInitPromiseRef.current
+      return initPromise
     }, [
       disposeSplitAfterRenderer,
       fastScrubInputProps,
@@ -496,7 +510,12 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
       isResolving,
       renderSize.height,
       renderSize.width,
+      useProxy,
     ])
+
+  useEffect(() => {
+    disposeSplitAfterRenderer()
+  }, [disposeSplitAfterRenderer, fastScrubRendererStructureKey])
 
   // Enter the composited path in the same render that activates the editor.
   // Waiting for the timeline-wide effect scan adds a reactive round trip that
@@ -657,6 +676,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
       preserveRendererAcrossOverlayRouting: shouldWarmGpuEffectsRenderer,
       domTextScrubOverlayEnabled: domTextScrubOverlayPlan.enabled,
       items,
+      useProxy,
       playerSize,
       playerRenderSize,
       renderSize,
@@ -706,6 +726,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
   usePreviewRenderPump({
     fps,
     forceFastScrubOverlay,
+    useProxy,
     // Scrub decoding must use the same proxy/source URLs as the renderer.
     // Feeding unresolved project tracks here silently made the worker decode
     // full-resolution originals while the composition rendered proxies.

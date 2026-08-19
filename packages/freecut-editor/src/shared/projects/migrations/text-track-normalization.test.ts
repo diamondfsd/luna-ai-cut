@@ -5,7 +5,7 @@ import type { Project } from '@freecut/types/project'
 import { migrateProject } from './index'
 
 describe('text track normalization', () => {
-  it('keeps plain title text on its dedicated text track', () => {
+  it('keeps plain title text on a video track', () => {
     const project = {
       id: 'project-1',
       name: 'Project',
@@ -18,8 +18,8 @@ describe('text track normalization', () => {
       timeline: {
         tracks: [{
           id: 'text-track',
-          name: 'S1',
-          kind: 'subtitle',
+          name: 'V1',
+          kind: 'video',
           height: 80,
           locked: false,
           visible: true,
@@ -47,7 +47,7 @@ describe('text track normalization', () => {
     const timeline = migrateProject(project).project.timeline!
 
     expect(timeline.tracks).toEqual([
-      expect.objectContaining({ id: 'text-track', name: 'S1', kind: 'subtitle' }),
+      expect.objectContaining({ id: 'text-track', name: 'V1', kind: 'video' }),
     ])
     expect(timeline.items[0]).toMatchObject({ id: 'title-1', trackId: 'text-track' })
   })

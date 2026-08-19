@@ -34,7 +34,6 @@ describe('classic tracks', () => {
     expect(getTrackKind(makeTrack({ kind: 'audio' }))).toBe('audio')
     expect(getTrackKind(makeTrack({ name: 'V2' }))).toBe('video')
     expect(getTrackKind(makeTrack({ name: 'A4' }))).toBe('audio')
-    expect(getTrackKind(makeTrack({ name: 'S2' }))).toBe('subtitle')
     expect(getTrackKind(makeTrack({ name: 'Track 1' }))).toBeNull()
   })
 

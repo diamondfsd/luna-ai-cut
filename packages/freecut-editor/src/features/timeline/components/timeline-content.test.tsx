@@ -116,16 +116,16 @@ const VIDEO_TRACK: TimelineTrack = {
   items: [],
 }
 
-const SUBTITLE_TRACK: TimelineTrack = {
-  id: 'track-subtitle-1',
-  name: '字幕',
-  kind: 'subtitle',
-  height: 40,
+const AUDIO_TRACK: TimelineTrack = {
+  id: 'track-audio-1',
+  name: 'A1',
+  kind: 'audio',
+  height: 60,
   locked: false,
   visible: true,
   muted: false,
   solo: false,
-  order: -1,
+  order: 1,
   items: [],
 }
 
@@ -195,7 +195,7 @@ function resetStores() {
   useTimelineStore.setState({
     fps: 30,
     items: [VIDEO_ITEM],
-    tracks: [VIDEO_TRACK],
+    tracks: [VIDEO_TRACK, AUDIO_TRACK],
     transitions: [],
     keyframes: [],
     markers: [],
@@ -232,12 +232,12 @@ describe('TimelineContent playback selection behavior', () => {
     expect(container.querySelector('.timeline-container')).toHaveClass('isolate')
   })
 
-  it('does not reserve a video drop-zone gap below subtitle tracks', () => {
+  it('reserves the video drop-zone gap for video tracks', () => {
     const { queryByTestId, rerender } = render(
-      <TimelineContent duration={10} tracks={[SUBTITLE_TRACK, VIDEO_TRACK]} />,
+      <TimelineContent duration={10} tracks={[VIDEO_TRACK]} />,
     )
 
-    expect(queryByTestId('timeline-video-drop-zone')).not.toBeInTheDocument()
+    expect(queryByTestId('timeline-video-drop-zone')).toHaveStyle({ height: '24px' })
 
     rerender(<TimelineContent duration={10} tracks={[VIDEO_TRACK]} />)
 
@@ -859,7 +859,7 @@ describe('TimelineContent playback selection behavior', () => {
     ]
 
     useTimelineStore.setState({
-      tracks: videoTracks,
+      tracks: [...videoTracks, AUDIO_TRACK],
       items: [],
     })
 

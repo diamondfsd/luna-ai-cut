@@ -298,7 +298,8 @@ vi.mock('../utils/media-resolver', () => ({
   resolveProxyUrl: mockState.resolveProxyUrlMock,
 }))
 
-vi.mock('@freecut/features/preview/deps/export', () => ({
+vi.mock('@freecut/features/preview/deps/export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@freecut/features/preview/deps/export')>()),
   importCompositionRenderer: vi.fn(async () => ({
     createCompositionRenderer: rendererMockState.create,
   })),

@@ -6,9 +6,8 @@
 import type { VideoItem } from '@freecut/types/timeline'
 import {
   getItemRenderTimelineSpan,
-  getRenderTimelineSourceStart,
-  getSourceFrameRampOffset,
   isFrameInsideSourceTimeRamp,
+  resolveVideoRenderSourceTimeSeconds,
   type RenderTimelineSpan,
 } from '../render-span'
 import {
@@ -41,7 +40,6 @@ function getTier2VideoFrameToleranceSeconds(sourceFps: number): number {
   const normalizedSourceFps = Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : 30
   return (1 / normalizedSourceFps) * TIER2_VIDEO_FRAME_TOLERANCE_FACTOR
 }
-
 function canUseWorkerPredecodedFrame(
   rctx: ItemRenderContext,
   workerSource: string | null | undefined,
@@ -62,10 +60,7 @@ function tryDrawActivePreviewFallback(options: {
   allowOutsideActivePreview?: boolean
 }): boolean {
   const { rctx, previewRootFrame, workerSource, sourceTime, toleranceSeconds, drawBitmap } = options
-  if (
-    !options.allowOutsideActivePreview &&
-    !rctx.isActivePreviewFrameCurrent?.(previewRootFrame)
-  )
+  if (!options.allowOutsideActivePreview && !rctx.isActivePreviewFrameCurrent?.(previewRootFrame))
     return false
   const bitmap = rctx.getCachedActivePreviewFallbackBitmap?.(
     workerSource,
@@ -131,25 +126,6 @@ async function tryDrawInflightWorkerBitmap(
     sourceTime: options.sourceTime,
   })
   return true
-}
-
-function clampVideoSourceTime(
-  sourceTime: number,
-  sourceFps: number,
-  sourceDurationFrames: number | undefined,
-): number {
-  const clampedToStart = Math.max(0, sourceTime)
-  if (
-    sourceDurationFrames === undefined ||
-    !Number.isFinite(sourceDurationFrames) ||
-    sourceDurationFrames <= 0
-  ) {
-    return clampedToStart
-  }
-
-  const lastFrame = Math.max(0, sourceDurationFrames - 1)
-  const maxTime = (lastFrame + 1e-4) / sourceFps
-  return Math.min(clampedToStart, maxTime)
 }
 
 function drawTier2VideoFrame(
@@ -272,37 +248,15 @@ export async function renderVideoItem(
   let mediabunnyFailedThisFrame = false
   const effectiveRenderSpan = renderSpan ?? getItemRenderTimelineSpan(item)
 
-  // Calculate source time
-  const localFrame = frame - effectiveRenderSpan.from
-  const localTime = localFrame / fps
-  const sourceStart = getRenderTimelineSourceStart(item, effectiveRenderSpan)
   const sourceFps = item.sourceFps ?? fps
   const speed = item.speed ?? 1
-
-  // Normal: play from sourceStart forwards
-  // sourceStart is in source-native FPS frames, so divide by sourceFps (not project fps)
-  // Snap to nearest source frame boundary to avoid floating-point drift
-  // that can cause Math.floor(sourceTime * sourceFps) to land on the wrong frame.
-  const sourceFramesNeeded = (item.durationInFrames * speed * sourceFps) / fps
-  const reverseSourceEnd = (item.sourceEnd ?? sourceStart + sourceFramesNeeded) - sourceFrameOffset
-  const adjustedSourceStart = sourceStart + sourceFrameOffset
-  // A-A transition ramps add extra source frames per timeline frame so left/
-  // right participants render distinct source content (otherwise their handle
-  // expansions resolve to identical frames and the transition is invisible).
-  // Ramps are scoped to the transition window and skip reversed clips.
-  const rampOffsetSourceFrames =
-    effectiveRenderSpan.sourceTimeRamp && !item.isReversed
-      ? getSourceFrameRampOffset(effectiveRenderSpan.sourceTimeRamp, frame)
-      : 0
-  const unclampedSourceTime = item.isReversed
-    ? (reverseSourceEnd - localFrame * speed * (sourceFps / fps) - 1) / sourceFps
-    : adjustedSourceStart / sourceFps + localTime * speed + rampOffsetSourceFrames / sourceFps
-  const rawSourceTime = clampVideoSourceTime(unclampedSourceTime, sourceFps, item.sourceDuration)
-  const snappedSourceFrame = Math.round(rawSourceTime * sourceFps)
-  const sourceTime =
-    Math.abs(rawSourceTime * sourceFps - snappedSourceFrame) < 1e-6
-      ? (snappedSourceFrame + 1e-4) / sourceFps
-      : rawSourceTime
+  const sourceTime = resolveVideoRenderSourceTimeSeconds(
+    item,
+    effectiveRenderSpan,
+    frame,
+    fps,
+    sourceFrameOffset,
+  )
   const tier2ToleranceSeconds = getTier2VideoFrameToleranceSeconds(sourceFps)
   const nonBlockingToleranceSeconds = rctx.nonBlockingVideoFrameToleranceSeconds
   const previewRootFrame = rctx.previewRootTimelineFrame ?? frame
@@ -405,20 +359,24 @@ export async function renderVideoItem(
   // effectiveRenderSpan (not the natural item span) and let the policy
   // function decide whether the DOM video is fresh enough, mirroring the GPU
   // transition path in gpu.ts which also passes isRenderingTransition through.
-  // A-A transition ramps render source frames offset from the DOM video
-  // element's natural playback time. Drawing from the live element would
-  // ignore the offset and show identical pixels on both transition sides,
-  // defeating the ramp. Force the decode path when a ramp is active here.
+  // A-A transition ramps can use a zero-copy DOM frame only while the preview
+  // transition session explicitly owns and synchronizes that element to the
+  // same ramped source time as this renderer.
   const hasActiveRamp =
     !!effectiveRenderSpan.sourceTimeRamp &&
     isFrameInsideSourceTimeRamp(effectiveRenderSpan.sourceTimeRamp, frame)
-  const canUseDomVideoElement =
+  const domVideoCandidate =
     isPreviewMode &&
     domVideoElementProvider &&
     sourceFrameOffset === 0 &&
-    !hasActiveRamp &&
     isFrameInsideItemTimelineSpan(effectiveRenderSpan, frame)
-  const domVideo = canUseDomVideoElement ? domVideoElementProvider(item.id) : null
+      ? domVideoElementProvider(item.id)
+      : null
+  const domVideo =
+    !hasActiveRamp || domVideoCandidate?.dataset.transitionSourceRamp === '1'
+      ? domVideoCandidate
+      : null
+  const canUseDomVideoElement = Boolean(domVideoCandidate)
   const domVideoDecisionOptions = {
     domVideo,
     sourceTime,
@@ -443,6 +401,19 @@ export async function renderVideoItem(
     }
   }
   const hasDomVideo = domVideoDecision.hasReadyDomVideo
+
+  if (
+    isPreviewMode &&
+    hasActiveRamp &&
+    domVideoCandidate?.dataset.transitionSourceRamp === '1' &&
+    !domVideoDecision.shouldDraw
+  ) {
+    // Let the browser finish the session-owned seek. Falling through to an
+    // exact main-thread decode here prevents that seek from settling and turns
+    // a one-frame hold into a 250-600ms playback freeze.
+    holdPreviewFrontBuffer()
+    return false
+  }
 
   // DEV diagnostics: record which transition participants the renderer actually
   // composites per frame. Tree-shaken from prod; no-op unless a trace is running.
@@ -1008,23 +979,5 @@ export function resolveVideoParticipantSourceTime(
   frame: number,
   rctx: ItemRenderContext,
 ): number {
-  const localFrame = frame - renderSpan.from
-  const localTime = localFrame / rctx.fps
-  const sourceStart = getRenderTimelineSourceStart(item, renderSpan)
-  const sourceFps = item.sourceFps ?? rctx.fps
-  const speed = item.speed ?? 1
-  const sourceFramesNeeded = (item.durationInFrames * speed * sourceFps) / rctx.fps
-  const reverseSourceEnd = item.sourceEnd ?? sourceStart + sourceFramesNeeded
-  const rampOffsetSourceFrames =
-    renderSpan.sourceTimeRamp && !item.isReversed
-      ? getSourceFrameRampOffset(renderSpan.sourceTimeRamp, frame)
-      : 0
-  const unclampedSourceTime = item.isReversed
-    ? (reverseSourceEnd - localFrame * speed * (sourceFps / rctx.fps) - 1) / sourceFps
-    : sourceStart / sourceFps + localTime * speed + rampOffsetSourceFrames / sourceFps
-  const rawSourceTime = clampVideoSourceTime(unclampedSourceTime, sourceFps, item.sourceDuration)
-  const snappedSourceFrame = Math.round(rawSourceTime * sourceFps)
-  return Math.abs(rawSourceTime * sourceFps - snappedSourceFrame) < 1e-6
-    ? (snappedSourceFrame + 1e-4) / sourceFps
-    : rawSourceTime
+  return resolveVideoRenderSourceTimeSeconds(item, renderSpan, frame, rctx.fps)
 }

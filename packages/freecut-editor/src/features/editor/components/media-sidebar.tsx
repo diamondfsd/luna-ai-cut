@@ -395,7 +395,7 @@ export const MediaSidebar = memo(function MediaSidebar() {
       const currentProject = useProjectStore.getState().currentProject
 
       const minOrder = tracks.reduce((lowest, track) => Math.min(lowest, track.order), 0)
-      const textTrack = createClassicTrack({ tracks, kind: 'subtitle', order: minOrder - 1 })
+      const textTrack = createClassicTrack({ tracks, kind: 'video', order: minOrder - 1 })
       const nextTracks = [...tracks, textTrack]
 
       const durationInFrames = getDefaultGeneratedLayerDurationInFrames(fps)

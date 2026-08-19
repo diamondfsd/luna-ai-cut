@@ -131,10 +131,6 @@ export const Timeline = memo(function Timeline({
     () => visibleTracks.filter((track) => getTrackKind(track) === 'video'),
     [visibleTracks],
   )
-  const subtitleTracks = useMemo(
-    () => visibleTracks.filter((track) => getTrackKind(track) === 'subtitle'),
-    [visibleTracks],
-  )
   const audioTracks = useMemo(
     () => visibleTracks.filter((track) => getTrackKind(track) === 'audio'),
     [visibleTracks],
@@ -215,7 +211,7 @@ export const Timeline = memo(function Timeline({
   )
 
   const { handleTrackResizeStart, handleTrackResizeReset } = useTrackHeightResize()
-  const videoZoneHeight = subtitleTracks.length > 0 ? 0 : 24
+  const videoZoneHeight = 24
   const audioZoneHeight = 24
   const getTrackStackOffset = useCallback(
     (sectionTracks: typeof visibleTracks, dropIndex: number, leadingOffset = 0) => {
@@ -565,21 +561,21 @@ export const Timeline = memo(function Timeline({
 
   const videoDropIndicatorIndex =
     isTrackDragging &&
-    dropIndicatorIndex >= subtitleTracks.length &&
-    dropIndicatorIndex <= subtitleTracks.length + videoTracks.length
-      ? dropIndicatorIndex - subtitleTracks.length
+    dropIndicatorIndex >= 0 &&
+    dropIndicatorIndex <= videoTracks.length
+      ? dropIndicatorIndex
       : -1
   const audioDropIndicatorIndex =
     isTrackDragging &&
-    dropIndicatorIndex >= subtitleTracks.length + videoTracks.length &&
+    dropIndicatorIndex >= videoTracks.length &&
     dropIndicatorIndex <= visibleTracks.length
-      ? dropIndicatorIndex - subtitleTracks.length - videoTracks.length
+      ? dropIndicatorIndex - videoTracks.length
       : -1
 
   const renderTrackHeadersSection = (
     sectionTracks: typeof visibleTracks,
     options: {
-      section: 'subtitle' | 'video' | 'audio'
+      section: 'video' | 'audio'
       zoneHeight: number
       dropIndicatorLocalIndex: number
       firstTrackFrame: 'with-top-divider' | 'regular'
@@ -603,14 +599,10 @@ export const Timeline = memo(function Timeline({
               <RowFrame
                 key={track.id}
                 onResizeMouseDown={
-                  options.section === 'subtitle'
-                    ? undefined
-                    : (event) => handleTrackResizeStart(event, track.id)
+                  (event) => handleTrackResizeStart(event, track.id)
                 }
                 onResizeDoubleClick={
-                  options.section === 'subtitle'
-                    ? undefined
-                    : (event) => handleTrackResizeReset(event, track.id)
+                  (event) => handleTrackResizeReset(event, track.id)
                 }
                 resizeHandleLabel={`Resize ${track.name} height`}
                 resizeHandlePosition={getTrackKind(track) === 'video' ? 'top' : 'bottom'}
@@ -810,17 +802,11 @@ export const Timeline = memo(function Timeline({
                 className="h-full overflow-hidden"
               >
                 <div className="relative min-h-full">
-                  {renderTrackHeadersSection(subtitleTracks, {
-                    section: 'subtitle',
-                    zoneHeight: 0,
-                    dropIndicatorLocalIndex: -1,
-                    firstTrackFrame: 'with-top-divider',
-                  })}
                   {renderTrackHeadersSection(videoTracks, {
                     section: 'video',
                     zoneHeight: videoZoneHeight,
                     dropIndicatorLocalIndex: videoDropIndicatorIndex,
-                    firstTrackFrame: subtitleTracks.length > 0 ? 'regular' : 'with-top-divider',
+                    firstTrackFrame: 'with-top-divider',
                   })}
                   {renderTrackHeadersSection(audioTracks, {
                     section: 'audio',

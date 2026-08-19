@@ -258,7 +258,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       (track) => !initialTracks.some((existing) => existing.id === track.id),
     )
     expect(captionTrack).toBeDefined()
-    expect(captionTrack?.order).toBe(-1)
+    expect(captionTrack?.order).toBe(0.5)
 
     expect(addItems).toHaveBeenCalledTimes(1)
     const insertedItems = addItems.mock.calls[0]![0] as TimelineItem[]
@@ -360,7 +360,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       (track) => !initialTracks.some((existing) => existing.id === track.id),
     )
     expect(captionTrack).toBeDefined()
-    expect(captionTrack?.kind).toBe('subtitle')
+    expect(captionTrack?.kind).toBe('video')
 
     expect(addItems).toHaveBeenCalledTimes(1)
     const insertedItems = addItems.mock.calls[0]![0] as TimelineItem[]
@@ -461,9 +461,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
       insertedItemCount: 2,
       removedItemCount: 1,
     })
-    expect(setTracks).toHaveBeenCalledTimes(1)
-    const updatedTracks = (setTracks.mock.calls[0]?.[0] ?? []) as TimelineTrack[]
-    expect(updatedTracks.some((track) => track.kind === 'subtitle')).toBe(true)
+    expect(setTracks).not.toHaveBeenCalled()
     expect(removeTimelineItemsExactMock).toHaveBeenCalledWith(['transcript-old'])
     expect(removeItems).not.toHaveBeenCalled()
     const insertedItems = addItems.mock.calls[0]![0] as TimelineItem[]
@@ -471,7 +469,7 @@ describe('mediaTranscriptionService.insertTranscriptAsCaptions', () => {
     expect(insertedItems[0]).toMatchObject({
       type: 'text',
       textRole: 'caption',
-      trackId: expect.stringMatching(/^track-captions-/),
+      trackId: 'track-captions',
       captionSource: {
         type: 'transcript',
         mediaId: 'media-1',

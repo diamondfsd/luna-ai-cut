@@ -7,6 +7,12 @@ export {
   SharedVideoExtractorPool,
   type VideoFrameSource,
 } from '@freecut/features/export/utils/shared-video-extractor'
+export {
+  isFrameInsideSourceTimeRamp,
+  resolveAATransitionRamps,
+  resolveTransitionRenderTimelineSpan,
+  resolveVideoRenderSourceTimeSeconds,
+} from '@freecut/features/export/utils/render-span'
 
 export type CreateCompositionRenderer =
   (typeof import('@freecut/features/export/utils/client-render-engine'))['createCompositionRenderer']

@@ -30,6 +30,12 @@ import { flattenBezierPath } from '@freecut/shared/graphics/shapes/bezier-path'
 import { resolveShapeLinearGradient } from '@freecut/shared/graphics/shapes/linear-gradient'
 import { recordPreviewVideoSource } from '@freecut/shared/logging/preview-scrub-performance'
 import { getAnimatedTransform } from '../canvas-keyframes'
+import {
+  getCanvasRenderScale,
+  getLogicalCanvasSize,
+  scaleShapeItemForCanvas,
+  scaleTextItemForCanvas,
+} from '../canvas-render-scale'
 import { combineEffects, getAdjustmentLayerEffects, getGpuEffectInstances } from '../canvas-effects'
 import {
   getItemRenderTimelineSpan,
@@ -108,7 +114,6 @@ function renderGpuShapeParticipantToTexture(
     }) ?? false
   )
 }
-
 function renderGpuTextureParticipantToTexture(
   prepared: PreparedGpuMediaParticipant,
   rctx: ItemRenderContext,
@@ -619,18 +624,22 @@ async function resolveGpuMediaParticipantSource(
   if (participant.item.type === 'shape') {
     const itemKeyframes =
       rctx.getCurrentKeyframes?.(participant.item.id) ?? rctx.keyframesMap.get(participant.item.id)
-    const shape = resolveAnimatedShapeItem(
-      participant.item,
-      itemKeyframes,
-      frame - participant.item.from,
-      rctx.canvasSettings.getExpressionItem && rctx.canvasSettings.getExpressionKeyframes
-        ? {
-            globalFrame: frame,
-            canvas: rctx.canvasSettings,
-            getItem: rctx.canvasSettings.getExpressionItem,
-            getKeyframes: rctx.canvasSettings.getExpressionKeyframes,
-          }
-        : undefined,
+    const logicalCanvasSettings = getLogicalCanvasSize(rctx.canvasSettings)
+    const shape = scaleShapeItemForCanvas(
+      resolveAnimatedShapeItem(
+        participant.item,
+        itemKeyframes,
+        frame - participant.item.from,
+        rctx.canvasSettings.getExpressionItem && rctx.canvasSettings.getExpressionKeyframes
+          ? {
+              globalFrame: frame,
+              canvas: logicalCanvasSettings,
+              getItem: rctx.canvasSettings.getExpressionItem,
+              getKeyframes: rctx.canvasSettings.getExpressionKeyframes,
+            }
+          : undefined,
+      ),
+      rctx.canvasSettings,
     )
     if (getGpuShapeUnsupportedReason(shape, transform, participant.effects, rctx)) return null
     const resolvedPathVertices =
@@ -703,18 +712,46 @@ async function resolveGpuMediaParticipantSource(
   }
 
   if (participant.item.type !== 'video') return null
-  if (!rctx.useMediabunny.has(participant.item.id)) return null
-  if (rctx.mediabunnyDisabledItems.has(participant.item.id)) return null
-
-  const extractor = rctx.videoExtractors.get(participant.item.id)
-  if (!extractor) return null
-
   const sourceTime = resolveVideoParticipantSourceTime(
     participant.item,
     participant.renderSpan,
     frame,
     rctx,
   )
+  const domVideo = rctx.domVideoElementProvider?.(participant.item.id) ?? null
+  const hasActiveRamp =
+    participant.renderSpan.sourceTimeRamp !== undefined &&
+    frame >= participant.renderSpan.sourceTimeRamp.rampStart &&
+    frame <= participant.renderSpan.sourceTimeRamp.rampEnd
+  const canUseSynchronizedDomVideo =
+    !hasActiveRamp || domVideo?.dataset.transitionSourceRamp === '1'
+  const domDecision = resolvePreviewDomVideoDrawDecision({
+    domVideo: canUseSynchronizedDomVideo ? domVideo : null,
+    sourceTime,
+    speed: domVideo?.playbackRate ?? participant.item.speed ?? 1,
+    isRenderingTransition: true,
+  })
+  if (domVideo && domDecision.shouldDraw) {
+    recordPreviewVideoSource({
+      frame,
+      itemId: participant.item.id,
+      path: 'dom-video',
+      sourceTime,
+    })
+    return {
+      kind: 'media',
+      item: participant.item,
+      source: domVideo,
+      sourceWidth: domVideo.videoWidth,
+      sourceHeight: domVideo.videoHeight,
+    }
+  }
+  if (!rctx.useMediabunny.has(participant.item.id)) return null
+  if (rctx.mediabunnyDisabledItems.has(participant.item.id)) return null
+
+  const extractor = rctx.videoExtractors.get(participant.item.id)
+  if (!extractor) return null
+
   const captured = await extractor.captureFrame(sourceTime)
   if (!captured.success || !captured.frame) return null
   const sourceWidth =
@@ -742,10 +779,18 @@ function resolveGpuTextParticipantSource(
   const relativeFrame = frame - participant.item.from
   const itemKeyframes =
     rctx.getCurrentKeyframes?.(participant.item.id) ?? rctx.keyframesMap.get(participant.item.id)
-  const resolvedTextItem = {
-    ...resolveAnimatedTextItem(participant.item, itemKeyframes, relativeFrame, rctx.canvasSettings),
-    cornerPin: participant.item.cornerPin,
-  }
+  const resolvedTextItem = scaleTextItemForCanvas(
+    {
+      ...resolveAnimatedTextItem(
+        participant.item,
+        itemKeyframes,
+        relativeFrame,
+        getLogicalCanvasSize(rctx.canvasSettings),
+      ),
+      cornerPin: participant.item.cornerPin,
+    },
+    rctx.canvasSettings,
+  )
   const baseTransform = resolveItemTransform(participant.transform)
   const resolvedTransform = expandTextTransformToFitContent(resolvedTextItem, baseTransform)
   const textureTransform = hasCornerPin(resolvedTextItem.cornerPin)
@@ -874,8 +919,9 @@ async function resolveGpuCompositionParticipantSource(
 ): Promise<ResolvedGpuMediaParticipantSource | null> {
   if (!rctx.gpuPipeline || !rctx.gpuMediaPipeline) return null
   if (rctx.gpuCompositionStack?.has(participant.item.compositionId)) return null
-  const width = Math.max(2, Math.ceil(participant.item.compositionWidth))
-  const height = Math.max(2, Math.ceil(participant.item.compositionHeight))
+  const renderScale = getCanvasRenderScale(rctx.canvasSettings)
+  const width = Math.max(2, Math.ceil(participant.item.compositionWidth * renderScale.x))
+  const height = Math.max(2, Math.ceil(participant.item.compositionHeight * renderScale.y))
   const gpuCompositionStack = new Set(rctx.gpuCompositionStack)
   gpuCompositionStack.add(participant.item.compositionId)
   const directTexture = await renderGpuSubCompChildrenToTexture(
@@ -930,7 +976,13 @@ async function renderGpuSubCompChildrenToTexture(
     rctx,
   )
 
-  const subCanvasSettings = { width, height, fps: subData.fps }
+  const subCanvasSettings = {
+    width,
+    height,
+    logicalWidth: participant.item.compositionWidth,
+    logicalHeight: participant.item.compositionHeight,
+    fps: subData.fps,
+  }
   const subRctx = createSubCompositionRenderContext(rctx, subData, subCanvasSettings)
   const occlusionCutoffOrder = findSubCompOcclusionCutoffOrder(
     subData,

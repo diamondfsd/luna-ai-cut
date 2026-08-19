@@ -17,6 +17,11 @@ import {
   rotatePath,
   resolveActiveShapeMasksAtFrame,
 } from '@freecut/features/export/deps/composition-runtime'
+import {
+  getLogicalCanvasSize,
+  scaleResolvedTransformForCanvas,
+  scaleShapeItemForCanvas,
+} from './canvas-render-scale'
 
 interface MaskEntry {
   mask: ShapeItem
@@ -46,6 +51,8 @@ export interface MaskFrameIndex {
 export interface MaskCanvasSettings {
   width: number
   height: number
+  logicalWidth?: number
+  logicalHeight?: number
   fps: number
 }
 
@@ -161,14 +168,15 @@ export function buildPreparedMask(
   transform: ResolvedTransform,
   canvas: MaskCanvasSettings,
 ): PreparedMask {
-  const cornerPinnedBitmapMask = renderCornerPinnedMaskBitmap(mask, transform, canvas)
+  const renderedMask = scaleShapeItemForCanvas(mask, canvas)
+  const cornerPinnedBitmapMask = renderCornerPinnedMaskBitmap(renderedMask, transform, canvas)
   if (cornerPinnedBitmapMask) {
-    const maskType = mask.maskType ?? 'clip'
-    const feather = maskType === 'alpha' ? (mask.maskFeather ?? 0) : 0
+    const maskType = renderedMask.maskType ?? 'clip'
+    const feather = maskType === 'alpha' ? (renderedMask.maskFeather ?? 0) : 0
 
     return {
       bitmapMask: cornerPinnedBitmapMask,
-      inverted: mask.maskInvert ?? false,
+      inverted: renderedMask.maskInvert ?? false,
       feather,
       // The corner-pinned bitmap already carries the opacity in its alpha.
       opacity: 1,
@@ -179,7 +187,7 @@ export function buildPreparedMask(
 
   // Generate SVG path
   let svgPath = getShapePath(
-    { ...mask, pathClosed: true },
+    { ...renderedMask, pathClosed: true },
     {
       x: transform.x,
       y: transform.y,
@@ -201,16 +209,16 @@ export function buildPreparedMask(
     svgPath = rotatePath(svgPath, transform.rotation, centerX, centerY)
   }
 
-  const maskType = mask.maskType ?? 'clip'
+  const maskType = renderedMask.maskType ?? 'clip'
   // Feather only applies to alpha masks - clip masks are always hard-edged
-  const feather = maskType === 'alpha' ? (mask.maskFeather ?? 0) : 0
+  const feather = maskType === 'alpha' ? (renderedMask.maskFeather ?? 0) : 0
   const opacity =
-    (Math.max(0, Math.min(100, mask.maskOpacity ?? 100)) / 100) *
+    (Math.max(0, Math.min(100, renderedMask.maskOpacity ?? 100)) / 100) *
     Math.max(0, Math.min(1, transform.opacity))
 
   return {
     path: svgPathToPath2D(svgPath),
-    inverted: mask.maskInvert ?? false,
+    inverted: renderedMask.maskInvert ?? false,
     feather,
     opacity,
     maskType,
@@ -536,7 +544,7 @@ export function getActiveMasksForFrame(
     trackOrder,
   }))
   const activeMaskShapes = resolveActiveShapeMasksAtFrame(liveMasks, {
-    canvas,
+    canvas: getLogicalCanvasSize(canvas),
     frame,
     getKeyframes: (itemId) => resolveMaskKeyframes(keyframes, itemId),
     getItem: getExpressionItem,
@@ -546,7 +554,11 @@ export function getActiveMasksForFrame(
 
   for (const mask of activeMaskShapes) {
     activeMasks.push({
-      ...buildPreparedMask(mask.shape, mask.transform, canvas),
+      ...buildPreparedMask(
+        mask.shape,
+        scaleResolvedTransformForCanvas(mask.transform, canvas),
+        canvas,
+      ),
       trackOrder: mask.trackOrder,
     })
   }

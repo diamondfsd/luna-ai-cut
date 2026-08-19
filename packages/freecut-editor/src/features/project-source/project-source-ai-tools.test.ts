@@ -134,9 +134,9 @@ describe('timeline AI tools', () => {
     })
   })
 
-  it('reuses the nearest available subtitle track for text', async () => {
-    const subtitleTrack = { id: 'track-subtitle', name: 'S1', kind: 'subtitle', order: -1, locked: false, visible: true, muted: false }
-    harness.state.tracks = [subtitleTrack, ...harness.state.tracks]
+  it('reuses the nearest available video track for text', async () => {
+    const videoTrack = { id: 'track-video-2', name: 'V2', kind: 'video', order: -1, locked: false, visible: true, muted: false }
+    harness.state.tracks = [videoTrack, ...harness.state.tracks]
     harness.state.saveTimeline.mockResolvedValue(undefined)
 
     await getTool('timeline.add_text').execute({
@@ -146,7 +146,7 @@ describe('timeline AI tools', () => {
     })
 
     expect(harness.state.addItem).toHaveBeenCalledWith(expect.objectContaining({
-      trackId: 'track-subtitle',
+      trackId: 'track-video-2',
       from: 60,
       durationInFrames: 90,
       backgroundColor: undefined,
