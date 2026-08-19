@@ -50,6 +50,7 @@ export interface ResolvedOnlyYourColorBatchMask {
 
 function normalizedRecognizedState(
   state: WorkspaceOnlyYourColorState,
+  projectId: string,
   assetId: string,
   maskPath: string,
 ): WorkspaceOnlyYourColorState {
@@ -64,10 +65,11 @@ function normalizedRecognizedState(
     subjectModel: state.subjectModel ?? 'fast',
     maskPath,
     maskAssetId: assetId,
+    maskProjectId: projectId,
   }
 }
 
-function defaultRecognizedState(assetId: string, maskPath: string, autoTone: OnlyYourColorAutoTone): WorkspaceOnlyYourColorState {
+function defaultRecognizedState(projectId: string, assetId: string, maskPath: string, autoTone: OnlyYourColorAutoTone): WorkspaceOnlyYourColorState {
   return {
     intensity: DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
     subjectExposure: DEFAULT_ONLY_YOUR_COLOR_SUBJECT_EXPOSURE,
@@ -79,6 +81,7 @@ function defaultRecognizedState(assetId: string, maskPath: string, autoTone: Onl
     subjectModel: 'fast',
     maskPath,
     maskAssetId: assetId,
+    maskProjectId: projectId,
   }
 }
 
@@ -89,7 +92,9 @@ export async function resolveOnlyYourColorBatchMask(options: {
   api: OnlyYourColorBatchMaskApi
 }): Promise<ResolvedOnlyYourColorBatchMask> {
   const { projectId, asset, savedState, api } = options
-  if (savedState?.maskPath && (!savedState.maskAssetId || savedState.maskAssetId === asset.id)) {
+  if (savedState?.maskPath
+    && (!savedState.maskAssetId || savedState.maskAssetId === asset.id)
+    && (!savedState.maskProjectId || savedState.maskProjectId === projectId)) {
     try {
       const loaded = await api.loadMask(projectId, savedState.maskPath)
       const data = new Uint8Array(loaded.bytes)
@@ -98,7 +103,7 @@ export async function resolveOnlyYourColorBatchMask(options: {
           data,
           width: loaded.width,
           height: loaded.height,
-          state: normalizedRecognizedState(savedState, asset.id, savedState.maskPath),
+          state: normalizedRecognizedState(savedState, projectId, asset.id, savedState.maskPath),
           newlyRecognized: false,
         }
       }
@@ -121,7 +126,7 @@ export async function resolveOnlyYourColorBatchMask(options: {
     data,
     width: saved.width,
     height: saved.height,
-    state: defaultRecognizedState(asset.id, saved.path, autoTone),
+    state: defaultRecognizedState(projectId, asset.id, saved.path, autoTone),
     newlyRecognized: true,
   }
 }

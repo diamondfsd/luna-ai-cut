@@ -14,9 +14,34 @@ export function onlyYourColorStateForAsset(
 ): WorkspaceOnlyYourColorState | undefined {
   if (!assetId) return undefined
   const perAsset = project?.creative?.onlyYourColorByAssetId?.[assetId]
-  if (perAsset) return perAsset
+  if (perAsset) return sanitizeOnlyYourColorState(project, perAsset, assetId)
   const legacy = project?.creative?.onlyYourColor
-  return legacy?.maskAssetId === assetId ? legacy : undefined
+  return legacy?.maskAssetId === assetId ? sanitizeOnlyYourColorState(project, legacy, assetId) : undefined
+}
+
+function normalizePath(value: string): string {
+  return value.replaceAll('\\', '/').replace(/\/+$/, '')
+}
+
+function isMaskPathInProject(project: WorkspaceProject | null | undefined, maskPath: string): boolean {
+  if (!project?.dir) return true
+  const projectMasksDir = `${normalizePath(project.dir)}/masks/`
+  return normalizePath(maskPath).startsWith(projectMasksDir)
+}
+
+function sanitizeOnlyYourColorState(
+  project: WorkspaceProject | null | undefined,
+  state: WorkspaceOnlyYourColorState,
+  assetId: string,
+): WorkspaceOnlyYourColorState | undefined {
+  if (state.maskAssetId && state.maskAssetId !== assetId) return undefined
+  if (state.maskProjectId && state.maskProjectId !== project?.id) {
+    return { ...state, maskPath: undefined, maskAssetId: undefined }
+  }
+  if (state.maskPath && !isMaskPathInProject(project, state.maskPath)) {
+    return { ...state, maskPath: undefined, maskAssetId: undefined }
+  }
+  return state
 }
 
 export function normalizeOnlyYourColorIntensity(value: unknown): number {

@@ -64,7 +64,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   const [subjectVibrance, setSubjectVibrance] = useState(normalizeOnlyYourColorSubjectVibrance(saved?.subjectVibrance))
   const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspaceOnlyYourColorState['subjectModel']>>(saved?.subjectModel ?? 'fast')
   const [maskPath, setMaskPath] = useState<string | null>(saved?.maskPath ?? null)
-  const [maskOwnerId, setMaskOwnerId] = useState<string | null>(saved?.maskPath ? activeAssetId ?? null : null)
+  const [maskOwnerKey, setMaskOwnerKey] = useState<string | null>(saved?.maskPath ? ownerKey : null)
   const [restoredOwnerKey, setRestoredOwnerKey] = useState(ownerKey)
   const [maskData, setMaskData] = useState<{ data: Uint8Array; width: number; height: number } | null>(null)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
@@ -78,16 +78,18 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   const [effectRenderedMaskPath, setEffectRenderedMaskPath] = useState<string | null>(null)
   const requestRef = useRef<string | null>(null)
   const pendingEffectToastRef = useRef<string | null>(null)
-  const activeAssetIdRef = useRef(activeAssetId)
-  activeAssetIdRef.current = activeAssetId
+  const activeOwnerKeyRef = useRef(ownerKey)
+  activeOwnerKeyRef.current = ownerKey
   const automaticAttemptRef = useRef<string | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
   const maskLayerOwnerRef = useRef<string | null>(null)
   const isImage = activeAsset?.kind === 'image'
-  const activeMaskPath = maskOwnerId === activeAssetId ? maskPath : null
+  const activeMaskPath = maskOwnerKey === ownerKey ? maskPath : null
   const subjectMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === ONLY_YOUR_COLOR_MASK_LAYER_ID)
   const backgroundMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID)
+  const currentSubjectMaskLayer = subjectMaskLayer?.path === activeMaskPath ? subjectMaskLayer : undefined
+  const currentBackgroundMaskLayer = backgroundMaskLayer?.path === activeMaskPath ? backgroundMaskLayer : undefined
 
   useEffect(() => {
     const restored = onlyYourColorStateForAsset(media.currentProject, activeAssetId)
@@ -108,7 +110,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   useEffect(() => {
     const restoredPath = onlyYourColorStateForAsset(media.currentProject, activeAssetId)?.maskPath ?? null
     setMaskPath(restoredPath)
-    setMaskOwnerId(restoredPath ? activeAssetId ?? null : null)
+    setMaskOwnerKey(restoredPath ? ownerKey : null)
     maskLayerOwnerRef.current = null
     setMaskData(null)
     setSourceSize(null)
@@ -146,8 +148,8 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   }, [activeAssetId])
 
   useEffect(() => {
-    if (!subjectMaskLayer?.path || maskLayerOwnerRef.current !== activeAssetId) return
-    setMaskOwnerId(activeAssetId ?? null)
+    if (!ownerKey || !subjectMaskLayer?.path || maskLayerOwnerRef.current !== ownerKey) return
+    setMaskOwnerKey(ownerKey)
     setMaskPath(subjectMaskLayer.path)
     if (backgroundMaskLayer?.path === subjectMaskLayer.path) return
     edit.commitPatch({
@@ -155,7 +157,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
         ? onlyYourColorBackgroundMaskLayer(subjectMaskLayer.path, subjectMaskLayer.width, subjectMaskLayer.height, layer)
         : layer),
     })
-  }, [activeAssetId, backgroundMaskLayer?.path, edit, subjectMaskLayer])
+  }, [backgroundMaskLayer?.path, edit, ownerKey, subjectMaskLayer])
 
   useEffect(() => {
     if (!activeMaskPath || !projectId) {
@@ -171,7 +173,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
     }).catch(() => {
       if (!cancelled) {
         setMaskPath(null)
-        setMaskOwnerId(null)
+        setMaskOwnerKey(null)
         setMaskData(null)
       }
     })
@@ -179,16 +181,17 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   }, [activeMaskPath, projectId])
 
   useEffect(() => {
-    if (!activeMaskPath || !maskData || subjectMaskLayer && backgroundMaskLayer) return
-    maskLayerOwnerRef.current = activeAssetId ?? null
+    const hasCurrentMaskLayers = currentSubjectMaskLayer && currentBackgroundMaskLayer
+    if (!activeMaskPath || !maskData || hasCurrentMaskLayers) return
+    maskLayerOwnerRef.current = ownerKey
     edit.commitPatch({
       colorMasks: [
         ...edit.pipeline.colorMasks.filter((layer) => layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID),
-        onlyYourColorMaskLayer(activeMaskPath, maskData.width, maskData.height, subjectMaskLayer),
-        onlyYourColorBackgroundMaskLayer(activeMaskPath, maskData.width, maskData.height, backgroundMaskLayer),
+        onlyYourColorMaskLayer(activeMaskPath, maskData.width, maskData.height, currentSubjectMaskLayer),
+        onlyYourColorBackgroundMaskLayer(activeMaskPath, maskData.width, maskData.height, currentBackgroundMaskLayer),
       ],
     })
-  }, [activeAssetId, activeMaskPath, backgroundMaskLayer, edit, maskData, subjectMaskLayer])
+  }, [activeMaskPath, currentBackgroundMaskLayer, currentSubjectMaskLayer, edit, maskData, ownerKey])
 
   useEffect(() => {
     const project = media.currentProject
@@ -204,6 +207,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
       subjectModel,
       maskPath: activeMaskPath ?? undefined,
       maskAssetId: activeMaskPath ? activeAssetId : undefined,
+      maskProjectId: activeMaskPath ? projectId : undefined,
     }
     const nextProject = {
       ...project,
@@ -233,16 +237,26 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   }, [])
 
   const outputSize = useMemo(() => sourceSize ? outputSizeForTransform(sourceSize, edit.pipeline.transform) : null, [edit.pipeline.transform, sourceSize])
+  const renderPipeline = useMemo(() => {
+    if (currentSubjectMaskLayer && currentBackgroundMaskLayer) return edit.pipeline
+    return {
+      ...edit.pipeline,
+      colorMasks: edit.pipeline.colorMasks.filter((layer) => (
+        layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID
+        && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID
+      )),
+    }
+  }, [currentBackgroundMaskLayer, currentSubjectMaskLayer, edit.pipeline])
   const baseLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
-    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark || usesCustomWatermark(edit.pipeline.watermark))
-  }, [activeAsset, allowWatermark, edit.pipeline, metadata, sourceSize])
+    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, renderPipeline, metadata, allowWatermark || usesCustomWatermark(renderPipeline.watermark))
+  }, [activeAsset, allowWatermark, metadata, renderPipeline, sourceSize])
   const effectLayers = useMemo(() => activeAsset && activeMaskPath
     ? buildOnlyYourColorLayers({
       layers: baseLayers,
       sourcePath: activeAsset.path,
-      subjectMaskPath: subjectMaskLayer?.path ?? activeMaskPath,
-      backgroundMaskPath: backgroundMaskLayer?.path ?? activeMaskPath,
+      subjectMaskPath: currentSubjectMaskLayer?.path ?? activeMaskPath,
+      backgroundMaskPath: currentBackgroundMaskLayer?.path ?? activeMaskPath,
       intensity,
       subjectExposure,
       backgroundExposure,
@@ -250,10 +264,10 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
       backgroundContrast,
       subjectSaturation,
       subjectVibrance,
-      subjectMaskInverted: subjectMaskLayer?.inverted,
-      backgroundMaskInverted: backgroundMaskLayer?.inverted,
+      subjectMaskInverted: currentSubjectMaskLayer?.inverted,
+      backgroundMaskInverted: currentBackgroundMaskLayer?.inverted,
     })
-    : baseLayers, [activeAsset, activeMaskPath, backgroundBrightness, backgroundContrast, backgroundExposure, backgroundMaskLayer, baseLayers, intensity, subjectExposure, subjectMaskLayer, subjectSaturation, subjectVibrance])
+    : baseLayers, [activeAsset, activeMaskPath, backgroundBrightness, backgroundContrast, backgroundExposure, baseLayers, currentBackgroundMaskLayer, currentSubjectMaskLayer, intensity, subjectExposure, subjectSaturation, subjectVibrance])
   const previewLayers = showOriginal ? baseLayers : effectLayers
 
   function recognizeSubject(value: NonNullable<WorkspaceOnlyYourColorState['subjectModel']>): void {
@@ -303,9 +317,9 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
         setSubjectVibrance(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE)
       }
       setMaskData({ data: selectedMask, width: result.width, height: result.height })
-      setMaskOwnerId(activeAsset.id)
+      setMaskOwnerKey(ownerKey)
       setMaskPath(savedMask.path)
-      maskLayerOwnerRef.current = activeAsset.id
+      maskLayerOwnerRef.current = ownerKey
       edit.commitPatch({
         colorMasks: [
           ...edit.pipeline.colorMasks.filter((layer) => layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID),
@@ -328,7 +342,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
         setProgress('')
       }
     }
-  }, [activeAsset, activeMaskPath, backgroundMaskLayer, edit, media.currentProject, segmenting, subjectMaskLayer, subjectModel])
+  }, [activeAsset, activeMaskPath, backgroundMaskLayer, edit, media.currentProject, ownerKey, segmenting, subjectMaskLayer, subjectModel])
 
   const handleEffectRender = useCallback(() => {
     if (!activeMaskPath || showOriginal) return
@@ -355,11 +369,11 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
       maskWidth: maskData.width,
       maskHeight: maskData.height,
     })
-    if (activeAssetIdRef.current !== activeAsset.id) return
+    if (activeOwnerKeyRef.current !== ownerKey) return
     setBackgroundExposure(autoTone.backgroundExposure)
     setBackgroundBrightness(autoTone.backgroundBrightness)
     setBackgroundContrast(autoTone.backgroundContrast)
-  }, [activeAsset, maskData])
+  }, [activeAsset, maskData, ownerKey])
 
   useEffect(() => {
     if (!isImage || !activeAsset || activeMaskPath || segmenting || restoredOwnerKey !== ownerKey) return
@@ -414,7 +428,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
         const persistedRecognizedStates = Object.fromEntries(Object.entries(result.recognizedStates).map(([assetId, recognized]) => {
           const current = onlyYourColorStateForAsset(latestProject, assetId)
           return [assetId, current
-            ? { ...recognized, ...current, maskPath: recognized.maskPath, maskAssetId: assetId }
+            ? { ...recognized, ...current, maskPath: recognized.maskPath, maskAssetId: assetId, maskProjectId: project.id }
             : recognized]
         }))
         const nextProject = {
@@ -433,7 +447,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
         await window.luna.workspace.saveProject(nextProject)
         const activeResolved = activeAssetId ? persistedRecognizedStates[activeAssetId] : undefined
         if (activeResolved?.maskPath) {
-          setMaskOwnerId(activeAssetId ?? null)
+          setMaskOwnerKey(activeAssetId ? `${project.id}:${activeAssetId}` : null)
           setMaskPath(activeResolved.maskPath)
         }
       }
