@@ -49,14 +49,16 @@ export function selectUpcomingTransitionStartFrame({
 
 export function shouldUsePausedTransitionOverlay({
   isPlaying,
+  previewFrame,
   forceFastScrubOverlay,
   hasActiveTransition,
 }: {
   isPlaying: boolean
+  previewFrame: number | null
   forceFastScrubOverlay: boolean
   hasActiveTransition: boolean
 }): boolean {
-  return !isPlaying && !forceFastScrubOverlay && hasActiveTransition
+  return !isPlaying && previewFrame === null && !forceFastScrubOverlay && hasActiveTransition
 }
 
 export function resolveTransitionPrerenderPlan({

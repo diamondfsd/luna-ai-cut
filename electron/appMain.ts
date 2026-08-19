@@ -24,7 +24,13 @@ import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDe
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
-import { activateMainWindow, appIconPath, createMainWindow, registerRendererProtocol } from './windowService'
+import {
+  activateMainWindow,
+  appIconPath,
+  createMainWindow,
+  registerRendererProtocol,
+} from './windowService'
+import { registerNativeMediaProtocol } from './nativeMediaProtocol'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
@@ -500,6 +506,7 @@ function createAppMenu(): void {
 
 app.whenReady().then(async () => {
   if (!VITE_DEV_SERVER_URL) registerRendererProtocol(RENDERER_DIST)
+  registerNativeMediaProtocol()
   initLogger()
   logMainInfo('应用启动', { codeSource: process.env.LUNA_BOOT_SOURCE ?? 'unknown' })
   // 打印系统信息

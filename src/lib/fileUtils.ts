@@ -53,6 +53,31 @@ export function filePathToPreviewUrl(filePath: string | null | undefined): strin
     .replace(/#/g, '%23').replace(/\?/g, '%3F')
 }
 
+/**
+ * Returns a fetchable local-media URL in Electron. The custom protocol keeps
+ * native videos range-readable by Mediabunny in both the window and workers.
+ */
+export function filePathToNativeMediaPreviewUrl(filePath: string | null | undefined): string | null {
+  if (!filePath) return null
+  if (filePath.startsWith('luna-media://')) return filePath
+  if (/^(?:blob:|data:|https?:|ws:|wss:)/i.test(filePath)) return filePath
+  let localPath = filePath
+  if (filePath.startsWith('file://')) {
+    try {
+      localPath = decodeURIComponent(new URL(filePath).pathname)
+    } catch {
+      return filePath
+    }
+  }
+  if (typeof window !== 'undefined' && window.luna && localPath) {
+    // Keep the path in the query rather than the URL pathname. Chromium may
+    // normalize an encoded leading slash in custom schemes to a single-slash
+    // URL when it hands it to a worker/media decoder.
+    return `luna-media://app/file?path=${encodeURIComponent(localPath)}`
+  }
+  return filePathToPreviewUrl(localPath)
+}
+
 export function thumbnailUrlForFile(file: { kind?: string }, filePath?: string | null): string | null {
   if (!filePath) return null
   if (file.kind === 'video' || file.kind === 'lrv') return null

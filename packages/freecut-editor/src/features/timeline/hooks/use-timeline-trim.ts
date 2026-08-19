@@ -17,7 +17,6 @@ import { useRollingEditPreviewStore } from '../stores/rolling-edit-preview-store
 import { useRippleEditPreviewStore } from '../stores/ripple-edit-preview-store'
 import { useTransitionBreakPreviewStore } from '../stores/transition-break-preview-store'
 import { useLinkedEditPreviewStore } from '../stores/linked-edit-preview-store'
-import { useTrimPreviewStore } from '../stores/trim-preview-store'
 import {
   rollingTrimItems,
   rippleTrimItem,
@@ -505,11 +504,6 @@ export function useTimelineTrim(
 
       // Update local state for visual feedback
       const isRolling = isRollingEdit && neighborId !== null
-      useTrimPreviewStore.getState().setPreview(
-        handle === 'end'
-          ? applyTrimEndPreview(currentItem, deltaFrames, fps)
-          : applyTrimStartPreview(currentItem, deltaFrames, fps),
-      )
       const linkedPreviewUpdates: PreviewItemUpdate[] = []
       const linkedSelectionEnabled = useEditorStore.getState().linkedSelectionEnabled
 
@@ -741,7 +735,6 @@ export function useTimelineTrim(
       useRippleEditPreviewStore.getState().clearPreview()
       useTransitionBreakPreviewStore.getState().clearPreview()
       useLinkedEditPreviewStore.getState().clear()
-      useTrimPreviewStore.getState().clear()
 
       // Clear drag state (including snap indicator)
       setActiveSnapTarget(null)
@@ -808,13 +801,10 @@ export function useTimelineTrim(
         useRollingEditPreviewStore.getState().clearPreview()
         useTransitionBreakPreviewStore.getState().clearPreview()
         useLinkedEditPreviewStore.getState().clear()
-        if (useTrimPreviewStore.getState().itemId === item.id) {
-          useTrimPreviewStore.getState().clear()
-        }
         magneticSnapTargetsRef.current = []
       }
     }
-  }, [item.id, trimState.isTrimming, handleMouseMove, handleMouseUp])
+  }, [trimState.isTrimming, handleMouseMove, handleMouseUp])
 
   // Start trim drag
   const handleTrimStart = useCallback(
@@ -934,7 +924,6 @@ export function useTimelineTrim(
       } else {
         useTransitionBreakPreviewStore.getState().clearPreview()
       }
-      useTrimPreviewStore.getState().setPreview({ id: currentItem.id })
     },
     [
       item.from,

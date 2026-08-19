@@ -33,6 +33,37 @@ import type {
   DeepSeekHarnessApi,
   DeepSeekHarnessToolRequest,
 } from '../src/shared/types'
+
+type VideoFrameRateReadyData = {
+  fileId: string
+  fileName: string
+  frameRate: number | null
+  duration?: number | null
+  dolbyVision?: boolean | null
+  dolbyVisionProfile?: number | null
+  iLog?: boolean | null
+}
+
+const videoFrameRateSubscribers = new Set<(data: VideoFrameRateReadyData) => void>()
+const videoFrameRateListener = (
+  _event: Electron.IpcRendererEvent,
+  data: VideoFrameRateReadyData,
+): void => {
+  for (const subscriber of videoFrameRateSubscribers) subscriber(data)
+}
+
+function subscribeVideoFrameRateReady(callback: (data: VideoFrameRateReadyData) => void): () => void {
+  if (videoFrameRateSubscribers.size === 0) {
+    ipcRenderer.on('luna:video-frame-rate-ready', videoFrameRateListener)
+  }
+  videoFrameRateSubscribers.add(callback)
+  return () => {
+    videoFrameRateSubscribers.delete(callback)
+    if (videoFrameRateSubscribers.size === 0) {
+      ipcRenderer.off('luna:video-frame-rate-ready', videoFrameRateListener)
+    }
+  }
+}
 import type { HtmlRenderApi } from './htmlRenderTypes'
 
 interface ExportItemInput {
@@ -325,14 +356,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.on('luna:thumbnail-ready', listener)
     return () => ipcRenderer.off('luna:thumbnail-ready', listener)
   },
-  onVideoFrameRateReady: (callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void) => {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null },
-    ): void => callback(data)
-    ipcRenderer.on('luna:video-frame-rate-ready', listener)
-    return () => ipcRenderer.off('luna:video-frame-rate-ready', listener)
-  },
+  onVideoFrameRateReady: subscribeVideoFrameRateReady,
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo): void => callback(info)
