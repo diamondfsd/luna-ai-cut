@@ -28,6 +28,7 @@ import { ProjectDebugPanel } from './project-debug-panel'
 import { SettingsDialog } from './settings-dialog'
 import { ShortcutsDialog } from './shortcuts-dialog'
 import { WorkspaceSwitcher } from './workspace-switcher'
+import './toolbar.css'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { cn } from '@freecut/shared/ui/cn'
 import { useDebugStore } from '@freecut/features/editor/stores/debug-store'
@@ -92,7 +93,7 @@ export const Toolbar = memo(function Toolbar({
   const toolbar = (
     <div
       className={cn(
-        'panel-header flex flex-shrink-0 items-center gap-2.5',
+        'editor-toolbar panel-header flex flex-shrink-0 items-center gap-2.5',
         lunaNavHost ? 'h-full w-full px-0' : 'border-b border-border px-3',
         locked && 'pointer-events-none select-none opacity-60',
       )}

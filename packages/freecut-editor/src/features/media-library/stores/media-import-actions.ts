@@ -7,6 +7,10 @@ import { getSharedProxyKey } from '../utils/proxy-key'
 import { hasMediaFilePickerSupport, showMediaFilePicker } from '../utils/media-file-picker'
 import { createLogger, createOperationId } from '@freecut/shared/logging/logger'
 import { useMediaPreparationStore } from './media-preparation-store'
+import {
+  nativeMediaSourceForHandle,
+  resolveNativeMediaFileHandle,
+} from '@freecut/shared/host/native-media-file-handle'
 
 const logger = createLogger('MediaImport')
 
@@ -24,7 +28,7 @@ const IMPORT_PROCESSING_CONCURRENCY = 2
 interface ImportTask {
   handle: FileSystemFileHandle
   tempId: string
-  file: File
+  file: ImportFileDescriptor
 }
 
 interface CompletedImportTask extends ImportTask {
@@ -33,9 +37,16 @@ interface CompletedImportTask extends ImportTask {
 
 type ImportStorageMode = 'copy' | 'link'
 
+interface ImportFileDescriptor {
+  name: string
+  size: number
+  lastModified: number
+  type: string
+}
+
 function buildOptimisticMediaItem(
   handle: FileSystemFileHandle,
-  file: File,
+  file: ImportFileDescriptor,
   tempId: string,
   storageMode: ImportStorageMode,
 ): MediaMetadata {
@@ -68,6 +79,12 @@ function removeImportPlaceholder(set: Set, tempId: string): void {
     mediaItems: state.mediaItems.filter((item) => item.id !== tempId),
     importingIds: state.importingIds.filter((id) => id !== tempId),
   }))
+}
+
+function clearImportPlaceholders(set: Set, importTasks: ImportTask[]): void {
+  for (const task of importTasks) {
+    removeImportPlaceholder(set, task.tempId)
+  }
 }
 
 /**
@@ -301,13 +318,24 @@ export function createImportActions(
   ): Promise<ImportTask[]> => {
     const importTasks: ImportTask[] = []
 
-    for (const handle of handles) {
-      if (!handle) continue
+    for (const candidateHandle of handles) {
+      if (!candidateHandle) continue
       const tempId = crypto.randomUUID()
 
-      let file: File
+      const handle = await resolveNativeMediaFileHandle(candidateHandle)
+      const nativeSource = nativeMediaSourceForHandle(handle)
+      let file: ImportFileDescriptor
       try {
-        file = await handle.getFile()
+        // The host already inspected native files. Reuse that descriptor so
+        // the picker can close before large local media is read.
+        file = nativeSource
+          ? {
+              name: nativeSource.name,
+              size: nativeSource.size,
+              lastModified: nativeSource.lastModified,
+              type: nativeSource.mimeType,
+            }
+          : await handle.getFile()
       } catch (error) {
         // getFile() can fail if permission is denied or file is missing —
         // remove the placeholder that was about to be inserted and skip.
@@ -374,6 +402,7 @@ export function createImportActions(
       includeDuplicatesInResults?: boolean
       waitForPreparation?: boolean
       storageMode?: ImportStorageMode
+      background?: boolean
     },
   ): Promise<MediaMetadata[]> => {
     const { currentProjectId } = get()
@@ -394,31 +423,47 @@ export function createImportActions(
     const storageMode = options?.storageMode ?? 'copy'
     const serviceModulePromise = loadMediaLibraryService()
     const importTasks = await createOptimisticImportTasks(handles, storageMode)
-    const importResults = await runImportTasks(
-      importTasks,
-      currentProjectId,
-      serviceModulePromise,
-      storageMode,
-    )
 
-    const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
-      processImportResults(importResults, importTasks, set, options)
+    const finishImport = async (): Promise<MediaMetadata[]> => {
+      const importResults = await runImportTasks(
+        importTasks,
+        currentProjectId,
+        serviceModulePromise,
+        storageMode,
+      )
 
-    showImportNotifications(importedCount, duplicateNames, unsupportedCodecFiles, failedCount, get)
+      const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
+        processImportResults(importResults, importTasks, set, options)
 
-    if (options?.waitForPreparation && results.length > 0) {
-      const { mediaLibraryService } = await serviceModulePromise
-      await mediaLibraryService.waitForMediaPreparation(results.map((media) => media.id))
+      showImportNotifications(importedCount, duplicateNames, unsupportedCodecFiles, failedCount, get)
+
+      if (options?.waitForPreparation && results.length > 0) {
+        const { mediaLibraryService } = await serviceModulePromise
+        await mediaLibraryService.waitForMediaPreparation(results.map((media) => media.id))
+      }
+
+      event.success({
+        imported: importedCount,
+        duplicates: duplicateNames.length,
+        failed: failedCount,
+        unsupportedCodecs: unsupportedCodecFiles.length,
+      })
+
+      return results
     }
 
-    event.success({
-      imported: importedCount,
-      duplicates: duplicateNames.length,
-      failed: failedCount,
-      unsupportedCodecs: unsupportedCodecFiles.length,
-    })
+    if (options?.background) {
+      void finishImport().catch((error) => {
+        const importError = error instanceof Error ? error : new Error(String(error))
+        clearImportPlaceholders(set, importTasks)
+        set({ error: importError.message })
+        event.failure(importError)
+        logger.error('Background import failed', importError)
+      })
+      return []
+    }
 
-    return results
+    return finishImport()
   }
 
   return {

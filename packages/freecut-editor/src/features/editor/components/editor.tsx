@@ -709,7 +709,9 @@ export const LoadedEditor = memo(function LoadedEditor({
         {mediaFullColumn && !hidesDefaultSidebars && (
           <InteractionLockRegion locked={isMaskEditingActive}>
             <ErrorBoundary level="feature">
-              <MediaSidebar />
+              <div data-editor-media-sidebar className="h-full">
+                <MediaSidebar />
+              </div>
             </ErrorBoundary>
           </InteractionLockRegion>
         )}
@@ -753,18 +755,22 @@ export const LoadedEditor = memo(function LoadedEditor({
                 {!mediaFullColumn && (
                   <InteractionLockRegion locked={isMaskEditingActive}>
                     <ErrorBoundary level="feature">
-                      <MediaSidebar />
+                      <div data-editor-media-sidebar className="h-full">
+                        <MediaSidebar />
+                      </div>
                     </ErrorBoundary>
                   </InteractionLockRegion>
                 )}
 
                 {/* Center - Preview */}
                 <ErrorBoundary level="feature">
-                  {isMotionWorkspace ? (
-                    <MotionPreviewArea project={project} />
-                  ) : (
-                    <PreviewArea project={project} />
-                  )}
+                  <div data-editor-preview className="flex min-w-0 min-h-0 flex-1">
+                    {isMotionWorkspace ? (
+                      <MotionPreviewArea project={project} />
+                    ) : (
+                      <PreviewArea project={project} />
+                    )}
+                  </div>
                 </ErrorBoundary>
 
                 {/* Right Sidebar - Properties (inline with preview) */}
@@ -792,7 +798,7 @@ export const LoadedEditor = memo(function LoadedEditor({
             >
               <InteractionLockRegion locked={isMaskEditingActive} className="h-full">
                 <ErrorBoundary level="feature">
-                  <div className="h-full flex overflow-hidden">
+                  <div data-editor-timeline className="h-full flex overflow-hidden">
                     <div className="min-w-0 flex-1">
                       {isMotionWorkspace ? (
                         <MotionTimelineDock project={project} />

@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useEditorStore } from '@freecut/shared/state/editor'
 import { cn } from '@freecut/shared/ui/cn'
 import type { EditorWorkspaceId } from '@freecut/config/editor-workspaces'
+import './workspace-switcher.css'
 
 const WORKSPACE_ITEMS: readonly {
   id: EditorWorkspaceId
@@ -30,7 +31,7 @@ export const WorkspaceSwitcher = memo(function WorkspaceSwitcher() {
     <div
       role="tablist"
       aria-label={t('toolbar.workspaces.label')}
-      className="flex items-center gap-0.5 rounded-md bg-muted p-0.5"
+      className="editor-workspace-tabs flex items-center gap-0.5 rounded-md p-0.5"
     >
       {WORKSPACE_ITEMS.map(({ id, icon: Icon, labelKey }) => {
         const isActive = workspace === id
@@ -42,7 +43,7 @@ export const WorkspaceSwitcher = memo(function WorkspaceSwitcher() {
             aria-selected={isActive}
             onClick={() => setWorkspace(id)}
             className={cn(
-              'flex h-7 items-center gap-1.5 rounded-[5px] px-3 text-xs font-medium transition-colors',
+              'editor-workspace-tab flex h-8 items-center gap-1.5 rounded-[5px] px-3 text-xs font-medium transition-colors',
               isActive
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',

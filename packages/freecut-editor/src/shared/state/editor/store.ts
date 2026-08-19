@@ -67,6 +67,11 @@ function loadEditorWorkspaceLayout(workspace: EditorWorkspaceId): EditorWorkspac
   if (workspace === 'edit' && !hasStoredFullColumn) {
     return { ...layout, propertiesFullColumn: loadLegacyPropertiesFullColumn() }
   }
+  // The Edit workspace keeps the media library beside the preview above the
+  // timeline. Ignore the old full-column preference left by earlier layouts.
+  if (workspace === 'edit') {
+    return { ...layout, mediaFullColumn: false }
+  }
   return layout
 }
 
@@ -159,14 +164,9 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
     }
   })(),
   propertiesFullColumn: initialWorkspaceLayout.propertiesFullColumn,
-  mediaFullColumn: (() => {
-    try {
-      const v = localStorage.getItem('editor:mediaFullColumn')
-      return v === null ? true : v === 'true'
-    } catch {
-      return true
-    }
-  })(),
+  // Edit keeps the media panel in the upper workspace so the timeline can use
+  // the full editor width. Color and Motion retain their workspace presets.
+  mediaFullColumn: initialWorkspaceLayout.mediaFullColumn,
   trackSizePreset: loadTrackSizePreset(),
 
   // Actions

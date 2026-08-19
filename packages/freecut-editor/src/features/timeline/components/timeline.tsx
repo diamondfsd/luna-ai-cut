@@ -907,6 +907,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
   return (
     <div
       className="timeline-bg h-full border-t border-border flex flex-col overflow-hidden"
+      data-timeline-root
       role="region"
       aria-label={t('timeline.region')}
     >
