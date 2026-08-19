@@ -42,6 +42,9 @@ const host = argValue('--host') || process.env.LUNA_MOCK_HOST || DEFAULT_MOCK.ho
 const httpPort = Number(argValue('--http-port') || process.env.LUNA_MOCK_HTTP_PORT || DEFAULT_MOCK.httpPort)
 const tcpPort = Number(argValue('--tcp-port') || process.env.LUNA_MOCK_TCP_PORT || DEFAULT_MOCK.tcpPort)
 const rateBps = Number(argValue('--rate-mbps') || process.env.LUNA_MOCK_RATE_MBPS || DEFAULT_MOCK.rateMbps) * 1024 * 1024
+// 调试录制时允许媒体请求独立于短暂的 TCP 列表会话，模拟相机持续提供媒体读取服务。
+const allowUnauthenticatedHttp = process.argv.includes('--allow-unauthenticated-http')
+  || process.env.LUNA_MOCK_ALLOW_UNAUTHENTICATED_HTTP === '1'
 
 function isStreamHandshake(frame) {
   return frame[6] === UCD2_STREAM && frame.length >= 16
@@ -475,7 +478,7 @@ const httpServer = createHttpServer(async (request, response) => {
       return
     }
 
-    if (!authGate.isAuthorized()) {
+    if (!authGate.isAuthorized() && !allowUnauthenticatedHttp) {
       response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
       response.end('Luna mock requires a fresh TCP auth session before HTTP access.\n')
       return
