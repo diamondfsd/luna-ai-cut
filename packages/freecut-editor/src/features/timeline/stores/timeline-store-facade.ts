@@ -50,7 +50,6 @@ let lastScrollPositionRef: unknown = null
 let lastSnapEnabledRef: unknown = null
 let lastAudioSkimmingEnabledRef: unknown = null
 let lastIsDirtyRef: unknown = null
-let lastChangeVersionRef: unknown = null
 
 /**
  * Get cached snapshot, rebuilding only if underlying state changed.
@@ -75,8 +74,7 @@ function getSnapshot(): TimelineState & TimelineActions {
     lastScrollPositionRef !== settingsState.scrollPosition ||
     lastSnapEnabledRef !== settingsState.snapEnabled ||
     lastAudioSkimmingEnabledRef !== settingsState.audioSkimmingEnabled ||
-    lastIsDirtyRef !== settingsState.isDirty ||
-    lastChangeVersionRef !== settingsState.changeVersion
+    lastIsDirtyRef !== settingsState.isDirty
 
   if (!cachedSnapshot || stateChanged) {
     // Update tracked references
@@ -92,7 +90,6 @@ function getSnapshot(): TimelineState & TimelineActions {
     lastSnapEnabledRef = settingsState.snapEnabled
     lastAudioSkimmingEnabledRef = settingsState.audioSkimmingEnabled
     lastIsDirtyRef = settingsState.isDirty
-    lastChangeVersionRef = settingsState.changeVersion
 
     // Rebuild cached snapshot
     cachedSnapshot = {
@@ -109,7 +106,6 @@ function getSnapshot(): TimelineState & TimelineActions {
       snapEnabled: settingsState.snapEnabled,
       audioSkimmingEnabled: settingsState.audioSkimmingEnabled,
       isDirty: settingsState.isDirty,
-      changeVersion: settingsState.changeVersion,
 
       // Actions (static references, never change)
       setTracks: timelineActions.setTracks,
@@ -298,18 +294,11 @@ function createTimelineStoreFacade(): TimelineStoreFacade {
       ('fps' in partial && partial.fps !== undefined)
 
     // Map partial state to appropriate domain stores
-    if (
-      'items' in partial && partial.items !== undefined &&
-      'tracks' in partial && partial.tracks !== undefined
-    ) {
-      useItemsStore.getState().setItemsAndTracks(partial.items, partial.tracks)
-    } else {
-      if ('items' in partial && partial.items !== undefined) {
-        useItemsStore.getState().setItems(partial.items)
-      }
-      if ('tracks' in partial && partial.tracks !== undefined) {
-        useItemsStore.getState().setTracks(partial.tracks)
-      }
+    if ('items' in partial && partial.items !== undefined) {
+      useItemsStore.getState().setItems(partial.items)
+    }
+    if ('tracks' in partial && partial.tracks !== undefined) {
+      useItemsStore.getState().setTracks(partial.tracks)
     }
     if ('transitions' in partial && partial.transitions !== undefined) {
       useTransitionsStore.getState().setTransitions(partial.transitions)

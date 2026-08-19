@@ -73,7 +73,7 @@ const EXTENSION_TO_MIME: Record<string, string> = {
 /**
  * Get MIME type from file, falling back to extension-based detection
  */
-export function getMimeType(file: Pick<File, 'name' | 'type'>): string {
+export function getMimeType(file: File): string {
   const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0]
   const extensionMimeType = ext ? EXTENSION_TO_MIME[ext] : undefined
 

@@ -9,6 +9,11 @@ const harnessPackagePath = join(harnessRoot, 'package.json')
 const harnessNodeModules = join(harnessRoot, 'node_modules')
 const harnessHostTypeSentinel = join(harnessRoot, 'vendor/cosmokit/lib/types/index.d.ts')
 
+if (!existsSync(harnessPackagePath)) {
+  console.log('[harness-deps] FreeCut source has no embedded Harness; skipped')
+  process.exit(0)
+}
+
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'))
 }

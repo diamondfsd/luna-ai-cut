@@ -196,11 +196,7 @@ const AudioEqPanelSurface = memo(function AudioEqPanelSurface({
   )
 })
 
-export const AudioMeterPanel = memo(function AudioMeterPanel({
-  compact = false,
-}: {
-  compact?: boolean
-}) {
+export const AudioMeterPanel = memo(function AudioMeterPanel() {
   const { t } = useTranslation()
   const [panelMode, setPanelMode] = useState<PanelMode>('meter')
   const [eqPanelTarget, setEqPanelTarget] = useState<EqPanelTarget | null>(null)
@@ -597,7 +593,7 @@ export const AudioMeterPanel = memo(function AudioMeterPanel({
     return mixerSourceTracks.map((track) => ({
       id: track.id,
       name: track.name,
-      kind: track.kind === 'audio' ? 'audio' : 'video',
+      kind: track.kind,
       color: track.color,
       muted: track.muted,
       solo: track.solo,
@@ -1067,31 +1063,6 @@ export const AudioMeterPanel = memo(function AudioMeterPanel({
         <AudioEqPanelSurface layoutMode="floating" {...eqPanelContentProps} />
       </WindowPortal>
     ) : null
-  const isScanningMeter = estimate.unresolvedSourceCount > 0 && estimate.resolvedSourceCount === 0
-
-  if (compact) {
-    return (
-      <div
-        ref={meterVisualRootRef}
-        className="flex h-4 w-8 shrink-0 flex-col justify-center gap-0.5 rounded-sm bg-black/25 px-1"
-        aria-label={t('editor.audioMeters.audioMeter')}
-        data-tooltip={t('editor.audioMeters.audioMeter')}
-      >
-        <span className="relative h-[3px] w-full overflow-hidden rounded-full bg-foreground/10">
-          <span
-            className={`absolute inset-y-0 left-0 rounded-full bg-primary/80 transition-[width] duration-75 ease-out ${isScanningMeter ? 'opacity-50' : ''}`}
-            style={{ width: 'var(--meter-l, 0%)' }}
-          />
-        </span>
-        <span className="relative h-[3px] w-full overflow-hidden rounded-full bg-foreground/10">
-          <span
-            className={`absolute inset-y-0 left-0 rounded-full bg-primary/80 transition-[width] duration-75 ease-out ${isScanningMeter ? 'opacity-50' : ''}`}
-            style={{ width: 'var(--meter-r, 0%)' }}
-          />
-        </span>
-      </div>
-    )
-  }
 
   // ---------------------------------------------------------------------------
   // Mixer mode (docked)
@@ -1133,6 +1104,8 @@ export const AudioMeterPanel = memo(function AudioMeterPanel({
     'repeating-linear-gradient(to top, black 0px, black 3px, transparent 3px, transparent 4px)'
   const unlitLedBg =
     'repeating-linear-gradient(to top, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 3px, transparent 3px, transparent 4px)'
+  const isScanningMeter = estimate.unresolvedSourceCount > 0 && estimate.resolvedSourceCount === 0
+
   return (
     <>
       {detachedEqPanel}

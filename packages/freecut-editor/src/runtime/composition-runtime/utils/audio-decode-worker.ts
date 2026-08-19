@@ -223,6 +223,7 @@ async function decodeWindow(
     startTime,
     durationSeconds,
     storageSampleRate,
+    mode = 'targeted',
   } = message
 
   const mb = await import('mediabunny')
@@ -286,31 +287,56 @@ async function decodeWindow(
       totalFrames += chunk.frameCount
     }
 
-    const initialSample = (await sink.getSample(safeStartTime)) as DecodeSampleData | null
-    let initialSampleEndTime: number | null = null
-    if (initialSample) {
-      try {
-        append(initialSample)
-        initialSampleEndTime = getDecodeSampleEndTime(initialSample)
-      } finally {
-        initialSample.close()
-      }
-    }
-
-    const iteratorStartTime =
-      initialSampleEndTime === null ? safeStartTime : Math.max(safeStartTime, initialSampleEndTime)
-    if (coverageEndTime < targetCoverageEndTime) {
-      for await (const sample of sink.samples(
-        iteratorStartTime,
-        targetCoverageEndTime,
-      ) as AsyncIterable<DecodeSampleData>) {
+    if (mode === 'sequential') {
+      // Some custom decoders can only advance from the beginning. Decode and
+      // discard early samples, retaining Float32 chunks only for this window.
+      for await (const sample of sink.samples() as AsyncIterable<DecodeSampleData>) {
         try {
+          const sampleStartTime = Number.isFinite(sample.timestamp)
+            ? Number(sample.timestamp)
+            : null
+          const sampleEndTime = getDecodeSampleEndTime(sample)
+          if (sampleEndTime !== null && sampleEndTime <= safeStartTime) {
+            continue
+          }
+          if (sampleStartTime !== null && sampleStartTime >= targetCoverageEndTime) {
+            break
+          }
           append(sample)
         } finally {
           sample.close()
         }
         if (coverageEndTime >= targetCoverageEndTime) {
           break
+        }
+      }
+    } else {
+      const initialSample = (await sink.getSample(safeStartTime)) as DecodeSampleData | null
+      let initialSampleEndTime: number | null = null
+      if (initialSample) {
+        try {
+          append(initialSample)
+          initialSampleEndTime = getDecodeSampleEndTime(initialSample)
+        } finally {
+          initialSample.close()
+        }
+      }
+
+      const iteratorStartTime =
+        initialSampleEndTime === null ? safeStartTime : Math.max(safeStartTime, initialSampleEndTime)
+      if (coverageEndTime < targetCoverageEndTime) {
+        for await (const sample of sink.samples(
+          iteratorStartTime,
+          targetCoverageEndTime,
+        ) as AsyncIterable<DecodeSampleData>) {
+          try {
+            append(sample)
+          } finally {
+            sample.close()
+          }
+          if (coverageEndTime >= targetCoverageEndTime) {
+            break
+          }
         }
       }
     }

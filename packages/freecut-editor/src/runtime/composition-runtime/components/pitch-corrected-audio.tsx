@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { useGizmoStore } from '@freecut/runtime/composition-runtime/deps/stores'
 import { usePlaybackStore } from '@freecut/runtime/composition-runtime/deps/stores'
-import { getOrDecodeAudio, getOrDecodeAudioSliceForPlayback } from '../utils/audio-decode-cache'
+import { getOrDecodeAudioSliceForPlayback } from '../utils/audio-decode-cache'
 import { audioBufferToWavBlob } from '../utils/audio-buffer-wav'
 import { createReversedAudioBuffer } from '../utils/audio-buffer-utils'
 import { getAudioTargetTimeSeconds } from '../utils/video-timing'
@@ -577,25 +577,6 @@ const DecodedPitchCorrectedAudio: React.FC<DecodedPitchCorrectedAudioProps> = Re
         .catch((error) => {
           if (!cancelled) {
             log.warn('Failed to prepare partial pitch-corrected preview buffer', {
-              mediaId,
-              error,
-            })
-          }
-        })
-
-      getOrDecodeAudio(mediaId, src)
-        .then((buffer) => {
-          if (cancelled) return
-          setDecodedSource({
-            buffer,
-            sourceStartOffsetSec: 0,
-            coverageEndSec: Number.POSITIVE_INFINITY,
-            isComplete: true,
-          })
-        })
-        .catch((error) => {
-          if (!cancelled) {
-            log.warn('Failed to prepare full pitch-corrected preview buffer', {
               mediaId,
               error,
             })

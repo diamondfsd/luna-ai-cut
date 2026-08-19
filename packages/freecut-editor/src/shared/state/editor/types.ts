@@ -20,8 +20,6 @@ export interface EditorState {
   clipInspectorTab: ClipInspectorTab
   sidebarWidth: number
   rightSidebarWidth: number
-  aiSidebarOpen: boolean
-  aiSidebarWidth: number
   timelineHeight: number
   sourcePreviewMediaId: string | null
   mediaSkimPreviewMediaId: string | null
@@ -39,7 +37,6 @@ export interface EditorState {
   propertiesFullColumn: boolean
   mediaFullColumn: boolean
   trackSizePreset: TrackSizePreset
-  trackPreviewCollapsed: boolean
 }
 
 export interface EditorActions {
@@ -50,14 +47,11 @@ export interface EditorActions {
   setTranscriptEditorShortcutScopeActive: (active: boolean) => void
   toggleLeftSidebar: () => void
   toggleRightSidebar: () => void
-  setAiSidebarOpen: (open: boolean) => void
-  toggleAiSidebar: () => void
   setWorkspace: (workspace: EditorWorkspaceId) => void
   setActiveTab: (tab: EditorSidebarTab) => void
   setClipInspectorTab: (tab: ClipInspectorTab) => void
   setSidebarWidth: (width: number) => void
   setRightSidebarWidth: (width: number) => void
-  setAiSidebarWidth: (width: number) => void
   syncSidebarLayout: (layout: {
     leftSidebarDefaultWidth: number
     leftSidebarMinWidth: number
@@ -65,9 +59,6 @@ export interface EditorActions {
     rightSidebarDefaultWidth: number
     rightSidebarMinWidth: number
     rightSidebarMaxWidth: number
-    aiSidebarDefaultWidth: number
-    aiSidebarMinWidth: number
-    aiSidebarMaxWidth: number
   }) => void
   setTimelineHeight: (height: number) => void
   setSourcePreviewMediaId: (mediaId: string | null) => void
@@ -92,5 +83,4 @@ export interface EditorActions {
   togglePropertiesFullColumn: () => void
   toggleMediaFullColumn: () => void
   setTrackSizePreset: (preset: TrackSizePreset) => void
-  setTrackPreviewCollapsed: (collapsed: boolean) => void
 }

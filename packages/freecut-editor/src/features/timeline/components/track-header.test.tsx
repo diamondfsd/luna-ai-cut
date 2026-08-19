@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type { TimelineTrack } from '@freecut/types/timeline'
 
+import { useItemsStore } from '../stores/items-store'
 import { TrackHeader } from './track-header'
 
 vi.mock('../hooks/use-track-drag', () => ({
@@ -53,6 +54,10 @@ function renderTrackHeader(track: TimelineTrack, onToggleDisabled = vi.fn()) {
 }
 
 describe('TrackHeader', () => {
+  beforeEach(() => {
+    useItemsStore.getState().setItems([])
+  })
+
   it('renders a unified disable control for video tracks', () => {
     const { onToggleDisabled } = renderTrackHeader(
       makeTrack({ kind: 'video', visible: true, muted: false }),
@@ -93,8 +98,8 @@ describe('TrackHeader', () => {
     expect(onToggleDisabled).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the lower-frequency sync lock action in the context menu', () => {
-    const { container } = render(
+  it('renders sync lock enabled by default and toggles the label when disabled', () => {
+    const { rerender } = render(
       <TrackHeader
         track={makeTrack()}
         isActive={false}
@@ -114,8 +119,28 @@ describe('TrackHeader', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: 'Disable sync lock' })).not.toBeInTheDocument()
-    fireEvent.contextMenu(container.querySelector('[data-track-id="track-1"]')!)
-    expect(screen.getByRole('menuitem', { name: 'Disable sync lock' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Disable sync lock' })).toBeInTheDocument()
+
+    rerender(
+      <TrackHeader
+        track={makeTrack({ syncLock: false })}
+        isActive={false}
+        isSelected={false}
+        canDeleteTrack
+        canDeleteEmptyTracks
+        onToggleLock={() => undefined}
+        onToggleSyncLock={() => undefined}
+        onToggleDisabled={() => undefined}
+        onToggleSolo={() => undefined}
+        onSelect={() => undefined}
+        onCloseGaps={() => undefined}
+        onAddVideoTrack={() => undefined}
+        onAddAudioTrack={() => undefined}
+        onDeleteTrack={() => undefined}
+        onDeleteEmptyTracks={() => undefined}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Enable sync lock' })).toBeInTheDocument()
   })
 })

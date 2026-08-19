@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vite-plus/test'
 import { useEditorStore } from '@freecut/shared/state/editor'
-import {
-  COMPACT_TRACK_HEIGHT,
-  DEFAULT_TRACK_HEIGHT,
-  MAX_TRACK_HEIGHT,
-} from '../constants'
+import { COMPACT_TRACK_HEIGHT, DEFAULT_TRACK_HEIGHT, MAX_TRACK_HEIGHT } from '../constants'
 import {
   clearAllTrackHeightOverrides,
   clearTrackHeightOverride,

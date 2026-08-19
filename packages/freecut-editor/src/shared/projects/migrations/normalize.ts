@@ -22,7 +22,6 @@ import { normalizeAudioEqSettings } from '@freecut/shared/utils/audio-eq'
 import { applyOptionalClamps } from '@freecut/shared/timeline/item-clamps'
 import { sanitizeTextMotion } from './sanitize-text-motion'
 import type { ProjectWarning } from './types'
-import { repairOverlappingItems, repairUniformLinkedOffsets } from './track-integrity'
 
 /**
  * Normalize a track to ensure all fields have valid values.
@@ -178,6 +177,91 @@ function flattenTrackGroups(tracks: ProjectTimeline['tracks']): ProjectTimeline[
 }
 
 /**
+ * Build a set of item ID pairs that are linked by a transition.
+ * Overlaps between transition-linked clips are intentional and must not be repaired.
+ */
+function buildTransitionPairs(
+  transitions?: NonNullable<ProjectTimeline['transitions']>,
+): Set<string> {
+  const pairs = new Set<string>()
+  if (!transitions) return pairs
+  for (const t of transitions) {
+    // Store both directions for O(1) lookup
+    pairs.add(`${t.leftClipId}:${t.rightClipId}`)
+    pairs.add(`${t.rightClipId}:${t.leftClipId}`)
+  }
+  return pairs
+}
+
+/**
+ * Detect and repair overlapping items on the same track.
+ * Pushes later-starting items forward to eliminate overlaps.
+ * Transition-linked overlaps are intentional and left untouched.
+ * Every repair is reported to `warnings` — for hand-built projects a silent
+ * shift reads as "the item vanished from its window".
+ */
+function repairOverlappingItems(
+  items: ProjectTimeline['items'],
+  transitions?: NonNullable<ProjectTimeline['transitions']>,
+  warnings?: ProjectWarning[],
+  compositionId?: string,
+): ProjectTimeline['items'] {
+  const transitionPairs = buildTransitionPairs(transitions)
+
+  // Group items by track, sorted by start frame
+  const byTrack = new Map<
+    string,
+    Array<{ index: number; item: ProjectTimeline['items'][number] }>
+  >()
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]!
+    let group = byTrack.get(item.trackId)
+    if (!group) {
+      group = []
+      byTrack.set(item.trackId, group)
+    }
+    group.push({ index: i, item })
+  }
+
+  const repaired = [...items]
+
+  for (const [, group] of byTrack) {
+    group.sort((a, b) => a.item.from - b.item.from)
+
+    for (let i = 0; i < group.length; i++) {
+      const current = group[i]!
+      const currentEnd = current.item.from + current.item.durationInFrames
+
+      for (let j = i + 1; j < group.length; j++) {
+        const next = group[j]!
+        if (next.item.from >= currentEnd) break // No overlap
+
+        // Skip transition-linked overlaps — they're intentional
+        const pairKey = `${current.item.id}:${next.item.id}`
+        if (transitionPairs.has(pairKey)) continue
+
+        // Push the later item to start right after the current one
+        warnings?.push({
+          code: 'TRACK_OVERLAP_REPAIRED',
+          message:
+            `Items "${current.item.id}" and "${next.item.id}" overlap on track ` +
+            `"${current.item.trackId}" (frames ${next.item.from}-${currentEnd}); ` +
+            `"${next.item.id}" was shifted to frame ${currentEnd}`,
+          itemIds: [current.item.id, next.item.id],
+          trackId: current.item.trackId,
+          compositionId,
+        })
+        const repairedItem = { ...next.item, from: currentEnd }
+        repaired[next.index] = repairedItem
+        next.item = repairedItem
+      }
+    }
+  }
+
+  return repaired
+}
+
+/**
  * Normalize a timeline to ensure all data conforms to current defaults.
  */
 function normalizeTimeline(
@@ -189,7 +273,6 @@ function normalizeTimeline(
   )
 
   const normalizedItems = timeline.items.map((item) => normalizeItem(item, warnings))
-  const alignedItems = repairUniformLinkedOffsets(normalizedItems)
   const normalizedTransitions = timeline.transitions?.map(normalizeTransition)
 
   // Drop tab ids that don't resolve to a composition (and any duplicates), so
@@ -210,23 +293,19 @@ function normalizeTimeline(
     tracks: normalizedTracks,
     busAudioEq: normalizeAudioEqSettings(timeline.busAudioEq),
     // Normalize items and repair overlaps
-    items: repairOverlappingItems(alignedItems, normalizedTransitions, warnings),
+    items: repairOverlappingItems(normalizedItems, normalizedTransitions, warnings),
     // Normalize transitions if present
     transitions: normalizedTransitions,
     // Normalize sub-composition tracks and items
     compositions: timeline.compositions?.map((comp) => {
       const compItems = comp.items.map((item) => normalizeItem(item, warnings, comp.id))
       const compTransitions = comp.transitions?.map(normalizeTransition)
-      const compTracks = flattenTrackGroups(
-        comp.tracks.map((track, index) => normalizeTrack(track, index)),
-      )
-      const alignedCompositionItems = repairUniformLinkedOffsets(compItems)
       return {
         ...comp,
         editorKind: comp.editorKind === 'composite-2d' ? 'composite-2d' : 'sequence',
-        tracks: compTracks,
+        tracks: flattenTrackGroups(comp.tracks.map((track, index) => normalizeTrack(track, index))),
         busAudioEq: normalizeAudioEqSettings(comp.busAudioEq),
-        items: repairOverlappingItems(alignedCompositionItems, compTransitions, warnings, comp.id),
+        items: repairOverlappingItems(compItems, compTransitions, warnings, comp.id),
         transitions: compTransitions,
       }
     }),

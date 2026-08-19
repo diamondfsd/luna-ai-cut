@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test'
 import {
+  buildContinuousPreviewOverlayIndex,
   getContinuousPreviewOverlayFrameWindow,
+  shouldForceContinuousPreviewOverlayFromIndex,
   shouldForceContinuousPreviewOverlay,
   shouldForceContinuousPreviewOverlayInWindow,
   timelineHasContinuousOverlayContent,
@@ -53,6 +55,45 @@ function createSubComposition(items: TimelineItem[]): SubComposition {
 }
 
 describe('shouldForceContinuousPreviewOverlay', () => {
+  it('indexes only rendered-overlay candidates for per-frame checks', () => {
+    const ordinaryItems = Array.from({ length: 327 }, (_, index) =>
+      createVideoItem({
+        id: `ordinary-${index}`,
+        from: index * 90,
+      }),
+    )
+    const effectedItem = createVideoItem({
+      id: 'effected',
+      from: 30_000,
+      effects: [
+        {
+          id: 'effect-1',
+          enabled: true,
+          effect: {
+            type: 'gpu-effect',
+            gpuEffectType: 'gpu-blur',
+            params: { amount: 0.5 },
+          },
+        },
+      ],
+    })
+    const index = buildContinuousPreviewOverlayIndex([...ordinaryItems, effectedItem], [])
+
+    expect(index.candidateItems.map((item) => item.id)).toEqual(['effected'])
+    expect(
+      shouldForceContinuousPreviewOverlayFromIndex(index, {
+        startFrame: 30_000,
+        endFrameExclusive: 30_001,
+      }),
+    ).toBe(true)
+    expect(
+      shouldForceContinuousPreviewOverlayFromIndex(index, {
+        startFrame: 0,
+        endFrameExclusive: 1,
+      }),
+    ).toBe(false)
+  })
+
   it('keeps numeric transition counts as a non-forcing legacy hint', () => {
     expect(shouldForceContinuousPreviewOverlay([createVideoItem()], 1, 0)).toBe(false)
   })

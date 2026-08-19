@@ -455,12 +455,7 @@ export function applyMasks(
         mask.opacity,
         canvas,
       )
-    } else if (
-      mask.maskType === 'clip' &&
-      mask.feather === 0 &&
-      mask.opacity === 1 &&
-      mask.path
-    ) {
+    } else if (mask.maskType === 'clip' && mask.feather === 0 && mask.opacity === 1 && mask.path) {
       // Simple clip mask
       outputCtx.save()
       applyClipMask(outputCtx, mask.path, mask.inverted, canvas)

@@ -148,6 +148,7 @@ describe('GPU transition registry', () => {
       directions: ['from-left', 'from-right', 'from-top', 'from-bottom'],
       uniformSize: 48,
     })
+    expect(def!.shader).toContain('let base = mix(right, left, reveal);')
   })
 
   it('packs light leak burn uniforms within its declared buffer size', () => {

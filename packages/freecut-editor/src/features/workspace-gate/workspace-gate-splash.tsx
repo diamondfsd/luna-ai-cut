@@ -1,5 +1,5 @@
 import { Trans, useTranslation } from 'react-i18next'
-import { FolderOpen, FolderX, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
+import { FolderOpen, FolderX, Loader2, RefreshCw, AlertTriangle, BookOpen } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
 import { FreeCutLogo } from '@freecut/components/brand/freecut-logo'
 
@@ -19,7 +19,7 @@ interface Props {
 export function WorkspaceGateSplash({ status, error, onPickFolder, onReconnect }: Props) {
   const { t } = useTranslation()
   return (
-    <div className="size-full min-h-0 bg-background flex items-center justify-center px-6">
+    <div className="min-h-screen bg-background flex items-center justify-center px-6">
       <div className="max-w-lg w-full text-center">
         <FreeCutLogo variant="full" size="lg" className="justify-center mb-8" />
 
@@ -45,6 +45,12 @@ export function WorkspaceGateSplash({ status, error, onPickFolder, onReconnect }
             <p className="text-sm text-muted-foreground">
               {t('projects.workspaceGate.unsupportedBrowserDescription')}
             </p>
+            <Button asChild variant="outline" size="sm" className="gap-2">
+              <a href="/docs/workspaces">
+                <BookOpen className="h-4 w-4" />
+                {t('projects.workspaceGate.workspaceGuide')}
+              </a>
+            </Button>
           </div>
         )}
 
@@ -62,6 +68,12 @@ export function WorkspaceGateSplash({ status, error, onPickFolder, onReconnect }
               <Button size="lg" className="gap-2" onClick={onPickFolder}>
                 <FolderOpen className="h-4 w-4" />
                 {t('projects.workspaceGate.chooseFolder')}
+              </Button>
+              <Button asChild variant="outline" size="lg" className="gap-2">
+                <a href="/docs/workspaces">
+                  <BookOpen className="h-4 w-4" />
+                  {t('projects.workspaceGate.workspaceGuide')}
+                </a>
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">{t('projects.workspaceGate.pickTip')}</p>
@@ -92,6 +104,12 @@ export function WorkspaceGateSplash({ status, error, onPickFolder, onReconnect }
                 {t('projects.workspaceGate.reconnect')}
               </Button>
             </div>
+            <Button asChild variant="ghost" size="sm" className="gap-2">
+              <a href="/docs/workspaces">
+                <BookOpen className="h-4 w-4" />
+                {t('projects.workspaceGate.workspaceGuide')}
+              </a>
+            </Button>
           </div>
         )}
       </div>

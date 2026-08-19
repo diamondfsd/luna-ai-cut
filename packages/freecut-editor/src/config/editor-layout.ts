@@ -5,29 +5,26 @@
  *
  * Prefer changing presets here before editing one-off component sizes.
  */
-const EDIT_DOPESHEET_COLUMN_WIDTH = 176
+const EDIT_DOPESHEET_COLUMN_WIDTH = 288
 
 const EDITOR_DENSITY_PRESETS = {
   compact: {
-    toolbarHeight: 44,
+    toolbarHeight: 48,
     sidebarRailWidth: 44,
     sidebarHeaderHeight: 36,
     sidebarHeaderButtonSize: 20,
     toolbarButtonSize: 20,
-    leftSidebarDefaultWidth: 360,
-    leftSidebarMinWidth: 280,
-    leftSidebarMaxWidth: 600,
-    rightSidebarDefaultWidth: 340,
-    rightSidebarMinWidth: 300,
-    rightSidebarMaxWidth: 480,
-    aiSidebarDefaultWidth: 380,
-    aiSidebarMinWidth: 320,
-    aiSidebarMaxWidth: 560,
-    previewPadding: 24,
+    leftSidebarDefaultWidth: 320,
+    leftSidebarMinWidth: 240,
+    leftSidebarMaxWidth: 560,
+    rightSidebarDefaultWidth: 288,
+    rightSidebarMinWidth: 280,
+    rightSidebarMaxWidth: 420,
+    previewPadding: 32,
     previewSplitHeaderHeight: 32,
     previewControlsHeight: 32,
     previewControlButtonSize: 30,
-    timelineDefaultSize: 36,
+    timelineDefaultSize: 28,
     timelineMinSize: 14,
     timelineMaxSize: 80,
     graphPanelSizeIncrease: 10,
@@ -51,7 +48,6 @@ export type EditorDensityPresetName = keyof typeof EDITOR_DENSITY_PRESETS
 export type EditorLayout = (typeof EDITOR_DENSITY_PRESETS)[EditorDensityPresetName]
 type LeftSidebarLayoutBounds = { leftSidebarMinWidth: number; leftSidebarMaxWidth: number }
 type RightSidebarLayoutBounds = { rightSidebarMinWidth: number; rightSidebarMaxWidth: number }
-type AiSidebarLayoutBounds = { aiSidebarMinWidth: number; aiSidebarMaxWidth: number }
 
 export const DEFAULT_EDITOR_DENSITY_PRESET: EditorDensityPresetName = 'compact'
 
@@ -196,23 +192,4 @@ export function clampRightEditorSidebarWidth(
   layoutOrPreset: EditorLayout | EditorDensityPresetName = EDITOR_LAYOUT,
 ): number {
   return clampSidebarWidth(width, getRightEditorSidebarBounds(layoutOrPreset))
-}
-
-export function getAiEditorSidebarBounds(
-  layoutOrPreset: EditorLayout | AiSidebarLayoutBounds | EditorDensityPresetName = EDITOR_LAYOUT,
-): { minWidth: number; maxWidth: number } {
-  const layout =
-    typeof layoutOrPreset === 'string' ? getEditorLayout(layoutOrPreset) : layoutOrPreset
-
-  return {
-    minWidth: layout.aiSidebarMinWidth,
-    maxWidth: layout.aiSidebarMaxWidth,
-  }
-}
-
-export function clampAiEditorSidebarWidth(
-  width: number,
-  layoutOrPreset: EditorLayout | EditorDensityPresetName = EDITOR_LAYOUT,
-): number {
-  return clampSidebarWidth(width, getAiEditorSidebarBounds(layoutOrPreset))
 }

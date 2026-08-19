@@ -5,7 +5,6 @@ import { useSettingsStore } from './settings-store'
 
 const DEFAULT_SETTINGS = {
   snapEnabled: true,
-  showTimelineHoverPreview: false,
   showWaveforms: true,
   showFilmstrips: true,
   enableFilmstripExtraction: true,
@@ -58,14 +57,6 @@ describe('settings-store', () => {
       expect(useSettingsStore.getState().autoSaveInterval).toBe(5)
     })
 
-    it('normalizes the video analysis intensity', () => {
-      useSettingsStore.getState().setSetting('visualAnalysisIntensity', 'strong')
-      expect(useSettingsStore.getState().visualAnalysisIntensity).toBe('strong')
-
-      useSettingsStore.getState().setSetting('visualAnalysisIntensity', 'unexpected' as never)
-      expect(useSettingsStore.getState().visualAnalysisIntensity).toBe('normal')
-    })
-
     it('does not affect other settings when changing one', () => {
       useSettingsStore.getState().setSetting('snapEnabled', false)
       expect(useSettingsStore.getState().showWaveforms).toBe(true)
@@ -86,7 +77,6 @@ describe('settings-store', () => {
 
       const state = useSettingsStore.getState()
       expect(state.snapEnabled).toBe(DEFAULT_SETTINGS.snapEnabled)
-      expect(state.showTimelineHoverPreview).toBe(DEFAULT_SETTINGS.showTimelineHoverPreview)
       expect(state.editorDensity).toBe(DEFAULT_SETTINGS.editorDensity)
       expect(state.autoSaveInterval).toBe(DEFAULT_SETTINGS.autoSaveInterval)
       expect(state.defaultWhisperModel).toBe(DEFAULT_SETTINGS.defaultWhisperModel)

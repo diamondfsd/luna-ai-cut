@@ -78,7 +78,7 @@ export const MiniTimelineTrackLanes = memo(function MiniTimelineTrackLanes({
             rowHeight >= 10 ? Math.max(8, Math.min(16, rowHeight - 4)) : Math.max(4, rowHeight - 2)
           const clipTop = laneIndex * rowHeight + Math.max(1, (rowHeight - clipHeight) / 2)
           const clipTone = selected
-            ? 'border-primary bg-primary/20 ring-1 ring-primary/45'
+            ? 'border-orange-500 bg-orange-500/20 shadow-[0_0_0_1px_rgba(249,115,22,0.45)]'
             : muted
               ? 'border-zinc-600/60 bg-zinc-500/20 opacity-70 hover:opacity-100'
               : 'border-sky-500/70 bg-sky-500/45 hover:border-sky-300'

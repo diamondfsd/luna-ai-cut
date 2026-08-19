@@ -95,16 +95,12 @@
       "trackInfo": "轨道 {{n}} · {{lang}} · {{codec}}"
     },
     "grid": {
-      "emptyHint": "将视频、音频或图片拖到此处，也可以从本地选择。",
+      "emptyHint": "将文件拖到此处，或点击导入添加媒体。",
       "emptyTitle": "暂无媒体",
-      "importingButton": "正在导入",
-      "importingHint": "正在读取并添加所选素材，请稍候。",
-      "importingTitle": "正在导入素材",
       "loadingSubtitle": "正在准备媒体…",
       "loadingTitle": "正在加载媒体…",
       "importButton": "导入媒体",
-      "folderDropUnsupported": "尚不支持文件夹。请直接拖放媒体文件。",
-      "supportedFormats": "支持的素材格式"
+      "folderDropUnsupported": "尚不支持文件夹。请直接拖放媒体文件。"
     },
     "info": {
       "codec": "编解码器",
@@ -145,7 +141,6 @@
       "dismiss": "关闭",
       "dragDropUnsupported": "此处不支持拖放操作。",
       "dropFilesHere": "将文件拖到此处",
-      "dropFilesHint": "松开后将素材添加到当前项目",
       "filesRejected": "部分文件无法添加。",
       "downloadingInterpolationModel": "正在下载插帧模型",
       "generateProxiesForSelected": "为 {{count}} 个所选项生成代理",

@@ -318,6 +318,7 @@ export async function renderCompositionItem(
     rctx.canvasPool.release(subCanvas)
   }
 }
+
 /**
  * Scope item-property animation lookups to the composition currently being
  * rendered. Root preview keyframes do not contain the keyframes authored on

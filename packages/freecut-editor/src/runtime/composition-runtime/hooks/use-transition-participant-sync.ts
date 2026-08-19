@@ -50,6 +50,10 @@ export function useTransitionParticipantSync(
       for (const participant of participants) {
         const video = pool.getClipElement(participant.poolClipId)
         if (!video) continue
+        // The preview transition session owns held elements, including A-A
+        // source-time ramps. Nominal sequence sync would overwrite its exact
+        // target time and playback rate once per clock frame.
+        if (video.dataset.transitionHold === '1') continue
 
         const relativeFrame = sequenceLocalFrame - participant.sequenceFrameOffset
         const startTime = participant.safeTrimBefore / participant.sourceFps

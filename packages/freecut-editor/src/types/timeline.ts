@@ -7,7 +7,6 @@ import type { TextStylePresetId } from '@freecut/shared/typography/text-style-pr
 import type { TextMotionSpec } from './text-motion'
 import type { TextLayoutDrafts, TextSpan, TextStyleFields } from './text'
 import type { CompositionControlOverrides } from './composition-controls'
-import type { HtmlAssetReference, HtmlRenderMode, HtmlViewport } from './html'
 
 export interface TimelineItemCornerPin {
   topLeft: [number, number]
@@ -62,17 +61,10 @@ type BaseTimelineItem = {
   from: number // Start frame (Composition convention)
   durationInFrames: number // Duration in frames (Composition convention)
   label: string
-  /** Raw MediaMetadata.id. Tool-facing references such as `media:<id>` are not valid here. */
   mediaId?: string
   compositionId?: string // Reference to a sub-composition for compound wrappers
   originId?: string // Tracks lineage - items from same split share this for stable React keys
   linkedGroupId?: string // Links paired timeline items like synced video/audio companions
-  /** Stable ownership used to reconcile declarative AI editing source across sessions. */
-  aiEditingSource?: {
-    projectId: string
-    ref: string
-    role: 'primary' | 'linked'
-  }
   // Trim properties for media items
   trimStart?: number // Frames trimmed from start of source media
   trimEnd?: number // Frames trimmed from end of source media
@@ -194,10 +186,6 @@ export interface GeneratedCaptionSource {
   fileName?: string
   format?: 'srt' | 'vtt'
   importedAt?: number
-  trackNumber?: number
-  language?: string
-  trackName?: string
-  codecId?: string
 }
 
 // Discriminated union types for different item types
@@ -252,16 +240,6 @@ export type ImageItem = BaseTimelineItem & {
   // Source dimensions (intrinsic size from media metadata)
   sourceWidth?: number
   sourceHeight?: number
-}
-
-export type HtmlItem = BaseTimelineItem & {
-  type: 'html'
-  html: string
-  css: string
-  viewport: HtmlViewport
-  renderMode: HtmlRenderMode
-  sourceRevision: number
-  assets: HtmlAssetReference[]
 }
 
 export type LottieItem = BaseTimelineItem & {
@@ -422,18 +400,78 @@ export type CompositionItem = BaseTimelineItem & {
   compositionHeight: number
 }
 
+/**
+ * A single cue inside a {@link SubtitleSegmentItem}. Times are seconds
+ * relative to the segment's `from` (after speed scaling) — i.e. the same
+ * model as imported SRT/VTT, so a cue payload survives `from` changes,
+ * trims, and splits without rewriting timestamps.
+ */
+export interface SubtitleSegmentCue {
+  id: string
+  startSeconds: number
+  endSeconds: number
+  text: string
+}
+
+/**
+ * One timeline item that owns an entire subtitle track's cues.
+ *
+ * Replaces the historical "one TextItem per cue" approach for
+ * embedded-subtitle / SRT-import flows: instead of stamping out N
+ * caption items, we get one segment that renders the active cue per
+ * frame from `cues`, applying the segment's style block uniformly.
+ *
+ * Style fields mirror the subset of {@link TextItem}'s typography that
+ * makes sense applied to all cues at once. Per-cue styling can be
+ * layered on later via `cue.style?` if needed.
+ */
+export type SubtitleSegmentItem = BaseTimelineItem &
+  TextStyleFields & {
+    type: 'subtitle'
+    /** Source-track origin (e.g. "Squid.Game.S02E01.mkv - en (Track 6)"). */
+    sourceLabel?: string
+    /** How the cues were obtained — drives replace/refresh affordances. */
+    source: SubtitleSegmentSource
+    /** Cue list, sorted by `startSeconds`. Times are segment-relative. */
+    cues: SubtitleSegmentCue[]
+    color: string
+  }
+
+export type SubtitleSegmentSource =
+  | {
+      type: 'transcript'
+      mediaId: string
+      clipId: string
+    }
+  | {
+      type: 'embedded-subtitles'
+      mediaId: string
+      clipId: string
+      trackNumber: number
+      language?: string
+      trackName?: string
+      codecId?: string
+      importedAt: number
+    }
+  | {
+      type: 'subtitle-import'
+      fileName: string
+      format: 'srt' | 'vtt'
+      importedAt: number
+    }
+
 // Union type for all timeline items
 export type TimelineItem =
   | VideoItem
   | AudioItem
   | TextItem
   | ImageItem
-  | HtmlItem
   | LottieItem
   | ShapeItem
   | AdjustmentItem
   | ControllerItem
   | CompositionItem
+  | SubtitleSegmentItem
 
 export interface TimelineTrack {
   id: string

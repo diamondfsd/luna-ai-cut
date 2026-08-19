@@ -1,5 +1,3 @@
-import { EDITOR_LAYOUT } from './editor-layout'
-
 /**
  * Editor workspaces (DaVinci-style pages): named layout presets that
  * rearrange existing panels for a task. Switching workspaces never changes
@@ -13,7 +11,6 @@ export type EditorWorkspaceId = 'edit' | 'color' | 'motion'
 
 export type EditorSidebarTab =
   | 'media'
-  | 'audio'
   | 'text'
   | 'shapes'
   | 'effects'
@@ -25,50 +22,32 @@ export type EditorClipInspectorTab = 'video' | 'motion' | 'audio' | 'effects'
 
 /** The slice of editor UI state that a workspace controls. */
 export interface EditorWorkspaceLayout {
-  schemaVersion: number
   colorScopesOpen: boolean
   clipInspectorTab: EditorClipInspectorTab
   activeTab: EditorSidebarTab
   propertiesFullColumn: boolean
-  mediaFullColumn: boolean
-  sidebarWidth: number
-  rightSidebarWidth: number
 }
-
-export const EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION = 2
 
 const EDITOR_WORKSPACE_PRESETS: Record<EditorWorkspaceId, EditorWorkspaceLayout> = {
   edit: {
-    schemaVersion: EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION,
     colorScopesOpen: false,
     clipInspectorTab: 'video',
     activeTab: 'media',
     propertiesFullColumn: false,
-    mediaFullColumn: false,
-    sidebarWidth: EDITOR_LAYOUT.leftSidebarDefaultWidth,
-    rightSidebarWidth: EDITOR_LAYOUT.rightSidebarDefaultWidth,
   },
   color: {
-    schemaVersion: EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION,
     colorScopesOpen: true,
     clipInspectorTab: 'effects',
     activeTab: 'effects',
     // The grade panel stacks wheels + curves + the effect list — give it
     // the full column height by default.
     propertiesFullColumn: true,
-    mediaFullColumn: true,
-    sidebarWidth: EDITOR_LAYOUT.leftSidebarDefaultWidth,
-    rightSidebarWidth: EDITOR_LAYOUT.rightSidebarDefaultWidth,
   },
   motion: {
-    schemaVersion: EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION,
     colorScopesOpen: false,
     clipInspectorTab: 'video',
     activeTab: 'media',
     propertiesFullColumn: false,
-    mediaFullColumn: true,
-    sidebarWidth: EDITOR_LAYOUT.leftSidebarDefaultWidth,
-    rightSidebarWidth: EDITOR_LAYOUT.rightSidebarDefaultWidth,
   },
 }
 
@@ -78,10 +57,10 @@ const EDITOR_WORKSPACE_PRESETS: Record<EditorWorkspaceId, EditorWorkspaceLayout>
  * rather than editing them, so the color workspace shrinks the timeline.
  */
 export const EDITOR_WORKSPACE_TIMELINE_SIZE: Record<EditorWorkspaceId, number | null> = {
-  edit: 36,
+  edit: null,
   color: 18,
-  // Keep Motion's established split while Edit adopts the larger timeline.
-  motion: 28,
+  // Motion reuses the standard split and swaps only the timeline surface.
+  motion: null,
 }
 
 const DEFAULT_EDITOR_WORKSPACE: EditorWorkspaceId = 'edit'
@@ -97,7 +76,6 @@ export function normalizeEditorWorkspaceId(value: unknown): EditorWorkspaceId {
 
 const SIDEBAR_TABS: readonly EditorSidebarTab[] = [
   'media',
-  'audio',
   'text',
   'shapes',
   'effects',
@@ -131,7 +109,6 @@ export function normalizeEditorWorkspaceLayout(
   const candidate = value as Partial<Record<keyof EditorWorkspaceLayout, unknown>>
 
   return {
-    schemaVersion: EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION,
     colorScopesOpen:
       typeof candidate.colorScopesOpen === 'boolean'
         ? candidate.colorScopesOpen
@@ -144,17 +121,5 @@ export function normalizeEditorWorkspaceLayout(
       typeof candidate.propertiesFullColumn === 'boolean'
         ? candidate.propertiesFullColumn
         : preset.propertiesFullColumn,
-    mediaFullColumn:
-      typeof candidate.mediaFullColumn === 'boolean'
-        ? candidate.mediaFullColumn
-        : preset.mediaFullColumn,
-    sidebarWidth:
-      typeof candidate.sidebarWidth === 'number' && Number.isFinite(candidate.sidebarWidth)
-        ? candidate.sidebarWidth
-        : preset.sidebarWidth,
-    rightSidebarWidth:
-      typeof candidate.rightSidebarWidth === 'number' && Number.isFinite(candidate.rightSidebarWidth)
-        ? candidate.rightSidebarWidth
-        : preset.rightSidebarWidth,
   }
 }

@@ -260,28 +260,12 @@ describe('createProjectObject', () => {
 
     expect(project.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
   })
-
-  it('starts with reusable video and audio tracks', () => {
-    const project = createProjectObject({
-      name: 'Ready to edit',
-      width: 1920,
-      height: 1080,
-      fps: 30,
-    })
-
-    expect(project.timeline?.tracks.map(({ id, kind, order }) => ({ id, kind, order }))).toEqual([
-      { id: 'id-video', kind: 'video', order: 0 },
-      { id: 'id-audio', kind: 'audio', order: 1 },
-    ])
-    expect(project.timeline?.items).toEqual([])
-    expect(project.timeline?.zoomLevel).toBe(0.125)
-  })
 })
 
 describe('formatProjectUpgradeBackupName', () => {
   it('includes the source and target schema versions in the backup name', () => {
     expect(formatProjectUpgradeBackupName('Demo Project', 4, 9)).toBe(
-      'Demo Project（从 v4 升级到 v9 前的备份）',
+      'Demo Project (Backup before upgrade v4 to v9)',
     )
   })
 })

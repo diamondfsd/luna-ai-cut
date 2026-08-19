@@ -145,16 +145,13 @@ export function createTextTemplateItem(params: {
     }
   }
 
-  const presetTemplate = buildTextStylePresetTemplate(textStylePresetId, {
-    width: placement.canvasWidth,
-    height: placement.canvasHeight,
-    fps: placement.fps ?? 30,
-  })
   return {
     ...baseTextItem,
-    ...presetTemplate,
-    // A caller-supplied message takes precedence over a preset's sample copy.
-    ...(text !== undefined ? { text, textSpans: undefined } : {}),
+    ...buildTextStylePresetTemplate(textStylePresetId, {
+      width: placement.canvasWidth,
+      height: placement.canvasHeight,
+      fps: placement.fps ?? 30,
+    }),
     label:
       label ??
       TEXT_STYLE_PRESETS.find((preset) => preset.id === textStylePresetId)?.label ??

@@ -4,7 +4,6 @@ import { useTimelineStore } from '../stores/timeline-store'
 import { getTrackKind } from '@freecut/features/timeline/utils/classic-tracks'
 import { isTrackSyncLockActive } from '../utils/track-sync-lock'
 import { emitUiSound } from '@freecut/shared/ui/ui-sound'
-import { getRemovableTrackIds } from '../utils/track-removal'
 
 function clampTrackVolume(volume: number): number {
   return Math.max(-60, Math.min(12, Math.round(volume * 10) / 10))
@@ -44,8 +43,7 @@ export function useTimelineTracks() {
   const removeTrack = useCallback(
     (id: string) => {
       const currentTracks = useTimelineStore.getState().tracks
-      const removableIds = new Set(getRemovableTrackIds(currentTracks, [id]))
-      if (removableIds.size > 0) setTracks(currentTracks.filter((track) => !removableIds.has(track.id)))
+      setTracks(currentTracks.filter((track) => track.id !== id))
     },
     [setTracks],
   )
@@ -58,8 +56,7 @@ export function useTimelineTracks() {
   const removeTracks = useCallback(
     (ids: string[]) => {
       const currentTracks = useTimelineStore.getState().tracks
-      const idsSet = new Set(getRemovableTrackIds(currentTracks, ids))
-      if (idsSet.size === 0) return
+      const idsSet = new Set(ids)
       setTracks(currentTracks.filter((track) => !idsSet.has(track.id)))
     },
     [setTracks],

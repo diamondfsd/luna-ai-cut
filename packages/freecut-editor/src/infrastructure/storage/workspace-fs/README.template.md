@@ -17,8 +17,7 @@ normal tools. AI coding agents can read them directly without a browser.
 |   `-- <projectId>/
 |       |-- project.json       <- timeline, settings, keyframes, markers, transitions
 |       |-- thumbnail.jpg
-|       |-- media-links.json   <- which media this project uses
-|       `-- project-source/    <- structured source files for AI and manual edits
+|       `-- media-links.json   <- which media this project uses
 |-- media/
 |   `-- <mediaId>/
 |       |-- metadata.json      <- codec, duration, resolution, etc.
@@ -49,8 +48,7 @@ Everything except media source bytes is safe to inspect. Editing
 Binary caches (waveforms, decoded audio, filmstrips) are regeneratable -
 delete them and the app will rebuild them on demand.
 
-## Workspace location
+## Moving the workspace
 
-The desktop app creates and opens this folder automatically under its local
-application data directory. Browser deployments may ask you to grant access to
-the folder again after it is moved.
+You can move this folder to a new location - the app just needs you to
+re-pick it via the "Reconnect" prompt on next launch.

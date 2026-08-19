@@ -37,11 +37,6 @@
       "prevFrameTooltip": "上一帧",
       "proxyPlaybackOff": "代理播放已关闭",
       "proxyPlaybackOn": "代理播放已开启",
-      "previewQuality": "预览清晰度",
-      "previewQualityFull": "完整",
-      "previewQualityHalf": "一半",
-      "previewQualityThird": "三分之一",
-      "previewQualityQuarter": "四分之一",
       "saveFrame": "保存帧",
       "saveFrameFailed": "无法保存帧。",
       "saveFrameTooltip": "保存帧",
@@ -79,12 +74,6 @@
       "ariaLabel": "缩放级别：{{label}}",
       "auto": "自动",
       "tooltip": "缩放：{{label}}"
-    },
-    "canvasRatio": {
-      "ariaLabel": "画布比例：{{label}}",
-      "tooltip": "画布比例：{{label}}",
-      "original": "适应（原始）",
-      "custom": "自定义"
     },
     "canvasDrop": {
       "dropOnTimeline": "拖放到时间线",

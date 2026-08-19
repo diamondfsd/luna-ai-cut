@@ -675,6 +675,7 @@ const NativePreviewVideo: React.FC<{
     const layoutPlan = planLayoutVideoSync({
       isPremounted: syncContext.isPremounted,
       isTransitionHeld: video.dataset.transitionHold === '1',
+      isTransitionPrearmed: video.dataset.transitionPrearm === '1',
       canSeek: syncContext.canSeek,
       currentTime: video.currentTime,
       targetTime: syncContext.clampedTargetTime,
@@ -820,6 +821,7 @@ const NativePreviewVideo: React.FC<{
     if (syncContext.isPremounted) {
       const premountPlan = planPremountedVideoSync({
         isTransitionHeld: video.dataset.transitionHold === '1',
+        isTransitionPrearmed: video.dataset.transitionPrearm === '1',
         canSeek: syncContext.canSeek,
         currentTime: video.currentTime,
         targetTime: syncContext.clampedTargetTime,

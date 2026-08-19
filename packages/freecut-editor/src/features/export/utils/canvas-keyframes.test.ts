@@ -47,6 +47,48 @@ describe('canvas-keyframes text sizing', () => {
   })
 })
 
+describe('canvas-keyframes logical preview space', () => {
+  it('resolves authored transforms before scaling them to preview pixels', () => {
+    const item: ShapeItem = {
+      id: 'shape-preview-scale',
+      type: 'shape',
+      shapeType: 'rectangle',
+      fillColor: '#fff',
+      trackId: 'shape-track',
+      from: 0,
+      durationInFrames: 60,
+      label: 'Shape',
+      transform: {
+        x: 320,
+        y: -180,
+        width: 960,
+        height: 540,
+        anchorX: 240,
+        anchorY: 135,
+        cornerRadius: 40,
+      },
+    }
+
+    const resolved = getAnimatedTransform(item, undefined, 0, {
+      width: 960,
+      height: 540,
+      logicalWidth: 3840,
+      logicalHeight: 2160,
+      fps: 30,
+    })
+
+    expect(resolved).toMatchObject({
+      x: 80,
+      y: -45,
+      width: 240,
+      height: 135,
+      anchorX: 60,
+      anchorY: 33.75,
+      cornerRadius: 10,
+    })
+  })
+})
+
 describe('canvas-keyframes transform parenting', () => {
   it('matches controller animation during export resolution', () => {
     const parentBase = {

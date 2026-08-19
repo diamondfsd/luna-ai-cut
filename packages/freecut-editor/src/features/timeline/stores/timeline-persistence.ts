@@ -920,7 +920,6 @@ export async function saveTimeline(projectId: string): Promise<void> {
 
   // Saving must not navigate the live editor. A temporary Main swap is still
   // observable by Motion's store subscribers and asynchronous preview renderer.
-  const changeVersion = useTimelineSettingsStore.getState().changeVersion
   const persistenceSnapshot = captureTimelinePersistenceSnapshot()
   const rootTimeline = persistenceSnapshot.rootTimeline
 
@@ -955,8 +954,6 @@ export async function saveTimeline(projectId: string): Promise<void> {
       width: project.metadata?.width,
       height: project.metadata?.height,
     })
-
-    const updatedAt = Date.now()
 
     // Generate thumbnail — prefer capturing the existing preview canvas
     // (near-free: reuses the already-initialized scrub renderer with cached
@@ -1048,6 +1045,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
     // thumbnail work above is preserved. Writing a full record from the
     // pre-await `project` snapshot would clobber those newer fields.
     // Clear the deprecated inline thumbnail field when using thumbnailId.
+    const updatedAt = Date.now()
     await updateProject(projectId, {
       timeline: sanitizedTimeline,
       ...(thumbnailId && { thumbnailId, thumbnail: undefined }),
@@ -1055,7 +1053,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
     })
 
     // Mark as clean after successful save
-    useTimelineSettingsStore.getState().markClean(changeVersion)
+    useTimelineSettingsStore.getState().markClean()
 
     event.success({ updatedAt, thumbnailId })
   } catch (error) {
@@ -1085,10 +1083,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
  * dialog side effects. {@link loadTimeline} calls this after reading +
  * migrating from storage; it then runs media validation on top.
  */
-export async function hydrateTimelineStoresFromProject(
-  project: Project,
-  options: { preserveZoom?: boolean } = {},
-): Promise<void> {
+export async function hydrateTimelineStoresFromProject(project: Project): Promise<void> {
   // Unwind the outgoing runtime context before replacing any live domain
   // stores. If a Motion composition is active and root items are loaded first,
   // resetToRoot() mistakes those freshly loaded root items for composition
@@ -1131,10 +1126,8 @@ export async function hydrateTimelineStoresFromProject(
     const hydratedItems = await reverseConformService.hydrateItems(
       (t.items || []) as TimelineItem[],
     )
-    useItemsStore.getState().setItemsAndTracks(
-      hydratedItems,
-      sortedTracks as TimelineTrack[],
-    )
+    useItemsStore.getState().setTracks(sortedTracks as TimelineTrack[])
+    useItemsStore.getState().setItems(hydratedItems)
     useTransitionsStore.getState().setTransitions((t.transitions || []) as Transition[])
     useKeyframesStore.getState().setKeyframes((t.keyframes || []) as ItemKeyframes[])
     useMarkersStore.getState().setMarkers(t.markers || [])
@@ -1190,8 +1183,10 @@ export async function hydrateTimelineStoresFromProject(
       )
 
     // Restore zoom and playback
-    if (!options.preserveZoom) {
-      useZoomStore.getState().setZoomLevelSynchronized(t.zoomLevel ?? 1)
+    if (t.zoomLevel !== undefined) {
+      useZoomStore.getState().setZoomLevel(t.zoomLevel)
+    } else {
+      useZoomStore.getState().setZoomLevel(1)
     }
     if (t.currentFrame !== undefined) {
       usePlaybackStore.getState().setCurrentFrame(t.currentFrame)
@@ -1202,7 +1197,8 @@ export async function hydrateTimelineStoresFromProject(
     logger.debug('hydrateTimelineStoresFromProject: initializing new project with default track')
 
     // Initialize with default tracks for new projects
-    useItemsStore.getState().setItemsAndTracks([], createDefaultClassicTracks())
+    useItemsStore.getState().setTracks(createDefaultClassicTracks())
+    useItemsStore.getState().setItems([])
     useTransitionsStore.getState().setTransitions([])
     useKeyframesStore.getState().setKeyframes([])
     useMarkersStore.getState().setMarkers([])
@@ -1211,7 +1207,7 @@ export async function hydrateTimelineStoresFromProject(
     useCompositionsStore.getState().setCompositions([])
     useSequencesStore.getState().reset()
     useTimelineSettingsStore.getState().setScrollPosition(0)
-    if (!options.preserveZoom) useZoomStore.getState().setZoomLevelSynchronized(0.125)
+    useZoomStore.getState().setZoomLevel(1)
     usePlaybackStore.getState().setCurrentFrame(0)
     usePlaybackStore.getState().setBusAudioEq(undefined)
   }
@@ -1250,7 +1246,8 @@ export function loadTimeline(
     ? timelineLoadQueueTail.catch(() => undefined)
     : Promise.resolve()
 
-  const pendingLoad: Promise<void> = queueStart
+  let pendingLoad: Promise<void>
+  pendingLoad = queueStart
     .then(() => loadTimelineOnce(projectId, options))
     .finally(() => {
       if (inFlightTimelineLoads.get(loadKey) === pendingLoad) {
@@ -1290,14 +1287,12 @@ async function loadTimelineOnce(
     const sanitizedTimeline = repairedLegacyLayouts.project.timeline
       ? sanitizeTimelineEphemeralFields(repairedLegacyLayouts.project.timeline)
       : { timeline: repairedLegacyLayouts.project.timeline, cleaned: false }
-    const storedProject = sanitizedTimeline.cleaned
+    const project = sanitizedTimeline.cleaned
       ? {
           ...repairedLegacyLayouts.project,
           timeline: sanitizedTimeline.timeline,
         }
       : repairedLegacyLayouts.project
-
-    const project = storedProject
 
     // Log migration activity
     if (migrationResult.migrated || repairedLegacyLayouts.repaired || sanitizedTimeline.cleaned) {

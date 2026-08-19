@@ -66,7 +66,7 @@ describe('mergeLiveItemPresentation', () => {
 })
 
 describe('buildPreviewCompositionData', () => {
-  it('derives playback and fast-scrub sources separately and computes boundaries', () => {
+  it('uses original media for playback and fast scrubbing when proxies are disabled', () => {
     const track: TimelineTrack = {
       id: 'track-1',
       name: 'Video',
@@ -107,12 +107,12 @@ describe('buildPreviewCompositionData', () => {
       { src: 'blob://video', startFrame: 10, endFrame: 70 },
     ])
     expect(result.scrubVideoSourceSpans).toEqual([
-      { src: 'proxy://video', startFrame: 10, endFrame: 70 },
+      { src: 'blob://video', startFrame: 10, endFrame: 70 },
     ])
     expect(result.fastScrubBoundaryFrames).toEqual([10, 70])
     expect(result.fastScrubBoundarySources).toEqual([
-      { frame: 10, srcs: ['proxy://video'] },
-      { frame: 70, srcs: ['proxy://video'] },
+      { frame: 10, srcs: ['blob://video'] },
+      { frame: 70, srcs: ['blob://video'] },
     ])
     expect(result.totalFrames).toBe(220)
     const playbackVideoItem = result.inputProps.tracks[0]?.items[0]
@@ -120,6 +120,67 @@ describe('buildPreviewCompositionData', () => {
     expect(playbackVideoItem?.type).toBe('video')
     expect(scrubVideoItem?.type).toBe('video')
     if (playbackVideoItem?.type === 'video' && scrubVideoItem?.type === 'video') {
+      expect(playbackVideoItem.src).toBe('blob://video')
+      expect(scrubVideoItem.src).toBe('blob://video')
+      expect(playbackVideoItem.audioSrc).toBe('blob://video')
+      expect(scrubVideoItem.audioSrc).toBe('blob://video')
+    }
+  })
+
+  it('uses proxy media for playback and fast scrubbing when proxies are enabled', () => {
+    const track: TimelineTrack = {
+      id: 'track-1',
+      name: 'Video',
+      height: 80,
+      locked: false,
+      visible: true,
+      muted: false,
+      solo: false,
+      order: 1,
+      items: [
+        {
+          id: 'clip-1',
+          trackId: 'track-1',
+          type: 'video',
+          mediaId: 'media-1',
+          src: '',
+          label: 'Clip',
+          from: 10,
+          durationInFrames: 60,
+        },
+      ],
+    }
+
+    const result = buildPreviewCompositionData({
+      combinedTracks: [track],
+      fps: 30,
+      items: track.items,
+      keyframes: [],
+      transitions: [],
+      resolvedUrls: new Map([['media-1', 'blob://video']]),
+      useProxy: true,
+      blobUrlVersion: 0,
+      project: { width: 1920, height: 1080, backgroundColor: '#000000' },
+      resolveProxyUrlFn: () => 'proxy://video',
+    })
+
+    expect(result.playbackVideoSourceSpans).toEqual([
+      { src: 'proxy://video', startFrame: 10, endFrame: 70 },
+    ])
+    expect(result.scrubVideoSourceSpans).toEqual([
+      { src: 'proxy://video', startFrame: 10, endFrame: 70 },
+    ])
+    expect(result.fastScrubBoundarySources).toEqual([
+      { frame: 10, srcs: ['proxy://video'] },
+      { frame: 70, srcs: ['proxy://video'] },
+    ])
+    const playbackVideoItem = result.inputProps.tracks[0]?.items[0]
+    const scrubVideoItem = result.fastScrubInputProps.tracks[0]?.items[0]
+    expect(playbackVideoItem?.type).toBe('video')
+    expect(scrubVideoItem?.type).toBe('video')
+    if (playbackVideoItem?.type === 'video' && scrubVideoItem?.type === 'video') {
+      expect(playbackVideoItem.src).toBe('proxy://video')
+      expect(scrubVideoItem.src).toBe('proxy://video')
       expect(playbackVideoItem.audioSrc).toBe('blob://video')
       expect(scrubVideoItem.audioSrc).toBe('blob://video')
     }
@@ -187,6 +248,24 @@ describe('buildPreviewCompositionData', () => {
     expect(result.totalFrames).toBe(900)
     expect(result.playerRenderSize).toEqual({ width: 1280, height: 720 })
     expect(result.renderSize).toEqual({ width: 1280, height: 720 })
+  })
+
+  it('keeps project coordinates while using a smaller physical preview target', () => {
+    const result = buildPreviewCompositionData({
+      combinedTracks: [],
+      fps: 30,
+      items: [],
+      keyframes: [],
+      transitions: [],
+      resolvedUrls: new Map(),
+      useProxy: false,
+      blobUrlVersion: 0,
+      project: { width: 3840, height: 2160 },
+      previewRenderSize: { width: 1504, height: 846 },
+    })
+
+    expect(result.fastScrubInputProps).toMatchObject({ width: 3840, height: 2160 })
+    expect(result.renderSize).toEqual({ width: 1504, height: 846 })
   })
 
   it('uses an already-acquired blob URL before resolvedUrls catches up', () => {

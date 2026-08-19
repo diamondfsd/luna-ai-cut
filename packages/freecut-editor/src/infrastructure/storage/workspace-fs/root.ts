@@ -2,8 +2,8 @@
  * Active workspace root owner.
  *
  * Holds the single FileSystemDirectoryHandle the entire app writes to.
- * `setWorkspaceRoot` is called once by WorkspaceGate after the app initializes
- * (or the browser grants) the workspace folder. Every storage module calls
+ * `setWorkspaceRoot` is called once by WorkspaceGate after the user picks
+ * (or re-grants) their workspace folder. Every storage module calls
  * `requireWorkspaceRoot()` to get the handle.
  *
  * Kept deliberately minimal — no React, no Zustand. This is the lowest

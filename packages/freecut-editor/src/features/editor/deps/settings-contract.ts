@@ -9,10 +9,7 @@ export {
   DEFAULT_CAPTIONING_INTERVAL_SECONDS,
   resolveCaptioningIntervalSec,
 } from '@freecut/features/settings/stores/settings-store'
-export type {
-  CaptioningIntervalUnit,
-  VisualAnalysisIntensity,
-} from '@freecut/features/settings/stores/settings-store'
+export type { CaptioningIntervalUnit } from '@freecut/features/settings/stores/settings-store'
 export { LocalInferenceUnloadControl } from '@freecut/features/settings/components/local-inference-unload-control'
 export { LocalModelCacheControl } from '@freecut/features/settings/components/local-model-cache-control'
 export { useResolvedHotkeys } from '@freecut/features/settings/hooks/use-resolved-hotkeys'

@@ -119,7 +119,7 @@ export async function persistGeneratedMediaAsset({
   let thumbnailSaved = false
 
   try {
-    // Durable primary store: the active workspace folder. It's the
+    // Durable primary store: the user-picked workspace folder. It's the
     // cross-origin source of truth, so a copied/generated/remote asset must
     // land here — not OPFS, which is origin-scoped and invisible when the
     // same project is opened on another origin. Strict: a failure here means

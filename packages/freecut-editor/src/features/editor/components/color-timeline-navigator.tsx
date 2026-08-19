@@ -57,7 +57,7 @@ interface ColorTimelineClip extends MiniFilmTileClip {
 }
 
 function isVisualNavigatorItem(item: TimelineItem): boolean {
-  return item.type !== 'audio'
+  return item.type !== 'audio' && item.type !== 'subtitle'
 }
 
 function isNavigatorVideoTrack(track: TimelineTrack): boolean {

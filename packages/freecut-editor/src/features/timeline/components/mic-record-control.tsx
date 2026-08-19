@@ -56,7 +56,7 @@ const MicLevelMeter = memo(function MicLevelMeter() {
         className="h-full rounded-full transition-[width] duration-75"
         style={{
           width: `${width}%`,
-          backgroundColor: 'var(--color-primary)',
+          backgroundColor: width > 85 ? 'var(--color-destructive)' : 'var(--color-primary)',
         }}
       />
     </div>
@@ -133,7 +133,6 @@ const MicDevicePicker = memo(function MicDevicePicker({ disabled }: { disabled?:
         <Button
           variant="ghost"
           size="icon"
-          className="timeline-header-button"
           style={{ width: 20, height: EDITOR_LAYOUT_CSS_VALUES.toolbarButtonSize }}
           disabled={disabled}
           aria-label={t('recording.chooseDevice')}
@@ -283,7 +282,6 @@ export const MicRecordControl = memo(function MicRecordControl() {
         <Button
           variant="ghost"
           size="icon"
-          className="timeline-header-button"
           style={btnSize}
           disabled={isRequesting}
           onClick={() => void startMicRecording()}
@@ -293,7 +291,7 @@ export const MicRecordControl = memo(function MicRecordControl() {
           {isRequesting ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Mic className="h-3.5 w-3.5" />
+            <Mic className="h-3.5 w-3.5" style={{ color: 'var(--color-destructive)' }} />
           )}
         </Button>
         <MicDevicePicker disabled={isRequesting} />
@@ -302,10 +300,10 @@ export const MicRecordControl = memo(function MicRecordControl() {
   }
 
   return (
-    <div className="flex items-center gap-1.5 rounded-md bg-primary/10 px-1.5 py-0.5">
+    <div className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-1.5 py-0.5">
       <span
         className={`h-2 w-2 shrink-0 rounded-full ${isRecording ? 'animate-pulse' : ''}`}
-        style={{ backgroundColor: 'var(--color-primary)' }}
+        style={{ backgroundColor: 'var(--color-destructive)' }}
         aria-hidden="true"
       />
       <MicElapsed />
@@ -323,7 +321,6 @@ export const MicRecordControl = memo(function MicRecordControl() {
           <Button
             variant="ghost"
             size="icon"
-            className="timeline-header-button"
             style={btnSize}
             onClick={() => (isPaused ? resumeMicRecording() : pauseMicRecording())}
             aria-label={isPaused ? t('recording.resume') : t('recording.pause')}
@@ -334,18 +331,16 @@ export const MicRecordControl = memo(function MicRecordControl() {
           <Button
             variant="ghost"
             size="icon"
-            className="timeline-header-button"
             style={btnSize}
             onClick={() => void stopMicRecording()}
             aria-label={t('recording.stop')}
             data-tooltip={t('recording.stopTooltip')}
           >
-            <Square className="h-3.5 w-3.5" />
+            <Square className="h-3.5 w-3.5" style={{ color: 'var(--color-destructive)' }} />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="timeline-header-button"
             style={btnSize}
             onClick={cancelMicRecording}
             aria-label={t('recording.cancel')}

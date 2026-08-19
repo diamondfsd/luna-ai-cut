@@ -312,6 +312,39 @@ describe('useMarqueeSelection deferred commits', () => {
     expect(onSelectionChange).not.toHaveBeenCalled()
   })
 
+  it('never starts marquee from an interaction shield', () => {
+    const onSelectionChange = vi.fn<(ids: string[]) => void>()
+    const onGestureEnd = vi.fn<(event: MouseEvent, wasActualDrag: boolean) => void>()
+    const { getByTestId } = render(
+      <MarqueeHarness onSelectionChange={onSelectionChange} onGestureEnd={onGestureEnd}>
+        <div data-marquee-ignore data-testid="interaction-shield" />
+      </MarqueeHarness>,
+    )
+    const container = getByTestId('marquee-container')
+
+    Object.defineProperties(container, {
+      clientWidth: { configurable: true, value: 200 },
+      clientHeight: { configurable: true, value: 200 },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => createRect(0, 0, 200, 200),
+      },
+    })
+
+    fireEvent.mouseDown(getByTestId('interaction-shield'), {
+      button: 0,
+      clientX: 75,
+      clientY: 75,
+    })
+    fireEvent.mouseMove(document, { clientX: 140, clientY: 140 })
+    flushAnimationFrames()
+    fireEvent.mouseUp(document, { clientX: 140, clientY: 140 })
+
+    expect(container).toHaveAttribute('data-marquee-active', 'false')
+    expect(onGestureEnd).not.toHaveBeenCalled()
+    expect(onSelectionChange).not.toHaveBeenCalled()
+  })
+
   it('restores the committed selection when cancellation follows a throttled live commit', () => {
     vi.spyOn(performance, 'now').mockReturnValue(100)
     const onSelectionChange = vi.fn<(ids: string[]) => void>()

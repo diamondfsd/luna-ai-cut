@@ -445,6 +445,9 @@ export function useMarqueeSelection({
       target.closest('[data-composition-id]') ||
       // Don't start marquee if clicking in the timeline ruler
       target.closest('.timeline-ruler') ||
+      // Transient interaction shields may intentionally own hit testing, but
+      // they are never valid marquee origins.
+      target.closest('[data-marquee-ignore]') ||
       // Don't start marquee if clicking on the playhead handle
       target.closest('[data-playhead-handle]') ||
       // Don't start marquee if clicking on gizmo elements (handles, borders)

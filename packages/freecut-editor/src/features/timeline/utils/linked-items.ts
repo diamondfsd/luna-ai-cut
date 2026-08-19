@@ -44,7 +44,7 @@ export function getAttachedCaptionItemIds(items: TimelineItem[], itemId: string)
     .filter(
       (item) =>
         item.type === 'text' &&
-        item.textRole === 'caption' &&
+        (item.textRole === 'caption' || item.captionSource !== undefined) &&
         item.captionSource?.clipId === anchor.id,
     )
     .map((item) => item.id)

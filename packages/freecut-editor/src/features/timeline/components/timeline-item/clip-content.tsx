@@ -1,5 +1,13 @@
-import { Suspense, lazy, memo, useCallback, useDeferredValue, useMemo, type ReactNode } from 'react'
-import { Code2, Link2 } from 'lucide-react'
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  type ReactNode,
+} from 'react'
+import { Link2 } from 'lucide-react'
 import { perfMarkRender } from '@freecut/shared/logging/perf-marks'
 import type { TimelineItem } from '@freecut/types/timeline'
 import { useSettingsStore } from '@freecut/features/timeline/deps/settings'
@@ -172,7 +180,6 @@ interface ClipContentProps {
   clipWidthFrames: number
   fps: number
   isCompactWidth?: boolean
-  isTrackPreviewCollapsed?: boolean
   isLinked?: boolean
   preferImmediateRendering?: boolean
   audioWaveformScale?: number
@@ -520,25 +527,26 @@ const StaticClipContent = memo(function StaticClipContent({ item }: { item: Time
 
   if (item.type === 'text') {
     return (
-      <div className="absolute inset-0 flex items-center overflow-hidden px-2">
-        <div className="min-w-0 truncate text-xs font-medium">{getTextItemPlainText(item)}</div>
+      <div className="absolute inset-0 flex flex-col px-2 py-1 overflow-hidden">
+        <div className="text-[10px] text-muted-foreground truncate">Text</div>
+        <div className="text-xs font-medium truncate flex-1">
+          {getTextItemPlainText(item) || 'Empty text'}
+        </div>
       </div>
     )
   }
 
-  if (item.type === 'html') {
+  if (item.type === 'subtitle') {
+    const cueCount = item.cues.length
+    const firstCueText = item.cues[0]?.text ?? ''
     return (
-      <div className="absolute inset-0 flex min-w-0 items-center gap-2 overflow-hidden px-2">
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-black/25 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-white/85">
-          <Code2 className="h-3 w-3" aria-hidden="true" />
-          HTML
-        </span>
-        <span className="min-w-0 truncate text-xs font-medium">
-          {item.label || (item.renderMode === 'animated' ? 'Animated HTML' : 'HTML layer')}
-        </span>
-        {item.renderMode === 'animated' && (
-          <span className="ml-auto shrink-0 text-[9px] uppercase text-white/65">Animated</span>
-        )}
+      <div className="absolute inset-0 flex flex-col px-2 py-1 overflow-hidden">
+        <div className="text-[10px] text-muted-foreground truncate">
+          {`Subtitles · ${cueCount} cue${cueCount === 1 ? '' : 's'}`}
+        </div>
+        <div className="text-xs font-medium truncate flex-1">
+          {firstCueText || item.label || 'Subtitles'}
+        </div>
       </div>
     )
   }
@@ -847,39 +855,8 @@ function hasBasicMediaVisuals(item: TimelineItem): boolean {
   if (item.type === 'audio') {
     return !!item.mediaId && !item.compositionId
   }
-  return item.type === 'image' && !!item.mediaId
+  return item.type === 'image' && !!item.src && !!item.mediaId
 }
-
-const CollapsedClipContent = memo(function CollapsedClipContent({
-  item,
-  isLinked = false,
-  linkedSyncOffsetFrames = null,
-  fps,
-}: ClipContentProps) {
-  if (!hasBasicMediaVisuals(item)) {
-    return (
-      <div className="absolute inset-0 flex items-center overflow-hidden px-2 text-xs font-medium">
-        <span className="truncate">{item.label}</span>
-      </div>
-    )
-  }
-
-  const linkedSyncOffsetLabel =
-    linkedSyncOffsetFrames === null ? null : formatSignedFrameDelta(linkedSyncOffsetFrames, fps)
-
-  return (
-    <div className="absolute inset-0 overflow-hidden">
-      <MediaClipLabel
-        label={item.label}
-        isLinked={isLinked}
-        linkedSyncOffsetLabel={linkedSyncOffsetLabel}
-        showLinkIcon
-        showLabel
-        showSyncOffset
-      />
-    </div>
-  )
-})
 
 function getMediaVisualMinWidthPx(item: TimelineItem): number {
   return item.type === 'audio' ? WAVEFORM_MIN_WIDTH_PX : FILMSTRIP_MIN_WIDTH_PX
@@ -1001,10 +978,6 @@ const WidthGatedMediaClipContent = memo(function WidthGatedMediaClipContent(
 })
 
 export const ClipContent = memo(function ClipContent(props: ClipContentProps) {
-  if (props.isTrackPreviewCollapsed === true) {
-    return <CollapsedClipContent {...props} />
-  }
-
   // Compact clips already retain the full interactive TimelineItem root. Do
   // not also mount a label/filmstrip/waveform subtree that cannot be read at
   // this width. Besides reducing layout work, returning before the width-gated

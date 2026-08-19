@@ -1,4 +1,0 @@
-interface:
-  display_name: "声音设计与混音"
-  short_description: "对白、配音、音乐、音效与混音层级设计指导和工具建议"
-  default_prompt: "使用 $luna-technique-audio-design 设计这次剪辑的声音层级"

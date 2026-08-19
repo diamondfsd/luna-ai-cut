@@ -1328,7 +1328,7 @@
     {
       "version": "2026.02.02",
       "date": "2026-02-02",
-      "subtitle": "Initial release",
+      "subtitleKey": "initialRelease",
       "groups": {
         "added": [
           {

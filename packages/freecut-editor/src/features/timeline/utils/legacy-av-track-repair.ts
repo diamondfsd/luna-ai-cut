@@ -16,6 +16,7 @@ interface LegacyTimelineData {
   items: TimelineItem[]
   keyframes: ItemKeyframes[]
 }
+
 interface LegacyAvRepairParams extends LegacyTimelineData {
   fps: number
   videoHasAudioByMediaId: Record<string, boolean | undefined>

@@ -1,4 +1,0 @@
-interface:
-  display_name: "动效与图形"
-  short_description: "关键帧、文字、画中画与动效拆解指导和工具建议与实操建议"
-  default_prompt: "使用 $luna-technique-motion-graphics 设计这次剪辑的文字和动效"

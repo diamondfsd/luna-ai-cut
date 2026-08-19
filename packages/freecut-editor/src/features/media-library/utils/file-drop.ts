@@ -1,5 +1,4 @@
 import { getMediaType, getMimeType, validateMediaFileContent } from './validation'
-import { createMediaFileHandle } from './media-file-handle'
 
 export interface ExtractedMediaFileEntry {
   handle: FileSystemFileHandle
@@ -11,6 +10,11 @@ export interface ExtractedMediaFileDropResult {
   supported: boolean
   entries: ExtractedMediaFileEntry[]
   errors: string[]
+}
+
+function supportsFileSystemDragDrop(dataTransfer: DataTransfer): boolean {
+  const firstItem = dataTransfer.items[0]
+  return !!firstItem && 'getAsFileSystemHandle' in firstItem
 }
 
 export function formatMediaDropRejectionMessage(errors: string[]): string {
@@ -27,6 +31,14 @@ export function formatMediaDropRejectionMessage(errors: string[]): string {
 export async function extractValidMediaFileEntriesFromDataTransfer(
   dataTransfer: DataTransfer,
 ): Promise<ExtractedMediaFileDropResult> {
+  if (!supportsFileSystemDragDrop(dataTransfer)) {
+    return {
+      supported: false,
+      entries: [],
+      errors: [],
+    }
+  }
+
   const items = Array.from(dataTransfer.items)
   const handlePromises: Promise<FileSystemHandle | null>[] = []
   for (const item of items) {
@@ -35,15 +47,7 @@ export async function extractValidMediaFileEntriesFromDataTransfer(
     }
   }
 
-  const resolvedHandles = handlePromises.length > 0
-    ? await Promise.all(handlePromises.map((promise) => promise.catch(() => null)))
-    : []
-  const rawHandles = resolvedHandles.some(Boolean)
-    ? resolvedHandles
-    : Array.from(dataTransfer.files).map(createMediaFileHandle)
-  if (rawHandles.length === 0) {
-    return { supported: false, entries: [], errors: [] }
-  }
+  const rawHandles = await Promise.all(handlePromises)
   const entries: ExtractedMediaFileEntry[] = []
   const errors: string[] = []
 
