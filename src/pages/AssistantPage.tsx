@@ -67,17 +67,16 @@ export function AssistantPage({ context: requestedContext, onClose }: AssistantP
 
   return (
     <aside className="assistant-page" aria-label="AI 助手">
-      <header className="assistant-page__header">
+      <section className="assistant-page__content">
         <IconButton
           variant="ghost"
           size="compact"
           icon={<X size={18} />}
+          className="assistant-page__close"
           aria-label="关闭 AI 助手"
           title="关闭 AI 助手"
           onClick={onClose}
         />
-      </header>
-      <section className="assistant-page__content">
         {webUrl ? (
           <iframe
             className="assistant-page__frame"

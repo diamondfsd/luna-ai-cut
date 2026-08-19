@@ -116,7 +116,7 @@ export function AppRoutes({ onOpenAssistant }: AppRoutesProps) {
   // 独立调试包：只渲染设备调试页面，无导航、无路由切换
   if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {
     return (
-      <main className="app">
+      <main className="app app-routes">
         <DeviceDebugPage />
       </main>
     )
@@ -124,7 +124,7 @@ export function AppRoutes({ onOpenAssistant }: AppRoutesProps) {
 
   return (
     <ExportProgressProvider>
-      <main className="app">
+      <main className="app app-routes">
         <AppNav
         connection={connection}
         sourceMode={sourceMode}
