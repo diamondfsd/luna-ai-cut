@@ -1,16 +1,11 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { createLogger } from '@freecut/shared/logging/logger'
-import { InlineCreateProjectForm } from '@freecut/features/projects/components/project-form'
 import { useCreateProject } from '@freecut/features/projects/hooks/use-project-actions'
 import { useProjectStore } from '@freecut/features/projects/stores/project-store'
-import { FreeCutLogo } from '@freecut/components/brand/freecut-logo'
-import { Button } from '@freecut/components/ui/button'
-import { DiscordIcon } from '@freecut/components/brand/discord-icon'
-import { DISCORD_INVITE_URL } from '@freecut/config/community'
-import type { ProjectFormData } from '@freecut/features/projects/utils/validation'
+import { DEFAULT_PROJECT_VALUES } from '@freecut/features/projects/utils/validation'
 
 const logger = createLogger('NewProject')
 
@@ -29,54 +24,44 @@ export const Route = createFileRoute('/projects/new')({
 function NewProject() {
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const createProject = useCreateProject()
+  const startedRef = useRef(false)
 
-  const handleSubmit = async (data: ProjectFormData) => {
-    setIsSubmitting(true)
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
 
-    try {
-      const result = await createProject(data)
+    const baseName = t('common.untitledProject')
+    const existingNames = new Set(useProjectStore.getState().projects.map((project) => project.name))
+    let projectName = baseName
+    let suffix = 2
+    while (existingNames.has(projectName)) {
+      projectName = `${baseName} ${suffix}`
+      suffix += 1
+    }
 
+    void createProject({
+      ...DEFAULT_PROJECT_VALUES,
+      name: projectName,
+    }).then((result) => {
       if (result.success && result.project) {
-        // Navigate to editor with new project
         navigate({
           to: '/editor/$projectId',
           params: { projectId: result.project.id },
+          replace: true,
         })
       } else {
         toast.error(t('projects.toasts.createFailed'), { description: result.error })
-        setIsSubmitting(false)
+        navigate({ to: '/projects', replace: true })
       }
-    } catch (error) {
-      logger.error('Failed to create project:', error)
-      toast.error(t('projects.toasts.createFailed'), { description: t('projects.tryAgain') })
-      setIsSubmitting(false)
-    }
-  }
+    })
+  }, [createProject, navigate, t])
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="panel-header border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
-          <Link to="/">
-            <FreeCutLogo variant="full" size="md" className="hover:opacity-80 transition-opacity" />
-          </Link>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="lg" className="gap-2" asChild>
-              <a href={DISCORD_INVITE_URL} target="_blank" rel="noopener noreferrer">
-                <DiscordIcon className="w-4 h-4" />
-                Discord
-              </a>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <InlineCreateProjectForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+    <div className="flex size-full min-h-0 items-center justify-center bg-background">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+        <p className="text-sm text-muted-foreground">{t('projects.creatingProject')}</p>
       </div>
     </div>
   )

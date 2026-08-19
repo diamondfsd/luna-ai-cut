@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import {
   MoreVertical,
   PlayCircle,
+  Loader2,
   Edit2,
   Copy,
   Trash2,
@@ -63,6 +64,7 @@ export function ProjectCard({
   const { t } = useTranslation()
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
+  const [isOpening, setIsOpening] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [clearLocalFiles, setClearLocalFiles] = useState(false)
   const deleteProject = useDeleteProject()
@@ -140,7 +142,12 @@ export function ProjectCard({
   }
 
   const openProject = () => {
-    navigate({ to: '/editor/$projectId', params: { projectId: project.id } })
+    if (isOpening) return
+
+    setIsOpening(true)
+    void navigate({ to: '/editor/$projectId', params: { projectId: project.id } }).catch(() => {
+      setIsOpening(false)
+    })
   }
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -194,7 +201,8 @@ export function ProjectCard({
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
-      aria-label={t('projects.card.openProject')}
+      aria-label={isOpening ? t('common.loading') : t('projects.card.openProject')}
+      aria-busy={isOpening}
       className={`group relative panel-bg border rounded-lg overflow-hidden transition-[transform,border-color,box-shadow] duration-150 active:scale-[0.99] cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
         isSelected
           ? 'border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/10'
@@ -225,11 +233,22 @@ export function ProjectCard({
         )}
 
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center justify-center">
-          <Button size="sm" className="gap-2" onClick={handleOpenClick}>
-            <PlayCircle className="w-4 h-4" />
-            {t('projects.card.openProject')}
-          </Button>
+        <div
+          className={`absolute inset-0 bg-black/60 transition-opacity flex items-center justify-center ${
+            isOpening ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+          }`}
+        >
+          {isOpening ? (
+            <div className="flex items-center gap-2 text-sm font-medium text-white">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              <span>{t('common.loading')}</span>
+            </div>
+          ) : (
+            <Button size="sm" className="gap-2" onClick={handleOpenClick}>
+              <PlayCircle className="w-4 h-4" />
+              {t('projects.card.openProject')}
+            </Button>
+          )}
         </div>
 
         {/* Resolution badge */}
@@ -275,6 +294,7 @@ export function ProjectCard({
                   to="/editor/$projectId"
                   params={{ projectId: project.id }}
                   className="flex items-center gap-2 cursor-pointer"
+                  onClick={handleOpenClick}
                 >
                   <PlayCircle className="w-4 h-4" />
                   {t('projects.card.openInEditor')}

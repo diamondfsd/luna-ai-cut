@@ -18,10 +18,10 @@
   --color-timeline-motion-segment: oklch(0.38 0 0);
   --color-timeline-image: oklch(0.62 0.17 250);
   --color-timeline-text: oklch(0.671 0 290);
-  --color-timeline-shape: oklch(0.68 0.19 45);
+  --color-timeline-shape: oklch(0.62 0.14 205);
 
   /* Playhead color */
-  --color-timeline-playhead: oklch(0.68 0.19 45); /* Orange (matches primary) */
+  --color-timeline-playhead: #ffffff;
 
   /* In/Out marker colors */
   --color-timeline-in: oklch(0.65 0.18 142); /* Green - in point */
@@ -41,8 +41,8 @@
   --color-timeline-marker: oklch(0.65 0.2 250); /* Blue - timeline markers */
 
   /* Snap/Join indicator colors */
-  --color-timeline-snap: #f97316; /* orange-500 - snap indicator */
-  --color-timeline-join: #fb923c; /* orange-400 - join indicator */
+  --color-timeline-snap: var(--primary);
+  --color-timeline-join: #4a9eff;
 
   --color-video-preview-background: oklch(0.1914 0 58);
 }
