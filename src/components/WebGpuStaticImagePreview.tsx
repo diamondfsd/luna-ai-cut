@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { CompositionInput, PreviewLayer } from '../shared/types'
-import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { filePathToNativeMediaPreviewUrl } from '../lib/fileUtils'
 import { WebGpuCompositionRenderer } from '../lib/webgpu/composition'
 import { readWebGpuLut } from '../lib/webgpu/lut-source'
 import { loadWebGpuMask } from '../lib/webgpu/mask-source'
@@ -28,7 +28,7 @@ interface WebGpuStaticImagePreviewProps {
 }
 
 function loadImage(path: string): Promise<HTMLImageElement> {
-  const url = filePathToPreviewUrl(path) ?? path
+  const url = filePathToNativeMediaPreviewUrl(path) ?? path
   return new Promise((resolve, reject) => {
     const image = new Image()
     image.crossOrigin = 'anonymous'

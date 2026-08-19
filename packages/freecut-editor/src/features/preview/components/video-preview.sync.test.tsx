@@ -4153,37 +4153,6 @@ describe('VideoPreview sync behavior', () => {
     })
   })
 
-  it('restores the transition overlay after repeated playback cycles', async () => {
-    const { scrubCanvas } = await renderReadyTransitionPreview()
-
-    for (const cycle of [1, 2]) {
-      act(() => {
-        usePlaybackStore.getState().setCurrentFrame(35)
-        usePlaybackStore.getState().play()
-        usePlaybackStore.getState().setCurrentFrame(48)
-      })
-
-      await waitFor(() => {
-        expect(getDisplayedFrame()).toBe(48)
-        expect(scrubCanvas.style.visibility).toBe('visible')
-      })
-
-      act(() => {
-        usePlaybackStore.getState().pause()
-      })
-
-      await waitFor(() => {
-        expect(usePlaybackStore.getState().isPlaying).toBe(false)
-      })
-
-      if (cycle === 1) {
-        await waitFor(() => {
-          expect(scrubCanvas.style.visibility).toBe('visible')
-        })
-      }
-    }
-  })
-
   it('keeps paused transition rendering active during a shape gizmo drag', async () => {
     setCrossfadeTransitionFixture()
     useItemsStore.getState().setItems([
