@@ -84,6 +84,8 @@ export interface WorkspaceOnlyYourColorState {
   subjectModel?: PixelStretchSubjectModel
   maskPath?: string
   maskAssetId?: string
+  /** 蒙版文件所属的工作台项目，用于防止项目切换后复用旧路径。 */
+  maskProjectId?: string
 }
 
 export interface WorkspacePixelFlowState {
