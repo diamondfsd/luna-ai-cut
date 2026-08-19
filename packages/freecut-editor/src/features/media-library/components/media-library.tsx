@@ -40,6 +40,8 @@ import {
   FileJson,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useEmbeddedHost } from '@freecut/shared/host/embedded-host'
+import { createNativeMediaFileHandle } from '@freecut/shared/host/native-media-file-handle'
 import { importSceneBrowserPanel, useSceneBrowserStore } from '../deps/scene-browser'
 import { createLogger } from '@freecut/shared/logging/logger'
 
@@ -234,6 +236,7 @@ function renderTaskDetailRows(
 
 export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaLibraryProps) {
   const { t } = useTranslation()
+  const { requestMediaImport } = useEmbeddedHost()
   const containerRef = useRef<HTMLDivElement>(null)
   const headerToolbarRef = useRef<HTMLDivElement>(null)
   const headerToolbarWidthRef = useRef(0)
@@ -245,6 +248,8 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
   const [showImportUrlDialog, setShowImportUrlDialog] = useState(false)
   const [importUrlValue, setImportUrlValue] = useState('')
   const [isImportUrlSubmitting, setIsImportUrlSubmitting] = useState(false)
+  const importInFlightRef = useRef(false)
+  const [isImporting, setIsImporting] = useState(false)
   // Store selectors
   const currentProjectId = useMediaLibraryStore((s) => s.currentProjectId)
   const setCurrentProject = useMediaLibraryStore((s) => s.setCurrentProject)
@@ -395,22 +400,46 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
     deleteMediaBatch,
   })
 
-  // Import files by copying them into the workspace-backed media store.
-  const handleImport = async () => {
+  const runImport = useCallback(async (operation: () => Promise<unknown>) => {
+    if (importInFlightRef.current) return
+    importInFlightRef.current = true
+    setIsImporting(true)
     try {
-      await importMedia({ storageMode: 'copy' })
+      await operation()
+    } finally {
+      importInFlightRef.current = false
+      setIsImporting(false)
+    }
+  }, [])
+
+  // In the embedded desktop app, show the local-resource picker supplied by the host.
+  // Standalone FreeCut keeps its native file picker fallback.
+  const handleImport = useCallback(async () => {
+    try {
+      await runImport(async () => {
+        if (requestMediaImport) {
+          await requestMediaImport(async (sources) => {
+            await importHandles(sources.map(createNativeMediaFileHandle), {
+              storageMode: 'link',
+            })
+          })
+          return
+        }
+
+        await importMedia({ storageMode: 'copy' })
+      })
     } catch (error) {
       logger.error('Import failed:', error)
     }
-  }
+  }, [importHandles, importMedia, requestMediaImport, runImport])
 
-  const handleLinkImport = async () => {
+  const handleLinkImport = useCallback(async () => {
     try {
       await importMedia({ storageMode: 'link' })
     } catch (error) {
       logger.error('Link import failed:', error)
     }
-  }
+  }, [importMedia])
 
   const handleImportUrl = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -639,15 +668,19 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
             <div className="flex shrink-0">
               <HeaderActionTooltip label={t('media.library.importMediaFiles')}>
                 <button
-                  onClick={handleImport}
-                  disabled={!currentProjectId}
+                  onClick={() => void handleImport()}
+                  disabled={!currentProjectId || isImporting}
                   className="flex items-center gap-1.5 h-7 px-2.5 rounded-l-md
                     bg-primary text-primary-foreground
                     hover:bg-primary/90
                     disabled:opacity-40 disabled:cursor-not-allowed
                     transition-colors duration-150"
                 >
-                  <FolderOpen className="w-3.5 h-3.5" />
+                    {isImporting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <FolderOpen className="w-3.5 h-3.5" />
+                    )}
                   <span className={headerCompactLevel >= 4 ? 'hidden' : 'hidden @[260px]:inline'}>
                     {t('media.library.import')}
                   </span>
@@ -656,7 +689,7 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    disabled={!currentProjectId}
+                    disabled={!currentProjectId || isImporting}
                     className="flex h-7 w-7 items-center justify-center rounded-r-md border-l border-primary-foreground/20
                       bg-primary text-primary-foreground
                       hover:bg-primary/90
@@ -669,7 +702,7 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem onSelect={handleImport}>
+                  <DropdownMenuItem onSelect={() => void handleImport()}>
                     <FolderOpen className="w-4 h-4 mr-2" />
                     {t('media.library.importCopyToWorkspace')}
                   </DropdownMenuItem>

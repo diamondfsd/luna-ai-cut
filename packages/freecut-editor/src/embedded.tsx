@@ -1,14 +1,93 @@
+import { useEffect, useMemo, useState } from 'react'
+
 import { App } from './app'
+import { i18nReady } from './i18n'
+import {
+  EmbeddedHostProvider,
+  type EmbeddedExportBridge,
+  type EmbeddedHtmlRenderRequest,
+  type EmbeddedHtmlRenderResult,
+  type EmbeddedMediaImportSource,
+  type EmbeddedMediaSource,
+  type EmbeddedNativeMediaFile,
+  type EmbeddedTaskProgress,
+  type EmbeddedTranscriptResult,
+  type ImportMediaFiles,
+} from './shared/host/embedded-host'
 import './index.css'
 
 export interface FreeCutEditorProps {
-  [key: string]: unknown
+  onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
+  onRevealFile?: (filePath: string) => Promise<void>
+  onDescribeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
+  onInspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
+  onReadNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
+  onResolveNativeMediaUrl?: (filePath: string) => string
+  onTranscribeMedia?: (
+    source: EmbeddedMediaSource,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ) => Promise<EmbeddedTranscriptResult>
+  onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
+  exportFiles?: EmbeddedExportBridge
 }
 
-export function FreeCutEditor(_props: FreeCutEditorProps) {
+export function FreeCutEditor({
+  onRequestMediaImport,
+  onRevealFile,
+  onDescribeDroppedMediaFiles,
+  onInspectNativeMediaFile,
+  onReadNativeMediaFile,
+  onResolveNativeMediaUrl,
+  onTranscribeMedia,
+  onRenderHtmlFrame,
+  exportFiles,
+}: FreeCutEditorProps) {
+  const [ready, setReady] = useState(false)
+  const hostBridge = useMemo(
+    () => ({
+      requestMediaImport: onRequestMediaImport,
+      revealFile: onRevealFile,
+      describeDroppedMediaFiles: onDescribeDroppedMediaFiles,
+      inspectNativeMediaFile: onInspectNativeMediaFile,
+      readNativeMediaFile: onReadNativeMediaFile,
+      resolveNativeMediaUrl: onResolveNativeMediaUrl,
+      transcribeMedia: onTranscribeMedia,
+      renderHtmlFrame: onRenderHtmlFrame,
+      exportFiles,
+    }),
+    [
+      onRequestMediaImport,
+      onRevealFile,
+      onDescribeDroppedMediaFiles,
+      onInspectNativeMediaFile,
+      onReadNativeMediaFile,
+      onResolveNativeMediaUrl,
+      onTranscribeMedia,
+      onRenderHtmlFrame,
+      exportFiles,
+    ],
+  )
+
+  useEffect(() => {
+    document.body.classList.add('freecut-active')
+    let active = true
+    void i18nReady.then(() => {
+      if (active) setReady(true)
+    })
+    return () => {
+      active = false
+      document.body.classList.remove('freecut-active')
+    }
+  }, [])
+
+  if (!ready) return null
+
   return (
-    <div className="freecut-app dark size-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
-      <App />
-    </div>
+    <EmbeddedHostProvider bridge={hostBridge}>
+      <div className="freecut-app dark size-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
+        <App />
+      </div>
+    </EmbeddedHostProvider>
   )
 }

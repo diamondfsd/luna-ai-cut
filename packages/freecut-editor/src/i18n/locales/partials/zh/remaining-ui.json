@@ -2,11 +2,15 @@
   "editor": {
     "mediaSidebar": {
       "media": "媒体",
+      "audio": "音频",
       "text": "文本",
+      "stickers": "贴纸",
       "shapes": "形状",
       "effects": "效果",
       "transitions": "转场",
+      "captions": "字幕",
       "ai": "AI",
+      "more": "更多",
       "collapsePanel": "收起面板",
       "expandPanel": "展开面板",
       "keyframeEditor": "关键帧编辑器",
