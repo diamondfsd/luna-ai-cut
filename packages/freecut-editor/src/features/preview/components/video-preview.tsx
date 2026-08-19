@@ -51,8 +51,6 @@ import { useMaskEditorStore } from '../stores/mask-editor-store'
 import { usePowerWindowEditorStore } from '../stores/power-window-editor-store'
 import { useSpatialEffectEditorStore } from '../stores/spatial-effect-editor-store'
 import { FAST_SCRUB_RENDERER_ENABLED } from '../utils/preview-constants'
-import { getActivePreviewDecodeMaxDimension } from '../utils/preview-quality'
-import { logPreviewDiagnostic } from '../utils/preview-diagnostic-log'
 import {
   drawSourceToPreviewDisplayCanvas,
   getPreviewDisplayCanvasBackingSize,
@@ -308,8 +306,6 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
     getPreviewCornerPinOverride,
     getPreviewPathVerticesOverride,
     getLiveItemSnapshot,
-    getLiveTransitionItemSnapshot,
-    getLiveTransitionSnapshot,
     getLiveKeyframes,
   } = usePreviewCompositionModel({
     combinedTracks,
@@ -327,38 +323,6 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
   const domTextScrubOverlayPlan = useMemo(
     () => buildDomTextScrubOverlayPlan(fastScrubScaledTracks, fastScrubScaledKeyframes),
     [fastScrubScaledKeyframes, fastScrubScaledTracks],
-  )
-  const getPreviewVideoDecodeMaxDimension = useCallback(
-    () => {
-      const playbackState = usePlaybackStore.getState()
-      const maxDimension =
-        playbackState.previewFrame === null
-          ? undefined
-          : getActivePreviewDecodeMaxDimension(
-              renderSize.width,
-              renderSize.height,
-              playbackState.previewQuality,
-            )
-      logPreviewDiagnostic(
-        'preview_decode_quality',
-        {
-          frame: playbackState.previewFrame ?? playbackState.currentFrame,
-          currentFrame: playbackState.currentFrame,
-          previewFrame: playbackState.previewFrame,
-          isPlaying: playbackState.isPlaying,
-          selectedQuality: playbackState.previewQuality,
-          maxDimension: maxDimension ?? null,
-          renderWidth: renderSize.width,
-          renderHeight: renderSize.height,
-        },
-        {
-          dedupKey: `decode-quality:${playbackState.previewFrame}:${playbackState.currentFrame}:${playbackState.previewQuality}:${maxDimension ?? 'full'}`,
-          minIntervalMs: 20,
-        },
-      )
-      return maxDimension
-    },
-    [renderSize.height, renderSize.width],
   )
   const domTextScrubInputProps = useMemo(
     () =>
@@ -391,7 +355,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
     isGizmoInteractingRef,
   })
   const {
-    playbackTransitionStructureFingerprint,
+    playbackTransitionFingerprint,
     playbackTransitionWindows,
     playbackTransitionLookaheadFrames,
     playbackTransitionCooldownFrames,
@@ -421,13 +385,13 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
         project.backgroundColor ?? '',
         fastScrubTracksTopologyFingerprint,
         domTextScrubOverlayPlan.enabled ? 'dom-text-overlay' : 'composited-text',
-        playbackTransitionStructureFingerprint,
+        playbackTransitionFingerprint,
       ].join('::'),
     [
       fastScrubTracksTopologyFingerprint,
       domTextScrubOverlayPlan.enabled,
       fps,
-      playbackTransitionStructureFingerprint,
+      playbackTransitionFingerprint,
       project.backgroundColor,
       project.height,
       project.width,
@@ -496,8 +460,6 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
             getPreviewCornerPinOverride,
             getPreviewPathVerticesOverride,
             getLiveItemSnapshot,
-            getLiveTransitionItemSnapshot,
-            getLiveTransitionSnapshot,
             getLiveKeyframes,
             renderText: !domTextScrubOverlayPlan.enabled,
           })
@@ -526,8 +488,6 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
       fastScrubRendererStructureKey,
       domTextScrubOverlayPlan.enabled,
       getLiveItemSnapshot,
-      getLiveTransitionItemSnapshot,
-      getLiveTransitionSnapshot,
       getLiveKeyframes,
       getPreviewCornerPinOverride,
       getPreviewEffectsOverrideWithGradeApplied,
@@ -713,10 +673,7 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
       getPreviewPathVerticesOverride,
       getLivePlaybackFrame,
       getLiveItemSnapshot,
-      getLiveTransitionItemSnapshot,
-      getLiveTransitionSnapshot,
       getLiveKeyframes,
-      getPreviewVideoDecodeMaxDimension,
       clearTransitionPlaybackSession,
       resetResolveRetryState,
       setCaptureFrame,
@@ -748,7 +705,6 @@ const VideoPreviewBase = memo(function VideoPreviewBase({
   }, [ensureFastScrubRenderer, isResolving, shouldWarmGpuEffectsRenderer])
   usePreviewRenderPump({
     fps,
-    getPreviewVideoDecodeMaxDimension,
     forceFastScrubOverlay,
     // Scrub decoding must use the same proxy/source URLs as the renderer.
     // Feeding unresolved project tracks here silently made the worker decode

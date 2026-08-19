@@ -43,7 +43,6 @@ import { renderLottieItem } from './lottie'
 import { renderHtmlItem } from './html'
 import { getTextRasterCacheKey, renderTextItem } from './text'
 import { isTextMotionActive } from '@freecut/shared/typography/text-motion'
-import { logPreviewDiagnostic } from '@freecut/features/preview/utils/preview-diagnostic-log'
 import { renderCompositionItem } from './composition'
 import type { CornerPinWarpCacheEntry } from './types'
 
@@ -186,28 +185,10 @@ async function renderItemContent(
         renderSpan,
       )
       if (!videoFrameDrawn) {
-        logPreviewDiagnostic(
-          'preview_video_draw_failed',
-          {
-            frame,
-            itemId: effectiveItem.id,
-            isTransitionParticipant: rctx.isRenderingTransition === true,
-            activePreviewFrame:
-              rctx.isActivePreviewFrameCurrent?.(rctx.previewRootTimelineFrame ?? frame) ?? false,
-          },
-          { dedupKey: `video-draw-failed:${frame}:${effectiveItem.id}`, minIntervalMs: 20 },
-        )
         // Preview canvases are cleared before item rendering. A video item is
         // complete only after one of its real frame sources was drawn; every
         // other outcome must preserve the previous front buffer.
-        if (rctx.renderMode === 'preview') {
-          rctx.markActivePreviewFramePending?.({
-            itemId: effectiveItem.id,
-            frame,
-            reason: 'video-renderer-returned-false',
-            isTransitionParticipant: rctx.isRenderingTransition === true,
-          })
-        }
+        if (rctx.renderMode === 'preview') rctx.markActivePreviewFramePending?.()
       }
       break
     }

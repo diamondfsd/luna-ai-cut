@@ -93,7 +93,7 @@ describe('transition-targets', () => {
     })
   })
 
-  it('returns a valid target for adjacent untrimmed clips', () => {
+  it('returns an invalid target when there is not enough handle at the cut', () => {
     const items = [
       createVideoClip('left', 0, 60, 0, 60, 60),
       createVideoClip('right', 60, 60, 0, 60, 60),
@@ -109,11 +109,10 @@ describe('transition-targets', () => {
     expect(target).toMatchObject({
       leftClipId: 'left',
       rightClipId: 'right',
-      canApply: true,
+      canApply: false,
       hasExisting: false,
-      maxDurationInFrames: 59,
-      suggestedDurationInFrames: 30,
     })
+    expect(target?.reason).toContain('Not enough source handle')
   })
 
   it('rejects drop targets when the chosen alignment cannot keep the requested duration', () => {

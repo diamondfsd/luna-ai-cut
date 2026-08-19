@@ -425,16 +425,13 @@ function renderSampleToBitmap(
   return state.canvas.transferToImageBitmap()
 }
 
-function renderCurrentSampleToBitmap(
-  state: ExtractorState,
-  maxDimension?: number,
-): ImageBitmap | null {
+function renderCurrentSampleToBitmap(state: ExtractorState): ImageBitmap | null {
   const sample = state.currentSample
   if (!sample) {
     return null
   }
 
-  return renderSampleToBitmap(state, sample, maxDimension)
+  return renderSampleToBitmap(state, sample)
 }
 
 async function recoverAndPrime(
@@ -463,19 +460,18 @@ async function preseekWithState(
   state: ExtractorState,
   timestamp: number,
   shouldContinue?: () => boolean,
-  maxDimension?: number,
 ): Promise<ImageBitmap | null> {
   try {
     await ensureSampleForTimestamp(state, timestamp, shouldContinue)
     if (shouldContinue && !shouldContinue()) return null
-    return renderCurrentSampleToBitmap(state, maxDimension)
+    return renderCurrentSampleToBitmap(state)
   } catch (error) {
     if (error === ACTIVE_PREVIEW_CANCELLED) return null
     const recovered = await recoverAndPrime(state, timestamp, error)
     if (!recovered) {
       return null
     }
-    return renderCurrentSampleToBitmap(state, maxDimension)
+    return renderCurrentSampleToBitmap(state)
   }
 }
 
@@ -483,7 +479,6 @@ async function sparsePreseekWithState(
   state: ExtractorState,
   timestamp: number,
   shouldContinue: () => boolean,
-  maxDimension?: number,
 ): Promise<ImageBitmap | null> {
   if (!shouldContinue()) return null
   let sample: WorkerSample | null = null
@@ -496,7 +491,7 @@ async function sparsePreseekWithState(
     if (!sample || !shouldContinue()) return null
     const previousDraw = state.drawLock ?? Promise.resolve()
     const draw = previousDraw.then(() =>
-      shouldContinue() && sample ? renderSampleToBitmap(state, sample, maxDimension) : null,
+      shouldContinue() && sample ? renderSampleToBitmap(state, sample) : null,
     )
     state.drawLock = draw.then(
       () => undefined,
@@ -516,7 +511,6 @@ async function preseek(
   blob?: Blob,
   sourceMetadata?: ObjectUrlSourceMetadata,
   shouldContinue?: () => boolean,
-  maxDimension?: number,
 ): Promise<ImageBitmap | null> {
   const state = await getExtractor(src, {
     blob,
@@ -526,11 +520,11 @@ async function preseek(
   if (!state) return null
 
   if (shouldContinue) {
-    return sparsePreseekWithState(state, timestamp, shouldContinue, maxDimension)
+    return sparsePreseekWithState(state, timestamp, shouldContinue)
   }
 
   const previous = state.drawLock ?? Promise.resolve()
-  const result = previous.then(() => preseekWithState(state, timestamp, undefined, maxDimension))
+  const result = previous.then(() => preseekWithState(state, timestamp))
   state.drawLock = result.then(
     () => undefined,
     () => undefined,
@@ -715,7 +709,6 @@ self.onmessage = async (event: MessageEvent) => {
       isActivePreviewRequest
         ? () => activePreviewGenerationBySrc.get(msg.src) === Number(msg.generation)
         : undefined,
-      msg.maxDimension,
     )
     if (isActivePreviewRequest) {
       self.postMessage({

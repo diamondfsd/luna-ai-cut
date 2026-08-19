@@ -1,6 +1,6 @@
 import { TRANSITION_CONFIGS, type Transition } from '@freecut/types/transition'
 import type { TimelineItem } from '@freecut/types/timeline'
-import { areFramesAligned, getMaxTransitionDurationAtCut } from './transition-utils'
+import { areFramesAligned, getMaxTransitionDurationForHandles } from './transition-utils'
 
 export interface ResolvedTransitionTarget {
   leftClipId: string
@@ -64,7 +64,7 @@ function resolveTargetForPair(
     }
   }
 
-  const maxDurationInFrames = getMaxTransitionDurationAtCut(
+  const maxDurationInFrames = getMaxTransitionDurationForHandles(
     leftClip,
     rightClip,
     alignment,
