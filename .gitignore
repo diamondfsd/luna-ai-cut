@@ -44,6 +44,9 @@ vendor/deepseek-harness/**/dist/
 vendor/deepseek-harness/**/coverage/
 vendor/deepseek-harness/**/.tsbuildinfo
 docs/
+# Keep the vendored upstream documentation available for source sync.
+!vendor/deepseek-harness/docs/
+!vendor/deepseek-harness/docs/**
 !packages/freecut-editor/docs/
 packages/freecut-editor/docs/*
 # These are FreeCut source files, not generated documentation or build output.

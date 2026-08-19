@@ -6,7 +6,7 @@ assert.deepEqual(defaults.locale, { preference: 'zh' })
 assert.deepEqual(defaults.permission, { defaultPreset: 'workspace-write' })
 assert.deepEqual(defaults['ui-theme'], { preference: 'dark' })
 
-const explicit = withEmbeddedHarnessDefaults({
+const explicit = withDeepSeekHarnessDefaults({
   locale: { preference: 'en', custom: true },
   permission: { defaultPreset: 'read-only', custom: true },
 })

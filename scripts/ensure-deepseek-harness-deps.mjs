@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveDeepSeekHarnessRoot } from './deepseek-harness-root.mjs'
 
@@ -15,7 +15,7 @@ const harnessNodeModules = join(harnessRoot, 'node_modules')
 const harnessHostTypeSentinel = join(harnessRoot, 'vendor/cosmokit/lib/types/index.d.ts')
 
 if (!existsSync(harnessPackagePath)) {
-  console.log('[harness-deps] FreeCut source has no embedded Harness; skipped')
+  console.log('[harness-deps] vendored DeepSeek Harness was not found; skipped')
   process.exit(0)
 }
 
@@ -51,6 +51,34 @@ function tscCommand() {
   return join(harnessNodeModules, '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc')
 }
 
+function installedPackagePath(name) {
+  const store = join(harnessNodeModules, '.pnpm')
+  const prefix = `${name.replaceAll('/', '+')}@`
+  const entry = readdirSync(store).find((candidate) => candidate.startsWith(prefix))
+  return entry ? join(store, entry, 'node_modules', name) : null
+}
+
+function ensurePeerDependencyAnchor(name) {
+  const target = join(harnessNodeModules, name)
+  if (existsSync(target)) return false
+
+  const source = installedPackagePath(name)
+  if (!source || !existsSync(source)) return false
+  const resolved = realpathSync(source)
+  mkdirSync(dirname(target), { recursive: true })
+  symlinkSync(relative(dirname(target), resolved), target)
+  return true
+}
+
+function ensureReactPeerDependencyAnchors() {
+  const anchors = ['react', 'react-dom', '@types/react', '@types/react-dom']
+  const created = anchors
+    .filter((name) => ensurePeerDependencyAnchor(name))
+  if (created.length > 0) {
+    console.log(`[harness-deps] anchored peer dependencies locally: ${created.join(', ')}`)
+  }
+}
+
 function repairIncompleteHostBuild() {
   if (existsSync(harnessHostTypeSentinel)) return
 
@@ -80,6 +108,7 @@ const missing = (() => {
 
 if (!missing) {
   console.log('[harness-deps] Harness workspace dependencies are ready')
+  ensureReactPeerDependencyAnchors()
   repairIncompleteHostBuild()
   process.exit(0)
 }
@@ -99,4 +128,5 @@ if (result.status !== 0) process.exit(result.status ?? 1)
 const remaining = requiredPackages()
 if (remaining) throw new Error(`Harness workspace dependencies remain incomplete：${remaining}`)
 console.log('[harness-deps] Harness workspace dependencies installed')
+ensureReactPeerDependencyAnchors()
 repairIncompleteHostBuild()

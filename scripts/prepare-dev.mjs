@@ -14,7 +14,6 @@ const distRoot = join(root, 'dist')
 
 const nativeStamp = join(distRoot, '.luna-dev-native.json')
 const harnessStamp = join(distRoot, '.luna-dev-harness.json')
-const harnessOutput = join(distRoot, 'deepseek-harness')
 const harnessRoot = resolveDeepSeekHarnessRoot(root)
 
 const ignoredSourceDirectories = new Set([
@@ -90,6 +89,26 @@ function runNodeScript(script, args = []) {
   })
 }
 
+function runPnpm(args, label) {
+  return new Promise((resolveRun, rejectRun) => {
+    const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+    const child = spawn(command, args, {
+      cwd: root,
+      env: process.env,
+      stdio: 'inherit',
+      windowsHide: true,
+    })
+    child.once('error', rejectRun)
+    child.once('exit', (code, signal) => {
+      if (code === 0) {
+        resolveRun()
+        return
+      }
+      rejectRun(new Error(`${label} exited with ${code ?? signal ?? 'unknown'}`))
+    })
+  })
+}
+
 function nativeArtifacts() {
   const extension = process.platform === 'win32' ? '.exe' : ''
   return [
@@ -148,7 +167,6 @@ function harnessInputs() {
   if (!harnessRoot) return []
   return [
     harnessRoot,
-    join(root, 'scripts/build-deepseek-harness-web.mjs'),
     join(root, 'scripts/ensure-deepseek-harness-deps.mjs'),
     join(root, 'scripts/deepseek-harness-root.mjs'),
   ]
@@ -156,8 +174,8 @@ function harnessInputs() {
 
 async function harnessNeedsBuild() {
   const requiredOutput = [
-    join(harnessOutput, 'lib/bin.js'),
-    join(harnessOutput, 'node_modules'),
+    join(harnessRoot, 'apps/cli/lib/bin.js'),
+    join(harnessRoot, 'apps/web/dist/index.html'),
   ]
   if (force || requiredOutput.some((path) => !existsSync(path))) return true
 
@@ -165,7 +183,7 @@ async function harnessNeedsBuild() {
   if (stamp?.kind === 'harness' && stamp.platform !== platformKey) return true
 
   const sourceMtime = await latestSourceMtime(harnessInputs())
-  const outputMtime = await latestOutputMtime([harnessOutput])
+  const outputMtime = await latestOutputMtime(requiredOutput)
   return outputMtime < sourceMtime
 }
 
@@ -175,16 +193,14 @@ async function prepareHarness() {
     return
   }
 
-  // This check is cheap and repairs a missing host build without deploying the
-  // full runtime when the existing output is still current.
   await runNodeScript('scripts/ensure-deepseek-harness-deps.mjs')
   if (!(await harnessNeedsBuild())) {
-    console.log('[dev] DeepSeek Harness is up to date; skipped runtime bundle')
+    console.log('[dev] DeepSeek Harness is up to date; skipped build')
     await writeStamp(harnessStamp, 'harness')
     return
   }
 
-  await runNodeScript('scripts/build-deepseek-harness-web.mjs')
+  await runPnpm(['--dir', harnessRoot, 'run', 'build'], 'DeepSeek Harness build')
   await writeStamp(harnessStamp, 'harness')
 }
 

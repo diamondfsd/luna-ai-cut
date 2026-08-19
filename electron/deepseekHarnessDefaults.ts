@@ -21,7 +21,7 @@ function isPermissionPresetId(value: unknown): value is PermissionPresetId {
  * made in the Harness settings page.
  *
  * @param settings - Parsed Harness settings document.
- * @returns A new settings document with embedded-surface defaults applied.
+ * @returns A new settings document with Luna assistant defaults applied.
  */
 export function withDeepSeekHarnessDefaults(settings: Record<string, unknown>): Record<string, unknown> {
   const locale = isRecord(settings.locale) ? settings.locale : {}
