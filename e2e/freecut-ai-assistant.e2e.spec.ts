@@ -32,7 +32,8 @@ test('AI 助手右侧栏可以加载 DeepSeek Harness Web', async ({ lunaApp }) 
   await expect.poll(() => app.windows().length).toBe(1)
   const assistantPanel = page.getByRole('complementary', { name: 'AI 助手' })
 
-  await expect(assistantPanel.getByRole('heading', { name: 'AI 助手', exact: true })).toBeVisible()
+  await expect(assistantPanel).toBeVisible()
+  await expect(assistantPanel.getByRole('button', { name: '关闭 AI 助手', exact: true })).toBeVisible()
   await expect(assistantPanel.locator('iframe[title="DeepSeek Harness AI 助手"]')).toBeVisible({
     timeout: 60_000,
   })

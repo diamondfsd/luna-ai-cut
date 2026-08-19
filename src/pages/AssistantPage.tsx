@@ -6,11 +6,13 @@ import { IconButton } from '../ui'
 import './AssistantPage.css'
 
 interface AssistantPageProps {
+  context?: DeepSeekHarnessContext
   onClose: () => void
 }
 
-export function AssistantPage({ onClose }: AssistantPageProps) {
+export function AssistantPage({ context: requestedContext, onClose }: AssistantPageProps) {
   const context = useMemo<DeepSeekHarnessContext>(() => {
+    if (requestedContext) return requestedContext
     const params = new URLSearchParams(window.location.search)
     const sessionId = params.get('sessionId')
     const feature = params.get('feature')
@@ -34,7 +36,7 @@ export function AssistantPage({ onClose }: AssistantPageProps) {
       projectId: projectId || undefined,
       metadata,
     }
-  }, [])
+  }, [requestedContext])
   const [webUrl, setWebUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,10 +68,6 @@ export function AssistantPage({ onClose }: AssistantPageProps) {
   return (
     <aside className="assistant-page" aria-label="AI 助手">
       <header className="assistant-page__header">
-        <div>
-          <h1>AI 助手</h1>
-          <p>独立于剪辑器的 Luna 智能助手</p>
-        </div>
         <IconButton
           variant="ghost"
           size="compact"

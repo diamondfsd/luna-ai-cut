@@ -11,6 +11,10 @@ export function register(): void {
       if (!window.isDestroyed()) window.webContents.send('deepseek-harness:web-state', state)
     }
   })
+  ipcMain.handle('deepseek-harness:request-open', (event, context: unknown) => {
+    if (context !== undefined && !isContext(context)) throw new Error('助手上下文无效。')
+    event.sender.send('deepseek-harness:open-requested', context)
+  })
   ipcMain.handle('deepseek-harness:get-web-url', (_event, context: unknown) => {
     if (!isContext(context)) throw new Error('助手上下文无效。')
     return getDeepSeekHarnessWebUrl(context)

@@ -14,28 +14,12 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-  min-height: 52px;
-  padding: 8px 12px 8px 16px;
+  min-height: 44px;
+  padding: 8px 10px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(246, 246, 248, 0.94);
-}
-
-.assistant-page__header h1,
-.assistant-page__header p {
-  margin: 0;
-}
-
-.assistant-page__header h1 {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.assistant-page__header p {
-  margin-top: 2px;
-  color: #6e6e73;
-  font-size: 12px;
 }
 
 .assistant-page__content {

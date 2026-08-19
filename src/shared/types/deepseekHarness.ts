@@ -28,6 +28,9 @@ export interface DeepSeekHarnessToolDefinition {
 }
 
 export interface DeepSeekHarnessApi {
+  /** Request the embedded assistant panel to open. */
+  openWindow(context?: DeepSeekHarnessContext): Promise<void>
   getWebUrl(context: DeepSeekHarnessContext): Promise<string>
+  onOpenRequested(callback: (context?: DeepSeekHarnessContext) => void): () => void
   onWebState(callback: (state: DeepSeekHarnessWebState) => void): () => void
 }
