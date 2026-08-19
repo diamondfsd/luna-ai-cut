@@ -31,6 +31,9 @@ import type {
   FreecutExportApi,
   OriginalFileExportRequest,
   DeepSeekHarnessApi,
+  LunaEditorSdkApi,
+  LunaEditorSdkRequest,
+  LunaEditorSdkResponse,
 } from '../src/shared/types'
 
 type VideoFrameRateReadyData = {
@@ -62,6 +65,34 @@ function subscribeVideoFrameRateReady(callback: (data: VideoFrameRateReadyData) 
       ipcRenderer.off('luna:video-frame-rate-ready', videoFrameRateListener)
     }
   }
+}
+
+function isLunaEditorSdkRequest(value: unknown): value is LunaEditorSdkRequest {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const request = value as Record<string, unknown>
+  return typeof request.requestId === 'string'
+    && request.requestId.length > 0
+    && request.requestId.length <= 200
+    && typeof request.sessionId === 'string'
+    && request.sessionId.length > 0
+    && request.sessionId.length <= 200
+    && (request.projectId === undefined || (typeof request.projectId === 'string' && request.projectId.length <= 200))
+    && typeof request.name === 'string'
+    && /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9_-]*)+$/u.test(request.name)
+    && Boolean(request.args)
+    && typeof request.args === 'object'
+    && !Array.isArray(request.args)
+}
+
+function isLunaEditorSdkResponse(value: unknown): value is LunaEditorSdkResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const response = value as Record<string, unknown>
+  if (typeof response.requestId !== 'string' || response.requestId.length === 0 || response.requestId.length > 200) return false
+  if (typeof response.ok !== 'boolean') return false
+  if (response.ok) return true
+  const error = response.error
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return false
+  return typeof (error as Record<string, unknown>).message === 'string'
 }
 import type { HtmlRenderApi } from './htmlRenderTypes'
 
@@ -217,6 +248,19 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       return () => ipcRenderer.removeListener('deepseek-harness:web-state', listener)
     },
   } satisfies DeepSeekHarnessApi,
+  lunaEditorSdk: {
+    onRequest: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
+        if (isLunaEditorSdkRequest(request)) callback(request)
+      }
+      ipcRenderer.on('luna-editor-sdk:request', listener)
+      return () => ipcRenderer.removeListener('luna-editor-sdk:request', listener)
+    },
+    respond: (response) => {
+      if (!isLunaEditorSdkResponse(response)) throw new TypeError('Invalid Luna Editor SDK response.')
+      ipcRenderer.send('luna-editor-sdk:response', response)
+    },
+  } satisfies LunaEditorSdkApi,
   stableAudio3: {
     getStatus: () => ipcRenderer.invoke('stable-audio-3:get-status'),
     generate: (request) => ipcRenderer.invoke('stable-audio-3:generate', request),

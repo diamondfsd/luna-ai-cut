@@ -1,6 +1,22 @@
 declare module '@freecut/embedded' {
   import type { ComponentType } from 'react'
 
+  export interface EmbeddedLunaEditorSdkBridge {
+    onRequest: (callback: (request: {
+      requestId: string
+      sessionId: string
+      projectId?: string
+      name: string
+      args: Record<string, unknown>
+    }) => void) => () => void
+    respond: (response: {
+      requestId: string
+      ok: boolean
+      result?: unknown
+      error?: { code?: string; message: string; details?: unknown; retryable?: boolean }
+    }) => void
+  }
+
   export interface EmbeddedMediaImportSource {
     path: string
     name: string
@@ -93,6 +109,7 @@ declare module '@freecut/embedded' {
       request: EmbeddedHtmlRenderRequest,
     ) => Promise<EmbeddedHtmlRenderResult>
     exportFiles?: EmbeddedExportBridge
+    lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
   }
 
   export const FreeCutEditor: ComponentType<FreeCutEditorProps>

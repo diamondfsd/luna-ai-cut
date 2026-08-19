@@ -33,6 +33,7 @@ import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { DeepSeekHarnessApi } from './deepseekHarness'
+import type { LunaEditorSdkApi } from './lunaEditorSdk'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
 export interface WorkspaceSegmentationRequest {
@@ -430,6 +431,7 @@ export interface LunaApi {
     onSessionUpdated(callback: (session: AiSelectionSession) => void): () => void
   }
   deepseekHarness: DeepSeekHarnessApi
+  lunaEditorSdk: LunaEditorSdkApi
   stableAudio3: StableAudio3Api
   mossTts: MossTtsApi
   modelManager: ModelManagerApi

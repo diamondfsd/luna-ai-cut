@@ -63,6 +63,12 @@ import {
   useSubtitleScanProgressStore,
 } from '@freecut/features/editor/deps/media-library'
 import { IoDragReadout } from '@freecut/shared/timeline/io-range'
+import { useEmbeddedHost } from '@freecut/shared/host/embedded-host'
+import { FreeCutRuntime } from '@freecut/integrations/luna-editor-sdk'
+import {
+  buildTimelineFromStores,
+  hydrateTimelineStoresFromProject,
+} from '@freecut/features/timeline/stores/timeline-persistence'
 const logger = createLogger('Editor')
 const LazyTimeline = lazy(() => importTimeline().then(({ Timeline }) => ({ default: Timeline })))
 const LazyColorGradingDock = lazy(() =>
@@ -377,6 +383,7 @@ export const LoadedEditor = memo(function LoadedEditor({
   migration,
 }: EditorProps) {
   const { t } = useTranslation()
+  const embeddedHost = useEmbeddedHost()
   const router = useRouter()
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
@@ -526,6 +533,64 @@ export const LoadedEditor = memo(function LoadedEditor({
     projectId,
     router,
   ])
+
+  // The embedded host is the renderer-side endpoint for the public Luna Editor
+  // SDK. Each request is hydrated from the live FreeCut stores so edits made by
+  // the assistant and edits made in the UI share the same project state.
+  useEffect(() => {
+    const sdk = embeddedHost.lunaEditorSdk
+    if (!sdk) return undefined
+
+    let queue: Promise<void> = Promise.resolve()
+    const unsubscribe = sdk.onRequest((request) => {
+      const run = async (): Promise<void> => {
+        try {
+          if (request.projectId && request.projectId !== projectId) {
+            throw new Error('Luna Editor SDK project context does not match the open FreeCut project.')
+          }
+
+          const currentProject = useProjectStore.getState().currentProject
+          if (!currentProject || currentProject.id !== projectId) {
+            throw new Error('The FreeCut project is not ready for SDK editing.')
+          }
+
+          const runtime = new FreeCutRuntime({
+            project: {
+              ...currentProject,
+              timeline: buildTimelineFromStores(),
+            },
+            media: useMediaLibraryStore.getState().mediaItems,
+          })
+          const result = await runtime.executeSdkCapability(request.name, request.args)
+
+          if (
+            result &&
+            typeof result === 'object' &&
+            'project' in result &&
+            result.project &&
+            typeof result.project === 'object'
+          ) {
+            await hydrateTimelineStoresFromProject(result.project as Parameters<typeof hydrateTimelineStoresFromProject>[0])
+            await useTimelineStore.getState().saveTimeline(projectId)
+          }
+
+          sdk.respond({ requestId: request.requestId, ok: true, result })
+        } catch (error) {
+          sdk.respond({
+            requestId: request.requestId,
+            ok: false,
+            error: {
+              code: 'CAPABILITY_ERROR',
+              message: error instanceof Error ? error.message : String(error),
+            },
+          })
+        }
+      }
+      queue = queue.then(run, run)
+    })
+
+    return unsubscribe
+  }, [embeddedHost.lunaEditorSdk, projectId])
 
   useEffect(() => {
     syncSidebarLayout(editorLayout)

@@ -53,6 +53,7 @@
     "prepare": "echo FreeCut is managed by the Luna pnpm workspace"
   },
   "dependencies": {
+    "@luna/editor-sdk": "workspace:*",
     "@hookform/resolvers": "5.2.2",
     "@huggingface/transformers": "4.1.0",
     "@lottiefiles/dotlottie-web": "0.76.0",

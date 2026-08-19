@@ -75,6 +75,22 @@ export interface EmbeddedExportBridge {
   revealFile(filePath: string): Promise<void>
 }
 
+export interface EmbeddedLunaEditorSdkBridge {
+  onRequest: (callback: (request: {
+    requestId: string
+    sessionId: string
+    projectId?: string
+    name: string
+    args: Record<string, unknown>
+  }) => void) => () => void
+  respond: (response: {
+    requestId: string
+    ok: boolean
+    result?: unknown
+    error?: { code?: string; message: string; details?: unknown; retryable?: boolean }
+  }) => void
+}
+
 export interface EmbeddedHostBridge {
   requestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
   revealFile?: (filePath: string) => Promise<void>
@@ -89,6 +105,7 @@ export interface EmbeddedHostBridge {
   ) => Promise<EmbeddedTranscriptResult>
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
+  lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
 }
 
 const EmbeddedHostContext = createContext<EmbeddedHostBridge>({})

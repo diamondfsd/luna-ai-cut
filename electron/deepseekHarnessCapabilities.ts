@@ -3,6 +3,15 @@ import type {
   DeepSeekHarnessToolDefinition,
   DeepSeekHarnessToolRequest,
 } from '../src/shared/types'
+import {
+  createUnboundFreecutProvider,
+  FREECUT_PROVIDER_ID,
+} from './luna-editor-sdk/freecut-provider'
+import {
+  LunaEditorSdkProviderRegistry,
+  toSdkRequest,
+} from './luna-editor-sdk/provider-registry'
+import type { LunaEditorSdkProvider } from './luna-editor-sdk/contracts'
 
 export interface DeepSeekHarnessCapabilityProvider {
   namespace: string
@@ -15,25 +24,36 @@ export interface DeepSeekHarnessCapabilityProvider {
 }
 
 export class DeepSeekHarnessCapabilityRegistry {
-  private readonly providers = new Map<string, DeepSeekHarnessCapabilityProvider>()
+  private readonly registry = new LunaEditorSdkProviderRegistry()
 
-  register(provider: DeepSeekHarnessCapabilityProvider): () => void {
-    if (!/^[a-z][a-z0-9-]*$/u.test(provider.namespace)) {
-      throw new Error(`助手能力命名空间无效：${provider.namespace}`)
-    }
-    if (this.providers.has(provider.namespace)) {
-      throw new Error(`助手能力命名空间已注册：${provider.namespace}`)
-    }
-    this.providers.set(provider.namespace, provider)
-    return () => {
-      if (this.providers.get(provider.namespace) === provider) {
-        this.providers.delete(provider.namespace)
-      }
-    }
+  register(provider: DeepSeekHarnessCapabilityProvider | LunaEditorSdkProvider): () => void {
+    if ('namespaces' in provider) return this.registry.register(provider)
+    return this.registry.register({
+      id: `legacy-${provider.namespace}`,
+      namespaces: [provider.namespace],
+      getTools: (context) => provider.getTools(context),
+      execute: (request, context) => provider.execute(request, context, context.signal),
+    })
+  }
+
+  registerProvider(provider: LunaEditorSdkProvider): () => void {
+    return this.register(provider)
+  }
+
+  replaceProvider(provider: LunaEditorSdkProvider): () => void {
+    return this.registry.replace(provider)
   }
 
   getTools(context: DeepSeekHarnessContext): DeepSeekHarnessToolDefinition[] {
-    return [...this.providers.values()].flatMap((provider) => provider.getTools(context))
+    return this.registry.getTools(context)
+  }
+
+  dispatch(
+    request: DeepSeekHarnessToolRequest,
+    context: DeepSeekHarnessContext,
+    signal: AbortSignal,
+  ) {
+    return this.registry.dispatch(toSdkRequest(request), context, signal)
   }
 
   execute(
@@ -41,13 +61,28 @@ export class DeepSeekHarnessCapabilityRegistry {
     context: DeepSeekHarnessContext,
     signal: AbortSignal,
   ): Promise<unknown> {
-    const namespace = request.name.split('.', 1)[0]
-    const provider = namespace ? this.providers.get(namespace) : undefined
-    if (!provider) {
-      throw new Error(`当前没有可用的助手能力：${request.name}`)
-    }
-    return provider.execute(request, context, signal)
+    return this.registry.execute(toSdkRequest(request), context, signal)
+  }
+
+  hasProvider(providerId: string): boolean {
+    return this.registry.hasProvider(providerId)
+  }
+
+  listProviders(): Array<{ id: string; namespaces: string[] }> {
+    return this.registry.listProviders()
   }
 }
 
 export const deepSeekHarnessCapabilities = new DeepSeekHarnessCapabilityRegistry()
+
+// The provider is registered during Electron module initialization. The
+// renderer/runtime adapter replaces this binding when it is ready; until then
+// capability calls fail explicitly instead of silently dispatching nowhere.
+deepSeekHarnessCapabilities.registerProvider(createUnboundFreecutProvider())
+
+export function registerFreecutHarnessProvider(provider: LunaEditorSdkProvider): () => void {
+  if (provider.id !== FREECUT_PROVIDER_ID) {
+    throw new Error(`FreeCut Provider ID 必须是 ${FREECUT_PROVIDER_ID}。`)
+  }
+  return deepSeekHarnessCapabilities.replaceProvider(provider)
+}

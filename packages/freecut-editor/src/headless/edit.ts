@@ -49,8 +49,11 @@ import {
   addKeyframes,
   setTracks,
   addKeyframe,
+  updateKeyframe,
+  removeKeyframe,
   removeKeyframesForProperty,
   addEffect,
+  updateEffect,
   removeEffect,
   updateItemTransform,
 } from '@freecut/features/timeline/stores/timeline-actions'
@@ -73,9 +76,12 @@ export type EditOperationName =
   | 'addTrack'
   | 'addClip'
   | 'addKeyframe'
+  | 'updateKeyframe'
+  | 'removeKeyframe'
   | 'removeKeyframes'
   | 'setTransformParent'
   | 'addEffect'
+  | 'updateEffect'
   | 'removeEffect'
   | 'setTransform'
 
@@ -561,6 +567,29 @@ function applyOp(op: EditOp): unknown {
       if (!keyframeId) throw new Error(`addKeyframe failed (item ${itemId} @ frame ${frame})`)
       return { keyframeId }
     }
+    case 'updateKeyframe': {
+      const itemId = asString(op.itemId)
+      const property = asString(op.property)
+      const keyframeId = asString(op.keyframeId)
+      if (!itemId || !property || !keyframeId) {
+        throw new Error('updateKeyframe requires `itemId`, `property`, and `keyframeId`')
+      }
+      requireItem(itemId, 'itemId')
+      const updates = (op.updates ?? {}) as Parameters<typeof updateKeyframe>[3]
+      updateKeyframe(itemId, property as AnimatableProperty, keyframeId, updates)
+      return { itemId, property, keyframeId }
+    }
+    case 'removeKeyframe': {
+      const itemId = asString(op.itemId)
+      const property = asString(op.property)
+      const keyframeId = asString(op.keyframeId)
+      if (!itemId || !property || !keyframeId) {
+        throw new Error('removeKeyframe requires `itemId`, `property`, and `keyframeId`')
+      }
+      requireItem(itemId, 'itemId')
+      removeKeyframe(itemId, property as AnimatableProperty, keyframeId)
+      return { itemId, property, keyframeId }
+    }
     case 'setTransformParent': {
       const id = asString(op.id)
       if (!id) throw new Error('setTransformParent requires `id`')
@@ -612,6 +641,26 @@ function applyOp(op: EditOp): unknown {
       }
       addEffect(itemId, effect as VisualEffect)
       return { itemId }
+    }
+    case 'updateEffect': {
+      const itemId = asString(op.itemId)
+      const effectId = asString(op.effectId)
+      if (!itemId || !effectId) throw new Error('updateEffect requires `itemId` and `effectId`')
+      const item = requireItem(itemId, 'itemId')
+      if (!item.effects?.some((effect) => effect.id === effectId)) {
+        throw new Error(`effectId: effect "${effectId}" does not exist on item "${itemId}"`)
+      }
+      updateEffect(itemId, effectId, {
+        ...(op.params && typeof op.params === 'object' ? {
+          effect: {
+            type: 'gpu-effect',
+            gpuEffectType: item.effects.find((effect) => effect.id === effectId)?.effect.gpuEffectType ?? '',
+            params: op.params as Record<string, number | boolean | string>,
+          } as VisualEffect,
+        } : {}),
+        ...(typeof op.enabled === 'boolean' ? { enabled: op.enabled } : {}),
+      })
+      return { itemId, effectId }
     }
     case 'removeEffect': {
       const itemId = asString(op.itemId)

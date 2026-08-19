@@ -4,6 +4,7 @@ import type {
   EmbeddedTaskProgress,
   EmbeddedExportFile,
   EmbeddedMediaImportSource,
+  EmbeddedLunaEditorSdkBridge,
   ImportMediaFiles,
 } from '@freecut/embedded'
 
@@ -221,6 +222,11 @@ export function VideoEditorPage() {
     revealFile: (filePath: string) => window.luna.revealFile(filePath),
   }), [saveExportBlob])
 
+  const lunaEditorSdk: EmbeddedLunaEditorSdkBridge = useMemo(() => ({
+    onRequest: window.luna.lunaEditorSdk.onRequest,
+    respond: window.luna.lunaEditorSdk.respond,
+  }), [])
+
   return (
     <div className="video-editor-page">
       <Suspense
@@ -241,6 +247,7 @@ export function VideoEditorPage() {
           onTranscribeMedia={handleTranscribeMedia}
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}
+          lunaEditorSdk={lunaEditorSdk}
         />
       </Suspense>
       <WorkspaceImportDialog

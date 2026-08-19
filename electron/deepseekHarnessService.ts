@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { existsSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { parse, stringify } from 'yaml'
 
@@ -17,12 +17,15 @@ import type {
 } from '../src/shared/types'
 
 const MAX_CONTEXT_STRING_LENGTH = 200
+const LUNA_EDITOR_PROTOCOL = 'luna.editor' as const
+const LUNA_EDITOR_API_VERSION = 1 as const
 
 interface HarnessRuntime {
   home: string
   process: ChildProcess
   token: string
   url: string
+  context: DeepSeekHarnessContext
 }
 
 interface HarnessNodeCommand {
@@ -129,6 +132,9 @@ function stringField(value: unknown, name: string, required = false): string | u
 }
 
 function contextFromBody(body: Record<string, unknown>): DeepSeekHarnessContext {
+  if (body.protocol !== LUNA_EDITOR_PROTOCOL || body.apiVersion !== LUNA_EDITOR_API_VERSION) {
+    throw new Error('助手能力请求协议版本不受支持。')
+  }
   const sessionId = stringField(body.sessionId, 'sessionId', true)
   if (!sessionId) throw new Error('助手能力请求缺少 sessionId。')
   const metadata = body.metadata
@@ -140,6 +146,43 @@ function contextFromBody(body: Record<string, unknown>): DeepSeekHarnessContext 
     feature: stringField(body.feature, 'feature'),
     projectId: stringField(body.projectId, 'projectId'),
     metadata: metadata as Record<string, string> | undefined,
+  }
+}
+
+function sha256Revision(value: unknown): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify(value) ?? 'null').digest('hex')}`
+}
+
+function stringArrayField(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function structuredResult(request: DeepSeekHarnessToolRequest, value: unknown): Record<string, unknown> {
+  const record = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+  const mutation = request.name !== 'project.inspect' && request.name !== 'timeline.inspect' &&
+    request.name !== 'media.list' && request.name !== 'media.inspect' &&
+    !request.name.startsWith('preview.') && !request.name.startsWith('capabilities.')
+  return {
+    kind: mutation ? 'edit' : 'data',
+    revision: sha256Revision(record?.project ?? value),
+    affectedIds: stringArrayField(record?.affectedIds),
+    createdIds: stringArrayField(record?.createdIds),
+    removedIds: stringArrayField(record?.removedIds),
+    warnings: stringArrayField(record?.warnings),
+    data: value,
+  }
+}
+
+function errorPayload(error: unknown): Record<string, unknown> {
+  const candidate = error as { code?: unknown; details?: unknown; retryable?: unknown } | null
+  const code = typeof candidate?.code === 'string' ? candidate.code : 'CAPABILITY_ERROR'
+  return {
+    code,
+    message: error instanceof Error ? error.message : String(error),
+    details: candidate?.details && typeof candidate.details === 'object' ? candidate.details : {},
+    retryable: candidate?.retryable === true || code === 'TIMEOUT',
   }
 }
 
@@ -171,6 +214,7 @@ async function handleToolRequest(request: IncomingMessage, response: ServerRespo
   }
 
   const controller = new AbortController()
+  let requestId: string | undefined
   const cancel = (): void => {
     if (!response.writableEnded && !controller.signal.aborted) controller.abort()
   }
@@ -178,15 +222,32 @@ async function handleToolRequest(request: IncomingMessage, response: ServerRespo
   response.once('close', cancel)
   try {
     const body = await readRequestBody(request)
+    requestId = typeof body.requestId === 'string' ? body.requestId : undefined
     const context = contextFromBody(body)
+    const activeContext = runtime?.context
+    if (!activeContext || activeContext.sessionId !== context.sessionId) {
+      throw new Error('助手会话上下文不匹配。')
+    }
+    if (activeContext.projectId !== context.projectId) {
+      throw new Error('助手项目上下文不匹配。')
+    }
     const toolRequest = toolRequestFromBody(body, context)
-    const result = await deepSeekHarnessCapabilities.execute(toolRequest, context, controller.signal)
-    jsonResponse(response, 200, { ok: true, result })
+    const dispatch = await deepSeekHarnessCapabilities.dispatch(toolRequest, context, controller.signal)
+    jsonResponse(response, 200, {
+      protocol: LUNA_EDITOR_PROTOCOL,
+      apiVersion: LUNA_EDITOR_API_VERSION,
+      requestId: toolRequest.requestId,
+      ok: true,
+      result: structuredResult(toolRequest, dispatch.result),
+    })
   } catch (error) {
     if (response.destroyed || response.writableEnded) return
     jsonResponse(response, 400, {
+      protocol: LUNA_EDITOR_PROTOCOL,
+      apiVersion: LUNA_EDITOR_API_VERSION,
+      requestId,
       ok: false,
-      error: error instanceof Error ? error.message : '助手能力调用失败。',
+      error: errorPayload(error),
     })
   } finally {
     request.removeListener('aborted', cancel)
@@ -362,6 +423,8 @@ async function startRuntime(context: DeepSeekHarnessContext, generation: number)
       DSH_TELEMETRY_DISABLED: '1',
       LUNA_ASSISTANT_CAPABILITY_ENDPOINT: endpoint,
       LUNA_ASSISTANT_CAPABILITY_TOKEN: token,
+      LUNA_ASSISTANT_SESSION_ID: context.sessionId,
+      ...(context.projectId ? { LUNA_ASSISTANT_PROJECT_ID: context.projectId } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -399,7 +462,7 @@ async function startRuntime(context: DeepSeekHarnessContext, generation: number)
       await terminateChild(child)
       throw new Error('DeepSeek Harness Web 启动已取消。')
     }
-    runtime = { home, process: child, token, url }
+    runtime = { home, process: child, token, url, context: { ...context } }
     child.once('close', () => {
       if (runtime?.process === child) {
         runtime = undefined
@@ -425,7 +488,12 @@ export function registerDeepSeekHarnessCapability(
 
 export async function getDeepSeekHarnessWebUrl(context: DeepSeekHarnessContext): Promise<string> {
   const home = dshHome()
-  if (runtime?.home === home && runtime.process.exitCode === null) return runtime.url
+  if (runtime?.home === home
+    && runtime.process.exitCode === null
+    && runtime.context.sessionId === context.sessionId
+    && runtime.context.projectId === context.projectId) {
+    return runtime.url
+  }
   if (!startingRuntime) {
     if (runtime) await stopRuntime()
     const generation = runtimeGeneration
