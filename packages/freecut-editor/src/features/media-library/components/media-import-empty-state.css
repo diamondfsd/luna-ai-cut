@@ -21,6 +21,31 @@
   background: color-mix(in srgb, var(--secondary) 55%, transparent);
 }
 
+.media-import-empty-state__card {
+  display: flex;
+  width: min(100%, 360px);
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 8px;
+  padding: 28px 22px;
+  background: transparent;
+  color: inherit;
+  text-align: center;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.media-import-empty-state__card:hover {
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+  background: color-mix(in srgb, var(--secondary) 35%, transparent);
+}
+
+.media-import-empty-state__card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .media-import-empty-state__upload,
 .media-import-empty-state__loader {
   width: 26px;
@@ -70,8 +95,17 @@
 }
 
 .media-import-empty-state__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 112px;
   gap: 6px;
+  border-radius: 6px;
+  background: var(--primary);
+  padding: 7px 12px;
+  color: var(--primary-foreground);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .media-import-empty-state__button svg {

@@ -1,0 +1,24 @@
+.editor-workspace-tabs {
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  background: color-mix(in oklab, var(--panel-header) 90%, transparent);
+}
+
+.editor-workspace-tab {
+  color: var(--muted-foreground);
+}
+
+.editor-workspace-tab:hover {
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.editor-workspace-tab[aria-selected='true'] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--background) 40%, transparent);
+}
+
+.editor-workspace-tab[aria-selected='true']:hover {
+  background: color-mix(in oklab, var(--primary) 88%, white);
+  color: var(--primary-foreground);
+}

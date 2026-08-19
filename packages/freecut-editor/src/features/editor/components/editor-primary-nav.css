@@ -1,0 +1,32 @@
+.editor-primary-nav {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: 32px;
+  min-height: 64px;
+  padding: 3px 5px;
+  background: var(--panel-header);
+}
+
+.editor-primary-nav__item {
+  min-width: 0;
+  color: var(--muted-foreground);
+}
+
+.editor-primary-nav__item:hover {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+  color: var(--foreground);
+}
+
+.editor-primary-nav__item[aria-selected='true'] {
+  color: var(--primary);
+}
+
+.editor-primary-nav__item svg {
+  flex: 0 0 auto;
+}
+
+.editor-primary-nav__item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

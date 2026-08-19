@@ -41,6 +41,7 @@ import { ZOOM_MIN, ZOOM_MAX, SLIP_SLIDE_TOOLS_ENABLED } from '../constants'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { useResolvedHotkeys } from '@freecut/features/timeline/deps/settings'
 import { MicRecordControl } from './mic-record-control'
+import './timeline-header.css'
 
 interface TimelineHeaderProps {
   onZoomChange?: (newZoom: number) => void
@@ -497,7 +498,7 @@ export const TimelineHeader = memo(function TimelineHeader({
 
   return (
     <div
-      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3"
+      className="editor-toolbar-theme timeline-header-toolbar grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3"
       style={{ height: EDITOR_LAYOUT_CSS_VALUES.timelineHeaderHeight }}
       role="toolbar"
       aria-label={t('timeline.header.controls')}

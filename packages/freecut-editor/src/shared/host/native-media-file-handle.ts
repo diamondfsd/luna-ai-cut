@@ -37,3 +37,24 @@ export function createNativeMediaFileHandle(
 
   return handle as unknown as FileSystemFileHandle
 }
+
+/**
+ * Converts a browser file handle into the host-backed handle when the
+ * embedded editor can resolve the dropped File back to its native path.
+ */
+export async function resolveNativeMediaFileHandle(
+  handle: FileSystemFileHandle,
+): Promise<FileSystemFileHandle> {
+  if (nativeMediaSourceForHandle(handle)) return handle
+
+  const describe = getEmbeddedHostBridge().describeDroppedMediaFiles
+  if (!describe) return handle
+
+  try {
+    const file = await handle.getFile()
+    const [source] = await describe([file])
+    return source ? createNativeMediaFileHandle(source) : handle
+  } catch {
+    return handle
+  }
+}

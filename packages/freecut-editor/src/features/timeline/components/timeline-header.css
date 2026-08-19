@@ -4,6 +4,19 @@
   --editor-toolbar-button-active-hover: color-mix(in oklab, var(--primary) 20%, transparent);
 }
 
+.timeline-header-toolbar {
+  background: color-mix(in oklab, var(--timeline-bg) 92%, var(--panel-header));
+}
+
+.timeline-header-toolbar button {
+  border-radius: 5px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.timeline-header-toolbar button:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
 .editor-toolbar-theme .editor-toolbar-button,
 .editor-toolbar-theme .timeline-header-button {
   border: 0;

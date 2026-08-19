@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Upload, AlertTriangle } from 'lucide-react'
+import { Loader2, Upload, Video, Music2, Image as ImageIcon, AlertTriangle } from 'lucide-react'
 import { createLogger } from '@freecut/shared/logging/logger'
 
 const logger = createLogger('MediaGrid')
@@ -25,6 +25,7 @@ import {
 } from '@freecut/components/ui/alert-dialog'
 
 import { GRID_MIN_SIZE_PX, GRID_GAP_BY_SIZE } from './media-grid-constants'
+import './media-import-empty-state.css'
 import {
   showMediaFilePicker,
   getSupportedMediaFormatLabels,
@@ -32,6 +33,7 @@ import {
 
 interface MediaGridProps {
   onMediaSelect?: (mediaId: string) => void
+  onImport?: () => void | Promise<void>
   /** Grid item size (1 = largest, 5 = smallest) */
   itemSize?: number
   /** When provided, renders these items instead of pulling from the store */
@@ -52,6 +54,7 @@ export const ListMediaGrid = memo(function ListMediaGrid(props: MediaGridProps) 
 
 const MediaGridBase = memo(function MediaGridBase({
   onMediaSelect,
+  onImport,
   layout,
   itemSize = 3,
   items,
@@ -196,11 +199,15 @@ const MediaGridBase = memo(function MediaGridBase({
   // Handle click on empty state to open file picker
   const handleEmptyStateClick = useCallback(async () => {
     try {
-      await importMedia()
+      if (onImport) {
+        await onImport()
+      } else {
+        await importMedia()
+      }
     } catch (error) {
       logger.error('Import failed:', error)
     }
-  }, [importMedia])
+  }, [importMedia, onImport])
 
   const cardHandlersById = useMemo(
     () =>
@@ -242,33 +249,30 @@ const MediaGridBase = memo(function MediaGridBase({
           </div>
         </div>
       ) : !items && filteredItems.length === 0 ? (
-        <div className="flex items-center justify-center py-24">
+        <div className="media-import-empty-state" aria-busy={isLoading}>
           <button
             type="button"
-            className="text-center max-w-md rounded-xl border border-dashed border-border/80 p-6 transition-colors hover:border-primary/60 hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="media-import-empty-state__card"
             onClick={handleEmptyStateClick}
           >
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full border-2 border-dashed border-border flex items-center justify-center bg-secondary transition-colors">
-              <Upload className="w-10 h-10 text-muted-foreground" />
+            <div className="media-import-empty-state__visual">
+              <Upload className="media-import-empty-state__upload" />
+              <div className="media-import-empty-state__types" aria-hidden="true">
+                <Video />
+                <Music2 />
+                <ImageIcon />
+              </div>
             </div>
-            <p className="text-base font-bold text-foreground mb-2 tracking-wide">
-              {t('media.grid.emptyTitle')}
-            </p>
-            <p className="text-sm text-muted-foreground font-light mb-4">
-              {t('media.grid.emptyHint')}
-            </p>
-            <span className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground mb-4">
+            <div className="media-import-empty-state__copy">
+              <h3>{t('media.grid.emptyTitle')}</h3>
+              <p>{t('media.grid.emptyHint')}</p>
+            </div>
+            <span className="media-import-empty-state__button">
+              <Upload aria-hidden="true" />
               {t('media.grid.importButton')}
             </span>
-            <div className="flex flex-wrap justify-center gap-2">
-              {getSupportedMediaFormatLabels().map((label) => (
-                <span
-                  key={label}
-                  className="px-2 py-0.5 bg-secondary border border-border rounded text-xs font-mono text-muted-foreground"
-                >
-                  {label}
-                </span>
-              ))}
+            <div className="media-import-empty-state__formats">
+              {getSupportedMediaFormatLabels().map((label) => <span key={label}>{label}</span>)}
             </div>
           </button>
         </div>

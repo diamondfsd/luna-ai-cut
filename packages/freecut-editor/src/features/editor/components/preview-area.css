@@ -1,0 +1,25 @@
+.preview-area {
+  background: var(--panel-bg);
+}
+
+.preview-canvas-region {
+  background:
+    linear-gradient(color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px),
+    var(--panel-bg);
+  background-size: 24px 24px;
+}
+
+.preview-canvas-region > * {
+  position: relative;
+  z-index: 1;
+}
+
+.preview-alignment-toolbar,
+.preview-playback-toolbar {
+  background: color-mix(in oklab, var(--panel-header) 94%, var(--background));
+}
+
+.preview-playback-toolbar {
+  box-shadow: 0 -1px 0 color-mix(in oklab, var(--border) 72%, transparent);
+}

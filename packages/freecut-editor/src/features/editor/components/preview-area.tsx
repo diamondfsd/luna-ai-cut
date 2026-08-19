@@ -22,6 +22,7 @@ import { ErrorBoundary } from '@freecut/app/error-boundary'
 import { useTranslation } from 'react-i18next'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { ShuttleIndicator } from '@freecut/shared/ui/shuttle-indicator'
+import './preview-area.css'
 
 interface PreviewAreaProps {
   project: {
@@ -516,7 +517,7 @@ export const PreviewArea = memo(function PreviewArea({
   return (
     <div
       ref={splitContainerRef}
-      className="flex-1 flex min-h-0 min-w-0 relative"
+      className="preview-area flex-1 flex min-h-0 min-w-0 relative"
       role="region"
       aria-label="Preview area"
     >
@@ -568,7 +569,7 @@ export const PreviewArea = memo(function PreviewArea({
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <div
             ref={previewContainerRef}
-            className="flex-1 min-h-0 relative overflow-hidden"
+            className="preview-canvas-region flex-1 min-h-0 relative overflow-hidden"
             aria-label="Preview canvas region"
           >
             <ProgramPreviewSurface
@@ -688,7 +689,7 @@ export const PreviewArea = memo(function PreviewArea({
             <InteractionLockRegion locked={false} overlayClassName="rounded-none">
               <div className="flex flex-col flex-shrink-0">
                 {previewChrome === 'edit' && (
-                  <div className="border-t border-border panel-header flex h-7 items-center justify-center overflow-hidden px-3">
+                  <div className="preview-alignment-toolbar border-t border-border panel-header flex h-7 items-center justify-center overflow-hidden px-3">
                     <div className="flex items-center gap-0">
                       <AlignmentToolbar projectSize={{ width, height }} />
                     </div>
@@ -697,7 +698,7 @@ export const PreviewArea = memo(function PreviewArea({
 
                 {/* Playback controls row */}
                 <div
-                  className="@container border-t border-border panel-header relative flex items-center px-3 overflow-hidden"
+                  className="preview-playback-toolbar @container border-t border-border panel-header relative flex items-center px-3 overflow-hidden"
                   style={{ height: EDITOR_LAYOUT_CSS_VALUES.previewControlsHeight }}
                 >
                   <div className="flex flex-shrink-0 items-center gap-2">
