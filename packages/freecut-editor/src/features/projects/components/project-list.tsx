@@ -94,6 +94,12 @@ export function ProjectList({ onEditProject, onImportProject }: ProjectListProps
   } = useProjectFilters()
   const deleteProject = useDeleteProject()
 
+  // The editor is a large route chunk. Start fetching it while the project list
+  // is visible so creating or opening a project does not wait for that download.
+  useEffect(() => {
+    void import('@freecut/features/editor/components/editor').catch(() => undefined)
+  }, [])
+
   const uniqueResolutions = useMemo(() => getUniqueResolutions(allProjects), [allProjects])
   const uniqueFps = useMemo(() => getUniqueFps(allProjects), [allProjects])
 

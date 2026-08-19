@@ -76,28 +76,8 @@ declare module '@freecut/embedded' {
     revealFile(filePath: string): Promise<void>
   }
 
-  export interface EmbeddedDeepSeekHarnessWebState {
-    projectId: string
-    status: 'starting' | 'ready' | 'error'
-    url?: string
-    error?: string
-  }
-
-  export interface EmbeddedDeepSeekHarnessToolRequest {
-    requestId: string
-    projectId: string
-    name: string
-    args: Record<string, unknown>
-  }
-
-  export interface EmbeddedDeepSeekHarnessBridge {
-    getWebUrl(projectId: string): Promise<string>
-    onWebState(callback: (state: EmbeddedDeepSeekHarnessWebState) => void): () => void
-    onToolRequest(callback: (request: EmbeddedDeepSeekHarnessToolRequest) => Promise<unknown>): () => void
-    onToolCancel(callback: (requestId: string) => void): () => void
-  }
-
   export interface FreeCutEditorProps {
+    language?: string
     onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
     onRevealFile?: (filePath: string) => Promise<void>
     onDescribeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
@@ -109,10 +89,6 @@ declare module '@freecut/embedded' {
       onProgress?: (progress: EmbeddedTaskProgress) => void,
       signal?: AbortSignal,
     ) => Promise<EmbeddedTranscriptResult>
-    onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
-    onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
-    onDeepSeekHarnessToolRequest?: EmbeddedDeepSeekHarnessBridge['onToolRequest']
-    onDeepSeekHarnessToolCancel?: EmbeddedDeepSeekHarnessBridge['onToolCancel']
     onRenderHtmlFrame?: (
       request: EmbeddedHtmlRenderRequest,
     ) => Promise<EmbeddedHtmlRenderResult>

@@ -17,6 +17,7 @@ import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
+import { AssistantPage } from '../pages/AssistantPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { VideoEditorPage } from '../pages/VideoEditorPage'
@@ -92,6 +93,7 @@ export function AppRoutes() {
     ['/library', true],
     ['/local-resources', true],
     ['/ai-selection', true],
+    ['/assistant', true],
     ['/workspace', true],
     ['/video-editor', true],
     ['/settings', true],
@@ -108,6 +110,8 @@ export function AppRoutes() {
   if (location.pathname === '/') return <Navigate to="/library" replace />
   if (isActive('/downloads')) return <Navigate to="/local-resources" replace />
   if (!isKnownRoute) return <Navigate to={developerMode ? '/developer' : '/library'} replace />
+
+  if (isActive('/assistant')) return <AssistantPage />
 
   // 独立调试包：只渲染设备调试页面，无导航、无路由切换
   if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {

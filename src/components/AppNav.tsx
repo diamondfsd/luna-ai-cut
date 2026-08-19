@@ -1,4 +1,4 @@
-import { MonitorCog, Unplug } from 'lucide-react'
+import { MonitorCog, Sparkles, Unplug } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -83,6 +83,14 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
               exportProgress={exportProgress}
               onRevealFile={(path) => void window.luna.revealFile(path)}
             />
+            <button
+              className="nav-icon-button"
+              aria-label="打开 AI 助手"
+              title="打开 AI 助手"
+              onClick={() => void window.luna.deepseekHarness.openWindow()}
+            >
+              <Sparkles size={15} />
+            </button>
             <SendToPhoneDialog />
             <HelpDialog />
           </div>

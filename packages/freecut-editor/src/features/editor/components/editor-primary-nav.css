@@ -1,14 +1,21 @@
 .editor-primary-nav {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  grid-auto-rows: 32px;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   min-height: 64px;
   padding: 3px 5px;
   background: var(--panel-header);
+  scrollbar-width: thin;
 }
 
 .editor-primary-nav__item {
-  min-width: 0;
+  flex: 0 0 72px;
+  min-width: 72px;
   color: var(--muted-foreground);
 }
 

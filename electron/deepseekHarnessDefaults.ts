@@ -17,13 +17,13 @@ function isPermissionPresetId(value: unknown): value is PermissionPresetId {
 }
 
 /**
- * Apply defaults for the embedded FreeCut Harness without overwriting choices
- * already made in the Harness settings page.
+ * Apply defaults for the Luna Harness without overwriting choices already
+ * made in the Harness settings page.
  *
  * @param settings - Parsed Harness settings document.
  * @returns A new settings document with embedded-surface defaults applied.
  */
-export function withEmbeddedHarnessDefaults(settings: Record<string, unknown>): Record<string, unknown> {
+export function withDeepSeekHarnessDefaults(settings: Record<string, unknown>): Record<string, unknown> {
   const locale = isRecord(settings.locale) ? settings.locale : {}
   const permission = isRecord(settings.permission) ? settings.permission : {}
   return {
@@ -34,8 +34,8 @@ export function withEmbeddedHarnessDefaults(settings: Record<string, unknown>): 
     },
     permission: {
       ...permission,
-      // workspace-write is rooted at the current Luna project directory by
-      // the Harness sandbox-policy composition.
+      // workspace-write is rooted at the Harness session directory by the
+      // application host. It is not rooted at a FreeCut project directory.
       defaultPreset: isPermissionPresetId(permission.defaultPreset)
         ? permission.defaultPreset
         : 'workspace-write',
