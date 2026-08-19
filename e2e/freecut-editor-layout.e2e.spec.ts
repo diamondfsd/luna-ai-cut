@@ -38,10 +38,9 @@ test('编辑工作区的媒体面板位于上方且时间轴横向铺满', async
   expect(layout.timeline!.width).toBeGreaterThanOrEqual(layout.viewport.width - 2)
   expect(layout.timeline!.y).toBeGreaterThan(layout.preview!.y)
 
-  const assistantWindowPromise = lunaApp.app.waitForEvent('window')
   await page.getByRole('button', { name: 'AI 助手', exact: true }).click()
-  const assistantPage = await assistantWindowPromise
-  await expect(assistantPage.getByRole('heading', { name: 'AI 助手', exact: true })).toBeVisible()
+  await expect.poll(() => lunaApp.app.windows().length).toBe(1)
+  await expect(page.getByRole('complementary', { name: 'AI 助手' })).toBeVisible()
 
   expect(runtimeErrors).toEqual([])
 })

@@ -1,4 +1,3 @@
-import { BrowserWindow } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { existsSync } from 'node:fs'
@@ -40,7 +39,6 @@ let startingChild: ChildProcess | undefined
 let runtimeGeneration = 0
 let toolServer: Server | undefined
 let toolEndpoint: string | undefined
-let assistantWindow: BrowserWindow | undefined
 
 function appRoot(): string {
   return process.env.APP_ROOT ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -239,6 +237,52 @@ async function readDocument(filePath: string): Promise<Record<string, unknown>> 
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function removeLegacyFreecutLoader(patches: unknown[]): { patches: unknown[]; changed: boolean } {
+  let changed = false
+  const retained: unknown[] = []
+
+  for (const entry of patches) {
+    if (!isRecord(entry)) {
+      retained.push(entry)
+      continue
+    }
+    if (entry.id === 'luna-freecut') {
+      changed = true
+      continue
+    }
+
+    const inserted = entry.insert
+    if (!Array.isArray(inserted)) {
+      retained.push(entry)
+      continue
+    }
+
+    const filtered = inserted.filter((item) => !(isRecord(item) && item.id === 'luna-freecut'))
+    if (filtered.length !== inserted.length) changed = true
+    retained.push(filtered.length === inserted.length ? entry : { ...entry, insert: filtered })
+  }
+
+  return { patches: retained, changed }
+}
+
+async function removeLegacyFreecutPatch(home: string): Promise<void> {
+  const patchPath = path.join(home, 'cordis.patch.yml')
+  let parsed: unknown
+  try {
+    parsed = parse(await fs.readFile(patchPath, 'utf8'))
+  } catch {
+    return
+  }
+  if (!Array.isArray(parsed)) return
+
+  const result = removeLegacyFreecutLoader(parsed)
+  if (result.changed) await writePrivateDocument(patchPath, result.patches)
+}
+
 async function prepareHarnessHome(home: string): Promise<void> {
   const settingsPath = path.join(home, 'settings.yaml')
   const currentSettings = withDeepSeekHarnessDefaults(await readDocument(settingsPath))
@@ -258,6 +302,10 @@ async function prepareHarnessHome(home: string): Promise<void> {
       : 'dark',
   }
   await writePrivateDocument(settingsPath, currentSettings)
+  // The current assistant is an independent Harness. Older Luna versions
+  // persisted a FreeCut editing plugin in this patch file; that plugin expects
+  // editing skill assets which are intentionally not part of this build.
+  await removeLegacyFreecutPatch(home)
 }
 
 async function terminateChild(child: ChildProcess): Promise<void> {
@@ -283,56 +331,6 @@ async function stopRuntime(): Promise<void> {
   if (current) children.add(current.process)
   if (startingChild) children.add(startingChild)
   await Promise.all([...children].map((child) => terminateChild(child)))
-}
-
-function assistantPageUrl(context?: DeepSeekHarnessContext): string {
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL
-  const baseUrl = devServerUrl
-    ? `${devServerUrl.replace(/\/$/u, '')}/`
-    : 'luna://app/index.html'
-  const url = new URL(baseUrl)
-  if (context) {
-    url.searchParams.set('sessionId', context.sessionId)
-    if (context.feature) url.searchParams.set('feature', context.feature)
-    if (context.projectId) url.searchParams.set('projectId', context.projectId)
-    if (context.metadata) url.searchParams.set('metadata', JSON.stringify(context.metadata))
-  }
-  url.hash = '/assistant'
-  return url.toString()
-}
-
-export function openDeepSeekHarnessWindow(context?: DeepSeekHarnessContext): void {
-  if (assistantWindow && !assistantWindow.isDestroyed()) {
-    if (context) void assistantWindow.loadURL(assistantPageUrl(context))
-    assistantWindow.focus()
-    return
-  }
-  assistantWindow = new BrowserWindow({
-    title: 'Luna AI 助手',
-    width: 980,
-    height: 760,
-    minWidth: 760,
-    minHeight: 560,
-    show: false,
-    icon: path.join(appRoot(), 'build', process.platform === 'darwin' ? 'icon.icns' : 'icon.png'),
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(appRoot(), 'dist-electron', 'preload.mjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: false,
-    },
-  })
-  assistantWindow.once('ready-to-show', () => assistantWindow?.show())
-  assistantWindow.on('closed', () => {
-    assistantWindow = undefined
-  })
-  void assistantWindow.loadURL(assistantPageUrl(context))
-}
-
-export function closeDeepSeekHarnessWindow(): void {
-  if (assistantWindow && !assistantWindow.isDestroyed()) assistantWindow.close()
-  assistantWindow = undefined
 }
 
 async function startRuntime(context: DeepSeekHarnessContext, generation: number): Promise<string> {
@@ -449,7 +447,6 @@ export function onDeepSeekHarnessWebState(listener: (state: DeepSeekHarnessWebSt
 }
 
 export async function disposeDeepSeekHarness(): Promise<void> {
-  closeDeepSeekHarnessWindow()
   await stopRuntime()
   if (toolServer) {
     await new Promise<void>((resolve) => toolServer?.close(() => resolve()))

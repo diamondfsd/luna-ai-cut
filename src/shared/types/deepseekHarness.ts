@@ -28,8 +28,6 @@ export interface DeepSeekHarnessToolDefinition {
 }
 
 export interface DeepSeekHarnessApi {
-  openWindow(context?: DeepSeekHarnessContext): Promise<void>
-  closeWindow(): Promise<void>
   getWebUrl(context: DeepSeekHarnessContext): Promise<string>
   onWebState(callback: (state: DeepSeekHarnessWebState) => void): () => void
 }

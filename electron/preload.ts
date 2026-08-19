@@ -204,8 +204,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
   deepseekHarness: {
-    openWindow: (context) => ipcRenderer.invoke('deepseek-harness:open-window', context),
-    closeWindow: () => ipcRenderer.invoke('deepseek-harness:close-window'),
     getWebUrl: (context) => ipcRenderer.invoke('deepseek-harness:get-web-url', context),
     onWebState: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, state: import('../src/shared/types').DeepSeekHarnessWebState) => callback(state)

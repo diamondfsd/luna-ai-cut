@@ -1,8 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import {
-  closeDeepSeekHarnessWindow,
   getDeepSeekHarnessWebUrl,
-  openDeepSeekHarnessWindow,
   onDeepSeekHarnessWebState,
 } from './deepseekHarnessService'
 import type { DeepSeekHarnessContext } from '../src/shared/types'
@@ -13,11 +11,6 @@ export function register(): void {
       if (!window.isDestroyed()) window.webContents.send('deepseek-harness:web-state', state)
     }
   })
-  ipcMain.handle('deepseek-harness:open-window', (_event, context: unknown) => {
-    if (context !== undefined && !isContext(context)) throw new Error('助手上下文无效。')
-    return openDeepSeekHarnessWindow(context as DeepSeekHarnessContext | undefined)
-  })
-  ipcMain.handle('deepseek-harness:close-window', () => closeDeepSeekHarnessWindow())
   ipcMain.handle('deepseek-harness:get-web-url', (_event, context: unknown) => {
     if (!isContext(context)) throw new Error('助手上下文无效。')
     return getDeepSeekHarnessWebUrl(context)

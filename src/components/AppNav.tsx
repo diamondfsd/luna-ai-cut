@@ -13,9 +13,10 @@ interface AppNavProps {
   connection: ConnectionStatus | null
   sourceMode: CameraConnectionMode
   onChangeConnection?: () => Promise<void>
+  onOpenAssistant: () => void
 }
 
-export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
+export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection, onOpenAssistant }: AppNavProps) {
   const { exportProgress } = useExportProgress()
   const location = useLocation()
   const isMac = window.navigator.platform.includes('Mac')
@@ -87,7 +88,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
               className="nav-icon-button"
               aria-label="打开 AI 助手"
               title="打开 AI 助手"
-              onClick={() => void window.luna.deepseekHarness.openWindow()}
+              onClick={onOpenAssistant}
             >
               <Sparkles size={15} />
             </button>

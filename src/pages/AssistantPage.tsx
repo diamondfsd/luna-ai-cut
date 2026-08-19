@@ -5,7 +5,11 @@ import type { DeepSeekHarnessContext } from '../shared/types'
 import { IconButton } from '../ui'
 import './AssistantPage.css'
 
-export function AssistantPage() {
+interface AssistantPageProps {
+  onClose: () => void
+}
+
+export function AssistantPage({ onClose }: AssistantPageProps) {
   const context = useMemo<DeepSeekHarnessContext>(() => {
     const params = new URLSearchParams(window.location.search)
     const sessionId = params.get('sessionId')
@@ -60,7 +64,7 @@ export function AssistantPage() {
   }, [context])
 
   return (
-    <main className="assistant-page">
+    <aside className="assistant-page" aria-label="AI 助手">
       <header className="assistant-page__header">
         <div>
           <h1>AI 助手</h1>
@@ -72,7 +76,7 @@ export function AssistantPage() {
           icon={<X size={18} />}
           aria-label="关闭 AI 助手"
           title="关闭 AI 助手"
-          onClick={() => void window.luna.deepseekHarness.closeWindow()}
+          onClick={onClose}
         />
       </header>
       <section className="assistant-page__content">
@@ -92,6 +96,6 @@ export function AssistantPage() {
           <div className="assistant-page__loading">正在启动 AI 助手…</div>
         )}
       </section>
-    </main>
+    </aside>
   )
 }
