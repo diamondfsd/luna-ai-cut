@@ -33,6 +33,7 @@
 - 添加转场前调用 `luna.timeline.listTransitions`，只能使用返回的真实预设。
 - 删除片段中间的一段时，先分割，再删除目标片段。
 - 已经确定同类操作时，优先使用批量工具，减少不必要的中间状态。
+- 没有视觉素材但需要可编辑包装时，使用 `luna.timeline.addHtml` 生成 HTML/CSS 图层；使用 `renderMode: 'animated'` 和 CSS keyframes 或 `--luna-time` 表达时间变化。作者脚本、iframe、外部网页和网络资源不属于可用素材来源。
 
 ## 每次编辑后的检查
 

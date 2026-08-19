@@ -361,6 +361,42 @@ describe('timeline AI tools', () => {
     expect(harness.state.addKeyframe).toHaveBeenCalledWith('clip-1', 'width', 30, 960, undefined)
   })
 
+  it('creates a time-addressable HTML layer on a free or new video track', async () => {
+    const validation = getTool('timeline.add_html').validate({
+      html: '<div class="title">Luna</div>',
+      css: '.title { color: white; animation: reveal 1s linear both; } @keyframes reveal { from { opacity: 0; } to { opacity: 1; } }',
+      startSeconds: 2,
+      durationSeconds: 4,
+      renderMode: 'animated',
+    })
+    expect(validation).toMatchObject({ ok: true })
+
+    const result = await getTool('timeline.add_html').execute((validation as { ok: true; value: Record<string, unknown> }).value)
+    const added = harness.state.addItemOnNewTrack.mock.calls[0]?.[0]
+
+    expect(result.ok).toBe(true)
+    expect(added).toMatchObject({
+      type: 'html',
+      html: '<div class="title">Luna</div>',
+      renderMode: 'animated',
+      sourceRevision: 1,
+      viewport: { width: 1920, height: 1080, deviceScaleFactor: 1 },
+      from: 60,
+      durationInFrames: 120,
+      transform: { width: 1920, height: 1080 },
+    })
+    expect(added?.assets).toEqual([])
+  })
+
+  it('rejects HTML layers that exceed the authored document limit', () => {
+    expect(getTool('timeline.add_html').validate({
+      html: 'x'.repeat(200_001),
+      css: '',
+      startSeconds: 0,
+      durationSeconds: 1,
+    })).toMatchObject({ ok: false })
+  })
+
   it('uses source-relative normalized values for crop keyframes', async () => {
     harness.state.saveTimeline.mockResolvedValue(undefined)
 

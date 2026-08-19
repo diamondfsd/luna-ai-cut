@@ -44,7 +44,7 @@ assert.match(rendered[0].text, /media-1/)
 
 const loadedSkills = await loadBuiltInSkills()
 assert.deepEqual(loadedSkills.map(skill => skill.name), BUILT_IN_SKILL_NAMES)
-assert.equal(BUILT_IN_SKILL_NAMES.length, 22)
+assert.equal(BUILT_IN_SKILL_NAMES.length, 25)
 assert.ok(loadedSkills.every(skill => skill.source === 'bundled'))
 assert.ok(loadedSkills.every(skill => skill.provider === 'luna-freecut-built-in'))
 const master = loadedSkills.find(skill => skill.name === 'luna-editing-master')
@@ -55,6 +55,9 @@ assert.match(master.content, /剪辑资料来源与使用边界/)
 assert.match(master.content, /edit\.run_script/)
 assert.match(master.content, /luna\.media\.list/)
 assert.doesNotMatch(master.content, /调用 `media\.list`/)
+assert.ok(loadedSkills.some(skill => skill.name === 'luna-style-talking-head-short'))
+assert.ok(loadedSkills.some(skill => skill.name === 'luna-technique-editing-playbook'))
+assert.ok(loadedSkills.some(skill => skill.name === 'luna-workflow-short-form-production'))
 
 const registeredSkills = []
 const registeredNames = await registerBuiltInSkills({

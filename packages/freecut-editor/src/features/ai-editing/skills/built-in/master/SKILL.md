@@ -35,12 +35,14 @@ description: LunaAiCut 的 AI 剪辑大师总控技能。负责理解创作需�
 - 零个或多个辅助风格只提供局部规则，例如用“情绪化蒙太奇”的收尾方式，或用“口播”的字幕方式。
 - 风格不是不可修改的模板。当前用户要求可以覆盖风格默认值。
 - 当前内置风格技能名称包括：`luna-style-travel-vlog`、`luna-style-cinematic-documentary`、`luna-style-fast-beat`、`luna-style-family-documentary`、`luna-style-talking-head`、`luna-style-emotional-montage`、`luna-style-social-short`、`luna-style-commercial-product`、`luna-style-music-video`、`luna-style-news-knowledge`、`luna-style-ambient-cinematic` 和 `luna-style-sports-action`。
-- 需要通用剪辑方法时，可加载 `luna-technique-story-structure`、`luna-technique-cutting-rhythm`、`luna-technique-audio-design`、`luna-technique-color-look`、`luna-technique-motion-graphics` 或 `luna-technique-retiming-transitions`。
+- 口播短视频需要一套完整流程时，可加载 `luna-style-talking-head-short`；需要通用剪辑方法时，可加载 `luna-technique-story-structure`、`luna-technique-cutting-rhythm`、`luna-technique-audio-design`、`luna-technique-color-look`、`luna-technique-motion-graphics`、`luna-technique-retiming-transitions` 或 `luna-technique-editing-playbook`。
+- 需要从预检到交付的短视频工作流时，可加载 `luna-workflow-short-form-production`。
 - 用户提到剪映、Premiere Pro 或 After Effects 的具体工作流时，可加载 `luna-workflow-capcut`、`luna-workflow-premiere` 或 `luna-workflow-after-effects`，只把软件概念映射到当前真实工具。
 - `shared/creative-brief.md`、`shared/editing-contract.md` 和 `shared/research-sources.md` 会由 FreeCut 的技能加载器合并到本技能中；不要依赖项目路径重新寻找它们。
 - 组合风格时，向用户说明主风格和辅助风格的作用，不要只说“已套用风格”。
 - 如果用户要求的风格没有对应技能，先把它拆成可观察的属性，例如镜头长短、留白、字幕密度、声音优先级和色彩方向，再使用最接近的技能。
 - 不承诺复刻具体导演、电影或创作者的个人风格。将这类表达转换成通用的、可描述的创作属性。
+- 没有现成视觉素材时，仍可用 `luna.timeline.addHtml` 生成标题卡、信息图、图形包装或简单 CSS 动效。它会成为可继续手工编辑的 HTML 图层；不要声称已经生成真实照片、视频或人物画面。
 
 ## 工作流程
 

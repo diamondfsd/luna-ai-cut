@@ -5,6 +5,7 @@ import { runEditScript, SCRIPT_API } from './deepseek-harness-script-runtime.mjs
 assert.equal('source' in SCRIPT_API, false)
 assert.deepEqual(Object.keys(SCRIPT_API.media), ['list', 'read', 'analyze', 'getAnalysisTask', 'searchTranscript'])
 assert.deepEqual(Object.keys(SCRIPT_API.audio), ['startSpeech', 'startMusic', 'getTask'])
+assert.equal(SCRIPT_API.timeline.addHtml, 'timeline.add_html')
 
 const requests = []
 let audioPolls = 0
@@ -53,15 +54,22 @@ try {
           const created = await luna.timeline.addMediaBatch({
             items: selected.map((mediaId, index) => ({ mediaId, startSeconds: index * 3, durationSeconds: 3 })),
           })
-          return { selected, created: created.data.createdItemIds }
+          const html = await luna.timeline.addHtml({
+            html: '<div class="title">No source</div>',
+            css: '.title { opacity: calc(0.5 + var(--luna-time)); }',
+            startSeconds: 0,
+            durationSeconds: 3,
+            renderMode: 'animated',
+          })
+          return { selected, created: created.data.createdItemIds, html: html.data.createdItemIds }
         }
       `,
     },
   )
 
   assert.equal(result.ok, true)
-  assert.deepEqual(result.data.result, { selected: ['media-1'], created: ['item-1'] })
-  assert.deepEqual(requests.map((request) => request.name), ['media.list', 'timeline.add_media_batch'])
+  assert.deepEqual(result.data.result, { selected: ['media-1'], created: ['item-1'], html: ['item-1'] })
+  assert.deepEqual(requests.map((request) => request.name), ['media.list', 'timeline.add_media_batch', 'timeline.add_html'])
   assert.ok(requests.every((request) => request.projectId === 'project-1'))
 
   const audioResult = await runEditScript(
@@ -93,7 +101,7 @@ try {
     mediaId: 'music-1',
     added: ['item-1'],
   })
-  assert.deepEqual(requests.slice(2).map((request) => request.name), [
+  assert.deepEqual(requests.slice(3).map((request) => request.name), [
     'audio.start_music',
     'audio.get_task',
     'audio.get_task',
