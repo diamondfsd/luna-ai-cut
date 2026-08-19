@@ -67,13 +67,11 @@ describe('getEmptyTrackIdsForRemoval', () => {
       makeTrack({ id: 'v1', name: 'V1', kind: 'video', order: 0 }),
       makeTrack({ id: 'v2', name: 'V2', kind: 'video', order: 1 }),
       makeTrack({ id: 'a1', name: 'A1', kind: 'audio', order: 2 }),
-      makeTrack({ id: 's1', name: 'S1', kind: 'subtitle', order: -1 }),
     ]
 
     expect(canRemoveTrack(tracks, 'v1')).toBe(true)
     expect(canRemoveTrack(tracks, 'a1')).toBe(false)
-    expect(canRemoveTrack(tracks, 's1')).toBe(true)
-    expect(getRemovableTrackIds(tracks, ['v1', 'v2', 'a1', 's1'])).toEqual(['v2', 's1'])
+    expect(getRemovableTrackIds(tracks, ['v1', 'v2', 'a1'])).toEqual(['v2'])
   })
 
   it('rejects store writes that remove a required track kind', () => {

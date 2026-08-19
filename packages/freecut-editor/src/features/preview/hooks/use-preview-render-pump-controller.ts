@@ -69,6 +69,7 @@ import {
   collectVisibleTrackVideoSourceTimesBySrc,
   getVideoItemSourceTimeSeconds,
   resolveActivePreviewLookaheadTimestamps,
+  resolvePreviewPreseekSource,
   resolvePausedVariableSpeedPrewarmPlan,
   shouldRunJumpPreseek,
 } from '../utils/render-pump-preseek'
@@ -99,6 +100,7 @@ import {
   type CommittedPreviewSnapshotState,
 } from '../utils/preview-display-canvas'
 import type { TransitionPreviewSessionTrace } from './use-preview-transition-session-controller'
+import { resolveTransitionDomPlaybackState } from '../utils/transition-dom-playback'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { isPreviewTraceEnabled, recordPumpTrace } from '@freecut/shared/logging/preview-trace'
 import {
@@ -110,7 +112,10 @@ import {
   recordPreviewScrubRenderStarted,
   recordPreviewScrubRequest,
 } from '@freecut/shared/logging/preview-scrub-performance'
-import type { CompositionRendererInstance } from '@freecut/features/preview/deps/export'
+import {
+  resolveAATransitionRamps,
+  type CompositionRendererInstance,
+} from '@freecut/features/preview/deps/export'
 
 const logger = createLogger('VideoPreview')
 
@@ -187,6 +192,7 @@ interface UsePreviewRenderPumpParams {
   playerRef: RefObject<PlayerRef | null>
   fps: number
   forceFastScrubOverlay: boolean
+  useProxy: boolean
   combinedTracks: TimelineTrack[]
   fastScrubBoundaryFrames: number[]
   fastScrubBoundarySources: FastScrubBoundarySource[]
@@ -270,6 +276,7 @@ export function usePreviewRenderPump({
   playerRef,
   fps,
   forceFastScrubOverlay,
+  useProxy,
   combinedTracks,
   fastScrubBoundaryFrames,
   fastScrubBoundarySources,
@@ -593,6 +600,26 @@ export function usePreviewRenderPump({
           clearTimeout(transitionPrepareTimeoutRef.current)
           transitionPrepareTimeoutRef.current = null
         }
+        return
+      }
+      const playbackState = usePlaybackStore.getState()
+      const transitionWindow = getTransitionWindowByStartFrame(frame)
+      const aaRamps = transitionWindow
+        ? resolveAATransitionRamps(
+            transitionWindow.leftClip,
+            transitionWindow.rightClip,
+            {
+              transitionStart: transitionWindow.startFrame,
+              transitionEnd: transitionWindow.endFrame,
+            },
+            fps,
+          )
+        : null
+      if (aaRamps && playbackState.previewFrame === null && playbackState.currentFrame < frame) {
+        // Continuous-split A-A transitions use synchronized DOM video lanes.
+        // Rendering a MediaBunny runway before entry blocks the display pump
+        // without producing frames the live transition will consume.
+        deferredPlaybackTransitionPrepareFrameRef.current = null
         return
       }
       deferredPlaybackTransitionPrepareFrameRef.current = frame
@@ -1516,7 +1543,12 @@ export function usePreviewRenderPump({
     const resolvePreseekItemSrc = (item: VideoItem) => {
       const proxyUrl = item.mediaId ? resolveProxyUrl(item.mediaId) : null
       const liveUrl = item.mediaId ? blobUrlManager.get(item.mediaId) : null
-      return proxyUrl ?? liveUrl ?? (item.src || null)
+      return resolvePreviewPreseekSource({
+        useProxy,
+        proxySource: proxyUrl,
+        liveSource: liveUrl,
+        itemSource: item.src,
+      })
     }
 
     function scheduleReversePlaybackPreseek(targetFrame: number) {
@@ -1985,7 +2017,7 @@ export function usePreviewRenderPump({
     }
 
     const handleActivePlaybackTransitionMaintenance = (state: PlaybackStoreSnapshot) => {
-      if (!state.isPlaying || !forceFastScrubOverlay) {
+      if (!state.isPlaying) {
         return
       }
 
@@ -2017,9 +2049,26 @@ export function usePreviewRenderPump({
           const el = transitionSessionPinnedElementsRef.current.get(clip.id)
           if (!el || el.dataset.transitionHold !== '1') continue
           const clipSpeed = clip.speed ?? 1
-          const mediaPlaybackRate = getBrowserMediaPlaybackRate(clipSpeed, state.playbackRate)
-          const targetTime = getVideoItemSourceTimeSeconds(clip, state.currentFrame, fps)
+          const transitionState = resolveTransitionDomPlaybackState({
+            window: sessionWindow,
+            clip,
+            frame: state.currentFrame,
+            timelineFps: fps,
+            transportRate: state.playbackRate,
+          })
+          const mediaPlaybackRate =
+            transitionState?.playbackRate ?? getBrowserMediaPlaybackRate(clipSpeed, state.playbackRate)
+          const targetTime =
+            transitionState?.sourceTime ?? getVideoItemSourceTimeSeconds(clip, state.currentFrame, fps)
           if (targetTime === null) continue
+          if (transitionState) {
+            delete el.dataset.transitionPrearm
+          }
+          if (transitionState?.hasActiveSourceRamp) {
+            el.dataset.transitionSourceRamp = '1'
+          } else {
+            delete el.dataset.transitionSourceRamp
+          }
           if (state.playbackRate < 0) {
             el.pause()
             el.playbackRate = 1
@@ -2071,6 +2120,12 @@ export function usePreviewRenderPump({
               Math.min(mediaPlaybackRate + maxAdj, mediaPlaybackRate + correction),
             )
           }
+          if (el.paused && el.readyState >= 2) {
+            el.playbackRate = mediaPlaybackRate
+            el.play().catch(() => {
+              /* best effort */
+            })
+          }
         }
       } else if (transitionSessionStallCountRef.current.size > 0) {
         transitionSessionStallCountRef.current.clear()
@@ -2088,22 +2143,33 @@ export function usePreviewRenderPump({
         if (lastPlayingPrearmTargetRef.current !== prearmStartFrame) {
           lastPlayingPrearmTargetRef.current = prearmStartFrame
           if (transitionWindow) {
-            const renderer = scrubRendererRef.current
-            if (renderer && 'prewarmItems' in renderer) {
-              transitionPrewarmPromiseRef.current = renderer.prewarmItems?.(
-                [transitionWindow.leftClip.id, transitionWindow.rightClip.id],
-                transitionWindow.startFrame,
+            const aaRamps = resolveAATransitionRamps(
+              transitionWindow.leftClip,
+              transitionWindow.rightClip,
+              {
+                transitionStart: transitionWindow.startFrame,
+                transitionEnd: transitionWindow.endFrame,
+              },
+              fps,
+            )
+            if (!aaRamps) {
+              const renderer = scrubRendererRef.current
+              if (renderer && 'prewarmItems' in renderer) {
+                transitionPrewarmPromiseRef.current = renderer.prewarmItems?.(
+                  [transitionWindow.leftClip.id, transitionWindow.rightClip.id],
+                  transitionWindow.startFrame,
+                )
+              }
+              runBatchPreseek(
+                collectClipVideoSourceTimesBySrcForFrameRange(
+                  [transitionWindow.leftClip, transitionWindow.rightClip],
+                  transitionWindow.startFrame,
+                  Math.min(8, transitionWindow.endFrame - transitionWindow.startFrame),
+                  fps,
+                  { requireExplicitSourceFps: true },
+                ),
               )
             }
-            runBatchPreseek(
-              collectClipVideoSourceTimesBySrcForFrameRange(
-                [transitionWindow.leftClip, transitionWindow.rightClip],
-                transitionWindow.startFrame,
-                Math.min(8, transitionWindow.endFrame - transitionWindow.startFrame),
-                fps,
-                { requireExplicitSourceFps: true },
-              ),
-            )
           }
           pushTransitionTrace('playing_prearm', {
             targetFrame: prearmStartFrame,

@@ -15,7 +15,6 @@
 import { useEditorStore } from '@freecut/shared/state/editor'
 import {
   COLLAPSED_TRACK_HEIGHT,
-  SUBTITLE_TRACK_HEIGHT,
   TRACK_SIZE_PRESET_HEIGHTS,
 } from '../constants'
 import { clampTrackHeight } from './track-resize'
@@ -71,9 +70,8 @@ export function getPresetTrackHeight(): number {
 
 export function resolveTrackHeight(
   trackId: string,
-  trackKind?: 'video' | 'audio' | 'subtitle' | null,
+  _trackKind?: 'video' | 'audio' | null,
 ): number {
-  if (trackKind === 'subtitle') return SUBTITLE_TRACK_HEIGHT
   if (useEditorStore.getState().trackPreviewCollapsed) return COLLAPSED_TRACK_HEIGHT
   return overrides.get(trackId) ?? getPresetTrackHeight()
 }

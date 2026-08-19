@@ -438,7 +438,7 @@ export type TimelineItem =
 export interface TimelineTrack {
   id: string
   name: string
-  kind?: 'video' | 'audio' | 'subtitle'
+  kind?: 'video' | 'audio'
   height: number
   locked: boolean
   syncLock?: boolean // Defaults to true - controls whether ripple edits propagate to this track

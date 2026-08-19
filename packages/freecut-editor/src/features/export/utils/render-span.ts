@@ -1,4 +1,4 @@
-import type { CompositionItem, TimelineItem } from '@freecut/types/timeline'
+import type { CompositionItem, TimelineItem, VideoItem } from '@freecut/types/timeline'
 import type { ActiveTransition } from './canvas-transitions'
 import { timelineToSourceFrames } from '@freecut/features/export/deps/timeline-frame'
 
@@ -21,7 +21,6 @@ export interface SourceTimeRamp {
   /** Timeline frame where the ramp ends (inclusive). */
   rampEnd: number
 }
-
 export interface RenderTimelineSpan {
   from: number
   durationInFrames: number
@@ -248,4 +247,44 @@ export function getSourceFrameRampOffset(ramp: SourceTimeRamp, frame: number): n
  */
 export function isFrameInsideSourceTimeRamp(ramp: SourceTimeRamp, frame: number): boolean {
   return frame >= ramp.rampStart && frame <= ramp.rampEnd
+}
+
+/**
+ * Resolve the exact source time for a video rendered through an explicit
+ * timeline span. Preview DOM-video synchronization uses the same helper as
+ * the canvas renderer so transition ramps cannot drift between the two paths.
+ */
+export function resolveVideoRenderSourceTimeSeconds(
+  item: VideoItem,
+  renderSpan: RenderTimelineSpan,
+  frame: number,
+  fps: number,
+  sourceFrameOffset = 0,
+): number {
+  const localFrame = frame - renderSpan.from
+  const localTime = localFrame / fps
+  const sourceStart = getRenderTimelineSourceStart(item, renderSpan)
+  const sourceFps = item.sourceFps ?? fps
+  const speed = item.speed ?? 1
+  const sourceFramesNeeded = (item.durationInFrames * speed * sourceFps) / fps
+  const reverseSourceEnd = (item.sourceEnd ?? sourceStart + sourceFramesNeeded) - sourceFrameOffset
+  const adjustedSourceStart = sourceStart + sourceFrameOffset
+  const rampOffsetSourceFrames =
+    renderSpan.sourceTimeRamp && !item.isReversed
+      ? getSourceFrameRampOffset(renderSpan.sourceTimeRamp, frame)
+      : 0
+  const unclampedSourceTime = item.isReversed
+    ? (reverseSourceEnd - localFrame * speed * (sourceFps / fps) - 1) / sourceFps
+    : adjustedSourceStart / sourceFps + localTime * speed + rampOffsetSourceFrames / sourceFps
+  const clampedToStart = Math.max(0, unclampedSourceTime)
+  const rawSourceTime =
+    item.sourceDuration === undefined ||
+    !Number.isFinite(item.sourceDuration) ||
+    item.sourceDuration <= 0
+      ? clampedToStart
+      : Math.min(clampedToStart, (Math.max(0, item.sourceDuration - 1) + 1e-4) / sourceFps)
+  const snappedSourceFrame = Math.round(rawSourceTime * sourceFps)
+  return Math.abs(rawSourceTime * sourceFps - snappedSourceFrame) < 1e-6
+    ? (snappedSourceFrame + 1e-4) / sourceFps
+    : rawSourceTime
 }

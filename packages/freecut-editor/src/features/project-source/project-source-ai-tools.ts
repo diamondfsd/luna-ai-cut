@@ -956,7 +956,7 @@ const timelineSetAudio = tool({
 
 const timelineAddText = tool({
   name: 'timeline.add_text',
-  description: '在时间轴顶部新增一条文字图层。时间单位是秒；优先放入按轨道顺序最近的空闲字幕轨道，所有字幕轨道都冲突或不存在时才创建新的字幕轨道。',
+  description: '在时间轴顶部新增一条文字图层。时间单位是秒；优先放入按轨道顺序最近的空闲视频轨道，所有视频轨道都冲突或不存在时才创建新的轨道。',
   inputSchema: schema({
     text: { type: 'string', minLength: 1, maxLength: 10000 },
     startSeconds: { type: 'number', minimum: 0 },
@@ -985,7 +985,7 @@ const timelineAddText = tool({
     const durationInFrames = Math.max(1, secondsToFrame(args.durationSeconds, state.fps))
     const to = from + durationInFrames
     const track = state.tracks
-      .filter((candidate) => !candidate.isGroup && !candidate.locked && getTrackKind(candidate) === 'subtitle')
+      .filter((candidate) => !candidate.isGroup && !candidate.locked && getTrackKind(candidate) === 'video')
       .toSorted((left, right) => left.order - right.order)
       .find((candidate) => !state.items.some((item) =>
         item.trackId === candidate.id &&
@@ -996,7 +996,7 @@ const timelineAddText = tool({
       ? state.tracks
       : (() => {
           const minOrder = state.tracks.reduce((lowest, candidate) => Math.min(lowest, candidate.order), 0)
-          const newTrack = createClassicTrack({ tracks: state.tracks, kind: 'subtitle', order: minOrder - 1 })
+          const newTrack = createClassicTrack({ tracks: state.tracks, kind: 'video', order: minOrder - 1 })
           return [...state.tracks, newTrack]
         })()
     const targetTrack = track ?? nextTracks[nextTracks.length - 1]!

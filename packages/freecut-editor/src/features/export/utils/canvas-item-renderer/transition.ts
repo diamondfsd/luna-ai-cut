@@ -20,6 +20,7 @@ import {
 } from '../canvas-effects'
 import { renderTransition, type ActiveTransition } from '../canvas-transitions'
 import { resolveAATransitionRamps, resolveTransitionRenderTimelineSpan } from '../render-span'
+import { scalePartialTransformForCanvas } from '../canvas-render-scale'
 import { getAnimatedTransform } from '../canvas-keyframes'
 import type {
   ItemRenderContext,
@@ -522,10 +523,14 @@ export function resolveTransitionParticipantRenderState<TItem extends TimelineIt
   if (rctx.renderMode === 'preview') {
     const previewOverride = rctx.getPreviewTransformOverride?.(currentClip.id)
     if (previewOverride) {
+      const scaledPreviewOverride = scalePartialTransformForCanvas(
+        previewOverride,
+        rctx.canvasSettings,
+      )
       transform = {
         ...transform,
-        ...previewOverride,
-        cornerRadius: previewOverride.cornerRadius ?? transform.cornerRadius,
+        ...scaledPreviewOverride,
+        cornerRadius: scaledPreviewOverride.cornerRadius ?? transform.cornerRadius,
       }
     }
   }

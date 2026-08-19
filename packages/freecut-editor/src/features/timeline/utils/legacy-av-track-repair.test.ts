@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vite-plus/test'
 import type { ItemKeyframes } from '@freecut/types/keyframe'
-import type { AdjustmentItem, AudioItem, TextItem, VideoItem } from '@freecut/types/timeline'
+import type { AdjustmentItem, AudioItem, VideoItem } from '@freecut/types/timeline'
 import {
   makeTimelineAudioItem,
   makeTimelineTrack as makeTrack,
@@ -29,39 +29,6 @@ function makeAudioItem(overrides: Partial<AudioItem> = {}): AudioItem {
 }
 
 describe('repairLegacyAvTrackLayout', () => {
-  it('does not reinterpret subtitle tracks as video tracks', () => {
-    const subtitle = {
-      id: 'subtitle-1',
-      type: 'text',
-      textRole: 'caption',
-      trackId: 'track-s1',
-      from: 0,
-      durationInFrames: 30,
-      label: 'Transcript',
-      text: 'Transcript',
-      color: '#fff',
-    } satisfies TextItem
-    const tracks = [
-      makeTrack({ id: 'track-s1', name: 'S1', kind: 'subtitle', order: -1 }),
-      makeTrack({ id: 'track-v1', name: 'V1', kind: 'video', order: 0 }),
-      makeTrack({ id: 'track-a1', name: 'A1', kind: 'audio', order: 1 }),
-    ]
-
-    expect(needsLegacyAvTrackLayoutRepair({ tracks, items: [subtitle] })).toBe(false)
-    const result = repairLegacyAvTrackLayout({
-      tracks,
-      items: [subtitle],
-      keyframes: [],
-      fps: 30,
-      videoHasAudioByMediaId: {},
-    })
-    expect(result.tracks.find((track) => track.id === 'track-s1')).toMatchObject({
-      name: 'S1',
-      kind: 'subtitle',
-    })
-    expect(result.items[0]).toMatchObject({ trackId: 'track-s1', type: 'text' })
-  })
-
   it('splits legacy video audio onto paired tracks and preserves standalone audio tracks', () => {
     const result = repairLegacyAvTrackLayout({
       tracks: [

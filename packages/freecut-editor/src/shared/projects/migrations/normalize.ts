@@ -32,10 +32,7 @@ function normalizeTrack(
   index: number,
 ): ProjectTimeline['tracks'][number] {
   const normalizedVolume = track.volume
-  const normalizedKind =
-    track.kind === 'video' || track.kind === 'audio' || track.kind === 'subtitle'
-      ? track.kind
-      : undefined
+  const normalizedKind = track.kind === 'video' || track.kind === 'audio' ? track.kind : undefined
   return {
     ...track,
     // Track height is a local view preference, persisted to localStorage and
@@ -54,30 +51,6 @@ function normalizeTrack(
     // Ensure order is set (fallback to index if missing)
     order: track.order ?? index,
   }
-}
-
-function separateSubtitleTracks(
-  tracks: ProjectTimeline['tracks'],
-  items: ProjectTimeline['items'],
-): { tracks: ProjectTimeline['tracks']; items: ProjectTimeline['items'] } {
-  const itemsByTrackId = new Map<string, ProjectTimeline['items']>()
-  for (const item of items) {
-    const trackItems = itemsByTrackId.get(item.trackId)
-    if (trackItems) trackItems.push(item)
-    else itemsByTrackId.set(item.trackId, [item])
-  }
-
-  const normalizedTracks = tracks.map((track) => {
-    const trackItems = itemsByTrackId.get(track.id) ?? []
-    if (trackItems.length > 0 && trackItems.every((item) => item.type === 'text')) {
-      return { ...track, kind: 'subtitle' as const }
-    }
-    if (track.kind !== 'subtitle' || trackItems.length === 0) return track
-    const kind = trackItems.every((item) => item.type === 'audio') ? 'audio' : 'video'
-    return { ...track, kind } as ProjectTimeline['tracks'][number]
-  })
-
-  return { tracks: normalizedTracks, items: items.map((item) => ({ ...item })) }
 }
 
 /**
@@ -216,8 +189,7 @@ function normalizeTimeline(
   )
 
   const normalizedItems = timeline.items.map((item) => normalizeItem(item, warnings))
-  const separated = separateSubtitleTracks(normalizedTracks, normalizedItems)
-  const alignedItems = repairUniformLinkedOffsets(separated.items)
+  const alignedItems = repairUniformLinkedOffsets(normalizedItems)
   const normalizedTransitions = timeline.transitions?.map(normalizeTransition)
 
   // Drop tab ids that don't resolve to a composition (and any duplicates), so
@@ -235,7 +207,7 @@ function normalizeTimeline(
     ...timeline,
     topLevelSequenceIds: normalizedTopLevelSequenceIds,
     // Normalize tracks
-    tracks: separated.tracks,
+    tracks: normalizedTracks,
     busAudioEq: normalizeAudioEqSettings(timeline.busAudioEq),
     // Normalize items and repair overlaps
     items: repairOverlappingItems(alignedItems, normalizedTransitions, warnings),
@@ -248,12 +220,11 @@ function normalizeTimeline(
       const compTracks = flattenTrackGroups(
         comp.tracks.map((track, index) => normalizeTrack(track, index)),
       )
-      const separatedComposition = separateSubtitleTracks(compTracks, compItems)
-      const alignedCompositionItems = repairUniformLinkedOffsets(separatedComposition.items)
+      const alignedCompositionItems = repairUniformLinkedOffsets(compItems)
       return {
         ...comp,
         editorKind: comp.editorKind === 'composite-2d' ? 'composite-2d' : 'sequence',
-        tracks: separatedComposition.tracks,
+        tracks: compTracks,
         busAudioEq: normalizeAudioEqSettings(comp.busAudioEq),
         items: repairOverlappingItems(alignedCompositionItems, compTransitions, warnings, comp.id),
         transitions: compTransitions,

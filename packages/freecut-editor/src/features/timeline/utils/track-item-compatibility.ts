@@ -3,7 +3,6 @@ import { getTrackKind, type TrackKind } from './classic-tracks'
 
 function getRequiredTrackKindForItemType(itemType: TimelineItem['type']): TrackKind {
   if (itemType === 'audio') return 'audio'
-  if (itemType === 'text') return 'subtitle'
   if (itemType === 'html') return 'video'
   return 'video'
 }
@@ -18,23 +17,16 @@ export function getEffectiveTrackKindForItem(
   }
 
   let hasAudioItems = false
-  let hasSubtitleItems = false
   for (const item of items) {
     if (item.trackId !== track.id) continue
     if (item.type === 'audio') {
       hasAudioItems = true
       continue
     }
-    if (item.type === 'text') {
-      hasSubtitleItems = true
-      continue
-    }
-
     return 'video'
   }
 
   if (hasAudioItems) return 'audio'
-  if (hasSubtitleItems) return 'subtitle'
   return null
 }
 

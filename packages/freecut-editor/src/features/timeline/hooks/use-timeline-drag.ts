@@ -331,7 +331,7 @@ function buildTrackVisualTopMap(
     id: string
     order: number
     height: number
-    kind: 'video' | 'audio' | 'subtitle' | null
+    kind: 'video' | 'audio' | null
   }>,
   domTopByTrackId: ReadonlyMap<string, number>,
 ): Map<string, number> {

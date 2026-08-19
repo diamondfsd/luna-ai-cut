@@ -48,6 +48,10 @@ export type { ResolvedTransform }
 export interface CanvasSettings {
   width: number
   height: number
+  /** Authored composition width when preview pixels are rendered at a lower resolution. */
+  logicalWidth?: number
+  /** Authored composition height when preview pixels are rendered at a lower resolution. */
+  logicalHeight?: number
   fps: number
   /** Same-composition sources for deterministic scalar property expressions. */
   getExpressionItem?: (itemId: string) => TimelineItem | undefined
@@ -71,7 +75,7 @@ export interface ItemTransform {
   cornerRadius: number
 }
 
-export type RenderImageSource = HTMLImageElement | ImageBitmap
+export type RenderImageSource = HTMLImageElement | HTMLVideoElement | ImageBitmap
 
 export interface WorkerLoadedImage {
   source: RenderImageSource
