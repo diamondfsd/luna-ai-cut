@@ -1063,7 +1063,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
 }
 
 /**
- * Load timeline from project in IndexedDB.
+ * Load timeline from the project's workspace file.
  * Single source of truth for all timeline loading (project open, refresh, etc.)
  *
  * This function:
@@ -1246,8 +1246,7 @@ export function loadTimeline(
     ? timelineLoadQueueTail.catch(() => undefined)
     : Promise.resolve()
 
-  let pendingLoad: Promise<void>
-  pendingLoad = queueStart
+  const pendingLoad = queueStart
     .then(() => loadTimelineOnce(projectId, options))
     .finally(() => {
       if (inFlightTimelineLoads.get(loadKey) === pendingLoad) {
