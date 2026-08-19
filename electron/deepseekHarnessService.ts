@@ -10,6 +10,7 @@ import { parse, stringify } from 'yaml'
 import { withDeepSeekHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
 import { deepSeekHarnessCapabilities } from './deepseekHarnessCapabilities'
+import { prepareHarnessSession } from './deepseekHarnessSession'
 import type {
   DeepSeekHarnessContext,
   DeepSeekHarnessToolRequest,
@@ -287,6 +288,20 @@ async function writePrivateDocument(filePath: string, value: unknown): Promise<v
   }
 }
 
+function freecutHarnessPluginSource(): string {
+  const candidates = [
+    path.join(appRoot(), 'integrations/deepseek-harness/plugin.mjs'),
+    ...(typeof process.resourcesPath === 'string'
+      ? [path.join(process.resourcesPath, 'integrations/deepseek-harness/plugin.mjs')]
+      : []),
+  ]
+  const source = candidates.find((candidate) => existsSync(candidate))
+  if (!source) {
+    throw new Error('Luna FreeCut SDK Harness 插件资源不存在。')
+  }
+  return source
+}
+
 async function readDocument(filePath: string): Promise<Record<string, unknown>> {
   try {
     const value: unknown = parse(await fs.readFile(filePath, 'utf8'))
@@ -394,7 +409,13 @@ async function stopRuntime(): Promise<void> {
   await Promise.all([...children].map((child) => terminateChild(child)))
 }
 
-async function startRuntime(context: DeepSeekHarnessContext, generation: number): Promise<string> {
+type BoundHarnessContext = DeepSeekHarnessContext & { projectId: string }
+
+function requireProjectContext(context: DeepSeekHarnessContext): asserts context is BoundHarnessContext {
+  if (!context.projectId) throw new Error('请先打开一个 FreeCut 剪辑项目。')
+}
+
+async function startRuntime(context: BoundHarnessContext, generation: number): Promise<string> {
   const endpoint = await ensureToolServer()
   const token = randomUUID()
   const baseDir = currentBaseDir()
@@ -402,6 +423,10 @@ async function startRuntime(context: DeepSeekHarnessContext, generation: number)
   const sessionRoot = harnessSessionRootForBaseDir(baseDir)
   await fs.mkdir(sessionRoot, { recursive: true, mode: 0o700 })
   await prepareHarnessHome(home)
+  const sessionPatchPath = await prepareHarnessSession(sessionRoot, freecutHarnessPluginSource(), {
+    projectId: context.projectId,
+    projectName: context.metadata?.projectName,
+  })
   if (home !== dshHome() || generation !== runtimeGeneration) throw new Error('DeepSeek Harness Web 启动已取消。')
 
   const nodeCommand = harnessNodeCommand()
@@ -409,6 +434,8 @@ async function startRuntime(context: DeepSeekHarnessContext, generation: number)
     ...nodeCommand.args,
     cliEntry(),
     'web',
+    '--patch',
+    sessionPatchPath,
     '--host',
     '127.0.0.1',
     '--port',
@@ -424,7 +451,13 @@ async function startRuntime(context: DeepSeekHarnessContext, generation: number)
       LUNA_ASSISTANT_CAPABILITY_ENDPOINT: endpoint,
       LUNA_ASSISTANT_CAPABILITY_TOKEN: token,
       LUNA_ASSISTANT_SESSION_ID: context.sessionId,
+      LUNA_ASSISTANT_CWD: sessionRoot,
+      LUNA_SDK_ENDPOINT: endpoint,
+      LUNA_SDK_TOKEN: token,
+      LUNA_SDK_SESSION_ID: context.sessionId,
+      LUNA_SDK_CWD: sessionRoot,
       ...(context.projectId ? { LUNA_ASSISTANT_PROJECT_ID: context.projectId } : {}),
+      ...(context.projectId ? { LUNA_SDK_PROJECT_ID: context.projectId } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -487,6 +520,7 @@ export function registerDeepSeekHarnessCapability(
 }
 
 export async function getDeepSeekHarnessWebUrl(context: DeepSeekHarnessContext): Promise<string> {
+  requireProjectContext(context)
   const home = dshHome()
   if (runtime?.home === home
     && runtime.process.exitCode === null

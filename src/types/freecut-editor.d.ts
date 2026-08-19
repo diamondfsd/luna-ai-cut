@@ -92,6 +92,11 @@ declare module '@freecut/embedded' {
     revealFile(filePath: string): Promise<void>
   }
 
+  export interface EmbeddedProjectContext {
+    id: string
+    name: string
+  }
+
   export interface FreeCutEditorProps {
     language?: string
     onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
@@ -110,6 +115,7 @@ declare module '@freecut/embedded' {
     ) => Promise<EmbeddedHtmlRenderResult>
     exportFiles?: EmbeddedExportBridge
     lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
+    onProjectContextChange?: (project: EmbeddedProjectContext | null) => void
   }
 
   export const FreeCutEditor: ComponentType<FreeCutEditorProps>

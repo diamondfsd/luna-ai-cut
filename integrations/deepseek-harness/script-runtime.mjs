@@ -74,6 +74,10 @@ export async function runEditScript(config, input) {
     const child = spawn(process.execPath, [fileURLToPath(import.meta.url), WORKER_FLAG, scriptPath], {
       cwd: resolvedConfig.cwd,
       env: {
+        // Keep the host runtime environment. The Harness may itself run from
+        // Electron with ELECTRON_RUN_AS_NODE=1; dropping it starts the worker
+        // as a GUI process and leaves edit.run_script waiting forever.
+        ...process.env,
         ...toLunaEnvironment(resolvedConfig),
       },
       stdio: ['ignore', 'pipe', 'pipe'],

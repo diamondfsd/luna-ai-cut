@@ -19,14 +19,6 @@ function App() {
     void preloadBorderLogoPaths()
   }, [])
 
-  useEffect(() => {
-    const removeOpenListener = window.luna.deepseekHarness.onOpenRequested((context) => {
-      setAssistantContext(context)
-      setAssistantOpen(true)
-    })
-    return removeOpenListener
-  }, [])
-
   return (
     <AppProvider>
       <DeviceConnectionProvider>
@@ -34,7 +26,10 @@ function App() {
           <div className={`app-layout${assistantOpen ? ' app-layout--assistant-open' : ''}`}>
             <div className="app-layout__main">
               <AppRoutes
-                onOpenAssistant={() => setAssistantOpen(true)}
+                onOpenAssistant={(context) => {
+                  setAssistantContext(context)
+                  setAssistantOpen(true)
+                }}
               />
             </div>
             {assistantOpen && (

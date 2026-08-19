@@ -384,6 +384,7 @@ export const LoadedEditor = memo(function LoadedEditor({
 }: EditorProps) {
   const { t } = useTranslation()
   const embeddedHost = useEmbeddedHost()
+  const onProjectContextChange = embeddedHost.onProjectContextChange
   const router = useRouter()
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
@@ -407,6 +408,11 @@ export const LoadedEditor = memo(function LoadedEditor({
 
   // Serialize saves so leaving during an in-flight auto-save cannot drop newer edits.
   const savePromiseRef = useRef<Promise<void> | null>(null)
+
+  useEffect(() => {
+    onProjectContextChange?.({ id: projectId, name: project.name })
+    return () => onProjectContextChange?.(null)
+  }, [onProjectContextChange, project.name, projectId])
 
   useEffect(() => {
     hasRefreshedMigrationStateRef.current = false

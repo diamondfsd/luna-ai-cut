@@ -9,6 +9,9 @@ assert.equal(SCRIPT_API.timeline.addHtml, 'timeline.add_html')
 
 const requests = []
 let audioPolls = 0
+const workerEnvironmentKey = 'LUNA_TEST_SCRIPT_RUNTIME_ENV'
+const previousWorkerEnvironment = process.env[workerEnvironmentKey]
+process.env[workerEnvironmentKey] = 'preserved'
 const server = createServer(async (request, response) => {
   const chunks = []
   for await (const chunk of request) chunks.push(chunk)
@@ -16,6 +19,17 @@ const server = createServer(async (request, response) => {
   requests.push(body)
   const result = body.name === 'media.list'
     ? { ok: true, message: '素材已读取。', data: { items: [{ id: 'media-1', mediaType: 'video' }] } }
+    : body.name === 'project.inspect'
+      ? {
+          kind: 'data',
+          revision: 'sha256:test',
+          data: {
+            projectId: 'project-1',
+            project: { id: 'project-1', name: '测试剪辑项目' },
+            timeline: { tracks: [], items: [], transitions: [], keyframes: [] },
+            counts: { tracks: 0, items: 0, transitions: 0, keyframes: 0 },
+          },
+        }
     : body.name === 'audio.start_music'
       ? { ok: true, message: '音乐任务已提交。', data: { taskId: 'audio-task-1', status: 'queued' } }
       : body.name === 'audio.get_task'
@@ -46,6 +60,7 @@ try {
     {
       code: `
         export default async function main(luna) {
+          const project = await luna.project.inspect()
           const media = await luna.media.list()
           const selected = []
           for (const item of media.data.items) {
@@ -61,15 +76,27 @@ try {
             durationSeconds: 3,
             renderMode: 'animated',
           })
-          return { selected, created: created.data.createdItemIds, html: html.data.createdItemIds }
+          return {
+            projectId: project.data.projectId,
+            workerEnvironment: process.env.LUNA_TEST_SCRIPT_RUNTIME_ENV,
+            selected,
+            created: created.data.createdItemIds,
+            html: html.data.createdItemIds,
+          }
         }
       `,
     },
   )
 
   assert.equal(result.ok, true)
-  assert.deepEqual(result.data.result, { selected: ['media-1'], created: ['item-1'], html: ['item-1'] })
-  assert.deepEqual(requests.map((request) => request.name), ['media.list', 'timeline.add_media_batch', 'timeline.add_html'])
+  assert.deepEqual(result.data.result, {
+    projectId: 'project-1',
+    workerEnvironment: 'preserved',
+    selected: ['media-1'],
+    created: ['item-1'],
+    html: ['item-1'],
+  })
+  assert.deepEqual(requests.map((request) => request.name), ['project.inspect', 'media.list', 'timeline.add_media_batch', 'timeline.add_html'])
   assert.ok(requests.every((request) => request.projectId === 'project-1'))
 
   const audioResult = await runEditScript(
@@ -101,7 +128,7 @@ try {
     mediaId: 'music-1',
     added: ['item-1'],
   })
-  assert.deepEqual(requests.slice(3).map((request) => request.name), [
+  assert.deepEqual(requests.slice(4).map((request) => request.name), [
     'audio.start_music',
     'audio.get_task',
     'audio.get_task',
@@ -109,6 +136,8 @@ try {
   ])
 } finally {
   await new Promise((resolve) => server.close(resolve))
+  if (previousWorkerEnvironment === undefined) delete process.env[workerEnvironmentKey]
+  else process.env[workerEnvironmentKey] = previousWorkerEnvironment
 }
 
 console.log('DeepSeek Harness editing script runtime passed.')

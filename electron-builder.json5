@@ -25,6 +25,11 @@
       "filter": ["**/*"]
     },
     {
+      "from": "integrations/deepseek-harness",
+      "to": "integrations/deepseek-harness",
+      "filter": ["**/*"]
+    },
+    {
       "from": "dist/deepseek-harness",
       "to": "deepseek-harness",
       "filter": ["**/*"]

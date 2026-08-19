@@ -76,6 +76,10 @@ The script may call the following Luna SDK methods. The adapter forwards each
 structured call to the host capability endpoint and returns the host result;
 the host and model own all business decisions.
 
+The host binds every SDK call to the FreeCut project currently open in the
+editor. Start by calling luna.project.inspect(); its result includes
+data.projectId and data.project. Do not invent or substitute a projectId.
+
 ${sdkMethodReference()}
 
 The script result is returned to the model. No adapter code classifies user

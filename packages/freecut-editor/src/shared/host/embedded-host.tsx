@@ -75,6 +75,11 @@ export interface EmbeddedExportBridge {
   revealFile(filePath: string): Promise<void>
 }
 
+export interface EmbeddedProjectContext {
+  id: string
+  name: string
+}
+
 export interface EmbeddedLunaEditorSdkBridge {
   onRequest: (callback: (request: {
     requestId: string
@@ -106,6 +111,7 @@ export interface EmbeddedHostBridge {
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
   lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
+  onProjectContextChange?: (project: EmbeddedProjectContext | null) => void
 }
 
 const EmbeddedHostContext = createContext<EmbeddedHostBridge>({})

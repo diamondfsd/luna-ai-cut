@@ -10,6 +10,7 @@ import {
   type EmbeddedMediaImportSource,
   type EmbeddedMediaSource,
   type EmbeddedNativeMediaFile,
+  type EmbeddedProjectContext,
   type EmbeddedTaskProgress,
   type EmbeddedTranscriptResult,
   type EmbeddedLunaEditorSdkBridge,
@@ -34,6 +35,7 @@ export interface FreeCutEditorProps {
   onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
   lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
+  onProjectContextChange?: (project: EmbeddedProjectContext | null) => void
 }
 
 export type { EmbeddedLunaEditorSdkBridge } from './shared/host/embedded-host'
@@ -50,6 +52,7 @@ export function FreeCutEditor({
   onRenderHtmlFrame,
   exportFiles,
   lunaEditorSdk,
+  onProjectContextChange,
 }: FreeCutEditorProps) {
   const [ready, setReady] = useState(false)
   const hostBridge = useMemo(
@@ -64,6 +67,7 @@ export function FreeCutEditor({
       renderHtmlFrame: onRenderHtmlFrame,
       exportFiles,
       lunaEditorSdk,
+      onProjectContextChange,
     }),
     [
       onRequestMediaImport,
@@ -76,6 +80,7 @@ export function FreeCutEditor({
       onRenderHtmlFrame,
       exportFiles,
       lunaEditorSdk,
+      onProjectContextChange,
     ],
   )
 

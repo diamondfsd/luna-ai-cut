@@ -538,6 +538,7 @@ export class FreeCutRuntime {
     const timeline = this.project.timeline
     const project = publicProject(this.project, includeTimeline)
     return {
+      projectId: this.project.id,
       project,
       timeline: includeTimeline ? project.timeline : undefined,
       counts: {

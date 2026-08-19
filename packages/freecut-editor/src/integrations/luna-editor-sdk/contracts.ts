@@ -19,6 +19,8 @@ export interface ProjectInspectQuery {
 }
 
 export interface ProjectInspection {
+  /** The project currently opened by the host editor. */
+  projectId: string
   project: Project
   timeline: Project['timeline']
   counts: {

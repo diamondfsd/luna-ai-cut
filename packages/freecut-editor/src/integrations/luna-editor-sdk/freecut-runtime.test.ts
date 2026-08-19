@@ -98,11 +98,13 @@ describe('FreeCutRuntime SDK adapter', () => {
       includeTimeline: false,
       includeMedia: true,
     }) as {
+      projectId: string
       project: Project
       timeline?: Project['timeline']
       media?: MediaMetadata[]
     }
 
+    expect(result.projectId).toBe('project-1')
     expect(result.timeline).toBeUndefined()
     expect(result.project.timeline).toBeUndefined()
     expect(result.project.rootFolderName).toBeUndefined()

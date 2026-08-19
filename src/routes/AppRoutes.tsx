@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 import { AppNav } from '../components/AppNav'
@@ -23,11 +23,16 @@ import { VideoEditorPage } from '../pages/VideoEditorPage'
 import { WebGpuColorGradeTestPage } from '../pages/WebGpuColorGradeTestPage'
 import { WebGpuCompositionTestPage } from '../pages/WebGpuCompositionTestPage'
 import { WebGpuDiagnosticsPage } from '../pages/WebGpuDiagnosticsPage'
-import type { CacheStats } from '../shared/types'
+import type { CacheStats, DeepSeekHarnessContext } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
 interface AppRoutesProps {
-  onOpenAssistant: () => void
+  onOpenAssistant: (context: DeepSeekHarnessContext) => void
+}
+
+interface EditorProjectContext {
+  id: string
+  name: string
 }
 
 export function AppRoutes({ onOpenAssistant }: AppRoutesProps) {
@@ -52,6 +57,34 @@ export function AppRoutes({ onOpenAssistant }: AppRoutesProps) {
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [pagesKey, setPagesKey] = useState(0)
   const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
+  const [editorProject, setEditorProject] = useState<EditorProjectContext | null>(null)
+
+  const contextForEditorProject = useCallback((baseContext?: DeepSeekHarnessContext): DeepSeekHarnessContext | undefined => {
+    if (!editorProject) return undefined
+    if (baseContext?.projectId && baseContext.projectId !== editorProject.id) return undefined
+    return {
+      sessionId: baseContext?.sessionId ?? crypto.randomUUID(),
+      feature: baseContext?.feature ?? 'freecut',
+      projectId: editorProject.id,
+      metadata: { ...baseContext?.metadata, projectName: editorProject.name },
+    }
+  }, [editorProject])
+
+  const handleOpenAssistant = useCallback(() => {
+    const context = contextForEditorProject()
+    if (context) onOpenAssistant(context)
+  }, [contextForEditorProject, onOpenAssistant])
+
+  useEffect(() => {
+    return window.luna.deepseekHarness.onOpenRequested((context) => {
+      const nextContext = contextForEditorProject(context)
+      if (nextContext) onOpenAssistant(nextContext)
+    })
+  }, [contextForEditorProject, onOpenAssistant])
+
+  const handleEditorProjectContextChange = useCallback((project: EditorProjectContext | null) => {
+    setEditorProject(project)
+  }, [])
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -130,7 +163,8 @@ export function AppRoutes({ onOpenAssistant }: AppRoutesProps) {
         sourceMode={sourceMode}
         activeDevice={activeDevice}
         onChangeConnection={disconnectDevice}
-        onOpenAssistant={onOpenAssistant}
+        onOpenAssistant={handleOpenAssistant}
+        assistantDisabled={!editorProject}
       />
       <UpdateBanner />
       <HotUpdateBanner />
@@ -179,7 +213,7 @@ export function AppRoutes({ onOpenAssistant }: AppRoutesProps) {
         </AppRoute>
 
         <AppRoute path="/video-editor" preserve={false}>
-          <VideoEditorPage />
+          <VideoEditorPage onProjectContextChange={handleEditorProjectContextChange} />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>

@@ -13,6 +13,10 @@ import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDi
 import { filePathToNativeMediaPreviewUrl } from '../lib/fileUtils'
 import './VideoEditorPage.css'
 
+interface VideoEditorPageProps {
+  onProjectContextChange: (project: { id: string; name: string } | null) => void
+}
+
 const FreeCutEditor = lazy(async () => {
   const module = await import('@freecut/embedded')
   return { default: module.FreeCutEditor }
@@ -64,7 +68,7 @@ function findImportedSourcePath(
   return [...sourcePaths.entries()].find(([key]) => key.startsWith(prefix))?.[1]
 }
 
-export function VideoEditorPage() {
+export function VideoEditorPage({ onProjectContextChange }: VideoEditorPageProps) {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const pendingImportRef = useRef<ImportMediaFiles | null>(null)
   const finishImportRequestRef = useRef<(() => void) | null>(null)
@@ -248,6 +252,7 @@ export function VideoEditorPage() {
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}
           lunaEditorSdk={lunaEditorSdk}
+          onProjectContextChange={onProjectContextChange}
         />
       </Suspense>
       <WorkspaceImportDialog

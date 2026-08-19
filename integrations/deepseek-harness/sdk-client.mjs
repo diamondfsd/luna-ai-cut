@@ -166,7 +166,7 @@ function editData(value) {
 
 function isOperationResult(value) {
   return value && typeof value === 'object' && !Array.isArray(value) &&
-    typeof value.operationId === 'string' && 'data' in value
+    'data' in value && (typeof value.operationId === 'string' || typeof value.kind === 'string')
 }
 
 function adaptLegacyResult(name, value) {
@@ -193,6 +193,7 @@ function adaptLegacyResult(name, value) {
     const timeline = data?.timeline ?? data?.project?.timeline
     return legacyEnvelope(name, {
       project: data?.project,
+      projectId: data?.projectId ?? data?.project?.id,
       tracks: timeline?.tracks ?? [],
       items: timeline?.items ?? [],
       transitions: timeline?.transitions ?? [],
