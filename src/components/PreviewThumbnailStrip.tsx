@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type WheelEvent } from 'react'
 
 import { LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
@@ -123,6 +123,17 @@ export function PreviewThumbnailStrip({
     }
   }
 
+  function handleWheel(event: WheelEvent<HTMLDivElement>): void {
+    const strip = stripRef.current
+    if (!strip || strip.scrollWidth <= strip.clientWidth) return
+
+    const delta = event.deltaX + event.deltaY
+    if (delta === 0) return
+
+    event.preventDefault()
+    strip.scrollLeft += delta
+  }
+
   // ── 键盘导航 ──
   const onChangeRef = useRef(onChange)
   useEffect(() => { onChangeRef.current = onChange })
@@ -168,7 +179,7 @@ export function PreviewThumbnailStrip({
   }, [currentIndex])
 
   return (
-    <div className="preview-thumbnails" ref={stripRef}>
+    <div className="preview-thumbnails" ref={stripRef} onWheel={handleWheel}>
       {files.map((filePath) => (
         <ThumbnailItem
           key={filePath}
