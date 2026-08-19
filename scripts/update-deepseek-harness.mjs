@@ -3,7 +3,6 @@ import { existsSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
-import { applyDeepSeekHarnessAdaptations } from './apply-deepseek-harness-adaptations.mjs'
 
 const repoRoot = resolve(import.meta.dirname, '..')
 const configPath = join(repoRoot, 'deepseek-harness.upstream.json')
@@ -329,7 +328,6 @@ async function main() {
     }
 
     runRescope(tempRoot, mode === 'check' ? 'apply' : mode)
-    await applyDeepSeekHarnessAdaptations(tempRoot)
     if (mode !== 'check') {
       runPnpm(['--dir', tempRoot, 'install', '--lockfile-only', '--ignore-scripts'], repoRoot, 'Harness lockfile update')
     }
