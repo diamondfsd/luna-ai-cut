@@ -58,7 +58,14 @@ test('真实工作台默认使用 WebGPU 预览图片和视频', async ({ lunaAp
   const project = lunaApp.page.locator('.workspace-project-open').filter({ hasText: 'WebGPU workspace E2E' })
   await expect(project).toBeVisible()
   await project.click()
-  await expect(lunaApp.page.getByRole('button', { name: '创意', exact: true })).toHaveCount(0)
+  await expect(lunaApp.page.getByRole('button', { name: '创意', exact: true })).toBeVisible()
+  await lunaApp.page.locator('.workspace-tool-rail button[aria-label="创意"]').click()
+  const creativePanel = lunaApp.page.locator('.workspace-creative-panel-list')
+  await expect(creativePanel).toBeVisible()
+  await expect(creativePanel.locator('.workspace-creative-panel-item')).toHaveCount(5)
+  for (const name of ['像素流光', '只有你的色彩', '像素拉伸', '色彩还原', 'Live 三拼']) {
+    await expect(creativePanel.getByRole('button', { name: new RegExp(name) })).toBeVisible()
+  }
   await lunaApp.page.locator('.workspace-tool-rail button[aria-label="水印"]').click()
   const watermarkSwitch = lunaApp.page.getByRole('switch', { name: '启用水印' })
   await expect(watermarkSwitch).toBeVisible()
