@@ -183,14 +183,6 @@ export function VideoEditorPage() {
     }
   }, [])
 
-  const handleGetDeepSeekHarnessWebUrl = useCallback((projectId: string) =>
-    window.luna.deepseekHarness.getWebUrl(projectId), [])
-  const handleDeepSeekHarnessWebState = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onWebState>[0]) =>
-    window.luna.deepseekHarness.onWebState(callback), [])
-  const handleDeepSeekHarnessToolRequest = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onToolRequest>[0]) =>
-    window.luna.deepseekHarness.onToolRequest(callback), [])
-  const handleDeepSeekHarnessToolCancel = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onToolCancel>[0]) =>
-    window.luna.deepseekHarness.onToolCancel(callback), [])
   const handleRenderHtmlFrame = useCallback(
     (request: Parameters<typeof window.lunaHtmlRenderer.render>[0]) =>
       window.lunaHtmlRenderer.render(request),
@@ -239,6 +231,7 @@ export function VideoEditorPage() {
         )}
       >
         <FreeCutEditor
+          language="zh"
           onRequestMediaImport={handleRequestMediaImport}
           onRevealFile={handleRevealFile}
           onDescribeDroppedMediaFiles={handleDescribeDroppedMediaFiles}
@@ -246,10 +239,6 @@ export function VideoEditorPage() {
           onReadNativeMediaFile={handleReadNativeMediaFile}
           onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
           onTranscribeMedia={handleTranscribeMedia}
-          onGetDeepSeekHarnessWebUrl={handleGetDeepSeekHarnessWebUrl}
-          onDeepSeekHarnessWebState={handleDeepSeekHarnessWebState}
-          onDeepSeekHarnessToolRequest={handleDeepSeekHarnessToolRequest}
-          onDeepSeekHarnessToolCancel={handleDeepSeekHarnessToolCancel}
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}
         />

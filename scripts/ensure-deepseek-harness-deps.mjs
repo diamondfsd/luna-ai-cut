@@ -2,9 +2,14 @@ import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveDeepSeekHarnessRoot } from './deepseek-harness-root.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const harnessRoot = join(root, 'packages/freecut-editor/src/features/ai-editing')
+const harnessRoot = resolveDeepSeekHarnessRoot(root)
+if (!harnessRoot) {
+  console.log('[harness-deps] standalone DeepSeek Harness checkout was not found; skipped')
+  process.exit(0)
+}
 const harnessPackagePath = join(harnessRoot, 'package.json')
 const harnessNodeModules = join(harnessRoot, 'node_modules')
 const harnessHostTypeSentinel = join(harnessRoot, 'vendor/cosmokit/lib/types/index.d.ts')

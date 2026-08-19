@@ -31,7 +31,6 @@ import type {
   FreecutExportApi,
   OriginalFileExportRequest,
   DeepSeekHarnessApi,
-  DeepSeekHarnessToolRequest,
 } from '../src/shared/types'
 
 type VideoFrameRateReadyData = {
@@ -205,32 +204,13 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
   deepseekHarness: {
-    getWebUrl: (projectId: string) => ipcRenderer.invoke('deepseek-harness:get-web-url', projectId),
+    openWindow: () => ipcRenderer.invoke('deepseek-harness:open-window'),
+    closeWindow: () => ipcRenderer.invoke('deepseek-harness:close-window'),
+    getWebUrl: (context) => ipcRenderer.invoke('deepseek-harness:get-web-url', context),
     onWebState: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, state: import('../src/shared/types').DeepSeekHarnessWebState) => callback(state)
       ipcRenderer.on('deepseek-harness:web-state', listener)
       return () => ipcRenderer.removeListener('deepseek-harness:web-state', listener)
-    },
-    onToolRequest: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, request: DeepSeekHarnessToolRequest) => {
-        void callback(request).then(
-          (result) => ipcRenderer.send('deepseek-harness:tool-response', { requestId: request.requestId, ok: true, result }),
-          (error: unknown) => ipcRenderer.send('deepseek-harness:tool-response', {
-            requestId: request.requestId,
-            ok: false,
-            error: error instanceof Error ? error.message : '剪辑能力调用失败。',
-          }),
-        )
-      }
-      ipcRenderer.on('deepseek-harness:tool-request', listener)
-      return () => ipcRenderer.removeListener('deepseek-harness:tool-request', listener)
-    },
-    onToolCancel: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: { requestId: string }) => {
-        if (typeof payload?.requestId === 'string') callback(payload.requestId)
-      }
-      ipcRenderer.on('deepseek-harness:tool-cancel', listener)
-      return () => ipcRenderer.removeListener('deepseek-harness:tool-cancel', listener)
     },
   } satisfies DeepSeekHarnessApi,
   stableAudio3: {

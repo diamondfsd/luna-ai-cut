@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { App } from './app'
-import { i18nReady } from './i18n'
+import { changeAppLanguage, i18nReady } from './i18n'
 import {
   EmbeddedHostProvider,
   type EmbeddedExportBridge,
@@ -17,6 +17,8 @@ import {
 import './index.css'
 
 export interface FreeCutEditorProps {
+  /** Embedded hosts can provide the host application's UI language explicitly. */
+  language?: string
   onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
   onRevealFile?: (filePath: string) => Promise<void>
   onDescribeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
@@ -33,6 +35,7 @@ export interface FreeCutEditorProps {
 }
 
 export function FreeCutEditor({
+  language,
   onRequestMediaImport,
   onRevealFile,
   onDescribeDroppedMediaFiles,
@@ -72,14 +75,18 @@ export function FreeCutEditor({
   useEffect(() => {
     document.body.classList.add('freecut-active')
     let active = true
-    void i18nReady.then(() => {
-      if (active) setReady(true)
-    })
+    setReady(false)
+    void i18nReady
+      .then(() => (language ? changeAppLanguage(language) : undefined))
+      .catch(() => undefined)
+      .then(() => {
+        if (active) setReady(true)
+      })
     return () => {
       active = false
       document.body.classList.remove('freecut-active')
     }
-  }, [])
+  }, [language])
 
   if (!ready) return null
 

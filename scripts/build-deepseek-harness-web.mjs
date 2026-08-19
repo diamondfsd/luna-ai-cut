@@ -5,24 +5,24 @@ import { builtinModules } from 'node:module'
 import process from 'node:process'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { resolveDeepSeekHarnessRoot } from './deepseek-harness-root.mjs'
+import { applyDeepSeekHarnessAdaptations } from './apply-deepseek-harness-adaptations.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const harnessRoot = join(root, 'packages/freecut-editor/src/features/ai-editing')
+const harnessRoot = resolveDeepSeekHarnessRoot(root)
+if (!harnessRoot) {
+  console.log('[harness-build] standalone DeepSeek Harness checkout was not found; skipped')
+  process.exit(0)
+}
 const layoutRoot = join(harnessRoot, 'packages/client/ui-layout')
 const settingsGeneralRoot = join(harnessRoot, 'packages/client/ui-settings-general')
 const output = join(root, 'dist/deepseek-harness')
-const plugin = join(root, 'scripts/deepseek-harness-freecut-plugin.mjs')
-const scriptRuntime = join(root, 'scripts/deepseek-harness-script-runtime.mjs')
-const builtInSkills = join(root, 'packages/freecut-editor/src/features/ai-editing/skills/built-in')
 const nodeModules = join(output, 'node_modules')
 const deepseekPackages = join(nodeModules, '@deepseek-ai')
 const bundleStage = join(output, '.deepseek-bundle-stage')
 const generatedBundleFiles = []
 
-if (!existsSync(join(harnessRoot, 'package.json'))) {
-  console.log('[harness-build] FreeCut source has no embedded Harness; skipped')
-  process.exit(0)
-}
+await applyDeepSeekHarnessAdaptations(harnessRoot)
 
 const nativePackagePrefixes = [
   '@img/',
@@ -367,10 +367,6 @@ for (const packageRoot of ['vendor', 'packages']) {
   }
 }
 
-await cp(plugin, join(output, 'luna-freecut-plugin.mjs'))
-await cp(scriptRuntime, join(output, 'deepseek-harness-script-runtime.mjs'))
-await cp(join(root, 'scripts/deepseek-harness-built-in-skills.mjs'), join(output, 'deepseek-harness-built-in-skills.mjs'))
-await cp(builtInSkills, join(output, 'skills/built-in'), { recursive: true, dereference: true })
 const { build: buildWithTsdown } = await import(pathToFileURL(join(
   harnessRoot,
   'node_modules/tsdown/dist/index.mjs',

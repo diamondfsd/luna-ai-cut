@@ -38,6 +38,11 @@ resources/dolby-vision/
 resources/node-runtime/
 resources/python-runtime/
 .dolby-tools-cache/
+vendor/deepseek-harness/**/node_modules/
+vendor/deepseek-harness/**/lib/
+vendor/deepseek-harness/**/dist/
+vendor/deepseek-harness/**/coverage/
+vendor/deepseek-harness/**/.tsbuildinfo
 docs/
 !packages/freecut-editor/docs/
 packages/freecut-editor/docs/*

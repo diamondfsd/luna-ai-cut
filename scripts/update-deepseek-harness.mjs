@@ -3,10 +3,11 @@ import { existsSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
+import { applyDeepSeekHarnessAdaptations } from './apply-deepseek-harness-adaptations.mjs'
 
 const repoRoot = resolve(import.meta.dirname, '..')
 const configPath = join(repoRoot, 'deepseek-harness.upstream.json')
-const harnessRelative = 'packages/freecut-editor/src/features/ai-editing'
+const harnessRelative = 'vendor/deepseek-harness'
 const harnessRoot = join(repoRoot, harnessRelative)
 const gitCommand = 'git'
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
@@ -184,7 +185,7 @@ async function importCurrentSnapshot(tempRoot) {
     filter: shouldCopyWorkingTreeEntry,
   })
   git(['add', '-A', '--force'], tempRoot)
-  git(['commit', '--quiet', '--allow-empty', '-m', 'FreeCut local snapshot'], tempRoot)
+  git(['commit', '--quiet', '--allow-empty', '-m', 'Luna local Harness snapshot'], tempRoot)
   return git(['rev-parse', 'HEAD'], tempRoot)
 }
 
@@ -217,7 +218,7 @@ function runRescope(tempRoot, mode) {
 
 function commitPreparedSnapshot(tempRoot) {
   git(['add', '-A'], tempRoot)
-  git(['commit', '--quiet', '--allow-empty', '-m', 'Apply FreeCut Harness adaptations'], tempRoot)
+  git(['commit', '--quiet', '--allow-empty', '-m', 'Apply Luna Harness adaptations'], tempRoot)
   return git(['rev-parse', 'HEAD'], tempRoot)
 }
 
@@ -259,7 +260,7 @@ async function writeSyncedCommit(config, commit) {
 function usage() {
   console.log(`用法：pnpm update:deepseek-harness [--check|--dry-run]
 
-默认模式会拉取上游、执行三方合并、重新应用 FreeCut 适配、安装 Harness 依赖并运行 build:app。
+默认模式会拉取上游、执行三方合并、重新应用 Luna 适配、安装 Harness 依赖并运行 build:app。
 --check    只检查工作区和上游合并可行性，不写入文件。
 --dry-run  预演完整同步并显示文件变化，不写入当前工作区。
 `)
@@ -322,12 +323,13 @@ async function main() {
       runRescope(tempRoot, 'apply')
       const preparedCommit = commitPreparedSnapshot(tempRoot)
       const changes = printChangeSummary(tempRoot, localCommit, preparedCommit)
-      if (changes.length === 0) console.log('DeepSeek Harness: 当前同步提交和 FreeCut 适配均已验证，无需更新。')
+      if (changes.length === 0) console.log('DeepSeek Harness: 当前同步提交和 Luna 适配均已验证，无需更新。')
       else console.log('DeepSeek Harness: 当前上游已是最新，但临时适配仍有待写回的文件。')
       return
     }
 
     runRescope(tempRoot, mode === 'check' ? 'apply' : mode)
+    await applyDeepSeekHarnessAdaptations(tempRoot)
     if (mode !== 'check') {
       runPnpm(['--dir', tempRoot, 'install', '--lockfile-only', '--ignore-scripts'], repoRoot, 'Harness lockfile update')
     }
@@ -353,7 +355,7 @@ async function main() {
     try {
       await writeSnapshot(tempRoot, previousFiles)
       runPnpm(['--dir', harnessRoot, 'install', '--ignore-scripts', '--frozen-lockfile'], repoRoot, 'Harness dependency install')
-      runPnpm(['run', 'build:app'], repoRoot, 'FreeCut build:app')
+      runPnpm(['run', 'build:app'], repoRoot, 'Luna build:app')
       await writeSyncedCommit(config, latestCommit)
       console.log(`DeepSeek Harness: 已同步到 ${latestCommit}。请检查并提交工作区改动。`)
     } catch (error) {

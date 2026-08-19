@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { resolveDeepSeekHarnessRoot } from './deepseek-harness-root.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const force = process.argv.includes('--force')
@@ -14,7 +15,7 @@ const distRoot = join(root, 'dist')
 const nativeStamp = join(distRoot, '.luna-dev-native.json')
 const harnessStamp = join(distRoot, '.luna-dev-harness.json')
 const harnessOutput = join(distRoot, 'deepseek-harness')
-const harnessRoot = join(root, 'packages/freecut-editor/src/features/ai-editing')
+const harnessRoot = resolveDeepSeekHarnessRoot(root)
 
 const ignoredSourceDirectories = new Set([
   '.git',
@@ -144,21 +145,18 @@ async function prepareDolbyTools() {
 }
 
 function harnessInputs() {
+  if (!harnessRoot) return []
   return [
     harnessRoot,
     join(root, 'scripts/build-deepseek-harness-web.mjs'),
     join(root, 'scripts/ensure-deepseek-harness-deps.mjs'),
-    join(root, 'scripts/deepseek-harness-freecut-plugin.mjs'),
-    join(root, 'scripts/deepseek-harness-script-runtime.mjs'),
-    join(root, 'scripts/deepseek-harness-built-in-skills.mjs'),
+    join(root, 'scripts/deepseek-harness-root.mjs'),
   ]
 }
 
 async function harnessNeedsBuild() {
   const requiredOutput = [
     join(harnessOutput, 'lib/bin.js'),
-    join(harnessOutput, 'luna-freecut-plugin.mjs'),
-    join(harnessOutput, 'deepseek-harness-script-runtime.mjs'),
     join(harnessOutput, 'node_modules'),
   ]
   if (force || requiredOutput.some((path) => !existsSync(path))) return true
@@ -172,8 +170,8 @@ async function harnessNeedsBuild() {
 }
 
 async function prepareHarness() {
-  if (!existsSync(join(harnessRoot, 'package.json'))) {
-    console.log('[dev] FreeCut source has no embedded Harness; skipped')
+  if (!harnessRoot) {
+    console.log('[dev] standalone DeepSeek Harness checkout was not found; skipped')
     return
   }
 

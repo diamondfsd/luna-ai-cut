@@ -2,9 +2,14 @@ import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveDeepSeekHarnessRoot } from './deepseek-harness-root.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const harnessRoot = join(root, 'packages/freecut-editor/src/features/ai-editing')
+const harnessRoot = resolveDeepSeekHarnessRoot(root)
+if (!harnessRoot) {
+  console.error('Standalone DeepSeek Harness checkout was not found.')
+  process.exit(1)
+}
 const executable = join(
   harnessRoot,
   'node_modules/.bin',

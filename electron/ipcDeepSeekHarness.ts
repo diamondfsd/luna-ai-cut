@@ -1,11 +1,11 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import {
-  cancelDeepSeekHarnessToolRequest,
+  closeDeepSeekHarnessWindow,
   getDeepSeekHarnessWebUrl,
+  openDeepSeekHarnessWindow,
   onDeepSeekHarnessWebState,
-  resolveDeepSeekHarnessToolResponse,
-  setDeepSeekHarnessRenderer,
 } from './deepseekHarnessService'
+import type { DeepSeekHarnessContext } from '../src/shared/types'
 
 export function register(): void {
   onDeepSeekHarnessWebState((state) => {
@@ -13,36 +13,27 @@ export function register(): void {
       if (!window.isDestroyed()) window.webContents.send('deepseek-harness:web-state', state)
     }
   })
-  ipcMain.handle('deepseek-harness:get-web-url', (event, projectId: string) => {
-    setDeepSeekHarnessRenderer(event.sender.id)
-    return getDeepSeekHarnessWebUrl(projectId)
-  })
-  ipcMain.on('deepseek-harness:tool-response', (event, payload) => {
-    if (!isToolResponse(payload)) return
-    resolveDeepSeekHarnessToolResponse(event.sender.id, payload)
-  })
-  ipcMain.on('deepseek-harness:tool-cancel', (event, payload) => {
-    if (!isToolCancel(payload)) return
-    cancelDeepSeekHarnessToolRequest(event.sender.id, payload.requestId)
+  ipcMain.handle('deepseek-harness:open-window', () => openDeepSeekHarnessWindow())
+  ipcMain.handle('deepseek-harness:close-window', () => closeDeepSeekHarnessWindow())
+  ipcMain.handle('deepseek-harness:get-web-url', (_event, context: unknown) => {
+    if (!isContext(context)) throw new Error('助手上下文无效。')
+    return getDeepSeekHarnessWebUrl(context)
   })
 }
 
-function isToolResponse(value: unknown): value is {
-  requestId: string
-  ok: boolean
-  result?: unknown
-  error?: string
-} {
+function isContext(value: unknown): value is DeepSeekHarnessContext {
   if (!value || typeof value !== 'object') return false
   const payload = value as Record<string, unknown>
-  return typeof payload.requestId === 'string'
-    && payload.requestId.length > 0
-    && typeof payload.ok === 'boolean'
-    && (payload.error === undefined || typeof payload.error === 'string')
+  return typeof payload.sessionId === 'string'
+    && payload.sessionId.length > 0
+    && payload.sessionId.length <= 200
+    && (payload.feature === undefined || typeof payload.feature === 'string')
+    && (payload.projectId === undefined || typeof payload.projectId === 'string')
+    && (payload.metadata === undefined || isMetadata(payload.metadata))
 }
 
-function isToolCancel(value: unknown): value is { requestId: string } {
-  if (!value || typeof value !== 'object') return false
-  const requestId = (value as Record<string, unknown>).requestId
-  return typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128
+function isMetadata(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  return Object.entries(value).every(([key, item]) =>
+    key.length <= 200 && typeof item === 'string' && item.length <= 200)
 }

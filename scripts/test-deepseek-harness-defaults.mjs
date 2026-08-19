@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { withEmbeddedHarnessDefaults } from '../electron/deepseekHarnessDefaults.ts'
+import { withDeepSeekHarnessDefaults } from '../electron/deepseekHarnessDefaults.ts'
 
-const defaults = withEmbeddedHarnessDefaults({ 'ui-theme': { preference: 'dark' } })
+const defaults = withDeepSeekHarnessDefaults({ 'ui-theme': { preference: 'dark' } })
 assert.deepEqual(defaults.locale, { preference: 'zh' })
 assert.deepEqual(defaults.permission, { defaultPreset: 'workspace-write' })
 assert.deepEqual(defaults['ui-theme'], { preference: 'dark' })
@@ -14,7 +14,7 @@ assert.deepEqual(explicit.locale, { preference: 'en', custom: true })
 assert.deepEqual(explicit.permission, { defaultPreset: 'read-only', custom: true })
 
 const original = { locale: { preference: 'invalid' } }
-withEmbeddedHarnessDefaults(original)
+withDeepSeekHarnessDefaults(original)
 assert.deepEqual(original, { locale: { preference: 'invalid' } })
 
-console.log('DeepSeek Harness embedded defaults passed.')
+console.log('DeepSeek Harness Luna defaults passed.')
