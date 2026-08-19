@@ -28,6 +28,8 @@ export interface AudioDecodeWindowRequest {
   startTime: number
   durationSeconds: number
   storageSampleRate: number
+  /** Targeted seeks first; sequential mode decodes forward while retaining only this window. */
+  mode?: 'targeted' | 'sequential'
 }
 
 /**

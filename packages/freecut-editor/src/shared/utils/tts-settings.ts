@@ -1,10 +1,10 @@
 const TTS_ENGINE_STORAGE_KEY = 'editor:ttsEngine'
-export type StoredTtsEngine = 'moss'
+export type StoredTtsEngine = 'kokoro' | 'moss' | 'supertonic'
 
-const DEFAULT_TTS_ENGINE: StoredTtsEngine = 'moss'
+const DEFAULT_TTS_ENGINE: StoredTtsEngine = 'kokoro'
 
 function isStoredTtsEngine(value: string): value is StoredTtsEngine {
-  return value === 'moss'
+  return value === 'kokoro' || value === 'moss' || value === 'supertonic'
 }
 
 export function getStoredTtsEngine(): StoredTtsEngine {

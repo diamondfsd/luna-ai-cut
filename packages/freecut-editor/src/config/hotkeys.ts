@@ -52,9 +52,9 @@ export const HOTKEYS = {
   PASTE: "mod+v",
 
   // Tools
-  SELECTION_TOOL: "a",
+  SELECTION_TOOL: "v",
   TRIM_EDIT_TOOL: "t",
-  RAZOR_TOOL: "b",
+  RAZOR_TOOL: "c",
   SPLIT_AT_CURSOR: "shift+c",
   RATE_STRETCH_TOOL: "r",
   SLIP_TOOL: "y",
@@ -86,7 +86,7 @@ export const HOTKEYS = {
   EDIT_KEYFRAME_ADD: "k",
   KEYFRAME_PREVIOUS: "alt+bracketleft",
   KEYFRAME_NEXT: "alt+bracketright",
-  KEYFRAME_TOGGLE_AUTO: "v",
+  KEYFRAME_TOGGLE_AUTO: "a",
   KEYFRAME_FIT: "f",
 
   // Source Monitor

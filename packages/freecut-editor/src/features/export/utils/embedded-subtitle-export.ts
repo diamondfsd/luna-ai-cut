@@ -1,5 +1,5 @@
 import type { CompositionInputProps, SubtitleExportMode } from '@freecut/types/export'
-import type { TextItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
+import type { SubtitleSegmentItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { serializeVtt, type SubtitleCue } from '@freecut/shared/utils/subtitles'
 
 export interface SubtitleExportPlan {
@@ -42,10 +42,8 @@ export function resolveSubtitleExportPlan(params: {
   return { embedTranscriptSubtitles, burnInSubtitles, fallbackToBurnIn }
 }
 
-function isTranscriptCaptionItem(item: TimelineItem): item is TextItem {
-  return (
-    item.type === 'text' && item.textRole === 'caption' && item.captionSource?.type === 'transcript'
-  )
+function isTranscriptSubtitleItem(item: TimelineItem): item is SubtitleSegmentItem {
+  return item.type === 'subtitle' && item.source.type === 'transcript'
 }
 
 /**
@@ -64,15 +62,28 @@ export function buildTranscriptSubtitleCues(composition: CompositionInputProps):
     if (track.visible === false) continue
 
     for (const item of track.items ?? []) {
-      if (!isTranscriptCaptionItem(item)) continue
+      if (!isTranscriptSubtitleItem(item)) continue
 
       const itemStartSeconds = item.from / fps
       const itemEndSeconds = (item.from + item.durationInFrames) / fps
 
-      const startSeconds = Math.max(0, itemStartSeconds)
-      const endSeconds = Math.min(durationSeconds, itemEndSeconds)
-      if (endSeconds <= startSeconds || item.text.trim().length === 0) continue
-      cues.push({ id: item.id, startSeconds, endSeconds, text: item.text })
+      for (const cue of item.cues) {
+        const startSeconds = Math.max(0, itemStartSeconds + cue.startSeconds)
+        const endSeconds = Math.min(
+          durationSeconds,
+          itemEndSeconds,
+          itemStartSeconds + cue.endSeconds,
+        )
+
+        if (endSeconds <= startSeconds || cue.text.trim().length === 0) continue
+
+        cues.push({
+          id: cue.id,
+          startSeconds,
+          endSeconds,
+          text: cue.text,
+        })
+      }
     }
   }
 
@@ -97,7 +108,7 @@ export function omitTranscriptSubtitleItemsForSoftSubtitleExport(
     tracks: composition.tracks.map(
       (track): TimelineTrack => ({
         ...track,
-        items: (track.items ?? []).filter((item) => !isTranscriptCaptionItem(item)),
+        items: (track.items ?? []).filter((item) => !isTranscriptSubtitleItem(item)),
       }),
     ),
   }

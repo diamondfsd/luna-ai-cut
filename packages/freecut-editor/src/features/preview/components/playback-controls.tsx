@@ -223,7 +223,7 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="editor-toolbar-button flex-shrink-0"
+          className="flex-shrink-0"
           style={btnSize}
           onClick={handleGoToStart}
           data-tooltip={t('preview.controls.goToStartTooltip')}
@@ -235,7 +235,7 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="editor-toolbar-button flex-shrink-0"
+          className="flex-shrink-0"
           style={btnSize}
           onClick={handlePreviousFrame}
           data-tooltip={t('preview.controls.prevFrameTooltip')}
@@ -245,16 +245,14 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
         </Button>
 
         <Button
-          variant="ghost"
           size="icon"
-          className={`editor-toolbar-button flex-shrink-0${isPlaying ? ' editor-toolbar-button-active' : ''}`}
+          className="flex-shrink-0"
           style={btnSize}
           onClick={togglePlayPause}
           data-tooltip={
             isPlaying ? t('preview.controls.pauseTooltip') : t('preview.controls.playTooltip')
           }
           aria-label={isPlaying ? t('preview.player.pause') : t('preview.player.play')}
-          aria-pressed={isPlaying}
         >
           {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
         </Button>
@@ -262,7 +260,7 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="editor-toolbar-button flex-shrink-0"
+          className="flex-shrink-0"
           style={btnSize}
           onClick={handleNextFrame}
           data-tooltip={t('preview.controls.nextFrameTooltip')}
@@ -274,7 +272,7 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="editor-toolbar-button flex-shrink-0"
+          className="flex-shrink-0"
           style={btnSize}
           onClick={handleGoToEnd}
           data-tooltip={t('preview.controls.goToEndTooltip')}
@@ -293,7 +291,7 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="editor-toolbar-button flex-shrink-0"
+          className="flex-shrink-0"
           style={btnSize}
           onClick={() => {
             void handleSaveFrame()
@@ -324,7 +322,11 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
           variant="ghost"
           size="icon"
           style={btnSize}
-          className={`editor-toolbar-button flex-shrink-0${useProxy ? ' editor-toolbar-button-active' : ''}`}
+          className={`flex-shrink-0 ${
+            useProxy
+              ? 'text-green-500 hover:text-green-400 hover:bg-green-500/10'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
           onClick={toggleUseProxy}
           data-tooltip={
             useProxy
@@ -336,7 +338,6 @@ export function PlaybackControls({ totalFrames, fps }: PlaybackControlsProps) {
               ? t('preview.controls.disableProxyPlayback')
               : t('preview.controls.enableProxyPlayback')
           }
-          aria-pressed={useProxy}
         >
           <Zap className="w-3.5 h-3.5" />
         </Button>

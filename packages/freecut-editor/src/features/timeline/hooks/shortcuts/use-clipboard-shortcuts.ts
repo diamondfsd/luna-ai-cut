@@ -21,7 +21,6 @@ import {
   wouldCreateCompositionCycle,
 } from '../../utils/composition-graph'
 import { handleTranscriptClipboardCopy } from '../../utils/transcript-copy-bridge'
-import { findCompatibleTrackForItemType } from '../../utils/track-item-compatibility'
 
 function revealPastedItems(itemIds: readonly string[]): void {
   if (itemIds.length === 0) {
@@ -241,16 +240,16 @@ export function useClipboardShortcuts() {
 
         for (const itemData of pasteItems) {
           const newId = crypto.randomUUID()
+          newItemIds.push(newId)
 
-          const preferredTrackId = preserveSourceTracks ? itemData.trackId : activeTrackId
-          const targetTrack = findCompatibleTrackForItemType({
-            tracks,
-            items: storeItems,
-            itemType: itemData.type,
-            preferredTrackId: preferredTrackId ?? itemData.trackId,
-          })
-          if (!targetTrack) continue
-          const targetTrackId = targetTrack.id
+          let targetTrackId = preserveSourceTracks ? itemData.trackId : activeTrackId
+          if (!targetTrackId || !tracks.some((t) => t.id === targetTrackId)) {
+            targetTrackId = itemData.trackId
+          }
+          const trackExists = tracks.some((t) => t.id === targetTrackId)
+          if (!trackExists && tracks.length > 0) {
+            targetTrackId = tracks[0]!.id
+          }
 
           const desiredFrom = currentFrame
           const duration = itemData.durationInFrames
@@ -277,7 +276,6 @@ export function useClipboardShortcuts() {
           }
 
           newItems.push(newItem as TimelineItem)
-          newItemIds.push(newId)
           usedTrackIds.add(targetTrackId)
         }
 

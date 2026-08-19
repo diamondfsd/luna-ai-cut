@@ -12,6 +12,7 @@ import { PropertiesSidebar } from './properties-sidebar'
 import { PreviewArea } from './preview-area'
 import { MotionPreviewArea, MotionTimelineDock } from './compose-workspace/compose-layout'
 import { InteractionLockRegion } from './interaction-lock-region'
+import { AudioMeterPanel } from './audio-meter-panel'
 import {
   importTimeline,
   importBentoLayoutDialog,
@@ -55,6 +56,7 @@ import {
 } from '@freecut/features/editor/deps/projects'
 import { useClearKeyframesDialogStore } from '@freecut/shared/state/clear-keyframes-dialog'
 import { useTtsGenerateDialogStore } from '@freecut/shared/state/tts-generate-dialog'
+import { useProjectMediaMatchDialogStore } from '@freecut/shared/state/project-media-match-dialog'
 import { rememberLastEditorProjectId } from '@freecut/shared/projects/last-editor-project'
 import {
   importEmbeddedSubtitleTrackPickerHost,
@@ -73,15 +75,10 @@ const LazyColorTimelineNavigator = lazy(() =>
     default: ColorTimelineNavigator,
   })),
 )
-const LazyDeepSeekHarnessDock = lazy(() =>
-  import('./deepseek-harness-dock').then(({ DeepSeekHarnessDock }) => ({
-    default: DeepSeekHarnessDock,
-  })),
-)
 const EDITOR_PROJECT_ROUTE_ID = '/editor/$projectId'
 
 function workspaceTimelineSizeStorageKey(workspace: EditorWorkspaceId): string {
-  return `editor:workspaceTimelineSize:v2:${workspace}`
+  return `editor:workspaceTimelineSize:${workspace}`
 }
 
 function loadWorkspaceTimelineSize(workspace: EditorWorkspaceId): number | null {
@@ -283,7 +280,7 @@ export const Editor = memo(function Editor({ projectId, project, migration }: Ed
 
   if (!upgradeApproved) {
     return (
-      <div className="size-full min-h-0 bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-sm text-muted-foreground">
           {t('editor.editor.upgrading', { defaultValue: 'Upgrading project…' })}
         </div>
@@ -297,6 +294,9 @@ export const Editor = memo(function Editor({ projectId, project, migration }: Ed
 const EditorDialogHost = memo(function EditorDialogHost({ projectId }: { projectId: string }) {
   const clearKeyframesDialogOpen = useClearKeyframesDialogStore((s) => s.isOpen)
   const ttsGenerateDialogOpen = useTtsGenerateDialogStore((s) => s.isOpen)
+  const projectMediaMatchDialogOpen = useProjectMediaMatchDialogStore(
+    (s) => s.isOpen && s.projectId === projectId,
+  )
   const embeddedSubtitlePickerOpen = useEmbeddedSubtitlePickerStore((s) => s.media !== null)
   const subtitleScanProgressOpen = useSubtitleScanProgressStore((s) => s.open)
 
@@ -307,9 +307,11 @@ const EditorDialogHost = memo(function EditorDialogHost({ projectId }: { project
           <LazyClearKeyframesDialog />
         </Suspense>
       )}
-      <Suspense fallback={null}>
-        <LazyProjectMediaMatchDialog projectId={projectId} />
-      </Suspense>
+      {projectMediaMatchDialogOpen && (
+        <Suspense fallback={null}>
+          <LazyProjectMediaMatchDialog projectId={projectId} />
+        </Suspense>
+      )}
       {ttsGenerateDialogOpen && (
         <Suspense fallback={null}>
           <LazyTtsGenerateDialog />
@@ -367,8 +369,7 @@ const AutoSaveController = memo(function AutoSaveController({
   onSave: () => Promise<void>
 }) {
   const isDirty = useTimelineStore((s: { isDirty: boolean }) => s.isDirty)
-  const changeVersion = useTimelineStore((s) => s.changeVersion ?? 0)
-  useAutoSave({ isDirty, changeVersion, onSave })
+  useAutoSave({ isDirty, onSave })
   return null
 })
 
@@ -404,8 +405,8 @@ export const LoadedEditor = memo(function LoadedEditor({
   const timelinePanelRef = useRef<ImperativePanelHandle>(null)
   const previousWorkspaceRef = useRef(workspace)
 
-  // Serialize saves so leaving during an in-flight auto-save cannot drop newer edits.
-  const savePromiseRef = useRef<Promise<void> | null>(null)
+  // Guard against concurrent saves (e.g., spamming Ctrl+S)
+  const isSavingRef = useRef(false)
 
   useEffect(() => {
     hasRefreshedMigrationStateRef.current = false
@@ -538,7 +539,7 @@ export const LoadedEditor = memo(function LoadedEditor({
 
   useEffect(() => {
     syncSidebarLayout(editorLayout)
-  }, [editorLayout, syncSidebarLayout, workspace])
+  }, [editorLayout, syncSidebarLayout])
 
   // Apply the per-workspace timeline split when switching workspaces:
   // snapshot the outgoing workspace's split, then restore the incoming
@@ -582,46 +583,28 @@ export const LoadedEditor = memo(function LoadedEditor({
     }
   }, [isMaskEditingActive])
 
-  const saveProject = useCallback(async (showFeedback: boolean, flushPendingEdits: boolean) => {
-    let didSave = false
+  // Save timeline to project (with guard against concurrent saves)
+  const handleSave = useCallback(async () => {
+    // Prevent concurrent saves (e.g., spamming Ctrl+S)
+    if (isSavingRef.current) {
+      return
+    }
+
+    isSavingRef.current = true
+    const { saveTimeline } = useTimelineStore.getState()
 
     try {
-      if (savePromiseRef.current) {
-        await savePromiseRef.current
-      }
-
-      do {
-        if (!useTimelineStore.getState().isDirty) break
-
-        const savePromise = useTimelineStore.getState().saveTimeline(projectId)
-        savePromiseRef.current = savePromise
-        try {
-          await savePromise
-          didSave = true
-        } finally {
-          if (savePromiseRef.current === savePromise) {
-            savePromiseRef.current = null
-          }
-        }
-      } while (flushPendingEdits && useTimelineStore.getState().isDirty)
-
-      if (didSave) {
-        logger.debug('Project saved successfully')
-      }
-      if (didSave && showFeedback) {
-        toast.success(i18n.t('editor.editor.projectSaved'))
-      }
+      await saveTimeline(projectId)
+      logger.debug('Project saved successfully')
+      toast.success(i18n.t('editor.editor.projectSaved'))
     } catch (error) {
       logger.error('Failed to save project:', error)
-      if (showFeedback) {
-        toast.error(i18n.t('editor.editor.projectSaveFailed'))
-      }
-      throw error
+      toast.error(i18n.t('editor.editor.projectSaveFailed'))
+      throw error // Re-throw so callers know save failed
+    } finally {
+      isSavingRef.current = false
     }
   }, [projectId])
-
-  const handleSave = useCallback(() => saveProject(true, true), [saveProject])
-  const handleAutoSave = useCallback(() => saveProject(false, false), [saveProject])
 
   const handleExport = useCallback(() => {
     // Pause playback when opening export dialog
@@ -682,17 +665,15 @@ export const LoadedEditor = memo(function LoadedEditor({
   // Color replaces the default editor shell. Motion deliberately keeps it and
   // swaps the preview/timeline surfaces while retaining the shared sidebars.
   const hidesDefaultSidebars = isColorWorkspace
-  const workspaceTimelineDefaultSize =
-    EDITOR_WORKSPACE_TIMELINE_SIZE[workspace] ?? editorLayout.timelineDefaultSize
 
   return (
     <div
-      className="size-full min-h-0 bg-background flex flex-col overflow-hidden"
+      className="h-screen bg-background flex flex-col overflow-hidden"
       style={editorLayoutCssVars as import('react').CSSProperties}
       role="application"
       aria-label={t('editor.editor.appLabel')}
     >
-      <AutoSaveController onSave={handleAutoSave} />
+      <AutoSaveController onSave={handleSave} />
       <TimelineShortcutsController />
 
       {/* Top Toolbar */}
@@ -705,12 +686,11 @@ export const LoadedEditor = memo(function LoadedEditor({
           onExportBundle={handleExportBundle}
           onOpenRenderQueue={handleOpenRenderQueue}
           renderQueueCount={renderQueueActiveCount}
-          locked={isMaskEditingActive}
         />
       </InteractionLockRegion>
 
-      {/* Main Layout: upper workspace + full-width timeline in Edit */}
-      <div className="relative flex-1 flex overflow-hidden">
+      {/* Main Layout: Full-height sidebar + vertical split */}
+      <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar - Media Library (full column mode) */}
         {mediaFullColumn && !hidesDefaultSidebars && (
           <InteractionLockRegion locked={isMaskEditingActive}>
@@ -746,11 +726,11 @@ export const LoadedEditor = memo(function LoadedEditor({
           <ResizablePanelGroup
             direction="vertical"
             className="flex-1 min-w-0"
-            autoSaveId="editor:timeline-layout:v2"
+            autoSaveId="editor:timeline-layout"
           >
             {/* Top - Preview + Properties (inline mode) */}
             <ResizablePanel
-              defaultSize={100 - workspaceTimelineDefaultSize}
+              defaultSize={100 - editorLayout.timelineDefaultSize}
               minSize={100 - editorLayout.timelineMaxSize}
               maxSize={100 - editorLayout.timelineMinSize}
             >
@@ -792,7 +772,7 @@ export const LoadedEditor = memo(function LoadedEditor({
             {/* Bottom - Timeline */}
             <ResizablePanel
               ref={timelinePanelRef}
-              defaultSize={workspaceTimelineDefaultSize}
+              defaultSize={editorLayout.timelineDefaultSize}
               minSize={editorLayout.timelineMinSize}
               maxSize={editorLayout.timelineMaxSize}
             >
@@ -804,12 +784,11 @@ export const LoadedEditor = memo(function LoadedEditor({
                         <MotionTimelineDock project={project} />
                       ) : (
                         <Suspense fallback={null}>
-                          <LazyTimeline
-                            duration={timelineDuration}
-                          />
+                          <LazyTimeline duration={timelineDuration} />
                         </Suspense>
                       )}
                     </div>
+                    <AudioMeterPanel />
                   </div>
                 </ErrorBoundary>
               </InteractionLockRegion>
@@ -825,14 +804,6 @@ export const LoadedEditor = memo(function LoadedEditor({
             </ErrorBoundary>
           </InteractionLockRegion>
         )}
-
-        {/* AI is a separate full-height dock. It does not share the properties
-            sidebar's open state or width so both panels remain independently
-            adjustable. */}
-        <Suspense fallback={null}>
-          <LazyDeepSeekHarnessDock projectId={projectId} />
-        </Suspense>
-
       </div>
 
       <Suspense fallback={null}>

@@ -21,7 +21,6 @@ import { useVisibleItems } from '../hooks/use-visible-items'
 import { useItemsStore } from '../stores/items-store'
 import { useCompositionsStore } from '../stores/compositions-store'
 import { useSelectionStore } from '@freecut/shared/state/selection'
-import { useEditorStore } from '@freecut/shared/state/editor'
 import { useMediaLibraryStore } from '@freecut/features/timeline/deps/media-library-store'
 import { useProjectStore } from '@freecut/features/timeline/deps/projects'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
@@ -227,7 +226,6 @@ function areTrackPropsEqual(prev: TimelineTrackProps, next: TimelineTrackProps):
 export const TimelineTrack = memo(function TimelineTrack({ track }: TimelineTrackProps) {
   perfMarkRender('TimelineTrack')
   const { t } = useTranslation()
-  const trackPreviewCollapsed = useEditorStore((state) => state.trackPreviewCollapsed)
   const previewOwnerId = `track:${track.id}`
   const [gapContextMenuRequest, setGapContextMenuRequest] =
     useState<TrackGapContextMenuRequest | null>(null)
@@ -1259,7 +1257,6 @@ export const TimelineTrack = memo(function TimelineTrack({ track }: TimelineTrac
               trackItemDurationBounds={trackItemRangeIndex}
               trackLocked={isTrackLocked}
               trackHidden={isTrackDisabled}
-              isTrackPreviewCollapsed={trackPreviewCollapsed}
             />
 
             {/* Render transitions for this track */}

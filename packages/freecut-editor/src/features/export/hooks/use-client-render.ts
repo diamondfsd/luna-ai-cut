@@ -36,8 +36,6 @@ import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/p
 import { resolveMediaUrls } from '@freecut/features/export/deps/media-library'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { createLogger, createOperationId } from '@freecut/shared/logging/logger'
-import { useEmbeddedHost, type EmbeddedExportSaveResult } from '@freecut/shared/host/embedded-host'
-import { buildDirectExportFiles } from '../utils/direct-export-files'
 
 const log = createLogger('Export')
 
@@ -61,14 +59,11 @@ interface UseClientRenderReturn {
   status: ClientRenderStatus
   error: string | null
   result: ClientRenderResult | null
-  savedFiles: EmbeddedExportSaveResult[]
-  supportsDirectSave: boolean
 
   // Actions
   startExport: (settings: ExportSettings | ExtendedExportSettings) => Promise<void>
   cancelExport: () => void
   downloadVideo: () => void
-  revealSavedFile: () => Promise<void>
   resetState: () => void
 
   // Utilities
@@ -81,7 +76,6 @@ interface UseClientRenderReturn {
 }
 
 export function useClientRender(): UseClientRenderReturn {
-  const { exportFiles } = useEmbeddedHost()
   const [isExporting, setIsExporting] = useState(false)
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState<string>()
@@ -90,26 +84,7 @@ export function useClientRender(): UseClientRenderReturn {
   const [status, setStatus] = useState<ClientRenderStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ClientRenderResult | null>(null)
-  const [savedFiles, setSavedFiles] = useState<EmbeddedExportSaveResult[]>([])
   const resultRef = useRef<ClientRenderResult | null>(null)
-
-  const saveToDesktop = useCallback(async (
-    renderResult: ClientRenderResult,
-    settings: ExportSettings | ExtendedExportSettings,
-    projectName: string | undefined,
-    signal: AbortSignal,
-  ): Promise<EmbeddedExportSaveResult[]> => {
-    if (!exportFiles) return []
-    const directory = isExtendedSettings(settings) ? settings.outputDirectory : undefined
-    if (!directory) throw new Error('请先选择导出目录')
-    setStatus('finalizing')
-    setProgressMessage('正在保存文件…')
-    return exportFiles.saveFiles(
-      directory,
-      buildDirectExportFiles(renderResult, projectName),
-      signal,
-    )
-  }, [exportFiles])
 
   // AbortController for cancellation
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -157,7 +132,6 @@ export function useClientRender(): UseClientRenderReturn {
         setProgressMessage(undefined)
         setError(null)
         setResult(null)
-        setSavedFiles([])
         setStatus('preparing')
 
         // Create abort controller for cancellation
@@ -204,14 +178,7 @@ export function useClientRender(): UseClientRenderReturn {
 
         if (smartCopy.result) {
           resultRef.current = smartCopy.result
-          const desktopFiles = await saveToDesktop(
-            smartCopy.result,
-            settings,
-            currentProject?.name,
-            signal,
-          )
           setResult(smartCopy.result)
-          setSavedFiles(desktopFiles)
           setStatus('completed')
           setProgress(100)
           event.set('renderPath', 'smart-copy')
@@ -344,14 +311,7 @@ export function useClientRender(): UseClientRenderReturn {
         }
 
         resultRef.current = finalResult
-        const desktopFiles = await saveToDesktop(
-          finalResult,
-          settings,
-          currentProject?.name,
-          signal,
-        )
         setResult(finalResult)
-        setSavedFiles(desktopFiles)
         setStatus('completed')
         setProgress(100)
 
@@ -378,7 +338,7 @@ export function useClientRender(): UseClientRenderReturn {
         abortControllerRef.current = null
       }
     },
-    [handleProgress, saveToDesktop],
+    [handleProgress],
   )
 
   /**
@@ -438,11 +398,6 @@ export function useClientRender(): UseClientRenderReturn {
     }
   }, [result])
 
-  const revealSavedFile = useCallback(async () => {
-    const first = savedFiles[0]
-    if (first && exportFiles) await exportFiles.revealFile(first.filePath)
-  }, [exportFiles, savedFiles])
-
   /**
    * Reset state
    */
@@ -456,7 +411,6 @@ export function useClientRender(): UseClientRenderReturn {
     setTotalFrames(undefined)
     setStatus('idle')
     setError(null)
-    setSavedFiles([])
     const previousResult = resultRef.current
     resultRef.current = null
     void releaseTemporaryExportOutput(previousResult)
@@ -517,12 +471,9 @@ export function useClientRender(): UseClientRenderReturn {
     status,
     error,
     result,
-    savedFiles,
-    supportsDirectSave: Boolean(exportFiles),
     startExport,
     cancelExport,
     downloadVideo,
-    revealSavedFile,
     resetState,
     getSupportedCodecs: getSupportedCodecsForResolution,
     estimateFileSize: estimateFileSizeForSettings,

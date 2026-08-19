@@ -31,18 +31,9 @@ describe("keyframe productivity hotkeys", () => {
       addInEdit: "k",
       previous: "alt+bracketleft",
       next: "alt+bracketright",
-      auto: "v",
+      auto: "a",
       fit: "f",
     });
-  });
-});
-
-describe("tool hotkeys", () => {
-  it("uses the requested editing defaults without collisions", () => {
-    expect(HOTKEYS.SELECTION_TOOL).toBe("a");
-    expect(HOTKEYS.RAZOR_TOOL).toBe("b");
-    expect(findHotkeyConflicts(HOTKEYS, "a", "SELECTION_TOOL")).toEqual([]);
-    expect(findHotkeyConflicts(HOTKEYS, "b", "RAZOR_TOOL")).toEqual([]);
   });
 });
 
@@ -140,10 +131,10 @@ describe("getHotkeyBindingFromEventData", () => {
 describe("findHotkeyConflicts", () => {
   it("returns other bindings using the same normalized shortcut", () => {
     const bindings = resolveHotkeys({
-      SELECTION_TOOL: "b",
+      SELECTION_TOOL: "c",
     });
 
-    expect(findHotkeyConflicts(bindings, "b", "SELECTION_TOOL")).toEqual([
+    expect(findHotkeyConflicts(bindings, "c", "SELECTION_TOOL")).toEqual([
       "RAZOR_TOOL",
     ]);
   });

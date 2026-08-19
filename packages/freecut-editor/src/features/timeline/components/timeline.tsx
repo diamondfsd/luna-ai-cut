@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, memo, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TimelineHeader } from './timeline-header'
 import { TimelineContent } from './timeline-content'
 import { TimelineNavigator } from './timeline-navigator'
 import { TrackHeader } from './track-header'
 import { TransitionDragTooltip } from './transition-drag-tooltip'
-import { FirstTrackRowFrame, TrackRowFrame } from './track-row-frame'
+import { FirstTrackRowFrame, TrackRowFrame, TrackSectionDivider } from './track-row-frame'
 import { useTimelineTracks } from '../hooks/use-timeline-tracks'
 import { useItemsStore } from '../stores/items-store'
 import { useSelectionStore } from '@freecut/shared/state/selection'
@@ -20,18 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@freecut/components/ui/dropdown-menu'
-import {
-  Plus,
-  Minus,
-  Rows4,
-  Rows3,
-  Rows2,
-  Check,
-  Video,
-  AudioLines,
-  PanelTopClose,
-  PanelTopOpen,
-} from 'lucide-react'
+import { Plus, Minus, Rows4, Rows3, Rows2, Check, Video, AudioLines } from 'lucide-react'
 import { CompositionBreadcrumbs } from './composition-breadcrumbs'
 import { SequenceTabs } from './sequence-tabs'
 import { useCompositionNavigationStore } from '../stores/composition-navigation-store'
@@ -41,20 +30,20 @@ import {
   trackDragJustDroppedRef,
 } from '../hooks/use-track-drag'
 import { createClassicTrack, getAdjacentTrackOrder, getTrackKind } from '../utils/classic-tracks'
-import { canRemoveTrack, getEmptyTrackIdsForRemoval, getRemovableTrackIds } from '../utils/track-removal'
+import { getEmptyTrackIdsForRemoval } from '../utils/track-removal'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { EDITOR_LAYOUT_CSS_VALUES, getEditorLayout } from '@freecut/config/editor-layout'
 import { useTrackHeightResize } from '../hooks/use-track-height-resize'
 import { resizeTracksOfKindByDelta } from '../utils/track-resize'
-import {
-  applyTrackSizePreset,
-  commitTrackHeights,
-  toggleTrackPreviewCollapsed,
-} from '../stores/actions/track-height-actions'
+import { applyTrackSizePreset, commitTrackHeights } from '../stores/actions/track-height-actions'
 import { useZoomStore } from '../stores/zoom-store'
 import { computeWheelZoomStep } from '../constants'
+import {
+  clampSectionDividerPosition,
+  getBottomAnchoredSectionScrollTop,
+  getTrackSectionLayout,
+} from '../utils/track-resize'
 import { clearMediaDragData } from '@freecut/features/timeline/deps/media-library-resolver'
-import { notifyTimelineLiveScroll } from '@freecut/shared/timeline/live-scroll-sync'
 import { useNewTrackZonePreviewStore } from '../stores/new-track-zone-preview-store'
 import { useTrackDropPreviewStore } from '../stores/track-drop-preview-store'
 import { clearAllTimelineDropPreviewOwners } from '../utils/drop-preview-owner'
@@ -64,6 +53,7 @@ import {
 } from '../utils/timeline-external-drag'
 import { getDefaultActiveTrackId } from '../utils/default-active-track'
 import { KeyframeGraphPanel } from './keyframe-graph-panel'
+import { createRafCoalescedCallback } from '../utils/raf-coalesced-callback'
 
 const logger = createLogger('Timeline')
 
@@ -92,9 +82,7 @@ interface TimelineProps {
  *
  * Follows modular architecture with granular Zustand selectors
  */
-export const Timeline = memo(function Timeline({
-  duration,
-}: TimelineProps) {
+export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
   const { t } = useTranslation()
   const editorDensity = useSettingsStore((s) => s.editorDensity)
   const editorLayout = getEditorLayout(editorDensity)
@@ -119,10 +107,17 @@ export const Timeline = memo(function Timeline({
   const canDeleteEmptyTracks = useItemsStore(
     useCallback(
       (s) => {
-        const emptyTrackIds = tracks
-          .filter((track) => (s.itemsByTrackId[track.id]?.length ?? 0) === 0)
-          .map((track) => track.id)
-        return getRemovableTrackIds(tracks, emptyTrackIds).length > 0
+        let emptyTrackCount = 0
+
+        for (const track of tracks) {
+          if ((s.itemsByTrackId[track.id]?.length ?? 0) === 0) {
+            emptyTrackCount += 1
+          }
+        }
+
+        if (emptyTrackCount === 0) return false
+        if (emptyTrackCount < tracks.length) return true
+        return tracks.length > 1
       },
       [tracks],
     ),
@@ -137,12 +132,21 @@ export const Timeline = memo(function Timeline({
   )
   const keyframePanelOpen = useSelectionStore((s) => s.editKeyframePanelOpen)
   const setKeyframePanelOpen = useSelectionStore((s) => s.setEditKeyframePanelOpen)
+  const hasTrackSections = videoTracks.length > 0 && audioTracks.length > 0
+
   // Refs for syncing scroll between track headers and timeline content
   const trackHeadersViewportRef = useRef<HTMLDivElement>(null)
   const trackHeadersRootRef = useRef<HTMLDivElement>(null)
   const timelineContentRef = useRef<HTMLDivElement>(null)
   const allTrackHeadersScrollRef = useRef<HTMLDivElement>(null)
+  const videoTrackHeadersScrollRef = useRef<HTMLDivElement>(null)
+  const audioTrackHeadersScrollRef = useRef<HTMLDivElement>(null)
   const allTrackContentScrollRef = useRef<HTMLDivElement>(null)
+  const videoTrackContentScrollRef = useRef<HTMLDivElement>(null)
+  const audioTrackContentScrollRef = useRef<HTMLDivElement>(null)
+  const sectionDividerDragRef = useRef<{ startY: number; startDividerPosition: number } | null>(
+    null,
+  )
 
   // Store zoom handlers from TimelineContent
   const [zoomHandlers, setZoomHandlers] = useState<{
@@ -151,8 +155,15 @@ export const Timeline = memo(function Timeline({
     handleZoomOut: () => void
     handleZoomToFit: () => void
   } | null>(null)
+  const [trackRowsViewportHeight, setTrackRowsViewportHeight] = useState(0)
+  // A/V divider position is a viewport layout preference, persisted globally in
+  // localStorage (null = centered default). Seed the live value once from the
+  // saved preference; the drag handler commits the final value back on mouseup.
+  const [sectionDividerPosition, setSectionDividerPosition] = useState<number | null>(
+    () => useSettingsStore.getState().timelineSectionDividerPosition,
+  )
+
   const trackSizePreset = useEditorStore((s) => s.trackSizePreset)
-  const trackPreviewCollapsed = useEditorStore((s) => s.trackPreviewCollapsed)
   const setTimelineTracks = useTimelineStore((s) => s.setTracks)
 
   useEffect(() => {
@@ -210,9 +221,39 @@ export const Timeline = memo(function Timeline({
       false,
   )
 
+  const trackSectionLayout = useMemo(
+    () =>
+      getTrackSectionLayout({
+        viewportHeight: trackRowsViewportHeight,
+        tracks: visibleTracks,
+        sectionDividerPosition,
+        trackTitleBarHeight: editorLayout.timelineClipLabelRowHeight,
+      }),
+    [
+      editorLayout.timelineClipLabelRowHeight,
+      sectionDividerPosition,
+      trackRowsViewportHeight,
+      visibleTracks,
+    ],
+  )
+  const { clampedSectionDividerPosition, videoPaneHeight, audioPaneHeight } = trackSectionLayout
   const { handleTrackResizeStart, handleTrackResizeReset } = useTrackHeightResize()
-  const videoZoneHeight = 24
-  const audioZoneHeight = 24
+  const videoDisplayHeight = useMemo(
+    () => videoTracks.reduce((sum, track) => sum + track.height, 0),
+    [videoTracks],
+  )
+  const audioDisplayHeight = useMemo(
+    () => audioTracks.reduce((sum, track) => sum + track.height, 0),
+    [audioTracks],
+  )
+  const videoZoneHeight = useMemo(
+    () => Math.max(24, videoPaneHeight - videoDisplayHeight),
+    [videoDisplayHeight, videoPaneHeight],
+  )
+  const audioZoneHeight = useMemo(
+    () => Math.max(24, audioPaneHeight - audioDisplayHeight),
+    [audioDisplayHeight, audioPaneHeight],
+  )
   const getTrackStackOffset = useCallback(
     (sectionTracks: typeof visibleTracks, dropIndex: number, leadingOffset = 0) => {
       return (
@@ -225,9 +266,23 @@ export const Timeline = memo(function Timeline({
     [],
   )
 
+  useEffect(() => {
+    const element = trackHeadersViewportRef.current
+    if (!element) return
+
+    const updateHeight = () => {
+      setTrackRowsViewportHeight(element.clientHeight)
+    }
+
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
   // Wheel handling in track headers:
-  //   Alt+scroll = resize track heights in the hovered zone
-  //   Scroll over a track = vertical scroll of the shared track list
+  //   Alt+scroll  = resize track heights in the hovered zone
+  //   Shift+scroll = vertical scroll of the hovered zone
   //   Ctrl/Cmd+scroll = zoom timeline in/out
   const zoomHandlersRef = useRef(zoomHandlers)
   useEffect(() => {
@@ -248,9 +303,9 @@ export const Timeline = memo(function Timeline({
 
       const sectionEl =
         event.target instanceof Element
-          ? (event.target.closest('[data-track-section]') as HTMLElement | null)
+          ? (event.target.closest('[data-track-section-scroll]') as HTMLElement | null)
           : null
-      const zone = sectionEl?.dataset.trackSection as 'video' | 'audio' | undefined
+      const zone = sectionEl?.dataset.trackSectionScroll as 'video' | 'audio' | undefined
 
       if (event.altKey) {
         event.preventDefault()
@@ -264,23 +319,135 @@ export const Timeline = memo(function Timeline({
         return
       }
 
-      event.preventDefault()
-      const scrollHorizontally = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
-      if (scrollHorizontally) {
-        const timelineScroll = timelineContentRef.current
-        if (!timelineScroll) return
-        timelineScroll.scrollLeft += event.deltaX || event.deltaY
-        notifyTimelineLiveScroll(timelineScroll)
-        return
+      if (event.shiftKey) {
+        event.preventDefault()
+        const contentScroll = hasTrackSections
+          ? zone === 'audio'
+            ? audioTrackContentScrollRef.current
+            : videoTrackContentScrollRef.current
+          : allTrackContentScrollRef.current
+        if (!contentScroll) return
+        contentScroll.scrollTop += event.deltaY || event.deltaX
       }
-      const contentScroll = allTrackContentScrollRef.current
-      if (!contentScroll) return
-      contentScroll.scrollTop += event.deltaY || event.deltaX
     }
 
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [])
+  }, [hasTrackSections])
+
+  const handleSectionDividerMouseDown = useCallback(
+    (event: React.MouseEvent) => {
+      if (!hasTrackSections) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      sectionDividerDragRef.current = {
+        startY: event.clientY,
+        startDividerPosition: clampedSectionDividerPosition,
+      }
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = 'row-resize'
+
+      let latestPosition = clampedSectionDividerPosition
+      const dividerPreview = createRafCoalescedCallback((position: number) => {
+        const previewLayout = getTrackSectionLayout({
+          viewportHeight: trackRowsViewportHeight,
+          tracks: visibleTracks,
+          sectionDividerPosition: position,
+          trackTitleBarHeight: editorLayout.timelineClipLabelRowHeight,
+        })
+        const videoZoneHeight = Math.max(24, previewLayout.videoPaneHeight - videoDisplayHeight)
+        const audioZoneHeight = Math.max(24, previewLayout.audioPaneHeight - audioDisplayHeight)
+        const roots = [
+          trackHeadersRootRef.current,
+          timelineContentRef.current?.parentElement ?? null,
+        ]
+        for (const root of roots) {
+          if (!root) continue
+          root.style.setProperty(
+            '--timeline-video-pane-height',
+            `${previewLayout.videoPaneHeight}px`,
+          )
+          root.style.setProperty(
+            '--timeline-audio-pane-height',
+            `${previewLayout.audioPaneHeight}px`,
+          )
+          root.style.setProperty('--timeline-video-zone-height', `${videoZoneHeight}px`)
+          root.style.setProperty('--timeline-audio-zone-height', `${audioZoneHeight}px`)
+        }
+
+        // Video tracks grow upward from the divider. Keep both synchronized
+        // scroll surfaces bottom-anchored during the RAF preview so the rows
+        // move with MMB instead of snapping into place on mouse release.
+        const videoScrollTop = getBottomAnchoredSectionScrollTop(
+          previewLayout.videoPaneHeight,
+          videoDisplayHeight,
+          videoZoneHeight,
+        )
+        if (videoTrackContentScrollRef.current) {
+          videoTrackContentScrollRef.current.scrollTop = videoScrollTop
+        }
+        if (videoTrackHeadersScrollRef.current) {
+          videoTrackHeadersScrollRef.current.scrollTop = videoScrollTop
+        }
+      })
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const dragState = sectionDividerDragRef.current
+        if (!dragState) return
+
+        const deltaY = moveEvent.clientY - dragState.startY
+        latestPosition = clampSectionDividerPosition({
+          viewportHeight: trackRowsViewportHeight,
+          tracks: visibleTracks,
+          requestedDividerPosition: dragState.startDividerPosition + deltaY,
+          trackTitleBarHeight: editorLayout.timelineClipLabelRowHeight,
+        })
+        // Preview outside React so the full timeline tree is not reconciled for
+        // every mouse sample. Both panes inherit these values from one root.
+        dividerPreview.queue(latestPosition)
+      }
+
+      const handleMouseUp = () => {
+        // Apply the last pointer sample before the committed render catches up.
+        dividerPreview.flush()
+        sectionDividerDragRef.current = null
+        document.body.style.userSelect = ''
+        document.body.style.cursor = ''
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', handleMouseUp)
+        setSectionDividerPosition(latestPosition)
+        // Persist to localStorage so the split survives a refresh (one write
+        // per gesture, on release — not on every mousemove frame).
+        useSettingsStore.getState().setSetting('timelineSectionDividerPosition', latestPosition)
+      }
+
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+    },
+    [
+      audioDisplayHeight,
+      clampedSectionDividerPosition,
+      editorLayout.timelineClipLabelRowHeight,
+      hasTrackSections,
+      trackRowsViewportHeight,
+      videoDisplayHeight,
+      visibleTracks,
+    ],
+  )
+
+  const handleTimelineAreaMouseDown = useCallback(
+    (event: React.MouseEvent) => {
+      if (event.button !== 1) return
+      if (!hasTrackSections) return
+      // Intentional: middle-click anywhere in the timeline area drags the A/V
+      // section divider — headers, ruler, clip rows, everywhere. coderabbitai
+      // flagged this as "hijacking clips/gizmos" in PR #202 review and we
+      // narrowed it to divider-only; that was wrong — MMB is reserved for this
+      // gesture across the whole timeline. Do not re-narrow.
+      handleSectionDividerMouseDown(event)
+    },
+    [handleSectionDividerMouseDown, hasTrackSections],
+  )
 
   // Set the default edit target on mount.
   const tracksLength = tracks.length
@@ -292,20 +459,72 @@ export const Timeline = memo(function Timeline({
   }, [tracksLength, activeTrackId, defaultActiveTrackId, setActiveTrack])
 
   useEffect(() => {
-    const source = allTrackContentScrollRef.current
-    const target = allTrackHeadersScrollRef.current
-    if (!source || !target) return
+    const syncPairs = [
+      {
+        source: allTrackContentScrollRef.current,
+        target: allTrackHeadersScrollRef.current,
+      },
+      {
+        source: videoTrackContentScrollRef.current,
+        target: videoTrackHeadersScrollRef.current,
+      },
+      {
+        source: audioTrackContentScrollRef.current,
+        target: audioTrackHeadersScrollRef.current,
+      },
+    ].filter((pair): pair is { source: HTMLDivElement; target: HTMLDivElement } => {
+      return pair.source !== null && pair.target !== null
+    })
 
-    const handleScroll = () => {
-      if (target.scrollTop !== source.scrollTop) {
-        target.scrollTop = source.scrollTop
+    const cleanups = syncPairs.map(({ source, target }) => {
+      const handleScroll = () => {
+        if (target.scrollTop !== source.scrollTop) {
+          target.scrollTop = source.scrollTop
+        }
+      }
+
+      handleScroll()
+      source.addEventListener('scroll', handleScroll, { passive: true })
+      return () => source.removeEventListener('scroll', handleScroll)
+    })
+
+    return () => {
+      for (const cleanup of cleanups) {
+        cleanup()
       }
     }
+  }, [audioTracks.length, hasTrackSections, tracksLength, videoTracks.length])
 
-    handleScroll()
-    source.addEventListener('scroll', handleScroll, { passive: true })
-    return () => source.removeEventListener('scroll', handleScroll)
-  }, [tracksLength])
+  useLayoutEffect(() => {
+    const content = hasTrackSections
+      ? videoTrackContentScrollRef.current
+      : videoTracks.length > 0
+        ? allTrackContentScrollRef.current
+        : null
+    const header = hasTrackSections
+      ? videoTrackHeadersScrollRef.current
+      : videoTracks.length > 0
+        ? allTrackHeadersScrollRef.current
+        : null
+
+    const anchorToDivider = (element: HTMLDivElement | null) => {
+      if (!element) {
+        return
+      }
+
+      element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+    }
+
+    anchorToDivider(content)
+    anchorToDivider(header)
+  }, [
+    allTrackContentScrollRef,
+    allTrackHeadersScrollRef,
+    hasTrackSections,
+    videoPaneHeight,
+    videoDisplayHeight,
+    videoTracks.length,
+  ])
 
   // Update drop indicator from shared ref (only during drag)
   // Only runs RAF loop when track dragging is active to avoid unnecessary renders
@@ -499,14 +718,10 @@ export const Timeline = memo(function Timeline({
     applyTrackSizePreset(preset.id)
   }, [])
 
-  const handleToggleTrackPreview = useCallback(() => {
-    toggleTrackPreviewCollapsed()
-  }, [])
-
   const handleDeleteTrack = useCallback(
     (trackId: string) => {
-      if (!canRemoveTrack(tracks, trackId)) {
-        logger.warn('Cannot remove the last required track')
+      if (tracks.length <= 1) {
+        logger.warn('Cannot remove all tracks')
         return
       }
 
@@ -547,22 +762,21 @@ export const Timeline = memo(function Timeline({
 
     if (tracksToRemove.length === 0) return
 
-    const tracksToRemoveSet = new Set(getRemovableTrackIds(tracks, tracksToRemove))
-    if (tracksToRemoveSet.size === 0) {
-      logger.warn('Cannot remove the last required tracks')
+    // Don't allow removing all tracks
+    const tracksToRemoveSet = new Set(tracksToRemove)
+    if (tracksToRemoveSet.size >= tracks.length) {
+      logger.warn('Cannot remove all tracks')
       return
     }
 
-    removeTracks([...tracksToRemoveSet])
+    removeTracks(tracksToRemove)
 
     const remainingTrack = tracks.find((t) => !tracksToRemoveSet.has(t.id))
     syncTrackSelectionAfterRemoval(tracksToRemove, remainingTrack?.id ?? null)
   }, [activeTrackId, removeTracks, selectedTrackIds, syncTrackSelectionAfterRemoval, tracks])
 
   const videoDropIndicatorIndex =
-    isTrackDragging &&
-    dropIndicatorIndex >= 0 &&
-    dropIndicatorIndex <= videoTracks.length
+    isTrackDragging && dropIndicatorIndex >= 0 && dropIndicatorIndex <= videoTracks.length
       ? dropIndicatorIndex
       : -1
   const audioDropIndicatorIndex =
@@ -571,24 +785,47 @@ export const Timeline = memo(function Timeline({
     dropIndicatorIndex <= visibleTracks.length
       ? dropIndicatorIndex - videoTracks.length
       : -1
+  const singleSectionKind = videoTracks.length > 0 ? 'video' : 'audio'
+  const singleSectionTracks = videoTracks.length > 0 ? videoTracks : audioTracks
+  const singleSectionHeight = videoTracks.length > 0 ? videoPaneHeight : audioPaneHeight
+  const singleSectionZoneHeight = videoTracks.length > 0 ? videoZoneHeight : audioZoneHeight
+  const singleDropIndicatorIndex =
+    !hasTrackSections &&
+    isTrackDragging &&
+    dropIndicatorIndex >= 0 &&
+    dropIndicatorIndex <= visibleTracks.length
+      ? dropIndicatorIndex
+      : -1
 
   const renderTrackHeadersSection = (
     sectionTracks: typeof visibleTracks,
     options: {
       section: 'video' | 'audio'
+      height: number
       zoneHeight: number
+      scrollRef: React.RefObject<HTMLDivElement | null>
       dropIndicatorLocalIndex: number
       firstTrackFrame: 'with-top-divider' | 'regular'
     },
   ) => (
-    <div className="relative" data-track-section={options.section}>
-      {options.section === 'video' && (
-        <div
-          aria-hidden="true"
-          data-track-header-new-zone="video"
-          style={{ height: `${options.zoneHeight}px` }}
-        />
-      )}
+    <div
+      className="relative min-h-0 overflow-hidden"
+      style={{
+        height: `var(--timeline-${options.section}-pane-height, ${options.height}px)`,
+      }}
+      data-track-section-scroll={options.section}
+    >
+      <div ref={options.scrollRef} className="h-full overflow-hidden">
+        <div className="relative min-h-full">
+          {options.section === 'video' && (
+            <div
+              aria-hidden="true"
+              data-track-header-new-zone="video"
+              style={{
+                height: `var(--timeline-video-zone-height, ${options.zoneHeight}px)`,
+              }}
+            />
+          )}
 
           {sectionTracks.map((track, index) => {
             const RowFrame =
@@ -598,12 +835,8 @@ export const Timeline = memo(function Timeline({
             return (
               <RowFrame
                 key={track.id}
-                onResizeMouseDown={
-                  (event) => handleTrackResizeStart(event, track.id)
-                }
-                onResizeDoubleClick={
-                  (event) => handleTrackResizeReset(event, track.id)
-                }
+                onResizeMouseDown={(event) => handleTrackResizeStart(event, track.id)}
+                onResizeDoubleClick={(event) => handleTrackResizeReset(event, track.id)}
                 resizeHandleLabel={`Resize ${track.name} height`}
                 resizeHandlePosition={getTrackKind(track) === 'video' ? 'top' : 'bottom'}
               >
@@ -611,7 +844,7 @@ export const Timeline = memo(function Timeline({
                   track={track}
                   isActive={activeTrackId === track.id}
                   isSelected={selectedTrackIdsSet.has(track.id)}
-                  canDeleteTrack={canRemoveTrack(tracks, track.id)}
+                  canDeleteTrack={tracks.length > 1}
                   canDeleteEmptyTracks={canDeleteEmptyTracks}
                   onToggleLock={() => toggleTrackLock(track.id)}
                   onToggleSyncLock={() => toggleTrackSyncLock(track.id)}
@@ -644,32 +877,36 @@ export const Timeline = memo(function Timeline({
             )
           })}
 
-      {options.section === 'audio' && (
-        <div
-          aria-hidden="true"
-          data-track-header-new-zone="audio"
-          style={{ height: `${options.zoneHeight}px` }}
-        />
-      )}
+          {options.section === 'audio' && (
+            <div
+              aria-hidden="true"
+              data-track-header-new-zone="audio"
+              style={{
+                height: `var(--timeline-audio-zone-height, ${options.zoneHeight}px)`,
+              }}
+            />
+          )}
 
-      {options.dropIndicatorLocalIndex >= 0 && (
-        <div
-          className="absolute left-0 right-0 h-0.5 pointer-events-none z-50 shadow-lg bg-primary"
-          style={{
-            top: getTrackStackOffset(
-              sectionTracks,
-              options.dropIndicatorLocalIndex,
-              options.section === 'video' ? options.zoneHeight : 0,
-            ),
-          }}
-        />
-      )}
+          {options.dropIndicatorLocalIndex >= 0 && (
+            <div
+              className="absolute left-0 right-0 h-0.5 pointer-events-none z-50 shadow-lg bg-primary"
+              style={{
+                top: getTrackStackOffset(
+                  sectionTracks,
+                  options.dropIndicatorLocalIndex,
+                  options.section === 'video' ? options.zoneHeight : 0,
+                ),
+              }}
+            />
+          )}
+        </div>
+      </div>
     </div>
   )
 
   return (
     <div
-      className="timeline-bg editor-toolbar-theme h-full border-t border-border flex flex-col overflow-hidden"
+      className="timeline-bg h-full border-t border-border flex flex-col overflow-hidden"
       role="region"
       aria-label={t('timeline.region')}
     >
@@ -679,14 +916,19 @@ export const Timeline = memo(function Timeline({
         onZoomIn={zoomHandlers?.handleZoomIn}
         onZoomOut={zoomHandlers?.handleZoomOut}
         onZoomToFit={zoomHandlers?.handleZoomToFit}
-        leadingContent={<SequenceTabs compact />}
       />
+
+      {/* Standalone-timeline (sequence) tabs — Main + top-level sequences */}
+      <SequenceTabs />
 
       {/* Composition Breadcrumbs - shown when inside a sub-composition */}
       <CompositionBreadcrumbs />
 
       {/* Timeline Content */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div
+        className="flex-1 flex overflow-hidden min-h-0"
+        onMouseDown={handleTimelineAreaMouseDown}
+      >
         {/* Track Headers Sidebar */}
         <div
           className="border-r border-border panel-bg flex-shrink-0 flex flex-col overflow-x-hidden"
@@ -697,31 +939,13 @@ export const Timeline = memo(function Timeline({
             className="flex items-center justify-between px-3 border-b border-border bg-secondary/20 flex-shrink-0"
             style={{ height: EDITOR_LAYOUT_CSS_VALUES.timelineTracksHeaderHeight }}
           >
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`editor-toolbar-button h-6 w-6 ${trackPreviewCollapsed ? 'editor-toolbar-button-active' : ''}`}
-              aria-pressed={trackPreviewCollapsed}
-              onClick={handleToggleTrackPreview}
-              title={t(
-                trackPreviewCollapsed
-                  ? 'timeline.trackSize.showPreview'
-                  : 'timeline.trackSize.hidePreview',
-              )}
-            >
-              {trackPreviewCollapsed ? (
-                <PanelTopOpen className="h-3.5 w-3.5" />
-              ) : (
-                <PanelTopClose className="h-3.5 w-3.5" />
-              )}
-            </Button>
             {/* Track size flyout */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="editor-toolbar-button h-6 w-6"
+                  className="h-6 w-6"
                   title={t('timeline.trackSize.label')}
                 >
                   <ActiveTrackSizeIcon className="w-3 h-3" />
@@ -751,7 +975,7 @@ export const Timeline = memo(function Timeline({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="editor-toolbar-button h-6 w-6"
+                    className="h-6 w-6"
                     title={t('timeline.addTrack.label')}
                   >
                     <Plus className="w-3 h-3" />
@@ -772,7 +996,7 @@ export const Timeline = memo(function Timeline({
               <Button
                 variant="ghost"
                 size="icon"
-                className="editor-toolbar-button h-6 w-6"
+                className="h-6 w-6"
                 onClick={handleRemoveTracks}
                 disabled={tracks.length === 0 || (!activeTrackId && selectedTrackIds.length === 0)}
                 title={
@@ -795,27 +1019,45 @@ export const Timeline = memo(function Timeline({
             <div
               ref={trackHeadersRootRef}
               className="flex h-full min-h-0 flex-col"
+              style={
+                {
+                  '--timeline-video-pane-height': `${videoPaneHeight}px`,
+                  '--timeline-audio-pane-height': `${audioPaneHeight}px`,
+                  '--timeline-video-zone-height': `${videoZoneHeight}px`,
+                  '--timeline-audio-zone-height': `${audioZoneHeight}px`,
+                } as React.CSSProperties
+              }
             >
-              <div
-                ref={allTrackHeadersScrollRef}
-                data-track-section-scroll="all"
-                className="h-full overflow-hidden"
-              >
-                <div className="relative min-h-full">
+              {hasTrackSections ? (
+                <>
                   {renderTrackHeadersSection(videoTracks, {
                     section: 'video',
+                    height: videoPaneHeight,
                     zoneHeight: videoZoneHeight,
+                    scrollRef: videoTrackHeadersScrollRef,
                     dropIndicatorLocalIndex: videoDropIndicatorIndex,
                     firstTrackFrame: 'with-top-divider',
                   })}
+                  <TrackSectionDivider onMouseDown={handleSectionDividerMouseDown} />
                   {renderTrackHeadersSection(audioTracks, {
                     section: 'audio',
+                    height: audioPaneHeight,
                     zoneHeight: audioZoneHeight,
+                    scrollRef: audioTrackHeadersScrollRef,
                     dropIndicatorLocalIndex: audioDropIndicatorIndex,
-                    firstTrackFrame: videoTracks.length > 0 ? 'regular' : 'with-top-divider',
+                    firstTrackFrame: 'regular',
                   })}
-                </div>
-              </div>
+                </>
+              ) : (
+                renderTrackHeadersSection(singleSectionTracks, {
+                  section: singleSectionKind,
+                  height: singleSectionHeight,
+                  zoneHeight: singleSectionZoneHeight,
+                  scrollRef: allTrackHeadersScrollRef,
+                  dropIndicatorLocalIndex: singleDropIndicatorIndex,
+                  firstTrackFrame: 'with-top-divider',
+                })
+              )}
             </div>
           </div>
         </div>
@@ -826,6 +1068,11 @@ export const Timeline = memo(function Timeline({
           tracks={visibleTracks}
           scrollRef={timelineContentRef}
           allTracksScrollRef={allTrackContentScrollRef}
+          videoTracksScrollRef={videoTrackContentScrollRef}
+          audioTracksScrollRef={audioTrackContentScrollRef}
+          videoPaneHeight={videoPaneHeight}
+          audioPaneHeight={audioPaneHeight}
+          onSectionDividerMouseDown={hasTrackSections ? handleSectionDividerMouseDown : undefined}
           onZoomHandlersReady={setZoomHandlers}
         />
       </div>

@@ -168,7 +168,6 @@ export function mapToClientSettings(
   settings: ExportSettings | ExtendedExportSettings,
   fps: number,
 ): ClientExportSettings {
-  const outputFps = settings.fps ?? fps
   const codec = mapExportCodecToClientCodec(settings.codec)
   const container = getPreferredContainerForCodec(codec)
   // `subtitleMode` only lives on the extended settings — a base ExportSettings
@@ -182,13 +181,13 @@ export function mapToClientSettings(
     container,
     quality: settings.quality,
     resolution: settings.resolution,
-    fps: outputFps,
+    fps,
     videoBitrate: resolveVideoBitrate({
       codec: settings.codec,
       quality: settings.quality,
       width: settings.resolution.width,
       height: settings.resolution.height,
-      fps: outputFps,
+      fps,
       rateControl: settings.rateControl,
       customBitrate: settings.videoBitrate,
       sourceVideo: settings.sourceVideo,

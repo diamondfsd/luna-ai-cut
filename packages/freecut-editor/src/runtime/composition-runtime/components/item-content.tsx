@@ -4,12 +4,7 @@ import {
   useClockPlaybackRate,
 } from '@freecut/runtime/composition-runtime/deps/player'
 import { useDebugStore, useGizmoStore } from '@freecut/runtime/composition-runtime/deps/stores'
-import {
-  type AudioItem,
-  type CompositionItem,
-  type TimelineItem,
-  type ShapeItem,
-} from '@freecut/types/timeline'
+import type { AudioItem, CompositionItem, TimelineItem, ShapeItem } from '@freecut/types/timeline'
 import type { ResolvedAudioEqSettings } from '@freecut/types/audio'
 import type { TransformProperties } from '@freecut/types/transform'
 import { DebugOverlay } from './debug-overlay'
@@ -17,12 +12,12 @@ import { CustomDecoderAudio } from './custom-decoder-audio'
 import { PitchCorrectedAudio } from './pitch-corrected-audio'
 import type { AudioPlaybackProps } from './audio-playback-props'
 import { GifPlayer } from './gif-player'
-import { HtmlContent } from './html-content'
 import { LottiePlayer } from './lottie-player'
 import { MediaOfflinePlaceholder } from './media-offline-placeholder'
 import { ItemVisualWrapper } from './item-visual-wrapper'
 import { isRenderableLottieSrc } from '@freecut/infrastructure/lottie/lottie-frame-provider'
 import { TextContent } from './text-content'
+import { SubtitleSegmentContent } from './subtitle-segment-content'
 import { ShapeContent } from './shape-content'
 import { VideoContent } from './video-content'
 import { useVideoConfig } from '../hooks/use-player-compat'
@@ -597,17 +592,10 @@ export const ItemContent = React.memo<ItemProps>(
     }
 
     if (item.type === 'text') {
+      // Use new ItemVisualWrapper for consolidated state and fixed DOM structure
       return (
         <ItemVisualWrapper item={item} masks={masks}>
           <TextContent item={item} />
-        </ItemVisualWrapper>
-      )
-    }
-
-    if (item.type === 'html') {
-      return (
-        <ItemVisualWrapper item={item} masks={masks}>
-          <HtmlContent item={item} />
         </ItemVisualWrapper>
       )
     }
@@ -658,6 +646,14 @@ export const ItemContent = React.memo<ItemProps>(
     // adjustment items render nothing visually (they apply effects to other items)
     if (item.type === 'adjustment') {
       return null
+    }
+
+    if (item.type === 'subtitle') {
+      return (
+        <ItemVisualWrapper item={item} masks={masks}>
+          <SubtitleSegmentContent item={item} />
+        </ItemVisualWrapper>
+      )
     }
 
     throw new Error(`Unknown item type: ${JSON.stringify(item)}`)

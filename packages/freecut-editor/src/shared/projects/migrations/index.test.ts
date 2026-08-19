@@ -433,6 +433,7 @@ describe('migrateProject transition normalization', () => {
     expect(result.project.timeline?.tracks.map((track) => track.order)).toEqual([0, 1, 2])
   })
 })
+
 describe('migrateProject validation warnings', () => {
   it('reports a TRACK_OVERLAP_REPAIRED warning with both item ids when items overlap', () => {
     const project = createBaseProject({

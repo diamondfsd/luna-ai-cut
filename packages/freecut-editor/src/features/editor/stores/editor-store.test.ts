@@ -22,8 +22,6 @@ describe('editor-store', () => {
     localStorage.removeItem('editor:workspaceTimelineSize:color')
     localStorage.removeItem('editor:workspaceTimelineSize:animate')
     localStorage.removeItem('editor:propertiesFullColumn')
-    localStorage.removeItem('editor:aiSidebarOpen:v2')
-    localStorage.removeItem('editor:aiSidebarWidth')
 
     // Reset store to defaults between tests
     useEditorStore.setState({
@@ -31,13 +29,11 @@ describe('editor-store', () => {
       workspace: 'edit',
       leftSidebarOpen: true,
       rightSidebarOpen: true,
-      aiSidebarOpen: true,
-      aiSidebarWidth: 380,
       keyframeEditorShortcutScopeActive: false,
       activeTab: 'media',
       clipInspectorTab: 'video',
-      sidebarWidth: 360,
-      rightSidebarWidth: 340,
+      sidebarWidth: editorLayout.leftSidebarDefaultWidth,
+      rightSidebarWidth: editorLayout.rightSidebarDefaultWidth,
       timelineHeight: 250,
       sourcePreviewMediaId: null,
       mediaSkimPreviewMediaId: null,
@@ -51,7 +47,7 @@ describe('editor-store', () => {
       linkedSelectionEnabled: true,
       colorScopesOpen: false,
       propertiesFullColumn: false,
-      mediaFullColumn: false,
+      mediaFullColumn: true,
     })
     usePlaybackStore.setState({ isPlaying: false, previewFrame: null, previewItemId: null })
   })
@@ -82,21 +78,6 @@ describe('editor-store', () => {
 
     useEditorStore.getState().toggleRightSidebar()
     expect(useEditorStore.getState().rightSidebarOpen).toBe(true)
-  })
-
-  it('keeps the AI sidebar open state and width independent', () => {
-    expect(useEditorStore.getState().aiSidebarOpen).toBe(true)
-    expect(useEditorStore.getState().aiSidebarWidth).toBe(380)
-
-    useEditorStore.getState().toggleAiSidebar()
-    useEditorStore.getState().setAiSidebarWidth(480)
-
-    expect(useEditorStore.getState().aiSidebarOpen).toBe(false)
-    expect(useEditorStore.getState().aiSidebarWidth).toBe(480)
-    expect(useEditorStore.getState().rightSidebarOpen).toBe(true)
-    expect(useEditorStore.getState().rightSidebarWidth).toBe(340)
-    expect(localStorage.getItem('editor:aiSidebarOpen:v2')).toBe('false')
-    expect(localStorage.getItem('editor:aiSidebarWidth')).toBe('480')
   })
 
   it('sets active tab', () => {
@@ -245,14 +226,10 @@ describe('editor-store', () => {
     const raw = localStorage.getItem('editor:workspaceLayout:color')
     expect(raw).not.toBeNull()
     expect(JSON.parse(raw ?? '{}')).toEqual({
-      schemaVersion: 2,
       activeTab: 'ai',
       clipInspectorTab: 'audio',
       colorScopesOpen: false,
       propertiesFullColumn: false,
-      mediaFullColumn: true,
-      sidebarWidth: 360,
-      rightSidebarWidth: 340,
     })
   })
 

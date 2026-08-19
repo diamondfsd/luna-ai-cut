@@ -88,17 +88,4 @@ describe('TimecodeDisplay', () => {
 
     expect(button).toHaveTextContent('00:01:20')
   })
-
-  it('never displays a frame beyond the timeline duration', () => {
-    render(<TimecodeDisplay fps={30} totalFrames={240} />)
-
-    const button = screen.getByRole('button')
-    usePlaybackStore.setState({ currentFrame: 264, currentFrameEpoch: 2 })
-    usePreviewBridgeStore.getState().setDisplayedFrame(264)
-
-    expect(button).toHaveTextContent('00:07:29 / 00:07:29')
-
-    fireEvent.click(button)
-    expect(button).toHaveTextContent('239 / 239')
-  })
 })

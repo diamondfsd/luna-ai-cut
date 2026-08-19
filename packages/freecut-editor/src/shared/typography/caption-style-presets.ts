@@ -1,7 +1,9 @@
 /**
  * Named caption/subtitle look-and-feel presets.
  *
- * Each preset is a patch of caption text style fields.
+ * Each preset is a *patch* of style fields shared between {@link TextItem}
+ * and {@link SubtitleSegmentItem}. Applying a preset overlays these onto
+ * the target item(s).
  *
  * `layout` carries canvas-relative tweaks (font size, vertical position,
  * box width). They're stored as ratios of the canvas so the same preset
@@ -11,7 +13,7 @@
  */
 
 import type { TransformProperties } from '@freecut/types/transform'
-import type { TextItem } from '@freecut/types/timeline'
+import type { SubtitleSegmentItem, TextItem } from '@freecut/types/timeline'
 
 export type CaptionStylePatch = Pick<
   TextItem,
@@ -169,7 +171,9 @@ export const CAPTION_STYLE_PRESETS: readonly CaptionStylePreset[] = [
  * given item's current style. Used to highlight the active preset chip in
  * the UI. Returns null when nothing matches well — the user has tweaked.
  */
-export function detectActiveCaptionPreset(item: TextItem): CaptionStylePreset | null {
+export function detectActiveCaptionPreset(
+  item: SubtitleSegmentItem | (TextItem & { textRole?: 'caption' }),
+): CaptionStylePreset | null {
   for (const preset of CAPTION_STYLE_PRESETS) {
     if (matchesPreset(item, preset.patch)) return preset
   }
@@ -223,7 +227,7 @@ export function resolveCaptionStylePatch(
   return patch
 }
 
-function matchesPreset(item: TextItem, patch: CaptionStylePatch): boolean {
+function matchesPreset(item: SubtitleSegmentItem | TextItem, patch: CaptionStylePatch): boolean {
   for (const key of Object.keys(patch) as Array<keyof CaptionStylePatch>) {
     const expected = patch[key]
     const actual = item[key]

@@ -11,6 +11,7 @@ import type { CropSettings, ResolvedTransform } from '@freecut/types/transform'
 import { resolveItemTransformAtFrame } from '@freecut/features/export/deps/composition-runtime'
 import { resolveAnimatedCrop } from '@freecut/features/export/deps/keyframes'
 import { applyRenderTimelineSpan, type RenderTimelineSpan } from './render-span'
+import { getLogicalCanvasSize, scaleResolvedTransformForCanvas } from './canvas-render-scale'
 
 function clamp01(value: number): number {
   if (value <= 0) return 0
@@ -103,6 +104,8 @@ function getVisualFadeOpacity(item: TimelineItem, frame: number, fps: number): n
 interface CanvasRenderSettings {
   width: number
   height: number
+  logicalWidth?: number
+  logicalHeight?: number
   fps: number
   getExpressionItem?: (itemId: string) => TimelineItem | undefined
   getExpressionKeyframes?: (itemId: string) => ItemKeyframes | undefined
@@ -155,10 +158,11 @@ export function getAnimatedTransform(
   renderSpan?: RenderTimelineSpan,
 ): ResolvedTransform {
   const resolvedItem = applyRenderTimelineSpan(item, renderSpan)
+  const logicalCanvas = getLogicalCanvasSize(canvas)
   const resolved = resolveItemTransformAtFrame(resolvedItem, {
     canvas: {
-      width: canvas.width,
-      height: canvas.height,
+      width: logicalCanvas.width,
+      height: logicalCanvas.height,
       fps: canvas.fps,
     },
     frame,
@@ -168,14 +172,15 @@ export function getAnimatedTransform(
     getPreviewTransform: canvas.getPreviewTransform,
   })
 
+  const scaled = scaleResolvedTransformForCanvas(resolved, canvas)
   const fadeOpacity = getVisualFadeOpacity(resolvedItem, frame, canvas.fps)
   if (fadeOpacity >= 1) {
-    return resolved
+    return scaled
   }
 
   return {
-    ...resolved,
-    opacity: resolved.opacity * fadeOpacity,
+    ...scaled,
+    opacity: scaled.opacity * fadeOpacity,
   }
 }
 
@@ -186,7 +191,7 @@ export function getAnimatedCrop(
   canvas: Pick<CanvasRenderSettings, 'width' | 'height'>,
   renderSpan?: RenderTimelineSpan,
 ): CropSettings | undefined {
-  const dimensions = getCropSourceDimensions(item, canvas)
+  const dimensions = getCropSourceDimensions(item, getLogicalCanvasSize(canvas))
   if (!dimensions) {
     return item.crop
   }

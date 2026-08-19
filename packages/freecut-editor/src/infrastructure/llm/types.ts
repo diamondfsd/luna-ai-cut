@@ -23,21 +23,6 @@ export interface LlmLoadProgress {
   percent: number
 }
 
-export interface LlmRequestStatus {
-  attempt: number
-  maxAttempts: number
-  state: 'waiting' | 'retrying' | 'streaming'
-  previewText?: string
-  previewKind?: 'reasoning' | 'content'
-}
-
-export interface LlmTokenUsage {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  cachedTokens: number
-}
-
 export interface LlmGenerateOptions {
   /** Hard cap on generated tokens. Adapters pick a sensible default. */
   maxTokens?: number
@@ -45,8 +30,6 @@ export interface LlmGenerateOptions {
   temperature?: number
   /** Nucleus sampling cutoff when `temperature > 0`. */
   topP?: number
-  /** Remote reasoning depth. Local adapters may ignore this preference. */
-  reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
   /** Abort streaming and reject the pending generation. */
   signal?: AbortSignal
   /**
@@ -54,10 +37,6 @@ export interface LlmGenerateOptions {
    * accumulated output so far. Fired on the main thread.
    */
   onToken?: (delta: string, text: string) => void
-  /** Actual token usage returned by the model provider, when available. */
-  onUsage?: (usage: LlmTokenUsage) => void
-  /** Reports remote request attempts so callers can show useful waiting feedback. */
-  onStatus?: (status: LlmRequestStatus) => void
 }
 
 export interface LlmAdapter {

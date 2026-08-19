@@ -1,4 +1,0 @@
-interface:
-  display_name: "剪辑节奏与镜头连接"
-  short_description: "剪辑节奏、切点与镜头连接方法指导和时间轴执行建议与实操建议"
-  default_prompt: "使用 $luna-technique-cutting-rhythm 设计这次剪辑的节奏和镜头连接"

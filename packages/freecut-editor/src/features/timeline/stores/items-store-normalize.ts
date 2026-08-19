@@ -1,4 +1,4 @@
-import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
+import type { SubtitleSegmentItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { normalizeAudioEqSettings } from '@freecut/shared/utils/audio-eq'
 import { resolveCornerPinTargetRect } from '@freecut/features/timeline/deps/composition-runtime'
 import {
@@ -128,4 +128,49 @@ export function normalizeTrack(track: TimelineTrack): TimelineTrack {
     volume: track.volume === undefined ? undefined : Math.max(-60, Math.min(12, track.volume)),
     audioEq: normalizeAudioEqSettings(track.audioEq),
   }
+}
+
+/**
+ * Trim a subtitle segment from its start: re-anchor every cue's time so the
+ * new `from` becomes 0, dropping cues entirely before the new boundary and
+ * clamping cues that straddle it.
+ *
+ * `clampedAmount` is in timeline frames — positive means trimming inward.
+ */
+export function trimSubtitleCuesAtStart(
+  item: SubtitleSegmentItem,
+  clampedAmount: number,
+  timelineFps: number,
+): { cues: SubtitleSegmentItem['cues'] } | null {
+  if (clampedAmount === 0) return null
+  const offsetSeconds = clampedAmount / timelineFps
+  const nextCues: SubtitleSegmentItem['cues'] = []
+  for (const cue of item.cues) {
+    if (cue.endSeconds <= offsetSeconds) continue // entirely outside new window
+    const startSeconds = Math.max(0, cue.startSeconds - offsetSeconds)
+    const endSeconds = cue.endSeconds - offsetSeconds
+    if (endSeconds <= startSeconds) continue
+    nextCues.push({ ...cue, startSeconds, endSeconds })
+  }
+  return { cues: nextCues }
+}
+
+/**
+ * Trim a subtitle segment from its end: drop cues past the new duration and
+ * clamp cues that straddle the boundary.
+ */
+export function trimSubtitleCuesAtEnd(
+  item: SubtitleSegmentItem,
+  newDurationFrames: number,
+  timelineFps: number,
+): { cues: SubtitleSegmentItem['cues'] } | null {
+  const newEndSeconds = newDurationFrames / timelineFps
+  const nextCues: SubtitleSegmentItem['cues'] = []
+  for (const cue of item.cues) {
+    if (cue.startSeconds >= newEndSeconds) continue
+    const endSeconds = Math.min(cue.endSeconds, newEndSeconds)
+    if (endSeconds <= cue.startSeconds) continue
+    nextCues.push({ ...cue, endSeconds })
+  }
+  return { cues: nextCues }
 }

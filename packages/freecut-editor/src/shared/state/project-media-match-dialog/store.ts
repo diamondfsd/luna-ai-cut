@@ -4,7 +4,7 @@ interface ProjectMediaMatchCandidate {
   fileName: string
   width: number
   height: number
-  fps?: number
+  fps: number
 }
 
 export type ProjectMediaMatchChoice = 'match-both' | 'fps-only' | 'size-only' | 'keep-current'

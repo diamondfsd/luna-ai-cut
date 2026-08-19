@@ -496,4 +496,40 @@ describe('renderVideoItem', () => {
 
     expect(markActivePreviewFramePending).toHaveBeenCalledOnce()
   })
+
+  it('holds a paused ramp-owned transition video without blocking on its seek', async () => {
+    const target = new EventTarget()
+    const mutableVideo = Object.assign(target, {
+      currentTime: 0.6,
+      dataset: { transitionHold: '1', transitionSourceRamp: '1' },
+      paused: true,
+      readyState: 1,
+      videoHeight: 1080,
+      videoWidth: 1920,
+    })
+    const domVideo = mutableVideo as unknown as HTMLVideoElement
+    const markActivePreviewFramePending = vi.fn()
+    const ctx = createCanvasContext()
+    const renderContext = createRenderContext({
+      domVideoElementProvider: vi.fn(() => domVideo),
+      isRenderingTransition: true,
+      markActivePreviewFramePending,
+    })
+
+    await expect(
+      renderVideoItem(ctx, item, transform, 12, renderContext, 0, {
+        from: 0,
+        durationInFrames: 30,
+        sourceStart: 0,
+        sourceTimeRamp: {
+          anchor: 'start',
+          rampStart: 0,
+          rampEnd: 20,
+          slope: 0.5,
+        },
+      }),
+    ).resolves.toBe(false)
+    expect(ctx.drawImage).not.toHaveBeenCalled()
+    expect(markActivePreviewFramePending).toHaveBeenCalledOnce()
+  })
 })

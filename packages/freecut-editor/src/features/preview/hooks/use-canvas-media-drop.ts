@@ -33,7 +33,6 @@ import {
   useProjectMediaMatchDialogStore,
   type ProjectMediaMatchChoice,
 } from '@freecut/shared/state/project-media-match-dialog'
-import { resizeCanvasToAspectRatio } from '@freecut/shared/projects/canvas-aspect-ratio'
 
 type DropSource = 'library' | 'external-file'
 
@@ -74,10 +73,7 @@ function normalizeMatchedProjectDimension(value: number): number {
   return rounded % 2 === 0 ? rounded : rounded + 1
 }
 
-function getMatchedProjectSize(
-  canvas: { width: number; height: number },
-  media: Pick<MediaMetadata, 'width' | 'height'>,
-) {
+function getMatchedProjectSize(media: Pick<MediaMetadata, 'width' | 'height'>) {
   const width = normalizeMatchedProjectDimension(media.width)
   const height = normalizeMatchedProjectDimension(media.height)
 
@@ -85,7 +81,7 @@ function getMatchedProjectSize(
     return null
   }
 
-  return resizeCanvasToAspectRatio(canvas, width / height)
+  return { width, height }
 }
 
 function shouldPreserveInitialPlacement(choice: ProjectMediaMatchChoice): boolean {
@@ -480,39 +476,30 @@ export function useCanvasMediaDrop({ coordParams, projectSize }: UseCanvasMediaD
 
       const mediaState = useMediaLibraryStore.getState()
       const currentProjectId = mediaState.currentProjectId
-      const hasExistingProjectVisual = mediaState.mediaItems.some(
-        (item) => item.mimeType.startsWith('video/') || item.mimeType.startsWith('image/'),
+      const hasExistingProjectVideo = mediaState.mediaItems.some((item) =>
+        item.mimeType.startsWith('video/'),
       )
 
       let preInspectedMetadata: {
         type: string
         width: number
         height: number
-        fps?: number
+        fps: number
       } | null = null
 
-      if (
-        (entry.mediaType === 'video' || entry.mediaType === 'image') &&
-        currentProjectId &&
-        !hasExistingProjectVisual
-      ) {
+      if (entry.mediaType === 'video' && currentProjectId && !hasExistingProjectVideo) {
         try {
           const mimeType = getMimeType(entry.file)
           const { metadata } = await mediaProcessorService.processMedia(entry.file, mimeType, {
             generateThumbnail: false,
           })
 
-          if (metadata.type !== 'video' && metadata.type !== 'image') {
-            toast.error(i18n.t('preview.canvasDrop.unableToInspectFile'))
+          if (metadata.type !== 'video') {
+            toast.error(i18n.t('preview.canvasDrop.unableToInspectVideo'))
             return
           }
 
-          preInspectedMetadata = {
-            type: metadata.type,
-            width: metadata.width,
-            height: metadata.height,
-            fps: metadata.type === 'video' ? metadata.fps : undefined,
-          }
+          preInspectedMetadata = metadata
         } catch (error) {
           toast.error(i18n.t('preview.canvasDrop.unableToInspectFile'), {
             description: error instanceof Error ? error.message : i18n.t('projects.tryAgain'),
@@ -551,8 +538,7 @@ export function useCanvasMediaDrop({ coordParams, projectSize }: UseCanvasMediaD
 
         preserveInitialPlacement = shouldPreserveInitialPlacement(matchChoice)
         if (preserveInitialPlacement) {
-          placementProjectSize =
-            getMatchedProjectSize(projectSize, preInspectedMetadata) ?? undefined
+          placementProjectSize = getMatchedProjectSize(preInspectedMetadata) ?? undefined
         }
       }
 
@@ -566,7 +552,7 @@ export function useCanvasMediaDrop({ coordParams, projectSize }: UseCanvasMediaD
         preserveInitialPlacement,
       })
     },
-    [placeMediaOnCanvas, projectSize],
+    [placeMediaOnCanvas],
   )
 
   const handleDragEnter = useCallback((event: React.DragEvent) => {

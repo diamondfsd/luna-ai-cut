@@ -1,6 +1,5 @@
 {
   "projects": {
-    "creatingProject": "正在创建项目…",
     "unknownError": "未知错误",
     "tryAgain": "请重试",
     "dismiss": "关闭",
@@ -113,8 +112,8 @@
       "selectedCount_other": "已选 {{count}} 个",
       "deleteN_one": "删除 {{count}} 个",
       "deleteN_other": "删除 {{count}} 个",
-      "welcomeTitle": "欢迎使用LunaAiCut",
-      "welcomeDescription": "基于开源freecut二次开发",
+      "welcomeTitle": "欢迎使用 FreeCut",
+      "welcomeDescription": "创建你的第一个视频项目开始吧。选择分辨率和帧率，然后开始编辑！",
       "noResultsTitle": "未找到项目",
       "noResultsDescription": "我们找不到符合你搜索条件的项目。请尝试调整筛选条件或搜索词。",
       "projectCount_one": "{{count}} 个项目",
@@ -259,6 +258,7 @@
       "heroSubtitle": "专业视频编辑，零安装。在你的浏览器中创作精彩内容。",
       "disclaimer": "⚠️ 免责声明：这非常处于测试阶段，可能存在问题。希望你仍能享受这段体验。",
       "getStarted": "开始使用",
+      "viewChangelog": "最新变化",
       "starOnGitHub": "在 GitHub 上点星",
       "showcaseHeading": "功能丰富的编辑能力",
       "showcaseSubheading": "完整的视频编辑套件，就在你的浏览器中。",
@@ -278,17 +278,33 @@
           "title": "时间线编辑",
           "description": "支持视频、音频、文本和形状的多轨编辑"
         },
-        "keyframe": {
-          "title": "简单的关键帧编辑器",
-          "description": "直观的关键帧动画，实现流畅过渡"
+        "motion": {
+          "title": "动效工作区",
+          "description": "使用精确时间控制和可复用缓动创建分层动画"
         },
-        "projects": {
-          "title": "项目管理",
-          "description": "创建、整理和管理你的项目"
+        "colorGrade": {
+          "title": "色彩分级",
+          "description": "使用色轮、曲线、示波器和调整图层进行调色"
+        },
+        "keyframe": {
+          "title": "关键帧编辑器",
+          "description": "在曲线或摄影表视图中精确调整运动"
+        },
+        "semantic": {
+          "title": "语义场景搜索",
+          "description": "根据画面内容搜索并找到合适的时刻"
         },
         "export": {
           "title": "在网页上导出",
           "description": "用你的浏览器在本地渲染你的视频。"
+        },
+        "audioEq": {
+          "title": "音频均衡与混音",
+          "description": "使用可视化均衡器调整片段和轨道音频"
+        },
+        "hotkeys": {
+          "title": "自定义键盘快捷键",
+          "description": "查看、重设、导入和导出编辑快捷键"
         }
       },
       "faq": {

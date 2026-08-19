@@ -1,4 +1,0 @@
-interface:
-  display_name: "变速与转场"
-  short_description: "变速、淡化、溶解与有动机转场设计指导和工具建议与实操建议"
-  default_prompt: "使用 $luna-technique-retiming-transitions 设计这次剪辑的速度和转场"

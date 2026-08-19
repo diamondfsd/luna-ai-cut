@@ -1,4 +1,4 @@
-import type { ShapeItem, TextItem } from '@freecut/types/timeline'
+import type { ShapeItem, SubtitleSegmentItem, TextItem } from '@freecut/types/timeline'
 import type { ResolvedTransform } from '@freecut/types/transform'
 
 export interface LogicalCanvasSize {
@@ -71,7 +71,7 @@ function scaleOptional(value: number | undefined, scale: number): number | undef
   return value === undefined ? undefined : value * scale
 }
 
-function scaleTextStyleForCanvas<TItem extends TextItem>(
+function scaleTextStyleForCanvas<TItem extends TextItem | SubtitleSegmentItem>(
   item: TItem,
   canvas: LogicalCanvasSize,
 ): TItem {
@@ -111,6 +111,13 @@ export function scaleTextItemForCanvas(item: TextItem, canvas: LogicalCanvasSize
   return scaleTextStyleForCanvas(item, canvas)
 }
 
+export function scaleSubtitleItemForCanvas(
+  item: SubtitleSegmentItem,
+  canvas: LogicalCanvasSize,
+): SubtitleSegmentItem {
+  return scaleTextStyleForCanvas(item, canvas)
+}
+
 export function scaleShapeItemForCanvas(item: ShapeItem, canvas: LogicalCanvasSize): ShapeItem {
   const scale = getCanvasRenderScale(canvas)
   if (scale.uniform === 1) return item
@@ -121,4 +128,3 @@ export function scaleShapeItemForCanvas(item: ShapeItem, canvas: LogicalCanvasSi
     maskFeather: scaleOptional(item.maskFeather, scale.uniform),
   }
 }
-

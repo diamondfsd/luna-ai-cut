@@ -129,7 +129,7 @@ describe('CustomDecoderBufferedAudio', () => {
     audioDecodeMocks.getOrDecodeAudio.mockReturnValue(pendingDecode)
   })
 
-  it('starts with partial decode playback and continues full decode in background', async () => {
+  it('keeps long preview audio windowed instead of starting a background full decode', async () => {
     vi.useFakeTimers()
     try {
       render(
@@ -162,11 +162,11 @@ describe('CustomDecoderBufferedAudio', () => {
       expect(audioDecodeMocks.getOrDecodeAudio).not.toHaveBeenCalled()
 
       await act(async () => {
-        vi.advanceTimersByTime(1600)
+        vi.advanceTimersByTime(10_000)
         await Promise.resolve()
       })
 
-      expect(audioDecodeMocks.getOrDecodeAudio).toHaveBeenCalledWith('media-1', 'blob:audio')
+      expect(audioDecodeMocks.getOrDecodeAudio).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }

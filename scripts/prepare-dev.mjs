@@ -172,6 +172,11 @@ async function harnessNeedsBuild() {
 }
 
 async function prepareHarness() {
+  if (!existsSync(join(harnessRoot, 'package.json'))) {
+    console.log('[dev] FreeCut source has no embedded Harness; skipped')
+    return
+  }
+
   // This check is cheap and repairs a missing host build without deploying the
   // full runtime when the existing output is still current.
   await runNodeScript('scripts/ensure-deepseek-harness-deps.mjs')

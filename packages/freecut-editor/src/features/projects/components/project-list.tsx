@@ -459,23 +459,6 @@ export function ProjectList({ onEditProject, onImportProject }: ProjectListProps
               </Button>
             </>
           )}
-
-          {selectionCount === 0 && (
-            <>
-              {onImportProject && (
-                <Button variant="editorAction" size="sm" className="gap-2" onClick={onImportProject}>
-                  <Upload className="w-4 h-4" />
-                  {t('projects.importProject')}
-                </Button>
-              )}
-              <Button variant="editorAction" size="sm" className="gap-2" asChild>
-                <Link to="/projects/new">
-                  <Plus className="w-4 h-4" />
-                  {t('projects.newProject')}
-                </Link>
-              </Button>
-            </>
-          )}
         </div>
       )}
 
@@ -489,14 +472,14 @@ export function ProjectList({ onEditProject, onImportProject }: ProjectListProps
             {t('projects.list.welcomeDescription')}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <Button variant="editorAction" size="lg" className="gap-2" asChild>
+            <Button size="lg" className="gap-2" asChild>
               <Link to="/projects/new">
                 <Plus className="w-4 h-4" />
                 {t('projects.list.createFirstProject')}
               </Link>
             </Button>
             {onImportProject && (
-              <Button variant="editorAction" size="lg" className="gap-2" onClick={onImportProject}>
+              <Button variant="outline" size="lg" className="gap-2" onClick={onImportProject}>
                 <Upload className="w-4 h-4" />
                 {t('projects.list.importExistingProject')}
               </Button>

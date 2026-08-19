@@ -35,7 +35,7 @@ export function PreviewZoomControls() {
         <Button
           ref={triggerRef}
           variant="ghost"
-          className="editor-toolbar-button flex-shrink-0 text-muted-foreground hover:text-foreground gap-1 px-1.5"
+          className="flex-shrink-0 text-muted-foreground hover:text-foreground gap-1 px-1.5"
           style={{ height: EDITOR_LAYOUT_CSS_VALUES.previewControlButtonSize }}
           data-tooltip={t('preview.zoom.tooltip', { label: currentLabel })}
           aria-label={t('preview.zoom.ariaLabel', { label: currentLabel })}

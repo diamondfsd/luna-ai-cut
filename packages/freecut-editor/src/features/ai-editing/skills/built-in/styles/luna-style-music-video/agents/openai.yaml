@@ -1,4 +1,0 @@
-interface:
-  display_name: "音乐视频风格"
-  short_description: "MV 歌曲剪辑、视觉母题与音乐段落节奏设计方案与实操建议"
-  default_prompt: "使用 $luna-style-music-video 设计这段音乐视频"

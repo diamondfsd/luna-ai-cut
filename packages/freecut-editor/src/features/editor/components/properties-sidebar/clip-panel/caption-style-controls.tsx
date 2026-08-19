@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Separator } from '@freecut/components/ui/separator'
 import { cn } from '@freecut/shared/ui/cn'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
-import type { TextItem } from '@freecut/types/timeline'
+import type { SubtitleSegmentItem, TextItem } from '@freecut/types/timeline'
 
 import { ColorPicker, PropertyRow, SliderInput } from '../components'
 import {
@@ -14,11 +14,12 @@ import {
   resolveCaptionStylePatch,
 } from '@freecut/shared/typography/caption-style-presets'
 
-type CaptionStylableItem = TextItem
+type CaptionStylableItem = SubtitleSegmentItem | TextItem
 
 interface CaptionStyleControlsProps {
   /**
-   * Items the controls should affect. Multi-select writes the same patch to each.
+   * Items the controls should affect. Typically a single subtitle segment,
+   * but the panel handles multi-select by writing the same patch to each.
    */
   items: CaptionStylableItem[]
   canvasWidth: number
@@ -29,7 +30,10 @@ interface CaptionStyleControlsProps {
 /**
  * Caption / subtitle look-and-feel editor.
  *
- * Surfaces caption presets, color, font size, vertical position, and background.
+ * Surfaces the typography subset shared between {@link TextItem} (captions)
+ * and {@link SubtitleSegmentItem}: presets, color, font size, vertical
+ * position, and a background-box toggle. Designed to be embedded inside a
+ * larger section (e.g. {@link SubtitleSection}).
  */
 export const CaptionStyleControls = memo(function CaptionStyleControls({
   items,

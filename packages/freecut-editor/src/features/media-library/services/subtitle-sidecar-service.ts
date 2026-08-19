@@ -8,16 +8,14 @@ import {
   extractMatroskaTextSubtitleTracksFromBlob,
   type EmbeddedSubtitleTrack,
 } from '@freecut/shared/utils/matroska-subtitles'
-import {
-  getEmbeddedSubtitleSidecar,
-  saveEmbeddedSubtitleSidecar,
-} from '@freecut/infrastructure/storage'
+import { getEmbeddedSubtitleSidecar, saveEmbeddedSubtitleSidecar } from '@freecut/infrastructure/storage'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
 import type { MediaMetadata } from '@freecut/types/storage'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import {
   buildCaptionTrack,
-  buildSubtitleTextItemsForClip,
+  buildSubtitleSegmentForClip,
+  consolidateCaptionTextItemsToSegments,
   findCaptionTargetClipsForMedia,
   findCompatibleCaptionTrackForRanges,
 } from '../utils/caption-items'
@@ -86,13 +84,19 @@ class SubtitleSidecarService {
     return { tracks, scannedAt, fromCache: false }
   }
 
-  /** Insert each embedded subtitle cue as an ordinary caption-marked text item. */
+  /**
+   * Insert a specific embedded subtitle track's cues on the timeline as one
+   * {@link SubtitleSegmentItem} per clip. Any existing subtitle segment
+   * already attached to a target clip (via `captionSource.clipId`) is
+   * removed first so the user gets a single, current segment per clip
+   * instead of stacking duplicates each time they re-extract.
+   */
   insertEmbeddedSubtitleTrack(
     media: MediaMetadata,
     track: EmbeddedSubtitleTrack,
   ): ExtractEmbeddedSubtitlesResult {
     const trackLabel = formatEmbeddedSubtitleTrackLabel(track)
-    const inserted = this.insertSubtitleCuesForMedia(media, track)
+    const inserted = this.insertSubtitleCuesAsSegmentForMedia(media, track, trackLabel)
     return {
       insertedItemCount: inserted,
       cueCount: track.cues.length,
@@ -100,7 +104,11 @@ class SubtitleSidecarService {
     }
   }
 
-  private insertSubtitleCuesForMedia(media: MediaMetadata, track: EmbeddedSubtitleTrack): number {
+  private insertSubtitleCuesAsSegmentForMedia(
+    media: MediaMetadata,
+    track: EmbeddedSubtitleTrack,
+    trackLabel: string,
+  ): number {
     const timeline = useTimelineStore.getState()
     const project = useProjectStore.getState().currentProject
     const canvasWidth = project?.metadata.width ?? DEFAULT_PROJECT_WIDTH
@@ -108,45 +116,52 @@ class SubtitleSidecarService {
     const clips = findCaptionTargetClipsForMedia(timeline.items, media.id)
     if (clips.length === 0) return 0
 
-    // Replace captions previously extracted from the same target clips.
+    // Drop any subtitle segments already attached to one of the target
+    // clips so the user ends up with one segment per clip instead of
+    // stacking a new layer on top with each re-extract. We also clean up
+    // legacy per-cue caption text items linked to those same clipIds —
+    // they'd otherwise sit underneath the new segment with stale text.
     const clipIdSet = new Set(clips.map((c) => c.id))
     const obsoleteIds = timeline.items
-      .filter((item) => isEmbeddedCaptionForClip(item, clipIdSet))
+      .filter((item) => isSubtitleForClip(item, clipIdSet))
       .map((item) => item.id)
 
-    const captionItems = [] as Array<Extract<TimelineItem, { type: 'text' }>>
+    const segments: import('@freecut/types/timeline').SubtitleSegmentItem[] = []
     for (const clip of clips) {
-      captionItems.push(
-        ...buildSubtitleTextItemsForClip({
-          trackId: clip.trackId,
-          cues: track.cues,
-          clip,
-          timelineFps: timeline.fps,
-          canvasWidth,
-          canvasHeight,
-          fileName: media.fileName,
-          format: 'srt',
-          sourceType: 'embedded-subtitles',
-          sourceMetadata: {
-            trackNumber: track.trackNumber,
-            language: track.language,
-            trackName: track.name,
-            codecId: track.codecId,
-            importedAt: Date.now(),
-          },
-        }),
-      )
+      const segment = buildSubtitleSegmentForClip({
+        trackId: clip.trackId,
+        cues: track.cues,
+        clip,
+        timelineFps: timeline.fps,
+        canvasWidth,
+        canvasHeight,
+        label: `${media.fileName} — ${trackLabel}`,
+        source: {
+          type: 'embedded-subtitles',
+          mediaId: media.id,
+          clipId: clip.id,
+          trackNumber: track.trackNumber,
+          language: track.language,
+          trackName: track.name,
+          codecId: track.codecId,
+          importedAt: Date.now(),
+        },
+      })
+      if (segment) segments.push(segment)
     }
-    if (captionItems.length === 0) {
+    if (segments.length === 0) {
+      // Nothing new to insert; still remove the obsolete entries so a
+      // re-extract that produced no usable cues at least clears the stale
+      // segment instead of leaving the user looking at outdated text.
       if (obsoleteIds.length > 0) removeTimelineItemsExact(obsoleteIds)
       return 0
     }
 
     if (obsoleteIds.length > 0) removeTimelineItemsExact(obsoleteIds)
 
-    // Pick a single track that can host every cue's range so captions
+    // Pick a single track that can host every segment's range so captions
     // stay on one row rather than scattering across several.
-    const ranges = captionItems.map((s) => ({
+    const ranges = segments.map((s) => ({
       startFrame: s.from,
       endFrame: s.from + s.durationInFrames,
     }))
@@ -160,18 +175,65 @@ class SubtitleSidecarService {
       nextTracks = [...nextTracks, target].sort((a, b) => a.order - b.order)
       refreshed.setTracks(nextTracks)
     }
-    const placedItems = captionItems.map((item) => ({ ...item, trackId: target.id }))
+    const placedSegments = segments.map((segment) => ({ ...segment, trackId: target.id }))
 
-    refreshed.addItems(placedItems)
-    useSelectionStore.getState().selectItems(placedItems.map((item) => item.id))
-    return placedItems.length
+    refreshed.addItems(placedSegments)
+    useSelectionStore.getState().selectItems(placedSegments.map((s) => s.id))
+    return placedSegments.length
+  }
+
+  /**
+   * One-shot migration: collapse all per-cue caption text items for the
+   * given clip (or every clip, if no clipId is provided) into a single
+   * {@link SubtitleSegmentItem} per clip group.
+   *
+   * Returns the number of segments created and the total cue count packed
+   * into them. Caller-side undo/redo is handled by the timeline command
+   * boundary that wraps the addItems/removeItems pair.
+   */
+  consolidatePerCueCaptionsToSegments(options: { clipId?: string } = {}): {
+    segmentsCreated: number
+    cuesConsolidated: number
+  } {
+    const timeline = useTimelineStore.getState()
+    const { segments, consumedItemIds } = consolidateCaptionTextItemsToSegments(
+      timeline.items,
+      timeline.fps,
+      { onlyClipId: options.clipId },
+    )
+    if (segments.length === 0) return { segmentsCreated: 0, cuesConsolidated: 0 }
+
+    timeline.removeItems(consumedItemIds)
+    timeline.addItems(segments)
+    useSelectionStore.getState().selectItems(segments.map((s) => s.id))
+    return {
+      segmentsCreated: segments.length,
+      cuesConsolidated: segments.reduce((sum, s) => sum + s.cues.length, 0),
+    }
   }
 }
 
-function isEmbeddedCaptionForClip(item: TimelineItem, clipIds: ReadonlySet<string>): boolean {
-  if (item.type !== 'text' || item.textRole !== 'caption') return false
+/**
+ * Treat a timeline item as "the existing subtitle for one of `clipIds`"
+ * if it's either:
+ *  - a {@link SubtitleSegmentItem} whose source.clipId matches, or
+ *  - a legacy per-cue caption text item linked to that clipId via
+ *    `captionSource.clipId`.
+ *
+ * Both shapes get cleared on re-extract so the user always sees a single,
+ * fresh subtitle entity per clip.
+ */
+function isSubtitleForClip(item: TimelineItem, clipIds: ReadonlySet<string>): boolean {
+  if (item.type === 'subtitle') {
+    return item.source.type === 'embedded-subtitles' && clipIds.has(item.source.clipId)
+  }
+  if (item.type !== 'text') return false
   const source = item.captionSource
-  return source !== undefined && source.type === 'embedded-subtitles' && clipIds.has(source.clipId)
+  return (
+    source !== undefined &&
+    (source.type === 'embedded-subtitles' || source.type === 'subtitle-import') &&
+    clipIds.has(source.clipId)
+  )
 }
 
 export const subtitleSidecarService = new SubtitleSidecarService()

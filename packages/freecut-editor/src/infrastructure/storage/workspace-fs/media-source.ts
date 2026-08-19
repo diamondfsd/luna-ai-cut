@@ -9,7 +9,7 @@
  *
  * This is the bridge that makes media visible across origins: OPFS and
  * `FileSystemFileHandle` are both origin-scoped, but files inside the
- * app-managed workspace folder are shared by every origin that opens the
+ * user-picked workspace folder are shared by every origin that picks the
  * same physical folder. The lazy-mirror in `getMediaFile` populates this
  * on first read, so existing media converges naturally.
  */

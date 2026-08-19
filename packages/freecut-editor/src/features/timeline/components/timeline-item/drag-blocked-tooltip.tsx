@@ -27,7 +27,7 @@ export const DragBlockedTooltip = memo(function DragBlockedTooltip({
       <div
         className={[
           'overflow-hidden rounded-md px-3 py-1.5 text-xs text-white shadow-lg',
-          hint.tone === 'danger' ? 'bg-red-500' : 'bg-amber-500 text-black',
+          hint.tone === 'danger' ? 'bg-red-500' : 'bg-orange-500',
         ].join(' ')}
       >
         {hint.message}

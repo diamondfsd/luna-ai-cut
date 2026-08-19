@@ -8,7 +8,6 @@ import {
   timelineSkimmerScrubSignal,
 } from '@freecut/shared/timeline/main-timeline-scrub'
 import { useTimelineStore } from '../stores/timeline-store'
-import { useSettingsStore } from '@freecut/features/timeline/deps/settings'
 import { TimelineMarkers } from './timeline-markers'
 
 vi.mock('../contexts/timeline-zoom-context', () => ({
@@ -28,7 +27,6 @@ describe('TimelineMarkers ruler scrub cancellation', () => {
       isPlaying: false,
     })
     useTimelineStore.setState({ fps: 30, inPoint: null, outPoint: null, markers: [] })
-    useSettingsStore.setState({ showTimelineHoverPreview: true })
     mainTimelineScrubActiveRef.current = false
     resetTimelineSkimmerScrubForTest()
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
@@ -155,20 +153,6 @@ describe('TimelineMarkers ruler scrub cancellation', () => {
     fireEvent.mouseLeave(ruler, { relatedTarget: track })
 
     expect(usePlaybackStore.getState().previewFrame).toBe(30)
-  })
-
-  it('does not preview frames from ruler hover when hover preview is disabled', () => {
-    useSettingsStore.setState({ showTimelineHoverPreview: false })
-    const { container } = render(
-      <div className="timeline-container" data-timeline-scroll-container>
-        <TimelineMarkers duration={10} width={1000} />
-      </div>,
-    )
-    const ruler = container.querySelector('[style*="cursor: ew-resize"]') as HTMLDivElement
-
-    fireEvent.mouseMove(ruler, { clientX: 100 })
-
-    expect(usePlaybackStore.getState().previewFrame).toBeNull()
   })
 
   it('clears the skim target when the pointer truly leaves the timeline', async () => {

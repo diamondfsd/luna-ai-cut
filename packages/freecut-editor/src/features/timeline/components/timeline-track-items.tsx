@@ -27,7 +27,6 @@ interface TimelineTrackItemsProps {
   trackItemDurationBounds?: TimelineItemDurationBounds
   trackLocked: boolean
   trackHidden: boolean
-  isTrackPreviewCollapsed?: boolean
 }
 
 const MAX_IMMEDIATE_SELECTED_OVERVIEW_ITEMS = 128
@@ -70,7 +69,6 @@ export const TimelineTrackItems = memo(function TimelineTrackItems({
   trackItemDurationBounds,
   trackLocked,
   trackHidden,
-  isTrackPreviewCollapsed = false,
 }: TimelineTrackItemsProps) {
   const fps = useTimelineStore((state) => state.fps)
   const detailRange = useVisibleItemDetailRange(trackId)
@@ -232,7 +230,6 @@ export const TimelineTrackItems = memo(function TimelineTrackItems({
             timelineDuration={30}
             trackLocked={trackLocked}
             trackHidden={trackHidden}
-            isTrackPreviewCollapsed={isTrackPreviewCollapsed}
             isDetailEligible={isDetailEligible}
             isCompactWidth={
               !isDetailEligible ||

@@ -53,7 +53,7 @@ export function getGhostHighlightClasses(ghostPreviews: TimelineGhostPreviewLike
     return 'border-violet-400/60 bg-violet-600/10'
   }
   if (ghostPreviews.some((ghost) => ghost.type === 'external-file')) {
-    return 'border-primary/60 bg-primary/10'
+    return 'border-orange-500/60 bg-orange-500/10'
   }
   return 'border-primary/50 bg-primary/10'
 }
@@ -63,7 +63,7 @@ export function getGhostPreviewItemClasses(type: TimelineGhostPreviewType): stri
     return 'border-violet-400 bg-violet-600/20'
   }
   if (type === 'external-file') {
-    return 'border-primary bg-primary/15'
+    return 'border-orange-500 bg-orange-500/15'
   }
   if (type === 'video') {
     return 'border-timeline-video bg-timeline-video/20'

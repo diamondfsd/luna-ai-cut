@@ -121,6 +121,35 @@ describe('useTransitionParticipantSync', () => {
     expect(freeVideo.currentTime).toBe(2)
   })
 
+  it('does not overwrite active participants owned by a transition session', () => {
+    clockMock.currentFrame = 40
+    const heldVideo = createVideo({ currentTime: 3.25, paused: false })
+    heldVideo.dataset.transitionHold = '1'
+    heldVideo.playbackRate = 1.5
+    getClipElementMock.mockReturnValue(heldVideo)
+
+    render(
+      React.createElement(SyncHarness, {
+        participants: [
+          {
+            poolClipId: 'held',
+            safeTrimBefore: 0,
+            sourceFps: 30,
+            playbackRate: 1,
+            sequenceFrameOffset: 0,
+            role: 'leader',
+          },
+        ],
+        groupMinFrom: 0,
+        timelineFps: 30,
+      }),
+    )
+
+    expect(heldVideo.currentTime).toBe(3.25)
+    expect(heldVideo.playbackRate).toBe(1.5)
+    expect(heldVideo.play).not.toHaveBeenCalled()
+  })
+
   it('syncs participants against source-native FPS and per-item sequence offsets', () => {
     clockMock.currentFrame = 25
     const leader = createVideo({ currentTime: 0, paused: true })

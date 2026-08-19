@@ -1,7 +1,7 @@
 /**
  * Storage barrel — re-exports the workspace-fs layer.
  *
- * All storage now lives in the app-managed or user-granted workspace folder via
+ * All storage now lives in the user-picked workspace folder via
  * `workspace-fs/*`. Legacy `video-editor-db` IndexedDB reads live under
  * `legacy-idb/` and are only touched by the one-time migration banner.
  */

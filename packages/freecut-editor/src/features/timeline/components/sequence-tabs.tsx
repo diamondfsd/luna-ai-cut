@@ -36,7 +36,7 @@ import {
  * every top-level sequence; clicking switches which sequence is live. A
  * sequence is the same primitive as a compound clip — see sequences-store.
  */
-export const SequenceTabs = memo(function SequenceTabs({ compact = false }: { compact?: boolean }) {
+export const SequenceTabs = memo(function SequenceTabs() {
   const topLevelSequenceIds = useSequencesStore((s) => s.topLevelSequenceIds)
   const compositionById = useCompositionsStore((s) => s.compositionById)
   const breadcrumbs = useCompositionNavigationStore((s) => s.breadcrumbs)
@@ -79,14 +79,7 @@ export const SequenceTabs = memo(function SequenceTabs({ compact = false }: { co
   const isMainActive = activeTabId === null
 
   return (
-    <div
-      className={cn(
-        'flex min-w-0 items-center gap-1 overflow-x-auto text-xs',
-        compact
-          ? 'max-w-[28vw] border-l border-border pl-2'
-          : 'border-b border-border bg-background/60 px-2 py-1 backdrop-blur-sm',
-      )}
-    >
+    <div className="flex items-center gap-1 px-2 py-1 border-b border-border bg-background/60 backdrop-blur-sm text-xs overflow-x-auto">
       <button
         type="button"
         onClick={() => switchToSequence(null)}

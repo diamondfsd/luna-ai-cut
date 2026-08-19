@@ -3,6 +3,7 @@ import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/rea
 import { GlobalTooltip } from '@freecut/components/ui/global-tooltip'
 import { TooltipProvider } from '@freecut/components/ui/tooltip'
 import { ErrorBoundary } from '@freecut/app/error-boundary'
+import { PwaInstallPrompt } from '@freecut/app/pwa-install-prompt'
 import { RouteErrorScreen } from '@freecut/app/route-error'
 import { WorkspaceGate } from '@freecut/features/workspace-gate/workspace-gate'
 import { routeTree } from './routeTree.gen'
@@ -74,7 +75,7 @@ export function App() {
   // GlobalTooltip handles lightweight data-tooltip attributes without per-item providers.
   // Toaster for toast notifications
   // ErrorBoundary for graceful error recovery
-  // WorkspaceGate blocks RouterProvider until the workspace is initialized.
+  // WorkspaceGate blocks RouterProvider until a workspace handle is granted.
   // Mounted HERE (not inside __root.tsx) so route loaders — which run before
   // children components mount — never see an uninitialized workspace root.
   return (
@@ -84,6 +85,7 @@ export function App() {
           <RouterProvider router={router} />
         </WorkspaceGate>
         <GlobalTooltip />
+        <PwaInstallPrompt />
         {showToaster && (
           <Suspense fallback={null}>
             <LazyToaster />

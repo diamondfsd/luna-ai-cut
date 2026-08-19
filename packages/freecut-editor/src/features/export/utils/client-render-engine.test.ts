@@ -6,6 +6,7 @@ import {
   collectPriorityMediaItemIds,
   collectPriorityMediaItemIdsForFrames,
   collectPriorityNestedVideoItemIds,
+  getPreviewVideoSourceCandidates,
   resolveCompositionRendererExecutionPolicy,
   resolveRenderedFrameCacheMode,
   resolveWorkerPredecodeWaitMs,
@@ -68,18 +69,17 @@ describe('nested transcript captions', () => {
 
     expect(tracks).toHaveLength(2)
     const transcriptTrack = tracks.find((track) =>
-      track.items.some((item) => item.type === 'text' && item.captionSource?.type === 'transcript'),
+      track.items.some((item) => item.type === 'subtitle'),
     )
     expect(transcriptTrack?.items).toEqual([
       expect.objectContaining({
-        type: 'text',
-        textRole: 'caption',
-        text: 'Nested phrase',
-        captionSource: expect.objectContaining({
+        type: 'subtitle',
+        source: expect.objectContaining({
           type: 'transcript',
           mediaId: 'media-1',
           clipId: 'nested-video',
         }),
+        cues: [expect.objectContaining({ text: 'Nested phrase' })],
       }),
     ])
   })
@@ -379,6 +379,42 @@ describe('collectPriorityNestedVideoItemIds', () => {
 })
 
 describe('selectPreviewVideoSource', () => {
+  it('prioritizes the canonical original URL and excludes proxies when source media is selected', () => {
+    expect(
+      getPreviewVideoSourceCandidates({
+        itemSource: 'blob:source',
+        proxySource: 'blob:proxy',
+        registeredSource: 'blob:registered-source',
+        cachedSource: 'blob:cached-source',
+        useProxyMedia: false,
+      }),
+    ).toEqual(['blob:cached-source', 'blob:registered-source', 'blob:source'])
+  })
+
+  it('drops a stale proxy item source when proxy playback is disabled', () => {
+    expect(
+      getPreviewVideoSourceCandidates({
+        itemSource: 'blob:proxy',
+        proxySource: 'blob:proxy',
+        registeredSource: 'blob:proxy',
+        cachedSource: 'blob:original',
+        useProxyMedia: false,
+      }),
+    ).toEqual(['blob:original', null, null])
+  })
+
+  it('includes cached proxies when proxy media is selected', () => {
+    expect(
+      getPreviewVideoSourceCandidates({
+        itemSource: 'blob:proxy',
+        proxySource: 'blob:proxy',
+        registeredSource: 'blob:registered-proxy',
+        cachedSource: 'blob:source',
+        useProxyMedia: true,
+      }),
+    ).toEqual(['blob:proxy', 'blob:proxy', 'blob:registered-proxy', 'blob:source'])
+  })
+
   it('selects the cached proxy when a compound item still carries its original source', () => {
     const proxyBitmap = {} as ImageBitmap
     expect(

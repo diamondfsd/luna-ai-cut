@@ -4,10 +4,12 @@ export type ChangelogItem = {
   title: string
 }
 
+export type ChangelogSubtitle = 'initialRelease'
+
 export type ChangelogEntry = {
   version: string
   date: string
-  subtitle?: string
+  subtitleKey?: ChangelogSubtitle
   groups: Partial<Record<ChangelogGroup, ChangelogItem[]>>
 }
 

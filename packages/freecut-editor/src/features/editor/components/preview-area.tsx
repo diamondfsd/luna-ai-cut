@@ -3,6 +3,7 @@ import { Columns2 } from 'lucide-react'
 import {
   VideoPreview,
   PlaybackControls,
+  AlignmentToolbar,
   TimecodeDisplay,
   PreviewZoomControls,
   importSourceMonitor,
@@ -21,8 +22,6 @@ import { ErrorBoundary } from '@freecut/app/error-boundary'
 import { useTranslation } from 'react-i18next'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { ShuttleIndicator } from '@freecut/shared/ui/shuttle-indicator'
-import { CanvasAspectRatioControls } from './canvas-aspect-ratio-controls'
-import { AudioMeterPanel } from './audio-meter-panel'
 
 interface PreviewAreaProps {
   project: {
@@ -688,14 +687,21 @@ export const PreviewArea = memo(function PreviewArea({
           ) : (
             <InteractionLockRegion locked={false} overlayClassName="rounded-none">
               <div className="flex flex-col flex-shrink-0">
+                {previewChrome === 'edit' && (
+                  <div className="border-t border-border panel-header flex h-7 items-center justify-center overflow-hidden px-3">
+                    <div className="flex items-center gap-0">
+                      <AlignmentToolbar projectSize={{ width, height }} />
+                    </div>
+                  </div>
+                )}
+
                 {/* Playback controls row */}
                 <div
-                  className="editor-toolbar-theme @container border-t border-border panel-header relative flex items-center px-3 overflow-hidden"
+                  className="@container border-t border-border panel-header relative flex items-center px-3 overflow-hidden"
                   style={{ height: EDITOR_LAYOUT_CSS_VALUES.previewControlsHeight }}
                 >
                   <div className="flex flex-shrink-0 items-center gap-2">
                     <TimecodeDisplay fps={fps} totalFrames={totalFrames} />
-                    <AudioMeterPanel compact />
                     <ProgramShuttleIndicator />
                   </div>
 
@@ -705,8 +711,7 @@ export const PreviewArea = memo(function PreviewArea({
                     </div>
                   </div>
 
-                  <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
-                    <CanvasAspectRatioControls />
+                  <div className="ml-auto flex-shrink-0">
                     <PreviewZoomControls />
                   </div>
                 </div>

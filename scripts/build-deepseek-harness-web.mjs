@@ -19,6 +19,11 @@ const deepseekPackages = join(nodeModules, '@deepseek-ai')
 const bundleStage = join(output, '.deepseek-bundle-stage')
 const generatedBundleFiles = []
 
+if (!existsSync(join(harnessRoot, 'package.json'))) {
+  console.log('[harness-build] FreeCut source has no embedded Harness; skipped')
+  process.exit(0)
+}
+
 const nativePackagePrefixes = [
   '@img/',
   '@koromix/',

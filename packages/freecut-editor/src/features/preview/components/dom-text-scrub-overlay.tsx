@@ -97,7 +97,6 @@ export const DomTextScrubOverlay = memo(function DomTextScrubOverlay({
       className="absolute inset-0 pointer-events-none"
       style={{
         zIndex: 6,
-        display: visible ? 'block' : 'none',
         visibility: visible ? 'visible' : 'hidden',
         contain: 'layout paint style',
       }}

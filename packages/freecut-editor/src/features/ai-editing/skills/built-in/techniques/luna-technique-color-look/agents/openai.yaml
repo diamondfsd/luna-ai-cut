@@ -1,4 +1,0 @@
-interface:
-  display_name: "色彩与视觉风格"
-  short_description: "基础校色、镜头匹配与创意视觉风格设计指导和工具建议"
-  default_prompt: "使用 $luna-technique-color-look 设计这次剪辑的色彩方向"

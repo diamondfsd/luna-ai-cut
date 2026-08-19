@@ -76,9 +76,6 @@ export function buildDroppedMediaTimelineItems(params: {
   thumbnailUrl?: string | null
   canvasWidth: number
   canvasHeight: number
-  sourceStart?: number
-  sourceEnd?: number
-  fallbackSourceFps?: number
   placement: TimelineLinkedMediaPlacement
   linkVideoAudio?: boolean
 }): TimelineItem[] {
@@ -92,9 +89,6 @@ export function buildDroppedMediaTimelineItems(params: {
     thumbnailUrl: params.thumbnailUrl,
     canvasWidth: params.canvasWidth,
     canvasHeight: params.canvasHeight,
-    sourceStart: params.sourceStart,
-    sourceEnd: params.sourceEnd,
-    fallbackSourceFps: params.fallbackSourceFps,
     placements: params.placement satisfies LinkedMediaTimelinePlacement,
     linkVideoAudio: params.linkVideoAudio,
   })

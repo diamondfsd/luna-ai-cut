@@ -51,7 +51,10 @@ fn lightLeakBurnFragment(input: VertexOutput) -> @location(0) vec4f {
   let fine = noise2d(uv * vec2f(params.width, params.height) * 0.45 + vec2f(p * 431.0));
   let noisyAxis = axis + (organic - 0.5) * params.spread * 0.28;
   let reveal = smoothstep(p - params.edgeSoftness, p + params.edgeSoftness, noisyAxis);
-  let base = mix(left, right, reveal);
+  // Reveal is 1 ahead of the moving front and 0 behind it. Keep the outgoing
+  // frame ahead of the front so p=0 starts on left, then reveal the incoming
+  // frame behind it until p=1 ends on right.
+  let base = mix(right, left, reveal);
 
   let frontDist = abs(noisyAxis - p);
   let hotCore = exp(-frontDist * frontDist / max(0.0001, params.edgeSoftness * params.edgeSoftness * 0.38));

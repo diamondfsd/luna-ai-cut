@@ -699,7 +699,7 @@ const T_YMAX = 1.3
 const projX = (t: number) => T_PAD + t * (T_SIZE - T_PAD * 2)
 const projY = (v: number) => T_PAD + ((T_YMAX - v) / (T_YMAX - T_YMIN)) * (T_SIZE - T_PAD * 2)
 
-// Wrapper: muted dot grid + square SVG curve + accent marker that rides the
+// Wrapper: muted dot grid + square SVG curve + orange marker that rides the
 // curve on hover (animation defined in easing-preset-thumbnail.css).
 function ThumbFrame({ d }: { d: string }) {
   return (

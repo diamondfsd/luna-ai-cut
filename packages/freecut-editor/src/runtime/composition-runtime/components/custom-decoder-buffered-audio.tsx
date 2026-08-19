@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { getAudioTargetTimeSeconds } from '../utils/video-timing'
 import {
-  getOrDecodeAudio,
   getOrDecodeAudioSliceForPlayback,
   isPreviewAudioDecodePending,
   type PlaybackAudioSlice,
@@ -32,12 +31,6 @@ const PARTIAL_BUFFER_EXTENSION_READY_SECONDS = 3
 const PARTIAL_BUFFER_REQUEST_PREROLL_SECONDS = 0.25
 const PENDING_SLICE_REUSE_HEADROOM_SECONDS = 1
 const PAUSED_SEEK_PREFETCH_DEBOUNCE_MS = 50
-const BACKGROUND_FULL_DECODE_DELAY_MS = 1500
-const BACKGROUND_FULL_DECODE_BACKSTOP_MS = 4000
-// Prefer a playable partial decode first, then upgrade to the full buffer in
-// the background. This keeps custom-decoded formats like Vorbis responsive on
-// first play after import/refresh instead of waiting for the whole file.
-const WAIT_FOR_FULL_DECODE_BEFORE_PLAYBACK = false
 
 interface CustomDecoderBufferedAudioProps extends AudioPlaybackProps {
   src: string
@@ -236,62 +229,7 @@ export const CustomDecoderBufferedAudio: React.FC<CustomDecoderBufferedAudioProp
       if (!mediaId || !src || isPreviewScrubbing) return
 
       let cancelled = false
-      let fullDecodeStarted = false
-      let scheduledFullDecodeAtMs = Number.POSITIVE_INFINITY
-      let fullDecodeTimer: ReturnType<typeof setTimeout> | null = null
       const effectiveSourceFps = sourceFps ?? fps
-      const clearScheduledFullDecode = () => {
-        scheduledFullDecodeAtMs = Number.POSITIVE_INFINITY
-        if (fullDecodeTimer !== null) {
-          clearTimeout(fullDecodeTimer)
-          fullDecodeTimer = null
-        }
-      }
-      const startFullDecode = () => {
-        if (cancelled || fullDecodeStarted) {
-          return
-        }
-        clearScheduledFullDecode()
-        activeSliceRequestRef.current = null
-        fullDecodeStarted = true
-        getOrDecodeAudio(mediaId, src)
-          .then((buffer) => {
-            if (!cancelled) {
-              setAudioSlice((current) => {
-                if (
-                  current?.isComplete &&
-                  current.buffer.length === buffer.length &&
-                  current.buffer.sampleRate === buffer.sampleRate
-                ) {
-                  return current
-                }
-                return { buffer, startTime: 0, isComplete: true }
-              })
-            }
-          })
-          .catch((err) => {
-            if (!cancelled) {
-              log.error('Failed to finalize buffered audio decode', { mediaId, err })
-            }
-          })
-      }
-      const scheduleFullDecode = (delayMs: number) => {
-        if (cancelled || fullDecodeStarted) {
-          return
-        }
-        const safeDelayMs = Math.max(0, delayMs)
-        const dueAtMs = Date.now() + safeDelayMs
-        if (fullDecodeTimer !== null && dueAtMs >= scheduledFullDecodeAtMs - 1) {
-          return
-        }
-        clearScheduledFullDecode()
-        scheduledFullDecodeAtMs = dueAtMs
-        fullDecodeTimer = setTimeout(() => {
-          fullDecodeTimer = null
-          scheduledFullDecodeAtMs = Number.POSITIVE_INFINITY
-          startFullDecode()
-        }, safeDelayMs)
-      }
       activeSliceRequestRef.current = null
       const decodeSeedKey = `${mediaId}:${src}:${trimBefore}:${effectiveSourceFps}:${playbackRate}`
       if (decodeSeedRef.current?.key !== decodeSeedKey) {
@@ -307,109 +245,81 @@ export const CustomDecoderBufferedAudio: React.FC<CustomDecoderBufferedAudioProp
         }
       }
       const initialTargetTime = decodeSeedRef.current.targetTime
-      if (WAIT_FOR_FULL_DECODE_BEFORE_PLAYBACK) {
-        getOrDecodeAudio(mediaId, src)
-          .then((buffer) => {
-            if (!cancelled) {
-              setAudioSlice({ buffer, startTime: 0, isComplete: true })
-              log.info('Full buffered audio ready', {
-                mediaId,
-                duration: buffer.duration.toFixed(2),
-                sampleRate: buffer.sampleRate,
-                channels: buffer.numberOfChannels,
-              })
+      // Keep preview audio windowed. A whole-file Float32 AudioBuffer for a
+      // long source can be hundreds of MiB and remains retained by component
+      // state even when the shared cache evicts it.
+      const initialSliceRequest = requestPartialSlice(
+        initialTargetTime,
+        INITIAL_PLAYABLE_BUFFER_SECONDS,
+      )
+      initialSliceRequest.promise
+        .then((slice) => {
+          if (!cancelled) {
+            if (!acceptPartialSlice(initialSliceRequest.requestId, slice)) {
+              return
             }
-          })
-          .catch((err) => {
-            if (!cancelled) {
-              log.error('Failed to decode buffered audio', { mediaId, err })
-            }
-          })
-      } else {
-        // Legacy low-latency path: start from partial bins, then upgrade to full decode.
-        scheduleFullDecode(BACKGROUND_FULL_DECODE_BACKSTOP_MS)
-        const initialSliceRequest = requestPartialSlice(
-          initialTargetTime,
-          INITIAL_PLAYABLE_BUFFER_SECONDS,
-        )
-        initialSliceRequest.promise
-          .then((slice) => {
-            if (!cancelled) {
-              if (!acceptPartialSlice(initialSliceRequest.requestId, slice)) {
-                return
-              }
-              if (slice.isComplete) {
-                clearScheduledFullDecode()
-              } else {
-                scheduleFullDecode(BACKGROUND_FULL_DECODE_DELAY_MS)
-              }
-              log.info('Initial buffered audio ready', {
-                mediaId,
-                duration: slice.buffer.duration.toFixed(2),
-                sampleRate: slice.buffer.sampleRate,
-                channels: slice.buffer.numberOfChannels,
-                startTime: slice.startTime.toFixed(2),
-              })
+            log.info('Initial buffered audio ready', {
+              mediaId,
+              duration: slice.buffer.duration.toFixed(2),
+              sampleRate: slice.buffer.sampleRate,
+              channels: slice.buffer.numberOfChannels,
+              startTime: slice.startTime.toFixed(2),
+            })
 
-              // The startup slice is intentionally small for fast first sound.
-              // If it is still tiny once ready, immediately ask for follow-up
-              // coverage so 1x playback does not outrun the initial buffer before
-              // the normal extension effect gets another turn.
-              if (
-                !slice.isComplete &&
-                slice.buffer.duration <= INITIAL_PLAYABLE_BUFFER_SECONDS + 0.5
-              ) {
-                const prefetchTargetTime = Math.max(
-                  initialTargetTime,
-                  slice.startTime +
-                    Math.max(0, slice.buffer.duration - PARTIAL_BUFFER_HEADROOM_SECONDS),
-                )
-                const prefetchSliceRequest = requestPartialSlice(
-                  prefetchTargetTime,
-                  PARTIAL_BUFFER_EXTENSION_READY_SECONDS,
-                )
-                void prefetchSliceRequest.promise
-                  .then((nextSlice) => {
-                    if (cancelled) {
-                      return
-                    }
-                    acceptPartialSlice(prefetchSliceRequest.requestId, nextSlice)
-                  })
-                  .catch((err) => {
-                    if (!cancelled) {
-                      log.warn('Failed to prefetch buffered custom decoder audio slice', {
-                        mediaId,
-                        targetTime: prefetchTargetTime,
-                        err,
-                      })
-                    }
-                  })
-                  .finally(() => {
-                    if (
-                      activeSliceRequestRef.current?.requestId === prefetchSliceRequest.requestId
-                    ) {
-                      activeSliceRequestRef.current = null
-                    }
-                  })
-              }
+            // The startup slice is intentionally small for fast first sound.
+            // If it is still tiny once ready, immediately ask for follow-up
+            // coverage so 1x playback does not outrun the initial buffer before
+            // the normal extension effect gets another turn.
+            if (
+              !slice.isComplete &&
+              slice.buffer.duration <= INITIAL_PLAYABLE_BUFFER_SECONDS + 0.5
+            ) {
+              const prefetchTargetTime = Math.max(
+                initialTargetTime,
+                slice.startTime +
+                  Math.max(0, slice.buffer.duration - PARTIAL_BUFFER_HEADROOM_SECONDS),
+              )
+              const prefetchSliceRequest = requestPartialSlice(
+                prefetchTargetTime,
+                PARTIAL_BUFFER_EXTENSION_READY_SECONDS,
+              )
+              void prefetchSliceRequest.promise
+                .then((nextSlice) => {
+                  if (cancelled) {
+                    return
+                  }
+                  acceptPartialSlice(prefetchSliceRequest.requestId, nextSlice)
+                })
+                .catch((err) => {
+                  if (!cancelled) {
+                    log.warn('Failed to prefetch buffered custom decoder audio slice', {
+                      mediaId,
+                      targetTime: prefetchTargetTime,
+                      err,
+                    })
+                  }
+                })
+                .finally(() => {
+                  if (activeSliceRequestRef.current?.requestId === prefetchSliceRequest.requestId) {
+                    activeSliceRequestRef.current = null
+                  }
+                })
             }
-          })
-          .catch((err) => {
-            if (!cancelled) {
-              log.error('Failed to decode buffered audio', { mediaId, err })
-            }
-            startFullDecode()
-          })
-          .finally(() => {
-            if (activeSliceRequestRef.current?.requestId === initialSliceRequest.requestId) {
-              activeSliceRequestRef.current = null
-            }
-          })
-      }
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            log.error('Failed to decode buffered audio slice', { mediaId, err })
+          }
+        })
+        .finally(() => {
+          if (activeSliceRequestRef.current?.requestId === initialSliceRequest.requestId) {
+            activeSliceRequestRef.current = null
+          }
+        })
 
       return () => {
         cancelled = true
-        clearScheduledFullDecode()
         activeSliceRequestRef.current = null
       }
     }, [

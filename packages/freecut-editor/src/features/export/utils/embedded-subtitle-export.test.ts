@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vite-plus/test'
 import type { CompositionInputProps } from '@freecut/types/export'
-import type { TextItem, TimelineTrack } from '@freecut/types/timeline'
+import type { SubtitleSegmentItem, TimelineTrack } from '@freecut/types/timeline'
 
 import {
   buildTranscriptSubtitleWebVtt,
@@ -26,22 +26,24 @@ function makeTrack(items: TimelineTrack['items']): TimelineTrack {
   }
 }
 
-function makeTranscriptCaption(overrides: Partial<TextItem> = {}): TextItem {
+function makeTranscriptSubtitle(overrides: Partial<SubtitleSegmentItem> = {}): SubtitleSegmentItem {
   return {
-    id: 'caption-1',
-    type: 'text',
-    textRole: 'caption',
+    id: 'subtitle-1',
+    type: 'subtitle',
     trackId: 'track-1',
     from: 30,
-    durationInFrames: 30,
+    durationInFrames: 90,
     label: 'Transcript',
     mediaId: 'media-1',
-    captionSource: {
+    source: {
       type: 'transcript',
       mediaId: 'media-1',
       clipId: 'clip-1',
     },
-    text: 'Hello',
+    cues: [
+      { id: 'cue-1', startSeconds: 0, endSeconds: 1, text: 'Hello' },
+      { id: 'cue-2', startSeconds: 2, endSeconds: 5, text: 'Trimmed tail' },
+    ],
     color: '#ffffff',
     ...overrides,
   }
@@ -58,18 +60,8 @@ function makeComposition(items: TimelineTrack['items']): CompositionInputProps {
 }
 
 describe('embedded transcript subtitle export', () => {
-  it('serializes caption text items as composition-relative WebVTT', () => {
-    const vtt = buildTranscriptSubtitleWebVtt(
-      makeComposition([
-        makeTranscriptCaption(),
-        makeTranscriptCaption({
-          id: 'caption-2',
-          from: 90,
-          durationInFrames: 90,
-          text: 'Trimmed tail',
-        }),
-      ]),
-    )
+  it('serializes transcript subtitle segment cues as composition-relative WebVTT', () => {
+    const vtt = buildTranscriptSubtitleWebVtt(makeComposition([makeTranscriptSubtitle()]))
 
     expect(vtt).toContain('WEBVTT')
     expect(vtt).toContain('00:00:01.000 --> 00:00:02.000\nHello')
@@ -77,7 +69,7 @@ describe('embedded transcript subtitle export', () => {
   })
 
   it('omits transcript subtitle items from the visual render copy only', () => {
-    const subtitle = makeTranscriptCaption()
+    const subtitle = makeTranscriptSubtitle()
     const title = {
       id: 'title-1',
       type: 'text' as const,
@@ -93,12 +85,12 @@ describe('embedded transcript subtitle export', () => {
     const filtered = omitTranscriptSubtitleItemsForSoftSubtitleExport(composition)
 
     expect(filtered.tracks[0]?.items?.map((item) => item.id)).toEqual(['title-1'])
-    expect(composition.tracks[0]?.items?.map((item) => item.id)).toEqual(['caption-1', 'title-1'])
+    expect(composition.tracks[0]?.items?.map((item) => item.id)).toEqual(['subtitle-1', 'title-1'])
   })
 
   it('returns null when there are no transcript subtitles to embed', () => {
-    const embeddedSubtitle = makeTranscriptCaption({
-      captionSource: {
+    const embeddedSubtitle = makeTranscriptSubtitle({
+      source: {
         type: 'embedded-subtitles',
         mediaId: 'media-1',
         clipId: 'clip-1',

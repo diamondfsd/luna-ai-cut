@@ -166,25 +166,17 @@ export const lfmCaptioningProvider: MediaCaptioningProvider = {
         return []
       }
 
-      const timestamps = options.sampleTimesSec
-        ? [...new Set(options.sampleTimesSec
-            .map((time) => Math.max(0, Math.min(duration, time)))
-            .filter((time) => Number.isFinite(time)))]
-            .sort((a, b) => a - b)
-        : (() => {
-            const generated: number[] = []
-            for (let time = 0; time < duration; time += sampleIntervalSec) {
-              generated.push(time)
-            }
+      const timestamps: number[] = []
+      for (let time = 0; time < duration; time += sampleIntervalSec) {
+        timestamps.push(time)
+      }
 
-            if (
-              generated.length > 0 &&
-              generated[generated.length - 1]! + sampleIntervalSec * 0.5 < duration
-            ) {
-              generated.push(Math.max(0, duration - 0.1))
-            }
-            return generated
-          })()
+      if (
+        timestamps.length > 0 &&
+        timestamps[timestamps.length - 1]! + sampleIntervalSec * 0.5 < duration
+      ) {
+        timestamps.push(Math.max(0, duration - 0.1))
+      }
 
       const captions: MediaCaption[] = []
 

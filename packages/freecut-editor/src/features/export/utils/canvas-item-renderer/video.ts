@@ -40,6 +40,7 @@ function getTier2VideoFrameToleranceSeconds(sourceFps: number): number {
   const normalizedSourceFps = Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : 30
   return (1 / normalizedSourceFps) * TIER2_VIDEO_FRAME_TOLERANCE_FACTOR
 }
+
 function canUseWorkerPredecodedFrame(
   rctx: ItemRenderContext,
   workerSource: string | null | undefined,

@@ -103,25 +103,6 @@ describe('linked items', () => {
     expect(expandItemIdsWithAttachedCaptions(items, ['video-1'])).toEqual(['video-1', 'caption-1'])
   })
 
-  it('attaches caption text by source clip without linking caption-only drags back to media', () => {
-    const items = [
-      makeItem({ id: 'video-1', type: 'video' }),
-      makeItem({
-        id: 'subtitle-1',
-        type: 'text',
-        textRole: 'caption',
-        trackId: 'subtitle-track',
-        captionSource: { type: 'transcript', mediaId: 'media-1', clipId: 'video-1' },
-        text: 'Hello',
-        color: '#fff',
-      }),
-    ]
-
-    expect(getAttachedCaptionItemIds(items, 'video-1')).toEqual(['subtitle-1'])
-    expect(expandItemIdsWithAttachedCaptions(items, ['video-1'])).toEqual(['video-1', 'subtitle-1'])
-    expect(expandItemIdsWithAttachedCaptions(items, ['subtitle-1'])).toEqual(['subtitle-1'])
-  })
-
   it('includes attached captions when expanding a linked clip pair', () => {
     const items = [
       makeItem({ id: 'video-1', linkedGroupId: 'group-1', type: 'video' }),

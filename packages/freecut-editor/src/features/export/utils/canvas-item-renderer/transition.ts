@@ -20,8 +20,8 @@ import {
 } from '../canvas-effects'
 import { renderTransition, type ActiveTransition } from '../canvas-transitions'
 import { resolveAATransitionRamps, resolveTransitionRenderTimelineSpan } from '../render-span'
-import { scalePartialTransformForCanvas } from '../canvas-render-scale'
 import { getAnimatedTransform } from '../canvas-keyframes'
+import { scalePartialTransformForCanvas } from '../canvas-render-scale'
 import type {
   ItemRenderContext,
   ResolvedGpuMediaParticipantSource,

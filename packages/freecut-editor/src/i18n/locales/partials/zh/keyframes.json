@@ -84,8 +84,8 @@
         "iconAutoKey": "自动关键帧：每当你更改此数值时自动记录一个关键帧。",
         "iconDiamond": "在播放头处添加或移除关键帧。",
         "colorsHeading": "关键帧",
-        "colorDefault": "蓝色菱形：一个关键帧。",
-        "colorSelected": "带光环的亮蓝色：已选中的关键帧。"
+        "colorDefault": "橙色菱形：一个关键帧。",
+        "colorSelected": "带光环的亮橙色：已选中的关键帧。"
       },
       "keyframeMarker": {
         "rowLabel": "第 {{frame}} 帧的关键帧 — 拖动可调整时间，按住 Alt 拖动可复制",

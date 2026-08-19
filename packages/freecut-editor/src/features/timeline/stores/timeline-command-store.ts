@@ -58,13 +58,6 @@ interface CommandStoreActions {
   execute: <T>(command: TimelineCommand, action: () => T) => T
 
   /**
-   * Run a group of timeline actions as one atomic, undoable change.
-   * Nested timeline actions keep their normal domain validation but do not
-   * create their own history entries while the transaction is active.
-   */
-  executeTransaction: <T>(command: TimelineCommand, action: () => T) => T
-
-  /**
    * Undo the last command.
    * Restores the state from before the command was executed.
    */
@@ -120,33 +113,6 @@ interface CommandStoreActions {
   removeContext: (compositionId: string) => void
 }
 
-type ActiveTransaction = {
-  depth: number
-  beforeSnapshot: TimelineSnapshot
-}
-
-let activeTransaction: ActiveTransaction | null = null
-
-function appendUndoEntry(
-  set: (partial: Partial<CommandStoreState & CommandStoreActions> | ((state: CommandStoreState & CommandStoreActions) => Partial<CommandStoreState & CommandStoreActions>)) => void,
-  command: TimelineCommand,
-  beforeSnapshot: TimelineSnapshot,
-): void {
-  const afterSnapshot = captureSnapshot()
-  if (snapshotsEqual(beforeSnapshot, afterSnapshot)) return
-
-  const maxHistory = useSettingsStore.getState().maxUndoHistory
-  set((state) => ({
-    undoStack: [
-      ...state.undoStack.slice(-(maxHistory - 1)),
-      { command, beforeSnapshot, timestamp: Date.now() },
-    ],
-    redoStack: [],
-    canUndo: true,
-    canRedo: false,
-  }))
-}
-
 export const useTimelineCommandStore = create<CommandStoreState & CommandStoreActions>()(
   (set, get) => ({
     // State
@@ -159,38 +125,29 @@ export const useTimelineCommandStore = create<CommandStoreState & CommandStoreAc
 
     // Execute a command
     execute: <T>(command: TimelineCommand, action: () => T): T => {
-      if (activeTransaction) return action()
-
       const beforeSnapshot = captureSnapshot()
+
+      // Execute the action
       const result = action()
-      appendUndoEntry(set, command, beforeSnapshot)
+
+      // Capture after state to check if anything changed
+      const afterSnapshot = captureSnapshot()
+
+      // Only add to history if state actually changed
+      if (!snapshotsEqual(beforeSnapshot, afterSnapshot)) {
+        const maxHistory = useSettingsStore.getState().maxUndoHistory
+        set((state) => ({
+          undoStack: [
+            ...state.undoStack.slice(-(maxHistory - 1)),
+            { command, beforeSnapshot, timestamp: Date.now() },
+          ],
+          redoStack: [], // Clear redo on new action
+          canUndo: true,
+          canRedo: false,
+        }))
+      }
+
       return result
-    },
-
-    executeTransaction: <T>(command: TimelineCommand, action: () => T): T => {
-      if (activeTransaction) {
-        activeTransaction.depth += 1
-        try {
-          return action()
-        } finally {
-          activeTransaction.depth -= 1
-        }
-      }
-
-      const beforeSnapshot = captureSnapshot()
-      activeTransaction = { depth: 1, beforeSnapshot }
-      try {
-        const result = action()
-        appendUndoEntry(set, command, beforeSnapshot)
-        return result
-      } catch (error) {
-        // A plan is all-or-nothing. Restore the captured state if a later
-        // operation unexpectedly fails after earlier edits were applied.
-        restoreSnapshot(beforeSnapshot)
-        throw error
-      } finally {
-        activeTransaction = null
-      }
     },
 
     // Undo
@@ -276,8 +233,21 @@ export const useTimelineCommandStore = create<CommandStoreState & CommandStoreAc
 
     // Add pre-captured snapshot to undo stack (for drag operations)
     addUndoEntry: (command: TimelineCommand, beforeSnapshot: TimelineSnapshot) => {
-      if (activeTransaction) return
-      appendUndoEntry(set, command, beforeSnapshot)
+      const afterSnapshot = captureSnapshot()
+
+      // Only add to history if state actually changed
+      if (!snapshotsEqual(beforeSnapshot, afterSnapshot)) {
+        const maxHistory = useSettingsStore.getState().maxUndoHistory
+        set((state) => ({
+          undoStack: [
+            ...state.undoStack.slice(-(maxHistory - 1)),
+            { command, beforeSnapshot, timestamp: Date.now() },
+          ],
+          redoStack: [], // Clear redo on new action
+          canUndo: true,
+          canRedo: false,
+        }))
+      }
     },
 
     setActiveContext: (compositionId) => {

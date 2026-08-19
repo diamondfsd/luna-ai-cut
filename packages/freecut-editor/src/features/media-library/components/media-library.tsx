@@ -1,42 +1,55 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useMemo,
   memo,
   useCallback,
+  lazy,
+  Suspense,
 } from 'react'
 import {
   Search,
   Filter,
-  ArrowUpDown,
+  SortAsc,
   Video,
   FileAudio,
   Image as ImageIcon,
   Trash2,
+  Grid3x3,
+  List,
   AlertTriangle,
   Info,
   X,
   FolderOpen,
+  Link,
+  Link2Off,
   ChevronDown,
   ChevronRight,
   Film,
   ArrowLeft,
+  Zap,
   Loader2,
   Copy,
   Check,
+  Upload,
   Sparkles,
   FileText,
+  ScanSearch,
   FileJson,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { importSceneBrowserPanel, useSceneBrowserStore } from '../deps/scene-browser'
 import { createLogger } from '@freecut/shared/logging/logger'
-import { useEmbeddedHost } from '@freecut/shared/host/embedded-host'
-import { createNativeMediaFileHandle } from '@freecut/shared/host/native-media-file-handle'
 
 const logger = createLogger('MediaLibrary')
+const LazySceneBrowserPanel = lazy(() =>
+  importSceneBrowserPanel().then((module) => ({ default: module.SceneBrowserPanel })),
+)
 import { Button } from '@freecut/components/ui/button'
 import { Input } from '@freecut/components/ui/input'
+import { Slider } from '@freecut/components/ui/slider'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,7 +67,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@freecut/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@freecut/components/ui/dialog'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@freecut/components/ui/collapsible'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@freecut/components/ui/tooltip'
 import { MarqueeOverlay } from '@freecut/shared/marquee/marquee-overlay'
 import { cn } from '@freecut/shared/ui/cn'
 import { GridMediaGrid, ListMediaGrid } from './media-grid'
@@ -72,8 +94,10 @@ import { useProjectStore } from '@freecut/features/media-library/deps/projects'
 import { proxyService } from '../services/proxy-service'
 import { frameInterpolationService } from '../services/frame-interpolation-service'
 import { upscaleService } from '../services/upscale-service'
+import { importMediaLibraryService } from '../services/media-library-service-loader'
 import { cancelMediaTranscriptionJob } from '../services/media-transcription-runner'
 import { importMediaAnalysisService } from '../services/media-analysis-service-loader'
+import { getSupportedMediaFormatLabels } from '../utils/media-file-picker'
 import { getSharedProxyKey } from '../utils/proxy-key'
 import { getMediaType } from '../utils/validation'
 import { getProjectBrokenMediaIds } from '@freecut/features/media-library/utils/broken-media'
@@ -83,8 +107,6 @@ import { useMediaLibraryMarquee } from './use-media-library-marquee'
 import { useMediaLibraryDragDrop } from './use-media-library-drag-drop'
 import { useMediaTaskProgress } from './use-media-task-progress'
 import { useMediaLibraryDeletion } from './use-media-library-deletion'
-import { MediaImportDropOverlay } from './media-import-empty-state'
-import type { ExtractedMediaFileEntry } from '../utils/file-drop'
 
 function CopyButton({ text }: { text: string }) {
   const { t } = useTranslation()
@@ -106,6 +128,15 @@ function CopyButton({ text }: { text: string }) {
         <Copy className="h-3 w-3 text-muted-foreground" />
       )}
     </button>
+  )
+}
+
+function HeaderActionTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -178,6 +209,10 @@ interface MediaLibraryProps {
   onMediaSelect?: (mediaId: string) => void
 }
 
+const MEDIA_HEADER_MAX_COMPACT_LEVEL = 4
+const MEDIA_HEADER_OVERFLOW_TOLERANCE_PX = 1
+const MEDIA_HEADER_RELAX_WIDTH_DELTA_PX = 8
+
 /**
  * Per-item rows shown when a background-task progress bar is expanded. A single row carries no
  * more information than the aggregate bar above it, so one row renders nothing.
@@ -199,19 +234,23 @@ function renderTaskDetailRows(
 
 export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaLibraryProps) {
   const { t } = useTranslation()
-  const { requestMediaImport, describeDroppedMediaFiles } = useEmbeddedHost()
   const containerRef = useRef<HTMLDivElement>(null)
+  const headerToolbarRef = useRef<HTMLDivElement>(null)
+  const headerToolbarWidthRef = useRef(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const importInFlightRef = useRef(false)
-  const [isImporting, setIsImporting] = useState(false)
+  const [headerCompactLevel, setHeaderCompactLevel] = useState(0)
   const [openGroups, setOpenGroups] = useState<Set<string>>(
     () => new Set(['video', 'audio', 'image', 'gif', 'lottie']),
   )
+  const [showImportUrlDialog, setShowImportUrlDialog] = useState(false)
+  const [importUrlValue, setImportUrlValue] = useState('')
+  const [isImportUrlSubmitting, setIsImportUrlSubmitting] = useState(false)
   // Store selectors
   const currentProjectId = useMediaLibraryStore((s) => s.currentProjectId)
   const setCurrentProject = useMediaLibraryStore((s) => s.setCurrentProject)
   const loadMediaItems = useMediaLibraryStore((s) => s.loadMediaItems)
   const importMedia = useMediaLibraryStore((s) => s.importMedia)
+  const importMediaFromUrl = useMediaLibraryStore((s) => s.importMediaFromUrl)
   const importHandles = useMediaLibraryStore((s) => s.importHandles)
   const deleteMediaBatch = useMediaLibraryStore((s) => s.deleteMediaBatch)
   const showNotification = useMediaLibraryStore((s) => s.showNotification)
@@ -222,7 +261,12 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
   const sortBy = useMediaLibraryStore((s) => s.sortBy)
   const setSortBy = useMediaLibraryStore((s) => s.setSortBy)
   const viewMode = useMediaLibraryStore((s) => s.viewMode)
+  const setViewMode = useMediaLibraryStore((s) => s.setViewMode)
+  const sceneBrowserOpen = useSceneBrowserStore((s) => s.open)
+  const openSceneBrowser = useSceneBrowserStore((s) => s.openBrowser)
+  const closeSceneBrowser = useSceneBrowserStore((s) => s.closeBrowser)
   const mediaItemSize = useMediaLibraryStore((s) => s.mediaItemSize)
+  const setMediaItemSize = useMediaLibraryStore((s) => s.setMediaItemSize)
   const selectedMediaIds = useMediaLibraryStore((s) => s.selectedMediaIds)
   const selectedCompositionIds = useMediaLibraryStore((s) => s.selectedCompositionIds)
   const setSelection = useMediaLibraryStore((s) => s.setSelection)
@@ -234,6 +278,7 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
   const notification = useMediaLibraryStore((s) => s.notification)
   const clearNotification = useMediaLibraryStore((s) => s.clearNotification)
   const brokenMediaIds = useMediaLibraryStore((s) => s.brokenMediaIds)
+  const isScanningMediaHealth = useMediaLibraryStore((s) => s.isScanningMediaHealth)
   const openMissingMediaDialog = useMediaLibraryStore((s) => s.openMissingMediaDialog)
   const projectStoreProjectId = useProjectStore((s) => s.currentProject?.id ?? null)
   const proxyStatus = useMediaLibraryStore((s) => s.proxyStatus)
@@ -350,61 +395,61 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
     deleteMediaBatch,
   })
 
-  const runImport = useCallback(async (operation: () => Promise<unknown>) => {
-    if (importInFlightRef.current) return
-    importInFlightRef.current = true
-    setIsImporting(true)
+  // Import files by copying them into the workspace-backed media store.
+  const handleImport = async () => {
     try {
-      await operation()
-    } finally {
-      importInFlightRef.current = false
-      setIsImporting(false)
-    }
-  }, [])
-
-  // Picker, empty state, and host integration all share this import path.
-  const handleImport = useCallback(async () => {
-    try {
-      await runImport(async () => {
-        if (requestMediaImport) {
-          await requestMediaImport(async (sources, options) => {
-            await importHandles(sources.map(createNativeMediaFileHandle), {
-              storageMode: 'link',
-              background: options?.background,
-            })
-          })
-          return
-        }
-
-        await importMedia({ storageMode: 'link' })
-      })
+      await importMedia({ storageMode: 'copy' })
     } catch (error) {
       logger.error('Import failed:', error)
     }
-  }, [importHandles, importMedia, requestMediaImport, runImport])
+  }
+
+  const handleLinkImport = async () => {
+    try {
+      await importMedia({ storageMode: 'link' })
+    } catch (error) {
+      logger.error('Link import failed:', error)
+    }
+  }
+
+  const handleImportUrl = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      if (isImportUrlSubmitting) {
+        return
+      }
+
+      setIsImportUrlSubmitting(true)
+      try {
+        await importMediaFromUrl(importUrlValue)
+        if (!useMediaLibraryStore.getState().error) {
+          setShowImportUrlDialog(false)
+          setImportUrlValue('')
+        }
+      } catch (error) {
+        logger.error('Import from URL failed:', error)
+      } finally {
+        setIsImportUrlSubmitting(false)
+      }
+    },
+    [importMediaFromUrl, importUrlValue, isImportUrlSubmitting],
+  )
 
   // Import files from drag-drop handles - memoized to prevent MediaGrid re-renders
-  const handleImportEntries = useCallback(
-    async (entries: ExtractedMediaFileEntry[]) => {
+  const handleImportHandles = useCallback(
+    async (handles: FileSystemFileHandle[]) => {
       try {
-        await runImport(async () => {
-          if (describeDroppedMediaFiles) {
-            const sources = await describeDroppedMediaFiles(entries.map((entry) => entry.file))
-            await importHandles(sources.map(createNativeMediaFileHandle), { storageMode: 'link' })
-            return
-          }
-          await importHandles(entries.map((entry) => entry.handle), { storageMode: 'link' })
-        })
+        await importHandles(handles)
       } catch (error) {
         logger.error('Import failed:', error)
       }
     },
-    [describeDroppedMediaFiles, importHandles, runImport],
+    [importHandles],
   )
 
   // Panel-level drag/drop handling so the drop zone covers the full panel height.
   const { isDragging, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } =
-    useMediaLibraryDragDrop({ showNotification, importEntries: handleImportEntries })
+    useMediaLibraryDragDrop({ showNotification, importHandles: handleImportHandles })
 
   // Count of items currently generating proxies
   const currentProjectBrokenMediaIds = useMemo(
@@ -438,6 +483,35 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
     preparingAvgProgress,
     hasRunningPreparationTasks,
   } = useMediaTaskProgress()
+
+  const handleGenerateSelectedProxies = async () => {
+    const selectedItems = selectedMediaIds
+      .map((id) => mediaById[id])
+      .filter(
+        (m): m is MediaMetadata =>
+          m !== undefined &&
+          proxyService.canGenerateProxy(m.mimeType) &&
+          proxyStatus.get(m.id) !== 'ready' &&
+          proxyStatus.get(m.id) !== 'generating',
+      )
+
+    selectedItems.forEach((item) => {
+      const proxyKey = getSharedProxyKey(item)
+      proxyService.setProxyKey(item.id, proxyKey)
+      proxyService.generateProxy(
+        item.id,
+        item.storageType === 'opfs' && item.opfsPath
+          ? { kind: 'opfs', path: item.opfsPath, mimeType: item.mimeType }
+          : async () => {
+              const { mediaLibraryService } = await importMediaLibraryService()
+              return mediaLibraryService.getMediaFile(item.id)
+            },
+        item.width,
+        item.height,
+        proxyKey,
+      )
+    })
+  }
 
   const handleCancelAllProxies = () => {
     for (const [mediaId, status] of proxyStatus.entries()) {
@@ -476,6 +550,70 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
     }
   }
 
+  // Count selected items that are eligible for proxy generation
+  const selectedProxyEligibleCount = useMemo(() => {
+    return selectedMediaIds.filter((id) => {
+      const m = mediaById[id]
+      return (
+        m &&
+        proxyService.canGenerateProxy(m.mimeType) &&
+        proxyStatus.get(id) !== 'ready' &&
+        proxyStatus.get(id) !== 'generating'
+      )
+    }).length
+  }, [selectedMediaIds, mediaById, proxyStatus])
+
+  useLayoutEffect(() => {
+    const toolbar = headerToolbarRef.current
+    if (!toolbar) return
+
+    let frame: number | undefined
+    const measure = () => {
+      if (frame !== undefined) {
+        window.cancelAnimationFrame(frame)
+      }
+
+      frame = window.requestAnimationFrame(() => {
+        frame = undefined
+        const nextWidth = toolbar.clientWidth
+        const previousWidth = headerToolbarWidthRef.current
+        headerToolbarWidthRef.current = nextWidth
+
+        if (previousWidth > 0 && nextWidth > previousWidth + MEDIA_HEADER_RELAX_WIDTH_DELTA_PX) {
+          setHeaderCompactLevel(0)
+          return
+        }
+
+        const overflowing =
+          toolbar.scrollWidth - toolbar.clientWidth > MEDIA_HEADER_OVERFLOW_TOLERANCE_PX
+        if (!overflowing) return
+
+        setHeaderCompactLevel((level) => Math.min(MEDIA_HEADER_MAX_COMPACT_LEVEL, level + 1))
+      })
+    }
+
+    const ResizeObserverCtor = typeof ResizeObserver === 'undefined' ? null : ResizeObserver
+    const observer = ResizeObserverCtor ? new ResizeObserverCtor(measure) : null
+    observer?.observe(toolbar)
+    window.addEventListener('resize', measure)
+    measure()
+
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+      if (frame !== undefined) {
+        window.cancelAnimationFrame(frame)
+      }
+    }
+  }, [
+    currentProjectBrokenMediaIds.length,
+    currentProjectId,
+    headerCompactLevel,
+    selectedAssetCount,
+    selectedProxyEligibleCount,
+    t,
+  ])
+
   const handleScrollContentClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (isMarqueeJustFinished()) return
@@ -490,130 +628,253 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
 
   return (
     <div ref={containerRef} className="h-full flex flex-col">
-      <div className="flex flex-shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <Button
-          type="button"
-          variant="editorAction"
-          size="sm"
-          onClick={() => void handleImport()}
-          disabled={!currentProjectId || isImporting}
-          className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
-        >
-          {isImporting ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <FolderOpen className="h-3.5 w-3.5" />
-          )}
-          {isImporting ? t('media.grid.importingButton') : t('media.library.import')}
-        </Button>
+      {/* Header toolbar */}
+      <div className="@container px-3 py-2 border-b border-border flex-shrink-0">
+        <TooltipProvider>
+          <div
+            ref={headerToolbarRef}
+            className="flex flex-nowrap items-center gap-2 text-xs min-w-0 overflow-hidden"
+          >
+            {/* Import action */}
+            <div className="flex shrink-0">
+              <HeaderActionTooltip label={t('media.library.importMediaFiles')}>
+                <button
+                  onClick={handleImport}
+                  disabled={!currentProjectId}
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-l-md
+                    bg-primary text-primary-foreground
+                    hover:bg-primary/90
+                    disabled:opacity-40 disabled:cursor-not-allowed
+                    transition-colors duration-150"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span className={headerCompactLevel >= 4 ? 'hidden' : 'hidden @[260px]:inline'}>
+                    {t('media.library.import')}
+                  </span>
+                </button>
+              </HeaderActionTooltip>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    disabled={!currentProjectId}
+                    className="flex h-7 w-7 items-center justify-center rounded-r-md border-l border-primary-foreground/20
+                      bg-primary text-primary-foreground
+                      hover:bg-primary/90
+                      disabled:opacity-40 disabled:cursor-not-allowed
+                      transition-colors duration-150"
+                    aria-label={t('media.library.importMoreOptions')}
+                    title={t('media.library.importMoreOptions')}
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem onSelect={handleImport}>
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    {t('media.library.importCopyToWorkspace')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={handleLinkImport}>
+                    <Link className="w-4 h-4 mr-2" />
+                    {t('media.library.importLinkOriginal')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
-        <div className="group relative min-w-0 flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
-          <Input
-            placeholder={t('media.searchMedia')}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="h-8 border-border bg-secondary pl-8 pr-7 text-xs placeholder:text-muted-foreground focus:border-primary"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-              aria-label={t('editor.mediaSidebar.clearSearch')}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
+            <HeaderActionTooltip label={t('media.library.importMediaFromUrl')}>
+              <button
+                onClick={() => setShowImportUrlDialog(true)}
+                disabled={!currentProjectId}
+                className="flex items-center gap-1.5 h-7 px-2.5 rounded-md shrink-0 border
+                  bg-secondary border-border text-muted-foreground
+                  hover:text-primary hover:bg-primary/10 hover:border-primary/40
+                  disabled:opacity-40 disabled:cursor-not-allowed
+                  transition-colors duration-150"
+              >
+                <Link className="w-3.5 h-3.5" />
+                <span className={headerCompactLevel >= 2 ? 'hidden' : 'hidden @[360px]:inline'}>
+                  {t('media.library.url')}
+                </span>
+              </button>
+            </HeaderActionTooltip>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                'h-8 shrink-0 gap-1 border-border bg-secondary px-2 text-muted-foreground',
-                filterByType && 'border-primary/60 text-primary',
-              )}
-              aria-label={t('media.library.allTypes')}
-            >
-              <Filter className="h-3.5 w-3.5" />
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onClick={() => setFilterByType(null)}>
-              {t('media.library.allTypes')}
-              {!filterByType && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setFilterByType('video')}>
-              <Video className="mr-2 h-3.5 w-3.5" />
-              {t('media.type.video')}
-              {filterByType === 'video' && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setFilterByType('audio')}>
-              <FileAudio className="mr-2 h-3.5 w-3.5" />
-              {t('media.type.audio')}
-              {filterByType === 'audio' && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setFilterByType('image')}>
-              <ImageIcon className="mr-2 h-3.5 w-3.5" />
-              {t('media.type.image')}
-              {filterByType === 'image' && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-            </DropdownMenuItem>
-            {currentProjectBrokenMediaIds.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={openMissingMediaDialog} className="text-destructive">
-                  {t('media.library.viewMissingMedia', {
-                    count: currentProjectBrokenMediaIds.length,
-                  })}
-                </DropdownMenuItem>
-              </>
+            {/* Workspace health scan indicator */}
+            {isScanningMediaHealth && (
+              <HeaderActionTooltip label={t('media.library.checkingWorkspaceHealth')}>
+                <div
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-md shrink-0 border
+                    bg-secondary border-border text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <ScanSearch className="w-3.5 h-3.5 animate-pulse" />
+                  <span className={headerCompactLevel >= 3 ? 'hidden' : 'hidden @[380px]:inline'}>
+                    {t('media.library.checkingWorkspaceHealthShort')}
+                  </span>
+                </div>
+              </HeaderActionTooltip>
             )}
+
+            {/* Missing media indicator */}
+            {currentProjectBrokenMediaIds.length > 0 && (
+              <HeaderActionTooltip
+                label={t('media.library.viewMissingMedia', {
+                  count: currentProjectBrokenMediaIds.length,
+                })}
+              >
+                <button
+                  onClick={openMissingMediaDialog}
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-md shrink-0
+                    bg-destructive/10 border border-destructive/25 text-destructive
+                    hover:bg-destructive/20 hover:border-destructive/40
+                    transition-colors duration-150"
+                >
+                  <Link2Off className="w-3.5 h-3.5" />
+                  <span className={headerCompactLevel >= 3 ? 'hidden' : 'hidden @[340px]:inline'}>
+                    {t('media.library.missingCount', {
+                      count: currentProjectBrokenMediaIds.length,
+                    })}
+                  </span>
+                </button>
+              </HeaderActionTooltip>
+            )}
+
+            {/* Selection indicator & actions */}
             {selectedAssetCount > 0 && (
               <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDeleteSelected} className="text-destructive">
-                  <Trash2 className="mr-2 h-3.5 w-3.5" />
-                  {t('common.delete')}
-                </DropdownMenuItem>
+                <div className="h-4 w-px bg-border hidden @[300px]:block" />
+
+                {/* Selection badge */}
+                <div className="flex shrink-0 items-center gap-1 h-7 pl-2 pr-1 rounded-md bg-accent/50 border border-border min-w-0 max-w-full overflow-hidden">
+                  <span
+                    className={cn(
+                      'tabular-nums shrink-0 whitespace-nowrap',
+                      headerCompactLevel >= 4 && 'hidden',
+                    )}
+                  >
+                    {t('media.library.selectedCount', { count: selectedAssetCount })}
+                  </span>
+                  <span
+                    className={cn(
+                      'hidden tabular-nums shrink-0 whitespace-nowrap',
+                      headerCompactLevel >= 4 && 'inline',
+                    )}
+                    aria-label={t('media.library.selectedCount', { count: selectedAssetCount })}
+                  >
+                    {selectedAssetCount}
+                  </span>
+                  <HeaderActionTooltip label={t('media.library.clearSelection')}>
+                    <button
+                      onClick={clearSelection}
+                      className="ml-0.5 p-1 rounded hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </HeaderActionTooltip>
+                </div>
+
+                {/* Generate proxies for selection */}
+                {selectedProxyEligibleCount > 0 && (
+                  <HeaderActionTooltip
+                    label={t('media.library.generateProxiesForSelected', {
+                      count: selectedProxyEligibleCount,
+                    })}
+                  >
+                    <button
+                      onClick={handleGenerateSelectedProxies}
+                      className="flex items-center gap-1.5 h-7 px-2.5 rounded-md shrink-0 border
+                        bg-secondary border-border text-muted-foreground
+                        hover:text-primary hover:bg-primary/10 hover:border-primary/40
+                        transition-colors duration-150"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span
+                        className={headerCompactLevel >= 2 ? 'hidden' : 'hidden @[440px]:inline'}
+                      >
+                        {t('media.library.proxyCount', { count: selectedProxyEligibleCount })}
+                      </span>
+                    </button>
+                  </HeaderActionTooltip>
+                )}
+
+                {/* Delete action */}
+                <HeaderActionTooltip label={t('media.library.deleteSelectedAssets')}>
+                  <button
+                    onClick={handleDeleteSelected}
+                    className="flex items-center gap-1.5 h-7 px-2.5 rounded-md shrink-0
+                      bg-destructive/10 border border-destructive/25 text-destructive
+                      hover:bg-destructive/20 hover:border-destructive/40
+                      transition-colors duration-150"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className={headerCompactLevel >= 1 ? 'hidden' : 'hidden @[400px]:inline'}>
+                      {t('common.delete')}
+                    </span>
+                  </button>
+                </HeaderActionTooltip>
               </>
             )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 gap-1 border-border bg-secondary px-2 text-muted-foreground"
-              aria-label={t(`media.library.sort${sortBy === 'date' ? 'Date' : sortBy === 'name' ? 'Name' : 'Size'}`)}
-            >
-              <ArrowUpDown className="h-3.5 w-3.5" />
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onClick={() => setSortBy('date')}>
-              {t('media.library.sortDate')}
-              {sortBy === 'date' && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy('name')}>
-              {t('media.library.sortName')}
-              {sortBy === 'name' && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy('size')}>
-              {t('media.library.sortSize')}
-              {sortBy === 'size' && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </div>
+        </TooltipProvider>
       </div>
+
+      <Dialog
+        open={showImportUrlDialog}
+        onOpenChange={(open) => {
+          setShowImportUrlDialog(open)
+          if (!open && !isImportUrlSubmitting) {
+            setImportUrlValue('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>{t('media.library.importFromUrlTitle')}</DialogTitle>
+            <DialogDescription>{t('media.library.importFromUrlDescription')}</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleImportUrl} className="space-y-4">
+            <div className="space-y-2">
+              <Input
+                autoFocus
+                type="url"
+                inputMode="url"
+                placeholder="https://example.com/video.mp4"
+                value={importUrlValue}
+                onChange={(event) => setImportUrlValue(event.target.value)}
+                disabled={isImportUrlSubmitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('media.library.importFromUrlHint')}
+              </p>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!isImportUrlSubmitting) {
+                    setShowImportUrlDialog(false)
+                    setImportUrlValue('')
+                  }
+                }}
+                disabled={isImportUrlSubmitting}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  !currentProjectId || importUrlValue.trim().length === 0 || isImportUrlSubmitting
+                }
+              >
+                {isImportUrlSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {t('media.library.import')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Error message */}
       {error && (
@@ -647,7 +908,7 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
         <div
           className={`mx-4 mt-3 p-2.5 rounded text-xs animate-in slide-in-from-top-2 duration-200 ${
             notification.type === 'info'
-              ? 'bg-primary/10 border border-primary/30'
+              ? 'bg-orange-500/10 border border-orange-500/30'
               : notification.type === 'warning'
                 ? 'bg-yellow-500/10 border border-yellow-500/30'
                 : notification.type === 'success'
@@ -660,7 +921,7 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
               <Info
                 className={`w-3.5 h-3.5 flex-shrink-0 ${
                   notification.type === 'info'
-                    ? 'text-primary'
+                    ? 'text-orange-500'
                     : notification.type === 'warning'
                       ? 'text-yellow-500'
                       : notification.type === 'success'
@@ -671,7 +932,7 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
               <p
                 className={`leading-relaxed line-clamp-2 ${
                   notification.type === 'info'
-                    ? 'text-primary'
+                    ? 'text-orange-600 dark:text-orange-400'
                     : notification.type === 'warning'
                       ? 'text-yellow-600 dark:text-yellow-400'
                       : notification.type === 'success'
@@ -692,6 +953,219 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
         </div>
       )}
 
+      {/* Search + view toggle always render so the toggle stays reachable
+          in Scene mode. The search input and the filter row below only scope
+          the media-library grid, so they're hidden when the Scene browser is
+          mounted (it has its own search). */}
+      <div className="px-4 pt-3 pb-2 space-y-2 flex-shrink-0">
+        {/* Search + Media/Scenes toggle group */}
+        <div className="@container flex items-center gap-2">
+          {!sceneBrowserOpen && (
+            <div className="relative group flex-1 min-w-0">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Input
+                placeholder={t('media.searchMedia')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-7 bg-secondary border border-border focus:border-primary text-foreground placeholder:text-muted-foreground text-xs"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+          {sceneBrowserOpen && <div className="flex-1 min-w-0" aria-hidden />}
+          <div
+            role="group"
+            aria-label={t('media.library.libraryView')}
+            className="inline-flex items-center h-7 rounded-md border border-border bg-secondary p-0.5 shrink-0"
+          >
+            <HeaderActionTooltip label={t('media.library.showMediaLibrary')}>
+              <button
+                onClick={() => {
+                  if (sceneBrowserOpen) closeSceneBrowser()
+                }}
+                aria-pressed={!sceneBrowserOpen}
+                className={cn(
+                  'flex items-center gap-1 h-6 px-1.5 @[280px]:px-2 rounded-[3px] text-[11px] transition-colors duration-150',
+                  !sceneBrowserOpen
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Film className="w-3 h-3" />
+                <span className="hidden @[280px]:inline">{t('media.library.mediaTab')}</span>
+              </button>
+            </HeaderActionTooltip>
+            <HeaderActionTooltip label={t('media.library.searchScenes')}>
+              <button
+                onClick={() => {
+                  if (!sceneBrowserOpen) openSceneBrowser()
+                }}
+                aria-pressed={sceneBrowserOpen}
+                className={cn(
+                  'flex items-center gap-1 h-6 px-1.5 @[280px]:px-2 rounded-[3px] text-[11px] transition-colors duration-150',
+                  sceneBrowserOpen
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <ScanSearch className="w-3 h-3" />
+                <span className="hidden @[280px]:inline">{t('media.library.scenesTab')}</span>
+              </button>
+            </HeaderActionTooltip>
+          </div>
+        </div>
+
+        {!sceneBrowserOpen && (
+          <>
+            {/* Filters and sort */}
+            <div className="@container flex items-center gap-1.5 min-w-0">
+              {/* Filter by type */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`h-6 bg-secondary border text-[10px] px-2 flex-shrink-0 ${
+                      filterByType
+                        ? 'border-primary text-primary hover:bg-primary/10'
+                        : 'border-border text-muted-foreground hover:border-primary/50 hover:text-primary'
+                    }`}
+                  >
+                    <Filter className="w-2.5 h-2.5" />
+                    <span className="hidden @[280px]:inline ml-1">
+                      {filterByType
+                        ? t(`media.library.typeShort.${filterByType}`)
+                        : t('media.library.allShort')}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="bg-popover border border-border">
+                  <DropdownMenuItem
+                    onClick={() => setFilterByType(null)}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    {t('media.library.allTypes')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-border" />
+                  <DropdownMenuItem
+                    onClick={() => setFilterByType('video')}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <Video className="w-3 h-3 mr-2" />
+                    {t('media.type.video')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setFilterByType('audio')}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <FileAudio className="w-3 h-3 mr-2" />
+                    {t('media.type.audio')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setFilterByType('image')}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <ImageIcon className="w-3 h-3 mr-2" />
+                    {t('media.type.image')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setFilterByType('lottie')}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <FileJson className="w-3 h-3 mr-2" />
+                    {t('media.type.lottie')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Sort by */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 bg-secondary border border-border text-muted-foreground hover:border-primary/50 hover:text-primary text-[10px] px-2 flex-shrink-0"
+                  >
+                    <SortAsc className="w-2.5 h-2.5" />
+                    <span className="hidden @[280px]:inline ml-1">
+                      {t(`media.library.sortShort.${sortBy}`)}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="bg-popover border border-border">
+                  <DropdownMenuItem
+                    onClick={() => setSortBy('date')}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    {t('media.library.sortDate')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setSortBy('name')}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    {t('media.library.sortName')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setSortBy('size')}
+                    className="text-xs hover:bg-accent hover:text-accent-foreground"
+                  >
+                    {t('media.library.sortSize')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* View mode toggle + item size */}
+              <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                {viewMode === 'grid' && (
+                  <Slider
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={[mediaItemSize]}
+                    onValueChange={([v]) => setMediaItemSize(v ?? 3)}
+                    className="flex-1 min-w-6 max-w-24"
+                    aria-label={t('media.library.gridItemSize')}
+                  />
+                )}
+                <div className="flex items-center border border-border rounded bg-secondary flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setViewMode('grid')}
+                    className={`h-6 w-6 p-0 rounded-none rounded-l ${
+                      viewMode === 'grid'
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Grid3x3 className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setViewMode('list')}
+                    className={`h-6 w-6 p-0 rounded-none rounded-r ${
+                      viewMode === 'list'
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <List className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Composition navigation banner — shown when inside a sub-composition */}
       {activeCompositionId !== null && activeCompLabel && (
         <div className="px-3 py-1.5 border-b border-violet-500/30 bg-violet-500/10 flex items-center gap-2 flex-shrink-0">
@@ -709,9 +1183,17 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
 
       {/* Scrollable content: wrapper provides relative context for the drag overlay */}
       <div className="flex-1 relative min-h-0">
+        {sceneBrowserOpen && (
+          <Suspense fallback={null}>
+            <LazySceneBrowserPanel className="absolute inset-0 bg-background" />
+          </Suspense>
+        )}
         <div
           ref={scrollContainerRef}
-          className="relative h-full overflow-y-auto px-4 pb-4 [scrollbar-gutter:stable]"
+          className={cn(
+            'relative h-full overflow-y-auto px-4 pb-4 [scrollbar-gutter:stable]',
+            sceneBrowserOpen && 'hidden',
+          )}
           onClick={handleScrollContentClick}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
@@ -747,17 +1229,40 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
 
           {/* Loading / empty state when no groups to show */}
           {mediaGroups.length === 0 && (
-            <EmptyMediaGrid
-              onMediaSelect={onMediaSelect}
-              itemSize={mediaItemSize}
-              onImport={() => void handleImport()}
-              isImporting={isImporting}
-            />
+            <EmptyMediaGrid onMediaSelect={onMediaSelect} itemSize={mediaItemSize} />
           )}
         </div>
 
         {/* Drag overlay — absolute sibling, always covers the visible viewport */}
-        {isDragging && <MediaImportDropOverlay />}
+        {isDragging && (
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 border-2 border-dashed border-primary z-50 flex items-center justify-center pointer-events-none">
+            <div className="absolute top-2 left-2 w-6 h-6 border-l-2 border-t-2 border-primary" />
+            <div className="absolute top-2 right-2 w-6 h-6 border-r-2 border-t-2 border-primary" />
+            <div className="absolute bottom-2 left-2 w-6 h-6 border-l-2 border-b-2 border-primary" />
+            <div className="absolute bottom-2 right-2 w-6 h-6 border-r-2 border-b-2 border-primary" />
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center bg-primary/20 border-2 border-primary">
+                <Upload className="w-7 h-7 text-primary animate-bounce" />
+              </div>
+              <p className="text-base font-bold tracking-wide text-primary">
+                {t('media.library.dropFilesHere')}
+              </p>
+              <div className="flex flex-wrap justify-center gap-2 mt-2">
+                {getSupportedMediaFormatLabels().map((label) => (
+                  <span
+                    key={label}
+                    className="px-2 py-0.5 bg-secondary border border-border rounded text-xs font-mono text-muted-foreground"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-primary to-transparent animate-scan" />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Background AI analysis status */}

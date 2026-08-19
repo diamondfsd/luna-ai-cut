@@ -60,7 +60,6 @@ export interface TimelineState {
   inPoint: number | null
   outPoint: number | null
   isDirty: boolean // Track unsaved changes
-  changeVersion?: number // Monotonic token used to debounce and safely complete saves
 }
 
 export interface TimelineActions {

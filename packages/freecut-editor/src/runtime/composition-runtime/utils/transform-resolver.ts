@@ -83,10 +83,6 @@ export function resolveTransform(
  * Returns undefined if dimensions are not available.
  */
 export function getSourceDimensions(item: TimelineItem): SourceDimensions | undefined {
-  if (item.type === 'html') {
-    return { width: item.viewport.width, height: item.viewport.height }
-  }
-
   if (item.type === 'video') {
     const videoItem = item as VideoItem
     if (videoItem.sourceWidth && videoItem.sourceHeight) {

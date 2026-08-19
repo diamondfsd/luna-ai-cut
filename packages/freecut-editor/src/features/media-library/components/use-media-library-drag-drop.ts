@@ -3,13 +3,12 @@ import { useTranslation } from 'react-i18next'
 import {
   extractValidMediaFileEntriesFromDataTransfer,
   formatMediaDropRejectionMessage,
-  type ExtractedMediaFileEntry,
 } from '../utils/file-drop'
 import type { MediaLibraryNotification } from '../types'
 
 interface UseMediaLibraryDragDropParams {
   showNotification: (notification: MediaLibraryNotification) => void
-  importEntries: (entries: ExtractedMediaFileEntry[]) => Promise<void>
+  importHandles: (handles: FileSystemFileHandle[]) => Promise<void>
 }
 
 /**
@@ -20,7 +19,7 @@ interface UseMediaLibraryDragDropParams {
  */
 export function useMediaLibraryDragDrop({
   showNotification,
-  importEntries,
+  importHandles,
 }: UseMediaLibraryDragDropParams) {
   const { t } = useTranslation()
   const [isDragging, setIsDragging] = useState(false)
@@ -93,10 +92,10 @@ export function useMediaLibraryDragDrop({
         })
       }
       if (entries.length > 0) {
-        await importEntries(entries)
+        await importHandles(entries.map((entry) => entry.handle))
       }
     },
-    [showNotification, importEntries, t],
+    [showNotification, importHandles, t],
   )
 
   return { isDragging, handleDragEnter, handleDragOver, handleDragLeave, handleDrop }

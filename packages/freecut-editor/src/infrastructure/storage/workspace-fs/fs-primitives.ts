@@ -171,8 +171,8 @@ type MovableHandle = FileSystemFileHandle & {
  * Chromium has shipped move() for local files since M111. The spec permits
  * rejection when the file "does not correspond to a file on the underlying file
  * system", which covers cloud-synced and network folders, and pre-M111 engines
- * reject every non-OPFS move. Browser roots come from showDirectoryPicker();
- * Electron roots use the native workspace adapter.
+ * reject every non-OPFS move. Our root always comes from showDirectoryPicker(),
+ * so we are never on the guaranteed-OPFS path.
  *
  * Presence is therefore NOT support; the only way to find out is to call it. We
  * remember the answer so at most one doomed move() happens per workspace rather

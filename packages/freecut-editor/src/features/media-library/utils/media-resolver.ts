@@ -5,7 +5,6 @@ import { blobUrlManager } from '@freecut/infrastructure/browser/blob-url-manager
 import { registerKeyframeIndex } from '@freecut/shared/utils/keyframe-index-registry'
 import type { TimelineTrack } from '@freecut/types/timeline'
 import { createLogger } from '@freecut/shared/logging/logger'
-import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 
 const logger = createLogger('MediaResolver')
 
@@ -45,15 +44,6 @@ export async function resolveMediaUrl(mediaId: string): Promise<string> {
       if (!media) {
         logger.warn(`Media not found: ${mediaId}`)
         return '' // Fallback: empty string (Composition will skip)
-      }
-
-      if (media.nativePath) {
-        const nativeUrl = getEmbeddedHostBridge().resolveNativeMediaUrl?.(media.nativePath)
-        if (!nativeUrl) {
-          throw new FileAccessError(`Media file "${media.fileName}" is unavailable.`, 'file_missing')
-        }
-        useMediaLibraryStore.getState().markMediaHealthy(mediaId)
-        return blobUrlManager.registerUrl(mediaId, nativeUrl)
       }
 
       // Get the source blob without an extra validation pass; getMediaFile

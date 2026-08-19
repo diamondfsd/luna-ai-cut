@@ -261,7 +261,7 @@ export function CompoundPropertyInputs({
     <div
       className={`flex shrink-0 items-center overflow-hidden rounded-sm border border-border/70 ${
         spacious ? 'w-[192px]' : 'w-[132px]'
-      } ${config.linked ? 'border-primary/50 text-primary' : ''}`}
+      } ${config.linked ? 'border-orange-500/50 text-orange-400' : ''}`}
       data-testid="compound-property-inputs"
     >
       {config.axisLink ? (

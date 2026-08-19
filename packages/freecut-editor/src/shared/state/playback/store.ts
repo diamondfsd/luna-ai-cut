@@ -208,28 +208,6 @@ export const usePlaybackStore = create<PlaybackState & PlaybackActions>()(
               }
             : state,
         ),
-      finishPlaybackAtFrame: (frame) =>
-        set((state) => {
-          const nextFrame = normalizeFrame(frame)
-          const frameChanged = state.currentFrame !== nextFrame
-          const transportChanged =
-            state.isPlaying ||
-            state.playbackRate !== 1 ||
-            state.transportMode !== 'normal' ||
-            state.playbackScrubResumeTransport !== null
-          if (!frameChanged && !transportChanged) return state
-
-          const nextEpoch = frameChanged ? state.frameUpdateEpoch + 1 : state.frameUpdateEpoch
-          return {
-            currentFrame: nextFrame,
-            currentFrameEpoch: frameChanged ? nextEpoch : state.currentFrameEpoch,
-            frameUpdateEpoch: nextEpoch,
-            isPlaying: false,
-            playbackRate: 1,
-            transportMode: 'normal' as const,
-            playbackScrubResumeTransport: null,
-          }
-        }),
       togglePlayPause: () =>
         set((state) =>
           state.isPlaying

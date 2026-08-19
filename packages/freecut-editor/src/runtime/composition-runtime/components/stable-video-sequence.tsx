@@ -46,7 +46,7 @@ import { useNestedMediaResolutionMode } from '../contexts/nested-media-resolutio
 import { areGroupPropsEqual } from './stable-video-sequence-comparator'
 
 const warmupLog = createLogger('StableVideoWarmup')
-const SAME_ORIGIN_SHADOW_MOUNT_LOOKAHEAD_FRAMES = 8
+const SAME_ORIGIN_SHADOW_MOUNT_MIN_LOOKAHEAD_FRAMES = 8
 const SHADOW_UNMOUNT_COOLDOWN_FRAMES = 18
 const TRANSITION_SYNC_COOLDOWN_FRAMES = 18
 const TRANSITION_WARMUP_LOOKAHEAD_SECONDS = 1.5
@@ -258,7 +258,10 @@ const GroupRenderer: React.FC<{
   // normal playback keeps using the simple single-clip path until near the cut.
   const overlapKey = useMemo(() => {
     if (isPremounted || activeItemIndex < 0 || group.items.length <= 1) return ''
-    const shadowMountLookaheadFrames = SAME_ORIGIN_SHADOW_MOUNT_LOOKAHEAD_FRAMES
+    const shadowMountLookaheadFrames = Math.max(
+      SAME_ORIGIN_SHADOW_MOUNT_MIN_LOOKAHEAD_FRAMES,
+      Math.ceil(fps * TRANSITION_WARMUP_LOOKAHEAD_SECONDS),
+    )
     const transitionClipIds = collectTransitionParticipantClipIds({
       transitionWindows,
       frame: globalFrame,
@@ -270,7 +273,7 @@ const GroupRenderer: React.FC<{
       activeItemIndex,
       transitionClipIds,
     })
-  }, [isPremounted, activeItemIndex, group.items, transitionWindows, globalFrame])
+  }, [isPremounted, activeItemIndex, fps, group.items, transitionWindows, globalFrame])
 
   // Build adjusted shadow items — only recalculated when overlap composition changes.
   // String comparison is by value, so stable overlapKey prevents rebuilds every frame.

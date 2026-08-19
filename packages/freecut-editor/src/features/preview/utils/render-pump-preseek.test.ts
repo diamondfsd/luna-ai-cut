@@ -25,6 +25,7 @@ import {
   collectVisibleTrackVideoSourceTimesBySrc,
   getVideoItemSourceTimeSeconds,
   mapTimelineFrameToSubCompositionFrame,
+  resolvePreviewPreseekSource,
   resolvePausedVariableSpeedPrewarmPlan,
   resolveActivePreviewLookaheadTimestamps,
   shouldRunJumpPreseek,
@@ -61,6 +62,28 @@ function makeTrack(items: VideoItem[]): TimelineTrack {
 }
 
 describe('render pump preseek helpers', () => {
+  it('keeps worker preseek on the original source when proxy playback is disabled', () => {
+    expect(
+      resolvePreviewPreseekSource({
+        useProxy: false,
+        proxySource: 'blob:proxy',
+        liveSource: 'blob:original',
+        itemSource: 'blob:stale-item-source',
+      }),
+    ).toBe('blob:original')
+  })
+
+  it('uses the proxy source when proxy playback is enabled', () => {
+    expect(
+      resolvePreviewPreseekSource({
+        useProxy: true,
+        proxySource: 'blob:proxy',
+        liveSource: 'blob:original',
+        itemSource: 'blob:stale-item-source',
+      }),
+    ).toBe('blob:proxy')
+  })
+
   it('computes source time at a timeline frame', () => {
     const item = makeVideoItem({
       from: 10,
@@ -101,6 +124,38 @@ describe('render pump preseek helpers', () => {
 
     expect(getVideoItemSourceTimeSeconds(item, 10, 30)).toBeCloseTo(179 / 60)
     expect(getVideoItemSourceTimeSeconds(item, 11, 30)).toBeCloseTo(175 / 60)
+  })
+
+  it('collects reversed playback windows from the selected proxy mode source', () => {
+    const tracks = [
+      makeTrack([
+        makeVideoItem({
+          id: 'reversed-proxy-toggle',
+          src: 'blob:stale-item-source',
+          from: 10,
+          durationInFrames: 30,
+          sourceStart: 120,
+          sourceEnd: 180,
+          sourceFps: 60,
+          speed: 1,
+          isReversed: true,
+        }),
+      ]),
+    ]
+
+    const collectForMode = (useProxy: boolean) =>
+      collectVisibleTrackVideoSourceTimesBySrc(tracks, 10, 30, {
+        resolveItemSrc: () =>
+          resolvePreviewPreseekSource({
+            useProxy,
+            proxySource: 'blob:proxy',
+            liveSource: 'blob:original',
+            itemSource: 'blob:stale-item-source',
+          }),
+      })
+
+    expectMapCloseTo(collectForMode(false), new Map([['blob:original', [179 / 60]]]))
+    expectMapCloseTo(collectForMode(true), new Map([['blob:proxy', [179 / 60]]]))
   })
 
   it('requires explicit source fps when requested', () => {

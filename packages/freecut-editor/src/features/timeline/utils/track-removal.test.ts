@@ -2,12 +2,7 @@
 
 import { describe, expect, it } from 'vite-plus/test'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
-import {
-  assertRequiredTracksPreserved,
-  canRemoveTrack,
-  getEmptyTrackIdsForRemoval,
-  getRemovableTrackIds,
-} from './track-removal'
+import { getEmptyTrackIdsForRemoval } from './track-removal'
 
 function makeTrack(overrides: Partial<TimelineTrack> = {}): TimelineTrack {
   return {
@@ -50,7 +45,7 @@ describe('getEmptyTrackIdsForRemoval', () => {
       a1: [makeItem({ id: 'audio-1', trackId: 'a1' })],
     }
 
-    expect(getEmptyTrackIdsForRemoval(tracks, itemsByTrackId, 'v1')).toEqual(['a2'])
+    expect(getEmptyTrackIdsForRemoval(tracks, itemsByTrackId, 'v1')).toEqual(['v1', 'a2'])
   })
 
   it('preserves the context track when every track is empty', () => {
@@ -59,27 +54,6 @@ describe('getEmptyTrackIdsForRemoval', () => {
       makeTrack({ id: 'a1', name: 'A1', kind: 'audio', order: 1 }),
     ]
 
-    expect(getEmptyTrackIdsForRemoval(tracks, {}, 'a1')).toEqual([])
-  })
-
-  it('never removes the final video or audio track', () => {
-    const tracks = [
-      makeTrack({ id: 'v1', name: 'V1', kind: 'video', order: 0 }),
-      makeTrack({ id: 'v2', name: 'V2', kind: 'video', order: 1 }),
-      makeTrack({ id: 'a1', name: 'A1', kind: 'audio', order: 2 }),
-    ]
-
-    expect(canRemoveTrack(tracks, 'v1')).toBe(true)
-    expect(canRemoveTrack(tracks, 'a1')).toBe(false)
-    expect(getRemovableTrackIds(tracks, ['v1', 'v2', 'a1'])).toEqual(['v2'])
-  })
-
-  it('rejects store writes that remove a required track kind', () => {
-    const tracks = [
-      makeTrack({ id: 'v1', name: 'V1', kind: 'video', order: 0 }),
-      makeTrack({ id: 'a1', name: 'A1', kind: 'audio', order: 1 }),
-    ]
-    expect(() => assertRequiredTracksPreserved(tracks, tracks.slice(0, 1)))
-      .toThrow('时间轴至少需要一条音频轨道。')
+    expect(getEmptyTrackIdsForRemoval(tracks, {}, 'a1')).toEqual(['v1'])
   })
 })

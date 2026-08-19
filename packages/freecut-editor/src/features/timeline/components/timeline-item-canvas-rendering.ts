@@ -45,12 +45,6 @@ const PALETTE_BY_TYPE: Partial<Record<TimelineItem['type'], TimelineCanvasClipPa
     labelFill: 'rgba(30, 64, 175, 0.34)',
     text: 'rgba(239, 246, 255, 0.96)',
   },
-  html: {
-    fill: 'rgba(8, 145, 178, 0.36)',
-    stroke: 'rgba(34, 211, 238, 0.82)',
-    labelFill: 'rgba(21, 94, 117, 0.4)',
-    text: 'rgba(236, 254, 255, 0.96)',
-  },
   text: {
     fill: 'rgba(163, 163, 163, 0.34)',
     stroke: 'rgba(212, 212, 212, 0.72)',

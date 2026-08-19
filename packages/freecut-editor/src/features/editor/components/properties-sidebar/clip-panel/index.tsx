@@ -3,7 +3,6 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
-  useState,
   useSyncExternalStore,
   memo,
   lazy,
@@ -12,15 +11,14 @@ import {
 import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  AlignCenterHorizontal,
   Crosshair,
   Film,
-  Shapes,
-  SlidersHorizontal,
   Sparkles,
-  Type,
+  SlidersHorizontal,
   Volume2,
+  Type,
   WandSparkles,
+  Shapes,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@freecut/shared/ui/cn'
@@ -42,8 +40,7 @@ import type { TimelineState, TimelineActions } from '@freecut/features/editor/de
 import type { TransformProperties } from '@freecut/types/transform'
 import type { TimelineItem, VideoItem, CompositionItem } from '@freecut/types/timeline'
 import { getLinkedAudioCompanion } from '@freecut/shared/utils/linked-media'
-import { useGizmoStore, AlignmentToolbar } from '@freecut/features/editor/deps/preview'
-import { PropertySection } from '../components'
+import { useGizmoStore } from '@freecut/features/editor/deps/preview'
 
 import { LayoutSection } from './layout-section'
 import { FillSection } from './fill-section'
@@ -69,9 +66,6 @@ const LazyTextEffectsSection = lazy(() =>
 const LazyTextStyleSection = lazy(() =>
   import('./text-section').then((module) => ({ default: module.TextStyleSection })),
 )
-const LazyHtmlSection = lazy(() =>
-  import('./html-section').then((module) => ({ default: module.HtmlSection })),
-)
 const LazyAnimationPresetLibrary = lazy(() =>
   import('../../animate-workspace/animation-preset-library').then((module) => ({
     default: module.AnimationPresetLibrary,
@@ -90,7 +84,7 @@ function isGifItem(item: TimelineItem): boolean {
  * Uses Set for O(1) type lookups instead of repeated array iterations.
  */
 function computeItemTypeInfo(items: TimelineItem[]) {
-  const types = new Set<string>(items.map((item) => item.type))
+  const types = new Set(items.map((item) => item.type))
   const hasGifItems = items.some(isGifItem)
 
   return {
@@ -101,8 +95,8 @@ function computeItemTypeInfo(items: TimelineItem[]) {
       types.has('shape') ||
       types.has('adjustment') ||
       types.has('composition') ||
+      types.has('subtitle') ||
       types.has('lottie') ||
-      types.has('html') ||
       types.has('controller'),
     hasVideoItems: types.has('video'),
     hasCompositionItems: types.has('composition'),
@@ -112,6 +106,7 @@ function computeItemTypeInfo(items: TimelineItem[]) {
     hasTextItems: types.has('text'),
     hasShapeItems: types.has('shape'),
     hasAdjustmentItems: types.has('adjustment'),
+    hasSubtitleItems: types.has('subtitle'),
     hasVirtualSubtitleItems: items.some(
       (item) =>
         (item.type === 'video' || item.type === 'audio') &&
@@ -126,7 +121,6 @@ function computeItemTypeInfo(items: TimelineItem[]) {
     isOnlyText: items.length > 0 && items.every((item) => item.type === 'text'),
     // Pure shape selection gets a Shape tab (no audio) instead of Video.
     isOnlyShape: items.length > 0 && items.every((item) => item.type === 'shape'),
-    isOnlyHtml: items.length > 0 && items.every((item) => item.type === 'html'),
     isOnlyController: items.length > 0 && items.every((item) => item.type === 'controller'),
   }
 }
@@ -461,11 +455,11 @@ const ClipPanelCore = memo(function ClipPanelCore({
     hasTextItems,
     hasShapeItems,
     hasAdjustmentItems,
+    hasSubtitleItems,
     hasVirtualSubtitleItems,
     isOnlyTextOrShape,
     isOnlyText,
     isOnlyShape,
-    isOnlyHtml,
     isOnlyController,
   } = itemTypeInfo
 
@@ -557,27 +551,17 @@ const ClipPanelCore = memo(function ClipPanelCore({
   }, [showMotionTab, showSecondTab, showEffectsTab, showVideoTab, workspace])
 
   const fallbackTab = availableTabs[0] ?? 'video'
-  const [selectionDefaultTab, setSelectionDefaultTab] = useState<ClipInspectorTab | null>(() =>
-    isOnlyText ? 'video' : null,
-  )
-  const activeTab =
-    selectionDefaultTab && availableTabs.includes(selectionDefaultTab)
-      ? selectionDefaultTab
-      : availableTabs.includes(clipInspectorTab)
-        ? clipInspectorTab
-        : fallbackTab
+  const activeTab = availableTabs.includes(clipInspectorTab) ? clipInspectorTab : fallbackTab
 
   useEffect(() => {
     if (selectedItems.length === 0) return
     if (clipInspectorTab !== activeTab) {
       setClipInspectorTab(activeTab)
     }
-    if (selectionDefaultTab !== null) setSelectionDefaultTab(null)
-  }, [activeTab, clipInspectorTab, selectedItems.length, selectionDefaultTab, setClipInspectorTab])
+  }, [activeTab, clipInspectorTab, selectedItems.length, setClipInspectorTab])
 
   const handleTabChange = useCallback(
     (value: string) => {
-      setSelectionDefaultTab(null)
       // Playback can keep the main thread busy with synchronous GPU canvas
       // handoffs. Commit this discrete inspector interaction before returning
       // to that loop so the requested tab never sits blank until playback
@@ -636,14 +620,6 @@ const ClipPanelCore = memo(function ClipPanelCore({
     return null
   }
 
-  if (isOnlyHtml) {
-    return (
-      <Suspense fallback={<div className="h-80 rounded-md bg-muted/20" />}>
-        <LazyHtmlSection items={selectedItems} />
-      </Suspense>
-    )
-  }
-
   const motionUsesFullHeight = activeTab === 'motion' && showFullMotionLibrary
 
   return (
@@ -654,15 +630,11 @@ const ClipPanelCore = memo(function ClipPanelCore({
         onValueChange={handleTabChange}
         className={cn('w-full', motionUsesFullHeight && 'flex h-full min-h-0 flex-col')}
       >
-        <TabsList className={cn('grid h-8 w-full shrink-0 bg-muted/45 p-0.5', tabGridColsClass)}>
+        <TabsList className={cn('grid h-8 w-full shrink-0', tabGridColsClass)}>
           {availableTabs.map((value) => {
             const { label, icon: Icon } = getTabMeta(value)
             return (
-              <TabsTrigger
-                key={value}
-                value={value}
-                className="gap-1 px-1.5 text-[10px] font-normal data-[state=active]:bg-background/70 data-[state=active]:shadow-none"
-              >
+              <TabsTrigger key={value} value={value} className="text-xs gap-1 px-2">
                 <Icon className="h-3 w-3" />
                 {label}
               </TabsTrigger>
@@ -674,11 +646,6 @@ const ClipPanelCore = memo(function ClipPanelCore({
         <TabsContent value="video" className="mt-3">
           {showVideoTab && (
             <div className="divide-y divide-border [&>*]:py-4 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-              {hasTextItems && (
-                <Suspense fallback={null}>
-                  <LazyTextContentSection items={selectedItems} canvas={canvas} />
-                </Suspense>
-              )}
               {showVideoTab && (
                 <LayoutSection
                   items={layoutFillItems}
@@ -688,19 +655,6 @@ const ClipPanelCore = memo(function ClipPanelCore({
                   aspectLocked={aspectLocked}
                   onAspectLockToggle={handleAspectLockToggle}
                 />
-              )}
-              {showVideoTab && (
-                <PropertySection
-                  title={t('editor.clipPanel.alignment')}
-                  icon={AlignCenterHorizontal}
-                  defaultOpen={true}
-                >
-                  <div className="flex items-center justify-center py-1">
-                    <AlignmentToolbar
-                      projectSize={{ width: projectWidth, height: projectHeight }}
-                    />
-                  </div>
-                </PropertySection>
               )}
               <CompositionControlsSection items={selectedItems} />
               {(hasVideoItems || hasCompositionItems) && <VideoSection items={selectedItems} />}
@@ -712,6 +666,11 @@ const ClipPanelCore = memo(function ClipPanelCore({
                 />
               )}
               {paintableLayoutItems.length > 0 && <CornerPinSection items={paintableLayoutItems} />}
+              {hasTextItems && (
+                <Suspense fallback={null}>
+                  <LazyTextContentSection items={selectedItems} canvas={canvas} />
+                </Suspense>
+              )}
               {/* Text-only: Style (shadow/stroke) lives with the text, not on
                   the Effects tab. Mixed selections keep it under Effects. */}
               {isOnlyText && (
@@ -720,7 +679,7 @@ const ClipPanelCore = memo(function ClipPanelCore({
                 </Suspense>
               )}
               {hasShapeItems && <ShapeSection items={selectedItems} />}
-              {hasVirtualSubtitleItems && (
+              {(hasSubtitleItems || hasVirtualSubtitleItems) && (
                 <Suspense fallback={null}>
                   <LazySubtitleSection items={selectedItems} canvas={canvas} />
                 </Suspense>

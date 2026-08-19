@@ -178,7 +178,6 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
       }
       logger.error('Folder pick failed', error)
       setError(t('projects.workspaceGate.folderPickFailed'))
-      setStatus({ kind: 'pick' })
     }
   }, [activate, t])
 
@@ -212,7 +211,7 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   // block so the transition from "checking" to "ready" or "splash" is
   // invisible instead of a logo+spinner flash.
   if (status.kind === 'initializing') {
-    return <div className="size-full min-h-0 bg-background" aria-hidden="true" />
+    return <div className="min-h-screen bg-background" aria-hidden="true" />
   }
 
   return (

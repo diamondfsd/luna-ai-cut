@@ -52,6 +52,7 @@ vi.mock('../deps/timeline-caption-utils-contract', () => ({
     if (/^A(\d+)$/i.test(track.name)) {
       return 'audio'
     }
+
     let hasAudioItems = false
     for (const item of items) {
       if (item.trackId !== track.id) continue
@@ -74,8 +75,11 @@ import {
   buildSubtitleTextItemsForClip,
   buildCaptionTrack,
   buildCaptionTrackAbove,
+  buildSubtitleSegmentForClip,
+  consolidateCaptionTextItemsToSegments,
   findCaptionTargetClipsForMedia,
   findGeneratedCaptionItemsForClip,
+  findReplaceableCaptionItemsForClip,
   getCaptionTextItemTemplate,
   findCompatibleCaptionTrack,
   findCompatibleCaptionTrackForRanges,
@@ -157,8 +161,6 @@ describe('caption-items', () => {
   it('maps imported subtitle cues to standalone caption text items', () => {
     const items = buildSubtitleTextItems({
       trackId: 'track-captions',
-      clipId: 'clip-1',
-      mediaId: 'media-1',
       cues: [{ id: 'cue-1', startSeconds: 1, endSeconds: 2.5, text: 'Imported\ncaption' }],
       timelineFps: 30,
       canvasWidth: 1920,
@@ -178,8 +180,6 @@ describe('caption-items', () => {
       text: 'Imported\ncaption',
       captionSource: {
         type: 'subtitle-import',
-        clipId: 'clip-1',
-        mediaId: 'media-1',
         fileName: 'captions.srt',
         format: 'srt',
       },
@@ -211,7 +211,7 @@ describe('caption-items', () => {
     })
   })
 
-  it('reuses an available video track without overlap', () => {
+  it('finds a compatible track without overlap', () => {
     const tracks: TimelineTrack[] = [
       {
         id: 'track-1',
@@ -226,8 +226,7 @@ describe('caption-items', () => {
       },
       {
         id: 'track-2',
-        name: 'V2',
-        kind: 'video',
+        name: 'Track 2',
         height: 64,
         locked: false,
         visible: true,
@@ -253,7 +252,7 @@ describe('caption-items', () => {
     expect(track?.id).toBe('track-2')
   })
 
-  it('does not reuse audio tracks for captions', () => {
+  it('never reuses audio tracks for caption text', () => {
     const tracks: TimelineTrack[] = [
       {
         id: 'track-audio',
@@ -570,7 +569,132 @@ describe('caption-items', () => {
     expect(targets.map((t) => t.id)).toEqual(['video-clip', 'video-clip-2'])
   })
 
-  it('keeps caption text items out of the source clip A/V link group', () => {
+  it('consolidates per-cue caption text items into one subtitle segment per clip', () => {
+    const items: TimelineItem[] = [
+      {
+        id: 'cap-1',
+        type: 'text',
+        trackId: 'track-captions',
+        from: 100,
+        durationInFrames: 30,
+        label: 'Hello',
+        text: 'Hello',
+        color: '#fff',
+        textRole: 'caption',
+        captionSource: {
+          type: 'embedded-subtitles',
+          mediaId: 'media-1',
+          clipId: 'clip-A',
+          importedAt: 1,
+        },
+      },
+      {
+        id: 'cap-2',
+        type: 'text',
+        trackId: 'track-captions',
+        from: 160,
+        durationInFrames: 30,
+        label: 'World',
+        text: 'World',
+        color: '#fff',
+        textRole: 'caption',
+        captionSource: {
+          type: 'embedded-subtitles',
+          mediaId: 'media-1',
+          clipId: 'clip-A',
+          importedAt: 1,
+        },
+      },
+      // Different clip — should produce its own segment.
+      {
+        id: 'cap-3',
+        type: 'text',
+        trackId: 'track-captions',
+        from: 500,
+        durationInFrames: 30,
+        label: 'Solo',
+        text: 'Solo',
+        color: '#fff',
+        textRole: 'caption',
+        captionSource: {
+          type: 'embedded-subtitles',
+          mediaId: 'media-1',
+          clipId: 'clip-B',
+          importedAt: 1,
+        },
+      },
+      // Non-caption text — must be left alone.
+      {
+        id: 'manual',
+        type: 'text',
+        trackId: 'track-captions',
+        from: 0,
+        durationInFrames: 30,
+        label: 'Manual title',
+        text: 'Manual title',
+        color: '#fff',
+      },
+    ]
+
+    const { segments, consumedItemIds } = consolidateCaptionTextItemsToSegments(items, 30)
+
+    expect(segments).toHaveLength(2)
+    expect(consumedItemIds.sort()).toEqual(['cap-1', 'cap-2', 'cap-3'])
+    const clipASegment = segments.find(
+      (s) => s.source.type === 'embedded-subtitles' && s.source.clipId === 'clip-A',
+    )!
+    expect(clipASegment.from).toBe(100)
+    expect(clipASegment.durationInFrames).toBe(160 + 30 - 100)
+    expect(clipASegment.cues.map((c) => c.text)).toEqual(['Hello', 'World'])
+    // Cue times are segment-relative.
+    expect(clipASegment.cues[0]).toMatchObject({ startSeconds: 0 })
+    expect(clipASegment.cues[1]?.startSeconds).toBeCloseTo((160 - 100) / 30)
+  })
+
+  it('falls back to legacy generated caption detection when source metadata is missing', () => {
+    const clip: VideoItem = {
+      id: 'clip-legacy',
+      type: 'video',
+      trackId: 'track-1',
+      from: 200,
+      durationInFrames: 40,
+      label: 'Legacy Clip',
+      mediaId: 'media-legacy',
+      src: 'blob:test',
+    }
+
+    const replaceableCaptions = findReplaceableCaptionItemsForClip(
+      [
+        {
+          id: 'legacy-caption',
+          type: 'text',
+          trackId: 'track-captions',
+          from: 205,
+          durationInFrames: 12,
+          label: 'Legacy caption',
+          mediaId: 'media-legacy',
+          text: 'Legacy caption',
+          color: '#ffffff',
+        },
+        {
+          id: 'manual-text',
+          type: 'text',
+          trackId: 'track-captions',
+          from: 205,
+          durationInFrames: 12,
+          label: 'Manual title',
+          mediaId: 'media-legacy',
+          text: 'Different text',
+          color: '#ffffff',
+        },
+      ],
+      clip,
+    )
+
+    expect(replaceableCaptions.map((item) => item.id)).toEqual(['legacy-caption'])
+  })
+
+  it('inherits the clip linkedGroupId on the built subtitle segment', () => {
     const clip: VideoItem = {
       id: 'video-clip',
       type: 'video',
@@ -583,25 +707,24 @@ describe('caption-items', () => {
       linkedGroupId: 'pair-1',
     }
 
-    const captions = buildSubtitleTextItemsForClip({
+    const segment = buildSubtitleSegmentForClip({
       trackId: 'track-captions',
       cues: [{ id: 'c1', startSeconds: 0.5, endSeconds: 1.5, text: 'Hi' }],
       clip,
       timelineFps: 30,
       canvasWidth: 1920,
       canvasHeight: 1080,
-      fileName: 'source.mkv',
-      format: 'srt',
-      sourceType: 'embedded-subtitles',
-      sourceMetadata: {
+      source: {
+        type: 'embedded-subtitles',
+        mediaId: 'media-1',
+        clipId: clip.id,
         trackNumber: 6,
         importedAt: 1,
       },
     })
 
-    expect(captions).toHaveLength(1)
-    expect(captions[0]).toMatchObject({ type: 'text', textRole: 'caption', text: 'Hi' })
-    expect(captions[0]?.linkedGroupId).toBeUndefined()
+    expect(segment).not.toBeNull()
+    expect(segment?.linkedGroupId).toBe('pair-1')
   })
 
   it('omits linkedGroupId when the source clip is solo (not linked to A/V pair)', () => {
@@ -616,23 +739,23 @@ describe('caption-items', () => {
       src: 'blob:test',
     }
 
-    const captions = buildSubtitleTextItemsForClip({
+    const segment = buildSubtitleSegmentForClip({
       trackId: 'track-captions',
       cues: [{ id: 'c1', startSeconds: 0.1, endSeconds: 0.6, text: 'Hi' }],
       clip,
       timelineFps: 30,
       canvasWidth: 1920,
       canvasHeight: 1080,
-      fileName: 'source.mkv',
-      format: 'srt',
-      sourceType: 'embedded-subtitles',
-      sourceMetadata: {
+      source: {
+        type: 'embedded-subtitles',
+        mediaId: 'media-1',
+        clipId: clip.id,
         trackNumber: 6,
         importedAt: 1,
       },
     })
 
-    expect(captions[0]?.linkedGroupId).toBeUndefined()
+    expect(segment?.linkedGroupId).toBeUndefined()
   })
 
   it('expands clip-owned transcript captions into a render-only top subtitle track', () => {
@@ -684,17 +807,16 @@ describe('caption-items', () => {
     expect(virtualTrack?.order).toBe(0)
     expect(virtualTrack?.items).toHaveLength(1)
     expect(virtualTrack?.items[0]).toMatchObject({
-      id: 'virtual-transcript-video-clip-0',
-      type: 'text',
-      textRole: 'caption',
-      text: 'Active',
+      id: 'virtual-transcript-video-clip',
+      type: 'subtitle',
       from: 90,
       durationInFrames: 30,
-      captionSource: {
+      source: {
         type: 'transcript',
         mediaId: 'media-1',
         clipId: 'video-clip',
       },
+      cues: [{ id: 'active', startSeconds: 0, endSeconds: 1, text: 'Active' }],
     })
   })
 
@@ -726,12 +848,22 @@ describe('caption-items', () => {
       label: 'Caption',
       text: 'Caption',
       color: '#fff',
-      textRole: 'caption',
       captionSource: {
         type: 'ai-captions',
         mediaId: 'media-1',
         clipId: reversedClip.id,
       },
+    } satisfies TimelineItem
+    const attachedSubtitle = {
+      id: 'subtitle-segment',
+      type: 'subtitle',
+      trackId: 'track-captions',
+      from: 0,
+      durationInFrames: 90,
+      label: 'Subtitles',
+      color: '#fff',
+      source: { type: 'transcript', mediaId: 'media-1', clipId: reversedClip.id },
+      cues: [{ id: 'segment', startSeconds: 0, endSeconds: 1, text: 'Segment' }],
     } satisfies TimelineItem
     const title = {
       id: 'title',
@@ -746,14 +878,67 @@ describe('caption-items', () => {
     const videoTrack = { ...makeTrack('track-v', 1), kind: 'video' as const, items: [reversedClip] }
     const captionTrack = {
       ...makeTrack('track-captions', 0),
-      items: [attachedText, title],
+      items: [attachedText, attachedSubtitle, title],
     }
 
-    const tracks = appendVirtualTranscriptCaptionTrack([videoTrack, captionTrack], 30, 1920, 1080)
+    const tracks = appendVirtualTranscriptCaptionTrack(
+      [videoTrack, captionTrack],
+      30,
+      1920,
+      1080,
+    )
 
     expect(tracks).toHaveLength(2)
     expect(tracks.find((track) => track.id === 'track-captions')?.items).toEqual([title])
     expect(tracks.some((track) => track.id === VIRTUAL_TRANSCRIPT_CAPTION_TRACK_ID)).toBe(false)
+  })
+
+  it('inherits linkedGroupId from the source clip when consolidating per-cue captions', () => {
+    const items: TimelineItem[] = [
+      {
+        id: 'video-clip',
+        type: 'video',
+        trackId: 'track-v',
+        from: 100,
+        durationInFrames: 300,
+        label: 'V',
+        mediaId: 'media-1',
+        src: 'blob:test',
+        linkedGroupId: 'pair-9',
+      },
+      {
+        id: 'audio-clip',
+        type: 'audio',
+        trackId: 'track-a',
+        from: 100,
+        durationInFrames: 300,
+        label: 'A',
+        mediaId: 'media-1',
+        src: 'blob:test',
+        linkedGroupId: 'pair-9',
+      },
+      {
+        id: 'cap-1',
+        type: 'text',
+        trackId: 'track-captions',
+        from: 105,
+        durationInFrames: 30,
+        label: 'Hello',
+        text: 'Hello',
+        color: '#fff',
+        textRole: 'caption',
+        captionSource: {
+          type: 'embedded-subtitles',
+          mediaId: 'media-1',
+          clipId: 'video-clip',
+          importedAt: 1,
+        },
+      },
+    ]
+
+    const { segments } = consolidateCaptionTextItemsToSegments(items, 30)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]?.linkedGroupId).toBe('pair-9')
   })
 })
 
@@ -804,7 +989,7 @@ describe('aiCaptionsToSegments', () => {
 })
 
 describe('buildCaptionTrackAbove', () => {
-  it('places the caption track above the entire media stack', () => {
+  it('places the caption track halfway between the reference and the next track up', () => {
     const tracks = [makeTrack('a', 0), makeTrack('b', 1), makeTrack('c', 2)]
     const captionTrack = buildCaptionTrackAbove(tracks, 2)
     expect(captionTrack.order).toBe(1.5)
@@ -826,7 +1011,7 @@ describe('buildCaptionTrackAbove', () => {
     expect(captionIndex).toBeLessThan(clipIndex)
   })
 
-  it('creates a video track for captions', () => {
+  it('creates a video-kind overlay track so the timeline renders it immediately', () => {
     const tracks = [makeTrack('clip', 1)]
     const captionTrack = buildCaptionTrackAbove(tracks, 1)
     expect(captionTrack.kind).toBe('video')
@@ -836,7 +1021,7 @@ describe('buildCaptionTrackAbove', () => {
 })
 
 describe('buildCaptionTrack (append-to-bottom helper)', () => {
-  it('creates video tracks after all media tracks', () => {
+  it('still creates tracks at maxOrder + 1', () => {
     const tracks = [
       { ...makeTrack('a', 0), name: 'V1', kind: 'video' as const },
       { ...makeTrack('b', 1), name: 'A1', kind: 'audio' as const },

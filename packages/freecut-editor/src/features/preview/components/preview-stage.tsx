@@ -36,7 +36,7 @@ interface PreviewStageProps {
   needsOverflow: boolean
   playerSize: { width: number; height: number }
   playerRenderSize: { width: number; height: number }
-  overlayRenderSize?: { width: number; height: number }
+  overlayRenderSize: { width: number; height: number }
   totalFrames: number
   fps: number
   /** Frame to start the player clock at on mount (preserves the playhead across remounts). */
@@ -78,7 +78,7 @@ export const PreviewStage = memo(function PreviewStage({
   needsOverflow,
   playerSize,
   playerRenderSize,
-  overlayRenderSize = playerRenderSize,
+  overlayRenderSize,
   totalFrames,
   fps,
   initialFrame = 0,

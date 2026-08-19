@@ -3,10 +3,7 @@ import type { TimelineItem as TimelineItemType } from '@freecut/types/timeline'
 import { useShallow } from 'zustand/react/shallow'
 import { useTimelineStore } from '../../stores/timeline-store'
 import { useItemsStore } from '../../stores/items-store'
-import {
-  selectReplaceableCaptionClipIds,
-  selectTimelineCaptionClipIds,
-} from '../../stores/items-store-indexes'
+import { selectReplaceableCaptionClipIds } from '../../stores/items-store-indexes'
 import { useKeyframesStore } from '../../stores/keyframes-store'
 import { useEffectDropPreviewStore } from '../../stores/effect-drop-preview-store'
 import { useEditPreviewShifts } from './use-edit-preview-shifts'
@@ -95,7 +92,6 @@ interface TimelineItemProps {
   timelineDuration?: number
   trackLocked?: boolean
   trackHidden?: boolean
-  isTrackPreviewCollapsed?: boolean
   isCompactWidth: boolean
   isDetailEligible: boolean
   onHoverChange?: (itemId: string, hovered: boolean) => void
@@ -119,7 +115,6 @@ export const TimelineItem = memo(function TimelineItem({
   timelineDuration = 30,
   trackLocked = false,
   trackHidden = false,
-  isTrackPreviewCollapsed = false,
   isCompactWidth,
   isDetailEligible,
   onHoverChange,
@@ -167,18 +162,6 @@ export const TimelineItem = memo(function TimelineItem({
       [item.id, linkedItemsForCaptionOwnership],
     ),
   )
-  const hasTimelineCaptions = useItemsStore(
-    useCallback(
-      (s) => {
-        const captionClipIds = selectTimelineCaptionClipIds(s)
-        if (captionClipIds.has(item.id)) return true
-        return linkedItemsForCaptionOwnership.some((linkedItem) =>
-          captionClipIds.has(linkedItem.id),
-        )
-      },
-      [item.id, linkedItemsForCaptionOwnership],
-    ),
-  )
   const linkedSelectionEnabled = useEditorStore((s) => s.linkedSelectionEnabled)
   const segmentOverlays = useTimelineItemOverlayStore(
     useCallback((s) => s.overlaysByItemId[item.id] ?? EMPTY_SEGMENT_OVERLAYS, [item.id]),
@@ -206,7 +189,7 @@ export const TimelineItem = memo(function TimelineItem({
     isBroken,
     linkedItemsForCaptionOwnership,
   })
-  useAutoTranscriptCaptions({ item, caption, hasTimelineCaptions, isBroken })
+  useAutoTranscriptCaptions({ item, caption, hasGeneratedCaptions, isBroken })
   const reverseMenuShowsUnreverse = useMemo(() => {
     if (item.type !== 'video' && item.type !== 'audio') {
       return false
@@ -598,8 +581,6 @@ export const TimelineItem = memo(function TimelineItem({
         return 'bg-timeline-audio border-timeline-audio'
       case 'image':
         return 'bg-timeline-image/30 border-timeline-image'
-      case 'html':
-        return 'bg-cyan-950/70 border-cyan-500/70'
       case 'text':
         return 'bg-timeline-text/30 border-timeline-text'
       case 'shape':
@@ -845,8 +826,7 @@ export const TimelineItem = memo(function TimelineItem({
     (item.type === 'shape' && (item.isMask ?? false))
   // hasActiveClipInteraction is hoisted before fade memos (see above)
   const useCompactClipShell =
-    isTrackPreviewCollapsed ||
-    (activeTool === 'select' && isCompactWidth && !hasDetailBadges && !hasActiveClipInteraction)
+    activeTool === 'select' && isCompactWidth && !hasDetailBadges && !hasActiveClipInteraction
   const { trimInfoLabel, moveInfoLabel } = useClipReadoutLabels({
     fps,
     isTrimming,
@@ -916,6 +896,8 @@ export const TimelineItem = memo(function TimelineItem({
           onOpenCaptionDialog: caption.openDialog,
           canExtractEmbeddedSubtitles: caption.canExtractEmbeddedSubtitles,
           onExtractEmbeddedSubtitles: caption.handleExtractEmbeddedSubtitles,
+          canConsolidateCaptionsToSegment: caption.hasConsolidatablePerCueCaptions,
+          onConsolidateCaptionsToSegment: caption.handleConsolidateCaptionsToSegment,
         }}
         compositionActions={{
           isCompositionItem,
@@ -1087,7 +1069,6 @@ export const TimelineItem = memo(function TimelineItem({
               audioWaveformScale={audioVisualizationScale}
               linkedSyncOffsetFrames={linkedSyncOffsetFrames}
               isDetailEligible={isDetailEligible}
-              isTrackPreviewCollapsed={isTrackPreviewCollapsed}
             />
 
             {!useCompactClipShell && (

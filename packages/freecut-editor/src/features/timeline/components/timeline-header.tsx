@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  useCallback,
-  memo,
-  useLayoutEffect,
-  useReducer,
-  useRef,
-  type ReactNode,
-} from 'react'
+import { useEffect, useCallback, memo, useLayoutEffect, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@freecut/components/ui/button'
 import {
@@ -36,8 +28,6 @@ import {
   Link2,
   Volume2,
   Diamond,
-  Eye,
-  EyeOff,
 } from 'lucide-react'
 import { Separator } from '@freecut/components/ui/separator'
 import { formatHotkeyBinding } from '@freecut/config/hotkeys'
@@ -46,31 +36,17 @@ import { useTimelineCommandStore } from '../stores/timeline-command-store'
 import { useZoomStore } from '../stores/zoom-store'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { useEditorStore } from '@freecut/shared/state/editor'
-import deepseekHarnessIconUrl from './deepseek-harness-icon.svg'
 import { useSelectionStore } from '@freecut/shared/state/selection'
 import { ZOOM_MIN, ZOOM_MAX, SLIP_SLIDE_TOOLS_ENABLED } from '../constants'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
-import { useResolvedHotkeys, useSettingsStore } from '@freecut/features/timeline/deps/settings'
+import { useResolvedHotkeys } from '@freecut/features/timeline/deps/settings'
 import { MicRecordControl } from './mic-record-control'
-import './timeline-header.css'
 
 interface TimelineHeaderProps {
   onZoomChange?: (newZoom: number) => void
   onZoomIn?: () => void
   onZoomOut?: () => void
   onZoomToFit?: () => void
-  leadingContent?: ReactNode
-}
-
-function getTimelineHeaderButtonClass(active = false): string {
-  return active
-    ? 'editor-toolbar-button timeline-header-button timeline-header-button-active'
-    : 'editor-toolbar-button timeline-header-button'
-}
-
-function toolTooltip(label: string, ...bindings: string[]): string {
-  const shortcuts = bindings.map((binding) => formatHotkeyBinding(binding)).filter(Boolean)
-  return shortcuts.length > 0 ? `${label} (${shortcuts.join(' / ')})` : label
 }
 
 function TrimEditIcon({ className }: { className?: string }) {
@@ -104,7 +80,7 @@ const InlineKeyframesToggle = memo(function InlineKeyframesToggle({
         width: EDITOR_LAYOUT_CSS_VALUES.toolbarButtonSize,
         height: EDITOR_LAYOUT_CSS_VALUES.toolbarButtonSize,
       }}
-      className={getTimelineHeaderButtonClass(isOpen)}
+      className={isOpen ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}
       onClick={onToggle}
       aria-label={label}
       aria-pressed={isOpen}
@@ -141,8 +117,6 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
   const settledZoomLevel = useZoomStore((state) => state.contentLevel)
   const zoomIn = useZoomStore((state) => state.zoomIn)
   const zoomOut = useZoomStore((state) => state.zoomOut)
-  const aiSidebarOpen = useEditorStore((state) => state.aiSidebarOpen)
-  const setAiSidebarOpen = useEditorStore((state) => state.setAiSidebarOpen)
   const beginZoomGesture = useZoomStore((state) => state.beginZoomGesture)
   const endZoomGesture = useZoomStore((state) => state.endZoomGesture)
   const setZoomImmediate = useZoomStore((state) => state.setZoomLevelImmediate)
@@ -393,12 +367,11 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
         isSameZoomLevel(liveZoomLevelRef.current, sliderCommitBaseZoom)))
 
   return (
-    <div className="timeline-header-zoom-controls flex items-center justify-end gap-1.5">
+    <div className="flex items-center justify-end gap-1.5">
       <Button
         variant="ghost"
         size="icon"
         style={btnSize}
-        className={getTimelineHeaderButtonClass()}
         onClick={onZoomOut ?? zoomOut}
         aria-label={t('timeline.header.zoomOut')}
         data-tooltip={t('timeline.header.zoomOutTooltip')}
@@ -441,7 +414,6 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
         variant="ghost"
         size="icon"
         style={btnSize}
-        className={getTimelineHeaderButtonClass()}
         onClick={onZoomIn ?? zoomIn}
         aria-label={t('timeline.header.zoomIn')}
         data-tooltip={t('timeline.header.zoomInTooltip')}
@@ -453,34 +425,11 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
         variant="ghost"
         size="icon"
         style={btnSize}
-        className={getTimelineHeaderButtonClass()}
         onClick={onZoomToFit}
         aria-label={t('timeline.header.zoomToFit')}
         data-tooltip={t('timeline.header.zoomToFitTooltip')}
       >
         <Maximize2 className="w-3.5 h-3.5" />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="icon"
-        style={btnSize}
-        className="timeline-header-ai-button"
-        onClick={() => setAiSidebarOpen(!aiSidebarOpen)}
-        aria-label={t(
-          aiSidebarOpen ? 'timeline.header.closeAiAssistant' : 'timeline.header.openAiAssistant',
-        )}
-        aria-pressed={aiSidebarOpen}
-        data-tooltip={t(
-          aiSidebarOpen ? 'timeline.header.closeAiAssistant' : 'timeline.header.openAiAssistant',
-        )}
-      >
-        <img
-          src={deepseekHarnessIconUrl}
-          alt=""
-          aria-hidden="true"
-          className="h-4 w-4 rounded-[3px]"
-        />
       </Button>
     </div>
   )
@@ -500,7 +449,6 @@ export const TimelineHeader = memo(function TimelineHeader({
   onZoomIn,
   onZoomOut,
   onZoomToFit,
-  leadingContent,
 }: TimelineHeaderProps) {
   const { t } = useTranslation()
   const hotkeys = useResolvedHotkeys()
@@ -508,8 +456,6 @@ export const TimelineHeader = memo(function TimelineHeader({
   const toggleSnap = useTimelineStore((s) => s.toggleSnap)
   const audioSkimmingEnabled = useTimelineStore((s) => s.audioSkimmingEnabled)
   const toggleAudioSkimming = useTimelineStore((s) => s.toggleAudioSkimming)
-  const showTimelineHoverPreview = useSettingsStore((s) => s.showTimelineHoverPreview)
-  const setSetting = useSettingsStore((s) => s.setSetting)
   const inPoint = useTimelineStore((s) => s.inPoint)
   const outPoint = useTimelineStore((s) => s.outPoint)
   const setInPoint = useTimelineStore((s) => s.setInPoint)
@@ -551,18 +497,17 @@ export const TimelineHeader = memo(function TimelineHeader({
 
   return (
     <div
-      className="timeline-header editor-toolbar-theme grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3"
+      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3"
       style={{ height: EDITOR_LAYOUT_CSS_VALUES.timelineHeaderHeight }}
       role="toolbar"
       aria-label={t('timeline.header.controls')}
     >
       {/* Left: Title */}
-      <div className="flex min-w-0 items-center gap-2.5 overflow-hidden">
-        <h2 className="flex shrink-0 items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <h2 className="text-xs font-semibold tracking-wide uppercase text-muted-foreground flex items-center gap-2">
           <Film className="w-3 h-3" />
           {t('timeline.header.title')}
         </h2>
-        {leadingContent}
       </div>
 
       {/* Middle: Timeline Controls */}
@@ -574,10 +519,14 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass(activeTool === 'select')}
+              className={
+                activeTool === 'select'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : ''
+              }
               onClick={() => setActiveTool('select')}
               aria-label={t('timeline.header.selectTool')}
-              data-tooltip={toolTooltip(t('timeline.header.selectToolTooltip'), hotkeys.SELECTION_TOOL)}
+              data-tooltip={t('timeline.header.selectToolTooltip')}
             >
               <MousePointer2 className="w-3.5 h-3.5" />
             </Button>
@@ -586,10 +535,14 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass(activeTool === 'trim-edit')}
+              className={
+                activeTool === 'trim-edit'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : ''
+              }
               onClick={() => setActiveTool(activeTool === 'trim-edit' ? 'select' : 'trim-edit')}
               aria-label={t('timeline.header.trimEditTool')}
-              data-tooltip={toolTooltip(t('timeline.header.trimEditToolTooltip'), hotkeys.TRIM_EDIT_TOOL)}
+              data-tooltip={t('timeline.header.trimEditToolTooltip')}
             >
               <TrimEditIcon className="w-3.5 h-3.5" />
             </Button>
@@ -598,10 +551,14 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass(activeTool === 'razor')}
+              className={
+                activeTool === 'razor'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : ''
+              }
               onClick={() => setActiveTool(activeTool === 'razor' ? 'select' : 'razor')}
               aria-label={t('timeline.header.razorTool')}
-              data-tooltip={toolTooltip(t('timeline.header.razorToolTooltip'), hotkeys.RAZOR_TOOL)}
+              data-tooltip={t('timeline.header.razorToolTooltip')}
             >
               <Scissors className="w-3.5 h-3.5 -rotate-90" />
             </Button>
@@ -610,15 +567,16 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass(activeTool === 'rate-stretch')}
+              className={
+                activeTool === 'rate-stretch'
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : ''
+              }
               onClick={() =>
                 setActiveTool(activeTool === 'rate-stretch' ? 'select' : 'rate-stretch')
               }
               aria-label={t('timeline.header.rateStretchTool')}
-              data-tooltip={toolTooltip(
-                t('timeline.header.rateStretchToolTooltip'),
-                hotkeys.RATE_STRETCH_TOOL,
-              )}
+              data-tooltip={t('timeline.header.rateStretchToolTooltip')}
             >
               <Gauge className="w-3.5 h-3.5" />
             </Button>
@@ -629,13 +587,13 @@ export const TimelineHeader = memo(function TimelineHeader({
                   <Button
                     variant="ghost"
                     style={{ height: EDITOR_LAYOUT_CSS_VALUES.toolbarButtonSize }}
-                    className={`${getTimelineHeaderButtonClass(activeTool === 'slip' || activeTool === 'slide')} gap-1 px-2`}
+                    className={`gap-1 px-2 ${
+                      activeTool === 'slip' || activeTool === 'slide'
+                        ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                        : ''
+                    }`}
                     aria-label={t('timeline.header.slipSlideTools')}
-                    data-tooltip={toolTooltip(
-                      t('timeline.header.slipSlideToolsTooltip'),
-                      hotkeys.SLIP_TOOL,
-                      hotkeys.SLIDE_TOOL,
-                    )}
+                    data-tooltip={t('timeline.header.slipSlideToolsTooltip')}
                   >
                     <span className="flex items-center gap-1">
                       <span className="inline-flex items-center justify-center">
@@ -677,7 +635,6 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={handleUndo}
               disabled={!canUndo}
               aria-label={
@@ -698,7 +655,6 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={handleRedo}
               disabled={!canRedo}
               aria-label={
@@ -724,12 +680,11 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={() => setInPoint(usePlaybackStore.getState().currentFrame)}
               aria-label={t('timeline.header.setInPoint')}
               data-tooltip={t('timeline.header.setInPointTooltip')}
             >
-              <span className="timeline-header-symbol text-sm font-bold">
+              <span className="text-sm font-bold" style={{ color: 'var(--color-timeline-in)' }}>
                 [
               </span>
             </Button>
@@ -738,12 +693,11 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={() => setOutPoint(usePlaybackStore.getState().currentFrame)}
               aria-label={t('timeline.header.setOutPoint')}
               data-tooltip={t('timeline.header.setOutPointTooltip')}
             >
-              <span className="timeline-header-symbol text-sm font-bold">
+              <span className="text-sm font-bold" style={{ color: 'var(--color-timeline-out)' }}>
                 ]
               </span>
             </Button>
@@ -752,7 +706,6 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={clearInOutPoints}
               disabled={inPoint === null && outPoint === null}
               aria-label={t('timeline.header.clearInOutPoints')}
@@ -770,19 +723,17 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={() => addMarker(usePlaybackStore.getState().currentFrame)}
               aria-label={t('timeline.header.addMarker')}
               data-tooltip={t('timeline.header.addMarkerTooltip')}
             >
-              <Flag className="timeline-header-symbol w-3.5 h-3.5" />
+              <Flag className="w-3.5 h-3.5" style={{ color: 'var(--color-timeline-marker)' }} />
             </Button>
 
             <Button
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={() => {
                 if (selectedMarkerId) {
                   removeMarker(selectedMarkerId)
@@ -800,7 +751,6 @@ export const TimelineHeader = memo(function TimelineHeader({
               variant="ghost"
               size="icon"
               style={btnSize}
-              className={getTimelineHeaderButtonClass()}
               onClick={clearAllMarkers}
               disabled={!hasMarkers}
               aria-label={t('timeline.header.clearAllMarkers')}
@@ -822,7 +772,7 @@ export const TimelineHeader = memo(function TimelineHeader({
             variant="ghost"
             size="icon"
             style={btnSize}
-            className={getTimelineHeaderButtonClass(snapEnabled)}
+            className={snapEnabled ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}
             onClick={toggleSnap}
             aria-label={
               snapEnabled
@@ -840,7 +790,9 @@ export const TimelineHeader = memo(function TimelineHeader({
             variant="ghost"
             size="icon"
             style={btnSize}
-            className={getTimelineHeaderButtonClass(audioSkimmingEnabled)}
+            className={
+              audioSkimmingEnabled ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
+            }
             onClick={toggleAudioSkimming}
             aria-label={
               audioSkimmingEnabled
@@ -857,31 +809,6 @@ export const TimelineHeader = memo(function TimelineHeader({
             <Volume2 className="w-3.5 h-3.5" />
           </Button>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            style={btnSize}
-            className={getTimelineHeaderButtonClass(showTimelineHoverPreview)}
-            onClick={() => setSetting('showTimelineHoverPreview', !showTimelineHoverPreview)}
-            aria-label={
-              showTimelineHoverPreview
-                ? t('timeline.header.disableHoverPreview')
-                : t('timeline.header.enableHoverPreview')
-            }
-            aria-pressed={showTimelineHoverPreview}
-            data-tooltip={
-              showTimelineHoverPreview
-                ? t('timeline.header.hoverPreviewEnabled')
-                : t('timeline.header.hoverPreviewDisabled')
-            }
-          >
-            {showTimelineHoverPreview ? (
-              <Eye className="h-3.5 w-3.5" />
-            ) : (
-              <EyeOff className="h-3.5 w-3.5" />
-            )}
-          </Button>
-
           <Separator orientation="vertical" className="h-5 mx-1.5" />
 
           <InlineKeyframesToggle isOpen={inlineKeyframesOpen} onToggle={toggleEditKeyframePanel} />
@@ -890,7 +817,9 @@ export const TimelineHeader = memo(function TimelineHeader({
             variant="ghost"
             size="icon"
             style={btnSize}
-            className={getTimelineHeaderButtonClass(linkedSelectionEnabled)}
+            className={
+              linkedSelectionEnabled ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
+            }
             onClick={() => setLinkedSelectionEnabled(!linkedSelectionEnabled)}
             aria-label={
               linkedSelectionEnabled
@@ -910,14 +839,12 @@ export const TimelineHeader = memo(function TimelineHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-1">
-        <TimelineZoomControls
-          onZoomChange={onZoomChange}
-          onZoomIn={onZoomIn}
-          onZoomOut={onZoomOut}
-          onZoomToFit={onZoomToFit}
-        />
-      </div>
+      <TimelineZoomControls
+        onZoomChange={onZoomChange}
+        onZoomIn={onZoomIn}
+        onZoomOut={onZoomOut}
+        onZoomToFit={onZoomToFit}
+      />
     </div>
   )
 })

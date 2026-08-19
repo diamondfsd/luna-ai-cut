@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@freecut/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@freecut/components/ui/dialog'
 import { useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
 import { useTimelineSettingsStore, useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
@@ -7,7 +16,7 @@ import { toast } from 'sonner'
 import { useProjectMediaMatchDialogStore } from '@freecut/shared/state/project-media-match-dialog'
 import {
   getProjectMediaMatchSuggestion,
-  isProjectMatchableVisual,
+  isProjectMatchableVideo,
 } from '../utils/project-media-match'
 import { commitProjectMetadataChange } from '../utils/project-metadata-history'
 
@@ -41,13 +50,13 @@ export function ProjectMediaMatchDialog({ projectId }: ProjectMediaMatchDialogPr
 
   const [isApplying, setIsApplying] = useState(false)
   const initializedRef = useRef(false)
-  const seenVisualIdsRef = useRef<Set<string>>(new Set())
-  const awaitingAutoMatchRef = useRef(false)
+  const seenVideoIdsRef = useRef<Set<string>>(new Set())
+  const awaitingAutoPromptRef = useRef(false)
 
   useEffect(() => {
     initializedRef.current = false
-    awaitingAutoMatchRef.current = false
-    seenVisualIdsRef.current = new Set()
+    awaitingAutoPromptRef.current = false
+    seenVideoIdsRef.current = new Set()
     setIsApplying(false)
   }, [projectId])
 
@@ -56,44 +65,44 @@ export function ProjectMediaMatchDialog({ projectId }: ProjectMediaMatchDialogPr
       return
     }
 
-    const visualItems = mediaItems.filter(isProjectMatchableVisual)
+    const videoItems = mediaItems.filter(isProjectMatchableVideo)
 
     if (!initializedRef.current) {
       initializedRef.current = true
-      seenVisualIdsRef.current = new Set(visualItems.map((item) => item.id))
-      if (visualItems.length > 0) {
+      seenVideoIdsRef.current = new Set(videoItems.map((item) => item.id))
+      if (videoItems.length > 0) {
         markProjectMediaMatchHandled(projectId)
       }
       return
     }
 
-    const newVisuals = visualItems.filter((item) => !seenVisualIdsRef.current.has(item.id))
+    const newVideos = videoItems.filter((item) => !seenVideoIdsRef.current.has(item.id))
 
-    for (const item of visualItems) {
-      seenVisualIdsRef.current.add(item.id)
+    for (const item of videoItems) {
+      seenVideoIdsRef.current.add(item.id)
     }
 
-    if (awaitingAutoMatchRef.current || hasHandledProjectMediaMatch(projectId)) {
+    if (awaitingAutoPromptRef.current || hasHandledProjectMediaMatch(projectId)) {
       return
     }
 
-    if (newVisuals.length === 0) {
+    if (newVideos.length === 0) {
       return
     }
 
-    const firstVisual = [...newVisuals].sort((left, right) => left.createdAt - right.createdAt)[0]
-    if (!firstVisual) {
+    const firstVideo = [...newVideos].sort((left, right) => left.createdAt - right.createdAt)[0]
+    if (!firstVideo) {
       return
     }
 
-    awaitingAutoMatchRef.current = true
+    awaitingAutoPromptRef.current = true
     void requestProjectMediaMatch(projectId, {
-      fileName: firstVisual.fileName,
-      width: firstVisual.width,
-      height: firstVisual.height,
-      fps: firstVisual.mimeType.startsWith('video/') ? firstVisual.fps : undefined,
+      fileName: firstVideo.fileName,
+      width: firstVideo.width,
+      height: firstVideo.height,
+      fps: firstVideo.fps,
     }).finally(() => {
-      awaitingAutoMatchRef.current = false
+      awaitingAutoPromptRef.current = false
     })
   }, [
     currentProject,
@@ -113,14 +122,47 @@ export function ProjectMediaMatchDialog({ projectId }: ProjectMediaMatchDialogPr
     return getProjectMediaMatchSuggestion(currentProject.metadata, pendingCandidate)
   }, [currentProject, pendingCandidate, pendingProjectId, projectId])
 
+  useEffect(() => {
+    if (
+      !open ||
+      !currentProject ||
+      !pendingCandidate ||
+      pendingProjectId !== projectId ||
+      !suggestion
+    ) {
+      return
+    }
+
+    if (!suggestion.hasChanges) {
+      resolveProjectMediaMatch('keep-current')
+    }
+  }, [
+    currentProject,
+    open,
+    pendingCandidate,
+    pendingProjectId,
+    projectId,
+    resolveProjectMediaMatch,
+    suggestion,
+  ])
+
+  const handleKeepCurrent = useCallback(() => {
+    if (isApplying) {
+      return
+    }
+
+    resolveProjectMediaMatch('keep-current')
+  }, [isApplying, resolveProjectMediaMatch])
+
   const applyMatch = useCallback(
-    async () => {
+    async (
+      choice: 'match-both' | 'fps-only' | 'size-only',
+      options: { matchSize: boolean; matchFps: boolean },
+    ) => {
       if (!currentProject || !pendingCandidate || !suggestion) {
         resolveProjectMediaMatch('keep-current')
         return
       }
-
-      const choice = suggestion.fpsDiffers ? 'match-both' : 'size-only'
 
       const updates: {
         width?: number
@@ -128,12 +170,12 @@ export function ProjectMediaMatchDialog({ projectId }: ProjectMediaMatchDialogPr
         fps?: number
       } = {}
 
-      if (suggestion.sizeDiffers) {
+      if (options.matchSize && suggestion.sizeDiffers) {
         updates.width = suggestion.width
         updates.height = suggestion.height
       }
 
-      if (suggestion.fpsDiffers) {
+      if (options.matchFps && suggestion.fpsDiffers) {
         updates.fps = suggestion.fps
       }
 
@@ -169,7 +211,6 @@ export function ProjectMediaMatchDialog({ projectId }: ProjectMediaMatchDialogPr
           description:
             error instanceof Error ? error.message : t('editor.projectMediaMatch.tryAgain'),
         })
-        resolveProjectMediaMatch('keep-current')
       } finally {
         setIsApplying(false)
       }
@@ -186,14 +227,107 @@ export function ProjectMediaMatchDialog({ projectId }: ProjectMediaMatchDialogPr
     ],
   )
 
-  useEffect(() => {
-    if (!open || pendingProjectId !== projectId || !suggestion || isApplying) return
-    if (!suggestion.hasChanges) {
-      resolveProjectMediaMatch('keep-current')
-      return
-    }
-    void applyMatch()
-  }, [applyMatch, isApplying, open, pendingProjectId, projectId, resolveProjectMediaMatch, suggestion])
+  return (
+    <Dialog
+      open={Boolean(open && pendingProjectId === projectId && suggestion?.hasChanges)}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) handleKeepCurrent()
+      }}
+    >
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>{t('editor.projectMediaMatch.title')}</DialogTitle>
+          <DialogDescription>
+            {pendingCandidate
+              ? t('editor.projectMediaMatch.descriptionWithFile', {
+                  fileName: pendingCandidate.fileName,
+                })
+              : t('editor.projectMediaMatch.description')}
+          </DialogDescription>
+        </DialogHeader>
 
-  return null
+        {currentProject && pendingCandidate && suggestion && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border/80 bg-muted/30 p-4">
+              <div className="grid grid-cols-[auto_1fr_1fr] gap-x-4 gap-y-2 text-sm">
+                <div />
+                <div className="font-medium text-foreground">
+                  {t('editor.projectMediaMatch.current')}
+                </div>
+                <div className="font-medium text-foreground">
+                  {t('editor.projectMediaMatch.clip')}
+                </div>
+                <div className="text-muted-foreground">{t('editor.projectMediaMatch.size')}</div>
+                <div className="text-muted-foreground">
+                  {currentProject.metadata.width}x{currentProject.metadata.height}
+                </div>
+                <div className="text-muted-foreground">
+                  {suggestion.width}x{suggestion.height}
+                </div>
+                <div className="text-muted-foreground">
+                  {t('editor.projectMediaMatch.frameRate')}
+                </div>
+                <div className="text-muted-foreground">{currentProject.metadata.fps} fps</div>
+                <div className="text-muted-foreground">{suggestion.sourceFpsLabel} fps</div>
+              </div>
+            </div>
+
+            {suggestion.fpsWasRounded && (
+              <p className="text-xs text-muted-foreground">
+                {t('editor.projectMediaMatch.fpsRoundedHint', { fps: suggestion.matchedFpsLabel })}
+              </p>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button variant="ghost" onClick={handleKeepCurrent} disabled={isApplying}>
+            {t('editor.projectMediaMatch.keepCurrent')}
+          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            {suggestion?.sizeDiffers && suggestion?.fpsDiffers && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => void applyMatch('fps-only', { matchSize: false, matchFps: true })}
+                  disabled={isApplying}
+                >
+                  {t('editor.projectMediaMatch.fpsOnly')}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => void applyMatch('size-only', { matchSize: true, matchFps: false })}
+                  disabled={isApplying}
+                >
+                  {t('editor.projectMediaMatch.sizeOnly')}
+                </Button>
+                <Button
+                  onClick={() => void applyMatch('match-both', { matchSize: true, matchFps: true })}
+                  disabled={isApplying}
+                >
+                  {t('editor.projectMediaMatch.matchBoth')}
+                </Button>
+              </>
+            )}
+            {!suggestion?.sizeDiffers && suggestion?.fpsDiffers && (
+              <Button
+                onClick={() => void applyMatch('fps-only', { matchSize: false, matchFps: true })}
+                disabled={isApplying}
+              >
+                {t('editor.projectMediaMatch.matchFps')}
+              </Button>
+            )}
+            {suggestion?.sizeDiffers && !suggestion?.fpsDiffers && (
+              <Button
+                onClick={() => void applyMatch('size-only', { matchSize: true, matchFps: false })}
+                disabled={isApplying}
+              >
+                {t('editor.projectMediaMatch.matchSize')}
+              </Button>
+            )}
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
