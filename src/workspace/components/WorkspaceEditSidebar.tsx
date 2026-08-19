@@ -417,7 +417,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
               : item.value === 'border' && runtimeResourceLoading?.fonts === true
             return (
             <div key={item.value} className="workspace-tool-rail-item">
-              <Tooltip content={resourceLoading ? `${item.label}资源加载中` : item.label}>
+              <Tooltip side="left" content={resourceLoading ? `${item.label}资源加载中` : item.label}>
                 <IconButton
                   variant={activeTool === item.value ? 'outline' : 'ghost'}
                   size="compact"
