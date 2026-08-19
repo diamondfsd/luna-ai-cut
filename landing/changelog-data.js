@@ -2,6 +2,48 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.7.1",
+    "title": "v1.7.1",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>原片预览与下载</strong>：支持在预览窗口查看相机原始视频，并可直接下载单个素材。</li>\n<li><strong>手机分享</strong>：支持将本地媒体通过临时分享页面发送到手机，提供更完整的分享操作和下载体验。</li>\n<li><strong>本地媒体分享服务</strong>：增加分享文件整理、压缩和访问能力，支持在设置中管理相关选项。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>缩略图滚动</strong>：修复缩略图条无法正确响应垂直滚轮的问题。</li>\n<li><strong>提示位置</strong>：调整工作区工具提示的位置，减少对编辑内容的遮挡。</li>\n<li><strong>模拟相机访问</strong>：支持媒体请求独立于短暂的连接会话，便于本地调试和录制。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li>优化预览窗口头部、缩略图条和分享弹窗的操作布局。</li>\n<li>补充相机媒体页和设置页中的分享入口与状态展示。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新项目版本至 <code>1.7.1</code>。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.7.0-hot.7",
+    "title": "v1.7.0-hot.7 - 热更新发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>按日期整理下载</strong>：可在设置中开启按拍摄日期将新下载放入 <code>YYYY-MM-DD</code> 文件夹。</li>\n<li><strong>整理旧下载</strong>：可在设置中将已有下载按拍摄日期归入文件夹，无法识别日期或遇到重名的文件会保留原处。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>下载目录兼容</strong>：日期子目录中的下载现在可以正常识别、浏览、预览和继续下载。</li>\n<li><strong>热更新重启</strong>：应用重启后会自动恢复窗口并激活，避免 macOS 窗口停留在最小化状态。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li><strong>文件与存储设置</strong>：整理旧下载按钮会在开启按日期分文件夹后显示，并位于开关左侧。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.7.0-hot.6",
+    "title": "v1.7.0-hot.6 - 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Dolby Vision 水印导出失败</strong>：导出到尚未创建的目录时，应用现在会自动创建目标目录，避免封装阶段无法创建临时文件。</li>\n</ul>\n<h3>兼容性说明</h3>\n<ul>\n<li>本次更新包含 Apple 芯片 Mac、Intel Mac 和 Windows x64 三个平台的原生渲染组件，支持从 Luna AI Cut v1.7.0 或任意较早的 v1.7.0 热更新直接升级。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.7.0-hot.5",
+    "title": "v1.7.0-hot.5 - 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复本地存储迁移失败</strong>：迁移时不再处理应用正在写入的运行日志，避免 Windows 因日志文件被占用而中断项目、素材和设置迁移。</li>\n</ul>\n<h3>兼容性说明</h3>\n<ul>\n<li>本次更新继续包含 Apple 芯片 Mac、Intel Mac 和 Windows x64 三个平台的原生渲染组件，支持从 Luna AI Cut v1.7.0 或任意较早的 v1.7.0 热更新直接升级。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.7.0-hot.4",
+    "title": "v1.7.0-hot.4 - 热更新发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>AI 选片人物管理升级</strong>：支持查看已识别人物、合并同一人物、隐藏不需要的人物，并可重新选择人物头像。</li>\n<li><strong>本地资源目录迁移</strong>：修改本地资源保存位置时，可将已有项目和素材迁移到新目录，并在迁移前检查空间与文件状态。</li>\n<li><strong>视频导出可关闭声音</strong>：导出视频时可选择是否保留原始声音，预览页和工作台导出均可使用。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>提高 AI 选片准确性与可控性</strong>：优化照片和视频中的人脸归组、人物封面、选中状态与重新分析流程；视频人脸可定位到对应画面。</li>\n<li><strong>改善人物合并体验</strong>：重新整理人物合并界面和操作反馈，合并结果会正确保留人物名称、头像与选择状态。</li>\n<li><strong>改善图片自然美颜</strong>：优化磨皮与细节处理，在平滑肤色的同时减少边缘和纹理损失。</li>\n<li><strong>改善素材拖放与复制</strong>：支持将本地素材拖入 AI 选片，并改善文件复制、下载目录和跨目录保存的稳定性。</li>\n<li><strong>提高设置与项目数据可靠性</strong>：调整设置、项目、预设和任务记录的保存位置及迁移流程，减少目录变更后数据丢失或读取旧数据的问题。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 AI 选片缓存异常</strong>：避免重新分析或人物调整后继续显示过期的识别和选择结果。</li>\n<li><strong>修复素材拖放失败</strong>：修复部分本地文件拖入媒体库或 AI 选片后没有正确加入的问题。</li>\n<li><strong>修复视频导出声音处理</strong>：关闭声音时不再执行音轨合并，并改善 macOS 与 Windows 的导出结果一致性。</li>\n<li><strong>修复更新说明缺失</strong>：帮助弹窗会显示安装版和已安装热更新的全部更新记录，包括此前的 <code>hot.2</code> 与 <code>hot.3</code>。</li>\n</ul>\n<h3>兼容性说明</h3>\n<ul>\n<li>本次更新包含原生渲染组件改动，将分别提供 Apple 芯片 Mac、Intel Mac 和 Windows x64 三个平台的热更新包。</li>\n<li>热更新仅适用于已安装的 Luna AI Cut v1.7.0。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.7.0-hot.3",
+    "title": "v1.7.0-hot.3 - 热更新发布说明",
+    "bodyHtml": "<h3>改进</h3>\n<ul>\n<li><strong>工作台缩略图显示视频时长</strong>：工作台底部的视频素材缩略图现在会显示总时长，方便快速识别和切换素材。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.7.0-hot.2",
+    "title": "v1.7.0-hot.2 - 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>改善热更新安装可靠性</strong>：更新下载或内容异常时会保留当前可用版本，并在下次检查时重新获取。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>预览缩略图显示视频时长</strong>：预览窗口底部的视频缩略图会直接显示总时长，无需先打开视频。</li>\n<li><strong>放大预览缩略图</strong>：缩略图条会随窗口高度调整大小，并限制最大高度，让素材更容易辨认。</li>\n<li><strong>补全媒体库视频信息</strong>：视频缩略图准备完成后会自动读取时长并显示。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.7.0",
     "title": "v1.7.0 - 发布说明",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>图片对象消除</strong>：可使用画笔、矩形或智能点选标记不需要的内容，在本地补全背景；支持多次处理、原图对比、项目保存和编辑后导出。</li>\n<li><strong>发送到手机</strong>：电脑与手机连接同一局域网后，可扫描二维码浏览本地素材和导出文件，预览图片或兼容视频，并选择多个文件下载到手机。</li>\n<li><strong>图片自然美颜</strong>：为人像图片提供面部美白、皮肤整体美白、磨皮和质感调整，支持自动识别皮肤区域并手动修复选区。</li>\n<li><strong>视频语音字幕</strong>：可在本地从视频语音生成带时间的字幕，修改文字和样式，并随画面一起导出或单独导出 SRT 文件。</li>\n<li><strong>DNG 素材支持</strong>：本地资源、相机媒体和 AI 整理流程可以识别并处理 DNG 原始图片。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>扩展视频截取与导出</strong>：时间线可分别标记视频片段、静态照片和 Live 图片段，并将多种结果一次加入导出队列。</li>\n<li><strong>优化工作台编辑体验</strong>：重新整理编辑工具入口和素材切换流程，复制效果时可同时包含美颜、边框等设置。</li>\n<li><strong>改善手机浏览体验</strong>：优化移动端相册、预览切换、图片缩放、持续加载和微信内打开提示。</li>\n<li><strong>提高 Windows 兼容性</strong>：D3D12 不可用时会自动回退到 OpenGL，并完善原生组件和 Dolby 工具的构建检查。</li>\n<li><strong>改善自动字幕分段</strong>：新增本地 ONNX 标点恢复模型，结合自然语言词组、停顿和字幕长度重新分段；保留问号并清理其他句末标点。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复局部调色叠加异常</strong>：多个重叠蒙版会按预期共同生效，旧版不兼容的调色数据会在渲染前安全处理。</li>\n<li><strong>修复自定义水印导入限制</strong>：允许使用小尺寸水印，并改善部分 WebP 水印的导入与显示。</li>\n<li><strong>修复预览与导出细节</strong>：改善暂停视频调色刷新、复杂图层组合和不同输出类型下的画面一致性。</li>\n</ul>\n<h3>说明</h3>\n<ul>\n<li>对象消除、自然美颜和语音字幕所需模型会在首次使用时按需下载，素材处理均在本地完成。</li>\n<li>对象消除与自然美颜当前用于图片；语音字幕当前用于视频。</li>\n<li>发送到手机只在用户主动开启时提供临时只读访问，停止发送或退出应用后原二维码失效。</li>\n</ul>",
