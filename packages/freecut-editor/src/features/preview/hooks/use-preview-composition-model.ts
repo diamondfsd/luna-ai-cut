@@ -132,9 +132,7 @@ export function mergeLiveItemPresentation(
   if (!liveItem || liveItem.id !== item.id || liveItem.type !== item.type) return item
 
   const itemWithLiveTransform =
-    'transform' in liveItem &&
-    'transform' in item &&
-    liveItem.transform !== item.transform
+    'transform' in liveItem && 'transform' in item && liveItem.transform !== item.transform
       ? ({ ...item, transform: liveItem.transform } as TimelineItem)
       : item
 
@@ -212,16 +210,19 @@ export function usePreviewCompositionModel({
 }: UsePreviewCompositionModelParams) {
   const projectWidth = project.width
   const projectHeight = project.height
+  const playerWidth = playerSize.width
+  const playerHeight = playerSize.height
   const calculatedPreviewRenderSize = getRealtimePreviewRenderSize(
     { width: projectWidth, height: projectHeight },
-    { width: playerSize.width, height: playerSize.height },
+    { width: playerWidth, height: playerHeight },
   )
+  const previewRenderWidth = calculatedPreviewRenderSize.width
+  const previewRenderHeight = calculatedPreviewRenderSize.height
+  // Keep renderer identity stable while the layout changes inside the same
+  // physical-size bucket (especially <=1080p projects, which stay full-size).
   const previewRenderSize = useMemo(
-    () => ({
-      width: calculatedPreviewRenderSize.width,
-      height: calculatedPreviewRenderSize.height,
-    }),
-    [calculatedPreviewRenderSize.height, calculatedPreviewRenderSize.width],
+    () => ({ width: previewRenderWidth, height: previewRenderHeight }),
+    [previewRenderHeight, previewRenderWidth],
   )
   const {
     playbackVideoSourceSpans,
@@ -337,8 +338,7 @@ export function usePreviewCompositionModel({
         canvas: { width: project.width, height: project.height, fps },
         frame: playbackState.previewFrame ?? playbackState.currentFrame,
         getItem: (candidateId) => fastScrubLiveItemsByIdRef.current.get(candidateId),
-        getKeyframes: (candidateId) =>
-          fastScrubKeyframesByItemIdRef.current.get(candidateId),
+        getKeyframes: (candidateId) => fastScrubKeyframesByItemIdRef.current.get(candidateId),
         getLocalPreviewTransform: (candidateId) =>
           useGizmoStore.getState().preview?.[candidateId]?.transform,
       })

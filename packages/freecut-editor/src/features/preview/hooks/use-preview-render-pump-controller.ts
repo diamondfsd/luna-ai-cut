@@ -250,7 +250,10 @@ interface UsePreviewRenderPumpParams {
   getPlayingAnyTransitionPrewarmStartFrame: (frame: number) => number | null
   getPausedTransitionPrewarmStartFrame: (frame: number) => number | null
   getPinnedTransitionElementForItem: (itemId: string) => HTMLVideoElement | null
-  pinTransitionPlaybackSession: (window: TransitionWindow | null) => TransitionWindow | null
+  pinTransitionPlaybackSession: (
+    window: TransitionWindow | null,
+    pausedTargetFrame?: number,
+  ) => TransitionWindow | null
   clearTransitionPlaybackSession: () => void
   cacheTransitionSessionFrame: (frame: number) => void
   preparePlaybackTransitionFrame: (frame: number) => Promise<boolean>
@@ -616,8 +619,8 @@ export function usePreviewRenderPump({
           )
         : null
       if (aaRamps && playbackState.previewFrame === null && playbackState.currentFrame < frame) {
-        // Continuous-split A-A transitions use synchronized DOM video lanes.
-        // Rendering a MediaBunny runway before entry blocks the display pump
+        // Continuous-split A-A transitions use synchronized DOM video lanes. Rendering an
+        // eight-frame MediaBunny runway before entry blocks the main thread
         // without producing frames the live transition will consume.
         deferredPlaybackTransitionPrepareFrameRef.current = null
         return
@@ -964,6 +967,15 @@ export function usePreviewRenderPump({
                 const prevSession = transitionSessionWindowRef.current
                 const isNewSession =
                   !prevSession || prevSession.transition.id !== windowForFrame.transition.id
+                const aaRamps = resolveAATransitionRamps(
+                  windowForFrame.leftClip,
+                  windowForFrame.rightClip,
+                  {
+                    transitionStart: windowForFrame.startFrame,
+                    transitionEnd: windowForFrame.endFrame,
+                  },
+                  fps,
+                )
                 pinTransitionPlaybackSession(windowForFrame)
                 // Await the prearm prewarm so mediabunny decoders are positioned
                 // at the correct source time before rendering. The prearm fires
@@ -976,7 +988,7 @@ export function usePreviewRenderPump({
                 }
                 // When entering a transition mid-playback (no prearm happened),
                 // await the prewarm synchronously to position decoders.
-                if (isNewSession && 'prewarmItems' in renderer) {
+                if (isNewSession && !aaRamps && 'prewarmItems' in renderer) {
                   await renderer.prewarmItems?.(
                     [windowForFrame.leftClip.id, windowForFrame.rightClip.id],
                     frameToRender,
@@ -999,7 +1011,21 @@ export function usePreviewRenderPump({
               // them here for zero-copy compositing. renderVideoItem still checks
               // freshness (0.2s drift) and falls back to mediabunny on large
               // jumps where the element hasn't caught up.
-              renderer.setDomVideoElementProvider?.(getBestDomVideoElementForItem)
+              const transitionWindow = getTransitionWindowForFrame(frameToRender)
+              const isActiveTransitionFrame =
+                transitionWindow !== null &&
+                frameToRender >= transitionWindow.startFrame &&
+                frameToRender < transitionWindow.endFrame
+              if (transitionWindow && isActiveTransitionFrame) {
+                // A-A transitions use an extended source-time ramp that the
+                // ordinary paused DOM composition does not own. Pin and seek
+                // both browser-video lanes to that ramp before compositing so
+                // hover skims show the real effect without a cold exact decode.
+                pinTransitionPlaybackSession(transitionWindow, frameToRender)
+                renderer.setDomVideoElementProvider?.(getPinnedTransitionElementForItem)
+              } else {
+                renderer.setDomVideoElementProvider?.(getBestDomVideoElementForItem)
+              }
             } else {
               // Reverse media elements retain only one outstanding seek and
               // coalesce every clock update to the newest target. Completed
@@ -1597,10 +1623,12 @@ export function usePreviewRenderPump({
         return
       }
 
-      for (const [src, timestamps] of bySource) {
-        const currentTimestamp = timestamps[0]
-        if (currentTimestamp !== undefined) {
-          scheduleScrubProxyFallback(src, currentTimestamp)
+      if (useProxy) {
+        for (const [src, timestamps] of bySource) {
+          const currentTimestamp = timestamps[0]
+          if (currentTimestamp !== undefined) {
+            scheduleScrubProxyFallback(src, currentTimestamp)
+          }
         }
       }
 
@@ -1755,7 +1783,9 @@ export function usePreviewRenderPump({
         const exactTimestamp = timestamps[0]
         if (exactTimestamp === undefined) continue
         nextSourceTimes.set(src, exactTimestamp)
-        scheduleScrubProxyFallback(src, exactTimestamp)
+        if (useProxy) {
+          scheduleScrubProxyFallback(src, exactTimestamp)
+        }
 
         if (!usedDedicatedLane) {
           usedDedicatedLane = true
@@ -2046,7 +2076,9 @@ export function usePreviewRenderPump({
       if (sessionWindow && transitionSessionPinnedElementsRef.current.size > 0) {
         for (const clip of [sessionWindow.leftClip, sessionWindow.rightClip]) {
           if (clip.type !== 'video') continue
-          const el = transitionSessionPinnedElementsRef.current.get(clip.id)
+          const el =
+            transitionSessionPinnedElementsRef.current.get(clip.id) ??
+            getPinnedTransitionElementForItem(clip.id)
           if (!el || el.dataset.transitionHold !== '1') continue
           const clipSpeed = clip.speed ?? 1
           const transitionState = resolveTransitionDomPlaybackState({
@@ -2057,9 +2089,11 @@ export function usePreviewRenderPump({
             transportRate: state.playbackRate,
           })
           const mediaPlaybackRate =
-            transitionState?.playbackRate ?? getBrowserMediaPlaybackRate(clipSpeed, state.playbackRate)
+            transitionState?.playbackRate ??
+            getBrowserMediaPlaybackRate(clipSpeed, state.playbackRate)
           const targetTime =
-            transitionState?.sourceTime ?? getVideoItemSourceTimeSeconds(clip, state.currentFrame, fps)
+            transitionState?.sourceTime ??
+            getVideoItemSourceTimeSeconds(clip, state.currentFrame, fps)
           if (targetTime === null) continue
           if (transitionState) {
             delete el.dataset.transitionPrearm
@@ -2152,14 +2186,16 @@ export function usePreviewRenderPump({
               },
               fps,
             )
-            if (!aaRamps) {
-              const renderer = scrubRendererRef.current
-              if (renderer && 'prewarmItems' in renderer) {
-                transitionPrewarmPromiseRef.current = renderer.prewarmItems?.(
+            transitionPrewarmPromiseRef.current = (async () => {
+              const renderer = await ensureFastScrubRenderer()
+              if (!aaRamps && renderer && 'prewarmItems' in renderer) {
+                await renderer.prewarmItems?.(
                   [transitionWindow.leftClip.id, transitionWindow.rightClip.id],
                   transitionWindow.startFrame,
                 )
               }
+            })()
+            if (!aaRamps) {
               runBatchPreseek(
                 collectClipVideoSourceTimesBySrcForFrameRange(
                   [transitionWindow.leftClip, transitionWindow.rightClip],
@@ -2399,7 +2435,9 @@ export function usePreviewRenderPump({
             playbackTransitionState.hasActiveTransition || playbackTransitionState.shouldHoldOverlay
           )
         ) {
-          if (!playbackTransitionState.shouldPrewarm) {
+          const hasPinnedPrearm =
+            getPlayingAnyTransitionPrewarmStartFrame(state.currentFrame) !== null
+          if (!playbackTransitionState.shouldPrewarm && !hasPinnedPrearm) {
             clearTransitionPlaybackSession()
           }
           hideAllOverlays()
@@ -3004,7 +3042,9 @@ export function usePreviewRenderPump({
           void pumpRenderLoop()
         }
       } else {
-        if (!playbackTransitionState.shouldPrewarm) {
+        const hasPinnedPrearm =
+          getPlayingAnyTransitionPrewarmStartFrame(playbackState.currentFrame) !== null
+        if (!playbackTransitionState.shouldPrewarm && !hasPinnedPrearm) {
           clearTransitionPlaybackSession()
         }
         hideAllOverlays()
@@ -3067,6 +3107,7 @@ export function usePreviewRenderPump({
     fastScrubBoundarySources,
     forceFastScrubOverlay,
     fps,
+    useProxy,
     clearTransitionPlaybackSession,
     getPausedTransitionPrewarmStartFrame,
     getPinnedTransitionElementForItem,
