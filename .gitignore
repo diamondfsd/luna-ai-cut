@@ -47,6 +47,7 @@ test-resources/
 test-results/
 dist*
 release*/
+backups/
 
 # Worktrees
 .worktrees/
