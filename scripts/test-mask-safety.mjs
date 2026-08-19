@@ -67,6 +67,7 @@ try {
     'src/workspace/creative/only-your-color/onlyYourColorAutoTone.ts',
     'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
     'src/workspace/creative/only-your-color/onlyYourColorBatchMask.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorState.ts',
     'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.ts',
     'src/workspace/creative/pixel-flow/pixelFlowBatchMask.ts',
     'src/workspace/creative/pixel-flow/pixelFlowLayers.ts',
@@ -101,6 +102,7 @@ try {
   const onlyYourColorAutoTone = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorAutoTone.js')))
   const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
   const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
+  const onlyYourColorState = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorState.js')))
   const onlyYourColorMaskRefinement = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.js')))
   const pixelFlowBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/pixel-flow/pixelFlowBatchMask.js')))
   const pixelFlowLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/pixel-flow/pixelFlowLayers.js')))
@@ -1038,6 +1040,28 @@ try {
   assert.equal(reusedBatchMask.state.backgroundBrightness, 12)
   assert.equal(reusedBatchMask.state.backgroundContrast, 22)
   assert.equal(batchSegmentCalls, 0, 'batch export must reuse a valid saved mask')
+
+  const projectMaskState = {
+    id: 'project-mask-state',
+    name: 'Mask state',
+    dir: '/workspace/workspace-projects/project-mask-state',
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+    assets: [],
+    creative: {
+      onlyYourColorByAssetId: {
+        'shared-asset': {
+          intensity: 80,
+          maskPath: '/workspace/workspace-projects/other-project/masks/shared-asset.pgm',
+          maskAssetId: 'shared-asset',
+          maskProjectId: 'project-mask-state',
+        },
+      },
+    },
+  }
+  const isolatedMaskState = onlyYourColorState.onlyYourColorStateForAsset(projectMaskState, 'shared-asset')
+  assert.equal(isolatedMaskState?.maskPath, undefined, 'a mask from another project must not be restored')
+  assert.equal(isolatedMaskState?.intensity, 80, 'invalid mask paths must not discard creative parameters')
 
   let batchSegmentRequest = null
   const generatedMask = new Uint8Array(25).fill(255)
