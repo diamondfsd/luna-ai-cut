@@ -371,7 +371,11 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
         if (requestMediaImport) {
           await requestMediaImport(async (sources, options) => {
             await importHandles(sources.map(createNativeMediaFileHandle), {
-              storageMode: 'link',
+              // The embedded host supplies a page-local wrapper around a native
+              // path. It is not a browser FileSystemFileHandle and cannot be
+              // structured-cloned into the handles database. Read it once and
+              // persist the media in the workspace instead.
+              storageMode: 'copy',
               background: options?.background,
             })
           })
