@@ -20,6 +20,21 @@
 - Blender Storyboarding：https://docs.blender.org/manual/en/latest/video_editing/storyboarding/index.html
   - Blender 手册页面标注除特别说明外采用 CC-BY-SA 4.0；其中的蒙太奇页面链接到 Kuleshov effect 作为剪辑概念参考。
 
+## GitHub 社区 skill
+
+- `Jaycheng1103/chatgpt-video-editing-skills`：https://github.com/Jaycheng1103/chatgpt-video-editing-skills
+  - 用于提炼素材预检、逐字转写、策略确认、分段粗剪、完整预览和交付证据的八步流程。
+- `maxazure/video-editing-skill`：https://github.com/maxazure/video-editing-skill
+  - 用于提炼口播初剪、对稿、去停顿、重复句处理、字幕可读性、声音桥接和交付前检查的实践。
+- `znyupup/ai-video-editing-skill`：https://github.com/znyupup/ai-video-editing-skill
+  - 用于提炼以转写、内容分析和可审计剪辑计划驱动自动化的思路。
+- `chang416/cutcraft`：https://github.com/chang416/cutcraft
+  - 用于提炼素材登记、编辑决策、字幕、EDL 和渲染后质量复核的工程化流程。
+- `Raven7979/ai-video-editing-skill`：https://github.com/Raven7979/ai-video-editing-skill
+  - 用于提炼口播稿对比、保留后一句重复表达、保守去停顿和剪后重新核对的规则。
+- `lqy392527482-del/video-informational-editing`：https://github.com/lqy392527482-del/video-informational-editing
+  - 用于提炼信息单元、章节导航、证据浮层、按口播节点逐步释放画面信息和避免遮挡主体的规则。
+
 ## 许可边界
 
 - Adobe 和剪映页面只作为官方功能与术语来源，不把网页正文复制进技能资源，也不打包其模板、音乐、字体或视频。

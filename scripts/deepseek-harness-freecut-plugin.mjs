@@ -373,6 +373,34 @@ const timelineTools = [
     },
   },
   {
+    name: 'timeline.add_html',
+    description: '把受限的 HTML/CSS 动画作为可编辑图层加入时间轴，适合没有现成素材时生成标题卡、信息图、图形包装和简单动效。作者脚本、外部网页和网络资源不会执行或加载；动画请使用 CSS keyframes 或 --luna-time / --luna-time-ms。默认铺满当前画布，并优先使用没有时间冲突的视频轨道；没有可用轨道时创建新的顶部视频轨道。',
+    parameters: {
+      type: 'object',
+      properties: {
+        html: { type: 'string', minLength: 1, maxLength: 200000 },
+        css: { type: 'string', maxLength: 200000 },
+        startSeconds: { type: 'number', minimum: 0 },
+        durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+        label: { type: 'string', maxLength: 200 },
+        trackId: { type: 'string', minLength: 1 },
+        renderMode: { type: 'string', enum: ['static', 'animated'] },
+        viewport: {
+          type: 'object',
+          properties: {
+            width: { type: 'integer', minimum: 1, maximum: 16384 },
+            height: { type: 'integer', minimum: 1, maximum: 16384 },
+            deviceScaleFactor: { type: 'number', exclusiveMinimum: 0, maximum: 4 },
+          },
+          required: ['width', 'height', 'deviceScaleFactor'],
+          additionalProperties: false,
+        },
+      },
+      required: ['html', 'css', 'startSeconds', 'durationSeconds'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'timeline.add_keyframe',
     description: '为片段增加一个标量关键帧。atSeconds 是相对片段起点的时间。x/y/width/height/anchorX/anchorY/cornerRadius、crop 边界和柔化、fontSize/textPadding/textShadowOffsetX/textShadowOffsetY/textShadowBlur/strokeWidth、trimPathStart/trimPathEnd 和 taper 属性的 value 统一使用 0 到 1 的归一化值，不要传入像素；x/y 的 0.5 表示居中，文字阴影偏移的 0.5 表示无偏移。trimPathOffset 是 -360 到 360 的角度。crop 相对于素材源尺寸，文字和描边尺寸相对于画布短边。旋转使用角度，透明度使用 0 到 1，行高和文字样式缩放使用倍数，音量使用 dB。',
     parameters: {
@@ -546,6 +574,7 @@ const EDITING_GUIDANCE = `
 - 需要判断画面内容或口播时，先调用 media.read 读取已有证据。证据不存在或不够用时，对目标素材调用 media.analyze；它会立即返回 taskId，不代表分析已经完成。随后循环调用 media.get_analysis_task，直到 status 为 completed 或 failed；完成后再次调用 media.read。初次粗选素材优先使用 intensity=light，只有需要更密集的场景证据时才使用 normal 或 strong；没有证据时明确说明未知，不要假装看过素材。
 - 需要按台词寻找内容时使用 media.search_transcript。用返回的 mediaId 和时间范围制定剪辑方案，但仍要通过 project.inspect 或 timeline.inspect_context 确认时间轴片段 ID。
 - 需要生成配音时使用 audio.start_speech，生成背景音乐时使用 audio.start_music。它们只提交后台任务并返回 taskId，不代表音频已经生成；必须循环调用 audio.get_task，直到 status 为 completed 或 failed。只有 completed 且存在 mediaId 时才可调用 timeline.add_media；failed 时读取 error，不要自行猜测失败原因。
+- 当前项目没有合适的视觉素材、但用户需要标题卡、数据图、图形包装或简单动效时，使用 timeline.add_html 生成可编辑 HTML/CSS 图层。它不需要 mediaId；html 只传内容片段，css 传样式和动画，renderMode 使用 animated 才会按时间轴定位动画。不要在内容中依赖作者脚本、iframe、外部网页或网络资源。
 
 规划与执行：
 - 先将用户目标拆成素材选择、保留或删除的时间范围、轨道安排和必要的字幕/音频/转场操作；信息不足时先补充读取或向用户说明缺口。
@@ -558,6 +587,7 @@ const EDITING_GUIDANCE = `
 - 修改画面、音频、文字、速度和关键帧时使用对应的 timeline 工具，不要通过移动片段来代替裁剪，也不要用猜测的 ID 重试。
 - 一次只提交当前计划所需的最小修改；同类编辑尽量批量提交，不要在每个小操作前后重复调用 todo_write。每次编辑后阅读返回 data 中的 after、split 或其他结果，确认修改确实落在目标片段和目标时间上；失败后先重新读取最新上下文，再决定下一步。
 - 文字片段调整 width/height 只会改变文字框，不会改变字号；需要让文字变大或变小时，在同一次 timeline.set_transform 调用中传 fontSizeRatio。未指定 stylePresetId 的 timeline.add_text 背景色透明；需要有色背景时必须明确指定样式预设。
+- timeline.add_html 默认铺满画布并放入空闲视频轨道；如果需要指定已有视频轨道，先通过 project.inspect 读取真实 trackId。HTML 图层是普通时间轴片段，后续可用 timeline.set_transform、timeline.move、timeline.trim 和 timeline.remove 继续编辑。
 - 保留已有音视频的关联、轨道顺序、转场和关键帧。删除片段优先使用 timeline.remove，让编辑器清理相关引用。
 
 完成检查：
@@ -589,6 +619,7 @@ ${SCRIPT_API_REFERENCE}
 - 所有时间使用秒；画面位置和图层尺寸遵循 SDK 方法说明中的单位。
 - 长视频优先调用一次批量分析或批量读取能力，再在脚本内循环筛选，最后使用批量时间轴能力提交结果；media.analyze 返回 taskId 后使用 media.get_analysis_task 轮询，不要为每个素材或每一帧制造一轮模型调用。
 - 每个重要编辑阶段都读取返回值并检查 data；脚本返回一个简短、结构化的结果，供下一轮模型判断。
+- 没有素材时可以直接调用 luna.timeline.addHtml({ html, css, startSeconds, durationSeconds, renderMode: 'animated' }) 创建 HTML/CSS 视觉素材。用 CSS @keyframes 或 var(--luna-time) / var(--luna-time-ms) 表达随时间变化的内容；不要生成或依赖 React/Remotion 运行时代码，当前能力会把结果保存为 FreeCut 可继续编辑的 HTML 图层。
 - 媒体和音频任务查询可以在脚本内使用 await new Promise(resolve => setTimeout(resolve, 2000)) 等待；不要因为第一次返回 queued、analyzing 或 preparing-model 就当作失败，也不要把 taskId 当作 mediaId。
 - 不要直接修改项目文件。所有项目读取和修改都通过 luna SDK 完成。
 - edit.run_script 的执行结果会返回模型；宿主不会根据脚本文案替模型判断任务是否完成。

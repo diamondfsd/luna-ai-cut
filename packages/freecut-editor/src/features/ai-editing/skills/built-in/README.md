@@ -19,6 +19,7 @@ built-in/
 │   ├── family-documentary/SKILL.md
 │   ├── fast-beat/SKILL.md
 │   ├── talking-head/SKILL.md
+│   ├── luna-style-talking-head-short/SKILL.md
 │   ├── travel-vlog/SKILL.md
 │   ├── luna-style-social-short/SKILL.md
 │   ├── luna-style-commercial-product/SKILL.md
@@ -32,11 +33,13 @@ built-in/
 │   ├── luna-technique-audio-design/SKILL.md
 │   ├── luna-technique-color-look/SKILL.md
 │   ├── luna-technique-motion-graphics/SKILL.md
-│   └── luna-technique-retiming-transitions/SKILL.md
+│   ├── luna-technique-retiming-transitions/SKILL.md
+│   └── luna-technique-editing-playbook/SKILL.md
 └── workflows/
     ├── luna-workflow-capcut/SKILL.md
     ├── luna-workflow-premiere/SKILL.md
-    └── luna-workflow-after-effects/SKILL.md
+    ├── luna-workflow-after-effects/SKILL.md
+    └── luna-workflow-short-form-production/SKILL.md
 ```
 
 ## 组合方式
@@ -60,7 +63,7 @@ built-in/
 - 读取项目：`luna.project.inspect`、`luna.timeline.inspectContext`
 - 修改项目：`luna.project.setCanvas`、`luna.timeline.addMedia`、`luna.timeline.addMediaBatch`、`luna.timeline.trim`、`luna.timeline.split`、`luna.timeline.move`、`luna.timeline.remove`
 - 修改画面和声音：`luna.timeline.setProperties`、`luna.timeline.setTransform`、`luna.timeline.setAudio`、`luna.timeline.addKeyframe`
-- 文字和转场：`luna.timeline.addText`、`luna.timeline.addTextBatch`、`luna.timeline.listTransitions`、`luna.timeline.addTransition`、`luna.timeline.addTransitionBatch`
+- 文字、HTML 图层和转场：`luna.timeline.addText`、`luna.timeline.addTextBatch`、`luna.timeline.addHtml`、`luna.timeline.listTransitions`、`luna.timeline.addTransition`、`luna.timeline.addTransitionBatch`
 - 长期偏好：`luna.memory.read`、`luna.memory.search`、`luna.memory.update`、`luna.memory.remove`
 
 当前没有独立的音乐节拍分析、人物身份识别或语义检索工具。遇到这些需求时，主 Agent 必须诚实说明当前证据或工具不足；风格提示词不能伪造不存在的能力。

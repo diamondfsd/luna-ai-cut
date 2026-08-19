@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AnimatableProperty, EasingType } from '@freecut/types/keyframe'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
+import type { HtmlRenderMode } from '@freecut/types/html'
 import type { TransitionPresentation } from '@freecut/types/transition'
 import { TEXT_STYLE_PRESETS, type TextStylePresetId } from '@freecut/shared/typography/text-style-presets'
 import { useProjectStore } from '@freecut/features/editor/deps/projects'
@@ -30,6 +31,7 @@ import type {
 
 const MAX_INSPECT_ITEMS = 200
 const MAX_EDIT_ITEMS = 50
+const MAX_HTML_DOCUMENT_LENGTH = 200_000
 const ANIMATABLE_PROPERTIES = [
   'x',
   'y',
@@ -1032,6 +1034,121 @@ const timelineAddText = tool({
   },
 })
 
+const timelineAddHtml = tool({
+  name: 'timeline.add_html',
+  description: '把一段受限的 HTML/CSS 动画作为可编辑图层加入时间轴。适合没有现成素材时生成标题卡、信息图、图形包装和简单动效；不执行作者脚本、不加载外部网页或网络资源。时间单位是秒，动画使用 CSS keyframes 或 --luna-time / --luna-time-ms 表达。默认铺满当前画布，并优先使用没有时间冲突的视频轨道；没有可用轨道时创建新的顶部视频轨道。',
+  inputSchema: schema({
+    html: { type: 'string', minLength: 1, maxLength: MAX_HTML_DOCUMENT_LENGTH },
+    css: { type: 'string', maxLength: MAX_HTML_DOCUMENT_LENGTH },
+    startSeconds: { type: 'number', minimum: 0 },
+    durationSeconds: { type: 'number', exclusiveMinimum: 0, maximum: 3600 },
+    label: { type: 'string', maxLength: 200 },
+    trackId: { type: 'string', minLength: 1 },
+    renderMode: { type: 'string', enum: ['static', 'animated'] },
+    viewport: {
+      type: 'object',
+      properties: {
+        width: { type: 'integer', minimum: 1, maximum: 16384 },
+        height: { type: 'integer', minimum: 1, maximum: 16384 },
+        deviceScaleFactor: { type: 'number', exclusiveMinimum: 0, maximum: 4 },
+      },
+      required: ['width', 'height', 'deviceScaleFactor'],
+      additionalProperties: false,
+    },
+  }, ['html', 'css', 'startSeconds', 'durationSeconds']),
+  schema: z.object({
+    html: z.string().min(1).max(MAX_HTML_DOCUMENT_LENGTH),
+    css: z.string().max(MAX_HTML_DOCUMENT_LENGTH),
+    startSeconds: z.number().min(0),
+    durationSeconds: z.number().positive().max(3600),
+    label: z.string().max(200).optional(),
+    trackId: z.string().min(1).optional(),
+    renderMode: z.enum(['static', 'animated']).optional(),
+    viewport: z.object({
+      width: z.number().int().min(1).max(16384),
+      height: z.number().int().min(1).max(16384),
+      deviceScaleFactor: z.number().positive().max(4),
+    }).optional(),
+  }),
+  execute: async (args, signal) => {
+    const state = timeline()
+    const project = useProjectStore.getState().currentProject
+    if (!project) throw new Error('当前没有打开的剪辑项目。')
+    const beforeSnapshot = captureSnapshot()
+    signal?.throwIfAborted()
+
+    const from = secondsToFrame(args.startSeconds, state.fps)
+    const durationInFrames = Math.max(1, secondsToFrame(args.durationSeconds, state.fps))
+    const to = from + durationInFrames
+    const isOccupied = (trackId: string) => state.items.some((item) =>
+      item.trackId === trackId && item.from < to && item.from + item.durationInFrames > from,
+    )
+    const requestedTrack = args.trackId
+      ? state.tracks.find((candidate) => candidate.id === args.trackId)
+      : undefined
+    if (args.trackId && !requestedTrack) throw new Error(`没有找到轨道 ${args.trackId}。`)
+    if (requestedTrack && (requestedTrack.isGroup || getTrackKind(requestedTrack) !== 'video')) {
+      throw new Error('HTML 图层必须放在视频轨道。')
+    }
+    if (requestedTrack?.locked) throw new Error(`目标轨道 ${requestedTrack.name} 已锁定，无法加入 HTML 图层。`)
+    if (requestedTrack && isOccupied(requestedTrack.id)) {
+      throw new Error(`目标轨道 ${requestedTrack.name} 在指定时间范围内已有片段。`)
+    }
+
+    const freeTrack = state.tracks
+      .filter((candidate) => !candidate.isGroup && !candidate.locked && getTrackKind(candidate) === 'video')
+      .toSorted((left, right) => left.order - right.order)
+      .find((candidate) => !isOccupied(candidate.id))
+    const track = requestedTrack ?? freeTrack
+    const nextTracks = track
+      ? state.tracks
+      : (() => {
+          const minOrder = state.tracks.reduce((lowest, candidate) => Math.min(lowest, candidate.order), 0)
+          const newTrack = createClassicTrack({ tracks: state.tracks, kind: 'video', order: minOrder - 1 })
+          return [...state.tracks, newTrack]
+        })()
+    const targetTrack = track ?? nextTracks[nextTracks.length - 1]!
+    const viewport = args.viewport ?? {
+      width: project.metadata.width,
+      height: project.metadata.height,
+      deviceScaleFactor: 1,
+    }
+    const item: TimelineItem = {
+      id: crypto.randomUUID(),
+      type: 'html',
+      trackId: targetTrack.id,
+      from,
+      durationInFrames,
+      label: args.label ?? 'HTML 素材',
+      html: args.html,
+      css: args.css,
+      viewport,
+      renderMode: (args.renderMode ?? 'animated') as HtmlRenderMode,
+      sourceRevision: 1,
+      assets: [],
+      transform: {
+        x: 0,
+        y: 0,
+        width: project.metadata.width,
+        height: project.metadata.height,
+        rotation: 0,
+        opacity: 1,
+      },
+    }
+
+    if (track) state.addItem(item)
+    else state.addItemOnNewTrack(item, nextTracks)
+    return saveTimelineEdit('添加 HTML 动画图层', {
+      item: itemSummary(item, nextTracks, state.fps),
+      source: {
+        kind: 'html-css',
+        renderMode: item.renderMode,
+        viewport,
+      },
+    }, beforeSnapshot, signal)
+  },
+})
+
 const timelineAddKeyframe = tool({
   name: 'timeline.add_keyframe',
   description: '为片段增加一个标量关键帧。atSeconds 是相对片段起点的时间。x/y/width/height/anchorX/anchorY/cornerRadius、crop 边界和柔化、fontSize/textPadding/textShadowOffsetX/textShadowOffsetY/textShadowBlur/strokeWidth、trimPathStart/trimPathEnd 和 taper 属性的 value 统一使用 0 到 1 的归一化值，不要传入像素；x/y 的 0.5 表示居中，文字阴影偏移的 0.5 表示无偏移。trimPathOffset 是 -360 到 360 的角度。crop 相对于素材源尺寸，文字和描边尺寸相对于画布短边。旋转使用角度，透明度使用 0 到 1，行高和文字样式缩放使用倍数，音量使用 dB。',
@@ -1333,6 +1450,7 @@ export const TIMELINE_AI_TOOLS: readonly ProjectEditingTool[] = [
   timelineSetTransform,
   timelineSetAudio,
   timelineAddText,
+  timelineAddHtml,
   timelineAddKeyframe,
   timelineListTransitions,
   timelineAddTransition,

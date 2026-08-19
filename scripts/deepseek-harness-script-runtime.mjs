@@ -44,6 +44,7 @@ export const SCRIPT_API = Object.freeze({
     setTransform: 'timeline.set_transform',
     setAudio: 'timeline.set_audio',
     addText: 'timeline.add_text',
+    addHtml: 'timeline.add_html',
     addKeyframe: 'timeline.add_keyframe',
     addTransition: 'timeline.add_transition',
     addMediaBatch: 'timeline.add_media_batch',

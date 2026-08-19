@@ -11,6 +11,7 @@ const BUILT_IN_SKILL_SPECS = [
   'styles/family-documentary/SKILL.md',
   'styles/fast-beat/SKILL.md',
   'styles/talking-head/SKILL.md',
+  'styles/luna-style-talking-head-short/SKILL.md',
   'styles/travel-vlog/SKILL.md',
   'techniques/luna-technique-story-structure/SKILL.md',
   'techniques/luna-technique-cutting-rhythm/SKILL.md',
@@ -18,6 +19,7 @@ const BUILT_IN_SKILL_SPECS = [
   'techniques/luna-technique-color-look/SKILL.md',
   'techniques/luna-technique-motion-graphics/SKILL.md',
   'techniques/luna-technique-retiming-transitions/SKILL.md',
+  'techniques/luna-technique-editing-playbook/SKILL.md',
   'styles/luna-style-social-short/SKILL.md',
   'styles/luna-style-commercial-product/SKILL.md',
   'styles/luna-style-music-video/SKILL.md',
@@ -27,6 +29,7 @@ const BUILT_IN_SKILL_SPECS = [
   'workflows/luna-workflow-capcut/SKILL.md',
   'workflows/luna-workflow-premiere/SKILL.md',
   'workflows/luna-workflow-after-effects/SKILL.md',
+  'workflows/luna-workflow-short-form-production/SKILL.md',
 ]
 
 const SHARED_FILES = [
@@ -42,6 +45,7 @@ export const BUILT_IN_SKILL_NAMES = Object.freeze([
   'luna-style-family-documentary',
   'luna-style-fast-beat',
   'luna-style-talking-head',
+  'luna-style-talking-head-short',
   'luna-style-travel-vlog',
   'luna-technique-story-structure',
   'luna-technique-cutting-rhythm',
@@ -49,6 +53,7 @@ export const BUILT_IN_SKILL_NAMES = Object.freeze([
   'luna-technique-color-look',
   'luna-technique-motion-graphics',
   'luna-technique-retiming-transitions',
+  'luna-technique-editing-playbook',
   'luna-style-social-short',
   'luna-style-commercial-product',
   'luna-style-music-video',
@@ -58,6 +63,7 @@ export const BUILT_IN_SKILL_NAMES = Object.freeze([
   'luna-workflow-capcut',
   'luna-workflow-premiere',
   'luna-workflow-after-effects',
+  'luna-workflow-short-form-production',
 ])
 
 const SCRIPT_ONLY_GUIDANCE = [
