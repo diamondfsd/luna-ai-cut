@@ -66,6 +66,26 @@ test('只有你的色彩不会加载其他项目的蒙版', async ({ lunaApp }) 
   await lunaApp.page.locator('.workspace-tool-rail button[aria-label="创意"]').click()
   await lunaApp.page.getByRole('button', { name: /只有你的色彩/ }).click()
   await expect(lunaApp.page.locator('.only-your-color-page')).toBeVisible()
+  const canvas = lunaApp.page.locator('canvas.only-your-color-canvas[data-renderer="webgpu"]')
+  await expect(canvas).toBeVisible({ timeout: 30_000 })
+  await expect.poll(async () => canvas.evaluate(async (element) => {
+    const source = element as HTMLCanvasElement
+    const image = new Image()
+    image.src = source.toDataURL('image/png')
+    await image.decode()
+    const sample = document.createElement('canvas')
+    sample.width = Math.max(1, source.width)
+    sample.height = Math.max(1, source.height)
+    const context = sample.getContext('2d')
+    if (!context) return 0
+    context.drawImage(image, 0, 0)
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data
+    let nonBlackPixels = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] + pixels[index + 1] + pixels[index + 2] > 30 && pixels[index + 3] > 10) nonBlackPixels += 1
+    }
+    return nonBlackPixels
+  }), { timeout: 30_000 }).toBeGreaterThan(0)
 
   const projectFile = path.join(lunaApp.baseDir, 'workspace-projects', projectInfo.projectId, 'project.json')
   const currentProjectDir = await realpath(path.join(lunaApp.baseDir, 'workspace-projects', projectInfo.projectId))

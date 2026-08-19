@@ -1606,6 +1606,17 @@ interface PreparedCompositionDraw {
   pipeline: GPURenderPipeline
 }
 
+function readWebGpuImagePixels(source: WebGpuImageSource, width: number, height: number): Uint8ClampedArray {
+  const staging = typeof OffscreenCanvas !== 'undefined'
+    ? new OffscreenCanvas(width, height)
+    : Object.assign(document.createElement('canvas'), { width, height })
+  const context = staging.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
+  if (!context) throw new Error('无法创建图片像素缓冲区')
+  context.clearRect(0, 0, width, height)
+  context.drawImage(source as CanvasImageSource, 0, 0, width, height)
+  return context.getImageData(0, 0, width, height).data
+}
+
 export class WebGpuCompositionRenderer {
   readonly canvas: HTMLCanvasElement | OffscreenCanvas
 
@@ -2277,10 +2288,11 @@ export class WebGpuCompositionRenderer {
       format: 'rgba8unorm',
       usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst | WEBGPU_FLAGS.textureRenderAttachment,
     })
-    this.device.queue.copyExternalImageToTexture(
-      { source, flipY: false },
+    this.device.queue.writeTexture(
       { texture },
-      { width, height },
+      readWebGpuImagePixels(source, width, height),
+      { bytesPerRow: width * 4, rowsPerImage: height },
+      { width, height, depthOrArrayLayers: 1 },
     )
     const entry = { texture, view: texture.createView(), width, height }
     this.imageTextures.set(path, entry)
@@ -2306,10 +2318,11 @@ export class WebGpuCompositionRenderer {
       format: 'rgba8unorm',
       usage: WEBGPU_FLAGS.textureBinding | WEBGPU_FLAGS.textureCopyDst | WEBGPU_FLAGS.textureRenderAttachment,
     })
-    this.device.queue.copyExternalImageToTexture(
-      { source: rasterized.canvas, flipY: false },
+    this.device.queue.writeTexture(
       { texture },
-      { width: rasterized.width, height: rasterized.height },
+      readWebGpuImagePixels(rasterized.canvas, rasterized.width, rasterized.height),
+      { bytesPerRow: rasterized.width * 4, rowsPerImage: rasterized.height },
+      { width: rasterized.width, height: rasterized.height, depthOrArrayLayers: 1 },
     )
     const entry = {
       texture,

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToNativeMediaPreviewUrl } from '../lib/fileUtils'
 import { WebGpuCompositionRenderer } from '../lib/webgpu/composition'
+import type { WebGpuImageSource } from '../lib/webgpu/source'
 import { readWebGpuLut } from '../lib/webgpu/lut-source'
 import { loadWebGpuMask } from '../lib/webgpu/mask-source'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
@@ -27,15 +28,15 @@ interface WebGpuStaticImagePreviewProps {
   time?: number
 }
 
-function loadImage(path: string): Promise<HTMLImageElement> {
+async function loadImage(path: string): Promise<ImageBitmap> {
   const url = filePathToNativeMediaPreviewUrl(path) ?? path
-  return new Promise((resolve, reject) => {
-    const image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error(`图片加载失败: ${path}`))
-    image.src = url
-  })
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`图片加载失败: ${path}`)
+  try {
+    return await createImageBitmap(await response.blob())
+  } catch (error) {
+    throw new Error(`图片解码失败: ${path}`, { cause: error })
+  }
 }
 
 export function WebGpuStaticImagePreview({
@@ -57,7 +58,7 @@ export function WebGpuStaticImagePreview({
 }: WebGpuStaticImagePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<WebGpuCompositionRenderer | null>(null)
-  const imageCacheRef = useRef(new Map<string, HTMLImageElement>())
+  const imageCacheRef = useRef(new Map<string, WebGpuImageSource>())
   const renderRevisionRef = useRef(0)
   const pendingRenderRef = useRef<{ composition: CompositionInput; time: number; revision: number } | null>(null)
   const renderingRef = useRef(false)
@@ -141,6 +142,9 @@ export function WebGpuStaticImagePreview({
       pendingRenderRef.current = null
       renderer.destroy()
       rendererRef.current = null
+      for (const image of imageCache.values()) {
+        if (image instanceof ImageBitmap) image.close()
+      }
       imageCache.clear()
     }
   }, [])
