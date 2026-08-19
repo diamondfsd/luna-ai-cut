@@ -3,14 +3,6 @@ import { initReactI18next } from 'react-i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { DEFAULT_LANGUAGE, SUPPORTED_LANGUAGE_CODES, resolveSupportedLanguage } from './languages'
-import en from './locales/en.json'
-import es from './locales/es.json'
-import fr from './locales/fr.json'
-import de from './locales/de.json'
-import ptBR from './locales/pt-BR.json'
-import tr from './locales/tr.json'
-import ja from './locales/ja.json'
-import ko from './locales/ko.json'
 import zh from './locales/zh.json'
 
 const log = createLogger('i18n')
@@ -20,14 +12,6 @@ export const I18N_STORAGE_KEY = 'freecut-language'
 type LocaleTree = Record<string, unknown>
 
 const baseLocales: Record<string, LocaleTree> = {
-  en: en as LocaleTree,
-  es: es as LocaleTree,
-  fr: fr as LocaleTree,
-  de: de as LocaleTree,
-  'pt-BR': ptBR as LocaleTree,
-  tr: tr as LocaleTree,
-  ja: ja as LocaleTree,
-  ko: ko as LocaleTree,
   zh: zh as LocaleTree,
 }
 
@@ -54,27 +38,23 @@ function normalizePartialSlice(path: string, slice: LocaleTree): LocaleTree {
   return slice
 }
 
-// Eager: English partials only (statically imported, bundled into app-shell).
-const enPartialModules = import.meta.glob<{ default: LocaleTree }>('./locales/partials/en/*.json', {
+// Chinese is the only supported UI language for now, so its partials are bundled eagerly.
+const zhPartialModules = import.meta.glob<{ default: LocaleTree }>('./locales/partials/zh/*.json', {
   eager: true,
 })
 
-// Lazy: all language partial dirs — loaded on demand when switching language.
-const lazyPartialModules = import.meta.glob<{ default: LocaleTree }>('./locales/partials/*/*.json')
-
-// Build the merged English tree eagerly.
-const enMerged: LocaleTree = structuredClone(baseLocales.en ?? {})
-for (const [path, mod] of Object.entries(enPartialModules).sort(([a], [b]) => a.localeCompare(b))) {
-  deepMerge(enMerged, normalizePartialSlice(path, mod.default ?? {}))
+// Build the merged Chinese tree eagerly.
+const zhMerged: LocaleTree = structuredClone(baseLocales.zh ?? {})
+for (const [path, mod] of Object.entries(zhPartialModules).sort(([a], [b]) => a.localeCompare(b))) {
+  deepMerge(zhMerged, normalizePartialSlice(path, mod.default ?? {}))
 }
 
-// Resources: full merged en tree + base-only trees for other languages.
-// Base-only ensures untranslated-yet feature strings fall back to English.
+// Chinese is currently the only UI resource.
 const resources = Object.fromEntries(
   SUPPORTED_LANGUAGE_CODES.map((lang) => [
     lang,
     {
-      translation: lang === DEFAULT_LANGUAGE ? enMerged : structuredClone(baseLocales[lang] ?? {}),
+      translation: lang === DEFAULT_LANGUAGE ? zhMerged : structuredClone(baseLocales[lang] ?? {}),
     },
   ]),
 )
@@ -117,16 +97,6 @@ const loadedLanguages = new Set<string>([DEFAULT_LANGUAGE])
 export async function loadLanguageResources(lang: string): Promise<void> {
   const resolved = resolveSupportedLanguage(lang)
   if (loadedLanguages.has(resolved)) return
-  const prefix = `./locales/partials/${resolved}/`
-  const entries = Object.entries(lazyPartialModules)
-    .filter(([path]) => path.startsWith(prefix))
-    .sort(([a], [b]) => a.localeCompare(b))
-  const tree = structuredClone(baseLocales[resolved] ?? {})
-  for (const [path, loader] of entries) {
-    const mod = await loader()
-    deepMerge(tree, normalizePartialSlice(path, mod.default ?? {}))
-  }
-  i18n.addResourceBundle(resolved, 'translation', tree, false, true)
   loadedLanguages.add(resolved)
 }
 

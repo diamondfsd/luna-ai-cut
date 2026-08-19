@@ -81,7 +81,7 @@ const page = {
         {
           kind: 'list',
           items: [
-            'Interface **language** is a separate control in the toolbar, not part of this dialog; FreeCut ships in 9 languages.',
+            'Interface **language** is a separate control in the toolbar, not part of this dialog; FreeCut currently uses Simplified Chinese.',
           ],
         },
         {

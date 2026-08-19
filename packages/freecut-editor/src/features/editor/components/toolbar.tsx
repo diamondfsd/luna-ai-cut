@@ -13,6 +13,7 @@ import {
   ListVideo,
   MoreHorizontal,
   Settings,
+  Sparkles,
   Video,
 } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
@@ -33,6 +34,19 @@ import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { cn } from '@freecut/shared/ui/cn'
 import { useDebugStore } from '@freecut/features/editor/stores/debug-store'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
+
+interface FreecutWindow extends Window {
+  luna?: {
+    deepseekHarness?: {
+      openWindow(context: {
+        sessionId: string
+        feature: string
+        projectId: string
+        metadata?: Record<string, string>
+      }): Promise<void>
+    }
+  }
+}
 
 interface ToolbarProps {
   projectId: string
@@ -88,6 +102,15 @@ export const Toolbar = memo(function Toolbar({
     } catch {
       // The save path reports the error. Stay in the editor so changes are not lost.
     }
+  }
+
+  const handleAssistantClick = () => {
+    void (window as FreecutWindow).luna?.deepseekHarness?.openWindow({
+      sessionId: crypto.randomUUID(),
+      feature: 'freecut-editor',
+      projectId,
+      metadata: { projectName: project.name },
+    })
   }
 
   const toolbar = (
@@ -154,6 +177,18 @@ export const Toolbar = memo(function Toolbar({
             )}
           </Button>
         )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={handleAssistantClick}
+          data-tooltip={t('toolbar.aiAssistant')}
+          data-tooltip-side="bottom"
+          aria-label={t('toolbar.aiAssistant')}
+        >
+          <Sparkles className="h-4 w-4" />
+        </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

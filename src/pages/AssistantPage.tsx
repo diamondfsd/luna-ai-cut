@@ -6,10 +6,31 @@ import { IconButton } from '../ui'
 import './AssistantPage.css'
 
 export function AssistantPage() {
-  const context = useMemo<DeepSeekHarnessContext>(() => ({
-    sessionId: crypto.randomUUID(),
-    feature: 'assistant',
-  }), [])
+  const context = useMemo<DeepSeekHarnessContext>(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sessionId = params.get('sessionId')
+    const feature = params.get('feature')
+    const projectId = params.get('projectId')
+    const metadataText = params.get('metadata')
+    let metadata: Record<string, string> | undefined
+    if (metadataText) {
+      try {
+        const parsed: unknown = JSON.parse(metadataText)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const entries = Object.entries(parsed).filter(([, value]) => typeof value === 'string')
+          metadata = Object.fromEntries(entries)
+        }
+      } catch {
+        // Ignore malformed optional metadata and keep the assistant usable.
+      }
+    }
+    return {
+      sessionId: sessionId || crypto.randomUUID(),
+      feature: feature || 'assistant',
+      projectId: projectId || undefined,
+      metadata,
+    }
+  }, [])
   const [webUrl, setWebUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 

@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { parse, stringify } from 'yaml'
 
 import { withDeepSeekHarnessDefaults } from './deepseekHarnessDefaults'
@@ -16,7 +17,6 @@ import type {
   DeepSeekHarnessWebState,
 } from '../src/shared/types'
 
-const DEFAULT_HARNESS_MODEL = 'deepseek-v4-flash'
 const MAX_CONTEXT_STRING_LENGTH = 200
 
 interface HarnessRuntime {
@@ -43,7 +43,7 @@ let toolEndpoint: string | undefined
 let assistantWindow: BrowserWindow | undefined
 
 function appRoot(): string {
-  return process.env.APP_ROOT ?? path.resolve(__dirname, '..')
+  return process.env.APP_ROOT ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 }
 
 function harnessSourceRoot(): string | null {
@@ -285,14 +285,25 @@ async function stopRuntime(): Promise<void> {
   await Promise.all([...children].map((child) => terminateChild(child)))
 }
 
-function assistantPageUrl(): string {
+function assistantPageUrl(context?: DeepSeekHarnessContext): string {
   const devServerUrl = process.env.VITE_DEV_SERVER_URL
-  if (devServerUrl) return `${devServerUrl.replace(/\/$/u, '')}/#/assistant`
-  return 'luna://app/index.html#/assistant'
+  const baseUrl = devServerUrl
+    ? `${devServerUrl.replace(/\/$/u, '')}/`
+    : 'luna://app/index.html'
+  const url = new URL(baseUrl)
+  if (context) {
+    url.searchParams.set('sessionId', context.sessionId)
+    if (context.feature) url.searchParams.set('feature', context.feature)
+    if (context.projectId) url.searchParams.set('projectId', context.projectId)
+    if (context.metadata) url.searchParams.set('metadata', JSON.stringify(context.metadata))
+  }
+  url.hash = '/assistant'
+  return url.toString()
 }
 
-export function openDeepSeekHarnessWindow(): void {
+export function openDeepSeekHarnessWindow(context?: DeepSeekHarnessContext): void {
   if (assistantWindow && !assistantWindow.isDestroyed()) {
+    if (context) void assistantWindow.loadURL(assistantPageUrl(context))
     assistantWindow.focus()
     return
   }
@@ -306,7 +317,7 @@ export function openDeepSeekHarnessWindow(): void {
     icon: path.join(appRoot(), 'build', process.platform === 'darwin' ? 'icon.icns' : 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(appRoot(), 'dist-electron', 'preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
@@ -316,7 +327,7 @@ export function openDeepSeekHarnessWindow(): void {
   assistantWindow.on('closed', () => {
     assistantWindow = undefined
   })
-  void assistantWindow.loadURL(assistantPageUrl())
+  void assistantWindow.loadURL(assistantPageUrl(context))
 }
 
 export function closeDeepSeekHarnessWindow(): void {

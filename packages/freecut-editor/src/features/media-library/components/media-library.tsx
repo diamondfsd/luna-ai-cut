@@ -207,6 +207,7 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
     () => new Set(['video', 'audio', 'image', 'gif', 'lottie']),
   )
   const importInFlightRef = useRef(false)
+  const mediaLoadProjectRef = useRef<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   // Store selectors
   const currentProjectId = useMediaLibraryStore((s) => s.currentProjectId)
@@ -310,14 +311,28 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
   const showUnsupportedCodecDialog = useMediaLibraryStore((s) => s.showUnsupportedCodecDialog)
   const resolveUnsupportedCodecDialog = useMediaLibraryStore((s) => s.resolveUnsupportedCodecDialog)
 
-  // HMR recovery: if media store lost project context, rehydrate it from project store.
+  // Keep the media store and project store in sync, then load the project media once.
+  // The editor sets both stores from its mount effect. Depending on effect ordering,
+  // the first render can observe either store before the other one is initialized.
   useEffect(() => {
-    if (!currentProjectId && projectStoreProjectId) {
-      setCurrentProject(projectStoreProjectId)
-      void loadMediaItems().catch((error) => {
-        logger.error('Failed to load media library during store recovery:', error)
-      })
+    if (!projectStoreProjectId) {
+      mediaLoadProjectRef.current = null
+      return
     }
+
+    if (currentProjectId !== projectStoreProjectId) {
+      mediaLoadProjectRef.current = null
+      setCurrentProject(projectStoreProjectId)
+      return
+    }
+
+    if (mediaLoadProjectRef.current === currentProjectId) return
+
+    mediaLoadProjectRef.current = currentProjectId
+    void loadMediaItems().catch((error) => {
+      mediaLoadProjectRef.current = null
+      logger.error('Failed to load media library:', error)
+    })
   }, [currentProjectId, loadMediaItems, projectStoreProjectId, setCurrentProject])
 
   const selectedAssetCount = selectedMediaIds.length + selectedCompositionIds.length
