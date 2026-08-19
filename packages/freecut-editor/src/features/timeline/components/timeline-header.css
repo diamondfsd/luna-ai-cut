@@ -1,0 +1,60 @@
+.editor-toolbar-theme {
+  --editor-toolbar-button-hover: color-mix(in oklab, var(--foreground) 8%, transparent);
+  --editor-toolbar-button-active: color-mix(in oklab, var(--primary) 14%, transparent);
+  --editor-toolbar-button-active-hover: color-mix(in oklab, var(--primary) 20%, transparent);
+}
+
+.editor-toolbar-theme .editor-toolbar-button,
+.editor-toolbar-theme .timeline-header-button {
+  border: 0;
+  border-radius: 5px;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--foreground);
+}
+
+.editor-toolbar-theme .editor-toolbar-button:hover:not(:disabled),
+.editor-toolbar-theme .timeline-header-button:hover:not(:disabled) {
+  background-color: var(--editor-toolbar-button-hover);
+  color: var(--foreground);
+}
+
+.editor-toolbar-theme .editor-toolbar-button-active,
+.editor-toolbar-theme .editor-toolbar-button[aria-pressed='true'],
+.editor-toolbar-theme .timeline-header-button-active,
+.editor-toolbar-theme .timeline-header-button[aria-pressed='true'] {
+  background-color: var(--editor-toolbar-button-active);
+  color: var(--primary);
+}
+
+.editor-toolbar-theme .editor-toolbar-button-active:hover:not(:disabled),
+.editor-toolbar-theme .editor-toolbar-button[aria-pressed='true']:hover:not(:disabled),
+.editor-toolbar-theme .timeline-header-button-active:hover:not(:disabled),
+.editor-toolbar-theme .timeline-header-button[aria-pressed='true']:hover:not(:disabled) {
+  background-color: var(--editor-toolbar-button-active-hover);
+  color: var(--primary);
+}
+
+.editor-toolbar-theme .editor-toolbar-button:disabled,
+.editor-toolbar-theme .timeline-header-button:disabled {
+  color: var(--muted-foreground);
+}
+
+.editor-toolbar-theme .timeline-header-ai-button {
+  border: 0;
+  border-radius: 5px;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--foreground);
+}
+
+.editor-toolbar-theme .timeline-header-ai-button:hover:not(:disabled),
+.editor-toolbar-theme .timeline-header-ai-button[aria-pressed='true'],
+.editor-toolbar-theme .timeline-header-ai-button[aria-pressed='true']:hover:not(:disabled) {
+  background-color: transparent;
+  color: var(--foreground);
+}
+
+.editor-toolbar-theme .timeline-header-symbol {
+  color: currentColor;
+}

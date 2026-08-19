@@ -1,6 +1,24 @@
 import { CURRENT_SCHEMA_VERSION } from '@freecut/shared/projects/migrations'
 import { i18n } from '@freecut/i18n'
 import type { Project } from '@freecut/types/project'
+import type { TimelineTrack } from '@freecut/types/timeline'
+
+const DEFAULT_TIMELINE_ZOOM_LEVEL = 0.125
+
+function createInitialTimelineTracks(): TimelineTrack[] {
+  return [
+    {
+      id: 'id-video', name: '视频', kind: 'video', height: 80,
+      locked: false, syncLock: true, visible: true, muted: false, solo: false,
+      volume: 0, order: 0, items: [],
+    },
+    {
+      id: 'id-audio', name: '音频', kind: 'audio', height: 60,
+      locked: false, syncLock: true, visible: true, muted: false, solo: false,
+      volume: 0, order: 1, items: [],
+    },
+  ]
+}
 
 /**
  * Generate a unique project ID (8-character base62 hash)
@@ -162,6 +180,11 @@ export function createProjectObject(
     duration: 0,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     thumbnail: undefined,
+    timeline: {
+      tracks: createInitialTimelineTracks(),
+      items: [],
+      zoomLevel: DEFAULT_TIMELINE_ZOOM_LEVEL,
+    },
   }
 }
 

@@ -72,10 +72,14 @@ function loadEditorWorkspaceLayout(workspace: EditorWorkspaceId): EditorWorkspac
 
 function getEditorWorkspaceLayoutSnapshot(state: EditorState): EditorWorkspaceLayout {
   return {
+    schemaVersion: 2,
     colorScopesOpen: state.colorScopesOpen,
     clipInspectorTab: state.clipInspectorTab,
     activeTab: state.activeTab,
     propertiesFullColumn: state.propertiesFullColumn,
+    mediaFullColumn: state.mediaFullColumn,
+    sidebarWidth: state.sidebarWidth,
+    rightSidebarWidth: state.rightSidebarWidth,
   }
 }
 
