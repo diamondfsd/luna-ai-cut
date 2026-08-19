@@ -35,9 +35,6 @@ export function usePreviewRuntimeRefs() {
   const scrubRendererStructureKeyRef = useRef<string | null>(null)
   const scrubRenderInFlightRef = useRef(false)
   const scrubRenderGenerationRef = useRef(0)
-  const scrubInitGenerationRef = useRef(0)
-  const bgTransitionInitGenerationRef = useRef(0)
-  const liveScopeCaptureInitGenerationRef = useRef(0)
   const scrubRequestedFrameRef = useRef<number | null>(null)
   const bgTransitionRendererRef = useRef<PreviewCompositionRenderer | null>(null)
   const bgTransitionInitPromiseRef = useRef<Promise<PreviewCompositionRenderer | null> | null>(null)
@@ -134,9 +131,6 @@ export function usePreviewRuntimeRefs() {
       scrubRendererStructureKeyRef,
       scrubRenderInFlightRef,
       scrubRenderGenerationRef,
-      scrubInitGenerationRef,
-      bgTransitionInitGenerationRef,
-      liveScopeCaptureInitGenerationRef,
       scrubRequestedFrameRef,
       bgTransitionRendererRef,
       bgTransitionInitPromiseRef,

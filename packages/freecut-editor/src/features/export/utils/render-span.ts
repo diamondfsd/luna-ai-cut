@@ -21,6 +21,7 @@ export interface SourceTimeRamp {
   /** Timeline frame where the ramp ends (inclusive). */
   rampEnd: number
 }
+
 export interface RenderTimelineSpan {
   from: number
   durationInFrames: number

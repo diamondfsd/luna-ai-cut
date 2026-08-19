@@ -136,9 +136,6 @@ interface UsePreviewRendererControllerParams {
   scrubRendererStructureKeyRef: MutableRefObject<string | null>
   scrubRenderInFlightRef: MutableRefObject<boolean>
   scrubRenderGenerationRef: MutableRefObject<number>
-  scrubInitGenerationRef: MutableRefObject<number>
-  bgTransitionInitGenerationRef: MutableRefObject<number>
-  liveScopeCaptureInitGenerationRef: MutableRefObject<number>
   scrubRequestedFrameRef: MutableRefObject<number | null>
   bgTransitionRendererRef: MutableRefObject<PreviewCompositionRenderer | null>
   bgTransitionInitPromiseRef: MutableRefObject<Promise<PreviewCompositionRenderer | null> | null>
@@ -218,9 +215,6 @@ export function usePreviewRendererController({
   scrubRendererStructureKeyRef,
   scrubRenderInFlightRef,
   scrubRenderGenerationRef,
-  scrubInitGenerationRef,
-  bgTransitionInitGenerationRef,
-  liveScopeCaptureInitGenerationRef,
   scrubRequestedFrameRef,
   bgTransitionRendererRef,
   bgTransitionInitPromiseRef,
@@ -282,6 +276,9 @@ export function usePreviewRendererController({
   const liveScopeCaptureInitPromiseRef = useRef<Promise<PreviewCompositionRenderer | null> | null>(
     null,
   )
+  const scrubInitGenerationRef = useRef(0)
+  const bgTransitionInitGenerationRef = useRef(0)
+  const liveScopeCaptureInitGenerationRef = useRef(0)
   const liveScopeCaptureCanvasRef = useRef<OffscreenCanvas | null>(null)
   const liveScopeCaptureCtxRef = useRef<OffscreenCanvasRenderingContext2D | null>(null)
   const liveScopeCaptureStructureKeyRef = useRef<string | null>(null)
@@ -295,7 +292,7 @@ export function usePreviewRendererController({
   useLayoutEffect(() => {
     const canvas = scrubCanvasRef.current
     if (!canvas) return
-    const backingSize = getPreviewDisplayCanvasBackingSize(playerSize, playerRenderSize)
+    const backingSize = getPreviewDisplayCanvasBackingSize(playerSize, renderSize)
     if (canvas.width !== backingSize.width) canvas.width = backingSize.width
     if (canvas.height !== backingSize.height) canvas.height = backingSize.height
     if (!showFastScrubOverlayRef.current && !showPlaybackTransitionOverlayRef.current) return
@@ -332,7 +329,7 @@ export function usePreviewRendererController({
     drawSourceToPreviewDisplayCanvas(ctx, canvas, offscreen)
     setDisplayedFrame(renderedFrame)
   }, [
-    playerRenderSize,
+    renderSize,
     playerSize,
     committedPreviewSnapshotRef,
     scrubCanvasRef,
@@ -729,9 +726,9 @@ export function usePreviewRendererController({
           ])
           return renderer
         } catch (error) {
-          markPlaybackStartReadiness({ rendererInitFailedMs: performance.now() })
           logger.warn('Failed to initialize renderer, falling back to Player seeks:', error)
           if (scrubInitGenerationRef.current === initGeneration) {
+            markPlaybackStartReadiness({ rendererInitFailedMs: performance.now() })
             scrubRendererRef.current = null
             setActivePreviewScrubbingCache(null)
             scrubOffscreenCanvasRef.current = null
@@ -1824,7 +1821,9 @@ export function usePreviewRendererController({
       // ensureFastScrubRenderer() is already in flight before this idle
       // callback fires, and the pool must still warm.
       warmDecoderPrewarmWorkerPool()
-      warmScrubProxyFallback()
+      if (useProxy) {
+        warmScrubProxyFallback()
+      }
       if (scrubRendererRef.current || scrubInitPromiseRef.current) return
       void ensureFastScrubRenderer()
     }
@@ -1853,7 +1852,7 @@ export function usePreviewRendererController({
         clearTimeout(timeoutId)
       }
     }
-  }, [ensureFastScrubRenderer, isResolving, scrubInitPromiseRef, scrubRendererRef])
+  }, [ensureFastScrubRenderer, isResolving, scrubInitPromiseRef, scrubRendererRef, useProxy])
 
   useEffect(() => {
     return () => {

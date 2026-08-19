@@ -114,6 +114,7 @@ function renderGpuShapeParticipantToTexture(
     }) ?? false
   )
 }
+
 function renderGpuTextureParticipantToTexture(
   prepared: PreparedGpuMediaParticipant,
   rctx: ItemRenderContext,
