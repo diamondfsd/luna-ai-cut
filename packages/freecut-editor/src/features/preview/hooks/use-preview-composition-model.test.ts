@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vite-plus/test'
 import type { TimelineTrack } from '@freecut/types/timeline'
 import {
   buildPreviewCompositionData,
-  mergeLiveTransitionItem,
   mergeLiveItemPresentation,
   mergeLiveItemPreview,
 } from './use-preview-composition-model'
@@ -62,38 +61,6 @@ describe('mergeLiveItemPresentation', () => {
       from: 10,
       durationInFrames: 100,
       transform: { x: 20, y: 10, width: 420, height: 126 },
-    })
-  })
-})
-
-describe('mergeLiveTransitionItem', () => {
-  it('keeps the resolved preview source while using live trim geometry', () => {
-    const snapshot = {
-      id: 'clip-1',
-      trackId: 'track-1',
-      type: 'video' as const,
-      src: 'proxy://clip-1',
-      label: 'Clip',
-      from: 10,
-      durationInFrames: 40,
-      sourceStart: 0,
-      sourceEnd: 40,
-    }
-    const live = {
-      ...snapshot,
-      src: 'blob://clip-1',
-      from: 20,
-      durationInFrames: 30,
-      sourceStart: 10,
-      sourceEnd: 40,
-    }
-
-    expect(mergeLiveTransitionItem(snapshot, live)).toMatchObject({
-      src: 'proxy://clip-1',
-      from: 20,
-      durationInFrames: 30,
-      sourceStart: 10,
-      sourceEnd: 40,
     })
   })
 })

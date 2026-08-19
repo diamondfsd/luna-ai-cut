@@ -427,11 +427,11 @@ export function usePreviewTransitionSessionController({
 
   const isPausedTransitionOverlayActive = useCallback(
     (frame: number, playbackState: { isPlaying: boolean; previewFrame: number | null }) => {
-      const targetFrame = playbackState.previewFrame ?? frame
       return shouldUsePausedTransitionOverlay({
         isPlaying: playbackState.isPlaying,
+        previewFrame: playbackState.previewFrame,
         forceFastScrubOverlay,
-        hasActiveTransition: getActiveTransitionWindowForFrame(targetFrame) !== null,
+        hasActiveTransition: getActiveTransitionWindowForFrame(frame) !== null,
       })
     },
     [forceFastScrubOverlay, getActiveTransitionWindowForFrame],

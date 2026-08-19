@@ -9,7 +9,7 @@ import type {
 
 import { LoadingIndicator } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
-import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { filePathToNativeMediaPreviewUrl } from '../lib/fileUtils'
 import './VideoEditorPage.css'
 
 const FreeCutEditor = lazy(async () => {
@@ -122,7 +122,7 @@ export function VideoEditorPage() {
   )
 
   const handleResolveNativeMediaUrl = useCallback(
-    (filePath: string) => filePathToPreviewUrl(filePath) ?? filePath,
+    (filePath: string) => filePathToNativeMediaPreviewUrl(filePath) ?? filePath,
     [],
   )
 

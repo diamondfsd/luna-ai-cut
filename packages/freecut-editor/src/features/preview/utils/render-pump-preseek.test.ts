@@ -17,11 +17,9 @@ function expectMapCloseTo(
   }
 }
 import type { CompositionItem, TimelineItem, TimelineTrack, VideoItem } from '@freecut/types/timeline'
-import type { Transition } from '@freecut/types/transition'
 import {
   collectClipVideoSourceTimesBySrcForFrame,
   collectClipVideoSourceTimesBySrcForFrameRange,
-  collectTransitionVideoSourceTimesBySrcForFrame,
   collectPlaybackStartVariableSpeedPreseekTargets,
   collectPlaybackStartVariableSpeedPrewarmItemIds,
   collectVisibleTrackVideoSourceTimesBySrc,
@@ -294,57 +292,6 @@ describe('render pump preseek helpers', () => {
       new Map([
         ['left.mp4', [1 / 30]],
         ['right.mp4', [60 / 30 + 1 / 30]],
-      ]),
-    )
-  })
-
-  it('includes an incoming transition participant before its natural clip start', () => {
-    const left = makeVideoItem({
-      id: 'left',
-      src: 'left.mp4',
-      from: 0,
-      durationInFrames: 60,
-      sourceStart: 0,
-      sourceFps: 30,
-      speed: 1,
-    })
-    const right = makeVideoItem({
-      id: 'right',
-      src: 'right.mp4',
-      from: 60,
-      durationInFrames: 60,
-      sourceStart: 0,
-      sourceFps: 30,
-      speed: 1,
-    })
-    const transitionWindow = {
-      transition: {
-        id: 'transition-1',
-        type: 'crossfade',
-        presentation: 'fade',
-        timing: 'linear',
-        leftClipId: left.id,
-        rightClipId: right.id,
-        trackId: left.trackId,
-        durationInFrames: 20,
-      } satisfies Transition,
-      leftClip: left,
-      rightClip: right,
-      cutPoint: 60,
-      startFrame: 50,
-      endFrame: 70,
-      durationInFrames: 20,
-      leftPortion: 10,
-      rightPortion: 10,
-    }
-
-    expectMapCloseTo(
-      collectTransitionVideoSourceTimesBySrcForFrame(transitionWindow, 55, 30, {
-        requireExplicitSourceFps: true,
-      }),
-      new Map([
-        ['left.mp4', [55 / 30]],
-        ['right.mp4', [5 / 30]],
       ]),
     )
   })

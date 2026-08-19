@@ -35,6 +35,15 @@ protocol.registerSchemesAsPrivileged([
       corsEnabled: true,
     },
   },
+  {
+    scheme: 'luna-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
 ])
 
 async function boot(): Promise<void> {

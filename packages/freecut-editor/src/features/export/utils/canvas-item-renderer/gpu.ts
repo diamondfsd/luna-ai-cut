@@ -56,8 +56,6 @@ import {
   GPU_TEXT_TEXTURE_CACHE_MAX_BYTES,
   log,
   resolveItemTransform,
-  TIER2_VIDEO_FRAME_TOLERANCE_FACTOR,
-  WORKER_PRESEEK_WAIT_MS,
 } from './shared'
 import { calculateContainedMediaDrawLayout, hasCropFeather } from './media-draw'
 import {
@@ -705,99 +703,18 @@ async function resolveGpuMediaParticipantSource(
   }
 
   if (participant.item.type !== 'video') return null
+  if (!rctx.useMediabunny.has(participant.item.id)) return null
+  if (rctx.mediabunnyDisabledItems.has(participant.item.id)) return null
+
+  const extractor = rctx.videoExtractors.get(participant.item.id)
+  if (!extractor) return null
+
   const sourceTime = resolveVideoParticipantSourceTime(
     participant.item,
     participant.renderSpan,
     frame,
     rctx,
   )
-  const sourceFps = participant.item.sourceFps ?? rctx.fps
-  const toleranceSeconds =
-    (1 / (Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : 30)) *
-    TIER2_VIDEO_FRAME_TOLERANCE_FACTOR
-  const workerSource =
-    rctx.getResolvedVideoSource?.(participant.item, sourceTime, toleranceSeconds) ??
-    participant.item.src
-
-  // The worker and GPU lanes share the same source-time contract. This is the
-  // fast path for paused scrubs: the worker owns random access, while WebGPU
-  // owns the actual participant render and transition composite.
-  if (workerSource) {
-    const maxDimension = rctx.getPreviewVideoDecodeMaxDimension?.()
-    const cachedBitmap =
-      maxDimension === undefined
-        ? rctx.getCachedPredecodedBitmap?.(workerSource, sourceTime, toleranceSeconds)
-        : rctx.getCachedPredecodedBitmap?.(
-            workerSource,
-            sourceTime,
-            toleranceSeconds,
-            maxDimension,
-          )
-    if (cachedBitmap) {
-      recordPreviewVideoSource({
-        frame,
-        itemId: participant.item.id,
-        path: 'worker-bitmap',
-        sourceTime,
-      })
-      return {
-        kind: 'media',
-        item: participant.item,
-        source: cachedBitmap,
-        sourceWidth: cachedBitmap.width,
-        sourceHeight: cachedBitmap.height,
-      }
-    }
-
-    if (rctx.isActivePreviewFrameCurrent?.(frame)) {
-      const maxWaitMs = rctx.workerPredecodeWaitMs ?? WORKER_PRESEEK_WAIT_MS
-      const inflightBitmap =
-        maxDimension === undefined
-          ? await rctx.waitForInflightPredecodedBitmap?.(
-              workerSource,
-              sourceTime,
-              toleranceSeconds,
-              maxWaitMs,
-            )
-          : await rctx.waitForInflightPredecodedBitmap?.(
-              workerSource,
-              sourceTime,
-              toleranceSeconds,
-              maxWaitMs,
-              maxDimension,
-            )
-      if (inflightBitmap) {
-        recordPreviewVideoSource({
-          frame,
-          itemId: participant.item.id,
-          path: 'worker-bitmap',
-          sourceTime,
-        })
-        return {
-          kind: 'media',
-          item: participant.item,
-          source: inflightBitmap,
-          sourceWidth: inflightBitmap.width,
-          sourceHeight: inflightBitmap.height,
-        }
-      }
-    }
-  }
-
-  // If the worker has not delivered the active target, warm the shared
-  // MediaBunny extractor and capture the exact VideoFrame for the same GPU
-  // upload path. This is deliberately before any DOM fallback.
-  if (
-    !rctx.useMediabunny.has(participant.item.id) &&
-    !rctx.mediabunnyDisabledItems.has(participant.item.id)
-  ) {
-    await rctx.ensureVideoItemReady?.(participant.item.id, participant.item)
-  }
-  if (rctx.mediabunnyDisabledItems.has(participant.item.id)) return null
-
-  const extractor = rctx.videoExtractors.get(participant.item.id)
-  if (!extractor || !rctx.useMediabunny.has(participant.item.id)) return null
-
   const captured = await extractor.captureFrame(sourceTime)
   if (!captured.success || !captured.frame) return null
   const sourceWidth =

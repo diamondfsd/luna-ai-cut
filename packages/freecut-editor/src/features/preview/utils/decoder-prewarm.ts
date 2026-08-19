@@ -104,12 +104,7 @@ const pendingBatchRequests = new Map<
 >()
 
 /** Cache of pre-decoded bitmaps keyed by video source URL. Multiple entries per source. */
-type CachedBitmapEntry = {
-  bitmap: ImageBitmap
-  timestamp: number
-  /** Undefined means native/full resolution; otherwise the requested max edge. */
-  maxDimension?: number
-}
+type CachedBitmapEntry = { bitmap: ImageBitmap; timestamp: number }
 const bitmapCache = new Map<string, CachedBitmapEntry[]>()
 const bitmapCacheCapacityBySrc = new Map<string, number>()
 type CachedFallbackBitmapEntry = CachedBitmapEntry & { proxyTimestamp: number }
@@ -118,7 +113,6 @@ const unavailableBlobUrls = new Set<string>()
 
 type InflightPreseek = {
   timestamp: number
-  maxDimension?: number
   promise: Promise<ImageBitmap | null>
 }
 
@@ -133,13 +127,11 @@ export interface ActivePreviewPreseekRequest {
   src: string
   timestamp: number
   lookaheadTimestamps?: number[]
-  maxDimension?: number
 }
 
 type ActivePreviewRequestState = {
   src: string
   timestamp: number
-  maxDimension?: number
   lookaheadTimestamps: number[]
   promise: Promise<ImageBitmap | null>
   resolve: (bitmap: ImageBitmap | null) => void
@@ -205,7 +197,6 @@ let latestActivePreviewTimelineFrame: number | null = null
 let activePreviewRequestVersion = 0
 let activePreviewSettleTimer: ReturnType<typeof setTimeout> | null = null
 const latestActivePreviewTimestampsBySrc = new Map<string, number[]>()
-let latestActivePreviewMaxDimension: number | undefined
 const activePreviewReadyListeners = new Set<(src: string, timestamp: number) => void>()
 
 // Dev: expose cache for debugging. Guard `window` — this module is also pulled
@@ -365,25 +356,10 @@ function releaseWorker(pw: PoolWorker): void {
   drainQueuedPreseeks()
 }
 
-function normalizeMaxDimension(maxDimension: number | undefined): number | undefined {
-  return Number.isFinite(maxDimension) && Number(maxDimension) >= 1
-    ? Math.max(1, Math.round(Number(maxDimension)))
-    : undefined
-}
-
-function canSatisfyDecodeSize(
-  cachedMaxDimension: number | undefined,
-  requestedMaxDimension: number | undefined,
-): boolean {
-  if (requestedMaxDimension === undefined) return cachedMaxDimension === undefined
-  return cachedMaxDimension === undefined || cachedMaxDimension >= requestedMaxDimension
-}
-
 function findClosestBitmapEntry(
   src: string,
   timestamp: number,
   toleranceSeconds: number,
-  maxDimension?: number,
 ): CachedBitmapEntry | null {
   const entries = bitmapCache.get(src)
   if (!entries || entries.length === 0) return null
@@ -395,9 +371,7 @@ function findClosestBitmapEntry(
 
   let best: CachedBitmapEntry | null = null
   let bestDist = Infinity
-  const normalizedMaxDimension = normalizeMaxDimension(maxDimension)
   for (const entry of entries) {
-    if (!canSatisfyDecodeSize(entry.maxDimension, normalizedMaxDimension)) continue
     const dist = Math.abs(entry.timestamp - timestamp)
     if (dist <= toleranceSeconds && dist < bestDist) {
       bestDist = dist
@@ -412,16 +386,13 @@ function findMatchingInflightPreseek(
   src: string,
   timestamp: number,
   toleranceSeconds: number,
-  maxDimension?: number,
 ): InflightPreseek | null {
   const entries = inflightPreseekBySrc.get(src)
   if (!entries || entries.length === 0) return null
 
   let best: InflightPreseek | null = null
   let bestDist = Infinity
-  const normalizedMaxDimension = normalizeMaxDimension(maxDimension)
   for (const entry of entries) {
-    if (!canSatisfyDecodeSize(entry.maxDimension, normalizedMaxDimension)) continue
     const dist = Math.abs(entry.timestamp - timestamp)
     if (dist <= toleranceSeconds && dist < bestDist) {
       bestDist = dist
@@ -484,30 +455,32 @@ function ensureBitmapCacheSourceCapacity(src: string): void {
   decoderPrewarmMetrics.cacheSourceEvictions += 1
 }
 
+function replaceDuplicateCachedBitmap(entries: CachedBitmapEntry[], timestamp: number): void {
+  const duplicateIndex = entries.findIndex(
+    (entry) => Math.abs(entry.timestamp - timestamp) <= PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS,
+  )
+  if (duplicateIndex < 0) return
+  const [duplicate] = entries.splice(duplicateIndex, 1)
+  duplicate?.bitmap.close()
+}
+
 function cachePredecodedBitmap(
   src: string,
   timestamp: number,
   bitmap: ImageBitmap,
-  options: { requestedCapacity?: number; maxDimension?: number } = {},
+  requestedCapacity = MAX_CACHED_BITMAPS_PER_SOURCE,
 ): void {
   ensureBitmapCacheSourceCapacity(src)
 
-  const maxDimension = normalizeMaxDimension(options.maxDimension)
-
   const capacity = Math.max(
     MAX_CACHED_BITMAPS_PER_SOURCE,
-    Math.round(options.requestedCapacity ?? MAX_CACHED_BITMAPS_PER_SOURCE),
+    Math.round(requestedCapacity),
     bitmapCacheCapacityBySrc.get(src) ?? 0,
   )
   bitmapCacheCapacityBySrc.set(src, capacity)
   const entries = bitmapCache.get(src) ?? []
-  const duplicateIndex = entries.findIndex(
-    (entry) =>
-      Math.abs(entry.timestamp - timestamp) <= PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS &&
-      entry.maxDimension === maxDimension,
-  )
-  if (duplicateIndex >= 0) entries.splice(duplicateIndex, 1)[0]?.bitmap.close()
-  entries.push({ bitmap, timestamp, maxDimension })
+  replaceDuplicateCachedBitmap(entries, timestamp)
+  entries.push({ bitmap, timestamp })
   trimCachedBitmapEntries(entries, capacity)
   bitmapCache.delete(src)
   bitmapCache.set(src, entries)
@@ -613,20 +586,12 @@ function removeInflightPreseek(src: string, entry: InflightPreseek): void {
   inflightPreseekBySrc.set(src, filtered)
 }
 
-function queueLatestPreseek(
-  src: string,
-  timestamp: number,
-  maxDimension?: number,
-): Promise<ImageBitmap | null> {
+function queueLatestPreseek(src: string, timestamp: number): Promise<ImageBitmap | null> {
   let resolve!: (bitmap: ImageBitmap | null) => void
   const promise = new Promise<ImageBitmap | null>((resolvePromise) => {
     resolve = resolvePromise
   })
-  const inflightEntry: InflightPreseek = {
-    timestamp,
-    maxDimension: normalizeMaxDimension(maxDimension),
-    promise,
-  }
+  const inflightEntry: InflightPreseek = { timestamp, promise }
 
   const existing = queuedPreseekBySrc.get(src)
   if (existing) {
@@ -668,9 +633,7 @@ function drainQueuedPreseeks(): void {
     // Avoid matching the queued promise against itself when the real worker
     // request starts. Other same-source in-flight work remains reusable.
     removeInflightPreseek(queued.src, queued.inflightEntry)
-    void startBackgroundPreseek(queued.src, queued.timestamp, false, {
-      maxDimension: queued.inflightEntry.maxDimension,
-    }).then(queued.resolve, () => {
+    void startBackgroundPreseek(queued.src, queued.timestamp, false).then(queued.resolve, () => {
       queued.resolve(null)
     })
   }
@@ -742,7 +705,6 @@ function createActivePreviewRequestState({
   src,
   timestamp,
   lookaheadTimestamps = [],
-  maxDimension,
 }: ActivePreviewPreseekRequest): ActivePreviewRequestState {
   let resolve!: (bitmap: ImageBitmap | null) => void
   const promise = new Promise<ImageBitmap | null>((resolvePromise) => {
@@ -751,7 +713,6 @@ function createActivePreviewRequestState({
   const state: ActivePreviewRequestState = {
     src,
     timestamp,
-    maxDimension: normalizeMaxDimension(maxDimension),
     lookaheadTimestamps: [...new Set(lookaheadTimestamps)]
       .filter(
         (candidate) =>
@@ -763,7 +724,7 @@ function createActivePreviewRequestState({
     promise,
     resolve,
     settled: false,
-    inflightEntry: { timestamp, maxDimension: normalizeMaxDimension(maxDimension), promise },
+    inflightEntry: { timestamp, promise },
   }
   addInflightPreseek(src, state.inflightEntry)
   return state
@@ -779,18 +740,14 @@ function settleActivePreviewRequest(
   request.resolve(bitmap)
 }
 
-function scheduleMissingActivePreviewLookahead(
-  src: string,
-  timestamps: number[],
-  maxDimension?: number,
-): void {
+function scheduleMissingActivePreviewLookahead(src: string, timestamps: number[]): void {
   const missing = timestamps.filter(
     (timestamp) =>
-      !getCachedPredecodedBitmap(src, timestamp, PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS, maxDimension),
+      !getCachedPredecodedBitmap(src, timestamp, PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS),
   )
   if (missing.length === 0) return
   decoderPrewarmMetrics.activeLookaheadPosts += 1
-  void backgroundBatchPreseek(src, missing, { maxDimension })
+  void backgroundBatchPreseek(src, missing)
 }
 
 function drainQueuedActivePreviewRequests(): void {
@@ -861,9 +818,7 @@ function startActivePreviewRequest(request: ActivePreviewRequestState): void {
     const wasCancelled = inflight.cancelled
     if (bitmap && !wasCancelled) {
       decoderPrewarmMetrics.workerSuccesses += 1
-      cachePredecodedBitmap(inflight.src, inflight.timestamp, bitmap, {
-        maxDimension: inflight.maxDimension,
-      })
+      cachePredecodedBitmap(inflight.src, inflight.timestamp, bitmap)
     } else if (bitmap) {
       closeUnclaimedBitmap(bitmap)
     } else if (!wasCancelled) {
@@ -876,16 +831,11 @@ function startActivePreviewRequest(request: ActivePreviewRequestState): void {
           inflight.src,
           inflight.timestamp,
           PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS,
-          inflight.maxDimension,
         )
     settleActivePreviewRequest(inflight, resolvedBitmap)
 
     if (resolvedBitmap && inflight.lookaheadTimestamps.length > 0) {
-      scheduleMissingActivePreviewLookahead(
-        inflight.src,
-        inflight.lookaheadTimestamps,
-        inflight.maxDimension,
-      )
+      scheduleMissingActivePreviewLookahead(inflight.src, inflight.lookaheadTimestamps)
     }
     drainQueuedActivePreviewRequests()
   }
@@ -927,7 +877,6 @@ function startActivePreviewRequest(request: ActivePreviewRequestState): void {
             blob,
             keyframeTimestamps,
             sourceMetadata,
-            maxDimension: inflight.maxDimension,
           }
         : {
             type: 'active_preseek',
@@ -937,7 +886,6 @@ function startActivePreviewRequest(request: ActivePreviewRequestState): void {
             timestamp: inflight.timestamp,
             keyframeTimestamps,
             sourceMetadata,
-            maxDimension: inflight.maxDimension,
           },
     )
   }
@@ -982,24 +930,17 @@ export function activePreviewPreseek(
     clearTimeout(activePreviewSettleTimer)
     activePreviewSettleTimer = null
   }
-  const maxDimension = normalizeMaxDimension(request.maxDimension)
-  latestActivePreviewMaxDimension = maxDimension
   latestActivePreviewTimestampsBySrc.set(request.src, [request.timestamp])
   const cached = getCachedPredecodedBitmap(
     request.src,
     request.timestamp,
     PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS,
-    maxDimension,
   )
   if (cached) {
     cancelSupersededActivePreviewRequests(request.src)
     decoderPrewarmMetrics.activeCacheHits += 1
     if (request.lookaheadTimestamps?.length) {
-      scheduleMissingActivePreviewLookahead(
-        request.src,
-        request.lookaheadTimestamps,
-        maxDimension,
-      )
+      scheduleMissingActivePreviewLookahead(request.src, request.lookaheadTimestamps)
     }
     return Promise.resolve(cached)
   }
@@ -1008,7 +949,6 @@ export function activePreviewPreseek(
     if (
       !inflight.cancelled &&
       inflight.src === request.src &&
-      canSatisfyDecodeSize(inflight.maxDimension, maxDimension) &&
       Math.abs(inflight.timestamp - request.timestamp) <= PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS
     ) {
       decoderPrewarmMetrics.inflightReuses += 1
@@ -1018,7 +958,6 @@ export function activePreviewPreseek(
   const queuedForSource = queuedActivePreviewRequestsBySrc.get(request.src)
   if (
     queuedForSource &&
-    canSatisfyDecodeSize(queuedForSource.maxDimension, maxDimension) &&
     Math.abs(queuedForSource.timestamp - request.timestamp) <=
       PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS
   ) {
@@ -1051,10 +990,7 @@ export function activePreviewPreseek(
 export function setActivePreviewRenderTarget(frame: number | null): void {
   latestActivePreviewTimelineFrame = frame
   activePreviewScrubSession = frame !== null
-  if (frame === null) {
-    latestActivePreviewTimestampsBySrc.clear()
-    latestActivePreviewMaxDimension = undefined
-  }
+  if (frame === null) latestActivePreviewTimestampsBySrc.clear()
 }
 
 export function settleActivePreviewRenderTarget(frame: number): void {
@@ -1106,12 +1042,7 @@ export function isActivePreviewFrameDecodeReady(frame: number): boolean {
   for (const [src, timestamps] of latestActivePreviewTimestampsBySrc) {
     for (const timestamp of timestamps) {
       if (
-        !getCachedPredecodedBitmap(
-          src,
-          timestamp,
-          PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS,
-          latestActivePreviewMaxDimension,
-        ) &&
+        !getCachedPredecodedBitmap(src, timestamp, PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS) &&
         !getCachedActivePreviewFallbackBitmap(
           src,
           timestamp,
@@ -1130,14 +1061,7 @@ function isActivePreviewFrameExactDecodeReady(frame: number): boolean {
   if (latestActivePreviewTimestampsBySrc.size === 0) return true
   for (const [src, timestamps] of latestActivePreviewTimestampsBySrc) {
     for (const timestamp of timestamps) {
-      if (
-        !getCachedPredecodedBitmap(
-          src,
-          timestamp,
-          PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS,
-          latestActivePreviewMaxDimension,
-        )
-      ) {
+      if (!getCachedPredecodedBitmap(src, timestamp, PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS)) {
         return false
       }
     }
@@ -1176,21 +1100,15 @@ export function isActivePreviewTargetSuperseded(
   )
 }
 
-export function backgroundPreseek(
-  src: string,
-  timestamp: number,
-  options: { maxDimension?: number } = {},
-): Promise<ImageBitmap | null> {
-  return startBackgroundPreseek(src, timestamp, true, options)
+export function backgroundPreseek(src: string, timestamp: number): Promise<ImageBitmap | null> {
+  return startBackgroundPreseek(src, timestamp, true)
 }
 
 function startBackgroundPreseek(
   src: string,
   timestamp: number,
   countRequest: boolean,
-  options: { maxDimension?: number } = {},
 ): Promise<ImageBitmap | null> {
-  const maxDimension = normalizeMaxDimension(options.maxDimension)
   if (countRequest) {
     decoderPrewarmMetrics.requests += 1
   }
@@ -1201,7 +1119,6 @@ function startBackgroundPreseek(
     src,
     timestamp,
     PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS,
-    maxDimension,
   )
   if (cachedBitmap) {
     decoderPrewarmMetrics.cacheHits += 1
@@ -1212,7 +1129,6 @@ function startBackgroundPreseek(
     src,
     timestamp,
     PRESEEK_REQUEST_REUSE_TOLERANCE_SECONDS,
-    maxDimension,
   )
   if (inflightMatch) {
     decoderPrewarmMetrics.inflightReuses += 1
@@ -1224,9 +1140,7 @@ function startBackgroundPreseek(
   // requests from growing without limit while still using the next free worker.
   const pw = acquireWorker()
   if (!pw) {
-    return workerPool.length > 0
-      ? queueLatestPreseek(src, timestamp, maxDimension)
-      : Promise.resolve(null)
+    return workerPool.length > 0 ? queueLatestPreseek(src, timestamp) : Promise.resolve(null)
   }
 
   const id = `preseek-${++requestId}`
@@ -1243,7 +1157,7 @@ function startBackgroundPreseek(
         releaseWorker(pw)
         if (bitmap) {
           decoderPrewarmMetrics.workerSuccesses += 1
-          cachePredecodedBitmap(src, timestamp, bitmap, { maxDimension })
+          cachePredecodedBitmap(src, timestamp, bitmap)
         } else {
           decoderPrewarmMetrics.workerFailures += 1
         }
@@ -1271,25 +1185,8 @@ function startBackgroundPreseek(
       decoderPrewarmMetrics.workerPosts += 1
       w.postMessage(
         blob
-          ? {
-              type: 'preseek',
-              id,
-              src,
-              timestamp,
-              blob,
-              keyframeTimestamps,
-              sourceMetadata,
-              maxDimension,
-            }
-          : {
-              type: 'preseek',
-              id,
-              src,
-              timestamp,
-              keyframeTimestamps,
-              sourceMetadata,
-              maxDimension,
-            },
+          ? { type: 'preseek', id, src, timestamp, blob, keyframeTimestamps, sourceMetadata }
+          : { type: 'preseek', id, src, timestamp, keyframeTimestamps, sourceMetadata },
       )
     }
 
@@ -1326,7 +1223,7 @@ function startBackgroundPreseek(
       }
     }
   })
-  const inflightEntry: InflightPreseek = { timestamp, maxDimension, promise }
+  const inflightEntry: InflightPreseek = { timestamp, promise }
   addInflightPreseek(src, inflightEntry)
   void promise.finally(() => {
     removeInflightPreseek(src, inflightEntry)
@@ -1405,10 +1302,7 @@ export function backgroundBatchPreseek(
         for (const bitmap of bitmaps.values()) bitmap.close()
       } else {
         for (const [ts, bitmap] of bitmaps) {
-          cachePredecodedBitmap(src, ts, bitmap, {
-            requestedCapacity: cacheCapacity,
-            maxDimension,
-          })
+          cachePredecodedBitmap(src, ts, bitmap, cacheCapacity)
         }
       }
       settleCaller(requestCancelled ? new Map() : bitmaps)
@@ -1500,7 +1394,6 @@ export function backgroundBatchPreseek(
   for (const timestamp of uniqueTimestamps) {
     const inflightEntry: InflightPreseek = {
       timestamp,
-      maxDimension: normalizeMaxDimension(maxDimension),
       promise: promise.then((bitmaps) => bitmaps.get(timestamp) ?? null),
     }
     addInflightPreseek(src, inflightEntry)
@@ -1520,9 +1413,8 @@ export function getCachedPredecodedBitmap(
   src: string,
   timestamp: number,
   toleranceSeconds = 0.5,
-  maxDimension?: number,
 ): ImageBitmap | null {
-  return findClosestBitmapEntry(src, timestamp, toleranceSeconds, maxDimension)?.bitmap ?? null
+  return findClosestBitmapEntry(src, timestamp, toleranceSeconds)?.bitmap ?? null
 }
 
 export async function waitForInflightPredecodedBitmap(
@@ -1530,10 +1422,9 @@ export async function waitForInflightPredecodedBitmap(
   timestamp: number,
   toleranceSeconds = 0.5,
   maxWaitMs = 12,
-  maxDimension?: number,
 ): Promise<ImageBitmap | null> {
   decoderPrewarmMetrics.waitRequests += 1
-  const inflight = findMatchingInflightPreseek(src, timestamp, toleranceSeconds, maxDimension)
+  const inflight = findMatchingInflightPreseek(src, timestamp, toleranceSeconds)
   if (!inflight) return null
   decoderPrewarmMetrics.waitMatches += 1
 
@@ -1566,13 +1457,13 @@ export async function waitForInflightPredecodedBitmap(
   }
 
   if (!resolved) {
-    return getCachedPredecodedBitmap(src, timestamp, toleranceSeconds, maxDimension)
+    return getCachedPredecodedBitmap(src, timestamp, toleranceSeconds)
   }
 
   // A superseded worker request may resolve after its consumer has moved to a
   // newer target. Only return a bitmap that is indexed at the requested source
   // timestamp; never draw an unverified worker result as an exact scrub frame.
-  return getCachedPredecodedBitmap(src, timestamp, toleranceSeconds, maxDimension)
+  return getCachedPredecodedBitmap(src, timestamp, toleranceSeconds)
 }
 
 /**
