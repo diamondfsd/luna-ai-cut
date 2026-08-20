@@ -7,6 +7,7 @@ const DEFAULT_AGENTS_START = '<!-- luna-ai-cut:default-agents:start -->'
 const DEFAULT_AGENTS_END = '<!-- luna-ai-cut:default-agents:end -->'
 const CURRENT_PROJECT_START = '<!-- luna-ai-cut:current-project:start -->'
 const CURRENT_PROJECT_END = '<!-- luna-ai-cut:current-project:end -->'
+const PROJECT_FILE_NAME = 'PROJECT.md'
 
 export interface HarnessSessionProject {
   projectId: string
@@ -37,25 +38,29 @@ async function writePrivateText(filePath: string, value: string): Promise<void> 
   }
 }
 
-function currentProjectInstructions(project?: HarnessSessionProject): string {
-  if (!project) return ''
-  return `${CURRENT_PROJECT_START}
-## 当前打开的剪辑项目
+function projectDocument(project?: HarnessSessionProject): string {
+  if (!project) {
+    return `# 当前打开的 FreeCut 剪辑项目
+
+当前没有可用的 FreeCut 剪辑项目。`
+  }
+  return `# 当前打开的 FreeCut 剪辑项目
 
 - projectId: ${JSON.stringify(project.projectId)}
 - projectName: ${JSON.stringify(project.projectName ?? project.projectId)}
 
-这是宿主当前已经打开的 FreeCut 剪辑项目。通过 Luna SDK 操作剪辑时，使用这个项目上下文；不要猜测或替换 projectId。
-${CURRENT_PROJECT_END}`
+这是宿主当前已经打开的 FreeCut 剪辑项目。通过 Luna SDK 操作剪辑时，使用这个项目上下文；不要猜测或替换 projectId。`
 }
 
-export function defaultSessionAgents(project?: HarnessSessionProject): string {
-  const currentProject = currentProjectInstructions(project)
+export function defaultSessionAgents(): string {
   return `${DEFAULT_AGENTS_START}
 # Luna AI Cut 编辑会话
 
 当前会话已经接入 Luna Editor SDK。涉及 FreeCut 剪辑时，使用 Harness 提供的 edit.run_script 工具，
 在脚本中调用注入的 luna SDK。不要直接修改项目文件、时间线内部数据或 Electron 状态。
+
+当前项目上下文不写在本文件中。理解本文件和用户请求后，在第一次调用 Luna SDK 之前，使用 Harness 的 read 工具读取当前工作目录的
+PROJECT.md；以其中的 projectId 和 projectName 为准，不要猜测、替换或向用户索要 projectId。
 
 脚本必须导出：
 
@@ -92,11 +97,12 @@ small-music 或 small-sfx；提交后用 audio.getTask 轮询。queued、prepari
 都表示仍在处理，只有 completed 且存在 mediaId 时才能加入时间轴，failed 时读取结构化错误。
 分析任务为 failed 时，不得继续把不存在的分析结果当作事实使用。
 不要根据固定文案猜测用户意图或自行宣布任务完成。
-${DEFAULT_AGENTS_END}${currentProject ? `\n\n${currentProject}` : ''}`
+${DEFAULT_AGENTS_END}`
 }
 
 async function ensureSessionAgents(sessionRoot: string, project?: HarnessSessionProject): Promise<void> {
   const agentsPath = path.join(sessionRoot, 'AGENTS.md')
+  const projectPath = path.join(sessionRoot, PROJECT_FILE_NAME)
   const defaultContent = defaultSessionAgents()
   let existing = ''
   try {
@@ -106,39 +112,38 @@ async function ensureSessionAgents(sessionRoot: string, project?: HarnessSession
   }
 
   if (!existing) {
-    await writePrivateText(agentsPath, `${defaultSessionAgents(project)}\n`)
-    return
-  }
-
-  const start = existing.indexOf(DEFAULT_AGENTS_START)
-  const endMarkerIndex = existing.indexOf(DEFAULT_AGENTS_END)
-  if (start >= 0 && endMarkerIndex >= start) {
-    const end = endMarkerIndex + DEFAULT_AGENTS_END.length
-    existing = `${existing.slice(0, start)}${defaultContent}${existing.slice(end)}`
-  }
-
-  const currentStart = existing.indexOf(CURRENT_PROJECT_START)
-  const currentEndMarkerIndex = existing.indexOf(CURRENT_PROJECT_END)
-  if (currentStart >= 0 && currentEndMarkerIndex >= currentStart) {
-    const currentEnd = currentEndMarkerIndex + CURRENT_PROJECT_END.length
-    existing = `${existing.slice(0, currentStart)}${existing.slice(currentEnd)}`.replace(/\n{3,}/gu, '\n\n')
-  }
-
-  const currentProject = currentProjectInstructions(project)
-  const insertion = currentProject ? `\n\n${currentProject}` : ''
-  const defaultEnd = existing.indexOf(DEFAULT_AGENTS_END)
-  if (defaultEnd < 0) {
-    existing = `${defaultContent}${insertion}\n\n${existing}`
+    await writePrivateText(agentsPath, `${defaultContent}\n`)
   } else {
-    const end = defaultEnd + DEFAULT_AGENTS_END.length
-    existing = `${existing.slice(0, end)}${insertion}${existing.slice(end)}`
+    const currentStart = existing.indexOf(CURRENT_PROJECT_START)
+    const currentEndMarkerIndex = existing.indexOf(CURRENT_PROJECT_END)
+    if (currentStart >= 0 && currentEndMarkerIndex >= currentStart) {
+      const currentEnd = currentEndMarkerIndex + CURRENT_PROJECT_END.length
+      existing = `${existing.slice(0, currentStart)}${existing.slice(currentEnd)}`.replace(/\n{3,}/gu, '\n\n')
+    }
+
+    const start = existing.indexOf(DEFAULT_AGENTS_START)
+    const endMarkerIndex = existing.indexOf(DEFAULT_AGENTS_END)
+    if (start >= 0 && endMarkerIndex >= start) {
+      const end = endMarkerIndex + DEFAULT_AGENTS_END.length
+      existing = `${existing.slice(0, start)}${defaultContent}${existing.slice(end)}`
+    } else {
+      existing = `${defaultContent}\n\n${existing}`
+    }
+
+    // Preserve any user-authored session instructions while keeping the
+    // generated defaults stable across project changes.
+    const next = existing.trimEnd() + '\n'
+    const previous = await fs.readFile(agentsPath, 'utf8')
+    if (next !== previous) await writePrivateText(agentsPath, next)
   }
 
-  // Preserve any user-authored session instructions while making the Luna
-  // defaults visible to Harness's cwd-based instruction loader.
-  const next = existing.trimEnd() + '\n'
-  if (next !== (await fs.readFile(agentsPath, 'utf8').catch(() => ''))) {
-    await writePrivateText(agentsPath, next)
+  const nextProject = `${projectDocument(project)}\n`
+  const previousProject = await fs.readFile(projectPath, 'utf8').catch((error) => {
+    if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return ''
+    throw error
+  })
+  if (nextProject !== previousProject) {
+    await writePrivateText(projectPath, nextProject)
   }
 }
 
