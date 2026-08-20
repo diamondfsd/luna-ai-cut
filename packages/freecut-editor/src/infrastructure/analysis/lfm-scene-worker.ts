@@ -28,10 +28,13 @@ import {
 } from './captioning/scene-caption-format'
 
 const MODEL_ID = 'LiquidAI/LFM2.5-VL-450M-ONNX'
+const MODEL_REVISION = 'c9d125fec44853268d18016e332e45061aa1067d'
 
 // Configure transformers.js for browser worker context
 env.useBrowserCache = true
 env.allowLocalModels = false
+env.remoteHost = 'https://www.modelscope.cn/models/'
+env.remotePathTemplate = '{model}/resolve/{revision}/'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let processor: any = null
@@ -61,11 +64,14 @@ async function loadModel(): Promise<void> {
     post({ type: 'progress', stage: 'loading-model', percent: 5 })
 
     let lastPct = 5
-    const loadedProcessor = await AutoProcessor.from_pretrained(MODEL_ID)
+    const loadedProcessor = await AutoProcessor.from_pretrained(MODEL_ID, {
+      revision: MODEL_REVISION,
+    })
 
     if (disposed || thisGen !== loadGeneration) return
 
     const loadedModel = await AutoModelForImageTextToText.from_pretrained(MODEL_ID, {
+      revision: MODEL_REVISION,
       dtype: {
         vision_encoder: 'fp16',
         embed_tokens: 'fp16',

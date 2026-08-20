@@ -102,6 +102,11 @@ test('通过当前页面的 Harness 助手剪辑当前项目的小短片', async
     isShortEnough: true,
   })
 
+  // The timeline can persist during a running SDK script. Keep the Electron
+  // session alive until Harness has finished the turn and re-enabled input.
+  await expect(input).toBeEnabled({ timeout: 7 * 60_000 })
+  await expect(assistantPanel.locator('[role="alert"]')).toHaveCount(0)
+
   const saved = JSON.parse(await readFile(projectFile, 'utf8')) as ProjectFile
   const items = saved.timeline?.items ?? []
   const visualItems = items.filter((item) => item.type === 'image' || item.type === 'video')

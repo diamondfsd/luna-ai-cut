@@ -54,7 +54,9 @@ function waitForReady(
 
       if (message.type === 'error') {
         cleanup()
-        reject(new Error(message.message))
+        const error = new Error(message.message)
+        log.error('LFM worker initialization failed', error)
+        reject(error)
         return
       }
 
@@ -221,6 +223,9 @@ export const lfmCaptioningProvider: MediaCaptioningProvider = {
       }
 
       return captions
+    } catch (error) {
+      log.error('LFM video captioning failed', error)
+      throw error
     } finally {
       worker.postMessage({ type: 'dispose' })
       setTimeout(() => worker.terminate(), 500)
@@ -262,6 +267,9 @@ export const lfmCaptioningProvider: MediaCaptioningProvider = {
             },
           ]
         : []
+    } catch (error) {
+      log.error('LFM image captioning failed', error)
+      throw error
     } finally {
       worker.postMessage({ type: 'dispose' })
       setTimeout(() => worker.terminate(), 500)
