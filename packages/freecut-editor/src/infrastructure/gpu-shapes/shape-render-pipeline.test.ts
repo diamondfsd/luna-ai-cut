@@ -77,6 +77,18 @@ describe('ShapeRenderPipeline', () => {
     expect(outputTexture.createView).toHaveBeenCalled()
   })
 
+  it('keeps parenthesized boolean arguments in the WGSL trim select', () => {
+    const { device } = createPipelineHarness()
+
+    const shaderCode = (device.createShaderModule.mock.calls[0]?.[0] as { code: string }).code
+    expect(shaderCode).toContain(
+      '(outlineProgress >= trimStart || outlineProgress < trimEnd),',
+    )
+    expect(shaderCode).toContain(
+      '(outlineProgress >= trimStart && outlineProgress < trimEnd),',
+    )
+  })
+
   it('reuses the shape bind group across frames', () => {
     const { device, outputTexture, pipeline } = createPipelineHarness()
     const params = {

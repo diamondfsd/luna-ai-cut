@@ -206,8 +206,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
     let trimStart = u.trimParams.x;
     let trimEnd = u.trimParams.y;
     strokeVisible = select(
-      outlineProgress >= trimStart || outlineProgress < trimEnd,
-      outlineProgress >= trimStart && outlineProgress < trimEnd,
+      (outlineProgress >= trimStart || outlineProgress < trimEnd),
+      (outlineProgress >= trimStart && outlineProgress < trimEnd),
       trimEnd >= trimStart,
     );
     let visibleLength = select(1.0 - trimStart + trimEnd, trimEnd - trimStart, trimEnd >= trimStart);
