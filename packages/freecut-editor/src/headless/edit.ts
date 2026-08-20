@@ -39,6 +39,7 @@ import {
   updateItem,
   moveItem,
   removeItems,
+  unlinkItems,
   splitItem,
   trimItemStart,
   trimItemEnd,
@@ -72,6 +73,7 @@ export type EditOperationName =
   | 'updateItem'
   | 'moveItem'
   | 'removeItems'
+  | 'unlinkItems'
   | 'split'
   | 'trimStart'
   | 'trimEnd'
@@ -343,6 +345,15 @@ function applyOp(op: EditOp): unknown {
       for (const id of ids) requireItem(id, 'ids')
       removeItems(ids)
       return { removed: ids }
+    }
+    case 'unlinkItems': {
+      const ids = Array.isArray(op.ids)
+        ? (op.ids.filter((x) => typeof x === 'string') as string[])
+        : []
+      if (ids.length === 0) throw new Error('unlinkItems requires non-empty `ids`')
+      for (const id of ids) requireItem(id, 'ids')
+      unlinkItems(ids)
+      return { unlinked: ids }
     }
     case 'split': {
       const id = asString(op.id)

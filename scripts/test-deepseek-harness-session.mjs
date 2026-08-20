@@ -19,7 +19,7 @@ try {
     insert: [{
       id: 'luna-freecut-sdk',
       name: path.join(root, 'luna-freecut-plugin.mjs'),
-      config: { registerBuiltInSkills: false },
+      config: { registerBuiltInSkills: true },
     }],
   }])
 
@@ -29,16 +29,9 @@ try {
 
   const firstAgents = await readFile(path.join(root, 'AGENTS.md'), 'utf8')
   assert.equal(firstAgents.includes('edit.run_script'), true)
-  assert.equal(firstAgents.includes('luna.timeline.inspectContext'), true)
-  assert.match(firstAgents, /memory\.(read|search|update|remove)/u)
-  assert.match(firstAgents, /media\.analyze/u)
-  assert.match(firstAgents, /media\.getAnalysisTask/u)
-  assert.match(firstAgents, /audio\.startSpeech/u)
-  assert.match(firstAgents, /audio\.startMusic/u)
-  assert.match(firstAgents, /audio\.getTask/u)
-  assert.match(firstAgents, /small-sfx/u)
-  assert.match(firstAgents, /completed/u)
-  assert.doesNotMatch(firstAgents, /没有接通记忆|没有接通.*TTS/u)
+  assert.match(firstAgents, /Markdown skills/u)
+  assert.doesNotMatch(firstAgents, /luna\.timeline\.inspectContext/u)
+  assert.doesNotMatch(firstAgents, /small-sfx/u)
   assert.match(firstAgents, /当前项目上下文/u)
   assert.match(firstAgents, /PROJECT\.md/u)
   assert.doesNotMatch(firstAgents, /project-current/u)

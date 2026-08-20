@@ -256,6 +256,30 @@ function timelineItems(project: Project): NonNullable<Project['timeline']>['item
   return project.timeline?.items ?? []
 }
 
+function audioMutationTargetIds(project: Project, itemIds: readonly string[]): string[] {
+  const items = timelineItems(project)
+  const targetIds = new Set<string>()
+
+  for (const itemId of itemIds) {
+    const item = items.find((candidate) => candidate.id === itemId)
+    if (!item) throw new Error(`Timeline item "${itemId}" does not exist`)
+    targetIds.add(item.id)
+
+    // Imported video audio is represented by a linked audio item. A mute
+    // request addressed to the video must reach that item as well, because it
+    // is the item that actually renders the companion audio.
+    if (item.type === 'video' && item.linkedGroupId) {
+      for (const companion of items) {
+        if (companion.type === 'audio' && companion.linkedGroupId === item.linkedGroupId) {
+          targetIds.add(companion.id)
+        }
+      }
+    }
+  }
+
+  return [...targetIds]
+}
+
 function asRecord(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError(`${field} must be an object`)
@@ -769,6 +793,25 @@ export class FreeCutRuntime {
       case 'timeline.remove':
         if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) throw new TypeError('itemIds must be a non-empty array')
         return this.edit({ ops: [{ op: 'removeItems', ids: args.itemIds }] })
+      case 'timeline.unlink':
+        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) throw new TypeError('itemIds must be a non-empty array')
+        return this.edit({ ops: [{ op: 'unlinkItems', ids: args.itemIds }] })
+      case 'timeline.mute': {
+        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) {
+          throw new TypeError('itemIds must be a non-empty array')
+        }
+        if (args.itemIds.some((itemId) => typeof itemId !== 'string' || itemId.length === 0)) {
+          throw new TypeError('itemIds must be an array of non-empty strings')
+        }
+        const muted = args.muted === undefined ? true : args.muted
+        if (typeof muted !== 'boolean') throw new TypeError('muted must be a boolean')
+        const targetIds = audioMutationTargetIds(this.project, args.itemIds)
+        const volume = muted ? -60 : 0
+        const result = await this.edit({
+          ops: targetIds.map((itemId) => ({ op: 'updateItem', id: itemId, updates: { volume } })),
+        })
+        return { ...result, mutedIds: muted ? targetIds : [], unmutedIds: muted ? [] : targetIds, volumeDb: volume }
+      }
       case 'timeline.set_properties': {
         const updates = Object.fromEntries(
           ['label', 'text', 'volume', 'speed', 'fadeIn', 'fadeOut'].filter((field) => args[field] !== undefined).map((field) => [field, args[field]]),
@@ -782,10 +825,22 @@ export class FreeCutRuntime {
         )
         return this.edit({ ops: [{ op: 'setTransform', id: itemId, transform }] })
       }
-      case 'timeline.set_audio':
-        return this.edit({ ops: [{ op: 'updateItem', id: asStringValue(args.itemId, 'itemId'), updates: Object.fromEntries(
+      case 'timeline.set_audio': {
+        const itemId = asStringValue(args.itemId, 'itemId')
+        if (args.muted !== undefined) {
+          if (typeof args.muted !== 'boolean') throw new TypeError('muted must be a boolean')
+          if (args.volume !== undefined) throw new TypeError('Use muted or volume, not both')
+          const targetIds = audioMutationTargetIds(this.project, [itemId])
+          const volume = args.muted ? -60 : 0
+          const result = await this.edit({
+            ops: targetIds.map((targetId) => ({ op: 'updateItem', id: targetId, updates: { volume } })),
+          })
+          return { ...result, mutedIds: args.muted ? targetIds : [], unmutedIds: args.muted ? [] : targetIds, volumeDb: volume }
+        }
+        return this.edit({ ops: [{ op: 'updateItem', id: itemId, updates: Object.fromEntries(
           ['volume', 'fadeIn', 'fadeOut', 'pitchSemitones'].filter((field) => args[field] !== undefined).map((field) => [field, args[field]]),
         ) }] })
+      }
       case 'timeline.add_text':
         return this.edit({ ops: [coreOperationForCapability('timeline.text.add', {
           ...args,

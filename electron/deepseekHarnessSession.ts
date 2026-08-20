@@ -62,41 +62,9 @@ export function defaultSessionAgents(): string {
 当前项目上下文不写在本文件中。理解本文件和用户请求后，在第一次调用 Luna SDK 之前，使用 Harness 的 read 工具读取当前工作目录的
 PROJECT.md；以其中的 projectId 和 projectName 为准，不要猜测、替换或向用户索要 projectId。
 
-脚本必须导出：
-
-~~~js
-export default async function main(luna) {
-  const projectState = await luna.project.inspect()
-  const timeline = await luna.timeline.inspectContext()
-  return { projectId: projectState.data.projectId, project: projectState, timeline }
-}
-~~~
-
-每个 SDK 调用都返回结构化结果，实际能力数据从 data.project、data.createdItemIds 和
-data.affectedIds 读取。先读取项目或时间线状态，再通过结构化 SDK 调用执行剪切、分割、移动、
-删除、参数、关键帧、文字和转场等操作；每次调用都等待结果并根据结构化数据继续下一步。
-
-时间参数统一使用秒数：timeline.trim 使用 itemId 加 startSeconds/endSeconds（时间轴绝对位置），
-timeline.split 使用 itemId 加 atSeconds，timeline.move 使用 itemId 加 toSeconds。
-timeline.addTrack 使用 type（video 或 audio）、可选 name/order，返回的 data.createdItemIds[0] 是轨道 ID。
-视频片段使用视频轨道；字幕、标题和其他画面叠加先创建独立视频轨道；TTS、背景音乐和音效先创建独立音频轨道；
-原始视频产生的伴侣音频保留在原音频轨道。不要把所有内容反复写入默认的两个轨道。
-timeline.addTransition 的 type 只能是 'crossfade'，使用 fromClipId、toClipId、type:'crossfade'、durationSeconds；
-需要淡化视觉样式时另传 presentation:'fade'，不要把 'fade' 作为 type，也不要省略 type。
-两个画面片段必须在同一视频轨道并在切点相邻；相邻转场还要求前片段有源素材尾部余量、后片段有源素材头部余量。
-先检查 timeline.inspectContext() 中的 from、durationInFrames、sourceStart、sourceEnd、sourceDuration，任一侧余量为 0
-就不要调用转场，或先调整源区间/改用 fadeIn/fadeOut。工具失败时读取结构化错误，不要假设转场已添加。
-
-素材使用 media.list、media.read 和 media.searchTranscript。需要新证据时，先用
-media.analyze 提交 transcript 或 visual 任务，再用 media.getAnalysisTask 轮询到 completed 或 failed；
-完成后再使用 media.read。加入时间轴使用 timeline.addMedia 或 timeline.addMediaBatch。
-
-长期偏好使用 memory.read/search/update/remove：只保存跨项目可复用的用户偏好，更新和删除都复用准确的
-memoryId。TTS 使用 audio.startSpeech；背景音乐和音效使用 audio.startMusic，其中 model 使用
-small-music 或 small-sfx；提交后用 audio.getTask 轮询。queued、preparing-model、generating 和 saving
-都表示仍在处理，只有 completed 且存在 mediaId 时才能加入时间轴，failed 时读取结构化错误。
-分析任务为 failed 时，不得继续把不存在的分析结果当作事实使用。
-不要根据固定文案猜测用户意图或自行宣布任务完成。
+脚本必须导出 default async function main(luna)，并从每个 SDK 结果的 data 字段读取结构化数据。
+详细的剪辑规则、能力说明和可选工作流由本插件注册的 Markdown skills 提供；需要时按 skill 内容执行，
+不要在会话目录自行复制或改写这些规则。工具结果必须回传模型，由模型判断下一步，宿主不根据自然语言猜测意图。
 ${DEFAULT_AGENTS_END}`
 }
 
@@ -164,7 +132,7 @@ export async function prepareHarnessSession(
     insert: [{
       id: 'luna-freecut-sdk',
       name: pluginReferencePath,
-      config: { registerBuiltInSkills: false },
+      config: { registerBuiltInSkills: true },
     }],
   }])
   await ensureSessionAgents(sessionRoot, project)

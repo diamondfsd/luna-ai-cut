@@ -18,6 +18,9 @@ const nodeModules = join(output, 'node_modules')
 const deepseekPackages = join(nodeModules, '@deepseek-ai')
 const bundleStage = join(output, '.deepseek-bundle-stage')
 const generatedBundleFiles = []
+const freecutSkillsSource = join(root, 'packages/freecut-editor/src/features/ai-editing/skills/built-in')
+const freecutSkillLoaderSource = join(root, 'scripts/deepseek-harness-built-in-skills.mjs')
+const freecutSkillLoaderDependency = join(root, 'node_modules/yaml')
 
 const nativePackagePrefixes = [
   '@img/',
@@ -198,6 +201,24 @@ async function bundleHarnessCli(build) {
   generatedBundleFiles.push(...await walkFiles(cliLib))
 }
 
+async function copyFreeCutSkillResources() {
+  if (!existsSync(freecutSkillsSource) || !existsSync(freecutSkillLoaderSource) || !existsSync(freecutSkillLoaderDependency)) {
+    throw new Error('FreeCut 内置技能 Markdown 资源缺失，无法构建 DeepSeek Harness。')
+  }
+  await cp(freecutSkillsSource, join(output, 'skills/built-in'), {
+    recursive: true,
+    dereference: true,
+  })
+  await cp(freecutSkillLoaderSource, join(output, 'deepseek-harness-built-in-skills.mjs'), {
+    dereference: true,
+  })
+  await cp(freecutSkillLoaderDependency, join(output, 'node_modules/yaml'), {
+    recursive: true,
+    dereference: true,
+  })
+  console.log('FreeCut Markdown skill resources copied into DeepSeek Harness runtime.')
+}
+
 function isAllowedBundleImport(specifier) {
   if (isExternalHarnessDependency(specifier)) return true
   const packageName = packageNameOf(specifier)
@@ -253,6 +274,7 @@ async function pruneBundledDependencies() {
 
   const runtimeFiles = [
     ...await walkFiles(join(output, 'lib')),
+    join(output, 'deepseek-harness-built-in-skills.mjs'),
     ...await walkFiles(deepseekPackages),
   ].filter((file) => /\.(?:js|mjs|cjs)$/.test(file))
   for (const file of runtimeFiles) {
@@ -344,6 +366,8 @@ for (const packageRoot of ['vendor', 'packages']) {
     }
   }
 }
+
+await copyFreeCutSkillResources()
 
 const { build: buildWithTsdown } = await import(pathToFileURL(join(
   harnessRoot,

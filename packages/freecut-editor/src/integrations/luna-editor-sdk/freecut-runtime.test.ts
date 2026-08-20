@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vite-plus/test'
 import type { Project, ProjectTimeline } from '@freecut/types/project'
+import type { TimelineItem } from '@freecut/types/timeline'
 import type { MediaMetadata } from '@freecut/types/storage'
 import { FreeCutCapabilityProvider } from './freecut-capability-provider'
 import { FreeCutRuntime } from './freecut-runtime'
@@ -37,6 +38,48 @@ function project(): Project {
       scrollPosition: 0,
     } as ProjectTimeline,
   }
+}
+
+function linkedProject(): Project {
+  const value = project()
+  value.timeline!.tracks.push({
+    id: 'audio-1',
+    name: 'A1',
+    kind: 'audio',
+    height: 64,
+    locked: false,
+    visible: true,
+    muted: false,
+    solo: false,
+    order: 1,
+  })
+  value.timeline!.items.push(
+    {
+      id: 'video-1',
+      type: 'video',
+      trackId: 'video-1',
+      from: 0,
+      durationInFrames: 100,
+      label: 'video',
+      mediaId: 'media-1',
+      src: '',
+      linkedGroupId: 'pair-1',
+      volume: 0,
+    } as TimelineItem,
+    {
+      id: 'audio-item-1',
+      type: 'audio',
+      trackId: 'audio-1',
+      from: 0,
+      durationInFrames: 100,
+      label: 'audio',
+      mediaId: 'media-1',
+      src: '',
+      linkedGroupId: 'pair-1',
+      volume: 0,
+    } as TimelineItem,
+  )
+  return value
 }
 
 const media: MediaMetadata = {
@@ -273,6 +316,30 @@ describe('FreeCutRuntime SDK adapter', () => {
       type: 'fade',
       durationSeconds: 0.25,
     })).rejects.toThrow('Unsupported transition type "fade"')
+  })
+
+  it('mutes the actual linked companion audio when addressed by its video item', async () => {
+    const runtime = new FreeCutRuntime({ project: linkedProject(), media: [media] })
+
+    const result = await runtime.executeSdkCapability('timeline.mute', {
+      itemIds: ['video-1'],
+    }) as { project: Project; mutedIds: string[]; volumeDb: number }
+
+    expect(result.volumeDb).toBe(-60)
+    expect(result.mutedIds).toEqual(['video-1', 'audio-item-1'])
+    expect(result.project.timeline!.items.find((item) => item.id === 'video-1')?.volume).toBe(-60)
+    expect(result.project.timeline!.items.find((item) => item.id === 'audio-item-1')?.volume).toBe(-60)
+  })
+
+  it('unlinks a companion before removal without removing the video', async () => {
+    const runtime = new FreeCutRuntime({ project: linkedProject(), media: [media] })
+
+    await runtime.executeSdkCapability('timeline.unlink', { itemIds: ['audio-item-1'] })
+    const removed = await runtime.executeSdkCapability('timeline.remove', { itemIds: ['audio-item-1'] }) as { project: Project }
+    const video = removed.project.timeline!.items.find((item) => item.id === 'video-1')
+
+    expect(video).toMatchObject({ embeddedAudioMuted: true })
+    expect(removed.project.timeline!.items.some((item) => item.id === 'audio-item-1')).toBe(false)
   })
 
   it('creates video and audio tracks through the provider and targets them from text and media edits', async () => {

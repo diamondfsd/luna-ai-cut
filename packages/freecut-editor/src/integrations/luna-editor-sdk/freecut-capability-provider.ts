@@ -19,6 +19,8 @@ export const FREECUT_CAPABILITIES: readonly FreeCutCapabilityDescriptor[] = [
   { name: 'project.edit', access: 'write', description: 'Apply a batch of FreeCut edit operations' },
   { name: 'timeline.inspect', access: 'read', description: 'Query tracks, items, transitions and keyframes' },
   { name: 'timeline.add_track', access: 'write', description: 'Create a video or audio timeline track' },
+  { name: 'timeline.unlink', access: 'write', description: 'Unlink a video from its companion audio without deleting either item' },
+  { name: 'timeline.mute', access: 'write', description: 'Mute or unmute timeline audio, including a linked video companion audio item' },
   { name: 'timeline.edit', access: 'write', description: 'Apply timeline edit operations' },
   { name: 'timeline.edit_batch', access: 'write', description: 'Apply an ordered timeline edit batch' },
   { name: 'media.list', access: 'read', description: 'List media available to the current project' },
@@ -78,6 +80,8 @@ export class FreeCutCapabilityProvider {
       case 'timeline.inspect':
         return this.runtime.inspectTimeline(value as TimelineQuery)
       case 'timeline.add_track':
+      case 'timeline.unlink':
+      case 'timeline.mute':
         return this.runtime.executeSdkCapability(name, value)
       case 'timeline.edit':
       case 'timeline.edit_batch':

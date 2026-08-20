@@ -13,7 +13,28 @@ Harness -> plugin -> runEditScript -> Luna JS SDK -> capability endpoint -> Elec
 - `sdk-client.mjs`：通用 Luna JS SDK 的 transport 和命名空间方法生成器。
 - `config.mjs`：统一解析 plugin 配置及 SDK/旧版环境变量。
 - `script-runtime.mjs`：在独立 Node 进程执行 ESM 脚本，并向脚本注入 Luna SDK。
-- `plugin.mjs`：Harness plugin，注册唯一编辑入口 `edit.run_script`；内置技能注册是可关闭的资源兼容选项，不参与能力执行。
+- `plugin.mjs`：Harness plugin，注册唯一编辑入口 `edit.run_script`，并加载 Markdown 技能资源。
+
+## Markdown 技能资源
+
+FreeCut 的剪辑提示词唯一维护在
+`packages/freecut-editor/src/features/ai-editing/skills/built-in/`：
+
+```text
+built-in/
+├── master/SKILL.md                 # 总控技能：任务分解、证据和复核
+├── shared/*.md                     # SDK、时间线、异步任务等共同契约
+├── styles/<name>/SKILL.md          # 风格技能
+├── techniques/<name>/SKILL.md      # 技巧技能
+└── workflows/<name>/SKILL.md       # 工作流技能
+```
+
+每个 `SKILL.md` 都必须有 `name` 和 `description` 的 YAML frontmatter。加载器会递归发现全部
+`SKILL.md`，校验名称唯一后注册到 `ctx.skills`；`shared/*.md` 会同时并入总控技能和 SDK 系统提示词。
+新增或调整剪辑提示词只修改这些 Markdown 文件，不修改插件的技能清单或系统提示词代码。
+
+构建 Harness runtime 时，脚本会将加载器和这棵 Markdown 目录复制到
+`dist/deepseek-harness/`，运行时优先从打包资源读取，不依赖工作树中的源码目录。
 
 ## 脚本 SDK
 
@@ -46,7 +67,7 @@ export default async function main(luna) {
 - `audio.startSpeech({ text, voice?, speed? })`：提交 TTS 任务。
 - `audio.startMusic({ prompt, model?, durationSeconds?, guidanceScale? })`：提交音乐或音效任务。背景音乐使用 `small-music`，音效使用 `small-sfx`。
 - `audio.getTask({ taskId })`：查询 TTS、音乐和音效任务。
-- `timeline.inspectContext()`、`addTrack()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
+- `timeline.inspectContext()`、`addTrack()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`unlink()`、`mute()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
 
 `addTrack({ type: 'video' | 'audio', name?, order? })` 返回新轨道 ID。字幕、标题和画面叠加应先创建独立视频轨道；
 TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 放置素材。视频素材自动生成的伴侣音频保留在原音频轨道。
@@ -56,6 +77,11 @@ TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 
 两个画面片段必须在同一视频轨道并在切点相邻。相邻转场是源素材余量模型：前片段需要未使用的尾部源素材，
 后片段需要未使用的头部源素材；任一侧余量不足时转场会失败。先检查 `sourceStart/sourceEnd/sourceDuration`，
 不要把“时间轴相邻”当作“必然可以转场”。
+
+`setAudio` 的 `volume` 使用 dB，范围为 -60 到 12；`0` 是 0 dB 正常音量，不是静音。静音请使用
+`timeline.mute({ itemIds, muted? })`，它会把指定片段设为 -60 dB；如果指定的是带关联原声的视频，还会同时处理关联音频片段。
+FreeCut 带原声的视频由视频片段和关联音频片段组成。只删除音频而保留视频时，必须先
+`timeline.unlink({ itemIds: [audioId] })`，再 `timeline.remove({ itemIds: [audioId] })`；直接 remove 仍会按关联规则级联删除视频。
 
 ### 记忆和异步任务
 
