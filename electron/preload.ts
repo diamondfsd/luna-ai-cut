@@ -55,6 +55,12 @@ interface LunaExportTaskApi {
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
+  setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
+  onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean): void => callback(isFullScreen)
+    ipcRenderer.on('window:fullscreen-changed', listener)
+    return () => ipcRenderer.off('window:fullscreen-changed', listener)
+  },
   // 日志
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)
