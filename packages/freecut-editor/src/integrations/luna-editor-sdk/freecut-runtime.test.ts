@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vite-plus/test'
 import type { Project, ProjectTimeline } from '@freecut/types/project'
 import type { MediaMetadata } from '@freecut/types/storage'
+import { FreeCutCapabilityProvider } from './freecut-capability-provider'
 import { FreeCutRuntime } from './freecut-runtime'
 
 function project(): Project {
@@ -239,11 +240,83 @@ describe('FreeCutRuntime SDK adapter', () => {
       toClipId: pieces[1]!.id,
       type: 'crossfade',
       durationSeconds: 0.25,
+      presentation: 'fade',
     }) as { project: Project }
     expect(transitionResult.project.timeline!.transitions).toHaveLength(1)
     expect(transitionResult.project.timeline!.transitions[0]).toMatchObject({
       leftClipId: pieces[0]!.id,
       rightClipId: pieces[1]!.id,
+      presentation: 'fade',
+    })
+  })
+
+  it('rejects the old fade transition type instead of translating it', async () => {
+    const runtime = new FreeCutRuntime({ project: project(), media: [media] })
+    const leftResult = await runtime.executeSdkCapability('timeline.add_media', {
+      mediaId: media.id,
+      startSeconds: 0,
+      sourceStartSeconds: 0,
+      sourceEndSeconds: 2,
+    }) as { project: Project }
+    const rightResult = await runtime.executeSdkCapability('timeline.add_media', {
+      mediaId: media.id,
+      startSeconds: 2,
+      sourceStartSeconds: 0,
+      sourceEndSeconds: 2,
+    }) as { project: Project }
+    const leftClip = leftResult.project.timeline!.items.find((item) => item.type === 'video')!
+    const rightClip = rightResult.project.timeline!.items.find((item) => item.type === 'video' && item.id !== leftClip.id)!
+
+    await expect(runtime.executeSdkCapability('timeline.add_transition', {
+      fromClipId: leftClip.id,
+      toClipId: rightClip.id,
+      type: 'fade',
+      durationSeconds: 0.25,
+    })).rejects.toThrow('Unsupported transition type "fade"')
+  })
+
+  it('creates video and audio tracks through the provider and targets them from text and media edits', async () => {
+    const runtime = new FreeCutRuntime({ project: project(), media: [audioMedia] })
+    const provider = new FreeCutCapabilityProvider(runtime)
+
+    const videoResult = await provider.execute('timeline.add_track', { type: 'video' }) as {
+      project: Project
+      createdIds: string[]
+    }
+    const videoTrackId = videoResult.createdIds[0]!
+    expect(videoResult.project.timeline!.tracks.find((track) => track.id === videoTrackId)).toMatchObject({
+      kind: 'video',
+    })
+
+    const textResult = await runtime.executeSdkCapability('timeline.add_text', {
+      text: 'on the new video track',
+      startSeconds: 0,
+      durationSeconds: 1,
+      trackId: videoTrackId,
+    }) as { project: Project }
+    expect(textResult.project.timeline!.items.find((item) => item.type === 'text')).toMatchObject({
+      trackId: videoTrackId,
+      text: 'on the new video track',
+    })
+
+    const audioResult = await provider.execute('timeline.add_track', { type: 'audio' }) as {
+      project: Project
+      createdIds: string[]
+    }
+    const audioTrackId = audioResult.createdIds[0]!
+    expect(audioResult.project.timeline!.tracks.find((track) => track.id === audioTrackId)).toMatchObject({
+      kind: 'audio',
+    })
+
+    const mediaResult = await runtime.executeSdkCapability('timeline.add_media', {
+      mediaId: audioMedia.id,
+      startSeconds: 1,
+      durationSeconds: 1,
+      trackId: audioTrackId,
+    }) as { project: Project }
+    expect(mediaResult.project.timeline!.items.find((item) => item.type === 'audio')).toMatchObject({
+      mediaId: audioMedia.id,
+      trackId: audioTrackId,
     })
   })
 })

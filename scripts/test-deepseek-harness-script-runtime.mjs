@@ -9,6 +9,7 @@ assert.deepEqual(Object.keys(SCRIPT_API.audio), ['startSpeech', 'startMusic', 'g
 assert.deepEqual(Object.keys(SCRIPT_API.project), ['inspect'])
 assert.deepEqual(Object.keys(SCRIPT_API.timeline), [
   'inspectContext',
+  'addTrack',
   'addMedia',
   'trim',
   'split',
@@ -73,6 +74,7 @@ try {
           const created = await luna.timeline.addMediaBatch({
             items: selected.map((mediaId, index) => ({ mediaId, startSeconds: index * 3, durationSeconds: 3 })),
           })
+          const track = await luna.timeline.addTrack({ type: 'audio', name: '音乐' })
           const transition = await luna.timeline.addTransition({
             fromClipId: 'clip-a',
             toClipId: 'clip-b',
@@ -99,7 +101,8 @@ try {
     created: ['item-1'],
     transition: ['item-1'],
   })
-  assert.deepEqual(requests.map((request) => request.name), ['project.inspect', 'media.list', 'timeline.add_media_batch', 'timeline.add_transition'])
+  assert.deepEqual(requests.map((request) => request.name), ['project.inspect', 'media.list', 'timeline.add_media_batch', 'timeline.add_track', 'timeline.add_transition'])
+  assert.deepEqual(requests[3].args, { type: 'audio', name: '音乐' })
   assert.deepEqual(requests.at(-1).args, {
     fromClipId: 'clip-a',
     toClipId: 'clip-b',

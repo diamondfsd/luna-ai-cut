@@ -17,7 +17,7 @@ import type {
   ImageItem,
 } from '@freecut/types/timeline'
 import type { MediaMetadata } from '@freecut/types/storage'
-import type { Transition } from '@freecut/types/transition'
+import { TRANSITION_CONFIGS, type Transition, type TransitionType } from '@freecut/types/transition'
 import type { AnimatableProperty, EasingType } from '@freecut/types/keyframe'
 import type { VisualEffect } from '@freecut/types/effects'
 import type { TransformProperties } from '@freecut/types/transform'
@@ -58,6 +58,11 @@ import {
   updateItemTransform,
 } from '@freecut/features/timeline/stores/timeline-actions'
 import { getGpuEffect } from '@freecut/infrastructure/gpu-effects'
+import {
+  areFramesAligned,
+  canAddTransition,
+  getMaxTransitionDurationForHandles,
+} from '@freecut/features/timeline/utils/transition-utils'
 
 const log = createLogger('HeadlessEdit')
 
@@ -368,12 +373,54 @@ function applyOp(op: EditOp): unknown {
       const left = asString(op.leftClipId)
       const right = asString(op.rightClipId)
       if (!left || !right) throw new Error('addTransition requires `leftClipId` and `rightClipId`')
-      requireItem(left, 'leftClipId')
-      requireItem(right, 'rightClipId')
+      const leftClip = requireItem(left, 'leftClipId')
+      const rightClip = requireItem(right, 'rightClipId')
+      const requestedType = asString(op.type) ?? 'crossfade'
+      const transitionType = requestedType as TransitionType
+      const config = TRANSITION_CONFIGS[transitionType]
+      if (!config) {
+        throw new Error(
+          `Unsupported transition type "${requestedType}". Use type "crossfade" and optionally presentation "fade".`,
+        )
+      }
+      const requestedDuration = asNumber(op.durationInFrames) ?? config.defaultDuration
+      const maxByClipDuration = Math.min(leftClip.durationInFrames, rightClip.durationInFrames) - 1
+      if (maxByClipDuration < 1) {
+        throw new Error('Transition clips must each contain at least 2 frames.')
+      }
+      let candidateDuration = Math.max(1, Math.min(Math.round(requestedDuration), maxByClipDuration))
+      const leftEnd = leftClip.from + leftClip.durationInFrames
+      if (areFramesAligned(leftEnd, rightClip.from)) {
+        const maxHandleDuration = getMaxTransitionDurationForHandles(
+          leftClip,
+          rightClip,
+          asNumber(op.alignment) ?? 0.5,
+          useTimelineSettingsStore.getState().fps,
+        )
+        candidateDuration = maxHandleDuration < 1
+          ? 1
+          : Math.min(candidateDuration, maxHandleDuration)
+      }
+      const validation = canAddTransition(
+        leftClip,
+        rightClip,
+        candidateDuration,
+        asNumber(op.alignment) ?? 0.5,
+        useTimelineSettingsStore.getState().fps,
+      )
+      if (!validation.canAdd) {
+        const handleSummary = validation.leftHandle !== undefined || validation.rightHandle !== undefined
+          ? ` Available source handles: outgoing=${validation.leftHandle ?? 0} frames, incoming=${validation.rightHandle ?? 0} frames.`
+          : ''
+        throw new Error(
+          `Cannot add transition between "${left}" and "${right}": ${validation.reason}.${handleSummary} ` +
+          'Adjacent transitions require both visual clips on the same track at the cut and unused source media on both sides.',
+        )
+      }
       const added = addTransition(
         left,
         right,
-        asString(op.type) as Parameters<typeof addTransition>[2],
+        transitionType,
         asNumber(op.durationInFrames),
         asString(op.presentation) as Parameters<typeof addTransition>[4],
         asString(op.direction) as Parameters<typeof addTransition>[5],
@@ -441,7 +488,11 @@ function applyOp(op: EditOp): unknown {
       const order =
         asNumber(op.order) ??
         (kind === 'video' ? Math.min(0, ...orders) - 1 : Math.max(0, ...orders) + 1)
-      const track = createClassicTrack({ tracks: all, kind, order })
+      const requestedName = asString(op.name)
+      const track = {
+        ...createClassicTrack({ tracks: all, kind, order }),
+        ...(requestedName ? { name: requestedName } : {}),
+      }
       setTracks([...all, track])
       return { trackId: track.id, name: track.name }
     }

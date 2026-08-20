@@ -205,6 +205,7 @@ export type FreeCutCapabilityName =
   | 'project.inspect'
   | 'project.edit'
   | 'timeline.inspect'
+  | 'timeline.add_track'
   | 'timeline.edit'
   | 'timeline.edit_batch'
   | 'media.list'

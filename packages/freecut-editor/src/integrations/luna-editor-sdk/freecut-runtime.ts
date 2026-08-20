@@ -349,11 +349,23 @@ function coreOperationForCapability(
   fps: number,
 ): Record<string, unknown> {
   switch (name) {
+    case 'timeline.add_track':
     case 'timeline.tracks.add':
-      return {
-        op: 'addTrack',
-        kind: args.type === 'audio' ? 'audio' : 'video',
-        ...(typeof args.index === 'number' ? { order: args.index } : {}),
+      {
+        const kind = args.kind ?? args.type
+        if (kind !== 'video' && kind !== 'audio') {
+          throw new TypeError('kind must be video or audio')
+        }
+        const order = args.order ?? args.index
+        if (order !== undefined && (typeof order !== 'number' || !Number.isFinite(order))) {
+          throw new TypeError('order must be a finite number')
+        }
+        return {
+          op: 'addTrack',
+          kind,
+          ...(typeof args.name === 'string' && args.name.length > 0 ? { name: args.name } : {}),
+          ...(order !== undefined ? { order } : {}),
+        }
       }
     case 'timeline.clips.add':
       return {
@@ -443,14 +455,19 @@ function coreOperationForCapability(
         ...asRecord(args.style ?? {}, 'style'),
       }
     case 'timeline.transitions.add':
-      return {
-        op: 'addTransition',
-        leftClipId: asStringValue(args.fromClipId, 'fromClipId'),
-        rightClipId: asStringValue(args.toClipId, 'toClipId'),
-        type: asStringValue(args.type, 'type'),
-        durationInFrames: asFrames(args.duration, fps, 'duration'),
-        ...(typeof args.direction === 'string' ? { direction: args.direction } : {}),
-        ...(args.properties !== undefined ? { properties: asRecord(args.properties, 'properties') } : {}),
+      {
+        return {
+          op: 'addTransition',
+          leftClipId: asStringValue(args.fromClipId, 'fromClipId'),
+          rightClipId: asStringValue(args.toClipId, 'toClipId'),
+          type: asStringValue(args.type, 'type'),
+          durationInFrames: asFrames(args.duration, fps, 'duration'),
+          ...(typeof args.presentation === 'string'
+            ? { presentation: args.presentation }
+            : {}),
+          ...(typeof args.direction === 'string' ? { direction: args.direction } : {}),
+          ...(args.properties !== undefined ? { properties: asRecord(args.properties, 'properties') } : {}),
+        }
       }
     case 'timeline.effects.update':
       return {
@@ -787,7 +804,7 @@ export class FreeCutRuntime {
           ...args,
           fromClipId: args.fromClipId,
           toClipId: args.toClipId,
-          type: args.type ?? 'fade',
+          type: args.type ?? 'crossfade',
           duration: args.durationSeconds ?? 0.5,
         }, this.project.metadata.fps)] })
       case 'timeline.add_html':

@@ -28,6 +28,7 @@ export const LUNA_SDK_API = Object.freeze({
   }),
   timeline: Object.freeze({
     inspectContext: 'timeline.inspect_context',
+    addTrack: 'timeline.add_track',
     addMedia: 'timeline.add_media',
     trim: 'timeline.trim',
     split: 'timeline.split',

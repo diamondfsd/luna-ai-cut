@@ -102,6 +102,52 @@ describe('editProject', () => {
     expect(orders['audio']).toBe(1)
   })
 
+  it('explains when an adjacent transition has no source handles', async () => {
+    await expect(editProject({
+      project: baseProject({
+        items: [
+          {
+            id: 'left',
+            type: 'video',
+            trackId: 't_v',
+            from: 0,
+            durationInFrames: 50,
+            label: 'left',
+            mediaId: 'm-vid',
+            src: '',
+            sourceFps: 25,
+            sourceStart: 0,
+            sourceEnd: 50,
+            sourceDuration: 50,
+            speed: 1,
+          },
+          {
+            id: 'right',
+            type: 'video',
+            trackId: 't_v',
+            from: 50,
+            durationInFrames: 50,
+            label: 'right',
+            mediaId: 'm-vid',
+            src: '',
+            sourceFps: 25,
+            sourceStart: 0,
+            sourceEnd: 50,
+            sourceDuration: 50,
+            speed: 1,
+          },
+        ],
+      }),
+      ops: [{
+        op: 'addTransition',
+        leftClipId: 'left',
+        rightClipId: 'right',
+        type: 'crossfade',
+        durationInFrames: 25,
+      } as EditOp],
+    })).rejects.toThrow(/source handles.*outgoing=0 frames, incoming=0 frames/u)
+  })
+
   it('resolves $ref chains between operations (track from a prior op)', async () => {
     const result = await editProject({
       project: baseProject(),

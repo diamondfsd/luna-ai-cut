@@ -46,10 +46,16 @@ export default async function main(luna) {
 - `audio.startSpeech({ text, voice?, speed? })`：提交 TTS 任务。
 - `audio.startMusic({ prompt, model?, durationSeconds?, guidanceScale? })`：提交音乐或音效任务。背景音乐使用 `small-music`，音效使用 `small-sfx`。
 - `audio.getTask({ taskId })`：查询 TTS、音乐和音效任务。
-- `timeline.inspectContext()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
+- `timeline.inspectContext()`、`addTrack()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
+
+`addTrack({ type: 'video' | 'audio', name?, order? })` 返回新轨道 ID。字幕、标题和画面叠加应先创建独立视频轨道；
+TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 放置素材。视频素材自动生成的伴侣音频保留在原音频轨道。
 
 时间轴时间参数均为秒：`trim` 使用 `startSeconds/endSeconds`，`split` 使用 `atSeconds`，`move` 使用
-`toSeconds`。转场使用 `fromClipId`、`toClipId`、`type` 和 `durationSeconds`。
+`toSeconds`。转场的 `type` 只能是 `crossfade`，使用 `fromClipId`、`toClipId`、`type: 'crossfade'` 和 `durationSeconds`；需要淡化视觉样式时另传 `presentation: 'fade'`，不要省略 `type` 或把 `fade` 作为 `type`。
+两个画面片段必须在同一视频轨道并在切点相邻。相邻转场是源素材余量模型：前片段需要未使用的尾部源素材，
+后片段需要未使用的头部源素材；任一侧余量不足时转场会失败。先检查 `sourceStart/sourceEnd/sourceDuration`，
+不要把“时间轴相邻”当作“必然可以转场”。
 
 ### 记忆和异步任务
 
@@ -81,7 +87,7 @@ const added = await luna.timeline.addMedia({ mediaId: task.mediaId, startSeconds
 
 `queued`、`preparing-model`、`generating` 和 `saving` 都表示仍在处理。只有 `completed` 且返回有效 `mediaId`
 时，才能将音频放入时间轴；素材分析完成后再用 `media.read` 读取证据。失败时读取 `data.error`、`data.failures`
-或任务中的错误字段并返回给模型。工具结果会回传模型，由模型决定下一步。
+或任务中的错误字段并返回给模型。分析失败时不要继续使用不存在的分析结果。工具结果会回传模型，由模型决定下一步。
 
 插件只注册一个 Harness 工具 `edit.run_script`；这些能力都通过脚本中的 `luna.*` 调用，不能作为独立的
 Harness 工具名直接调用。插件和宿主不根据用户或模型文案推断意图，也不会自行宣布任务完成。

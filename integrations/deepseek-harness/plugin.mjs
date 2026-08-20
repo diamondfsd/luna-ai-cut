@@ -84,6 +84,7 @@ const project = result.data.project
 - \`luna.audio.startSpeech({ text, voice?, speed? })\`：提交本地 TTS 任务，立即返回 \`data.taskId\`。
 - \`luna.audio.startMusic({ prompt, model?, durationSeconds?, guidanceScale? })\`：提交背景音乐或音效任务；\`model\` 使用 \`small-music\` 或 \`small-sfx\`，立即返回 \`data.taskId\`。
 - \`luna.audio.getTask({ taskId })\`: 查询 TTS、音乐或音效任务；只有 \`status === 'completed'\` 且有 \`data.mediaId\` 时，才能把结果交给 \`timeline.addMedia\`，\`failed\` 时读取错误。
+- \`luna.timeline.addTrack({ type: 'video' | 'audio', name?, order? })\`: 创建独立轨道并使用返回的 \`data.createdItemIds[0]\` 作为后续调用的 \`trackId\`。视频片段使用视频轨道；字幕、标题和其他画面叠加使用单独的视频轨道；原始视频伴侣音频留在原音频轨道；TTS、背景音乐和音效使用独立的音频轨道。
 - \`luna.timeline.addMedia({ mediaId, startSeconds?, durationSeconds?, sourceStartSeconds?, sourceEndSeconds?, trackId? })\`。
 - \`luna.timeline.addMediaBatch({ items: [...] })\`: \`items\` 使用 \`addMedia\` 的参数格式。
 - \`luna.timeline.trim({ itemId, startSeconds?, endSeconds? })\`: 两个时间是时间轴上的绝对秒数，不是素材源区间。
@@ -95,7 +96,9 @@ const project = result.data.project
 - \`luna.timeline.setAudio({ itemId, volume?, fadeIn?, fadeOut?, pitchSemitones? })\`。
 - \`luna.timeline.addText({ text, startSeconds, durationSeconds, trackId?, style? })\`。
 - \`luna.timeline.addKeyframe({ itemId, property, atSeconds, value, easing? })\`：当前 \`value\` 必须是数字。
-- \`luna.timeline.addTransition({ fromClipId, toClipId, type, durationSeconds, direction?, properties? })\`。
+- \`luna.timeline.addTransition({ fromClipId, toClipId, type: 'crossfade', durationSeconds, presentation?, direction?, properties? })\`。\`type\` 只能是 \`'crossfade'\`，需要淡化视觉样式时另传 \`presentation: 'fade'\`；不要把 \`'fade'\` 作为 \`type\`，也不要省略 \`type\`。两个参与转场的画面片段必须在同一视频轨道，并且在时间轴切点相邻（旧项目中的重叠转场除外）。相邻片段使用切点中心的源素材余量：前片段需要有未使用的源素材尾部，后片段需要有未使用的源素材头部；只要任一侧余量为 0，转场就不能创建。先从 \`timeline.inspectContext()\` 检查 \`from\`、\`durationInFrames\`、\`sourceStart\`、\`sourceEnd\` 和 \`sourceDuration\`，再选择不超过两侧余量的时长。如果工具返回失败，读取错误并调整片段源区间或改用片段的 \`fadeIn/fadeOut\`，不能假设转场已经存在。
+
+剪辑前先规划轨道，不要把所有内容反复放到默认的 V1/A1：字幕和标题先创建独立视频轨道，TTS、背景音乐和音效先创建独立音频轨道，再把返回的轨道 ID 传给 \`addText\` 或 \`addMedia\`。调用后重新检查时间线，确认每个新项目确实落在预期轨道。
 
 编辑结果通常在 \`result.data.project\`，新建片段 ID 在 \`result.data.createdItemIds\`，受影响 ID 在
 \`result.data.affectedIds\`。异步能力的提交结果不是最终结果：保存 \`taskId\`，等待一小段时间后重复查询，
@@ -123,7 +126,7 @@ if (task.status === 'failed') throw new Error(task.error || '音频生成失败'
 const added = await luna.timeline.addMedia({ mediaId: task.mediaId, startSeconds: 0 })
 ~~~
 
-不要把尚未完成的任务加入时间轴，也不要在没有调用查询方法的情况下声称模型已完成。每次调用都等待结果，再根据返回的结构化数据决定下一步。
+不要把尚未完成的任务加入时间轴，也不要在没有调用查询方法的情况下声称模型已完成。素材分析返回 \`failed\` 时不能继续假设已有画面或字幕证据；应读取结构化错误并根据实际数据决定下一步。每次调用都等待结果，再根据返回的结构化数据决定下一步。
 `.trim()
 
 // This prompt documents the wire contract only. It deliberately does not

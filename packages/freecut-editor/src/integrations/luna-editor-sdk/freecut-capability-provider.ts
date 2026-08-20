@@ -18,6 +18,7 @@ export const FREECUT_CAPABILITIES: readonly FreeCutCapabilityDescriptor[] = [
   { name: 'project.inspect', access: 'read', description: 'Inspect the current FreeCut project' },
   { name: 'project.edit', access: 'write', description: 'Apply a batch of FreeCut edit operations' },
   { name: 'timeline.inspect', access: 'read', description: 'Query tracks, items, transitions and keyframes' },
+  { name: 'timeline.add_track', access: 'write', description: 'Create a video or audio timeline track' },
   { name: 'timeline.edit', access: 'write', description: 'Apply timeline edit operations' },
   { name: 'timeline.edit_batch', access: 'write', description: 'Apply an ordered timeline edit batch' },
   { name: 'media.list', access: 'read', description: 'List media available to the current project' },
@@ -76,6 +77,8 @@ export class FreeCutCapabilityProvider {
         return this.runtime.edit(readOps(value))
       case 'timeline.inspect':
         return this.runtime.inspectTimeline(value as TimelineQuery)
+      case 'timeline.add_track':
+        return this.runtime.executeSdkCapability(name, value)
       case 'timeline.edit':
       case 'timeline.edit_batch':
         return this.runtime.editBatch(readOps(value))

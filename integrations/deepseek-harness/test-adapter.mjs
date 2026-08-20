@@ -86,6 +86,13 @@ try {
     message: 'legacy host result',
     data: { createdItemIds: ['item-1'] },
   })
+  assert.deepEqual(await legacySdk.timeline.addTrack({ type: 'audio' }), {
+    ok: true,
+    message: 'legacy host result',
+    data: { createdItemIds: ['item-1'] },
+  })
+  assert.equal(requests.at(-1).body.name, 'timeline.add_track')
+  assert.deepEqual(requests.at(-1).body.args, { type: 'audio' })
 
   const scriptResult = await runEditScript(config, {
     code: `
@@ -115,6 +122,9 @@ try {
   assert.equal(prompts.length, 1)
   assert.match(prompts[0].text, /edit\.run_script/)
   assert.match(prompts[0].text, /fromClipId/u)
+  assert.match(prompts[0].text, /addTrack/u)
+  assert.match(prompts[0].text, /type: 'crossfade'/u)
+  assert.match(prompts[0].text, /源素材余量/u)
   assert.match(prompts[0].text, /startSeconds\?, endSeconds\?/u)
   assert.match(prompts[0].text, /result\.data/u)
   assert.match(prompts[0].text, /luna\.memory\.search/u)

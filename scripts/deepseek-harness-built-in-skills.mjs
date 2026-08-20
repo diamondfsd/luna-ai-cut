@@ -73,11 +73,11 @@ const SCRIPT_ONLY_GUIDANCE = [
   '',
   '脚本必须导出 `default async function main(luna)`。脚本可以使用完整 JavaScript 语法，在本地完成循环、条件判断、数组筛选和批量操作。SDK 方法返回结构化结果，实际能力数据必须从 `result.data` 读取；每个脚本阶段读取结构化结果，并返回简短结果供模型继续判断。',
   '',
-  '时间线方法的时间参数统一使用秒数：`trim` 使用 `startSeconds/endSeconds`，`split` 使用 `atSeconds`，`move` 使用 `toSeconds`。转场使用 `fromClipId/toClipId/type/durationSeconds`。',
+  '时间线方法的时间参数统一使用秒数：`trim` 使用 `startSeconds/endSeconds`，`split` 使用 `atSeconds`，`move` 使用 `toSeconds`。先用 `timeline.addTrack({ type: "video" | "audio", name?, order? })` 规划独立轨道：字幕/标题使用独立视频轨道，TTS/音乐/音效使用独立音频轨道。转场的 `type` 只能是 `"crossfade"`，使用 `fromClipId/toClipId/type:"crossfade"/durationSeconds`；需要淡化视觉样式时另传 `presentation:"fade"`，不要把 `fade` 作为 `type`，也不要省略 `type`。两个画面片段必须在同一视频轨道的切点相邻，且相邻转场两侧都要有未使用的源素材余量。',
   '',
   '长期偏好使用 `memory.read/search/update/remove`：先读取或搜索已有记录，只有跨项目可复用的用户偏好才保存；更新已有偏好时复用准确的 memoryId，删除时只使用读取结果中的 ID。一次性任务要求和模型推断不写入记忆。',
   '',
-  '素材分析使用 `media.analyze({ mediaIds, kind })` 提交任务，再循环调用 `media.get_analysis_task({ taskId })`。TTS 使用 `audio.startSpeech`；背景音乐或音效使用 `audio.startMusic`，其中 `model` 为 `small-music` 或 `small-sfx`；这些调用都先返回 taskId。只有任务状态为 `completed` 时才使用 mediaId 或 `media.read` 的结果，`failed` 时返回结构化错误。`queued`、`preparing-model`、`generating` 和 `saving` 都必须继续等待，不能提前报告完成。',
+  '素材分析使用 `media.analyze({ mediaIds, kind })` 提交任务，再循环调用 `media.get_analysis_task({ taskId })`。TTS 使用 `audio.startSpeech`；背景音乐或音效使用 `audio.startMusic`，其中 `model` 为 `small-music` 或 `small-sfx`；这些调用都先返回 taskId。只有任务状态为 `completed` 时才使用 mediaId 或 `media.read` 的结果，`failed` 时读取结构化错误且不能假设分析结果存在。`queued`、`preparing-model`、`generating` 和 `saving` 都必须继续等待，不能提前报告完成。',
 ].join('\n')
 
 function skillRootCandidates() {
