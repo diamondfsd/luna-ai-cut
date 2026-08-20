@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Luna Camera</string>
+	<key>CFBundleExecutable</key>
+	<string>LunaCameraExtension</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.diamondfsd.lunaaicut.camera</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Luna Camera</string>
+	<key>CFBundlePackageType</key>
+	<string>SYSX</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CMIOExtension</key>
+	<dict>
+		<key>CMIOExtensionMachServiceName</key>
+		<string>com.diamondfsd.lunaaicut.camera</string>
+	</dict>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.3</string>
+	<key>NSSystemExtensionUsageDescription</key>
+	<string>Luna AI Cut 用于提供 Luna Camera 虚拟摄像头。</string>
+</dict>
+</plist>

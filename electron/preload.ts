@@ -69,6 +69,15 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       ipcRenderer.on('camera-bridge:frame', listener)
       return () => ipcRenderer.off('camera-bridge:frame', listener)
     },
+    startVirtualCamera: () => ipcRenderer.invoke('camera-bridge:virtual-start'),
+    stopVirtualCamera: () => ipcRenderer.invoke('camera-bridge:virtual-stop'),
+    getVirtualCameraStatus: () => ipcRenderer.invoke('camera-bridge:virtual-status'),
+    onVirtualCameraStatus: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: import('../src/shared/types').MacVirtualCameraStatus): void => callback(status)
+      ipcRenderer.on('camera-bridge:virtual-status', listener)
+      ipcRenderer.send('camera-bridge:virtual-subscribe')
+      return () => ipcRenderer.off('camera-bridge:virtual-status', listener)
+    },
   },
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),

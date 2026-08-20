@@ -287,6 +287,13 @@
   line-height: 1.5;
 }
 
+.camera-bridge-inline-error {
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
 @media (max-width: 920px) {
   .camera-bridge-page {
     padding: 28px 22px 40px;

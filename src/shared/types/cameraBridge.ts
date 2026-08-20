@@ -30,4 +30,16 @@ export type CameraBridgeApi = {
   getStatus(): Promise<CameraBridgeStatus>
   onStatus(callback: (status: CameraBridgeStatus) => void): () => void
   onFrame(callback: (frame: CameraBridgeFrame) => void): () => void
+  startVirtualCamera(): Promise<MacVirtualCameraStatus>
+  stopVirtualCamera(): Promise<MacVirtualCameraStatus>
+  getVirtualCameraStatus(): Promise<MacVirtualCameraStatus>
+  onVirtualCameraStatus(callback: (status: MacVirtualCameraStatus) => void): () => void
+}
+
+export type MacVirtualCameraStatus = {
+  supported: boolean
+  state: 'unsupported' | 'stopped' | 'starting' | 'running' | 'error'
+  deviceName: string
+  frames: number
+  error: string | null
 }

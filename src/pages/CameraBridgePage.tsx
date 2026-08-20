@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Activity, CircleDot, Clock3, Database, PlugZap, Radio, RefreshCw, Square, Video } from 'lucide-react'
+import { Activity, Camera, CircleDot, Clock3, Database, PlugZap, Radio, RefreshCw, Square, Video } from 'lucide-react'
 
-import type { CameraBridgeStatus } from '../shared/types'
+import type { CameraBridgeStatus, MacVirtualCameraStatus } from '../shared/types'
 import { Button } from '../ui'
 import { CameraBridgePreview } from '../components/CameraBridgePreview'
 import '../styles/camera-bridge.css'
@@ -51,6 +51,7 @@ export function CameraBridgePage() {
   const [stats, setStats] = useState<BridgeStats>(EMPTY_STATS)
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
   const [status, setStatus] = useState<CameraBridgeStatus | null>(null)
+  const [virtualCamera, setVirtualCamera] = useState<MacVirtualCameraStatus | null>(null)
 
   useEffect(() => {
     const unsubscribe = window.luna.cameraBridge.onStatus((next) => {
@@ -74,6 +75,8 @@ export function CameraBridgePage() {
     }
   }, [])
 
+  useEffect(() => window.luna.cameraBridge.onVirtualCameraStatus(setVirtualCamera), [])
+
   function refreshStatus(): void {
     void window.luna.cameraBridge.start()
   }
@@ -83,8 +86,14 @@ export function CameraBridgePage() {
     else void window.luna.cameraBridge.stop()
   }
 
+  function toggleVirtualCamera(): void {
+    if (virtualCamera?.state === 'running' || virtualCamera?.state === 'starting') void window.luna.cameraBridge.stopVirtualCamera()
+    else void window.luna.cameraBridge.startVirtualCamera()
+  }
+
   const receiving = connectionState === 'receiving'
   const listening = connectionState !== 'idle'
+  const virtualCameraRunning = virtualCamera?.state === 'running' || virtualCamera?.state === 'starting'
 
   return (
     <main className="camera-bridge-page">
@@ -99,6 +108,9 @@ export function CameraBridgePage() {
             {listening ? '停止监听' : '开始监听'}
           </Button>
           <Button icon={<RefreshCw size={15} />} onClick={refreshStatus} size="compact" variant="secondary">重新连接</Button>
+          <Button icon={virtualCameraRunning ? <Square size={14} /> : <Camera size={15} />} onClick={toggleVirtualCamera} size="compact" variant={virtualCameraRunning ? 'secondary' : 'primary'} disabled={virtualCamera?.state === 'unsupported'}>
+            {virtualCameraRunning ? '停止虚拟摄像头' : '启动虚拟摄像头'}
+          </Button>
         </div>
       </header>
 
@@ -145,6 +157,25 @@ export function CameraBridgePage() {
           <section className="camera-bridge-card">
             <div className="camera-bridge-card-heading">
               <div>
+                <span className="camera-bridge-card-kicker">MACOS CAMERA</span>
+                <h2>系统摄像头</h2>
+              </div>
+              <span className={`camera-bridge-status-pill ${virtualCamera?.state ?? 'stopped'}`}>
+                <span className="bridge-live-dot" />
+                {virtualCamera?.state === 'running' ? '已启动' : virtualCamera?.state === 'starting' ? '正在启动' : virtualCamera?.state === 'error' ? '启动失败' : '未启动'}
+              </span>
+            </div>
+            <dl className="camera-bridge-details">
+              <div><dt>设备名称</dt><dd>{virtualCamera?.deviceName ?? 'Luna Camera'}</dd></div>
+              <div><dt>输出</dt><dd>1280×720 · 30fps · BGRA</dd></div>
+              <div><dt>解码帧</dt><dd>{virtualCamera?.frames ?? 0}</dd></div>
+            </dl>
+            {virtualCamera?.error && <p className="camera-bridge-inline-error">{virtualCamera.error}</p>}
+          </section>
+
+          <section className="camera-bridge-card">
+            <div className="camera-bridge-card-heading">
+              <div>
                 <span className="camera-bridge-card-kicker">INPUT SOURCES</span>
                 <h2>输入源</h2>
               </div>
@@ -158,7 +189,7 @@ export function CameraBridgePage() {
 
           <section className="camera-bridge-card camera-bridge-note">
             <Clock3 size={16} />
-            <span>{status?.error ?? (receiving ? '已收到 H.264 编码帧，虚拟摄像头输出尚未接入。' : '页面会持续监听 Android AOA USB 设备。')}</span>
+            <span>{status?.error ?? virtualCamera?.error ?? (virtualCamera?.state === 'running' ? 'Luna Camera 已启动，OBS、Zoom 等软件可以尝试选择它。' : receiving ? '已收到 H.264 编码帧，点击上方按钮启动 macOS 系统摄像头。' : '页面会持续监听 Android AOA USB 设备。')}</span>
           </section>
         </aside>
       </section>

@@ -46,6 +46,7 @@ scripts/deploy-release.conf
 test-resources/
 test-results/
 dist*
+native/macos/LunaCameraExtension/build/
 release*/
 backups/
 

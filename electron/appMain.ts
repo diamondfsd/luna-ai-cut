@@ -35,6 +35,7 @@ import { shutdownSpecializedSegmentationWorker } from './specializedSegmentation
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './localMediaShareService'
 import { cameraBridgeReceiver } from './cameraBridgeReceiver'
+import { macVirtualCamera } from './macVirtualCamera'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -291,6 +292,7 @@ app.on('before-quit', () => {
   void stopMockServer()
   void stopLocalMediaShare()
   void cameraBridgeReceiver.stop()
+  void macVirtualCamera.stop()
 })
 
 app.on('activate', () => {
