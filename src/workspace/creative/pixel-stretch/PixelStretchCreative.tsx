@@ -78,7 +78,7 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const [flowPoints, setFlowPoints] = useState<PixelStretchPathPoint[] | undefined>(normalizePixelStretchPathPoints(saved?.flowPoints))
   const [maskPath, setMaskPath] = useState<string | null>(saved?.maskPath ?? null)
   const [maskOwnerId, setMaskOwnerId] = useState<string | null>(saved?.maskPath ? activeAssetId ?? null : null)
-  const [restoredOwnerKey, setRestoredOwnerKey] = useState(parameterOwnerKey)
+  const [restoredOwnerKey, setRestoredOwnerKey] = useState<string | null>(null)
   const [subjectBounds, setSubjectBounds] = useState<SubjectBounds | null>(null)
   const [maskData, setMaskData] = useState<{ data: Uint8Array; width: number; height: number } | null>(null)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
@@ -279,9 +279,9 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
     if (!activeAsset || !sourceSize) return []
     return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark || usesCustomWatermark(edit.pipeline.watermark))
   }, [activeAsset, allowWatermark, edit.pipeline, metadata, sourceSize])
-  const effectLayers = useMemo(() => activeMaskPath && subjectBounds && sourceSize
-    ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: activeCreativeMaskLayer?.inverted, maskFeather: activeCreativeMaskLayer?.feather, subjectBounds, sourceAspect: sourceSize.width / sourceSize.height, flowShape, flowLength, flowCurve, flowWidth, flowEndWidth, flowPoints })
-    : [], [activeCreativeMaskLayer?.feather, activeCreativeMaskLayer?.inverted, activeMaskPath, angle, baseLayers, flowCurve, flowEndWidth, flowLength, flowPoints, flowShape, flowWidth, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
+  const effectLayers = useMemo(() => activeMaskPath && projectId && subjectBounds && sourceSize
+    ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, maskProjectId: projectId, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: activeCreativeMaskLayer?.inverted, maskFeather: activeCreativeMaskLayer?.feather, subjectBounds, sourceAspect: sourceSize.width / sourceSize.height, flowShape, flowLength, flowCurve, flowWidth, flowEndWidth, flowPoints })
+    : [], [activeCreativeMaskLayer?.feather, activeCreativeMaskLayer?.inverted, activeMaskPath, angle, baseLayers, flowCurve, flowEndWidth, flowLength, flowPoints, flowShape, flowWidth, preset, projectId, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
   const previewLayers = showOriginal ? baseLayers : effectLayers.length ? effectLayers : baseLayers
 
   function changeSubjectModel(value: NonNullable<WorkspacePixelStretchState['subjectModel']>): void {

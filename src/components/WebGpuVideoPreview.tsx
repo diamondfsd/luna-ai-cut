@@ -108,6 +108,8 @@ export function WebGpuVideoPreview({
   const rendererRef = useRef<WebGpuCompositionRenderer | null>(null)
   const compositionRef = useRef(compositionForPreview(layers, canvasWidth, canvasHeight, maxSide))
   const layersRef = useRef(layers)
+  const compositionTimeRef = useRef(compositionTime)
+  const seekTimeRef = useRef(time)
   const videoSourcesRef = useRef<VideoSourceDescriptor[]>([])
   const renderRevisionRef = useRef(0)
   const renderingRef = useRef(false)
@@ -126,6 +128,8 @@ export function WebGpuVideoPreview({
 
   callbacksRef.current = { onError, onReady, onRender, onVideoElement, onViewportChange }
   layersRef.current = layers
+  compositionTimeRef.current = compositionTime
+  seekTimeRef.current = time
   videoSourcesRef.current = videoSources
   primarySourceKeyRef.current = primarySourceKey
   compositionRef.current = compositionForPreview(layers, canvasWidth, canvasHeight, maxSide)
@@ -158,8 +162,9 @@ export function WebGpuVideoPreview({
   }, [])
 
   const compositionTimeForCurrentFrame = useCallback(() => {
-    if (compositionTime != null && Number.isFinite(compositionTime)) {
-      return Math.max(0, compositionTime)
+    const externalTime = compositionTimeRef.current
+    if (externalTime != null && Number.isFinite(externalTime)) {
+      return Math.max(0, externalTime)
     }
     const primary = layersRef.current.find((layer) => layer.isVideo)
     if (!primary) return null
@@ -167,7 +172,7 @@ export function WebGpuVideoPreview({
     const primaryVideo = videoElementsRef.current.get(primaryKey)
     if (!primaryVideo || !Number.isFinite(primaryVideo.currentTime)) return null
     return compositionTimeForVideoLayer(primary, primaryVideo.currentTime)
-  }, [compositionTime])
+  }, [])
 
   const syncVideoTimes = useCallback(() => {
     const primary = layersRef.current.find((layer) => layer.isVideo)
@@ -200,7 +205,9 @@ export function WebGpuVideoPreview({
 
   const renderFrame = useCallback(async () => {
     const renderer = rendererRef.current
-    if (!renderer || destroyedRef.current) return
+    // Video metadata can arrive while pipelines are still compiling. Ignore
+    // those early callbacks; the ready effect will render the first frame.
+    if (!renderer || !renderer.isReady || destroyedRef.current) return
     const videoLayers = layersRef.current.filter((layer) => layer.isVideo)
     const requiredKeys = new Set(videoLayers.map(compositionSourceKey))
     for (const key of requiredKeys) {
@@ -358,16 +365,18 @@ export function WebGpuVideoPreview({
     const primary = primarySourceKeyRef.current
       ? videoElementsRef.current.get(primarySourceKeyRef.current)
       : null
-    if (!primary || time == null || !Number.isFinite(time)) return
-    if (Math.abs(primary.currentTime - time) > 0.01) {
-      primary.currentTime = Math.max(0, time)
+    const seekTime = seekTimeRef.current
+    if (!primary || seekTime == null || !Number.isFinite(seekTime)) return
+    if (Math.abs(primary.currentTime - seekTime) > 0.01) {
+      primary.currentTime = Math.max(0, seekTime)
     }
     syncVideoTimes()
     void renderFrame()
-  }, [renderFrame, seekRevision, syncVideoTimes, time])
+  }, [renderFrame, seekRevision, syncVideoTimes])
 
   useEffect(() => {
     if (!ready || fatalError) return
+    if (compositionTimeRef.current != null && Number.isFinite(compositionTimeRef.current)) return
     let frame = 0
     const tick = () => {
       const primary = primarySourceKeyRef.current

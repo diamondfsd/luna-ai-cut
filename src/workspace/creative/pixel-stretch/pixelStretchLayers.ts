@@ -12,6 +12,7 @@ export interface SubjectBounds {
 interface PixelStretchLayerOptions {
   layers: PreviewLayer[]
   maskPath: string
+  maskProjectId: string
   preset: PixelStretchPresetId
   angle: number
   samplePosition: number
@@ -154,6 +155,7 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
     ...main,
     layerType: 'pixel-stretch',
     maskPath: options.maskPath,
+    maskProjectId: options.maskProjectId,
     maskOpacity: 1,
     maskInverted: options.maskInverted ?? false,
     maskFeather: 0,
@@ -187,6 +189,7 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
     layerType: 'local-color',
     fit: 'cover',
     maskPath: options.maskPath,
+    maskProjectId: options.maskProjectId,
     maskOpacity: 1,
     maskInverted: options.maskInverted ?? false,
     maskFeather: options.maskFeather ?? 1,

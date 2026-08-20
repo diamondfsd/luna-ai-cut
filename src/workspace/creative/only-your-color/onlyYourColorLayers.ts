@@ -5,6 +5,7 @@ import { pipelineColorToRenderColor } from '../../shared/renderLayerPipeline'
 interface OnlyYourColorLayerOptions {
   layers: PreviewLayer[]
   sourcePath: string
+  maskProjectId: string
   subjectMaskPath: string
   backgroundMaskPath: string
   intensity: number
@@ -74,6 +75,9 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
   const background: PreviewLayer = {
     ...flattened,
     layerType: 'local-color',
+    precomposeGroup: undefined,
+    precomposeRole: undefined,
+    maskProjectId: options.maskProjectId,
     color: {
       ...neutralColor,
       exposure: Math.max(-5, Math.min(5, options.backgroundExposure)),
@@ -90,6 +94,9 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
   const subject: PreviewLayer = {
     ...flattened,
     layerType: 'local-color',
+    precomposeGroup: undefined,
+    precomposeRole: undefined,
+    maskProjectId: options.maskProjectId,
     color: {
       ...neutralColor,
       exposure: Math.max(-5, Math.min(5, options.subjectExposure)),

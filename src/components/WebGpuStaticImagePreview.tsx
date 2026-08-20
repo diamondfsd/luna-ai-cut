@@ -83,11 +83,13 @@ export function WebGpuStaticImagePreview({
     if (!renderer) return
 
     renderingRef.current = true
+    let activeRequest: { composition: CompositionInput; time: number; revision: number } | null = null
     try {
       while (!destroyedRef.current) {
         const request = pendingRenderRef.current
         if (!request) break
         pendingRenderRef.current = null
+        activeRequest = request
 
         await renderer.render(request.composition, request.time)
         await renderer.waitForGpu()
@@ -95,7 +97,7 @@ export function WebGpuStaticImagePreview({
         callbacksRef.current.onRender?.()
       }
     } catch (error: unknown) {
-      const request = pendingRenderRef.current
+      const request = activeRequest
       if (destroyedRef.current || (request && request.revision !== renderRevisionRef.current)) return
       const message = error instanceof Error ? error.message : String(error)
       setFatalError(message)

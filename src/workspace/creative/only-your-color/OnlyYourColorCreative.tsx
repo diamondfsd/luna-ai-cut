@@ -65,7 +65,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspaceOnlyYourColorState['subjectModel']>>(saved?.subjectModel ?? 'fast')
   const [maskPath, setMaskPath] = useState<string | null>(saved?.maskPath ?? null)
   const [maskOwnerKey, setMaskOwnerKey] = useState<string | null>(saved?.maskPath ? ownerKey : null)
-  const [restoredOwnerKey, setRestoredOwnerKey] = useState(ownerKey)
+  const [restoredOwnerKey, setRestoredOwnerKey] = useState<string | null>(null)
   const [maskData, setMaskData] = useState<{ data: Uint8Array; width: number; height: number } | null>(null)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
   const [metadata, setMetadata] = useState<MediaMetadata | null>(null)
@@ -237,24 +237,22 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   }, [])
 
   const outputSize = useMemo(() => sourceSize ? outputSizeForTransform(sourceSize, edit.pipeline.transform) : null, [edit.pipeline.transform, sourceSize])
-  const renderPipeline = useMemo(() => {
-    if (currentSubjectMaskLayer && currentBackgroundMaskLayer) return edit.pipeline
-    return {
-      ...edit.pipeline,
-      colorMasks: edit.pipeline.colorMasks.filter((layer) => (
-        layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID
-        && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID
-      )),
-    }
-  }, [currentBackgroundMaskLayer, currentSubjectMaskLayer, edit.pipeline])
+  const renderPipeline = useMemo(() => ({
+    ...edit.pipeline,
+    colorMasks: edit.pipeline.colorMasks.filter((layer) => (
+      layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID
+      && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID
+    )),
+  }), [edit.pipeline])
   const baseLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
     return buildWorkspaceExportLayers(activeAsset.path, sourceSize, renderPipeline, metadata, allowWatermark || usesCustomWatermark(renderPipeline.watermark))
   }, [activeAsset, allowWatermark, metadata, renderPipeline, sourceSize])
-  const effectLayers = useMemo(() => activeAsset && activeMaskPath
+  const effectLayers = useMemo(() => activeAsset && activeMaskPath && projectId
     ? buildOnlyYourColorLayers({
       layers: baseLayers,
       sourcePath: activeAsset.path,
+      maskProjectId: projectId,
       subjectMaskPath: currentSubjectMaskLayer?.path ?? activeMaskPath,
       backgroundMaskPath: currentBackgroundMaskLayer?.path ?? activeMaskPath,
       intensity,
@@ -267,7 +265,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
       subjectMaskInverted: currentSubjectMaskLayer?.inverted,
       backgroundMaskInverted: currentBackgroundMaskLayer?.inverted,
     })
-    : baseLayers, [activeAsset, activeMaskPath, backgroundBrightness, backgroundContrast, backgroundExposure, baseLayers, currentBackgroundMaskLayer, currentSubjectMaskLayer, intensity, subjectExposure, subjectSaturation, subjectVibrance])
+    : baseLayers, [activeAsset, activeMaskPath, backgroundBrightness, backgroundContrast, backgroundExposure, baseLayers, currentBackgroundMaskLayer, currentSubjectMaskLayer, intensity, projectId, subjectExposure, subjectSaturation, subjectVibrance])
   const previewLayers = showOriginal ? baseLayers : effectLayers
 
   function recognizeSubject(value: NonNullable<WorkspaceOnlyYourColorState['subjectModel']>): void {

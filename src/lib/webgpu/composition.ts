@@ -1946,9 +1946,10 @@ export class WebGpuCompositionRenderer {
     sourceOverride?: CachedImageTexture,
   ): Promise<PreparedCompositionDraw | typeof HIDDEN_MASK> {
     const layerType = layer.layerType ?? 'media'
-    const isLocalColorInput = layerType === 'local-color' && layer.precomposeRole === 'input'
     const canUseImageSource = layerType === 'media'
-      || isLocalColorInput
+      || layerType === 'pixel-flow'
+      || layerType === 'pixel-stretch'
+      || layerType === 'local-color'
       || ((layerType === 'logo' || layerType === 'decoration') && Boolean(layer.source.path))
     if (!sourceOverride && !canUseImageSource && !hasRasterizableWebGpuLayerContent(layer)) {
       throw new Error('当前图层缺少可显示内容')

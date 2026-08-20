@@ -20,7 +20,11 @@ export function onlyYourColorStateForAsset(
 }
 
 function normalizePath(value: string): string {
-  return value.replaceAll('\\', '/').replace(/\/+$/, '')
+  return value
+    .replaceAll('\\', '/')
+    // macOS exposes /var through the /private/var symlink depending on the API used.
+    .replace(/^\/private\/var(?=\/|$)/, '/var')
+    .replace(/\/+$/, '')
 }
 
 function isMaskPathInProject(project: WorkspaceProject | null | undefined, maskPath: string): boolean {

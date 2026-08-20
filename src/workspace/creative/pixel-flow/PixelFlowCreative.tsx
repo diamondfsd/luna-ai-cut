@@ -360,7 +360,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       pipeline: edit.pipeline,
       settings: effectSettings,
     })]
-  }, [activeAsset, depthMaskPath, edit.pipeline, effectSettings, playbackDuration, sourceSize])
+  }, [activeAsset, depthMaskPath, edit.pipeline, effectSettings, playbackDuration, projectId, sourceSize])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -433,6 +433,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
                 canvasWidth={gpuPreviewSize.width}
                 canvasHeight={gpuPreviewSize.height}
                 playing={playing}
+                compositionTime={currentTime}
                 time={currentTime}
                 seekRevision={seekRevision}
                 onError={handleError}

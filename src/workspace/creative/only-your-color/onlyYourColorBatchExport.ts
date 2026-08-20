@@ -116,6 +116,7 @@ export async function exportOnlyYourColorBatch(options: OnlyYourColorBatchExport
       const effectLayers = buildOnlyYourColorLayers({
         layers: baseLayers,
         sourcePath: entry.asset.path,
+        maskProjectId: options.project.id,
         subjectMaskPath: mask.state.maskPath!,
         backgroundMaskPath: mask.state.maskPath!,
         intensity: mask.state.intensity,
