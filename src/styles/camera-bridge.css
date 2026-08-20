@@ -32,6 +32,11 @@
   margin: 0;
 }
 
+.camera-bridge-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .camera-bridge-layout {
   display: grid;
   gap: 18px;
@@ -60,6 +65,13 @@
   min-height: 320px;
   overflow: hidden;
   position: relative;
+}
+
+.camera-bridge-video-canvas {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
 }
 
 .camera-bridge-preview-empty {
@@ -180,6 +192,16 @@
   color: #238243;
 }
 
+.camera-bridge-status-pill.connected {
+  background: #eaf2ff;
+  color: var(--blue);
+}
+
+.camera-bridge-status-pill.error {
+  background: #fff0ef;
+  color: #b42318;
+}
+
 .camera-bridge-details {
   border-top: 1px solid var(--hairline);
   margin: 16px 0 0;
@@ -289,6 +311,10 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 18px;
+  }
+
+  .camera-bridge-header-actions {
+    flex-wrap: wrap;
   }
 
   .camera-bridge-preview {

@@ -3,7 +3,7 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.diamondfsd.lunaaicut",
   "asar": true,
-  "asarUnpack": [],
+  "asarUnpack": ["**/*.node"],
   "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna AI Cut",
   "directories": {

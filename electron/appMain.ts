@@ -34,6 +34,7 @@ import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } fro
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './localMediaShareService'
+import { cameraBridgeReceiver } from './cameraBridgeReceiver'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -289,6 +290,7 @@ app.on('before-quit', () => {
   cleanupDeviceDebug()
   void stopMockServer()
   void stopLocalMediaShare()
+  void cameraBridgeReceiver.stop()
 })
 
 app.on('activate', () => {

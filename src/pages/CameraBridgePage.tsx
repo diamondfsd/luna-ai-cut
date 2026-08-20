@@ -1,12 +1,12 @@
-import { useState } from 'react'
-import { Activity, CircleDot, Clock3, Database, Radio, RefreshCw, Video } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Activity, CircleDot, Clock3, Database, PlugZap, Radio, RefreshCw, Square, Video } from 'lucide-react'
 
+import type { CameraBridgeStatus } from '../shared/types'
 import { Button } from '../ui'
+import { CameraBridgePreview } from '../components/CameraBridgePreview'
 import '../styles/camera-bridge.css'
 
-type BridgeConnectionState = 'idle' | 'waiting' | 'receiving'
-
-interface BridgeStats {
+type BridgeStats = {
   source: string
   codec: string
   resolution: string
@@ -26,10 +26,13 @@ const EMPTY_STATS: BridgeStats = {
   keyframes: 0,
 }
 
-function connectionLabel(state: BridgeConnectionState): string {
+function connectionLabel(state: CameraBridgeStatus['state']): string {
   if (state === 'receiving') return '正在接收'
-  if (state === 'waiting') return '等待连接'
-  return '未连接'
+  if (state === 'connected') return 'USB 已连接'
+  if (state === 'negotiating') return '正在握手'
+  if (state === 'waiting-usb') return '等待 USB'
+  if (state === 'error') return 'USB 错误'
+  return '未监听'
 }
 
 function formatCheckedAt(date: Date | null): string {
@@ -37,18 +40,51 @@ function formatCheckedAt(date: Date | null): string {
   return date.toLocaleTimeString('zh-CN', { hour12: false })
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
 export function CameraBridgePage() {
-  const [connectionState, setConnectionState] = useState<BridgeConnectionState>('idle')
+  const [connectionState, setConnectionState] = useState<CameraBridgeStatus['state']>('idle')
   const [stats, setStats] = useState<BridgeStats>(EMPTY_STATS)
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
+  const [status, setStatus] = useState<CameraBridgeStatus | null>(null)
+
+  useEffect(() => {
+    const unsubscribe = window.luna.cameraBridge.onStatus((next) => {
+      setStatus(next)
+      setConnectionState(next.state)
+      setCheckedAt(new Date())
+      setStats({
+        source: 'Android 手机',
+        codec: next.codec,
+        resolution: next.width && next.height ? `${next.width}×${next.height}` : '—',
+        frames: next.videoFrames,
+        bytes: formatBytes(next.bytes),
+        fps: next.fps.toFixed(1),
+        keyframes: next.keyframes,
+      })
+    })
+    void window.luna.cameraBridge.start()
+    return () => {
+      unsubscribe()
+      void window.luna.cameraBridge.stop()
+    }
+  }, [])
 
   function refreshStatus(): void {
-    setCheckedAt(new Date())
-    setConnectionState('waiting')
-    setStats(EMPTY_STATS)
+    void window.luna.cameraBridge.start()
+  }
+
+  function toggleListening(): void {
+    if (connectionState === 'idle') void window.luna.cameraBridge.start()
+    else void window.luna.cameraBridge.stop()
   }
 
   const receiving = connectionState === 'receiving'
+  const listening = connectionState !== 'idle'
 
   return (
     <main className="camera-bridge-page">
@@ -56,30 +92,24 @@ export function CameraBridgePage() {
         <div>
           <div className="camera-bridge-eyebrow">CAMERA BRIDGE</div>
           <h1>视频流测试</h1>
-          <p>Android 输入源 · 桌面接收状态</p>
+          <p>Android 手机输入源 · AOA USB 接收状态</p>
         </div>
-        <Button
-          icon={<RefreshCw size={15} />}
-          onClick={refreshStatus}
-          size="compact"
-          variant="secondary"
-        >
-          刷新状态
-        </Button>
+        <div className="camera-bridge-header-actions">
+          <Button icon={listening ? <Square size={14} /> : <PlugZap size={15} />} onClick={toggleListening} size="compact" variant={listening ? 'secondary' : 'primary'}>
+            {listening ? '停止监听' : '开始监听'}
+          </Button>
+          <Button icon={<RefreshCw size={15} />} onClick={refreshStatus} size="compact" variant="secondary">重新连接</Button>
+        </div>
       </header>
 
       <section className="camera-bridge-layout">
         <div className="camera-bridge-preview-panel">
           <div className="camera-bridge-preview">
-            <div className="camera-bridge-preview-empty">
-              <Video size={36} strokeWidth={1.5} />
-              <strong>{receiving ? '正在接收视频流' : '等待视频流'}</strong>
-              <span>{connectionState === 'waiting' ? '接收通道已准备' : '接收器待接入'}</span>
-            </div>
+            <CameraBridgePreview receiving={receiving} transportError={status?.error ?? null} />
             <div className="camera-bridge-preview-meta">
               <span className={receiving ? 'bridge-live-dot active' : 'bridge-live-dot'} />
               <span>{connectionLabel(connectionState)}</span>
-              <span className="camera-bridge-preview-format">{stats.resolution} · {stats.codec}</span>
+              <span className="camera-bridge-preview-format">{stats.resolution} · {stats.codec} · AOA USB</span>
             </div>
           </div>
 
@@ -106,8 +136,8 @@ export function CameraBridgePage() {
               </span>
             </div>
             <dl className="camera-bridge-details">
-              <div><dt>通道</dt><dd>Android Bridge</dd></div>
-              <div><dt>协议</dt><dd>LBRG · 待接入</dd></div>
+              <div><dt>通道</dt><dd>Android AOA USB</dd></div>
+              <div><dt>协议</dt><dd>LBRG · CRC32</dd></div>
               <div><dt>最近检查</dt><dd>{formatCheckedAt(checkedAt)}</dd></div>
             </dl>
           </section>
@@ -120,7 +150,7 @@ export function CameraBridgePage() {
               </div>
             </div>
             <div className="camera-bridge-source-list">
-              <SourceRow title="手机摄像头" detail="Android Camera2 · H.264" state="已编码" active />
+              <SourceRow title="手机摄像头" detail="Android Camera2 · H.264" state={receiving ? '正在发送' : '等待 USB'} active />
               <SourceRow title="Luna Ultra" detail="Wi-Fi 视频输入" state="待验证" />
               <SourceRow title="外接设备" detail="USB / 网络摄像头" state="待接入" />
             </div>
@@ -128,7 +158,7 @@ export function CameraBridgePage() {
 
           <section className="camera-bridge-card camera-bridge-note">
             <Clock3 size={16} />
-            <span>页面已就绪，当前桌面接收器尚未接入。</span>
+            <span>{status?.error ?? (receiving ? '已收到 H.264 编码帧，虚拟摄像头输出尚未接入。' : '页面会持续监听 Android AOA USB 设备。')}</span>
           </section>
         </aside>
       </section>

@@ -54,6 +54,22 @@ interface LunaExportTaskApi {
 }
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
+  cameraBridge: {
+    start: () => ipcRenderer.invoke('camera-bridge:start'),
+    stop: () => ipcRenderer.invoke('camera-bridge:stop'),
+    getStatus: () => ipcRenderer.invoke('camera-bridge:status'),
+    onStatus: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: import('../src/shared/types').CameraBridgeStatus): void => callback(status)
+      ipcRenderer.on('camera-bridge:status', listener)
+      ipcRenderer.send('camera-bridge:subscribe')
+      return () => ipcRenderer.off('camera-bridge:status', listener)
+    },
+    onFrame: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, frame: import('../src/shared/types').CameraBridgeFrame): void => callback(frame)
+      ipcRenderer.on('camera-bridge:frame', listener)
+      return () => ipcRenderer.off('camera-bridge:frame', listener)
+    },
+  },
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
