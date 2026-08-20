@@ -99,7 +99,7 @@ try {
     `,
   })
   assert.deepEqual(scriptResult.data.result, {
-    hasPath: false,
+    hasPath: true,
     sdkToken: 'test-token',
     legacyToken: 'test-token',
   })
@@ -114,6 +114,18 @@ try {
   assert.deepEqual(registered.map(tool => tool.name), ['edit.run_script'])
   assert.equal(prompts.length, 1)
   assert.match(prompts[0].text, /edit\.run_script/)
+  assert.match(prompts[0].text, /fromClipId/u)
+  assert.match(prompts[0].text, /startSeconds\?, endSeconds\?/u)
+  assert.match(prompts[0].text, /result\.data/u)
+  assert.match(prompts[0].text, /luna\.memory\.search/u)
+  assert.match(prompts[0].text, /luna\.memory\.update/u)
+  assert.match(prompts[0].text, /luna\.media\.analyze/u)
+  assert.match(prompts[0].text, /luna\.media\.getAnalysisTask/u)
+  assert.match(prompts[0].text, /luna\.audio\.startSpeech/u)
+  assert.match(prompts[0].text, /luna\.audio\.startMusic/u)
+  assert.match(prompts[0].text, /luna\.audio\.getTask/u)
+  assert.match(prompts[0].text, /status === 'completed'/u)
+  assert.match(prompts[0].text, /small-sfx/u)
   assert.equal(typeof dispose, 'function')
   dispose()
 } finally {

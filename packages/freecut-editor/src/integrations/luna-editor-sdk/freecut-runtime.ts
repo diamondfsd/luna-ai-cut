@@ -1,4 +1,11 @@
 import { editProject, type EditOp } from '@freecut/headless/edit'
+import { getTranscript } from '@freecut/infrastructure/storage'
+import {
+  getAudioTask,
+  getMediaAnalysisTask,
+  startAudioTask,
+  startMediaAnalysisTask,
+} from './freecut-ai-tasks'
 import type {
   FreeCutEditRequest,
   FreeCutEditResponse,
@@ -128,6 +135,8 @@ type StructuredMediaListQuery = MediaQuery & {
 }
 
 type PublicMediaKind = 'video' | 'audio' | 'image' | 'gif' | 'svg' | 'lottie' | 'unknown'
+
+const MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS = 500
 
 interface NormalizedMediaQuery {
   ids?: readonly string[]
@@ -602,7 +611,7 @@ export class FreeCutRuntime {
     return { media: publicMediaMetadata(media, true) }
   }
 
-  readMedia(args: Record<string, unknown>): MediaInspection & { items?: MediaMetadata[] } {
+  async readMedia(args: Record<string, unknown>): Promise<MediaInspection & { items?: MediaMetadata[] }> {
     assertProjectContext(args.projectId, this.project.id)
     const ids = new Set<string>()
     if (args.mediaId !== undefined) ids.add(asStringValue(args.mediaId, 'mediaId'))
@@ -610,11 +619,29 @@ export class FreeCutRuntime {
     for (const mediaId of batchIds ?? []) ids.add(mediaId)
     if (ids.size === 0) throw new TypeError('mediaId or mediaIds must be provided')
 
-    const items = [...ids].map((mediaId) => {
+    const items = await Promise.all([...ids].map(async (mediaId) => {
       const media = this.mediaById.get(mediaId)
       if (!media) throw new Error(`Media "${mediaId}" does not exist`)
-      return publicMediaMetadata(media, true)
-    })
+      const transcript = await getTranscript(media.id).catch(() => undefined)
+      const transcriptSegments = transcript?.segments ?? []
+      return {
+        ...publicMediaMetadata(media, true),
+        transcript: transcript
+          ? {
+              status: 'ready',
+              language: transcript.language,
+              model: transcript.model,
+              segments: transcriptSegments.slice(0, MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS).map((segment) => ({
+                startSeconds: segment.start,
+                endSeconds: segment.end,
+                text: segment.text,
+              })),
+              truncated: transcriptSegments.length > MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS,
+              updatedAt: transcript.updatedAt,
+            }
+          : { status: 'not-requested', segments: [], truncated: false },
+      }
+    }))
     if (batchIds !== undefined) return { media: items[0]!, items }
     return { media: items[0]! }
   }
@@ -674,7 +701,7 @@ export class FreeCutRuntime {
         assertProjectContext(args.projectId, this.project.id)
         return this.inspectMedia(asStringValue(args.mediaId, 'mediaId'))
       case 'media.read': {
-        return this.readMedia(args)
+        return await this.readMedia(args)
       }
       case 'timeline.inspect_context':
         return this.inspectTimeline(legacyTrackQuery(args, this.project.metadata.fps))
@@ -758,39 +785,106 @@ export class FreeCutRuntime {
       case 'timeline.add_transition':
         return this.edit({ ops: [coreOperationForCapability('timeline.transitions.add', {
           ...args,
-          fromClipId: args.leftItemId,
-          toClipId: args.rightItemId,
-          type: args.presentation ?? 'fade',
+          fromClipId: args.fromClipId,
+          toClipId: args.toClipId,
+          type: args.type ?? 'fade',
           duration: args.durationSeconds ?? 0.5,
         }, this.project.metadata.fps)] })
       case 'timeline.add_html':
         throw new FreeCutCapabilityUnavailableError('timeline.add_html')
       case 'project.set_canvas':
         throw new FreeCutCapabilityUnavailableError('project.set_canvas')
-      case 'audio.start_speech':
-      case 'audio.start_music':
-      case 'audio.get_task':
-      case 'media.analyze':
+      case 'media.analyze': {
+        assertProjectContext(args.projectId, this.project.id)
+        const mediaIds = assertStringArray(
+          args.mediaIds ?? (typeof args.mediaId === 'string' ? [args.mediaId] : undefined),
+          'mediaIds',
+        )
+        if (!mediaIds || mediaIds.length === 0) throw new TypeError('mediaIds must be a non-empty array')
+        if (mediaIds.length > 12) throw new TypeError('mediaIds must contain at most 12 items')
+        const kind = args.kind
+        if (kind !== 'transcript' && kind !== 'visual') {
+          throw new TypeError('kind must be transcript or visual')
+        }
+        const requested = new Set(mediaIds)
+        return startMediaAnalysisTask({
+          projectId: this.project.id,
+          mediaIds,
+          mediaItems: [...this.mediaById.values()].filter((media) => requested.has(media.id)),
+          kind,
+        })
+      }
       case 'media.get_analysis_task':
-        throw new FreeCutCapabilityUnavailableError(name)
+        assertProjectContext(args.projectId, this.project.id)
+        return getMediaAnalysisTask(asStringValue(args.taskId, 'taskId'), this.project.id)
+      case 'audio.start_speech': {
+        const text = asStringValue(args.text, 'text')
+        if (text.length > 8_000) throw new TypeError('text must be at most 8000 characters')
+        const voice = args.voice === undefined ? 'Junhao' : asStringValue(args.voice, 'voice')
+        const speed = args.speed === undefined ? 1 : args.speed
+        if (typeof speed !== 'number' || !Number.isFinite(speed) || speed < 0.5 || speed > 2) {
+          throw new TypeError('speed must be between 0.5 and 2')
+        }
+        return startAudioTask({ projectId: this.project.id, kind: 'speech', text, voice, speed })
+      }
+      case 'audio.start_music': {
+        const prompt = asStringValue(args.prompt, 'prompt')
+        if (prompt.length > 1_000) throw new TypeError('prompt must be at most 1000 characters')
+        const model = args.model === undefined ? 'small-music' : args.model
+        if (model !== 'small-music' && model !== 'small-sfx') {
+          throw new TypeError('model must be small-music or small-sfx')
+        }
+        const durationSeconds = args.durationSeconds === undefined ? 8 : args.durationSeconds
+        if (
+          typeof durationSeconds !== 'number' ||
+          !Number.isFinite(durationSeconds) ||
+          durationSeconds < 2 ||
+          durationSeconds > 30
+        ) {
+          throw new TypeError('durationSeconds must be between 2 and 30')
+        }
+        const guidanceScale = args.guidanceScale === undefined ? 3 : args.guidanceScale
+        if (
+          typeof guidanceScale !== 'number' ||
+          !Number.isFinite(guidanceScale) ||
+          guidanceScale < 0 ||
+          guidanceScale > 10
+        ) {
+          throw new TypeError('guidanceScale must be between 0 and 10')
+        }
+        return startAudioTask({
+          projectId: this.project.id,
+          kind: 'music',
+          prompt,
+          model,
+          durationSeconds,
+          guidanceScale,
+        })
+      }
+      case 'audio.get_task':
+        assertProjectContext(args.projectId, this.project.id)
+        return getAudioTask(asStringValue(args.taskId, 'taskId'), this.project.id)
       case 'media.search_transcript':
       case 'media.searchTranscript': {
+        assertProjectContext(args.projectId, this.project.id)
         const query = asStringValue(args.query, 'query').toLocaleLowerCase()
         const ids = Array.isArray(args.mediaIds)
           ? new Set(args.mediaIds.filter((value): value is string => typeof value === 'string'))
           : typeof args.mediaId === 'string' ? new Set([args.mediaId]) : undefined
-        const matches = [...this.mediaById.values()].flatMap((media) => {
+        const matches = (await Promise.all([...this.mediaById.values()].map(async (media) => {
           if (ids && !ids.has(media.id)) return []
-          return (media.aiCaptions ?? [])
-            .filter((caption) => caption.text.toLocaleLowerCase().includes(query))
-            .map((caption, index) => ({
+          const transcript = await getTranscript(media.id).catch(() => undefined)
+          return (transcript?.segments ?? [])
+            .filter((segment) => segment.text.toLocaleLowerCase().includes(query))
+            .map((segment, index) => ({
               mediaId: media.id,
-              segmentId: `${media.id}-caption-${index}`,
-              text: caption.text,
-              start: caption.timeSec,
-              end: caption.timeSec,
+              segmentId: `${media.id}-transcript-${index}`,
+              fileName: media.fileName,
+              text: segment.text,
+              start: segment.start,
+              end: segment.end,
             }))
-        })
+        }))).flat()
         return name === 'media.search_transcript' ? { matches } : matches
       }
       case 'project.edit':

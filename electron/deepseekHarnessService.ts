@@ -6,11 +6,17 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { parse, stringify } from 'yaml'
+import { app } from 'electron'
 
 import { withDeepSeekHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
 import { deepSeekHarnessCapabilities } from './deepseekHarnessCapabilities'
 import { prepareHarnessSession } from './deepseekHarnessSession'
+import {
+  createUserMemoryHost,
+  isUserMemoryCapability,
+  userMemoryRootForApplicationData,
+} from './userMemoryService'
 import type {
   DeepSeekHarnessContext,
   DeepSeekHarnessToolRequest,
@@ -43,6 +49,7 @@ let startingChild: ChildProcess | undefined
 let runtimeGeneration = 0
 let toolServer: Server | undefined
 let toolEndpoint: string | undefined
+let userMemoryHost: ReturnType<typeof createUserMemoryHost> | undefined
 
 function appRoot(): string {
   return process.env.APP_ROOT ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -95,6 +102,23 @@ function harnessSessionRootForBaseDir(baseDir: string): string {
 
 function dshHome(): string {
   return harnessHomeForBaseDir(currentBaseDir())
+}
+
+function userMemoryRoot(): string {
+  return userMemoryRootForApplicationData(app.getPath('userData'))
+}
+
+async function executeUserMemoryCapability(name: string, args: Record<string, unknown>): Promise<unknown> {
+  if (!isUserMemoryCapability(name)) throw new Error(`未知的用户记忆能力：${name}`)
+  const rootDirectory = userMemoryRoot()
+  if (!userMemoryHost || userMemoryHost.rootDirectory !== rootDirectory) {
+    userMemoryHost = createUserMemoryHost(rootDirectory)
+  }
+  const result = await userMemoryHost.execute(name, args)
+  // The memory store keeps the historical `{ ok, message, data }` host
+  // envelope. The Luna SDK transport already adds the operation envelope, so
+  // expose the capability payload at the same `result.data` depth as FreeCut.
+  return result.data ?? result
 }
 
 function emitState(state: DeepSeekHarnessWebState): void {
@@ -164,6 +188,9 @@ function structuredResult(request: DeepSeekHarnessToolRequest, value: unknown): 
     : undefined
   const mutation = request.name !== 'project.inspect' && request.name !== 'timeline.inspect' &&
     request.name !== 'media.list' && request.name !== 'media.inspect' &&
+    request.name !== 'media.read' && request.name !== 'media.get_analysis_task' &&
+    request.name !== 'media.search_transcript' && request.name !== 'memory.read' &&
+    request.name !== 'memory.search' && request.name !== 'audio.get_task' &&
     !request.name.startsWith('preview.') && !request.name.startsWith('capabilities.')
   return {
     kind: mutation ? 'edit' : 'data',
@@ -233,13 +260,15 @@ async function handleToolRequest(request: IncomingMessage, response: ServerRespo
       throw new Error('助手项目上下文不匹配。')
     }
     const toolRequest = toolRequestFromBody(body, context)
-    const dispatch = await deepSeekHarnessCapabilities.dispatch(toolRequest, context, controller.signal)
+    const result = isUserMemoryCapability(toolRequest.name)
+      ? await executeUserMemoryCapability(toolRequest.name, toolRequest.args)
+      : (await deepSeekHarnessCapabilities.dispatch(toolRequest, context, controller.signal)).result
     jsonResponse(response, 200, {
       protocol: LUNA_EDITOR_PROTOCOL,
       apiVersion: LUNA_EDITOR_API_VERSION,
       requestId: toolRequest.requestId,
       ok: true,
-      result: structuredResult(toolRequest, dispatch.result),
+      result: structuredResult(toolRequest, result),
     })
   } catch (error) {
     if (response.destroyed || response.writableEnded) return

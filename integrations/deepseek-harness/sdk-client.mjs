@@ -25,7 +25,6 @@ export const LUNA_SDK_API = Object.freeze({
   }),
   project: Object.freeze({
     inspect: 'project.inspect',
-    setCanvas: 'project.set_canvas',
   }),
   timeline: Object.freeze({
     inspectContext: 'timeline.inspect_context',
@@ -38,13 +37,9 @@ export const LUNA_SDK_API = Object.freeze({
     setTransform: 'timeline.set_transform',
     setAudio: 'timeline.set_audio',
     addText: 'timeline.add_text',
-    addHtml: 'timeline.add_html',
     addKeyframe: 'timeline.add_keyframe',
     addTransition: 'timeline.add_transition',
     addMediaBatch: 'timeline.add_media_batch',
-    addTextBatch: 'timeline.add_text_batch',
-    addTransitionBatch: 'timeline.add_transition_batch',
-    listTransitions: 'timeline.list_transitions',
   }),
 })
 

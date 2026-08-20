@@ -67,9 +67,24 @@ export default async function main(luna) {
 }
 ~~~
 
-SDK 按命名空间提供项目、素材、时间线、预览、渲染、音频和 AI 能力。先读取项目或时间线状态，
-再通过结构化 SDK 调用执行剪切、分割、移动、删除、参数、特效、关键帧和转场等编辑操作。
-每次调用都等待工具返回结果，并根据结构化结果继续下一步；不要根据固定文案猜测用户意图或自行宣布任务完成。
+每个 SDK 调用都返回结构化结果，实际能力数据从 data.project、data.createdItemIds 和
+data.affectedIds 读取。先读取项目或时间线状态，再通过结构化 SDK 调用执行剪切、分割、移动、
+删除、参数、关键帧、文字和转场等操作；每次调用都等待结果并根据结构化数据继续下一步。
+
+时间参数统一使用秒数：timeline.trim 使用 itemId 加 startSeconds/endSeconds（时间轴绝对位置），
+timeline.split 使用 itemId 加 atSeconds，timeline.move 使用 itemId 加 toSeconds。
+timeline.addTransition 必须使用 fromClipId、toClipId、type 和 durationSeconds；不要使用 leftItemId、
+rightItemId、presentation、toFrame 或 sourceStart/sourceEnd 这些未公开参数。
+
+素材使用 media.list、media.read 和 media.searchTranscript。需要新证据时，先用
+media.analyze 提交 transcript 或 visual 任务，再用 media.getAnalysisTask 轮询到 completed 或 failed；
+完成后再使用 media.read。加入时间轴使用 timeline.addMedia 或 timeline.addMediaBatch。
+
+长期偏好使用 memory.read/search/update/remove：只保存跨项目可复用的用户偏好，更新和删除都复用准确的
+memoryId。TTS 使用 audio.startSpeech；背景音乐和音效使用 audio.startMusic，其中 model 使用
+small-music 或 small-sfx；提交后用 audio.getTask 轮询。queued、preparing-model、generating 和 saving
+都表示仍在处理，只有 completed 且存在 mediaId 时才能加入时间轴，failed 时读取结构化错误。
+不要根据固定文案猜测用户意图或自行宣布任务完成。
 ${DEFAULT_AGENTS_END}${currentProject ? `\n\n${currentProject}` : ''}`
 }
 

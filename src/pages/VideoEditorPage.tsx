@@ -2,6 +2,9 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import type {
   EmbeddedMediaSource,
   EmbeddedTaskProgress,
+  EmbeddedSpeechGenerationRequest,
+  EmbeddedMusicGenerationRequest,
+  EmbeddedGeneratedAudio,
   EmbeddedExportFile,
   EmbeddedMediaImportSource,
   EmbeddedLunaEditorSdkBridge,
@@ -188,6 +191,52 @@ export function VideoEditorPage({ onProjectContextChange }: VideoEditorPageProps
     }
   }, [])
 
+  const handleGenerateSpeech = useCallback(async (
+    request: EmbeddedSpeechGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<EmbeddedGeneratedAudio> => {
+    signal?.throwIfAborted()
+    const cancel = (): void => { void window.luna.mossTts.cancel(request.requestId) }
+    const unsubscribe = window.luna.mossTts.onProgress((progress) => {
+      if (progress.requestId !== request.requestId) return
+      onProgress?.({
+        label: progress.stage,
+        percent: progress.fraction === null ? null : progress.fraction * 100,
+      })
+    })
+    signal?.addEventListener('abort', cancel, { once: true })
+    try {
+      return await window.luna.mossTts.generate(request)
+    } finally {
+      signal?.removeEventListener('abort', cancel)
+      unsubscribe()
+    }
+  }, [])
+
+  const handleGenerateMusic = useCallback(async (
+    request: EmbeddedMusicGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<EmbeddedGeneratedAudio> => {
+    signal?.throwIfAborted()
+    const cancel = (): void => { void window.luna.stableAudio3.cancel(request.requestId) }
+    const unsubscribe = window.luna.stableAudio3.onProgress((progress) => {
+      if (progress.requestId !== request.requestId) return
+      onProgress?.({
+        label: progress.stage,
+        percent: progress.fraction === null ? null : progress.fraction * 100,
+      })
+    })
+    signal?.addEventListener('abort', cancel, { once: true })
+    try {
+      return await window.luna.stableAudio3.generate(request)
+    } finally {
+      signal?.removeEventListener('abort', cancel)
+      unsubscribe()
+    }
+  }, [])
+
   const handleRenderHtmlFrame = useCallback(
     (request: Parameters<typeof window.lunaHtmlRenderer.render>[0]) =>
       window.lunaHtmlRenderer.render(request),
@@ -249,6 +298,8 @@ export function VideoEditorPage({ onProjectContextChange }: VideoEditorPageProps
           onReadNativeMediaFile={handleReadNativeMediaFile}
           onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
           onTranscribeMedia={handleTranscribeMedia}
+          onGenerateSpeech={handleGenerateSpeech}
+          onGenerateMusic={handleGenerateMusic}
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}
           lunaEditorSdk={lunaEditorSdk}

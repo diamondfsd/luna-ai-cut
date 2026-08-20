@@ -38,11 +38,6 @@ const SCRIPT_TOOL = {
   },
 }
 
-// These exports are retained for consumers of the old FreeCut entry point.
-// They describe protocol namespaces only; the adapter does not register them
-// as separate Harness tools.
-export const FREECUT_MEMORY_TOOL_NAMES = Object.values(LUNA_SDK_API.memory)
-export const FREECUT_AUDIO_TOOL_NAMES = Object.values(LUNA_SDK_API.audio)
 export const FREECUT_EXPOSED_TOOL_NAMES = [SCRIPT_TOOL.name]
 
 export const name = 'luna-freecut-script-editing'
@@ -60,6 +55,76 @@ function sdkMethodReference() {
     }))
     .join('\n')
 }
+
+const SDK_USAGE_GUIDE = `
+## Luna SDK 使用契约
+
+每个 SDK 方法都返回结构化操作结果，宿主能力的实际数据统一位于 \`result.data\`：
+
+~~~js
+const result = await luna.project.inspect()
+const project = result.data.project
+~~~
+
+所有编辑请求都绑定到宿主当前打开的项目。不要传入或猜测另一个 projectId；先调用
+\`luna.project.inspect()\`，需要复核时间线时调用 \`luna.timeline.inspectContext()\`。
+
+可用方法和参数如下：
+
+- \`luna.project.inspect()\`: 返回 \`data.projectId\`、\`data.project\`、\`data.timeline\` 和计数信息。
+- \`luna.media.list({ limit? })\`: 返回 \`data.items\` 和 \`data.total\`。
+- \`luna.media.read({ mediaIds })\`: 读取素材元数据和已经生成的画面/字幕证据，结果在 \`data.items\`。
+- \`luna.media.analyze({ mediaIds, kind })\`: 提交字幕或画面分析任务，\`kind\` 为 \`transcript\` 或 \`visual\`；立即返回 \`data.taskId\`。
+- \`luna.media.getAnalysisTask({ taskId })\`: 查询素材分析任务；任务达到 \`completed\` 后再用 \`luna.media.read({ mediaIds })\` 读取结果，\`failed\` 时读取 \`data.error\` 和 \`data.failures\`。
+- \`luna.media.searchTranscript({ query, mediaIds? })\`: 在已完成的字幕识别结果中搜索，结果在 \`data.matches\`。
+- \`luna.memory.read({ memoryIds?, scope?, videoType?, limit? })\` 和 \`luna.memory.search({ query?, scope?, videoType?, limit? })\`：读取或检索跨项目的用户剪辑偏好，结果在 \`data.entries\`。
+- \`luna.memory.update({ memoryId?, scope, videoType?, topic, preference, evidence? })\`：新增或更新可跨项目复用的偏好；更新已有记录时传入返回的 \`memoryId\`。
+- \`luna.memory.remove({ memoryIds })\`：按 \`memory.read/search\` 返回的准确 ID 删除偏好，结果在 \`data.removedIds\` 和 \`data.missingIds\`。
+- 记忆只保存跨项目的长期偏好；本轮任务要求、项目临时规则和模型自己的推断不要保存。是否值得保存由模型根据会话判断，宿主不根据文案猜测。
+- \`luna.audio.startSpeech({ text, voice?, speed? })\`：提交本地 TTS 任务，立即返回 \`data.taskId\`。
+- \`luna.audio.startMusic({ prompt, model?, durationSeconds?, guidanceScale? })\`：提交背景音乐或音效任务；\`model\` 使用 \`small-music\` 或 \`small-sfx\`，立即返回 \`data.taskId\`。
+- \`luna.audio.getTask({ taskId })\`: 查询 TTS、音乐或音效任务；只有 \`status === 'completed'\` 且有 \`data.mediaId\` 时，才能把结果交给 \`timeline.addMedia\`，\`failed\` 时读取错误。
+- \`luna.timeline.addMedia({ mediaId, startSeconds?, durationSeconds?, sourceStartSeconds?, sourceEndSeconds?, trackId? })\`。
+- \`luna.timeline.addMediaBatch({ items: [...] })\`: \`items\` 使用 \`addMedia\` 的参数格式。
+- \`luna.timeline.trim({ itemId, startSeconds?, endSeconds? })\`: 两个时间是时间轴上的绝对秒数，不是素材源区间。
+- \`luna.timeline.split({ itemId, atSeconds })\`：在时间轴绝对位置切开片段。
+- \`luna.timeline.move({ itemId, toSeconds, trackId? })\`：将片段起点移动到时间轴绝对位置。
+- \`luna.timeline.remove({ itemIds })\`：删除一个或多个片段。
+- \`luna.timeline.setProperties({ itemId, label?, text?, volume?, speed?, fadeIn?, fadeOut? })\`。
+- \`luna.timeline.setTransform({ itemId, x?, y?, width?, height?, rotation?, opacity?, flipHorizontal?, flipVertical?, cornerRadius? })\`。
+- \`luna.timeline.setAudio({ itemId, volume?, fadeIn?, fadeOut?, pitchSemitones? })\`。
+- \`luna.timeline.addText({ text, startSeconds, durationSeconds, trackId?, style? })\`。
+- \`luna.timeline.addKeyframe({ itemId, property, atSeconds, value, easing? })\`：当前 \`value\` 必须是数字。
+- \`luna.timeline.addTransition({ fromClipId, toClipId, type, durationSeconds, direction?, properties? })\`。
+
+编辑结果通常在 \`result.data.project\`，新建片段 ID 在 \`result.data.createdItemIds\`，受影响 ID 在
+\`result.data.affectedIds\`。异步能力的提交结果不是最终结果：保存 \`taskId\`，等待一小段时间后重复查询，
+直到状态为 \`completed\` 或 \`failed\`。\`queued\`、\`preparing-model\`、\`generating\` 和 \`saving\` 都表示仍在处理，不能当作失败或完成。
+
+异步任务脚本模式：
+
+~~~js
+async function waitForTask(readTask, taskId) {
+  for (;;) {
+    const result = await readTask({ taskId })
+    const task = result.data
+    if (task.status === 'completed' || task.status === 'failed') return task
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+}
+
+const submitted = await luna.audio.startMusic({
+  prompt: '轻快、温暖的旅行背景音乐',
+  model: 'small-music',
+  durationSeconds: 8,
+})
+const task = await waitForTask(luna.audio.getTask, submitted.data.taskId)
+if (task.status === 'failed') throw new Error(task.error || '音频生成失败')
+const added = await luna.timeline.addMedia({ mediaId: task.mediaId, startSeconds: 0 })
+~~~
+
+不要把尚未完成的任务加入时间轴，也不要在没有调用查询方法的情况下声称模型已完成。每次调用都等待结果，再根据返回的结构化数据决定下一步。
+`.trim()
 
 // This prompt documents the wire contract only. It deliberately does not
 // tell the host how to interpret a user's request or when to stop a task.
@@ -81,6 +146,8 @@ editor. Start by calling luna.project.inspect(); its result includes
 data.projectId and data.project. Do not invent or substitute a projectId.
 
 ${sdkMethodReference()}
+
+${SDK_USAGE_GUIDE}
 
 The script result is returned to the model. No adapter code classifies user
 messages or model text, changes the script, or declares a task complete.

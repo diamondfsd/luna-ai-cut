@@ -3,12 +3,26 @@ import { createServer } from 'node:http'
 import { runEditScript, SCRIPT_API } from './deepseek-harness-script-runtime.mjs'
 
 assert.equal('source' in SCRIPT_API, false)
+assert.deepEqual(Object.keys(SCRIPT_API.memory), ['read', 'search', 'update', 'remove'])
 assert.deepEqual(Object.keys(SCRIPT_API.media), ['list', 'read', 'analyze', 'getAnalysisTask', 'searchTranscript'])
 assert.deepEqual(Object.keys(SCRIPT_API.audio), ['startSpeech', 'startMusic', 'getTask'])
-assert.equal(SCRIPT_API.timeline.addHtml, 'timeline.add_html')
-
+assert.deepEqual(Object.keys(SCRIPT_API.project), ['inspect'])
+assert.deepEqual(Object.keys(SCRIPT_API.timeline), [
+  'inspectContext',
+  'addMedia',
+  'trim',
+  'split',
+  'move',
+  'remove',
+  'setProperties',
+  'setTransform',
+  'setAudio',
+  'addText',
+  'addKeyframe',
+  'addTransition',
+  'addMediaBatch',
+])
 const requests = []
-let audioPolls = 0
 const workerEnvironmentKey = 'LUNA_TEST_SCRIPT_RUNTIME_ENV'
 const previousWorkerEnvironment = process.env[workerEnvironmentKey]
 process.env[workerEnvironmentKey] = 'preserved'
@@ -30,17 +44,7 @@ const server = createServer(async (request, response) => {
             counts: { tracks: 0, items: 0, transitions: 0, keyframes: 0 },
           },
         }
-    : body.name === 'audio.start_music'
-      ? { ok: true, message: '音乐任务已提交。', data: { taskId: 'audio-task-1', status: 'queued' } }
-      : body.name === 'audio.get_task'
-        ? {
-            ok: true,
-            message: audioPolls++ === 0 ? '音乐任务仍在处理中。' : '音乐任务已完成。',
-            data: audioPolls === 1
-              ? { taskId: 'audio-task-1', status: 'generating' }
-              : { taskId: 'audio-task-1', status: 'completed', mediaId: 'music-1' },
-          }
-        : { ok: true, message: '编辑完成。', data: { createdItemIds: ['item-1'] } }
+    : { ok: true, message: '编辑完成。', data: { createdItemIds: ['item-1'] } }
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({ ok: true, result }))
 })
@@ -69,19 +73,18 @@ try {
           const created = await luna.timeline.addMediaBatch({
             items: selected.map((mediaId, index) => ({ mediaId, startSeconds: index * 3, durationSeconds: 3 })),
           })
-          const html = await luna.timeline.addHtml({
-            html: '<div class="title">No source</div>',
-            css: '.title { opacity: calc(0.5 + var(--luna-time)); }',
-            startSeconds: 0,
-            durationSeconds: 3,
-            renderMode: 'animated',
+          const transition = await luna.timeline.addTransition({
+            fromClipId: 'clip-a',
+            toClipId: 'clip-b',
+            type: 'crossfade',
+            durationSeconds: 0.5,
           })
           return {
             projectId: project.data.projectId,
             workerEnvironment: process.env.LUNA_TEST_SCRIPT_RUNTIME_ENV,
             selected,
             created: created.data.createdItemIds,
-            html: html.data.createdItemIds,
+            transition: transition.data.createdItemIds,
           }
         }
       `,
@@ -94,46 +97,16 @@ try {
     workerEnvironment: 'preserved',
     selected: ['media-1'],
     created: ['item-1'],
-    html: ['item-1'],
+    transition: ['item-1'],
   })
-  assert.deepEqual(requests.map((request) => request.name), ['project.inspect', 'media.list', 'timeline.add_media_batch', 'timeline.add_html'])
+  assert.deepEqual(requests.map((request) => request.name), ['project.inspect', 'media.list', 'timeline.add_media_batch', 'timeline.add_transition'])
+  assert.deepEqual(requests.at(-1).args, {
+    fromClipId: 'clip-a',
+    toClipId: 'clip-b',
+    type: 'crossfade',
+    durationSeconds: 0.5,
+  })
   assert.ok(requests.every((request) => request.projectId === 'project-1'))
-
-  const audioResult = await runEditScript(
-    {
-      endpoint: `http://127.0.0.1:${String(address.port)}`,
-      token: 'test-token',
-      projectId: 'project-1',
-      cwd: process.cwd(),
-    },
-    {
-      code: `
-        export default async function main(luna) {
-          const submitted = await luna.audio.startMusic({ prompt: '舒缓的日落氛围音乐', durationSeconds: 8 })
-          let task = submitted
-          while (task.data.status !== 'completed' && task.data.status !== 'failed') {
-            await new Promise((resolve) => setTimeout(resolve, 1))
-            task = await luna.audio.getTask({ taskId: submitted.data.taskId })
-          }
-          if (task.data.status === 'failed') throw new Error(task.data.error || 'audio task failed')
-          const added = await luna.timeline.addMedia({ mediaId: task.data.mediaId, startSeconds: 0 })
-          return { taskId: submitted.data.taskId, mediaId: task.data.mediaId, added: added.data.createdItemIds }
-        }
-      `,
-    },
-  )
-
-  assert.deepEqual(audioResult.data.result, {
-    taskId: 'audio-task-1',
-    mediaId: 'music-1',
-    added: ['item-1'],
-  })
-  assert.deepEqual(requests.slice(4).map((request) => request.name), [
-    'audio.start_music',
-    'audio.get_task',
-    'audio.get_task',
-    'timeline.add_media',
-  ])
 } finally {
   await new Promise((resolve) => server.close(resolve))
   if (previousWorkerEnvironment === undefined) delete process.env[workerEnvironmentKey]

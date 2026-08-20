@@ -13,6 +13,9 @@ import {
   type EmbeddedProjectContext,
   type EmbeddedTaskProgress,
   type EmbeddedTranscriptResult,
+  type EmbeddedSpeechGenerationRequest,
+  type EmbeddedMusicGenerationRequest,
+  type EmbeddedGeneratedAudio,
   type EmbeddedLunaEditorSdkBridge,
   type ImportMediaFiles,
 } from './shared/host/embedded-host'
@@ -32,6 +35,16 @@ export interface FreeCutEditorProps {
     onProgress?: (progress: EmbeddedTaskProgress) => void,
     signal?: AbortSignal,
   ) => Promise<EmbeddedTranscriptResult>
+  onGenerateSpeech?: (
+    request: EmbeddedSpeechGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ) => Promise<EmbeddedGeneratedAudio>
+  onGenerateMusic?: (
+    request: EmbeddedMusicGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ) => Promise<EmbeddedGeneratedAudio>
   onRenderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
   lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
@@ -49,6 +62,8 @@ export function FreeCutEditor({
   onReadNativeMediaFile,
   onResolveNativeMediaUrl,
   onTranscribeMedia,
+  onGenerateSpeech,
+  onGenerateMusic,
   onRenderHtmlFrame,
   exportFiles,
   lunaEditorSdk,
@@ -64,6 +79,8 @@ export function FreeCutEditor({
       readNativeMediaFile: onReadNativeMediaFile,
       resolveNativeMediaUrl: onResolveNativeMediaUrl,
       transcribeMedia: onTranscribeMedia,
+      generateSpeech: onGenerateSpeech,
+      generateMusic: onGenerateMusic,
       renderHtmlFrame: onRenderHtmlFrame,
       exportFiles,
       lunaEditorSdk,
@@ -77,6 +94,8 @@ export function FreeCutEditor({
       onReadNativeMediaFile,
       onResolveNativeMediaUrl,
       onTranscribeMedia,
+      onGenerateSpeech,
+      onGenerateMusic,
       onRenderHtmlFrame,
       exportFiles,
       lunaEditorSdk,

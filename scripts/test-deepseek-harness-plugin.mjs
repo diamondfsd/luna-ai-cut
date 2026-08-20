@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
 import {
   FREECUT_EXPOSED_TOOL_NAMES,
-  FREECUT_AUDIO_TOOL_NAMES,
-  FREECUT_MEMORY_TOOL_NAMES,
   renderToolResult,
 } from './deepseek-harness-freecut-plugin.mjs'
 import {
@@ -10,19 +8,6 @@ import {
   loadBuiltInSkills,
   registerBuiltInSkills,
 } from './deepseek-harness-built-in-skills.mjs'
-
-assert.deepEqual(FREECUT_MEMORY_TOOL_NAMES, [
-  'memory.read',
-  'memory.search',
-  'memory.update',
-  'memory.remove',
-])
-
-assert.deepEqual(FREECUT_AUDIO_TOOL_NAMES, [
-  'audio.start_speech',
-  'audio.start_music',
-  'audio.get_task',
-])
 
 assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, ['edit.run_script'])
 
@@ -54,7 +39,16 @@ assert.match(master.content, /AI 剪辑执行契约/)
 assert.match(master.content, /剪辑资料来源与使用边界/)
 assert.match(master.content, /edit\.run_script/)
 assert.match(master.content, /luna\.media\.list/)
+assert.match(master.content, /memory\.(read|search|update|remove)/)
+assert.match(master.content, /media\.analyze/)
+assert.match(master.content, /media\.get_analysis_task/)
+assert.match(master.content, /audio\.startSpeech/)
+assert.match(master.content, /audio\.startMusic/)
+assert.match(master.content, /audio\.get_task/)
+assert.match(master.content, /completed/)
+assert.match(master.content, /small-sfx/)
 assert.doesNotMatch(master.content, /调用 `media\.list`/)
+assert.doesNotMatch(master.content, /没有接通记忆|未公开的素材分析|未公开的.*音频生成/u)
 assert.ok(loadedSkills.some(skill => skill.name === 'luna-style-talking-head-short'))
 assert.ok(loadedSkills.some(skill => skill.name === 'luna-technique-editing-playbook'))
 assert.ok(loadedSkills.some(skill => skill.name === 'luna-workflow-short-form-production'))

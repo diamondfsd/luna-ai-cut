@@ -22,6 +22,13 @@ export const FREECUT_CAPABILITIES: readonly FreeCutCapabilityDescriptor[] = [
   { name: 'timeline.edit_batch', access: 'write', description: 'Apply an ordered timeline edit batch' },
   { name: 'media.list', access: 'read', description: 'List media available to the current project' },
   { name: 'media.inspect', access: 'read', description: 'Inspect one media metadata record' },
+  { name: 'media.read', access: 'read', description: 'Read media metadata and saved transcript evidence' },
+  { name: 'media.analyze', access: 'write', description: 'Start transcript or visual media analysis' },
+  { name: 'media.get_analysis_task', access: 'read', description: 'Read media analysis task status' },
+  { name: 'media.search_transcript', access: 'read', description: 'Search saved transcript segments' },
+  { name: 'audio.start_speech', access: 'write', description: 'Start local speech generation' },
+  { name: 'audio.start_music', access: 'write', description: 'Start local music or sound-effect generation' },
+  { name: 'audio.get_task', access: 'read', description: 'Read audio generation task status' },
   { name: 'render.project', access: 'write', description: 'Render the current project' },
   { name: 'render.frame', access: 'read', description: 'Render one project frame' },
   { name: 'render.layout', access: 'read', description: 'Inspect computed frame layout' },
@@ -76,6 +83,14 @@ export class FreeCutCapabilityProvider {
         return this.runtime.listMedia(value as MediaQuery)
       case 'media.inspect':
         return this.runtime.inspectMedia(requireString(value.mediaId, 'mediaId'))
+      case 'media.read':
+      case 'media.analyze':
+      case 'media.get_analysis_task':
+      case 'media.search_transcript':
+      case 'audio.start_speech':
+      case 'audio.start_music':
+      case 'audio.get_task':
+        return this.runtime.executeSdkCapability(name, value)
       case 'render.project':
         return this.runtime.renderProject(value as unknown as FreeCutRenderProjectRequest)
       case 'render.frame':

@@ -152,7 +152,7 @@ describe('FreeCutRuntime SDK adapter', () => {
     expect(batch.items.map((item) => item.id)).toEqual(['media-1', 'audio-1'])
   })
 
-  it('rejects context and input errors without routing unsupported AI or audio calls to transcript search', async () => {
+  it('rejects context and input errors without routing AI or audio calls to transcript search', async () => {
     const runtime = new FreeCutRuntime({ project: project(), media: [analyzedMedia] })
 
     await expect(runtime.executeSdkCapability('project.inspect', { projectId: 'other-project' }))
@@ -167,9 +167,24 @@ describe('FreeCutRuntime SDK adapter', () => {
     await expect(runtime.executeSdkCapability('media.analyze', {
       mediaId: 'media-1',
       kinds: ['transcript'],
-    })).rejects.toMatchObject({ code: 'CAPABILITY_UNAVAILABLE' })
-    await expect(runtime.executeSdkCapability('audio.start_music', { prompt: 'ambient' }))
-      .rejects.toMatchObject({ code: 'CAPABILITY_UNAVAILABLE' })
+    })).rejects.toThrow('kind must be transcript or visual')
+    await expect(runtime.executeSdkCapability('media.analyze', {
+      projectId: 'other-project',
+      mediaId: 'media-1',
+      kind: 'transcript',
+    })).rejects.toMatchObject({ code: 'PROJECT_CONTEXT_MISMATCH' })
+    const missingTask = await runtime.executeSdkCapability('media.analyze', {
+      projectId: 'project-1',
+      mediaIds: ['missing'],
+      kind: 'transcript',
+    }) as { status: string; missingIds: string[]; error?: string }
+    expect(missingTask.status).toBe('failed')
+    expect(missingTask.missingIds).toEqual(['missing'])
+    expect(missingTask.error).toBeTruthy()
+    await expect(runtime.executeSdkCapability('audio.start_music', {
+      prompt: 'ambient',
+      durationSeconds: 1,
+    })).rejects.toThrow('durationSeconds must be between 2 and 30')
   })
 
   it('routes legacy editing calls through the real headless actions', async () => {
@@ -218,5 +233,17 @@ describe('FreeCutRuntime SDK adapter', () => {
       value: 0.5,
     }) as { project: Project }
     expect(keyframeResult.project.timeline!.keyframes?.some((group) => group.itemId === pieces[0]!.id)).toBe(true)
+
+    const transitionResult = await runtime.executeSdkCapability('timeline.add_transition', {
+      fromClipId: pieces[0]!.id,
+      toClipId: pieces[1]!.id,
+      type: 'crossfade',
+      durationSeconds: 0.25,
+    }) as { project: Project }
+    expect(transitionResult.project.timeline!.transitions).toHaveLength(1)
+    expect(transitionResult.project.timeline!.transitions[0]).toMatchObject({
+      leftClipId: pieces[0]!.id,
+      rightClipId: pieces[1]!.id,
+    })
   })
 })

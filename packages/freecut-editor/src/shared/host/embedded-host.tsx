@@ -39,6 +39,29 @@ export interface EmbeddedTaskProgress {
   percent: number | null
 }
 
+export interface EmbeddedSpeechGenerationRequest {
+  requestId: string
+  text: string
+  voice: string
+  speed: number
+}
+
+export interface EmbeddedMusicGenerationRequest {
+  requestId: string
+  model: 'small-music' | 'small-sfx'
+  prompt: string
+  durationSeconds: number
+  guidanceScale?: number
+  seed?: number
+}
+
+export interface EmbeddedGeneratedAudio {
+  requestId: string
+  fileName: string
+  durationSeconds: number
+  bytes: Uint8Array
+}
+
 export interface EmbeddedHtmlRenderRequest {
   html: string
   css: string
@@ -108,6 +131,16 @@ export interface EmbeddedHostBridge {
     onProgress?: (progress: EmbeddedTaskProgress) => void,
     signal?: AbortSignal,
   ) => Promise<EmbeddedTranscriptResult>
+  generateSpeech?: (
+    request: EmbeddedSpeechGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ) => Promise<EmbeddedGeneratedAudio>
+  generateMusic?: (
+    request: EmbeddedMusicGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ) => Promise<EmbeddedGeneratedAudio>
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
   lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
