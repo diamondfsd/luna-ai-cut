@@ -28,7 +28,18 @@ assert.match(rendered[0].text, /media-1/)
 
 const loadedSkills = await loadBuiltInSkills()
 const loadedNames = loadedSkills.map(skill => skill.name)
-assert.ok(loadedNames.includes('luna-editing-master'))
+const expectedSkillNames = [
+  'luna-editing-master',
+  'luna-editing-standard',
+  'luna-rough-cut',
+  'luna-story-continuity',
+  'luna-rhythm-pacing',
+  'luna-audio-editing',
+  'luna-caption-layout',
+  'luna-polish-delivery',
+]
+for (const name of expectedSkillNames) assert.ok(loadedNames.includes(name))
+assert.ok(loadedNames.length >= expectedSkillNames.length)
 assert.equal(new Set(loadedNames).size, loadedNames.length)
 assert.ok(loadedSkills.every(skill => skill.source === 'bundled'))
 assert.ok(loadedSkills.every(skill => skill.provider === 'luna-freecut-built-in'))
@@ -53,6 +64,28 @@ assert.match(master.content, /timeline\.mute/u)
 assert.match(master.content, /0.*不是静音/u)
 assert.doesNotMatch(master.content, /调用 `media\.list`/u)
 assert.doesNotMatch(master.content, /没有接通记忆|未公开的素材分析|未公开的.*音频生成/u)
+
+const standard = loadedSkills.find(skill => skill.name === 'luna-editing-standard')
+assert.ok(standard)
+assert.match(standard.content, /证据优先/u)
+assert.match(standard.content, /media\.getAnalysisTask/u)
+assert.match(standard.content, /edit\.run_script/u)
+assert.match(standard.content, /crossfade/u)
+assert.match(standard.content, /复核/u)
+
+const skillMarkers = {
+  'luna-rough-cut': /media\.analyze/u,
+  'luna-story-continuity': /视线方向/u,
+  'luna-rhythm-pacing': /固定秒数/u,
+  'luna-audio-editing': /small-music/u,
+  'luna-caption-layout': /addText/u,
+  'luna-polish-delivery': /addTransition/u,
+}
+for (const [name, marker] of Object.entries(skillMarkers)) {
+  const skill = loadedSkills.find(candidate => candidate.name === name)
+  assert.ok(skill)
+  assert.match(skill.content, marker)
+}
 
 const registeredSkills = []
 const registeredNames = await registerBuiltInSkills({

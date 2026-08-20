@@ -18,4 +18,4 @@ description: Luna AI Cut 的通用剪辑总控技能，负责读取项目和素�
 
 ## 可组合技能
 
-后续的风格、技巧和工作流技能会作为独立目录加入本目录。组合技能时，主技能负责整体结构，辅助技能只提供对应的局部规则；当前用户要求优先于技能默认值。
+普通真人素材的整理、粗剪、重排和成片复核加载 `luna-editing-standard`。根据任务再组合以下专项技能：`luna-rough-cut` 负责转录优先粗剪，`luna-story-continuity` 负责镜头和连续性，`luna-rhythm-pacing` 负责节奏，`luna-audio-editing` 负责声音，`luna-caption-layout` 负责字幕，`luna-polish-delivery` 负责精修和交付复核。主技能负责整体结构，标准技能负责通用剪辑判断，专项技能只提供对应的局部规则；当前用户要求优先于技能默认值。
