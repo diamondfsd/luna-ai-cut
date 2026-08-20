@@ -44,10 +44,21 @@ export const LUNA_SDK_API = Object.freeze({
     addKeyframe: 'timeline.add_keyframe',
     addTransition: 'timeline.add_transition',
     addMediaBatch: 'timeline.add_media_batch',
+    effects: Object.freeze({
+      add: 'timeline.effects.add',
+      update: 'timeline.effects.update',
+      remove: 'timeline.effects.remove',
+    }),
   }),
 })
 
-const TIMELINE_CAPABILITY_NAMES = new Set(Object.values(LUNA_SDK_API.timeline))
+function capabilityNames(api) {
+  return Object.values(api).flatMap((value) =>
+    typeof value === 'string' ? [value] : capabilityNames(value),
+  )
+}
+
+const TIMELINE_CAPABILITY_NAMES = new Set(capabilityNames(LUNA_SDK_API.timeline))
 
 function responseError(response, payload) {
   if (payload && typeof payload.error === 'string') return payload.error
@@ -110,18 +121,22 @@ export function createCapabilityTransport(config) {
 export function createLunaSdk(config, { api = LUNA_SDK_API, transport, legacyResults = false } = {}) {
   const resolved = normalizeLunaConfig(config)
   const bridge = transport ?? createCapabilityTransport(resolved)
-  const sdk = {}
-  for (const [namespace, methods] of Object.entries(api)) {
-    sdk[namespace] = {}
-    for (const [method, capabilityName] of Object.entries(methods)) {
-      sdk[namespace][method] = async (args) => {
-        const result = await bridge.call(capabilityName, args)
-        return legacyResults ? adaptLegacyResult(capabilityName, result) : result
+  return Object.freeze(createSdkNamespace(api, bridge, legacyResults))
+}
+
+function createSdkNamespace(methods, bridge, legacyResults) {
+  const namespace = {}
+  for (const [method, value] of Object.entries(methods)) {
+    if (typeof value === 'string') {
+      namespace[method] = async (args) => {
+        const result = await bridge.call(value, args)
+        return legacyResults ? adaptLegacyResult(value, result) : result
       }
+    } else {
+      namespace[method] = Object.freeze(createSdkNamespace(value, bridge, legacyResults))
     }
-    Object.freeze(sdk[namespace])
   }
-  return Object.freeze(sdk)
+  return namespace
 }
 
 function isLegacyEnvelope(value) {

@@ -61,6 +61,7 @@ assert.match(master.content, /completed/u)
 assert.match(master.content, /small-sfx/u)
 assert.match(master.content, /timeline\.unlink/u)
 assert.match(master.content, /timeline\.mute/u)
+assert.match(master.content, /timeline\.effects\.add/u)
 assert.match(master.content, /0.*不是静音/u)
 assert.doesNotMatch(master.content, /调用 `media\.list`/u)
 assert.doesNotMatch(master.content, /没有接通记忆|未公开的素材分析|未公开的.*音频生成/u)
@@ -80,12 +81,20 @@ const skillMarkers = {
   'luna-audio-editing': /small-music/u,
   'luna-caption-layout': /addText/u,
   'luna-polish-delivery': /addTransition/u,
+  'luna-wong-kar-wai': /gpu-motion-blur/u,
 }
 for (const [name, marker] of Object.entries(skillMarkers)) {
   const skill = loadedSkills.find(candidate => candidate.name === name)
   assert.ok(skill)
   assert.match(skill.content, marker)
 }
+
+const wong = loadedSkills.find(skill => skill.name === 'luna-wong-kar-wai')
+assert.ok(wong)
+assert.match(wong.content, /不复制具体电影/u)
+assert.match(wong.content, /inspectContext/u)
+assert.match(wong.content, /gpu-temperature/u)
+assert.match(wong.content, /步进印片/u)
 
 const registeredSkills = []
 const registeredNames = await registerBuiltInSkills({

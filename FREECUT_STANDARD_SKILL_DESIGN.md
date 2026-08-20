@@ -16,10 +16,11 @@ packages/freecut-editor/src/features/ai-editing/skills/built-in/
 ├── techniques/luna-audio-editing/SKILL.md
 ├── techniques/luna-caption-layout/SKILL.md
 ├── techniques/luna-polish-delivery/SKILL.md
+├── styles/luna-wong-kar-wai/SKILL.md
 └── shared/*.md
 ```
 
-当前共有 8 个内置技能：`luna-editing-master` 负责总控，`luna-editing-standard` 负责通用工作流，另外 6 个技能分别负责粗剪、连续性、节奏、声音、字幕和精修交付。它们按任务由模型组合使用，`shared/*.md` 继续承载所有技能共同需要的技术契约。
+当前共有 9 个内置技能：`luna-editing-master` 负责总控，`luna-editing-standard` 负责通用工作流，6 个技能分别负责粗剪、连续性、节奏、声音、字幕和精修交付，另有 `luna-wong-kar-wai` 作为首个风格镜头。它们按任务由模型组合使用，`shared/*.md` 继续承载所有技能共同需要的技术契约。
 
 ## 对研究资料的解读
 
@@ -53,6 +54,8 @@ Markdown SKILL.md
 
 `scripts/build-deepseek-harness-web.mjs` 会把整个内置技能目录复制到 `dist/deepseek-harness/skills/built-in`，加载器在开发树和打包树之间选择资源。因此新增一个目录内的 `SKILL.md` 就会自动进入 Harness；不需要把技能名称追加到插件代码，也不需要修改 Harness 的 `skill` 注册表、系统提示词或 agent loop。
 
+风格技能可以调用共享 SDK 已经支持、但此前没有暴露给脚本层的 `luna.timeline.effects.*`。这组方法仍然通过同一个 `edit.run_script` 和同一条 capability endpoint 执行；SDK 只负责结构化传输，效果 ID 和参数由 FreeCut 核心注册表校验。风格正文必须说明哪些效果是近似表达，不能把当前不存在的逐帧步进印片、摄影机运动或素材生成能力写成已完成。
+
 Harness 文件系统提供方支持 `.dsh/skills`、`.agents/skills`、自定义目录和 bundled root，但 FreeCut 当前使用的是适配层显式注册的 bundled runtime skill。这是产品内置剪辑技能的正确归属；不要把产品技能放到用户个人 skill 根目录，也不要依赖用户工作区的相对路径。
 
 需要区分两个目录协议：Harness 原生 filesystem provider 发现的是 `<skill-root>/<name>/SKILL.md`，只扫描 skill root 的直接子目录；当前 FreeCut 的 `deepseek-harness-built-in-skills.mjs` 是产品适配层，自行递归发现 `master/`、`workflows/`、`techniques/` 和 `styles/` 下的 `SKILL.md`。因此本次使用现有的递归目录约定以保持产品发布链路稳定；如果未来切换到原生 filesystem provider，应先扁平化技能根目录或增加明确的 provider 适配，不要直接复用现有目录并假设它会被发现。
@@ -74,6 +77,7 @@ SDK 参数、轨道层级、异步状态、关联音频删除和静音语义只�
 
 - `SKILL.md` 有有效的 `name` 和 `description`，名称唯一且符合 kebab-case。
 - 加载器能发现 `luna-editing-standard`，注册来源为 bundled/provider 为 FreeCut 内置 provider。
+- 加载器能发现 `luna-wong-kar-wai`，且风格正文包含原创表达边界、素材证据、效果能力和未实现能力说明。
 - 运行时加载的技能正文包含证据优先、异步任务等待、轨道/时间线复核和 `edit.run_script` 约束。
 - 没有新增根据用户输入、模型回复、工具名称或业务关键词改变意图、工具策略、停止或完成状态的逻辑。
 - 构建时技能正文被复制进打包 Harness；日常验证优先运行资源注册测试，不因 Markdown 改动触发完整应用打包。

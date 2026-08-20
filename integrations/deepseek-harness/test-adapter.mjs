@@ -93,6 +93,17 @@ try {
   })
   assert.equal(requests.at(-1).body.name, 'timeline.add_track')
   assert.deepEqual(requests.at(-1).body.args, { type: 'audio' })
+  await legacySdk.timeline.effects.add({
+    clipId: 'clip-1',
+    type: 'gpu-grain',
+    params: { amount: 0.05, size: 1.5, speed: 1 },
+  })
+  assert.equal(requests.at(-1).body.name, 'timeline.effects.add')
+  assert.deepEqual(requests.at(-1).body.args, {
+    clipId: 'clip-1',
+    type: 'gpu-grain',
+    params: { amount: 0.05, size: 1.5, speed: 1 },
+  })
 
   const scriptResult = await runEditScript(config, {
     code: `
@@ -126,6 +137,7 @@ try {
   assert.match(prompts[0].text, /moveTrack/u)
   assert.match(prompts[0].text, /timeline\.unlink/u)
   assert.match(prompts[0].text, /timeline\.mute/u)
+  assert.match(prompts[0].text, /timeline\.effects\.add/u)
   assert.match(prompts[0].text, /0.*不是静音/u)
   assert.match(prompts[0].text, /type: 'crossfade'/u)
   assert.match(prompts[0].text, /源素材余量/u)

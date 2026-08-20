@@ -25,7 +25,9 @@ assert.deepEqual(Object.keys(SCRIPT_API.timeline), [
   'addKeyframe',
   'addTransition',
   'addMediaBatch',
+  'effects',
 ])
+assert.deepEqual(Object.keys(SCRIPT_API.timeline.effects), ['add', 'update', 'remove'])
 const requests = []
 const workerEnvironmentKey = 'LUNA_TEST_SCRIPT_RUNTIME_ENV'
 const previousWorkerEnvironment = process.env[workerEnvironmentKey]

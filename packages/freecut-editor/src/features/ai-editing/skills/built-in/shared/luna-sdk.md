@@ -60,6 +60,7 @@ await luna.timeline.moveTrack({
 - `luna.timeline.addText({ text, startSeconds, durationSeconds, trackId?, style? })`：创建文字片段，应放在独立视频轨道。
 - `luna.timeline.addKeyframe({ itemId, property, atSeconds, value, easing? })`：添加关键帧；当前 `value` 必须是数字。
 - `luna.timeline.addTransition({ fromClipId, toClipId, type: 'crossfade', durationSeconds, presentation?, direction?, properties? })`：添加转场。
+- `luna.timeline.effects.add({ clipId, type, params?, enabled? })`、`update({ clipId, effectId, params?, enabled? })`、`remove({ clipId, effectId })`：管理当前 FreeCut 已注册的 GPU 效果。`type` 必须是编辑器效果注册表中的 ID；参数必须符合对应效果的参数定义，写入后应通过 `timeline.inspectContext()` 和预览复核。
 
 转场规则：`type` 只能是 `'crossfade'`，需要淡化视觉样式时另传 `presentation: 'fade'`，不要把 `'fade'` 作为 `type`，也不要省略 `type`。两个参与转场的画面片段必须在同一视频轨道，并在时间轴切点相邻；前片段需要未使用的源素材尾部，后片段需要未使用的源素材头部。先从 `timeline.inspectContext()` 检查 `from`、`durationInFrames`、`sourceStart`、`sourceEnd` 和 `sourceDuration`，再选择不超过两侧余量的时长。任一侧余量为 0 时转场不能创建；工具失败后读取错误并调整源区间或改用 `fadeIn/fadeOut`，不能假设转场已经存在。
 

@@ -21,6 +21,18 @@ export const FONT_WEIGHT_MAP: Record<string, number> = {
 const loadedFontFamilies = new Map<string, string>()
 const loadingPromises = new Map<string, Promise<string>>()
 
+const LOCAL_FONT_FAMILIES = new Set([
+  'system',
+  'system-ui',
+  '-apple-system',
+  'blinkmacsystemfont',
+  'segoe ui',
+])
+
+function isLocalFontFamily(fontName: string): boolean {
+  return LOCAL_FONT_FAMILIES.has(fontName.trim().toLowerCase())
+}
+
 // Google Fonts configuration
 interface FontConfig {
   family: string
@@ -91,7 +103,7 @@ function buildGoogleFontsUrl(config: FontConfig): string {
  * Load a font from Google Fonts
  */
 async function loadGoogleFont(fontName: string): Promise<string> {
-  if (typeof document === 'undefined') {
+  if (typeof document === 'undefined' || isLocalFontFamily(fontName)) {
     return fontName
   }
 
@@ -167,6 +179,10 @@ async function loadGoogleFont(fontName: string): Promise<string> {
  * @returns The CSS font-family value to use in styles
  */
 export function loadFont(fontName: string): string {
+  if (isLocalFontFamily(fontName)) {
+    return fontName
+  }
+
   // Check if font is already loaded and return cached fontFamily
   const cached = loadedFontFamilies.get(fontName)
   if (cached) {
@@ -195,7 +211,11 @@ export async function ensureFontsLoaded(
 
   const uniqueFonts = [...new Set(fontNames.map((name) => name.trim() || DEFAULT_TEXT_FONT_FAMILY))]
 
-  await Promise.all(uniqueFonts.map((fontName) => loadGoogleFont(fontName)))
+  await Promise.all(
+    uniqueFonts
+      .filter((fontName) => !isLocalFontFamily(fontName))
+      .map((fontName) => loadGoogleFont(fontName)),
+  )
 
   await Promise.all(
     uniqueFonts.flatMap((fontName) => {
