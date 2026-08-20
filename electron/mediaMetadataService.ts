@@ -12,8 +12,8 @@ import { detectInsta360ILog } from './iLogDetection'
 import { downloadToFile } from './fileDownloadService'
 import { safeName } from './filePathUtils'
 import { currentBaseDir, previewCacheDir } from './settingsService'
-import type { LunaFile, MediaMetadata, MetadataEntry } from '../src/shared/types'
-import { readMediaDeviceInfo } from './exifReader'
+import type { LunaFile, MediaMetadata } from '../src/shared/types'
+import { buildVideoMetadata, dolbyVisionInfo, parseFrameRate, type VideoProbeData } from './videoMetadata'
 
 const _require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
@@ -28,7 +28,7 @@ interface MetadataCacheEntry {
   data: MediaMetadata
 }
 
-const METADATA_CACHE_VERSION = 3
+const METADATA_CACHE_VERSION = 6
 
 function metadataCacheDir(): string {
   return path.join(currentBaseDir(), 'cache', 'metadata')
@@ -107,6 +107,10 @@ function isFileUrl(url: string): boolean {
   return url.startsWith('file:')
 }
 
+function isHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url)
+}
+
 function sourceUrlFor(file: Pick<LunaFile, 'sourceUrl' | 'url'>): string {
   return file.sourceUrl || file.url
 }
@@ -155,42 +159,6 @@ function metadataGroupTitle(name: string): string {
     jfif: 'JFIF',
   }
   return titles[name] ?? name
-}
-
-function parseFrameRate(value: string | undefined): number | null {
-  if (!value) return null
-  const parts = value.split('/')
-  const fps = parts.length === 2 && Number(parts[1]) > 0
-    ? Number(parts[0]) / Number(parts[1])
-    : Number(parts[0])
-  return Number.isFinite(fps) && fps > 0 && fps <= 1000
-    ? Math.round(fps * 100) / 100
-    : null
-}
-
-interface VideoProbeStream {
-  codec_type: string
-  avg_frame_rate?: string
-  r_frame_rate?: string
-  side_data_list?: Array<{
-    side_data_type?: string
-    dv_profile?: number | string
-  }>
-}
-
-interface VideoProbeFormat {
-  duration?: string
-  tags?: Record<string, string>
-}
-
-function dolbyVisionInfo(stream: VideoProbeStream | undefined, format: VideoProbeFormat | undefined): { dolbyVision: boolean; dolbyVisionProfile: number | null } {
-  const configuration = stream?.side_data_list?.find((entry) => entry.side_data_type?.toLowerCase().includes('dovi configuration'))
-  const brands = format?.tags?.compatible_brands?.toLowerCase() ?? ''
-  const profile = Number(configuration?.dv_profile)
-  return {
-    dolbyVision: Boolean(configuration || brands.includes('dby1')),
-    dolbyVisionProfile: Number.isFinite(profile) ? profile : null,
-  }
 }
 
 interface VideoProbeResult {
@@ -242,7 +210,7 @@ export async function getVideoFrameRate(
       ], { encoding: 'utf-8' }),
       detectInsta360ILog(sourcePath),
     ])
-    const data = JSON.parse(stdout) as { streams?: VideoProbeStream[]; format?: VideoProbeFormat }
+    const data = JSON.parse(stdout) as VideoProbeData
     const videoStream = data.streams?.find((stream) => stream.codec_type === 'video')
     const frameRate = parseFrameRate(videoStream?.avg_frame_rate)
       ?? parseFrameRate(videoStream?.r_frame_rate)
@@ -288,7 +256,9 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
 
   // 视频：使用 ffprobe 提取元数据
   if (file.kind === 'video') {
-    if (!sourcePath) return cacheReturn(file, sourcePath, { groups: [] })
+    // 相机视频尚未下载时，直接探测原始 HTTP 地址；只读取媒体头，不落地整段视频。
+    const probeTarget = sourcePath ?? (isHttpUrl(sourceUrl) ? sourceUrl : null)
+    if (!probeTarget) return cacheReturn(file, sourcePath, { groups: [] })
     try {
       const ffprobePath = getFfprobePath()
       const { stdout } = await execFileAsync(ffprobePath, [
@@ -296,85 +266,12 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
         '-print_format', 'json',
         '-show_streams',
         '-show_format',
-        sourcePath,
-      ], { encoding: 'utf-8' })
-      const data = JSON.parse(stdout) as {
-        streams?: Array<{
-          codec_type: string
-          codec_name?: string
-          width?: number
-          height?: number
-          avg_frame_rate?: string
-          r_frame_rate?: string
-          bit_rate?: string
-        }>
-        format?: {
-          duration?: string
-          bit_rate?: string
-          size?: string
-        }
-      }
+        '-show_chapters',
+        probeTarget,
+      ], { encoding: 'utf-8', timeout: 15_000 })
+      const data = JSON.parse(stdout) as VideoProbeData
 
-      const videoStream = data.streams?.find((s) => s.codec_type === 'video')
-      if (!videoStream) return cacheReturn(file, sourcePath, { groups: [] })
-
-      const entries: MetadataEntry[] = []
-      const deviceInfo = await readMediaDeviceInfo(sourcePath)
-      if (deviceInfo?.make) entries.push({ key: 'Make', value: deviceInfo.make })
-      if (deviceInfo?.model) entries.push({ key: 'Model', value: deviceInfo.model })
-      if (deviceInfo?.firmware) entries.push({ key: 'FirmwareVersion', value: deviceInfo.firmware })
-
-      if (videoStream.width && videoStream.height) {
-        entries.push({ key: '分辨率', value: `${videoStream.width} x ${videoStream.height}` })
-      }
-
-      const fps = parseFrameRate(videoStream.avg_frame_rate)
-        ?? parseFrameRate(videoStream.r_frame_rate)
-      if (fps !== null) {
-        entries.push({ key: '帧率', value: `${fps} fps` })
-      }
-
-      if (videoStream.codec_name) {
-        entries.push({ key: '视频编码', value: videoStream.codec_name.toUpperCase() })
-      }
-
-      // 码率（ffprobe 可能返回 "N/A" 或空字符串）
-      const bitRateRaw = videoStream.bit_rate || data.format?.bit_rate || ''
-      const bitRateNum = Number(bitRateRaw)
-      if (bitRateNum > 0) {
-        const mbps = (bitRateNum / 1_000_000).toFixed(1)
-        entries.push({ key: '码率', value: `${mbps} Mbps` })
-      }
-
-      if (data.format?.duration) {
-        const secs = Math.round(Number(data.format.duration))
-        const m = Math.floor(secs / 60)
-        const s = secs % 60
-        entries.push({ key: '时长', value: `${m}:${String(s).padStart(2, '0')}` })
-      }
-
-      // 文件大小：ffprobe format.size 或 fs.stat 兜底
-      let fileSizeBytes: number | null = null
-      const formatSize = Number(data.format?.size)
-      if (formatSize > 0) {
-        fileSizeBytes = Math.round(formatSize)
-      } else {
-        try { const stat = await fs.stat(sourcePath); fileSizeBytes = stat.size } catch { /* ignore */ }
-      }
-      if (fileSizeBytes !== null) {
-        entries.push({ key: 'size', value: String(fileSizeBytes) })
-        entries.push({ key: '文件大小', value: `${(fileSizeBytes / 1_000_000).toFixed(1)} MB` })
-      }
-
-      // 拍摄时间：文件 mtime 兜底
-      try {
-        const stat = await fs.stat(sourcePath)
-        const ts = stat.mtimeMs
-        // 追加为可被 enrichedFile 捕获的元数据
-        entries.push({ key: 'ModifyDate', value: new Date(ts).toISOString() })
-      } catch { /* ignore */ }
-
-      return cacheReturn(file, sourcePath, { groups: [{ name: '视频', entries }] })
+      return cacheReturn(file, sourcePath, await buildVideoMetadata(file, sourcePath, sourceUrl, data))
     } catch {
       return cacheReturn(file, sourcePath, { groups: [] })
     }

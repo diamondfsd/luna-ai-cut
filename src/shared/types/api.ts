@@ -161,6 +161,8 @@ export interface WorkspaceSegmentationModelStatus {
 
 export interface LunaApi {
   startupReady(): void
+  setFullScreen(enabled: boolean): Promise<void>
+  onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
   getLogDir: () => Promise<string>

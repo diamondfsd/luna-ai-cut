@@ -167,6 +167,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
     <video
       src={url}
       controls
+      controlsList="nofullscreen"
       autoPlay
       playsInline
       onLoadedMetadata={(event) => rememberMediaSize(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import { formatBytes } from '../lib/format'
 import { emptyDetails, buildHistogram } from './previewModalUtils'
-import type { MediaMetadata } from '../shared/types'
+import { MediaMetadataGroup } from './MediaMetadataGroups'
+import type { LunaFile, MediaMetadata } from '../shared/types'
 import { mediaKindFromPath } from '../lib/fileUtils'
 import '../styles/media-inspector.css'
 
@@ -29,6 +30,8 @@ export interface MediaDetails {
 
 interface MediaInspectorProps {
   filePath: string
+  file?: LunaFile
+  cachedPath?: string | null
   proxyPreview?: boolean
   onToggleCollapse?: () => void
   /** 顶部额外内容（如水印设置） */
@@ -280,8 +283,8 @@ function MetadataSection({ section, metaMap }: { section: SectionDef; metaMap: M
 
 // ─── Component ─────────────────────────────────────────
 
-export function MediaInspector({ filePath, proxyPreview = false, onToggleCollapse, header }: MediaInspectorProps) {
-  const kind = useMemo(() => mediaKindFromPath(filePath), [filePath])
+export function MediaInspector({ filePath, file, cachedPath, proxyPreview = false, onToggleCollapse, header }: MediaInspectorProps) {
+  const kind = useMemo(() => file?.kind ?? mediaKindFromPath(filePath), [file?.kind, filePath])
 
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
@@ -325,13 +328,16 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
     }
     const timer = setTimeout(() => {
       setMetadataLoading(true)
-      window.luna.getMediaMetadataByPath(filePath)
+      const request = file
+        ? window.luna.getMediaMetadata(file, cachedPath)
+        : window.luna.getMediaMetadataByPath(filePath)
+      request
         .then(setMediaMetadata)
         .catch(() => setMediaMetadata({ groups: [] }))
         .finally(() => setMetadataLoading(false))
     }, 200)
     return () => clearTimeout(timer)
-  }, [filePath, kind])
+  }, [cachedPath, file, filePath, kind])
 
   const histogram = mediaDetails.histogram
   const histogramWidth = 280
@@ -366,11 +372,14 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
         <dl>
           <div>
             <dt>文件大小</dt>
-            <dd>{formatBytes(Number(metaMap.get('size') ?? 0))}</dd>
+            <dd>{(() => {
+              const bytes = Number(metaMap.get('size') ?? file?.bytes ?? 0)
+              return bytes > 0 ? formatBytes(bytes) : '-'
+            })()}</dd>
           </div>
           <div>
             <dt>拍摄时间</dt>
-            <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? null)}</dd>
+            <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? file?.capturedAt ?? null)}</dd>
           </div>
           {kind === 'video' && (metaMap.get('Make') || metaMap.get('Model')) && (
             <div>
@@ -382,6 +391,12 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
             <div>
               <dt>设备版本</dt>
               <dd>{metaMap.get('FirmwareVersion')}</dd>
+            </div>
+          )}
+          {kind === 'video' && metaMap.get('SerialNumber') && (
+            <div>
+              <dt>设备序列号</dt>
+              <dd>{formatFieldValue(metaMap.get('SerialNumber')!, { key: 'SerialNumber', label: '设备序列号', format: 'maskSerial' })}</dd>
             </div>
           )}
           {!proxyPreview && kind !== 'video' && (
@@ -443,17 +458,19 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
             )
           )}
         </>
-      ) : (
-        /* ── 视频参数（数据来自 getMediaMetadata → ffprobe） ── */
+      ) : metadataLoading ? (
         <section>
-          <span className="eyebrow">视频参数</span>
-          <dl>
-            {metaMap.get('时长') && <div><dt>时长</dt><dd>{metaMap.get('时长')}</dd></div>}
-            {!proxyPreview && metaMap.get('分辨率') && <div><dt>分辨率</dt><dd>{metaMap.get('分辨率')}</dd></div>}
-            {!proxyPreview && metaMap.get('帧率') && <div><dt>帧率</dt><dd>{metaMap.get('帧率')}</dd></div>}
-            {!proxyPreview && metaMap.get('码率') && <div><dt>码率</dt><dd>{metaMap.get('码率')}</dd></div>}
-            {!proxyPreview && metaMap.get('视频编码') && <div><dt>编码</dt><dd>{metaMap.get('视频编码')}</dd></div>}
-          </dl>
+          <span className="eyebrow">视频信息</span>
+          <Loader2 className="spin" size={18} />
+        </section>
+      ) : mediaMetadata?.groups.some((group) => group.name !== '文件' && group.entries.length > 0) ? (
+        mediaMetadata.groups
+          .filter((group) => group.name !== '文件')
+          .map((group) => <MediaMetadataGroup key={group.name} name={group.name} entries={group.entries} />)
+      ) : (
+        <section>
+          <span className="eyebrow">视频信息</span>
+          <p className="metadata-empty">暂无扩展信息</p>
         </section>
       )}
     </aside>
