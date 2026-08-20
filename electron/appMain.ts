@@ -36,6 +36,7 @@ import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from '.
 import { stopLocalMediaShare } from './localMediaShareService'
 import { cameraBridgeReceiver } from './cameraBridgeReceiver'
 import { macVirtualCamera } from './macVirtualCamera'
+import { obsCameraOutput } from './obsCameraOutput'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -292,6 +293,7 @@ app.on('before-quit', () => {
   void stopMockServer()
   void stopLocalMediaShare()
   void cameraBridgeReceiver.stop()
+  obsCameraOutput.stop()
   void macVirtualCamera.stop()
 })
 

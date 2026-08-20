@@ -69,6 +69,15 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       ipcRenderer.on('camera-bridge:frame', listener)
       return () => ipcRenderer.off('camera-bridge:frame', listener)
     },
+    startObsOutput: () => ipcRenderer.invoke('camera-bridge:obs-start'),
+    stopObsOutput: () => ipcRenderer.invoke('camera-bridge:obs-stop'),
+    getObsOutputStatus: () => ipcRenderer.invoke('camera-bridge:obs-status'),
+    onObsOutputStatus: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: import('../src/shared/types').ObsCameraOutputStatus): void => callback(status)
+      ipcRenderer.on('camera-bridge:obs-status', listener)
+      ipcRenderer.send('camera-bridge:obs-subscribe')
+      return () => ipcRenderer.off('camera-bridge:obs-status', listener)
+    },
     startVirtualCamera: () => ipcRenderer.invoke('camera-bridge:virtual-start'),
     stopVirtualCamera: () => ipcRenderer.invoke('camera-bridge:virtual-stop'),
     getVirtualCameraStatus: () => ipcRenderer.invoke('camera-bridge:virtual-status'),
