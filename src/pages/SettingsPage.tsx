@@ -170,6 +170,19 @@ export function SettingsPage({
     }
   }
 
+  async function saveWindowCloseBehavior(hide: boolean): Promise<void> {
+    if (!settings) return
+    const previous = settings.windowCloseBehavior ?? 'quit'
+    const nextBehavior = hide ? 'hide' : 'quit'
+    setSettings((current) => (current ? { ...current, windowCloseBehavior: nextBehavior } : current))
+    try {
+      setSettings(await window.luna.saveSettings({ windowCloseBehavior: nextBehavior }))
+    } catch (error) {
+      setSettings((current) => (current ? { ...current, windowCloseBehavior: previous } : current))
+      toast.error(error instanceof Error ? error.message : '窗口设置保存失败')
+    }
+  }
+
   async function organizeOldDownloads(): Promise<void> {
     setOrganizingDownloads(true)
     try {
@@ -337,6 +350,18 @@ export function SettingsPage({
                 value={settings?.cameraHost ?? ''}
                 onChange={(event) => setSettings((current) => (current ? { ...current, cameraHost: event.target.value } : current))}
                 onBlur={(event) => window.luna.saveSettings({ cameraHost: (event.target as HTMLInputElement).value }).then(setSettings)}
+              />
+            </article>
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>关闭窗口时隐藏</span>
+                <em>{settings?.windowCloseBehavior === 'hide' ? '关闭按钮只隐藏窗口，应用仍会继续运行' : '关闭按钮会退出应用'}</em>
+              </div>
+              <Switch
+                checked={settings?.windowCloseBehavior === 'hide'}
+                disabled={!settings}
+                ariaLabel="关闭窗口时隐藏"
+                onCheckedChange={(enabled) => void saveWindowCloseBehavior(enabled)}
               />
             </article>
             <article className="settings-row">

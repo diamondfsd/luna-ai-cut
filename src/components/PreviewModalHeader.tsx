@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
-import { Check, X, CircleAlert, FolderOpen } from 'lucide-react'
+import { Check, X, CircleAlert, Download, FolderOpen } from 'lucide-react'
 
-import { IconButton } from '../ui'
+import { ButtonGroup, IconButton } from '../ui'
 import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
+
+export type PreviewQuality = 'proxy' | 'original'
 
 interface PreviewModalHeaderProps {
   filePath: string
@@ -11,6 +13,10 @@ interface PreviewModalHeaderProps {
   onClose: () => void
   onSetInspectorOpen?: (open: boolean) => void
   onToggleSelected?: () => void
+  previewQuality?: PreviewQuality
+  onPreviewQualityChange?: (quality: PreviewQuality) => void
+  showOriginalOption?: boolean
+  onDownload?: () => void
 }
 
 function mediaLabel(filePath: string): string {
@@ -27,6 +33,10 @@ export function PreviewModalHeader({
   onClose,
   onSetInspectorOpen,
   onToggleSelected,
+  previewQuality,
+  onPreviewQualityChange,
+  showOriginalOption = false,
+  onDownload,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
     () => filePath.startsWith('file://') ? decodeURIComponent(new URL(filePath).pathname) : filePath,
@@ -44,6 +54,18 @@ export function PreviewModalHeader({
         <h2>{fileNameFromPath(filePath)}</h2>
       </div>
       <div className="preview-actions">
+        {showOriginalOption && previewQuality && onPreviewQualityChange && (
+          <ButtonGroup
+            className="camera-preview-quality"
+            ariaLabel="预览画质"
+            value={previewQuality}
+            onChange={onPreviewQualityChange}
+            options={[
+              { value: 'proxy', label: '流畅' },
+              { value: 'original', label: '原画' },
+            ]}
+          />
+        )}
         {onToggleSelected && selected !== undefined && (
           <IconButton
             variant="light"
@@ -69,6 +91,14 @@ export function PreviewModalHeader({
             icon={<FolderOpen size={16} />}
             onClick={handleRevealInFolder}
             title="在文件夹中显示"
+          />
+        )}
+        {onDownload && (
+          <IconButton
+            variant="light"
+            icon={<Download size={16} />}
+            onClick={onDownload}
+            title="下载当前素材"
           />
         )}
         <IconButton variant="light" icon={<X size={18} />} onClick={onClose} title="关闭" />

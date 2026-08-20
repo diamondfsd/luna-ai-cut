@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Builds the renderer hot-update archive and optionally uploads it to GitCode.
- * Native AI workers remain part of the installed application and are not
- * replaced by a renderer-only hot update.
+ * Builds platform hot-update archives and optionally uploads them to GitCode.
+ * Native modules are included only when --include-native is supplied.
  */
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
@@ -16,9 +15,13 @@ const valueAfter = (flag) => {
 }
 
 const version = valueAfter('--version')
+const nativeDir = valueAfter('--native-dir') ?? '.hot-native'
+const includeNative = args.has('--include-native')
 const upload = args.has('--upload')
 const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version
 const versionPattern = new RegExp(`^${packageVersion.replaceAll('.', '\\.')}-hot\\.\\d+$`)
+const supportedPlatforms = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'universal']
+const requestedPlatform = valueAfter('--platform')
 
 function loadLocalConfig() {
   const configPath = join('scripts', 'deploy-release.conf')
@@ -39,11 +42,23 @@ if (upload) loadLocalConfig()
 if (!version || !versionPattern.test(version)) {
   throw new Error(`--version 必须是 ${packageVersion}-hot.N`)
 }
+if (requestedPlatform && !supportedPlatforms.includes(requestedPlatform)) {
+  throw new Error(`--platform 必须是 ${supportedPlatforms.join('、')}`)
+}
+if (includeNative && requestedPlatform === 'universal') {
+  throw new Error('原生热更新不能使用 universal，请指定具体平台或省略 --platform 生成三平台包')
+}
 if (!existsSync('dist/index.html') || !existsSync('dist-electron/luna-appMain.js')) {
   throw new Error('缺少 dist 构建产物，请先执行 pnpm build:app')
 }
 
 const releaseDir = join('release', packageVersion, 'hot-update')
+const platforms = includeNative
+  ? (requestedPlatform ? [requestedPlatform] : ['darwin-arm64', 'darwin-x64', 'win32-x64'])
+  : [requestedPlatform ?? 'universal']
+if (!supportedPlatforms.includes(platforms[0])) {
+  throw new Error(`当前平台 ${platforms[0]} 不支持热更新，请显式使用 --platform universal`)
+}
 mkdirSync(releaseDir, { recursive: true })
 
 function addAppFiles(zip) {
@@ -71,20 +86,41 @@ function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-const zip = new AdmZip()
-addAppFiles(zip)
-const zipName = `renderer-${version}.zip`
-const zipPath = join(releaseDir, zipName)
-zip.writeZip(zipPath)
-const packages = {
-  universal: {
+const packages = {}
+for (const platform of platforms) {
+  const zip = new AdmZip()
+  addAppFiles(zip)
+  if (includeNative) {
+    const nativePath = join(nativeDir, platform, 'luna-render-core.node')
+    if (!existsSync(nativePath)) throw new Error(`缺少 ${platform} 原生模块: ${nativePath}`)
+    zip.addLocalFile(nativePath, 'pending-native')
+    if (platform === 'win32-x64') {
+      for (const file of [
+        'dxcompiler.dll',
+        'dxil.dll',
+        'DXC-LICENSE-MIT.txt',
+        'DXC-LICENSE-LLVM.txt',
+        'DXC-LICENSE-MS.txt',
+      ]) {
+        const runtimePath = join(nativeDir, platform, file)
+        if (!existsSync(runtimePath)) throw new Error(`缺少 ${platform} DXC 运行文件: ${runtimePath}`)
+        zip.addLocalFile(runtimePath, 'pending-native')
+      }
+    }
+  }
+  const zipName = platform === 'universal'
+    ? `renderer-${version}.zip`
+    : `renderer-${version}-${platform}.zip`
+  const zipPath = join(releaseDir, zipName)
+  zip.writeZip(zipPath)
+  packages[platform] = {
     zipName,
     sha256: sha256(zipPath),
     sizeBytes: statSync(zipPath).size,
-    includesNative: false,
-  },
+    includesNative: includeNative,
+  }
+  console.log(`[hot-update] 已生成 ${zipPath}`)
 }
-console.log(`[hot-update] 已生成 ${zipPath}`)
 
 const manifestPath = join(releaseDir, `renderer-${version}.json`)
 const notesPath = `RELEASE_NOTES_v${version}.md`

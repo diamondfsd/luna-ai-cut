@@ -1,9 +1,25 @@
 import { app, BrowserWindow, dialog, net, protocol } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import type { WindowCloseBehavior } from '../src/shared/types'
 
 const RENDERER_PROTOCOL = 'luna'
 const RENDERER_HOST = 'app'
+
+let appQuitting = false
+let windowCloseBehavior: WindowCloseBehavior = 'quit'
+
+app.on('before-quit', () => {
+  appQuitting = true
+})
+
+export function setMainWindowCloseBehavior(behavior: WindowCloseBehavior | undefined): void {
+  windowCloseBehavior = behavior === 'hide' ? 'hide' : 'quit'
+}
+
+export function getMainWindowCloseBehavior(): WindowCloseBehavior {
+  return windowCloseBehavior
+}
 
 interface MainWindowOptions {
   devServerUrl: string | undefined
@@ -14,6 +30,7 @@ interface MainWindowOptions {
   hasActiveExports: () => boolean
   abortDownloads: () => void
   abortExports: () => void
+  getWindowCloseBehavior: () => WindowCloseBehavior
 }
 
 function rendererFilePath(requestUrl: string, rendererDist: string): string | null {
@@ -54,6 +71,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     height: 820,
     minWidth: 1040,
     minHeight: 680,
+    fullscreenable: true,
     show: false,
     icon: options.iconPath,
     autoHideMenuBar: true,
@@ -77,7 +95,15 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   win.on('close', (event) => {
     const hasDownloadTasks = options.hasActiveDownloads()
     const hasExportTasks = options.hasActiveExports()
-    if (forceQuitAfterTaskCancel || (!hasDownloadTasks && !hasExportTasks)) return
+    if (forceQuitAfterTaskCancel) return
+
+    if (!hasDownloadTasks && !hasExportTasks) {
+      if (!appQuitting && options.getWindowCloseBehavior() === 'hide') {
+        event.preventDefault()
+        win.hide()
+      }
+      return
+    }
 
     event.preventDefault()
     const tasks = [

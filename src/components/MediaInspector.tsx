@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import { formatBytes } from '../lib/format'
 import { emptyDetails, buildHistogram } from './previewModalUtils'
-import type { MediaMetadata } from '../shared/types'
+import { MediaMetadataGroup } from './MediaMetadataGroups'
+import type { LunaFile, MediaMetadata } from '../shared/types'
 import { mediaKindFromPath } from '../lib/fileUtils'
 import '../styles/media-inspector.css'
 
@@ -29,6 +30,8 @@ export interface MediaDetails {
 
 interface MediaInspectorProps {
   filePath: string
+  file?: LunaFile
+  cachedPath?: string | null
   proxyPreview?: boolean
   onToggleCollapse?: () => void
   /** 顶部额外内容（如水印设置） */
@@ -278,42 +281,10 @@ function MetadataSection({ section, metaMap }: { section: SectionDef; metaMap: M
   )
 }
 
-const REDUNDANT_VIDEO_METADATA_KEYS = new Set(['Make', 'Model', 'FirmwareVersion'])
-
-function metadataEntryLabel(name: string, key: string): string {
-  if (name === '视频' && key === 'SerialNumber') return '序列号'
-  return key
-}
-
-function visibleMetadataEntries(name: string, entries: Array<{ key: string; value: string }>) {
-  return entries.filter((entry) => (
-    !entry.key.startsWith('标签')
-    && !(name === '视频' && REDUNDANT_VIDEO_METADATA_KEYS.has(entry.key))
-  ))
-}
-
-function MetadataGroupView({ name, entries }: { name: string; entries: Array<{ key: string; value: string }> }) {
-  const visibleEntries = visibleMetadataEntries(name, entries)
-  if (visibleEntries.length === 0) return null
-  return (
-    <section>
-      <span className="eyebrow">{name}</span>
-      <dl>
-        {visibleEntries.map((entry) => (
-          <div key={`${name}-${entry.key}`}>
-            <dt>{metadataEntryLabel(name, entry.key)}</dt>
-            <dd title={entry.value}>{entry.value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  )
-}
-
 // ─── Component ─────────────────────────────────────────
 
-export function MediaInspector({ filePath, proxyPreview = false, onToggleCollapse, header }: MediaInspectorProps) {
-  const kind = useMemo(() => mediaKindFromPath(filePath), [filePath])
+export function MediaInspector({ filePath, file, cachedPath, proxyPreview = false, onToggleCollapse, header }: MediaInspectorProps) {
+  const kind = useMemo(() => file?.kind ?? mediaKindFromPath(filePath), [file?.kind, filePath])
 
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
@@ -357,13 +328,16 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
     }
     const timer = setTimeout(() => {
       setMetadataLoading(true)
-      window.luna.getMediaMetadataByPath(filePath)
+      const request = file
+        ? window.luna.getMediaMetadata(file, cachedPath)
+        : window.luna.getMediaMetadataByPath(filePath)
+      request
         .then(setMediaMetadata)
         .catch(() => setMediaMetadata({ groups: [] }))
         .finally(() => setMetadataLoading(false))
     }, 200)
     return () => clearTimeout(timer)
-  }, [filePath, kind])
+  }, [cachedPath, file, filePath, kind])
 
   const histogram = mediaDetails.histogram
   const histogramWidth = 280
@@ -398,11 +372,14 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
         <dl>
           <div>
             <dt>文件大小</dt>
-            <dd>{formatBytes(Number(metaMap.get('size') ?? 0))}</dd>
+            <dd>{(() => {
+              const bytes = Number(metaMap.get('size') ?? file?.bytes ?? 0)
+              return bytes > 0 ? formatBytes(bytes) : '-'
+            })()}</dd>
           </div>
           <div>
             <dt>拍摄时间</dt>
-            <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('creation_time') ?? metaMap.get('ModifyDate') ?? null)}</dd>
+            <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? file?.capturedAt ?? null)}</dd>
           </div>
           {kind === 'video' && (metaMap.get('Make') || metaMap.get('Model')) && (
             <div>
@@ -414,6 +391,12 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
             <div>
               <dt>设备版本</dt>
               <dd>{metaMap.get('FirmwareVersion')}</dd>
+            </div>
+          )}
+          {kind === 'video' && metaMap.get('SerialNumber') && (
+            <div>
+              <dt>设备序列号</dt>
+              <dd>{formatFieldValue(metaMap.get('SerialNumber')!, { key: 'SerialNumber', label: '设备序列号', format: 'maskSerial' })}</dd>
             </div>
           )}
           {!proxyPreview && kind !== 'video' && (
@@ -483,7 +466,7 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
       ) : mediaMetadata?.groups.some((group) => group.name !== '文件' && group.entries.length > 0) ? (
         mediaMetadata.groups
           .filter((group) => group.name !== '文件')
-          .map((group) => <MetadataGroupView key={group.name} name={group.name} entries={group.entries} />)
+          .map((group) => <MediaMetadataGroup key={group.name} name={group.name} entries={group.entries} />)
       ) : (
         <section>
           <span className="eyebrow">视频信息</span>

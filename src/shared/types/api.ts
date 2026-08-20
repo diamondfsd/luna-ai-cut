@@ -30,7 +30,7 @@ import type {
 } from './aiSelection'
 import type { AutomaticSegmentationTargetId, SegmentationModelId, SegmentationModelPreparationId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
-import type { LocalMediaShareStatus } from './localMediaShare'
+import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { DeepSeekHarnessApi } from './deepseekHarness'
 import type { LunaEditorSdkApi } from './lunaEditorSdk'
@@ -318,6 +318,8 @@ export interface LunaApi {
   freecutWorkspace: FreecutWorkspaceApi
   freecutExport: FreecutExportApi
   startupReady(): void
+  setFullScreen(enabled: boolean): Promise<void>
+  onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
   getLogDir: () => Promise<string>
@@ -374,6 +376,13 @@ export interface LunaApi {
     getStatus(): Promise<LocalMediaShareStatus>
     start(): Promise<LocalMediaShareStatus>
     stop(): Promise<LocalMediaShareStatus>
+    getDirectories(): Promise<string[]>
+    getEntries(): Promise<LocalMediaShareEntry[]>
+    chooseDirectories(): Promise<string[]>
+    chooseFiles(): Promise<LocalMediaShareStatus | null>
+    removeDirectory(directory: string): Promise<string[]>
+    addFiles(filePaths: string[]): Promise<LocalMediaShareStatus>
+    removeFile(filePath: string): Promise<LocalMediaShareStatus>
   }
   getDownloadedRecords(files: LunaFile[]): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>

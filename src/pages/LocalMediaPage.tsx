@@ -105,6 +105,7 @@ export function LocalMediaPage() {
           enableILogRestoreOption
           filePath={previewPath(controller.previewFile)}
           filePathList={controller.filteredFiles.map(previewPath)}
+          mediaFileForPath={(filePath) => controller.filteredFiles.find((file) => previewPath(file) === filePath)}
           isFileSelected={(filePath) => {
             const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
             return Boolean(file && controller.selected.has(file.id))

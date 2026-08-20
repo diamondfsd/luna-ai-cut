@@ -1,6 +1,10 @@
 import type { CustomWatermarkAsset, WatermarkPosition, WatermarkSettings } from './watermark'
 import type { CameraConnectionMode } from './cameraMediaSource'
 
+export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
+
+export type WindowCloseBehavior = 'quit' | 'hide'
+
 export interface CustomLutFile {
   filePath: string
   fileName: string
@@ -36,8 +40,18 @@ export interface AppSettings {
   workspaceImportDir?: string
   /** 扩展 LUT 滤镜目录路径（.cube 文件目录树，按文件夹分组） */
   lutDir?: string
+  /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
+  workspacePreviewQuality?: WorkspacePreviewQuality
+  /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
+  experimentalGpuPreview?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean
+  /** 手机分享时额外公开的目录，只扫描目录本身和下一层子目录。 */
+  localMediaShareDirectories?: string[]
+  /** 手机分享时拖入的文件路径，应用重启后会继续尝试共享。 */
+  localMediaShareFiles?: string[]
+  /** 点击窗口关闭按钮时退出应用，还是只隐藏窗口。 */
+  windowCloseBehavior?: WindowCloseBehavior
 }
 
 export interface CacheStats {

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppleLivePhotoExportOption } from './AppleLivePhotoExportOption'
 import { buildExportLayers, exportBatchFiles, type BatchExportSource } from './previewStageExport'
 import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
 import { HtmlPreview } from './HtmlPreview'
 import { MediaInspector } from './MediaInspector'
-import { PreviewModalHeader } from './PreviewModalHeader'
+import { PreviewModalHeader, type PreviewQuality } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
@@ -14,9 +14,10 @@ import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, lockDolbyVisionExportSettings } from '../shared/types'
-import type { DolbyVisionProbeResult, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DolbyVisionProbeResult, LunaFile, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { usesCustomWatermark } from '../shared/watermarkGeometry'
-import { Button, Dialog, toast } from '../ui'
+import { Button, Dialog, IconButton, toast } from '../ui'
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react'
 import { findLunaUltraRestoreLut } from '../workspace/lut/lunaUltraRestoreLut'
 import { lutManager } from '../workspace/lut/LutManager'
 import '../styles/modal.css'
@@ -30,8 +31,11 @@ interface PreviewModalProps {
   batchExportMode?: boolean
   enableILogRestoreOption?: boolean
   onFilePathChange?: (filePath: string) => void
+  mediaFileForPath?: (filePath: string) => LunaFile | undefined
   isFileSelected?: (filePath: string) => boolean
   onSetFileSelected?: (filePath: string, selected: boolean) => void
+  originalVideoUrls?: Record<string, string>
+  onDownload?: (filePath: string) => void
   onClose: () => void
 }
 
@@ -58,8 +62,11 @@ export function PreviewModal({
   batchExportMode,
   enableILogRestoreOption,
   onFilePathChange,
+  mediaFileForPath,
   isFileSelected,
   onSetFileSelected,
+  originalVideoUrls,
+  onDownload,
   onClose,
 }: PreviewModalProps) {
   // ── 当前预览文件路径 ──
@@ -90,15 +97,101 @@ export function PreviewModal({
   const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
   const [dolbyVisionChecking, setDolbyVisionChecking] = useState(false)
   const [hasILogInExport, setHasILogInExport] = useState(false)
+  const [previewQuality, setPreviewQuality] = useState<PreviewQuality>('proxy')
+  const [immersive, setImmersive] = useState(false)
+  const [navigationVisible, setNavigationVisible] = useState(false)
+  const navigationHideTimerRef = useRef<number | null>(null)
+
+  const navigationFiles = filePathList?.length ? filePathList : [currentFilePath]
+  const currentNavigationIndex = navigationFiles.indexOf(currentFilePath)
+  const canNavigatePrevious = currentNavigationIndex > 0
+  const canNavigateNext = currentNavigationIndex >= 0 && currentNavigationIndex < navigationFiles.length - 1
+
+  const revealNavigation = useCallback(() => {
+    setNavigationVisible(true)
+    if (navigationHideTimerRef.current !== null) {
+      window.clearTimeout(navigationHideTimerRef.current)
+    }
+    navigationHideTimerRef.current = window.setTimeout(() => {
+      navigationHideTimerRef.current = null
+      setNavigationVisible(false)
+    }, 1800)
+  }, [])
+
+  const hideNavigation = useCallback(() => {
+    if (navigationHideTimerRef.current !== null) {
+      window.clearTimeout(navigationHideTimerRef.current)
+      navigationHideTimerRef.current = null
+    }
+    setNavigationVisible(false)
+  }, [])
+
+  useEffect(() => hideNavigation, [hideNavigation])
+
+  function navigateTo(index: number): void {
+    const nextFilePath = navigationFiles[index]
+    if (nextFilePath) setCurrentFilePath(nextFilePath)
+    revealNavigation()
+  }
+
+  const enterImmersive = useCallback(() => {
+    setImmersive(true)
+    void window.luna.setFullScreen(true).catch(() => setImmersive(false))
+  }, [])
+
+  const exitImmersive = useCallback(() => {
+    setImmersive(false)
+    void window.luna.setFullScreen(false).catch(() => {})
+  }, [])
+
+  const toggleImmersive = useCallback(() => {
+    if (immersive) exitImmersive()
+    else enterImmersive()
+  }, [enterImmersive, exitImmersive, immersive])
+
+  useEffect(() => {
+    const unsubscribe = window.luna.onFullScreenChange(setImmersive)
+    return () => {
+      unsubscribe()
+      void window.luna.setFullScreen(false)
+    }
+  }, [])
+
+  const originalVideoUrl = originalVideoUrls?.[currentFilePath] ?? null
+  const canUseOriginalPreview = Boolean(originalVideoUrl)
+  const useOriginalPreview = canUseOriginalPreview && previewQuality === 'original'
+  const selectedSourcePath = useOriginalPreview ? originalVideoUrl : currentFilePath
+  const mediaFile = useMemo(
+    () => mediaFileForPath?.(currentFilePath),
+    [currentFilePath, mediaFileForPath],
+  )
+
+  useEffect(() => {
+    setPreviewQuality('proxy')
+  }, [currentFilePath])
+
+  useEffect(() => {
+    if (!canUseOriginalPreview) setPreviewQuality('proxy')
+  }, [canUseOriginalPreview])
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
-  const { cacheFilePath: resolvedPath } = useFileCache(currentFilePath)
+  const { cacheFilePath: resolvedPath } = useFileCache(useOriginalPreview ? null : currentFilePath)
 
-  const isRemoteSource = isHttpPath(currentFilePath)
-  const activeSourcePath = isRemoteSource ? resolvedPath : currentFilePath
-  const displaySource = activeSourcePath ? (filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath) : null
+  const isRemoteSource = isHttpPath(selectedSourcePath)
+  const activeSourcePath = useOriginalPreview
+    ? originalVideoUrl
+    : isRemoteSource
+      ? resolvedPath
+      : selectedSourcePath
+  const displaySource = activeSourcePath
+    ? (isHttpPath(activeSourcePath) ? activeSourcePath : filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath)
+    : null
   const stageSource = toLocalPath(activeSourcePath)
+  const htmlMediaPath = activeSourcePath && isHttpPath(activeSourcePath) ? null : stageSource
   const proxyPreview = proxyPreviewPaths?.includes(currentFilePath) ?? false
+  const metadataCachedPath = mediaFile?.downloadFilePath
+    ?? mediaFile?.localPath
+    ?? (isRemoteSource ? null : stageSource)
   const currentSelected = selectionOverrides.get(currentFilePath) ?? isFileSelected?.(currentFilePath)
   const exportList = useMemo(
     () => batchExportMode ? (filePathList ?? []) : [currentFilePath],
@@ -294,48 +387,92 @@ export function PreviewModal({
   // Escape 关闭
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      if (immersive) exitImmersive()
+      else onClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [exitImmersive, immersive, onClose])
 
   return (
     <Dialog open variant="fullscreen" closeOnMaskClick={false} onOpenChange={(o) => !o && onClose()}>
-      <section className="preview-modal">
+      <section className={`preview-modal${immersive ? ' is-immersive' : ''}`}>
         <PreviewModalHeader
           filePath={currentFilePath}
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
+          previewQuality={previewQuality}
+          onPreviewQualityChange={setPreviewQuality}
+          showOriginalOption={canUseOriginalPreview}
           selected={currentSelected}
           onToggleSelected={onSetFileSelected && currentSelected !== undefined ? () => {
             const nextSelected = !currentSelected
             setSelectionOverrides((current) => new Map(current).set(currentFilePath, nextSelected))
             onSetFileSelected(currentFilePath, nextSelected)
           } : undefined}
+          onDownload={onDownload ? () => onDownload(currentFilePath) : undefined}
           onClose={onClose}
         />
 
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
           <div className="preview-stage-col">
-            {previewOnly || lightweightPreview ? (
-              <div className="preview-stage">
-                <HtmlPreview
-                  url={displaySource}
-                  mediaPath={stageSource}
-                  proxyPreview={proxyPreview}
-                  watermarkLayer={lightweightPreview ? watermarkLayers[0] : undefined}
-                  watermarkSettings={lightweightPreview ? watermarkSettings : undefined}
-                  watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled && watermarkSettings.sourceKind === 'custom')}
-                  onWatermarkChange={lightweightPreview ? handleWatermarkChange : undefined}
-                />
-              </div>
-            ) : (
-              <PreviewStage
-                url={stageSource}
-                extraLayers={watermarkLayers}
+            <div
+              className={`preview-stage-shell${navigationVisible ? ' navigation-visible' : ''}`}
+              onMouseMove={revealNavigation}
+              onMouseLeave={hideNavigation}
+            >
+              <IconButton
+                variant="light"
+                className={`preview-immersive-toggle${navigationVisible ? ' is-visible' : ''}`}
+                icon={immersive ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+                onClick={toggleImmersive}
+                title={immersive ? '退出全屏' : '全屏预览'}
+                aria-label={immersive ? '退出全屏' : '全屏预览'}
+                aria-pressed={immersive}
               />
-            )}
+              {previewOnly || lightweightPreview ? (
+                <div className="preview-stage">
+                  <HtmlPreview
+                    url={displaySource}
+                    mediaPath={htmlMediaPath}
+                    proxyPreview={proxyPreview && !useOriginalPreview}
+                    watermarkLayer={lightweightPreview ? watermarkLayers[0] : undefined}
+                    watermarkSettings={lightweightPreview ? watermarkSettings : undefined}
+                    watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled && watermarkSettings.sourceKind === 'custom')}
+                    onWatermarkChange={lightweightPreview ? handleWatermarkChange : undefined}
+                  />
+                </div>
+              ) : (
+                <PreviewStage
+                  url={stageSource}
+                  extraLayers={watermarkLayers}
+                />
+              )}
+
+              {navigationFiles.length > 1 && (
+                <>
+                  <IconButton
+                    variant="light"
+                    className={`preview-nav previous${navigationVisible ? ' is-visible' : ''}`}
+                    icon={<ChevronLeft size={21} />}
+                    disabled={!canNavigatePrevious}
+                    onClick={() => navigateTo(currentNavigationIndex - 1)}
+                    title="上一张"
+                    aria-label="上一张"
+                  />
+                  <IconButton
+                    variant="light"
+                    className={`preview-nav next${navigationVisible ? ' is-visible' : ''}`}
+                    icon={<ChevronRight size={21} />}
+                    disabled={!canNavigateNext}
+                    onClick={() => navigateTo(currentNavigationIndex + 1)}
+                    title="下一张"
+                    aria-label="下一张"
+                  />
+                </>
+              )}
+            </div>
 
             <PreviewThumbnailStrip
               filePathList={filePathList ?? [currentFilePath]}
@@ -348,7 +485,9 @@ export function PreviewModal({
             <div className={`preview-sidebar${batchExportMode ? ' batch-export-sidebar' : ''}`}>
               <MediaInspector
                 filePath={currentFilePath}
-                proxyPreview={proxyPreview}
+                file={mediaFile}
+                cachedPath={metadataCachedPath}
+                proxyPreview={proxyPreview && !useOriginalPreview}
                 onToggleCollapse={() => setInspectorOpen(false)}
                 header={!previewOnly && stageSource ? (
                   <WatermarkSettings

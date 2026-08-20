@@ -144,6 +144,12 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     preserveSourceMetadata: (outputPath, sourcePath, options) => ipcRenderer.invoke('freecut-export:preserve-source-metadata', outputPath, sourcePath, options),
   } satisfies FreecutExportApi,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
+  setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
+  onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean): void => callback(isFullScreen)
+    ipcRenderer.on('window:fullscreen-changed', listener)
+    return () => ipcRenderer.off('window:fullscreen-changed', listener)
+  },
   // 日志
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)
@@ -215,6 +221,13 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     getStatus: () => ipcRenderer.invoke('local-media-share:status'),
     start: () => ipcRenderer.invoke('local-media-share:start'),
     stop: () => ipcRenderer.invoke('local-media-share:stop'),
+    getDirectories: () => ipcRenderer.invoke('local-media-share:directories'),
+    getEntries: () => ipcRenderer.invoke('local-media-share:entries'),
+    chooseDirectories: () => ipcRenderer.invoke('local-media-share:choose-directories'),
+    chooseFiles: () => ipcRenderer.invoke('local-media-share:choose-files'),
+    removeDirectory: (directory: string) => ipcRenderer.invoke('local-media-share:remove-directory', directory),
+    addFiles: (filePaths: string[]) => ipcRenderer.invoke('local-media-share:add-files', filePaths),
+    removeFile: (filePath: string) => ipcRenderer.invoke('local-media-share:remove-file', filePath),
   },
   getDownloadedRecords: (files: LunaFile[]) => ipcRenderer.invoke('downloads:records', files),
   revealFile: (filePath: string) => ipcRenderer.invoke('files:reveal', filePath),

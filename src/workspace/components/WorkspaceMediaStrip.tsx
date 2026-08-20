@@ -1,5 +1,5 @@
 import { FolderOpen } from 'lucide-react'
-import { type MouseEvent, useEffect, useRef, useState } from 'react'
+import { type MouseEvent, type WheelEvent, useEffect, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset, WorkspaceMediaKind } from '../../shared/types'
 import { mergePipeline, normalizePersistedPipelinePatch, type EditPipeline } from '../shared/editPipeline'
@@ -186,6 +186,17 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
     }
   }
 
+  function handleWheel(e: WheelEvent<HTMLDivElement>): void {
+    const container = containerRef.current
+    if (!container || container.scrollWidth <= container.clientWidth) return
+
+    const delta = e.deltaX + e.deltaY
+    if (delta === 0) return
+
+    e.preventDefault()
+    container.scrollLeft += delta
+  }
+
   async function revealAsset(filePath: string): Promise<void> {
     try {
       await window.luna.revealFile(filePath)
@@ -204,6 +215,7 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onKeyDown={handleKeyDown}
+      onWheel={handleWheel}
     >
       {visibleMedia.map(({ item, index }) => {
         const isBroken = brokenPaths.has(item.path)

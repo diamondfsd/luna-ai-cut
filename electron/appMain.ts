@@ -28,7 +28,9 @@ import {
   activateMainWindow,
   appIconPath,
   createMainWindow,
+  getMainWindowCloseBehavior,
   registerRendererProtocol,
+  setMainWindowCloseBehavior,
 } from './windowService'
 import { registerNativeMediaProtocol } from './nativeMediaProtocol'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
@@ -213,6 +215,7 @@ function createWindow(): void {
       for (const [, controller] of activeExportControllers) controller.abort()
       activeExportControllers.clear()
     },
+    getWindowCloseBehavior: getMainWindowCloseBehavior,
   })
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
@@ -522,6 +525,8 @@ app.whenReady().then(async () => {
   createAppMenu()
   registerIpc()
   scheduleUpdateCheck()
+  const settings = await getSettings()
+  setMainWindowCloseBehavior(settings.windowCloseBehavior)
   createWindow()
 
   // 设置窗口标题（含版本号，有热更新则追加 hot build 号）
