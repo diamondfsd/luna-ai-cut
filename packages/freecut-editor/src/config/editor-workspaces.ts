@@ -78,9 +78,9 @@ const EDITOR_WORKSPACE_PRESETS: Record<EditorWorkspaceId, EditorWorkspaceLayout>
  * rather than editing them, so the color workspace shrinks the timeline.
  */
 export const EDITOR_WORKSPACE_TIMELINE_SIZE: Record<EditorWorkspaceId, number | null> = {
-  edit: 36,
+  edit: 28,
   color: 18,
-  // Keep Motion's established split while Edit adopts the larger timeline.
+  // Motion keeps a compact timeline while its preview surface remains available.
   motion: 28,
 }
 

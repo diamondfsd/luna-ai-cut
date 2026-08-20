@@ -386,4 +386,32 @@ describe('FreeCutRuntime SDK adapter', () => {
       trackId: audioTrackId,
     })
   })
+
+  it('moves a video overlay track above its reference track', async () => {
+    const runtime = new FreeCutRuntime({ project: project() })
+    const provider = new FreeCutCapabilityProvider(runtime)
+
+    const firstOverlay = await provider.execute('timeline.add_track', { type: 'video' }) as {
+      createdIds: string[]
+    }
+    const secondOverlay = await provider.execute('timeline.add_track', { type: 'video' }) as {
+      createdIds: string[]
+    }
+    const baseTrackId = 'video-1'
+    const firstOverlayId = firstOverlay.createdIds[0]!
+    const secondOverlayId = secondOverlay.createdIds[0]!
+
+    const moved = await provider.execute('timeline.move_track', {
+      trackId: baseTrackId,
+      aboveTrackId: secondOverlayId,
+    }) as { project: Project; affectedIds: string[] }
+
+    const tracks = moved.project.timeline!.tracks
+    const baseTrack = tracks.find((track) => track.id === baseTrackId)!
+    const firstOverlayTrack = tracks.find((track) => track.id === firstOverlayId)!
+    const secondOverlayTrack = tracks.find((track) => track.id === secondOverlayId)!
+    expect(baseTrack.order).toBeLessThan(secondOverlayTrack.order)
+    expect(secondOverlayTrack.order).toBeLessThan(firstOverlayTrack.order)
+    expect(moved.affectedIds).toContain(baseTrackId)
+  })
 })

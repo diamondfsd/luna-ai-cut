@@ -13,7 +13,7 @@ import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/p
 import type { MediaMetadata } from '@freecut/types/storage'
 import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import {
-  buildCaptionTrack,
+  buildCaptionTrackAbove,
   buildSubtitleSegmentForClip,
   consolidateCaptionTextItemsToSegments,
   findCaptionTargetClipsForMedia,
@@ -171,7 +171,13 @@ class SubtitleSidecarService {
     const refreshed = useTimelineStore.getState()
     let target = findCompatibleCaptionTrackForRanges(nextTracks, refreshed.items, ranges)
     if (!target) {
-      target = buildCaptionTrack(nextTracks)
+      const referenceOrder = Math.min(
+        ...clips
+          .map((clip) => nextTracks.find((track) => track.id === clip.trackId)?.order)
+          .filter((order): order is number => order !== undefined),
+        0,
+      )
+      target = buildCaptionTrackAbove(nextTracks, referenceOrder)
       nextTracks = [...nextTracks, target].sort((a, b) => a.order - b.order)
       refreshed.setTracks(nextTracks)
     }

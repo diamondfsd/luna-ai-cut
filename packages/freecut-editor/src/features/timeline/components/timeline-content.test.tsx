@@ -770,7 +770,7 @@ describe('TimelineContent playback selection behavior', () => {
     )
     const scrollContainer =
       allTracksScrollRef.current ??
-      (container.querySelector('[data-track-section-scroll="video"]') as HTMLDivElement | null)
+      (container.querySelector('[data-track-section-scroll="all"]') as HTMLDivElement | null)
     expect(scrollContainer).toBeTruthy()
 
     const trackElements = Array.from(container.querySelectorAll<HTMLElement>('[data-track-id]'))
@@ -854,7 +854,7 @@ describe('TimelineContent playback selection behavior', () => {
     })
   })
 
-  it('reveals the active track through the split-pane video scroll ref', async () => {
+  it('reveals the active track through the unified track scroll ref', async () => {
     const tracks: TimelineTrack[] = [
       { ...VIDEO_TRACK, id: 'track-video-1', name: 'V1', order: 0 },
       { ...VIDEO_TRACK, id: 'track-video-2', name: 'V2', order: 1 },
@@ -873,37 +873,30 @@ describe('TimelineContent playback selection behavior', () => {
       items: [],
     })
 
-    const videoTracksScrollRef = createRef<HTMLDivElement>()
-    const audioTracksScrollRef = createRef<HTMLDivElement>()
+    const allTracksScrollRef = createRef<HTMLDivElement>()
     const { container } = render(
       <TimelineContent
         duration={10}
         tracks={tracks}
-        videoTracksScrollRef={videoTracksScrollRef}
-        audioTracksScrollRef={audioTracksScrollRef}
+        allTracksScrollRef={allTracksScrollRef}
       />,
     )
-    const videoScrollContainer =
-      videoTracksScrollRef.current ??
-      (container.querySelector('[data-track-section-scroll="video"]') as HTMLDivElement | null)
-    const audioScrollContainer =
-      audioTracksScrollRef.current ??
-      (container.querySelector('[data-track-section-scroll="audio"]') as HTMLDivElement | null)
-    expect(videoScrollContainer).toBeTruthy()
-    expect(audioScrollContainer).toBeTruthy()
+    const scrollContainer =
+      allTracksScrollRef.current ??
+      (container.querySelector('[data-track-section-scroll="all"]') as HTMLDivElement | null)
+    expect(scrollContainer).toBeTruthy()
 
     const videoTrackElements = Array.from(
-      videoScrollContainer!.querySelectorAll<HTMLElement>('[data-track-id]'),
+      container.querySelectorAll<HTMLElement>('[data-track-section="video"] [data-track-id]'),
     )
     expect(videoTrackElements).toHaveLength(3)
 
-    Object.defineProperty(videoScrollContainer!, 'clientHeight', {
+    Object.defineProperty(scrollContainer!, 'clientHeight', {
       configurable: true,
       value: 100,
     })
-    videoScrollContainer!.scrollTop = 120
-    audioScrollContainer!.scrollTop = 55
-    vi.spyOn(videoScrollContainer!, 'getBoundingClientRect').mockReturnValue({
+    scrollContainer!.scrollTop = 120
+    vi.spyOn(scrollContainer!, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
       left: 0,
@@ -972,9 +965,8 @@ describe('TimelineContent playback selection behavior', () => {
     })
 
     await waitFor(() => {
-      expect(videoScrollContainer!.scrollTop).toBe(0)
+      expect(scrollContainer!.scrollTop).toBe(0)
     })
-    expect(audioScrollContainer!.scrollTop).toBe(55)
   })
 
   it('does not clear previewFrame on ruler mousedown before the ruler handler runs', () => {

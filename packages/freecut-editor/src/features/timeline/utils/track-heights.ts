@@ -2,8 +2,8 @@
  * Track heights are a local view preference, not project data.
  *
  * Two localStorage keys back them: the global Track Size preset
- * (`editor:trackSizePreset`, owned by the editor store) supplies the base row
- * height, and `editor:trackHeights:<projectId>` holds per-track overrides for
+ * (`editor:trackSizePreset:v2`, owned by the editor store) supplies the base row
+ * height, and `editor:trackHeights:v2:<projectId>` holds per-track overrides for
  * tracks the user has dragged to a custom height. `items-store.setTracks()`
  * re-derives `TimelineTrack.height` from these on every write, so the height
  * stored in a project file is ignored.
@@ -15,7 +15,7 @@ import { useEditorStore } from '@freecut/shared/state/editor'
 import { TRACK_SIZE_PRESET_HEIGHTS } from '../constants'
 import { clampTrackHeight } from './track-resize'
 
-const OVERRIDES_KEY_PREFIX = 'editor:trackHeights:'
+const OVERRIDES_KEY_PREFIX = 'editor:trackHeights:v2:'
 const PERSIST_DEBOUNCE_MS = 250
 
 let activeProjectId: string | null = null

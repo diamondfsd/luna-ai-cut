@@ -39,7 +39,7 @@ export const test = base.extend<{ lunaLiveApp: LunaLiveElectronApp }>({
     let app: ElectronApplication | undefined
     try {
       app = await electron.launch({
-        args: ['.'],
+        args: ['.', '--no-sandbox'],
         cwd: projectRoot,
         // Do not inherit a caller's isolated profile by accident.
         env: liveEnv,

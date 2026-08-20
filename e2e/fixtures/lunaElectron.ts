@@ -149,7 +149,7 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
     let app: ElectronApplication | undefined
     try {
       app = await electron.launch({
-        args: ['.'],
+        args: ['.', '--no-sandbox'],
         cwd: projectRoot,
         env: {
           ...process.env,

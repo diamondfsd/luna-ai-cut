@@ -67,9 +67,9 @@ export default async function main(luna) {
 - `audio.startSpeech({ text, voice?, speed? })`：提交 TTS 任务。
 - `audio.startMusic({ prompt, model?, durationSeconds?, guidanceScale? })`：提交音乐或音效任务。背景音乐使用 `small-music`，音效使用 `small-sfx`。
 - `audio.getTask({ taskId })`：查询 TTS、音乐和音效任务。
-- `timeline.inspectContext()`、`addTrack()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`unlink()`、`mute()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
+- `timeline.inspectContext()`、`addTrack()`、`moveTrack()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`unlink()`、`mute()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
 
-`addTrack({ type: 'video' | 'audio', name?, order? })` 返回新轨道 ID。字幕、标题和画面叠加应先创建独立视频轨道；
+`addTrack({ type: 'video' | 'audio', name?, order? })` 返回新轨道 ID；`moveTrack({ trackId, aboveTrackId?, belowTrackId? })` 调整已有轨道层级，两个锚点参数只能传一个，且必须与被移动轨道保持同类型。`order` 越小表示画面层级越高，预览和导出都会按这个规则处理。字幕、标题和画面叠加应先创建独立视频轨道，并使用 `moveTrack` 放到目标视频轨道上方；
 TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 放置素材。视频素材自动生成的伴侣音频保留在原音频轨道。
 
 时间轴时间参数均为秒：`trim` 使用 `startSeconds/endSeconds`，`split` 使用 `atSeconds`，`move` 使用

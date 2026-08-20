@@ -391,6 +391,24 @@ function coreOperationForCapability(
           ...(order !== undefined ? { order } : {}),
         }
       }
+    case 'timeline.move_track':
+    case 'timeline.tracks.move': {
+      const trackId = asStringValue(args.trackId, 'trackId')
+      const aboveTrackId = args.aboveTrackId === undefined
+        ? undefined
+        : asStringValue(args.aboveTrackId, 'aboveTrackId')
+      const belowTrackId = args.belowTrackId === undefined
+        ? undefined
+        : asStringValue(args.belowTrackId, 'belowTrackId')
+      if ((aboveTrackId ? 1 : 0) + (belowTrackId ? 1 : 0) !== 1) {
+        throw new TypeError('Exactly one of aboveTrackId or belowTrackId is required')
+      }
+      return {
+        op: 'moveTrack',
+        id: trackId,
+        ...(aboveTrackId ? { aboveTrackId } : { belowTrackId }),
+      }
+    }
     case 'timeline.clips.add':
       return {
         op: 'addClip',

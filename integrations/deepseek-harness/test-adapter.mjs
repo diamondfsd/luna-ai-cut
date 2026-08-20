@@ -123,6 +123,7 @@ try {
   assert.match(prompts[0].text, /edit\.run_script/)
   assert.match(prompts[0].text, /fromClipId/u)
   assert.match(prompts[0].text, /addTrack/u)
+  assert.match(prompts[0].text, /moveTrack/u)
   assert.match(prompts[0].text, /timeline\.unlink/u)
   assert.match(prompts[0].text, /timeline\.mute/u)
   assert.match(prompts[0].text, /0.*不是静音/u)

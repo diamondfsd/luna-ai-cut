@@ -10,6 +10,7 @@ assert.deepEqual(Object.keys(SCRIPT_API.project), ['inspect'])
 assert.deepEqual(Object.keys(SCRIPT_API.timeline), [
   'inspectContext',
   'addTrack',
+  'moveTrack',
   'addMedia',
   'trim',
   'split',

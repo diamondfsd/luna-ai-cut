@@ -25,10 +25,26 @@
 
 - `luna.timeline.inspectContext()`：读取轨道、片段、关联关系、转场和关键帧。
 - `luna.timeline.addTrack({ type: 'video' | 'audio', name?, order? })`：创建独立轨道，使用返回的 `data.createdItemIds[0]` 作为后续 `trackId`。
+- `luna.timeline.moveTrack({ trackId, aboveTrackId?, belowTrackId? })`：调整已有轨道的层级。`aboveTrackId` 和 `belowTrackId` 只能传一个；移动后被调整轨道会位于锚点轨道的上方或下方。两个轨道必须是同一种类型。
 - `luna.timeline.addMedia({ mediaId, startSeconds?, durationSeconds?, sourceStartSeconds?, sourceEndSeconds?, trackId? })`：将素材加入时间轴。
 - `luna.timeline.addMediaBatch({ items: [...] })`：批量加入素材，`items` 使用 `addMedia` 的参数格式。
 
-字幕、标题和其他画面叠加先创建独立视频轨道；TTS、背景音乐和音效先创建独立音频轨道；原始视频产生的伴侣音频保留在原音频轨道。
+字幕、标题和其他画面叠加先创建独立视频轨道，并确认其 `order` 小于要覆盖的视频轨道；需要调整已有轨道时使用 `moveTrack`，不要只修改返回数组中的位置。TTS、背景音乐和音效先创建独立音频轨道；原始视频产生的伴侣音频保留在原音频轨道。
+
+轨道层级示例：
+
+```js
+const context = await luna.timeline.inspectContext()
+const videoTrack = context.data.tracks.find((track) => track.kind === 'video')
+if (!videoTrack) throw new Error('没有可覆盖的视频轨道')
+
+const added = await luna.timeline.addTrack({ type: 'video', name: '字幕' })
+const subtitleTrackId = added.data.createdItemIds[0]
+await luna.timeline.moveTrack({
+  trackId: subtitleTrackId,
+  aboveTrackId: videoTrack.id,
+})
+```
 
 ## 时间线编辑
 

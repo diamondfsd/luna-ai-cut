@@ -32,7 +32,7 @@ import { useItemsStore } from '@freecut/features/timeline/stores/items-store'
 import { useTransitionsStore } from '@freecut/features/timeline/stores/transitions-store'
 import { useTimelineSettingsStore } from '@freecut/features/timeline/stores/timeline-settings-store'
 import { useMediaLibraryStore } from '@freecut/features/media-library/stores/media-library-store'
-import { createClassicTrack } from '@freecut/features/timeline/utils/classic-tracks'
+import { createClassicTrack, getTrackKind } from '@freecut/features/timeline/utils/classic-tracks'
 import { seedMediaLibrary } from './seed-media'
 import {
   addItem,
@@ -81,6 +81,7 @@ export type EditOperationName =
   | 'updateTransition'
   | 'removeTransition'
   | 'addTrack'
+  | 'moveTrack'
   | 'addClip'
   | 'addKeyframe'
   | 'updateKeyframe'
@@ -127,6 +128,8 @@ const REFERENCE_ID_FIELDS = new Set([
   'id',
   'itemId',
   'trackId',
+  'aboveTrackId',
+  'belowTrackId',
   'leftClipId',
   'rightClipId',
   'effectId',
@@ -506,6 +509,53 @@ function applyOp(op: EditOp): unknown {
       }
       setTracks([...all, track])
       return { trackId: track.id, name: track.name }
+    }
+    case 'moveTrack': {
+      const trackId = asString(op.id)
+      if (!trackId) throw new Error('moveTrack requires `id`')
+      const aboveTrackId = asString(op.aboveTrackId)
+      const belowTrackId = asString(op.belowTrackId)
+      if ((aboveTrackId ? 1 : 0) + (belowTrackId ? 1 : 0) !== 1) {
+        throw new Error('moveTrack requires exactly one of `aboveTrackId` or `belowTrackId`')
+      }
+
+      const all = tracks()
+      const track = requireTrack(trackId)
+      const anchorId = aboveTrackId ?? belowTrackId!
+      const anchor = requireTrack(anchorId, aboveTrackId ? 'aboveTrackId' : 'belowTrackId')
+      if (track.id === anchor.id) throw new Error('moveTrack cannot use the same track as its anchor')
+
+      const trackKind = getTrackKind(track)
+      const anchorKind = getTrackKind(anchor)
+      if (trackKind && anchorKind && trackKind !== anchorKind) {
+        throw new Error('moveTrack requires the moved track and anchor track to have the same kind')
+      }
+
+      const remaining = all
+        .filter((candidate) => candidate.id !== track.id)
+        .sort((left, right) => left.order - right.order)
+      const anchorIndex = remaining.findIndex((candidate) => candidate.id === anchor.id)
+      if (anchorIndex === -1) throw new Error('moveTrack anchor track does not exist')
+
+      const insertIndex = aboveTrackId ? anchorIndex : anchorIndex + 1
+      const previous = remaining[insertIndex - 1]
+      const next = remaining[insertIndex]
+      const order = previous && next
+        ? (previous.order + next.order) / 2
+        : next
+          ? next.order - 1
+          : previous
+            ? previous.order + 1
+            : 0
+
+      setTracks(all.map((candidate) =>
+        candidate.id === track.id ? { ...candidate, order } : candidate,
+      ))
+      return {
+        trackId: track.id,
+        order,
+        ...(aboveTrackId ? { aboveTrackId } : { belowTrackId }),
+      }
     }
     case 'addClip': {
       const mediaId = asString(op.mediaId)

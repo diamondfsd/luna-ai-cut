@@ -82,7 +82,7 @@ const LazyColorTimelineNavigator = lazy(() =>
 const EDITOR_PROJECT_ROUTE_ID = '/editor/$projectId'
 
 function workspaceTimelineSizeStorageKey(workspace: EditorWorkspaceId): string {
-  return `editor:workspaceTimelineSize:v2:${workspace}`
+  return `editor:workspaceTimelineSize:v3:${workspace}`
 }
 
 function loadWorkspaceTimelineSize(workspace: EditorWorkspaceId): number | null {
@@ -810,7 +810,7 @@ export const LoadedEditor = memo(function LoadedEditor({
           <ResizablePanelGroup
             direction="vertical"
             className="flex-1 min-w-0"
-            autoSaveId="editor:timeline-layout:v2"
+            autoSaveId="editor:timeline-layout:v3"
           >
             {/* Top - Preview + Properties (inline mode) */}
             <ResizablePanel

@@ -34,8 +34,8 @@ const log = createLogger('TimelineToComposition')
  * - Adjusts item positions to be relative to in-point
  * - Sets duration to the in/out range length
  *
- * Tracks are sorted by their order property so that higher-numbered tracks
- * (e.g., Track 2) render on top of lower-numbered tracks (e.g., Track 1).
+ * Tracks are sorted by their order property so that lower-numbered tracks
+ * render on top of higher-numbered tracks. This is also the preview z-order.
  */
 export function convertTimelineToComposition(
   tracks: TimelineTrack[],

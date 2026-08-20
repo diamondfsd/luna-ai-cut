@@ -15,7 +15,7 @@ import { usePlaybackStore } from '@freecut/shared/state/playback'
 
 const LEGACY_SIDEBAR_DEFAULT_WIDTH = 320
 const WORKSPACE_STORAGE_KEY = 'editor:workspace'
-const TRACK_SIZE_PRESET_STORAGE_KEY = 'editor:trackSizePreset'
+const TRACK_SIZE_PRESET_STORAGE_KEY = 'editor:trackSizePreset:v2'
 
 function loadTrackSizePreset(): TrackSizePreset {
   try {
@@ -26,7 +26,7 @@ function loadTrackSizePreset(): TrackSizePreset {
   } catch {
     /* noop */
   }
-  return 'medium'
+  return 'compact'
 }
 
 function workspaceLayoutStorageKey(workspace: EditorWorkspaceId): string {
