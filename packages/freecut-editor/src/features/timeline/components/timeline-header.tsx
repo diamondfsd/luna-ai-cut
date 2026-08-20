@@ -1,4 +1,12 @@
-import { useEffect, useCallback, memo, useLayoutEffect, useReducer, useRef } from 'react'
+import {
+  useEffect,
+  useCallback,
+  memo,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@freecut/components/ui/button'
 import {
@@ -48,6 +56,7 @@ interface TimelineHeaderProps {
   onZoomIn?: () => void
   onZoomOut?: () => void
   onZoomToFit?: () => void
+  leadingContent?: ReactNode
 }
 
 function TrimEditIcon({ className }: { className?: string }) {
@@ -450,6 +459,7 @@ export const TimelineHeader = memo(function TimelineHeader({
   onZoomIn,
   onZoomOut,
   onZoomToFit,
+  leadingContent,
 }: TimelineHeaderProps) {
   const { t } = useTranslation()
   const hotkeys = useResolvedHotkeys()
@@ -509,6 +519,7 @@ export const TimelineHeader = memo(function TimelineHeader({
           <Film className="w-3 h-3" />
           {t('timeline.header.title')}
         </h2>
+        {leadingContent}
       </div>
 
       {/* Middle: Timeline Controls */}
