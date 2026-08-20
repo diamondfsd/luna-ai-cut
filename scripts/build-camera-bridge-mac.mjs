@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
@@ -24,6 +24,7 @@ const systemExtensionExecutableDir = join(systemExtensionContentsDir, 'MacOS')
 const installedHostBundleDir = '/Applications/Luna Camera Development Host.app'
 const extensionEntitlements = join(sourceDir, 'CameraExtension.entitlements')
 const hostEntitlements = join(sourceDir, 'DevHost.entitlements')
+const signingIdentity = process.env.LUNA_CAMERA_CODESIGN_IDENTITY?.trim() || null
 const sources = [
   'FrameServer.swift',
   'H264Decoder.swift',
@@ -36,6 +37,7 @@ if (!sources.every((file) => existsSync(file))) {
   process.exit(1)
 }
 
+rmSync(outputDir, { recursive: true, force: true })
 mkdirSync(executableDir, { recursive: true })
 copyFileSync(join(sourceDir, 'Info.plist'), join(contentsDir, 'Info.plist'))
 const result = spawnSync('swiftc', [
@@ -54,6 +56,11 @@ if (result.status !== 0) process.exit(result.status ?? 1)
 mkdirSync(systemExtensionExecutableDir, { recursive: true })
 copyFileSync(output, join(systemExtensionExecutableDir, 'LunaCameraExtension'))
 copyFileSync(join(sourceDir, 'Info.plist'), join(systemExtensionContentsDir, 'Info.plist'))
+if (!signingIdentity) {
+  console.log('[camera-bridge] no signing identity configured; skipped System Extension signing and /Applications installation')
+  console.log('[camera-bridge] use OBS output for development, or set LUNA_CAMERA_CODESIGN_IDENTITY explicitly for signed builds')
+  process.exit(0)
+}
 mkdirSync(hostExecutableDir, { recursive: true })
 copyFileSync(join(sourceDir, 'DevHostInfo.plist'), join(hostContentsDir, 'Info.plist'))
 const installer = spawnSync('swiftc', [
@@ -64,7 +71,6 @@ const installer = spawnSync('swiftc', [
   join(sourceDir, 'Installer.swift'),
 ], { cwd: root, stdio: 'inherit' })
 if (installer.status !== 0) process.exit(installer.status ?? 1)
-const signingIdentity = resolveSigningIdentity()
 const extensionSign = spawnSync('codesign', [
   '--force',
   '--sign', signingIdentity,
@@ -83,12 +89,3 @@ cpSync(hostBundleDir, installedHostBundleDir, { recursive: true, force: true })
 console.log(`[camera-bridge] development host installed: ${installedHostBundleDir}`)
 console.log(`[camera-bridge] signing identity: ${signingIdentity}`)
 console.log(`[camera-bridge] macOS native service built: ${output}`)
-
-function resolveSigningIdentity() {
-  if (process.env.LUNA_CAMERA_CODESIGN_IDENTITY) return process.env.LUNA_CAMERA_CODESIGN_IDENTITY
-  const identities = spawnSync('security', ['find-identity', '-v', '-p', 'codesigning'], { encoding: 'utf8' })
-  const match = identities.stdout.match(/"(Apple Development:[^"]+)"/)
-  if (match) return match[1]
-  console.warn('[camera-bridge] Apple Development identity not found; falling back to ad hoc signing')
-  return '-'
-}
