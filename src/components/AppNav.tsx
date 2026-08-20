@@ -39,6 +39,9 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台
           </NavLink>
+          <NavLink to="/camera-bridge" className={({ isActive }) => (isActive ? 'active' : '')}>
+            视频流测试
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>

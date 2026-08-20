@@ -17,6 +17,7 @@ import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
+import { CameraBridgePage } from '../pages/CameraBridgePage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import type { CacheStats } from '../shared/types'
@@ -89,6 +90,7 @@ export function AppRoutes() {
     ['/local-resources', true],
     ['/ai-selection', true],
     ['/workspace', true],
+    ['/camera-bridge', true],
     ['/settings', true],
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
@@ -163,6 +165,10 @@ export function AppRoutes() {
             onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
           />
+        </AppRoute>
+
+        <AppRoute path="/camera-bridge" preserve={false}>
+          <CameraBridgePage />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>
