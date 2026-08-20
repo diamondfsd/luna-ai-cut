@@ -23,12 +23,6 @@ const versionPattern = new RegExp(`^${packageVersion.replaceAll('.', '\\.')}-hot
 const supportedPlatforms = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'universal']
 const requestedPlatform = valueAfter('--platform')
 
-function currentPlatform() {
-  if (process.platform === 'darwin') return process.arch === 'x64' ? 'darwin-x64' : 'darwin-arm64'
-  if (process.platform === 'win32') return 'win32-x64'
-  return `${process.platform}-${process.arch}`
-}
-
 function loadLocalConfig() {
   const configPath = join('scripts', 'deploy-release.conf')
   if (!existsSync(configPath)) return
@@ -61,7 +55,7 @@ if (!existsSync('dist/index.html') || !existsSync('dist-electron/luna-appMain.js
 const releaseDir = join('release', packageVersion, 'hot-update')
 const platforms = includeNative
   ? (requestedPlatform ? [requestedPlatform] : ['darwin-arm64', 'darwin-x64', 'win32-x64'])
-  : [requestedPlatform ?? currentPlatform()]
+  : [requestedPlatform ?? 'universal']
 if (!supportedPlatforms.includes(platforms[0])) {
   throw new Error(`当前平台 ${platforms[0]} 不支持热更新，请显式使用 --platform universal`)
 }
@@ -93,7 +87,7 @@ function sha256(path) {
 }
 
 const packages = {}
-for (const platform of includeNative ? platforms : ['universal']) {
+for (const platform of platforms) {
   const zip = new AdmZip()
   addAppFiles(zip)
   if (includeNative) {

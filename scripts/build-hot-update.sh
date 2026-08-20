@@ -5,7 +5,7 @@
 # 构建前端 + 主进程 JS，打包为 zip 并上传到 GitCode Release。
 #
 # 用法:
-#   ./scripts/build-hot-update.sh                  # 当前平台纯 JS 热更新，自动取 build 号 +1
+#   ./scripts/build-hot-update.sh                  # 平台无关单包纯 JS 热更新，自动取 build 号 +1
 #   ./scripts/build-hot-update.sh --platform darwin-arm64 # 指定单个平台
 #   ./scripts/build-hot-update.sh --platform universal   # 显式发布通用包
 #   ./scripts/build-hot-update.sh --build-only     # 只构建不上传
@@ -45,7 +45,7 @@ err()   { echo -e "${RED}  ✗${NC} $*"; }
 BUILD_ONLY=false
 UPLOAD_ONLY=false
 HOT_VERSION_ARG=""
-PLATFORM_ARG=""
+PLATFORM_ARG="universal"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -101,14 +101,6 @@ except: print(0)
 
 HOT_VERSION=$(resolve_build_number "$HOT_VERSION_ARG")
 FULL_VERSION="${PKG_VERSION}-hot.${HOT_VERSION}"
-if [ -z "$PLATFORM_ARG" ]; then
-  case "$(uname -s):$(uname -m)" in
-    Darwin:arm64|Darwin:aarch64) PLATFORM_ARG="darwin-arm64" ;;
-    Darwin:x86_64) PLATFORM_ARG="darwin-x64" ;;
-    MINGW*:x86_64|MSYS*:x86_64|CYGWIN*:x86_64) PLATFORM_ARG="win32-x64" ;;
-    *) err "无法识别当前平台，请使用 --platform darwin-arm64、darwin-x64、win32-x64 或 universal"; exit 1 ;;
-  esac
-fi
 case "$PLATFORM_ARG" in
   darwin-arm64|darwin-x64|win32-x64|universal) ;;
   *) err "不支持的平台: $PLATFORM_ARG"; exit 1 ;;
