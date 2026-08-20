@@ -142,6 +142,22 @@
   height: auto;
 }
 
+.preview-stage-shell {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.preview-stage-shell > .preview-stage {
+  flex: 1 1 0;
+  height: auto;
+}
+
 .preview-loading-overlay {
   position: absolute;
   inset: 0;
@@ -242,16 +258,19 @@
   position: absolute;
   z-index: 2;
   top: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  cursor: pointer;
   transform: translateY(-50%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 140ms ease, visibility 140ms ease, background 140ms ease;
+}
+
+.preview-nav.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .preview-nav:hover {
@@ -314,6 +333,39 @@
 
 .preview-body.inspector-collapsed {
   display: flex;
+}
+
+/* 沉浸式观看：保留画面和必要的退出入口，隐藏标题、信息栏和缩略图栏。 */
+.preview-modal.is-immersive > header,
+.preview-modal.is-immersive .preview-sidebar,
+.preview-modal.is-immersive .preview-thumbnails {
+  display: none;
+}
+
+.preview-modal.is-immersive .preview-body {
+  display: block;
+}
+
+.preview-modal.is-immersive .preview-stage-col {
+  width: 100%;
+  height: 100%;
+}
+
+.preview-immersive-toggle.ui-icon-btn {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 12;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 140ms ease, visibility 140ms ease, background 140ms ease;
+}
+
+.preview-immersive-toggle.ui-icon-btn.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 /* ── 批量导出侧栏 ── */

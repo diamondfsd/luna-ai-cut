@@ -117,9 +117,9 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 
 ## 日常热更新发布
 
-当只需要推送增量修复，且当前正式版发布后从未通过热更新修改原生模块时，使用本地脚本生成一份平台无关的通用热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为平台无关的 JS，无需让 GitHub Actions 重复构建三份。
+当只需要推送增量修复，且当前正式版发布后从未通过热更新修改原生模块时，使用本地脚本生成纯 JS 热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为 JavaScript 热更新内容，无需让 GitHub Actions 重复构建三份。
 
-纯前端/纯 JS 热更新只发布一个无平台后缀的通用 ZIP（例如 `renderer-1.6.5-hot.1.zip`）和发布说明。**不构建、不上传 macOS ARM64、macOS x64 或 Windows x64 平台包**；客户端直接从 GitCode Release 附件列表中选择最新的通用 ZIP，不依赖 `renderer-latest.json` 清单。此方式仅适用于从正式版 tag 到当前热更新均无原生改动的版本线。
+除非用户明确要求多平台、通用包或原生模块热更新，后续热更新默认采用**当前开发平台的单平台纯前端/纯 JS 包**：不构建、不上传其他平台，也不包含 Rust 或其他原生模块。例如本机为 macOS ARM64 时，产物为 `renderer-1.7.1-hot.1-darwin-arm64.zip`。客户端会优先选择与自身平台匹配的附件；通用包和三平台包只能在明确要求时发布。此方式仅适用于从正式版 tag 到当前热更新均无原生改动的版本线。
 
 ### 1. 创建热更新发布说明
 
@@ -155,16 +155,21 @@ git commit -m "fix: xxx"
 ### 3. 构建并上传热更新包
 
 ```bash
-# 自动取下一个 build 号，构建并上传到 GitCode Release
+# 默认：自动取下一个 build 号，构建并上传当前平台的纯 JS 包
 ./scripts/build-hot-update.sh
+
+# 也可以显式指定单个平台
+./scripts/build-hot-update.sh --platform darwin-arm64
 ```
+
+可选平台为 `darwin-arm64`、`darwin-x64`、`win32-x64` 和 `universal`。其中 `universal`、多平台产物和 `--include-native` 均不是默认选项，只有收到明确要求时才使用。
 
 首次运行需确保 `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
 
 脚本会完成以下操作：
 
 - 运行 `pnpm run build:app`。
-- 生成并校验通用热更新 ZIP。
+- 生成并校验当前平台热更新 ZIP。
 - 上传 ZIP 和发布说明到 GitCode Release。
 - 创建并推送 `hot/v<版本号>-hot.<build号>` tag。
 

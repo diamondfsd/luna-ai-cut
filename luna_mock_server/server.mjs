@@ -400,8 +400,18 @@ function rangeFor(request, size) {
   if (!range) return { start: 0, end: size - 1, partial: false }
   const match = String(range).match(/^bytes=(\d*)-(\d*)$/)
   if (!match) return null
-  let start = match[1] === '' ? 0 : Number(match[1])
-  let end = match[2] === '' ? size - 1 : Number(match[2])
+  let start
+  let end
+  if (match[1] === '') {
+    // bytes=-N means the final N bytes, rather than bytes 0-N.
+    const suffixLength = Number(match[2])
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null
+    start = Math.max(size - suffixLength, 0)
+    end = size - 1
+  } else {
+    start = Number(match[1])
+    end = match[2] === '' ? size - 1 : Number(match[2])
+  }
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) return null
   end = Math.min(end, size - 1)
   return { start, end, partial: true }

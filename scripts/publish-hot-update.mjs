@@ -20,6 +20,14 @@ const includeNative = args.has('--include-native')
 const upload = args.has('--upload')
 const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version
 const versionPattern = new RegExp(`^${packageVersion.replaceAll('.', '\\.')}-hot\\.\\d+$`)
+const supportedPlatforms = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'universal']
+const requestedPlatform = valueAfter('--platform')
+
+function currentPlatform() {
+  if (process.platform === 'darwin') return process.arch === 'x64' ? 'darwin-x64' : 'darwin-arm64'
+  if (process.platform === 'win32') return 'win32-x64'
+  return `${process.platform}-${process.arch}`
+}
 
 function loadLocalConfig() {
   const configPath = join('scripts', 'deploy-release.conf')
@@ -40,12 +48,23 @@ if (upload) loadLocalConfig()
 if (!version || !versionPattern.test(version)) {
   throw new Error(`--version 必须是 ${packageVersion}-hot.N`)
 }
+if (requestedPlatform && !supportedPlatforms.includes(requestedPlatform)) {
+  throw new Error(`--platform 必须是 ${supportedPlatforms.join('、')}`)
+}
+if (includeNative && requestedPlatform === 'universal') {
+  throw new Error('原生热更新不能使用 universal，请指定具体平台或省略 --platform 生成三平台包')
+}
 if (!existsSync('dist/index.html') || !existsSync('dist-electron/luna-appMain.js')) {
   throw new Error('缺少 dist 构建产物，请先执行 pnpm build:app')
 }
 
 const releaseDir = join('release', packageVersion, 'hot-update')
-const platforms = ['darwin-arm64', 'darwin-x64', 'win32-x64']
+const platforms = includeNative
+  ? (requestedPlatform ? [requestedPlatform] : ['darwin-arm64', 'darwin-x64', 'win32-x64'])
+  : [requestedPlatform ?? currentPlatform()]
+if (!supportedPlatforms.includes(platforms[0])) {
+  throw new Error(`当前平台 ${platforms[0]} 不支持热更新，请显式使用 --platform universal`)
+}
 mkdirSync(releaseDir, { recursive: true })
 
 function addAppFiles(zip) {
@@ -95,7 +114,9 @@ for (const platform of includeNative ? platforms : ['universal']) {
       }
     }
   }
-  const zipName = includeNative ? `renderer-${version}-${platform}.zip` : `renderer-${version}.zip`
+  const zipName = platform === 'universal'
+    ? `renderer-${version}.zip`
+    : `renderer-${version}-${platform}.zip`
   const zipPath = join(releaseDir, zipName)
   zip.writeZip(zipPath)
   packages[platform] = {

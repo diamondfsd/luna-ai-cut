@@ -5,7 +5,9 @@
 # 构建前端 + 主进程 JS，打包为 zip 并上传到 GitCode Release。
 #
 # 用法:
-#   ./scripts/build-hot-update.sh                  # 自动取 build 号 +1，构建 + 上传
+#   ./scripts/build-hot-update.sh                  # 当前平台纯 JS 热更新，自动取 build 号 +1
+#   ./scripts/build-hot-update.sh --platform darwin-arm64 # 指定单个平台
+#   ./scripts/build-hot-update.sh --platform universal   # 显式发布通用包
 #   ./scripts/build-hot-update.sh --build-only     # 只构建不上传
 #   ./scripts/build-hot-update.sh --upload-only    # 只上传（跳过构建）
 #   ./scripts/build-hot-update.sh 3                # 指定 build 号
@@ -43,13 +45,19 @@ err()   { echo -e "${RED}  ✗${NC} $*"; }
 BUILD_ONLY=false
 UPLOAD_ONLY=false
 HOT_VERSION_ARG=""
+PLATFORM_ARG=""
 
-for arg in "$@"; do
-  case "$arg" in
-    --build-only) BUILD_ONLY=true ;;
-    --upload-only) UPLOAD_ONLY=true ;;
-    --upload) ;; # 兼容（默认行为就是构建+上传）
-    *) HOT_VERSION_ARG="$arg" ;;
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --build-only) BUILD_ONLY=true; shift ;;
+    --upload-only) UPLOAD_ONLY=true; shift ;;
+    --upload) shift ;; # 兼容（默认行为就是构建+上传）
+    --platform)
+      [ "$#" -ge 2 ] || { err "--platform 需要平台参数"; exit 1; }
+      PLATFORM_ARG="$2"
+      shift 2
+      ;;
+    *) HOT_VERSION_ARG="$1"; shift ;;
   esac
 done
 
@@ -80,7 +88,7 @@ try:
     assets = d.get('assets', [])
     nums = []
     for a in assets:
-        m = re.search(r'-hot\.(\d+)\.zip$', a['name'])
+        m = re.search(r'-hot\.(\d+)(?:-[a-z0-9-]+)?\.zip$', a['name'])
         if m: nums.append(int(m.group(1)))
     print(max(nums) if nums else 0)
 except: print(0)
@@ -93,7 +101,23 @@ except: print(0)
 
 HOT_VERSION=$(resolve_build_number "$HOT_VERSION_ARG")
 FULL_VERSION="${PKG_VERSION}-hot.${HOT_VERSION}"
-ZIP_NAME="renderer-${FULL_VERSION}.zip"
+if [ -z "$PLATFORM_ARG" ]; then
+  case "$(uname -s):$(uname -m)" in
+    Darwin:arm64|Darwin:aarch64) PLATFORM_ARG="darwin-arm64" ;;
+    Darwin:x86_64) PLATFORM_ARG="darwin-x64" ;;
+    MINGW*:x86_64|MSYS*:x86_64|CYGWIN*:x86_64) PLATFORM_ARG="win32-x64" ;;
+    *) err "无法识别当前平台，请使用 --platform darwin-arm64、darwin-x64、win32-x64 或 universal"; exit 1 ;;
+  esac
+fi
+case "$PLATFORM_ARG" in
+  darwin-arm64|darwin-x64|win32-x64|universal) ;;
+  *) err "不支持的平台: $PLATFORM_ARG"; exit 1 ;;
+esac
+if [ "$PLATFORM_ARG" = "universal" ]; then
+  ZIP_NAME="renderer-${FULL_VERSION}.zip"
+else
+  ZIP_NAME="renderer-${FULL_VERSION}-${PLATFORM_ARG}.zip"
+fi
 ZIP_PATH="${RELEASE_DIR}/${ZIP_NAME}"
 MANIFEST_NAME="renderer-${FULL_VERSION}.json"
 MANIFEST_PATH="${RELEASE_DIR}/${MANIFEST_NAME}"
@@ -109,7 +133,7 @@ function write_hot_manifest() {
       version: '${FULL_VERSION}',
       minAppVersion: '${PKG_VERSION}',
       packages: {
-        universal: {
+        '${PLATFORM_ARG}': {
           zipName: '${ZIP_NAME}',
           sha256: '${zip_sha256}',
           sizeBytes: ${zip_bytes},

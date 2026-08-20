@@ -45,6 +45,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     height: 820,
     minWidth: 1040,
     minHeight: 680,
+    fullscreenable: true,
     show: false,
     icon: options.iconPath,
     autoHideMenuBar: true,
