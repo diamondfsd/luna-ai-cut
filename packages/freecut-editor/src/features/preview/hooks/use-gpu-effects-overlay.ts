@@ -10,7 +10,10 @@ import { useGizmoStore } from '@freecut/features/preview/stores/gizmo-store'
 import type { ItemEffect } from '@freecut/types/effects'
 import type { TimelineItem } from '@freecut/types/timeline'
 import type { Transition } from '@freecut/types/transition'
-import { resolveTransitionWindows } from '@freecut/shared/timeline/transitions/transition-planner'
+import {
+  resolveTransitionWindows,
+  type ResolvedTransitionWindow,
+} from '@freecut/shared/timeline/transitions/transition-planner'
 import { hasCornerPin } from '@freecut/features/preview/deps/composition-runtime'
 import { isTextMotionActive } from '@freecut/shared/typography/text-motion'
 
@@ -80,6 +83,12 @@ export interface ContinuousPreviewOverlayFrameWindow {
 
 interface ContinuousPreviewOverlayWindowOptions {
   forceTransitionFrames?: boolean
+  checkTransitions?: boolean
+}
+
+export interface ContinuousPreviewOverlayIndex {
+  candidateItems: TimelineItem[]
+  transitionWindows: ResolvedTransitionWindow[]
 }
 
 interface ContinuousPreviewOverlayFrameWindowInput {
@@ -143,6 +152,102 @@ function isTextMotionActiveInWindow(
     }
   }
   return false
+}
+
+export function buildContinuousPreviewOverlayIndex(
+  items: TimelineItem[],
+  transitions: Transition[],
+  previewEffectsByItemId?: ReadonlyMap<string, ItemEffect[]>,
+  compositionById?: Record<string, SubComposition>,
+): ContinuousPreviewOverlayIndex {
+  const candidateItems = items.filter((item) => {
+    const effectiveEffects = previewEffectsByItemId?.get(item.id) ?? item.effects
+    if (hasEnabledGpuEffect(effectiveEffects)) return true
+    if (hasRenderableBlendMode(item)) return true
+    if (hasCornerPin(item.cornerPin)) return true
+    if (hasTextMotionSpec(item)) return true
+    if (item.type === 'composition' && compositionById) {
+      const subComp = compositionById[item.compositionId]
+      return Boolean(subComp && subCompositionNeedsRenderedOverlayPath(subComp, compositionById))
+    }
+    return false
+  })
+  const clipsById = new Map(items.map((item) => [item.id, item]))
+
+  return {
+    candidateItems,
+    transitionWindows: resolveTransitionWindows(transitions, clipsById),
+  }
+}
+
+export function shouldForceContinuousPreviewOverlayFromIndex(
+  index: ContinuousPreviewOverlayIndex,
+  window: ContinuousPreviewOverlayFrameWindow,
+  previewEffectsByItemId?: ReadonlyMap<string, ItemEffect[]>,
+  compositionById?: Record<string, SubComposition>,
+  options: ContinuousPreviewOverlayWindowOptions = {},
+): boolean {
+  const { startFrame, endFrameExclusive } = window
+  if (
+    !Number.isFinite(startFrame) ||
+    !Number.isFinite(endFrameExclusive) ||
+    endFrameExclusive <= startFrame
+  ) {
+    return false
+  }
+
+  if (options.checkTransitions !== false) {
+    for (const transitionWindow of index.transitionWindows) {
+      if (
+        !rangesOverlap(
+          startFrame,
+          endFrameExclusive,
+          transitionWindow.startFrame,
+          transitionWindow.endFrame,
+        )
+      ) {
+        continue
+      }
+      if (options.forceTransitionFrames) return true
+      if (
+        transitionWindow.leftClip.type === 'composition' ||
+        transitionWindow.rightClip.type === 'composition' ||
+        hasCornerPin(transitionWindow.leftClip.cornerPin) ||
+        hasCornerPin(transitionWindow.rightClip.cornerPin)
+      ) {
+        return true
+      }
+    }
+  }
+
+  return index.candidateItems.some((item) => {
+    if (
+      !rangesOverlap(
+        startFrame,
+        endFrameExclusive,
+        item.from,
+        item.from + item.durationInFrames,
+      )
+    ) {
+      return false
+    }
+    const effectiveEffects = previewEffectsByItemId?.get(item.id) ?? item.effects
+    if (hasEnabledGpuEffect(effectiveEffects)) return true
+    if (hasRenderableBlendMode(item)) return true
+    if (hasCornerPin(item.cornerPin)) return true
+    if (
+      item.type === 'text' &&
+      item.textMotion !== undefined &&
+      isTextMotionActiveInWindow(item, startFrame, endFrameExclusive)
+    ) {
+      return true
+    }
+    if (item.type === 'composition' && compositionById) {
+      const subComp = compositionById[item.compositionId]
+      return Boolean(subComp && subCompositionNeedsRenderedOverlayPath(subComp, compositionById))
+    }
+    return false
+  })
 }
 
 /**
@@ -253,12 +358,7 @@ export function shouldForceContinuousPreviewOverlayInWindow(
 
   return items.some((item) => {
     if (
-      !rangesOverlap(
-        startFrame,
-        endFrameExclusive,
-        item.from,
-        item.from + item.durationInFrames,
-      )
+      !rangesOverlap(startFrame, endFrameExclusive, item.from, item.from + item.durationInFrames)
     ) {
       return false
     }
@@ -306,10 +406,49 @@ export function useGpuEffectsOverlay(fps: number) {
   }, [])
 
   useEffect(() => {
-    const check = () => {
+    let indexedItems: TimelineItem[] | null = null
+    let indexedTransitions: Transition[] | null = null
+    let indexedCompositions: Record<string, SubComposition> | null = null
+    let indexedPreview: ReturnType<typeof useGizmoStore.getState>['preview'] | undefined
+    let previewEffectsByItemId: ReadonlyMap<string, ItemEffect[]> | undefined
+    let overlayIndex: ContinuousPreviewOverlayIndex | null = null
+
+    const getOverlayIndex = () => {
       const items = useItemsStore.getState().items
       const transitions = useTransitionsStore.getState().transitions
       const compositionById = useCompositionsStore.getState().compositionById
+      const preview = useGizmoStore.getState().preview
+      if (
+        overlayIndex &&
+        indexedItems === items &&
+        indexedTransitions === transitions &&
+        indexedCompositions === compositionById &&
+        indexedPreview === preview
+      ) {
+        return { compositionById, overlayIndex, previewEffectsByItemId }
+      }
+
+      previewEffectsByItemId = preview
+        ? new Map(
+            Object.entries(preview)
+              .filter(([, itemPreview]) => Array.isArray(itemPreview.effects))
+              .map(([itemId, itemPreview]) => [itemId, itemPreview.effects!]),
+          )
+        : undefined
+      overlayIndex = buildContinuousPreviewOverlayIndex(
+        items,
+        transitions,
+        previewEffectsByItemId,
+        compositionById,
+      )
+      indexedItems = items
+      indexedTransitions = transitions
+      indexedCompositions = compositionById
+      indexedPreview = preview
+      return { compositionById, overlayIndex, previewEffectsByItemId }
+    }
+
+    const check = () => {
       const playback = usePlaybackStore.getState()
       const isPreviewing = playback.previewFrame !== null
       const frame = playback.previewFrame ?? playback.currentFrame
@@ -320,34 +459,26 @@ export function useGpuEffectsOverlay(fps: number) {
         isPreviewing,
         playbackRate: playback.playbackRate,
       })
-      const preview = useGizmoStore.getState().preview
-      const previewEffectsByItemId = preview
-        ? new Map(
-            Object.entries(preview)
-              .filter(([, itemPreview]) => Array.isArray(itemPreview.effects))
-              .map(([itemId, itemPreview]) => [itemId, itemPreview.effects!]),
-          )
-        : undefined
+      const { compositionById, overlayIndex, previewEffectsByItemId } = getOverlayIndex()
 
       setNeedsOverlay((prev) => {
         // Pre-arm shortly before rendered-only content and retain it briefly
         // after the boundary. Ordinary frames outside this bounded window stay
         // on the browser Player instead of paying the continuous render-pump cost.
         const next =
-          shouldForceContinuousPreviewOverlayInWindow(
-            items,
-            0,
+          shouldForceContinuousPreviewOverlayFromIndex(
+            overlayIndex,
             frameWindow,
             previewEffectsByItemId,
             compositionById,
+            { checkTransitions: false },
           ) ||
           // Transition pre-rendering has its own runway and buffer ownership.
           // Only route an actual transition frame here so effect lookahead does
           // not turn the pre-render runway itself into presented overlay frames.
-          shouldForceContinuousPreviewOverlay(
-            items,
-            transitions,
-            frame,
+          shouldForceContinuousPreviewOverlayFromIndex(
+            overlayIndex,
+            { startFrame: frame, endFrameExclusive: frame + 1 },
             previewEffectsByItemId,
             compositionById,
             { forceTransitionFrames: isPreviewing || playback.isPlaying },

@@ -102,6 +102,52 @@ describe('editProject', () => {
     expect(orders['audio']).toBe(1)
   })
 
+  it('explains when an adjacent transition has no source handles', async () => {
+    await expect(editProject({
+      project: baseProject({
+        items: [
+          {
+            id: 'left',
+            type: 'video',
+            trackId: 't_v',
+            from: 0,
+            durationInFrames: 50,
+            label: 'left',
+            mediaId: 'm-vid',
+            src: '',
+            sourceFps: 25,
+            sourceStart: 0,
+            sourceEnd: 50,
+            sourceDuration: 50,
+            speed: 1,
+          },
+          {
+            id: 'right',
+            type: 'video',
+            trackId: 't_v',
+            from: 50,
+            durationInFrames: 50,
+            label: 'right',
+            mediaId: 'm-vid',
+            src: '',
+            sourceFps: 25,
+            sourceStart: 0,
+            sourceEnd: 50,
+            sourceDuration: 50,
+            speed: 1,
+          },
+        ],
+      }),
+      ops: [{
+        op: 'addTransition',
+        leftClipId: 'left',
+        rightClipId: 'right',
+        type: 'crossfade',
+        durationInFrames: 25,
+      } as EditOp],
+    })).rejects.toThrow(/source handles.*outgoing=0 frames, incoming=0 frames/u)
+  })
+
   it('resolves $ref chains between operations (track from a prior op)', async () => {
     const result = await editProject({
       project: baseProject(),
@@ -145,6 +191,60 @@ describe('editProject', () => {
       ],
     })
     expect(result.project.timeline!.items).toHaveLength(0)
+  })
+
+  it('unlinks a companion audio item before removal so the video remains', async () => {
+    const result = await editProject({
+      project: baseProject({
+        tracks: [
+          ...baseProject().timeline!.tracks,
+          {
+            id: 't_a',
+            name: 'A1',
+            kind: 'audio',
+            height: 64,
+            locked: false,
+            visible: true,
+            muted: false,
+            solo: false,
+            order: 1,
+          },
+        ],
+        items: [
+          {
+            id: 'video-1',
+            type: 'video',
+            trackId: 't_v',
+            from: 0,
+            durationInFrames: 100,
+            label: 'video',
+            mediaId: 'm-vid',
+            src: '',
+            linkedGroupId: 'pair-1',
+          },
+          {
+            id: 'audio-1',
+            type: 'audio',
+            trackId: 't_a',
+            from: 0,
+            durationInFrames: 100,
+            label: 'audio',
+            mediaId: 'm-vid',
+            src: '',
+            linkedGroupId: 'pair-1',
+          },
+        ],
+      }),
+      ops: [
+        { op: 'unlinkItems', ids: ['audio-1'] } as EditOp,
+        { op: 'removeItems', ids: ['audio-1'] } as EditOp,
+      ],
+    })
+
+    const video = result.project.timeline!.items.find((item) => item.id === 'video-1')
+    expect(video).toMatchObject({ embeddedAudioMuted: true })
+    expect(video?.linkedGroupId).not.toBe('pair-1')
+    expect(result.project.timeline!.items.some((item) => item.id === 'audio-1')).toBe(false)
   })
 
   it('rejects duplicate callerIds', async () => {

@@ -100,7 +100,7 @@ const GraphKeyframe = memo(function GraphKeyframe({
           cy={point.y}
           r={halfSize + 4}
           fill="none"
-          stroke="var(--primary)"
+          stroke="hsl(var(--primary))"
           strokeWidth={2}
           strokeOpacity={0.5}
         />

@@ -5,7 +5,7 @@
  *
  * Prefer changing presets here before editing one-off component sizes.
  */
-const EDIT_DOPESHEET_COLUMN_WIDTH = 176
+const EDIT_DOPESHEET_COLUMN_WIDTH = 160
 
 const EDITOR_DENSITY_PRESETS = {
   compact: {
@@ -27,7 +27,7 @@ const EDITOR_DENSITY_PRESETS = {
     previewSplitHeaderHeight: 32,
     previewControlsHeight: 32,
     previewControlButtonSize: 30,
-    timelineDefaultSize: 36,
+    timelineDefaultSize: 28,
     timelineMinSize: 14,
     timelineMaxSize: 80,
     graphPanelSizeIncrease: 10,

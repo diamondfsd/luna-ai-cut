@@ -1,0 +1,57 @@
+.app-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--parchment);
+}
+
+.app-layout--assistant-open {
+  grid-template-columns: minmax(0, 1fr) min(430px, 36vw);
+}
+
+.app-layout__main {
+  display: contents;
+}
+
+.app-layout__main > .app-routes {
+  display: contents;
+}
+
+.app-layout .global-nav {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.app-layout .update-banner,
+.app-layout .hot-update-banner {
+  grid-column: 1 / -1;
+}
+
+.app-layout .route-stack {
+  grid-column: 1;
+  grid-row: 4;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-layout--assistant-open .assistant-page {
+  grid-column: 2;
+  grid-row: 4;
+}
+
+@media (max-width: 900px) {
+  .app-layout--assistant-open {
+    grid-template-columns: minmax(0, 1fr) min(380px, 44vw);
+  }
+}
+
+/* Keep the route panels positioned inside the left column after the app shell is flattened. */
+.app-layout .route-stack {
+  position: relative;
+  min-width: 0;
+}

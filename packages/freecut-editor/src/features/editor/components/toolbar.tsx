@@ -13,6 +13,7 @@ import {
   ListVideo,
   MoreHorizontal,
   Settings,
+  Sparkles,
   Video,
 } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
@@ -28,10 +29,24 @@ import { ProjectDebugPanel } from './project-debug-panel'
 import { SettingsDialog } from './settings-dialog'
 import { ShortcutsDialog } from './shortcuts-dialog'
 import { WorkspaceSwitcher } from './workspace-switcher'
+import './toolbar.css'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { cn } from '@freecut/shared/ui/cn'
 import { useDebugStore } from '@freecut/features/editor/stores/debug-store'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
+
+interface FreecutWindow extends Window {
+  luna?: {
+    deepseekHarness?: {
+      openWindow(context: {
+        sessionId: string
+        feature: string
+        projectId: string
+        metadata?: Record<string, string>
+      }): Promise<void>
+    }
+  }
+}
 
 interface ToolbarProps {
   projectId: string
@@ -89,10 +104,19 @@ export const Toolbar = memo(function Toolbar({
     }
   }
 
+  const handleAssistantClick = () => {
+    void (window as FreecutWindow).luna?.deepseekHarness?.openWindow({
+      sessionId: crypto.randomUUID(),
+      feature: 'freecut-editor',
+      projectId,
+      metadata: { projectName: project.name },
+    })
+  }
+
   const toolbar = (
     <div
       className={cn(
-        'panel-header flex flex-shrink-0 items-center gap-2.5',
+        'editor-toolbar panel-header flex flex-shrink-0 items-center gap-2.5',
         lunaNavHost ? 'h-full w-full px-0' : 'border-b border-border px-3',
         locked && 'pointer-events-none select-none opacity-60',
       )}
@@ -153,6 +177,18 @@ export const Toolbar = memo(function Toolbar({
             )}
           </Button>
         )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={handleAssistantClick}
+          data-tooltip={t('toolbar.aiAssistant')}
+          data-tooltip-side="bottom"
+          aria-label={t('toolbar.aiAssistant')}
+        >
+          <Sparkles className="h-4 w-4" />
+        </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

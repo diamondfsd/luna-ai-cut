@@ -50,13 +50,6 @@ export function applyTrackSizePreset(preset: TrackSizePreset): void {
   refreshTrackHeights()
 }
 
-export function toggleTrackPreviewCollapsed(): void {
-  usePlaybackStore.getState().setPreviewFrame(null)
-  const editorStore = useEditorStore.getState()
-  editorStore.setTrackPreviewCollapsed(!editorStore.trackPreviewCollapsed)
-  refreshTrackHeights()
-}
-
 /** Drop the override on one track (or all of them) so it snaps back to the preset. */
 export function resetTrackHeights(trackId: string, applyToAll: boolean): void {
   usePlaybackStore.getState().setPreviewFrame(null)

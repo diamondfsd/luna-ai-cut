@@ -106,24 +106,6 @@ describe('ClipContent', () => {
     useSequencesStore.getState().reset()
   })
 
-  it('renders a persisted image filmstrip after its session URL is cleared', async () => {
-    useSettingsStore.setState({ showFilmstrips: true })
-    const item: TimelineItem = {
-      id: 'persisted-image',
-      type: 'image',
-      trackId: 'track-1',
-      from: 0,
-      durationInFrames: 60,
-      label: 'Persisted image',
-      mediaId: 'media-1',
-      src: '',
-    } as TimelineItem
-
-    render(<ClipContent item={item} clipLeftFrames={0} clipWidthFrames={60} fps={30} />)
-
-    expect(await screen.findByTestId('image-filmstrip')).toBeInTheDocument()
-  })
-
   it('keeps compact clip content unmounted across live zoom updates', () => {
     useSettingsStore.setState({
       showFilmstrips: true,

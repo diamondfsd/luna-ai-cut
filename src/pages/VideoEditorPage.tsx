@@ -2,8 +2,12 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import type {
   EmbeddedMediaSource,
   EmbeddedTaskProgress,
+  EmbeddedSpeechGenerationRequest,
+  EmbeddedMusicGenerationRequest,
+  EmbeddedGeneratedAudio,
   EmbeddedExportFile,
   EmbeddedMediaImportSource,
+  EmbeddedLunaEditorSdkBridge,
   ImportMediaFiles,
 } from '@freecut/embedded'
 
@@ -11,6 +15,10 @@ import { LoadingIndicator } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import { filePathToNativeMediaPreviewUrl } from '../lib/fileUtils'
 import './VideoEditorPage.css'
+
+interface VideoEditorPageProps {
+  onProjectContextChange: (project: { id: string; name: string } | null) => void
+}
 
 const FreeCutEditor = lazy(async () => {
   const module = await import('@freecut/embedded')
@@ -63,7 +71,7 @@ function findImportedSourcePath(
   return [...sourcePaths.entries()].find(([key]) => key.startsWith(prefix))?.[1]
 }
 
-export function VideoEditorPage() {
+export function VideoEditorPage({ onProjectContextChange }: VideoEditorPageProps) {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const pendingImportRef = useRef<ImportMediaFiles | null>(null)
   const finishImportRequestRef = useRef<(() => void) | null>(null)
@@ -183,14 +191,52 @@ export function VideoEditorPage() {
     }
   }, [])
 
-  const handleGetDeepSeekHarnessWebUrl = useCallback((projectId: string) =>
-    window.luna.deepseekHarness.getWebUrl(projectId), [])
-  const handleDeepSeekHarnessWebState = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onWebState>[0]) =>
-    window.luna.deepseekHarness.onWebState(callback), [])
-  const handleDeepSeekHarnessToolRequest = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onToolRequest>[0]) =>
-    window.luna.deepseekHarness.onToolRequest(callback), [])
-  const handleDeepSeekHarnessToolCancel = useCallback((callback: Parameters<typeof window.luna.deepseekHarness.onToolCancel>[0]) =>
-    window.luna.deepseekHarness.onToolCancel(callback), [])
+  const handleGenerateSpeech = useCallback(async (
+    request: EmbeddedSpeechGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<EmbeddedGeneratedAudio> => {
+    signal?.throwIfAborted()
+    const cancel = (): void => { void window.luna.mossTts.cancel(request.requestId) }
+    const unsubscribe = window.luna.mossTts.onProgress((progress) => {
+      if (progress.requestId !== request.requestId) return
+      onProgress?.({
+        label: progress.stage,
+        percent: progress.fraction === null ? null : progress.fraction * 100,
+      })
+    })
+    signal?.addEventListener('abort', cancel, { once: true })
+    try {
+      return await window.luna.mossTts.generate(request)
+    } finally {
+      signal?.removeEventListener('abort', cancel)
+      unsubscribe()
+    }
+  }, [])
+
+  const handleGenerateMusic = useCallback(async (
+    request: EmbeddedMusicGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<EmbeddedGeneratedAudio> => {
+    signal?.throwIfAborted()
+    const cancel = (): void => { void window.luna.stableAudio3.cancel(request.requestId) }
+    const unsubscribe = window.luna.stableAudio3.onProgress((progress) => {
+      if (progress.requestId !== request.requestId) return
+      onProgress?.({
+        label: progress.stage,
+        percent: progress.fraction === null ? null : progress.fraction * 100,
+      })
+    })
+    signal?.addEventListener('abort', cancel, { once: true })
+    try {
+      return await window.luna.stableAudio3.generate(request)
+    } finally {
+      signal?.removeEventListener('abort', cancel)
+      unsubscribe()
+    }
+  }, [])
+
   const handleRenderHtmlFrame = useCallback(
     (request: Parameters<typeof window.lunaHtmlRenderer.render>[0]) =>
       window.lunaHtmlRenderer.render(request),
@@ -229,6 +275,11 @@ export function VideoEditorPage() {
     revealFile: (filePath: string) => window.luna.revealFile(filePath),
   }), [saveExportBlob])
 
+  const lunaEditorSdk: EmbeddedLunaEditorSdkBridge = useMemo(() => ({
+    onRequest: window.luna.lunaEditorSdk.onRequest,
+    respond: window.luna.lunaEditorSdk.respond,
+  }), [])
+
   return (
     <div className="video-editor-page">
       <Suspense
@@ -239,6 +290,7 @@ export function VideoEditorPage() {
         )}
       >
         <FreeCutEditor
+          language="zh"
           onRequestMediaImport={handleRequestMediaImport}
           onRevealFile={handleRevealFile}
           onDescribeDroppedMediaFiles={handleDescribeDroppedMediaFiles}
@@ -246,12 +298,12 @@ export function VideoEditorPage() {
           onReadNativeMediaFile={handleReadNativeMediaFile}
           onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
           onTranscribeMedia={handleTranscribeMedia}
-          onGetDeepSeekHarnessWebUrl={handleGetDeepSeekHarnessWebUrl}
-          onDeepSeekHarnessWebState={handleDeepSeekHarnessWebState}
-          onDeepSeekHarnessToolRequest={handleDeepSeekHarnessToolRequest}
-          onDeepSeekHarnessToolCancel={handleDeepSeekHarnessToolCancel}
+          onGenerateSpeech={handleGenerateSpeech}
+          onGenerateMusic={handleGenerateMusic}
           onRenderHtmlFrame={handleRenderHtmlFrame}
           exportFiles={exportFiles}
+          lunaEditorSdk={lunaEditorSdk}
+          onProjectContextChange={onProjectContextChange}
         />
       </Suspense>
       <WorkspaceImportDialog

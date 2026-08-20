@@ -1,5 +1,5 @@
 /**
- * Tool shortcuts: A (Select), T (Trim Edit), B (Razor), Shift+C (Split at cursor), R (Rate Stretch).
+ * Tool shortcuts: V (Select), T (Trim Edit), C (Razor), Shift+C (Split at cursor), R (Rate Stretch).
  */
 
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -16,7 +16,7 @@ export function useToolShortcuts(callbacks: TimelineShortcutCallbacks) {
   const activeTool = useSelectionStore((s) => s.activeTool)
   const setActiveTool = useSelectionStore((s) => s.setActiveTool)
 
-  // Tool: A - Selection Tool
+  // Tool: V - Selection Tool
   useHotkeys(
     hotkeys.SELECTION_TOOL,
     (event) => {
@@ -38,7 +38,7 @@ export function useToolShortcuts(callbacks: TimelineShortcutCallbacks) {
     [activeTool, setActiveTool],
   )
 
-  // Tool: B - Toggle Razor/Cut Mode
+  // Tool: C - Toggle Razor/Cut Mode
   useHotkeys(
     hotkeys.RAZOR_TOOL,
     (event) => {

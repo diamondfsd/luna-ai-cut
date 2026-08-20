@@ -2,23 +2,12 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { createLogger } from '@freecut/shared/logging/logger'
 import { useCreateProject } from '@freecut/features/projects/hooks/use-project-actions'
 import { useProjectStore } from '@freecut/features/projects/stores/project-store'
 import { DEFAULT_PROJECT_VALUES } from '@freecut/features/projects/utils/validation'
 
-const logger = createLogger('NewProject')
-
 export const Route = createFileRoute('/projects/new')({
   component: NewProject,
-  beforeLoad: async () => {
-    try {
-      const { loadProjects } = useProjectStore.getState()
-      await loadProjects()
-    } catch (err) {
-      logger.warn('Failed to pre-load projects in beforeLoad:', err)
-    }
-  },
 })
 
 function NewProject() {
@@ -32,7 +21,9 @@ function NewProject() {
     startedRef.current = true
 
     const baseName = t('common.untitledProject')
-    const existingNames = new Set(useProjectStore.getState().projects.map((project) => project.name))
+    const existingNames = new Set(
+      useProjectStore.getState().projects.map((project) => project.name),
+    )
     let projectName = baseName
     let suffix = 2
     while (existingNames.has(projectName)) {

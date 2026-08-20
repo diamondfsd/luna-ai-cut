@@ -3,7 +3,7 @@ import { SoundTouchWorkletAudio } from './soundtouch-worklet-audio'
 import { CustomDecoderBufferedAudio } from './custom-decoder-buffered-audio'
 import { NativePitchCorrectedAudio } from './pitch-corrected-audio'
 import type { AudioPlaybackProps } from './audio-playback-props'
-import { getOrDecodeAudio, getOrDecodeAudioSliceForPlayback } from '../utils/audio-decode-cache'
+import { getOrDecodeAudioSliceForPlayback } from '../utils/audio-decode-cache'
 import { audioBufferToWavBlob } from '../utils/audio-buffer-wav'
 import { createReversedAudioBuffer } from '../utils/audio-buffer-utils'
 import { createLogger } from '@freecut/shared/logging/logger'
@@ -23,8 +23,6 @@ const PARTIAL_WAV_READY_SECONDS = 2
 const PARTIAL_WAV_WAIT_TIMEOUT_MS = 6000
 const PARTIAL_WAV_EXTENSION_TRIGGER_SECONDS = 1.25
 const PARTIAL_WAV_EXTENSION_READY_SECONDS = 3
-const BACKGROUND_FULL_DECODE_DELAY_MS = 1500
-const BACKGROUND_FULL_DECODE_BACKSTOP_MS = 4000
 const REVERSE_SHUTTLE_PREROLL_SECONDS = 4
 
 interface CustomDecoderAudioProps extends AudioPlaybackProps {
@@ -244,9 +242,6 @@ const CustomDecoderPitchPreservedAudio: React.FC<CustomDecoderAudioProps> = ({
     if (!mediaId || !src || isPreviewScrubbing) return
 
     let cancelled = false
-    let fullDecodeStarted = false
-    let scheduledFullDecodeAtMs = Number.POSITIVE_INFINITY
-    let fullDecodeTimer: ReturnType<typeof setTimeout> | null = null
     const effectiveSourceFps = sourceFps ?? 30
     const seedSourceFrames = isReverseShuttle
       ? getAudioTargetTimeSeconds(
@@ -262,52 +257,11 @@ const CustomDecoderPitchPreservedAudio: React.FC<CustomDecoderAudioProps> = ({
         ? reverseSourceEnd
         : trimBefore
     const clipStartTime = Math.max(0, seedSourceFrames / effectiveSourceFps)
-    const clearScheduledFullDecode = () => {
-      scheduledFullDecodeAtMs = Number.POSITIVE_INFINITY
-      if (fullDecodeTimer !== null) {
-        clearTimeout(fullDecodeTimer)
-        fullDecodeTimer = null
-      }
-    }
-    const startFullDecode = () => {
-      if (cancelled || fullDecodeStarted) return
-      clearScheduledFullDecode()
-      fullDecodeStarted = true
-      getOrDecodeAudio(mediaId, src)
-        .then((buffer) => {
-          if (cancelled) return
-          setDecodedSource({
-            buffer,
-            sourceStartOffsetSec: 0,
-            coverageEndSec: Number.POSITIVE_INFINITY,
-            isComplete: true,
-          })
-          log.info('Decoded pitch source ready', { mediaId })
-        })
-        .catch((err) => {
-          if (cancelled) return
-          log.error('Failed to prepare decoded pitch source', { mediaId, err })
-        })
-    }
-    const scheduleFullDecode = (delayMs: number) => {
-      if (cancelled || fullDecodeStarted) return
-      const safeDelayMs = Math.max(0, delayMs)
-      const dueAtMs = Date.now() + safeDelayMs
-      if (fullDecodeTimer !== null && dueAtMs >= scheduledFullDecodeAtMs - 1) {
-        return
-      }
-      clearScheduledFullDecode()
-      scheduledFullDecodeAtMs = dueAtMs
-      fullDecodeTimer = setTimeout(() => {
-        fullDecodeTimer = null
-        scheduledFullDecodeAtMs = Number.POSITIVE_INFINITY
-        startFullDecode()
-      }, safeDelayMs)
-    }
     setDecodedSource(null)
     pendingExtensionKeyRef.current = null
-    scheduleFullDecode(BACKGROUND_FULL_DECODE_BACKSTOP_MS)
 
+    // Keep preview audio windowed. Whole-file decoding makes long custom-codec
+    // sources retain very large Float32 buffers after the cache has evicted them.
     getOrDecodeAudioSliceForPlayback(mediaId, src, {
       minReadySeconds: PARTIAL_WAV_READY_SECONDS,
       waitTimeoutMs: PARTIAL_WAV_WAIT_TIMEOUT_MS,
@@ -328,11 +282,6 @@ const CustomDecoderPitchPreservedAudio: React.FC<CustomDecoderAudioProps> = ({
           }
           return nextSource
         })
-        if (slice.isComplete) {
-          clearScheduledFullDecode()
-        } else {
-          scheduleFullDecode(BACKGROUND_FULL_DECODE_DELAY_MS)
-        }
         log.info('Partial decoded pitch source ready', {
           mediaId,
           duration: slice.buffer.duration.toFixed(2),
@@ -341,12 +290,10 @@ const CustomDecoderPitchPreservedAudio: React.FC<CustomDecoderAudioProps> = ({
       .catch((err) => {
         if (cancelled) return
         log.error('Failed to prepare partial decoded pitch source', { mediaId, err })
-        startFullDecode()
       })
 
     return () => {
       cancelled = true
-      clearScheduledFullDecode()
     }
   }, [
     fps,

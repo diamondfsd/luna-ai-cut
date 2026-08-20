@@ -32,7 +32,6 @@ import type { GlyphAtlasTextPipeline } from '@freecut/infrastructure/gpu-text'
 import type { MaskCombinePipeline } from '@freecut/infrastructure/gpu-masks'
 import type { AdjustmentLayerWithTrackOrder, EffectSourceMask } from '../canvas-effects'
 import type { RenderTimelineSpan } from '../render-span'
-import type { HtmlFrameProvider } from '../html-frame-provider'
 import type { calculateMediaCropLayout } from '@freecut/shared/utils/media-crop'
 import type {
   CompositionControlOverrides,
@@ -48,6 +47,10 @@ export type { ResolvedTransform }
 export interface CanvasSettings {
   width: number
   height: number
+  /** Authored composition width when preview pixels are rendered at a lower resolution. */
+  logicalWidth?: number
+  /** Authored composition height when preview pixels are rendered at a lower resolution. */
+  logicalHeight?: number
   fps: number
   /** Same-composition sources for deterministic scalar property expressions. */
   getExpressionItem?: (itemId: string) => TimelineItem | undefined
@@ -71,7 +74,7 @@ export interface ItemTransform {
   cornerRadius: number
 }
 
-export type RenderImageSource = HTMLImageElement | ImageBitmap
+export type RenderImageSource = HTMLImageElement | HTMLVideoElement | ImageBitmap
 
 export interface WorkerLoadedImage {
   source: RenderImageSource
@@ -171,8 +174,6 @@ export interface ItemRenderContext {
   imageElements: Map<string, WorkerLoadedImage>
   gifFramesMap: Map<string, CachedGifFrames>
   ensureImageItemReady?: (item: ImageItem) => Promise<void>
-  htmlFrameProvider?: HtmlFrameProvider
-  htmlRasterCache?: Map<string, ImageBitmap>
   /** Preloaded Lottie renderers keyed by item id; renders a frame on demand. */
   lottieProvider: LottieExportProvider
   ensureLottieItemReady?: (item: import('@freecut/types/timeline').LottieItem) => Promise<void>

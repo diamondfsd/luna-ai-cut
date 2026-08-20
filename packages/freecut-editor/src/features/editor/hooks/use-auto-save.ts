@@ -1,17 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { useSettingsStore } from '@freecut/features/editor/deps/settings'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { i18n } from '@freecut/i18n'
-
-export const AUTO_SAVE_DELAY_MS = 1_500
 
 const logger = createLogger('AutoSave')
 
 interface UseAutoSaveOptions {
   /** Whether there are unsaved changes */
   isDirty: boolean
-  /** Changes whenever the editable project content changes. */
-  changeVersion: number
   /** Function to call when auto-saving */
   onSave: () => Promise<void>
   /** Whether auto-save is enabled (can be used to disable during export, etc.) */
@@ -19,7 +16,10 @@ interface UseAutoSaveOptions {
 }
 
 /**
- * Saves shortly after editing stops. Further edits reset the delay.
+ * Hook that automatically saves at the configured interval when there are unsaved changes.
+ *
+ * Reads `autoSaveInterval` from settings store (in minutes, 0 = disabled).
+ * Only triggers save when `isDirty` is true to avoid unnecessary saves.
  *
  * @example
  * useAutoSave({
@@ -27,32 +27,52 @@ interface UseAutoSaveOptions {
  *   onSave: handleSave,
  * });
  */
-export function useAutoSave({
-  isDirty,
-  changeVersion,
-  onSave,
-  enabled = true,
-}: UseAutoSaveOptions) {
+export function useAutoSave({ isDirty, onSave, enabled = true }: UseAutoSaveOptions) {
+  const autoSaveInterval = useSettingsStore((s) => s.autoSaveInterval)
+  const isSavingRef = useRef(false)
+
   useEffect(() => {
-    if (!isDirty || !enabled) {
+    // Auto-save disabled if interval is 0 or hook is disabled
+    if (autoSaveInterval === 0 || !enabled) {
       return
     }
 
-    const timeoutId = window.setTimeout(async () => {
-      const event = logger.startEvent('save')
-      event.set('delay_ms', AUTO_SAVE_DELAY_MS)
+    const intervalMs = autoSaveInterval * 60 * 1000 // Convert minutes to ms
 
-      try {
-        await onSave()
-        event.success()
-      } catch (error) {
-        event.failure(error)
-        toast.error(i18n.t('editor.autoSave.failed'))
+    let idleCallbackId: number | undefined
+
+    const intervalId = setInterval(() => {
+      // Only save if there are unsaved changes and not already saving
+      if (!isDirty || isSavingRef.current) {
+        return
       }
-    }, AUTO_SAVE_DELAY_MS)
+
+      // Defer save to idle time so it doesn't interrupt active editing (e.g., dragging).
+      // timeout ensures save still fires within 10s even under continuous activity.
+      idleCallbackId = requestIdleCallback(
+        async () => {
+          if (isSavingRef.current) return
+          isSavingRef.current = true
+          const event = logger.startEvent('save')
+          event.set('interval_min', autoSaveInterval)
+
+          try {
+            await onSave()
+            event.success()
+          } catch (error) {
+            event.failure(error)
+            toast.error(i18n.t('editor.autoSave.failed'))
+          } finally {
+            isSavingRef.current = false
+          }
+        },
+        { timeout: 10_000 },
+      )
+    }, intervalMs)
 
     return () => {
-      window.clearTimeout(timeoutId)
+      clearInterval(intervalId)
+      if (idleCallbackId !== undefined) cancelIdleCallback(idleCallbackId)
     }
-  }, [changeVersion, isDirty, onSave, enabled])
+  }, [autoSaveInterval, isDirty, onSave, enabled])
 }

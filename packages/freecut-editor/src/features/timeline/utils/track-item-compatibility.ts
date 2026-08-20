@@ -2,10 +2,7 @@ import type { TimelineItem, TimelineTrack } from '@freecut/types/timeline'
 import { getTrackKind, type TrackKind } from './classic-tracks'
 
 function getRequiredTrackKindForItemType(itemType: TimelineItem['type']): TrackKind {
-  if (itemType === 'audio') return 'audio'
-  if (itemType === 'text') return 'subtitle'
-  if (itemType === 'html') return 'video'
-  return 'video'
+  return itemType === 'audio' ? 'audio' : 'video'
 }
 
 export function getEffectiveTrackKindForItem(
@@ -18,43 +15,17 @@ export function getEffectiveTrackKindForItem(
   }
 
   let hasAudioItems = false
-  let hasSubtitleItems = false
   for (const item of items) {
     if (item.trackId !== track.id) continue
     if (item.type === 'audio') {
       hasAudioItems = true
       continue
     }
-    if (item.type === 'text') {
-      hasSubtitleItems = true
-      continue
-    }
 
     return 'video'
   }
 
-  if (hasAudioItems) return 'audio'
-  if (hasSubtitleItems) return 'subtitle'
-  return null
-}
-
-export function assertItemTrackCompatibility(
-  item: TimelineItem,
-  tracks: readonly TimelineTrack[],
-): void {
-  const track = tracks.find((candidate) => candidate.id === item.trackId)
-  if (!track) return
-  if (isTrackCompatibleWithItemType(track, [], item.type)) return
-
-  const itemLabel = item.type === 'text' ? '文字' : '素材'
-  throw new Error(`${itemLabel}不能放在“${track.name}”轨道。`)
-}
-
-export function assertItemsTrackCompatibility(
-  items: readonly TimelineItem[],
-  tracks: readonly TimelineTrack[],
-): void {
-  for (const item of items) assertItemTrackCompatibility(item, tracks)
+  return hasAudioItems ? 'audio' : null
 }
 
 export function isTrackCompatibleWithItemType(

@@ -29,7 +29,6 @@ import { createExportOutputTarget } from './export-output-target'
 // Subsystems
 import { createCompositionRenderer } from './client-render-engine'
 import { runPipelinedFrameLoop } from './pipelined-frame-loop'
-import { buildExportFramePlan, compositionFrameForOutputFrame } from './export-frame-rate'
 
 function getLog() {
   return createLogger('CanvasRenderOrchestrator')
@@ -420,7 +419,7 @@ async function tryPacketRemuxComposition(
         temporaryOutput: completed.temporaryOutput,
       }
     } finally {
-      (output as unknown as { dispose?: () => void }).dispose?.()
+      ;(output as unknown as { dispose?: () => void }).dispose?.()
       if (!outputCompleted) await outputTarget.discard()
     }
   } catch (error) {
@@ -447,16 +446,13 @@ async function tryPacketRemuxComposition(
  */
 export async function renderComposition(options: RenderEngineOptions): Promise<ClientRenderResult> {
   const { settings, composition, onProgress, signal } = options
-  const { fps: compositionFps, durationInFrames = 0 } = composition
-  const outputFps = settings.fps
-  const framePlan = buildExportFramePlan(durationInFrames, compositionFps, outputFps)
+  const { fps, durationInFrames = 0 } = composition
   const canvasAudio = await loadCanvasAudio()
 
   getLog().info('Starting enhanced client render', {
-    compositionFps,
-    outputFps,
+    fps,
     durationInFrames,
-    durationSeconds: durationInFrames / compositionFps,
+    durationSeconds: durationInFrames / fps,
     width: settings.resolution.width,
     height: settings.resolution.height,
     codec: settings.codec,
@@ -470,7 +466,8 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
     throw new Error('Composition has no duration')
   }
 
-  const { durationSeconds, totalFrames } = framePlan
+  const totalFrames = durationInFrames
+  const durationSeconds = totalFrames / fps
 
   onProgress({
     phase: 'preparing',
@@ -511,7 +508,7 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
   const compositionHasAudio = await canvasAudio.hasAudioContent(composition)
   const useWindowedAudio =
     compositionHasAudio &&
-    durationSeconds >= 5 * 60 &&
+    durationInFrames / fps >= 5 * 60 &&
     canvasAudio.supportsWindowedAudioProcessing(composition)
 
   onProgress({
@@ -645,7 +642,7 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
 
   // Add video track
   output.addVideoTrack(videoSource, {
-    frameRate: outputFps,
+    frameRate: fps,
   })
 
   let audioSource: InstanceType<typeof AudioSampleSource> | null = null
@@ -683,7 +680,7 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
       // Add audio track to output (audio data fed after start())
       output.addAudioTrack(audioSource)
       getLog().info('Audio track added to output', {
-        duration: durationSeconds,
+        duration: durationInFrames / fps,
         channels: 2,
         sampleRate: 48_000,
         codec: audioCodec,
@@ -792,7 +789,7 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
       signal,
       getPendingError: () => audioError,
       renderFrame: async (frame) => {
-        await renderer.renderFrame(compositionFrameForOutputFrame(frame, framePlan))
+        await renderer.renderFrame(frame)
         // Scale to output resolution if needed
         if (needsScaling) {
           outputCtx.clearRect(0, 0, exportWidth, exportHeight)
@@ -802,7 +799,7 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
       // VideoSampleSource does NOT close samples (unlike CanvasSource) — the
       // loop closes each sample to release the VideoFrame's GPU memory.
       captureSample: (frame) =>
-        new VideoSample(outputCanvas, { timestamp: frame / outputFps, duration: 1 / outputFps }),
+        new VideoSample(outputCanvas, { timestamp: frame / fps, duration: 1 / fps }),
       encodeSample: (sample, keyFrame) =>
         keyFrame ? videoSource.add(sample, { keyFrame: true }) : videoSource.add(sample),
       onAbort: () => output.cancel(),

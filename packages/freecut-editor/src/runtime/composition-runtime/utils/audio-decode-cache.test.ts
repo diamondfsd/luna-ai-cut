@@ -61,11 +61,13 @@ const mediabunnyMocks = vi.hoisted(() => {
     ) => void
     close: () => void
   }> = []
+  let rejectTargetedWindows = false
   const stats = {
     inputConstructed: 0,
     sinkConstructed: 0,
     sampleSinkConstructed: 0,
     bufferRangeStarts: [] as number[],
+    sequentialSamplesCalls: 0,
   }
 
   class Input {
@@ -97,6 +99,9 @@ const mediabunnyMocks = vi.hoisted(() => {
       stats.sampleSinkConstructed += 1
     }
     async getSample(startTime: number) {
+      if (rejectTargetedWindows) {
+        throw new Error('Random-access audio decode is unsupported')
+      }
       if (pendingSamplePromise) {
         return pendingSamplePromise
       }
@@ -109,10 +114,15 @@ const mediabunnyMocks = vi.hoisted(() => {
         null
       )
     }
-    samples(startTime = 0, endTime = Number.POSITIVE_INFINITY) {
-      stats.bufferRangeStarts.push(startTime)
+    samples(startTime?: number, endTime = Number.POSITIVE_INFINITY) {
+      if (startTime === undefined) {
+        stats.sequentialSamplesCalls += 1
+      } else {
+        stats.bufferRangeStarts.push(startTime)
+      }
+      const effectiveStartTime = startTime ?? 0
       const samples = pendingSamples.filter(
-        (sample) => sample.timestamp >= startTime && sample.timestamp < endTime,
+        (sample) => sample.timestamp >= effectiveStartTime && sample.timestamp < endTime,
       )
       return (async function* yieldSamples() {
         for (const sample of samples) {
@@ -147,13 +157,18 @@ const mediabunnyMocks = vi.hoisted(() => {
     __setPendingSamplePromise(promise: Promise<MockAudioSample | null>) {
       pendingSamplePromise = promise
     },
+    __setRejectTargetedWindows(value: boolean) {
+      rejectTargetedWindows = value
+    },
     __reset() {
       pendingSamplePromise = null
       pendingSamples = []
+      rejectTargetedWindows = false
       stats.inputConstructed = 0
       stats.sinkConstructed = 0
       stats.sampleSinkConstructed = 0
       stats.bufferRangeStarts = []
+      stats.sequentialSamplesCalls = 0
     },
     __stats: stats,
   }
@@ -289,6 +304,33 @@ describe('audio-decode-cache targeted slice reuse', () => {
     expect(slice.isComplete).toBe(false)
     expect(ac3Mocks.ensureAc3DecoderRegistered).toHaveBeenCalledTimes(1)
     expect(mediabunnyMocks.__stats.sampleSinkConstructed).toBe(1)
+    expect(mediabunnyMocks.__stats.bufferRangeStarts).toEqual([])
+    expect(mediabunnyMocks.__stats.sequentialSamplesCalls).toBe(0)
+  })
+
+  it('falls back to bounded sequential decoding when targeted windows are unsupported', async () => {
+    mediaDbMocks.getMedia.mockResolvedValue({ mimeType: 'audio/ac3', codec: 'ac-3' })
+    ac3Mocks.isAc3AudioCodec.mockReturnValue(true)
+    mediabunnyMocks.__setRejectTargetedWindows(true)
+    mediabunnyMocks.__setPendingSamples([
+      makeSample(22050, 22050, 0),
+      makeSample(22050, 22050, 24),
+      makeSample(22050, 22050, 25),
+      makeSample(22050, 22050, 26),
+    ])
+
+    const slice = await getOrDecodeAudioSliceForPlayback('media-sequential', 'blob://audio', {
+      minReadySeconds: 1,
+      targetTimeSeconds: 25,
+      preRollSeconds: 0,
+      waitTimeoutMs: 0,
+    })
+
+    expect(slice.startTime).toBe(25)
+    expect(slice.buffer.duration).toBe(1)
+    expect(slice.isComplete).toBe(false)
+    expect(mediabunnyMocks.__stats.sampleSinkConstructed).toBe(2)
+    expect(mediabunnyMocks.__stats.sequentialSamplesCalls).toBe(1)
     expect(mediabunnyMocks.__stats.bufferRangeStarts).toEqual([])
   })
 

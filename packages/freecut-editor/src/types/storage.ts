@@ -2,9 +2,9 @@
  * Storage type for media files
  * - 'handle':    Uses FileSystemFileHandle — references the user's original
  *                file on disk (instant import, no copy). Origin-scoped.
- * - 'workspace': Source bytes copied into the app-managed workspace folder
+ * - 'workspace': Source bytes copied into the user-picked workspace folder
  *                (`media/{id}/{filename}`). Durable and shared across every
- *                origin that opens the same folder — the source of truth for
+ *                origin that picks the same folder — the source of truth for
  *                media with no user file handle (remote/generated/copied).
  * - 'opfs':      Legacy: source copied into the Origin Private File System.
  *                Origin-scoped, so NOT visible cross-origin. No longer written
@@ -49,8 +49,6 @@ export interface MediaMetadata {
    * Stored in IndexedDB - requires permission re-request on new sessions
    */
   fileHandle?: FileSystemFileHandle
-  /** Absolute source path supplied by the Electron host for linked local media. */
-  nativePath?: string
   /**
    * OPFS path (when storageType === 'opfs')
    * Format: content/{shard1}/{shard2}/{uuid}/data
@@ -205,17 +203,6 @@ export interface MediaTranscript {
   segments: MediaTranscriptSegment[]
   createdAt: number
   updatedAt: number
-  /**
-   * Optional source details for transcripts supplied by an embedded desktop
-   * host. `model` stays compatible with the browser transcription UI, while
-   * these fields preserve the actual local model used for the evidence.
-   */
-  provenance?: {
-    service: string
-    modelId: string
-    modelVersion?: string
-    sourceFingerprint?: string
-  }
 }
 
 // Waveform data for timeline audio clip visualization

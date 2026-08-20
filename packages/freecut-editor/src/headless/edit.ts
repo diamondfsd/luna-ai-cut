@@ -17,7 +17,7 @@ import type {
   ImageItem,
 } from '@freecut/types/timeline'
 import type { MediaMetadata } from '@freecut/types/storage'
-import type { Transition } from '@freecut/types/transition'
+import { TRANSITION_CONFIGS, type Transition, type TransitionType } from '@freecut/types/transition'
 import type { AnimatableProperty, EasingType } from '@freecut/types/keyframe'
 import type { VisualEffect } from '@freecut/types/effects'
 import type { TransformProperties } from '@freecut/types/transform'
@@ -32,13 +32,14 @@ import { useItemsStore } from '@freecut/features/timeline/stores/items-store'
 import { useTransitionsStore } from '@freecut/features/timeline/stores/transitions-store'
 import { useTimelineSettingsStore } from '@freecut/features/timeline/stores/timeline-settings-store'
 import { useMediaLibraryStore } from '@freecut/features/media-library/stores/media-library-store'
-import { createClassicTrack } from '@freecut/features/timeline/utils/classic-tracks'
+import { createClassicTrack, getTrackKind } from '@freecut/features/timeline/utils/classic-tracks'
 import { seedMediaLibrary } from './seed-media'
 import {
   addItem,
   updateItem,
   moveItem,
   removeItems,
+  unlinkItems,
   splitItem,
   trimItemStart,
   trimItemEnd,
@@ -49,12 +50,20 @@ import {
   addKeyframes,
   setTracks,
   addKeyframe,
+  updateKeyframe,
+  removeKeyframe,
   removeKeyframesForProperty,
   addEffect,
+  updateEffect,
   removeEffect,
   updateItemTransform,
 } from '@freecut/features/timeline/stores/timeline-actions'
 import { getGpuEffect } from '@freecut/infrastructure/gpu-effects'
+import {
+  areFramesAligned,
+  canAddTransition,
+  getMaxTransitionDurationForHandles,
+} from '@freecut/features/timeline/utils/transition-utils'
 
 const log = createLogger('HeadlessEdit')
 
@@ -64,6 +73,7 @@ export type EditOperationName =
   | 'updateItem'
   | 'moveItem'
   | 'removeItems'
+  | 'unlinkItems'
   | 'split'
   | 'trimStart'
   | 'trimEnd'
@@ -71,11 +81,15 @@ export type EditOperationName =
   | 'updateTransition'
   | 'removeTransition'
   | 'addTrack'
+  | 'moveTrack'
   | 'addClip'
   | 'addKeyframe'
+  | 'updateKeyframe'
+  | 'removeKeyframe'
   | 'removeKeyframes'
   | 'setTransformParent'
   | 'addEffect'
+  | 'updateEffect'
   | 'removeEffect'
   | 'setTransform'
 
@@ -114,6 +128,8 @@ const REFERENCE_ID_FIELDS = new Set([
   'id',
   'itemId',
   'trackId',
+  'aboveTrackId',
+  'belowTrackId',
   'leftClipId',
   'rightClipId',
   'effectId',
@@ -333,6 +349,15 @@ function applyOp(op: EditOp): unknown {
       removeItems(ids)
       return { removed: ids }
     }
+    case 'unlinkItems': {
+      const ids = Array.isArray(op.ids)
+        ? (op.ids.filter((x) => typeof x === 'string') as string[])
+        : []
+      if (ids.length === 0) throw new Error('unlinkItems requires non-empty `ids`')
+      for (const id of ids) requireItem(id, 'ids')
+      unlinkItems(ids)
+      return { unlinked: ids }
+    }
     case 'split': {
       const id = asString(op.id)
       const frame = asNumber(op.frame)
@@ -362,12 +387,54 @@ function applyOp(op: EditOp): unknown {
       const left = asString(op.leftClipId)
       const right = asString(op.rightClipId)
       if (!left || !right) throw new Error('addTransition requires `leftClipId` and `rightClipId`')
-      requireItem(left, 'leftClipId')
-      requireItem(right, 'rightClipId')
+      const leftClip = requireItem(left, 'leftClipId')
+      const rightClip = requireItem(right, 'rightClipId')
+      const requestedType = asString(op.type) ?? 'crossfade'
+      const transitionType = requestedType as TransitionType
+      const config = TRANSITION_CONFIGS[transitionType]
+      if (!config) {
+        throw new Error(
+          `Unsupported transition type "${requestedType}". Use type "crossfade" and optionally presentation "fade".`,
+        )
+      }
+      const requestedDuration = asNumber(op.durationInFrames) ?? config.defaultDuration
+      const maxByClipDuration = Math.min(leftClip.durationInFrames, rightClip.durationInFrames) - 1
+      if (maxByClipDuration < 1) {
+        throw new Error('Transition clips must each contain at least 2 frames.')
+      }
+      let candidateDuration = Math.max(1, Math.min(Math.round(requestedDuration), maxByClipDuration))
+      const leftEnd = leftClip.from + leftClip.durationInFrames
+      if (areFramesAligned(leftEnd, rightClip.from)) {
+        const maxHandleDuration = getMaxTransitionDurationForHandles(
+          leftClip,
+          rightClip,
+          asNumber(op.alignment) ?? 0.5,
+          useTimelineSettingsStore.getState().fps,
+        )
+        candidateDuration = maxHandleDuration < 1
+          ? 1
+          : Math.min(candidateDuration, maxHandleDuration)
+      }
+      const validation = canAddTransition(
+        leftClip,
+        rightClip,
+        candidateDuration,
+        asNumber(op.alignment) ?? 0.5,
+        useTimelineSettingsStore.getState().fps,
+      )
+      if (!validation.canAdd) {
+        const handleSummary = validation.leftHandle !== undefined || validation.rightHandle !== undefined
+          ? ` Available source handles: outgoing=${validation.leftHandle ?? 0} frames, incoming=${validation.rightHandle ?? 0} frames.`
+          : ''
+        throw new Error(
+          `Cannot add transition between "${left}" and "${right}": ${validation.reason}.${handleSummary} ` +
+          'Adjacent transitions require both visual clips on the same track at the cut and unused source media on both sides.',
+        )
+      }
       const added = addTransition(
         left,
         right,
-        asString(op.type) as Parameters<typeof addTransition>[2],
+        transitionType,
         asNumber(op.durationInFrames),
         asString(op.presentation) as Parameters<typeof addTransition>[4],
         asString(op.direction) as Parameters<typeof addTransition>[5],
@@ -435,9 +502,60 @@ function applyOp(op: EditOp): unknown {
       const order =
         asNumber(op.order) ??
         (kind === 'video' ? Math.min(0, ...orders) - 1 : Math.max(0, ...orders) + 1)
-      const track = createClassicTrack({ tracks: all, kind, order })
+      const requestedName = asString(op.name)
+      const track = {
+        ...createClassicTrack({ tracks: all, kind, order }),
+        ...(requestedName ? { name: requestedName } : {}),
+      }
       setTracks([...all, track])
       return { trackId: track.id, name: track.name }
+    }
+    case 'moveTrack': {
+      const trackId = asString(op.id)
+      if (!trackId) throw new Error('moveTrack requires `id`')
+      const aboveTrackId = asString(op.aboveTrackId)
+      const belowTrackId = asString(op.belowTrackId)
+      if ((aboveTrackId ? 1 : 0) + (belowTrackId ? 1 : 0) !== 1) {
+        throw new Error('moveTrack requires exactly one of `aboveTrackId` or `belowTrackId`')
+      }
+
+      const all = tracks()
+      const track = requireTrack(trackId)
+      const anchorId = aboveTrackId ?? belowTrackId!
+      const anchor = requireTrack(anchorId, aboveTrackId ? 'aboveTrackId' : 'belowTrackId')
+      if (track.id === anchor.id) throw new Error('moveTrack cannot use the same track as its anchor')
+
+      const trackKind = getTrackKind(track)
+      const anchorKind = getTrackKind(anchor)
+      if (trackKind && anchorKind && trackKind !== anchorKind) {
+        throw new Error('moveTrack requires the moved track and anchor track to have the same kind')
+      }
+
+      const remaining = all
+        .filter((candidate) => candidate.id !== track.id)
+        .sort((left, right) => left.order - right.order)
+      const anchorIndex = remaining.findIndex((candidate) => candidate.id === anchor.id)
+      if (anchorIndex === -1) throw new Error('moveTrack anchor track does not exist')
+
+      const insertIndex = aboveTrackId ? anchorIndex : anchorIndex + 1
+      const previous = remaining[insertIndex - 1]
+      const next = remaining[insertIndex]
+      const order = previous && next
+        ? (previous.order + next.order) / 2
+        : next
+          ? next.order - 1
+          : previous
+            ? previous.order + 1
+            : 0
+
+      setTracks(all.map((candidate) =>
+        candidate.id === track.id ? { ...candidate, order } : candidate,
+      ))
+      return {
+        trackId: track.id,
+        order,
+        ...(aboveTrackId ? { aboveTrackId } : { belowTrackId }),
+      }
     }
     case 'addClip': {
       const mediaId = asString(op.mediaId)
@@ -561,6 +679,29 @@ function applyOp(op: EditOp): unknown {
       if (!keyframeId) throw new Error(`addKeyframe failed (item ${itemId} @ frame ${frame})`)
       return { keyframeId }
     }
+    case 'updateKeyframe': {
+      const itemId = asString(op.itemId)
+      const property = asString(op.property)
+      const keyframeId = asString(op.keyframeId)
+      if (!itemId || !property || !keyframeId) {
+        throw new Error('updateKeyframe requires `itemId`, `property`, and `keyframeId`')
+      }
+      requireItem(itemId, 'itemId')
+      const updates = (op.updates ?? {}) as Parameters<typeof updateKeyframe>[3]
+      updateKeyframe(itemId, property as AnimatableProperty, keyframeId, updates)
+      return { itemId, property, keyframeId }
+    }
+    case 'removeKeyframe': {
+      const itemId = asString(op.itemId)
+      const property = asString(op.property)
+      const keyframeId = asString(op.keyframeId)
+      if (!itemId || !property || !keyframeId) {
+        throw new Error('removeKeyframe requires `itemId`, `property`, and `keyframeId`')
+      }
+      requireItem(itemId, 'itemId')
+      removeKeyframe(itemId, property as AnimatableProperty, keyframeId)
+      return { itemId, property, keyframeId }
+    }
     case 'setTransformParent': {
       const id = asString(op.id)
       if (!id) throw new Error('setTransformParent requires `id`')
@@ -612,6 +753,26 @@ function applyOp(op: EditOp): unknown {
       }
       addEffect(itemId, effect as VisualEffect)
       return { itemId }
+    }
+    case 'updateEffect': {
+      const itemId = asString(op.itemId)
+      const effectId = asString(op.effectId)
+      if (!itemId || !effectId) throw new Error('updateEffect requires `itemId` and `effectId`')
+      const item = requireItem(itemId, 'itemId')
+      if (!item.effects?.some((effect) => effect.id === effectId)) {
+        throw new Error(`effectId: effect "${effectId}" does not exist on item "${itemId}"`)
+      }
+      updateEffect(itemId, effectId, {
+        ...(op.params && typeof op.params === 'object' ? {
+          effect: {
+            type: 'gpu-effect',
+            gpuEffectType: item.effects.find((effect) => effect.id === effectId)?.effect.gpuEffectType ?? '',
+            params: op.params as Record<string, number | boolean | string>,
+          } as VisualEffect,
+        } : {}),
+        ...(typeof op.enabled === 'boolean' ? { enabled: op.enabled } : {}),
+      })
+      return { itemId, effectId }
     }
     case 'removeEffect': {
       const itemId = asString(op.itemId)

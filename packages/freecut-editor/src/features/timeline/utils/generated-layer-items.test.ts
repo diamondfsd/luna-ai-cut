@@ -5,7 +5,6 @@ import {
   createDefaultControllerItem,
   createDefaultGradientItem,
   createDefaultSolidColorItem,
-  createTextTemplateItem,
   createTimelineTemplateItem,
   getTemplateEffectsForDirectApplication,
 } from './generated-layer-items'
@@ -42,26 +41,6 @@ describe('getTemplateEffectsForDirectApplication', () => {
 })
 
 describe('createTimelineTemplateItem', () => {
-  it('preserves supplied copy when applying a text style preset', () => {
-    const item = createTextTemplateItem({
-      placement: {
-        trackId: 'track-1',
-        from: 0,
-        durationInFrames: 90,
-        canvasWidth: 1920,
-        canvasHeight: 1080,
-        fps: 30,
-      },
-      text: '第一天，UI 重构',
-      textStylePresetId: 'clean-title',
-    })
-
-    expect(item).toMatchObject({
-      text: '第一天，UI 重构',
-      textStylePresetId: 'clean-title',
-    })
-  })
-
   it('creates a styled text item for text templates with presets', () => {
     const item = createTimelineTemplateItem({
       template: {

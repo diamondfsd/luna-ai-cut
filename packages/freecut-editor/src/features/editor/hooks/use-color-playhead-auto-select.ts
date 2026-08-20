@@ -9,11 +9,11 @@ const GRADE_TYPE_PRIORITY: Record<TimelineItem['type'], number> = {
   video: 0,
   image: 1,
   lottie: 1,
-  html: 2,
   composition: 2,
   adjustment: 3,
   shape: 4,
   text: 5,
+  subtitle: 6,
   controller: Number.POSITIVE_INFINITY,
   audio: Number.POSITIVE_INFINITY,
 }

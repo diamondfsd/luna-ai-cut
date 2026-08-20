@@ -1,7 +1,8 @@
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@freecut/shared/ui/cn'
 import type { EditorSidebarTab } from '@freecut/config/editor-workspaces'
+import './editor-primary-nav.css'
 
 export interface EditorPrimaryNavItem {
   id: EditorSidebarTab
@@ -20,11 +21,24 @@ export const EditorPrimaryNav = memo(function EditorPrimaryNav({
   activeTab,
   onSelect,
 }: EditorPrimaryNavProps) {
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY === 0) return
+
+    const element = event.currentTarget
+    const maxScrollLeft = element.scrollWidth - element.clientWidth
+    const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, element.scrollLeft + event.deltaY))
+    if (nextScrollLeft === element.scrollLeft) return
+
+    event.preventDefault()
+    element.scrollLeft = nextScrollLeft
+  }, [])
+
   return (
     <div
       role="tablist"
       aria-orientation="horizontal"
-      className="panel-header flex h-12 shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-border px-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="editor-primary-nav panel-header shrink-0 border-b border-border"
+      onWheel={handleWheel}
     >
       {items.map(({ id, icon: Icon, label }) => {
         const selected = activeTab === id
@@ -37,7 +51,7 @@ export const EditorPrimaryNav = memo(function EditorPrimaryNav({
             aria-label={label}
             onClick={() => onSelect(id)}
             className={cn(
-              'relative flex min-w-10 shrink-0 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-normal transition-colors',
+              'editor-primary-nav__item relative flex min-w-0 flex-col items-center justify-center gap-0.5 text-[10px] font-normal transition-colors',
               selected
                 ? 'text-primary'
                 : 'text-muted-foreground hover:bg-secondary/40 hover:text-foreground',

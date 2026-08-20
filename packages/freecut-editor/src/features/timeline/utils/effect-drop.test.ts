@@ -86,7 +86,7 @@ function makeItem(id: string, type: TimelineItem['type']): TimelineItem {
         compositionWidth: 1920,
         compositionHeight: 1080,
       }
-    case 'html':
+    case 'subtitle':
       return {
         id,
         type,
@@ -94,12 +94,9 @@ function makeItem(id: string, type: TimelineItem['type']): TimelineItem {
         from: 0,
         durationInFrames: 30,
         label: id,
-        html: '<div>HTML</div>',
-        css: '',
-        viewport: { width: 1920, height: 1080, deviceScaleFactor: 1 },
-        renderMode: 'static',
-        sourceRevision: 1,
-        assets: [],
+        source: { type: 'subtitle-import', fileName: id, format: 'srt', importedAt: 0 },
+        cues: [],
+        color: '#fff',
       }
     case 'controller':
       return {

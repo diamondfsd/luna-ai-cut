@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, AlertTriangle } from 'lucide-react'
+import { Loader2, Upload, Video, Music2, Image as ImageIcon, AlertTriangle } from 'lucide-react'
 import { createLogger } from '@freecut/shared/logging/logger'
 
 const logger = createLogger('MediaGrid')
@@ -25,18 +25,19 @@ import {
 } from '@freecut/components/ui/alert-dialog'
 
 import { GRID_MIN_SIZE_PX, GRID_GAP_BY_SIZE } from './media-grid-constants'
-import { showMediaFilePicker } from '@freecut/features/media-library/utils/media-file-picker'
-import { MediaImportEmptyState } from './media-import-empty-state'
+import './media-import-empty-state.css'
+import {
+  showMediaFilePicker,
+  getSupportedMediaFormatLabels,
+} from '@freecut/features/media-library/utils/media-file-picker'
 
 interface MediaGridProps {
   onMediaSelect?: (mediaId: string) => void
+  onImport?: () => void | Promise<void>
   /** Grid item size (1 = largest, 5 = smallest) */
   itemSize?: number
   /** When provided, renders these items instead of pulling from the store */
   items?: MediaMetadata[]
-  /** Uses the panel's canonical import path for the empty state. */
-  onImport?: () => void
-  isImporting?: boolean
 }
 
 interface MediaGridBaseProps extends MediaGridProps {
@@ -53,11 +54,10 @@ export const ListMediaGrid = memo(function ListMediaGrid(props: MediaGridProps) 
 
 const MediaGridBase = memo(function MediaGridBase({
   onMediaSelect,
+  onImport,
   layout,
   itemSize = 3,
   items,
-  onImport,
-  isImporting = false,
 }: MediaGridBaseProps) {
   const { t } = useTranslation()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -73,6 +73,7 @@ const MediaGridBase = memo(function MediaGridBase({
   const deleteMedia = useMediaLibraryStore((s) => s.deleteMedia)
   const deleteMediaBatch = useMediaLibraryStore((s) => s.deleteMediaBatch)
   const relinkMedia = useMediaLibraryStore((s) => s.relinkMedia)
+  const importMedia = useMediaLibraryStore((s) => s.importMedia)
   const setSourcePreviewMediaId = useEditorStore((s) => s.setSourcePreviewMediaId)
   const selectedMediaIdSet = useMemo(() => new Set(selectedMediaIds), [selectedMediaIds])
   const brokenMediaIdSet = useMemo(() => new Set(brokenMediaIds), [brokenMediaIds])
@@ -195,6 +196,19 @@ const MediaGridBase = memo(function MediaGridBase({
     [relinkMedia],
   )
 
+  // Handle click on empty state to open file picker
+  const handleEmptyStateClick = useCallback(async () => {
+    try {
+      if (onImport) {
+        await onImport()
+      } else {
+        await importMedia()
+      }
+    } catch (error) {
+      logger.error('Import failed:', error)
+    }
+  }, [importMedia, onImport])
+
   const cardHandlersById = useMemo(
     () =>
       new Map(
@@ -235,7 +249,33 @@ const MediaGridBase = memo(function MediaGridBase({
           </div>
         </div>
       ) : !items && filteredItems.length === 0 ? (
-        <MediaImportEmptyState importing={isImporting} onImport={onImport ?? (() => undefined)} />
+        <div className="media-import-empty-state" aria-busy={isLoading}>
+          <button
+            type="button"
+            className="media-import-empty-state__card"
+            onClick={handleEmptyStateClick}
+          >
+            <div className="media-import-empty-state__visual">
+              <Upload className="media-import-empty-state__upload" />
+              <div className="media-import-empty-state__types" aria-hidden="true">
+                <Video />
+                <Music2 />
+                <ImageIcon />
+              </div>
+            </div>
+            <div className="media-import-empty-state__copy">
+              <h3>{t('media.grid.emptyTitle')}</h3>
+              <p>{t('media.grid.emptyHint')}</p>
+            </div>
+            <span className="media-import-empty-state__button">
+              <Upload aria-hidden="true" />
+              {t('media.grid.importButton')}
+            </span>
+            <div className="media-import-empty-state__formats">
+              {getSupportedMediaFormatLabels().map((label) => <span key={label}>{label}</span>)}
+            </div>
+          </button>
+        </div>
       ) : (
         <div
           className={

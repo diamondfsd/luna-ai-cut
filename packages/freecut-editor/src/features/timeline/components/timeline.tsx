@@ -29,8 +29,6 @@ import {
   Check,
   Video,
   AudioLines,
-  PanelTopClose,
-  PanelTopOpen,
 } from 'lucide-react'
 import { CompositionBreadcrumbs } from './composition-breadcrumbs'
 import { SequenceTabs } from './sequence-tabs'
@@ -49,7 +47,6 @@ import { resizeTracksOfKindByDelta } from '../utils/track-resize'
 import {
   applyTrackSizePreset,
   commitTrackHeights,
-  toggleTrackPreviewCollapsed,
 } from '../stores/actions/track-height-actions'
 import { useZoomStore } from '../stores/zoom-store'
 import { computeWheelZoomStep } from '../constants'
@@ -131,10 +128,6 @@ export const Timeline = memo(function Timeline({
     () => visibleTracks.filter((track) => getTrackKind(track) === 'video'),
     [visibleTracks],
   )
-  const subtitleTracks = useMemo(
-    () => visibleTracks.filter((track) => getTrackKind(track) === 'subtitle'),
-    [visibleTracks],
-  )
   const audioTracks = useMemo(
     () => visibleTracks.filter((track) => getTrackKind(track) === 'audio'),
     [visibleTracks],
@@ -156,7 +149,6 @@ export const Timeline = memo(function Timeline({
     handleZoomToFit: () => void
   } | null>(null)
   const trackSizePreset = useEditorStore((s) => s.trackSizePreset)
-  const trackPreviewCollapsed = useEditorStore((s) => s.trackPreviewCollapsed)
   const setTimelineTracks = useTimelineStore((s) => s.setTracks)
 
   useEffect(() => {
@@ -215,7 +207,7 @@ export const Timeline = memo(function Timeline({
   )
 
   const { handleTrackResizeStart, handleTrackResizeReset } = useTrackHeightResize()
-  const videoZoneHeight = subtitleTracks.length > 0 ? 0 : 24
+  const videoZoneHeight = 24
   const audioZoneHeight = 24
   const getTrackStackOffset = useCallback(
     (sectionTracks: typeof visibleTracks, dropIndex: number, leadingOffset = 0) => {
@@ -503,10 +495,6 @@ export const Timeline = memo(function Timeline({
     applyTrackSizePreset(preset.id)
   }, [])
 
-  const handleToggleTrackPreview = useCallback(() => {
-    toggleTrackPreviewCollapsed()
-  }, [])
-
   const handleDeleteTrack = useCallback(
     (trackId: string) => {
       if (!canRemoveTrack(tracks, trackId)) {
@@ -565,21 +553,21 @@ export const Timeline = memo(function Timeline({
 
   const videoDropIndicatorIndex =
     isTrackDragging &&
-    dropIndicatorIndex >= subtitleTracks.length &&
-    dropIndicatorIndex <= subtitleTracks.length + videoTracks.length
-      ? dropIndicatorIndex - subtitleTracks.length
+    dropIndicatorIndex >= 0 &&
+    dropIndicatorIndex <= videoTracks.length
+      ? dropIndicatorIndex
       : -1
   const audioDropIndicatorIndex =
     isTrackDragging &&
-    dropIndicatorIndex >= subtitleTracks.length + videoTracks.length &&
+    dropIndicatorIndex >= videoTracks.length &&
     dropIndicatorIndex <= visibleTracks.length
-      ? dropIndicatorIndex - subtitleTracks.length - videoTracks.length
+      ? dropIndicatorIndex - videoTracks.length
       : -1
 
   const renderTrackHeadersSection = (
     sectionTracks: typeof visibleTracks,
     options: {
-      section: 'subtitle' | 'video' | 'audio'
+      section: 'video' | 'audio'
       zoneHeight: number
       dropIndicatorLocalIndex: number
       firstTrackFrame: 'with-top-divider' | 'regular'
@@ -603,14 +591,10 @@ export const Timeline = memo(function Timeline({
               <RowFrame
                 key={track.id}
                 onResizeMouseDown={
-                  options.section === 'subtitle'
-                    ? undefined
-                    : (event) => handleTrackResizeStart(event, track.id)
+                  (event) => handleTrackResizeStart(event, track.id)
                 }
                 onResizeDoubleClick={
-                  options.section === 'subtitle'
-                    ? undefined
-                    : (event) => handleTrackResizeReset(event, track.id)
+                  (event) => handleTrackResizeReset(event, track.id)
                 }
                 resizeHandleLabel={`Resize ${track.name} height`}
                 resizeHandlePosition={getTrackKind(track) === 'video' ? 'top' : 'bottom'}
@@ -705,24 +689,6 @@ export const Timeline = memo(function Timeline({
             className="flex items-center justify-between px-3 border-b border-border bg-secondary/20 flex-shrink-0"
             style={{ height: EDITOR_LAYOUT_CSS_VALUES.timelineTracksHeaderHeight }}
           >
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`editor-toolbar-button h-6 w-6 ${trackPreviewCollapsed ? 'editor-toolbar-button-active' : ''}`}
-              aria-pressed={trackPreviewCollapsed}
-              onClick={handleToggleTrackPreview}
-              title={t(
-                trackPreviewCollapsed
-                  ? 'timeline.trackSize.showPreview'
-                  : 'timeline.trackSize.hidePreview',
-              )}
-            >
-              {trackPreviewCollapsed ? (
-                <PanelTopOpen className="h-3.5 w-3.5" />
-              ) : (
-                <PanelTopClose className="h-3.5 w-3.5" />
-              )}
-            </Button>
             {/* Track size flyout */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -810,17 +776,11 @@ export const Timeline = memo(function Timeline({
                 className="h-full overflow-hidden"
               >
                 <div className="relative min-h-full">
-                  {renderTrackHeadersSection(subtitleTracks, {
-                    section: 'subtitle',
-                    zoneHeight: 0,
-                    dropIndicatorLocalIndex: -1,
-                    firstTrackFrame: 'with-top-divider',
-                  })}
                   {renderTrackHeadersSection(videoTracks, {
                     section: 'video',
                     zoneHeight: videoZoneHeight,
                     dropIndicatorLocalIndex: videoDropIndicatorIndex,
-                    firstTrackFrame: subtitleTracks.length > 0 ? 'regular' : 'with-top-divider',
+                    firstTrackFrame: 'with-top-divider',
                   })}
                   {renderTrackHeadersSection(audioTracks, {
                     section: 'audio',

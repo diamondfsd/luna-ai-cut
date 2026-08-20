@@ -171,6 +171,7 @@ describe('CustomDecoderAudio', () => {
         'true',
       )
     })
+    expect(audioDecodeMocks.getOrDecodeAudio).not.toHaveBeenCalled()
   })
 
   it('defers pitch-preserved decoding until an active preview scrub settles', async () => {

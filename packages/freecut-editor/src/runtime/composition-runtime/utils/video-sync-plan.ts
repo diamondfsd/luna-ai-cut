@@ -82,11 +82,18 @@ export function getVideoSyncTargetContext(input: {
 
 export function planPremountedVideoSync(input: {
   isTransitionHeld: boolean
+  isTransitionPrearmed?: boolean
   canSeek: boolean
   currentTime: number
   targetTime: number
   seekToleranceSeconds: number
 }): VideoSyncAction {
+  if (input.isTransitionPrearmed) {
+    return {
+      shouldPause: true,
+      seekTo: null,
+    }
+  }
   if (input.isTransitionHeld) {
     return {
       shouldPause: false,
@@ -106,6 +113,7 @@ export function planPremountedVideoSync(input: {
 export function planLayoutVideoSync(input: {
   isPremounted: boolean
   isTransitionHeld: boolean
+  isTransitionPrearmed?: boolean
   canSeek: boolean
   currentTime: number
   targetTime: number
@@ -124,6 +132,7 @@ export function planLayoutVideoSync(input: {
     return {
       ...planPremountedVideoSync({
         isTransitionHeld: input.isTransitionHeld,
+        isTransitionPrearmed: input.isTransitionPrearmed,
         canSeek: input.canSeek,
         currentTime: input.currentTime,
         targetTime: input.targetTime,
@@ -273,16 +282,11 @@ export function planVideoFrameCallbackCorrection(input: {
         }
       }
 
-      const correction = Math.min(
-        MAX_LARGE_DRIFT_RATE_CORRECTION,
-        Math.max(0.05, absDrift * 0.2),
-      )
+      const correction = Math.min(MAX_LARGE_DRIFT_RATE_CORRECTION, Math.max(0.05, absDrift * 0.2))
       return {
         kind: 'adjust_rate',
         playbackRate:
-          drift > 0
-            ? input.nominalRate * (1 - correction)
-            : input.nominalRate * (1 + correction),
+          drift > 0 ? input.nominalRate * (1 - correction) : input.nominalRate * (1 + correction),
       }
     }
 

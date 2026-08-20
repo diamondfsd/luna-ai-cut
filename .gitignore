@@ -38,7 +38,15 @@ resources/dolby-vision/
 resources/node-runtime/
 resources/python-runtime/
 .dolby-tools-cache/
+vendor/deepseek-harness/**/node_modules/
+vendor/deepseek-harness/**/lib/
+vendor/deepseek-harness/**/dist/
+vendor/deepseek-harness/**/coverage/
+vendor/deepseek-harness/**/.tsbuildinfo
 docs/
+# Keep the vendored upstream documentation available for source sync.
+!vendor/deepseek-harness/docs/
+!vendor/deepseek-harness/docs/**
 !packages/freecut-editor/docs/
 packages/freecut-editor/docs/*
 # These are FreeCut source files, not generated documentation or build output.
@@ -79,3 +87,4 @@ luna-render-core/luna-punctuation-worker.exe
 luna-render-core/ASR-LICENSE-*.txt
 worktrees/
 *com*.jpg
+backups/

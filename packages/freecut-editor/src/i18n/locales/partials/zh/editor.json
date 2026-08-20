@@ -401,14 +401,13 @@
       "totalFrames": "总帧数"
     },
     "clipPanel": {
-      "tabVideo": "画面",
+      "tabVideo": "视频",
       "tabAudio": "音频",
-      "tabEffects": "调整",
+      "tabEffects": "效果",
       "adjustmentLayerHint": "调整图层上的效果会应用到上方所有轨道的项目。",
       "tabText": "文本",
       "tabAnimation": "动画",
-      "tabShape": "形状",
-      "alignment": "对齐"
+      "tabShape": "形状"
     },
     "gifSection": {
       "animation": "动画",
@@ -679,15 +678,11 @@
     },
     "mediaSidebar": {
       "media": "媒体",
-      "audio": "音频",
       "text": "文本",
       "shapes": "形状",
-      "stickers": "贴纸",
       "effects": "效果",
       "transitions": "转场",
-      "captions": "字幕",
       "ai": "AI",
-      "more": "更多",
       "collapsePanel": "收起面板",
       "expandPanel": "展开面板",
       "keyframeEditor": "关键帧编辑器",
@@ -845,6 +840,9 @@
       "stableAudioDescription": "使用 Stable Audio 3 在电脑本地生成背景音乐或音效。首次使用会准备本地环境并下载模型，之后会复用基础目录中的缓存。",
       "stableAudioPromptHint": "选择背景音乐或音效，再描述想要的内容、情绪、节奏和声音特点。",
       "stableAudioUnsupported": "当前应用无法启动本地音频环境，请重试或检查应用运行环境。",
+      "musicgenDescription": "通过 Transformers.js 使用 Xenova 的浏览器版 MusicGen 模型。首次下载较大，之后会缓存在本地。",
+      "musicgenPromptHint": "请描述流派、情绪、速度和乐器。较短的片段会完成得更快。",
+      "musicgenUnsupported": "此浏览器不支持 WebGPU. MusicGen 需要 Chrome 113+, Edge 113+ 或 Safari 26+.",
       "prompt": "提示词",
       "presets": "预设",
       "musicPromptPlaceholder": "描述你想生成的音乐类型...",
@@ -860,6 +858,7 @@
       "errors": {
         "describeMusic": "请描述你想生成的音乐。",
         "stableAudioUnsupported": "当前应用无法启动本地音频环境，请重试或检查应用运行环境。",
+        "musicgenUnsupported": "MusicGen 需要 WebGPU. 请尝试 Chrome 113+, Edge 113+ 或 Safari 26+.",
         "generateMusicFailed": "无法生成音乐。",
         "saveAudioFailed": "无法将音频保存到媒体库。"
       },

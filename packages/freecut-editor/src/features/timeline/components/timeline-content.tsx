@@ -11,7 +11,6 @@ import { registerZoomTo100, useZoomStore } from '../stores/zoom-store'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { useEditorStore } from '@freecut/shared/state/editor'
 import { useSelectionStore } from '@freecut/shared/state/selection'
-import { useSettingsStore } from '../deps/settings-contract'
 
 // Hooks
 import { useMarqueeSelection } from '@freecut/shared/marquee/use-marquee-selection'
@@ -59,11 +58,7 @@ import { useMarkersStore } from '../stores/markers-store'
 import { useTransitionsStore } from '../stores/transitions-store'
 import { getFilteredItemSnapEdges } from '../utils/timeline-snap-utils'
 import { expandSelectionWithLinkedItems } from '../utils/linked-items'
-import {
-  getTimelineContentDuration,
-  getTimelineWidth,
-  getZoomToFitLevel,
-} from '../utils/timeline-layout'
+import { getTimelineWidth, getZoomToFitLevel } from '../utils/timeline-layout'
 import { DENSE_TIMELINE_TRACK_ITEM_THRESHOLD } from '../utils/timeline-dom-density'
 import {
   getAnchoredZoomScrollLeft,
@@ -78,6 +73,7 @@ import { setTimelineDensityMarqueePreview } from '../utils/timeline-density-marq
 import { notifyTimelineLiveScroll } from '@freecut/shared/timeline/live-scroll-sync'
 import { getPlaybackFollowScrollLeft } from '../utils/playback-follow-scroll'
 import { TimelineSettledContentZoomProvider } from './timeline-settled-content-zoom-provider'
+import { getTimelineZoomInteractionShieldBounds } from '../utils/timeline-zoom-interaction-shield'
 
 const ACTIVE_TIMELINE_GESTURE_CURSOR_CLASSES = [
   'timeline-cursor-trim-left',
@@ -504,7 +500,6 @@ interface TimelineTrackSectionsSurfaceProps {
   actualDuration: number
   containerWidth: number
   initialTimelineWidth: number
-  subtitleTracks: TimelineTrackType[]
   videoTracks: TimelineTrackType[]
   audioTracks: TimelineTrackType[]
   videoZoneHeight: number
@@ -521,7 +516,6 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
   actualDuration,
   containerWidth,
   initialTimelineWidth,
-  subtitleTracks,
   videoTracks,
   audioTracks,
   videoZoneHeight,
@@ -567,7 +561,7 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
   const renderTrackSection = (
     sectionTracks: TimelineTrackType[],
     options: {
-      section: 'subtitle' | 'video' | 'audio'
+      section: 'video' | 'audio'
       zoneHeight: number
       anchorTrackId: string | null
       firstTrackFrame: 'with-top-divider' | 'regular'
@@ -645,17 +639,11 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
           className="h-full min-h-0 overflow-y-auto overflow-x-hidden"
         >
           <div className="relative min-h-full">
-            {renderTrackSection(subtitleTracks, {
-              section: 'subtitle',
-              zoneHeight: 0,
-              anchorTrackId: null,
-              firstTrackFrame: 'with-top-divider',
-            })}
             {renderTrackSection(videoTracks, {
               section: 'video',
               zoneHeight: videoZoneHeight,
               anchorTrackId: topZoneAnchorTrackId,
-              firstTrackFrame: subtitleTracks.length > 0 ? 'regular' : 'with-top-divider',
+              firstTrackFrame: 'with-top-divider',
             })}
             {renderTrackSection(audioTracks, {
               section: 'audio',
@@ -704,10 +692,6 @@ export const TimelineContent = memo(function TimelineContent({
     () => tracks.filter((track) => getTrackKind(track) === 'video'),
     [tracks],
   )
-  const subtitleTracks = useMemo(
-    () => tracks.filter((track) => getTrackKind(track) === 'subtitle'),
-    [tracks],
-  )
   const audioTracks = useMemo(
     () => tracks.filter((track) => getTrackKind(track) === 'audio'),
     [tracks],
@@ -718,7 +702,7 @@ export const TimelineContent = memo(function TimelineContent({
     tracks.find((track) => getTrackKind(track) === 'video')?.id ?? firstTrackId
   const bottomZoneAnchorTrackId =
     [...tracks].reverse().find((track) => getTrackKind(track) === 'audio')?.id ?? lastTrackId
-  const videoZoneHeight = subtitleTracks.length > 0 ? 0 : 24
+  const videoZoneHeight = 24
   const audioZoneHeight = 24
 
   // PERFORMANCE: Don't subscribe to items directly - it causes ALL tracks to re-render
@@ -726,9 +710,7 @@ export const TimelineContent = memo(function TimelineContent({
 
   // O(1) pre-computed value from items store instead of O(n) reduce on every change
   const furthestItemEndFrame = useItemsStore((s) => s.maxItemEndFrame)
-  const maxTimelineFrame = Math.floor(
-    getTimelineContentDuration(furthestItemEndFrame / fps) * fps,
-  )
+  const maxTimelineFrame = Math.floor(Math.max(furthestItemEndFrame / fps, 10) * fps)
   // NOTE: Don't subscribe to currentFrame here - it would cause re-renders every frame!
   // Use refs to access it in callbacks instead (see currentFrameRef below)
   const selectItems = useSelectionStore((s) => s.selectItems)
@@ -736,7 +718,6 @@ export const TimelineContent = memo(function TimelineContent({
   const clearItemSelection = useSelectionStore((s) => s.clearItemSelection)
   const activeTrackId = useSelectionStore((s) => s.activeTrackId)
   const isTranscriptionDialogOpen = useEditorStore((s) => s.transcriptionDialogDepth > 0)
-  const showTimelineHoverPreview = useSettingsStore((s) => s.showTimelineHoverPreview)
   // Granular selectors for drag state - avoid subscribing to entire dragState object
   const isDragging = useSelectionStore((s) => !!s.dragState?.isDragging)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -806,14 +787,6 @@ export const TimelineContent = memo(function TimelineContent({
     }
   }, [cancelPendingHoverPreview])
 
-  useEffect(() => {
-    if (showTimelineHoverPreview) return
-    cancelPendingHoverPreview()
-    if (usePlaybackStore.getState().previewFrame !== null) {
-      setPreviewFrameRef.current(null)
-    }
-  }, [cancelPendingHoverPreview, showTimelineHoverPreview])
-
   // Use refs to avoid callback recreation on every frame/zoom change
   // Access currentFrame via store subscription (no re-renders) instead of hook
   const currentFrameRef = useRef(usePlaybackStore.getState().currentFrame)
@@ -830,6 +803,7 @@ export const TimelineContent = memo(function TimelineContent({
   // NOTE: itemsRef removed - use getState() on-demand or actualDurationRef for duration
 
   // Momentum scrolling state
+  const velocityXRef = useRef(0)
   const velocityYRef = useRef(0)
   const velocityZoomRef = useRef(0)
   const momentumIdRef = useRef<number | null>(null)
@@ -930,6 +904,7 @@ export const TimelineContent = memo(function TimelineContent({
       })
       if (nextScrollLeft === null) return
 
+      velocityXRef.current = 0
       container.scrollLeft = nextScrollLeft
       scrollLeftRef.current = nextScrollLeft
       syncViewportFromContainer(nextScrollLeft, true)
@@ -1374,11 +1349,6 @@ export const TimelineContent = memo(function TimelineContent({
 
   const handleTimelineMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!showTimelineHoverPreview) {
-        cancelPendingHoverPreview()
-        return
-      }
-
       // A hover-skim request that lands in the same frame as the first zoom
       // wheel update makes the program monitor render a new preview frame while
       // the dense timeline is also changing scale. Keep the last settled
@@ -1489,7 +1459,7 @@ export const TimelineContent = memo(function TimelineContent({
         schedulePreviewFrame()
       }
     },
-    [buildRazorSnapTargets, cancelPendingHoverPreview, showTimelineHoverPreview],
+    [buildRazorSnapTargets, cancelPendingHoverPreview],
   )
 
   const handleTimelineMouseLeave = useCallback(() => {
@@ -1505,9 +1475,8 @@ export const TimelineContent = memo(function TimelineContent({
     // Convert furthest item end from frames to seconds
     const furthestItemEnd = furthestItemEndFrame / fps
 
-    // Empty projects start with one minute of working room. Once content exists,
-    // preserve the existing minimum for very short edits.
-    const contentDuration = getTimelineContentDuration(furthestItemEnd)
+    // Use actual content end, with minimum of 10 seconds for empty timelines
+    const contentDuration = Math.max(furthestItemEnd, 10)
 
     // Keep the visible fit behavior, but leave extra space after the project end
     // so the user can still scroll a bit farther to the right when needed.
@@ -1765,16 +1734,13 @@ export const TimelineContent = memo(function TimelineContent({
 
   const getVerticalScrollTarget = useCallback(
     (target: EventTarget | null): HTMLDivElement | null => {
-      if (target instanceof Element) {
-        const sectionScroll = target.closest('[data-track-section-scroll]')
-        if (sectionScroll instanceof HTMLDivElement) {
-          return sectionScroll
-        }
+      if (!(target instanceof Element)) {
+        return null
       }
 
-      return allTracksScrollRef?.current ?? null
+      return target.closest('[data-track-section-scroll]') as HTMLDivElement | null
     },
-    [allTracksScrollRef],
+    [],
   )
 
   // Momentum scroll/zoom loop using requestAnimationFrame
@@ -1791,12 +1757,13 @@ export const TimelineContent = memo(function TimelineContent({
     momentumLastTimeRef.current = 0
 
     const momentumLoop = () => {
-      if (!containerRef.current) return
+      const container = containerRef.current
+      if (!container) return
 
-      withPerfMeasure('tl.raf.momentum', momentumLoopBody)
+      withPerfMeasure('tl.raf.momentum', () => momentumLoopBody(container))
     }
 
-    const momentumLoopBody = () => {
+    const momentumLoopBody = (container: HTMLDivElement) => {
       let hasScrollMomentum = false
       let hasZoomMomentum = false
 
@@ -1809,6 +1776,18 @@ export const TimelineContent = memo(function TimelineContent({
       momentumLastTimeRef.current = now
       const frames = last === 0 ? 1 : Math.min(4, Math.max(0, (now - last) / MOMENTUM_REF_FRAME_MS))
       const scrollDecay = Math.pow(SCROLL_FRICTION, frames)
+
+      // Apply velocity to scroll position
+      if (Math.abs(velocityXRef.current) > SCROLL_MIN_VELOCITY) {
+        container.scrollLeft += velocityXRef.current * frames
+        // Linked panels live outside this native scroller. Notify them inside
+        // the same RAF so their ruler/playhead update before this frame paints.
+        notifyTimelineLiveScroll(container)
+        velocityXRef.current *= scrollDecay
+        hasScrollMomentum = true
+      } else {
+        velocityXRef.current = 0
+      }
 
       const verticalScrollTarget = verticalScrollTargetRef.current
       if (verticalScrollTarget && Math.abs(velocityYRef.current) > SCROLL_MIN_VELOCITY) {
@@ -1863,18 +1842,34 @@ export const TimelineContent = memo(function TimelineContent({
 
     const cached = viewportDimsRef.current
     const rect = cached ? null : container.getBoundingClientRect()
-    shield.style.left = `${cached?.left ?? rect?.left ?? 0}px`
-    shield.style.top = `${cached?.top ?? rect?.top ?? 0}px`
-    shield.style.width = `${cached?.width ?? rect?.width ?? container.clientWidth}px`
-    shield.style.height = `${cached?.fullHeight ?? rect?.height ?? container.clientHeight}px`
+    const shieldBounds = getTimelineZoomInteractionShieldBounds({
+      left: cached?.left ?? rect?.left ?? 0,
+      top: cached?.top ?? rect?.top ?? 0,
+      width: cached?.width ?? rect?.width ?? container.clientWidth,
+      height: cached?.fullHeight ?? rect?.height ?? container.clientHeight,
+    })
+    shield.style.left = `${shieldBounds.left}px`
+    // Keep the ruler interactive while content geometry settles. A ruler press
+    // owns transport immediately and must never land on this track-only shield.
+    shield.style.top = `${shieldBounds.top}px`
+    shield.style.width = `${shieldBounds.width}px`
+    shield.style.height = `${shieldBounds.height}px`
     shield.style.display = 'block'
   }, [])
 
   useEffect(() => {
+    const hideShieldIfSettled = (isZoomInteracting: boolean) => {
+      if (isZoomInteracting) return
+      const shield = zoomInteractionShieldRef.current
+      if (shield) shield.style.display = 'none'
+    }
+
+    // HMR or a remount can preserve an imperative `display: block` write after
+    // the zoom store has already settled. Reconcile the DOM immediately.
+    hideShieldIfSettled(useZoomStore.getState().isZoomInteracting)
     return useZoomStore.subscribe((state, previousState) => {
       if (!state.isZoomInteracting && previousState.isZoomInteracting) {
-        const shield = zoomInteractionShieldRef.current
-        if (shield) shield.style.display = 'none'
+        hideShieldIfSettled(state.isZoomInteracting)
       }
     })
   }, [])
@@ -1907,12 +1902,14 @@ export const TimelineContent = memo(function TimelineContent({
 
       // If a new gesture starts (after pause), reset all velocities
       if (timeDelta > SCROLL_GESTURE_TIMEOUT) {
+        velocityXRef.current = 0
         velocityYRef.current = 0
         velocityZoomRef.current = 0
       }
 
       // Ctrl/Cmd + scroll = discrete zoom in 10% increments (anchored to cursor position)
       if (event.ctrlKey || event.metaKey) {
+        velocityXRef.current = 0
         velocityYRef.current = 0
         velocityZoomRef.current = 0
         showZoomInteractionShield()
@@ -1954,22 +1951,21 @@ export const TimelineContent = memo(function TimelineContent({
       velocityZoomRef.current = 0
       const smoothingFactor = 1 - SCROLL_SMOOTHING
 
-      // Scroll over a track section = vertical scroll; Shift + scroll keeps
-      // horizontal timeline navigation available for track content. Horizontal
-      // input updates immediately to stay coupled to the user's gesture.
+      // Scroll over the unified track list = vertical scroll. Shift + scroll
+      // keeps horizontal timeline navigation available for track content.
       const verticalScrollTarget = getVerticalScrollTarget(event.target)
       const scrollHorizontally =
         event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
       if (verticalScrollTarget && !scrollHorizontally) {
         verticalScrollTargetRef.current = verticalScrollTarget
+        velocityXRef.current = 0
         const delta = (event.deltaY || event.deltaX) * SCROLL_SENSITIVITY
         velocityYRef.current = velocityYRef.current * smoothingFactor + delta * SCROLL_SMOOTHING
       } else {
         verticalScrollTargetRef.current = null
         velocityYRef.current = 0
-        container.scrollLeft += event.deltaX || event.deltaY
-        notifyTimelineLiveScroll(container)
-        return
+        const delta = (event.deltaX || event.deltaY) * SCROLL_SENSITIVITY
+        velocityXRef.current = velocityXRef.current * smoothingFactor + delta * SCROLL_SMOOTHING
       }
 
       startMomentumScroll()
@@ -2025,6 +2021,7 @@ export const TimelineContent = memo(function TimelineContent({
         <div
           ref={zoomInteractionShieldRef}
           data-timeline-zoom-interaction-shield
+          data-marquee-ignore
           aria-hidden="true"
           className="fixed z-50"
           style={{ display: 'none' }}
@@ -2064,7 +2061,6 @@ export const TimelineContent = memo(function TimelineContent({
             actualDuration={actualDuration}
             containerWidth={containerWidth}
             initialTimelineWidth={timelineWidth}
-            subtitleTracks={subtitleTracks}
             videoTracks={videoTracks}
             audioTracks={audioTracks}
             videoZoneHeight={videoZoneHeight}
@@ -2078,9 +2074,7 @@ export const TimelineContent = memo(function TimelineContent({
         </TimelineSettledContentZoomProvider>
 
         {/* One overlay owns each complete marker across the ruler and tracks. */}
-        {showTimelineHoverPreview && (
-          <TimelinePreviewScrubber inRuler maxFrame={maxTimelineFrame} zIndex={40} />
-        )}
+        <TimelinePreviewScrubber inRuler maxFrame={maxTimelineFrame} zIndex={40} />
         <TimelinePlayhead
           inRuler
           maxFrame={maxTimelineFrame}

@@ -1,10 +1,4 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react'
-export type {
-  EmbeddedDeepSeekHarnessBridge,
-  EmbeddedDeepSeekHarnessToolRequest,
-  EmbeddedDeepSeekHarnessWebState,
-} from './deepseek-harness'
-import type { EmbeddedDeepSeekHarnessBridge } from './deepseek-harness'
 
 export interface EmbeddedMediaImportSource {
   path: string
@@ -23,7 +17,6 @@ export type ImportMediaFiles = (
   options?: { background?: boolean },
 ) => Promise<void>
 
-/** Media identity supplied to host-side tasks without transferring source bytes. */
 export interface EmbeddedMediaSource {
   mediaId: string
   nativePath?: string
@@ -44,6 +37,29 @@ export interface EmbeddedTranscriptResult {
 export interface EmbeddedTaskProgress {
   label: string
   percent: number | null
+}
+
+export interface EmbeddedSpeechGenerationRequest {
+  requestId: string
+  text: string
+  voice: string
+  speed: number
+}
+
+export interface EmbeddedMusicGenerationRequest {
+  requestId: string
+  model: 'small-music' | 'small-sfx'
+  prompt: string
+  durationSeconds: number
+  guidanceScale?: number
+  seed?: number
+}
+
+export interface EmbeddedGeneratedAudio {
+  requestId: string
+  fileName: string
+  durationSeconds: number
+  bytes: Uint8Array
 }
 
 export interface EmbeddedHtmlRenderRequest {
@@ -82,6 +98,27 @@ export interface EmbeddedExportBridge {
   revealFile(filePath: string): Promise<void>
 }
 
+export interface EmbeddedProjectContext {
+  id: string
+  name: string
+}
+
+export interface EmbeddedLunaEditorSdkBridge {
+  onRequest: (callback: (request: {
+    requestId: string
+    sessionId: string
+    projectId?: string
+    name: string
+    args: Record<string, unknown>
+  }) => void) => () => void
+  respond: (response: {
+    requestId: string
+    ok: boolean
+    result?: unknown
+    error?: { code?: string; message: string; details?: unknown; retryable?: boolean }
+  }) => void
+}
+
 export interface EmbeddedHostBridge {
   requestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
   revealFile?: (filePath: string) => Promise<void>
@@ -89,26 +126,30 @@ export interface EmbeddedHostBridge {
   inspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
   readNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
   resolveNativeMediaUrl?: (filePath: string) => string
-  /** Runs the host's local speech model. It never receives an editor path. */
   transcribeMedia?: (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
     signal?: AbortSignal,
   ) => Promise<EmbeddedTranscriptResult>
-  /** DeepSeek Harness owns the conversation, model loop, and tool execution. */
-  deepseekHarness?: EmbeddedDeepSeekHarnessBridge
+  generateSpeech?: (
+    request: EmbeddedSpeechGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ) => Promise<EmbeddedGeneratedAudio>
+  generateMusic?: (
+    request: EmbeddedMusicGenerationRequest,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+    signal?: AbortSignal,
+  ) => Promise<EmbeddedGeneratedAudio>
   renderHtmlFrame?: (request: EmbeddedHtmlRenderRequest) => Promise<EmbeddedHtmlRenderResult>
   exportFiles?: EmbeddedExportBridge
+  lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
+  onProjectContextChange?: (project: EmbeddedProjectContext | null) => void
 }
 
 const EmbeddedHostContext = createContext<EmbeddedHostBridge>({})
 let activeHostBridge: EmbeddedHostBridge = {}
 
-/**
- * Non-React services (such as the internal AI tool registry) need the same
- * constrained bridge as UI components. FreeCut is mounted once per window, so
- * this remains window-local and is cleared with the provider.
- */
 export function getEmbeddedHostBridge(): EmbeddedHostBridge {
   return activeHostBridge
 }

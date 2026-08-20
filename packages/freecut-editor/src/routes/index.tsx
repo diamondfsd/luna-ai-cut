@@ -1,19 +1,30 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import {
   Layers,
   ArrowRight,
   Play,
-  FolderOpen,
   Download,
   Star,
   ExternalLink,
   BookOpen,
+  Search,
+  AudioLines,
+  Keyboard,
+  History,
+  Palette,
+  WandSparkles,
 } from 'lucide-react'
 import { FreeCutLogo } from '@freecut/components/brand/freecut-logo'
 import { DiscordIcon } from '@freecut/components/brand/discord-icon'
 import { Button } from '@freecut/components/ui/button'
 import { DISCORD_INVITE_URL } from '@freecut/config/community'
+import {
+  isGitHubStarsCacheFresh,
+  readGitHubStarsCache,
+  refreshGitHubStarCount,
+} from '@freecut/shared/utils/github-stars'
 import {
   Accordion,
   AccordionContent,
@@ -31,41 +42,90 @@ const showcaseItems = [
     titleKey: 'projects.landing.showcase.timeline.title',
     descriptionKey: 'projects.landing.showcase.timeline.description',
     icon: Layers,
-    media: '/freecut/assets/landing/timeline.png',
-    className: 'md:col-span-2 md:row-span-1',
-    aspectClass: 'aspect-[2/1]',
+    media: '/assets/landing/timeline.png',
   },
   {
     id: 'keyframe',
     titleKey: 'projects.landing.showcase.keyframe.title',
     descriptionKey: 'projects.landing.showcase.keyframe.description',
     icon: Play,
-    media: '/freecut/assets/landing/keyframe.png',
-    className: 'md:row-span-2',
-    aspectClass: 'aspect-[3/4] md:aspect-auto md:h-full',
+    media: '/assets/landing/dopesheet.png',
   },
   {
-    id: 'projects',
-    titleKey: 'projects.landing.showcase.projects.title',
-    descriptionKey: 'projects.landing.showcase.projects.description',
-    icon: FolderOpen,
-    media: '/freecut/assets/landing/projects.png',
-    className: '',
-    aspectClass: 'aspect-video',
+    id: 'semantic',
+    titleKey: 'projects.landing.showcase.semantic.title',
+    descriptionKey: 'projects.landing.showcase.semantic.description',
+    icon: Search,
+    media: '/assets/landing/semantic.png',
   },
   {
     id: 'export',
     titleKey: 'projects.landing.showcase.export.title',
     descriptionKey: 'projects.landing.showcase.export.description',
     icon: Download,
-    media: '/freecut/assets/landing/export.png',
-    className: '',
-    aspectClass: 'aspect-video',
+    media: '/assets/landing/export.png',
+  },
+  {
+    id: 'audioEq',
+    titleKey: 'projects.landing.showcase.audioEq.title',
+    descriptionKey: 'projects.landing.showcase.audioEq.description',
+    icon: AudioLines,
+    media: '/assets/landing/eq.png',
+  },
+  {
+    id: 'hotkeys',
+    titleKey: 'projects.landing.showcase.hotkeys.title',
+    descriptionKey: 'projects.landing.showcase.hotkeys.description',
+    icon: Keyboard,
+    media: '/assets/landing/hotkeys.png',
+  },
+  {
+    id: 'motion',
+    titleKey: 'projects.landing.showcase.motion.title',
+    descriptionKey: 'projects.landing.showcase.motion.description',
+    icon: WandSparkles,
+    media: '/assets/landing/motion.png',
+  },
+  {
+    id: 'colorGrade',
+    titleKey: 'projects.landing.showcase.colorGrade.title',
+    descriptionKey: 'projects.landing.showcase.colorGrade.description',
+    icon: Palette,
+    media: '/assets/landing/colorgrade.png',
   },
 ]
 
+function useGitHubStarCount(): number | null {
+  const [initialCache] = useState(readGitHubStarsCache)
+  const [starCount, setStarCount] = useState<number | null>(initialCache?.stars ?? null)
+
+  useEffect(() => {
+    if (initialCache && isGitHubStarsCacheFresh(initialCache)) return
+
+    let active = true
+    void refreshGitHubStarCount().then((count) => {
+      if (active && count !== null) setStarCount(count)
+    })
+    return () => {
+      active = false
+    }
+  }, [initialCache])
+
+  return starCount
+}
+
+function GitHubStarCount({ count }: { count: number | null }) {
+  if (count === null) return null
+  return (
+    <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs tabular-nums text-primary">
+      {new Intl.NumberFormat().format(count)}
+    </span>
+  )
+}
+
 function LandingPage() {
   const { t } = useTranslation()
+  const githubStarCount = useGitHubStarCount()
   const faqItems: Array<{ id?: string; question: string; answer: React.ReactNode }> = [
     {
       question: t('projects.landing.faq.free.question'),
@@ -138,7 +198,7 @@ function LandingPage() {
     },
   ]
   return (
-    <div className="size-full min-h-0 overflow-auto bg-background text-foreground select-text">
+    <div className="min-h-screen bg-background text-foreground select-text">
       {/* Hero Section */}
       <section className="relative flex min-h-[60vh] flex-col items-center justify-center px-6 py-12">
         {/* Subtle gradient background */}
@@ -169,11 +229,18 @@ function LandingPage() {
             {t('projects.landing.disclaimer')}
           </p>
 
-          <div className="flex flex-col items-center gap-4 sm:flex-row">
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
             <Button asChild size="lg" className="gap-2 px-8">
               <Link to="/projects">
                 {t('projects.landing.getStarted')}
                 <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+
+            <Button asChild variant="outline" size="lg" className="gap-2 px-8">
+              <Link to="/changelog">
+                <History className="h-4 w-4" />
+                {t('projects.landing.viewChangelog')}
               </Link>
             </Button>
 
@@ -199,6 +266,7 @@ function LandingPage() {
               >
                 <Star className="h-4 w-4" />
                 {t('projects.landing.starOnGitHub')}
+                <GitHubStarCount count={githubStarCount} />
               </a>
             </Button>
           </div>
@@ -217,40 +285,19 @@ function LandingPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3 md:grid-rows-2">
+          <div className="grid gap-4 md:grid-cols-2">
             {showcaseItems.map((item) => (
               <div
                 key={item.id}
-                className={`group relative overflow-hidden rounded-xl border border-border bg-card transition-[border-color,box-shadow] duration-150 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 ${item.className}`}
+                className="group relative overflow-hidden rounded-xl border border-border bg-card transition-[border-color,box-shadow] duration-150 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
               >
-                {/* Media placeholder or actual media */}
-                <div className={`relative ${item.aspectClass} w-full overflow-hidden bg-muted`}>
-                  {item.media ? (
-                    <img
-                      src={item.media}
-                      alt={t(item.titleKey)}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    /* Placeholder with icon */
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="flex flex-col items-center gap-3 text-muted-foreground/50">
-                        <item.icon className="h-12 w-12" />
-                        <span className="text-xs uppercase tracking-wider">
-                          {t('projects.landing.screenshot')}
-                        </span>
-                      </div>
-                      {/* Subtle grid pattern */}
-                      <div
-                        className="absolute inset-0 opacity-[0.03]"
-                        style={{
-                          backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px),
-                                           linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
-                          backgroundSize: '24px 24px',
-                        }}
-                      />
-                    </div>
-                  )}
+                <div className="relative aspect-[16/10] w-full overflow-hidden bg-black">
+                  <img
+                    src={item.media}
+                    alt={t(item.titleKey)}
+                    loading="lazy"
+                    className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
+                  />
                 </div>
 
                 {/* Content overlay */}
@@ -291,7 +338,7 @@ function LandingPage() {
           >
             <div className="relative aspect-video w-full overflow-hidden bg-muted">
               <img
-                src="/freecut/assets/landing/timeline.png"
+                src="/assets/landing/main.png"
                 alt={t('projects.landing.demoPreviewAlt')}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
@@ -368,6 +415,7 @@ function LandingPage() {
               >
                 <Star className="h-4 w-4" />
                 {t('projects.landing.starOnGitHub')}
+                <GitHubStarCount count={githubStarCount} />
               </a>
             </Button>
           </div>

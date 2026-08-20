@@ -9,14 +9,10 @@ import { useSelectionStore } from '@freecut/shared/state/selection'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { joinTranscriptWords } from '@freecut/shared/utils/transcript-text'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
-import type {
-  MediaTranscript,
-  MediaTranscriptModel,
-  MediaTranscriptSegment,
-} from '@freecut/types/storage'
+import type { MediaTranscript, MediaTranscriptModel, MediaTranscriptSegment } from '@freecut/types/storage'
 import type {
   AudioItem,
-  TextItem,
+  SubtitleSegmentItem,
   TimelineTranscriptCaptionCue,
   TimelineItem,
   TimelineTrack,
@@ -29,7 +25,7 @@ import {
 } from '../transcription/registry'
 import { importMediaLibraryService } from './media-library-service-loader'
 import {
-  buildSubtitleTextItemsForClip,
+  buildSubtitleSegmentForClip,
   getCaptionStyleTemplateFromPreset,
   buildCaptionTrackAbove,
   type CaptionTextItemTemplate,
@@ -87,52 +83,6 @@ interface InsertTranscriptAsCaptionsResult {
 interface EnableTranscriptCaptionsResult {
   updatedClipCount: number
   removedItemCount: number
-}
-
-function hasSameCaptionPlacement(left: CaptionableClip, right: CaptionableClip): boolean {
-  return (
-    left.mediaId === right.mediaId &&
-    left.from === right.from &&
-    left.durationInFrames === right.durationInFrames &&
-    (left.sourceStart ?? 0) === (right.sourceStart ?? 0) &&
-    left.sourceEnd === right.sourceEnd &&
-    left.sourceFps === right.sourceFps &&
-    (left.speed ?? 1) === (right.speed ?? 1) &&
-    (left.isReversed ?? false) === (right.isReversed ?? false)
-  )
-}
-
-function canonicalCaptionClip(
-  clips: readonly CaptionableClip[],
-  clip: CaptionableClip,
-): CaptionableClip {
-  if (clip.type === 'video') return clip
-  return (
-    clips.find(
-      (candidate) =>
-        candidate.type === 'video' &&
-        clip.linkedGroupId !== undefined &&
-        candidate.linkedGroupId === clip.linkedGroupId,
-    ) ??
-    clips.find(
-      (candidate) => candidate.type === 'video' && hasSameCaptionPlacement(candidate, clip),
-    ) ??
-    clip
-  )
-}
-
-function uniqueCaptionOwners(
-  allClips: readonly CaptionableClip[],
-  clips: readonly CaptionableClip[],
-): CaptionableClip[] {
-  return Array.from(
-    new Map(
-      clips.map((clip) => {
-        const owner = canonicalCaptionClip(allClips, clip)
-        return [owner.id, owner] as const
-      }),
-    ).values(),
-  )
 }
 
 function definedCaptionStyleFields(
@@ -395,7 +345,6 @@ class MediaTranscriptionService {
   })
   private activeJob: QueuedTranscriptionJob | null = null
   private queue: QueuedTranscriptionJob[] = []
-  private captionMutationTail: Promise<void> = Promise.resolve()
   private readonly transcriptChangeListeners = new Set<(mediaId: string) => void>()
 
   getTranscript = getTranscript
@@ -418,18 +367,6 @@ class MediaTranscriptionService {
   async deleteTranscript(mediaId: string): Promise<void> {
     await deleteTranscript(mediaId)
     this.emitTranscriptChanged(mediaId)
-  }
-
-  /**
-   * Stores a transcript supplied by a trusted embedded host, then refreshes
-   * any captions already linked to its timeline clips. The host provides
-   * normalized timed text only; source media never enters this service.
-   */
-  async adoptTranscript(transcript: MediaTranscript): Promise<MediaTranscript> {
-    const saved = await saveTranscript(transcript)
-    this.syncExistingTranscriptCaptions(saved.mediaId, saved)
-    this.emitTranscriptChanged(saved.mediaId)
-    return saved
   }
 
   async transcribeMedia(
@@ -690,7 +627,12 @@ class MediaTranscriptionService {
     // an older transcript snapshot.
     const compositionsState = useCompositionsStore.getState()
     for (const composition of compositionsState.compositions) {
-      const synced = syncTranscriptCaptionItems(composition.items, mediaId, transcript, sourceCues)
+      const synced = syncTranscriptCaptionItems(
+        composition.items,
+        mediaId,
+        transcript,
+        sourceCues,
+      )
       if (synced.updatedClipCount === 0) continue
       compositionsState.updateComposition(composition.id, { items: synced.items })
       updatedClipCount += synced.updatedClipCount
@@ -707,7 +649,9 @@ class MediaTranscriptionService {
       return synced.updatedClipCount > 0 ? { ...stash, items: synced.items } : stash
     }
     const nextStashStack = navigationState.stashStack.map(syncStash)
-    const nextMainHolder = navigationState.mainHolder ? syncStash(navigationState.mainHolder) : null
+    const nextMainHolder = navigationState.mainHolder
+      ? syncStash(navigationState.mainHolder)
+      : null
     if (updatedStashedClipCount > 0) {
       useCompositionNavigationStore.setState({
         stashStack: nextStashStack,
@@ -753,20 +697,6 @@ class MediaTranscriptionService {
     mediaId: string,
     options: InsertTranscriptAsCaptionsOptions = {},
   ): Promise<InsertTranscriptAsCaptionsResult> {
-    const pending = this.captionMutationTail.then(() =>
-      this.insertTranscriptAsCaptionsNow(mediaId, options),
-    )
-    this.captionMutationTail = pending.then(
-      () => undefined,
-      () => undefined,
-    )
-    return pending
-  }
-
-  private async insertTranscriptAsCaptionsNow(
-    mediaId: string,
-    options: InsertTranscriptAsCaptionsOptions,
-  ): Promise<InsertTranscriptAsCaptionsResult> {
     const transcript = await getTranscript(mediaId)
     if (!transcript) {
       throw new Error('No transcript found for this media item')
@@ -797,8 +727,7 @@ class MediaTranscriptionService {
         )
       : new Set<string>()
     const plannedItems = timeline.items.filter((item) => !generatedCaptionIdsToRemove.has(item.id))
-    const insertedItems: TextItem[] = []
-    let skippedExistingCaptions = false
+    const insertedItems: SubtitleSegmentItem[] = []
 
     for (const clip of targetClips) {
       const clipRange = getCaptionRangeForClip(clip, transcript.segments, timeline.fps)
@@ -806,16 +735,9 @@ class MediaTranscriptionService {
         continue
       }
 
-      const existingGeneratedCaptions = findReplaceableCaptionItemsForClip(
-        timeline.items,
-        clip,
-        'transcript',
-      )
-      if (!options.replaceExisting && existingGeneratedCaptions.length > 0) {
-        skippedExistingCaptions = true
-        continue
-      }
-      const previousAttachedStyle = clip.transcriptCaptions?.style
+      const existingGeneratedCaptions = options.replaceExisting
+        ? findReplaceableCaptionItemsForClip(timeline.items, clip, 'transcript')
+        : []
       const preferredTrackId = this.resolvePreferredCaptionTrackId(
         newTracks,
         plannedItems,
@@ -838,37 +760,33 @@ class MediaTranscriptionService {
         newTracks.sort((a, b) => a.order - b.order)
       }
 
-      const clipCaptionItems = buildSubtitleTextItemsForClip({
+      const clipCaptionItem = buildSubtitleSegmentForClip({
         trackId: targetTrack.id,
         cues: buildTimelineTranscriptCaptionCues(clip.id, transcript.segments),
         clip,
         timelineFps: timeline.fps,
         canvasWidth,
         canvasHeight,
-        fileName: 'Transcript',
-        format: 'srt',
-        sourceType: 'transcript',
-        styleTemplate: {
-          ...definedCaptionStyleFields(defaultCaptionTemplate),
-          ...definedCaptionStyleFields(previousAttachedStyle),
-          ...(existingGeneratedCaptions[0]
-            ? definedCaptionStyleFields(getCaptionTextItemTemplate(existingGeneratedCaptions[0]))
-            : {}),
-        } as CaptionTextItemTemplate,
+        label: 'Transcript',
+        source: {
+          type: 'transcript',
+          mediaId,
+          clipId: clip.id,
+        },
+        styleTemplate: existingGeneratedCaptions[0]
+          ? getCaptionTextItemTemplate(existingGeneratedCaptions[0])
+          : defaultCaptionTemplate,
       })
 
-      if (clipCaptionItems.length === 0) {
+      if (!clipCaptionItem) {
         continue
       }
 
-      insertedItems.push(...clipCaptionItems)
-      plannedItems.push(...clipCaptionItems)
+      insertedItems.push(clipCaptionItem)
+      plannedItems.push(clipCaptionItem)
     }
 
     if (insertedItems.length === 0 && generatedCaptionIdsToRemove.size === 0) {
-      if (skippedExistingCaptions) {
-        return { insertedItemCount: 0, removedItemCount: 0 }
-      }
       throw new Error('Transcript does not overlap the selected clip source range')
     }
 
@@ -885,22 +803,7 @@ class MediaTranscriptionService {
 
     if (insertedItems.length > 0) {
       timeline.addItems(insertedItems)
-      for (const clip of targetClips) {
-        if (
-          clip.transcriptCaptions &&
-          insertedItems.some(
-            (item) =>
-              item.textRole === 'caption' &&
-              item.captionSource?.type === 'transcript' &&
-              item.captionSource.clipId === clip.id,
-          )
-        ) {
-          timeline.updateItem(clip.id, { transcriptCaptions: undefined } as Partial<TimelineItem>)
-        }
-      }
-      if (options.selectUpdatedClips !== false) {
-        useSelectionStore.getState().selectItems(insertedItems.map((item) => item.id))
-      }
+      useSelectionStore.getState().selectItems(insertedItems.map((item) => item.id))
     }
 
     return {
@@ -1018,10 +921,7 @@ class MediaTranscriptionService {
 
     if (clipIds && clipIds.length > 0) {
       const requestedClipIds = new Set(clipIds)
-      return uniqueCaptionOwners(
-        matchingClips,
-        matchingClips.filter((clip) => requestedClipIds.has(clip.id)),
-      )
+      return matchingClips.filter((clip) => requestedClipIds.has(clip.id))
     }
 
     const selectedClips = selection.selectedItemIds
@@ -1029,7 +929,7 @@ class MediaTranscriptionService {
       .filter((clip): clip is CaptionableClip => clip !== undefined)
 
     if (selectedClips.length > 0) {
-      return uniqueCaptionOwners(matchingClips, selectedClips)
+      return selectedClips
     }
 
     if (matchingClips.length === 1) {
@@ -1040,7 +940,7 @@ class MediaTranscriptionService {
       (clip) => playheadFrame >= clip.from && playheadFrame < clip.from + clip.durationInFrames,
     )
     if (clipAtPlayhead) {
-      return uniqueCaptionOwners(matchingClips, [clipAtPlayhead])
+      return [clipAtPlayhead]
     }
 
     return []

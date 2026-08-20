@@ -1,4 +1,0 @@
-interface:
-  display_name: "After Effects 动效工作流"
-  short_description: "将 After Effects 合成、关键帧和文字动效思路映射到 Luna"
-  default_prompt: "使用 $luna-workflow-after-effects 将 AE 动效思路映射到当前项目"

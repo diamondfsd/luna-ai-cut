@@ -237,13 +237,16 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   }, [])
 
   const outputSize = useMemo(() => sourceSize ? outputSizeForTransform(sourceSize, edit.pipeline.transform) : null, [edit.pipeline.transform, sourceSize])
-  const renderPipeline = useMemo(() => ({
-    ...edit.pipeline,
-    colorMasks: edit.pipeline.colorMasks.filter((layer) => (
-      layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID
-      && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID
-    )),
-  }), [edit.pipeline])
+  const renderPipeline = useMemo(() => {
+    if (currentSubjectMaskLayer && currentBackgroundMaskLayer) return edit.pipeline
+    return {
+      ...edit.pipeline,
+      colorMasks: edit.pipeline.colorMasks.filter((layer) => (
+        layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID
+        && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID
+      )),
+    }
+  }, [currentBackgroundMaskLayer, currentSubjectMaskLayer, edit.pipeline])
   const baseLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
     return buildWorkspaceExportLayers(activeAsset.path, sourceSize, renderPipeline, metadata, allowWatermark || usesCustomWatermark(renderPipeline.watermark))

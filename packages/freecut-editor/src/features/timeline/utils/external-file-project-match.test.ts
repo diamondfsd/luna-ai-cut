@@ -35,7 +35,7 @@ vi.mock('@freecut/shared/state/project-media-match-dialog', () => ({
   },
 }))
 
-import { preflightFirstTimelineVisualProjectMatch } from './external-file-project-match'
+import { preflightFirstTimelineVideoProjectMatch } from './external-file-project-match'
 
 function makeVideoMedia(overrides: Partial<MediaMetadata> = {}): MediaMetadata {
   return {
@@ -67,7 +67,7 @@ function makeEntry(overrides: Partial<ExtractedMediaFileEntry> = {}): ExtractedM
   }
 }
 
-describe('preflightFirstTimelineVisualProjectMatch', () => {
+describe('preflightFirstTimelineVideoProjectMatch', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mediaLibraryState = {
@@ -86,8 +86,8 @@ describe('preflightFirstTimelineVisualProjectMatch', () => {
     mocks.requestProjectMediaMatch.mockResolvedValue('match-both')
   })
 
-  it('matches from the first dropped video before timeline import continues', async () => {
-    await preflightFirstTimelineVisualProjectMatch([makeEntry()])
+  it('prompts from the first dropped video before timeline import continues', async () => {
+    await preflightFirstTimelineVideoProjectMatch([makeEntry()])
 
     expect(mocks.processMedia).toHaveBeenCalledWith(expect.any(File), 'video/mp4', {
       generateThumbnail: false,
@@ -101,37 +101,17 @@ describe('preflightFirstTimelineVisualProjectMatch', () => {
     })
   })
 
-  it('skips matching when the project already has visual media', async () => {
+  it('skips prompting when the project already has video media', async () => {
     mediaLibraryState.mediaItems = [makeVideoMedia()]
 
-    await preflightFirstTimelineVisualProjectMatch([makeEntry()])
+    await preflightFirstTimelineVideoProjectMatch([makeEntry()])
 
     expect(mocks.processMedia).not.toHaveBeenCalled()
     expect(mocks.requestProjectMediaMatch).not.toHaveBeenCalled()
   })
 
-  it('matches the first dropped image without a frame rate', async () => {
-    mocks.processMedia.mockResolvedValue({
-      metadata: { type: 'image', width: 1080, height: 1350 },
-    })
-
-    await preflightFirstTimelineVisualProjectMatch([
-      makeEntry({
-        file: new File(['image'], 'drop.jpg', { type: 'image/jpeg' }),
-        mediaType: 'image',
-      }),
-    ])
-
-    expect(mocks.requestProjectMediaMatch).toHaveBeenCalledWith('project-1', {
-      fileName: 'drop.jpg',
-      width: 1080,
-      height: 1350,
-      fps: undefined,
-    })
-  })
-
-  it('skips matching when no dropped entry is visual', async () => {
-    await preflightFirstTimelineVisualProjectMatch([
+  it('skips prompting when no dropped entry is a video', async () => {
+    await preflightFirstTimelineVideoProjectMatch([
       makeEntry({
         file: new File(['audio'], 'drop.mp3', { type: 'audio/mpeg' }),
         mediaType: 'audio',

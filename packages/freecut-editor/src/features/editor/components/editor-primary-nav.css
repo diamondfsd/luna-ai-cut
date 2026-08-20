@@ -1,0 +1,43 @@
+.editor-primary-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  min-height: 64px;
+  padding: 3px 5px;
+  background: var(--panel-header);
+  scrollbar-width: none;
+}
+
+.editor-primary-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-primary-nav__item {
+  flex: 0 0 72px;
+  min-width: 72px;
+  color: var(--muted-foreground);
+}
+
+.editor-primary-nav__item:hover {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+  color: var(--foreground);
+}
+
+.editor-primary-nav__item[aria-selected='true'] {
+  color: var(--primary);
+}
+
+.editor-primary-nav__item svg {
+  flex: 0 0 auto;
+}
+
+.editor-primary-nav__item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -46,6 +46,7 @@ export function getEmptyTrackIdsForRemoval(
   const emptyTrackIds = tracks
     .filter((track) => (itemsByTrackId[track.id]?.length ?? 0) === 0)
     .map((track) => track.id)
+
   const removableIds = getRemovableTrackIds(tracks, emptyTrackIds)
   if (removableIds.length < tracks.length) return removableIds
   return removableIds.filter((trackId) => trackId !== contextTrackId)

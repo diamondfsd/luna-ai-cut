@@ -92,7 +92,6 @@ function evictIfNeeded(): void {
   }
 }
 const DEFAULT_PLAYABLE_PARTIAL_READY_SECONDS = 2
-const PLAYABLE_PARTIAL_TIMEOUT_MS = 8000
 const PLAYABLE_PARTIAL_PREROLL_SECONDS = 0.25
 const STARTUP_PLAYABLE_PARTIAL_READY_SECONDS = 1
 const PENDING_PLAYBACK_SLICE_REUSE_HEADROOM_SECONDS = 1
@@ -108,6 +107,8 @@ export interface PlaybackAudioSlice {
   startTime: number
   isComplete: boolean
 }
+
+type AudioWindowDecodeMode = 'targeted' | 'sequential'
 
 interface DecodeAudioSampleData {
   numberOfFrames?: number
@@ -213,12 +214,6 @@ function rememberPlaybackSlice(mediaId: string, slice: PlaybackAudioSlice): void
 
 function binKey(mediaId: string, binIndex: number): string {
   return `${mediaId}:bin:${binIndex}`
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
 }
 
 function createInputSource(mb: Awaited<typeof import('mediabunny')>, src: PreviewAudioSource) {
@@ -398,6 +393,7 @@ async function decodeAudioWindow(
   src: PreviewAudioSource,
   startTime: number,
   durationSeconds: number,
+  mode: AudioWindowDecodeMode = 'targeted',
   ac3RetryAttempted: boolean = false,
 ): Promise<PlaybackAudioSlice> {
   const shouldRegisterAc3 = ac3RetryAttempted || (await shouldPreRegisterAc3Decoder(mediaId))
@@ -468,33 +464,58 @@ async function decodeAudioWindow(
         totalFrames += chunk.frameCount
       }
 
-      const initialSample = (await sink.getSample(safeStartTime)) as DecodeAudioSampleData | null
-      let initialSampleEndTime: number | null = null
-      if (initialSample) {
-        try {
-          appendSample(initialSample)
-          initialSampleEndTime = getDecodeSampleEndTime(initialSample)
-        } finally {
-          initialSample.close()
-        }
-      }
-
-      const iteratorStartTime =
-        initialSampleEndTime === null
-          ? safeStartTime
-          : Math.max(safeStartTime, initialSampleEndTime)
-      if (coverageEndTime < targetCoverageEndTime) {
-        for await (const sample of sink.samples(
-          iteratorStartTime,
-          targetCoverageEndTime,
-        ) as AsyncIterable<DecodeAudioSampleData>) {
+      if (mode === 'sequential') {
+        // A custom decoder may support only forward decoding from the start.
+        // Discard early samples and retain chunks only for the requested window.
+        for await (const sample of sink.samples() as AsyncIterable<DecodeAudioSampleData>) {
           try {
+            const sampleStartTime = Number.isFinite(sample.timestamp)
+              ? Number(sample.timestamp)
+              : null
+            const sampleEndTime = getDecodeSampleEndTime(sample)
+            if (sampleEndTime !== null && sampleEndTime <= safeStartTime) {
+              continue
+            }
+            if (sampleStartTime !== null && sampleStartTime >= targetCoverageEndTime) {
+              break
+            }
             appendSample(sample)
           } finally {
             sample.close()
           }
           if (coverageEndTime >= targetCoverageEndTime) {
             break
+          }
+        }
+      } else {
+        const initialSample = (await sink.getSample(safeStartTime)) as DecodeAudioSampleData | null
+        let initialSampleEndTime: number | null = null
+        if (initialSample) {
+          try {
+            appendSample(initialSample)
+            initialSampleEndTime = getDecodeSampleEndTime(initialSample)
+          } finally {
+            initialSample.close()
+          }
+        }
+
+        const iteratorStartTime =
+          initialSampleEndTime === null
+            ? safeStartTime
+            : Math.max(safeStartTime, initialSampleEndTime)
+        if (coverageEndTime < targetCoverageEndTime) {
+          for await (const sample of sink.samples(
+            iteratorStartTime,
+            targetCoverageEndTime,
+          ) as AsyncIterable<DecodeAudioSampleData>) {
+            try {
+              appendSample(sample)
+            } finally {
+              sample.close()
+            }
+            if (coverageEndTime >= targetCoverageEndTime) {
+              break
+            }
           }
         }
       }
@@ -520,7 +541,7 @@ async function decodeAudioWindow(
   } catch (err) {
     if (!ac3RetryAttempted && !shouldRegisterAc3) {
       try {
-        return await decodeAudioWindow(mediaId, src, startTime, durationSeconds, true)
+        return await decodeAudioWindow(mediaId, src, startTime, durationSeconds, mode, true)
       } catch {
         // Keep original error as primary failure.
       }
@@ -531,14 +552,16 @@ async function decodeAudioWindow(
 
 /**
  * Playback-first helper for custom-decoded audio:
- * returns a partial buffer as soon as enough decoded bins are available,
- * while full decode continues in the background.
+ * returns a bounded buffer around the requested playback position. This path
+ * deliberately never starts a whole-file decode: callers retain the returned
+ * AudioBuffer, so a long source would otherwise defeat the shared cache budget.
  */
 export async function getOrDecodeAudioSliceForPlayback(
   mediaId: string,
   src: PreviewAudioSource,
   options?: {
     minReadySeconds?: number
+    /** @deprecated Retained for call-site compatibility; window decoding no longer escalates. */
     waitTimeoutMs?: number
     targetTimeSeconds?: number
     preRollSeconds?: number
@@ -558,10 +581,8 @@ export async function getOrDecodeAudioSliceForPlayback(
     1,
     options?.minReadySeconds ?? DEFAULT_PLAYABLE_PARTIAL_READY_SECONDS,
   )
-  const waitTimeoutMs = Math.max(0, options?.waitTimeoutMs ?? PLAYABLE_PARTIAL_TIMEOUT_MS)
   const targetTimeSeconds = Math.max(0, options?.targetTimeSeconds ?? 0)
   const preRollSeconds = Math.max(0, options?.preRollSeconds ?? PLAYABLE_PARTIAL_PREROLL_SECONDS)
-  const pendingFullDecodePromise = pendingDecodes.get(mediaId) ?? null
 
   const cachedPlaybackSlice = playbackSliceCache.get(mediaId)
   if (
@@ -611,17 +632,30 @@ export async function getOrDecodeAudioSliceForPlayback(
       rememberPlaybackSlice(mediaId, slice)
       return slice
     } catch (windowError) {
-      log.warn('Targeted preview audio window decode failed, falling back to full decode', {
+      log.warn('Targeted preview audio window decode failed, retrying sequentially', {
         mediaId,
         targetTimeSeconds,
         error: windowError,
       })
-    }
-
-    return {
-      buffer: await getOrDecodeAudio(mediaId, src),
-      startTime: 0,
-      isComplete: true,
+      try {
+        const slice = await decodeAudioWindowPreferWorker(
+          mediaId,
+          src,
+          partialStartTime,
+          partialDurationSeconds,
+          'sequential',
+        )
+        rememberPlaybackSlice(mediaId, slice)
+        return slice
+      } catch (sequentialError) {
+        log.warn('Sequential preview audio window decode failed', {
+          mediaId,
+          targetTimeSeconds,
+          targetedError: windowError,
+          error: sequentialError,
+        })
+        throw sequentialError
+      }
     }
   })()
 
@@ -632,19 +666,6 @@ export async function getOrDecodeAudioSliceForPlayback(
   })
 
   try {
-    if (waitTimeoutMs > 0) {
-      return await Promise.race([
-        partialPromise,
-        (async () => {
-          await sleep(waitTimeoutMs)
-          return {
-            buffer: await (pendingFullDecodePromise ?? getOrDecodeAudio(mediaId, src)),
-            startTime: 0,
-            isComplete: true,
-          } satisfies PlaybackAudioSlice
-        })(),
-      ])
-    }
     return await partialPromise
   } finally {
     const pendingSlice = pendingPlaybackSliceDecodes.get(mediaId)
@@ -854,6 +875,7 @@ function decodeAudioWindowViaWorker(
   src: PreviewAudioSource,
   startTime: number,
   durationSeconds: number,
+  mode: AudioWindowDecodeMode = 'targeted',
 ): Promise<PlaybackAudioSlice> {
   return new Promise<PlaybackAudioSlice>((resolve, reject) => {
     const worker = getAudioWindowWorker()
@@ -906,6 +928,7 @@ function decodeAudioWindowViaWorker(
       startTime,
       durationSeconds,
       storageSampleRate: STORAGE_SAMPLE_RATE,
+      mode,
     })
   })
 }
@@ -916,18 +939,20 @@ async function decodeAudioWindowPreferWorker(
   src: PreviewAudioSource,
   startTime: number,
   durationSeconds: number,
+  mode: AudioWindowDecodeMode = 'targeted',
 ): Promise<PlaybackAudioSlice> {
   if (canUseAudioDecodeWorker()) {
     try {
-      return await decodeAudioWindowViaWorker(mediaId, src, startTime, durationSeconds)
+      return await decodeAudioWindowViaWorker(mediaId, src, startTime, durationSeconds, mode)
     } catch (err) {
       log.warn('Worker window decode failed, falling back to main-thread window decode', {
         mediaId,
+        mode,
         err,
       })
     }
   }
-  return decodeAudioWindow(mediaId, src, startTime, durationSeconds)
+  return decodeAudioWindow(mediaId, src, startTime, durationSeconds, mode)
 }
 
 // ---------------------------------------------------------------------------

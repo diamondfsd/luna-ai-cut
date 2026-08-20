@@ -56,7 +56,6 @@ function buildOptimisticMediaItem(
     id: tempId,
     storageType: storageMode === 'link' ? 'handle' : 'workspace',
     fileHandle: storageMode === 'link' ? handle : undefined,
-    nativePath: nativeMediaSourceForHandle(handle)?.path,
     fileName: file.name,
     fileSize: file.size,
     fileLastModified: file.lastModified,
@@ -327,6 +326,8 @@ export function createImportActions(
       const nativeSource = nativeMediaSourceForHandle(handle)
       let file: ImportFileDescriptor
       try {
+        // The host already inspected native files. Reuse that descriptor so
+        // the picker can close before large local media is read.
         file = nativeSource
           ? {
               name: nativeSource.name,
@@ -419,7 +420,7 @@ export function createImportActions(
       fileCount: handles.length,
     })
 
-    const storageMode: ImportStorageMode = 'link'
+    const storageMode = options?.storageMode ?? 'copy'
     const serviceModulePromise = loadMediaLibraryService()
     const importTasks = await createOptimisticImportTasks(handles, storageMode)
 
@@ -466,7 +467,7 @@ export function createImportActions(
   }
 
   return {
-    importMedia: async () => {
+    importMedia: async (options) => {
       const { currentProjectId } = get()
 
       if (!currentProjectId) {
@@ -499,7 +500,7 @@ export function createImportActions(
 
         // Create optimistic placeholders for all files immediately
         const serviceModulePromise = loadMediaLibraryService()
-        const storageMode: ImportStorageMode = 'link'
+        const storageMode = options?.storageMode ?? 'copy'
         const importTasks = await createOptimisticImportTasks(handles, storageMode)
         const importResults = await runImportTasks(
           importTasks,
@@ -666,7 +667,7 @@ export function createImportActions(
       importHandlesInternal(handles, {
         includeDuplicatesInResults: true,
         waitForPreparation: true,
-        storageMode: 'link',
+        storageMode: 'copy',
       }),
   }
 }

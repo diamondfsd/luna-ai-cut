@@ -23,12 +23,9 @@ export const TIMELINE_SIDEBAR_WIDTH = EDITOR_LAYOUT.timelineSidebarWidth
 export const MIN_TRACK_HEIGHT = 48
 export const MAX_TRACK_HEIGHT = 140
 
-// "Compact" track-size preset — comfortably above the bare minimum so clip
-// content stays legible.
-export const COMPACT_TRACK_HEIGHT = 72
-export const COLLAPSED_TRACK_HEIGHT = 40
-/** Subtitle lanes stay label-only and visually distinct from media lanes. */
-export const SUBTITLE_TRACK_HEIGHT = 40
+// "Compact" track-size preset — keeps several tracks visible while leaving
+// enough room for clip labels and waveform/filmstrip previews.
+export const COMPACT_TRACK_HEIGHT = 64
 export const TRACK_SECTION_DIVIDER_HEIGHT = 3
 
 // Track heights behind the Track Size presets. The chosen preset is persisted

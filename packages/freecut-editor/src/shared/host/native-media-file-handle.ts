@@ -39,8 +39,8 @@ export function createNativeMediaFileHandle(
 }
 
 /**
- * Converts an Electron-backed browser handle into a durable native-path handle.
- * Standalone browser hosts keep their original File System Access handle.
+ * Converts a browser file handle into the host-backed handle when the
+ * embedded editor can resolve the dropped File back to its native path.
  */
 export async function resolveNativeMediaFileHandle(
   handle: FileSystemFileHandle,

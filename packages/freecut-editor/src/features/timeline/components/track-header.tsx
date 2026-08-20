@@ -10,7 +10,6 @@ import {
 } from '@freecut/components/ui/context-menu'
 import {
   AudioLines,
-  Captions,
   Eye,
   EyeOff,
   Film,
@@ -22,7 +21,7 @@ import type { TimelineTrack } from '@freecut/types/timeline'
 import { useTrackDrag } from '../hooks/use-track-drag'
 import { TIMELINE_SIDEBAR_WIDTH } from '../constants'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
-import { getTrackKind, isTrackDisabled } from '@freecut/features/timeline/utils/classic-tracks'
+import { isTrackDisabled } from '@freecut/features/timeline/utils/classic-tracks'
 import { isTrackSyncLockActive } from '../utils/track-sync-lock'
 
 interface TrackHeaderProps {
@@ -87,8 +86,7 @@ export const TrackHeader = memo(function TrackHeader({
   const syncLockEnabled = isTrackSyncLockActive(track)
   const trackDisabled = isTrackDisabled(track)
   const isAudioTrack = track.kind === 'audio'
-  const isSubtitleTrack = getTrackKind(track) === 'subtitle'
-  const TrackKindIcon = isAudioTrack ? AudioLines : isSubtitleTrack ? Captions : Film
+  const TrackKindIcon = isAudioTrack ? AudioLines : Film
   const TrackEnabledIcon = isAudioTrack ? Volume2 : Eye
   const TrackDisabledIcon = isAudioTrack ? VolumeX : EyeOff
 
@@ -111,7 +109,7 @@ export const TrackHeader = memo(function TrackHeader({
           <div
             className={`
               flex items-center gap-1 overflow-hidden px-1.5
-              ${isSubtitleTrack ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} relative
+              cursor-grab active:cursor-grabbing relative
               ${isSelected ? 'bg-primary/10' : trackDisabled ? 'bg-muted/30 hover:bg-muted/40' : 'hover:bg-secondary/50'}
               ${isActive ? 'border-l-3 border-l-primary' : 'border-l-3 border-l-transparent'}
               ${trackDisabled ? 'text-muted-foreground' : ''}
@@ -119,7 +117,7 @@ export const TrackHeader = memo(function TrackHeader({
             `}
             style={{ height: `${track.height}px` }}
             onClick={onSelect}
-            onMouseDown={isSubtitleTrack ? undefined : handleDragStart}
+            onMouseDown={handleDragStart}
           >
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-0.5">
               <div className="flex h-5 w-4 shrink-0 items-center justify-center text-muted-foreground">

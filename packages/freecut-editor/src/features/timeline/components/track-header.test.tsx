@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type { TimelineTrack } from '@freecut/types/timeline'
 
+import { useItemsStore } from '../stores/items-store'
 import { TrackHeader } from './track-header'
 
 vi.mock('../hooks/use-track-drag', () => ({
@@ -53,16 +54,20 @@ function renderTrackHeader(track: TimelineTrack, onToggleDisabled = vi.fn()) {
 }
 
 describe('TrackHeader', () => {
+  beforeEach(() => {
+    useItemsStore.getState().setItems([])
+  })
+
   it('renders a unified disable control for video tracks', () => {
     const { onToggleDisabled } = renderTrackHeader(
       makeTrack({ kind: 'video', visible: true, muted: false }),
     )
 
-    expect(screen.getByRole('button', { name: 'Disable track' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Hide track' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Mute track' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '禁用轨道' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '隐藏轨道' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '静音轨道' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Disable track' }))
+    fireEvent.click(screen.getByRole('button', { name: '禁用轨道' }))
 
     expect(onToggleDisabled).toHaveBeenCalledTimes(1)
   })
@@ -72,9 +77,9 @@ describe('TrackHeader', () => {
       makeTrack({ id: 'track-2', name: 'A1', kind: 'audio', muted: true }),
     )
 
-    expect(screen.getByRole('button', { name: 'Enable track' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Show track' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Unmute track' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '启用轨道' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '显示轨道' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '取消静音' })).not.toBeInTheDocument()
     expect(container.querySelector('[data-track-id="track-2"]')).toHaveAttribute(
       'data-track-disabled',
       'true',
@@ -88,13 +93,13 @@ describe('TrackHeader', () => {
       onToggleDisabled,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enable track' }))
+    fireEvent.click(screen.getByRole('button', { name: '启用轨道' }))
 
     expect(onToggleDisabled).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the lower-frequency sync lock action in the context menu', () => {
-    const { container } = render(
+  it('renders sync lock enabled by default and toggles the label when disabled', () => {
+    const { container, rerender } = render(
       <TrackHeader
         track={makeTrack()}
         isActive={false}
@@ -114,8 +119,35 @@ describe('TrackHeader', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: 'Disable sync lock' })).not.toBeInTheDocument()
-    fireEvent.contextMenu(container.querySelector('[data-track-id="track-1"]')!)
-    expect(screen.getByRole('menuitem', { name: 'Disable sync lock' })).toBeInTheDocument()
+    const trackHeader = container.querySelector('[data-track-id]')
+    expect(trackHeader).not.toBeNull()
+
+    fireEvent.contextMenu(trackHeader as HTMLElement)
+    expect(screen.getByRole('menuitem', { name: '禁用同步锁定' })).toBeInTheDocument()
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+
+    rerender(
+      <TrackHeader
+        track={makeTrack({ syncLock: false })}
+        isActive={false}
+        isSelected={false}
+        canDeleteTrack
+        canDeleteEmptyTracks
+        onToggleLock={() => undefined}
+        onToggleSyncLock={() => undefined}
+        onToggleDisabled={() => undefined}
+        onToggleSolo={() => undefined}
+        onSelect={() => undefined}
+        onCloseGaps={() => undefined}
+        onAddVideoTrack={() => undefined}
+        onAddAudioTrack={() => undefined}
+        onDeleteTrack={() => undefined}
+        onDeleteEmptyTracks={() => undefined}
+      />,
+    )
+
+    fireEvent.contextMenu(trackHeader as HTMLElement)
+    expect(screen.getByRole('menuitem', { name: '启用同步锁定' })).toBeInTheDocument()
   })
 })

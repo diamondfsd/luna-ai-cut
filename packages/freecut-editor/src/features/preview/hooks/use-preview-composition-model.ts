@@ -16,6 +16,7 @@ import { useGizmoStore, type ItemPreview } from '../stores/gizmo-store'
 import { useMaskEditorStore } from '../stores/mask-editor-store'
 import { resolveGizmoWorldPreviewAsLocal } from '../utils/gizmo-world-preview'
 import { resolveProxyUrl } from '../utils/media-resolver'
+import { getRealtimePreviewRenderSize } from '../utils/preview-render-size'
 import {
   getMediaResolveCost,
   toTrackTopologyFingerprint,
@@ -58,6 +59,11 @@ interface PreviewProject {
   backgroundColor?: string
 }
 
+interface PreviewPlayerSize {
+  width: number
+  height: number
+}
+
 interface BuildPreviewCompositionDataParams {
   combinedTracks: TimelineTrack[]
   fps: number
@@ -69,6 +75,7 @@ interface BuildPreviewCompositionDataParams {
   useProxy: boolean
   blobUrlVersion: number
   project: PreviewProject
+  previewRenderSize?: PreviewPlayerSize
   resolveProxyUrlFn?: (mediaId: string) => string | null
   getBlobUrlFn?: (mediaId: string) => string | null
 }
@@ -85,6 +92,7 @@ interface UsePreviewCompositionModelParams {
   proxyReadyCount: number
   blobUrlVersion: number
   project: PreviewProject
+  playerSize: PreviewPlayerSize
 }
 
 interface UsePreviewCompositionBaseModelParams {
@@ -124,9 +132,7 @@ export function mergeLiveItemPresentation(
   if (!liveItem || liveItem.id !== item.id || liveItem.type !== item.type) return item
 
   const itemWithLiveTransform =
-    'transform' in liveItem &&
-    'transform' in item &&
-    liveItem.transform !== item.transform
+    'transform' in liveItem && 'transform' in item && liveItem.transform !== item.transform
       ? ({ ...item, transform: liveItem.transform } as TimelineItem)
       : item
 
@@ -200,7 +206,24 @@ export function usePreviewCompositionModel({
   proxyReadyCount,
   blobUrlVersion,
   project,
+  playerSize,
 }: UsePreviewCompositionModelParams) {
+  const projectWidth = project.width
+  const projectHeight = project.height
+  const playerWidth = playerSize.width
+  const playerHeight = playerSize.height
+  const calculatedPreviewRenderSize = getRealtimePreviewRenderSize(
+    { width: projectWidth, height: projectHeight },
+    { width: playerWidth, height: playerHeight },
+  )
+  const previewRenderWidth = calculatedPreviewRenderSize.width
+  const previewRenderHeight = calculatedPreviewRenderSize.height
+  // Keep renderer identity stable while the layout changes inside the same
+  // physical-size bucket (especially <=1080p projects, which stay full-size).
+  const previewRenderSize = useMemo(
+    () => ({ width: previewRenderWidth, height: previewRenderHeight }),
+    [previewRenderHeight, previewRenderWidth],
+  )
   const {
     playbackVideoSourceSpans,
     scrubVideoSourceSpans,
@@ -228,6 +251,7 @@ export function usePreviewCompositionModel({
       useProxy,
       blobUrlVersion,
       project,
+      previewRenderSize,
     })
   }, [
     blobUrlVersion,
@@ -237,6 +261,7 @@ export function usePreviewCompositionModel({
     items,
     keyframes,
     project,
+    previewRenderSize,
     proxyReadyCount,
     resolvedUrls,
     transitions,
@@ -313,8 +338,7 @@ export function usePreviewCompositionModel({
         canvas: { width: project.width, height: project.height, fps },
         frame: playbackState.previewFrame ?? playbackState.currentFrame,
         getItem: (candidateId) => fastScrubLiveItemsByIdRef.current.get(candidateId),
-        getKeyframes: (candidateId) =>
-          fastScrubKeyframesByItemIdRef.current.get(candidateId),
+        getKeyframes: (candidateId) => fastScrubKeyframesByItemIdRef.current.get(candidateId),
         getLocalPreviewTransform: (candidateId) =>
           useGizmoStore.getState().preview?.[candidateId]?.transform,
       })
@@ -370,6 +394,7 @@ export function buildPreviewCompositionData({
   useProxy,
   blobUrlVersion,
   project,
+  previewRenderSize,
   resolveProxyUrlFn = resolveProxyUrl,
   getBlobUrlFn = (mediaId: string) => blobUrlManager.get(mediaId),
 }: BuildPreviewCompositionDataParams) {
@@ -402,7 +427,7 @@ export function buildPreviewCompositionData({
       const proxyUrl =
         item.type === 'video' ? resolveProxyUrlFn(item.mediaId) || sourceUrl : sourceUrl
       const resolvedSrc = useProxy && item.type === 'video' ? proxyUrl : sourceUrl
-      const fastScrubSrc = item.type === 'video' ? proxyUrl : sourceUrl
+      const fastScrubSrc = resolvedSrc
       const hasMatchingAudioSrc = item.type !== 'video' || item.audioSrc === sourceUrl
 
       const resolvedItem =
@@ -499,10 +524,7 @@ export function buildPreviewCompositionData({
     width: Math.max(2, project.width),
     height: Math.max(2, project.height),
   }
-  const renderSize = {
-    width: Math.max(2, Math.max(1, Math.round(project.width))),
-    height: Math.max(2, Math.max(1, Math.round(project.height))),
-  }
+  const renderSize = previewRenderSize ?? playerRenderSize
   const fastScrubScaledTracks = fastScrubTracks as CompositionInputProps['tracks']
   const fastScrubScaledKeyframes = keyframes
   const fastScrubInputProps: CompositionInputProps = {

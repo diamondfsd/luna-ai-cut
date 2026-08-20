@@ -34,7 +34,6 @@ import {
   Scissors,
   ListPlus,
   ChevronDown,
-  FolderOpen,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -83,7 +82,6 @@ import { ExportPreviewPlayer } from './export-preview-player'
 import { useBrokenMediaIds, useMediaMetadataById } from '../deps/media-library'
 import { assessSmartCopyEligibility } from '../utils/smart-copy'
 import { resolveVideoBitrate } from '../utils/video-bitrate'
-import { useEmbeddedHost } from '@freecut/shared/host/embedded-host'
 
 export interface ExportDialogProps {
   open: boolean
@@ -305,7 +303,6 @@ function ExportPreflightPanel({ preflight }: { preflight: ExportPreflightResult 
 
 export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogProps) {
   const { t } = useTranslation()
-  const { exportFiles } = useEmbeddedHost()
   // Which sequence to export (Main or a standalone tab). Snapshotted when the
   // dialog opens (reset to the active tab) and re-read when the picker changes.
   // Sourced read-only so the editor view is never disturbed; the timeline isn't
@@ -358,7 +355,6 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [subtitleMode, setSubtitleMode] = useState<SubtitleExportMode>('burn')
   const [renderWholeProject, setRenderWholeProject] = useState(false)
-  const [outputDirectory, setOutputDirectory] = useState<string | null>(null)
   const wasOpenRef = useRef(false)
 
   // Calculate timeline duration from items
@@ -398,16 +394,16 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     const reversedClipIds = new Set(
       items
         .filter(
-          (item) => (item.type === 'video' || item.type === 'audio') && item.isReversed === true,
+          (item) =>
+            (item.type === 'video' || item.type === 'audio') && item.isReversed === true,
         )
         .map((item) => item.id),
     )
     return items.some(
       (item) =>
-        (item.type === 'text' &&
-          item.textRole === 'caption' &&
-          item.captionSource?.type === 'transcript' &&
-          !reversedClipIds.has(item.captionSource.clipId)) ||
+        (item.type === 'subtitle' &&
+          item.source.type === 'transcript' &&
+          !reversedClipIds.has(item.source.clipId)) ||
         ((item.type === 'video' || item.type === 'audio') &&
           item.isReversed !== true &&
           item.transcriptCaptions?.enabled === true &&
@@ -443,14 +439,13 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
         quality: settings.quality,
         width: settings.resolution.width,
         height: settings.resolution.height,
-        fps: settings.fps ?? fps,
+        fps,
         rateControl: settings.rateControl,
         customBitrate: settings.videoBitrate,
         sourceVideo,
       }),
     [
       fps,
-      settings.fps,
       settings.codec,
       settings.quality,
       settings.rateControl,
@@ -535,7 +530,6 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
         settings.codec === preset.codec &&
         settings.quality === preset.quality &&
         (settings.rateControl ?? 'auto') === 'auto' &&
-        settings.fps === undefined &&
         settings.resolution.width === res.width &&
         settings.resolution.height === res.height
       )
@@ -546,7 +540,6 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     settings.codec,
     settings.quality,
     settings.rateControl,
-    settings.fps,
     settings.resolution.width,
     settings.resolution.height,
     projectWidth,
@@ -587,9 +580,6 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     startExport,
     cancelExport,
     downloadVideo,
-    savedFiles,
-    supportsDirectSave,
-    revealSavedFile,
     resetState,
     getSupportedCodecs,
   } = clientRender
@@ -641,7 +631,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
 
   // Assemble the extended settings the render pipeline expects from the dialog
   // state. Shared by "Export now" and the "Add to queue" actions.
-  const buildExtendedSettings = (directory = outputDirectory): ExtendedExportSettings => ({
+  const buildExtendedSettings = (): ExtendedExportSettings => ({
     ...settings,
     sourceVideo,
     mode: exportMode,
@@ -649,19 +639,12 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     audioContainer: exportMode === 'audio' ? audioContainer : undefined,
     subtitleMode: exportMode === 'video' ? effectiveSubtitleMode : undefined,
     renderWholeProject,
-    outputDirectory: exportFiles ? (directory ?? undefined) : undefined,
   })
 
   // Start export
   const handleStartExport = async () => {
-    let directory = outputDirectory
-    if (supportsDirectSave && !directory) {
-      directory = (await exportFiles?.chooseDirectory()) ?? null
-      if (!directory) return
-      setOutputDirectory(directory)
-    }
     setView('progress')
-    await startExport(buildExtendedSettings(directory))
+    await startExport(buildExtendedSettings())
   }
 
   // The active render range for a sequence (whole timeline unless in/out set).
@@ -787,22 +770,6 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
 
     wasOpenRef.current = open
   }, [open, projectHeight, projectWidth, resetState])
-
-  useEffect(() => {
-    if (!open || !exportFiles) return
-    let active = true
-    void exportFiles
-      .getDirectory()
-      .then((directory) => {
-        if (active) setOutputDirectory(directory)
-      })
-      .catch(() => {
-        if (active) setOutputDirectory(null)
-      })
-    return () => {
-      active = false
-    }
-  }, [exportFiles, open])
 
   const getAudioContainerOptions = () => [
     { value: 'mp3', label: 'MP3', description: t('export.audioContainer.mp3') },
@@ -1116,33 +1083,6 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                   </div>
                 </div>
 
-                {supportsDirectSave && (
-                  <div className="space-y-2">
-                    <Label htmlFor="output-directory">{t('export.settings.outputDirectory')}</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="output-directory"
-                        value={outputDirectory ?? ''}
-                        placeholder={t('export.settings.outputDirectoryEmpty')}
-                        readOnly
-                        className="min-w-0"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="shrink-0"
-                        onClick={async () => {
-                          const directory = await exportFiles?.chooseDirectory()
-                          if (directory) setOutputDirectory(directory)
-                        }}
-                      >
-                        <FolderOpen className="mr-2 h-4 w-4" />
-                        {t('export.settings.chooseOutputDirectory')}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
                 {/* Export Range Section */}
                 <div className="space-y-3 p-3 rounded-lg border border-border bg-muted/20">
                   <div className="flex items-center justify-between">
@@ -1354,33 +1294,6 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                               {resolutionOptions.map((option) => (
                                 <SelectItem key={option.value} value={option.value}>
                                   {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="frame-rate">{t('export.settings.frameRate')}</Label>
-                          <Select
-                            value={settings.fps === undefined ? 'project' : String(settings.fps)}
-                            onValueChange={(value) =>
-                              setSettings((previous) => ({
-                                ...previous,
-                                fps: value === 'project' ? undefined : Number(value),
-                              }))
-                            }
-                          >
-                            <SelectTrigger id="frame-rate">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="project">
-                                {t('export.settings.frameRateProject', { fps })}
-                              </SelectItem>
-                              {[24, 25, 29.97, 30, 50, 60, 120].map((value) => (
-                                <SelectItem key={value} value={String(value)}>
-                                  {value} fps
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1661,7 +1574,8 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                 </div>
                 <div className="flex items-center justify-between text-sm gap-2">
                   <span className="text-muted-foreground truncate">
-                    {status === 'preparing' && (progressMessage ?? t('export.progress.preparing'))}
+                    {status === 'preparing' &&
+                      (progressMessage ?? t('export.progress.preparing'))}
                     {status === 'rendering' && t('export.progress.rendering')}
                     {status === 'encoding' && t('export.progress.encoding')}
                     {status === 'finalizing' && t('export.progress.finalizing')}
@@ -1714,19 +1628,11 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
             <Alert className="border-green-900 bg-green-950">
               <CheckCircle2 className="h-4 w-4 text-green-500" />
               <AlertDescription className="text-green-400">
-                {supportsDirectSave
-                  ? t('export.complete.savedSuccess')
-                  : exportMode === 'audio'
-                    ? t('export.complete.audioSuccess')
-                    : t('export.complete.videoSuccess')}
+                {exportMode === 'audio'
+                  ? t('export.complete.audioSuccess')
+                  : t('export.complete.videoSuccess')}
               </AlertDescription>
             </Alert>
-
-            {savedFiles[0] && (
-              <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground break-all">
-                {savedFiles[0].filePath}
-              </div>
-            )}
 
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               {fileSize && (
@@ -1753,17 +1659,10 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
               <Button variant="outline" onClick={handleClose}>
                 {t('common.close')}
               </Button>
-              {supportsDirectSave ? (
-                <Button onClick={() => void revealSavedFile()} disabled={savedFiles.length === 0}>
-                  <FolderOpen className="mr-2 h-4 w-4" />
-                  {t('export.complete.reveal')}
-                </Button>
-              ) : (
-                <Button onClick={downloadVideo}>
-                  <Download className="mr-2 h-4 w-4" />
-                  {t('export.complete.download')}
-                </Button>
-              )}
+              <Button onClick={downloadVideo}>
+                <Download className="mr-2 h-4 w-4" />
+                {t('export.complete.download')}
+              </Button>
             </div>
           </div>
         )}

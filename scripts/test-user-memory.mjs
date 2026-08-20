@@ -2,11 +2,21 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { createUserMemoryStore } from '../electron/userMemoryService.ts'
+import { createUserMemoryHost, createUserMemoryStore } from '../electron/userMemoryService.ts'
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'luna-user-memory-'))
 try {
   const store = createUserMemoryStore(root)
+  const host = createUserMemoryHost(root)
+  const hostCreated = await host.execute('memory.update', {
+    scope: 'global',
+    topic: '主进程入口',
+    preference: 'SDK 记忆请求由主进程直接处理。',
+  })
+  assert.equal(hostCreated.ok, true)
+  const hostRead = await host.execute('memory.search', { query: '主进程入口' })
+  assert.equal(hostRead.data.entries.length, 1)
+
   const created = await store.update({
     scope: 'global',
     topic: '画幅',
@@ -28,7 +38,7 @@ try {
     store.update({ scope: 'global', topic: '音乐', preference: '不要自动添加背景音乐。' }),
   ])
   const serializedRead = await store.read()
-  assert.equal(serializedRead.data.total, 4)
+  assert.equal(serializedRead.data.total, 5)
   const expectedRecentOrder = [...serializedRead.data.entries]
     .sort((left, right) => right.createdAt - left.createdAt)
     .map((entry) => entry.id)
@@ -63,6 +73,10 @@ try {
     /videoType/,
   )
   assert.equal(path.basename(reloaded.filePath), 'preferences.json')
+  await assert.rejects(
+    () => host.execute('memory.unknown', {}),
+    /未知的用户记忆能力/,
+  )
   console.log('Luna user memory persistence passed.')
 } finally {
   await rm(root, { recursive: true, force: true })

@@ -19,7 +19,7 @@ import type { TFunction } from 'i18next'
 import {
   ChevronDown,
   ChevronRight,
-  Code2,
+  Captions,
   ClipboardPaste,
   Blend,
   Copy,
@@ -1270,12 +1270,10 @@ const MotionSelectionRetimeRange = memo(function MotionSelectionRetimeRange({
     <div
       ref={rangeRef}
       data-testid="motion-selection-retime-range"
-      className="pointer-events-none absolute bottom-0 z-10 h-1 rounded-full bg-primary/70"
+      className="pointer-events-none absolute bottom-0 z-10 h-1 rounded-full bg-primary/70 shadow-[0_0_0_1px_hsl(var(--background)),0_0_6px_hsl(var(--primary)/0.45)]"
       style={{
         left: `${frameToPercent(visibleRange.startFrame)}%`,
         width: `${Math.max(0.4, visibleRange.widthPercent)}%`,
-        boxShadow:
-          '0 0 0 1px var(--background), 0 0 6px color-mix(in oklab, var(--primary) 45%, transparent)',
       }}
       title={`${range.keyframeCount} selected keyframes across ${range.itemCount} layer${layerSuffix} · ${selectionDuration}f`}
     >
@@ -3270,8 +3268,6 @@ function getMotionLayerTypeIcon(itemType: TimelineItem['type']): LucideIcon {
       return Music
     case 'image':
       return ImageIcon
-    case 'html':
-      return Code2
     case 'lottie':
       return Sticker
     case 'text':
@@ -3284,6 +3280,8 @@ function getMotionLayerTypeIcon(itemType: TimelineItem['type']): LucideIcon {
       return Crosshair
     case 'composition':
       return Layers
+    case 'subtitle':
+      return Captions
     default:
       return itemType satisfies never
   }
@@ -3712,7 +3710,9 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
   const wheelMotionViewportCommitTimerRef = useRef<number | null>(null)
   const wheelMotionPanAxisRef = useRef<'x' | 'y' | null>(null)
   const [motionScrollbarWidth, setMotionScrollbarWidth] = useState(0)
-  const [allPathVertexItemIds, setAllPathVertexItemIds] = useState<Set<string>>(() => new Set())
+  const [allPathVertexItemIds, setAllPathVertexItemIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const cancelQueuedMotionViewport = useCallback(() => {
     if (wheelMotionViewportCommitTimerRef.current !== null) {
       window.clearTimeout(wheelMotionViewportCommitTimerRef.current)
@@ -3755,7 +3755,9 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
   const maskEditingItemId = useMaskEditorStore((state) =>
     state.isEditing ? state.editingItemId : null,
   )
-  const selectedPathVertexIndices = useMaskEditorStore((state) => state.selectedVertexIndices)
+  const selectedPathVertexIndices = useMaskEditorStore(
+    (state) => state.selectedVertexIndices,
+  )
   const expandedLayerIds = useComposeUiStore(
     useCallback(
       (state) =>
@@ -4060,13 +4062,15 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
       }
       for (const target of preview.elements) {
         const rawLeft =
-          target.edgeInset + ((target.frame - viewport.startFrame) / nextRange) * target.usableWidth
+          target.edgeInset +
+          ((target.frame - viewport.startFrame) / nextRange) * target.usableWidth
         const clampX = (x: number) =>
           Math.max(target.edgeInset, Math.min(target.edgeInset + target.usableWidth, x))
         const left = target.clampToSurface ? clampX(rawLeft) : rawLeft
         target.element.style.left = `${left}px`
         if (target.frameSpan !== null) {
-          const rawRight = rawLeft + (target.frameSpan / nextRange) * target.usableWidth
+          const rawRight =
+            rawLeft + (target.frameSpan / nextRange) * target.usableWidth
           const right = target.clampToSurface ? clampX(rawRight) : rawRight
           target.element.style.width = `${Math.max(0, right - left)}px`
         }
@@ -4268,7 +4272,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
   const layerEntries = useMemo<LayerEntry[]>(
     () =>
       items
-        .filter((item) => !hiddenLinkedAudioItemIds.has(item.id))
+        .filter((item) => item.type !== 'subtitle' && !hiddenLinkedAudioItemIds.has(item.id))
         .map((item) => ({ item, track: trackById.get(item.trackId) }))
         .sort(
           (a, b) =>
@@ -5438,7 +5442,9 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
       const visibleRange = Math.max(1, viewport.endFrame - viewport.startFrame)
       const autoEdgeEndFrame = compositionEndFrame ?? durationInFrames
       const velocity =
-        visibleRange < autoEdgeEndFrame ? getMotionPlayheadEdgeScrollVelocity(clientX, rect) : 0
+        visibleRange < autoEdgeEndFrame
+          ? getMotionPlayheadEdgeScrollVelocity(clientX, rect)
+          : 0
       let keepScrolling = false
       if (velocity !== 0 && rect.width > 0) {
         const previousTimestamp = scrubAnimationTimeRef.current ?? timestamp - 1000 / 60
@@ -5461,7 +5467,8 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
           velocity < 0 && pannedViewport.startFrame <= Number.EPSILON * autoEdgeEndFrame * 4
             ? { startFrame: 0, endFrame: boundaryVisibleRange }
             : velocity > 0 &&
-                autoEdgeEndFrame - pannedViewport.endFrame <= Number.EPSILON * autoEdgeEndFrame * 4
+                autoEdgeEndFrame - pannedViewport.endFrame <=
+                  Number.EPSILON * autoEdgeEndFrame * 4
               ? {
                   startFrame: Math.max(0, autoEdgeEndFrame - boundaryVisibleRange),
                   endFrame: autoEdgeEndFrame,
@@ -6291,7 +6298,9 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
                     maskEditingItemId === item.id ? selectedPathVertexIndices : [],
                   showAllVertices: showAllPathVertices,
                   alwaysInclude:
-                    activeInlineCurve?.itemId === item.id ? activeInlineCurve.property : null,
+                    activeInlineCurve?.itemId === item.id
+                      ? activeInlineCurve.property
+                      : null,
                 })
                 const proceduralBands = getProceduralBands(
                   item.motionModifiers,
@@ -6320,7 +6329,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
                     className={cn(
                       'relative border-b border-border/70',
                       isDragging && 'z-30 opacity-85 shadow-lg',
-                      'data-[transform-parent-link-hover=true]:bg-primary/10 data-[transform-parent-link-hover=true]:ring-1 data-[transform-parent-link-hover=true]:ring-inset data-[transform-parent-link-hover=true]:ring-primary/70',
+                      'data-[transform-parent-link-hover=true]:bg-orange-500/10 data-[transform-parent-link-hover=true]:ring-1 data-[transform-parent-link-hover=true]:ring-inset data-[transform-parent-link-hover=true]:ring-orange-400/70',
                       'data-[transform-parent-link-rejected=true]:bg-red-500/10 data-[transform-parent-link-rejected=true]:ring-1 data-[transform-parent-link-rejected=true]:ring-inset data-[transform-parent-link-rejected=true]:ring-red-400/70',
                     )}
                   >
@@ -6562,7 +6571,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
                               className={cn(
                                 'flex h-6 w-6 shrink-0 touch-none items-center justify-center rounded-sm outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-primary',
                                 parentItemId
-                                  ? 'text-primary'
+                                  ? 'text-orange-400'
                                   : 'text-muted-foreground hover:text-foreground',
                               )}
                             >

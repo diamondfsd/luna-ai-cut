@@ -6,7 +6,7 @@ import {
   type ExtractedMediaFileEntry,
 } from '@freecut/features/timeline/deps/media-library-resolver'
 
-export async function preflightFirstTimelineVisualProjectMatch(
+export async function preflightFirstTimelineVideoProjectMatch(
   entries: ExtractedMediaFileEntry[],
 ): Promise<void> {
   const currentProjectId = useMediaLibraryStore.getState().currentProjectId
@@ -14,36 +14,32 @@ export async function preflightFirstTimelineVisualProjectMatch(
     return
   }
 
-  const hasExistingProjectVisual = useMediaLibraryStore
+  const hasExistingProjectVideo = useMediaLibraryStore
     .getState()
-    .mediaItems.some(
-      (item) => item.mimeType.startsWith('video/') || item.mimeType.startsWith('image/'),
-    )
-  if (hasExistingProjectVisual) {
+    .mediaItems.some((item) => item.mimeType.startsWith('video/'))
+  if (hasExistingProjectVideo) {
     return
   }
 
-  const firstVisualEntry = entries.find(
-    (entry) => entry.mediaType === 'video' || entry.mediaType === 'image',
-  )
-  if (!firstVisualEntry) {
+  const firstVideoEntry = entries.find((entry) => entry.mediaType === 'video')
+  if (!firstVideoEntry) {
     return
   }
 
-  const mimeType = getMimeType(firstVisualEntry.file)
-  const { metadata } = await mediaProcessorService.processMedia(firstVisualEntry.file, mimeType, {
+  const mimeType = getMimeType(firstVideoEntry.file)
+  const { metadata } = await mediaProcessorService.processMedia(firstVideoEntry.file, mimeType, {
     generateThumbnail: false,
     fastMetadata: true,
   })
 
-  if (metadata.type !== 'video' && metadata.type !== 'image') {
-    throw new Error('Unable to inspect dropped visual media.')
+  if (metadata.type !== 'video') {
+    throw new Error('Unable to inspect dropped video.')
   }
 
   await useProjectMediaMatchDialogStore.getState().requestProjectMediaMatch(currentProjectId, {
-    fileName: firstVisualEntry.file.name,
+    fileName: firstVideoEntry.file.name,
     width: metadata.width,
     height: metadata.height,
-    fps: metadata.type === 'video' ? metadata.fps : undefined,
+    fps: metadata.fps,
   })
 }

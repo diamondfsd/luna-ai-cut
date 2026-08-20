@@ -65,12 +65,15 @@ function registerFontCatalog(catalog: readonly FontCatalogEntry[]): void {
   }
 }
 
-function getFontConfig(fontName: string): FontConfig | undefined {
-  return FONT_CONFIGS.get(fontName)
-}
+function getFontConfig(fontName: string): FontConfig {
+  const existing = FONT_CONFIGS.get(fontName)
+  if (existing) {
+    return existing
+  }
 
-function getFontFamily(fontName: string): string {
-  return getFontConfig(fontName)?.family ?? fontName
+  const fallback = toConfigEntry(fontName, [400])
+  FONT_CONFIGS.set(fontName, fallback)
+  return fallback
 }
 
 registerFontCatalog(FONT_CATALOG)
@@ -87,13 +90,12 @@ function buildGoogleFontsUrl(config: FontConfig): string {
 /**
  * Load a font from Google Fonts
  */
-async function loadFontFamily(fontName: string): Promise<string> {
+async function loadGoogleFont(fontName: string): Promise<string> {
   if (typeof document === 'undefined') {
     return fontName
   }
 
   const config = getFontConfig(fontName)
-  const family = config?.family ?? fontName
 
   // Check if already loading
   const existingPromise = loadingPromises.get(fontName)
@@ -109,13 +111,9 @@ async function loadFontFamily(fontName: string): Promise<string> {
 
   const loadPromise = (async () => {
     try {
-      // Only catalog entries are known Google Fonts. Arbitrary names emitted by
-      // editing tools are treated as local/system fonts and must not trigger a
-      // request to Google Fonts.
-      const existingLink = config
-        ? document.querySelector(`link[data-font="${fontName}"]`)
-        : null
-      if (config && !existingLink) {
+      // Check if link already exists
+      const existingLink = document.querySelector(`link[data-font="${fontName}"]`)
+      if (!existingLink) {
         // Create link element for Google Fonts
         const link = document.createElement('link')
         link.rel = 'stylesheet'
@@ -136,7 +134,7 @@ async function loadFontFamily(fontName: string): Promise<string> {
         await document.fonts.ready
 
         // Check if font is actually loaded
-        const fontFace = `400 16px "${family}"`
+        const fontFace = `400 16px "${config.family}"`
         const loaded = document.fonts.check(fontFace)
 
         if (!loaded) {
@@ -146,12 +144,12 @@ async function loadFontFamily(fontName: string): Promise<string> {
       }
 
       // Cache and return the font family
-      const fontFamily = `"${family}", sans-serif`
+      const fontFamily = `"${config.family}", sans-serif`
       loadedFontFamilies.set(fontName, fontFamily)
       return fontFamily
     } catch (error) {
       logger.warn(`Failed to load font "${fontName}":`, error)
-      return `"${family}", sans-serif`
+      return fontName
     } finally {
       loadingPromises.delete(fontName)
     }
@@ -176,11 +174,12 @@ export function loadFont(fontName: string): string {
   }
 
   // Start loading in background (fire and forget for sync API compatibility)
-  void loadFontFamily(fontName)
+  void loadGoogleFont(fontName)
 
   // Return immediately with font-family string
   // The font will be available when it finishes loading
-  return `"${getFontFamily(fontName)}", sans-serif`
+  const config = getFontConfig(fontName)
+  return `"${config.family}", sans-serif`
 }
 
 /**
@@ -196,13 +195,13 @@ export async function ensureFontsLoaded(
 
   const uniqueFonts = [...new Set(fontNames.map((name) => name.trim() || DEFAULT_TEXT_FONT_FAMILY))]
 
-  await Promise.all(uniqueFonts.map((fontName) => loadFontFamily(fontName)))
+  await Promise.all(uniqueFonts.map((fontName) => loadGoogleFont(fontName)))
 
   await Promise.all(
     uniqueFonts.flatMap((fontName) => {
       const config = getFontConfig(fontName)
-      const family = config?.family ?? fontName
-      const weightsToLoad = weights.length > 0 ? weights : config?.weights ?? [400]
+      const family = config.family
+      const weightsToLoad = weights.length > 0 ? weights : config.weights
       return weightsToLoad.map((weight) =>
         document.fonts.load(`${weight} 16px "${family}"`, 'BESbswy'),
       )

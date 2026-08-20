@@ -6,6 +6,7 @@ export const USER_MEMORY_VERSION = 1 as const
 export const USER_MEMORY_MAX_ENTRIES = 500
 export const USER_MEMORY_MAX_QUERY_LENGTH = 200
 export const USER_MEMORY_MAX_TEXT_LENGTH = 2_000
+export const USER_MEMORY_DIRECTORY = 'user-memory'
 
 export type UserMemoryScope = 'global' | 'video-type'
 
@@ -56,6 +57,25 @@ export interface UserMemoryToolResult {
   ok: boolean
   message: string
   data?: unknown
+}
+
+export const USER_MEMORY_CAPABILITY_NAMES = [
+  'memory.read',
+  'memory.search',
+  'memory.update',
+  'memory.remove',
+] as const
+
+export type UserMemoryCapabilityName = typeof USER_MEMORY_CAPABILITY_NAMES[number]
+
+export interface UserMemoryHost {
+  readonly rootDirectory: string
+  readonly filePath: string
+  execute(name: UserMemoryCapabilityName, args?: Record<string, unknown>): Promise<UserMemoryToolResult>
+}
+
+export function userMemoryRootForApplicationData(applicationDataDirectory: string): string {
+  return path.join(applicationDataDirectory, USER_MEMORY_DIRECTORY)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -225,7 +245,7 @@ export function createUserMemoryStore(rootDirectory: string) {
       const document = await readDocument()
       const filtered = document.entries
         .filter((entry) => matches(entry, args))
-        .sort((left, right) => right.createdAt - left.createdAt)
+        .sort((left, right) => right.updatedAt - left.updatedAt)
       const limit = boundedLimit(args.limit)
       return {
         ok: true,
@@ -249,7 +269,7 @@ export function createUserMemoryStore(rootDirectory: string) {
       const filtered = document.entries
         .filter((entry) => ids === undefined || ids.has(entry.id))
         .filter((entry) => matches(entry, args))
-        .sort((left, right) => right.createdAt - left.createdAt)
+        .sort((left, right) => right.updatedAt - left.updatedAt)
       const limit = boundedLimit(args.limit)
       return {
         ok: true,
@@ -330,4 +350,32 @@ export function createUserMemoryStore(rootDirectory: string) {
   }
 
   return { filePath, read, search, update, remove }
+}
+
+export function isUserMemoryCapability(name: string): name is UserMemoryCapabilityName {
+  return (USER_MEMORY_CAPABILITY_NAMES as readonly string[]).includes(name)
+}
+
+/** Host-side adapter used by the SDK transport before renderer dispatch. */
+export function createUserMemoryHost(rootDirectory: string): UserMemoryHost {
+  const store = createUserMemoryStore(rootDirectory)
+
+  return {
+    rootDirectory,
+    filePath: store.filePath,
+    execute: async (name, args = {}) => {
+      switch (name) {
+        case 'memory.read':
+          return store.read(args as UserMemoryReadArgs)
+        case 'memory.search':
+          return store.search(args as UserMemorySearchArgs)
+        case 'memory.update':
+          return store.update(args as unknown as UserMemoryUpdateArgs)
+        case 'memory.remove':
+          return store.remove(args as unknown as UserMemoryRemoveArgs)
+        default:
+          throw new Error(`未知的用户记忆能力：${name}`)
+      }
+    },
+  }
 }

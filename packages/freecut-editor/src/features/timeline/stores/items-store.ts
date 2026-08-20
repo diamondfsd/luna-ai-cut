@@ -17,14 +17,9 @@ import {
   clampSpeed,
 } from '../utils/source-calculations'
 import { isCompositionWrapperItem, wouldCreateCompositionCycle } from '../utils/composition-graph'
-import { getTrackKind, normalizeClassicTrackNames } from '../utils/classic-tracks'
+import { normalizeClassicTrackNames } from '../utils/classic-tracks'
 import { pruneEmptyLayerGroups } from '../utils/group-utils'
 import { resolveTrackHeight } from '../utils/track-heights'
-import { assertRequiredTracksPreserved } from '../utils/track-removal'
-import {
-  assertItemTrackCompatibility,
-  assertItemsTrackCompatibility,
-} from '../utils/track-item-compatibility'
 import { getActiveCompositionId } from './composition-navigation-active'
 import { useCompositionsStore } from './compositions-store'
 import { useTimelineSettingsStore } from './timeline-settings-store'
@@ -36,6 +31,8 @@ import {
   normalizeTrack,
   roundDuration,
   roundFrame,
+  trimSubtitleCuesAtEnd,
+  trimSubtitleCuesAtStart,
 } from './items-store-normalize'
 import {
   buildItemsMediaDependencyIds,
@@ -73,7 +70,6 @@ interface ItemsActions {
   // Bulk setters for snapshot restore
   setItems: (items: TimelineItem[]) => void
   setTracks: (tracks: TimelineTrack[]) => void
-  setItemsAndTracks: (items: TimelineItem[], tracks: TimelineTrack[]) => void
 
   // Internal mutations (prefixed with _ to indicate called by command system)
   _addItem: (item: TimelineItem) => void
@@ -142,23 +138,6 @@ function updateVisualItemEffects(
   return withItemIndexes(nextItems, state)
 }
 
-function normalizeStoreTracks(
-  tracks: TimelineTrack[],
-  previousTracks: TimelineTrack[],
-): TimelineTrack[] {
-  const previousById = new Map(previousTracks.map((track) => [track.id, track]))
-  const sortedTracks = pruneEmptyLayerGroups(tracks)
-    .map((track) => {
-      const previous = previousById.get(track.id)
-      const normalized = previous === track ? previous : normalizeTrack(track)
-      const height = resolveTrackHeight(normalized.id, getTrackKind(normalized))
-      return normalized.height === height ? normalized : { ...normalized, height }
-    })
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-
-  return normalizeClassicTrackNames(sortedTracks)
-}
-
 export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => ({
   // State
   items: [],
@@ -175,7 +154,6 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
   setItems: (items) =>
     set((state) => {
       const normalizedItems = items.map((item) => normalizeFrameFields(item))
-      assertItemsTrackCompatibility(normalizedItems, state.tracks)
       return withItemIndexes(normalizedItems, state)
     }),
   setTracks: (tracks) =>
@@ -187,9 +165,24 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
       // (areTrackPropsEqual) and re-rendering every track row. When the caller
       // passes the existing stored object, normalization is a no-op re-clone, so
       // reuse the previous reference.
-      const nextTracks = normalizeStoreTracks(tracks, state.tracks)
-      assertRequiredTracksPreserved(state.tracks, nextTracks)
-      assertItemsTrackCompatibility(state.items, nextTracks)
+      const previousById = new Map(state.tracks.map((track) => [track.id, track]))
+      const sortedTracks = pruneEmptyLayerGroups(tracks)
+        .map((track) => {
+          const previous = previousById.get(track.id)
+          const normalized = previous === track ? previous : normalizeTrack(track)
+          // Height is a local view preference (see utils/track-heights.ts), so
+          // it is always re-derived here rather than read off the track. This is
+          // the single funnel for track writes, which keeps whatever height a
+          // caller happens to carry — a project file, a snapshot restored by
+          // undo, a freshly created track — from leaking into the timeline.
+          const height = resolveTrackHeight(normalized.id)
+          return normalized.height === height ? normalized : { ...normalized, height }
+        })
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      // Re-derive classic V#/A# labels from the settled stack order so create /
+      // delete history can't leave names out of sequence (e.g. V1, V5, V3, V4).
+      // No-ops (and preserves references) when names already match position.
+      const nextTracks = normalizeClassicTrackNames(sortedTracks)
 
       // If the result is element-wise identical to the current tracks, keep the
       // same array reference so `s.tracks` selectors don't fire at all.
@@ -200,33 +193,17 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
       return { tracks: unchanged ? state.tracks : nextTracks }
     }),
 
-  setItemsAndTracks: (items, tracks) =>
-    set((state) => {
-      const normalizedItems = items.map((item) => normalizeFrameFields(item))
-      const nextTracks = normalizeStoreTracks(tracks, state.tracks)
-      assertRequiredTracksPreserved(state.tracks, nextTracks)
-      assertItemsTrackCompatibility(normalizedItems, nextTracks)
-      return {
-        ...withItemIndexes(normalizedItems, state),
-        tracks: nextTracks,
-      }
-    }),
-
   // Add item
   _addItem: (item) =>
     set((state) => {
-      const normalizedItem = normalizeFrameFields(item)
-      assertItemTrackCompatibility(normalizedItem, state.tracks)
-      const nextItems = [...state.items, normalizedItem]
+      const nextItems = [...state.items, normalizeFrameFields(item)]
       return withItemIndexes(nextItems, state)
     }),
 
   // Add multiple items in one mutation
   _addItems: (items) =>
     set((state) => {
-      const normalizedItems = items.map((item) => normalizeFrameFields(item))
-      assertItemsTrackCompatibility(normalizedItems, state.tracks)
-      const nextItems = [...state.items, ...normalizedItems]
+      const nextItems = [...state.items, ...items.map((item) => normalizeFrameFields(item))]
       return withItemIndexes(nextItems, state)
     }),
 
@@ -234,12 +211,9 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
   _updateItem: (id, updates) => {
     const normalizedUpdates = normalizeItemUpdates(updates)
     return set((state) => {
-      const nextItems = state.items.map((i) => {
-        if (i.id !== id) return i
-        const nextItem = normalizeFrameFields({ ...i, ...normalizedUpdates } as typeof i)
-        assertItemTrackCompatibility(nextItem, state.tracks)
-        return nextItem
-      })
+      const nextItems = state.items.map((i) =>
+        i.id === id ? normalizeFrameFields({ ...i, ...normalizedUpdates } as typeof i) : i,
+      )
       return withItemIndexes(nextItems, state)
     })
   },
@@ -313,15 +287,11 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
     return set((state) => {
       const nextItems = state.items.map((item) =>
         item.id === id
-          ? (() => {
-              const nextItem = normalizeFrameFields({
-                ...item,
-                from: normalizedFrom,
-                ...(newTrackId && { trackId: newTrackId }),
-              })
-              assertItemTrackCompatibility(nextItem, state.tracks)
-              return nextItem
-            })()
+          ? normalizeFrameFields({
+              ...item,
+              from: normalizedFrom,
+              ...(newTrackId && { trackId: newTrackId }),
+            })
           : item,
       )
       return withItemIndexes(nextItems, state)
@@ -335,13 +305,11 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
       const nextItems = state.items.map((item) => {
         const update = updateMap.get(item.id)
         if (!update) return item
-        const nextItem = normalizeFrameFields({
+        return normalizeFrameFields({
           ...item,
           from: update.from,
           ...(update.trackId && { trackId: update.trackId }),
         })
-        assertItemTrackCompatibility(nextItem, state.tracks)
-        return nextItem
       })
       return withItemIndexes(nextItems, state)
     }),
@@ -389,9 +357,7 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
           : undefined,
       } as TimelineItem
 
-      const normalizedDuplicate = normalizeFrameFields(duplicate)
-      assertItemTrackCompatibility(normalizedDuplicate, state.tracks)
-      newItems.push(normalizedDuplicate)
+      newItems.push(normalizeFrameFields(duplicate))
       duplicatedItemIdByOriginalId.set(original.id, duplicate.id)
     }
 
@@ -450,11 +416,19 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
           timelineFps,
         )
 
+        // Subtitle segments: re-anchor cues to the new `from` and drop cues
+        // that no longer fall inside the visible window.
+        const cueUpdate =
+          item.type === 'subtitle'
+            ? trimSubtitleCuesAtStart(item, clampedAmount, timelineFps)
+            : null
+
         return {
           ...item,
           from: roundFrame(newFrom),
           durationInFrames: roundDuration(newDuration),
           ...sourceUpdate,
+          ...(cueUpdate ?? {}),
         } as typeof item
       })
       return withItemIndexes(nextItems, state)
@@ -493,10 +467,15 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
           timelineFps,
         )
 
+        // Subtitle segments: drop or truncate cues past the new end.
+        const cueUpdate =
+          item.type === 'subtitle' ? trimSubtitleCuesAtEnd(item, newDuration, timelineFps) : null
+
         return {
           ...item,
           durationInFrames: roundDuration(newDuration),
           ...sourceUpdate,
+          ...(cueUpdate ?? {}),
         } as typeof item
       })
       return withItemIndexes(nextItems, state)
@@ -538,6 +517,43 @@ export const useItemsStore = create<ItemsState & ItemsActions>()((set, get) => (
       from: splitAt,
       durationInFrames: rightDuration,
     } as TimelineItem
+
+    // Subtitle segments own their full cue list — partition it at the split
+    // point so neither half references cues outside its window. Cues are
+    // segment-relative seconds (start = 0 at item.from), so we partition
+    // against `leftDuration / fps`.
+    if (item.type === 'subtitle') {
+      const timelineFps = useTimelineSettingsStore.getState().fps
+      const splitSeconds = leftDuration / timelineFps
+      const leftCues: typeof item.cues = []
+      const rightCues: typeof item.cues = []
+      for (const cue of item.cues) {
+        const startsBeforeSplit = cue.startSeconds < splitSeconds
+        const endsAfterSplit = cue.endSeconds > splitSeconds
+        if (startsBeforeSplit && !endsAfterSplit) {
+          // Wholly in the left half.
+          leftCues.push(cue)
+        } else if (!startsBeforeSplit) {
+          // Wholly in the right half — rebase to the new segment's `from`.
+          rightCues.push({
+            ...cue,
+            startSeconds: cue.startSeconds - splitSeconds,
+            endSeconds: cue.endSeconds - splitSeconds,
+          })
+        } else {
+          // Straddles the cut. Truncate left to splitSeconds, rebase right.
+          leftCues.push({ ...cue, endSeconds: splitSeconds })
+          rightCues.push({
+            ...cue,
+            id: `${cue.id}-r`,
+            startSeconds: 0,
+            endSeconds: cue.endSeconds - splitSeconds,
+          })
+        }
+      }
+      ;(leftItem as typeof item).cues = leftCues
+      ;(rightItem as typeof item).cues = rightCues
+    }
 
     // Handle sourceStart/sourceEnd for media items (accounting for speed)
     if (isMediaItem(item)) {

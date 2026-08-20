@@ -6,26 +6,8 @@ import type { CaptionDialogState } from './use-caption-dialog-state'
 interface UseAutoTranscriptCaptionsParams {
   item: TimelineItemType
   caption: CaptionDialogState
-  hasTimelineCaptions: boolean
+  hasGeneratedCaptions: boolean
   isBroken: boolean
-}
-
-export function shouldAutoInsertTranscriptCaptions({
-  item,
-  caption,
-  hasTimelineCaptions,
-  isBroken,
-}: UseAutoTranscriptCaptionsParams): boolean {
-  return (
-    !item.aiEditingSource &&
-    caption.canManageCaptions &&
-    caption.mediaHasTranscript &&
-    !hasTimelineCaptions &&
-    !(item.transcriptCaptions?.type === 'transcript' && item.transcriptCaptions.enabled === false) &&
-    !isBroken &&
-    (item.type === 'video' || item.type === 'audio') &&
-    Boolean(item.mediaId)
-  )
 }
 
 /**
@@ -37,29 +19,31 @@ export function shouldAutoInsertTranscriptCaptions({
 export function useAutoTranscriptCaptions({
   item,
   caption,
-  hasTimelineCaptions,
+  hasGeneratedCaptions,
   isBroken,
 }: UseAutoTranscriptCaptionsParams): void {
   const attemptRef = useRef<string | null>(null)
-  const mediaId = item.mediaId
-  const eligible = shouldAutoInsertTranscriptCaptions({
-    item,
-    caption,
-    hasTimelineCaptions,
-    isBroken,
-  })
 
   useEffect(() => {
-    if (!eligible || !mediaId) return
+    if (
+      !caption.canManageCaptions ||
+      !caption.mediaHasTranscript ||
+      hasGeneratedCaptions ||
+      isBroken ||
+      (item.type !== 'video' && item.type !== 'audio') ||
+      !item.mediaId
+    ) {
+      return
+    }
 
-    const attemptKey = `${item.id}:${mediaId}`
+    const attemptKey = `${item.id}:${item.mediaId}`
     if (attemptRef.current === attemptKey) {
       return
     }
     attemptRef.current = attemptKey
 
     void mediaTranscriptionService
-      .insertTranscriptAsCaptions(mediaId, {
+      .enableTranscriptCaptions(item.mediaId, {
         clipIds: [item.id],
         replaceExisting: false,
         selectUpdatedClips: false,
@@ -67,5 +51,13 @@ export function useAutoTranscriptCaptions({
       .catch(() => {
         // Keep this silent: the explicit Generate Captions action remains the user-facing fallback.
       })
-  }, [eligible, item.id, mediaId])
+  }, [
+    caption.canManageCaptions,
+    caption.mediaHasTranscript,
+    hasGeneratedCaptions,
+    isBroken,
+    item.id,
+    item.mediaId,
+    item.type,
+  ])
 }

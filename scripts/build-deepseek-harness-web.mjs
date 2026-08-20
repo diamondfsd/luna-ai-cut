@@ -5,19 +5,22 @@ import { builtinModules } from 'node:module'
 import process from 'node:process'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { resolveDeepSeekHarnessRoot } from './deepseek-harness-root.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const harnessRoot = join(root, 'packages/freecut-editor/src/features/ai-editing')
-const layoutRoot = join(harnessRoot, 'packages/client/ui-layout')
-const settingsGeneralRoot = join(harnessRoot, 'packages/client/ui-settings-general')
+const harnessRoot = resolveDeepSeekHarnessRoot(root)
+if (!harnessRoot) {
+  console.log('[harness-build] standalone DeepSeek Harness checkout was not found; skipped')
+  process.exit(0)
+}
 const output = join(root, 'dist/deepseek-harness')
-const plugin = join(root, 'scripts/deepseek-harness-freecut-plugin.mjs')
-const scriptRuntime = join(root, 'scripts/deepseek-harness-script-runtime.mjs')
-const builtInSkills = join(root, 'packages/freecut-editor/src/features/ai-editing/skills/built-in')
 const nodeModules = join(output, 'node_modules')
 const deepseekPackages = join(nodeModules, '@deepseek-ai')
 const bundleStage = join(output, '.deepseek-bundle-stage')
 const generatedBundleFiles = []
+const freecutSkillsSource = join(root, 'packages/freecut-editor/src/features/ai-editing/skills/built-in')
+const freecutSkillLoaderSource = join(root, 'scripts/deepseek-harness-built-in-skills.mjs')
+const freecutSkillLoaderDependency = join(root, 'node_modules/yaml')
 
 const nativePackagePrefixes = [
   '@img/',
@@ -198,6 +201,24 @@ async function bundleHarnessCli(build) {
   generatedBundleFiles.push(...await walkFiles(cliLib))
 }
 
+async function copyFreeCutSkillResources() {
+  if (!existsSync(freecutSkillsSource) || !existsSync(freecutSkillLoaderSource) || !existsSync(freecutSkillLoaderDependency)) {
+    throw new Error('FreeCut 内置技能 Markdown 资源缺失，无法构建 DeepSeek Harness。')
+  }
+  await cp(freecutSkillsSource, join(output, 'skills/built-in'), {
+    recursive: true,
+    dereference: true,
+  })
+  await cp(freecutSkillLoaderSource, join(output, 'deepseek-harness-built-in-skills.mjs'), {
+    dereference: true,
+  })
+  await cp(freecutSkillLoaderDependency, join(output, 'node_modules/yaml'), {
+    recursive: true,
+    dereference: true,
+  })
+  console.log('FreeCut Markdown skill resources copied into DeepSeek Harness runtime.')
+}
+
 function isAllowedBundleImport(specifier) {
   if (isExternalHarnessDependency(specifier)) return true
   const packageName = packageNameOf(specifier)
@@ -253,6 +274,7 @@ async function pruneBundledDependencies() {
 
   const runtimeFiles = [
     ...await walkFiles(join(output, 'lib')),
+    join(output, 'deepseek-harness-built-in-skills.mjs'),
     ...await walkFiles(deepseekPackages),
   ].filter((file) => /\.(?:js|mjs|cjs)$/.test(file))
   for (const file of runtimeFiles) {
@@ -280,34 +302,17 @@ async function pruneBundledDependencies() {
   console.log(`DeepSeek Harness dependencies pruned: ${removed}, ${(before / 1024 / 1024).toFixed(1)} MiB -> ${(after / 1024 / 1024).toFixed(1)} MiB`)
 }
 
-// The deployed Web runtime consumes workspace bundles from lib/.
-// Rebuild host and client output first so source changes cannot be hidden by
-// stale ignored output in a fresh worktree.
-const harnessHostBuild = spawnSync('pnpm', [
+// Build the upstream workspace once. This produces Host, Client, and Web
+// artifacts using the same command documented by DeepSeek Harness.
+const harnessBuild = spawnSync('pnpm', [
   '--dir', harnessRoot,
-  'run', 'build:lib:host',
+  'run', 'build',
 ], {
   cwd: root,
   stdio: 'inherit',
   shell: process.platform === 'win32',
 })
-if (harnessHostBuild.status !== 0) process.exit(harnessHostBuild.status ?? 1)
-
-const bin = (name) => join(harnessRoot, 'node_modules/.bin', process.platform === 'win32' ? `${name}.cmd` : name)
-for (const clientRoot of [layoutRoot, settingsGeneralRoot]) {
-  const clientTypes = spawnSync(bin('tsc'), ['-b', 'tsconfig.json'], {
-    cwd: clientRoot,
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  })
-  if (clientTypes.status !== 0) process.exit(clientTypes.status ?? 1)
-  const clientBuild = spawnSync(bin('tsdown'), ['--env.DSH_BUILD_FACE', 'client'], {
-    cwd: clientRoot,
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  })
-  if (clientBuild.status !== 0) process.exit(clientBuild.status ?? 1)
-}
+if (harnessBuild.status !== 0) process.exit(harnessBuild.status ?? 1)
 
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
@@ -362,10 +367,8 @@ for (const packageRoot of ['vendor', 'packages']) {
   }
 }
 
-await cp(plugin, join(output, 'luna-freecut-plugin.mjs'))
-await cp(scriptRuntime, join(output, 'deepseek-harness-script-runtime.mjs'))
-await cp(join(root, 'scripts/deepseek-harness-built-in-skills.mjs'), join(output, 'deepseek-harness-built-in-skills.mjs'))
-await cp(builtInSkills, join(output, 'skills/built-in'), { recursive: true, dereference: true })
+await copyFreeCutSkillResources()
+
 const { build: buildWithTsdown } = await import(pathToFileURL(join(
   harnessRoot,
   'node_modules/tsdown/dist/index.mjs',

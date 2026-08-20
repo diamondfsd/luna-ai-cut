@@ -63,12 +63,7 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import { useUiSoundStore } from '@freecut/shared/state/ui-sound-store'
 import { emitUiSound, previewUiSound } from '@freecut/shared/ui/ui-sound'
 import { VOICE_OPTIONS, type VoiceName } from '@freecut/infrastructure/audio/ui-sound'
-import {
-  Select,
-  SelectContent,
-  SelectTrigger,
-  SelectValue,
-} from '@freecut/components/ui/select'
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@freecut/components/ui/select'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { cn } from '@freecut/shared/ui/cn'
 import { useNaturalHeight } from '@freecut/shared/ui/use-natural-height'
@@ -376,6 +371,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const showWaveforms = useSettingsStore((s) => s.showWaveforms)
   const showFilmstrips = useSettingsStore((s) => s.showFilmstrips)
   const enableFilmstripExtraction = useSettingsStore((s) => s.enableFilmstripExtraction)
+  const autoSaveInterval = useSettingsStore((s) => s.autoSaveInterval)
   const maxUndoHistory = useSettingsStore((s) => s.maxUndoHistory)
   const captioningIntervalUnit = useSettingsStore((s) => s.captioningIntervalUnit)
   const captioningIntervalValue = useSettingsStore((s) => s.captioningIntervalValue)
@@ -639,6 +635,32 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   >
                     {activeSection === 'general' && (
                       <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm">{t('settings.general.autoSave')}</Label>
+                          <Switch
+                            checked={autoSaveInterval > 0}
+                            onCheckedChange={(v) => setSetting('autoSaveInterval', v ? 5 : 0)}
+                          />
+                        </div>
+                        {autoSaveInterval > 0 && (
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm text-muted-foreground">
+                              {t('settings.general.interval')}
+                            </Label>
+                            <div className="w-32 flex items-center gap-2">
+                              <Slider
+                                value={[autoSaveInterval]}
+                                onValueChange={([v]) => setSetting('autoSaveInterval', v || 5)}
+                                min={5}
+                                max={30}
+                                step={5}
+                              />
+                              <span className="text-xs text-muted-foreground w-6">
+                                {t('settings.general.intervalMinutes', { count: autoSaveInterval })}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <Label className="text-sm">
                             {t('settings.general.undoHistoryDepth')}

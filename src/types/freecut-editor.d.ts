@@ -1,6 +1,22 @@
 declare module '@freecut/embedded' {
   import type { ComponentType } from 'react'
 
+  export interface EmbeddedLunaEditorSdkBridge {
+    onRequest: (callback: (request: {
+      requestId: string
+      sessionId: string
+      projectId?: string
+      name: string
+      args: Record<string, unknown>
+    }) => void) => () => void
+    respond: (response: {
+      requestId: string
+      ok: boolean
+      result?: unknown
+      error?: { code?: string; message: string; details?: unknown; retryable?: boolean }
+    }) => void
+  }
+
   export interface EmbeddedMediaImportSource {
     path: string
     name: string
@@ -40,6 +56,29 @@ declare module '@freecut/embedded' {
     percent: number | null
   }
 
+  export interface EmbeddedSpeechGenerationRequest {
+    requestId: string
+    text: string
+    voice: string
+    speed: number
+  }
+
+  export interface EmbeddedMusicGenerationRequest {
+    requestId: string
+    model: 'small-music' | 'small-sfx'
+    prompt: string
+    durationSeconds: number
+    guidanceScale?: number
+    seed?: number
+  }
+
+  export interface EmbeddedGeneratedAudio {
+    requestId: string
+    fileName: string
+    durationSeconds: number
+    bytes: Uint8Array
+  }
+
   export interface EmbeddedHtmlRenderRequest {
     html: string
     css: string
@@ -76,28 +115,13 @@ declare module '@freecut/embedded' {
     revealFile(filePath: string): Promise<void>
   }
 
-  export interface EmbeddedDeepSeekHarnessWebState {
-    projectId: string
-    status: 'starting' | 'ready' | 'error'
-    url?: string
-    error?: string
-  }
-
-  export interface EmbeddedDeepSeekHarnessToolRequest {
-    requestId: string
-    projectId: string
+  export interface EmbeddedProjectContext {
+    id: string
     name: string
-    args: Record<string, unknown>
-  }
-
-  export interface EmbeddedDeepSeekHarnessBridge {
-    getWebUrl(projectId: string): Promise<string>
-    onWebState(callback: (state: EmbeddedDeepSeekHarnessWebState) => void): () => void
-    onToolRequest(callback: (request: EmbeddedDeepSeekHarnessToolRequest) => Promise<unknown>): () => void
-    onToolCancel(callback: (requestId: string) => void): () => void
   }
 
   export interface FreeCutEditorProps {
+    language?: string
     onRequestMediaImport?: (importFiles: ImportMediaFiles) => void | Promise<void>
     onRevealFile?: (filePath: string) => Promise<void>
     onDescribeDroppedMediaFiles?: (files: File[]) => Promise<EmbeddedMediaImportSource[]>
@@ -109,14 +133,22 @@ declare module '@freecut/embedded' {
       onProgress?: (progress: EmbeddedTaskProgress) => void,
       signal?: AbortSignal,
     ) => Promise<EmbeddedTranscriptResult>
-    onGetDeepSeekHarnessWebUrl?: EmbeddedDeepSeekHarnessBridge['getWebUrl']
-    onDeepSeekHarnessWebState?: EmbeddedDeepSeekHarnessBridge['onWebState']
-    onDeepSeekHarnessToolRequest?: EmbeddedDeepSeekHarnessBridge['onToolRequest']
-    onDeepSeekHarnessToolCancel?: EmbeddedDeepSeekHarnessBridge['onToolCancel']
+    onGenerateSpeech?: (
+      request: EmbeddedSpeechGenerationRequest,
+      onProgress?: (progress: EmbeddedTaskProgress) => void,
+      signal?: AbortSignal,
+    ) => Promise<EmbeddedGeneratedAudio>
+    onGenerateMusic?: (
+      request: EmbeddedMusicGenerationRequest,
+      onProgress?: (progress: EmbeddedTaskProgress) => void,
+      signal?: AbortSignal,
+    ) => Promise<EmbeddedGeneratedAudio>
     onRenderHtmlFrame?: (
       request: EmbeddedHtmlRenderRequest,
     ) => Promise<EmbeddedHtmlRenderResult>
     exportFiles?: EmbeddedExportBridge
+    lunaEditorSdk?: EmbeddedLunaEditorSdkBridge
+    onProjectContextChange?: (project: EmbeddedProjectContext | null) => void
   }
 
   export const FreeCutEditor: ComponentType<FreeCutEditorProps>

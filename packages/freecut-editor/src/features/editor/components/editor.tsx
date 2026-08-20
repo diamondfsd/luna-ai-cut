@@ -63,6 +63,12 @@ import {
   useSubtitleScanProgressStore,
 } from '@freecut/features/editor/deps/media-library'
 import { IoDragReadout } from '@freecut/shared/timeline/io-range'
+import { useEmbeddedHost } from '@freecut/shared/host/embedded-host'
+import { FreeCutRuntime } from '@freecut/integrations/luna-editor-sdk'
+import {
+  buildTimelineFromStores,
+  hydrateTimelineStoresFromProject,
+} from '@freecut/features/timeline/stores/timeline-persistence'
 const logger = createLogger('Editor')
 const LazyTimeline = lazy(() => importTimeline().then(({ Timeline }) => ({ default: Timeline })))
 const LazyColorGradingDock = lazy(() =>
@@ -73,15 +79,10 @@ const LazyColorTimelineNavigator = lazy(() =>
     default: ColorTimelineNavigator,
   })),
 )
-const LazyDeepSeekHarnessDock = lazy(() =>
-  import('./deepseek-harness-dock').then(({ DeepSeekHarnessDock }) => ({
-    default: DeepSeekHarnessDock,
-  })),
-)
 const EDITOR_PROJECT_ROUTE_ID = '/editor/$projectId'
 
 function workspaceTimelineSizeStorageKey(workspace: EditorWorkspaceId): string {
-  return `editor:workspaceTimelineSize:v2:${workspace}`
+  return `editor:workspaceTimelineSize:v3:${workspace}`
 }
 
 function loadWorkspaceTimelineSize(workspace: EditorWorkspaceId): number | null {
@@ -367,8 +368,7 @@ const AutoSaveController = memo(function AutoSaveController({
   onSave: () => Promise<void>
 }) {
   const isDirty = useTimelineStore((s: { isDirty: boolean }) => s.isDirty)
-  const changeVersion = useTimelineStore((s) => s.changeVersion ?? 0)
-  useAutoSave({ isDirty, changeVersion, onSave })
+  useAutoSave({ isDirty, onSave })
   return null
 })
 
@@ -383,6 +383,8 @@ export const LoadedEditor = memo(function LoadedEditor({
   migration,
 }: EditorProps) {
   const { t } = useTranslation()
+  const embeddedHost = useEmbeddedHost()
+  const onProjectContextChange = embeddedHost.onProjectContextChange
   const router = useRouter()
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
@@ -406,6 +408,11 @@ export const LoadedEditor = memo(function LoadedEditor({
 
   // Serialize saves so leaving during an in-flight auto-save cannot drop newer edits.
   const savePromiseRef = useRef<Promise<void> | null>(null)
+
+  useEffect(() => {
+    onProjectContextChange?.({ id: projectId, name: project.name })
+    return () => onProjectContextChange?.(null)
+  }, [onProjectContextChange, project.name, projectId])
 
   useEffect(() => {
     hasRefreshedMigrationStateRef.current = false
@@ -456,7 +463,7 @@ export const LoadedEditor = memo(function LoadedEditor({
 
   // Initialize timeline from project data (or create default tracks for new projects).
   useEffect(() => {
-    const { setCurrentProject: setMediaProject, loadMediaItems } = useMediaLibraryStore.getState()
+    const { setCurrentProject: setMediaProject } = useMediaLibraryStore.getState()
     const { setCurrentProject } = useProjectStore.getState()
     const playbackStore = usePlaybackStore.getState()
 
@@ -467,9 +474,6 @@ export const LoadedEditor = memo(function LoadedEditor({
 
     // Set current project context for media library (v3: project-scoped media)
     setMediaProject(projectId)
-    void loadMediaItems().catch((error) => {
-      logger.error('Failed to load media library:', error)
-    })
 
     // Set current project in project store for properties panel
     setCurrentProject({
@@ -535,6 +539,64 @@ export const LoadedEditor = memo(function LoadedEditor({
     projectId,
     router,
   ])
+
+  // The embedded host is the renderer-side endpoint for the public Luna Editor
+  // SDK. Each request is hydrated from the live FreeCut stores so edits made by
+  // the assistant and edits made in the UI share the same project state.
+  useEffect(() => {
+    const sdk = embeddedHost.lunaEditorSdk
+    if (!sdk) return undefined
+
+    let queue: Promise<void> = Promise.resolve()
+    const unsubscribe = sdk.onRequest((request) => {
+      const run = async (): Promise<void> => {
+        try {
+          if (request.projectId && request.projectId !== projectId) {
+            throw new Error('Luna Editor SDK project context does not match the open FreeCut project.')
+          }
+
+          const currentProject = useProjectStore.getState().currentProject
+          if (!currentProject || currentProject.id !== projectId) {
+            throw new Error('The FreeCut project is not ready for SDK editing.')
+          }
+
+          const runtime = new FreeCutRuntime({
+            project: {
+              ...currentProject,
+              timeline: buildTimelineFromStores(),
+            },
+            media: useMediaLibraryStore.getState().mediaItems,
+          })
+          const result = await runtime.executeSdkCapability(request.name, request.args)
+
+          if (
+            result &&
+            typeof result === 'object' &&
+            'project' in result &&
+            result.project &&
+            typeof result.project === 'object'
+          ) {
+            await hydrateTimelineStoresFromProject(result.project as Parameters<typeof hydrateTimelineStoresFromProject>[0])
+            await useTimelineStore.getState().saveTimeline(projectId)
+          }
+
+          sdk.respond({ requestId: request.requestId, ok: true, result })
+        } catch (error) {
+          sdk.respond({
+            requestId: request.requestId,
+            ok: false,
+            error: {
+              code: 'CAPABILITY_ERROR',
+              message: error instanceof Error ? error.message : String(error),
+            },
+          })
+        }
+      }
+      queue = queue.then(run, run)
+    })
+
+    return unsubscribe
+  }, [embeddedHost.lunaEditorSdk, projectId])
 
   useEffect(() => {
     syncSidebarLayout(editorLayout)
@@ -715,7 +777,9 @@ export const LoadedEditor = memo(function LoadedEditor({
         {mediaFullColumn && !hidesDefaultSidebars && (
           <InteractionLockRegion locked={isMaskEditingActive}>
             <ErrorBoundary level="feature">
-              <MediaSidebar />
+              <div data-editor-media-sidebar className="h-full">
+                <MediaSidebar />
+              </div>
             </ErrorBoundary>
           </InteractionLockRegion>
         )}
@@ -746,7 +810,7 @@ export const LoadedEditor = memo(function LoadedEditor({
           <ResizablePanelGroup
             direction="vertical"
             className="flex-1 min-w-0"
-            autoSaveId="editor:timeline-layout:v2"
+            autoSaveId="editor:timeline-layout:v3"
           >
             {/* Top - Preview + Properties (inline mode) */}
             <ResizablePanel
@@ -759,18 +823,22 @@ export const LoadedEditor = memo(function LoadedEditor({
                 {!mediaFullColumn && (
                   <InteractionLockRegion locked={isMaskEditingActive}>
                     <ErrorBoundary level="feature">
-                      <MediaSidebar />
+                      <div data-editor-media-sidebar className="h-full">
+                        <MediaSidebar />
+                      </div>
                     </ErrorBoundary>
                   </InteractionLockRegion>
                 )}
 
                 {/* Center - Preview */}
                 <ErrorBoundary level="feature">
-                  {isMotionWorkspace ? (
-                    <MotionPreviewArea project={project} />
-                  ) : (
-                    <PreviewArea project={project} />
-                  )}
+                  <div data-editor-preview className="flex min-w-0 min-h-0 flex-1">
+                    {isMotionWorkspace ? (
+                      <MotionPreviewArea project={project} />
+                    ) : (
+                      <PreviewArea project={project} />
+                    )}
+                  </div>
                 </ErrorBoundary>
 
                 {/* Right Sidebar - Properties (inline with preview) */}
@@ -798,7 +866,7 @@ export const LoadedEditor = memo(function LoadedEditor({
             >
               <InteractionLockRegion locked={isMaskEditingActive} className="h-full">
                 <ErrorBoundary level="feature">
-                  <div className="h-full flex overflow-hidden">
+                  <div data-editor-timeline className="h-full flex overflow-hidden">
                     <div className="min-w-0 flex-1">
                       {isMotionWorkspace ? (
                         <MotionTimelineDock project={project} />
@@ -825,13 +893,6 @@ export const LoadedEditor = memo(function LoadedEditor({
             </ErrorBoundary>
           </InteractionLockRegion>
         )}
-
-        {/* AI is a separate full-height dock. It does not share the properties
-            sidebar's open state or width so both panels remain independently
-            adjustable. */}
-        <Suspense fallback={null}>
-          <LazyDeepSeekHarnessDock projectId={projectId} />
-        </Suspense>
 
       </div>
 

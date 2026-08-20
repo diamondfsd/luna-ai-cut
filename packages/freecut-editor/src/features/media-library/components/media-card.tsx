@@ -674,13 +674,6 @@ const MediaCardInternal = memo(function MediaCardInternal({
   const isImporting = useMediaLibraryStore(
     useCallback((s) => s.importingIds.includes(media.id), [media.id]),
   )
-  const importProgress = useMediaPreparationStore(
-    useCallback(
-      (s) => [...s.tasks.values()].find((task) => task.mediaId === media.id && task.type === 'import')?.progress ?? null,
-      [media.id],
-    ),
-  )
-  const importProgressPercent = importProgress === null ? null : Math.round(importProgress * 100)
   const hasActivePreparationTasks = useMediaPreparationStore(
     useCallback(
       (s) => {
@@ -1698,9 +1691,7 @@ const MediaCardInternal = memo(function MediaCardInternal({
               {/* Info — single row: icon + name + duration */}
               <div className="flex-1 min-w-0 flex items-center gap-1.5">
                 {isImporting ? (
-                  <span className="text-[10px] text-muted-foreground">
-                    {preparingLabel}{importProgressPercent !== null ? ` ${importProgressPercent}%` : ''}
-                  </span>
+                  <span className="text-[10px] text-muted-foreground">{preparingLabel}</span>
                 ) : (
                   <>
                     <div className="p-0.5 rounded bg-primary/90 text-primary-foreground flex-shrink-0">
@@ -1806,7 +1797,7 @@ const MediaCardInternal = memo(function MediaCardInternal({
                 <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 pointer-events-none">
                   <Loader2 className="w-6 h-6 text-white animate-spin" />
                   <div className="text-[9px] text-white/60 uppercase tracking-wider">
-                    {preparingLabel}{importProgressPercent !== null ? ` ${importProgressPercent}%` : ''}
+                    {preparingLabel}
                   </div>
                 </div>
               )}

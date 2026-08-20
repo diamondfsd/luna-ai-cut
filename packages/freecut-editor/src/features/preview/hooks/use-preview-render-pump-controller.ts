@@ -69,6 +69,7 @@ import {
   collectVisibleTrackVideoSourceTimesBySrc,
   getVideoItemSourceTimeSeconds,
   resolveActivePreviewLookaheadTimestamps,
+  resolvePreviewPreseekSource,
   resolvePausedVariableSpeedPrewarmPlan,
   shouldRunJumpPreseek,
 } from '../utils/render-pump-preseek'
@@ -99,6 +100,7 @@ import {
   type CommittedPreviewSnapshotState,
 } from '../utils/preview-display-canvas'
 import type { TransitionPreviewSessionTrace } from './use-preview-transition-session-controller'
+import { resolveTransitionDomPlaybackState } from '../utils/transition-dom-playback'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { isPreviewTraceEnabled, recordPumpTrace } from '@freecut/shared/logging/preview-trace'
 import {
@@ -110,7 +112,10 @@ import {
   recordPreviewScrubRenderStarted,
   recordPreviewScrubRequest,
 } from '@freecut/shared/logging/preview-scrub-performance'
-import type { CompositionRendererInstance } from '@freecut/features/preview/deps/export'
+import {
+  resolveAATransitionRamps,
+  type CompositionRendererInstance,
+} from '@freecut/features/preview/deps/export'
 
 const logger = createLogger('VideoPreview')
 
@@ -187,6 +192,7 @@ interface UsePreviewRenderPumpParams {
   playerRef: RefObject<PlayerRef | null>
   fps: number
   forceFastScrubOverlay: boolean
+  useProxy: boolean
   combinedTracks: TimelineTrack[]
   fastScrubBoundaryFrames: number[]
   fastScrubBoundarySources: FastScrubBoundarySource[]
@@ -244,7 +250,10 @@ interface UsePreviewRenderPumpParams {
   getPlayingAnyTransitionPrewarmStartFrame: (frame: number) => number | null
   getPausedTransitionPrewarmStartFrame: (frame: number) => number | null
   getPinnedTransitionElementForItem: (itemId: string) => HTMLVideoElement | null
-  pinTransitionPlaybackSession: (window: TransitionWindow | null) => TransitionWindow | null
+  pinTransitionPlaybackSession: (
+    window: TransitionWindow | null,
+    pausedTargetFrame?: number,
+  ) => TransitionWindow | null
   clearTransitionPlaybackSession: () => void
   cacheTransitionSessionFrame: (frame: number) => void
   preparePlaybackTransitionFrame: (frame: number) => Promise<boolean>
@@ -270,6 +279,7 @@ export function usePreviewRenderPump({
   playerRef,
   fps,
   forceFastScrubOverlay,
+  useProxy,
   combinedTracks,
   fastScrubBoundaryFrames,
   fastScrubBoundarySources,
@@ -593,6 +603,26 @@ export function usePreviewRenderPump({
           clearTimeout(transitionPrepareTimeoutRef.current)
           transitionPrepareTimeoutRef.current = null
         }
+        return
+      }
+      const playbackState = usePlaybackStore.getState()
+      const transitionWindow = getTransitionWindowByStartFrame(frame)
+      const aaRamps = transitionWindow
+        ? resolveAATransitionRamps(
+            transitionWindow.leftClip,
+            transitionWindow.rightClip,
+            {
+              transitionStart: transitionWindow.startFrame,
+              transitionEnd: transitionWindow.endFrame,
+            },
+            fps,
+          )
+        : null
+      if (aaRamps && playbackState.previewFrame === null && playbackState.currentFrame < frame) {
+        // Continuous-split A-A transitions use synchronized DOM video lanes. Rendering an
+        // eight-frame MediaBunny runway before entry blocks the main thread
+        // without producing frames the live transition will consume.
+        deferredPlaybackTransitionPrepareFrameRef.current = null
         return
       }
       deferredPlaybackTransitionPrepareFrameRef.current = frame
@@ -937,6 +967,15 @@ export function usePreviewRenderPump({
                 const prevSession = transitionSessionWindowRef.current
                 const isNewSession =
                   !prevSession || prevSession.transition.id !== windowForFrame.transition.id
+                const aaRamps = resolveAATransitionRamps(
+                  windowForFrame.leftClip,
+                  windowForFrame.rightClip,
+                  {
+                    transitionStart: windowForFrame.startFrame,
+                    transitionEnd: windowForFrame.endFrame,
+                  },
+                  fps,
+                )
                 pinTransitionPlaybackSession(windowForFrame)
                 // Await the prearm prewarm so mediabunny decoders are positioned
                 // at the correct source time before rendering. The prearm fires
@@ -949,7 +988,7 @@ export function usePreviewRenderPump({
                 }
                 // When entering a transition mid-playback (no prearm happened),
                 // await the prewarm synchronously to position decoders.
-                if (isNewSession && 'prewarmItems' in renderer) {
+                if (isNewSession && !aaRamps && 'prewarmItems' in renderer) {
                   await renderer.prewarmItems?.(
                     [windowForFrame.leftClip.id, windowForFrame.rightClip.id],
                     frameToRender,
@@ -972,7 +1011,21 @@ export function usePreviewRenderPump({
               // them here for zero-copy compositing. renderVideoItem still checks
               // freshness (0.2s drift) and falls back to mediabunny on large
               // jumps where the element hasn't caught up.
-              renderer.setDomVideoElementProvider?.(getBestDomVideoElementForItem)
+              const transitionWindow = getTransitionWindowForFrame(frameToRender)
+              const isActiveTransitionFrame =
+                transitionWindow !== null &&
+                frameToRender >= transitionWindow.startFrame &&
+                frameToRender < transitionWindow.endFrame
+              if (transitionWindow && isActiveTransitionFrame) {
+                // A-A transitions use an extended source-time ramp that the
+                // ordinary paused DOM composition does not own. Pin and seek
+                // both browser-video lanes to that ramp before compositing so
+                // hover skims show the real effect without a cold exact decode.
+                pinTransitionPlaybackSession(transitionWindow, frameToRender)
+                renderer.setDomVideoElementProvider?.(getPinnedTransitionElementForItem)
+              } else {
+                renderer.setDomVideoElementProvider?.(getBestDomVideoElementForItem)
+              }
             } else {
               // Reverse media elements retain only one outstanding seek and
               // coalesce every clock update to the newest target. Completed
@@ -1516,7 +1569,12 @@ export function usePreviewRenderPump({
     const resolvePreseekItemSrc = (item: VideoItem) => {
       const proxyUrl = item.mediaId ? resolveProxyUrl(item.mediaId) : null
       const liveUrl = item.mediaId ? blobUrlManager.get(item.mediaId) : null
-      return proxyUrl ?? liveUrl ?? (item.src || null)
+      return resolvePreviewPreseekSource({
+        useProxy,
+        proxySource: proxyUrl,
+        liveSource: liveUrl,
+        itemSource: item.src,
+      })
     }
 
     function scheduleReversePlaybackPreseek(targetFrame: number) {
@@ -1565,10 +1623,12 @@ export function usePreviewRenderPump({
         return
       }
 
-      for (const [src, timestamps] of bySource) {
-        const currentTimestamp = timestamps[0]
-        if (currentTimestamp !== undefined) {
-          scheduleScrubProxyFallback(src, currentTimestamp)
+      if (useProxy) {
+        for (const [src, timestamps] of bySource) {
+          const currentTimestamp = timestamps[0]
+          if (currentTimestamp !== undefined) {
+            scheduleScrubProxyFallback(src, currentTimestamp)
+          }
         }
       }
 
@@ -1723,7 +1783,9 @@ export function usePreviewRenderPump({
         const exactTimestamp = timestamps[0]
         if (exactTimestamp === undefined) continue
         nextSourceTimes.set(src, exactTimestamp)
-        scheduleScrubProxyFallback(src, exactTimestamp)
+        if (useProxy) {
+          scheduleScrubProxyFallback(src, exactTimestamp)
+        }
 
         if (!usedDedicatedLane) {
           usedDedicatedLane = true
@@ -1985,7 +2047,7 @@ export function usePreviewRenderPump({
     }
 
     const handleActivePlaybackTransitionMaintenance = (state: PlaybackStoreSnapshot) => {
-      if (!state.isPlaying || !forceFastScrubOverlay) {
+      if (!state.isPlaying) {
         return
       }
 
@@ -2014,12 +2076,33 @@ export function usePreviewRenderPump({
       if (sessionWindow && transitionSessionPinnedElementsRef.current.size > 0) {
         for (const clip of [sessionWindow.leftClip, sessionWindow.rightClip]) {
           if (clip.type !== 'video') continue
-          const el = transitionSessionPinnedElementsRef.current.get(clip.id)
+          const el =
+            transitionSessionPinnedElementsRef.current.get(clip.id) ??
+            getPinnedTransitionElementForItem(clip.id)
           if (!el || el.dataset.transitionHold !== '1') continue
           const clipSpeed = clip.speed ?? 1
-          const mediaPlaybackRate = getBrowserMediaPlaybackRate(clipSpeed, state.playbackRate)
-          const targetTime = getVideoItemSourceTimeSeconds(clip, state.currentFrame, fps)
+          const transitionState = resolveTransitionDomPlaybackState({
+            window: sessionWindow,
+            clip,
+            frame: state.currentFrame,
+            timelineFps: fps,
+            transportRate: state.playbackRate,
+          })
+          const mediaPlaybackRate =
+            transitionState?.playbackRate ??
+            getBrowserMediaPlaybackRate(clipSpeed, state.playbackRate)
+          const targetTime =
+            transitionState?.sourceTime ??
+            getVideoItemSourceTimeSeconds(clip, state.currentFrame, fps)
           if (targetTime === null) continue
+          if (transitionState) {
+            delete el.dataset.transitionPrearm
+          }
+          if (transitionState?.hasActiveSourceRamp) {
+            el.dataset.transitionSourceRamp = '1'
+          } else {
+            delete el.dataset.transitionSourceRamp
+          }
           if (state.playbackRate < 0) {
             el.pause()
             el.playbackRate = 1
@@ -2071,6 +2154,12 @@ export function usePreviewRenderPump({
               Math.min(mediaPlaybackRate + maxAdj, mediaPlaybackRate + correction),
             )
           }
+          if (el.paused && el.readyState >= 2) {
+            el.playbackRate = mediaPlaybackRate
+            el.play().catch(() => {
+              /* best effort */
+            })
+          }
         }
       } else if (transitionSessionStallCountRef.current.size > 0) {
         transitionSessionStallCountRef.current.clear()
@@ -2088,22 +2177,35 @@ export function usePreviewRenderPump({
         if (lastPlayingPrearmTargetRef.current !== prearmStartFrame) {
           lastPlayingPrearmTargetRef.current = prearmStartFrame
           if (transitionWindow) {
-            const renderer = scrubRendererRef.current
-            if (renderer && 'prewarmItems' in renderer) {
-              transitionPrewarmPromiseRef.current = renderer.prewarmItems?.(
-                [transitionWindow.leftClip.id, transitionWindow.rightClip.id],
-                transitionWindow.startFrame,
+            const aaRamps = resolveAATransitionRamps(
+              transitionWindow.leftClip,
+              transitionWindow.rightClip,
+              {
+                transitionStart: transitionWindow.startFrame,
+                transitionEnd: transitionWindow.endFrame,
+              },
+              fps,
+            )
+            transitionPrewarmPromiseRef.current = (async () => {
+              const renderer = await ensureFastScrubRenderer()
+              if (!aaRamps && renderer && 'prewarmItems' in renderer) {
+                await renderer.prewarmItems?.(
+                  [transitionWindow.leftClip.id, transitionWindow.rightClip.id],
+                  transitionWindow.startFrame,
+                )
+              }
+            })()
+            if (!aaRamps) {
+              runBatchPreseek(
+                collectClipVideoSourceTimesBySrcForFrameRange(
+                  [transitionWindow.leftClip, transitionWindow.rightClip],
+                  transitionWindow.startFrame,
+                  Math.min(8, transitionWindow.endFrame - transitionWindow.startFrame),
+                  fps,
+                  { requireExplicitSourceFps: true },
+                ),
               )
             }
-            runBatchPreseek(
-              collectClipVideoSourceTimesBySrcForFrameRange(
-                [transitionWindow.leftClip, transitionWindow.rightClip],
-                transitionWindow.startFrame,
-                Math.min(8, transitionWindow.endFrame - transitionWindow.startFrame),
-                fps,
-                { requireExplicitSourceFps: true },
-              ),
-            )
           }
           pushTransitionTrace('playing_prearm', {
             targetFrame: prearmStartFrame,
@@ -2333,7 +2435,9 @@ export function usePreviewRenderPump({
             playbackTransitionState.hasActiveTransition || playbackTransitionState.shouldHoldOverlay
           )
         ) {
-          if (!playbackTransitionState.shouldPrewarm) {
+          const hasPinnedPrearm =
+            getPlayingAnyTransitionPrewarmStartFrame(state.currentFrame) !== null
+          if (!playbackTransitionState.shouldPrewarm && !hasPinnedPrearm) {
             clearTransitionPlaybackSession()
           }
           hideAllOverlays()
@@ -2938,7 +3042,9 @@ export function usePreviewRenderPump({
           void pumpRenderLoop()
         }
       } else {
-        if (!playbackTransitionState.shouldPrewarm) {
+        const hasPinnedPrearm =
+          getPlayingAnyTransitionPrewarmStartFrame(playbackState.currentFrame) !== null
+        if (!playbackTransitionState.shouldPrewarm && !hasPinnedPrearm) {
           clearTransitionPlaybackSession()
         }
         hideAllOverlays()
@@ -3001,6 +3107,7 @@ export function usePreviewRenderPump({
     fastScrubBoundarySources,
     forceFastScrubOverlay,
     fps,
+    useProxy,
     clearTransitionPlaybackSession,
     getPausedTransitionPrewarmStartFrame,
     getPinnedTransitionElementForItem,

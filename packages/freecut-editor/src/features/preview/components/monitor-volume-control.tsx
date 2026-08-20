@@ -45,7 +45,7 @@ export function MonitorVolumeControl({ buttonStyle }: MonitorVolumeControlProps)
         <Button
           variant="ghost"
           size="icon"
-          className="editor-toolbar-button flex-shrink-0"
+          className="flex-shrink-0"
           style={buttonStyle}
           data-tooltip={
             muted ? t('preview.monitor.muted') : t('preview.monitor.percent', { percent })

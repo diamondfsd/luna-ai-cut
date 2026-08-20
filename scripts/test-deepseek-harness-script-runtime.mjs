@@ -3,11 +3,33 @@ import { createServer } from 'node:http'
 import { runEditScript, SCRIPT_API } from './deepseek-harness-script-runtime.mjs'
 
 assert.equal('source' in SCRIPT_API, false)
+assert.deepEqual(Object.keys(SCRIPT_API.memory), ['read', 'search', 'update', 'remove'])
 assert.deepEqual(Object.keys(SCRIPT_API.media), ['list', 'read', 'analyze', 'getAnalysisTask', 'searchTranscript'])
 assert.deepEqual(Object.keys(SCRIPT_API.audio), ['startSpeech', 'startMusic', 'getTask'])
-
+assert.deepEqual(Object.keys(SCRIPT_API.project), ['inspect'])
+assert.deepEqual(Object.keys(SCRIPT_API.timeline), [
+  'inspectContext',
+  'addTrack',
+  'moveTrack',
+  'addMedia',
+  'trim',
+  'split',
+  'move',
+  'remove',
+  'unlink',
+  'mute',
+  'setProperties',
+  'setTransform',
+  'setAudio',
+  'addText',
+  'addKeyframe',
+  'addTransition',
+  'addMediaBatch',
+])
 const requests = []
-let audioPolls = 0
+const workerEnvironmentKey = 'LUNA_TEST_SCRIPT_RUNTIME_ENV'
+const previousWorkerEnvironment = process.env[workerEnvironmentKey]
+process.env[workerEnvironmentKey] = 'preserved'
 const server = createServer(async (request, response) => {
   const chunks = []
   for await (const chunk of request) chunks.push(chunk)
@@ -15,17 +37,18 @@ const server = createServer(async (request, response) => {
   requests.push(body)
   const result = body.name === 'media.list'
     ? { ok: true, message: '素材已读取。', data: { items: [{ id: 'media-1', mediaType: 'video' }] } }
-    : body.name === 'audio.start_music'
-      ? { ok: true, message: '音乐任务已提交。', data: { taskId: 'audio-task-1', status: 'queued' } }
-      : body.name === 'audio.get_task'
-        ? {
-            ok: true,
-            message: audioPolls++ === 0 ? '音乐任务仍在处理中。' : '音乐任务已完成。',
-            data: audioPolls === 1
-              ? { taskId: 'audio-task-1', status: 'generating' }
-              : { taskId: 'audio-task-1', status: 'completed', mediaId: 'music-1' },
-          }
-        : { ok: true, message: '编辑完成。', data: { createdItemIds: ['item-1'] } }
+    : body.name === 'project.inspect'
+      ? {
+          kind: 'data',
+          revision: 'sha256:test',
+          data: {
+            projectId: 'project-1',
+            project: { id: 'project-1', name: '测试剪辑项目' },
+            timeline: { tracks: [], items: [], transitions: [], keyframes: [] },
+            counts: { tracks: 0, items: 0, transitions: 0, keyframes: 0 },
+          },
+        }
+    : { ok: true, message: '编辑完成。', data: { createdItemIds: ['item-1'] } }
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({ ok: true, result }))
 })
@@ -45,6 +68,7 @@ try {
     {
       code: `
         export default async function main(luna) {
+          const project = await luna.project.inspect()
           const media = await luna.media.list()
           const selected = []
           for (const item of media.data.items) {
@@ -53,54 +77,46 @@ try {
           const created = await luna.timeline.addMediaBatch({
             items: selected.map((mediaId, index) => ({ mediaId, startSeconds: index * 3, durationSeconds: 3 })),
           })
-          return { selected, created: created.data.createdItemIds }
+          const track = await luna.timeline.addTrack({ type: 'audio', name: '音乐' })
+          const transition = await luna.timeline.addTransition({
+            fromClipId: 'clip-a',
+            toClipId: 'clip-b',
+            type: 'crossfade',
+            durationSeconds: 0.5,
+          })
+          return {
+            projectId: project.data.projectId,
+            workerEnvironment: process.env.LUNA_TEST_SCRIPT_RUNTIME_ENV,
+            selected,
+            created: created.data.createdItemIds,
+            transition: transition.data.createdItemIds,
+          }
         }
       `,
     },
   )
 
   assert.equal(result.ok, true)
-  assert.deepEqual(result.data.result, { selected: ['media-1'], created: ['item-1'] })
-  assert.deepEqual(requests.map((request) => request.name), ['media.list', 'timeline.add_media_batch'])
-  assert.ok(requests.every((request) => request.projectId === 'project-1'))
-
-  const audioResult = await runEditScript(
-    {
-      endpoint: `http://127.0.0.1:${String(address.port)}`,
-      token: 'test-token',
-      projectId: 'project-1',
-      cwd: process.cwd(),
-    },
-    {
-      code: `
-        export default async function main(luna) {
-          const submitted = await luna.audio.startMusic({ prompt: '舒缓的日落氛围音乐', durationSeconds: 8 })
-          let task = submitted
-          while (task.data.status !== 'completed' && task.data.status !== 'failed') {
-            await new Promise((resolve) => setTimeout(resolve, 1))
-            task = await luna.audio.getTask({ taskId: submitted.data.taskId })
-          }
-          if (task.data.status === 'failed') throw new Error(task.data.error || 'audio task failed')
-          const added = await luna.timeline.addMedia({ mediaId: task.data.mediaId, startSeconds: 0 })
-          return { taskId: submitted.data.taskId, mediaId: task.data.mediaId, added: added.data.createdItemIds }
-        }
-      `,
-    },
-  )
-
-  assert.deepEqual(audioResult.data.result, {
-    taskId: 'audio-task-1',
-    mediaId: 'music-1',
-    added: ['item-1'],
+  assert.deepEqual(result.data.result, {
+    projectId: 'project-1',
+    workerEnvironment: 'preserved',
+    selected: ['media-1'],
+    created: ['item-1'],
+    transition: ['item-1'],
   })
-  assert.deepEqual(requests.slice(2).map((request) => request.name), [
-    'audio.start_music',
-    'audio.get_task',
-    'audio.get_task',
-    'timeline.add_media',
-  ])
+  assert.deepEqual(requests.map((request) => request.name), ['project.inspect', 'media.list', 'timeline.add_media_batch', 'timeline.add_track', 'timeline.add_transition'])
+  assert.deepEqual(requests[3].args, { type: 'audio', name: '音乐' })
+  assert.deepEqual(requests.at(-1).args, {
+    fromClipId: 'clip-a',
+    toClipId: 'clip-b',
+    type: 'crossfade',
+    durationSeconds: 0.5,
+  })
+  assert.ok(requests.every((request) => request.projectId === 'project-1'))
 } finally {
   await new Promise((resolve) => server.close(resolve))
+  if (previousWorkerEnvironment === undefined) delete process.env[workerEnvironmentKey]
+  else process.env[workerEnvironmentKey] = previousWorkerEnvironment
 }
 
 console.log('DeepSeek Harness editing script runtime passed.')

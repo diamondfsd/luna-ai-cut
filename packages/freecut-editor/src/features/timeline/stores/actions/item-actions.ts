@@ -706,7 +706,8 @@ export function addItemsOnNewTracks(items: TimelineItem[], tracks: TimelineTrack
     'ADD_ITEMS_ON_NEW_TRACKS',
     () => {
       const store = useItemsStore.getState()
-      store.setItemsAndTracks([...store.items, ...items], tracks)
+      store.setTracks(tracks)
+      store._addItems(items)
       useTimelineSettingsStore.getState().markDirty()
     },
     { count: items.length, trackCount: tracks.length },

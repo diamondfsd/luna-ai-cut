@@ -1,4 +1,5 @@
-import type { AudioItem, TimelineItem, VideoItem } from '@freecut/types/timeline'
+import type { AudioItem, TextItem, TimelineItem, VideoItem } from '@freecut/types/timeline'
+import { getTextItemPlainText } from '@freecut/shared/utils/text-item-spans'
 import { getLinkedItems } from '../utils/linked-items'
 import { useTransitionsStore } from './transitions-store'
 
@@ -304,12 +305,25 @@ function isCaptionableClip(item: TimelineItem): item is AudioItem | VideoItem {
   )
 }
 
-// Lazy, items-keyed memoization keeps caption availability checks out of
-// hot drag-frame mutations.
+function isLegacyGeneratedCaptionItem(item: TimelineItem): item is TextItem {
+  const plainText = item.type === 'text' ? getTextItemPlainText(item) : ''
+  return (
+    item.type === 'text' &&
+    !item.captionSource &&
+    typeof item.mediaId === 'string' &&
+    item.mediaId.length > 0 &&
+    plainText.trim().length > 0 &&
+    item.label === plainText.slice(0, 48)
+  )
+}
+
+// Lazy, items-keyed memoization. The legacy caption-detection pass is O(N) with
+// string slicing + per-mediaId sorts; running it inside withItemIndexes makes
+// every drag-frame mutation pay for it. Callers go through
+// `selectReplaceableCaptionClipIds` instead, which rebuilds only when `items`
+// changes identity.
 let captionCacheItems: TimelineItem[] | null = null
 let captionCacheSet: Set<string> = new Set()
-let timelineCaptionCacheItems: TimelineItem[] | null = null
-let timelineCaptionCacheSet: Set<string> = new Set()
 
 export function selectReplaceableCaptionClipIds(state: { items: TimelineItem[] }): Set<string> {
   if (captionCacheItems === state.items) return captionCacheSet
@@ -318,37 +332,22 @@ export function selectReplaceableCaptionClipIds(state: { items: TimelineItem[] }
   return captionCacheSet
 }
 
-/** Clip ids backed by an actual selectable item on a visible timeline track. */
-export function selectTimelineCaptionClipIds(state: { items: TimelineItem[] }): Set<string> {
-  if (timelineCaptionCacheItems === state.items) return timelineCaptionCacheSet
-  timelineCaptionCacheItems = state.items
-  timelineCaptionCacheSet = new Set<string>()
-
-  for (const item of state.items) {
-    if (
-      item.type === 'text' &&
-      item.textRole === 'caption' &&
-      item.captionSource?.type === 'transcript' &&
-      item.captionSource.clipId
-    ) {
-      timelineCaptionCacheSet.add(item.captionSource.clipId)
-    }
-  }
-
-  return timelineCaptionCacheSet
-}
-
 function buildReplaceableCaptionClipIds(items: TimelineItem[]): Set<string> {
   const ids = new Set<string>()
+  const clipsByMediaId: Record<string, Array<AudioItem | VideoItem>> = {}
 
   for (const item of items) {
     if (
       item.type === 'text' &&
-      item.textRole === 'caption' &&
       item.captionSource?.type === 'transcript' &&
       item.captionSource.clipId
     ) {
       ids.add(item.captionSource.clipId)
+      continue
+    }
+
+    if (item.type === 'subtitle' && item.source.type === 'transcript' && item.source.clipId) {
+      ids.add(item.source.clipId)
       continue
     }
 
@@ -358,6 +357,40 @@ function buildReplaceableCaptionClipIds(items: TimelineItem[]): Set<string> {
       item.transcriptCaptions.cues.length > 0
     ) {
       ids.add(item.id)
+    }
+
+    if (isCaptionableClip(item)) {
+      const mediaId = item.mediaId
+      if (!mediaId) continue
+      ;(clipsByMediaId[mediaId] ??= []).push(item)
+    }
+  }
+
+  for (const clips of Object.values(clipsByMediaId)) {
+    clips.sort((left, right) => left.from - right.from)
+  }
+
+  for (const item of items) {
+    if (!isLegacyGeneratedCaptionItem(item) || !item.mediaId) {
+      continue
+    }
+
+    const mediaId = item.mediaId
+    const itemEnd = item.from + item.durationInFrames
+    const candidateClips = clipsByMediaId[mediaId]
+    if (!candidateClips) {
+      continue
+    }
+
+    for (const clip of candidateClips) {
+      if (clip.from > item.from) {
+        break
+      }
+
+      const clipEnd = clip.from + clip.durationInFrames
+      if (item.from >= clip.from && itemEnd <= clipEnd) {
+        ids.add(clip.id)
+      }
     }
   }
 

@@ -20,6 +20,7 @@ export interface LunaElectronApp {
 
 export interface LunaElectronOptions {
   launchEnv: Record<string, string>
+  seedHarnessPatch?: string
   seedProject?: {
     sourceUserDataDir: string
     projectId: string
@@ -133,6 +134,11 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
         developerMode: false,
       }, null, 2)}\n`, 'utf8')
     }
+    if (lunaElectronOptions.seedHarnessPatch !== undefined) {
+      const harnessHome = path.join(baseDir, 'deepseek-harness')
+      await mkdir(harnessHome, { recursive: true })
+      await writeFile(path.join(harnessHome, 'cordis.patch.yml'), lunaElectronOptions.seedHarnessPatch, 'utf8')
+    }
     if (lunaElectronOptions.seedProject) {
       if (useExistingUserDataDir) {
         throw new Error('seedProject requires the fixture-managed isolated user data directory')
@@ -143,7 +149,7 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
     let app: ElectronApplication | undefined
     try {
       app = await electron.launch({
-        args: ['.'],
+        args: ['.', '--no-sandbox'],
         cwd: projectRoot,
         env: {
           ...process.env,

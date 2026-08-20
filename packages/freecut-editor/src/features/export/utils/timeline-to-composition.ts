@@ -34,8 +34,8 @@ const log = createLogger('TimelineToComposition')
  * - Adjusts item positions to be relative to in-point
  * - Sets duration to the in/out range length
  *
- * Tracks are sorted by their order property so that higher-numbered tracks
- * (e.g., Track 2) render on top of lower-numbered tracks (e.g., Track 1).
+ * Tracks are sorted by their order property so that lower-numbered tracks
+ * render on top of higher-numbered tracks. This is also the preview z-order.
  */
 export function convertTimelineToComposition(
   tracks: TimelineTrack[],
@@ -164,6 +164,19 @@ export function convertTimelineToComposition(
         // where in the sub-comp to start playing (in timeline frames, same fps).
         if (item.type === 'composition' && additionalTrimStart > 0) {
           adjustedItem.sourceStart = (item.sourceStart || 0) + additionalTrimStart
+        }
+
+        if (item.type === 'subtitle' && (additionalTrimStart > 0 || additionalTrimEnd > 0)) {
+          const trimStartSeconds = additionalTrimStart / fps
+          const trimmedDurationSeconds = newDuration / fps
+          const subtitleItem = adjustedItem as typeof item
+          subtitleItem.cues = item.cues
+            .map((cue) => ({
+              ...cue,
+              startSeconds: Math.max(0, cue.startSeconds - trimStartSeconds),
+              endSeconds: Math.min(trimmedDurationSeconds, cue.endSeconds - trimStartSeconds),
+            }))
+            .filter((cue) => cue.text.trim().length > 0 && cue.endSeconds > cue.startSeconds)
         }
 
         return adjustedItem

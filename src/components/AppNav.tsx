@@ -1,4 +1,4 @@
-import { MonitorCog, Unplug } from 'lucide-react'
+import { MonitorCog, Sparkles, Unplug } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -13,9 +13,18 @@ interface AppNavProps {
   connection: ConnectionStatus | null
   sourceMode: CameraConnectionMode
   onChangeConnection?: () => Promise<void>
+  onOpenAssistant: () => void
+  assistantDisabled?: boolean
 }
 
-export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
+export function AppNav({
+  activeDevice,
+  connection,
+  sourceMode,
+  onChangeConnection,
+  onOpenAssistant,
+  assistantDisabled = false,
+}: AppNavProps) {
   const { exportProgress } = useExportProgress()
   const location = useLocation()
   const isMac = window.navigator.platform.includes('Mac')
@@ -83,6 +92,15 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
               exportProgress={exportProgress}
               onRevealFile={(path) => void window.luna.revealFile(path)}
             />
+            <button
+              className="nav-icon-button"
+              aria-label="打开 AI 助手"
+              title={assistantDisabled ? '请先打开剪辑项目' : '打开 AI 助手'}
+              disabled={assistantDisabled}
+              onClick={onOpenAssistant}
+            >
+              <Sparkles size={15} />
+            </button>
             <SendToPhoneDialog />
             <HelpDialog />
           </div>

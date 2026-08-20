@@ -87,11 +87,6 @@ import { parseLottieFileBytes } from '@freecut/infrastructure/lottie/lottie-meta
 import { getSharedProxyKey } from '../utils/proxy-key'
 import { mediaProcessorService } from './media-processor-service'
 import { generateThumbnail } from '../utils/thumbnail-generator'
-import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
-import {
-  nativeMediaSourceForHandle,
-  resolveNativeMediaFileHandle,
-} from '@freecut/shared/host/native-media-file-handle'
 import {
   needsCustomAudioDecoder,
   startPreviewAudioConform,
@@ -907,7 +902,7 @@ class MediaLibraryService {
   async importMediaWithHandle(
     handle: FileSystemFileHandle,
     projectId: string,
-    _options?: { storageMode?: 'copy' | 'link' },
+    options?: { storageMode?: 'copy' | 'link' },
   ): Promise<MediaMetadata & { isDuplicate?: boolean; hasUnsupportedCodec?: boolean }> {
     // Stage 1: Get file from handle (instant)
     const hasPermission = await ensureFileHandlePermission(handle)
@@ -916,7 +911,10 @@ class MediaLibraryService {
     }
 
     const file = await handle.getFile()
-    const nativeSource = nativeMediaSourceForHandle(handle)
+
+    if (options?.storageMode === 'copy') {
+      return this.importMediaFileToOpfs(file, projectId)
+    }
 
     // Stage 2: Validation
     const validationResult = await validateMediaFileContent(file)
@@ -929,7 +927,8 @@ class MediaLibraryService {
     // bumps lastModified, and two different files sharing name + exact byte
     // size + exact mtime is a practical non-occurrence. Zero file I/O — all
     // three fields come from File metadata — so unique imports pay nothing.
-    // A match reuses the existing media record across projects.
+    // A match reuses the existing media record across projects instead of
+    // re-mirroring the bytes into a fresh `media/{id}/` directory.
     //
     // `isDuplicate` is only set when the matched media is already in THIS
     // project. Cross-project reuse (new project importing the same file) is
@@ -948,17 +947,16 @@ class MediaLibraryService {
     )
     if (workspaceDuplicate) {
       let resolvedDuplicate = workspaceDuplicate
-      if (nativeSource || workspaceDuplicate.storageType === 'handle') {
+      if (workspaceDuplicate.storageType === 'handle') {
         resolvedDuplicate = await updateMediaDB(workspaceDuplicate.id, {
-          storageType: 'handle',
           fileHandle: handle,
-          ...(nativeSource ? { nativePath: nativeSource.path } : {}),
           fileName: file.name,
           fileSize: file.size,
           fileLastModified: file.lastModified,
           updatedAt: Date.now(),
         })
       }
+      mirrorSourceToWorkspaceInBackground(resolvedDuplicate.id, file, file.name)
       this.schedulePostImportWork(file, resolvedDuplicate, {
         isVideo: resolvedDuplicate.mimeType.startsWith('video/'),
         previewAudioCodec: resolvedDuplicate.mimeType.startsWith('audio/')
@@ -1000,10 +998,10 @@ class MediaLibraryService {
       if (existingMedia.storageType === 'handle' || !existingMedia.opfsPath) {
         updates.storageType = 'handle'
         updates.fileHandle = handle
-        updates.nativePath = nativeSource?.path
       }
 
       const refreshedMedia = await updateMediaDB(existingMedia.id, updates)
+      mirrorSourceToWorkspaceInBackground(refreshedMedia.id, file, file.name)
       this.schedulePostImportWork(file, refreshedMedia, {
         isVideo: refreshedMedia.mimeType.startsWith('video/'),
         previewAudioCodec: refreshedMedia.mimeType.startsWith('audio/')
@@ -1047,7 +1045,6 @@ class MediaLibraryService {
         id,
         storageType: 'handle',
         fileHandle: handle,
-        nativePath: nativeSource?.path,
         fileName: file.name,
         fileSize: file.size,
         fileLastModified: file.lastModified,
@@ -1065,6 +1062,7 @@ class MediaLibraryService {
       }
 
       await createMediaDB(mediaMetadata)
+      mirrorSourceToWorkspaceInBackground(id, file, file.name)
       await associateMediaWithProject(projectId, id)
 
       return mediaMetadata
@@ -1116,7 +1114,6 @@ class MediaLibraryService {
       id,
       storageType: 'handle',
       fileHandle: handle,
-      nativePath: nativeSource?.path,
       fileName: file.name,
       fileSize: file.size,
       fileLastModified: file.lastModified,
@@ -1144,6 +1141,12 @@ class MediaLibraryService {
     }
 
     await createMediaDB(mediaMetadata)
+
+    // Mirror source bytes into the workspace folder so every origin (dev,
+    // prod, agents reading from disk) can see the media — not just this one.
+    // Runs in the background to avoid blocking the rest of the import flow;
+    // the lazy fallback in getMediaFile covers the gap if this loses a race.
+    mirrorSourceToWorkspaceInBackground(id, file, file.name)
 
     // Stage 7: Associate with project
     await associateMediaWithProject(projectId, id)
@@ -1694,25 +1697,6 @@ class MediaLibraryService {
     }
     const id = media.id
 
-    if (media.nativePath) {
-      const read = getEmbeddedHostBridge().readNativeMediaFile
-      if (!read) {
-        throw new FileAccessError(`File "${media.fileName}" is unavailable.`, 'file_missing')
-      }
-      try {
-        const source = await read(media.nativePath)
-        return new File([source.bytes], source.name, {
-          type: source.mimeType,
-          lastModified: source.lastModified,
-        })
-      } catch {
-        throw new FileAccessError(
-          `File "${media.fileName}" not found. It may have been moved or deleted.`,
-          'file_missing',
-        )
-      }
-    }
-
     // Workspace-folder storage (durable, cross-origin source of truth).
     // Source bytes live at `media/{id}/{filename}` in the user-picked folder.
     if (media.storageType === 'workspace') {
@@ -1733,7 +1717,9 @@ class MediaLibraryService {
           )
         }
 
-        return await media.fileHandle.getFile()
+        const file = await media.fileHandle.getFile()
+        mirrorSourceToWorkspaceInBackground(id, file, media.fileName)
+        return file
       } catch (error) {
         if (error instanceof FileAccessError) {
           // Cross-origin recovery: if the handle exists but isn't granted here,
@@ -1907,22 +1893,18 @@ class MediaLibraryService {
       throw new Error(`Media not found: ${mediaId}`)
     }
 
-    const resolvedHandle = await resolveNativeMediaFileHandle(newHandle)
-
     // Verify we have permission to access the new file
-    const hasPermission = await ensureFileHandlePermission(resolvedHandle)
+    const hasPermission = await ensureFileHandlePermission(newHandle)
     if (!hasPermission) {
       throw new FileAccessError('Permission denied for the selected file', 'permission_denied')
     }
 
     // Verify file exists and get basic info
-    const file = await resolvedHandle.getFile()
-    const nativeSource = nativeMediaSourceForHandle(resolvedHandle)
+    const file = await newHandle.getFile()
 
     // Update metadata with new handle and file info
     const updated = await updateMediaDB(mediaId, {
-      fileHandle: resolvedHandle,
-      nativePath: nativeSource?.path,
+      fileHandle: newHandle,
       fileName: file.name,
       fileSize: file.size,
       fileLastModified: file.lastModified,
@@ -2007,10 +1989,6 @@ class MediaLibraryService {
    * Get media file as blob URL (for preview/playback)
    */
   async getMediaBlobUrl(id: string): Promise<string | null> {
-    const media = await getMediaDB(id)
-    if (media?.nativePath) {
-      return getEmbeddedHostBridge().resolveNativeMediaUrl?.(media.nativePath) ?? null
-    }
     const file = await this.getMediaFile(id)
 
     if (!file) {

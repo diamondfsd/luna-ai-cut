@@ -1,15 +1,15 @@
 /**
  * Top-level item dispatcher: resolves animated state, applies corner pin /
  * corner radius / opacity transforms, then delegates to the type-specific
- * renderer (video, image, text, shape, composition).
+ * renderer (video, image, text, subtitle, shape, composition).
  */
 
 import type {
   CompositionItem,
   ImageItem,
-  HtmlItem,
   LottieItem,
   ShapeItem,
+  SubtitleSegmentItem,
   TextItem,
   TimelineItem,
   VideoItem,
@@ -23,10 +23,7 @@ import {
   resolveCornerPinForSize,
   resolveCornerPinTargetRect,
 } from '@freecut/features/export/deps/composition-runtime'
-import {
-  resolveAnimatedShapeItem,
-  resolveAnimatedTextItem,
-} from '@freecut/features/export/deps/keyframes'
+import { resolveAnimatedShapeItem, resolveAnimatedTextItem } from '@freecut/features/export/deps/keyframes'
 import type { EffectSourceMask } from '../canvas-effects'
 import { applyMasks } from '../canvas-masks'
 import { renderShape } from '../canvas-shapes'
@@ -40,11 +37,16 @@ import {
 import { renderVideoItem } from './video'
 import { renderImageItem } from './image'
 import { renderLottieItem } from './lottie'
-import { renderHtmlItem } from './html'
-import { getTextRasterCacheKey, renderTextItem } from './text'
+import { getTextRasterCacheKey, renderSubtitleSegmentItem, renderTextItem } from './text'
 import { isTextMotionActive } from '@freecut/shared/typography/text-motion'
 import { renderCompositionItem } from './composition'
 import type { CornerPinWarpCacheEntry } from './types'
+import {
+  getLogicalCanvasSize,
+  scaleShapeItemForCanvas,
+  scaleSubtitleItemForCanvas,
+  scaleTextItemForCanvas,
+} from '../canvas-render-scale'
 
 /** Total RAM budget for the preview corner-pin warp cache. */
 const CORNER_PIN_WARP_CACHE_MAX_BYTES = 256_000_000 // ~256MB
@@ -77,24 +79,43 @@ export async function renderItem(
   preCornerPinMasks: EffectSourceMask[] = [],
 ): Promise<void> {
   const itemKeyframes = rctx.getCurrentKeyframes?.(item.id) ?? rctx.keyframesMap.get(item.id)
+  const logicalCanvasSettings = getLogicalCanvasSize(rctx.canvasSettings)
   const shapeExpressionContext =
     rctx.canvasSettings.getExpressionItem && rctx.canvasSettings.getExpressionKeyframes
       ? {
           globalFrame: frame,
-          canvas: rctx.canvasSettings,
+          canvas: logicalCanvasSettings,
           getItem: rctx.canvasSettings.getExpressionItem,
           getKeyframes: rctx.canvasSettings.getExpressionKeyframes,
         }
       : undefined
   const animatedTextItem =
     item.type === 'text'
-      ? {
-          ...resolveAnimatedTextItem(item, itemKeyframes, frame - item.from, rctx.canvasSettings),
-          cornerPin: item.cornerPin,
-        }
+      ? scaleTextItemForCanvas(
+          {
+            ...resolveAnimatedTextItem(
+              item,
+              itemKeyframes,
+              frame - item.from,
+              logicalCanvasSettings,
+            ),
+            cornerPin: item.cornerPin,
+          },
+          rctx.canvasSettings,
+        )
       : item.type === 'shape'
-        ? resolveAnimatedShapeItem(item, itemKeyframes, frame - item.from, shapeExpressionContext)
-        : item
+        ? scaleShapeItemForCanvas(
+            resolveAnimatedShapeItem(
+              item,
+              itemKeyframes,
+              frame - item.from,
+              shapeExpressionContext,
+            ),
+            rctx.canvasSettings,
+          )
+        : item.type === 'subtitle'
+          ? scaleSubtitleItemForCanvas(item, rctx.canvasSettings)
+          : item
   const frameResolvedItem = applyAnimatedCropToItem(animatedTextItem, frame, rctx, renderSpan)
   const resolvedTransform = resolveItemTransform(transform)
   const frameResolvedTransform =
@@ -200,9 +221,6 @@ async function renderItemContent(
       await rctx.ensureLottieItemReady?.(effectiveItem as LottieItem)
       renderLottieItem(ctx, effectiveItem as LottieItem, transform, rctx, frame)
       break
-    case 'html':
-      await renderHtmlItem(ctx, effectiveItem as HtmlItem, transform, frame, rctx)
-      break
     case 'text': {
       const textItem = effectiveItem as TextItem
       // Motion text: while a per-unit window is active, paint glyph-by-glyph
@@ -225,6 +243,9 @@ async function renderItemContent(
       renderTextItem(ctx, textItem, transform, rctx, motion)
       break
     }
+    case 'subtitle':
+      renderSubtitleSegmentItem(ctx, effectiveItem as SubtitleSegmentItem, transform, frame, rctx)
+      break
     case 'shape':
       renderShape(
         ctx,

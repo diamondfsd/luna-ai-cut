@@ -1,0 +1,8 @@
+.editor-toolbar {
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  background: color-mix(in oklab, var(--panel-header) 88%, var(--background));
+}
+
+.editor-toolbar h1 {
+  color: var(--foreground);
+}

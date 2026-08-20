@@ -1,4 +1,0 @@
-interface:
-  display_name: "氛围电影感"
-  short_description: "安静沉浸的氛围电影感视频镜头、声音和色彩设计方案与实操建议"
-  default_prompt: "使用 $luna-style-ambient-cinematic 设计这段氛围视频"
