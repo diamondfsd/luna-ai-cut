@@ -48,6 +48,7 @@ class MacVirtualCamera {
   private socket: net.Socket | null = null
   private listeners = new Set<StatusListener>()
   private stopping = false
+  private activationOutput: string[] = []
 
   getStatus(): MacVirtualCameraStatus { return this.status }
 
@@ -62,6 +63,7 @@ class MacVirtualCamera {
     if (this.status.state === 'running' || this.status.state === 'starting') return this.status
 
     this.stopping = false
+    this.activationOutput = []
     this.update({ state: 'starting', error: null, frames: 0 })
     const executable = resolveExecutable()
     if (!existsSync(executable)) {
@@ -70,23 +72,29 @@ class MacVirtualCamera {
 
     try {
       this.child = spawn(executable, ['--activate'], { stdio: 'pipe' })
-      this.child.stdout.on('data', (chunk: Buffer) => console.info(`[camera-extension] ${chunk.toString().trim()}`))
-      this.child.stderr.on('data', (chunk: Buffer) => console.warn(`[camera-extension] ${chunk.toString().trim()}`))
+      this.child.stdout.on('data', (chunk: Buffer) => this.recordActivationOutput(chunk, false))
+      this.child.stderr.on('data', (chunk: Buffer) => this.recordActivationOutput(chunk, true))
       this.child.once('error', (error) => {
         if (!this.stopping) this.update({ state: 'error', error: `虚拟摄像头进程启动失败：${error.message}` })
       })
       this.child.once('exit', (code, signal) => {
-        if (!this.stopping && code !== 0) this.update({ state: 'error', error: `虚拟摄像头激活失败 (${code ?? signal ?? 'unknown'})` })
+        if (!this.stopping && code !== 0) {
+          this.update({
+            state: 'error',
+            error: this.activationOutput.join(' ') || `虚拟摄像头激活失败 (${code ?? signal ?? 'unknown'})`,
+          })
+        }
       })
-      this.socket = await connectWithRetry(FRAME_PORT, () => !this.stopping)
+      this.socket = await connectWithRetry(FRAME_PORT, () => !this.stopping && this.status.state !== 'error')
       this.socket.setNoDelay(true)
       this.socket.on('close', () => {
         if (!this.stopping) this.update({ state: 'error', error: '虚拟摄像头帧通道已断开' })
       })
       this.update({ state: 'running', error: null })
     } catch (error) {
+      const activationError = this.status.error
       await this.stop()
-      return this.update({ state: 'error', error: error instanceof Error ? error.message : String(error) })
+      return this.update({ state: 'error', error: activationError ?? (error instanceof Error ? error.message : String(error)) })
     }
     return this.status
   }
@@ -116,9 +124,20 @@ class MacVirtualCamera {
     for (const listener of this.listeners) listener(this.status)
     return this.status
   }
+
+  private recordActivationOutput(chunk: Buffer, isError: boolean): void {
+    const message = chunk.toString().trim()
+    if (!message) return
+    this.activationOutput.push(message)
+    if (isError) console.warn(`[camera-extension] ${message}`)
+    else console.info(`[camera-extension] ${message}`)
+    this.update({ error: message })
+  }
 }
 
 function resolveExecutable(): string {
+  const installedHost = '/Applications/Luna Camera Development Host.app/Contents/MacOS/LunaCameraDevHost'
+  if (existsSync(installedHost)) return installedHost
   const appRoot = process.env.APP_ROOT || path.resolve(__dirname, '..')
   return path.join(appRoot, 'native', 'macos', 'LunaCameraExtension', 'build', 'LunaCameraDevHost.app', 'Contents', 'MacOS', 'LunaCameraDevHost')
 }
