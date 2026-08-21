@@ -50,6 +50,19 @@ const server = createServer(async (request, response) => {
             counts: { tracks: 0, items: 0, transitions: 0, keyframes: 0 },
           },
         }
+      : body.name === 'timeline.inspect_context'
+        ? {
+            kind: 'data',
+            revision: 'sha256:large-test',
+            data: {
+              projectId: 'project-1',
+              fps: 25,
+              tracks: [],
+              items: [{ id: 'item-large', label: 'x'.repeat(200_000) }],
+              transitions: [],
+              keyframes: [],
+            },
+          }
     : { ok: true, message: '编辑完成。', data: { createdItemIds: ['item-1'] } }
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({ ok: true, result }))
@@ -115,6 +128,24 @@ try {
     durationSeconds: 0.5,
   })
   assert.ok(requests.every((request) => request.projectId === 'project-1'))
+
+  const largeResult = await runEditScript(
+    {
+      endpoint: `http://127.0.0.1:${String(address.port)}`,
+      token: 'test-token',
+      projectId: 'project-1',
+      cwd: process.cwd(),
+    },
+    {
+      code: `
+        export default async function main(luna) {
+          return await luna.timeline.inspectContext()
+        }
+      `,
+    },
+  )
+  assert.equal(largeResult.ok, true)
+  assert.equal(largeResult.data.result.data.items[0].label.length, 200_000)
 } finally {
   await new Promise((resolve) => server.close(resolve))
   if (previousWorkerEnvironment === undefined) delete process.env[workerEnvironmentKey]

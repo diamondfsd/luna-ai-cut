@@ -10,6 +10,9 @@ const WORKER_FLAG = '--luna-freecut-script-worker'
 const RESULT_PREFIX = 'LUNA_FREECUT_SCRIPT_RESULT:'
 const ERROR_PREFIX = 'LUNA_FREECUT_SCRIPT_ERROR:'
 const MAX_OUTPUT_LENGTH = 64_000
+// Timeline results contain the complete project snapshot and can be much
+// larger than the bounded diagnostic output returned to the Harness UI.
+const MAX_PROTOCOL_OUTPUT_LENGTH = 16 * 1024 * 1024
 
 // Compatibility export retained for scripts and existing host imports.
 export const SCRIPT_API = LUNA_SDK_API
@@ -85,6 +88,8 @@ export async function runEditScript(config, input) {
     })
 
     let stdout = ''
+    let protocolStdout = ''
+    let protocolOutputTooLarge = false
     let stderr = ''
     let settled = false
     let abortListener
@@ -97,7 +102,15 @@ export async function runEditScript(config, input) {
 
     return await new Promise((resolve, reject) => {
       child.stdout.on('data', (chunk) => {
-        stdout = `${stdout}${chunk.toString('utf8')}`.slice(-MAX_OUTPUT_LENGTH * 2)
+        const text = chunk.toString('utf8')
+        stdout = `${stdout}${text}`.slice(-MAX_OUTPUT_LENGTH * 2)
+        if (!protocolOutputTooLarge) {
+          protocolStdout = `${protocolStdout}${text}`
+          if (protocolStdout.length > MAX_PROTOCOL_OUTPUT_LENGTH) {
+            protocolOutputTooLarge = true
+            protocolStdout = ''
+          }
+        }
       })
       child.stderr.on('data', (chunk) => {
         stderr = `${stderr}${chunk.toString('utf8')}`.slice(-MAX_OUTPUT_LENGTH * 2)
@@ -110,16 +123,20 @@ export async function runEditScript(config, input) {
             return
           }
           try {
-            const payload = parseWorkerPayload(stdout)
+            const payload = protocolOutputTooLarge ? undefined : parseWorkerPayload(protocolStdout)
             if (!payload || code !== 0) {
-              throw new Error(`剪辑脚本进程已退出（${String(code ?? signal ?? '未知原因')}）。${stderr.trim()}`)
+              const reason = protocolOutputTooLarge
+                ? '剪辑脚本返回结果过大，超过了 16MB 限制。'
+                : '剪辑脚本未返回有效结果。'
+              throw new Error(`${reason}进程退出（${String(code ?? signal ?? '未知原因')}）。${stderr.trim()}`)
             }
+            const serializedResult = `${RESULT_PREFIX}${JSON.stringify(payload.result)}`
             resolve({
               ok: true,
               message: '剪辑脚本执行完成。',
               data: {
                 result: payload.result,
-                stdout: boundedOutput(stdout.replace(`${RESULT_PREFIX}${JSON.stringify(payload.result)}`, '').trim()),
+                stdout: boundedOutput(protocolStdout.replace(serializedResult, '').trim()),
                 stderr: boundedOutput(stderr.trim()),
               },
             })
