@@ -30,7 +30,13 @@ import {
 } from './easings-dev-presets'
 import { EasingCurveEditor } from './easing-curve-editor'
 import { loadCustomPresets, saveCustomPresets } from './custom-easing-presets'
-import './easing-preset-thumbnail.css'
+
+// This component is also reachable from the worker render graph. Vite's CSS
+// side-effect module injects a <style> element, so it must only be loaded in a
+// document environment.
+if (typeof document !== 'undefined') {
+  void import('./easing-preset-thumbnail.css')
+}
 
 type PresetType = 'Easing' | 'Spring'
 type DirectionFilter = 'all' | EasingDirection

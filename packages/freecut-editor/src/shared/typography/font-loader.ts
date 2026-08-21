@@ -27,6 +27,18 @@ const LOCAL_FONT_FAMILIES = new Set([
   '-apple-system',
   'blinkmacsystemfont',
   'segoe ui',
+  'arial',
+  'helvetica',
+  'pingfang sc',
+  'pingfang tc',
+  'hiragino sans gb',
+  'microsoft yahei',
+  'microsoft yahei ui',
+  'noto sans cjk sc',
+  'noto sans cjk tc',
+  'source han sans cn',
+  'source han sans tw',
+  'sans-serif',
 ])
 
 function isLocalFontFamily(fontName: string): boolean {

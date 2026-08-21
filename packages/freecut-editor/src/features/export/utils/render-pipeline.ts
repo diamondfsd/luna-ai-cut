@@ -38,7 +38,9 @@ import { renderAudioOnly, renderComposition } from './canvas-render-orchestrator
 import type {
   ExportRenderWorkerRequest,
   ExportRenderWorkerResponse,
+  ExportRenderWorkerSource,
 } from '../workers/export-render-worker.types'
+import { getObjectUrlBlob } from '@freecut/infrastructure/browser/object-url-registry'
 
 /** Narrow ExportSettings to the extended variant (has a `mode`). */
 export function isExtendedSettings(
@@ -156,6 +158,23 @@ export interface RunRenderArgs {
   onProgress: (progress: RenderProgress) => void
 }
 
+function collectWorkerSources(composition: CompositionInputProps): ExportRenderWorkerSource[] {
+  const urls = new Set<string>()
+  for (const track of composition.tracks ?? []) {
+    for (const item of track.items ?? []) {
+      const src = 'src' in item && typeof item.src === 'string' ? item.src : null
+      if (src) urls.add(src)
+    }
+  }
+
+  const sources: ExportRenderWorkerSource[] = []
+  for (const url of urls) {
+    const blob = getObjectUrlBlob(url)
+    if (blob) sources.push({ url, blob })
+  }
+  return sources
+}
+
 export interface RunRenderOutcome {
   result: ClientRenderResult
   renderPath: 'worker' | 'main-thread'
@@ -227,6 +246,7 @@ function renderInWorker(
       requestId,
       settings: clientSettings,
       composition,
+      sources: collectWorkerSources(composition),
     }
     worker.postMessage(startMessage)
   })

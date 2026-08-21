@@ -159,7 +159,7 @@ describe('assessExportPreflight', () => {
     )
   })
 
-  it('warns when audio needs main-thread fallback without OfflineAudioContext in workers', async () => {
+  it('keeps audible audio on the worker when OfflineAudioContext is unavailable', async () => {
     const result = await assessExportPreflight({
       settings: baseSettings,
       fps: 30,
@@ -172,11 +172,11 @@ describe('assessExportPreflight', () => {
     })
 
     expect(result.canExport).toBe(true)
-    expect(result.predictedRenderPath).toBe('main-thread')
+    expect(result.predictedRenderPath).toBe('worker')
     expect(result.checks).toContainEqual(
       expect.objectContaining({
-        id: 'worker-audio-context-fallback',
-        severity: 'info',
+        id: 'worker-export-ready',
+        severity: 'ok',
       }),
     )
   })

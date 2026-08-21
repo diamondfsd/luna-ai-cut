@@ -1346,6 +1346,135 @@ async function decodeAudioFromSource(
   }
 }
 
+/**
+ * Decode AAC and other native WebCodecs audio without Web Audio. Dedicated
+ * workers do not expose OfflineAudioContext, but they do expose AudioDecoder.
+ * Keep this path range-aware so long exports do not materialize unused audio.
+ */
+async function decodeAudioWithWebCodecs(
+  src: string,
+  itemId: string,
+  startTime?: number,
+  endTime?: number,
+): Promise<DecodedAudio> {
+  if (typeof AudioDecoder === 'undefined') {
+    throw new Error('AudioDecoder is not available in this render worker')
+  }
+
+  const mb = await import('mediabunny')
+  const input = new mb.Input({
+    formats: mb.ALL_FORMATS,
+    source: createMediabunnyInputSource(mb, src),
+  })
+  const requestedStart = Math.max(0, startTime ?? 0)
+  const requestedEnd = endTime === undefined ? Number.POSITIVE_INFINITY : Math.max(requestedStart, endTime)
+  const channelChunks: Float32Array[][] = []
+  let sampleRate = 48_000
+  let channelCount = 0
+  let decoderError: Error | null = null
+
+  try {
+    const audioTrack = await input.getPrimaryAudioTrack()
+    if (!audioTrack) throw new Error('No audio track found')
+    const decoderConfig = await audioTrack.getDecoderConfig()
+    if (!decoderConfig) throw new Error('MediaBunny returned no audio decoder config')
+
+    const support = await AudioDecoder.isConfigSupported(decoderConfig)
+    if (!support.supported) {
+      throw new Error(`Audio codec is not supported by this browser (${decoderConfig.codec})`)
+    }
+
+    const decoder = new AudioDecoder({
+      output(audioData: AudioData) {
+        try {
+          const frames = audioData.numberOfFrames
+          const rate = audioData.sampleRate
+          const channels = audioData.numberOfChannels
+          if (frames <= 0 || rate <= 0 || channels <= 0) return
+
+          const chunkStart = audioData.timestamp / 1_000_000
+          const chunkEnd = chunkStart + frames / rate
+          const overlapStart = Math.max(chunkStart, requestedStart)
+          const overlapEnd = Math.min(chunkEnd, requestedEnd)
+          if (overlapEnd <= overlapStart) return
+
+          const sourceStartFrame = Math.max(0, Math.floor((overlapStart - chunkStart) * rate))
+          const sourceEndFrame = Math.min(
+            frames,
+            Math.ceil((overlapEnd - chunkStart) * rate),
+          )
+          if (sourceEndFrame <= sourceStartFrame) return
+
+          sampleRate = rate
+          if (channels > channelCount) {
+            for (let channel = channelCount; channel < channels; channel++) {
+              channelChunks.push([])
+            }
+            channelCount = channels
+          }
+
+          for (let channel = 0; channel < channelCount; channel++) {
+            const planeSize = audioData.allocationSize({
+              format: 'f32-planar',
+              planeIndex: Math.min(channel, channels - 1),
+            })
+            const plane = new Float32Array(planeSize / Float32Array.BYTES_PER_ELEMENT)
+            audioData.copyTo(plane, {
+              format: 'f32-planar',
+              planeIndex: Math.min(channel, channels - 1),
+            })
+            channelChunks[channel]!.push(plane.slice(sourceStartFrame, sourceEndFrame))
+          }
+        } catch (error) {
+          decoderError = error instanceof Error ? error : new Error(String(error))
+        } finally {
+          audioData.close()
+        }
+      },
+      error(error) {
+        decoderError = error instanceof Error ? error : new Error(String(error))
+      },
+    })
+
+    decoder.configure(decoderConfig)
+    try {
+      const packetSink = new mb.EncodedPacketSink(audioTrack)
+      for await (const packet of packetSink.packets()) {
+        if (decoderError) throw decoderError
+        if (packet.timestamp > requestedEnd) break
+        decoder.decode(packet.toEncodedAudioChunk())
+      }
+      await decoder.flush()
+      if (decoderError) throw decoderError
+    } finally {
+      decoder.close()
+    }
+  } finally {
+    input.dispose()
+  }
+
+  const totalFrames = channelChunks[0]?.reduce((sum, chunk) => sum + chunk.length, 0) ?? 0
+  if (channelCount === 0 || totalFrames === 0) {
+    throw new Error('WebCodecs audio decode produced no output')
+  }
+
+  return {
+    itemId,
+    sampleRate,
+    channels: channelCount,
+    samples: channelChunks.map((chunks) => {
+      const samples = new Float32Array(totalFrames)
+      let offset = 0
+      for (const chunk of chunks) {
+        samples.set(chunk, offset)
+        offset += chunk.length
+      }
+      return samples
+    }),
+    duration: totalFrames / sampleRate,
+  }
+}
+
 function sliceDecodedAudioRange(
   decoded: DecodedAudio,
   itemId: string,
@@ -1387,6 +1516,10 @@ async function decodeAudioFallback(
   }
 
   log.debug('Decoding audio with Web Audio API fallback', { itemId, src: src.substring(0, 50) })
+
+  if (typeof OfflineAudioContext === 'undefined') {
+    return decodeAudioWithWebCodecs(src, itemId, startTime, endTime)
+  }
 
   const response = await fetch(src)
   if (!response.ok) {
@@ -1940,8 +2073,9 @@ async function applySpeedAndPitch(
 }
 
 /**
- * Resample audio to target sample rate using OfflineAudioContext for high-quality
- * sinc interpolation (matches browser-native resampling quality).
+ * Resample audio while keeping the Worker audio path independent of Web Audio.
+ * Browsers still use OfflineAudioContext's higher-quality interpolation when it
+ * is available; dedicated Electron workers use the deterministic PCM fallback.
  */
 async function resample(
   samples: Float32Array,
@@ -1950,23 +2084,39 @@ async function resample(
 ): Promise<Float32Array> {
   if (sourceSampleRate === targetSampleRate) return samples
 
-  const duration = samples.length / sourceSampleRate
-  const offlineCtx = new OfflineAudioContext(
-    1,
-    Math.ceil(duration * targetSampleRate),
-    targetSampleRate,
-  )
+  if (typeof OfflineAudioContext !== 'undefined') {
+    const duration = samples.length / sourceSampleRate
+    const offlineCtx = new OfflineAudioContext(
+      1,
+      Math.ceil(duration * targetSampleRate),
+      targetSampleRate,
+    )
 
-  const buffer = offlineCtx.createBuffer(1, samples.length, sourceSampleRate)
-  buffer.getChannelData(0).set(samples)
+    const buffer = offlineCtx.createBuffer(1, samples.length, sourceSampleRate)
+    buffer.getChannelData(0).set(samples)
 
-  const source = offlineCtx.createBufferSource()
-  source.buffer = buffer
-  source.connect(offlineCtx.destination)
-  source.start(0)
+    const source = offlineCtx.createBufferSource()
+    source.buffer = buffer
+    source.connect(offlineCtx.destination)
+    source.start(0)
 
-  const rendered = await offlineCtx.startRendering()
-  return rendered.getChannelData(0)
+    const rendered = await offlineCtx.startRendering()
+    return rendered.getChannelData(0)
+  }
+
+  const outputLength = Math.max(0, Math.ceil((samples.length * targetSampleRate) / sourceSampleRate))
+  const output = new Float32Array(outputLength)
+  const sourceStep = sourceSampleRate / targetSampleRate
+  for (let index = 0; index < outputLength; index++) {
+    const sourcePosition = index * sourceStep
+    const lowerIndex = Math.min(samples.length - 1, Math.floor(sourcePosition))
+    const upperIndex = Math.min(samples.length - 1, lowerIndex + 1)
+    const fraction = sourcePosition - lowerIndex
+    const lower = samples[lowerIndex] ?? 0
+    const upper = samples[upperIndex] ?? lower
+    output[index] = lower + (upper - lower) * fraction
+  }
+  return output
 }
 
 /**
@@ -2037,7 +2187,7 @@ function downmixToStereo(source: readonly Float32Array[]): Float32Array[] {
   //   Ro = R + sqrt(0.5)·C + sqrt(0.5)·Rs
   // LFE is dropped — re-mixing it into stereo without bandlimiting causes
   // muddy bass. Matches Dolby's recommended Lo/Ro downmix.
-  const [L, R, C, _LFE, Ls, Rs, Lr, Rr] = source
+  const [L, R, C, , Ls, Rs, Lr, Rr] = source
   const length = L?.length ?? R?.length ?? 0
   if (length === 0) return [new Float32Array(0), new Float32Array(0)]
 

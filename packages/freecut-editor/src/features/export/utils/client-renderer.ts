@@ -73,6 +73,13 @@ export interface CodecSupportCheckOptions {
   bitrate?: number
 }
 
+interface CodecCapabilityRequest {
+  width: number
+  height: number
+  bitrate?: number
+  codecs: ClientCodec[]
+}
+
 const EXPORT_CODEC_TO_CLIENT_CODEC: Record<ExportSettings['codec'], ClientCodec> = {
   h264: 'avc',
   h265: 'hevc',
@@ -125,6 +132,41 @@ function getMediabunnyEncodeApi() {
   }
 
   return mediabunnyEncodeApiPromise
+}
+
+function probeVideoCodecsInWorker(options: CodecSupportCheckOptions): Promise<ClientCodec[]> {
+  const worker = new Worker(new URL('../workers/codec-capability.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+
+  return new Promise<ClientCodec[]>((resolve, reject) => {
+    const cleanup = () => {
+      worker.onmessage = null
+      worker.onerror = null
+      worker.terminate()
+    }
+
+    worker.onmessage = (event: MessageEvent<{ supported?: ClientCodec[]; error?: string }>) => {
+      cleanup()
+      if (event.data.error) {
+        reject(new Error(event.data.error))
+        return
+      }
+      resolve(event.data.supported ?? [])
+    }
+
+    worker.onerror = (event: ErrorEvent) => {
+      cleanup()
+      reject(new Error(event.message || '视频编码能力探测失败'))
+    }
+
+    worker.postMessage({
+      width: options.width,
+      height: options.height,
+      bitrate: options.bitrate,
+      codecs: ['avc', 'hevc', 'vp8', 'vp9', 'av1'] satisfies ClientCodec[],
+    } satisfies CodecCapabilityRequest)
+  })
 }
 
 export function getCompatibleVideoCodecs(container: ClientVideoContainer): ExportVideoCodec[] {
@@ -257,6 +299,12 @@ export async function getSupportedCodecs(
     typeof widthOrOptions === 'number'
       ? { width: widthOrOptions, height: height ?? DEFAULT_PROJECT_HEIGHT }
       : widthOrOptions
+  // Electron 43 exposes WebCodecs encoders in dedicated workers only. Probe
+  // there so the preflight result matches the worker that performs export.
+  if (typeof VideoEncoder === 'undefined' && typeof Worker !== 'undefined') {
+    return probeVideoCodecsInWorker(options)
+  }
+
   const codecs: ClientCodec[] = ['avc', 'hevc', 'vp8', 'vp9', 'av1']
   const supported: ClientCodec[] = []
 

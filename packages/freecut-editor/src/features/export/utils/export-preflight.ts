@@ -37,6 +37,7 @@ export interface AssessExportPreflightOptions {
   durationFrames: number
   supportedVideoCodecs?: ClientCodec[]
   workerAvailable?: boolean
+  /** @deprecated Worker audio processing no longer depends on OfflineAudioContext. */
   offlineAudioContextAvailable?: boolean
   audioEncoderSupported?: boolean
   brokenMediaIds?: string[]
@@ -321,7 +322,6 @@ function appendRenderPathCheck(options: {
   workerAvailable: boolean
   settings: ClientExportSettings
   tracks: TimelineTrack[]
-  offlineAudioContextAvailable: boolean
 }): ExportPreflightResult['predictedRenderPath'] {
   if (options.smartCopyActive) return 'smart-copy'
 
@@ -343,16 +343,6 @@ function appendRenderPathCheck(options: {
       titleKey: 'export.preflight.checks.worker-animated-image-fallback.title',
       detailKey: 'export.preflight.checks.worker-animated-image-fallback.detail',
       fixKey: 'export.preflight.checks.worker-animated-image-fallback.fix',
-    })
-    return 'main-thread'
-  }
-
-  if (hasAudibleItem(options.tracks) && !options.offlineAudioContextAvailable) {
-    options.checks.push({
-      id: 'worker-audio-context-fallback',
-      severity: 'info',
-      titleKey: 'export.preflight.checks.worker-audio-context-fallback.title',
-      detailKey: 'export.preflight.checks.worker-audio-context-fallback.detail',
     })
     return 'main-thread'
   }
@@ -385,7 +375,6 @@ export async function assessExportPreflight({
   durationFrames,
   supportedVideoCodecs,
   workerAvailable = typeof Worker !== 'undefined',
-  offlineAudioContextAvailable = typeof OfflineAudioContext !== 'undefined',
   audioEncoderSupported,
   brokenMediaIds = [],
   smartCopyAssessment,
@@ -478,7 +467,6 @@ export async function assessExportPreflight({
     workerAvailable,
     settings: resolved.clientSettings,
     tracks,
-    offlineAudioContextAvailable,
   })
 
   const estimatedFileSizeBytes = getEstimatedFileSize(

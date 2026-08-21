@@ -1,5 +1,6 @@
 import { isGifUrl, isWebpUrl } from '@freecut/shared/utils/media-utils'
 import { createLogger } from '@freecut/shared/logging/logger'
+import { registerObjectUrl, unregisterObjectUrl } from '@freecut/infrastructure/browser/object-url-registry'
 import type { ImageItem } from '@freecut/types/timeline'
 import type { RenderProgress } from '../utils/client-renderer'
 import type {
@@ -67,22 +68,6 @@ function compositionHasAnimatedImage(
   return false
 }
 
-function compositionHasAudio(
-  tracks: Array<{ items: Array<{ type: string; muted?: boolean }> }>,
-): boolean {
-  for (const track of tracks) {
-    for (const item of track.items ?? []) {
-      if (item.type === 'audio' && item.muted !== true) {
-        return true
-      }
-      if (item.type === 'video' && item.muted !== true) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
 self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
   const message = event.data
 
@@ -101,17 +86,17 @@ self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
   const { requestId, settings, composition } = message
   const controller = new AbortController()
   activeRequests.set(requestId, controller)
+  const registeredSourceUrls = new Set<string>()
 
   try {
-    const tracks = composition.tracks ?? []
+    for (const source of message.sources ?? []) {
+      registerObjectUrl(source.url, source.blob)
+      registeredSourceUrls.add(source.url)
+    }
 
     if (settings.mode === 'video' && compositionHasAnimatedImage(composition.tracks ?? [])) {
       throw new Error('WORKER_REQUIRES_MAIN_THREAD:animated-image')
     }
-    if (compositionHasAudio(tracks) && typeof OfflineAudioContext === 'undefined') {
-      throw new Error('WORKER_REQUIRES_MAIN_THREAD:audio-context')
-    }
-
     const { renderAudioOnly, renderComposition } = await loadRenderers()
 
     const onProgress = (progress: RenderProgress) => {
@@ -158,23 +143,30 @@ self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
     const stack = error instanceof Error ? error.stack : undefined
     // Surface the stack: bare mediabunny asserts report only "Assertion failed",
     // so without the stack the failing call site is invisible on the main thread.
-    log.error('Export worker failed', { requestId, error: messageText, stack })
+    const isWorkerEnvironmentDependency =
+      error instanceof ReferenceError &&
+      /\b(document|navigator|HTML\w*Element|OfflineAudioContext|AudioContext)\b/.test(messageText)
+    const logMessage = `Export worker ${isWorkerEnvironmentDependency ? 'requires main thread' : 'failed'} (${requestId}): ${messageText}${stack ? `\n${stack}` : ''}`
+    if (isWorkerEnvironmentDependency) {
+      log.warn(logMessage)
+    } else {
+      log.error(logMessage)
+    }
     // A DOM global reaching worker code is a bug in that code, not something the
     // user can act on — and it used to fail the whole export. Report it as a
     // main-thread fallback instead: the render still completes, and the reason
     // (with the original message) lands in the export's wide event so the
     // offending call site stays visible rather than being silently absorbed.
-    const isDomDependency =
-      error instanceof ReferenceError && /\b(document|navigator|HTML\w*Element)\b/.test(messageText)
     const failure: ExportRenderWorkerResponse = {
       type: 'error',
       requestId,
-      error: isDomDependency
+      error: isWorkerEnvironmentDependency
         ? `WORKER_REQUIRES_MAIN_THREAD:dom-dependency:${messageText}`
         : messageText,
     }
     self.postMessage(failure)
   } finally {
+    for (const url of registeredSourceUrls) unregisterObjectUrl(url)
     activeRequests.delete(requestId)
   }
 }

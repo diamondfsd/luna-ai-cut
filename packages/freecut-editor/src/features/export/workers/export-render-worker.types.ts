@@ -5,11 +5,17 @@ import type {
   RenderProgress,
 } from '../utils/client-renderer'
 
+export interface ExportRenderWorkerSource {
+  url: string
+  blob: Blob
+}
+
 export interface ExportRenderStartRequest {
   type: 'start'
   requestId: string
   settings: ClientExportSettings
   composition: CompositionInputProps
+  sources?: ExportRenderWorkerSource[]
 }
 
 export interface ExportRenderCancelRequest {
