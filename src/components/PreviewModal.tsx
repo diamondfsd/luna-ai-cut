@@ -98,6 +98,7 @@ export function PreviewModal({
   const [dolbyVisionChecking, setDolbyVisionChecking] = useState(false)
   const [hasILogInExport, setHasILogInExport] = useState(false)
   const [previewQuality, setPreviewQuality] = useState<PreviewQuality>('proxy')
+  const previewQualityPreferenceRevision = useRef(0)
   const [immersive, setImmersive] = useState(false)
   const [navigationVisible, setNavigationVisible] = useState(false)
   const navigationHideTimerRef = useRef<number | null>(null)
@@ -167,12 +168,24 @@ export function PreviewModal({
   )
 
   useEffect(() => {
-    setPreviewQuality('proxy')
-  }, [currentFilePath])
+    let cancelled = false
+    const revision = previewQualityPreferenceRevision.current
+    void window.luna.getSettings()
+      .then((settings) => {
+        if (cancelled || previewQualityPreferenceRevision.current !== revision) return
+        if (settings.cameraPreviewQuality === 'original' || settings.cameraPreviewQuality === 'proxy') {
+          setPreviewQuality(settings.cameraPreviewQuality)
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
-  useEffect(() => {
-    if (!canUseOriginalPreview) setPreviewQuality('proxy')
-  }, [canUseOriginalPreview])
+  const handlePreviewQualityChange = useCallback((quality: PreviewQuality) => {
+    previewQualityPreferenceRevision.current += 1
+    setPreviewQuality(quality)
+    void window.luna.saveSettings({ cameraPreviewQuality: quality }).catch(() => {})
+  }, [])
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
   const { cacheFilePath: resolvedPath } = useFileCache(useOriginalPreview ? null : currentFilePath)
@@ -400,7 +413,7 @@ export function PreviewModal({
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
           previewQuality={previewQuality}
-          onPreviewQualityChange={setPreviewQuality}
+          onPreviewQualityChange={handlePreviewQualityChange}
           showOriginalOption={canUseOriginalPreview}
           selected={currentSelected}
           onToggleSelected={onSetFileSelected && currentSelected !== undefined ? () => {

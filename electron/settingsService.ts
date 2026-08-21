@@ -67,6 +67,7 @@ function defaultSettings(): AppSettings {
     defaultWatermarkEnabled: true,
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
+    cameraPreviewQuality: 'proxy',
     experimentalGpuPreview: false,
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
@@ -110,6 +111,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.experimentalGpuPreview = typeof saved?.experimentalGpuPreview === 'boolean'
     ? saved.experimentalGpuPreview
     : defaults.experimentalGpuPreview
+  merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
+    ? saved.cameraPreviewQuality
+    : defaults.cameraPreviewQuality
   merged.organizeDownloadsByDate = typeof saved?.organizeDownloadsByDate === 'boolean'
     ? saved.organizeDownloadsByDate
     : defaults.organizeDownloadsByDate
