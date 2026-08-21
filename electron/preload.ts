@@ -34,6 +34,9 @@ import type {
   LunaEditorSdkApi,
   LunaEditorSdkRequest,
   LunaEditorSdkResponse,
+  RemotionApi,
+  RemotionClipCreateInput,
+  RemotionSourceUpdateRequest,
 } from '../src/shared/types'
 
 type VideoFrameRateReadyData = {
@@ -143,6 +146,18 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     embedJpegSourceMetadata: (outputPath, sourcePath) => ipcRenderer.invoke('freecut-export:embed-jpeg-source-metadata', outputPath, sourcePath),
     preserveSourceMetadata: (outputPath, sourcePath, options) => ipcRenderer.invoke('freecut-export:preserve-source-metadata', outputPath, sourcePath, options),
   } satisfies FreecutExportApi,
+  remotion: {
+    start: (scene, projectId) => ipcRenderer.invoke('remotion:start', scene, projectId),
+    getTask: (taskId, projectId) => ipcRenderer.invoke('remotion:get-task', taskId, projectId),
+    cancel: (taskId, projectId) => ipcRenderer.invoke('remotion:cancel', taskId, projectId),
+    createClip: (projectId: string, input?: RemotionClipCreateInput) => ipcRenderer.invoke('remotion:create-clip', projectId, input),
+    listClips: (projectId: string) => ipcRenderer.invoke('remotion:list-clips', projectId),
+    getClip: (projectId: string, clipId: string) => ipcRenderer.invoke('remotion:get-clip', projectId, clipId),
+    readSource: (projectId: string, clipId: string) => ipcRenderer.invoke('remotion:read-source', projectId, clipId),
+    updateSource: (request: RemotionSourceUpdateRequest) => ipcRenderer.invoke('remotion:update-source', request),
+    preview: (request) => ipcRenderer.invoke('remotion:preview', request.projectId, request.clipId, request.expectedRevision),
+    render: (request) => ipcRenderer.invoke('remotion:render', request.projectId, request.clipId, request.expectedRevision),
+  } satisfies RemotionApi,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {

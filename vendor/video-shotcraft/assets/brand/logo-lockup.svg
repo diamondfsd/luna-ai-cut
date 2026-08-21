@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 128" role="img" aria-labelledby="title desc">
+  <title id="title">video-shotcraft</title>
+  <desc id="desc">The video-shotcraft Frame Chisel mark and wordmark.</desc>
+  <path fill="#171714" d="M16 16h96v26H42v44h70v26H16V16Z"/>
+  <path fill="#D3923C" d="M92 48h28L84 84H56l36-36Z"/>
+  <text x="156" y="81" fill="#171714"
+        font-family="Avenir Next, Avenir, Inter, Helvetica Neue, Arial, sans-serif"
+        font-size="50" font-weight="700" letter-spacing="1.5">video-shotcraft</text>
+</svg>

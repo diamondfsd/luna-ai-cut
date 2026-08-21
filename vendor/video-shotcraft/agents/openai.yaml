@@ -1,0 +1,9 @@
+# Codex skill UI metadata — schema: skill-creator references/openai_yaml.md.
+# Read by the Codex harness (not the agent); Claude Code reads SKILL.md frontmatter instead.
+interface:
+  display_name: "Video Shotcraft"
+  short_description: "用真实页面与镜头卡制作可验收的电影感产品宣传片工作流"
+  icon_small: "./assets/brand/logo-mark.svg"
+  icon_large: "./assets/brand/logo-lockup.svg"
+  brand_color: "#D3923C"
+  default_prompt: "使用 $video-shotcraft，把我的前端项目制作成产品宣传片。"

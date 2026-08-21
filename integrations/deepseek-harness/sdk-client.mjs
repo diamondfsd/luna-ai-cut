@@ -23,6 +23,18 @@ export const LUNA_SDK_API = Object.freeze({
     startMusic: 'audio.start_music',
     getTask: 'audio.get_task',
   }),
+  render: Object.freeze({
+    remotionStart: 'render.remotion.start',
+    remotionGetTask: 'render.remotion.get_task',
+    remotionCancel: 'render.remotion.cancel',
+    remotionCreate: 'render.remotion.create',
+    remotionList: 'render.remotion.list',
+    remotionGet: 'render.remotion.get',
+    remotionReadSource: 'render.remotion.read_source',
+    remotionUpdateSource: 'render.remotion.update_source',
+    remotionPreview: 'render.remotion.preview',
+    remotionRender: 'render.remotion.render',
+  }),
   project: Object.freeze({
     inspect: 'project.inspect',
   }),

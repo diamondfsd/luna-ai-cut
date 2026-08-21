@@ -1,0 +1,849 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f3ee;
+  --bg-translucent: rgba(245, 243, 238, 0.92);
+  --surface: #fffefa;
+  --surface-translucent: rgba(255, 254, 250, 0.94);
+  --surface-soft: #efede7;
+  --surface-strong: #e8e5dd;
+  --text: #211f1b;
+  --muted: #716d64;
+  /* --faint clears 4.5:1 on every light surface incl. --surface-strong */
+  --faint: #6a665d;
+  --line: #d9d5cc;
+  --accent: #bd761d;
+  /* --accent is tuned as a FILL. For accent-colored text use
+     --accent-text, which clears 4.5:1 on light surfaces. */
+  --accent-text: #985c15;
+  --accent-soft: rgba(189, 118, 29, 0.11);
+  --accent-ink: #281805;
+  --accent-contrast: #281805;
+  --danger: #a84937;
+  --preview-bg: #e8e6e0;
+  --missing-a: #eceae4;
+  --missing-b: #e7e4dd;
+  --skeleton-a: #e4e1da;
+  --skeleton-b: #ece9e2;
+  --control-shadow: rgba(61, 53, 38, 0.08);
+  --radius: 14px;
+  --shadow: 0 8px 28px rgba(61, 53, 38, 0.06);
+  font-family: "Avenir Next", Avenir, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+/* :root-scoped on purpose. A bare [data-theme="dark"] also matches the
+   theme-switch <button data-theme="dark">, redefining every token on that
+   button and painting its label in dark-theme colors while in light mode. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #171714;
+  --bg-translucent: rgba(23, 23, 20, 0.92);
+  --surface: #201f1b;
+  --surface-translucent: rgba(32, 31, 27, 0.94);
+  --surface-soft: #292821;
+  --surface-strong: #343229;
+  --text: #f0ede5;
+  --muted: #b5b0a5;
+  /* was #89847b: fell to 3.46:1 on --surface-strong */
+  --faint: #a29d93;
+  --line: #3e3b34;
+  --accent: #d3923c;
+  --accent-text: #dfa254;
+  --accent-soft: rgba(211, 146, 60, 0.14);
+  --accent-ink: #241607;
+  --accent-contrast: #241607;
+  --danger: #df806d;
+  --preview-bg: #151513;
+  --missing-a: #24231e;
+  --missing-b: #201f1b;
+  --skeleton-a: #292820;
+  --skeleton-b: #343229;
+  --control-shadow: rgba(0, 0, 0, 0.32);
+  --shadow: 0 10px 32px rgba(0, 0, 0, 0.24);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+}
+button, input { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: inherit; }
+
+/* amber ring, not the browser's default blue against an amber system */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.search-field:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.search-field input:focus-visible { outline: none; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 20;
+  padding: 0.65rem 0.9rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  transform: translateY(-180%);
+}
+.skip-link:focus { transform: translateY(0); }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 max(24px, calc((100vw - 1560px) / 2));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-translucent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.brand-mark {
+  display: block;
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+.brand-mark-dark { display: none; }
+:root[data-theme="dark"] .brand-mark-light { display: none; }
+:root[data-theme="dark"] .brand-mark-dark { display: block; }
+
+.topbar-actions,
+.sync-status,
+.language-switch,
+.theme-switch {
+  display: flex;
+  align-items: center;
+}
+.topbar-actions { gap: 0.55rem; }
+.sync-status { gap: 0.5rem; color: var(--muted); font-size: 0.74rem; }
+.sync-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.sync-status[data-state="loading"] .sync-indicator { animation: pulse 1s ease-in-out infinite; }
+.sync-status[data-state="error"] { color: var(--danger); }
+.sync-status[data-state="error"] .sync-indicator { background: var(--danger); }
+
+.language-switch,
+.theme-switch {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-soft);
+}
+.language-switch button,
+.theme-switch button {
+  height: 30px;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 6px;
+  /* --muted (4.40:1) misses on --surface-soft; --faint is tuned to clear it */
+  color: var(--faint);
+  background: transparent;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.theme-switch button { padding-inline: 0.55rem; }
+.language-switch button.is-active,
+.theme-switch button.is-active {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 4px var(--control-shadow);
+  font-weight: 700;
+}
+
+main {
+  width: min(1560px, calc(100% - 48px));
+  margin: 0 auto;
+  padding-bottom: 6rem;
+}
+
+/* ---------- library layout: category sidebar + content ---------- */
+
+.library-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.sidebar {
+  position: sticky;
+  top: 98px;
+  padding-top: 3.5rem;
+}
+
+.sidebar-heading {
+  margin: 0 0 0.9rem;
+  padding-left: 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.category-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.category-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+.category-link:hover { color: var(--text); background: var(--surface-soft); }
+.category-link.is-active {
+  color: var(--bg);
+  background: var(--text);
+  font-weight: 700;
+}
+.category-link .count {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+
+/* NEW 徽标：卡片标题与分类导航共用；入库 60 天内由 app.js 判定挂载 */
+.new-badge {
+  display: inline-block;
+  padding: 0.08em 0.34em;
+  border-radius: 3px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.45;
+  vertical-align: 0.22em;
+  flex: none;
+}
+.category-link .new-badge { margin-left: auto; }
+.category-link .count { flex: none; }
+.category-link.is-active .new-badge { background: #e5484d; color: #fff; }
+
+.library-main { min-width: 0; }
+
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 3rem;
+  padding: 3.5rem 0 2rem;
+}
+
+h1, h2, p { overflow-wrap: anywhere; }
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 3.4vw, 3.4rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-weight: 750;
+}
+.intro-description {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.stats {
+  display: flex;
+  gap: 1.35rem;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.stats div { min-width: 64px; }
+.stats dt { color: var(--muted); font-size: 0.72rem; }
+.stats dd { margin: 0.3rem 0 0; font: 650 1.3rem/1 "SFMono-Regular", Consolas, monospace; }
+
+.controls {
+  position: sticky;
+  top: 78px;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-translucent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.search-field {
+  height: 40px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0 0.8rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--surface-soft);
+}
+.search-field:focus-within { border-color: var(--accent); }
+.search-icon { width: 12px; height: 12px; border: 1.4px solid var(--muted); border-radius: 50%; position: relative; }
+.search-icon::after { content: ""; position: absolute; width: 5px; height: 1.4px; right: -4px; bottom: -3px; background: var(--muted); transform: rotate(45deg); }
+.search-field input { width: 100%; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 0.82rem; }
+.search-field input::placeholder { color: var(--faint); }
+kbd { padding: 0.2rem 0.34rem; border: 1px solid var(--line); border-radius: 5px; color: var(--faint); font: 0.7rem/1 "SFMono-Regular", Consolas, monospace; }
+
+.filter-row { display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: none; }
+.filter-row::-webkit-scrollbar { display: none; }
+.filter-button,
+.empty-state button,
+.load-error button {
+  min-height: 36px;
+  padding: 0.5rem 0.72rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+.filter-button:hover { color: var(--text); background: var(--surface-soft); }
+.filter-button.is-active { color: var(--accent-contrast); background: var(--accent); font-weight: 700; }
+.filter-button:active,
+.empty-state button:active,
+.load-error button:active { transform: translateY(1px); }
+
+.library {
+  display: grid;
+  /* 3 up, not 4: the demo is the point of the card, and a 4-up track only
+     leaves it 151px tall. 4-up returns on genuinely wide screens. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.1rem;
+  /* start, not stretch: a multi-style card is ~100px taller than its
+     row-mates, and stretching padded that gap INSIDE the shorter cards as
+     blank white. Now each card ends where its content ends. */
+  align-items: start;
+}
+
+.shot-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.preview {
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background: var(--preview-bg);
+}
+.preview video,
+.preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.video-expand {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(20, 19, 17, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.video-expand svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: #f0ede5;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+/* revealed on hover/focus so it never competes with the demo itself;
+   plain :focus too, not only :focus-visible: keyboard focus must reveal the
+   button even when the UA declines to paint a focus ring */
+.shot-card:hover .video-expand,
+.shot-card:focus-within .video-expand,
+.video-expand:focus { opacity: 1; }
+@media (hover: none) {
+  .video-expand { opacity: 1; }
+}
+
+/* fullscreen: the tile crops with object-fit:cover, but a full-screen demo
+   must show the whole 16:9 frame */
+.preview:fullscreen {
+  display: grid;
+  place-items: center;
+  background: #0e0e0c;
+  aspect-ratio: auto;
+  border: 0;
+}
+.preview:fullscreen video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.preview:fullscreen .video-expand { display: none; }
+
+.preview-missing {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: var(--muted);
+  background: repeating-linear-gradient(135deg, var(--missing-a), var(--missing-a) 10px, var(--missing-b) 10px, var(--missing-b) 20px);
+}
+.missing-glyph { width: 36px; height: 26px; margin: 0 auto 0.55rem; border: 1px solid var(--line); border-radius: 5px; position: relative; background: var(--surface); }
+.missing-glyph::after { content: ""; position: absolute; left: 7px; right: 7px; top: 50%; height: 1px; background: var(--faint); transform: rotate(-28deg); }
+.preview-missing p { margin: 0; font-size: 0.76rem; }
+.preview-missing small { max-width: 220px; margin-top: 0.35rem; color: var(--faint); font-size: 0.7rem; }
+
+.card-body {
+  /* no min-height: it used to reserve room for the duration/energy block
+     and now just pads blank space under the buttons */
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 0.9rem 1rem 1rem;
+}
+.card-title-row { display: flex; align-items: flex-start; gap: 0.75rem; }
+/* flex:1 + min-width:0 so the title gets the full column and can ellipsize
+   instead of breaking mid-word under overflow-wrap:anywhere */
+.card-title { flex: 1; min-width: 0; }
+.card-title h3 {
+  /* h3, not h2: cards moved under the category h2. While this selector still
+     said h2 the heading fell back to the UA default (18.7px + 18.7px margins),
+     wasting 37px of the card on empty space. */
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  /* slugs are hyphenated single "words": break at the hyphens, not mid-word */
+  overflow-wrap: break-word;
+}
+.card-title > p {
+  margin: 0.22rem 0 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: 0.7rem/1.3 "SFMono-Regular", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* actions live on their own row at the card foot: in the title row they
+   claimed 160px and starved the title down to 64px, shattering slugs */
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+.source-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.55rem;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-underline-offset: 3px;
+}
+.source-link:hover { color: var(--accent-text); }
+.copy-button {
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.copy-button:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.select-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.select-button:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.select-check {
+  width: 0.72rem;
+  height: 0.72rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  position: relative;
+  flex-shrink: 0;
+}
+.select-button.is-selected {
+  color: var(--accent-text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.select-button.is-selected .select-check::after {
+  content: '';
+  position: absolute;
+  inset: 1px 2px 3px 2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(40deg) scale(0.72);
+}
+
+.shot-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow);
+}
+
+.selection-bar[hidden] { display: none; }
+.selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.selection-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.selection-copy,
+.selection-clear {
+  min-height: 40px;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.selection-copy {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+.selection-copy:hover { filter: brightness(1.08); }
+.selection-clear {
+  background: transparent;
+  color: var(--muted);
+}
+.selection-clear:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.implementation-status {
+  /* was a grid cell inside .current-style, which this branch removed; now a
+     standalone badge over the demo's bottom-left, where it costs no card
+     height: appearing in the body flow made the card 29px taller than its
+     row-mates whenever a reference-only style was selected. */
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  z-index: 2;
+  /* clears the fullscreen button (top-right); wrap instead of ellipsizing —
+     a truncated "custom implementation re…" hides the one fact the badge
+     exists to state */
+  max-width: calc(100% - 4rem);
+  width: fit-content;
+  padding: 0.16rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  font-size: 0.7rem;
+  font-style: normal;
+  line-height: 1.25;
+}
+.implementation-status--reference-only { border-color: var(--danger); color: var(--danger); }
+.implementation-status--missing-preview { border-style: dashed; }
+
+.summary {
+  display: -webkit-box;
+  margin: 0.65rem 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.52;
+  -webkit-box-orient: vertical;
+  /* 4 lines, not 2: at 2 lines 44 of 104 descriptions were cut mid-sentence,
+     and every one of them fits in exactly 4 */
+  -webkit-line-clamp: 4;
+  /* reserve all 4 lines: without it a 3-line description makes its card 18px
+     shorter than its row-mates, and align-items:start leaves the row ragged */
+  min-height: calc(4 * 1.52em);
+}
+
+/* Multi-style cards used to stack a "STYLE 01 <name>" line plus a chip row
+   under the summary, making them 88px taller than single-style cards in the
+   same row. The chips now overlay the demo instead, so every card body has
+   the same structure and rows stay flush without stretching blank space. */
+.card-media { position: relative; }
+.style-selector {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  display: flex;
+  /* flex-start, not flex-end: with flex-end an overflowing row grows
+     leftward past its own scroll origin and the first chip becomes
+     unreachable (the 6-style card clipped chip 1 that way) */
+  justify-content: flex-start;
+  gap: 0.3rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* soften both ends so an overflowing row reads as scrollable rather than
+     as a chip sliced off at the card edge */
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+.style-selector::-webkit-scrollbar { display: none; }
+.style-option {
+  position: relative;
+  /* 0 0 auto: never shrink — the row already scrolls horizontally with
+     end-fade masks, so full style names beat "bento-ligh…" truncation */
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 7px;
+  color: #f0ede5;
+  background: rgba(20, 19, 17, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.style-option:hover { border-color: var(--accent); }
+.style-option.is-active {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  background: var(--accent);
+  font-weight: 700;
+}
+.style-option i {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+
+.empty-state,
+.load-error { grid-column: 1 / -1; padding: 5rem 1rem; text-align: center; color: var(--muted); }
+.empty-state button,
+.load-error button { border-color: var(--line); color: var(--text); background: var(--surface); }
+
+.skeleton-card { min-height: 400px; padding: 1rem; }
+.skeleton-line,
+.skeleton-media {
+  border-radius: 7px;
+  background: linear-gradient(100deg, var(--skeleton-a) 20%, var(--skeleton-b) 38%, var(--skeleton-a) 56%);
+  background-size: 220% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+.skeleton-line { width: 68%; height: 12px; margin-top: 0.8rem; }
+.skeleton-title { width: 42%; height: 25px; margin-top: 0; }
+.skeleton-media { aspect-ratio: 16 / 9; margin-top: 1rem; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 15;
+  padding: 0.72rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--text);
+  box-shadow: var(--shadow);
+  color: var(--bg);
+  font-size: 0.72rem;
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease, bottom 200ms ease;
+}
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+/* selection bar owns the bottom-center slot; the toast stacks above it
+   rather than covering the "copy selected" button it just acted on */
+.toast.has-selection-bar { bottom: 5.2rem; }
+
+@keyframes pulse { 50% { opacity: 0.35; transform: scale(0.75); } }
+@keyframes shimmer { to { background-position-x: -220%; } }
+
+
+/* 4 up only when the track can still give the demo real height */
+@media (min-width: 1700px) {
+  .library { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1100px) {
+  .library { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  /* minmax(0,…) not 1fr: the horizontal category-nav's min-content width
+     (~1300px) would otherwise blow the track out and scroll the whole page */
+  .library-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .sidebar {
+    position: sticky;
+    top: 66px;
+    z-index: 9;
+    min-width: 0;
+    padding: 0.6rem 0;
+    background: var(--bg-translucent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .sidebar-heading { display: none; }
+  .category-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 0.25rem;
+  }
+  .category-nav::-webkit-scrollbar { display: none; }
+  .category-link { flex-shrink: 0; padding: 0.5rem 0.85rem; font-size: 0.8rem; }
+  .intro { grid-template-columns: 1fr; gap: 1.5rem; padding-top: 1.5rem; }
+  .stats { width: fit-content; }
+  .controls { top: 124px; }
+  .library { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  main { width: min(100% - 24px, 1560px); }
+  .topbar { padding: 0 12px; }
+  /* the enlarged desktop wordmark + theme/language switches overflow a
+     390px bar; the mark stays big, the wordmark gives back its extra size */
+  .brand { font-size: 0.72rem; letter-spacing: 0.1em; }
+  .brand-mark { width: 26px; height: 26px; }
+  .topbar-actions { gap: 0.55rem; }
+  .theme-switch button { padding-inline: 0.42rem; }
+  .sync-status span:last-child { display: none; }
+  .intro { padding: 1.5rem 0 1.5rem; }
+  h1 { font-size: 2.15rem; }
+  .stats { width: 100%; justify-content: space-between; }
+  .controls { top: 120px; }
+  kbd { display: none; }
+  .library { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topbar,
+  .controls {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

@@ -12,7 +12,9 @@
   },
   "files": [
     "dist",
-    "dist-electron"
+    "dist-electron",
+    "integrations/remotion",
+    "electron/remotion-render-worker.mjs"
   ],
   "extraResources": [
     {
@@ -32,6 +34,16 @@
     {
       "from": "dist/deepseek-harness",
       "to": "deepseek-harness",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/remotion-binaries",
+      "to": "remotion-binaries",
+      "filter": ["**/*", "!manifest.json"]
+    },
+    {
+      "from": "resources/remotion-browser",
+      "to": "remotion-browser",
       "filter": ["**/*"]
     },
     {

@@ -36,6 +36,16 @@ built-in/
 构建 Harness runtime 时，脚本会将加载器和这棵 Markdown 目录复制到
 `dist/deepseek-harness/`，运行时优先从打包资源读取，不依赖工作树中的源码目录。
 
+### video-shotcraft
+
+`video-shotcraft` 是一个 Apache-2.0 skill bundle，包含电影感产品视频的镜头卡、Remotion demo、Ink Press 模板、页面采集脚本和音频资源。它不属于 FreeCut 时间线技能目录，也不被 loader 递归解析；loader 只读取根目录的 `SKILL.md`，Harness 按 skill 返回的本地资源目录按需读取其余文件。
+
+源码固定放在仓库内的 `vendor/video-shotcraft/`，当前版本为上游 commit
+`0d6f0b57f0d4d6700761644c07f7ef03c3e50234`。因此开发、测试和打包都不需要远程安装或环境变量覆盖；`build:harness-runtime` 会把本地资源复制到
+`dist/deepseek-harness/skills/video-shotcraft`，缺少该目录时构建直接失败。
+
+用户提出产品宣传片、Remotion 动效或镜头卡需求后，模型先加载 `video-shotcraft` skill，再按其中的相对路径读取镜头卡、模板和 demo；宿主不根据用户文案猜测意图，也不自行选择模板或宣布任务完成。
+
 ## 脚本 SDK
 
 脚本是 ESM 模块，唯一需要导出的入口是 `default async function main(luna)`。每个 SDK 方法返回结构化操作结果，
@@ -86,6 +96,12 @@ TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 
 `timeline.mute({ itemIds, muted? })`，它会把指定片段设为 -60 dB；如果指定的是带关联原声的视频，还会同时处理关联音频片段。
 FreeCut 带原声的视频由视频片段和关联音频片段组成。只删除音频而保留视频时，必须先
 `timeline.unlink({ itemIds: [audioId] })`，再 `timeline.remove({ itemIds: [audioId] })`；直接 remove 仍会按关联规则级联删除视频。
+
+RemotionClip 是项目内的特殊片段。它的 `src/Root.tsx` 和组件 TSX 是唯一编辑源，MP4 只是绑定了
+`sourceRevision`、`sourceHash` 的渲染缓存。使用 `luna.render.remotionCreate`、
+`remotionReadSource`、`remotionUpdateSource`、`remotionPreview` 和 `remotionRender` 管理它；
+更新源码必须带上读取到的 `expectedRevision`，不要直接改 MP4、构造文件路径或把源码放到项目外。
+预览/渲染完成后检查任务的 `clipId`、`sourceRevision`、`sourceHash`，源码在任务期间发生变化时旧结果不能覆盖新版本。
 
 ### 记忆和异步任务
 
@@ -170,7 +186,7 @@ LUNA_ASSISTANT_CWD
 LUNA_ASSISTANT_MODEL
 ```
 
-Harness 的 profile/plugin 资源需要能加载 `integrations/deepseek-harness/plugin.mjs`。生产构建还需要把该目录和两个兼容脚本一起纳入资源；本次适配层没有修改 Electron 或构建配置。
+Harness 的 profile/plugin 资源需要能加载 `integrations/deepseek-harness/plugin.mjs`。生产构建还需要把该目录和两个兼容脚本一起纳入资源；Electron 接线不需要额外改动，Harness runtime 构建脚本会同时处理仓库内的 video-shotcraft 资源。
 
 ## 测试
 

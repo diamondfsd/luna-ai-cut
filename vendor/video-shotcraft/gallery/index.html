@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="google-site-verification" content="Qu8vMAC99goV9xnwf_0ZlGGimtmj24TWFNVUiTz2mhM">
+  <meta name="description" content="video-shotcraft is an AI agent skill for Claude Code &amp; Codex that makes cinematic product promo videos with Remotion. 152 shot recipe cards organized by function, tuned demos, and a production-ready template.">
+  <link rel="canonical" href="https://vincentwei1021.github.io/video-shotcraft/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="video-shotcraft">
+  <meta property="og:title" content="video-shotcraft — AI Video Skill for Claude Code &amp; Codex">
+  <meta property="og:description" content="An agent skill for crafting cinematic product videos with Remotion: 152 shot recipe cards, 209 motion previews, and a production-ready promo template.">
+  <meta property="og:url" content="https://vincentwei1021.github.io/video-shotcraft/">
+  <meta property="og:image" content="https://vincentwei1021.github.io/video-shotcraft/og-image.jpg?v=20260726b">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="video-shotcraft Gallery — shot recipes and motion samples">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="video-shotcraft — AI Video Skill for Claude Code &amp; Codex">
+  <meta name="twitter:description" content="An agent skill for crafting cinematic product videos with Remotion: 152 shot recipe cards, 209 motion previews, and a production-ready promo template.">
+  <meta name="twitter:image" content="https://vincentwei1021.github.io/video-shotcraft/og-image.jpg?v=20260726b">
+  <link rel="icon" href="./logo-mark.svg" type="image/svg+xml">
+  <title>video-shotcraft — AI Video Skill for Claude Code &amp; Codex | Cinematic Product Videos with Remotion</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "video-shotcraft",
+    "description": "An AI agent skill for Claude Code and Codex that crafts cinematic product promo videos with Remotion: 152 shot recipe cards organized by function, 209 styles, 209 motion previews, and a production-ready 36.2-second video template.",
+    "url": "https://vincentwei1021.github.io/video-shotcraft/",
+    "sameAs": ["https://github.com/Vincentwei1021/video-shotcraft"],
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "macOS, Linux, Windows",
+    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+    "softwareHelp": "https://github.com/Vincentwei1021/video-shotcraft#readme",
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "author": {"@type": "Person", "name": "Wei Yihao", "url": "https://github.com/Vincentwei1021"}
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #0e0e0c;
+      --text: #f0ede5;
+      --muted: #b5b0a5;
+      --line: rgba(240, 237, 229, 0.16);
+      --accent: #d3923c;
+      --accent-ink: #241607;
+      font-family: "Avenir Next", Avenir, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+    button, a { -webkit-tap-highlight-color: transparent; }
+
+    /* ---- full-screen motion wall ---- */
+    .wall {
+      position: fixed;
+      inset: -2vh -2vw;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 10px;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .wall-tile {
+      position: relative;
+      overflow: hidden;
+      border-radius: 10px;
+      background: #14130f;
+    }
+    /* poster carries the wall until the clip is decoded: 140KB of stills
+       stands in for 8MB of video, so the grid is never empty */
+    .wall-tile img,
+    .wall-tile video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .wall-tile video {
+      opacity: 0;
+      transition: opacity 900ms ease;
+    }
+    .wall-tile video.is-on { opacity: 1; }
+
+    /* dim + vignette so type stays readable */
+    .scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at center, rgba(14, 14, 12, 0.42) 0%, rgba(14, 14, 12, 0.62) 68%, rgba(14, 14, 12, 0.8) 100%),
+        linear-gradient(180deg, rgba(14, 14, 12, 0.55) 0%, rgba(14, 14, 12, 0.26) 30%, rgba(14, 14, 12, 0.26) 70%, rgba(14, 14, 12, 0.66) 100%);
+    }
+
+    /* ---- top bar ---- */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.1rem clamp(16px, 3vw, 40px);
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 800;
+      letter-spacing: 0.09em;
+      font-size: 1.22rem;
+    }
+    .brand-mark {
+      display: block;
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+    }
+    .language-switch {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      background: rgba(14, 14, 12, 0.35);
+    }
+    .language-switch button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.8rem;
+      padding: 0.38rem 0.85rem;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .language-switch button.is-active { color: var(--text); font-weight: 700; background: rgba(240, 237, 229, 0.1); }
+
+    /* ---- hero ---- */
+    .hero {
+      position: relative;
+      z-index: 2;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0 24px;
+    }
+    .hero-kicker {
+      margin: 0 0 1.3rem;
+      font-size: clamp(0.72rem, 1.1vw, 0.85rem);
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      text-shadow: 0 2px 18px rgba(0, 0, 0, 0.8);
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(2.2rem, 5.6vw, 4.2rem);
+      line-height: 1.14;
+      letter-spacing: -0.02em;
+      font-weight: 800;
+      max-width: 21ch;
+      text-shadow: 0 4px 40px rgba(0, 0, 0, 0.9), 0 1px 10px rgba(0, 0, 0, 0.7);
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+    .hero-sub {
+      margin: 1.5rem 0 0;
+      max-width: 56ch;
+      font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+      line-height: 1.7;
+      color: var(--text);
+      opacity: 0.82;
+      text-shadow: 0 2px 20px rgba(0, 0, 0, 0.85);
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 2.6rem;
+    }
+    .button-primary,
+    .button-github {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      min-width: clamp(240px, 24vw, 300px);
+      height: clamp(58px, 6.4vh, 66px);
+      padding: 0 2.2rem;
+      border-radius: 999px;
+      font-weight: 750;
+      font-size: clamp(1.18rem, 1.8vw, 1.4rem);
+      text-decoration: none;
+      transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease, border-color 150ms ease;
+    }
+    .button-primary {
+      position: relative;
+      overflow: hidden;
+      background: var(--accent);
+      color: var(--accent-ink);
+      box-shadow: 0 10px 38px rgba(211, 146, 60, 0.4);
+    }
+    /* hover: one specular sweep left→right — the same draw-on scanline the
+       shot cards speak, kept to a single pass so it reads as light, not loop */
+    .button-primary::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(115deg, transparent 32%, rgba(255, 244, 224, 0.55) 50%, transparent 68%);
+      transform: translateX(-110%);
+      pointer-events: none;
+    }
+    .button-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 48px rgba(211, 146, 60, 0.55);
+    }
+    .button-primary:hover::after { animation: cta-sheen 700ms ease-out; }
+    @keyframes cta-sheen {
+      from { transform: translateX(-110%); }
+      to { transform: translateX(110%); }
+    }
+    .button-github {
+      position: relative;
+      border: 1px solid rgba(240, 237, 229, 0.35);
+      color: var(--text);
+      background: rgba(14, 14, 12, 0.5);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .button-github:hover {
+      transform: translateY(-2px);
+      background: rgba(240, 237, 229, 0.12);
+      border-color: rgba(211, 146, 60, 0.65);
+      box-shadow: 0 10px 34px rgba(211, 146, 60, 0.22);
+    }
+    .button-github svg { width: 20px; height: 20px; fill: currentColor; flex-shrink: 0; }
+    .star-glyph {
+      color: var(--accent);
+      transition: transform 180ms ease;
+    }
+    /* the star does one anticipation-free pop-and-settle, echoing the cards'
+       spring落定 vocabulary */
+    .button-github:hover .star-glyph { animation: star-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+    @keyframes star-pop {
+      0% { transform: scale(1) rotate(0deg); }
+      45% { transform: scale(1.45) rotate(-14deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    /* star count: floating badge, only revealed on hover/focus */
+    .star-count {
+      position: absolute;
+      top: -0.85rem;
+      right: 0.9rem;
+      padding: 0.18rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid rgba(211, 146, 60, 0.5);
+      background: rgba(14, 14, 12, 0.92);
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 160ms ease, transform 160ms ease;
+      pointer-events: none;
+    }
+    .star-count::before { content: "★ "; }
+    .button-github:hover .star-count:not(:empty),
+    .button-github:focus-visible .star-count:not(:empty) {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: clamp(1.4rem, 4vw, 3rem);
+      margin: 3rem 0 0;
+      padding: 0;
+      list-style: none;
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-shadow: 0 2px 14px rgba(0, 0, 0, 0.8);
+    }
+    .hero-stats strong {
+      display: block;
+      font-size: clamp(1.3rem, 2.4vw, 1.8rem);
+      font-weight: 800;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+
+    .hero-foot {
+      position: fixed;
+      bottom: 1.1rem;
+      left: 0;
+      right: 0;
+      z-index: 2;
+      text-align: center;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: rgba(181, 176, 165, 0.7);
+    }
+    .hero-foot a { color: inherit; text-decoration: none; }
+    .hero-foot a:hover { color: var(--text); }
+
+    /* ---- Chinese typography tuning ---- */
+    html[lang="zh-CN"] .hero h1 {
+      letter-spacing: 0.04em;
+      line-height: 1.32;
+      font-weight: 750;
+    }
+    html[lang="zh-CN"] .hero h1 em { padding: 0 0.06em; }
+    html[lang="zh-CN"] .hero-kicker { letter-spacing: 0.3em; }
+    html[lang="zh-CN"] .hero-sub {
+      max-width: 34em;
+      letter-spacing: 0.03em;
+      line-height: 1.9;
+      text-wrap: balance;
+    }
+    html[lang="zh-CN"] .button-primary,
+    html[lang="zh-CN"] .button-github { letter-spacing: 0.08em; }
+    html[lang="zh-CN"] .hero-stats span { letter-spacing: 0.06em; }
+
+    @media (max-width: 900px) {
+      .wall { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(6, 1fr); }
+    }
+    @media (max-width: 620px) {
+      .wall { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(8, 1fr); }
+      .hero-actions { flex-direction: column; width: 100%; max-width: 340px; }
+      .button-primary, .button-github { justify-content: center; }
+      /* the enlarged wordmark plus the language switch overflow a 390px bar */
+      .brand { font-size: 0.85rem; letter-spacing: 0.08em; }
+      .brand-mark { width: 28px; height: 28px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wall-tile video { transition: none; }
+      .button-primary:hover, .button-github:hover { transform: none; }
+      .button-primary:hover::after, .button-github:hover .star-glyph { animation: none; }
+    }
+
+    /* amber ring, not the browser's default blue against an amber system */
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+    .button-primary:focus-visible,
+    .button-github:focus-visible { outline-offset: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wall" id="wall" aria-hidden="true"></div>
+  <div class="scrim" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="video-shotcraft home">
+      <img class="brand-mark" src="./logo-mark-reverse.svg" alt="" width="24" height="24" aria-hidden="true">
+      <span>VIDEO SHOTCRAFT</span>
+    </a>
+    <nav class="language-switch" id="languageSwitch" aria-label="Language">
+      <button type="button" data-language="zh" aria-pressed="false">中文</button>
+      <button type="button" data-language="en" aria-pressed="true">EN</button>
+    </nav>
+  </header>
+
+  <main class="hero">
+    <p class="hero-kicker" data-l10n="kicker">An agent skill for Claude Code &amp; Codex</p>
+    <h1 data-l10n="heroTitle">152 cinematic shot recipes.<br><em>One prompt</em> to a finished promo.</h1>
+    <p class="hero-sub" data-l10n="heroSub">Every motion you see behind this page is a tuned, ready-to-use shot recipe card — your agent picks the shots, animates real product screenshots with Remotion, syncs the beats, and delivers the film.</p>
+    <div class="hero-actions">
+      <a class="button-primary" href="./library.html" data-l10n="ctaLibrary">Browse all motions</a>
+      <a class="button-github" href="https://github.com/Vincentwei1021/video-shotcraft" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span data-l10n="ctaStar">Star on GitHub</span>
+        <span class="star-glyph" aria-hidden="true">★</span>
+        <span class="star-count" id="starCount" aria-label="GitHub stars"></span>
+      </a>
+    </div>
+    <ul class="hero-stats" aria-label="Library statistics">
+      <li><strong id="statCards">152</strong><span data-l10n="statCards">recipe cards</span></li>
+      <li><strong id="statStyles">209</strong><span data-l10n="statStyles">styles</span></li>
+      <li><strong id="statSamples">209</strong><span data-l10n="statSamples">motion previews</span></li>
+      <li><strong>36.2s</strong><span data-l10n="statTemplate">ready template</span></li>
+    </ul>
+  </main>
+
+  <footer class="hero-foot">
+    <span data-l10n="footer">Apache-2.0 · Built with Remotion · </span><a href="https://github.com/Vincentwei1021/video-shotcraft" target="_blank" rel="noreferrer">github.com/Vincentwei1021/video-shotcraft</a>
+  </footer>
+
+  <script>
+    const L10N = {
+      en: {
+        kicker: 'An agent skill for Claude Code & Codex',
+        heroTitle: '152 cinematic shot recipes.<br><em>One prompt</em> to a finished promo.',
+        heroSub: 'Every motion you see behind this page is a tuned, ready-to-use shot recipe card — your agent picks the shots, animates real product screenshots with Remotion, syncs the beats, and delivers the film.',
+        ctaLibrary: 'Browse all motions',
+        ctaStar: 'Star on GitHub',
+        statCards: 'recipe cards',
+        statStyles: 'styles',
+        statSamples: 'motion previews',
+        statTemplate: 'ready template',
+        footer: 'Apache-2.0 · Built with Remotion · ',
+      },
+      zh: {
+        kicker: '一个 Claude Code / Codex 的 agent skill',
+        heroTitle: '152 张镜头配方卡<br>宣传片<em>一键直出</em>',
+        heroSub: '页面背后滚动的每个动效，都是一张调校好、即取即用的镜头配方卡。agent 负责选镜头、给真实产品截图做动画、卡上节奏，直接交付成片。',
+        ctaLibrary: '浏览全部动效',
+        ctaStar: '收藏 GitHub',
+        statCards: '镜头配方卡',
+        statStyles: '动效样式',
+        statSamples: '动态样片',
+        statTemplate: '现成模板',
+        footer: 'Apache-2.0 · 基于 Remotion 构建 · ',
+      },
+    };
+
+    const state = {
+      language: (() => {
+        try { return localStorage.getItem('video-shot-gallery-language') === 'zh' ? 'zh' : 'en'; } catch { return 'en'; }
+      })(),
+    };
+    const t = (key) => L10N[state.language][key] || L10N.en[key] || key;
+
+    function applyLanguage() {
+      document.documentElement.lang = state.language === 'zh' ? 'zh-CN' : 'en';
+      document.querySelectorAll('[data-l10n]').forEach((node) => {
+        node.innerHTML = t(node.dataset.l10n);
+      });
+      document.querySelectorAll('#languageSwitch [data-language]').forEach((button) => {
+        const active = button.dataset.language === state.language;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+
+    document.querySelector('#languageSwitch').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-language]');
+      if (!button || button.dataset.language === state.language) return;
+      state.language = button.dataset.language;
+      try { localStorage.setItem('video-shot-gallery-language', state.language); } catch {}
+      applyLanguage();
+    });
+
+    /* ---- random motion wall ---- */
+    const wall = document.querySelector('#wall');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // 固定 16 支精选样片（4×4 墙位，一一对应，不轮换）
+    const WALL_CLIPS = [
+      'comic-panel-split',
+      'beat-step-list-theme-cycle',
+      'before-after-slider-scrub',
+      'bottom-push-stack-wipe',
+      'unit-dot-swarm-regroup',
+      'circle-match-iris',
+      'graze-face-tour',
+      'magician-card-flourish',
+      'paper-title-card',
+      'autolayout-gap-dial',
+      'neon-frame-orbit-drop',
+      'spotlight-hero-card',
+      'slide-spotlight-pan',
+      'palette-theme-ripple',
+      'ui-strip-away-outro',
+      'word-relay-filmstrip',
+    ];
+
+    function mountVideo(tile, url) {
+      const video = document.createElement('video');
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      // metadata, not auto: the poster already holds the tile, so the full
+      // clip is fetched by play() rather than racing first paint
+      video.preload = 'metadata';
+      video.src = url;
+      tile.append(video);
+      const start = () => {
+        video.classList.add('is-on');
+        if (!reduceMotion) video.play().catch(() => {});
+      };
+      if (video.readyState >= 2) start();
+      else video.addEventListener('loadeddata', start, {once: true});
+      return video;
+    }
+
+    WALL_CLIPS.forEach((name, index) => {
+      const tile = document.createElement('div');
+      tile.className = 'wall-tile';
+      wall.append(tile);
+      if (reduceMotion) {
+        // no video is fetched at all here, so the tile would stay black
+        // forever; the poster still frame stands in for the clip
+        const poster = document.createElement('img');
+        poster.src = `./media/poster/${name}.jpg`;
+        poster.alt = '';
+        poster.decoding = 'async';
+        tile.append(poster);
+        return;
+      }
+      // tiles start black and each clip fades itself in on arrival:
+      // the wall assembling one tile at a time IS the reveal, so no poster
+      // here — a still would pre-fill the grid and kill it
+      setTimeout(() => mountVideo(tile, `./media/${name}.mp4`), index * 180);
+    });
+
+    /* ---- live GitHub star count (cached 1h to spare the rate limit) ---- */
+    (() => {
+      const el = document.querySelector('#starCount');
+      const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n));
+      const CACHE_KEY = 'video-shotcraft-stars';
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+        if (cached && Date.now() - cached.at < 3600_000) {
+          el.textContent = fmt(cached.stars);
+          return;
+        }
+      } catch {}
+      fetch('https://api.github.com/repos/Vincentwei1021/video-shotcraft')
+        .then((response) => (response.ok ? response.json() : Promise.reject()))
+        .then((repo) => {
+          if (typeof repo.stargazers_count !== 'number') return;
+          el.textContent = fmt(repo.stargazers_count);
+          try { localStorage.setItem(CACHE_KEY, JSON.stringify({stars: repo.stargazers_count, at: Date.now()})); } catch {}
+        })
+        .catch(() => {});
+    })();
+
+    fetch('./api/library.json', {cache: 'no-store'})
+      .then((response) => response.json())
+      .then((library) => {
+        document.querySelector('#statCards').textContent = library.stats.cardCount;
+        document.querySelector('#statStyles').textContent = library.stats.styleCount;
+        document.querySelector('#statSamples').textContent = library.stats.previewCount;
+      })
+      .catch(() => {});
+
+    applyLanguage();
+  </script>
+</body>
+</html>

@@ -35,6 +35,20 @@
 - `luna.timeline.addMedia({ mediaId, startSeconds?, durationSeconds?, sourceStartSeconds?, sourceEndSeconds?, trackId? })`：将素材加入时间轴。
 - `luna.timeline.addMediaBatch({ items: [...] })`：批量加入素材，`items` 使用 `addMedia` 的参数格式。
 
+## RemotionClip 源码片段
+
+RemotionClip 是时间线中的特殊片段：项目目录内的 `src/Root.tsx` 及其组件源码是唯一编辑源，MP4 只是带有源码版本和校验值的渲染缓存。需要修改 Remotion 画面时，不能直接改 MP4，也不能调用文件系统；必须读取并更新源码，再预览或渲染。
+
+- `luna.render.remotionList()`：列出当前项目的 RemotionClip，读取 `clipId`、`sourceRevision`、`sourceHash` 和缓存状态。
+- `luna.render.remotionCreate({ input: { mediaIds?, width?, height?, fps?, durationInFrames?, files? } })`：创建项目内 RemotionClip。没有 `files` 时会生成可编辑的 `src/Root.tsx` 模板。
+- `luna.render.remotionReadSource({ clipId })`：读取源码文件集合。先保存返回的 `sourceRevision`。
+- `luna.render.remotionUpdateSource({ clipId, expectedRevision, files, removeFiles? })`：以源码文件路径为键更新 TSX/TS 文件。必须传入刚读取的 revision；版本冲突时重新读取，不能覆盖他人的修改。
+- `luna.render.remotionPreview({ clipId, expectedRevision? })`：用当前源码生成预览任务。
+- `luna.render.remotionRender({ clipId, expectedRevision? })`：用当前源码生成绑定到该 clip 的 MP4 缓存。
+- `luna.render.remotionGetTask({ taskId })`：轮询预览或渲染任务，只有 `status === 'completed'` 才算完成；检查返回的 `clipId`、`sourceRevision` 和 `sourceHash` 是否仍与当前 clip 一致。
+
+Remotion 任务结果不会向模型暴露宿主绝对路径。不要自行构造路径，也不要把源码复制到项目外；渲染期间源码发生变化时，旧任务结果不能替代新版本。
+
 字幕、标题和其他画面叠加先创建独立视频轨道，并确认其 `order` 小于要覆盖的视频轨道；需要调整已有轨道时使用 `moveTrack`，不要只修改返回数组中的位置。TTS、背景音乐和音效先创建独立音频轨道；原始视频产生的伴侣音频保留在原音频轨道。
 
 轨道层级示例：

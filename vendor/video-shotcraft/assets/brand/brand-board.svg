@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">video-shotcraft brand board</title>
+  <desc id="desc">Logo, palette, and usage concept for the video-shotcraft identity.</desc>
+  <rect width="1600" height="1000" fill="#F5F3EE"/>
+  <rect width="630" height="1000" fill="#171714"/>
+
+  <g transform="translate(105 110) scale(2.4)">
+    <path fill="#F5F3EE" d="M16 16h96v26H42v44h70v26H16V16Z"/>
+    <path fill="#D3923C" d="M92 48h28L84 84H56l36-36Z"/>
+  </g>
+  <text x="105" y="520" fill="#F5F3EE"
+        font-family="Avenir Next, Avenir, Inter, Helvetica Neue, Arial, sans-serif"
+        font-size="55" font-weight="700" letter-spacing="1.8">video-shotcraft</text>
+  <text x="108" y="565" fill="#B5B0A5"
+        font-family="Avenir Next, Avenir, Inter, Helvetica Neue, Arial, sans-serif"
+        font-size="21" font-weight="500" letter-spacing="4">FRAME · CUT · CRAFT</text>
+  <text x="108" y="875" fill="#D3923C"
+        font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif"
+        font-size="25" font-weight="600" letter-spacing="5">镜刻 / FRAME CHISEL</text>
+  <text x="108" y="916" fill="#B5B0A5"
+        font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif"
+        font-size="18">把运动裁成一格值得停留的镜头</text>
+
+  <text x="720" y="115" fill="#171714"
+        font-family="Avenir Next, Avenir, Inter, Helvetica Neue, Arial, sans-serif"
+        font-size="20" font-weight="700" letter-spacing="4">IDENTITY SYSTEM / 01</text>
+  <text x="720" y="190" fill="#171714"
+        font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif"
+        font-size="48" font-weight="700">取景框，被一刀刻开。</text>
+  <text x="720" y="240" fill="#716D64"
+        font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif"
+        font-size="22">黑色是结构，琥珀是动作；留白才是被选中的镜头。</text>
+
+  <g transform="translate(720 320)">
+    <rect width="190" height="250" rx="8" fill="#D3923C"/>
+    <text x="20" y="190" fill="#241607"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="19" font-weight="700">镜琥珀</text>
+    <text x="20" y="222" fill="#241607"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="18">#D3923C</text>
+
+    <rect x="215" width="190" height="250" rx="8" fill="#171714"/>
+    <text x="235" y="190" fill="#F5F3EE"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="19" font-weight="700">片场墨</text>
+    <text x="235" y="222" fill="#B5B0A5"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="18">#171714</text>
+
+    <rect x="430" width="190" height="250" rx="8" fill="#F5F3EE" stroke="#D9D5CC"/>
+    <text x="450" y="190" fill="#171714"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="19" font-weight="700">剪辑纸</text>
+    <text x="450" y="222" fill="#716D64"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="18">#F5F3EE</text>
+
+    <rect x="645" width="190" height="250" rx="8" fill="#B5B0A5"/>
+    <text x="665" y="190" fill="#171714"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="19" font-weight="700">场记灰</text>
+    <text x="665" y="222" fill="#171714"
+          font-family="Avenir Next, Avenir, Inter, sans-serif"
+          font-size="18">#B5B0A5</text>
+  </g>
+
+  <g transform="translate(720 680)">
+    <text y="0" fill="#171714"
+          font-family="Avenir Next, Avenir, Inter, Helvetica Neue, Arial, sans-serif"
+          font-size="18" font-weight="700" letter-spacing="3">SMALL SCALE</text>
+    <g transform="translate(0 50)">
+      <rect width="112" height="112" rx="20" fill="#171714"/>
+      <g transform="translate(12 12) scale(.6875)">
+        <path fill="#F5F3EE" d="M16 16h96v26H42v44h70v26H16V16Z"/>
+        <path fill="#D3923C" d="M92 48h28L84 84H56l36-36Z"/>
+      </g>
+    </g>
+    <g transform="translate(145 74) scale(.5)">
+      <path fill="#171714" d="M16 16h96v26H42v44h70v26H16V16Z"/>
+      <path fill="#D3923C" d="M92 48h28L84 84H56l36-36Z"/>
+    </g>
+    <g transform="translate(235 84) scale(.3125)">
+      <path fill="#171714" d="M16 16h96v26H42v44h70v26H16V16Z"/>
+      <path fill="#D3923C" d="M92 48h28L84 84H56l36-36Z"/>
+    </g>
+  </g>
+
+  <g transform="translate(1090 680)">
+    <text y="0" fill="#171714"
+          font-family="Avenir Next, Avenir, Inter, Helvetica Neue, Arial, sans-serif"
+          font-size="18" font-weight="700" letter-spacing="3">COLOR RATIO</text>
+    <rect y="50" width="390" height="58" rx="5" fill="#171714"/>
+    <rect x="273" y="50" width="78" height="58" fill="#F5F3EE"/>
+    <rect x="351" y="50" width="39" height="58" rx="0 5 5 0" fill="#D3923C"/>
+    <text y="145" fill="#716D64"
+          font-family="Avenir Next, Avenir, Inter, Helvetica Neue, Arial, sans-serif"
+          font-size="18">70% ink · 20% paper · 10% amber</text>
+  </g>
+</svg>

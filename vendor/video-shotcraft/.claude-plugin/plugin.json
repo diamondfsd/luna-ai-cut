@@ -1,0 +1,19 @@
+{
+  "name": "video-shotcraft",
+  "version": "1.0.0",
+  "description": "Craft cinematic product videos with Remotion using shot recipes, motion previews, reusable components, SFX, and a production-ready template.",
+  "author": {
+    "name": "Wei Yihao"
+  },
+  "homepage": "https://vincentwei1021.github.io/video-shotcraft/",
+  "repository": "https://github.com/Vincentwei1021/video-shotcraft",
+  "license": "Apache-2.0",
+  "keywords": [
+    "video",
+    "remotion",
+    "motion-design",
+    "product-video",
+    "agent-skill"
+  ],
+  "skills": "./"
+}

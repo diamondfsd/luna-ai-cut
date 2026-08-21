@@ -37,6 +37,8 @@ resources/ffmpeg/
 resources/dolby-vision/
 resources/node-runtime/
 resources/python-runtime/
+resources/remotion-binaries/
+resources/remotion-browser/
 .dolby-tools-cache/
 .dxc-cache/
 vendor/deepseek-harness/**/node_modules/

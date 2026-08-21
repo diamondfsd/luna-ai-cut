@@ -10,6 +10,7 @@ import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage 
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './crashDiagnostics'
 import { cameraPathsForFiles } from './cameraDeletePaths'
 import { disposeDeepSeekHarness } from './deepseekHarnessService'
+import { disposeRemotionRenderService } from './remotionRenderService'
 
 import {
   getLocalResourcesDir,
@@ -245,6 +246,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void disposeDeepSeekHarness()
+  void disposeRemotionRenderService()
   abortAllExports()
   stopSegmentationModelPrefetch()
   shutdownSpecializedSegmentationWorker()

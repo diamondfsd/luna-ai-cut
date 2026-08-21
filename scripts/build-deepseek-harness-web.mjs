@@ -3,9 +3,10 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import process from 'node:process'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolveDeepSeekHarnessRoot } from './deepseek-harness-root.mjs'
+import { resolveVideoShotcraftRoot } from './video-shotcraft.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const harnessRoot = resolveDeepSeekHarnessRoot(root)
@@ -20,6 +21,7 @@ const bundleStage = join(output, '.deepseek-bundle-stage')
 const generatedBundleFiles = []
 const freecutSkillsSource = join(root, 'packages/freecut-editor/src/features/ai-editing/skills/built-in')
 const freecutSkillLoaderSource = join(root, 'scripts/deepseek-harness-built-in-skills.mjs')
+const videoShotcraftResolverSource = join(root, 'scripts/video-shotcraft.mjs')
 const freecutSkillLoaderDependency = join(root, 'node_modules/yaml')
 
 const nativePackagePrefixes = [
@@ -202,7 +204,8 @@ async function bundleHarnessCli(build) {
 }
 
 async function copyFreeCutSkillResources() {
-  if (!existsSync(freecutSkillsSource) || !existsSync(freecutSkillLoaderSource) || !existsSync(freecutSkillLoaderDependency)) {
+  if (!existsSync(freecutSkillsSource) || !existsSync(freecutSkillLoaderSource)
+    || !existsSync(videoShotcraftResolverSource) || !existsSync(freecutSkillLoaderDependency)) {
     throw new Error('FreeCut 内置技能 Markdown 资源缺失，无法构建 DeepSeek Harness。')
   }
   await cp(freecutSkillsSource, join(output, 'skills/built-in'), {
@@ -212,11 +215,29 @@ async function copyFreeCutSkillResources() {
   await cp(freecutSkillLoaderSource, join(output, 'deepseek-harness-built-in-skills.mjs'), {
     dereference: true,
   })
+  await cp(videoShotcraftResolverSource, join(output, 'video-shotcraft.mjs'), {
+    dereference: true,
+  })
   await cp(freecutSkillLoaderDependency, join(output, 'node_modules/yaml'), {
     recursive: true,
     dereference: true,
   })
   console.log('FreeCut Markdown skill resources copied into DeepSeek Harness runtime.')
+
+  const videoShotcraftRoot = resolveVideoShotcraftRoot(root)
+  if (videoShotcraftRoot === undefined) {
+    throw new Error('本地 video-shotcraft 组件缺失，请确认 vendor/video-shotcraft 已纳入仓库。')
+  }
+
+  const excludedSegments = new Set(['.git', '.github', '.claude-plugin', 'node_modules'])
+  await cp(videoShotcraftRoot, join(output, 'skills/video-shotcraft'), {
+    recursive: true,
+    dereference: true,
+    filter(source) {
+      return !source.split(sep).some((segment) => excludedSegments.has(segment))
+    },
+  })
+  console.log(`video-shotcraft resources copied into ${join(output, 'skills/video-shotcraft')}.`)
 }
 
 function isAllowedBundleImport(specifier) {

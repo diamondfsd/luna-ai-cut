@@ -242,6 +242,16 @@ export async function listWorkspaceProjects(baseDir: string): Promise<WorkspaceP
   }
 }
 
+/** Read one project for services that persist project-scoped resources. */
+export async function getWorkspaceProject(baseDir: string, projectId: string): Promise<WorkspaceProject | null> {
+  return readProject(projectJsonPath(baseDir, projectId))
+}
+
+/** Resolve a project directory after validating the project identifier. */
+export function workspaceProjectDirectory(baseDir: string, projectId: string): string {
+  return projectDir(baseDir, projectId)
+}
+
 export async function createWorkspaceProject(
   baseDir: string,
   name: string,

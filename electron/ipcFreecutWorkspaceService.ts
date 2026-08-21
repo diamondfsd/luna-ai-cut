@@ -36,7 +36,7 @@ function resolveWorkspacePath(segments: string[], root = workspaceRoot()): strin
   return path.join(root, ...segments)
 }
 
-async function findMediaSourcePath(mediaId: string): Promise<string | null> {
+export async function resolveWorkspaceMediaSourcePath(mediaId: string): Promise<string | null> {
   validateSegments([mediaId])
   const mediaPath = resolveWorkspacePath(['media', mediaId])
   let entries
@@ -94,7 +94,7 @@ export function register(): void {
   })
 
   ipcMain.handle('freecut-workspace:get-media-source-path', (_event, mediaId: string) =>
-    typeof mediaId === 'string' ? findMediaSourcePath(mediaId) : null,
+    typeof mediaId === 'string' ? resolveWorkspaceMediaSourcePath(mediaId) : null,
   )
 
   ipcMain.handle(

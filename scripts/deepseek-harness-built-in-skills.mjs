@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
+import { resolveVideoShotcraftRoot } from './video-shotcraft.mjs'
 
 function skillRootCandidates() {
   const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -10,6 +11,14 @@ function skillRootCandidates() {
     path.resolve(moduleDirectory, '../packages/freecut-editor/src/features/ai-editing/skills/built-in'),
     path.resolve(moduleDirectory, 'skills/built-in'),
   ]
+}
+
+function videoShotcraftRoot() {
+  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
+  return resolveVideoShotcraftRoot(
+    path.resolve(moduleDirectory, '..'),
+    path.join(moduleDirectory, 'skills/video-shotcraft'),
+  )
 }
 
 function parseSkillMarkdown(raw, filePath) {
@@ -69,6 +78,21 @@ function withRuntimeMetadata(skill) {
   }
 }
 
+async function loadVideoShotcraftSkill() {
+  const root = videoShotcraftRoot()
+  if (root === undefined) return []
+  const skill = await readSkill(root, 'SKILL.md')
+  return [{
+    ...skill,
+    source: 'bundled',
+    provider: 'luna-video-shotcraft',
+    resourceBase: {
+      kind: 'directory',
+      path: root,
+    },
+  }]
+}
+
 /**
  * Load the checked-in prompt assets from either the source tree or the copied
  * packaged runtime tree. The plugin registers the result as runtime skills so
@@ -83,7 +107,10 @@ export async function loadBuiltInSkills() {
   const skillFiles = (await markdownFiles(root)).filter(relativePath => path.basename(relativePath) === 'SKILL.md')
   if (skillFiles.length === 0) throw new Error('Luna AI Cut 内置剪辑技能目录为空。')
   const parsed = await Promise.all(skillFiles.map(async relativePath => readSkill(root, relativePath)))
-  const duplicateNames = parsed
+  const bundledSkills = parsed.map(skill => withRuntimeMetadata(skill))
+  const videoShotcraftSkills = await loadVideoShotcraftSkill()
+  const allSkills = [...bundledSkills, ...videoShotcraftSkills]
+  const duplicateNames = allSkills
     .map(skill => skill.name)
     .filter((name, index, names) => names.indexOf(name) !== index)
   if (duplicateNames.length > 0) {
@@ -104,10 +131,10 @@ export async function loadBuiltInSkills() {
     ]),
   ].join('\n')
 
-  return parsed.map(skill => withRuntimeMetadata({
+  return bundledSkills.map(skill => ({
     ...skill,
     content: `${skill.content}${skill.name === master.name ? `\n\n${sharedInstructions}` : ''}`,
-  }))
+  })).concat(videoShotcraftSkills)
 }
 
 export async function loadSharedPrompt() {

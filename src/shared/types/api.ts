@@ -35,6 +35,7 @@ import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } fr
 import type { DeepSeekHarnessApi } from './deepseekHarness'
 import type { LunaEditorSdkApi } from './lunaEditorSdk'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
+import type { RemotionApi } from './remotion'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -317,6 +318,7 @@ export interface LunaApi {
   }
   freecutWorkspace: FreecutWorkspaceApi
   freecutExport: FreecutExportApi
+  remotion: RemotionApi
   startupReady(): void
   setFullScreen(enabled: boolean): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void

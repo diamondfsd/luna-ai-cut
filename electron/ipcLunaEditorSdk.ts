@@ -4,6 +4,7 @@ import type { DeepSeekHarnessContext } from '../src/shared/types'
 import { registerFreecutHarnessProvider } from './deepseekHarnessCapabilities'
 import { createFreecutProvider } from './luna-editor-sdk/freecut-provider'
 import { LunaEditorSdkError, type LunaEditorSdkRequest } from './luna-editor-sdk/contracts'
+import { executeRemotionCapability } from './remotionRenderService'
 
 interface RendererResponse {
   requestId: string
@@ -135,7 +136,9 @@ function handleRendererResponse(event: Electron.IpcMainEvent, value: unknown): v
 export function register(): void {
   if (registered) return
   const disposeProvider = registerFreecutHarnessProvider(createFreecutProvider({
-    execute: (request, context) => requestRenderer(request, context, context.signal),
+    execute: (request, context) => request.name.startsWith('render.remotion.')
+      ? executeRemotionCapability(request.name, request.args, context, context.signal)
+      : requestRenderer(request, context, context.signal),
   }))
   try {
     ipcMain.on('luna-editor-sdk:response', handleRendererResponse)

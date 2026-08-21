@@ -1,5 +1,6 @@
 import type { PixelFlowSubjectDirection } from './render'
 import type { WorkspaceSubtitleTrack } from './subtitles'
+import type { RemotionClip } from './remotion'
 
 export interface WorkspaceMediaAsset {
   id: string
@@ -148,6 +149,8 @@ export interface WorkspaceProject {
   createdAt: string
   updatedAt: string
   assets: WorkspaceProjectAsset[]
+  /** Remotion 源码绑定的特殊片段，源码和渲染缓存存放在项目目录内。 */
+  remotionClips?: RemotionClip[]
   creative?: {
     pixelFlow?: WorkspacePixelFlowState
     pixelFlowByAssetId?: Record<string, WorkspacePixelFlowState>
