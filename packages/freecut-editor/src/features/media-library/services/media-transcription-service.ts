@@ -9,6 +9,7 @@ import { useSelectionStore } from '@freecut/shared/state/selection'
 import { createLogger } from '@freecut/shared/logging/logger'
 import { joinTranscriptWords } from '@freecut/shared/utils/transcript-text'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@freecut/shared/projects/defaults'
+import { getEmbeddedHostBridge, type EmbeddedTranscriptResult } from '@freecut/shared/host/embedded-host'
 import type { MediaTranscript, MediaTranscriptModel, MediaTranscriptSegment } from '@freecut/types/storage'
 import type {
   AudioItem,
@@ -67,6 +68,8 @@ const TRANSCRIPT_CAPTION_BREAK_GAP_SECONDS = 0.18
 const TRANSCRIPT_CAPTION_TIMING_VERSION = 4
 const SENTENCE_END_PATTERN = /[.!?。！？]$/
 const DEFAULT_QUANTIZATION = DEFAULT_WHISPER_QUANTIZATION
+const NATIVE_TRANSCRIPT_MODEL: MediaTranscriptModel = 'paraformer-zh-q8'
+const NATIVE_TRANSCRIPT_QUANTIZATION = 'q8' as const
 
 type CaptionableClip = AudioItem | VideoItem
 interface InsertTranscriptAsCaptionsOptions {
@@ -126,6 +129,7 @@ interface QueuedTranscriptionJob {
   reject: (reason?: unknown) => void
   state: QueueState
   stream: { collect(): Promise<TranscriptSegment[]>; cancel(message?: string): void } | null
+  nativeAbortController: AbortController | null
   cancelled: boolean
   cancelMessage: string
 }
@@ -274,6 +278,31 @@ function segmentTranscriptForCaptions(segments: TranscriptSegment[]): MediaTrans
   })
 
   return captionSegments.toSorted((left, right) => left.start - right.start)
+}
+
+function embeddedTranscriptToMediaTranscript(
+  mediaId: string,
+  result: EmbeddedTranscriptResult,
+): MediaTranscript {
+  const segments: TranscriptSegment[] = result.cues
+    .filter((cue) => cue.endSeconds > cue.startSeconds && cue.text.trim().length > 0)
+    .map((cue) => ({
+      text: cue.text.trim(),
+      start: cue.startSeconds,
+      end: cue.endSeconds,
+    }))
+
+  return {
+    id: mediaId,
+    mediaId,
+    model: NATIVE_TRANSCRIPT_MODEL,
+    language: result.language,
+    quantization: NATIVE_TRANSCRIPT_QUANTIZATION,
+    text: joinTranscriptWords(segments.map((segment) => segment.text)),
+    segments: segmentTranscriptForCaptions(segments),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
 }
 
 function buildTimelineTranscriptCaptionCues(
@@ -472,6 +501,7 @@ class MediaTranscriptionService {
       reject,
       state: 'queued',
       stream: null,
+      nativeAbortController: null,
       cancelled: false,
       cancelMessage: TRANSCRIPTION_CANCELLED_MESSAGE,
     }
@@ -499,6 +529,7 @@ class MediaTranscriptionService {
     }
 
     job.stream?.cancel(message)
+    job.nativeAbortController?.abort()
   }
 
   private startJob(job: QueuedTranscriptionJob): void {
@@ -550,6 +581,11 @@ class MediaTranscriptionService {
       throw new Error('Only audio and video files can be transcribed')
     }
 
+    const embeddedTranscript = await this.transcribeWithEmbeddedHost(job, media)
+    if (embeddedTranscript) {
+      return this.persistTranscript(mediaId, embeddedTranscript)
+    }
+
     const sourceBlob = await mediaLibraryService.getMediaFile(mediaId)
     if (!sourceBlob) {
       throw new Error(`Could not load media file: ${media.fileName}`)
@@ -592,6 +628,72 @@ class MediaTranscriptionService {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
+
+    return this.persistTranscript(mediaId, transcript)
+  }
+
+  private async transcribeWithEmbeddedHost(
+    job: QueuedTranscriptionJob,
+    media: {
+      id: string
+      fileName: string
+      fileSize: number
+      fileLastModified?: number
+      mimeType: string
+      duration: number
+    },
+  ): Promise<MediaTranscript | null> {
+    const host = getEmbeddedHostBridge()
+    if (!host.transcribeMedia || !host.resolveMediaSourcePath) {
+      return null
+    }
+
+    const nativePath = await host.resolveMediaSourcePath(media.id)
+    if (!nativePath) {
+      return null
+    }
+
+    this.throwIfCancelled(job)
+    const controller = new AbortController()
+    job.nativeAbortController = controller
+    try {
+      const result = await host.transcribeMedia(
+        {
+          mediaId: media.id,
+          nativePath,
+          fileName: media.fileName,
+          fileSize: media.fileSize,
+          fileLastModified: media.fileLastModified,
+          mimeType: media.mimeType,
+          durationSeconds: media.duration,
+        },
+        (progress) => {
+          const fraction = progress.percent === null
+            ? 0
+            : Math.max(0, Math.min(1, progress.percent / 100))
+          for (const listener of job.listeners) {
+            listener.onProgress?.({
+              stage: 'transcribing',
+              progress: fraction,
+              ...(progress.percent === null ? { indeterminate: true } : {}),
+            })
+          }
+        },
+        controller.signal,
+      )
+      this.throwIfCancelled(job)
+      return embeddedTranscriptToMediaTranscript(media.id, result)
+    } finally {
+      if (job.nativeAbortController === controller) {
+        job.nativeAbortController = null
+      }
+    }
+  }
+
+  private async persistTranscript(
+    mediaId: string,
+    transcript: MediaTranscript,
+  ): Promise<MediaTranscript> {
 
     await saveTranscript(transcript)
     this.syncExistingTranscriptCaptions(mediaId, transcript)

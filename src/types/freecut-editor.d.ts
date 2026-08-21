@@ -128,6 +128,7 @@ declare module '@freecut/embedded' {
     onInspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
     onReadNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
     onResolveNativeMediaUrl?: (filePath: string) => string
+    onResolveMediaSourcePath?: (mediaId: string) => Promise<string | null>
     onTranscribeMedia?: (
       source: EmbeddedMediaSource,
       onProgress?: (progress: EmbeddedTaskProgress) => void,

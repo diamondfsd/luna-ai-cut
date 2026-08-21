@@ -172,6 +172,7 @@ export interface ThumbnailData {
 
 export type MediaTranscriptModel =
   | 'parakeet-tdt-v3'
+  | 'paraformer-zh-q8'
   | 'whisper-tiny'
   | 'whisper-base'
   | 'whisper-small'

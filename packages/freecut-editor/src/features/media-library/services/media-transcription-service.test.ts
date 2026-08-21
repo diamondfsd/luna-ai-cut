@@ -20,6 +20,10 @@ const getMediaMock = vi.fn()
 const getMediaFileMock = vi.fn()
 const startPreviewAudioConformMock = vi.fn()
 const resolvePreviewAudioConformUrlMock = vi.fn()
+const embeddedHostMock = vi.hoisted(() => ({
+  resolveMediaSourcePath: vi.fn(),
+  transcribeMedia: vi.fn(),
+}))
 
 vi.mock('@freecut/infrastructure/storage', () => ({
   deleteTranscript: vi.fn(),
@@ -38,6 +42,10 @@ vi.mock('@freecut/shared/state/playback', () => ({
   usePlaybackStore: {
     getState: usePlaybackStoreGetStateMock,
   },
+}))
+
+vi.mock('@freecut/shared/host/embedded-host', () => ({
+  getEmbeddedHostBridge: () => embeddedHostMock,
 }))
 
 vi.mock('@freecut/features/media-library/deps/projects', () => ({
@@ -681,9 +689,11 @@ describe('mediaTranscriptionService.transcribeMedia', () => {
     })
     transcribeCollectMock.mockResolvedValue([{ text: ' hello ', start: 0, end: 1.2 }])
     startPreviewAudioConformMock.mockResolvedValue(undefined)
-    resolvePreviewAudioConformUrlMock.mockResolvedValue(null)
-    useTimelineStoreGetStateMock.mockReturnValue({ items: [], updateItem: vi.fn() })
-  })
+  resolvePreviewAudioConformUrlMock.mockResolvedValue(null)
+  embeddedHostMock.resolveMediaSourcePath.mockResolvedValue(null)
+  embeddedHostMock.transcribeMedia.mockReset()
+  useTimelineStoreGetStateMock.mockReturnValue({ items: [], updateItem: vi.fn() })
+})
 
   it('transcribes the original file for browser-decodable codecs', async () => {
     const sourceFile = new File(['audio'], 'clip.mp3', { type: 'audio/mpeg' })
@@ -701,6 +711,48 @@ describe('mediaTranscriptionService.transcribeMedia', () => {
     expect(startPreviewAudioConformMock).not.toHaveBeenCalled()
     expect(transcribeMock).toHaveBeenCalledTimes(1)
     expect(transcribeMock.mock.calls[0]?.[0]).toBe(sourceFile)
+    expect(saveTranscriptMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the embedded native recognizer before loading a long source blob', async () => {
+    const nativeResult = {
+      language: 'zh',
+      cues: [
+        { startSeconds: 0, endSeconds: 1.2, text: '你好' },
+        { startSeconds: 2, endSeconds: 3.4, text: '欢迎回来' },
+      ],
+      model: { id: 'paraformer-zh-q8', version: 'test' },
+      sourceFingerprint: { size: 1_000, modifiedAtMs: 123 },
+    }
+    embeddedHostMock.resolveMediaSourcePath.mockResolvedValue('/workspace/media-1/movie.mp4')
+    embeddedHostMock.transcribeMedia.mockImplementation(async () => nativeResult)
+    getMediaMock.mockResolvedValue({
+      id: 'media-1',
+      fileName: 'movie.mp4',
+      fileSize: 1_000,
+      mimeType: 'video/mp4',
+      duration: 5_814,
+      codec: 'h264',
+      fileLastModified: 123,
+    })
+
+    const transcript = await mediaTranscriptionService.transcribeMedia('media-1')
+
+    expect(embeddedHostMock.transcribeMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mediaId: 'media-1',
+        nativePath: '/workspace/media-1/movie.mp4',
+        durationSeconds: 5_814,
+      }),
+      expect.any(Function),
+      expect.any(AbortSignal),
+    )
+    expect(getMediaFileMock).not.toHaveBeenCalled()
+    expect(transcript.model).toBe('paraformer-zh-q8')
+    expect(transcript.segments).toEqual([
+      { text: '你好', start: 0, end: 1.2 },
+      { text: '欢迎回来', start: 2, end: 3.4 },
+    ])
     expect(saveTranscriptMock).toHaveBeenCalledTimes(1)
   })
 

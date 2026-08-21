@@ -7,6 +7,7 @@ const WHISPER_MODEL_BASE_ESTIMATES_MIB: Record<MediaTranscriptModel, number> = {
   // Parakeet is sized by backend via estimateParakeetRuntimeBytes(); this entry only
   // satisfies the exhaustive map and is never scaled by the whisper quantization factor.
   'parakeet-tdt-v3': 1_270,
+  'paraformer-zh-q8': 226,
   'whisper-tiny': 220,
   'whisper-base': 420,
   'whisper-small': 900,

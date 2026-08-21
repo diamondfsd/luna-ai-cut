@@ -134,6 +134,11 @@ export function VideoEditorPage({ onProjectContextChange }: VideoEditorPageProps
     [],
   )
 
+  const handleResolveMediaSourcePath = useCallback(
+    (mediaId: string) => window.luna.freecutWorkspace.getMediaSourcePath(mediaId),
+    [],
+  )
+
   const handleImportDialogOpenChange = useCallback((open: boolean) => {
     setImportDialogOpen(open)
     if (!open) {
@@ -297,6 +302,7 @@ export function VideoEditorPage({ onProjectContextChange }: VideoEditorPageProps
           onInspectNativeMediaFile={handleInspectNativeMediaFile}
           onReadNativeMediaFile={handleReadNativeMediaFile}
           onResolveNativeMediaUrl={handleResolveNativeMediaUrl}
+          onResolveMediaSourcePath={handleResolveMediaSourcePath}
           onTranscribeMedia={handleTranscribeMedia}
           onGenerateSpeech={handleGenerateSpeech}
           onGenerateMusic={handleGenerateMusic}

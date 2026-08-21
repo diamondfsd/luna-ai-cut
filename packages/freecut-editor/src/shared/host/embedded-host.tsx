@@ -126,6 +126,7 @@ export interface EmbeddedHostBridge {
   inspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
   readNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
   resolveNativeMediaUrl?: (filePath: string) => string
+  resolveMediaSourcePath?: (mediaId: string) => Promise<string | null>
   transcribeMedia?: (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,

@@ -97,6 +97,8 @@ export const MODEL_IDS: Record<WhisperModel, string> = {
   // Parakeet resolves its own ONNX assets inside the worker; this entry is the source repo
   // for reference and to satisfy the exhaustive model map.
   'parakeet-tdt-v3': 'Olicorne/parakeet-tdt-0.6b-v3-smoothquant-onnx',
+  // Native Electron transcription uses this model and never routes it through this map.
+  'paraformer-zh-q8': 'FunAudioLLM/Paraformer-GGUF',
   'whisper-tiny': 'onnx-community/whisper-tiny_timestamped',
   'whisper-base': 'onnx-community/whisper-base_timestamped',
   'whisper-small': 'onnx-community/whisper-small_timestamped',

@@ -30,6 +30,7 @@ export interface FreeCutEditorProps {
   onInspectNativeMediaFile?: (filePath: string) => Promise<EmbeddedMediaImportSource>
   onReadNativeMediaFile?: (filePath: string) => Promise<EmbeddedNativeMediaFile>
   onResolveNativeMediaUrl?: (filePath: string) => string
+  onResolveMediaSourcePath?: (mediaId: string) => Promise<string | null>
   onTranscribeMedia?: (
     source: EmbeddedMediaSource,
     onProgress?: (progress: EmbeddedTaskProgress) => void,
@@ -61,6 +62,7 @@ export function FreeCutEditor({
   onInspectNativeMediaFile,
   onReadNativeMediaFile,
   onResolveNativeMediaUrl,
+  onResolveMediaSourcePath,
   onTranscribeMedia,
   onGenerateSpeech,
   onGenerateMusic,
@@ -78,6 +80,7 @@ export function FreeCutEditor({
       inspectNativeMediaFile: onInspectNativeMediaFile,
       readNativeMediaFile: onReadNativeMediaFile,
       resolveNativeMediaUrl: onResolveNativeMediaUrl,
+      resolveMediaSourcePath: onResolveMediaSourcePath,
       transcribeMedia: onTranscribeMedia,
       generateSpeech: onGenerateSpeech,
       generateMusic: onGenerateMusic,
@@ -93,6 +96,7 @@ export function FreeCutEditor({
       onInspectNativeMediaFile,
       onReadNativeMediaFile,
       onResolveNativeMediaUrl,
+      onResolveMediaSourcePath,
       onTranscribeMedia,
       onGenerateSpeech,
       onGenerateMusic,
