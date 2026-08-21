@@ -2,6 +2,7 @@ import type { CustomWatermarkAsset, WatermarkPosition, WatermarkSettings } from 
 import type { CameraConnectionMode } from './cameraMediaSource'
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
+export type CameraPreviewQuality = 'proxy' | 'original'
 
 export type WindowCloseBehavior = 'quit' | 'hide'
 
@@ -42,6 +43,8 @@ export interface AppSettings {
   lutDir?: string
   /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
   workspacePreviewQuality?: WorkspacePreviewQuality
+  /** 相机媒体预览最近一次选择的画质。 */
+  cameraPreviewQuality?: CameraPreviewQuality
   /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
   experimentalGpuPreview?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
