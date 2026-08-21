@@ -317,3 +317,6 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 - 工作流文件：`.github/workflows/package-artifacts.yml`
 - macOS: macos-latest runner，生成 DMG
 - Windows: windows-latest runner，生成 NSIS 安装包
+
+
+快速开发 ，快速测试， 开发前可以问我一个问题，你觉得最有价值的！
