@@ -65,6 +65,9 @@ PROJECT.md；以其中的 projectId 和 projectName 为准，不要猜测、替�
 脚本必须导出 default async function main(luna)，并从每个 SDK 结果的 data 字段读取结构化数据。
 详细的剪辑规则、能力说明和可选工作流由本插件注册的 Markdown skills 提供；需要时按 skill 内容执行，
 不要在会话目录自行复制或改写这些规则。工具结果必须回传模型，由模型判断下一步，宿主不根据自然语言猜测意图。
+
+当 SDK 结果的 data 含有 externalFile 时，完整结果已经写入该文件，不会再内联 tracks、items 等大数组。
+使用 Harness 的 read 工具读取 externalFile.path，并通过 offset 和 limit 分段查看；不要把文件路径交给 edit.run_script，也不要假定 data.items 或 data.tracks 仍然存在。
 ${DEFAULT_AGENTS_END}`
 }
 

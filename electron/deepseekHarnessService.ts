@@ -12,6 +12,7 @@ import { withDeepSeekHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
 import { deepSeekHarnessCapabilities } from './deepseekHarnessCapabilities'
 import { prepareHarnessSession } from './deepseekHarnessSession'
+import { externalizeLargeResult } from './deepseekHarnessResultSpill'
 import {
   createUserMemoryHost,
   isUserMemoryCapability,
@@ -182,7 +183,11 @@ function stringArrayField(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
-function structuredResult(request: DeepSeekHarnessToolRequest, value: unknown): Record<string, unknown> {
+async function structuredResult(
+  request: DeepSeekHarnessToolRequest,
+  value: unknown,
+  sessionRoot: string,
+): Promise<Record<string, unknown>> {
   const record = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined
@@ -192,6 +197,7 @@ function structuredResult(request: DeepSeekHarnessToolRequest, value: unknown): 
     request.name !== 'media.search_transcript' && request.name !== 'memory.read' &&
     request.name !== 'memory.search' && request.name !== 'audio.get_task' &&
     !request.name.startsWith('preview.') && !request.name.startsWith('capabilities.')
+  const responseData = await externalizeLargeResult(request.name, value, sessionRoot)
   return {
     kind: mutation ? 'edit' : 'data',
     revision: sha256Revision(record?.project ?? value),
@@ -199,7 +205,7 @@ function structuredResult(request: DeepSeekHarnessToolRequest, value: unknown): 
     createdIds: stringArrayField(record?.createdIds),
     removedIds: stringArrayField(record?.removedIds),
     warnings: stringArrayField(record?.warnings),
-    data: value,
+    data: responseData,
   }
 }
 
@@ -252,7 +258,8 @@ async function handleToolRequest(request: IncomingMessage, response: ServerRespo
     const body = await readRequestBody(request)
     requestId = typeof body.requestId === 'string' ? body.requestId : undefined
     const context = contextFromBody(body)
-    const activeContext = runtime?.context
+    const activeRuntime = runtime
+    const activeContext = activeRuntime?.context
     if (!activeContext || activeContext.sessionId !== context.sessionId) {
       throw new Error('助手会话上下文不匹配。')
     }
@@ -268,7 +275,7 @@ async function handleToolRequest(request: IncomingMessage, response: ServerRespo
       apiVersion: LUNA_EDITOR_API_VERSION,
       requestId: toolRequest.requestId,
       ok: true,
-      result: structuredResult(toolRequest, result),
+      result: await structuredResult(toolRequest, result, path.join(activeRuntime?.home ?? harnessHomeForBaseDir(currentBaseDir()), 'sessions')),
     })
   } catch (error) {
     if (response.destroyed || response.writableEnded) return

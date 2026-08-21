@@ -39,6 +39,18 @@ const server = createServer(async (request, response) => {
         removedIds: [],
         warnings: [],
       }
+    : body.name === 'timeline.inspect_context'
+      ? {
+          kind: 'data',
+          data: {
+            externalFile: { path: 'luna-results/timeline-inspect-context.json' },
+            summary: { valueType: 'object', collectionCounts: { tracks: 2, items: 18 } },
+          },
+          affectedIds: [],
+          createdIds: [],
+          removedIds: [],
+          warnings: [],
+        }
     : {
         ok: true,
         message: 'legacy host result',
@@ -81,6 +93,11 @@ try {
     mediaType: 'video',
     name: 'clip.mp4',
   }])
+  const externalResult = await legacySdk.timeline.inspectContext()
+  assert.deepEqual(externalResult.data, {
+    externalFile: { path: 'luna-results/timeline-inspect-context.json' },
+    summary: { valueType: 'object', collectionCounts: { tracks: 2, items: 18 } },
+  })
   assert.deepEqual(await legacySdk.timeline.addMedia({ mediaId: 'media-1' }), {
     ok: true,
     message: 'legacy host result',
@@ -143,6 +160,8 @@ try {
   assert.match(prompts[0].text, /源素材余量/u)
   assert.match(prompts[0].text, /startSeconds\?, endSeconds\?/u)
   assert.match(prompts[0].text, /result\.data/u)
+  assert.match(prompts[0].text, /data\.externalFile/u)
+  assert.match(prompts[0].text, /offset/u)
   assert.match(prompts[0].text, /luna\.memory\.search/u)
   assert.match(prompts[0].text, /luna\.memory\.update/u)
   assert.match(prompts[0].text, /luna\.media\.analyze/u)

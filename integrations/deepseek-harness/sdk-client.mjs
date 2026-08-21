@@ -183,6 +183,12 @@ function isOperationResult(value) {
     'data' in value && (typeof value.operationId === 'string' || typeof value.kind === 'string')
 }
 
+function isExternalizedData(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) &&
+    value.externalFile && typeof value.externalFile.path === 'string' &&
+    value.summary && typeof value.summary === 'object' && !Array.isArray(value.summary)
+}
+
 function adaptLegacyResult(name, value) {
   // Harness compatibility is a wire-level adapter. A server that already
   // returns the historical envelope is passed through unchanged, preserving
@@ -190,6 +196,10 @@ function adaptLegacyResult(name, value) {
   if (isLegacyEnvelope(value)) return value
   const data = isOperationResult(value) ? value.data : value
   const metadata = isOperationResult(value) ? value : value
+
+  // Preserve the file reference through the legacy result projection. Turning
+  // it into empty arrays would hide the only usable way to inspect the result.
+  if (isExternalizedData(data)) return legacyEnvelope(name, data, metadata)
 
   if (name === 'media.list') {
     const items = (data?.media ?? []).map((media) => ({

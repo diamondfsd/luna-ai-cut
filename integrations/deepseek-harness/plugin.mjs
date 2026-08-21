@@ -106,6 +106,13 @@ ${sdkMethodReference()}
 
 The script result is returned to the model. No adapter code classifies user
 messages or model text, changes the script, or declares a task complete.
+
+Large SDK results are stored in the current Harness workspace and returned as
+data.externalFile with a compact data.summary. When externalFile is
+present, use the built-in read tool with its path and bounded offset /
+limit windows to inspect the JSON file. Do not assume large arrays such as
+data.items or data.tracks are present, and do not pass the file path to
+edit.run_script.
 `.trim()
 
 function resolveConfig(config) {

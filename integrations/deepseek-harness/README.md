@@ -42,6 +42,10 @@ built-in/
 实际能力数据位于 `result.data`；编辑脚本应先读取当前项目，再从 `result.data` 读取结构化结果。所有请求都绑定到
 宿主当前打开的项目，不要猜测或替换 `projectId`。
 
+宿主对超过 128 KiB 的能力结果执行结果外置：`result.data` 会返回 `externalFile` 和紧凑的 `summary`，完整 JSON
+写入当前 Harness 会话工作区的 `luna-results/`。模型应使用 Harness 内置 `read` 工具按 `externalFile.path`、`offset`
+和 `limit` 分段读取，不要假定外置结果仍包含完整的 `items` 或 `tracks` 数组，也不要把文件路径传给 `edit.run_script`。
+
 ```js
 export default async function main(luna) {
   const project = await luna.project.inspect()

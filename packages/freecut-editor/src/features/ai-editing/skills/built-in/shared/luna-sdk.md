@@ -3,6 +3,11 @@
 每个方法返回结构化结果，数据位于 `result.data`。所有编辑请求绑定到当前打开的 FreeCut 项目；先调用
 `luna.project.inspect()`，不要猜测或替换 `projectId`。
 
+当 `result.data.externalFile` 存在时，说明完整结果超过宿主的内联大小上限，`data` 中不会包含完整的
+`tracks`、`items` 或其他大数组；完整 JSON 位于 `result.data.externalFile.path`。此路径相对于当前 Harness
+会话工作区，使用 Harness 内置 `read` 工具读取，传入 `file_path`、`offset` 和 `limit` 分段查看。先读取
+`data.summary` 判断需要的范围，再按需读取文件；不要把文件路径交给 `edit.run_script`，也不要假设外置结果仍有 `data.items`。
+
 ## 项目和素材
 
 - `luna.project.inspect()`：读取 `data.projectId`、`data.project`、当前时间线和计数。
