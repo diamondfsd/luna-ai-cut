@@ -3,8 +3,9 @@ import { Check, X, CircleAlert, Download, FolderOpen } from 'lucide-react'
 
 import { ButtonGroup, IconButton } from '../ui'
 import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
+import type { CameraPreviewQuality } from '../shared/types'
 
-export type PreviewQuality = 'proxy' | 'original'
+export type PreviewQuality = CameraPreviewQuality
 
 interface PreviewModalHeaderProps {
   filePath: string
