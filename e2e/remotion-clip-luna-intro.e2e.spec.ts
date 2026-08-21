@@ -132,7 +132,7 @@ function OpeningShot({ frame, media }: { frame: number; media: MediaInput[] }) {
         <div style={{ marginTop: 32, color: MUTED, fontSize: 25, lineHeight: 1.35 }}>Turn camera moments into a cut with a clear point of view.</div>
       </div>
       <div style={{ position: 'absolute', left: 88, right: 88, bottom: 54, height: 2, background: 'rgba(255,255,255,.18)' }}>
-        <div style={{ width: \`${Math.min(100, (local / 180) * 100)}%\`, height: '100%', background: BLUE_LIGHT }} />
+        <div style={{ width: \`\${Math.min(100, (local / 180) * 100)}%\`, height: '100%', background: BLUE_LIGHT }} />
       </div>
     </AbsoluteFill>
   )
@@ -225,7 +225,7 @@ function GeometryShot({ frame }: { frame: number }) {
   const particleShift = local * 0.7
   return (
     <AbsoluteFill style={{ background: '#070b12', opacity: clampOpacity(local, 0, 180), color: '#fff', overflow: 'hidden' }}>
-      {PARTICLES.map((particle) => <div key={particle.phase} style={{ position: 'absolute', left: \`${particle.left}%\`, top: \`${(particle.top + particleShift + particle.phase) % 110 - 5}%\`, width: particle.size, height: particle.size, borderRadius: 99, background: BLUE_LIGHT, opacity: 0.12 + ((particle.phase % 4) * 0.05) }} />)}
+      {PARTICLES.map((particle) => <div key={particle.phase} style={{ position: 'absolute', left: \`\${particle.left}%\`, top: \`\${(particle.top + particleShift + particle.phase) % 110 - 5}%\`, width: particle.size, height: particle.size, borderRadius: 99, background: BLUE_LIGHT, opacity: 0.12 + ((particle.phase % 4) * 0.05) }} />)}
       <div style={{ position: 'absolute', left: 92, top: 68, color: BLUE_LIGHT, fontSize: 18, letterSpacing: 3, fontWeight: 700 }}>A BETTER WAY TO CUT</div>
       <svg viewBox="-640 -360 1280 720" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
         {slot === 0 ? <circle cx="0" cy="0" r="236" fill="none" stroke="#495b73" strokeWidth="3" strokeDasharray="12 18" opacity={progress} transform={\`rotate(\${local * 0.8}) scale(\${interpolate(progress, [0, 1], [0.68, 1])})\`} /> : null}
