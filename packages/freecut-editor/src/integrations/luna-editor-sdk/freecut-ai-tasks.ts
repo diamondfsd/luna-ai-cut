@@ -1,4 +1,5 @@
 import type { MediaMetadata } from '@freecut/types/storage'
+import type { CaptionTimeRange } from '@freecut/infrastructure/analysis/media-tagger'
 import { useMediaLibraryStore } from '@freecut/features/media-library/stores/media-library-store'
 import { importMediaAnalysisService } from '@freecut/features/media-library/services/media-analysis-service-loader'
 import { importMediaLibraryService } from '@freecut/features/media-library/services/media-library-service-loader'
@@ -9,7 +10,13 @@ import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 type MediaAnalysisKind = 'transcript' | 'visual'
 type MediaTaskStatus = 'queued' | 'running' | 'completed' | 'failed'
 type AudioTaskKind = 'speech' | 'music'
-type AudioTaskStatus = 'queued' | 'preparing-model' | 'generating' | 'saving' | 'completed' | 'failed'
+type AudioTaskStatus =
+  | 'queued'
+  | 'preparing-model'
+  | 'generating'
+  | 'saving'
+  | 'completed'
+  | 'failed'
 
 interface MediaAnalysisTask {
   id: string
@@ -28,6 +35,7 @@ interface MediaAnalysisTask {
   progress: number | null
   createdAt: number
   updatedAt: number
+  visualTimeRanges?: CaptionTimeRange[]
 }
 
 interface AudioTask {
@@ -66,6 +74,9 @@ function mediaTaskSnapshot(task: MediaAnalysisTask): Record<string, unknown> {
     skippedIds: [...task.skippedIds],
     failedIds: [...task.failedIds],
     failures: task.failures.map((failure) => ({ ...failure })),
+    ...(task.visualTimeRanges
+      ? { visualTimeRanges: task.visualTimeRanges.map((range) => ({ ...range })) }
+      : {}),
     taskId: task.id,
   }
 }
@@ -95,6 +106,15 @@ function updateAudioTask(task: AudioTask, update: Partial<AudioTask>): void {
   Object.assign(task, update, { updatedAt: Date.now() })
 }
 
+function mediaTaskKey(input: {
+  projectId: string
+  kind: MediaAnalysisKind
+  mediaIds: readonly string[]
+  visualTimeRanges?: readonly CaptionTimeRange[]
+}): string {
+  return `${input.projectId}:${input.kind}:${[...input.mediaIds].sort().join(',')}:${JSON.stringify(input.visualTimeRanges ?? null)}`
+}
+
 function mediaCanBeAnalyzed(media: MediaMetadata, kind: MediaAnalysisKind): boolean {
   const type = getMediaType(media.mimeType)
   return kind === 'visual'
@@ -122,7 +142,11 @@ function startMediaTaskRun(task: MediaAnalysisTask, mediaById: Map<string, Media
       try {
         if (task.kind === 'visual') {
           const { mediaAnalysisService } = await importMediaAnalysisService()
-          if (!await mediaAnalysisService.analyzeMedia(media)) {
+          if (
+            !(await mediaAnalysisService.analyzeMedia(media, {
+              visualTimeRanges: task.visualTimeRanges,
+            }))
+          ) {
             task.failedIds.push(media.id)
             task.failures.push({ mediaId: media.id, error: '素材画面分析未完成。' })
           } else {
@@ -131,10 +155,12 @@ function startMediaTaskRun(task: MediaAnalysisTask, mediaById: Map<string, Media
         } else {
           const result = await runMediaTranscriptionJob(media.id, {
             updateProgress: false,
-            onProgress: (progress) => updateMediaTask(task, {
-              stage: progress.stage,
-              progress: (index + Math.max(0, Math.min(1, progress.progress))) / task.pendingIds.length,
-            }),
+            onProgress: (progress) =>
+              updateMediaTask(task, {
+                stage: progress.stage,
+                progress:
+                  (index + Math.max(0, Math.min(1, progress.progress))) / task.pendingIds.length,
+              }),
           })
           if (result.status === 'completed') task.completedIds.push(media.id)
           else task.skippedIds.push(media.id)
@@ -157,13 +183,15 @@ function startMediaTaskRun(task: MediaAnalysisTask, mediaById: Map<string, Media
       stage: hasSuccess ? '素材分析任务已完成。' : '素材分析任务失败。',
       ...(hasSuccess ? {} : { error: task.failures[0]?.error ?? '没有完成任何素材分析。' }),
     })
-  })().catch((error) => updateMediaTask(task, {
-    status: 'failed',
-    progress: 1,
-    stage: '素材分析任务失败。',
-    error: errorMessage(error),
-    failures: [...task.failures, { mediaId: '', error: errorMessage(error) }],
-  }))
+  })().catch((error) =>
+    updateMediaTask(task, {
+      status: 'failed',
+      progress: 1,
+      stage: '素材分析任务失败。',
+      error: errorMessage(error),
+      failures: [...task.failures, { mediaId: '', error: errorMessage(error) }],
+    }),
+  )
 }
 
 export function startMediaAnalysisTask(input: {
@@ -171,12 +199,18 @@ export function startMediaAnalysisTask(input: {
   mediaIds: readonly string[]
   mediaItems: readonly MediaMetadata[]
   kind: MediaAnalysisKind
+  visualTimeRanges?: readonly CaptionTimeRange[]
 }): Record<string, unknown> {
   const mediaIds = [...new Set(input.mediaIds)]
-  const key = `${input.projectId}:${input.kind}:${[...mediaIds].sort().join(',')}`
+  const key = mediaTaskKey({
+    projectId: input.projectId,
+    kind: input.kind,
+    mediaIds,
+    visualTimeRanges: input.visualTimeRanges,
+  })
   const existing = [...mediaTasks.values()].find((task) =>
     task.status === 'queued' || task.status === 'running'
-      ? `${task.projectId}:${task.kind}:${[...task.mediaIds].sort().join(',')}` === key
+      ? mediaTaskKey(task) === key
       : false,
   )
   if (existing) return mediaTaskSnapshot(existing)
@@ -203,14 +237,15 @@ export function startMediaAnalysisTask(input: {
     failedIds: [],
     failures: [],
     missingIds,
-    status: pendingIds.length > 0 ? 'queued' : (skippedIds.length > 0 ? 'completed' : 'failed'),
+    status: pendingIds.length > 0 ? 'queued' : skippedIds.length > 0 ? 'completed' : 'failed',
     stage: pendingIds.length > 0 ? '素材分析任务已提交。' : '没有找到需要处理的素材。',
     progress: pendingIds.length > 0 ? 0 : 1,
     createdAt: now,
     updatedAt: now,
-    ...(pendingIds.length === 0 && missingIds.length > 0
-      ? { error: '没有找到请求的素材。' }
+    ...(input.visualTimeRanges
+      ? { visualTimeRanges: input.visualTimeRanges.map((range) => ({ ...range })) }
       : {}),
+    ...(pendingIds.length === 0 && missingIds.length > 0 ? { error: '没有找到请求的素材。' } : {}),
   }
   mediaTasks.set(task.id, task)
   if (pendingIds.length > 0) startMediaTaskRun(task, byId)
@@ -224,12 +259,14 @@ export function getMediaAnalysisTask(taskId: string, projectId: string): Record<
 }
 
 function startAudioTaskRun(task: AudioTask, run: () => Promise<void>): void {
-  void run().catch((error) => updateAudioTask(task, {
-    status: 'failed',
-    progress: null,
-    stage: '音频生成任务失败。',
-    error: errorMessage(error),
-  }))
+  void run().catch((error) =>
+    updateAudioTask(task, {
+      status: 'failed',
+      progress: null,
+      stage: '音频生成任务失败。',
+      error: errorMessage(error),
+    }),
+  )
 }
 
 async function saveGeneratedAudio(
@@ -266,14 +303,15 @@ export function startAudioTask(input: {
     progress: 0,
     createdAt: now,
     updatedAt: now,
-    details: input.kind === 'speech'
-      ? { engine: 'moss-tts', voice: input.voice, speed: input.speed }
-      : {
-          engine: 'stable-audio-3',
-          model: input.model,
-          targetDurationSeconds: input.durationSeconds,
-          guidanceScale: input.guidanceScale,
-        },
+    details:
+      input.kind === 'speech'
+        ? { engine: 'moss-tts', voice: input.voice, speed: input.speed }
+        : {
+            engine: 'stable-audio-3',
+            model: input.model,
+            targetDurationSeconds: input.durationSeconds,
+            guidanceScale: input.guidanceScale,
+          },
   }
   audioTasks.set(task.id, task)
   const bridge = getEmbeddedHostBridge()
@@ -281,20 +319,31 @@ export function startAudioTask(input: {
   startAudioTaskRun(task, async () => {
     if (input.kind === 'speech') {
       if (!bridge.generateSpeech) throw new Error('当前宿主未接入语音生成服务。')
-      updateAudioTask(task, { status: 'preparing-model', stage: '正在准备语音模型。', progress: null })
-      const result = await bridge.generateSpeech({
-        requestId: task.id,
-        text: input.text!,
-        voice: input.voice!,
-        speed: input.speed!,
-      }, (progress) => updateAudioTask(task, {
-        status: progress.percent === null ? 'preparing-model' : 'generating',
-        stage: progress.label,
-        progress: progress.percent === null ? null : progress.percent / 100,
-      }))
+      updateAudioTask(task, {
+        status: 'preparing-model',
+        stage: '正在准备语音模型。',
+        progress: null,
+      })
+      const result = await bridge.generateSpeech(
+        {
+          requestId: task.id,
+          text: input.text!,
+          voice: input.voice!,
+          speed: input.speed!,
+        },
+        (progress) =>
+          updateAudioTask(task, {
+            status: progress.percent === null ? 'preparing-model' : 'generating',
+            stage: progress.label,
+            progress: progress.percent === null ? null : progress.percent / 100,
+          }),
+      )
       updateAudioTask(task, { status: 'saving', stage: '正在保存生成的语音。', progress: null })
       const media = await saveGeneratedAudio(input.projectId, result, [
-        'ai-generated', 'moss-tts', 'tts-engine:moss', `moss-voice:${input.voice}`,
+        'ai-generated',
+        'moss-tts',
+        'tts-engine:moss',
+        `moss-voice:${input.voice}`,
       ])
       updateAudioTask(task, {
         status: 'completed',
@@ -308,21 +357,31 @@ export function startAudioTask(input: {
     }
 
     if (!bridge.generateMusic) throw new Error('当前宿主未接入音乐生成服务。')
-    updateAudioTask(task, { status: 'preparing-model', stage: '正在准备音频模型。', progress: null })
-    const result = await bridge.generateMusic({
-      requestId: task.id,
-      model: input.model!,
-      prompt: input.prompt!,
-      durationSeconds: input.durationSeconds!,
-      guidanceScale: input.guidanceScale!,
-    }, (progress) => updateAudioTask(task, {
-      status: progress.percent === null ? 'preparing-model' : 'generating',
-      stage: progress.label,
-      progress: progress.percent === null ? null : progress.percent / 100,
-    }))
+    updateAudioTask(task, {
+      status: 'preparing-model',
+      stage: '正在准备音频模型。',
+      progress: null,
+    })
+    const result = await bridge.generateMusic(
+      {
+        requestId: task.id,
+        model: input.model!,
+        prompt: input.prompt!,
+        durationSeconds: input.durationSeconds!,
+        guidanceScale: input.guidanceScale!,
+      },
+      (progress) =>
+        updateAudioTask(task, {
+          status: progress.percent === null ? 'preparing-model' : 'generating',
+          stage: progress.label,
+          progress: progress.percent === null ? null : progress.percent / 100,
+        }),
+    )
     updateAudioTask(task, { status: 'saving', stage: '正在保存生成的音频。', progress: null })
     const media = await saveGeneratedAudio(input.projectId, result, [
-      'ai-generated', 'stable-audio-3', `stable-audio-model:${input.model}`,
+      'ai-generated',
+      'stable-audio-3',
+      `stable-audio-model:${input.model}`,
       `stable-audio-target:${input.durationSeconds}s`,
     ])
     updateAudioTask(task, {

@@ -49,6 +49,32 @@ function post(msg: Record<string, unknown>): void {
   self.postMessage(msg)
 }
 
+/** Release tensors nested in a transformers.js inference result. */
+function disposeInferenceValue(value: unknown, seen = new Set<object>()): void {
+  if (value === null || typeof value !== 'object') return
+  if (seen.has(value)) return
+  seen.add(value)
+
+  const disposable = value as { dispose?: unknown }
+  if (typeof disposable.dispose === 'function') {
+    try {
+      disposable.dispose.call(value)
+    } catch {
+      // Disposal is best effort; the worker is still usable after a failed cleanup.
+    }
+    return
+  }
+
+  if (Array.isArray(value)) {
+    for (const child of value) disposeInferenceValue(child, seen)
+    return
+  }
+
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) return
+  for (const child of Object.values(value)) disposeInferenceValue(child, seen)
+}
+
 async function loadModel(): Promise<void> {
   if (model && processor) {
     post({ type: 'ready' })
@@ -146,8 +172,14 @@ async function verifyCandidate(id: number, beforeBlob: Blob, afterBlob: Blob): P
     return
   }
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  let stitched: any = null
+  let inputs: any = null
+  let outputs: any = null
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
   try {
-    const stitched = await stitchSideBySide(beforeBlob, afterBlob)
+    stitched = await stitchSideBySide(beforeBlob, afterBlob)
 
     post({
       type: 'debug',
@@ -172,7 +204,7 @@ async function verifyCandidate(id: number, beforeBlob: Blob, afterBlob: Blob): P
       prompt: typeof prompt === 'string' ? prompt.slice(0, 500) : 'non-string prompt',
     })
 
-    const inputs = await processor(stitched, prompt, { add_special_tokens: false })
+    inputs = await processor(stitched, prompt, { add_special_tokens: false })
 
     post({
       type: 'debug',
@@ -181,7 +213,7 @@ async function verifyCandidate(id: number, beforeBlob: Blob, afterBlob: Blob): P
       pixelValues: inputs.pixel_values?.dims?.toString(),
     })
 
-    const outputs = await model.generate({
+    outputs = await model.generate({
       ...inputs,
       max_new_tokens: 16,
       do_sample: false,
@@ -202,6 +234,10 @@ async function verifyCandidate(id: number, beforeBlob: Blob, afterBlob: Blob): P
     post({ type: 'result', id, isSceneCut: isCut, reason: raw })
   } catch (err) {
     post({ type: 'result', id, isSceneCut: false, reason: `error: ${(err as Error).message}` })
+  } finally {
+    disposeInferenceValue(outputs)
+    disposeInferenceValue(inputs)
+    disposeInferenceValue(stitched)
   }
 }
 
@@ -211,8 +247,14 @@ async function describeImage(id: number, imageBlob: Blob): Promise<void> {
     return
   }
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  let image: any = null
+  let inputs: any = null
+  let outputs: any = null
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
   try {
-    const image = await RawImage.fromBlob(imageBlob)
+    image = await RawImage.fromBlob(imageBlob)
 
     const messages = [
       {
@@ -225,9 +267,9 @@ async function describeImage(id: number, imageBlob: Blob): Promise<void> {
       add_generation_prompt: true,
     })
 
-    const inputs = await processor(image, prompt, { add_special_tokens: false })
+    inputs = await processor(image, prompt, { add_special_tokens: false })
 
-    const outputs = await model.generate({
+    outputs = await model.generate({
       ...inputs,
       max_new_tokens: DESCRIBE_MAX_NEW_TOKENS,
       do_sample: false,
@@ -248,6 +290,10 @@ async function describeImage(id: number, imageBlob: Blob): Promise<void> {
     })
   } catch (err) {
     post({ type: 'caption', id, caption: '', error: (err as Error).message })
+  } finally {
+    disposeInferenceValue(outputs)
+    disposeInferenceValue(inputs)
+    disposeInferenceValue(image)
   }
 }
 

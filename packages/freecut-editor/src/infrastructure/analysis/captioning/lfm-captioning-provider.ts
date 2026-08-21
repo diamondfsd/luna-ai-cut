@@ -1,6 +1,13 @@
 import { createLogger } from '@freecut/shared/logging/logger'
 import { createLfmSceneWorker } from '../create-lfm-worker'
 import { seekVideo } from '../scene-detection-utils'
+import {
+  buildCaptionTimestamps,
+  buildCaptionTimestampsForRanges,
+  MAX_VIDEO_CAPTION_SAMPLES,
+  MAX_TARGETED_VIDEO_CAPTION_SAMPLES,
+  resolveCaptioningIntervalForDuration,
+} from './sample-timestamps'
 import type { CaptioningOptions, MediaCaption, MediaCaptioningProvider } from './types'
 
 const log = createLogger('LfmCaptioningProvider')
@@ -8,6 +15,7 @@ const log = createLogger('LfmCaptioningProvider')
 const MAX_DIM = 512
 const DEFAULT_SAMPLE_INTERVAL_SEC = 3
 const INIT_TIMEOUT_MS = 30_000
+const LONG_VIDEO_TARGETED_ANALYSIS_THRESHOLD_SEC = 10 * 60
 
 async function captureFrame(video: HTMLVideoElement, timeSec: number): Promise<Blob> {
   await seekVideo(video, timeSec)
@@ -156,6 +164,20 @@ export const lfmCaptioningProvider: MediaCaptioningProvider = {
         ? rawSampleInterval
         : DEFAULT_SAMPLE_INTERVAL_SEC
 
+    const duration = video.duration || 0
+    if (duration > LONG_VIDEO_TARGETED_ANALYSIS_THRESHOLD_SEC && !options.timeRanges?.length) {
+      log.info('Skipping unscoped visual analysis for long video; transcript ranges are required', {
+        durationSec: duration,
+      })
+      onProgress?.({
+        stage: 'captioning',
+        percent: 100,
+        framesAnalyzed: 0,
+        totalFrames: 0,
+      })
+      return []
+    }
+
     const worker = createLfmSceneWorker()
     try {
       await waitForReady(worker, onProgress, signal)
@@ -163,21 +185,28 @@ export const lfmCaptioningProvider: MediaCaptioningProvider = {
         return []
       }
 
-      const duration = video.duration || 0
       if (duration <= 0) {
         return []
       }
 
-      const timestamps: number[] = []
-      for (let time = 0; time < duration; time += sampleIntervalSec) {
-        timestamps.push(time)
-      }
-
-      if (
-        timestamps.length > 0 &&
-        timestamps[timestamps.length - 1]! + sampleIntervalSec * 0.5 < duration
-      ) {
-        timestamps.push(Math.max(0, duration - 0.1))
+      const effectiveSampleIntervalSec = options.timeRanges?.length
+        ? sampleIntervalSec
+        : resolveCaptioningIntervalForDuration(sampleIntervalSec, duration)
+      const timestamps = options.timeRanges?.length
+        ? buildCaptionTimestampsForRanges(
+            duration,
+            effectiveSampleIntervalSec,
+            options.timeRanges,
+            MAX_TARGETED_VIDEO_CAPTION_SAMPLES,
+          )
+        : buildCaptionTimestamps(duration, effectiveSampleIntervalSec, MAX_VIDEO_CAPTION_SAMPLES)
+      if (!options.timeRanges?.length && effectiveSampleIntervalSec > sampleIntervalSec) {
+        log.info('Caption sampling cadence adjusted for long video', {
+          durationSec: duration,
+          requestedIntervalSec: sampleIntervalSec,
+          effectiveIntervalSec: effectiveSampleIntervalSec,
+          sampleCount: timestamps.length,
+        })
       }
 
       const captions: MediaCaption[] = []

@@ -36,6 +36,11 @@ editing:
   short_shot_ratio: "use a few short cuts to make the anchor hold feel longer"
   transition_bias: [hard_cut, motivated_jump_cut, rare_crossfade]
   slow_segment_count: 1
+  slow_segment_scope: "one motion or hesitation beat, never the whole timeline"
+  slow_speed_range: [0.5, 0.7]
+  slow_speed_default: 0.6
+  slow_segment_source_seconds: [2, 5]
+  slow_segment_output_factor: "output duration = source duration / speed"
 sound:
   music: original_or_user_licensed_nostalgic_instrumental
   voice_over: first_person_only_when_text_is_provided_or_approved
@@ -52,8 +57,8 @@ color:
 第一次编辑前必须调用 `luna.project.inspect()` 和 `luna.timeline.inspectContext()`。之后按当前项目状态补充证据：
 
 1. 用 `luna.media.list()` 读取素材清单；用 `luna.media.read({ mediaIds })` 读取已有画面、时长和分析结果。
-2. 画面证据不足时，对候选素材调用 `luna.media.analyze({ mediaIds, kind: 'visual' })`，轮询 `luna.media.getAnalysisTask({ taskId })` 到 `completed` 或 `failed`，再重新读取素材。
-3. 需要旁白、对白或声音桥时，读取转录；没有转录就提交 `kind: 'transcript'` 的分析任务并等待完成。
+2. 需要旁白、对白或声音桥时，先提交 `kind: 'transcript'` 的分析任务并按页读取完整转录；先根据对白和声音内容选出候选源区间。
+3. 画面证据不足时，只对这些候选区间调用 `luna.media.analyze({ mediaIds: [mediaId], kind: 'visual', timeRanges })`，轮询 `luna.media.getAnalysisTask({ taskId })` 到 `completed` 或 `failed`，再重新读取素材；不要对长片做整片视觉扫描。
 4. 先形成镜头表，再写时间线脚本。镜头表至少记录真实 `mediaId`、源区间、目标时长、叙事作用、画面证据、是否重复动作、声音进入/离开点和是否使用慢速或效果。
 
 没有画面证据时，不要假设某个素材有门框、玻璃、雨、霓虹、人物关系或合适的反应镜头。风格要求不能替代素材事实。
@@ -73,7 +78,11 @@ color:
 - 先完成内容粗剪，再做风格化节奏。短镜头集中在信息转折或微动作附近，连续快切之后保留一个稳定的呼吸镜头。
 - 1.5-4 秒是起始参考，不是每个镜头的固定长度。保留一处 6-12 秒的情绪锚点，其他镜头围绕它形成长短对比。
 - 跳接必须有理由：重复动作、记忆缺口、关系退步或时间断裂。普通连续动作使用动作衔接，不能把所有切点都做成跳接。
-- 整段最多选择一个慢速片段。先用 `luna.timeline.split()` 得到真实片段，再用 `luna.timeline.setProperties({ itemId, speed })` 调整速度，随后重新检查时间线和原声长度。
+- 整段最多选择一个慢速片段，而且慢放只作用于一个有明确动作或犹豫的 2-5 秒源区间，不能把整条时间线统一降速。
+- 用户没有给出速度时，以 `speed: 0.6` 作为起点；可在 `0.5-0.7` 范围内根据动作清晰度和目标时长调整。`0.5` 已经是明显慢放，未经预览不要低于这个值。
+- 先用 `luna.timeline.split()` 得到真实片段，再用 `luna.timeline.setProperties({ itemId, speed: 0.6 })` 调整速度。速度是播放倍率，慢放后输出时长约为源区间时长除以速度；例如 3 秒源区间在 0.6 倍下约为 5 秒。
+- 如果目标输出时长必须固定为 `D` 秒，先选取约 `D * speed` 秒的源区间，再设置速度；写入后必须通过 `inspectContext()` 检查出点、相邻片段、总时长和关联原声，必要时重新 trim 或 move。
+- 慢放和慢门拖影是两个独立层次：慢放改变动作时间，`gpu-motion-blur` 才负责运动曝光拖影。不要用提高拖影强度来代替慢放，也不要因为已慢放就自动叠加拖影。
 - 当前 SDK 的速度调整不是逐帧重复打印，也不等于真正的步进印片。不要声称已经实现步进印片；需要该效果时，在结果中标记为待新增渲染能力或待人工确认。
 
 ### 转场
@@ -86,7 +95,40 @@ color:
 
 FreeCut 核心已经支持 GPU 效果，脚本层通过 `luna.timeline.effects` 调用。效果应在粗剪复核后按素材状态谨慎加入；同一片段已存在相同效果时更新它或跳过，不要重复叠加。
 
-推荐的低强度起点如下，实际值应根据预览帧调整：
+推荐的低强度起点如下，实际值应根据预览帧调整。用户明确要求更暗、更强烈的王家卫式段落时，使用下面的“单段慢放 + 暗部 + 慢门”组合，而不是把低强度值套到全片：
+
+```js
+await luna.timeline.setProperties({ itemId: slowClipId, speed: 0.6 })
+await luna.timeline.effects.add({
+  clipId: slowClipId,
+  type: 'gpu-brightness',
+  params: { amount: -0.12 },
+})
+await luna.timeline.effects.add({
+  clipId: slowClipId,
+  type: 'gpu-contrast',
+  params: { amount: 1.45 },
+})
+await luna.timeline.effects.add({
+  clipId: slowClipId,
+  type: 'gpu-saturation',
+  params: { amount: 1.22 },
+})
+await luna.timeline.effects.add({
+  clipId: slowClipId,
+  type: 'gpu-vignette',
+  params: { amount: 0.55, size: 0.55, softness: 0.42, roundness: 1 },
+})
+await luna.timeline.effects.add({
+  clipId: slowClipId,
+  type: 'gpu-motion-blur',
+  params: { amount: 0.3, angle: 0.2, shutterAngle: 360, samples: 28 },
+})
+```
+
+这里的 `gpu-motion-blur.amount` 有效范围是 `0-0.3`，`samples` 有效范围是 `4-32`；`0.3 + shutterAngle: 360 + samples: 28` 已是当前 SDK 的强拖影起点。它只应挂在一个短动作片段上，并在关键帧或预览中确认主体没有糊成不可辨认的形状。
+
+低强度整体基调仍可使用下面的参数：
 
 ```js
 await luna.timeline.effects.add({

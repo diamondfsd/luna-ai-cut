@@ -27,6 +27,12 @@ export interface BridgeCallbacks {
   onError: (message: string) => void
 }
 
+// `AudioContext.decodeAudioData` materializes every sample in the file. Keep this legacy
+// fallback for short clips, but never let it expand a feature-length source into a multi-GB
+// Float32Array on the renderer thread. Electron's WebCodecs path is the streaming path for
+// long media and is selected above when available.
+const MAX_AUDIO_CONTEXT_FALLBACK_SECONDS = 10 * 60
+
 export class Bridge {
   private readonly callbacks: BridgeCallbacks
   // Only the decoder is per-job. Both transcription engines run on shared, persistent
@@ -168,6 +174,13 @@ export class Bridge {
     try {
       this.callbacks.onProgress({ stage: 'decoding', progress: 0 })
 
+      const durationSeconds = await readMediaDuration(file)
+      if (durationSeconds > MAX_AUDIO_CONTEXT_FALLBACK_SECONDS) {
+        throw new Error(
+          '当前环境无法流式解码这段长音频，请启用硬件音频解码后再分析。长视频不会被一次性载入内存。',
+        )
+      }
+
       const arrayBuffer = await file.arrayBuffer()
       const AudioContextClass =
         window.AudioContext ??
@@ -287,5 +300,25 @@ export class Bridge {
       default:
         break
     }
+  }
+}
+
+async function readMediaDuration(file: File): Promise<number> {
+  if (typeof document === 'undefined') return 0
+
+  const audio = document.createElement('audio')
+  const url = URL.createObjectURL(file)
+  audio.preload = 'metadata'
+  audio.src = url
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      audio.onloadedmetadata = () => resolve()
+      audio.onerror = () => reject(new Error('无法读取音频时长'))
+    })
+    return Number.isFinite(audio.duration) ? audio.duration : 0
+  } finally {
+    audio.src = ''
+    URL.revokeObjectURL(url)
   }
 }

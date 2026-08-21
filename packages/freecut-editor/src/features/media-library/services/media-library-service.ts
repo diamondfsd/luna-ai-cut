@@ -1939,7 +1939,7 @@ class MediaLibraryService {
        * into the shared content-addressable cache so other mediaIds with the
        * same source bytes skip re-analysis.
        */
-      contentHash?: string
+      contentHash?: string | null
     },
   ): Promise<MediaMetadata> {
     const existingEnvelope = await readAiOutput(mediaId, 'captions').catch(() => undefined)
@@ -1960,7 +1960,10 @@ class MediaLibraryService {
       imageEmbeddingModel:
         options?.imageEmbeddingModel ?? existingEnvelope?.data.imageEmbeddingModel,
       imageEmbeddingDim: options?.imageEmbeddingDim ?? existingEnvelope?.data.imageEmbeddingDim,
-      contentHash: options?.contentHash ?? existingEnvelope?.data.contentHash,
+      contentHash:
+        options && 'contentHash' in options
+          ? (options.contentHash ?? undefined)
+          : existingEnvelope?.data.contentHash,
     }
 
     try {

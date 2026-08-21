@@ -13,6 +13,7 @@ import type { MediaMetadata } from '@freecut/types/storage'
 import {
   captionVideo,
   captionImage,
+  resolveCaptioningIntervalForDuration,
   type MediaCaption,
   embeddingsProvider,
   EMBEDDING_MODEL_ID,
@@ -22,6 +23,7 @@ import {
   CLIP_EMBEDDING_DIM,
   buildEmbeddingText,
   extractDominantColors,
+  type CaptionTimeRange,
 } from '../deps/analysis'
 import { useSettingsStore, resolveCaptioningIntervalSec } from '../deps/settings-contract'
 import {
@@ -43,6 +45,7 @@ import { getMediaType } from '../utils/validation'
 import { createLogger } from '@freecut/shared/logging/logger'
 
 const logger = createLogger('MediaAnalysisService')
+const MAX_CONTENT_HASH_BYTES = 256 * 1024 * 1024
 
 interface AnalyzeBatchResult {
   analyzed: number
@@ -55,6 +58,13 @@ interface AnalyzeBatchOptions {
   onlyMissing?: boolean
   /** Optional filter for which media to consider (e.g. a single scope id). */
   mediaIds?: readonly string[]
+  /** Transcript-selected source ranges for targeted video verification. */
+  visualTimeRanges?: readonly CaptionTimeRange[]
+}
+
+interface AnalyzeMediaOptions {
+  /** Only inspect these source ranges when the media is a video. */
+  visualTimeRanges?: readonly CaptionTimeRange[]
 }
 
 class MediaAnalysisService {
@@ -70,7 +80,10 @@ class MediaAnalysisService {
    * 1-item run so the background progress bar shows a concrete 0→100%
    * instead of a pulsing indeterminate bar.
    */
-  async analyzeMedia(mediaOrId: string | MediaMetadata): Promise<boolean> {
+  async analyzeMedia(
+    mediaOrId: string | MediaMetadata,
+    options: AnalyzeMediaOptions = {},
+  ): Promise<boolean> {
     const store = useMediaLibraryStore.getState()
     const media = typeof mediaOrId === 'string' ? store.mediaById[mediaOrId] : mediaOrId
     if (!media) return false
@@ -80,7 +93,7 @@ class MediaAnalysisService {
       store.beginAnalysisRun(1)
     }
     try {
-      const ok = await this.analyzeOne(media)
+      const ok = await this.analyzeOne(media, options)
       if (ownsRun) {
         useMediaLibraryStore.getState().incrementAnalysisCompleted(1)
       }
@@ -92,17 +105,24 @@ class MediaAnalysisService {
     }
   }
 
-  private async analyzeOne(media: MediaMetadata): Promise<boolean> {
+  private async analyzeOne(
+    media: MediaMetadata,
+    options: AnalyzeMediaOptions = {},
+  ): Promise<boolean> {
     const store = useMediaLibraryStore.getState()
     const mediaType = getMediaType(media.mimeType)
     if (mediaType !== 'video' && mediaType !== 'image') return false
 
     const { captioningIntervalUnit, captioningIntervalValue } = useSettingsStore.getState()
-    const sampleIntervalSec = resolveCaptioningIntervalSec(
+    const configuredSampleIntervalSec = resolveCaptioningIntervalSec(
       captioningIntervalUnit,
       captioningIntervalValue,
       media.fps,
     )
+    let sampleIntervalSec =
+      mediaType === 'video' && !options.visualTimeRanges?.length
+        ? resolveCaptioningIntervalForDuration(configuredSampleIntervalSec, media.duration)
+        : configuredSampleIntervalSec
 
     store.setTaggingMedia(media.id, true)
 
@@ -112,7 +132,10 @@ class MediaAnalysisService {
       // re-running the VLM. We resolve the hash once here and thread it
       // through every save* call so the shared bins/thumbs land in the
       // content tree (or so the adoptCaptionsFromCache fast-path can run).
-      const contentHash = await this.resolveContentHash(media)
+      const contentHash = options.visualTimeRanges?.length
+        ? undefined
+        : await this.resolveContentHash(media)
+      const captionCacheHash = options.visualTimeRanges?.length ? undefined : contentHash
 
       // Drop every in-memory thumbnail URL and semantic cache entry tied to
       // this media before either adopting cached captions or writing fresh
@@ -123,7 +146,10 @@ class MediaAnalysisService {
         media.aiCaptions?.map((caption) => caption.thumbRelPath) ?? [],
       )
 
-      if (contentHash) {
+      // A targeted visual pass is intentionally range-specific. Reusing a full-video cache here
+      // would silently ignore the ranges selected from the transcript, so only untargeted runs
+      // use the content-addressable caption cache.
+      if (contentHash && !options.visualTimeRanges?.length) {
         const cached = await getCaptionsByContentHash(contentHash, sampleIntervalSec).catch(
           () => undefined,
         )
@@ -187,8 +213,12 @@ class MediaAnalysisService {
         })
 
         try {
+          sampleIntervalSec = options.visualTimeRanges?.length
+            ? configuredSampleIntervalSec
+            : resolveCaptioningIntervalForDuration(configuredSampleIntervalSec, video.duration)
           captions = await captionVideo(video, {
             sampleIntervalSec,
+            ...(options.visualTimeRanges?.length ? { timeRanges: options.visualTimeRanges } : {}),
             saveThumbnail: stageThumbnail,
           })
         } finally {
@@ -252,7 +282,7 @@ class MediaAnalysisService {
           const vectors = await embeddingsProvider.embedBatch(texts)
           if (vectors.length === captions.length) {
             await saveCaptionEmbeddings(media.id, vectors, EMBEDDING_MODEL_DIM, {
-              contentHash,
+              contentHash: captionCacheHash,
               sampleIntervalSec,
             })
             embeddingModel = EMBEDDING_MODEL_ID
@@ -277,7 +307,7 @@ class MediaAnalysisService {
             const imageVectors = await clipProvider.embedImages(validBlobs)
             if (imageVectors.length === captions.length) {
               await saveCaptionImageEmbeddings(media.id, imageVectors, CLIP_EMBEDDING_DIM, {
-                contentHash,
+                contentHash: captionCacheHash,
                 sampleIntervalSec,
               })
               imageEmbeddingModel = CLIP_MODEL_ID
@@ -295,7 +325,7 @@ class MediaAnalysisService {
               if (!blob) return caption
               try {
                 const thumbRelPath = await saveCaptionThumbnail(media.id, index, blob, {
-                  contentHash,
+                  contentHash: captionCacheHash,
                   sampleIntervalSec,
                 })
                 return { ...caption, thumbRelPath }
@@ -312,7 +342,7 @@ class MediaAnalysisService {
           embeddingDim,
           imageEmbeddingModel,
           imageEmbeddingDim,
-          contentHash,
+          contentHash: options.visualTimeRanges?.length ? null : captionCacheHash,
         })
         store.updateMediaCaptions(media.id, captionsWithEmbeddings)
 
@@ -324,7 +354,7 @@ class MediaAnalysisService {
       } else {
         await mediaLibraryService.updateMediaCaptions(media.id, [], {
           sampleIntervalSec,
-          contentHash,
+          contentHash: options.visualTimeRanges?.length ? null : captionCacheHash,
         })
         store.updateMediaCaptions(media.id, [])
         await deleteCaptionThumbnails(media.id)
@@ -407,7 +437,9 @@ class MediaAnalysisService {
           break
         }
         logger.info('batch analyzing media', { mediaId: media.id, fileName: media.fileName })
-        const ok = await this.analyzeOne(media)
+        const ok = await this.analyzeOne(media, {
+          visualTimeRanges: options.visualTimeRanges,
+        })
         if (ok) analyzed += 1
         else failed += 1
         useMediaLibraryStore.getState().incrementAnalysisCompleted(1)
@@ -453,6 +485,14 @@ class MediaAnalysisService {
       const { mediaLibraryService } = await importMediaLibraryService()
       const file = await mediaLibraryService.getMediaFile(media.id)
       if (!file) return undefined
+      if (file.size > MAX_CONTENT_HASH_BYTES) {
+        logger.info('Skipping content hash for large media to avoid a full-memory read', {
+          mediaId: media.id,
+          fileSize: file.size,
+          maxBytes: MAX_CONTENT_HASH_BYTES,
+        })
+        return undefined
+      }
       const buffer = await file.arrayBuffer()
       const hash = await computeContentHashFromBuffer(buffer)
       try {

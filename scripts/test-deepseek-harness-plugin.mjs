@@ -32,11 +32,13 @@ const expectedSkillNames = [
   'luna-editing-master',
   'luna-editing-standard',
   'luna-rough-cut',
+  'luna-talking-head-editing',
   'luna-story-continuity',
   'luna-rhythm-pacing',
   'luna-audio-editing',
   'luna-caption-layout',
   'luna-polish-delivery',
+  'luna-director-style-library',
 ]
 for (const name of expectedSkillNames) assert.ok(loadedNames.includes(name))
 assert.ok(loadedNames.length >= expectedSkillNames.length)
@@ -76,12 +78,14 @@ assert.match(standard.content, /复核/u)
 
 const skillMarkers = {
   'luna-rough-cut': /media\.analyze/u,
+  'luna-talking-head-editing': /完整音频字幕/u,
   'luna-story-continuity': /视线方向/u,
   'luna-rhythm-pacing': /固定秒数/u,
   'luna-audio-editing': /small-music/u,
   'luna-caption-layout': /addText/u,
   'luna-polish-delivery': /addTransition/u,
   'luna-wong-kar-wai': /gpu-motion-blur/u,
+  'luna-director-style-library': /时间轴镜头表/u,
 }
 for (const [name, marker] of Object.entries(skillMarkers)) {
   const skill = loadedSkills.find(candidate => candidate.name === name)
@@ -95,6 +99,30 @@ assert.match(wong.content, /不复制具体电影/u)
 assert.match(wong.content, /inspectContext/u)
 assert.match(wong.content, /gpu-temperature/u)
 assert.match(wong.content, /步进印片/u)
+assert.match(wong.content, /slow_speed_range: \[0\.5, 0\.7\]/u)
+assert.match(wong.content, /slow_speed_default: 0\.6/u)
+assert.match(wong.content, /speed: 0\.6/u)
+assert.match(wong.content, /shutterAngle: 360/u)
+assert.match(wong.content, /inspectContext/u)
+
+const directorLibrary = loadedSkills.find(skill => skill.name === 'luna-director-style-library')
+assert.ok(directorLibrary)
+assert.match(directorLibrary.content, /最多组合两个画像/u)
+assert.match(directorLibrary.content, /真实 `mediaId`/u)
+assert.match(directorLibrary.content, /luna\.timeline\.setProperties/u)
+assert.match(directorLibrary.content, /gpu-motion-blur/u)
+assert.match(directorLibrary.content, /完成认证/u)
+assert.match(directorLibrary.content, /不复制外部 skill 的原文/u)
+
+const talkingHead = loadedSkills.find(skill => skill.name === 'luna-talking-head-editing')
+assert.ok(talkingHead)
+assert.match(talkingHead.content, /media\.getAnalysisTask/u)
+assert.match(talkingHead.content, /status === 'completed'/u)
+assert.match(talkingHead.content, /words/u)
+assert.match(talkingHead.content, /0\.15-0\.35/u)
+assert.match(talkingHead.content, /自我纠正/u)
+assert.match(talkingHead.content, /重新从保留的转录片段计算成片时间/u)
+assert.match(talkingHead.content, /不把静音检测结果直接变成删除操作/u)
 
 const registeredSkills = []
 const registeredNames = await registerBuiltInSkills({

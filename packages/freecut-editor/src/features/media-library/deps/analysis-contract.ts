@@ -5,8 +5,13 @@
  * future providers) stay in one auditable place for the boundary checker.
  */
 
-export { captionVideo, captionImage } from '@freecut/infrastructure/analysis/media-tagger'
+export {
+  captionVideo,
+  captionImage,
+  resolveCaptioningIntervalForDuration,
+} from '@freecut/infrastructure/analysis/media-tagger'
 export type { MediaCaption } from '@freecut/infrastructure/analysis/media-tagger'
+export type { CaptionTimeRange } from '@freecut/infrastructure/analysis/media-tagger'
 export {
   embeddingsProvider,
   EMBEDDING_MODEL_ID,

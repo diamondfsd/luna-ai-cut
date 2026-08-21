@@ -47,10 +47,21 @@ export interface CaptioningProgress {
   totalFrames: number
 }
 
+export interface CaptionTimeRange {
+  startSeconds: number
+  endSeconds: number
+}
+
 export interface CaptioningOptions {
   onProgress?: (progress: CaptioningProgress) => void
   signal?: AbortSignal
   sampleIntervalSec?: number
+  /**
+   * Candidate source ranges selected from transcript or other evidence. When present, only
+   * these ranges are decoded and sent to the vision model; the provider never scans the rest of
+   * a long video.
+   */
+  timeRanges?: readonly CaptionTimeRange[]
   /**
    * Optional persistence hook invoked once per captioned frame with the
    * JPEG the provider already captured for VLM inference. Return a

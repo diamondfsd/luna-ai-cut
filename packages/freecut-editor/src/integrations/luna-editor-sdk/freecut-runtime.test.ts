@@ -133,6 +133,13 @@ const analyzedMedia: MediaMetadata = {
   aiCaptions: [{ timeSec: 0, text: 'A bright scene' }],
 } as MediaMetadata
 
+const longVideoMedia: MediaMetadata = {
+  ...media,
+  id: 'long-video-1',
+  duration: 5_814,
+  fileSize: 1_780_000_000,
+} as MediaMetadata
+
 describe('FreeCutRuntime SDK adapter', () => {
   it('accepts structured project inspection parameters and omits hidden project data', async () => {
     const runtime = new FreeCutRuntime({ project: project(), media: [analyzedMedia, audioMedia] })
@@ -229,6 +236,38 @@ describe('FreeCutRuntime SDK adapter', () => {
       prompt: 'ambient',
       durationSeconds: 1,
     })).rejects.toThrow('durationSeconds must be between 2 and 30')
+  })
+
+  it('requires transcript-selected ranges before visual analysis of a long video', async () => {
+    const runtime = new FreeCutRuntime({ project: project(), media: [longVideoMedia] })
+
+    await expect(runtime.executeSdkCapability('media.analyze', {
+      projectId: 'project-1',
+      mediaIds: [longVideoMedia.id],
+      kind: 'visual',
+    })).rejects.toThrow('先完成 transcript 分析')
+
+    await expect(runtime.executeSdkCapability('media.analyze', {
+      projectId: 'project-1',
+      mediaIds: [longVideoMedia.id],
+      kind: 'visual',
+      timeRanges: [{ startSeconds: 0, endSeconds: 61 }],
+    })).rejects.toThrow('at most 60 seconds')
+  })
+
+  it('deduplicates an in-flight visual analysis with the same source ranges', async () => {
+    const runtime = new FreeCutRuntime({ project: project(), media: [longVideoMedia] })
+    const request = {
+      projectId: 'project-1',
+      mediaIds: [longVideoMedia.id],
+      kind: 'visual' as const,
+      timeRanges: [{ startSeconds: 0, endSeconds: 30 }],
+    }
+
+    const first = await runtime.executeSdkCapability('media.analyze', request) as { taskId: string }
+    const second = await runtime.executeSdkCapability('media.analyze', request) as { taskId: string }
+
+    expect(second.taskId).toBe(first.taskId)
   })
 
   it('routes legacy editing calls through the real headless actions', async () => {

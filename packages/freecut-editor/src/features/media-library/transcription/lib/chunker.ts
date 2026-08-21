@@ -1,12 +1,11 @@
 import type { PCMChunk } from '../types'
 
 const SAMPLE_RATE = 16_000
-// Feed Whisper large, near-contiguous spans rather than 30 s windows. transformers.js
-// windows each span into 30 s segments internally and batches them on WebGPU, so
-// app-level 30 s chunking just forced one un-batched inference call per window and
-// re-decoded the 5 s overlaps. A 120 s span lets ~4 windows batch in a single call.
-// A tiny 2 s overlap only guards words straddling a span boundary (deduped downstream).
-const CHUNK_SECONDS = 120
+// Keep each application-level inference request bounded. The ASR pipeline still uses its
+// native 30 s windows internally, but a 45 s span prevents a long film from accumulating
+// multi-minute PCM buffers or making the UI wait for a large inference request before it can
+// report progress. The short overlap preserves words that straddle a boundary.
+const CHUNK_SECONDS = 45
 const OVERLAP_SECONDS = 2
 const SAMPLES_PER_CHUNK = SAMPLE_RATE * CHUNK_SECONDS
 const OVERLAP_SAMPLES = SAMPLE_RATE * OVERLAP_SECONDS

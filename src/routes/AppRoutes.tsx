@@ -60,13 +60,17 @@ export function AppRoutes({ onOpenAssistant }: AppRoutesProps) {
   const [editorProject, setEditorProject] = useState<EditorProjectContext | null>(null)
 
   const contextForEditorProject = useCallback((baseContext?: DeepSeekHarnessContext): DeepSeekHarnessContext | undefined => {
-    if (!editorProject) return undefined
-    if (baseContext?.projectId && baseContext.projectId !== editorProject.id) return undefined
+    const projectId = baseContext?.projectId ?? editorProject?.id
+    if (!projectId) return undefined
+    if (editorProject && baseContext?.projectId && baseContext.projectId !== editorProject.id) return undefined
     return {
       sessionId: baseContext?.sessionId ?? crypto.randomUUID(),
       feature: baseContext?.feature ?? 'freecut',
-      projectId: editorProject.id,
-      metadata: { ...baseContext?.metadata, projectName: editorProject.name },
+      projectId,
+      metadata: {
+        ...baseContext?.metadata,
+        ...(editorProject ? { projectName: editorProject.name } : {}),
+      },
     }
   }, [editorProject])
 

@@ -12,8 +12,8 @@ function makeSamples(seconds: number): Float32Array {
 }
 
 describe('Chunker', () => {
-  // Chunker uses 120 s windows with a 2 s overlap (stride 118 s) so transformers.js
-  // can batch ~4 internal 30 s windows per inference call.
+  // Chunker uses bounded 45 s windows with a 2 s overlap so each model request stays small
+  // while words near a boundary remain recoverable.
   it('emits overlapping chunks to preserve words near chunk boundaries', () => {
     const chunks: PCMChunk[] = []
     const chunker = new Chunker((chunk) => chunks.push(chunk), TOTAL_DURATION)
@@ -21,25 +21,27 @@ describe('Chunker', () => {
     chunker.push(makeSamples(150))
     chunker.flush()
 
-    expect(chunks).toHaveLength(2)
+    expect(chunks).toHaveLength(4)
     expect(chunks[0]).toMatchObject({ timestamp: 0, final: false })
-    expect(chunks[0]?.samples.length).toBe(SAMPLE_RATE * 120)
-    expect(chunks[1]).toMatchObject({ timestamp: 118, final: true })
-    expect(chunks[1]?.samples.length).toBe(SAMPLE_RATE * 32)
-    expect(chunks[1]?.samples[0]).toBe(chunks[0]?.samples[SAMPLE_RATE * 118])
+    expect(chunks[0]?.samples.length).toBe(SAMPLE_RATE * 45)
+    expect(chunks[1]).toMatchObject({ timestamp: 43, final: false })
+    expect(chunks[1]?.samples.length).toBe(SAMPLE_RATE * 45)
+    expect(chunks[1]?.samples[0]).toBe(chunks[0]?.samples[SAMPLE_RATE * 43])
+    expect(chunks.at(-1)).toMatchObject({ timestamp: 129, final: true })
+    expect(chunks.at(-1)?.samples.length).toBe(SAMPLE_RATE * 21)
   })
 
   it('does not emit a duplicate final overlap for exact chunk-length audio', () => {
     const chunks: PCMChunk[] = []
     const chunker = new Chunker((chunk) => chunks.push(chunk), TOTAL_DURATION)
 
-    chunker.push(makeSamples(120))
+    chunker.push(makeSamples(45))
     chunker.flush()
 
     expect(chunks).toHaveLength(2)
     expect(chunks[0]).toMatchObject({ timestamp: 0, final: false })
-    expect(chunks[0]?.samples.length).toBe(SAMPLE_RATE * 120)
-    expect(chunks[1]).toMatchObject({ timestamp: 118, final: true })
+    expect(chunks[0]?.samples.length).toBe(SAMPLE_RATE * 45)
+    expect(chunks[1]).toMatchObject({ timestamp: 43, final: true })
     expect(chunks[1]?.samples.length).toBe(0)
   })
 
@@ -61,7 +63,7 @@ describe('Chunker', () => {
     const chunks: PCMChunk[] = []
     const chunker = new Chunker((chunk) => chunks.push(chunk), TOTAL_DURATION)
 
-    chunker.push(makeSamples(120))
+    chunker.push(makeSamples(45))
     chunker.flush()
 
     expect(chunks).toHaveLength(2)

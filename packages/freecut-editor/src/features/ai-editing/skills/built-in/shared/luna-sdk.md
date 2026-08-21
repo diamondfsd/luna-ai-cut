@@ -7,8 +7,9 @@
 
 - `luna.project.inspect()`：读取 `data.projectId`、`data.project`、当前时间线和计数。
 - `luna.media.list({ limit? })`：列出当前项目素材，结果在 `data.items` 和 `data.total`。
-- `luna.media.read({ mediaIds })`：读取素材元数据和已保存的画面/字幕分析证据，结果在 `data.items`。
-- `luna.media.analyze({ mediaIds, kind })`：提交 `transcript` 或 `visual` 分析任务，立即返回 `data.taskId`。
+- `luna.media.read({ mediaIds, transcriptOffset?, transcriptLimit? })`：读取素材元数据和已保存的画面/字幕分析证据，结果在 `data.items`。长转录按页读取：使用 `transcript.nextOffset` 继续，片段带有源素材时间和可用的词级时间。
+- `luna.media.analyze({ mediaIds, kind: 'transcript' })`：提交音频转录任务，立即返回 `data.taskId`。长视频必须先完成这一步。
+- `luna.media.analyze({ mediaIds: [mediaId], kind: 'visual', timeRanges: [{ startSeconds, endSeconds }] })`：只分析给定源区间附近的画面。每段最多 60 秒，最多 12 段、合计最多 8 分钟；长视频不能省略 `timeRanges`。
 - `luna.media.getAnalysisTask({ taskId })`：轮询分析任务；完成后再用 `media.read` 读取证据，失败时读取错误字段。
 - `luna.media.searchTranscript({ query, mediaIds? })`：搜索已完成的字幕识别结果，结果在 `data.matches`。
 
@@ -69,3 +70,5 @@ await luna.timeline.moveTrack({
 编辑结果通常在 `result.data.project`，新建片段或轨道 ID 在 `result.data.createdItemIds`，受影响 ID 在 `result.data.affectedIds`。
 
 素材分析、TTS、音乐和音效都是异步任务。提交后保存 `taskId`，反复调用对应查询方法，直到 `status === 'completed'` 或 `status === 'failed'`。`queued`、`preparing-model`、`generating` 和 `saving` 都表示仍在处理，不能当作失败或完成。失败时读取结构化错误；没有查询到完成且拿到有效 `mediaId` 前，不要把结果加入时间轴或声称任务完成。
+
+长片工作流固定为：转录音频并按页读取完整结果 → 根据对白/声音内容选择源区间 → 只对这些区间做视觉抽帧 → 复核真实画面证据后剪辑。不要为了找镜头而对整部电影做均匀视觉扫描。

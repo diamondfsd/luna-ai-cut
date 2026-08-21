@@ -7,9 +7,11 @@
  */
 
 import { getDefaultMediaCaptioningProvider } from './captioning/registry'
-import type { CaptioningOptions, MediaCaption } from './captioning/types'
+import type { CaptioningOptions, CaptionTimeRange, MediaCaption } from './captioning/types'
 
 export type { MediaCaption }
+export type { CaptionTimeRange }
+export { resolveCaptioningIntervalForDuration } from './captioning/sample-timestamps'
 
 export async function captionVideo(
   video: HTMLVideoElement,

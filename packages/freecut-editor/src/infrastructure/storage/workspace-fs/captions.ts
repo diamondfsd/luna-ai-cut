@@ -73,7 +73,7 @@ interface SaveCaptionsInput {
    * assets are mirrored into the shared content cache and this mediaId is
    * registered as a ref-holder.
    */
-  contentHash?: string
+  contentHash?: string | null
 }
 
 /** Options common to most read/write helpers. */
@@ -161,7 +161,7 @@ export async function saveCaptions(input: SaveCaptionsInput): Promise<MediaCapti
     embeddingDim: input.embeddingDim,
     imageEmbeddingModel: input.imageEmbeddingModel,
     imageEmbeddingDim: input.imageEmbeddingDim,
-    contentHash: input.contentHash,
+    ...(input.contentHash ? { contentHash: input.contentHash } : {}),
     captions: input.captions,
   }
 
@@ -170,15 +170,13 @@ export async function saveCaptions(input: SaveCaptionsInput): Promise<MediaCapti
   // old shared-cache ref so it doesn't leak a stale entry.
   let priorContentHash: string | undefined
   let priorSampleIntervalSec: number | undefined
-  if (input.contentHash) {
-    try {
-      const prior = await readAiOutput(input.mediaId, 'captions')
-      priorContentHash = prior?.data.contentHash
-      priorSampleIntervalSec = resolveSampleIntervalSec(prior?.data, prior?.params)
-    } catch {
-      priorContentHash = undefined
-      priorSampleIntervalSec = undefined
-    }
+  try {
+    const prior = await readAiOutput(input.mediaId, 'captions')
+    priorContentHash = prior?.data.contentHash
+    priorSampleIntervalSec = resolveSampleIntervalSec(prior?.data, prior?.params)
+  } catch {
+    priorContentHash = undefined
+    priorSampleIntervalSec = undefined
   }
 
   try {
@@ -245,6 +243,16 @@ export async function saveCaptions(input: SaveCaptionsInput): Promise<MediaCapti
           })
         }
       }
+    }
+
+    // A targeted visual pass is stored per media, so it must release any previous shared-cache
+    // reference without replacing the shared full-video variant.
+    if (!input.contentHash && priorContentHash) {
+      await deleteSharedCaptionsIfUnreferenced(
+        priorContentHash,
+        input.mediaId,
+        priorSampleIntervalSec,
+      ).catch((error) => logger.warn('saveCaptions: failed to release prior shared ref', error))
     }
 
     return written.data.captions

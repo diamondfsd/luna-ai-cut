@@ -74,9 +74,7 @@ function addString(set: Set<string>, value: unknown): void {
   if (typeof value === 'string' && value.length > 0) set.add(value)
 }
 
-function collectEditIds(
-  results: readonly { op: string; detail?: unknown }[],
-): EditIdCollection {
+function collectEditIds(results: readonly { op: string; detail?: unknown }[]): EditIdCollection {
   const ids: EditIdCollection = {
     affectedIds: new Set(),
     createdIds: new Set(),
@@ -137,6 +135,9 @@ type StructuredMediaListQuery = MediaQuery & {
 type PublicMediaKind = 'video' | 'audio' | 'image' | 'gif' | 'svg' | 'lottie' | 'unknown'
 
 const MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS = 500
+const MAX_VISUAL_TIME_RANGES = 12
+const MAX_VISUAL_RANGE_SECONDS = 60
+const MAX_VISUAL_TOTAL_SECONDS = 8 * 60
 
 interface NormalizedMediaQuery {
   ids?: readonly string[]
@@ -163,7 +164,10 @@ function assertOptionalBoolean(value: unknown, field: string): boolean | undefin
 
 function assertStringArray(value: unknown, field: string): readonly string[] | undefined {
   if (value === undefined) return undefined
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || item.length === 0)) {
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => typeof item !== 'string' || item.length === 0)
+  ) {
     throw new TypeError(`${field} must be an array of non-empty strings`)
   }
   return value
@@ -223,14 +227,27 @@ function normalizeMediaQuery(query: StructuredMediaListQuery): NormalizedMediaQu
     throw new TypeError('mimeTypePrefix must be a string')
   }
 
-  const validKinds: readonly PublicMediaKind[] = ['video', 'audio', 'image', 'gif', 'svg', 'lottie', 'unknown']
-  if (query.kind !== undefined && (typeof query.kind !== 'string' || !validKinds.includes(query.kind as PublicMediaKind))) {
+  const validKinds: readonly PublicMediaKind[] = [
+    'video',
+    'audio',
+    'image',
+    'gif',
+    'svg',
+    'lottie',
+    'unknown',
+  ]
+  if (
+    query.kind !== undefined &&
+    (typeof query.kind !== 'string' || !validKinds.includes(query.kind as PublicMediaKind))
+  ) {
     throw new TypeError(`kind must be one of ${validKinds.join(', ')}`)
   }
 
   return {
     ...(ids ? { ids } : {}),
-    ...(typeof searchValue === 'string' && searchValue.trim().length > 0 ? { search: searchValue } : {}),
+    ...(typeof searchValue === 'string' && searchValue.trim().length > 0
+      ? { search: searchValue }
+      : {}),
     ...(typeof query.mimeTypePrefix === 'string' && query.mimeTypePrefix.length > 0
       ? { mimeTypePrefix: query.mimeTypePrefix }
       : {}),
@@ -288,12 +305,14 @@ function asRecord(value: unknown, field: string): Record<string, unknown> {
 }
 
 function asStringValue(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.length === 0) throw new TypeError(`${field} must be a string`)
+  if (typeof value !== 'string' || value.length === 0)
+    throw new TypeError(`${field} must be a string`)
   return value
 }
 
 function asFrames(value: unknown, fps: number, field: string): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value * fps))
+  if (typeof value === 'number' && Number.isFinite(value))
+    return Math.max(0, Math.round(value * fps))
   const timecode = asRecord(value, field)
   if (typeof timecode.frames === 'number' && Number.isFinite(timecode.frames)) {
     return Math.max(0, Math.round(timecode.frames))
@@ -312,10 +331,46 @@ function secondsValue(value: unknown, field: string, fallback?: number): number 
   return value
 }
 
+function visualTimeRanges(
+  value: unknown,
+): Array<{ startSeconds: number; endSeconds: number }> | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_VISUAL_TIME_RANGES) {
+    throw new TypeError(`timeRanges must contain 1-${MAX_VISUAL_TIME_RANGES} ranges`)
+  }
+
+  let totalSeconds = 0
+  const ranges = value.map((raw, index) => {
+    const range = asRecord(raw, `timeRanges[${index}]`)
+    const startSeconds = secondsValue(range.startSeconds, `timeRanges[${index}].startSeconds`)
+    const endSeconds = secondsValue(range.endSeconds, `timeRanges[${index}].endSeconds`)
+    const durationSeconds = endSeconds - startSeconds
+    if (durationSeconds <= 0) {
+      throw new TypeError(`timeRanges[${index}] endSeconds must be after startSeconds`)
+    }
+    if (durationSeconds > MAX_VISUAL_RANGE_SECONDS) {
+      throw new TypeError(
+        `timeRanges[${index}] must be at most ${MAX_VISUAL_RANGE_SECONDS} seconds`,
+      )
+    }
+    totalSeconds += durationSeconds
+    return { startSeconds, endSeconds }
+  })
+
+  if (totalSeconds > MAX_VISUAL_TOTAL_SECONDS) {
+    throw new TypeError(
+      `timeRanges must cover at most ${MAX_VISUAL_TOTAL_SECONDS} seconds in total`,
+    )
+  }
+  return ranges
+}
+
 function legacyTrackQuery(args: Record<string, unknown>, fps: number): TimelineQuery {
   return {
     ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
-    ...(typeof args.fromSeconds === 'number' ? { fromFrame: Math.round(args.fromSeconds * fps) } : {}),
+    ...(typeof args.fromSeconds === 'number'
+      ? { fromFrame: Math.round(args.fromSeconds * fps) }
+      : {}),
     ...(typeof args.toSeconds === 'number' ? { toFrame: Math.round(args.toSeconds * fps) } : {}),
   }
 }
@@ -328,27 +383,34 @@ function mediaSourceRangeOps(
 ): Record<string, unknown>[] {
   const startSeconds = secondsValue(args.startSeconds, 'startSeconds', 0)
   const sourceStartSeconds = secondsValue(args.sourceStartSeconds, 'sourceStartSeconds', 0)
-  const sourceEndSeconds = args.sourceEndSeconds === undefined
-    ? undefined
-    : secondsValue(args.sourceEndSeconds, 'sourceEndSeconds')
-  const durationSeconds = sourceEndSeconds !== undefined
-    ? sourceEndSeconds - sourceStartSeconds
-    : secondsValue(args.durationSeconds, 'durationSeconds', media.duration)
+  const sourceEndSeconds =
+    args.sourceEndSeconds === undefined
+      ? undefined
+      : secondsValue(args.sourceEndSeconds, 'sourceEndSeconds')
+  const durationSeconds =
+    sourceEndSeconds !== undefined
+      ? sourceEndSeconds - sourceStartSeconds
+      : secondsValue(args.durationSeconds, 'durationSeconds', media.duration)
   if (durationSeconds <= 0) throw new TypeError('sourceEndSeconds must be after sourceStartSeconds')
   const sourceFps = media.fps > 0 ? media.fps : fps
   const sourceDuration = Math.max(1, Math.round(media.duration * sourceFps))
   const sourceStart = Math.max(0, Math.round(sourceStartSeconds * sourceFps))
-  const sourceEnd = Math.min(sourceDuration, Math.round((sourceStartSeconds + durationSeconds) * sourceFps))
+  const sourceEnd = Math.min(
+    sourceDuration,
+    Math.round((sourceStartSeconds + durationSeconds) * sourceFps),
+  )
   if (sourceEnd <= sourceStart) throw new TypeError('The requested media range is empty')
 
-  const ops: Record<string, unknown>[] = [{
-    op: 'addClip',
-    callerId,
-    mediaId: media.id,
-    from: Math.round(startSeconds * fps),
-    durationInFrames: Math.max(1, Math.round(durationSeconds * fps)),
-    ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
-  }]
+  const ops: Record<string, unknown>[] = [
+    {
+      op: 'addClip',
+      callerId,
+      mediaId: media.id,
+      from: Math.round(startSeconds * fps),
+      durationInFrames: Math.max(1, Math.round(durationSeconds * fps)),
+      ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
+    },
+  ]
   const sourceUpdates = { sourceStart, sourceEnd, sourceDuration, sourceFps }
   // addClip creates the primary item first and a linked audio item second when
   // the source has an audio stream. Apply the same source window to both.
@@ -374,32 +436,33 @@ function coreOperationForCapability(
 ): Record<string, unknown> {
   switch (name) {
     case 'timeline.add_track':
-    case 'timeline.tracks.add':
-      {
-        const kind = args.kind ?? args.type
-        if (kind !== 'video' && kind !== 'audio') {
-          throw new TypeError('kind must be video or audio')
-        }
-        const order = args.order ?? args.index
-        if (order !== undefined && (typeof order !== 'number' || !Number.isFinite(order))) {
-          throw new TypeError('order must be a finite number')
-        }
-        return {
-          op: 'addTrack',
-          kind,
-          ...(typeof args.name === 'string' && args.name.length > 0 ? { name: args.name } : {}),
-          ...(order !== undefined ? { order } : {}),
-        }
+    case 'timeline.tracks.add': {
+      const kind = args.kind ?? args.type
+      if (kind !== 'video' && kind !== 'audio') {
+        throw new TypeError('kind must be video or audio')
       }
+      const order = args.order ?? args.index
+      if (order !== undefined && (typeof order !== 'number' || !Number.isFinite(order))) {
+        throw new TypeError('order must be a finite number')
+      }
+      return {
+        op: 'addTrack',
+        kind,
+        ...(typeof args.name === 'string' && args.name.length > 0 ? { name: args.name } : {}),
+        ...(order !== undefined ? { order } : {}),
+      }
+    }
     case 'timeline.move_track':
     case 'timeline.tracks.move': {
       const trackId = asStringValue(args.trackId, 'trackId')
-      const aboveTrackId = args.aboveTrackId === undefined
-        ? undefined
-        : asStringValue(args.aboveTrackId, 'aboveTrackId')
-      const belowTrackId = args.belowTrackId === undefined
-        ? undefined
-        : asStringValue(args.belowTrackId, 'belowTrackId')
+      const aboveTrackId =
+        args.aboveTrackId === undefined
+          ? undefined
+          : asStringValue(args.aboveTrackId, 'aboveTrackId')
+      const belowTrackId =
+        args.belowTrackId === undefined
+          ? undefined
+          : asStringValue(args.belowTrackId, 'belowTrackId')
       if ((aboveTrackId ? 1 : 0) + (belowTrackId ? 1 : 0) !== 1) {
         throw new TypeError('Exactly one of aboveTrackId or belowTrackId is required')
       }
@@ -420,7 +483,8 @@ function coreOperationForCapability(
     case 'timeline.clips.update': {
       const updates = asRecord(args.properties ?? {}, 'properties')
       if (args.start !== undefined) updates.from = asFrames(args.start, fps, 'start')
-      if (args.duration !== undefined) updates.durationInFrames = asFrames(args.duration, fps, 'duration')
+      if (args.duration !== undefined)
+        updates.durationInFrames = asFrames(args.duration, fps, 'duration')
       if (typeof args.speed === 'number') updates.speed = args.speed
       if (typeof args.reverse === 'boolean') updates.reverse = args.reverse
       return { op: 'updateItem', id: asStringValue(args.clipId, 'clipId'), updates }
@@ -434,7 +498,9 @@ function coreOperationForCapability(
       }
     case 'timeline.clips.delete':
       if (args.mode === 'ripple' || args.mode === 'lift') {
-        throw new Error(`Clip delete mode "${String(args.mode)}" is not available in the current headless adapter`)
+        throw new Error(
+          `Clip delete mode "${String(args.mode)}" is not available in the current headless adapter`,
+        )
       }
       return { op: 'removeItems', ids: [asStringValue(args.clipId, 'clipId')] }
     case 'timeline.clips.split':
@@ -445,7 +511,9 @@ function coreOperationForCapability(
       }
     case 'timeline.clips.trim':
       if (args.mode && args.mode !== 'normal') {
-        throw new Error(`Clip trim mode "${String(args.mode)}" is not available in the current headless adapter`)
+        throw new Error(
+          `Clip trim mode "${String(args.mode)}" is not available in the current headless adapter`,
+        )
       }
       return {
         op: args.edge === 'start' ? 'trimStart' : 'trimEnd',
@@ -478,7 +546,8 @@ function coreOperationForCapability(
         effectId: asStringValue(args.effectId, 'effectId'),
       }
     case 'timeline.keyframes.add':
-      if (typeof args.value !== 'number') throw new Error('Current headless keyframe adapter requires a numeric value')
+      if (typeof args.value !== 'number')
+        throw new Error('Current headless keyframe adapter requires a numeric value')
       return {
         op: 'addKeyframe',
         itemId: asStringValue(args.clipId, 'clipId'),
@@ -496,21 +565,20 @@ function coreOperationForCapability(
         text: asStringValue(args.text, 'text'),
         ...asRecord(args.style ?? {}, 'style'),
       }
-    case 'timeline.transitions.add':
-      {
-        return {
-          op: 'addTransition',
-          leftClipId: asStringValue(args.fromClipId, 'fromClipId'),
-          rightClipId: asStringValue(args.toClipId, 'toClipId'),
-          type: asStringValue(args.type, 'type'),
-          durationInFrames: asFrames(args.duration, fps, 'duration'),
-          ...(typeof args.presentation === 'string'
-            ? { presentation: args.presentation }
-            : {}),
-          ...(typeof args.direction === 'string' ? { direction: args.direction } : {}),
-          ...(args.properties !== undefined ? { properties: asRecord(args.properties, 'properties') } : {}),
-        }
+    case 'timeline.transitions.add': {
+      return {
+        op: 'addTransition',
+        leftClipId: asStringValue(args.fromClipId, 'fromClipId'),
+        rightClipId: asStringValue(args.toClipId, 'toClipId'),
+        type: asStringValue(args.type, 'type'),
+        durationInFrames: asFrames(args.duration, fps, 'duration'),
+        ...(typeof args.presentation === 'string' ? { presentation: args.presentation } : {}),
+        ...(typeof args.direction === 'string' ? { direction: args.direction } : {}),
+        ...(args.properties !== undefined
+          ? { properties: asRecord(args.properties, 'properties') }
+          : {}),
       }
+    }
     case 'timeline.effects.update':
       return {
         op: 'updateEffect',
@@ -542,10 +610,14 @@ function coreOperationForCapability(
       return {
         op: 'updateTransition',
         id: asStringValue(args.transitionId, 'transitionId'),
-        ...(args.duration !== undefined ? { durationInFrames: asFrames(args.duration, fps, 'duration') } : {}),
+        ...(args.duration !== undefined
+          ? { durationInFrames: asFrames(args.duration, fps, 'duration') }
+          : {}),
         ...(typeof args.type === 'string' ? { presentation: args.type } : {}),
         ...(typeof args.direction === 'string' ? { direction: args.direction } : {}),
-        ...(args.properties !== undefined ? { properties: asRecord(args.properties, 'properties') } : {}),
+        ...(args.properties !== undefined
+          ? { properties: asRecord(args.properties, 'properties') }
+          : {}),
       }
     case 'timeline.transitions.remove':
       return {
@@ -599,7 +671,9 @@ export class FreeCutRuntime {
     }
   }
 
-  inspectProject(query: StructuredProjectInspectQuery = {}): ProjectInspection & { media?: MediaMetadata[] } {
+  inspectProject(
+    query: StructuredProjectInspectQuery = {},
+  ): ProjectInspection & { media?: MediaMetadata[] } {
     assertProjectContext(query.projectId, this.project.id)
     const includeTimeline = assertOptionalBoolean(query.includeTimeline, 'includeTimeline') ?? true
     const includeMedia = assertOptionalBoolean(query.includeMedia, 'includeMedia') ?? false
@@ -657,9 +731,14 @@ export class FreeCutRuntime {
   listMedia(query: StructuredMediaListQuery = {}): MediaListResult {
     assertProjectContext(query.projectId, this.project.id)
     const normalized = normalizeMediaQuery(query)
-    const matching = [...this.mediaById.values()].filter((entry) => matchesNormalizedMediaQuery(entry, normalized))
+    const matching = [...this.mediaById.values()].filter((entry) =>
+      matchesNormalizedMediaQuery(entry, normalized),
+    )
     const media = matching
-      .slice(normalized.offset, normalized.limit === undefined ? undefined : normalized.offset + normalized.limit)
+      .slice(
+        normalized.offset,
+        normalized.limit === undefined ? undefined : normalized.offset + normalized.limit,
+      )
       .map((entry) => publicMediaMetadata(entry, false))
     return { media, total: matching.length }
   }
@@ -670,37 +749,73 @@ export class FreeCutRuntime {
     return { media: publicMediaMetadata(media, true) }
   }
 
-  async readMedia(args: Record<string, unknown>): Promise<MediaInspection & { items?: MediaMetadata[] }> {
+  async readMedia(
+    args: Record<string, unknown>,
+  ): Promise<MediaInspection & { items?: MediaMetadata[] }> {
     assertProjectContext(args.projectId, this.project.id)
     const ids = new Set<string>()
     if (args.mediaId !== undefined) ids.add(asStringValue(args.mediaId, 'mediaId'))
     const batchIds = assertStringArray(args.mediaIds, 'mediaIds')
     for (const mediaId of batchIds ?? []) ids.add(mediaId)
     if (ids.size === 0) throw new TypeError('mediaId or mediaIds must be provided')
+    const transcriptOffset =
+      args.transcriptOffset === undefined
+        ? 0
+        : assertNonNegativeInteger(args.transcriptOffset, 'transcriptOffset')
+    const transcriptLimit =
+      args.transcriptLimit === undefined
+        ? MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS
+        : Math.min(
+            MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS,
+            assertPositiveInteger(args.transcriptLimit, 'transcriptLimit'),
+          )
 
-    const items = await Promise.all([...ids].map(async (mediaId) => {
-      const media = this.mediaById.get(mediaId)
-      if (!media) throw new Error(`Media "${mediaId}" does not exist`)
-      const transcript = await getTranscript(media.id).catch(() => undefined)
-      const transcriptSegments = transcript?.segments ?? []
-      return {
-        ...publicMediaMetadata(media, true),
-        transcript: transcript
-          ? {
-              status: 'ready',
-              language: transcript.language,
-              model: transcript.model,
-              segments: transcriptSegments.slice(0, MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS).map((segment) => ({
-                startSeconds: segment.start,
-                endSeconds: segment.end,
-                text: segment.text,
-              })),
-              truncated: transcriptSegments.length > MAX_MEDIA_READ_TRANSCRIPT_SEGMENTS,
-              updatedAt: transcript.updatedAt,
-            }
-          : { status: 'not-requested', segments: [], truncated: false },
-      }
-    }))
+    const items = await Promise.all(
+      [...ids].map(async (mediaId) => {
+        const media = this.mediaById.get(mediaId)
+        if (!media) throw new Error(`Media "${mediaId}" does not exist`)
+        const transcript = await getTranscript(media.id).catch(() => undefined)
+        const transcriptSegments = transcript?.segments ?? []
+        const visibleTranscriptSegments = transcriptSegments.slice(
+          transcriptOffset,
+          transcriptOffset + transcriptLimit,
+        )
+        return {
+          ...publicMediaMetadata(media, true),
+          transcript: transcript
+            ? {
+                status: 'ready',
+                language: transcript.language,
+                model: transcript.model,
+                segments: visibleTranscriptSegments.map((segment) => ({
+                  startSeconds: segment.start,
+                  endSeconds: segment.end,
+                  text: segment.text,
+                  ...(segment.words
+                    ? {
+                        words: segment.words.map((word) => ({
+                          startSeconds: word.start,
+                          endSeconds: word.end,
+                          text: word.text,
+                          ...(word.confidence !== undefined ? { confidence: word.confidence } : {}),
+                        })),
+                      }
+                    : {}),
+                })),
+                offset: transcriptOffset,
+                totalSegments: transcriptSegments.length,
+                nextOffset:
+                  transcriptOffset + visibleTranscriptSegments.length < transcriptSegments.length
+                    ? transcriptOffset + visibleTranscriptSegments.length
+                    : null,
+                truncated:
+                  transcriptOffset + visibleTranscriptSegments.length < transcriptSegments.length,
+                updatedAt: transcript.updatedAt,
+              }
+            : { status: 'not-requested', segments: [], truncated: false },
+        }
+      }),
+    )
     if (batchIds !== undefined) return { media: items[0]!, items }
     return { media: items[0]! }
   }
@@ -750,7 +865,9 @@ export class FreeCutRuntime {
       case 'timeline.inspect':
         return this.inspectTimeline({
           ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
-          ...(Array.isArray(args.trackIds) ? { trackId: args.trackIds[0] as string | undefined } : {}),
+          ...(Array.isArray(args.trackIds)
+            ? { trackId: args.trackIds[0] as string | undefined }
+            : {}),
           ...(Array.isArray(args.clipIds) ? { itemIds: args.clipIds as string[] } : {}),
           ...(Array.isArray(args.itemIds) ? { itemIds: args.itemIds as string[] } : {}),
         })
@@ -767,16 +884,21 @@ export class FreeCutRuntime {
       case 'timeline.add_media': {
         const media = this.mediaById.get(asStringValue(args.mediaId, 'mediaId'))
         if (!media) throw new Error(`Media "${String(args.mediaId)}" does not exist`)
-        return this.edit({ ops: mediaSourceRangeOps(media, args, this.project.metadata.fps, 'add-media') })
+        return this.edit({
+          ops: mediaSourceRangeOps(media, args, this.project.metadata.fps, 'add-media'),
+        })
       }
       case 'timeline.add_media_batch': {
-        if (!Array.isArray(args.items) || args.items.length === 0) throw new TypeError('items must be a non-empty array')
+        if (!Array.isArray(args.items) || args.items.length === 0)
+          throw new TypeError('items must be a non-empty array')
         const ops: Record<string, unknown>[] = []
         for (const [index, raw] of args.items.entries()) {
           const item = asRecord(raw, `items[${index}]`)
           const media = this.mediaById.get(asStringValue(item.mediaId, `items[${index}].mediaId`))
           if (!media) throw new Error(`Media "${String(item.mediaId)}" does not exist`)
-          ops.push(...mediaSourceRangeOps(media, item, this.project.metadata.fps, `add-media-${index}`))
+          ops.push(
+            ...mediaSourceRangeOps(media, item, this.project.metadata.fps, `add-media-${index}`),
+          )
         }
         return this.edit({ ops })
       }
@@ -787,32 +909,57 @@ export class FreeCutRuntime {
         const fps = this.project.metadata.fps
         const ops: Record<string, unknown>[] = []
         if (args.startSeconds !== undefined) {
-          ops.push({ op: 'trimStart', id: itemId, amount: Math.round(secondsValue(args.startSeconds, 'startSeconds') * fps) - item.from })
+          ops.push({
+            op: 'trimStart',
+            id: itemId,
+            amount: Math.round(secondsValue(args.startSeconds, 'startSeconds') * fps) - item.from,
+          })
         }
         if (args.endSeconds !== undefined) {
-          ops.push({ op: 'trimEnd', id: itemId, amount: Math.round(secondsValue(args.endSeconds, 'endSeconds') * fps) - (item.from + item.durationInFrames) })
+          ops.push({
+            op: 'trimEnd',
+            id: itemId,
+            amount:
+              Math.round(secondsValue(args.endSeconds, 'endSeconds') * fps) -
+              (item.from + item.durationInFrames),
+          })
         }
-        if (ops.length === 0) throw new TypeError('timeline.trim requires startSeconds or endSeconds')
+        if (ops.length === 0)
+          throw new TypeError('timeline.trim requires startSeconds or endSeconds')
         return this.edit({ ops })
       }
       case 'timeline.split':
-        return this.edit({ ops: [{
-          op: 'split',
-          id: asStringValue(args.itemId, 'itemId'),
-          frame: Math.round(secondsValue(args.atSeconds, 'atSeconds') * this.project.metadata.fps),
-        }] })
+        return this.edit({
+          ops: [
+            {
+              op: 'split',
+              id: asStringValue(args.itemId, 'itemId'),
+              frame: Math.round(
+                secondsValue(args.atSeconds, 'atSeconds') * this.project.metadata.fps,
+              ),
+            },
+          ],
+        })
       case 'timeline.move':
-        return this.edit({ ops: [{
-          op: 'moveItem',
-          id: asStringValue(args.itemId, 'itemId'),
-          from: Math.round(secondsValue(args.toSeconds, 'toSeconds') * this.project.metadata.fps),
-          ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
-        }] })
+        return this.edit({
+          ops: [
+            {
+              op: 'moveItem',
+              id: asStringValue(args.itemId, 'itemId'),
+              from: Math.round(
+                secondsValue(args.toSeconds, 'toSeconds') * this.project.metadata.fps,
+              ),
+              ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
+            },
+          ],
+        })
       case 'timeline.remove':
-        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) throw new TypeError('itemIds must be a non-empty array')
+        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0)
+          throw new TypeError('itemIds must be a non-empty array')
         return this.edit({ ops: [{ op: 'removeItems', ids: args.itemIds }] })
       case 'timeline.unlink':
-        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) throw new TypeError('itemIds must be a non-empty array')
+        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0)
+          throw new TypeError('itemIds must be a non-empty array')
         return this.edit({ ops: [{ op: 'unlinkItems', ids: args.itemIds }] })
       case 'timeline.mute': {
         if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) {
@@ -828,18 +975,39 @@ export class FreeCutRuntime {
         const result = await this.edit({
           ops: targetIds.map((itemId) => ({ op: 'updateItem', id: itemId, updates: { volume } })),
         })
-        return { ...result, mutedIds: muted ? targetIds : [], unmutedIds: muted ? [] : targetIds, volumeDb: volume }
+        return {
+          ...result,
+          mutedIds: muted ? targetIds : [],
+          unmutedIds: muted ? [] : targetIds,
+          volumeDb: volume,
+        }
       }
       case 'timeline.set_properties': {
         const updates = Object.fromEntries(
-          ['label', 'text', 'volume', 'speed', 'fadeIn', 'fadeOut'].filter((field) => args[field] !== undefined).map((field) => [field, args[field]]),
+          ['label', 'text', 'volume', 'speed', 'fadeIn', 'fadeOut']
+            .filter((field) => args[field] !== undefined)
+            .map((field) => [field, args[field]]),
         )
-        return this.edit({ ops: [{ op: 'updateItem', id: asStringValue(args.itemId, 'itemId'), updates }] })
+        return this.edit({
+          ops: [{ op: 'updateItem', id: asStringValue(args.itemId, 'itemId'), updates }],
+        })
       }
       case 'timeline.set_transform': {
         const itemId = asStringValue(args.itemId, 'itemId')
         const transform = Object.fromEntries(
-          ['x', 'y', 'width', 'height', 'rotation', 'opacity', 'flipHorizontal', 'flipVertical', 'cornerRadius'].filter((field) => args[field] !== undefined).map((field) => [field, args[field]]),
+          [
+            'x',
+            'y',
+            'width',
+            'height',
+            'rotation',
+            'opacity',
+            'flipHorizontal',
+            'flipVertical',
+            'cornerRadius',
+          ]
+            .filter((field) => args[field] !== undefined)
+            .map((field) => [field, args[field]]),
         )
         return this.edit({ ops: [{ op: 'setTransform', id: itemId, transform }] })
       }
@@ -851,35 +1019,78 @@ export class FreeCutRuntime {
           const targetIds = audioMutationTargetIds(this.project, [itemId])
           const volume = args.muted ? -60 : 0
           const result = await this.edit({
-            ops: targetIds.map((targetId) => ({ op: 'updateItem', id: targetId, updates: { volume } })),
+            ops: targetIds.map((targetId) => ({
+              op: 'updateItem',
+              id: targetId,
+              updates: { volume },
+            })),
           })
-          return { ...result, mutedIds: args.muted ? targetIds : [], unmutedIds: args.muted ? [] : targetIds, volumeDb: volume }
+          return {
+            ...result,
+            mutedIds: args.muted ? targetIds : [],
+            unmutedIds: args.muted ? [] : targetIds,
+            volumeDb: volume,
+          }
         }
-        return this.edit({ ops: [{ op: 'updateItem', id: itemId, updates: Object.fromEntries(
-          ['volume', 'fadeIn', 'fadeOut', 'pitchSemitones'].filter((field) => args[field] !== undefined).map((field) => [field, args[field]]),
-        ) }] })
+        return this.edit({
+          ops: [
+            {
+              op: 'updateItem',
+              id: itemId,
+              updates: Object.fromEntries(
+                ['volume', 'fadeIn', 'fadeOut', 'pitchSemitones']
+                  .filter((field) => args[field] !== undefined)
+                  .map((field) => [field, args[field]]),
+              ),
+            },
+          ],
+        })
       }
       case 'timeline.add_text':
-        return this.edit({ ops: [coreOperationForCapability('timeline.text.add', {
-          ...args,
-          start: args.startSeconds,
-          duration: args.durationSeconds,
-          text: args.text,
-        }, this.project.metadata.fps)] })
+        return this.edit({
+          ops: [
+            coreOperationForCapability(
+              'timeline.text.add',
+              {
+                ...args,
+                start: args.startSeconds,
+                duration: args.durationSeconds,
+                text: args.text,
+              },
+              this.project.metadata.fps,
+            ),
+          ],
+        })
       case 'timeline.add_keyframe':
-        return this.edit({ ops: [coreOperationForCapability('timeline.keyframes.add', {
-          ...args,
-          clipId: args.itemId,
-          at: args.atSeconds,
-        }, this.project.metadata.fps)] })
+        return this.edit({
+          ops: [
+            coreOperationForCapability(
+              'timeline.keyframes.add',
+              {
+                ...args,
+                clipId: args.itemId,
+                at: args.atSeconds,
+              },
+              this.project.metadata.fps,
+            ),
+          ],
+        })
       case 'timeline.add_transition':
-        return this.edit({ ops: [coreOperationForCapability('timeline.transitions.add', {
-          ...args,
-          fromClipId: args.fromClipId,
-          toClipId: args.toClipId,
-          type: args.type ?? 'crossfade',
-          duration: args.durationSeconds ?? 0.5,
-        }, this.project.metadata.fps)] })
+        return this.edit({
+          ops: [
+            coreOperationForCapability(
+              'timeline.transitions.add',
+              {
+                ...args,
+                fromClipId: args.fromClipId,
+                toClipId: args.toClipId,
+                type: args.type ?? 'crossfade',
+                duration: args.durationSeconds ?? 0.5,
+              },
+              this.project.metadata.fps,
+            ),
+          ],
+        })
       case 'timeline.add_html':
         throw new FreeCutCapabilityUnavailableError('timeline.add_html')
       case 'project.set_canvas':
@@ -890,11 +1101,32 @@ export class FreeCutRuntime {
           args.mediaIds ?? (typeof args.mediaId === 'string' ? [args.mediaId] : undefined),
           'mediaIds',
         )
-        if (!mediaIds || mediaIds.length === 0) throw new TypeError('mediaIds must be a non-empty array')
+        if (!mediaIds || mediaIds.length === 0)
+          throw new TypeError('mediaIds must be a non-empty array')
         if (mediaIds.length > 12) throw new TypeError('mediaIds must contain at most 12 items')
         const kind = args.kind
         if (kind !== 'transcript' && kind !== 'visual') {
           throw new TypeError('kind must be transcript or visual')
+        }
+        const timeRanges = kind === 'visual' ? visualTimeRanges(args.timeRanges) : undefined
+        if (timeRanges && mediaIds.length !== 1) {
+          throw new TypeError('timeRanges can only be used when analyzing one video')
+        }
+        if (timeRanges) {
+          const rangedMedia = this.mediaById.get(mediaIds[0]!)
+          if (!rangedMedia?.mimeType.startsWith('video/')) {
+            throw new TypeError('timeRanges can only be used with a video')
+          }
+        }
+        if (kind === 'visual' && !timeRanges) {
+          const longVideo = mediaIds
+            .map((mediaId) => this.mediaById.get(mediaId))
+            .find((media) => media?.mimeType.startsWith('video/') && media.duration > 10 * 60)
+          if (longVideo) {
+            throw new TypeError(
+              '长视频请先完成 transcript 分析，再根据对白传入 timeRanges 做局部画面分析。',
+            )
+          }
         }
         const requested = new Set(mediaIds)
         return startMediaAnalysisTask({
@@ -902,6 +1134,7 @@ export class FreeCutRuntime {
           mediaIds,
           mediaItems: [...this.mediaById.values()].filter((media) => requested.has(media.id)),
           kind,
+          ...(timeRanges ? { visualTimeRanges: timeRanges } : {}),
         })
       }
       case 'media.get_analysis_task':
@@ -960,21 +1193,27 @@ export class FreeCutRuntime {
         const query = asStringValue(args.query, 'query').toLocaleLowerCase()
         const ids = Array.isArray(args.mediaIds)
           ? new Set(args.mediaIds.filter((value): value is string => typeof value === 'string'))
-          : typeof args.mediaId === 'string' ? new Set([args.mediaId]) : undefined
-        const matches = (await Promise.all([...this.mediaById.values()].map(async (media) => {
-          if (ids && !ids.has(media.id)) return []
-          const transcript = await getTranscript(media.id).catch(() => undefined)
-          return (transcript?.segments ?? [])
-            .filter((segment) => segment.text.toLocaleLowerCase().includes(query))
-            .map((segment, index) => ({
-              mediaId: media.id,
-              segmentId: `${media.id}-transcript-${index}`,
-              fileName: media.fileName,
-              text: segment.text,
-              start: segment.start,
-              end: segment.end,
-            }))
-        }))).flat()
+          : typeof args.mediaId === 'string'
+            ? new Set([args.mediaId])
+            : undefined
+        const matches = (
+          await Promise.all(
+            [...this.mediaById.values()].map(async (media) => {
+              if (ids && !ids.has(media.id)) return []
+              const transcript = await getTranscript(media.id).catch(() => undefined)
+              return (transcript?.segments ?? [])
+                .filter((segment) => segment.text.toLocaleLowerCase().includes(query))
+                .map((segment, index) => ({
+                  mediaId: media.id,
+                  segmentId: `${media.id}-transcript-${index}`,
+                  fileName: media.fileName,
+                  text: segment.text,
+                  start: segment.start,
+                  end: segment.end,
+                }))
+            }),
+          )
+        ).flat()
         return name === 'media.search_transcript' ? { matches } : matches
       }
       case 'project.edit':
@@ -987,7 +1226,9 @@ export class FreeCutRuntime {
         })
       }
       default:
-        return this.edit({ ops: [coreOperationForCapability(name, args, this.project.metadata.fps)] })
+        return this.edit({
+          ops: [coreOperationForCapability(name, args, this.project.metadata.fps)],
+        })
     }
   }
 
