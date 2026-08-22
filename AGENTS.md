@@ -217,6 +217,12 @@ Electron E2E 必须统一使用 Playwright Test。禁止新增基于 `agent-brow
 
 Luna AI Cut 是一款面向 Insta360 Luna Ultra 相机的桌面媒体管理。
 
+### 编辑入口边界
+
+- `工作台` 只提供简单的素材编辑能力，例如裁剪、调色、蒙版和导出，不是完整的时间线剪辑入口。
+- `剪辑` 菜单才是完整 FreeCut 编辑器的正式入口，对应 `packages/freecut-editor`，负责项目、媒体库、轨道、时间线和成片编辑。
+- 涉及完整剪辑、AI 剪辑助手、RemotionClip 或 `video-shotcraft` 时，必须从 `剪辑` 菜单进入并使用内嵌 FreeCut 编辑器；E2E 应覆盖 `#/video-editor` 和 `.freecut-app`，不要把 `工作台` 当作剪辑器入口。
+
 ## 开发期数据兼容策略
 
 - 当前项目仍处于开发阶段。编辑数据结构或轨道规范发生变化时，不为本地测试项目增加历史数据迁移、自动修复或兼容分支。
@@ -317,6 +323,12 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 - 工作流文件：`.github/workflows/package-artifacts.yml`
 - macOS: macos-latest runner，生成 DMG
 - Windows: windows-latest runner，生成 NSIS 安装包
+
+### DeepSeek Harness 操作入口
+
+- 涉及 DeepSeek Harness 与 FreeCut 剪辑时，优先通过 FreeCut 软件内置的“AI 助手”面板提交需求并观察执行结果。
+- 不要把外部浏览器页面当作默认操作入口；只有用户明确要求浏览器操作或内置 AI 助手不可用时，才使用外部 Harness 页面排查。
+- 用户要求“让 AI 助手剪辑”时，必须让内置 AI 助手实际调用 FreeCut 编辑能力并修改当前项目时间线，不要只输出剪辑方案。
 
 
 快速开发 ，快速测试，不需要多余的解释, 开发前可以问我一个问题，你觉得最有价值的！

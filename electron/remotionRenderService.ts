@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { access, mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,12 +15,14 @@ import type {
   RemotionSourceSnapshot,
   RemotionSourceUpdateRequest,
 } from '../src/shared/types/remotion'
+import { getVideoFrameRate } from './mediaMetadataService'
 import { mediaIdsForScene, parseRemotionSceneSpec } from '../integrations/remotion/src/scene-spec'
 import { currentBaseDir } from './settingsService'
 import { resolveWorkspaceMediaSourcePath } from './ipcFreecutWorkspaceService'
 import { getWorkspaceProject } from './workspaceProjectService'
 import {
   createRemotionClip,
+  attachRemotionClipMedia,
   getRemotionClip,
   listRemotionClips,
   markRemotionClipRenderFailed,
@@ -30,6 +32,7 @@ import {
   refreshRemotionClipStatus,
   remotionClipArtifactDirectory,
   remotionClipDirectory,
+  remotionProjectDirectory,
   updateRemotionClipAfterRender,
   updateRemotionSource,
 } from './remotionClipService'
@@ -74,6 +77,126 @@ function updateTask(state: RemotionTaskState, patch: Partial<RemotionRenderTask>
 
 async function cleanupTaskDirectory(state: RemotionTaskState): Promise<void> {
   await rm(state.temporaryDirectory, { recursive: true, force: true }).catch(() => undefined)
+}
+
+interface RemotionGeneratedMediaMetadata {
+  id: string
+  storageType: 'workspace'
+  fileName: string
+  fileSize: number
+  mimeType: 'video/mp4'
+  duration: number
+  width: number
+  height: number
+  fps: number
+  codec: string
+  bitrate: number
+  tags: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  const temporary = `${filePath}.${process.pid}.${randomUUID()}.tmp`
+  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+  try {
+    await rename(temporary, filePath)
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined)
+  }
+}
+
+async function probeRenderedDurationSeconds(sourcePath: string, fallback: number): Promise<number> {
+  const probed = await getVideoFrameRate({
+    kind: 'video',
+    downloadFilePath: sourcePath,
+    localPath: sourcePath,
+    cacheFilePath: null,
+    sourceUrl: sourcePath,
+    url: sourcePath,
+  })
+  return typeof probed.duration === 'number' && probed.duration > 0
+    ? probed.duration
+    : fallback
+}
+
+async function associateWorkspaceMedia(baseDir: string, projectId: string, mediaId: string): Promise<void> {
+  const linksPath = path.join(remotionProjectDirectory(baseDir, projectId), 'media-links.json')
+  let links: { version?: string; mediaIds?: Array<{ id: string; addedAt: number }> } = {
+    version: '1.0',
+    mediaIds: [],
+  }
+  try {
+    links = JSON.parse(await readFile(linksPath, 'utf8')) as typeof links
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  const mediaIds = Array.isArray(links.mediaIds) ? links.mediaIds : []
+  if (mediaIds.some((entry) => entry?.id === mediaId)) return
+  await writeJsonAtomic(linksPath, {
+    version: links.version ?? '1.0',
+    mediaIds: [...mediaIds, { id: mediaId, addedAt: Date.now() }],
+  })
+}
+
+async function registerRenderedClipMedia(
+  taskIdInput: unknown,
+  context: { sessionId?: string; projectId?: string },
+): Promise<{ taskId: string; clipId: string; mediaId: string; media: RemotionGeneratedMediaMetadata; durationSeconds: number }> {
+  const projectId = requireProjectId(context.projectId)
+  const taskId = typeof taskIdInput === 'string' ? taskIdInput : ''
+  const state = requireTask(taskId)
+  if (state.ownerKey !== ownerKey(context.sessionId, projectId)) throw new Error('Remotion task does not belong to this editor session')
+  if (state.task.kind !== 'render' || state.task.status !== 'completed' || !state.task.result?.clipId) {
+    throw new Error('Remotion 渲染任务尚未完成，不能加入时间线')
+  }
+  if (state.task.projectId !== projectId) throw new Error('Remotion task does not belong to this project')
+
+  const clipId = state.task.result.clipId
+  const clip = await getRemotionClip(currentBaseDir(), projectId, clipId)
+  if (!clip?.artifact || clip.artifact.sourceRevision !== state.task.result.sourceRevision || clip.artifact.sourceHash !== state.task.result.sourceHash) {
+    throw new Error('Remotion 渲染产物已过期，请重新渲染后再加入时间线')
+  }
+  const sourcePath = state.task.result.outputPath
+  if (!sourcePath) throw new Error('Remotion 渲染产物路径缺失')
+  const sourceStats = await stat(sourcePath).catch(() => null)
+  if (!sourceStats?.isFile()) throw new Error('Remotion 渲染产物不存在')
+
+  // The source can change its Composition duration without changing the
+  // original RemotionClip metadata. Probe the rendered file so timeline
+  // registration follows the artifact that will actually be played.
+  const artifactDurationSeconds = await probeRenderedDurationSeconds(
+    sourcePath,
+    clip.durationInFrames / clip.fps,
+  )
+
+  const mediaId = clip.artifact.mediaId ?? `remotion-${clip.clipId}-${clip.sourceRevision}`
+  const fileName = `${mediaId}.mp4`
+  const mediaDirectory = path.join(currentBaseDir(), 'freecut-workspace', 'media', mediaId)
+  const targetPath = path.join(mediaDirectory, fileName)
+  await mkdir(mediaDirectory, { recursive: true })
+  await copyFile(sourcePath, targetPath)
+  const now = Date.now()
+  const media: RemotionGeneratedMediaMetadata = {
+    id: mediaId,
+    storageType: 'workspace',
+    fileName,
+    fileSize: sourceStats.size,
+    mimeType: 'video/mp4',
+    duration: artifactDurationSeconds,
+    width: clip.width,
+    height: clip.height,
+    fps: clip.fps,
+    codec: 'h264',
+    bitrate: 0,
+    tags: ['remotion'],
+    createdAt: now,
+    updatedAt: now,
+  }
+  await writeJsonAtomic(path.join(mediaDirectory, 'metadata.json'), media)
+  await associateWorkspaceMedia(currentBaseDir(), projectId, mediaId)
+  await attachRemotionClipMedia(currentBaseDir(), projectId, clipId, mediaId)
+  return { taskId, clipId, mediaId, media, durationSeconds: media.duration }
 }
 
 function ownerKey(sessionId?: string, projectId?: string): string {
@@ -284,6 +407,11 @@ async function runClipTask(state: RemotionTaskState, media: RemotionMediaInput[]
     await rename(state.manifestPath, manifestPath)
     const relativeOutputPath = path.posix.join('artifacts', outputName)
     const relativeManifestPath = path.posix.join('artifacts', manifestName)
+    const artifactDurationSeconds = await probeRenderedDurationSeconds(
+      outputPath,
+      clip.durationInFrames / clip.fps,
+    )
+    const artifactDurationInFrames = Math.max(1, Math.round(artifactDurationSeconds * clip.fps))
     const artifact: NonNullable<RemotionClip['artifact']> = {
       artifactId,
       outputPath: relativeOutputPath,
@@ -302,6 +430,7 @@ async function runClipTask(state: RemotionTaskState, media: RemotionMediaInput[]
         artifact,
         snapshot.sourceRevision,
         snapshot.sourceHash,
+        artifactDurationInFrames,
       )
       : await refreshRemotionClipStatus(currentBaseDir(), clip.projectId, clip.clipId)
     const taskResult: RemotionRenderTaskResult = {
@@ -448,6 +577,9 @@ export async function executeRemotionCapability(
   if (name === 'render.remotion.start') return taskForModel(await startRemotionRender(args.scene, context.sessionId, context.projectId))
   if (name === 'render.remotion.get_task') return taskForModel(await getRemotionTask(args.taskId, context.sessionId, context.projectId))
   if (name === 'render.remotion.cancel') return taskForModel(await cancelRemotionTask(args.taskId, context.sessionId, context.projectId))
+  if (name === 'render.remotion.add_to_timeline') {
+    return registerRenderedClipMedia(args.taskId, context)
+  }
   const projectId = requireProjectId(context.projectId)
   if (name === 'render.remotion.create') return createRemotionClip(currentBaseDir(), projectId, clipInput(args.input))
   if (name === 'render.remotion.list') return listRemotionClips(currentBaseDir(), projectId)

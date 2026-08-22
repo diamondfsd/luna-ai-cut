@@ -580,6 +580,14 @@ export const LoadedEditor = memo(function LoadedEditor({
             await useTimelineStore.getState().saveTimeline(projectId)
           }
 
+          // Main-process generated media is persisted before the timeline edit
+          // is forwarded here. Reload the project-scoped media store after an
+          // SDK edit that injects metadata so preview and the media library can
+          // resolve the new source immediately.
+          if (request.name === 'timeline.edit' && Array.isArray(request.args.media)) {
+            await useMediaLibraryStore.getState().loadMediaItems()
+          }
+
           sdk.respond({ requestId: request.requestId, ok: true, result })
         } catch (error) {
           sdk.respond({

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -40,8 +40,9 @@ try {
     fileSize: 10,
     sha256: 'a'.repeat(64),
     mimeType: 'video/mp4',
-  }, clip.sourceRevision, clip.sourceHash)
+  }, clip.sourceRevision, clip.sourceHash, 120)
   assert.equal(rendered?.status, 'ready')
+  assert.equal(rendered?.durationInFrames, 120)
 
   const snapshot = await readRemotionSource(baseDir, project.id, clip.clipId)
   assert.deepEqual(snapshot.files, initialSource)
@@ -68,7 +69,37 @@ try {
 
   const loaded = await getRemotionClip(baseDir, project.id, clip.clipId)
   assert.equal(loaded?.sourceRevision, 2)
+  assert.equal(loaded?.durationInFrames, 120)
   assert.equal((await listRemotionClips(baseDir, project.id)).length, 1)
+
+  const freecutProjectId = 'freecut-project-1'
+  const freecutProjectDirectory = path.join(baseDir, 'freecut-workspace', 'projects', freecutProjectId)
+  await mkdir(freecutProjectDirectory, { recursive: true })
+  await writeFile(path.join(freecutProjectDirectory, 'project.json'), `${JSON.stringify({
+    id: freecutProjectId,
+    name: 'FreeCut Remotion project',
+    description: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    duration: 0,
+    schemaVersion: 15,
+    metadata: { width: 1080, height: 1920, fps: 30 },
+  })}\n`, 'utf8')
+
+  const freecutClip = await createRemotionClip(baseDir, freecutProjectId, {
+    width: 1080,
+    height: 1920,
+    durationInFrames: 90,
+    files: initialSource,
+  })
+  const freecutClipFile = path.join(
+    freecutProjectDirectory,
+    'remotion-clips',
+    freecutClip.clipId,
+    'clip.json',
+  )
+  assert.equal((await stat(freecutClipFile)).isFile(), true)
+  assert.equal((await listRemotionClips(baseDir, freecutProjectId)).length, 1)
   console.log('RemotionClip source revision/hash storage passed.')
 } finally {
   await rm(baseDir, { recursive: true, force: true })

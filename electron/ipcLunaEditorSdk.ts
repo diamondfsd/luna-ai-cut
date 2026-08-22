@@ -1,9 +1,8 @@
 import { BrowserWindow, ipcMain } from 'electron'
 
-import type { DeepSeekHarnessContext } from '../src/shared/types'
 import { registerFreecutHarnessProvider } from './deepseekHarnessCapabilities'
 import { createFreecutProvider } from './luna-editor-sdk/freecut-provider'
-import { LunaEditorSdkError, type LunaEditorSdkRequest } from './luna-editor-sdk/contracts'
+import { LunaEditorSdkError, type LunaEditorSdkContext, type LunaEditorSdkRequest } from './luna-editor-sdk/contracts'
 import { executeRemotionCapability } from './remotionRenderService'
 
 interface RendererResponse {
@@ -19,13 +18,24 @@ interface PendingRequest {
   reject: (reason?: unknown) => void
 }
 
+function recordValue(value: unknown, field: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${field} 返回值无效`)
+  return value as Record<string, unknown>
+}
+
+function nonNegativeSeconds(value: unknown, field: string, fallback: number): number {
+  if (value === undefined) return fallback
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new TypeError(`${field} 必须是非负数字`)
+  return value
+}
+
 const pending = new Map<string, PendingRequest>()
 let registered = false
 const RENDERER_REQUEST_TIMEOUT_MS = 60_000
 
 function requestRenderer(
   request: LunaEditorSdkRequest,
-  context: DeepSeekHarnessContext,
+  context: LunaEditorSdkContext,
   signal: AbortSignal,
 ): Promise<unknown> {
   if (signal.aborted) {
@@ -132,13 +142,54 @@ function handleRendererResponse(event: Electron.IpcMainEvent, value: unknown): v
   request.reject(error)
 }
 
+async function executeRemotionTimelineCapability(
+  request: LunaEditorSdkRequest,
+  context: LunaEditorSdkContext,
+): Promise<unknown> {
+  const registered = recordValue(
+    await executeRemotionCapability(request.name, request.args, context, context.signal),
+    'Remotion 素材登记结果',
+  )
+  const media = recordValue(registered.media, 'Remotion 素材')
+  const durationSeconds = typeof registered.durationSeconds === 'number' ? registered.durationSeconds : 0
+  const startSeconds = nonNegativeSeconds(request.args.startSeconds, 'startSeconds', 0)
+  const clipDurationSeconds = nonNegativeSeconds(request.args.durationSeconds, 'durationSeconds', durationSeconds)
+  if (clipDurationSeconds <= 0 || clipDurationSeconds > durationSeconds) throw new RangeError('durationSeconds 超出 Remotion 素材时长')
+  const timelineContext = recordValue(
+    await requestRenderer({
+      ...request,
+      name: 'timeline.inspect_context',
+      args: {},
+    }, context, context.signal),
+    '时间线信息',
+  )
+  const fps = typeof timelineContext.fps === 'number' && timelineContext.fps > 0 ? timelineContext.fps : 30
+  const addResult = await requestRenderer({
+    ...request,
+    name: 'timeline.edit',
+    args: {
+      ops: [{
+        op: 'addClip',
+        mediaId: media.id,
+        from: Math.round(startSeconds * fps),
+        durationInFrames: Math.max(1, Math.round(clipDurationSeconds * fps)),
+        ...(typeof request.args.trackId === 'string' ? { trackId: request.args.trackId } : {}),
+      }],
+      media: [media],
+    },
+  }, context, context.signal)
+  return { ...registered, timeline: addResult }
+}
+
 /** Register the renderer-backed FreeCut implementation for Harness requests. */
 export function register(): void {
   if (registered) return
   const disposeProvider = registerFreecutHarnessProvider(createFreecutProvider({
-    execute: (request, context) => request.name.startsWith('render.remotion.')
-      ? executeRemotionCapability(request.name, request.args, context, context.signal)
-      : requestRenderer(request, context, context.signal),
+    execute: (request, context) => request.name === 'render.remotion.add_to_timeline'
+      ? executeRemotionTimelineCapability(request, context)
+      : request.name.startsWith('render.remotion.')
+        ? executeRemotionCapability(request.name, request.args, context, context.signal)
+        : requestRenderer(request, context, context.signal),
   }))
   try {
     ipcMain.on('luna-editor-sdk:response', handleRendererResponse)

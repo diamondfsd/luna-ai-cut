@@ -17,6 +17,7 @@ export interface RemotionClipArtifact {
   artifactId: string
   outputPath: string
   manifestPath: string
+  mediaId?: string
   sourceRevision: number
   sourceHash: string
   fileSize: number

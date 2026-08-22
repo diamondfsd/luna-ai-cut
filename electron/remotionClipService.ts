@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -10,12 +11,13 @@ import type {
   RemotionSourceSnapshot,
   RemotionSourceUpdateRequest,
 } from '../src/shared/types/remotion'
-import { getWorkspaceProject, workspaceProjectDirectory } from './workspaceProjectService'
 
 const CLIPS_DIRECTORY = 'remotion-clips'
 const SOURCE_DIRECTORY = 'src'
 const CLIP_FILE = 'clip.json'
 const ENTRY_FILE = 'entry.tsx' as const
+const FREECUT_PROJECTS_DIRECTORY = path.join('freecut-workspace', 'projects')
+const LEGACY_PROJECTS_DIRECTORY = 'workspace-projects'
 const MAX_SOURCE_FILE_COUNT = 128
 const MAX_SOURCE_FILE_BYTES = 1_000_000
 const MAX_SOURCE_TOTAL_BYTES = 8_000_000
@@ -89,7 +91,23 @@ function validateInteger(value: unknown, label: string, minimum: number, maximum
 function clipDirectory(baseDir: string, projectId: string, clipId: string): string {
   validateProjectId(projectId)
   validateClipId(clipId)
-  return path.join(workspaceProjectDirectory(baseDir, projectId), CLIPS_DIRECTORY, clipId)
+  return path.join(projectDirectory(baseDir, projectId), CLIPS_DIRECTORY, clipId)
+}
+
+/**
+ * FreeCut projects live in the new workspace filesystem. Keep the legacy
+ * directory as a read/write fallback for projects created by the old Luna
+ * workspace surface while they are still supported elsewhere in the app.
+ */
+function projectDirectory(baseDir: string, projectId: string): string {
+  validateProjectId(projectId)
+  const freecutDirectory = path.resolve(baseDir, FREECUT_PROJECTS_DIRECTORY, projectId)
+  if (existsSync(path.join(freecutDirectory, 'project.json'))) return freecutDirectory
+  return path.resolve(baseDir, LEGACY_PROJECTS_DIRECTORY, projectId)
+}
+
+export function remotionProjectDirectory(baseDir: string, projectId: string): string {
+  return projectDirectory(baseDir, projectId)
 }
 
 function sourceDirectory(baseDir: string, projectId: string, clipId: string): string {
@@ -142,7 +160,17 @@ export function remotionSourceHash(files: Record<string, string>): string {
 
 async function ensureProject(baseDir: string, projectId: string): Promise<void> {
   validateProjectId(projectId)
-  if (!await getWorkspaceProject(baseDir, projectId)) throw new Error('项目不存在')
+  const projectFile = path.join(projectDirectory(baseDir, projectId), 'project.json')
+  try {
+    const stats = await fs.stat(projectFile)
+    if (!stats.isFile()) throw new Error('项目不存在')
+    const project = JSON.parse(await fs.readFile(projectFile, 'utf8')) as { id?: unknown }
+    if (project.id !== projectId) throw new Error('项目不存在')
+  } catch (error) {
+    if (error instanceof Error && error.message === '项目不存在') throw error
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('项目不存在')
+    throw error
+  }
 }
 
 async function readSourceFiles(directory: string): Promise<RemotionSourceFiles> {
@@ -269,7 +297,7 @@ async function writeFileForClip(baseDir: string, projectId: string, clipId: stri
 
 export async function listRemotionClips(baseDir: string, projectId: string): Promise<RemotionClip[]> {
   await ensureProject(baseDir, projectId)
-  const directory = path.join(workspaceProjectDirectory(baseDir, projectId), CLIPS_DIRECTORY)
+  const directory = path.join(projectDirectory(baseDir, projectId), CLIPS_DIRECTORY)
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch((error: unknown) => {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw error
@@ -354,11 +382,37 @@ export async function updateRemotionClipAfterRender(
   artifact: RemotionClip['artifact'],
   sourceRevision: number,
   sourceHash: string,
+  durationInFrames?: number,
 ): Promise<RemotionClip | null> {
   const clip = await getRemotionClip(baseDir, projectId, clipId)
   if (!clip) return null
   if (clip.sourceRevision !== sourceRevision || clip.sourceHash !== sourceHash) return clip
-  const updated = { ...clip, artifact, status: 'ready' as const, error: undefined, updatedAt: new Date().toISOString() }
+  const updated = {
+    ...clip,
+    ...(durationInFrames !== undefined ? { durationInFrames } : {}),
+    artifact,
+    status: 'ready' as const,
+    error: undefined,
+    updatedAt: new Date().toISOString(),
+  }
+  await writeFileForClip(baseDir, projectId, clipId, updated)
+  return updated
+}
+
+export async function attachRemotionClipMedia(
+  baseDir: string,
+  projectId: string,
+  clipId: string,
+  mediaId: string,
+): Promise<RemotionClip | null> {
+  const clip = await getRemotionClip(baseDir, projectId, clipId)
+  if (!clip?.artifact) return clip
+  if (clip.artifact.mediaId === mediaId) return clip
+  const updated = {
+    ...clip,
+    artifact: { ...clip.artifact, mediaId },
+    updatedAt: new Date().toISOString(),
+  }
   await writeFileForClip(baseDir, projectId, clipId, updated)
   return updated
 }

@@ -103,6 +103,7 @@ RemotionClip 是项目内的特殊片段。它的 `src/Root.tsx` 和组件 TSX �
 `sourceRevision`、`sourceHash` 的渲染缓存。使用 `luna.render.remotionCreate`、
 `remotionReadSource`、`remotionUpdateSource`、`remotionPreview` 和 `remotionRender` 管理它；
 更新源码必须带上读取到的 `expectedRevision`，不要直接改 MP4、构造文件路径或把源码放到项目外。
+渲染任务完成后使用 `luna.render.remotionAddToTimeline({ taskId, ... })`，它会把 MP4 登记为当前项目的真实视频素材并加入时间线。
 预览/渲染完成后检查任务的 `clipId`、`sourceRevision`、`sourceHash`，源码在任务期间发生变化时旧结果不能覆盖新版本。
 
 ### 记忆和异步任务

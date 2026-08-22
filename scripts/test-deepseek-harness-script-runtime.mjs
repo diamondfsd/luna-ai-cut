@@ -16,6 +16,8 @@ assert.deepEqual(Object.keys(SCRIPT_API.timeline), [
   'split',
   'move',
   'remove',
+  'removeAudio',
+  'fitAudioToVisual',
   'unlink',
   'mute',
   'setProperties',

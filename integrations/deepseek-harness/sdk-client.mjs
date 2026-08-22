@@ -34,6 +34,7 @@ export const LUNA_SDK_API = Object.freeze({
     remotionUpdateSource: 'render.remotion.update_source',
     remotionPreview: 'render.remotion.preview',
     remotionRender: 'render.remotion.render',
+    remotionAddToTimeline: 'render.remotion.add_to_timeline',
   }),
   project: Object.freeze({
     inspect: 'project.inspect',

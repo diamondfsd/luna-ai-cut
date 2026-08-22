@@ -47,6 +47,7 @@ RemotionClip 是时间线中的特殊片段：项目目录内的 `src/Root.tsx` 
 - `luna.render.remotionPreview({ clipId, expectedRevision? })`：用当前源码生成预览任务。
 - `luna.render.remotionRender({ clipId, expectedRevision? })`：用当前源码生成绑定到该 clip 的 MP4 缓存。
 - `luna.render.remotionGetTask({ taskId })`：轮询预览或渲染任务，只有 `status === 'completed'` 才算完成；检查返回的 `clipId`、`sourceRevision` 和 `sourceHash` 是否仍与当前 clip 一致。
+- `luna.render.remotionAddToTimeline({ taskId, startSeconds?, durationSeconds?, trackId? })`：将已完成的 Remotion 渲染产物登记为项目视频素材，并加入当前时间线；只能传入 `remotionRender` 返回的已完成任务。
 
 Remotion 任务结果不会向模型暴露宿主绝对路径。不要自行构造路径，也不要把源码复制到项目外；渲染期间源码发生变化时，旧任务结果不能替代新版本。
 
