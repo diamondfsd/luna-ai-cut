@@ -9,6 +9,15 @@
 - 第一次编辑前调用 `luna.project.inspect()` 和 `luna.timeline.inspectContext()`；素材选择依赖画面或台词时，再调用 `media.read` 或提交 `media.analyze` 并轮询任务。
 - 所有 SDK 方法的实际结果从 `result.data` 读取。每次写入都等待工具结果，完成一组操作后重新检查时间线。
 
+## 动画成片和交付门禁
+
+- 用户要求连续动画、知识点动效、RemotionClip 或 video-shotcraft 时，必须使用 RemotionClip 实际生成动画并渲染成片；Remotion 是硬性要求，不能用 `addText`、TTS、音乐或静止信息卡替代。
+- Remotion 的创建、源码更新、预览或渲染失败后，必须读取结构化错误并停止当前交付流程。不能把失败任务当成成功，也不能以字幕卡降级后宣告完成。
+- 画布尺寸、帧率和最终时长必须在创建字幕和音频前确定。Remotion 分镜、旁白、字幕、音乐使用同一份章节时间表；每个字幕的结束帧必须不晚于主视觉结束帧。
+- 异步音频只有在 `status === 'completed'` 且有有效 `mediaId` 时才能加入时间线；`failed`、缺少 `mediaId` 或 `durationInFrames <= 1` 的结果必须删除或忽略。
+- 所有编辑结束后调用 `luna.render.preflight({ maxDurationSeconds })`。`data.ready === false` 或 `data.issues` 含有 `severity: 'error'` 时不得回复完成，必须根据 `code` 和 `entityIds` 修复后再次调用。
+- 成片交付前再调用 `luna.render.layout()` 检查文字框边界，并调用 `luna.render.frame()` 检查实际画面；只检查素材或时间线结构不算视觉验收。
+
 ## 时间线和轨道
 
 - 时间参数使用秒：`trim` 使用绝对时间轴位置，`split` 使用绝对时间轴位置，`move` 使用目标起点。

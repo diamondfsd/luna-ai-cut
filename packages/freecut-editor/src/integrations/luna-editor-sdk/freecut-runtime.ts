@@ -16,6 +16,9 @@ import type {
   FreeCutPreviewPort,
   FreeCutPreviewState,
   FreeCutRenderFrameRequest,
+  FreeCutRenderIssue,
+  FreeCutRenderPreflight,
+  FreeCutRenderPreflightRequest,
   FreeCutRenderProjectRequest,
   FreeCutRenderSummary,
   FreeCutFrameSummary,
@@ -292,6 +295,106 @@ function visualTimelineEndFrame(project: Project): number | null {
   )
   if (visualItems.length === 0) return null
   return Math.max(...visualItems.map((item) => item.from + item.durationInFrames))
+}
+
+const TEXT_TRANSFORM_SIZE_FIELDS = ['x', 'y', 'width', 'height'] as const
+
+function scaleTextTransforms(
+  project: Project,
+  oldCanvas: { width: number; height: number },
+  newCanvas: { width: number; height: number },
+): { project: Project; resizedTextIds: string[] } {
+  const timeline = project.timeline
+  if (!timeline || (oldCanvas.width === newCanvas.width && oldCanvas.height === newCanvas.height)) {
+    return { project, resizedTextIds: [] }
+  }
+
+  const scaleX = newCanvas.width / oldCanvas.width
+  const scaleY = newCanvas.height / oldCanvas.height
+  const resizedTextIds: string[] = []
+  const items = timeline.items.map((item) => {
+    if (item.type !== 'text' || !item.transform) return item
+
+    const transform = { ...item.transform }
+    let resized = false
+    for (const field of TEXT_TRANSFORM_SIZE_FIELDS) {
+      const value = transform[field]
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue
+      const scale = field === 'x' || field === 'width' ? scaleX : scaleY
+      transform[field] = value * scale
+      resized = true
+    }
+    if (!resized) return item
+    resizedTextIds.push(item.id)
+    return { ...item, transform }
+  })
+
+  return {
+    project: {
+      ...project,
+      timeline: { ...timeline, items },
+    },
+    resizedTextIds,
+  }
+}
+
+function finiteTransformValue(
+  value: unknown,
+  fallback: number,
+): number | undefined {
+  if (value === undefined) return fallback
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function textBoundsIssue(
+  item: { id: string; type?: string; transform?: Record<string, unknown> },
+  canvas: { width: number; height: number },
+): FreeCutRenderIssue | undefined {
+  if (item.type !== 'text' || !item.transform) return undefined
+  const transform = item.transform
+  const hasExplicitBounds = transform.width !== undefined || transform.height !== undefined
+  if (!hasExplicitBounds) return undefined
+
+  const x = finiteTransformValue(transform.x, 0)
+  const y = finiteTransformValue(transform.y, 0)
+  const width = finiteTransformValue(transform.width, 0)
+  const height = finiteTransformValue(transform.height, 0)
+  if (x === undefined || y === undefined || width === undefined || height === undefined || width <= 0 || height <= 0) {
+    return {
+      severity: 'error',
+      code: 'text.invalid_transform',
+      message: `文字框 ${item.id} 的位置或尺寸无效。`,
+      entityIds: [item.id],
+    }
+  }
+
+  const rotation = finiteTransformValue(transform.rotation, 0)
+  if (rotation === undefined) {
+    return {
+      severity: 'error',
+      code: 'text.invalid_transform',
+      message: `文字框 ${item.id} 的旋转值无效。`,
+      entityIds: [item.id],
+    }
+  }
+  const radians = (rotation * Math.PI) / 180
+  const boundingWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians))
+  const boundingHeight = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians))
+  const centerX = canvas.width / 2 + x
+  const centerY = canvas.height / 2 + y
+  const left = centerX - boundingWidth / 2
+  const top = centerY - boundingHeight / 2
+  const right = centerX + boundingWidth / 2
+  const bottom = centerY + boundingHeight / 2
+  if (left < 0 || top < 0 || right > canvas.width || bottom > canvas.height) {
+    return {
+      severity: 'error',
+      code: 'text.out_of_bounds',
+      message: `文字框 ${item.id} 超出 ${canvas.width}×${canvas.height} 画布。`,
+      entityIds: [item.id],
+    }
+  }
+  return undefined
 }
 
 function audioMutationTargetIds(project: Project, itemIds: readonly string[]): string[] {
@@ -976,6 +1079,10 @@ export class FreeCutRuntime {
       case 'project.update': {
         assertProjectContext(args.projectId, this.project.id)
         const canvas = args.canvas === undefined ? {} : asRecord(args.canvas, 'canvas')
+        const oldCanvas = {
+          width: this.project.metadata.width,
+          height: this.project.metadata.height,
+        }
         const width = canvas.width === undefined
           ? this.project.metadata.width
           : assertPositiveInteger(canvas.width, 'canvas.width')
@@ -988,8 +1095,9 @@ export class FreeCutRuntime {
         const backgroundColor = canvas.backgroundColor === undefined
           ? this.project.metadata.backgroundColor
           : asStringValue(canvas.backgroundColor, 'canvas.backgroundColor')
+        const resized = scaleTextTransforms(this.project, oldCanvas, { width, height })
         this.project = {
-          ...this.project,
+          ...resized.project,
           metadata: {
             width,
             height,
@@ -998,7 +1106,14 @@ export class FreeCutRuntime {
           },
           updatedAt: Date.now(),
         }
-        return { project: this.project, affectedIds: [this.project.id], createdIds: [], removedIds: [], warnings: [] }
+        return {
+          project: this.project,
+          affectedIds: [this.project.id, ...resized.resizedTextIds],
+          createdIds: [],
+          removedIds: [],
+          warnings: [],
+          resizedTextIds: resized.resizedTextIds,
+        }
       }
       case 'timeline.inspect':
         return this.inspectTimeline({
@@ -1510,6 +1625,93 @@ export class FreeCutRuntime {
       project: this.project,
       media: request.media ?? [...this.mediaSourcesById.values()],
     })
+  }
+
+  preflight(request: FreeCutRenderPreflightRequest = {}): FreeCutRenderPreflight {
+    const maxDurationSeconds = request.maxDurationSeconds === undefined
+      ? undefined
+      : secondsValue(request.maxDurationSeconds, 'maxDurationSeconds')
+    const canvas = {
+      width: this.project.metadata.width,
+      height: this.project.metadata.height,
+      fps: this.project.metadata.fps,
+    }
+    const visualEndFrame = visualTimelineEndFrame(this.project)
+    const visualEndSeconds = visualEndFrame === null ? null : visualEndFrame / canvas.fps
+    const issues: FreeCutRenderIssue[] = []
+    const items = timelineItems(this.project)
+
+    if (visualEndFrame === null) {
+      issues.push({
+        severity: 'error',
+        code: 'visual.empty',
+        message: '时间线没有可渲染的视觉内容。',
+      })
+    }
+    if (visualEndSeconds !== null && maxDurationSeconds !== undefined && visualEndSeconds > maxDurationSeconds) {
+      issues.push({
+        severity: 'error',
+        code: 'visual.over_max_duration',
+        message: `视觉内容结束于 ${visualEndSeconds.toFixed(3)} 秒，超过允许的 ${maxDurationSeconds.toFixed(3)} 秒。`,
+      })
+    }
+
+    for (const item of items) {
+      const endFrame = item.from + item.durationInFrames
+      if (item.type === 'text') {
+        if (item.durationInFrames <= 0 || item.from < 0) {
+          issues.push({
+            severity: 'error',
+            code: 'text.invalid_range',
+            message: `字幕 ${item.id} 的时间范围无效。`,
+            entityIds: [item.id],
+          })
+        } else if (visualEndFrame !== null && endFrame > visualEndFrame) {
+          issues.push({
+            severity: 'error',
+            code: 'text.after_visual',
+            message: `字幕 ${item.id} 结束于视觉内容之后。`,
+            entityIds: [item.id],
+          })
+        }
+        const boundsIssue = textBoundsIssue(item, canvas)
+        if (boundsIssue) issues.push(boundsIssue)
+      }
+
+      if (item.type === 'audio') {
+        if (item.durationInFrames <= 1) {
+          issues.push({
+            severity: 'error',
+            code: 'audio.too_short',
+            message: `音频 ${item.id} 只有 ${item.durationInFrames} 帧，不能交付。`,
+            entityIds: [item.id],
+          })
+        }
+        if (item.from < 0 || item.durationInFrames <= 0) {
+          issues.push({
+            severity: 'error',
+            code: 'audio.invalid_range',
+            message: `音频 ${item.id} 的时间范围无效。`,
+            entityIds: [item.id],
+          })
+        } else if (visualEndFrame !== null && endFrame > visualEndFrame) {
+          issues.push({
+            severity: 'error',
+            code: 'audio.after_visual',
+            message: `音频 ${item.id} 结束于视觉内容之后。`,
+            entityIds: [item.id],
+          })
+        }
+      }
+    }
+
+    return {
+      ready: !issues.some((issue) => issue.severity === 'error'),
+      canvas,
+      visualEndFrame,
+      visualEndSeconds,
+      issues,
+    }
   }
 
   async inspectPreview(): Promise<FreeCutPreviewState> {

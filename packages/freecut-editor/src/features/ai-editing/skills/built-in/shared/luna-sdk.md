@@ -12,6 +12,7 @@
 
 - `luna.project.inspect()`：读取 `data.projectId`、`data.project`、当前时间线和计数。
 - `luna.project.update({ canvas: { width, height, fps?, backgroundColor? } })`：更新当前项目画布；需要改变成片比例时，先 inspect 再使用明确的偶数像素尺寸（例如 4:3 的 `1440×1080`），随后重新检查项目画布和预览尺寸。
+- `luna.render.preflight({ maxDurationSeconds? })`：在交付前验证视觉结束点、最大时长、字幕/音频是否超出画面、音频是否只有 1 帧，以及显式文字框是否越出画布。只有 `data.ready === true` 才能继续交付；`data.issues` 中的 `code` 和 `entityIds` 用于定位修复对象。
 - `luna.media.list({ limit? })`：列出当前项目素材，结果在 `data.items` 和 `data.total`。
 - `luna.media.read({ mediaIds, transcriptOffset?, transcriptLimit? })`：读取素材元数据和已保存的画面/字幕分析证据，结果通常在 `data.items`。如果 `data.externalFile` 存在，说明结果已外置，脚本中不能再访问 `data.items`；优先按单个 `mediaId` 分批读取，或使用 Harness 的 `read` 工具查看外置文件。长转录按页读取：使用 `transcript.nextOffset` 继续，片段带有源素材时间和可用的词级时间。
 - `luna.media.analyze({ mediaIds, kind: 'transcript' })`：提交音频转录任务，立即返回 `data.taskId`。长视频必须先完成这一步。
@@ -56,6 +57,8 @@ RemotionClip 是时间线中的特殊片段：项目目录内的 `src/Root.tsx` 
 结束时间和项目总时长，确认没有因为追加导致画面重复或时长翻倍。旁白、背景音乐、字幕及其他轨道不得随旧视频一起删除。
 
 Remotion 任务结果不会向模型暴露宿主绝对路径。不要自行构造路径，也不要把源码复制到项目外；渲染期间源码发生变化时，旧任务结果不能替代新版本。
+
+Remotion 是动画成片的硬门禁。创建、源码更新、预览或渲染失败时不得退化成字幕/TTS/音乐成片，也不得宣告完成；必须读取错误、修复源码并重新执行失败步骤。Remotion 分镜、旁白、字幕和音乐必须共用同一份章节时间表。
 
 字幕、标题和其他画面叠加先创建独立视频轨道，并确认其 `order` 小于要覆盖的视频轨道；需要调整已有轨道时使用 `moveTrack`，不要只修改返回数组中的位置。TTS、背景音乐和音效先创建独立音频轨道；原始视频产生的伴侣音频保留在原音频轨道。
 

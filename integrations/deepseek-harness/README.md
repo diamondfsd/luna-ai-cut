@@ -76,6 +76,7 @@ export default async function main(luna) {
 
 - `project.inspect()`：读取当前项目、画布、轨道、片段和计数。
 - `project.update({ canvas: { width, height, fps?, backgroundColor? } })`：更新当前项目画布元数据；改变画布比例后要再次检查项目、主视觉和字幕布局。
+- `render.preflight({ maxDurationSeconds? })`：交付前检查视觉结束点、最大时长、字幕/音频越界、单帧音频和文字框出画布；`ready` 为 `false` 时必须修复并重新检查。
 - `media.list()`、`media.read({ mediaIds })`、`media.searchTranscript({ query, mediaIds? })`：读取素材和已有证据。
 - `media.analyze({ mediaIds, kind })`：提交 `transcript` 或 `visual` 分析任务；视觉分析最多可批量提交 12 个短视频或图片，但批量调用时不要传 `timeRanges`。带 `timeRanges` 的视觉分析一次只能传一个视频；用 `media.getAnalysisTask({ taskId })` 查询状态。
 - `memory.read()`、`memory.search()`、`memory.update()`、`memory.remove()`：维护跨项目的用户剪辑偏好。记忆返回在 `data.entries`，更新和删除使用返回的准确 ID。
@@ -106,6 +107,8 @@ RemotionClip 是项目内的特殊片段。它的 `src/Root.tsx` 和组件 TSX �
 更新源码必须带上读取到的 `expectedRevision`，不要直接改 MP4、构造文件路径或把源码放到项目外。
 渲染任务完成后使用 `luna.render.remotionAddToTimeline({ taskId, ... })`，它会把 MP4 登记为当前项目的真实视频素材并加入时间线。
 预览/渲染完成后检查任务的 `clipId`、`sourceRevision`、`sourceHash`，源码在任务期间发生变化时旧结果不能覆盖新版本。
+
+动画要求是硬门禁：Remotion 创建、源码更新、预览或渲染失败不能降级为字幕卡、TTS 或音乐成片，也不能宣告完成。Remotion 分镜、旁白、字幕和音乐必须使用同一份章节时间表；交付前必须通过 `render.preflight`。
 
 ### 记忆和异步任务
 

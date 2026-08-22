@@ -27,6 +27,8 @@ interface Item {
   mediaId?: string
   sourceWidth?: number
   sourceHeight?: number
+  width?: number
+  height?: number
   transform?: Record<string, unknown>
 }
 
@@ -133,20 +135,51 @@ test('让内置 AI 助手按归一化字幕坐标重做 LunaUltra 教程', async
         transform.width > 0 &&
         transform.height > 0
     })
+    const canvas = { width: 1440, height: 1080 }
+    const textBoxesInBounds = texts.length > 0 && texts.every((item) => {
+      const transform = item.transform
+      if (
+        typeof transform?.x !== 'number' ||
+        typeof transform.y !== 'number' ||
+        typeof transform.width !== 'number' ||
+        typeof transform.height !== 'number' ||
+        transform.width <= 0 ||
+        transform.height <= 0
+      ) return false
+      const left = canvas.width / 2 + transform.x - transform.width / 2
+      const top = canvas.height / 2 + transform.y - transform.height / 2
+      const right = left + transform.width
+      const bottom = top + transform.height
+      return left >= 0 && top >= 0 && right <= canvas.width && bottom <= canvas.height
+    })
+    const visualEndFrame = videos.length > 0
+      ? Math.max(...videos.map((item) => (item.from ?? 0) + (item.durationInFrames ?? 0)))
+      : 0
+    const textRangesInVisual = texts.length > 0 && texts.every((item) =>
+      (item.from ?? 0) >= 0 &&
+      (item.durationInFrames ?? 0) > 0 &&
+      (item.from ?? 0) + (item.durationInFrames ?? 0) <= visualEndFrame,
+    )
     const inBoundsAudio = audio.length > 0 && audio.every((item) =>
       (item.from ?? 0) >= 0 &&
       (item.durationInFrames ?? 0) > 1 &&
-      (item.from ?? 0) + (item.durationInFrames ?? 0) <= 1800,
+      (item.from ?? 0) + (item.durationInFrames ?? 0) <= visualEndFrame,
     )
+    const mainVideo = videos[0]
+    const mainVideoIs4x3 = (mainVideo?.sourceWidth ?? mainVideo?.width) === 1440 &&
+      (mainVideo?.sourceHeight ?? mainVideo?.height) === 1080
     return (project.updatedAt ?? 0) > (before.updatedAt ?? 0) &&
       videos.length === 1 &&
       videos[0]?.from === 0 &&
       (videos[0]?.durationInFrames ?? 0) > 0 &&
       (videos[0]?.durationInFrames ?? 0) <= 1800 &&
+      mainVideoIs4x3 &&
       !beforeMediaIds.has(videos[0]?.mediaId) &&
       renderedMediaIds.has(videos[0]?.mediaId) &&
       texts.length > 0 &&
       positionedTexts.length > 0 &&
+      textBoxesInBounds &&
+      textRangesInVisual &&
       inBoundsAudio &&
       readyAnimatedClips.length > 0
   }, { timeout: 40 * 60_000, intervals: [5_000] }).toBe(true)

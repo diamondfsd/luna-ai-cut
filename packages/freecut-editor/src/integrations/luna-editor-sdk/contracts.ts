@@ -127,6 +127,25 @@ export interface FreeCutRenderFrameRequest {
   strict?: boolean
 }
 
+export interface FreeCutRenderPreflightRequest {
+  maxDurationSeconds?: number
+}
+
+export interface FreeCutRenderIssue {
+  severity: 'error' | 'warning'
+  code: string
+  message: string
+  entityIds?: string[]
+}
+
+export interface FreeCutRenderPreflight {
+  ready: boolean
+  canvas: { width: number; height: number; fps: number }
+  visualEndFrame: number | null
+  visualEndSeconds: number | null
+  issues: FreeCutRenderIssue[]
+}
+
 export interface FreeCutLayoutRequest {
   media?: readonly FreeCutMediaSource[]
   frame?: number
@@ -226,6 +245,7 @@ export type FreeCutCapabilityName =
   | 'render.project'
   | 'render.frame'
   | 'render.layout'
+  | 'render.preflight'
   | 'preview.inspect'
   | 'preview.seek'
   | 'preview.capture_frame'

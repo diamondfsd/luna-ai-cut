@@ -216,16 +216,100 @@ describe('FreeCutRuntime SDK adapter', () => {
   })
 
   it('updates the current project canvas through the structured project capability', async () => {
-    const runtime = new FreeCutRuntime({ project: project() })
+    const value = project()
+    appendTimelineItems(value, [{
+      id: 'text-1',
+      type: 'text',
+      trackId: 'video-1',
+      from: 0,
+      durationInFrames: 50,
+      label: 'caption',
+      text: 'caption',
+      color: '#ffffff',
+      transform: { x: 240, y: -108, width: 1440, height: 108 },
+    } as TimelineItem])
+    const runtime = new FreeCutRuntime({ project: value })
 
     const result = await runtime.executeSdkCapability('project.update', {
       projectId: 'project-1',
       canvas: { width: 1440, height: 1080, fps: 30 },
-    }) as { project: Project; affectedIds: string[] }
+    }) as { project: Project; affectedIds: string[]; resizedTextIds: string[] }
 
-    expect(result.affectedIds).toEqual(['project-1'])
+    expect(result.affectedIds).toEqual(['project-1', 'text-1'])
+    expect(result.resizedTextIds).toEqual(['text-1'])
     expect(result.project.metadata).toMatchObject({ width: 1440, height: 1080, fps: 30 })
+    expect(result.project.timeline!.items.find((item) => item.id === 'text-1')?.transform).toEqual({
+      x: 180,
+      y: -108,
+      width: 1080,
+      height: 108,
+    })
     expect(runtime.getProject().metadata).toMatchObject({ width: 1440, height: 1080, fps: 30 })
+  })
+
+  it('preflights visual, text, and audio ranges before delivery', async () => {
+    const value = project()
+    appendMusicTrack(value)
+    appendTimelineItems(value, [
+      {
+        id: 'visual-1',
+        type: 'video',
+        trackId: 'video-1',
+        from: 0,
+        durationInFrames: 100,
+        label: 'visual',
+        mediaId: 'media-1',
+      } as TimelineItem,
+      {
+        id: 'text-too-late',
+        type: 'text',
+        trackId: 'video-1',
+        from: 90,
+        durationInFrames: 30,
+        label: 'caption',
+        text: 'caption',
+        color: '#ffffff',
+        transform: { x: 900, y: 0, width: 400, height: 120 },
+      } as TimelineItem,
+      {
+        id: 'audio-too-late',
+        type: 'audio',
+        trackId: 'music-1',
+        from: 90,
+        durationInFrames: 30,
+        label: 'music',
+        mediaId: 'audio-1',
+        src: '',
+      } as TimelineItem,
+      {
+        id: 'audio-one-frame',
+        type: 'audio',
+        trackId: 'music-1',
+        from: 0,
+        durationInFrames: 1,
+        label: 'broken audio',
+        mediaId: 'audio-1',
+        src: '',
+      } as TimelineItem,
+    ])
+    const runtime = new FreeCutRuntime({ project: value })
+
+    const result = runtime.preflight({ maxDurationSeconds: 3 })
+    expect(result.ready).toBe(false)
+    expect(result.visualEndFrame).toBe(100)
+    expect(result.canvas).toEqual({ width: 1920, height: 1080, fps: 25 })
+    expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining([
+      'text.after_visual',
+      'text.out_of_bounds',
+      'audio.after_visual',
+      'audio.too_short',
+      'visual.over_max_duration',
+    ]))
+
+    const viaProvider = await new FreeCutCapabilityProvider(runtime).execute('render.preflight', {
+      maxDurationSeconds: 3,
+    })
+    expect(viaProvider).toEqual(result)
   })
 
   it('supports structured media list filters, pagination, and a safe metadata shape', async () => {

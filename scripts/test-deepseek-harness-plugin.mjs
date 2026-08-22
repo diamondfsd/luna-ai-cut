@@ -2,13 +2,19 @@ import assert from 'node:assert/strict'
 import {
   FREECUT_EXPOSED_TOOL_NAMES,
   renderToolResult,
+  SCRIPT_SYSTEM_PROMPT,
 } from './deepseek-harness-freecut-plugin.mjs'
+import { LUNA_SDK_API } from '../integrations/deepseek-harness/sdk-client.mjs'
 import {
   loadBuiltInSkills,
   registerBuiltInSkills,
 } from './deepseek-harness-built-in-skills.mjs'
 
 assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, ['edit.run_script'])
+assert.equal(LUNA_SDK_API.render.preflight, 'render.preflight')
+assert.equal(LUNA_SDK_API.render.frame, 'render.frame')
+assert.equal(LUNA_SDK_API.render.layout, 'render.layout')
+assert.match(SCRIPT_SYSTEM_PROMPT, /data\.projectId and data\.project/u)
 
 const result = {
   ok: true,
@@ -69,6 +75,11 @@ assert.match(master.content, /timeline\.unlink/u)
 assert.match(master.content, /timeline\.mute/u)
 assert.match(master.content, /timeline\.effects\.add/u)
 assert.match(master.content, /0.*不是静音/u)
+assert.match(master.content, /Remotion 是硬性要求/u)
+assert.match(master.content, /不能降级/u)
+assert.match(master.content, /render\.preflight/u)
+assert.match(master.content, /data\.ready === true/u)
+assert.match(master.content, /失败事实/u)
 assert.doesNotMatch(master.content, /调用 `media\.list`/u)
 assert.doesNotMatch(master.content, /没有接通记忆|未公开的素材分析|未公开的.*音频生成/u)
 

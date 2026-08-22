@@ -24,6 +24,9 @@ export const LUNA_SDK_API = Object.freeze({
     getTask: 'audio.get_task',
   }),
   render: Object.freeze({
+    preflight: 'render.preflight',
+    frame: 'render.frame',
+    layout: 'render.layout',
     remotionStart: 'render.remotion.start',
     remotionGetTask: 'render.remotion.get_task',
     remotionCancel: 'render.remotion.cancel',

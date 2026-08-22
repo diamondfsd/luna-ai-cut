@@ -7,6 +7,7 @@ import type {
   FreeCutCapabilityName,
   FreeCutEditRequest,
   FreeCutLayoutRequest,
+  FreeCutRenderPreflightRequest,
   FreeCutRenderFrameRequest,
   FreeCutRenderProjectRequest,
   MediaQuery,
@@ -44,6 +45,7 @@ export const FREECUT_CAPABILITIES: readonly FreeCutCapabilityDescriptor[] = [
   { name: 'render.project', access: 'write', description: 'Render the current project' },
   { name: 'render.frame', access: 'read', description: 'Render one project frame' },
   { name: 'render.layout', access: 'read', description: 'Inspect computed frame layout' },
+  { name: 'render.preflight', access: 'read', description: 'Validate timeline ranges and visual layout before delivery' },
   { name: 'preview.inspect', access: 'read', description: 'Inspect connected preview state' },
   { name: 'preview.seek', access: 'write', description: 'Seek the connected preview' },
   { name: 'preview.capture_frame', access: 'read', description: 'Capture a frame from the connected preview' },
@@ -118,6 +120,8 @@ export class FreeCutCapabilityProvider {
         return this.runtime.renderFrame(value as unknown as FreeCutRenderFrameRequest)
       case 'render.layout':
         return this.runtime.inspectLayout(value as unknown as FreeCutLayoutRequest)
+      case 'render.preflight':
+        return this.runtime.preflight(value as FreeCutRenderPreflightRequest)
       case 'preview.inspect':
         return this.runtime.inspectPreview()
       case 'preview.seek':
