@@ -37,6 +37,9 @@ interface CompletedImportTask extends ImportTask {
 
 type ImportStorageMode = 'copy' | 'link'
 
+type ImportResult = PromiseSettledResult<CompletedImportTask>
+type ImportResultHandler = (index: number, result: ImportResult) => void
+
 interface ImportFileDescriptor {
   name: string
   size: number
@@ -363,8 +366,9 @@ export function createImportActions(
     projectId: string,
     serviceModulePromise: ReturnType<typeof loadMediaLibraryService>,
     storageMode: ImportStorageMode,
-  ): Promise<PromiseSettledResult<CompletedImportTask>[]> => {
-    const results: PromiseSettledResult<CompletedImportTask>[] = new Array(importTasks.length)
+    onSettled?: ImportResultHandler,
+  ): Promise<ImportResult[]> => {
+    const results: ImportResult[] = new Array(importTasks.length)
     let nextIndex = 0
     const { mediaLibraryService } = await serviceModulePromise
 
@@ -376,18 +380,21 @@ export function createImportActions(
           continue
         }
 
+        let result: ImportResult
         try {
           markImportPreparationRunning(task.tempId)
           const metadata = await mediaLibraryService.importMediaWithHandle(task.handle, projectId, {
             storageMode,
           })
-          results[index] = {
+          result = {
             status: 'fulfilled',
             value: { metadata, tempId: task.tempId, file: task.file, handle: task.handle },
           }
         } catch (reason) {
-          results[index] = { status: 'rejected', reason }
+          result = { status: 'rejected', reason }
         }
+        results[index] = result
+        onSettled?.(index, result)
       }
     }
 
@@ -425,15 +432,29 @@ export function createImportActions(
     const importTasks = await createOptimisticImportTasks(handles, storageMode)
 
     const finishImport = async (): Promise<MediaMetadata[]> => {
-      const importResults = await runImportTasks(
+      const resultsByIndex: Array<MediaMetadata[] | undefined> = new Array(importTasks.length)
+      let importedCount = 0
+      let duplicateNames: string[] = []
+      let unsupportedCodecFiles: UnsupportedCodecFile[] = []
+      let failedCount = 0
+
+      await runImportTasks(
         importTasks,
         currentProjectId,
         serviceModulePromise,
         storageMode,
+        (index, result) => {
+          const importTask = importTasks[index]
+          if (!importTask) return
+          const summary = processImportResults([result], [importTask], set, options)
+          resultsByIndex[index] = summary.results
+          importedCount += summary.importedCount
+          duplicateNames = [...duplicateNames, ...summary.duplicateNames]
+          unsupportedCodecFiles = [...unsupportedCodecFiles, ...summary.unsupportedCodecFiles]
+          failedCount += summary.failedCount
+        },
       )
-
-      const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
-        processImportResults(importResults, importTasks, set, options)
+      const results = resultsByIndex.flatMap((entry) => entry ?? [])
 
       showImportNotifications(importedCount, duplicateNames, unsupportedCodecFiles, failedCount, get)
 
@@ -502,15 +523,29 @@ export function createImportActions(
         const serviceModulePromise = loadMediaLibraryService()
         const storageMode = options?.storageMode ?? 'copy'
         const importTasks = await createOptimisticImportTasks(handles, storageMode)
-        const importResults = await runImportTasks(
+        const resultsByIndex: Array<MediaMetadata[] | undefined> = new Array(importTasks.length)
+        let importedCount = 0
+        let duplicateNames: string[] = []
+        let unsupportedCodecFiles: UnsupportedCodecFile[] = []
+        let failedCount = 0
+
+        await runImportTasks(
           importTasks,
           currentProjectId,
           serviceModulePromise,
           storageMode,
+          (index, result) => {
+            const importTask = importTasks[index]
+            if (!importTask) return
+            const summary = processImportResults([result], [importTask], set)
+            resultsByIndex[index] = summary.results
+            importedCount += summary.importedCount
+            duplicateNames = [...duplicateNames, ...summary.duplicateNames]
+            unsupportedCodecFiles = [...unsupportedCodecFiles, ...summary.unsupportedCodecFiles]
+            failedCount += summary.failedCount
+          },
         )
-
-        const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
-          processImportResults(importResults, importTasks, set)
+        const results = resultsByIndex.flatMap((entry) => entry ?? [])
 
         showImportNotifications(
           importedCount,

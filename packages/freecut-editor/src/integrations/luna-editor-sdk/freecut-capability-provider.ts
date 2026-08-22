@@ -20,6 +20,8 @@ export const FREECUT_CAPABILITIES: readonly FreeCutCapabilityDescriptor[] = [
   { name: 'timeline.inspect', access: 'read', description: 'Query tracks, items, transitions and keyframes' },
   { name: 'timeline.add_track', access: 'write', description: 'Create a video or audio timeline track' },
   { name: 'timeline.move_track', access: 'write', description: 'Move a timeline track above or below another track of the same kind' },
+  { name: 'timeline.remove_audio', access: 'write', description: 'Remove music or linked original audio; linked video audio is detached automatically' },
+  { name: 'timeline.fit_audio_to_visual', access: 'write', description: 'Trim standalone music to the end of the visual timeline and remove any fully trailing audio' },
   { name: 'timeline.unlink', access: 'write', description: 'Unlink a video from its companion audio without deleting either item' },
   { name: 'timeline.mute', access: 'write', description: 'Mute or unmute timeline audio, including a linked video companion audio item' },
   { name: 'timeline.edit', access: 'write', description: 'Apply timeline edit operations' },
@@ -27,7 +29,12 @@ export const FREECUT_CAPABILITIES: readonly FreeCutCapabilityDescriptor[] = [
   { name: 'media.list', access: 'read', description: 'List media available to the current project' },
   { name: 'media.inspect', access: 'read', description: 'Inspect one media metadata record' },
   { name: 'media.read', access: 'read', description: 'Read media metadata and saved transcript evidence' },
-  { name: 'media.analyze', access: 'write', description: 'Start transcript or visual media analysis' },
+  {
+    name: 'media.analyze',
+    access: 'write',
+    description:
+      'Start transcript or visual media analysis. Batch visual analysis accepts up to 12 mediaIds without timeRanges; timeRanges is only valid for one video at a time.',
+  },
   { name: 'media.get_analysis_task', access: 'read', description: 'Read media analysis task status' },
   { name: 'media.search_transcript', access: 'read', description: 'Search saved transcript segments' },
   { name: 'audio.start_speech', access: 'write', description: 'Start local speech generation' },
@@ -82,6 +89,8 @@ export class FreeCutCapabilityProvider {
         return this.runtime.inspectTimeline(value as TimelineQuery)
       case 'timeline.add_track':
       case 'timeline.move_track':
+      case 'timeline.remove_audio':
+      case 'timeline.fit_audio_to_visual':
       case 'timeline.unlink':
       case 'timeline.mute':
         return this.runtime.executeSdkCapability(name, value)

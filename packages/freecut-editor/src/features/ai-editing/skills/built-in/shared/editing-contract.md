@@ -21,7 +21,7 @@
 
 带原声的视频由视频片段和关联音频片段组成，真正播放的原声通常是关联音频片段。
 
-- 只删除伴侣音频并保留视频：先调用 `luna.timeline.unlink({ itemIds: [audioId] })`，再调用 `luna.timeline.remove({ itemIds: [audioId] })`。直接 remove 仍可能按关联规则级联删除视频。
+- 只删除伴侣音频并保留视频：调用 `luna.timeline.removeAudio({ itemIds: [audioId] })`；它会自动解除关联后删除音频。`timeline.remove()` 删除单独的关联原声音频时也会自动解除关联。
 - 静音使用 `luna.timeline.mute({ itemIds: [videoId] })`，对视频 ID 调用时会同时处理关联音频；也可以传准确的音频 ID。
 - `setAudio.volume` 是 dB，范围为 `-60` 到 `12`；`0` 是正常的 0 dB，不是静音。静音应使用 `mute` 或 `setAudio({ muted: true })`，不要用 `volume: 0` 表示静音。
 - 静音后必须在返回的项目数据中确认目标音频的 `volume === -60`，否则不能向用户声称已经静音。

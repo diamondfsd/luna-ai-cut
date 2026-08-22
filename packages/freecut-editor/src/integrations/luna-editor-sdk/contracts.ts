@@ -207,6 +207,8 @@ export type FreeCutCapabilityName =
   | 'timeline.inspect'
   | 'timeline.add_track'
   | 'timeline.move_track'
+  | 'timeline.remove_audio'
+  | 'timeline.fit_audio_to_visual'
   | 'timeline.unlink'
   | 'timeline.mute'
   | 'timeline.edit'

@@ -2,7 +2,7 @@
  * Item Actions - Cross-domain operations that affect items, transitions, and keyframes.
  */
 
-import type { ControllerItem, TimelineItem, TimelineTrack, VideoItem } from '@freecut/types/timeline'
+import type { AudioItem, ControllerItem, TimelineItem, TimelineTrack, VideoItem } from '@freecut/types/timeline'
 import type {
   CanvasSettings,
   ResolvedTransform,
@@ -646,6 +646,15 @@ export function addItems(items: TimelineItem[]): void {
  * directly without re-running overlap placement, which would desync the pair.
  */
 export function addItemWithLinkedAudio(video: VideoItem): void {
+  addVideoWithLinkedAudio(video)
+}
+
+/**
+ * Add only the linked audio companion for a video that is already in the
+ * timeline. The video has already gone through normal visual-track placement,
+ * so re-adding it would duplicate the clip and can desynchronise the pair.
+ */
+export function addLinkedAudioCompanion(video: VideoItem): AudioItem {
   const itemsState = useItemsStore.getState()
   const itemsByTrackId = new Map<string, TimelineItem[]>()
   for (const item of itemsState.items) {
@@ -663,7 +672,54 @@ export function addItemWithLinkedAudio(video: VideoItem): void {
     itemsByTrackId,
   })
 
-  execute(
+  return execute(
+    'ADD_LINKED_AUDIO_COMPANION',
+    () => {
+      const store = useItemsStore.getState()
+      if (newTrack) {
+        store.setTracks([...store.tracks, newTrack])
+      }
+      if (updatedVideo !== video) {
+        store._updateItem(video.id, { linkedGroupId: updatedVideo.linkedGroupId })
+      }
+      store._addItem(audioItem)
+      useTimelineSettingsStore.getState().markDirty()
+      return audioItem
+    },
+    { itemId: updatedVideo.id, audioId: audioItem.id, trackCreated: !!newTrack },
+  )
+}
+
+/**
+ * Add a video and its companion audio at the same timeline position.
+ *
+ * The normal addItem path avoids overlaps independently per track. That is
+ * correct for standalone clips, but it can desynchronise a linked AV pair
+ * when an audio track already contains music. Choose an audio track with room
+ * first, then commit both items together.
+ */
+export function addVideoWithLinkedAudio(video: VideoItem): {
+  video: VideoItem
+  audio: AudioItem
+} {
+  const itemsState = useItemsStore.getState()
+  const itemsByTrackId = new Map<string, TimelineItem[]>()
+  for (const item of itemsState.items) {
+    const existing = itemsByTrackId.get(item.trackId)
+    if (existing) {
+      existing.push(item)
+    } else {
+      itemsByTrackId.set(item.trackId, [item])
+    }
+  }
+
+  const { updatedVideo, audioItem, newTrack } = buildLinkedAudioForVideo({
+    video,
+    tracks: itemsState.tracks,
+    itemsByTrackId,
+  })
+
+  return execute(
     'ADD_ITEM_WITH_LINKED_AUDIO',
     () => {
       const store = useItemsStore.getState()
@@ -672,6 +728,7 @@ export function addItemWithLinkedAudio(video: VideoItem): void {
       }
       store._addItems([updatedVideo, audioItem])
       useTimelineSettingsStore.getState().markDirty()
+      return { video: updatedVideo, audio: audioItem }
     },
     { itemId: updatedVideo.id, audioId: audioItem.id, trackCreated: !!newTrack },
   )

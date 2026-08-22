@@ -50,10 +50,18 @@ export function renderToolResult(_args, value) {
   return [{ type: 'text', text: text ?? String(value) }]
 }
 
+const SDK_METHOD_DESCRIPTIONS = Object.freeze({
+  'timeline.removeAudio': '删除独立音乐或视频原声并保留画面；关联原声会自动解除关联',
+  'timeline.fitAudioToVisual': '把独立音乐截短到画面结束点；完全落在画面之后的独立音频会移除，不处理视频原声',
+  'media.analyze': '视觉分析批量调用不要传 timeRanges；传 timeRanges 时只能分析一个视频',
+})
+
 function sdkMethodReference() {
   return Object.entries(LUNA_SDK_API)
     .flatMap(([namespace, methods]) => Object.entries(methods).map(([method, capability]) => {
-      return `- luna.${namespace}.${method}(args) -> ${capability}`
+      const name = `${namespace}.${method}`
+      const description = SDK_METHOD_DESCRIPTIONS[name]
+      return `- luna.${name}(args) -> ${capability}${description ? `：${description}` : ''}`
     }))
     .join('\n')
 }

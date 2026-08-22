@@ -292,6 +292,34 @@ describe('createImportActions', () => {
     )
   })
 
+  it('publishes each completed import without waiting for slower files', async () => {
+    const firstFile = new File(['video-1'], 'first.mp4', { type: 'video/mp4' })
+    const secondFile = new File(['video-2'], 'second.mp4', { type: 'video/mp4' })
+    const handles = [createHandle(firstFile), createHandle(secondFile)]
+    const firstImported = makeMedia({ id: 'first-imported', fileName: 'first.mp4' })
+    const secondImported = makeMedia({ id: 'second-imported', fileName: 'second.mp4' })
+    let resolveFirst!: (metadata: MediaMetadata) => void
+
+    mediaLibraryServiceMocks.importMediaWithHandle
+      .mockReturnValueOnce(new Promise<MediaMetadata>((resolve) => {
+        resolveFirst = resolve
+      }))
+      .mockResolvedValueOnce(secondImported)
+
+    const harness = createImportActionsHarness()
+    const importPromise = harness.actions.importHandles(handles)
+
+    await flushMicrotasks(8)
+
+    expect(harness.currentState.mediaItems.some((item) => item.id === secondImported.id)).toBe(true)
+    expect(harness.currentState.importingIds).toHaveLength(1)
+
+    resolveFirst(firstImported)
+    const result = await importPromise
+    expect(result.map((item) => item.id)).toEqual(['first-imported', 'second-imported'])
+    expect(harness.currentState.importingIds).toEqual([])
+  })
+
   it('passes link mode through for advanced linked-file imports', async () => {
     const file = new File(['video'], 'linked.mp4', { type: 'video/mp4' })
     const handle = createHandle(file)

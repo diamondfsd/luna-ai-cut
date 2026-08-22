@@ -76,15 +76,15 @@ export default async function main(luna) {
 
 - `project.inspect()`：读取当前项目、画布、轨道、片段和计数。
 - `media.list()`、`media.read({ mediaIds })`、`media.searchTranscript({ query, mediaIds? })`：读取素材和已有证据。
-- `media.analyze({ mediaIds, kind })`：提交 `transcript` 或 `visual` 分析任务；用 `media.getAnalysisTask({ taskId })` 查询状态。
+- `media.analyze({ mediaIds, kind })`：提交 `transcript` 或 `visual` 分析任务；视觉分析最多可批量提交 12 个短视频或图片，但批量调用时不要传 `timeRanges`。带 `timeRanges` 的视觉分析一次只能传一个视频；用 `media.getAnalysisTask({ taskId })` 查询状态。
 - `memory.read()`、`memory.search()`、`memory.update()`、`memory.remove()`：维护跨项目的用户剪辑偏好。记忆返回在 `data.entries`，更新和删除使用返回的准确 ID。
 - `audio.startSpeech({ text, voice?, speed? })`：提交 TTS 任务。
 - `audio.startMusic({ prompt, model?, durationSeconds?, guidanceScale? })`：提交音乐或音效任务。背景音乐使用 `small-music`，音效使用 `small-sfx`。
 - `audio.getTask({ taskId })`：查询 TTS、音乐和音效任务。
-- `timeline.inspectContext()`、`addTrack()`、`moveTrack()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`unlink()`、`mute()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
+- `timeline.inspectContext()`、`addTrack()`、`moveTrack()`、`addMedia()`、`addMediaBatch()`、`trim()`、`split()`、`move()`、`remove()`、`removeAudio()`、`fitAudioToVisual()`、`unlink()`、`mute()`、`setProperties()`、`setTransform()`、`setAudio()`、`addText()`、`addKeyframe()` 和 `addTransition()`：执行时间轴编辑。
 
 `addTrack({ type: 'video' | 'audio', name?, order? })` 返回新轨道 ID；`moveTrack({ trackId, aboveTrackId?, belowTrackId? })` 调整已有轨道层级，两个锚点参数只能传一个，且必须与被移动轨道保持同类型。`order` 越小表示画面层级越高，预览和导出都会按这个规则处理。字幕、标题和画面叠加应先创建独立视频轨道，并使用 `moveTrack` 放到目标视频轨道上方；
-TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 放置素材。视频素材自动生成的伴侣音频保留在原音频轨道。
+TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 放置素材。视频素材自动生成的伴侣音频会选择有空位的音频轨道，并与视频保持同一个时间轴起点；不要把背景音乐轨道当作原声轨道。
 
 时间轴时间参数均为秒：`trim` 使用 `startSeconds/endSeconds`，`split` 使用 `atSeconds`，`move` 使用
 `toSeconds`。转场的 `type` 只能是 `crossfade`，使用 `fromClipId`、`toClipId`、`type: 'crossfade'` 和 `durationSeconds`；需要淡化视觉样式时另传 `presentation: 'fade'`，不要省略 `type` 或把 `fade` 作为 `type`。
@@ -94,8 +94,10 @@ TTS、背景音乐和音效应先创建独立音频轨道，再通过 `trackId` 
 
 `setAudio` 的 `volume` 使用 dB，范围为 -60 到 12；`0` 是 0 dB 正常音量，不是静音。静音请使用
 `timeline.mute({ itemIds, muted? })`，它会把指定片段设为 -60 dB；如果指定的是带关联原声的视频，还会同时处理关联音频片段。
-FreeCut 带原声的视频由视频片段和关联音频片段组成。只删除音频而保留视频时，必须先
-`timeline.unlink({ itemIds: [audioId] })`，再 `timeline.remove({ itemIds: [audioId] })`；直接 remove 仍会按关联规则级联删除视频。
+FreeCut 带原声的视频由视频片段和关联音频片段组成。删除背景音乐或删除原声而保留画面时，使用
+`timeline.removeAudio({ itemIds: [audioId] })`；传入视频 ID 也会只删除它的原声。这个方法会自动解除关联，再删除音频；没有独立伴侣音频时会关闭视频内嵌原声。为兼容旧脚本，`timeline.remove({ itemIds })` 删除单独的关联音频时也会自动解除关联。
+背景音乐的结束时间必须不超过最后一个画面片段的结束时间。加入音乐后重新检查视频轨道的最大结束时间，并用
+`timeline.fitAudioToVisual({ itemIds: [musicId] })` 截掉多余部分；它只处理独立音乐，完全落在画面之后的音频会被移除，不会处理视频原声伴侣。不要用目标时长代替实际画面时长。
 
 RemotionClip 是项目内的特殊片段。它的 `src/Root.tsx` 和组件 TSX 是唯一编辑源，MP4 只是绑定了
 `sourceRevision`、`sourceHash` 的渲染缓存。使用 `luna.render.remotionCreate`、

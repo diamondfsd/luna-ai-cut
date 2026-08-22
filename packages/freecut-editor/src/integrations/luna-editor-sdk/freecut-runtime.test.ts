@@ -40,6 +40,25 @@ function project(): Project {
   }
 }
 
+function appendTimelineItems(projectValue: Project, items: readonly TimelineItem[]): void {
+  const timelineItems = projectValue.timeline!.items as unknown as TimelineItem[]
+  timelineItems.push(...items)
+}
+
+function appendMusicTrack(projectValue: Project): void {
+  projectValue.timeline!.tracks.push({
+    id: 'music-1',
+    name: 'Music',
+    kind: 'audio',
+    height: 64,
+    locked: false,
+    visible: true,
+    muted: false,
+    solo: false,
+    order: 2,
+  })
+}
+
 function linkedProject(): Project {
   const value = project()
   value.timeline!.tracks.push({
@@ -53,7 +72,7 @@ function linkedProject(): Project {
     solo: false,
     order: 1,
   })
-  value.timeline!.items.push(
+  appendTimelineItems(value, [
     {
       id: 'video-1',
       type: 'video',
@@ -78,7 +97,34 @@ function linkedProject(): Project {
       linkedGroupId: 'pair-1',
       volume: 0,
     } as TimelineItem,
-  )
+  ])
+  return value
+}
+
+function musicProject(): Project {
+  const value = project()
+  value.timeline!.tracks.push({
+    id: 'music-1',
+    name: 'Music',
+    kind: 'audio',
+    height: 64,
+    locked: false,
+    visible: true,
+    muted: false,
+    solo: false,
+    order: 1,
+  })
+  appendTimelineItems(value, [{
+    id: 'music-item-1',
+    type: 'audio',
+    trackId: 'music-1',
+    from: 0,
+    durationInFrames: 750,
+    label: 'music',
+    mediaId: 'audio-1',
+    src: '',
+    volume: 0,
+  } as TimelineItem])
   return value
 }
 
@@ -130,7 +176,12 @@ const analyzedMedia: MediaMetadata = {
   fileHandle: {} as FileSystemFileHandle,
   opfsPath: 'content/private/media-1/data',
   previewAudioOpfsPath: 'cache/private/media-1.wav',
-  aiCaptions: [{ timeSec: 0, text: 'A bright scene' }],
+  aiCaptions: [{
+    timeSec: 0,
+    text: 'A bright scene',
+    embedding: [0.1, 0.2],
+    thumbRelPath: 'cache/thumb.jpg',
+  }],
 } as MediaMetadata
 
 const longVideoMedia: MediaMetadata = {
@@ -255,6 +306,17 @@ describe('FreeCutRuntime SDK adapter', () => {
     })).rejects.toThrow('at most 60 seconds')
   })
 
+  it('explains that visual time ranges are single-video only', async () => {
+    const runtime = new FreeCutRuntime({ project: project(), media: [analyzedMedia, longVideoMedia] })
+
+    await expect(runtime.executeSdkCapability('media.analyze', {
+      projectId: 'project-1',
+      mediaIds: [analyzedMedia.id, longVideoMedia.id],
+      kind: 'visual',
+      timeRanges: [{ startSeconds: 0, endSeconds: 30 }],
+    })).rejects.toThrow('timeRanges 只支持单个视频')
+  })
+
   it('deduplicates an in-flight visual analysis with the same source ranges', async () => {
     const runtime = new FreeCutRuntime({ project: project(), media: [longVideoMedia] })
     const request = {
@@ -325,7 +387,9 @@ describe('FreeCutRuntime SDK adapter', () => {
       presentation: 'fade',
     }) as { project: Project }
     expect(transitionResult.project.timeline!.transitions).toHaveLength(1)
-    expect(transitionResult.project.timeline!.transitions[0]).toMatchObject({
+    const transition = transitionResult.project.timeline!.transitions?.[0]
+    expect(transition).toBeDefined()
+    expect(transition!).toMatchObject({
       leftClipId: pieces[0]!.id,
       rightClipId: pieces[1]!.id,
       presentation: 'fade',
@@ -370,15 +434,120 @@ describe('FreeCutRuntime SDK adapter', () => {
     expect(result.project.timeline!.items.find((item) => item.id === 'audio-item-1')?.volume).toBe(-60)
   })
 
-  it('unlinks a companion before removal without removing the video', async () => {
+  it('automatically unlinks a companion before removal without removing the video', async () => {
     const runtime = new FreeCutRuntime({ project: linkedProject(), media: [media] })
 
-    await runtime.executeSdkCapability('timeline.unlink', { itemIds: ['audio-item-1'] })
     const removed = await runtime.executeSdkCapability('timeline.remove', { itemIds: ['audio-item-1'] }) as { project: Project }
     const video = removed.project.timeline!.items.find((item) => item.id === 'video-1')
 
     expect(video).toMatchObject({ embeddedAudioMuted: true })
     expect(removed.project.timeline!.items.some((item) => item.id === 'audio-item-1')).toBe(false)
+  })
+
+  it('removes original audio by video id and keeps the video', async () => {
+    const runtime = new FreeCutRuntime({ project: linkedProject(), media: [media] })
+
+    const removed = await runtime.executeSdkCapability('timeline.remove_audio', {
+      itemIds: ['video-1'],
+    }) as { project: Project; removedAudioIds: string[] }
+
+    expect(removed.removedAudioIds).toEqual(['audio-item-1'])
+    expect(removed.project.timeline!.items.find((item) => item.id === 'video-1')).toMatchObject({
+      embeddedAudioMuted: true,
+    })
+    expect(removed.project.timeline!.items.some((item) => item.id === 'audio-item-1')).toBe(false)
+  })
+
+  it('removes standalone music by audio id', async () => {
+    const runtime = new FreeCutRuntime({ project: musicProject(), media: [audioMedia] })
+
+    const removed = await runtime.executeSdkCapability('timeline.remove_audio', {
+      itemIds: ['music-item-1'],
+    }) as { project: Project; removedAudioIds: string[] }
+
+    expect(removed.removedAudioIds).toEqual(['music-item-1'])
+    expect(removed.project.timeline!.items).toHaveLength(0)
+  })
+
+  it('fits standalone music to the visual timeline without touching linked original audio', async () => {
+    const value = linkedProject()
+    appendMusicTrack(value)
+    appendTimelineItems(value, [{
+      id: 'music-item-1',
+      type: 'audio',
+      trackId: 'music-1',
+      from: 0,
+      durationInFrames: 150,
+      label: 'music',
+      mediaId: 'audio-1',
+      src: '',
+      volume: 0,
+    } as TimelineItem])
+    const runtime = new FreeCutRuntime({ project: value, media: [media, audioMedia] })
+
+    const fitted = await runtime.executeSdkCapability('timeline.fit_audio_to_visual', {}) as {
+      project: Project
+      visualEndSeconds: number
+      trimmedAudioIds: string[]
+      removedAudioIds: string[]
+    }
+
+    expect(fitted.visualEndSeconds).toBe(100 / 25)
+    expect(fitted.trimmedAudioIds).toEqual(['music-item-1'])
+    expect(fitted.removedAudioIds).toEqual([])
+    expect(fitted.project.timeline!.items.find((item) => item.id === 'music-item-1')).toMatchObject({
+      from: 0,
+      durationInFrames: 100,
+    })
+    expect(fitted.project.timeline!.items.find((item) => item.id === 'audio-item-1')).toMatchObject({
+      from: 0,
+      durationInFrames: 100,
+    })
+  })
+
+  it('removes standalone audio that starts after the visual timeline', async () => {
+    const value = project()
+    value.timeline!.tracks.push({
+      id: 'audio-1',
+      name: 'Music',
+      kind: 'audio',
+      height: 64,
+      locked: false,
+      visible: true,
+      muted: false,
+      solo: false,
+      order: 1,
+    })
+    appendTimelineItems(value, [{
+      id: 'music-item-1',
+      type: 'audio',
+      trackId: 'audio-1',
+      from: 120,
+      durationInFrames: 30,
+      label: 'music',
+      mediaId: 'audio-1',
+      src: '',
+      volume: 0,
+    } as TimelineItem])
+    appendTimelineItems(value, [{
+      id: 'video-item-1',
+      type: 'image',
+      trackId: 'video-1',
+      from: 0,
+      durationInFrames: 60,
+      label: 'image',
+      mediaId: 'image-1',
+      src: '',
+    } as TimelineItem])
+    const runtime = new FreeCutRuntime({ project: value, media: [audioMedia] })
+
+    const fitted = await runtime.executeSdkCapability('timeline.fit_audio_to_visual', {}) as {
+      project: Project
+      removedAudioIds: string[]
+    }
+
+    expect(fitted.removedAudioIds).toEqual(['music-item-1'])
+    expect(fitted.project.timeline!.items.some((item) => item.id === 'music-item-1')).toBe(false)
   })
 
   it('creates video and audio tracks through the provider and targets them from text and media edits', async () => {

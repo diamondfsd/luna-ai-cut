@@ -12,9 +12,10 @@
 
 - `luna.project.inspect()`：读取 `data.projectId`、`data.project`、当前时间线和计数。
 - `luna.media.list({ limit? })`：列出当前项目素材，结果在 `data.items` 和 `data.total`。
-- `luna.media.read({ mediaIds, transcriptOffset?, transcriptLimit? })`：读取素材元数据和已保存的画面/字幕分析证据，结果在 `data.items`。长转录按页读取：使用 `transcript.nextOffset` 继续，片段带有源素材时间和可用的词级时间。
+- `luna.media.read({ mediaIds, transcriptOffset?, transcriptLimit? })`：读取素材元数据和已保存的画面/字幕分析证据，结果通常在 `data.items`。如果 `data.externalFile` 存在，说明结果已外置，脚本中不能再访问 `data.items`；优先按单个 `mediaId` 分批读取，或使用 Harness 的 `read` 工具查看外置文件。长转录按页读取：使用 `transcript.nextOffset` 继续，片段带有源素材时间和可用的词级时间。
 - `luna.media.analyze({ mediaIds, kind: 'transcript' })`：提交音频转录任务，立即返回 `data.taskId`。长视频必须先完成这一步。
-- `luna.media.analyze({ mediaIds: [mediaId], kind: 'visual', timeRanges: [{ startSeconds, endSeconds }] })`：只分析给定源区间附近的画面。每段最多 60 秒，最多 12 段、合计最多 8 分钟；长视频不能省略 `timeRanges`。
+- `luna.media.analyze({ mediaIds, kind: 'visual' })`：批量分析不超过 12 个短视频或图片的画面；批量调用时不要传 `timeRanges`。
+- `luna.media.analyze({ mediaIds: [mediaId], kind: 'visual', timeRanges: [{ startSeconds, endSeconds }] })`：只分析一个视频给定源区间附近的画面。每段最多 60 秒，最多 12 段、合计最多 8 分钟；`timeRanges` 不能按 `mediaIds` 一一对应批量传入，长视频不能省略它。
 - `luna.media.getAnalysisTask({ taskId })`：轮询分析任务；完成后再用 `media.read` 读取证据，失败时读取错误字段。
 - `luna.media.searchTranscript({ query, mediaIds? })`：搜索已完成的字幕识别结果，结果在 `data.matches`。
 
@@ -71,8 +72,10 @@ await luna.timeline.moveTrack({
 - `luna.timeline.trim({ itemId, startSeconds?, endSeconds? })`：使用时间轴上的绝对秒数，不是素材源区间。
 - `luna.timeline.split({ itemId, atSeconds })`：在时间轴绝对位置切开片段。
 - `luna.timeline.move({ itemId, toSeconds, trackId? })`：将片段起点移动到时间轴绝对位置，可同时更换轨道。
-- `luna.timeline.remove({ itemIds })`：删除一个或多个片段；关联片段可能级联删除。
-- `luna.timeline.unlink({ itemIds })`：解除片段关联，不删除片段；只删除伴侣音频前必须先调用。
+- `luna.timeline.remove({ itemIds })`：删除一个或多个片段；单独删除关联原声音频时会先自动解除关联。
+- `luna.timeline.removeAudio({ itemIds })`：删除背景音乐或视频原声并保留画面。可传音频片段 ID，也可传视频片段 ID；关联原声会自动解除后删除，没有伴侣时会关闭内嵌原声。
+- `luna.timeline.fitAudioToVisual({ itemIds? })`：把独立背景音乐截短到当前画面时间轴的最晚结束点；完全落在画面之后的独立音频会移除。默认处理全部独立音频，不处理视频原声伴侣；原声删除请使用 `removeAudio()`。
+- `luna.timeline.unlink({ itemIds })`：只解除片段关联，不删除片段；如果目标是删除原声或音乐，直接使用 `removeAudio()`，它会自动解除关联。
 - `luna.timeline.mute({ itemIds, muted? })`：可靠地静音或取消静音；对视频片段调用时会同时处理关联原声。
 - `luna.timeline.setProperties({ itemId, label?, text?, volume?, speed?, fadeIn?, fadeOut? })`：修改通用片段参数。
 - `luna.timeline.setTransform({ itemId, x?, y?, width?, height?, rotation?, opacity?, flipHorizontal?, flipVertical?, cornerRadius? })`：修改画面变换。
@@ -80,6 +83,9 @@ await luna.timeline.moveTrack({
 - `luna.timeline.addText({ text, startSeconds, durationSeconds, trackId?, style? })`：创建文字片段，应放在独立视频轨道。
 - `luna.timeline.addKeyframe({ itemId, property, atSeconds, value, easing? })`：添加关键帧；当前 `value` 必须是数字。
 - `luna.timeline.addTransition({ fromClipId, toClipId, type: 'crossfade', durationSeconds, presentation?, direction?, properties? })`：添加转场。
+
+背景音乐的时长必须按实际画面结束时间处理：先读取视频轨道最大 `from + durationInFrames`，再用
+`luna.timeline.fitAudioToVisual({ itemIds: [musicId] })` 截掉超出的尾部；不要因为用户目标是 30 秒就把音乐固定加入 30 秒。
 - `luna.timeline.effects.add({ clipId, type, params?, enabled? })`、`update({ clipId, effectId, params?, enabled? })`、`remove({ clipId, effectId })`：管理当前 FreeCut 已注册的 GPU 效果。`type` 必须是编辑器效果注册表中的 ID；参数必须符合对应效果的参数定义，写入后应通过 `timeline.inspectContext()` 和预览复核。
 
 转场规则：`type` 只能是 `'crossfade'`，需要淡化视觉样式时另传 `presentation: 'fade'`，不要把 `'fade'` 作为 `type`，也不要省略 `type`。两个参与转场的画面片段必须在同一视频轨道，并在时间轴切点相邻；前片段需要未使用的源素材尾部，后片段需要未使用的源素材头部。先从 `timeline.inspectContext()` 检查 `from`、`durationInFrames`、`sourceStart`、`sourceEnd` 和 `sourceDuration`，再选择不超过两侧余量的时长。任一侧余量为 0 时转场不能创建；工具失败后读取错误并调整源区间或改用 `fadeIn/fadeOut`，不能假设转场已经存在。

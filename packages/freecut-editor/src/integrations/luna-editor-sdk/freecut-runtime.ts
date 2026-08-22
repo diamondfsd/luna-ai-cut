@@ -26,6 +26,7 @@ import type {
   Project,
   ProjectInspection,
   ProjectInspectQuery,
+  TimelineItem,
   TimelineInspection,
   TimelineQuery,
 } from './contracts'
@@ -206,6 +207,16 @@ function publicMediaMetadata(media: MediaMetadata, includeAnalysis: boolean): Me
   delete result.previewAudioMimeType
   delete result.previewAudioConformedAt
   if (!includeAnalysis) delete result.aiCaptions
+  else if (result.aiCaptions) {
+    // Embeddings and thumbnail paths are editor-internal evidence. They are
+    // large, not useful to an editing script, and can force a batch read into
+    // the Harness external-result path before the script can inspect it.
+    result.aiCaptions = result.aiCaptions.map(({ embedding, thumbRelPath, ...caption }) => {
+      void embedding
+      void thumbRelPath
+      return caption
+    })
+  }
   return result
 }
 
@@ -273,6 +284,16 @@ function timelineItems(project: Project): NonNullable<Project['timeline']>['item
   return project.timeline?.items ?? []
 }
 
+function visualTimelineEndFrame(project: Project): number | null {
+  const visualItems = timelineItems(project).filter((item) =>
+    item.type === 'video' ||
+    item.type === 'image' ||
+    item.type === 'composition',
+  )
+  if (visualItems.length === 0) return null
+  return Math.max(...visualItems.map((item) => item.from + item.durationInFrames))
+}
+
 function audioMutationTargetIds(project: Project, itemIds: readonly string[]): string[] {
   const items = timelineItems(project)
   const targetIds = new Set<string>()
@@ -295,6 +316,39 @@ function audioMutationTargetIds(project: Project, itemIds: readonly string[]): s
   }
 
   return [...targetIds]
+}
+
+function timelineItemIds(args: Record<string, unknown>): string[] {
+  if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) {
+    throw new TypeError('itemIds must be a non-empty array')
+  }
+  if (args.itemIds.some((itemId) => typeof itemId !== 'string' || itemId.length === 0)) {
+    throw new TypeError('itemIds must be an array of non-empty strings')
+  }
+  return args.itemIds as string[]
+}
+
+function linkedAudioIdsForItems(project: Project, itemIds: readonly string[]): string[] {
+  const items = timelineItems(project)
+  const selected = new Set(itemIds)
+  const linkedAudioIds = new Set<string>()
+
+  for (const itemId of itemIds) {
+    const item = items.find((candidate) => candidate.id === itemId)
+    if (!item) throw new Error(`Timeline item "${itemId}" does not exist`)
+    if (item.type !== 'audio' || !item.linkedGroupId) continue
+
+    if (items.some((candidate) =>
+      candidate.id !== item.id &&
+      candidate.linkedGroupId === item.linkedGroupId &&
+      candidate.type !== 'audio' &&
+      !selected.has(candidate.id),
+    )) {
+      linkedAudioIds.add(item.id)
+    }
+  }
+
+  return [...linkedAudioIds]
 }
 
 function asRecord(value: unknown, field: string): Record<string, unknown> {
@@ -954,23 +1008,145 @@ export class FreeCutRuntime {
           ],
         })
       case 'timeline.remove':
-        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0)
-          throw new TypeError('itemIds must be a non-empty array')
-        return this.edit({ ops: [{ op: 'removeItems', ids: args.itemIds }] })
+        {
+          const itemIds = timelineItemIds(args)
+          const linkedAudioIds = linkedAudioIdsForItems(this.project, itemIds)
+          return this.edit({
+            ops: [
+              ...(linkedAudioIds.length > 0
+                ? [{ op: 'unlinkItems', ids: linkedAudioIds }]
+                : []),
+              { op: 'removeItems', ids: itemIds },
+            ],
+          })
+        }
+      case 'timeline.remove_audio': {
+        const itemIds = timelineItemIds(args)
+        const items = timelineItems(this.project)
+        const audioIds = new Set<string>()
+        const unlinkIds = new Set<string>()
+        const muteVideoIds = new Set<string>()
+
+        for (const itemId of itemIds) {
+          const item = items.find((candidate) => candidate.id === itemId)
+          if (!item) throw new Error(`Timeline item "${itemId}" does not exist`)
+
+          if (item.type === 'audio') {
+            audioIds.add(item.id)
+            if (item.linkedGroupId) unlinkIds.add(item.id)
+            continue
+          }
+
+          if (item.type !== 'video') {
+            throw new TypeError(`删除原声只支持音频或视频片段：${itemId}`)
+          }
+
+          const video = item as Extract<TimelineItem, { type: 'video' }>
+
+          const companions = items.filter((candidate) =>
+            candidate.type === 'audio' &&
+            candidate.linkedGroupId !== undefined &&
+            candidate.linkedGroupId === video.linkedGroupId,
+          )
+          if (companions.length > 0) {
+            for (const companion of companions) {
+              audioIds.add(companion.id)
+              unlinkIds.add(companion.id)
+            }
+          } else if (!video.embeddedAudioMuted) {
+            muteVideoIds.add(video.id)
+          }
+        }
+
+        const ops: Record<string, unknown>[] = []
+        if (unlinkIds.size > 0) ops.push({ op: 'unlinkItems', ids: [...unlinkIds] })
+        for (const itemId of muteVideoIds) {
+          ops.push({ op: 'updateItem', id: itemId, updates: { embeddedAudioMuted: true } })
+        }
+        if (audioIds.size > 0) ops.push({ op: 'removeItems', ids: [...audioIds] })
+        if (ops.length === 0) throw new Error('没有可删除的音频')
+
+        const result = await this.edit({ ops })
+        return {
+          ...result,
+          removedAudioIds: [...audioIds],
+          mutedVideoIds: [...muteVideoIds],
+        }
+      }
+      case 'timeline.fit_audio_to_visual': {
+        const visualEndFrame = visualTimelineEndFrame(this.project)
+        if (visualEndFrame === null) {
+          throw new Error('当前时间轴还没有画面片段，无法确定音乐结束时间')
+        }
+
+        const requestedIds =
+          args.itemIds === undefined ? undefined : timelineItemIds(args)
+        const items = timelineItems(this.project)
+        const audioItems = items.filter((item) => {
+          if (item.type !== 'audio') return false
+          if (requestedIds && !requestedIds.includes(item.id)) return false
+          if (item.linkedGroupId) {
+            if (requestedIds?.includes(item.id)) {
+              throw new Error(
+                `片段 "${item.id}" 是视频原声，请使用 timeline.removeAudio 删除原声，不能用音乐收尾操作处理。`,
+              )
+            }
+            return false
+          }
+          return true
+        })
+
+        const trimOps: Record<string, unknown>[] = []
+        const removeIds: string[] = []
+        const trimmedAudioIds: string[] = []
+        for (const item of audioItems) {
+          const itemEndFrame = item.from + item.durationInFrames
+          if (item.from >= visualEndFrame) {
+            removeIds.push(item.id)
+          } else if (itemEndFrame > visualEndFrame) {
+            trimOps.push({
+              op: 'trimEnd',
+              id: item.id,
+              amount: visualEndFrame - itemEndFrame,
+            })
+            trimmedAudioIds.push(item.id)
+          }
+        }
+
+        const ops = [
+          ...trimOps,
+          ...(removeIds.length > 0 ? [{ op: 'removeItems', ids: removeIds }] : []),
+        ]
+        if (ops.length === 0) {
+          return {
+            project: this.project,
+            applied: 0,
+            results: [],
+            affectedIds: [],
+            createdIds: [],
+            removedIds: [],
+            warnings: [],
+            visualEndSeconds: visualEndFrame / this.project.metadata.fps,
+            trimmedAudioIds,
+            removedAudioIds: removeIds,
+          }
+        }
+
+        const result = await this.edit({ ops })
+        return {
+          ...result,
+          visualEndSeconds: visualEndFrame / this.project.metadata.fps,
+          trimmedAudioIds,
+          removedAudioIds: removeIds,
+        }
+      }
       case 'timeline.unlink':
-        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0)
-          throw new TypeError('itemIds must be a non-empty array')
-        return this.edit({ ops: [{ op: 'unlinkItems', ids: args.itemIds }] })
+        return this.edit({ ops: [{ op: 'unlinkItems', ids: timelineItemIds(args) }] })
       case 'timeline.mute': {
-        if (!Array.isArray(args.itemIds) || args.itemIds.length === 0) {
-          throw new TypeError('itemIds must be a non-empty array')
-        }
-        if (args.itemIds.some((itemId) => typeof itemId !== 'string' || itemId.length === 0)) {
-          throw new TypeError('itemIds must be an array of non-empty strings')
-        }
+        const itemIds = timelineItemIds(args)
         const muted = args.muted === undefined ? true : args.muted
         if (typeof muted !== 'boolean') throw new TypeError('muted must be a boolean')
-        const targetIds = audioMutationTargetIds(this.project, args.itemIds)
+        const targetIds = audioMutationTargetIds(this.project, itemIds)
         const volume = muted ? -60 : 0
         const result = await this.edit({
           ops: targetIds.map((itemId) => ({ op: 'updateItem', id: itemId, updates: { volume } })),
@@ -1110,12 +1286,14 @@ export class FreeCutRuntime {
         }
         const timeRanges = kind === 'visual' ? visualTimeRanges(args.timeRanges) : undefined
         if (timeRanges && mediaIds.length !== 1) {
-          throw new TypeError('timeRanges can only be used when analyzing one video')
+          throw new TypeError(
+            'timeRanges 只支持单个视频。批量视觉分析请省略 timeRanges；如需按时间段分析，请一次只传一个 mediaId。',
+          )
         }
         if (timeRanges) {
           const rangedMedia = this.mediaById.get(mediaIds[0]!)
           if (!rangedMedia?.mimeType.startsWith('video/')) {
-            throw new TypeError('timeRanges can only be used with a video')
+            throw new TypeError('timeRanges 只支持视频素材，不能用于图片或音频。')
           }
         }
         if (kind === 'visual' && !timeRanges) {

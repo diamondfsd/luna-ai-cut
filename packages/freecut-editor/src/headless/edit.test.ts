@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test'
 import type { Project, ProjectTimeline } from '@freecut/types/project'
 import type { MediaMetadata } from '@freecut/types/storage'
+import type { TimelineItem } from '@freecut/types/timeline'
 import { editProject, type EditOp } from './edit'
 
 /**
@@ -302,6 +303,49 @@ describe('editProject', () => {
     // The audio companion got its own bottom track.
     const audioTrack = result.project.timeline!.tracks.find((t) => t.id === audio.trackId)!
     expect(audioTrack.kind).toBe('audio')
+  })
+
+  it('keeps a linked audio companion aligned when an audio track already contains music', async () => {
+    const result = await editProject({
+      project: baseProject({
+        tracks: [
+          ...baseProject().timeline!.tracks,
+          {
+            id: 'music-track',
+            name: 'Music',
+            kind: 'audio',
+            height: 64,
+            locked: false,
+            visible: true,
+            muted: false,
+            solo: false,
+            order: 1,
+          },
+        ],
+        items: [{
+          id: 'music-1',
+          type: 'audio',
+          trackId: 'music-track',
+          from: 0,
+          durationInFrames: 900,
+          label: 'music',
+          mediaId: 'music-media',
+          src: '',
+          volume: 0,
+        } as TimelineItem],
+      }),
+      ops: [{ op: 'addClip', mediaId: 'm-vid', from: 0, durationInFrames: 60 } as EditOp],
+      media: [{ mediaId: 'm-vid', metadata: videoMedia }],
+    })
+
+    const video = result.project.timeline!.items.find((item) => item.type === 'video')!
+    const audio = result.project.timeline!.items.find(
+      (item) => item.type === 'audio' && item.linkedGroupId === video.linkedGroupId,
+    )!
+
+    expect(video.from).toBe(0)
+    expect(audio).toMatchObject({ from: 0, durationInFrames: 60 })
+    expect(audio.trackId).not.toBe('music-track')
   })
 
   it('addClip image defaults to a 150-frame still', async () => {

@@ -138,7 +138,7 @@ speech_editing:
 - 先保存镜头顺序和关联关系，再用 `luna.timeline.split()`、`luna.timeline.trim()`、`luna.timeline.move()` 和 `luna.timeline.remove()` 执行内容取舍。
 - 所有时间参数是当前时间轴绝对秒数；源素材转录时间只有在映射到当前片段后才能用于切点。
 - 使用真实的视频片段 ID。每次 split 后，旧片段 ID 可能失效，必须读取返回的 `leftId`、`rightId` 或重新 `inspectContext()`。
-- 带伴侣音频的视频片段优先保持关联一起剪。若确实要单独删除伴侣音频，先用 `luna.timeline.unlink({ itemIds })`，再确认准确音频 ID 后 `remove()`；不要直接删除视频导致口播音频错位。
+- 带伴侣音频的视频片段优先保持关联一起剪。若确实要单独删除伴侣音频，使用 `luna.timeline.removeAudio({ itemIds })`；它会自动解除关联并保留视频。不要删除视频来代替删除原声。
 - 同一组剪辑尽量批量完成，但每组写入后都要重新读取时间线，确认没有黑隙、重叠、源素材越界、意外静音或音画脱离。
 - 默认硬切。口播 A-roll 的连续跳剪不靠装饰性转场掩盖；有明确的空间或 B-roll 衔接理由时才使用 `crossfade`。
 

@@ -36,6 +36,7 @@ import { createClassicTrack, getTrackKind } from '@freecut/features/timeline/uti
 import { seedMediaLibrary } from './seed-media'
 import {
   addItem,
+  addLinkedAudioCompanion,
   updateItem,
   moveItem,
   removeItems,
@@ -626,23 +627,14 @@ function applyOp(op: EditOp): unknown {
           ...sf,
         }
         addItem(video)
+        const placedVideo = useItemsStore.getState().itemById[video.id]
+        if (!placedVideo || placedVideo.type !== 'video') {
+          throw new Error(`addClip: video ${video.id} was not added`)
+        }
         created.push({ id: video.id, type: 'video' })
         // Linked audio companion (as the app creates on import) so audio renders.
         if (media.audioCodec) {
-          const audio: AudioItem = {
-            id: newId(),
-            type: 'audio',
-            trackId: getOrCreateTrack('audio'),
-            from,
-            durationInFrames,
-            label: `${label} audio`,
-            mediaId,
-            src: '',
-            volume: 0,
-            linkedGroupId,
-            ...sf,
-          }
-          addItem(audio)
+          const audio = addLinkedAudioCompanion(placedVideo)
           created.push({ id: audio.id, type: 'audio' })
         }
       } else {

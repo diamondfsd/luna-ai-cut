@@ -47,6 +47,8 @@ export const LUNA_SDK_API = Object.freeze({
     split: 'timeline.split',
     move: 'timeline.move',
     remove: 'timeline.remove',
+    removeAudio: 'timeline.remove_audio',
+    fitAudioToVisual: 'timeline.fit_audio_to_visual',
     unlink: 'timeline.unlink',
     mute: 'timeline.mute',
     setProperties: 'timeline.set_properties',

@@ -26,7 +26,8 @@ description: 处理对白优先、J/L-cut、环境声、配音、音乐和音效
 ## 时间轴执行
 
 - 通过 `addTrack()` 创建独立音频轨道，再用 `addMedia()`、`move()`、`trim()` 和 `setAudio()` 放置或调整媒体。
-- 只删除伴侣音频时，先 `unlink({ itemIds: [audioId] })`，再 `remove()`；删除前重新确认准确的音频 ID。
+- 只删除伴侣音频或背景音乐时，使用 `removeAudio({ itemIds: [audioId] })`；它会自动解除关联并保留视频。删除前重新确认准确的音频 ID。
+- 背景音乐加入画面后，使用 `fitAudioToVisual({ itemIds: [musicId] })` 收掉超过最后画面结束点的尾部；它不会处理视频原声伴侣。
 - 每组声音操作后调用 `luna.timeline.inspectContext()`，确认轨道、片段范围、关联关系和音量。
 
 ## 完成复核
