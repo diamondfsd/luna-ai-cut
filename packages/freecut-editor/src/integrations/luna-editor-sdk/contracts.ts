@@ -203,6 +203,7 @@ export interface FreeCutPreviewPort {
 
 export type FreeCutCapabilityName =
   | 'project.inspect'
+  | 'project.update'
   | 'project.edit'
   | 'timeline.inspect'
   | 'timeline.add_track'

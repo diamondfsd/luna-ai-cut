@@ -11,6 +11,7 @@
 ## 项目和素材
 
 - `luna.project.inspect()`：读取 `data.projectId`、`data.project`、当前时间线和计数。
+- `luna.project.update({ canvas: { width, height, fps?, backgroundColor? } })`：更新当前项目画布；需要改变成片比例时，先 inspect 再使用明确的偶数像素尺寸（例如 4:3 的 `1440×1080`），随后重新检查项目画布和预览尺寸。
 - `luna.media.list({ limit? })`：列出当前项目素材，结果在 `data.items` 和 `data.total`。
 - `luna.media.read({ mediaIds, transcriptOffset?, transcriptLimit? })`：读取素材元数据和已保存的画面/字幕分析证据，结果通常在 `data.items`。如果 `data.externalFile` 存在，说明结果已外置，脚本中不能再访问 `data.items`；优先按单个 `mediaId` 分批读取，或使用 Harness 的 `read` 工具查看外置文件。长转录按页读取：使用 `transcript.nextOffset` 继续，片段带有源素材时间和可用的词级时间。
 - `luna.media.analyze({ mediaIds, kind: 'transcript' })`：提交音频转录任务，立即返回 `data.taskId`。长视频必须先完成这一步。
@@ -49,6 +50,11 @@ RemotionClip 是时间线中的特殊片段：项目目录内的 `src/Root.tsx` 
 - `luna.render.remotionGetTask({ taskId })`：轮询预览或渲染任务，只有 `status === 'completed'` 才算完成；检查返回的 `clipId`、`sourceRevision` 和 `sourceHash` 是否仍与当前 clip 一致。
 - `luna.render.remotionAddToTimeline({ taskId, startSeconds?, durationSeconds?, trackId? })`：将已完成的 Remotion 渲染产物登记为项目视频素材，并加入当前时间线；只能传入 `remotionRender` 返回的已完成任务。
 
+替换现有画面时，`remotionAddToTimeline` 只会追加片段，不会自动替换旧片段。必须先用 `project.inspect()` 和
+`timeline.inspectContext()` 读取旧视频的真实 `itemId` 和起点；加入新渲染片段后，用 `timeline.remove({ itemIds: [旧视频 itemId] })`
+删除旧视频，再用 `timeline.move({ itemId: 新视频 itemId, toSeconds: 旧视频起点, trackId })` 移到原位置。最后重新检查视频片段数量、起点、
+结束时间和项目总时长，确认没有因为追加导致画面重复或时长翻倍。旁白、背景音乐、字幕及其他轨道不得随旧视频一起删除。
+
 Remotion 任务结果不会向模型暴露宿主绝对路径。不要自行构造路径，也不要把源码复制到项目外；渲染期间源码发生变化时，旧任务结果不能替代新版本。
 
 字幕、标题和其他画面叠加先创建独立视频轨道，并确认其 `order` 小于要覆盖的视频轨道；需要调整已有轨道时使用 `moveTrack`，不要只修改返回数组中的位置。TTS、背景音乐和音效先创建独立音频轨道；原始视频产生的伴侣音频保留在原音频轨道。
@@ -81,7 +87,7 @@ await luna.timeline.moveTrack({
 - `luna.timeline.setProperties({ itemId, label?, text?, volume?, speed?, fadeIn?, fadeOut? })`：修改通用片段参数。
 - `luna.timeline.setTransform({ itemId, x?, y?, width?, height?, rotation?, opacity?, flipHorizontal?, flipVertical?, cornerRadius? })`：修改画面变换。
 - `luna.timeline.setAudio({ itemId, volume?, muted?, fadeIn?, fadeOut?, pitchSemitones? })`：修改音频参数；`volume` 是 dB，范围为 `-60` 到 `12`，`0` 不是静音，不能和 `muted` 同时传。
-- `luna.timeline.addText({ text, startSeconds, durationSeconds, trackId?, style? })`：创建文字片段，应放在独立视频轨道。
+- `luna.timeline.addText({ text, startSeconds, durationSeconds, trackId?, style?, x?, y?, width?, height?, rotation?, opacity?, flipHorizontal?, flipVertical?, cornerRadius? })`：创建文字片段，应放在独立视频轨道；位置字段可在创建时直接写入，不需要再调用 `setTransform()`。`x/y` 是文字框中心的归一化坐标，范围为 `0~1`，原点在画布左上角（`x: 0.5, y: 0.5` 为居中）；`width/height` 也是相对画布宽高的归一化尺寸。
 - `luna.timeline.addKeyframe({ itemId, property, atSeconds, value, easing? })`：添加关键帧；当前 `value` 必须是数字。
 - `luna.timeline.addTransition({ fromClipId, toClipId, type: 'crossfade', durationSeconds, presentation?, direction?, properties? })`：添加转场。
 

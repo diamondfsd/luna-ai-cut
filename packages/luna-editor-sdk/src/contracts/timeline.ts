@@ -173,6 +173,19 @@ export interface AddTextRequest extends MutationRequest {
   readonly duration: Timecode
   readonly text: string
   readonly style?: JsonObject
+  /** Normalized horizontal center position of the text box, from 0 (left) to 1 (right). */
+  readonly x?: number
+  /** Normalized vertical center position of the text box, from 0 (top) to 1 (bottom). */
+  readonly y?: number
+  /** Normalized text box width as a fraction of the canvas width. */
+  readonly width?: number
+  /** Normalized text box height as a fraction of the canvas height. */
+  readonly height?: number
+  readonly rotation?: number
+  readonly opacity?: number
+  readonly flipHorizontal?: boolean
+  readonly flipVertical?: boolean
+  readonly cornerRadius?: number
 }
 
 export interface EffectInstance {

@@ -75,6 +75,7 @@ export default async function main(luna) {
 ### 能力分区
 
 - `project.inspect()`：读取当前项目、画布、轨道、片段和计数。
+- `project.update({ canvas: { width, height, fps?, backgroundColor? } })`：更新当前项目画布元数据；改变画布比例后要再次检查项目、主视觉和字幕布局。
 - `media.list()`、`media.read({ mediaIds })`、`media.searchTranscript({ query, mediaIds? })`：读取素材和已有证据。
 - `media.analyze({ mediaIds, kind })`：提交 `transcript` 或 `visual` 分析任务；视觉分析最多可批量提交 12 个短视频或图片，但批量调用时不要传 `timeRanges`。带 `timeRanges` 的视觉分析一次只能传一个视频；用 `media.getAnalysisTask({ taskId })` 查询状态。
 - `memory.read()`、`memory.search()`、`memory.update()`、`memory.remove()`：维护跨项目的用户剪辑偏好。记忆返回在 `data.entries`，更新和删除使用返回的准确 ID。

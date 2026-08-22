@@ -38,6 +38,7 @@ export const LUNA_SDK_API = Object.freeze({
   }),
   project: Object.freeze({
     inspect: 'project.inspect',
+    update: 'project.update',
   }),
   timeline: Object.freeze({
     inspectContext: 'timeline.inspect_context',

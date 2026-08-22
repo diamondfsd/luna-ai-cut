@@ -6,7 +6,7 @@ assert.equal('source' in SCRIPT_API, false)
 assert.deepEqual(Object.keys(SCRIPT_API.memory), ['read', 'search', 'update', 'remove'])
 assert.deepEqual(Object.keys(SCRIPT_API.media), ['list', 'read', 'analyze', 'getAnalysisTask', 'searchTranscript'])
 assert.deepEqual(Object.keys(SCRIPT_API.audio), ['startSpeech', 'startMusic', 'getTask'])
-assert.deepEqual(Object.keys(SCRIPT_API.project), ['inspect'])
+assert.deepEqual(Object.keys(SCRIPT_API.project), ['inspect', 'update'])
 assert.deepEqual(Object.keys(SCRIPT_API.timeline), [
   'inspectContext',
   'addTrack',

@@ -303,6 +303,9 @@ function buildTextItem(op: EditOp): TextItem {
     ...(op.verticalAlign === 'top' || op.verticalAlign === 'middle' || op.verticalAlign === 'bottom'
       ? { verticalAlign: op.verticalAlign }
       : {}),
+    ...(op.transform && typeof op.transform === 'object'
+      ? { transform: op.transform as TransformProperties }
+      : {}),
   }
 }
 

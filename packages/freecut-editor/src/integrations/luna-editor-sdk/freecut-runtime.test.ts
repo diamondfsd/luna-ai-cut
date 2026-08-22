@@ -215,6 +215,19 @@ describe('FreeCutRuntime SDK adapter', () => {
     expect(result.media?.[0]).not.toHaveProperty('opfsPath')
   })
 
+  it('updates the current project canvas through the structured project capability', async () => {
+    const runtime = new FreeCutRuntime({ project: project() })
+
+    const result = await runtime.executeSdkCapability('project.update', {
+      projectId: 'project-1',
+      canvas: { width: 1440, height: 1080, fps: 30 },
+    }) as { project: Project; affectedIds: string[] }
+
+    expect(result.affectedIds).toEqual(['project-1'])
+    expect(result.project.metadata).toMatchObject({ width: 1440, height: 1080, fps: 30 })
+    expect(runtime.getProject().metadata).toMatchObject({ width: 1440, height: 1080, fps: 30 })
+  })
+
   it('supports structured media list filters, pagination, and a safe metadata shape', async () => {
     const runtime = new FreeCutRuntime({ project: project(), media: [analyzedMedia, audioMedia, imageMedia] })
 
@@ -563,15 +576,20 @@ describe('FreeCutRuntime SDK adapter', () => {
       kind: 'video',
     })
 
-    const textResult = await runtime.executeSdkCapability('timeline.add_text', {
+    const textResult = await runtime.executeSdkCapability('timeline.text.add', {
       text: 'on the new video track',
-      startSeconds: 0,
-      durationSeconds: 1,
+      start: { seconds: 0 },
+      duration: { seconds: 1 },
       trackId: videoTrackId,
+      x: 0.5,
+      y: 0.75,
+      width: 0.75,
+      height: 0.1,
     }) as { project: Project }
     expect(textResult.project.timeline!.items.find((item) => item.type === 'text')).toMatchObject({
       trackId: videoTrackId,
       text: 'on the new video track',
+      transform: { x: 0, y: 270, width: 1440, height: 108 },
     })
 
     const audioResult = await provider.execute('timeline.add_track', { type: 'audio' }) as {

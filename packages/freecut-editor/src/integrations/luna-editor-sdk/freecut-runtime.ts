@@ -385,6 +385,59 @@ function secondsValue(value: unknown, field: string, fallback?: number): number 
   return value
 }
 
+const DIRECT_TRANSFORM_FIELDS = [
+  'x',
+  'y',
+  'width',
+  'height',
+  'rotation',
+  'opacity',
+  'flipHorizontal',
+  'flipVertical',
+  'cornerRadius',
+] as const
+
+function directTransformFromArgs(
+  args: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const transform = Object.fromEntries(
+    DIRECT_TRANSFORM_FIELDS
+      .filter((field) => args[field] !== undefined)
+      .map((field) => [field, args[field]]),
+  )
+  return Object.keys(transform).length > 0 ? transform : undefined
+}
+
+function normalizedTextPositionValue(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new TypeError(`${field} must be a finite number between 0 and 1`)
+  }
+  return value
+}
+
+function normalizedTextTransformFromArgs(
+  args: Record<string, unknown>,
+  canvas: { width: number; height: number },
+): Record<string, unknown> | undefined {
+  const transform = directTransformFromArgs(args)
+  if (!transform) return undefined
+
+  const normalized = { ...transform }
+  if (normalized.x !== undefined) {
+    normalized.x = (normalizedTextPositionValue(normalized.x, 'x') - 0.5) * canvas.width
+  }
+  if (normalized.y !== undefined) {
+    normalized.y = (normalizedTextPositionValue(normalized.y, 'y') - 0.5) * canvas.height
+  }
+  if (normalized.width !== undefined) {
+    normalized.width = normalizedTextPositionValue(normalized.width, 'width') * canvas.width
+  }
+  if (normalized.height !== undefined) {
+    normalized.height = normalizedTextPositionValue(normalized.height, 'height') * canvas.height
+  }
+  return normalized
+}
+
 function visualTimeRanges(
   value: unknown,
 ): Array<{ startSeconds: number; endSeconds: number }> | undefined {
@@ -487,6 +540,7 @@ function coreOperationForCapability(
   name: string,
   args: Record<string, unknown>,
   fps: number,
+  canvas: { width: number; height: number },
 ): Record<string, unknown> {
   switch (name) {
     case 'timeline.add_track':
@@ -610,7 +664,8 @@ function coreOperationForCapability(
         value: args.value,
         ...(typeof args.easing === 'string' ? { easing: args.easing } : {}),
       }
-    case 'timeline.text.add':
+    case 'timeline.text.add': {
+      const transform = normalizedTextTransformFromArgs(args, canvas)
       return {
         op: 'addText',
         ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
@@ -618,7 +673,9 @@ function coreOperationForCapability(
         durationInFrames: asFrames(args.duration, fps, 'duration'),
         text: asStringValue(args.text, 'text'),
         ...asRecord(args.style ?? {}, 'style'),
+        ...(transform ? { transform } : {}),
       }
+    }
     case 'timeline.transitions.add': {
       return {
         op: 'addTransition',
@@ -916,6 +973,33 @@ export class FreeCutRuntime {
     switch (name) {
       case 'project.inspect':
         return this.inspectProject(args as StructuredProjectInspectQuery)
+      case 'project.update': {
+        assertProjectContext(args.projectId, this.project.id)
+        const canvas = args.canvas === undefined ? {} : asRecord(args.canvas, 'canvas')
+        const width = canvas.width === undefined
+          ? this.project.metadata.width
+          : assertPositiveInteger(canvas.width, 'canvas.width')
+        const height = canvas.height === undefined
+          ? this.project.metadata.height
+          : assertPositiveInteger(canvas.height, 'canvas.height')
+        const fps = canvas.fps === undefined
+          ? this.project.metadata.fps
+          : assertPositiveInteger(canvas.fps, 'canvas.fps')
+        const backgroundColor = canvas.backgroundColor === undefined
+          ? this.project.metadata.backgroundColor
+          : asStringValue(canvas.backgroundColor, 'canvas.backgroundColor')
+        this.project = {
+          ...this.project,
+          metadata: {
+            width,
+            height,
+            fps,
+            ...(backgroundColor ? { backgroundColor } : {}),
+          },
+          updatedAt: Date.now(),
+        }
+        return { project: this.project, affectedIds: [this.project.id], createdIds: [], removedIds: [], warnings: [] }
+      }
       case 'timeline.inspect':
         return this.inspectTimeline({
           ...(typeof args.trackId === 'string' ? { trackId: args.trackId } : {}),
@@ -1170,21 +1254,7 @@ export class FreeCutRuntime {
       }
       case 'timeline.set_transform': {
         const itemId = asStringValue(args.itemId, 'itemId')
-        const transform = Object.fromEntries(
-          [
-            'x',
-            'y',
-            'width',
-            'height',
-            'rotation',
-            'opacity',
-            'flipHorizontal',
-            'flipVertical',
-            'cornerRadius',
-          ]
-            .filter((field) => args[field] !== undefined)
-            .map((field) => [field, args[field]]),
-        )
+        const transform = directTransformFromArgs(args) ?? {}
         return this.edit({ ops: [{ op: 'setTransform', id: itemId, transform }] })
       }
       case 'timeline.set_audio': {
@@ -1234,6 +1304,7 @@ export class FreeCutRuntime {
                 text: args.text,
               },
               this.project.metadata.fps,
+              this.project.metadata,
             ),
           ],
         })
@@ -1248,6 +1319,7 @@ export class FreeCutRuntime {
                 at: args.atSeconds,
               },
               this.project.metadata.fps,
+              this.project.metadata,
             ),
           ],
         })
@@ -1264,6 +1336,7 @@ export class FreeCutRuntime {
                 duration: args.durationSeconds ?? 0.5,
               },
               this.project.metadata.fps,
+              this.project.metadata,
             ),
           ],
         })
@@ -1405,7 +1478,9 @@ export class FreeCutRuntime {
       }
       default:
         return this.edit({
-          ops: [coreOperationForCapability(name, args, this.project.metadata.fps)],
+          ops: [
+            coreOperationForCapability(name, args, this.project.metadata.fps, this.project.metadata),
+          ],
         })
     }
   }

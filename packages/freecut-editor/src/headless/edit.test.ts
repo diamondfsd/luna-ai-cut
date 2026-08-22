@@ -77,6 +77,23 @@ describe('editProject', () => {
     })
   })
 
+  it('addText persists the supplied transform on the new text item', async () => {
+    const result = await editProject({
+      project: baseProject(),
+      ops: [{
+        op: 'addText',
+        text: 'lower third',
+        from: 10,
+        transform: { x: 0, y: 360, width: 1600, height: 120, opacity: 0.9 },
+      } as EditOp],
+    })
+
+    expect(result.project.timeline!.items[0]).toMatchObject({
+      type: 'text',
+      transform: { x: 0, y: 360, width: 1600, height: 120, opacity: 0.9 },
+    })
+  })
+
   it('a project with zero tracks gets a default track during hydration (addText still lands)', async () => {
     const result = await editProject({
       project: baseProject({ tracks: [] }),

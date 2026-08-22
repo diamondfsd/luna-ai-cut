@@ -570,6 +570,28 @@ export const LoadedEditor = memo(function LoadedEditor({
           const result = await runtime.executeSdkCapability(request.name, request.args)
 
           if (
+            request.name === 'project.update' &&
+            result &&
+            typeof result === 'object' &&
+            'project' in result &&
+            result.project &&
+            typeof result.project === 'object'
+          ) {
+            const updatedProject = result.project as {
+              metadata?: { width?: number; height?: number; fps?: number; backgroundColor?: string }
+            }
+            const metadata = updatedProject.metadata
+            if (metadata) {
+              await useProjectStore.getState().updateProject(projectId, {
+                ...(metadata.width !== undefined ? { width: metadata.width } : {}),
+                ...(metadata.height !== undefined ? { height: metadata.height } : {}),
+                ...(metadata.fps !== undefined ? { fps: metadata.fps } : {}),
+                ...(metadata.backgroundColor !== undefined ? { backgroundColor: metadata.backgroundColor } : {}),
+              })
+            }
+          }
+
+          if (
             result &&
             typeof result === 'object' &&
             'project' in result &&

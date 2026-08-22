@@ -16,6 +16,7 @@ import type {
 
 export const FREECUT_CAPABILITIES: readonly FreeCutCapabilityDescriptor[] = [
   { name: 'project.inspect', access: 'read', description: 'Inspect the current FreeCut project' },
+  { name: 'project.update', access: 'write', description: 'Update the current project canvas metadata' },
   { name: 'project.edit', access: 'write', description: 'Apply a batch of FreeCut edit operations' },
   { name: 'timeline.inspect', access: 'read', description: 'Query tracks, items, transitions and keyframes' },
   { name: 'timeline.add_track', access: 'write', description: 'Create a video or audio timeline track' },
@@ -83,6 +84,8 @@ export class FreeCutCapabilityProvider {
     switch (name) {
       case 'project.inspect':
         return this.runtime.inspectProject(value as ProjectInspectQuery)
+      case 'project.update':
+        return this.runtime.executeSdkCapability(name, value)
       case 'project.edit':
         return this.runtime.edit(readOps(value))
       case 'timeline.inspect':
