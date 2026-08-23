@@ -114,3 +114,8 @@ export function appIconPath(appRoot: string): string {
   if (app.isPackaged) return path.join(process.resourcesPath, iconName)
   return path.join(appRoot, 'build', iconName)
 }
+
+export function appTrayIconPath(appRoot: string): string {
+  if (app.isPackaged) return path.join(process.resourcesPath, 'icon.png')
+  return path.join(appRoot, 'build', 'icon.png')
+}

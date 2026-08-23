@@ -28,7 +28,8 @@ import {
 } from '../src/shared/lrcInitGuardRecovery'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
-import { activateMainWindow, appIconPath, createMainWindow, getMainWindowCloseBehavior, setMainWindowCloseBehavior } from './windowService'
+import { activateMainWindow, appIconPath, appTrayIconPath, createMainWindow, getMainWindowCloseBehavior, setMainWindowCloseBehavior } from './windowService'
+import { createAppTray, destroyAppTray } from './trayService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
@@ -281,6 +282,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  destroyAppTray()
   resetRenderCompatibilityBlock()
   abortAllExports()
   stopSegmentationModelPrefetch()
@@ -560,6 +562,11 @@ app.whenReady().then(async () => {
     userData: app.getPath('userData').replace(process.env.USERPROFILE || process.env.HOME || '', '~'),
   })
   createAppMenu()
+  createAppTray({
+    iconPath: appTrayIconPath(process.env.APP_ROOT),
+    getMainWindow: () => win,
+    createMainWindow: createWindow,
+  })
   registerIpc()
   scheduleUpdateCheck()
   const settings = await getSettings()
