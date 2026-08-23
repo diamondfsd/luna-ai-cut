@@ -95,7 +95,7 @@
           <button id="camera-connect" class="primary">连接相机</button>
           <button id="camera-disconnect" class="danger">断开</button>
         </div>
-        <div id="camera-info" class="camera-info">直连时使用 Luna 的 192.168.42.1:6666；手机中转时填写手机在 USB 网络上的 IP。</div>
+        <div id="camera-info" class="camera-info">手机中转使用 ADB：先执行 adb forward tcp:26666 tcp:26666，再连接 127.0.0.1:26666。</div>
       </div>
 
       <div class="panel">
@@ -160,7 +160,7 @@
     const $ = (id) => document.getElementById(id)
     const logLines = []
     let cameraMode = 'direct'
-    const cameraHosts = { direct: '192.168.42.1', 'phone-relay': '' }
+    const cameraHosts = { direct: '192.168.42.1', 'phone-relay': '127.0.0.1' }
 
     function setText(id, value) { $(id).textContent = value }
     function degrees(value) { return typeof value === 'number' ? `${(value * 180 / Math.PI).toFixed(1)}°` : '--' }
@@ -187,7 +187,7 @@
       if (motion.lastError) setText('motion-info', motion.lastError)
       setText('camera-info', cameraOn
         ? `${camera.transport === 'phone-relay' ? '手机中转' : '直连'} ${camera.host}:${camera.port} · Luna TCP 控制已就绪`
-        : cameraMode === 'phone-relay' ? 'PC 生成完整 Luna 指令，手机只透明转发到相机 192.168.42.1:6666。'
+        : cameraMode === 'phone-relay' ? 'PC 生成完整 Luna 指令；ADB 将 127.0.0.1:26666 转到手机，再透明转发到相机 192.168.42.1:6666。'
           : '直连时使用 Luna 的 192.168.42.1:6666。')
       $('follow-toggle').checked = Boolean(follow.enabled)
     }

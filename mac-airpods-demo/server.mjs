@@ -14,6 +14,7 @@ const PORT = Number(process.env.LUNA_DEMO_PORT || 8787)
 const MOTION_BRIDGE_PORT = Number(process.env.LUNA_MOTION_BRIDGE_PORT || 8788)
 const DEFAULT_HOST = '192.168.42.1'
 const DEFAULT_CAMERA_PORT = 6666
+const DEFAULT_PHONE_RELAY_HOST = '127.0.0.1'
 const PHONE_RELAY_PORT = 26666
 const MOTION_APP = join(ROOT, '.runtime/HeadphoneMotion.app')
 const INDEX_FILE = join(ROOT, 'index.html')
@@ -412,7 +413,9 @@ function stopMotion() {
 async function connectCamera(host = DEFAULT_HOST, port = DEFAULT_CAMERA_PORT, transport = 'direct') {
   await disconnectCamera()
   const normalizedTransport = transport === 'phone-relay' ? 'phone-relay' : 'direct'
-  const normalizedHost = typeof host === 'string' ? host.trim() : ''
+  const normalizedHost = typeof host === 'string' && host.trim()
+    ? host.trim()
+    : normalizedTransport === 'phone-relay' ? DEFAULT_PHONE_RELAY_HOST : DEFAULT_HOST
   const normalizedPort = normalizedTransport === 'phone-relay' ? PHONE_RELAY_PORT : Number(port)
   if (!normalizedHost || !Number.isInteger(normalizedPort) || normalizedPort < 1 || normalizedPort > 65_535) throw new Error('目标地址或端口无效')
   state.camera = { connected: false, connecting: true, transport: normalizedTransport, host: normalizedHost, port: normalizedPort, info: null }
