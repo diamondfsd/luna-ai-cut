@@ -16,6 +16,7 @@ const DEFAULT_HOST = '192.168.42.1'
 const DEFAULT_CAMERA_PORT = 6666
 const DEFAULT_PHONE_RELAY_HOST = '127.0.0.1'
 const PHONE_RELAY_PORT = 26666
+const DEFAULT_TRANSPORT = 'phone-relay'
 const DEFAULT_GIMBAL_SPEED = 40
 const MOTION_SMOOTHING_TAU_SECONDS = 0.18
 const FOLLOW_ENTER_DEAD_ZONE = 0.15
@@ -51,9 +52,9 @@ const state = {
   camera: {
     connected: false,
     connecting: false,
-    transport: 'direct',
-    host: DEFAULT_HOST,
-    port: DEFAULT_CAMERA_PORT,
+    transport: DEFAULT_TRANSPORT,
+    host: DEFAULT_PHONE_RELAY_HOST,
+    port: PHONE_RELAY_PORT,
     info: null,
   },
   follow: {
@@ -476,7 +477,7 @@ function stopMotion() {
   publishState()
 }
 
-async function connectCamera(host = DEFAULT_HOST, port = DEFAULT_CAMERA_PORT, transport = 'direct') {
+async function connectCamera(host = DEFAULT_PHONE_RELAY_HOST, port = PHONE_RELAY_PORT, transport = DEFAULT_TRANSPORT) {
   await disconnectCamera()
   const normalizedTransport = transport === 'phone-relay' ? 'phone-relay' : 'direct'
   const normalizedHost = typeof host === 'string' && host.trim()
@@ -488,6 +489,7 @@ async function connectCamera(host = DEFAULT_HOST, port = DEFAULT_CAMERA_PORT, tr
   publishState()
   const session = new Insta360TcpSession(normalizedHost, normalizedPort)
   try {
+    log(`正在建立 Luna 控制握手（${normalizedTransport === 'phone-relay' ? '手机中转' : 'Mac 直连'}），不会启动视频流`)
     await session.open()
     cameraSession = session
     state.camera = { connected: true, connecting: false, transport: normalizedTransport, host: normalizedHost, port: normalizedPort, info: session.info || null }
@@ -495,7 +497,7 @@ async function connectCamera(host = DEFAULT_HOST, port = DEFAULT_CAMERA_PORT, tr
       if (cameraSession === session && session.isOpen) void session.refresh().catch((error) => log(`相机保活失败：${error.message}`, 'warn'))
     }, 3_000)
     ensurePulseTimer()
-    log(`已连接 Luna 相机${normalizedTransport === 'phone-relay' ? '（手机中转）' : ''} ${normalizedHost}:${normalizedPort}`)
+    log(`Luna 控制握手已就绪${normalizedTransport === 'phone-relay' ? '（手机中转）' : ''} ${normalizedHost}:${normalizedPort}，未启动视频流`)
     publishState()
   } catch (error) {
     session.close()

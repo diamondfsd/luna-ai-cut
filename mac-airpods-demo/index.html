@@ -74,7 +74,7 @@
       <div>
         <div class="eyebrow">Luna / Motion Lab</div>
         <h1>AirPods 云台控制可行性演示</h1>
-        <p class="subtle">Mac 直接读取头部运动，再通过 Luna Wi-Fi 控制云台</p>
+        <p class="subtle">Mac 读取 AirPods 头部运动；手机保持 Luna Wi-Fi，Mac 只建立控制握手</p>
       </div>
       <div class="status-row">
         <span class="status-chip"><i id="motion-dot" class="dot"></i><span id="motion-status">运动未启动</span></span>
@@ -86,18 +86,18 @@
       <div class="panel">
         <h2>相机连接</h2>
         <div class="segmented" role="group" aria-label="相机连接方式">
-          <button id="camera-mode-direct" class="active" type="button">直连相机 Wi-Fi</button>
-          <button id="camera-mode-relay" type="button">手机 TCP 中转</button>
+          <button id="camera-mode-direct" type="button">直连相机 Wi-Fi</button>
+          <button id="camera-mode-relay" class="active" type="button">手机 TCP 中转</button>
         </div>
         <div class="form-row">
-          <label>目标地址<input id="camera-host" type="text" value="192.168.42.1" autocomplete="off"></label>
-          <label style="max-width: 130px">端口<input id="camera-port" type="number" value="6666" min="1" max="65535"></label>
+          <label>目标地址<input id="camera-host" type="text" value="127.0.0.1" autocomplete="off"></label>
+          <label style="max-width: 130px">端口<input id="camera-port" type="number" value="26666" min="1" max="65535" readonly title="手机中转端口固定为 26666"></label>
         </div>
         <div class="actions">
           <button id="camera-connect" class="primary">连接相机</button>
           <button id="camera-disconnect" class="danger">断开</button>
         </div>
-        <div id="camera-info" class="camera-info">手机中转使用 ADB：先执行 adb forward tcp:26666 tcp:26666，再连接 127.0.0.1:26666。</div>
+        <div id="camera-info" class="camera-info">手机已连接 Luna Wi-Fi 后，先执行 adb forward tcp:26666 tcp:26666；PC 连接这里只发送控制握手，不启动视频流。</div>
       </div>
 
       <div class="panel">
@@ -155,14 +155,14 @@
         <div id="log" class="log" aria-live="polite"></div>
       </div>
     </section>
-    <p class="footer-note">头部跟随默认关闭。先用模拟运动确认页面，再连接 AirPods；真实相机移动前请先用手动按钮确认方向。</p>
+    <p class="footer-note">默认走手机 TCP 中转：手机无需再次点击连接相机，PC 会在建立 TCP 后直接发送 Luna 控制握手。头部跟随默认关闭，真实移动前请先用手动按钮确认方向。</p>
   </main>
 
   <script>
     const state = { motion: {}, camera: {}, follow: {} }
     const $ = (id) => document.getElementById(id)
     const logLines = []
-    let cameraMode = 'direct'
+    let cameraMode = 'phone-relay'
     let gimbalSpeed = 40
     const cameraHosts = { direct: '192.168.42.1', 'phone-relay': '127.0.0.1' }
 
