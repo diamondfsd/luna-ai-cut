@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Luna Motion Lab</title>
+  <style>
+    :root { color-scheme: dark; --bg: #0b0d10; --panel: #15191f; --panel-2: #1b2129; --border: #2a323d; --text: #edf2f7; --muted: #91a0af; --blue: #56a8ff; --green: #55d49a; --orange: #ffb454; --red: #ff7777; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 980px; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+    button, input { font: inherit; }
+    button { border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2); color: var(--text); cursor: pointer; padding: 8px 12px; transition: border-color .15s, background .15s; }
+    button:hover { border-color: var(--blue); background: #202a35; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    .shell { max-width: 1240px; margin: 0 auto; padding: 30px 34px 40px; }
+    header { align-items: center; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; margin-bottom: 22px; padding-bottom: 20px; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 25px; letter-spacing: .01em; }
+    h2 { font-size: 15px; margin-bottom: 16px; }
+    .eyebrow { color: var(--blue); font-size: 11px; font-weight: 700; letter-spacing: .12em; margin-bottom: 5px; text-transform: uppercase; }
+    .subtle { color: var(--muted); }
+    .status-row { align-items: center; display: flex; gap: 10px; }
+    .status-chip { align-items: center; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); display: inline-flex; gap: 7px; padding: 6px 10px; }
+    .dot { background: #66717d; border-radius: 50%; height: 7px; width: 7px; }
+    .dot.on { background: var(--green); box-shadow: 0 0 0 3px #55d49a1f; }
+    .dot.warn { background: var(--orange); }
+    .grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 18px; }
+    .wide { grid-column: 1 / -1; }
+    .form-row { align-items: end; display: flex; gap: 10px; }
+    label { color: var(--muted); display: flex; flex: 1; flex-direction: column; font-size: 12px; gap: 6px; }
+    input[type="text"], input[type="number"] { background: #0e1216; border: 1px solid var(--border); border-radius: 6px; color: var(--text); min-height: 36px; padding: 7px 9px; width: 100%; }
+    input:focus { border-color: var(--blue); outline: 2px solid #56a8ff30; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .primary { background: #1d5e9d; border-color: #3e8ad2; }
+    .primary:hover { background: #2878c1; }
+    .danger { color: #ffaaaa; }
+    .section-meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .motion-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); }
+    .metric { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; padding: 13px; }
+    .metric-name { color: var(--muted); font-size: 12px; }
+    .metric-value { font-size: 28px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+    .metric-unit { color: var(--muted); font-size: 11px; }
+    .rate-row { color: var(--muted); display: flex; font-size: 12px; gap: 15px; margin-top: 14px; }
+    .rate-row strong { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 500; }
+    .follow-row { align-items: center; border-top: 1px solid var(--border); display: flex; justify-content: space-between; margin-top: 16px; padding-top: 14px; }
+    .switch-label { align-items: center; color: var(--text); cursor: pointer; display: flex; flex-direction: row; font-size: 14px; gap: 9px; }
+    .switch-label input { accent-color: var(--blue); height: 16px; width: 16px; }
+    .gimbal { align-items: center; display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); margin: 8px auto 0; max-width: 255px; }
+    .gimbal button { aspect-ratio: 1.25; font-size: 23px; padding: 0; }
+    .gimbal .center { color: var(--blue); font-size: 14px; }
+    .camera-info { color: var(--muted); font-size: 12px; margin-top: 12px; min-height: 18px; }
+    .log { background: #0a0d10; border: 1px solid var(--border); border-radius: 6px; color: #aeb9c4; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; height: 160px; overflow: auto; padding: 10px; white-space: pre-wrap; }
+    .log .warn { color: var(--orange); }
+    .log .error { color: var(--red); }
+    .footer-note { color: var(--muted); font-size: 12px; margin-top: 18px; }
+    @media (max-width: 1050px) { body { min-width: 0; } .shell { padding: 20px; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <div class="eyebrow">Luna / Motion Lab</div>
+        <h1>AirPods 云台控制可行性演示</h1>
+        <p class="subtle">Mac 直接读取头部运动，再通过 Luna Wi-Fi 控制云台</p>
+      </div>
+      <div class="status-row">
+        <span class="status-chip"><i id="motion-dot" class="dot"></i><span id="motion-status">运动未启动</span></span>
+        <span class="status-chip"><i id="camera-dot" class="dot"></i><span id="camera-status">相机未连接</span></span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>相机连接</h2>
+        <div class="form-row">
+          <label>地址<input id="camera-host" type="text" value="192.168.42.1" autocomplete="off"></label>
+          <label style="max-width: 130px">端口<input id="camera-port" type="number" value="6666" min="1" max="65535"></label>
+        </div>
+        <div class="actions">
+          <button id="camera-connect" class="primary">连接相机</button>
+          <button id="camera-disconnect" class="danger">断开</button>
+        </div>
+        <div id="camera-info" class="camera-info">控制端口用于验证 Wi-Fi 协议和云台命令。</div>
+      </div>
+
+      <div class="panel">
+        <h2>AirPods 运动源</h2>
+        <div class="actions" style="margin-top: 0">
+          <button id="airpods-start" class="primary">启动 AirPods</button>
+          <button id="mock-start">模拟运动</button>
+          <button id="motion-stop" class="danger">停止</button>
+        </div>
+        <p id="motion-info" class="section-meta">macOS 14+，首次启动需要允许运动权限；连接后转动头部即可看到样本。</p>
+        <div class="follow-row">
+          <label class="switch-label"><input id="follow-toggle" type="checkbox">头部跟随云台</label>
+          <span id="follow-status" class="subtle">已关闭</span>
+        </div>
+      </div>
+
+      <div class="panel wide">
+        <h2>实时姿态</h2>
+        <div class="motion-grid">
+          <div class="metric"><div class="metric-name">Roll / 横滚</div><div id="roll" class="metric-value">--</div><span class="metric-unit">deg</span></div>
+          <div class="metric"><div class="metric-name">Pitch / 俯仰</div><div id="pitch" class="metric-value">--</div><span class="metric-unit">deg</span></div>
+          <div class="metric"><div class="metric-name">Yaw / 航向</div><div id="yaw" class="metric-value">--</div><span class="metric-unit">deg</span></div>
+        </div>
+        <div class="rate-row">
+          <span>rotation x <strong id="rate-x">--</strong></span>
+          <span>rotation y <strong id="rate-y">--</strong></span>
+          <span>rotation z <strong id="rate-z">--</strong></span>
+          <span>source <strong id="motion-source">--</strong></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>手动云台</h2>
+        <div class="gimbal">
+          <span></span><button data-direction="up" aria-label="向上">↑</button><span></span>
+          <button data-direction="left" aria-label="向左">←</button><button class="center" id="gimbal-center" aria-label="回中">回中</button><button data-direction="right" aria-label="向右">→</button>
+          <span></span><button data-direction="down" aria-label="向下">↓</button><span></span>
+        </div>
+        <div class="form-row" style="margin-top: 16px">
+          <label>幅度<input id="gimbal-amplitude" type="number" value="40" min="1" max="200"></label>
+          <label>持续<input id="gimbal-duration" type="number" value="350" min="100" max="5000"></label>
+        </div>
+        <div class="actions"><button id="gimbal-stop" class="danger">停止云台</button></div>
+      </div>
+
+      <div class="panel">
+        <h2>事件</h2>
+        <div id="log" class="log" aria-live="polite"></div>
+      </div>
+    </section>
+    <p class="footer-note">头部跟随默认关闭。先用模拟运动确认页面，再连接 AirPods；真实相机移动前请先用手动按钮确认方向。</p>
+  </main>
+
+  <script>
+    const state = { motion: {}, camera: {}, follow: {} }
+    const $ = (id) => document.getElementById(id)
+    const logLines = []
+
+    function setText(id, value) { $(id).textContent = value }
+    function degrees(value) { return typeof value === 'number' ? `${(value * 180 / Math.PI).toFixed(1)}°` : '--' }
+    function rate(value) { return typeof value === 'number' ? value.toFixed(3) : '--' }
+
+    function render(next) {
+      Object.assign(state, next)
+      const motion = state.motion || {}
+      const camera = state.camera || {}
+      const follow = state.follow || {}
+      const motionOn = Boolean(motion.running && motion.connected)
+      const cameraOn = Boolean(camera.connected)
+      $('motion-dot').className = `dot ${motionOn ? 'on' : motion.running ? 'warn' : ''}`
+      $('camera-dot').className = `dot ${cameraOn ? 'on' : camera.connecting ? 'warn' : ''}`
+      setText('motion-status', motionOn ? `${motion.source === 'mock' ? '模拟运动' : 'AirPods 已连接'}` : motion.running ? '正在检测 AirPods' : '运动未启动')
+      setText('camera-status', cameraOn ? '相机已连接' : camera.connecting ? '连接中' : '相机未连接')
+      setText('follow-status', follow.enabled ? '已开启' : '已关闭')
+      setText('motion-source', motion.source || '--')
+      if (motion.last) updateMotion(motion.last)
+      if (motion.lastError) setText('motion-info', motion.lastError)
+      setText('camera-info', cameraOn ? `${camera.host}:${camera.port} · Wi-Fi 控制已就绪` : '控制端口用于验证 Wi-Fi 协议和云台命令。')
+      $('follow-toggle').checked = Boolean(follow.enabled)
+    }
+
+    function updateMotion(motion) {
+      setText('roll', degrees(motion.roll))
+      setText('pitch', degrees(motion.pitch))
+      setText('yaw', degrees(motion.yaw))
+      setText('rate-x', rate(motion.x))
+      setText('rate-y', rate(motion.y))
+      setText('rate-z', rate(motion.z))
+      setText('motion-source', motion.source || '--')
+    }
+
+    function addLog(entry) {
+      logLines.unshift(`[${new Date(entry.at).toLocaleTimeString()}] ${entry.message}`)
+      logLines.splice(32)
+      $('log').innerHTML = logLines.map((line) => `<div>${line.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</div>`).join('')
+    }
+
+    async function post(path, body = {}) {
+      const response = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const payload = await response.json()
+      if (!response.ok || !payload.ok) throw new Error(payload.error || '请求失败')
+      if (payload.state) render(payload.state)
+      return payload
+    }
+
+    function action(button, task) {
+      button.disabled = true
+      Promise.resolve().then(task).catch((error) => addLog({ at: Date.now(), message: error.message })).finally(() => { button.disabled = false })
+    }
+
+    $('camera-connect').onclick = () => action($('camera-connect'), () => post('/api/camera/connect', { host: $('camera-host').value.trim(), port: Number($('camera-port').value) }))
+    $('camera-disconnect').onclick = () => action($('camera-disconnect'), () => post('/api/camera/disconnect'))
+    $('airpods-start').onclick = () => action($('airpods-start'), () => post('/api/motion/start'))
+    $('mock-start').onclick = () => action($('mock-start'), () => post('/api/motion/mock', { enabled: true }))
+    $('motion-stop').onclick = () => action($('motion-stop'), () => post('/api/motion/stop'))
+    $('gimbal-stop').onclick = () => action($('gimbal-stop'), () => post('/api/gimbal/stop'))
+    $('gimbal-center').onclick = () => action($('gimbal-center'), () => post('/api/gimbal/center'))
+    $('follow-toggle').onchange = () => action($('follow-toggle'), () => post('/api/follow', { enabled: $('follow-toggle').checked }))
+
+    document.querySelectorAll('[data-direction]').forEach((button) => {
+      button.addEventListener('click', () => action(button, () => post('/api/gimbal/move', {
+        direction: button.dataset.direction,
+        amplitude: Number($('gimbal-amplitude').value),
+        durationMs: Number($('gimbal-duration').value),
+      })))
+    })
+
+    const events = new EventSource('/events')
+    events.addEventListener('state', (event) => render(JSON.parse(event.data)))
+    events.addEventListener('motion', (event) => {
+      const motion = JSON.parse(event.data)
+      state.motion.last = motion
+      updateMotion(motion)
+    })
+    events.addEventListener('motion-status', (event) => {
+      const status = JSON.parse(event.data)
+      if (status.error) setText('motion-info', status.error)
+    })
+    events.addEventListener('log', (event) => addLog(JSON.parse(event.data)))
+    events.onerror = () => setText('motion-info', '与本地服务的实时连接已断开')
+
+    fetch('/api/state').then((response) => response.json()).then((payload) => render(payload.state)).catch((error) => addLog({ at: Date.now(), message: error.message }))
+  </script>
+</body>
+</html>

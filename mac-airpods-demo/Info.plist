@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.luna.aicut.mac-airpods-demo</string>
+	<key>CFBundleExecutable</key>
+	<string>headphone-motion</string>
+	<key>CFBundleName</key>
+	<string>Luna AirPods Motion Demo</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSMotionUsageDescription</key>
+	<string>用于读取 AirPods 头部运动数据并测试 Luna 云台控制。</string>
+</dict>
+</plist>
