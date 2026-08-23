@@ -36,6 +36,10 @@
     .primary:hover { background: #2878c1; }
     .danger { color: #ffaaaa; }
     .section-meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .heading-row { align-items: center; display: flex; justify-content: space-between; margin-bottom: 16px; }
+    .heading-row h2 { margin-bottom: 0; }
+    .heading-actions { align-items: center; display: flex; gap: 9px; }
+    .zero-status { color: var(--muted); font-size: 12px; }
     .motion-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); }
     .metric { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; padding: 13px; }
     .metric-name { color: var(--muted); font-size: 12px; }
@@ -100,7 +104,13 @@
       </div>
 
       <div class="panel wide">
-        <h2>实时姿态</h2>
+        <div class="heading-row">
+          <h2>实时姿态</h2>
+          <div class="heading-actions">
+            <span id="zero-status" class="zero-status">零点未设置</span>
+            <button id="motion-reset">重置零点</button>
+          </div>
+        </div>
         <div class="motion-grid">
           <div class="metric"><div class="metric-name">Roll / 横滚</div><div id="roll" class="metric-value">--</div><span class="metric-unit">deg</span></div>
           <div class="metric"><div class="metric-name">Pitch / 俯仰</div><div id="pitch" class="metric-value">--</div><span class="metric-unit">deg</span></div>
@@ -158,16 +168,32 @@
       setText('camera-status', cameraOn ? '相机已连接' : camera.connecting ? '连接中' : '相机未连接')
       setText('follow-status', follow.enabled ? '已开启' : '已关闭')
       setText('motion-source', motion.source || '--')
+      setText('zero-status', motion.zero ? `零点 ${new Date(motion.zero.at).toLocaleTimeString()}` : '零点未设置')
+      $('motion-reset').disabled = !motion.last
       if (motion.last) updateMotion(motion.last)
       if (motion.lastError) setText('motion-info', motion.lastError)
       setText('camera-info', cameraOn ? `${camera.host}:${camera.port} · Wi-Fi 控制已就绪` : '控制端口用于验证 Wi-Fi 协议和云台命令。')
       $('follow-toggle').checked = Boolean(follow.enabled)
     }
 
+    function relativeAngle(value, zero) {
+      if (typeof value !== 'number') return null
+      if (typeof zero !== 'number') return value
+      return normalizeAngle(value - zero)
+    }
+
+    function normalizeAngle(value) {
+      let normalized = value
+      while (normalized > Math.PI) normalized -= Math.PI * 2
+      while (normalized < -Math.PI) normalized += Math.PI * 2
+      return normalized
+    }
+
     function updateMotion(motion) {
-      setText('roll', degrees(motion.roll))
-      setText('pitch', degrees(motion.pitch))
-      setText('yaw', degrees(motion.yaw))
+      const zero = state.motion.zero
+      setText('roll', degrees(relativeAngle(motion.roll, zero?.roll)))
+      setText('pitch', degrees(relativeAngle(motion.pitch, zero?.pitch)))
+      setText('yaw', degrees(relativeAngle(motion.yaw, zero?.yaw)))
       setText('rate-x', rate(motion.x))
       setText('rate-y', rate(motion.y))
       setText('rate-z', rate(motion.z))
@@ -198,6 +224,7 @@
     $('airpods-start').onclick = () => action($('airpods-start'), () => post('/api/motion/start'))
     $('mock-start').onclick = () => action($('mock-start'), () => post('/api/motion/mock', { enabled: true }))
     $('motion-stop').onclick = () => action($('motion-stop'), () => post('/api/motion/stop'))
+    $('motion-reset').onclick = () => action($('motion-reset'), () => post('/api/motion/reset'))
     $('gimbal-stop').onclick = () => action($('gimbal-stop'), () => post('/api/gimbal/stop'))
     $('gimbal-center').onclick = () => action($('gimbal-center'), () => post('/api/gimbal/center'))
     $('follow-toggle').onchange = () => action($('follow-toggle'), () => post('/api/follow', { enabled: $('follow-toggle').checked }))

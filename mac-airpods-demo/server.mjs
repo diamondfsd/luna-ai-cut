@@ -37,6 +37,7 @@ const state = {
     connected: false,
     available: false,
     last: null,
+    zero: null,
   },
   camera: {
     connected: false,
@@ -218,6 +219,27 @@ function normalizeAngle(angle) {
   return result
 }
 
+function resetMotionZero() {
+  const current = state.motion.last
+  if (!current || typeof current.roll !== 'number' || typeof current.pitch !== 'number' || typeof current.yaw !== 'number') {
+    throw new Error('还没有收到姿态数据，暂时不能重置零点')
+  }
+  state.motion.zero = {
+    roll: current.roll,
+    pitch: current.pitch,
+    yaw: current.yaw,
+    at: Date.now(),
+  }
+  if (state.follow.enabled) {
+    state.follow.baseline = { yaw: current.yaw, pitch: current.pitch }
+    const hadDesired = Boolean(desiredGimbal)
+    stopDesired()
+    if (hadDesired) void sendNeutral()
+  }
+  log('已将当前 AirPods 姿态重置为零点')
+  publishState()
+}
+
 function updateFollow(motion) {
   if (!state.follow.enabled || typeof motion.yaw !== 'number' || typeof motion.pitch !== 'number') return
   if (!state.follow.baseline) {
@@ -302,6 +324,7 @@ function startAirpods() {
   state.motion.running = true
   state.motion.source = 'airpods'
   state.motion.last = null
+  state.motion.zero = null
   state.motion.lastError = null
   child.once('error', (error) => log(`AirPods helper 启动失败：${error.message}`, 'error'))
   child.once('close', (code) => {
@@ -339,6 +362,7 @@ function startMock() {
   state.motion.connected = true
   state.motion.available = true
   state.motion.last = null
+  state.motion.zero = null
   mockTimer = setInterval(() => {
     const seconds = (Date.now() - mockStartedAt) / 1_000
     processMotion({
@@ -378,6 +402,7 @@ function stopMotion() {
   state.motion.connected = false
   state.motion.available = false
   state.motion.last = null
+  state.motion.zero = null
   stopDesired()
   publishState()
 }
@@ -432,6 +457,10 @@ async function handleApi(path, method, body, response) {
   }
   if (path === '/api/motion/stop') {
     stopMotion()
+    return sendJson(response, 200, { ok: true, state: publicState() })
+  }
+  if (path === '/api/motion/reset') {
+    resetMotionZero()
     return sendJson(response, 200, { ok: true, state: publicState() })
   }
   if (path === '/api/follow') {
