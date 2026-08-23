@@ -10,6 +10,7 @@ export interface LunaLiveElectronApp {
   app: ElectronApplication
   page: Page
   runtimeErrors: string[]
+  artifactDir: string
 }
 
 async function waitForMainWindow(app: ElectronApplication): Promise<Page> {
@@ -56,7 +57,7 @@ export const test = base.extend<{ lunaLiveApp: LunaLiveElectronApp }>({
         if (message.type() === 'error') runtimeErrors.push(message.text())
       })
       await page.waitForLoadState('domcontentloaded')
-      await use({ app, page, runtimeErrors })
+      await use({ app, page, runtimeErrors, artifactDir })
     } finally {
       const failed = testInfo.status !== testInfo.expectedStatus
       const page = app?.windows().find((candidate) => !candidate.isClosed())

@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 
 import { registerFreecutHarnessProvider } from './deepseekHarnessCapabilities'
+import type { IpcContext } from './ipcContext'
 import { createFreecutProvider } from './luna-editor-sdk/freecut-provider'
 import { LunaEditorSdkError, type LunaEditorSdkContext, type LunaEditorSdkRequest } from './luna-editor-sdk/contracts'
 import { executeRemotionCapability } from './remotionRenderService'
@@ -32,6 +33,7 @@ function nonNegativeSeconds(value: unknown, field: string, fallback: number): nu
 const pending = new Map<string, PendingRequest>()
 let registered = false
 const RENDERER_REQUEST_TIMEOUT_MS = 60_000
+let getEditorWindow: () => BrowserWindow | null = () => null
 
 function requestRenderer(
   request: LunaEditorSdkRequest,
@@ -41,7 +43,7 @@ function requestRenderer(
   if (signal.aborted) {
     return Promise.reject(new LunaEditorSdkError('ABORTED', 'FreeCut SDK 请求已取消。'))
   }
-  const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed())
+  const window = getEditorWindow()
   if (!window || window.webContents.isDestroyed()) {
     return Promise.reject(new LunaEditorSdkError('WINDOW_UNAVAILABLE', 'FreeCut 编辑器窗口尚未打开。'))
   }
@@ -182,8 +184,9 @@ async function executeRemotionTimelineCapability(
 }
 
 /** Register the renderer-backed FreeCut implementation for Harness requests. */
-export function register(): void {
+export function register(context: IpcContext): void {
   if (registered) return
+  getEditorWindow = () => context.win
   const disposeProvider = registerFreecutHarnessProvider(createFreecutProvider({
     execute: (request, context) => request.name === 'render.remotion.add_to_timeline'
       ? executeRemotionTimelineCapability(request, context)

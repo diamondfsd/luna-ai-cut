@@ -110,6 +110,9 @@ try {
   })
   assert.equal(requests.at(-1).body.name, 'timeline.add_track')
   assert.deepEqual(requests.at(-1).body.args, { type: 'audio' })
+  await legacySdk.browser.open({ url: 'https://github.com/search?q=electron' })
+  assert.equal(requests.at(-1).body.name, 'browser.open')
+  assert.deepEqual(requests.at(-1).body.args, { url: 'https://github.com/search?q=electron' })
   await legacySdk.timeline.effects.add({
     clipId: 'clip-1',
     type: 'gpu-grain',
@@ -145,10 +148,19 @@ try {
     tools: { register: tool => registered.push(tool) },
     systemPrompt: { section: section => { prompts.push(section); return () => {} } },
   }, { ...config, registerBuiltInSkills: false })
-  assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, ['edit.run_script'])
-  assert.deepEqual(registered.map(tool => tool.name), ['edit.run_script'])
+  assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, [
+    'edit.run_script',
+    'browser.open',
+    'browser.read',
+    'browser.click',
+    'browser.type',
+    'browser.press',
+  ])
+  assert.deepEqual(registered.map(tool => tool.name), FREECUT_EXPOSED_TOOL_NAMES)
   assert.equal(prompts.length, 1)
   assert.match(prompts[0].text, /edit\.run_script/)
+  assert.match(prompts[0].text, /browser\.open/)
+  assert.match(prompts[0].text, /browser\.read/)
   assert.match(prompts[0].text, /fromClipId/u)
   assert.match(prompts[0].text, /addTrack/u)
   assert.match(prompts[0].text, /moveTrack/u)
@@ -171,6 +183,10 @@ try {
   assert.match(prompts[0].text, /luna\.audio\.getTask/u)
   assert.match(prompts[0].text, /status === 'completed'/u)
   assert.match(prompts[0].text, /small-sfx/u)
+  const browserTool = registered.find(tool => tool.name === 'browser.open')
+  assert.ok(browserTool)
+  await browserTool.execute({ url: 'https://github.com' }, { signal: new AbortController().signal })
+  assert.equal(requests.at(-1).body.name, 'browser.open')
   assert.equal(typeof dispose, 'function')
   dispose()
 } finally {

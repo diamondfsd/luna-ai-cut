@@ -39,6 +39,13 @@ export const LUNA_SDK_API = Object.freeze({
     remotionRender: 'render.remotion.render',
     remotionAddToTimeline: 'render.remotion.add_to_timeline',
   }),
+  browser: Object.freeze({
+    open: 'browser.open',
+    read: 'browser.read',
+    click: 'browser.click',
+    type: 'browser.type',
+    press: 'browser.press',
+  }),
   project: Object.freeze({
     inspect: 'project.inspect',
     update: 'project.update',
@@ -103,7 +110,7 @@ function normalizeArguments(args) {
 export function createCapabilityTransport(config) {
   const resolved = normalizeLunaConfig(config)
   return Object.freeze({
-    async call(name, args = {}) {
+    async call(name, args = {}, signal) {
       assertCapabilityName(name)
       const requestArgs = normalizeArguments(args)
       const response = await fetch(resolved.endpoint, {
@@ -113,6 +120,7 @@ export function createCapabilityTransport(config) {
           accept: 'application/json',
           'content-type': 'application/json',
         },
+        signal,
         body: JSON.stringify({
           protocol: 'luna.editor',
           apiVersion: 1,
@@ -147,8 +155,8 @@ function createSdkNamespace(methods, bridge, legacyResults) {
   const namespace = {}
   for (const [method, value] of Object.entries(methods)) {
     if (typeof value === 'string') {
-      namespace[method] = async (args) => {
-        const result = await bridge.call(value, args)
+      namespace[method] = async (args, options) => {
+        const result = await bridge.call(value, args, options?.signal)
         return legacyResults ? adaptLegacyResult(value, result) : result
       }
     } else {

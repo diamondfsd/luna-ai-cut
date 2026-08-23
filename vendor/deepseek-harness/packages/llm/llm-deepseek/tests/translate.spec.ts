@@ -16,6 +16,10 @@ async function collect(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[
   return out
 }
 
+function toolCallId(chunk: StreamChunk | undefined): string | undefined {
+  return chunk?.type === 'block-end' && chunk.block.type === 'tool-call' ? chunk.block.id : undefined
+}
+
 /** The live first-chunk signature: role + null content + EMPTY reasoning. */
 const firstChunk = { choices: [{ delta: { role: 'assistant', content: null, reasoning_content: '' } }] }
 
@@ -312,7 +316,7 @@ describe('mapUsage', () => {
 })
 
 describe('translate: defensive tool-call branches', () => {
-  it('handles deltas that never carry id or name (empty-string fallbacks)', async () => {
+  it('assigns a stable id when deltas never carry id or name', async () => {
     const chunks = await collect(translate(feed(
       firstChunk,
       // Hypothetical lenient wire: argument fragments with no id/name at all.
@@ -322,10 +326,54 @@ describe('translate: defensive tool-call branches', () => {
     )))
     expect(chunks).toEqual([
       { type: 'block-start', index: 0, blockType: 'tool-call' },
-      { type: 'tool-call-delta', index: 0, id: '', argumentsDelta: '{}' },
-      { type: 'block-end', index: 0, block: { type: 'tool-call', id: '', name: '', arguments: '{}' } },
+      { type: 'tool-call-delta', index: 0, id: expect.stringMatching(/^dsh-tool-call-/), argumentsDelta: '{}' },
+      { type: 'block-end', index: 0, block: expect.objectContaining({ type: 'tool-call', name: '', arguments: '{}' }) },
       { type: 'finish', reason: { kind: 'tool-calls' } },
     ])
+    const delta = chunks.find(chunk => chunk.type === 'tool-call-delta')
+    const end = chunks.find(chunk => chunk.type === 'block-end')
+    expect(toolCallId(end)).toBe(delta?.type === 'tool-call-delta' ? delta.id : undefined)
+  })
+
+  it('keeps parallel missing-id calls distinct and stable when a later id appears', async () => {
+    const chunks = await collect(translate(feed(
+      firstChunk,
+      {
+        choices: [{ delta: {
+          tool_calls: [
+            { index: 0, function: { arguments: '{"a":1}' } },
+            { index: 1, function: { arguments: '{"b":2}' } },
+          ],
+        } }],
+      },
+      {
+        choices: [{ delta: {
+          tool_calls: [
+            { index: 0, id: 'provider-id-0', function: { arguments: '' } },
+            { index: 1, function: { arguments: '' } },
+          ],
+        } }],
+      },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      DONE,
+    )))
+    const deltas = chunks.filter(chunk => chunk.type === 'tool-call-delta')
+    const ends = chunks.filter(chunk => chunk.type === 'block-end')
+    expect(deltas).toHaveLength(4)
+    expect(deltas[0]?.type === 'tool-call-delta' && deltas[1]?.type === 'tool-call-delta'
+      ? new Set([deltas[0].id, deltas[1].id]).size
+      : 0).toBe(2)
+    expect(deltas[2]?.type === 'tool-call-delta' && deltas[0]?.type === 'tool-call-delta'
+      ? deltas[2].id
+      : undefined).toBe(deltas[0]?.type === 'tool-call-delta' ? deltas[0].id : undefined)
+    expect(deltas[3]?.type === 'tool-call-delta' && deltas[1]?.type === 'tool-call-delta'
+      ? deltas[3].id
+      : undefined).toBe(deltas[1]?.type === 'tool-call-delta' ? deltas[1].id : undefined)
+    expect(ends).toHaveLength(2)
+    expect(ends[0]?.type === 'block-end' ? ends[0].block : undefined).toMatchObject({ type: 'tool-call', name: '', arguments: '{"a":1}' })
+    expect(ends[1]?.type === 'block-end' ? ends[1].block : undefined).toMatchObject({ type: 'tool-call', name: '', arguments: '{"b":2}' })
+    expect(toolCallId(ends[0])).toBe(deltas[0]?.type === 'tool-call-delta' ? deltas[0].id : undefined)
+    expect(toolCallId(ends[1])).toBe(deltas[1]?.type === 'tool-call-delta' ? deltas[1].id : undefined)
   })
 
   it('handles tool_call deltas with a function object but no arguments field', async () => {

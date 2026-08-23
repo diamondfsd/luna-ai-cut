@@ -1,19 +1,23 @@
 # DeepSeek Harness 适配层
 
-这个目录只负责把 DeepSeek Harness 的 `edit.run_script` 接到 Luna JS SDK：
+这个目录只负责把 DeepSeek Harness 的 `edit.run_script` 和受限的 `browser.*` 工具接到 Luna JS SDK：
 
 ```text
-Harness -> plugin -> runEditScript -> Luna JS SDK -> capability endpoint -> Electron host
+Harness -> plugin -> Luna JS SDK -> capability endpoint -> Electron host
 ```
 
-它不实现时间线、媒体、渲染或 AI 业务逻辑，也不根据用户或模型文案推断意图。具体能力由宿主通过结构化 capability name 和参数提供。
+它不实现时间线、媒体、渲染、网页解析或 AI 业务逻辑，也不根据用户或模型文案推断意图。具体能力由宿主通过结构化 capability name 和参数提供。
+
+## 浏览器研究工具
+
+当模型需要查找公开资料时，可以按 `browser.open` -> `browser.read` -> `browser.click` / `browser.type` / `browser.press` 操作一个按会话隔离的隐藏 Electron 浏览器。宿主只返回有长度上限的正文和可操作元素摘要，并用短期 `ref` 标识元素；不允许模型传入任意 JavaScript、CSS 选择器或本地文件路径。浏览器只允许 HTTP/HTTPS，并拒绝本机、局域网、解析到私有地址的网页以及密码输入。
 
 ## 文件职责
 
 - `sdk-client.mjs`：通用 Luna JS SDK 的 transport 和命名空间方法生成器。
 - `config.mjs`：统一解析 plugin 配置及 SDK/旧版环境变量。
 - `script-runtime.mjs`：在独立 Node 进程执行 ESM 脚本，并向脚本注入 Luna SDK。
-- `plugin.mjs`：Harness plugin，注册唯一编辑入口 `edit.run_script`，并加载 Markdown 技能资源。
+- `plugin.mjs`：Harness plugin，注册编辑脚本和浏览器工具，并加载 Markdown 技能资源。
 
 ## Markdown 技能资源
 

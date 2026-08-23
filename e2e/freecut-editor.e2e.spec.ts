@@ -38,41 +38,26 @@ test('从 Luna 导航创建项目并打开内嵌 FreeCut 剪辑器', async ({ lu
   expect(runtimeErrors).toEqual([])
 })
 
-test('剪辑助手占用右侧布局并可调整宽度', async ({ lunaApp }) => {
+test('AI 助手占用右侧布局并可关闭', async ({ lunaApp }) => {
   const { page, runtimeErrors } = lunaApp
 
   await page.getByRole('link', { name: '剪辑', exact: true }).click()
   await page.getByRole('link', { name: /^(创建第一个项目|新建项目)$/ }).click()
 
-  const assistantButton = page.getByRole('button', { name: '打开剪辑助手' })
+  const assistantButton = page.getByRole('button', { name: 'AI 助手', exact: true })
   await expect(assistantButton).toBeVisible()
   await assistantButton.click()
 
-  const assistant = page.getByRole('complementary', { name: '剪辑助手' })
+  const assistant = page.getByRole('complementary', { name: 'AI 助手' })
   await expect(assistant).toBeVisible()
-  await expect(page.getByPlaceholder('完成设置后开始对话')).toBeDisabled()
-  await expect(page.getByRole('button', { name: '去设置' })).toBeVisible()
+  await expect(assistant.locator('iframe[title="DeepSeek Harness AI 助手"]')).toBeVisible()
+  await expect(page.locator('.app-layout--assistant-open')).toBeVisible()
 
-  const initialBounds = await assistant.boundingBox()
-  const resizeHandle = page.getByTestId('ai-editing-resize-handle')
-  const handleBounds = await resizeHandle.boundingBox()
-  expect(initialBounds).not.toBeNull()
-  expect(handleBounds).not.toBeNull()
+  const assistantBounds = await assistant.boundingBox()
+  expect(assistantBounds).not.toBeNull()
+  expect(assistantBounds!.width).toBeGreaterThan(300)
 
-  await page.mouse.move(handleBounds!.x + 1, handleBounds!.y + 120)
-  await page.mouse.down()
-  await page.mouse.move(handleBounds!.x - 64, handleBounds!.y + 120)
-  await page.mouse.up()
-
-  const resizedBounds = await assistant.boundingBox()
-  expect(resizedBounds).not.toBeNull()
-  expect(resizedBounds!.width).toBeGreaterThan(initialBounds!.width + 40)
-
-  await page.getByRole('button', { name: '去设置' }).click()
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('heading', { name: '剪辑助手连接' })).toBeVisible()
-  const dialogColor = await dialog.evaluate((element) => getComputedStyle(element).color)
-  expect(dialogColor).not.toBe('rgb(0, 0, 0)')
+  await page.getByRole('button', { name: '关闭 AI 助手', exact: true }).click()
+  await expect(assistant).toBeHidden()
   expect(runtimeErrors).toEqual([])
 })

@@ -12,6 +12,7 @@ import {
   toSdkRequest,
 } from './luna-editor-sdk/provider-registry'
 import type { LunaEditorSdkProvider } from './luna-editor-sdk/contracts'
+import { createDeepSeekBrowserProvider } from './deepseekBrowserService'
 
 export interface DeepSeekHarnessCapabilityProvider {
   namespace: string
@@ -79,6 +80,7 @@ export const deepSeekHarnessCapabilities = new DeepSeekHarnessCapabilityRegistry
 // renderer/runtime adapter replaces this binding when it is ready; until then
 // capability calls fail explicitly instead of silently dispatching nowhere.
 deepSeekHarnessCapabilities.registerProvider(createUnboundFreecutProvider())
+deepSeekHarnessCapabilities.registerProvider(createDeepSeekBrowserProvider())
 
 export function registerFreecutHarnessProvider(provider: LunaEditorSdkProvider): () => void {
   if (provider.id !== FREECUT_PROVIDER_ID) {

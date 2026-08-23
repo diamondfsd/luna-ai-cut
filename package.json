@@ -67,6 +67,7 @@
     "test:remotion": "node scripts/test-remotion-integration.mjs",
     "test:remotion-clip": "pnpm exec tsx scripts/test-remotion-clip-storage.mjs",
     "test:deepseek-harness": "node --experimental-strip-types scripts/test-deepseek-harness-session.mjs && node --experimental-strip-types scripts/test-deepseek-harness-defaults.mjs && node --experimental-strip-types scripts/test-deepseek-harness-result-spill.mjs && node scripts/test-video-shotcraft-integration.mjs && node scripts/test-remotion-integration.mjs && node scripts/test-deepseek-harness-vitest.mjs",
+    "test:deepseek-browser-policy": "node --experimental-strip-types scripts/test-deepseek-browser-policy.mjs && node integrations/deepseek-harness/test-adapter.mjs",
     "test:hot-update": "node scripts/test-hot-update-compatibility.mjs && node scripts/test-hot-update-archive.mjs && node scripts/test-release-notes.mjs",
     "test:landing": "node scripts/test-landing-platform.mjs",
     "test:local-share": "node --experimental-strip-types scripts/test-local-media-share.mjs",

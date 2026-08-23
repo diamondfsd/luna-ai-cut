@@ -8,6 +8,7 @@
  * @module dsh-llm-deepseek/translate
  */
 
+import { randomUUID } from 'node:crypto'
 import { CallId, EMPTY_RESPONSE_CODE, LlmError } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import { DONE } from './sse.ts'
@@ -18,7 +19,7 @@ interface OpenBlock {
   index: number
   kind: 'text' | 'reasoning' | 'tool-call'
   text: string
-  /** tool-call only */
+  /** tool-call only; assigned on the first fragment and never changes. */
   callId?: string
   name?: string
 }
@@ -68,7 +69,7 @@ function closeBlock(block: OpenBlock): ContentBlock {
     case 'reasoning': return { type: 'reasoning', text: block.text }
     case 'tool-call': return {
       type: 'tool-call',
-      id: CallId(block.callId ?? ''),
+      id: CallId(block.callId!),
       name: block.name ?? '',
       arguments: block.text,
     }
@@ -84,6 +85,7 @@ function closeBlock(block: OpenBlock): ContentBlock {
  *   `EMPTY_RESPONSE` error finish instead of a successful empty message.
  */
 export async function* translate(payloads: AsyncIterable<string>): AsyncGenerator<StreamChunk> {
+  const fallbackIdPrefix = `dsh-tool-call-${randomUUID()}`
   let nextIndex = 0
   let textBlock: OpenBlock | undefined
   let reasoningBlock: OpenBlock | undefined
@@ -93,7 +95,12 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
   let pendingUsage: TokenUsage | undefined
 
   function open(kind: OpenBlock['kind']): OpenBlock {
-    const block: OpenBlock = { index: nextIndex++, kind, text: '' }
+    const index = nextIndex++
+    const block: OpenBlock = {
+      index,
+      kind,
+      text: '',
+    }
     order.push(block)
     return block
   }
@@ -156,14 +163,22 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
           toolBlocks.set(call.index, block)
           yield { type: 'block-start', index: block.index, blockType: 'tool-call' }
         }
-        if (call.id !== undefined) block.callId = call.id
+        // Some OpenAI-compatible gateways omit the id on streamed fragments.
+        // The block-local fallback is assigned on the first fragment so every
+        // delta, the assembled message, and the tool result share one stable
+        // session-wide key, even when a provider omits every wire id.
+        if (block.callId === undefined) {
+          block.callId = typeof call.id === 'string' && call.id.length > 0
+            ? call.id
+            : `${fallbackIdPrefix}-${block.index}`
+        }
         if (call.function?.name !== undefined) block.name = call.function.name
         const fragment = call.function?.arguments ?? ''
         block.text += fragment
         yield {
           type: 'tool-call-delta',
           index: block.index,
-          id: CallId(block.callId ?? ''),
+          id: CallId(block.callId!),
           ...block.name !== undefined ? { name: block.name } : {},
           argumentsDelta: fragment,
         }

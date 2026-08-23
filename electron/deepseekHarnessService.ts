@@ -11,6 +11,7 @@ import { app } from 'electron'
 import { withDeepSeekHarnessDefaults } from './deepseekHarnessDefaults'
 import { currentBaseDir } from './settingsService'
 import { deepSeekHarnessCapabilities } from './deepseekHarnessCapabilities'
+import { disposeDeepSeekBrowser } from './deepseekBrowserService'
 import { prepareHarnessSession } from './deepseekHarnessSession'
 import { externalizeLargeResult } from './deepseekHarnessResultSpill'
 import {
@@ -197,6 +198,7 @@ async function structuredResult(
     request.name !== 'media.search_transcript' && request.name !== 'memory.read' &&
     request.name !== 'memory.search' && request.name !== 'audio.get_task' &&
     !request.name.startsWith('preview.') && !request.name.startsWith('capabilities.')
+    && !request.name.startsWith('browser.')
   const responseData = await externalizeLargeResult(request.name, value, sessionRoot)
   return {
     kind: mutation ? 'edit' : 'data',
@@ -443,6 +445,7 @@ async function stopRuntime(): Promise<void> {
   if (current) children.add(current.process)
   if (startingChild) children.add(startingChild)
   await Promise.all([...children].map((child) => terminateChild(child)))
+  await disposeDeepSeekBrowser()
 }
 
 type BoundHarnessContext = DeepSeekHarnessContext & { projectId: string }

@@ -269,6 +269,13 @@ function startAudioTaskRun(task: AudioTask, run: () => Promise<void>): void {
   )
 }
 
+function deferAudioTaskRun(task: AudioTask, run: () => Promise<void>): void {
+  // Return the queued task to the SDK caller before entering the host IPC
+  // bridge. A model can submit audio and immediately poll the task; starting
+  // IPC in the same call stack can hold the editor SDK request queue open.
+  setTimeout(() => startAudioTaskRun(task, run), 0)
+}
+
 async function saveGeneratedAudio(
   projectId: string,
   result: { fileName: string; durationSeconds: number; bytes: Uint8Array },
@@ -316,7 +323,7 @@ export function startAudioTask(input: {
   audioTasks.set(task.id, task)
   const bridge = getEmbeddedHostBridge()
 
-  startAudioTaskRun(task, async () => {
+  deferAudioTaskRun(task, async () => {
     if (input.kind === 'speech') {
       if (!bridge.generateSpeech) throw new Error('当前宿主未接入语音生成服务。')
       updateAudioTask(task, {

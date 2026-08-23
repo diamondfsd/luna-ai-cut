@@ -10,10 +10,18 @@ import {
   registerBuiltInSkills,
 } from './deepseek-harness-built-in-skills.mjs'
 
-assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, ['edit.run_script'])
+assert.deepEqual(FREECUT_EXPOSED_TOOL_NAMES, [
+  'edit.run_script',
+  'browser.open',
+  'browser.read',
+  'browser.click',
+  'browser.type',
+  'browser.press',
+])
 assert.equal(LUNA_SDK_API.render.preflight, 'render.preflight')
 assert.equal(LUNA_SDK_API.render.frame, 'render.frame')
 assert.equal(LUNA_SDK_API.render.layout, 'render.layout')
+assert.equal(LUNA_SDK_API.browser.open, 'browser.open')
 assert.match(SCRIPT_SYSTEM_PROMPT, /data\.projectId and data\.project/u)
 
 const result = {
