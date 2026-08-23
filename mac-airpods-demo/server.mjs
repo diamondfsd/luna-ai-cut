@@ -16,6 +16,11 @@ const DEFAULT_HOST = '192.168.42.1'
 const DEFAULT_CAMERA_PORT = 6666
 const DEFAULT_PHONE_RELAY_HOST = '127.0.0.1'
 const PHONE_RELAY_PORT = 26666
+const DEFAULT_GIMBAL_SPEED = 40
+const MOTION_SMOOTHING_TAU_SECONDS = 0.18
+const FOLLOW_ENTER_DEAD_ZONE = 0.15
+const FOLLOW_EXIT_DEAD_ZONE = 0.08
+const FOLLOW_AXIS_SWITCH_MARGIN = 0.18
 const MOTION_APP = join(ROOT, '.runtime/HeadphoneMotion.app')
 const INDEX_FILE = join(ROOT, 'index.html')
 
@@ -31,6 +36,8 @@ let pulseTimer = null
 let pulseInFlight = false
 let desiredGimbal = null
 let desiredStopTimer = null
+let motionFilter = null
+let followAxis = null
 
 const state = {
   motion: {
@@ -53,6 +60,9 @@ const state = {
     enabled: false,
     baseline: null,
   },
+  gimbal: {
+    speed: DEFAULT_GIMBAL_SPEED,
+  },
 }
 
 function publicState() {
@@ -63,6 +73,7 @@ function publicState() {
       enabled: state.follow.enabled,
       baseline: state.follow.baseline,
     },
+    gimbal: { ...state.gimbal },
     desiredGimbal,
   }
 }
@@ -161,10 +172,11 @@ function directionVector(direction) {
 }
 
 function stopDesired() {
+  const hadDesired = Boolean(desiredGimbal)
   desiredGimbal = null
   if (desiredStopTimer) clearTimeout(desiredStopTimer)
   desiredStopTimer = null
-  publishState()
+  if (hadDesired) publishState()
 }
 
 function setDesired(direction, amplitude, durationMs) {
@@ -222,6 +234,39 @@ function normalizeAngle(angle) {
   return result
 }
 
+function smoothValue(previous, current, alpha) {
+  if (typeof previous !== 'number' || typeof current !== 'number') return current
+  return previous + (current - previous) * alpha
+}
+
+function smoothAngle(previous, current, alpha) {
+  if (typeof previous !== 'number' || typeof current !== 'number') return current
+  return previous + normalizeAngle(current - previous) * alpha
+}
+
+function smoothMotion(message) {
+  const currentAt = typeof message.at === 'number' ? message.at : Date.now()
+  if (!motionFilter || motionFilter.source !== message.source) {
+    motionFilter = { ...message, at: currentAt }
+    return message
+  }
+
+  const elapsedSeconds = Math.max(0.01, Math.min(0.2, (currentAt - motionFilter.at) / 1_000))
+  const alpha = 1 - Math.exp(-elapsedSeconds / MOTION_SMOOTHING_TAU_SECONDS)
+  const filtered = {
+    ...message,
+    roll: smoothAngle(motionFilter.roll, message.roll, alpha),
+    pitch: smoothAngle(motionFilter.pitch, message.pitch, alpha),
+    yaw: smoothAngle(motionFilter.yaw, message.yaw, alpha),
+    x: smoothValue(motionFilter.x, message.x, alpha),
+    y: smoothValue(motionFilter.y, message.y, alpha),
+    z: smoothValue(motionFilter.z, message.z, alpha),
+    at: currentAt,
+  }
+  motionFilter = filtered
+  return filtered
+}
+
 function resetMotionZero() {
   const current = state.motion.last
   if (!current || typeof current.roll !== 'number' || typeof current.pitch !== 'number' || typeof current.yaw !== 'number') {
@@ -235,6 +280,7 @@ function resetMotionZero() {
   }
   if (state.follow.enabled) {
     state.follow.baseline = { yaw: current.yaw, pitch: current.pitch }
+    followAxis = null
     const hadDesired = Boolean(desiredGimbal)
     stopDesired()
     if (hadDesired) void sendNeutral()
@@ -250,31 +296,43 @@ function updateFollow(motion) {
   }
   const yawDelta = normalizeAngle(motion.yaw - state.follow.baseline.yaw)
   const pitchDelta = motion.pitch - state.follow.baseline.pitch
-  const deadZone = 0.12
-  const yawActive = Math.abs(yawDelta) >= deadZone
-  const pitchActive = Math.abs(pitchDelta) >= deadZone
-  if (!yawActive && !pitchActive) {
+  const yawAbs = Math.abs(yawDelta)
+  const pitchAbs = Math.abs(pitchDelta)
+  const maxDelta = Math.max(yawAbs, pitchAbs)
+  const deadZone = followAxis ? FOLLOW_EXIT_DEAD_ZONE : FOLLOW_ENTER_DEAD_ZONE
+  if (maxDelta < deadZone) {
+    followAxis = null
     const hadDesired = Boolean(desiredGimbal)
     stopDesired()
     if (hadDesired) void sendNeutral()
     return
   }
 
-  const useYaw = Math.abs(yawDelta) >= Math.abs(pitchDelta)
-  const delta = useYaw ? yawDelta : pitchDelta
-  const direction = useYaw ? (delta > 0 ? 'right' : 'left') : (delta > 0 ? 'up' : 'down')
-  const amplitude = Math.max(10, Math.min(60, Math.round(Math.abs(delta) * 90)))
+  if (!followAxis) followAxis = yawAbs >= pitchAbs ? 'yaw' : 'pitch'
+  const currentAbs = followAxis === 'yaw' ? yawAbs : pitchAbs
+  const otherAbs = followAxis === 'yaw' ? pitchAbs : yawAbs
+  if (otherAbs > currentAbs + FOLLOW_AXIS_SWITCH_MARGIN) followAxis = followAxis === 'yaw' ? 'pitch' : 'yaw'
+  const delta = followAxis === 'yaw' ? yawDelta : pitchDelta
+  const direction = followAxis === 'yaw' ? (delta > 0 ? 'right' : 'left') : (delta > 0 ? 'up' : 'down')
+  const amplitude = Math.max(1, Math.min(state.gimbal.speed, Math.round(Math.abs(delta) * 90)))
   desiredGimbal = { direction, amplitude, until: Date.now() + 300 }
   publishState()
 }
 
+function normalizeGimbalSpeed(value) {
+  const speed = Number(value)
+  if (!Number.isFinite(speed) || speed < 1 || speed > 100) throw new Error('云台速度必须在 1-100 之间')
+  return Math.round(speed)
+}
+
 function processMotion(message) {
   if (message.type === 'motion') {
-    state.motion.last = message
+    const smoothed = smoothMotion(message)
+    state.motion.last = smoothed
     state.motion.connected = true
     state.motion.available = true
-    broadcast('motion', message)
-    updateFollow(message)
+    broadcast('motion', smoothed)
+    updateFollow(smoothed)
   } else if (message.type === 'status') {
     state.motion.connected = Boolean(message.connected)
     state.motion.available = Boolean(message.available)
@@ -307,6 +365,8 @@ const motionBridgeServer = createNetServer((socket) => {
     if (motionBridgeSocket !== socket) return
     motionBridgeSocket = null
     if (state.motion.source === 'airpods') {
+      motionFilter = null
+      followAxis = null
       state.motion.running = false
       state.motion.source = 'none'
       state.motion.connected = false
@@ -328,6 +388,8 @@ function startAirpods() {
   state.motion.source = 'airpods'
   state.motion.last = null
   state.motion.zero = null
+  motionFilter = null
+  followAxis = null
   state.motion.lastError = null
   child.once('error', (error) => log(`AirPods helper 启动失败：${error.message}`, 'error'))
   child.once('close', (code) => {
@@ -366,6 +428,8 @@ function startMock() {
   state.motion.available = true
   state.motion.last = null
   state.motion.zero = null
+  motionFilter = null
+  followAxis = null
   mockTimer = setInterval(() => {
     const seconds = (Date.now() - mockStartedAt) / 1_000
     processMotion({
@@ -406,6 +470,8 @@ function stopMotion() {
   state.motion.available = false
   state.motion.last = null
   state.motion.zero = null
+  motionFilter = null
+  followAxis = null
   stopDesired()
   publishState()
 }
@@ -472,6 +538,7 @@ async function handleApi(path, method, body, response) {
   }
   if (path === '/api/follow') {
     state.follow.enabled = Boolean(body.enabled)
+    followAxis = null
     state.follow.baseline = state.follow.enabled && state.motion.last
       ? { yaw: state.motion.last.yaw, pitch: state.motion.last.pitch }
       : null
@@ -494,8 +561,14 @@ async function handleApi(path, method, body, response) {
   if (path === '/api/gimbal/move') {
     if (!cameraSession?.isOpen) throw new Error('请先连接相机')
     const durationMs = Math.max(100, Math.min(5_000, Number(body.durationMs) || 300))
-    const amplitude = Math.max(1, Math.min(200, Number(body.amplitude) || 40))
+    const amplitude = Math.max(1, Math.min(200, Number(body.speed) || Number(body.amplitude) || state.gimbal.speed))
     setDesired(body.direction, amplitude, durationMs)
+    return sendJson(response, 200, { ok: true, state: publicState() })
+  }
+  if (path === '/api/gimbal/settings') {
+    state.gimbal.speed = normalizeGimbalSpeed(body.speed)
+    log(`云台速度已调整为 ${state.gimbal.speed}`)
+    publishState()
     return sendJson(response, 200, { ok: true, state: publicState() })
   }
   if (path === '/api/gimbal/stop') {
@@ -507,7 +580,7 @@ async function handleApi(path, method, body, response) {
     if (!cameraSession?.isOpen) throw new Error('请先连接相机')
     stopDesired()
     await cameraSession.sendCommand(226, buildGimbalControl(2), 4_000)
-    log('已发送云台回中')
+    log('已发送云台回正')
     return sendJson(response, 200, { ok: true, state: publicState() })
   }
   return sendError(response, 404, '未找到接口')

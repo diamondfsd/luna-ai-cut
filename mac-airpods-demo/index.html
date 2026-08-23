@@ -58,6 +58,8 @@
     .gimbal { align-items: center; display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); margin: 8px auto 0; max-width: 255px; }
     .gimbal button { aspect-ratio: 1.25; font-size: 23px; padding: 0; }
     .gimbal .center { color: var(--blue); font-size: 14px; }
+    .speed-value { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 8px; }
+    input[type="range"] { accent-color: var(--blue); min-height: 32px; width: 100%; }
     .camera-info { color: var(--muted); font-size: 12px; margin-top: 12px; min-height: 18px; }
     .log { background: #0a0d10; border: 1px solid var(--border); border-radius: 6px; color: #aeb9c4; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; height: 160px; overflow: auto; padding: 10px; white-space: pre-wrap; }
     .log .warn { color: var(--orange); }
@@ -137,14 +139,15 @@
         <h2>手动云台</h2>
         <div class="gimbal">
           <span></span><button data-direction="up" aria-label="向上">↑</button><span></span>
-          <button data-direction="left" aria-label="向左">←</button><button class="center" id="gimbal-center" aria-label="回中">回中</button><button data-direction="right" aria-label="向右">→</button>
+          <button data-direction="left" aria-label="向左">←</button><button class="center" id="gimbal-center" aria-label="回正">回正</button><button data-direction="right" aria-label="向右">→</button>
           <span></span><button data-direction="down" aria-label="向下">↓</button><span></span>
         </div>
         <div class="form-row" style="margin-top: 16px">
-          <label>幅度<input id="gimbal-amplitude" type="number" value="40" min="1" max="200"></label>
+          <label>速度<span><input id="gimbal-speed" type="range" value="40" min="1" max="100" step="1"><span id="gimbal-speed-value" class="speed-value">40</span></span></label>
           <label>持续<input id="gimbal-duration" type="number" value="350" min="100" max="5000"></label>
         </div>
         <div class="actions"><button id="gimbal-stop" class="danger">停止云台</button></div>
+        <p class="section-meta">速度同时作用于手动方向和 AirPods 头部跟随。</p>
       </div>
 
       <div class="panel">
@@ -160,6 +163,7 @@
     const $ = (id) => document.getElementById(id)
     const logLines = []
     let cameraMode = 'direct'
+    let gimbalSpeed = 40
     const cameraHosts = { direct: '192.168.42.1', 'phone-relay': '127.0.0.1' }
 
     function setText(id, value) { $(id).textContent = value }
@@ -171,8 +175,11 @@
       const motion = state.motion || {}
       const camera = state.camera || {}
       const follow = state.follow || {}
+      const gimbal = state.gimbal || {}
       if (camera.connected || camera.connecting) cameraMode = camera.transport === 'phone-relay' ? 'phone-relay' : 'direct'
+      if (typeof gimbal.speed === 'number' && document.activeElement !== $('gimbal-speed')) gimbalSpeed = gimbal.speed
       updateCameraMode()
+      updateGimbalSpeed()
       const motionOn = Boolean(motion.running && motion.connected)
       const cameraOn = Boolean(camera.connected)
       $('motion-dot').className = `dot ${motionOn ? 'on' : motion.running ? 'warn' : ''}`
@@ -199,6 +206,13 @@
       $('camera-port').value = relay ? '26666' : ($('camera-port').value === '26666' ? '6666' : $('camera-port').value)
       $('camera-port').readOnly = relay
       $('camera-port').title = relay ? '手机中转端口固定为 26666' : ''
+    }
+
+    function updateGimbalSpeed() {
+      const value = Math.max(1, Math.min(100, Math.round(Number(gimbalSpeed) || 40)))
+      gimbalSpeed = value
+      $('gimbal-speed').value = String(value)
+      setText('gimbal-speed-value', String(value))
     }
 
     function selectCameraMode(mode) {
@@ -263,12 +277,14 @@
     $('motion-reset').onclick = () => action($('motion-reset'), () => post('/api/motion/reset'))
     $('gimbal-stop').onclick = () => action($('gimbal-stop'), () => post('/api/gimbal/stop'))
     $('gimbal-center').onclick = () => action($('gimbal-center'), () => post('/api/gimbal/center'))
+    $('gimbal-speed').oninput = () => { gimbalSpeed = Number($('gimbal-speed').value); updateGimbalSpeed() }
+    $('gimbal-speed').onchange = () => action($('gimbal-speed'), () => post('/api/gimbal/settings', { speed: gimbalSpeed }))
     $('follow-toggle').onchange = () => action($('follow-toggle'), () => post('/api/follow', { enabled: $('follow-toggle').checked }))
 
     document.querySelectorAll('[data-direction]').forEach((button) => {
       button.addEventListener('click', () => action(button, () => post('/api/gimbal/move', {
         direction: button.dataset.direction,
-        amplitude: Number($('gimbal-amplitude').value),
+        speed: Number($('gimbal-speed').value),
         durationMs: Number($('gimbal-duration').value),
       })))
     })
