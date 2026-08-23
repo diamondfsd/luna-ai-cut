@@ -18,9 +18,10 @@ const DEFAULT_PHONE_RELAY_HOST = '127.0.0.1'
 const PHONE_RELAY_PORT = 26666
 const DEFAULT_TRANSPORT = 'phone-relay'
 const DEFAULT_GIMBAL_SPEED = 40
-const MOTION_SMOOTHING_TAU_SECONDS = 0.18
-const FOLLOW_ENTER_DEAD_ZONE = 0.15
-const FOLLOW_EXIT_DEAD_ZONE = 0.08
+const MOTION_SMOOTHING_TAU_SECONDS = 0.28
+const FOLLOW_ENTER_DEAD_ZONE = 0.20
+const FOLLOW_EXIT_DEAD_ZONE = 0.10
+const FOLLOW_STILL_RATE_THRESHOLD = 0.08
 const FOLLOW_AXIS_SWITCH_MARGIN = 0.18
 const MOTION_APP = join(ROOT, '.runtime/HeadphoneMotion.app')
 const INDEX_FILE = join(ROOT, 'index.html')
@@ -63,6 +64,7 @@ const state = {
   },
   gimbal: {
     speed: DEFAULT_GIMBAL_SPEED,
+    horizontalInverted: false,
   },
 }
 
@@ -172,6 +174,13 @@ function directionVector(direction) {
   }
 }
 
+function mapHorizontalDirection(direction) {
+  if (!state.gimbal.horizontalInverted) return direction
+  if (direction === 'left') return 'right'
+  if (direction === 'right') return 'left'
+  return direction
+}
+
 function stopDesired() {
   const hadDesired = Boolean(desiredGimbal)
   desiredGimbal = null
@@ -181,8 +190,9 @@ function stopDesired() {
 }
 
 function setDesired(direction, amplitude, durationMs) {
-  if (!directionVector(direction)) return
-  desiredGimbal = { direction, amplitude, until: Date.now() + durationMs }
+  const mappedDirection = mapHorizontalDirection(direction)
+  if (!directionVector(mappedDirection)) return
+  desiredGimbal = { direction: mappedDirection, amplitude, until: Date.now() + durationMs }
   if (desiredStopTimer) clearTimeout(desiredStopTimer)
   desiredStopTimer = setTimeout(() => {
     desiredStopTimer = null
@@ -292,6 +302,14 @@ function resetMotionZero() {
 
 function updateFollow(motion) {
   if (!state.follow.enabled || typeof motion.yaw !== 'number' || typeof motion.pitch !== 'number') return
+  const hasRotationRate = [motion.x, motion.y, motion.z].every((value) => typeof value === 'number' && Number.isFinite(value))
+  if (hasRotationRate && Math.hypot(motion.x, motion.y, motion.z) < FOLLOW_STILL_RATE_THRESHOLD) {
+    followAxis = null
+    const hadDesired = Boolean(desiredGimbal)
+    stopDesired()
+    if (hadDesired) void sendNeutral()
+    return
+  }
   if (!state.follow.baseline) {
     state.follow.baseline = { yaw: motion.yaw, pitch: motion.pitch }
   }
@@ -314,7 +332,7 @@ function updateFollow(motion) {
   const otherAbs = followAxis === 'yaw' ? pitchAbs : yawAbs
   if (otherAbs > currentAbs + FOLLOW_AXIS_SWITCH_MARGIN) followAxis = followAxis === 'yaw' ? 'pitch' : 'yaw'
   const delta = followAxis === 'yaw' ? yawDelta : pitchDelta
-  const direction = followAxis === 'yaw' ? (delta > 0 ? 'right' : 'left') : (delta > 0 ? 'up' : 'down')
+  const direction = mapHorizontalDirection(followAxis === 'yaw' ? (delta > 0 ? 'right' : 'left') : (delta > 0 ? 'up' : 'down'))
   const amplitude = Math.max(1, Math.min(state.gimbal.speed, Math.round(Math.abs(delta) * 90)))
   desiredGimbal = { direction, amplitude, until: Date.now() + 300 }
   publishState()
@@ -322,7 +340,7 @@ function updateFollow(motion) {
 
 function normalizeGimbalSpeed(value) {
   const speed = Number(value)
-  if (!Number.isFinite(speed) || speed < 1 || speed > 100) throw new Error('云台速度必须在 1-100 之间')
+  if (!Number.isFinite(speed) || speed < 1 || speed > 200) throw new Error('云台速度必须在 1-200 之间')
   return Math.round(speed)
 }
 
@@ -568,8 +586,17 @@ async function handleApi(path, method, body, response) {
     return sendJson(response, 200, { ok: true, state: publicState() })
   }
   if (path === '/api/gimbal/settings') {
-    state.gimbal.speed = normalizeGimbalSpeed(body.speed)
-    log(`云台速度已调整为 ${state.gimbal.speed}`)
+    const changes = []
+    if (body.speed !== undefined) {
+      state.gimbal.speed = normalizeGimbalSpeed(body.speed)
+      changes.push(`速度 ${state.gimbal.speed}`)
+    }
+    if (body.horizontalInverted !== undefined) {
+      state.gimbal.horizontalInverted = Boolean(body.horizontalInverted)
+      changes.push(`左右方向 ${state.gimbal.horizontalInverted ? '反向' : '正常'}`)
+    }
+    if (changes.length === 0) throw new Error('没有可更新的云台配置')
+    log(`云台配置已更新：${changes.join('，')}`)
     publishState()
     return sendJson(response, 200, { ok: true, state: publicState() })
   }

@@ -143,11 +143,11 @@
           <span></span><button data-direction="down" aria-label="向下">↓</button><span></span>
         </div>
         <div class="form-row" style="margin-top: 16px">
-          <label>速度<span><input id="gimbal-speed" type="range" value="40" min="1" max="100" step="1"><span id="gimbal-speed-value" class="speed-value">40</span></span></label>
-          <label>持续<input id="gimbal-duration" type="number" value="350" min="100" max="5000"></label>
+          <label>速度<span><input id="gimbal-speed" type="range" value="40" min="1" max="200" step="1"><span id="gimbal-speed-value" class="speed-value">40</span></span></label>
+          <label>单次时长<input id="gimbal-duration" type="number" value="350" min="100" max="5000" title="手动方向按钮每次保持发送脉冲的时间，单位毫秒"></label>
         </div>
-        <div class="actions"><button id="gimbal-stop" class="danger">停止云台</button></div>
-        <p class="section-meta">速度同时作用于手动方向和 AirPods 头部跟随。</p>
+        <div class="actions"><button id="gimbal-stop" class="danger">停止云台</button><button id="horizontal-invert" type="button" aria-pressed="false">左右方向：正常</button></div>
+        <p class="section-meta">速度上限 200；单次时长只作用于手动按钮，AirPods 跟随会自动按运动状态发送。</p>
       </div>
 
       <div class="panel">
@@ -164,6 +164,7 @@
     const logLines = []
     let cameraMode = 'phone-relay'
     let gimbalSpeed = 40
+    let horizontalInverted = false
     const cameraHosts = { direct: '192.168.42.1', 'phone-relay': '127.0.0.1' }
 
     function setText(id, value) { $(id).textContent = value }
@@ -178,8 +179,10 @@
       const gimbal = state.gimbal || {}
       if (camera.connected || camera.connecting) cameraMode = camera.transport === 'phone-relay' ? 'phone-relay' : 'direct'
       if (typeof gimbal.speed === 'number' && document.activeElement !== $('gimbal-speed')) gimbalSpeed = gimbal.speed
+      if (typeof gimbal.horizontalInverted === 'boolean') horizontalInverted = gimbal.horizontalInverted
       updateCameraMode()
       updateGimbalSpeed()
+      updateHorizontalDirection()
       const motionOn = Boolean(motion.running && motion.connected)
       const cameraOn = Boolean(camera.connected)
       $('motion-dot').className = `dot ${motionOn ? 'on' : motion.running ? 'warn' : ''}`
@@ -209,10 +212,16 @@
     }
 
     function updateGimbalSpeed() {
-      const value = Math.max(1, Math.min(100, Math.round(Number(gimbalSpeed) || 40)))
+      const value = Math.max(1, Math.min(200, Math.round(Number(gimbalSpeed) || 40)))
       gimbalSpeed = value
       $('gimbal-speed').value = String(value)
       setText('gimbal-speed-value', String(value))
+    }
+
+    function updateHorizontalDirection() {
+      const button = $('horizontal-invert')
+      button.textContent = `左右方向：${horizontalInverted ? '反向' : '正常'}`
+      button.setAttribute('aria-pressed', String(horizontalInverted))
     }
 
     function selectCameraMode(mode) {
@@ -279,6 +288,7 @@
     $('gimbal-center').onclick = () => action($('gimbal-center'), () => post('/api/gimbal/center'))
     $('gimbal-speed').oninput = () => { gimbalSpeed = Number($('gimbal-speed').value); updateGimbalSpeed() }
     $('gimbal-speed').onchange = () => action($('gimbal-speed'), () => post('/api/gimbal/settings', { speed: gimbalSpeed }))
+    $('horizontal-invert').onclick = () => action($('horizontal-invert'), () => post('/api/gimbal/settings', { horizontalInverted: !horizontalInverted }))
     $('follow-toggle').onchange = () => action($('follow-toggle'), () => post('/api/follow', { enabled: $('follow-toggle').checked }))
 
     document.querySelectorAll('[data-direction]').forEach((button) => {
