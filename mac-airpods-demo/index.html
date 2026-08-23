@@ -28,6 +28,11 @@
     .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 18px; }
     .wide { grid-column: 1 / -1; }
     .form-row { align-items: end; display: flex; gap: 10px; }
+    .segmented { display: flex; gap: 0; margin-bottom: 14px; }
+    .segmented button { border-radius: 0; flex: 1; }
+    .segmented button:first-child { border-radius: 7px 0 0 7px; }
+    .segmented button:last-child { border-radius: 0 7px 7px 0; margin-left: -1px; }
+    .segmented button.active { background: #1d5e9d; border-color: #3e8ad2; color: #fff; }
     label { color: var(--muted); display: flex; flex: 1; flex-direction: column; font-size: 12px; gap: 6px; }
     input[type="text"], input[type="number"] { background: #0e1216; border: 1px solid var(--border); border-radius: 6px; color: var(--text); min-height: 36px; padding: 7px 9px; width: 100%; }
     input:focus { border-color: var(--blue); outline: 2px solid #56a8ff30; }
@@ -78,15 +83,19 @@
     <section class="grid">
       <div class="panel">
         <h2>相机连接</h2>
+        <div class="segmented" role="group" aria-label="相机连接方式">
+          <button id="camera-mode-direct" class="active" type="button">直连相机 Wi-Fi</button>
+          <button id="camera-mode-relay" type="button">手机 TCP 中转</button>
+        </div>
         <div class="form-row">
-          <label>地址<input id="camera-host" type="text" value="192.168.42.1" autocomplete="off"></label>
+          <label>目标地址<input id="camera-host" type="text" value="192.168.42.1" autocomplete="off"></label>
           <label style="max-width: 130px">端口<input id="camera-port" type="number" value="6666" min="1" max="65535"></label>
         </div>
         <div class="actions">
           <button id="camera-connect" class="primary">连接相机</button>
           <button id="camera-disconnect" class="danger">断开</button>
         </div>
-        <div id="camera-info" class="camera-info">控制端口用于验证 Wi-Fi 协议和云台命令。</div>
+        <div id="camera-info" class="camera-info">直连时使用 Luna 的 192.168.42.1:6666；手机中转时填写手机在 USB 网络上的 IP。</div>
       </div>
 
       <div class="panel">
@@ -150,6 +159,8 @@
     const state = { motion: {}, camera: {}, follow: {} }
     const $ = (id) => document.getElementById(id)
     const logLines = []
+    let cameraMode = 'direct'
+    const cameraHosts = { direct: '192.168.42.1', 'phone-relay': '' }
 
     function setText(id, value) { $(id).textContent = value }
     function degrees(value) { return typeof value === 'number' ? `${(value * 180 / Math.PI).toFixed(1)}°` : '--' }
@@ -160,20 +171,43 @@
       const motion = state.motion || {}
       const camera = state.camera || {}
       const follow = state.follow || {}
+      if (camera.connected || camera.connecting) cameraMode = camera.transport === 'phone-relay' ? 'phone-relay' : 'direct'
+      updateCameraMode()
       const motionOn = Boolean(motion.running && motion.connected)
       const cameraOn = Boolean(camera.connected)
       $('motion-dot').className = `dot ${motionOn ? 'on' : motion.running ? 'warn' : ''}`
       $('camera-dot').className = `dot ${cameraOn ? 'on' : camera.connecting ? 'warn' : ''}`
       setText('motion-status', motionOn ? `${motion.source === 'mock' ? '模拟运动' : 'AirPods 已连接'}` : motion.running ? '正在检测 AirPods' : '运动未启动')
-      setText('camera-status', cameraOn ? '相机已连接' : camera.connecting ? '连接中' : '相机未连接')
+      setText('camera-status', cameraOn ? (camera.transport === 'phone-relay' ? '手机中转已连接' : '相机已连接') : camera.connecting ? '连接中' : '相机未连接')
       setText('follow-status', follow.enabled ? '已开启' : '已关闭')
       setText('motion-source', motion.source || '--')
       setText('zero-status', motion.zero ? `零点 ${new Date(motion.zero.at).toLocaleTimeString()}` : '零点未设置')
       $('motion-reset').disabled = !motion.last
       if (motion.last) updateMotion(motion.last)
       if (motion.lastError) setText('motion-info', motion.lastError)
-      setText('camera-info', cameraOn ? `${camera.host}:${camera.port} · Wi-Fi 控制已就绪` : '控制端口用于验证 Wi-Fi 协议和云台命令。')
+      setText('camera-info', cameraOn
+        ? `${camera.transport === 'phone-relay' ? '手机中转' : '直连'} ${camera.host}:${camera.port} · Luna TCP 控制已就绪`
+        : cameraMode === 'phone-relay' ? 'PC 生成完整 Luna 指令，手机只透明转发到相机 192.168.42.1:6666。'
+          : '直连时使用 Luna 的 192.168.42.1:6666。')
       $('follow-toggle').checked = Boolean(follow.enabled)
+    }
+
+    function updateCameraMode() {
+      const relay = cameraMode === 'phone-relay'
+      $('camera-mode-direct').classList.toggle('active', !relay)
+      $('camera-mode-relay').classList.toggle('active', relay)
+      $('camera-port').value = relay ? '26666' : ($('camera-port').value === '26666' ? '6666' : $('camera-port').value)
+      $('camera-port').readOnly = relay
+      $('camera-port').title = relay ? '手机中转端口固定为 26666' : ''
+    }
+
+    function selectCameraMode(mode) {
+      cameraHosts[cameraMode] = $('camera-host').value.trim()
+      cameraMode = mode
+      $('camera-host').value = cameraHosts[mode]
+      $('camera-port').value = mode === 'phone-relay' ? '26666' : '6666'
+      updateCameraMode()
+      render(state)
     }
 
     function relativeAngle(value, zero) {
@@ -219,7 +253,9 @@
       Promise.resolve().then(task).catch((error) => addLog({ at: Date.now(), message: error.message })).finally(() => { button.disabled = false })
     }
 
-    $('camera-connect').onclick = () => action($('camera-connect'), () => post('/api/camera/connect', { host: $('camera-host').value.trim(), port: Number($('camera-port').value) }))
+    $('camera-mode-direct').onclick = () => selectCameraMode('direct')
+    $('camera-mode-relay').onclick = () => selectCameraMode('phone-relay')
+    $('camera-connect').onclick = () => action($('camera-connect'), () => post('/api/camera/connect', { transport: cameraMode, host: $('camera-host').value.trim(), port: Number($('camera-port').value) }))
     $('camera-disconnect').onclick = () => action($('camera-disconnect'), () => post('/api/camera/disconnect'))
     $('airpods-start').onclick = () => action($('airpods-start'), () => post('/api/motion/start'))
     $('mock-start').onclick = () => action($('mock-start'), () => post('/api/motion/mock', { enabled: true }))

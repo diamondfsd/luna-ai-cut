@@ -14,6 +14,7 @@ const PORT = Number(process.env.LUNA_DEMO_PORT || 8787)
 const MOTION_BRIDGE_PORT = Number(process.env.LUNA_MOTION_BRIDGE_PORT || 8788)
 const DEFAULT_HOST = '192.168.42.1'
 const DEFAULT_CAMERA_PORT = 6666
+const PHONE_RELAY_PORT = 26666
 const MOTION_APP = join(ROOT, '.runtime/HeadphoneMotion.app')
 const INDEX_FILE = join(ROOT, 'index.html')
 
@@ -42,6 +43,7 @@ const state = {
   camera: {
     connected: false,
     connecting: false,
+    transport: 'direct',
     host: DEFAULT_HOST,
     port: DEFAULT_CAMERA_PORT,
     info: null,
@@ -407,26 +409,28 @@ function stopMotion() {
   publishState()
 }
 
-async function connectCamera(host = DEFAULT_HOST, port = DEFAULT_CAMERA_PORT) {
+async function connectCamera(host = DEFAULT_HOST, port = DEFAULT_CAMERA_PORT, transport = 'direct') {
   await disconnectCamera()
-  const normalizedPort = Number(port)
-  if (!host || !Number.isInteger(normalizedPort) || normalizedPort < 1 || normalizedPort > 65_535) throw new Error('相机地址或端口无效')
-  state.camera = { connected: false, connecting: true, host, port: normalizedPort, info: null }
+  const normalizedTransport = transport === 'phone-relay' ? 'phone-relay' : 'direct'
+  const normalizedHost = typeof host === 'string' ? host.trim() : ''
+  const normalizedPort = normalizedTransport === 'phone-relay' ? PHONE_RELAY_PORT : Number(port)
+  if (!normalizedHost || !Number.isInteger(normalizedPort) || normalizedPort < 1 || normalizedPort > 65_535) throw new Error('目标地址或端口无效')
+  state.camera = { connected: false, connecting: true, transport: normalizedTransport, host: normalizedHost, port: normalizedPort, info: null }
   publishState()
-  const session = new Insta360TcpSession(host, normalizedPort)
+  const session = new Insta360TcpSession(normalizedHost, normalizedPort)
   try {
     await session.open()
     cameraSession = session
-    state.camera = { connected: true, connecting: false, host, port: normalizedPort, info: session.info || null }
+    state.camera = { connected: true, connecting: false, transport: normalizedTransport, host: normalizedHost, port: normalizedPort, info: session.info || null }
     cameraHeartbeat = setInterval(() => {
       if (cameraSession === session && session.isOpen) void session.refresh().catch((error) => log(`相机保活失败：${error.message}`, 'warn'))
     }, 3_000)
     ensurePulseTimer()
-    log(`已连接 Luna 相机 ${host}:${normalizedPort}`)
+    log(`已连接 Luna 相机${normalizedTransport === 'phone-relay' ? '（手机中转）' : ''} ${normalizedHost}:${normalizedPort}`)
     publishState()
   } catch (error) {
     session.close()
-    state.camera = { connected: false, connecting: false, host, port: normalizedPort, info: null }
+    state.camera = { connected: false, connecting: false, transport: normalizedTransport, host: normalizedHost, port: normalizedPort, info: null }
     publishState()
     throw error
   }
@@ -477,7 +481,7 @@ async function handleApi(path, method, body, response) {
     return sendJson(response, 200, { ok: true, state: publicState() })
   }
   if (path === '/api/camera/connect') {
-    await connectCamera(body.host || DEFAULT_HOST, body.port || DEFAULT_CAMERA_PORT)
+    await connectCamera(body.host, body.port, body.transport)
     return sendJson(response, 200, { ok: true, state: publicState() })
   }
   if (path === '/api/camera/disconnect') {
