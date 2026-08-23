@@ -7,14 +7,25 @@ import type { PlayerRef } from '@freecut/features/preview/deps/player-core'
 import { DomTextScrubOverlay } from './dom-text-scrub-overlay'
 
 const seekToMock = vi.fn<(frame: number) => void>()
+let mockedPlayerFrame = 0
 
 vi.mock('@freecut/features/preview/deps/player-core', async () => {
   const React = await import('react')
   const HeadlessPlayer = React.forwardRef<
-    { seekTo: (frame: number) => void },
+    { seekTo: (frame: number) => void; getCurrentFrame: () => number },
     React.PropsWithChildren
   >(({ children }, ref) => {
-    React.useImperativeHandle(ref, () => ({ seekTo: seekToMock }), [])
+    React.useImperativeHandle(
+      ref,
+      () => ({
+        seekTo: (frame: number) => {
+          mockedPlayerFrame = frame
+          seekToMock(frame)
+        },
+        getCurrentFrame: () => mockedPlayerFrame,
+      }),
+      [],
+    )
     return <div>{children}</div>
   })
   HeadlessPlayer.displayName = 'HeadlessPlayer'
@@ -37,6 +48,7 @@ describe('DomTextScrubOverlay', () => {
 
   beforeEach(() => {
     seekToMock.mockReset()
+    mockedPlayerFrame = 0
     rafId = 0
     rafCallbacks = new Map()
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -98,5 +110,111 @@ describe('DomTextScrubOverlay', () => {
     })
     expect(seekToMock).toHaveBeenCalledOnce()
     expect(seekToMock).toHaveBeenLastCalledWith(20)
+  })
+
+  it('resyncs when the overlay player is behind its last requested frame', () => {
+    const view = render(
+      <DomTextScrubOverlay
+        playerRef={createRef<PlayerRef>()}
+        visible
+        durationInFrames={120}
+        fps={30}
+        renderSize={{ width: 1920, height: 1080 }}
+        layoutSize={{ width: 1280, height: 720 }}
+        inputProps={{
+          fps: 30,
+          width: 1920,
+          height: 1080,
+          tracks: [],
+          transitions: [],
+          keyframes: [],
+        }}
+      />,
+    )
+
+    act(flushAnimationFrames)
+    expect(seekToMock).toHaveBeenLastCalledWith(10)
+
+    act(() => {
+      usePreviewBridgeStore.getState().setDisplayedFrame(20)
+      flushAnimationFrames()
+    })
+    expect(seekToMock).toHaveBeenLastCalledWith(20)
+
+    mockedPlayerFrame = 0
+    act(() => {
+      usePreviewBridgeStore.getState().setDisplayedFrame(10)
+      flushAnimationFrames()
+    })
+
+    expect(seekToMock).toHaveBeenLastCalledWith(10)
+    expect(seekToMock).toHaveBeenCalledTimes(3)
+    view.unmount()
+  })
+
+  it('forces a fresh seek after the overlay is hidden and shown again', () => {
+    const playerRef = createRef<PlayerRef>()
+    const view = render(
+      <DomTextScrubOverlay
+        playerRef={playerRef}
+        visible
+        durationInFrames={120}
+        fps={30}
+        renderSize={{ width: 1920, height: 1080 }}
+        layoutSize={{ width: 1280, height: 720 }}
+        inputProps={{
+          fps: 30,
+          width: 1920,
+          height: 1080,
+          tracks: [],
+          transitions: [],
+          keyframes: [],
+        }}
+      />,
+    )
+
+    act(flushAnimationFrames)
+    seekToMock.mockClear()
+    view.rerender(
+      <DomTextScrubOverlay
+        playerRef={playerRef}
+        visible={false}
+        durationInFrames={120}
+        fps={30}
+        renderSize={{ width: 1920, height: 1080 }}
+        layoutSize={{ width: 1280, height: 720 }}
+        inputProps={{
+          fps: 30,
+          width: 1920,
+          height: 1080,
+          tracks: [],
+          transitions: [],
+          keyframes: [],
+        }}
+      />,
+    )
+    mockedPlayerFrame = 0
+    view.rerender(
+      <DomTextScrubOverlay
+        playerRef={playerRef}
+        visible
+        durationInFrames={120}
+        fps={30}
+        renderSize={{ width: 1920, height: 1080 }}
+        layoutSize={{ width: 1280, height: 720 }}
+        inputProps={{
+          fps: 30,
+          width: 1920,
+          height: 1080,
+          tracks: [],
+          transitions: [],
+          keyframes: [],
+        }}
+      />,
+    )
+
+    act(flushAnimationFrames)
+    expect(seekToMock).toHaveBeenCalledWith(10)
+    view.unmount()
   })
 })

@@ -42,8 +42,11 @@ export const DomTextScrubOverlay = memo(function DomTextScrubOverlay({
     rafRef.current = null
     const frame = pendingFrameRef.current
     pendingFrameRef.current = null
-    if (frame === null || frame === lastFrameRef.current || !playerRef.current) return
-    playerRef.current.seekTo(frame)
+    const player = playerRef.current
+    if (frame === null || !player) return
+    const currentFrame = Math.round(player.getCurrentFrame())
+    if (frame === lastFrameRef.current && currentFrame === frame) return
+    player.seekTo(frame)
     lastFrameRef.current = frame
   }, [playerRef])
 
@@ -83,6 +86,7 @@ export const DomTextScrubOverlay = memo(function DomTextScrubOverlay({
       unsubscribePlayback()
       unsubscribePreviewBridge()
       pendingFrameRef.current = null
+      lastFrameRef.current = null
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null

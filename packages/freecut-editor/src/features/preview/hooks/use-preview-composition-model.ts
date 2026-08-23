@@ -509,7 +509,10 @@ export function buildPreviewCompositionData({
     (max, item) => Math.max(max, item.from + item.durationInFrames),
     0,
   )
-  const totalFrames = furthestItemEndFrame === 0 ? 900 : furthestItemEndFrame + fps * 5
+  // The preview transport must stop at the last authored item. Timeline
+  // editing can still extend the work area independently; adding a trailing
+  // buffer here makes playback continue after all media has ended.
+  const totalFrames = furthestItemEndFrame === 0 ? 900 : furthestItemEndFrame
   const inputProps: CompositionInputProps = {
     fps,
     width: project.width,

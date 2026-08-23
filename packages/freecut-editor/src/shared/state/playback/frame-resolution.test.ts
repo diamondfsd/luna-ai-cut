@@ -30,6 +30,19 @@ describe('getResolvedPlaybackFrame', () => {
     ).toBe(132)
   })
 
+  it('does not reuse a stale overlay frame after a scrub is released', () => {
+    expect(
+      getResolvedPlaybackFrame({
+        currentFrame: 120,
+        previewFrame: null,
+        displayedFrame: 0,
+        isPlaying: false,
+        currentFrameEpoch: 4,
+        previewFrameEpoch: 5,
+      }),
+    ).toBe(120)
+  })
+
   it('falls back to previewFrame/currentFrame ordering when displayedFrame is null', () => {
     expect(
       getResolvedPlaybackFrame({

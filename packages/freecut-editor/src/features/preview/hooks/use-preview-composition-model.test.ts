@@ -114,7 +114,7 @@ describe('buildPreviewCompositionData', () => {
       { frame: 10, srcs: ['blob://video'] },
       { frame: 70, srcs: ['blob://video'] },
     ])
-    expect(result.totalFrames).toBe(220)
+    expect(result.totalFrames).toBe(70)
     const playbackVideoItem = result.inputProps.tracks[0]?.items[0]
     const scrubVideoItem = result.fastScrubInputProps.tracks[0]?.items[0]
     expect(playbackVideoItem?.type).toBe('video')

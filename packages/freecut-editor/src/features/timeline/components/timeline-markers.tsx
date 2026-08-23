@@ -1070,7 +1070,7 @@ export const TimelineMarkers = memo(function TimelineMarkers({
         scrubRAFIdRef.current = null
       }
       const finalFrame = getFrameFromClientX(scrubMouseClientXRef.current)
-      setScrubFrameRef.current(finalFrame)
+      usePlaybackStore.getState().finishScrub(finalFrame)
       const finalTimelineX = Math.round(frameToPixelsNow(finalFrame))
       for (const element of scrubPlayheadElementsRef.current) {
         element.style.transform = `translate3d(${finalTimelineX}px, 0, 0)`
@@ -1078,8 +1078,7 @@ export const TimelineMarkers = memo(function TimelineMarkers({
       scrubAnimationTimeRef.current = null
       scrubPlayheadElementsRef.current = []
       setIsDragging(false)
-      setPreviewFrameRef.current(null)
-      // Clear after the preview notification so linked playheads retain the
+      // Clear after the atomic scrub commit so linked playheads retain the
       // final frame while their slower React props catch up.
       mainTimelineScrubActiveRef.current = false
       endTimelineSkimmerScrub(skimmerScrubOwner)

@@ -488,6 +488,7 @@ const PlayerInner = forwardRef<PlayerRef, PlayerProps>(
           overflow: 'hidden',
         }}
         data-player-container
+        data-player-current-frame={currentFrame}
       >
         {/* Video content - canvas rendered at native size, scaled to fit via CSS */}
         <div

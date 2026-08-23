@@ -684,7 +684,9 @@ export async function createCompositionRenderer(
     options.renderText === false
       ? composition.tracks?.map((track) => ({
           ...track,
-          items: (track.items ?? []).filter((item) => item.type !== 'text'),
+          items: (track.items ?? []).filter(
+            (item) => item.type !== 'text' && item.type !== 'subtitle',
+          ),
         }))
       : composition.tracks
   const tracks =

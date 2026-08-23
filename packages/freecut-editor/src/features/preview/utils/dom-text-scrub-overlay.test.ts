@@ -1,7 +1,12 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest'
-import type { TextItem, TimelineItem, TimelineTrack } from '@freecut/types/timeline'
+import type {
+  SubtitleSegmentItem,
+  TextItem,
+  TimelineItem,
+  TimelineTrack,
+} from '@freecut/types/timeline'
 import { buildDomTextScrubOverlayPlan } from './dom-text-scrub-overlay'
 
 function text(id: string, from = 0, durationInFrames = 100): TextItem {
@@ -14,6 +19,25 @@ function text(id: string, from = 0, durationInFrames = 100): TextItem {
     durationInFrames,
     text: id,
     color: '#fff',
+  }
+}
+
+function subtitle(id: string, from = 0, durationInFrames = 100): SubtitleSegmentItem {
+  return {
+    id,
+    type: 'subtitle',
+    trackId: 'track',
+    label: id,
+    from,
+    durationInFrames,
+    color: '#fff',
+    source: {
+      type: 'subtitle-import',
+      fileName: 'captions.srt',
+      format: 'srt',
+      importedAt: 0,
+    },
+    cues: [{ id: `${id}-cue`, startSeconds: 0, endSeconds: 1, text: id }],
   }
 }
 
@@ -71,6 +95,18 @@ describe('buildDomTextScrubOverlayPlan', () => {
     const tracks = [track('mixed', 0, [text('title', 0, 20), shape('card', 20, 20)])]
 
     expect(buildDomTextScrubOverlayPlan(tracks, []).enabled).toBe(true)
+  })
+
+  it('includes subtitle segments in the DOM text overlay', () => {
+    const tracks = [track('captions', 0, [subtitle('caption')])]
+
+    const plan = buildDomTextScrubOverlayPlan(tracks, [])
+
+    expect(plan.enabled).toBe(true)
+    expect(plan.textTracks.flatMap((entry) => entry.items).map((item) => item.id)).toEqual([
+      'caption',
+    ])
+    expect(plan.textTracks[0]?.items[0]?.type).toBe('subtitle')
   })
 
   it('rejects text that needs composition-level rendering', () => {

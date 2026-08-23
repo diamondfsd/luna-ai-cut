@@ -422,7 +422,13 @@ export function TimelinePlayhead({
           clientX - bounds.left + (coordinateSurface ? 0 : (scrollContainer?.scrollLeft ?? 0))
         let frame = Math.max(0, Math.round(pixelsToFrameRef.current(pointerX)))
         if (maxFrameRef.current !== undefined) frame = Math.min(frame, maxFrameRef.current)
-        setScrubFrameRef.current(frame)
+        console.info('[timeline-playhead] finish', {
+          clientX,
+          boundsLeft: bounds.left,
+          pointerX,
+          frame,
+        })
+        usePlaybackStore.getState().finishScrub(frame)
       }
 
       isDraggingRef.current = false
@@ -431,9 +437,7 @@ export function TimelinePlayhead({
       scrubScrollContainerRef.current = null
       scrubCoordinateSurfaceRef.current = null
       scrubPlayheadElementsRef.current = []
-      setPreviewFrameRef.current(null)
-      // Keep the shared flag set through the preview-clear notification so the
-      // keyframe playhead retains the final scrub position until props settle.
+      // Keep the shared flag set until linked playheads retain the final frame.
       mainTimelineScrubActiveRef.current = false
       endTimelineSkimmerScrub(skimmerScrubOwner)
       setIsDragging(false)

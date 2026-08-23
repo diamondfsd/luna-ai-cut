@@ -12,15 +12,17 @@ type FrameResolutionInput = Pick<
  *
  * Rules:
  * - Playing always follows currentFrame.
- * - When fast-scrub overlay is visible, follow displayedFrame to stay in sync
- *   with what is actually on screen.
- * - If previewFrame is null, follow currentFrame.
- * - While paused, follow whichever source was updated most recently.
+ * - While a paused scrub is active, follow displayedFrame to stay in sync with
+ *   the frame that the fast-scrub overlay has actually presented.
+ * - Once the scrub is released, currentFrame is authoritative. A displayed
+ *   frame from the previous overlay must not pin adjacent UI to an old frame.
+ * - While a paused scrub has not presented yet, use the most recently updated
+ *   preview/current frame.
  */
 export function getResolvedPlaybackFrame(input: FrameResolutionInput): number {
   if (input.isPlaying) return input.currentFrame
-  if (input.displayedFrame !== null) return input.displayedFrame
   if (input.previewFrame === null) return input.currentFrame
+  if (input.displayedFrame !== null) return input.displayedFrame
   return input.previewFrameEpoch >= input.currentFrameEpoch
     ? input.previewFrame
     : input.currentFrame

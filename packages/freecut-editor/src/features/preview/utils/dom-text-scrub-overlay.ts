@@ -12,8 +12,10 @@ interface OrderedItem<TItem extends TimelineItem = TimelineItem> {
   order: number
 }
 
+type DomTextItem = Extract<TimelineItem, { type: 'text' | 'subtitle' }>
+
 interface VisibleOverlayItems {
-  text: Array<OrderedItem<Extract<TimelineItem, { type: 'text' }>>>
+  text: Array<OrderedItem<DomTextItem>>
   nonText: OrderedItem[]
   hasMaskOrAdjustment: boolean
 }
@@ -46,7 +48,7 @@ function appendVisibleTrackItems(track: TimelineTrack, visible: VisibleOverlayIt
   for (const item of track.items) {
     if (isMaskOrAdjustment(item)) visible.hasMaskOrAdjustment = true
     if (!isRenderableVisualItem(item)) continue
-    if (item.type === 'text') visible.text.push({ item, order })
+    if (item.type === 'text' || item.type === 'subtitle') visible.text.push({ item, order })
     else visible.nonText.push({ item, order })
   }
 }
@@ -66,9 +68,9 @@ function collectVisibleOverlayItems(tracks: TimelineTrack[]): VisibleOverlayItem
   return visible
 }
 
-function isDomSafeText(item: Extract<TimelineItem, { type: 'text' }>): boolean {
+function isDomSafeText(item: DomTextItem): boolean {
   return (
-    !hasTextMotion(item) &&
+    (item.type !== 'text' || !hasTextMotion(item)) &&
     !hasEnabledEffects(item) &&
     (!item.blendMode || item.blendMode === 'normal') &&
     !item.transformParent?.parentItemId
@@ -111,7 +113,7 @@ export function buildDomTextScrubOverlayPlan(
     enabled: true,
     textTracks: tracks.map((track) => ({
       ...track,
-      items: track.items.filter((item) => item.type === 'text'),
+      items: track.items.filter((item) => item.type === 'text' || item.type === 'subtitle'),
     })),
     textKeyframes: keyframes.filter((entry) => textItemIds.has(entry.itemId)),
   }
