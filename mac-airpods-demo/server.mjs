@@ -19,10 +19,10 @@ const PHONE_RELAY_PORT = 26666
 const DEFAULT_TRANSPORT = 'phone-relay'
 const DEFAULT_GIMBAL_SPEED = 40
 const MOTION_SMOOTHING_TAU_SECONDS = 0.28
-const FOLLOW_ENTER_DEAD_ZONE = 0.20
-const FOLLOW_EXIT_DEAD_ZONE = 0.10
 const FOLLOW_STILL_RATE_THRESHOLD = 0.08
-const FOLLOW_AXIS_SWITCH_MARGIN = 0.18
+const FOLLOW_ENTER_STEP_DEAD_ZONE = 0.006
+const FOLLOW_EXIT_STEP_DEAD_ZONE = 0.003
+const FOLLOW_AXIS_SWITCH_RATIO = 1.35
 const MOTION_APP = join(ROOT, '.runtime/HeadphoneMotion.app')
 const INDEX_FILE = join(ROOT, 'index.html')
 
@@ -40,6 +40,7 @@ let desiredGimbal = null
 let desiredStopTimer = null
 let motionFilter = null
 let followAxis = null
+let followPrevious = null
 
 const state = {
   motion: {
@@ -292,6 +293,7 @@ function resetMotionZero() {
   if (state.follow.enabled) {
     state.follow.baseline = { yaw: current.yaw, pitch: current.pitch }
     followAxis = null
+    followPrevious = { yaw: current.yaw, pitch: current.pitch }
     const hadDesired = Boolean(desiredGimbal)
     stopDesired()
     if (hadDesired) void sendNeutral()
@@ -302,6 +304,12 @@ function resetMotionZero() {
 
 function updateFollow(motion) {
   if (!state.follow.enabled || typeof motion.yaw !== 'number' || typeof motion.pitch !== 'number') return
+  const previous = followPrevious
+  followPrevious = { yaw: motion.yaw, pitch: motion.pitch }
+  if (!previous) return
+
+  const yawStep = normalizeAngle(motion.yaw - previous.yaw)
+  const pitchStep = motion.pitch - previous.pitch
   const hasRotationRate = [motion.x, motion.y, motion.z].every((value) => typeof value === 'number' && Number.isFinite(value))
   if (hasRotationRate && Math.hypot(motion.x, motion.y, motion.z) < FOLLOW_STILL_RATE_THRESHOLD) {
     followAxis = null
@@ -313,13 +321,11 @@ function updateFollow(motion) {
   if (!state.follow.baseline) {
     state.follow.baseline = { yaw: motion.yaw, pitch: motion.pitch }
   }
-  const yawDelta = normalizeAngle(motion.yaw - state.follow.baseline.yaw)
-  const pitchDelta = motion.pitch - state.follow.baseline.pitch
-  const yawAbs = Math.abs(yawDelta)
-  const pitchAbs = Math.abs(pitchDelta)
-  const maxDelta = Math.max(yawAbs, pitchAbs)
-  const deadZone = followAxis ? FOLLOW_EXIT_DEAD_ZONE : FOLLOW_ENTER_DEAD_ZONE
-  if (maxDelta < deadZone) {
+  const yawAbs = Math.abs(yawStep)
+  const pitchAbs = Math.abs(pitchStep)
+  const maxStep = Math.max(yawAbs, pitchAbs)
+  const stepDeadZone = followAxis ? FOLLOW_EXIT_STEP_DEAD_ZONE : FOLLOW_ENTER_STEP_DEAD_ZONE
+  if (maxStep < stepDeadZone) {
     followAxis = null
     const hadDesired = Boolean(desiredGimbal)
     stopDesired()
@@ -330,10 +336,10 @@ function updateFollow(motion) {
   if (!followAxis) followAxis = yawAbs >= pitchAbs ? 'yaw' : 'pitch'
   const currentAbs = followAxis === 'yaw' ? yawAbs : pitchAbs
   const otherAbs = followAxis === 'yaw' ? pitchAbs : yawAbs
-  if (otherAbs > currentAbs + FOLLOW_AXIS_SWITCH_MARGIN) followAxis = followAxis === 'yaw' ? 'pitch' : 'yaw'
-  const delta = followAxis === 'yaw' ? yawDelta : pitchDelta
+  if (otherAbs > currentAbs * FOLLOW_AXIS_SWITCH_RATIO) followAxis = followAxis === 'yaw' ? 'pitch' : 'yaw'
+  const delta = followAxis === 'yaw' ? yawStep : pitchStep
   const direction = mapHorizontalDirection(followAxis === 'yaw' ? (delta > 0 ? 'right' : 'left') : (delta > 0 ? 'up' : 'down'))
-  const amplitude = Math.max(1, Math.min(state.gimbal.speed, Math.round(Math.abs(delta) * 90)))
+  const amplitude = Math.max(1, Math.min(state.gimbal.speed, Math.round(Math.abs(delta) * 900)))
   desiredGimbal = { direction, amplitude, until: Date.now() + 300 }
   publishState()
 }
@@ -359,6 +365,7 @@ function processMotion(message) {
     broadcast('motion-status', message)
     publishState()
     if (!state.motion.connected && state.follow.enabled) {
+      followPrevious = null
       const hadDesired = Boolean(desiredGimbal)
       stopDesired()
       if (hadDesired) void sendNeutral()
@@ -386,6 +393,7 @@ const motionBridgeServer = createNetServer((socket) => {
     if (state.motion.source === 'airpods') {
       motionFilter = null
       followAxis = null
+      followPrevious = null
       state.motion.running = false
       state.motion.source = 'none'
       state.motion.connected = false
@@ -409,6 +417,7 @@ function startAirpods() {
   state.motion.zero = null
   motionFilter = null
   followAxis = null
+  followPrevious = null
   state.motion.lastError = null
   child.once('error', (error) => log(`AirPods helper 启动失败：${error.message}`, 'error'))
   child.once('close', (code) => {
@@ -449,6 +458,7 @@ function startMock() {
   state.motion.zero = null
   motionFilter = null
   followAxis = null
+  followPrevious = null
   mockTimer = setInterval(() => {
     const seconds = (Date.now() - mockStartedAt) / 1_000
     processMotion({
@@ -491,6 +501,7 @@ function stopMotion() {
   state.motion.zero = null
   motionFilter = null
   followAxis = null
+  followPrevious = null
   stopDesired()
   publishState()
 }
@@ -560,6 +571,9 @@ async function handleApi(path, method, body, response) {
     state.follow.enabled = Boolean(body.enabled)
     followAxis = null
     state.follow.baseline = state.follow.enabled && state.motion.last
+      ? { yaw: state.motion.last.yaw, pitch: state.motion.last.pitch }
+      : null
+    followPrevious = state.follow.enabled && state.motion.last
       ? { yaw: state.motion.last.yaw, pitch: state.motion.last.pitch }
       : null
     if (!state.follow.enabled) {
