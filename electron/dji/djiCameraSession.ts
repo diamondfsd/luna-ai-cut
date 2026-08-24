@@ -1,15 +1,12 @@
 import { getSettings, saveSettings } from '../fileService'
 import net from 'node:net'
-import type { CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../src/shared/types'
+import type { CameraMediaSourceOptions, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../src/shared/types'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
-import { DjiBleSession, createHttpMockDjiBleTransport, type DjiWifiCredentials } from './djiBleSession'
+import type { DjiWifiCredentials } from './djiBleSession'
 import { encodeDjiMessage, hex, newInstallIdentity, packString } from './djiBytes'
 import { isPrimaryMedia, isProxyMedia, mediaStem, parseCompositeManifest, type DjiManifestFile } from './djiManifest'
 import { DjiUdpTransport, decodeDumlFromUdp } from './djiUdpTransport'
-
-const DJI_CAPABILITIES = {
-  list: true, preview: true, copyToLocal: true, create: false, update: false, delete: false, watch: true,
-} as const
+import { DefaultDjiWirelessPreparation, type DjiWirelessPreparation } from './djiWirelessPreparation'
 
 interface DjiEndpoint {
   host: string
@@ -70,59 +67,49 @@ function listQuery(counter: number, cursor: number): Buffer {
   return query
 }
 
-function isLoopback(host: string): boolean {
-  try {
-    return ['127.0.0.1', 'localhost'].includes(new URL(host.includes('://') ? host : `http://${host}`).hostname)
-  } catch {
-    return false
-  }
-}
-
 export class DjiCameraSession {
   readonly profile: DjiModelProfile
   private readonly endpoint: DjiEndpoint
   private readonly udp: DjiUdpTransport
-  private ble: DjiBleSession | null = null
+  private readonly wirelessPreparation: DjiWirelessPreparation
   private credentials: DjiWifiCredentials | null = null
   private connected = false
 
-  constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string) {
+  constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation) {
     this.profile = djiProfileForDevice(deviceId)
     this.endpoint = endpointFor(host, this.profile)
     this.udp = new DjiUdpTransport(this.endpoint.host, this.endpoint.udpPort)
+    this.wirelessPreparation = wirelessPreparation ?? new DefaultDjiWirelessPreparation(deviceId, host, installIdentity)
   }
 
   get host(): string {
     return `${this.endpoint.host}:${this.endpoint.httpPort}`
   }
 
-  async connect(): Promise<CameraMediaSourceStatus> {
+  async connect(options: CameraMediaSourceOptions = { mode: 'wireless', deviceId: this.deviceId, host: this.host }): Promise<CameraMediaSourceStatus> {
     if (!this.connected) {
-      if (!isLoopback(this.host)) {
-        throw new Error('DJI Pocket 4 的真实 BLE 长连接适配器尚未接入；当前可先使用 Pocket 4 mock service 验收')
-      }
-      const transport = createHttpMockDjiBleTransport(this.deviceId, httpBase(this.endpoint))
-      this.ble = new DjiBleSession(transport, this.installIdentity)
-      this.credentials = await this.ble.readWifiCredentials()
+      const preparation = await this.wirelessPreparation.prepare(options)
+      this.credentials = preparation.credentials ?? null
       await this.tcpPoke()
       await this.udp.handshake()
       await this.registerCamera()
       this.connected = true
+      return this.status(`${preparation.message}，UDP 会话已建立`)
     }
-    return this.status('已通过蓝牙取得 DJI 相机连接信息，UDP 会话已建立')
+    return this.status('DJI 相机连接已保持')
   }
 
-  async check(): Promise<CameraMediaSourceStatus> {
+  async check(options?: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus> {
     try {
-      await this.connect()
+      await this.connect(options)
       return this.status('DJI 相机连接正常')
     } catch (error) {
       return this.status(error instanceof Error ? error.message : String(error), false)
     }
   }
 
-  async listFiles(storageId = 'all'): Promise<LunaFile[]> {
-    if (!this.connected) await this.connect()
+  async listFiles(storageId = 'all', options?: CameraMediaSourceOptions): Promise<LunaFile[]> {
+    if (!this.connected) await this.connect(options)
     const storageIds = storageId === 'all' ? this.profile.storageIds : [storageId]
     const files: DjiManifestFile[] = []
     for (const [index, id] of storageIds.entries()) {
@@ -138,8 +125,7 @@ export class DjiCameraSession {
   async close(): Promise<void> {
     this.connected = false
     this.udp.close()
-    if (this.ble) await this.ble.close()
-    this.ble = null
+    await this.wirelessPreparation.close()
   }
 
   private async registerCamera(): Promise<void> {
@@ -238,7 +224,22 @@ export class DjiCameraSession {
       message,
       deviceInfo: this.credentials ? { deviceName: this.profile.name, ssid: this.credentials.ssid, rawStrings: [] } : { deviceName: this.profile.name, rawStrings: [] },
     }
-    return { ...base, mode: 'wireless', connected, sourceId: `dji:${this.profile.id}:${this.host}`, capabilities: DJI_CAPABILITIES }
+    return {
+      ...base,
+      mode: 'wireless',
+      connected,
+      sourceId: `dji:${this.profile.id}:${this.host}`,
+      capabilities: {
+        list: true,
+        preview: true,
+        copyToLocal: true,
+        create: false,
+        update: false,
+        delete: false,
+        watch: true,
+        connection: this.wirelessPreparation.capabilities,
+      },
+    }
   }
 }
 

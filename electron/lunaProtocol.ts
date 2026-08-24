@@ -1,6 +1,7 @@
 import { DEFAULT_DEVICE } from './deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
-import { buildKeepAliveOptionsBody, connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
+import { connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
+import { buildKeepAliveOptionsBody } from './lunaControlMessages'
 import { parseLunaFilePaths } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../src/shared/types'
 

@@ -2,6 +2,8 @@
   "id": "go-ultra",
   "name": "GO Ultra",
   "vendor": "Insta360",
+  "protocol": "go-ultra",
+  "mediaCapabilities": { "delete": false },
   "defaultHost": "192.168.42.1",
   "httpPort": 80,
   "controlPort": 6666,
