@@ -5,7 +5,7 @@ import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
 import type { DjiWifiCredentials } from './djiBleSession'
 import { encodeDjiMessage, hex, newInstallIdentity, packString } from './djiBytes'
 import { isPrimaryMedia, isProxyMedia, mediaStem, parseCompositeManifest, type DjiManifestFile } from './djiManifest'
-import { DjiUdpTransport, decodeDumlFromUdp } from './djiUdpTransport'
+import { DjiUdpTransport, decodeDumlFromUdp, type DjiUdpCommand, type DjiUdpPacket } from './djiUdpTransport'
 import { DefaultDjiWirelessPreparation, type DjiWirelessPreparation } from './djiWirelessPreparation'
 import { mockTcpPortForHost, mockUdpPortForHost } from '../../devtools/mock/mockServerService'
 import { captureDateFromMediaSource } from '../../media/mediaCaptureDate'
@@ -84,6 +84,7 @@ export class DjiCameraSession {
   private readonly wirelessPreparation: DjiWirelessPreparation
   private credentials: DjiWifiCredentials | null = null
   private connected = false
+  private pocket3PlaybackPrepared = false
 
   constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation) {
     this.profile = djiProfileForDevice(deviceId)
@@ -132,6 +133,10 @@ export class DjiCameraSession {
 
   async listFiles(storageId = 'all', options?: CameraMediaSourceOptions): Promise<LunaFile[]> {
     if (!this.connected) await this.connect(options)
+    if (this.profile.playback === 'pocket3' && !this.pocket3PlaybackPrepared) {
+      await this.enterPocket3Playback()
+      this.pocket3PlaybackPrepared = true
+    }
     const storageIds = storageId === 'all' ? this.profile.storageIds : [storageId]
     const files: DjiManifestFile[] = []
     for (const [index, id] of storageIds.entries()) {
@@ -146,6 +151,7 @@ export class DjiCameraSession {
 
   async close(): Promise<void> {
     this.connected = false
+    this.pocket3PlaybackPrepared = false
     this.udp.close()
     await this.wirelessPreparation.close()
   }
@@ -177,16 +183,44 @@ export class DjiCameraSession {
   }
 
   private async requestManifest(counter: number, cursor: number, storageId: string): Promise<DjiManifestFile[]> {
-    const packets = await this.udp.commandAndCollect({ target: 0x0102, id: 0x8026, cmdSet: 0x00, cmdId: 0x26, flags: 0x40, payload: listQuery(counter, cursor) }, 1200)
+    const responseCounters = new Set([counter])
+    let packets: DjiUdpPacket[]
+    if (this.profile.playback === 'pocket3') {
+      const pageCounter = counter + 1
+      responseCounters.add(pageCounter)
+      const command = (payload: Buffer): DjiUdpCommand => ({ target: 0x0102, id: 0x8026, cmdSet: 0x00, cmdId: 0x26, flags: 0x40, payload })
+      packets = await this.udp.commandSequenceAndCollect([
+        command(listQuery(counter, 1)),
+        command(hex('4a040e1001000000000001000000')),
+        command(listQuery(pageCounter, cursor)),
+      ], 1500)
+    } else {
+      packets = await this.udp.commandAndCollect({ target: 0x0102, id: 0x8026, cmdSet: 0x00, cmdId: 0x26, flags: 0x40, payload: listQuery(counter, cursor) }, 1200)
+    }
     const chunks: Buffer[] = []
     for (const packet of packets) {
       const message = decodeDumlFromUdp(packet)
       if (!message || message.cmdSet !== 0x00 || message.cmdId !== 0x27 || message.payload.length < 10) continue
       const payload = message.payload
-      if (payload[0] === 0x4a && payload[1] === 0x01 && payload[4] === counter) chunks.push(payload.subarray(10))
+      if (payload[0] === 0x4a && payload[1] === 0x01 && responseCounters.has(payload[4])) chunks.push(payload.subarray(10))
     }
     if (chunks.length === 0) return []
     return parseCompositeManifest(Buffer.concat(chunks), storageId)
+  }
+
+  private async enterPocket3Playback(): Promise<void> {
+    const command = (payload: Buffer): DjiUdpCommand => ({
+      target: 0x0102,
+      id: 0x8004,
+      cmdSet: 0x01,
+      cmdId: 0x01,
+      flags: 0x00,
+      payload,
+    })
+    const prelude = hex('0300000000040000000701')
+    const enter = hex('0000000000040000000401')
+    const commands = Array.from({ length: 27 }, (_, index) => command(index < 6 ? prelude : enter))
+    await this.udp.commandSequenceAndCollect(commands, 2000, 50)
   }
 
   private async toLunaFile(file: DjiManifestFile, proxies: DjiManifestFile[]): Promise<LunaFile> {

@@ -9,6 +9,12 @@ export interface DjiUdpPacket {
   payload: Buffer
 }
 
+export type DjiUdpCommand = Omit<DjiMessage, 'flags' | 'cmdSet' | 'cmdId'> & {
+  flags?: number
+  cmdSet: number
+  cmdId: number
+}
+
 const HANDSHAKE = Buffer.from('000064006400c005140000640000019001c005140000640014006400c00514000064000101040102', 'hex')
 
 export function udpHeader(packetType: number, payloadLength: number, sessionId: number, sequence: number): Buffer {
@@ -94,7 +100,7 @@ export class DjiUdpTransport {
     this.sequence = (this.sequence + 8) & 0xffff
   }
 
-  async sendCommand(message: Omit<DjiMessage, 'flags' | 'cmdSet' | 'cmdId'> & { flags?: number; cmdSet: number; cmdId: number }): Promise<void> {
+  async sendCommand(message: DjiUdpCommand): Promise<void> {
     await this.open()
     this.counter += 1
     const packet = encodeDumlUdpPacket({ ...message, flags: message.flags ?? 0x40 }, this.sessionId, this.sequence, this.counter)
@@ -103,7 +109,7 @@ export class DjiUdpTransport {
   }
 
   async commandAndCollect(
-    message: Omit<DjiMessage, 'flags' | 'cmdSet' | 'cmdId'> & { flags?: number; cmdSet: number; cmdId: number },
+    message: DjiUdpCommand,
     durationMs: number,
   ): Promise<DjiUdpPacket[]> {
     await this.open()
@@ -111,6 +117,45 @@ export class DjiUdpTransport {
     const packet = encodeDumlUdpPacket({ ...message, flags: message.flags ?? 0x40 }, this.sessionId, this.sequence, this.counter)
     this.sequence = (this.sequence + 8) & 0xffff
     return this.request(packet, durationMs)
+  }
+
+  async commandSequenceAndCollect(
+    messages: DjiUdpCommand[],
+    durationMs: number,
+    intervalMs = 0,
+  ): Promise<DjiUdpPacket[]> {
+    await this.open()
+    const socket = this.socket
+    if (!socket) throw new Error('DJI UDP 尚未打开')
+    return new Promise((resolve, reject) => {
+      const packets: DjiUdpPacket[] = []
+      const onMessage = (data: Buffer): void => {
+        const packet = parseUdpPacket(data)
+        if (packet) packets.push(packet)
+      }
+      const timer = setTimeout(() => {
+        socket.off('message', onMessage)
+        resolve(packets)
+      }, durationMs)
+      socket.on('message', onMessage)
+      void (async () => {
+        try {
+          for (const [index, message] of messages.entries()) {
+            this.counter += 1
+            const packet = encodeDumlUdpPacket({ ...message, flags: message.flags ?? 0x40 }, this.sessionId, this.sequence, this.counter)
+            this.sequence = (this.sequence + 8) & 0xffff
+            await this.send(packet)
+            if (intervalMs > 0 && index + 1 < messages.length) {
+              await new Promise((wait) => setTimeout(wait, intervalMs))
+            }
+          }
+        } catch (error) {
+          clearTimeout(timer)
+          socket.off('message', onMessage)
+          reject(error)
+        }
+      })()
+    })
   }
 
   async collect(durationMs = 700): Promise<DjiUdpPacket[]> {

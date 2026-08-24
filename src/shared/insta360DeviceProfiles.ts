@@ -35,6 +35,14 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
     defaultWatermarkStyle: 'go_ultra_cn',
   },
   {
+    id: 'dji-pocket-3',
+    displayName: 'Osmo Pocket 3',
+    cameraType: 'DJI OsmoPocket3',
+    deviceNamePatterns: [/DJI\s*Osmo\s*Pocket\s*3/i, /OsmoPocket3/i, /OP3/i],
+    exifModelPatterns: [/DJI\s*Osmo\s*Pocket\s*3/i, /OsmoPocket3/i, /OP3/i],
+    defaultWatermarkStyle: 'dji_pocket_3',
+  },
+  {
     id: 'dji-pocket-4-pro',
     displayName: 'Osmo Pocket 4 Pro',
     cameraType: 'DJI OsmoPocket4P',
