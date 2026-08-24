@@ -26,9 +26,11 @@ export function AppRoutes() {
   const { settings, setSettings, connection, hiddenDevMode } = useApp()
   const {
     activeDevice,
+    devices,
     cameraLibraryMounted,
     chooseWiredCamera,
     connectDevice,
+    selectDevice,
     connectionMode,
     disconnectDevice,
     devicePhase,
@@ -128,10 +130,12 @@ export function AppRoutes() {
           {showDeviceConnect && (
             <DeviceConnectPage
               activeDevice={activeDevice}
+              devices={devices}
               connection={connection}
               phase={devicePhase}
               settings={settings}
               onConnect={connectDevice}
+              onDeviceChange={selectDevice}
               connectionMode={connectionMode}
               onConnectionModeChange={setConnectionMode}
               onChooseWiredCamera={chooseWiredCamera}
@@ -168,6 +172,7 @@ export function AppRoutes() {
         <AppRoute path="/settings" preserve={false}>
           <SettingsPage
             activeDevice={activeDevice}
+            devices={devices}
             cacheStats={cacheStats}
             chooseBaseDir={chooseBaseDir}
             chooseLocalResourcesDir={chooseLocalResourcesDir}

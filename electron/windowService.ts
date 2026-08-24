@@ -116,6 +116,10 @@ export function appIconPath(appRoot: string): string {
 }
 
 export function appTrayIconPath(appRoot: string): string {
+  if (process.platform === 'darwin') {
+    if (app.isPackaged) return path.join(process.resourcesPath, 'tray-template.png')
+    return path.join(appRoot, 'build', 'tray-template.png')
+  }
   if (app.isPackaged) return path.join(process.resourcesPath, 'icon.png')
   return path.join(appRoot, 'build', 'icon.png')
 }

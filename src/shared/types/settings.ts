@@ -21,6 +21,7 @@ export interface AppSettings {
   cameraConnectionMode?: CameraConnectionMode
   mountedCameraRoot?: string
   activeDeviceId?: string
+  djiInstallIdentity?: string
   deviceStorage?: Record<string, string>
   deviceWatermark?: Record<string, WatermarkSettings>
   developerMode?: boolean

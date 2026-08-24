@@ -16,6 +16,7 @@ import type {
   ConnectionStatus,
   LunaFile,
 } from '../src/shared/types'
+import { djiSessionFor, disconnectDjiSession } from './dji/djiCameraSession'
 
 const WIRELESS_CAPABILITIES: CameraMediaSourceCapabilities = {
   list: true,
@@ -122,6 +123,56 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
   }
 }
 
+class DjiCameraMediaSource implements CameraMediaSourceAdapter {
+  constructor(private readonly options: CameraMediaSourceOptions) {}
+
+  private async values(): Promise<{ deviceId: string; host: string; storageId: string }> {
+    const settings = await getSettings()
+    const deviceId = this.options.deviceId ?? settings.activeDeviceId ?? 'dji-pocket-4'
+    const profile = deviceDefinitionFor(deviceId)
+    return {
+      deviceId,
+      host: this.options.host || settings.cameraHost || profile.defaultHost,
+      storageId: this.options.storageId ?? settings.deviceStorage?.[deviceId] ?? 'all',
+    }
+  }
+
+  async connect(): Promise<CameraMediaSourceStatus> {
+    const { deviceId, host } = await this.values()
+    const session = await djiSessionFor(deviceId, host)
+    const status = await session.connect()
+    await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
+    return status
+  }
+
+  async check(): Promise<CameraMediaSourceStatus> {
+    const { deviceId, host } = await this.values()
+    return (await djiSessionFor(deviceId, host)).check()
+  }
+
+  async listFiles(): Promise<LunaFile[]> {
+    const { deviceId, host, storageId } = await this.values()
+    const session = await djiSessionFor(deviceId, host)
+    const files = await session.listFiles(storageId)
+    await saveSettings({
+      cameraConnectionMode: 'wireless',
+      cameraHost: host,
+      deviceStorage: { ...(await getSettings()).deviceStorage, [deviceId]: storageId },
+    })
+    await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
+    return files
+  }
+
+  async deleteFiles(): Promise<CameraDeleteResult> {
+    return { deleted: [], failed: [{ path: '', error: 'DJI Pocket 4 首版暂不支持删除相机素材' }] }
+  }
+
+  async disconnect(): Promise<void> {
+    const { deviceId, host } = await this.values()
+    await disconnectDjiSession(deviceId, host)
+  }
+}
+
 class MountedCameraMediaSource implements CameraMediaSourceAdapter {
   constructor(private readonly options: CameraMediaSourceOptions) {}
 
@@ -174,6 +225,9 @@ class MountedCameraMediaSource implements CameraMediaSourceAdapter {
 }
 
 export function cameraMediaSourceFor(ctx: IpcContext, options: CameraMediaSourceOptions): CameraMediaSourceAdapter {
+  if (options.mode === 'wireless' && options.deviceId?.startsWith('dji-')) {
+    return new DjiCameraMediaSource(options)
+  }
   return options.mode === 'wired'
     ? new MountedCameraMediaSource(options)
     : new WirelessCameraMediaSource(ctx, options)

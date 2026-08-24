@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Cable, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
 
 import type { AppSettings, CameraConnectionMode, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
+import { SupportedDeviceList } from '../components/SupportedDeviceList'
 import { Alert, Button, ButtonGroup } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
@@ -11,10 +12,12 @@ import lunaIcon from '../../public/luna-icon.png'
 
 interface DeviceConnectPageProps {
   activeDevice?: DeviceDefinition
+  devices: DeviceDefinition[]
   connection: ConnectionStatus | null
   phase: DeviceConnectionPhase
   settings: AppSettings | null
-  onConnect: (rootPath?: string) => Promise<void>
+  onConnect: (rootPath?: string, deviceId?: string) => Promise<void>
+  onDeviceChange: (deviceId: string) => Promise<void>
   connectionMode: CameraConnectionMode
   onConnectionModeChange: (mode: CameraConnectionMode) => Promise<void>
   onChooseWiredCamera: () => Promise<void>
@@ -23,10 +26,12 @@ interface DeviceConnectPageProps {
 
 export function DeviceConnectPage({
   activeDevice,
+  devices,
   connection,
   phase,
   settings,
   onConnect,
+  onDeviceChange,
   connectionMode,
   onConnectionModeChange,
   onChooseWiredCamera,
@@ -40,6 +45,7 @@ export function DeviceConnectPage({
   const [mountedVolumes, setMountedVolumes] = useState<MountedCameraVolume[]>([])
   const [mountedVolumesLoading, setMountedVolumesLoading] = useState(false)
   const [mountedVolumesError, setMountedVolumesError] = useState<string | null>(null)
+  const [changingDevice, setChangingDevice] = useState(false)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
@@ -73,7 +79,6 @@ export function DeviceConnectPage({
       ? '请选择相机磁盘后连接，即可浏览其中的相机素材'
       : '连接相机 Wi-Fi 后，即可浏览和下载相机素材')
   const statusLabel = isChecking ? '检测中' : isError ? '需要处理' : '等待连接'
-
   const refreshMountedVolumes = useCallback(async (): Promise<void> => {
     if (!isWired) {
       setMountedVolumes([])
@@ -117,6 +122,19 @@ export function DeviceConnectPage({
     } finally {
       setConnecting(false)
       await refreshMountedVolumes()
+    }
+  }
+
+  async function handleSupportedDeviceClick(deviceId: string): Promise<void> {
+    if (connecting || isChecking || changingDevice) return
+    setConnecting(true)
+    setChangingDevice(true)
+    try {
+      await onDeviceChange(deviceId)
+      await onConnect(undefined, deviceId)
+    } finally {
+      setChangingDevice(false)
+      setConnecting(false)
     }
   }
 
@@ -364,6 +382,14 @@ export function DeviceConnectPage({
             </div>
           </aside>
         </div>
+
+        <SupportedDeviceList
+          activeDevice={activeDevice}
+          devices={devices}
+          connection={connection}
+          disabled={connecting || changingDevice || isChecking}
+          onSelect={handleSupportedDeviceClick}
+        />
 
         <div className="device-connect-footer">
           <HelpDialog>

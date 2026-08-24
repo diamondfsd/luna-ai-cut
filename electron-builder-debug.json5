@@ -16,6 +16,15 @@
   ],
   "extraResources": [
     {
+      "from": "build/tray-template.png",
+      "to": "tray-template.png"
+    },
+    {
+      "from": "dji_mock_server",
+      "to": "dji_mock_server",
+      "filter": ["**/*"]
+    },
+    {
       "from": "resources/dolby-vision",
       "to": "dolby-vision",
       "filter": ["dovi_tool", "dovi_tool.exe", "mp4mux", "mp4mux.exe"]
