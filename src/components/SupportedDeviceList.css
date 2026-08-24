@@ -71,12 +71,12 @@
 
 .supported-device-visual {
   display: grid;
-  width: 56px;
+  width: 72px;
   height: 72px;
-  flex: 0 0 56px;
+  flex: 0 0 72px;
   place-items: center;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 20px;
   background: color-mix(in srgb, var(--blue) 8%, var(--parchment));
   color: var(--blue);
 }
@@ -144,8 +144,9 @@
   }
 
   .supported-device-visual {
-    width: 48px;
+    width: 56px;
     height: 56px;
-    flex-basis: 48px;
+    flex-basis: 56px;
+    border-radius: 16px;
   }
 }
