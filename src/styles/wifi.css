@@ -34,8 +34,8 @@
 }
 
 .device-connect-logo-character {
-  object-fit: contain;
-  padding: 3px;
+  object-fit: cover;
+  padding: 0;
 }
 
 .device-connect-logo-fallback {
