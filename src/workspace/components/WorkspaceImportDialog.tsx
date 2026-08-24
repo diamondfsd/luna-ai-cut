@@ -67,6 +67,11 @@ export function WorkspaceImportDialog({
         name: file.name,
         path,
         kind: file.kind,
+        sourceDeviceId: file.sourceDeviceId,
+        sourceDeviceName: file.sourceDeviceName,
+        cameraType: file.cameraType,
+        cameraSerial: file.cameraSerial,
+        watermarkProfileId: file.watermarkProfileId,
         thumbnailUrl: thumbnailPath ? filePathToPreviewUrl(thumbnailPath) : null,
         isLivePhoto: file.isLivePhoto,
       })

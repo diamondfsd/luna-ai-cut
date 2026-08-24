@@ -24,6 +24,22 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
     exifModelPatterns: [/Insta360\s+GO\s+Ultra/i, /GO\s+Ultra/i, /TC4/i, /IBE/i],
     defaultWatermarkStyle: 'go_ultra_cn',
   },
+  {
+    id: 'dji-pocket-4-pro',
+    displayName: 'Osmo Pocket 4 Pro',
+    cameraType: 'DJI OsmoPocket4P',
+    deviceNamePatterns: [/DJI\s*Osmo\s*Pocket\s*4\s*P/i, /OsmoPocket4P/i, /PP-041/i],
+    exifModelPatterns: [/DJI\s*Osmo\s*Pocket\s*4\s*P/i, /OsmoPocket4P/i, /PP-041/i],
+    defaultWatermarkStyle: 'dji_pocket_4_pro',
+  },
+  {
+    id: 'dji-pocket-4',
+    displayName: 'Osmo Pocket 4',
+    cameraType: 'DJI OsmoPocket4',
+    deviceNamePatterns: [/DJI\s*Osmo\s*Pocket\s*4(?!\s*P)/i, /OsmoPocket4(?!P)/i],
+    exifModelPatterns: [/DJI\s*Osmo\s*Pocket\s*4(?!\s*P)/i, /OsmoPocket4(?!P)/i],
+    defaultWatermarkStyle: 'dji_pocket_4',
+  },
 ]
 
 export function deviceProfileForId(deviceId?: string | null): Insta360DeviceProfile | null {

@@ -505,6 +505,7 @@ export function PreviewModal({
                     onChange={handleWatermarkChange}
                     filePath={stageSource ?? undefined}
                     mediaKind={isVideoPath(currentFilePath) ? 'video' : 'image'}
+                    deviceMetadata={mediaFile}
                   />
                 ) : undefined}
               />

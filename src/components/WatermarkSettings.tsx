@@ -3,7 +3,7 @@ import { FolderOpen, ImagePlus, Settings2 } from 'lucide-react'
 import { Slider as RadixSlider } from 'radix-ui'
 
 import { isVideoPath } from '../lib/fileUtils'
-import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
+import { defaultWatermarkStyleForDevice, resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { CustomWatermarkAsset, PreviewLayer, WatermarkPosition, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   DEFAULT_WATERMARK_WIDTH_RATIO,
@@ -88,6 +88,13 @@ interface WatermarkSettingsProps {
   title?: string
   filePath?: string
   mediaKind?: 'image' | 'video'
+  deviceMetadata?: {
+    sourceDeviceId?: string | null
+    sourceDeviceName?: string | null
+    cameraType?: string | null
+    cameraSerial?: string | null
+    watermarkProfileId?: string | null
+  } | null
 }
 
 function WatermarkSlider({ label, value, min, max, onChange }: {
@@ -161,6 +168,7 @@ export function WatermarkSettings({
   title = '水印设置',
   filePath,
   mediaKind,
+  deviceMetadata,
 }: WatermarkSettingsProps) {
   const controlled = settings !== undefined
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
@@ -180,6 +188,19 @@ export function WatermarkSettings({
   const [customAssets, setCustomAssets] = useState<CustomWatermarkAsset[]>([])
   const enrichSeqRef = useRef(0)
   const watermarkKind = mediaKind ?? (filePath && isVideoPath(filePath) ? 'video' : 'image')
+  const resolvedDeviceMetadata = useMemo(() => ({
+    sourceDeviceId: deviceMetadata?.sourceDeviceId ?? null,
+    sourceDeviceName: deviceMetadata?.sourceDeviceName ?? null,
+    cameraType: deviceMetadata?.cameraType ?? null,
+    cameraSerial: deviceMetadata?.cameraSerial ?? null,
+    watermarkProfileId: deviceMetadata?.watermarkProfileId ?? null,
+  }), [
+    deviceMetadata?.sourceDeviceId,
+    deviceMetadata?.sourceDeviceName,
+    deviceMetadata?.cameraType,
+    deviceMetadata?.cameraSerial,
+    deviceMetadata?.watermarkProfileId,
+  ])
   const defaultWatermarkWidthRatio = resolvedMediaSize && resolvedMediaSize.height > resolvedMediaSize.width
     ? 0.35
     : DEFAULT_WATERMARK_WIDTH_RATIO
@@ -200,12 +221,12 @@ export function WatermarkSettings({
     if (preferencesOnly || !filePath) return
     let cancelled = false
     resolveDeviceId(
-      { sourceDeviceId: null, cameraType: null, sourceDeviceName: null, cameraSerial: null, watermarkProfileId: null },
+      resolvedDeviceMetadata,
       { filePath, readExif: window.luna.readExifModel.bind(window.luna) },
     ).then((id) => { if (!cancelled) setDeviceId(id) })
       .catch(() => { if (!cancelled) setDeviceId(null) })
     return () => { cancelled = true }
-  }, [filePath, preferencesOnly])
+  }, [filePath, preferencesOnly, resolvedDeviceMetadata])
 
   useEffect(() => {
     if (!filePath) {
@@ -274,6 +295,18 @@ export function WatermarkSettings({
     const layer = next.enabled ? buildResolvedWatermarkStaticLayer(next, size.width, size.height) ?? undefined : undefined
     publish(next, layer)
   }, [builtinAvailable, defaultWatermarkWidthRatio, preferencesOnly, publish, resolvedMediaSize, watermarkKind])
+
+  const defaultStyleForDevice = deviceId
+    ? defaultWatermarkStyleForDevice({ sourceDeviceId: deviceId, watermarkProfileId: deviceId })
+    : null
+
+  useEffect(() => {
+    if (!hydrated || preferencesOnly || !deviceId || !builtinAvailable || !defaultStyleForDevice) return
+    const current = settingsRef.current
+    if (usesCustomWatermark(current)) return
+    if (stylePills.some((option) => option.value === current.style)) return
+    void enrichAndChange({ sourceKind: 'builtin', style: defaultStyleForDevice })
+  }, [builtinAvailable, defaultStyleForDevice, deviceId, enrichAndChange, hydrated, preferencesOnly, stylePills])
 
   useEffect(() => {
     if (!hydrated || (filePath && !resolvedMediaSize)) return

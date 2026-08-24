@@ -6,6 +6,11 @@ export interface WorkspaceMediaAsset {
   name: string
   path: string
   kind: 'image' | 'video'
+  sourceDeviceId?: string
+  sourceDeviceName?: string
+  cameraType?: string
+  cameraSerial?: string
+  watermarkProfileId?: string
   thumbnailUrl?: string | null
   isLivePhoto?: boolean
 }
