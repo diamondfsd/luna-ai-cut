@@ -1,0 +1,28 @@
+{
+  "id": "dji-pocket-4-pro",
+  "name": "Osmo Pocket 4 Pro",
+  "vendor": "DJI",
+  "protocol": "dji",
+  "defaultHost": "192.168.2.1",
+  "httpPort": 80,
+  "controlPort": 7001,
+  "mock": {
+    "host": "127.0.0.1",
+    "httpPort": 18080,
+    "tcpPort": 17001,
+    "rateMbps": 30
+  },
+  "bluetooth": {
+    "namePrefixes": ["OsmoPocket4P"],
+    "scanServiceUuids": ["0000fff0-0000-1000-8000-00805f9b34fb"],
+    "optionalServiceUuids": [],
+    "serviceUuid": "0000fff0-0000-1000-8000-00805f9b34fb",
+    "writeCharacteristicUuid": "0000fff5-0000-1000-8000-00805f9b34fb",
+    "notifyCharacteristicUuid": "0000fff4-0000-1000-8000-00805f9b34fb",
+    "wakePayloadHex": "0100"
+  },
+  "storages": [
+    { "id": "storage_internal", "label": "内置存储", "path": "DCIM/", "default": true },
+    { "id": "sdcard", "label": "SD 卡", "path": "DCIM/", "default": false }
+  ]
+}

@@ -8,12 +8,13 @@ import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
-import { Button, Dialog, Input, Switch, toast } from '../ui'
+import { Button, Dialog, Input, Select, Switch, toast } from '../ui'
 import '../styles/settings.css'
 import '../styles/download-storage-settings.css'
 
 interface SettingsPageProps {
   activeDevice?: DeviceDefinition
+  devices: DeviceDefinition[]
   cacheStats: CacheStats | null
   chooseBaseDir: () => Promise<void>
   chooseLocalResourcesDir: () => Promise<void>
@@ -60,6 +61,7 @@ function DirectorySettingRow({ label, path, onOpen, onChange, onMigrate, migrati
 
 export function SettingsPage({
   activeDevice,
+  devices,
   cacheStats,
   chooseBaseDir,
   chooseLocalResourcesDir,
@@ -192,6 +194,21 @@ export function SettingsPage({
     } finally {
       setOrganizingDownloads(false)
     }
+  }
+
+  async function changeActiveDevice(deviceId: string): Promise<void> {
+    const nextDevice = devices.find((device) => device.id === deviceId)
+    if (!nextDevice) return
+    const next = await window.luna.saveSettings({
+      activeDeviceId: nextDevice.id,
+      cameraHost: nextDevice.defaultHost,
+      cameraConnectionMode: 'wireless',
+      mockHost: nextDevice.mock.host,
+      mockHttpPort: nextDevice.mock.httpPort,
+      mockTcpPort: nextDevice.mock.tcpPort,
+      mockRateMbps: nextDevice.mock.rateMbps,
+    })
+    setSettings(next)
   }
 
   return (
@@ -334,6 +351,19 @@ export function SettingsPage({
         <section className="settings-group">
           <h2 className="settings-group-title">连接与维护</h2>
           <div className="settings-card">
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>当前设备</span>
+                <em>{activeDevice?.vendor ?? '相机'}连接配置</em>
+              </div>
+              <Select
+                variant="compact"
+                value={activeDevice?.id}
+                options={devices.map((device) => ({ value: device.id, label: `${device.vendor} ${device.name}` }))}
+                placeholder="选择设备"
+                onValueChange={(value) => void changeActiveDevice(value)}
+              />
+            </article>
             <article className="settings-row">
               <div className="settings-row-copy">
                 <span

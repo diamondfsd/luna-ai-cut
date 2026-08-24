@@ -51,6 +51,7 @@ export interface DeviceDefinition {
     tcpPort: number
     rateMbps: number
   }
+  protocol?: 'insta360' | 'dji'
   bluetooth?: {
     namePrefixes: string[]
     scanServiceUuids: string[]
@@ -77,4 +78,6 @@ export interface BluetoothDeviceCandidate {
   rssi?: number
   serviceUuids?: string[]
   localName?: string
+  manufacturerData?: string
+  manufacturerText?: string
 }

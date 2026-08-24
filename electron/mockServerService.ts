@@ -13,11 +13,11 @@ function normalizePort(value: number | undefined, fallback: number): number {
   return Number.isInteger(value) && value !== undefined && value > 0 && value < 65536 ? value : fallback
 }
 
-function mockServerScriptPath(): string {
+function mockServerScriptPath(dji: boolean): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'luna_mock_server', 'server.mjs')
+    return path.join(process.resourcesPath, dji ? 'dji_mock_server' : 'luna_mock_server', 'server.mjs')
   }
-  return path.join(process.env.APP_ROOT, 'luna_mock_server', 'server.mjs')
+  return path.join(process.env.APP_ROOT, dji ? 'dji_mock_server' : 'luna_mock_server', 'server.mjs')
 }
 
 function currentMockStatus(settings: AppSettings, message?: string): MockServerStatus {
@@ -75,8 +75,9 @@ export async function startMockServer(partial?: Partial<AppSettings>): Promise<M
     throw new Error(mockStatus.message)
   }
 
+  const isDji = settings.activeDeviceId?.startsWith('dji-') ?? false
   const child = spawn(process.execPath, [
-    mockServerScriptPath(),
+    mockServerScriptPath(isDji),
     '--root',
     status.rootDir,
     '--host',
@@ -87,6 +88,7 @@ export async function startMockServer(partial?: Partial<AppSettings>): Promise<M
     String(status.tcpPort),
     '--rate-mbps',
     String(status.rateMbps),
+    ...(isDji ? ['--model', settings.activeDeviceId === 'dji-pocket-4-pro' ? 'pocket4pro' : 'pocket4', '--udp-port', '19004'] : []),
   ])
 
   mockProcess = child

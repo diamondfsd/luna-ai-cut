@@ -31,7 +31,9 @@ export function register(): void {
   }
 
   ipcMain.handle('bluetooth:scanNative', async (_event, timeoutMs?: number) => {
-    return scanBluetoothDevices(timeoutMs)
+    const result = await scanBluetoothDevices(timeoutMs)
+    if (!result.success) throw new Error(result.message)
+    return result.data ?? []
   })
 
   ipcMain.handle('bluetooth:cancelScan', () => {

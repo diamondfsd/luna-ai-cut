@@ -20,8 +20,17 @@
       "to": "icon.png"
     },
     {
+      "from": "build/tray-template.png",
+      "to": "tray-template.png"
+    },
+    {
       "from": "luna_mock_server",
       "to": "luna_mock_server",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "dji_mock_server",
+      "to": "dji_mock_server",
       "filter": ["**/*"]
     },
     {

@@ -21,7 +21,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`
-    : connection?.message ?? `${deviceName} 未连接`
+    : `${deviceName} 未连接`
 
   return (
     <nav className="global-nav">
