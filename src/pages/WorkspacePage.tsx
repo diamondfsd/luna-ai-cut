@@ -18,7 +18,7 @@ import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
 import { WorkspaceMaskProvider, useWorkspaceMask } from '../workspace/context/WorkspaceMaskContext'
-import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline, normalizePersistedPipelinePatch } from '../workspace/shared/editPipeline'
+import { createDefaultPipeline, mergePipeline, normalizePersistedPipelinePatch } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
 import { updateProjectAssetPipeline } from '../workspace/shared/workspaceProjectPipeline'
 import { PreviewStage, type PreviewStageHandle } from '../components/PreviewStage'
@@ -53,6 +53,7 @@ import {
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
+import { borderTitleForDevice, isLegacyBorderTitle } from '../shared/insta360DeviceProfiles'
 import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspace/removal/removalOperations'
 import { beautyClipboardSettings } from '../workspace/beauty/beautyLayers'
 import { prepareBeautyPasteTargets } from '../workspace/beauty/beautyPaste'
@@ -129,9 +130,12 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const mask = useWorkspaceMask()
   const { settings, setSettings } = useApp()
   const { activeDevice, isConnected } = useDeviceConnection()
-  const connectedDeviceMetadata = isConnected && activeDevice
-    ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
-    : null
+  const connectedDeviceMetadata = useMemo(
+    () => isConnected && activeDevice
+      ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
+      : null,
+    [activeDevice, isConnected],
+  )
   const defaultPipelineRef = useRef(createWorkspaceDefaultPipeline(settings, media.activeMedia, connectedDeviceMetadata))
   defaultPipelineRef.current = createWorkspaceDefaultPipeline(settings, media.activeMedia, connectedDeviceMetadata)
   const settingsReady = settings !== null
@@ -530,16 +534,19 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     return () => { cancelled = true }
   }, [media.activeMedia?.path])
 
-  // ── EXIF Make 自动填充边框标题 ──
+  // ── 设备型号自动填充边框标题；仅替换旧版默认值，不覆盖用户标题 ──
   useEffect(() => {
-    if (!borderMetadata) return
-    const makeValue = extractExifValue(borderMetadata, 'Make')
-    if (!makeValue) return
-    const currentTitle = edit.pipeline.border.title
-    if (currentTitle === DEFAULT_PIPELINE.border.title) {
-      edit.commitPatch({ border: { title: makeValue } })
+    const currentTitle = edit.pipeline.border.title.trim()
+    const exifModel = borderMetadata ? extractExifValue(borderMetadata, 'Model') : null
+    const deviceTitle = borderTitleForDevice({
+      ...(media.activeMedia ?? {}),
+      ...(connectedDeviceMetadata ?? {}),
+      exifModel,
+    }) ?? ''
+    if ((isLegacyBorderTitle(currentTitle) || !currentTitle) && currentTitle !== deviceTitle) {
+      edit.commitPatch({ border: { title: deviceTitle } })
     }
-  }, [borderMetadata])
+  }, [borderMetadata, connectedDeviceMetadata, edit.commitPatch, edit.pipeline.border.title, media.activeMedia])
 
   // ── Auto-save project when pipeline changes ──
   const saveTimerRef = useRef<number | null>(null)

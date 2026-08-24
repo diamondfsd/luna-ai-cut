@@ -1,6 +1,6 @@
 import type { AppSettings, WatermarkPosition } from '../../shared/types'
 import { createDefaultPipeline, type EditPipeline } from './editPipeline'
-import { defaultWatermarkStyleForDevice, type DeviceMetadataLike } from '../../shared/insta360DeviceProfiles'
+import { borderTitleForDevice, defaultWatermarkStyleForDevice, type DeviceMetadataLike } from '../../shared/insta360DeviceProfiles'
 
 const WATERMARK_POSITIONS = new Set<WatermarkPosition>([
   'top-left',
@@ -16,9 +16,10 @@ export function createWorkspaceDefaultPipeline(
   connectedDeviceMetadata?: DeviceMetadataLike | null,
 ): EditPipeline {
   const pipeline = createDefaultPipeline()
-  pipeline.watermark.style = defaultWatermarkStyleForDevice(resourceMetadata ?? {})
-    ?? defaultWatermarkStyleForDevice(connectedDeviceMetadata ?? {})
+  const deviceMetadata = connectedDeviceMetadata ?? resourceMetadata ?? {}
+  pipeline.watermark.style = defaultWatermarkStyleForDevice(deviceMetadata)
     ?? ''
+  pipeline.border.title = borderTitleForDevice(deviceMetadata) ?? ''
   pipeline.watermark.enabled = settings?.defaultWatermarkEnabled ?? true
   pipeline.watermark.position = settings?.defaultWatermarkPosition
     && WATERMARK_POSITIONS.has(settings.defaultWatermarkPosition)

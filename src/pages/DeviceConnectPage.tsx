@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Bluetooth, Cable, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
+import { Bluetooth, Cable, Camera, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
 
 import type { AppSettings, CameraConnectionMode, CameraMediaSourcePreparationResult, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { SupportedDeviceList } from '../components/SupportedDeviceList'
@@ -10,6 +10,25 @@ import { useStorageMigration } from '../hooks/useStorageMigration'
 import '../styles/wifi.css'
 import '../styles/device-connect-wireless.css'
 import lunaIcon from '../../public/luna-icon.png'
+import pocket4Character from '../../public/pocket4.png'
+import pocket4ProCharacter from '../../public/pocket4p-white.png'
+
+function deviceConnectVisual(device?: DeviceDefinition) {
+  if (device?.protocol === 'insta360') {
+    return <img src={lunaIcon} alt="" className="device-connect-logo" />
+  }
+  if (device?.id === 'dji-pocket-4') {
+    return <img src={pocket4Character} alt="" className="device-connect-logo device-connect-logo-character" />
+  }
+  if (device?.id === 'dji-pocket-4-pro') {
+    return <img src={pocket4ProCharacter} alt="" className="device-connect-logo device-connect-logo-character" />
+  }
+  return (
+    <span className="device-connect-logo device-connect-logo-fallback" aria-hidden="true">
+      <Camera size={30} strokeWidth={1.6} />
+    </span>
+  )
+}
 
 interface DeviceConnectPageProps {
   activeDevice?: DeviceDefinition
@@ -226,7 +245,7 @@ export function DeviceConnectPage({
       <div className="device-connect-content">
         <header className="device-connect-header">
           <div className="device-connect-brand">
-            <img src={lunaIcon} alt="Luna" className="device-connect-logo" />
+            {deviceConnectVisual(activeDevice)}
             <div>
               <p>相机媒体库</p>
               <h1>连接 {deviceName}</h1>

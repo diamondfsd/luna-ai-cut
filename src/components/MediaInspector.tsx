@@ -219,7 +219,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     title: '传感器数据',
-    condition: (map) => map.get('Make') === 'Insta360',
+    condition: (map) => ['Parameters', 'Accelerometer', 'AngularVelocity'].some((key) => map.has(key)),
     fields: [
       { key: 'Parameters', label: '拼接参数' },
       { key: 'Accelerometer', label: '加速度计' },

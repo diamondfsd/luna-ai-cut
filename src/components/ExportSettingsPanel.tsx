@@ -112,7 +112,7 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedF
             />
           </div>
         )}
-        {(dolbyVisionAvailable || dolbyVisionChecking) && (
+        {dolbyVisionAvailable === true && (
           <div className="export-settings-row export-settings-dolby-row">
             <label className="export-settings-label">Dolby Vision 导出</label>
             <Switch

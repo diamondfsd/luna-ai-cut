@@ -16,11 +16,11 @@ interface SupportedDeviceListProps {
 }
 
 function supportedDevices(devices: DeviceDefinition[]): DeviceDefinition[] {
-  return devices.filter((device) => device.id === 'luna-ultra' || device.protocol === 'dji')
+  return devices.filter((device) => device.protocol === 'insta360' || device.protocol === 'go-ultra' || device.protocol === 'dji')
 }
 
 function deviceVisual(device: DeviceDefinition) {
-  if (device.id === 'luna-ultra') {
+  if (device.protocol === 'insta360') {
     return <img src={lunaIcon} alt="" />
   }
   if (device.id === 'dji-pocket-4') {

@@ -273,6 +273,12 @@
   pointer-events: none;
 }
 
+.triple-stitch-wm-btn > svg {
+  width: 28px;
+  height: 28px;
+  color: #808080;
+}
+
 .triple-stitch-wm-btn span {
   font-size: 11px;
   color: #b0b0b0;
@@ -280,6 +286,10 @@
 }
 
 .triple-stitch-wm-btn.active span {
+  color: var(--blue, #06c);
+}
+
+.triple-stitch-wm-btn.active > svg {
   color: var(--blue, #06c);
 }
 

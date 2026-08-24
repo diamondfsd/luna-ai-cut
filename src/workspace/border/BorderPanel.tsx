@@ -13,6 +13,7 @@ interface BorderPanelProps {
   value: EditPipeline['border']
   onChange: (patch: Partial<EditPipeline['border']>) => void
   mediaPath?: string | null
+  defaultTitle?: string
 }
 
 export function presetColors(presetId: string): { backgroundColor: string; textColor: string } {
@@ -25,7 +26,7 @@ export function presetColors(presetId: string): { backgroundColor: string; textC
   }
 }
 
-export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
+export function BorderPanel({ value, onChange, mediaPath, defaultTitle = '' }: BorderPanelProps) {
   const [view, setView] = useState<'list' | 'edit'>(() => value.enabled ? 'edit' : 'list')
   const [query, setQuery] = useState('')
   const activePreset = useMemo(
@@ -58,6 +59,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
       presetId,
       ...presetColors(presetId),
       ...framePresetDefaultSettings(preset?.id),
+      title: value.title || defaultTitle,
     })
     setView('edit')
   }
@@ -68,6 +70,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
     presetId: value.presetId,
     ...presetColors(value.presetId),
     ...framePresetDefaultSettings(activePreset?.id),
+    title: defaultTitle,
   })
 
   if (view === 'edit' && activePreset) {
