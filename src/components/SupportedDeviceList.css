@@ -88,9 +88,8 @@
 }
 
 .supported-device-visual img.supported-device-character {
-  box-sizing: border-box;
-  object-fit: contain;
-  padding: 3px;
+  object-fit: cover;
+  padding: 0;
 }
 
 .supported-device-visual.dji {
