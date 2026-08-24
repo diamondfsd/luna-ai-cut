@@ -44,7 +44,7 @@
   color: #16803c;
 }
 
-.device-connect-wireless-state.manual {
+.device-connect-wireless-state.system {
   background: color-mix(in srgb, #b45309 10%, transparent);
   color: #b45309;
 }
@@ -78,7 +78,7 @@
   white-space: nowrap;
 }
 
-.device-connect-wireless-manual {
+.device-connect-wireless-system {
   display: grid;
   gap: 10px;
   border: 1px solid color-mix(in srgb, #b45309 28%, var(--hairline));
@@ -87,23 +87,11 @@
   padding: 12px;
 }
 
-.device-connect-wireless-manual-header {
-  display: grid;
-  gap: 3px;
-}
-
-.device-connect-wireless-manual-header > span,
-.device-connect-wireless-manual-hint {
+.device-connect-wireless-system p:last-child {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.45;
-}
-
-.device-connect-wireless-manual-fields {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 @media (max-width: 680px) {
@@ -113,9 +101,5 @@
 
   .device-connect-wireless-state {
     justify-self: start;
-  }
-
-  .device-connect-wireless-manual-fields {
-    grid-template-columns: 1fr;
   }
 }

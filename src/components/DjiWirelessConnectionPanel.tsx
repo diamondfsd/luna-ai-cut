@@ -1,30 +1,22 @@
 import { Bluetooth, Check, Copy } from 'lucide-react'
 
 import type { CameraMediaSourcePreparationResult } from '../shared/types'
-import { Button, Input } from '../ui'
+import { Button } from '../ui'
 import '../styles/device-connect-wireless.css'
 
 interface DjiWirelessConnectionPanelProps {
   preparation: CameraMediaSourcePreparationResult | null
   credentials: CameraMediaSourcePreparationResult['credentials'] | null
-  needsManualWifi: boolean
-  manualWifiSsid: string
-  manualWifiPassword: string
+  needsSystemWifi: boolean
   wifiPasswordCopied: boolean
-  onManualWifiSsidChange: (value: string) => void
-  onManualWifiPasswordChange: (value: string) => void
   onCopyPassword: () => void
 }
 
 export function DjiWirelessConnectionPanel({
   preparation,
   credentials,
-  needsManualWifi,
-  manualWifiSsid,
-  manualWifiPassword,
+  needsSystemWifi,
   wifiPasswordCopied,
-  onManualWifiSsidChange,
-  onManualWifiPasswordChange,
   onCopyPassword,
 }: DjiWirelessConnectionPanelProps) {
   const bluetoothUnsupported = preparation?.capabilities?.bluetoothWifiCredentials === false
@@ -36,17 +28,17 @@ export function DjiWirelessConnectionPanel({
           <p className="device-connect-section-title">Wi-Fi 连接准备</p>
           <span>
             {preparation?.credentials
-              ? '已通过蓝牙取得相机 Wi-Fi 信息，点击右侧连接即可继续'
+              ? '已通过蓝牙取得相机 Wi-Fi 信息，请使用系统 Wi-Fi 工具连接相机后点击右侧连接'
               : bluetoothUnsupported
-                ? '当前电脑不支持蓝牙，建议先让手机连接相机，再用手机系统的 Wi-Fi 分享功能查看或分享密码'
+                ? '当前电脑不支持蓝牙，请使用系统 Wi-Fi 工具手动连接相机热点'
                 : preparation
                   ? preparation.message
                   : '点击“开始连接”后会自动尝试通过蓝牙获取相机 Wi-Fi 信息'}
           </span>
         </div>
-        <span className={`device-connect-wireless-state ${preparation?.credentials ? 'success' : needsManualWifi ? 'manual' : ''}`}>
+        <span className={`device-connect-wireless-state ${preparation?.credentials ? 'success' : needsSystemWifi ? 'system' : ''}`}>
           <Bluetooth size={13} />
-          {preparation?.credentials ? '蓝牙已获取' : needsManualWifi ? '需要手动填写' : '自动尝试蓝牙'}
+          {preparation?.credentials ? '蓝牙已获取' : needsSystemWifi ? '需要系统 Wi-Fi' : '自动尝试蓝牙'}
         </span>
       </div>
 
@@ -65,33 +57,11 @@ export function DjiWirelessConnectionPanel({
         </div>
       )}
 
-      {needsManualWifi && (
-        <div className="device-connect-wireless-manual">
-          <div className="device-connect-wireless-manual-header">
-            <p className="device-connect-section-title">手动填写 Wi-Fi</p>
-            <span>填写后再次点击右侧连接按钮</span>
-          </div>
-          <div className="device-connect-wireless-manual-fields">
-            <Input
-              variant="compact"
-              fullWidth
-              aria-label="相机 Wi-Fi 名称"
-              placeholder="相机 Wi-Fi 名称"
-              value={manualWifiSsid}
-              onChange={(event) => onManualWifiSsidChange(event.target.value)}
-            />
-            <Input
-              variant="compact"
-              fullWidth
-              type="password"
-              aria-label="相机 Wi-Fi 密码"
-              placeholder="Wi-Fi 密码（无密码可留空）"
-              value={manualWifiPassword}
-              onChange={(event) => onManualWifiPasswordChange(event.target.value)}
-            />
-          </div>
-          <p className="device-connect-wireless-manual-hint">
-            电脑没有蓝牙时，建议先让手机连接相机；现在大多数手机都支持系统 Wi-Fi 分享功能，可用它查看或分享密码。然后在电脑系统 Wi-Fi 中连接相机热点，再填写这里。
+      {needsSystemWifi && (
+        <div className="device-connect-wireless-system">
+          <p className="device-connect-section-title">请使用系统 Wi-Fi 连接工具</p>
+          <p>
+            点击右侧“打开 Wi-Fi 设置”，在系统中手动连接相机热点。电脑没有蓝牙时，可先让手机连接相机；现在大多数手机都支持系统 Wi-Fi 分享功能，可以用手机获取密码。连接完成后回来点击“开始连接”，应用不会自动切换系统网络。
           </p>
         </div>
       )}

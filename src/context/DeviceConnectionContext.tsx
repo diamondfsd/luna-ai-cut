@@ -246,7 +246,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       const t0 = performance.now()
       const preparedWifi = preparedDjiWifi?.deviceId === deviceId ? preparedDjiWifi : null
       const wireless = wirelessOverride ?? (preparedWifi ? {
-        preparation: 'manual-wifi' as const,
+        preparation: 'bluetooth' as const,
         ssid: preparedWifi.ssid,
         password: preparedWifi.password,
       } : undefined)
@@ -322,7 +322,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       const message = userFacingConnectionError(error)
       setConnection({ host, httpOk: false, controlOk: false, message })
       setDevicePhase('idle')
-      return { mode: 'wireless', preparation: 'manual-wifi', message }
+      return { mode: 'wireless', preparation: 'already-connected', message }
     }
   }
 
