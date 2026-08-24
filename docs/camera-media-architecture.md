@@ -42,7 +42,7 @@ cameraMediaSourceFor()  根据 DeviceDefinition.protocol 注册适配器
 - `connection.automaticWifiJoin`
 - `connection.manualWifiCredentials`
 
-连接准备通过 `CameraMediaSourceOptions.wireless` 传递。密码只作为本次连接参数使用，不写入应用设置。未来需要系统 Wi-Fi 自动加入时，只新增对应策略实现，不改变素材列表接口。
+连接准备通过 `CameraMediaSourceOptions.wireless` 传递。密码只作为本次连接参数使用，不写入应用设置。DJI 额外提供 `prepareConnection()`：先通过蓝牙读取 Wi-Fi 信息并断开 BLE，用户手动切换 Wi-Fi 后再调用统一的 `connect()`。未来需要系统 Wi-Fi 自动加入时，只新增对应策略实现，不改变素材列表接口。
 
 ## 设备注册
 
@@ -66,11 +66,11 @@ DJI 媒体会话分为两步：
 
 准备策略目前支持三种结果：
 
-- `bluetooth`：Mock 服务中执行完整 BLE DUML 配对和 Wi-Fi 信息读取
+- `bluetooth`：通过 Mock 或 macOS CoreBluetooth 执行完整 BLE DUML 配对和 Wi-Fi 信息读取
 - `manual-wifi`：用户已经在系统中连接相机 Wi-Fi，应用直接使用该连接
-- `already-connected`：真实设备当前没有原生 BLE transport 时，保留已连接 Wi-Fi 的媒体访问路径
+- `already-connected`：跳过 BLE，直接复用用户已经连接好的相机 Wi-Fi
 
-真实 CoreBluetooth transport 接入后，只替换 `DjiWirelessPreparation` 的 transport factory。媒体清单、下载、预览和删除能力不需要重新实现。
+真实 BLE transport 由平台 helper 承载：macOS 使用 CoreBluetooth Swift helper，Windows 使用 Windows Runtime PowerShell helper；两者都只通过 `DjiBleTransport` 接入。媒体清单、下载、预览和删除能力不需要重新实现。
 
 ## Mock 验收
 
@@ -94,7 +94,7 @@ Pocket 4 Pro 使用 `--model pocket4pro`。素材目录可以直接放文件，�
 
 ## 后续实现顺序
 
-1. 接入真实 DJI BLE transport，优先实现 macOS CoreBluetooth；保持 `DjiBleTransport` 字节协议接口不变。
+1. 在真实 macOS 和 Windows 设备上验证 Pocket 4 / Pocket 4 Pro 的连接、通知分片和 Wi-Fi 信息读取；保持 `DjiBleTransport` 字节协议接口不变。
 2. 根据用户输入补齐系统 Wi-Fi 连接策略；默认仍允许用户手动切换 Wi-Fi。
 3. 为设备定义补充每个机型的存储、预览、删除和连接能力矩阵。
 4. 新增设备时只增加 profile、协议实现和 Mock fixture，并复用 `CameraMediaSourceApi`。

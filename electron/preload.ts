@@ -98,6 +98,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     detectMounted: () => ipcRenderer.invoke('camera-source:detect-mounted'),
     chooseMounted: () => ipcRenderer.invoke('camera-source:choose-mounted'),
     connect: (options) => ipcRenderer.invoke('camera-source:connect', options),
+    prepareConnection: (options) => ipcRenderer.invoke('camera-source:prepare-connection', options),
     check: (options) => ipcRenderer.invoke('camera-source:check', options),
     listFiles: (options) => ipcRenderer.invoke('camera-source:list-files', options),
     deleteFiles: (files, options) => ipcRenderer.invoke('camera-source:delete-files', files, options),

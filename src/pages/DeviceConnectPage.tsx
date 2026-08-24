@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Cable, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
+import { Bluetooth, Cable, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
 
-import type { AppSettings, CameraConnectionMode, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
+import type { AppSettings, CameraConnectionMode, CameraMediaSourcePreparationResult, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { SupportedDeviceList } from '../components/SupportedDeviceList'
 import { Alert, Button, ButtonGroup } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import { useStorageMigration } from '../hooks/useStorageMigration'
 import '../styles/wifi.css'
+import '../styles/device-connect-wireless.css'
 import lunaIcon from '../../public/luna-icon.png'
 
 interface DeviceConnectPageProps {
@@ -17,6 +18,8 @@ interface DeviceConnectPageProps {
   phase: DeviceConnectionPhase
   settings: AppSettings | null
   onConnect: (rootPath?: string, deviceId?: string) => Promise<void>
+  onPrepareConnection: () => Promise<void>
+  preparedDjiWifi: CameraMediaSourcePreparationResult['credentials'] | null
   onDeviceChange: (deviceId: string) => Promise<void>
   connectionMode: CameraConnectionMode
   onConnectionModeChange: (mode: CameraConnectionMode) => Promise<void>
@@ -31,6 +34,8 @@ export function DeviceConnectPage({
   phase,
   settings,
   onConnect,
+  onPrepareConnection,
+  preparedDjiWifi,
   onDeviceChange,
   connectionMode,
   onConnectionModeChange,
@@ -46,6 +51,8 @@ export function DeviceConnectPage({
   const [mountedVolumesLoading, setMountedVolumesLoading] = useState(false)
   const [mountedVolumesError, setMountedVolumesError] = useState<string | null>(null)
   const [changingDevice, setChangingDevice] = useState(false)
+  const [preparingConnection, setPreparingConnection] = useState(false)
+  const [wifiPasswordCopied, setWifiPasswordCopied] = useState(false)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
@@ -107,6 +114,26 @@ export function DeviceConnectPage({
       await onConnect()
     } finally {
       setConnecting(false)
+    }
+  }
+
+  async function handlePrepareConnection(): Promise<void> {
+    setPreparingConnection(true)
+    try {
+      await onPrepareConnection()
+    } finally {
+      setPreparingConnection(false)
+    }
+  }
+
+  async function copyWifiPassword(): Promise<void> {
+    if (!preparedDjiWifi?.password) return
+    try {
+      await navigator.clipboard.writeText(preparedDjiWifi.password)
+      setWifiPasswordCopied(true)
+      window.setTimeout(() => setWifiPasswordCopied(false), 1500)
+    } catch {
+      setWifiPasswordCopied(false)
     }
   }
 
@@ -268,6 +295,40 @@ export function DeviceConnectPage({
                 ? '请在相机上选择磁盘或 U 盘模式；删除相机素材前会再次确认'
                 : '相机 Wi-Fi 可能无法访问互联网，素材导入后可切回常用网络'}</span>
             </p>
+
+            {!isWired && activeDevice?.protocol === 'dji' && (
+              <section className="device-connect-wireless-preparation" aria-label="DJI Wi-Fi 连接准备">
+                <div className="device-connect-wireless-preparation-header">
+                  <div>
+                    <p className="device-connect-section-title">先读取相机 Wi-Fi 信息</p>
+                    <span>应用会临时连接 DJI 蓝牙，读取完成后立即断开</span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="mini"
+                    disabled={preparingConnection || connecting || isChecking}
+                    onClick={() => void handlePrepareConnection()}
+                    icon={<Bluetooth className={preparingConnection ? 'spin' : ''} size={13} />}
+                  >
+                    {preparingConnection ? '读取中' : '读取信息'}
+                  </Button>
+                </div>
+                {preparedDjiWifi && (
+                  <div className="device-connect-wireless-credentials">
+                    <div><span>Wi-Fi 名称</span><strong title={preparedDjiWifi.ssid}>{preparedDjiWifi.ssid}</strong></div>
+                    <div><span>Wi-Fi 密码</span><strong>{preparedDjiWifi.password || '无密码'}</strong></div>
+                    <Button
+                      variant="ghost"
+                      size="mini"
+                      onClick={() => void copyWifiPassword()}
+                      icon={wifiPasswordCopied ? <Check size={13} /> : <Copy size={13} />}
+                    >
+                      {wifiPasswordCopied ? '已复制密码' : '复制密码'}
+                    </Button>
+                  </div>
+                )}
+              </section>
+            )}
 
             {isWired && (
               <section className="device-connect-volumes" aria-label="已连接的相机磁盘">

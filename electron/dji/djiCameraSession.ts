@@ -1,6 +1,6 @@
 import { getSettings, saveSettings } from '../fileService'
 import net from 'node:net'
-import type { CameraMediaSourceOptions, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../src/shared/types'
+import type { CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../src/shared/types'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
 import type { DjiWifiCredentials } from './djiBleSession'
 import { encodeDjiMessage, hex, newInstallIdentity, packString } from './djiBytes'
@@ -97,6 +97,16 @@ export class DjiCameraSession {
       return this.status(`${preparation.message}，UDP 会话已建立`)
     }
     return this.status('DJI 相机连接已保持')
+  }
+
+  async prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult> {
+    const preparation = await this.wirelessPreparation.prepare(options)
+    this.credentials = preparation.credentials ?? null
+    return {
+      mode: 'wireless',
+      credentials: preparation.credentials,
+      message: preparation.message,
+    }
   }
 
   async check(options?: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus> {

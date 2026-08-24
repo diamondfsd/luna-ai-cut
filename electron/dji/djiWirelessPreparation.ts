@@ -8,6 +8,8 @@ import {
   type DjiBleTransport,
   type DjiWifiCredentials,
 } from './djiBleSession'
+import { createCoreBluetoothDjiBleTransport } from './djiCoreBluetoothTransport'
+import { createWindowsDjiBleTransport } from './djiWindowsBluetoothTransport'
 
 export type DjiWirelessPreparationMode = 'bluetooth' | 'manual-wifi' | 'already-connected'
 
@@ -31,9 +33,16 @@ function isLoopbackHost(host: string): boolean {
   }
 }
 
+type DjiTransportFactory = (deviceId: string, baseUrl: string) => DjiBleTransport | null
+
+function defaultDjiTransportFactory(deviceId: string, baseUrl: string): DjiBleTransport | null {
+  if (isLoopbackHost(baseUrl)) return createHttpMockDjiBleTransport(deviceId, baseUrl)
+  return createCoreBluetoothDjiBleTransport(deviceId) ?? createWindowsDjiBleTransport(deviceId)
+}
+
 /**
  * DJI 的媒体会话只消费连接准备结果，不直接依赖某一种 BLE 实现。
- * 真实 CoreBluetooth transport 接入后，只需要替换 transportFactory。
+ * BLE 只负责激活相机和读取 Wi-Fi 信息；媒体会话本身继续走 Wi-Fi。
  */
 export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
   private ble: DjiBleSession | null = null
@@ -42,13 +51,11 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     private readonly deviceId: string,
     private readonly host: string,
     private readonly installIdentity: string,
-    private readonly transportFactory: ((deviceId: string, baseUrl: string) => DjiBleTransport | null) = (deviceId, baseUrl) => (
-      isLoopbackHost(baseUrl) ? createHttpMockDjiBleTransport(deviceId, baseUrl) : null
-    ),
+    private readonly transportFactory: DjiTransportFactory = defaultDjiTransportFactory,
   ) {}
 
   get capabilities(): CameraMediaSourceConnectionCapabilities {
-    const bluetoothAvailable = Boolean(this.transportFactory(this.deviceId, this.host))
+    const bluetoothAvailable = process.platform === 'darwin' || process.platform === 'win32' || isLoopbackHost(this.host)
     return {
       bluetoothActivation: bluetoothAvailable,
       bluetoothWifiCredentials: bluetoothAvailable,
@@ -82,12 +89,18 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
       }
     }
 
-    this.ble = new DjiBleSession(transport, this.installIdentity)
-    const credentials = await this.ble.readWifiCredentials()
-    return {
-      mode: 'bluetooth',
-      credentials,
-      message: `已通过蓝牙取得 Wi-Fi 信息：${credentials.ssid}`,
+    const ble = new DjiBleSession(transport, this.installIdentity)
+    this.ble = ble
+    try {
+      const credentials = await ble.readWifiCredentials()
+      return {
+        mode: 'bluetooth',
+        credentials,
+        message: `已通过蓝牙取得 Wi-Fi 信息：${credentials.ssid}`,
+      }
+    } finally {
+      await ble.close().catch(() => undefined)
+      if (this.ble === ble) this.ble = null
     }
   }
 

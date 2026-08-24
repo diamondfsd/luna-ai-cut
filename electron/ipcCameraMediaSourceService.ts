@@ -16,6 +16,13 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('camera-source:connect', (_event, options: CameraMediaSourceOptions) => (
     cameraMediaSourceFor(ctx, options).connect()
   ))
+  ipcMain.handle('camera-source:prepare-connection', async (_event, options: CameraMediaSourceOptions) => {
+    const source = cameraMediaSourceFor(ctx, options)
+    if (!source.prepareConnection) {
+      return { mode: options.mode, message: '当前设备可以直接使用已连接的网络' }
+    }
+    return source.prepareConnection()
+  })
   ipcMain.handle('camera-source:check', (_event, options: CameraMediaSourceOptions) => (
     cameraMediaSourceFor(ctx, options).check()
   ))

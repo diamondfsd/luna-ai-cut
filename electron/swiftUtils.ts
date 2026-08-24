@@ -13,6 +13,8 @@ import { join } from 'node:path'
 
 const HOT_SWIFT_DIR = () => join(app.getPath('userData'), '.luna-hot', 'swift')
 const RESOURCES_SWIFT_DIR = () => join(process.resourcesPath, 'swift')
+const HOT_NATIVE_DIR = () => join(app.getPath('userData'), '.luna-hot', 'native')
+const RESOURCES_NATIVE_DIR = () => join(process.resourcesPath, 'native')
 const RESOURCES_LEGACY_DIR = () => process.resourcesPath // 旧版: Resources/livetool.swift
 const DEV_SWIFT_DIR = () => join(app.getAppPath(), 'electron')
 
@@ -40,5 +42,18 @@ export function getSwiftScriptPath(scriptName: string): string {
   }
 
   // 4. 开发目录
+  return join(DEV_SWIFT_DIR(), scriptName)
+}
+
+/** 获取非 Swift 原生 helper（例如 Windows PowerShell BLE bridge）的完整路径。 */
+export function getNativeScriptPath(scriptName: string): string {
+  if (app.isPackaged) {
+    const hotPath = join(HOT_NATIVE_DIR(), scriptName)
+    if (existsSync(hotPath)) return hotPath
+  }
+  if (app.isPackaged) {
+    const resourcePath = join(RESOURCES_NATIVE_DIR(), scriptName)
+    if (existsSync(resourcePath)) return resourcePath
+  }
   return join(DEV_SWIFT_DIR(), scriptName)
 }
