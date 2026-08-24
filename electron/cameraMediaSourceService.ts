@@ -10,10 +10,12 @@ import {
 } from './mountedCameraMediaSource'
 import type {
   CameraDeleteResult,
+  CameraMediaSourceAdapter,
   CameraMediaSourceCapabilities,
   CameraMediaSourceOptions,
   CameraMediaSourceStatus,
   ConnectionStatus,
+  DeviceDefinition,
   LunaFile,
 } from '../src/shared/types'
 import { djiSessionFor, disconnectDjiSession } from './dji/djiCameraSession'
@@ -26,26 +28,29 @@ const WIRELESS_CAPABILITIES: CameraMediaSourceCapabilities = {
   update: false,
   delete: true,
   watch: true,
+  connection: {
+    bluetoothActivation: false,
+    bluetoothWifiCredentials: false,
+    automaticWifiJoin: false,
+    manualWifiCredentials: true,
+  },
 }
 
-export interface CameraMediaSourceAdapter {
-  connect(): Promise<CameraMediaSourceStatus>
-  check(): Promise<CameraMediaSourceStatus>
-  listFiles(): Promise<LunaFile[]>
-  deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult>
-  disconnect(): Promise<void>
+function wirelessCapabilities(definition: DeviceDefinition): CameraMediaSourceCapabilities {
+  return {
+    ...WIRELESS_CAPABILITIES,
+    ...definition.mediaCapabilities,
+    delete: definition.mediaCapabilities?.delete ?? definition.protocol === 'insta360',
+  }
 }
 
-function wirelessStatus(status: ConnectionStatus, deviceId: string, host: string): CameraMediaSourceStatus {
+function wirelessStatus(status: ConnectionStatus, definition: DeviceDefinition, host: string): CameraMediaSourceStatus {
   return {
     ...status,
     mode: 'wireless',
     connected: Boolean(status.httpOk && status.controlOk),
-    sourceId: `wireless:${deviceId}:${host}`,
-    capabilities: {
-      ...WIRELESS_CAPABILITIES,
-      delete: deviceId === 'luna-ultra',
-    },
+    sourceId: `wireless:${definition.id}:${host}`,
+    capabilities: wirelessCapabilities(definition),
   }
 }
 
@@ -77,26 +82,36 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     }
   }
 
-  private protocol(deviceId: string) {
-    return deviceId === 'go-ultra' ? this.ctx.goUltraProtocol() : this.ctx.lunaProtocol()
+  private protocol(definition: DeviceDefinition) {
+    switch (definition.protocol ?? 'insta360') {
+      case 'go-ultra':
+        return this.ctx.goUltraProtocol()
+      case 'insta360':
+        return this.ctx.lunaProtocol()
+      default:
+        throw new Error(`暂不支持 ${definition.name} 的媒体协议`)
+    }
   }
 
   async connect(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host, storageId } = await this.values()
-    const status = await this.protocol(deviceId).connect({ deviceId, host, storageId })
+    const definition = deviceDefinitionFor(deviceId)
+    const status = await this.protocol(definition).connect({ deviceId, host, storageId })
     await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
-    return wirelessStatus(status, deviceId, host)
+    return wirelessStatus(status, definition, host)
   }
 
   async check(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host } = await this.values()
-    return wirelessStatus(await this.protocol(deviceId).checkStatus(host), deviceId, host)
+    const definition = deviceDefinitionFor(deviceId)
+    return wirelessStatus(await this.protocol(definition).checkStatus(host), definition, host)
   }
 
   async listFiles(): Promise<LunaFile[]> {
     const { deviceId, host, storageId } = await this.values()
+    const definition = deviceDefinitionFor(deviceId)
     const files = attachSourceDevice(
-      await this.protocol(deviceId).listFiles({ deviceId, host, storageId }),
+      await this.protocol(definition).listFiles({ deviceId, host, storageId }),
       deviceId,
     )
     await saveSettings({
@@ -113,13 +128,14 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
 
   async deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult> {
     const { deviceId, host } = await this.values()
-    if (deviceId !== 'luna-ultra') throw new Error('当前设备暂不支持在应用中删除相机素材')
-    return this.ctx.lunaProtocol().deleteFiles(cameraPathsForFiles(files, host), { deviceId, host })
+    const definition = deviceDefinitionFor(deviceId)
+    if (definition.protocol !== 'insta360') throw new Error('当前设备暂不支持在应用中删除相机素材')
+    return this.protocol(definition).deleteFiles(cameraPathsForFiles(files, host), { deviceId, host })
   }
 
   async disconnect(): Promise<void> {
     const { deviceId, host } = await this.values()
-    await this.protocol(deviceId).disconnect(host)
+    await this.protocol(deviceDefinitionFor(deviceId)).disconnect(host)
   }
 }
 
@@ -140,20 +156,20 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
   async connect(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host } = await this.values()
     const session = await djiSessionFor(deviceId, host)
-    const status = await session.connect()
+    const status = await session.connect(this.options)
     await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
     return status
   }
 
   async check(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host } = await this.values()
-    return (await djiSessionFor(deviceId, host)).check()
+    return (await djiSessionFor(deviceId, host)).check(this.options)
   }
 
   async listFiles(): Promise<LunaFile[]> {
     const { deviceId, host, storageId } = await this.values()
     const session = await djiSessionFor(deviceId, host)
-    const files = await session.listFiles(storageId)
+    const files = await session.listFiles(storageId, this.options)
     await saveSettings({
       cameraConnectionMode: 'wireless',
       cameraHost: host,
@@ -225,10 +241,13 @@ class MountedCameraMediaSource implements CameraMediaSourceAdapter {
 }
 
 export function cameraMediaSourceFor(ctx: IpcContext, options: CameraMediaSourceOptions): CameraMediaSourceAdapter {
-  if (options.mode === 'wireless' && options.deviceId?.startsWith('dji-')) {
-    return new DjiCameraMediaSource(options)
+  if (options.mode === 'wired') return new MountedCameraMediaSource(options)
+
+  const definition = deviceDefinitionFor(options.deviceId)
+  const factories: Record<NonNullable<DeviceDefinition['protocol']>, () => CameraMediaSourceAdapter> = {
+    insta360: () => new WirelessCameraMediaSource(ctx, options),
+    'go-ultra': () => new WirelessCameraMediaSource(ctx, options),
+    dji: () => new DjiCameraMediaSource(options),
   }
-  return options.mode === 'wired'
-    ? new MountedCameraMediaSource(options)
-    : new WirelessCameraMediaSource(ctx, options)
+  return factories[definition.protocol ?? 'insta360']()
 }

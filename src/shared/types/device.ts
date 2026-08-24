@@ -1,4 +1,5 @@
 import type { WatermarkStyle } from './watermark'
+import type { CameraMediaSourceCapabilities } from './cameraMediaSource'
 
 export interface DeviceWatermarkStyleConfig {
   value: WatermarkStyle
@@ -50,8 +51,10 @@ export interface DeviceDefinition {
     httpPort: number
     tcpPort: number
     rateMbps: number
+    model?: string
   }
-  protocol?: 'insta360' | 'dji'
+  protocol?: 'insta360' | 'go-ultra' | 'dji'
+  mediaCapabilities?: Partial<Pick<CameraMediaSourceCapabilities, 'list' | 'preview' | 'copyToLocal' | 'create' | 'update' | 'delete' | 'watch'>>
   bluetooth?: {
     namePrefixes: string[]
     scanServiceUuids: string[]

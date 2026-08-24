@@ -7,7 +7,7 @@ export interface Insta360TcpDeviceInfo {
   rawStrings: string[]
 }
 
-function extractAsciiStrings(data: Buffer): string[] {
+export function extractAsciiStrings(data: Buffer): string[] {
   const strings: string[] = []
   let current = ''
   for (const byte of data) {

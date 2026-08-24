@@ -46,6 +46,12 @@ function activeDeviceFor(settings: AppSettings | null, devices: DeviceDefinition
 
 const EMPTY_CAPABILITIES: CameraMediaSourceCapabilities = {
   list: false, preview: false, copyToLocal: false, create: false, update: false, delete: false, watch: false,
+  connection: {
+    bluetoothActivation: false,
+    bluetoothWifiCredentials: false,
+    automaticWifiJoin: false,
+    manualWifiCredentials: false,
+  },
 }
 
 function connectionTimeoutStatus(mode: CameraConnectionMode, host: string): Promise<CameraMediaSourceStatus> {

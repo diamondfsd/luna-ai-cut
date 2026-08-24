@@ -25,6 +25,12 @@ export const MOUNTED_CAMERA_CAPABILITIES: CameraMediaSourceCapabilities = {
   update: false,
   delete: true,
   watch: true,
+  connection: {
+    bluetoothActivation: false,
+    bluetoothWifiCredentials: false,
+    automaticWifiJoin: false,
+    manualWifiCredentials: false,
+  },
 }
 
 const execFileAsync = promisify(execFile)

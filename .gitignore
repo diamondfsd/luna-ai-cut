@@ -37,7 +37,8 @@ resources/ffmpeg/
 resources/dolby-vision/
 .dolby-tools-cache/
 .dxc-cache/
-docs/
+docs/*
+!docs/camera-media-architecture.md
 
 # Local deploy config
 scripts/deploy-release.conf

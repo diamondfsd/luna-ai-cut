@@ -30,6 +30,14 @@ Luna AI Cut 是一款开源、非商业的桌面素材管理与创作工具。�
 
 当前部分相机连接、色彩还原和设备水印能力会因机型而异。项目会在验证兼容性后逐步增加支持范围。
 
+## DJI 协议参考
+
+DJI Osmo Pocket 4 / Pocket 4 Pro 的设备识别、BLE 配对与 Wi-Fi 信息交互、TCP/UDP 会话以及媒体清单协议，参考了 [KonradIT/osmosis](https://github.com/KonradIT/osmosis) 项目的协议分析与实现。
+
+Osmosis 是一个独立的开源 DJI Osmo 媒体客户端，采用 MIT License。Luna AI Cut 的 DJI 接入代码根据上游公开资料在 Electron/TypeScript 中重新实现，不依赖 DJI 官方 SDK。感谢 [KonradIT](https://github.com/KonradIT) 对 DJI Osmo 协议的整理和开源。
+
+多设备媒体接入、可选 BLE/Wi-Fi 连接准备以及 Pocket 4 / Pocket 4 Pro Mock 验收流程见 [`docs/camera-media-architecture.md`](docs/camera-media-architecture.md)。
+
 ## 开发指南
 
 ### 环境要求

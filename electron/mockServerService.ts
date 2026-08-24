@@ -75,7 +75,8 @@ export async function startMockServer(partial?: Partial<AppSettings>): Promise<M
     throw new Error(mockStatus.message)
   }
 
-  const isDji = settings.activeDeviceId?.startsWith('dji-') ?? false
+  const device = deviceDefinitionFor(settings.activeDeviceId)
+  const isDji = device.protocol === 'dji'
   const child = spawn(process.execPath, [
     mockServerScriptPath(isDji),
     '--root',
@@ -88,7 +89,7 @@ export async function startMockServer(partial?: Partial<AppSettings>): Promise<M
     String(status.tcpPort),
     '--rate-mbps',
     String(status.rateMbps),
-    ...(isDji ? ['--model', settings.activeDeviceId === 'dji-pocket-4-pro' ? 'pocket4pro' : 'pocket4', '--udp-port', '19004'] : []),
+    ...(isDji ? ['--model', device.mock.model || 'pocket4', '--udp-port', '19004'] : []),
   ])
 
   mockProcess = child
