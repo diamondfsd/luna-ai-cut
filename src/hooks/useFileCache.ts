@@ -28,7 +28,7 @@ interface FileCache {
  * @param sourceUrl 文件 URL
  * @param enabled 是否允许触发缓存（设为 false 可延迟缓存，适合列表滚动懒加载）
  */
-export function useFileCache(sourceUrl: string | null, enabled = true): FileCache {
+export function useFileCache(sourceUrl: string | null, enabled = true, previewUrl?: string | null): FileCache {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   const [cacheFilePath, setCacheFilePath] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -64,11 +64,11 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
       if (!active || fileId !== sourceUrl) return
       if (cachedPath) setCacheFilePath(cachedPath)
       if (thumbUrl) setThumbnailUrl(thumbUrl)
-      if (cachedPath || thumbUrl) {
+      if (thumbUrl) {
         setHasError(false)
         setIsLoading(false)
       } else {
-        // cacheFilePath=null 表示缓存失败
+        // 缓存文件存在但缩略图缺失时仍算失败，允许重新生成缩略图。
         setHasError(true)
         setIsLoading(false)
       }
@@ -79,7 +79,7 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
 
     // 先订阅就绪事件，再触发缓存，避免快速命中磁盘缓存时错过通知。
     setIsLoading(!latest)
-    window.luna.cacheFile({ sourceUrl }).then((success) => {
+    window.luna.cacheFile({ sourceUrl, previewUrl }).then((success) => {
       if (!active || success) return
       setHasError(true)
       setIsLoading(false)
@@ -96,7 +96,7 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
       unsubscribe()
       cleanupRef.current = null
     }
-  }, [sourceUrl, enabled, retryKey])
+  }, [sourceUrl, enabled, previewUrl, retryKey])
 
   const retry = useCallback(() => {
     if (sourceUrl) invalidateThumbnailReady(sourceUrl)

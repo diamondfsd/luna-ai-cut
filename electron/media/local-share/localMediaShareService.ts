@@ -28,7 +28,7 @@ import type {
 } from '../../../src/shared/types/localMediaShare'
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif', '.tif', '.tiff', '.heic', '.heif'])
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi', '.mts', '.insv', '.wmv', '.3gp', '.lrv'])
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi', '.mts', '.insv', '.wmv', '.3gp', '.lrv', '.lrf', '.xrf'])
 const MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -52,6 +52,8 @@ const MIME_TYPES: Record<string, string> = {
   '.wmv': 'video/x-ms-wmv',
   '.3gp': 'video/3gpp',
   '.lrv': 'video/mp4',
+  '.lrf': 'video/mp4',
+  '.xrf': 'video/mp4',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
   '.m4a': 'audio/mp4',

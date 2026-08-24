@@ -13,7 +13,7 @@ export interface MediaDeviceInfo {
   serialNumber?: string
 }
 
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.insv', '.lrv'])
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.insv', '.lrv', '.lrf', '.xrf'])
 const execFileAsync = promisify(execFile)
 const REMOTE_TAIL_BYTES = 1024 * 1024
 const REMOTE_REQUEST_TIMEOUT_MS = 15_000
