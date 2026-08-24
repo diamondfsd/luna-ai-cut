@@ -5,6 +5,7 @@ import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
 import type { LunaFile } from '../shared/types'
+import { formatMediaGroupTitle } from '../lib/mediaDate'
 import { useMediaLibraryController, MediaLibraryCtx } from './useMediaLibraryController'
 import { Modal } from '../ui'
 import '../styles/camera-media-preview.css'
@@ -43,22 +44,10 @@ function originalVideoPreviewUrls(
   )
 }
 
-/** 格式化日期，年月日和星期之间加空格 */
-function groupTitle(group: string): string {
-  if (group.includes('未知')) return group
-  const date = new Date(`${group}T00:00:00`)
-  const dateStr = new Intl.DateTimeFormat('zh-CN', {
-    month: 'long',
-    day: 'numeric',
-  }).format(date)
-  const weekdayStr = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date)
-  return `${dateStr} ${weekdayStr}`
-}
-
 /**
  * 相机媒体库页面 — /library
  *
- * 数据源：从 Luna 相机设备读取文件列表。
+ * 数据源：从当前连接的相机设备读取文件列表。
  * 预览方式：远程地址预览。
  * 特色功能：下载到本地、存储介质筛选。
  */
@@ -71,16 +60,7 @@ export function CameraMediaPage() {
   // 页面组件只管理滚动日期状态，其他状态通过 Context 共享给子组件
   const [currentDate, setCurrentDate] = useState(
     controller.groups.length > 0
-      ? (() => {
-          const date = new Date(`${controller.groups[0][0]}T00:00:00`)
-          const dateStr = new Intl.DateTimeFormat('zh-CN', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }).format(date)
-          const weekdayStr = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date)
-          return `${dateStr} ${weekdayStr}`
-        })()
+      ? formatMediaGroupTitle(controller.groups[0][0], true)
       : '',
   )
 
@@ -109,14 +89,7 @@ export function CameraMediaPage() {
         }
         if (best) {
           const group = best.getAttribute('data-group') || ''
-          const date = new Date(`${group}T00:00:00`)
-          const dateStr = new Intl.DateTimeFormat('zh-CN', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }).format(date)
-          const weekdayStr = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date)
-          setCurrentDate(`${dateStr} ${weekdayStr}`)
+          setCurrentDate(formatMediaGroupTitle(group, true))
         }
       },
       { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5] },
@@ -135,7 +108,7 @@ export function CameraMediaPage() {
 
       <MediaGallery
         mode="camera"
-        groupTitle={groupTitle}
+        groupTitle={formatMediaGroupTitle}
       />
 
       {pageActive && controller.previewFile && (

@@ -4,6 +4,7 @@ import { Button, IconButton, Select, Tooltip, toast } from '../../ui'
 import type { WorkspacePreviewQuality } from '../../shared/types/settings'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
+import { useDeviceConnection } from '../../context/DeviceConnectionContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
 import { useApp } from '../../context/AppContext'
@@ -49,6 +50,10 @@ export function WorkspacePreviewToolbar({
   const media = useWorkspaceMedia()
   const mask = useWorkspaceMask()
   const { settings } = useApp()
+  const { activeDevice, isConnected } = useDeviceConnection()
+  const connectedDeviceMetadata = isConnected && activeDevice
+    ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
+    : null
   const scalePercent = viewScale === 'fit' ? null : viewScale
   const currentScalePercent = scalePercent ?? fitScalePercent
 
@@ -58,7 +63,7 @@ export function WorkspacePreviewToolbar({
 
   function resetAdjustments(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
-    const defaultPipeline = createWorkspaceDefaultPipeline(settings)
+    const defaultPipeline = createWorkspaceDefaultPipeline(settings, media.activeMedia, connectedDeviceMetadata)
     if (indices.size === 1 && indices.has(media.activeIndex)) {
       edit.resetPipeline(defaultPipeline)
       toast.success('已重置当前素材')

@@ -9,6 +9,7 @@ import { useExportProgress } from '../context/ExportProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { logger } from '../lib/rendererLogger'
 import { subscribeThumbnailReady } from '../lib/thumbnailReady'
+import { mediaSourceLabelFor } from '../shared/insta360DeviceProfiles'
 
 type MediaFilter = 'all' | 'image' | 'video'
 type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
@@ -42,7 +43,7 @@ export function useMediaLibraryController(pageType: PageType) {
   const [fallbackDownloadProgress, setFallbackDownloadProgress] = useState<Map<string, DownloadProgress>>(new Map())
   const downloadProgress = downloadProgressContext?.downloadProgress ?? fallbackDownloadProgress
   const setDownloadProgress = downloadProgressContext?.setDownloadProgress ?? setFallbackDownloadProgress
-  const { activeDevice, sourceCapabilities, sourceMode } = useDeviceConnection()
+  const { activeDevice, isConnected, sourceCapabilities, sourceMode } = useDeviceConnection()
   const isCamera = pageType === 'camera'
   const isLocal = pageType === 'local'
 
@@ -111,6 +112,15 @@ export function useMediaLibraryController(pageType: PageType) {
   const currentFiles = useMemo(
     () => (isLocal ? (viewMode === 'export' ? exportedFiles : downloadedFiles) : files),
     [isLocal, viewMode, files, downloadedFiles, exportedFiles],
+  )
+
+  const mediaSourceLabel = useMemo(
+    () => mediaSourceLabelFor({
+      connected: isCamera && isConnected,
+      connectedDeviceName: activeDevice?.name,
+      files: currentFiles,
+    }),
+    [activeDevice?.name, currentFiles, isCamera, isConnected],
   )
 
   const filteredFiles = useMemo(() => {
@@ -588,6 +598,7 @@ export function useMediaLibraryController(pageType: PageType) {
 
     // 加载状态
     isCurrentLoading,
+    mediaSourceLabel,
 
     // 应用级
     downloadProgress,

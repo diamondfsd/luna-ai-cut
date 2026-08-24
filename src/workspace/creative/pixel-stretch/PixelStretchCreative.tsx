@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { LrcRender } from '../../../components/LrcRender'
 import type { MediaMetadata, PixelStretchFlowShape, PixelStretchPathPoint, PreviewLayer, WorkspacePixelStretchState } from '../../../shared/types'
 import { Button, IconButton, LoadingIndicator, SegmentedControl, toast } from '../../../ui'
-import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
+import { useDeviceWatermark } from '../../../hooks/useDeviceWatermark'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
@@ -58,7 +58,7 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const projectId = media.currentProject?.id
   const activeAssetId = activeAsset?.id
   const parameterOwnerKey = projectId && activeAssetId ? `${projectId}:${activeAssetId}` : null
-  const allowWatermark = useLunaUltraWatermark(activeAsset)
+  const allowWatermark = useDeviceWatermark(activeAsset)
   const saved = pixelStretchStateForAsset(media.currentProject, activeAssetId)
   const [preset, setPreset] = useState<WorkspacePixelStretchState['preset']>(normalizePixelStretchPreset(saved?.preset))
   const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspacePixelStretchState['subjectModel']>>(normalizePixelStretchSubjectModel(saved?.subjectModel))
@@ -277,7 +277,7 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const outputSize = useMemo(() => sourceSize ? outputSizeForTransform(sourceSize, edit.pipeline.transform) : null, [edit.pipeline.transform, sourceSize])
   const baseLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
-    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark || usesCustomWatermark(edit.pipeline.watermark))
+    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark || usesCustomWatermark(edit.pipeline.watermark), undefined, activeAsset)
   }, [activeAsset, allowWatermark, edit.pipeline, metadata, sourceSize])
   const effectLayers = useMemo(() => activeMaskPath && subjectBounds && sourceSize
     ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: activeCreativeMaskLayer?.inverted, maskFeather: activeCreativeMaskLayer?.feather, subjectBounds, sourceAspect: sourceSize.width / sourceSize.height, flowShape, flowLength, flowCurve, flowWidth, flowEndWidth, flowPoints })

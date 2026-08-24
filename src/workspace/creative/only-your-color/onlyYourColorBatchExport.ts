@@ -1,5 +1,5 @@
 import { exportPreviewImage } from '../../../components/previewStageExport'
-import { canUseLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
+import { canUseDeviceWatermark } from '../../../hooks/useDeviceWatermark'
 import type { WorkspaceMediaAsset, WorkspaceOnlyYourColorState, WorkspaceProject } from '../../../shared/types'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import type { EditPipeline } from '../../shared/editPipeline'
@@ -110,8 +110,8 @@ export async function exportOnlyYourColorBatch(options: OnlyYourColorBatchExport
         ? await window.luna.getMediaMetadataByPath(entry.asset.path).catch(() => ({ groups: [] }))
         : null
       const allowWatermark = usesCustomWatermark(renderPipeline.watermark)
-        || await canUseLunaUltraWatermark(entry.asset.path, entry.asset.kind)
-      const baseLayers = buildWorkspaceExportLayers(entry.asset.path, resolution, renderPipeline, metadata, allowWatermark)
+        || await canUseDeviceWatermark(entry.asset.path, entry.asset.kind, entry.asset)
+      const baseLayers = buildWorkspaceExportLayers(entry.asset.path, resolution, renderPipeline, metadata, allowWatermark, undefined, entry.asset)
       const outputSize = outputSizeForTransform(resolution, renderPipeline.transform)
       const effectLayers = buildOnlyYourColorLayers({
         layers: baseLayers,

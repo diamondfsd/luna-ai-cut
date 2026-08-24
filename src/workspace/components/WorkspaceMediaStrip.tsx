@@ -6,6 +6,7 @@ import { mergePipeline, normalizePersistedPipelinePatch, type EditPipeline } fro
 import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useApp } from '../../context/AppContext'
+import { useDeviceConnection } from '../../context/DeviceConnectionContext'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, LivePhotoBadge, VideoPlayBadge, toast } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
 import { WorkspaceMissingMedia } from './WorkspaceMissingMedia'
@@ -45,7 +46,11 @@ interface WorkspaceMediaStripProps {
 export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStripProps = {}) {
   const { media: mediaList, brokenPaths, setBrokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
   const { settings } = useApp()
-  const defaultPipeline = createWorkspaceDefaultPipeline(settings)
+  const { activeDevice, isConnected } = useDeviceConnection()
+  const connectedDeviceMetadata = isConnected && activeDevice
+    ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
+    : null
+  const defaultPipeline = createWorkspaceDefaultPipeline(settings, mediaList[activeIndex], connectedDeviceMetadata)
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)

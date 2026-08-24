@@ -4,6 +4,7 @@ import { Slider as RadixSlider } from 'radix-ui'
 
 import { isVideoPath } from '../lib/fileUtils'
 import { defaultWatermarkStyleForDevice, resolveDeviceId } from '../shared/insta360DeviceProfiles'
+import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import type { CustomWatermarkAsset, PreviewLayer, WatermarkPosition, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   DEFAULT_WATERMARK_WIDTH_RATIO,
@@ -171,9 +172,10 @@ export function WatermarkSettings({
   deviceMetadata,
 }: WatermarkSettingsProps) {
   const controlled = settings !== undefined
+  const { activeDevice, isConnected } = useDeviceConnection()
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
     enabled: true,
-    style: 'luna_ultra_cn',
+    style: '',
     position: 'bottom-center',
   })
   const [hydrated, setHydrated] = useState(controlled)
@@ -218,15 +220,17 @@ export function WatermarkSettings({
   }, [controlled])
 
   useEffect(() => {
-    if (preferencesOnly || !filePath) return
     let cancelled = false
+    const connectedDeviceId = isConnected ? activeDevice?.id ?? null : null
     resolveDeviceId(
       resolvedDeviceMetadata,
-      { filePath, readExif: window.luna.readExifModel.bind(window.luna) },
-    ).then((id) => { if (!cancelled) setDeviceId(id) })
-      .catch(() => { if (!cancelled) setDeviceId(null) })
+      filePath
+        ? { filePath, readExif: window.luna.readExifModel.bind(window.luna) }
+        : undefined,
+    ).then((id) => { if (!cancelled) setDeviceId(id ?? connectedDeviceId) })
+      .catch(() => { if (!cancelled) setDeviceId(connectedDeviceId) })
     return () => { cancelled = true }
-  }, [filePath, preferencesOnly, resolvedDeviceMetadata])
+  }, [activeDevice?.id, filePath, isConnected, resolvedDeviceMetadata])
 
   useEffect(() => {
     if (!filePath) {
@@ -289,7 +293,7 @@ export function WatermarkSettings({
       if (seq !== enrichSeqRef.current) return
       next = { ...next, sourceKind: 'builtin', imagePath: info?.filePath, imageWidth: info?.width, imageHeight: info?.height }
     } else if (!builtinAvailable) {
-      next = { ...next, imagePath: undefined, imageWidth: undefined, imageHeight: undefined }
+      next = { ...next, style: '', imagePath: undefined, imageWidth: undefined, imageHeight: undefined }
     }
     const size = resolvedMediaSize ?? { width: 16, height: 9 }
     const layer = next.enabled ? buildResolvedWatermarkStaticLayer(next, size.width, size.height) ?? undefined : undefined

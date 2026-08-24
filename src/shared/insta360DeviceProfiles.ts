@@ -5,6 +5,15 @@ export interface Insta360DeviceProfile {
   deviceNamePatterns: RegExp[]
   exifModelPatterns: RegExp[]
   defaultWatermarkStyle: string
+  supportsBorderLogo?: boolean
+}
+
+export type DeviceMetadataLike = {
+  sourceDeviceId?: string | null
+  sourceDeviceName?: string | null
+  cameraType?: string | null
+  cameraSerial?: string | null
+  watermarkProfileId?: string | null
 }
 
 export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
@@ -15,6 +24,7 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
     deviceNamePatterns: [/Insta360\s+Luna\s+Ultra/i, /Luna\s+Ultra/i, /Z03/i],
     exifModelPatterns: [/Insta360\s+Luna\s+Ultra/i, /Luna\s+Ultra/i, /Z03/i],
     defaultWatermarkStyle: 'luna_ultra_cn',
+    supportsBorderLogo: true,
   },
   {
     id: 'go-ultra',
@@ -55,14 +65,7 @@ export function deviceProfileForText(text?: string | null): Insta360DeviceProfil
   )) ?? null
 }
 
-export function inferDeviceProfile(params: {
-  sourceDeviceId?: string | null
-  sourceDeviceName?: string | null
-  cameraType?: string | null
-  cameraSerial?: string | null
-  watermarkProfileId?: string | null
-  exifModel?: string | null
-}): Insta360DeviceProfile | null {
+export function inferDeviceProfile(params: DeviceMetadataLike & { exifModel?: string | null }): Insta360DeviceProfile | null {
   return deviceProfileForId(params.watermarkProfileId)
     ?? deviceProfileForId(params.sourceDeviceId)
     ?? deviceProfileForText(params.cameraType)
@@ -71,8 +74,32 @@ export function inferDeviceProfile(params: {
     ?? deviceProfileForText(params.exifModel)
 }
 
-export function defaultWatermarkStyleForDevice(params: Parameters<typeof inferDeviceProfile>[0]): string {
-  return inferDeviceProfile(params)?.defaultWatermarkStyle ?? 'luna_ultra_cn'
+export function defaultWatermarkStyleForDevice(params: Parameters<typeof inferDeviceProfile>[0]): string | null {
+  return inferDeviceProfile(params)?.defaultWatermarkStyle ?? null
+}
+
+export function deviceDisplayNameForMetadata(params: DeviceMetadataLike): string | null {
+  const profile = inferDeviceProfile(params)
+  if (profile) return profile.displayName
+  return [params.sourceDeviceName, params.cameraType]
+    .map((value) => value?.trim())
+    .find((value): value is string => Boolean(value)) ?? null
+}
+
+export function mediaSourceLabelFor(params: {
+  connected?: boolean
+  connectedDeviceName?: string | null
+  files?: readonly DeviceMetadataLike[]
+}): string {
+  if (params.connected) {
+    const connectedName = params.connectedDeviceName?.trim()
+    if (connectedName) return connectedName
+  }
+  for (const file of params.files ?? []) {
+    const label = deviceDisplayNameForMetadata(file)
+    if (label) return label
+  }
+  return '相机媒体'
 }
 
 export function concreteWatermarkStyle(style: string): string {

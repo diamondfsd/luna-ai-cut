@@ -166,7 +166,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
         <section className="lut-restore-row">
           <span>
             <strong>LUT 还原</strong>
-            <small>{lutsLoading ? '正在准备...' : lutsError ? '暂时不可用' : 'Luna Ultra · Rec.709'}</small>
+            <small>{lutsLoading ? '正在准备...' : lutsError ? '暂时不可用' : 'Rec.709 还原'}</small>
           </span>
           {lutsError ? (
             <Button variant="ghost" size="mini" onClick={() => void refreshLuts()}>重试</Button>

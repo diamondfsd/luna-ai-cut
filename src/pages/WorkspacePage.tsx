@@ -9,6 +9,7 @@ import {
 } from '../shared/types'
 import type { WorkspacePreviewQuality } from '../shared/types/settings'
 import { useApp } from '../context/AppContext'
+import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { ErrorBoundary, toast } from '../ui'
 import { ExportSettingsDialog } from '../components/ExportSettingsDialog'
 import { isVideoPath } from '../lib/fileUtils'
@@ -127,8 +128,12 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
   const { settings, setSettings } = useApp()
-  const defaultPipelineRef = useRef(createWorkspaceDefaultPipeline(settings))
-  defaultPipelineRef.current = createWorkspaceDefaultPipeline(settings)
+  const { activeDevice, isConnected } = useDeviceConnection()
+  const connectedDeviceMetadata = isConnected && activeDevice
+    ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
+    : null
+  const defaultPipelineRef = useRef(createWorkspaceDefaultPipeline(settings, media.activeMedia, connectedDeviceMetadata))
+  defaultPipelineRef.current = createWorkspaceDefaultPipeline(settings, media.activeMedia, connectedDeviceMetadata)
   const settingsReady = settings !== null
   const previewRef = useRef<PreviewStageHandle>(null)
   const setVideoFrameTime = mask.setVideoFrameTime
@@ -437,6 +442,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       canvasHeight: finalCanvasSize.height,
       border: edit.pipeline.border,
       metadata: borderMetadata,
+      deviceMetadata: media.activeMedia,
       mediaPath: sourcePath,
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(stagePipeline.color),
@@ -450,7 +456,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     return sourcePath
       ? applyLocalColorToSourceMediaLayers(layers, sourcePath, stagePipeline)
       : layers
-  }, [activeSourcePath, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
+  }, [activeSourcePath, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia, media.activeMedia?.path])
 
   const subtitleLayer = useMemo(() => {
     if (!finalCanvasSize || media.activeMedia?.kind !== 'video') return []
@@ -753,7 +759,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
           : null
         const untrimmedPipeline = isVideoPath(asset.path) ? mergePipeline(pipeline, { trim: null }) : pipeline
-        const layers = buildWorkspaceExportLayers(sourcePath, resolution, untrimmedPipeline, borderMeta, true, projectAsset?.subtitles)
+        const layers = buildWorkspaceExportLayers(sourcePath, resolution, untrimmedPipeline, borderMeta, true, projectAsset?.subtitles, asset)
         const outputSize = outputSizeForTransform(resolution, untrimmedPipeline.transform)
 
         if (!isVideoPath(asset.path)) {

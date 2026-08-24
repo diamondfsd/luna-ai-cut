@@ -305,7 +305,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                   }
                   title={isLocal
                     ? (ctrl.viewMode === 'export' ? '刷新已导出' : '刷新已下载')
-                    : '读取 Luna'
+                    : `读取 ${ctrl.mediaSourceLabel}`
                   }
                   type="button"
                 >

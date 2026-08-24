@@ -5,7 +5,7 @@ import type { EditPipeline } from '../../shared/editPipeline'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { loadCreativeImageSize } from '../shared/creativeMedia'
-import { canUseLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
+import { canUseDeviceWatermark } from '../../../hooks/useDeviceWatermark'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import { colorRevealCreativeDuration, colorRevealTransitionMax, IMAGE_CREATIVE_DURATION } from './colorRevealConfig'
 import { buildColorRevealLayers } from './colorRevealLayers'
@@ -83,10 +83,10 @@ export async function queueColorRevealBatchExport(options: ColorRevealBatchExpor
       ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => ({ groups: [] }))
       : null
     const allowWatermark = usesCustomWatermark(pipeline.watermark)
-      || await canUseLunaUltraWatermark(asset.path, asset.kind)
+      || await canUseDeviceWatermark(asset.path, asset.kind, asset)
     const outputSize = outputSizeForTransform(resolution, pipeline.transform)
     const resolved = resolveExportConfig(options.config, outputSize.width, outputSize.height)
-    const baseLayers = buildWorkspaceExportLayers(asset.path, resolution, pipeline, metadata, allowWatermark)
+    const baseLayers = buildWorkspaceExportLayers(asset.path, resolution, pipeline, metadata, allowWatermark, undefined, asset)
     const effectLayers = buildColorRevealLayers({
       sourcePath: asset.path,
       layers: baseLayers,

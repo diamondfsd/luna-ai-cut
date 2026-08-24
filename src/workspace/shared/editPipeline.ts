@@ -238,7 +238,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   },
   watermark: {
     enabled: true,
-    style: 'luna_ultra_cn',
+    style: '',
     position: 'bottom-center',
   },
   border: {

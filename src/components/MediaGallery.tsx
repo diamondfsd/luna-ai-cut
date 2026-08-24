@@ -262,7 +262,7 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
       <div className="media-gallery-content">
       {ctrl.isCurrentLoading && (
         <section className="loading-gallery">
-          <LoadingIndicator size="large" label={isLocal ? '正在读取已下载文件' : '正在读取 Luna 媒体'} />
+          <LoadingIndicator size="large" label={isLocal ? '正在读取已下载文件' : `正在读取 ${ctrl.mediaSourceLabel}`} />
         </section>
       )}
       {ctrl.groups.map(([group, items]) => (
