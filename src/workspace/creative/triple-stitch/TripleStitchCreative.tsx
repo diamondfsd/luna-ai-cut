@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowUp, Download, Minus, Move, Plus, RotateCcw } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, Download, EyeOff, Minus, Move, Plus, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
@@ -259,7 +259,8 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const [watermarkInfo, setWatermarkInfo] = useState<{ imagePath: string } | null>(null)
 
   useEffect(() => {
-    if (watermarkOptions.some((option) => option.value === watermarkStyle)) return
+    // 空值是用户主动关闭水印的持久化状态，设备切换时不能自动恢复。
+    if (!watermarkStyle || watermarkOptions.some((option) => option.value === watermarkStyle)) return
     setWatermarkStyle(watermarkOptions[0]?.value ?? '')
   }, [watermarkOptions, watermarkStyle])
 
@@ -917,12 +918,23 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
           <div className="triple-stitch-section">
             <div className="triple-stitch-section-title">水印</div>
             <div className="triple-stitch-watermark-toggle">
+              <button
+                type="button"
+                className={`triple-stitch-wm-btn${watermarkStyle === '' ? ' active' : ''}`}
+                aria-pressed={watermarkStyle === ''}
+                onClick={() => setWatermarkStyle('')}
+              >
+                <EyeOff size={24} aria-hidden="true" />
+                <span>关闭</span>
+              </button>
               {watermarkOptions.map((opt) => {
                 const thumbSrc = WM_SRC[opt.value]?.image
                 return (
                   <button
                     key={opt.value}
+                    type="button"
                     className={`triple-stitch-wm-btn${watermarkStyle === opt.value ? ' active' : ''}`}
+                    aria-pressed={watermarkStyle === opt.value}
                     onClick={() => setWatermarkStyle(opt.value)}
                   >
                     {thumbSrc && <img src={thumbSrc} alt={opt.label} />}

@@ -86,6 +86,29 @@ export function deviceDisplayNameForMetadata(params: DeviceMetadataLike): string
     .find((value): value is string => Boolean(value)) ?? null
 }
 
+/**
+ * 边框标题使用设备的标准型号，而不是厂商 Make（例如“Insta360”）。
+ * 这样同一套边框可以随当前连接设备或素材来源切换标题。
+ */
+export function borderTitleForDevice(params: DeviceMetadataLike & { exifModel?: string | null }): string | null {
+  const profile = inferDeviceProfile(params)
+  if (profile) return profile.cameraType
+  const genericLabels = new Set(['insta360', 'dji', 'camera', '相机'])
+  return [params.cameraType, params.sourceDeviceName, params.exifModel]
+    .map((value) => value?.trim())
+    .find((value): value is string => typeof value === 'string' && value.length > 0 && !genericLabels.has(value.toLocaleLowerCase())) ?? null
+}
+
+const LEGACY_BORDER_TITLES = new Set([
+  'insta360',
+  'insta360 luna ultra',
+  'luna ultra',
+])
+
+export function isLegacyBorderTitle(title?: string | null): boolean {
+  return LEGACY_BORDER_TITLES.has(title?.trim().toLocaleLowerCase() ?? '')
+}
+
 export function mediaSourceLabelFor(params: {
   connected?: boolean
   connectedDeviceName?: string | null

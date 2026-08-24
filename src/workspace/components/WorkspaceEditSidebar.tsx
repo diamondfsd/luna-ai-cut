@@ -15,6 +15,8 @@ import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel, type LivePhotoSelection } from '../trim/TrimPanel'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import { useDeviceConnection } from '../../context/DeviceConnectionContext'
+import { borderTitleForDevice } from '../../shared/insta360DeviceProfiles'
 import { RemovalPanel } from '../removal/RemovalPanel'
 import { WorkspaceCreativePanel } from '../creative/WorkspaceCreativeFactory'
 import type { CreativeModeId } from '../creative/creativeCatalog'
@@ -132,9 +134,15 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
   const mask = useWorkspaceMask()
+  const { activeDevice, isConnected } = useDeviceConnection()
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
   const cropHeight = edit.cropSize.height || refH
+  const defaultBorderTitle = borderTitleForDevice(
+    isConnected && activeDevice
+      ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
+      : mediaCtx.activeMedia ?? {},
+  ) ?? ''
 
   // 滤镜搜索关键字
   const [filterSearchKey, setFilterSearchKey] = useState('')
@@ -393,6 +401,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
               value={edit.pipeline.border}
               onChange={(border) => edit.updateWorkspacePanel({ border })}
               mediaPath={mediaCtx.activeMedia?.path}
+              defaultTitle={defaultBorderTitle}
             />
           ) : (
             <Accordion

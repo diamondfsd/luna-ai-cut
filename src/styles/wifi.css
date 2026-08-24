@@ -33,6 +33,18 @@
   object-fit: cover;
 }
 
+.device-connect-logo-character {
+  object-fit: contain;
+  padding: 3px;
+}
+
+.device-connect-logo-fallback {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--blue) 8%, var(--parchment));
+  color: var(--blue);
+}
+
 .device-connect-brand p,
 .device-connect-status-header p,
 .device-connect-details-header p,
