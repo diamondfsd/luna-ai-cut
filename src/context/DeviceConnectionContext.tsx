@@ -149,9 +149,18 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
           window.luna.listDevices(),
         ])
         logger.info('[设备连接] 初始化完成', { devices: nextDevices.map(d => ({ id: d.id, name: d.name })), activeDeviceId: nextSettings.activeDeviceId })
+        const nextActiveDevice = nextDevices.find((device) => device.id === nextSettings.activeDeviceId) ?? nextDevices[0]
+        const normalizedSettings = nextActiveDevice && nextActiveDevice.id !== nextSettings.activeDeviceId
+          ? await window.luna.saveSettings({
+              activeDeviceId: nextActiveDevice.id,
+              cameraHost: nextActiveDevice.defaultHost,
+              cameraConnectionMode: 'wireless',
+              mountedCameraRoot: '',
+            })
+          : nextSettings
         setDevices(nextDevices)
-        setSettings(nextSettings)
-        setConnectionModeState(nextSettings.cameraConnectionMode ?? 'wireless')
+        setSettings(normalizedSettings)
+        setConnectionModeState(normalizedSettings.cameraConnectionMode ?? 'wireless')
         setConnection(null)
         setDevicePhase('idle')
         void window.luna.getMockServerStatuses().then(setMockServerStatuses).catch(() => undefined)

@@ -3,7 +3,7 @@
  */
 import { app } from 'electron'
 import * as path from 'node:path'
-import { deviceDefinitions } from '../devices/definitions/deviceDefaults'
+import { allDeviceDefinitions } from '../devices/definitions/deviceDefaults'
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
@@ -11,7 +11,7 @@ function getWatermarkDir(): string {
 }
 
 const WATERMARK_FILE_NAMES = new Map<string, { video: string; image: string }>()
-for (const device of deviceDefinitions()) {
+for (const device of allDeviceDefinitions()) {
   for (const ws of device.watermarkStyles ?? []) {
     WATERMARK_FILE_NAMES.set(ws.value, { video: ws.videoFileName, image: ws.imageFileName })
   }

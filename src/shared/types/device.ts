@@ -43,6 +43,8 @@ export interface DeviceDefinition {
   id: string
   name: string
   vendor: string
+  /** 未完成真机验证的设备保留定义，但不展示为可连接设备。 */
+  connectionSupported?: boolean
   defaultHost: string
   httpPort: number
   controlPort: number

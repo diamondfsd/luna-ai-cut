@@ -2,6 +2,7 @@
   "id": "go-ultra",
   "name": "GO Ultra",
   "vendor": "Insta360",
+  "connectionSupported": false,
   "protocol": "go-ultra",
   "mediaCapabilities": { "delete": false },
   "defaultHost": "192.168.42.1",

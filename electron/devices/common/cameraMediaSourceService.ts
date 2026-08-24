@@ -247,9 +247,10 @@ class MountedCameraMediaSource implements CameraMediaSourceAdapter {
 }
 
 export function cameraMediaSourceFor(ctx: IpcContext, options: CameraMediaSourceOptions): CameraMediaSourceAdapter {
+  const definition = deviceDefinitionFor(options.deviceId)
+  if (definition.connectionSupported === false) throw new Error(`${definition.name} 暂不支持连接`)
   if (options.mode === 'wired') return new MountedCameraMediaSource(options)
 
-  const definition = deviceDefinitionFor(options.deviceId)
   const factories: Record<NonNullable<DeviceDefinition['protocol']>, () => CameraMediaSourceAdapter> = {
     insta360: () => new WirelessCameraMediaSource(ctx, options),
     'go-ultra': () => new WirelessCameraMediaSource(ctx, options),

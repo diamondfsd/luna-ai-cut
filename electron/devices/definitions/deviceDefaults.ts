@@ -26,10 +26,20 @@ export function deviceDefinitionFor(deviceId?: string): DeviceDefinition {
 
 /** 获取所有支持的设备列表 */
 export function deviceDefinitions(): DeviceDefinition[] {
+  return allDeviceDefinitions().filter((device) => device.connectionSupported !== false)
+}
+
+/** 包含暂未开放连接的设备，供资源注册等内部用途使用。 */
+export function allDeviceDefinitions(): DeviceDefinition[] {
   return [
     DEFAULT_DEVICE,
     GO_ULTRA_DEVICE,
     POCKET_4_DEVICE,
     POCKET_4_PRO_DEVICE,
   ]
+}
+
+export function assertDeviceConnectionSupported(deviceId: string): void {
+  const device = deviceDefinitionFor(deviceId)
+  if (device.connectionSupported === false) throw new Error(`${device.name} 暂不支持连接`)
 }

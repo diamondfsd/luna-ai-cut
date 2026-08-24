@@ -16,7 +16,7 @@ interface SupportedDeviceListProps {
 }
 
 function supportedDevices(devices: DeviceDefinition[]): DeviceDefinition[] {
-  return devices.filter((device) => device.protocol === 'insta360' || device.protocol === 'go-ultra' || device.protocol === 'dji')
+  return devices.filter((device) => device.connectionSupported !== false && (device.protocol === 'insta360' || device.protocol === 'go-ultra' || device.protocol === 'dji'))
 }
 
 function deviceVisual(device: DeviceDefinition) {

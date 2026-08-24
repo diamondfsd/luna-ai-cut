@@ -151,14 +151,15 @@ export async function stopMockServer(deviceId?: string): Promise<MockServerStatu
 }
 
 export async function startMockServer(deviceId?: string, partial?: Partial<AppSettings>): Promise<MockServerStatus> {
-  if (partial) await saveSettings(partial)
   const initialSettings = await getSettings()
   const targetDeviceId = deviceId ?? initialSettings.activeDeviceId ?? DEFAULT_DEVICE.id
+  const device = deviceDefinitionFor(targetDeviceId)
+  if (device.connectionSupported === false) throw new Error(`${device.name} 暂不支持连接，暂不提供 Mock Server`)
+  if (partial) await saveSettings(partial)
   await stopMockServer(targetDeviceId)
   const settings = await getSettings()
   const config = mockConfigFor(settings, targetDeviceId)
   const persistedSettings = await persistMockConfig(settings, targetDeviceId, config)
-  const device = deviceDefinitionFor(targetDeviceId)
   const startingStatus = statusFor(persistedSettings, targetDeviceId, 'Mock Server 启动中')
 
   if (!startingStatus.rootDir) {
