@@ -114,7 +114,9 @@ export class DjiCameraSession {
     this.credentials = preparation.credentials ?? null
     return {
       mode: 'wireless',
+      preparation: preparation.mode,
       credentials: preparation.credentials,
+      capabilities: this.wirelessPreparation.capabilities,
       message: preparation.message,
     }
   }

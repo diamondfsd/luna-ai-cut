@@ -25,6 +25,30 @@
   line-height: 1.45;
 }
 
+.device-connect-wireless-state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  color: var(--blue);
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.device-connect-wireless-state.success {
+  background: color-mix(in srgb, #16803c 10%, transparent);
+  color: #16803c;
+}
+
+.device-connect-wireless-state.manual {
+  background: color-mix(in srgb, #b45309 10%, transparent);
+  color: #b45309;
+}
+
 .device-connect-wireless-credentials {
   display: grid;
   gap: 8px;
@@ -54,12 +78,44 @@
   white-space: nowrap;
 }
 
+.device-connect-wireless-manual {
+  display: grid;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, #b45309 28%, var(--hairline));
+  border-radius: 8px;
+  background: color-mix(in srgb, #b45309 4%, var(--parchment));
+  padding: 12px;
+}
+
+.device-connect-wireless-manual-header {
+  display: grid;
+  gap: 3px;
+}
+
+.device-connect-wireless-manual-header > span,
+.device-connect-wireless-manual-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.device-connect-wireless-manual-fields {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 @media (max-width: 680px) {
   .device-connect-wireless-preparation-header {
     display: grid;
   }
 
-  .device-connect-wireless-preparation-header > button {
+  .device-connect-wireless-state {
     justify-self: start;
+  }
+
+  .device-connect-wireless-manual-fields {
+    grid-template-columns: 1fr;
   }
 }
