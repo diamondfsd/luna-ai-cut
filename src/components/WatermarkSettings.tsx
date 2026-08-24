@@ -10,7 +10,9 @@ import {
   DEFAULT_WATERMARK_WIDTH_RATIO,
   defaultWatermarkPlacement,
   effectiveWatermarkPlacement,
+  resolveDjiWatermarkPositioning,
   resolveWatermarkPositioning,
+  usesDjiBuiltinWatermark,
   usesCustomWatermark,
   watermarkImagePath,
 } from '../shared/watermarkGeometry'
@@ -44,7 +46,9 @@ export function buildWatermarkStaticLayer(
   if (!filePath) return null
   const width = mediaSize?.width ?? (isLandscape ? 16 : 9)
   const height = mediaSize?.height ?? (isLandscape ? 9 : 16)
-  const positioning = usesAdvancedGeometry(settings)
+  const positioning = usesDjiBuiltinWatermark(settings)
+    ? resolveDjiWatermarkPositioning(settings, width, height)
+    : usesAdvancedGeometry(settings)
     ? resolveWatermarkPositioning(settings, width, height)
     : legacyPositioning(isLandscape, builtinWatermarkPosition(settings.position))
   return {
