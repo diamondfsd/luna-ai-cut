@@ -13,7 +13,8 @@ for (let index = 2; index < process.argv.length; index += 1) {
 }
 
 const rootDir = path.resolve(String(args.get('--root') || process.env.DJI_MOCK_ROOT || '.'))
-const model = args.get('--model') === 'pocket4pro' ? 'pocket4pro' : 'pocket4'
+const requestedModel = args.get('--model')
+const model = requestedModel === 'pocket3' || requestedModel === 'pocket4pro' ? requestedModel : 'pocket4'
 const host = String(args.get('--host') || process.env.DJI_MOCK_HOST || '127.0.0.1')
 const httpPort = Number(args.get('--http-port') || process.env.DJI_MOCK_HTTP_PORT || 18080)
 const tcpPort = Number(args.get('--tcp-port') || process.env.DJI_MOCK_TCP_PORT || 17001)
@@ -22,7 +23,9 @@ const dropAfterBytes = Math.max(0, Number(args.get('--drop-after-bytes') || proc
 const rateMbps = Math.max(0, Number(args.get('--rate-mbps') || process.env.DJI_MOCK_RATE_MBPS || 30))
 const modelData = model === 'pocket4pro'
   ? { name: 'Osmo Pocket 4 Pro', localName: 'OsmoPocket4P-6E55', modelNumber: 34, productType: 218, advert: '000000ee0004bd6e5620da000010' }
-  : { name: 'Osmo Pocket 4', localName: 'OsmoPocket4-ACPT', modelNumber: 33, productType: null, advert: '210000be0000ee8dd9a000000000' }
+  : model === 'pocket3'
+    ? { name: 'Osmo Pocket 3', localName: 'OsmoPocket3', modelNumber: 32, productType: null, advert: '2000' }
+    : { name: 'Osmo Pocket 4', localName: 'OsmoPocket4-ACPT', modelNumber: 33, productType: null, advert: '210000be0000ee8dd9a000000000' }
 const filesByStorage = [[], []]
 const filesByCameraPath = new Map()
 const droppedPaths = new Set()
@@ -118,7 +121,7 @@ function handleBleExchange(frameHex) {
     return { framesHex: [bleResponse(request, 0x07, 0x07, Buffer.concat([Buffer.from([0]), packString(ssid)]))] }
   }
   if (request.cmdSet === 0x07 && request.cmdId === 0x0e) {
-    const password = model === 'pocket4pro' ? 'pocket4-pro-mock-pass' : 'pocket4-mock-pass'
+    const password = model === 'pocket4pro' ? 'pocket4-pro-mock-pass' : model === 'pocket3' ? 'pocket3-mock-pass' : 'pocket4-mock-pass'
     return { framesHex: [bleResponse(request, 0x07, 0x0e, Buffer.concat([Buffer.from([0]), packString(password)]))] }
   }
   if (request.cmdSet === 0x53 && request.cmdId === 0x10) return { framesHex: [bleResponse(request, 0x53, 0x10, Buffer.from([1, 0, 0, 0]))] }
@@ -167,8 +170,9 @@ function nameField(value) {
 function manifestFor(storageFiles, storage) {
   const body = [u32(storageFiles.length)]
   for (const [index, file] of storageFiles.entries()) {
-    const handleBase = storage === 1 ? 0x40100000 : 0x00100000
-    const handle = handleBase + index * 0x40
+    const handleBase = storage === 1 ? 0x40100000 : model === 'pocket3' ? 0x00040000 : 0x00100000
+    const handleStep = model === 'pocket3' ? 0x10 : 0x40
+    const handle = handleBase + index * handleStep
     const head = Buffer.alloc(48)
     head.writeUInt32LE(handle >>> 0, 0)
     head[8] = 0x03
@@ -263,7 +267,7 @@ async function loadFiles() {
     await loadStorage(sdDirectory || rootDir, 0)
     if (internalDirectory) await loadStorage(internalDirectory, 1)
   } else {
-    await loadStorage(rootDir, 1)
+    await loadStorage(rootDir, model === 'pocket3' ? 0 : 1)
   }
   filesByStorage.forEach((files) => files.sort((a, b) => a.name.localeCompare(b.name)))
 }

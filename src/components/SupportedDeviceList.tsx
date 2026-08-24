@@ -3,6 +3,7 @@ import { Camera, Check, Wifi } from 'lucide-react'
 import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { Button } from '../ui'
 import lunaIcon from '../../public/luna-icon.png'
+import pocket3Character from '../../public/pocket3.png'
 import pocket4Character from '../../public/pocket4.png'
 import pocket4ProCharacter from '../../public/pocket4p-white.png'
 import './SupportedDeviceList.css'
@@ -25,6 +26,9 @@ function deviceVisual(device: DeviceDefinition) {
   }
   if (device.id === 'dji-pocket-4') {
     return <img className="supported-device-character" src={pocket4Character} alt="" />
+  }
+  if (device.id === 'dji-pocket-3') {
+    return <img className="supported-device-character" src={pocket3Character} alt="" />
   }
   if (device.id === 'dji-pocket-4-pro') {
     return <img className="supported-device-character" src={pocket4ProCharacter} alt="" />

@@ -186,7 +186,7 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
   }
 
   async deleteFiles(): Promise<CameraDeleteResult> {
-    return { deleted: [], failed: [{ path: '', error: 'DJI Pocket 4 首版暂不支持删除相机素材' }] }
+    return { deleted: [], failed: [{ path: '', error: 'DJI 相机暂不支持在应用中删除相机素材' }] }
   }
 
   async disconnect(): Promise<void> {

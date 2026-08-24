@@ -1,0 +1,34 @@
+{
+  "id": "dji-pocket-3",
+  "name": "Osmo Pocket 3",
+  "vendor": "DJI",
+  "protocol": "dji",
+  "mediaCapabilities": { "delete": false },
+  "defaultHost": "192.168.2.1",
+  "httpPort": 80,
+  "controlPort": 7001,
+  "mock": {
+    "host": "127.0.0.1",
+    "httpPort": 18084,
+    "tcpPort": 17004,
+    "udpPort": 19006,
+    "rateMbps": 30,
+    "model": "pocket3"
+  },
+  "bluetooth": {
+    "namePrefixes": ["OsmoPocket3"],
+    "scanServiceUuids": ["0000fff0-0000-1000-8000-00805f9b34fb"],
+    "optionalServiceUuids": [],
+    "serviceUuid": "0000fff0-0000-1000-8000-00805f9b34fb",
+    "writeCharacteristicUuid": "0000fff5-0000-1000-8000-00805f9b34fb",
+    "notifyCharacteristicUuid": "0000fff4-0000-1000-8000-00805f9b34fb",
+    "wakePayloadHex": "0100"
+  },
+  "storages": [
+    { "id": "sdcard", "label": "SD 卡", "path": "DCIM/", "default": true }
+  ],
+  "watermarkStyles": [
+    { "value": "dji_pocket_3", "label": "DJI 标准", "videoFileName": "ic_watermark_dji_pocket_3", "imageFileName": "ic_watermark_dji_pocket_3" },
+    { "value": "dji_pocket_3_clean", "label": "简洁标识", "videoFileName": "ic_watermark_dji_pocket_3_clean", "imageFileName": "ic_watermark_dji_pocket_3_clean" }
+  ]
+}

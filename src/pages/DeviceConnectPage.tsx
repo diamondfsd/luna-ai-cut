@@ -11,6 +11,7 @@ import { useStorageMigration } from '../hooks/useStorageMigration'
 import '../styles/wifi.css'
 import '../styles/device-connect-layout.css'
 import lunaIcon from '../../public/luna-icon.png'
+import pocket3Character from '../../public/pocket3.png'
 import pocket4Character from '../../public/pocket4.png'
 import pocket4ProCharacter from '../../public/pocket4p-white.png'
 
@@ -20,6 +21,9 @@ function deviceConnectVisual(device?: DeviceDefinition) {
   }
   if (device?.id === 'dji-pocket-4') {
     return <img src={pocket4Character} alt="" className="device-connect-logo device-connect-logo-character" />
+  }
+  if (device?.id === 'dji-pocket-3') {
+    return <img src={pocket3Character} alt="" className="device-connect-logo device-connect-logo-character" />
   }
   if (device?.id === 'dji-pocket-4-pro') {
     return <img src={pocket4ProCharacter} alt="" className="device-connect-logo device-connect-logo-character" />
