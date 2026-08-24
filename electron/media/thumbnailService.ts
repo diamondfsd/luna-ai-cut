@@ -63,7 +63,7 @@ export function thumbnailPathFor(cacheDir: string, fileId: string): string {
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tiff', '.tif', '.heic', '.heif'])
 
 /** 视频扩展名集合 */
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.mts', '.m2ts'])
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.mts', '.m2ts', '.lrv', '.lrf', '.xrf'])
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

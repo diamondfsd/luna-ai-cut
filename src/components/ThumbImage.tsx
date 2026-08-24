@@ -11,6 +11,8 @@ const MAX_AUTO_RETRIES = 2
 interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   /** 本地文件路径，组件内部通过 useFileCache 懒加载并生成缩略图 */
   src: string
+  /** 相机提供的低分辨率代理视频，例如 Luna 的 LRV 或 DJI 的 LRF */
+  previewSrc?: string | null
   /** 距离最近滚动容器可视区域多远时开始加载，默认 300px */
   preloadMargin?: number
   /** 仅向滚动方向下方提前加载；设置后覆盖 preloadMargin 的全方向边距 */
@@ -35,13 +37,13 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, previewSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const retryCountRef = useRef(0)
-  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, visible && !embeddedImage)
+  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, visible && !embeddedImage, previewSrc)
 
   useEffect(() => {
     if (cacheFilePath) onCacheReady?.(cacheFilePath)

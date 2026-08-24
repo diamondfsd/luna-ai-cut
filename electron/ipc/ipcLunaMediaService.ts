@@ -31,10 +31,28 @@ import { existingDragFiles } from '../platform/files/nativeFileDragService'
 import { copyLocalFilesToDirectory, sourcePathsForCopy } from '../media/localFileCopyService'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
-  const ext = path.extname(filePath).toLowerCase()
-  if (['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.m4v', '.lrv'].includes(ext)) return 'video'
+  const ext = path.extname(mediaFileNameForPath(filePath)).toLowerCase()
+  if (['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.m4v', '.lrv', '.lrf', '.xrf'].includes(ext)) return 'video'
   if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.heic', '.heif', '.avif'].includes(ext)) return 'image'
   return 'unknown'
+}
+
+/**
+ * 相机媒体地址通常统一指向 /v2，真实文件名放在 path 查询参数中。
+ * 代理视频（LRV/LRF）也依赖这个名字来确定缓存文件和缩略图 key。
+ */
+function mediaFileNameForPath(filePath: string): string {
+  try {
+    if (/^(?:https?|file):/i.test(filePath)) {
+      const url = new URL(filePath)
+      const mediaPath = url.searchParams.get('path')
+      if (mediaPath) return path.basename(mediaPath)
+      return path.basename(decodeURIComponent(url.pathname))
+    }
+  } catch {
+    // 回退到普通本地路径解析。
+  }
+  return path.basename(filePath.split(/[?#]/, 1)[0])
 }
 
 /** LRV 文件的缩略图 key 映射为对应的 MP4 文件名，避免不同格式重复生成缩略图 */
@@ -48,7 +66,7 @@ function thumbnailKeyFor(file: LunaFile): string {
 }
 
 function localFileForPath(filePath: string): LunaFile {
-  const name = path.basename(filePath)
+  const name = mediaFileNameForPath(filePath)
   return {
     id: filePath,
     name,
@@ -60,7 +78,7 @@ function localFileForPath(filePath: string): LunaFile {
     sizeText: '',
     bytes: null,
     kind: mediaKindForPath(filePath),
-    extension: path.extname(filePath),
+    extension: path.extname(name),
     capturedAt: null,
     groupDay: '',
     groupHour: '',
@@ -158,11 +176,7 @@ export function register(ctx: IpcContext): void {
     const file = localFileForPath(sourceUrl)
     // 如果传入了 previewUrl，设置到 file 上以便 cacheFile 优先使用 LRV 下载
     if (previewUrl) {
-      try {
-        file.previewName = new URL(previewUrl).pathname.split('/').pop() ?? previewUrl
-      } catch {
-        file.previewName = previewUrl.replace(/^.*[/\\]/, '')
-      }
+      file.previewName = mediaFileNameForPath(previewUrl)
       file.previewUrl = previewUrl
     }
 

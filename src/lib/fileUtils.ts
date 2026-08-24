@@ -5,7 +5,7 @@ export const IMAGE_EXTENSIONS = new Set([
 ])
 
 export const VIDEO_EXTENSIONS = new Set([
-  '.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.m4v', '.lrv', '.ogg',
+  '.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.m4v', '.lrv', '.lrf', '.xrf', '.ogg',
 ])
 
 export function fileNameFromPath(filePath: string): string {
