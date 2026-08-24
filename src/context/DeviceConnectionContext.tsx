@@ -64,7 +64,7 @@ function connectionTimeoutStatus(mode: CameraConnectionMode, host: string): Prom
     setTimeout(() => resolve({
       mode, connected: false, sourceId: mode, capabilities: EMPTY_CAPABILITIES,
       host, httpOk: false, controlOk: false, message: '连接超时',
-    }), mode === 'wired' ? 12000 : 4000)
+    }), mode === 'wired' ? 12000 : 20000)
   })
 }
 

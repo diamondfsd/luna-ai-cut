@@ -83,6 +83,7 @@ export function DeviceConnectPage({
   const deviceName = activeDevice?.name ?? '设备'
   const isWired = connectionMode === 'wired'
   const isDjiWireless = !isWired && activeDevice?.protocol === 'dji'
+  const canAutoJoinWifi = !isWired && activeDevice?.wifi?.autoJoin === true
   const djiWifiCredentials = preparedDjiWifi ?? djiPreparation?.credentials ?? null
   const needsSystemWifi = isDjiWireless && Boolean(djiPreparation || preparedDjiWifi)
   const deviceInfo = connection?.deviceInfo
@@ -111,7 +112,9 @@ export function DeviceConnectPage({
     ? isWired ? '正在检查已选择的相机磁盘和素材目录' : '正在检测相机服务并建立控制会话'
     : connection?.message ?? (isWired
       ? '请选择相机磁盘后连接，即可浏览其中的相机素材'
-      : '连接相机 Wi-Fi 后，即可浏览和下载相机素材')
+      : canAutoJoinWifi
+        ? '开始连接时会先查找并尝试加入设备 Wi-Fi；如果系统尚未保存网络凭据，请在系统 Wi-Fi 工具中完成连接'
+        : '连接相机 Wi-Fi 后，即可浏览和下载相机素材')
   const statusLabel = isChecking ? '检测中' : isError ? '需要处理' : '等待连接'
   const refreshMountedVolumes = useCallback(async (): Promise<void> => {
     if (!isWired) {

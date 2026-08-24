@@ -7,6 +7,10 @@
   "defaultHost": "192.168.42.1",
   "httpPort": 80,
   "controlPort": 6666,
+  "wifi": {
+    "autoJoin": true,
+    "ssidIncludes": ["luna"]
+  },
   "mock": {
     "host": "127.0.0.1",
     "httpPort": 18080,
