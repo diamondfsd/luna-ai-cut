@@ -71,8 +71,22 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
       throw new Error('DJI 当前不支持由应用自动切换 Wi-Fi，请先在系统中连接相机 Wi-Fi')
     }
 
+    if (wireless?.preparation === 'already-connected') {
+      return {
+        mode: 'already-connected',
+        message: '已使用当前系统 Wi-Fi 连接',
+      }
+    }
+
     const manualSsid = wireless?.ssid?.trim()
     const manualPassword = wireless?.password
+    if (wireless?.preparation === 'bluetooth' && manualSsid) {
+      return {
+        mode: 'bluetooth',
+        credentials: { ssid: manualSsid, password: manualPassword ?? '' },
+        message: `已使用蓝牙取得的 Wi-Fi 信息：${manualSsid}`,
+      }
+    }
     if (wireless?.preparation === 'manual-wifi' || manualSsid || manualPassword) {
       return {
         mode: 'manual-wifi',
@@ -86,7 +100,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     if (!transport) {
       return {
         mode: 'already-connected',
-        message: '当前电脑不支持蓝牙读取 Wi-Fi 信息，建议先让手机连接相机，再用手机系统的 Wi-Fi 分享功能查看或分享密码，然后让电脑连接相机热点并在这里填写',
+        message: '当前电脑不支持蓝牙读取 Wi-Fi 信息，请使用系统 Wi-Fi 工具手动连接相机热点；如需密码，可先让手机连接相机并使用系统 Wi-Fi 分享功能获取，连接完成后回来点击“开始连接”',
       }
     }
 
@@ -101,8 +115,8 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
       }
     } catch {
       return {
-        mode: 'manual-wifi',
-        message: '未能通过 DJI 蓝牙读取 Wi-Fi 信息，建议先让手机连接相机，再用手机系统的 Wi-Fi 分享功能查看或分享密码，然后让电脑连接相机热点并在这里填写',
+        mode: 'already-connected',
+        message: '未能通过 DJI 蓝牙读取 Wi-Fi 信息，请使用系统 Wi-Fi 工具手动连接相机热点，连接完成后回来点击“开始连接”',
       }
     } finally {
       await ble.close().catch(() => undefined)

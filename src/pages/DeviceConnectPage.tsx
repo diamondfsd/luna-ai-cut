@@ -73,8 +73,6 @@ export function DeviceConnectPage({
   const [changingDevice, setChangingDevice] = useState(false)
   const [wifiPasswordCopied, setWifiPasswordCopied] = useState(false)
   const [djiPreparation, setDjiPreparation] = useState<CameraMediaSourcePreparationResult | null>(null)
-  const [manualWifiSsid, setManualWifiSsid] = useState('')
-  const [manualWifiPassword, setManualWifiPassword] = useState('')
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
@@ -82,7 +80,7 @@ export function DeviceConnectPage({
   const isWired = connectionMode === 'wired'
   const isDjiWireless = !isWired && activeDevice?.protocol === 'dji'
   const djiWifiCredentials = preparedDjiWifi ?? djiPreparation?.credentials ?? null
-  const needsManualWifi = isDjiWireless && Boolean(djiPreparation) && !djiWifiCredentials
+  const needsSystemWifi = isDjiWireless && Boolean(djiPreparation || preparedDjiWifi)
   const deviceInfo = connection?.deviceInfo
   const deviceRows = [
     ['设备', deviceInfo?.deviceName],
@@ -135,27 +133,18 @@ export function DeviceConnectPage({
 
   useEffect(() => {
     setDjiPreparation(null)
-    setManualWifiSsid('')
-    setManualWifiPassword('')
   }, [activeDevice?.id, connectionMode])
 
   async function handleConnect(): Promise<void> {
     setConnecting(true)
     try {
-      if (isDjiWireless && !djiWifiCredentials && !manualWifiSsid.trim()) {
+      if (isDjiWireless && !djiWifiCredentials && !djiPreparation) {
         const result = await onPrepareConnection()
         setDjiPreparation(result)
-        if (!result?.credentials) return
-        await onConnect(undefined, undefined, {
-          preparation: 'manual-wifi',
-          ssid: result.credentials.ssid,
-          password: result.credentials.password,
-        })
         return
       }
-      const ssid = manualWifiSsid.trim()
-      const wireless = isDjiWireless && ssid
-        ? { preparation: 'manual-wifi' as const, ssid, password: manualWifiPassword }
+      const wireless = isDjiWireless && (djiPreparation || preparedDjiWifi)
+        ? { preparation: 'already-connected' as const }
         : undefined
       await onConnect(undefined, undefined, wireless)
     } finally {
@@ -352,12 +341,8 @@ export function DeviceConnectPage({
               <DjiWirelessConnectionPanel
                 preparation={djiPreparation}
                 credentials={djiWifiCredentials}
-                needsManualWifi={needsManualWifi}
-                manualWifiSsid={manualWifiSsid}
-                manualWifiPassword={manualWifiPassword}
+                needsSystemWifi={needsSystemWifi}
                 wifiPasswordCopied={wifiPasswordCopied}
-                onManualWifiSsidChange={setManualWifiSsid}
-                onManualWifiPasswordChange={setManualWifiPassword}
                 onCopyPassword={() => void copyWifiPassword()}
               />
             )}
