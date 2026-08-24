@@ -19,7 +19,7 @@ import {
 import { DEFAULT_HOST, LunaClient } from './devices/insta360/lunaProtocol'
 import { GoUltraClient } from './devices/go-ultra/protocol'
 import { LunaUltraProtocol, GoUltraProtocol } from './devices/common/deviceProtocols'
-import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './devices/definitions/deviceDefaults'
+import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, assertDeviceConnectionSupported, deviceDefinitionFor } from './devices/definitions/deviceDefaults'
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
 import {
   LRC_INIT_GUARD_FILE,
@@ -347,6 +347,7 @@ function registerIpc(): void {
   ipcMain.handle('device:connect', async (_event, options?: DeviceConnectOptions) => {
     const settings = await getSettings()
     const deviceId = options?.deviceId ?? settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    assertDeviceConnectionSupported(deviceId)
     const host = options?.host || settings.cameraHost || DEFAULT_HOST
     logMainInfo(`[设备连接] 开始连接设备`, { deviceId, host, options })
 
@@ -376,6 +377,7 @@ function registerIpc(): void {
     const settings = await getSettings()
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    assertDeviceConnectionSupported(deviceId)
     logMainInfo(`[HTTP检测] 检查设备连接状态`, { host: normalizedHost, deviceId })
     try {
       let protocol: LunaUltraProtocol | GoUltraProtocol
@@ -400,6 +402,7 @@ function registerIpc(): void {
     const settings = await getSettings()
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    assertDeviceConnectionSupported(deviceId)
     const nextStorageId = storageId ?? settings.deviceStorage?.[deviceId] ?? 'all'
     logMainInfo(`[文件读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
     const t0 = performance.now()

@@ -115,7 +115,7 @@ export function DeveloperTab({
     return mockServerStatuses.find((status) => status.deviceId === deviceId)
   }
 
-  const mockDevices = devices.filter((device) => device.protocol === 'insta360' || device.protocol === 'go-ultra' || device.protocol === 'dji')
+  const mockDevices = devices.filter((device) => device.connectionSupported !== false && (device.protocol === 'insta360' || device.protocol === 'go-ultra' || device.protocol === 'dji'))
 
   return (
     <div className="developer-debug-content">
