@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { deleteCustomLutInDirectory, listCustomLutsInDirectory } from '../electron/customLutLibrary.ts'
+import { deleteCustomLutInDirectory, listCustomLutsInDirectory } from '../electron/features/color/customLutLibrary.ts'
 
 const testRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-custom-luts-'))
 const lutRoot = path.join(testRoot, 'luts')

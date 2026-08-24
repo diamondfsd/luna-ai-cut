@@ -55,7 +55,7 @@
 
 ### 前提：ffmpeg 无法实现的功能 → 删除
 
-基于 `/Users/REDACTED/projects/FFmpeg/libavfilter/` 实际源码验证：
+基于 `FFmpeg/libavfilter/` 实际源码验证：
 
 | 功能 | 涉及 GLSL | ffmpeg filter | 结论 |
 |------|----------|--------------|------|

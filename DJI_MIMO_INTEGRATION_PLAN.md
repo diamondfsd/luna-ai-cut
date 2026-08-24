@@ -4,7 +4,7 @@
 >
 > 日期：2026-08-23
 >
-> 参考工程：`/Users/REDACTED/projects/osmosis`
+> 参考工程：[`KonradIT/osmosis`](https://github.com/KonradIT/osmosis)
 >
 > 本文记录接入方案、当前实现边界和后续硬件工作；不修改 Osmosis，只移植协议行为。
 
@@ -55,7 +55,7 @@ DJI Osmo 的接入不能按“扫描 Wi-Fi、输入密码、访问 HTTP”实现
 | 浏览器 GATT 调试 | `src/pages/BluetoothTab.tsx` | 仅适合人工试验；不能承担 DJI 的双特征订阅、无响应写入、帧匹配、保活和跨平台发布 |
 | Wi-Fi 系统操作 | `electron/wifiCoreWlan.swift`、`electron/wifiDebugService.ts` | macOS/Windows 已有基础连接能力，但注册和会话绑定还需为 DJI 连接流程整理 |
 | IPC 注册 | `electron/ipcConnectivityService.ts`、`electron/appMain.ts`、`electron/preload.ts` | 适合新增独立 `ipcDjiCameraService.ts`，不把协议细节暴露给页面 |
-| 文件模型和下载 | `src/shared/types/media.ts`、`electron/fileService.ts`、`electron/resumableDownloadService.ts` | `LunaFile` 能承载 DJI 媒体，但需要稳定 ID、存储 ID、预览 URL 和机型适配器 |
+| 文件模型和下载 | `src/shared/types/media.ts`、`electron/storage/fileService.ts`、`electron/media/resumableDownloadService.ts` | `LunaFile` 能承载 DJI 媒体，但需要稳定 ID、存储 ID、预览 URL 和机型适配器 |
 | 连接页面 | `src/pages/DeviceConnectPage.tsx`、`useMediaLibraryController.ts` | 需要显示“蓝牙获取连接信息 / 等待相机确认 / 加入相机 Wi-Fi / 读取素材”等阶段 |
 
 ## 3. Osmosis 已确认的 DJI 流程

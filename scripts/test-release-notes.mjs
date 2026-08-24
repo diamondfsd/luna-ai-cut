@@ -10,7 +10,7 @@ const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-release-notes-'))
 const compiledRoot = path.join(temporaryRoot, 'compiled')
 
 try {
-  const sourcePath = path.join(projectRoot, 'electron/releaseNotesService.ts')
+  const sourcePath = path.join(projectRoot, 'electron/infrastructure/releaseNotesService.ts')
   const program = ts.createProgram([sourcePath], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
@@ -21,7 +21,7 @@ try {
   })
   assert.deepEqual(ts.getPreEmitDiagnostics(program), [])
   assert.equal(program.emit().emitSkipped, false)
-  const { listReleaseNotes } = await import(pathToFileURL(path.join(compiledRoot, 'electron/releaseNotesService.js')))
+  const { listReleaseNotes } = await import(pathToFileURL(path.join(compiledRoot, 'electron/infrastructure/releaseNotesService.js')))
 
   const hotRoot = path.join(temporaryRoot, 'hot')
   const bundledRoot = path.join(temporaryRoot, 'bundled')

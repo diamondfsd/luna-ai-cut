@@ -50,6 +50,7 @@ export interface DeviceDefinition {
     host: string
     httpPort: number
     tcpPort: number
+    udpPort?: number
     rateMbps: number
     model?: string
   }

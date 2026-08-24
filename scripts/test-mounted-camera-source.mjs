@@ -5,8 +5,8 @@ import os from 'node:os'
 import path from 'node:path'
 import ts from 'typescript'
 
-const adapterSource = await readFile(new URL('../electron/deviceMedia.ts', import.meta.url), 'utf8')
-let source = await readFile(new URL('../electron/mountedCameraMediaSource.ts', import.meta.url), 'utf8')
+const adapterSource = await readFile(new URL('../electron/devices/common/deviceMedia.ts', import.meta.url), 'utf8')
+let source = await readFile(new URL('../electron/devices/common/mountedCameraMediaSource.ts', import.meta.url), 'utf8')
 source = source
   .replace("import { dialog } from 'electron'", "const dialog = { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) }")
   .replace("import { lunaMediaAdapter } from './deviceMedia'", '')

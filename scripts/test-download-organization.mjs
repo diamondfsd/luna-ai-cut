@@ -6,8 +6,8 @@ import * as path from 'node:path'
 import {
   downloadDestinationFor,
   organizeDownloadedFiles,
-} from '../electron/downloadStorageService.ts'
-import { readSourceRecord, recordDownloadedFileSource } from '../electron/mediaSourceManifestService.ts'
+} from '../electron/media/downloadStorageService.ts'
+import { readSourceRecord, recordDownloadedFileSource } from '../electron/media/mediaSourceManifestService.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-download-organization-'))
 const file = (name, capturedAt = null) => ({

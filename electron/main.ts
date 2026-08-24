@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
-import { failStartup, installStartupExperience } from './startupWindowService'
+import { failStartup, installStartupExperience } from './infrastructure/startupWindowService'
 
 async function boot(): Promise<void> {
   // 开发模式跳过热更新，避免本地代码被热更新覆盖

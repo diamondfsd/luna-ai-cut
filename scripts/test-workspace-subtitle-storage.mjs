@@ -12,8 +12,8 @@ const compiled = await mkdtemp(path.join(tmpdir(), 'luna-workspace-subtitle-test
 const temporary = await mkdtemp(path.join(tmpdir(), 'luna-workspace-subtitle-data-'))
 try {
   const sources = [
-    path.join(root, 'electron', 'workspaceProjectService.ts'),
-    path.join(root, 'electron', 'resumableDownloadService.ts'),
+    path.join(root, 'electron', 'features', 'workspace', 'workspaceProjectService.ts'),
+    path.join(root, 'electron', 'media', 'resumableDownloadService.ts'),
     path.join(root, 'src', 'shared', 'subtitleTrack.ts'),
   ]
   const program = ts.createProgram(sources, {
@@ -31,7 +31,7 @@ try {
   assert.equal(diagnostics.length, 0, ts.formatDiagnostics(diagnostics, { getCanonicalFileName: String, getCurrentDirectory: () => root, getNewLine: () => '\n' }))
   assert.equal(program.emit().emitSkipped, false)
   await writeFile(path.join(compiled, 'package.json'), '{"type":"commonjs"}\n')
-  const service = createRequire(import.meta.url)(path.join(compiled, 'electron', 'workspaceProjectService.js'))
+  const service = createRequire(import.meta.url)(path.join(compiled, 'electron', 'features', 'workspace', 'workspaceProjectService.js'))
   const project = await service.createWorkspaceProject(temporary, '字幕存储测试', [{ id: 'video', name: 'source.mp4', path: '/tmp/source.mp4', kind: 'video' }])
   await service.saveWorkspaceProject(temporary, {
     ...project,

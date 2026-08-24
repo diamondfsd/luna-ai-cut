@@ -2,22 +2,22 @@ import { readFileSync } from 'node:fs'
 import process from 'node:process'
 
 const protocolFiles = [
-  'electron/insta360CameraDelete.ts',
-  'electron/insta360DeleteCodec.ts',
-  'electron/insta360DeviceInfo.ts',
-  'electron/insta360TcpCodec.ts',
-  'electron/insta360TcpDiagnostics.ts',
-  'electron/insta360TcpDiagnosticsCodec.ts',
-  'electron/insta360TcpDiagnosticsHttp.ts',
-  'electron/insta360TcpDiagnosticsSession.ts',
-  'electron/insta360TcpDiagnosticsTypes.ts',
-  'electron/insta360TcpFileList.ts',
-  'electron/insta360TcpProtocol.ts',
-  'electron/lunaControlMessages.ts',
+  'electron/devices/insta360/insta360CameraDelete.ts',
+  'electron/devices/insta360/insta360DeleteCodec.ts',
+  'electron/devices/insta360/insta360DeviceInfo.ts',
+  'electron/devices/insta360/insta360TcpCodec.ts',
+  'electron/devices/insta360/insta360TcpDiagnostics.ts',
+  'electron/devices/insta360/insta360TcpDiagnosticsCodec.ts',
+  'electron/devices/insta360/insta360TcpDiagnosticsHttp.ts',
+  'electron/devices/insta360/insta360TcpDiagnosticsSession.ts',
+  'electron/devices/insta360/insta360TcpDiagnosticsTypes.ts',
+  'electron/devices/insta360/insta360TcpFileList.ts',
+  'electron/devices/insta360/insta360TcpProtocol.ts',
+  'electron/devices/insta360/lunaControlMessages.ts',
 ]
 const source = (path) => readFileSync(path, 'utf8')
 const protocolSource = protocolFiles.map(source).join('\n')
-const clientSource = source('electron/lunaProtocol.ts')
+const clientSource = source('electron/devices/insta360/lunaProtocol.ts')
 
 for (const signature of [
   'export class Insta360TcpSession',

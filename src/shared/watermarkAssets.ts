@@ -1,7 +1,7 @@
-import goUltraConfig from '../../electron/deviceConfigs/go-ultra.json'
-import lunaUltraConfig from '../../electron/deviceConfigs/luna-ultra.json'
-import pocket4Config from '../../electron/deviceConfigs/pocket-4.json'
-import pocket4ProConfig from '../../electron/deviceConfigs/pocket-4-pro.json'
+import goUltraConfig from '../../electron/devices/definitions/configs/go-ultra.json'
+import lunaUltraConfig from '../../electron/devices/definitions/configs/luna-ultra.json'
+import pocket4Config from '../../electron/devices/definitions/configs/pocket-4.json'
+import pocket4ProConfig from '../../electron/devices/definitions/configs/pocket-4-pro.json'
 
 import type { DeviceWatermarkStyleConfig } from './types'
 

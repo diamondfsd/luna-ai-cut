@@ -14,7 +14,7 @@ Module._initPaths()
 const compiled = await mkdtemp(path.join(tmpdir(), 'luna-workspace-removal-test-'))
 const temporary = await mkdtemp(path.join(tmpdir(), 'luna-workspace-removal-data-'))
 try {
-  const sources = [path.join(root, 'electron', 'workspaceProjectService.ts'), path.join(root, 'electron', 'resumableDownloadService.ts')]
+  const sources = [path.join(root, 'electron', 'features', 'workspace', 'workspaceProjectService.ts'), path.join(root, 'electron', 'media', 'resumableDownloadService.ts')]
   const program = ts.createProgram(sources, {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
@@ -30,7 +30,7 @@ try {
   assert.equal(diagnostics.length, 0, ts.formatDiagnostics(diagnostics, { getCanonicalFileName: String, getCurrentDirectory: () => root, getNewLine: () => '\n' }))
   assert.equal(program.emit().emitSkipped, false)
   await writeFile(path.join(compiled, 'package.json'), '{"type":"commonjs"}\n')
-  const service = createRequire(import.meta.url)(path.join(compiled, 'electron', 'workspaceProjectService.js'))
+  const service = createRequire(import.meta.url)(path.join(compiled, 'electron', 'features', 'workspace', 'workspaceProjectService.js'))
   const project = await service.createWorkspaceProject(temporary, '消除存储测试', [{ id: 'asset', name: 'source.png', path: '/tmp/source.png', kind: 'image' }])
   const directory = path.join(temporary, 'workspace-projects', project.id, 'removal')
   await mkdir(directory, { recursive: true })

@@ -42,7 +42,7 @@ Luna AI Cut 的滤镜/LUT 功能，完整链路从 GPU 渲染到 UI 交互。
 
 | 文件 | 角色 |
 |------|------|
-| `electron/lunaRenderCore.ts` | Native `loadLut`/`releaseLut` 封装 |
+| `electron/platform/render/lunaRenderCore.ts` | Native `loadLut`/`releaseLut` 封装 |
 | `electron/ipcLunaRenderCore.ts` | IPC handler 'lrc:loadLut' / 'lrc:releaseLut' |
 | `electron/preload.ts` | 暴露 `window.lunaRenderCore.loadLut` |
 | `src/workspace/lut/builtinLuts.ts` | 内置 LUT 生成器 (17级 .cube) |

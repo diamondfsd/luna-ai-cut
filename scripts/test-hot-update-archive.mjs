@@ -34,7 +34,7 @@ async function seedInstalledUpdate(hotDir) {
 }
 
 try {
-  const sourcePath = path.join(projectRoot, 'electron/hotUpdateArchiveService.ts')
+  const sourcePath = path.join(projectRoot, 'electron/infrastructure/hotUpdateArchiveService.ts')
   const program = ts.createProgram([sourcePath], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
@@ -46,7 +46,7 @@ try {
   assert.deepEqual(ts.getPreEmitDiagnostics(program), [])
   assert.equal(program.emit().emitSkipped, false)
   await symlink(path.join(projectRoot, 'node_modules'), path.join(compiledRoot, 'node_modules'), 'dir')
-  const { installHotUpdateArchive } = await import(pathToFileURL(path.join(compiledRoot, 'electron/hotUpdateArchiveService.js')))
+  const { installHotUpdateArchive } = await import(pathToFileURL(path.join(compiledRoot, 'electron/infrastructure/hotUpdateArchiveService.js')))
 
   const validArchive = archiveBytes({
     'dist-electron/luna-appMain.js': 'new main',

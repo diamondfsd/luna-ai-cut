@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { normalizeGeneratedSubtitleText, normalizeSubtitleCuesLanguage, parseSubtitleWorkerEvent, subtitleCueFromWorker } from '../electron/subtitleWorkerProtocol.ts'
+import { normalizeGeneratedSubtitleText, normalizeSubtitleCuesLanguage, parseSubtitleWorkerEvent, subtitleCueFromWorker } from '../electron/features/subtitles/subtitleWorkerProtocol.ts'
 
 const ready = parseSubtitleWorkerEvent('{"version":1,"type":"ready","modelLoadMs":120,"gpu":true}')
 assert.equal(ready.type, 'ready')

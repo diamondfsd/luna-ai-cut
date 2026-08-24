@@ -10,8 +10,8 @@ const projectRoot = path.resolve(import.meta.dirname, '..')
 const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-specialized-worker-tests-'))
 
 try {
-  const sourcePath = path.join(projectRoot, 'electron/specializedWorkerClient.ts')
-  const attemptSourcePath = path.join(projectRoot, 'electron/specializedSegmentationAttempt.ts')
+  const sourcePath = path.join(projectRoot, 'electron/features/segmentation/specializedWorkerClient.ts')
+  const attemptSourcePath = path.join(projectRoot, 'electron/features/segmentation/specializedSegmentationAttempt.ts')
   const program = ts.createProgram([sourcePath, attemptSourcePath], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
@@ -53,8 +53,8 @@ for await (const line of lines) {
 }
 `)
 
-  const { SpecializedWorkerClient } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/specializedWorkerClient.js')))
-  const { runSpecializedWorkerAttempt } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/specializedSegmentationAttempt.js')))
+  const { SpecializedWorkerClient } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/features/segmentation/specializedWorkerClient.js')))
+  const { runSpecializedWorkerAttempt } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/features/segmentation/specializedSegmentationAttempt.js')))
   const client = new SpecializedWorkerClient(() => ({ executable: process.execPath, args: [fakeWorkerPath] }), 2_000)
 
   const first = await client.segment({ mode: 'success' })

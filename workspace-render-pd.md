@@ -159,7 +159,7 @@ export interface PreviewLayer {
 
 ## 调色算法
 
-工作台调色算法参考 `/Users/REDACTED/projects/darktable/webgl-color-lab/src/colorEngine/shaders` 的模块顺序和核心公式，但不直接运行 GLSL。Rust/wgpu 使用 WGSL 重写并在同一个 layer shader 中执行：
+工作台调色算法参考 `darktable/webgl-color-lab/src/colorEngine/shaders` 的模块顺序和核心公式，但不直接运行 GLSL。Rust/wgpu 使用 WGSL 重写并在同一个 layer shader 中执行：
 
 1. detail 采样：邻域 blur、detail、denoise、local contrast、sharpen。
 2. exposure：`(c - black) * exp2(exposure)`。
@@ -339,7 +339,7 @@ const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previ
 同步扩展以下文件中的 layer 类型：
 
 - `electron/ipcLunaRenderCore.ts`
-- `electron/lunaRenderCore.ts`
+- `electron/platform/render/lunaRenderCore.ts`
 - `src/shared/types/render.ts`
 
 需要增加以下字段：

@@ -5,7 +5,7 @@ import {
   faceSkinMaskFromSamples,
   personMaskFromHumanLabels,
   softenBeautyMask,
-} from '../electron/beautySkinSegmentation.ts'
+} from '../electron/features/beauty/beautySkinSegmentation.ts'
 
 const labels = new Uint8Array([
   14, 6,

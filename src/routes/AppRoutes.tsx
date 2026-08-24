@@ -36,7 +36,7 @@ export function AppRoutes() {
     connectionMode,
     disconnectDevice,
     devicePhase,
-    mockServerStatus,
+    mockServerStatuses,
     showDeviceConnect,
     sourceMode,
     setConnectionMode,
@@ -195,7 +195,8 @@ export function AppRoutes() {
             settings={settings}
             setSettings={setSettings}
             developerMode={settings?.developerMode ?? false}
-            mockServerStatus={mockServerStatus}
+            devices={devices}
+            mockServerStatuses={mockServerStatuses}
             startMockServer={startMockServer}
             stopMockServer={stopMockServer}
             chooseMockMediaDir={chooseMockMediaDir}

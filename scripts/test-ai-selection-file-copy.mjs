@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { copyLocalFilesToDirectory } from '../electron/localFileCopyService.ts'
+import { copyLocalFilesToDirectory } from '../electron/media/localFileCopyService.ts'
 
 const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-ai-selection-copy-'))
 const sourceDir = path.join(temporaryRoot, 'source')

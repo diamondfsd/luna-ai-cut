@@ -7,7 +7,7 @@ import ts from 'typescript'
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
 const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-segmentation-task-tests-'))
-const sourcePath = path.join(projectRoot, 'electron/segmentationTaskRegistry.ts')
+const sourcePath = path.join(projectRoot, 'electron/features/segmentation/segmentationTaskRegistry.ts')
 
 try {
   const program = ts.createProgram([sourcePath], {
@@ -22,7 +22,7 @@ try {
   assert.deepEqual(diagnostics, [], diagnostics.map((item) => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('\n'))
   assert.equal(program.emit().emitSkipped, false)
 
-  const { SegmentationTaskRegistry } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/segmentationTaskRegistry.js')))
+  const { SegmentationTaskRegistry } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/features/segmentation/segmentationTaskRegistry.js')))
   const registry = new SegmentationTaskRegistry()
   const taskA = registry.begin(1, 'request-a')
   assert.equal(registry.isActive(taskA), true)

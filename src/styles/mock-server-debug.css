@@ -1,0 +1,137 @@
+.developer-debug-content {
+  display: grid;
+  max-width: 1100px;
+  gap: 14px;
+  margin: 0 auto;
+}
+
+.developer-mode-panel {
+  gap: 12px;
+}
+
+.developer-mode-row,
+.mock-server-card-header,
+.mock-server-media-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.developer-mode-title {
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.developer-mode-row em,
+.mock-server-list-header p,
+.mock-server-card-header span {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.developer-mode-actions,
+.mock-server-card-actions,
+.mock-server-path-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.mock-server-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mock-server-list-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  padding: 3px 2px 0;
+}
+
+.mock-server-list-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mock-server-list-header p {
+  margin: 5px 0 0;
+}
+
+.mock-server-card {
+  display: grid;
+  gap: 13px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--canvas);
+  padding: 16px;
+}
+
+.mock-server-card.is-active {
+  border-color: rgba(0, 102, 204, 0.42);
+}
+
+.mock-server-card-header h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mock-server-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mock-server-config-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.3fr) repeat(4, minmax(90px, 0.7fr));
+  gap: 10px;
+}
+
+.mock-server-config-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.mock-server-config-grid label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mock-server-endpoint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .developer-mode-row,
+  .mock-server-card-header,
+  .mock-server-media-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mock-server-config-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mock-server-config-grid label:first-child {
+    grid-column: 1 / -1;
+  }
+}

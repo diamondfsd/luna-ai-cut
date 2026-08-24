@@ -3,10 +3,10 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { friendlyDownloadError, prepareDownloadDirectory } from '../electron/downloadDirectoryService.ts'
-import { existingDragFiles } from '../electron/nativeFileDragService.ts'
-import { readSourceRecord, recordDownloadedFileSource } from '../electron/mediaSourceManifestService.ts'
-import { migrateBaseDirectory } from '../electron/settingsMigration.ts'
+import { friendlyDownloadError, prepareDownloadDirectory } from '../electron/media/downloadDirectoryService.ts'
+import { existingDragFiles } from '../electron/platform/files/nativeFileDragService.ts'
+import { readSourceRecord, recordDownloadedFileSource } from '../electron/media/mediaSourceManifestService.ts'
+import { migrateBaseDirectory } from '../electron/storage/settingsMigration.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-hotfix-files-'))
 try {
