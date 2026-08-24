@@ -25,6 +25,15 @@ export interface CameraMediaSourceCapabilities {
   connection: CameraMediaSourceConnectionCapabilities
 }
 
+export interface CameraMediaSourcePreparationResult {
+  mode: CameraConnectionMode
+  credentials?: {
+    ssid: string
+    password: string
+  }
+  message: string
+}
+
 export interface MountedCameraVolume {
   id: string
   label: string
@@ -68,12 +77,14 @@ export interface CameraMediaSourceAdapter {
   listFiles(): Promise<LunaFile[]>
   deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult>
   disconnect(): Promise<void>
+  prepareConnection?(): Promise<CameraMediaSourcePreparationResult>
 }
 
 export interface CameraMediaSourceApi {
   detectMounted(): Promise<MountedCameraVolume[]>
   chooseMounted(): Promise<MountedCameraVolume | null>
   connect(options: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus>
+  prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
   check(options: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus>
   listFiles(options: CameraMediaSourceOptions): Promise<LunaFile[]>
   deleteFiles(files: LunaFile[], options: CameraMediaSourceOptions): Promise<CameraDeleteResult>

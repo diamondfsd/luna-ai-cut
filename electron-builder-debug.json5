@@ -42,6 +42,16 @@
       "from": "src/assets/logos",
       "to": "logos",
       "filter": ["**/*.png"]
+    },
+    {
+      "from": "electron",
+      "to": "swift",
+      "filter": ["*.swift"]
+    },
+    {
+      "from": "electron",
+      "to": "native",
+      "filter": ["*.ps1"]
     }
   ],
   "mac": {
@@ -65,7 +75,9 @@
       }
     ],
     "extendInfo": {
-      "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接 Insta360 相机（Luna / Go Ultra）"
+      "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接相机并读取素材",
+      "NSBluetoothAlwaysUsageDescription": "Luna AI Cut 需要通过 Bluetooth 读取 DJI 相机的 Wi-Fi 连接信息",
+      "NSBluetoothPeripheralUsageDescription": "Luna AI Cut 需要通过 Bluetooth 读取 DJI 相机的 Wi-Fi 连接信息"
     }
   },
   "win": {

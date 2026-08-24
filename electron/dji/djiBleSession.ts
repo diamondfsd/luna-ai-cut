@@ -16,7 +16,7 @@ export interface DjiBleTransport {
   readonly advertisement: Buffer
   armPairing(): Promise<void>
   exchange(frame: Buffer): Promise<DjiMessage[]>
-  waitForPairingConfirmation(): Promise<void>
+  waitForPairingConfirmation(): Promise<DjiMessage | null>
   close(): Promise<void>
 }
 
@@ -55,8 +55,8 @@ export class DjiBleSession {
     const pairReply = responseFor(pairReplies, 0x07, 0x45)
     const pairStatus = pairReply?.payload[1] ?? pairReply?.payload[0] ?? 0xff
     if (pairStatus === 0x02) {
-      await this.transport.waitForPairingConfirmation()
-      const approval = pairReplies.find((message) => message.cmdSet === 0x07 && message.cmdId === 0x46 && message.flags === 0x40)
+      const confirmation = await this.transport.waitForPairingConfirmation()
+      const approval = pairReplies.find((message) => message.cmdSet === 0x07 && message.cmdId === 0x46 && message.flags === 0x40) ?? confirmation
       if (approval) {
         await this.transport.exchange(command(TARGET_APP_TO_WIFI, approval.id, 0x07, 0x46, Buffer.from([0x00])))
       }
@@ -105,8 +105,9 @@ export class MockDjiBleTransport implements DjiBleTransport {
     this.armed = true
   }
 
-  async waitForPairingConfirmation(): Promise<void> {
+  async waitForPairingConfirmation(): Promise<DjiMessage | null> {
     this.paired = true
+    return null
   }
 
   async exchange(frame: Buffer): Promise<DjiMessage[]> {
@@ -168,8 +169,9 @@ export class HttpMockDjiBleTransport implements DjiBleTransport {
     })
   }
 
-  async waitForPairingConfirmation(): Promise<void> {
+  async waitForPairingConfirmation(): Promise<DjiMessage | null> {
     await this.call('/ble/confirm', 'POST')
+    return null
   }
 
   async close(): Promise<void> {}

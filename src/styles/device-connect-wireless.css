@@ -1,0 +1,65 @@
+.device-connect-wireless-preparation {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 20px;
+}
+
+.device-connect-wireless-preparation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.device-connect-wireless-preparation-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.device-connect-wireless-preparation-header > div > span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.device-connect-wireless-credentials {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--parchment);
+  padding: 12px;
+}
+
+.device-connect-wireless-credentials > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.device-connect-wireless-credentials span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-connect-wireless-credentials strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .device-connect-wireless-preparation-header {
+    display: grid;
+  }
+
+  .device-connect-wireless-preparation-header > button {
+    justify-self: start;
+  }
+}

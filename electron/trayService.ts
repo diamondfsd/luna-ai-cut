@@ -10,11 +10,7 @@ interface AppTrayOptions {
 let appTray: Tray | null = null
 
 function createTrayIcon(iconPath: string): Electron.NativeImage {
-  let icon = nativeImage.createFromPath(iconPath)
-  if (icon.isEmpty()) {
-    const fallbackIconPath = iconPath.replace(/[/\\]tray-template\.png$/, '/icon.png')
-    icon = nativeImage.createFromPath(fallbackIconPath)
-  }
+  const icon = nativeImage.createFromPath(iconPath)
   if (!icon.isEmpty()) {
     const size = process.platform === 'darwin' ? 18 : 16
     const resized = icon.resize({ width: size, height: size })

@@ -13,6 +13,7 @@ import type {
   CameraMediaSourceAdapter,
   CameraMediaSourceCapabilities,
   CameraMediaSourceOptions,
+  CameraMediaSourcePreparationResult,
   CameraMediaSourceStatus,
   ConnectionStatus,
   DeviceDefinition,
@@ -159,6 +160,11 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
     const status = await session.connect(this.options)
     await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
     return status
+  }
+
+  async prepareConnection(): Promise<CameraMediaSourcePreparationResult> {
+    const { deviceId, host } = await this.values()
+    return (await djiSessionFor(deviceId, host)).prepareConnection(this.options)
   }
 
   async check(): Promise<CameraMediaSourceStatus> {

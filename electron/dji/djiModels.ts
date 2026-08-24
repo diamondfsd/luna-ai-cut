@@ -15,6 +15,13 @@ export interface DjiModelProfile {
   mockTcpPort: number
   mockHttpPort: number
   storageIds: string[]
+  ble: {
+    namePrefixes: string[]
+    excludedNamePrefixes: string[]
+    serviceUuid: string
+    writeCharacteristicUuid: string
+    notifyCharacteristicUuid: string
+  }
 }
 
 const POCKET_4_ADVERT = Buffer.from('210000be0000ee8dd9a000000000', 'hex')
@@ -26,12 +33,24 @@ export const DJI_MODEL_PROFILES: Record<DjiModelId, DjiModelProfile> = {
     productType: null, advertisement: POCKET_4_ADVERT, localName: 'OsmoPocket4-ACPT',
     udpPort: 9004, tcpPort: 7001, httpPort: 80, mockUdpPort: 19004, mockTcpPort: 17001, mockHttpPort: 18080,
     storageIds: ['sdcard', 'storage_internal'],
+    ble: {
+      namePrefixes: ['OsmoPocket4'], excludedNamePrefixes: ['OsmoPocket4P'],
+      serviceUuid: '0000fff0-0000-1000-8000-00805f9b34fb',
+      writeCharacteristicUuid: '0000fff5-0000-1000-8000-00805f9b34fb',
+      notifyCharacteristicUuid: '0000fff4-0000-1000-8000-00805f9b34fb',
+    },
   },
   pocket4pro: {
     id: 'pocket4pro', deviceId: 'dji-pocket-4-pro', name: 'Osmo Pocket 4 Pro', modelNumber: 0x22,
     productType: 218, advertisement: POCKET_4_PRO_ADVERT, localName: 'OsmoPocket4P-6E55',
     udpPort: 9004, tcpPort: 7001, httpPort: 80, mockUdpPort: 19004, mockTcpPort: 17001, mockHttpPort: 18080,
     storageIds: ['sdcard', 'storage_internal'],
+    ble: {
+      namePrefixes: ['OsmoPocket4P'], excludedNamePrefixes: [],
+      serviceUuid: '0000fff0-0000-1000-8000-00805f9b34fb',
+      writeCharacteristicUuid: '0000fff5-0000-1000-8000-00805f9b34fb',
+      notifyCharacteristicUuid: '0000fff4-0000-1000-8000-00805f9b34fb',
+    },
   },
 }
 
@@ -61,4 +80,3 @@ export function decodeDjiAdvertisement(payload: Uint8Array): DjiAdvertisement {
     : bytes.length >= 2 && bytes.readUInt16LE(0) !== 0 ? bytes.readUInt16LE(0) : null
   return { companyId: 0x08aa, modelNumber, productType, newFormat, payload: bytes }
 }
-
