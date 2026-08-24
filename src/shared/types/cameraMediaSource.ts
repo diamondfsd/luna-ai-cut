@@ -3,6 +3,8 @@ import type { CameraDeleteResult, LunaFile } from './media'
 
 export type CameraConnectionMode = 'wireless' | 'wired'
 
+export type CameraMediaSourceWirelessPreparation = 'bluetooth' | 'manual-wifi' | 'already-connected'
+
 export interface CameraMediaSourceConnectionCapabilities {
   /** 设备是否需要或支持通过蓝牙唤醒/激活无线连接。 */
   bluetoothActivation: boolean
@@ -27,10 +29,12 @@ export interface CameraMediaSourceCapabilities {
 
 export interface CameraMediaSourcePreparationResult {
   mode: CameraConnectionMode
+  preparation?: CameraMediaSourceWirelessPreparation
   credentials?: {
     ssid: string
     password: string
   }
+  capabilities?: CameraMediaSourceConnectionCapabilities
   message: string
 }
 
@@ -50,7 +54,7 @@ export interface CameraMediaSourceOptions {
   rootPath?: string
   wireless?: {
     /** 只表示连接准备方式，不会把密码写入应用设置。 */
-    preparation?: 'bluetooth' | 'manual-wifi' | 'already-connected'
+    preparation?: CameraMediaSourceWirelessPreparation
     ssid?: string
     password?: string
     /** 预留给未来的系统 Wi-Fi 自动加入能力，默认关闭。 */

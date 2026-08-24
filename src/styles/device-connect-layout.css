@@ -1,0 +1,71 @@
+.device-connect-page {
+  padding: 36px 32px 72px;
+}
+
+.device-connect-layout {
+  width: min(100%, 1220px);
+  margin: 0 auto;
+  display: grid;
+  align-items: start;
+  gap: 24px;
+  grid-template-columns: 248px minmax(0, 1fr);
+}
+
+.device-connect-sidebar {
+  position: sticky;
+  top: 20px;
+  min-width: 0;
+}
+
+.device-connect-main {
+  min-width: 0;
+}
+
+.device-connect-footer {
+  justify-content: flex-start;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-connect-sidebar-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+@media (max-width: 980px) {
+  .device-connect-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .device-connect-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .device-connect-mode-picker {
+    justify-items: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .device-connect-page {
+    padding: 28px 18px 48px;
+  }
+
+  .device-connect-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .device-connect-sidebar,
+  .device-connect-main {
+    width: 100%;
+  }
+
+  .device-connect-sidebar {
+    position: static;
+  }
+}

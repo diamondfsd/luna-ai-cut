@@ -1,6 +1,7 @@
 import type {
   CameraMediaSourceConnectionCapabilities,
   CameraMediaSourceOptions,
+  CameraMediaSourceWirelessPreparation,
 } from '../../../src/shared/types'
 import {
   createHttpMockDjiBleTransport,
@@ -11,7 +12,7 @@ import {
 import { createCoreBluetoothDjiBleTransport } from './djiCoreBluetoothTransport'
 import { createWindowsDjiBleTransport } from './djiWindowsBluetoothTransport'
 
-export type DjiWirelessPreparationMode = 'bluetooth' | 'manual-wifi' | 'already-connected'
+export type DjiWirelessPreparationMode = CameraMediaSourceWirelessPreparation
 
 export interface DjiWirelessPreparationResult {
   mode: DjiWirelessPreparationMode
@@ -85,7 +86,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     if (!transport) {
       return {
         mode: 'already-connected',
-        message: '已使用当前 Wi-Fi 连接；如需蓝牙取回 Wi-Fi 信息，请接入 DJI 蓝牙适配器',
+        message: '当前电脑不支持蓝牙读取 Wi-Fi 信息，建议先让手机连接相机，再用手机系统的 Wi-Fi 分享功能查看或分享密码，然后让电脑连接相机热点并在这里填写',
       }
     }
 
@@ -97,6 +98,11 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
         mode: 'bluetooth',
         credentials,
         message: `已通过蓝牙取得 Wi-Fi 信息：${credentials.ssid}`,
+      }
+    } catch {
+      return {
+        mode: 'manual-wifi',
+        message: '未能通过 DJI 蓝牙读取 Wi-Fi 信息，建议先让手机连接相机，再用手机系统的 Wi-Fi 分享功能查看或分享密码，然后让电脑连接相机热点并在这里填写',
       }
     } finally {
       await ble.close().catch(() => undefined)

@@ -1,9 +1,9 @@
 .supported-device-list {
-  margin-top: 18px;
+  margin: 0;
   border: 1px solid var(--hairline);
   border-radius: 8px;
   background: var(--canvas);
-  padding: 18px;
+  padding: 16px 12px;
 }
 
 .supported-device-list-header {
@@ -44,21 +44,21 @@
 
 .supported-device-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
+  grid-template-columns: 1fr;
 }
 
 .supported-device-card.ui-btn {
   display: flex;
   min-width: 0;
-  min-height: 112px;
+  min-height: 72px;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
   border-color: var(--hairline);
   border-radius: 8px;
   background: var(--canvas);
-  padding: 12px;
+  padding: 9px;
   text-align: left;
   white-space: normal;
 }
@@ -71,12 +71,12 @@
 
 .supported-device-visual {
   display: grid;
-  width: 72px;
-  height: 72px;
-  flex: 0 0 72px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
   place-items: center;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--blue) 8%, var(--parchment));
   color: var(--blue);
 }
@@ -115,7 +115,7 @@
 
 .supported-device-copy strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -135,10 +135,6 @@
 }
 
 @media (max-width: 760px) {
-  .supported-device-grid {
-    grid-template-columns: 1fr;
-  }
-
   .supported-device-card.ui-btn {
     min-height: 80px;
   }
