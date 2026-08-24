@@ -26,5 +26,9 @@
   "storages": [
     { "id": "storage_internal", "label": "内置存储", "path": "DCIM/", "default": true },
     { "id": "sdcard", "label": "SD 卡", "path": "DCIM/", "default": false }
+  ],
+  "watermarkStyles": [
+    { "value": "dji_pocket_4", "label": "DJI 标准", "videoFileName": "ic_watermark_dji_pocket_4", "imageFileName": "ic_watermark_dji_pocket_4" },
+    { "value": "dji_pocket_4_clean", "label": "简洁标识", "videoFileName": "ic_watermark_dji_pocket_4_clean", "imageFileName": "ic_watermark_dji_pocket_4_clean" }
   ]
 }

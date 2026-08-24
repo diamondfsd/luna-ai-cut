@@ -1,5 +1,7 @@
 import goUltraConfig from '../../electron/deviceConfigs/go-ultra.json'
 import lunaUltraConfig from '../../electron/deviceConfigs/luna-ultra.json'
+import pocket4Config from '../../electron/deviceConfigs/pocket-4.json'
+import pocket4ProConfig from '../../electron/deviceConfigs/pocket-4-pro.json'
 
 import type { DeviceWatermarkStyleConfig } from './types'
 
@@ -14,12 +16,16 @@ interface WatermarkStyleEntry {
 const DEVICE_CONFIGS: Record<string, { watermarkStyles?: WatermarkStyleEntry[] }> = {
   'go-ultra': goUltraConfig as { watermarkStyles: WatermarkStyleEntry[] },
   'luna-ultra': lunaUltraConfig as { watermarkStyles: WatermarkStyleEntry[] },
+  'dji-pocket-4': pocket4Config as { watermarkStyles: WatermarkStyleEntry[] },
+  'dji-pocket-4-pro': pocket4ProConfig as { watermarkStyles: WatermarkStyleEntry[] },
 }
 
 /** 所有设备配置中声明的水印样式（唯一数据源，与 electron/deviceConfigs 保持一致） */
 export const ALL_WATERMARK_STYLES: WatermarkStyleEntry[] = [
   ...(goUltraConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
   ...(lunaUltraConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
+  ...(pocket4Config as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
+  ...(pocket4ProConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
 ]
 
 /** 根据设备 ID 获取该设备的水印样式选项 */

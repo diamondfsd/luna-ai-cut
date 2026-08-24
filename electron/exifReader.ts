@@ -25,7 +25,7 @@ async function readStandardVideoDeviceInfo(localPath: string): Promise<MediaDevi
   const parsed = JSON.parse(stdout) as { format?: { tags?: Record<string, string> } }
   const tags = parsed.format?.tags ?? {}
   const make = tags.make?.trim() ?? ''
-  const model = tags.model?.trim() ?? ''
+  const model = tags.model?.trim() || tags.encoder?.trim() || ''
   if (!make && !model) return null
   return {
     make,

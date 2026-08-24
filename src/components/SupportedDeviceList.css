@@ -87,6 +87,12 @@
   object-fit: cover;
 }
 
+.supported-device-visual img.supported-device-character {
+  box-sizing: border-box;
+  object-fit: contain;
+  padding: 3px;
+}
+
 .supported-device-visual.dji {
   background: color-mix(in srgb, var(--ink) 8%, var(--parchment));
   color: var(--ink);

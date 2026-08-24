@@ -404,6 +404,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                 onChange={handleWatermarkChange}
                 filePath={mediaCtx.activeMedia?.path}
                 mediaKind={mediaCtx.activeMedia?.kind}
+                deviceMetadata={mediaCtx.activeMedia}
               />
             </Accordion>
           )}
