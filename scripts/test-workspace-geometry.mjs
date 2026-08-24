@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer'
 import ts from 'typescript'
 
 const source = await readFile(new URL('../src/workspace/transform/cropGeometry.ts', import.meta.url), 'utf8')
+const watermarkGeometrySource = await readFile(new URL('../src/shared/watermarkGeometry.ts', import.meta.url), 'utf8')
 const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchLayers.ts', import.meta.url), 'utf8')
 const pixelStretchStateSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchState.ts', import.meta.url), 'utf8')
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
@@ -17,6 +18,7 @@ const compilerOptions = {
   importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
 }
 const compiled = ts.transpileModule(source, { compilerOptions }).outputText
+const watermarkGeometryCompiled = ts.transpileModule(watermarkGeometrySource, { compilerOptions }).outputText
 const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\n/, '')}`, { compilerOptions }).outputText
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
@@ -25,6 +27,7 @@ const videoOutputMarkersCompiled = ts.transpileModule(videoOutputMarkersSource, 
 const aiSelectionWorkspaceAssetsCompiled = ts.transpileModule(aiSelectionWorkspaceAssetsSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const watermarkGeometry = await import(`data:text/javascript;base64,${Buffer.from(watermarkGeometryCompiled).toString('base64')}`)
 const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
 const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchStateCompiled).toString('base64')}`)
 const pixelStretchPath = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchPathCompiled).toString('base64')}`)
@@ -42,6 +45,42 @@ function cropClose(actual, expected, message) {
   close(actual.w, expected.w, `${message}.w`)
   close(actual.h, expected.h, `${message}.h`)
 }
+
+function watermarkSettings(style, position, imageWidth, imageHeight = 144) {
+  return { enabled: true, style, position, sourceKind: 'builtin', imageWidth, imageHeight }
+}
+
+function watermarkClose(actual, expected, message) {
+  close(actual.marginX, expected.marginX, `${message}.marginX`)
+  close(actual.marginY, expected.marginY, `${message}.marginY`)
+  close(actual.targetWidth, expected.targetWidth, `${message}.targetWidth`)
+}
+
+assert.equal(
+  watermarkGeometry.usesDjiBuiltinWatermark(watermarkSettings('dji_pocket_4', 'bottom-center', 468)),
+  true,
+  'DJI builtin watermark styles use the normalized editor geometry',
+)
+assert.equal(
+  watermarkGeometry.usesDjiBuiltinWatermark({ ...watermarkSettings('dji_pocket_4', 'bottom-center', 468), sourceKind: 'custom' }),
+  false,
+  'custom assets never use a device preset geometry',
+)
+watermarkClose(
+  watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4', 'bottom-left', 468), 1920, 1080),
+  { marginX: 0.06, marginY: 0.8971794872, targetWidth: 0.12 },
+  'Pocket 4 16:9 size 0 left bottom placement',
+)
+watermarkClose(
+  watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4_pro', 'top-right', 540), 1080, 1920),
+  { marginX: 0.70, marginY: 0.034, targetWidth: 0.08 },
+  'Pocket 4 Pro 9:16 size 10 right top placement',
+)
+watermarkClose(
+  watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4_pro', 'bottom-center', 540), 4000, 3000),
+  { marginX: 0.44, marginY: 0.9186666667, targetWidth: 0.12 },
+  'Pocket 4 Pro 4:3 size 10 center bottom placement',
+)
 
 const sourceAspect = 16 / 9
 
