@@ -72,7 +72,7 @@ function defaultSettings(): AppSettings {
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
-    windowCloseBehavior: 'quit',
+    windowCloseBehavior: 'hide',
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,

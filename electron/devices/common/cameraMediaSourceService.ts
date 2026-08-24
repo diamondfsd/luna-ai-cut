@@ -20,6 +20,7 @@ import type {
   LunaFile,
 } from '../../../src/shared/types'
 import { djiSessionFor, disconnectDjiSession } from '../dji/djiCameraSession'
+import { autoJoinDeviceWifi } from '../../platform/network/wifiAutoJoinService'
 
 const WIRELESS_CAPABILITIES: CameraMediaSourceCapabilities = {
   list: true,
@@ -42,6 +43,19 @@ function wirelessCapabilities(definition: DeviceDefinition): CameraMediaSourceCa
     ...WIRELESS_CAPABILITIES,
     ...definition.mediaCapabilities,
     delete: definition.mediaCapabilities?.delete ?? definition.protocol === 'insta360',
+    connection: {
+      ...WIRELESS_CAPABILITIES.connection,
+      automaticWifiJoin: process.platform === 'darwin' && definition.wifi?.autoJoin === true,
+    },
+  }
+}
+
+function isLoopbackHost(host: string): boolean {
+  try {
+    const hostname = new URL(host.includes('://') ? host : `http://${host}`).hostname
+    return hostname === '127.0.0.1' || hostname === 'localhost'
+  } catch {
+    return false
   }
 }
 
@@ -97,9 +111,22 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
   async connect(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host, storageId } = await this.values()
     const definition = deviceDefinitionFor(deviceId)
-    const status = await this.protocol(definition).connect({ deviceId, host, storageId })
-    await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
-    return wirelessStatus(status, definition, host)
+    const wifiJoin = isLoopbackHost(host)
+      ? { attempted: false, connected: false, message: '模拟设备跳过 Wi-Fi 自动连接' }
+      : await autoJoinDeviceWifi(definition.wifi)
+    const protocol = this.protocol(definition)
+    try {
+      const status = await protocol.connect({ deviceId, host, storageId })
+      await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
+      return wirelessStatus({
+        ...status,
+        message: wifiJoin.connected ? `${wifiJoin.message}，${status.message}` : status.message,
+      }, definition, host)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      const wifiHint = definition.wifi?.autoJoin && !wifiJoin.connected ? `${wifiJoin.message}。` : ''
+      throw new Error(`${wifiHint}${detail}`)
+    }
   }
 
   async check(): Promise<CameraMediaSourceStatus> {

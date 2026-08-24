@@ -57,6 +57,11 @@ export interface DeviceDefinition {
     model?: string
   }
   protocol?: 'insta360' | 'go-ultra' | 'dji'
+  /** 设备 Wi-Fi 的自动发现与连接策略，由设备定义提供。 */
+  wifi?: {
+    autoJoin?: boolean
+    ssidIncludes: string[]
+  }
   mediaCapabilities?: Partial<Pick<CameraMediaSourceCapabilities, 'list' | 'preview' | 'copyToLocal' | 'create' | 'update' | 'delete' | 'watch'>>
   bluetooth?: {
     namePrefixes: string[]

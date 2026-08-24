@@ -182,7 +182,15 @@ do {
       exit(0)
     }
     try interface.associate(to: network, password: password)
-    result(success: true, message: "CoreWLAN 已尝试连接 \(ssid)", data: statusPayload(interface: interface))
+    let deadline = Date().addingTimeInterval(5)
+    while Date() < deadline {
+      if interface.ssid() == ssid {
+        result(success: true, message: "CoreWLAN 已连接 \(ssid)", data: statusPayload(interface: interface))
+        exit(0)
+      }
+      Thread.sleep(forTimeInterval: 0.25)
+    }
+    result(success: false, message: "CoreWLAN 连接请求未确认成功：当前 Wi-Fi 为 \(interface.ssid() ?? "未连接")", data: statusPayload(interface: interface), code: "ASSOCIATION_NOT_CONFIRMED")
 
   case "disconnect":
     interface.disassociate()

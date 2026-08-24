@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { WindowCloseBehavior } from '../../src/shared/types'
 
 let appQuitting = false
-let windowCloseBehavior: WindowCloseBehavior = 'quit'
+let windowCloseBehavior: WindowCloseBehavior = 'hide'
 
 app.on('before-quit', () => {
   appQuitting = true

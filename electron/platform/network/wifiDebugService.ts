@@ -145,28 +145,36 @@ function parseWindowsScan(raw: string): WifiDebugNetwork[] {
   return networks.filter((network) => network.ssid)
 }
 
-function normalizeWifiStatus(value: any, raw?: string): WifiDebugStatus {
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function normalizeWifiStatus(value: unknown, raw?: string): WifiDebugStatus {
+  const data = jsonRecord(value)
   return {
-    platform: value?.platform ?? process.platform,
-    interfaceName: value?.interfaceName ?? null,
-    connected: Boolean(value?.connected),
-    ssid: value?.ssid ?? null,
-    bssid: value?.bssid ?? null,
-    signal: value?.signal ?? null,
-    security: value?.security ?? null,
-    ipAddress: value?.ipAddress ?? null,
+    platform: typeof data.platform === 'string' ? data.platform : process.platform,
+    interfaceName: typeof data.interfaceName === 'string' ? data.interfaceName : null,
+    connected: Boolean(data.connected),
+    ssid: typeof data.ssid === 'string' ? data.ssid : null,
+    bssid: typeof data.bssid === 'string' ? data.bssid : null,
+    signal: typeof data.signal === 'string' ? data.signal : null,
+    security: typeof data.security === 'string' ? data.security : null,
+    ipAddress: typeof data.ipAddress === 'string' ? data.ipAddress : null,
     raw,
   }
 }
 
-function normalizeWifiNetwork(value: any): WifiDebugNetwork {
+function normalizeWifiNetwork(value: unknown): WifiDebugNetwork {
+  const data = jsonRecord(value)
   return {
-    ssid: String(value?.ssid ?? ''),
-    bssid: value?.bssid ?? null,
-    signal: value?.signal ?? null,
-    security: value?.security ?? null,
-    channel: value?.channel ?? null,
-    raw: typeof value?.raw === 'string' ? value.raw : JSON.stringify(value?.raw ?? {}),
+    ssid: String(data.ssid ?? ''),
+    bssid: typeof data.bssid === 'string' ? data.bssid : null,
+    signal: typeof data.signal === 'string' ? data.signal : null,
+    security: typeof data.security === 'string' ? data.security : null,
+    channel: typeof data.channel === 'string' ? data.channel : null,
+    raw: typeof data.raw === 'string' ? data.raw : JSON.stringify(data.raw ?? {}),
   }
 }
 
@@ -188,6 +196,19 @@ async function runCoreWlan<T>(args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_M
 export async function getWifiDebugStatus(): Promise<WifiDebugResult<WifiDebugStatus>> {
   try {
     const snapshot = systemNetworkSnapshot()
+    if (process.platform === 'darwin') {
+      const result = await runCoreWlan<unknown>(['status'], 8000)
+      if (result.success) {
+        const status = normalizeWifiStatus(result.data, result.raw)
+        return ok(result.message || 'CoreWLAN 状态已刷新', {
+          ...status,
+          interfaceName: status.interfaceName ?? snapshot.interfaceName,
+          ipAddress: status.ipAddress ?? snapshot.ipAddress ?? firstWirelessIpv4(),
+          ipAddresses: snapshot.ipAddresses,
+          interfaces: snapshot.interfaces,
+        }, result.raw)
+      }
+    }
     return ok('系统网卡信息已刷新', {
       platform: process.platform,
       ssid: null,
@@ -201,10 +222,10 @@ export async function getWifiDebugStatus(): Promise<WifiDebugResult<WifiDebugSta
   }
 }
 
-export async function scanWifiNetworks(): Promise<WifiDebugResult<WifiDebugNetwork[]>> {
+export async function scanWifiNetworks(timeoutMs = 30000): Promise<WifiDebugResult<WifiDebugNetwork[]>> {
   try {
     if (process.platform === 'darwin') {
-      const result = await runCoreWlan<any[]>(['scan'], 30000)
+      const result = await runCoreWlan<unknown[]>(['scan'], timeoutMs)
       if (!result.success) return result as WifiDebugResult<WifiDebugNetwork[]>
       const networks = (result.data ?? []).map(normalizeWifiNetwork).filter((network) => network.ssid)
       return ok(result.message || `CoreWLAN 扫描到 ${networks.length} 个 Wi-Fi`, networks, result.raw)
@@ -270,7 +291,7 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
       const args = ['connect', '--ssid', ssid]
       if (options.password) args.push('--password', options.password)
       if (options.bssid) args.push('--bssid', options.bssid)
-      const result = await runCoreWlan<any>(args, timeoutMs)
+      const result = await runCoreWlan<unknown>(args, timeoutMs)
       if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
       const status = normalizeWifiStatus(result.data, result.raw)
       return ok(result.message || `CoreWLAN 已尝试连接 ${ssid}`, { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
@@ -302,7 +323,7 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
 export async function disconnectWifiNetwork(): Promise<WifiDebugResult<WifiDebugStatus>> {
   try {
     if (process.platform === 'darwin') {
-      const result = await runCoreWlan<any>(['disconnect'], 12000)
+      const result = await runCoreWlan<unknown>(['disconnect'], 12000)
       if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
       const status = normalizeWifiStatus(result.data, result.raw)
       return ok(result.message || 'CoreWLAN 已断开当前 Wi-Fi', { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
