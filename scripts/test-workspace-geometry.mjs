@@ -68,17 +68,17 @@ assert.equal(
 )
 watermarkClose(
   watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4', 'bottom-left', 468), 1920, 1080),
-  { marginX: 0.06, marginY: 0.8971794872, targetWidth: 0.12 },
+  { marginX: 0, marginY: 0.8643589744, targetWidth: 0.24 },
   'Pocket 4 16:9 size 0 left bottom placement',
 )
 watermarkClose(
   watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4_pro', 'top-right', 540), 1080, 1920),
-  { marginX: 0.70, marginY: 0.034, targetWidth: 0.08 },
+  { marginX: 0.66, marginY: 0.028, targetWidth: 0.16 },
   'Pocket 4 Pro 9:16 size 10 right top placement',
 )
 watermarkClose(
   watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4_pro', 'bottom-center', 540), 4000, 3000),
-  { marginX: 0.44, marginY: 0.9186666667, targetWidth: 0.12 },
+  { marginX: 0.38, marginY: 0.8973333333, targetWidth: 0.24 },
   'Pocket 4 Pro 4:3 size 10 center bottom placement',
 )
 

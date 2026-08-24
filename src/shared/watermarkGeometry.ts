@@ -124,7 +124,10 @@ export function resolveDjiWatermarkPositioning(
   const defaultWidth = settings.style.includes('_pro') ? 540 : 468
   const imageWidth = Math.max(1, finiteOr(settings.imageWidth, defaultWidth))
   const imageHeight = Math.max(1, finiteOr(settings.imageHeight, 144))
-  const targetWidth = widthRatio > 1 ? 0.12 : 0.08
+  // Producer scale is the half-width in its normalized [-0.5, 0.5] frame;
+  // the renderer positioning API expects the full width in [0, 1] UV space.
+  const producerScale = widthRatio > 1 ? 0.12 : 0.08
+  const targetWidth = producerScale * 2
   const targetHeight = targetWidth / (imageWidth / imageHeight) * widthRatio
   const position = settings.position === 'top-center' ? 'bottom-center' : settings.position
   const offset = djiPositionOffset(position, widthRatio, djiStickerSize(settings))
