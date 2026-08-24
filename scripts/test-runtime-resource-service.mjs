@@ -68,7 +68,7 @@ async function waitFor(predicate, timeoutMs = 2_000) {
 }
 
 try {
-  const sourcePath = path.join(projectRoot, 'electron/runtimeResourceService.ts')
+  const sourcePath = path.join(projectRoot, 'electron/infrastructure/runtimeResourceService.ts')
   const program = ts.createProgram([sourcePath], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
@@ -85,7 +85,7 @@ try {
     path.join(compiledRoot, 'node_modules'),
     process.platform === 'win32' ? 'junction' : 'dir',
   )
-  const service = await import(pathToFileURL(path.join(compiledRoot, 'electron/runtimeResourceService.js')))
+  const service = await import(pathToFileURL(path.join(compiledRoot, 'electron/infrastructure/runtimeResourceService.js')))
   const { loadRuntimeResource, getRuntimeResourceCachePath } = service
 
   const normal = makeFixture('normal-pack', [

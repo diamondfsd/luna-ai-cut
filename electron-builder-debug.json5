@@ -44,12 +44,12 @@
       "filter": ["**/*.png"]
     },
     {
-      "from": "electron",
+      "from": "electron/platform/macos",
       "to": "swift",
       "filter": ["*.swift"]
     },
     {
-      "from": "electron",
+      "from": "electron/platform/windows",
       "to": "native",
       "filter": ["*.ps1"]
     }

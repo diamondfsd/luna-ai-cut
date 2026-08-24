@@ -5,7 +5,7 @@ import path from 'node:path'
 import { Buffer } from 'node:buffer'
 import ts from 'typescript'
 
-const source = await readFile(new URL('../electron/originalFileExportService.ts', import.meta.url), 'utf8')
+const source = await readFile(new URL('../electron/export/originalFileExportService.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,

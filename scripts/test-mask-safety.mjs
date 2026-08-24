@@ -57,8 +57,8 @@ async function compileModules(entryPaths) {
 
 try {
   await compileModules([
-    'electron/workspaceProjectService.ts',
-    'electron/colorMaskService.ts',
+    'electron/features/workspace/workspaceProjectService.ts',
+    'electron/features/segmentation/colorMaskService.ts',
     'src/workspace/shared/editPipeline.ts',
     'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
@@ -90,8 +90,8 @@ try {
     process.platform === 'win32' ? 'junction' : 'dir',
   )
 
-  const projectService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/workspaceProjectService.js')))
-  const maskService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/colorMaskService.js')))
+  const projectService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/features/workspace/workspaceProjectService.js')))
+  const maskService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/features/segmentation/colorMaskService.js')))
   const pipelineModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipeline.js')))
   const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))

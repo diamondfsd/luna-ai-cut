@@ -11,9 +11,9 @@ import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
-import { registerDeviceDebugHandlers, cleanupDeviceDebug } from './deviceDebugHandlers'
-import { deviceDefinitions } from './deviceDefaults'
-import { getSettings, openPath, openPhotosApp } from './fileService'
+import { registerDeviceDebugHandlers, cleanupDeviceDebug } from './devtools/device-debug/handlers'
+import { deviceDefinitions } from './devices/definitions/deviceDefaults'
+import { getSettings, openPath, openPhotosApp } from './storage/fileService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '..')

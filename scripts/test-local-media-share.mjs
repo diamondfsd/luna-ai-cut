@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { parseByteRange, startLocalMediaShareServer } from '../electron/localMediaShareServer.ts'
+import { parseByteRange, startLocalMediaShareServer } from '../electron/media/local-share/localMediaShareServer.ts'
 
 const tempDir = await mkdtemp(join(tmpdir(), 'luna-local-share-'))
 const assetsDir = join(process.cwd(), 'public', 'local-share')

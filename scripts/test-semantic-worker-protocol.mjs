@@ -10,7 +10,7 @@ const projectRoot = path.resolve(import.meta.dirname, '..')
 const outputRoot = await mkdtemp(path.join(tmpdir(), 'luna-semantic-protocol-'))
 
 try {
-  const sourcePath = path.join(projectRoot, 'electron/semanticWorkerProtocol.ts')
+  const sourcePath = path.join(projectRoot, 'electron/features/segmentation/semanticWorkerProtocol.ts')
   const program = ts.createProgram([sourcePath], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
@@ -21,7 +21,7 @@ try {
   })
   assert.deepEqual(ts.getPreEmitDiagnostics(program), [])
   assert.equal(program.emit().emitSkipped, false)
-  const { parseSemanticWorkerOutput } = await import(pathToFileURL(path.join(outputRoot, 'electron/semanticWorkerProtocol.js')))
+  const { parseSemanticWorkerOutput } = await import(pathToFileURL(path.join(outputRoot, 'electron/features/segmentation/semanticWorkerProtocol.js')))
 
   const mask = Buffer.from([0, 64, 128, 255, 10, 20])
   const output = Buffer.alloc(12 + mask.byteLength)

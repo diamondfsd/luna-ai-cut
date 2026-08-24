@@ -13,6 +13,6 @@ Luna AI Cut 的滤镜/LUT 功能，完整链路从 GPU 渲染到 UI 交互。
 所有 .cube 数据由程序化生成器产生，无需捆绑文件。
 导入: 用户可通过 FilePicker 导入自定义 .cube 文件，通过 LutManager 管理 GPU 生命周期。
 
-**Key files:** electron/lunaRenderCore.ts (loadLut/releaseLut), electron/ipcLunaRenderCore.ts (IPC handlers), electron/preload.ts (preload API), src/workspace/lut/builtinLuts.ts | LutManager.ts | FilterPanel.tsx, src/components/PreviewStage.tsx (gpuLutId state + layer injection), src/workspace/shared/editPipeline.ts (lutFilter.activeId field)
+**Key files:** electron/platform/render/lunaRenderCore.ts (loadLut/releaseLut), electron/ipc/ipcLunaRenderCore.ts (IPC handlers), electron/preload.ts (preload API), src/workspace/lut/builtinLuts.ts | LutManager.ts | FilterPanel.tsx, src/components/PreviewStage.tsx (gpuLutId state + layer injection), src/workspace/shared/editPipeline.ts (lutFilter.activeId field)
 
 **Rust side (previously completed):** luna-render-core/src/compositor.rs | lib.rs, params.wgsl, color.wgsl

@@ -199,14 +199,16 @@ export function SettingsPage({
   async function changeActiveDevice(deviceId: string): Promise<void> {
     const nextDevice = devices.find((device) => device.id === deviceId)
     if (!nextDevice) return
+    const mockConfig = settings?.mockServers?.[nextDevice.id]
     const next = await window.luna.saveSettings({
       activeDeviceId: nextDevice.id,
       cameraHost: nextDevice.defaultHost,
       cameraConnectionMode: 'wireless',
-      mockHost: nextDevice.mock.host,
-      mockHttpPort: nextDevice.mock.httpPort,
-      mockTcpPort: nextDevice.mock.tcpPort,
-      mockRateMbps: nextDevice.mock.rateMbps,
+      mockMediaDir: mockConfig?.rootDir ?? '',
+      mockHost: mockConfig?.host ?? nextDevice.mock.host,
+      mockHttpPort: mockConfig?.httpPort ?? nextDevice.mock.httpPort,
+      mockTcpPort: mockConfig?.tcpPort ?? nextDevice.mock.tcpPort,
+      mockRateMbps: mockConfig?.rateMbps ?? nextDevice.mock.rateMbps,
     })
     setSettings(next)
   }

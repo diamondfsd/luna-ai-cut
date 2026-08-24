@@ -4,10 +4,10 @@ import * as path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import type { AiSelectionItem } from '../src/shared/types'
 
-import { analyzeIndexedMedia, indexMediaSource } from '../electron/aiSelectionMedia'
-import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups } from '../electron/aiSelectionAlgorithms'
-import { analyzePersonEvidence } from '../electron/aiSelectionPerson'
-import { analyzeVideoStory } from '../electron/aiSelectionVideo'
+import { analyzeIndexedMedia, indexMediaSource } from '../electron/features/ai-selection/aiSelectionMedia'
+import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups } from '../electron/features/ai-selection/aiSelectionAlgorithms'
+import { analyzePersonEvidence } from '../electron/features/ai-selection/aiSelectionPerson'
+import { analyzeVideoStory } from '../electron/features/ai-selection/aiSelectionVideo'
 
 interface BenchmarkResult {
   indexMs: number

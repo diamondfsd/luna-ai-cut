@@ -9,8 +9,8 @@ import { Buffer } from 'node:buffer'
 import ts from 'typescript'
 
 const execFileAsync = promisify(execFile)
-const source = await readFile(new URL('../electron/dolbyVisionHvcc.ts', import.meta.url), 'utf8')
-const bitrateSource = await readFile(new URL('../electron/dolbyVisionBitrate.ts', import.meta.url), 'utf8')
+const source = await readFile(new URL('../electron/export/dolbyVisionHvcc.ts', import.meta.url), 'utf8')
+const bitrateSource = await readFile(new URL('../electron/export/dolbyVisionBitrate.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,

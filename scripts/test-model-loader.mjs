@@ -25,10 +25,10 @@ function responseFor(bytes, { status = 200, contentLength = bytes.byteLength } =
 
 async function compileModule() {
   const program = ts.createProgram([
-    path.join(projectRoot, 'electron/modelFileService.ts'),
-    path.join(projectRoot, 'electron/resumableDownloadService.ts'),
-    path.join(projectRoot, 'electron/modelCacheStatus.ts'),
-    path.join(projectRoot, 'electron/sharedLoadRegistry.ts'),
+    path.join(projectRoot, 'electron/infrastructure/modelFileService.ts'),
+    path.join(projectRoot, 'electron/media/resumableDownloadService.ts'),
+    path.join(projectRoot, 'electron/infrastructure/modelCacheStatus.ts'),
+    path.join(projectRoot, 'electron/infrastructure/sharedLoadRegistry.ts'),
   ], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
@@ -45,9 +45,9 @@ async function compileModule() {
 
 try {
   await compileModule()
-  const { loadVerifiedModelFile, writeAll } = await import(pathToFileURL(path.join(compiledRoot, 'electron/modelFileService.js')))
-  const { SharedLoadRegistry } = await import(pathToFileURL(path.join(compiledRoot, 'electron/sharedLoadRegistry.js')))
-  const { hasCachedModelFiles } = await import(pathToFileURL(path.join(compiledRoot, 'electron/modelCacheStatus.js')))
+  const { loadVerifiedModelFile, writeAll } = await import(pathToFileURL(path.join(compiledRoot, 'electron/infrastructure/modelFileService.js')))
+  const { SharedLoadRegistry } = await import(pathToFileURL(path.join(compiledRoot, 'electron/infrastructure/sharedLoadRegistry.js')))
+  const { hasCachedModelFiles } = await import(pathToFileURL(path.join(compiledRoot, 'electron/infrastructure/modelCacheStatus.js')))
   const modelDir = path.join(temporaryRoot, 'model')
   const bytes = Buffer.from('luna-model-fixture-v1')
   const definition = {

@@ -9,7 +9,7 @@ const pixelStretchStateSource = await readFile(new URL('../src/workspace/creativ
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
 const previewQualitySource = await readFile(new URL('../src/workspace/shared/workspacePreviewQuality.ts', import.meta.url), 'utf8')
 const videoOutputMarkersSource = await readFile(new URL('../src/workspace/trim/videoOutputMarkers.ts', import.meta.url), 'utf8')
-const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
+const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/features/ai-selection/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
   module: ts.ModuleKind.ES2020,

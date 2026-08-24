@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
-const sourceRoot = process.env.LUNA_AI_SELECTION_E2E_SOURCE || '/Users/REDACTED/wps同步文件夹/2026-媒体素材/20260621 - 珠海'
+const sourceRoot = process.env.LUNA_AI_SELECTION_E2E_SOURCE || path.join(projectRoot, 'test-fixtures', 'ai-selection')
 const sourceNames = [
   'IMG_20260619_161341_011.jpg',
   'IMG_20260619_161352_012.jpg',

@@ -10,14 +10,14 @@ import {
   buildShootingEvents,
   buildSimilarityGroups,
   hammingDistance,
-} from '../electron/aiSelectionAlgorithms.ts'
-import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
-import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
-import { readAiSelectionItemCache, writeAiSelectionItemCache } from '../electron/aiSelectionItemCache.ts'
-import { prepareAiSelectionReanalysis, preserveAiSelectionUserDecisions } from '../electron/aiSelectionReanalysis.ts'
-import { buildFaceGroups, DEFAULT_FACE_GROUPING_THRESHOLD, FACE_EMBEDDING_VERSION, faceEmbeddingsForGroup, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
-import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
-import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, restoreGlobalPerson, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
+} from '../electron/features/ai-selection/aiSelectionAlgorithms.ts'
+import { deriveBasicSemanticTags } from '../electron/features/ai-selection/aiSelectionTags.ts'
+import { applyAiSelectionUserOperation } from '../electron/features/ai-selection/aiSelectionOperations.ts'
+import { readAiSelectionItemCache, writeAiSelectionItemCache } from '../electron/features/ai-selection/aiSelectionItemCache.ts'
+import { prepareAiSelectionReanalysis, preserveAiSelectionUserDecisions } from '../electron/features/ai-selection/aiSelectionReanalysis.ts'
+import { buildFaceGroups, DEFAULT_FACE_GROUPING_THRESHOLD, FACE_EMBEDDING_VERSION, faceEmbeddingsForGroup, hasSufficientFacePixels } from '../electron/features/ai-selection/aiSelectionFaceGroups.ts'
+import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/features/ai-selection/aiSelectionPeopleStore.ts'
+import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, restoreGlobalPerson, unmergeGlobalPerson } from '../electron/features/ai-selection/aiSelectionPeopleManager.ts'
 import { FACE_AVATAR_CONTEXT_SCALE, squareCropAroundCenter } from '../src/shared/aiAvatarCrop.ts'
 import {
   aiSelectionAnalysisProgress,

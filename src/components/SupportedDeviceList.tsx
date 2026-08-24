@@ -3,8 +3,8 @@ import { Camera, Check, Wifi } from 'lucide-react'
 import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { Button } from '../ui'
 import lunaIcon from '../../public/luna-icon.png'
-import pocket4Character from '../assets/device-characters/pocket-4.svg'
-import pocket4ProCharacter from '../assets/device-characters/pocket-4-pro.svg'
+import pocket4Character from '../../public/pocket4.png'
+import pocket4ProCharacter from '../../public/pocket4p-white.png'
 import './SupportedDeviceList.css'
 
 interface SupportedDeviceListProps {

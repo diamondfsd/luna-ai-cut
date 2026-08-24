@@ -17,7 +17,7 @@ function sha256(bytes) {
 }
 
 try {
-  const sourcePath = path.join(projectRoot, 'electron/resumableDownloadService.ts')
+  const sourcePath = path.join(projectRoot, 'electron/media/resumableDownloadService.ts')
   const program = ts.createProgram([sourcePath], {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ES2022,
@@ -28,7 +28,7 @@ try {
   })
   assert.deepEqual(ts.getPreEmitDiagnostics(program), [])
   assert.equal(program.emit().emitSkipped, false)
-  const { downloadVerifiedFile } = await import(pathToFileURL(path.join(compiledRoot, 'electron/resumableDownloadService.js')))
+  const { downloadVerifiedFile } = await import(pathToFileURL(path.join(compiledRoot, 'electron/media/resumableDownloadService.js')))
 
   const destinationDir = path.join(temporaryRoot, 'files')
   const bytes = Buffer.from('luna-resumable-runtime-resource')

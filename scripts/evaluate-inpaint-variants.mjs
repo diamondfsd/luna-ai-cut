@@ -15,7 +15,7 @@ import {
   INPAINT_MODEL_SIZE,
   modelRadiusForSourcePixels,
   prepareInpaintInputs,
-} from '../electron/inpaintMask.ts'
+} from '../electron/features/segmentation/inpaintMask.ts'
 
 function parseArgs() {
   const values = new Map()

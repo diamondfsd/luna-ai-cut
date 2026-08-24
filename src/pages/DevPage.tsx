@@ -9,13 +9,14 @@ import '../styles/bluetooth-debug.css'
 
 interface DevPageProps {
   activeDevice?: DeviceDefinition
+  devices: DeviceDefinition[]
   settings: AppSettings | null
   setSettings: (updater: AppSettings | ((current: AppSettings | null) => AppSettings | null)) => void
   developerMode: boolean
-  mockServerStatus: MockServerStatus | null
-  startMockServer: (settings?: Partial<AppSettings>) => Promise<void>
-  stopMockServer: () => Promise<void>
-  chooseMockMediaDir: () => Promise<void>
+  mockServerStatuses: MockServerStatus[]
+  startMockServer: (deviceId?: string, settings?: Partial<AppSettings>) => Promise<void>
+  stopMockServer: (deviceId?: string) => Promise<void>
+  chooseMockMediaDir: (deviceId?: string) => Promise<void>
   openDirectory: (targetPath: string | null | undefined) => void
 }
 
@@ -23,10 +24,11 @@ type DebugTab = 'developer' | 'bluetooth' | 'wifi'
 
 export function DevPage({
   activeDevice,
+  devices,
   settings,
   setSettings,
   developerMode,
-  mockServerStatus,
+  mockServerStatuses,
   startMockServer,
   stopMockServer,
   chooseMockMediaDir,
@@ -75,10 +77,11 @@ export function DevPage({
       {activeTab === 'developer' && (
         <DeveloperTab
           activeDevice={activeDevice}
+          devices={devices}
           settings={settings}
           setSettings={setSettings}
           developerMode={developerMode}
-          mockServerStatus={mockServerStatus}
+          mockServerStatuses={mockServerStatuses}
           startMockServer={startMockServer}
           stopMockServer={stopMockServer}
           chooseMockMediaDir={chooseMockMediaDir}

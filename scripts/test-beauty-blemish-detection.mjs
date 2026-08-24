@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { detectFaceBlemishes } from '../electron/beautyBlemishDetection.ts'
+import { detectFaceBlemishes } from '../electron/features/beauty/beautyBlemishDetection.ts'
 
 const size = 64
 

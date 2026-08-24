@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { readStoredSettings, readStoredSettingsSync, stableSettingsPath } from '../electron/settingsStorage.ts'
+import { readStoredSettings, readStoredSettingsSync, stableSettingsPath } from '../electron/storage/settingsStorage.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-settings-storage-'))
 try {

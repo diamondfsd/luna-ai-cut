@@ -6,7 +6,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 
-import { convertWebpWatermarkToPng, probeWatermarkImage } from '../electron/customWatermarkImage.ts'
+import { convertWebpWatermarkToPng, probeWatermarkImage } from '../electron/export/watermark/customWatermarkImage.ts'
 
 const require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)

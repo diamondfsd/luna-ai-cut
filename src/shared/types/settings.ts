@@ -1,5 +1,6 @@
 import type { CustomWatermarkAsset, WatermarkPosition, WatermarkSettings } from './watermark'
 import type { CameraConnectionMode } from './cameraMediaSource'
+import type { MockServerConfig } from './mock'
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
 export type CameraPreviewQuality = 'proxy' | 'original'
@@ -30,6 +31,8 @@ export interface AppSettings {
   mockHttpPort?: number
   mockTcpPort?: number
   mockRateMbps?: number
+  /** 按设备保存的模拟服务配置。旧字段仅作为迁移兼容回退。 */
+  mockServers?: Record<string, MockServerConfig>
   /** 新素材与重置素材使用的默认水印开关。 */
   defaultWatermarkEnabled?: boolean
   /** 新素材与重置素材使用的默认水印位置。 */

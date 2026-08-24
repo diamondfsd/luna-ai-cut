@@ -11,6 +11,7 @@ import type {
   ConnectionStatus,
   DeviceConnectionPhase,
   DeviceDefinition,
+  MockServerConfig,
   MockServerStatus,
 } from '../shared/types'
 
@@ -27,14 +28,14 @@ interface DeviceConnectionContextValue {
   devices: DeviceDefinition[]
   devicePhase: DeviceConnectionPhase
   isConnected: boolean
-  mockServerStatus: MockServerStatus | null
-  chooseMockMediaDir: () => Promise<void>
+  mockServerStatuses: MockServerStatus[]
+  chooseMockMediaDir: (deviceId?: string) => Promise<void>
   showDeviceConnect: boolean
   sourceMode: CameraConnectionMode
   sourceCapabilities: CameraMediaSourceCapabilities
   preparedDjiWifi: CameraMediaSourcePreparationResult['credentials'] | null
-  startMockServer: (settings?: Partial<AppSettings>) => Promise<void>
-  stopMockServer: () => Promise<void>
+  startMockServer: (deviceId?: string, settings?: Partial<AppSettings>) => Promise<void>
+  stopMockServer: (deviceId?: string) => Promise<void>
 }
 
 const DeviceConnectionCtx = createContext<DeviceConnectionContextValue | null>(null)
@@ -97,16 +98,19 @@ async function enrichConnectionStatus(status: ConnectionStatus): Promise<Connect
   }
 }
 
-function failedMockStatus(settings: AppSettings, activeDevice: DeviceDefinition | undefined, message: string): MockServerStatus {
-  const mock = activeDevice?.mock
+function failedMockStatus(settings: AppSettings, device: DeviceDefinition | undefined, message: string): MockServerStatus {
+  const mock = device?.mock
   const host = settings.mockHost || mock?.host || ''
   const httpPort = settings.mockHttpPort || mock?.httpPort || 0
   return {
+    deviceId: device?.id ?? settings.activeDeviceId ?? '',
+    deviceName: device?.name ?? '当前设备',
     running: false,
     rootDir: settings.mockMediaDir || '',
     host,
     httpPort,
     tcpPort: settings.mockTcpPort || mock?.tcpPort || 0,
+    udpPort: mock?.udpPort || 0,
     rateMbps: settings.mockRateMbps || mock?.rateMbps || 0,
     cameraHost: host && httpPort ? `${host}:${httpPort}` : host,
     message,
@@ -126,7 +130,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   const { settings, setSettings, connection, setConnection } = useApp()
   const [devices, setDevices] = useState<DeviceDefinition[]>([])
   const [devicePhase, setDevicePhase] = useState<DeviceConnectionPhase>('idle')
-  const [mockServerStatus, setMockServerStatus] = useState<MockServerStatus | null>(null)
+  const [mockServerStatuses, setMockServerStatuses] = useState<MockServerStatus[]>([])
   const [cameraLibraryMounted, setCameraLibraryMounted] = useState(false)
   const [connectionMode, setConnectionModeState] = useState<CameraConnectionMode>('wireless')
   const [preparedDjiWifi, setPreparedDjiWifi] = useState<CameraMediaSourcePreparationResult['credentials'] & { deviceId: string } | null>(null)
@@ -150,7 +154,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         setConnectionModeState(nextSettings.cameraConnectionMode ?? 'wireless')
         setConnection(null)
         setDevicePhase('idle')
-        void window.luna.getMockServerStatus().then(setMockServerStatus).catch(() => undefined)
+        void window.luna.getMockServerStatuses().then(setMockServerStatuses).catch(() => undefined)
       } catch (error) {
         logger.error('[设备连接] 初始化失败', { error: error instanceof Error ? error.message : String(error) })
       }
@@ -333,15 +337,17 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     })
     setSettings(nextSettings)
 
-    if (mockServerStatus?.running && nextSettings.developerMode && nextSettings.mockMediaDir) {
-      try {
-        const nextMockStatus = await window.luna.startMockServer(nextSettings)
-        setMockServerStatus(nextMockStatus)
-        setSettings(await window.luna.getSettings())
-      } catch (error) {
-        setMockServerStatus(failedMockStatus(nextSettings, nextDevice, error instanceof Error ? error.message : String(error)))
-      }
-    }
+    const selectedMockStatus = mockServerStatuses.find((status) => status.deviceId === nextDevice.id)
+    const savedMock = nextSettings.mockServers?.[nextDevice.id]
+    const mockHost = savedMock?.host ?? nextDevice.mock.host
+    const mockHttpPort = savedMock?.httpPort ?? nextDevice.mock.httpPort
+    const mockTcpPort = savedMock?.tcpPort ?? nextDevice.mock.tcpPort
+    const mockRateMbps = savedMock?.rateMbps ?? nextDevice.mock.rateMbps
+    const cameraHost = nextSettings.developerMode && selectedMockStatus?.running
+      ? selectedMockStatus.cameraHost
+      : nextDevice.defaultHost
+    const updated = await window.luna.saveSettings({ mockHost, mockHttpPort, mockTcpPort, mockRateMbps, cameraHost })
+    setSettings(updated)
   }
 
   async function chooseWiredCamera(): Promise<void> {
@@ -389,30 +395,48 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     setPreparedDjiWifi(null)
   }
 
-  async function chooseMockMediaDir(): Promise<void> {
+  async function chooseMockMediaDir(deviceId = activeDevice?.id): Promise<void> {
     const dir = await window.luna.chooseMockMediaDir()
-    if (!dir) return
-    setSettings(await window.luna.saveSettings({ mockMediaDir: dir }))
+    if (!dir || !deviceId) return
+    const current = await window.luna.getSettings()
+    const device = devices.find((item) => item.id === deviceId) ?? activeDevice
+    if (!device) return
+    const existing = current.mockServers?.[deviceId]
+    const config: MockServerConfig = {
+      rootDir: dir,
+      host: existing?.host ?? device.mock.host,
+      httpPort: existing?.httpPort ?? device.mock.httpPort,
+      tcpPort: existing?.tcpPort ?? device.mock.tcpPort,
+      udpPort: existing?.udpPort ?? device.mock.udpPort ?? (device.protocol === 'dji' ? 19004 : 19001),
+      rateMbps: existing?.rateMbps ?? device.mock.rateMbps,
+    }
+    setSettings(await window.luna.saveSettings({
+      mockServers: { ...(current.mockServers ?? {}), [deviceId]: config },
+      ...(current.activeDeviceId === deviceId ? { mockMediaDir: dir } : {}),
+    }))
   }
 
-  async function startMockServer(nextSettings?: Partial<AppSettings>): Promise<void> {
+  async function startMockServer(deviceId = activeDevice?.id, nextSettings?: Partial<AppSettings>): Promise<void> {
+    if (!deviceId) return
     const baseSettings = { ...(settings ?? {}), ...nextSettings } as AppSettings
+    const device = devices.find((item) => item.id === deviceId) ?? activeDevice
     try {
-      const status = await window.luna.startMockServer(nextSettings)
-      setMockServerStatus(status)
+      await window.luna.startMockServer(deviceId, nextSettings)
+      setMockServerStatuses(await window.luna.getMockServerStatuses())
       const updated = await window.luna.getSettings()
       setSettings(updated)
       // 不自动连接，让用户手动连接
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      setMockServerStatus(failedMockStatus(baseSettings, activeDevice, message))
+      const failed = failedMockStatus(baseSettings, device, message)
+      setMockServerStatuses((current) => [...current.filter((status) => status.deviceId !== deviceId), failed])
     }
   }
 
-  async function stopMockServer(): Promise<void> {
-    const status = await window.luna.stopMockServer()
-    setMockServerStatus(status)
-    setSettings(await window.luna.saveSettings({ developerMode: false }))
+  async function stopMockServer(deviceId?: string): Promise<void> {
+    await window.luna.stopMockServer(deviceId)
+    setMockServerStatuses(await window.luna.getMockServerStatuses())
+    if (!deviceId) setSettings(await window.luna.saveSettings({ developerMode: false }))
   }
 
   return (
@@ -429,7 +453,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         devices,
         devicePhase,
         isConnected,
-        mockServerStatus,
+        mockServerStatuses,
         chooseMockMediaDir,
         showDeviceConnect,
         sourceMode: connectionMode,

@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { assertStorageTargetWritable, migrateLocalStorage } from '../electron/storageMigrationService.ts'
+import { assertStorageTargetWritable, migrateLocalStorage } from '../electron/storage/storageMigrationService.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-storage-migration-'))
 try {

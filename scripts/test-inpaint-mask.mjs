@@ -11,7 +11,7 @@ import {
   modelRadiusForSourcePixels,
   prepareInpaintInputs,
   resampleInpaintMask,
-} from '../electron/inpaintMask.ts'
+} from '../electron/features/segmentation/inpaintMask.ts'
 
 const empty = new Uint8Array(INPAINT_MODEL_SIZE * INPAINT_MODEL_SIZE)
 assert.equal(dilateInpaintMask(empty, 12).some(Boolean), false, 'empty mask must stay empty')

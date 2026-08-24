@@ -178,9 +178,10 @@ export interface LunaApi {
   chooseCustomWatermarks(): Promise<CustomWatermarkAsset[]>
   listCustomWatermarks(): Promise<CustomWatermarkAsset[]>
   deleteCustomWatermark(assetId: string): Promise<CustomWatermarkAsset[]>
-  startMockServer(settings?: Partial<AppSettings>): Promise<MockServerStatus>
-  stopMockServer(): Promise<MockServerStatus>
-  getMockServerStatus(): Promise<MockServerStatus>
+  startMockServer(deviceId?: string, settings?: Partial<AppSettings>): Promise<MockServerStatus>
+  stopMockServer(deviceId?: string): Promise<MockServerStatus>
+  getMockServerStatus(deviceId?: string): Promise<MockServerStatus>
+  getMockServerStatuses(): Promise<MockServerStatus[]>
   getCacheStats(): Promise<CacheStats>
   clearCache(): Promise<CacheStats>
   organizeDownloadedFiles(): Promise<DownloadOrganizationResult>

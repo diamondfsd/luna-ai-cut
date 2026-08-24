@@ -1,40 +1,40 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkForUpdates } from './updateService'
-import { checkForHotUpdates, getCurrentHotVersion } from './hotUpdater'
+import { checkForUpdates } from './infrastructure/updateService'
+import { checkForHotUpdates, getCurrentHotVersion } from './infrastructure/hotUpdater'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
-import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
-import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './crashDiagnostics'
-import { cameraPathsForFiles } from './cameraDeletePaths'
+import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './infrastructure/loggerService'
+import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrastructure/crashDiagnostics'
+import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
 
 import {
   getLocalResourcesDir,
   getSettings,
   resolveLocalThumbnails,
   saveSettings,
-} from './fileService'
-import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
-import { GoUltraClient } from './goUltraProtocol'
-import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
-import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDefaults'
+} from './storage/fileService'
+import { DEFAULT_HOST, LunaClient } from './devices/insta360/lunaProtocol'
+import { GoUltraClient } from './devices/go-ultra/protocol'
+import { LunaUltraProtocol, GoUltraProtocol } from './devices/common/deviceProtocols'
+import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './devices/definitions/deviceDefaults'
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
 import {
   LRC_INIT_GUARD_FILE,
   LRC_INIT_RECOVERY_FILE,
   shouldRecoverLrcInitGuard,
 } from '../src/shared/lrcInitGuardRecovery'
-import { mockTcpPortForHost, stopMockServer } from './mockServerService'
-import { createPreviewTaskQueue } from './previewTaskQueue'
-import { activateMainWindow, appIconPath, appTrayIconPath, createMainWindow, getMainWindowCloseBehavior, setMainWindowCloseBehavior } from './windowService'
-import { createAppTray, destroyAppTray } from './trayService'
-import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
-import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
-import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
-import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
-import { stopLocalMediaShare } from './localMediaShareService'
+import { mockTcpPortForHost, stopMockServer } from './devtools/mock/mockServerService'
+import { createPreviewTaskQueue } from './media/previewTaskQueue'
+import { activateMainWindow, appIconPath, appTrayIconPath, createMainWindow, getMainWindowCloseBehavior, setMainWindowCloseBehavior } from './application/windowService'
+import { createAppTray, destroyAppTray } from './application/trayService'
+import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './devtools/device-debug/handlers'
+import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './platform/render/lunaRenderCore'
+import { shutdownSpecializedSegmentationWorker } from './features/segmentation/specializedSegmentationService'
+import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './features/segmentation/segmentationModelPrefetchService'
+import { stopLocalMediaShare } from './media/local-share/localMediaShareService'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -127,6 +127,8 @@ function mockCameraHost(settings: AppSettings): string {
 }
 
 function controlPortFor(settings: AppSettings, host: string): number {
+  const runningMockPort = mockTcpPortForHost(host)
+  if (runningMockPort !== null) return runningMockPort
   const device = deviceDefinitionFor(settings.activeDeviceId)
   return settings.developerMode && (host.trim() || DEFAULT_HOST) === mockCameraHost(settings)
     ? settings.mockTcpPort || device.mock.tcpPort
@@ -305,7 +307,7 @@ app.on('activate', () => {
 
 function registerIpc(): void {
   // appMain.ts 只负责应用生命周期、共享上下文组装和 IPC 模块注册。
-  // 具体 IPC 实现必须拆分到 electron/ipc*.ts 或独立服务模块中，
+  // 具体 IPC 实现必须拆分到 electron/ipc/ipc*.ts 或独立服务模块中，
   // 并通过 Vite 的 import.meta.glob 自动发现注册，避免在这里堆业务逻辑。
   const ctx = {
     get win() {
@@ -324,7 +326,7 @@ function registerIpc(): void {
     lunaProtocol,
     goUltraProtocol,
   } as const
-  const ipcModules = import.meta.glob('./ipc*.ts', { eager: true })
+  const ipcModules = import.meta.glob('./ipc/ipc*.ts', { eager: true })
   for (const [, mod] of Object.entries(ipcModules)) {
     const fn = (mod as any).register
     if (typeof fn === 'function') fn(ctx)
