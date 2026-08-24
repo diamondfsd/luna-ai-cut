@@ -5,6 +5,7 @@ import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
 import { normalizeMaskTrack } from '../mask/maskTrack'
 import { normalizeMaskTimeline } from '../mask/maskTimeline'
 import { framePresetDefaultSettings } from '../border/borderPresets'
+import { isLegacyBorderTitle } from '../../shared/insta360DeviceProfiles'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 import { normalizeVideoOutputMarkers, type VideoOutputMarker } from '../trim/videoOutputMarkers'
 export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTimeline, ColorMaskTimelineFrame, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
@@ -550,6 +551,7 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
   const shadowBlur = Number(value?.shadowBlur ?? presetDefaults.shadowBlur ?? 50)
   const shadowStrength = Number(value?.shadowStrength ?? presetDefaults.shadowStrength ?? 50)
   const shadowOffsetY = value?.presetId === 'blurred-photo-card' ? 0 : Number(value?.shadowOffsetY ?? 0)
+  const title = typeof value?.title === 'string' ? value.title : presetDefaults.title ?? DEFAULT_PIPELINE.border.title
   return {
     ...DEFAULT_PIPELINE.border,
     ...presetDefaults,
@@ -559,7 +561,7 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
     backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? presetDefaults.backgroundColor ?? DEFAULT_PIPELINE.border.backgroundColor,
     textColor: typeof value?.textColor === 'string' ? value.textColor : presetDefaults.textColor ?? DEFAULT_PIPELINE.border.textColor,
     opacity: clampNumber(Number(value?.opacity ?? presetDefaults.opacity ?? 100), { min: 0, max: 100 }),
-    title: typeof value?.title === 'string' ? value.title : presetDefaults.title ?? DEFAULT_PIPELINE.border.title,
+    title: isLegacyBorderTitle(title) ? '' : title,
     mediaScale: clampNumber(Number(value?.mediaScale ?? presetDefaults.mediaScale ?? 100), { min: 70, max: 160 }),
     mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? presetDefaults.mediaOffsetX ?? 0), { min: -50, max: 50 }),
     mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? presetDefaults.mediaOffsetY ?? 0), { min: -50, max: 50 }),

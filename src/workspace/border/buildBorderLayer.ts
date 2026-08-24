@@ -3,13 +3,17 @@ import { isVideoPath } from '../../lib/fileUtils'
 import type { BorderSettings } from '../shared/editPipeline'
 import { getBorderLogo } from './logoAssets'
 import { FRAME_PRESETS } from './borderPresets'
-import { inferDeviceProfile, type DeviceMetadataLike } from '../../shared/insta360DeviceProfiles'
+import { borderTitleForDevice, inferDeviceProfile, type DeviceMetadataLike } from '../../shared/insta360DeviceProfiles'
 
 export { FRAME_PRESETS } from './borderPresets'
 
-function metadataVariables(metadata: MediaMetadata | null, title: string): Record<string, string> {
+function metadataVariables(metadata: MediaMetadata | null, title: string, deviceMetadata?: DeviceMetadataLike | null): Record<string, string> {
   const values = new Map<string, string>()
   for (const group of metadata?.groups ?? []) for (const entry of group.entries) values.set(entry.key, entry.value)
+  const camera = borderTitleForDevice({
+    ...(deviceMetadata ?? {}),
+    exifModel: values.get('Model'),
+  }) ?? ''
   const exposureValue = values.get('ExposureTime')
   const exposureNumber = Number(exposureValue)
   const shutter = exposureValue && Number.isFinite(exposureNumber) && exposureNumber > 0 && exposureNumber < 1
@@ -25,7 +29,7 @@ function metadataVariables(metadata: MediaMetadata | null, title: string): Recor
         return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
       })()
   return {
-    camera: [values.get('Model')].filter(Boolean).join(' '),
+    camera,
     focalLength: values.get('FocalLengthIn35mmFormat') ? `${values.get('FocalLengthIn35mmFormat')}mm` : '—mm',
     aperture: values.get('FNumber') ? `f/${values.get('FNumber')}` : 'f/—',
     shutter,
@@ -200,7 +204,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
   if (!border.enabled) return []
   const preset = FRAME_PRESETS.find((item) => item.id === border.presetId) ?? FRAME_PRESETS[0]
   if (!preset) return []
-  const variables = metadataVariables(metadata, border.title)
+  const variables = metadataVariables(metadata, border.title, deviceMetadata)
   const sourceDeviceProfile = inferDeviceProfile({
     ...(deviceMetadata ?? {}),
     exifModel: metadataValue(metadata, 'Model'),
