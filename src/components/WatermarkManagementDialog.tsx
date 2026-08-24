@@ -73,7 +73,7 @@ export function WatermarkManagementDialog({
             title="默认开启"
             settings={{
               enabled: settings?.defaultWatermarkEnabled ?? true,
-              style: 'luna_ultra_cn',
+              style: settings?.recentWatermarkSettings?.style ?? '',
               position: settings?.defaultWatermarkPosition === 'top-center'
                 ? 'bottom-center'
                 : settings?.defaultWatermarkPosition ?? 'bottom-center',

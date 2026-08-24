@@ -29,11 +29,11 @@ export const lunaMediaAdapter: DeviceMediaAdapter = {
   },
 
   capturedAt(name: string): Date | null {
-    const match = name.match(/(?:VID|LRV|IMG|LIV|PIC|PANO)_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/i)
+    const match = name.match(/(?:DJI|VID|LRV|IMG|LIV|PIC|PANO)[_-]?(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})/i)
     if (!match) return null
 
     const [, year, month, day, hour, minute, second] = match
-    return new Date(
+    const date = new Date(
       Number(year),
       Number(month) - 1,
       Number(day),
@@ -41,6 +41,15 @@ export const lunaMediaAdapter: DeviceMediaAdapter = {
       Number(minute),
       Number(second),
     )
+    if (
+      date.getFullYear() !== Number(year)
+      || date.getMonth() !== Number(month) - 1
+      || date.getDate() !== Number(day)
+      || date.getHours() !== Number(hour)
+      || date.getMinutes() !== Number(minute)
+      || date.getSeconds() !== Number(second)
+    ) return null
+    return date
   },
 
   videoKey(name: string): string | null {

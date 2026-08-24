@@ -1,6 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata, WorkspaceSubtitleTrack } from '../../shared/types'
+import type { DeviceMetadataLike } from '../../shared/insta360DeviceProfiles'
 import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
@@ -13,6 +14,7 @@ export function buildWorkspaceExportLayers(
   borderMetadata: MediaMetadata | null | undefined,
   allowWatermark: boolean,
   subtitles?: WorkspaceSubtitleTrack,
+  deviceMetadata?: DeviceMetadataLike | null,
 ): PreviewLayer[] {
   const finalCanvasSize = outputSizeForTransform(resolution, pipeline.transform)
   const main = buildLayers(sourcePath)
@@ -44,6 +46,7 @@ export function buildWorkspaceExportLayers(
       canvasHeight: finalCanvasSize.height,
       border: pipeline.border,
       metadata: borderMetadata,
+      deviceMetadata,
       mediaPath: sourcePath,
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(pipeline.color),

@@ -3,6 +3,7 @@ import { isVideoPath } from '../../lib/fileUtils'
 import type { BorderSettings } from '../shared/editPipeline'
 import { getBorderLogo } from './logoAssets'
 import { FRAME_PRESETS } from './borderPresets'
+import { inferDeviceProfile, type DeviceMetadataLike } from '../../shared/insta360DeviceProfiles'
 
 export { FRAME_PRESETS } from './borderPresets'
 
@@ -24,7 +25,7 @@ function metadataVariables(metadata: MediaMetadata | null, title: string): Recor
         return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
       })()
   return {
-    camera: [values.get('Model')].filter(Boolean).join(' ') || 'LUNA ULTRA',
+    camera: [values.get('Model')].filter(Boolean).join(' '),
     focalLength: values.get('FocalLengthIn35mmFormat') ? `${values.get('FocalLengthIn35mmFormat')}mm` : '—mm',
     aperture: values.get('FNumber') ? `f/${values.get('FNumber')}` : 'f/—',
     shutter,
@@ -34,6 +35,14 @@ function metadataVariables(metadata: MediaMetadata | null, title: string): Recor
     title: title.trim(),
     sequence: '01',
   }
+}
+
+function metadataValue(metadata: MediaMetadata | null, key: string): string | null {
+  for (const group of metadata?.groups ?? []) {
+    const entry = group.entries.find((candidate) => candidate.key === key)
+    if (entry?.value) return entry.value
+  }
+  return null
 }
 
 function template(content: string, variables: Record<string, string>): string {
@@ -179,17 +188,23 @@ export interface BuildBorderLayerOptions {
   canvasHeight: number
   border: BorderSettings
   metadata: MediaMetadata | null
+  /** 资源清单中的设备字段，优先于 EXIF 推断。 */
+  deviceMetadata?: DeviceMetadataLike | null
   /** 当前素材。带 media 层的预设可借此重新安排照片在画布中的位置。 */
   mediaPath?: string | null
   mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'restoreLutId' | 'lutId' | 'lutIntensity' | 'isVideo' | 'maskPath' | 'maskOpacity' | 'maskInverted' | 'maskFeather'>
 }
 
 /** JSON 预设直接转换为 wgpu 原生层，不在浏览器中进行任何栅格化。 */
-export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, mediaPath, mediaLayerStyle }: BuildBorderLayerOptions): PreviewLayer[] {
+export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, deviceMetadata, mediaPath, mediaLayerStyle }: BuildBorderLayerOptions): PreviewLayer[] {
   if (!border.enabled) return []
   const preset = FRAME_PRESETS.find((item) => item.id === border.presetId) ?? FRAME_PRESETS[0]
   if (!preset) return []
   const variables = metadataVariables(metadata, border.title)
+  const sourceDeviceProfile = inferDeviceProfile({
+    ...(deviceMetadata ?? {}),
+    exifModel: metadataValue(metadata, 'Model'),
+  })
   if (!border.showDate) variables.date = ''
   // 含媒体层的预设是固定的全画布版式（如拍立得、卡纸），其 frameSize
   // 在开口边框生成时单独处理；底栏/浮层预设仍沿用纵向缩放逻辑。
@@ -300,6 +315,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
       strokeWidth: layerFeather ? -layerFeather : layer.stroke?.width,
     }]
     if (layer.type === 'logo' && layer.source?.path) {
+      if (sourceDeviceProfile?.supportsBorderLogo !== true) return []
       const logo = getBorderLogo(layer.source.path)
       if (!logo) return []
       const targetPixelWidth = layer.rect.w * canvasWidth

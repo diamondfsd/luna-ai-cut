@@ -2,7 +2,7 @@ import { ArrowLeft, Download, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
-import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
+import { useDeviceWatermark } from '../../../hooks/useDeviceWatermark'
 import type { MediaMetadata, PreviewLayer, WorkspaceOnlyYourColorState } from '../../../shared/types'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import { Button, IconButton, LoadingIndicator, toast } from '../../../ui'
@@ -54,7 +54,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   const activeAssetId = activeAsset?.id
   const ownerKey = projectId && activeAssetId ? `${projectId}:${activeAssetId}` : null
   const saved = onlyYourColorStateForAsset(media.currentProject, activeAssetId)
-  const allowWatermark = useLunaUltraWatermark(activeAsset)
+  const allowWatermark = useDeviceWatermark(activeAsset)
   const [intensity, setIntensity] = useState(normalizeOnlyYourColorIntensity(saved?.intensity))
   const [subjectExposure, setSubjectExposure] = useState(normalizeOnlyYourColorSubjectExposure(saved?.subjectExposure))
   const [backgroundExposure, setBackgroundExposure] = useState(normalizeOnlyYourColorBackgroundExposure(saved?.backgroundExposure))
@@ -235,7 +235,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   const outputSize = useMemo(() => sourceSize ? outputSizeForTransform(sourceSize, edit.pipeline.transform) : null, [edit.pipeline.transform, sourceSize])
   const baseLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
-    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark || usesCustomWatermark(edit.pipeline.watermark))
+    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark || usesCustomWatermark(edit.pipeline.watermark), undefined, activeAsset)
   }, [activeAsset, allowWatermark, edit.pipeline, metadata, sourceSize])
   const effectLayers = useMemo(() => activeAsset && activeMaskPath
     ? buildOnlyYourColorLayers({

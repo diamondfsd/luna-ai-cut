@@ -10,7 +10,7 @@ function pad(value: number): string {
 }
 
 export function labelsFor(date: Date | null): Pick<LunaFile, 'capturedAt' | 'dateText' | 'timeText' | 'groupDay' | 'groupHour'> {
-  if (!date) {
+  if (!date || Number.isNaN(date.getTime())) {
     return {
       capturedAt: null,
       dateText: '未知日期',

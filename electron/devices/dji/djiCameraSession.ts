@@ -8,6 +8,9 @@ import { isPrimaryMedia, isProxyMedia, mediaStem, parseCompositeManifest, type D
 import { DjiUdpTransport, decodeDumlFromUdp } from './djiUdpTransport'
 import { DefaultDjiWirelessPreparation, type DjiWirelessPreparation } from './djiWirelessPreparation'
 import { mockTcpPortForHost, mockUdpPortForHost } from '../../devtools/mock/mockServerService'
+import { captureDateFromMediaSource } from '../../media/mediaCaptureDate'
+import { labelsFor } from '../../media/filePathUtils'
+import { lunaMediaAdapter } from '../common/deviceMedia'
 
 interface DjiEndpoint {
   host: string
@@ -38,14 +41,6 @@ function mediaUrl(endpoint: DjiEndpoint, storage: number, cameraPath: string): s
   return `${httpBase(endpoint)}/v2?${params.toString()}`
 }
 
-function dateForName(name: string): Date | null {
-  const compact = name.match(/(?:DJI|IMG|VID|LIV|PIC)[_-]?(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})/i)
-  if (!compact) return null
-  const [, year, month, day, hour, minute, second] = compact
-  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
 function sizeText(bytes: number | null): string {
   if (bytes === null) return '-'
   if (bytes >= 1024 ** 3) return `${Math.round(bytes / 1024 ** 3)}G`
@@ -67,6 +62,19 @@ function listQuery(counter: number, cursor: number): Buffer {
   query[4] = counter & 0xff
   query.writeUInt32LE(cursor >>> 0, 10)
   return query
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  const worker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      results[index] = await mapper(items[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
 }
 
 export class DjiCameraSession {
@@ -131,7 +139,7 @@ export class DjiCameraSession {
     }
     const primary = files.filter(isPrimaryMedia)
     const proxies = files.filter(isProxyMedia)
-    return Promise.all(primary.map((file) => this.toLunaFile(file, proxies)))
+    return mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies))
   }
 
   async close(): Promise<void> {
@@ -187,8 +195,10 @@ export class DjiCameraSession {
     const bytes = Number.isFinite(length) ? length : null
     const proxy = proxies.find((candidate) => mediaStem(candidate.name) === mediaStem(file.name) && candidate.storageId === file.storageId)
     const previewUrl = proxy ? mediaUrl(this.endpoint, storageNumberValue, proxy.path) : null
-    const capturedAt = dateForName(file.name)
-    const captured = capturedAt ? capturedAt.toISOString() : null
+    const kind = file.extension === 'JPG' || file.extension === 'JPEG' || file.extension === 'DNG' || file.extension === 'HEIC' ? 'image' : 'video'
+    const capturedAt = await captureDateFromMediaSource(sourceUrl, kind)
+      ?? lunaMediaAdapter.capturedAt(file.name)
+    const labels = labelsFor(capturedAt)
     const baseId = `dji:${this.profile.id}:${file.storageId}:${file.path}`
     return {
       id: baseId,
@@ -201,15 +211,15 @@ export class DjiCameraSession {
       href: sourceUrl,
       sourceUrl,
       url: sourceUrl,
-      dateText: capturedAt ? capturedAt.toLocaleDateString('zh-CN') : '未知日期',
-      timeText: capturedAt ? capturedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+      dateText: labels.dateText,
+      timeText: labels.timeText,
       sizeText: sizeText(bytes),
       bytes,
-      kind: file.extension === 'JPG' || file.extension === 'JPEG' || file.extension === 'DNG' || file.extension === 'HEIC' ? 'image' : 'video',
+      kind,
       extension: file.extension.toLowerCase(),
-      capturedAt: captured,
-      groupDay: capturedAt ? capturedAt.toISOString().slice(0, 10) : 'unknown',
-      groupHour: capturedAt ? capturedAt.toISOString().slice(0, 13) : 'unknown',
+      capturedAt: labels.capturedAt,
+      groupDay: labels.groupDay,
+      groupHour: labels.groupHour,
       videoKey: null,
       previewName: proxy?.name ?? null,
       previewUrl,

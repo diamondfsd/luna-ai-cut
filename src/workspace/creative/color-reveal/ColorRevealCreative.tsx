@@ -5,7 +5,7 @@ import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
 import type { MediaMetadata, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, SegmentedControl, VideoControls, toast } from '../../../ui'
-import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
+import { useDeviceWatermark } from '../../../hooks/useDeviceWatermark'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
@@ -38,7 +38,7 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const activeAsset = media.activeMedia
-  const allowWatermark = useLunaUltraWatermark(activeAsset)
+  const allowWatermark = useDeviceWatermark(activeAsset)
   const pipeline = edit.pipeline
   const savedState = media.currentProject?.creative?.colorReveal
   const [saturation, setSaturation] = useState(savedState?.saturation ?? DEFAULT_SATURATION)
@@ -177,7 +177,7 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
     : null, [pipeline.transform, sourceSize])
   const editedLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
-    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, pipeline, borderMetadata, allowWatermark || usesCustomWatermark(pipeline.watermark))
+    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, pipeline, borderMetadata, allowWatermark || usesCustomWatermark(pipeline.watermark), undefined, activeAsset)
   }, [activeAsset, allowWatermark, borderMetadata, pipeline, sourceSize])
 
   const buildEffectLayers = useCallback((forExport: boolean): PreviewLayer[] => {

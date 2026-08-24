@@ -9,7 +9,7 @@ import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { useFileCache } from '../hooks/useFileCache'
-import { canUseLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
+import { canUseDeviceWatermark } from '../hooks/useDeviceWatermark'
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
 import { getIsLivePhoto } from '../shared/livePhoto'
@@ -363,9 +363,10 @@ export function PreviewModal({
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
         const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
         const restoreILog = restoreByPath.get(sourcePath) === true
-        const canUseBuiltinWatermark = await canUseLunaUltraWatermark(
+        const canUseBuiltinWatermark = await canUseDeviceWatermark(
           sourcePath,
           isVideoPath(sourcePath) ? 'video' : 'image',
+          mediaFileForPath?.(sourcePath),
         )
         const layers = buildExportLayers(
           sourcePath,
@@ -392,7 +393,7 @@ export function PreviewModal({
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, watermarkSettings])
+  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, mediaFileForPath, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {

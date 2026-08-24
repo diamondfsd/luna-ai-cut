@@ -9,11 +9,13 @@ import { Button, IconButton, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
+import { useDeviceConnection } from '../../../context/DeviceConnectionContext'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
+import { inferDeviceProfile } from '../../../shared/insta360DeviceProfiles'
 import { useTripleStitchPlayback } from './useTripleStitchPlayback'
 import { useTripleStitchSources, type TripleStitchSource } from './useTripleStitchSources'
 import type { CreativeModuleProps } from '../creativeCatalog'
@@ -27,14 +29,10 @@ import {
 } from './tripleStitchState'
 import './triple-stitch.css'
 
-// 从 Luna 设备配置读取水印选项（中文 / 标准英文）
-const LUNA_WATERMARK_OPTIONS = watermarkStyleOptionsForDevice('luna-ultra')
-
 const CANVAS_WIDTH = 2160
 const CANVAS_HEIGHT = 3840
 const FPS = 30
 const EXPORT_DURATION = 3
-const DEFAULT_WATERMARK_STYLE = LUNA_WATERMARK_OPTIONS[0]?.value ?? 'luna_ultra_cn'
 
 // 导出设置已迁移至 ExportSettingsPanel + 弹窗
 
@@ -177,6 +175,7 @@ function compositionApi(): LunaCompositionExportApi {
 export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] TripleStitchCreative mount at ${performance.now().toFixed(0)}ms`)
   const media = useWorkspaceMedia()
+  const { activeDevice, isConnected } = useDeviceConnection()
   const renderCountRef = useRef(0)
   renderCountRef.current++
   // 诊断：每次渲染记录 slotSources 关键字段
@@ -186,11 +185,24 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
   currentProjectRef.current = media.currentProject
   const projectSaveTimerRef = useRef<number | null>(null)
   const initialStateRef = useRef<TripleStitchSavedState | null>(null)
+  const connectedDeviceId = activeDevice?.id
+  const connectedDeviceName = activeDevice?.name
+  const connectedDeviceMetadata = useMemo(
+    () => isConnected && connectedDeviceId && connectedDeviceName
+      ? { sourceDeviceId: connectedDeviceId, sourceDeviceName: connectedDeviceName, cameraType: connectedDeviceName, watermarkProfileId: connectedDeviceId }
+      : null,
+    [connectedDeviceId, connectedDeviceName, isConnected],
+  )
+  const initialWatermarkDeviceId = inferDeviceProfile(media.media.slice(0, 3).find((asset) => inferDeviceProfile(asset)) ?? {})?.id
+    ?? inferDeviceProfile(connectedDeviceMetadata ?? {})?.id
+    ?? null
+  const initialWatermarkOptions = watermarkStyleOptionsForDevice(initialWatermarkDeviceId)
+  const defaultWatermarkStyle = initialWatermarkOptions[0]?.value ?? ''
   if (!initialStateRef.current) {
     initialStateRef.current = loadTripleStitchState(
       workspaceStateKey,
       media.media.slice(0, 3).map((asset) => asset.id),
-      DEFAULT_WATERMARK_STYLE,
+      defaultWatermarkStyle,
       media.currentProject?.creative?.tripleStitch,
     )
   }
@@ -198,6 +210,20 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const [selectedIds, setSelectedIds] = useState<string[]>(initialState.selectedIds)
   const [activeSlot, setActiveSlot] = useState(initialState.activeSlot)
   const [slotEdits, setSlotEdits] = useState<SlotEdit[]>(initialState.slotEdits)
+  const watermarkDeviceId = useMemo(() => {
+    const selectedAssets = selectedIds
+      .map((id) => media.media.find((asset) => asset.id === id))
+      .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset))
+    const activeAsset = selectedAssets[activeSlot]
+    return inferDeviceProfile(activeAsset ?? {})?.id
+      ?? selectedAssets.map((asset) => inferDeviceProfile(asset)?.id).find(Boolean)
+      ?? inferDeviceProfile(connectedDeviceMetadata ?? {})?.id
+      ?? null
+  }, [activeSlot, connectedDeviceMetadata, media.media, selectedIds])
+  const watermarkOptions = useMemo(
+    () => watermarkStyleOptionsForDevice(watermarkDeviceId),
+    [watermarkDeviceId],
+  )
   const previewPlayback = useTripleStitchPlayback(EXPORT_DURATION)
   const [busy, setBusy] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
@@ -228,11 +254,20 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const [composition, setComposition] = useState<CompositionInput | null>(null)
   const compositionVersionRef = useRef(0)
 
-  // ── 水印：从 Luna 设备配置读取，无开关 ──
+  // ── 水印：从当前素材或连接设备的配置读取 ──
   const [watermarkStyle, setWatermarkStyle] = useState<string>(initialState.watermarkStyle)
   const [watermarkInfo, setWatermarkInfo] = useState<{ imagePath: string } | null>(null)
 
   useEffect(() => {
+    if (watermarkOptions.some((option) => option.value === watermarkStyle)) return
+    setWatermarkStyle(watermarkOptions[0]?.value ?? '')
+  }, [watermarkOptions, watermarkStyle])
+
+  useEffect(() => {
+    if (!watermarkStyle) {
+      setWatermarkInfo(null)
+      return
+    }
     let cancelled = false
     window.luna.getWatermarkPath(watermarkStyle, 'image')
       .then((info) => {
@@ -391,7 +426,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
     setSelectedIds([])
     setSlotEdits(createDefaultSlotEdits())
     setActiveSlot(0)
-    setWatermarkStyle(DEFAULT_WATERMARK_STYLE)
+    setWatermarkStyle(defaultWatermarkStyle)
     previewPlayback.reset()
   }
 
@@ -878,11 +913,11 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
           </div>
         </div>
 
-        {LUNA_WATERMARK_OPTIONS.length > 0 && (
+        {watermarkOptions.length > 0 && (
           <div className="triple-stitch-section">
             <div className="triple-stitch-section-title">水印</div>
             <div className="triple-stitch-watermark-toggle">
-              {LUNA_WATERMARK_OPTIONS.map((opt) => {
+              {watermarkOptions.map((opt) => {
                 const thumbSrc = WM_SRC[opt.value]?.image
                 return (
                   <button
