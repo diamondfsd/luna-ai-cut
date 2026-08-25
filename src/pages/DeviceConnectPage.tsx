@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Cable, Camera, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
+import { Cable, Camera, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, KeyRound, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
 
 import type { AppSettings, CameraConnectionMode, CameraMediaSourceOptions, CameraMediaSourcePreparationResult, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { SupportedDeviceList } from '../components/SupportedDeviceList'
 import { DjiWirelessConnectionPanel } from '../components/DjiWirelessConnectionPanel'
-import { Alert, Button, ButtonGroup } from '../ui'
+import { Alert, Button, ButtonGroup, Dialog, Input } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
 import { useStorageMigration } from '../hooks/useStorageMigration'
 import '../styles/wifi.css'
 import '../styles/device-connect-layout.css'
+import '../styles/device-connect-wifi-password.css'
 import lunaIcon from '../../public/luna-icon.png'
 import pocket3Character from '../../public/pocket3.png'
 import pocket4Character from '../../public/pocket4.png'
@@ -76,6 +77,10 @@ export function DeviceConnectPage({
   const [mountedVolumesError, setMountedVolumesError] = useState<string | null>(null)
   const [changingDevice, setChangingDevice] = useState(false)
   const [wifiPasswordCopied, setWifiPasswordCopied] = useState(false)
+  const [wifiPasswordDialogOpen, setWifiPasswordDialogOpen] = useState(false)
+  const [wifiPassword, setWifiPassword] = useState('')
+  const [wifiPasswordError, setWifiPasswordError] = useState<string | null>(null)
+  const [wifiPasswordConnecting, setWifiPasswordConnecting] = useState(false)
   const [djiPreparation, setDjiPreparation] = useState<CameraMediaSourcePreparationResult | null>(null)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
@@ -113,7 +118,7 @@ export function DeviceConnectPage({
     : connection?.message ?? (isWired
       ? '请选择相机磁盘后连接，即可浏览其中的相机素材'
       : canAutoJoinWifi
-        ? '开始连接时会先查找并尝试加入设备 Wi-Fi；如果系统尚未保存网络凭据，请在系统 Wi-Fi 工具中完成连接'
+        ? '开始连接时会读取系统已保存的设备 Wi-Fi；如果 macOS 弹出权限提示，请允许应用使用网络配置'
         : '连接相机 Wi-Fi 后，即可浏览和下载相机素材')
   const statusLabel = isChecking ? '检测中' : isError ? '需要处理' : '等待连接'
   const refreshMountedVolumes = useCallback(async (): Promise<void> => {
@@ -142,6 +147,32 @@ export function DeviceConnectPage({
     setDjiPreparation(null)
   }, [activeDevice?.id, connectionMode])
 
+  useEffect(() => {
+    if (!connection || isWired) {
+      setWifiPasswordDialogOpen(false)
+      setWifiPasswordError(null)
+      setWifiPassword('')
+      return
+    }
+    if (connection?.httpOk && connection.controlOk) {
+      setWifiPasswordDialogOpen(false)
+      setWifiPasswordError(null)
+      setWifiPassword('')
+      return
+    }
+    if (connection?.wifiPasswordRequired && !wifiPasswordConnecting) {
+      setWifiPasswordDialogOpen(true)
+      setWifiPasswordError(connection.message)
+    }
+  }, [connection, isWired, wifiPasswordConnecting])
+
+  function closeWifiPasswordDialog(): void {
+    if (wifiPasswordConnecting) return
+    setWifiPasswordDialogOpen(false)
+    setWifiPasswordError(null)
+    setWifiPassword('')
+  }
+
   async function handleConnect(): Promise<void> {
     setConnecting(true)
     try {
@@ -156,6 +187,24 @@ export function DeviceConnectPage({
       await onConnect(undefined, undefined, wireless)
     } finally {
       setConnecting(false)
+    }
+  }
+
+  async function handleWifiPasswordConnect(): Promise<void> {
+    if (!wifiPassword) {
+      setWifiPasswordError('请输入 Wi-Fi 密码')
+      return
+    }
+    setWifiPasswordError(null)
+    setWifiPasswordConnecting(true)
+    try {
+      await onConnect(undefined, undefined, {
+        preparation: 'manual-wifi',
+        password: wifiPassword,
+      })
+    } finally {
+      setWifiPasswordConnecting(false)
+      setWifiPassword('')
     }
   }
 
@@ -315,6 +364,17 @@ export function DeviceConnectPage({
               <Alert variant="error" message={connection.message} />
             ) : (
               <p className="device-connect-desc">{statusDescription}</p>
+            )}
+
+            {isError && !isWired && connection?.wifiPasswordRequired && !wifiPasswordDialogOpen && (
+              <Button
+                variant="secondary"
+                size="compact"
+                onClick={() => setWifiPasswordDialogOpen(true)}
+                icon={<KeyRound size={15} />}
+              >
+                输入 Wi-Fi 密码
+              </Button>
             )}
 
             <div className="device-connect-actions">
@@ -479,6 +539,54 @@ export function DeviceConnectPage({
         restarting={restarting}
         onRestart={() => void restart()}
       />
+      <Dialog
+        open={wifiPasswordDialogOpen}
+        onOpenChange={(open) => {
+          if (open) setWifiPasswordDialogOpen(true)
+          else closeWifiPasswordDialog()
+        }}
+        title={`输入 ${deviceName} 的 Wi-Fi 密码`}
+        description={`首次连接后，macOS 会保存 ${connection?.wifiSsid ?? '设备 Wi-Fi'} 的网络配置，后续可直接连接。`}
+        className="device-connect-wifi-password-dialog"
+        closeOnMaskClick={!wifiPasswordConnecting}
+        footer={(
+          <>
+            <Button variant="secondary" disabled={wifiPasswordConnecting} onClick={closeWifiPasswordDialog}>取消</Button>
+            <Button
+              variant="primary"
+              disabled={wifiPasswordConnecting || !wifiPassword}
+              onClick={() => void handleWifiPasswordConnect()}
+              icon={<KeyRound size={16} />}
+            >
+              {wifiPasswordConnecting ? '正在连接并保存' : '连接并保存'}
+            </Button>
+          </>
+        )}
+      >
+        <div className="device-connect-wifi-password-body">
+          <div className="device-connect-wifi-password-target">
+            <span>Wi-Fi 名称</span>
+            <strong title={connection?.wifiSsid}>{connection?.wifiSsid ?? '设备 Wi-Fi'}</strong>
+          </div>
+          <label className="device-connect-wifi-password-field">
+            <span>Wi-Fi 密码</span>
+            <Input
+              variant="pill"
+              type="password"
+              value={wifiPassword}
+              onChange={(event) => setWifiPassword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && wifiPassword) void handleWifiPasswordConnect()
+              }}
+              placeholder="输入密码"
+              autoFocus
+              fullWidth
+            />
+          </label>
+          {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
+          <p>密码只用于本次连接，并由 macOS 保存到系统 Wi-Fi 配置中。</p>
+        </div>
+      </Dialog>
     </section>
   )
 }

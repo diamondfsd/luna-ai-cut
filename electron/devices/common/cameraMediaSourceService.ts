@@ -20,7 +20,7 @@ import type {
   LunaFile,
 } from '../../../src/shared/types'
 import { djiSessionFor, disconnectDjiSession } from '../dji/djiCameraSession'
-import { autoJoinDeviceWifi } from '../../platform/network/wifiAutoJoinService'
+import { autoJoinDeviceWifi, restoreDeviceWifi } from '../../platform/network/wifiAutoJoinService'
 
 const WIRELESS_CAPABILITIES: CameraMediaSourceCapabilities = {
   list: true,
@@ -56,6 +56,14 @@ function isLoopbackHost(host: string): boolean {
     return hostname === '127.0.0.1' || hostname === 'localhost'
   } catch {
     return false
+  }
+}
+
+function withWifiFailureMessage(status: ConnectionStatus, wifiMessage: string, shouldIncludeWifiMessage: boolean): ConnectionStatus {
+  if (!shouldIncludeWifiMessage || (status.httpOk && status.controlOk)) return status
+  return {
+    ...status,
+    message: `${wifiMessage}；${status.message}`,
   }
 }
 
@@ -111,21 +119,55 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
   async connect(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host, storageId } = await this.values()
     const definition = deviceDefinitionFor(deviceId)
-    const wifiJoin = isLoopbackHost(host)
+    const wifiSessionKey = `${deviceId}:${host}`
+    const loopback = isLoopbackHost(host)
+    const wifiJoin = loopback
       ? { attempted: false, connected: false, message: '模拟设备跳过 Wi-Fi 自动连接' }
-      : await autoJoinDeviceWifi(definition.wifi)
+      : await autoJoinDeviceWifi(definition.wifi, wifiSessionKey, this.options.wireless?.password)
     const protocol = this.protocol(definition)
+    if (!loopback && definition.wifi?.autoJoin === true && wifiJoin.attempted && !wifiJoin.connected) {
+      return wirelessStatus({
+        deviceId,
+        deviceName: definition.name,
+        host,
+        httpOk: false,
+        controlOk: false,
+        wifiSsid: wifiJoin.ssid,
+        wifiPasswordRequired: wifiJoin.wifiPasswordRequired,
+        message: wifiJoin.message,
+      }, definition, host)
+    }
     try {
       const status = await protocol.connect({ deviceId, host, storageId })
       await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
+      const statusWithWifiMessage = withWifiFailureMessage(
+        status,
+        wifiJoin.message,
+        !loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected,
+      )
+      if (!status.httpOk || !status.controlOk) {
+        const restore = wifiJoin.attempted && wifiJoin.connected
+          ? await restoreDeviceWifi(wifiSessionKey).catch(() => null)
+          : null
+        return wirelessStatus({
+          ...statusWithWifiMessage,
+          message: restore?.attempted
+            ? `${statusWithWifiMessage.message}；${restore.message}`
+            : statusWithWifiMessage.message,
+        }, definition, host)
+      }
       return wirelessStatus({
         ...status,
         message: wifiJoin.connected ? `${wifiJoin.message}，${status.message}` : status.message,
       }, definition, host)
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
-      const wifiHint = definition.wifi?.autoJoin && !wifiJoin.connected ? `${wifiJoin.message}。` : ''
-      throw new Error(`${wifiHint}${detail}`)
+      const wifiHint = !loopback && definition.wifi?.autoJoin && !wifiJoin.connected ? `${wifiJoin.message}。` : ''
+      const restore = wifiJoin.attempted && wifiJoin.connected
+        ? await restoreDeviceWifi(wifiSessionKey).catch(() => null)
+        : null
+      const restoreHint = restore?.attempted ? `。${restore.message}` : ''
+      throw new Error(`${wifiHint}${detail}${restoreHint}`)
     }
   }
 
@@ -163,7 +205,12 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
 
   async disconnect(): Promise<void> {
     const { deviceId, host } = await this.values()
-    await this.protocol(deviceDefinitionFor(deviceId)).disconnect(host)
+    const wifiSessionKey = `${deviceId}:${host}`
+    try {
+      await this.protocol(deviceDefinitionFor(deviceId)).disconnect(host)
+    } finally {
+      await restoreDeviceWifi(wifiSessionKey).catch(() => undefined)
+    }
   }
 }
 

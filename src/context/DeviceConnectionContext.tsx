@@ -64,7 +64,7 @@ function connectionTimeoutStatus(mode: CameraConnectionMode, host: string): Prom
     setTimeout(() => resolve({
       mode, connected: false, sourceId: mode, capabilities: EMPTY_CAPABILITIES,
       host, httpOk: false, controlOk: false, message: '连接超时',
-    }), mode === 'wired' ? 12000 : 20000)
+    }), mode === 'wired' ? 12000 : 75000)
   })
 }
 
@@ -180,7 +180,11 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       logger.warn('[设备连接] 连接丢失', { host })
       setConnection({ host, httpOk: false, controlOk: false, message: '设备连接已断开' })
       setDevicePhase('error')
-      void window.luna.disconnect()
+      void window.luna.cameraSource.disconnect({
+        mode: 'wireless',
+        deviceId: settings?.activeDeviceId ?? activeDevice?.id,
+        host,
+      }).catch(() => window.luna.disconnect())
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDevice?.defaultHost, connectionMode, settings?.cameraHost])
