@@ -468,10 +468,11 @@ function registerIpc(): void {
 }
 
 /**
- * 每天最多检查一次更新
+ * 每天最多自动检查一次更新
  */
 function scheduleUpdateCheck(): void {
   const CHECK_FILE = join(app.getPath('userData'), '.last-update-check')
+  const HOT_CHECK_FILE = join(app.getPath('userData'), '.last-hot-update-check')
   const today = new Date().toISOString().slice(0, 10) // "2026-06-25"
 
   // 延迟 2s 执行首次检查
@@ -492,10 +493,14 @@ function scheduleUpdateCheck(): void {
       writeFileSync(CHECK_FILE, today, 'utf-8')
     }
 
-    // 热更新检查：每次启动都检查（不受每日限制）
-    const hotInfo = await checkForHotUpdates()
-    if (hotInfo && win && !win.isDestroyed()) {
-      win.webContents.send('hot-update:available', hotInfo)
+    // 热更新检查：每天最多一次，避免频繁启动应用时重复请求服务
+    if (!existsSync(HOT_CHECK_FILE) || readFileSync(HOT_CHECK_FILE, 'utf-8').trim() !== today) {
+      const hotInfo = await checkForHotUpdates()
+      if (hotInfo && win && !win.isDestroyed()) {
+        win.webContents.send('hot-update:available', hotInfo)
+      }
+      mkdirSync(app.getPath('userData'), { recursive: true })
+      writeFileSync(HOT_CHECK_FILE, today, 'utf-8')
     }
   }, 2_000)
 }
