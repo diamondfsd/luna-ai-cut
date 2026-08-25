@@ -31,6 +31,8 @@ export interface ConnectionStatus {
   deviceName?: string
   deviceInfo?: Insta360DeviceInfo
   diagnosticsRaw?: string
+  wifiSsid?: string
+  wifiPasswordRequired?: boolean
   host: string
   httpOk: boolean
   controlOk: boolean
