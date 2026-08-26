@@ -30,6 +30,7 @@ import type {
 } from './aiSelection'
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
+import type { CameraVideoStreamApi } from './cameraVideoStream'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
@@ -212,6 +213,7 @@ export interface LunaApi {
   scanBluetoothDevices(timeoutMs?: number): Promise<BluetoothDeviceCandidate[]>
   cancelBluetoothScan(): Promise<void>
   cameraSource: CameraMediaSourceApi
+  cameraVideoStream: CameraVideoStreamApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>

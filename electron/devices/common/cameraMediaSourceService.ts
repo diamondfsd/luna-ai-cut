@@ -21,6 +21,7 @@ import type {
 } from '../../../src/shared/types'
 import { djiSessionFor, disconnectDjiSession } from '../dji/djiCameraSession'
 import { autoJoinDeviceWifi, restoreDeviceWifi } from '../../platform/network/wifiAutoJoinService'
+import { stopCameraVideoStream } from './cameraVideoStreamService'
 
 const WIRELESS_CAPABILITIES: CameraMediaSourceCapabilities = {
   list: true,
@@ -214,6 +215,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     const { deviceId, host } = await this.values()
     const wifiSessionKey = `${deviceId}:${host}`
     try {
+      await stopCameraVideoStream({ mode: 'wireless', deviceId, host })
       await this.protocol(deviceDefinitionFor(deviceId)).disconnect(host)
     } finally {
       await restoreDeviceWifi(wifiSessionKey).catch(() => undefined)
@@ -272,6 +274,7 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
 
   async disconnect(): Promise<void> {
     const { deviceId, host } = await this.values()
+    await stopCameraVideoStream({ mode: 'wireless', deviceId, host })
     await disconnectDjiSession(deviceId, host)
   }
 }

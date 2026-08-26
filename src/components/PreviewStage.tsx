@@ -250,6 +250,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const canvasRenderKey = previewCanvas && displayUrl
     ? `${displayUrl}\n${previewCanvas.width}x${previewCanvas.height}`
     : null
+  // 切换素材或画布尺寸时销毁旧渲染实例，避免旧的异步渲染结果回写当前 loading 状态。
+  const rendererKey = canvasRenderKey ?? 'empty'
   const canvasAwaitingRender = canvasRenderKey !== null && renderedCanvasKey !== canvasRenderKey
 
   function handleRender() {
@@ -466,6 +468,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
             />
           ) : isDisplayVideo && !useCompositionVideoRenderer ? (
             <MultipleLayerVideoPreviewLrcRender
+              key={rendererKey}
               layers={layers}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
@@ -481,6 +484,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
             />
           ) : (
             <LrcRender
+              key={rendererKey}
               layers={layers}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
