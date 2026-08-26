@@ -21,6 +21,7 @@ interface ModelFileOptions {
   signal?: AbortSignal
   onProgress?: (progress: ModelFileProgress) => void
   fetcher?: typeof fetch
+  label?: string
 }
 
 export { writeAll }
@@ -33,7 +34,7 @@ export async function loadVerifiedModelFile(
   const downloadOptions: DownloadOptions = {
     ...options,
     maxBytes: MAX_MODEL_BYTES,
-    label: '模型',
+    label: options.label ?? '模型',
     onProgress: options.onProgress
       ? ({ completedBytes, totalBytes }) => options.onProgress?.({ completedBytes, totalBytes })
       : undefined,

@@ -49,7 +49,7 @@ export interface AppSettings {
   workspacePreviewQuality?: WorkspacePreviewQuality
   /** 相机媒体预览最近一次选择的画质。 */
   cameraPreviewQuality?: CameraPreviewQuality
-  /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
+  /** 原生 GPU 预览；默认自动尝试，失败时回退到普通预览。 */
   experimentalGpuPreview?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean

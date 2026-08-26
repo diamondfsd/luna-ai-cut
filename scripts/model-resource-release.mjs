@@ -10,7 +10,7 @@ import ts from 'typescript'
 
 export const MODEL_RELEASE_VERSION = '1.0.0'
 export const MODEL_RELEASE_TAG = `model-resources-v${MODEL_RELEASE_VERSION}`
-export const MODEL_MANIFEST_NAME = `${MODEL_RELEASE_TAG}-r3.json`
+export const MODEL_MANIFEST_NAME = `${MODEL_RELEASE_TAG}-r4.json`
 export const SUBTITLE_MODEL_MANIFEST_NAME = `subtitle-${MODEL_RELEASE_TAG}.json`
 export const DEFAULT_GITCODE_OWNER = 'diamondfsd'
 export const DEFAULT_GITCODE_REPO = 'luna-ai-cut-package-release'
@@ -23,6 +23,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
     const sourceRoot = path.join(rootDir, 'src', 'shared')
     const sources = [
       path.join(sourceRoot, 'segmentationModels.ts'),
+      path.join(sourceRoot, 'compositionModels.ts'),
       path.join(sourceRoot, 'ade20kSegmentationTargets.ts'),
       path.join(sourceRoot, 'inpaintModels.ts'),
       path.join(sourceRoot, 'subtitleModels.ts'),
@@ -48,6 +49,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
     await writeFile(path.join(temporaryRoot, 'package.json'), '{"type":"commonjs"}\n')
     return {
       ...require(path.join(temporaryRoot, 'src', 'shared', 'segmentationModels.js')),
+      ...require(path.join(temporaryRoot, 'src', 'shared', 'compositionModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'inpaintModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'subtitleModels.js')),
     }
@@ -72,7 +74,7 @@ function addArtifact(artifacts, artifact) {
 
 export function buildModelArtifacts(registry) {
   const artifacts = []
-  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.INPAINT_MODELS]) {
+  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.COMPOSITION_MODELS, ...registry.INPAINT_MODELS]) {
     addArtifact(artifacts, {
       fileName: `${model.id}.onnx`,
       sizeBytes: model.sizeBytes,
@@ -103,7 +105,7 @@ export function buildModelArtifacts(registry) {
       })
     }
   }
-  for (const model of [registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]) {
+  for (const model of [registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_ASR_TOKENS_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]) {
     addArtifact(artifacts, {
       fileName: model.fileName,
       sizeBytes: model.sizeBytes,

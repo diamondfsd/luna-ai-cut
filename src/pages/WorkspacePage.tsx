@@ -26,6 +26,7 @@ import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import { WorkspacePreviewToolbar } from '../workspace/components/WorkspacePreviewToolbar'
 import type { WorkspaceViewScale } from '../workspace/components/WorkspacePreviewToolbar'
+import { WorkspacePreviewViewport } from '../workspace/components/WorkspacePreviewViewport'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
@@ -155,11 +156,59 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
+  const [immersive, setImmersive] = useState(false)
+  const workspaceWasActiveRef = useRef(false)
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const pasteInProgressRef = useRef(false)
   const colorResetNoticeRef = useRef(new Set<string>())
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
   const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
+
+  const enterImmersive = useCallback(() => {
+    setImmersive(true)
+    void window.luna.setFullScreen(true).catch(() => setImmersive(false))
+  }, [])
+
+  const exitImmersive = useCallback(() => {
+    setImmersive(false)
+    void window.luna.setFullScreen(false).catch(() => {})
+  }, [])
+
+  const toggleImmersive = useCallback(() => {
+    if (immersive) exitImmersive()
+    else enterImmersive()
+  }, [enterImmersive, exitImmersive, immersive])
+
+  useEffect(() => {
+    if (!pageActive) {
+      if (workspaceWasActiveRef.current) {
+        workspaceWasActiveRef.current = false
+        setImmersive(false)
+        void window.luna.setFullScreen(false)
+      }
+      return
+    }
+
+    workspaceWasActiveRef.current = true
+    return window.luna.onFullScreenChange(setImmersive)
+  }, [pageActive])
+
+  useEffect(() => () => {
+    if (workspaceWasActiveRef.current) void window.luna.setFullScreen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!pageActive || !immersive) return
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') exitImmersive()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [exitImmersive, immersive, pageActive])
+
+  useEffect(() => {
+    if (creativeModeId && immersive) exitImmersive()
+  }, [creativeModeId, exitImmersive, immersive])
   useEffect(() => {
     if (!pageActive) return
     let disposed = false
@@ -1003,7 +1052,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const exportDialogSummary = summarizeWorkspaceMixedExport(exportDialogPlan)
 
   return (
-    <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}`}>
+    <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}${immersive ? ' is-immersive' : ''}`}>
       {creativeModeId ? (
         <WorkspaceCreativeFactory
           creativeModeId={creativeModeId}
@@ -1031,38 +1080,44 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           />
 
           {/* ── Rust/wgpu 预览组件 ── */}
-          <PreviewStage
-            ref={previewRef}
-            url={activeSourcePath ?? null}
-            active={pageActive}
-            isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
-            pending={!media.activeMedia}
-            pipeline={stagePipeline}
-            maskProjectId={media.currentProject?.id}
-            extraLayers={combinedExtraLayers}
-            cropActive={edit.cropActive}
-            hideControls={edit.trimActive}
-            onMetricsChange={canvas.setPreviewMetrics}
-            onMediaSize={handleMediaSize}
-            renderOverlay={() => (
-              edit.cropActive
-                ? <CropOverlay />
-                : mask.editing
-                  ? <MaskOverlay />
-                  : edit.activeTool === 'beauty' && edit.beautyRetouchActive && edit.beautyRetouchMode
-                    ? <BeautyRetouchOverlay />
-                    : edit.beautyMaskPreview
-                    ? <BeautyMaskOverlay currentTime={trimCurrentTime} />
-                    : null
-            )}
-            viewScale={viewScale}
-            onViewScaleChange={setViewScale}
-            onFitScaleChange={setFitScalePercent}
-            viewportKey={media.activeMedia?.path}
-            previewMaxSide={workspacePreviewMaxSide(previewQuality)}
-            keepCompositionVideoRenderer={keepCompositionVideoRenderer}
-            onPlayStateChange={handlePlayStateChange}
-          />
+          <WorkspacePreviewViewport
+            immersive={immersive}
+            disabled={!hasActiveMedia}
+            onToggleImmersive={toggleImmersive}
+          >
+            <PreviewStage
+              ref={previewRef}
+              url={activeSourcePath ?? null}
+              active={pageActive}
+              isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
+              pending={!media.activeMedia}
+              pipeline={stagePipeline}
+              maskProjectId={media.currentProject?.id}
+              extraLayers={combinedExtraLayers}
+              cropActive={edit.cropActive}
+              hideControls={edit.trimActive}
+              onMetricsChange={canvas.setPreviewMetrics}
+              onMediaSize={handleMediaSize}
+              renderOverlay={() => (
+                edit.cropActive
+                  ? <CropOverlay />
+                  : mask.editing
+                    ? <MaskOverlay />
+                    : edit.activeTool === 'beauty' && edit.beautyRetouchActive && edit.beautyRetouchMode
+                      ? <BeautyRetouchOverlay />
+                      : edit.beautyMaskPreview
+                      ? <BeautyMaskOverlay currentTime={trimCurrentTime} />
+                      : null
+              )}
+              viewScale={viewScale}
+              onViewScaleChange={setViewScale}
+              onFitScaleChange={setFitScalePercent}
+              viewportKey={media.activeMedia?.path}
+              previewMaxSide={workspacePreviewMaxSide(previewQuality)}
+              keepCompositionVideoRenderer={keepCompositionVideoRenderer}
+              onPlayStateChange={handlePlayStateChange}
+            />
+          </WorkspacePreviewViewport>
 
           <WorkspaceEditSidebar
             mediaSize={mediaSize}

@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceBeautyAnalysisRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../../src/shared/types'
+import type { WorkspaceBeautyAnalysisRequest, WorkspaceCompositionAnalysisRequest, WorkspaceCompositionCropScoreRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from '../export/exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from '../storage/fileService'
@@ -44,6 +44,7 @@ import { trackMaskInWorker } from '../features/segmentation/maskTrackingService'
 import { removeObject } from '../features/segmentation/inpaintService'
 import { inpaintWorkerService } from '../features/segmentation/inpaintWorkerService'
 import { analyzeBeauty } from '../features/beauty/beautyAnalysisService'
+import { analyzeCompositionSubject, scoreCompositionCrops } from '../features/composition/compositionAnalysisService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -372,6 +373,45 @@ export function register(): void {
     ])
     const uniqueModelIds = [...new Set(modelIds)].filter((modelId) => availableModelIds.has(modelId))
     for (const modelId of uniqueModelIds) await loadModel(modelId as ModelId)
+  })
+  ipcMain.handle('workspace:analyzeComposition', async (event, request: WorkspaceCompositionAnalysisRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('构图分析任务标识无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('素材路径无效')
+    const frameTime = request.frameTime == null ? undefined : Number(request.frameTime)
+    if (frameTime !== undefined && (!Number.isFinite(frameTime) || frameTime < 0)) throw new Error('视频帧时间无效')
+    const task = segmentationTasks.begin(event.sender.id, request.requestId)
+    watchSender(event.sender)
+    try {
+      return await analyzeCompositionSubject(request.filePath, frameTime, task.controller.signal, true)
+    } finally {
+      segmentationTasks.finish(task)
+    }
+  })
+  ipcMain.handle('workspace:scoreCompositionCrops', async (event, request: WorkspaceCompositionCropScoreRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('构图评分任务标识无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('素材路径无效')
+    if (!Array.isArray(request.crops) || request.crops.length === 0 || request.crops.length > 32 || request.crops.some((crop) => (
+      !crop
+      || !Number.isFinite(crop.x)
+      || !Number.isFinite(crop.y)
+      || !Number.isFinite(crop.width)
+      || !Number.isFinite(crop.height)
+      || crop.x < 0
+      || crop.x > 1
+      || crop.y < 0
+      || crop.y > 1
+      || crop.width <= 0
+      || crop.height <= 0
+    ))) throw new Error('候选裁剪无效')
+    const frameTime = request.frameTime == null ? undefined : Number(request.frameTime)
+    if (frameTime !== undefined && (!Number.isFinite(frameTime) || frameTime < 0)) throw new Error('视频帧时间无效')
+    const task = segmentationTasks.begin(event.sender.id, request.requestId)
+    watchSender(event.sender)
+    try {
+      return await scoreCompositionCrops(request.filePath, frameTime, request.crops, task.controller.signal)
+    } finally {
+      segmentationTasks.finish(task)
+    }
   })
   ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false

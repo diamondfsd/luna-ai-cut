@@ -24,6 +24,7 @@ export type SpecializedSegmentationBackend =
   | 'sface'
   | 'face-parsing'
   | 'human-parsing'
+  | 'relic2-cpc'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend
@@ -103,7 +104,9 @@ async function segmentSpecializedWithWorker(
       worker,
       command,
       outputPath,
-      input.outputSize * input.outputSize * (input.backend === 'yolo26-instances' ? 2 : 1),
+      input.backend === 'relic2-cpc'
+        ? input.outputSize * Float32Array.BYTES_PER_ELEMENT
+        : input.outputSize * input.outputSize * (input.backend === 'yolo26-instances' ? 2 : 1),
       signal,
     )
     return {
@@ -118,6 +121,33 @@ async function segmentSpecializedWithWorker(
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
+}
+
+export async function scoreCompositionInWorker(
+  modelPath: string,
+  rgb: Buffer,
+  signal?: AbortSignal,
+): Promise<{
+  raw: number
+  sessionLoadMs: number
+  workerInferenceMs: number
+  sessionReused: boolean
+  executionBackend: 'onnx-cpu'
+}> {
+  const result = await segmentSpecializedInWorker({
+    backend: 'relic2-cpc',
+    modelPath,
+    rgb,
+    scaledWidth: 224,
+    scaledHeight: 224,
+    padX: 0,
+    padY: 0,
+    outputSize: 1,
+  }, signal)
+  if (result.bytes.byteLength !== Float32Array.BYTES_PER_ELEMENT) throw new Error('ReLIC++ CPC 返回结果无效')
+  const raw = result.bytes.readFloatLE(0)
+  if (!Number.isFinite(raw)) throw new Error('ReLIC++ CPC 返回了无效分数')
+  return { raw, sessionLoadMs: result.sessionLoadMs, workerInferenceMs: result.workerInferenceMs, sessionReused: result.sessionReused, executionBackend: result.executionBackend }
 }
 
 export async function extractImageEmbeddingInWorker(

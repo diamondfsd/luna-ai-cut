@@ -1,4 +1,5 @@
 import type { AiSelectionItem, AiSelectionSession, AiSelectionState } from '../shared/types'
+import { COMPOSITION_ANALYSIS_VERSION } from '../shared/compositionAnalysis'
 
 export type AiSelectionResultFilter = 'recommended' | 'attention' | 'kept' | 'rejected' | 'all'
 
@@ -33,15 +34,20 @@ export function aiSelectionAnalysisProgress(session: AiSelectionSession | null):
   const photos = session.items.filter((item) => item.kind === 'image')
   const contentCompleted = photos.filter((item) => item.analysisState === 'failed' || Boolean(item.contentTagVersion || item.contentTagError)).length
   const peopleCompleted = session.items.filter((item) => item.analysisState === 'failed' || Boolean(item.personEvidence) || item.semanticTags.includes('人物分析未完成')).length
+  const compositionCompleted = session.items.filter((item) => item.analysisState === 'failed' || item.compositionEvidence?.version === COMPOSITION_ANALYSIS_VERSION).length
   const phase = session.phase === 'content'
     ? { completed: contentCompleted, total: photos.length }
     : session.phase === 'people'
       ? { completed: peopleCompleted, total: session.items.length }
-      : { completed: session.counts.completed, total: session.counts.total }
+      : session.phase === 'composition'
+        ? { completed: compositionCompleted, total: session.items.length }
+        : session.phase === 'evidence'
+          ? { completed: contentCompleted + peopleCompleted + compositionCompleted, total: photos.length + session.items.length + session.items.length }
+          : { completed: session.counts.completed, total: session.counts.total }
   return {
     phaseCompleted: phase.completed,
     phaseTotal: phase.total,
-    overallCompleted: session.counts.completed + contentCompleted + peopleCompleted,
-    overallTotal: session.counts.total + photos.length + session.items.length,
+    overallCompleted: session.counts.completed + contentCompleted + peopleCompleted + compositionCompleted,
+    overallTotal: session.counts.total + photos.length + session.items.length + session.items.length,
   }
 }

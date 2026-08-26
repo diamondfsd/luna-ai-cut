@@ -19,7 +19,6 @@ import { prepareDxcRuntime } from './prepare-dxc.mjs'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
-const asrSourceDir = join(root, 'vendor', 'funasr-paraformer')
 
 // ── 确定目标平台 ──
 const target = process.env.CROSS_TARGET || ''
@@ -118,39 +117,6 @@ function resolveCargo() {
 
 const cargoBin = resolveCargo()
 
-function resolveCmake() {
-  if (process.env.CMAKE_BIN) return process.env.CMAKE_BIN
-  if (process.platform !== 'win32') return 'cmake'
-
-  const programFiles = process.env.ProgramFiles || 'C:\\Program Files'
-  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
-  const candidates = [
-    join(programFiles, 'CMake', 'bin', 'cmake.exe'),
-    join(programFilesX86, 'CMake', 'bin', 'cmake.exe'),
-  ]
-  for (const edition of ['Community', 'Professional', 'Enterprise', 'BuildTools']) {
-    candidates.push(
-      join(
-        programFiles,
-        'Microsoft Visual Studio',
-        '2022',
-        edition,
-        'Common7',
-        'IDE',
-        'CommonExtensions',
-        'Microsoft',
-        'CMake',
-        'CMake',
-        'bin',
-        'cmake.exe',
-      ),
-    )
-  }
-  return candidates.find((candidate) => existsSync(candidate)) || 'cmake'
-}
-
-const cmakeBin = resolveCmake()
-
 // 使用 rustup 工具链时，强制指定同 toolchain 的 rustc（避免 PATH 中的 Homebrew rustc 干扰）
 const rustcBin = cargoBin !== 'cargo'
   ? join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'rustc')
@@ -167,46 +133,6 @@ const build = spawnSync(cargoBin, buildArgs, {
 })
 if (build.status !== 0) {
   console.error('[build-native] ❌ cargo build failed')
-  process.exit(1)
-}
-
-// Paraformer 使用官方 FunASR GGUF/ggml 原生实现，保持为独立进程以隔离内存与故障。
-const asrBuildKey = target || `${process.platform}-${process.arch}`
-const asrBuildDir = join(rcDir, 'target', `funasr-${asrBuildKey}`)
-const asrConfigureArgs = [
-  '-S', asrSourceDir,
-  '-B', asrBuildDir,
-  '-DCMAKE_BUILD_TYPE=Release',
-]
-if (process.env.FUNASR_LLAMA_SOURCE_DIR) {
-  asrConfigureArgs.push(`-DFETCHCONTENT_SOURCE_DIR_LLAMA=${process.env.FUNASR_LLAMA_SOURCE_DIR}`)
-}
-if (isMac) {
-  asrConfigureArgs.push(`-DCMAKE_OSX_ARCHITECTURES=${targetArch === 'x64' ? 'x86_64' : 'arm64'}`)
-  asrConfigureArgs.push('-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0')
-} else if (isWin && process.platform === 'win32') {
-  asrConfigureArgs.push('-A', targetArch === 'arm64' ? 'ARM64' : targetArch === 'ia32' ? 'Win32' : 'x64')
-}
-console.log('[build-native] cmake configure Paraformer worker...')
-const asrConfigure = spawnSync(cmakeBin, asrConfigureArgs, { cwd: root, stdio: 'inherit' })
-if (asrConfigure.status !== 0) {
-  if (asrConfigure.error) console.error(`[build-native] CMake could not start: ${asrConfigure.error.message}`)
-  console.error('[build-native] ❌ Paraformer worker configure failed')
-  process.exit(1)
-}
-console.log('[build-native] cmake build Paraformer worker...')
-const asrBuild = spawnSync(cmakeBin, [
-  '--build', asrBuildDir,
-  '--config', 'Release',
-  '--target', 'luna-asr-worker',
-  '--parallel',
-], {
-  cwd: root,
-  stdio: 'inherit',
-})
-if (asrBuild.status !== 0) {
-  if (asrBuild.error) console.error(`[build-native] CMake could not start: ${asrBuild.error.message}`)
-  console.error('[build-native] ❌ Paraformer worker build failed')
   process.exit(1)
 }
 
@@ -246,26 +172,20 @@ for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker
 }
 
 const asrWorkerName = isWin ? 'luna-asr-worker.exe' : 'luna-asr-worker'
-const asrCandidates = [
-  join(asrBuildDir, 'Release', asrWorkerName),
-  join(asrBuildDir, asrWorkerName),
-]
-const asrWorkerSrc = asrCandidates.find((candidate) => existsSync(candidate))
-if (!asrWorkerSrc) {
-  console.error(`[build-native] ❌ Paraformer worker artifact missing: ${asrCandidates.join(', ')}`)
+const asrWorkerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), asrWorkerName)
+if (!existsSync(asrWorkerSrc)) {
+  console.error(`[build-native] ❌ Paraformer worker artifact missing: ${asrWorkerSrc}`)
   process.exit(1)
 }
+const asrWorkerDest = join(rcDir, asrWorkerName)
+copyFileSync(asrWorkerSrc, asrWorkerDest)
+if (!isWin) chmodSync(asrWorkerDest, 0o755)
+prepareMacArtifact(asrWorkerDest, isMacX64 ? 'required' : 'optional')
 if (!target) {
-  const asrHealthCheck = spawnSync(asrWorkerSrc, ['--health-check'], { stdio: 'inherit' })
+  const asrHealthCheck = spawnSync(asrWorkerDest, ['--health-check'], { stdio: 'inherit' })
   if (asrHealthCheck.status !== 0) {
     console.error('[build-native] ASR worker health check failed')
     process.exit(1)
   }
 }
-const asrWorkerDest = join(rcDir, asrWorkerName)
-copyFileSync(asrWorkerSrc, asrWorkerDest)
-if (!isWin) chmodSync(asrWorkerDest, 0o755)
-prepareMacArtifact(asrWorkerDest, 'forbidden')
-copyFileSync(join(asrSourceDir, 'LICENSE-FunASR'), join(rcDir, 'ASR-LICENSE-FunASR.txt'))
-copyFileSync(join(asrSourceDir, 'LICENSE-llama.cpp'), join(rcDir, 'ASR-LICENSE-llama.cpp.txt'))
 console.log('[build-native] ✅', asrWorkerDest)

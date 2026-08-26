@@ -74,6 +74,7 @@ export async function transcribeVideo(
   const totalMs = Math.round(request.endMs - request.startMs)
   const worker = spawn(asrWorkerPath(), [
     models.asr,
+    models.tokens,
     models.vad,
     request.language,
     String(asrThreads()),

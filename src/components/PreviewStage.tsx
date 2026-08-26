@@ -29,7 +29,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
-  const { settings } = useApp()
+  const { settings, setSettings } = useApp()
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   // ── 媒体分辨率 ──
@@ -45,6 +45,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [nativePreviewFailed, setNativePreviewFailed] = useState(false)
+  const nativePreviewAutoDisabledRef = useRef(false)
   const gpuPreviewEnabled = settings?.experimentalGpuPreview ?? false
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
   const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
@@ -57,7 +58,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
   const resolution = usePreviewResolution(layoutUrl)
-  useEffect(() => setNativePreviewFailed(false), [gpuPreviewEnabled])
+  useEffect(() => {
+    setNativePreviewFailed(false)
+    if (!gpuPreviewEnabled) nativePreviewAutoDisabledRef.current = false
+  }, [gpuPreviewEnabled])
   // 暴露给父组件的视频控制 API
   useImperativeHandle(ref, () => ({
     seek: (time: number) => {
@@ -228,6 +232,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   function handleRender() {
     previewErrorToastRef.current = null
+    setPreviewError(null)
     setRenderedCanvasKey(canvasRenderKey)
     setLoading(false)
     // 裁剪模式会在“最终裁剪画布”和“原始工作画布”之间切换。
@@ -250,6 +255,17 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     setRenderedCanvasKey(canvasRenderKey)
     setLoading(false)
     shouldResumePlaybackRef.current = false
+  }
+
+  function handleNativePreviewFailure(reason: string) {
+    handleRenderFailure(reason)
+    setNativePreviewFailed(true)
+    if (nativePreviewAutoDisabledRef.current || !settings?.experimentalGpuPreview) return
+
+    // Keep an incompatible Windows GPU from selecting the failing preview path again.
+    nativePreviewAutoDisabledRef.current = true
+    setSettings((current) => (current ? { ...current, experimentalGpuPreview: false } : current))
+    void window.luna.saveSettings({ experimentalGpuPreview: false }).catch(() => undefined)
   }
 
   useEffect(() => {
@@ -422,8 +438,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               onVideoElement={handleVideoElement}
               onFallback={(reason) => {
                 console.warn('[PreviewStage] native GPU preview fallback', { reason })
-                handleRenderFailure(reason)
-                setNativePreviewFailed(true)
+                handleNativePreviewFailure(reason)
               }}
             />
           ) : isDisplayVideo && !useCompositionVideoRenderer ? (

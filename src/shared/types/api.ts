@@ -33,6 +33,7 @@ import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
+import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -68,6 +69,24 @@ export interface WorkspaceSegmentationProgress {
   phase: 'model' | 'preparing' | 'recognizing'
   label: string
   percent: number | null
+}
+
+export interface WorkspaceCompositionAnalysisRequest {
+  requestId: string
+  filePath: string
+  /** 视频素材取帧时间；图片素材忽略。 */
+  frameTime?: number
+}
+
+export interface WorkspaceCompositionCrop {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface WorkspaceCompositionCropScoreRequest extends WorkspaceCompositionAnalysisRequest {
+  crops: WorkspaceCompositionCrop[]
 }
 
 export interface WorkspaceMaskTrackingRequest {
@@ -303,6 +322,8 @@ export interface LunaApi {
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>
     prepareSegmentationModels(modelIds: SegmentationModelId[]): Promise<void>
+    analyzeComposition(request: WorkspaceCompositionAnalysisRequest): Promise<CompositionEvidence>
+    scoreCompositionCrops(request: WorkspaceCompositionCropScoreRequest): Promise<CompositionScore[]>
     segmentImage(request: WorkspaceSegmentationRequest): Promise<{
       requestId: string
       width: number

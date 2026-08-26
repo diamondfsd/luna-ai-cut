@@ -9,6 +9,8 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ColorMaskPanel } from '../color/ColorMaskPanel'
 import { FilterPanel } from '../lut/FilterPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
+import { WorkspaceAiCompositionPanel } from '../transform/WorkspaceAiCompositionPanel'
+import { frameAspect } from '../transform/cropGeometry'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
 import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
@@ -138,6 +140,11 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
   const cropHeight = edit.cropSize.height || refH
+  const cropAspectRatio = useMemo(() => {
+    if (edit.cropPreset === 'free') return null
+    if (edit.cropPreset === 'original') return frameAspect(canvas.sourceAspect, edit.activeTransform.orientation)
+    return cropWidth / Math.max(cropHeight, 1)
+  }, [canvas.sourceAspect, cropHeight, cropWidth, edit.activeTransform.orientation, edit.cropPreset])
   const defaultBorderTitle = borderTitleForDevice(
     isConnected && activeDevice
       ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
@@ -349,6 +356,19 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                   onRotateChange={edit.handleRotateChange}
                   onCropPresetChange={onCropPresetChange}
                   onCropSizeChange={onCropSizeChange}
+                />
+                <WorkspaceAiCompositionPanel
+                  filePath={mediaCtx.activeMedia?.path ?? null}
+                  frameTime={mediaCtx.activeMedia?.kind === 'video' ? currentTime : undefined}
+                  sourceAspect={canvas.sourceAspect}
+                  orientation={edit.activeTransform.orientation}
+                  rotate={edit.activeTransform.rotate}
+                  aspectRatio={cropAspectRatio}
+                  crop={edit.activeTransform.crop}
+                  onApply={(crop) => edit.setTransformDraft((current) => ({
+                    ...(current ?? edit.pipeline.transform),
+                    crop,
+                  }))}
                 />
               </Accordion>
               <div className="workspace-crop-panel-actions">
