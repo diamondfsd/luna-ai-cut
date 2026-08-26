@@ -34,7 +34,7 @@ func argumentValue(_ name: String) -> String? {
 
 func standardInputPassword() -> String? {
   let data = FileHandle.standardInput.readDataToEndOfFile()
-  return String(data: data, encoding: .utf8)
+  return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .newlines)
 }
 
 func wifiInterface() -> CWInterface? {
@@ -164,37 +164,6 @@ func waitForAssociation(interface: CWInterface, ssid: String, timeout: TimeInter
   return interface.ssid() == ssid
 }
 
-/// macOS stores saved Wi-Fi passwords as generic passwords. Keep the lookup
-/// and the password in this helper so they never cross the Electron bridge.
-func savedWifiPassword(ssid: String) -> String? {
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-  process.arguments = [
-    "find-generic-password",
-    "-D",
-    "AirPort network password",
-    "-a",
-    ssid,
-    "-w",
-  ]
-  let output = Pipe()
-  process.standardOutput = output
-  process.standardError = Pipe()
-
-  do {
-    try process.run()
-    process.waitUntilExit()
-  } catch {
-    return nil
-  }
-
-  guard process.terminationStatus == 0 else { return nil }
-  var password = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-  if password.hasSuffix("\n") { password.removeLast() }
-  if password.hasSuffix("\r") { password.removeLast() }
-  return password.isEmpty ? nil : password
-}
-
 guard let command = CommandLine.arguments.dropFirst().first else {
   result(success: false, message: "缺少 CoreWLAN 命令", code: "COMMAND_REQUIRED")
   exit(0)
@@ -226,18 +195,7 @@ do {
       exit(0)
     }
     let password = argumentValue("--password") ?? (CommandLine.arguments.contains("--password-stdin") ? standardInputPassword() : nil)
-    let useKeychain = CommandLine.arguments.contains("--use-keychain")
-    let requireSavedPassword = CommandLine.arguments.contains("--require-keychain")
     let bssid = argumentValue("--bssid")
-    var savedPassword: String?
-    if useKeychain && password == nil {
-      savedPassword = savedWifiPassword(ssid: ssid)
-      if requireSavedPassword && savedPassword == nil {
-        result(success: false, message: "没有找到可用的系统 Wi-Fi 配置，请输入 Wi-Fi 密码", code: "WIFI_PASSWORD_REQUIRED")
-        exit(0)
-      }
-    }
-    let associationPassword = password ?? savedPassword
     let retryDelays: [TimeInterval] = [0, 0.5, 1.0]
     var lastMessage = "未扫描到目标 Wi-Fi：\(ssid)"
 
@@ -253,7 +211,7 @@ do {
           continue
         }
 
-        try interface.associate(to: network, password: associationPassword)
+        try interface.associate(to: network, password: password)
         if waitForAssociation(interface: interface, ssid: ssid, timeout: 3.5) {
           result(success: true, message: "CoreWLAN 已连接 \(ssid)", data: statusPayload(interface: interface))
           exit(0)

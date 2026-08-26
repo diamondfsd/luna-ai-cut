@@ -3,8 +3,6 @@ import * as os from 'node:os'
 
 import { logMainDebug, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import { deleteCameraPaths } from './insta360CameraDelete'
-import { parseDeviceInfo } from './insta360DeviceInfo'
-import type { Insta360TcpDeviceInfo } from './insta360DeviceInfo'
 import {
   buildFileCommand,
   buildStreamHello,
@@ -13,7 +11,6 @@ import {
   UCD2_FILE,
   UCD2_MAGIC,
   UCD2_STREAM,
-  wireFieldVarint,
 } from './insta360TcpCodec'
 import type { Insta360RawResponse } from './insta360TcpCodec'
 import {
@@ -26,9 +23,7 @@ import {
 export { insta360PacketChecksum } from './insta360TcpCodec'
 export type { Insta360RawResponse } from './insta360TcpCodec'
 
-const CODE_GET_OPTIONS = 8
 const CODE_GET_FILE_LIST = 13
-const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
 const MEDIA_TYPE_ALL = 2
 const CARD_LOCATION_INTERNAL = 2
@@ -129,41 +124,6 @@ function builtCommand(label: string, seq: number, code: number, requestId: numbe
   }
 }
 
-const EXACT_INFO_COMMANDS: ExactCommand[] = [
-  builtCommand(
-    'GET_OPTIONS small',
-    0x25,
-    CODE_GET_OPTIONS,
-    1,
-    Buffer.concat([wireFieldVarint(1, 48), wireFieldVarint(1, 15), wireFieldVarint(1, 11)]),
-  ),
-  builtCommand(
-    'GET_CURRENT_CAPTURE_STATUS',
-    0x26,
-    CODE_GET_CURRENT_CAPTURE_STATUS,
-    2,
-    Buffer.alloc(0),
-  ),
-  builtCommand(
-    'GET_OPTIONS large',
-    0x27,
-    CODE_GET_OPTIONS,
-    3,
-    Buffer.from(`
-      08 01 08 03 08 02 08 4c 08 06 08 4e 08 4f 08 0b 08 55 08 0c
-      08 0d 08 af 01 08 0e 08 0f 08 13 08 37 08 11 08 14 08 1e
-      08 24 08 6e 08 72 08 75 08 59 08 74 08 73 08 25 08 26
-      08 2a 08 28 08 29 08 30 08 31 08 32 08 42 08 84 01 08
-      3a 08 3b 08 3c 08 43 08 44 08 5d 08 53 08 52 08 46 08
-      58 08 67 08 10 08 61 08 85 01 08 86 01 08 77 08 7a 08
-      7b 08 7c 08 80 01 08 81 01 08 87 01 08 96 01 08 95 01
-      08 93 01 08 9b 01 08 9d 01 08 9e 01 08 a0 01 08 b3 01
-      08 a1 01 08 16 08 50 08 51 08 a7 01 08 a9 01 08 ad 01
-      08 b4 01 08 b0 01 08 b1 01 08 78 08 6f 08 79 08 ac 01
-    `.replace(/\s+/g, ''), 'hex'),
-  ),
-]
-
 const EXACT_FILE_LIST_INTERNAL: ExactCommand[] = [
   builtCommand(
     'GET_FILE_LIST internal offset=0',
@@ -211,8 +171,6 @@ export class Insta360TcpSession {
     label?: string
     startedAt: number
   }>()
-  private deviceInfo: Insta360TcpDeviceInfo | null = null
-
   constructor(
     private readonly host: string,
     private readonly port: number,
@@ -220,10 +178,6 @@ export class Insta360TcpSession {
 
   get isOpen(): boolean {
     return this.socket !== null && !this.socket.destroyed
-  }
-
-  get info(): Insta360TcpDeviceInfo | null {
-    return this.deviceInfo
   }
 
   async open(): Promise<void> {
@@ -246,39 +200,13 @@ export class Insta360TcpSession {
     const helloSeq = this.nextSeq()
     socket.write(buildStreamHello(helloSeq))
     logMainInfo('[Insta360TCP] STREAM 握手已发送', { host: this.host, port: this.port, seq: helloSeq })
-    const infoResponses = await Promise.allSettled(EXACT_INFO_COMMANDS.map((command) => this.sendExactCommand(command, 4000)))
-    for (const [index, result] of infoResponses.entries()) {
-      const command = EXACT_INFO_COMMANDS[index]
-      if (result.status === 'fulfilled') {
-        logMainDebug('[Insta360TCP] 设备信息命令完成', {
-          label: command.label,
-          requestId: command.requestId,
-          responseCode: result.value.code,
-          bodyBytes: result.value.body.length,
-        })
-      } else {
-        logMainWarn('[Insta360TCP] 设备信息命令失败', {
-          label: command.label,
-          requestId: command.requestId,
-          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-        })
-      }
-    }
-    const fulfilled = infoResponses
-      .filter((result): result is PromiseFulfilledResult<Insta360RawResponse> => result.status === 'fulfilled')
-      .map((result) => result.value)
-    this.deviceInfo = parseDeviceInfo(fulfilled)
+    // 连接只需要完成 STREAM 握手。设备信息/字符串查询不是建立媒体连接的必要条件，
+    // 也避免在密码未知时额外请求相机配置。
     this.requestId = Math.max(this.requestId, 12)
     logMainInfo('[Insta360TCP] 控制会话已建立', {
       host: this.host,
       port: this.port,
       elapsedMs: Date.now() - startedAt,
-      infoCommandsSucceeded: fulfilled.length,
-      infoCommandsFailed: infoResponses.length - fulfilled.length,
-      deviceInfo: this.deviceInfo ? {
-        deviceName: this.deviceInfo.deviceName,
-        firmware: this.deviceInfo.firmware,
-      } : null,
     })
   }
 
