@@ -9,7 +9,10 @@ export interface TripleStitchSavedState {
   selectedIds: string[]
   activeSlot: number
   slotEdits: SlotEdit[]
+  /** 兼容旧版本的单水印字段，实际状态按 slot 保存。 */
   watermarkStyle: string
+  watermarkStyles: string[]
+  watermarkEnabled: boolean[]
   exportFrameTime?: number
 }
 
@@ -39,6 +42,8 @@ export function loadTripleStitchState(
     activeSlot: 0,
     slotEdits: createDefaultSlotEdits(),
     watermarkStyle: fallbackWatermarkStyle,
+    watermarkStyles: Array.from({ length: 3 }, () => fallbackWatermarkStyle),
+    watermarkEnabled: Array.from({ length: 3 }, () => Boolean(fallbackWatermarkStyle)),
     exportFrameTime: 0,
   }
 
@@ -54,6 +59,17 @@ export function loadTripleStitchState(
           ...(parsed.slotEdits?.[index] ?? {}),
         }))
       : fallback.slotEdits
+    const legacyWatermarkStyle = typeof parsed.watermarkStyle === 'string'
+      ? parsed.watermarkStyle
+      : fallbackWatermarkStyle
+    const watermarkStyles = Array.from({ length: 3 }, (_, index) => {
+      const style = Array.isArray(parsed.watermarkStyles) ? parsed.watermarkStyles[index] : undefined
+      return typeof style === 'string' ? style : legacyWatermarkStyle
+    })
+    const watermarkEnabled = Array.from({ length: 3 }, (_, index) => {
+      const enabled = Array.isArray(parsed.watermarkEnabled) ? parsed.watermarkEnabled[index] : undefined
+      return typeof enabled === 'boolean' ? enabled : Boolean(watermarkStyles[index])
+    })
     return {
       selectedIds: Array.isArray(parsed.selectedIds)
         ? parsed.selectedIds.filter((id): id is string => typeof id === 'string').slice(0, 3)
@@ -62,9 +78,9 @@ export function loadTripleStitchState(
         ? Math.min(2, Math.max(0, Math.round(parsed.activeSlot)))
         : 0,
       slotEdits,
-      watermarkStyle: typeof parsed.watermarkStyle === 'string'
-        ? parsed.watermarkStyle
-        : fallbackWatermarkStyle,
+      watermarkStyle: watermarkEnabled[0] ? watermarkStyles[0] : '',
+      watermarkStyles,
+      watermarkEnabled,
       exportFrameTime: typeof parsed.exportFrameTime === 'number'
         ? Math.max(0, Math.min(parsed.exportFrameTime, 3))
         : 0,

@@ -65,6 +65,8 @@ export interface WorkspaceTripleStitchState {
     startTime: number
   }>
   watermarkStyle: string
+  watermarkStyles?: string[]
+  watermarkEnabled?: boolean[]
 }
 
 export interface WorkspaceColorRevealState {
