@@ -3,9 +3,6 @@ import { Camera, Check, Wifi } from 'lucide-react'
 import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { Button } from '../ui'
 import lunaIcon from '../../public/luna-icon.png'
-import pocket3Character from '../../public/pocket3.png'
-import pocket4Character from '../../public/pocket4.png'
-import pocket4ProCharacter from '../../public/pocket4p-white.png'
 import './SupportedDeviceList.css'
 
 interface SupportedDeviceListProps {
@@ -17,21 +14,12 @@ interface SupportedDeviceListProps {
 }
 
 function supportedDevices(devices: DeviceDefinition[]): DeviceDefinition[] {
-  return devices.filter((device) => device.connectionSupported !== false && (device.protocol === 'insta360' || device.protocol === 'go-ultra' || device.protocol === 'dji'))
+  return devices.filter((device) => device.id === 'luna-ultra' && device.connectionSupported !== false)
 }
 
 function deviceVisual(device: DeviceDefinition) {
   if (device.protocol === 'insta360') {
     return <img src={lunaIcon} alt="" />
-  }
-  if (device.id === 'dji-pocket-4') {
-    return <img className="supported-device-character" src={pocket4Character} alt="" />
-  }
-  if (device.id === 'dji-pocket-3') {
-    return <img className="supported-device-character" src={pocket3Character} alt="" />
-  }
-  if (device.id === 'dji-pocket-4-pro') {
-    return <img className="supported-device-character" src={pocket4ProCharacter} alt="" />
   }
   return <Camera size={30} strokeWidth={1.6} />
 }
@@ -60,7 +48,7 @@ export function SupportedDeviceList({ activeDevice, devices, connection, disable
               disabled={disabled}
               onClick={() => void onSelect(device.id)}
             >
-              <span className={`supported-device-visual ${device.protocol === 'dji' ? 'dji' : 'insta360'}`}>
+              <span className="supported-device-visual insta360">
                 {deviceVisual(device)}
               </span>
               <span className="supported-device-copy">
