@@ -49,10 +49,6 @@ export class LunaClient {
     private readonly storages: DeviceStorageOption[] = DEFAULT_DEVICE.storages,
   ) {}
 
-  get deviceInfo(): ConnectionStatus['deviceInfo'] {
-    return this.controlSession?.info ?? undefined
-  }
-
   private async runAuthExclusive<T>(task: () => Promise<T>): Promise<T> {
     const previous = this.authLock
     let release: () => void = () => undefined
@@ -219,7 +215,7 @@ export class LunaClient {
     }
 
     logMainInfo(`[状态检测] 端口检测完成`, { host: this.host, httpOk, controlOk, totalElapsedMs: Math.round(performance.now() - t0), httpError, controlError, message })
-    return { host: this.host, httpOk, controlOk, message, deviceInfo: this.deviceInfo }
+    return { host: this.host, httpOk, controlOk, message }
   }
 
   storagePath(storageId?: string): string {

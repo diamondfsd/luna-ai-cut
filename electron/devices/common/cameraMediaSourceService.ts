@@ -123,9 +123,14 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     const loopback = isLoopbackHost(host)
     const wifiJoin = loopback
       ? { attempted: false, connected: false, message: '模拟设备跳过 Wi-Fi 自动连接' }
-      : await autoJoinDeviceWifi(definition.wifi, wifiSessionKey, this.options.wireless?.password)
+      : await autoJoinDeviceWifi(
+        definition.wifi,
+        wifiSessionKey,
+        this.options.wireless?.password,
+        this.options.wireless?.ssid,
+      )
     const protocol = this.protocol(definition)
-    if (!loopback && definition.wifi?.autoJoin === true && wifiJoin.attempted && !wifiJoin.connected) {
+    if (!loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected && wifiJoin.wifiPasswordRequired) {
       return wirelessStatus({
         deviceId,
         deviceName: definition.name,
@@ -151,6 +156,8 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
           : null
         return wirelessStatus({
           ...statusWithWifiMessage,
+          wifiSsid: statusWithWifiMessage.wifiSsid ?? wifiJoin.ssid,
+          wifiPasswordRequired: wifiJoin.wifiPasswordRequired,
           message: restore?.attempted
             ? `${statusWithWifiMessage.message}；${restore.message}`
             : statusWithWifiMessage.message,

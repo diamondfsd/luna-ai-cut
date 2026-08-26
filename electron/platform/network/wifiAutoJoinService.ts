@@ -1,4 +1,4 @@
-import type { DeviceDefinition } from '../../../src/shared/types'
+import type { DeviceDefinition, WifiDebugStatus } from '../../../src/shared/types'
 import { connectWifiNetwork, disconnectWifiNetwork, getWifiDebugStatus, scanWifiNetworks } from './wifiDebugService'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
@@ -25,27 +25,32 @@ function matchesConfiguredSsid(ssid: string, includes: string[]): boolean {
   })
 }
 
-function skipped(message: string): WifiAutoJoinResult {
-  return { attempted: false, connected: false, message }
+function skipped(message: string, wifiPasswordRequired = false): WifiAutoJoinResult {
+  return { attempted: false, connected: false, wifiPasswordRequired, message }
 }
 
-function matchRule(config: DeviceDefinition['wifi']): string {
-  return config?.ssidIncludes.join('、') || '未配置'
+function isLunaWifiAddress(address: string): boolean {
+  const match = address.trim().match(/^192\.168\.42\.(\d{1,3})$/)
+  return Boolean(match && Number(match[1]) <= 255)
 }
 
-function usesSavedNetworkCredentials(security: string | null): boolean {
-  return Boolean(security && /(WEP|WPA|Personal|Enterprise)/i.test(security))
+function hasLunaWifiAddress(status?: WifiDebugStatus): boolean {
+  const addresses = [
+    status?.ipAddress,
+    ...(status?.ipAddresses ?? []).map((item) => item.address),
+  ].filter((address): address is string => Boolean(address))
+  return addresses.some(isLunaWifiAddress)
 }
 
 /**
- * 仅按设备定义发现目标热点。未提供密码时由 CoreWLAN 从 macOS 已保存的 Wi-Fi
- * 配置读取凭据后关联；只有确认当前 SSID 后才算连接成功。
- * 设备没有匹配热点时不阻断后续连接，允许用户已经在系统中手动连好网络。
+ * 仅按设备定义发现目标热点。本机已有 Luna 网段地址时直接视为已经连好网络；
+ * 其他情况必须由用户输入密码后再尝试连接。
  */
 export async function autoJoinDeviceWifi(
   config?: DeviceDefinition['wifi'],
   sessionKey = 'default',
   password?: string,
+  requestedSsid?: string,
 ): Promise<WifiAutoJoinResult> {
   if (process.platform !== 'darwin' || !config?.autoJoin || config.ssidIncludes.length === 0) {
     return skipped('未启用设备 Wi-Fi 自动连接')
@@ -57,109 +62,136 @@ export async function autoJoinDeviceWifi(
   })
   const current = await getWifiDebugStatus().catch(() => null)
   const currentSsid = current?.success ? current.data?.ssid : null
+  if (hasLunaWifiAddress(current?.data)) {
+    const localAddress = [
+      current?.data?.ipAddress,
+      ...(current?.data?.ipAddresses ?? []).map((item) => item.address),
+    ].find((address): address is string => address != null && isLunaWifiAddress(address))
+    logMainInfo('[设备 Wi-Fi] 当前地址已在 Luna 网段，跳过系统 Wi-Fi 切换', {
+      sessionKey,
+      localAddress,
+      ssid: currentSsid,
+    })
+    return {
+      attempted: false,
+      connected: true,
+      ssid: currentSsid ?? undefined,
+      message: `已连接 Luna Wi-Fi${localAddress ? `（本机地址 ${localAddress}）` : ''}`,
+    }
+  }
   if (currentSsid && matchesConfiguredSsid(currentSsid, config.ssidIncludes)) {
     logMainInfo('[设备 Wi-Fi] 当前已连接目标网络', { sessionKey, ssid: currentSsid })
     return { attempted: false, connected: true, ssid: currentSsid, message: `已连接设备 Wi-Fi：${currentSsid}` }
   }
 
-  const scan = await scanWifiNetworks(10000)
-  if (!scan.success) {
-    logMainWarn('[设备 Wi-Fi] 扫描失败', {
-      sessionKey,
-      matchRule: config.ssidIncludes,
-      code: scan.code,
-      message: scan.message,
-    })
-    return skipped(`设备 Wi-Fi 扫描失败（匹配规则：${matchRule(config)}）：${scan.message}`)
+  const manualSsid = requestedSsid?.trim()
+  let candidateSsid = manualSsid
+  let candidateSecurity: string | null = null
+
+  if (!candidateSsid) {
+    const scan = await scanWifiNetworks(10000)
+    if (!scan.success) {
+      logMainWarn('[设备 Wi-Fi] 扫描失败', {
+        sessionKey,
+        ssidIncludes: config.ssidIncludes,
+        code: scan.code,
+        message: scan.message,
+      })
+      return skipped(`未找到设备 Wi-Fi，请输入 Wi-Fi 名称和密码（${scan.message}）`, true)
+    }
+
+    const candidate = (scan.data ?? []).find((network) => matchesConfiguredSsid(network.ssid, config.ssidIncludes))
+    if (!candidate) {
+      logMainWarn('[设备 Wi-Fi] 未发现匹配网络', {
+        sessionKey,
+        ssidIncludes: config.ssidIncludes,
+        scannedSsids: (scan.data ?? []).map((network) => network.ssid),
+        currentSsid,
+      })
+      return skipped('未找到设备 Wi-Fi，请输入 Wi-Fi 名称和密码', true)
+    }
+    candidateSsid = candidate.ssid
+    candidateSecurity = candidate.security
   }
 
-  const candidate = (scan.data ?? []).find((network) => matchesConfiguredSsid(network.ssid, config.ssidIncludes))
-  if (!candidate) {
-    logMainWarn('[设备 Wi-Fi] 未发现匹配网络', {
-      sessionKey,
-      matchRule: config.ssidIncludes,
-      scannedSsids: (scan.data ?? []).map((network) => network.ssid),
-      currentSsid,
-    })
-    return skipped(`未发现匹配的设备 Wi-Fi（匹配规则：${matchRule(config)}），当前网络未切换`)
+  if (!password) {
+    return {
+      attempted: false,
+      connected: false,
+      ssid: candidateSsid,
+      wifiPasswordRequired: true,
+      message: `请输入 ${candidateSsid} 的 Wi-Fi 密码`,
+    }
   }
 
   logMainInfo('[设备 Wi-Fi] 找到目标网络，准备连接', {
     sessionKey,
-    ssid: candidate.ssid,
+    ssid: candidateSsid,
     currentSsid,
-    security: candidate.security,
-    credentialSource: password
-      ? 'user-provided-wifi-password'
-      : usesSavedNetworkCredentials(candidate.security) ? 'macos-saved-wifi' : 'corewlan',
-    connectionStrategy: password
-      ? 'networksetup-with-save'
-      : usesSavedNetworkCredentials(candidate.security) ? 'corewlan-with-keychain' : 'corewlan-with-retry',
+    security: candidateSecurity,
+    credentialSource: 'user-provided-wifi-password',
+    connectionStrategy: 'corewlan-password-stdin',
   })
   const joined = await connectWifiNetwork({
-    ssid: candidate.ssid,
-    timeoutMs: usesSavedNetworkCredentials(candidate.security) ? 60000 : 30000,
+    ssid: candidateSsid,
+    timeoutMs: 30000,
     password,
-    savedNetworkOnly: !password,
-    requireSavedPassword: !password && usesSavedNetworkCredentials(candidate.security),
   })
   logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
     sessionKey,
-    ssid: candidate.ssid,
+    ssid: candidateSsid,
     success: joined.success,
     code: joined.code,
     message: joined.message,
   })
   if (!joined.success) {
-    const wifiPasswordRequired = usesSavedNetworkCredentials(candidate.security)
+    const wifiPasswordRequired = true
     logMainWarn('[设备 Wi-Fi] 切换失败', {
       sessionKey,
-      ssid: candidate.ssid,
+      ssid: candidateSsid,
       code: joined.code,
       message: joined.message,
     })
-    const message = wifiPasswordRequired
-      ? `${joined.message}。请输入 ${candidate.ssid} 的 Wi-Fi 密码`
-      : `自动切换到 ${candidate.ssid} 失败：${joined.message}。请在系统 Wi-Fi 设置中点选该网络后重试`
+    const message = `${joined.message}。请检查 ${candidateSsid} 的 Wi-Fi 名称和密码`
     return {
       attempted: true,
       connected: false,
-      ssid: candidate.ssid,
+      ssid: candidateSsid,
       wifiPasswordRequired,
       message,
     }
   }
 
   const joinedSsid = joined.data?.ssid
-  if (joinedSsid && !matchesConfiguredSsid(joinedSsid, config.ssidIncludes)) {
+  if (joinedSsid && joinedSsid !== candidateSsid && !matchesConfiguredSsid(joinedSsid, config.ssidIncludes)) {
     logMainWarn('[设备 Wi-Fi] 切换结果未匹配目标', {
       sessionKey,
-      targetSsid: candidate.ssid,
+      targetSsid: candidateSsid,
       joinedSsid,
     })
     return {
       attempted: true,
       connected: false,
-      ssid: candidate.ssid,
-      message: `系统未切换到设备 Wi-Fi，当前网络为 ${joinedSsid}（目标：${candidate.ssid}）`,
+      ssid: candidateSsid,
+      message: `系统未切换到目标 Wi-Fi，当前网络为 ${joinedSsid}（目标：${candidateSsid}）`,
     }
   }
 
   restoreSessions.set(sessionKey, {
-    cameraSsid: candidate.ssid,
+    cameraSsid: candidateSsid,
     previousSsid: currentSsid ?? null,
   })
 
   logMainInfo('[设备 Wi-Fi] 自动连接成功', {
     sessionKey,
-    targetSsid: candidate.ssid,
-    joinedSsid: joinedSsid ?? candidate.ssid,
+    targetSsid: candidateSsid,
+    joinedSsid: joinedSsid ?? candidateSsid,
   })
   return {
     attempted: true,
     connected: true,
-    ssid: candidate.ssid,
-    message: `已自动连接设备 Wi-Fi：${candidate.ssid}`,
+    ssid: candidateSsid,
+    message: `已连接设备 Wi-Fi：${candidateSsid}`,
   }
 }
 

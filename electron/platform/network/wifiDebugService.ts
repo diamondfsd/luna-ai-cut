@@ -250,65 +250,22 @@ async function currentDarwinWifiSsid(interfaceName?: string | null): Promise<str
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function waitForDarwinWifiSsid(ssid: string, timeoutMs: number): Promise<WifiDebugResult<WifiDebugStatus> | null> {
-  const deadline = Date.now() + timeoutMs
-  let lastResult: WifiDebugResult<WifiDebugStatus> | null = null
-  while (Date.now() < deadline) {
-    lastResult = await getWifiDebugStatus()
-    if (lastResult.success && lastResult.data?.ssid === ssid) return lastResult
-    await sleep(500)
-  }
-  return lastResult
-}
-
-/**
- * A password supplied by the user goes through networksetup first so macOS
- * can create/update its preferred Wi-Fi and Keychain entries. CoreWLAN is a
- * fallback for systems where networksetup reports a transient failure.
- */
+/** A password supplied by the user is passed directly to CoreWLAN. */
 async function connectDarwinWifiWithPassword(
   ssid: string,
   password: string,
   timeoutMs: number,
   bssid?: string,
 ): Promise<WifiDebugResult<WifiDebugStatus>> {
-  let systemMessage = ''
-  try {
-    const device = await preferredDarwinWifiDevice()
-    if (device) {
-      const commandTimeoutMs = Math.min(Math.max(timeoutMs, 5000), 15000)
-      const raw = await runCommand('/usr/sbin/networksetup', ['-setairportnetwork', device, ssid, password], commandTimeoutMs)
-      const status = await waitForDarwinWifiSsid(ssid, commandTimeoutMs)
-      if (status?.success && status.data?.ssid === ssid) {
-        return ok(`已连接 ${ssid}，macOS 已保存该 Wi-Fi 配置`, {
-          ...status.data,
-          ipAddress: status.data.ipAddress ?? firstWirelessIpv4(),
-        }, raw)
-      }
-      systemMessage = `macOS 未确认已连接到 ${ssid}`
-    }
-  } catch (error) {
-    systemMessage = error instanceof Error ? error.message : String(error)
-  }
-
   const args = ['connect', '--ssid', ssid, '--password-stdin']
   if (bssid) args.push('--bssid', bssid)
-  const fallback = await runCoreWlan<unknown>(args, Math.min(Math.max(timeoutMs, 10000), 30000), password)
-  if (!fallback.success) {
-    return {
-      ...fallback,
-      message: systemMessage ? `${systemMessage}；${fallback.message}` : fallback.message,
-    } as WifiDebugResult<WifiDebugStatus>
-  }
-  const status = normalizeWifiStatus(fallback.data, fallback.raw)
+  const result = await runCoreWlan<unknown>(args, Math.min(Math.max(timeoutMs, 10000), 30000), password)
+  if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
+  const status = normalizeWifiStatus(result.data, result.raw)
   return ok(
-    systemMessage ? `${systemMessage}；${fallback.message || `CoreWLAN 已连接 ${ssid}`}` : fallback.message || `CoreWLAN 已连接 ${ssid}`,
+    result.message || `CoreWLAN 已连接 ${ssid}`,
     { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() },
-    fallback.raw,
+    result.raw,
   )
 }
 
@@ -413,14 +370,8 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
         return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid)
       }
       const args = ['connect', '--ssid', ssid]
-      const useSavedNetwork = !options.password && options.savedNetworkOnly !== false
-      if (useSavedNetwork) args.push('--use-keychain')
-      if (options.requireSavedPassword) args.push('--require-keychain')
       if (options.bssid) args.push('--bssid', options.bssid)
-      // Reading a saved Wi-Fi credential can show a macOS permission dialog.
-      // Give the user enough time to approve it before the helper is killed.
-      const effectiveTimeoutMs = useSavedNetwork ? Math.max(timeoutMs, 60000) : timeoutMs
-      const result = await runCoreWlan<unknown>(args, effectiveTimeoutMs)
+      const result = await runCoreWlan<unknown>(args, timeoutMs)
       if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
       const status = normalizeWifiStatus(result.data, result.raw)
       return ok(result.message || `CoreWLAN 已尝试连接 ${ssid}`, { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
