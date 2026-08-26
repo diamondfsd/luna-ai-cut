@@ -43,7 +43,7 @@ const token = process.env.GITCODE_TOKEN ?? config.GITCODE_TOKEN
 const outputDir = path.join(rootDir, 'release', 'model-resources', MODEL_RELEASE_TAG)
 const registry = await loadModelRegistry(rootDir)
 const subtitleOnly = process.argv.includes('--subtitle-only')
-const subtitleModelIds = new Set([registry.SUBTITLE_ASR_MODEL.id, registry.SUBTITLE_VAD_MODEL.id, registry.SUBTITLE_PUNCTUATION_MODEL.id])
+const subtitleModelIds = new Set([registry.SUBTITLE_ASR_MODEL.id, registry.SUBTITLE_ASR_TOKENS_MODEL.id, registry.SUBTITLE_VAD_MODEL.id, registry.SUBTITLE_PUNCTUATION_MODEL.id])
 const artifacts = buildModelArtifacts(registry).filter((artifact) => (
   !subtitleOnly || artifact.models.some((model) => subtitleModelIds.has(model.modelId))
 ))

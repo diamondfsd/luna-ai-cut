@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::mem::{size_of, ManuallyDrop};
 use std::ptr;
 use std::time::{Duration, Instant};
@@ -5,10 +6,10 @@ use std::time::{Duration, Instant};
 use windows::core::{Interface, BOOL};
 use windows::Win32::Graphics::Direct3D11::{
     ID3D11Device, ID3D11DeviceContext, ID3D11Query, ID3D11Resource, ID3D11Texture2D,
-    ID3D11VideoContext, ID3D11VideoDevice, D3D11_ASYNC_GETDATA_DONOTFLUSH,
-    D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_QUERY_DESC, D3D11_QUERY_EVENT,
-    D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
-    D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE, D3D11_VIDEO_PROCESSOR_CONTENT_DESC,
+    ID3D11VideoContext, ID3D11VideoDevice, ID3D11VideoProcessor, ID3D11VideoProcessorEnumerator,
+    D3D11_ASYNC_GETDATA_DONOTFLUSH, D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE,
+    D3D11_QUERY_DESC, D3D11_QUERY_EVENT, D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC,
+    D3D11_USAGE_DEFAULT, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE, D3D11_VIDEO_PROCESSOR_CONTENT_DESC,
     D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0,
     D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0,
     D3D11_VIDEO_PROCESSOR_STREAM, D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
@@ -34,7 +35,27 @@ pub(crate) struct VideoConverter {
     fence: ID3D12Fence,
     next_fence_value: u64,
     completion_query: ID3D11Query,
+    /// 视频尺寸通常在整个导出期间保持不变。缓存处理器可避免每帧重复创建
+    /// D3D11 视频处理器和枚举器。
+    video_processors: HashMap<VideoProcessorKey, VideoProcessorState>,
+    /// 导出路径在每帧完成跨 API 交接后才归还这些纹理，因而可以安全复用。
+    reusable_bgra: HashMap<(u32, u32), Vec<ID3D11Texture2D>>,
 }
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct VideoProcessorKey {
+    input_width: u32,
+    input_height: u32,
+    output_width: u32,
+    output_height: u32,
+}
+
+struct VideoProcessorState {
+    enumerator: ID3D11VideoProcessorEnumerator,
+    processor: ID3D11VideoProcessor,
+}
+
+const MAX_REUSABLE_BGRA_PER_SIZE: usize = 4;
 
 pub(crate) struct D3d12TextureLease {
     resource12: Option<ID3D12Resource>,
@@ -124,15 +145,35 @@ impl VideoConverter {
             fence,
             next_fence_value: 1,
             completion_query,
+            video_processors: HashMap::new(),
+            reusable_bgra: HashMap::new(),
         })
     }
 
-    pub(crate) fn decode_to_bgra(&self, frame: &DecodedFrame) -> Result<ID3D11Texture2D, String> {
-        self.decode_to_bgra_scaled(frame, frame.width, frame.height)
+    /// 导出路径使用的 BGRA 纹理。调用方必须在对应的 D3D12 lease 归还后
+    /// 调用 `recycle_bgra_texture`，这样下一帧可以复用同一张显卡纹理。
+    pub(crate) fn decode_to_bgra_for_export(
+        &mut self,
+        frame: &DecodedFrame,
+    ) -> Result<ID3D11Texture2D, String> {
+        let output = self.take_bgra_texture(frame.width, frame.height)?;
+        if let Err(error) = self.blit(
+            &frame.texture,
+            frame.array_slice,
+            frame.width,
+            frame.height,
+            &output,
+            frame.width,
+            frame.height,
+        ) {
+            self.recycle_bgra_texture(output, frame.width, frame.height);
+            return Err(error);
+        }
+        Ok(output)
     }
 
     pub(crate) fn decode_to_bgra_scaled(
-        &self,
+        &mut self,
         frame: &DecodedFrame,
         output_width: u32,
         output_height: u32,
@@ -156,21 +197,16 @@ impl VideoConverter {
     }
 
     pub(crate) fn create_composition_target(
-        &self,
+        &mut self,
         width: u32,
         height: u32,
     ) -> Result<ID3D11Texture2D, String> {
-        self.create_texture(
-            width,
-            height,
-            DXGI_FORMAT_B8G8R8A8_UNORM,
-            (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
-        )
+        self.take_bgra_texture(width, height)
     }
 
     pub(crate) fn bgra_to_nv12(
-        &self,
-        input: &ID3D11Texture2D,
+        &mut self,
+        input: ID3D11Texture2D,
         width: u32,
         height: u32,
     ) -> Result<ID3D11Texture2D, String> {
@@ -180,8 +216,35 @@ impl VideoConverter {
             DXGI_FORMAT_NV12,
             D3D11_BIND_RENDER_TARGET.0 as u32,
         )?;
-        self.blit(input, 0, width, height, &output, width, height)?;
+        let result = self.blit(&input, 0, width, height, &output, width, height);
+        self.recycle_bgra_texture(input, width, height);
+        result?;
         Ok(output)
+    }
+
+    fn take_bgra_texture(&mut self, width: u32, height: u32) -> Result<ID3D11Texture2D, String> {
+        let key = (width, height);
+        if let Some(texture) = self.reusable_bgra.get_mut(&key).and_then(|pool| pool.pop()) {
+            return Ok(texture);
+        }
+        self.create_texture(
+            width,
+            height,
+            DXGI_FORMAT_B8G8R8A8_UNORM,
+            (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+        )
+    }
+
+    pub(crate) fn recycle_bgra_texture(
+        &mut self,
+        texture: ID3D11Texture2D,
+        width: u32,
+        height: u32,
+    ) {
+        let pool = self.reusable_bgra.entry((width, height)).or_default();
+        if pool.len() < MAX_REUSABLE_BGRA_PER_SIZE {
+            pool.push(texture);
+        }
     }
 
     pub(crate) fn unwrap_for_wgpu(
@@ -241,7 +304,7 @@ impl VideoConverter {
 
     #[allow(clippy::too_many_arguments)]
     fn blit(
-        &self,
+        &mut self,
         input: &ID3D11Texture2D,
         input_subresource: u32,
         input_width: u32,
@@ -266,10 +329,28 @@ impl VideoConverter {
             OutputHeight: output_height,
             Usage: D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
         };
-        let enumerator = unsafe { self.video_device.CreateVideoProcessorEnumerator(&content) }
-            .map_err(|error| format!("当前显卡不支持所需视频尺寸或格式: {error}"))?;
-        let processor = unsafe { self.video_device.CreateVideoProcessor(&enumerator, 0) }
-            .map_err(|error| format!("无法创建显卡颜色转换器: {error}"))?;
+        let key = VideoProcessorKey {
+            input_width,
+            input_height,
+            output_width,
+            output_height,
+        };
+        let (enumerator, processor) = if let Some(state) = self.video_processors.get(&key) {
+            (state.enumerator.clone(), state.processor.clone())
+        } else {
+            let enumerator = unsafe { self.video_device.CreateVideoProcessorEnumerator(&content) }
+                .map_err(|error| format!("当前显卡不支持所需视频尺寸或格式: {error}"))?;
+            let processor = unsafe { self.video_device.CreateVideoProcessor(&enumerator, 0) }
+                .map_err(|error| format!("无法创建显卡颜色转换器: {error}"))?;
+            self.video_processors.insert(
+                key,
+                VideoProcessorState {
+                    enumerator: enumerator.clone(),
+                    processor: processor.clone(),
+                },
+            );
+            (enumerator, processor)
+        };
 
         let input_resource = input
             .cast::<ID3D11Resource>()

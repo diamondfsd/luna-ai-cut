@@ -154,6 +154,7 @@ fn export_frames(
             let mut source_layers = Vec::with_capacity(layer_inputs.len());
             let mut transient_texture_ids = Vec::new();
             let mut input_leases: Vec<D3d12TextureLease> = Vec::new();
+            let mut input_bgra = Vec::new();
             let mut output_bgra = None;
             let mut output_lease = None;
 
@@ -187,9 +188,10 @@ fn export_frames(
                             else {
                                 continue;
                             };
-                            let bgra = converter.decode_to_bgra(&decoded)?;
+                            let bgra = converter.decode_to_bgra_for_export(&decoded)?;
                             let lease = converter.unwrap_for_wgpu(&bgra)?;
                             let resource = lease.resource().clone();
+                            input_bgra.push((bgra, decoded.width, decoded.height));
                             input_leases.push(lease);
                             let texture = unsafe {
                                 compositor.wrap_external_dx12_texture(
@@ -303,7 +305,13 @@ fn export_frames(
             for texture_id in transient_texture_ids {
                 compositor.unregister_external_texture(texture_id);
             }
-            let cleanup_result = compositor.wait_for_gpu();
+            // render_into_external_texture already waits for its submission on success.
+            // Only wait here when the render body failed and may have left work in flight.
+            let cleanup_result = if render_result.is_err() {
+                compositor.wait_for_gpu()
+            } else {
+                Ok(())
+            };
             let mut sync_error = None;
             for lease in input_leases {
                 if let Err(error) = lease.finish() {
@@ -327,10 +335,13 @@ fn export_frames(
             }
             let output_bgra = output_bgra.ok_or_else(|| "合成画面没有生成".to_string())?;
             let nv12 = converter.bgra_to_nv12(
-                &output_bgra,
+                output_bgra,
                 composition.canvas.width,
                 composition.canvas.height,
             )?;
+            for (texture, width, height) in input_bgra {
+                converter.recycle_bgra_texture(texture, width, height);
+            }
             writer.append(&nv12, frame_index)?;
 
             if let Some(state) = task {

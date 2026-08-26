@@ -158,9 +158,9 @@ impl Compositor {
         let result = self
             .render_impl(canvas_width, canvas_height, layers, false, false)
             .map(|_| ());
-        if let Some((texture, _, _)) = self.output_texture.take() {
+        if let Some((_texture, _, _)) = self.output_texture.take() {
             #[cfg(target_os = "windows")]
-            texture.destroy();
+            _texture.destroy();
         }
         self.output_texture = previous;
         result
@@ -213,14 +213,14 @@ impl Compositor {
     /// 移除逐帧外部纹理。
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn unregister_external_texture(&mut self, texture_id: u32) {
-        if let Some(entry) = self.textures.remove(&texture_id) {
+        if let Some(_entry) = self.textures.remove(&texture_id) {
             #[cfg(target_os = "windows")]
-            entry.texture.destroy();
+            _entry.texture.destroy();
         }
     }
 
     /// 等待 GPU 完成所有已提交的工作（用于跨 API 同步）。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "windows")]
     pub(crate) fn wait_for_gpu(&self) -> Result<(), String> {
         self.device
             .poll(wgpu::PollType::Wait {

@@ -77,6 +77,8 @@ fn write_response<W: Write>(writer: &mut W, response: &WorkerResponse) -> Result
 fn expected_output_bytes(backend: &str, output_size: usize) -> usize {
     if backend == "dinov2-small" || backend == "sface" || backend == "ultraface-boxes" {
         output_size * std::mem::size_of::<f32>()
+    } else if backend == "relic2-cpc" {
+        output_size * std::mem::size_of::<f32>()
     } else if backend == "yolo26-instances" {
         output_size * output_size * std::mem::size_of::<u16>()
     } else {
@@ -185,7 +187,8 @@ fn run() -> Result<(), String> {
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
         }
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
-        "ultraface" | "ultraface-boxes" | "eye-state" | "dinov2-small" | "sface" => {
+        "ultraface" | "ultraface-boxes" | "eye-state" | "dinov2-small" | "sface"
+        | "relic2-cpc" => {
             let mut session =
                 specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
@@ -232,5 +235,10 @@ mod tests {
         let responses = String::from_utf8(output).unwrap();
         assert!(responses.contains("\"kind\":\"pong\",\"id\":\"ready\""));
         assert!(responses.contains("\"kind\":\"pong\",\"id\":\"stop\""));
+    }
+
+    #[test]
+    fn relic_cpc_uses_one_little_endian_float_output() {
+        assert_eq!(expected_output_bytes("relic2-cpc", 1), std::mem::size_of::<f32>());
     }
 }

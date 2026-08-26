@@ -68,7 +68,9 @@ function defaultSettings(): AppSettings {
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
     cameraPreviewQuality: 'proxy',
-    experimentalGpuPreview: false,
+    // Try the faster preview path by default. PreviewStage disables it and
+    // persists the fallback when the current device cannot present it.
+    experimentalGpuPreview: true,
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
     localMediaShareFiles: [],

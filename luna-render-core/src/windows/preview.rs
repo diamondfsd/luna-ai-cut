@@ -355,7 +355,13 @@ impl NativePreviewRuntime {
         for id in texture_ids {
             self.compositor.unregister_external_texture(id);
         }
-        let cleanup_result = self.compositor.wait_for_gpu();
+        // render_into_present_texture already waits for its submission on success.
+        // Keep the extra wait only for an error path that may have pending work.
+        let cleanup_result = if result.is_err() {
+            self.compositor.wait_for_gpu()
+        } else {
+            Ok(())
+        };
         let mut sync_error = None;
         for lease in leases {
             if let Err(error) = lease.finish() {

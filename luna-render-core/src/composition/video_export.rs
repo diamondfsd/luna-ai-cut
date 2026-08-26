@@ -173,11 +173,7 @@ impl Task for ExportCompositionVideoTask {
                 .store(total_frames, std::sync::atomic::Ordering::SeqCst);
         }
 
-        let encoder = if self.input.hardware.unwrap_or(true) {
-            best_hardware_encoder(&self.input.ffmpeg_path).unwrap_or_else(|| "libx264".to_string())
-        } else {
-            "libx264".to_string()
-        };
+        let hardware_requested = self.input.hardware.unwrap_or(true);
         let preset = self
             .input
             .quality_preset
@@ -248,8 +244,8 @@ impl Task for ExportCompositionVideoTask {
         }
 
         #[cfg(target_os = "windows")]
-        if self.input.hardware.unwrap_or(true)
-            && std::env::var_os("LUNA_WINDOWS_ZERO_COPY_EXPORT").is_some()
+        if hardware_requested
+            && std::env::var_os("LUNA_DISABLE_WINDOWS_ZERO_COPY_EXPORT").is_none()
         {
             let bitrate_bps = bitrate
                 .trim_end_matches(['k', 'K'])
@@ -257,7 +253,7 @@ impl Task for ExportCompositionVideoTask {
                 .unwrap_or(50_000)
                 .saturating_mul(1_000);
             log_write(&format!(
-                "[Export:WinGPU] start output={} frames={} fps={} bitrate={}",
+                "[Export:WinGPU] automatic attempt output={} frames={} fps={} bitrate={}",
                 self.input.output_path, total_frames, fps, bitrate_bps,
             ));
             let windows_result = crate::lock_export(|compositor| {
@@ -307,6 +303,14 @@ impl Task for ExportCompositionVideoTask {
                 }
             }
         }
+
+        // Windows GPU export is attempted automatically above. Only detect the
+        // FFmpeg encoder when the compatibility path is actually needed.
+        let encoder = if hardware_requested {
+            best_hardware_encoder(&self.input.ffmpeg_path).unwrap_or_else(|| "libx264".to_string())
+        } else {
+            "libx264".to_string()
+        };
 
         let mut args = vec![
             "-y".to_string(),

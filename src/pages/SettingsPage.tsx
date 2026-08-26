@@ -77,7 +77,6 @@ export function SettingsPage({
   const [logDir, setLogDir] = useState('')
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
-  const [gpuPreviewConfirmOpen, setGpuPreviewConfirmOpen] = useState(false)
   const [organizeDownloadsDialogOpen, setOrganizeDownloadsDialogOpen] = useState(false)
   const [organizingDownloads, setOrganizingDownloads] = useState(false)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, setSettings)
@@ -330,21 +329,18 @@ export function SettingsPage({
         </section>
 
         <section className="settings-group">
-          <h2 className="settings-group-title">实验性功能</h2>
+          <h2 className="settings-group-title">预览</h2>
           <div className="settings-card">
             <article className="settings-row">
               <div className="settings-row-copy">
-                <span>GPU 预览加速</span>
-                <em>减少预览和时间跳转时的等待；部分设备上可能存在显示兼容问题</em>
+                <span>加速预览</span>
+                <em>应用会自动选择兼容的预览方式；出现问题时会自动切回普通预览</em>
               </div>
               <Switch
-                checked={settings?.experimentalGpuPreview ?? false}
+                checked={settings?.experimentalGpuPreview ?? true}
                 disabled={!settings}
-                ariaLabel="GPU 预览加速"
-                onCheckedChange={(enabled) => {
-                  if (enabled) setGpuPreviewConfirmOpen(true)
-                  else saveGpuPreviewSetting(false)
-                }}
+                ariaLabel="加速预览"
+                onCheckedChange={saveGpuPreviewSetting}
               />
             </article>
           </div>
@@ -431,21 +427,6 @@ export function SettingsPage({
         onDefaultChange={handleDefaultWatermarkChange}
       />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
-      <Dialog
-        open={gpuPreviewConfirmOpen}
-        onOpenChange={setGpuPreviewConfirmOpen}
-        title="开启 GPU 预览加速？"
-        description="部分 Windows 设备可能出现黑屏、无法预览或画面异常。如果遇到这些情况，请返回设置关闭 GPU 预览加速。"
-        footer={(
-          <>
-            <Button variant="secondary" onClick={() => setGpuPreviewConfirmOpen(false)}>取消</Button>
-            <Button variant="primary" onClick={() => {
-              setGpuPreviewConfirmOpen(false)
-              saveGpuPreviewSetting(true)
-            }}>仍然开启</Button>
-          </>
-        )}
-      />
       <Dialog
         open={organizeDownloadsDialogOpen}
         onOpenChange={(open) => {
