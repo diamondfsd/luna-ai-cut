@@ -246,7 +246,7 @@ export function NativeGpuVideoPreview({
         const time = playbackElement
           ? compositionTimeFor(playbackElement, playback.primaryLayer)
           : playback.time
-        const command = playback.playing
+        const command = visible && playback.playing
           ? api.playNativePreview(sessionId, time)
           : api.pauseNativePreview(sessionId, time)
         return api.setNativePreviewVisible(sessionId, visible)
@@ -287,6 +287,9 @@ export function NativeGpuVideoPreview({
   }, [Boolean(initialBounds)])
 
   useEffect(() => {
+    const playbackElement = playbackElementRef.current
+    if (!active) playbackElement?.pause()
+
     const sessionId = sessionRef.current
     const api = nativePreviewApi()
     const canvas = canvasRef.current
@@ -297,12 +300,29 @@ export function NativeGpuVideoPreview({
     occludedRef.current = occluded
     surfaceVisibleRef.current = visible
     if (!visible) {
-      void api.setNativePreviewVisible(sessionId, false).catch(() => undefined)
+      const time = playbackElement
+        ? compositionTimeFor(playbackElement, playbackRef.current.primaryLayer)
+        : playbackRef.current.time
+      // Pause before hiding so an inactive workspace cannot keep decoding frames.
+      void api.pauseNativePreview(sessionId, time)
+        .catch(() => undefined)
+        .then(() => api.setNativePreviewVisible(sessionId, false))
+        .catch(() => undefined)
       return
     }
     surfaceBoundsRef.current = bounds
     void api.setNativePreviewBounds(sessionId, bounds!)
       .then(() => api.setNativePreviewVisible(sessionId, true))
+      .then(() => {
+        if (!playbackRef.current.playing) return
+        const currentPlaybackElement = playbackElementRef.current
+        const time = currentPlaybackElement
+          ? compositionTimeFor(currentPlaybackElement, playbackRef.current.primaryLayer)
+          : playbackRef.current.time
+        return api.playNativePreview(sessionId, time).then(() => (
+          currentPlaybackElement?.play().catch(() => undefined)
+        ))
+      })
       .catch((error: unknown) => {
         if (sessionRef.current === sessionId) {
           callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
