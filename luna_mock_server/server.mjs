@@ -5,7 +5,7 @@ import { createServer as createHttpServer } from 'node:http'
 import { createServer as createTcpServer } from 'node:net'
 import path from 'node:path'
 import { createHttpAuthGate } from './httpAuthGate.mjs'
-const DEVICE_CONFIG = JSON.parse(readFileSync(new URL('../electron/deviceConfigs/luna-ultra.json', import.meta.url), 'utf-8'))
+const DEVICE_CONFIG = JSON.parse(readFileSync(new URL('../electron/devices/definitions/configs/luna-ultra.json', import.meta.url), 'utf-8'))
 const STORAGE_PATHS = DEVICE_CONFIG.storages.map((s) => s.path)
 const CAMERA_PATH = STORAGE_PATHS.find((p) => DEVICE_CONFIG.storages[STORAGE_PATHS.indexOf(p)].default) || STORAGE_PATHS[0] || '/'
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'dng', 'insp', 'webp'])
