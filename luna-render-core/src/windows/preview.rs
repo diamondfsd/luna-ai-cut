@@ -63,8 +63,10 @@ impl NativePreviewRuntime {
     ) -> Result<Self, String> {
         let com = ComGuard::start()?;
         let media_foundation = MediaFoundationGuard::start()?;
-        let _ = log_path;
-        let compositor = crate::new_shared_compositor()?;
+        // Keep the native preview on its own D3D12 device. Sharing the renderer's
+        // wgpu device with D3D11On12 video processing can invalidate wgpu resources
+        // on Intel drivers while the first preview frame is being submitted.
+        let compositor = Compositor::new(log_path)?;
         let (device, queue) = compositor.dx12_device_and_queue()?;
         let interop = InteropDevice::new(&device, &queue)?;
         let converter = VideoConverter::new(
@@ -99,11 +101,50 @@ impl NativePreviewRuntime {
         let previous_max_side = self.surface.width.max(self.surface.height);
         self.surface.set_bounds(&self.compositor, bounds)?;
         if self.surface.width.max(self.surface.height) != previous_max_side {
-            self.frame_cache.clear();
+            self.clear_frame_cache();
         }
         self.surface
             .set_visible(self.desired_visible && self.has_presented);
         Ok(())
+    }
+
+    fn clear_frame_cache(&mut self) {
+        let cached = std::mem::take(&mut self.frame_cache);
+        for frames in cached.into_values() {
+            for frame in frames {
+                self.converter
+                    .recycle_bgra_texture(frame.texture, frame.width, frame.height);
+            }
+        }
+    }
+
+    fn retain_active_resources(&mut self, active: &HashSet<&str>) {
+        let stale_frame_keys = self
+            .frame_cache
+            .keys()
+            .filter(|key| !active.iter().any(|path| key.starts_with(*path)))
+            .cloned()
+            .collect::<Vec<_>>();
+        for key in stale_frame_keys {
+            if let Some(frames) = self.frame_cache.remove(&key) {
+                for frame in frames {
+                    self.converter
+                        .recycle_bgra_texture(frame.texture, frame.width, frame.height);
+                }
+            }
+        }
+
+        let stale_static_paths = self
+            .static_textures
+            .keys()
+            .filter(|path| !active.contains(path.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        for path in stale_static_paths {
+            if let Some((texture_id, _, _)) = self.static_textures.remove(&path) {
+                let _ = self.compositor.release_texture(texture_id);
+            }
+        }
     }
 
     pub(crate) fn set_visible(&mut self, visible: bool) {
@@ -128,14 +169,13 @@ impl NativePreviewRuntime {
             .map(|layer| layer.source.path.as_str())
             .collect::<std::collections::HashSet<_>>();
         if active != previous_active {
-            self.frame_cache.clear();
+            self.clear_frame_cache();
             self.decoders.clear();
         } else {
             self.decoders
                 .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
-            self.frame_cache
-                .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
         }
+        self.retain_active_resources(&active);
         self.composition = composition;
     }
 
@@ -172,7 +212,14 @@ impl NativePreviewRuntime {
         let decoder = match self.decoders.entry(key.to_string()) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(VideoDecoder::open(path, &self._interop.device_manager)?)
+                // Keep preview decoding on the stable system-memory MF output path.
+                // Passing decoder-owned D3D11On12 surfaces through the video processor
+                // and wgpu can remove the device on Intel drivers during longer clips.
+                entry.insert(VideoDecoder::open_system_memory(
+                    path,
+                    &self._interop.d3d11_device,
+                    &self._interop.d3d11_context,
+                )?)
             }
         };
         let rotation = decoder.info().rotation_degrees;
@@ -184,21 +231,31 @@ impl NativePreviewRuntime {
             .converter
             .decode_to_bgra_scaled(&frame, width, height)?;
         let frame_time = frame.timestamp_100ns as f64 / 10_000_000.0;
-        let frames = self.frame_cache.entry(key.to_string()).or_default();
-        frames.push_back(CachedVideoFrame {
-            time: frame_time,
-            texture: texture.clone(),
-            width,
-            height,
-        });
-        while frames.len() > 3
-            || frames
-                .iter()
-                .map(|frame| frame.width as u64 * frame.height as u64 * 4)
-                .sum::<u64>()
-                > MAX_FRAME_CACHE_BYTES
-        {
-            frames.pop_front();
+        let evicted = {
+            let frames = self.frame_cache.entry(key.to_string()).or_default();
+            frames.push_back(CachedVideoFrame {
+                time: frame_time,
+                texture: texture.clone(),
+                width,
+                height,
+            });
+            let mut evicted = Vec::new();
+            while frames.len() > 3
+                || frames
+                    .iter()
+                    .map(|frame| frame.width as u64 * frame.height as u64 * 4)
+                    .sum::<u64>()
+                    > MAX_FRAME_CACHE_BYTES
+            {
+                if let Some(frame) = frames.pop_front() {
+                    evicted.push(frame);
+                }
+            }
+            evicted
+        };
+        for frame in evicted {
+            self.converter
+                .recycle_bgra_texture(frame.texture, frame.width, frame.height);
         }
         Ok(Some((texture, width, height, rotation, false)))
     }

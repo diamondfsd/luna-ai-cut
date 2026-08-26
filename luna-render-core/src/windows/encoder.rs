@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use windows::core::{Interface, HSTRING};
+use windows::core::{Interface, GUID, HSTRING};
 use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFDXGIDeviceManager, IMFMediaType, IMFSinkWriter, IMFSinkWriterEx,
@@ -12,11 +12,19 @@ use windows::Win32::Media::MediaFoundation::{
     MF_SINK_WRITER_D3D_MANAGER, MF_SINK_WRITER_DISABLE_THROTTLING,
 };
 
+// This attribute was added to the Windows 11 25H2 SDK, but is not exposed by
+// the windows crate version used here. Keeping the GUID local lets older SDKs
+// build while newer Windows versions can reject a software MFT immediately.
+const MF_READWRITE_USE_ONLY_HARDWARE_TRANSFORMS: GUID = GUID::from_u128(
+    0xf9074427bf8b4f69bbaf524969056fb6,
+);
+
 pub(crate) struct VideoEncoder {
     writer: Option<IMFSinkWriter>,
     stream_index: u32,
     output_path: PathBuf,
     frame_duration_100ns: i64,
+    hardware_verified: bool,
     finished: bool,
 }
 
@@ -69,18 +77,18 @@ impl VideoEncoder {
             .map_err(|error| format!("硬件编码器不接受显卡 NV12 画面: {error}"))?;
         unsafe { writer.BeginWriting() }
             .map_err(|error| format!("无法启动 Windows 硬件编码器: {error}"))?;
-        verify_hardware_encoder(&writer, stream_index)?;
 
         Ok(Self {
             writer: Some(writer),
             stream_index,
             output_path: output_path.to_path_buf(),
             frame_duration_100ns: (10_000_000.0 / fps.max(1.0)).round() as i64,
+            hardware_verified: false,
             finished: false,
         })
     }
 
-    pub(crate) fn append(&self, texture: &ID3D11Texture2D, frame_index: u64) -> Result<(), String> {
+    pub(crate) fn append(&mut self, texture: &ID3D11Texture2D, frame_index: u64) -> Result<(), String> {
         let buffer = unsafe { MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, texture, 0, false) }
             .map_err(|error| format!("无法创建硬件编码画面: {error}"))?;
         let sample =
@@ -99,7 +107,12 @@ impl VideoEncoder {
             .as_ref()
             .ok_or_else(|| "视频编码器已经关闭".to_string())?;
         unsafe { writer.WriteSample(self.stream_index, &sample) }
-            .map_err(|error| format!("Windows 硬件编码失败: {error}"))
+            .map_err(|error| format!("Windows 硬件编码失败: {error}"))?;
+        if !self.hardware_verified {
+            verify_hardware_encoder(writer, self.stream_index)?;
+            self.hardware_verified = true;
+        }
+        Ok(())
     }
 
     pub(crate) fn finish(mut self) -> Result<(), String> {
@@ -135,6 +148,7 @@ fn create_writer_attributes(
         unsafe {
             attributes.SetUnknown(&MF_SINK_WRITER_D3D_MANAGER, device_manager)?;
             attributes.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1)?;
+            attributes.SetUINT32(&MF_READWRITE_USE_ONLY_HARDWARE_TRANSFORMS, 1)?;
             attributes.SetUINT32(&MF_SINK_WRITER_DISABLE_THROTTLING, 1)?;
         }
         Ok(())
@@ -191,7 +205,20 @@ fn verify_hardware_encoder(writer: &IMFSinkWriter, stream_index: u32) -> Result<
         let Some(transform) = transform else {
             continue;
         };
-        if transform_has_hardware_url(&transform) {
+        if category != windows::Win32::Media::MediaFoundation::MFT_CATEGORY_VIDEO_ENCODER {
+            crate::logging::write(&format!(
+                "[Export:WinGPU] encoder-transform index={} category={:?} skipped=non-encoder",
+                transform_index, category,
+            ));
+            continue;
+        }
+        let hardware_url = transform_has_hardware_url(&transform);
+        let transform_clsid = transform_clsid(&transform);
+        crate::logging::write(&format!(
+            "[Export:WinGPU] encoder-transform index={} category={:?} clsid={:?} hardware_url={}",
+            transform_index, category, transform_clsid, hardware_url,
+        ));
+        if hardware_url {
             return Ok(());
         }
     }
@@ -206,6 +233,15 @@ fn transform_has_hardware_url(transform: &IMFTransform) -> bool {
         attributes
             .GetStringLength(&MFT_ENUM_HARDWARE_URL_Attribute)
             .is_ok_and(|length| length > 0)
+    }
+}
+
+fn transform_clsid(transform: &IMFTransform) -> Option<GUID> {
+    let attributes = unsafe { transform.GetAttributes().ok()? };
+    unsafe {
+        attributes
+            .GetGUID(&windows::Win32::Media::MediaFoundation::MFT_TRANSFORM_CLSID_Attribute)
+            .ok()
     }
 }
 

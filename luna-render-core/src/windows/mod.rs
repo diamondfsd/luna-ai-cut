@@ -66,6 +66,7 @@ pub(crate) fn export_video(
     bitrate: u64,
     include_audio: bool,
     task: Option<&Arc<TaskState>>,
+    system_memory_decode: bool,
 ) -> Result<(), String> {
     let _com = ComGuard::start()?;
     let _mf = MediaFoundationGuard::start()?;
@@ -82,18 +83,30 @@ pub(crate) fn export_video(
         .iter()
         .find(|layer| is_video_source(&layer.source))
     {
-        let mut decoder = decoder::VideoDecoder::open(&layer.source.path, &interop.device_manager)?;
+        let mut decoder = if system_memory_decode {
+            decoder::VideoDecoder::open_system_memory(
+                &layer.source.path,
+                &interop.d3d11_device,
+                &interop.d3d11_context,
+            )?
+        } else {
+            decoder::VideoDecoder::open(&layer.source.path, &interop.device_manager)?
+        };
         let frame = decoder
             .read_frame_at(0)?
             .ok_or_else(|| "视频中没有可解码的画面".to_string())?;
-        decoder::validate_d3d12_interop(&frame, &interop.d3d11on12_device, &d3d12_queue)?;
         crate::logging::write(&format!(
-            "[Export:WinGPU] decoder=media-foundation output={} size={}x{} rotation={} subresource={} sharing=d3d11on12-unwrap",
+            "[Export:WinGPU] decoder=media-foundation output={} size={}x{} rotation={} subresource={} input={}",
             frame.format.label(),
             frame.width,
             frame.height,
             decoder.info().rotation_degrees,
             frame.subresource_index,
+            if system_memory_decode {
+                "system-memory-upload"
+            } else {
+                "d3d11on12-unwrap"
+            },
         ));
     }
 
@@ -121,5 +134,49 @@ pub(crate) fn export_video(
         &interop,
         &d3d12_device,
         &d3d12_queue,
+        system_memory_decode,
+    )
+}
+
+/// Windows 硬件解码 + GPU 合成 + FFmpeg 硬件编码的兼容路径。
+///
+/// Media Foundation Sink Writer 的 D3D11On12 纹理输入在部分驱动上会触发设备移除，
+/// 因此这里仅把最终合成帧传给已经实际探测可用的硬件编码器。视频解码和合成仍然不走
+/// FFmpeg 软解。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn export_video_with_hardware_encoder(
+    compositor: &mut Compositor,
+    ffmpeg_path: &str,
+    ffprobe_path: &str,
+    output_path: &str,
+    composition: &CompositionInput,
+    fps: f64,
+    total_frames: u64,
+    bitrate: &str,
+    include_audio: bool,
+    encoder: &str,
+    task: Option<&Arc<TaskState>>,
+    system_memory_decode: bool,
+) -> Result<(), String> {
+    let _com = ComGuard::start()?;
+    let _mf = MediaFoundationGuard::start()?;
+    let (d3d12_device, d3d12_queue) = compositor.dx12_device_and_queue()?;
+    let interop = device::InteropDevice::new(&d3d12_device, &d3d12_queue)?;
+    export::run_hardware_encoder(
+        compositor,
+        ffmpeg_path,
+        ffprobe_path,
+        output_path,
+        composition,
+        fps,
+        total_frames,
+        bitrate,
+        include_audio,
+        encoder,
+        task,
+        &interop,
+        &d3d12_device,
+        &d3d12_queue,
+        system_memory_decode,
     )
 }

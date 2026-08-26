@@ -19,7 +19,7 @@ const compilerOptions = {
 }
 const compiled = ts.transpileModule(source, { compilerOptions }).outputText
 const watermarkGeometryCompiled = ts.transpileModule(watermarkGeometrySource, { compilerOptions }).outputText
-const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\n/, '')}`, { compilerOptions }).outputText
+const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\r?\n/, '')}`, { compilerOptions }).outputText
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
 const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText

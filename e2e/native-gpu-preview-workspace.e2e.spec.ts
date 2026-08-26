@@ -16,9 +16,15 @@ test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
   await execFileAsync(ffmpegPath, [
     '-f', 'lavfi',
     '-i', 'testsrc2=size=960x540:rate=30',
+    '-f', 'lavfi',
+    '-i', 'sine=frequency=1000:sample_rate=48000',
     '-t', '3',
+    '-map', '0:v:0',
+    '-map', '1:a:0',
     '-pix_fmt', 'yuv420p',
     '-c:v', 'libx264',
+    '-c:a', 'aac',
+    '-shortest',
     '-movflags', '+faststart',
     '-y',
     videoPath,
@@ -50,7 +56,7 @@ test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
   await lunaApp.page.evaluate(() => {
     window.location.hash = '#/settings'
   })
-  await expect(lunaApp.page.getByRole('switch', { name: 'GPU 预览加速' })).toHaveCount(0)
+  await expect(lunaApp.page.getByRole('switch', { name: '加速预览' })).toBeVisible()
 
   await lunaApp.page.evaluate(() => {
     window.location.hash = '#/workspace'
@@ -61,7 +67,17 @@ test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
   await project.click()
 
   await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas')).toBeVisible({ timeout: 30_000 })
-  await expect(lunaApp.page.locator('canvas.native-gpu-video-preview')).toHaveCount(0)
+  await expect(lunaApp.page.locator('canvas.native-gpu-video-preview')).toBeVisible()
+
+  const playback = lunaApp.page.locator('.ui-video-controls-button')
+  await expect(playback).toHaveAttribute('aria-label', '播放')
+  await playback.click()
+  await expect(playback).toHaveAttribute('aria-label', '暂停')
+  await lunaApp.page.waitForTimeout(300)
+  await playback.click()
+  await expect(playback).toHaveAttribute('aria-label', '播放')
+  await lunaApp.page.waitForTimeout(800)
+  await expect(playback).toHaveAttribute('aria-label', '播放')
 
   await lunaApp.page.getByRole('button', { name: '返回工作台' }).click()
   await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas')).toHaveCount(0)
