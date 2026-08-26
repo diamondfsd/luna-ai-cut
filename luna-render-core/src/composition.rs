@@ -13,7 +13,7 @@ pub use image_export::{
 pub(crate) use mask_texture::{bind_layer_mask_texture, retain_layer_mask_textures};
 #[cfg(target_os = "windows")]
 pub(crate) use timeline::is_video_source;
-pub(crate) use timeline::{composition_layers, mux_primary_audio};
+pub(crate) use timeline::{composition_layers, infer_composition_duration, mux_primary_audio};
 pub use video_export::{export_composition_video_async, ExportCompositionVideoTask};
 
 use std::collections::HashMap;

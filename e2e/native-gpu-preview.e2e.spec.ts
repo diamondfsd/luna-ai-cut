@@ -185,9 +185,10 @@ test('原生 GPU 预览可播放、跳转并呈现画面', async ({ lunaApp }) =
       ...window.getBounds(),
       nativeHandle: process.platform === 'win32'
         ? window.getNativeWindowHandle().readBigUInt64LE(0).toString()
-        : undefined,
+      : undefined,
     }
   })
+  const captureScaleFactor = await lunaApp.page.evaluate(() => Math.max(1, window.devicePixelRatio || 1))
   const outputDir = path.join(lunaApp.temporaryRoot, 'artifacts')
   const capturePath = path.join(outputDir, 'native-gpu-preview-window.png')
   await mkdir(outputDir, { recursive: true })
@@ -439,15 +440,15 @@ test('原生 GPU 预览可播放、跳转并呈现画面', async ({ lunaApp }) =
     { withPreview: resizedCapturePath, withoutPreview: withoutPreviewPath },
   )
   expect(changedRegion.changedPixels).toBeGreaterThan(20_000)
-  expect(changedRegion.width).toBeGreaterThan(300)
-  expect(changedRegion.width).toBeLessThan(440)
-  expect(changedRegion.height).toBeGreaterThan(160)
-  expect(changedRegion.height).toBeLessThan(260)
+  expect(changedRegion.width).toBeGreaterThan(300 * captureScaleFactor)
+  expect(changedRegion.width).toBeLessThan(440 * captureScaleFactor)
+  expect(changedRegion.height).toBeGreaterThan(160 * captureScaleFactor)
+  expect(changedRegion.height).toBeLessThan(260 * captureScaleFactor)
   if (process.platform === 'win32') {
-    expect(changedRegion.x).toBeGreaterThan(240)
-    expect(changedRegion.x).toBeLessThan(320)
-    expect(changedRegion.y).toBeGreaterThan(200)
-    expect(changedRegion.y).toBeLessThan(300)
+    expect(changedRegion.x).toBeGreaterThan(240 * captureScaleFactor)
+    expect(changedRegion.x).toBeLessThan(320 * captureScaleFactor)
+    expect(changedRegion.y).toBeGreaterThan(200 * captureScaleFactor)
+    expect(changedRegion.y).toBeLessThan(300 * captureScaleFactor)
   }
   expect(lunaApp.runtimeErrors).toEqual([])
 })

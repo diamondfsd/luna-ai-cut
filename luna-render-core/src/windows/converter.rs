@@ -9,10 +9,11 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11VideoContext, ID3D11VideoDevice, ID3D11VideoProcessor, ID3D11VideoProcessorEnumerator,
     D3D11_ASYNC_GETDATA_DONOTFLUSH, D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE,
     D3D11_QUERY_DESC, D3D11_QUERY_EVENT, D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC,
-    D3D11_USAGE_DEFAULT, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE, D3D11_VIDEO_PROCESSOR_CONTENT_DESC,
-    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0,
-    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0,
-    D3D11_VIDEO_PROCESSOR_STREAM, D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
+    D3D11_USAGE_DEFAULT, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
+    D3D11_VIDEO_PROCESSOR_CONTENT_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC,
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC,
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_STREAM,
+    D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
     D3D11_VPIV_DIMENSION_TEXTURE2D, D3D11_VPOV_DIMENSION_TEXTURE2D,
 };
 use windows::Win32::Graphics::Direct3D11on12::ID3D11On12Device2;
@@ -156,6 +157,21 @@ impl VideoConverter {
         &mut self,
         frame: &DecodedFrame,
     ) -> Result<ID3D11Texture2D, String> {
+        self.decode_to_bgra_for_export_inner(frame, false)
+    }
+
+    pub(crate) fn decode_to_bgra_for_export_synchronized(
+        &mut self,
+        frame: &DecodedFrame,
+    ) -> Result<ID3D11Texture2D, String> {
+        self.decode_to_bgra_for_export_inner(frame, true)
+    }
+
+    fn decode_to_bgra_for_export_inner(
+        &mut self,
+        frame: &DecodedFrame,
+        wait_for_completion: bool,
+    ) -> Result<ID3D11Texture2D, String> {
         let output = self.take_bgra_texture(frame.width, frame.height)?;
         if let Err(error) = self.blit(
             &frame.texture,
@@ -165,6 +181,7 @@ impl VideoConverter {
             &output,
             frame.width,
             frame.height,
+            wait_for_completion,
         ) {
             self.recycle_bgra_texture(output, frame.width, frame.height);
             return Err(error);
@@ -178,13 +195,8 @@ impl VideoConverter {
         output_width: u32,
         output_height: u32,
     ) -> Result<ID3D11Texture2D, String> {
-        let output = self.create_texture(
-            output_width,
-            output_height,
-            DXGI_FORMAT_B8G8R8A8_UNORM,
-            (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
-        )?;
-        self.blit(
+        let output = self.take_bgra_texture(output_width, output_height)?;
+        if let Err(error) = self.blit(
             &frame.texture,
             frame.array_slice,
             frame.width,
@@ -192,7 +204,11 @@ impl VideoConverter {
             &output,
             output_width,
             output_height,
-        )?;
+            true,
+        ) {
+            self.recycle_bgra_texture(output, output_width, output_height);
+            return Err(error);
+        }
         Ok(output)
     }
 
@@ -216,11 +232,12 @@ impl VideoConverter {
             DXGI_FORMAT_NV12,
             D3D11_BIND_RENDER_TARGET.0 as u32,
         )?;
-        let result = self.blit(&input, 0, width, height, &output, width, height);
+        let result = self.blit(&input, 0, width, height, &output, width, height, false);
         self.recycle_bgra_texture(input, width, height);
         result?;
         Ok(output)
     }
+
 
     fn take_bgra_texture(&mut self, width: u32, height: u32) -> Result<ID3D11Texture2D, String> {
         let key = (width, height);
@@ -312,6 +329,7 @@ impl VideoConverter {
         output: &ID3D11Texture2D,
         output_width: u32,
         output_height: u32,
+        wait_for_completion: bool,
     ) -> Result<(), String> {
         let content = D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
             InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
@@ -413,7 +431,11 @@ impl VideoConverter {
         };
         unsafe { ManuallyDrop::drop(&mut stream.pInputSurface) };
         result.map_err(|error| format!("显卡颜色转换失败: {error}"))?;
-        self.wait_for_blit()
+        if wait_for_completion {
+            self.wait_for_blit()
+        } else {
+            Ok(())
+        }
     }
 
     fn wait_for_blit(&self) -> Result<(), String> {

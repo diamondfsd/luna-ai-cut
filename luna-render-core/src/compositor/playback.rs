@@ -112,6 +112,7 @@ impl Compositor {
         ffprobe: &str,
         file_path: &str,
         video_time: f64,
+        decode_max_side: u32,
         fps: Option<f64>,
     ) -> Result<Option<(Vec<u8>, u32, u32)>, String> {
         // ── 已标记结束的视频 → 直接跳过 ──
@@ -146,7 +147,14 @@ impl Compositor {
                         video_time,
                     );
                     self.remove_video_decoder(file_path);
-                    return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time, fps);
+                    return self.read_video_frame(
+                        ffmpeg,
+                        ffprobe,
+                        file_path,
+                        video_time,
+                        decode_max_side,
+                        fps,
+                    );
                 }
             }
 
@@ -164,7 +172,14 @@ impl Compositor {
                 } else {
                     log!("read_video_frame [{}] pipe EOF, restarting", file_path);
                     self.remove_video_decoder(file_path);
-                    return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time, fps);
+                    return self.read_video_frame(
+                        ffmpeg,
+                        ffprobe,
+                        file_path,
+                        video_time,
+                        decode_max_side,
+                        fps,
+                    );
                 }
             }
             dec.current_time = video_time;
@@ -174,8 +189,9 @@ impl Compositor {
         // ── 首次或换文件：spawn 持久 pipe ──
         let (vw, vh) = self.probe_video(ffprobe, file_path)?;
         let max_edge = vw.max(vh);
-        let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
-            let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
+        let decode_max_side = decode_max_side.max(1);
+        let (dw, dh) = if max_edge > decode_max_side {
+            let s = decode_max_side as f64 / max_edge as f64;
             (
                 (vw as f64 * s).round().max(1.0) as u32,
                 (vh as f64 * s).round().max(1.0) as u32,
@@ -282,7 +298,7 @@ impl Compositor {
         ffmpeg: &str,
         ffprobe: &str,
         layer: &PreviewLayerInput,
-        _decode_max_side: u32,
+        decode_max_side: u32,
         fps: Option<f64>,
     ) -> Result<Option<u32>, String> {
         // ── 有 pipe 解码器：直接读下一帧（顺序读取最可靠） ──
@@ -298,7 +314,14 @@ impl Compositor {
             if (layer.video_time - current_time).abs() < 0.001 {
                 return Ok(Some(texture_id));
             }
-            match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)? {
+            match self.read_video_frame(
+                ffmpeg,
+                ffprobe,
+                &layer.file_path,
+                layer.video_time,
+                decode_max_side,
+                fps,
+            )? {
                 Some((rgba, dw, dh)) => {
                     // seek 跳转时 read_video_frame 内部可能已释放旧纹理（remove_video_decoder → release_texture）
                     if self.textures.contains_key(&texture_id) {
@@ -317,7 +340,14 @@ impl Compositor {
         }
 
         // ── 无 pipe 解码器：优先创建 pipe + 读第1帧 ──
-        match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)? {
+        match self.read_video_frame(
+            ffmpeg,
+            ffprobe,
+            &layer.file_path,
+            layer.video_time,
+            decode_max_side,
+            fps,
+        )? {
             Some((rgba, dw, dh)) => {
                 let texture_id = self.load_texture(&rgba, dw, dh)?;
                 if let Some(decoder) = self.video_decoders.get_mut(&layer.file_path) {

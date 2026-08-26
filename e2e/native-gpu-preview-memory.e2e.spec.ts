@@ -71,20 +71,34 @@ test('Windows GPU 预览切换素材和暂停时内存保持有界', async ({ lu
   const memorySamples: Array<{ label: string; privateKb: number; workingSetKb: number }> = []
   const sampleMemory = async (label: string) => {
     const memory = await lunaApp.app.evaluate(({ app }) => {
-      const metrics = app.getAppMetrics()
-      return metrics.reduce((total, metric) => ({
-        privateKb: total.privateKb + metric.memory.privateBytes,
-        workingSetKb: total.workingSetKb + metric.memory.workingSetSize,
-      }), { privateKb: 0, workingSetKb: 0 })
+      const processes = app.getAppMetrics().map((metric) => ({
+        pid: metric.pid,
+        type: metric.type,
+        privateKb: metric.memory.privateBytes,
+        workingSetKb: metric.memory.workingSetSize,
+      }))
+      return {
+        privateKb: processes.reduce((total, process) => total + process.privateKb, 0),
+        workingSetKb: processes.reduce((total, process) => total + process.workingSetKb, 0),
+        processes,
+      }
     })
-    memorySamples.push({ label, ...memory })
+    console.log(`GPU preview memory sample ${label}: ${JSON.stringify(memory)}`)
+    memorySamples.push({ label, privateKb: memory.privateKb, workingSetKb: memory.workingSetKb })
   }
 
   await playback.click()
   await lunaApp.page.waitForTimeout(800)
   await playback.click()
+  await thumbs.nth(1).click()
+  await expect(thumbs.nth(1)).toHaveClass(/active/)
+  await playback.click()
+  await lunaApp.page.waitForTimeout(500)
+  await playback.click()
+  await thumbs.nth(0).click()
+  await expect(thumbs.nth(0)).toHaveClass(/active/)
   await expect.poll(() => lunaApp.page.evaluate(() => performance.now())).toBeGreaterThan(0)
-  await sampleMemory('warm-a')
+  await sampleMemory('warm-both')
 
   const cycleCount = Number.parseInt(process.env.LUNA_GPU_PREVIEW_CYCLES ?? '8', 10)
   for (let cycle = 0; cycle < cycleCount; cycle += 1) {

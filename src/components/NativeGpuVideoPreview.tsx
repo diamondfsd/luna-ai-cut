@@ -123,6 +123,7 @@ export function NativeGpuVideoPreview({
   const compositionRef = useRef<CompositionInput | null>(null)
   const compositionUpdateRef = useRef(0)
   const seekUpdateRef = useRef(0)
+  const playbackRevisionRef = useRef(0)
   const callbackRef = useRef({ onFallback, onRender, onVideoElement })
   const playbackRef = useRef({ playing, time, primaryLayer: layers.find((layer) => layer.isVideo) })
   const [initialBounds, setInitialBounds] = useState<NativePreviewBounds | null>(null)
@@ -395,6 +396,9 @@ export function NativeGpuVideoPreview({
     playbackElement.preload = 'metadata'
     playbackElement.muted = false
     const startTime = playbackRef.current.primaryLayer?.videoTime ?? 0
+    const handlePlaybackStateChange = () => {
+      playbackRevisionRef.current += 1
+    }
     const handleLoaded = () => {
       playbackElement.currentTime = startTime
       callbackRef.current.onVideoElement?.(playbackElement)
@@ -405,17 +409,19 @@ export function NativeGpuVideoPreview({
       const api = nativePreviewApi()
       if (sessionId === null || !api) return
       const updateId = ++seekUpdateRef.current
+      const playbackRevision = playbackRevisionRef.current
       const isActive = () => (
         sessionRef.current === sessionId
         && playbackElementRef.current === playbackElement
         && seekUpdateRef.current === updateId
+        && playbackRevisionRef.current === playbackRevision
       )
       void (async () => {
         try {
           const before = await api.getNativePreviewSessionStats(sessionId)
           if (!isActive()) return
           const time = compositionTimeFor(playbackElement, playbackRef.current.primaryLayer)
-          const command = playbackRef.current.playing
+          const command = !playbackElement.paused && !playbackElement.ended
             ? api.playNativePreview(sessionId, time)
             : api.seekNativePreview(sessionId, time)
                 .then(() => api.pauseNativePreview(sessionId, time))
@@ -432,6 +438,8 @@ export function NativeGpuVideoPreview({
       })()
     }
     playbackElement.addEventListener('loadedmetadata', handleLoaded)
+    playbackElement.addEventListener('play', handlePlaybackStateChange)
+    playbackElement.addEventListener('pause', handlePlaybackStateChange)
     playbackElement.addEventListener('seeked', handleSeeked)
     playbackElement.load()
     playbackElementRef.current = playbackElement
@@ -439,6 +447,8 @@ export function NativeGpuVideoPreview({
       seekUpdateRef.current += 1
       callbackRef.current.onVideoElement?.(null)
       playbackElement.removeEventListener('loadedmetadata', handleLoaded)
+      playbackElement.removeEventListener('play', handlePlaybackStateChange)
+      playbackElement.removeEventListener('pause', handlePlaybackStateChange)
       playbackElement.removeEventListener('seeked', handleSeeked)
       playbackElement.pause()
       playbackElement.removeAttribute('src')

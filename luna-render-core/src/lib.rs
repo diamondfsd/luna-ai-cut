@@ -96,12 +96,28 @@ fn ensure_export_compositor() -> napi::Result<()> {
             return Ok(());
         }
     }
+    // The export path creates D3D11On12 and Media Foundation objects of its own.
+    // Sharing the wgpu/D3D12 device with the live native preview lets two D3D11On12
+    // devices operate on the same queue concurrently, which can trigger device
+    // removal on Windows drivers (observed as 0x887A0005 on Intel GPUs).
+    #[cfg(target_os = "windows")]
+    let replacement = {
+        let log_path = COMPOSITOR_LOG_PATH
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        Compositor::new(log_path.as_deref()).map_err(napi::Error::from_reason)?
+    };
+    #[cfg(not(target_os = "windows"))]
     let replacement = new_shared_compositor().map_err(napi::Error::from_reason)?;
     let mut guard = COMPOSITOR_EXPORT
         .lock()
         .map_err(|e| napi::Error::from_reason(format!("lock export compositor: {}", e)))?;
     if guard.is_none() {
         *guard = Some(replacement);
+        #[cfg(target_os = "windows")]
+        log!("init_export_compositor OK shared_gpu=false");
+        #[cfg(not(target_os = "windows"))]
         log!("init_export_compositor OK shared_gpu=true");
     }
     Ok(())
@@ -119,13 +135,20 @@ pub(crate) fn new_shared_compositor() -> Result<Compositor, String> {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn reset_export_compositor() -> napi::Result<()> {
-    let replacement = new_shared_compositor()
+    // A device-removal event invalidates every compositor that shares the old
+    // wgpu device. Reusing the preview compositor here would only copy the
+    // invalid handles into the fallback path.
+    let log_path = COMPOSITOR_LOG_PATH
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    let replacement = Compositor::new(log_path.as_deref())
         .map_err(|e| napi::Error::from_reason(format!("reinitialize export compositor: {}", e)))?;
     let mut guard = COMPOSITOR_EXPORT
         .lock()
         .map_err(|e| napi::Error::from_reason(format!("lock export compositor: {}", e)))?;
     *guard = Some(replacement);
-    log!("reset_export_compositor OK after Windows GPU fallback");
+    log!("reset_export_compositor OK after Windows GPU fallback isolated_gpu=true");
     Ok(())
 }
 

@@ -52,6 +52,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
+  const playbackIntentRef = useRef(false)
   const wasPlayingBeforeSeekRef = useRef(false) // 记录 seek 前是否在播放
   const shouldResumePlaybackRef = useRef(false) // 记录是否需要在渲染完成后恢复播放
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
@@ -70,8 +71,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     },
     togglePlay: () => {
       if (!videoRef.current) return
-      if (videoRef.current.paused) videoRef.current.play().catch(() => {})
-      else videoRef.current.pause()
+      shouldResumePlaybackRef.current = false
+      if (playing) {
+        playbackIntentRef.current = false
+        videoRef.current.pause()
+      } else {
+        playbackIntentRef.current = true
+        videoRef.current.play().catch(() => {})
+      }
     },
     getCurrentTime: () => videoRef.current?.currentTime ?? currentTime,
     getDuration: () => videoRef.current?.duration ?? duration,
@@ -91,14 +98,20 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     }
     videoRef.current = el
     if (el) {
-      setPlaying(!el.paused)
+      playbackIntentRef.current = !el.paused
+      setPlaying(playbackIntentRef.current)
       setCurrentTime(el.currentTime)
       setDuration(el.duration || 0)
       el.onplay = () => {
+        if (!playbackIntentRef.current) {
+          el.pause()
+          return
+        }
         setPlaying(true)
         onPlayStateChange?.({ playing: true, currentTime: el.currentTime, duration: el.duration || 0 })
       }
       el.onpause = () => {
+        playbackIntentRef.current = false
         setPlaying(false)
         onPlayStateChange?.({ playing: false, currentTime: el.currentTime, duration: el.duration || 0 })
       }
@@ -111,21 +124,25 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         onPlayStateChange?.({ playing: !el.paused, currentTime: el.currentTime, duration: el.duration || 0 })
       }
       el.onended = () => {
+        shouldResumePlaybackRef.current = false
+        playbackIntentRef.current = false
         setPlaying(false)
         setCurrentTime(el.duration || el.currentTime)
         if (livePlaying) setLivePlaying(false)
         onPlayStateChange?.({ playing: false, currentTime: el.duration || el.currentTime, duration: el.duration || 0 })
       }
       if (livePlaying && isDisplayVideo) {
+        playbackIntentRef.current = true
         el.currentTime = 0
         el.play().catch(() => {})
       }
     } else {
+      playbackIntentRef.current = false
       setPlaying(false)
       setCurrentTime(0)
       setDuration(0)
     }
-  }, [livePlaying, isDisplayVideo])
+  }, [isDisplayVideo, livePlaying, onPlayStateChange])
 
   useEffect(() => {
     let canceled = false
@@ -153,9 +170,12 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   function togglePlay() {
     if (!videoRef.current) return
-    if (videoRef.current.paused) {
+    shouldResumePlaybackRef.current = false
+    if (!playing) {
+      playbackIntentRef.current = true
       videoRef.current.play().catch(() => {})
     } else {
+      playbackIntentRef.current = false
       videoRef.current.pause()
     }
   }
@@ -172,6 +192,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     // 拖动开始时，如果正在播放，暂停视频
     if (videoRef.current && !videoRef.current.paused) {
       wasPlayingBeforeSeekRef.current = true
+      playbackIntentRef.current = false
       videoRef.current.pause()
     } else {
       wasPlayingBeforeSeekRef.current = false
@@ -195,6 +216,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   useEffect(() => {
     if (!livePlaying || !isDisplayVideo || !videoRef.current) return
+    playbackIntentRef.current = true
     videoRef.current.currentTime = 0
     videoRef.current.play().catch(() => {})
   }, [livePlaying, isDisplayVideo, displayUrl])
@@ -241,6 +263,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     // 渲染完成后，检查是否需要恢复播放
     if (shouldResumePlaybackRef.current && videoRef.current) {
       shouldResumePlaybackRef.current = false
+      playbackIntentRef.current = true
       videoRef.current.play().catch(() => {})
     }
   }

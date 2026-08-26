@@ -25,6 +25,8 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const root = join(__dirname, '..')
 const _require = createRequire(import.meta.url)
 process.env.APP_ROOT = root
+const dxcPath = join(root, 'luna-render-core', process.platform === 'win32' ? 'dxcompiler.dll' : 'libdxcompiler.dylib')
+if (existsSync(dxcPath)) process.env.LUNA_DXC_PATH = dxcPath
 
 // ── FFmpeg/FFprobe 路径 ──
 let ffmpeg, ffprobe
@@ -39,7 +41,8 @@ try {
 }
 
 // ── 参数 ──
-const inputPath = process.argv[2]
+const inputPath = process.argv.find((value, index) => index > 1 && !value.startsWith('--'))
+const softwareMode = process.argv.includes('--software')
 if (!inputPath) {
   console.error('Usage: node scripts/test-gpu-export.mjs <video-path>')
   process.exit(1)
@@ -125,7 +128,7 @@ async function main() {
   console.log(`  Layers: 1 (video)`)
 
   // ── 4. Export ──
-  console.log('\n── Step 4: Export (hardware=true) ──')
+  console.log(`\n── Step 4: Export (hardware=${!softwareMode}) ──`)
   const startTime = Date.now()
   let exportSuccess = true
   let exportError = null
@@ -151,7 +154,7 @@ async function main() {
       composition,
       fps,
       duration,
-      hardware: true,  // ← 尝试 GPU 导出
+      hardware: !softwareMode,  // GPU or FFmpeg software baseline
       taskId,
       qualityPreset: 'high',
     })
@@ -255,7 +258,7 @@ async function main() {
       console.log(`  Fallback reason: ${reason}`)
     }
     console.log(`  FFmpeg fallback logs: ${ffmpegFallback.length}`)
-    winGpuSuccess = winGpuCompleted.length > 0 && winGpuFallback.length === 0 && ffmpegFallback.length === 0
+    winGpuSuccess = softwareMode || (winGpuCompleted.length > 0 && winGpuFallback.length === 0 && ffmpegFallback.length === 0)
     console.log(`  Audio mux logs: ${audioMux.length}`)
     if (audioMux.length) {
       audioMux.forEach(l => console.log(`    ${l.split('] ').slice(1).join('] ')}`))
@@ -265,9 +268,9 @@ async function main() {
   // ── 总结 ──
   console.log('\n══════════════════════════════════════════════')
   const outputExists = existsSync(outputPath)
-  const testPassed = exportSuccess && outputExists && (process.platform !== 'win32' || winGpuSuccess)
+  const testPassed = exportSuccess && outputExists && (process.platform !== 'win32' || softwareMode || winGpuSuccess)
   if (testPassed) {
-    console.log(process.platform === 'win32'
+    console.log(process.platform === 'win32' && !softwareMode
       ? '  ✅ TEST PASSED — WinGPU export succeeded without FFmpeg fallback'
       : '  ✅ TEST PASSED — Export succeeded')
   } else {
