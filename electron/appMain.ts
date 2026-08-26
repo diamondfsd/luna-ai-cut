@@ -9,6 +9,7 @@ import path from 'node:path'
 import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './infrastructure/loggerService'
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrastructure/crashDiagnostics'
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
+import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
 
 import {
   getLocalResourcesDir,
@@ -79,6 +80,7 @@ const enqueuePreviewTask = createPreviewTaskQueue(2)
 
 /** 停止所有客户端的保活并清理 */
 function stopAllKeepAlive(): void {
+  void stopAllCameraVideoStreams()
   for (const client of clients.values()) {
     client.stopKeepAlive()
     client.close()
@@ -314,6 +316,8 @@ function registerIpc(): void {
       return win
     },
     clients,
+    lunaClientFor: clientFor,
+    lunaControlPortFor: controlPortForCurrentSettings,
     goUltraClients,
     activeDownloadControllers,
     activeExportControllers,

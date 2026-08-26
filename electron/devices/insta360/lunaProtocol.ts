@@ -1,7 +1,7 @@
 import { DEFAULT_DEVICE } from '../definitions/deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from '../../infrastructure/loggerService'
-import { connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
-import { buildKeepAliveOptionsBody } from './lunaControlMessages'
+import { connectSocket, Insta360TcpSession, type Insta360VideoFrameListener } from './insta360TcpProtocol'
+import { buildKeepAliveOptionsBody, buildStartLiveStreamBody, CODE_START_LIVE_STREAM, CODE_STOP_LIVE_STREAM } from './lunaControlMessages'
 import { parseLunaFilePaths } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../../../src/shared/types'
 
@@ -39,6 +39,8 @@ export class LunaClient {
   private keepAliveFailures = 0
   private authLock: Promise<void> = Promise.resolve()
   private listFilesPromises = new Map<string, Promise<LunaFile[]>>()
+  private readonly videoListeners = new Set<Insta360VideoFrameListener>()
+  private readonly sessionVideoUnsubscribers = new Map<Insta360VideoFrameListener, () => void>()
 
   /** 保活失败时的回调，由调用方（main.ts）设置 */
   onKeepAliveFailed: (() => void) | null = null
@@ -73,6 +75,7 @@ export class LunaClient {
     } else {
       logMainDebug(`[LunaClient] 控制会话已存活`, { host: this.host })
     }
+    this.attachVideoListeners()
   }
 
   async connect(): Promise<void> {
@@ -87,8 +90,29 @@ export class LunaClient {
   }
 
   private resetControlSession(): void {
+    for (const unsubscribe of this.sessionVideoUnsubscribers.values()) unsubscribe()
+    this.sessionVideoUnsubscribers.clear()
     this.controlSession?.close()
     this.controlSession = null
+  }
+
+  subscribeVideo(listener: Insta360VideoFrameListener): () => void {
+    this.videoListeners.add(listener)
+    this.attachVideoListener(listener)
+    return () => {
+      this.videoListeners.delete(listener)
+      this.sessionVideoUnsubscribers.get(listener)?.()
+      this.sessionVideoUnsubscribers.delete(listener)
+    }
+  }
+
+  private attachVideoListeners(): void {
+    for (const listener of this.videoListeners) this.attachVideoListener(listener)
+  }
+
+  private attachVideoListener(listener: Insta360VideoFrameListener): void {
+    if (this.sessionVideoUnsubscribers.has(listener) || !this.controlSession) return
+    this.sessionVideoUnsubscribers.set(listener, this.controlSession.subscribeVideo(listener))
   }
 
   close(): void {
@@ -237,6 +261,27 @@ export class LunaClient {
       })
     this.listFilesPromises.set(cameraPath, task)
     return task
+  }
+
+  async startLiveStream(): Promise<void> {
+    await this.runAuthExclusive(async () => {
+      await this.connectUnlocked()
+      const session = this.controlSession
+      if (!session) throw new Error('相机控制连接未建立')
+      const response = await session.sendCommand(CODE_START_LIVE_STREAM, buildStartLiveStreamBody(), 5000)
+      if (response.code !== 200) throw new Error(`相机拒绝实时视频流请求（${response.code}）`)
+      logMainInfo('[相机视频流] 相机已接受开始取流命令', { host: this.host })
+    })
+  }
+
+  async stopLiveStream(): Promise<void> {
+    await this.runAuthExclusive(async () => {
+      const session = this.controlSession
+      if (!session?.isOpen) return
+      const response = await session.sendCommand(CODE_STOP_LIVE_STREAM, Buffer.alloc(0), 5000)
+      if (response.code !== 200) throw new Error(`相机停止实时视频流失败（${response.code}）`)
+      logMainInfo('[相机视频流] 相机已接受停止取流命令', { host: this.host })
+    })
   }
 
   async deleteFilePaths(cameraPaths: string[]): Promise<CameraDeleteResult> {

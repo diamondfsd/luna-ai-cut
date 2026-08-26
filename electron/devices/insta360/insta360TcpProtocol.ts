@@ -7,8 +7,11 @@ import {
   buildFileCommand,
   buildStreamHello,
   inspectFrameChecksum,
+  MEDIA_VIDEO,
+  parseMediaFrame,
   parseRawResponse,
   UCD2_FILE,
+  UCD2_MEDIA,
   UCD2_MAGIC,
   UCD2_STREAM,
 } from './insta360TcpCodec'
@@ -22,6 +25,8 @@ import {
 
 export { insta360PacketChecksum } from './insta360TcpCodec'
 export type { Insta360RawResponse } from './insta360TcpCodec'
+
+export type Insta360VideoFrameListener = (data: Buffer) => void
 
 const CODE_GET_FILE_LIST = 13
 const STATUS_OK = 200
@@ -171,6 +176,7 @@ export class Insta360TcpSession {
     label?: string
     startedAt: number
   }>()
+  private readonly videoListeners = new Set<Insta360VideoFrameListener>()
   constructor(
     private readonly host: string,
     private readonly port: number,
@@ -214,6 +220,11 @@ export class Insta360TcpSession {
     this.socket?.destroy()
     this.socket = null
     this.rejectAll()
+  }
+
+  subscribeVideo(listener: Insta360VideoFrameListener): () => void {
+    this.videoListeners.add(listener)
+    return () => this.videoListeners.delete(listener)
   }
 
   async refresh(): Promise<void> {
@@ -342,13 +353,17 @@ export class Insta360TcpSession {
         this.buffer = this.buffer.subarray(start)
       }
       if (this.buffer.length < 8) return
+      if (this.buffer.length < 12) return
 
       const type = this.buffer[6]
-      const frameLen = type === UCD2_STREAM
-        ? 16
-        : type === UCD2_FILE && this.buffer.length >= 12
-          ? 12 + this.buffer.readUInt32LE(8) + 4
-          : 0
+      const frameLen = type === UCD2_STREAM || type === UCD2_FILE || type === UCD2_MEDIA
+        ? 12 + this.buffer.readUInt32LE(8) + 4
+        : 0
+      if (frameLen > 8 * 1024 * 1024) {
+        logMainWarn('[Insta360TCP] 收到异常大的媒体帧长度', { type, frameLen })
+        this.buffer = this.buffer.subarray(8)
+        continue
+      }
       if (frameLen === 0) {
         logMainWarn('[Insta360TCP] 收到未知帧类型', {
           version: this.buffer[4],
@@ -367,6 +382,14 @@ export class Insta360TcpSession {
 
       const frame = this.buffer.subarray(0, frameLen)
       this.buffer = this.buffer.subarray(frameLen)
+      if (type === UCD2_MEDIA) {
+        const media = parseMediaFrame(frame)
+        if (media?.substream === MEDIA_VIDEO && media.data.length > 0) {
+          logMainDebug('[Insta360TCP] 收到视频媒体帧', { frameBytes: media.data.length })
+          for (const listener of this.videoListeners) listener(media.data)
+        }
+        continue
+      }
       if (type !== UCD2_FILE) {
         logMainDebug('[Insta360TCP] 收到 STREAM 帧', { seq: frame[7], frameBytes: frame.length })
         continue

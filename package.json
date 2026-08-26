@@ -61,6 +61,7 @@
     "test:custom-luts": "node --experimental-strip-types scripts/test-custom-lut-library.mjs",
     "test:ai-selection:e2e": "node scripts/test-ai-selection-e2e.mjs",
     "test:protocol": "node scripts/verify-luna-protocol.mjs",
+    "test:camera-video-stream": "node --experimental-strip-types scripts/test-camera-video-stream.mjs",
     "test:render-input": "node scripts/test-render-input-normalization.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "mock:dji": "node dji_mock_server/server.mjs",

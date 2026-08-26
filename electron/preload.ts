@@ -105,6 +105,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     deleteFiles: (files, options) => ipcRenderer.invoke('camera-source:delete-files', files, options),
     disconnect: (options) => ipcRenderer.invoke('camera-source:disconnect', options),
   },
+  cameraVideoStream: {
+    start: (options) => ipcRenderer.invoke('camera-video-stream:start', options),
+    stop: (options) => ipcRenderer.invoke('camera-video-stream:stop', options),
+    status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
+  },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
   listFiles: (host?: string, storageId?: string) => ipcRenderer.invoke('luna:listFiles', host, storageId),
