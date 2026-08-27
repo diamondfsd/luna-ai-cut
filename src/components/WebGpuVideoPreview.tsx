@@ -81,16 +81,20 @@ export function WebGpuVideoPreview({
   }, [active, playing, time])
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="webgpu-video-preview"
-      width={canvasWidth}
-      height={canvasHeight}
-      style={{
-        aspectRatio: `${canvasWidth} / ${canvasHeight}`,
-        transform: imageScale == null ? undefined : `scale(${imageScale})`,
-      }}
-      aria-label="视频预览"
-    />
+    <div
+      className="webgpu-video-preview-frame"
+      style={{ aspectRatio: `${canvasWidth} / ${canvasHeight}` }}
+    >
+      <canvas
+        ref={canvasRef}
+        className="webgpu-video-preview"
+        width={canvasWidth}
+        height={canvasHeight}
+        style={{
+          transform: imageScale == null ? undefined : `scale(${imageScale})`,
+        }}
+        aria-label="视频预览"
+      />
+    </div>
   )
 }
