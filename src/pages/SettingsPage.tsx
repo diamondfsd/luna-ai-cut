@@ -157,6 +157,12 @@ export function SettingsPage({
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
+  function saveWebGpuExportSetting(enabled: boolean): void {
+    const patch = { experimentalWebGpuExport: enabled }
+    setSettings((current) => (current ? { ...current, ...patch } : current))
+    void window.luna.saveSettings(patch).then(setSettings)
+  }
+
   async function saveDownloadOrganizationSetting(enabled: boolean): Promise<void> {
     if (!settings) return
     const previous = settings.organizeDownloadsByDate ?? false
@@ -359,6 +365,18 @@ export function SettingsPage({
                 disabled={!settings}
                 ariaLabel="系统视频预览"
                 onCheckedChange={saveWebGpuPreviewSetting}
+              />
+            </article>
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>加速导出（实验）</span>
+                <em>为后续高分辨率视频导出准备；当前仍使用稳定的导出方式</em>
+              </div>
+              <Switch
+                checked={settings?.experimentalWebGpuExport ?? false}
+                disabled={!settings}
+                ariaLabel="加速导出"
+                onCheckedChange={saveWebGpuExportSetting}
               />
             </article>
           </div>
