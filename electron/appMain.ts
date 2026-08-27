@@ -32,7 +32,7 @@ import { createPreviewTaskQueue } from './media/previewTaskQueue'
 import { activateMainWindow, appIconPath, appTrayIconPath, createMainWindow, getMainWindowCloseBehavior, setMainWindowCloseBehavior } from './application/windowService'
 import { createAppTray, destroyAppTray } from './application/trayService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './devtools/device-debug/handlers'
-import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './platform/render/lunaRenderCore'
+import { cancelExportTask, resetRenderCompatibilityBlock } from './platform/render/lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './features/segmentation/specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './features/segmentation/segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './media/local-share/localMediaShareService'
@@ -248,14 +248,6 @@ function createWindow(): void {
   })
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
-    setTimeout(() => {
-      void warmupRenderCore().then(
-        () => logMainInfo('[LRC] 后台预热完成'),
-        (error) => logMainWarn('[LRC] 后台预热失败，将在首次使用时重试', {
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      )
-    }, 200)
     setTimeout(() => startSegmentationModelPrefetch(), 1_000)
   })
 }
