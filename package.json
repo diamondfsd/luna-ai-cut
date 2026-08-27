@@ -34,6 +34,7 @@
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:webgpu-preview": "node --experimental-strip-types scripts/test-webgpu-preview.mjs",
     "benchmark:webgpu-preview": "node --experimental-strip-types scripts/benchmark-webgpu-preview.mjs",
+    "benchmark:webgpu-export": "node --experimental-strip-types scripts/benchmark-webgpu-export.mjs",
     "test:custom-watermark": "node --experimental-strip-types scripts/test-custom-watermark-webp.mjs",
     "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",
     "test:original-export": "node scripts/test-original-file-export.mjs",
