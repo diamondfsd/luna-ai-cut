@@ -293,7 +293,6 @@ pub struct Compositor {
 /// 否则 process.wait() 因 pipe 未关闭而阻塞。
 struct VideoDecoder {
     stdout: std::process::ChildStdout,
-    #[allow(dead_code)]
     process: std::process::Child,
     scaled_w: u32,
     scaled_h: u32,
@@ -302,6 +301,16 @@ struct VideoDecoder {
     texture_id: Option<u32>,
     /// pipe 已结束或无帧可读，后续不再尝试读取
     decoding_finished: bool,
+}
+
+impl Drop for VideoDecoder {
+    fn drop(&mut self) {
+        // A decoder can still be blocked writing a large raw frame when a
+        // layer is removed. Kill and reap it so preview seeks cannot leave
+        // FFmpeg processes behind or retain pipe resources.
+        let _ = self.process.kill();
+        let _ = self.process.wait();
+    }
 }
 
 /// 创建 bind group layout（每个 layer 一个，含 LUT 3D texture 可选绑定）

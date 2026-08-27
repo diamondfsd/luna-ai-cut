@@ -858,7 +858,15 @@ export class WebGpuVideoRenderer {
     if (!entry.resource || entry.resource.width !== width || entry.resource.height !== height) {
       entry.resource?.texture.destroy?.()
       entry.resource = {
-        texture: createTexture(device, width, height, 'rgba8unorm-srgb', TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING),
+        // Chromium's video upload path uses an internal render pass on some
+        // backends, so the destination must also allow render attachment use.
+        texture: createTexture(
+          device,
+          width,
+          height,
+          'rgba8unorm-srgb',
+          TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING | TEXTURE_USAGE_RENDER_ATTACHMENT,
+        ),
         width,
         height,
         external: { source: entry.video, width: entry.video.videoWidth || width, height: entry.video.videoHeight || height },

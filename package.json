@@ -33,6 +33,7 @@
     "test:beauty": "node --experimental-strip-types scripts/test-beauty-blemish-detection.mjs && node --experimental-strip-types scripts/test-beauty-skin-segmentation.mjs && node --experimental-strip-types scripts/test-video-beauty-timeline.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:webgpu-preview": "node --experimental-strip-types scripts/test-webgpu-preview.mjs",
+    "benchmark:webgpu-preview": "node --experimental-strip-types scripts/benchmark-webgpu-preview.mjs",
     "test:custom-watermark": "node --experimental-strip-types scripts/test-custom-watermark-webp.mjs",
     "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",
     "test:original-export": "node scripts/test-original-file-export.mjs",
