@@ -26,10 +26,8 @@ import { getLogDir, logMainError, logMainInfo, logMainWarn } from '../infrastruc
 import { RUNTIME_RESOURCE_DEFINITIONS } from '../infrastructure/runtimeResourceDefinitions'
 import { loadRuntimeResource } from '../infrastructure/runtimeResourceService'
 import { embedJpegSourceMetadata, embedVideoSourceMetadata } from '../export/exportSourceMetadata'
-import { registerNativePreviewIpc } from '../media/nativePreviewIpc'
 
 interface RegisterContext {
-  win: Electron.BrowserWindow | null
   activeNativeExportTasks: Set<string>
 }
 
@@ -114,7 +112,6 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
 }
 
 export function register(ctx: RegisterContext): void {
-  registerNativePreviewIpc(ctx, resolveRuntimePaths)
 
   ipcMain.handle('lrc:resetCompatibilityBlock', async () => {
     resetRenderCompatibilityBlock()

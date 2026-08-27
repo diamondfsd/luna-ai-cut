@@ -145,12 +145,6 @@ export function SettingsPage({
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
-  function saveGpuPreviewSetting(enabled: boolean): void {
-    const patch = { experimentalGpuPreview: enabled }
-    setSettings((current) => (current ? { ...current, ...patch } : current))
-    void window.luna.saveSettings(patch).then(setSettings)
-  }
-
   function saveWebGpuPreviewSetting(enabled: boolean): void {
     const patch = { experimentalWebGpuPreview: enabled }
     setSettings((current) => (current ? { ...current, ...patch } : current))
@@ -343,18 +337,6 @@ export function SettingsPage({
         <section className="settings-group">
           <h2 className="settings-group-title">预览</h2>
           <div className="settings-card">
-            <article className="settings-row">
-              <div className="settings-row-copy">
-                <span>gpu加速预览</span>
-                <em>应用会自动选择兼容的预览方式；出现问题时会自动切回普通预览</em>
-              </div>
-              <Switch
-                checked={settings?.experimentalGpuPreview ?? true}
-                disabled={!settings}
-                ariaLabel="gpu加速预览"
-                onCheckedChange={saveGpuPreviewSetting}
-              />
-            </article>
             <article className="settings-row">
               <div className="settings-row-copy">
                 <span>webgpu预览</span>

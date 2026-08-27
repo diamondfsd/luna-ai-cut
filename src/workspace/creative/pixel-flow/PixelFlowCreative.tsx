@@ -2,7 +2,6 @@ import { ArrowLeft, Play, ScanLine } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
-import { NativeGpuVideoPreview } from '../../../components/NativeGpuVideoPreview'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { type PixelFlowSubjectDirection, type PreviewLayer, type WorkspacePixelFlowState } from '../../../shared/types'
 import { Button, LoadingIndicator, VideoControls, toast } from '../../../ui'
@@ -63,8 +62,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [mediaDuration, setMediaDuration] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [gpuFallback, setGpuFallback] = useState(false)
-  const [seekRevision, setSeekRevision] = useState(0)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const saveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
@@ -100,8 +97,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setMediaDuration(null)
     setCurrentTime(0)
     setPlaying(false)
-    setGpuFallback(false)
-    setSeekRevision((revision) => revision + 1)
     attemptedAssetRef.current = null
     depthBuildRef.current = null
   // Only restore when the selected asset or project changes.
@@ -159,7 +154,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       setMediaDuration(sourceDuration)
       setCurrentTime(0)
       setPlaying(false)
-      setSeekRevision((revision) => revision + 1)
     }).catch(() => { if (!cancelled) toast.error('无法读取素材信息') })
     return () => { cancelled = true }
   }, [activeAsset])
@@ -263,7 +257,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }
     setCurrentTime(0)
     setPlaying(true)
-    setSeekRevision((revision) => revision + 1)
   }, [depthMaskPath, segmenting, sourceSize])
 
   useEffect(() => {
@@ -362,7 +355,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       settings: effectSettings,
     })]
   }, [activeAsset, depthMaskPath, edit.pipeline, effectSettings, playbackDuration, sourceSize])
-  const gpuPreviewSize = useMemo(() => {
+  const previewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
     return {
@@ -377,14 +370,12 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     if (!playbackReady) return
     setCurrentTime(0)
     setPlaying(true)
-    setSeekRevision((revision) => revision + 1)
   }, [playbackReady])
 
   function seek(time: number): void {
     if (!playbackReady) return
     setPlaying(false)
     setCurrentTime(time)
-    setSeekRevision((revision) => revision + 1)
   }
 
   function resetParameters(): void {
@@ -426,9 +417,18 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     <div className="pixel-flow-preview">
       {activeAsset ? <div className={`pixel-flow-stage${sourceSize ? sourceSize.width > sourceSize.height ? ' is-landscape' : ' is-portrait' : ''}`}>
         <div className="pixel-flow-render-surface">
-          {previewLayers.length > 0 && gpuPreviewSize && (gpuFallback
-            ? <LrcRender className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} maxSide={1080} compositionTime={currentTime} interactiveImageLayerIndexes={[]} onError={handleError} />
-            : <NativeGpuVideoPreview className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} playing={playing} time={currentTime} seekRevision={seekRevision} onFallback={() => setGpuFallback(true)} />)}
+          {previewLayers.length > 0 && previewSize && (
+            <LrcRender
+              className="pixel-flow-canvas"
+              layers={previewLayers}
+              canvasWidth={previewSize.width}
+              canvasHeight={previewSize.height}
+              maxSide={1080}
+              compositionTime={currentTime}
+              interactiveImageLayerIndexes={[]}
+              onError={handleError}
+            />
+          )}
         </div>
         {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>生成中</span></div>}
         <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={playbackDuration} playing={playing} disabled={!playbackReady} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />

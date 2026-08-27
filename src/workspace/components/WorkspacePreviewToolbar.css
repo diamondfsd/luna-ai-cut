@@ -20,33 +20,6 @@
 }
 
 .workspace-preview-quality { width: 76px; min-width: 76px; }
-.workspace-preview-renderer {
-  flex-shrink: 0;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.workspace-preview-renderer .ui-btn-group-btn {
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 11px;
-}
-
-.workspace-preview-renderer .ui-btn-group-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-
-.workspace-preview-renderer .ui-btn-group-btn.active {
-  background: var(--blue);
-  color: #fff;
-}
 
 .workspace-toolbar-left,
 .workspace-toolbar-actions {
