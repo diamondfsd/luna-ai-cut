@@ -67,6 +67,7 @@ function defaultSettings(): AppSettings {
     defaultWatermarkEnabled: true,
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
+    workspacePreviewRenderer: 'native',
     cameraPreviewQuality: 'proxy',
     // Try the faster preview path by default. PreviewStage disables it and
     // persists the fallback when the current device cannot present it.
@@ -120,6 +121,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
     ? saved.cameraPreviewQuality
     : defaults.cameraPreviewQuality
+  merged.workspacePreviewRenderer = saved?.workspacePreviewRenderer === 'webgpu'
+    ? 'webgpu'
+    : 'native'
   merged.organizeDownloadsByDate = typeof saved?.organizeDownloadsByDate === 'boolean'
     ? saved.organizeDownloadsByDate
     : defaults.organizeDownloadsByDate

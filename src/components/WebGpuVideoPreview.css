@@ -5,4 +5,6 @@
   margin-bottom: 42px;
   background: #000;
   pointer-events: none;
+  transform-origin: center;
+  will-change: transform;
 }

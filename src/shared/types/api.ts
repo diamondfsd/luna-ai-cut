@@ -314,6 +314,8 @@ export interface LunaApi {
     deleteColorMask(projectId: string, filePath: string): Promise<void>
     cleanupColorMasks(projectId: string, retainedPaths: string[]): Promise<{ deleted: number; retained: number }>
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
+    loadFont(filePath: string): Promise<ArrayBuffer>
+    loadLut(filePath: string): Promise<ArrayBuffer>
     getMediaFormatInfo(filePath: string): Promise<{ dolbyVision: boolean; iLog: boolean; raw: boolean }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>

@@ -7,7 +7,7 @@ import {
   type WorkspaceProject,
   type WorkspaceProjectAsset,
 } from '../shared/types'
-import type { WorkspacePreviewQuality } from '../shared/types/settings'
+import type { WorkspacePreviewQuality, WorkspacePreviewRenderer } from '../shared/types/settings'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { ErrorBoundary, toast } from '../ui'
@@ -156,6 +156,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
+  const [previewRenderer, setPreviewRenderer] = useState<WorkspacePreviewRenderer>(() => settings?.workspacePreviewRenderer === 'webgpu' ? 'webgpu' : 'native')
   const [immersive, setImmersive] = useState(false)
   const workspaceWasActiveRef = useRef(false)
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
@@ -247,6 +248,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     setPreviewQuality(normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   }, [settings?.workspacePreviewQuality])
 
+  useEffect(() => {
+    setPreviewRenderer(settings?.workspacePreviewRenderer === 'webgpu' ? 'webgpu' : 'native')
+  }, [settings?.workspacePreviewRenderer])
+
   function changePreviewQuality(quality: WorkspacePreviewQuality): void {
     const previous = previewQuality
     setPreviewQuality(quality)
@@ -255,6 +260,17 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       .catch(() => {
         setPreviewQuality(previous)
         toast.error('无法保存预览清晰度')
+      })
+  }
+
+  function changePreviewRenderer(renderer: WorkspacePreviewRenderer): void {
+    const previous = previewRenderer
+    setPreviewRenderer(renderer)
+    void window.luna.saveSettings({ workspacePreviewRenderer: renderer })
+      .then(setSettings)
+      .catch(() => {
+        setPreviewRenderer(previous)
+        toast.error('无法保存预览引擎')
       })
   }
 
@@ -1077,6 +1093,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             fitScalePercent={fitScalePercent}
             previewQuality={previewQuality}
             onPreviewQualityChange={changePreviewQuality}
+            previewRenderer={previewRenderer}
+            onPreviewRendererChange={changePreviewRenderer}
           />
 
           {/* ── Rust/wgpu 预览组件 ── */}
@@ -1115,6 +1133,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               viewportKey={media.activeMedia?.path}
               previewMaxSide={workspacePreviewMaxSide(previewQuality)}
               keepCompositionVideoRenderer={keepCompositionVideoRenderer}
+              previewRenderer={previewRenderer}
               onPlayStateChange={handlePlayStateChange}
             />
           </WorkspacePreviewViewport>

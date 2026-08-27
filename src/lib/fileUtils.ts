@@ -47,6 +47,8 @@ export function isVideoPath(filePath: string): boolean {
 
 export function filePathToPreviewUrl(filePath: string | null | undefined): string | null {
   if (!filePath) return null
+  // Keep browser-native URLs usable by lightweight render harnesses and cached previews.
+  if (/^(?:data|blob|https?):/i.test(filePath)) return filePath
   if (filePath.startsWith('file://')) return filePath
   const normalized = filePath.replace(/\\/g, '/')
   return encodeURI(`file://${normalized.startsWith('/') ? '' : '/'}${normalized}`)

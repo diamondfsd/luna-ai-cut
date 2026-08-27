@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PreviewLayer } from '../shared/types'
+import type { WorkspacePreviewRenderer } from '../shared/types/settings'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 
 export interface PreviewStageHandle {
@@ -29,5 +30,6 @@ export interface PreviewStageProps {
   viewportKey?: string
   previewMaxSide?: number
   keepCompositionVideoRenderer?: boolean
+  previewRenderer?: WorkspacePreviewRenderer
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }

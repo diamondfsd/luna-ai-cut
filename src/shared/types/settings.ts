@@ -3,6 +3,7 @@ import type { CameraConnectionMode } from './cameraMediaSource'
 import type { MockServerConfig } from './mock'
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
+export type WorkspacePreviewRenderer = 'native' | 'webgpu'
 export type CameraPreviewQuality = 'proxy' | 'original'
 
 export type WindowCloseBehavior = 'quit' | 'hide'
@@ -47,6 +48,8 @@ export interface AppSettings {
   lutDir?: string
   /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
   workspacePreviewQuality?: WorkspacePreviewQuality
+  /** 工作台预览后端；独立于原生 GPU 预览开关。 */
+  workspacePreviewRenderer?: WorkspacePreviewRenderer
   /** 相机媒体预览最近一次选择的画质。 */
   cameraPreviewQuality?: CameraPreviewQuality
   /** 原生 GPU 预览；默认自动尝试，失败时回退到普通预览。 */
