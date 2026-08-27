@@ -56,6 +56,8 @@ export interface AppSettings {
   experimentalGpuPreview?: boolean
   /** Chromium WebGPU 视频预览实验；仅覆盖基础单视频图层，其他图层继续使用 LRC。 */
   experimentalWebGpuPreview?: boolean
+  /** WebGPU + WebCodecs 导出实验；当前仅保存开关状态，正式导出仍使用稳定方式。 */
+  experimentalWebGpuExport?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean
   /** 手机分享时额外公开的目录，只扫描目录本身和下一层子目录。 */

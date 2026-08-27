@@ -73,6 +73,7 @@ function defaultSettings(): AppSettings {
     // persists the fallback when the current device cannot present it.
     experimentalGpuPreview: true,
     experimentalWebGpuPreview: false,
+    experimentalWebGpuExport: false,
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
@@ -118,6 +119,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.experimentalWebGpuPreview = typeof saved?.experimentalWebGpuPreview === 'boolean'
     ? saved.experimentalWebGpuPreview
     : defaults.experimentalWebGpuPreview
+  merged.experimentalWebGpuExport = typeof saved?.experimentalWebGpuExport === 'boolean'
+    ? saved.experimentalWebGpuExport
+    : defaults.experimentalWebGpuExport
   merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
     ? saved.cameraPreviewQuality
     : defaults.cameraPreviewQuality
