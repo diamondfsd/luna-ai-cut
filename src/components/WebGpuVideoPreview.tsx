@@ -87,6 +87,7 @@ export function WebGpuVideoPreview({
       width={canvasWidth}
       height={canvasHeight}
       style={{
+        aspectRatio: `${canvasWidth} / ${canvasHeight}`,
         transform: imageScale == null ? undefined : `scale(${imageScale})`,
       }}
       aria-label="视频预览"

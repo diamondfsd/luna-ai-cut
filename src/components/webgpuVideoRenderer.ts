@@ -854,7 +854,13 @@ export class WebGpuVideoRenderer {
     if (!device) throw new Error('WebGPU 设备未初始化')
     const source = await this.loadImage(path)
     const [width, height] = calcRenderSize(source.width || 1, source.height || 1, this.options.maxSide)
-    const texture = createTexture(device, width, height, 'rgba8unorm-srgb', TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING)
+    const texture = createTexture(
+      device,
+      width,
+      height,
+      'rgba8unorm-srgb',
+      TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING | TEXTURE_USAGE_RENDER_ATTACHMENT,
+    )
     if (this.options.rasterizeImages) {
       // Headless Chromium can accept an external image upload without an
       // error but produce an empty texture. The standalone harness opts into

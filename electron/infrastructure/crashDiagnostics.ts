@@ -212,9 +212,14 @@ export function attachWindowCrashDiagnostics(win: BrowserWindow): void {
     }
     logMainInfo('[诊断] 页面内导航', { route, isMainFrame })
   })
-  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    if (level < 2) return
-    const log = level === 3 ? logMainError : logMainWarn
-    log('[诊断] 浏览器控制台消息', { level, message, line, sourceId })
+  win.webContents.on('console-message', (details) => {
+    if (details.level !== 'warning' && details.level !== 'error') return
+    const log = details.level === 'error' ? logMainError : logMainWarn
+    log('[诊断] 浏览器控制台消息', {
+      level: details.level,
+      message: details.message,
+      line: details.lineNumber,
+      sourceId: details.sourceId,
+    })
   })
 }

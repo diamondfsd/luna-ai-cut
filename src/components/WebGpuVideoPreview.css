@@ -3,6 +3,7 @@
   max-width: 100%;
   max-height: calc(100% - 42px);
   margin-bottom: 42px;
+  aspect-ratio: auto;
   background: #000;
   pointer-events: none;
   transform-origin: center;
