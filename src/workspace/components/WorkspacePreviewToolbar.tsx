@@ -1,7 +1,7 @@
 import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
-import { Button, ButtonGroup, IconButton, Select, Tooltip, toast } from '../../ui'
-import type { WorkspacePreviewQuality, WorkspacePreviewRenderer } from '../../shared/types/settings'
+import { Button, IconButton, Select, Tooltip, toast } from '../../ui'
+import type { WorkspacePreviewQuality } from '../../shared/types/settings'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useDeviceConnection } from '../../context/DeviceConnectionContext'
@@ -28,8 +28,6 @@ interface WorkspacePreviewToolbarProps {
   fitScalePercent: number
   previewQuality: WorkspacePreviewQuality
   onPreviewQualityChange: (quality: WorkspacePreviewQuality) => void
-  previewRenderer: WorkspacePreviewRenderer
-  onPreviewRendererChange: (renderer: WorkspacePreviewRenderer) => void
 }
 
 export function WorkspacePreviewToolbar({
@@ -47,8 +45,6 @@ export function WorkspacePreviewToolbar({
   fitScalePercent,
   previewQuality,
   onPreviewQualityChange,
-  previewRenderer,
-  onPreviewRendererChange,
 }: WorkspacePreviewToolbarProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
@@ -126,16 +122,6 @@ export function WorkspacePreviewToolbar({
         )}
       </div>
       <div className="workspace-toolbar-group workspace-toolbar-actions">
-        <ButtonGroup
-          className="workspace-preview-renderer"
-          value={previewRenderer}
-          options={[
-            { value: 'native', label: '原生 GPU' },
-            { value: 'webgpu', label: 'WebGPU' },
-          ]}
-          onChange={onPreviewRendererChange}
-          ariaLabel="预览引擎"
-        />
         <Select
           className="workspace-preview-quality"
           variant="compact"

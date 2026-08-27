@@ -33,7 +33,6 @@ test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', asyn
   const projectName = `WebGPU 预览 ${Date.now()}`
   await lunaApp.page.evaluate(async ({ name, filePath }) => {
     await window.luna.saveSettings({
-      experimentalGpuPreview: false,
       experimentalWebGpuPreview: true,
     })
     await window.luna.workspace.createProject(name, [{
