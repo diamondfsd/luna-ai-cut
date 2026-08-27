@@ -22,15 +22,17 @@ fn glyph_bits(input_code: u32) -> u32 {
 
 fn sample_media_texture(tex_coord: vec2<f32>) -> vec4<f32> {
     if (params.sampling_quality < 0.5) {
-        return textureSample(src_texture, src_sampler, tex_coord);
+        return textureSampleLevel(src_texture, src_sampler, tex_coord, 0.0);
     }
 
     // A positioned logo can shrink to a small fraction of its source size.
     // Average across the destination pixel footprint to avoid aliasing thin strokes.
-    let footprint = max(abs(dpdx(tex_coord)), abs(dpdy(tex_coord)));
     let texel = vec2<f32>(params.texel_x, params.texel_y);
+    // Explicit LOD sampling keeps this shared shader valid in strict WebGPU
+    // implementations, where derivatives after a discard are non-uniform.
+    let footprint = texel * 2.0;
     if (max(footprint.x / texel.x, footprint.y / texel.y) < 1.5) {
-        return textureSample(src_texture, src_sampler, tex_coord);
+        return textureSampleLevel(src_texture, src_sampler, tex_coord, 0.0);
     }
 
     var premultiplied = vec3<f32>(0.0);
@@ -38,7 +40,7 @@ fn sample_media_texture(tex_coord: vec2<f32>) -> vec4<f32> {
     for (var y = -1; y <= 1; y = y + 1) {
         for (var x = -1; x <= 1; x = x + 1) {
             let offset = vec2<f32>(f32(x), f32(y)) * footprint / 3.0;
-            let sample = textureSample(src_texture, src_sampler, tex_coord + offset);
+            let sample = textureSampleLevel(src_texture, src_sampler, tex_coord + offset, 0.0);
             premultiplied += sample.rgb * sample.a;
             alpha += sample.a;
         }
@@ -66,7 +68,7 @@ fn rounded_box_distance(position: vec2<f32>, size: vec2<f32>, radius: f32) -> f3
 }
 
 fn sample_effective_color_mask(tex_coord: vec2<f32>) -> f32 {
-    let value = textureSample(mask_texture, src_sampler, tex_coord).r;
+    let value = textureSampleLevel(mask_texture, src_sampler, tex_coord, 0.0).r;
     return select(value, 1.0 - value, params.mask_params.y > 0.5);
 }
 
@@ -161,7 +163,7 @@ fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
     if (mask_coord.x < 0.0 || mask_coord.x > 1.0 || mask_coord.y < 0.0 || mask_coord.y > 1.0) {
         return 0.0;
     }
-    let mask_sample = textureSample(mask_texture, src_sampler, mask_coord);
+    let mask_sample = textureSampleLevel(mask_texture, src_sampler, mask_coord, 0.0);
     let inverted = params.mask_params.y > 0.5;
     let original = select(mask_sample.r, 1.0 - mask_sample.r, inverted);
     let feather_px = params.mask_params.z;
@@ -195,7 +197,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (params.procedural.x < 0.5 && params.procedural.z > 0.0) {
         let p = vec2<f32>(local_x, local_y);
         let corner_distance = rounded_rect_distance(p, params.procedural.z);
-        let corner_aa = max(fwidth(corner_distance) * 1.5, 1.5);
+        let corner_aa = 1.5;
         if (corner_distance > corner_aa) {
             discard;
         }
@@ -248,7 +250,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     if (params.procedural.x > 2.5) {
-        let glyph_color = textureSample(src_texture, src_sampler, vec2<f32>(local_x, local_y));
+        let glyph_color = textureSampleLevel(src_texture, src_sampler, vec2<f32>(local_x, local_y), 0.0);
         return vec4<f32>(glyph_color.rgb * params.opacity, glyph_color.a * params.opacity);
     }
 
@@ -320,10 +322,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (params.pixel_flow.x > 0.5) {
         let source_size = vec2<f32>(textureDimensions(src_texture));
         let cell_px = max(2.0, max(source_size.x, source_size.y) / max(24.0, params.pixel_flow.z));
-        let source_per_screen_pixel = vec2<f32>(
-            max(0.0001, length(dpdx(tex_coord) * source_size)),
-            max(0.0001, length(dpdy(tex_coord) * source_size)),
-        );
+        let source_per_screen_pixel = vec2<f32>(1.0);
         let projected_cell_size = vec2<f32>(cell_px) / source_per_screen_pixel;
         let square_cell_size = max(0.0001, min(projected_cell_size.x, projected_cell_size.y));
         let square_correction = projected_cell_size / square_cell_size;
@@ -533,7 +532,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 distance_from_centerline = length(position - best_point);
             }
             let edge_distance = half_width - distance_from_centerline;
-            let edge_aa = max(fwidth(edge_distance), 0.00001);
+            let edge_aa = max(max(params.texel_x, params.texel_y) * 4.0, 0.00001);
             if (edge_distance < -edge_aa) {
                 discard;
             }
@@ -544,7 +543,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let range_min = min(sample_start, sample_end);
             let range_max = max(sample_start, sample_end);
             let cross_distance = min(effect_coord.y - range_min, range_max - effect_coord.y);
-            let cross_aa = max(fwidth(effect_coord.y), 0.00001);
+            let cross_aa = max(max(params.texel_x, params.texel_y) * 4.0, 0.00001);
             if (cross_distance < -cross_aa) {
                 discard;
             }
@@ -560,7 +559,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else if (stretch_mode > 4.5 && stretch_mode < 5.5) {
                 direction_distance = min(direction_distance, sample_x - effect_coord.x);
             }
-            let direction_aa = max(fwidth(direction_distance), 0.00001);
+            let direction_aa = max(max(params.texel_x, params.texel_y) * 4.0, 0.00001);
             if (direction_distance < -direction_aa) {
                 discard;
             }
@@ -569,7 +568,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let range_min = min(sample_start, sample_end);
             let range_max = max(sample_start, sample_end);
             let cross_distance = min(effect_coord.x - range_min, range_max - effect_coord.x);
-            let cross_aa = max(fwidth(effect_coord.x), 0.00001);
+            let cross_aa = max(max(params.texel_x, params.texel_y) * 4.0, 0.00001);
             if (cross_distance < -cross_aa) {
                 discard;
             }
@@ -585,7 +584,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else if (stretch_mode > 5.5 && stretch_mode < 6.5) {
                 direction_distance = min(direction_distance, sample_y - effect_coord.y);
             }
-            let direction_aa = max(fwidth(direction_distance), 0.00001);
+            let direction_aa = max(max(params.texel_x, params.texel_y) * 4.0, 0.00001);
             if (direction_distance < -direction_aa) {
                 discard;
             }

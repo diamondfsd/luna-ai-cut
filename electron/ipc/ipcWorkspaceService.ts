@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import { execFile } from 'node:child_process'
 import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -45,9 +45,41 @@ import { removeObject } from '../features/segmentation/inpaintService'
 import { inpaintWorkerService } from '../features/segmentation/inpaintWorkerService'
 import { analyzeBeauty } from '../features/beauty/beautyAnalysisService'
 import { analyzeCompositionSubject, scoreCompositionCrops } from '../features/composition/compositionAnalysisService'
+import { RUNTIME_RESOURCE_DEFINITIONS } from '../infrastructure/runtimeResourceDefinitions'
+import { loadRuntimeResource } from '../infrastructure/runtimeResourceService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
+const FONT_EXTENSIONS = new Set(['.otf', '.ttf'])
+const MAX_FONT_BYTES = 30 * 1024 * 1024
 const execFileAsync = promisify(execFile)
+
+function relativeFontPath(value: string): string | null {
+  const normalized = value.replace(/\\/g, '/')
+  const prefix = 'fonts/'
+  if (!path.isAbsolute(value)) return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : null
+  const index = normalized.toLowerCase().lastIndexOf(`/${prefix}`)
+  return index >= 0 ? normalized.slice(index + prefix.length + 1) : null
+}
+
+function validateRelativeFontPath(relative: string): void {
+  if (!relative || relative.split('/').some((part) => !part || part === '.' || part === '..' || part.includes(':'))) {
+    throw new Error('字体文件路径无效')
+  }
+}
+
+async function resolveFontPath(filePath: string): Promise<string> {
+  const relative = relativeFontPath(filePath)
+  if (!relative) return filePath
+  validateRelativeFontPath(relative)
+  const localPath = path.join(process.env.APP_ROOT ?? path.join(import.meta.dirname, '..'), 'public', 'fonts', relative)
+  try {
+    await fs.promises.access(localPath)
+    return localPath
+  } catch {
+    const root = await loadRuntimeResource(path.join(app.getPath('userData'), 'resource-packs'), RUNTIME_RESOURCE_DEFINITIONS.fonts)
+    return path.join(root, relative)
+  }
+}
 
 interface FfprobeVideoEntry {
   media_type?: unknown
@@ -200,6 +232,23 @@ export function register(): void {
 
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
+  })
+
+  ipcMain.handle('workspace:loadFont', async (_event, filePath: string) => {
+    if (typeof filePath !== 'string' || !filePath.trim()) throw new Error('字体文件路径无效')
+    if (!FONT_EXTENSIONS.has(path.extname(filePath).toLowerCase())) throw new Error('字体文件格式不受支持')
+    const bytes = await readFile(await resolveFontPath(filePath))
+    if (bytes.byteLength <= 0 || bytes.byteLength > MAX_FONT_BYTES) throw new Error('字体文件大小无效')
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+  })
+
+  ipcMain.handle('workspace:loadLut', async (_event, filePath: string) => {
+    if (path.extname(filePath).toLowerCase() !== '.cube') throw new Error('调色文件格式不受支持')
+    const data = await readFile(filePath)
+    if (data.byteLength > 16 * 1024 * 1024) throw new Error('调色文件过大')
+    const result = new ArrayBuffer(data.byteLength)
+    new Uint8Array(result).set(data)
+    return result
   })
 
   ipcMain.handle('workspace:getMediaFormatInfo', async (_event, filePath: string) => {
