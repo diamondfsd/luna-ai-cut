@@ -71,6 +71,7 @@ function defaultSettings(): AppSettings {
     // Try the faster preview path by default. PreviewStage disables it and
     // persists the fallback when the current device cannot present it.
     experimentalGpuPreview: true,
+    experimentalWebGpuPreview: false,
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
@@ -113,6 +114,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.experimentalGpuPreview = typeof saved?.experimentalGpuPreview === 'boolean'
     ? saved.experimentalGpuPreview
     : defaults.experimentalGpuPreview
+  merged.experimentalWebGpuPreview = typeof saved?.experimentalWebGpuPreview === 'boolean'
+    ? saved.experimentalWebGpuPreview
+    : defaults.experimentalWebGpuPreview
   merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
     ? saved.cameraPreviewQuality
     : defaults.cameraPreviewQuality
