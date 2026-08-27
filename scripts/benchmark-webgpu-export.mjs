@@ -28,15 +28,23 @@ const inputPath = path.resolve(process.env.LUNA_WEBGPU_EXPORT_VIDEO ?? process.a
 const LUT_PATH = path.join(projectRoot, 'public', 'luts', '徕卡', 'Leica Classic.cube')
 const WATERMARK_PATH = path.join(projectRoot, 'src', 'assets', 'watermark', 'ic_watermark_luna_ultra_image_cn.png')
 const FONT_PATH = path.join(projectRoot, 'public', 'fonts', 'SourceHanSansSC-Regular.otf')
-const MAX_SIDE = Math.max(360, Number(process.env.LUNA_WEBGPU_EXPORT_MAX_SIDE ?? 960))
+const requestedMaxSide = Number(process.env.LUNA_WEBGPU_EXPORT_MAX_SIDE ?? 960)
+const MAX_SIDE = Number.isFinite(requestedMaxSide)
+  ? Math.min(3840, Math.max(360, Math.round(requestedMaxSide)))
+  : 960
 const FPS = 30
 // Four frames are enough to expose export throughput while keeping this
 // standalone comparison bounded on machines where a full-resolution render is expensive.
-const FRAME_COUNT = Math.max(1, Math.min(12, Math.round(Number(process.env.LUNA_WEBGPU_EXPORT_FRAMES ?? 4))))
+const requestedFrameCount = Number(process.env.LUNA_WEBGPU_EXPORT_FRAMES ?? 4)
+const FRAME_COUNT = Number.isFinite(requestedFrameCount)
+  ? Math.max(1, Math.min(12, Math.round(requestedFrameCount)))
+  : 4
 const DURATION = FRAME_COUNT / FPS
-const CODEC = 'avc1.4D002A'
+const CODEC = process.env.LUNA_WEBGPU_EXPORT_CODEC
+  ?? (MAX_SIDE >= 2160 ? 'avc1.640033' : 'avc1.4D002A')
 const BITRATE = 12_000_000
-const LAYER_LIMIT = Math.max(0, Math.round(Number(process.env.LUNA_WEBGPU_EXPORT_LAYER_LIMIT ?? 0)))
+const requestedLayerLimit = Number(process.env.LUNA_WEBGPU_EXPORT_LAYER_LIMIT ?? 0)
+const LAYER_LIMIT = Number.isFinite(requestedLayerLimit) ? Math.max(0, Math.round(requestedLayerLimit)) : 0
 
 function round(value) {
   return Math.round(value * 100) / 100
@@ -111,7 +119,8 @@ function fullStackLayers(sourcePath, resources) {
     maskOpacity: 0.82,
     maskFeather: 8,
     blendMode: 'screen',
-    ...(process.env.LUNA_WEBGPU_EXPORT_NO_MASK_LUT === '1' ? {} : { lutId: resources.lutPath, lutIntensity: 62 }),
+    lutId: resources.lutPath,
+    lutIntensity: 62,
   })
   return [
     base,
@@ -253,11 +262,13 @@ async function runNativeExport(composition, outputPath, logPath) {
   })
   const elapsedMs = performance.now() - startedAt
   const output = await probeVideo(outputPath)
+  const outputFrames = Number(output.nb_frames ?? 0)
   return {
     renderer: 'rust-wgpu',
     elapsedMs: round(elapsedMs),
-    frames: Number(output.nb_frames ?? 0),
-    fps: round(FRAME_COUNT * 1000 / Math.max(1, elapsedMs)),
+    requestedFrames: FRAME_COUNT,
+    frames: outputFrames,
+    fps: round(outputFrames * 1000 / Math.max(1, elapsedMs)),
     output: {
       path: outputPath,
       width: Number(output.width),
@@ -347,6 +358,8 @@ async function runWebGpuWebCodecsExport({ feature, width, height, watermarkDataU
     return {
       renderer: 'webgpu+webcodecs',
       elapsedMs: result.elapsedMs,
+      requestedFrames: FRAME_COUNT,
+      throughputFps: round(result.frames * 1000 / Math.max(1, result.elapsedMs)),
       renderMs: result.renderMs,
       encodeMs: result.encodeMs,
       readbackMs: result.readbackMs,
@@ -407,14 +420,12 @@ const fullNativeLayers = exactFrameInput
   ? staticFrameLayers(exactFrameInput, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH })
   : fullStackLayers(benchmarkVideoPath, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH })
 const nativeLayers = LAYER_LIMIT > 0 ? fullNativeLayers.slice(0, LAYER_LIMIT) : fullNativeLayers
-if (process.env.LUNA_WEBGPU_EXPORT_DEBUG_LAYERS === '1') console.log(JSON.stringify(nativeLayers.slice(0, 2), null, 2))
 const composition = buildCompositionFromPreviewLayers(nativeLayers, width, height, { fps: FPS, duration: DURATION })
 const webgpuFrameLayers = frameInputs.map(({ dataUrl }) => staticFrameLayers(dataUrl, {
   maskPath: 'fixture://mask',
   lutPath: 'fixture://lut',
   watermarkPath: 'fixture://watermark',
 })).map((layers) => (LAYER_LIMIT > 0 ? layers.slice(0, LAYER_LIMIT) : layers))
-if (process.env.LUNA_WEBGPU_EXPORT_DEBUG_LAYERS === '1') console.log(JSON.stringify(webgpuFrameLayers[0]?.slice(0, 2), null, 2))
 let nativeResult
 let webgpuResult
 nativeResult = await runNativeExport(composition, nativeOutputPath, path.join(outputRoot, 'native-export.log'))
@@ -425,7 +436,7 @@ webgpuResult = await runWebGpuWebCodecsExport({
   watermarkDataUrl,
   lutText,
   fontData,
-  mask,
+  mask: { width: mask.width, height: mask.height, bytes: [...mask.bytes] },
 })
 const nativeFirstFrame = await decodeFirstFrameRgba(nativeOutputPath, width, height)
 const webgpuFirstFrame = await decodeFirstFrameRgba(webgpuOutputPath, width, height)
