@@ -345,37 +345,37 @@ export function SettingsPage({
           <div className="settings-card">
             <article className="settings-row">
               <div className="settings-row-copy">
-                <span>加速预览</span>
+                <span>gpu加速预览</span>
                 <em>应用会自动选择兼容的预览方式；出现问题时会自动切回普通预览</em>
               </div>
               <Switch
                 checked={settings?.experimentalGpuPreview ?? true}
                 disabled={!settings}
-                ariaLabel="加速预览"
+                ariaLabel="gpu加速预览"
                 onCheckedChange={saveGpuPreviewSetting}
               />
             </article>
             <article className="settings-row">
               <div className="settings-row-copy">
-                <span>系统视频预览（实验）</span>
+                <span>webgpu预览</span>
                 <em>使用系统视频解码和画布显示；复杂编辑内容会继续使用普通预览</em>
               </div>
               <Switch
                 checked={settings?.experimentalWebGpuPreview ?? false}
                 disabled={!settings}
-                ariaLabel="系统视频预览"
+                ariaLabel="webgpu预览"
                 onCheckedChange={saveWebGpuPreviewSetting}
               />
             </article>
             <article className="settings-row">
               <div className="settings-row-copy">
-                <span>加速导出（实验）</span>
+                <span>webgpu导出</span>
                 <em>为后续高分辨率视频导出准备；当前仍使用稳定的导出方式</em>
               </div>
               <Switch
                 checked={settings?.experimentalWebGpuExport ?? false}
                 disabled={!settings}
-                ariaLabel="加速导出"
+                ariaLabel="webgpu导出"
                 onCheckedChange={saveWebGpuExportSetting}
               />
             </article>
