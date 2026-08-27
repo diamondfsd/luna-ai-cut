@@ -789,12 +789,33 @@ export class WebGpuVideoRenderer {
     this.options.onVideoElement(primary)
   }
 
+  private currentPlaybackCompositionTime(): number {
+    const primaryLayer = this.layers.find((layer) => layer.isVideo)
+    const primaryVideo = primaryLayer
+      ? this.videos.get(videoLayerKey(primaryLayer))?.video
+      : undefined
+    if (!this.playing || !primaryLayer || !primaryVideo || !Number.isFinite(primaryVideo.currentTime)) {
+      return this.compositionTime
+    }
+    return Math.max(
+      0,
+      primaryVideo.currentTime
+        - numberOr(primaryLayer.videoTime, 0)
+        + numberOr(primaryLayer.videoOffset, 0),
+    )
+  }
+
   private syncVideoClocks(): void {
+    const playbackTime = this.currentPlaybackCompositionTime()
+    if (this.playing) this.compositionTime = playbackTime
     for (const layer of this.layers) {
       if (!layer.isVideo) continue
       const entry = this.videos.get(videoLayerKey(layer))
       if (!entry?.ready) continue
-      const target = Math.max(0, numberOr(layer.videoTime, 0) + this.compositionTime - numberOr(layer.videoOffset, 0))
+      // 播放时主视频自身就是时钟，不能用低频的 React timeupdate 反向拉回它。
+      // 其他视频层仍跟随主视频的合成时间，避免多视频素材逐渐漂移。
+      if (this.playing && entry.video === this.currentPrimaryVideo) continue
+      const target = Math.max(0, numberOr(layer.videoTime, 0) + playbackTime - numberOr(layer.videoOffset, 0))
       const threshold = this.playing ? 0.15 : 0.01
       if (Math.abs(entry.video.currentTime - target) > threshold) entry.video.currentTime = target
     }
