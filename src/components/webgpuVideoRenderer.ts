@@ -22,7 +22,12 @@ type GpuSampler = object
 type GpuShaderModule = {
   getCompilationInfo?: () => Promise<{ messages?: Array<{ type?: string; message?: string; lineNum?: number }> }>
 }
-type GpuBuffer = { destroy?: () => void }
+type GpuBuffer = {
+  destroy?: () => void
+  mapAsync: (mode: number) => Promise<void>
+  getMappedRange: () => ArrayBuffer
+  unmap: () => void
+}
 type GpuTexture = {
   createView: (descriptor?: unknown) => GpuTextureView
   destroy?: () => void
@@ -41,6 +46,7 @@ interface GpuRenderPass {
 interface GpuCommandEncoder {
   beginRenderPass: (descriptor: unknown) => GpuRenderPass
   copyTextureToTexture: (source: unknown, destination: unknown, copySize: unknown) => void
+  copyTextureToBuffer: (source: unknown, destination: unknown, copySize: unknown) => void
   finish: () => GpuCommandBuffer
 }
 
@@ -1241,6 +1247,44 @@ export class WebGpuVideoRenderer {
         this.renderQueued = false
         this.scheduleRender()
       }
+    }
+  }
+
+  async readOutputFrame(): Promise<Uint8Array> {
+    const device = this.device
+    const output = this.outputTexture
+    if (!device || !output) throw new Error('WebGPU 输出画面尚未准备好')
+    const bytesPerRow = Math.ceil(output.width * 4 / 256) * 256
+    const buffer = device.createBuffer({ size: bytesPerRow * output.height, usage: 0x01 | 0x08 })
+    try {
+      const encoder = device.createCommandEncoder({ label: 'luna-webgpu-readback' })
+      encoder.copyTextureToBuffer(
+        { texture: output.texture },
+        { buffer, bytesPerRow, rowsPerImage: output.height },
+        { width: output.width, height: output.height, depthOrArrayLayers: 1 },
+      )
+      device.queue.submit([encoder.finish()])
+      await device.queue.onSubmittedWorkDone?.()
+      await buffer.mapAsync(0x01)
+      const mapped = new Uint8Array(buffer.getMappedRange())
+      const rgba = new Uint8Array(output.width * output.height * 4)
+      const isBgra = this.canvasFormat.startsWith('bgra')
+      for (let y = 0; y < output.height; y += 1) {
+        const sourceOffset = y * bytesPerRow
+        const targetOffset = y * output.width * 4
+        for (let x = 0; x < output.width; x += 1) {
+          const sourcePixel = sourceOffset + x * 4
+          const targetPixel = targetOffset + x * 4
+          rgba[targetPixel] = mapped[sourcePixel + (isBgra ? 2 : 0)] ?? 0
+          rgba[targetPixel + 1] = mapped[sourcePixel + 1] ?? 0
+          rgba[targetPixel + 2] = mapped[sourcePixel + (isBgra ? 0 : 2)] ?? 0
+          rgba[targetPixel + 3] = mapped[sourcePixel + 3] ?? 255
+        }
+      }
+      buffer.unmap()
+      return rgba
+    } finally {
+      buffer.destroy?.()
     }
   }
 }

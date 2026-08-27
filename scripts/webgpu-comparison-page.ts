@@ -5,6 +5,7 @@ interface ComparisonFeature {
   id: string
   layers: PreviewLayer[]
   time: number
+  frameLayers?: PreviewLayer[][]
 }
 
 interface ComparisonConfig {
@@ -38,10 +39,80 @@ interface VideoBenchmarkResult {
   video: { width: number; height: number; duration: number }
 }
 
+interface EncodedVideoChunkLike {
+  type: 'key' | 'delta'
+  timestamp: number
+  duration?: number
+  byteLength: number
+  copyTo(destination: Uint8Array): void
+}
+
+interface VideoFrameLike {
+  close(): void
+}
+
+interface VideoEncoderLike {
+  configure(config: Record<string, unknown>): void
+  encode(frame: VideoFrameLike, options?: Record<string, unknown>): void
+  flush(): Promise<void>
+  close(): void
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeout)
+        resolve(value)
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeout)
+        reject(error)
+      },
+    )
+  })
+}
+
+interface VideoEncoderConstructorLike {
+  new(options: {
+    output: (chunk: EncodedVideoChunkLike) => void
+    error: (error: Error) => void
+  }): VideoEncoderLike
+  isConfigSupported(config: Record<string, unknown>): Promise<{ supported?: boolean; config?: Record<string, unknown> }>
+}
+
+interface VideoFrameConstructorLike {
+  new(source: HTMLCanvasElement, init: { timestamp: number; duration?: number }): VideoFrameLike
+}
+
+interface WebCodecsExportChunk {
+  type: 'key' | 'delta'
+  timestamp: number
+  duration: number | null
+  data: number[]
+}
+
+interface WebCodecsExportResult {
+  elapsedMs: number
+  renderMs: number
+  encodeMs: number
+  readbackMs: number
+  flushMs: number
+  frames: number
+  keyFrames: number
+  chunks: WebCodecsExportChunk[]
+  codec: string
+  width: number
+  height: number
+  fps: number
+}
+
 interface ComparisonApi {
   initialize(config: ComparisonConfig): Promise<{ navigatorGpu: boolean }>
   renderFeature(id: string): Promise<{ elapsedMs: number; layerCount: number }>
   measureVideo(id: string, durationMs: number): Promise<VideoBenchmarkResult>
+  exportVideo(id: string, frameCount: number, fps: number, codec: string, bitrate: number): Promise<WebCodecsExportResult>
   destroy(): void
 }
 
@@ -114,6 +185,50 @@ function waitForVideoReady(video: HTMLVideoElement): Promise<void> {
     video.addEventListener('loadeddata', handleReady, { once: true })
     video.addEventListener('error', handleError, { once: true })
   })
+}
+
+function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
+  const videoWithFrameCallback = video as HTMLVideoElement & {
+    requestVideoFrameCallback?: (callback: () => void) => number
+  }
+  if (!videoWithFrameCallback.requestVideoFrameCallback) return waitForAnimationFrames(2)
+  return withTimeout(new Promise((resolve) => {
+    videoWithFrameCallback.requestVideoFrameCallback(() => resolve())
+  }), 5_000, 'WebGPU 导出视频帧准备超时')
+}
+
+async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
+  if (Math.abs(video.currentTime - time) < 0.001) {
+    await video.play().catch(() => undefined)
+    await waitForVideoFrame(video)
+    video.pause()
+    return
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup()
+      reject(new Error(`WebGPU 导出视频定位超时: ${time.toFixed(3)}s`))
+    }, 15_000)
+    const cleanup = () => {
+      window.clearTimeout(timeout)
+      video.removeEventListener('seeked', handleSeeked)
+      video.removeEventListener('error', handleError)
+    }
+    const handleSeeked = () => {
+      cleanup()
+      resolve()
+    }
+    const handleError = () => {
+      cleanup()
+      reject(new Error(`WebGPU 导出视频定位失败: ${video.error?.message ?? 'unknown error'}`))
+    }
+    video.addEventListener('seeked', handleSeeked, { once: true })
+    video.addEventListener('error', handleError, { once: true })
+    video.currentTime = time
+  })
+  await video.play().catch(() => undefined)
+  await waitForVideoFrame(video)
+  video.pause()
 }
 
 function waitForAnimationFrames(count: number): Promise<void> {
@@ -286,6 +401,129 @@ pageWindow.lunaWebGpuComparison = {
         height: video.videoHeight,
         duration: video.duration,
       },
+    }
+  },
+
+  async exportVideo(id: string, frameCount: number, fps: number, codec: string, bitrate: number): Promise<WebCodecsExportResult> {
+    if (!renderer || !config) throw new Error('WebGPU standalone renderer is not initialized')
+    const feature = config.features.find((entry) => entry.id === id)
+    if (!feature) throw new Error(`Unknown comparison feature: ${id}`)
+    const firstRender = waitForRender()
+    await renderer.setLayers(feature.layers)
+    await firstRender
+    const globals = window as unknown as {
+      VideoEncoder?: VideoEncoderConstructorLike
+      VideoFrame?: VideoFrameConstructorLike
+    }
+    const Encoder = globals.VideoEncoder
+    const Frame = globals.VideoFrame
+    if (!Encoder || !Frame) throw new Error('当前 Chromium 不支持视频导出能力')
+    const frameLayers = feature.frameLayers
+    const video = primaryVideo
+    if (!video && !frameLayers) throw new Error('WebGPU standalone export source is missing')
+    if (video) {
+      await waitForVideoReady(video)
+      video.muted = true
+      video.pause()
+    }
+    const safeFrameCount = Math.max(1, Math.min(60, Math.round(frameCount)))
+    const safeFps = Math.max(1, Math.min(120, Number(fps) || 30))
+    const safeBitrate = Math.max(100_000, Math.round(bitrate))
+    const width = canvas.width
+    const height = canvas.height
+    const captureCanvas = document.createElement('canvas')
+    captureCanvas.width = width
+    captureCanvas.height = height
+    const captureContext = captureCanvas.getContext('2d')
+    if (!captureContext) throw new Error('无法准备视频导出画面')
+    const encoderConfig = {
+      codec,
+      width,
+      height,
+      bitrate: safeBitrate,
+      framerate: safeFps,
+      hardwareAcceleration: 'prefer-hardware',
+      latencyMode: 'quality',
+      avc: { format: 'annexb' },
+    }
+    const support = await Encoder.isConfigSupported(encoderConfig)
+    if (!support.supported) throw new Error(`当前 Chromium 不支持 ${codec} 视频编码`)
+    const chunks: WebCodecsExportChunk[] = []
+    let encodingError: Error | null = null
+    const encoder = new Encoder({
+      output: (chunk) => {
+        const data = new Uint8Array(chunk.byteLength)
+        chunk.copyTo(data)
+        chunks.push({
+          type: chunk.type,
+          timestamp: chunk.timestamp,
+          duration: typeof chunk.duration === 'number' ? chunk.duration : null,
+          data: Array.from(data),
+        })
+      },
+      error: (error) => {
+        encodingError = error
+      },
+    })
+    encoder.configure(support.config ?? encoderConfig)
+    const startedAt = performance.now()
+    let renderMs = 0
+    let encodeMs = 0
+    let readbackMs = 0
+    try {
+      for (let index = 0; index < safeFrameCount; index += 1) {
+        if (encodingError) throw encodingError
+        const time = index / safeFps
+        const renderStartedAt = performance.now()
+        const rendered = waitForRender()
+        if (frameLayers) {
+          await renderer.setLayers(frameLayers[index] ?? frameLayers[frameLayers.length - 1] ?? feature.layers)
+        } else if (video) {
+          await seekVideo(video, time)
+          await renderer.setPlayback(true, false, time)
+        }
+        await rendered
+        // The renderer callback marks submission, while VideoFrame reads the
+        // canvas on the browser side. One animation frame lets that copy land
+        // without waiting indefinitely on the GPU queue.
+        await waitForAnimationFrames(2)
+        renderMs += performance.now() - renderStartedAt
+        const readbackStartedAt = performance.now()
+        const rgba = await renderer.readOutputFrame()
+        captureContext.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0)
+        readbackMs += performance.now() - readbackStartedAt
+        const frameStartedAt = performance.now()
+        const frame = new Frame(captureCanvas, {
+          timestamp: Math.round(time * 1_000_000),
+          duration: Math.round(1_000_000 / safeFps),
+        })
+        try {
+          encoder.encode(frame, { keyFrame: index === 0 })
+        } finally {
+          frame.close()
+        }
+        encodeMs += performance.now() - frameStartedAt
+      }
+      const flushStartedAt = performance.now()
+      await withTimeout(encoder.flush(), 15_000, 'WebCodecs 视频编码收尾超时')
+      const flushMs = performance.now() - flushStartedAt
+      if (encodingError) throw encodingError
+      return {
+        elapsedMs: Math.round(performance.now() - startedAt),
+        renderMs: Math.round(renderMs * 100) / 100,
+        encodeMs: Math.round(encodeMs * 100) / 100,
+        readbackMs: Math.round(readbackMs * 100) / 100,
+        flushMs: Math.round(flushMs * 100) / 100,
+        frames: safeFrameCount,
+        keyFrames: chunks.filter((chunk) => chunk.type === 'key').length,
+        chunks,
+        codec,
+        width,
+        height,
+        fps: safeFps,
+      }
+    } finally {
+      encoder.close()
     }
   },
 
