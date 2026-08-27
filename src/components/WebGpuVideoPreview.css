@@ -1,0 +1,8 @@
+.preview-canvas-wrapper .webgpu-video-preview {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100% - 42px);
+  margin-bottom: 42px;
+  background: #000;
+  pointer-events: none;
+}

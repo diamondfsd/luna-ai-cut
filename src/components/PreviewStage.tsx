@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, 
 import { LrcRender } from './LrcRender'
 import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
 import { NativeGpuVideoPreview } from './NativeGpuVideoPreview'
+import { WebGpuVideoPreview, canUseWebGpuVideoPreview } from './WebGpuVideoPreview'
 import { PreviewStageError } from './PreviewStageError'
 import { useApp } from '../context/AppContext'
 import type { PreviewLayer } from '../shared/types'
@@ -47,6 +48,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [nativePreviewFailed, setNativePreviewFailed] = useState(false)
   const nativePreviewAutoDisabledRef = useRef(false)
   const gpuPreviewEnabled = settings?.experimentalGpuPreview ?? false
+  const webGpuPreviewEnabled = settings?.experimentalWebGpuPreview ?? false
+  const [webGpuPreviewFailed, setWebGpuPreviewFailed] = useState(false)
+  const webGpuPreviewAutoDisabledRef = useRef(false)
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
   const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
@@ -63,6 +67,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     setNativePreviewFailed(false)
     if (!gpuPreviewEnabled) nativePreviewAutoDisabledRef.current = false
   }, [gpuPreviewEnabled])
+  useEffect(() => {
+    setWebGpuPreviewFailed(false)
+    if (!webGpuPreviewEnabled) webGpuPreviewAutoDisabledRef.current = false
+  }, [webGpuPreviewEnabled])
   // 暴露给父组件的视频控制 API
   useImperativeHandle(ref, () => ({
     seek: (time: number) => {
@@ -293,6 +301,17 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     void window.luna.saveSettings({ experimentalGpuPreview: false }).catch(() => undefined)
   }
 
+  function handleWebGpuPreviewFailure(reason: string) {
+    handleRenderFailure(reason)
+    setWebGpuPreviewFailed(true)
+    // A lost WebGPU device is process-wide for this renderer. Disable only the
+    // experimental route and leave the established native/export paths intact.
+    if (webGpuPreviewAutoDisabledRef.current || !settings?.experimentalWebGpuPreview) return
+    webGpuPreviewAutoDisabledRef.current = true
+    setSettings((current) => (current ? { ...current, experimentalWebGpuPreview: false } : current))
+    void window.luna.saveSettings({ experimentalWebGpuPreview: false }).catch(() => undefined)
+  }
+
   useEffect(() => {
     previewErrorToastRef.current = null
     setPreviewError(null)
@@ -368,11 +387,20 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   )
   const useNativeGpuPreview = isDisplayVideo
     && gpuPreviewEnabled
+    && !webGpuPreviewEnabled
     && !livePlaying
     && !useCompositionVideoRenderer
     && !cropActive
     && viewScale === 'fit'
     && !nativePreviewFailed
+  const useWebGpuPreview = isDisplayVideo
+    && webGpuPreviewEnabled
+    && !livePlaying
+    && !useCompositionVideoRenderer
+    && !cropActive
+    && viewScale === 'fit'
+    && !webGpuPreviewFailed
+    && canUseWebGpuVideoPreview(layers)
   const primaryVideoLayer = layers.find((layer) => layer.isVideo)
   const compositionTime = primaryVideoLayer
     ? compositionTimeForVideoLayer(primaryVideoLayer, currentTime)
@@ -451,7 +479,21 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          {useNativeGpuPreview && previewCanvas ? (
+          {useWebGpuPreview && previewCanvas ? (
+            <WebGpuVideoPreview
+              layers={layers}
+              canvasWidth={previewCanvas.width}
+              canvasHeight={previewCanvas.height}
+              active={active}
+              playing={playing}
+              onRender={handleRender}
+              onVideoElement={handleVideoElement}
+              onFallback={(reason) => {
+                console.warn('[PreviewStage] WebGPU preview fallback', { reason })
+                handleWebGpuPreviewFailure(reason)
+              }}
+            />
+          ) : useNativeGpuPreview && previewCanvas ? (
             <NativeGpuVideoPreview
               layers={layers}
               canvasWidth={previewCanvas.width}
