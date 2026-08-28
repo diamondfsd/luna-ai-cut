@@ -8,6 +8,7 @@ import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import type { CustomWatermarkAsset, PreviewLayer, WatermarkPosition, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   DEFAULT_WATERMARK_WIDTH_RATIO,
+  DEFAULT_DJI_PORTRAIT_WIDTH_RATIO,
   defaultWatermarkPlacement,
   effectiveWatermarkPlacement,
   resolveDjiWatermarkPositioning,
@@ -208,7 +209,7 @@ export function WatermarkSettings({
     deviceMetadata?.watermarkProfileId,
   ])
   const defaultWatermarkWidthRatio = resolvedMediaSize && resolvedMediaSize.height > resolvedMediaSize.width
-    ? 0.35
+    ? DEFAULT_DJI_PORTRAIT_WIDTH_RATIO
     : DEFAULT_WATERMARK_WIDTH_RATIO
 
   useEffect(() => {

@@ -1,6 +1,8 @@
 import type { WatermarkPlacement, WatermarkPosition, WatermarkPositioning, WatermarkSettings } from './types'
 
 export const DEFAULT_WATERMARK_WIDTH_RATIO = 0.23
+/** DJI 内置竖屏水印的默认宽度；与水印面板的竖屏预设保持一致。 */
+export const DEFAULT_DJI_PORTRAIT_WIDTH_RATIO = 0.35
 export const DEFAULT_WATERMARK_INSET_ON_SHORT_EDGE = 0.059
 export const MIN_WATERMARK_WIDTH_RATIO = 0.08
 export const MAX_WATERMARK_WIDTH_RATIO = 0.8
@@ -126,7 +128,7 @@ export function resolveDjiWatermarkPositioning(
   const imageHeight = Math.max(1, finiteOr(settings.imageHeight, 144))
   // Producer scale is the half-width in its normalized [-0.5, 0.5] frame;
   // the renderer positioning API expects the full width in [0, 1] UV space.
-  const producerScale = widthRatio > 1 ? 0.12 : 0.08
+  const producerScale = widthRatio > 1 ? 0.12 : DEFAULT_DJI_PORTRAIT_WIDTH_RATIO / 2
   const targetWidth = producerScale * 2
   const targetHeight = targetWidth / (imageWidth / imageHeight) * widthRatio
   const position = settings.position === 'top-center' ? 'bottom-center' : settings.position
