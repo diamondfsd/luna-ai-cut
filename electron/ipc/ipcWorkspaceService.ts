@@ -47,6 +47,8 @@ import { analyzeBeauty } from '../features/beauty/beautyAnalysisService'
 import { analyzeCompositionSubject, scoreCompositionCrops } from '../features/composition/compositionAnalysisService'
 import { RUNTIME_RESOURCE_DEFINITIONS } from '../infrastructure/runtimeResourceDefinitions'
 import { loadRuntimeResource } from '../infrastructure/runtimeResourceService'
+import type { IpcContext } from './context'
+import { selectPrimaryVideoStream, selectVideoFrame, type FfprobeVideoEntry } from '../media/videoResolution'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const FONT_EXTENSIONS = new Set(['.otf', '.ttf'])
@@ -61,9 +63,23 @@ function relativeFontPath(value: string): string | null {
   return index >= 0 ? normalized.slice(index + prefix.length + 1) : null
 }
 
+function relativeLutPath(value: string): string | null {
+  const normalized = value.replace(/\\/g, '/')
+  const prefix = 'luts/'
+  if (!path.isAbsolute(value)) return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : null
+  const index = normalized.toLowerCase().lastIndexOf(`/${prefix}`)
+  return index >= 0 ? normalized.slice(index + prefix.length + 1) : null
+}
+
 function validateRelativeFontPath(relative: string): void {
   if (!relative || relative.split('/').some((part) => !part || part === '.' || part === '..' || part.includes(':'))) {
     throw new Error('字体文件路径无效')
+  }
+}
+
+function validateRelativeLutPath(relative: string): void {
+  if (!relative || relative.split('/').some((part) => !part || part === '.' || part === '..' || part.includes(':'))) {
+    throw new Error('调色文件路径无效')
   }
 }
 
@@ -81,13 +97,40 @@ async function resolveFontPath(filePath: string): Promise<string> {
   }
 }
 
-interface FfprobeVideoEntry {
-  media_type?: unknown
-  codec_type?: unknown
-  width?: unknown
-  height?: unknown
-  side_data_list?: Array<{ rotation?: unknown }>
-  tags?: Record<string, unknown>
+async function resolveLutPath(filePath: string): Promise<string> {
+  if (path.isAbsolute(filePath)) {
+    try {
+      await fs.promises.access(filePath)
+      return filePath
+    } catch {
+      // 旧版本保存的绝对路径可能只剩下相对资源位置。
+    }
+  }
+  const relative = relativeLutPath(filePath)
+  if (!relative) return filePath
+  validateRelativeLutPath(relative)
+
+  const settings = await getSettings().catch(() => null)
+  const appRoot = process.env.APP_ROOT ?? path.join(import.meta.dirname, '..')
+  const builtinDirectories = [
+    settings?.lutDir,
+    app.isPackaged ? path.join(process.resourcesPath, 'luts') : path.join(appRoot, 'public', 'luts'),
+    process.env.VITE_PUBLIC ? path.join(process.env.VITE_PUBLIC, 'luts') : null,
+    path.join(process.resourcesPath || '', 'luts'),
+  ].filter((directory): directory is string => Boolean(directory))
+
+  for (const directory of [...new Set(builtinDirectories)]) {
+    const candidate = path.join(directory, ...relative.split('/'))
+    try {
+      await fs.promises.access(candidate)
+      return candidate
+    } catch {
+      // 继续尝试其他当前资源目录。
+    }
+  }
+
+  const root = await loadRuntimeResource(path.join(app.getPath('userData'), 'resource-packs'), RUNTIME_RESOURCE_DEFINITIONS.luts)
+  return path.join(root, ...relative.split('/'))
 }
 
 function normalizeRotation(value: unknown): number | null {
@@ -138,10 +181,13 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
       filePath,
     ])
     const parsed = JSON.parse(stdout) as { frames?: FfprobeVideoEntry[]; streams?: FfprobeVideoEntry[] }
-    const frame = parsed.frames?.find((item) => item.media_type === 'video')
-    const stream = parsed.streams?.find((item) => item.codec_type === 'video')
-    const encodedWidth = Number(frame?.width ?? stream?.width ?? 0)
-    const encodedHeight = Number(frame?.height ?? stream?.height ?? 0)
+    const stream = selectPrimaryVideoStream(parsed.streams)
+    const frame = selectVideoFrame(parsed.frames, stream)
+    // A DJI MP4 may contain an attached 960x540 MJPEG thumbnail. Its first
+    // frame can appear before the real video frame, so dimensions must come
+    // from the selected encoded video stream first.
+    const encodedWidth = Number(stream?.width ?? frame?.width ?? 0)
+    const encodedHeight = Number(stream?.height ?? frame?.height ?? 0)
     if (Number.isFinite(encodedWidth) && Number.isFinite(encodedHeight) && encodedWidth > 0 && encodedHeight > 0) {
       const rotation = displayRotation(frame, stream)
       const shouldSwap = rotation === 90 || rotation === 270
@@ -179,7 +225,11 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
   throw new Error(`无法获取文件分辨率: ${filePath}`)
 }
 
-export function register(): void {
+export function register(ctx: IpcContext): void {
+  type VideoProbeResult = Awaited<ReturnType<typeof getVideoFrameRate>>
+  type MediaResolutionResult = Awaited<ReturnType<typeof probeDisplayResolution>>
+  const videoProbeTasks = new Map<string, Promise<VideoProbeResult>>()
+  const mediaResolutionTasks = new Map<string, Promise<MediaResolutionResult>>()
   const segmentationTasks = new SegmentationTaskRegistry()
   const trackingTasks = new SegmentationTaskRegistry()
   const removalTasks = new SegmentationTaskRegistry()
@@ -201,6 +251,33 @@ export function register(): void {
       cancelSenderTasks()
       watchedSenders.delete(sender.id)
     })
+  }
+  const enqueueVideoProbe = (filePath: string): Promise<VideoProbeResult> => {
+    const existingTask = videoProbeTasks.get(filePath)
+    if (existingTask) return existingTask
+
+    const task = ctx.enqueuePreviewTask(() => getVideoFrameRate({
+      kind: 'video',
+      sourceUrl: filePath,
+      url: filePath,
+      downloadFilePath: filePath,
+      localPath: filePath,
+      cacheFilePath: null,
+    }, filePath), 0).finally(() => {
+      videoProbeTasks.delete(filePath)
+    })
+    videoProbeTasks.set(filePath, task)
+    return task
+  }
+  const enqueueMediaResolution = (filePath: string): Promise<MediaResolutionResult> => {
+    const existingTask = mediaResolutionTasks.get(filePath)
+    if (existingTask) return existingTask
+
+    const task = ctx.enqueuePreviewTask(() => probeDisplayResolution(filePath), 0).finally(() => {
+      mediaResolutionTasks.delete(filePath)
+    })
+    mediaResolutionTasks.set(filePath, task)
+    return task
   }
   ipcMain.handle('workspace:loadTrimThumbnailCache', async (_event, videoPath: string, duration: number) => {
     return loadTrimThumbnailCache(videoPath, duration)
@@ -243,8 +320,8 @@ export function register(): void {
   })
 
   ipcMain.handle('workspace:loadLut', async (_event, filePath: string) => {
-    if (path.extname(filePath).toLowerCase() !== '.cube') throw new Error('调色文件格式不受支持')
-    const data = await readFile(filePath)
+    if (typeof filePath !== 'string' || path.extname(filePath).toLowerCase() !== '.cube') throw new Error('调色文件格式不受支持')
+    const data = await readFile(await resolveLutPath(filePath))
     if (data.byteLength > 16 * 1024 * 1024) throw new Error('调色文件过大')
     const result = new ArrayBuffer(data.byteLength)
     new Uint8Array(result).set(data)
@@ -257,24 +334,30 @@ export function register(): void {
       ? path.join(path.dirname(filePath), `${path.basename(filePath, extension)}.dng`)
       : null
     const raw = rawPath ? await fs.promises.access(rawPath).then(() => true).catch(() => false) : false
-    if (!VIDEO_EXTENSIONS.has(extension)) return { dolbyVision: false, iLog: false, raw }
+    if (!VIDEO_EXTENSIONS.has(extension)) return { dolbyVision: false, iLog: false, raw, duration: null }
 
-    const info = await getVideoFrameRate({
-      kind: 'video',
-      sourceUrl: filePath,
-      url: filePath,
-      downloadFilePath: filePath,
-      localPath: filePath,
-      cacheFilePath: null,
-    }, filePath)
-    return { dolbyVision: info.dolbyVision === true, iLog: info.iLog === true, raw }
+    const info = await enqueueVideoProbe(filePath)
+    return {
+      dolbyVision: info.dolbyVision === true,
+      iLog: info.iLog === true,
+      raw,
+      duration: info.duration,
+    }
   })
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
     // 统一使用 ffprobe（非阻塞，只读文件头），避免同步解码大图阻塞主进程。
     // 同时读取 stream 与首帧，按 Rust 渲染层同样的规则处理视频 display matrix 和图片 Orientation。
     try {
-      const resolution = await probeDisplayResolution(filePath)
+      const resolution = await enqueueMediaResolution(filePath)
+      logMainInfo('[workspace:getMediaResolution] resolved', {
+        filePath,
+        width: resolution.width,
+        height: resolution.height,
+        encodedWidth: resolution.encodedWidth,
+        encodedHeight: resolution.encodedHeight,
+        rotation: resolution.rotation,
+      })
       return { width: resolution.width, height: resolution.height }
     } catch (error) {
       logMainError(`[workspace:getMediaResolution] FAILED filePath=${filePath} error=${error instanceof Error ? error.message : String(error)}`)
@@ -283,15 +366,22 @@ export function register(): void {
   })
 
   ipcMain.handle('workspace:getVideoDuration', async (_event, filePath: string) => {
-    const { stdout } = await execFileAsync(getFfprobePath(), [
-      '-v', 'quiet',
-      '-show_entries', 'format=duration',
-      '-of', 'default=noprint_wrappers=1:nokey=1',
-      filePath,
-    ], { encoding: 'utf-8' })
-    const duration = Number(stdout.trim())
-    if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
-    return duration
+    if (typeof filePath !== 'string' || filePath.trim().length === 0) throw new Error('视频文件路径无效')
+    try {
+      const info = await enqueueVideoProbe(filePath)
+      if (info.duration === null || !Number.isFinite(info.duration) || info.duration <= 0) {
+        throw new Error('无法读取视频时长')
+      }
+      logMainInfo('[workspace:getVideoDuration] resolved', { filePath, duration: info.duration })
+      return info.duration
+    } catch (error) {
+      logMainError('[workspace:getVideoDuration] failed', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error),
+        code: error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : undefined,
+      })
+      throw error
+    }
   })
 
   ipcMain.handle('workspace:cancelMaskTracking', (event, requestId: string) => {
@@ -337,7 +427,7 @@ export function register(): void {
     const task = removalTasks.begin(event.sender.id, request.requestId)
     watchSender(event.sender)
     try {
-      const [settings, resolution] = await Promise.all([getSettings(), probeDisplayResolution(request.filePath)])
+      const [settings, resolution] = await Promise.all([getSettings(), enqueueMediaResolution(request.filePath)])
       return await removeObject(request, settings.baseDir, resolution.width, resolution.height, event.sender.id, task.controller.signal)
     } finally {
       removalTasks.finish(task)
@@ -370,13 +460,11 @@ export function register(): void {
     const task = trackingTasks.begin(event.sender.id, request.requestId)
     watchSender(event.sender)
     try {
-      const [duration, resolution] = await Promise.all([
-        (async () => {
-          const { stdout } = await execFileAsync(getFfprobePath(), ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', request.filePath], { encoding: 'utf-8' })
-          return Number(stdout.trim())
-        })(),
-        probeDisplayResolution(request.filePath),
+      const [probe, resolution] = await Promise.all([
+        enqueueVideoProbe(request.filePath),
+        enqueueMediaResolution(request.filePath),
       ])
+      const duration = probe.duration ?? NaN
       if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
       const boundedAnchorTime = Math.min(anchorTime, duration)
       const endTime = requestedEndTime == null ? undefined : Math.min(Math.max(requestedEndTime, 0), duration)
@@ -508,7 +596,7 @@ export function register(): void {
       signal.throwIfAborted()
       reportProgress('preparing', '正在准备画面', null)
       const prepareStartedAt = performance.now()
-      const sourceSize = await probeDisplayResolution(filePath)
+      const sourceSize = await enqueueMediaResolution(filePath)
       const scale = Math.min(640 / sourceSize.width, 640 / sourceSize.height)
       const scaledWidth = Math.max(1, Math.round(sourceSize.width * scale))
       const scaledHeight = Math.max(1, Math.round(sourceSize.height * scale))
@@ -618,7 +706,7 @@ export function register(): void {
     const decodeStartedAt = performance.now()
     const semanticDefinition = isSam || specializedDefinition ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
     const semanticInputSize = semanticDefinition?.inputSize ?? 512
-    const sourceSize = await probeDisplayResolution(filePath)
+    const sourceSize = await enqueueMediaResolution(filePath)
     const samScale = sourceSize ? Math.min(1, 1024 / Math.max(sourceSize.width, sourceSize.height)) : 1
     const samWidth = sourceSize ? Math.max(1, Math.round(sourceSize.width * samScale)) : 512
     const samHeight = sourceSize ? Math.max(1, Math.round(sourceSize.height * samScale)) : 512

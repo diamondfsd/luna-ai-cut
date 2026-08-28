@@ -1,6 +1,6 @@
-# DJI Pocket 4 / 4 Pro Mock Service
+# DJI Osmo Mock Service
 
-该服务模拟 Osmosis 中 Pocket 4 系列的验收链路：
+该服务模拟 Osmosis 中 DJI Osmo 相机的验收链路：
 
 - HTTP `/v2?storage=...&path=...`，支持 `HEAD`、Range 和断点下载；
 - UDP DUML `9004`（本地默认 `19004`）；
@@ -16,6 +16,7 @@
 pnpm mock:dji -- --model pocket4 --root /path/to/media
 pnpm mock:dji -- --model pocket4pro --root /path/to/media --drop-after-bytes 1048576
 pnpm mock:dji -- --model pocket3 --root /path/to/media
+pnpm mock:dji -- --model action5pro --root /path/to/media
 ```
 
 素材目录如果包含 `sdcard/` 和 `internal/` 子目录，会分别映射到两个存储；没有子目录时，Pocket 3 全部映射到 SD 卡，Pocket 4 全部映射到内置存储。启动日志是 JSON 行，包含文件数量和端口，不输出 Wi-Fi 密码。

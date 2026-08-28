@@ -10,6 +10,8 @@ interface DjiWirelessConnectionPanelProps {
   needsSystemWifi: boolean
   wifiPasswordCopied: boolean
   onCopyPassword: () => void
+  loading: boolean
+  onReadWifi: () => void
 }
 
 export function DjiWirelessConnectionPanel({
@@ -18,8 +20,11 @@ export function DjiWirelessConnectionPanel({
   needsSystemWifi,
   wifiPasswordCopied,
   onCopyPassword,
+  loading,
+  onReadWifi,
 }: DjiWirelessConnectionPanelProps) {
   const bluetoothUnsupported = preparation?.capabilities?.bluetoothWifiCredentials === false
+  const hasCredentials = Boolean(credentials)
 
   return (
     <section className="device-connect-wireless-preparation" aria-label="DJI Wi-Fi 连接准备">
@@ -27,8 +32,8 @@ export function DjiWirelessConnectionPanel({
         <div>
           <p className="device-connect-section-title">Wi-Fi 连接准备</p>
           <span>
-            {preparation?.credentials
-              ? '已通过蓝牙取得相机 Wi-Fi 信息，请使用系统 Wi-Fi 工具连接相机后点击右侧连接'
+            {hasCredentials
+              ? '已通过蓝牙取得相机 Wi-Fi 信息，点击连接时会自动切换到相机 Wi-Fi'
               : bluetoothUnsupported
                 ? '当前电脑不支持蓝牙，请使用系统 Wi-Fi 工具手动连接相机热点'
                 : preparation
@@ -36,10 +41,21 @@ export function DjiWirelessConnectionPanel({
                   : '点击“开始连接”后会自动尝试通过蓝牙获取相机 Wi-Fi 信息'}
           </span>
         </div>
-        <span className={`device-connect-wireless-state ${preparation?.credentials ? 'success' : needsSystemWifi ? 'system' : ''}`}>
-          <Bluetooth size={13} />
-          {preparation?.credentials ? '蓝牙已获取' : needsSystemWifi ? '需要系统 Wi-Fi' : '自动尝试蓝牙'}
-        </span>
+        <div className="device-connect-wireless-header-actions">
+          <span className={`device-connect-wireless-state ${hasCredentials ? 'success' : needsSystemWifi ? 'system' : ''}`}>
+            <Bluetooth size={13} />
+            {hasCredentials ? '蓝牙已获取' : needsSystemWifi ? '需要系统 Wi-Fi' : '自动尝试蓝牙'}
+          </span>
+          <Button
+            variant="secondary"
+            size="mini"
+            disabled={loading}
+            onClick={onReadWifi}
+            icon={<Bluetooth size={13} />}
+          >
+            {loading ? '正在获取' : hasCredentials ? '重新获取密码' : '蓝牙一键获取 Wi-Fi 密码'}
+          </Button>
+        </div>
       </div>
 
       {credentials && (

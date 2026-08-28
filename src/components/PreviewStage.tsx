@@ -220,6 +220,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     videoRef.current.play().catch(() => {})
   }, [livePlaying, isDisplayVideo, displayUrl])
 
+  useEffect(() => {
+    if (active) return
+    playbackIntentRef.current = false
+    shouldResumePlaybackRef.current = false
+    setLivePlaying(false)
+    videoRef.current?.pause()
+  }, [active])
+
   // url 变化时显示 loading，onRender 时取消
   useEffect(() => {
     if (!displayUrl) { setLoading(false); return }
@@ -284,11 +292,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function handleWebGpuPreviewFailure(reason: string) {
     console.warn('[PreviewStage] WebGPU preview fallback', { reason })
     setWebGpuPreviewFailed(true)
-    handleRenderFailure(reason, false)
+    const isResourceFailure = reason.includes('调色文件') || reason.includes('字体文件')
+    const userMessage = isResourceFailure ? '调色文件暂时无法读取' : '预览加速暂时不可用'
+    handleRenderFailure(userMessage, false)
     if (previewErrorToastRef.current !== reason) {
       previewErrorToastRef.current = reason
-      toast.error('WebGPU 预览暂不可用，已切回通用预览')
+      toast.error(`${userMessage}，已切回通用预览`)
     }
+    if (isResourceFailure) return
     if (webGpuPreviewAutoDisabledRef.current || !settings?.experimentalWebGpuPreview) return
     webGpuPreviewAutoDisabledRef.current = true
     setSettings((current) => (current ? { ...current, experimentalWebGpuPreview: false } : current))
@@ -470,6 +481,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
             <MultipleLayerVideoPreviewLrcRender
               key={rendererKey}
               layers={layers}
+              active={active}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
@@ -486,6 +498,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
             <LrcRender
               key={rendererKey}
               layers={layers}
+              active={active}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}

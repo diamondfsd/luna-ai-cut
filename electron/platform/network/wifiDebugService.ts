@@ -256,8 +256,10 @@ async function connectDarwinWifiWithPassword(
   password: string,
   timeoutMs: number,
   bssid?: string,
+  skipSsidVerification = false,
 ): Promise<WifiDebugResult<WifiDebugStatus>> {
   const args = ['connect', '--ssid', ssid, '--password-stdin']
+  if (skipSsidVerification) args.push('--skip-ssid-verification')
   if (bssid) args.push('--bssid', bssid)
   const result = await runCoreWlan<unknown>(args, Math.min(Math.max(timeoutMs, 10000), 30000), password)
   if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
@@ -367,9 +369,10 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
   try {
     if (process.platform === 'darwin') {
       if (options.password) {
-        return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid)
+        return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid, options.skipSsidVerification)
       }
       const args = ['connect', '--ssid', ssid]
+      if (options.skipSsidVerification) args.push('--skip-ssid-verification')
       if (options.bssid) args.push('--bssid', options.bssid)
       const result = await runCoreWlan<unknown>(args, timeoutMs)
       if (!result.success) return result as WifiDebugResult<WifiDebugStatus>

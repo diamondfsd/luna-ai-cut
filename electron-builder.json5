@@ -97,6 +97,11 @@
       {
         "from": "node_modules/7zip-bin/mac/${arch}/7za",
         "to": "tools/7za"
+      },
+      {
+        "from": "resources/dji-ble-helper",
+        "to": "dji-ble-helper",
+        "filter": ["DjiCoreBluetoothTransport.app/**/*"]
       }
     ],
     "extendInfo": {

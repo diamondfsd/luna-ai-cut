@@ -26,12 +26,13 @@ function getLRC(): LunaRenderCore | undefined {
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
-      { layers, className, canvasWidth, canvasHeight, maxSide, playing = false, compositionTime, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 5, interactiveImageLayerIndexes, viewportKey },
+      { layers, active = true, className, canvasWidth, canvasHeight, maxSide, playing = false, compositionTime, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 5, interactiveImageLayerIndexes, viewportKey },
       ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
       const lrcRef = useRef<LunaRenderCore | null>(null)
       const destroyRef = useRef(false)
+      const activeRef = useRef(active)
       const readyRef = useRef(false)
       const scheduledRenderRef = useRef(0)
       const renderingRef = useRef(false)
@@ -50,6 +51,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
       const layersRef = useRef(layers)
       layersRef.current = layers
+      activeRef.current = active
       const playingRef = useRef(playing)
       playingRef.current = playing
       const compositionTimeRef = useRef(compositionTime)
@@ -84,7 +86,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
        * 多视频层可能几乎同时产出画面，不应为每个回调分别走一次 RGBA IPC。
        */
       function scheduleRender(): void {
-        if (destroyRef.current || scheduledRenderRef.current !== 0) return
+        if (destroyRef.current || !activeRef.current || scheduledRenderRef.current !== 0) return
         scheduledRenderRef.current = requestAnimationFrame(() => {
           scheduledRenderRef.current = 0
           void renderFrame()
@@ -104,6 +106,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       function scheduleVideoFrameCallback(entry: VideoStateEntry): void {
         if (
           destroyRef.current
+          || !activeRef.current
           || entry.frameCallbackId !== null
           || typeof entry.video.requestVideoFrameCallback !== 'function'
         ) return
@@ -193,7 +196,13 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
       // ── 管理视频元素 ──
       useEffect(() => {
-        if (!readyRef.current) {
+        if (!readyRef.current || !active) {
+          if (!active) {
+            for (const entry of videoStatesRef.current.values()) {
+              cancelVideoFrameCallback(entry)
+              entry.video.pause()
+            }
+          }
           // LRC 尚未就绪，跳过视频创建；依赖有 ready，等 ready 变为 true 后自动重跑
           return
         }
@@ -359,29 +368,29 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         perfLog(`video management effect done in ${(tEnd - t0).toFixed(0)}ms, ${videoStatesRef.current.size} videos managed`)
       // 调度函数通过 refs 访问最新状态，避免视频回调因函数重建而重复注册。
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [canvasHeight, canvasWidth, decodeQuality, layers, maxSide, ready])
+      }, [active, canvasHeight, canvasWidth, decodeQuality, layers, maxSide, ready])
 
       // ── 播放/暂停控制 ──
       useEffect(() => {
         if (!readyRef.current) return
         for (const [, entry] of videoStatesRef.current) {
           if (!entry.ready) continue
-          scheduleVideoFrameCallback(entry)
-          if (playing) {
+          if (active) scheduleVideoFrameCallback(entry)
+          if (playing && active) {
             entry.video.play().catch(() => {})
           } else {
             entry.video.pause()
           }
         }
-        scheduleRender()
+        if (active) scheduleRender()
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [ready, playing])
+      }, [active, ready, playing])
 
       async function renderFrame() {
         const lrc = lrcRef.current
         const canvas = outputCanvasRef.current
         const currentLayers = layersRef.current
-        if (!lrc || !canvas || destroyRef.current) return
+        if (!lrc || !canvas || destroyRef.current || !activeRef.current) return
 
         if (renderingRef.current) {
           renderQueuedRef.current = true
@@ -412,7 +421,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             renderQueuedRef.current = true
             return
           }
-          if (result === 'rendered') onRender?.()
+          if (result === 'rendered' && activeRef.current) onRender?.()
         } catch (error) {
           // 组件已卸载（如 tab 切换）时纹理被清理导致 renderFrame IPC 报错属正常，静默忽略
           if (destroyRef.current) return
@@ -431,7 +440,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           onError?.(msg)
         } finally {
           renderingRef.current = false
-          if (renderQueuedRef.current && !destroyRef.current) {
+          if (renderQueuedRef.current && !destroyRef.current && activeRef.current) {
             renderQueuedRef.current = false
             void renderFrame()
           }
@@ -441,10 +450,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       // ── layers 变化时触发一次渲染 ──
       // renderFrame 内部通过 layersRef.current 读取最新 layers，不受闭包影响。
       useEffect(() => {
-        if (!ready) return
+        if (!ready || !active) return
         scheduleRender()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [layers, ready])
+      }, [active, layers, ready])
 
       // ── 错误状态 UI ──
       if (fatalError) {

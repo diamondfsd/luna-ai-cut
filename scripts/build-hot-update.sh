@@ -66,7 +66,11 @@ GITCODE_OWNER="${GITCODE_OWNER:-diamondfsd}"
 GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
 PKG_VERSION=$(node -p "require('./package.json').version")
 RELEASE_DIR="release/${PKG_VERSION}/hot-update"
-LATEST_TAG="v${PKG_VERSION}"
+if [[ "$PKG_VERSION" =~ -beta\.[0-9]+$ ]]; then
+  RELEASE_TAG="beta/v${PKG_VERSION}"
+else
+  RELEASE_TAG="v${PKG_VERSION}"
+fi
 API_BASE="https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}"
 
 # ── 确定 build 号 ──
@@ -79,7 +83,7 @@ function resolve_build_number() {
 
   # 通过 GitCode API 查找已有热更新 zip，取最大 build 号 +1
   local latest_json last_build
-  latest_json=$(curl -sS "${API_BASE}/releases/tags/${LATEST_TAG}" 2>/dev/null || echo "")
+  latest_json=$(curl -sS "${API_BASE}/releases/tags/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$RELEASE_TAG")" 2>/dev/null || echo "")
   if [ -n "$latest_json" ]; then
     last_build=$(echo "$latest_json" | python3 -c "
 import json,sys,re
@@ -235,7 +239,7 @@ fi
 # 第二步：上传（--build-only 跳过）
 # ============================================================
 if [ "$BUILD_ONLY" = true ]; then
-  echo "  上传以下文件到 GitCode Release ${LATEST_TAG}:"
+  echo "  上传以下文件到 GitCode Release ${RELEASE_TAG}:"
   echo "    - ${ZIP_PATH}"
   echo "    - ${MANIFEST_PATH}"
   echo "    - ${NOTES_NAME}（存在时）"
@@ -250,7 +254,7 @@ fi
 
 echo ""
 info "═══════════════════════════════════════════════════════════"
-info "  上传到 GitCode Release ${LATEST_TAG}"
+info "  上传到 GitCode Release ${RELEASE_TAG}"
 info "═══════════════════════════════════════════════════════════"
 echo ""
 
@@ -262,15 +266,15 @@ if [ ! -f "$ZIP_PATH" ]; then
 fi
 write_hot_manifest
 # ── 确保 Release 存在 ──
-info "确保 Release ${LATEST_TAG} 存在..."
+info "确保 Release ${RELEASE_TAG} 存在..."
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API_BASE}/releases" \
   -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "$(cat <<-END
 {
-  "tag_name": "${LATEST_TAG}",
-  "name": "${LATEST_TAG}",
-  "body": "Luna AI Cut ${LATEST_TAG} — 热更新包"
+  "tag_name": "${RELEASE_TAG}",
+  "name": "${RELEASE_TAG}",
+  "body": "Luna AI Cut ${RELEASE_TAG} — 热更新包"
 }
 END
 )" ) || true
@@ -294,7 +298,7 @@ function upload_asset() {
   # 获取 OBS 上传地址
   local upload_json upload_url headers_json ct pid acl cb
   upload_json=$(curl -sS \
-    "${API_BASE}/releases/${LATEST_TAG}/upload_url?file_name=${encoded_name}" \
+    "${API_BASE}/releases/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$RELEASE_TAG")/upload_url?file_name=${encoded_name}" \
     -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
   upload_url=$(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
@@ -347,5 +351,5 @@ fi
 
 echo ""
 ok "全部上传完成！"
-info "Release: ${API_BASE}/releases/tag/${LATEST_TAG}"
+info "Release: ${API_BASE}/releases/tag/${RELEASE_TAG}"
 echo ""

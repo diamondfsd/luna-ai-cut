@@ -1,27 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { FileText, RefreshCw, X as XIcon, Zap } from 'lucide-react'
 import type { HotUpdateCheckResult } from '../shared/types'
 import { Button } from '../ui/Button'
 
 type Phase = 'idle' | 'downloading' | 'ready' | 'done'
 
-export function HotUpdateBanner() {
-  const [hotInfo, setHotInfo] = useState<HotUpdateCheckResult | null>(null)
+interface HotUpdateBannerProps {
+  hotInfo?: HotUpdateCheckResult | null
+}
+
+export function HotUpdateBanner({ hotInfo = null }: HotUpdateBannerProps) {
   const [dismissed, setDismissed] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
   const [showNotes, setShowNotes] = useState(false)
-
-  useEffect(() => {
-    // 监听主进程推送的热更新通知
-    const unsub = window.luna.onHotUpdateAvailable((info) => {
-      setHotInfo(info)
-      setDismissed(false)
-      setPhase('idle')
-      setError(null)
-    })
-    return unsub
-  }, [])
 
   if (!hotInfo || dismissed) return null
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
+import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
@@ -75,6 +75,7 @@ export function SettingsPage({
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
+  const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
   const [organizeDownloadsDialogOpen, setOrganizeDownloadsDialogOpen] = useState(false)
@@ -415,7 +416,7 @@ export function SettingsPage({
             <article className="settings-row">
               <div className="settings-row-copy">
                 <span>日志</span>
-                <strong>{logDir || '正在读取'}</strong>
+                <strong>{logDir || '正在读取'} · 可导出当天诊断信息</strong>
               </div>
               <div className="settings-row-actions">
                 <Button variant="secondary" size="compact" onClick={() => {
@@ -432,6 +433,26 @@ export function SettingsPage({
                   toast.success('日志已清空')
                 }} icon={<Trash2 size={15} />}>
                   清空
+                </Button>
+                <Button
+                  variant="primary"
+                  size="compact"
+                  disabled={exportingDiagnostics}
+                  onClick={async () => {
+                    setExportingDiagnostics(true)
+                    try {
+                      const outputPath = await window.luna.exportDiagnosticsBundle()
+                      await window.luna.openPath(outputPath)
+                      toast.success('诊断包已导出')
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : '诊断包导出失败')
+                    } finally {
+                      setExportingDiagnostics(false)
+                    }
+                  }}
+                  icon={<Archive size={15} />}
+                >
+                  {exportingDiagnostics ? '导出中' : '导出诊断包'}
                 </Button>
               </div>
             </article>

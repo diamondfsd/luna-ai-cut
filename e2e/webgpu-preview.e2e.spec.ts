@@ -1,12 +1,32 @@
 import { execFile } from 'node:child_process'
+import { copyFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
 import ffmpegPath from 'ffmpeg-static'
+import type { Page } from '@playwright/test'
 
 import { expect, test } from './fixtures/lunaElectron'
 
 const execFileAsync = promisify(execFile)
+
+async function clickNavigationLinkAtPoint(page: Page, name: string, path: string): Promise<void> {
+  const link = page.getByRole('link', { name })
+  const box = await link.boundingBox()
+  expect(box).not.toBeNull()
+  if (!box) return
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const hit = await page.evaluate(({ x, y }) => {
+    const element = document.elementFromPoint(x, y)
+    return {
+      tag: element?.tagName ?? null,
+      className: typeof element?.className === 'string' ? element.className : null,
+      href: element?.closest('a')?.getAttribute('href') ?? null,
+    }
+  }, point)
+  expect(hit.href).toContain(path)
+  await page.mouse.click(point.x, point.y)
+}
 
 test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', async ({ lunaApp }) => {
   const hasWebGpu = await lunaApp.page.evaluate(async () => {
@@ -21,7 +41,7 @@ test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', asyn
   const videoPath = path.join(lunaApp.temporaryRoot, 'webgpu-preview.mp4')
   await execFileAsync(ffmpegPath, [
     '-f', 'lavfi',
-    '-i', 'testsrc2=size=640x360:rate=30',
+    '-i', 'testsrc2=size=1920x1080:rate=30',
     '-t', '1.5',
     '-pix_fmt', 'yuv420p',
     '-c:v', 'libx264',
@@ -29,11 +49,15 @@ test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', asyn
     '-movflags', '+faststart',
     '-y', videoPath,
   ])
+  const localResourcesDir = path.join(lunaApp.temporaryRoot, 'downloads', 'localResources')
+  await mkdir(localResourcesDir, { recursive: true })
+  await copyFile(videoPath, path.join(localResourcesDir, 'local-preview.mp4'))
 
   const projectName = `WebGPU 预览 ${Date.now()}`
   await lunaApp.page.evaluate(async ({ name, filePath }) => {
     await window.luna.saveSettings({
       experimentalWebGpuPreview: true,
+      workspacePreviewQuality: 'smooth',
     })
     await window.luna.workspace.createProject(name, [{
       id: 'webgpu-preview-video',
@@ -42,6 +66,13 @@ test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', asyn
       kind: 'video',
     }])
   }, { name: projectName, filePath: videoPath })
+
+  const staleLutPath = path.join(path.dirname(lunaApp.temporaryRoot), 'old-worktree', 'public', 'luts', '富士胶片', 'nostalgic-neg_sRGB.cube')
+  const lutLoaded = await lunaApp.page.evaluate(async (filePath) => {
+    const bytes = await window.luna.workspace.loadLut(filePath)
+    return bytes instanceof ArrayBuffer && bytes.byteLength > 0
+  }, staleLutPath)
+  expect(lutLoaded).toBe(true)
 
   await lunaApp.page.reload()
   await lunaApp.page.waitForLoadState('domcontentloaded')
@@ -54,7 +85,7 @@ test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', asyn
     const canvas = document.querySelector('canvas.webgpu-video-preview') as HTMLCanvasElement | null
     if (!canvas) return { width: 0, height: 0, dataLength: 0 }
     return { width: canvas.width, height: canvas.height, dataLength: canvas.toDataURL('image/png').length }
-  })).toMatchObject({ width: 640, height: 360 })
+  })).toMatchObject({ width: 960, height: 540 })
   await expect.poll(async () => lunaApp.page.evaluate(() => {
     const canvas = document.querySelector('canvas.webgpu-video-preview') as HTMLCanvasElement | null
     return canvas?.toDataURL('image/png').length ?? 0
@@ -68,9 +99,21 @@ test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', asyn
   await playback.click()
   await expect(playback).toHaveAttribute('aria-label', '播放')
 
-  await lunaApp.page.evaluate(() => { window.location.hash = '#/settings' })
+  await clickNavigationLinkAtPoint(lunaApp.page, '设置', '/settings')
+  await expect.poll(() => lunaApp.page.evaluate(() => window.location.hash)).toBe('#/settings')
   await expect(lunaApp.page.locator('.settings-surface')).toBeVisible()
-  await lunaApp.page.evaluate(() => { window.location.hash = '#/workspace' })
+  await expect(lunaApp.page.locator('.workspace-layout')).toHaveCount(0)
+  await clickNavigationLinkAtPoint(lunaApp.page, '工作台', '/workspace')
   await expect(lunaApp.page.locator('.workspace-layout')).toBeVisible()
+
+  await lunaApp.page.getByRole('link', { name: '本地资源' }).click()
+  await expect(lunaApp.page.locator('.media-frame').first()).toBeVisible({ timeout: 15_000 })
+  await lunaApp.page.locator('.media-frame').first().click()
+  await expect(lunaApp.page.locator('.preview-modal')).toBeVisible()
+  await clickNavigationLinkAtPoint(lunaApp.page, '设置', '/settings')
+  await expect.poll(() => lunaApp.page.evaluate(() => window.location.hash)).toBe('#/settings')
+  await expect(lunaApp.page.locator('.settings-surface')).toBeVisible()
+  await expect(lunaApp.page.locator('.workspace-layout')).toHaveCount(0)
+  await expect(lunaApp.page.locator('.preview-modal')).toHaveCount(0)
   expect(lunaApp.runtimeErrors).toEqual([])
 })

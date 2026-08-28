@@ -13,6 +13,8 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
   src: string
   /** 相机提供的低分辨率代理视频，例如 Luna 的 LRV 或 DJI 的 LRF */
   previewSrc?: string | null
+  /** 相机清单提供的独立缩略图，例如 DJI 的 .scr/.thm */
+  thumbnailSrc?: string | null
   /** 距离最近滚动容器可视区域多远时开始加载，默认 300px */
   preloadMargin?: number
   /** 仅向滚动方向下方提前加载；设置后覆盖 preloadMargin 的全方向边距 */
@@ -37,13 +39,21 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, previewSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
+  const [remoteThumbnail, setRemoteThumbnail] = useState<string | null>(thumbnailSrc ?? null)
+  const [remoteThumbnailFailed, setRemoteThumbnailFailed] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const retryCountRef = useRef(0)
-  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, visible && !embeddedImage, previewSrc)
+  useEffect(() => {
+    setRemoteThumbnail(thumbnailSrc ?? null)
+    setRemoteThumbnailFailed(false)
+  }, [thumbnailSrc])
+
+  const useRemoteThumbnail = Boolean(remoteThumbnail) && !remoteThumbnailFailed
+  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, visible && !embeddedImage && !useRemoteThumbnail, previewSrc)
 
   useEffect(() => {
     if (cacheFilePath) onCacheReady?.(cacheFilePath)
@@ -120,9 +130,18 @@ export function ThumbImage({ src, previewSrc, preloadMargin = 300, preloadBottom
   return unavailable && unavailableFallback ? unavailableFallback : (
     <img
       ref={imgRef}
-      src={embeddedImage ? src : thumbnailUrl ?? PLACEHOLDER_DATA_URL}
+      src={embeddedImage ? src : remoteThumbnail ?? thumbnailUrl ?? PLACEHOLDER_DATA_URL}
       onError={(event) => {
         onError?.(event)
+        if (remoteThumbnail && !remoteThumbnailFailed) {
+          if (/\.scr(?:$|[?#])/i.test(remoteThumbnail)) {
+            setRemoteThumbnail(remoteThumbnail.replace(/\.scr(?=$|[?#])/i, '.thm'))
+          } else {
+            setRemoteThumbnail(null)
+            setRemoteThumbnailFailed(true)
+          }
+          return
+        }
         if (thumbnailUrl) retryOnce()
       }}
       onLoad={(event) => {

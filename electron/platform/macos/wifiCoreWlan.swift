@@ -196,6 +196,7 @@ do {
     }
     let password = argumentValue("--password") ?? (CommandLine.arguments.contains("--password-stdin") ? standardInputPassword() : nil)
     let bssid = argumentValue("--bssid")
+    let skipSsidVerification = CommandLine.arguments.contains("--skip-ssid-verification")
     let retryDelays: [TimeInterval] = [0, 0.5, 1.0]
     var lastMessage = "未扫描到目标 Wi-Fi：\(ssid)"
 
@@ -212,7 +213,7 @@ do {
         }
 
         try interface.associate(to: network, password: password)
-        if waitForAssociation(interface: interface, ssid: ssid, timeout: 3.5) {
+        if skipSsidVerification || waitForAssociation(interface: interface, ssid: ssid, timeout: 3.5) {
           result(success: true, message: "CoreWLAN 已连接 \(ssid)", data: statusPayload(interface: interface))
           exit(0)
         }

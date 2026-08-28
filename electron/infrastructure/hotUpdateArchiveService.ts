@@ -29,7 +29,8 @@ export interface HotUpdateInstallOptions {
 }
 
 function safeArchiveName(value: string): boolean {
-  return path.basename(value) === value && /^renderer-\d+\.\d+\.\d+-hot\.\d+(?:-[a-z0-9-]+)?\.zip$/.test(value)
+  return path.basename(value) === value
+    && /^renderer-\d+\.\d+\.\d+(?:-beta\.\d+)?-hot\.\d+(?:-[a-z0-9-]+)?\.zip$/.test(value)
 }
 
 function safeArchiveEntry(entry: AdmZip.IZipEntry): void {

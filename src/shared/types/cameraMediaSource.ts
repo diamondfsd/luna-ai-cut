@@ -50,6 +50,8 @@ export interface CameraMediaSourceOptions {
   mode: CameraConnectionMode
   deviceId?: string
   host?: string
+  /** 连接入口可先探测相机地址，避免已连通时重复走蓝牙和 Wi-Fi 切换。 */
+  preferExistingConnection?: boolean
   storageId?: string
   rootPath?: string
   wireless?: {
@@ -57,7 +59,7 @@ export interface CameraMediaSourceOptions {
     preparation?: CameraMediaSourceWirelessPreparation
     ssid?: string
     password?: string
-    /** 预留给未来的系统 Wi-Fi 自动加入能力，默认关闭。 */
+    /** 使用提供的 Wi-Fi 凭据时，是否先自动切换系统网络。 */
     autoJoin?: boolean
   }
 }
@@ -81,7 +83,7 @@ export interface CameraMediaSourceAdapter {
   listFiles(): Promise<LunaFile[]>
   deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult>
   disconnect(): Promise<void>
-  prepareConnection?(): Promise<CameraMediaSourcePreparationResult>
+  prepareConnection?(options?: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
 }
 
 export interface CameraMediaSourceApi {

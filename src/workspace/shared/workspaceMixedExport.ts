@@ -5,6 +5,7 @@ import {
   resolveExportConfig,
 } from '../../components/previewStageExport'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
+import { logExport } from '../../lib/rendererLogger'
 
 export interface WorkspaceMixedExportPlanItem {
   id: string
@@ -252,6 +253,12 @@ export async function queueWorkspaceMixedExport(
         try {
           await report(entry, index, 0, 'exporting')
           const resolved = resolveExportConfig(config, entry.plan.outputSize.width, entry.plan.outputSize.height)
+          logExport('[导出诊断] 工作台导出尺寸解析', {
+            sourcePath: entry.plan.sourcePath,
+            planOutputSize: entry.plan.outputSize,
+            resolutionSetting: config.resolution,
+            resolvedSize: { width: resolved.width, height: resolved.height },
+          })
           if (entry.plan.kind === 'video') {
             const startTime = entry.plan.startTime ?? 0
             const endTime = entry.plan.endTime ?? startTime + 0.1

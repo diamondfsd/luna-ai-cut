@@ -25,25 +25,37 @@ private func uuidText(_ value: CBUUID) -> String {
   value.uuidString.lowercased()
 }
 
+private func uuidMatches(_ value: CBUUID, _ configured: String) -> Bool {
+  value == CBUUID(string: configured)
+}
+
 final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
   private var central: CBCentralManager!
   private var peripheral: CBPeripheral?
   private var serviceUuid = ""
   private var writeUuid = ""
   private var notifyUuid = ""
+  private var expectedModelNumber: Int?
   private var namePrefixes: [String] = []
   private var excludedNamePrefixes: [String] = []
   private var connectRequestId: String?
   private var armRequestId: String?
   private var writeCharacteristic: CBCharacteristic?
   private var armCharacteristic: CBCharacteristic?
-  private var notifying = Set<String>()
+  private var notifyQueue: [CBCharacteristic] = []
+  private var notifyIndex = 0
   private var ready = false
   private var scanTimer: DispatchWorkItem?
 
   override init() {
     super.init()
-    central = CBCentralManager(delegate: self, queue: nil)
+  }
+
+  private func ensureCentralManager() {
+    guard central == nil else { return }
+    central = CBCentralManager(delegate: self, queue: DispatchQueue.main, options: [
+      CBCentralManagerOptionShowPowerAlertKey: true,
+    ])
   }
 
   func handle(_ request: [String: Any]) {
@@ -64,6 +76,7 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
   }
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    emit(["event": "bluetooth-state", "message": stateText(central.state)])
     guard let requestId = connectRequestId else { return }
     guard central.state == .poweredOn else {
       respond(requestId, ok: false, code: "BLUETOOTH_UNAVAILABLE", message: stateText(central.state))
@@ -74,22 +87,33 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
   }
 
   func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+    guard self.peripheral == nil, connectRequestId != nil else { return }
     let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? ""
-    let name = peripheral.name ?? localName
-    let candidate = name.lowercased()
-    let matchesName = namePrefixes.isEmpty || namePrefixes.contains { candidate.hasPrefix($0.lowercased()) }
-    let excluded = excludedNamePrefixes.contains { candidate.hasPrefix($0.lowercased()) }
-    guard matchesName && !excluded else { return }
+    let name = localName.isEmpty ? (peripheral.name ?? "") : localName
+    let candidate = normalizedName(name)
+    let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
+    let advertisesDjiService = advertisedServices.contains { uuidMatches($0, serviceUuid) }
+    let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
+    let matchesName = namePrefixes.isEmpty || namePrefixes.contains { candidate.hasPrefix(normalizedName($0)) }
+    let excluded = excludedNamePrefixes.contains { candidate.hasPrefix(normalizedName($0)) }
+    // Newer DJI cameras use an advertisement format where the classic model bytes are zero and
+    // product type at payload[10:12] identifies the model. Match model data as well as the name so
+    // a user-renamed camera is still discoverable, matching Osmosis' verified scanner.
+    let matchesModel = matchesExpectedModel(manufacturerData)
+    // Some Pocket firmware revisions omit the local name from the first advertisement. The FFF0
+    // service is sufficient to identify that device when no model data is available.
+    guard (matchesName || matchesModel || (name.isEmpty && advertisesDjiService)) && !excluded else { return }
 
     central.stopScan()
     scanTimer?.cancel()
     self.peripheral = peripheral
     peripheral.delegate = self
-    central.connect(peripheral, options: nil)
-    emit(["event": "discovered", "name": name, "rssi": RSSI.intValue, "identifier": peripheral.identifier.uuidString])
+    central.connect(peripheral, options: [CBConnectPeripheralOptionNotifyOnDisconnectionKey: true])
+    emit(["event": "discovered", "name": name, "message": "扫描到匹配的 DJI BLE 设备", "rssi": RSSI.intValue, "identifier": peripheral.identifier.uuidString])
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    emit(["event": "gatt-connected", "message": "BLE 已连接，开始发现 FFF0 服务"])
     peripheral.delegate = self
     peripheral.discoverServices([CBUUID(string: serviceUuid)])
   }
@@ -113,11 +137,12 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
       failConnect(error.localizedDescription)
       return
     }
-    guard let service = peripheral.services?.first(where: { uuidText($0.uuid) == serviceUuid.lowercased() }) else {
+    guard let service = peripheral.services?.first(where: { uuidMatches($0.uuid, serviceUuid) }) else {
       failConnect("未找到 DJI BLE 服务 \(serviceUuid)")
       return
     }
-    peripheral.discoverCharacteristics(nil, for: service)
+    emit(["event": "service-discovered", "message": "已发现 DJI BLE 服务 (serviceUuid)"])
+    peripheral.discoverCharacteristics([CBUUID(string: notifyUuid), CBUUID(string: writeUuid)], for: service)
   }
 
   func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -129,25 +154,33 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
       failConnect("DJI BLE 服务没有特征")
       return
     }
-    writeCharacteristic = characteristics.first { uuidText($0.uuid) == writeUuid.lowercased() }
-    armCharacteristic = characteristics.first { uuidText($0.uuid) == notifyUuid.lowercased() }
+    writeCharacteristic = characteristics.first { uuidMatches($0.uuid, writeUuid) }
+    armCharacteristic = characteristics.first { uuidMatches($0.uuid, notifyUuid) }
     guard writeCharacteristic != nil, armCharacteristic != nil else {
       failConnect("未找到 DJI BLE 的 fff4/fff5 特征")
       return
     }
 
-    let notifyCharacteristics = characteristics.filter {
-      let uuid = uuidText($0.uuid)
-      return uuid == notifyUuid.lowercased() || uuid == writeUuid.lowercased()
+    emit(["event": "characteristics-discovered", "message": "已发现 FFF4/FFF5 特征"])
+
+    notifyQueue = characteristics.filter {
+      uuidMatches($0.uuid, notifyUuid) || uuidMatches($0.uuid, writeUuid)
     }
-    notifying = Set(notifyCharacteristics.map { uuidText($0.uuid) })
-    if notifying.isEmpty {
+    notifyQueue.sort { uuidMatches($0.uuid, notifyUuid) && !uuidMatches($1.uuid, notifyUuid) }
+    notifyIndex = 0
+    if notifyQueue.isEmpty {
       markReady()
       return
     }
-    for characteristic in notifyCharacteristics {
-      peripheral.setNotifyValue(true, for: characteristic)
+    enableNextNotification(on: peripheral)
+  }
+
+  private func enableNextNotification(on peripheral: CBPeripheral) {
+    guard notifyIndex < notifyQueue.count else {
+      markReady()
+      return
     }
+    peripheral.setNotifyValue(true, for: notifyQueue[notifyIndex])
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
@@ -156,8 +189,14 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
       failConnect("启用 DJI BLE 通知失败（\(uuid)）：\(error.localizedDescription)")
       return
     }
-    notifying.remove(uuid)
-    if notifying.isEmpty { markReady() }
+    guard notifyIndex < notifyQueue.count, characteristic.uuid == notifyQueue[notifyIndex].uuid else { return }
+    guard characteristic.isNotifying else {
+      failConnect("DJI BLE 特征拒绝通知：\(uuid)")
+      return
+    }
+    emit(["event": "notification-enabled", "message": "已开启 (uuid) 通知"])
+    notifyIndex += 1
+    enableNextNotification(on: peripheral)
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -189,21 +228,29 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
     serviceUuid = service
     writeUuid = write
     notifyUuid = notify
+    expectedModelNumber = (request["modelNumber"] as? NSNumber)?.intValue
     namePrefixes = request["namePrefixes"] as? [String] ?? []
     excludedNamePrefixes = request["excludedNamePrefixes"] as? [String] ?? []
-    guard central.state == .poweredOn else {
-      connectRequestId = requestId
-      return
-    }
     connectRequestId = requestId
     ready = false
+    peripheral = nil
+    writeCharacteristic = nil
+    armCharacteristic = nil
+    notifyQueue = []
+    notifyIndex = 0
+    ensureCentralManager()
+    guard central.state == .poweredOn else {
+      return
+    }
     central.stopScan()
     startScan()
   }
 
   private func startScan() {
     guard central.state == .poweredOn, connectRequestId != nil else { return }
-    central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+    // Match Osmosis: filter at the CoreBluetooth layer so unrelated BLE
+    // peripherals never enter the application-side name matching path.
+    central.scanForPeripherals(withServices: [CBUUID(string: serviceUuid)], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     let timer = DispatchWorkItem { [weak self] in
       guard let self, self.connectRequestId != nil, !self.ready else { return }
       self.central.stopScan()
@@ -211,12 +258,13 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
     }
     scanTimer?.cancel()
     scanTimer = timer
-    DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timer)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timer)
   }
 
   private func markReady() {
     guard !ready else { return }
     ready = true
+    emit(["event": "ready", "message": "FFF4 授权通道已准备完成"])
     if let requestId = connectRequestId {
       respond(requestId, ok: true, event: "ready", name: peripheral?.name ?? "DJI")
       connectRequestId = nil
@@ -229,6 +277,7 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
       return
     }
     armRequestId = requestId
+    emit(["event": "arm-sent", "message": "先发送 FFF4 授权准备 01 00"])
     peripheral.writeValue(Data([0x01, 0x00]), for: characteristic, type: .withResponse)
   }
 
@@ -241,6 +290,7 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
       respond(requestId, ok: false, code: "INVALID_PAYLOAD", message: "DUML 数据不是有效十六进制")
       return
     }
+    emit(["event": "duml-write", "message": "已发送 DJI BLE 数据"])
     peripheral.writeValue(data, for: characteristic, type: .withoutResponse)
     respond(requestId, ok: true)
   }
@@ -257,6 +307,8 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
 
   private func failConnect(_ message: String) {
     central.stopScan()
+    ready = false
+    emit(["event": "connect-failed", "message": message])
     if let requestId = connectRequestId {
       respond(requestId, ok: false, code: "BLE_CONNECT_FAILED", message: message)
       connectRequestId = nil
@@ -284,6 +336,29 @@ final class DjiCoreBluetoothBridge: NSObject, CBCentralManagerDelegate, CBPeriph
     case .poweredOn: return "Bluetooth 已开启"
     @unknown default: return "Bluetooth 状态异常"
     }
+  }
+
+  private func normalizedName(_ value: String) -> String {
+    value.lowercased().filter { $0.isLetter || $0.isNumber }
+  }
+
+  private func matchesExpectedModel(_ data: Data?) -> Bool {
+    guard let expectedModelNumber, let data else { return false }
+    let bytes = [UInt8](data)
+    guard bytes.count >= 4 else { return false }
+    let companyId = Int(bytes[0]) | (Int(bytes[1]) << 8)
+    guard companyId == 0x08AA || companyId == 0xF7AA || companyId == 0xE5C0 else { return false }
+    let payload = Array(bytes.dropFirst(2))
+
+    let classicModel = payload.count >= 2 ? Int(payload[0]) | (Int(payload[1]) << 8) : nil
+    if classicModel == expectedModelNumber { return true }
+
+    guard payload.count >= 12, payload.count > 5, (payload[5] & 0x04) != 0 else { return false }
+    let productType = Int(payload[10]) | (Int(payload[11]) << 8)
+    let productModel: [Int: Int] = [
+      145: 0x20, 218: 0x22, 219: 0x21, 235: 0x15,
+    ]
+    return productModel[productType] == expectedModelNumber
   }
 }
 

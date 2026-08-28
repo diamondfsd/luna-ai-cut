@@ -4,6 +4,8 @@
 
 使用 `gh` CLI 执行标准发版流程。每次发版包含版本号升级、发布说明、Git tag 和 GitHub Release。
 
+应用更新统一为手动触发：启动应用不会访问更新服务，也不会自动下载或安装更新。用户需要打开顶部问号窗口，点击“检查更新”，再分别点击安装包或热更新的更新按钮。
+
 ## 前置条件
 
 - `gh` CLI 已安装并登录 (`gh auth status`)
@@ -101,6 +103,34 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 > - `gh` CLI 已安装并登录 (`gh auth status`)
 > - `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件
 
+### 6c. 内测版本发布通道
+
+版本号带 `-beta.N` 的安装包只进入 GitCode 的 beta 专属 Release，不会出现在稳定版更新结果或公开 Landing 页面中：
+
+```text
+安装版本：1.8.0-beta.1
+GitCode Release：beta/v1.8.0-beta.1
+```
+
+内测安装包仍使用正常部署脚本上传，脚本会依据 beta 版本自动选择专属 tag：
+
+```bash
+./scripts/deploy-release.sh v1.8.0-beta.1
+```
+
+beta 热更新必须以同一个 beta 安装版本为基准，热更新版本和 Release 也使用 beta 专属规则：
+
+```text
+热更新：1.8.0-beta.1-hot.1
+GitCode Release：beta/v1.8.0-beta.1
+```
+
+```bash
+./scripts/build-hot-update.sh
+```
+
+`1.8.0-beta.1-hot.1` 不能安装到 `1.8.0` 或 `1.8.0-beta.2`。稳定版继续使用 `vX.Y.Z` 和 `X.Y.Z-hot.N` 规则。
+
 ## gh release 常用参数
 
 | 参数 | 说明 |
@@ -181,7 +211,7 @@ git push origin main
 
 推送热更新 tag 后，GitHub Actions 会从对应正式版 tag（例如 `v1.6.5`）开始检查原生相关文件。只要该版本线任意一次热更新修改过 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/platform/render/lunaRenderCore.ts`，此后所有热更新都必须继续构建并发布三个平台包，保证跳过中间热更新的客户端也能获得最新原生模块。仅当整个版本线均无原生改动时，才跳过三端构建。
 
-> 客户端每天最多自动检查一次热更新（启动后 2 秒执行），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效；帮助页仍支持手动检查。
+> 客户端不会在启动时自动检查更新。用户需要在顶部问号窗口中手动检查，并确认下载或应用更新。
 
 ## 原生模块热更新
 

@@ -212,8 +212,8 @@ assert.equal(
     videoLayer,
     { ...videoLayer, layerType: 'local-color', maskPath: '/tmp/mask.pgm' },
   ]),
-  true,
-  'masked video preview uses the composition renderer that loads linear mask textures',
+  false,
+  'masked video preview keeps the direct renderer that uploads mask textures',
 )
 assert.equal(
   rendererSelection.requiresCompositionVideoRenderer(false, [

@@ -153,6 +153,7 @@ export function MediaCard({
         <ThumbImage
           src={file.sourceUrl}
           previewSrc={file.previewUrl}
+          thumbnailSrc={file.thumbnailUrl}
           preloadBottom={300}
           alt={file.name}
           onCacheReady={handleCacheReady}

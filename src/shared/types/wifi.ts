@@ -39,6 +39,8 @@ export interface WifiConnectOptions {
   bssid?: string
   hidden?: boolean
   timeoutMs?: number
+  /** 设备热点由目标 IP 连通性确认，不依赖系统返回当前 SSID。 */
+  skipSsidVerification?: boolean
 }
 
 export interface WifiPortCheckOptions {

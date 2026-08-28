@@ -1,8 +1,7 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkForUpdates } from './infrastructure/updateService'
-import { checkForHotUpdates, getCurrentHotVersion } from './infrastructure/hotUpdater'
+import { getCurrentHotVersion } from './infrastructure/hotUpdater'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
@@ -463,44 +462,6 @@ function registerIpc(): void {
   })
 }
 
-/**
- * 每天最多自动检查一次更新
- */
-function scheduleUpdateCheck(): void {
-  const CHECK_FILE = join(app.getPath('userData'), '.last-update-check')
-  const HOT_CHECK_FILE = join(app.getPath('userData'), '.last-hot-update-check')
-  const today = new Date().toISOString().slice(0, 10) // "2026-06-25"
-
-  // 延迟 2s 执行首次检查
-  setTimeout(async () => {
-    // 开发环境下跳过所有更新检查
-    if (!app.isPackaged) return
-
-    // 全量更新检查：受每日限制
-    if (existsSync(CHECK_FILE) && readFileSync(CHECK_FILE, 'utf-8').trim() === today) {
-      // 今天已检查过全量更新，跳过
-    } else {
-      const info = await checkForUpdates()
-      if (info && win && !win.isDestroyed()) {
-        win.webContents.send('update:available', info)
-      }
-      // 记录检查日期
-      mkdirSync(app.getPath('userData'), { recursive: true })
-      writeFileSync(CHECK_FILE, today, 'utf-8')
-    }
-
-    // 热更新检查：每天最多一次，避免频繁启动应用时重复请求服务
-    if (!existsSync(HOT_CHECK_FILE) || readFileSync(HOT_CHECK_FILE, 'utf-8').trim() !== today) {
-      const hotInfo = await checkForHotUpdates()
-      if (hotInfo && win && !win.isDestroyed()) {
-        win.webContents.send('hot-update:available', hotInfo)
-      }
-      mkdirSync(app.getPath('userData'), { recursive: true })
-      writeFileSync(HOT_CHECK_FILE, today, 'utf-8')
-    }
-  }, 2_000)
-}
-
 /** 创建应用菜单，保留文本编辑快捷键（剪切/复制/粘贴/全选） */
 function createAppMenu(): void {
   const isMac = process.platform === 'darwin'
@@ -574,7 +535,6 @@ app.whenReady().then(async () => {
     createMainWindow: createWindow,
   })
   registerIpc()
-  scheduleUpdateCheck()
   const settings = await getSettings()
   setMainWindowCloseBehavior(settings.windowCloseBehavior)
   createWindow()

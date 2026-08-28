@@ -38,6 +38,8 @@ const TARGET_FPS = 30
 const FRAME_COUNT = 24
 const BENCHMARK_DURATION_MS = Math.round((FRAME_COUNT / TARGET_FPS) * 1000)
 const USE_ORIGINAL_VIDEO = process.env.LUNA_WEBGPU_BENCHMARK_USE_ORIGINAL === '1'
+const PRESENTATION_WIDTH = 960
+const PRESENTATION_HEIGHT = 540
 
 function round(value) {
   return Math.round(value * 100) / 100
@@ -203,6 +205,44 @@ async function reservePort() {
   return port
 }
 
+async function inspectCanvas(page) {
+  return page.locator('#comparison-canvas').evaluate(async (element) => {
+    const canvas = element
+    const width = canvas.width
+    const height = canvas.height
+    const capture = document.createElement('canvas')
+    capture.width = width
+    capture.height = height
+    const context = capture.getContext('2d')
+    if (!context) throw new Error('无法读取 WebGPU 画布画面')
+    const snapshot = new Image()
+    snapshot.src = canvas.toDataURL('image/png')
+    await snapshot.decode()
+    context.drawImage(snapshot, 0, 0, width, height)
+    const pixels = context.getImageData(0, 0, width, height).data
+    const coverage = (startX, startY, regionWidth, regionHeight) => {
+      let visible = 0
+      const total = regionWidth * regionHeight
+      for (let y = startY; y < startY + regionHeight; y += 1) {
+        for (let x = startX; x < startX + regionWidth; x += 1) {
+          if ((pixels[(y * width + x) * 4 + 3] ?? 0) > 8) visible += 1
+        }
+      }
+      return visible / Math.max(1, total)
+    }
+    const rightStart = Math.floor(width * 0.75)
+    const bottomStart = Math.floor(height * 0.75)
+    return {
+      width,
+      height,
+      clientWidth: canvas.clientWidth,
+      clientHeight: canvas.clientHeight,
+      rightCoverage: coverage(rightStart, 0, width - rightStart, height),
+      bottomCoverage: coverage(0, bottomStart, width, height - bottomStart),
+    }
+  })
+}
+
 async function startVideoServer(filePath) {
   const size = (await stat(filePath)).size
   const server = createHttpServer((request, response) => {
@@ -300,7 +340,10 @@ async function runWebGpu(config, width, height, videoUrl) {
   const chromiumArgs = ['--enable-unsafe-webgpu', '--force-device-scale-factor=1']
   if (process.platform === 'darwin') chromiumArgs.push('--use-angle=metal')
   const browser = await chromium.launch({ headless: true, args: chromiumArgs })
-  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 })
+  // Keep the page viewport aligned with the standalone canvas CSS size. The
+  // renderer still receives the requested logical size below, so this keeps
+  // the 480x270 logical / 960x540 presentation regression case meaningful.
+  const context = await browser.newContext({ viewport: { width: PRESENTATION_WIDTH, height: PRESENTATION_HEIGHT }, deviceScaleFactor: 1 })
   const page = await context.newPage()
   const runtimeErrors = []
   const runtimeWarnings = []
@@ -316,6 +359,8 @@ async function runWebGpu(config, width, height, videoUrl) {
       const initialized = await page.evaluate((next) => window.lunaWebGpuComparison?.initialize(next), {
         canvasWidth: width,
         canvasHeight: height,
+        presentationWidth: PRESENTATION_WIDTH,
+        presentationHeight: PRESENTATION_HEIGHT,
         maxSide: MAX_SIDE,
         waitForGpu: false,
         lutText: config.lutText,
@@ -330,6 +375,9 @@ async function runWebGpu(config, width, height, videoUrl) {
           })),
         }],
       })
+      const initialCanvas = await inspectCanvas(page)
+      assert.equal(initialCanvas.width, PRESENTATION_WIDTH, `WebGPU presentation 宽度错误: ${initialCanvas.width}`)
+      assert.equal(initialCanvas.height, PRESENTATION_HEIGHT, `WebGPU presentation 高度错误: ${initialCanvas.height}`)
       assert.equal(initialized?.navigatorGpu, true, '当前 Chromium 没有可用的 WebGPU')
       try {
         const measurement = await page.evaluate((input) => window.lunaWebGpuComparison?.measureVideo(input.id, input.duration), {
@@ -337,7 +385,14 @@ async function runWebGpu(config, width, height, videoUrl) {
           duration: BENCHMARK_DURATION_MS,
         })
         assert.ok(measurement, `WebGPU 视频基准没有返回结果: ${feature.id}`)
-        measurements[feature.id] = measurement
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+        const canvas = await inspectCanvas(page)
+        assert.ok(canvas.rightCoverage >= 0.95, `${feature.id} WebGPU 画面右侧覆盖率不足: ${canvas.rightCoverage}`)
+        assert.ok(canvas.bottomCoverage >= 0.95, `${feature.id} WebGPU 画面下侧覆盖率不足: ${canvas.bottomCoverage}`)
+        measurements[feature.id] = { ...measurement, canvas }
+        if (process.env.LUNA_WEBGPU_BENCHMARK_SCREENSHOT === '1') {
+          await page.locator('#comparison-canvas').screenshot({ path: path.join(outputRoot, `${feature.id}-webgpu.png`) })
+        }
       } finally {
         await page.evaluate(() => window.lunaWebGpuComparison?.destroy()).catch(() => undefined)
       }
@@ -439,6 +494,7 @@ const comparisons = nativeFeatures.map((feature) => {
       videoCallbackFps: round(webgpuMeasurement.videoFrameCallbacks * 1000 / Math.max(1, webgpuMeasurement.elapsedMs)),
       presentedFrames: webgpuMeasurement.presentedFrames,
       firstRenderMs: webgpuMeasurement.firstRenderMs,
+      canvas: webgpuMeasurement.canvas,
       renderInterval: summarize(webgpuRenderSamples),
       quality: {
         totalVideoFrames: deltaQuality(webgpuMeasurement.qualityBefore, webgpuMeasurement.qualityAfter, 'totalVideoFrames'),
@@ -473,6 +529,8 @@ const report = {
   policy: {
     canvasWidth: width,
     canvasHeight: height,
+    presentationWidth: PRESENTATION_WIDTH,
+    presentationHeight: PRESENTATION_HEIGHT,
     maxSide: MAX_SIDE,
     targetFps: TARGET_FPS,
     sampledFrames: FRAME_COUNT,

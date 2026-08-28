@@ -194,18 +194,33 @@ export async function downloadToFile(
   }
 
   const partialPath = partialPathFor(destination)
-  await fs.rm(partialPath, { force: true })
+  let existingPartial = await fileSize(partialPath)
+  if (existingPartial < 0) existingPartial = 0
 
-  const response = await httpGet(itemSourceUrl, {}, signal)
+  const response = await httpGet(
+    itemSourceUrl,
+    existingPartial > 0 ? { Range: `bytes=${existingPartial}-`, Connection: 'close' } : { Connection: 'close' },
+    signal,
+  )
 
-  if (response.statusCode !== 200) {
+  if (response.statusCode !== 200 && response.statusCode !== 206) {
     response.destroy()
     throw new Error(`HTTP ${response.statusCode ?? '未知'}：${item.name}`)
   }
 
-  const total = responseTotal(response.statusCode, response.headers, 0) ?? item.bytes
-  const output = createWriteStream(partialPath, { flags: 'w' })
-  let downloaded = 0
+  let append = existingPartial > 0 && response.statusCode === 206
+  if (append) {
+    const contentRange = String(response.headers['content-range'] ?? '')
+    const rangeStart = contentRange.match(/^bytes\s+(\d+)-\d+\/(?:\d+|\*)$/i)?.[1]
+    append = Number(rangeStart) === existingPartial
+  }
+
+  // Some camera firmware accepts Range but answers with the complete file. Reusing that body at the
+  // old offset would corrupt the media, so truncate and treat it as a fresh download.
+  const startOffset = append ? existingPartial : 0
+  const total = responseTotal(response.statusCode, response.headers, startOffset) ?? item.bytes
+  const output = createWriteStream(partialPath, { flags: append ? 'a' : 'w' })
+  let downloaded = startOffset
   const startedAt = Date.now()
   let lastEmit = 0
 

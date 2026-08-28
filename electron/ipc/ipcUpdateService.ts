@@ -2,21 +2,21 @@ import { app, ipcMain } from 'electron'
 import { join } from 'node:path'
 import type { HotUpdateCheckResult } from '../infrastructure/hotUpdater'
 import { applyHotUpdate, checkForHotUpdates, clearHotUpdate, getCurrentHotVersion } from '../infrastructure/hotUpdater'
-import type { IpcContext } from './context'
 import { logMainError, logMainInfo } from '../infrastructure/loggerService'
 import { listReleaseNotes } from '../infrastructure/releaseNotesService'
 import { checkForUpdates } from '../infrastructure/updateService'
 
-export function register(ctx: IpcContext): void {
+export function register(): void {
   ipcMain.handle('update:check', async () => {
-    const fullInfo = await checkForUpdates()
-    if (fullInfo) return fullInfo
-
-    const hotInfo = await checkForHotUpdates()
-    if (hotInfo && ctx.win && !ctx.win.isDestroyed()) {
-      ctx.win.webContents.send('hot-update:available', hotInfo)
+    logMainInfo('[更新] 用户手动检查完整更新')
+    try {
+      const result = await checkForUpdates()
+      logMainInfo('[更新] 完整更新检查完成', { available: Boolean(result), version: result?.version })
+      return result
+    } catch (error) {
+      logMainError('[更新] 完整更新检查失败', { error: error instanceof Error ? error.message : String(error) })
+      throw error
     }
-    return null
   })
 
   ipcMain.handle('hot-update:current-version', () => {
@@ -24,7 +24,15 @@ export function register(ctx: IpcContext): void {
   })
 
   ipcMain.handle('hot-update:check', async (): Promise<HotUpdateCheckResult | null> => {
-    return checkForHotUpdates()
+    logMainInfo('[热更新] 用户手动检查')
+    try {
+      const result = await checkForHotUpdates()
+      logMainInfo('[热更新] 手动检查完成', { available: Boolean(result), version: result?.version })
+      return result
+    } catch (error) {
+      logMainError('[热更新] 手动检查失败', { error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
   })
 
   ipcMain.handle('hot-update:apply', async (_event, info: HotUpdateCheckResult): Promise<{ success: boolean; error?: string }> => {

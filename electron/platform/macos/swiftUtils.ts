@@ -18,6 +18,13 @@ const RESOURCES_NATIVE_DIR = () => join(process.resourcesPath, 'native')
 const RESOURCES_LEGACY_DIR = () => process.resourcesPath // 旧版: Resources/livetool.swift
 const DEV_SWIFT_DIR = () => join(app.getAppPath(), 'electron', 'platform', 'macos')
 const DEV_NATIVE_DIR = () => join(app.getAppPath(), 'electron', 'platform', 'windows')
+const DJI_BLE_HELPER_RELATIVE_PATH = join(
+  'dji-ble-helper',
+  'DjiCoreBluetoothTransport.app',
+  'Contents',
+  'MacOS',
+  'DjiCoreBluetoothTransport',
+)
 
 /**
  * 获取 Swift 脚本的完整路径。
@@ -57,4 +64,13 @@ export function getNativeScriptPath(scriptName: string): string {
     if (existsSync(resourcePath)) return resourcePath
   }
   return join(DEV_NATIVE_DIR(), scriptName)
+}
+
+/** 获取带 macOS 蓝牙权限声明的 DJI CoreBluetooth helper。 */
+export function getDjiCoreBluetoothHelperPath(): string {
+  if (app.isPackaged) {
+    const packagedPath = join(process.resourcesPath, DJI_BLE_HELPER_RELATIVE_PATH)
+    if (existsSync(packagedPath)) return packagedPath
+  }
+  return join(app.getAppPath(), 'resources', DJI_BLE_HELPER_RELATIVE_PATH)
 }

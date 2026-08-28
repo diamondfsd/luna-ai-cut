@@ -6,6 +6,7 @@ import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
+import { logExport } from '../lib/rendererLogger'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -281,6 +282,14 @@ export async function exportPreviewVideo(params: {
       params.height,
       { fps: exportFps ?? undefined },
     )
+    logExport('[导出诊断] 视频最终参数', {
+      sourcePaths: [...new Set(params.layers.map((layer) => layer.filePath).filter(Boolean))],
+      requestedSize: { width: params.width, height: params.height },
+      compositionCanvas: composition.canvas,
+      fps: exportFps,
+      qualityPreset: params.qualityPreset ?? 'high',
+      includeAudio: params.includeAudio !== false,
+    })
     await lrc().exportCompositionVideo(
       path,
       composition,

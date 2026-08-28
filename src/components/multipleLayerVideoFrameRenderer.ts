@@ -36,6 +36,7 @@ export interface VideoStateEntry {
 
 export interface MultipleLayerVideoPreviewLrcRenderProps {
   layers: PreviewLayer[]
+  active?: boolean
   className?: string
   canvasWidth?: number
   canvasHeight?: number
@@ -59,6 +60,8 @@ export function multipleLayerVideoPreviewPropsEqual(
   next: MultipleLayerVideoPreviewLrcRenderProps,
 ): boolean {
   return (
+    previous.active === next.active
+    &&
     previous.playing === next.playing
     && previous.compositionTime === next.compositionTime
     && previous.decodeQuality === next.decodeQuality
