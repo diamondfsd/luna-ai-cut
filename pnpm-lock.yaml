@@ -99,6 +99,9 @@ importers:
       ffprobe-static:
         specifier: ^3.1.0
         version: 3.1.0
+      https-proxy-agent:
+        specifier: ^5.0.1
+        version: 5.0.1
       typescript:
         specifier: ^5.2.2
         version: 5.2.2
@@ -2090,10 +2093,6 @@ packages:
 
   http-response-object@3.0.2:
     resolution: {integrity: sha512-bqX0XTF6fnXSQcEJ2Iuyr75yVakyjIDCqroJQ/aHfSdlM743Cwqoi2nDYMzLGWUcuTWGWy8AAvOKXTfiv6q9RA==}
-
-  https-proxy-agent@5.0.0:
-    resolution: {integrity: sha512-EkYm5BcKUGiduxzSt3Eppko+PiNWNEpa4ySk9vTC6wDsQJW9rHSa+UhGNJoRYp7bz6Ht1eaRIa6QaJqO5rCFbA==}
-    engines: {node: '>= 6'}
 
   https-proxy-agent@5.0.1:
     resolution: {integrity: sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==}
@@ -4928,7 +4927,7 @@ snapshots:
     dependencies:
       '@derhuerst/http-basic': 8.2.4
       env-paths: 2.2.0
-      https-proxy-agent: 5.0.0
+      https-proxy-agent: 5.0.1
       progress: 2.0.3
     transitivePeerDependencies:
       - supports-color
@@ -5109,13 +5108,6 @@ snapshots:
   http-response-object@3.0.2:
     dependencies:
       '@types/node': 10.0.3
-
-  https-proxy-agent@5.0.0:
-    dependencies:
-      agent-base: 6.0.0
-      debug: 4.4.3
-    transitivePeerDependencies:
-      - supports-color
 
   https-proxy-agent@5.0.1:
     dependencies:

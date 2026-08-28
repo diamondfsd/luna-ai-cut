@@ -7,12 +7,24 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { createRequire } from 'node:module'
+import https from 'node:https'
 import { join } from 'node:path'
 import AdmZip from 'adm-zip'
+import { buildDependencyUrl } from './build-dependency-sources.mjs'
 
 const DXC_VERSION = '1.9.2602.24'
 const DXC_PACKAGE_SHA256 = '4e4cef12283f7875a3602b9f5dc04f153c77cfa216559f58881305f59f8f7e2f'
 const DXC_PACKAGE_URL = `https://api.nuget.org/v3-flatcontainer/microsoft.direct3d.dxc/${DXC_VERSION}/microsoft.direct3d.dxc.${DXC_VERSION}.nupkg`
+const DXC_PACKAGE_FILE_NAME = `microsoft.direct3d.dxc.${DXC_VERSION}.nupkg`
+const require = createRequire(import.meta.url)
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
+  || process.env.HTTP_PROXY || process.env.http_proxy || ''
+let proxyAgent
+if (proxyUrl) {
+  const { HttpsProxyAgent } = require('https-proxy-agent')
+  proxyAgent = new HttpsProxyAgent(proxyUrl)
+}
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
@@ -23,15 +35,37 @@ async function ensurePackage(packagePath) {
 
   const partialPath = `${packagePath}.download`
   rmSync(partialPath, { force: true })
-  const response = await fetch(DXC_PACKAGE_URL)
-  if (!response.ok) throw new Error(`DXC download failed: HTTP ${response.status}`)
-  writeFileSync(partialPath, Buffer.from(await response.arrayBuffer()))
+  const packageUrl = buildDependencyUrl(DXC_PACKAGE_FILE_NAME, DXC_PACKAGE_URL)
+  writeFileSync(partialPath, await download(packageUrl))
   const actualHash = sha256(partialPath)
   if (actualHash !== DXC_PACKAGE_SHA256) {
     rmSync(partialPath, { force: true })
     throw new Error(`DXC package checksum mismatch: ${actualHash}`)
   }
   renameSync(partialPath, packagePath)
+}
+
+function download(url, redirects = 5) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, { agent: proxyAgent }, (response) => {
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location && redirects > 0) {
+        response.resume()
+        resolve(download(new URL(response.headers.location, url).href, redirects - 1))
+        return
+      }
+      if (response.statusCode !== 200) {
+        response.resume()
+        reject(new Error(`DXC download failed: HTTP ${response.statusCode}`))
+        return
+      }
+      const chunks = []
+      response.on('data', (chunk) => chunks.push(chunk))
+      response.on('end', () => resolve(Buffer.concat(chunks)))
+      response.on('error', reject)
+    })
+    request.setTimeout(30_000, () => request.destroy(new Error('DXC download timed out')))
+    request.on('error', reject)
+  })
 }
 
 function extract(zip, entryName, destination) {
