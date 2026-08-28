@@ -38,6 +38,8 @@ const TARGET_FPS = 30
 const FRAME_COUNT = 24
 const BENCHMARK_DURATION_MS = Math.round((FRAME_COUNT / TARGET_FPS) * 1000)
 const USE_ORIGINAL_VIDEO = process.env.LUNA_WEBGPU_BENCHMARK_USE_ORIGINAL === '1'
+const WAIT_FOR_GPU = process.env.LUNA_WEBGPU_BENCHMARK_WAIT_FOR_GPU === '1'
+const BASELINE_ONLY = process.env.LUNA_WEBGPU_BENCHMARK_BASELINE_ONLY === '1'
 const PRESENTATION_WIDTH = 960
 const PRESENTATION_HEIGHT = 540
 
@@ -362,7 +364,7 @@ async function runWebGpu(config, width, height, videoUrl) {
         presentationWidth: PRESENTATION_WIDTH,
         presentationHeight: PRESENTATION_HEIGHT,
         maxSide: MAX_SIDE,
-        waitForGpu: false,
+        waitForGpu: WAIT_FOR_GPU,
         lutText: config.lutText,
         fontPath: FONT_PATH,
         fontData: config.fontData,
@@ -376,8 +378,11 @@ async function runWebGpu(config, width, height, videoUrl) {
         }],
       })
       const initialCanvas = await inspectCanvas(page)
-      assert.equal(initialCanvas.width, PRESENTATION_WIDTH, `WebGPU presentation 宽度错误: ${initialCanvas.width}`)
-      assert.equal(initialCanvas.height, PRESENTATION_HEIGHT, `WebGPU presentation 高度错误: ${initialCanvas.height}`)
+      // The renderer owns the canvas backing store. The presentation viewport
+      // remains 960x540 CSS pixels, while the GPU target follows the requested
+      // logical render size (including the 4K benchmark).
+      assert.equal(initialCanvas.width, width, `WebGPU backing 宽度错误: ${initialCanvas.width}`)
+      assert.equal(initialCanvas.height, height, `WebGPU backing 高度错误: ${initialCanvas.height}`)
       assert.equal(initialized?.navigatorGpu, true, '当前 Chromium 没有可用的 WebGPU')
       try {
         const measurement = await page.evaluate((input) => window.lunaWebGpuComparison?.measureVideo(input.id, input.duration), {
@@ -386,13 +391,17 @@ async function runWebGpu(config, width, height, videoUrl) {
         })
         assert.ok(measurement, `WebGPU 视频基准没有返回结果: ${feature.id}`)
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+        // At 4K, the first measured interval can finish while large video,
+        // LUT, mask, and text resources are still being uploaded. Render one
+        // settled frame before checking edge coverage.
+        await page.evaluate((featureId) => window.lunaWebGpuComparison?.renderFeature(featureId), feature.id)
         const canvas = await inspectCanvas(page)
-        assert.ok(canvas.rightCoverage >= 0.95, `${feature.id} WebGPU 画面右侧覆盖率不足: ${canvas.rightCoverage}`)
-        assert.ok(canvas.bottomCoverage >= 0.95, `${feature.id} WebGPU 画面下侧覆盖率不足: ${canvas.bottomCoverage}`)
-        measurements[feature.id] = { ...measurement, canvas }
         if (process.env.LUNA_WEBGPU_BENCHMARK_SCREENSHOT === '1') {
           await page.locator('#comparison-canvas').screenshot({ path: path.join(outputRoot, `${feature.id}-webgpu.png`) })
         }
+        assert.ok(canvas.rightCoverage >= 0.95, `${feature.id} WebGPU 画面右侧覆盖率不足: ${canvas.rightCoverage}`)
+        assert.ok(canvas.bottomCoverage >= 0.95, `${feature.id} WebGPU 画面下侧覆盖率不足: ${canvas.bottomCoverage}`)
+        measurements[feature.id] = { ...measurement, canvas }
       } finally {
         await page.evaluate(() => window.lunaWebGpuComparison?.destroy()).catch(() => undefined)
       }
@@ -428,17 +437,17 @@ const lutText = await readFile(LUT_PATH, 'utf8')
 const fontData = (await readFile(FONT_PATH)).toString('base64')
 const videoServer = await startVideoServer(benchmarkVideoPath)
 const times = Array.from({ length: FRAME_COUNT }, (_, index) => round((index + 1) / TARGET_FPS))
-const nativeFeatures = USE_ORIGINAL_VIDEO
+const nativeFeatures = USE_ORIGINAL_VIDEO && !BASELINE_ONLY
   ? [{ id: 'full-stack', layers: fullStackLayers(benchmarkVideoPath, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH }) }]
   : [
       { id: 'baseline', layers: [videoLayer(benchmarkVideoPath)] },
-      { id: 'full-stack', layers: fullStackLayers(benchmarkVideoPath, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH }) },
+      ...(BASELINE_ONLY ? [] : [{ id: 'full-stack', layers: fullStackLayers(benchmarkVideoPath, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH }) }]),
     ]
-const webgpuFeatures = USE_ORIGINAL_VIDEO
+const webgpuFeatures = USE_ORIGINAL_VIDEO && !BASELINE_ONLY
   ? [{ id: 'full-stack', layers: fullStackLayers(videoServer.url, { maskPath: 'fixture://mask', lutPath: 'fixture://lut', watermarkPath: 'fixture://watermark' }) }]
   : [
       { id: 'baseline', layers: [videoLayer(videoServer.url)] },
-      { id: 'full-stack', layers: fullStackLayers(videoServer.url, { maskPath: 'fixture://mask', lutPath: 'fixture://lut', watermarkPath: 'fixture://watermark' }) },
+      ...(BASELINE_ONLY ? [] : [{ id: 'full-stack', layers: fullStackLayers(videoServer.url, { maskPath: 'fixture://mask', lutPath: 'fixture://lut', watermarkPath: 'fixture://watermark' }) }]),
     ]
 let webgpuResult = {
   renderer: 'webgpu',
@@ -531,12 +540,13 @@ const report = {
     canvasHeight: height,
     presentationWidth: PRESENTATION_WIDTH,
     presentationHeight: PRESENTATION_HEIGHT,
+    waitForGpu: WAIT_FOR_GPU,
     maxSide: MAX_SIDE,
     targetFps: TARGET_FPS,
     sampledFrames: FRAME_COUNT,
     benchmarkDurationMs: BENCHMARK_DURATION_MS,
     oneVideo: true,
-    fullStackLayers: nativeFeatures.find((feature) => feature.id === 'full-stack').layers.length,
+    fullStackLayers: nativeFeatures.find((feature) => feature.id === 'full-stack')?.layers.length ?? 0,
     electron: false,
     ai: false,
     chromiumPages: 1,

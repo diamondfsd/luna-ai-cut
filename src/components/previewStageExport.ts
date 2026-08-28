@@ -7,6 +7,8 @@ import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
 import { logExport } from '../lib/rendererLogger'
+import { isTestBuild } from '../shared/buildChannel'
+import { exportVideoWithWebGpu } from './webgpuVideoExport'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -196,6 +198,12 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
+async function shouldUseWebGpuVideoExport(): Promise<boolean> {
+  if (isTestBuild) return true
+  const settings = await window.luna.getSettings().catch(() => null)
+  return settings?.experimentalWebGpuExport === true
+}
+
 export async function exportPreviewImage(params: {
   exportDir: string
   fileName: string
@@ -250,29 +258,36 @@ export async function exportPreviewVideo(params: {
     if (!taskId || !itemId) return
     emitLocalExportProgress({ exportId: itemId, taskId, taskName, fileName: params.fileName, index, totalFiles, percent, status, destinationPath: path, error })
   }
-  let stopProgressWatcher = false
   let lastPercent = 0
-  const progressWatcher = renderTaskId && (params.onProgress || (taskId && itemId)) ? (async () => {
-    while (!stopProgressWatcher) {
-      const progress = await renderCoreProgress(renderTaskId).catch(() => null)
-      if (progress) {
-        const currentFrame = Number(progress[0])
-        const totalFrames = Number(progress[1])
-        if (totalFrames > 1) {
-          const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
-          if (percent > lastPercent) {
-            lastPercent = percent
-            await params.onProgress?.(percent)
-            if (taskId && itemId) {
-              await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
-              emitVideoProgress(percent, 'exporting')
-            }
+  const reportVideoProgress = async (percent: number): Promise<void> => {
+    if (percent <= lastPercent) return
+    lastPercent = percent
+    await params.onProgress?.(percent)
+    if (taskId && itemId) {
+      await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
+      emitVideoProgress(percent, 'exporting')
+    }
+  }
+  const useWebGpu = await shouldUseWebGpuVideoExport()
+  let stopProgressWatcher = false
+  const progressWatchers: Promise<void>[] = []
+  const startNativeProgressWatcher = (): void => {
+    if (progressWatchers.length > 0 || !renderTaskId || (!params.onProgress && !(taskId && itemId))) return
+    progressWatchers.push((async () => {
+      while (!stopProgressWatcher) {
+        const progress = await renderCoreProgress(renderTaskId).catch(() => null)
+        if (progress) {
+          const currentFrame = Number(progress[0])
+          const totalFrames = Number(progress[1])
+          if (totalFrames > 1) {
+            const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
+            await reportVideoProgress(percent)
           }
         }
+        await wait(500)
       }
-      await wait(500)
-    }
-  })() : null
+    })())
+  }
 
   try {
     const exportFps = params.fps ?? null
@@ -290,18 +305,44 @@ export async function exportPreviewVideo(params: {
       qualityPreset: params.qualityPreset ?? 'high',
       includeAudio: params.includeAudio !== false,
     })
-    await lrc().exportCompositionVideo(
-      path,
-      composition,
-      exportFps,
-      null,
-      true,
-      renderTaskId,
-      params.qualityPreset ?? 'high',
-      taskId,
-      itemId,
-      params.includeAudio !== false,
-    )
+    const exportWithNative = async (): Promise<void> => {
+      startNativeProgressWatcher()
+      await lrc().exportCompositionVideo(
+        path,
+        composition,
+        exportFps,
+        null,
+        true,
+        renderTaskId,
+        params.qualityPreset ?? 'high',
+        taskId,
+        itemId,
+        params.includeAudio !== false,
+      )
+    }
+    if (useWebGpu) {
+      try {
+        await exportVideoWithWebGpu({
+          outputPath: path,
+          width: params.width,
+          height: params.height,
+          layers: params.layers,
+          fps: exportFps,
+          qualityPreset: params.qualityPreset ?? 'high',
+          includeAudio: params.includeAudio !== false,
+          sessionId: renderTaskId ?? itemId ?? `webgpu_export_${Date.now()}`,
+          onProgress: reportVideoProgress,
+        })
+      } catch (error) {
+        if (isTestBuild) throw error
+        logExport('[导出诊断] WebGPU 导出失败，切换通用导出', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        await exportWithNative()
+      }
+    } else {
+      await exportWithNative()
+    }
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
       emitVideoProgress(100, 'done')
@@ -315,7 +356,7 @@ export async function exportPreviewVideo(params: {
     throw error
   } finally {
     stopProgressWatcher = true
-    await progressWatcher?.catch(() => {})
+    await Promise.all(progressWatchers).catch(() => {})
   }
   return { path, name: params.fileName }
 }

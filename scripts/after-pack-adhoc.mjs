@@ -5,6 +5,10 @@ import { join } from 'node:path'
 /** electron-builder 生成 DMG 前，对 macOS App 做 Ad Hoc 签名。 */
 export default async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') return
+  if (process.env.LUNA_SIGNING_MODE === 'official') {
+    console.log('[after-pack] 正式签名模式，交由 electron-builder 完成签名')
+    return
+  }
 
   const appName = `${context.packager.appInfo.productFilename}.app`
   const appPath = join(context.appOutDir, appName)

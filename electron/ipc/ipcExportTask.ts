@@ -43,6 +43,12 @@ export function register(ctx: IpcContext): void {
     for (const [key, controller] of ctx.activeExportControllers) {
       if (key === taskId || key.startsWith(`${taskId}:`)) controller.abort()
     }
+    for (const [key, encoder] of ctx.activeExportEncoders) {
+      if (key !== taskId && !key.startsWith(`${taskId}:`)) continue
+      ctx.activeExportEncoders.delete(key)
+      encoder.kill()
+      encoder.stdin.destroy()
+    }
     await exportTaskService.cancelTask(taskId)
   })
 

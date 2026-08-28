@@ -1,10 +1,11 @@
 import { app } from 'electron'
 import {
   compareReleaseVersions,
-  releaseChannelForVersion,
+  releaseChannelForBuild,
   releaseVersionFromTag,
   type ReleaseChannel,
 } from '../../src/shared/hotUpdateCompatibility'
+import { isTestBuild } from '../../src/shared/buildChannel'
 import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 
 export interface UpdateCheckResult {
@@ -48,15 +49,16 @@ function installerForAssets(assets: GitCodeAsset[] | Array<{ name: string }>): {
   const platform = process.platform
   const arch = process.arch
   const installer = assets.find((asset) => {
-    if (platform === 'win32') return asset.name.endsWith('.exe') && asset.name.includes('-Windows-')
-    if (platform === 'darwin') return asset.name.endsWith('.dmg') && asset.name.includes(`-${arch}.dmg`)
+    const marker = isTestBuild ? '-Test-' : '-'
+    if (platform === 'win32') return asset.name.endsWith('.exe') && asset.name.includes(`${marker}Windows-`)
+    if (platform === 'darwin') return asset.name.endsWith('.dmg') && asset.name.includes(`${marker}Mac-`) && asset.name.includes(`-${arch}.dmg`)
     return false
   })
   return installer ?? null
 }
 
 function githubVersionFromTag(tag: string): ReleaseChannel | null {
-  return releaseChannelForVersion(tag)
+  return releaseVersionFromTag(tag)
 }
 
 async function releaseNotesForTag(tagName: string): Promise<string | undefined> {
@@ -82,7 +84,7 @@ async function releaseNotesForTag(tagName: string): Promise<string | undefined> 
  * 稳定版只读取 vX.Y.Z，内测版只读取 beta/vX.Y.Z-beta.N。
  */
 async function checkGitCode(currentVersion: string): Promise<UpdateCheckResult | null> {
-  const current = releaseChannelForVersion(currentVersion)
+  const current = releaseChannelForBuild(currentVersion, isTestBuild ? 'test' : 'stable')
   if (!current) {
     logMainWarn('[更新] 当前版本不在支持的更新通道中', { currentVersion })
     return null
@@ -100,7 +102,7 @@ async function checkGitCode(currentVersion: string): Promise<UpdateCheckResult |
       const parsed = release.tag_name ? releaseVersionFromTag(release.tag_name) : null
       return { release, parsed }
     })
-    .filter(({ parsed }) => parsed?.channel === current.channel && parsed !== null)
+    .filter(({ parsed }) => parsed?.channel === current.channel && parsed?.buildChannel === current.buildChannel && parsed !== null)
     .sort((left, right) => compareReleaseVersions(right.parsed!.version, left.parsed!.version))
 
   for (const { release, parsed } of candidates) {
@@ -114,7 +116,7 @@ async function checkGitCode(currentVersion: string): Promise<UpdateCheckResult |
       channel: parsed.channel,
       downloadUrl: `${GITCODE_DL}/${release.tag_name}/${installer.name}`,
       releaseUrl: `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/tag/${release.tag_name}`,
-      releaseNotes: await releaseNotesForTag(githubTag),
+      releaseNotes: await releaseNotesForTag(isTestBuild ? `test/${githubTag}` : githubTag),
       publishedAt: release.created_at,
     }
   }
@@ -124,7 +126,7 @@ async function checkGitCode(currentVersion: string): Promise<UpdateCheckResult |
 
 /** 从 GitHub 获取当前通道的最新安装包，作为 GitCode 备用源。 */
 async function checkGitHub(currentVersion: string): Promise<UpdateCheckResult | null> {
-  const current = releaseChannelForVersion(currentVersion)
+  const current = releaseChannelForBuild(currentVersion, isTestBuild ? 'test' : 'stable')
   if (!current) return null
 
   const endpoint = current.channel === 'stable'
@@ -141,7 +143,7 @@ async function checkGitHub(currentVersion: string): Promise<UpdateCheckResult | 
   const candidates = releases
     .filter((release) => !release.draft && (current.channel === 'beta' ? release.prerelease : !release.prerelease))
     .map((release) => ({ release, parsed: release.tag_name ? githubVersionFromTag(release.tag_name) : null }))
-    .filter(({ parsed }) => parsed?.channel === current.channel && parsed !== null)
+    .filter(({ parsed }) => parsed?.channel === current.channel && parsed?.buildChannel === (isTestBuild ? 'test' : 'stable') && parsed !== null)
     .sort((left, right) => compareReleaseVersions(right.parsed!.version, left.parsed!.version))
 
   for (const { release, parsed } of candidates) {
@@ -163,7 +165,7 @@ async function checkGitHub(currentVersion: string): Promise<UpdateCheckResult | 
 /** 手动调用时检查更新；不会在启动时自动执行，也不会自动下载或安装。 */
 export async function checkForUpdates(): Promise<UpdateCheckResult | null> {
   const currentVersion = app.getVersion()
-  const current = releaseChannelForVersion(currentVersion)
+  const current = releaseChannelForBuild(currentVersion, isTestBuild ? 'test' : 'stable')
   logMainInfo('[更新] 开始查询', {
     currentVersion,
     channel: current?.channel ?? 'unsupported',

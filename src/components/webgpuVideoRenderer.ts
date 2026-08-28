@@ -93,6 +93,7 @@ interface GpuCanvasContext {
 
 type GpuUploadSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas
 type GpuUploadCanvas = HTMLCanvasElement | OffscreenCanvas
+export type WebGpuRenderCanvas = HTMLCanvasElement | OffscreenCanvas
 
 interface ExternalImageResource {
   source: HTMLImageElement | HTMLVideoElement
@@ -134,9 +135,20 @@ interface WebGpuVideoRendererOptions {
   maxSide: number
   waitForGpu?: boolean
   rasterizeImages?: boolean
+  presentToCanvas?: boolean
   onVideoElement: (element: HTMLMediaElement | null) => void
-  onFallback: (reason: string) => void
+  onError: (reason: string) => void
   onRender: () => void
+}
+
+interface RenderWaiter {
+  resolve: () => void
+  reject: (error: Error) => void
+}
+
+interface PendingVideoSeek {
+  entry: GpuVideoEntry
+  sourceTime: number
 }
 
 const TEXTURE_USAGE_COPY_SRC = 0x01
@@ -499,7 +511,7 @@ function getWebGpuNavigator(): GpuNavigator | null {
   return (navigator as Navigator & { gpu?: GpuNavigator }).gpu ?? null
 }
 
-function getWebGpuContext(canvas: HTMLCanvasElement): GpuCanvasContext | null {
+function getWebGpuContext(canvas: WebGpuRenderCanvas): GpuCanvasContext | null {
   return (canvas.getContext as (contextId: string, options?: unknown) => unknown).call(canvas, 'webgpu') as GpuCanvasContext | null
 }
 
@@ -568,8 +580,100 @@ function canvasSize(canvas: GpuUploadCanvas): { width: number; height: number } 
   return { width: canvas.width, height: canvas.height }
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeout)
+        resolve(value)
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeout)
+        reject(error)
+      },
+    )
+  })
+}
+
+function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
+  const videoWithFrameCallback = video as HTMLVideoElement & {
+    requestVideoFrameCallback?: (callback: () => void) => number
+  }
+  if (!videoWithFrameCallback.requestVideoFrameCallback) {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+  }
+  return withTimeout(new Promise((resolve) => {
+    videoWithFrameCallback.requestVideoFrameCallback?.(() => resolve())
+  }), 15_000, 'WebGPU 导出视频帧准备超时')
+}
+
+function waitForAnimationFrames(count: number): Promise<void> {
+  if (count <= 0) return Promise.resolve()
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      void waitForAnimationFrames(count - 1).then(resolve)
+    })
+  })
+}
+
+async function waitForVideoReady(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= 2) return
+  await withTimeout(new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener('loadeddata', handleReady)
+      video.removeEventListener('error', handleError)
+    }
+    const handleReady = () => {
+      cleanup()
+      resolve()
+    }
+    const handleError = () => {
+      cleanup()
+      reject(new Error(`视频无法在 WebGPU 导出中打开（错误代码 ${video.error?.code ?? '未知'}）`))
+    }
+    video.addEventListener('loadeddata', handleReady, { once: true })
+    video.addEventListener('error', handleError, { once: true })
+  }), 15_000, 'WebGPU 导出视频加载超时')
+}
+
+async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
+  const boundedTime = Number.isFinite(video.duration) && video.duration > 0
+    ? Math.min(Math.max(0, time), Math.max(0, video.duration - 0.001))
+    : Math.max(0, time)
+  if (Math.abs(video.currentTime - boundedTime) >= 0.001) {
+    await withTimeout(new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        video.removeEventListener('seeked', handleSeeked)
+        video.removeEventListener('error', handleError)
+      }
+      const handleSeeked = () => {
+        cleanup()
+        resolve()
+      }
+      const handleError = () => {
+        cleanup()
+        reject(new Error(`WebGPU 导出视频定位失败（错误代码 ${video.error?.code ?? '未知'}）`))
+      }
+      video.addEventListener('seeked', handleSeeked, { once: true })
+      video.addEventListener('error', handleError, { once: true })
+      video.currentTime = boundedTime
+    }), 15_000, `WebGPU 导出视频定位超时: ${boundedTime.toFixed(3)}s`)
+  }
+  await playAndWaitForVideoFrame(video)
+}
+
+async function playAndWaitForVideoFrame(video: HTMLVideoElement): Promise<void> {
+  const playing = await video.play().then(() => true).catch(() => false)
+  if (playing) await waitForVideoFrame(video)
+  else await waitForAnimationFrames(2)
+  video.pause()
+}
+
 export class WebGpuVideoRenderer {
-  private readonly canvas: HTMLCanvasElement
+  private readonly canvas: WebGpuRenderCanvas
   private readonly options: WebGpuVideoRendererOptions
   private readonly videos = new Map<string, GpuVideoEntry>()
   private readonly images = new Map<string, GpuImageResource>()
@@ -593,6 +697,8 @@ export class WebGpuVideoRenderer {
   private canvasFormat = ''
   private presentationFormat = ''
   private outputTexture: GpuImageResource | null = null
+  private canvasWidth: number
+  private canvasHeight: number
   private renderWidth = 1
   private renderHeight = 1
   private layers: PreviewLayer[] = []
@@ -601,8 +707,11 @@ export class WebGpuVideoRenderer {
   private active = true
   private initialized = false
   private destroyed = false
+  private failed = false
   private renderInFlight = false
   private renderQueued = false
+  private directRenderQueued = false
+  private readonly renderWaiters = new Set<RenderWaiter>()
   private resizeQueued = false
   private renderRevision = 0
   private frameCounter = 0
@@ -613,10 +722,14 @@ export class WebGpuVideoRenderer {
   private lastLayerSummary = ''
   private firstRenderLogged = false
   private readonly loggedVideoSizes = new Set<string>()
+  private exportFrameCounter = 0
+  private lastVideoTargetConflictLogFrame = -Infinity
 
-  constructor(canvas: HTMLCanvasElement, options: WebGpuVideoRendererOptions) {
+  constructor(canvas: WebGpuRenderCanvas, options: WebGpuVideoRendererOptions) {
     this.canvas = canvas
     this.options = options
+    this.canvasWidth = Math.max(1, Math.round(options.canvasWidth))
+    this.canvasHeight = Math.max(1, Math.round(options.canvasHeight))
     // WebGPU captures the canvas size when its context is created. Resize the
     // backing store before the asynchronous adapter/device setup begins.
     this.syncCanvasBackingSize()
@@ -700,7 +813,7 @@ export class WebGpuVideoRenderer {
   }
 
   resize(): void {
-    if (this.destroyed || !this.initialized || !this.context) return
+    if (this.destroyed || this.failed || !this.initialized || !this.context) return
     if (this.renderInFlight) {
       this.resizeQueued = true
       return
@@ -716,8 +829,19 @@ export class WebGpuVideoRenderer {
     this.scheduleRender()
   }
 
+  /** Update the project backing size without recreating the renderer. */
+  setRenderSize(width: number, height: number): void {
+    const nextWidth = Math.max(1, Math.round(width))
+    const nextHeight = Math.max(1, Math.round(height))
+    if (nextWidth === this.canvasWidth && nextHeight === this.canvasHeight) return
+    this.canvasWidth = nextWidth
+    this.canvasHeight = nextHeight
+    if (this.initialized) this.resize()
+    else this.syncCanvasBackingSize()
+  }
+
   async setLayers(layers: PreviewLayer[]): Promise<void> {
-    if (!this.initialized || this.destroyed) return
+    if (!this.initialized || this.destroyed || this.failed) return
     this.layers = layers
     const summary = layers.map((layer) => `${layer.layerType ?? 'media'}:${layer.isVideo ? 'video' : 'still'}:${layer.dstW}x${layer.dstH}`).join('|')
     if (summary !== this.lastLayerSummary) {
@@ -730,7 +854,7 @@ export class WebGpuVideoRenderer {
   }
 
   async setPlayback(active: boolean, playing: boolean, time: number): Promise<void> {
-    if (this.destroyed) return
+    if (this.destroyed || this.failed) return
     this.active = active
     this.playing = playing
     this.compositionTime = Math.max(0, Number.isFinite(time) ? time : 0)
@@ -743,9 +867,176 @@ export class WebGpuVideoRenderer {
     this.scheduleRender()
   }
 
+  /** 导出专用的确定性逐帧渲染。 */
+  async renderFrameAt(time: number, options: { seekVideos?: boolean } = {}): Promise<void> {
+    if (this.destroyed || this.failed || !this.initialized) {
+      throw new Error(this.lastFailureReason || 'WebGPU 渲染器尚未准备好')
+    }
+    const compositionTime = Math.max(0, Number.isFinite(time) ? time : 0)
+    this.active = true
+    this.playing = false
+    this.compositionTime = compositionTime
+    const exportFrame = this.exportFrameCounter + 1
+    this.exportFrameCounter = exportFrame
+    const pendingVideoSeeks = new Map<HTMLVideoElement, PendingVideoSeek>()
+    let deduplicatedVideoLayers = 0
+    let conflictingVideoTargets = 0
+    let firstVideoTargetConflict: { key: string; previousTime: number; finalTime: number } | null = null
+    for (const layer of this.layers) {
+      if (!layer.isVideo) continue
+      const entry = this.videos.get(videoLayerKey(layer))
+      if (!entry) continue
+      const sourceTime = numberOr(layer.videoTime, 0)
+        + compositionTime
+        - numberOr(layer.videoOffset, 0)
+      const previous = pendingVideoSeeks.get(entry.video)
+      if (previous) {
+        deduplicatedVideoLayers += 1
+        if (Math.abs(previous.sourceTime - sourceTime) >= 0.001) {
+          conflictingVideoTargets += 1
+          firstVideoTargetConflict ??= {
+            key: entry.key,
+            previousTime: previous.sourceTime,
+            finalTime: sourceTime,
+          }
+        }
+        if (firstVideoTargetConflict?.key === entry.key) firstVideoTargetConflict.finalTime = sourceTime
+        // Keep the existing order-dependent behavior: the last layer wins.
+        previous.sourceTime = sourceTime
+      } else {
+        pendingVideoSeeks.set(entry.video, { entry, sourceTime })
+      }
+    }
+    const seekVideos = options.seekVideos !== false
+    const seekStartedAt = performance.now()
+    for (const { entry, sourceTime } of pendingVideoSeeks.values()) {
+      if (!entry.ready) {
+        await waitForVideoReady(entry.video)
+        entry.ready = true
+      }
+      if (seekVideos) await seekVideo(entry.video, sourceTime)
+      else await playAndWaitForVideoFrame(entry.video)
+    }
+    const seekMs = performance.now() - seekStartedAt
+    if (this.destroyed || this.failed) throw new Error(this.lastFailureReason || 'WebGPU 渲染器已停止')
+    this.renderRevision += 1
+    if (firstVideoTargetConflict && exportFrame - this.lastVideoTargetConflictLogFrame >= 30) {
+      this.lastVideoTargetConflictLogFrame = exportFrame
+      logger.warn('[WebGPU诊断] 同一视频源出现多个导出目标时间，已使用最后一个目标时间', {
+        exportFrame,
+        key: firstVideoTargetConflict.key,
+        previousTime: firstVideoTargetConflict.previousTime,
+        finalTime: firstVideoTargetConflict.finalTime,
+        conflictingVideoTargets,
+      })
+    }
+    const rendered = this.waitForNextRender()
+    const renderScheduleStartedAt = performance.now()
+    if (this.renderFrameId) {
+      cancelAnimationFrame(this.renderFrameId)
+      this.renderFrameId = 0
+    }
+    if (this.renderInFlight) {
+      this.renderQueued = true
+      this.directRenderQueued = true
+    } else {
+      void this.render()
+    }
+    await rendered
+    const renderScheduleMs = performance.now() - renderScheduleStartedAt
+    if (exportFrame === 1 || exportFrame % 30 === 0) {
+      logger.info('[WebGPU诊断] 导出帧渲染', {
+        exportFrame,
+        uniqueVideoSources: pendingVideoSeeks.size,
+        deduplicatedVideoLayers,
+        seekVideos,
+        seekMs: Math.round(seekMs * 100) / 100,
+        renderScheduleMs: Math.round(renderScheduleMs * 100) / 100,
+      })
+    }
+  }
+
+  /**
+   * Read the final compositor texture as RGBA for WebCodecs. Chromium's
+   * direct VideoFrame(WebGPU canvas) path is not reliable on every backend;
+   * this explicit boundary also makes the captured frame deterministic.
+   */
+  async readOutputFrame(): Promise<{ rgba: Uint8Array; width: number; height: number }> {
+    const device = this.device
+    const output = this.outputTexture
+    if (!device || !output) throw new Error('WebGPU 输出画面尚未准备好')
+    const width = output.width
+    const height = output.height
+    const bytesPerRow = Math.ceil(width * 4 / 256) * 256
+    const buffer = device.createBuffer({ size: bytesPerRow * height, usage: 0x01 | 0x08 })
+    try {
+      const encoder = device.createCommandEncoder({ label: 'luna-webgpu-readback' })
+      encoder.copyTextureToBuffer(
+        { texture: output.texture },
+        { buffer, bytesPerRow, rowsPerImage: height },
+        { width, height, depthOrArrayLayers: 1 },
+      )
+      device.queue.submit([encoder.finish()])
+      await withTimeout(buffer.mapAsync(0x01), 15_000, 'WebGPU 导出画面读回超时')
+      const mapped = new Uint8Array(buffer.getMappedRange())
+      const rgba = new Uint8Array(width * height * 4)
+      const isBgra = this.canvasFormat.startsWith('bgra')
+      const littleEndian = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1
+      if (bytesPerRow === width * 4 && !isBgra) {
+        rgba.set(mapped.subarray(0, rgba.byteLength))
+      } else if (isBgra && littleEndian && mapped.byteOffset % 4 === 0) {
+        // On the usual little-endian path, swap BGRA/RGBA four pixels at a
+        // time. The byte-wise branch below keeps unusual stride/endianness
+        // combinations correct.
+        const packedSource = new Uint32Array(mapped.buffer, mapped.byteOffset, Math.floor(mapped.byteLength / 4))
+        const packedTarget = new Uint32Array(rgba.buffer)
+        for (let y = 0; y < height; y += 1) {
+          const sourceRow = (y * bytesPerRow) / 4
+          const targetRow = y * width
+          for (let x = 0; x < width; x += 1) {
+            const value = packedSource[sourceRow + x] ?? 0xff000000
+            packedTarget[targetRow + x] = (value & 0xff00ff00) | ((value & 0x000000ff) << 16) | ((value & 0x00ff0000) >>> 16)
+          }
+        }
+      } else {
+        // Do not interpret mapped bytes as host-endian integers here. This is
+        // also the correct path when the row stride has padding.
+        for (let y = 0; y < height; y += 1) {
+          const sourceRow = y * bytesPerRow
+          const targetRow = y * width * 4
+          for (let x = 0; x < width; x += 1) {
+            const sourceIndex = sourceRow + x * 4
+            const targetIndex = targetRow + x * 4
+            if (isBgra) {
+              rgba[targetIndex] = mapped[sourceIndex + 2] ?? 0
+              rgba[targetIndex + 1] = mapped[sourceIndex + 1] ?? 0
+              rgba[targetIndex + 2] = mapped[sourceIndex] ?? 0
+              rgba[targetIndex + 3] = mapped[sourceIndex + 3] ?? 255
+            } else {
+              rgba[targetIndex] = mapped[sourceIndex] ?? 0
+              rgba[targetIndex + 1] = mapped[sourceIndex + 1] ?? 0
+              rgba[targetIndex + 2] = mapped[sourceIndex + 2] ?? 0
+              rgba[targetIndex + 3] = mapped[sourceIndex + 3] ?? 255
+            }
+          }
+        }
+      }
+      buffer.unmap()
+      return { rgba, width, height }
+    } finally {
+      buffer.destroy?.()
+    }
+  }
+
+  async captureVideoFrame<T>(createFrame: (rgba: Uint8Array, width: number, height: number) => T): Promise<T> {
+    const output = await this.readOutputFrame()
+    return createFrame(output.rgba, output.width, output.height)
+  }
+
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
+    this.rejectRenderWaiters(new Error('WebGPU 渲染器已销毁'))
     if (this.renderFrameId) cancelAnimationFrame(this.renderFrameId)
     if (this.playbackFrameId) cancelAnimationFrame(this.playbackFrameId)
     for (const entry of this.videos.values()) {
@@ -832,7 +1123,9 @@ export class WebGpuVideoRenderer {
     projectWidth: number
     projectHeight: number
   } {
-    const rect = this.canvas.getBoundingClientRect()
+    const rect = 'getBoundingClientRect' in this.canvas
+      ? this.canvas.getBoundingClientRect()
+      : { width: this.canvas.width, height: this.canvas.height }
     return {
       cssWidth: Math.round(rect.width * 100) / 100,
       cssHeight: Math.round(rect.height * 100) / 100,
@@ -847,8 +1140,8 @@ export class WebGpuVideoRenderer {
     // The preview canvas deliberately keeps the project resolution as its
     // backing store while CSS scales it to fit the workspace. Do not use the
     // transformed/client box here: it is a display size, not a render target.
-    const width = Math.max(1, Math.round(this.options.canvasWidth))
-    const height = Math.max(1, Math.round(this.options.canvasHeight))
+    const width = this.canvasWidth
+    const height = this.canvasHeight
     const changed = this.canvas.width !== width || this.canvas.height !== height
     if (changed) {
       this.canvas.width = width
@@ -885,7 +1178,7 @@ export class WebGpuVideoRenderer {
   }
 
   private schedulePlaybackLoop(): void {
-    if (this.destroyed || !this.playing || !this.active || this.playbackFrameId) return
+    if (this.destroyed || this.failed || !this.playing || !this.active || this.playbackFrameId) return
     this.playbackFrameId = requestAnimationFrame(() => {
       this.playbackFrameId = 0
       this.scheduleRender()
@@ -894,20 +1187,38 @@ export class WebGpuVideoRenderer {
   }
 
   private scheduleRender(): void {
-    if (this.destroyed || this.renderFrameId) return
+    if (this.destroyed || this.failed || this.renderFrameId) return
     this.renderFrameId = requestAnimationFrame(() => {
       this.renderFrameId = 0
       void this.render()
     })
   }
 
+  private waitForNextRender(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.renderWaiters.add({ resolve, reject })
+    })
+  }
+
+  private resolveRenderWaiters(): void {
+    const waiters = [...this.renderWaiters]
+    this.renderWaiters.clear()
+    for (const waiter of waiters) waiter.resolve()
+  }
+
+  private rejectRenderWaiters(error: Error): void {
+    const waiters = [...this.renderWaiters]
+    this.renderWaiters.clear()
+    for (const waiter of waiters) waiter.reject(error)
+  }
+
   private fail(reason: string): void {
     if (this.destroyed) return
-    if (this.lastFailureReason !== reason) {
-      this.lastFailureReason = reason
-      logger.error('[WebGPU诊断] 预览回退', { reason, canvas: this.canvasSnapshot() })
-    }
-    this.options.onFallback(reason)
+    if (this.lastFailureReason === reason) return
+    this.lastFailureReason = reason
+    this.failed = true
+    logger.error('[WebGPU诊断] 预览失败，已停止继续提交帧', { reason, canvas: this.canvasSnapshot() })
+    this.options.onError(reason)
   }
 
   private async syncVideoElements(): Promise<void> {
@@ -949,7 +1260,7 @@ export class WebGpuVideoRenderer {
         if (!this.playing) this.scheduleRender()
       })
       video.addEventListener('error', () => {
-        if (this.destroyed || video.error?.code === 4) return
+        if (this.destroyed) return
         this.fail(`视频无法在 WebGPU 预览中打开（错误代码 ${video.error?.code ?? '未知'}）`)
       })
       this.videos.set(key, entry)
@@ -1074,8 +1385,8 @@ export class WebGpuVideoRenderer {
     const displayMaxSide = Math.max(this.renderWidth, this.renderHeight)
     const qualityMaxSide = computeLayerDecodeMaxSide(
       layer,
-      this.options.canvasWidth,
-      this.options.canvasHeight,
+      this.canvasWidth,
+      this.canvasHeight,
       1.5,
       Math.max(this.options.maxSide, displayMaxSide),
     )
@@ -1199,8 +1510,9 @@ export class WebGpuVideoRenderer {
     try {
       return await pending
     } catch (error) {
-      logger.warn('[WebGPU诊断] 字体加载失败，使用后备字体', { fontFile, error: error instanceof Error ? error.message : String(error) })
-      return fallback
+      const reason = error instanceof Error ? error.message : String(error)
+      logger.error('[WebGPU诊断] 字体加载失败，停止 WebGPU 预览', { fontFile, error: reason })
+      throw new Error(`字体文件无法在 WebGPU 预览中打开: ${fontFile}`)
     }
   }
 
@@ -1327,14 +1639,7 @@ export class WebGpuVideoRenderer {
     for (let index = 0; index < sortedLayers.length; index += 1) {
       const layer = sortedLayers[index]
       if (layer.isVideo && !this.videos.get(videoLayerKey(layer))?.ready) continue
-      let resources
-      try {
-        resources = await this.layerResources(layer, time, overrides, canvasWidth, canvasHeight)
-      } catch (error) {
-        // Bundled/custom watermarks are optional in the native path as well.
-        if (layer.positioning) continue
-        throw error
-      }
+      const resources = await this.layerResources(layer, time, overrides, canvasWidth, canvasHeight)
       const positioning = positioningFor(layer.positioning, canvasWidth, canvasHeight)
       const sourceTransform: RenderLayerTransform = layer.transform ?? {
         crop: null,
@@ -1409,7 +1714,6 @@ export class WebGpuVideoRenderer {
     }
     pass.end()
     device.queue.submit([encoder.finish()])
-    if (this.options.waitForGpu) await device.queue.onSubmittedWorkDone?.()
   }
 
   private outputResource(width: number, height: number): GpuImageResource {
@@ -1429,7 +1733,7 @@ export class WebGpuVideoRenderer {
   }
 
   private async render(): Promise<void> {
-    if (this.destroyed || !this.initialized || !this.context || !this.active) return
+    if (this.destroyed || this.failed || !this.initialized || !this.active) return
     const context = this.context
     const device = this.device
     if (!device) return
@@ -1491,15 +1795,18 @@ export class WebGpuVideoRenderer {
         this.compositionTime,
         overrides,
       )
-      const presentationTexture = context.getCurrentTexture()
-      const copyEncoder = device.createCommandEncoder({ label: 'luna-webgpu-present' })
-      copyEncoder.copyTextureToTexture(
-        { texture: output.texture },
-        { texture: presentationTexture },
-        { width: output.width, height: output.height, depthOrArrayLayers: 1 },
-      )
-      device.queue.submit([copyEncoder.finish()])
-      await device.queue.onSubmittedWorkDone?.()
+      if (this.options.presentToCanvas !== false) {
+        if (!context) throw new Error('WebGPU 画布上下文尚未初始化')
+        const presentationTexture = context.getCurrentTexture()
+        const copyEncoder = device.createCommandEncoder({ label: 'luna-webgpu-present' })
+        copyEncoder.copyTextureToTexture(
+          { texture: output.texture },
+          { texture: presentationTexture },
+          { width: output.width, height: output.height, depthOrArrayLayers: 1 },
+        )
+        device.queue.submit([copyEncoder.finish()])
+      }
+      if (this.options.waitForGpu) await device.queue.onSubmittedWorkDone?.()
       if (!this.destroyed) {
         if (!this.firstRenderLogged) {
           this.firstRenderLogged = true
@@ -1510,9 +1817,14 @@ export class WebGpuVideoRenderer {
           })
         }
         this.options.onRender()
+        this.resolveRenderWaiters()
       }
     } catch (error: unknown) {
-      if (!this.destroyed) this.fail(error instanceof Error ? error.message : String(error))
+      if (!this.destroyed) {
+        const reason = error instanceof Error ? error.message : String(error)
+        this.rejectRenderWaiters(error instanceof Error ? error : new Error(reason))
+        this.fail(reason)
+      }
     } finally {
       this.renderInFlight = false
       if (this.resizeQueued && !this.destroyed) {
@@ -1521,48 +1833,12 @@ export class WebGpuVideoRenderer {
       }
       if (this.renderQueued && !this.destroyed) {
         this.renderQueued = false
-        this.scheduleRender()
+        const renderImmediately = this.directRenderQueued
+        this.directRenderQueued = false
+        if (renderImmediately) void this.render()
+        else this.scheduleRender()
       }
     }
   }
 
-  async readOutputFrame(): Promise<Uint8Array> {
-    const device = this.device
-    const output = this.outputTexture
-    if (!device || !output) throw new Error('WebGPU 输出画面尚未准备好')
-    const width = output.width
-    const height = output.height
-    const bytesPerRow = Math.ceil(width * 4 / 256) * 256
-    const buffer = device.createBuffer({ size: bytesPerRow * height, usage: 0x01 | 0x08 })
-    try {
-      const encoder = device.createCommandEncoder({ label: 'luna-webgpu-readback' })
-      encoder.copyTextureToBuffer(
-        { texture: output.texture },
-        { buffer, bytesPerRow, rowsPerImage: height },
-        { width, height, depthOrArrayLayers: 1 },
-      )
-      device.queue.submit([encoder.finish()])
-      await device.queue.onSubmittedWorkDone?.()
-      await buffer.mapAsync(0x01)
-      const mapped = new Uint8Array(buffer.getMappedRange())
-      const rgba = new Uint8Array(width * height * 4)
-      const isBgra = this.canvasFormat.startsWith('bgra')
-      for (let y = 0; y < height; y += 1) {
-        const sourceOffset = y * bytesPerRow
-        const targetOffset = y * width * 4
-        for (let x = 0; x < width; x += 1) {
-          const sourcePixel = sourceOffset + x * 4
-          const targetPixel = targetOffset + x * 4
-          rgba[targetPixel] = mapped[sourcePixel + (isBgra ? 2 : 0)] ?? 0
-          rgba[targetPixel + 1] = mapped[sourcePixel + 1] ?? 0
-          rgba[targetPixel + 2] = mapped[sourcePixel + (isBgra ? 0 : 2)] ?? 0
-          rgba[targetPixel + 3] = mapped[sourcePixel + 3] ?? 255
-        }
-      }
-      buffer.unmap()
-      return rgba
-    } finally {
-      buffer.destroy?.()
-    }
-  }
 }

@@ -338,7 +338,6 @@ export function DeviceConnectPage({
           <SupportedDeviceList
             activeDevice={activeDevice}
             devices={devices}
-            connection={connection}
             disabled={connecting || changingDevice || isChecking}
             onSelect={handleSupportedDeviceSelect}
           />

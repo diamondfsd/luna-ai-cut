@@ -28,6 +28,9 @@ assert.equal(compatibility.canLoadHotUpdate('1.8.0', '1.8.0-beta.1-hot.1'), fals
 assert.equal(compatibility.releaseChannelForVersion('1.8.0-beta.1').releaseTag, 'beta/v1.8.0-beta.1')
 assert.equal(compatibility.releaseVersionFromTag('beta/v1.8.0-beta.2').version, '1.8.0-beta.2')
 assert.equal(compatibility.releaseVersionFromTag('v1.8.0-beta.2'), null)
+assert.equal(compatibility.releaseVersionFromTag('test/beta/v1.8.0-beta.2').buildChannel, 'test')
+assert.equal(compatibility.releaseChannelForBuild('1.8.0-beta.1', 'test').releaseTag, 'test/beta/v1.8.0-beta.1')
+assert.equal(compatibility.releaseChannelForBuild('1.8.0-beta.1', 'stable').releaseTag, 'beta/v1.8.0-beta.1')
 assert.equal(compatibility.compareHotUpdateVersions('1.8.0-beta.1-hot.2', '1.8.0-beta.1-hot.1') > 0, true)
 
 console.log('Hot update compatibility verified')

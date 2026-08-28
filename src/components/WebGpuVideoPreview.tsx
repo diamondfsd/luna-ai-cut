@@ -15,7 +15,7 @@ interface WebGpuVideoPreviewProps {
   time?: number
   imageScale?: number | null
   onVideoElement?: (element: HTMLMediaElement | null) => void
-  onFallback: (reason: string) => void
+  onError: (reason: string) => void
   onRender?: () => void
 }
 
@@ -29,14 +29,14 @@ export function WebGpuVideoPreview({
   time = 0,
   imageScale,
   onVideoElement,
-  onFallback,
+  onError,
   onRender,
 }: WebGpuVideoPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<WebGpuVideoRenderer | null>(null)
-  const callbackRef = useRef({ onVideoElement, onFallback, onRender })
-  callbackRef.current = { onVideoElement, onFallback, onRender }
+  const callbackRef = useRef({ onVideoElement, onError, onRender })
+  callbackRef.current = { onVideoElement, onError, onRender }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -47,9 +47,9 @@ export function WebGpuVideoPreview({
       canvasHeight,
       maxSide,
       onVideoElement: (element) => callbackRef.current.onVideoElement?.(element),
-      onFallback: (reason) => {
-        logger.warn('[WebGPU诊断] 预览组件收到回退通知', { reason })
-        callbackRef.current.onFallback(reason)
+      onError: (reason) => {
+        logger.error('[WebGPU诊断] 预览组件收到渲染错误', { reason })
+        callbackRef.current.onError(reason)
       },
       onRender: () => callbackRef.current.onRender?.(),
     })
@@ -68,7 +68,7 @@ export function WebGpuVideoPreview({
       .then(() => renderer.setPlayback(active, playing, time))
       .catch((error: unknown) => {
         if (cancelled) return
-        callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+        callbackRef.current.onError(error instanceof Error ? error.message : String(error))
       })
 
     return () => {
@@ -84,14 +84,18 @@ export function WebGpuVideoPreview({
   }, [])
 
   useEffect(() => {
+    rendererRef.current?.setRenderSize(canvasWidth, canvasHeight)
+  }, [canvasHeight, canvasWidth])
+
+  useEffect(() => {
     void rendererRef.current?.setLayers(layers).catch((error: unknown) => {
-      callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+      callbackRef.current.onError(error instanceof Error ? error.message : String(error))
     })
   }, [layers])
 
   useEffect(() => {
     void rendererRef.current?.setPlayback(active, playing, time).catch((error: unknown) => {
-      callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+      callbackRef.current.onError(error instanceof Error ? error.message : String(error))
     })
   }, [active, playing, time])
 

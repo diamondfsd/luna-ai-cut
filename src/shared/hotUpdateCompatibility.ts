@@ -4,9 +4,11 @@ const STABLE_HOT_VERSION = /^v?(\d+)\.(\d+)\.(\d+)-hot\.(\d+)$/i
 const BETA_HOT_VERSION = /^v?(\d+)\.(\d+)\.(\d+)-beta\.(\d+)-hot\.(\d+)$/i
 
 export type UpdateChannel = 'stable' | 'beta'
+export type BuildChannel = 'stable' | 'test'
 
 export interface ReleaseChannel {
   channel: UpdateChannel
+  buildChannel: BuildChannel
   version: string
   baseVersion: string
   releaseTag: string
@@ -27,6 +29,7 @@ function parseReleaseVersion(version: string): ParsedReleaseVersion | null {
     const normalized = `${baseVersion(betaMatch)}-beta.${Number(betaMatch[4])}`
     return {
       channel: 'beta',
+      buildChannel: 'stable',
       version: normalized,
       baseVersion: baseVersion(betaMatch),
       releaseTag: `beta/v${normalized}`,
@@ -39,6 +42,7 @@ function parseReleaseVersion(version: string): ParsedReleaseVersion | null {
   const normalized = baseVersion(stableMatch)
   return {
     channel: 'stable',
+    buildChannel: 'stable',
     version: normalized,
     baseVersion: normalized,
     releaseTag: `v${normalized}`,
@@ -46,7 +50,17 @@ function parseReleaseVersion(version: string): ParsedReleaseVersion | null {
 }
 
 export function releaseChannelForVersion(version: string): ReleaseChannel | null {
-  return parseReleaseVersion(version)
+  return releaseChannelForBuild(version, 'stable')
+}
+
+export function releaseChannelForBuild(version: string, buildChannel: BuildChannel): ReleaseChannel | null {
+  const parsed = parseReleaseVersion(version)
+  if (!parsed) return null
+  return {
+    ...parsed,
+    buildChannel,
+    releaseTag: buildChannel === 'test' ? `test/${parsed.releaseTag}` : parsed.releaseTag,
+  }
 }
 
 export function stableReleaseVersion(version: string): string | null {
@@ -61,14 +75,16 @@ export function betaReleaseVersion(version: string): string | null {
 
 /** Parse the channel-specific GitCode tag back to the application version. */
 export function releaseVersionFromTag(tag: string): ReleaseChannel | null {
-  const value = tag.trim()
+  const rawValue = tag.trim()
+  const buildChannel: BuildChannel = rawValue.startsWith('test/') ? 'test' : 'stable'
+  const value = buildChannel === 'test' ? rawValue.slice('test/'.length) : rawValue
   if (value.startsWith('beta/v')) {
     const parsed = parseReleaseVersion(value.slice('beta/'.length))
-    return parsed?.channel === 'beta' ? parsed : null
+    return parsed?.channel === 'beta' ? { ...parsed, buildChannel, releaseTag: rawValue } : null
   }
   if (value.startsWith('v')) {
     const parsed = parseReleaseVersion(value)
-    return parsed?.channel === 'stable' ? parsed : null
+    return parsed?.channel === 'stable' ? { ...parsed, buildChannel, releaseTag: rawValue } : null
   }
   return null
 }

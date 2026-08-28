@@ -49,9 +49,9 @@ export interface AppSettings {
   workspacePreviewQuality?: WorkspacePreviewQuality
   /** 相机媒体预览最近一次选择的画质。 */
   cameraPreviewQuality?: CameraPreviewQuality
-  /** Chromium WebGPU 视频预览实验；仅覆盖基础单视频图层，其他图层继续使用 LRC。 */
+  /** Chromium WebGPU 预览；内测版本固定开启，保留字段仅用于兼容旧设置。 */
   experimentalWebGpuPreview?: boolean
-  /** WebGPU + WebCodecs 导出实验；当前仅保存开关状态，正式导出仍使用稳定方式。 */
+  /** GPU 导出；内测版本固定开启，保留字段仅用于兼容旧设置。 */
   experimentalWebGpuExport?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean
