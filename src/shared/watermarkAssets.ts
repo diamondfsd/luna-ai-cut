@@ -3,6 +3,7 @@ import lunaUltraConfig from '../../electron/devices/definitions/configs/luna-ult
 import pocket3Config from '../../electron/devices/definitions/configs/pocket-3.json'
 import pocket4Config from '../../electron/devices/definitions/configs/pocket-4.json'
 import pocket4ProConfig from '../../electron/devices/definitions/configs/pocket-4-pro.json'
+import action5ProConfig from '../../electron/devices/definitions/configs/action-5-pro.json'
 
 import type { DeviceWatermarkStyleConfig } from './types'
 
@@ -20,6 +21,7 @@ const DEVICE_CONFIGS: Record<string, { watermarkStyles?: WatermarkStyleEntry[] }
   'dji-pocket-3': pocket3Config as { watermarkStyles: WatermarkStyleEntry[] },
   'dji-pocket-4': pocket4Config as { watermarkStyles: WatermarkStyleEntry[] },
   'dji-pocket-4-pro': pocket4ProConfig as { watermarkStyles: WatermarkStyleEntry[] },
+  'dji-action-5-pro': action5ProConfig as { watermarkStyles: WatermarkStyleEntry[] },
 }
 
 /** 所有设备配置中声明的水印样式（唯一数据源，与 electron/deviceConfigs 保持一致） */
@@ -29,6 +31,7 @@ export const ALL_WATERMARK_STYLES: WatermarkStyleEntry[] = [
   ...(pocket3Config as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
   ...(pocket4Config as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
   ...(pocket4ProConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
+  ...(action5ProConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
 ]
 
 /** 根据设备 ID 获取该设备的水印样式选项 */
