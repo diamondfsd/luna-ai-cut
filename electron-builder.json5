@@ -90,6 +90,12 @@
     "artifactName": "LunaAICut-Mac-${version}-Installer-${arch}.${ext}",
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
+    // Electron Framework 的 .pak/数据资源由外层 bundle 的资源封印保护，无需逐个签名。
+    "signIgnore": [
+      "\\.pak$",
+      "icudtl\\.dat$",
+      "v8_context_snapshot\\..*\\.bin$"
+    ],
     "hardenedRuntime": true,
     "extraResources": [
       {

@@ -110,6 +110,161 @@ function waitForChildProcess(child: ChildProcessWithoutNullStreams): Promise<{ c
   })
 }
 
+interface WebGpuVideoProbeResult {
+  duration: number | null
+  fps: number | null
+  width: number | null
+  height: number | null
+}
+
+interface FfprobeVideoStream {
+  codec_type?: unknown
+  duration?: unknown
+  width?: unknown
+  height?: unknown
+  avg_frame_rate?: unknown
+  r_frame_rate?: unknown
+  disposition?: { attached_pic?: unknown }
+}
+
+interface FfprobeJson {
+  format?: { duration?: unknown }
+  streams?: FfprobeVideoStream[]
+}
+
+const WEBGPU_VIDEO_PROBE_TIMEOUT_MS = 15_000
+const WEBGPU_VIDEO_PROBE_MAX_ATTEMPTS = 4
+const WEBGPU_VIDEO_PROBE_RETRY_DELAYS_MS = [100, 250, 500] as const
+const WEBGPU_VIDEO_PROBE_MAX_OUTPUT_BYTES = 1024 * 1024
+
+function errorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('code' in error)) return undefined
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : undefined
+}
+
+function waitMilliseconds(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
+
+function runFfprobeOnce(ffprobePath: string, sourcePath: string): Promise<{ stdout: string; stderr: string }> {
+  const args = [
+    '-v', 'error',
+    '-print_format', 'json',
+    '-show_entries', 'format=duration:stream=codec_type,duration,width,height,avg_frame_rate,r_frame_rate,disposition',
+    '-show_format',
+    '-show_streams',
+    sourcePath,
+  ]
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffprobePath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const timeout = setTimeout(() => {
+      const failure = Object.assign(new Error(`ffprobe 探测超时（${WEBGPU_VIDEO_PROBE_TIMEOUT_MS}ms）`), { code: 'ETIMEDOUT' })
+      try {
+        child.kill()
+      } catch {
+        // 进程可能已经退出，超时错误仍需返回给调用方。
+      }
+      rejectOnce(failure)
+    }, WEBGPU_VIDEO_PROBE_TIMEOUT_MS)
+
+    const cleanup = () => {
+      clearTimeout(timeout)
+      child.removeListener('error', onError)
+      child.removeListener('close', onClose)
+    }
+    const resolveOnce = (result: { stdout: string; stderr: string }) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(result)
+    }
+    const rejectOnce = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    const onError = (error: Error) => rejectOnce(error)
+    const onClose = (code: number | null, signal: NodeJS.Signals | null) => {
+      if (code === 0) {
+        resolveOnce({ stdout, stderr })
+        return
+      }
+      const failure = new Error(`ffprobe 进程失败${stderr.trim() ? `: ${stderr.trim()}` : `（退出码 ${code ?? '未知'}${signal ? `，信号 ${signal}` : ''}）`}`)
+      Object.assign(failure, { code: 'FFPROBE_EXIT', exitCode: code, signal })
+      rejectOnce(failure)
+    }
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk
+      if (stdout.length > WEBGPU_VIDEO_PROBE_MAX_OUTPUT_BYTES) stdout = stdout.slice(-WEBGPU_VIDEO_PROBE_MAX_OUTPUT_BYTES)
+    })
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk
+      if (stderr.length > WEBGPU_VIDEO_PROBE_MAX_OUTPUT_BYTES) stderr = stderr.slice(-WEBGPU_VIDEO_PROBE_MAX_OUTPUT_BYTES)
+    })
+    child.once('error', onError)
+    child.once('close', onClose)
+  })
+}
+
+function positiveNumber(value: unknown): number | null {
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0 ? number : null
+}
+
+function parseFrameRate(value: unknown): number | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null
+  const raw = String(value).trim()
+  if (!raw || raw === '0/0' || raw === 'N/A') return null
+  const parts = raw.split('/')
+  const numerator = Number(parts[0])
+  const denominator = parts.length > 1 ? Number(parts[1]) : 1
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || numerator <= 0 || denominator <= 0) return null
+  const fps = numerator / denominator
+  return Number.isFinite(fps) && fps > 0 ? fps : null
+}
+
+function selectWebGpuProbeStream(streams: FfprobeVideoStream[] | undefined): FfprobeVideoStream | undefined {
+  return (streams ?? [])
+    .filter((stream) => stream.codec_type === 'video' && Number(stream.disposition?.attached_pic) !== 1)
+    .sort((left, right) => {
+      const leftArea = (positiveNumber(left.width) ?? 0) * (positiveNumber(left.height) ?? 0)
+      const rightArea = (positiveNumber(right.width) ?? 0) * (positiveNumber(right.height) ?? 0)
+      return rightArea - leftArea
+    })[0]
+}
+
+function parseWebGpuVideoProbe(stdout: string): WebGpuVideoProbeResult {
+  const parsed = JSON.parse(stdout) as FfprobeJson
+  const stream = selectWebGpuProbeStream(parsed.streams)
+  if (!stream) throw new Error('ffprobe 未找到可用视频流')
+  return {
+    duration: positiveNumber(stream.duration) ?? positiveNumber(parsed.format?.duration),
+    fps: parseFrameRate(stream?.avg_frame_rate) ?? parseFrameRate(stream?.r_frame_rate),
+    width: positiveNumber(stream?.width),
+    height: positiveNumber(stream?.height),
+  }
+}
+
+async function validateWebGpuVideoProbePath(sourcePath: unknown): Promise<string> {
+  if (typeof sourcePath !== 'string') throw new Error('WebGPU 视频探测路径无效')
+  const normalized = sourcePath.trim()
+  if (!normalized || normalized.length > 4096 || normalized.includes('\0') || !isAbsolute(normalized)) {
+    throw new Error('WebGPU 视频探测路径无效')
+  }
+  const sourceStat = await stat(normalized)
+  if (!sourceStat.isFile()) throw new Error('WebGPU 视频探测源不是文件')
+  return normalized
+}
+
 /** 包装 handler：自动 catch 异常并记日志 */
 function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
   let firstCall = true
@@ -142,6 +297,65 @@ export function register(ctx: RegisterContext): void {
     await warmupRenderCore(logPath)
     rcLog('lrc:init OK')
   }))
+
+  ipcMain.handle('lrc:webgpu-video-probe', safe('webgpu-video-probe',
+    async (_event: IpcMainInvokeEvent, sourcePath: unknown): Promise<WebGpuVideoProbeResult> => {
+      const startedAt = performance.now()
+      let normalizedSourcePath: string | null = null
+      let ffprobePath: string | null = null
+      let attempts = 0
+      try {
+        normalizedSourcePath = await validateWebGpuVideoProbePath(sourcePath)
+        ffprobePath = getFfprobePath()
+        logMainInfo('[LRC] WebGPU 视频元数据探测开始', {
+          sourcePath: normalizedSourcePath,
+          ffprobePath,
+          timeoutMs: WEBGPU_VIDEO_PROBE_TIMEOUT_MS,
+          maxAttempts: WEBGPU_VIDEO_PROBE_MAX_ATTEMPTS,
+        })
+
+        while (attempts < WEBGPU_VIDEO_PROBE_MAX_ATTEMPTS) {
+          attempts += 1
+          try {
+            const processResult = await runFfprobeOnce(ffprobePath, normalizedSourcePath)
+            const result = parseWebGpuVideoProbe(processResult.stdout)
+            logMainInfo('[LRC] WebGPU 视频元数据探测完成', {
+              sourcePath: normalizedSourcePath,
+              attempts,
+              elapsedMs: Math.round(performance.now() - startedAt),
+              ...result,
+            })
+            return result
+          } catch (error) {
+            const code = errorCode(error)
+            if (code !== 'EAGAIN' || attempts >= WEBGPU_VIDEO_PROBE_MAX_ATTEMPTS) throw error
+            const delayMs = WEBGPU_VIDEO_PROBE_RETRY_DELAYS_MS[attempts - 1] ?? WEBGPU_VIDEO_PROBE_RETRY_DELAYS_MS[WEBGPU_VIDEO_PROBE_RETRY_DELAYS_MS.length - 1]
+            logMainWarn('[LRC] WebGPU 视频元数据探测重试', {
+              sourcePath: normalizedSourcePath,
+              attempt: attempts,
+              nextAttempt: attempts + 1,
+              maxAttempts: WEBGPU_VIDEO_PROBE_MAX_ATTEMPTS,
+              errorCode: code,
+              error: error instanceof Error ? error.message : String(error),
+              delayMs,
+            })
+            await waitMilliseconds(delayMs)
+          }
+        }
+        throw new Error('WebGPU 视频元数据探测失败')
+      } catch (error) {
+        logMainError('[LRC] WebGPU 视频元数据探测失败', {
+          sourcePath: normalizedSourcePath ?? (typeof sourcePath === 'string' ? sourcePath : null),
+          ffprobePath,
+          attempts,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          errorCode: errorCode(error),
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
+    },
+  ))
 
   ipcMain.handle('lrc:getNativePreviewCapabilities', safe('getNativePreviewCapabilities', async () => {
     return getNative().getNativePreviewCapabilities()

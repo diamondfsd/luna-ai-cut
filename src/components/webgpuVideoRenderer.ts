@@ -133,6 +133,8 @@ interface WebGpuVideoRendererOptions {
   canvasWidth: number
   canvasHeight: number
   maxSide: number
+  /** Use an RGBA offscreen target when the caller only needs raw readback. */
+  captureFormat?: 'rgba'
   waitForGpu?: boolean
   rasterizeImages?: boolean
   presentToCanvas?: boolean
@@ -662,7 +664,10 @@ async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
       video.currentTime = boundedTime
     }), 15_000, `WebGPU 导出视频定位超时: ${boundedTime.toFixed(3)}s`)
   }
-  await playAndWaitForVideoFrame(video)
+  // `seeked` means the paused element already exposes the decoded frame at
+  // the requested timestamp. Playing once more advances it to a later frame,
+  // which is visible when 4K readback/encoding is slower than realtime.
+  video.pause()
 }
 
 async function playAndWaitForVideoFrame(video: HTMLVideoElement): Promise<void> {
@@ -778,7 +783,9 @@ export class WebGpuVideoRenderer {
       // are copied into the browser-owned canvas texture. The unorm and
       // unorm-srgb variants are copy-compatible because they have the same
       // underlying 8-bit layout.
-      this.canvasFormat = srgbFormatFor(this.presentationFormat)
+      this.canvasFormat = this.options.captureFormat === 'rgba'
+        ? 'rgba8unorm-srgb'
+        : srgbFormatFor(this.presentationFormat)
       this.configureCanvasContext()
       logger.info('[WebGPU诊断] 画布已配置', {
         presentationFormat: this.presentationFormat,

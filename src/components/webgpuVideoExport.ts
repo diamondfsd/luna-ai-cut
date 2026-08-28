@@ -11,6 +11,8 @@ interface EncodedVideoChunkLike {
 
 interface VideoFrameLike {
   close(): void
+  allocationSize?(options?: Record<string, unknown>): number
+  copyTo?(destination: Uint8Array, options?: Record<string, unknown>): Promise<unknown>
 }
 
 interface VideoEncoderLike {
@@ -27,7 +29,7 @@ interface VideoEncoderConstructorLike {
 }
 
 interface VideoFrameConstructorLike {
-  new(source: Uint8Array, init: {
+  new(source: unknown, init: {
     format: 'RGBA'
     codedWidth: number
     codedHeight: number
@@ -37,6 +39,7 @@ interface VideoFrameConstructorLike {
 }
 
 interface WebGpuVideoExportApi {
+  webGpuVideoProbe(sourcePath: string): Promise<WebGpuVideoMetadata>
   webGpuVideoBegin(
     sessionId: string,
     outputPath: string,
@@ -53,9 +56,16 @@ interface WebGpuVideoExportApi {
   webGpuVideoCancel(sessionId: string): Promise<void>
 }
 
+interface WebGpuVideoMetadata {
+  duration: number | null
+  fps: number | null
+  width: number | null
+  height: number | null
+}
+
 function api(): WebGpuVideoExportApi {
   const value = (window as unknown as { lunaRenderCore?: WebGpuVideoExportApi }).lunaRenderCore
-  if (!value?.webGpuVideoBegin) throw new Error('当前版本没有可用的视频导出加速能力')
+  if (!value?.webGpuVideoBegin || !value?.webGpuVideoProbe) throw new Error('当前版本没有可用的视频导出加速能力')
   return value
 }
 
@@ -138,6 +148,32 @@ const MAX_ENCODER_QUEUE = 4
 const MAX_PENDING_WRITES = 2
 const MAX_IN_FLIGHT_CAPTURES = 2
 
+async function hasCanvasVideoFramePixels(frame: VideoFrameLike, width: number, height: number): Promise<boolean> {
+  if (!frame.allocationSize || !frame.copyTo) return false
+  const sampleSize = 16
+  const rects = [
+    { x: 0, y: 0 },
+    { x: Math.max(0, Math.floor(width / 2) - sampleSize / 2), y: Math.max(0, Math.floor(height / 2) - sampleSize / 2) },
+    { x: Math.max(0, width - sampleSize), y: Math.max(0, height - sampleSize) },
+  ].map(({ x, y }) => ({
+    x: Math.min(Math.max(0, Math.floor(x)), Math.max(0, width - sampleSize)),
+    y: Math.min(Math.max(0, Math.floor(y)), Math.max(0, height - sampleSize)),
+    width: Math.min(sampleSize, width),
+    height: Math.min(sampleSize, height),
+  }))
+  try {
+    for (const rect of rects) {
+      const options = { format: 'RGBA', rect }
+      const pixels = new Uint8Array(frame.allocationSize(options))
+      await frame.copyTo(pixels, options)
+      if (pixels.some((value) => value !== 0)) return true
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
 interface PendingCapture {
   index: number
   promise: Promise<{ frame: VideoFrameLike; captureMs: number; capturedAt: number }>
@@ -158,9 +194,10 @@ export async function exportVideoWithWebGpu(params: {
   const videoLayer = primaryVideoLayer(params.layers)
   const width = evenDimension(params.width)
   const height = evenDimension(params.height)
-  const fps = videoFrameRate(params.fps)
+  const sourcePath = sourcePathFor(videoLayer)
   const sourceStartTime = Math.max(0, (videoLayer.videoTime ?? 0) - (videoLayer.videoOffset ?? 0))
   if (typeof OffscreenCanvas === 'undefined') throw new Error('当前 Chromium 不支持离屏视频导出')
+  const webGpuApi = api()
   const rendererCanvas = new OffscreenCanvas(width, height)
 
   let primaryVideo: HTMLVideoElement | null = null
@@ -169,12 +206,13 @@ export async function exportVideoWithWebGpu(params: {
     canvasWidth: width,
     canvasHeight: height,
     maxSide: Math.max(width, height),
-    // The canvas capture below is the synchronization boundary for export.
-    // Interactive preview keeps this disabled so it is not serialized by a GPU
-    // fence on every animation frame.
-    waitForGpu: false,
+    captureFormat: 'rgba',
+    // Direct VideoFrame(canvas) capture needs the submitted WebGPU work to be
+    // complete before the snapshot is taken. This is export-only; interactive
+    // preview keeps this option disabled.
+    waitForGpu: true,
     rasterizeImages: false,
-    presentToCanvas: false,
+    presentToCanvas: true,
     onVideoElement: (element) => {
       primaryVideo = element instanceof HTMLVideoElement ? element : null
     },
@@ -202,7 +240,17 @@ export async function exportVideoWithWebGpu(params: {
   let ipcWriteTotalMs = 0
   const pendingCaptures: PendingCapture[] = []
   const startedAt = performance.now()
+  let fps = videoFrameRate(params.fps)
+  let sourceMetadata: WebGpuVideoMetadata = { duration: null, fps: null, width: null, height: null }
+  let metadataStartedAt = startedAt
   try {
+    metadataStartedAt = performance.now()
+    sourceMetadata = await withTimeout(
+      webGpuApi.webGpuVideoProbe(sourcePath),
+      30_000,
+      'WebGPU 导出视频独立元数据读取超时',
+    )
+    fps = videoFrameRate(params.fps ?? sourceMetadata.fps)
     await renderer.initialize()
     await renderer.setLayers(params.layers)
     const video = await waitForPrimaryVideo(() => primaryVideo)
@@ -210,14 +258,27 @@ export async function exportVideoWithWebGpu(params: {
     // Chromium allow deterministic frame activation without user interaction.
     video.muted = true
     video.pause()
-    if (video.duration && video.duration > 0 && !Number.isFinite(video.duration)) {
-      throw new Error('WebGPU 导出视频时长无效')
-    }
-    const duration = Number.isFinite(videoLayer.videoDuration) && (videoLayer.videoDuration ?? 0) > 0
-      ? videoLayer.videoDuration!
-      : Math.max(0.001, (Number.isFinite(video.duration) ? video.duration : 0) - sourceStartTime)
-    if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法确定 WebGPU 导出视频时长')
+    const layerDuration = Number.isFinite(videoLayer.videoDuration) && (videoLayer.videoDuration ?? 0) > 0
+      ? videoLayer.videoDuration
+      : null
+    const mediaDuration = Number.isFinite(sourceMetadata.duration) && (sourceMetadata.duration ?? 0) > sourceStartTime
+      ? (sourceMetadata.duration ?? 0) - sourceStartTime
+      : null
+    const duration = layerDuration ?? mediaDuration
+    if (duration == null || !Number.isFinite(duration) || duration <= 0) throw new Error('无法确定 WebGPU 导出视频时长')
     const frameCount = Math.max(1, Math.ceil(duration * fps))
+    logger.info('[WebGPU诊断] 导出时间参数', {
+      layerDuration,
+      mediaDuration,
+      sourceMetadata,
+      metadataMs: Math.round(performance.now() - metadataStartedAt),
+      sourceStartTime,
+      duration,
+      fps,
+      frameCount,
+      videoReadyState: video.readyState,
+      videoDuration: video.duration,
+    })
     const encoderConfig: Record<string, unknown> = {
       codec: codecFor(width, height),
       width,
@@ -231,11 +292,10 @@ export async function exportVideoWithWebGpu(params: {
     const support = await Encoder.isConfigSupported(encoderConfig)
     if (!support.supported) throw new Error(`当前 Chromium 不支持 ${encoderConfig.codec} 视频编码`)
 
-    const webGpuApi = api()
     await webGpuApi.webGpuVideoBegin(
       params.sessionId,
       params.outputPath,
-      sourcePathFor(videoLayer),
+      sourcePath,
       width,
       height,
       fps,
@@ -274,12 +334,61 @@ export async function exportVideoWithWebGpu(params: {
     })
     encoder.configure(support.config ?? encoderConfig)
 
-    const captureCanvasFrame = (index: number): Promise<{
+    let directCapture = true
+    let directCaptureFailureLogged = false
+    const captureCanvasFrame = async (index: number): Promise<{
       frame: VideoFrameLike
       captureMs: number
       capturedAt: number
     }> => {
       const captureStartedAt = performance.now()
+      const frameInit = {
+        format: 'RGBA' as const,
+        codedWidth: width,
+        codedHeight: height,
+        timestamp: Math.round(index * 1_000_000 / fps),
+        duration: Math.round(1_000_000 / fps),
+      }
+      if (directCapture) {
+        let bitmap: ImageBitmap | null = null
+        try {
+          // Chromium's direct VideoFrame(WebGPU canvas) constructor can
+          // succeed while capturing an all-zero frame. The ImageBitmap
+          // snapshot keeps the transfer on the browser/GPU side and is valid
+          // for OffscreenCanvas on the Metal backend.
+          const source = typeof rendererCanvas.transferToImageBitmap === 'function'
+            ? (bitmap = rendererCanvas.transferToImageBitmap())
+            : rendererCanvas
+          const frame = new Frame(source, frameInit)
+          bitmap?.close()
+          bitmap = null
+          if (index === 0 && !(await hasCanvasVideoFramePixels(frame, width, height))) {
+            frame.close()
+            directCapture = false
+            if (!directCaptureFailureLogged) {
+              directCaptureFailureLogged = true
+              logger.warn('[WebGPU诊断] 画布直出 VideoFrame 内容无效，改用纹理读回', { width, height })
+            }
+          } else {
+            return {
+              frame,
+              captureMs: performance.now() - captureStartedAt,
+              capturedAt: performance.now(),
+            }
+          }
+        } catch (error) {
+          bitmap?.close()
+          directCapture = false
+          if (!directCaptureFailureLogged) {
+            directCaptureFailureLogged = true
+            logger.warn('[WebGPU诊断] 画布直出 VideoFrame 不可用，改用纹理读回', {
+              error: error instanceof Error ? error.message : String(error),
+              width,
+              height,
+            })
+          }
+        }
+      }
       return renderer.captureVideoFrame((rgba, frameWidth, frameHeight) => ({
         frame: new Frame(rgba, {
           format: 'RGBA',
@@ -359,7 +468,10 @@ export async function exportVideoWithWebGpu(params: {
       if (encodingError || rendererError) throw encodingError ?? rendererError
       const time = Math.min(duration, index / fps)
       const frameStartedAt = performance.now()
-      await renderer.renderFrameAt(time, { seekVideos: index === 0 })
+      // Readback and encoding are slower than realtime at 4K. Seeking every
+      // frame keeps the exported timeline tied to its requested timestamp
+      // instead of letting the detached video element run ahead.
+      await renderer.renderFrameAt(time, { seekVideos: true })
       if (rendererError) throw rendererError
       pendingCaptures.push({ index, promise: captureCanvasFrame(index), renderStartedAt: frameStartedAt })
       if (pendingCaptures.length >= MAX_IN_FLIGHT_CAPTURES) await drainCapture()
@@ -381,7 +493,7 @@ export async function exportVideoWithWebGpu(params: {
       elapsedMs: Math.round(performance.now() - startedAt),
       encodedBytes,
       ipcWriteTotalMs: Math.round(ipcWriteTotalMs),
-      capturePath: 'gpu-texture-readback-rgba-video-frame',
+      capturePath: directCapture ? 'webgpu-canvas-video-frame' : 'gpu-texture-readback-rgba-video-frame',
       encoderQueueLimit: MAX_ENCODER_QUEUE,
       pendingWriteLimit: MAX_PENDING_WRITES,
       buildChannel: isTestBuild ? 'test' : 'stable',
