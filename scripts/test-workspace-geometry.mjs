@@ -73,7 +73,7 @@ watermarkClose(
 )
 watermarkClose(
   watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4_pro', 'top-right', 540), 1080, 1920),
-  { marginX: 0.66, marginY: 0.028, targetWidth: 0.16 },
+  { marginX: 0.565, marginY: 0.01375, targetWidth: 0.35 },
   'Pocket 4 Pro 9:16 size 10 right top placement',
 )
 watermarkClose(
