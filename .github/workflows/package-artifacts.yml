@@ -19,6 +19,7 @@ on:
       - "v*"
     branches:
       - test
+      - release-1.8.0-beta
 
 permissions:
   contents: write
