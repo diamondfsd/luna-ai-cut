@@ -21,6 +21,7 @@ import type {
   DolbyVisionWatermarkExportRequest,
   CustomWatermarkAsset,
   WatermarkSettings,
+  DjiBluetoothRendererEvent,
   WifiConnectOptions,
   WifiDebugApi,
   WifiHttpRequestOptions,
@@ -102,6 +103,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   openDevTools: () => ipcRenderer.invoke('devtools:open'),
   scanBluetoothDevices: (timeoutMs?: number) => ipcRenderer.invoke('bluetooth:scanNative', timeoutMs),
   cancelBluetoothScan: () => ipcRenderer.invoke('bluetooth:cancelScan'),
+  djiBluetooth: {
+    emit: (event: DjiBluetoothRendererEvent) => ipcRenderer.send('dji-web-bluetooth:event', event),
+  },
   cameraSource: {
     detectMounted: () => ipcRenderer.invoke('camera-source:detect-mounted'),
     chooseMounted: () => ipcRenderer.invoke('camera-source:choose-mounted'),
