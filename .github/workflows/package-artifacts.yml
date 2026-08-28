@@ -53,14 +53,14 @@ jobs:
         run: pnpm run init:rust
 
       - name: Import macOS Developer ID certificate
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         uses: Apple-Actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
 
       - name: Prepare App Store Connect API key
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         env:
           APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
         run: |
@@ -69,7 +69,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/AuthKey.p8"
 
       - name: Build macOS DMG (signed and notarized)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         env:
           CSC_NAME: "Developer ID Application: shuxin wu (8B6J8663PS)"
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -81,13 +81,13 @@ jobs:
         run: pnpm run pack:mac:signed:arm64
 
       - name: Build macOS DMG (Ad Hoc)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         env:
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
         run: pnpm run pack:mac:arm64
 
       - name: Verify macOS distribution signature and notarization
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         shell: bash
         run: |
           app_path="$(find release -type d -name '*.app' -print -quit)"
@@ -102,7 +102,7 @@ jobs:
           echo "Developer ID 签名和公证校验通过: $app_path"
 
       - name: Verify macOS Ad Hoc signature
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         shell: bash
         run: |
           app_path="$(find release -type d -name '*.app' -print -quit)"
@@ -131,7 +131,7 @@ jobs:
   # ─── macOS x64 (Intel) 构建 ────────────────────────
   package-mac-x64:
     name: Build macOS (Intel x64 DMG)
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (inputs.target == 'all' || inputs.target == 'macos-x64'))
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) || (github.event_name == 'workflow_dispatch' && (inputs.target == 'all' || inputs.target == 'macos-x64'))
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -172,14 +172,14 @@ jobs:
           echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
 
       - name: Import macOS Developer ID certificate
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         uses: Apple-Actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
 
       - name: Prepare App Store Connect API key
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         env:
           APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
         run: |
@@ -188,7 +188,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/AuthKey.p8"
 
       - name: Build macOS x64 DMG (signed and notarized)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         env:
           CSC_NAME: "Developer ID Application: shuxin wu (8B6J8663PS)"
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -200,13 +200,13 @@ jobs:
         run: pnpm run pack:mac:signed:x64
 
       - name: Build macOS x64 DMG (Ad Hoc)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         env:
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
         run: pnpm run pack:mac:x64
 
       - name: Verify macOS x64 distribution signature and notarization
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         shell: bash
         run: |
           app_path="$(find release -type d -name '*.app' -print -quit)"
@@ -221,7 +221,7 @@ jobs:
           echo "Developer ID 签名和公证校验通过: $app_path"
 
       - name: Verify macOS x64 Ad Hoc signature
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         shell: bash
         run: |
           app_path="$(find release -type d -name '*.app' -print -quit)"
