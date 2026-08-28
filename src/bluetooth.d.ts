@@ -25,9 +25,11 @@ interface BluetoothRemoteGATTCharacteristic extends EventTarget {
   value?: DataView
   startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>
   writeValue(value: Uint8Array): Promise<void>
+  writeValueWithResponse(value: Uint8Array): Promise<void>
+  writeValueWithoutResponse(value: Uint8Array): Promise<void>
 }
 
-interface BluetoothDevice {
+interface BluetoothDevice extends EventTarget {
   id: string
   name?: string
   gatt?: BluetoothRemoteGATTServer
@@ -35,6 +37,7 @@ interface BluetoothDevice {
 
 interface Bluetooth {
   requestDevice(options: RequestDeviceOptions): Promise<BluetoothDevice>
+  getDevices?(): Promise<BluetoothDevice[]>
 }
 
 interface Navigator {

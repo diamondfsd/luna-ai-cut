@@ -8,6 +8,16 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+/* macOS 将导航并入隐藏的原生标题栏；空白区域仍可拖动窗口。 */
+.global-nav-macos {
+  -webkit-app-region: drag;
+}
+
+.global-nav-macos .nav-links,
+.global-nav-macos .nav-status {
+  -webkit-app-region: no-drag;
+}
+
 .nav-inner {
   display: flex;
   max-width: 1440px;
@@ -18,6 +28,11 @@
   margin: 0 auto;
   padding: 0 22px;
   position: relative;
+}
+
+.global-nav-macos .nav-inner {
+  max-width: none;
+  padding-left: 112px;
 }
 
 .nav-links a,

@@ -22,6 +22,7 @@ interface AppNavProps {
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
+  const isMac = window.navigator.platform.includes('Mac')
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
@@ -50,7 +51,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   }, [])
 
   return (
-    <nav className="global-nav">
+    <nav className={`global-nav${isMac ? ' global-nav-macos' : ''}`}>
       <div className="nav-inner">
         <div className="nav-links">
           <NavLink to="/library" onClick={(event) => handleNavigationClick(event, '/library')} className={({ isActive }) => (isActive ? 'active' : '')}>

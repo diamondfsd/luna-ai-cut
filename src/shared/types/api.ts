@@ -90,6 +90,14 @@ export interface WorkspaceCompositionCropScoreRequest extends WorkspaceCompositi
   crops: WorkspaceCompositionCrop[]
 }
 
+export interface DjiBluetoothRendererEvent {
+  token: string
+  event: 'notification' | 'disconnected'
+  characteristic?: string
+  payloadHex?: string
+  message?: string
+}
+
 export interface WorkspaceMaskTrackingRequest {
   requestId: string
   filePath: string
@@ -213,6 +221,9 @@ export interface LunaApi {
   openDevTools(): Promise<void>
   scanBluetoothDevices(timeoutMs?: number): Promise<BluetoothDeviceCandidate[]>
   cancelBluetoothScan(): Promise<void>
+  djiBluetooth: {
+    emit(event: DjiBluetoothRendererEvent): void
+  }
   cameraSource: CameraMediaSourceApi
   cameraVideoStream: CameraVideoStreamApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
