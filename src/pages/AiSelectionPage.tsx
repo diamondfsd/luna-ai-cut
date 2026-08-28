@@ -74,10 +74,11 @@ function mediaFileForSelection(item: AiSelectionItem): LunaFile {
     groupHour: item.capturedAt.slice(0, 13),
     videoKey: null,
     previewName: null,
-    previewUrl: item.thumbnailUrl ?? item.videoKeyframes[0]?.thumbnailUrl ?? null,
+    previewUrl: item.videoKeyframes[0]?.thumbnailUrl ?? null,
     cacheFilePath: item.path,
     downloadFilePath: null,
-    thumbnailUrl: item.thumbnailUrl,
+    // 交给 MediaCard -> ThumbImage -> useFileCache 统一生成本地缩略图。
+    thumbnailUrl: null,
     isLivePhoto: false,
     livePhotoVideoName: null,
     livePhotoVideoUrl: null,
@@ -402,7 +403,7 @@ export function AiSelectionPage() {
       }}
       onRevealPath={() => undefined}
       onRevealProgress={() => undefined}
-      onDragStart={item.state === 'kept' ? () => window.luna.startFileDrag(selectedItems.map((candidate) => candidate.path), item.thumbnailUrl) : undefined}
+      onDragStart={item.state === 'kept' ? () => window.luna.startFileDrag(selectedItems.map((candidate) => candidate.path), null) : undefined}
       overlay={<>{showFaceBoxes && <AiSelectionFaceOverlay item={item} faces={faceBoxesByItem.get(item.id) ?? []} />}<div className="ai-selection-card-badges">
         {isAiRecommended(item) && <span className="ai-selection-recommendation-badge"><Sparkles size={12} />AI 推荐</span>}
         {stage === 'scenes' && (groupsByItem.get(item.id)?.itemIds.length ?? 0) > 1 && <span className="ai-selection-group-badge"><Layers3 size={11} />{groupsByItem.get(item.id)?.itemIds.length}</span>}
@@ -459,7 +460,7 @@ export function AiSelectionPage() {
           {stage === 'compare' && pendingGroups.map((group, index) => {
             const cover = itemsById.get(group.representativeId) ?? itemsById.get(group.itemIds[0])
             return <button key={group.id} type="button" className={`ai-selection-compare-filter${activeGroup?.id === group.id ? ' active' : ''}`} aria-label={`查看相似组 ${index + 1}，${group.itemIds.length} 项素材`} onClick={() => { setGroupId(group.id); setFocusedId('') }}>
-              <span className="ai-selection-compare-cover">{cover && <ThumbImage src={cover.thumbnailUrl ?? cover.path} alt="" />}</span>
+              <span className="ai-selection-compare-cover">{cover && <ThumbImage src={cover.path} alt="" />}</span>
               <strong>{group.itemIds.length}</strong>
             </button>
           })}

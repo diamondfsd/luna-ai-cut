@@ -69,11 +69,6 @@ export function PreviewModal({
   onDownload,
   onClose,
 }: PreviewModalProps) {
-  useEffect(() => {
-    document.body.classList.add('preview-modal-open')
-    return () => document.body.classList.remove('preview-modal-open')
-  }, [])
-
   // ── 当前预览文件路径 ──
   const [currentFilePath, setCurrentFilePath] = useState(filePath)
   const [selectionOverrides, setSelectionOverrides] = useState<Map<string, boolean>>(new Map())
@@ -412,7 +407,7 @@ export function PreviewModal({
   }, [exitImmersive, immersive, onClose])
 
   return (
-    <Dialog open variant="fullscreen" modal={false} className="preview-modal-dialog" closeOnMaskClick={false} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open variant="fullscreen" closeOnMaskClick={false} onOpenChange={(o) => !o && onClose()}>
       <section className={`preview-modal${immersive ? ' is-immersive' : ''}`}>
         <PreviewModalHeader
           filePath={currentFilePath}
