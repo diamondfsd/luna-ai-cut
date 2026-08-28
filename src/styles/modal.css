@@ -11,20 +11,6 @@
   overscroll-behavior: contain;
 }
 
-/* 预览允许直接切换顶部页面；内容从导航栏下方开始，避免互相遮挡。 */
-body.preview-modal-open .global-nav {
-  z-index: 100;
-}
-
-.preview-modal-dialog.ui-dialog-fullscreen {
-  top: 44px;
-  height: calc(100vh - 44px);
-}
-
-.preview-modal-dialog .preview-modal {
-  height: 100%;
-}
-
 .preview-modal {
   --preview-thumbnail-strip-height: clamp(96px, 15vh, 156px);
   display: flex;
