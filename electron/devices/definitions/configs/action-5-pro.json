@@ -31,5 +31,12 @@
   "watermarkStyles": [
     { "value": "dji_action_5_pro", "label": "DJI 标准", "videoFileName": "ic_watermark_dji_action_5_pro", "imageFileName": "ic_watermark_dji_action_5_pro" },
     { "value": "dji_action_5_pro_clean", "label": "简洁标识", "videoFileName": "ic_watermark_dji_action_5_pro_clean", "imageFileName": "ic_watermark_dji_action_5_pro_clean" }
-  ]
+  ],
+  "lut": {
+    "restore": {
+      "fileName": "DJI_Osmo_Action_5_Pro_D-Log_M_to_Rec709_V1.cube",
+      "label": "D-Log M 转 Rec.709",
+      "description": "DJI 官方 Osmo Action 5 Pro Log 还原 LUT"
+    }
+  }
 }

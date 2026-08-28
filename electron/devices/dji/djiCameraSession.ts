@@ -1,4 +1,5 @@
 import { getSettings, saveSettings } from '../../storage/fileService'
+import type { BrowserWindow } from 'electron'
 import net from 'node:net'
 import type { CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../../src/shared/types'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
@@ -99,11 +100,11 @@ export class DjiCameraSession {
   private playbackPrepared = false
   private playbackConfirmed = false
 
-  constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation) {
+  constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation, win: BrowserWindow | null = null) {
     this.profile = djiProfileForDevice(deviceId)
     this.endpoint = endpointFor(host, this.profile)
     this.udp = new DjiUdpTransport(this.endpoint.host, this.endpoint.udpPort)
-    this.wirelessPreparation = wirelessPreparation ?? new DefaultDjiWirelessPreparation(deviceId, host, installIdentity)
+    this.wirelessPreparation = wirelessPreparation ?? new DefaultDjiWirelessPreparation(deviceId, host, installIdentity, undefined, win)
   }
 
   get host(): string {
@@ -780,7 +781,7 @@ async function installIdentity(): Promise<string> {
   return identity
 }
 
-export async function djiSessionFor(deviceId: string, host: string): Promise<DjiCameraSession> {
+export async function djiSessionFor(deviceId: string, host: string, win: BrowserWindow | null = null): Promise<DjiCameraSession> {
   const key = `${deviceId}:${host}`
   const existing = djiSessions.get(key)
   if (existing) {
@@ -789,7 +790,7 @@ export async function djiSessionFor(deviceId: string, host: string): Promise<Dji
   }
   const startedAt = Date.now()
   logMainInfo('[DJI 连接] 创建相机会话对象', { deviceId, host })
-  const session = new DjiCameraSession(deviceId, host, await installIdentity())
+  const session = new DjiCameraSession(deviceId, host, await installIdentity(), undefined, win)
   djiSessions.set(key, session)
   logMainInfo('[DJI 连接] 相机会话对象创建完成', { deviceId, host, elapsedMs: Date.now() - startedAt })
   return session

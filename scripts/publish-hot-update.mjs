@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * Builds platform hot-update archives and optionally uploads them to GitCode.
- * Native modules are included only when --include-native is supplied.
+ * Default policy: build one universal pure-JS hot-update archive for every platform.
+ * Platform-specific archives and native modules are exception flows and must be
+ * requested explicitly with --platform and/or --include-native.
+ * Native changes in a release line still require the native release flow.
  * Use --channel test for the isolated test-package release namespace.
  */
 import { createHash } from 'node:crypto'
@@ -142,7 +144,9 @@ if (!isBeta && !/^\d+\.\d+\.\d+$/.test(packageVersion)) {
   throw new Error(`package.json 版本不受支持: ${packageVersion}（仅支持稳定版或 beta 版）`)
 }
 const baseTag = isBeta ? `beta/v${packageVersion}` : `v${packageVersion}`
-const tag = channel === 'test' ? `test/${baseTag}` : baseTag
+const tag = channel === 'test'
+  ? (isBeta ? `test-beta-v${packageVersion}` : `test-v${packageVersion}`)
+  : baseTag
 const api = `https://api.gitcode.com/api/v5/repos/${owner}/${repo}`
 const headers = { 'PRIVATE-TOKEN': token, 'Content-Type': 'application/json' }
 

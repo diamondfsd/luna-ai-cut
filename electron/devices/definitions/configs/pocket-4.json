@@ -31,5 +31,12 @@
   "watermarkStyles": [
     { "value": "dji_pocket_4", "label": "DJI 标准", "videoFileName": "ic_watermark_dji_pocket_4", "imageFileName": "ic_watermark_dji_pocket_4" },
     { "value": "dji_pocket_4_clean", "label": "简洁标识", "videoFileName": "ic_watermark_dji_pocket_4_clean", "imageFileName": "ic_watermark_dji_pocket_4_clean" }
-  ]
+  ],
+  "lut": {
+    "restore": {
+      "fileName": "DJI_Osmo_Pocket_4_D-Log_to_Rec709_V1.0.cube",
+      "label": "D-Log 转 Rec.709",
+      "description": "DJI 官方 Osmo Pocket 4 Log 还原 LUT"
+    }
+  }
 }

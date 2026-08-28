@@ -1,17 +1,12 @@
-import { getNativeScriptPath } from '../../platform/macos/swiftUtils'
-import { NativeDjiBleTransport } from './djiCoreBluetoothTransport'
+import type { BrowserWindow } from 'electron'
+import { WebBluetoothDjiBleTransport } from './djiWebBluetoothTransport'
 
-export class WindowsDjiBleTransport extends NativeDjiBleTransport {
-  constructor(deviceId: string) {
-    super(deviceId, {
-      platform: 'win32',
-      executable: 'powershell.exe',
-      args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File'],
-      scriptPath: getNativeScriptPath('djiWindowsBluetoothTransport.ps1'),
-    })
+export class WindowsDjiBleTransport extends WebBluetoothDjiBleTransport {
+  constructor(deviceId: string, win: BrowserWindow | null) {
+    super(deviceId, win)
   }
 }
 
-export function createWindowsDjiBleTransport(deviceId: string): WindowsDjiBleTransport | null {
-  return process.platform === 'win32' ? new WindowsDjiBleTransport(deviceId) : null
+export function createWindowsDjiBleTransport(deviceId: string, win: BrowserWindow | null): WindowsDjiBleTransport | null {
+  return process.platform === 'win32' && win ? new WindowsDjiBleTransport(deviceId, win) : null
 }

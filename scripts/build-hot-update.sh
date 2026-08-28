@@ -3,10 +3,11 @@
 # build-hot-update.sh — 构建并上传热更新包
 #
 # 构建前端 + 主进程 JS，打包为 zip 并上传到 GitCode Release。
+# 默认发布一个适用于所有桌面平台的 universal 纯 JS 包；平台专属包和原生模块包仅作为明确要求时的例外。
 #
 # 用法:
 #   ./scripts/build-hot-update.sh                  # 平台无关单包纯 JS 热更新，自动取 build 号 +1
-#   ./scripts/build-hot-update.sh --platform darwin-arm64 # 指定单个平台
+#   ./scripts/build-hot-update.sh --platform darwin-arm64 # 明确要求时指定单个平台
 #   ./scripts/build-hot-update.sh --platform universal   # 显式发布通用包
 #   ./scripts/build-hot-update.sh --build-only     # 只构建不上传
 #   ./scripts/build-hot-update.sh --upload-only    # 只上传（跳过构建）

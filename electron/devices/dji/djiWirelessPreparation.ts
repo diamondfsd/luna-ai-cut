@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import type { BrowserWindow } from 'electron'
 
 import type {
   CameraMediaSourceConnectionCapabilities,
@@ -42,11 +43,11 @@ function isLoopbackHost(host: string): boolean {
   }
 }
 
-type DjiTransportFactory = (deviceId: string, baseUrl: string) => DjiBleTransport | null
+type DjiTransportFactory = (deviceId: string, baseUrl: string, win: BrowserWindow | null) => DjiBleTransport | null
 
-function defaultDjiTransportFactory(deviceId: string, baseUrl: string): DjiBleTransport | null {
+function defaultDjiTransportFactory(deviceId: string, baseUrl: string, win: BrowserWindow | null): DjiBleTransport | null {
   if (isLoopbackHost(baseUrl)) return createHttpMockDjiBleTransport(deviceId, baseUrl)
-  return createCoreBluetoothDjiBleTransport(deviceId) ?? createWindowsDjiBleTransport(deviceId)
+  return createCoreBluetoothDjiBleTransport(deviceId) ?? createWindowsDjiBleTransport(deviceId, win)
 }
 
 function pingArgs(host: string): string[] {
@@ -186,6 +187,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     private readonly host: string,
     private readonly installIdentity: string,
     private readonly transportFactory: DjiTransportFactory = defaultDjiTransportFactory,
+    private readonly win: BrowserWindow | null = null,
   ) {}
 
   get capabilities(): CameraMediaSourceConnectionCapabilities {
@@ -302,7 +304,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
         attempt,
       })
       const ble = this.ble ?? (() => {
-        const transport = this.transportFactory(this.deviceId, baseUrl)
+        const transport = this.transportFactory(this.deviceId, baseUrl, this.win)
         return transport ? new DjiBleSession(transport, this.installIdentity) : null
       })()
       if (!ble) {
@@ -391,7 +393,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
       host: this.host,
       platform: process.platform,
     })
-    const transport = this.transportFactory(this.deviceId, baseUrl)
+    const transport = this.transportFactory(this.deviceId, baseUrl, this.win)
     if (!transport) {
       logMainWarn('[DJI BLE] 没有可用的蓝牙传输', {
         deviceId: this.deviceId,

@@ -14,7 +14,9 @@
 }
 
 .global-nav-macos .nav-links,
-.global-nav-macos .nav-status {
+.global-nav-macos .nav-status,
+.global-nav-windows .nav-links,
+.global-nav-windows .nav-status {
   -webkit-app-region: no-drag;
 }
 
@@ -33,6 +35,16 @@
 .global-nav-macos .nav-inner {
   max-width: none;
   padding-left: 112px;
+}
+
+/* Windows 的系统按钮位于右上角，使用标题栏安全区动态留出空间。 */
+.global-nav-windows {
+  -webkit-app-region: drag;
+}
+
+.global-nav-windows .nav-inner {
+  max-width: none;
+  padding-right: max(150px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 150px))));
 }
 
 .nav-links a,

@@ -59,7 +59,9 @@ export function releaseChannelForBuild(version: string, buildChannel: BuildChann
   return {
     ...parsed,
     buildChannel,
-    releaseTag: buildChannel === 'test' ? `test/${parsed.releaseTag}` : parsed.releaseTag,
+    releaseTag: buildChannel === 'test'
+      ? parsed.channel === 'beta' ? `test-beta-v${parsed.version}` : `test-v${parsed.version}`
+      : parsed.releaseTag,
   }
 }
 
@@ -76,6 +78,22 @@ export function betaReleaseVersion(version: string): string | null {
 /** Parse the channel-specific GitCode tag back to the application version. */
 export function releaseVersionFromTag(tag: string): ReleaseChannel | null {
   const rawValue = tag.trim()
+
+  if (rawValue.startsWith('test-beta-v')) {
+    const parsed = parseReleaseVersion(`v${rawValue.slice('test-beta-v'.length)}`)
+    return parsed?.channel === 'beta'
+      ? { ...parsed, buildChannel: 'test', releaseTag: rawValue }
+      : null
+  }
+
+  if (rawValue.startsWith('test-v')) {
+    const parsed = parseReleaseVersion(`v${rawValue.slice('test-v'.length)}`)
+    return parsed?.channel === 'stable'
+      ? { ...parsed, buildChannel: 'test', releaseTag: rawValue }
+      : null
+  }
+
+  // Keep accepting releases created by the old slash-based test naming scheme.
   const buildChannel: BuildChannel = rawValue.startsWith('test/') ? 'test' : 'stable'
   const value = buildChannel === 'test' ? rawValue.slice('test/'.length) : rawValue
   if (value.startsWith('beta/v')) {

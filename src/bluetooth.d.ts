@@ -22,6 +22,7 @@ interface BluetoothRemoteGATTService {
 }
 
 interface BluetoothRemoteGATTCharacteristic extends EventTarget {
+  uuid: string
   value?: DataView
   startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>
   writeValue(value: Uint8Array): Promise<void>

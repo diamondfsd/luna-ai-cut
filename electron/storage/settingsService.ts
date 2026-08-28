@@ -17,6 +17,14 @@ function legacyPath(): string {
   return legacySettingsPath(app.getPath('userData'))
 }
 
+let settingsOperation: Promise<void> = Promise.resolve()
+
+function enqueueSettingsOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const next = settingsOperation.then(operation, operation)
+  settingsOperation = next.then(() => undefined, () => undefined)
+  return next
+}
+
 export function cacheDir(baseDir: string): string {
   return path.join(baseDir, 'cache')
 }
@@ -146,6 +154,7 @@ async function readSettingsWithoutWriting(): Promise<AppSettings> {
 }
 
 export async function getSettings(): Promise<AppSettings> {
+  await settingsOperation
   const stored = await readSettingsFile()
   const saved = stored.value
   if (!saved) {
@@ -165,22 +174,33 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 async function writeSettingsFile(settings: AppSettings): Promise<void> {
-  await fs.mkdir(path.dirname(settingsPath()), { recursive: true })
-  await fs.writeFile(settingsPath(), JSON.stringify(settings, null, 2), 'utf-8')
+  const targetPath = settingsPath()
+  const directory = path.dirname(targetPath)
+  const temporaryPath = `${targetPath}.${process.pid}.tmp`
+  await fs.mkdir(directory, { recursive: true })
+  await fs.writeFile(temporaryPath, JSON.stringify(settings, null, 2), 'utf-8')
+  try {
+    await fs.rename(temporaryPath, targetPath)
+  } catch (error) {
+    await fs.rm(temporaryPath, { force: true })
+    throw error
+  }
 }
 
-export async function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
-  const current = await readSettingsWithoutWriting()
-  const next = {
-    ...current,
-    ...partial,
-    experimentalWebGpuPreview: isTestBuild ? true : partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
-    // 视频导出统一使用 Rust/wgpu；忽略旧客户端传入的导出加速开关。
-    experimentalWebGpuExport: false,
-  }
-  next.cacheDir = cacheDir(next.baseDir)
-  await writeSettingsFile(next)
-  return next
+export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
+  return enqueueSettingsOperation(async () => {
+    const current = await readSettingsWithoutWriting()
+    const next = {
+      ...current,
+      ...partial,
+      experimentalWebGpuPreview: isTestBuild ? true : partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
+      // 视频导出统一使用 Rust/wgpu；忽略旧客户端传入的导出加速开关。
+      experimentalWebGpuExport: false,
+    }
+    next.cacheDir = cacheDir(next.baseDir)
+    await writeSettingsFile(next)
+    return next
+  })
 }
 
 export async function chooseBaseDir(): Promise<string | null> {

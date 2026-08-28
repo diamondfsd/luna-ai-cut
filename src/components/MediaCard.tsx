@@ -62,19 +62,20 @@ export function MediaCard({
   useEffect(() => {
     if (file.kind !== 'video') return
     const unsub = window.luna.onVideoFrameRateReady((data) => {
-      if (data.fileId === file.id && data.duration != null) {
+      const matches = data.fileId === file.id || data.fileName === file.name
+      if (matches && data.duration != null) {
         setVideoDuration(data.duration)
       }
-      if (data.fileId === file.id && data.dolbyVision != null) {
+      if (matches && data.dolbyVision != null) {
         setDetectedDolbyVision(data.dolbyVision)
         setDetectedDolbyVisionProfile(data.dolbyVisionProfile ?? null)
       }
-      if (data.fileId === file.id && data.iLog != null) {
+      if (matches && data.iLog != null) {
         setDetectedILog(data.iLog)
       }
     })
     return () => { unsub() }
-  }, [file.id, file.kind])
+  }, [file.id, file.kind, file.name])
 
   const handleCacheReady = useCallback((cacheFilePath: string) => {
     if (file.kind !== 'video' || (file.duration != null && file.dolbyVision != null && file.iLog != null)) return
@@ -156,6 +157,7 @@ export function MediaCard({
           thumbnailSrc={file.thumbnailUrl}
           preloadBottom={300}
           alt={file.name}
+          cacheWhenUsingRemoteThumbnail={file.kind === 'video'}
           onCacheReady={handleCacheReady}
         />
         {file.kind === 'video' && effectiveDuration != null ? (

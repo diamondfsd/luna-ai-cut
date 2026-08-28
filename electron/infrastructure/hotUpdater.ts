@@ -142,7 +142,12 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
     return {
       version,
       zipName: latest.name,
-      minAppVersion: releaseTag.replace(/^test\//, '').replace(/^beta\//, '').replace(/^v/, ''),
+      minAppVersion: releaseTag
+        .replace(/^test-beta-v/, '')
+        .replace(/^test-v/, '')
+        .replace(/^test\//, '')
+        .replace(/^beta\//, '')
+        .replace(/^v/, ''),
       integrity,
       notesUrl: notesAsset ? `${GITCODE_DL}/${releaseTag}/${notesAsset.name}` : undefined,
     }

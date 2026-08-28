@@ -226,7 +226,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
 }
 
 class DjiCameraMediaSource implements CameraMediaSourceAdapter {
-  constructor(private readonly options: CameraMediaSourceOptions) {}
+  constructor(private readonly ctx: IpcContext, private readonly options: CameraMediaSourceOptions) {}
 
   private async values(): Promise<{ deviceId: string; host: string; storageId: string }> {
     const settings = await getSettings()
@@ -252,7 +252,7 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
       hasPassword: Boolean(this.options.wireless?.password),
     })
     try {
-      const session = await djiSessionFor(deviceId, host)
+      const session = await djiSessionFor(deviceId, host, this.ctx.win)
       const status = await session.connect(this.options)
       await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
       logMainInfo('[DJI 媒体入口] connect 完成', {
@@ -288,7 +288,7 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
       hasPassword: Boolean(mergedOptions.wireless?.password),
     })
     try {
-      const result = await (await djiSessionFor(deviceId, host)).prepareConnection(mergedOptions)
+      const result = await (await djiSessionFor(deviceId, host, this.ctx.win)).prepareConnection(mergedOptions)
       logMainInfo('[DJI 媒体入口] prepare-connection 完成', {
         deviceId,
         host,
@@ -313,7 +313,7 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
     const startedAt = Date.now()
     logMainInfo('[DJI 媒体入口] check 开始', { deviceId, host })
     try {
-      const status = await (await djiSessionFor(deviceId, host)).check(this.options)
+      const status = await (await djiSessionFor(deviceId, host, this.ctx.win)).check(this.options)
       logMainInfo('[DJI 媒体入口] check 完成', {
         deviceId,
         host,
@@ -337,7 +337,7 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
     const startedAt = Date.now()
     logMainInfo('[DJI 媒体入口] list-files 开始', { deviceId, host, storageId })
     try {
-      const session = await djiSessionFor(deviceId, host)
+      const session = await djiSessionFor(deviceId, host, this.ctx.win)
       const files = await session.listFiles(storageId, this.options)
       await saveSettings({
         cameraConnectionMode: 'wireless',
@@ -448,7 +448,7 @@ export function cameraMediaSourceFor(ctx: IpcContext, options: CameraMediaSource
   const factories: Record<NonNullable<DeviceDefinition['protocol']>, () => CameraMediaSourceAdapter> = {
     insta360: () => new WirelessCameraMediaSource(ctx, options),
     'go-ultra': () => new WirelessCameraMediaSource(ctx, options),
-    dji: () => new DjiCameraMediaSource(options),
+    dji: () => new DjiCameraMediaSource(ctx, options),
   }
   return factories[definition.protocol ?? 'insta360']()
 }

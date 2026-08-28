@@ -34,6 +34,11 @@
       "filter": ["**/*"]
     },
     {
+      "from": "public/luts/DJI",
+      "to": "luts/DJI",
+      "filter": ["*.cube", "*.cube.meta.json"]
+    },
+    {
       "from": "resources/ffmpeg",
       "to": "ffmpeg",
       "filter": ["**/*"]

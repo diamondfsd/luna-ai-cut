@@ -136,7 +136,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
   const mask = useWorkspaceMask()
-  const { activeDevice, isConnected } = useDeviceConnection()
+  const { activeDevice, devices, isConnected } = useDeviceConnection()
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
   const cropHeight = edit.cropSize.height || refH
@@ -150,6 +150,12 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
       ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
       : mediaCtx.activeMedia ?? {},
   ) ?? ''
+  const mediaDevice = mediaCtx.activeMedia?.sourceDeviceId
+    ? devices.find((device) => device.id === mediaCtx.activeMedia?.sourceDeviceId)
+    : undefined
+  const restoreLut = mediaDevice
+    ? mediaDevice.lut?.restore
+    : (isConnected ? activeDevice?.lut?.restore : undefined)
 
   // 滤镜搜索关键字
   const [filterSearchKey, setFilterSearchKey] = useState('')
@@ -311,6 +317,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
             <WorkspaceCreativePanel onSelect={onOpenCreative} />
           ) : activeTool === 'filter' ? (
             <FilterPanel
+              restoreLut={restoreLut}
               restoreLutId={edit.pipeline.logRestore.activeId}
               onRestoreChange={(activeId) => edit.updateWorkspacePanel({ logRestore: { activeId } })}
               activeLutId={edit.pipeline.lutFilter.activeId}
