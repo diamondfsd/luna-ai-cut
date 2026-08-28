@@ -71,7 +71,7 @@ jobs:
       - name: Build macOS DMG (signed and notarized)
         if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         env:
-          CSC_NAME: "Developer ID Application: shuxin wu (8B6J8663PS)"
+          CSC_NAME: "shuxin wu (8B6J8663PS)"
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           LUNA_SIGNING_MODE: official
           APPLE_API_KEY: ${{ runner.temp }}/AuthKey.p8
@@ -84,7 +84,7 @@ jobs:
         if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         env:
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
-        run: pnpm run pack:mac:arm64
+        run: pnpm run pack:test:mac:arm64
 
       - name: Verify macOS distribution signature and notarization
         if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
@@ -105,7 +105,7 @@ jobs:
         if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         shell: bash
         run: |
-          app_path="$(find release -type d -name '*.app' -print -quit)"
+          app_path="$(find release-test -type d -name '*.app' -print -quit)"
           test -n "$app_path" || { echo "未找到 macOS App"; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$app_path"
           codesign --display --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc' || {
@@ -118,7 +118,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: luna-ai-cut-macos-arm64-dmg
-          path: release/**/*.dmg
+          path: release*/**/*.dmg
           if-no-files-found: error
 
       - name: Upload to GitHub Release
@@ -126,7 +126,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: release/**/*.dmg
+          files: release*/**/*.dmg
 
   # ─── macOS x64 (Intel) 构建 ────────────────────────
   package-mac-x64:
@@ -190,7 +190,7 @@ jobs:
       - name: Build macOS x64 DMG (signed and notarized)
         if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
         env:
-          CSC_NAME: "Developer ID Application: shuxin wu (8B6J8663PS)"
+          CSC_NAME: "shuxin wu (8B6J8663PS)"
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           LUNA_SIGNING_MODE: official
           APPLE_API_KEY: ${{ runner.temp }}/AuthKey.p8
@@ -203,7 +203,7 @@ jobs:
         if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         env:
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
-        run: pnpm run pack:mac:x64
+        run: pnpm run pack:test:mac:x64
 
       - name: Verify macOS x64 distribution signature and notarization
         if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
@@ -224,7 +224,7 @@ jobs:
         if: ${{ !(startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
         shell: bash
         run: |
-          app_path="$(find release -type d -name '*.app' -print -quit)"
+          app_path="$(find release-test -type d -name '*.app' -print -quit)"
           test -n "$app_path" || { echo "未找到 macOS App"; exit 1; }
           native_dir="$app_path/Contents/Resources/luna-render-core"
           test -f "$native_dir/libonnxruntime.1.23.2.dylib" || {
@@ -262,7 +262,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: luna-ai-cut-macos-x64-dmg
-          path: release/**/*.dmg
+          path: release*/**/*.dmg
           if-no-files-found: error
 
       - name: Upload to GitHub Release
@@ -270,7 +270,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: release/**/*.dmg
+          files: release*/**/*.dmg
 
   # ─── Windows 构建 ─────────────────────────────────
   package-win:
@@ -302,13 +302,13 @@ jobs:
       - name: Build Windows NSIS
         env:
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
-        run: pnpm run pack:win:x64
+        run: pnpm run pack:test:win:x64
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: luna-ai-cut-windows-x64-nsis
-          path: release/**/*Setup*.exe
+          path: release*/**/*Setup*.exe
           if-no-files-found: error
 
       - name: Upload to GitHub Release
@@ -316,4 +316,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: release/**/*Setup*.exe
+          files: release*/**/*Setup*.exe
