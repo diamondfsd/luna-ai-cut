@@ -47,21 +47,6 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     minHeight: 680,
     fullscreenable: true,
     show: false,
-    ...(process.platform === 'darwin'
-      ? {
-          titleBarStyle: 'hiddenInset' as const,
-          trafficLightPosition: { x: 18, y: 14 },
-        }
-      : process.platform === 'win32'
-        ? {
-            titleBarStyle: 'hidden' as const,
-            titleBarOverlay: {
-              color: '#ffffff',
-              symbolColor: '#6e6e73',
-              height: 44,
-            },
-          }
-      : {}),
     icon: options.iconPath,
     autoHideMenuBar: true,
     webPreferences: {
