@@ -67,11 +67,7 @@ GITCODE_OWNER="${GITCODE_OWNER:-diamondfsd}"
 GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
 PKG_VERSION=$(node -p "require('./package.json').version")
 RELEASE_DIR="release/${PKG_VERSION}/hot-update"
-if [[ "$PKG_VERSION" =~ -beta\.[0-9]+$ ]]; then
-  RELEASE_TAG="beta/v${PKG_VERSION}"
-else
-  RELEASE_TAG="v${PKG_VERSION}"
-fi
+RELEASE_TAG="v${PKG_VERSION}"
 API_BASE="https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}"
 
 # ── 确定 build 号 ──
@@ -84,7 +80,7 @@ function resolve_build_number() {
 
   # 通过 GitCode API 查找已有热更新 zip，取最大 build 号 +1
   local latest_json last_build
-  latest_json=$(curl -sS "${API_BASE}/releases/tags/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$RELEASE_TAG")" 2>/dev/null || echo "")
+  latest_json=$(curl -sS "${API_BASE}/releases/tags/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$RELEASE_TAG")" 2>/dev/null || echo "")
   if [ -n "$latest_json" ]; then
     last_build=$(echo "$latest_json" | python3 -c "
 import json,sys,re
@@ -299,7 +295,7 @@ function upload_asset() {
   # 获取 OBS 上传地址
   local upload_json upload_url headers_json ct pid acl cb
   upload_json=$(curl -sS \
-    "${API_BASE}/releases/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$RELEASE_TAG")/upload_url?file_name=${encoded_name}" \
+    "${API_BASE}/releases/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$RELEASE_TAG")/upload_url?file_name=${encoded_name}" \
     -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
   upload_url=$(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")

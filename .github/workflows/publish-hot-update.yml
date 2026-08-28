@@ -36,11 +36,7 @@ jobs:
           fi
           version="${GITHUB_REF_NAME#hot/v}"
           base_version="${version%%-hot.*}"
-          if [[ "$base_version" =~ -beta\.[0-9]+$ ]]; then
-            release_tag="beta/v${base_version}"
-          else
-            release_tag="v${base_version}"
-          fi
+          release_tag="v${base_version}"
           include_native=true
           if git rev-parse "$release_tag" >/dev/null 2>&1 && git diff --quiet "$release_tag" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
             include_native=false

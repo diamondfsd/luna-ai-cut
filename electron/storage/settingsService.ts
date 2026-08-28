@@ -6,10 +6,9 @@ import { DEFAULT_DEVICE } from '../devices/definitions/deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
 import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
 import type { AppSettings } from '../../src/shared/types'
-import { isTestBuild } from '../../src/shared/buildChannel'
 
 function settingsPath(): string {
-  if (isTestBuild || process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
+  if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
   return stableSettingsPath(app.getPath('appData'))
 }
 
@@ -47,7 +46,7 @@ export async function previewCacheDir(): Promise<string> {
 }
 
 function defaultBaseDir(): string {
-  return path.join(app.getPath('pictures'), isTestBuild ? 'LunaAI-Cut-Test' : 'LunaAI-Cut')
+  return path.join(app.getPath('pictures'), 'LunaAI-Cut')
 }
 
 function defaultExportDir(): string {
@@ -119,10 +118,8 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   ].includes(String(saved?.defaultWatermarkPosition))
     ? saved?.defaultWatermarkPosition
     : defaults.defaultWatermarkPosition
-  // 测试包固定启用 WebGPU；正式包保留用户可控的兼容字段。
-  merged.experimentalWebGpuPreview = isTestBuild
-    ? true
-    : typeof saved?.experimentalWebGpuPreview === 'boolean' ? saved.experimentalWebGpuPreview : defaults.experimentalWebGpuPreview
+  merged.experimentalWebGpuPreview = typeof saved?.experimentalWebGpuPreview === 'boolean'
+    ? saved.experimentalWebGpuPreview : defaults.experimentalWebGpuPreview
   // 浏览器 WebGPU 导出已移除，覆盖旧版本保存的 true，避免升级后继续走慢路径。
   merged.experimentalWebGpuExport = false
   merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
@@ -193,7 +190,7 @@ export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings
     const next = {
       ...current,
       ...partial,
-      experimentalWebGpuPreview: isTestBuild ? true : partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
+      experimentalWebGpuPreview: partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
       // 视频导出统一使用 Rust/wgpu；忽略旧客户端传入的导出加速开关。
       experimentalWebGpuExport: false,
     }

@@ -4,7 +4,7 @@
  * Platform-specific archives and native modules are exception flows and must be
  * requested explicitly with --platform and/or --include-native.
  * Native changes in a release line still require the native release flow.
- * Use --channel test for the isolated test-package release namespace.
+ * Every hot update is uploaded to the Release matching package.json's version.
  */
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
@@ -21,7 +21,6 @@ const version = valueAfter('--version')
 const nativeDir = valueAfter('--native-dir') ?? '.hot-native'
 const includeNative = args.has('--include-native')
 const upload = args.has('--upload')
-const channel = valueAfter('--channel') ?? 'stable'
 const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version
 const versionPattern = new RegExp(`^${packageVersion.replaceAll('.', '\\.')}-hot\\.\\d+$`)
 const supportedPlatforms = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'universal']
@@ -46,9 +45,6 @@ if (upload) loadLocalConfig()
 if (!version || !versionPattern.test(version)) {
   throw new Error(`--version 必须是 ${packageVersion}-hot.N`)
 }
-if (channel !== 'stable' && channel !== 'test') {
-  throw new Error('--channel 必须是 stable 或 test')
-}
 if (requestedPlatform && !supportedPlatforms.includes(requestedPlatform)) {
   throw new Error(`--platform 必须是 ${supportedPlatforms.join('、')}`)
 }
@@ -59,7 +55,7 @@ if (!existsSync('dist/index.html') || !existsSync('dist-electron/luna-appMain.js
   throw new Error('缺少 dist 构建产物，请先执行 pnpm build:app')
 }
 
-const releaseDir = join(channel === 'test' ? 'release-test' : 'release', packageVersion, 'hot-update')
+const releaseDir = join('release', packageVersion, 'hot-update')
 const platforms = includeNative
   ? (requestedPlatform ? [requestedPlatform] : ['darwin-arm64', 'darwin-x64', 'win32-x64'])
   : [requestedPlatform ?? 'universal']
@@ -143,10 +139,7 @@ const isBeta = /^\d+\.\d+\.\d+-beta\.\d+$/i.test(packageVersion)
 if (!isBeta && !/^\d+\.\d+\.\d+$/.test(packageVersion)) {
   throw new Error(`package.json 版本不受支持: ${packageVersion}（仅支持稳定版或 beta 版）`)
 }
-const baseTag = isBeta ? `beta/v${packageVersion}` : `v${packageVersion}`
-const tag = channel === 'test'
-  ? (isBeta ? `test-beta-v${packageVersion}` : `test-v${packageVersion}`)
-  : baseTag
+const tag = `v${packageVersion}`
 const api = `https://api.gitcode.com/api/v5/repos/${owner}/${repo}`
 const headers = { 'PRIVATE-TOKEN': token, 'Content-Type': 'application/json' }
 

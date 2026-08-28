@@ -36,7 +36,6 @@ import { shutdownSpecializedSegmentationWorker } from './features/segmentation/s
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './features/segmentation/segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './media/local-share/localMediaShareService'
 import { installDjiWebBluetoothHandlers } from './devices/dji/djiWebBluetoothTransport'
-import { isTestBuild } from '../src/shared/buildChannel'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -545,7 +544,7 @@ app.whenReady().then(async () => {
   // 设置窗口标题（含版本号，有热更新则追加 hot build 号）
   const hotVersion = !app.isPackaged ? null : getCurrentHotVersion()
   const titleSuffix = hotVersion ? `-${hotVersion.split('-').pop()}` : ''
-  const title = `${isTestBuild ? 'Luna AI Cut 测试版' : 'Luna AI Cut'} v${app.getVersion()}${titleSuffix}`
+  const title = `Luna AI Cut v${app.getVersion()}${titleSuffix}`
   logMainInfo(`设置窗口标题: ${title}`)
   if (win && !win.isDestroyed()) {
     win.setTitle(title)
