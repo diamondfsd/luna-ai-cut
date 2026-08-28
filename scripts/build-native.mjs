@@ -23,6 +23,7 @@ const rcDir = join(root, 'luna-render-core')
 // ── 确定目标平台 ──
 const target = process.env.CROSS_TARGET || ''
 const targetLower = target.toLowerCase()
+const useCargoXwin = process.env.CARGO_XWIN === '1' && targetLower.includes('windows-msvc')
 
 // 从 target 推断平台；没有 target 则用当前主机
 const isWin = targetLower.includes('windows') || (!target && process.platform === 'win32')
@@ -123,7 +124,11 @@ const rustcBin = cargoBin !== 'cargo'
   : undefined
 
 // ── cargo build ──
-const buildArgs = target ? ['build', '--release', '--target', target] : ['build', '--release']
+const buildArgs = useCargoXwin
+  ? ['xwin', 'build', '--release', '--target', target]
+  : target
+    ? ['build', '--release', '--target', target]
+    : ['build', '--release']
 
 console.log('[build-native] cargo build...', cargoBin, buildArgs.join(' '))
 const build = spawnSync(cargoBin, buildArgs, {

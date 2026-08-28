@@ -18,6 +18,7 @@ import https from 'node:https'
 import http from 'node:http'
 import { createGunzip } from 'node:zlib'
 import { pipeline } from 'node:stream/promises'
+import { buildDependencyUrl } from './build-dependency-sources.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -84,7 +85,9 @@ async function downloadFile(url, dest, maxRedirects = 5) {
 // ─── 从 GitHub Releases 下载 ffmpeg（交叉编译时使用） ───
 
 async function downloadStaticBinary(name, releaseTag, platform, arch, dest) {
-  const url = `https://github.com/eugeneware/ffmpeg-static/releases/download/${releaseTag}/${name}-${platform}-${arch}.gz`
+  const fileName = `${name}-${platform}-${arch}.gz`
+  const upstreamUrl = `https://github.com/eugeneware/ffmpeg-static/releases/download/${releaseTag}/${fileName}`
+  const url = buildDependencyUrl(fileName, upstreamUrl)
   console.log(`[copy-ffmpeg] Downloading ${name} from ${url} ...`)
   await downloadFile(url, dest)
 }
