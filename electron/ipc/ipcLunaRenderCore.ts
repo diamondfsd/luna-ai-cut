@@ -732,7 +732,15 @@ export function register(ctx: RegisterContext): void {
   /** 递归扫描 .cube 文件（内置 + 外部目录），按目录名作为分类 */
   ipcMain.handle('lrc:listCubeFiles', safe('listCubeFiles',
     async (_event: IpcMainInvokeEvent, dirPath: string) => {
-      const results: Array<{ path: string; name: string; relDir: string; description?: string; isBuiltin: boolean }> = []
+      const results: Array<{
+        path: string
+        name: string
+        relDir: string
+        description?: string
+        isBuiltin: boolean
+        isTechnical?: boolean
+        deviceId?: string
+      }> = []
       const seen = new Set<string>()
 
       // 内置 LUT 目录：遍历候选路径，取第一个存在的
@@ -760,18 +768,22 @@ export function register(ctx: RegisterContext): void {
               // 尝试读取同名的 .meta.json，用其中的 name 字段作为显示名
               let name = fileBaseName
               let description: string | undefined
+              let isTechnical = false
+              let deviceId: string | undefined
               try {
                 const metaPath = join(dir, `${fileBaseName}.cube.meta.json`)
                 const metaRaw = await readFile(metaPath, 'utf8')
                 const meta = JSON.parse(metaRaw)
                 if (meta.name) name = meta.name
                 if (meta.description) description = meta.description
+                isTechnical = meta.isTechnical === true
+                if (typeof meta.deviceId === 'string' && meta.deviceId.trim()) deviceId = meta.deviceId.trim()
               } catch { /* 没有 meta 文件就用文件名 */ }
               const relDir = dir === baseDir ? '' : dir.slice(baseDir.length + 1)
               const key = `${fileBaseName}:${relDir}`
               if (seen.has(key)) continue
               seen.add(key)
-              results.push({ path: fullPath, name, relDir, description, isBuiltin: dir.startsWith(builtinDir) })
+              results.push({ path: fullPath, name, relDir, description, isBuiltin: dir.startsWith(builtinDir), isTechnical, deviceId })
             }
           } catch { /* 跳过无权限文件 */ }
         }

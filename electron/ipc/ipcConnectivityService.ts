@@ -12,8 +12,10 @@ import {
 import { openWifiSettings } from '../platform/network/wifiService'
 import { getDownloadedRecords, getLocalResourcesDir, getSettings } from '../storage/fileService'
 import { collectLunaNetworkDiagnostics } from '../platform/network/networkDiagnostics'
+import { registerDjiWebBluetoothIpc } from '../devices/dji/djiWebBluetoothTransport'
 
 export function register(): void {
+  if (process.platform === 'win32') registerDjiWebBluetoothIpc()
   ipcMain.handle('downloads:records', async (_event, files: LunaFile[]) => {
     const settings = await getSettings()
     return getDownloadedRecords(files, getLocalResourcesDir(settings), settings.organizeDownloadsByDate ?? false)

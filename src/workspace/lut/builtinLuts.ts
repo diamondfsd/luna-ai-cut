@@ -15,4 +15,8 @@ export interface LutFileInfo {
   description?: string
   /** 是否为内置 LUT（不可删除） */
   isBuiltin?: boolean
+  /** 技术还原 LUT 不作为创意滤镜展示。 */
+  isTechnical?: boolean
+  /** 技术还原 LUT 所属设备。 */
+  deviceId?: string
 }

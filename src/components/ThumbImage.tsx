@@ -25,6 +25,8 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
   onUnavailable?: (src: string) => void
   /** 本地缓存文件准备好时触发 */
   onCacheReady?: (cacheFilePath: string) => void
+  /** 使用独立缩略图时，仍在后台缓存原视频，供时长等信息探测使用 */
+  cacheWhenUsingRemoteThumbnail?: boolean
 }
 
 /**
@@ -39,7 +41,7 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, cacheWhenUsingRemoteThumbnail = false, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
@@ -53,7 +55,8 @@ export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300,
   }, [thumbnailSrc])
 
   const useRemoteThumbnail = Boolean(remoteThumbnail) && !remoteThumbnailFailed
-  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, visible && !embeddedImage && !useRemoteThumbnail, previewSrc)
+  const shouldCache = visible && !embeddedImage && (!useRemoteThumbnail || cacheWhenUsingRemoteThumbnail)
+  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, shouldCache, previewSrc)
 
   useEffect(() => {
     if (cacheFilePath) onCacheReady?.(cacheFilePath)

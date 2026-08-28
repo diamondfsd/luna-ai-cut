@@ -17,6 +17,14 @@ export interface DeviceStorageOption {
   default?: boolean
 }
 
+export interface DeviceLutRestoreConfig {
+  /** 内置 LUT 文件名；实际文件位于应用的 luts 资源目录中。 */
+  fileName: string
+  /** 面板中显示的还原方式名称。 */
+  label: string
+  description?: string
+}
+
 export interface Insta360DeviceInfo {
   serial?: string
   deviceName?: string
@@ -77,6 +85,10 @@ export interface DeviceDefinition {
   storages: DeviceStorageOption[]
   /** 设备可选水印样式列表 */
   watermarkStyles?: DeviceWatermarkStyleConfig[]
+  /** 设备专用的 Log 还原 LUT。未配置表示该设备暂不支持 LUT 还原。 */
+  lut?: {
+    restore?: DeviceLutRestoreConfig
+  }
 }
 
 export interface DeviceConnectOptions {

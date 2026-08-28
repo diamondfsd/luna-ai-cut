@@ -54,6 +54,8 @@ import {
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
+import { isDeviceRestoreLut } from '../workspace/lut/restoreLuts'
+import type { DeviceLutRestoreConfig } from '../shared/types/device'
 import { borderTitleForDevice, isLegacyBorderTitle } from '../shared/insta360DeviceProfiles'
 import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspace/removal/removalOperations'
 import { beautyClipboardSettings } from '../workspace/beauty/beautyLayers'
@@ -62,9 +64,17 @@ import { logger } from '../lib/rendererLogger'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
-function normalizePipeline(value: unknown, defaultPipeline: EditPipeline = createDefaultPipeline()): EditPipeline {
+function normalizePipeline(
+  value: unknown,
+  defaultPipeline: EditPipeline = createDefaultPipeline(),
+  restoreLut?: DeviceLutRestoreConfig | null,
+): EditPipeline {
   const { patch } = normalizePersistedPipelinePatch(value)
-  return mergePipeline(structuredClone(defaultPipeline), patch)
+  const pipeline = mergePipeline(structuredClone(defaultPipeline), patch)
+  if (restoreLut !== undefined && pipeline.logRestore.activeId && !isDeviceRestoreLut(pipeline.logRestore.activeId, restoreLut)) {
+    pipeline.logRestore.activeId = null
+  }
+  return pipeline
 }
 
 function removalSourcePath(asset: WorkspaceProjectAsset | undefined, compareOriginal = false): string | undefined {
@@ -141,7 +151,16 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
   const { settings, setSettings } = useApp()
-  const { activeDevice, isConnected } = useDeviceConnection()
+  const { activeDevice, devices, isConnected } = useDeviceConnection()
+  const mediaDevice = media.activeMedia?.sourceDeviceId
+    ? devices.find((device) => device.id === media.activeMedia?.sourceDeviceId)
+    : undefined
+  // 设备列表异步加载期间保留旧值，列表就绪后再按设备清理不适用的 LUT。
+  const restoreLut = devices.length === 0
+    ? undefined
+    : mediaDevice
+      ? mediaDevice.lut?.restore ?? null
+      : (isConnected ? activeDevice?.lut?.restore ?? null : null)
   const connectedDeviceMetadata = useMemo(
     () => isConnected && activeDevice
       ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
@@ -551,7 +570,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       colorResetNoticeRef.current.add(asset.id)
       toast.show('当前素材的旧版调色参数已重置')
     }
-    edit.initializePipeline(normalizePipeline(asset?.pipeline, defaultPipelineRef.current))
+    edit.initializePipeline(normalizePipeline(asset?.pipeline, defaultPipelineRef.current, restoreLut))
     if (media.activeMedia && !isVideoPath(media.activeMedia.path)) {
       // 图片不显示截取，退出截取模式
       if (edit.trimActive) {
@@ -559,7 +578,16 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         if (edit.activeTool === 'trim') edit.setActiveTool('filter')
       }
     }
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, settingsReady])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, restoreLut, settingsReady])
+
+  useEffect(() => {
+    if (restoreLut === undefined) return
+    const activeRestoreLut = edit.pipeline.logRestore.activeId
+    if (!activeRestoreLut || isDeviceRestoreLut(activeRestoreLut, restoreLut)) return
+    edit.applySystemUpdate((pipeline) => pipeline.logRestore.activeId
+      ? { ...pipeline, logRestore: { activeId: null } }
+      : pipeline)
+  }, [edit.applySystemUpdate, edit.pipeline.logRestore.activeId, restoreLut])
 
   useEffect(() => {
     setMediaSize(null)

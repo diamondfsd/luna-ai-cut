@@ -27,7 +27,7 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 function bytesToHex(value: DataView): string {
-  return [...new Uint8Array(value.buffer)]
+  return [...new Uint8Array(value.buffer, value.byteOffset, value.byteLength)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join(' ')
 }
@@ -60,6 +60,37 @@ export function BluetoothTab({ activeDevice }: BluetoothTabProps) {
     setStatus('scanning')
     setCandidates([])
     setSelectedDevice(null)
+    const isWindows = /Windows/i.test(navigator.userAgent)
+    if (isWindows) {
+      appendLog('开始 Web Bluetooth 扫描')
+      try {
+        const bluetooth = activeDevice?.bluetooth
+        const optionalServices = [...new Set([
+          ...(bluetooth?.optionalServiceUuids ?? []),
+          ...(bluetooth?.serviceUuid ? [bluetooth.serviceUuid] : []),
+        ])]
+        const device = await navigator.bluetooth.requestDevice(bluetooth
+          ? {
+              filters: bluetooth.namePrefixes.map((namePrefix) => ({ namePrefix })),
+              optionalServices,
+            }
+          : { acceptAllDevices: true, optionalServices })
+        if (scanCancelledRef.current) return
+        setCandidates([{
+          deviceId: device.id,
+          deviceName: device.name || device.id,
+        }])
+        setSelectedDevice(device)
+        setStatus('selected')
+        appendLog(`Web Bluetooth 扫描完成：${device.name || device.id}`)
+      } catch (error) {
+        if (scanCancelledRef.current) return
+        setStatus('error')
+        appendLog(`Web Bluetooth 扫描失败：${error instanceof Error ? error.message : String(error)}`)
+      }
+      return
+    }
+
     appendLog('开始原生蓝牙扫描')
     try {
       const devices = await window.luna.scanBluetoothDevices(8000)
@@ -90,8 +121,14 @@ export function BluetoothTab({ activeDevice }: BluetoothTabProps) {
 
     try {
       appendLog(`正在匹配 ${candidate.deviceName} ...`)
+      const bluetooth = activeDevice?.bluetooth
+      const optionalServices = [...new Set([
+        ...(bluetooth?.optionalServiceUuids ?? []),
+        ...(bluetooth?.serviceUuid ? [bluetooth.serviceUuid] : []),
+      ])]
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ name: candidate.deviceName }],
+        optionalServices,
       })
       setSelectedDevice(device)
       setStatus('selected')
@@ -139,7 +176,11 @@ export function BluetoothTab({ activeDevice }: BluetoothTabProps) {
 
     try {
       const bytes = hexToBytes(hex)
-      await writeCharacteristicRef.current.writeValue(bytes)
+      if (typeof writeCharacteristicRef.current.writeValueWithoutResponse === 'function') {
+        await writeCharacteristicRef.current.writeValueWithoutResponse(bytes)
+      } else {
+        await writeCharacteristicRef.current.writeValue(bytes)
+      }
       appendLog(`发送：${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join(' ')}`)
     } catch (error) {
       setStatus('error')

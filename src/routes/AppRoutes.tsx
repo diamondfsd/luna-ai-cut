@@ -54,17 +54,17 @@ export function AppRoutes() {
 
   async function chooseBaseDir(): Promise<void> {
     const dir = await window.luna.chooseBaseDir()
-    if (dir) setSettings(await window.luna.saveSettings({ baseDir: dir }))
+    if (dir) setSettings(await window.luna.getSettings())
   }
 
   async function chooseLocalResourcesDir(): Promise<void> {
     const dir = await window.luna.chooseLocalResourcesDir()
-    if (dir) setSettings(await window.luna.saveSettings({ localResourcesDir: dir }))
+    if (dir) setSettings(await window.luna.getSettings())
   }
 
   async function chooseExportDir(): Promise<void> {
     const dir = await window.luna.chooseExportDir()
-    if (dir) setSettings(await window.luna.saveSettings({ exportDir: dir }))
+    if (dir) setSettings(await window.luna.getSettings())
   }
 
   function openDirectory(targetPath: string | null | undefined): void {

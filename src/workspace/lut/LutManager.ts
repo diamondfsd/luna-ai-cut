@@ -32,6 +32,8 @@ class LutManagerClass {
             filePath: entry.path,
             description: entry.description,
             isBuiltin: entry.isBuiltin,
+            isTechnical: entry.isTechnical,
+            deviceId: entry.deviceId,
           })
         }
       }
@@ -51,7 +53,15 @@ class LutManagerClass {
 }
 
 type LunaRenderCore = {
-  listCubeFiles: (dir: string) => Promise<Array<{ path: string; name: string; relDir: string; description?: string; isBuiltin: boolean }>>
+  listCubeFiles: (dir: string) => Promise<Array<{
+    path: string
+    name: string
+    relDir: string
+    description?: string
+    isBuiltin: boolean
+    isTechnical?: boolean
+    deviceId?: string
+  }>>
 }
 
 function getLrc(): LunaRenderCore | null {

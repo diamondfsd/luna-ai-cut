@@ -1,0 +1,9 @@
+{
+  "name": "Osmo Pocket 3 D-Log M to Rec.709",
+  "description": "DJI official Log restoration LUT for Osmo Pocket 3.",
+  "isTechnical": true,
+  "deviceId": "dji-pocket-3",
+  "sourcePage": "https://www.dji.com/cn/downloads/softwares/osmo-pocket-3-dlog-to-rec709",
+  "sourceUrl": "https://www-dl.djicdn.com/5e45168b46b342d5b88f72c458ba6e79/OP3%20LUT%E6%96%87%E4%BB%B6%E7%89%B9%E6%AE%8A%E5%A4%84%E7%90%86/DJI%20OSMO%20Pocket%203%20D-Log%20M%20to%20Rec.709%20V1.cube",
+  "sha256": "b18162854ab47702068410c33afa98a8cb6eef159fc5a04ce0e65fad0fd8947e"
+}

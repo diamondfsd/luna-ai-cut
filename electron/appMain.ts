@@ -35,6 +35,7 @@ import { cancelExportTask, resetRenderCompatibilityBlock } from './platform/rend
 import { shutdownSpecializedSegmentationWorker } from './features/segmentation/specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './features/segmentation/segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './media/local-share/localMediaShareService'
+import { installDjiWebBluetoothHandlers } from './devices/dji/djiWebBluetoothTransport'
 import { isTestBuild } from '../src/shared/buildChannel'
 import type {
   AppSettings,
@@ -246,6 +247,7 @@ function createWindow(): void {
     },
     getWindowCloseBehavior: getMainWindowCloseBehavior,
   })
+  if (process.platform === 'win32') installDjiWebBluetoothHandlers(win)
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
     setTimeout(() => startSegmentationModelPrefetch(), 1_000)

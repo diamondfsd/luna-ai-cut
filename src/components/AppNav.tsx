@@ -23,6 +23,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
   const isMac = window.navigator.platform.includes('Mac')
+  const isWindows = window.navigator.platform.includes('Win')
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
@@ -51,7 +52,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   }, [])
 
   return (
-    <nav className={`global-nav${isMac ? ' global-nav-macos' : ''}`}>
+    <nav className={`global-nav${isMac ? ' global-nav-macos' : isWindows ? ' global-nav-windows' : ''}`}>
       <div className="nav-inner">
         <div className="nav-links">
           <NavLink to="/library" onClick={(event) => handleNavigationClick(event, '/library')} className={({ isActive }) => (isActive ? 'active' : '')}>

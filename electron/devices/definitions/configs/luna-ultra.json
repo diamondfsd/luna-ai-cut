@@ -52,5 +52,12 @@
   "watermarkStyles": [
     { "value": "luna_ultra_cn", "label": "中文", "videoFileName": "ic_watermark_luna_ultra_cn", "imageFileName": "ic_watermark_luna_ultra_image_cn" },
     { "value": "luna_ultra", "label": "标准", "videoFileName": "ic_watermark_luna_ultra", "imageFileName": "ic_watermark_luna_ultra_image" }
-  ]
+  ],
+  "lut": {
+    "restore": {
+      "fileName": "Luna_I-Log_to_Rec709_BT1886_s65_v2.cube",
+      "label": "I-Log 转 Rec.709",
+      "description": "Luna Ultra 官方 I-Log 还原 LUT"
+    }
+  }
 }

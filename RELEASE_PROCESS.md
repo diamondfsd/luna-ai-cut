@@ -6,6 +6,14 @@
 
 应用更新统一为手动触发：启动应用不会访问更新服务，也不会自动下载或安装更新。用户需要打开顶部问号窗口，点击“检查更新”，再分别点击安装包或热更新的更新按钮。
 
+### 热更新默认发布约定
+
+后续所有热更新默认发布一个 `universal` 平台无关的纯 JS 包，适用于 macOS ARM64、macOS x64 和 Windows x64。发布时不需要选择平台，标准命令是 `./scripts/build-hot-update.sh`；同一个正式版本线可以继续发布 `hot.1`、`hot.2` 等后续热更新。
+
+只有明确要求平台专属包、多平台包或原生模块热更新时，才使用 `--platform`、`--include-native` 或原生模块发布流程。若 CI 检测到该正式版本线已经修改过原生模块，会强制进入原生热更新流程，不能为了遵循默认策略而发布不完整的通用包。
+
+跨正式版本（例如从 `1.8.0` 到 `1.8.1`）不能依靠旧版本热更新，仍然必须发布并安装完整安装包。
+
 ## 前置条件
 
 - `gh` CLI 已安装并登录 (`gh auth status`)
@@ -125,6 +133,8 @@ beta 热更新必须以同一个 beta 安装版本为基准，热更新版本和
 GitCode Release：beta/v1.8.0-beta.1
 ```
 
+测试包使用独立的 GitCode Release tag：beta 版本为 `test-beta-v1.8.0-beta.1`，稳定版本为 `test-v1.8.0`，不使用带 `/` 的测试 tag。
+
 ```bash
 ./scripts/build-hot-update.sh
 ```
@@ -147,9 +157,9 @@ GitCode Release：beta/v1.8.0-beta.1
 
 ## 日常热更新发布
 
-当只需要推送增量修复，且当前正式版发布后从未通过热更新修改原生模块时，使用本地脚本生成纯 JS 热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为 JavaScript 热更新内容，无需让 GitHub Actions 重复构建三份。
+当只需要推送增量修复，且当前正式版发布后从未通过热更新修改原生模块时，使用本地脚本生成默认的 `universal` 纯 JS 热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为 JavaScript 热更新内容，无需重复构建三份平台包。例如产物为 `renderer-1.7.1-hot.1.zip`，客户端会从 GitCode Release 附件中使用这个通用包。
 
-除非用户明确要求平台专属包、多平台包或原生模块热更新，后续热更新默认采用**一个平台无关的纯前端/纯 JS 包**：不构建、不上传多份平台包，也不包含 Rust 或其他原生模块。例如产物为 `renderer-1.7.1-hot.1.zip`。客户端会从 GitCode Release 附件中使用这个通用包；平台专属包和三平台包只能在明确要求时发布。此方式仅适用于从正式版 tag 到当前热更新均无原生改动的版本线。
+平台专属包、三平台包和原生模块热更新都属于例外流程：只有明确要求时才发布；如果版本线已经出现原生模块变更，则必须遵循“原生模块热更新”章节的流程。
 
 ### 1. 创建热更新发布说明
 
@@ -185,14 +195,14 @@ git commit -m "fix: xxx"
 ### 3. 构建并上传热更新包
 
 ```bash
-# 默认：自动取下一个 build 号，构建并上传平台无关的单个纯 JS 包
+# 默认，也是后续热更新的标准命令：通用纯 JS 包
 ./scripts/build-hot-update.sh
 
-# 也可以显式指定单个平台
+# 仅在明确要求平台专属包时使用
 ./scripts/build-hot-update.sh --platform darwin-arm64
 ```
 
-可选平台为 `darwin-arm64`、`darwin-x64`、`win32-x64` 和 `universal`。默认使用 `universal`；平台专属包、多平台产物和 `--include-native` 均不是默认选项，只有收到明确要求时才使用。
+可选平台为 `darwin-arm64`、`darwin-x64`、`win32-x64` 和 `universal`。默认且长期约定使用 `universal`；平台专属包、多平台产物和 `--include-native` 均不是默认选项，只有收到明确要求时才使用。
 
 首次运行需确保 `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
 

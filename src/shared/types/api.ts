@@ -92,7 +92,7 @@ export interface WorkspaceCompositionCropScoreRequest extends WorkspaceCompositi
 
 export interface DjiBluetoothRendererEvent {
   token: string
-  event: 'notification' | 'disconnected'
+  event: 'notification' | 'disconnected' | 'stage'
   characteristic?: string
   payloadHex?: string
   message?: string
