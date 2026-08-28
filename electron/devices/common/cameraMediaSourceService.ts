@@ -20,8 +20,10 @@ import type {
   LunaFile,
 } from '../../../src/shared/types'
 import { djiSessionFor, disconnectDjiSession } from '../dji/djiCameraSession'
+import { djiErrorDetails } from '../dji/djiLog'
 import { autoJoinDeviceWifi, restoreDeviceWifi } from '../../platform/network/wifiAutoJoinService'
 import { stopCameraVideoStream } from './cameraVideoStreamService'
+import { logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
 const WIRELESS_CAPABILITIES: CameraMediaSourceCapabilities = {
   list: true,
@@ -239,33 +241,128 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
 
   async connect(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host } = await this.values()
-    const session = await djiSessionFor(deviceId, host)
-    const status = await session.connect(this.options)
-    await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
-    return status
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体入口] connect 开始', {
+      deviceId,
+      host,
+      preparation: this.options.wireless?.preparation ?? 'bluetooth-auto',
+      autoJoin: this.options.wireless?.autoJoin === true,
+      preferExistingConnection: this.options.preferExistingConnection === true,
+      hasSsid: Boolean(this.options.wireless?.ssid?.trim()),
+      hasPassword: Boolean(this.options.wireless?.password),
+    })
+    try {
+      const session = await djiSessionFor(deviceId, host)
+      const status = await session.connect(this.options)
+      await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
+      logMainInfo('[DJI 媒体入口] connect 完成', {
+        deviceId,
+        host,
+        connected: status.connected,
+        httpOk: status.httpOk,
+        controlOk: status.controlOk,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return status
+    } catch (error) {
+      logMainError('[DJI 媒体入口] connect 异常', {
+        deviceId,
+        host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
   }
 
-  async prepareConnection(): Promise<CameraMediaSourcePreparationResult> {
+  async prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult> {
     const { deviceId, host } = await this.values()
-    return (await djiSessionFor(deviceId, host)).prepareConnection(this.options)
+    const startedAt = Date.now()
+    const mergedOptions = { ...this.options, ...options }
+    logMainInfo('[DJI 媒体入口] prepare-connection 开始', {
+      deviceId,
+      host,
+      preparation: mergedOptions.wireless?.preparation ?? 'bluetooth-auto',
+      autoJoin: mergedOptions.wireless?.autoJoin === true,
+      hasSsid: Boolean(mergedOptions.wireless?.ssid?.trim()),
+      hasPassword: Boolean(mergedOptions.wireless?.password),
+    })
+    try {
+      const result = await (await djiSessionFor(deviceId, host)).prepareConnection(mergedOptions)
+      logMainInfo('[DJI 媒体入口] prepare-connection 完成', {
+        deviceId,
+        host,
+        preparation: result.preparation,
+        hasCredentials: Boolean(result.credentials),
+        elapsedMs: Date.now() - startedAt,
+      })
+      return result
+    } catch (error) {
+      logMainError('[DJI 媒体入口] prepare-connection 异常', {
+        deviceId,
+        host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
   }
 
   async check(): Promise<CameraMediaSourceStatus> {
     const { deviceId, host } = await this.values()
-    return (await djiSessionFor(deviceId, host)).check(this.options)
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体入口] check 开始', { deviceId, host })
+    try {
+      const status = await (await djiSessionFor(deviceId, host)).check(this.options)
+      logMainInfo('[DJI 媒体入口] check 完成', {
+        deviceId,
+        host,
+        connected: status.connected,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return status
+    } catch (error) {
+      logMainWarn('[DJI 媒体入口] check 异常', {
+        deviceId,
+        host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
   }
 
   async listFiles(): Promise<LunaFile[]> {
     const { deviceId, host, storageId } = await this.values()
-    const session = await djiSessionFor(deviceId, host)
-    const files = await session.listFiles(storageId, this.options)
-    await saveSettings({
-      cameraConnectionMode: 'wireless',
-      cameraHost: host,
-      deviceStorage: { ...(await getSettings()).deviceStorage, [deviceId]: storageId },
-    })
-    await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
-    return files
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体入口] list-files 开始', { deviceId, host, storageId })
+    try {
+      const session = await djiSessionFor(deviceId, host)
+      const files = await session.listFiles(storageId, this.options)
+      await saveSettings({
+        cameraConnectionMode: 'wireless',
+        cameraHost: host,
+        deviceStorage: { ...(await getSettings()).deviceStorage, [deviceId]: storageId },
+      })
+      await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
+      logMainInfo('[DJI 媒体入口] list-files 完成', {
+        deviceId,
+        host,
+        storageId,
+        fileCount: files.length,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return files
+    } catch (error) {
+      logMainError('[DJI 媒体入口] list-files 异常', {
+        deviceId,
+        host,
+        storageId,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
   }
 
   async deleteFiles(): Promise<CameraDeleteResult> {
@@ -274,8 +371,21 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
 
   async disconnect(): Promise<void> {
     const { deviceId, host } = await this.values()
-    await stopCameraVideoStream({ mode: 'wireless', deviceId, host })
-    await disconnectDjiSession(deviceId, host)
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体入口] disconnect 开始', { deviceId, host })
+    try {
+      await stopCameraVideoStream({ mode: 'wireless', deviceId, host })
+      await disconnectDjiSession(deviceId, host)
+      logMainInfo('[DJI 媒体入口] disconnect 完成', { deviceId, host, elapsedMs: Date.now() - startedAt })
+    } catch (error) {
+      logMainError('[DJI 媒体入口] disconnect 异常', {
+        deviceId,
+        host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
   }
 }
 
