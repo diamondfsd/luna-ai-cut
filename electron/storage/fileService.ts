@@ -362,8 +362,19 @@ export async function cacheFile(file: LunaFile): Promise<string | null> {
 
     if (file.kind === 'video' && file.previewName && file.previewUrl) {
       const lrvPath = path.join(cacheDir, safeName(file.previewName))
-      await downloadWithLog(file, file.previewUrl, lrvPath)
-      return lrvPath
+      try {
+        await downloadWithLog(file, file.previewUrl, lrvPath)
+        return lrvPath
+      } catch (error) {
+        // DJI cameras can advertise a proxy convention without exposing the sidecar for every clip.
+        // Keep the proxy as the fast path, then fall back to the original instead of making the
+        // thumbnail/preview unavailable because the optional sidecar returned 404.
+        logMainWarn(`[cacheFile] 代理预览不可用，改用原始素材`, {
+          fileName: file.name,
+          previewUrl: file.previewUrl,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
     if (file.kind === 'video') {
       const destPath = path.join(cacheDir, safeName(file.name))

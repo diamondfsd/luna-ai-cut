@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 
+import { logger } from '../lib/rendererLogger'
 import type { PreviewLayer } from '../shared/types'
 import { WebGpuVideoRenderer } from './webgpuVideoRenderer'
 import './WebGpuVideoPreview.css'
@@ -32,6 +33,7 @@ export function WebGpuVideoPreview({
   onRender,
 }: WebGpuVideoPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<WebGpuVideoRenderer | null>(null)
   const callbackRef = useRef({ onVideoElement, onFallback, onRender })
   callbackRef.current = { onVideoElement, onFallback, onRender }
@@ -45,10 +47,21 @@ export function WebGpuVideoPreview({
       canvasHeight,
       maxSide,
       onVideoElement: (element) => callbackRef.current.onVideoElement?.(element),
-      onFallback: (reason) => callbackRef.current.onFallback(reason),
+      onFallback: (reason) => {
+        logger.warn('[WebGPU诊断] 预览组件收到回退通知', { reason })
+        callbackRef.current.onFallback(reason)
+      },
       onRender: () => callbackRef.current.onRender?.(),
     })
     rendererRef.current = renderer
+    const resize = () => renderer.resize()
+    const frame = frameRef.current
+    let resizeObserver: ResizeObserver | null = null
+    if (frame && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(resize)
+      resizeObserver.observe(frame)
+    }
+    window.addEventListener('resize', resize)
 
     void renderer.initialize()
       .then(() => renderer.setLayers(layers))
@@ -60,6 +73,8 @@ export function WebGpuVideoPreview({
 
     return () => {
       cancelled = true
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', resize)
       rendererRef.current = null
       renderer.destroy()
       callbackRef.current.onVideoElement?.(null)
@@ -82,6 +97,7 @@ export function WebGpuVideoPreview({
 
   return (
     <div
+      ref={frameRef}
       className="webgpu-video-preview-frame"
       style={{ aspectRatio: `${canvasWidth} / ${canvasHeight}` }}
     >

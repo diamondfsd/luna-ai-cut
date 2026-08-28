@@ -9,7 +9,7 @@
  */
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
 import { failStartup, installStartupExperience } from './infrastructure/startupWindowService'
@@ -102,6 +102,11 @@ function readHotVersion(filePath: string): string | null {
     return null
   }
 }
+
+// The lock is acquired before appMain.ts is loaded. Apply the E2E userData
+// override here as well, otherwise tests still contend with the user's app.
+const e2eUserDataDir = process.env.LUNA_E2E_USER_DATA_DIR
+if (!app.isPackaged && e2eUserDataDir) app.setPath('userData', resolve(e2eUserDataDir))
 
 const singleInstanceLock = app.requestSingleInstanceLock()
 if (!singleInstanceLock) {

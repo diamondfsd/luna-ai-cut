@@ -11,6 +11,8 @@ interface ComparisonFeature {
 interface ComparisonConfig {
   canvasWidth: number
   canvasHeight: number
+  presentationWidth?: number
+  presentationHeight?: number
   maxSide: number
   lutText: string
   fontPath: string
@@ -278,8 +280,12 @@ pageWindow.lunaWebGpuComparison = {
   async initialize(next: ComparisonConfig): Promise<{ navigatorGpu: boolean }> {
     if (renderer) throw new Error('WebGPU standalone renderer already initialized')
     config = next
-    canvas.width = next.canvasWidth
-    canvas.height = next.canvasHeight
+    const presentationWidth = next.presentationWidth ?? next.canvasWidth
+    const presentationHeight = next.presentationHeight ?? next.canvasHeight
+    canvas.style.width = `${presentationWidth}px`
+    canvas.style.height = `${presentationHeight}px`
+    canvas.width = presentationWidth
+    canvas.height = presentationHeight
     installStandaloneApi(next)
     renderer = new WebGpuVideoRenderer(canvas, {
       canvasWidth: next.canvasWidth,

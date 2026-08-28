@@ -58,6 +58,7 @@ import { borderTitleForDevice, isLegacyBorderTitle } from '../shared/insta360Dev
 import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspace/removal/removalOperations'
 import { beautyClipboardSettings } from '../workspace/beauty/beautyLayers'
 import { prepareBeautyPasteTargets } from '../workspace/beauty/beautyPaste'
+import { logger } from '../lib/rendererLogger'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -99,22 +100,32 @@ function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promis
 }
 
 export function WorkspacePage({ creativeModeId, onCreativeModeChange, pageActive }: WorkspacePageProps) {
-  // 非活跃时不渲染：AppRoute 的 preserve 只隐藏不卸载，不跳过会导致 context 消费者持续响应全局 state 变化
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
+
+  useEffect(() => {
+    logger.info('[导航诊断] 工作台活动状态', {
+      hash: window.location.hash,
+      pathname: location.pathname,
+      pageActive,
+      detailMounted: pageActive,
+    })
+  }, [location.pathname, pageActive])
 
   return (
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
         <WorkspaceCanvasProvider>
           <WorkspaceMaskProvider active={pageActive && (!creativeModeId || creativeModeId === 'pixel-stretch')}>
-            <ErrorBoundary>
-              <WorkspacePageInner
-                creativeModeId={creativeModeId}
-                onCreativeModeChange={onCreativeModeChange}
-                pageActive={pageActive}
-              />
-            </ErrorBoundary>
+            {pageActive && (
+              <ErrorBoundary>
+                <WorkspacePageInner
+                  creativeModeId={creativeModeId}
+                  onCreativeModeChange={onCreativeModeChange}
+                  pageActive={pageActive}
+                />
+              </ErrorBoundary>
+            )}
           </WorkspaceMaskProvider>
         </WorkspaceCanvasProvider>
       </WorkspaceMediaProvider>
@@ -817,6 +828,17 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         const untrimmedPipeline = isVideoPath(asset.path) ? mergePipeline(pipeline, { trim: null }) : pipeline
         const layers = buildWorkspaceExportLayers(sourcePath, resolution, untrimmedPipeline, borderMeta, true, projectAsset?.subtitles, asset)
         const outputSize = outputSizeForTransform(resolution, untrimmedPipeline.transform)
+        logger.info('[导出诊断] 工作台尺寸参数', {
+          assetPath: asset.path,
+          sourcePath,
+          sourceResolution: resolution,
+          outputSize,
+          resolutionSetting: '待导出弹窗选择',
+          transform: {
+            orientation: untrimmedPipeline.transform.orientation,
+            crop: untrimmedPipeline.transform.crop,
+          },
+        })
 
         if (!isVideoPath(asset.path)) {
           return [{

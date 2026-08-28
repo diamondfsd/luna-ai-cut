@@ -43,7 +43,7 @@ interface DeviceConnectPageProps {
   phase: DeviceConnectionPhase
   settings: AppSettings | null
   onConnect: (rootPath?: string, deviceId?: string, wireless?: CameraMediaSourceOptions['wireless']) => Promise<void>
-  onPrepareConnection: () => Promise<CameraMediaSourcePreparationResult | null>
+  onPrepareConnection: (preferExistingConnection?: boolean) => Promise<CameraMediaSourcePreparationResult | null>
   preparedDjiWifi: CameraMediaSourcePreparationResult['credentials'] | null
   onDeviceChange: (deviceId: string) => Promise<void>
   connectionMode: CameraConnectionMode
@@ -91,7 +91,7 @@ export function DeviceConnectPage({
   const isDjiWireless = !isWired && activeDevice?.protocol === 'dji'
   const canAutoJoinWifi = !isWired && activeDevice?.wifi?.autoJoin === true
   const djiWifiCredentials = preparedDjiWifi ?? djiPreparation?.credentials ?? null
-  const needsSystemWifi = isDjiWireless && Boolean(djiPreparation || preparedDjiWifi)
+  const needsSystemWifi = isDjiWireless && Boolean(djiPreparation && !djiWifiCredentials)
   const deviceInfo = connection?.deviceInfo
   const deviceRows = [
     ['设备', deviceInfo?.deviceName],
@@ -181,15 +181,38 @@ export function DeviceConnectPage({
   async function handleConnect(): Promise<void> {
     setConnecting(true)
     try {
-      if (isDjiWireless && !djiWifiCredentials && !djiPreparation) {
-        const result = await onPrepareConnection()
+      let preparation = djiPreparation
+      let credentials = djiWifiCredentials
+      if (isDjiWireless && !credentials && (!preparation || preparation.preparation === 'already-connected')) {
+        const result = await onPrepareConnection(true)
         setDjiPreparation(result)
-        return
+        preparation = result
+        credentials = result?.credentials ?? null
       }
-      const wireless = isDjiWireless && (djiPreparation || preparedDjiWifi)
-        ? { preparation: 'already-connected' as const }
+      const wireless = isDjiWireless
+        ? credentials
+          ? {
+              preparation: 'bluetooth' as const,
+              ssid: credentials.ssid,
+              password: credentials.password,
+              autoJoin: true,
+            }
+          : preparation
+            ? { preparation: 'already-connected' as const }
+            : undefined
         : undefined
       await onConnect(undefined, undefined, wireless)
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  async function handleReadDjiWifi(): Promise<void> {
+    if (!isDjiWireless || connecting || isChecking) return
+    setConnecting(true)
+    try {
+      const result = await onPrepareConnection()
+      setDjiPreparation(result)
     } finally {
       setConnecting(false)
     }
@@ -208,6 +231,7 @@ export function DeviceConnectPage({
         preparation: 'manual-wifi',
         ssid,
         password: wifiPassword,
+        autoJoin: true,
       })
     } finally {
       setWifiPasswordConnecting(false)
@@ -418,6 +442,8 @@ export function DeviceConnectPage({
                 needsSystemWifi={needsSystemWifi}
                 wifiPasswordCopied={wifiPasswordCopied}
                 onCopyPassword={() => void copyWifiPassword()}
+                loading={connecting || isChecking}
+                onReadWifi={() => void handleReadDjiWifi()}
               />
             )}
 

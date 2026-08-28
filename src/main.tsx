@@ -17,7 +17,7 @@ initRendererLogger()
 document.title = `Luna AI Cut v${__APP_VERSION__}`
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-    <HashRouter>
+    <HashRouter useTransitions={false}>
       <App />
     </HashRouter>
 )

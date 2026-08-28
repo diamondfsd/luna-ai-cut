@@ -32,6 +32,13 @@ PKG_VER="$(node -p "require('./package.json').version")"
 DEFAULT_TAG="v${PKG_VER}"
 TAG="${1:-$DEFAULT_TAG}"
 RELEASE_NOTES="${SCRIPT_DIR}/../RELEASE_NOTES_${TAG}.md"
+if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+  IS_BETA=true
+  GITCODE_TAG="beta/${TAG}"
+else
+  IS_BETA=false
+  GITCODE_TAG="$TAG"
+fi
 
 if [ ! -f "$RELEASE_NOTES" ]; then
   echo "发布说明文件不存在: ${RELEASE_NOTES}" >&2
@@ -45,6 +52,7 @@ GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
 GITCODE_DL="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 GITHUB_REPO="${GITHUB_REPO:-diamondfsd/luna-ai-cut}"
 DOWNLOAD_DIR="release"
+GITCODE_TAG_URL="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$GITCODE_TAG")"
 
 # ── 颜色 ──
 RED='\033[0;31m'
@@ -114,7 +122,7 @@ done
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"
-info "  GitCode Release — ${TAG}"
+info "  GitCode Release — ${GITCODE_TAG}"
 info "═══════════════════════════════════════════════════════════"
 echo ""
 
@@ -126,8 +134,8 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API_BASE}/releases
   -H "Content-Type: application/json" \
   -d "$(cat <<-END
 {
-  "tag_name": "${TAG}",
-  "name": "${TAG}",
+  "tag_name": "${GITCODE_TAG}",
+  "name": "${GITCODE_TAG}",
   "body": "Luna AI Cut ${TAG} 发布，详见 https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
 }
 END
@@ -159,7 +167,7 @@ for filepath in "${FILES[@]}"; do
 
   # 获取 OBS 上传地址
   upload_json=$(curl -sS \
-    "${API_BASE}/releases/${TAG}/upload_url?file_name=${encoded_name}" \
+    "${API_BASE}/releases/${GITCODE_TAG_URL}/upload_url?file_name=${encoded_name}" \
     -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
   upload_url=$(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
@@ -186,6 +194,13 @@ for filepath in "${FILES[@]}"; do
     ok "${filename} 上传完成" || err "${filename} 上传失败"
 done
 
+if [ "$IS_BETA" = true ]; then
+  echo ""
+  ok "内测版本 ${TAG} 已发布到 GitCode 专属通道 ${GITCODE_TAG}"
+  info "不会更新公开下载页或稳定版 README"
+  info "  ${API_BASE}/releases/tag/${GITCODE_TAG}"
+  exit 0
+fi
 
 # ============================================================
 # 第四步：更新 README
@@ -198,7 +213,7 @@ echo ""
 
 # 获取 release 详情得到附件名称
 release_json=$(curl -sS \
-  "${API_BASE}/releases/tags/${TAG}" \
+  "${API_BASE}/releases/tags/${GITCODE_TAG_URL}" \
   -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
 mac_arm_name=$(echo "$release_json" | python3 -c "
@@ -225,9 +240,9 @@ for a in d.get('assets',[]):
 
 # API 返回的 browser_download_url 使用 api.gitcode.com，公开下载会返回 404。
 # README 与 Landing 页面统一使用 GitCode Release 的公开下载域名。
-mac_arm_url="${GITCODE_DL}/${TAG}/${mac_arm_name}"
-mac_x64_url="${GITCODE_DL}/${TAG}/${mac_x64_name}"
-win_url="${GITCODE_DL}/${TAG}/${win_name}"
+mac_arm_url="${GITCODE_DL}/${GITCODE_TAG}/${mac_arm_name}"
+mac_x64_url="${GITCODE_DL}/${GITCODE_TAG}/${mac_x64_name}"
+win_url="${GITCODE_DL}/${GITCODE_TAG}/${win_name}"
 
 echo "  macOS ARM64: ${mac_arm_name:-<未上传>}"
 echo "  macOS x64:   ${mac_x64_name:-<未上传>}"

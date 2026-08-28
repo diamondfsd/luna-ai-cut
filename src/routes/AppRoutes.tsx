@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 import { AppNav } from '../components/AppNav'
-import { HotUpdateBanner } from '../components/HotUpdateBanner'
-import { UpdateBanner } from '../components/UpdateBanner'
 import { PreviewModalHost } from '../components/PreviewModalHost'
 import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
@@ -19,6 +17,7 @@ import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
+import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
@@ -85,6 +84,7 @@ export function AppRoutes() {
   const location = useLocation()
   const activePath = location.pathname === '/' ? '/library' : location.pathname
   const isActive = (path: string) => activePath === path
+  const settingsRoute = activePath === '/settings'
 
   // ── 路由访问权限表：path → 是否有权访问 ──
   // 加新路由时，在这里加一行，再在下面加 <section> 即可
@@ -99,6 +99,16 @@ export function AppRoutes() {
     ['/device-debug', debugVisible],
   ]
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
+
+  useEffect(() => {
+    logger.info('[导航诊断] 路由状态', {
+      hash: window.location.hash,
+      pathname: location.pathname,
+      activePath,
+      isKnownRoute,
+      settingsRoute,
+    })
+  }, [activePath, isKnownRoute, location.pathname, settingsRoute])
 
   // ── 特殊处理 ──
   if (location.pathname === '/') return <Navigate to="/library" replace />
@@ -123,8 +133,6 @@ export function AppRoutes() {
         activeDevice={activeDevice}
         onChangeConnection={disconnectDevice}
       />
-      <UpdateBanner />
-      <HotUpdateBanner />
 
       <div className="route-stack" key={pagesKey}>
 

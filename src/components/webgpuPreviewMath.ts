@@ -9,6 +9,9 @@ export interface WebGpuCubeLut {
 
 const MASK_DISTANCE_RANGE = 100
 const DIAGONAL_DISTANCE = Math.SQRT2
+// WebGPU guarantees a 3D texture dimension of at least 256. This covers the
+// 65^3 Luna Ultra LUTs as well as the common 17/32/33^3 cube formats.
+const MAX_WEBGPU_CUBE_SIZE = 256
 
 function distanceToSelection(selected: Uint8Array, width: number, height: number): Float32Array {
   const distances = new Float32Array(width * height)
@@ -77,7 +80,7 @@ export function parseWebGpuCube(data: string): WebGpuCubeLut {
     if (rgb.some((value) => !Number.isFinite(value))) throw new Error('调色文件内容无效')
     values.push(...rgb)
   }
-  if (size < 2 || size > 64 || values.length !== size ** 3 * 3) throw new Error('调色文件尺寸无效')
+  if (size < 2 || size > MAX_WEBGPU_CUBE_SIZE || values.length !== size ** 3 * 3) throw new Error('调色文件尺寸无效')
   const rgba = new Uint8Array(size ** 3 * 4)
   for (let index = 0; index < size ** 3; index += 1) {
     rgba[index * 4] = Math.round(clamp(values[index * 3], 0, 1) * 255)

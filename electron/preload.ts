@@ -17,7 +17,6 @@ import type {
   WorkspaceSegmentationRequest,
   WorkspaceMaskTrackingRequest,
   WorkspaceObjectRemovalRequest,
-  UpdateInfo,
   VideoExportSettings,
   DolbyVisionWatermarkExportRequest,
   CustomWatermarkAsset,
@@ -69,6 +68,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     return ipcRenderer.invoke('log:export', message, meta)
   },
   getLogDir: () => ipcRenderer.invoke('log:getDir'),
+  exportDiagnosticsBundle: () => ipcRenderer.invoke('log:export-bundle'),
   clearLogs: () => ipcRenderer.invoke('log:clear'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:save', settings),
@@ -265,11 +265,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     return () => ipcRenderer.off('luna:video-frame-rate-ready', listener)
   },
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
-  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo): void => callback(info)
-    ipcRenderer.on('update:available', listener)
-    return () => ipcRenderer.off('update:available', listener)
-  },
   listReleaseNotes: () => ipcRenderer.invoke('release-notes:list'),
 
   // ── 导出任务记录（统一 API） ──
@@ -325,11 +320,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   applyHotUpdate: (info: HotUpdateCheckResult) => ipcRenderer.invoke('hot-update:apply', info),
   clearHotUpdate: () => ipcRenderer.invoke('hot-update:clear'),
   relaunchApp: () => ipcRenderer.invoke('hot-update:relaunch'),
-  onHotUpdateAvailable: (callback: (info: HotUpdateCheckResult) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, info: HotUpdateCheckResult): void => callback(info)
-    ipcRenderer.on('hot-update:available', listener)
-    return () => ipcRenderer.off('hot-update:available', listener)
-  },
 }
 
 const wifiDebugApi: WifiDebugApi = {

@@ -33,6 +33,7 @@ release
 __pycache__/
 *.py[cod]
 resources/ffmpeg/
+resources/dji-ble-helper/
 .ffmpeg-cache/
 resources/dolby-vision/
 .dolby-tools-cache/

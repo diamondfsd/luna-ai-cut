@@ -1,4 +1,11 @@
 import { app } from 'electron'
+import {
+  compareReleaseVersions,
+  releaseChannelForVersion,
+  releaseVersionFromTag,
+  type ReleaseChannel,
+} from '../../src/shared/hotUpdateCompatibility'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 
 export interface UpdateCheckResult {
   version: string
@@ -6,36 +13,22 @@ export interface UpdateCheckResult {
   releaseUrl: string
   releaseNotes?: string
   publishedAt?: string
+  channel?: 'stable' | 'beta'
 }
 
 const GITCODE_API = 'https://api.gitcode.com/api/v5/repos/diamondfsd/luna-ai-cut-package-release'
 const GITCODE_DL = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download'
 const GITHUB_REPO = 'diamondfsd/luna-ai-cut'
 
-/**
- * 简单 semver 比较，返回 1 / 0 / -1
- */
-function compareVersions(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split('.').map(Number)
-  const pb = b.replace(/^v/, '').split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    const na = pa[i] || 0
-    const nb = pb[i] || 0
-    if (na > nb) return 1
-    if (na < nb) return -1
-  }
-  return 0
-}
-
 interface GitCodeAsset {
   name: string
-  browser_download_url: string
-  type: string // "attach" | "source"
+  browser_download_url?: string
+  type?: string // "attach" | "source"
 }
 
 interface GitCodeRelease {
-  tag_name: string
-  name: string
+  tag_name?: string
+  name?: string
   body?: string
   created_at?: string
   assets?: GitCodeAsset[]
@@ -51,129 +44,148 @@ interface GitHubRelease {
   assets?: Array<{ name: string; browser_download_url: string }>
 }
 
-/**
- * 从 GitCode API 获取最新 Release（含下载链接），无需鉴权
- *
- * 注意：不使用 /releases/latest（GitCode 该接口返回的并非最新 tag），
- * 改为遍历 release 列表找到版本最大的发行版。
- */
-async function checkGitCode(): Promise<UpdateCheckResult | null> {
-  const res = await fetch(`${GITCODE_API}/releases?per_page=50`)
-  if (!res.ok) return null
+function installerForAssets(assets: GitCodeAsset[] | Array<{ name: string }>): { name: string } | null {
+  const platform = process.platform
+  const arch = process.arch
+  const installer = assets.find((asset) => {
+    if (platform === 'win32') return asset.name.endsWith('.exe') && asset.name.includes('-Windows-')
+    if (platform === 'darwin') return asset.name.endsWith('.dmg') && asset.name.includes(`-${arch}.dmg`)
+    return false
+  })
+  return installer ?? null
+}
 
-  const releases: GitCodeRelease[] = await res.json()
-  const currentVersion = app.getVersion()
+function githubVersionFromTag(tag: string): ReleaseChannel | null {
+  return releaseChannelForVersion(tag)
+}
 
-  // 从新到旧遍历（列表按创建时间升序，reverse 后最新在前）
-  for (const data of releases.reverse()) {
-    const tagName = data.tag_name ?? ''
-    // 稳定版更新通道不接收 Beta/RC，避免测试版本推送给所有用户。
-    if (tagName.includes('-')) continue
-    const latestVersion = tagName.replace(/^v/, '')
-    if (compareVersions(latestVersion, currentVersion) <= 0) continue
-
-    // assets 中 type 为 "attach" 的才是上传的安装包，排除 source 包
-    const attachAssets = (data.assets ?? []).filter(a => a.type === 'attach')
-
-    // 根据当前操作系统和 CPU 架构选择对应安装包
-    // 资产命名示例: LunaAICut-Mac-1.3.3-Installer-arm64.dmg / LunaAICut-Windows-1.3.3-Setup-x64.exe
-    const platform = process.platform
-    const arch = process.arch // 'arm64' | 'x64'
-    const installer = attachAssets.find(a => {
-      if (platform === 'win32') return a.name.endsWith('.exe') && a.name.includes('-Windows-')
-      if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-${arch}.dmg`)
-      return false
+async function releaseNotesForTag(tagName: string): Promise<string | undefined> {
+  try {
+    const ghRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${tagName}`,
+      { headers: { Accept: 'application/vnd.github+json' } },
+    )
+    if (!ghRes.ok) return undefined
+    const ghData = await ghRes.json() as GitHubRelease
+    return ghData.body?.slice(0, 500) || undefined
+  } catch (error) {
+    logMainWarn('[更新] 获取发布说明失败', {
+      tagName,
+      error: error instanceof Error ? error.message : String(error),
     })
-    if (!installer) continue // 该版本没有安装包，继续看更早的版本
+    return undefined
+  }
+}
 
-    // 从 GitHub 获取详细的发布说明（GitCode 只有附件，没有完整内容）
-    let releaseNotes: string | undefined
-    try {
-      const ghRes = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${tagName}`,
-        { headers: { Accept: 'application/vnd.github+json' } },
-      )
-      if (ghRes.ok) {
-        const ghData = await ghRes.json() as GitHubRelease
-        releaseNotes = ghData.body?.slice(0, 500) || undefined
-      }
-    } catch {
-      // GitHub 获取失败不影响主流程，用户仍可下载
-    }
+/**
+ * 从 GitCode 获取当前通道的最新安装包。
+ * 稳定版只读取 vX.Y.Z，内测版只读取 beta/vX.Y.Z-beta.N。
+ */
+async function checkGitCode(currentVersion: string): Promise<UpdateCheckResult | null> {
+  const current = releaseChannelForVersion(currentVersion)
+  if (!current) {
+    logMainWarn('[更新] 当前版本不在支持的更新通道中', { currentVersion })
+    return null
+  }
 
-    // API 返回的 browser_download_url 是 api.gitcode.com 域名（直链可能鉴权）
-    // 改用 gitcode.com 的公开下载地址
-    const downloadUrl = `${GITCODE_DL}/${tagName}/${installer.name}`
+  const res = await fetch(`${GITCODE_API}/releases?per_page=100`)
+  if (!res.ok) {
+    logMainWarn('[更新] GitCode 查询失败', { status: res.status, channel: current.channel })
+    return null
+  }
 
+  const releases = await res.json() as GitCodeRelease[]
+  const candidates = releases
+    .map((release) => {
+      const parsed = release.tag_name ? releaseVersionFromTag(release.tag_name) : null
+      return { release, parsed }
+    })
+    .filter(({ parsed }) => parsed?.channel === current.channel && parsed !== null)
+    .sort((left, right) => compareReleaseVersions(right.parsed!.version, left.parsed!.version))
+
+  for (const { release, parsed } of candidates) {
+    if (!parsed || compareReleaseVersions(parsed.version, current.version) <= 0) continue
+    const installer = installerForAssets((release.assets ?? []).filter((asset) => asset.type === 'attach' || asset.type === undefined))
+    if (!installer) continue
+
+    const githubTag = `v${parsed.version}`
     return {
-      version: latestVersion,
-      downloadUrl,
-      releaseUrl: `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/tag/${tagName}`,
-      releaseNotes,
-      publishedAt: data.created_at,
+      version: parsed.version,
+      channel: parsed.channel,
+      downloadUrl: `${GITCODE_DL}/${release.tag_name}/${installer.name}`,
+      releaseUrl: `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/tag/${release.tag_name}`,
+      releaseNotes: await releaseNotesForTag(githubTag),
+      publishedAt: release.created_at,
     }
   }
 
   return null
 }
 
-/**
- * 从 GitHub API 获取最新 Release（备用）
- */
-async function checkGitHub(): Promise<UpdateCheckResult | null> {
-  const res = await fetch(
-    `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-    { headers: { Accept: 'application/vnd.github+json' } },
-  )
-  if (!res.ok) return null
+/** 从 GitHub 获取当前通道的最新安装包，作为 GitCode 备用源。 */
+async function checkGitHub(currentVersion: string): Promise<UpdateCheckResult | null> {
+  const current = releaseChannelForVersion(currentVersion)
+  if (!current) return null
 
-  const data = await res.json() as GitHubRelease
-  if (data.prerelease || data.draft) return null
-  const tagName: string = data.tag_name ?? ''
-  const latestVersion = tagName.replace(/^v/, '')
-  const currentVersion = app.getVersion()
-  if (compareVersions(latestVersion, currentVersion) <= 0) return null
-
-  const assets: Array<{ name: string; browser_download_url: string }> = data.assets ?? []
-
-  // 根据当前操作系统和 CPU 架构选择对应安装包
-
-  // 资产命名示例: LunaAICut-Mac-1.3.3-Installer-arm64.dmg / LunaAICut-Windows-1.3.3-Setup-x64.exe
-  const platform = process.platform
-  const arch = process.arch // 'arm64' | 'x64'
-  const installer = assets.find(a => {
-    if (platform === 'win32') return a.name.endsWith('.exe') && a.name.includes('-Windows-')
-    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-${arch}.dmg`)
-
-    return false
-  })
-
-  // 没有安装包文件则不提示更新
-  if (!installer) return null
-
-  return {
-    version: latestVersion,
-    downloadUrl: installer.browser_download_url,
-    releaseUrl: data.html_url ?? `https://github.com/${GITHUB_REPO}/releases/tag/${tagName}`,
-    releaseNotes: data.body?.slice(0, 500) || undefined,
-    publishedAt: data.published_at,
+  const endpoint = current.channel === 'stable'
+    ? `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
+    : `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100`
+  const res = await fetch(endpoint, { headers: { Accept: 'application/vnd.github+json' } })
+  if (!res.ok) {
+    logMainWarn('[更新] GitHub 查询失败', { status: res.status, channel: current.channel })
+    return null
   }
+
+  const payload = await res.json() as GitHubRelease | GitHubRelease[]
+  const releases = Array.isArray(payload) ? payload : [payload]
+  const candidates = releases
+    .filter((release) => !release.draft && (current.channel === 'beta' ? release.prerelease : !release.prerelease))
+    .map((release) => ({ release, parsed: release.tag_name ? githubVersionFromTag(release.tag_name) : null }))
+    .filter(({ parsed }) => parsed?.channel === current.channel && parsed !== null)
+    .sort((left, right) => compareReleaseVersions(right.parsed!.version, left.parsed!.version))
+
+  for (const { release, parsed } of candidates) {
+    if (!parsed || compareReleaseVersions(parsed.version, current.version) <= 0) continue
+    const installer = installerForAssets(release.assets ?? [])
+    if (!installer) continue
+    return {
+      version: parsed.version,
+      channel: parsed.channel,
+      downloadUrl: release.assets?.find((asset) => asset.name === installer.name)?.browser_download_url ?? '',
+      releaseUrl: release.html_url ?? `https://github.com/${GITHUB_REPO}/releases/tag/${release.tag_name}`,
+      releaseNotes: release.body?.slice(0, 500) || undefined,
+      publishedAt: release.published_at,
+    }
+  }
+  return null
 }
 
-/**
- * 检查更新：优先 GitCode（国内快速、无需鉴权），GitHub 作为备用
- */
+/** 手动调用时检查更新；不会在启动时自动执行，也不会自动下载或安装。 */
 export async function checkForUpdates(): Promise<UpdateCheckResult | null> {
+  const currentVersion = app.getVersion()
+  const current = releaseChannelForVersion(currentVersion)
+  logMainInfo('[更新] 开始查询', {
+    currentVersion,
+    channel: current?.channel ?? 'unsupported',
+    releaseTag: current?.releaseTag,
+  })
+
   try {
-    const gitcodeResult = await checkGitCode()
-    if (gitcodeResult) return gitcodeResult
-  } catch {
-    // GitCode 失败，继续尝试 GitHub
+    const gitcodeResult = await checkGitCode(currentVersion)
+    if (gitcodeResult) {
+      logMainInfo('[更新] GitCode 发现新版本', { version: gitcodeResult.version, channel: gitcodeResult.channel })
+      return gitcodeResult
+    }
+  } catch (error) {
+    logMainWarn('[更新] GitCode 查询异常，切换备用源', { error: error instanceof Error ? error.message : String(error) })
   }
 
   try {
-    return await checkGitHub()
-  } catch {
+    const githubResult = await checkGitHub(currentVersion)
+    logMainInfo('[更新] GitHub 查询完成', { available: Boolean(githubResult), version: githubResult?.version, channel: githubResult?.channel })
+    return githubResult
+  } catch (error) {
+    logMainError('[更新] GitHub 查询异常', { error: error instanceof Error ? error.message : String(error) })
     return null
   }
 }

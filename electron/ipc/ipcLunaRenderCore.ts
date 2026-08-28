@@ -50,6 +50,16 @@ function joinPackPath(root: string, relative: string): string {
   return join(root, ...relative.split('/'))
 }
 
+function localPackPath(root: 'fonts' | 'luts', relative: string): string | null {
+  const appRoot = process.env.APP_ROOT ?? join(import.meta.dirname, '..')
+  const candidates = [
+    app.isPackaged ? join(process.resourcesPath, root, relative) : join(appRoot, 'public', root, relative),
+    process.env.VITE_PUBLIC ? join(process.env.VITE_PUBLIC, root, relative) : null,
+    join(process.resourcesPath || '', root, relative),
+  ].filter((candidate): candidate is string => Boolean(candidate))
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
 async function resolveRuntimePaths<T>(value: T): Promise<T> {
   if (Array.isArray(value)) return await Promise.all(value.map(resolveRuntimePaths)) as T
   if (!value || typeof value !== 'object') return value
@@ -72,8 +82,8 @@ async function resolveRuntimePaths<T>(value: T): Promise<T> {
       const relative = relativePackPath(item, 'luts')
       if (existsSync(item) || !relative) output[key] = item
       else {
-        const root = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
-        output[key] = joinPackPath(root, relative)
+        output[key] = localPackPath('luts', relative)
+          ?? joinPackPath(await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts), relative)
       }
     } else {
       output[key] = await resolveRuntimePaths(item)

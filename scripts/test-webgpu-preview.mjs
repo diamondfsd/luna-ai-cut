@@ -15,6 +15,7 @@ import { chromium } from '@playwright/test'
 import { createServer } from 'vite'
 
 import { buildCompositionFromPreviewLayers } from '../src/components/renderComposition.ts'
+import { parseWebGpuCube } from '../src/components/webgpuPreviewMath.ts'
 
 const execFileAsync = promisify(execFile)
 const require = createRequire(import.meta.url)
@@ -26,7 +27,7 @@ const ffprobePath = require('ffprobe-static').path
 
 const ORIGINAL_IMAGE_PATH = '/Users/zhouchao/照片同步/lunaultra/2026-08-09/IMG_20260809_184536_331.jpg'
 const inputPath = path.resolve(process.env.LUNA_WEBGPU_COMPARISON_IMAGE ?? process.argv[2] ?? ORIGINAL_IMAGE_PATH)
-const LUT_PATH = path.join(projectRoot, 'public', 'luts', '徕卡', 'Leica Classic.cube')
+const LUT_PATH = path.join(projectRoot, 'public', 'luts', 'LunaUltra', 'Luna_I-Log_to_Rec709_BT1886_s65_v2.cube')
 const WATERMARK_PATH = path.join(projectRoot, 'src', 'assets', 'watermark', 'ic_watermark_luna_ultra_image_cn.png')
 const FONT_PATH = path.join(projectRoot, 'public', 'fonts', 'SourceHanSansSC-Regular.otf')
 const canvasMaxSide = 960
@@ -286,6 +287,9 @@ await writeFile(maskPath, Buffer.concat([Buffer.from(`P5\n${mask.width} ${mask.h
 const imageDataUrl = `data:image/jpeg;base64,${(await readFile(lowResImagePath)).toString('base64')}`
 const watermarkDataUrl = `data:image/png;base64,${(await readFile(WATERMARK_PATH)).toString('base64')}`
 const lutText = await readFile(LUT_PATH, 'utf8')
+const parsedLut = parseWebGpuCube(lutText)
+assert.equal(parsedLut.size, 65, 'Luna Ultra 内置 LUT 应为 65³')
+assert.equal(parsedLut.rgba.length, 65 ** 3 * 4, '65³ LUT RGBA 数据尺寸不正确')
 const fontData = (await readFile(FONT_PATH)).toString('base64')
 
 const nativeFeatures = FEATURES.map((id) => ({ id, time: id === 'creative' ? 0.5 : 0, layers: featureLayers(lowResImagePath, id, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH }) }))
@@ -324,6 +328,12 @@ const printableWebGpu = webgpuResult.measurements.map((measurement) => {
 console.log(JSON.stringify({ ...report, nativeMeasurements: printableNative, webgpuMeasurements: printableWebGpu, reportPath }, null, 2))
 assert.deepEqual(webgpuResult.runtimeErrors, [])
 assert.deepEqual(webgpuResult.runtimeWarnings, [])
+const baselineComparison = comparisons.find((entry) => entry.feature === 'baseline')
+assert.ok(baselineComparison, '缺少 baseline 颜色空间对照结果')
+assert.ok(
+  baselineComparison.pixelComparison.meanAbsDelta < 8,
+  `WebGPU baseline 颜色空间不一致: meanAbsDelta=${baselineComparison.pixelComparison.meanAbsDelta}`,
+)
 assert.ok(comparisons.every((entry) => (
   entry.rustPixels.nonTransparentPixels > 0
   && entry.webgpuPixels.nonTransparentPixels > 0

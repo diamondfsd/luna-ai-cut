@@ -132,17 +132,24 @@ const token = process.env.GITCODE_TOKEN
 if (!token) throw new Error('上传需要 GITCODE_TOKEN 或 scripts/deploy-release.conf')
 const owner = process.env.GITCODE_OWNER ?? 'diamondfsd'
 const repo = process.env.GITCODE_REPO ?? 'luna-ai-cut-package-release'
-const tag = `v${packageVersion}`
+const isBeta = /^\d+\.\d+\.\d+-beta\.\d+$/i.test(packageVersion)
+if (!isBeta && !/^\d+\.\d+\.\d+$/.test(packageVersion)) {
+  throw new Error(`package.json 版本不受支持: ${packageVersion}（仅支持稳定版或 beta 版）`)
+}
+const tag = isBeta ? `beta/v${packageVersion}` : `v${packageVersion}`
 const api = `https://api.gitcode.com/api/v5/repos/${owner}/${repo}`
 const headers = { 'PRIVATE-TOKEN': token, 'Content-Type': 'application/json' }
 
-await fetch(`${api}/releases`, {
+const createRelease = await fetch(`${api}/releases`, {
   method: 'POST', headers,
   body: JSON.stringify({ tag_name: tag, name: tag, body: `Luna AI Cut ${tag} 热更新` }),
 })
+if (!createRelease.ok && createRelease.status !== 409) {
+  throw new Error(`创建 GitCode Release 失败: HTTP ${createRelease.status}`)
+}
 
 async function uploadAsset(path) {
-  const response = await fetch(`${api}/releases/${tag}/upload_url?file_name=${encodeURIComponent(basename(path))}`, {
+  const response = await fetch(`${api}/releases/${encodeURIComponent(tag)}/upload_url?file_name=${encodeURIComponent(basename(path))}`, {
     headers: { 'PRIVATE-TOKEN': token },
   })
   if (!response.ok) throw new Error(`获取 ${basename(path)} 上传地址失败: HTTP ${response.status}`)

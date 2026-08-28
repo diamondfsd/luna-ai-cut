@@ -12,6 +12,7 @@ import { detectInsta360ILog } from './iLogDetection'
 import { downloadToFile } from './fileDownloadService'
 import { safeName } from './filePathUtils'
 import { currentBaseDir, previewCacheDir } from '../storage/settingsService'
+import { logMainWarn } from '../infrastructure/loggerService'
 import type { LunaFile, MediaMetadata } from '../../src/shared/types'
 import { buildVideoMetadata, dolbyVisionInfo, parseFrameRate, type VideoProbeData } from './videoMetadata'
 
@@ -207,16 +208,24 @@ export async function getVideoFrameRate(
         '-show_streams',
         '-show_format',
         sourcePath,
-      ], { encoding: 'utf-8' }),
+      ], { encoding: 'utf-8', timeout: 15_000 }),
       detectInsta360ILog(sourcePath),
     ])
     const data = JSON.parse(stdout) as VideoProbeData
     const videoStream = data.streams?.find((stream) => stream.codec_type === 'video')
     const frameRate = parseFrameRate(videoStream?.avg_frame_rate)
       ?? parseFrameRate(videoStream?.r_frame_rate)
-    const duration = data.format?.duration ? Math.round(Number(data.format.duration)) : null
+    const parsedDuration = Number(data.format?.duration)
+    const duration = Number.isFinite(parsedDuration) && parsedDuration > 0
+      ? Math.round(parsedDuration)
+      : null
     return { frameRate, duration, ...dolbyVisionInfo(videoStream, data.format), iLog }
-  } catch {
+  } catch (error) {
+    logMainWarn('[媒体探测] ffprobe 失败', {
+      filePath: sourcePath,
+      error: error instanceof Error ? error.message : String(error),
+      code: error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : undefined,
+    })
     return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
   }
 }

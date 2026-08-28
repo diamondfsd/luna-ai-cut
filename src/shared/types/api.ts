@@ -186,6 +186,7 @@ export interface LunaApi {
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
   getLogDir: () => Promise<string>
+  exportDiagnosticsBundle: () => Promise<string>
   clearLogs: () => Promise<void>
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
@@ -316,7 +317,7 @@ export interface LunaApi {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     loadFont(filePath: string): Promise<ArrayBuffer>
     loadLut(filePath: string): Promise<ArrayBuffer>
-    getMediaFormatInfo(filePath: string): Promise<{ dolbyVision: boolean; iLog: boolean; raw: boolean }>
+    getMediaFormatInfo(filePath: string): Promise<{ dolbyVision: boolean; iLog: boolean; raw: boolean; duration: number | null }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
     getVideoDuration(filePath: string): Promise<number>
@@ -383,14 +384,12 @@ export interface LunaApi {
   onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void): () => void
   onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void): () => void
   checkForUpdates(): Promise<UpdateInfo | null>
-  onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   listReleaseNotes(): Promise<ReleaseNoteItem[]>
   getHotUpdateVersion(): Promise<string | null>
   checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   applyHotUpdate(info: HotUpdateCheckResult): Promise<{ success: boolean; error?: string }>
   clearHotUpdate(): Promise<void>
   relaunchApp(): Promise<void>
-  onHotUpdateAvailable(callback: (info: HotUpdateCheckResult) => void): () => void
 }
 
 export interface DeviceDebugApi {
