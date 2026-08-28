@@ -3,9 +3,10 @@
  */
 import { app, ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { appendFileSync, existsSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { join, extname, basename, isAbsolute } from 'node:path'
+import { join, extname, basename, dirname, isAbsolute } from 'node:path'
 import {
   warmupRenderCore,
   renderCompositionFrame as lrcRenderCompositionFrame,
@@ -29,6 +30,7 @@ import { embedJpegSourceMetadata, embedVideoSourceMetadata } from '../export/exp
 
 interface RegisterContext {
   activeNativeExportTasks: Set<string>
+  activeExportEncoders: Map<string, ChildProcessWithoutNullStreams>
 }
 
 function runtimeResourceCacheRoot(): string {
@@ -101,6 +103,13 @@ function rcLog(msg: string): void {
   } catch { /* ignore */ }
 }
 
+function waitForChildProcess(child: ChildProcessWithoutNullStreams): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
+  return new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', (code, signal) => resolve({ code, signal }))
+  })
+}
+
 /** 包装 handler：自动 catch 异常并记日志 */
 function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
   let firstCall = true
@@ -122,6 +131,7 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
 }
 
 export function register(ctx: RegisterContext): void {
+  const webGpuSessions = new Map<string, { outputPath: string; sourcePath: string | null; stderr: { value: string } }>()
 
   ipcMain.handle('lrc:resetCompatibilityBlock', async () => {
     resetRenderCompatibilityBlock()
@@ -355,9 +365,146 @@ export function register(ctx: RegisterContext): void {
     },
   ))
 
+  ipcMain.handle('lrc:webgpu-video-begin', safe('webgpu-video-begin',
+    async (
+      _event: IpcMainInvokeEvent,
+      sessionId: string,
+      outputPath: string,
+      sourcePath: string | null,
+      width: number,
+      height: number,
+      fps: number,
+      duration: number,
+      sourceStartTime: number,
+      includeAudio: boolean,
+    ) => {
+      if (!sessionId || ctx.activeExportEncoders.has(sessionId)) throw new Error('WebGPU 视频导出会话已存在')
+      if (!outputPath || !Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2) {
+        throw new Error('WebGPU 视频导出尺寸无效')
+      }
+      if (!Number.isFinite(fps) || fps <= 0 || !Number.isFinite(duration) || duration <= 0) {
+        throw new Error('WebGPU 视频导出时间参数无效')
+      }
+      await mkdir(dirname(outputPath), { recursive: true })
+      const safeSourcePath = typeof sourcePath === 'string' && sourcePath.trim().length > 0 ? sourcePath : null
+      const safeStartTime = Number.isFinite(sourceStartTime) ? Math.max(0, sourceStartTime) : 0
+      const videoInput = ['-f', 'h264', '-r', String(fps), '-i', 'pipe:0']
+      const audioInput = safeSourcePath && includeAudio
+        ? [...(safeStartTime > 0 ? ['-ss', String(safeStartTime)] : []), '-i', safeSourcePath]
+        : []
+      const args = [
+        '-y', '-hide_banner', '-loglevel', 'error',
+        ...videoInput,
+        ...audioInput,
+        '-map', '0:v:0',
+        ...(audioInput.length > 0 ? ['-map', '1:a:0?'] : []),
+        '-c:v', 'copy',
+        ...(audioInput.length > 0 ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : ['-an']),
+        '-t', String(duration),
+        '-movflags', '+faststart',
+        outputPath,
+      ]
+      const child = spawn(getFfmpegPath(), args, { stdio: ['pipe', 'pipe', 'pipe'] })
+      child.stdout.resume()
+      const stderr = { value: '' }
+      child.stderr.setEncoding('utf8')
+      child.stderr.on('data', (chunk: string) => {
+        stderr.value += chunk
+        if (stderr.value.length > 16_384) stderr.value = stderr.value.slice(-16_384)
+      })
+      child.once('error', (error) => {
+        rcLog(`lrc:webgpu-video process error session=${sessionId} error=${error.message}`)
+      })
+      ctx.activeExportEncoders.set(sessionId, child)
+      webGpuSessions.set(sessionId, { outputPath, sourcePath: safeSourcePath, stderr })
+      rcLog(`lrc:webgpu-video-begin session=${sessionId} size=${width}x${height} fps=${fps} duration=${duration} audio=${Boolean(audioInput.length)}`)
+    },
+  ))
+
+  ipcMain.handle('lrc:webgpu-video-write', safe('webgpu-video-write',
+    async (_event: IpcMainInvokeEvent, sessionId: string, data: Uint8Array) => {
+      const child = ctx.activeExportEncoders.get(sessionId)
+      if (!child || child.stdin.destroyed || child.exitCode !== null) throw new Error('WebGPU 视频导出会话不可用')
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
+      if (bytes.byteLength === 0) return
+      if (!child.stdin.write(Buffer.from(bytes))) {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            cleanup()
+            reject(new Error('WebGPU 视频输出管道等待超时'))
+          }, 30_000)
+          const onDrain = () => {
+            cleanup()
+            resolve()
+          }
+          const onError = (error: Error) => {
+            cleanup()
+            reject(error)
+          }
+          const onClose = () => {
+            cleanup()
+            reject(new Error('WebGPU 视频封装进程已提前退出'))
+          }
+          const cleanup = () => {
+            clearTimeout(timeout)
+            child.stdin.off('drain', onDrain)
+            child.stdin.off('error', onError)
+            child.off('close', onClose)
+          }
+          child.stdin.once('drain', onDrain)
+          child.stdin.once('error', onError)
+          child.once('close', onClose)
+        })
+      }
+    },
+  ))
+
+  ipcMain.handle('lrc:webgpu-video-end', safe('webgpu-video-end',
+    async (_event: IpcMainInvokeEvent, sessionId: string) => {
+      const child = ctx.activeExportEncoders.get(sessionId)
+      const session = webGpuSessions.get(sessionId)
+      if (!child || !session) throw new Error('WebGPU 视频导出会话不可用')
+      ctx.activeExportEncoders.delete(sessionId)
+      webGpuSessions.delete(sessionId)
+      child.stdin.end()
+      const result = await waitForChildProcess(child)
+      if (result.code !== 0) {
+        throw new Error(`WebGPU 视频封装失败${session.stderr.value ? `: ${session.stderr.value.trim()}` : `（退出码 ${result.code ?? '未知'}）`}`)
+      }
+      if (session.sourcePath) {
+        await embedVideoSourceMetadata(getFfmpegPath(), session.outputPath, session.sourcePath).catch((error) => {
+          logMainWarn('[导出] WebGPU 视频无法写入来源设备信息', {
+            outputPath: session.outputPath,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+      }
+      rcLog(`lrc:webgpu-video-end session=${sessionId} output=${session.outputPath}`)
+    },
+  ))
+
+  ipcMain.handle('lrc:webgpu-video-cancel', safe('webgpu-video-cancel',
+    async (_event: IpcMainInvokeEvent, sessionId: string) => {
+      const child = ctx.activeExportEncoders.get(sessionId)
+      if (child) {
+        ctx.activeExportEncoders.delete(sessionId)
+        child.kill()
+        child.stdin.destroy()
+      }
+      webGpuSessions.delete(sessionId)
+      rcLog(`lrc:webgpu-video-cancel session=${sessionId}`)
+    },
+  ))
+
   ipcMain.handle('lrc:cancelExportTask', safe('cancelExportTask',
     async (_event: IpcMainInvokeEvent, taskId: string) => {
       lrcCancelExportTask(taskId)
+      const encoder = ctx.activeExportEncoders.get(taskId)
+      if (encoder) {
+        ctx.activeExportEncoders.delete(taskId)
+        encoder.kill()
+        encoder.stdin.destroy()
+      }
       rcLog(`lrc:cancelExportTask task=${taskId}`)
     },
   ))

@@ -12,7 +12,15 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
+import { isTestBuild } from '../src/shared/buildChannel'
 import { failStartup, installStartupExperience } from './infrastructure/startupWindowService'
+
+// Keep the test installer completely separate from the production app before
+// acquiring the single-instance lock or loading appMain.ts.
+if (isTestBuild) {
+  app.setName('Luna AI Cut 测试版')
+  app.setPath('userData', join(app.getPath('appData'), 'LunaAI-Cut-Test'))
+}
 
 async function boot(): Promise<void> {
   // 开发模式跳过热更新，避免本地代码被热更新覆盖

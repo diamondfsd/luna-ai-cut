@@ -81,8 +81,6 @@
   ],
   "mac": {
     "icon": "build/icon.icns",
-    // electron-builder 不签名；afterPack 统一执行 Ad Hoc 签名。
-    "identity": null,
     "target": [
       {
         "target": "dmg",

@@ -54,6 +54,7 @@ interface VideoFrameLike {
 }
 
 interface VideoEncoderLike {
+  readonly encodeQueueSize?: number
   configure(config: Record<string, unknown>): void
   encode(frame: VideoFrameLike, options?: Record<string, unknown>): void
   flush(): Promise<void>
@@ -85,7 +86,13 @@ interface VideoEncoderConstructorLike {
 }
 
 interface VideoFrameConstructorLike {
-  new(source: HTMLCanvasElement, init: { timestamp: number; duration?: number }): VideoFrameLike
+  new(source: Uint8Array, init: {
+    format: 'RGBA'
+    codedWidth: number
+    codedHeight: number
+    timestamp: number
+    duration?: number
+  }): VideoFrameLike
 }
 
 interface WebCodecsExportChunk {
@@ -99,6 +106,7 @@ interface WebCodecsExportResult {
   elapsedMs: number
   renderMs: number
   encodeMs: number
+  captureMs: number
   readbackMs: number
   flushMs: number
   frames: number
@@ -109,6 +117,8 @@ interface WebCodecsExportResult {
   height: number
   fps: number
 }
+
+const MAX_IN_FLIGHT_CAPTURES = 2
 
 interface ComparisonApi {
   initialize(config: ComparisonConfig): Promise<{ navigatorGpu: boolean }>
@@ -189,50 +199,6 @@ function waitForVideoReady(video: HTMLVideoElement): Promise<void> {
   })
 }
 
-function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
-  const videoWithFrameCallback = video as HTMLVideoElement & {
-    requestVideoFrameCallback?: (callback: () => void) => number
-  }
-  if (!videoWithFrameCallback.requestVideoFrameCallback) return waitForAnimationFrames(2)
-  return withTimeout(new Promise((resolve) => {
-    videoWithFrameCallback.requestVideoFrameCallback(() => resolve())
-  }), 5_000, 'WebGPU 导出视频帧准备超时')
-}
-
-async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
-  if (Math.abs(video.currentTime - time) < 0.001) {
-    await video.play().catch(() => undefined)
-    await waitForVideoFrame(video)
-    video.pause()
-    return
-  }
-  await new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      cleanup()
-      reject(new Error(`WebGPU 导出视频定位超时: ${time.toFixed(3)}s`))
-    }, 15_000)
-    const cleanup = () => {
-      window.clearTimeout(timeout)
-      video.removeEventListener('seeked', handleSeeked)
-      video.removeEventListener('error', handleError)
-    }
-    const handleSeeked = () => {
-      cleanup()
-      resolve()
-    }
-    const handleError = () => {
-      cleanup()
-      reject(new Error(`WebGPU 导出视频定位失败: ${video.error?.message ?? 'unknown error'}`))
-    }
-    video.addEventListener('seeked', handleSeeked, { once: true })
-    video.addEventListener('error', handleError, { once: true })
-    video.currentTime = time
-  })
-  await video.play().catch(() => undefined)
-  await waitForVideoFrame(video)
-  video.pause()
-}
-
 function waitForAnimationFrames(count: number): Promise<void> {
   if (count <= 0) return Promise.resolve()
   return new Promise((resolve) => {
@@ -291,12 +257,14 @@ pageWindow.lunaWebGpuComparison = {
       canvasWidth: next.canvasWidth,
       canvasHeight: next.canvasHeight,
       maxSide: next.maxSide,
-      waitForGpu: next.waitForGpu ?? true,
+      // Export capture is the synchronization point. Waiting after the
+      // presentation copy here would serialize interactive rendering.
+      waitForGpu: next.waitForGpu ?? false,
       rasterizeImages: true,
       onVideoElement: (element) => {
         primaryVideo = element instanceof HTMLVideoElement ? element : null
       },
-      onFallback: (reason) => {
+      onError: (reason) => {
         lastFallbackReason = reason
         rejectPending(new Error(reason))
       },
@@ -437,11 +405,6 @@ pageWindow.lunaWebGpuComparison = {
     const safeBitrate = Math.max(100_000, Math.round(bitrate))
     const width = canvas.width
     const height = canvas.height
-    const captureCanvas = document.createElement('canvas')
-    captureCanvas.width = width
-    captureCanvas.height = height
-    const captureContext = captureCanvas.getContext('2d')
-    if (!captureContext) throw new Error('无法准备视频导出画面')
     const encoderConfig = {
       codec,
       width,
@@ -475,41 +438,62 @@ pageWindow.lunaWebGpuComparison = {
     const startedAt = performance.now()
     let renderMs = 0
     let encodeMs = 0
-    let readbackMs = 0
+    let captureMs = 0
+    const pendingCaptures: Array<{ index: number; promise: Promise<{ frame: VideoFrameLike; captureMs: number }> }> = []
+    const captureCanvasFrame = (index: number): Promise<{ frame: VideoFrameLike; captureMs: number }> => {
+      const captureStartedAt = performance.now()
+      return renderer.captureVideoFrame((rgba, frameWidth, frameHeight) => ({
+        frame: new Frame(rgba, {
+          format: 'RGBA',
+          codedWidth: frameWidth,
+          codedHeight: frameHeight,
+          timestamp: Math.round(index * 1_000_000 / safeFps),
+          duration: Math.round(1_000_000 / safeFps),
+        }),
+        captureMs: performance.now() - captureStartedAt,
+      }))
+    }
+    const encodeCanvasFrame = async (index: number, captured: { frame: VideoFrameLike; captureMs: number }): Promise<void> => {
+      try {
+        captureMs += captured.captureMs
+        const encodeStartedAt = performance.now()
+        encoder.encode(captured.frame, { keyFrame: index === 0 })
+        encodeMs += performance.now() - encodeStartedAt
+        const queueStartedAt = performance.now()
+        while ((encoder.encodeQueueSize ?? 0) > 4) {
+          if (encodingError) throw encodingError
+          if (performance.now() - queueStartedAt >= 30_000) throw new Error('WebGPU standalone 编码队列排空超时')
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+        }
+      } finally {
+        captured.frame.close()
+      }
+    }
+    const drainCapture = async (): Promise<void> => {
+      const pending = pendingCaptures.shift()
+      if (!pending) return
+      await encodeCanvasFrame(pending.index, await pending.promise)
+    }
     try {
       for (let index = 0; index < safeFrameCount; index += 1) {
         if (encodingError) throw encodingError
         const time = index / safeFps
         const renderStartedAt = performance.now()
-        const rendered = waitForRender()
         if (frameLayers) {
+          const rendered = waitForRender()
           await renderer.setLayers(frameLayers[index] ?? frameLayers[frameLayers.length - 1] ?? feature.layers)
+          await rendered
         } else if (video) {
-          await seekVideo(video, time)
-          await renderer.setPlayback(true, false, time)
+          // Exercise the same deterministic path used by the real Electron
+          // export. It seeks each unique HTMLVideoElement once, then renders
+          // all layers using the prepared frame.
+          await renderer.renderFrameAt(time, { seekVideos: index === 0 })
         }
-        await rendered
-        // The renderer callback marks submission, while VideoFrame reads the
-        // canvas on the browser side. One animation frame lets that copy land
-        // without waiting indefinitely on the GPU queue.
-        await waitForAnimationFrames(2)
         renderMs += performance.now() - renderStartedAt
-        const readbackStartedAt = performance.now()
-        const rgba = await renderer.readOutputFrame()
-        captureContext.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0)
-        readbackMs += performance.now() - readbackStartedAt
-        const frameStartedAt = performance.now()
-        const frame = new Frame(captureCanvas, {
-          timestamp: Math.round(time * 1_000_000),
-          duration: Math.round(1_000_000 / safeFps),
-        })
-        try {
-          encoder.encode(frame, { keyFrame: index === 0 })
-        } finally {
-          frame.close()
-        }
-        encodeMs += performance.now() - frameStartedAt
+        pendingCaptures.push({ index, promise: captureCanvasFrame(index) })
+        if (pendingCaptures.length >= MAX_IN_FLIGHT_CAPTURES) await drainCapture()
       }
+      while (pendingCaptures.length > 0) await drainCapture()
       const flushStartedAt = performance.now()
       await withTimeout(encoder.flush(), 15_000, 'WebCodecs 视频编码收尾超时')
       const flushMs = performance.now() - flushStartedAt
@@ -518,7 +502,8 @@ pageWindow.lunaWebGpuComparison = {
         elapsedMs: Math.round(performance.now() - startedAt),
         renderMs: Math.round(renderMs * 100) / 100,
         encodeMs: Math.round(encodeMs * 100) / 100,
-        readbackMs: Math.round(readbackMs * 100) / 100,
+        captureMs: Math.round(captureMs * 100) / 100,
+        readbackMs: Math.round(captureMs * 100) / 100,
         flushMs: Math.round(flushMs * 100) / 100,
         frames: safeFrameCount,
         keyFrames: chunks.filter((chunk) => chunk.type === 'key').length,
@@ -529,6 +514,11 @@ pageWindow.lunaWebGpuComparison = {
         fps: safeFps,
       }
     } finally {
+      for (const pending of pendingCaptures.splice(0)) {
+        void pending.promise
+          .then((captured) => captured.frame.close())
+          .catch(() => undefined)
+      }
       encoder.close()
     }
   },

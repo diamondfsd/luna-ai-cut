@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
+import { createReadStream } from 'node:fs'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { createServer as createHttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -45,6 +47,7 @@ const CODEC = process.env.LUNA_WEBGPU_EXPORT_CODEC
 const BITRATE = 12_000_000
 const requestedLayerLimit = Number(process.env.LUNA_WEBGPU_EXPORT_LAYER_LIMIT ?? 0)
 const LAYER_LIMIT = Number.isFinite(requestedLayerLimit) ? Math.max(0, Math.round(requestedLayerLimit)) : 0
+const SKIP_REAL_VIDEO = process.env.LUNA_WEBGPU_EXPORT_SKIP_REAL_VIDEO === '1'
 
 function round(value) {
   return Math.round(value * 100) / 100
@@ -245,6 +248,55 @@ async function reservePort() {
   return port
 }
 
+async function startVideoServer(filePath) {
+  const size = (await stat(filePath)).size
+  const server = createHttpServer((request, response) => {
+    if (request.url !== '/benchmark-video.mp4') {
+      response.writeHead(404)
+      response.end()
+      return
+    }
+    const headers = {
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store',
+      'Content-Type': 'video/mp4',
+    }
+    if (request.method === 'HEAD') {
+      response.writeHead(200, { ...headers, 'Content-Length': size })
+      response.end()
+      return
+    }
+    const range = request.headers.range?.match(/^bytes=(\d*)-(\d*)$/)
+    if (!range) {
+      response.writeHead(200, { ...headers, 'Content-Length': size })
+      createReadStream(filePath).pipe(response)
+      return
+    }
+    const start = range[1] ? Number(range[1]) : 0
+    const requestedEnd = range[2] ? Number(range[2]) : size - 1
+    const end = Math.min(requestedEnd, size - 1)
+    if (start < 0 || start > end || start >= size) {
+      response.writeHead(416, { 'Content-Range': `bytes */${size}` })
+      response.end()
+      return
+    }
+    response.writeHead(206, {
+      ...headers,
+      'Content-Length': end - start + 1,
+      'Content-Range': `bytes ${start}-${end}/${size}`,
+    })
+    createReadStream(filePath, { start, end }).pipe(response)
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  return { server, url: `http://127.0.0.1:${port}/benchmark-video.mp4` }
+}
+
 async function runNativeExport(composition, outputPath, logPath) {
   native.initCompositor(logPath)
   const startedAt = performance.now()
@@ -280,7 +332,12 @@ async function runNativeExport(composition, outputPath, logPath) {
   }
 }
 
-async function runWebGpuWebCodecsExport({ feature, width, height, watermarkDataUrl, lutText, fontData, mask }) {
+async function runWebGpuWebCodecsExport({ feature, sourceType, width, height, watermarkDataUrl, lutText, fontData, mask }) {
+  if (sourceType === 'real-video') {
+    assert.equal(feature.frameLayers, undefined, 'real-video 基准不能传入 frameLayers')
+  } else {
+    assert.ok(feature.frameLayers?.length, 'static-frame 基准必须传入 PNG frameLayers')
+  }
   const port = await reservePort()
   const vite = await createViteServer({
     configFile: false,
@@ -295,6 +352,72 @@ async function runWebGpuWebCodecsExport({ feature, width, height, watermarkDataU
   const browser = await chromium.launch({ headless: true, args: chromiumArgs })
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 })
   const page = await context.newPage()
+  if (sourceType === 'real-video') {
+    await page.addInitScript(() => {
+      const metrics = {
+        seekMs: 0,
+        decodeMs: 0,
+        seekCount: 0,
+        frameCallbackCount: 0,
+      }
+      const seekStartedAt = new WeakMap()
+      const decodeStartedAt = new WeakMap()
+      window.__lunaWebGpuExportVideoMetrics = metrics
+
+      try {
+        const currentTimeDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')
+        if (currentTimeDescriptor?.get && currentTimeDescriptor.set) {
+          Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
+            configurable: currentTimeDescriptor.configurable,
+            enumerable: currentTimeDescriptor.enumerable,
+            get: currentTimeDescriptor.get,
+            set(value) {
+              if (this instanceof HTMLVideoElement) {
+                const next = Number(value)
+                const current = Number(currentTimeDescriptor.get.call(this))
+                if (Number.isFinite(next) && Number.isFinite(current) && Math.abs(next - current) > 0.001) {
+                  metrics.seekCount += 1
+                  seekStartedAt.set(this, performance.now())
+                }
+              }
+              currentTimeDescriptor.set.call(this, value)
+            },
+          })
+        }
+      } catch {
+        // The benchmark remains valid without setter instrumentation.
+      }
+
+      document.addEventListener('seeked', (event) => {
+        const video = event.target
+        const startedAt = video instanceof HTMLVideoElement ? seekStartedAt.get(video) : undefined
+        if (startedAt == null) return
+        metrics.seekMs += performance.now() - startedAt
+        seekStartedAt.delete(video)
+      }, true)
+
+      const originalPlay = HTMLMediaElement.prototype.play
+      HTMLMediaElement.prototype.play = function (...args) {
+        if (this instanceof HTMLVideoElement) decodeStartedAt.set(this, performance.now())
+        return originalPlay.apply(this, args)
+      }
+
+      const requestVideoFrameCallback = HTMLVideoElement.prototype.requestVideoFrameCallback
+      if (requestVideoFrameCallback) {
+        HTMLVideoElement.prototype.requestVideoFrameCallback = function (callback) {
+          return requestVideoFrameCallback.call(this, (now, metadata) => {
+            const startedAt = decodeStartedAt.get(this)
+            if (startedAt != null) {
+              metrics.decodeMs += performance.now() - startedAt
+              metrics.frameCallbackCount += 1
+              decodeStartedAt.delete(this)
+            }
+            callback(now, metadata)
+          })
+        }
+      }
+    })
+  }
   const runtimeErrors = []
   const runtimeWarnings = []
   page.on('pageerror', (error) => runtimeErrors.push(`pageerror: ${error.message}`))
@@ -309,29 +432,32 @@ async function runWebGpuWebCodecsExport({ feature, width, height, watermarkDataU
       ...layer,
       filePath: layer.filePath === 'fixture://watermark' ? watermarkDataUrl : layer.filePath,
     }))
+    const preparedFeature = {
+      ...feature,
+      layers: replaceFixturePaths(feature.layers),
+    }
+    if (feature.frameLayers) preparedFeature.frameLayers = feature.frameLayers.map(replaceFixturePaths)
     const initialized = await page.evaluate((next) => window.lunaWebGpuComparison?.initialize(next), {
       canvasWidth: width,
       canvasHeight: height,
       maxSide: MAX_SIDE,
-      // The headless Metal backend can leave onSubmittedWorkDone pending
-      // after a canvas copy. Render callbacks still provide a bounded frame
-      // boundary for this standalone benchmark.
-      waitForGpu: true,
+      // Export capture performs the one explicit GPU wait immediately before
+      // VideoFrame(canvas). Keep render submission itself asynchronous so the
+      // benchmark does not count the same fence twice.
+      waitForGpu: false,
       lutText,
       fontPath: FONT_PATH,
       fontData,
       mask,
-      features: [{
-        ...feature,
-        layers: replaceFixturePaths(feature.layers),
-        frameLayers: feature.frameLayers?.map(replaceFixturePaths),
-      }],
+      features: [preparedFeature],
     })
     assert.equal(initialized?.navigatorGpu, true, '当前 Chromium 没有可用的 WebGPU')
     if (process.env.LUNA_WEBGPU_EXPORT_SCREENSHOT === '1') {
       const preflight = await page.evaluate((id) => window.lunaWebGpuComparison?.renderFeature(id), feature.id)
       assert.ok(preflight, 'WebGPU 导出前置画面没有返回结果')
-      await page.locator('#comparison-canvas').screenshot({ path: path.join(path.dirname(feature.outputPath), 'webgpu-preflight.png') })
+      await page.locator('#comparison-canvas').screenshot({
+        path: path.join(path.dirname(feature.outputPath), `${feature.id}-webgpu-preflight.png`),
+      })
     }
     const result = await page.evaluate((input) => window.lunaWebGpuComparison?.exportVideo(input.id, input.frameCount, input.fps, input.codec, input.bitrate), {
       id: feature.id,
@@ -343,11 +469,14 @@ async function runWebGpuWebCodecsExport({ feature, width, height, watermarkDataU
     assert.ok(result, 'WebGPU + WebCodecs 导出没有返回结果')
     assert.ok(result.chunks.length > 0, 'WebCodecs 没有生成编码数据')
     if (process.env.LUNA_WEBGPU_EXPORT_SCREENSHOT === '1') {
-      await page.locator('#comparison-canvas').screenshot({ path: path.join(path.dirname(feature.outputPath), 'webgpu-canvas.png') })
+      await page.locator('#comparison-canvas').screenshot({
+        path: path.join(path.dirname(feature.outputPath), `${feature.id}-webgpu-canvas.png`),
+      })
     }
     const encodedBytes = Buffer.concat(result.chunks.map((chunk) => Buffer.from(chunk.data)))
     assert.ok(encodedBytes.length > 0, 'WebCodecs 编码数据为空')
-    const encodedPath = path.join(path.dirname(feature.outputPath), 'webcodecs.h264')
+    const outputStem = path.basename(feature.outputPath, path.extname(feature.outputPath))
+    const encodedPath = path.join(path.dirname(feature.outputPath), `${outputStem}.h264`)
     await writeFile(encodedPath, encodedBytes)
     await execFileAsync(ffmpegPath, [
       '-y', '-hide_banner', '-loglevel', 'error',
@@ -355,17 +484,29 @@ async function runWebGpuWebCodecsExport({ feature, width, height, watermarkDataU
       '-c:v', 'copy', '-movflags', '+faststart', feature.outputPath,
     ])
     const output = await probeVideo(feature.outputPath)
+    const videoMetrics = sourceType === 'real-video'
+      ? await page.evaluate(() => window.__lunaWebGpuExportVideoMetrics ?? null)
+      : null
+    const seekMs = round(Number(videoMetrics?.seekMs ?? 0))
+    const decodeMs = round(Number(videoMetrics?.decodeMs ?? 0))
     return {
       renderer: 'webgpu+webcodecs',
+      sourceType,
       elapsedMs: result.elapsedMs,
       requestedFrames: FRAME_COUNT,
       throughputFps: round(result.frames * 1000 / Math.max(1, result.elapsedMs)),
       renderMs: result.renderMs,
+      seekMs,
+      decodeMs,
+      gpuRenderMs: round(Math.max(0, result.renderMs - seekMs - decodeMs)),
       encodeMs: result.encodeMs,
+      captureMs: result.captureMs,
       readbackMs: result.readbackMs,
       flushMs: result.flushMs,
       frames: result.frames,
       keyFrames: result.keyFrames,
+      seekCount: Number(videoMetrics?.seekCount ?? 0),
+      videoFrameCallbacks: Number(videoMetrics?.frameCallbackCount ?? 0),
       encodedBytes: encodedBytes.length,
       codec: result.codec,
       runtimeErrors,
@@ -387,6 +528,31 @@ async function runWebGpuWebCodecsExport({ feature, width, height, watermarkDataU
     await browser.close().catch(() => undefined)
     await vite.close().catch(() => undefined)
   }
+}
+
+function exportMetrics(result) {
+  return {
+    sourceType: result.sourceType,
+    elapsedMs: result.elapsedMs,
+    throughputFps: result.throughputFps,
+    renderMs: result.renderMs,
+    seekMs: result.seekMs,
+    decodeMs: result.decodeMs,
+    gpuRenderMs: result.gpuRenderMs,
+    captureMs: round(result.captureMs),
+    encodeMs: result.encodeMs,
+    readbackMs: round(result.readbackMs),
+    flushMs: round(result.flushMs),
+    frames: result.frames,
+    seekCount: result.seekCount,
+    videoFrameCallbacks: result.videoFrameCallbacks,
+    encodedBytes: result.encodedBytes,
+  }
+}
+
+function encodedPathFor(outputPath) {
+  const stem = path.basename(outputPath, path.extname(outputPath))
+  return path.join(path.dirname(outputPath), `${stem}.h264`)
 }
 
 const sourceStat = await stat(inputPath).catch(() => null)
@@ -411,8 +577,95 @@ await writeFile(maskPath, Buffer.concat([Buffer.from(`P5\n${mask.width} ${mask.h
 const watermarkDataUrl = `data:image/png;base64,${(await readFile(WATERMARK_PATH)).toString('base64')}`
 const lutText = await readFile(LUT_PATH, 'utf8')
 const fontData = (await readFile(FONT_PATH)).toString('base64')
-const nativeOutputPath = path.join(outputRoot, 'rust-wgpu-export.mp4')
-const webgpuOutputPath = path.join(outputRoot, 'webgpu-webcodecs-export.mp4')
+const sourceDetails = {
+  path: inputPath,
+  width: Number(source.width),
+  height: Number(source.height),
+  duration: Number(source.duration),
+  sourceFps: parseRate(source.avg_frame_rate ?? source.r_frame_rate),
+  codec: source.codec_name,
+  pixelFormat: source.pix_fmt,
+}
+const benchmarkVideoDetails = {
+  path: benchmarkVideoPath,
+  width: Number(benchmarkVideo.width),
+  height: Number(benchmarkVideo.height),
+  duration: Number(benchmarkVideo.duration),
+  fps: parseRate(benchmarkVideo.avg_frame_rate ?? benchmarkVideo.r_frame_rate),
+  codec: benchmarkVideo.codec_name,
+}
+const policy = {
+  canvasWidth: width,
+  canvasHeight: height,
+  maxSide: MAX_SIDE,
+  targetFps: FPS,
+  frames: FRAME_COUNT,
+  duration: DURATION,
+  electron: false,
+  audio: false,
+  ai: false,
+  chromiumPages: 1,
+}
+const webgpuMask = { width: mask.width, height: mask.height, bytes: [...mask.bytes] }
+
+// Run the real-video path first so the default benchmark measures browser video
+// seeking/decoding before the static PNG fixtures add their preprocessing cost.
+let realVideoReport
+if (SKIP_REAL_VIDEO) {
+  realVideoReport = {
+    generatedAt: new Date().toISOString(),
+    mode: 'real-video',
+    skipped: true,
+    skipReason: 'LUNA_WEBGPU_EXPORT_SKIP_REAL_VIDEO=1',
+    source: { type: 'real-video', ...sourceDetails, benchmarkVideoPath },
+    benchmarkVideo: benchmarkVideoDetails,
+    policy,
+    metrics: null,
+    comparisons: null,
+    outputs: { video: null, encodedH264: null },
+    outputRoot,
+  }
+  await writeFile(path.join(outputRoot, 'report-real-video.json'), `${JSON.stringify(realVideoReport, null, 2)}\n`, 'utf8')
+} else {
+  const realOutputPath = path.join(outputRoot, 'webgpu-webcodecs-real-video.mp4')
+  const realVideoServer = await startVideoServer(benchmarkVideoPath)
+  try {
+    const realLayers = fullStackLayers(realVideoServer.url, {
+      maskPath: 'fixture://mask',
+      lutPath: 'fixture://lut',
+      watermarkPath: 'fixture://watermark',
+    })
+    const realResult = await runWebGpuWebCodecsExport({
+      sourceType: 'real-video',
+      feature: { id: 'real-video', layers: realLayers, outputPath: realOutputPath },
+      width,
+      height,
+      watermarkDataUrl,
+      lutText,
+      fontData,
+      mask: webgpuMask,
+    })
+    realVideoReport = {
+      generatedAt: new Date().toISOString(),
+      mode: 'real-video',
+      skipped: false,
+      source: { type: 'real-video', ...sourceDetails, benchmarkVideoPath, videoUrl: realVideoServer.url },
+      benchmarkVideo: benchmarkVideoDetails,
+      policy: { ...policy, fullStackLayers: realLayers.length, exactFrameInput: false },
+      metrics: exportMetrics(realResult),
+      comparisons: { webgpuWebCodecs: realResult },
+      outputs: { video: realOutputPath, encodedH264: encodedPathFor(realOutputPath) },
+      outputRoot,
+    }
+    await writeFile(path.join(outputRoot, 'report-real-video.json'), `${JSON.stringify(realVideoReport, null, 2)}\n`, 'utf8')
+    assert.deepEqual(realResult.runtimeErrors, [])
+    assert.equal(realResult.output.width, width)
+    assert.equal(realResult.output.height, height)
+  } finally {
+    await new Promise((resolve) => realVideoServer.server.close(resolve))
+  }
+}
+
 const frameInputs = await extractBenchmarkFrames(benchmarkVideoPath, outputRoot, width, height)
 const exactFrameInput = process.env.LUNA_WEBGPU_EXPORT_EXACT_FRAME === '1' ? frameInputs[0]?.path : null
 if (process.env.LUNA_WEBGPU_EXPORT_EXACT_FRAME === '1') assert.equal(FRAME_COUNT, 1, '同帧校验模式只支持 1 帧')
@@ -426,72 +679,79 @@ const webgpuFrameLayers = frameInputs.map(({ dataUrl }) => staticFrameLayers(dat
   lutPath: 'fixture://lut',
   watermarkPath: 'fixture://watermark',
 })).map((layers) => (LAYER_LIMIT > 0 ? layers.slice(0, LAYER_LIMIT) : layers))
-let nativeResult
-let webgpuResult
-nativeResult = await runNativeExport(composition, nativeOutputPath, path.join(outputRoot, 'native-export.log'))
-webgpuResult = await runWebGpuWebCodecsExport({
-  feature: { id: 'full-stack', layers: webgpuFrameLayers[0].slice(), frameLayers: webgpuFrameLayers.map((layers) => layers.slice()), outputPath: webgpuOutputPath },
+const nativeOutputPath = path.join(outputRoot, 'rust-wgpu-static-frame-reference.mp4')
+const staticOutputPath = path.join(outputRoot, 'webgpu-webcodecs-static-frame.mp4')
+const nativeResult = await runNativeExport(composition, nativeOutputPath, path.join(outputRoot, 'rust-wgpu-static-frame.log'))
+const staticResult = await runWebGpuWebCodecsExport({
+  sourceType: 'static-frame',
+  feature: {
+    id: 'static-frame',
+    layers: webgpuFrameLayers[0].slice(),
+    frameLayers: webgpuFrameLayers.map((layers) => layers.slice()),
+    outputPath: staticOutputPath,
+  },
   width,
   height,
   watermarkDataUrl,
   lutText,
   fontData,
-  mask: { width: mask.width, height: mask.height, bytes: [...mask.bytes] },
+  mask: webgpuMask,
 })
 const nativeFirstFrame = await decodeFirstFrameRgba(nativeOutputPath, width, height)
-const webgpuFirstFrame = await decodeFirstFrameRgba(webgpuOutputPath, width, height)
-
-const report = {
+const webgpuFirstFrame = await decodeFirstFrameRgba(staticOutputPath, width, height)
+const staticFrameReport = {
   generatedAt: new Date().toISOString(),
-  mode: 'standalone-export-rust-wgpu-vs-webgpu-webcodecs-frame-sequence',
+  mode: 'static-frame',
+  skipped: false,
   source: {
-    path: inputPath,
-    width: Number(source.width),
-    height: Number(source.height),
-    duration: Number(source.duration),
-    sourceFps: parseRate(source.avg_frame_rate ?? source.r_frame_rate),
-    codec: source.codec_name,
-    pixelFormat: source.pix_fmt,
+    type: 'static-frame',
+    ...sourceDetails,
+    benchmarkVideoPath,
+    framePath: frameInputs[0]?.path ?? null,
   },
-  benchmarkVideo: {
-    path: benchmarkVideoPath,
-    width: Number(benchmarkVideo.width),
-    height: Number(benchmarkVideo.height),
-    duration: Number(benchmarkVideo.duration),
-    fps: parseRate(benchmarkVideo.avg_frame_rate ?? benchmarkVideo.r_frame_rate),
-    codec: benchmarkVideo.codec_name,
-  },
+  benchmarkVideo: benchmarkVideoDetails,
   benchmarkFrames: {
     count: frameInputs.length,
     width,
     height,
     source: 'ffmpeg-decoded lossless PNG frames from the real 4K source',
   },
-  policy: {
-    canvasWidth: width,
-    canvasHeight: height,
-    maxSide: MAX_SIDE,
-    targetFps: FPS,
-    frames: FRAME_COUNT,
-    duration: DURATION,
-    fullStackLayers: nativeLayers.length,
-    electron: false,
-    audio: false,
-    ai: false,
-    chromiumPages: 1,
-    exactFrameInput: Boolean(exactFrameInput),
-  },
+  policy: { ...policy, fullStackLayers: nativeLayers.length, exactFrameInput: Boolean(exactFrameInput) },
+  metrics: exportMetrics(staticResult),
   comparisons: {
     native: nativeResult,
-    webgpuWebCodecs: webgpuResult,
+    webgpuWebCodecs: staticResult,
     firstFrame: compareRgbaFrames(nativeFirstFrame, webgpuFirstFrame),
+  },
+  outputs: {
+    nativeVideo: nativeOutputPath,
+    webgpuVideo: staticOutputPath,
+    encodedH264: encodedPathFor(staticOutputPath),
+  },
+  outputRoot,
+}
+await writeFile(path.join(outputRoot, 'report-static-frame.json'), `${JSON.stringify(staticFrameReport, null, 2)}\n`, 'utf8')
+assert.deepEqual(staticResult.runtimeErrors, [])
+assert.equal(nativeResult.output.width, width)
+assert.equal(nativeResult.output.height, height)
+assert.equal(staticResult.output.width, width)
+assert.equal(staticResult.output.height, height)
+
+const report = {
+  generatedAt: new Date().toISOString(),
+  mode: 'standalone-export-split-static-frame-and-real-video',
+  source: sourceDetails,
+  benchmarkVideo: benchmarkVideoDetails,
+  policy: { ...policy, exactFrameInput: Boolean(exactFrameInput) },
+  reports: {
+    staticFrame: 'report-static-frame.json',
+    realVideo: 'report-real-video.json',
+  },
+  results: {
+    staticFrame: staticFrameReport,
+    realVideo: realVideoReport,
   },
   outputRoot,
 }
 await writeFile(path.join(outputRoot, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
 console.log(JSON.stringify(report, null, 2))
-assert.deepEqual(webgpuResult.runtimeErrors, [])
-assert.equal(nativeResult.output.width, width)
-assert.equal(nativeResult.output.height, height)
-assert.equal(webgpuResult.output.width, width)
-assert.equal(webgpuResult.output.height, height)

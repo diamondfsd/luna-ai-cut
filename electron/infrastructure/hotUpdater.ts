@@ -20,8 +20,9 @@ import { join } from 'node:path'
 import {
   canLoadHotUpdate,
   compareHotUpdateVersions,
-  releaseChannelForVersion,
+  releaseChannelForBuild,
 } from '../../src/shared/hotUpdateCompatibility'
+import { isTestBuild } from '../../src/shared/buildChannel'
 import { installHotUpdateArchive, type HotUpdateIntegrity } from './hotUpdateArchiveService'
 import { logMainInfo, logMainWarn } from './loggerService'
 
@@ -141,7 +142,7 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
     return {
       version,
       zipName: latest.name,
-      minAppVersion: releaseTag.replace(/^beta\//, '').replace(/^v/, ''),
+      minAppVersion: releaseTag.replace(/^test\//, '').replace(/^beta\//, '').replace(/^v/, ''),
       integrity,
       notesUrl: notesAsset ? `${GITCODE_DL}/${releaseTag}/${notesAsset.name}` : undefined,
     }
@@ -199,7 +200,7 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   }
 
   const appVersion = app.getVersion()
-  const appRelease = releaseChannelForVersion(appVersion)
+  const appRelease = releaseChannelForBuild(appVersion, isTestBuild ? 'test' : 'stable')
   if (!appRelease) {
     logMainWarn('[hot-update] 当前安装包版本不在支持的更新通道中', { appVersion })
     return null
@@ -218,7 +219,7 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   }
 
   // 检查 minAppVersion 约束
-  const minAppRelease = releaseChannelForVersion(manifest.minAppVersion)
+  const minAppRelease = releaseChannelForBuild(manifest.minAppVersion, appRelease.buildChannel)
   if (!minAppRelease || minAppRelease.version !== appRelease.version) {
     logMainWarn('[hot-update] 热更新最低版本不匹配', {
       appVersion: appRelease.version,

@@ -4,6 +4,7 @@ import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewL
 import { WebGpuVideoPreview } from './WebGpuVideoPreview'
 import { PreviewStageError } from './PreviewStageError'
 import { useApp } from '../context/AppContext'
+import { isTestBuild } from '../shared/buildChannel'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls, toast } from '../ui'
@@ -44,7 +45,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const webGpuPreviewEnabled = settings?.experimentalWebGpuPreview ?? false
+  // 测试包固定使用 WebGPU；正式包仍可通过设置切换并保留回退行为。
+  const webGpuPreviewEnabled = isTestBuild || (settings?.experimentalWebGpuPreview ?? false)
   const [webGpuPreviewFailed, setWebGpuPreviewFailed] = useState(false)
   const webGpuPreviewAutoDisabledRef = useRef(false)
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
@@ -290,16 +292,16 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   }
 
   function handleWebGpuPreviewFailure(reason: string) {
-    console.warn('[PreviewStage] WebGPU preview fallback', { reason })
+    console.error('[PreviewStage] WebGPU preview failed', { reason, buildChannel: isTestBuild ? 'test' : 'stable' })
     setWebGpuPreviewFailed(true)
     const isResourceFailure = reason.includes('调色文件') || reason.includes('字体文件')
     const userMessage = isResourceFailure ? '调色文件暂时无法读取' : '预览加速暂时不可用'
-    handleRenderFailure(userMessage, false)
+    handleRenderFailure(isTestBuild ? reason : userMessage, false)
     if (previewErrorToastRef.current !== reason) {
       previewErrorToastRef.current = reason
-      toast.error(`${userMessage}，已切回通用预览`)
+      toast.error(isTestBuild ? '预览加速失败，已停止自动切换，请查看错误详情' : `${userMessage}，已切回通用预览`)
     }
-    if (isResourceFailure) return
+    if (isTestBuild || isResourceFailure) return
     if (webGpuPreviewAutoDisabledRef.current || !settings?.experimentalWebGpuPreview) return
     webGpuPreviewAutoDisabledRef.current = true
     setSettings((current) => (current ? { ...current, experimentalWebGpuPreview: false } : current))
@@ -475,9 +477,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
-              onFallback={handleWebGpuPreviewFailure}
+              onError={handleWebGpuPreviewFailure}
             />
-          ) : isDisplayVideo && !useCompositionVideoRenderer ? (
+          ) : isTestBuild ? null : isDisplayVideo && !useCompositionVideoRenderer ? (
             <MultipleLayerVideoPreviewLrcRender
               key={rendererKey}
               layers={layers}

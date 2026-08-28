@@ -4,6 +4,7 @@ import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-r
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useStorageMigration } from '../hooks/useStorageMigration'
+import { isTestBuild } from '../shared/buildChannel'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
@@ -335,35 +336,35 @@ export function SettingsPage({
           </div>
         </section>
 
-        <section className="settings-group">
-          <h2 className="settings-group-title">预览</h2>
+        {!isTestBuild && <section className="settings-group">
+          <h2 className="settings-group-title">预览与导出加速</h2>
           <div className="settings-card">
             <article className="settings-row">
               <div className="settings-row-copy">
-                <span>webgpu预览</span>
-                <em>使用系统视频解码和画布显示；复杂编辑内容会继续使用普通预览</em>
+                <span>预览加速</span>
+                <em>{settings?.experimentalWebGpuPreview ? '预览优先使用画面加速' : '使用通用预览方式'}</em>
               </div>
               <Switch
                 checked={settings?.experimentalWebGpuPreview ?? false}
                 disabled={!settings}
-                ariaLabel="webgpu预览"
+                ariaLabel="预览加速"
                 onCheckedChange={saveWebGpuPreviewSetting}
               />
             </article>
             <article className="settings-row">
               <div className="settings-row-copy">
-                <span>webgpu导出</span>
-                <em>为后续高分辨率视频导出准备；当前仍使用稳定的导出方式</em>
+                <span>导出加速</span>
+                <em>{settings?.experimentalWebGpuExport ? '导出优先使用画面加速' : '使用通用导出方式'}</em>
               </div>
               <Switch
                 checked={settings?.experimentalWebGpuExport ?? false}
                 disabled={!settings}
-                ariaLabel="webgpu导出"
+                ariaLabel="导出加速"
                 onCheckedChange={saveWebGpuExportSetting}
               />
             </article>
           </div>
-        </section>
+        </section>}
 
         <section className="settings-group">
           <h2 className="settings-group-title">连接与维护</h2>

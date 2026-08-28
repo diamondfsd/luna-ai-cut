@@ -6,9 +6,10 @@ import { DEFAULT_DEVICE } from '../devices/definitions/deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
 import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
 import type { AppSettings } from '../../src/shared/types'
+import { isTestBuild } from '../../src/shared/buildChannel'
 
 function settingsPath(): string {
-  if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
+  if (isTestBuild || process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
   return stableSettingsPath(app.getPath('appData'))
 }
 
@@ -38,7 +39,7 @@ export async function previewCacheDir(): Promise<string> {
 }
 
 function defaultBaseDir(): string {
-  return path.join(app.getPath('pictures'), 'LunaAI-Cut')
+  return path.join(app.getPath('pictures'), isTestBuild ? 'LunaAI-Cut-Test' : 'LunaAI-Cut')
 }
 
 function defaultExportDir(): string {
@@ -68,8 +69,8 @@ function defaultSettings(): AppSettings {
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
     cameraPreviewQuality: 'proxy',
-    experimentalWebGpuPreview: false,
-    experimentalWebGpuExport: false,
+    experimentalWebGpuPreview: true,
+    experimentalWebGpuExport: true,
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
@@ -109,12 +110,13 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   ].includes(String(saved?.defaultWatermarkPosition))
     ? saved?.defaultWatermarkPosition
     : defaults.defaultWatermarkPosition
-  merged.experimentalWebGpuPreview = typeof saved?.experimentalWebGpuPreview === 'boolean'
-    ? saved.experimentalWebGpuPreview
-    : defaults.experimentalWebGpuPreview
-  merged.experimentalWebGpuExport = typeof saved?.experimentalWebGpuExport === 'boolean'
-    ? saved.experimentalWebGpuExport
-    : defaults.experimentalWebGpuExport
+  // 测试包固定启用 WebGPU；正式包保留用户可控的兼容字段。
+  merged.experimentalWebGpuPreview = isTestBuild
+    ? true
+    : typeof saved?.experimentalWebGpuPreview === 'boolean' ? saved.experimentalWebGpuPreview : defaults.experimentalWebGpuPreview
+  merged.experimentalWebGpuExport = isTestBuild
+    ? true
+    : typeof saved?.experimentalWebGpuExport === 'boolean' ? saved.experimentalWebGpuExport : defaults.experimentalWebGpuExport
   merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
     ? saved.cameraPreviewQuality
     : defaults.cameraPreviewQuality
@@ -166,6 +168,8 @@ export async function saveSettings(partial: Partial<AppSettings>): Promise<AppSe
   const next = {
     ...current,
     ...partial,
+    experimentalWebGpuPreview: isTestBuild ? true : partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
+    experimentalWebGpuExport: isTestBuild ? true : partial.experimentalWebGpuExport ?? current.experimentalWebGpuExport,
   }
   next.cacheDir = cacheDir(next.baseDir)
   await writeSettingsFile(next)
