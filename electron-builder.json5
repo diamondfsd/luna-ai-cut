@@ -4,6 +4,7 @@
   "appId": "com.diamondfsd.lunaaicut",
   "asar": true,
   "asarUnpack": [],
+  "beforePack": "scripts/verify-native-artifact.mjs",
   "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna AI Cut",
   "directories": {
