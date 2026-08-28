@@ -1,4 +1,4 @@
-import { useCallback, useState, type MouseEvent } from 'react'
+import { useState } from 'react'
 import { Camera, MonitorCog, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
@@ -9,7 +9,6 @@ import { HelpDialog } from './HelpDialog'
 import { SendToPhoneDialog } from './SendToPhoneDialog'
 import { CameraLivePreviewDialog } from './CameraLivePreviewDialog'
 import { IconButton, Tooltip } from '../ui'
-import { logger } from '../lib/rendererLogger'
 import '../styles/nav.css'
 
 interface AppNavProps {
@@ -22,56 +21,33 @@ interface AppNavProps {
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
-  const isMac = window.navigator.platform.includes('Mac')
-  const isWindows = window.navigator.platform.includes('Win')
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`
     : `${deviceName} 未连接`
-  const handleNavigationClick = useCallback((event: MouseEvent<HTMLAnchorElement>, target: string) => {
-    const link = event.currentTarget
-    const rect = link.getBoundingClientRect()
-    const hit = document.elementFromPoint(event.clientX, event.clientY)
-    const hitLink = hit?.closest('a')
-    logger.info('[导航诊断] 顶部导航点击', {
-      target,
-      currentHash: window.location.hash,
-      defaultPrevented: event.defaultPrevented,
-      button: event.button,
-      point: { x: event.clientX, y: event.clientY },
-      linkRect: {
-        left: Math.round(rect.left),
-        top: Math.round(rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      },
-      hitElement: hit ? `${hit.tagName.toLowerCase()}${hit.className ? `.${String(hit.className).replace(/\s+/g, '.')}` : ''}` : null,
-      hitLink: hitLink?.getAttribute('href') ?? null,
-    })
-  }, [])
 
   return (
-    <nav className={`global-nav${isMac ? ' global-nav-macos' : isWindows ? ' global-nav-windows' : ''}`}>
+    <nav className="global-nav">
       <div className="nav-inner">
         <div className="nav-links">
-          <NavLink to="/library" onClick={(event) => handleNavigationClick(event, '/library')} className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink to="/library" className={({ isActive }) => (isActive ? 'active' : '')}>
             设备媒体库
           </NavLink>
-          <NavLink to="/local-resources" onClick={(event) => handleNavigationClick(event, '/local-resources')} className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink to="/local-resources" className={({ isActive }) => (isActive ? 'active' : '')}>
             本地资源
           </NavLink>
-          <NavLink to="/ai-selection" onClick={(event) => handleNavigationClick(event, '/ai-selection')} className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink to="/ai-selection" className={({ isActive }) => (isActive ? 'active' : '')}>
             AI 选片
           </NavLink>
-          <NavLink to="/workspace" onClick={(event) => handleNavigationClick(event, '/workspace')} className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台
           </NavLink>
-          <NavLink to="/settings" onClick={(event) => handleNavigationClick(event, '/settings')} className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>
           {(import.meta.env.DEV) && (
-            <NavLink to="/ble-debug" onClick={(event) => handleNavigationClick(event, '/ble-debug')} className={({ isActive }) => (isActive ? 'active' : '')}>
+            <NavLink to="/ble-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
               调试
             </NavLink>
           )}
