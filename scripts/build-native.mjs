@@ -11,7 +11,7 @@
  * 要求：目标需通过 rustup 安装，如 rustup target add x86_64-pc-windows-msvc
  */
 import { spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, readdirSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
@@ -40,6 +40,18 @@ const targetArch = targetLower.includes('aarch64')
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
+const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker']
+
+// The build output directory is shared by platform builds on developer machines.
+// Remove incompatible leftovers before copying the current target's artifacts.
+for (const fileName of readdirSync(rcDir)) {
+  const isIncompatible = isWin
+    ? workerBaseNames.includes(fileName) || /\.(dylib|so(?:\..*)?)$/i.test(fileName)
+    : /\.(exe|dll)$/i.test(fileName) || /^DXC-LICENSE-.*\.txt$/i.test(fileName)
+  if (!isIncompatible) continue
+  rmSync(join(rcDir, fileName), { force: true })
+  console.log('[build-native] removed incompatible artifact:', fileName)
+}
 
 if (isWin) {
   await prepareDxcRuntime({ rootDir: root, outputDir: rcDir, arch: targetArch })
@@ -166,7 +178,7 @@ copyFileSync(src, dest)
 prepareMacArtifact(dest, 'forbidden')
 console.log('[build-native] ✅', dest)
 
-for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker']) {
+for (const baseName of workerBaseNames.slice(0, 5)) {
   const workerName = isWin ? `${baseName}.exe` : baseName
   const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
   const workerDest = join(rcDir, workerName)
