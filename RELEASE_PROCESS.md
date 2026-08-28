@@ -126,18 +126,21 @@ GitCode Release：beta/v1.8.0-beta.1
 ./scripts/deploy-release.sh v1.8.0-beta.1
 ```
 
-beta 热更新必须以同一个 beta 安装版本为基准，热更新版本和 Release 也使用 beta 专属规则：
+后续 beta 调试/测试热更新统一发布到固定的测试 Release。测试 Release 使用不带 `/` 的 tag，避免 GitCode 附件回调路由异常：
 
 ```text
 热更新：1.8.0-beta.1-hot.1
-GitCode Release：beta/v1.8.0-beta.1
+GitCode Release：test-beta-v1.8.0-beta.1
 ```
 
-测试包使用独立的 GitCode Release tag：beta 版本为 `test-beta-v1.8.0-beta.1`，稳定版本为 `test-v1.8.0`，不使用带 `/` 的测试 tag。
+发布 beta 测试热更新时，必须先构建测试通道，再使用测试发布脚本：
 
 ```bash
-./scripts/build-hot-update.sh
+pnpm run build:test:app
+pnpm publish:hot:test --version 1.8.0-beta.1-hot.1 --upload
 ```
+
+后续热更新默认沿用这个测试 Release 流程，不使用 `pnpm publish:hot` 或 `./scripts/build-hot-update.sh` 发布到 `beta/v1.8.0-beta.N`。稳定版本测试包使用 `test-vX.Y.Z`，同样不使用带 `/` 的测试 tag。
 
 `1.8.0-beta.1-hot.1` 不能安装到 `1.8.0` 或 `1.8.0-beta.2`。稳定版继续使用 `vX.Y.Z` 和 `X.Y.Z-hot.N` 规则。
 
