@@ -8,7 +8,6 @@ import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
 import { logExport } from '../lib/rendererLogger'
 import { isTestBuild } from '../shared/buildChannel'
-import { exportVideoWithWebGpu } from './webgpuVideoExport'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -198,12 +197,6 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-async function shouldUseWebGpuVideoExport(): Promise<boolean> {
-  if (isTestBuild) return true
-  const settings = await window.luna.getSettings().catch(() => null)
-  return settings?.experimentalWebGpuExport === true
-}
-
 export async function exportPreviewImage(params: {
   exportDir: string
   fileName: string
@@ -268,7 +261,11 @@ export async function exportPreviewVideo(params: {
       emitVideoProgress(percent, 'exporting')
     }
   }
-  const useWebGpu = await shouldUseWebGpuVideoExport()
+  logExport('[导出诊断] 视频渲染路径', {
+    renderer: 'rust-wgpu',
+    buildChannel: isTestBuild ? 'test' : 'stable',
+    reason: '浏览器端导出加速已移除，统一使用原生 wgpu 导出',
+  })
   let stopProgressWatcher = false
   const progressWatchers: Promise<void>[] = []
   const startNativeProgressWatcher = (): void => {
@@ -320,29 +317,7 @@ export async function exportPreviewVideo(params: {
         params.includeAudio !== false,
       )
     }
-    if (useWebGpu) {
-      try {
-        await exportVideoWithWebGpu({
-          outputPath: path,
-          width: params.width,
-          height: params.height,
-          layers: params.layers,
-          fps: exportFps,
-          qualityPreset: params.qualityPreset ?? 'high',
-          includeAudio: params.includeAudio !== false,
-          sessionId: renderTaskId ?? itemId ?? `webgpu_export_${Date.now()}`,
-          onProgress: reportVideoProgress,
-        })
-      } catch (error) {
-        if (isTestBuild) throw error
-        logExport('[导出诊断] WebGPU 导出失败，切换通用导出', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-        await exportWithNative()
-      }
-    } else {
-      await exportWithNative()
-    }
+    await exportWithNative()
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
       emitVideoProgress(100, 'done')

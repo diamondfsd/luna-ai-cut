@@ -441,10 +441,7 @@ async function runWebGpuWebCodecsExport({ feature, sourceType, width, height, wa
       canvasWidth: width,
       canvasHeight: height,
       maxSide: MAX_SIDE,
-      // Export capture performs the one explicit GPU wait immediately before
-      // VideoFrame(canvas). Keep render submission itself asynchronous so the
-      // benchmark does not count the same fence twice.
-      waitForGpu: false,
+      captureMode: 'canvas',
       lutText,
       fontPath: FONT_PATH,
       fontData,

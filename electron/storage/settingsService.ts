@@ -70,7 +70,8 @@ function defaultSettings(): AppSettings {
     workspacePreviewQuality: 'balanced',
     cameraPreviewQuality: 'proxy',
     experimentalWebGpuPreview: true,
-    experimentalWebGpuExport: true,
+    // 视频导出统一使用 Rust/wgpu；保留该字段仅用于兼容旧版本设置。
+    experimentalWebGpuExport: false,
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
@@ -114,9 +115,8 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.experimentalWebGpuPreview = isTestBuild
     ? true
     : typeof saved?.experimentalWebGpuPreview === 'boolean' ? saved.experimentalWebGpuPreview : defaults.experimentalWebGpuPreview
-  merged.experimentalWebGpuExport = isTestBuild
-    ? true
-    : typeof saved?.experimentalWebGpuExport === 'boolean' ? saved.experimentalWebGpuExport : defaults.experimentalWebGpuExport
+  // 浏览器 WebGPU 导出已移除，覆盖旧版本保存的 true，避免升级后继续走慢路径。
+  merged.experimentalWebGpuExport = false
   merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
     ? saved.cameraPreviewQuality
     : defaults.cameraPreviewQuality
@@ -154,7 +154,13 @@ export async function getSettings(): Promise<AppSettings> {
     return defaults
   }
   const merged = mergeSettings(saved)
-  if (stored.fromLegacyPath || (saved.downloadDir && !saved.baseDir)) await writeSettingsFile(merged)
+  if (
+    stored.fromLegacyPath
+    || (saved.downloadDir && !saved.baseDir)
+    || saved.experimentalWebGpuExport === true
+  ) {
+    await writeSettingsFile(merged)
+  }
   return merged
 }
 
@@ -169,7 +175,8 @@ export async function saveSettings(partial: Partial<AppSettings>): Promise<AppSe
     ...current,
     ...partial,
     experimentalWebGpuPreview: isTestBuild ? true : partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
-    experimentalWebGpuExport: isTestBuild ? true : partial.experimentalWebGpuExport ?? current.experimentalWebGpuExport,
+    // 视频导出统一使用 Rust/wgpu；忽略旧客户端传入的导出加速开关。
+    experimentalWebGpuExport: false,
   }
   next.cacheDir = cacheDir(next.baseDir)
   await writeSettingsFile(next)

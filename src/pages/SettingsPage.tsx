@@ -153,12 +153,6 @@ export function SettingsPage({
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
-  function saveWebGpuExportSetting(enabled: boolean): void {
-    const patch = { experimentalWebGpuExport: enabled }
-    setSettings((current) => (current ? { ...current, ...patch } : current))
-    void window.luna.saveSettings(patch).then(setSettings)
-  }
-
   async function saveDownloadOrganizationSetting(enabled: boolean): Promise<void> {
     if (!settings) return
     const previous = settings.organizeDownloadsByDate ?? false
@@ -337,7 +331,7 @@ export function SettingsPage({
         </section>
 
         {!isTestBuild && <section className="settings-group">
-          <h2 className="settings-group-title">预览与导出加速</h2>
+          <h2 className="settings-group-title">预览加速</h2>
           <div className="settings-card">
             <article className="settings-row">
               <div className="settings-row-copy">
@@ -349,18 +343,6 @@ export function SettingsPage({
                 disabled={!settings}
                 ariaLabel="预览加速"
                 onCheckedChange={saveWebGpuPreviewSetting}
-              />
-            </article>
-            <article className="settings-row">
-              <div className="settings-row-copy">
-                <span>导出加速</span>
-                <em>{settings?.experimentalWebGpuExport ? '导出优先使用画面加速' : '使用通用导出方式'}</em>
-              </div>
-              <Switch
-                checked={settings?.experimentalWebGpuExport ?? false}
-                disabled={!settings}
-                ariaLabel="导出加速"
-                onCheckedChange={saveWebGpuExportSetting}
               />
             </article>
           </div>

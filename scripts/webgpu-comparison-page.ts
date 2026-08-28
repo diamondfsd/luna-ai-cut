@@ -20,6 +20,7 @@ interface ComparisonConfig {
   mask: { width: number; height: number; bytes: number[] }
   features: ComparisonFeature[]
   waitForGpu?: boolean
+  captureMode?: 'canvas' | 'readback'
 }
 
 interface VideoQualitySnapshot {
@@ -51,6 +52,8 @@ interface EncodedVideoChunkLike {
 
 interface VideoFrameLike {
   close(): void
+  allocationSize?(options?: Record<string, unknown>): number
+  copyTo?(destination: Uint8Array, options?: Record<string, unknown>): Promise<unknown>
 }
 
 interface VideoEncoderLike {
@@ -86,7 +89,7 @@ interface VideoEncoderConstructorLike {
 }
 
 interface VideoFrameConstructorLike {
-  new(source: Uint8Array, init: {
+  new(source: unknown, init: {
     format: 'RGBA'
     codedWidth: number
     codedHeight: number
@@ -116,9 +119,36 @@ interface WebCodecsExportResult {
   width: number
   height: number
   fps: number
+  capturePath: string
 }
 
 const MAX_IN_FLIGHT_CAPTURES = 2
+
+async function hasCanvasVideoFramePixels(frame: VideoFrameLike, width: number, height: number): Promise<boolean> {
+  if (!frame.allocationSize || !frame.copyTo) return false
+  const sampleSize = 16
+  const rects = [
+    { x: 0, y: 0 },
+    { x: Math.max(0, Math.floor(width / 2) - sampleSize / 2), y: Math.max(0, Math.floor(height / 2) - sampleSize / 2) },
+    { x: Math.max(0, width - sampleSize), y: Math.max(0, height - sampleSize) },
+  ].map(({ x, y }) => ({
+    x: Math.min(Math.max(0, Math.floor(x)), Math.max(0, width - sampleSize)),
+    y: Math.min(Math.max(0, Math.floor(y)), Math.max(0, height - sampleSize)),
+    width: Math.min(sampleSize, width),
+    height: Math.min(sampleSize, height),
+  }))
+  try {
+    for (const rect of rects) {
+      const options = { format: 'RGBA', rect }
+      const pixels = new Uint8Array(frame.allocationSize(options))
+      await frame.copyTo(pixels, options)
+      if (pixels.some((value) => value !== 0)) return true
+    }
+  } catch {
+    return false
+  }
+  return false
+}
 
 interface ComparisonApi {
   initialize(config: ComparisonConfig): Promise<{ navigatorGpu: boolean }>
@@ -257,9 +287,9 @@ pageWindow.lunaWebGpuComparison = {
       canvasWidth: next.canvasWidth,
       canvasHeight: next.canvasHeight,
       maxSide: next.maxSide,
-      // Export capture is the synchronization point. Waiting after the
-      // presentation copy here would serialize interactive rendering.
-      waitForGpu: next.waitForGpu ?? false,
+      // Canvas VideoFrame capture is the synchronization point for export.
+      // Interactive preview leaves this disabled unless explicitly requested.
+      waitForGpu: next.captureMode === 'canvas' ? true : next.waitForGpu ?? false,
       rasterizeImages: true,
       onVideoElement: (element) => {
         primaryVideo = element instanceof HTMLVideoElement ? element : null
@@ -439,9 +469,39 @@ pageWindow.lunaWebGpuComparison = {
     let renderMs = 0
     let encodeMs = 0
     let captureMs = 0
+    let directCapture = config.captureMode !== 'readback'
+    let directCaptureFailureLogged = false
     const pendingCaptures: Array<{ index: number; promise: Promise<{ frame: VideoFrameLike; captureMs: number }> }> = []
-    const captureCanvasFrame = (index: number): Promise<{ frame: VideoFrameLike; captureMs: number }> => {
+    const captureCanvasFrame = async (index: number): Promise<{ frame: VideoFrameLike; captureMs: number }> => {
       const captureStartedAt = performance.now()
+      const frameInit = {
+        format: 'RGBA' as const,
+        codedWidth: width,
+        codedHeight: height,
+        timestamp: Math.round(index * 1_000_000 / safeFps),
+        duration: Math.round(1_000_000 / safeFps),
+      }
+      if (directCapture) {
+        try {
+          const frame = new Frame(canvas, frameInit)
+          if (index === 0 && !(await hasCanvasVideoFramePixels(frame, width, height))) {
+            frame.close()
+            directCapture = false
+            if (!directCaptureFailureLogged) {
+              directCaptureFailureLogged = true
+              console.warn('[WebGPU诊断] 画布直出 VideoFrame 内容无效，改用纹理读回', `${width}x${height}`)
+            }
+          } else {
+            return { frame, captureMs: performance.now() - captureStartedAt }
+          }
+        } catch (error) {
+          directCapture = false
+          if (!directCaptureFailureLogged) {
+            directCaptureFailureLogged = true
+            console.warn('[WebGPU诊断] 画布直出 VideoFrame 不可用，改用纹理读回', String(error))
+          }
+        }
+      }
       return renderer.captureVideoFrame((rgba, frameWidth, frameHeight) => ({
         frame: new Frame(rgba, {
           format: 'RGBA',
@@ -484,10 +544,10 @@ pageWindow.lunaWebGpuComparison = {
           await renderer.setLayers(frameLayers[index] ?? frameLayers[frameLayers.length - 1] ?? feature.layers)
           await rendered
         } else if (video) {
-          // Exercise the same deterministic path used by the real Electron
-          // export. It seeks each unique HTMLVideoElement once, then renders
-          // all layers using the prepared frame.
-          await renderer.renderFrameAt(time, { seekVideos: index === 0 })
+          // Keep every benchmark frame tied to its requested media timestamp.
+          // Capture/readback can be slower than realtime, so continuous
+          // playback would make later frames skip ahead.
+          await renderer.renderFrameAt(time, { seekVideos: true })
         }
         renderMs += performance.now() - renderStartedAt
         pendingCaptures.push({ index, promise: captureCanvasFrame(index) })
@@ -512,6 +572,7 @@ pageWindow.lunaWebGpuComparison = {
         width,
         height,
         fps: safeFps,
+        capturePath: directCapture ? 'webgpu-canvas-video-frame' : 'gpu-texture-readback-rgba-video-frame',
       }
     } finally {
       for (const pending of pendingCaptures.splice(0)) {

@@ -42,6 +42,13 @@ interface ExportItemUpdate {
   destinationPath?: string
 }
 
+interface WebGpuVideoProbeResult {
+  duration: number | null
+  fps: number | null
+  width: number | null
+  height: number | null
+}
+
 interface LunaExportTaskApi {
   create(name: string, items?: ExportItemInput[], taskId?: string): Promise<ExportTaskRecord>
   addItems(taskId: string, items: ExportItemInput[]): Promise<void>
@@ -429,6 +436,8 @@ const lunaRenderCoreApi = {
     sourceStartTime: number,
     includeAudio: boolean,
   ) => ipcRenderer.invoke('lrc:webgpu-video-begin', sessionId, outputPath, sourcePath, width, height, fps, duration, sourceStartTime, includeAudio),
+  webGpuVideoProbe: (sourcePath: string): Promise<WebGpuVideoProbeResult> =>
+    ipcRenderer.invoke('lrc:webgpu-video-probe', sourcePath),
   webGpuVideoWrite: (sessionId: string, data: Uint8Array) => ipcRenderer.invoke('lrc:webgpu-video-write', sessionId, data),
   webGpuVideoEnd: (sessionId: string) => ipcRenderer.invoke('lrc:webgpu-video-end', sessionId),
   webGpuVideoCancel: (sessionId: string) => ipcRenderer.invoke('lrc:webgpu-video-cancel', sessionId),
