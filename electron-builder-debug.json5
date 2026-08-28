@@ -4,6 +4,7 @@
   "appId": "com.diamondfsd.luna-device-debug",
   "asar": true,
   "asarUnpack": [],
+  "beforePack": "scripts/verify-native-artifact.mjs",
   "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna Device Debug",
   "directories": {

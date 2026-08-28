@@ -16,7 +16,8 @@ import {
 import { createCoreBluetoothDjiBleTransport } from './djiCoreBluetoothTransport'
 import { createWindowsDjiBleTransport } from './djiWindowsBluetoothTransport'
 import { djiErrorDetails } from './djiLog'
-import { connectWifiNetwork } from '../../platform/network/wifiDebugService'
+import { djiProfileForDevice } from './djiModels'
+import { connectWifiNetwork, getWifiDebugStatus } from '../../platform/network/wifiDebugService'
 import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
 const execFileAsync = promisify(execFile)
@@ -115,7 +116,7 @@ async function joinDjiWifi(credentials: DjiWifiCredentials, deviceId: string, ho
     deviceId,
     ssid: credentials.ssid,
     passwordProvided: true,
-    strategy: 'corewlan-password-stdin',
+    strategy: process.platform === 'win32' ? 'netsh-profile' : 'corewlan-password-stdin',
   })
   let result: Awaited<ReturnType<typeof connectWifiNetwork>>
   try {
@@ -175,6 +176,17 @@ async function isDjiHostReachable(host: string, deviceId: string): Promise<boole
   }
 }
 
+async function currentWindowsWifiSsid(): Promise<string | null> {
+  if (process.platform !== 'win32') return null
+  const status = await getWifiDebugStatus().catch(() => null)
+  return status?.success ? status.data?.ssid ?? null : null
+}
+
+function isDjiWifiSsid(ssid: string, deviceId: string): boolean {
+  const normalized = ssid.trim().toLocaleLowerCase()
+  return djiProfileForDevice(deviceId).ble.namePrefixes.some((prefix) => normalized.startsWith(prefix.toLocaleLowerCase()))
+}
+
 /**
  * DJI 的媒体会话只消费连接准备结果，不直接依赖某一种 BLE 实现。
  * BLE 只负责激活相机和读取 Wi-Fi 信息；媒体会话本身继续走 Wi-Fi。
@@ -195,7 +207,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     return {
       bluetoothActivation: bluetoothAvailable,
       bluetoothWifiCredentials: bluetoothAvailable,
-      automaticWifiJoin: process.platform === 'darwin',
+      automaticWifiJoin: process.platform === 'darwin' || process.platform === 'win32',
       manualWifiCredentials: true,
     }
   }
@@ -215,14 +227,23 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     })
 
     if (options.preferExistingConnection && await isDjiHostReachable(this.host, this.deviceId)) {
-      logMainInfo('[DJI Wi-Fi] 已检测到相机地址可达，跳过蓝牙和 Wi-Fi 切换', {
+      const currentSsid = await currentWindowsWifiSsid()
+      if (process.platform !== 'win32' || (currentSsid && isDjiWifiSsid(currentSsid, this.deviceId))) {
+        logMainInfo('[DJI Wi-Fi] 已检测到相机地址和当前 Wi-Fi 可用，跳过蓝牙和 Wi-Fi 切换', {
+          deviceId: this.deviceId,
+          host: this.host,
+          ssid: currentSsid,
+        })
+        return {
+          mode: 'already-connected',
+          message: '已检测到相机 Wi-Fi 连接，将直接建立相机会话',
+        }
+      }
+      logMainWarn('[DJI Wi-Fi] 相机地址可达但当前 Wi-Fi 不是相机网络，继续读取并切换', {
         deviceId: this.deviceId,
         host: this.host,
+        ssid: currentSsid,
       })
-      return {
-        mode: 'already-connected',
-        message: '已检测到相机 Wi-Fi 连接，将直接建立相机会话',
-      }
     }
 
     if (wireless?.preparation === 'already-connected') {
@@ -255,20 +276,28 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
         passwordProvided: Boolean(suppliedCredentials.password),
       })
       const hostReachable = wireless?.autoJoin && await isDjiHostReachable(this.host, this.deviceId)
+      const currentSsid = await currentWindowsWifiSsid()
+      const currentWifiMatches = process.platform === 'win32'
+        ? currentSsid === suppliedCredentials.ssid
+        : Boolean(hostReachable)
       logMainDebug('[DJI Wi-Fi] 外部 Wi-Fi 信息处理前状态', {
         deviceId: this.deviceId,
         host: this.host,
         hostReachable: Boolean(hostReachable),
+        currentSsid,
+        currentWifiMatches,
       })
-      if (!hostReachable && (wireless?.preparation === 'bluetooth' || wireless?.autoJoin)) {
+      if (!currentWifiMatches && (wireless?.preparation === 'bluetooth' || wireless?.autoJoin)) {
         const ble = await this.ensureBluetoothSession()
         if (!ble && wireless?.preparation === 'bluetooth') {
           throw new Error('当前电脑无法通过蓝牙激活 DJI 相机')
         }
       }
       if (wireless?.autoJoin) {
-        if (!hostReachable) {
+        if (!currentWifiMatches) {
           await joinDjiWifi(suppliedCredentials, this.deviceId, this.host)
+        } else if (!hostReachable) {
+          await waitForDjiHostReachable(this.host, this.deviceId)
         }
         await this.releaseBluetoothSession()
       }
@@ -278,7 +307,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
         host: this.host,
         mode,
         autoJoin: wireless?.autoJoin === true,
-        hostReachable: Boolean(hostReachable || wireless?.autoJoin),
+        hostReachable: Boolean(hostReachable || currentWifiMatches || wireless?.autoJoin),
         elapsedMs: Date.now() - startedAt,
       })
       return {

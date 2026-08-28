@@ -8,7 +8,6 @@ import {
   DEFAULT_WATERMARK_WIDTH_RATIO,
   freePlacementFromTopLeft,
   resolveWatermarkPositioning as resolveEditableWatermarkPositioning,
-  usesCustomWatermark,
 } from '../shared/watermarkGeometry'
 import { IconButton, LivePhotoBadge } from '../ui'
 import { containPreviewSize, resolveWatermarkPositioning, watermarkPositionStyle, type PreviewSize } from './htmlPreviewGeometry'
@@ -87,7 +86,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
   const positioning = watermarkLayer && mediaSize ? resolveWatermarkPositioning(watermarkLayer, mediaSize) : null
 
   function startWatermarkGesture(event: ReactPointerEvent<HTMLDivElement>, type: 'move' | 'resize'): void {
-    if (!watermarkSettings || !usesCustomWatermark(watermarkSettings) || !watermarkLayer || !positioning || !mediaSize || !contentRef.current) return
+    if (!watermarkSettings || !watermarkLayer || !positioning || !mediaSize || !contentRef.current) return
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -211,7 +210,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
         style={{ width: frameSize.width, height: frameSize.height, ...viewport.style }}
       >
         {!mediaError && media}
-        {!watermarkError && watermarkUrl && positioning && watermarkEditable && watermarkSettings && usesCustomWatermark(watermarkSettings) && onWatermarkChange ? (
+        {!watermarkError && watermarkUrl && positioning && watermarkEditable && watermarkSettings && onWatermarkChange ? (
           <div
             className="html-preview-watermark-editor"
             style={watermarkPositionStyle(positioning)}

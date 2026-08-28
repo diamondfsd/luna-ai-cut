@@ -134,6 +134,21 @@ const moved = watermarkGeometry.resolveWatermarkPositioning({
 }, 1080, 1920)
 assert.ok((moved.marginX ?? 0) + moved.targetWidth <= 1, 'free watermark stays inside right edge')
 assert.ok((moved.marginY ?? 0) >= 0, 'free watermark stays inside vertical bounds')
+const builtinSettings = {
+  ...customSettings,
+  sourceKind: 'builtin',
+  style: 'luna_ultra',
+  customAsset: undefined,
+  imagePath: '/tmp/luna.png',
+}
+const movedBuiltin = watermarkGeometry.resolveWatermarkPositioning({
+  ...builtinSettings,
+  sizeOnCanvasWidth: 0.4,
+  placement: { mode: 'free', centerX: 0.22, centerY: 0.31 },
+}, 1920, 1080)
+close(movedBuiltin.targetWidth, 0.4, 'built-in watermark uses the editable size')
+close(movedBuiltin.marginX, 0.02, 'built-in watermark uses the editable horizontal position')
+close(movedBuiltin.marginY, 0.31 - movedBuiltin.targetWidth * 1920 / 1080 / 4 / 2, 'built-in watermark uses the editable vertical position')
 
 const firstAsset = { id: 'first', filePath: '/tmp/first.png' }
 const secondAsset = { id: 'second', filePath: '/tmp/second.png' }

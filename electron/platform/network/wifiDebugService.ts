@@ -145,6 +145,29 @@ function parseWindowsScan(raw: string): WifiDebugNetwork[] {
   return networks.filter((network) => network.ssid)
 }
 
+function parseWindowsWifiStatus(raw: string, snapshot: ReturnType<typeof systemNetworkSnapshot>): WifiDebugStatus {
+  const value = (labels: string[]): string | null => {
+    const match = raw.match(new RegExp(`^\\s*(?:${labels.join('|')})\\s*:\\s*(.*)$`, 'im'))
+    const result = match?.[1]?.trim()
+    return result || null
+  }
+
+  const ssid = value(['SSID'])
+  return {
+    platform: 'win32',
+    interfaceName: value(['Interface Name', 'Name', '接口名称']) ?? snapshot.interfaceName,
+    connected: Boolean(ssid),
+    ssid,
+    bssid: value(['BSSID']),
+    signal: value(['Signal', '信号']),
+    security: value(['Authentication', '身份验证']),
+    ipAddress: snapshot.ipAddress,
+    ipAddresses: snapshot.ipAddresses,
+    interfaces: snapshot.interfaces,
+    raw,
+  }
+}
+
 function jsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -274,6 +297,11 @@ async function connectDarwinWifiWithPassword(
 export async function getWifiDebugStatus(): Promise<WifiDebugResult<WifiDebugStatus>> {
   try {
     const snapshot = systemNetworkSnapshot()
+    if (process.platform === 'win32') {
+      const raw = await runCommand('netsh', ['wlan', 'show', 'interfaces'], 8000)
+      const status = parseWindowsWifiStatus(raw, snapshot)
+      return ok(status.connected ? 'Windows Wi-Fi 状态已刷新' : 'Windows 当前未连接 Wi-Fi', status, raw)
+    }
     if (process.platform === 'darwin') {
       const result = await runCoreWlan<unknown>(['status'], 8000)
       if (result.success) {
@@ -386,7 +414,21 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
       try {
         await runCommand('netsh', ['wlan', 'add', 'profile', `filename=${profilePath}`, 'user=current'], timeoutMs)
         const raw = await runCommand('netsh', ['wlan', 'connect', `name=${ssid}`, `ssid=${ssid}`], timeoutMs)
-        const status = await getWifiDebugStatus()
+        const deadline = Date.now() + Math.min(Math.max(timeoutMs, 8000), 12000)
+        let status = await getWifiDebugStatus()
+        while (status.success && status.data?.ssid !== ssid && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          status = await getWifiDebugStatus()
+        }
+        if (status.success && status.data?.ssid !== ssid) {
+          return {
+            ...status,
+            success: false,
+            code: 'WIFI_SSID_NOT_MATCHED',
+            message: `Windows 未切换到目标 Wi-Fi，当前网络为 ${status.data?.ssid ?? '未连接'}`,
+            raw,
+          }
+        }
         return {
           ...status,
           message: status.success ? `已尝试连接 ${ssid}` : status.message,

@@ -480,7 +480,7 @@ export function PreviewModal({
                     proxyPreview={proxyPreview && !useOriginalPreview}
                     watermarkLayer={lightweightPreview ? watermarkLayers[0] : undefined}
                     watermarkSettings={lightweightPreview ? watermarkSettings : undefined}
-                    watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled && watermarkSettings.sourceKind === 'custom')}
+                    watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled)}
                     onWatermarkChange={lightweightPreview ? handleWatermarkChange : undefined}
                   />
                 </div>
