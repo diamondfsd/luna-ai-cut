@@ -1,4 +1,3 @@
-import { isTestBuild } from '../shared/buildChannel'
 import type { PreviewLayer } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
 import { WebGpuVideoRenderer } from './webgpuVideoRenderer'
@@ -496,7 +495,6 @@ export async function exportVideoWithWebGpu(params: {
       capturePath: directCapture ? 'webgpu-canvas-video-frame' : 'gpu-texture-readback-rgba-video-frame',
       encoderQueueLimit: MAX_ENCODER_QUEUE,
       pendingWriteLimit: MAX_PENDING_WRITES,
-      buildChannel: isTestBuild ? 'test' : 'stable',
     })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
@@ -506,7 +504,6 @@ export async function exportVideoWithWebGpu(params: {
       height,
       fps,
       reason,
-      buildChannel: isTestBuild ? 'test' : 'stable',
     })
     throw error
   } finally {

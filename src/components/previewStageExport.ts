@@ -7,7 +7,6 @@ import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
 import { logExport } from '../lib/rendererLogger'
-import { isTestBuild } from '../shared/buildChannel'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -263,7 +262,6 @@ export async function exportPreviewVideo(params: {
   }
   logExport('[导出诊断] 视频渲染路径', {
     renderer: 'rust-wgpu',
-    buildChannel: isTestBuild ? 'test' : 'stable',
     reason: '浏览器端导出加速已移除，统一使用原生 wgpu 导出',
   })
   let stopProgressWatcher = false

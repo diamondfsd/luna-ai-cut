@@ -12,15 +12,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
-import { isTestBuild } from '../src/shared/buildChannel'
 import { failStartup, installStartupExperience } from './infrastructure/startupWindowService'
-
-// Keep the test installer completely separate from the production app before
-// acquiring the single-instance lock or loading appMain.ts.
-if (isTestBuild) {
-  app.setName('Luna AI Cut 测试版')
-  app.setPath('userData', join(app.getPath('appData'), 'LunaAI-Cut-Test'))
-}
 
 async function boot(): Promise<void> {
   // 开发模式跳过热更新，避免本地代码被热更新覆盖
@@ -39,8 +31,7 @@ async function boot(): Promise<void> {
   // 检查是否有有效的热更新版本
   let hotVersion = readHotVersion(versionFile)
 
-  // 热更新只能覆盖完全相同的稳定安装版。Beta/RC 必须使用安装包内置代码，
-  // 避免旧热更新同时替换主进程、页面和原生模块。
+  // 热更新只能覆盖完全相同的安装版本，避免旧热更新覆盖其他版本的代码。
   const appVersion = app.getVersion()
   if (hotVersion && !canLoadHotUpdate(appVersion, hotVersion)) {
     console.log(`[hot-update] 热更新 ${hotVersion} 与安装版本 ${appVersion} 不兼容，丢弃旧热更新`)

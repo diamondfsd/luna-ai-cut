@@ -4,7 +4,6 @@ import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-r
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useStorageMigration } from '../hooks/useStorageMigration'
-import { isTestBuild } from '../shared/buildChannel'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
@@ -330,7 +329,7 @@ export function SettingsPage({
           </div>
         </section>
 
-        {!isTestBuild && <section className="settings-group">
+        <section className="settings-group">
           <h2 className="settings-group-title">预览加速</h2>
           <div className="settings-card">
             <article className="settings-row">
@@ -346,7 +345,7 @@ export function SettingsPage({
               />
             </article>
           </div>
-        </section>}
+        </section>
 
         <section className="settings-group">
           <h2 className="settings-group-title">连接与维护</h2>

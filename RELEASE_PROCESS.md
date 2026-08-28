@@ -111,36 +111,36 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 > - `gh` CLI 已安装并登录 (`gh auth status`)
 > - `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件
 
-### 6c. 内测版本发布通道
+### 6c. Beta 版本发布
 
-版本号带 `-beta.N` 的安装包只进入 GitCode 的 beta 专属 Release，不会出现在稳定版更新结果或公开 Landing 页面中：
+版本号带 `-beta.N` 的安装包与稳定版使用同一套按版本号命名的 Release，不再区分测试通道或 beta 专属 tag：
 
 ```text
 安装版本：1.8.0-beta.1
-GitCode Release：beta/v1.8.0-beta.1
+GitCode Release：v1.8.0-beta.1
 ```
 
-内测安装包仍使用正常部署脚本上传，脚本会依据 beta 版本自动选择专属 tag：
+安装包仍使用正常部署脚本上传：
 
 ```bash
 ./scripts/deploy-release.sh v1.8.0-beta.1
 ```
 
-后续 beta 调试/测试热更新统一发布到固定的测试 Release。测试 Release 使用不带 `/` 的 tag，避免 GitCode 附件回调路由异常：
+Beta 热更新也上传到安装版本对应的同一个 Release：
 
 ```text
 热更新：1.8.0-beta.1-hot.1
-GitCode Release：test-beta-v1.8.0-beta.1
+GitCode Release：v1.8.0-beta.1
 ```
 
-发布 beta 测试热更新时，必须先构建测试通道，再使用测试发布脚本：
+发布 beta 热更新时，使用普通构建和发布脚本：
 
 ```bash
-pnpm run build:test:app
-pnpm publish:hot:test --version 1.8.0-beta.1-hot.1 --upload
+pnpm run build:app
+pnpm run publish:hot -- --version 1.8.0-beta.1-hot.1 --upload
 ```
 
-后续热更新默认沿用这个测试 Release 流程，不使用 `pnpm publish:hot` 或 `./scripts/build-hot-update.sh` 发布到 `beta/v1.8.0-beta.N`。稳定版本测试包使用 `test-vX.Y.Z`，同样不使用带 `/` 的测试 tag。
+客户端只根据安装版本计算 Release tag。历史的 `beta/v...`、`test-beta-v...`、`test-v...` 和 `test/...` Release 不再兼容；已安装旧版本的客户端需要先安装包含本规则的新版安装包。
 
 `1.8.0-beta.1-hot.1` 不能安装到 `1.8.0` 或 `1.8.0-beta.2`。稳定版继续使用 `vX.Y.Z` 和 `X.Y.Z-hot.N` 规则。
 
@@ -213,7 +213,7 @@ git commit -m "fix: xxx"
 
 - 运行 `pnpm run build:app`。
 - 生成并校验平台无关的单个热更新 ZIP。
-- 上传 ZIP 和发布说明到 GitCode Release。
+- 将 ZIP 和发布说明上传到版本对应的 GitCode Release `v<安装版本>`。
 - 创建并推送 `hot/v<版本号>-hot.<build号>` tag。
 
 ### 4. 推送 main

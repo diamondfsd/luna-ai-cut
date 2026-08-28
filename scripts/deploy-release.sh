@@ -34,11 +34,10 @@ TAG="${1:-$DEFAULT_TAG}"
 RELEASE_NOTES="${SCRIPT_DIR}/../RELEASE_NOTES_${TAG}.md"
 if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
   IS_BETA=true
-  GITCODE_TAG="beta/${TAG}"
 else
   IS_BETA=false
-  GITCODE_TAG="$TAG"
 fi
+GITCODE_TAG="$TAG"
 
 if [ ! -f "$RELEASE_NOTES" ]; then
   echo "发布说明文件不存在: ${RELEASE_NOTES}" >&2
@@ -52,7 +51,7 @@ GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
 GITCODE_DL="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 GITHUB_REPO="${GITHUB_REPO:-diamondfsd/luna-ai-cut}"
 DOWNLOAD_DIR="release"
-GITCODE_TAG_URL="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$GITCODE_TAG")"
+GITCODE_TAG_URL="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$GITCODE_TAG")"
 
 # ── 颜色 ──
 RED='\033[0;31m'
@@ -196,7 +195,7 @@ done
 
 if [ "$IS_BETA" = true ]; then
   echo ""
-  ok "内测版本 ${TAG} 已发布到 GitCode 专属通道 ${GITCODE_TAG}"
+  ok "内测版本 ${TAG} 已发布到 GitCode Release ${GITCODE_TAG}"
   info "不会更新公开下载页或稳定版 README"
   info "  ${API_BASE}/releases/tag/${GITCODE_TAG}"
   exit 0
