@@ -13,6 +13,13 @@ import { labelsFor } from '../../media/filePathUtils'
 import { lunaMediaAdapter } from '../common/deviceMedia'
 import { djiErrorDetails, djiMessageDetails } from './djiLog'
 import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import {
+  DJI_MANIFEST_PAGE_SIZE,
+  hasManifestPageAfter,
+  olderManifestCursor,
+  seedManifestCursor,
+  stepManifestPage,
+} from './djiManifestPagination'
 
 interface DjiEndpoint {
   host: string
@@ -68,6 +75,14 @@ function listQuery(counter: number, cursor: number): Buffer {
 }
 
 const MANIFEST_TRIGGER = hex('4a040e1001000000000001000000')
+const INITIAL_INTERNAL_CURSOR = 0x40000001
+const MAX_MANIFEST_PAGES = 256
+
+interface ManifestPage {
+  sd: DjiManifestFile[]
+  internal: DjiManifestFile[]
+  fallback: DjiManifestFile[]
+}
 
 function djiCommand(cmdSet: number, cmdId: number, payload: Buffer, id = 0x8026, flags = 0x40): DjiUdpCommand {
   return { target: 0x0102, id, cmdSet, cmdId, flags, payload }
@@ -93,7 +108,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
 export class DjiCameraSession {
   readonly profile: DjiModelProfile
   private readonly endpoint: DjiEndpoint
-  private readonly udp: DjiUdpTransport
+  private udp: DjiUdpTransport
   private readonly wirelessPreparation: DjiWirelessPreparation
   private credentials: DjiWifiCredentials | null = null
   private connected = false
@@ -427,34 +442,95 @@ export class DjiCameraSession {
   }
 
   private async requestManifest(storageId: string): Promise<DjiManifestFile[]> {
-    // The camera does not send the whole manifest in response to the three commands immediately.
-    // It opens a reliable downlink and waits for the app's 0x04 ACK after each receive window. Sending
-    // all commands in a burst and stopping after 4.5 seconds leaves Pocket 4 with only the first two
-    // chunks, which then parse as an empty/incomplete CompositePack. Keep the same cadence as Osmosis:
-    // query newest -> trigger -> query internal, with 15 receive/ACK windows.
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体] 请求相机媒体清单', {
+      deviceId: this.deviceId,
+      storageId,
+      pageSize: DJI_MANIFEST_PAGE_SIZE,
+      maxPages: MAX_MANIFEST_PAGES,
+    })
+    const files: DjiManifestFile[] = []
+    const seen = new Set<string>()
+    let cursor = INITIAL_INTERNAL_CURSOR
+    let pageNumber = 0
+    let reconnects = 0
+
+    while (pageNumber < MAX_MANIFEST_PAGES) {
+      const page = await this.requestManifestPage(cursor, storageId)
+      const pageFiles = page.sd.length > 0 || page.internal.length > 0
+        ? [...page.sd, ...page.internal]
+        : page.fallback
+
+      // A camera may drop the datalink after a couple of pages. Rebuild only the current session and
+      // retry the same cursor once; a genuinely empty final page then exits on the second attempt.
+      if (pageNumber > 0 && pageFiles.length === 0 && reconnects < 1) {
+        reconnects += 1
+        logMainWarn('[DJI 媒体] 旧页请求未收到清单，重建会话后重试', { deviceId: this.deviceId, pageNumber, cursor })
+        await this.reopenDatalinkSession()
+        continue
+      }
+      reconnects = 0
+
+      if (pageFiles.length === 0) break
+      const pageStep = pageNumber === 0
+        ? stepManifestPage(Number.MAX_SAFE_INTEGER, pageFiles, seen)
+        : stepManifestPage(cursor, pageFiles, seen)
+      files.push(...pageStep.fresh)
+
+      const pageCursor = pageNumber === 0
+        ? seedManifestCursor(page.internal)
+        : pageStep.nextCursor
+      const internalPageIsFull = page.internal.length >= DJI_MANIFEST_PAGE_SIZE
+      logMainInfo('[DJI 媒体] 清单分页完成', {
+        deviceId: this.deviceId,
+        pageNumber: pageNumber + 1,
+        pageFileCount: pageFiles.length,
+        sdCount: page.sd.length,
+        internalCount: page.internal.length,
+        freshCount: pageStep.fresh.length,
+        totalCount: files.length,
+        cursor: pageCursor,
+        moreAvailable: internalPageIsFull && pageCursor > 0 && pageStep.fresh.length > 0,
+      })
+
+      if (pageNumber === 0) {
+        cursor = pageCursor
+        if (!hasManifestPageAfter(page.internal.length, cursor)) break
+      } else {
+        const advanced = olderManifestCursor(cursor, pageFiles) !== null
+        cursor = pageStep.nextCursor
+        if (!internalPageIsFull || !advanced || !pageStep.moreAvailable) break
+      }
+      pageNumber += 1
+    }
+
+    if (pageNumber >= MAX_MANIFEST_PAGES) {
+      logMainWarn('[DJI 媒体] 清单分页达到安全上限', { deviceId: this.deviceId, maxPages: MAX_MANIFEST_PAGES, totalCount: files.length })
+    }
+
+    const selected = storageId === 'all' ? files : files.filter((file) => file.storageId === storageId)
+    logMainInfo('[DJI 媒体] 清单读取完成', {
+      deviceId: this.deviceId,
+      storageId,
+      pageCount: pageNumber + (files.length > 0 ? 1 : 0),
+      fileCount: selected.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return selected
+  }
+
+  private async requestManifestPage(internalCursor: number, storageId: string): Promise<ManifestPage> {
     const startedAt = Date.now()
     const packets: DjiUdpPacket[] = []
     let lastManifestCount = -1
     let stableBatches = 0
     let stopReason = '达到最大接收窗口'
-    logMainInfo('[DJI 媒体] 请求相机媒体清单', {
-      deviceId: this.deviceId,
-      storageId,
-      receiveWindowMs: 800,
-      maxBatches: 14,
-    })
-    // Install the receiver before the first query is sent. Pocket 4 can answer the initial query
-    // immediately, and a bare sendCommand followed by collect() has a small but real lost-packet gap.
+
+    // The camera sends the manifest through a reliable downlink. Keep the same query -> trigger ->
+    // internal-query cadence as Osmosis and ACK every receive window.
     const initialPackets = await this.udp.commandAndCollect(djiCommand(0x00, 0x26, listQuery(1, 0x00000001)), 800)
     packets.push(...initialPackets)
     await this.udp.sendAck()
-    logMainDebug('[DJI 媒体] 清单首个请求收包完成', {
-      deviceId: this.deviceId,
-      storageId,
-      receivedPackets: initialPackets.length,
-      totalPackets: packets.length,
-      elapsedMs: Date.now() - startedAt,
-    })
     for (let batch = 1; batch < 15; batch += 1) {
       const batchStartedAt = Date.now()
       const received = await this.udp.collect(800)
@@ -466,90 +542,67 @@ export class DjiCameraSession {
         sentCommand = 'manifest-trigger'
       }
       if (batch === 2) {
-        await this.udp.sendCommand(djiCommand(0x00, 0x26, listQuery(2, 0x40000001)))
+        await this.udp.sendCommand(djiCommand(0x00, 0x26, listQuery(2, internalCursor)))
         sentCommand = 'internal-storage-query'
       }
-      const chunks = this.manifestChunks(packets)
-      const count = chunks.length > 0
-        ? parseCompositeManifest(Buffer.concat(chunks), 'storage_internal').length
-        : 0
-      let shouldStop = false
-      if (batch >= 4 && count > 0 && count === lastManifestCount) {
+      const internalCount = this.parseManifestCounter(packets, 2, 'storage_internal').length
+      if (batch >= 4 && internalCount > 0 && internalCount === lastManifestCount) {
         stableBatches += 1
         if (stableBatches >= 2) {
           stopReason = '清单数量连续两轮稳定'
-          shouldStop = true
+          logMainDebug('[DJI 媒体] 清单接收提前结束', { internalCursor, batch, internalCount, stopReason })
+          break
         }
       } else {
         stableBatches = 0
       }
-      lastManifestCount = count
+      lastManifestCount = internalCount
       logMainDebug('[DJI 媒体] 清单接收窗口完成', {
-        deviceId: this.deviceId,
-        storageId,
+        internalCursor,
         batch,
         receivedPackets: received.length,
         totalPackets: packets.length,
-        chunkCount: chunks.length,
-        parsedInternalCount: count,
+        parsedInternalCount: internalCount,
         stableBatches,
         sentCommand,
         elapsedMs: Date.now() - batchStartedAt,
-        totalElapsedMs: Date.now() - startedAt,
       })
-      if (shouldStop) break
     }
+
+    const sd = this.parseManifestCounter(packets, 1, 'sdcard')
+    const internal = this.parseManifestCounter(packets, 2, 'storage_internal')
+    const fallbackChunks = this.manifestChunks(packets)
+    const fallbackStorage = storageId === 'all' ? 'sdcard' : storageId
+    const fallback = sd.length === 0 && internal.length === 0 && fallbackChunks.length > 0
+      ? parseCompositeManifest(Buffer.concat(fallbackChunks), fallbackStorage)
+      : []
     const packetTypes = packets.reduce<Record<string, number>>((counts, packet) => {
       const key = `0x${packet.packetType.toString(16).padStart(2, '0')}`
       counts[key] = (counts[key] ?? 0) + 1
       return counts
     }, {})
-    const manifestMessages = decodeDumlMessagesFromUdpStream(packets)
-    const manifestCommands = manifestMessages.reduce<Record<string, number>>((counts, message) => {
-      const key = `0x${message.cmdSet.toString(16).padStart(2, '0')}/0x${message.cmdId.toString(16).padStart(2, '0')}`
-      counts[key] = (counts[key] ?? 0) + 1
-      return counts
-    }, {})
-    const dumlCount = packets.reduce((count, packet) => count + decodeDumlMessagesFromUdp(packet).length, 0)
-    logMainInfo('[DJI 媒体] 清单 UDP 收包完成', {
-      deviceId: this.deviceId,
+    logMainDebug('[DJI 媒体] 清单分页收包完成', {
+      internalCursor,
       packetCount: packets.length,
       packetTypes,
-      dumlCount,
-      manifestDumlCount: manifestMessages.length,
-      manifestCommands,
+      sdCount: sd.length,
+      internalCount: internal.length,
+      fallbackCount: fallback.length,
       stopReason,
       elapsedMs: Date.now() - startedAt,
     })
+    return { sd, internal, fallback }
+  }
 
-    const sd = this.parseManifestCounter(packets, 1, 'sdcard')
-    const internal = this.parseManifestCounter(packets, 2, 'storage_internal')
-    let files: DjiManifestFile[]
-    if (sd.length > 0 || internal.length > 0) {
-      files = [...sd, ...internal]
-    } else {
-      const chunks = this.manifestChunks(packets)
-      const fallbackStorage = storageId === 'all' ? 'sdcard' : storageId
-      files = chunks.length > 0 ? parseCompositeManifest(Buffer.concat(chunks), fallbackStorage) : []
-      logMainInfo('[DJI 媒体] 清单未按存储计数器分组，使用兼容解析', {
-        deviceId: this.deviceId,
-        packetCount: packets.length,
-        chunkCount: chunks.length,
-        fileCount: files.length,
-      })
-    }
-
-    const selected = storageId === 'all' ? files : files.filter((file) => file.storageId === storageId)
-    logMainInfo('[DJI 媒体] 清单读取完成', {
-      deviceId: this.deviceId,
-      storageId,
-      packetCount: packets.length,
-      sdCount: sd.length,
-      internalCount: internal.length,
-      fileCount: selected.length,
-      elapsedMs: Date.now() - startedAt,
-    })
-    return selected
+  private async reopenDatalinkSession(): Promise<void> {
+    this.udp.stopKeepAlive()
+    this.udp.close()
+    this.udp = new DjiUdpTransport(this.endpoint.host, this.endpoint.udpPort)
+    this.playbackPrepared = false
+    this.playbackConfirmed = false
+    await this.udp.handshake()
+    await this.registerCamera()
+    await this.ensurePlayback()
   }
 
   private manifestChunks(packets: DjiUdpPacket[], counter?: number): Buffer[] {
