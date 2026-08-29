@@ -131,3 +131,15 @@ export function buildDjiWebBluetoothConnectScript(token: string, profile: DjiMod
     })();
   })()`
 }
+
+export function buildDjiWebBluetoothCleanupScript(token: string): string {
+  return `(() => {
+    const state = window.__lunaDjiBluetoothState;
+    if (state && state.token === ${scriptValue(token)}) {
+      for (const item of state.notificationHandlers) item.characteristic.removeEventListener('characteristicvaluechanged', item.handler);
+      state.device.removeEventListener('gattserverdisconnected', state.disconnectHandler);
+      try { if (state.device.gatt?.connected) state.device.gatt.disconnect(); } catch (_) {}
+      window.__lunaDjiBluetoothState = null;
+    }
+  })()`
+}

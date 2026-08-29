@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { DjiBluetoothRendererEvent } from '../../../src/shared/types'
 import { decodeDjiMessage, responseToDjiRequest, type DjiMessage } from './djiBytes'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
-import { buildDjiWebBluetoothAvailabilityScript, buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from './djiWebBluetoothScripts'
+import { buildDjiWebBluetoothAvailabilityScript, buildDjiWebBluetoothCleanupScript, buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from './djiWebBluetoothScripts'
 import { djiErrorDetails, djiMessageDetails } from './djiLog'
 import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import type { DjiBleTransport } from './djiBleSession'
@@ -314,15 +314,7 @@ export class WebBluetoothDjiBleTransport implements DjiBleTransport {
     this.rejectPending(new Error('DJI Bluetooth：BLE 会话已关闭'))
     logMainDebug('[DJI BLE] 关闭 Electron Web Bluetooth 会话', { deviceId: this.profile.deviceId, token: this.token })
     try {
-      await withTimeout(this.execute(`
-        const state = window.__lunaDjiBluetoothState;
-        if (state && state.token === ${scriptValue(this.token)}) {
-          for (const item of state.notificationHandlers) item.characteristic.removeEventListener('characteristicvaluechanged', item.handler);
-          state.device.removeEventListener('gattserverdisconnected', state.disconnectHandler);
-          try { if (state.device.gatt?.connected) state.device.gatt.disconnect(); } catch (_) {}
-          window.__lunaDjiBluetoothState = null;
-        }
-      `), CLEANUP_TIMEOUT_MS, '关闭蓝牙会话超时')
+      await withTimeout(this.execute(buildDjiWebBluetoothCleanupScript(this.token)), CLEANUP_TIMEOUT_MS, '关闭蓝牙会话超时')
     } catch (error) {
       logMainWarn('[DJI BLE] Web Bluetooth 会话清理失败', {
         deviceId: this.profile.deviceId,
@@ -420,15 +412,7 @@ export class WebBluetoothDjiBleTransport implements DjiBleTransport {
   }
 
   private async cleanupRendererState(): Promise<void> {
-    await withTimeout(this.execute(`
-      const state = window.__lunaDjiBluetoothState;
-      if (state && state.token === ${scriptValue(this.token)}) {
-        for (const item of state.notificationHandlers) item.characteristic.removeEventListener('characteristicvaluechanged', item.handler);
-        state.device.removeEventListener('gattserverdisconnected', state.disconnectHandler);
-        try { if (state.device.gatt?.connected) state.device.gatt.disconnect(); } catch (_) {}
-        window.__lunaDjiBluetoothState = null;
-      }
-    `), CLEANUP_TIMEOUT_MS, '清理蓝牙会话超时')
+    await withTimeout(this.execute(buildDjiWebBluetoothCleanupScript(this.token)), CLEANUP_TIMEOUT_MS, '清理蓝牙会话超时')
   }
 
   private consumeNotification(chunk: Buffer): void {

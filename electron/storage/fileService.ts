@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { localThumbnailUrl, safeName } from '../media/filePathUtils'
-import { downloadToFile, downloadToFileWithRetry, isAbortError } from '../media/fileDownloadService'
+import { downloadToFileWithRetry, isAbortError } from '../media/fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from '../media/thumbnailService'
 import { logMainError, logMainInfo, logMainWarn } from '../infrastructure/loggerService'
@@ -96,7 +96,7 @@ function rawCompanionAsFile(file: LunaFile): LunaFile | null {
 
 async function copyIfPresent(source: string, destination: string): Promise<boolean> {
   try {
-    await fs.access(source)
+    if (await fileSize(source) <= 0) return false
     await fs.mkdir(path.dirname(destination), { recursive: true })
     const partialPath = partialPathFor(destination)
     await fs.rm(partialPath, { force: true })
@@ -233,7 +233,7 @@ export async function previewFile(file: LunaFile): Promise<PreviewResult> {
 
   // 4. 从相机下载到缓存
   if (file.kind === 'image') {
-    await downloadToFile({ ...file, sourceUrl }, cachedPath)
+    await downloadToFileWithRetry({ ...file, sourceUrl }, cachedPath)
     return {
       fileName: file.name,
       kind: file.kind,
@@ -248,7 +248,7 @@ export async function previewFile(file: LunaFile): Promise<PreviewResult> {
       ? { name: file.previewName, sourceUrl: file.previewUrl, bytes: null }
       : { ...file, sourceUrl }
     const lrvPath = path.join(previewDir, safeName(file.previewName ?? file.name))
-    await downloadToFile(lrvItem, lrvPath)
+    await downloadToFileWithRetry(lrvItem, lrvPath)
     return {
       fileName: file.name,
       kind: file.kind,
@@ -310,7 +310,7 @@ export async function resolveLocalThumbnails(files: LunaFile[], localResourcesDi
  * 返回下载后的缓存文件路径，或 null 失败。
  */
 async function downloadWithLog(file: LunaFile, url: string, destPath: string): Promise<string> {
-  return downloadToFile(
+  return downloadToFileWithRetry(
     { name: file.previewName ?? file.name, sourceUrl: url, bytes: file.bytes },
     destPath,
   )
@@ -469,12 +469,13 @@ export async function downloadFiles(
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
       if (!rawFile && canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
+        const downloadedBytes = await fileSize(destination)
         await recordDownloadedSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
           totalFiles: files.length,
-          downloaded: file.bytes ?? 0,
+          downloaded: downloadedBytes,
           total: totalBytes,
           percent: 100,
           speedBps: 0,
@@ -482,7 +483,7 @@ export async function downloadFiles(
           destinationPath: destination,
         })
         summary.completed.push({ name: file.name, path: destination })
-        logFinalDownloadSuccess(file, destination, file.bytes, { copyFromUrl: cachedPath })
+        logFinalDownloadSuccess(file, destination, downloadedBytes, { copyFromUrl: cachedPath })
         continue
       }
 
@@ -514,11 +515,14 @@ export async function downloadFiles(
         await recordDownloadedSource(outputDir, rawDestination, rawFile)
       }
 
+      const downloadedMainBytes = await fileSize(destination)
+      const downloadedRawBytes = rawDestination ? await fileSize(rawDestination) : 0
+      const downloadedBytes = downloadedMainBytes + downloadedRawBytes
       onProgress({
         fileName: file.name,
         index,
         totalFiles: files.length,
-        downloaded: totalBytes ?? file.bytes ?? 0,
+        downloaded: downloadedBytes,
         total: totalBytes,
         percent: 100,
         speedBps: 0,
@@ -527,7 +531,7 @@ export async function downloadFiles(
       })
       await recordDownloadedSource(outputDir, destination, file)
       summary.completed.push({ name: file.name, path: destination })
-      logFinalDownloadSuccess(file, destination, totalBytes)
+      logFinalDownloadSuccess(file, destination, downloadedBytes)
     } catch (error) {
       if (signal?.aborted || isAbortError(error)) {
         const partialSize = await fileSize(destination)

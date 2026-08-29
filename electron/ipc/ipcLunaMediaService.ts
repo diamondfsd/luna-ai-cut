@@ -374,7 +374,7 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('luna:metadata', async (_event, file: LunaFile, cachedPath?: string | null) => {
     return ctx.enqueuePreviewTask(async () => {
-      await ctx.ensureCameraSessionForFile(file)
+      await ctx.ensureCameraSessionForFile(file, undefined, cachedPath)
       return getMediaMetadata(file, cachedPath)
     }, 1)
   })

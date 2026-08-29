@@ -224,7 +224,34 @@ async function ensureCameraSessionForUrl(url: string | null | undefined): Promis
   client.startKeepAlive()
 }
 
-async function ensureCameraSessionForFile(file: LunaFile, url = file.sourceUrl || file.url): Promise<void> {
+function localPathExists(value: string | null | undefined): boolean {
+  if (!value) return false
+  try {
+    return existsSync(value.startsWith('file:') ? fileURLToPath(value) : value)
+  } catch {
+    return false
+  }
+}
+
+async function ensureCameraSessionForFile(
+  file: LunaFile,
+  url = file.sourceUrl || file.url,
+  localPath?: string | null,
+): Promise<void> {
+  if ([localPath, file.downloadFilePath, file.localPath, file.cacheFilePath].some(localPathExists)) return
+
+  const settings = await getSettings()
+  const deviceId = file.sourceDeviceId ?? settings.activeDeviceId ?? DEFAULT_DEVICE.id
+  const device = deviceDefinitionFor(deviceId)
+  if (device.protocol !== 'insta360') {
+    logMainInfo('[预览] 跳过不适用的 Luna 相机连接', {
+      fileName: file.name,
+      sourceDeviceId: file.sourceDeviceId ?? null,
+      activeDeviceId: settings.activeDeviceId ?? null,
+      protocol: device.protocol ?? null,
+    })
+    return
+  }
   await ensureCameraSessionForUrl(url)
 }
 

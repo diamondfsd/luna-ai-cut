@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 import exifr from 'exifr'
 import { detectInsta360ILog } from './iLogDetection'
 
-import { downloadToFile } from './fileDownloadService'
+import { downloadToFileWithRetry } from './fileDownloadService'
 import { safeName } from './filePathUtils'
 import { currentBaseDir, previewCacheDir } from '../storage/settingsService'
 import { logMainWarn } from '../infrastructure/loggerService'
@@ -303,7 +303,7 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
   if (!sourcePath) {
     const previewDir = await previewCacheDir()
     sourcePath = path.join(previewDir, safeName(file.name))
-    await downloadToFile({ ...file, sourceUrl }, sourcePath)
+    await downloadToFileWithRetry({ ...file, sourceUrl }, sourcePath)
   }
 
   const parsed = await exifr.parse(sourcePath, {
