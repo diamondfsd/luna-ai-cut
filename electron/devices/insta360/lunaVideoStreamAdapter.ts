@@ -18,15 +18,12 @@ function nowIso(): string {
 
 export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
   private readonly server = new LocalVideoStreamServer()
-  private readonly obsServer = new LocalObsVideoStreamServer(() => {
-    this.statusValue = { ...this.statusValue, obsStreamUrl: null }
-  })
+  private readonly obsServer = new LocalObsVideoStreamServer()
   private client: ReturnType<IpcContext['lunaClientFor']> | null = null
   private unsubscribeVideo: (() => void) | null = null
   private startPromise: Promise<CameraVideoStreamStatus> | null = null
   private generation = 0
   private remoteRunning = false
-  private rawStreamUrl: string | null = null
   private statusValue: CameraVideoStreamStatus
 
   constructor(
@@ -110,9 +107,9 @@ export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
         frames: this.statusValue.frames + 1,
       }
       this.server.publish(frame)
+      this.obsServer.publishVideoFrame(frame)
     })
     const local = await this.server.start()
-    this.rawStreamUrl = local.url
     this.statusValue = { ...this.statusValue, streamUrl: local.url, port: local.port }
     if (generation !== this.generation) {
       await this.cleanupTransport()
@@ -156,8 +153,7 @@ export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
 
   async startObs(): Promise<CameraVideoStreamStatus> {
     if (this.statusValue.state !== 'running') await this.start()
-    const rawStreamUrl = this.rawStreamUrl ?? (await this.server.start()).url
-    const local = await this.obsServer.start(rawStreamUrl, 'h264')
+    const local = await this.obsServer.start('h264')
     this.statusValue = { ...this.statusValue, obsStreamUrl: local.url }
     return this.status()
   }
@@ -183,7 +179,6 @@ export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
     this.unsubscribeVideo?.()
     this.unsubscribeVideo = null
     await this.obsServer.stop()
-    this.rawStreamUrl = null
     await this.server.stop()
   }
 }

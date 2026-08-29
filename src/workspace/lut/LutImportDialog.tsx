@@ -440,7 +440,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
                     </div>
                     {/* 原始文件名 */}
                     <div className="lut-import-origin-cell">
-                      <span className="lut-import-origin-name">{entry.name}</span>
+                      <span className="lut-import-origin-name" title={entry.name}>{entry.name}</span>
                     </div>
                     {/* 状态 */}
                     <div className="lut-import-status-cell">

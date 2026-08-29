@@ -57,10 +57,10 @@ export function WhiteBalancePanel({ value, modified, onChange, onPreviewChange, 
         </Tooltip>
       </div>
       <ColorBarSlider color="linear-gradient(90deg, #3958ff, #d9d3a5, #f5a35a)">
-        <ParamSlider label="色温" value={value.temperature} {...sliderRange(EDIT_PARAMETER_RANGES.color.temperature)} onChange={(temperature) => previewChange({ temperature, whiteBalanceMode: 'custom' })} onCommit={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} />
+        <ParamSlider label="色温" value={value.temperature} {...sliderRange(EDIT_PARAMETER_RANGES.color.temperature)} onChange={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} onPreviewChange={(temperature) => previewChange({ temperature, whiteBalanceMode: 'custom' })} onCommit={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} />
       </ColorBarSlider>
       <ColorBarSlider color="linear-gradient(90deg, #35bd4b, #b6b6b6, #d936c7)">
-        <ParamSlider label="色调" value={value.tint} {...sliderRange(EDIT_PARAMETER_RANGES.color.tint)} onChange={(tint) => previewChange({ tint, whiteBalanceMode: 'custom' })} onCommit={(tint) => onChange({ tint, whiteBalanceMode: 'custom' })} />
+        <ParamSlider label="色调" value={value.tint} {...sliderRange(EDIT_PARAMETER_RANGES.color.tint)} onChange={(tint) => onChange({ tint, whiteBalanceMode: 'custom' })} onPreviewChange={(tint) => previewChange({ tint, whiteBalanceMode: 'custom' })} onCommit={(tint) => onChange({ tint, whiteBalanceMode: 'custom' })} />
       </ColorBarSlider>
     </Accordion>
   )

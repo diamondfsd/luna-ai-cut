@@ -8,6 +8,7 @@ interface ParamSliderProps {
   max: number
   step?: number
   onChange: (value: number) => void
+  onPreviewChange?: (value: number) => void
   onCommit?: (value: number) => void
   formatValue?: (value: number) => string
 }
@@ -29,6 +30,7 @@ export function ParamSlider({
   max,
   step = 1,
   onChange,
+  onPreviewChange,
   onCommit,
   formatValue = formatSigned,
 }: ParamSliderProps) {
@@ -74,7 +76,10 @@ export function ParamSlider({
       rafRef.current = null
       const pending = pendingValueRef.current
       pendingValueRef.current = null
-      if (pending !== null) onChange(pending)
+      if (pending !== null) {
+        const previewChange = onPreviewChange ?? (onCommit ? null : onChange)
+        previewChange?.(pending)
+      }
     })
   }
 
@@ -121,7 +126,10 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
-          onValueChange={([v]) => { if (onCommit) setSliderValue(v); scheduleSliderChange(v) }}
+          onValueChange={([v]) => {
+            if (onCommit) setSliderValue(v)
+            if (!onCommit || onPreviewChange) scheduleSliderChange(v)
+          }}
           onValueCommit={([v]) => flushSliderChange(v)}
         >
           <RadixSlider.Track className="workspace-slider-track">

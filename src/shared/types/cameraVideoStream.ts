@@ -15,7 +15,7 @@ export interface CameraVideoStreamStatus {
   transport: CameraVideoStreamTransport | null
   codec: CameraVideoStreamCodec
   streamUrl: string | null
-  /** 可供 OBS 媒体源使用的本机地址。 */
+  /** 可供 OBS 媒体源使用的本机 RTSP 地址。 */
   obsStreamUrl?: string | null
   port: number | null
   bytes: number

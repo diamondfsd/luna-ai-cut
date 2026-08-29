@@ -211,7 +211,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
           {activeLutInfo ? (
             <div className="current-info">
               <div className="current-top">
-                <span className="current-name">{activeLutInfo.name}</span>
+                <span className="current-name" title={activeLutInfo.name}>{activeLutInfo.name}</span>
                 <div className="current-actions">
                   <Popover>
                     <PopoverTrigger asChild>
