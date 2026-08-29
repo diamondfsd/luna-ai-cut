@@ -331,7 +331,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       const message = userFacingConnectionError(error)
       setConnection({ host, httpOk: false, controlOk: false, message })
       setDevicePhase('idle')
-      return { mode: 'wireless', preparation: 'already-connected', message }
+      return { mode: 'wireless', preparation: 'already-connected', requiresManualWifi: true, message }
     }
   }
 

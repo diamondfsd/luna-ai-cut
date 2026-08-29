@@ -183,11 +183,12 @@ export function DeviceConnectPage({
     try {
       let preparation = djiPreparation
       let credentials = djiWifiCredentials
-      if (isDjiWireless && !credentials && (!preparation || preparation.preparation === 'already-connected')) {
+      if (isDjiWireless && !credentials && (!preparation || (preparation.preparation === 'already-connected' && !preparation.requiresManualWifi))) {
         const result = await onPrepareConnection(true)
         setDjiPreparation(result)
         preparation = result
         credentials = result?.credentials ?? null
+        if (result?.requiresManualWifi) return
       }
       const wireless = isDjiWireless
         ? credentials

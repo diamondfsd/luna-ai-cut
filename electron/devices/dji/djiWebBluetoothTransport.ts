@@ -4,13 +4,14 @@ import { randomUUID } from 'node:crypto'
 import type { DjiBluetoothRendererEvent } from '../../../src/shared/types'
 import { decodeDjiMessage, responseToDjiRequest, type DjiMessage } from './djiBytes'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
-import { buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from './djiWebBluetoothScripts'
+import { buildDjiWebBluetoothAvailabilityScript, buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from './djiWebBluetoothScripts'
 import { djiErrorDetails, djiMessageDetails } from './djiLog'
 import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import type { DjiBleTransport } from './djiBleSession'
 
 const EVENT_CHANNEL = 'dji-web-bluetooth:event'
 const CONNECT_TIMEOUT_MS = 30_000
+const AVAILABILITY_TIMEOUT_MS = 3_000
 const REQUEST_TIMEOUT_MS = 12_000
 const PAIRING_CONFIRMATION_TIMEOUT_MS = 15_000
 const CLEANUP_TIMEOUT_MS = 3_000
@@ -206,6 +207,31 @@ export class WebBluetoothDjiBleTransport implements DjiBleTransport {
 
   acceptsSender(sender: WebContents): boolean {
     return sender === this.window?.webContents
+  }
+
+  async checkAvailability(): Promise<boolean | null> {
+    const startedAt = Date.now()
+    try {
+      const result = await withTimeout(
+        this.execute(buildDjiWebBluetoothAvailabilityScript()),
+        AVAILABILITY_TIMEOUT_MS,
+        '检查蓝牙状态超时',
+      )
+      const available = typeof result === 'boolean' ? result : null
+      logMainInfo('[DJI BLE] 检查蓝牙适配器状态完成', {
+        deviceId: this.profile.deviceId,
+        available,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return available
+    } catch (error) {
+      logMainWarn('[DJI BLE] 检查蓝牙适配器状态失败，将继续尝试连接', {
+        deviceId: this.profile.deviceId,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      return null
+    }
   }
 
   async armPairing(): Promise<void> {

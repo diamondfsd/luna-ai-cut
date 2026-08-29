@@ -26,6 +26,7 @@ export type DjiWirelessPreparationMode = CameraMediaSourceWirelessPreparation
 export interface DjiWirelessPreparationResult {
   mode: DjiWirelessPreparationMode
   credentials?: DjiWifiCredentials
+  requiresManualWifi?: boolean
   message: string
 }
 
@@ -59,6 +60,7 @@ function pingArgs(host: string): string[] {
 const PING_COMMAND_TIMEOUT_MS = 1200
 const HOST_REACHABLE_TIMEOUT_MS = 8000
 const HOST_REACHABLE_RETRY_DELAY_MS = 150
+const MANUAL_WIFI_MESSAGE = '未检测到可用的蓝牙适配器。请打开系统 Wi-Fi 设置，手动连接相机热点；连接完成后返回应用，再点击“开始连接”'
 
 function sleep(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs))
@@ -192,6 +194,7 @@ function isDjiWifiSsid(ssid: string, deviceId: string): boolean {
  */
 export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
   private ble: DjiBleSession | null = null
+  private bluetoothAvailable: boolean | null = null
 
   constructor(
     private readonly deviceId: string,
@@ -202,7 +205,8 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
   ) {}
 
   get capabilities(): CameraMediaSourceConnectionCapabilities {
-    const bluetoothAvailable = process.platform === 'darwin' || process.platform === 'win32' || isLoopbackHost(this.host)
+    const platformSupportsBluetooth = process.platform === 'darwin' || process.platform === 'win32' || isLoopbackHost(this.host)
+    const bluetoothAvailable = this.bluetoothAvailable ?? platformSupportsBluetooth
     return {
       bluetoothActivation: bluetoothAvailable,
       bluetoothWifiCredentials: bluetoothAvailable,
@@ -336,6 +340,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
         return transport ? new DjiBleSession(transport, this.installIdentity) : null
       })()
       if (!ble) {
+        this.bluetoothAvailable = false
         logMainWarn('[DJI BLE] 当前平台没有可用的 DJI BLE 传输', {
           deviceId: this.deviceId,
           host: this.host,
@@ -344,9 +349,29 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
         })
         return {
           mode: 'already-connected',
-          message: '当前电脑不支持蓝牙读取 Wi-Fi 信息，请使用系统 Wi-Fi 工具手动连接相机热点；如需密码，可先让手机连接相机并使用系统 Wi-Fi 分享功能获取，连接完成后回来点击“开始连接”',
+          requiresManualWifi: true,
+          message: MANUAL_WIFI_MESSAGE,
         }
       }
+
+      const bluetoothAvailability = await ble.checkAvailability()
+      if (bluetoothAvailability === false) {
+        this.bluetoothAvailable = false
+        await ble.close().catch(() => undefined)
+        if (this.ble === ble) this.ble = null
+        logMainWarn('[DJI BLE] 当前电脑没有可用的蓝牙适配器', {
+          deviceId: this.deviceId,
+          host: this.host,
+          platform: process.platform,
+          elapsedMs: Date.now() - startedAt,
+        })
+        return {
+          mode: 'already-connected',
+          requiresManualWifi: true,
+          message: MANUAL_WIFI_MESSAGE,
+        }
+      }
+      if (bluetoothAvailability === true) this.bluetoothAvailable = true
 
       this.ble = ble
       try {
@@ -385,6 +410,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     })
     return {
       mode: 'already-connected',
+      requiresManualWifi: true,
       message: '未能通过 DJI 蓝牙读取 Wi-Fi 信息，请使用系统 Wi-Fi 工具手动连接相机热点，连接完成后回来点击“开始连接”',
     }
   }

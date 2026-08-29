@@ -4,6 +4,15 @@ function scriptValue(value: unknown): string {
   return JSON.stringify(value)
 }
 
+/** Build a non-interactive Web Bluetooth availability probe. */
+export function buildDjiWebBluetoothAvailabilityScript(): string {
+  return `(async () => {
+    if (!navigator.bluetooth) return false;
+    if (typeof navigator.bluetooth.getAvailability !== 'function') return null;
+    return Boolean(await navigator.bluetooth.getAvailability());
+  })()`
+}
+
 export function matchesDjiBluetoothName(name: string | undefined, profile: DjiModelProfile): boolean {
   const candidate = String(name || '').trim().toLowerCase()
   if (!candidate) return false

@@ -35,6 +35,8 @@ export interface CameraMediaSourcePreparationResult {
     password: string
   }
   capabilities?: CameraMediaSourceConnectionCapabilities
+  /** 需要用户先在系统 Wi-Fi 中连接相机，再点击开始连接。 */
+  requiresManualWifi?: boolean
   message: string
 }
 

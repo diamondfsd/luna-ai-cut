@@ -16,6 +16,8 @@ export interface DjiWifiCredentials {
 export interface DjiBleTransport {
   readonly profile: DjiModelProfile
   readonly advertisement: Buffer
+  /** Returns false when the host has no usable Bluetooth adapter; null means unknown. */
+  checkAvailability?(): Promise<boolean | null>
   armPairing(): Promise<void>
   send(frame: Buffer): Promise<void>
   exchange(frame: Buffer): Promise<DjiMessage[]>
@@ -54,6 +56,10 @@ export class DjiBleSession {
     private readonly transport: DjiBleTransport,
     private readonly installIdentity: string,
   ) {}
+
+  async checkAvailability(): Promise<boolean | null> {
+    return this.transport.checkAvailability?.() ?? null
+  }
 
   /**
    * Keep the BLE session alive after the wake command. The camera can expose the
