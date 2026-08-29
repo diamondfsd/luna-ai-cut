@@ -187,8 +187,7 @@ fn run() -> Result<(), String> {
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
         }
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
-        "ultraface" | "ultraface-boxes" | "eye-state" | "dinov2-small" | "sface"
-        | "relic2-cpc" => {
+        "ultraface" | "ultraface-boxes" | "eye-state" | "dinov2-small" | "sface" | "relic2-cpc" => {
             let mut session =
                 specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
@@ -239,6 +238,9 @@ mod tests {
 
     #[test]
     fn relic_cpc_uses_one_little_endian_float_output() {
-        assert_eq!(expected_output_bytes("relic2-cpc", 1), std::mem::size_of::<f32>());
+        assert_eq!(
+            expected_output_bytes("relic2-cpc", 1),
+            std::mem::size_of::<f32>()
+        );
     }
 }

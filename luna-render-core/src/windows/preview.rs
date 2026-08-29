@@ -68,12 +68,13 @@ impl NativePreviewRuntime {
         // on Intel drivers while the first preview frame is being submitted.
         let compositor = Compositor::new(log_path)?;
         let (device, queue) = compositor.dx12_device_and_queue()?;
-        let interop = InteropDevice::new(&device, &queue)?;
+        let interop = InteropDevice::new(&device)?;
         let converter = VideoConverter::new(
             &interop.d3d11_device,
             &interop.d3d11_context,
             &interop.d3d11on12_device,
             &device,
+            &interop.interop_queue,
             &queue,
         )?;
         let surface = PreviewSurface::new(HWND(parent as *mut _), &queue, bounds)?;

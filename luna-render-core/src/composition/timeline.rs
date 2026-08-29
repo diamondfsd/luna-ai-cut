@@ -84,14 +84,11 @@ fn mask_timeline_frame(timeline: &MaskTimeline, time: f64) -> Option<&MaskTimeli
     {
         return None;
     }
-    timeline
-        .frames
-        .iter()
-        .min_by(|left, right| {
-            (left.time - time)
-                .abs()
-                .total_cmp(&(right.time - time).abs())
-        })
+    timeline.frames.iter().min_by(|left, right| {
+        (left.time - time)
+            .abs()
+            .total_cmp(&(right.time - time).abs())
+    })
 }
 
 fn ease_in_out_cubic(value: f64) -> f64 {
@@ -513,13 +510,19 @@ mod tests {
             mask_timeline_frame(&timeline, 0.2).and_then(|frame| frame.path.as_deref()),
             Some("face-0.pgm")
         );
-        assert_eq!(mask_timeline_frame(&timeline, 1.0).and_then(|frame| frame.path.as_deref()), None);
+        assert_eq!(
+            mask_timeline_frame(&timeline, 1.0).and_then(|frame| frame.path.as_deref()),
+            None
+        );
         assert_eq!(
             mask_timeline_frame(&timeline, 1.8).and_then(|frame| frame.path.as_deref()),
             Some("face-2.pgm")
         );
         assert!(mask_timeline_frame(&timeline, 2.1).is_none());
-        let transform = timeline.frames[2].transform.as_ref().expect("tracked frame");
+        let transform = timeline.frames[2]
+            .transform
+            .as_ref()
+            .expect("tracked frame");
         assert_eq!(transform.translate_x, 0.2);
     }
 

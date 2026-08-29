@@ -88,9 +88,10 @@ impl Compositor {
             self.device.create_texture_from_hal::<wgpu::hal::api::Dx12>(
                 hal_texture,
                 &descriptor,
-                // UnwrapUnderlyingResource transitions the resource to COMMON. The
-                // swap-chain back buffer is also acquired in COMMON/PRESENT state.
-                wgpu::wgt::TextureUses::UNINITIALIZED,
+                // UnwrapUnderlyingResource transitions the resource to COMMON.
+                // wgpu's DX12 PRESENT usage maps to COMMON, so declare the real
+                // initial state instead of bypassing wgpu's state tracker.
+                wgpu::wgt::TextureUses::PRESENT,
             )
         })
     }

@@ -5,20 +5,22 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11Device, ID3D11DeviceContext, ID3D11Resource, ID3D11Texture2D, D3D11_BIND_DECODER,
     D3D11_BIND_SHADER_RESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
 };
+use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_NV12,
     DXGI_FORMAT_P010, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Media::MediaFoundation::{
-    IMF2DBuffer, IMF2DBuffer2, IMFAttributes, IMFDXGIBuffer, IMFDXGIDeviceManager, IMFMediaBuffer,
-    IMFMediaType, IMFSample, IMFSourceReader, MF2DBuffer_LockFlags_Read, MFCreateAttributes,
-    MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video, MFVideoFormat_HEVC,
-    MFVideoFormat_NV12, MFVideoFormat_P010, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
+    IMF2DBuffer, IMF2DBuffer2, IMFAttributes, IMFD3D12SynchronizationObjectCommands, IMFDXGIBuffer,
+    IMFDXGIDeviceManager, IMFMediaBuffer, IMFMediaType, IMFSample, IMFSourceReader,
+    MF2DBuffer_LockFlags_Read, MFCreateAttributes, MFCreateMediaType, MFCreateSourceReaderFromURL,
+    MFMediaType_Video, MFVideoFormat_HEVC, MFVideoFormat_NV12, MFVideoFormat_P010,
+    MF_D3D12_SYNCHRONIZATION_OBJECT, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
     MF_MT_VIDEO_PROFILE, MF_MT_VIDEO_ROTATION, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
     MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED, MF_SOURCE_READERF_ENDOFSTREAM,
     MF_SOURCE_READERF_ERROR, MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED,
     MF_SOURCE_READERF_STREAMTICK, MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_D3D_MANAGER,
-    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+    MF_SOURCE_READER_FIRST_VIDEO_STREAM,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 
@@ -40,6 +42,23 @@ impl SurfaceFormat {
             Self::P010 => "P010",
             Self::Bgra8 => "BGRA8",
             Self::Other(_) => "unsupported",
+        }
+    }
+}
+
+pub(crate) enum DecodedSurface {
+    D3d11(ID3D11Texture2D),
+    D3d12 {
+        resource: ID3D12Resource,
+        synchronization: IMFD3D12SynchronizationObjectCommands,
+    },
+}
+
+impl DecodedSurface {
+    pub(crate) fn transport_label(&self) -> &'static str {
+        match self {
+            Self::D3d11(_) => "d3d11-surface",
+            Self::D3d12 { .. } => "d3d12-resource",
         }
     }
 }
@@ -69,7 +88,7 @@ pub(crate) struct DecoderInfo {
 pub(crate) struct DecodedFrame {
     #[allow(dead_code)]
     sample: IMFSample,
-    pub(crate) texture: ID3D11Texture2D,
+    pub(crate) surface: DecodedSurface,
     pub(crate) timestamp_100ns: i64,
     pub(crate) subresource_index: u32,
     pub(crate) array_slice: u32,
@@ -121,11 +140,11 @@ impl VideoDecoder {
         let native_type = unsafe { reader.GetNativeMediaType(video_stream, 0) }
             .map_err(|error| format!("无法读取视频格式: {error}"))?;
         let output_subtype = preferred_output_subtype(&native_type);
-        set_output_type(&reader, output_subtype).or_else(|first_error| {
+        set_output_type(&reader, output_subtype, &native_type).or_else(|first_error| {
             if output_subtype == MFVideoFormat_NV12 {
                 return Err(first_error);
             }
-            set_output_type(&reader, MFVideoFormat_NV12).map_err(|fallback_error| {
+            set_output_type(&reader, MFVideoFormat_NV12, &native_type).map_err(|fallback_error| {
                 format!("{first_error}; NV12 回退也不可用: {fallback_error}")
             })
         })?;
@@ -190,7 +209,7 @@ impl VideoDecoder {
         &mut self,
         seconds: f64,
     ) -> Result<Option<DecodedFrame>, String> {
-        let timestamp = (seconds.max(0.0) * TICKS_PER_SECOND).round() as i64;
+        let timestamp = seconds_to_timestamp(seconds);
         self.read_frame_at(timestamp)
     }
 
@@ -289,6 +308,13 @@ impl VideoDecoder {
     }
 }
 
+fn seconds_to_timestamp(seconds: f64) -> i64 {
+    // Media timestamps are quantized to the source time base. Flooring
+    // avoids asking for one tick past a frame whose mathematically exact
+    // timestamp is just below the requested presentation time.
+    (seconds.max(0.0) * TICKS_PER_SECOND).floor() as i64
+}
+
 fn create_reader_attributes(
     device_manager: Option<&IMFDXGIDeviceManager>,
 ) -> Result<IMFAttributes, String> {
@@ -302,7 +328,6 @@ fn create_reader_attributes(
                 attributes.SetUnknown(&MF_SOURCE_READER_D3D_MANAGER, device_manager)?;
             }
             attributes.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1)?;
-            attributes.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1)?;
         }
         Ok(())
     })()
@@ -310,11 +335,19 @@ fn create_reader_attributes(
     Ok(attributes)
 }
 
-fn set_output_type(reader: &IMFSourceReader, subtype: GUID) -> Result<(), String> {
+fn set_output_type(
+    reader: &IMFSourceReader,
+    subtype: GUID,
+    native_type: &IMFMediaType,
+) -> Result<(), String> {
     let media_type =
         unsafe { MFCreateMediaType() }.map_err(|error| format!("无法创建解码输出格式: {error}"))?;
     (|| -> windows::core::Result<()> {
         unsafe {
+            // Keep the allocator, geometry, timing and color metadata selected by
+            // the decoder. A bare NV12/P010 type is rejected by some hardware
+            // Source Reader paths as MF_E_INVALIDMEDIATYPE.
+            native_type.CopyAllItems(&media_type)?;
             media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
             media_type.SetGUID(&MF_MT_SUBTYPE, &subtype)?;
             reader.SetCurrentMediaType(
@@ -373,6 +406,43 @@ fn decoded_surface(sample: IMFSample, timestamp_100ns: i64) -> Result<DecodedFra
         .cast::<IMFDXGIBuffer>()
         .map_err(|_| "解码器返回了内存画面，未进入显卡表面路径".to_string())?;
 
+    let subresource_index = unsafe { dxgi_buffer.GetSubresourceIndex() }
+        .map_err(|error| format!("failed to get decoded surface subresource: {error}"))?;
+    let mut raw_resource = ptr::null_mut();
+    if unsafe { dxgi_buffer.GetResource(&ID3D12Resource::IID, &mut raw_resource) }.is_ok() {
+        if raw_resource.is_null() {
+            return Err("Direct3D12 视频表面为空".to_string());
+        }
+        let resource = unsafe { ID3D12Resource::from_raw(raw_resource) };
+        let mut raw_sync = ptr::null_mut();
+        unsafe {
+            dxgi_buffer.GetUnknown(
+                &MF_D3D12_SYNCHRONIZATION_OBJECT,
+                &IMFD3D12SynchronizationObjectCommands::IID,
+                &mut raw_sync,
+            )
+        }
+        .map_err(|error| format!("无法取得 D3D12 解码同步对象: {error}"))?;
+        if raw_sync.is_null() {
+            return Err("D3D12 解码同步对象为空".to_string());
+        }
+        let synchronization = unsafe { IMFD3D12SynchronizationObjectCommands::from_raw(raw_sync) };
+        let desc = unsafe { resource.GetDesc() };
+        return Ok(DecodedFrame {
+            sample,
+            surface: DecodedSurface::D3d12 {
+                resource,
+                synchronization,
+            },
+            timestamp_100ns,
+            subresource_index,
+            array_slice: subresource_index / u32::from(desc.MipLevels).max(1),
+            width: desc.Width as u32,
+            height: desc.Height as u32,
+            format: SurfaceFormat::from(desc.Format),
+        });
+    }
+
     let mut raw_texture = ptr::null_mut();
     unsafe { dxgi_buffer.GetResource(&ID3D11Texture2D::IID, &mut raw_texture) }
         .map_err(|error| format!("无法取得 Direct3D 视频表面: {error}"))?;
@@ -380,14 +450,14 @@ fn decoded_surface(sample: IMFSample, timestamp_100ns: i64) -> Result<DecodedFra
         return Err("Direct3D 视频表面为空".to_string());
     }
     let texture = unsafe { ID3D11Texture2D::from_raw(raw_texture) };
-    let subresource_index = unsafe { dxgi_buffer.GetSubresourceIndex() }
+    let _ = unsafe { dxgi_buffer.GetSubresourceIndex() }
         .map_err(|error| format!("无法取得视频表面层索引: {error}"))?;
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     unsafe { texture.GetDesc(&mut desc) };
 
     Ok(DecodedFrame {
         sample,
-        texture,
+        surface: DecodedSurface::D3d11(texture),
         timestamp_100ns,
         subresource_index,
         array_slice: subresource_index / desc.MipLevels.max(1),
@@ -396,7 +466,6 @@ fn decoded_surface(sample: IMFSample, timestamp_100ns: i64) -> Result<DecodedFra
         format: SurfaceFormat::from(desc.Format),
     })
 }
-
 
 fn decoded_system_memory_surface(
     sample: IMFSample,
@@ -414,13 +483,7 @@ fn decoded_system_memory_surface(
     if buffer.cast::<IMFDXGIBuffer>().is_ok() {
         return Err("system-memory decoder returned a GPU surface".to_string());
     }
-    let row_pitch = copy_system_memory_buffer(
-        &buffer,
-        width,
-        height,
-        format,
-        reusable_buffer,
-    )?;
+    let row_pitch = copy_system_memory_buffer(&buffer, width, height, format, reusable_buffer)?;
     let texture = upload_system_memory_frame(
         device,
         context,
@@ -433,7 +496,7 @@ fn decoded_system_memory_surface(
     )?;
     Ok(DecodedFrame {
         sample,
-        texture,
+        surface: DecodedSurface::D3d11(texture),
         timestamp_100ns,
         subresource_index: 0,
         array_slice: 0,
@@ -482,13 +545,8 @@ fn copy_system_memory_buffer(
                 )
                 .map_err(|error| format!("failed to lock system-memory video frame: {error}"))?;
         }
-        let copy_result = copy_pitched_rows(
-            scanline0,
-            pitch,
-            row_count,
-            bytes_per_row,
-            reusable_buffer,
-        );
+        let copy_result =
+            copy_pitched_rows(scanline0, pitch, row_count, bytes_per_row, reusable_buffer);
         let unlock_result = unsafe { buffer_2d.Unlock2D() };
         copy_result?;
         unlock_result
@@ -501,13 +559,8 @@ fn copy_system_memory_buffer(
         let mut pitch = 0;
         unsafe { buffer_2d.Lock2D(&mut scanline0, &mut pitch) }
             .map_err(|error| format!("failed to lock system-memory video frame: {error}"))?;
-        let copy_result = copy_pitched_rows(
-            scanline0,
-            pitch,
-            row_count,
-            bytes_per_row,
-            reusable_buffer,
-        );
+        let copy_result =
+            copy_pitched_rows(scanline0, pitch, row_count, bytes_per_row, reusable_buffer);
         let unlock_result = unsafe { buffer_2d.Unlock2D() };
         copy_result?;
         unlock_result
@@ -639,4 +692,15 @@ fn stream_index(value: i32) -> u32 {
 
 fn flag_is_set(flags: u32, flag: i32) -> bool {
     flags & flag as u32 != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::seconds_to_timestamp;
+
+    #[test]
+    fn seconds_to_timestamp_does_not_skip_quantized_last_frame() {
+        assert_eq!(seconds_to_timestamp(89.0 / 30.0), 29_666_666);
+        assert_eq!(seconds_to_timestamp(-1.0), 0);
+    }
 }
