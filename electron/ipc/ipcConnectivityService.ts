@@ -15,7 +15,7 @@ import { collectLunaNetworkDiagnostics } from '../platform/network/networkDiagno
 import { registerDjiWebBluetoothIpc } from '../devices/dji/djiWebBluetoothTransport'
 
 export function register(): void {
-  if (process.platform === 'win32') registerDjiWebBluetoothIpc()
+  if (process.platform === 'darwin' || process.platform === 'win32') registerDjiWebBluetoothIpc()
   ipcMain.handle('downloads:records', async (_event, files: LunaFile[]) => {
     const settings = await getSettings()
     return getDownloadedRecords(files, getLocalResourcesDir(settings), settings.organizeDownloadsByDate ?? false)

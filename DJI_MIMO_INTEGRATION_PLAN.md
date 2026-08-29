@@ -1,6 +1,6 @@
 # DJI Mimo 协议接入计划
 
-> 状态：Pocket 4 / Pocket 4 Pro 协议基线与 mock 服务已实现，真实 BLE/Wi-Fi 原生适配器待接入
+> 状态：Pocket 4 / Pocket 4 Pro 协议基线、mock 服务和 Electron Web Bluetooth transport 已实现，真实 BLE/Wi-Fi 硬件链路待验收
 >
 > 日期：2026-08-23
 >
@@ -25,7 +25,7 @@ DJI Osmo 的接入不能按“扫描 Wi-Fi、输入密码、访问 HTTP”实现
   -> HTTP 缩略图、预览和原文件下载
 ```
 
-建议把 Osmosis 当作协议和行为参考，移植其中的纯协议逻辑；不要把 Android Activity、Android Bluetooth、Android Wi-Fi API 直接搬进 Luna。Luna 的实现应放在 Electron 主进程和原生系统桥接层，React 渲染进程只负责展示连接阶段和素材结果。
+建议把 Osmosis 当作协议和行为参考，移植其中的纯协议逻辑；不要把 Android Activity、Android Bluetooth、Android Wi-Fi API 直接搬进 Luna。Luna 的实现应放在 Electron 主进程和 Web Bluetooth/系统网络桥接层，React 渲染进程只负责展示连接阶段和素材结果。
 
 第一版建议直接以 **Osmo Pocket 4 / Pocket 4 Pro** 为目标，但分成两个硬件验收顺序：先用 Pocket 4 建立完整链路基线，再用 Pocket 4 Pro 验证新 BLE 广播格式、双存储和 AP 掉线恢复。无人机 QuickTransfer、Osmo 360/WPA3、删除和复杂控制能力放到后续阶段。这样可以先验证最核心的 BLE 取凭据和桌面切换 Wi-Fi 风险，同时尽早覆盖 Pocket 4 Pro 的差异。
 
@@ -51,8 +51,7 @@ DJI Osmo 的接入不能按“扫描 Wi-Fi、输入密码、访问 HTTP”实现
 | --- | --- | --- |
 | 设备协议抽象 | `electron/deviceProtocols.ts` | `DeviceProtocol` 假设设备已经有 host；需要增加 DJI 的 BLE/Wi-Fi 会话入口 |
 | 媒体源抽象 | `electron/cameraMediaSourceService.ts`、`electron/ipcCameraMediaSourceService.ts` | 已有 `connect/check/list/delete/disconnect` 边界，适合新增 `DjiCameraMediaSource` |
-| BLE 扫描 | `electron/bluetoothCoreScanner.swift`、`electron/bluetoothDebugService.ts` | 目前只有一次性扫描和广播信息回传，没有生产级 GATT 会话 |
-| 浏览器 GATT 调试 | `src/pages/BluetoothTab.tsx` | 仅适合人工试验；不能承担 DJI 的双特征订阅、无响应写入、帧匹配、保活和跨平台发布 |
+| BLE 扫描与 GATT | `electron/devices/dji/djiWebBluetoothTransport.ts`、`src/pages/BluetoothTab.tsx` | macOS/Windows 生产链路统一使用 Electron Web Bluetooth；Swift 扫描器仅保留为不支持 Web Bluetooth 的调试回退 |
 | Wi-Fi 系统操作 | `electron/wifiCoreWlan.swift`、`electron/wifiDebugService.ts` | macOS/Windows 已有基础连接能力，但注册和会话绑定还需为 DJI 连接流程整理 |
 | IPC 注册 | `electron/ipcConnectivityService.ts`、`electron/appMain.ts`、`electron/preload.ts` | 适合新增独立 `ipcDjiCameraService.ts`，不把协议细节暴露给页面 |
 | 文件模型和下载 | `src/shared/types/media.ts`、`electron/storage/fileService.ts`、`electron/media/resumableDownloadService.ts` | `LunaFile` 能承载 DJI 媒体，但需要稳定 ID、存储 ID、预览 URL 和机型适配器 |
@@ -218,16 +217,15 @@ React 页面
 
 IPC 单独放在 `electron/ipcDjiCameraService.ts`，通过项目已有的 `import.meta.glob('./ipc*.ts')` 自动注册。所有特征写入、密码、原始 BLE 帧和 UDP 调试数据都留在主进程；渲染进程只接收脱敏状态和最终媒体数据。
 
-### 4.2 BLE 原生实现选择
+### 4.2 BLE 实现选择
 
 推荐顺序：
 
-1. **第一阶段 macOS：复用 CoreBluetooth 方向，新增长连接 GATT helper。** 当前 `bluetoothCoreScanner.swift` 已能启动 CoreBluetooth，但它只做一次性扫描。新 helper 要能持续运行，支持扫描、连接、服务发现、两个 CCCD、`fff4` 有响应写入、`fff5` 无响应写入、通知转发、断开和取消。
-2. **发布构建：确认不依赖用户安装 Swift 工具链。** 当前项目开发和部分原生能力通过 `swift <script>` 启动；DJI BLE 是产品主链路，打包时应使用可随应用发布的原生 helper，或明确验证目标系统具备所需运行时。
-3. **Windows：单独实现 WinRT BLE 适配器。** 不把 CoreBluetooth 逻辑和 Swift helper 当作 Windows 方案。Windows 版本至少要验证 BLE 广播、GATT Write Without Response、通知订阅、连接断开回调和权限行为。
-4. **不把浏览器 Web Bluetooth 作为正式方案。** 现有 `BluetoothTab.tsx` 保留作实验/诊断工具即可；它不能控制所有底层连接参数，也不适合承载跨平台原生权限和长连接状态机。
+1. **macOS/Windows：统一使用 Electron Web Bluetooth。** 主进程负责设备选择、配对回调和事件路由，渲染进程中的受控脚本负责 GATT 连接、双特征通知订阅和写入。
+2. **发布构建：使用应用自身的蓝牙权限声明。** macOS 安装包保留 `NSBluetoothAlwaysUsageDescription` 和蓝牙 entitlement，不再依赖随包发布的 Swift DJI BLE helper。
+3. **调试回退：保留一次性 CoreBluetooth 扫描器。** 仅用于没有 Web Bluetooth 的环境诊断，不参与 DJI 生产 GATT 会话。
 
-原生 helper 建议使用 JSON Lines 或等价的请求/事件协议：主进程发送带 request ID 的命令，helper 输出结构化事件；BLE 通知必须是异步事件，不能用一次性命令等待完整结果。原始字节只用于本地诊断，默认日志脱敏。
+Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事件；BLE 通知必须作为事件处理，不能用一次性命令等待完整结果。原始字节只用于本地诊断，默认日志脱敏。
 
 ### 4.3 设备与媒体抽象调整
 
@@ -266,11 +264,11 @@ IPC 单独放在 `electron/ipcDjiCameraService.ts`，通过项目已有的 `impo
 
 验收：不连接设备也能通过 fixture 做字节级 round-trip、坏 CRC、截断帧、未知命令和多个分片重组测试。
 
-### Phase 2：macOS BLE 长连接
+### Phase 2：跨平台 BLE 长连接
 
 交付物：
 
-- CoreBluetooth helper 的扫描、连接、服务发现和通知事件；
+- Electron Web Bluetooth 在 macOS/Windows 上的扫描、连接、服务发现和通知事件；
 - 严格实现两个 CCCD 订阅和 `fff4`/`fff5` 两种写入类型；
 - 主进程 BLE session 状态机：连接、配对、等待相机确认、重试、超时、断开；
 - 每安装一次生成并持久化 app identity；
@@ -318,7 +316,7 @@ IPC 单独放在 `electron/ipcDjiCameraService.ts`，通过项目已有的 `impo
 
 交付物：
 
-- WinRT BLE 原生适配器和 Windows Wi-Fi handoff；
+- Electron Web Bluetooth transport 和 Windows Wi-Fi handoff；
 - Action 5/Xtra 10004/no-poke 分支；
 - 其他机型的双存储、Action 1 index 清单等差异；Pocket 4 / Pocket 4 Pro 不再作为后续扩展项；
 - 无人机 `DJI FLY` token、9003、`0x51` session-open 和 DCF 清单作为独立协议族；
@@ -364,7 +362,7 @@ IPC 单独放在 `electron/ipcDjiCameraService.ts`，通过项目已有的 `impo
 
 | 风险 | 影响 | 处理 |
 | --- | --- | --- |
-| macOS/Windows BLE GATT 能力不一致 | 连接链路无法跨平台复用 | BLE 仅定义抽象接口，先完成 macOS，再单独做 WinRT |
+| macOS/Windows BLE GATT 能力不一致 | 连接链路在不同系统上表现不同 | BLE 仅定义抽象接口，统一走 Electron Web Bluetooth，并分别完成两平台实机验收 |
 | MTU 500/517 文档矛盾 | 相机静默不响应，难以定位 | 第一阶段硬件测量并记录实际协商值，按 profile 配置 |
 | Wi-Fi 切网影响用户网络 | 用户失去互联网或应用访问错误网卡 | 显示阶段、保存网络快照、探测相机地址、断开后恢复/提示 |
 | BLE Write Without Response 丢帧 | 配对或取密码偶发超时 | 所有发送串行化、按命令间隔 pacing、按消息 ID 等待响应、有限重试 |
@@ -390,7 +388,7 @@ IPC 单独放在 `electron/ipcDjiCameraService.ts`，通过项目已有的 `impo
 
 1. 先锁定 Pocket 4，完成 BLE 广播、服务、特征、MTU 和一组脱敏抓包记录；随后补采 Pocket 4 Pro 的新格式广播和清单记录；
 2. 只写 TypeScript 协议内核和 fixture 测试，不接 UI；
-3. 做 macOS BLE 长连接 helper，先实现取 SSID/密码，不急着列媒体；
+3. 完成 macOS/Windows Electron Web Bluetooth 长连接实机验收，先实现取 SSID/密码，不急着列媒体；
 4. 完成 Wi-Fi handoff 和 `192.168.2.1` 探测；
 5. 移植 UDP 握手和最小媒体清单，先验证 Pocket 4 的一个照片和一个视频下载，再验证 Pocket 4 Pro 的双存储清单；
 6. 再接入 `CameraMediaSource`、连接页面和现有下载队列；
@@ -423,4 +421,4 @@ IPC 单独放在 `electron/ipcDjiCameraService.ts`，通过项目已有的 `impo
 
 服务端口默认使用本地 `HTTP 18080`、`TCP 17001`、`UDP 19004`，与真实设备的 `80/7001/9004` 分开，避免误连。`--drop-after-bytes` 可模拟 Pocket 4 Pro 下载中 AP 掉线；素材根目录包含 `sdcard/` 和 `internal/` 时会生成双存储清单。
 
-当前仍明确保留的硬件工作：真实 macOS CoreBluetooth 长连接、系统 Wi-Fi 切换/恢复，以及 Pocket 4 Pro 真实掉线后的断点恢复。当前非 loopback 地址会给出明确错误，不会伪装成已支持的真实连接。
+当前仍明确保留的硬件工作：真实 macOS/Windows Electron Web Bluetooth 长连接、系统 Wi-Fi 切换/恢复，以及 Pocket 4 Pro 真实掉线后的断点恢复。当前非 loopback 地址会给出明确错误，不会伪装成已支持的真实连接。

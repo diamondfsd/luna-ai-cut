@@ -246,7 +246,7 @@ function createWindow(): void {
     },
     getWindowCloseBehavior: getMainWindowCloseBehavior,
   })
-  if (process.platform === 'win32') installDjiWebBluetoothHandlers(win)
+  if (process.platform === 'darwin' || process.platform === 'win32') installDjiWebBluetoothHandlers(win)
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
     setTimeout(() => startSegmentationModelPrefetch(), 1_000)

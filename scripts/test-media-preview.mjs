@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 
 const source = await readFile(new URL('../src/components/htmlPreviewGeometry.ts', import.meta.url), 'utf8')
+const fileUtilsSource = await readFile(new URL('../src/lib/fileUtils.ts', import.meta.url), 'utf8')
 const watermarkGeometrySource = await readFile(new URL('../src/shared/watermarkGeometry.ts', import.meta.url), 'utf8')
 const watermarkLibrarySource = await readFile(new URL('../src/shared/watermarkLibrary.ts', import.meta.url), 'utf8')
 const rendererSelectionSource = await readFile(new URL('../src/components/previewRendererSelection.ts', import.meta.url), 'utf8')
@@ -17,6 +18,14 @@ const compiled = ts.transpileModule(source, {
   },
 }).outputText
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const fileUtilsCompiled = ts.transpileModule(fileUtilsSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+  },
+}).outputText
+const fileUtils = await import(`data:text/javascript;base64,${Buffer.from(fileUtilsCompiled).toString('base64')}`)
 const watermarkGeometryCompiled = ts.transpileModule(watermarkGeometrySource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -68,6 +77,11 @@ close(landscape.height, 562.5, 'landscape preview height')
 const portrait = geometry.containPreviewSize({ width: 1000, height: 800 }, { width: 1080, height: 1920 })
 close(portrait.width, 450, 'rotated portrait preview width')
 close(portrait.height, 800, 'rotated portrait preview height')
+
+const djiOriginalUrl = 'http://192.168.2.1/v2?storage=1&path=DCIM/DJI_001/DJI_0001.MP4'
+assert.equal(fileUtils.fileNameFromPath(djiOriginalUrl), 'DJI_0001.MP4', 'DJI media endpoint exposes the original file name')
+assert.equal(fileUtils.extensionFromPath(djiOriginalUrl), '.mp4', 'DJI media endpoint exposes the original extension')
+assert.equal(fileUtils.mediaKindFromPath(djiOriginalUrl), 'video', 'DJI original media URL is recognized as video')
 
 const layer = {
   positioning: {

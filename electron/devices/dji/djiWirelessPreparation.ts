@@ -13,8 +13,7 @@ import {
   type DjiBleTransport,
   type DjiWifiCredentials,
 } from './djiBleSession'
-import { createCoreBluetoothDjiBleTransport } from './djiCoreBluetoothTransport'
-import { createWindowsDjiBleTransport } from './djiWindowsBluetoothTransport'
+import { createElectronDjiBleTransport } from './djiWebBluetoothTransport'
 import { djiErrorDetails } from './djiLog'
 import { djiProfileForDevice } from './djiModels'
 import { connectWifiNetwork, getWifiDebugStatus } from '../../platform/network/wifiDebugService'
@@ -48,7 +47,7 @@ type DjiTransportFactory = (deviceId: string, baseUrl: string, win: BrowserWindo
 
 function defaultDjiTransportFactory(deviceId: string, baseUrl: string, win: BrowserWindow | null): DjiBleTransport | null {
   if (isLoopbackHost(baseUrl)) return createHttpMockDjiBleTransport(deviceId, baseUrl)
-  return createCoreBluetoothDjiBleTransport(deviceId) ?? createWindowsDjiBleTransport(deviceId, win)
+  return createElectronDjiBleTransport(deviceId, win)
 }
 
 function pingArgs(host: string): string[] {

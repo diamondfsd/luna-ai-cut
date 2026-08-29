@@ -89,7 +89,7 @@ function beginSelection(contents: WebContents, profile: DjiModelProfile): () => 
   return request.cancel
 }
 
-/** Install Electron's device selection and Windows pairing hooks for the main window. */
+/** Install Electron's device selection and pairing hooks for the main window. */
 export function installDjiWebBluetoothHandlers(win: BrowserWindow): void {
   const contents = win.webContents
   if (installedWebContents.has(contents)) return
@@ -130,27 +130,29 @@ export function installDjiWebBluetoothHandlers(win: BrowserWindow): void {
     pendingSelections.delete(contents)
   })
 
-  contents.session.setBluetoothPairingHandler((details, callback) => {
-    logMainInfo('[DJI BLE] 收到 Windows 蓝牙配对请求', {
-      deviceId: details.deviceId,
-      pairingKind: details.pairingKind,
-      hasPin: Boolean(details.pin),
-    })
-    if (details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin') {
-      callback({ confirmed: true })
-      logMainInfo('[DJI BLE] 已确认 Windows 蓝牙配对', {
+  if (process.platform === 'win32') {
+    contents.session.setBluetoothPairingHandler((details, callback) => {
+      logMainInfo('[DJI BLE] 收到蓝牙配对请求', {
+        deviceId: details.deviceId,
+        pairingKind: details.pairingKind,
+        hasPin: Boolean(details.pin),
+      })
+      if (details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin') {
+        callback({ confirmed: true })
+        logMainInfo('[DJI BLE] 已确认蓝牙配对', {
+          deviceId: details.deviceId,
+          pairingKind: details.pairingKind,
+        })
+        return
+      }
+
+      logMainWarn('[DJI BLE] 蓝牙要求输入配对码，应用没有可用配对码', {
         deviceId: details.deviceId,
         pairingKind: details.pairingKind,
       })
-      return
-    }
-
-    logMainWarn('[DJI BLE] Windows 蓝牙要求输入配对码，应用没有可用配对码', {
-      deviceId: details.deviceId,
-      pairingKind: details.pairingKind,
+      callback({ confirmed: false })
     })
-    callback({ confirmed: false })
-  })
+  }
 }
 
 /** Register the renderer-to-main notification channel once during app startup. */
@@ -192,7 +194,7 @@ export class WebBluetoothDjiBleTransport implements DjiBleTransport {
     this.advertisement = this.profile.advertisement
     this.window = win
     activeTransports.set(this.token, this)
-    logMainInfo('[DJI BLE] 创建 Windows Web Bluetooth 传输', {
+    logMainInfo('[DJI BLE] 创建 Electron Web Bluetooth 传输', {
       deviceId: this.profile.deviceId,
       token: this.token,
       hasWindow: Boolean(win && !win.isDestroyed()),
@@ -284,7 +286,7 @@ export class WebBluetoothDjiBleTransport implements DjiBleTransport {
     this.selectionCancel = null
     activeTransports.delete(this.token)
     this.rejectPending(new Error('DJI Bluetooth：BLE 会话已关闭'))
-    logMainDebug('[DJI BLE] 关闭 Windows Web Bluetooth 会话', { deviceId: this.profile.deviceId, token: this.token })
+    logMainDebug('[DJI BLE] 关闭 Electron Web Bluetooth 会话', { deviceId: this.profile.deviceId, token: this.token })
     try {
       await withTimeout(this.execute(`
         const state = window.__lunaDjiBluetoothState;
@@ -466,6 +468,12 @@ export class WebBluetoothDjiBleTransport implements DjiBleTransport {
     }
     this.messageWaiters.length = 0
   }
+}
+
+export function createElectronDjiBleTransport(deviceId: string, win: BrowserWindow | null): WebBluetoothDjiBleTransport | null {
+  return (process.platform === 'darwin' || process.platform === 'win32') && win
+    ? new WebBluetoothDjiBleTransport(deviceId, win)
+    : null
 }
 
 interface MessageWaiter {
