@@ -12,6 +12,7 @@ import type {
   CameraDeleteResult,
   CameraMediaSourceAdapter,
   CameraMediaSourceCapabilities,
+  CameraMediaSourceFilePageCallback,
   CameraMediaSourceOptions,
   CameraMediaSourcePreparationResult,
   CameraMediaSourceStatus,
@@ -332,13 +333,13 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
     }
   }
 
-  async listFiles(): Promise<LunaFile[]> {
+  async listFiles(onPage?: CameraMediaSourceFilePageCallback): Promise<LunaFile[]> {
     const { deviceId, host, storageId } = await this.values()
     const startedAt = Date.now()
     logMainInfo('[DJI 媒体入口] list-files 开始', { deviceId, host, storageId })
     try {
       const session = await djiSessionFor(deviceId, host, this.ctx.win)
-      const files = await session.listFiles(storageId, this.options)
+      const files = await session.listFiles(storageId, this.options, onPage)
       await saveSettings({
         cameraConnectionMode: 'wireless',
         cameraHost: host,

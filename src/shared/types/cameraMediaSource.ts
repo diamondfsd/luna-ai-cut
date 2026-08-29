@@ -64,6 +64,13 @@ export interface CameraMediaSourceOptions {
   }
 }
 
+export interface CameraMediaSourceFilePage {
+  pageNumber: number
+  files: LunaFile[]
+}
+
+export type CameraMediaSourceFilePageCallback = (page: CameraMediaSourceFilePage) => void | Promise<void>
+
 export interface CameraMediaSourceStatus extends ConnectionStatus {
   mode: CameraConnectionMode
   connected: boolean
@@ -80,7 +87,7 @@ export interface CameraMediaSourceStatus extends ConnectionStatus {
 export interface CameraMediaSourceAdapter {
   connect(): Promise<CameraMediaSourceStatus>
   check(): Promise<CameraMediaSourceStatus>
-  listFiles(): Promise<LunaFile[]>
+  listFiles(onPage?: CameraMediaSourceFilePageCallback): Promise<LunaFile[]>
   deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult>
   disconnect(): Promise<void>
   prepareConnection?(options?: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
@@ -92,7 +99,7 @@ export interface CameraMediaSourceApi {
   connect(options: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus>
   prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
   check(options: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus>
-  listFiles(options: CameraMediaSourceOptions): Promise<LunaFile[]>
+  listFiles(options: CameraMediaSourceOptions, onPage?: CameraMediaSourceFilePageCallback): Promise<LunaFile[]>
   deleteFiles(files: LunaFile[], options: CameraMediaSourceOptions): Promise<CameraDeleteResult>
   disconnect(options: CameraMediaSourceOptions): Promise<void>
 }

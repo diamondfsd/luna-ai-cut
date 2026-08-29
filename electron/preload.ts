@@ -1,6 +1,7 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type {
   AppSettings,
+  CameraMediaSourceFilePage,
   DeviceDebugApi,
   DeviceDebugEvent,
   DeviceConnectOptions,
@@ -112,7 +113,18 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     connect: (options) => ipcRenderer.invoke('camera-source:connect', options),
     prepareConnection: (options) => ipcRenderer.invoke('camera-source:prepare-connection', options),
     check: (options) => ipcRenderer.invoke('camera-source:check', options),
-    listFiles: (options) => ipcRenderer.invoke('camera-source:list-files', options),
+    listFiles: (options, onPage) => {
+      if (!onPage) return ipcRenderer.invoke('camera-source:list-files', options)
+      const requestId = `camera-files-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const listener = (_event: Electron.IpcRendererEvent, value: CameraMediaSourceFilePage & { requestId?: string }) => {
+        if (value?.requestId !== requestId) return
+        onPage({ pageNumber: value.pageNumber, files: value.files })
+      }
+      ipcRenderer.on('camera-source:files-page', listener)
+      return ipcRenderer.invoke('camera-source:list-files', options, requestId).finally(() => {
+        ipcRenderer.off('camera-source:files-page', listener)
+      })
+    },
     deleteFiles: (files, options) => ipcRenderer.invoke('camera-source:delete-files', files, options),
     disconnect: (options) => ipcRenderer.invoke('camera-source:disconnect', options),
   },

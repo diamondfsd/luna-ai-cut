@@ -29,7 +29,7 @@ interface MetadataCacheEntry {
   data: MediaMetadata
 }
 
-const METADATA_CACHE_VERSION = 6
+const METADATA_CACHE_VERSION = 7
 
 function metadataCacheDir(): string {
   return path.join(currentBaseDir(), 'cache', 'metadata')
