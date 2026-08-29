@@ -66,11 +66,11 @@ DJI 媒体会话分为两步：
 
 准备策略目前支持三种结果：
 
-- `bluetooth`：通过 Mock 或 macOS CoreBluetooth 执行完整 BLE DUML 配对和 Wi-Fi 信息读取
+- `bluetooth`：通过 Mock 或 Electron Web Bluetooth 执行完整 BLE DUML 配对和 Wi-Fi 信息读取
 - `manual-wifi`：用户已经在系统中连接相机 Wi-Fi，应用直接使用该连接
 - `already-connected`：跳过 BLE，直接复用用户已经连接好的相机 Wi-Fi
 
-真实 BLE transport 由平台 helper 承载：macOS 使用 CoreBluetooth Swift helper，Windows 使用 Windows Runtime PowerShell helper；两者都只通过 `DjiBleTransport` 接入。媒体清单、下载、预览和删除能力不需要重新实现。
+真实 BLE transport 由 Electron Web Bluetooth 承载，macOS 和 Windows 都通过 `DjiBleTransport` 接入。媒体清单、下载、预览和删除能力不需要重新实现。
 
 ## Mock 验收
 

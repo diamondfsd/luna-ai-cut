@@ -8,8 +8,19 @@ export const VIDEO_EXTENSIONS = new Set([
   '.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.m4v', '.lrv', '.lrf', '.xrf', '.ogg',
 ])
 
+function mediaPathFromUrl(filePath: string): string {
+  try {
+    const parsed = new URL(filePath)
+    // Some camera HTTP APIs expose every file through one endpoint and put the
+    // actual media path in a query parameter (for example DJI /v2?path=...).
+    return parsed.searchParams.get('path') ?? parsed.pathname
+  } catch {
+    return filePath
+  }
+}
+
 export function fileNameFromPath(filePath: string): string {
-  const clean = filePath.split(/[?#]/)[0]
+  const clean = mediaPathFromUrl(filePath).split(/[?#]/)[0]
   try {
     const parsed = new URL(clean)
     return decodeURIComponent(parsed.pathname.replace(/\\/g, '/').split('/').pop() || 'unknown')

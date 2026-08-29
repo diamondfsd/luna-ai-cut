@@ -60,8 +60,7 @@ export function BluetoothTab({ activeDevice }: BluetoothTabProps) {
     setStatus('scanning')
     setCandidates([])
     setSelectedDevice(null)
-    const isWindows = /Windows/i.test(navigator.userAgent)
-    if (isWindows) {
+    if (navigator.bluetooth) {
       appendLog('开始 Web Bluetooth 扫描')
       try {
         const bluetooth = activeDevice?.bluetooth
