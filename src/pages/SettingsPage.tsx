@@ -4,7 +4,7 @@ import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-r
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useStorageMigration } from '../hooks/useStorageMigration'
-import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
+import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition, WatermarkSettings } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
@@ -132,15 +132,20 @@ export function SettingsPage({
     if (stats) setFreshCacheStats(stats)
   }
 
-  function handleDefaultWatermarkChange(watermark: { enabled: boolean; position: NonNullable<AppSettings['defaultWatermarkPosition']> }): void {
+  function handleDefaultWatermarkChange(watermark: Pick<WatermarkSettings, 'enabled' | 'position' | 'sizeOnCanvasWidth' | 'placement'>): void {
     if (!settings) return
+    const placementChanged = JSON.stringify(settings.defaultWatermarkPlacement) !== JSON.stringify(watermark.placement)
     if (
       settings.defaultWatermarkEnabled === watermark.enabled
       && settings.defaultWatermarkPosition === watermark.position
+      && settings.defaultWatermarkSizeOnCanvasWidth === watermark.sizeOnCanvasWidth
+      && !placementChanged
     ) return
     const patch = {
       defaultWatermarkEnabled: watermark.enabled,
       defaultWatermarkPosition: watermark.position,
+      defaultWatermarkSizeOnCanvasWidth: watermark.sizeOnCanvasWidth,
+      defaultWatermarkPlacement: watermark.placement,
     }
     setSettings((current) => (current ? { ...current, ...patch } : current))
     void window.luna.saveSettings(patch).then(setSettings)

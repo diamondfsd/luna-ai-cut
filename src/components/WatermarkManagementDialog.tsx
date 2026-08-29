@@ -2,17 +2,17 @@ import { useEffect, useState } from 'react'
 import { FolderOpen, Trash2 } from 'lucide-react'
 
 import { filePathToPreviewUrl } from '../lib/fileUtils'
-import type { AppSettings, CustomWatermarkAsset, WatermarkPosition } from '../shared/types'
+import type { AppSettings, CustomWatermarkAsset, WatermarkSettings } from '../shared/types'
 import { addCustomWatermarkAssets } from '../shared/watermarkLibrary'
 import { Button, Dialog, IconButton, toast } from '../ui'
-import { WatermarkSettings } from './WatermarkSettings'
+import { WatermarkSettings as WatermarkSettingsComponent } from './WatermarkSettings'
 import './WatermarkManagementDialog.css'
 
 interface WatermarkManagementDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   settings: AppSettings | null
-  onDefaultChange: (watermark: { enabled: boolean; position: WatermarkPosition }) => void
+  onDefaultChange: (watermark: Pick<WatermarkSettings, 'enabled' | 'position' | 'sizeOnCanvasWidth' | 'placement'>) => void
 }
 
 export function WatermarkManagementDialog({
@@ -23,6 +23,9 @@ export function WatermarkManagementDialog({
 }: WatermarkManagementDialogProps) {
   const [assets, setAssets] = useState<CustomWatermarkAsset[]>([])
   const [loading, setLoading] = useState(false)
+  const defaultPosition = settings?.defaultWatermarkPosition === 'top-center'
+    ? 'bottom-center'
+    : settings?.defaultWatermarkPosition ?? 'bottom-center'
 
   useEffect(() => {
     if (!open) return
@@ -68,15 +71,16 @@ export function WatermarkManagementDialog({
       <div className="ui-dialog-body watermark-management-body">
         <section className="watermark-management-section">
           <h3>默认水印</h3>
-          <WatermarkSettings
+          <WatermarkSettingsComponent
             preferencesOnly
             title="默认开启"
             settings={{
               enabled: settings?.defaultWatermarkEnabled ?? true,
               style: settings?.recentWatermarkSettings?.style ?? '',
-              position: settings?.defaultWatermarkPosition === 'top-center'
-                ? 'bottom-center'
-                : settings?.defaultWatermarkPosition ?? 'bottom-center',
+              position: defaultPosition,
+              sourceKind: 'builtin',
+              sizeOnCanvasWidth: settings?.defaultWatermarkSizeOnCanvasWidth,
+              placement: settings?.defaultWatermarkPlacement,
             }}
             onChange={onDefaultChange}
           />

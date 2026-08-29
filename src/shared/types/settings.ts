@@ -1,4 +1,4 @@
-import type { CustomWatermarkAsset, WatermarkPosition, WatermarkSettings } from './watermark'
+import type { CustomWatermarkAsset, WatermarkPlacement, WatermarkPosition, WatermarkSettings } from './watermark'
 import type { CameraConnectionMode } from './cameraMediaSource'
 import type { MockServerConfig } from './mock'
 
@@ -37,6 +37,10 @@ export interface AppSettings {
   defaultWatermarkEnabled?: boolean
   /** 新素材与重置素材使用的默认水印位置。 */
   defaultWatermarkPosition?: WatermarkPosition
+  /** 新素材与重置素材使用的默认水印宽度，占画面宽度的比例。 */
+  defaultWatermarkSizeOnCanvasWidth?: number
+  /** 新素材与重置素材使用的默认水印位置，可保存预设或自由位置。 */
+  defaultWatermarkPlacement?: WatermarkPlacement
   /** 批量导出最近一次有效的水印设置。 */
   recentWatermarkSettings?: WatermarkSettings
   /** 用户已导入的自定义水印库，按最近导入顺序排列。 */

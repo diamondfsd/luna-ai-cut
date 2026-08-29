@@ -48,7 +48,7 @@ reader.releaseLock()
 
 async function readRtspResponse(socket) {
   let buffered = Buffer.alloc(0)
-  while (true) {
+  for (;;) {
     const headerEnd = buffered.indexOf('\r\n\r\n')
     if (headerEnd >= 0) {
       const header = buffered.subarray(0, headerEnd + 4).toString('utf8')
@@ -68,6 +68,9 @@ async function rtspRequest(socket, method, url, cseq, headers = {}) {
 }
 
 const rtspServer = new LocalObsVideoStreamServer()
+const h264AccessUnit = Buffer.from('000000016742e01f0102030000000168ce060e000000016501020304', 'hex')
+rtspServer.setCodec('h264')
+rtspServer.publishVideoFrame(h264AccessUnit, 0)
 const rtspInfo = await rtspServer.start('h264', 0)
 const rtspSocket = connect({ host: '127.0.0.1', port: rtspInfo.port })
 await once(rtspSocket, 'connect')
@@ -76,6 +79,7 @@ assert.match((await rtspRequest(rtspSocket, 'OPTIONS', rtspUrl, 1)).toString('ut
 const describe = (await rtspRequest(rtspSocket, 'DESCRIBE', rtspUrl, 2, { Accept: 'application/sdp' })).toString('utf8')
 assert.match(describe, /Content-Type: application\/sdp/i)
 assert.match(describe, /a=rtpmap:96 H264\/90000/)
+assert.match(describe, /sprop-parameter-sets=/)
 const setup = (await rtspRequest(rtspSocket, 'SETUP', `${rtspUrl}/trackID=0`, 3, {
   Transport: 'RTP/AVP/TCP;unicast;interleaved=0-1',
 })).toString('utf8')
@@ -84,15 +88,17 @@ const session = /Session:\s*([^\r\n]+)/i.exec(setup)?.[1]
 assert.ok(session)
 assert.match((await rtspRequest(rtspSocket, 'PLAY', rtspUrl, 4, { Session: session })).toString('utf8'), /RTSP\/1\.0 200 OK/)
 
-const h264AccessUnit = Buffer.from('000000016742e01f0102030000000168ce060e000000016501020304', 'hex')
 rtspServer.publishVideoFrame(h264AccessUnit, 0)
 const [rtpFrame] = await once(rtspSocket, 'data')
 assert.equal(rtpFrame[0], 0x24)
 assert.equal(rtpFrame[1], 0)
-assert.equal(rtpFrame.readUInt16BE(2), rtpFrame.length - 4)
-assert.equal(rtpFrame[4] & 0xc0, 0x80)
-assert.equal(rtpFrame[5] & 0x7f, 96)
-assert.equal(rtpFrame[16], 0x67)
+const rtpLength = rtpFrame.readUInt16BE(2)
+const rtpPacket = rtpFrame.subarray(4, 4 + rtpLength)
+assert.equal(rtpLength, 19)
+assert.equal(rtpFrame.length >= 4 + rtpLength, true)
+assert.equal(rtpPacket[0] & 0xc0, 0x80)
+assert.equal(rtpPacket[1] & 0x7f, 96)
+assert.equal(rtpPacket[12], 0x67)
 rtspSocket.destroy()
 await rtspServer.stop()
 
