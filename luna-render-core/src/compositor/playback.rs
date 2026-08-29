@@ -190,6 +190,14 @@ impl Compositor {
                 }
             }
             dec.current_time = video_time;
+            if video_time.abs() < 0.0001 {
+                log!(
+                    "read_video_frame [{}] decoded first RGBA bytes={} first={:?}",
+                    file_path,
+                    rgba.len(),
+                    &rgba[..rgba.len().min(16)],
+                );
+            }
             return Ok(Some((rgba, dec.scaled_w, dec.scaled_h)));
         }
 
@@ -288,6 +296,14 @@ impl Compositor {
             dw,
             dh,
         );
+        if video_time.abs() < 0.0001 {
+            log!(
+                "read_video_frame [{}] decoded first RGBA bytes={} first={:?}",
+                file_path,
+                rgba.len(),
+                &rgba[..rgba.len().min(16)],
+            );
+        }
         Ok(Some((rgba, dw, dh)))
     }
 

@@ -259,12 +259,12 @@ pub fn yolo_instance_map(
             .ceil()
             .clamp(0.0, output_size as f32) as usize;
         for y in y1..y2 {
-            let input_y = pad_y as f32
-                + (y as f32 + 0.5) * scaled_height as f32 / output_size as f32;
+            let input_y =
+                pad_y as f32 + (y as f32 + 0.5) * scaled_height as f32 / output_size as f32;
             let prototype_y = input_y * prototype_height as f32 / YOLO_SIZE as f32 - 0.5;
             for x in x1..x2 {
-                let input_x = pad_x as f32
-                    + (x as f32 + 0.5) * scaled_width as f32 / output_size as f32;
+                let input_x =
+                    pad_x as f32 + (x as f32 + 0.5) * scaled_width as f32 / output_size as f32;
                 let prototype_x = input_x * prototype_width as f32 / YOLO_SIZE as f32 - 0.5;
                 let mut logit = 0.0f32;
                 for channel in 0..prototype_channels {
@@ -1239,13 +1239,10 @@ mod tests {
     #[test]
     fn yolo_instance_map_keeps_instances_separate_and_prefers_stronger_overlap() {
         let detections = vec![
-            0.0, 0.0, 400.0, 640.0, 0.8, 2.0, 2.0,
-            240.0, 0.0, 640.0, 640.0, 0.9, 2.0, 2.0,
+            0.0, 0.0, 400.0, 640.0, 0.8, 2.0, 2.0, 240.0, 0.0, 640.0, 640.0, 0.9, 2.0, 2.0,
         ];
-        let bytes = yolo_instance_map(
-            &detections, 2, 7, &[1.0], 1, 1, 1, 640, 640, 0, 0, 4,
-        )
-        .unwrap();
+        let bytes =
+            yolo_instance_map(&detections, 2, 7, &[1.0], 1, 1, 1, 640, 640, 0, 0, 4).unwrap();
         let ids = bytes
             .chunks_exact(2)
             .map(|value| u16::from_le_bytes([value[0], value[1]]))

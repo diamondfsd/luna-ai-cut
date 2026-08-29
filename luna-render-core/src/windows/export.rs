@@ -19,6 +19,7 @@ use super::converter::{D3d12TextureLease, VideoConverter};
 use super::decoder::VideoDecoder;
 use super::device::InteropDevice;
 use super::encoder::VideoEncoder;
+use super::native_converter::{NativeSharedTexture, NativeTextureLease, NativeVideoConverter};
 
 fn temporary_output_path(output: &str) -> PathBuf {
     let path = Path::new(output);
@@ -47,24 +48,27 @@ pub(crate) fn run(
     d3d12_queue: &windows::Win32::Graphics::Direct3D12::ID3D12CommandQueue,
     system_memory_decode: bool,
 ) -> Result<(), String> {
+    if system_memory_decode {
+        return Err("native Windows GPU export requires D3D11 video surfaces".to_string());
+    }
     let temp_output = temporary_output_path(output_path);
     let mut temp_guard = TemporaryOutputGuard::new(temp_output.clone());
-    let mut converter = VideoConverter::new(
-        &interop.d3d11_device,
-        &interop.d3d11_context,
-        &interop.d3d11on12_device,
+    let mut converter = NativeVideoConverter::new(
+        &interop.native_d3d11_device,
+        &interop.native_d3d11_context,
         d3d12_device,
         d3d12_queue,
     )?;
     let writer = VideoEncoder::new(
         &temp_output,
-        &interop.device_manager,
+        &interop.native_device_manager,
         composition.canvas.width,
         composition.canvas.height,
         fps,
         bitrate,
         hevc,
     )?;
+    crate::logging::write("[Export:WinGPU] decoder-manager=D3D11 native shared-texture bridge");
     export_frames(
         compositor,
         ffmpeg_path,
@@ -75,6 +79,7 @@ pub(crate) fn run(
         task,
         &mut converter,
         interop,
+        &interop.native_device_manager,
         writer,
         system_memory_decode,
     )?;
@@ -254,11 +259,13 @@ fn export_frames_to_hardware_encoder(
     let mut mask_textures: HashMap<String, u32> = HashMap::new();
     let started = std::time::Instant::now();
     let log_interval = (total_frames / 10).max(1);
+    let mut first_frame_logged = false;
     let mut converter = VideoConverter::new(
         &interop.d3d11_device,
         &interop.d3d11_context,
         &interop.d3d11on12_device,
         d3d12_device,
+        &interop.interop_queue,
         d3d12_queue,
     )?;
 
@@ -299,10 +306,7 @@ fn export_frames_to_hardware_encoder(
                                         &interop.d3d11_context,
                                     )?
                                 } else {
-                                    VideoDecoder::open(
-                                        &layer.file_path,
-                                        &interop.device_manager,
-                                    )?
+                                    VideoDecoder::open(&layer.file_path, &interop.device_manager)?
                                 })
                             }
                         };
@@ -435,6 +439,25 @@ fn export_frames_to_hardware_encoder(
                 return Err(error);
             }
         };
+        if !first_frame_logged {
+            let mut sums = [0u64; 4];
+            for pixel in rgba.chunks_exact(4) {
+                for (channel, value) in pixel.iter().enumerate() {
+                    sums[channel] += u64::from(*value);
+                }
+            }
+            let pixel_count = (rgba.len() / 4).max(1) as f64;
+            crate::logging::write(&format!(
+                "[Export:WinGPU] compatible first-frame RGBA bytes={} mean={:.2},{:.2},{:.2},{:.2} first={:?}",
+                rgba.len(),
+                sums[0] as f64 / pixel_count,
+                sums[1] as f64 / pixel_count,
+                sums[2] as f64 / pixel_count,
+                sums[3] as f64 / pixel_count,
+                &rgba[..rgba.len().min(16)],
+            ));
+            first_frame_logged = true;
+        }
         cleanup_result?;
         if let Some(error) = sync_error {
             return Err(error);
@@ -469,7 +492,6 @@ fn export_frames_to_hardware_encoder(
     Ok(())
 }
 
-
 struct TemporaryOutputGuard {
     path: PathBuf,
     armed: bool,
@@ -502,10 +524,11 @@ fn export_frames(
     fps: f64,
     total_frames: u64,
     task: Option<&Arc<TaskState>>,
-    converter: &mut VideoConverter,
-    interop: &InteropDevice,
+    converter: &mut NativeVideoConverter,
+    _interop: &InteropDevice,
+    decoder_device_manager: &windows::Win32::Media::MediaFoundation::IMFDXGIDeviceManager,
     mut writer: VideoEncoder,
-    system_memory_decode: bool,
+    _system_memory_decode: bool,
 ) -> Result<(), String> {
     let mut decoders: HashMap<String, VideoDecoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
@@ -513,6 +536,7 @@ fn export_frames(
     let mut mask_textures: HashMap<String, u32> = HashMap::new();
     let started = std::time::Instant::now();
     let log_interval = (total_frames / 10).max(1);
+    let mut decoder_logged = false;
 
     let export_result = (|| -> Result<(), String> {
         for frame_index in 0..total_frames {
@@ -525,10 +549,13 @@ fn export_frames(
             retain_layer_mask_textures(compositor, &mut mask_textures, &layer_inputs);
             let mut source_layers = Vec::with_capacity(layer_inputs.len());
             let mut transient_texture_ids = Vec::new();
-            let mut input_leases: Vec<D3d12TextureLease> = Vec::new();
-            let mut input_bgra = Vec::new();
-            let mut output_bgra = None;
-            let mut output_lease = None;
+            // Keep decoder samples alive until all asynchronous D3D11 video
+            // processing and the downstream wgpu submission have completed.
+            let mut decoded_frames = Vec::new();
+            let mut input_leases: Vec<NativeTextureLease> = Vec::new();
+            let mut input_bgra: Vec<NativeSharedTexture> = Vec::new();
+            let mut output_bgra: Option<NativeSharedTexture> = None;
+            let mut output_lease: Option<NativeTextureLease> = None;
 
             let render_result = (|| -> Result<(), String> {
                 for (layer_index, mut layer) in layer_inputs.into_iter().enumerate() {
@@ -539,99 +566,95 @@ fn export_frames(
                     {
                         continue;
                     }
-                    let (texture_id, width, height) =
-                        if crate::compositor::is_procedural_layer_type(layer.layer_type.as_deref())
-                        {
-                            (0, 1, 1)
-                        } else if layer.is_video {
-                            let key = format!("{}@slot{}", layer.file_path, layer_index);
-                            let decoder = match decoders.entry(key) {
-                                std::collections::hash_map::Entry::Occupied(entry) => {
-                                    entry.into_mut()
-                                }
-                                std::collections::hash_map::Entry::Vacant(entry) => {
-                                    entry.insert(if system_memory_decode {
-                                        VideoDecoder::open_system_memory(
-                                            &layer.file_path,
-                                            &interop.d3d11_device,
-                                            &interop.d3d11_context,
-                                        )?
-                                    } else {
-                                        VideoDecoder::open(
-                                            &layer.file_path,
-                                            &interop.device_manager,
-                                        )?
-                                    })
-                                }
-                            };
-                            let rotation = decoder.info().rotation_degrees;
-                            if rotation != 0 && layer.transform.orientation == 0.0 {
-                                layer.transform.orientation = rotation as f64;
-                            }
-                            let Some(decoded) = decoder.read_frame_at_seconds(layer.video_time)?
-                            else {
-                                continue;
-                            };
-                            // Media Foundation owns the decoder surface and may complete the
-                            // decode on a different D3D11 queue. The conversion must observe
-                            // that completion before D3D11On12 unwraps the BGRA surface.
-                            let bgra = converter.decode_to_bgra_for_export_synchronized(&decoded)?;
-                            let lease = converter.unwrap_for_wgpu(&bgra)?;
-                            let resource = lease.resource().clone();
-                            input_bgra.push((bgra, decoded.width, decoded.height));
-                            input_leases.push(lease);
-                            let texture = unsafe {
-                                compositor.wrap_external_dx12_texture(
-                                    resource,
+                    let (texture_id, width, height) = if crate::compositor::is_procedural_layer_type(
+                        layer.layer_type.as_deref(),
+                    ) {
+                        (0, 1, 1)
+                    } else if layer.is_video {
+                        let key = format!("{}@slot{}", layer.file_path, layer_index);
+                        let decoder = match decoders.entry(key) {
+                            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
+                                VideoDecoder::open(&layer.file_path, decoder_device_manager)?,
+                            ),
+                        };
+                        let rotation = decoder.info().rotation_degrees;
+                        if rotation != 0 && layer.transform.orientation == 0.0 {
+                            layer.transform.orientation = rotation as f64;
+                        }
+                        let Some(decoded) = decoder.read_frame_at_seconds(layer.video_time)? else {
+                            continue;
+                        };
+                        let decoded_width = decoded.width;
+                        let decoded_height = decoded.height;
+                        if !decoder_logged {
+                            crate::logging::write(&format!(
+                                    "[Export:WinGPU] decoder=media-foundation output={} size={}x{} rotation={} subresource={} input={}",
+                                    decoded.format.label(),
                                     decoded.width,
                                     decoded.height,
-                                    wgpu::TextureUsages::TEXTURE_BINDING,
-                                    true,
-                                )?
-                            };
-                            let texture_id = compositor.register_external_texture(
-                                texture,
+                                    decoder.info().rotation_degrees,
+                                    decoded.subresource_index,
+                                    "d3d11-native-shared-texture",
+                                ));
+                            decoder_logged = true;
+                        }
+                        let bgra = converter.decode_to_bgra_for_export(&decoded)?;
+                        let lease = converter.wrap_for_wgpu(&bgra)?;
+                        let resource = lease.resource().clone();
+                        input_bgra.push(bgra);
+                        input_leases.push(lease);
+                        let texture = unsafe {
+                            compositor.wrap_external_dx12_texture(
+                                resource,
                                 decoded.width,
                                 decoded.height,
-                            );
-                            transient_texture_ids.push(texture_id);
-                            (texture_id, decoded.width, decoded.height)
-                        } else if let Some(cached) = static_textures.get(&layer.file_path).copied()
-                        {
-                            cached
-                        } else {
-                            let decoded = decode_static_image_scaled(
-                                ffmpeg_path,
-                                ffprobe_path,
-                                &layer.file_path,
-                                composition.canvas.width.max(composition.canvas.height),
-                            );
-                            let Some((rgba, width, height)) =
-                                tolerate_optional_positioned_asset_error(
-                                    layer.layer_type.as_deref(),
-                                    layer.positioning.is_some(),
-                                    &layer.file_path,
-                                    &mut unavailable_optional_assets,
-                                    decoded,
-                                )?
-                            else {
-                                continue;
-                            };
-                            let uploaded = compositor.load_texture(&rgba, width, height);
-                            let Some(texture_id) = tolerate_optional_positioned_asset_error(
-                                layer.layer_type.as_deref(),
-                                layer.positioning.is_some(),
-                                &layer.file_path,
-                                &mut unavailable_optional_assets,
-                                uploaded,
+                                wgpu::TextureUsages::TEXTURE_BINDING,
+                                true,
                             )?
-                            else {
-                                continue;
-                            };
-                            let cached = (texture_id, width, height);
-                            static_textures.insert(layer.file_path.clone(), cached);
-                            cached
                         };
+                        let texture_id = compositor.register_external_texture(
+                            texture,
+                            decoded.width,
+                            decoded.height,
+                        );
+                        transient_texture_ids.push(texture_id);
+                        decoded_frames.push(decoded);
+                        (texture_id, decoded_width, decoded_height)
+                    } else if let Some(cached) = static_textures.get(&layer.file_path).copied() {
+                        cached
+                    } else {
+                        let decoded = decode_static_image_scaled(
+                            ffmpeg_path,
+                            ffprobe_path,
+                            &layer.file_path,
+                            composition.canvas.width.max(composition.canvas.height),
+                        );
+                        let Some((rgba, width, height)) = tolerate_optional_positioned_asset_error(
+                            layer.layer_type.as_deref(),
+                            layer.positioning.is_some(),
+                            &layer.file_path,
+                            &mut unavailable_optional_assets,
+                            decoded,
+                        )?
+                        else {
+                            continue;
+                        };
+                        let uploaded = compositor.load_texture(&rgba, width, height);
+                        let Some(texture_id) = tolerate_optional_positioned_asset_error(
+                            layer.layer_type.as_deref(),
+                            layer.positioning.is_some(),
+                            &layer.file_path,
+                            &mut unavailable_optional_assets,
+                            uploaded,
+                        )?
+                        else {
+                            continue;
+                        };
+                        let cached = (texture_id, width, height);
+                        static_textures.insert(layer.file_path.clone(), cached);
+                        cached
+                    };
                     bind_layer_mask_texture(
                         compositor,
                         ffmpeg_path,
@@ -667,7 +690,7 @@ fn export_frames(
                     composition.canvas.width,
                     composition.canvas.height,
                 )?;
-                let lease = converter.unwrap_for_wgpu(&target)?;
+                let lease = converter.wrap_for_wgpu(&target)?;
                 let resource = lease.resource().clone();
                 output_bgra = Some(target);
                 output_lease = Some(lease);
@@ -726,8 +749,8 @@ fn export_frames(
                 composition.canvas.width,
                 composition.canvas.height,
             )?;
-            for (texture, width, height) in input_bgra {
-                converter.recycle_bgra_texture(texture, width, height);
+            for texture in input_bgra {
+                converter.recycle_bgra_texture(texture);
             }
             writer.append(&nv12, frame_index)?;
 

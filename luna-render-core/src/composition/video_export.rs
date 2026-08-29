@@ -330,11 +330,7 @@ impl Task for ExportCompositionVideoTask {
                 total_frames,
                 fps,
                 bitrate_bps,
-                if system_memory_decode {
-                    "system-memory-upload"
-                } else {
-                    "d3d11on12-unwrap"
-                },
+                "d3d11-native-shared-texture",
             ));
             let windows_result = crate::lock_export(|compositor| {
                 compositor.clear_video_decoders();
@@ -531,9 +527,31 @@ impl Task for ExportCompositionVideoTask {
                     &self.input.composition,
                     time,
                     None,
-                    Some(fps),
+                    // The decoder pipe is consumed one frame per export tick;
+                    // applying an output -r here can make FFmpeg resample the
+                    // first frame and is unnecessary because the encoder is
+                    // already configured with the composition FPS.
+                    None,
                 )
             })?;
+            if frame == 0 {
+                let mut sums = [0u64; 4];
+                for pixel in rgba.chunks_exact(4) {
+                    for (channel, value) in pixel.iter().enumerate() {
+                        sums[channel] += u64::from(*value);
+                    }
+                }
+                let pixel_count = (rgba.len() / 4).max(1) as f64;
+                log_write(&format!(
+                    "[Export:FFmpeg] first-frame RGBA bytes={} mean={:.2},{:.2},{:.2},{:.2} first={:?}",
+                    rgba.len(),
+                    sums[0] as f64 / pixel_count,
+                    sums[1] as f64 / pixel_count,
+                    sums[2] as f64 / pixel_count,
+                    sums[3] as f64 / pixel_count,
+                    &rgba[..rgba.len().min(16)],
+                ));
+            }
             if let Err(e) = stdin.write_all(&rgba) {
                 // 写入 pipe 失败（通常是 Broken pipe），说明 ffmpeg 编码器已提前退出。
                 // 关闭 stdin 并等待子进程获取 stderr 中的真实错误原因。

@@ -16,7 +16,7 @@
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
@@ -53,10 +53,18 @@ if (!existsSync(inputPath)) {
   process.exit(1)
 }
 
-// Windows 上默认强制走 native Media Foundation 路径，避免测试悄悄退回
-// "GPU 合成 + CPU readback + FFmpeg pipe"。--compatible 仅用于对比测试。
+// Keep the three test modes deterministic even when a developer has stale
+// Windows export overrides in the parent shell.
 if (process.platform === 'win32' && !softwareMode) {
-  process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER = compatibleMode ? 'ffmpeg' : 'mf'
+  if (compatibleMode) {
+    process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER = 'ffmpeg'
+  } else {
+    delete process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER
+  }
+  delete process.env.LUNA_WINDOWS_GPU_EXPORT_INPUT
+} else {
+  delete process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER
+  delete process.env.LUNA_WINDOWS_GPU_EXPORT_INPUT
 }
 
 const outDir = join(root, 'test-output')
@@ -94,6 +102,15 @@ async function main() {
   const hasAudio = probe.streams?.some(s => s.codec_type === 'audio')
   if (!vs) { console.error('❌ No video stream'); process.exit(1) }
   console.log(`  Video: ${vs.width}x${vs.height} ${vs.codec_name} ${vs.duration}s`)
+  const inputWidth = Number(vs.width)
+  const inputHeight = Number(vs.height)
+  const isUhd4K = Math.min(inputWidth, inputHeight) >= 2160
+    && Math.max(inputWidth, inputHeight) >= 3840
+  if (!isUhd4K) {
+    console.error(`  4K gate failed: input must be at least 3840x2160, got ${inputWidth}x${inputHeight}`)
+    process.exit(1)
+  }
+  console.log('  4K gate: UHD source accepted')
   console.log(`  Audio: ${hasAudio ? '✅ ' + probe.streams.find(s => s.codec_type === 'audio').codec_name : '❌ none'}`)
 
   // ── 2. Load Native Core ──
@@ -125,7 +142,7 @@ async function main() {
         source_type: 'video',
         time: { offset: 0, start: 0, duration },
       },
-      rect: { x: 0, y: 0, w: vs.width, h: vs.height },
+      rect: { x: 0, y: 0, w: 1, h: 1 },
       fit: 'cover',
       opacity: 1,
       z_index: 0,
@@ -140,6 +157,7 @@ async function main() {
   let exportSuccess = true
   let exportError = null
   let winGpuSuccess = false
+  const verificationIssues = []
 
   // 轮询进度
   const taskId = 'test-gpu-export'
@@ -181,7 +199,7 @@ async function main() {
   if (!existsSync(outputPath)) {
     console.log('  ❌ Output file does not exist!')
   } else {
-    const stat = (await import('node:fs')).statSync(outputPath)
+    const stat = statSync(outputPath)
     console.log(`  File size: ${(stat.size / 1024 / 1024).toFixed(2)} MB`)
 
     // 检查输出文件的流信息
@@ -192,33 +210,122 @@ async function main() {
       const outInfo = JSON.parse(outProbe)
       const outVideo = outInfo.streams?.filter(s => s.codec_type === 'video')
       const outAudio = outInfo.streams?.filter(s => s.codec_type === 'audio')
+      const outputVideo = outVideo?.[0]
       console.log(`  Video streams: ${outVideo?.length ?? 0} ${outVideo?.map(s => s.codec_name).join(',') ?? ''}`)
       console.log(`  Audio streams: ${outAudio?.length ?? 0} ${outAudio?.map(s => s.codec_name).join(',') ?? '❌ NO AUDIO'}`)
+      if (!outputVideo) {
+        verificationIssues.push('output has no video stream')
+      } else if (Number(outputVideo.width) !== inputWidth || Number(outputVideo.height) !== inputHeight) {
+        verificationIssues.push(`output dimensions changed from ${inputWidth}x${inputHeight} to ${outputVideo.width}x${outputVideo.height}`)
+      } else {
+        const reportedFrames = Number(outputVideo.nb_frames)
+        const expectedFrames = Math.max(1, Math.round(duration * fps))
+        if (Number.isFinite(reportedFrames) && reportedFrames > 0 && reportedFrames !== expectedFrames) {
+          verificationIssues.push(`output frame count changed from ${expectedFrames} to ${reportedFrames}`)
+        }
+      }
       if (!outAudio?.length) {
         console.log('  ⚠️  Output has NO audio!')
       } else {
         console.log('  ✅ Output has audio')
       }
+
+      // Decode every frame into a tiny RGB diagnostic thumbnail. The export
+      // itself remains zero-copy; this independent verifier catches black or
+      // missing frames anywhere in the 4K output, not just at frame zero.
+      const readFrames = async (path) => {
+        const { stdout } = await execAsync(ffmpeg, [
+          '-v', 'error', '-i', path, '-map', '0:v:0', '-an',
+          '-vf', 'scale=64:64', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1',
+        ], { timeout: 30000, maxBuffer: 64 * 1024 * 1024, encoding: 'buffer' })
+        const bytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+        const frameBytes = 64 * 64 * 3
+        return Array.from({ length: Math.floor(bytes.length / frameBytes) }, (_, index) => (
+          bytes.subarray(index * frameBytes, (index + 1) * frameBytes)
+        ))
+      }
+      const [inputFrames, outputFrames] = await Promise.all([
+        readFrames(inputPath),
+        readFrames(outputPath),
+      ])
+      const expectedFrames = Math.max(1, Math.round(duration * fps))
+      if (inputFrames.length !== expectedFrames) {
+        verificationIssues.push(`input diagnostic frame count is ${inputFrames.length}, expected ${expectedFrames}`)
+      }
+      if (outputFrames.length !== expectedFrames) {
+        verificationIssues.push(`output diagnostic frame count is ${outputFrames.length}, expected ${expectedFrames}`)
+      }
+      const frameCount = Math.min(inputFrames.length, outputFrames.length)
+      const sampleIndices = [...new Set([
+        0,
+        Math.floor(Math.max(0, frameCount - 1) / 2),
+        Math.max(0, frameCount - 1),
+      ])]
+      const mean = (bytes) => bytes.length
+        ? [...bytes].reduce((sum, value) => sum + value, 0) / bytes.length
+        : 0
+      const frameStats = (bytes) => {
+        const pixels = Math.floor(bytes.length / 3)
+        const colors = new Map()
+        const sums = [0, 0, 0]
+        for (let index = 0; index < pixels; index += 1) {
+          const offset = index * 3
+          const color = [bytes[offset], bytes[offset + 1], bytes[offset + 2]]
+          color.forEach((value, channel) => { sums[channel] += value })
+          const key = color.join(',')
+          colors.set(key, (colors.get(key) ?? 0) + 1)
+        }
+        let dominant = 0
+        for (const count of colors.values()) dominant = Math.max(dominant, count)
+        return {
+          pixels,
+          mean: sums.map((sum) => sum / Math.max(1, pixels)),
+          uniqueColors: colors.size,
+          dominantRatio: dominant / Math.max(1, pixels),
+        }
+      }
+      const inputMeans = inputFrames.map(mean)
+      const outputMeans = outputFrames.map(mean)
+      const inputStats = inputFrames.map(frameStats)
+      const outputStats = outputFrames.map(frameStats)
+      const sampledInputMeans = sampleIndices.map(index => inputMeans[index] ?? 0)
+      const sampledOutputMeans = sampleIndices.map(index => outputMeans[index] ?? 0)
+      console.log(`  All-frame RGB diagnostics: input=${inputFrames.length} output=${outputFrames.length}`)
+      console.log(`  Sampled RGB means: frames=${sampleIndices.join(',')} input=${sampledInputMeans.map(value => value.toFixed(2)).join(',')} output=${sampledOutputMeans.map(value => value.toFixed(2)).join(',')}`)
+      if (inputStats[0] && outputStats[0]) {
+        console.log(`  First-frame colors: input=${inputStats[0].uniqueColors} (dominant ${(inputStats[0].dominantRatio * 100).toFixed(1)}%) output=${outputStats[0].uniqueColors} (dominant ${(outputStats[0].dominantRatio * 100).toFixed(1)}%)`)
+      }
+      for (let index = 0; index < frameCount; index += 1) {
+        if (!outputFrames[index].length) {
+          verificationIssues.push(`output frame ${index} could not be decoded`)
+        } else if (inputMeans[index] > 2 && outputMeans[index] <= 1) {
+          verificationIssues.push(`output frame ${index} is effectively black`)
+        } else if (inputStats[index].dominantRatio < 0.98 && outputStats[index].dominantRatio >= 0.98) {
+          verificationIssues.push(`output frame ${index} is effectively a solid color`)
+        }
+      }
     } catch (e) {
       console.log('  ⚠️  Could not probe output:', e.message)
+      verificationIssues.push(`output probe failed: ${e.message}`)
     }
   }
 
   // ── 6. 分析日志 ──
   console.log('\n── Step 6: Log analysis ──')
   if (existsSync(logPath)) {
-    const log = (await import('node:fs')).readFileSync(logPath, 'utf-8')
+    const log = readFileSync(logPath, 'utf-8')
     const lines = log.split('\n')
 
     // 提取关键日志
-    const gpuAdapter = lines.find(l => l.includes('GPU adapter:'))
+    const gpuAdapter = lines.find(l => l.includes('GPU adapter:') || l.includes('GPU adapter selected:'))
     const winGpuStart = lines.filter(l => l.includes('[Export:WinGPU] automatic attempt'))
     const winGpuCompatible = lines.filter(l => l.includes('[Export:WinGPU] compatible path start'))
     const winGpuCpuReadback = lines.filter(l => l.includes('transport=cpu-readback'))
     const winGpuCapabilities = lines.filter(l => l.includes('[Export:WinGPU] capabilities'))
     const winGpuDecoder = lines.filter(l => l.includes('[Export:WinGPU] decoder=media-foundation'))
     const winGpuPipeline = lines.filter(l => l.includes('[Export:WinGPU] pipeline='))
-    const winGpuCompleted = lines.filter(l => l.includes('[Export:WinGPU] completed'))
+    const winGpuCompleted = lines.filter(l => /\[Export:WinGPU\] completed\s*$/.test(l))
+    const winGpuCompatibleCompleted = lines.filter(l => l.includes('[Export:WinGPU] completed via compatible hardware path'))
     const winGpuFallback = lines.filter(l => l.includes('[Export:WinGPU] unavailable'))
     const ffmpegFallback = lines.filter(l => l.includes('[Export:FFmpeg]'))
     const audioMux = lines.filter(l => l.includes('[Export:Audio]'))
@@ -232,6 +339,8 @@ async function main() {
       } else {
         console.log(`  ⚠️  Backend is ${backend}, not Dx12 — GPU export path will fail`)
       }
+    } else if (process.platform === 'win32' && !softwareMode) {
+      verificationIssues.push('missing GPU adapter diagnostic')
     }
     if (encoderDetect.length) {
       console.log(`  Encoder detect: ${encoderDetect.map(l => l.split(']').slice(1).join(']').trim()).join('; ')}`)
@@ -263,19 +372,39 @@ async function main() {
       console.log(`  WinGPU pipeline: ${stages} sync=${sync} readback=${readback}`)
     }
     console.log(`  WinGPU completed: ${winGpuCompleted.length}`)
+    console.log(`  WinGPU compatible completed: ${winGpuCompatibleCompleted.length}`)
     console.log(`  WinGPU fallback: ${winGpuFallback.length}`)
     if (winGpuFallback.length) {
-      const reason = winGpuFallback[winGpuFallback.length - 1].split('falling back to FFmpeg:')[1]?.trim()
+      const reason = winGpuFallback[winGpuFallback.length - 1]
+        .split(/falling back to (?:compatible path|FFmpeg):/)[1]?.trim()
       console.log(`  Fallback reason: ${reason}`)
     }
     console.log(`  FFmpeg fallback logs: ${ffmpegFallback.length}`)
     const usedCpuReadback = winGpuCompatible.length > 0 || winGpuCpuReadback.length > 0
-    winGpuSuccess = softwareMode || (
-      winGpuCompleted.length > 0 &&
-      winGpuFallback.length === 0 &&
-      ffmpegFallback.length === 0 &&
-      (compatibleMode || !usedCpuReadback)
-    )
+    if (process.platform === 'win32' && !softwareMode) {
+      const backend = gpuAdapter?.match(/backend=(\w+)/)?.[1]
+      if (compatibleMode) {
+        if (winGpuCompatible.length === 0) verificationIssues.push('compatible mode did not start the compatible path')
+        if (winGpuCompatibleCompleted.length === 0) verificationIssues.push('compatible mode did not complete')
+        if (!usedCpuReadback) verificationIssues.push('compatible mode did not report CPU transport')
+      } else {
+        const pipeline = winGpuPipeline[winGpuPipeline.length - 1] ?? ''
+        if (backend !== 'Dx12') verificationIssues.push(`native backend is ${backend ?? '?'}, expected Dx12`)
+        if (!lines.some(l => l.includes('selecting zero-copy path by default'))) verificationIssues.push('native mode was not selected by default')
+        if (winGpuStart.length === 0) verificationIssues.push('native path was not attempted')
+        if (winGpuCompleted.length === 0) verificationIssues.push('native path did not complete')
+        if (winGpuFallback.length > 0) verificationIssues.push('native path fell back to another export path')
+        if (winGpuCompatible.length > 0) verificationIssues.push('native log contains compatible path')
+        if (winGpuCpuReadback.length > 0) verificationIssues.push('native log contains CPU readback transport')
+        if (!/sync=d3d12-fence\b/.test(pipeline)) verificationIssues.push('native pipeline is missing d3d12-fence synchronization')
+        if (!/readback=false\b/.test(pipeline)) verificationIssues.push('native pipeline is not marked readback=false')
+        if (!lines.some(l => /encoder-transform .*hardware_url=true/.test(l))) verificationIssues.push('native encoder was not verified as hardware MFT')
+        if (!lines.some(l => l.includes('interop adapter-luid'))) verificationIssues.push('missing interop adapter-luid diagnostic')
+        if (!lines.some(l => l.includes('[Export:WinGPU:Timing]'))) verificationIssues.push('missing WinGPU timing diagnostic')
+      }
+      if (ffmpegFallback.length > 0) verificationIssues.push('FFmpeg fallback path was used')
+    }
+    winGpuSuccess = verificationIssues.length === 0
     console.log(`  Audio mux logs: ${audioMux.length}`)
     if (audioMux.length) {
       audioMux.forEach(l => console.log(`    ${l.split('] ').slice(1).join('] ')}`))
@@ -285,7 +414,13 @@ async function main() {
   // ── 总结 ──
   console.log('\n══════════════════════════════════════════════')
   const outputExists = existsSync(outputPath)
-  const testPassed = exportSuccess && outputExists && (process.platform !== 'win32' || softwareMode || winGpuSuccess)
+  if (!outputExists) verificationIssues.push('output file does not exist')
+  if (!exportSuccess) verificationIssues.push(`export failed: ${exportError ?? 'unknown error'}`)
+  if (verificationIssues.length) {
+    console.log('  Verification issues:')
+    verificationIssues.forEach(issue => console.log(`    - ${issue}`))
+  }
+  const testPassed = exportSuccess && outputExists && (process.platform !== 'win32' || winGpuSuccess)
   if (testPassed) {
     console.log(process.platform === 'win32' && !softwareMode
       ? compatibleMode

@@ -4,13 +4,14 @@ mod decoder;
 mod device;
 mod encoder;
 mod export;
+mod native_converter;
 mod preview;
 mod preview_surface;
 
 pub(crate) use preview::NativePreviewRuntime;
 pub(crate) use preview_surface::PreviewBounds;
 
-use crate::composition::{is_video_source, CompositionInput};
+use crate::composition::CompositionInput;
 use crate::compositor::Compositor;
 use crate::export::TaskState;
 use std::sync::Arc;
@@ -71,55 +72,23 @@ pub(crate) fn export_video(
     let _com = ComGuard::start()?;
     let _mf = MediaFoundationGuard::start()?;
     let (d3d12_device, d3d12_queue) = compositor.dx12_device_and_queue()?;
-    let interop = device::InteropDevice::new(&d3d12_device, &d3d12_queue)?;
+    let interop = device::InteropDevice::new(&d3d12_device)?;
     let encoders = capabilities::probe_hardware_encoders()?;
 
     crate::logging::write(&format!(
-        "[Export:WinGPU] capabilities d3d11on12=true h264={} hevc={}",
+        "[Export:WinGPU] capabilities d3d11-native=true shared-texture=true d3d11on12=true h264={} hevc={}",
         encoders.h264, encoders.hevc,
     ));
-    if let Some(layer) = composition
-        .layers
-        .iter()
-        .find(|layer| is_video_source(&layer.source))
-    {
-        let mut decoder = if system_memory_decode {
-            decoder::VideoDecoder::open_system_memory(
-                &layer.source.path,
-                &interop.d3d11_device,
-                &interop.d3d11_context,
-            )?
-        } else {
-            decoder::VideoDecoder::open(&layer.source.path, &interop.device_manager)?
-        };
-        let frame = decoder
-            .read_frame_at(0)?
-            .ok_or_else(|| "视频中没有可解码的画面".to_string())?;
-        crate::logging::write(&format!(
-            "[Export:WinGPU] decoder=media-foundation output={} size={}x{} rotation={} subresource={} input={}",
-            frame.format.label(),
-            frame.width,
-            frame.height,
-            decoder.info().rotation_degrees,
-            frame.subresource_index,
-            if system_memory_decode {
-                "system-memory-upload"
-            } else {
-                "d3d11on12-unwrap"
-            },
-        ));
-    }
-
     if !encoders.any() {
         return Err("未找到可用的系统硬件视频编码器".to_string());
     }
     let hevc = !encoders.h264 && encoders.hevc;
 
     crate::logging::write(&format!(
-        "[Export:WinGPU] pipeline=mf-decode,d3d11-video-process,wgpu-compose,mf-{} sync=d3d12-fence readback=false",
+        "[Export:WinGPU] pipeline=mf-d3d11-decode,d3d11-video-process,shared-nt-handle,wgpu-compose,mf-{} sync=d3d12-fence readback=false",
         if hevc { "hevc" } else { "h264" },
     ));
-    export::run(
+    let result = export::run(
         compositor,
         ffmpeg_path,
         ffprobe_path,
@@ -135,7 +104,11 @@ pub(crate) fn export_video(
         &d3d12_device,
         &d3d12_queue,
         system_memory_decode,
-    )
+    );
+    if result.is_err() {
+        interop.log_device_status("native export failure");
+    }
+    result
 }
 
 /// Windows 硬件解码 + GPU 合成 + FFmpeg 硬件编码的兼容路径。
@@ -161,8 +134,8 @@ pub(crate) fn export_video_with_hardware_encoder(
     let _com = ComGuard::start()?;
     let _mf = MediaFoundationGuard::start()?;
     let (d3d12_device, d3d12_queue) = compositor.dx12_device_and_queue()?;
-    let interop = device::InteropDevice::new(&d3d12_device, &d3d12_queue)?;
-    export::run_hardware_encoder(
+    let interop = device::InteropDevice::new(&d3d12_device)?;
+    let result = export::run_hardware_encoder(
         compositor,
         ffmpeg_path,
         ffprobe_path,
@@ -178,5 +151,9 @@ pub(crate) fn export_video_with_hardware_encoder(
         &d3d12_device,
         &d3d12_queue,
         system_memory_decode,
-    )
+    );
+    if result.is_err() {
+        interop.log_device_status("compatible export failure");
+    }
+    result
 }

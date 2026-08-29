@@ -15,9 +15,8 @@ use windows::Win32::Media::MediaFoundation::{
 // This attribute was added to the Windows 11 25H2 SDK, but is not exposed by
 // the windows crate version used here. Keeping the GUID local lets older SDKs
 // build while newer Windows versions can reject a software MFT immediately.
-const MF_READWRITE_USE_ONLY_HARDWARE_TRANSFORMS: GUID = GUID::from_u128(
-    0xf9074427bf8b4f69bbaf524969056fb6,
-);
+const MF_READWRITE_USE_ONLY_HARDWARE_TRANSFORMS: GUID =
+    GUID::from_u128(0xf9074427bf8b4f69bbaf524969056fb6);
 
 pub(crate) struct VideoEncoder {
     writer: Option<IMFSinkWriter>,
@@ -88,9 +87,17 @@ impl VideoEncoder {
         })
     }
 
-    pub(crate) fn append(&mut self, texture: &ID3D11Texture2D, frame_index: u64) -> Result<(), String> {
+    pub(crate) fn append(
+        &mut self,
+        texture: &ID3D11Texture2D,
+        frame_index: u64,
+    ) -> Result<(), String> {
         let buffer = unsafe { MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, texture, 0, false) }
             .map_err(|error| format!("无法创建硬件编码画面: {error}"))?;
+        let buffer_length = unsafe { buffer.GetMaxLength() }
+            .map_err(|error| format!("failed to get hardware encoder surface length: {error}"))?;
+        unsafe { buffer.SetCurrentLength(buffer_length) }
+            .map_err(|error| format!("failed to set hardware encoder surface length: {error}"))?;
         let sample =
             unsafe { MFCreateSample() }.map_err(|error| format!("无法创建视频帧: {error}"))?;
         (|| -> windows::core::Result<()> {
