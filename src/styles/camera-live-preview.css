@@ -77,6 +77,83 @@
   color: rgba(255, 255, 255, 0.4);
 }
 
+.camera-live-preview-obs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.camera-live-preview-obs-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.camera-live-preview-obs-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+}
+
+.camera-live-preview-obs-title svg {
+  color: #62a9ff;
+}
+
+.camera-live-preview-obs-state {
+  margin-left: 2px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 11px;
+}
+
+.camera-live-preview-obs-state.active {
+  color: #55d66e;
+}
+
+.camera-live-preview-obs-heading p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+}
+
+.camera-live-preview-obs-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.camera-live-preview-obs-url {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.camera-live-preview-obs-url > span {
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 10px;
+}
+
+.camera-live-preview-obs-url code {
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.camera-live-preview-obs-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.camera-live-preview-obs-error {
+  color: #ffb4ae;
+  font-size: 11px;
+}
+
 @media (max-width: 640px) {
   .camera-live-preview-dialog.ui-dialog-content {
     width: calc(100vw - 24px);
@@ -89,5 +166,14 @@
 
   .camera-live-preview-stage {
     min-height: 200px;
+  }
+
+  .camera-live-preview-obs-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .camera-live-preview-obs-buttons {
+    justify-content: flex-end;
   }
 }

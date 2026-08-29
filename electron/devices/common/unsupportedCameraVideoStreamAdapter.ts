@@ -34,6 +34,14 @@ export class UnsupportedCameraVideoStreamAdapter implements CameraVideoStreamAda
     return this.status()
   }
 
+  async startObs(): Promise<CameraVideoStreamStatus> {
+    return this.status()
+  }
+
+  async stopObs(): Promise<CameraVideoStreamStatus> {
+    return this.status()
+  }
+
   status(): CameraVideoStreamStatus {
     return { ...this.statusValue }
   }

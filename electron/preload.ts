@@ -1,4 +1,4 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import type {
   AppSettings,
   CameraMediaSourceFilePage,
@@ -79,6 +79,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   getLogDir: () => ipcRenderer.invoke('log:getDir'),
   exportDiagnosticsBundle: () => ipcRenderer.invoke('log:export-bundle'),
   clearLogs: () => ipcRenderer.invoke('log:clear'),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:save', settings),
   listDevices: () => ipcRenderer.invoke('devices:list'),
@@ -131,6 +132,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   cameraVideoStream: {
     start: (options) => ipcRenderer.invoke('camera-video-stream:start', options),
     stop: (options) => ipcRenderer.invoke('camera-video-stream:stop', options),
+    startObs: (options) => ipcRenderer.invoke('camera-video-stream:start-obs', options),
+    stopObs: (options) => ipcRenderer.invoke('camera-video-stream:stop-obs', options),
     status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
   },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),

@@ -2,6 +2,7 @@ import type { IpcContext } from '../../ipc/context'
 import type {
   CameraVideoStreamAdapter,
   CameraVideoStreamOptions,
+  CameraVideoStreamStatus,
 } from '../../../src/shared/types'
 import { deviceDefinitionFor } from '../definitions/deviceDefaults'
 import { LunaVideoStreamAdapter } from '../insta360/lunaVideoStreamAdapter'
@@ -43,4 +44,12 @@ export async function stopCameraVideoStream(options: CameraVideoStreamOptions): 
   if (!adapter) return
   await adapter.stop().catch(() => undefined)
   adapters.delete(key)
+}
+
+export function startCameraObsVideoStream(ctx: IpcContext, options: CameraVideoStreamOptions): Promise<CameraVideoStreamStatus> {
+  return cameraVideoStreamFor(ctx, options).startObs()
+}
+
+export function stopCameraObsVideoStream(ctx: IpcContext, options: CameraVideoStreamOptions): Promise<CameraVideoStreamStatus> {
+  return cameraVideoStreamFor(ctx, options).stopObs()
 }
