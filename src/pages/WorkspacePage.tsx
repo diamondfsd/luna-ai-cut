@@ -100,7 +100,8 @@ interface WorkspacePageProps {
 
 type WorkspaceRuntimeResource = 'fonts' | 'luts'
 const RUNTIME_RESOURCE_RETRY_DELAY_MS = 5_000
-const RUNTIME_RESOURCE_MAX_ATTEMPTS = 100
+const RUNTIME_RESOURCE_RETRY_DELAYS_MS = [2_000, RUNTIME_RESOURCE_RETRY_DELAY_MS] as const
+const RUNTIME_RESOURCE_MAX_ATTEMPTS = RUNTIME_RESOURCE_RETRY_DELAYS_MS.length + 1
 
 function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promise<void> {
   const renderCore = (window as unknown as {
@@ -257,10 +258,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           setRuntimeResourceLoading((current) => ({ ...current, [kind]: false }))
           return
         }
-        console.warn(`[Workspace] ${label}资源第 ${attempt} 次下载失败，5 秒后重试:`, error)
+        const retryDelay = RUNTIME_RESOURCE_RETRY_DELAYS_MS[attempt - 1] ?? RUNTIME_RESOURCE_RETRY_DELAY_MS
+        console.warn(`[Workspace] ${label}资源第 ${attempt} 次下载失败，${retryDelay} 毫秒后重试:`, error)
         retryTimers.push(window.setTimeout(() => {
           void prepare(kind, attempt + 1)
-        }, RUNTIME_RESOURCE_RETRY_DELAY_MS))
+        }, retryDelay))
       }
     }
     void prepare('fonts')

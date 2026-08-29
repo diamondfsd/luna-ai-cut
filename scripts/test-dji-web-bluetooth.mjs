@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import vm from 'node:vm'
 
 import { DJI_MODEL_PROFILES, djiProfileForDevice } from '../electron/devices/dji/djiModels.ts'
-import { buildDjiWebBluetoothAvailabilityScript, buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from '../electron/devices/dji/djiWebBluetoothScripts.ts'
+import { buildDjiWebBluetoothAvailabilityScript, buildDjiWebBluetoothCleanupScript, buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from '../electron/devices/dji/djiWebBluetoothScripts.ts'
 
 class FakeEventTarget {
   listeners = new Map()
@@ -195,6 +195,9 @@ staleBluetooth.requestDeviceResult = replacement.device
 await runConnect(pocket4, 'test-cleanup-token', staleContext)
 assert.equal(stale.notify.listenerCount('characteristicvaluechanged'), 0, '重新连接前应移除旧通知监听')
 assert.equal(stale.device.disconnectCount, 1, '重新连接前应断开旧 GATT')
+vm.runInNewContext(buildDjiWebBluetoothCleanupScript('test-cleanup-token'), staleContext)
+vm.runInNewContext(buildDjiWebBluetoothCleanupScript('test-cleanup-token'), staleContext)
+assert.equal(staleContext.window.__lunaDjiBluetoothState, null, '清理脚本可重复执行且不会污染脚本作用域')
 
 const broken = createDevice(pocket4, 'OsmoPocket4-Broken', 'broken', true)
 const brokenContext = harness(new FakeBluetooth([], broken.device))

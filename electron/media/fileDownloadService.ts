@@ -55,17 +55,24 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
-function isTransientDownloadError(error: unknown): boolean {
+export function isTransientDownloadError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const message = error.message.toLowerCase()
-  const code = 'code' in error ? String(error.code) : ''
+  const code = 'code' in error ? String(error.code).toUpperCase() : ''
   return (
     message === 'aborted'
     || message.includes('socket hang up')
     || message.includes('premature close')
+    || message.includes('下载请求超时')
+    || message.includes('timeout')
     || code === 'ECONNRESET'
     || code === 'EPIPE'
     || code === 'ETIMEDOUT'
+    || code === 'EHOSTUNREACH'
+    || code === 'ENETUNREACH'
+    || code === 'ECONNREFUSED'
+    || code === 'ENETDOWN'
+    || code === 'EAI_AGAIN'
   )
 }
 
@@ -114,6 +121,7 @@ export async function downloadToFile(
   if (isFileUrl(itemSourceUrl)) {
     const sourcePath = fileURLToPath(itemSourceUrl)
     const sourceSize = (await fs.stat(sourcePath)).size
+    if (sourceSize <= 0) throw new Error(`下载内容为空：${item.name}`)
     const existingFinal = await fileSize(destination)
     if (existingFinal > 0) {
       onProgress?.({
@@ -170,6 +178,7 @@ export async function downloadToFile(
     })
 
     throwIfAborted(signal)
+    if (copied <= 0) throw new Error(`下载内容为空：${item.name}`)
     await fs.rename(partialPath, destination)
     onProgress?.({
       fileName: item.name,
@@ -263,6 +272,7 @@ export async function downloadToFile(
   if (total !== null && downloaded < total) {
     throw new Error(`下载不完整：${downloaded}/${total}`)
   }
+  if (downloaded <= 0) throw new Error(`下载内容为空：${item.name}`)
 
   await fs.rename(partialPath, destination)
   return destination

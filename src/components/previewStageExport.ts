@@ -7,6 +7,7 @@ import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
 import { logExport } from '../lib/rendererLogger'
+import { resolveVideoExportResolution, normalizeVideoDimensions } from '../lib/videoExportResolution'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -72,22 +73,7 @@ export function resolveExportResolution(
   originalHeight: number,
   resolution: VideoResolution,
 ): { width: number; height: number } {
-  if (resolution === 'original' || resolution === undefined) {
-    return { width: originalWidth, height: originalHeight }
-  }
-
-  const aspect = originalWidth / originalHeight
-
-  switch (resolution) {
-    case '1080p':
-      return { width: Math.round(1080 * aspect), height: 1080 }
-    case '2k':
-      return { width: 2560, height: Math.round(2560 / aspect) }
-    case '4k':
-      return { width: 3840, height: Math.round(3840 / aspect) }
-    default:
-      return { width: originalWidth, height: originalHeight }
-  }
+  return resolveVideoExportResolution(originalWidth, originalHeight, resolution)
 }
 
 /** 根据帧率预设解析数值，'original' 返回 null（由 Rust 决定） */
@@ -141,7 +127,7 @@ export function resolveExportConfig(
 } {
   const res = config?.resolution
     ? resolveExportResolution(originalWidth, originalHeight, config.resolution)
-    : { width: originalWidth, height: originalHeight }
+    : normalizeVideoDimensions(originalWidth, originalHeight)
 
   return {
     width: res.width,

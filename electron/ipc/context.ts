@@ -18,7 +18,7 @@ export interface IpcContext {
   previewCacheTasks: Map<string, Promise<boolean>>
   videoFrameRateTasks: Map<string, Promise<number | null>>
   enqueuePreviewTask: <T>(run: () => Promise<T>, priority?: number) => Promise<T>
-  ensureCameraSessionForFile: (file: LunaFile, url?: string) => Promise<void>
+  ensureCameraSessionForFile: (file: LunaFile, url?: string, localPath?: string | null) => Promise<void>
   lunaProtocol: () => LunaUltraProtocol
   goUltraProtocol: () => GoUltraProtocol
 }

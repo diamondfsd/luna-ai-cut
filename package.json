@@ -52,7 +52,7 @@
     "test:e2e": "pnpm run build:app && playwright test",
     "test:model-loader": "node scripts/test-model-loader.mjs",
     "test:model-resources": "node scripts/test-model-resource-release.mjs",
-    "test:downloads": "node scripts/test-resumable-download.mjs",
+    "test:downloads": "node scripts/test-resumable-download.mjs && node scripts/test-media-download.mjs",
     "test:download-organization": "node --experimental-strip-types scripts/test-download-organization.mjs",
     "test:storage-migration": "node --experimental-strip-types scripts/test-storage-migration.mjs",
     "test:settings-storage": "node --experimental-strip-types scripts/test-settings-storage.mjs",
