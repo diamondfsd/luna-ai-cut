@@ -31,6 +31,11 @@ impl InteropDevice {
         d3d12_device: &ID3D12Device,
         d3d12_queue: &ID3D12CommandQueue,
     ) -> Result<Self, String> {
+        let adapter_luid = unsafe { d3d12_device.GetAdapterLuid() };
+        crate::logging::write(&format!(
+            "[Export:WinGPU] interop adapter-luid high={} low={} (from wgpu D3D12 device)",
+            adapter_luid.HighPart, adapter_luid.LowPart,
+        ));
         let queue: IUnknown = d3d12_queue
             .cast()
             .map_err(|error| format!("无法共享图形队列: {error}"))?;

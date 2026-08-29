@@ -2,7 +2,7 @@
 /**
  * 测试 Windows GPU 导出路径
  *
- * 用法: node scripts/test-gpu-export.mjs <视频路径>
+ * 用法: node scripts/test-gpu-export.mjs <视频路径> [--compatible] [--software]
  *
  * 测试内容:
  * 1. 加载 luna-render-core native addon
@@ -43,6 +43,7 @@ try {
 // ── 参数 ──
 const inputPath = process.argv.find((value, index) => index > 1 && !value.startsWith('--'))
 const softwareMode = process.argv.includes('--software')
+const compatibleMode = process.argv.includes('--compatible')
 if (!inputPath) {
   console.error('Usage: node scripts/test-gpu-export.mjs <video-path>')
   process.exit(1)
@@ -50,6 +51,12 @@ if (!inputPath) {
 if (!existsSync(inputPath)) {
   console.error('File not found:', inputPath)
   process.exit(1)
+}
+
+// Windows 上默认强制走 native Media Foundation 路径，避免测试悄悄退回
+// "GPU 合成 + CPU readback + FFmpeg pipe"。--compatible 仅用于对比测试。
+if (process.platform === 'win32' && !softwareMode) {
+  process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER = compatibleMode ? 'ffmpeg' : 'mf'
 }
 
 const outDir = join(root, 'test-output')
@@ -205,7 +212,9 @@ async function main() {
 
     // 提取关键日志
     const gpuAdapter = lines.find(l => l.includes('GPU adapter:'))
-    const winGpuStart = lines.filter(l => l.includes('[Export:WinGPU] start'))
+    const winGpuStart = lines.filter(l => l.includes('[Export:WinGPU] automatic attempt'))
+    const winGpuCompatible = lines.filter(l => l.includes('[Export:WinGPU] compatible path start'))
+    const winGpuCpuReadback = lines.filter(l => l.includes('transport=cpu-readback'))
     const winGpuCapabilities = lines.filter(l => l.includes('[Export:WinGPU] capabilities'))
     const winGpuDecoder = lines.filter(l => l.includes('[Export:WinGPU] decoder=media-foundation'))
     const winGpuPipeline = lines.filter(l => l.includes('[Export:WinGPU] pipeline='))
@@ -227,7 +236,9 @@ async function main() {
     if (encoderDetect.length) {
       console.log(`  Encoder detect: ${encoderDetect.map(l => l.split(']').slice(1).join(']').trim()).join('; ')}`)
     }
-    console.log(`  WinGPU start: ${winGpuStart.length}`)
+    console.log(`  WinGPU native attempt: ${winGpuStart.length}`)
+    console.log(`  WinGPU compatible CPU transport: ${winGpuCompatible.length}`)
+    console.log(`  CPU readback frames: ${winGpuCpuReadback.length}`)
     if (winGpuCapabilities.length) {
       const capability = winGpuCapabilities[winGpuCapabilities.length - 1]
       const d3d11on12 = capability.match(/d3d11on12=(true|false)/)?.[1] ?? '?'
@@ -258,7 +269,13 @@ async function main() {
       console.log(`  Fallback reason: ${reason}`)
     }
     console.log(`  FFmpeg fallback logs: ${ffmpegFallback.length}`)
-    winGpuSuccess = softwareMode || (winGpuCompleted.length > 0 && winGpuFallback.length === 0 && ffmpegFallback.length === 0)
+    const usedCpuReadback = winGpuCompatible.length > 0 || winGpuCpuReadback.length > 0
+    winGpuSuccess = softwareMode || (
+      winGpuCompleted.length > 0 &&
+      winGpuFallback.length === 0 &&
+      ffmpegFallback.length === 0 &&
+      (compatibleMode || !usedCpuReadback)
+    )
     console.log(`  Audio mux logs: ${audioMux.length}`)
     if (audioMux.length) {
       audioMux.forEach(l => console.log(`    ${l.split('] ').slice(1).join('] ')}`))
@@ -271,7 +288,9 @@ async function main() {
   const testPassed = exportSuccess && outputExists && (process.platform !== 'win32' || softwareMode || winGpuSuccess)
   if (testPassed) {
     console.log(process.platform === 'win32' && !softwareMode
-      ? '  ✅ TEST PASSED — WinGPU export succeeded without FFmpeg fallback'
+      ? compatibleMode
+        ? '  ✅ TEST PASSED — compatible hardware export succeeded'
+        : '  ✅ TEST PASSED — native WinGPU export succeeded without CPU readback'
       : '  ✅ TEST PASSED — Export succeeded')
   } else {
     console.log(process.platform === 'win32' && exportSuccess && outputExists

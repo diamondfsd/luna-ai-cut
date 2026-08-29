@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::mem::{size_of, ManuallyDrop};
-use std::ptr;
 use std::time::{Duration, Instant};
 
 use windows::core::{Interface, BOOL};
@@ -10,10 +9,10 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_ASYNC_GETDATA_DONOTFLUSH, D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE,
     D3D11_QUERY_DESC, D3D11_QUERY_EVENT, D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC,
     D3D11_USAGE_DEFAULT, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
-    D3D11_VIDEO_PROCESSOR_CONTENT_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC,
-    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC,
-    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_STREAM,
-    D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
+    D3D11_VIDEO_PROCESSOR_ALPHA_FILL_MODE_OPAQUE, D3D11_VIDEO_PROCESSOR_CONTENT_DESC,
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0,
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0,
+    D3D11_VIDEO_PROCESSOR_STREAM, D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
     D3D11_VPIV_DIMENSION_TEXTURE2D, D3D11_VPOV_DIMENSION_TEXTURE2D,
 };
 use windows::Win32::Graphics::Direct3D11on12::ID3D11On12Device2;
@@ -65,6 +64,7 @@ pub(crate) struct D3d12TextureLease {
     queue: ID3D12CommandQueue,
     fence: ID3D12Fence,
     fence_value: u64,
+    signal_submitted: bool,
     returned: bool,
 }
 
@@ -75,11 +75,20 @@ impl D3d12TextureLease {
             .expect("D3D12 lease already returned")
     }
 
-    /// 在 wgpu 已向同一队列提交命令后调用。Signal 排在该提交之后，
-    /// ReturnUnderlyingResource 会让后续 D3D11 工作等待这个 fence。
-    pub(crate) fn finish(mut self) -> Result<(), String> {
+    fn signal_d3d12_work(&mut self) -> Result<(), String> {
+        if self.signal_submitted {
+            return Ok(());
+        }
+        // Signal is ordered after the wgpu submission on the same queue. The
+        // D3D11On12 layer defers its wait until the resource is used again.
         unsafe { self.queue.Signal(&self.fence, self.fence_value) }
             .map_err(|error| format!("无法同步合成画面: {error}"))?;
+        self.signal_submitted = true;
+        Ok(())
+    }
+
+    fn return_to_d3d11(&mut self) -> Result<(), String> {
+        self.signal_d3d12_work()?;
         let values = [self.fence_value];
         let fences = [Some(self.fence.clone())];
         unsafe {
@@ -95,6 +104,12 @@ impl D3d12TextureLease {
         self.returned = true;
         Ok(())
     }
+
+    /// 在 wgpu 已向同一队列提交命令后调用。Signal 排在该提交之后，
+    /// ReturnUnderlyingResource 会让后续 D3D11 工作等待这个 fence。
+    pub(crate) fn finish(mut self) -> Result<(), String> {
+        self.return_to_d3d11()
+    }
 }
 
 impl Drop for D3d12TextureLease {
@@ -102,12 +117,13 @@ impl Drop for D3d12TextureLease {
         if self.returned {
             return;
         }
-        // 错误路径没有再向 wgpu 提交工作，可以无 fence 归还资源，避免让
-        // D3D11On12 永久保留解包所有权。
-        let _ = unsafe {
-            self.d3d11on12
-                .ReturnUnderlyingResource(&self.resource11, 0, ptr::null(), ptr::null())
-        };
+        // UnwrapUnderlyingResource itself can enqueue D3D12 work. Even an
+        // error path must therefore return with a fence, never with NumSync=0.
+        if let Err(error) = self.return_to_d3d11() {
+            crate::logging::write(&format!(
+                "[Export:WinGPU] D3D12 lease cleanup failed; resource kept checked out: {error}"
+            ));
+        }
     }
 }
 
@@ -226,18 +242,21 @@ impl VideoConverter {
         width: u32,
         height: u32,
     ) -> Result<ID3D11Texture2D, String> {
+        if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
+            return Err("显卡颜色转换要求 NV12 画面宽高为正偶数".to_string());
+        }
         let output = self.create_texture(
             width,
             height,
             DXGI_FORMAT_NV12,
-            D3D11_BIND_RENDER_TARGET.0 as u32,
+            (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
         )?;
-        let result = self.blit(&input, 0, width, height, &output, width, height, false);
+        // Media Foundation may consume the texture asynchronously. Wait for
+        // VideoProcessorBlt before handing it over or recycling the BGRA input.
+        self.blit(&input, 0, width, height, &output, width, height, true)?;
         self.recycle_bgra_texture(input, width, height);
-        result?;
         Ok(output)
     }
-
 
     fn take_bgra_texture(&mut self, width: u32, height: u32) -> Result<ID3D11Texture2D, String> {
         let key = (width, height);
@@ -268,8 +287,6 @@ impl VideoConverter {
         &mut self,
         texture: &ID3D11Texture2D,
     ) -> Result<D3d12TextureLease, String> {
-        // 提交此前的视频处理命令，Unwrap 后 wgpu 会继续使用同一个 D3D12 队列。
-        unsafe { self.context.Flush() };
         let resource11 = texture
             .cast::<ID3D11Resource>()
             .map_err(|error| format!("无法取得共享纹理资源: {error}"))?;
@@ -278,6 +295,9 @@ impl VideoConverter {
                 .UnwrapUnderlyingResource::<_, _, ID3D12Resource>(&resource11, &self.queue)
         }
         .map_err(|error| format!("无法将视频画面交给合成器: {error}"))?;
+        // UnwrapUnderlyingResource can enqueue state transitions and waits;
+        // flush after it so the following wgpu commands see the full handoff.
+        unsafe { self.context.Flush() };
         let fence_value = self.next_fence_value;
         self.next_fence_value = self.next_fence_value.saturating_add(1);
         Ok(D3d12TextureLease {
@@ -287,6 +307,7 @@ impl VideoConverter {
             queue: self.queue.clone(),
             fence: self.fence.clone(),
             fence_value,
+            signal_submitted: false,
             returned: false,
         })
     }
@@ -360,6 +381,15 @@ impl VideoConverter {
                 .map_err(|error| format!("当前显卡不支持所需视频尺寸或格式: {error}"))?;
             let processor = unsafe { self.video_device.CreateVideoProcessor(&enumerator, 0) }
                 .map_err(|error| format!("无法创建显卡颜色转换器: {error}"))?;
+            // Video frames have no meaningful alpha. Some drivers leave the
+            // BGRA output alpha at zero, which makes premultiplied WGSL output black.
+            unsafe {
+                self.video_context.VideoProcessorSetOutputAlphaFillMode(
+                    &processor,
+                    D3D11_VIDEO_PROCESSOR_ALPHA_FILL_MODE_OPAQUE,
+                    0,
+                );
+            }
             self.video_processors.insert(
                 key,
                 VideoProcessorState {

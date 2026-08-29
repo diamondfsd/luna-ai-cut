@@ -8,7 +8,7 @@ impl Compositor {
         canvas_height: u32,
         layers: &[RenderLayer],
         readback: bool,
-        present_output: bool,
+        return_output_to_common: bool,
     ) -> Result<Vec<u8>, String> {
         let (prepared_layers, temporary_texture_ids) = self.prepare_precompositions(layers)?;
         let result = self.render_flat_impl(
@@ -16,7 +16,7 @@ impl Compositor {
             canvas_height,
             &prepared_layers,
             readback,
-            present_output,
+            return_output_to_common,
         );
         for texture_id in temporary_texture_ids {
             self.textures.remove(&texture_id);
@@ -171,7 +171,7 @@ impl Compositor {
         mut canvas_height: u32,
         layers: &[RenderLayer],
         readback: bool,
-        _present_output: bool,
+        return_output_to_common: bool,
     ) -> Result<Vec<u8>, String> {
         // 限制画布尺寸不超过 GPU 上限，保持宽高比
         let max_dim = canvas_width.max(canvas_height);
@@ -789,16 +789,39 @@ impl Compositor {
 
         if !readback {
             #[cfg(target_os = "windows")]
-            if _present_output {
-                let transitions = [wgpu::wgt::TextureTransition {
+            if return_output_to_common {
+                // D3D11On12 UnwrapUnderlyingResource hands wgpu a COMMON resource.
+                // ReturnUnderlyingResource requires the fence to cover work that has
+                // brought every checked-out resource back to COMMON as well.
+                let external_count = self
+                    .textures
+                    .values()
+                    .filter(|entry| entry.external)
+                    .count();
+                let mut transitions = Vec::with_capacity(external_count + 1);
+                transitions.push(wgpu::wgt::TextureTransition {
                     texture: output_tex,
                     selector: None,
                     state: wgpu::wgt::TextureUses::PRESENT,
-                }];
+                });
+                transitions.extend(self.textures.values().filter(|entry| entry.external).map(
+                    |entry| wgpu::wgt::TextureTransition {
+                        texture: &entry.texture,
+                        selector: None,
+                        state: wgpu::wgt::TextureUses::PRESENT,
+                    },
+                ));
+                crate::log!(
+                    "[D3D12] finalize external render target {}x{} format={:?} and {} external input(s): COLOR_TARGET/RESOURCE -> PRESENT(COMMON)",
+                    canvas_width,
+                    canvas_height,
+                    output_tex.format(),
+                    external_count
+                );
                 encoder.transition_resources(std::iter::empty(), transitions.into_iter());
             }
             let submission_index = self.queue.submit(Some(encoder.finish()));
-            let poll_type = if _present_output {
+            let poll_type = if return_output_to_common {
                 // Bound native-preview work to one submitted frame. Waiting without an index
                 // also includes concurrent LUT thumbnail submissions on the shared device,
                 // while a non-blocking poll lets per-frame resources accumulate until OOM.
