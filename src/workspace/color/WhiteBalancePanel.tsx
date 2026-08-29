@@ -10,6 +10,7 @@ interface WhiteBalancePanelProps {
   value: EditPipeline['color']
   modified: boolean
   onChange: (patch: Partial<EditPipeline['color']>) => void
+  onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
   onActivatePipette?: () => void
 }
 
@@ -20,7 +21,8 @@ const WHITE_BALANCE_OPTIONS: Array<{ value: WhiteBalanceMode; label: string; tem
   { value: 'indoor', label: '室内', temperature: -42, tint: -3 },
 ]
 
-export function WhiteBalancePanel({ value, modified, onChange, onActivatePipette }: WhiteBalancePanelProps) {
+export function WhiteBalancePanel({ value, modified, onChange, onPreviewChange, onActivatePipette }: WhiteBalancePanelProps) {
+  const previewChange = onPreviewChange ?? onChange
   function updateWhiteBalanceMode(whiteBalanceMode: string): void {
     const preset = WHITE_BALANCE_OPTIONS.find((item) => item.value === whiteBalanceMode)
     if (!preset) return
@@ -55,10 +57,10 @@ export function WhiteBalancePanel({ value, modified, onChange, onActivatePipette
         </Tooltip>
       </div>
       <ColorBarSlider color="linear-gradient(90deg, #3958ff, #d9d3a5, #f5a35a)">
-        <ParamSlider label="色温" value={value.temperature} {...sliderRange(EDIT_PARAMETER_RANGES.color.temperature)} onChange={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} />
+        <ParamSlider label="色温" value={value.temperature} {...sliderRange(EDIT_PARAMETER_RANGES.color.temperature)} onChange={(temperature) => previewChange({ temperature, whiteBalanceMode: 'custom' })} onCommit={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} />
       </ColorBarSlider>
       <ColorBarSlider color="linear-gradient(90deg, #35bd4b, #b6b6b6, #d936c7)">
-        <ParamSlider label="色调" value={value.tint} {...sliderRange(EDIT_PARAMETER_RANGES.color.tint)} onChange={(tint) => onChange({ tint, whiteBalanceMode: 'custom' })} />
+        <ParamSlider label="色调" value={value.tint} {...sliderRange(EDIT_PARAMETER_RANGES.color.tint)} onChange={(tint) => previewChange({ tint, whiteBalanceMode: 'custom' })} onCommit={(tint) => onChange({ tint, whiteBalanceMode: 'custom' })} />
       </ColorBarSlider>
     </Accordion>
   )

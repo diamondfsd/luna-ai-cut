@@ -21,6 +21,7 @@ interface HslPanelProps {
   value: EditPipeline['color']
   modified: boolean
   onChange: (patch: Partial<EditPipeline['color']>) => void
+  onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
 }
 
 function normalizeHue(hue: number): number {
@@ -84,14 +85,15 @@ function withModeValue(channel: HslChannelAdjust, mode: HslMode, next: number): 
   return { ...channel, luminance: next }
 }
 
-export function HslPanel({ value, modified, onChange }: HslPanelProps) {
+export function HslPanel({ value, modified, onChange, onPreviewChange }: HslPanelProps) {
   const [mode, setMode] = useState<HslMode>('saturation')
+  const previewChange = onPreviewChange ?? onChange
   const range = mode === 'hue'
     ? sliderRange(EDIT_PARAMETER_RANGES.hsl.hue)
     : sliderRange(EDIT_PARAMETER_RANGES.hsl.saturation)
 
-  function updateDefaultChannel(channelKey: HslChannelKey, next: number): void {
-    onChange({
+  function updateDefaultChannel(channelKey: HslChannelKey, next: number, update = onChange): void {
+    update({
       hslChannels: {
         ...value.hslChannels,
         [channelKey]: withModeValue(value.hslChannels[channelKey], mode, next),
@@ -99,8 +101,8 @@ export function HslPanel({ value, modified, onChange }: HslPanelProps) {
     })
   }
 
-  function updateCustomChannel(index: number, next: number): void {
-    onChange({
+  function updateCustomChannel(index: number, next: number, update = onChange): void {
+    update({
       customHslChannels: value.customHslChannels.map((channel, channelIndex) => (
         channelIndex === index ? withModeValue(channel, mode, next) : channel
       )),
@@ -176,7 +178,8 @@ export function HslPanel({ value, modified, onChange }: HslPanelProps) {
                 )}
                 value={channelValue(channel, mode)}
                 {...range}
-                onChange={(next) => updateCustomChannel(index, next)}
+                onChange={(next) => updateCustomChannel(index, next, previewChange)}
+                onCommit={(next) => updateCustomChannel(index, next)}
                 formatValue={(next) => String(Math.round(next))}
               />
             </ColorBarSlider>
@@ -191,7 +194,8 @@ export function HslPanel({ value, modified, onChange }: HslPanelProps) {
                 label={channel.label}
                 value={channelValue(adjustment, mode)}
                 {...range}
-                onChange={(next) => updateDefaultChannel(channel.key, next)}
+                onChange={(next) => updateDefaultChannel(channel.key, next, previewChange)}
+                onCommit={(next) => updateDefaultChannel(channel.key, next)}
                 formatValue={(next) => String(Math.round(next))}
               />
             </ColorBarSlider>

@@ -34,9 +34,6 @@ export function ParamSlider({
 }: ParamSliderProps) {
   const accessibleLabel = typeof label === 'string' ? label : '参数'
   const zeroRatio = max - min > 0 ? (0 - min) / (max - min) : 0.5
-  const valueRatio = max - min > 0 ? (value - min) / (max - min) : 0.5
-  const fillLeft = Math.min(zeroRatio, valueRatio) * 100
-  const fillWidth = Math.abs(valueRatio - zeroRatio) * 100
 
   const [editValue, setEditValue] = useState(() => formatValue(value))
   const [editing, setEditing] = useState(false)
@@ -45,6 +42,11 @@ export function ParamSlider({
   const rafRef = useRef<number | null>(null)
   const pendingValueRef = useRef<number | null>(null)
   const displayValue = numericInputValue(value, formatValue)
+  const sliderDisplayValue = numericInputValue(onCommit ? sliderValue : value, formatValue)
+  const renderedValue = onCommit ? sliderValue : value
+  const renderedValueRatio = max - min > 0 ? (renderedValue - min) / (max - min) : 0.5
+  const renderedFillLeft = Math.min(zeroRatio, renderedValueRatio) * 100
+  const renderedFillWidth = Math.abs(renderedValueRatio - zeroRatio) * 100
 
   useEffect(() => {
     if (!editing) {
@@ -59,6 +61,7 @@ export function ParamSlider({
       setEditValue(formatValue(value))
     } else {
       const next = Math.min(max, Math.max(min, parsed))
+      if (onCommit) setSliderValue(next)
       ;(onCommit ?? onChange)(next)
     }
     setEditing(false)
@@ -104,7 +107,7 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
-          value={editing ? editValue : displayValue}
+          value={editing ? editValue : onCommit ? sliderDisplayValue : displayValue}
           onChange={(e) => { setEditing(true); setEditValue(e.currentTarget.value) }}
           onFocus={() => { setEditValue(displayValue); setEditing(true) }}
           onBlur={commit}
@@ -118,13 +121,13 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
-          onValueChange={([v]) => { if (onCommit) setSliderValue(v); else scheduleSliderChange(v) }}
+          onValueChange={([v]) => { if (onCommit) setSliderValue(v); scheduleSliderChange(v) }}
           onValueCommit={([v]) => flushSliderChange(v)}
         >
           <RadixSlider.Track className="workspace-slider-track">
             <div
               className="workspace-slider-fill"
-              style={{ left: `${fillLeft}%`, width: `${fillWidth}%` }}
+              style={{ left: `${renderedFillLeft}%`, width: `${renderedFillWidth}%` }}
             />
             <div
               className="workspace-slider-zero"

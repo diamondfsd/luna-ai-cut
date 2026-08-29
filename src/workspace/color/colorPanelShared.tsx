@@ -34,16 +34,21 @@ export function ColorWheel({
   saturation,
   size = 'default',
   onChange,
+  onPreviewChange,
+  onCommit,
 }: {
   label: string
   hue: number
   saturation: number
   size?: 'default' | 'mini'
   onChange: (hue: number, saturation: number) => void
+  onPreviewChange?: (hue: number, saturation: number) => void
+  onCommit?: (hue: number, saturation: number) => void
 }) {
   const wheelSize = size === 'mini' ? 76 : 150
   const markerDistance = (saturation / 100) * (wheelSize / 2)
   const radians = (hue * Math.PI) / 180
+  const previewChange = onPreviewChange ?? onChange
   return (
     <button
       type="button"
@@ -51,15 +56,17 @@ export function ColorWheel({
       className={`workspace-color-wheel workspace-color-wheel-${size}`}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId)
-        updateWheel(event, onChange)
+        updateWheel(event, previewChange)
       }}
       onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) updateWheel(event, onChange)
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) updateWheel(event, previewChange)
       }}
       onPointerUp={(event) => {
+        if (onCommit && event.currentTarget.hasPointerCapture(event.pointerId)) updateWheel(event, onCommit)
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       }}
       onPointerCancel={(event) => {
+        if (onCommit && event.currentTarget.hasPointerCapture(event.pointerId)) updateWheel(event, onCommit)
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       }}
     >
