@@ -13,6 +13,8 @@ export class LocalObsVideoStreamServer {
   private inputUrl: string | null = null
   private stopPromise: Promise<void> | null = null
 
+  constructor(private readonly onUnexpectedStop?: () => void) {}
+
   async start(inputUrl: string, codec: ObsInputCodec): Promise<LocalVideoStreamInfo> {
     if (this.ffmpeg && this.inputUrl === inputUrl) return this.output.start()
 
@@ -65,6 +67,10 @@ export class LocalObsVideoStreamServer {
       if (code !== 0 && signal !== 'SIGTERM') {
         logMainWarn('[OBS 推送] 编码进程已停止', { code, signal })
       }
+      void this.stop().catch((error: unknown) => {
+        logMainWarn('[OBS 推送] 输出地址关闭失败', { error: error instanceof Error ? error.message : String(error) })
+      })
+      this.onUnexpectedStop?.()
     })
     try {
       await new Promise<void>((resolve, reject) => {

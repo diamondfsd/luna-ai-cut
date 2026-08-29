@@ -18,7 +18,9 @@ function nowIso(): string {
 
 export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
   private readonly server = new LocalVideoStreamServer()
-  private readonly obsServer = new LocalObsVideoStreamServer()
+  private readonly obsServer = new LocalObsVideoStreamServer(() => {
+    this.statusValue = { ...this.statusValue, obsStreamUrl: null }
+  })
   private session: DjiCameraSession | null = null
   private unsubscribePreview: (() => void) | null = null
   private startPromise: Promise<CameraVideoStreamStatus> | null = null
