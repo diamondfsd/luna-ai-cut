@@ -4,7 +4,7 @@ import { cameraMediaSourceFor } from '../devices/common/cameraMediaSourceService
 import { chooseMountedCameraVolume, detectMountedCameraVolumes } from '../devices/common/mountedCameraMediaSource'
 import { saveSettings } from '../storage/settingsService'
 import type { IpcContext } from './context'
-import type { CameraMediaSourceOptions, LunaFile } from '../../src/shared/types'
+import type { CameraMediaSourceFilePage, CameraMediaSourceOptions, LunaFile } from '../../src/shared/types'
 
 export function register(ctx: IpcContext): void {
   ipcMain.handle('camera-source:detect-mounted', () => detectMountedCameraVolumes())
@@ -26,9 +26,16 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('camera-source:check', (_event, options: CameraMediaSourceOptions) => (
     cameraMediaSourceFor(ctx, options).check()
   ))
-  ipcMain.handle('camera-source:list-files', (_event, options: CameraMediaSourceOptions) => (
-    cameraMediaSourceFor(ctx, options).listFiles()
-  ))
+  ipcMain.handle('camera-source:list-files', (event, options: CameraMediaSourceOptions, requestId?: string) => {
+    const onPage = typeof requestId === 'string' && requestId.length > 0
+      ? (page: CameraMediaSourceFilePage) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('camera-source:files-page', { requestId, ...page })
+          }
+        }
+      : undefined
+    return cameraMediaSourceFor(ctx, options).listFiles(onPage)
+  })
   ipcMain.handle('camera-source:delete-files', (_event, files: LunaFile[], options: CameraMediaSourceOptions) => (
     cameraMediaSourceFor(ctx, options).deleteFiles(files)
   ))

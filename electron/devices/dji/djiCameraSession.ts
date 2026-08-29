@@ -1,7 +1,7 @@
 import { getSettings, saveSettings } from '../../storage/fileService'
 import type { BrowserWindow } from 'electron'
 import net from 'node:net'
-import type { CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../../src/shared/types'
+import type { CameraMediaSourceFilePageCallback, CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../../src/shared/types'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
 import type { DjiWifiCredentials } from './djiBleSession'
 import { encodeDjiMessage, hex, newInstallIdentity, packString, type DjiMessage } from './djiBytes'
@@ -83,6 +83,8 @@ interface ManifestPage {
   internal: DjiManifestFile[]
   fallback: DjiManifestFile[]
 }
+
+type DjiManifestPageCallback = (freshFiles: DjiManifestFile[], loadedFiles: DjiManifestFile[], pageNumber: number) => void | Promise<void>
 
 function djiCommand(cmdSet: number, cmdId: number, payload: Buffer, id = 0x8026, flags = 0x40): DjiUdpCommand {
   return { target: 0x0102, id, cmdSet, cmdId, flags, payload }
@@ -256,7 +258,7 @@ export class DjiCameraSession {
     }
   }
 
-  async listFiles(storageId = 'all', options?: CameraMediaSourceOptions): Promise<LunaFile[]> {
+  async listFiles(storageId = 'all', options?: CameraMediaSourceOptions, onPage?: CameraMediaSourceFilePageCallback): Promise<LunaFile[]> {
     const startedAt = Date.now()
     logMainInfo('[DJI 媒体] 媒体清单读取开始', {
       deviceId: this.deviceId,
@@ -267,7 +269,18 @@ export class DjiCameraSession {
     try {
       if (!this.connected) await this.connect(options)
       await this.ensurePlayback()
-      const files = await this.requestManifest(storageId)
+      const files = await this.requestManifest(storageId, async (freshFiles, loadedFiles, pageNumber) => {
+        if (!onPage) return
+        const primary = freshFiles
+          .filter(isPrimaryMedia)
+          .filter((file) => storageId === 'all' || file.storageId === storageId)
+        if (primary.length === 0) return
+        const proxies = loadedFiles.filter(isProxyMedia)
+        await onPage({
+          pageNumber,
+          files: await mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies)),
+        })
+      })
       const primary = files.filter(isPrimaryMedia)
       const proxies = files.filter(isProxyMedia)
       const result = await mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies))
@@ -441,7 +454,7 @@ export class DjiCameraSession {
     })
   }
 
-  private async requestManifest(storageId: string): Promise<DjiManifestFile[]> {
+  private async requestManifest(storageId: string, onPage?: DjiManifestPageCallback): Promise<DjiManifestFile[]> {
     const startedAt = Date.now()
     logMainInfo('[DJI 媒体] 请求相机媒体清单', {
       deviceId: this.deviceId,
@@ -476,6 +489,8 @@ export class DjiCameraSession {
         ? stepManifestPage(Number.MAX_SAFE_INTEGER, pageFiles, seen)
         : stepManifestPage(cursor, pageFiles, seen)
       files.push(...pageStep.fresh)
+
+      await onPage?.(pageStep.fresh, files, pageNumber + 1)
 
       const pageCursor = pageNumber === 0
         ? seedManifestCursor(page.internal)
