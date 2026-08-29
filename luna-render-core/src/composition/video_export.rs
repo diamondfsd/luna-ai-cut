@@ -11,13 +11,14 @@ use napi_derive::napi;
 static HW_ENCODER_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// 用一个 1x1 纯色帧实际测试编码器是否能正常初始化并输出
+/// 用一个标准尺寸的纯色帧实际测试编码器是否能正常初始化并输出。
 /// 这能捕获编译支持但运行时不可用的情况（如 nvcuda.dll 缺失）
 fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
-    // H.264 hardware encoders commonly reject 1x1 input. Use a small,
-    // standards-compliant frame so supported encoders are not rejected.
-    const TEST_WIDTH: usize = 64;
-    const TEST_HEIGHT: usize = 64;
+    // Some hardware encoders reject very small frames even when the encoder is
+    // available. 1280x720 avoids that false negative while keeping the probe
+    // independent of the user's export resolution.
+    const TEST_WIDTH: usize = 1280;
+    const TEST_HEIGHT: usize = 720;
     let mut args = vec![
         "-y".to_string(),
         "-hide_banner".to_string(),
@@ -53,7 +54,7 @@ fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
         .stderr(Stdio::piped())
         .spawn()
         .and_then(|mut child| {
-            // 写入 4 字节 RGBA（1x1 像素）
+            // 写入一帧 RGBA。
             if let Some(ref mut stdin) = child.stdin {
                 use std::io::Write;
                 let frame = vec![0u8; TEST_WIDTH * TEST_HEIGHT * 4];
@@ -247,15 +248,24 @@ impl Task for ExportCompositionVideoTask {
         let mut windows_gpu_needs_compatible = false;
 
         #[cfg(target_os = "windows")]
-        if hardware_requested && std::env::var_os("LUNA_DISABLE_WINDOWS_ZERO_COPY_EXPORT").is_none()
-        {
-            let ffmpeg_hardware_available =
-                best_hardware_encoder(&self.input.ffmpeg_path).is_some();
+        let windows_zero_copy_disabled =
+            std::env::var_os("LUNA_DISABLE_WINDOWS_ZERO_COPY_EXPORT").is_some();
+
+        #[cfg(target_os = "windows")]
+        if hardware_requested {
             let force_zero_copy_input = std::env::var("LUNA_WINDOWS_GPU_EXPORT_INPUT")
                 .map(|value| {
                     matches!(
                         value.to_ascii_lowercase().as_str(),
                         "zero-copy" | "zerocopy" | "d3d11on12"
+                    )
+                })
+                .unwrap_or(false);
+            let force_compatible_input = std::env::var("LUNA_WINDOWS_GPU_EXPORT_INPUT")
+                .map(|value| {
+                    matches!(
+                        value.to_ascii_lowercase().as_str(),
+                        "system-memory" | "system-memory-upload" | "cpu"
                     )
                 })
                 .unwrap_or(false);
@@ -275,26 +285,29 @@ impl Task for ExportCompositionVideoTask {
                     )
                 })
                 .unwrap_or(false);
-            // QSV/NVENC/AMF can accept the final GPU-composited frame through the
-            // existing pipe and are more reliable than a D3D11On12 Sink Writer on
-            // affected Intel drivers. Keep the zero-copy Sink Writer path available
-            // for diagnostics or machines without an FFmpeg hardware encoder.
-            if ffmpeg_hardware_available
-                && !force_media_foundation_encoder
-                && (!force_zero_copy_input || force_compatible_encoder)
-            {
+
+            // Hardware encoder discovery is intentionally deferred until the
+            // zero-copy path fails. Detecting an FFmpeg encoder must not make the
+            // default path read every composited frame back to CPU memory.
+            let force_compatible_path = windows_zero_copy_disabled
+                || force_compatible_encoder
+                || (!force_media_foundation_encoder && force_compatible_input);
+            if force_compatible_path {
                 windows_gpu_needs_compatible = true;
+                log_write("[Export:WinGPU] selecting compatible path by explicit configuration");
+            } else if force_media_foundation_encoder {
+                log_write("[Export:WinGPU] selecting zero-copy path by explicit Media Foundation configuration");
+            } else if force_zero_copy_input {
                 log_write(
-                    "[Export:WinGPU] selecting compatible hardware path (Media Foundation decode + GPU composition + hardware encode)",
+                    "[Export:WinGPU] selecting zero-copy path by explicit input configuration",
                 );
+            } else {
+                log_write("[Export:WinGPU] selecting zero-copy path by default");
             }
         }
 
         #[cfg(target_os = "windows")]
-        if hardware_requested
-            && !windows_gpu_needs_compatible
-            && std::env::var_os("LUNA_DISABLE_WINDOWS_ZERO_COPY_EXPORT").is_none()
-        {
+        if hardware_requested && !windows_gpu_needs_compatible && !windows_zero_copy_disabled {
             let system_memory_decode = std::env::var("LUNA_WINDOWS_GPU_EXPORT_INPUT")
                 .map(|value| {
                     !matches!(
@@ -302,7 +315,10 @@ impl Task for ExportCompositionVideoTask {
                         "zero-copy" | "zerocopy" | "d3d11on12"
                     )
                 })
-                .unwrap_or(true);
+                // Native Windows export should first keep decoded frames on the
+                // D3D11/D3D12 path. The compatible path below explicitly opts
+                // into a system-memory upload when native interop fails.
+                .unwrap_or(false);
             let bitrate_bps = bitrate
                 .trim_end_matches(['k', 'K'])
                 .parse::<u64>()
@@ -350,12 +366,13 @@ impl Task for ExportCompositionVideoTask {
                 Err(error) => {
                     windows_gpu_needs_compatible = true;
                     log_write(&format!(
-                        "[Export:WinGPU] unavailable, falling back to FFmpeg: {}",
+                        "[Export:WinGPU] unavailable, falling back to compatible path: {}",
                         error
                     ));
                     // D3D11On12 / Media Foundation failures can leave wgpu's shared D3D12
-                    // device unusable. Recreate only the export compositor before the CPU
-                    // encoding fallback starts; the preview compositor remains untouched.
+                    // device unusable. Recreate only the export compositor before the
+                    // compatible or CPU encoding fallback starts; the preview compositor
+                    // remains untouched.
                     crate::reset_export_compositor().map_err(|reset_error| {
                         napi::Error::from_reason(format!(
                             "Windows GPU export failed ({error}); export renderer recovery failed: {reset_error}"

@@ -36,8 +36,29 @@ impl Compositor {
         width: u32,
         height: u32,
         usage: wgpu::TextureUsages,
-        initialized: bool,
+        _initialized: bool,
     ) -> Result<wgpu::Texture, String> {
+        let raw_desc = unsafe { resource.GetDesc() };
+        let expected_format = windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+        if raw_desc.Format != expected_format {
+            return Err(format!(
+                "外部 D3D12 纹理格式不匹配: expected DXGI_FORMAT_B8G8R8A8_UNORM(87), got {}",
+                raw_desc.Format.0
+            ));
+        }
+        if raw_desc.Width != width as u64 || raw_desc.Height != height {
+            return Err(format!(
+                "外部 D3D12 纹理尺寸不匹配: expected {}x{}, got {}x{}",
+                width, height, raw_desc.Width, raw_desc.Height
+            ));
+        }
+        crate::log!(
+            "[D3D12] wrap external texture raw={}x{} dxgi_format={} wgpu_format=Bgra8UnormSrgb initial_state=COMMON usage={usage:?}",
+            raw_desc.Width,
+            raw_desc.Height,
+            raw_desc.Format.0
+        );
+
         let size = wgpu::Extent3d {
             width,
             height,
@@ -67,11 +88,9 @@ impl Compositor {
             self.device.create_texture_from_hal::<wgpu::hal::api::Dx12>(
                 hal_texture,
                 &descriptor,
-                if initialized {
-                    wgpu::wgt::TextureUses::RESOURCE
-                } else {
-                    wgpu::wgt::TextureUses::UNINITIALIZED
-                },
+                // UnwrapUnderlyingResource transitions the resource to COMMON. The
+                // swap-chain back buffer is also acquired in COMMON/PRESENT state.
+                wgpu::wgt::TextureUses::UNINITIALIZED,
             )
         })
     }
@@ -155,8 +174,15 @@ impl Compositor {
         let previous = self
             .output_texture
             .replace((target, canvas_width, canvas_height));
+        let return_output_to_common = cfg!(target_os = "windows");
         let result = self
-            .render_impl(canvas_width, canvas_height, layers, false, false)
+            .render_impl(
+                canvas_width,
+                canvas_height,
+                layers,
+                false,
+                return_output_to_common,
+            )
             .map(|_| ());
         if let Some((_texture, _, _)) = self.output_texture.take() {
             #[cfg(target_os = "windows")]
