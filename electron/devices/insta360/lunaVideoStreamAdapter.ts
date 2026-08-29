@@ -18,7 +18,9 @@ function nowIso(): string {
 
 export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
   private readonly server = new LocalVideoStreamServer()
-  private readonly obsServer = new LocalObsVideoStreamServer()
+  private readonly obsServer = new LocalObsVideoStreamServer(() => {
+    this.statusValue = { ...this.statusValue, obsStreamUrl: null }
+  })
   private client: ReturnType<IpcContext['lunaClientFor']> | null = null
   private unsubscribeVideo: (() => void) | null = null
   private startPromise: Promise<CameraVideoStreamStatus> | null = null
