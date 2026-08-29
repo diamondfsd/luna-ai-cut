@@ -46,7 +46,11 @@ function webCodecs(): { Decoder: VideoDecoderConstructor; Chunk: EncodedVideoChu
     : null
 }
 
-function LiveCanvas({ url, onFrame, onError }: { url: string; onFrame: () => void; onError: (message: string) => void }) {
+function LiveCanvas({ url, onFrame, onError }: {
+  url: string
+  onFrame: (dimensions: { width: number; height: number }) => void
+  onError: (message: string) => void
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -84,8 +88,9 @@ function LiveCanvas({ url, onFrame, onError }: { url: string; onFrame: () => voi
       if (canvas.width !== frame.displayWidth) canvas.width = frame.displayWidth
       if (canvas.height !== frame.displayHeight) canvas.height = frame.displayHeight
       canvas.getContext('2d')?.drawImage(frame as unknown as CanvasImageSource, 0, 0)
+      const dimensions = { width: frame.displayWidth, height: frame.displayHeight }
       frame.close()
-      onFrame()
+      onFrame(dimensions)
     }
 
     const consume = async () => {
@@ -175,18 +180,26 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
   const [obsError, setObsError] = useState<string | null>(null)
   const [obsBusy, setObsBusy] = useState(false)
   const [hasFrame, setHasFrame] = useState(false)
-  const handleFrame = useCallback(() => setHasFrame(true), [])
+  const [streamDimensions, setStreamDimensions] = useState<{ width: number; height: number } | null>(null)
+  const handleFrame = useCallback((dimensions: { width: number; height: number }) => {
+    setHasFrame(true)
+    setStreamDimensions((current) => (
+      current?.width === dimensions.width && current.height === dimensions.height ? current : dimensions
+    ))
+  }, [])
   const handleError = useCallback((message: string) => setError(message), [])
 
   useEffect(() => {
     if (!open || !connected) {
       setHasFrame(false)
+      setStreamDimensions(null)
       if (!open) setStatus(null)
       return
     }
 
     let cancelled = false
     setHasFrame(false)
+    setStreamDimensions(null)
     setError(null)
     setObsError(null)
     setObsBusy(false)
@@ -241,13 +254,15 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
       open={open}
       onOpenChange={onOpenChange}
       title="相机预览"
-      description="实时查看相机当前画面"
       className="camera-live-preview-dialog"
       tone="dark"
       footer={<Button variant="secondary" onClick={() => onOpenChange(false)}>关闭</Button>}
     >
       <div className="camera-live-preview-body">
-        <div className="camera-live-preview-stage">
+        <div
+          className="camera-live-preview-stage"
+          style={streamDimensions ? { aspectRatio: `${streamDimensions.width} / ${streamDimensions.height}` } : undefined}
+        >
           {status?.streamUrl && status.state === 'running' && !unsupported ? (
             <LiveCanvas url={status.streamUrl} onFrame={handleFrame} onError={handleError} />
           ) : null}
@@ -272,6 +287,11 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
         <div className="camera-live-preview-status" aria-live="polite">
           <span className={`camera-live-preview-dot ${hasFrame ? 'active' : ''}`} />
           <span>{hasFrame ? '正在接收画面' : status?.message ?? '准备相机预览'}</span>
+          {streamDimensions ? (
+            <span className="camera-live-preview-resolution">
+              {streamDimensions.width} × {streamDimensions.height}
+            </span>
+          ) : null}
           {status && status.frames > 0 ? <span className="camera-live-preview-count">已接收画面</span> : null}
         </div>
         {status?.state === 'running' && (
