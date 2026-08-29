@@ -18,7 +18,7 @@ function nowIso(): string {
 
 export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
   private readonly server = new LocalVideoStreamServer()
-  private readonly obsServer = new LocalObsVideoStreamServer()
+  private readonly obsServer = new LocalObsVideoStreamServer(logMainInfo, logMainWarn)
   private client: ReturnType<IpcContext['lunaClientFor']> | null = null
   private unsubscribeVideo: (() => void) | null = null
   private startPromise: Promise<CameraVideoStreamStatus> | null = null
@@ -66,6 +66,7 @@ export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
       message: '正在连接相机预览',
       error: null,
     }
+    this.obsServer.setCodec('h264')
     const task = this.startInternal(generation)
       .then(() => this.status())
       .catch(async (error: unknown) => {
@@ -153,13 +154,14 @@ export class LunaVideoStreamAdapter implements CameraVideoStreamAdapter {
 
   async startObs(): Promise<CameraVideoStreamStatus> {
     if (this.statusValue.state !== 'running') await this.start()
+    this.obsServer.setCodec('h264')
     const local = await this.obsServer.start('h264')
     this.statusValue = { ...this.statusValue, obsStreamUrl: local.url }
     return this.status()
   }
 
   async stopObs(): Promise<CameraVideoStreamStatus> {
-    await this.obsServer.stop()
+    await this.obsServer.stop(false)
     this.statusValue = { ...this.statusValue, obsStreamUrl: null }
     return this.status()
   }

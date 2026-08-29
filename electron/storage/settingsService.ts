@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { DEFAULT_DEVICE } from '../devices/definitions/deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
 import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
-import type { AppSettings } from '../../src/shared/types'
+import type { AppSettings, WatermarkPlacement, WatermarkPosition } from '../../src/shared/types'
 
 function settingsPath(): string {
   if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
@@ -91,6 +91,39 @@ function defaultSettings(): AppSettings {
   }
 }
 
+const WATERMARK_POSITIONS = new Set<WatermarkPosition>([
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+])
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function normalizeDefaultWatermarkPlacement(value: unknown): WatermarkPlacement | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const placement = value as Partial<WatermarkPlacement>
+  if (placement.mode === 'preset' && WATERMARK_POSITIONS.has(placement.anchor as WatermarkPosition) && finiteNumber(placement.insetOnShortEdge)) {
+    return {
+      mode: 'preset',
+      anchor: placement.anchor as WatermarkPosition,
+      insetOnShortEdge: Math.min(0.25, Math.max(0, placement.insetOnShortEdge)),
+    }
+  }
+  if (placement.mode === 'free' && finiteNumber(placement.centerX) && finiteNumber(placement.centerY)) {
+    return {
+      mode: 'free',
+      centerX: Math.min(1, Math.max(0, placement.centerX)),
+      centerY: Math.min(1, Math.max(0, placement.centerY)),
+    }
+  }
+  return undefined
+}
+
 type StoredSettings = Partial<AppSettings> & { downloadDir?: string }
 
 async function readSettingsFile() {
@@ -118,6 +151,11 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   ].includes(String(saved?.defaultWatermarkPosition))
     ? saved?.defaultWatermarkPosition
     : defaults.defaultWatermarkPosition
+  const savedDefaultWatermarkSize = saved?.defaultWatermarkSizeOnCanvasWidth
+  merged.defaultWatermarkSizeOnCanvasWidth = finiteNumber(savedDefaultWatermarkSize)
+    ? Math.min(0.8, Math.max(0.08, savedDefaultWatermarkSize))
+    : undefined
+  merged.defaultWatermarkPlacement = normalizeDefaultWatermarkPlacement(saved?.defaultWatermarkPlacement)
   merged.experimentalWebGpuPreview = typeof saved?.experimentalWebGpuPreview === 'boolean'
     ? saved.experimentalWebGpuPreview : defaults.experimentalWebGpuPreview
   // 浏览器 WebGPU 导出已移除，覆盖旧版本保存的 true，避免升级后继续走慢路径。

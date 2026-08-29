@@ -178,8 +178,11 @@ export function resolveWatermarkPositioning(
   const imageWidth = Math.max(1, finiteOr(settings.imageWidth ?? settings.customAsset?.width, 4))
   const imageHeight = Math.max(1, finiteOr(settings.imageHeight ?? settings.customAsset?.height, 1))
   const imageAspect = imageWidth / imageHeight
+  const defaultWidth = settings.sourceKind === 'builtin' && safeCanvasHeight > safeCanvasWidth
+    ? DEFAULT_DJI_PORTRAIT_WIDTH_RATIO
+    : DEFAULT_WATERMARK_WIDTH_RATIO
   const requestedWidth = clamp(
-    finiteOr(settings.sizeOnCanvasWidth, DEFAULT_WATERMARK_WIDTH_RATIO),
+    finiteOr(settings.sizeOnCanvasWidth, defaultWidth),
     MIN_WATERMARK_WIDTH_RATIO,
     MAX_WATERMARK_WIDTH_RATIO,
   )

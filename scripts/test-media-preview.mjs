@@ -160,9 +160,15 @@ const movedBuiltin = watermarkGeometry.resolveWatermarkPositioning({
   sizeOnCanvasWidth: 0.4,
   placement: { mode: 'free', centerX: 0.22, centerY: 0.31 },
 }, 1920, 1080)
+const defaultPortraitBuiltin = watermarkGeometry.resolveWatermarkPositioning({
+  ...builtinSettings,
+  sizeOnCanvasWidth: undefined,
+  placement: undefined,
+}, 1080, 1920)
 close(movedBuiltin.targetWidth, 0.4, 'built-in watermark uses the editable size')
 close(movedBuiltin.marginX, 0.02, 'built-in watermark uses the editable horizontal position')
 close(movedBuiltin.marginY, 0.31 - movedBuiltin.targetWidth * 1920 / 1080 / 4 / 2, 'built-in watermark uses the editable vertical position')
+close(defaultPortraitBuiltin.targetWidth, 0.35, 'built-in portrait watermark keeps the default size')
 
 const firstAsset = { id: 'first', filePath: '/tmp/first.png' }
 const secondAsset = { id: 'second', filePath: '/tmp/second.png' }

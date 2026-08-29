@@ -392,7 +392,9 @@ export function WatermarkSettings({
     void enrichAndChange(patch)
   }
 
-  const selectedSourceKind = builtinAvailable ? currentSettings.sourceKind ?? 'builtin' : 'custom'
+  const selectedSourceKind = preferencesOnly
+    ? 'builtin'
+    : builtinAvailable ? currentSettings.sourceKind ?? 'builtin' : 'custom'
   const customSelected = selectedSourceKind === 'custom' && usesCustomWatermark(currentSettings)
   const sourceOptions: Array<{ value: 'builtin' | 'custom'; label: string }> = builtinAvailable
     ? [{ value: 'builtin', label: '内置' }, { value: 'custom', label: '自定义' }]
@@ -446,10 +448,10 @@ export function WatermarkSettings({
       {(selectedSourceKind === 'builtin' || customSelected) && (
         <SettingsSection>
           <PositionGrid settings={currentSettings} custom={customSelected} onChange={changePosition} />
-          {!preferencesOnly && (selectedSourceKind === 'builtin' || customSelected) && (
+          {(selectedSourceKind === 'builtin' || customSelected) && (
             <div className="wm-appearance-controls">
               <WatermarkSlider label="大小" value={(currentSettings.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio) * 100} min={8} max={80} onChange={(value) => void enrichAndChange({ sizeOnCanvasWidth: value / 100 })} />
-              {customSelected && <WatermarkSlider label="透明度" value={(currentSettings.opacity ?? 1) * 100} min={0} max={100} onChange={(value) => void enrichAndChange({ opacity: value / 100 })} />}
+              {!preferencesOnly && customSelected && <WatermarkSlider label="透明度" value={(currentSettings.opacity ?? 1) * 100} min={0} max={100} onChange={(value) => void enrichAndChange({ opacity: value / 100 })} />}
             </div>
           )}
         </SettingsSection>

@@ -2,7 +2,6 @@ import { createSocket, type Socket as DgramSocket } from 'node:dgram'
 import { randomBytes } from 'node:crypto'
 import { createServer, type Server, type Socket } from 'node:net'
 
-import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import type { LocalVideoStreamInfo } from './localVideoStreamServer'
 
 export type ObsInputCodec = 'h264' | 'h265'
@@ -41,6 +40,8 @@ interface RtspRequest {
   headers: Map<string, string>
 }
 
+type RtspLogger = (message: string, meta?: unknown) => void
+
 /** 将相机的 Annex-B 视频数据封装为 OBS 可读取的本机 RTSP 流。 */
 export class LocalObsVideoStreamServer {
   private server: Server | null = null
@@ -53,23 +54,36 @@ export class LocalObsVideoStreamServer {
   private parameterSets = new Map<number, Buffer>()
   private latestKeyframe: EncodedAccessUnit | null = null
   private stopPromise: Promise<void> | null = null
+  private readonly logInfo?: RtspLogger
+  private readonly logWarn?: RtspLogger
+
+  constructor(logInfo?: RtspLogger, logWarn?: RtspLogger) {
+    this.logInfo = logInfo
+    this.logWarn = logWarn
+  }
+
+  setCodec(codec: ObsInputCodec): void {
+    if (this.codec !== codec) {
+      this.parameterSets.clear()
+      this.latestKeyframe = null
+    }
+    this.codec = codec
+  }
 
   async start(codec: ObsInputCodec, port = RTSP_PORT): Promise<LocalVideoStreamInfo> {
     if (this.server && this.codec === codec && this.streamUrl && this.streamPort) {
       return { url: this.streamUrl, port: this.streamPort }
     }
 
-    await this.stop()
-    this.codec = codec
-    this.parameterSets.clear()
-    this.latestKeyframe = null
+    await this.stopInternal(false)
+    this.setCodec(codec)
 
     const server = createServer((socket) => this.acceptClient(socket))
     await new Promise<void>((resolve, reject) => {
       let listening = false
       const onError = (error: Error) => {
         if (listening) {
-          logMainWarn('[OBS 推送] RTSP 服务异常', { error: error.message })
+          this.logWarn?.('[OBS 推送] RTSP 服务异常', { error: error.message })
           return
         }
         server.off('listening', onListening)
@@ -97,7 +111,7 @@ export class LocalObsVideoStreamServer {
     this.server = server
     this.streamPort = address.port
     this.streamUrl = `rtsp://127.0.0.1:${address.port}${RTSP_PATH}`
-    logMainInfo('[OBS 推送] RTSP 地址已启动', { url: this.streamUrl, codec })
+    this.logInfo?.('[OBS 推送] RTSP 地址已启动', { url: this.streamUrl, codec })
     return { url: this.streamUrl, port: address.port }
   }
 
@@ -124,15 +138,21 @@ export class LocalObsVideoStreamServer {
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(resetCodec = true): Promise<void> {
+    await this.stopInternal(resetCodec)
+  }
+
+  private async stopInternal(resetCodec: boolean): Promise<void> {
     if (this.stopPromise) return this.stopPromise
     const server = this.server
     this.server = null
     this.streamUrl = null
     this.streamPort = null
-    this.codec = null
-    this.parameterSets.clear()
-    this.latestKeyframe = null
+    if (resetCodec) {
+      this.codec = null
+      this.parameterSets.clear()
+      this.latestKeyframe = null
+    }
     this.stopPromise = (async () => {
       for (const client of [...this.clients]) this.disposeClient(client)
       if (server) await new Promise<void>((resolve) => server.close(() => resolve()))
@@ -163,7 +183,7 @@ export class LocalObsVideoStreamServer {
     this.clients.add(client)
     socket.on('data', (chunk: Buffer) => this.readClientData(client, chunk))
     socket.once('error', (error) => {
-      if (!client.socket.destroyed) logMainWarn('[OBS 推送] RTSP 客户端连接异常', { error: error.message })
+      if (!client.socket.destroyed) this.logWarn?.('[OBS 推送] RTSP 客户端连接异常', { error: error.message })
       this.disposeClient(client)
     })
     socket.once('close', () => this.disposeClient(client))
@@ -193,7 +213,7 @@ export class LocalObsVideoStreamServer {
       client.requestChain = client.requestChain
         .then(() => this.handleRequest(client, request))
         .catch((error: unknown) => {
-          logMainWarn('[OBS 推送] RTSP 请求处理失败', { error: error instanceof Error ? error.message : String(error) })
+          this.logWarn?.('[OBS 推送] RTSP 请求处理失败', { error: error instanceof Error ? error.message : String(error) })
           this.disposeClient(client)
         })
     }
@@ -287,8 +307,8 @@ export class LocalObsVideoStreamServer {
     client.clientRtpPort = clientPort
     client.rtpSocket = rtpSocket
     client.rtcpSocket = rtcpSocket
-    rtpSocket.on('error', (error) => logMainWarn('[OBS 推送] RTP UDP 服务异常', { error: error.message }))
-    rtcpSocket.on('error', (error) => logMainWarn('[OBS 推送] RTCP UDP 服务异常', { error: error.message }))
+    rtpSocket.on('error', (error) => this.logWarn?.('[OBS 推送] RTP UDP 服务异常', { error: error.message }))
+    rtcpSocket.on('error', (error) => this.logWarn?.('[OBS 推送] RTCP UDP 服务异常', { error: error.message }))
     await Promise.all([bindUdpSocket(rtpSocket), bindUdpSocket(rtcpSocket)])
   }
 
@@ -333,7 +353,7 @@ export class LocalObsVideoStreamServer {
             if (!client.socket.write(framed)) await waitForDrain(client.socket)
           } else if (client.clientRtpPort) {
             client.rtpSocket.send(packet, client.clientRtpPort, client.clientAddress, (error) => {
-              if (error) logMainWarn('[OBS 推送] RTP UDP 发送失败', { error: error.message })
+              if (error) this.logWarn?.('[OBS 推送] RTP UDP 发送失败', { error: error.message })
             })
           }
         }

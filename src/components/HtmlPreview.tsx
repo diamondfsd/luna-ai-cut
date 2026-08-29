@@ -112,8 +112,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
     if (rect.width <= 0 || rect.height <= 0) return
     let next: WatermarkSettings
     if (gesture.type === 'resize') {
-      const shortEdge = Math.min(rect.width, rect.height)
-      const size = Math.min(0.8, Math.max(0.08, gesture.size + (event.clientX - gesture.startX) / shortEdge))
+      const size = Math.min(0.8, Math.max(0.08, gesture.size + (event.clientX - gesture.startX) / rect.width))
       next = { ...watermarkSettings, sizeOnCanvasWidth: size }
     } else {
       next = {

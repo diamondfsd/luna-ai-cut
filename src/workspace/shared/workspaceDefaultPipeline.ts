@@ -25,5 +25,11 @@ export function createWorkspaceDefaultPipeline(
     && WATERMARK_POSITIONS.has(settings.defaultWatermarkPosition)
     ? settings.defaultWatermarkPosition
     : 'bottom-center'
+  if (settings?.defaultWatermarkSizeOnCanvasWidth !== undefined) {
+    pipeline.watermark.sizeOnCanvasWidth = settings.defaultWatermarkSizeOnCanvasWidth
+  }
+  if (settings?.defaultWatermarkPlacement) {
+    pipeline.watermark.placement = structuredClone(settings.defaultWatermarkPlacement)
+  }
   return pipeline
 }
