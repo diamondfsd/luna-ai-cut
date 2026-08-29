@@ -214,7 +214,7 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
         ? await window.luna.cameraVideoStream.stopObs({ mode, deviceId, host })
         : await window.luna.cameraVideoStream.startObs({ mode, deviceId, host })
       setStatus(nextStatus)
-      if (nextStatus.obsStreamUrl) toast.success('OBS 地址已启动')
+      if (nextStatus.obsStreamUrl) toast.success('RTSP 地址已启动')
     } catch (cause: unknown) {
       setObsError(cause instanceof Error ? cause.message : 'OBS 地址启动失败')
     } finally {
@@ -275,21 +275,21 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
           {status && status.frames > 0 ? <span className="camera-live-preview-count">已接收画面</span> : null}
         </div>
         {status?.state === 'running' && (
-          <section className="camera-live-preview-obs" aria-label="OBS 推送">
+          <section className="camera-live-preview-obs" aria-label="RTSP 推送">
             <div className="camera-live-preview-obs-heading">
               <div className="camera-live-preview-obs-title">
                 <Radio size={16} />
-                <strong>OBS 推送</strong>
+                <strong>RTSP 推送</strong>
                 <span className={`camera-live-preview-obs-state${status.obsStreamUrl ? ' active' : ''}`}>
                   {status.obsStreamUrl ? '已开启' : '未开启'}
                 </span>
               </div>
-              <p>把当前相机画面提供给 OBS。添加 OBS 媒体源时填入下方地址，关闭预览后会自动停止。</p>
+              <p>把当前相机画面提供给 OBS。添加 OBS 媒体源时填入下方 RTSP 地址，关闭预览后会自动停止。</p>
             </div>
             {status.obsStreamUrl ? (
               <div className="camera-live-preview-obs-actions">
                 <div className="camera-live-preview-obs-url">
-                  <span>OBS 地址</span>
+                  <span>RTSP 地址</span>
                   <code>{status.obsStreamUrl}</code>
                 </div>
                 <div className="camera-live-preview-obs-buttons">
@@ -321,7 +321,7 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
                 onClick={() => void toggleObsStream()}
                 disabled={obsBusy}
               >
-                {obsBusy ? '正在准备 OBS 地址...' : '启动 OBS 推送'}
+                {obsBusy ? '正在准备 RTSP 地址...' : '启动 RTSP 推送'}
               </Button>
             )}
             {obsError && <span className="camera-live-preview-obs-error" role="alert">{obsError}</span>}

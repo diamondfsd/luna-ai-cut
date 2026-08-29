@@ -743,18 +743,33 @@ export function register(ctx: RegisterContext): void {
       }> = []
       const seen = new Set<string>()
 
-      // 内置 LUT 目录：遍历候选路径，取第一个存在的
+      // 内置 LUT 目录：打包版可能只附带部分 LUT（例如 DJI 专用 LUT），
+      // 仍需和按需下载的完整资源包合并扫描。
       //   打包后：process.resourcesPath/luts（extraResources 复制到 resources/luts/）
       //   开发时：VITE_PUBLIC/luts 或 APP_ROOT/public/luts
-      let builtinDir = [
+      const localBuiltinDirs = [
         join(process.resourcesPath || '', 'luts'),
         join(process.env.VITE_PUBLIC || join(process.env.APP_ROOT || join(import.meta.dirname, '..'), 'public'), 'luts'),
-      ].find((p) => { try { return statSync(p).isDirectory() } catch { return false } }) || ''
-      if (!builtinDir) {
-        builtinDir = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
+      ].filter((p, index, candidates) => {
+        if (candidates.indexOf(p) !== index) return false
+        try { return statSync(p).isDirectory() } catch { return false }
+      })
+      const builtinDirs = [...localBuiltinDirs]
+      // 完整开发资源目录带有根清单；打包版的局部资源没有清单，需要补充运行时资源包。
+      const hasCompleteLocalPack = localBuiltinDirs.some((directory) => {
+        try { return statSync(join(directory, 'manifest.json')).isFile() } catch { return false }
+      })
+      if (!hasCompleteLocalPack) {
+        try {
+          builtinDirs.push(await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts))
+        } catch (error) {
+          if (localBuiltinDirs.length === 0) throw error
+          // 本地已附带的 LUT 仍然可用，资源包下载由工作台继续重试。
+          console.warn('[lrc] 完整 LUT 资源包暂时不可用，将使用已附带的 LUT:', error)
+        }
       }
 
-      async function scanDir(dir: string, baseDir: string): Promise<void> {
+      async function scanDir(dir: string, baseDir: string, isBuiltin: boolean): Promise<void> {
         let entries: string[]
         try { entries = await readdir(dir) } catch { return }
         for (const entry of entries.sort()) {
@@ -762,7 +777,7 @@ export function register(ctx: RegisterContext): void {
           try {
             const info = await stat(fullPath)
             if (info.isDirectory()) {
-              await scanDir(fullPath, baseDir)
+              await scanDir(fullPath, baseDir, isBuiltin)
             } else if (info.isFile() && extname(entry).toLowerCase() === '.cube') {
               const fileBaseName = entry.replace(/\.cube$/i, '')
               // 尝试读取同名的 .meta.json，用其中的 name 字段作为显示名
@@ -783,19 +798,22 @@ export function register(ctx: RegisterContext): void {
               const key = `${fileBaseName}:${relDir}`
               if (seen.has(key)) continue
               seen.add(key)
-              results.push({ path: fullPath, name, relDir, description, isBuiltin: dir.startsWith(builtinDir), isTechnical, deviceId })
+              results.push({ path: fullPath, name, relDir, description, isBuiltin, isTechnical, deviceId })
             }
           } catch { /* 跳过无权限文件 */ }
         }
       }
 
-      await scanDir(dirPath, dirPath)
+      await scanDir(dirPath, dirPath, false)
 
-      // 始终扫描内置 LUT 目录
-      try {
-        await stat(builtinDir)
-        await scanDir(builtinDir, builtinDir)
-      } catch { /* 内置 LUT 目录不存在则跳过 */ }
+      // 始终扫描所有内置 LUT 来源。先扫描本地覆盖资源，再扫描完整资源包，
+      // 让同一相对路径下的本地文件优先保留。
+      for (const builtinDir of [...new Set(builtinDirs)]) {
+        try {
+          await stat(builtinDir)
+          await scanDir(builtinDir, builtinDir, true)
+        } catch { /* 内置 LUT 目录不存在则跳过 */ }
+      }
 
       return results
     },

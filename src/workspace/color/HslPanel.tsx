@@ -178,7 +178,8 @@ export function HslPanel({ value, modified, onChange, onPreviewChange }: HslPane
                 )}
                 value={channelValue(channel, mode)}
                 {...range}
-                onChange={(next) => updateCustomChannel(index, next, previewChange)}
+                onChange={(next) => updateCustomChannel(index, next)}
+                onPreviewChange={(next) => updateCustomChannel(index, next, previewChange)}
                 onCommit={(next) => updateCustomChannel(index, next)}
                 formatValue={(next) => String(Math.round(next))}
               />
@@ -194,7 +195,8 @@ export function HslPanel({ value, modified, onChange, onPreviewChange }: HslPane
                 label={channel.label}
                 value={channelValue(adjustment, mode)}
                 {...range}
-                onChange={(next) => updateDefaultChannel(channel.key, next, previewChange)}
+                onChange={(next) => updateDefaultChannel(channel.key, next)}
+                onPreviewChange={(next) => updateDefaultChannel(channel.key, next, previewChange)}
                 onCommit={(next) => updateDefaultChannel(channel.key, next)}
                 formatValue={(next) => String(Math.round(next))}
               />

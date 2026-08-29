@@ -39,9 +39,9 @@ export function GradingPanel({ value, modified, onChange, onPreviewChange }: Gra
           <ColorWheel size="mini" label="高光颜色" hue={value.gradeHighlightsHue} saturation={Math.abs(value.gradeHighlightsAmount)} onChange={(gradeHighlightsHue, gradeHighlightsAmount) => onChange({ gradeHighlightsHue, gradeHighlightsAmount })} onPreviewChange={(gradeHighlightsHue, gradeHighlightsAmount) => previewChange({ gradeHighlightsHue, gradeHighlightsAmount })} onCommit={(gradeHighlightsHue, gradeHighlightsAmount) => onChange({ gradeHighlightsHue, gradeHighlightsAmount })} />
         </div>
       </div>
-      <ParamSlider label="阴影染色" value={value.gradeShadowsAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeShadowsAmount) => previewChange({ gradeShadowsAmount })} onCommit={(gradeShadowsAmount) => onChange({ gradeShadowsAmount })} />
-      <ParamSlider label="中间调染色" value={value.gradeMidAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeMidAmount) => previewChange({ gradeMidAmount })} onCommit={(gradeMidAmount) => onChange({ gradeMidAmount })} />
-      <ParamSlider label="高光染色" value={value.gradeHighlightsAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeHighlightsAmount) => previewChange({ gradeHighlightsAmount })} onCommit={(gradeHighlightsAmount) => onChange({ gradeHighlightsAmount })} />
+      <ParamSlider label="阴影染色" value={value.gradeShadowsAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeShadowsAmount) => onChange({ gradeShadowsAmount })} onPreviewChange={(gradeShadowsAmount) => previewChange({ gradeShadowsAmount })} onCommit={(gradeShadowsAmount) => onChange({ gradeShadowsAmount })} />
+      <ParamSlider label="中间调染色" value={value.gradeMidAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeMidAmount) => onChange({ gradeMidAmount })} onPreviewChange={(gradeMidAmount) => previewChange({ gradeMidAmount })} onCommit={(gradeMidAmount) => onChange({ gradeMidAmount })} />
+      <ParamSlider label="高光染色" value={value.gradeHighlightsAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeHighlightsAmount) => onChange({ gradeHighlightsAmount })} onPreviewChange={(gradeHighlightsAmount) => previewChange({ gradeHighlightsAmount })} onCommit={(gradeHighlightsAmount) => onChange({ gradeHighlightsAmount })} />
     </Accordion>
   )
 }

@@ -38,9 +38,9 @@ export function CurvePanel({ value, modified, onChange, onPreviewChange }: Curve
         onChange={(activeChannel) => onChange({ curve: { ...value.curve, activeChannel: activeChannel as ToneCurveChannel } })}
       />
       <CurvePreview points={activePoints} onChange={(points) => updateCurve(activeCurveChannel, points)} />
-      <ParamSlider label="输入黑点" value={value.levelsBlack} {...sliderRange(EDIT_PARAMETER_RANGES.levels.black)} onChange={(levelsBlack) => previewChange({ levelsBlack })} onCommit={(levelsBlack) => onChange({ levelsBlack })} />
-      <ParamSlider label="中间调" value={value.levelsGray} {...sliderRange(EDIT_PARAMETER_RANGES.levels.gray)} onChange={(levelsGray) => previewChange({ levelsGray })} onCommit={(levelsGray) => onChange({ levelsGray })} />
-      <ParamSlider label="输入白点" value={value.levelsWhite} {...sliderRange(EDIT_PARAMETER_RANGES.levels.white)} onChange={(levelsWhite) => previewChange({ levelsWhite })} onCommit={(levelsWhite) => onChange({ levelsWhite })} />
+      <ParamSlider label="输入黑点" value={value.levelsBlack} {...sliderRange(EDIT_PARAMETER_RANGES.levels.black)} onChange={(levelsBlack) => onChange({ levelsBlack })} onPreviewChange={(levelsBlack) => previewChange({ levelsBlack })} onCommit={(levelsBlack) => onChange({ levelsBlack })} />
+      <ParamSlider label="中间调" value={value.levelsGray} {...sliderRange(EDIT_PARAMETER_RANGES.levels.gray)} onChange={(levelsGray) => onChange({ levelsGray })} onPreviewChange={(levelsGray) => previewChange({ levelsGray })} onCommit={(levelsGray) => onChange({ levelsGray })} />
+      <ParamSlider label="输入白点" value={value.levelsWhite} {...sliderRange(EDIT_PARAMETER_RANGES.levels.white)} onChange={(levelsWhite) => onChange({ levelsWhite })} onPreviewChange={(levelsWhite) => previewChange({ levelsWhite })} onCommit={(levelsWhite) => onChange({ levelsWhite })} />
     </Accordion>
   )
 }
