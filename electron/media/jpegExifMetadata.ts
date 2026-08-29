@@ -7,7 +7,7 @@ interface TiffAccess {
   write32(offset: number, value: number): void
 }
 
-function jpegDimensions(bytes: Buffer): { width: number; height: number } | null {
+export function jpegDimensions(bytes: Buffer): { width: number; height: number } | null {
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null
   let offset = 2
   while (offset + 9 < bytes.length && bytes[offset] === 0xff) {
