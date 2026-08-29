@@ -47,6 +47,8 @@ interface WorkspaceEditValue {
   commitPatch: (patch: PipelinePatch, group?: HistoryGroup) => void
   commitUpdate: (update: (pipeline: EditPipeline) => EditPipeline, group?: HistoryGroup) => void
   applySystemUpdate: (update: (pipeline: EditPipeline) => EditPipeline) => void
+  updatePreview: (update: (pipeline: EditPipeline) => EditPipeline) => void
+  clearPreview: () => void
   retainedMaskPaths: string[]
   resetPipeline: (pipeline?: EditPipeline) => void
   initializePipeline: (pipe: EditPipeline) => void
@@ -118,6 +120,7 @@ export function useWorkspaceEdit(): WorkspaceEditValue {
 export function WorkspaceEditProvider({ children }: { children: React.ReactNode }) {
   const {
     pipeline,
+    previewPipeline: draftPipeline,
     canUndo,
     canRedo,
     undo,
@@ -128,6 +131,8 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     retainedMaskPaths,
     resetPipeline,
     initializePipeline,
+    updatePreview,
+    clearPreview,
   } = useEditPipeline()
 
   const [activeTool, setActiveTool] = useState<WorkspaceTool>('color')
@@ -144,21 +149,24 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   // Derived pipelines
   const previewPipeline = useMemo(
     () => (cropMachine.cropActive && cropMachine.transformDraft
-      ? mergePipeline(pipeline, { transform: cropMachine.transformDraft })
-      : pipeline),
-    [cropMachine.cropActive, cropMachine.transformDraft, pipeline],
+      ? mergePipeline(draftPipeline, { transform: cropMachine.transformDraft })
+      : draftPipeline),
+    [cropMachine.cropActive, cropMachine.transformDraft, draftPipeline],
   )
   const comparePipeline = useMemo(
-    () => mergePipeline(previewPipeline, {
-      color: DEFAULT_PIPELINE.color,
-      effects: DEFAULT_PIPELINE.effects,
-      logRestore: DEFAULT_PIPELINE.logRestore,
-      lutFilter: DEFAULT_PIPELINE.lutFilter,
-      colorMasks: [],
-      beautyMasks: [],
-      border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
-    }),
-    [previewPipeline],
+    () => {
+      if (!compareOriginal) return previewPipeline
+      return mergePipeline(previewPipeline, {
+        color: DEFAULT_PIPELINE.color,
+        effects: DEFAULT_PIPELINE.effects,
+        logRestore: DEFAULT_PIPELINE.logRestore,
+        lutFilter: DEFAULT_PIPELINE.lutFilter,
+        colorMasks: [],
+        beautyMasks: [],
+        border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
+      })
+    },
+    [compareOriginal, previewPipeline],
   )
 
   // Clipboard
@@ -269,6 +277,8 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     retainedMaskPaths,
     resetPipeline,
     initializePipeline,
+    updatePreview,
+    clearPreview,
     activeTool,
     setActiveTool,
     compareOriginal,
@@ -302,6 +312,8 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     retainedMaskPaths,
     resetPipeline,
     initializePipeline,
+    updatePreview,
+    clearPreview,
     activeTool,
     setActiveTool,
     compareOriginal,

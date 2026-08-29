@@ -11,10 +11,11 @@ import { ColorPresetPanel } from './ColorPresetPanel'
 interface ColorPanelProps {
   value: EditPipeline['color']
   onChange: (patch: Partial<EditPipeline['color']>) => void
+  onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
   onActivatePipette?: () => void
 }
 
-export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelProps) {
+export function ColorPanel({ value, onChange, onPreviewChange, onActivatePipette }: ColorPanelProps) {
   const activeCurve = value.curve.points[value.curve.activeChannel]
 
   const modified = {
@@ -41,13 +42,13 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
   return (
     <div className="workspace-color-modules">
       <ColorPresetPanel value={value} onApply={handlePresetApply} />
-      <WhiteBalancePanel value={value} modified={modified.whiteBalance} onChange={onChange} onActivatePipette={onActivatePipette} />
-      <TonePanel value={value} modified={modified.tone} onChange={onChange} />
-      <CurvePanel value={value} modified={modified.curve} onChange={onChange} />
-      <HslPanel value={value} modified={modified.hsl} onChange={onChange} />
-      <GradingPanel value={value} modified={modified.grading} onChange={onChange} />
-      <DetailPanel value={value} modified={modified.detail} onChange={onChange} />
-      <GlowPanel value={value} modified={modified.glow} onChange={onChange} />
+      <WhiteBalancePanel value={value} modified={modified.whiteBalance} onChange={onChange} onPreviewChange={onPreviewChange} onActivatePipette={onActivatePipette} />
+      <TonePanel value={value} modified={modified.tone} onChange={onChange} onPreviewChange={onPreviewChange} />
+      <CurvePanel value={value} modified={modified.curve} onChange={onChange} onPreviewChange={onPreviewChange} />
+      <HslPanel value={value} modified={modified.hsl} onChange={onChange} onPreviewChange={onPreviewChange} />
+      <GradingPanel value={value} modified={modified.grading} onChange={onChange} onPreviewChange={onPreviewChange} />
+      <DetailPanel value={value} modified={modified.detail} onChange={onChange} onPreviewChange={onPreviewChange} />
+      <GlowPanel value={value} modified={modified.glow} onChange={onChange} onPreviewChange={onPreviewChange} />
     </div>
   )
 }

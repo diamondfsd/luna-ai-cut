@@ -117,12 +117,47 @@ export function ColorMaskPanel() {
   const canvas = useWorkspaceCanvas()
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
+  const updatePreview = edit.updatePreview
+  const clearPreview = edit.clearPreview
   const globalThumbnailSize = fitThumbnailSize(canvas.sourceAspect, 1)
-  const selectedColor = mask.activeMask?.color ?? edit.pipeline.color
+  const activeMaskId = mask.activeMask?.id ?? null
+  const selectedColor = activeMaskId
+    ? edit.previewPipeline.colorMasks.find((layer) => layer.id === activeMaskId)?.color ?? mask.activeMask?.color ?? edit.previewPipeline.color
+    : edit.previewPipeline.color
   const createMaskHint = mask.available ? '新建蒙版' : '请先在项目中打开图片或视频'
   const [renameState, setRenameState] = useState<{ id: string; originalName: string; value: string } | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: ColorMaskDropPosition } | null>(null)
+
+  useEffect(() => {
+    clearPreview()
+  }, [clearPreview, mask.activeLayerId])
+
+  useEffect(() => () => clearPreview(), [clearPreview])
+
+  const previewColorChange = (color: Partial<typeof selectedColor>): void => {
+    updatePreview((pipeline) => activeMaskId
+      ? {
+          ...pipeline,
+          colorMasks: pipeline.colorMasks.map((layer) => layer.id === activeMaskId
+            ? { ...layer, color: { ...layer.color, ...color } }
+            : layer),
+        }
+      : { ...pipeline, color: { ...pipeline.color, ...color } })
+  }
+
+  const commitColorChange = (color: Partial<typeof selectedColor>): void => {
+    if (!activeMaskId) {
+      edit.updateWorkspacePanel({ color })
+      return
+    }
+    edit.commitUpdate((pipeline) => ({
+      ...pipeline,
+      colorMasks: pipeline.colorMasks.map((layer) => layer.id === activeMaskId
+        ? { ...layer, color: { ...layer.color, ...color } }
+        : layer),
+    }))
+  }
 
   const openRename = (layer: ColorMaskLayer): void => {
     setRenameState({ id: layer.id, originalName: layer.name, value: layer.name })
@@ -155,9 +190,8 @@ export function ColorMaskPanel() {
         ) : (
           <ColorPanel
             value={selectedColor}
-            onChange={(color) => mask.activeMask
-              ? mask.updateActiveLayer({ color: { ...mask.activeMask.color, ...color } })
-              : edit.updateWorkspacePanel({ color })}
+            onChange={commitColorChange}
+            onPreviewChange={previewColorChange}
             onActivatePipette={mask.activeMask ? undefined : () => edit.setPipetteActive(true)}
           />
         )}
