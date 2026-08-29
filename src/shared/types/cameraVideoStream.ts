@@ -15,6 +15,8 @@ export interface CameraVideoStreamStatus {
   transport: CameraVideoStreamTransport | null
   codec: CameraVideoStreamCodec
   streamUrl: string | null
+  /** 可供 OBS 媒体源使用的本机地址。 */
+  obsStreamUrl?: string | null
   port: number | null
   bytes: number
   frames: number
@@ -27,11 +29,15 @@ export interface CameraVideoStreamStatus {
 export interface CameraVideoStreamAdapter {
   start(): Promise<CameraVideoStreamStatus>
   stop(): Promise<CameraVideoStreamStatus>
+  startObs(): Promise<CameraVideoStreamStatus>
+  stopObs(): Promise<CameraVideoStreamStatus>
   status(): CameraVideoStreamStatus
 }
 
 export interface CameraVideoStreamApi {
   start(options: CameraVideoStreamOptions): Promise<CameraVideoStreamStatus>
   stop(options: CameraVideoStreamOptions): Promise<CameraVideoStreamStatus>
+  startObs(options: CameraVideoStreamOptions): Promise<CameraVideoStreamStatus>
+  stopObs(options: CameraVideoStreamOptions): Promise<CameraVideoStreamStatus>
   status(options: CameraVideoStreamOptions): Promise<CameraVideoStreamStatus>
 }

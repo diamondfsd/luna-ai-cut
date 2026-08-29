@@ -7,6 +7,7 @@ import type {
   CameraVideoStreamStatus,
 } from '../../../src/shared/types'
 import { deviceDefinitionFor } from '../definitions/deviceDefaults'
+import { LocalObsVideoStreamServer } from '../common/localObsVideoStreamServer'
 import { LocalVideoStreamServer } from '../common/localVideoStreamServer'
 import { djiSessionFor, type DjiCameraSession } from './djiCameraSession'
 import { DjiPreviewReassembler } from './djiPreview'
@@ -17,10 +18,12 @@ function nowIso(): string {
 
 export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
   private readonly server = new LocalVideoStreamServer()
+  private readonly obsServer = new LocalObsVideoStreamServer()
   private session: DjiCameraSession | null = null
   private unsubscribePreview: (() => void) | null = null
   private startPromise: Promise<CameraVideoStreamStatus> | null = null
   private generation = 0
+  private rawStreamUrl: string | null = null
   private statusValue: CameraVideoStreamStatus
 
   constructor(
@@ -35,6 +38,7 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
       transport: null,
       codec: 'h265',
       streamUrl: null,
+      obsStreamUrl: null,
       port: null,
       bytes: 0,
       frames: 0,
@@ -55,6 +59,7 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
       transport: 'annexb',
       codec: 'h265',
       streamUrl: null,
+      obsStreamUrl: null,
       port: null,
       bytes: 0,
       frames: 0,
@@ -115,6 +120,7 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
       reassembler.feed(packet)
     })
     const local = await this.server.start()
+    this.rawStreamUrl = local.url
     this.statusValue = { ...this.statusValue, streamUrl: local.url, port: local.port }
     if (generation !== this.generation) {
       await this.cleanupTransport()
@@ -136,6 +142,7 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
     this.statusValue = {
       ...this.statusValue,
       state: 'stopped',
+      obsStreamUrl: null,
       message: '相机预览已停止',
       error: null,
     }
@@ -148,6 +155,20 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
     return { ...this.statusValue }
   }
 
+  async startObs(): Promise<CameraVideoStreamStatus> {
+    if (this.statusValue.state !== 'running') await this.start()
+    const rawStreamUrl = this.rawStreamUrl ?? (await this.server.start()).url
+    const local = await this.obsServer.start(rawStreamUrl, 'h265')
+    this.statusValue = { ...this.statusValue, obsStreamUrl: local.url }
+    return this.status()
+  }
+
+  async stopObs(): Promise<CameraVideoStreamStatus> {
+    await this.obsServer.stop()
+    this.statusValue = { ...this.statusValue, obsStreamUrl: null }
+    return this.status()
+  }
+
   private async cleanupTransport(): Promise<void> {
     this.unsubscribePreview?.()
     this.unsubscribePreview = null
@@ -158,6 +179,8 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
         logMainWarn('[相机视频流] DJI 停止预览失败', { error: error instanceof Error ? error.message : String(error) })
       })
     }
+    this.rawStreamUrl = null
+    await this.obsServer.stop()
     await this.server.stop()
   }
 }

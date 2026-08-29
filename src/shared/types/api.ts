@@ -196,6 +196,7 @@ export interface LunaApi {
   getLogDir: () => Promise<string>
   exportDiagnosticsBundle: () => Promise<string>
   clearLogs: () => Promise<void>
+  getPathForFile: (file: File) => string
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>

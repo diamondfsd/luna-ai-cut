@@ -12,10 +12,15 @@ const PRE_CLIENT_BUFFER_BYTES = 4 * 1024 * 1024
  * frames here and the renderer reads one normal localhost HTTP stream.
  */
 export class LocalVideoStreamServer {
+  private readonly contentType: string
   private server: Server | null = null
   private readonly clients = new Set<ServerResponse>()
   private readonly preClientFrames: Buffer[] = []
   private preClientBytes = 0
+
+  constructor(contentType = 'application/octet-stream') {
+    this.contentType = contentType
+  }
 
   async start(): Promise<LocalVideoStreamInfo> {
     if (this.server) {
@@ -102,7 +107,7 @@ export class LocalVideoStreamServer {
 
   private headers(): Record<string, string> {
     return {
-      'Content-Type': 'application/octet-stream',
+      'Content-Type': this.contentType,
       'Cache-Control': 'no-store',
       'Access-Control-Allow-Origin': '*',
       Connection: 'keep-alive',
