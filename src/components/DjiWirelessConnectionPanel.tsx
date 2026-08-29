@@ -35,7 +35,7 @@ export function DjiWirelessConnectionPanel({
             {hasCredentials
               ? '已通过蓝牙取得相机 Wi-Fi 信息，点击连接时会自动切换到相机 Wi-Fi'
               : bluetoothUnsupported
-                ? '当前电脑不支持蓝牙，请使用系统 Wi-Fi 工具手动连接相机热点'
+                ? '未检测到可用蓝牙，请打开系统 Wi-Fi 设置手动连接相机热点，连接完成后再点击“开始连接”'
                 : preparation
                   ? preparation.message
                   : '点击“开始连接”后会自动尝试通过蓝牙获取相机 Wi-Fi 信息'}
@@ -53,7 +53,7 @@ export function DjiWirelessConnectionPanel({
             onClick={onReadWifi}
             icon={<Bluetooth size={13} />}
           >
-            {loading ? '正在获取' : hasCredentials ? '重新获取密码' : '蓝牙一键获取 Wi-Fi 密码'}
+            {loading ? '正在获取' : bluetoothUnsupported ? '重新检测蓝牙' : hasCredentials ? '重新获取密码' : '蓝牙一键获取 Wi-Fi 密码'}
           </Button>
         </div>
       </div>
@@ -77,7 +77,7 @@ export function DjiWirelessConnectionPanel({
         <div className="device-connect-wireless-system">
           <p className="device-connect-section-title">请使用系统 Wi-Fi 连接工具</p>
           <p>
-            点击右侧“打开 Wi-Fi 设置”，在系统中手动连接相机热点。电脑没有蓝牙时，可先让手机连接相机；现在大多数手机都支持系统 Wi-Fi 分享功能，可以用手机获取密码。连接完成后回来点击“开始连接”，应用不会自动切换系统网络。
+            点击上方“打开 Wi-Fi 设置”，在系统中手动连接相机热点。连接完成后返回应用，再点击“开始连接”；应用不会自动切换系统网络。
           </p>
         </div>
       )}

@@ -5,6 +5,7 @@ import type {
 } from '../../../src/shared/types'
 import { deviceDefinitionFor } from '../definitions/deviceDefaults'
 import { LunaVideoStreamAdapter } from '../insta360/lunaVideoStreamAdapter'
+import { DjiVideoStreamAdapter } from '../dji/djiVideoStreamAdapter'
 import { UnsupportedCameraVideoStreamAdapter } from './unsupportedCameraVideoStreamAdapter'
 
 const adapters = new Map<string, CameraVideoStreamAdapter>()
@@ -21,6 +22,8 @@ export function cameraVideoStreamFor(ctx: IpcContext, options: CameraVideoStream
   const definition = deviceDefinitionFor(options.deviceId)
   const adapter = options.mode === 'wireless' && definition.id === 'luna-ultra'
     ? new LunaVideoStreamAdapter(ctx, options)
+    : options.mode === 'wireless' && definition.protocol === 'dji'
+      ? new DjiVideoStreamAdapter(ctx, options)
     : new UnsupportedCameraVideoStreamAdapter(
         options,
         options.mode === 'wired' ? '有线相机暂不支持实时视频预览' : undefined,

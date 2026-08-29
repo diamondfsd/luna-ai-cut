@@ -9,15 +9,19 @@ export interface DjiUdpPacket {
   sessionId: number
   sequence: number
   payload: Buffer
+  raw: Buffer
 }
 
 export type DjiUdpCommand = Omit<DjiMessage, 'flags' | 'cmdSet' | 'cmdId'> & {
   flags?: number
   cmdSet: number
   cmdId: number
+  routingClass?: number
+  routingTail?: number
 }
 
 const HANDSHAKE = Buffer.from('000064006400c005140000640000019001c005140000640014006400c00514000064000101040102', 'hex')
+const DJI_PREVIEW_RECV_BUFFER_BYTES = 4 * 1024 * 1024
 
 export function udpHeader(packetType: number, payloadLength: number, sessionId: number, sequence: number): Buffer {
   const total = 8 + payloadLength
@@ -39,15 +43,24 @@ export function parseUdpPacket(data: Uint8Array): DjiUdpPacket | null {
     sessionId: data[2] | (data[3] << 8),
     sequence: data[4] | (data[5] << 8),
     payload: Buffer.from(data.subarray(8, total)),
+    raw: Buffer.from(data.subarray(0, total)),
   }
 }
 
-export function buildRoutingHeader(sequence: number, counter: number, peerAck = (sequence - 8) & 0xffff): Buffer {
+export function buildRoutingHeader(
+  sequence: number,
+  counter: number,
+  peerAck = (sequence - 8) & 0xffff,
+  routingClass = 0,
+  routingTail = 0,
+): Buffer {
   const header = Buffer.alloc(12)
   header.writeUInt16LE(peerAck & 0xffff, 0)
   header.writeUInt16LE(sequence & 0xffff, 2)
   header[8] = counter & 0xff
   header[9] = 0x01
+  header[10] = routingClass & 0xff
+  header[11] = routingTail & 0xff
   return header
 }
 
@@ -114,8 +127,10 @@ export function encodeDumlUdpPacket(
   sequence: number,
   counter: number,
   peerAck = (sequence - 8) & 0xffff,
+  routingClass = 0,
+  routingTail = 0,
 ): Buffer {
-  const routing = buildRoutingHeader(sequence, counter, peerAck)
+  const routing = buildRoutingHeader(sequence, counter, peerAck, routingClass, routingTail)
   const frame = encodeDjiMessage(message)
   return Buffer.concat([udpHeader(0x05, routing.length + frame.length, sessionId, sequence), routing, frame])
 }
@@ -143,7 +158,9 @@ export class DjiUdpTransport {
   private seenType3 = false
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null
   private reassertTimer: ReturnType<typeof setInterval> | null = null
+  private ackTimer: ReturnType<typeof setInterval> | null = null
   private keepAliveMessageHandler: ((data: Buffer) => void) | null = null
+  private readonly packetListeners = new Set<(packet: DjiUdpPacket) => void>()
   private lastAckAt = 0
 
   constructor(private readonly host: string, private readonly port: number) {}
@@ -170,6 +187,11 @@ export class DjiUdpTransport {
     this.seenType3 = false
     this.lastAckAt = 0
     const socket = dgram.createSocket('udp4')
+    try {
+      socket.setRecvBufferSize(DJI_PREVIEW_RECV_BUFFER_BYTES)
+    } catch {
+      // Some platforms reject enlarging the UDP receive buffer; the default remains usable.
+    }
     this.socket = socket
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error): void => {
@@ -244,7 +266,15 @@ export class DjiUdpTransport {
     await this.open()
     this.counter += 1
     const sequence = this.sequence
-    const packet = encodeDumlUdpPacket({ ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 }, this.sessionId, sequence, this.counter, this.peerAckedTxSequence)
+    const packet = encodeDumlUdpPacket(
+      { ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 },
+      this.sessionId,
+      sequence,
+      this.counter,
+      this.peerAckedTxSequence,
+      message.routingClass ?? 0,
+      message.routingTail ?? 0,
+    )
     this.sequence = (this.sequence + 8) & 0xffff
     await this.send(packet)
     this.lastTxSequence = sequence
@@ -258,7 +288,15 @@ export class DjiUdpTransport {
     await this.open()
     this.counter += 1
     const sequence = this.sequence
-    const packet = encodeDumlUdpPacket({ ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 }, this.sessionId, sequence, this.counter, this.peerAckedTxSequence)
+    const packet = encodeDumlUdpPacket(
+      { ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 },
+      this.sessionId,
+      sequence,
+      this.counter,
+      this.peerAckedTxSequence,
+      message.routingClass ?? 0,
+      message.routingTail ?? 0,
+    )
     this.sequence = (this.sequence + 8) & 0xffff
     this.lastTxSequence = sequence
     logMainDebug('[DJI UDP] 命令发送并收集响应开始', {
@@ -331,7 +369,15 @@ export class DjiUdpTransport {
           for (const [index, message] of messages.entries()) {
             this.counter += 1
             const sequence = this.sequence
-            const packet = encodeDumlUdpPacket({ ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 }, this.sessionId, sequence, this.counter, this.peerAckedTxSequence)
+            const packet = encodeDumlUdpPacket(
+              { ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 },
+              this.sessionId,
+              sequence,
+              this.counter,
+              this.peerAckedTxSequence,
+              message.routingClass ?? 0,
+              message.routingTail ?? 0,
+            )
             this.sequence = (this.sequence + 8) & 0xffff
             await this.send(packet)
             this.lastTxSequence = sequence
@@ -465,6 +511,27 @@ export class DjiUdpTransport {
     this.keepAliveMessageHandler = null
   }
 
+  subscribePackets(listener: (packet: DjiUdpPacket) => void): () => void {
+    this.packetListeners.add(listener)
+    const socket = this.socket
+    if (!socket) {
+      this.packetListeners.delete(listener)
+      throw new Error('DJI UDP 尚未打开')
+    }
+    const onMessage = (data: Buffer): void => {
+      const packet = parseUdpPacket(data)
+      if (packet) {
+        this.observe(packet)
+        listener(packet)
+      }
+    }
+    socket.on('message', onMessage)
+    return () => {
+      socket.off('message', onMessage)
+      this.packetListeners.delete(listener)
+    }
+  }
+
   /** Send the 34-byte pktType=0x04 sliding-window acknowledgement used by Osmosis. */
   async sendAck(): Promise<void> {
     const socket = this.socket
@@ -489,9 +556,24 @@ export class DjiUdpTransport {
     await this.send(Buffer.concat([udpHeader(0x04, payload.length, this.sessionId, 0), payload]))
   }
 
+  startAckTimer(intervalMs = 20): void {
+    if (this.ackTimer) return
+    void this.sendAck().catch(() => undefined)
+    this.ackTimer = setInterval(() => {
+      void this.sendAck().catch(() => undefined)
+    }, intervalMs)
+  }
+
+  stopAckTimer(): void {
+    if (this.ackTimer) clearInterval(this.ackTimer)
+    this.ackTimer = null
+  }
+
   close(): void {
     logMainDebug('[DJI UDP] 关闭 UDP socket', { host: this.host, port: this.port })
     this.stopKeepAlive()
+    this.stopAckTimer()
+    this.packetListeners.clear()
     this.socket?.close()
     this.socket = null
   }

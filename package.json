@@ -69,6 +69,7 @@
     "test:protocol": "node scripts/verify-luna-protocol.mjs",
     "test:dji-bluetooth": "node --experimental-strip-types scripts/test-dji-web-bluetooth.mjs",
     "test:camera-video-stream": "node --experimental-strip-types scripts/test-camera-video-stream.mjs",
+    "test:dji-preview": "node --experimental-strip-types scripts/test-dji-preview.mjs",
     "test:render-input": "node scripts/test-render-input-normalization.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "mock:dji": "node dji_mock_server/server.mjs",

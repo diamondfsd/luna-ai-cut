@@ -1,3 +1,5 @@
+/* global Buffer, setImmediate */
+
 import assert from 'node:assert/strict'
 
 import { buildStartLiveStreamBody } from '../electron/devices/insta360/lunaControlMessages.ts'
@@ -26,10 +28,14 @@ assert.equal(UCD2_MEDIA, 0x01)
 
 const server = new LocalVideoStreamServer()
 const info = await server.start()
+const bufferedPayload = Buffer.from('buffered-before-client')
+server.publish(bufferedPayload)
 const response = await fetch(info.url)
 assert.equal(response.status, 200)
 const reader = response.body?.getReader()
 assert.ok(reader)
+const bufferedChunk = await reader.read()
+assert.deepEqual(Buffer.from(bufferedChunk.value), bufferedPayload)
 await new Promise((resolve) => setImmediate(resolve))
 server.publish(payload)
 const chunk = await reader.read()

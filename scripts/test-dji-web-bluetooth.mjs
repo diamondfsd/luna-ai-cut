@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import vm from 'node:vm'
 
 import { DJI_MODEL_PROFILES, djiProfileForDevice } from '../electron/devices/dji/djiModels.ts'
-import { buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from '../electron/devices/dji/djiWebBluetoothScripts.ts'
+import { buildDjiWebBluetoothAvailabilityScript, buildDjiWebBluetoothConnectScript, matchesDjiBluetoothName } from '../electron/devices/dji/djiWebBluetoothScripts.ts'
 
 class FakeEventTarget {
   listeners = new Map()
@@ -96,9 +96,14 @@ class FakeService {
 class FakeBluetooth {
   requestOptions = []
 
-  constructor(grantedDevices, requestDevice) {
+  constructor(grantedDevices, requestDevice, availability = true) {
     this.grantedDevices = grantedDevices
     this.requestDeviceResult = requestDevice
+    this.availability = availability
+  }
+
+  async getAvailability() {
+    return this.availability
   }
 
   async getDevices() {
@@ -128,6 +133,10 @@ async function runConnect(profile, token, context) {
   return vm.runInNewContext(buildDjiWebBluetoothConnectScript(token, profile), context)
 }
 
+async function runAvailability(context) {
+  return vm.runInNewContext(buildDjiWebBluetoothAvailabilityScript(), context)
+}
+
 function createDevice(profile, name, suffix = '', shouldFail = false) {
   const write = new FakeCharacteristic(profile.ble.writeCharacteristicUuid)
   const notify = new FakeCharacteristic(profile.ble.notifyCharacteristicUuid, shouldFail)
@@ -138,6 +147,10 @@ function createDevice(profile, name, suffix = '', shouldFail = false) {
 
 const pocket4 = DJI_MODEL_PROFILES.pocket4
 const pocket4Pro = DJI_MODEL_PROFILES.pocket4pro
+
+assert.equal(await runAvailability(harness(new FakeBluetooth([], null, true))), true, '应识别可用的蓝牙适配器')
+assert.equal(await runAvailability(harness(new FakeBluetooth([], null, false))), false, '应识别不可用的蓝牙适配器')
+assert.equal(await runAvailability({ navigator: { bluetooth: {} } }), null, '不支持状态探测时应返回未知')
 
 assert.equal(djiProfileForDevice('dji-pocket-4').ble.serviceUuid, pocket4.ble.serviceUuid)
 assert.equal(matchesDjiBluetoothName('OsmoPocket4-ACPT', pocket4), true)

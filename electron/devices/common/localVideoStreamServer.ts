@@ -5,6 +5,8 @@ export interface LocalVideoStreamInfo {
   port: number
 }
 
+const PRE_CLIENT_BUFFER_BYTES = 4 * 1024 * 1024
+
 /**
  * Keeps high-rate video bytes out of Electron IPC. Device adapters publish
  * frames here and the renderer reads one normal localhost HTTP stream.
@@ -12,6 +14,8 @@ export interface LocalVideoStreamInfo {
 export class LocalVideoStreamServer {
   private server: Server | null = null
   private readonly clients = new Set<ServerResponse>()
+  private readonly preClientFrames: Buffer[] = []
+  private preClientBytes = 0
 
   async start(): Promise<LocalVideoStreamInfo> {
     if (this.server) {
@@ -37,6 +41,7 @@ export class LocalVideoStreamServer {
       response.writeHead(200, this.headers())
       response.flushHeaders()
       this.clients.add(response)
+      this.flushPreClientFrames(response)
       const remove = () => this.clients.delete(response)
       response.once('close', remove)
       request.once('aborted', remove)
@@ -66,6 +71,10 @@ export class LocalVideoStreamServer {
   }
 
   publish(frame: Buffer): void {
+    if (this.clients.size === 0) {
+      this.queuePreClientFrame(frame)
+      return
+    }
     for (const client of this.clients) {
       if (client.destroyed || client.writableEnded) {
         this.clients.delete(client)
@@ -81,6 +90,8 @@ export class LocalVideoStreamServer {
   async stop(): Promise<void> {
     for (const client of this.clients) client.destroy()
     this.clients.clear()
+    this.preClientFrames.length = 0
+    this.preClientBytes = 0
     const server = this.server
     this.server = null
     if (!server) return
@@ -96,5 +107,21 @@ export class LocalVideoStreamServer {
       'Access-Control-Allow-Origin': '*',
       Connection: 'keep-alive',
     }
+  }
+
+  private queuePreClientFrame(frame: Buffer): void {
+    const copy = Buffer.from(frame)
+    this.preClientFrames.push(copy)
+    this.preClientBytes += copy.length
+    while (this.preClientBytes > PRE_CLIENT_BUFFER_BYTES && this.preClientFrames.length > 1) {
+      const first = this.preClientFrames.shift()!
+      this.preClientBytes -= first.length
+    }
+  }
+
+  private flushPreClientFrames(response: ServerResponse): void {
+    for (const frame of this.preClientFrames) response.write(frame)
+    this.preClientFrames.length = 0
+    this.preClientBytes = 0
   }
 }
