@@ -44,6 +44,22 @@ cameraMediaSourceFor()  根据 DeviceDefinition.protocol 注册适配器
 
 连接准备通过 `CameraMediaSourceOptions.wireless` 传递。密码只作为本次连接参数使用，不写入应用设置。DJI 额外提供 `prepareConnection()`：先通过蓝牙读取 Wi-Fi 信息并断开 BLE，用户手动切换 Wi-Fi 后再调用统一的 `connect()`。未来需要系统 Wi-Fi 自动加入时，只新增对应策略实现，不改变素材列表接口。
 
+## Luna Ultra Wi-Fi 连接确认
+
+macOS 的 CoreWLAN 在应用缺少定位/无线网络相关权限，或系统版本限制时，可能在 Wi-Fi 已经关联成功后仍返回空 SSID。`interface.ssid()` 为空不能作为“未连接”的判断，也不能阻断 Luna Ultra 的自动连接流程。
+
+Luna Ultra 自动连接的确认链路固定为：
+
+```text
+CoreWLAN 发起连接
+  -> 连接 192.168.42.1:6666
+  -> 发送 UCD2 STREAM hello（UCD2 / type=STREAM / f6cc4f09）
+  -> 写入成功后确认 Luna 控制通道可用
+  -> 建立正常 Luna TCP 会话
+```
+
+SSID 只用于扫描、日志和界面展示。实际连接状态以相机控制端口的 UCD2 STREAM 探测为准；Luna 不保证对该单向 hello 返回响应，因此 TCP 连接和握手帧写入成功就是此阶段的协议确认。失败时才提示检查 Wi-Fi 名称和密码。
+
 ## 设备注册
 
 设备定义中的 `protocol` 决定适配器：

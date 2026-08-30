@@ -139,6 +139,9 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         wifiSessionKey,
         this.options.wireless?.password,
         this.options.wireless?.ssid,
+        definition.protocol === 'insta360'
+          ? { host, port: definition.controlPort, protocol: 'insta360-stream' }
+          : undefined,
       )
     const protocol = this.protocol(definition)
     if (!loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected && wifiJoin.wifiPasswordRequired) {

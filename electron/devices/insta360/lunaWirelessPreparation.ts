@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import net from 'node:net'
 import type { BrowserWindow } from 'electron'
 
 import type {
@@ -12,10 +11,11 @@ import { getSettings, saveSettings } from '../../storage/fileService'
 import { getWifiDebugStatus } from '../../platform/network/wifiDebugService'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import { LunaBleSession } from './lunaBleSession'
+import { probeInsta360StreamHandshake } from './insta360TcpProtocol'
 import type { LunaWifiCredentials } from './lunaBleCodec'
 import { createElectronLunaBleTransport } from './lunaBleWebBluetoothTransport'
 
-const HOST_PROBE_TIMEOUT_MS = 1_200
+const LUNA_CONTROL_PORT = 6666
 const MANUAL_WIFI_MESSAGE = '未能通过蓝牙读取相机 Wi-Fi 信息，请打开系统 Wi-Fi 设置手动连接相机热点，连接完成后再点击“开始连接”'
 
 export type LunaWirelessPreparationMode = CameraMediaSourceWirelessPreparation
@@ -34,28 +34,13 @@ function isLoopbackHost(host: string): boolean {
   }
 }
 
-function hostParts(host: string): { hostname: string; port: number } | null {
+async function lunaControlReachable(host: string): Promise<boolean> {
   try {
-    const url = new URL(host.includes('://') ? host : `http://${host}`)
-    return { hostname: url.hostname, port: Number(url.port || 80) }
+    await probeInsta360StreamHandshake(host, LUNA_CONTROL_PORT)
+    return true
   } catch {
-    return null
+    return false
   }
-}
-
-function hostReachable(host: string): Promise<boolean> {
-  const parts = hostParts(host)
-  if (!parts) return Promise.resolve(false)
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ host: parts.hostname, port: parts.port, timeout: HOST_PROBE_TIMEOUT_MS })
-    const finish = (reachable: boolean): void => {
-      socket.destroy()
-      resolve(reachable)
-    }
-    socket.once('connect', () => finish(true))
-    socket.once('timeout', () => finish(false))
-    socket.once('error', () => finish(false))
-  })
 }
 
 function currentLunaWifi(): Promise<string | null> {
@@ -129,7 +114,7 @@ export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
       return { mode: 'wireless', preparation: 'already-connected', message: '模拟设备使用本机网络' }
     }
 
-    if (options.preferExistingConnection && await hostReachable(this.host)) {
+    if (options.preferExistingConnection && await lunaControlReachable(this.host)) {
       const ssid = await currentLunaWifi()
       logMainInfo('[Luna Wi-Fi] 已检测到相机地址可达，跳过蓝牙读取', { deviceId: this.deviceId, host: this.host, ssid })
       return { mode: 'wireless', preparation: 'already-connected', message: '已检测到相机 Wi-Fi 连接，将直接建立相机会话' }

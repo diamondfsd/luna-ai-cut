@@ -14,9 +14,33 @@ import {
 
 const EVENT_CHANNEL = 'luna-web-bluetooth:event'
 const CONNECT_TIMEOUT_MS = 30_000
+const CONNECT_ATTEMPTS = 2
+const CONNECT_RETRY_DELAY_MS = 300
 const AVAILABILITY_TIMEOUT_MS = 3_000
 const REQUEST_TIMEOUT_MS = 12_000
 const CLEANUP_TIMEOUT_MS = 3_000
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const value = error as { name?: unknown; message?: unknown; code?: unknown }
+    const name = typeof value.name === 'string' ? value.name : ''
+    const message = typeof value.message === 'string' ? value.message : ''
+    const code = typeof value.code === 'string' || typeof value.code === 'number' ? String(value.code) : ''
+    const detail = [name, message].filter(Boolean).join(': ')
+    if (detail || code) return [detail, code ? `code=${code}` : ''].filter(Boolean).join(' ')
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return Object.prototype.toString.call(error)
+    }
+  }
+  return String(error)
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export interface LunaBleTransport {
   onNotification: ((data: Buffer) => void) | null
@@ -207,7 +231,7 @@ export class WebBluetoothLunaBleTransport implements LunaBleTransport {
       return typeof result === 'boolean' ? result : null
     } catch (error) {
       logMainWarn('[Luna BLE] 检查蓝牙适配器状态失败，将继续尝试连接', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       })
       return null
     }
@@ -219,29 +243,41 @@ export class WebBluetoothLunaBleTransport implements LunaBleTransport {
     const win = this.window
     if (!win || win.isDestroyed()) throw new Error('主窗口不可用')
     installLunaWebBluetoothHandlers(win)
-    this.selectionCancel = beginSelection(win.webContents)
-    try {
-      const result = await withTimeout(
-        this.execute(buildLunaWebBluetoothConnectScript(this.token), true) as Promise<ConnectResult>,
-        CONNECT_TIMEOUT_MS,
-        'Web Bluetooth 连接超时，请确认相机已开机且靠近电脑',
-      )
-      this.connected = true
-      logMainInfo('[Luna BLE] Web Bluetooth 连接准备完成', {
-        bluetoothDeviceId: result.deviceId,
-        deviceName: result.deviceName,
-        source: result.source,
-        serviceUuid: result.serviceUuid,
-        writeCharacteristicUuid: result.writeCharacteristicUuid,
-        notifyCharacteristicUuid: result.notifyCharacteristicUuid,
-      })
-    } catch (error) {
-      await this.cleanupRendererState().catch(() => undefined)
-      throw error instanceof Error ? error : new Error(String(error))
-    } finally {
-      this.selectionCancel?.()
-      this.selectionCancel = null
+    let lastError: Error | null = null
+    for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt += 1) {
+      this.selectionCancel = beginSelection(win.webContents)
+      try {
+        const result = await withTimeout(
+          this.execute(buildLunaWebBluetoothConnectScript(this.token), true) as Promise<ConnectResult>,
+          CONNECT_TIMEOUT_MS,
+          'Web Bluetooth 连接超时，请确认相机已开机且靠近电脑',
+        )
+        this.connected = true
+        logMainInfo('[Luna BLE] Web Bluetooth 连接准备完成', {
+          bluetoothDeviceId: result.deviceId,
+          deviceName: result.deviceName,
+          source: result.source,
+          serviceUuid: result.serviceUuid,
+          writeCharacteristicUuid: result.writeCharacteristicUuid,
+          notifyCharacteristicUuid: result.notifyCharacteristicUuid,
+          attempt,
+        })
+        return
+      } catch (error) {
+        lastError = new Error(errorMessage(error))
+        await this.cleanupRendererState().catch(() => undefined)
+        logMainWarn('[Luna BLE] Web Bluetooth 连接失败', {
+          error: lastError.message,
+          attempt,
+          maxAttempts: CONNECT_ATTEMPTS,
+        })
+        if (attempt < CONNECT_ATTEMPTS) await delay(CONNECT_RETRY_DELAY_MS)
+      } finally {
+        this.selectionCancel?.()
+        this.selectionCancel = null
+      }
     }
+    throw lastError ?? new Error('Web Bluetooth 连接失败')
   }
 
   async send(frame: Buffer, label: string): Promise<void> {
@@ -264,7 +300,7 @@ export class WebBluetoothLunaBleTransport implements LunaBleTransport {
     try {
       await withTimeout(this.execute(buildLunaWebBluetoothCleanupScript(this.token)), CLEANUP_TIMEOUT_MS, '关闭蓝牙会话超时')
     } catch (error) {
-      logMainWarn('[Luna BLE] Web Bluetooth 会话清理失败', { error: error instanceof Error ? error.message : String(error) })
+      logMainWarn('[Luna BLE] Web Bluetooth 会话清理失败', { error: errorMessage(error) })
     }
   }
 
