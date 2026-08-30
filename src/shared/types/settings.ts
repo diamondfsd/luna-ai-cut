@@ -23,6 +23,7 @@ export interface AppSettings {
   mountedCameraRoot?: string
   activeDeviceId?: string
   djiInstallIdentity?: string
+  lunaInstallIdentity?: string
   deviceStorage?: Record<string, string>
   deviceWatermark?: Record<string, WatermarkSettings>
   developerMode?: boolean

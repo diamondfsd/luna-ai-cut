@@ -23,6 +23,7 @@ import type {
   CustomWatermarkAsset,
   WatermarkSettings,
   DjiBluetoothRendererEvent,
+  LunaBluetoothRendererEvent,
   WifiConnectOptions,
   WifiDebugApi,
   WifiHttpRequestOptions,
@@ -107,6 +108,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   cancelBluetoothScan: () => ipcRenderer.invoke('bluetooth:cancelScan'),
   djiBluetooth: {
     emit: (event: DjiBluetoothRendererEvent) => ipcRenderer.send('dji-web-bluetooth:event', event),
+  },
+  lunaBluetooth: {
+    emit: (event: LunaBluetoothRendererEvent) => ipcRenderer.send('luna-web-bluetooth:event', event),
   },
   cameraSource: {
     detectMounted: () => ipcRenderer.invoke('camera-source:detect-mounted'),

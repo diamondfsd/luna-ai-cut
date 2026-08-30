@@ -19,21 +19,15 @@
     "rateMbps": 30
   },
   "bluetooth": {
-    "namePrefixes": ["Insta360 Z03", "##Insta360##"],
-    "scanServiceUuids": ["00001812-0000-1000-8000-00805f9b34fb"],
+    "namePrefixes": ["Luna ", "Insta360 Z03", "Insta360 Z05", "Insta360", "##Insta360##"],
+    "scanServiceUuids": ["0000be80-0000-1000-8000-00805f9b34fb"],
     "optionalServiceUuids": [
-      "00001812-0000-1000-8000-00805f9b34fb",
-      "0000180a-0000-1000-8000-00805f9b34fb",
-      "0000180f-0000-1000-8000-00805f9b34fb",
-      "0000ffd0-0000-1000-8000-00805f9b34fb",
-      "0000ffd5-0000-1000-8000-00805f9b34fb",
-      "0000ffe0-0000-1000-8000-00805f9b34fb",
-      "0000ffe1-0000-1000-8000-00805f9b34fb"
+      "0000be80-0000-1000-8000-00805f9b34fb"
     ],
-    "serviceUuid": "0000ffd0-0000-1000-8000-00805f9b34fb",
-    "writeCharacteristicUuid": "0000ffd5-0000-1000-8000-00805f9b34fb",
-    "notifyCharacteristicUuid": "0000ffd5-0000-1000-8000-00805f9b34fb",
-    "wakePayloadHex": "0802"
+    "serviceUuid": "0000be80-0000-1000-8000-00805f9b34fb",
+    "writeCharacteristicUuid": "0000be81-0000-1000-8000-00805f9b34fb",
+    "notifyCharacteristicUuid": "0000be82-0000-1000-8000-00805f9b34fb",
+    "wakePayloadHex": ""
   },
   "storages": [
     {

@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcessByStdio } from 'node:child_process'
+import type { Readable } from 'node:stream'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import { getFfmpegPath } from '../../platform/ffmpeg/pipeline'
@@ -9,7 +10,7 @@ export type ObsInputCodec = 'h264' | 'h265'
 /** 将相机的裸视频流复用为 OBS 可读取的本机 MPEG-TS HTTP 流。 */
 export class LocalObsVideoStreamServer {
   private readonly output = new LocalVideoStreamServer('video/mp2t')
-  private ffmpeg: ChildProcessWithoutNullStreams | null = null
+  private ffmpeg: ChildProcessByStdio<null, Readable, Readable> | null = null
   private inputUrl: string | null = null
   private stopPromise: Promise<void> | null = null
   private readonly onUnexpectedStop?: () => void
