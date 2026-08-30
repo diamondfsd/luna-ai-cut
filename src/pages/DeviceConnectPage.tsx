@@ -3,7 +3,7 @@ import { Cable, Camera, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCi
 
 import type { AppSettings, CameraConnectionMode, CameraMediaSourceOptions, CameraMediaSourcePreparationResult, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { SupportedDeviceList } from '../components/SupportedDeviceList'
-import { DjiWirelessConnectionPanel } from '../components/DjiWirelessConnectionPanel'
+import { WirelessConnectionPanel } from '../components/WirelessConnectionPanel'
 import { Alert, Button, ButtonGroup, Dialog, Input } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
@@ -44,7 +44,7 @@ interface DeviceConnectPageProps {
   settings: AppSettings | null
   onConnect: (rootPath?: string, deviceId?: string, wireless?: CameraMediaSourceOptions['wireless']) => Promise<void>
   onPrepareConnection: (preferExistingConnection?: boolean) => Promise<CameraMediaSourcePreparationResult | null>
-  preparedDjiWifi: CameraMediaSourcePreparationResult['credentials'] | null
+  preparedWifi: CameraMediaSourcePreparationResult['credentials'] | null
   onDeviceChange: (deviceId: string) => Promise<void>
   connectionMode: CameraConnectionMode
   onConnectionModeChange: (mode: CameraConnectionMode) => Promise<void>
@@ -60,7 +60,7 @@ export function DeviceConnectPage({
   settings,
   onConnect,
   onPrepareConnection,
-  preparedDjiWifi,
+  preparedWifi,
   onDeviceChange,
   connectionMode,
   onConnectionModeChange,
@@ -82,16 +82,16 @@ export function DeviceConnectPage({
   const [wifiPassword, setWifiPassword] = useState('')
   const [wifiPasswordError, setWifiPasswordError] = useState<string | null>(null)
   const [wifiPasswordConnecting, setWifiPasswordConnecting] = useState(false)
-  const [djiPreparation, setDjiPreparation] = useState<CameraMediaSourcePreparationResult | null>(null)
+  const [wirelessPreparation, setWirelessPreparation] = useState<CameraMediaSourcePreparationResult | null>(null)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
   const deviceName = activeDevice?.name ?? '设备'
   const isWired = connectionMode === 'wired'
-  const isDjiWireless = !isWired && activeDevice?.protocol === 'dji'
+  const isBluetoothWifiWireless = !isWired && (activeDevice?.protocol === 'dji' || activeDevice?.id === 'luna-ultra')
   const canAutoJoinWifi = !isWired && activeDevice?.wifi?.autoJoin === true
-  const djiWifiCredentials = preparedDjiWifi ?? djiPreparation?.credentials ?? null
-  const needsSystemWifi = isDjiWireless && Boolean(djiPreparation && !djiWifiCredentials)
+  const wifiCredentials = preparedWifi ?? wirelessPreparation?.credentials ?? null
+  const needsSystemWifi = isBluetoothWifiWireless && Boolean(wirelessPreparation && !wifiCredentials)
   const deviceInfo = connection?.deviceInfo
   const deviceRows = [
     ['设备', deviceInfo?.deviceName],
@@ -145,7 +145,7 @@ export function DeviceConnectPage({
   }, [refreshMountedVolumes])
 
   useEffect(() => {
-    setDjiPreparation(null)
+    setWirelessPreparation(null)
   }, [activeDevice?.id, connectionMode])
 
   useEffect(() => {
@@ -181,16 +181,16 @@ export function DeviceConnectPage({
   async function handleConnect(): Promise<void> {
     setConnecting(true)
     try {
-      let preparation = djiPreparation
-      let credentials = djiWifiCredentials
-      if (isDjiWireless && !credentials && (!preparation || (preparation.preparation === 'already-connected' && !preparation.requiresManualWifi))) {
+      let preparation = wirelessPreparation
+      let credentials = wifiCredentials
+      if (isBluetoothWifiWireless && !credentials && (!preparation || (preparation.preparation === 'already-connected' && !preparation.requiresManualWifi))) {
         const result = await onPrepareConnection(true)
-        setDjiPreparation(result)
+        setWirelessPreparation(result)
         preparation = result
         credentials = result?.credentials ?? null
         if (result?.requiresManualWifi) return
       }
-      const wireless = isDjiWireless
+      const wireless = isBluetoothWifiWireless
         ? credentials
           ? {
               preparation: 'bluetooth' as const,
@@ -208,12 +208,12 @@ export function DeviceConnectPage({
     }
   }
 
-  async function handleReadDjiWifi(): Promise<void> {
-    if (!isDjiWireless || connecting || isChecking) return
+  async function handleReadWirelessWifi(): Promise<void> {
+    if (!isBluetoothWifiWireless || connecting || isChecking) return
     setConnecting(true)
     try {
       const result = await onPrepareConnection()
-      setDjiPreparation(result)
+      setWirelessPreparation(result)
     } finally {
       setConnecting(false)
     }
@@ -241,9 +241,9 @@ export function DeviceConnectPage({
   }
 
   async function copyWifiPassword(): Promise<void> {
-    if (!djiWifiCredentials?.password) return
+    if (!wifiCredentials?.password) return
     try {
-      await navigator.clipboard.writeText(djiWifiCredentials.password)
+      await navigator.clipboard.writeText(wifiCredentials.password)
       setWifiPasswordCopied(true)
       window.setTimeout(() => setWifiPasswordCopied(false), 1500)
     } catch {
@@ -435,15 +435,16 @@ export function DeviceConnectPage({
                 : '相机 Wi-Fi 可能无法访问互联网，素材导入后可切回常用网络'}</span>
             </p>
 
-            {isDjiWireless && (
-              <DjiWirelessConnectionPanel
-                preparation={djiPreparation}
-                credentials={djiWifiCredentials}
+            {isBluetoothWifiWireless && (
+              <WirelessConnectionPanel
+                deviceName={deviceName}
+                preparation={wirelessPreparation}
+                credentials={wifiCredentials}
                 needsSystemWifi={needsSystemWifi}
                 wifiPasswordCopied={wifiPasswordCopied}
                 onCopyPassword={() => void copyWifiPassword()}
                 loading={connecting || isChecking}
-                onReadWifi={() => void handleReadDjiWifi()}
+                onReadWifi={() => void handleReadWirelessWifi()}
               />
             )}
 

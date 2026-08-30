@@ -36,6 +36,7 @@ import { shutdownSpecializedSegmentationWorker } from './features/segmentation/s
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './features/segmentation/segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './media/local-share/localMediaShareService'
 import { installDjiWebBluetoothHandlers } from './devices/dji/djiWebBluetoothTransport'
+import { installLunaWebBluetoothHandlers } from './devices/insta360/lunaBleWebBluetoothTransport'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -273,7 +274,10 @@ function createWindow(): void {
     },
     getWindowCloseBehavior: getMainWindowCloseBehavior,
   })
-  if (process.platform === 'darwin' || process.platform === 'win32') installDjiWebBluetoothHandlers(win)
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    installDjiWebBluetoothHandlers(win)
+    installLunaWebBluetoothHandlers(win)
+  }
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
     setTimeout(() => startSegmentationModelPrefetch(), 1_000)

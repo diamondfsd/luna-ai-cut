@@ -22,6 +22,7 @@ import type {
 } from '../../../src/shared/types'
 import { djiSessionFor, disconnectDjiSession } from '../dji/djiCameraSession'
 import { djiErrorDetails } from '../dji/djiLog'
+import { DefaultLunaWirelessPreparation, type LunaWirelessPreparation } from '../insta360/lunaWirelessPreparation'
 import { autoJoinDeviceWifi, restoreDeviceWifi } from '../../platform/network/wifiAutoJoinService'
 import { stopCameraVideoStream } from './cameraVideoStreamService'
 import { logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
@@ -43,13 +44,15 @@ const WIRELESS_CAPABILITIES: CameraMediaSourceCapabilities = {
 }
 
 function wirelessCapabilities(definition: DeviceDefinition): CameraMediaSourceCapabilities {
+  const lunaBluetoothAvailable = definition.id === 'luna-ultra' && (process.platform === 'darwin' || process.platform === 'win32')
   return {
     ...WIRELESS_CAPABILITIES,
     ...definition.mediaCapabilities,
     delete: definition.mediaCapabilities?.delete ?? definition.protocol === 'insta360',
     connection: {
       ...WIRELESS_CAPABILITIES.connection,
-      automaticWifiJoin: process.platform === 'darwin' && definition.wifi?.autoJoin === true,
+      bluetoothWifiCredentials: lunaBluetoothAvailable,
+      automaticWifiJoin: (process.platform === 'darwin' || process.platform === 'win32') && definition.wifi?.autoJoin === true,
     },
   }
 }
@@ -93,6 +96,8 @@ function attachSourceDevice(files: LunaFile[], deviceId: string): LunaFile[] {
 }
 
 class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
+  private lunaPreparation: LunaWirelessPreparation | null = null
+
   constructor(
     private readonly ctx: IpcContext,
     private readonly options: CameraMediaSourceOptions,
@@ -126,7 +131,9 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     const wifiSessionKey = `${deviceId}:${host}`
     const loopback = isLoopbackHost(host)
     const wifiJoin = loopback
-      ? { attempted: false, connected: false, message: '模拟设备跳过 Wi-Fi 自动连接' }
+      ? { attempted: false, connected: true, message: '模拟设备使用本机网络' }
+      : this.options.wireless?.preparation === 'already-connected'
+        ? { attempted: false, connected: true, message: '使用当前系统 Wi-Fi' }
       : await autoJoinDeviceWifi(
         definition.wifi,
         wifiSessionKey,
@@ -179,6 +186,25 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         : null
       const restoreHint = restore?.attempted ? `。${restore.message}` : ''
       throw new Error(`${wifiHint}${detail}${restoreHint}`)
+    }
+  }
+
+  async prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult> {
+    const { deviceId, host } = await this.values()
+    const definition = deviceDefinitionFor(deviceId)
+    if (deviceId !== 'luna-ultra' || definition.protocol !== 'insta360') {
+      return {
+        mode: 'wireless',
+        preparation: 'already-connected',
+        capabilities: wirelessCapabilities(definition).connection,
+        message: '当前设备可以直接使用已连接的网络',
+      }
+    }
+    this.lunaPreparation = new DefaultLunaWirelessPreparation(deviceId, host, this.ctx.win)
+    const result = await this.lunaPreparation.prepare({ ...this.options, ...options })
+    return {
+      ...result,
+      capabilities: result.capabilities ?? this.lunaPreparation.capabilities,
     }
   }
 

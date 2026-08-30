@@ -52,7 +52,7 @@ export async function autoJoinDeviceWifi(
   password?: string,
   requestedSsid?: string,
 ): Promise<WifiAutoJoinResult> {
-  if (process.platform !== 'darwin' || !config?.autoJoin || config.ssidIncludes.length === 0) {
+  if ((process.platform !== 'darwin' && process.platform !== 'win32') || !config?.autoJoin || config.ssidIncludes.length === 0) {
     return skipped('未启用设备 Wi-Fi 自动连接')
   }
 
@@ -130,7 +130,7 @@ export async function autoJoinDeviceWifi(
     currentSsid,
     security: candidateSecurity,
     credentialSource: 'user-provided-wifi-password',
-    connectionStrategy: 'corewlan-password-stdin',
+    connectionStrategy: process.platform === 'win32' ? 'netsh-profile' : 'corewlan-password-stdin',
   })
   const joined = await connectWifiNetwork({
     ssid: candidateSsid,

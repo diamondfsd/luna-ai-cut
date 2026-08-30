@@ -13,9 +13,13 @@ import { openWifiSettings } from '../platform/network/wifiService'
 import { getDownloadedRecords, getLocalResourcesDir, getSettings } from '../storage/fileService'
 import { collectLunaNetworkDiagnostics } from '../platform/network/networkDiagnostics'
 import { registerDjiWebBluetoothIpc } from '../devices/dji/djiWebBluetoothTransport'
+import { registerLunaWebBluetoothIpc } from '../devices/insta360/lunaBleWebBluetoothTransport'
 
 export function register(): void {
-  if (process.platform === 'darwin' || process.platform === 'win32') registerDjiWebBluetoothIpc()
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    registerDjiWebBluetoothIpc()
+    registerLunaWebBluetoothIpc()
+  }
   ipcMain.handle('downloads:records', async (_event, files: LunaFile[]) => {
     const settings = await getSettings()
     return getDownloadedRecords(files, getLocalResourcesDir(settings), settings.organizeDownloadsByDate ?? false)

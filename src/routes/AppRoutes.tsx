@@ -30,7 +30,7 @@ export function AppRoutes() {
     chooseWiredCamera,
     connectDevice,
     prepareConnection,
-    preparedDjiWifi,
+    preparedWifi,
     selectDevice,
     connectionMode,
     disconnectDevice,
@@ -146,7 +146,7 @@ export function AppRoutes() {
               settings={settings}
               onConnect={connectDevice}
               onPrepareConnection={prepareConnection}
-              preparedDjiWifi={preparedDjiWifi}
+              preparedWifi={preparedWifi}
               onDeviceChange={selectDevice}
               connectionMode={connectionMode}
               onConnectionModeChange={setConnectionMode}

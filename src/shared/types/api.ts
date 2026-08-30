@@ -98,6 +98,14 @@ export interface DjiBluetoothRendererEvent {
   message?: string
 }
 
+export interface LunaBluetoothRendererEvent {
+  token: string
+  event: 'notification' | 'disconnected' | 'stage'
+  characteristic?: string
+  payloadHex?: string
+  message?: string
+}
+
 export interface WorkspaceMaskTrackingRequest {
   requestId: string
   filePath: string
@@ -224,6 +232,9 @@ export interface LunaApi {
   cancelBluetoothScan(): Promise<void>
   djiBluetooth: {
     emit(event: DjiBluetoothRendererEvent): void
+  }
+  lunaBluetooth: {
+    emit(event: LunaBluetoothRendererEvent): void
   }
   cameraSource: CameraMediaSourceApi
   cameraVideoStream: CameraVideoStreamApi
