@@ -1802,6 +1802,7 @@ export class WebGpuVideoRenderer {
         this.compositionTime,
         overrides,
       )
+      if (revision !== this.renderRevision || this.destroyed) return
       if (this.options.presentToCanvas !== false) {
         if (!context) throw new Error('WebGPU 画布上下文尚未初始化')
         const presentationTexture = context.getCurrentTexture()
