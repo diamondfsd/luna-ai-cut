@@ -30,6 +30,14 @@ export function hasManifestPageAfter(pageSize: number, cursor: number): boolean 
   return cursor > 0 && pageSize >= DJI_MANIFEST_PAGE_SIZE
 }
 
+/**
+ * The manifest is complete once one post-query receive window confirms that its parsed count did not grow.
+ * Requiring a second identical window only adds a fixed delay on cameras that keep sending status packets.
+ */
+export function manifestBatchHasStabilized(batch: number, internalCount: number, previousCount: number): boolean {
+  return batch >= 4 && internalCount > 0 && internalCount === previousCount
+}
+
 export interface ManifestPageStep {
   fresh: DjiManifestFile[]
   nextCursor: number

@@ -20,6 +20,8 @@ export type DjiUdpCommand = Omit<DjiMessage, 'flags' | 'cmdSet' | 'cmdId'> & {
   routingTail?: number
 }
 
+type PacketActivityPredicate = (packet: DjiUdpPacket) => boolean
+
 const HANDSHAKE = Buffer.from('000064006400c005140000640000019001c005140000640014006400c00514000064000101040102', 'hex')
 const DJI_PREVIEW_RECV_BUFFER_BYTES = 4 * 1024 * 1024
 
@@ -419,6 +421,45 @@ export class DjiUdpTransport {
       }
       socket.on('message', onMessage)
       void timer
+    })
+  }
+
+  /**
+   * Collect a burst without waiting through the whole maximum window after the stream goes quiet.
+   * The maximum is retained because DJI may pause between reliable downlink fragments.
+   */
+  async collectUntilQuiet(
+    maxDurationMs = 800,
+    quietDurationMs = 400,
+    isActivity: PacketActivityPredicate = () => true,
+  ): Promise<DjiUdpPacket[]> {
+    const socket = this.socket
+    if (!socket) return []
+    return new Promise((resolve) => {
+      const packets: DjiUdpPacket[] = []
+      let finished = false
+      let quietTimer: ReturnType<typeof setTimeout> | null = null
+      const finish = (): void => {
+        if (finished) return
+        finished = true
+        clearTimeout(maxTimer)
+        if (quietTimer) clearTimeout(quietTimer)
+        socket.off('message', onMessage)
+        resolve(packets)
+      }
+      const armQuietTimer = (): void => {
+        if (quietTimer) clearTimeout(quietTimer)
+        quietTimer = setTimeout(finish, quietDurationMs)
+      }
+      const onMessage = (data: Buffer): void => {
+        const packet = parseUdpPacket(data)
+        if (!packet) return
+        this.observe(packet)
+        packets.push(packet)
+        if (isActivity(packet)) armQuietTimer()
+      }
+      const maxTimer = setTimeout(finish, maxDurationMs)
+      socket.on('message', onMessage)
     })
   }
 
