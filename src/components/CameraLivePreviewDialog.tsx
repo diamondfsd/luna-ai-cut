@@ -289,7 +289,7 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
           <span>{hasFrame ? '正在接收画面' : status?.message ?? '准备相机预览'}</span>
           {streamDimensions ? (
             <span className="camera-live-preview-resolution">
-              {streamDimensions.width} × {streamDimensions.height}
+              分辨率 {streamDimensions.width} × {streamDimensions.height}
             </span>
           ) : null}
           {status && status.frames > 0 ? <span className="camera-live-preview-count">已接收画面</span> : null}
