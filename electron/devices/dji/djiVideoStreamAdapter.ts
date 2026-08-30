@@ -18,11 +18,14 @@ function nowIso(): string {
 
 export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
   private readonly server = new LocalVideoStreamServer()
-  private readonly obsServer = new LocalObsVideoStreamServer(logMainInfo, logMainWarn)
+  private readonly obsServer = new LocalObsVideoStreamServer(() => {
+    this.statusValue = { ...this.statusValue, obsStreamUrl: null }
+  })
   private session: DjiCameraSession | null = null
   private unsubscribePreview: (() => void) | null = null
   private startPromise: Promise<CameraVideoStreamStatus> | null = null
   private generation = 0
+  private rawStreamUrl: string | null = null
   private statusValue: CameraVideoStreamStatus
 
   constructor(
@@ -66,7 +69,6 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
       message: '正在连接 DJI 相机预览',
       error: null,
     }
-    this.obsServer.setCodec('h265')
     const task = this.startInternal(generation)
       .then(() => this.status())
       .catch(async (error: unknown) => {
@@ -115,12 +117,12 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
         frames: this.statusValue.frames + 1,
       }
       this.server.publish(unit.data)
-      this.obsServer.publishVideoFrame(unit.data)
     })
     this.unsubscribePreview = session.subscribePreviewPackets((packet) => {
       reassembler.feed(packet)
     })
     const local = await this.server.start()
+    this.rawStreamUrl = local.url
     this.statusValue = { ...this.statusValue, streamUrl: local.url, port: local.port }
     if (generation !== this.generation) {
       await this.cleanupTransport()
@@ -157,14 +159,14 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
 
   async startObs(): Promise<CameraVideoStreamStatus> {
     if (this.statusValue.state !== 'running') await this.start()
-    this.obsServer.setCodec('h265')
-    const local = await this.obsServer.start('h265')
+    const rawStreamUrl = this.rawStreamUrl ?? (await this.server.start()).url
+    const local = await this.obsServer.start(rawStreamUrl, 'h265')
     this.statusValue = { ...this.statusValue, obsStreamUrl: local.url }
     return this.status()
   }
 
   async stopObs(): Promise<CameraVideoStreamStatus> {
-    await this.obsServer.stop(false)
+    await this.obsServer.stop()
     this.statusValue = { ...this.statusValue, obsStreamUrl: null }
     return this.status()
   }
@@ -179,6 +181,7 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
         logMainWarn('[相机视频流] DJI 停止预览失败', { error: error instanceof Error ? error.message : String(error) })
       })
     }
+    this.rawStreamUrl = null
     await this.obsServer.stop()
     await this.server.stop()
   }

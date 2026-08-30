@@ -1,13 +1,17 @@
 /* global Buffer, setImmediate */
 
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { connect } from 'node:net'
+import { createRequire } from 'node:module'
 
 import { buildStartLiveStreamBody } from '../electron/devices/insta360/lunaControlMessages.ts'
 import { MEDIA_VIDEO, UCD2_MEDIA, parseMediaFrame } from '../electron/devices/insta360/insta360TcpCodec.ts'
 import { LocalObsVideoStreamServer } from '../electron/devices/common/localObsVideoStreamServer.ts'
 import { LocalVideoStreamServer } from '../electron/devices/common/localVideoStreamServer.ts'
+
+const require = createRequire(import.meta.url)
+const ffmpegPath = require('ffmpeg-static')
 
 function mediaFrame(data, substream = MEDIA_VIDEO) {
   const header = Buffer.from('55434432010c0107', 'hex')
@@ -46,60 +50,30 @@ assert.deepEqual(Buffer.from(chunk.value), payload)
 await server.stop()
 reader.releaseLock()
 
-async function readRtspResponse(socket) {
-  let buffered = Buffer.alloc(0)
-  for (;;) {
-    const headerEnd = buffered.indexOf('\r\n\r\n')
-    if (headerEnd >= 0) {
-      const header = buffered.subarray(0, headerEnd + 4).toString('utf8')
-      const contentLength = Number.parseInt(/^Content-Length:\s*(\d+)/im.exec(header)?.[1] ?? '0', 10)
-      if (buffered.length >= headerEnd + 4 + contentLength) return buffered
-    }
-    const [chunk] = await once(socket, 'data')
-    buffered = Buffer.concat([buffered, chunk])
-  }
-}
+const rawServer = new LocalVideoStreamServer()
+const rawInfo = await rawServer.start()
+const obsServer = new LocalObsVideoStreamServer(undefined, ffmpegPath)
+const obsInfo = await obsServer.start(rawInfo.url, 'h264')
+const obsResponse = await fetch(obsInfo.url)
+assert.equal(obsResponse.status, 200)
+assert.equal(obsResponse.headers.get('content-type'), 'video/mp2t')
+const obsReader = obsResponse.body?.getReader()
+assert.ok(obsReader)
 
-async function rtspRequest(socket, method, url, cseq, headers = {}) {
-  const requestHeaders = Object.entries(headers).map(([name, value]) => `${name}: ${value}`).join('\r\n')
-  const response = readRtspResponse(socket)
-  socket.write(`${method} ${url} RTSP/1.0\r\nCSeq: ${cseq}\r\n${requestHeaders}${requestHeaders ? '\r\n' : ''}\r\n`)
-  return response
-}
+const encoder = spawn(ffmpegPath, [
+  '-hide_banner', '-loglevel', 'error',
+  '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30',
+  '-t', '1', '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+  '-pix_fmt', 'yuv420p', '-g', '30', '-f', 'h264', 'pipe:1',
+], { stdio: ['ignore', 'pipe', 'ignore'] })
+encoder.stdout.on('data', (chunk) => rawServer.publish(chunk))
+const firstObsChunk = await obsReader.read()
+assert.equal(firstObsChunk.done, false)
+assert.ok(Buffer.from(firstObsChunk.value).includes(0x47), 'OBS output should contain MPEG-TS packets')
+encoder.kill('SIGTERM')
+await once(encoder, 'close')
+await obsServer.stop()
+await rawServer.stop()
+obsReader.releaseLock()
 
-const rtspServer = new LocalObsVideoStreamServer()
-const h264AccessUnit = Buffer.from('000000016742e01f0102030000000168ce060e000000016501020304', 'hex')
-rtspServer.setCodec('h264')
-rtspServer.publishVideoFrame(h264AccessUnit, 0)
-const rtspInfo = await rtspServer.start('h264', 0)
-const rtspSocket = connect({ host: '127.0.0.1', port: rtspInfo.port })
-await once(rtspSocket, 'connect')
-const rtspUrl = rtspInfo.url
-assert.match((await rtspRequest(rtspSocket, 'OPTIONS', rtspUrl, 1)).toString('utf8'), /RTSP\/1\.0 200 OK/)
-const describe = (await rtspRequest(rtspSocket, 'DESCRIBE', rtspUrl, 2, { Accept: 'application/sdp' })).toString('utf8')
-assert.match(describe, /Content-Type: application\/sdp/i)
-assert.match(describe, /a=rtpmap:96 H264\/90000/)
-assert.match(describe, /sprop-parameter-sets=/)
-const setup = (await rtspRequest(rtspSocket, 'SETUP', `${rtspUrl}/trackID=0`, 3, {
-  Transport: 'RTP/AVP/TCP;unicast;interleaved=0-1',
-})).toString('utf8')
-assert.match(setup, /Transport: RTP\/AVP\/TCP;unicast;interleaved=0-1/i)
-const session = /Session:\s*([^\r\n]+)/i.exec(setup)?.[1]
-assert.ok(session)
-assert.match((await rtspRequest(rtspSocket, 'PLAY', rtspUrl, 4, { Session: session })).toString('utf8'), /RTSP\/1\.0 200 OK/)
-
-rtspServer.publishVideoFrame(h264AccessUnit, 0)
-const [rtpFrame] = await once(rtspSocket, 'data')
-assert.equal(rtpFrame[0], 0x24)
-assert.equal(rtpFrame[1], 0)
-const rtpLength = rtpFrame.readUInt16BE(2)
-const rtpPacket = rtpFrame.subarray(4, 4 + rtpLength)
-assert.equal(rtpLength, 19)
-assert.equal(rtpFrame.length >= 4 + rtpLength, true)
-assert.equal(rtpPacket[0] & 0xc0, 0x80)
-assert.equal(rtpPacket[1] & 0x7f, 96)
-assert.equal(rtpPacket[12], 0x67)
-rtspSocket.destroy()
-await rtspServer.stop()
-
-console.log('Camera video stream protocol and local server checks passed')
+console.log('Camera video stream protocol and OBS output checks passed')
