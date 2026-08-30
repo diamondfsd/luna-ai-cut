@@ -63,11 +63,17 @@ export function WirelessConnectionPanel({
       {credentials && (
         <div className="device-connect-wireless-credentials">
           <div><span>Wi-Fi 名称</span><strong title={credentials.ssid}>{credentials.ssid}</strong></div>
-          <div><span>Wi-Fi 密码</span><strong>{credentials.password || '无密码'}</strong></div>
+          <div>
+            <span>Wi-Fi 密码</span>
+            <strong aria-label={credentials.password ? 'Wi-Fi 密码已隐藏' : '无密码'}>
+              {credentials.password ? '••••••••' : '无密码'}
+            </strong>
+          </div>
           <Button
             variant="ghost"
             size="mini"
             onClick={onCopyPassword}
+            disabled={!credentials.password}
             icon={wifiPasswordCopied ? <Check size={13} /> : <Copy size={13} />}
           >
             {wifiPasswordCopied ? '已复制密码' : '复制密码'}
