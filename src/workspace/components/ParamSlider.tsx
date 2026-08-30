@@ -44,6 +44,10 @@ export function ParamSlider({
   const rafRef = useRef<number | null>(null)
   const pendingValueRef = useRef<number | null>(null)
   const draggingRef = useRef(false)
+  const pointerSessionRef = useRef(false)
+  const pointerStartValueRef = useRef(value)
+  const latestSliderValueRef = useRef(value)
+  const skipNextCommitRef = useRef<number | null>(null)
   const commitMode = onCommit !== undefined
   const displayValue = numericInputValue(value, formatValue)
   const sliderDisplayValue = numericInputValue(commitMode ? sliderValue : value, formatValue)
@@ -59,7 +63,10 @@ export function ParamSlider({
   }, [displayValue, editing])
 
   useEffect(() => {
-    if (commitMode && !draggingRef.current) setSliderValue(value)
+    if (commitMode && !draggingRef.current) {
+      setSliderValue(value)
+      latestSliderValueRef.current = value
+    }
   }, [commitMode, value])
 
   function commit() {
@@ -68,8 +75,12 @@ export function ParamSlider({
       setEditValue(formatValue(value))
     } else {
       const next = Math.min(max, Math.max(min, parsed))
-      if (onCommit) setSliderValue(next)
-      ;(onCommit ?? onChange)(next)
+      if (onCommit) {
+        setSliderValue(next)
+        latestSliderValueRef.current = next
+      }
+      const commitChange = onCommit ?? onChange
+      commitChange(next)
     }
     setEditing(false)
   }
@@ -89,15 +100,32 @@ export function ParamSlider({
   }
 
   function flushSliderChange(next: number): void {
+    const pointerCommit = pointerSessionRef.current || draggingRef.current
+    const committedValue = pointerCommit ? latestSliderValueRef.current : next
+    if (!Number.isFinite(committedValue)) return
+    if (skipNextCommitRef.current === committedValue) {
+      skipNextCommitRef.current = null
+      pointerSessionRef.current = false
+      draggingRef.current = false
+      return
+    }
+    if (pointerCommit && committedValue === pointerStartValueRef.current) {
+      pointerSessionRef.current = false
+      draggingRef.current = false
+      return
+    }
     pendingValueRef.current = null
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-    setSliderValue(next)
+    setSliderValue(committedValue)
+    latestSliderValueRef.current = committedValue
+    if (pointerCommit) skipNextCommitRef.current = committedValue
+    pointerSessionRef.current = false
     draggingRef.current = false
     const commitChange = onCommit ?? onChange
-    commitChange(next)
+    commitChange(committedValue)
   }
 
   useEffect(() => {
@@ -132,13 +160,20 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
-          onPointerDown={() => { draggingRef.current = true }}
-          onPointerCancel={() => { draggingRef.current = false }}
+          onPointerDown={() => {
+            pointerSessionRef.current = true
+            pointerStartValueRef.current = latestSliderValueRef.current
+            skipNextCommitRef.current = null
+            draggingRef.current = true
+          }}
           onValueChange={([v]) => {
+            latestSliderValueRef.current = v
             if (onCommit) setSliderValue(v)
             if (!onCommit || onPreviewChange) scheduleSliderChange(v)
           }}
           onValueCommit={([v]) => flushSliderChange(v)}
+          onPointerUp={() => flushSliderChange(latestSliderValueRef.current)}
+          onPointerCancel={() => flushSliderChange(latestSliderValueRef.current)}
         >
           <RadixSlider.Track className="workspace-slider-track">
             <div
