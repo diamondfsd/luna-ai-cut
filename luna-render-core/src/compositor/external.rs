@@ -52,12 +52,12 @@ impl Compositor {
                 width, height, raw_desc.Width, raw_desc.Height
             ));
         }
-        crate::log!(
+        crate::logging::write_once(&format!(
             "[D3D12] wrap external texture raw={}x{} dxgi_format={} wgpu_format=Bgra8UnormSrgb initial_state=COMMON usage={usage:?}",
             raw_desc.Width,
             raw_desc.Height,
             raw_desc.Format.0
-        );
+        ));
 
         let size = wgpu::Extent3d {
             width,

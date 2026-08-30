@@ -811,13 +811,13 @@ impl Compositor {
                         state: wgpu::wgt::TextureUses::PRESENT,
                     },
                 ));
-                crate::log!(
+                crate::logging::write_once(&format!(
                     "[D3D12] finalize external render target {}x{} format={:?} and {} external input(s): COLOR_TARGET/RESOURCE -> PRESENT(COMMON)",
                     canvas_width,
                     canvas_height,
                     output_tex.format(),
                     external_count
-                );
+                ));
                 encoder.transition_resources(std::iter::empty(), transitions.into_iter());
             }
             let submission_index = self.queue.submit(Some(encoder.finish()));

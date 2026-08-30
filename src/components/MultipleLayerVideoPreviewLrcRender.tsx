@@ -50,7 +50,11 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       })
 
       const layersRef = useRef(layers)
-      layersRef.current = layers
+      const layersRevisionRef = useRef(0)
+      if (layersRef.current !== layers) {
+        layersRevisionRef.current += 1
+        layersRef.current = layers
+      }
       activeRef.current = active
       const playingRef = useRef(playing)
       playingRef.current = playing
@@ -401,6 +405,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         renderQueuedRef.current = false
         // 快照当前纹理版本，渲染完成后检查是否有纹理在此期间被释放
         const versionAtStart = textureVersionRef.current
+        const layersRevisionAtStart = layersRevisionRef.current
 
         try {
           const result = await renderMultipleLayerVideoFrame({
@@ -415,6 +420,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             maxSide: maxSideRef.current,
             textureVersion: versionAtStart,
             getTextureVersion: () => textureVersionRef.current,
+            renderRevision: layersRevisionAtStart,
+            getRenderRevision: () => layersRevisionRef.current,
             isDestroyed: () => destroyRef.current,
           })
           if (result === 'stale') {

@@ -43,6 +43,7 @@ export function ParamSlider({
   const inputRef = useRef<HTMLInputElement>(null)
   const rafRef = useRef<number | null>(null)
   const pendingValueRef = useRef<number | null>(null)
+  const draggingRef = useRef(false)
   const commitMode = onCommit !== undefined
   const displayValue = numericInputValue(value, formatValue)
   const sliderDisplayValue = numericInputValue(commitMode ? sliderValue : value, formatValue)
@@ -58,7 +59,7 @@ export function ParamSlider({
   }, [displayValue, editing])
 
   useEffect(() => {
-    if (commitMode) setSliderValue(value)
+    if (commitMode && !draggingRef.current) setSliderValue(value)
   }, [commitMode, value])
 
   function commit() {
@@ -94,6 +95,7 @@ export function ParamSlider({
       rafRef.current = null
     }
     setSliderValue(next)
+    draggingRef.current = false
     const commitChange = onCommit ?? onChange
     commitChange(next)
   }
@@ -130,6 +132,8 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
+          onPointerDown={() => { draggingRef.current = true }}
+          onPointerCancel={() => { draggingRef.current = false }}
           onValueChange={([v]) => {
             if (onCommit) setSliderValue(v)
             if (!onCommit || onPreviewChange) scheduleSliderChange(v)

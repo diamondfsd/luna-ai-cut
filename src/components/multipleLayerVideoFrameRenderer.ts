@@ -90,6 +90,8 @@ interface RenderFrameOptions {
   maxSide: number
   textureVersion: number
   getTextureVersion: () => number
+  renderRevision: number
+  getRenderRevision: () => number
   isDestroyed: () => boolean
 }
 
@@ -264,6 +266,8 @@ export async function renderMultipleLayerVideoFrame(
     maxSide,
     textureVersion,
     getTextureVersion,
+    renderRevision,
+    getRenderRevision,
     isDestroyed,
   } = options
   const renderLayers: Array<Record<string, unknown> & { zIndex: number }> = []
@@ -388,7 +392,7 @@ export async function renderMultipleLayerVideoFrame(
   if (isDestroyed() || getTextureVersion() !== textureVersion) return 'stale'
 
   const pixels = await lrc.renderFrame(outputWidth, outputHeight, renderLayers, frameCompositionTime)
-  if (isDestroyed()) return 'stale'
+  if (isDestroyed() || getRenderRevision() !== renderRevision) return 'stale'
   canvas.width = outputWidth
   canvas.height = outputHeight
   const displayContext = canvas.getContext('2d')
