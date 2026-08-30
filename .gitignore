@@ -47,6 +47,7 @@ scripts/deploy-release.conf
 # Test resources
 test-resources/
 test-results/
+test-output/
 dist*
 release*/
 backups/
