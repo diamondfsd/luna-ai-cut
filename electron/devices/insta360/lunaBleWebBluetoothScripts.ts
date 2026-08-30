@@ -58,6 +58,9 @@ export function buildLunaWebBluetoothConnectScript(token: string): string {
         if (!device) {
           stage('开始扫描 Luna 设备');
           device = await navigator.bluetooth.requestDevice({
+            // Require the verified Luna GATT service before attempting a
+            // connection. Electron's device-selection callback still picks
+            // the first matching advertisement immediately.
             filters: [{ services: [config.serviceUuid] }],
             optionalServices: [config.serviceUuid],
           });

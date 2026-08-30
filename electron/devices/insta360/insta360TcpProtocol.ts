@@ -120,6 +120,46 @@ export function connectSocket(host: string, port: number, timeoutMs: number, loc
   })
 }
 
+/**
+ * Probe the Luna control endpoint with the same one-way UCD2 STREAM greeting
+ * used by the persistent control session. Luna does not guarantee a reply to
+ * this greeting, so a successful TCP write is the protocol-level confirmation.
+ */
+export async function probeInsta360StreamHandshake(host: string, port: number, timeoutMs = 1500): Promise<void> {
+  const startedAt = Date.now()
+  const normalizedHost = tcpHost(host)
+  const socket = await connectSocket(normalizedHost, port, timeoutMs)
+  try {
+    const packet = buildStreamHello(0x24)
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const timer = setTimeout(() => finish(new Error(`Luna STREAM 握手写入超时（${normalizedHost}:${port}）`)), timeoutMs)
+      const cleanup = (): void => {
+        clearTimeout(timer)
+        socket.off('error', onError)
+      }
+      const finish = (error?: Error): void => {
+        if (settled) return
+        settled = true
+        cleanup()
+        if (error) reject(error)
+        else resolve()
+      }
+      const onError = (error: Error): void => finish(error)
+      socket.once('error', onError)
+      socket.write(packet, (error) => finish(error ?? undefined))
+    })
+    logMainInfo('[Insta360TCP] Luna STREAM 握手探测成功', {
+      host: normalizedHost,
+      port,
+      packetBytes: packet.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+  } finally {
+    socket.destroy()
+  }
+}
+
 function builtCommand(label: string, seq: number, code: number, requestId: number, body: Buffer): ExactCommand {
   return {
     label,

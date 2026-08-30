@@ -76,6 +76,9 @@ export class LunaBleSession {
       this.resolveFirstNotify = resolve
       this.rejectFirstNotify = reject
     })
+    // The transport can fail before initialize() starts waiting on this
+    // promise. Keep that teardown rejection observed in every lifecycle path.
+    this.firstNotify.catch(() => undefined)
     this.transport.onNotification = (data) => this.handleNotification(data)
     this.transport.onError = (error) => this.handleTransportError(error)
   }
