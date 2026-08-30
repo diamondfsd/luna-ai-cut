@@ -782,6 +782,11 @@ export class DjiCameraSession {
         MANIFEST_QUIET_WINDOW_MS,
         isManifestDataPacket,
         batch < 3 || lastManifestCount > 0,
+        {
+          isComplete: batch >= 3
+            ? (windowPackets) => this.parseManifestCounter([...packets, ...windowPackets], 2, 'storage_internal').length >= DJI_MANIFEST_PAGE_SIZE
+            : undefined,
+        },
       )
       packets.push(...received)
       await this.udp.sendAck()

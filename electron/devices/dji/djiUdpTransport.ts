@@ -26,6 +26,7 @@ export interface DjiUdpCollectionOptions {
   quietDurationMs?: number
   isActivity?: PacketActivityPredicate
   quietFromStart?: boolean
+  isComplete?: (packets: readonly DjiUdpPacket[]) => boolean
 }
 
 const HANDSHAKE = Buffer.from('000064006400c005140000640000019001c005140000640014006400c00514000064000101040102', 'hex')
@@ -423,8 +424,9 @@ export class DjiUdpTransport {
     quietDurationMs = 400,
     isActivity: PacketActivityPredicate = () => true,
     quietFromStart = false,
+    options: DjiUdpCollectionOptions = {},
   ): Promise<DjiUdpPacket[]> {
-    return this.collectPackets(maxDurationMs, { quietDurationMs, isActivity, quietFromStart })
+    return this.collectPackets(maxDurationMs, { ...options, quietDurationMs, isActivity, quietFromStart })
   }
 
   private async collectPackets(
@@ -459,6 +461,7 @@ export class DjiUdpTransport {
         this.observe(packet)
         packets.push(packet)
         if (isActivity(packet)) armQuietTimer()
+        if (options.isComplete?.(packets)) finish()
       }
       const maxTimer = setTimeout(finish, maxDurationMs)
       socket.on('message', onMessage)
