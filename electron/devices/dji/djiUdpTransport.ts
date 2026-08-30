@@ -20,7 +20,13 @@ export type DjiUdpCommand = Omit<DjiMessage, 'flags' | 'cmdSet' | 'cmdId'> & {
   routingTail?: number
 }
 
-type PacketActivityPredicate = (packet: DjiUdpPacket) => boolean
+export type PacketActivityPredicate = (packet: DjiUdpPacket) => boolean
+
+export interface DjiUdpCollectionOptions {
+  quietDurationMs?: number
+  isActivity?: PacketActivityPredicate
+  quietFromStart?: boolean
+}
 
 const HANDSHAKE = Buffer.from('000064006400c005140000640000019001c005140000640014006400c00514000064000101040102', 'hex')
 const DJI_PREVIEW_RECV_BUFFER_BYTES = 4 * 1024 * 1024
@@ -285,6 +291,7 @@ export class DjiUdpTransport {
   async commandAndCollect(
     message: DjiUdpCommand,
     durationMs: number,
+    options: DjiUdpCollectionOptions = {},
   ): Promise<DjiUdpPacket[]> {
     const startedAt = Date.now()
     await this.open()
@@ -308,7 +315,7 @@ export class DjiUdpTransport {
       ...djiMessageDetails({ ...message, flags: message.flags ?? 0x40 }),
     })
     try {
-      const packets = await this.request(packet, durationMs)
+      const packets = await this.collectPackets(durationMs, options, packet)
       logMainDebug('[DJI UDP] 命令发送并收集响应完成', {
         host: this.host,
         port: this.port,
@@ -404,24 +411,7 @@ export class DjiUdpTransport {
   }
 
   async collect(durationMs = 700): Promise<DjiUdpPacket[]> {
-    const socket = this.socket
-    if (!socket) return []
-    return new Promise((resolve) => {
-      const packets: DjiUdpPacket[] = []
-      const timer = setTimeout(() => {
-        socket.off('message', onMessage)
-        resolve(packets)
-      }, durationMs)
-      const onMessage = (data: Buffer): void => {
-        const packet = parseUdpPacket(data)
-        if (packet) {
-          this.observe(packet)
-          packets.push(packet)
-        }
-      }
-      socket.on('message', onMessage)
-      void timer
-    })
+    return this.collectPackets(durationMs)
   }
 
   /**
@@ -432,10 +422,21 @@ export class DjiUdpTransport {
     maxDurationMs = 800,
     quietDurationMs = 400,
     isActivity: PacketActivityPredicate = () => true,
+    quietFromStart = false,
+  ): Promise<DjiUdpPacket[]> {
+    return this.collectPackets(maxDurationMs, { quietDurationMs, isActivity, quietFromStart })
+  }
+
+  private async collectPackets(
+    maxDurationMs: number,
+    options: DjiUdpCollectionOptions = {},
+    packetToSend?: Buffer,
   ): Promise<DjiUdpPacket[]> {
     const socket = this.socket
     if (!socket) return []
-    return new Promise((resolve) => {
+    const quietDurationMs = options.quietDurationMs ?? null
+    const isActivity = options.isActivity ?? (() => true)
+    return new Promise((resolve, reject) => {
       const packets: DjiUdpPacket[] = []
       let finished = false
       let quietTimer: ReturnType<typeof setTimeout> | null = null
@@ -448,6 +449,7 @@ export class DjiUdpTransport {
         resolve(packets)
       }
       const armQuietTimer = (): void => {
+        if (quietDurationMs === null) return
         if (quietTimer) clearTimeout(quietTimer)
         quietTimer = setTimeout(finish, quietDurationMs)
       }
@@ -460,32 +462,23 @@ export class DjiUdpTransport {
       }
       const maxTimer = setTimeout(finish, maxDurationMs)
       socket.on('message', onMessage)
+      if (quietDurationMs !== null && options.quietFromStart) armQuietTimer()
+      if (packetToSend) {
+        void this.send(packetToSend).catch((error: unknown) => {
+          if (finished) return
+          finished = true
+          clearTimeout(maxTimer)
+          if (quietTimer) clearTimeout(quietTimer)
+          socket.off('message', onMessage)
+          reject(error)
+        })
+      }
     })
   }
 
   async request(packet: Buffer, timeoutMs: number): Promise<DjiUdpPacket[]> {
-    const socket = this.socket
-    if (!socket) throw new Error('DJI UDP 尚未打开')
-    return new Promise((resolve, reject) => {
-      const packets: DjiUdpPacket[] = []
-      const timer = setTimeout(() => {
-        socket.off('message', onMessage)
-        resolve(packets)
-      }, timeoutMs)
-      const onMessage = (data: Buffer): void => {
-        const parsed = parseUdpPacket(data)
-        if (parsed) {
-          this.observe(parsed)
-          packets.push(parsed)
-        }
-      }
-      socket.on('message', onMessage)
-      void this.send(packet).catch((error: unknown) => {
-        clearTimeout(timer)
-        socket.off('message', onMessage)
-        reject(error)
-      })
-    })
+    if (!this.socket) throw new Error('DJI UDP 尚未打开')
+    return this.collectPackets(timeoutMs, {}, packet)
   }
 
   /**
