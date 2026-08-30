@@ -15,6 +15,7 @@
 
 .camera-live-preview-body {
   display: flex;
+  overflow-y: auto;
   min-height: 0;
   flex-direction: column;
   gap: 12px;
@@ -24,6 +25,8 @@
 .camera-live-preview-stage {
   position: relative;
   display: grid;
+  width: 100%;
+  flex: 0 0 auto;
   min-height: 280px;
   aspect-ratio: 16 / 9;
   overflow: hidden;
