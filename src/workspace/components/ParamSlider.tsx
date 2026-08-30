@@ -43,9 +43,10 @@ export function ParamSlider({
   const inputRef = useRef<HTMLInputElement>(null)
   const rafRef = useRef<number | null>(null)
   const pendingValueRef = useRef<number | null>(null)
+  const commitMode = onCommit !== undefined
   const displayValue = numericInputValue(value, formatValue)
-  const sliderDisplayValue = numericInputValue(onCommit ? sliderValue : value, formatValue)
-  const renderedValue = onCommit ? sliderValue : value
+  const sliderDisplayValue = numericInputValue(commitMode ? sliderValue : value, formatValue)
+  const renderedValue = commitMode ? sliderValue : value
   const renderedValueRatio = max - min > 0 ? (renderedValue - min) / (max - min) : 0.5
   const renderedFillLeft = Math.min(zeroRatio, renderedValueRatio) * 100
   const renderedFillWidth = Math.abs(renderedValueRatio - zeroRatio) * 100
@@ -54,8 +55,11 @@ export function ParamSlider({
     if (!editing) {
       setEditValue(displayValue)
     }
-    if (onCommit) setSliderValue(value)
-  }, [displayValue, editing, onCommit, value])
+  }, [displayValue, editing])
+
+  useEffect(() => {
+    if (commitMode) setSliderValue(value)
+  }, [commitMode, value])
 
   function commit() {
     const parsed = Number(editValue)
@@ -122,7 +126,7 @@ export function ParamSlider({
       <div className="workspace-range-wrap">
         <RadixSlider.Root
           className="workspace-slider-root"
-          value={[onCommit ? sliderValue : value]}
+          value={[commitMode ? sliderValue : value]}
           min={min}
           max={max}
           step={step}
