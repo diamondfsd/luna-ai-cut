@@ -762,16 +762,27 @@ export class DjiCameraSession {
 
     // The camera sends the manifest through a reliable downlink. Keep the same query -> trigger ->
     // internal-query cadence as Osmosis and ACK every receive window.
-    const initialPackets = await this.udp.commandAndCollect(djiCommand(0x00, 0x26, listQuery(1, 0x00000001)), MANIFEST_MAX_WINDOW_MS)
+    const initialPackets = await this.udp.commandAndCollect(
+      djiCommand(0x00, 0x26, listQuery(1, 0x00000001)),
+      MANIFEST_MAX_WINDOW_MS,
+      {
+        quietDurationMs: MANIFEST_QUIET_WINDOW_MS,
+        isActivity: isManifestDataPacket,
+        quietFromStart: true,
+      },
+    )
     packets.push(...initialPackets)
     await this.udp.sendAck()
     for (let batch = 1; batch < 15; batch += 1) {
       const batchStartedAt = Date.now()
       // Keep the query/trigger cadence intact, then stop a receive burst early once the
       // reliable downlink has gone quiet. The maximum window still protects delayed fragments.
-      const received = batch >= 3
-        ? await this.udp.collectUntilQuiet(MANIFEST_MAX_WINDOW_MS, MANIFEST_QUIET_WINDOW_MS, isManifestDataPacket)
-        : await this.udp.collect(MANIFEST_MAX_WINDOW_MS)
+      const received = await this.udp.collectUntilQuiet(
+        MANIFEST_MAX_WINDOW_MS,
+        MANIFEST_QUIET_WINDOW_MS,
+        isManifestDataPacket,
+        batch < 3 || lastManifestCount > 0,
+      )
       packets.push(...received)
       await this.udp.sendAck()
       let sentCommand: string | null = null
