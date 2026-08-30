@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   DJI_MANIFEST_PAGE_SIZE,
   hasManifestPageAfter,
+  manifestBatchHasStabilized,
   olderManifestCursor,
   seedManifestCursor,
   stepManifestPage,
@@ -17,6 +18,10 @@ const firstPage = [
 assert.equal(seedManifestCursor(firstPage), 0x40100040)
 assert.equal(hasManifestPageAfter(DJI_MANIFEST_PAGE_SIZE, 0x40100040), true)
 assert.equal(hasManifestPageAfter(DJI_MANIFEST_PAGE_SIZE - 1, 0x40100040), false)
+assert.equal(manifestBatchHasStabilized(3, 42, 42), false)
+assert.equal(manifestBatchHasStabilized(4, 42, 42), true)
+assert.equal(manifestBatchHasStabilized(4, 42, 41), false)
+assert.equal(manifestBatchHasStabilized(4, 0, 0), false)
 
 const seen = new Set(firstPage.map((item) => `${item.storageId}:${item.path}`))
 const secondPage = [

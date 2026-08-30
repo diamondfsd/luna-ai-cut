@@ -16,6 +16,7 @@ import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infr
 import {
   DJI_MANIFEST_PAGE_SIZE,
   hasManifestPageAfter,
+  manifestBatchHasStabilized,
   olderManifestCursor,
   seedManifestCursor,
   stepManifestPage,
@@ -77,6 +78,8 @@ function listQuery(counter: number, cursor: number): Buffer {
 const MANIFEST_TRIGGER = hex('4a040e1001000000000001000000')
 const INITIAL_INTERNAL_CURSOR = 0x40000001
 const MAX_MANIFEST_PAGES = 256
+const MANIFEST_MAX_WINDOW_MS = 800
+const MANIFEST_QUIET_WINDOW_MS = 400
 
 interface ManifestPage {
   sd: DjiManifestFile[]
@@ -88,6 +91,13 @@ type DjiManifestPageCallback = (freshFiles: DjiManifestFile[], loadedFiles: DjiM
 
 function djiCommand(cmdSet: number, cmdId: number, payload: Buffer, id = 0x8026, flags = 0x40): DjiUdpCommand {
   return { target: 0x0102, id, cmdSet, cmdId, flags, payload }
+}
+
+function isManifestDataPacket(packet: DjiUdpPacket): boolean {
+  if (packet.packetType === 0x03) return true
+  return decodeDumlMessagesFromUdp(packet).some((message) =>
+    message.cmdSet === 0x00 && message.cmdId === 0x27 && message.payload[0] === 0x4a && message.payload[1] === 0x01,
+  )
 }
 
 const PREVIEW_LIVE_STATE = hex('0300000000040000000701')
@@ -752,12 +762,16 @@ export class DjiCameraSession {
 
     // The camera sends the manifest through a reliable downlink. Keep the same query -> trigger ->
     // internal-query cadence as Osmosis and ACK every receive window.
-    const initialPackets = await this.udp.commandAndCollect(djiCommand(0x00, 0x26, listQuery(1, 0x00000001)), 800)
+    const initialPackets = await this.udp.commandAndCollect(djiCommand(0x00, 0x26, listQuery(1, 0x00000001)), MANIFEST_MAX_WINDOW_MS)
     packets.push(...initialPackets)
     await this.udp.sendAck()
     for (let batch = 1; batch < 15; batch += 1) {
       const batchStartedAt = Date.now()
-      const received = await this.udp.collect(800)
+      // Keep the query/trigger cadence intact, then stop a receive burst early once the
+      // reliable downlink has gone quiet. The maximum window still protects delayed fragments.
+      const received = batch >= 3
+        ? await this.udp.collectUntilQuiet(MANIFEST_MAX_WINDOW_MS, MANIFEST_QUIET_WINDOW_MS, isManifestDataPacket)
+        : await this.udp.collect(MANIFEST_MAX_WINDOW_MS)
       packets.push(...received)
       await this.udp.sendAck()
       let sentCommand: string | null = null
@@ -770,13 +784,11 @@ export class DjiCameraSession {
         sentCommand = 'internal-storage-query'
       }
       const internalCount = this.parseManifestCounter(packets, 2, 'storage_internal').length
-      if (batch >= 4 && internalCount > 0 && internalCount === lastManifestCount) {
+      if (manifestBatchHasStabilized(batch, internalCount, lastManifestCount)) {
         stableBatches += 1
-        if (stableBatches >= 2) {
-          stopReason = '清单数量连续两轮稳定'
-          logMainDebug('[DJI 媒体] 清单接收提前结束', { internalCursor, batch, internalCount, stopReason })
-          break
-        }
+        stopReason = '清单数量连续一轮稳定'
+        logMainDebug('[DJI 媒体] 清单接收提前结束', { internalCursor, batch, internalCount, stopReason })
+        break
       } else {
         stableBatches = 0
       }
