@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Download, X } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
+import { overallDownloadProgress } from '../lib/downloadProgress'
 import { useDownloadProgress } from '../context/DownloadProgressContext'
 import { Button } from '../ui'
 import '../styles/download-progress.css'
@@ -26,9 +27,9 @@ export function GlobalDownloadProgress({ visible }: GlobalDownloadProgressProps)
 
   if (!visible || entries.length === 0) return null
 
+  const overallPercent = overallDownloadProgress(entries)
   const totalBytes = entries.reduce((sum, progress) => sum + (progress.total ?? 0), 0)
   const downloadedBytes = entries.reduce((sum, progress) => sum + progress.downloaded, 0)
-  const overallPercent = totalBytes > 0 ? Math.min(100, (downloadedBytes / totalBytes) * 100) : 0
   const speedBps = entries.reduce((sum, progress) => sum + progress.speedBps, 0)
   const current = entries.find((progress) => progress.status === 'downloading') ?? entries[0]
 

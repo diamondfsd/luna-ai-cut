@@ -452,6 +452,10 @@ export async function downloadFiles(
     const rawFile = rawCompanionAsFile(file)
     const rawDestination = rawFile ? downloadDestinationFor(outputDir, rawFile, organizeByDate) : null
     const totalBytes = downloadTotalBytes(file)
+    let resolvedMainBytes = file.bytes
+    let resolvedRawBytes = rawFile?.bytes ?? null
+    let downloadedMainProgressBytes = 0
+    let resolvedTotalBytes = totalBytes
     try {
       const existingFinal = await fileSize(destination)
       const existingRaw = rawDestination ? await fileSize(rawDestination) : 0
@@ -478,12 +482,13 @@ export async function downloadFiles(
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
       if (!rawFile && canCopyCachedFile && await downloadCachedFile(file, cachedPath, destination, (progress) => {
+        const progressTotal = totalBytes ?? progress.total
         onProgress({
           ...progress,
           index,
           totalFiles: files.length,
-          total: totalBytes,
-          percent: totalBytes ? Math.min(100, ((progress.downloaded ?? 0) / totalBytes) * 100) : progress.percent,
+          total: progressTotal,
+          percent: progressTotal ? Math.min(100, ((progress.downloaded ?? 0) / progressTotal) * 100) : progress.percent,
           status: 'downloading',
         })
       }, signal)) {
@@ -494,7 +499,7 @@ export async function downloadFiles(
           index,
           totalFiles: files.length,
           downloaded: downloadedBytes,
-          total: totalBytes,
+          total: totalBytes ?? downloadedBytes,
           percent: 100,
           speedBps: 0,
           status: 'done',
@@ -506,25 +511,33 @@ export async function downloadFiles(
       }
 
       await downloadToFileWithRetry({ ...file, sourceUrl: sourceUrlFor(file) }, destination, (progress) => {
+        downloadedMainProgressBytes = progress.downloaded
+        if (progress.total !== null) resolvedMainBytes = progress.total
+        const progressTotal = totalBytes ?? (rawFile ? null : resolvedMainBytes)
+        if (progressTotal !== null) resolvedTotalBytes = progressTotal
         onProgress({
           ...progress,
           index,
           totalFiles: files.length,
-          total: totalBytes,
-          percent: totalBytes ? Math.min(100, ((progress.downloaded ?? 0) / totalBytes) * 100) : progress.percent,
+          total: resolvedTotalBytes,
+          percent: resolvedTotalBytes ? Math.min(100, ((progress.downloaded ?? 0) / resolvedTotalBytes) * 100) : progress.percent,
           status: 'downloading',
         })
       }, signal)
 
       if (rawFile && rawDestination) {
         await downloadToFileWithRetry({ ...rawFile, sourceUrl: sourceUrlFor(rawFile) }, rawDestination, (progress) => {
-          const downloaded = (file.bytes ?? 0) + progress.downloaded
+          if (progress.total !== null) resolvedRawBytes = progress.total
+          const downloaded = downloadedMainProgressBytes + progress.downloaded
+          const progressTotal = totalBytes
+            ?? (resolvedMainBytes !== null && resolvedRawBytes !== null ? resolvedMainBytes + resolvedRawBytes : null)
+          if (progressTotal !== null) resolvedTotalBytes = progressTotal
           onProgress({
             ...progress,
             fileName: file.name,
             downloaded,
-            total: totalBytes,
-            percent: totalBytes ? Math.min(100, (downloaded / totalBytes) * 100) : progress.percent,
+            total: resolvedTotalBytes,
+            percent: resolvedTotalBytes ? Math.min(100, (downloaded / resolvedTotalBytes) * 100) : progress.percent,
             index,
             totalFiles: files.length,
             status: 'downloading',
@@ -541,7 +554,7 @@ export async function downloadFiles(
         index,
         totalFiles: files.length,
         downloaded: downloadedBytes,
-        total: totalBytes,
+        total: resolvedTotalBytes ?? downloadedBytes,
         percent: 100,
         speedBps: 0,
         status: 'done',
@@ -560,8 +573,8 @@ export async function downloadFiles(
           index,
           totalFiles: files.length,
           downloaded: partialSize,
-          total: totalBytes,
-          percent: totalBytes ? Math.min(100, (partialSize / totalBytes) * 100) : null,
+          total: resolvedTotalBytes,
+          percent: resolvedTotalBytes ? Math.min(100, (partialSize / resolvedTotalBytes) * 100) : null,
           speedBps: 0,
           status: 'canceled',
         })
@@ -577,7 +590,7 @@ export async function downloadFiles(
         index,
         totalFiles: files.length,
         downloaded: 0,
-        total: totalBytes,
+        total: resolvedTotalBytes,
         percent: null,
         speedBps: 0,
         status: 'failed',
