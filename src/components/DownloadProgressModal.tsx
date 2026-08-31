@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Download, FileQuestion, FolderOpen, Loader2, X } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
+import { downloadProgressPercent, overallDownloadProgress } from '../lib/downloadProgress'
 import { subscribeThumbnailReady } from '../lib/thumbnailReady'
 import { useDownloadProgress } from '../context/DownloadProgressContext'
 import type { DownloadProgress, LunaFile } from '../shared/types'
@@ -271,9 +272,7 @@ export function DownloadProgressModal({
   cancelDownloadsRef.current = cancelDownloads
   useEffect(() => registerCancelHandler(() => cancelDownloadsRef.current()), [registerCancelHandler])
 
-  const totalBytes = entries.reduce((s, p) => s + (p.total ?? 0), 0)
-  const downloadedBytes = entries.reduce((s, p) => s + p.downloaded, 0)
-  const overallPercent = totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0
+  const overallPercent = overallDownloadProgress(entries)
 
   if (totalCount === 0) return null
 
@@ -368,9 +367,7 @@ export function DownloadProgressModal({
             const file = fileSnapshotsRef.current.get(progress.fileName)
             const previewSource = previewSourceFor(progress, file, readyThumbnailUrlsRef.current)
             const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
-            const pct = progress.status === 'done' || progress.status === 'exists'
-              ? 100
-              : progress.total ? (progress.downloaded / progress.total) * 100 : 0
+            const pct = downloadProgressPercent(progress)
             const normalizedStatus = progress.status === 'exists' ? 'done' : progress.status
             return (
               <div key={progress.fileName} className={`dl-file-item ${normalizedStatus}`}>

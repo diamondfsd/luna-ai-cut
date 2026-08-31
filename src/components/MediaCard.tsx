@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Check, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
+import { downloadProgressPercent } from '../lib/downloadProgress'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { ThumbImage } from './ThumbImage'
@@ -87,7 +88,7 @@ export function MediaCard({
   const dolbyVisionProfile = file.dolbyVisionProfile ?? detectedDolbyVisionProfile
   const isILog = file.iLog ?? detectedILog ?? false
 
-  const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
+  const progressValue = progress ? downloadProgressPercent(progress) : 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
   const localPath = file.downloadFilePath ?? file.localPath
   const downloadedPath = localPath
