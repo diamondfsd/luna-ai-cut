@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 
 import { AppNav } from '../components/AppNav'
 import { PreviewModalHost } from '../components/PreviewModalHost'
+import { GlobalDownloadProgress } from '../components/GlobalDownloadProgress'
 import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
 import { DownloadProgressProvider } from '../context/DownloadProgressContext'
@@ -126,13 +127,15 @@ export function AppRoutes() {
 
   return (
     <ExportProgressProvider>
-      <main className="app">
+      <DownloadProgressProvider>
+        <main className="app">
         <AppNav
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
         onChangeConnection={disconnectDevice}
       />
+      <GlobalDownloadProgress visible={!isActive('/library')} />
 
       <div className="route-stack" key={pagesKey}>
 
@@ -156,17 +159,13 @@ export function AppRoutes() {
           )}
           {(cameraLibraryMounted || !showDeviceConnect) && (
             <div hidden={showDeviceConnect}>
-              <DownloadProgressProvider>
-                <CameraMediaPage />
-              </DownloadProgressProvider>
+              <CameraMediaPage />
             </div>
           )}
         </AppRoute>
 
         <AppRoute path="/local-resources">
-          <DownloadProgressProvider>
-            <LocalMediaPage />
-          </DownloadProgressProvider>
+          <LocalMediaPage />
         </AppRoute>
 
         <AppRoute path="/ai-selection" preserve={false}>
@@ -218,7 +217,8 @@ export function AppRoutes() {
 
         <PreviewModalHost />
       </div>
-    </main>
+        </main>
+      </DownloadProgressProvider>
     </ExportProgressProvider>
   )
 }
