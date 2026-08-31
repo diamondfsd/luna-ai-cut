@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
 import * as https from 'node:https'
 import * as path from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 
 import type { DownloadProgress, LunaFile } from '../../src/shared/types'
@@ -41,8 +42,24 @@ function responseTotal(statusCode: number | undefined, headers: http.IncomingHtt
 
   return statusCode === 206 ? existing + length : length
 }
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', cancel)
+      resolve()
+    }, ms)
+    const cancel = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', cancel)
+      reject(abortError())
+    }
+    signal?.addEventListener('abort', cancel, { once: true })
+  })
 }
 
 function abortError(): Error {
@@ -73,6 +90,8 @@ export function isTransientDownloadError(error: unknown): boolean {
     || code === 'ECONNREFUSED'
     || code === 'ENETDOWN'
     || code === 'EAI_AGAIN'
+    || code === 'EBUSY'
+    || message.includes('resource busy or locked')
   )
 }
 
@@ -135,47 +154,39 @@ export async function downloadToFile(
     }
 
     const partialPath = partialPathFor(destination)
-    await fs.rm(partialPath, { force: true })
+    await fs.rm(partialPath, { force: true, maxRetries: 5, retryDelay: 200 })
+    throwIfAborted(signal)
     const input = createReadStream(sourcePath)
     const output = createWriteStream(partialPath)
     let copied = 0
     const startedAt = Date.now()
     let lastEmit = 0
 
-    await new Promise<void>((resolve, reject) => {
-      const cancel = (): void => {
-        input.destroy(abortError())
-        output.destroy(abortError())
-        reject(abortError())
+    const onData = (chunk: Buffer): void => {
+      copied += chunk.length
+      const now = Date.now()
+      if (now - lastEmit > 120 || copied >= sourceSize) {
+        const elapsed = Math.max((now - startedAt) / 1000, 0.001)
+        onProgress?.({
+          fileName: item.name,
+          downloaded: copied,
+          total: sourceSize,
+          percent: sourceSize ? Math.min(100, (copied / sourceSize) * 100) : 100,
+          speedBps: copied / elapsed,
+        })
+        lastEmit = now
       }
-      signal?.addEventListener('abort', cancel, { once: true })
-      input.on('data', (chunk: Buffer) => {
-        if (signal?.aborted) {
-          cancel()
-          return
-        }
-        copied += chunk.length
-        const now = Date.now()
-        if (now - lastEmit > 120 || copied >= sourceSize) {
-          const elapsed = Math.max((now - startedAt) / 1000, 0.001)
-          onProgress?.({
-            fileName: item.name,
-            downloaded: copied,
-            total: sourceSize,
-            percent: sourceSize ? Math.min(100, (copied / sourceSize) * 100) : 100,
-            speedBps: copied / elapsed,
-          })
-          lastEmit = now
-        }
-      })
-      input.on('error', reject)
-      output.on('error', reject)
-      output.on('finish', () => {
-        signal?.removeEventListener('abort', cancel)
-        resolve()
-      })
-      input.pipe(output)
-    })
+    }
+    input.on('data', onData)
+    try {
+      await pipeline(
+        input as unknown as NodeJS.ReadableStream,
+        output as unknown as NodeJS.WritableStream,
+        { signal },
+      )
+    } finally {
+      input.off('data', onData)
+    }
 
     throwIfAborted(signal)
     if (copied <= 0) throw new Error(`下载内容为空：${item.name}`)
@@ -233,40 +244,31 @@ export async function downloadToFile(
   const startedAt = Date.now()
   let lastEmit = 0
 
-  await new Promise<void>((resolve, reject) => {
-    const cancel = (): void => {
-      response.destroy(abortError())
-      output.destroy(abortError())
-      reject(abortError())
+  const onData = (chunk: Buffer): void => {
+    downloaded += chunk.length
+    const now = Date.now()
+    if (now - lastEmit > 120 || (total !== null && downloaded >= total)) {
+      const elapsed = Math.max((now - startedAt) / 1000, 0.001)
+      onProgress?.({
+        fileName: item.name,
+        downloaded,
+        total,
+        percent: total ? Math.min(100, (downloaded / total) * 100) : null,
+        speedBps: downloaded / elapsed,
+      })
+      lastEmit = now
     }
-    signal?.addEventListener('abort', cancel, { once: true })
-    response.on('data', (chunk: Buffer) => {
-      if (signal?.aborted) {
-        cancel()
-        return
-      }
-      downloaded += chunk.length
-      const now = Date.now()
-      if (now - lastEmit > 120 || (total !== null && downloaded >= total)) {
-        const elapsed = Math.max((now - startedAt) / 1000, 0.001)
-        onProgress?.({
-          fileName: item.name,
-          downloaded,
-          total,
-          percent: total ? Math.min(100, (downloaded / total) * 100) : null,
-          speedBps: downloaded / elapsed,
-        })
-        lastEmit = now
-      }
-    })
-    response.on('error', reject)
-    output.on('error', reject)
-    output.on('finish', () => {
-      signal?.removeEventListener('abort', cancel)
-      resolve()
-    })
-    response.pipe(output)
-  })
+  }
+  response.on('data', onData)
+  try {
+    await pipeline(
+      response as unknown as NodeJS.ReadableStream,
+      output as unknown as NodeJS.WritableStream,
+      { signal },
+    )
+  } finally {
+    response.off('data', onData)
+  }
 
   throwIfAborted(signal)
   if (total !== null && downloaded < total) {
@@ -278,7 +280,7 @@ export async function downloadToFile(
   return destination
 }
 
-export async function downloadToFileWithRetry(
+async function downloadToFileWithRetryInternal(
   item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string },
   destination: string,
   onProgress?: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
@@ -292,9 +294,35 @@ export async function downloadToFileWithRetry(
       if (signal?.aborted || isAbortError(error)) throw abortError()
       if (!isTransientDownloadError(error) || attempt === maxAttempts - 1) throw error
 
-      await delay(350 * (attempt + 1))
+      await delay(350 * (attempt + 1), signal)
     }
   }
 
   throw new Error(`下载失败：${item.name}`)
+}
+
+const activeDownloadTasks = new Map<string, Promise<string>>()
+
+function downloadTaskKey(destination: string): string {
+  const resolved = path.resolve(destination)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+export function downloadToFileWithRetry(
+  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string },
+  destination: string,
+  onProgress?: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const key = downloadTaskKey(destination)
+  const activeTask = activeDownloadTasks.get(key)
+  if (activeTask) return activeTask
+
+  const task = downloadToFileWithRetryInternal(item, destination, onProgress, signal)
+  activeDownloadTasks.set(key, task)
+  const clearTask = (): void => {
+    if (activeDownloadTasks.get(key) === task) activeDownloadTasks.delete(key)
+  }
+  void task.then(clearTask, clearTask)
+  return task
 }

@@ -12,6 +12,7 @@ export interface IpcContext {
   lunaControlPortFor: (host: string) => number
   goUltraClients: Map<string, GoUltraClient>
   activeDownloadControllers: Set<AbortController>
+  activeDownloadTasks: Set<Promise<unknown>>
   activeExportControllers: Map<string, AbortController>
   activeExportEncoders: Map<string, ChildProcessWithoutNullStreams>
   activeNativeExportTasks: Set<string>

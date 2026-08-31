@@ -272,7 +272,11 @@ export function DownloadProgressModal({
       return next
     })
     setDownloading(false)
-    await window.luna.cancelDownloads()
+    try {
+      await window.luna.cancelDownloads()
+    } catch (error) {
+      console.error('取消下载失败', error)
+    }
   }
 
   return (

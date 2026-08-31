@@ -397,12 +397,20 @@ export function register(ctx: IpcContext): void {
 
     const controller = new AbortController()
     ctx.activeDownloadControllers.add(controller)
+    const task = downloadFiles(files, localResourcesDir, (progress: DownloadProgress) => {
+      ctx.win?.webContents.send('download:progress', progress)
+    }, controller.signal, settings.organizeDownloadsByDate ?? false)
+    ctx.activeDownloadTasks.add(task)
     try {
-      return await downloadFiles(files, localResourcesDir, (progress: DownloadProgress) => {
-        ctx.win?.webContents.send('download:progress', progress)
-      }, controller.signal, settings.organizeDownloadsByDate ?? false)
+      return await task
     } finally {
       ctx.activeDownloadControllers.delete(controller)
+      ctx.activeDownloadTasks.delete(task)
     }
+  })
+
+  ipcMain.handle('luna:cancelDownloads', async () => {
+    for (const controller of ctx.activeDownloadControllers) controller.abort()
+    await Promise.allSettled(ctx.activeDownloadTasks)
   })
 }
