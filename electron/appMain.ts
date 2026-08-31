@@ -72,6 +72,7 @@ let win: BrowserWindow | null
 const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()
 const activeDownloadControllers = new Set<AbortController>()
+const activeDownloadTasks = new Set<Promise<unknown>>()
 const activeExportControllers = new Map<string, AbortController>()
 const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
 const activeNativeExportTasks = new Set<string>()
@@ -344,6 +345,7 @@ function registerIpc(): void {
     lunaControlPortFor: controlPortForCurrentSettings,
     goUltraClients,
     activeDownloadControllers,
+    activeDownloadTasks,
     activeExportControllers,
     activeExportEncoders,
     activeNativeExportTasks,

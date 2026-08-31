@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -25,7 +25,7 @@ try {
   assert.equal(program.emit().emitSkipped, false)
   const service = await import(pathToFileURL(path.join(compiledRoot, 'electron/media/fileDownloadService.js')))
 
-  for (const code of ['EHOSTUNREACH', 'ENETUNREACH', 'ECONNREFUSED']) {
+  for (const code of ['EHOSTUNREACH', 'ENETUNREACH', 'ECONNREFUSED', 'EBUSY']) {
     const error = Object.assign(new Error(code), { code })
     assert.equal(service.isTransientDownloadError(error), true, `${code} 应触发媒体下载重试`)
   }
@@ -62,6 +62,68 @@ try {
     assert.deepEqual(await readFile(destination), serverBytes, '媒体声明大小为 0 时仍应以实际响应内容为准')
   } finally {
     await new Promise((resolve, reject) => validServer.close((error) => error ? reject(error) : resolve()))
+  }
+
+  const wiredSourceBytes = Buffer.alloc(4 * 1024 * 1024, 0x5a)
+  const wiredSourcePath = path.join(temporaryRoot, 'wired-source.mp4')
+  const wiredDestination = path.join(temporaryRoot, 'wired-destination.mp4')
+  await writeFile(wiredSourcePath, wiredSourceBytes)
+  const wiredAbort = new AbortController()
+  let wiredProgressObserved = false
+  await assert.rejects(
+    service.downloadToFileWithRetry(
+      { name: 'wired-destination.mp4', bytes: wiredSourceBytes.byteLength, sourceUrl: pathToFileURL(wiredSourcePath).href },
+      wiredDestination,
+      (progress) => {
+        if (!wiredProgressObserved && progress.downloaded > 0) {
+          wiredProgressObserved = true
+          wiredAbort.abort()
+        }
+      },
+      wiredAbort.signal,
+    ),
+    (error) => service.isAbortError(error),
+  )
+  assert.equal(wiredProgressObserved, true, '取消前应至少收到一次有线复制进度')
+  assert.equal((await readdir(temporaryRoot)).includes('wired-destination.mp4'), false, '取消时不能发布正式文件')
+  await service.downloadToFileWithRetry(
+    { name: 'wired-destination.mp4', bytes: wiredSourceBytes.byteLength, sourceUrl: pathToFileURL(wiredSourcePath).href },
+    wiredDestination,
+  )
+  assert.deepEqual(await readFile(wiredDestination), wiredSourceBytes, '取消后再次下载应能重新打开临时文件')
+
+  const concurrentBytes = Buffer.from('single-flight-media')
+  let concurrentRequests = 0
+  const concurrentServer = createServer((_request, response) => {
+    concurrentRequests += 1
+    response.writeHead(200, { 'content-length': String(concurrentBytes.length) })
+    let offset = 0
+    const sendChunk = () => {
+      if (response.destroyed) return
+      if (offset >= concurrentBytes.length) {
+        response.end()
+        return
+      }
+      response.write(concurrentBytes.subarray(offset, offset + 1))
+      offset += 1
+      setTimeout(sendChunk, 10)
+    }
+    sendChunk()
+  })
+  await new Promise((resolve) => concurrentServer.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = concurrentServer.address()
+    assert.ok(address && typeof address === 'object')
+    const concurrentDestination = path.join(temporaryRoot, 'concurrent.mp4')
+    const concurrentItem = { name: 'concurrent.mp4', bytes: concurrentBytes.length, sourceUrl: `http://127.0.0.1:${address.port}/concurrent` }
+    await Promise.all([
+      service.downloadToFileWithRetry(concurrentItem, concurrentDestination),
+      service.downloadToFileWithRetry(concurrentItem, concurrentDestination),
+    ])
+    assert.equal(concurrentRequests, 1, '同一目标路径的并发下载只能发起一个传输')
+    assert.deepEqual(await readFile(concurrentDestination), concurrentBytes)
+  } finally {
+    await new Promise((resolve, reject) => concurrentServer.close((error) => error ? reject(error) : resolve()))
   }
 
   console.log('media download tests passed')
