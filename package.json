@@ -71,6 +71,7 @@
     "test:luna-ble": "node --experimental-strip-types scripts/test-luna-ble-protocol.mjs",
     "test:camera-video-stream": "node --experimental-strip-types scripts/test-camera-video-stream.mjs",
     "test:dji-preview": "node --experimental-strip-types scripts/test-dji-preview.mjs",
+    "test:dji-udp": "node --experimental-strip-types scripts/test-dji-udp-transport.mjs",
     "test:render-input": "node scripts/test-render-input-normalization.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "mock:dji": "node dji_mock_server/server.mjs",

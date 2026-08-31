@@ -1,6 +1,7 @@
 import dgram from 'node:dgram'
 import { randomInt } from 'node:crypto'
 import { decodeDjiMessage, encodeDjiMessage, type DjiMessage } from './djiBytes'
+import { buildAckPayload, buildRoutingHeader } from './djiUdpProtocol'
 import { djiErrorDetails, djiMessageDetails } from './djiLog'
 import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
@@ -54,23 +55,6 @@ export function parseUdpPacket(data: Uint8Array): DjiUdpPacket | null {
     payload: Buffer.from(data.subarray(8, total)),
     raw: Buffer.from(data.subarray(0, total)),
   }
-}
-
-export function buildRoutingHeader(
-  sequence: number,
-  counter: number,
-  peerAck = (sequence - 8) & 0xffff,
-  routingClass = 0,
-  routingTail = 0,
-): Buffer {
-  const header = Buffer.alloc(12)
-  header.writeUInt16LE(peerAck & 0xffff, 0)
-  header.writeUInt16LE(sequence & 0xffff, 2)
-  header[8] = counter & 0xff
-  header[9] = 0x01
-  header[10] = routingClass & 0xff
-  header[11] = routingTail & 0xff
-  return header
 }
 
 export function buildHandshakePayload(baseSequence: number): Buffer {
@@ -135,11 +119,10 @@ export function encodeDumlUdpPacket(
   sessionId: number,
   sequence: number,
   counter: number,
-  peerAck = (sequence - 8) & 0xffff,
   routingClass = 0,
   routingTail = 0,
 ): Buffer {
-  const routing = buildRoutingHeader(sequence, counter, peerAck, routingClass, routingTail)
+  const routing = buildRoutingHeader(sequence, counter, routingClass, routingTail)
   const frame = encodeDjiMessage(message)
   return Buffer.concat([udpHeader(0x05, routing.length + frame.length, sessionId, sequence), routing, frame])
 }
@@ -280,7 +263,6 @@ export class DjiUdpTransport {
       this.sessionId,
       sequence,
       this.counter,
-      this.peerAckedTxSequence,
       message.routingClass ?? 0,
       message.routingTail ?? 0,
     )
@@ -303,7 +285,6 @@ export class DjiUdpTransport {
       this.sessionId,
       sequence,
       this.counter,
-      this.peerAckedTxSequence,
       message.routingClass ?? 0,
       message.routingTail ?? 0,
     )
@@ -384,7 +365,6 @@ export class DjiUdpTransport {
               this.sessionId,
               sequence,
               this.counter,
-              this.peerAckedTxSequence,
               message.routingClass ?? 0,
               message.routingTail ?? 0,
             )
@@ -573,23 +553,12 @@ export class DjiUdpTransport {
   async sendAck(): Promise<void> {
     const socket = this.socket
     if (!socket) return
-    const group = (value: number): Buffer => {
-      const result = Buffer.alloc(8)
-      result.writeUInt16LE(value & 0xffff, 0)
-      result.writeUInt16LE(value & 0xffff, 2)
-      return result
-    }
-    const payload = Buffer.concat([
-      group(this.rxType2Sequence),
-      group(this.rxType3Sequence),
-      Buffer.from([
-        this.peerAckedTxSequence & 0xff,
-        (this.peerAckedTxSequence >>> 8) & 0xff,
-        this.lastTxSequence & 0xff,
-        (this.lastTxSequence >>> 8) & 0xff,
-      ]),
-      Buffer.alloc(6),
-    ])
+    const payload = buildAckPayload(
+      this.rxType2Sequence,
+      this.rxType3Sequence,
+      this.peerAckedTxSequence,
+      this.lastTxSequence,
+    )
     await this.send(Buffer.concat([udpHeader(0x04, payload.length, this.sessionId, 0), payload]))
   }
 
