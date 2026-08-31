@@ -3,6 +3,7 @@ import { Check, Download, FileQuestion, FolderOpen, Loader2, X } from 'lucide-re
 
 import { formatBytes } from '../lib/format'
 import { subscribeThumbnailReady } from '../lib/thumbnailReady'
+import { useDownloadProgress } from '../context/DownloadProgressContext'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { Button, DropdownPanel, IconButton } from '../ui'
 import '../styles/download-progress.css'
@@ -67,7 +68,9 @@ export function DownloadProgressModal({
   onQueueShift,
   onRevealFile,
 }: DownloadProgressModalProps) {
+  const { registerCancelHandler } = useDownloadProgress()
   const [open, setOpen] = useState(false)
+  const [canceling, setCanceling] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const queueRef = useRef(downloadQueue)
   const fileSnapshotsRef = useRef<Map<string, LunaFile>>(new Map())
@@ -78,9 +81,11 @@ export function DownloadProgressModal({
   const readyThumbnailUrlsRef = useRef<Map<string, string>>(new Map())
   const [, forceUpdate] = useState(0)
   const requestedThumbnailIdsRef = useRef<Set<string>>(new Set())
+  const cancelDownloadsRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   useEffect(() => {
     queueRef.current = downloadQueue
+    if (downloadQueue.length > 0) setCanceling(false)
     for (const file of downloadQueue) {
       fileSnapshotsRef.current.set(file.name, file)
     }
@@ -178,6 +183,24 @@ export function DownloadProgressModal({
           return next
         })
       }
+      const canceled = summary.canceled.some((item) => item.name === file.name)
+      if (canceled) {
+        setDownloadProgress((current) => {
+          const next = new Map(current)
+          const progress = next.get(file.name)
+          next.set(file.name, {
+            fileName: file.name,
+            index: progress?.index ?? 0,
+            totalFiles: progress?.totalFiles ?? 1,
+            downloaded: progress?.downloaded ?? 0,
+            total: progress?.total ?? file.bytes,
+            percent: progress?.percent ?? null,
+            speedBps: 0,
+            status: 'canceled',
+          })
+          return next
+        })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error(error)
@@ -245,6 +268,9 @@ export function DownloadProgressModal({
   const activeCount = entries.filter((p) => p.status === 'downloading').length
   const queuedCount = entries.filter((p) => p.status === 'queued').length
 
+  cancelDownloadsRef.current = cancelDownloads
+  useEffect(() => registerCancelHandler(() => cancelDownloadsRef.current()), [registerCancelHandler])
+
   const totalBytes = entries.reduce((s, p) => s + (p.total ?? 0), 0)
   const downloadedBytes = entries.reduce((s, p) => s + p.downloaded, 0)
   const overallPercent = totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0
@@ -252,30 +278,36 @@ export function DownloadProgressModal({
   if (totalCount === 0) return null
 
   async function cancelDownloads(): Promise<void> {
+    if (canceling) return
+    setCanceling(true)
     queueRef.current = []
     onQueueClearRef.current()
     setDownloadProgress((current) => {
       const next = new Map(current)
       for (const [fileName, progress] of next.entries()) {
         if (progress.status === 'queued') {
-          next.delete(fileName)
+          next.set(fileName, {
+            ...progress,
+            status: 'canceled',
+            speedBps: 0,
+          })
           continue
         }
         if (progress.status === 'downloading') {
           next.set(fileName, {
             ...progress,
-            status: 'canceled',
             speedBps: 0,
           })
         }
       }
       return next
     })
-    setDownloading(false)
     try {
       await window.luna.cancelDownloads()
     } catch (error) {
       console.error('取消下载失败', error)
+    } finally {
+      setCanceling(false)
     }
   }
 
@@ -308,9 +340,9 @@ export function DownloadProgressModal({
         triggerRef={rootRef}
         onClose={() => setOpen(false)}
         title={<><Download size={16} />下载进度</>}
-        headerActions={activeCount + queuedCount > 0 && (
-          <Button variant="secondary" size="compact" className="dl-cancel-button" onClick={() => void cancelDownloads()} icon={<X size={14} />}>
-            取消
+        headerActions={(activeCount + queuedCount > 0 || canceling) && (
+          <Button variant="secondary" size="compact" className="dl-cancel-button" disabled={canceling} onClick={() => void cancelDownloads()} icon={<X size={14} />}>
+            {canceling ? '取消中...' : '取消'}
           </Button>
         )}
       >

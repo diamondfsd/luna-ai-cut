@@ -99,6 +99,50 @@ function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw abortError()
 }
 
+type DownloadProgressUpdate = Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>
+
+/**
+ * 传输过程统一由这个 reporter 节流并计算速度。
+ * 只依赖已读字节，不依赖目标文件是否及时刷新到磁盘，因此有线磁盘和网络响应使用同一套逻辑。
+ */
+function createProgressReporter(
+  fileName: string,
+  total: number | null,
+  onProgress?: (progress: DownloadProgressUpdate) => void,
+): { emit: (downloaded: number, force?: boolean) => void; stop: () => void } {
+  let latestDownloaded = 0
+  let lastEmitAt = 0
+  let lastSampleAt = Date.now()
+  let lastSampleBytes = 0
+  const emit = (downloaded: number, force = false): void => {
+    latestDownloaded = Math.max(latestDownloaded, downloaded)
+    if (!onProgress) return
+    const now = Date.now()
+    if (!force && now - lastEmitAt < 120) return
+    const elapsed = Math.max((now - lastSampleAt) / 1000, 0.001)
+    const speedBps = Math.max(0, latestDownloaded - lastSampleBytes) / elapsed
+    onProgress({
+      fileName,
+      downloaded: latestDownloaded,
+      total,
+      percent: total ? Math.min(100, (latestDownloaded / total) * 100) : null,
+      speedBps,
+    })
+    lastEmitAt = now
+    lastSampleAt = now
+    lastSampleBytes = latestDownloaded
+  }
+  const timer = onProgress ? setInterval(() => emit(latestDownloaded, true), 250) : null
+  timer?.unref?.()
+
+  return {
+    emit,
+    stop: () => {
+      if (timer) clearInterval(timer)
+    },
+  }
+}
+
 function httpGet(url: string, headers: Record<string, string>, signal?: AbortSignal): Promise<http.IncomingMessage> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -159,23 +203,12 @@ export async function downloadToFile(
     const input = createReadStream(sourcePath)
     const output = createWriteStream(partialPath)
     let copied = 0
-    const startedAt = Date.now()
-    let lastEmit = 0
+    const reporter = createProgressReporter(item.name, sourceSize, onProgress)
+    reporter.emit(0, true)
 
     const onData = (chunk: Buffer): void => {
       copied += chunk.length
-      const now = Date.now()
-      if (now - lastEmit > 120 || copied >= sourceSize) {
-        const elapsed = Math.max((now - startedAt) / 1000, 0.001)
-        onProgress?.({
-          fileName: item.name,
-          downloaded: copied,
-          total: sourceSize,
-          percent: sourceSize ? Math.min(100, (copied / sourceSize) * 100) : 100,
-          speedBps: copied / elapsed,
-        })
-        lastEmit = now
-      }
+      reporter.emit(copied)
     }
     input.on('data', onData)
     try {
@@ -186,18 +219,13 @@ export async function downloadToFile(
       )
     } finally {
       input.off('data', onData)
+      reporter.stop()
     }
 
+    reporter.emit(copied, true)
     throwIfAborted(signal)
     if (copied <= 0) throw new Error(`下载内容为空：${item.name}`)
     await fs.rename(partialPath, destination)
-    onProgress?.({
-      fileName: item.name,
-      downloaded: copied,
-      total: sourceSize,
-      percent: 100,
-      speedBps: 0,
-    })
     return destination
   }
 
@@ -241,23 +269,12 @@ export async function downloadToFile(
   const total = responseTotal(response.statusCode, response.headers, startOffset) ?? item.bytes
   const output = createWriteStream(partialPath, { flags: append ? 'a' : 'w' })
   let downloaded = startOffset
-  const startedAt = Date.now()
-  let lastEmit = 0
+  const reporter = createProgressReporter(item.name, total, onProgress)
+  reporter.emit(downloaded, true)
 
   const onData = (chunk: Buffer): void => {
     downloaded += chunk.length
-    const now = Date.now()
-    if (now - lastEmit > 120 || (total !== null && downloaded >= total)) {
-      const elapsed = Math.max((now - startedAt) / 1000, 0.001)
-      onProgress?.({
-        fileName: item.name,
-        downloaded,
-        total,
-        percent: total ? Math.min(100, (downloaded / total) * 100) : null,
-        speedBps: downloaded / elapsed,
-      })
-      lastEmit = now
-    }
+    reporter.emit(downloaded)
   }
   response.on('data', onData)
   try {
@@ -268,8 +285,10 @@ export async function downloadToFile(
     )
   } finally {
     response.off('data', onData)
+    reporter.stop()
   }
 
+  reporter.emit(downloaded, true)
   throwIfAborted(signal)
   if (total !== null && downloaded < total) {
     throw new Error(`下载不完整：${downloaded}/${total}`)

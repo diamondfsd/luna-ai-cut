@@ -69,12 +69,14 @@ try {
   const wiredDestination = path.join(temporaryRoot, 'wired-destination.mp4')
   await writeFile(wiredSourcePath, wiredSourceBytes)
   const wiredAbort = new AbortController()
+  const wiredProgress = []
   let wiredProgressObserved = false
   await assert.rejects(
     service.downloadToFileWithRetry(
       { name: 'wired-destination.mp4', bytes: wiredSourceBytes.byteLength, sourceUrl: pathToFileURL(wiredSourcePath).href },
       wiredDestination,
       (progress) => {
+        wiredProgress.push(progress)
         if (!wiredProgressObserved && progress.downloaded > 0) {
           wiredProgressObserved = true
           wiredAbort.abort()
@@ -84,7 +86,9 @@ try {
     ),
     (error) => service.isAbortError(error),
   )
+  assert.equal(wiredProgress[0]?.downloaded, 0, '有线复制开始前应立即上报初始进度')
   assert.equal(wiredProgressObserved, true, '取消前应至少收到一次有线复制进度')
+  assert.equal(wiredProgress.some((progress) => progress.speedBps > 0), true, '有线复制进度应包含速度')
   assert.equal((await readdir(temporaryRoot)).includes('wired-destination.mp4'), false, '取消时不能发布正式文件')
   await service.downloadToFileWithRetry(
     { name: 'wired-destination.mp4', bytes: wiredSourceBytes.byteLength, sourceUrl: pathToFileURL(wiredSourcePath).href },

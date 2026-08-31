@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { localThumbnailUrl, safeName } from '../media/filePathUtils'
 import { downloadToFileWithRetry, isAbortError } from '../media/fileDownloadService'
@@ -94,16 +94,25 @@ function rawCompanionAsFile(file: LunaFile): LunaFile | null {
   }
 }
 
-async function copyIfPresent(source: string, destination: string): Promise<boolean> {
+async function downloadCachedFile(
+  file: LunaFile,
+  source: string,
+  destination: string,
+  onProgress: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
+  signal?: AbortSignal,
+): Promise<boolean> {
   try {
-    if (await fileSize(source) <= 0) return false
-    await fs.mkdir(path.dirname(destination), { recursive: true })
-    const partialPath = partialPathFor(destination)
-    await fs.rm(partialPath, { force: true })
-    await fs.copyFile(source, partialPath)
-    await fs.rename(partialPath, destination)
+    const sourceSize = await fileSize(source)
+    if (sourceSize <= 0) return false
+    await downloadToFileWithRetry(
+      { name: file.name, bytes: sourceSize, sourceUrl: pathToFileURL(source).toString() },
+      destination,
+      onProgress,
+      signal,
+    )
     return true
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) throw error
     return false
   }
 }
@@ -468,7 +477,16 @@ export async function downloadFiles(
       const previewDir = await previewCacheDir()
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
-      if (!rawFile && canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
+      if (!rawFile && canCopyCachedFile && await downloadCachedFile(file, cachedPath, destination, (progress) => {
+        onProgress({
+          ...progress,
+          index,
+          totalFiles: files.length,
+          total: totalBytes,
+          percent: totalBytes ? Math.min(100, ((progress.downloaded ?? 0) / totalBytes) * 100) : progress.percent,
+          status: 'downloading',
+        })
+      }, signal)) {
         const downloadedBytes = await fileSize(destination)
         await recordDownloadedSource(outputDir, destination, file)
         onProgress({

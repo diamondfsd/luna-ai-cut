@@ -410,7 +410,18 @@ export function register(ctx: IpcContext): void {
   })
 
   ipcMain.handle('luna:cancelDownloads', async () => {
-    for (const controller of ctx.activeDownloadControllers) controller.abort()
-    await Promise.allSettled(ctx.activeDownloadTasks)
+    const controllers = [...ctx.activeDownloadControllers]
+    const tasks = [...ctx.activeDownloadTasks]
+    logMainInfo('[下载] 收到取消请求', {
+      activeControllerCount: controllers.length,
+      activeTaskCount: tasks.length,
+    })
+    for (const controller of controllers) controller.abort()
+    const results = await Promise.allSettled(tasks)
+    logMainInfo('[下载] 取消请求处理完成', {
+      activeControllerCount: ctx.activeDownloadControllers.size,
+      activeTaskCount: ctx.activeDownloadTasks.size,
+      rejectedTaskCount: results.filter((result) => result.status === 'rejected').length,
+    })
   })
 }
