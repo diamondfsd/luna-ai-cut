@@ -9,6 +9,7 @@ import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage 
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrastructure/crashDiagnostics'
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
 import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
+import { stopObsStreamDemoOnQuit } from './media/obs-demo/obsMp4StreamService'
 
 import {
   getLocalResourcesDir,
@@ -83,6 +84,7 @@ const enqueuePreviewTask = createPreviewTaskQueue(2)
 /** 停止所有客户端的保活并清理 */
 function stopAllKeepAlive(): void {
   void stopAllCameraVideoStreams()
+  void stopObsStreamDemoOnQuit()
   for (const client of clients.values()) {
     client.stopKeepAlive()
     client.close()
@@ -333,6 +335,10 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
+  ipcMain.on('app:is-packaged', (event) => {
+    event.returnValue = app.isPackaged
+  })
+
   // appMain.ts 只负责应用生命周期、共享上下文组装和 IPC 模块注册。
   // 具体 IPC 实现必须拆分到 electron/ipc/ipc*.ts 或独立服务模块中，
   // 并通过 Vite 的 import.meta.glob 自动发现注册，避免在这里堆业务逻辑。

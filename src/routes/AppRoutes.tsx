@@ -18,6 +18,7 @@ import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
+import { ObsStreamDemoPage } from '../pages/ObsStreamDemoPage'
 import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
@@ -82,6 +83,7 @@ export function AppRoutes() {
 
   const developerMode = settings?.developerMode ?? false
   const debugVisible = import.meta.env.DEV || hiddenDevMode
+  const obsStreamDemoVisible = !window.luna.isPackaged
   const location = useLocation()
   const activePath = location.pathname === '/' ? '/library' : location.pathname
   const isActive = (path: string) => activePath === path
@@ -94,6 +96,7 @@ export function AppRoutes() {
     ['/local-resources', true],
     ['/ai-selection', true],
     ['/workspace', true],
+    ['/obs-stream', obsStreamDemoVisible],
     ['/settings', true],
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
@@ -178,6 +181,10 @@ export function AppRoutes() {
             onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
           />
+        </AppRoute>
+
+        <AppRoute path="/obs-stream" preserve={false}>
+          <ObsStreamDemoPage />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>

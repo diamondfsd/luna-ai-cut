@@ -64,6 +64,10 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpc(): void {
+  ipcMain.on('app:is-packaged', (event) => {
+    event.returnValue = app.isPackaged
+  })
+
   // 注册设备调试处理器
   registerDeviceDebugHandlers(() => win)
 

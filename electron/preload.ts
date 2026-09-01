@@ -63,6 +63,7 @@ interface LunaExportTaskApi {
 }
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
+  isPackaged: ipcRenderer.sendSync('app:is-packaged') === true,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
@@ -139,6 +140,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     startObs: (options) => ipcRenderer.invoke('camera-video-stream:start-obs', options),
     stopObs: (options) => ipcRenderer.invoke('camera-video-stream:stop-obs', options),
     status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
+  },
+  obsStreamDemo: {
+    status: () => ipcRenderer.invoke('obs-stream-demo:status'),
+    start: () => ipcRenderer.invoke('obs-stream-demo:start'),
+    stop: () => ipcRenderer.invoke('obs-stream-demo:stop'),
   },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),

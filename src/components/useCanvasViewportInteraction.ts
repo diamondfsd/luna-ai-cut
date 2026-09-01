@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react'
 import type { PreviewLayer } from '../shared/types'
+import { zoomOffsetAroundPoint } from './previewViewportGeometry'
 
 interface ViewportTransform {
   scale: number
@@ -188,7 +189,9 @@ export function useCanvasViewportInteraction({
   const onWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault()
     const canvas = event.currentTarget
-    const rect = canvas.getBoundingClientRect()
+    const container = canvas.parentElement
+    if (!container) return
+    const rect = container.getBoundingClientRect()
 
     setViewport((current) => {
       const metrics = canvasMetrics(canvas)
@@ -199,12 +202,18 @@ export function useCanvasViewportInteraction({
         Math.max(1, current.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY)),
       )
       onImageScaleChange?.(nextScale <= 1.001 ? null : nextScale * metrics.fitPixelRatio)
-      const scaleRatio = nextScale / current.scale
+      const offset = zoomOffsetAroundPoint(
+        { x: current.translateX, y: current.translateY },
+        current.scale,
+        nextScale,
+        event.clientX - (rect.left + rect.width / 2),
+        event.clientY - (rect.top + rect.height / 2),
+      )
       const translation = clampTranslation(
         metrics,
         nextScale,
-        current.translateX + (event.clientX - (rect.left + rect.width / 2)) * (1 - scaleRatio),
-        current.translateY + (event.clientY - (rect.top + rect.height / 2)) * (1 - scaleRatio),
+        offset.x,
+        offset.y,
       )
       return {
         scale: nextScale,

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Camera, MonitorCog, Unplug } from 'lucide-react'
+import { Camera, MonitorCog, Radio, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -21,6 +21,7 @@ interface AppNavProps {
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
+  const obsStreamDemoVisible = !window.luna.isPackaged
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
@@ -43,6 +44,12 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台
           </NavLink>
+          {obsStreamDemoVisible && (
+            <NavLink to="/obs-stream" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <Radio size={14} aria-hidden="true" />
+              OBS 推流
+            </NavLink>
+          )}
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>

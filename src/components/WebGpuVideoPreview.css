@@ -18,3 +18,14 @@
   transform-origin: center;
   will-change: transform;
 }
+
+.preview-canvas-wrapper .webgpu-video-preview-frame .webgpu-video-preview.is-interactive {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.preview-canvas-wrapper .webgpu-video-preview-frame .webgpu-video-preview.is-dragging {
+  cursor: grabbing;
+}

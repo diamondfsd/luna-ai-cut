@@ -473,6 +473,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               playing={playing}
               time={compositionTime}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
+              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
+              onViewportChange={syncCanvasMetrics}
+              viewportKey={viewportKey}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
               onError={handleWebGpuPreviewFailure}
