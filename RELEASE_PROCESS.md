@@ -2,7 +2,7 @@
 
 ## 概述
 
-使用 `gh` CLI 执行标准发版流程。每次发版包含版本号升级、发布说明、Git tag 和 GitHub Release。
+默认使用本地工作树编译三平台安装包，再直接上传到 GitCode。除非用户明确要求，否则不使用 GitHub Actions 构建，也不以 GitHub Release 作为产物中转站。每次发版包含版本号升级、发布说明和 GitCode Release。
 
 应用更新统一为手动触发：启动应用不会访问更新服务，也不会自动下载或安装更新。用户需要打开顶部问号窗口，点击“检查更新”，再分别点击安装包或热更新的更新按钮。
 
@@ -10,15 +10,16 @@
 
 后续所有热更新默认发布一个 `universal` 平台无关的纯 JS 包，适用于 macOS ARM64、macOS x64 和 Windows x64。发布时不需要选择平台，标准命令是 `./scripts/build-hot-update.sh`；同一个正式版本线可以继续发布 `hot.1`、`hot.2` 等后续热更新。
 
-只有明确要求平台专属包、多平台包或原生模块热更新时，才使用 `--platform`、`--include-native` 或原生模块发布流程。若 CI 检测到该正式版本线已经修改过原生模块，会强制进入原生热更新流程，不能为了遵循默认策略而发布不完整的通用包。
+只有明确要求平台专属包或原生模块热更新时，才使用 `--platform`、`--include-native` 或原生模块发布流程。涉及原生模块时，必须在本地准备并校验对应平台产物，不能发布不完整的通用包。
 
 跨正式版本（例如从 `1.8.0` 到 `1.8.1`）不能依靠旧版本热更新，仍然必须发布并安装完整安装包。
 
 ## 前置条件
 
-- `gh` CLI 已安装并登录 (`gh auth status`)
-- 当前分支为 `main`
-- 构建 CI 通过 GitHub Actions 自动触发
+- `pnpm` 已安装，依赖已通过 `pnpm install --frozen-lockfile` 安装
+- 当前工作树包含目标版本的代码和发布说明
+- GitCode `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf`
+- 在 macOS 上构建 Windows x64 时，需要安装并验证 `cargo-xwin`；Windows 主机直接使用本机 Rust 工具链
 
 ## 版本号规则
 
@@ -28,7 +29,7 @@
 
 ## 前置注意事项
 
-- **未提交的改动**：工作区中任何未提交的修改，直接随发布提交（`git add -A`），不需要 stash 或分离。发布后推送到 main。
+- **未提交的改动**：工作区中任何未提交的修改，直接随发布提交（`git add -A`），不需要 stash 或分离。发布后推送到目标发布分支。
 
 ## 操作步骤
 
@@ -73,54 +74,61 @@ git commit --amend --no-edit
 git tag -f v<新版本号>
 ```
 
-### 5. 推送 main 和 tag
+### 5. 本地编译三平台安装包
+
+默认在本地生成 macOS ARM64、macOS x64 和 Windows x64 安装包。产物会写入 `release/<版本号>/`：
 
 ```bash
-git push origin main
-git push origin v<新版本号>
+pnpm install --frozen-lockfile
+pnpm run pack:mac:arm64
+pnpm run pack:mac:x64
+pnpm run pack:win:x64
 ```
 
-> **必须先推送 main，再推送 tag**，否则 CI 触发时 main 上还没有 release notes commit。
-> 推送 `v*` tag 会自动触发 GitHub Actions CI 构建打包。
-
-### 6. 创建 GitHub Release（自动挂载构建产物）
+在 macOS 上首次构建 Windows x64 前，先确认交叉编译工具可用：
 
 ```bash
-# 使用 gh 创建 release，发布说明从 .md 文件读取
-gh release create v<新版本号> \
-  --title "v<新版本号>" \
-  --notes-file RELEASE_NOTES_v<新版本号>.md
+cargo xwin --version
 ```
 
-> ⚡ **产物自动上传**：推送 `v*` tag 后，CI 会自动构建 macOS DMG 和 Windows NSIS 安装包，并在构建完成后通过 `softprops/action-gh-release` 将产物自动挂载到 Release 页面附件中，无需手动上传。
->
-> 手动触发 `workflow_dispatch` 时不会上传到 Release（仅 tag 推送触发）。
+如果命令不存在，先执行 `cargo install cargo-xwin`，再重新构建 Windows 安装包。
 
-### 6b. 发布到国内资源（GitCode）
+构建完成后，确认 `release/<版本号>/` 同时包含 `*-arm64.dmg`、`*-x64.dmg` 和 Windows `.exe` 文件，再执行下一步上传。
 
-GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Release 下载构建产物并上传到 GitCode 国内镜像仓库，方便国内用户高速下载：
+### 6. 推送代码
 
 ```bash
-# 运行部署脚本（从 GitHub 下载产物 → 上传到 GitCode）
+git push origin <发布分支>
+```
+
+本地构建不依赖 GitHub Actions。Git tag 可以保留在本地用于标记版本；只有用户明确要求 GitHub Actions/Release 时，才推送会触发打包 workflow 的 `v*` tag。
+
+### 6b. 上传到 GitCode（默认路径）
+
+上传脚本默认读取本地 `release/<版本号>/`，创建或更新 GitCode Release，并上传三平台安装包：
+
+```bash
 ./scripts/deploy-release.sh v<版本号>
 ```
 
-部署脚本会同步更新官网下载地址和更新日志，并提交、推送 Landing 页面变更。脚本执行前需确保对应的 `RELEASE_NOTES_v<版本号>.md` 已存在。
+脚本不会访问 GitHub。beta/测试版不会更新稳定版 README 或公开下载页；稳定版会按原有流程同步下载地址和更新日志。脚本执行前需确保对应的 `RELEASE_NOTES_v<版本号>.md` 已存在。
 
-> 前置条件：
-> - `gh` CLI 已安装并登录 (`gh auth status`)
-> - `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件
+只有需要复用 GitHub Release 产物时，才显式使用旧路径：
 
-### 6c. Beta 版本发布
+```bash
+./scripts/deploy-release.sh --from-github v<版本号>
+```
 
-版本号带 `-beta.N` 的安装包与稳定版使用同一套按版本号命名的 Release，不再区分测试通道或 beta 专属 tag：
+### 6c. Beta/测试版发布
+
+版本号带 `-beta.N` 的安装包属于测试版，不是正式稳定版。仍使用按安装版本命名的 GitCode Release，但必须作为预发布版本管理，不更新稳定版下载入口：
 
 ```text
 安装版本：1.8.0-beta.1
 GitCode Release：v1.8.0-beta.1
 ```
 
-安装包仍使用正常部署脚本上传：
+安装包使用本地三平台构建和上传脚本：
 
 ```bash
 ./scripts/deploy-release.sh v1.8.0-beta.1
@@ -144,7 +152,7 @@ pnpm run publish:hot -- --version 1.8.0-beta.1-hot.1 --upload
 
 `1.8.0-beta.1-hot.1` 不能安装到 `1.8.0` 或 `1.8.0-beta.2`。稳定版继续使用 `vX.Y.Z` 和 `X.Y.Z-hot.N` 规则。
 
-## gh release 常用参数
+## GitHub Release（仅明确要求时）
 
 | 参数 | 说明 |
 |------|------|
@@ -156,7 +164,7 @@ pnpm run publish:hot -- --version 1.8.0-beta.1-hot.1 --upload
 | `--generate-notes` | 自动生成发布说明 |
 | `--target main` | 指定目标分支 |
 
-> 每次推送 `v*` tag 到 GitHub 时，`.github/workflows/package-artifacts.yml` 会自动触发 CI 构建，生成 macOS DMG 和 Windows NSIS 安装包。
+仅当用户明确要求 GitHub Actions/Release 时，才使用 `gh release` 或推送会触发打包的 `v*` tag。此路径由 `.github/workflows/package-artifacts.yml` 负责构建和挂载附件，不改变默认的本地编译上传流程。
 
 ## 日常热更新发布
 
@@ -222,13 +230,13 @@ git commit -m "fix: xxx"
 git push origin main
 ```
 
-推送热更新 tag 后，GitHub Actions 会从对应正式版 tag（例如 `v1.6.5`）开始检查原生相关文件。只要该版本线任意一次热更新修改过 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/platform/render/lunaRenderCore.ts`，此后所有热更新都必须继续构建并发布三个平台包，保证跳过中间热更新的客户端也能获得最新原生模块。仅当整个版本线均无原生改动时，才跳过三端构建。
+发布热更新前，在本地从对应安装版本（例如 `v1.6.5`）开始检查原生相关文件。只要该版本线任意一次热更新修改过 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/platform/render/lunaRenderCore.ts`，此后所有热更新都必须继续构建并发布三个平台包，保证跳过中间热更新的客户端也能获得最新原生模块。仅当整个版本线均无原生改动时，才跳过三端构建。
 
 > 客户端不会在启动时自动检查更新。用户需要在顶部问号窗口中手动检查，并确认下载或应用更新。
 
 ## 原生模块热更新
 
-修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。同一正式版本线只要出现过一次原生热更新，后续热更新也全部按此流程发布。推送 `hot/v*` tag 后，GitHub Actions 只构建 macOS ARM64、macOS x64 和 Windows x64 三个平台的原生模块 artifact；三端产物下载、热更新打包和 GitCode 上传均在本机完成，避免 GitHub runner 到 GitCode 的慢速链路。
+修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。同一版本线只要出现过一次原生热更新，后续热更新也全部按此流程发布。三个目标平台的原生模块和热更新包均在本机编译、校验并上传到 GitCode；除非用户明确要求，不使用 GitHub Actions 代替本地构建。
 
 原生热更新不要运行 `build-hot-update.sh`，避免三平台包就绪前先发布不含原生模块的通用 ZIP。确定下一个 build 号并提交代码与发布说明后，直接推送 `main` 和 tag：
 
@@ -238,7 +246,7 @@ git tag hot/v<版本号>-hot.<build号>
 git push origin hot/v<版本号>-hot.<build号>
 ```
 
-手动触发 `Publish Hot Update` workflow 也始终按原生热更新处理。原生热更新必须等待该 workflow 的三平台任务全部成功，再执行以下本地发布步骤：
+只有用户明确要求 GitHub Actions 时，才触发 `Publish Hot Update` workflow。默认直接完成三平台本地构建，再执行以下本地发布步骤：
 
 ```bash
 # 获取当前 tag 对应的成功运行 ID
