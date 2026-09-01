@@ -120,7 +120,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
     setMaskOwnerId(restoredPath ? activeAssetId ?? null : null)
     maskLayerOwnerRef.current = null
     setMaskData(null)
-    setSourceSize(null)
+    // 保留上一张图片的画布尺寸，避免切换素材时卸载 WebGPU 预览并重新申请设备。
     setMetadata(null)
     pendingEffectToastRef.current = null
     setEffectRenderedMaskPath(null)

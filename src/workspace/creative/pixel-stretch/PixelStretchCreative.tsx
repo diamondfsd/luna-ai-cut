@@ -144,7 +144,7 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
     maskLayerOwnerRef.current = null
     setSubjectBounds(null)
     setMaskData(null)
-    setSourceSize(null)
+    // 保留上一张图片的画布尺寸，避免切换素材时卸载 WebGPU 预览并重新申请设备。
     setMetadata(null)
     if (!activeAsset || activeAsset.kind !== 'image') return
     let cancelled = false
