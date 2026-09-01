@@ -41,6 +41,13 @@
   font-size: 12px;
 }
 
+.workspace-trim-live-duration-input {
+  width: 42px;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .workspace-trim-markers {
   gap: 10px;
   padding-top: 16px;
@@ -236,20 +243,25 @@
 .workspace-trim-live-cover-control,
 .workspace-trim-video-progress-control {
   display: grid;
-  grid-template-columns: auto minmax(28px, 1fr) auto;
   align-items: center;
   gap: 5px;
   min-width: 0;
   padding: 2px 1px 1px;
 }
 
-.workspace-trim-live-cover-control > span,
+.workspace-trim-live-cover-control {
+  grid-template-columns: minmax(28px, 1fr) 42px;
+}
+
+.workspace-trim-video-progress-control {
+  grid-template-columns: auto minmax(28px, 1fr) auto;
+}
+
 .workspace-trim-video-progress-control > span {
   color: var(--muted);
   font-size: 10px;
 }
 
-.workspace-trim-live-cover-control strong,
 .workspace-trim-video-progress-control strong {
   overflow: hidden;
   color: var(--muted);

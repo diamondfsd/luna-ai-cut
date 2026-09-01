@@ -35,7 +35,7 @@ import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativ
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import type { LivePhotoSelection } from '../workspace/trim/TrimPanel'
-import { buildVideoOutputExportItems, LIVE_PHOTO_DURATION } from '../workspace/trim/videoOutputMarkers'
+import { buildVideoOutputExportItems, livePhotoSelectionForMarker } from '../workspace/trim/videoOutputMarkers'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { BeautyMaskOverlay } from '../workspace/beauty/BeautyMaskOverlay'
 import { BeautyRetouchOverlay } from '../workspace/beauty/BeautyRetouchOverlay'
@@ -295,7 +295,6 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [trimDuration, setTrimDuration] = useState(0)
   const [trimDurationSourcePath, setTrimDurationSourcePath] = useState<string | null>(null)
   const [trimPlaying, setTrimPlaying] = useState(false)
-  const [livePhotoSelection, setLivePhotoSelection] = useState<LivePhotoSelection | null>(null)
   const [activeOutputMarkerId, setActiveOutputMarkerId] = useState<string | null>(null)
   const [playingOutputMarkerId, setPlayingOutputMarkerId] = useState<string | null>(null)
   const markerPlaybackRangeRef = useRef<{
@@ -315,9 +314,15 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   ))
   const activeVideoMarkerRef = useRef(activeVideoMarker)
   activeVideoMarkerRef.current = activeVideoMarker
+  const livePhotoSelection = useMemo(
+    () => livePhotoSelectionForMarker(edit.pipeline.outputMarkers, activeOutputMarkerId),
+    [activeOutputMarkerId, edit.pipeline.outputMarkers],
+  )
+  const handleLivePhotoSelectionChange = useCallback((selection: LivePhotoSelection | null) => {
+    if (selection) setActiveOutputMarkerId(selection.markerId)
+  }, [])
 
   useEffect(() => {
-    setLivePhotoSelection(null)
     setActiveOutputMarkerId(null)
     setPlayingOutputMarkerId(null)
     markerPlaybackRangeRef.current = null
@@ -1177,7 +1182,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             currentTime={trimCurrentTime}
             onTrimSeek={handleTrimSeek}
             livePhotoSelection={livePhotoSelection}
-            onLivePhotoSelectionChange={setLivePhotoSelection}
+            onLivePhotoSelectionChange={handleLivePhotoSelectionChange}
             activeMarkerId={activeOutputMarkerId}
             onActiveMarkerChange={setActiveOutputMarkerId}
             playingMarkerId={playingOutputMarkerId}
@@ -1203,41 +1208,41 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               outputMarkers={edit.pipeline.outputMarkers}
               secondaryFixedRange={livePhotoSelection ? {
                 startTime: livePhotoSelection.startTime,
-                duration: LIVE_PHOTO_DURATION,
+                duration: livePhotoSelection.endTime - livePhotoSelection.startTime,
                 coverTime: livePhotoSelection.coverTime,
                 label: `Live ${String(edit.pipeline.outputMarkers
                   .filter((marker) => marker.kind === 'live')
                   .findIndex((marker) => marker.id === livePhotoSelection.markerId) + 1).padStart(2, '0')}`,
                 onStartChange: (startTime) => {
                   const current = livePhotoSelection
-                  const delta = startTime - current.startTime
-                  const endTime = startTime + LIVE_PHOTO_DURATION
-                  const next = {
-                    markerId: current.markerId,
-                    startTime,
-                    endTime,
-                    coverTime: Math.max(startTime, Math.min(current.coverTime + delta, endTime - 0.01)),
-                  }
-                  setLivePhotoSelection(next)
-                  edit.commitPatch({
-                    outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
-                      marker.kind === 'live' && marker.id === current.markerId
-                        ? { ...marker, startTime: next.startTime, endTime: next.endTime, coverTime: next.coverTime }
-                        : marker
-                    )),
-                  })
+                  edit.commitUpdate((pipeline) => ({
+                    ...pipeline,
+                    outputMarkers: pipeline.outputMarkers.map((marker) => {
+                      if (marker.kind !== 'live' || marker.id !== current.markerId) return marker
+                      const delta = startTime - marker.startTime
+                      const liveDuration = marker.endTime - marker.startTime
+                      const maxStart = Math.max(0, activeTrimDuration - liveDuration)
+                      const nextStart = Math.max(0, Math.min(startTime, maxStart))
+                      const nextEnd = nextStart + liveDuration
+                      return {
+                        ...marker,
+                        startTime: nextStart,
+                        endTime: nextEnd,
+                        coverTime: Math.max(nextStart, Math.min(marker.coverTime + delta, nextEnd - 0.01)),
+                      }
+                    }),
+                  }))
                 },
                 onCoverTimeChange: (coverTime) => {
                   const current = livePhotoSelection
-                  const next = { ...current, coverTime }
-                  setLivePhotoSelection(next)
-                  edit.commitPatch({
-                    outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
+                  edit.commitUpdate((pipeline) => ({
+                    ...pipeline,
+                    outputMarkers: pipeline.outputMarkers.map((marker) => (
                       marker.kind === 'live' && marker.id === current.markerId
-                        ? { ...marker, coverTime }
+                        ? { ...marker, coverTime: Math.max(marker.startTime, Math.min(coverTime, marker.endTime - 0.01)) }
                         : marker
                     )),
-                  })
+                  }))
                 },
               } : undefined}
               thumbnails={thumbnails}

@@ -18,6 +18,10 @@ function partialPathFor(destination: string): string {
   return `${destination}.tmp`
 }
 
+export async function cleanupDownloadPartial(destination: string): Promise<void> {
+  await fs.rm(partialPathFor(destination), { force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined)
+}
+
 async function fileSize(filePath: string): Promise<number> {
   try {
     return (await fs.stat(filePath)).size
@@ -177,7 +181,12 @@ export async function downloadToFile(
   signal?: AbortSignal,
 ): Promise<string> {
   await fs.mkdir(path.dirname(destination), { recursive: true })
-  throwIfAborted(signal)
+  try {
+    throwIfAborted(signal)
+  } catch (error) {
+    await cleanupDownloadPartial(destination)
+    throw error
+  }
   const itemSourceUrl = item.sourceUrl || item.url
   if (!itemSourceUrl) throw new Error(`缺少下载地址：${item.name}`)
 
@@ -217,16 +226,24 @@ export async function downloadToFile(
         output as unknown as NodeJS.WritableStream,
         { signal },
       )
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+      throw error
     } finally {
       input.off('data', onData)
       reporter.stop()
     }
 
-    reporter.emit(copied, true)
-    throwIfAborted(signal)
-    if (copied <= 0) throw new Error(`下载内容为空：${item.name}`)
-    await fs.rename(partialPath, destination)
-    return destination
+    try {
+      reporter.emit(copied, true)
+      throwIfAborted(signal)
+      if (copied <= 0) throw new Error(`下载内容为空：${item.name}`)
+      await fs.rename(partialPath, destination)
+      return destination
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+      throw error
+    }
   }
 
   const existingFinal = await fileSize(destination)
@@ -245,11 +262,17 @@ export async function downloadToFile(
   let existingPartial = await fileSize(partialPath)
   if (existingPartial < 0) existingPartial = 0
 
-  const response = await httpGet(
-    itemSourceUrl,
-    existingPartial > 0 ? { Range: `bytes=${existingPartial}-`, Connection: 'close' } : { Connection: 'close' },
-    signal,
-  )
+  let response: http.IncomingMessage
+  try {
+    response = await httpGet(
+      itemSourceUrl,
+      existingPartial > 0 ? { Range: `bytes=${existingPartial}-`, Connection: 'close' } : { Connection: 'close' },
+      signal,
+    )
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+    throw error
+  }
 
   if (response.statusCode !== 200 && response.statusCode !== 206) {
     response.destroy()
@@ -283,20 +306,28 @@ export async function downloadToFile(
       output as unknown as NodeJS.WritableStream,
       { signal },
     )
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+    throw error
   } finally {
     response.off('data', onData)
     reporter.stop()
   }
 
-  reporter.emit(downloaded, true)
-  throwIfAborted(signal)
-  if (total !== null && downloaded < total) {
-    throw new Error(`下载不完整：${downloaded}/${total}`)
-  }
-  if (downloaded <= 0) throw new Error(`下载内容为空：${item.name}`)
+  try {
+    reporter.emit(downloaded, true)
+    throwIfAborted(signal)
+    if (total !== null && downloaded < total) {
+      throw new Error(`下载不完整：${downloaded}/${total}`)
+    }
+    if (downloaded <= 0) throw new Error(`下载内容为空：${item.name}`)
 
-  await fs.rename(partialPath, destination)
-  return destination
+    await fs.rename(partialPath, destination)
+    return destination
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+    throw error
+  }
 }
 
 async function downloadToFileWithRetryInternal(

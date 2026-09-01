@@ -260,6 +260,7 @@ fn export_frames_to_hardware_encoder(
     let started = std::time::Instant::now();
     let log_interval = (total_frames / 10).max(1);
     let mut first_frame_logged = false;
+    let mut has_video_layer = false;
     let mut converter = VideoConverter::new(
         &interop.d3d11_device,
         &interop.d3d11_context,
@@ -295,6 +296,7 @@ fn export_frames_to_hardware_encoder(
                     if crate::compositor::is_procedural_layer_type(layer.layer_type.as_deref()) {
                         (0, 1, 1)
                     } else if layer.is_video {
+                        has_video_layer = true;
                         let key = format!("{}@slot{}", layer.file_path, layer_index);
                         let decoder = match decoders.entry(key) {
                             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
@@ -317,11 +319,12 @@ fn export_frames_to_hardware_encoder(
                         let Some(decoded) = decoder.read_frame_at_seconds(layer.video_time)? else {
                             continue;
                         };
-                        let bgra = if system_memory_decode {
-                            converter.decode_to_bgra_for_export(&decoded)?
-                        } else {
-                            converter.decode_to_bgra_for_export_synchronized(&decoded)?
-                        };
+                        // The system-memory decoder still uploads into a GPU
+                        // texture before VideoProcessorBlt. Do not hand that
+                        // texture to wgpu until the D3D11 video operation has
+                        // completed; otherwise the first frame can be black
+                        // while every API call reports success.
+                        let bgra = converter.decode_to_bgra_for_export_synchronized(&decoded)?;
                         let lease = converter.unwrap_for_wgpu(&bgra)?;
                         let resource = lease.resource().clone();
                         input_bgra.push((bgra, decoded.width, decoded.height));
@@ -462,6 +465,12 @@ fn export_frames_to_hardware_encoder(
         if let Some(error) = sync_error {
             return Err(error);
         }
+        if frame_index == 0 && has_video_layer && rgba_frame_is_effectively_black(&rgba) {
+            crate::logging::write(
+                "[Export:WinGPU] compatible first frame is effectively black; aborting compatible path for FFmpeg fallback",
+            );
+            return Err("Windows GPU 兼容路径首帧为空，改用通用导出路径".to_string());
+        }
         stdin
             .write_all(&rgba)
             .map_err(|error| format!("硬件编码器输入失败: {error}"))?;
@@ -492,6 +501,17 @@ fn export_frames_to_hardware_encoder(
     Ok(())
 }
 
+fn rgba_frame_is_effectively_black(rgba: &[u8]) -> bool {
+    let mut pixel_count = 0;
+    for pixel in rgba.chunks_exact(4) {
+        pixel_count += 1;
+        if pixel[0] > 1 || pixel[1] > 1 || pixel[2] > 1 {
+            return false;
+        }
+    }
+    pixel_count > 0
+}
+
 struct TemporaryOutputGuard {
     path: PathBuf,
     armed: bool,
@@ -512,6 +532,22 @@ impl Drop for TemporaryOutputGuard {
         if self.armed {
             let _ = std::fs::remove_file(&self.path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rgba_frame_is_effectively_black;
+
+    #[test]
+    fn detects_black_rgba_frame_without_treating_alpha_as_color() {
+        assert!(rgba_frame_is_effectively_black(&[
+            0, 0, 0, 255, 1, 1, 1, 255,
+        ]));
+        assert!(!rgba_frame_is_effectively_black(&[
+            0, 0, 0, 255, 2, 1, 1, 255,
+        ]));
+        assert!(!rgba_frame_is_effectively_black(&[]));
     }
 }
 
