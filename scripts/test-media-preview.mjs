@@ -10,6 +10,7 @@ const watermarkLibrarySource = await readFile(new URL('../src/shared/watermarkLi
 const rendererSelectionSource = await readFile(new URL('../src/components/previewRendererSelection.ts', import.meta.url), 'utf8')
 const previewLayerTimingSource = await readFile(new URL('../src/components/previewLayerTiming.ts', import.meta.url), 'utf8')
 const nativePreviewOcclusionSource = await readFile(new URL('../src/components/nativePreviewOcclusion.ts', import.meta.url), 'utf8')
+const previewViewportGeometrySource = await readFile(new URL('../src/components/previewViewportGeometry.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -66,10 +67,24 @@ const nativePreviewOcclusionCompiled = ts.transpileModule(nativePreviewOcclusion
   },
 }).outputText
 const nativePreviewOcclusion = await import(`data:text/javascript;base64,${Buffer.from(nativePreviewOcclusionCompiled).toString('base64')}`)
+const previewViewportGeometryCompiled = ts.transpileModule(previewViewportGeometrySource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+  },
+}).outputText
+const previewViewportGeometry = await import(`data:text/javascript;base64,${Buffer.from(previewViewportGeometryCompiled).toString('base64')}`)
 
 function close(actual, expected, message) {
   assert.ok(Math.abs(actual - expected) < 0.0001, `${message}: expected ${expected}, got ${actual}`)
 }
+
+const firstZoom = previewViewportGeometry.zoomOffsetAroundPoint({ x: 0, y: 0 }, 1, 2, 200, -120)
+close(firstZoom.x, -200, 'first zoom keeps the cursor anchor horizontally fixed')
+close(firstZoom.y, 120, 'first zoom keeps the cursor anchor vertically fixed')
+const secondZoom = previewViewportGeometry.zoomOffsetAroundPoint(firstZoom, 2, 4, 200, -120)
+close(secondZoom.x, -600, 'repeated zoom keeps the same cursor anchor horizontally fixed')
+close(secondZoom.y, 360, 'repeated zoom keeps the same cursor anchor vertically fixed')
 
 const landscape = geometry.containPreviewSize({ width: 1000, height: 800 }, { width: 1920, height: 1080 })
 close(landscape.width, 1000, 'landscape preview width')

@@ -28,6 +28,30 @@ async function clickNavigationLinkAtPoint(page: Page, name: string, path: string
   await page.mouse.click(point.x, point.y)
 }
 
+async function previewAnchorProjection(page: Page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('canvas.webgpu-video-preview')
+    const frame = canvas?.parentElement
+    if (!canvas || !frame) return null
+    const frameRect = frame.getBoundingClientRect()
+    const centerX = frameRect.left + frameRect.width / 2
+    const centerY = frameRect.top + frameRect.height / 2
+    const offsetX = canvas.clientWidth * 0.16
+    const offsetY = canvas.clientHeight * 0.12
+    const pointerX = centerX + offsetX
+    const pointerY = centerY + offsetY
+    const canvasRect = canvas.getBoundingClientRect()
+    const scale = new DOMMatrixReadOnly(getComputedStyle(canvas).transform).a
+    return {
+      pointerX,
+      pointerY,
+      projectedX: (canvasRect.left + canvasRect.right) / 2 + offsetX * scale,
+      projectedY: (canvasRect.top + canvasRect.bottom) / 2 + offsetY * scale,
+      scale,
+    }
+  })
+}
+
 test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', async ({ lunaApp }) => {
   const hasWebGpu = await lunaApp.page.evaluate(async () => {
     const gpu = (navigator as Navigator & {
@@ -90,6 +114,20 @@ test('Electron WebGPU 基础视频预览可播放、暂停并安全切页', asyn
     const canvas = document.querySelector('canvas.webgpu-video-preview') as HTMLCanvasElement | null
     return canvas?.toDataURL('image/png').length ?? 0
   })).toBeGreaterThan(100)
+
+  const beforeZoom = await previewAnchorProjection(lunaApp.page)
+  expect(beforeZoom).not.toBeNull()
+  if (!beforeZoom) throw new Error('WebGPU 预览画布未准备好缩放锚点测试')
+  await lunaApp.page.mouse.move(beforeZoom.pointerX, beforeZoom.pointerY)
+  await lunaApp.page.mouse.wheel(0, -120)
+  await expect.poll(async () => (await previewAnchorProjection(lunaApp.page))?.scale ?? 1).toBeGreaterThan(1.01)
+  const afterZoom = await previewAnchorProjection(lunaApp.page)
+  expect(afterZoom).not.toBeNull()
+  if (!afterZoom) throw new Error('WebGPU 预览画布在缩放后消失')
+  expect(Math.abs(afterZoom.projectedX - beforeZoom.projectedX)).toBeLessThan(2)
+  expect(Math.abs(afterZoom.projectedY - beforeZoom.projectedY)).toBeLessThan(2)
+  await lunaApp.page.locator('.workspace-zoom-value').click()
+  await expect.poll(async () => (await previewAnchorProjection(lunaApp.page))?.scale ?? 0).toBeCloseTo(1, 2)
 
   const playback = lunaApp.page.locator('.ui-video-controls-button')
   await expect(playback).toHaveAttribute('aria-label', '播放')

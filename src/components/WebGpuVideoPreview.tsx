@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 
 import { logger } from '../lib/rendererLogger'
 import type { PreviewLayer } from '../shared/types'
 import { WebGpuVideoRenderer } from './webgpuVideoRenderer'
+import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './WebGpuVideoPreview.css'
 
 interface WebGpuVideoPreviewProps {
@@ -14,6 +15,10 @@ interface WebGpuVideoPreviewProps {
   playing: boolean
   time?: number
   imageScale?: number | null
+  maxImageScale?: number
+  viewportKey?: string
+  onImageScaleChange?: (scale: number | null) => void
+  onViewportChange?: () => void
   onVideoElement?: (element: HTMLMediaElement | null) => void
   onError: (reason: string) => void
   onRender?: () => void
@@ -28,6 +33,10 @@ export function WebGpuVideoPreview({
   playing,
   time = 0,
   imageScale,
+  maxImageScale = 5,
+  viewportKey,
+  onImageScaleChange,
+  onViewportChange,
   onVideoElement,
   onError,
   onRender,
@@ -35,8 +44,21 @@ export function WebGpuVideoPreview({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<WebGpuVideoRenderer | null>(null)
+  const imageInteraction = useCanvasViewportInteraction({
+    layers,
+    canvasRef,
+    interactiveImageLayerIndexes: layers.length > 0 ? [0] : [],
+    viewportKey,
+    maxImageScale,
+    imageScale,
+    onImageScaleChange,
+  })
   const callbackRef = useRef({ onVideoElement, onError, onRender })
   callbackRef.current = { onVideoElement, onError, onRender }
+
+  useLayoutEffect(() => {
+    onViewportChange?.()
+  }, [imageInteraction.style, onViewportChange])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -107,12 +129,16 @@ export function WebGpuVideoPreview({
     >
       <canvas
         ref={canvasRef}
-        className="webgpu-video-preview"
+        className={`webgpu-video-preview${imageInteraction.interactive ? ' is-interactive' : ''}${imageInteraction.dragging ? ' is-dragging' : ''}`}
         width={canvasWidth}
         height={canvasHeight}
-        style={{
-          transform: imageScale == null ? undefined : `scale(${imageScale})`,
-        }}
+        style={imageInteraction.style}
+        onPointerDown={imageInteraction.onPointerDown}
+        onPointerMove={imageInteraction.onPointerMove}
+        onPointerUp={imageInteraction.onPointerEnd}
+        onPointerCancel={imageInteraction.onPointerEnd}
+        onWheel={imageInteraction.onWheel}
+        onDoubleClick={imageInteraction.onDoubleClick}
         aria-label="视频预览"
       />
     </div>

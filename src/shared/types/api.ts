@@ -31,6 +31,7 @@ import type {
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { CameraVideoStreamApi } from './cameraVideoStream'
+import type { ObsStreamDemoApi } from './obsStreamDemo'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
@@ -196,6 +197,7 @@ export interface WorkspaceSegmentationModelStatus {
 }
 
 export interface LunaApi {
+  isPackaged: boolean
   startupReady(): void
   setFullScreen(enabled: boolean): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
@@ -238,6 +240,7 @@ export interface LunaApi {
   }
   cameraSource: CameraMediaSourceApi
   cameraVideoStream: CameraVideoStreamApi
+  obsStreamDemo: ObsStreamDemoApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>
