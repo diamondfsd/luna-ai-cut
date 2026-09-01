@@ -267,6 +267,10 @@ export class DjiCameraSession {
     })
   }
 
+  previewTransportState(): ReturnType<DjiUdpTransport['previewTransportState']> {
+    return this.udp.previewTransportState()
+  }
+
   startPreview(): Promise<void> {
     if (this.previewActive) return Promise.resolve()
     if (this.previewStartPromise) return this.previewStartPromise
@@ -309,6 +313,7 @@ export class DjiCameraSession {
       this.previewRequested = true
       this.udp.startAckTimer(20)
 
+      const previewStart = previewCommand(0xf002, 0x00, 0x2b, PREVIEW_START_TRIGGER, 0x40, 0x60, 0x75)
       // Live view and media browsing use different camera-wide modes. Leave browsing first so a
       // preview opened after the media grid does not keep the camera in playback.
       await this.udp.commandAndCollect(
@@ -319,7 +324,10 @@ export class DjiCameraSession {
       this.playbackPrepared = false
       this.playbackConfirmed = false
 
-      await this.sendPreviewCommand(generation, previewCommand(0xf002, 0x00, 0x2b, PREVIEW_START_TRIGGER, 0x40, 0x60, 0x75))
+      const previewChannel = await this.udp.synchronizePreviewChannel(previewStart, 500)
+      if (!this.isPreviewGenerationCurrent(generation)) return
+
+      if (!previewChannel.probed) await this.sendPreviewCommand(generation, previewStart)
       await this.previewDelay(generation, PREVIEW_PRESENCE_DELAY_MS)
       await this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, PREVIEW_APP_PRESENCE))
       await this.sendPreviewCommand(generation, previewCommand(0x0302, 0x03, 0xda, hex('05ffffffff')))

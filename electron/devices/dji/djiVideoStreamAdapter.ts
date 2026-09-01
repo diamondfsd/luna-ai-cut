@@ -109,7 +109,24 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
       return
     }
 
+    let datagrams = 0
+    let firstAccessUnitSeen = false
+    let resolveFirstAccessUnit: (() => void) | null = null
+    const firstAccessUnit = new Promise<void>((resolve) => {
+      resolveFirstAccessUnit = resolve
+    })
     const reassembler = new DjiPreviewReassembler((unit) => {
+      if (!firstAccessUnitSeen) {
+        firstAccessUnitSeen = true
+        resolveFirstAccessUnit?.()
+        logMainInfo('[相机视频流] 收到首个完整 DJI 视频帧', {
+          deviceId,
+          host,
+          bytes: unit.data.length,
+          parts: unit.parts,
+          nalTypes: unit.nalTypes,
+        })
+      }
       if (this.statusValue.state !== 'starting' && this.statusValue.state !== 'running') return
       this.statusValue = {
         ...this.statusValue,
@@ -119,6 +136,16 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
       this.server.publish(unit.data)
     })
     this.unsubscribePreview = session.subscribePreviewPackets((packet) => {
+      datagrams += 1
+      if (datagrams === 1) {
+        logMainInfo('[相机视频流] 收到首个 DJI 预览数据包', {
+          deviceId,
+          host,
+          packetType: `0x${packet.packetType.toString(16).padStart(2, '0')}`,
+          sequence: `0x${packet.sequence.toString(16).padStart(4, '0')}`,
+          bytes: packet.raw.length,
+        })
+      }
       reassembler.feed(packet)
     })
     const local = await this.server.start()
@@ -133,6 +160,24 @@ export class DjiVideoStreamAdapter implements CameraVideoStreamAdapter {
     if (generation !== this.generation) {
       await this.cleanupTransport()
       return
+    }
+    if (!firstAccessUnitSeen) {
+      await Promise.race([
+        firstAccessUnit,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('DJI 相机未返回实时视频流')), 5000)
+        }),
+      ]).catch((error: unknown) => {
+        logMainWarn('[相机视频流] 等待首个视频帧超时', {
+          deviceId,
+          host,
+          datagrams,
+          transport: session.previewTransportState(),
+          reassembly: reassembler.snapshot(),
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      })
     }
     this.statusValue = { ...this.statusValue, state: 'running', message: 'DJI 相机预览已连接' }
     logMainInfo('[相机视频流] DJI 预览已启动', { deviceId, host, url: local.url })
