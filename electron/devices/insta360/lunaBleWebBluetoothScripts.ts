@@ -33,6 +33,14 @@ export function buildLunaWebBluetoothConnectScript(token: string): string {
       if (!window.luna?.lunaBluetooth?.emit) throw new Error('Luna 蓝牙页面桥接不可用');
       window.luna.lunaBluetooth.emit({ token: config.token, event, characteristic, payloadHex, message });
     };
+    const errorDetail = (error) => {
+      const name = typeof error?.name === 'string' ? error.name : '';
+      const message = typeof error?.message === 'string' ? error.message : '';
+      const detail = [name, message].filter(Boolean).join(': ');
+      if (detail) return detail;
+      const text = String(error || '未知错误');
+      return text === '[object Object]' ? '未知错误' : text;
+    };
     const stage = (message) => { try { emit('stage', '', '', message); } catch (_) {} };
     const cleanup = (state) => {
       if (!state) return;
@@ -68,9 +76,9 @@ export function buildLunaWebBluetoothConnectScript(token: string): string {
         if (!device) {
           stage('开始扫描 Luna 设备');
           device = await navigator.bluetooth.requestDevice({
-            // Discover every nearby BLE device first. Luna is identified only
-            // after GATT connection by its service and characteristics.
-            acceptAllDevices: true,
+            // The camera advertises this service. Filter at discovery time so
+            // Electron cannot select an unrelated nearby BLE device.
+            filters: [{ services: [config.serviceUuid] }],
             optionalServices: [config.serviceUuid],
           });
           stage('扫描已选择设备');
@@ -107,7 +115,7 @@ export function buildLunaWebBluetoothConnectScript(token: string): string {
           notifyCharacteristicUuid: notifyCharacteristic.uuid,
         };
       } catch (error) {
-        stage('Luna 蓝牙连接失败');
+        stage('Luna 蓝牙连接失败：' + errorDetail(error));
         cleanup(window[stateKey]);
         if (!window[stateKey] && device) {
           try { if (device.gatt?.connected) device.gatt.disconnect(); } catch (_) {}
