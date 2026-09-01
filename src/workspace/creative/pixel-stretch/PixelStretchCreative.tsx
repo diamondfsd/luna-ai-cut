@@ -19,6 +19,8 @@ import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
 import { CreativeCompareButton } from '../shared/CreativeCompareButton'
+import { CreativePreviewQualitySelect } from '../shared/CreativePreviewQualitySelect'
+import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import { preparePreciseSubjectModelIfNeeded } from '../shared/preparePreciseSubjectModel'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
@@ -102,6 +104,7 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const stageRef = useRef<HTMLDivElement>(null)
   const isImage = activeAsset?.kind === 'image'
   const activeMaskPath = maskOwnerId === activeAsset?.id ? maskPath : null
+  const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
   const useWebGpuPreview = isImage && (settings?.experimentalWebGpuPreview ?? true) && !webGpuPreviewFailed
   const isHorizontalPreset = preset === 'left' || preset === 'right' || preset === 'horizontal'
   const creativeMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === PIXEL_STRETCH_MASK_LAYER_ID)
@@ -489,10 +492,10 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   }
 
   return <section className="pixel-stretch-page">
-    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
+    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /><CreativePreviewQualitySelect value={previewQuality} onChange={changePreviewQuality} /></header>
     <div className="pixel-stretch-preview">
       {activeAsset && !isImage ? <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>像素拉伸目前支持图片素材</span></div>
-        : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}>{useWebGpuPreview ? <WebGpuVideoPreview className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} playing={false} interactiveImageLayerIndexes={[]} onError={handleWebGpuPreviewError} /> : <LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />}{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
+        : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}>{useWebGpuPreview ? <WebGpuVideoPreview className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={previewMaxSide} playing={false} interactiveImageLayerIndexes={[]} onError={handleWebGpuPreviewError} /> : <LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={previewMaxSide} interactiveImageLayerIndexes={[]} onError={toast.error} />}{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
           : activeAsset && isImage ? <img className="pixel-stretch-source-fallback" src={assetSourceUrl(activeAsset)} alt="" />
             : <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要制作效果的图片</span></div>}
     </div>

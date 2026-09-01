@@ -114,6 +114,10 @@ export function WebGpuVideoPreview({
   }, [canvasHeight, canvasWidth])
 
   useEffect(() => {
+    rendererRef.current?.setMaxSide(maxSide)
+  }, [maxSide])
+
+  useEffect(() => {
     void rendererRef.current?.setLayers(layers).catch((error: unknown) => {
       callbackRef.current.onError(error instanceof Error ? error.message : String(error))
     })

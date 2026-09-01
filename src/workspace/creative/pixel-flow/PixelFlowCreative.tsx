@@ -10,6 +10,8 @@ import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import { loadCreativeImageSize } from '../shared/creativeMedia'
+import { CreativePreviewQualitySelect } from '../shared/CreativePreviewQualitySelect'
+import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import { PixelFlowControls } from './PixelFlowControls'
 import { combinePixelFlowDepthMask, type PixelFlowMask } from './pixelFlowRender'
 import { buildPixelFlowLayer, type PixelFlowEffectSettings } from './pixelFlowLayers'
@@ -69,6 +71,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const operationRef = useRef<string | null>(null)
   const attemptedAssetRef = useRef<string | null>(null)
   const depthBuildRef = useRef<string | null>(null)
+  const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
 
   useEffect(() => {
     for (const requestId of requestRef.current) void window.luna.workspace.cancelSegmentation(requestId)
@@ -357,12 +360,12 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }, [activeAsset, depthMaskPath, edit.pipeline, effectSettings, playbackDuration, sourceSize])
   const previewSize = useMemo(() => {
     if (!sourceSize) return null
-    const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
+    const scale = Math.min(1, previewMaxSide / Math.max(sourceSize.width, sourceSize.height))
     return {
       width: Math.max(1, Math.round(sourceSize.width * scale)),
       height: Math.max(1, Math.round(sourceSize.height * scale)),
     }
-  }, [sourceSize])
+  }, [previewMaxSide, sourceSize])
   const playbackReady = Boolean(sourceSize && depthMaskPath && !segmenting)
   const maskPreparing = Boolean(activeAsset && (!sourceSize || segmenting || !depthMaskPath))
 
@@ -413,22 +416,23 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>返回</Button>
       <span>像素流光</span>
       <Button className="pixel-flow-replay" variant="toolbar" size="compact" icon={<Play size={14} />} disabled={!playbackReady} onClick={replay}>重播</Button>
+      <CreativePreviewQualitySelect value={previewQuality} onChange={changePreviewQuality} />
     </header>
     <div className="pixel-flow-preview">
       {activeAsset ? <div className={`pixel-flow-stage${sourceSize ? sourceSize.width > sourceSize.height ? ' is-landscape' : ' is-portrait' : ''}`}>
         <div className="pixel-flow-render-surface">
-          {previewLayers.length > 0 && previewSize && (
+          {previewLayers.length > 0 && previewSize && <>
             <LrcRender
               className="pixel-flow-canvas"
               layers={previewLayers}
               canvasWidth={previewSize.width}
               canvasHeight={previewSize.height}
-              maxSide={1080}
+              maxSide={previewMaxSide}
               compositionTime={currentTime}
               interactiveImageLayerIndexes={[]}
               onError={handleError}
             />
-          )}
+          </>}
         </div>
         {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>生成中</span></div>}
         <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={playbackDuration} playing={playing} disabled={!playbackReady} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />

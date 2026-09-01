@@ -708,6 +708,7 @@ export class WebGpuVideoRenderer {
   private renderHeight = 1
   private layers: PreviewLayer[] = []
   private compositionTime = 0
+  private playbackStartCompositionTime: number | null = null
   private playing = false
   private active = true
   private initialized = false
@@ -716,6 +717,7 @@ export class WebGpuVideoRenderer {
   private renderInFlight = false
   private renderQueued = false
   private directRenderQueued = false
+  private imageResourcesInvalidated = false
   private readonly renderWaiters = new Set<RenderWaiter>()
   private resizeQueued = false
   private renderRevision = 0
@@ -847,9 +849,25 @@ export class WebGpuVideoRenderer {
     else this.syncCanvasBackingSize()
   }
 
+  /** Rebuild source textures when the preview quality changes. */
+  setMaxSide(maxSide: number): void {
+    const nextMaxSide = Math.max(1, Math.round(maxSide))
+    if (nextMaxSide === this.options.maxSide) return
+    this.options.maxSide = nextMaxSide
+    this.renderRevision += 1
+    if (this.renderInFlight) {
+      this.imageResourcesInvalidated = true
+      this.renderQueued = true
+      return
+    }
+    this.clearImageResources()
+    this.scheduleRender()
+  }
+
   async setLayers(layers: PreviewLayer[]): Promise<void> {
     if (!this.initialized || this.destroyed || this.failed) return
     this.layers = layers
+    if (this.active && this.playing) this.playbackStartCompositionTime = this.compositionTime
     const summary = layers.map((layer) => `${layer.layerType ?? 'media'}:${layer.isVideo ? 'video' : 'still'}:${layer.dstW}x${layer.dstH}`).join('|')
     if (summary !== this.lastLayerSummary) {
       this.lastLayerSummary = summary
@@ -862,9 +880,12 @@ export class WebGpuVideoRenderer {
 
   async setPlayback(active: boolean, playing: boolean, time: number): Promise<void> {
     if (this.destroyed || this.failed) return
+    const wasPlaying = this.active && this.playing
     this.active = active
     this.playing = playing
     this.compositionTime = Math.max(0, Number.isFinite(time) ? time : 0)
+    if (playing && active && !wasPlaying) this.playbackStartCompositionTime = this.compositionTime
+    if (!playing || !active) this.playbackStartCompositionTime = null
     for (const entry of this.videos.values()) {
       if (!entry.ready) continue
       if (playing && active) await entry.video.play().catch(() => undefined)
@@ -1259,6 +1280,7 @@ export class WebGpuVideoRenderer {
       video.addEventListener('loadeddata', () => {
         if (this.destroyed || this.videos.get(key) !== entry) return
         entry.ready = true
+        if (this.playing && this.active) void entry.video.play().catch(() => undefined)
         this.scheduleRender()
       })
       video.addEventListener('loadedmetadata', () => this.updatePrimaryVideo())
@@ -1304,18 +1326,23 @@ export class WebGpuVideoRenderer {
   }
 
   private syncVideoClocks(): void {
-    const playbackTime = this.currentPlaybackCompositionTime()
+    const playbackTime = this.playbackStartCompositionTime ?? this.currentPlaybackCompositionTime()
     if (this.playing) this.compositionTime = playbackTime
+    let primaryVideoReady = false
     for (const layer of this.layers) {
       if (!layer.isVideo) continue
       const entry = this.videos.get(videoLayerKey(layer))
       if (!entry?.ready) continue
+      if (entry.video === this.currentPrimaryVideo) primaryVideoReady = true
       // 播放时主视频自身就是时钟，不能用低频的 React timeupdate 反向拉回它。
       // 其他视频层仍跟随主视频的合成时间，避免多视频素材逐渐漂移。
-      if (this.playing && entry.video === this.currentPrimaryVideo) continue
+      if (this.playing && entry.video === this.currentPrimaryVideo && this.playbackStartCompositionTime === null) continue
       const target = Math.max(0, numberOr(layer.videoTime, 0) + playbackTime - numberOr(layer.videoOffset, 0))
       const threshold = this.playing ? 0.15 : 0.01
       if (Math.abs(entry.video.currentTime - target) > threshold) entry.video.currentTime = target
+    }
+    if (this.playbackStartCompositionTime !== null && primaryVideoReady) {
+      this.playbackStartCompositionTime = null
     }
   }
 
@@ -1835,6 +1862,10 @@ export class WebGpuVideoRenderer {
       }
     } finally {
       this.renderInFlight = false
+      if (this.imageResourcesInvalidated) {
+        this.imageResourcesInvalidated = false
+        this.clearImageResources()
+      }
       if (this.resizeQueued && !this.destroyed) {
         this.resizeQueued = false
         this.resize()
@@ -1847,6 +1878,11 @@ export class WebGpuVideoRenderer {
         else this.scheduleRender()
       }
     }
+  }
+
+  private clearImageResources(): void {
+    for (const resource of this.images.values()) resource.texture.destroy?.()
+    this.images.clear()
   }
 
 }
