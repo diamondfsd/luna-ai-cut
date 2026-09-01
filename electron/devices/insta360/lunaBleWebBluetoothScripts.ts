@@ -6,7 +6,6 @@ function scriptValue(value: unknown): string {
 
 function bluetoothConfig(): NonNullable<DeviceDefinition['bluetooth']> {
   const config = {
-    namePrefixes: ['Luna ', 'Insta360 Z03', 'Insta360 Z05', 'Insta360', '##Insta360##'],
     serviceUuid: '0000be80-0000-1000-8000-00805f9b34fb',
     writeCharacteristicUuid: '0000be81-0000-1000-8000-00805f9b34fb',
     notifyCharacteristicUuid: '0000be82-0000-1000-8000-00805f9b34fb',
@@ -28,7 +27,6 @@ export function buildLunaWebBluetoothConnectScript(token: string): string {
   return `(() => {
     const config = ${scriptValue(config)};
     const stateKey = '__lunaBluetoothState';
-    const matchesName = (name) => config.namePrefixes.some((prefix) => String(name || '').toLowerCase().startsWith(String(prefix).toLowerCase()));
     const toHex = (value) => Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))
       .map((byte) => byte.toString(16).padStart(2, '0')).join('');
     const emit = (event, characteristic, payloadHex, message) => {
@@ -52,16 +50,27 @@ export function buildLunaWebBluetoothConnectScript(token: string): string {
         stage('检查已授权的 Luna 设备');
         if (typeof navigator.bluetooth.getDevices === 'function') {
           const grantedDevices = await navigator.bluetooth.getDevices();
-          device = grantedDevices.find((candidate) => matchesName(candidate.name));
+          device = null;
+          for (const candidate of grantedDevices) {
+            try {
+              if (!candidate?.gatt) continue;
+              const server = await candidate.gatt.connect();
+              await server.getPrimaryService(config.serviceUuid);
+              try { candidate.gatt.disconnect(); } catch (_) {}
+              device = candidate;
+              break;
+            } catch (_) {
+              try { if (candidate?.gatt?.connected) candidate.gatt.disconnect(); } catch (_) {}
+            }
+          }
           if (device) { source = 'granted'; stage('找到已授权设备'); }
         }
         if (!device) {
           stage('开始扫描 Luna 设备');
           device = await navigator.bluetooth.requestDevice({
-            // Require the verified Luna GATT service before attempting a
-            // connection. Electron's device-selection callback still picks
-            // the first matching advertisement immediately.
-            filters: [{ services: [config.serviceUuid] }],
+            // Discover every nearby BLE device first. Luna is identified only
+            // after GATT connection by its service and characteristics.
+            acceptAllDevices: true,
             optionalServices: [config.serviceUuid],
           });
           stage('扫描已选择设备');
@@ -135,8 +144,4 @@ export function buildLunaWebBluetoothCleanupScript(token: string): string {
       window.__lunaBluetoothState = null;
     }
   })()`
-}
-
-export function lunaBluetoothNamePrefixes(): string[] {
-  return bluetoothConfig().namePrefixes
 }

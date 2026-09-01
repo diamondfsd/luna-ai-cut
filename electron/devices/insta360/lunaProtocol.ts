@@ -1,12 +1,15 @@
 import { DEFAULT_DEVICE } from '../definitions/deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from '../../infrastructure/loggerService'
-import { connectSocket, Insta360TcpSession, type Insta360VideoFrameListener } from './insta360TcpProtocol'
+import { Insta360TcpSession, probeInsta360ControlResponse, type Insta360VideoFrameListener } from './insta360TcpProtocol'
 import { buildKeepAliveOptionsBody, buildStartLiveStreamBody, CODE_START_LIVE_STREAM, CODE_STOP_LIVE_STREAM } from './lunaControlMessages'
 import { parseLunaFilePaths } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../../../src/shared/types'
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
 export const CAMERA_PATH = DEFAULT_DEVICE.storages.find((storage) => storage.default)?.path ?? DEFAULT_DEVICE.storages[0]?.path ?? '/'
+
+const CODE_GET_CURRENT_CAPTURE_STATUS = 15
+const STATUS_OK = 200
 
 function cameraUrl(host: string, cameraPath = CAMERA_PATH): string {
   return `http://${host}${cameraPath}`
@@ -17,18 +20,6 @@ function tcpHost(host: string): string {
     return new URL(`http://${host}`).hostname
   } catch {
     return host.split(':')[0] || host
-  }
-}
-
-function httpEndpoint(host: string, cameraPath = CAMERA_PATH): { host: string; port: number } {
-  try {
-    const url = new URL(cameraUrl(host, cameraPath))
-    return {
-      host: url.hostname,
-      port: url.port ? Number(url.port) : 80,
-    }
-  } catch {
-    return { host: tcpHost(host), port: 80 }
   }
 }
 
@@ -193,53 +184,55 @@ export class LunaClient {
 
   async checkStatus(): Promise<ConnectionStatus> {
     const t0 = performance.now()
-    let httpOk = false
     let controlOk = false
     let message = '未检测到 Luna 相机'
-    let httpError: string | null = null
     let controlError: string | null = null
 
-    logMainInfo(`[状态检测] 开始端口探测`, { host: this.host })
+    logMainInfo(`[状态检测] 开始控制指令探测`, { host: this.host, port: this.controlPort })
     const t2 = performance.now()
     if (this.controlSession?.isOpen) {
-      controlOk = true
-      logMainInfo(`[状态检测] 控制端口已存活（跳过探测）`, { host: this.host })
-    } else {
       try {
-        const socket = await connectSocket(tcpHost(this.host), this.controlPort, 1500)
-        socket.destroy()
+        const response = await this.controlSession.sendCommand(CODE_GET_CURRENT_CAPTURE_STATUS, Buffer.alloc(0), 3000)
+        if (response.code !== STATUS_OK) throw new Error(`Luna 控制指令返回 ${response.code}`)
         controlOk = true
-        logMainInfo(`[状态检测] 控制端口探测成功`, { host: this.host, port: this.controlPort, elapsedMs: Math.round(performance.now() - t2) })
+        logMainInfo(`[状态检测] 控制指令收到响应帧`, {
+          host: this.host,
+          commandCode: CODE_GET_CURRENT_CAPTURE_STATUS,
+          responseCode: response.code,
+          requestId: response.requestId,
+          elapsedMs: Math.round(performance.now() - t2),
+        })
       } catch (error) {
         controlError = error instanceof Error ? error.message : String(error)
-        message = `控制端口不可用：${controlError}`
-        logMainWarn(`[状态检测] 控制端口探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t2), error: controlError })
-      }
-    }
-
-    if (controlOk) {
-      const t1 = performance.now()
-      try {
-        const endpoint = httpEndpoint(this.host)
-        const socket = await connectSocket(endpoint.host, endpoint.port, 1500)
-        socket.destroy()
-        httpOk = true
-        logMainInfo(`[状态检测] HTTP 端口探测成功`, { host: this.host, hostPort: `${endpoint.host}:${endpoint.port}`, elapsedMs: Math.round(performance.now() - t1) })
-      } catch (error) {
-        httpError = error instanceof Error ? error.message : String(error)
-        message = `HTTP 服务不可用：${httpError}`
-        logMainWarn(`[状态检测] HTTP 端口探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t1), error: httpError })
+        message = `控制指令无响应：${controlError}`
+        logMainWarn(`[状态检测] 控制指令响应探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t2), error: controlError })
+        this.resetControlSession()
       }
     } else {
-      logMainWarn(`[状态检测] 控制端口未建立，跳过 HTTP 探测`, { host: this.host, port: this.controlPort })
+      try {
+        const response = await probeInsta360ControlResponse(tcpHost(this.host), this.controlPort)
+        if (response.code !== STATUS_OK) throw new Error(`Luna 控制指令返回 ${response.code}`)
+        controlOk = true
+        logMainInfo(`[状态检测] 控制指令收到响应帧`, {
+          host: this.host,
+          port: this.controlPort,
+          commandCode: CODE_GET_CURRENT_CAPTURE_STATUS,
+          responseCode: response.code,
+          requestId: response.requestId,
+          elapsedMs: Math.round(performance.now() - t2),
+        })
+      } catch (error) {
+        controlError = error instanceof Error ? error.message : String(error)
+        message = `控制指令无响应：${controlError}`
+        logMainWarn(`[状态检测] 控制指令响应探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t2), error: controlError })
+      }
     }
 
-    if (httpOk && controlOk) {
-      message = '已检测到 Luna 相机'
-    }
+    if (controlOk) message = '已检测到 Luna 相机'
 
-    logMainInfo(`[状态检测] 端口检测完成`, { host: this.host, httpOk, controlOk, totalElapsedMs: Math.round(performance.now() - t0), httpError, controlError, message })
-    return { host: this.host, httpOk, controlOk, message }
+    logMainInfo(`[状态检测] 控制指令探测完成`, { host: this.host, controlOk, totalElapsedMs: Math.round(performance.now() - t0), controlError, message })
+    // Keep the legacy field populated for callers that still render it; connection validity is controlOk only.
+    return { host: this.host, httpOk: controlOk, controlOk, message }
   }
 
   storagePath(storageId?: string): string {

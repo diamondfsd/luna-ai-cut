@@ -67,7 +67,7 @@ function isLoopbackHost(host: string): boolean {
 }
 
 function withWifiFailureMessage(status: ConnectionStatus, wifiMessage: string, shouldIncludeWifiMessage: boolean): ConnectionStatus {
-  if (!shouldIncludeWifiMessage || (status.httpOk && status.controlOk)) return status
+  if (!shouldIncludeWifiMessage || status.controlOk) return status
   return {
     ...status,
     message: `${wifiMessage}；${status.message}`,
@@ -78,7 +78,7 @@ function wirelessStatus(status: ConnectionStatus, definition: DeviceDefinition, 
   return {
     ...status,
     mode: 'wireless',
-    connected: Boolean(status.httpOk && status.controlOk),
+    connected: Boolean(status.controlOk),
     sourceId: `wireless:${definition.id}:${host}`,
     capabilities: wirelessCapabilities(definition),
   }
@@ -132,8 +132,6 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     const loopback = isLoopbackHost(host)
     const wifiJoin = loopback
       ? { attempted: false, connected: true, message: '模拟设备使用本机网络' }
-      : this.options.wireless?.preparation === 'already-connected'
-        ? { attempted: false, connected: true, message: '使用当前系统 Wi-Fi' }
       : await autoJoinDeviceWifi(
         definition.wifi,
         wifiSessionKey,
@@ -164,7 +162,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         wifiJoin.message,
         !loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected,
       )
-      if (!status.httpOk || !status.controlOk) {
+      if (!status.controlOk) {
         const restore = wifiJoin.attempted && wifiJoin.connected
           ? await restoreDeviceWifi(wifiSessionKey).catch(() => null)
           : null

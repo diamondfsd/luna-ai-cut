@@ -22,7 +22,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
   const obsStreamDemoVisible = !window.luna.isPackaged
-  const connected = Boolean(connection?.httpOk && connection.controlOk)
+  const connected = Boolean(connection?.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`

@@ -19,7 +19,6 @@
     "rateMbps": 30
   },
   "bluetooth": {
-    "namePrefixes": ["Luna ", "Insta360 Z03", "Insta360 Z05", "Insta360", "##Insta360##"],
     "scanServiceUuids": ["0000be80-0000-1000-8000-00805f9b34fb"],
     "optionalServiceUuids": [
       "0000be80-0000-1000-8000-00805f9b34fb"
