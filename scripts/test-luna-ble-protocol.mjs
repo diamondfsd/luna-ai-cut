@@ -14,6 +14,12 @@ import {
   parseEncryptedMessagePacket,
   parseGetOptionsResponse,
 } from '../electron/devices/insta360/lunaBleCodec.ts'
+import { buildLunaWebBluetoothConnectScript } from '../electron/devices/insta360/lunaBleWebBluetoothScripts.ts'
+
+const bluetoothScript = buildLunaWebBluetoothConnectScript('test-token')
+assert.match(bluetoothScript, /filters: \[\{ services: \[config\.serviceUuid\] \}\]/, 'Luna BLE discovery must filter by service UUID')
+assert.doesNotMatch(bluetoothScript, /acceptAllDevices/, 'Luna BLE discovery must not accept unrelated devices')
+assert.doesNotMatch(bluetoothScript, /namePrefix|namePrefixes/, 'Luna BLE discovery must not identify devices by name prefix')
 
 const optionsRequest = buildGetOptionsRequest([36, 37, 43])
 assert.equal(optionsRequest.toString('hex'), '08240825082b', '官方 GetOptions 应使用非 packed repeated 编码')

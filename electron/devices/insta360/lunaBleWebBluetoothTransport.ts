@@ -29,12 +29,16 @@ function errorMessage(error: unknown): string {
     const detail = [name, message].filter(Boolean).join(': ')
     if (detail || code) return [detail, code ? `code=${code}` : ''].filter(Boolean).join(' ')
     try {
-      return JSON.stringify(error)
+      const json = JSON.stringify(error)
+      if (json && json !== '{}') return json
     } catch {
-      return Object.prototype.toString.call(error)
+      // Fall through to the string representation below.
     }
+    const text = String(error)
+    return text === '[object Object]' ? Object.prototype.toString.call(error) : text
   }
-  return String(error)
+  const text = String(error)
+  return text === '[object Object]' ? Object.prototype.toString.call(error) : text
 }
 
 function delay(ms: number): Promise<void> {
@@ -130,11 +134,12 @@ export function installLunaWebBluetoothHandlers(win: BrowserWindow): void {
 
     event.preventDefault()
     request.callback = callback
-    // The renderer request accepts all devices for diagnosis. Luna is
-    // identified later by its GATT service and characteristics.
+    // The renderer request is filtered by Luna's advertised service UUID, so
+    // every candidate here has already passed the protocol-level scan filter.
     const target = devices[0]
     logMainInfo('[Luna BLE] Electron 收到附近蓝牙设备列表', {
       candidateCount: devices.length,
+      filter: 'service:0000be80-0000-1000-8000-00805f9b34fb',
       devices: devices.map((device) => ({
         deviceId: device.deviceId,
         deviceName: device.deviceName,
