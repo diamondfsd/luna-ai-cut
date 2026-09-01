@@ -13,6 +13,7 @@
  *
  * 日志输出到 test-output/luna-rc-test.log
  */
+// Windows tests use the compatible FFmpeg path by default; pass --native to opt into zero-copy.
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -43,7 +44,8 @@ try {
 // ── 参数 ──
 const inputPath = process.argv.find((value, index) => index > 1 && !value.startsWith('--'))
 const softwareMode = process.argv.includes('--software')
-const compatibleMode = process.argv.includes('--compatible')
+const nativeMode = process.argv.includes('--native')
+const compatibleMode = !nativeMode
 if (!inputPath) {
   console.error('Usage: node scripts/test-gpu-export.mjs <video-path>')
   process.exit(1)
@@ -56,11 +58,7 @@ if (!existsSync(inputPath)) {
 // Keep the three test modes deterministic even when a developer has stale
 // Windows export overrides in the parent shell.
 if (process.platform === 'win32' && !softwareMode) {
-  if (compatibleMode) {
-    process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER = 'ffmpeg'
-  } else {
-    delete process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER
-  }
+  process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER = nativeMode ? 'mf' : 'ffmpeg'
   delete process.env.LUNA_WINDOWS_GPU_EXPORT_INPUT
 } else {
   delete process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER
@@ -390,7 +388,7 @@ async function main() {
       } else {
         const pipeline = winGpuPipeline[winGpuPipeline.length - 1] ?? ''
         if (backend !== 'Dx12') verificationIssues.push(`native backend is ${backend ?? '?'}, expected Dx12`)
-        if (!lines.some(l => l.includes('selecting zero-copy path by default'))) verificationIssues.push('native mode was not selected by default')
+        if (!lines.some(l => l.includes('selecting zero-copy path by explicit Media Foundation configuration'))) verificationIssues.push('native mode was not selected explicitly')
         if (winGpuStart.length === 0) verificationIssues.push('native path was not attempted')
         if (winGpuCompleted.length === 0) verificationIssues.push('native path did not complete')
         if (winGpuFallback.length > 0) verificationIssues.push('native path fell back to another export path')

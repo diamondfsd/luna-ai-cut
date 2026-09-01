@@ -245,7 +245,11 @@ impl Task for ExportCompositionVideoTask {
         }
 
         #[cfg(target_os = "windows")]
-        let mut windows_gpu_needs_compatible = false;
+        // Keep the Windows zero-copy path opt-in while its D3D11/D3D12
+        // interop stability is being verified. The default uses the
+        // system-memory-compatible path and still lets FFmpeg select a
+        // working hardware encoder when one is available.
+        let mut windows_gpu_needs_compatible = true;
 
         #[cfg(target_os = "windows")]
         let windows_zero_copy_disabled =
@@ -286,9 +290,8 @@ impl Task for ExportCompositionVideoTask {
                 })
                 .unwrap_or(false);
 
-            // Hardware encoder discovery is intentionally deferred until the
-            // zero-copy path fails. Detecting an FFmpeg encoder must not make the
-            // default path read every composited frame back to CPU memory.
+            // The native Media Foundation path is opt-in. All other Windows
+            // hardware exports use the compatible FFmpeg path first.
             let force_compatible_path = windows_zero_copy_disabled
                 || force_compatible_encoder
                 || (!force_media_foundation_encoder && force_compatible_input);
@@ -296,13 +299,15 @@ impl Task for ExportCompositionVideoTask {
                 windows_gpu_needs_compatible = true;
                 log_write("[Export:WinGPU] selecting compatible path by explicit configuration");
             } else if force_media_foundation_encoder {
+                windows_gpu_needs_compatible = false;
                 log_write("[Export:WinGPU] selecting zero-copy path by explicit Media Foundation configuration");
             } else if force_zero_copy_input {
+                windows_gpu_needs_compatible = false;
                 log_write(
                     "[Export:WinGPU] selecting zero-copy path by explicit input configuration",
                 );
             } else {
-                log_write("[Export:WinGPU] selecting zero-copy path by default");
+                log_write("[Export:WinGPU] selecting compatible path by default");
             }
         }
 
