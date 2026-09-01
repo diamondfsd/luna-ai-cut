@@ -29,6 +29,7 @@ export type { Insta360RawResponse } from './insta360TcpCodec'
 export type Insta360VideoFrameListener = (data: Buffer) => void
 
 const CODE_GET_FILE_LIST = 13
+const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
 const MEDIA_TYPE_ALL = 2
 const CARD_LOCATION_INTERNAL = 2
@@ -480,5 +481,35 @@ export class Insta360TcpSession {
     const value = this.seq & 0xff
     this.seq = (this.seq + 1) & 0xff
     return value
+  }
+}
+
+/**
+ * Verify the Luna control endpoint with a request/response command.
+ * A successful TCP connect or write alone is not enough because a routed or
+ * virtual interface can accept the connection without being the camera.
+ */
+export async function probeInsta360ControlResponse(
+  host: string,
+  port: number,
+  timeoutMs = 3000,
+): Promise<Insta360RawResponse> {
+  const startedAt = Date.now()
+  const session = new Insta360TcpSession(tcpHost(host), port)
+  try {
+    await session.open()
+    const response = await session.sendCommand(CODE_GET_CURRENT_CAPTURE_STATUS, Buffer.alloc(0), timeoutMs)
+    logMainInfo('[Insta360TCP] Luna 控制指令响应探测成功', {
+      host: tcpHost(host),
+      port,
+      commandCode: CODE_GET_CURRENT_CAPTURE_STATUS,
+      responseCode: response.code,
+      requestId: response.requestId,
+      bodyBytes: response.body.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return response
+  } finally {
+    session.close()
   }
 }

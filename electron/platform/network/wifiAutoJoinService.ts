@@ -1,6 +1,6 @@
 import type { DeviceDefinition, WifiDebugStatus } from '../../../src/shared/types'
 import { connectWifiNetwork, disconnectWifiNetwork, getWifiDebugStatus, scanWifiNetworks } from './wifiDebugService'
-import { probeInsta360StreamHandshake } from '../../devices/insta360/insta360TcpProtocol'
+import { probeInsta360ControlResponse } from '../../devices/insta360/insta360TcpProtocol'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
 export interface WifiAutoJoinResult {
@@ -62,11 +62,13 @@ async function waitForCameraHandshake(
   while (Date.now() < deadline) {
     attempts += 1
     try {
-      await probeInsta360StreamHandshake(endpoint.host, endpoint.port)
+      const response = await probeInsta360ControlResponse(endpoint.host, endpoint.port)
+      if (response.code !== 200) throw new Error(`Luna 控制指令返回 ${response.code}`)
       logMainInfo('[设备 Wi-Fi] 相机控制通道握手成功', {
         sessionKey,
         host: endpoint.host,
         port: endpoint.port,
+        responseCode: response.code,
         attempts,
         elapsedMs: Date.now() - startedAt,
       })
@@ -93,6 +95,41 @@ async function waitForCameraHandshake(
     error: lastError,
   })
   return { ok: false, lastError }
+}
+
+async function waitForLunaWifiAddress(
+  sessionKey: string,
+): Promise<{ address: string; ssid: string | null } | null> {
+  const startedAt = Date.now()
+  const deadline = startedAt + CAMERA_HANDSHAKE_WAIT_MS
+  let attempts = 0
+  while (Date.now() < deadline) {
+    attempts += 1
+    const status = await getWifiDebugStatus().catch(() => null)
+    if (status?.success && hasLunaWifiAddress(status.data)) {
+      const address = [
+        status.data?.ipAddress,
+        ...(status.data?.ipAddresses ?? []).map((item) => item.address),
+      ].find((item): item is string => Boolean(item) && isLunaWifiAddress(item))
+      if (address) {
+        logMainInfo('[设备 Wi-Fi] 已获取 Luna 网段地址', {
+          sessionKey,
+          address,
+          ssid: status.data?.ssid,
+          attempts,
+          elapsedMs: Date.now() - startedAt,
+        })
+        return { address, ssid: status.data?.ssid ?? null }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, CAMERA_HANDSHAKE_RETRY_DELAY_MS))
+  }
+  logMainWarn('[设备 Wi-Fi] 切换后未获取 Luna 网段地址', {
+    sessionKey,
+    attempts,
+    elapsedMs: Date.now() - startedAt,
+  })
+  return null
 }
 
 /**
@@ -153,7 +190,7 @@ export async function autoJoinDeviceWifi(
       }
     }
   }
-  if (currentSsid && matchesConfiguredSsid(currentSsid, config.ssidIncludes)) {
+  if (currentSsid && matchesConfiguredSsid(currentSsid, config.ssidIncludes) && hasLunaWifiAddress(current?.data)) {
     logMainInfo('[设备 Wi-Fi] 当前已连接目标网络，开始控制通道确认', { sessionKey, ssid: currentSsid })
     if (endpoint) {
       const handshake = await waitForCameraHandshake(endpoint, sessionKey)
@@ -224,9 +261,6 @@ export async function autoJoinDeviceWifi(
     ssid: candidateSsid,
     timeoutMs: 30000,
     password,
-    // macOS may hide the current SSID from CoreWLAN even after association.
-    // The camera control handshake below is the actual connection check.
-    skipSsidVerification: Boolean(endpoint),
   })
   logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
     sessionKey,
@@ -254,6 +288,31 @@ export async function autoJoinDeviceWifi(
   }
 
   const joinedSsid = joined.data?.ssid
+  const network = await waitForLunaWifiAddress(sessionKey)
+  if (!network) {
+    return {
+      attempted: true,
+      connected: false,
+      ssid: candidateSsid,
+      wifiPasswordRequired: true,
+      message: `已尝试连接 ${candidateSsid}，但本机未获取 Luna Wi-Fi 地址（192.168.42.x），未建立相机连接`,
+    }
+  }
+  if (network.ssid && network.ssid.trim().toLocaleLowerCase() !== candidateSsid.trim().toLocaleLowerCase()) {
+    logMainWarn('[设备 Wi-Fi] 当前 SSID 与目标网络不一致', {
+      sessionKey,
+      targetSsid: candidateSsid,
+      currentSsid: network.ssid,
+      address: network.address,
+    })
+    return {
+      attempted: true,
+      connected: false,
+      ssid: network.ssid,
+      wifiPasswordRequired: true,
+      message: `当前 Wi-Fi 为 ${network.ssid}，不是目标网络 ${candidateSsid}`,
+    }
+  }
   if (endpoint) {
     const handshake = await waitForCameraHandshake(endpoint, sessionKey)
     if (!handshake.ok) {

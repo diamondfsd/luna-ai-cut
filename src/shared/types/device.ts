@@ -74,7 +74,7 @@ export interface DeviceDefinition {
   }
   mediaCapabilities?: Partial<Pick<CameraMediaSourceCapabilities, 'list' | 'preview' | 'copyToLocal' | 'create' | 'update' | 'delete' | 'watch'>>
   bluetooth?: {
-    namePrefixes: string[]
+    namePrefixes?: string[]
     scanServiceUuids: string[]
     optionalServiceUuids: string[]
     serviceUuid: string
