@@ -13,11 +13,6 @@ on:
           - windows-x64
           - macos-arm64
           - macos-x64
-  push:
-    tags:
-      - "v*"
-    branches:
-      - release-1.8.0-beta
 
 permissions:
   contents: write
