@@ -239,7 +239,7 @@ if [ "$IS_BETA" = true ]; then
   echo ""
   ok "内测版本 ${TAG} 已发布到 GitCode Release ${GITCODE_TAG}"
   info "不会更新公开下载页或稳定版 README"
-  info "  ${API_BASE}/releases/tag/${GITCODE_TAG}"
+  info "  https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${GITCODE_TAG}"
   exit 0
 fi
 
@@ -422,5 +422,5 @@ fi
 echo ""
 info "═══════════════════════════════════════════════════════════"
 ok  "全部完成！${TAG} 已发布到 GitCode"
-info "  ${API_BASE}/releases/tag/${TAG}"
+info "  https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}"
 echo ""

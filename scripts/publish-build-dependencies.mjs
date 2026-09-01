@@ -204,4 +204,4 @@ for (const artifact of artifacts) {
 
 release = await getRelease()
 for (const artifact of artifacts) verifyReleaseAsset(release, artifact)
-console.log(`[publish-build-dependencies] Release: https://gitcode.com/${owner}/${repo}/releases/tag/${BUILD_DEPENDENCY_RELEASE_TAG}`)
+console.log(`[publish-build-dependencies] Release: https://gitcode.com/${owner}/${repo}/releases/${BUILD_DEPENDENCY_RELEASE_TAG}`)

@@ -11,10 +11,6 @@ export const CAMERA_PATH = DEFAULT_DEVICE.storages.find((storage) => storage.def
 const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
 
-function cameraUrl(host: string, cameraPath = CAMERA_PATH): string {
-  return `http://${host}${cameraPath}`
-}
-
 function tcpHost(host: string): string {
   try {
     return new URL(`http://${host}`).hostname

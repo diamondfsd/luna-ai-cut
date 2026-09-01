@@ -344,5 +344,5 @@ export async function publishModelRelease({ artifacts, manifestPath, token, owne
     const url = `${downloadBase}/${encodeURIComponent(upload.fileName)}`
     verified.push({ fileName: upload.fileName, url, ...await verifyDownload(url, upload) })
   }
-  return { releaseUrl: `https://gitcode.com/${owner}/${repo}/releases/tag/${MODEL_RELEASE_TAG}`, verified }
+  return { releaseUrl: `https://gitcode.com/${owner}/${repo}/releases/${MODEL_RELEASE_TAG}`, verified }
 }
