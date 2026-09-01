@@ -220,6 +220,7 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
         {marker.kind === 'photo' ? <span className="workspace-trim-marker-time">{formatSeconds(marker.time)}</span> : null}
         {liveMarker ? (
           <div className="workspace-trim-live-cover-control">
+            <span className="workspace-trim-live-cover-label">封面</span>
             <RadixSlider.Root
               className="workspace-trim-live-cover-slider"
               value={[liveMarker.coverTime]}
@@ -238,6 +239,7 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
               </RadixSlider.Track>
               <RadixSlider.Thumb className="workspace-trim-live-cover-thumb" aria-label="Live 图封面" />
             </RadixSlider.Root>
+            <span className="workspace-trim-live-duration-label">时长</span>
             <Input
               className="workspace-trim-live-duration-input"
               variant="compact"
@@ -268,6 +270,7 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
               }}
               onClick={(event) => event.stopPropagation()}
             />
+            <span className="workspace-trim-live-duration-unit">秒</span>
           </div>
         ) : null}
         {videoMarker ? (
