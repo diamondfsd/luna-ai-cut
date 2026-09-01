@@ -11,12 +11,14 @@ interface WebGpuVideoPreviewProps {
   canvasWidth: number
   canvasHeight: number
   maxSide: number
+  className?: string
   active?: boolean
   playing: boolean
   time?: number
   imageScale?: number | null
   maxImageScale?: number
   viewportKey?: string
+  interactiveImageLayerIndexes?: readonly number[]
   onImageScaleChange?: (scale: number | null) => void
   onViewportChange?: () => void
   onVideoElement?: (element: HTMLMediaElement | null) => void
@@ -29,12 +31,14 @@ export function WebGpuVideoPreview({
   canvasWidth,
   canvasHeight,
   maxSide,
+  className,
   active = true,
   playing,
   time = 0,
   imageScale,
   maxImageScale = 5,
   viewportKey,
+  interactiveImageLayerIndexes = layers.length > 0 ? [0] : [],
   onImageScaleChange,
   onViewportChange,
   onVideoElement,
@@ -47,7 +51,7 @@ export function WebGpuVideoPreview({
   const imageInteraction = useCanvasViewportInteraction({
     layers,
     canvasRef,
-    interactiveImageLayerIndexes: layers.length > 0 ? [0] : [],
+    interactiveImageLayerIndexes,
     viewportKey,
     maxImageScale,
     imageScale,
@@ -129,7 +133,7 @@ export function WebGpuVideoPreview({
     >
       <canvas
         ref={canvasRef}
-        className={`webgpu-video-preview${imageInteraction.interactive ? ' is-interactive' : ''}${imageInteraction.dragging ? ' is-dragging' : ''}`}
+        className={`webgpu-video-preview${className ? ` ${className}` : ''}${imageInteraction.interactive ? ' is-interactive' : ''}${imageInteraction.dragging ? ' is-dragging' : ''}`}
         width={canvasWidth}
         height={canvasHeight}
         style={imageInteraction.style}

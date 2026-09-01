@@ -312,6 +312,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const activeVideoMarker = edit.pipeline.outputMarkers.find((marker): marker is Extract<EditPipeline['outputMarkers'][number], { kind: 'video' }> => (
     marker.kind === 'video' && marker.id === activeOutputMarkerId
   ))
+  const playingOutputMarker = edit.pipeline.outputMarkers.find((marker) => marker.id === playingOutputMarkerId)
+  const playingOutputRange = playingOutputMarker && playingOutputMarker.kind !== 'photo'
+    ? { startTime: playingOutputMarker.startTime, endTime: playingOutputMarker.endTime }
+    : undefined
   const activeVideoMarkerRef = useRef(activeVideoMarker)
   activeVideoMarkerRef.current = activeVideoMarker
   const livePhotoSelection = useMemo(
@@ -384,7 +388,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       if (previewRef.current?.isPlaying()) previewRef.current.togglePlay()
       return
     }
-    if (markerRange && !state.playing) {
+    // seek 或渲染切换可能短暂触发暂停事件，不能因此中断刚刚发起的标记播放。
+    // 用户主动暂停会先清除 markerRange；这里只处理视频自然播放到片段末尾后的暂停。
+    if (markerRange && !state.playing && state.currentTime >= markerRange.endTime - 0.05) {
       markerPlaybackRangeRef.current = null
       setPlayingOutputMarkerId(null)
     }
@@ -400,6 +406,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
   // ── 截取控制 ──
   const handleTrimSeek = useCallback((time: number) => {
+    markerPlaybackRangeRef.current = null
+    setPlayingOutputMarkerId(null)
     if (previewRef.current) {
       previewRef.current.seek(time)
     }
@@ -1203,6 +1211,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
                 ? () => handleToggleMarkerPreview(activeVideoMarker)
                 : handleTrimTogglePlay}
               onSeek={handleTrimSeek}
+              playheadRange={playingOutputRange}
               onStartTimeChange={handleStartTimeChange}
               onEndTimeChange={handleEndTimeChange}
               outputMarkers={edit.pipeline.outputMarkers}
