@@ -9,7 +9,6 @@ import {
   buildLunaWebBluetoothCleanupScript,
   buildLunaWebBluetoothConnectScript,
   buildLunaWebBluetoothWriteScript,
-  lunaBluetoothNamePrefixes,
 } from './lunaBleWebBluetoothScripts'
 
 const EVENT_CHANNEL = 'luna-web-bluetooth:event'
@@ -100,12 +99,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   })
 }
 
-export function matchesLunaBluetoothName(name: string | undefined): boolean {
-  const candidate = String(name || '').trim().toLowerCase()
-  if (!candidate) return false
-  return lunaBluetoothNamePrefixes().some((prefix) => candidate.startsWith(prefix.toLowerCase()))
-}
-
 function beginSelection(contents: WebContents): () => void {
   const previous = pendingSelections.get(contents)
   previous?.cancel()
@@ -137,13 +130,21 @@ export function installLunaWebBluetoothHandlers(win: BrowserWindow): void {
 
     event.preventDefault()
     request.callback = callback
-    const target = devices.find((device) => matchesLunaBluetoothName(device.deviceName))
+    // The renderer request accepts all devices for diagnosis. Luna is
+    // identified later by its GATT service and characteristics.
+    const target = devices[0]
+    logMainInfo('[Luna BLE] Electron 收到附近蓝牙设备列表', {
+      candidateCount: devices.length,
+      devices: devices.map((device) => ({
+        deviceId: device.deviceId,
+        deviceName: device.deviceName,
+      })),
+    })
     if (!target) {
       if (request.lastDeviceCount !== devices.length) {
         request.lastDeviceCount = devices.length
         logMainDebug('[Luna BLE] 扫描中，暂未找到目标设备', {
           candidateCount: devices.length,
-          namePrefixes: lunaBluetoothNamePrefixes(),
         })
       }
       return
