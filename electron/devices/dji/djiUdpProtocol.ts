@@ -16,6 +16,18 @@ export function buildRoutingHeader(
   return header
 }
 
+/** The reliable route/window prefix carries the camera channel in its first two bytes. */
+export function cameraChannelFromPacket(packet: { packetType: number; payload: Uint8Array }): number | null {
+  if (packet.packetType !== 0x01 && packet.packetType !== 0x02 && packet.packetType !== 0x03) return null
+  if (packet.payload.length < 2) return null
+  const channel = packet.payload[0]! | (packet.payload[1]! << 8)
+  return channel === 0 ? null : channel
+}
+
+export function nextSequenceForCameraChannel(cameraChannel: number): number {
+  return (cameraChannel + 8) & 0xffff
+}
+
 export function buildAckPayload(
   rxType2Sequence: number,
   rxType3Sequence: number,
