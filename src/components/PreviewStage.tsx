@@ -70,14 +70,17 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       setCurrentTime(time)
     },
     togglePlay: () => {
-      if (!videoRef.current) return
+      const video = videoRef.current
+      if (!video) return
       shouldResumePlaybackRef.current = false
-      if (playing) {
+      if (!video.paused) {
         playbackIntentRef.current = false
-        videoRef.current.pause()
+        setPlaying(false)
+        video.pause()
       } else {
         playbackIntentRef.current = true
-        videoRef.current.play().catch(() => {})
+        setPlaying(true)
+        video.play().catch(() => {})
       }
     },
     getCurrentTime: () => videoRef.current?.currentTime ?? currentTime,
@@ -111,6 +114,13 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         onPlayStateChange?.({ playing: true, currentTime: el.currentTime, duration: el.duration || 0 })
       }
       el.onpause = () => {
+        // 渲染器的旧暂停命令可能晚于新的播放命令到达；当前仍有播放意图时，
+        // 不要把这个过期事件传播成用户暂停。
+        if (playbackIntentRef.current && !el.ended) {
+          setPlaying(true)
+          el.play().catch(() => {})
+          return
+        }
         playbackIntentRef.current = false
         setPlaying(false)
         onPlayStateChange?.({ playing: false, currentTime: el.currentTime, duration: el.duration || 0 })
@@ -168,14 +178,17 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   }, [url, isLivePhoto])
 
   function togglePlay() {
-    if (!videoRef.current) return
+    const video = videoRef.current
+    if (!video) return
     shouldResumePlaybackRef.current = false
-    if (!playing) {
+    if (video.paused) {
       playbackIntentRef.current = true
-      videoRef.current.play().catch(() => {})
+      setPlaying(true)
+      video.play().catch(() => {})
     } else {
       playbackIntentRef.current = false
-      videoRef.current.pause()
+      setPlaying(false)
+      video.pause()
     }
   }
 

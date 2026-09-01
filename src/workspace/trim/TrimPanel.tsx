@@ -439,7 +439,7 @@ export function TrimPanel({
     onMarkersChange(markers.filter((marker) => marker.id !== id))
   }
 
-  const selectMarker = (marker: VideoOutputMarker) => {
+  const selectMarker = (marker: VideoOutputMarker, seekToMarker = true) => {
     onActiveMarkerChange(marker.id)
     setNewMarkerId(null)
     if (marker.kind === 'live') {
@@ -452,7 +452,7 @@ export function TrimPanel({
     } else {
       onLiveSelectionChange(null)
     }
-    onSelectMarker(marker)
+    if (seekToMarker) onSelectMarker(marker)
   }
 
   const counts = markers.reduce((result, marker) => ({ ...result, [marker.kind]: result[marker.kind] + 1 }), {
@@ -540,7 +540,8 @@ export function TrimPanel({
                 playing={marker.id === playingMarkerId}
                 onTogglePreview={() => {
                   if (marker.kind !== 'live' && marker.kind !== 'video') return
-                  selectMarker(marker)
+                  // 播放按钮只切换左侧预览，避免重复 seek 到封面导致无法暂停当前片段。
+                  selectMarker(marker, false)
                   onToggleMarkerPreview(marker)
                 }}
                 onPreviewTimeChange={(time) => {
