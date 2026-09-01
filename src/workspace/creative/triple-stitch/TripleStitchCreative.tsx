@@ -18,6 +18,8 @@ import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermar
 import { deviceProfileForId, inferDeviceProfile } from '../../../shared/insta360DeviceProfiles'
 import { useTripleStitchPlayback } from './useTripleStitchPlayback'
 import { useTripleStitchSources, type TripleStitchSource } from './useTripleStitchSources'
+import { CreativePreviewQualitySelect } from '../shared/CreativePreviewQualitySelect'
+import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import {
   createDefaultSlotEdits,
@@ -388,6 +390,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
 
     return [...mediaLayers, ...logoLayers]
   }, [slotSources, slotEdits, watermarkInfos, previewPlayback.seekTime])
+  const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
   const activeSource = slotSources[activeSlot]
   const activeDuration = activeSource?.duration
@@ -784,6 +787,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
         </Button>
         <span>Live 三拼</span>
         <WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} />
+        <CreativePreviewQualitySelect className="triple-stitch-preview-quality" value={previewQuality} onChange={changePreviewQuality} />
       </header>
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board ui-video-controls-host">
@@ -792,6 +796,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
             layers={previewLayers}
             canvasWidth={CANVAS_WIDTH}
             canvasHeight={CANVAS_HEIGHT}
+            maxSide={previewMaxSide}
             playing={previewPlayback.playing}
             decodeQuality={1.0}
             onError={(message) => toast.error(message)}

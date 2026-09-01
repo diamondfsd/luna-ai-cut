@@ -38,10 +38,15 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
   const [brokenPaths, setBrokenPaths] = useState<Set<string>>(new Set())
   const saveTimerRef = useRef<number | null>(null)
+  const latestProjectsRef = useRef(new Map<string, WorkspaceProject>())
 
   const media = currentProject?.assets ?? transientMedia
   const activeMedia = media[activeIndex] ?? null
   const editorOpen = Boolean(currentProject || transientMedia.length > 0)
+
+  useEffect(() => {
+    if (currentProject) latestProjectsRef.current.set(currentProject.id, currentProject)
+  }, [currentProject])
 
   useEffect(() => {
     setProjectLoading(true)
@@ -124,15 +129,29 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
 
   const openProject = useCallback((project: WorkspaceProject) => {
     setBrokenPaths(new Set())
-    setCurrentProject(project)
+    setCurrentProject(latestProjectsRef.current.get(project.id) ?? project)
     setActiveIndex(0)
   }, [])
 
   const backToProjects = useCallback(() => {
     setBrokenPaths(new Set())
+    const latestProject = currentProject
+    if (latestProject) {
+      setProjects((prev) => {
+        const hasProject = prev.some((project) => project.id === latestProject.id)
+        return hasProject
+          ? prev.map((project) => project.id === latestProject.id ? latestProject : project)
+          : [latestProject, ...prev]
+      })
+    }
     setCurrentProject(null)
-    window.luna.workspace.listProjects().then(setProjects).catch(() => undefined)
-  }, [])
+    window.luna.workspace.listProjects().then((nextProjects) => {
+      setProjects(() => {
+        if (!latestProject) return nextProjects
+        return nextProjects.map((project) => project.id === latestProject.id ? latestProject : project)
+      })
+    }).catch(() => undefined)
+  }, [currentProject])
 
   const removeMedia = useCallback(
     (index: number) => {

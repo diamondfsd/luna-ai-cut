@@ -573,6 +573,18 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     [edit.cropActive, mask.editing, watermarkLayer, borderLayer, subtitleLayer],
   )
 
+  // 切换项目或素材时，不能把上一个项目的截取模式带过来。
+  const workspaceAssetKey = `${media.currentProject?.id ?? 'transient'}:${media.activeIndex}:${media.activeMedia?.path ?? ''}`
+  const previousWorkspaceAssetKeyRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!settingsReady || previousWorkspaceAssetKeyRef.current === workspaceAssetKey) return
+    previousWorkspaceAssetKeyRef.current = workspaceAssetKey
+    if (edit.trimActive) {
+      edit.deactivateTrim()
+      if (edit.activeTool === 'trim') edit.setActiveTool('color')
+    }
+  }, [edit, settingsReady, workspaceAssetKey])
+
   // ── Initialize pipeline / reset crop/trim when active asset changes ──
   useLayoutEffect(() => {
     if (!settingsReady) return

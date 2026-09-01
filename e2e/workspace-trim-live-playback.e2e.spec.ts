@@ -121,14 +121,32 @@ test('工作台拖动左侧 Live 胶囊后切回截取仍保留 Live 图', async
   if (!before) throw new Error('Live 胶囊没有可用位置')
   await lunaApp.page.mouse.move(before.x + before.width / 2, before.y + before.height / 2)
   await lunaApp.page.mouse.down()
-  await lunaApp.page.mouse.move(before.x + before.width / 2 + 80, before.y + before.height / 2)
+  await lunaApp.page.mouse.move(before.x + before.width / 2 + 80, before.y + before.height / 2, { steps: 20 })
   await lunaApp.page.mouse.up()
 
-  await lunaApp.page.getByRole('button', { name: '滤镜', exact: true }).click()
+  await lunaApp.page.waitForTimeout(800)
+  const savedMarkers = await lunaApp.page.evaluate(async (name) => {
+    const project = (await window.luna.workspace.listProjects()).find((candidate) => candidate.name === name)
+    return project?.assets[0]?.pipeline?.outputMarkers ?? []
+  }, projectName)
+  expect(savedMarkers).toHaveLength(1)
+  expect(savedMarkers[0]).toMatchObject({ kind: 'live' })
+  expect((savedMarkers[0] as { startTime: number }).startTime).toBeGreaterThan(0)
+
+  await lunaApp.page.getByRole('button', { name: '调色与蒙版', exact: true }).click()
   await expect(markerList).toHaveCount(0)
   await lunaApp.page.getByRole('button', { name: '截取', exact: true }).click()
 
   await expect(lunaApp.page.locator('.workspace-trim-marker-list .workspace-trim-marker-row')).toHaveCount(1)
   await expect(lunaApp.page.locator('.workspace-trim-secondary-range')).toBeVisible()
+
+  await lunaApp.page.waitForTimeout(800)
+  await lunaApp.page.getByRole('button', { name: '返回工作台', exact: true }).click()
+  await expect(lunaApp.page.locator('.workspace-layout')).toHaveCount(0)
+  await lunaApp.page.locator('.workspace-project-open').filter({ hasText: projectName }).click()
+  await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas')).toBeVisible({ timeout: 30_000 })
+  await lunaApp.page.getByRole('button', { name: '截取', exact: true }).click()
+  await expect(lunaApp.page.locator('.workspace-trim-marker-list .workspace-trim-marker-row')).toHaveCount(1)
+
   expect(lunaApp.runtimeErrors).toEqual([])
 })

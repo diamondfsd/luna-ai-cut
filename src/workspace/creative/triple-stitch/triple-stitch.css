@@ -155,6 +155,10 @@
   overflow-y: auto;
 }
 
+.triple-stitch-preview-quality {
+  margin-left: auto;
+}
+
 .triple-stitch-panel-head {
   display: flex;
   align-items: center;
