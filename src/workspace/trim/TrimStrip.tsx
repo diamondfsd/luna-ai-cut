@@ -19,7 +19,7 @@ interface TrimStripProps {
   /** 固定时长模式：选区不可缩放，只能整体拖动。 */
   fixedDuration?: number
   onFixedStartChange?: (time: number) => void
-  /** 叠加在主截取范围内的固定时长选区（例如 Live 图 3 秒范围）。 */
+  /** 叠加在主截取范围内的固定时长选区（例如 Live 图范围）。 */
   secondaryFixedRange?: {
     startTime: number
     duration: number

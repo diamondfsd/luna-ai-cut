@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { localThumbnailUrl, safeName } from '../media/filePathUtils'
-import { downloadToFileWithRetry, isAbortError } from '../media/fileDownloadService'
+import { cleanupDownloadPartial, downloadToFileWithRetry, isAbortError } from '../media/fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from '../media/thumbnailService'
 import { logMainError, logMainInfo, logMainWarn } from '../infrastructure/loggerService'
@@ -92,6 +92,20 @@ function rawCompanionAsFile(file: LunaFile): LunaFile | null {
     localPath: raw.localPath,
     rawCompanion: null,
   }
+}
+
+async function cleanupDownloadPartials(
+  files: LunaFile[],
+  outputDir: string,
+  organizeByDate: boolean,
+): Promise<void> {
+  const destinations = files.flatMap((file) => {
+    const rawFile = rawCompanionAsFile(file)
+    const destination = downloadDestinationFor(outputDir, file, organizeByDate)
+    const rawDestination = rawFile ? downloadDestinationFor(outputDir, rawFile, organizeByDate) : null
+    return rawDestination ? [destination, rawDestination] : [destination]
+  })
+  await Promise.all(destinations.map((destination) => cleanupDownloadPartial(destination)))
 }
 
 async function downloadCachedFile(
@@ -444,6 +458,7 @@ export async function downloadFiles(
 
   for (const [index, file] of files.entries()) {
     if (signal?.aborted) {
+      await cleanupDownloadPartials(files, outputDir, organizeByDate)
       summary.canceled.push({ name: file.name })
       break
     }
@@ -568,6 +583,7 @@ export async function downloadFiles(
         const partialSize = await fileSize(destination)
           + await fileSize(partialPathFor(destination))
           + (rawDestination ? await fileSize(rawDestination) + await fileSize(partialPathFor(rawDestination)) : 0)
+        await cleanupDownloadPartials(files, outputDir, organizeByDate)
         onProgress({
           fileName: file.name,
           index,

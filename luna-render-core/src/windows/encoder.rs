@@ -12,18 +12,12 @@ use windows::Win32::Media::MediaFoundation::{
     MF_SINK_WRITER_D3D_MANAGER, MF_SINK_WRITER_DISABLE_THROTTLING,
 };
 
-// This attribute was added to the Windows 11 25H2 SDK, but is not exposed by
-// the windows crate version used here. Keeping the GUID local lets older SDKs
-// build while newer Windows versions can reject a software MFT immediately.
-const MF_READWRITE_USE_ONLY_HARDWARE_TRANSFORMS: GUID =
-    GUID::from_u128(0xf9074427bf8b4f69bbaf524969056fb6);
-
 pub(crate) struct VideoEncoder {
     writer: Option<IMFSinkWriter>,
     stream_index: u32,
     output_path: PathBuf,
     frame_duration_100ns: i64,
-    hardware_verified: bool,
+    encoder_inspected: bool,
     finished: bool,
 }
 
@@ -82,7 +76,7 @@ impl VideoEncoder {
             stream_index,
             output_path: output_path.to_path_buf(),
             frame_duration_100ns: (10_000_000.0 / fps.max(1.0)).round() as i64,
-            hardware_verified: false,
+            encoder_inspected: false,
             finished: false,
         })
     }
@@ -115,9 +109,9 @@ impl VideoEncoder {
             .ok_or_else(|| "视频编码器已经关闭".to_string())?;
         unsafe { writer.WriteSample(self.stream_index, &sample) }
             .map_err(|error| format!("Windows 硬件编码失败: {error}"))?;
-        if !self.hardware_verified {
-            verify_hardware_encoder(writer, self.stream_index)?;
-            self.hardware_verified = true;
+        if !self.encoder_inspected {
+            inspect_hardware_encoder(writer, self.stream_index);
+            self.encoder_inspected = true;
         }
         Ok(())
     }
@@ -155,7 +149,6 @@ fn create_writer_attributes(
         unsafe {
             attributes.SetUnknown(&MF_SINK_WRITER_D3D_MANAGER, device_manager)?;
             attributes.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1)?;
-            attributes.SetUINT32(&MF_READWRITE_USE_ONLY_HARDWARE_TRANSFORMS, 1)?;
             attributes.SetUINT32(&MF_SINK_WRITER_DISABLE_THROTTLING, 1)?;
         }
         Ok(())
@@ -191,10 +184,17 @@ fn create_video_type(
     Ok(media_type)
 }
 
-fn verify_hardware_encoder(writer: &IMFSinkWriter, stream_index: u32) -> Result<(), String> {
-    let extended = writer
-        .cast::<IMFSinkWriterEx>()
-        .map_err(|error| format!("无法确认硬件编码器: {error}"))?;
+fn inspect_hardware_encoder(writer: &IMFSinkWriter, stream_index: u32) {
+    let extended = match writer.cast::<IMFSinkWriterEx>() {
+        Ok(extended) => extended,
+        Err(error) => {
+            crate::logging::write(&format!(
+                "[Export:WinGPU] encoder-transform inspection unavailable error={error}"
+            ));
+            return;
+        }
+    };
+    let mut saw_encoder = false;
     for transform_index in 0..8 {
         let mut category = windows::core::GUID::zeroed();
         let mut transform = None;
@@ -219,6 +219,7 @@ fn verify_hardware_encoder(writer: &IMFSinkWriter, stream_index: u32) -> Result<
             ));
             continue;
         }
+        saw_encoder = true;
         let hardware_url = transform_has_hardware_url(&transform);
         let transform_clsid = transform_clsid(&transform);
         crate::logging::write(&format!(
@@ -226,10 +227,22 @@ fn verify_hardware_encoder(writer: &IMFSinkWriter, stream_index: u32) -> Result<
             transform_index, category, transform_clsid, hardware_url,
         ));
         if hardware_url {
-            return Ok(());
+            return;
         }
     }
-    Err("系统选择的编码器不是显卡硬件编码器".to_string())
+    if saw_encoder {
+        // The attribute is a useful diagnostic, but it is not a reliable
+        // reason to discard a writer that already accepted a DXGI sample.
+        // Older Windows builds and some vendor MFTs do not expose it on the
+        // instantiated transform even when the hardware path is usable.
+        crate::logging::write(
+            "[Export:WinGPU] encoder-transform hardware MFT not confirmed; continuing with the selected transform",
+        );
+    } else {
+        crate::logging::write(
+            "[Export:WinGPU] encoder-transform video encoder MFT not reported; continuing",
+        );
+    }
 }
 
 fn transform_has_hardware_url(transform: &IMFTransform) -> bool {

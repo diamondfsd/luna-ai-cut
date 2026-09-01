@@ -90,11 +90,12 @@ try {
   assert.equal(wiredProgressObserved, true, '取消前应至少收到一次有线复制进度')
   assert.equal(wiredProgress.some((progress) => progress.speedBps > 0), true, '有线复制进度应包含速度')
   assert.equal((await readdir(temporaryRoot)).includes('wired-destination.mp4'), false, '取消时不能发布正式文件')
+  assert.equal((await readdir(temporaryRoot)).includes('wired-destination.mp4.tmp'), false, '取消时应清理临时文件')
   await service.downloadToFileWithRetry(
     { name: 'wired-destination.mp4', bytes: wiredSourceBytes.byteLength, sourceUrl: pathToFileURL(wiredSourcePath).href },
     wiredDestination,
   )
-  assert.deepEqual(await readFile(wiredDestination), wiredSourceBytes, '取消后再次下载应能重新打开临时文件')
+  assert.deepEqual(await readFile(wiredDestination), wiredSourceBytes, '取消后再次下载应能重新开始传输')
 
   const concurrentBytes = Buffer.from('single-flight-media')
   let concurrentRequests = 0

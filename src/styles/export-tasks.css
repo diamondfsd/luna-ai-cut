@@ -20,6 +20,20 @@
   font-size: 13px;
 }
 
+.et-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  margin-bottom: 10px;
+}
+
+.et-toolbar-summary {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* ====== 表格 ====== */
 
 .et-table-wrap {
