@@ -70,7 +70,9 @@ export function BluetoothTab({ activeDevice }: BluetoothTabProps) {
         ])]
         const device = await navigator.bluetooth.requestDevice(bluetooth
           ? {
-              filters: bluetooth.namePrefixes.map((namePrefix) => ({ namePrefix })),
+              filters: bluetooth.scanServiceUuids.length > 0
+                ? [{ services: bluetooth.scanServiceUuids }]
+                : (bluetooth.namePrefixes ?? []).map((namePrefix) => ({ namePrefix })),
               optionalServices,
             }
           : { acceptAllDevices: true, optionalServices })

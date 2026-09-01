@@ -156,7 +156,7 @@ export function DeviceConnectPage({
       setWifiPassword('')
       return
     }
-    if (connection?.httpOk && connection.controlOk) {
+    if (connection?.controlOk) {
       setWifiPasswordDialogOpen(false)
       setWifiSsid('')
       setWifiPasswordError(null)
@@ -538,7 +538,7 @@ export function DeviceConnectPage({
                 <p>当前连接</p>
                 <h2>{modeLabel}</h2>
               </div>
-              {connection?.httpOk && connection.controlOk && (
+              {connection?.controlOk && (
                 <span className="device-connect-ready"><CheckCircle2 size={14} />服务可用</span>
               )}
             </div>

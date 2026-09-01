@@ -137,7 +137,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   const [preparedWifi, setPreparedWifi] = useState<CameraMediaSourcePreparationResult['credentials'] & { deviceId: string } | null>(null)
 
   const activeDevice = useMemo(() => activeDeviceFor(settings, devices), [devices, settings])
-  const isConnected = devicePhase === 'connected' && Boolean(connection?.httpOk && connection.controlOk)
+  const isConnected = devicePhase === 'connected' && Boolean(connection?.controlOk)
   const showDeviceConnect = !isConnected
   const sourceCapabilities = (connection as CameraMediaSourceStatus | null)?.capabilities ?? EMPTY_CAPABILITIES
 
