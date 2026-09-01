@@ -18,6 +18,7 @@ export interface UpdateCheckResult {
 
 const GITCODE_API = 'https://api.gitcode.com/api/v5/repos/diamondfsd/luna-ai-cut-package-release'
 const GITCODE_DL = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download'
+const GITCODE_WEB = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases'
 const GITHUB_REPO = 'diamondfsd/luna-ai-cut'
 
 interface GitCodeAsset {
@@ -113,7 +114,7 @@ async function checkGitCode(currentVersion: string): Promise<UpdateCheckResult |
       version: parsed.version,
       channel: parsed.channel,
       downloadUrl: `${GITCODE_DL}/${release.tag_name}/${installer.name}`,
-      releaseUrl: `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/tag/${release.tag_name}`,
+      releaseUrl: `${GITCODE_WEB}/${release.tag_name}`,
       releaseNotes: await releaseNotesForTag(githubTag),
       publishedAt: release.created_at,
     }

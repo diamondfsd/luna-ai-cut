@@ -69,6 +69,7 @@ PKG_VERSION=$(node -p "require('./package.json').version")
 RELEASE_DIR="release/${PKG_VERSION}/hot-update"
 RELEASE_TAG="v${PKG_VERSION}"
 API_BASE="https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}"
+GITCODE_WEB_BASE="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}"
 
 # ── 确定 build 号 ──
 function resolve_build_number() {
@@ -348,5 +349,5 @@ fi
 
 echo ""
 ok "全部上传完成！"
-info "Release: ${API_BASE}/releases/tag/${RELEASE_TAG}"
+info "Release: ${GITCODE_WEB_BASE}/releases/${RELEASE_TAG}"
 echo ""

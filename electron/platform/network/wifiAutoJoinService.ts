@@ -110,7 +110,7 @@ async function waitForLunaWifiAddress(
       const address = [
         status.data?.ipAddress,
         ...(status.data?.ipAddresses ?? []).map((item) => item.address),
-      ].find((item): item is string => Boolean(item) && isLunaWifiAddress(item))
+      ].find((item): item is string => typeof item === 'string' && isLunaWifiAddress(item))
       if (address) {
         logMainInfo('[设备 Wi-Fi] 已获取 Luna 网段地址', {
           sessionKey,
