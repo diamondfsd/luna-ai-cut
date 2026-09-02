@@ -1,8 +1,7 @@
 use windows::core::{IUnknown, Interface};
 use windows::Win32::Graphics::Direct3D12::{
     ID3D12CommandQueue, ID3D12Device, D3D12_COMMAND_LIST_TYPE,
-    D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS,
-    D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE,
+    D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE,
 };
 use windows::Win32::Media::MediaFoundation::{IMFDXGIDeviceManager, MFCreateDXGIDeviceManager};
 
@@ -14,7 +13,6 @@ use windows::Win32::Media::MediaFoundation::{IMFDXGIDeviceManager, MFCreateDXGID
 pub(crate) struct InteropDevice {
     pub(crate) d3d12_device: ID3D12Device,
     pub(crate) video_process_queue: ID3D12CommandQueue,
-    pub(crate) video_encode_queue: ID3D12CommandQueue,
     pub(crate) decoder_device_manager: IMFDXGIDeviceManager,
     /// Compatibility alias for callers that used the generic manager name.
     #[allow(dead_code)]
@@ -38,12 +36,6 @@ impl InteropDevice {
             D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS,
             "D3D12 video process",
         )?;
-        let video_encode_queue = create_video_queue(
-            d3d12_device,
-            D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE,
-            "D3D12 video encode",
-        )?;
-
         let d3d12_unknown: IUnknown = d3d12_device
             .cast()
             .map_err(|error| format!("无法取得 D3D12 Media Foundation device: {error}"))?;
@@ -51,13 +43,12 @@ impl InteropDevice {
             create_device_manager(&d3d12_unknown, "D3D12 Media Foundation")?;
 
         crate::logging::write(
-            "[Export:WinGPU] backend=d3d12 video-process-queue=true video-encode-queue=true media-foundation-device=D3D12",
+            "[Export:WinGPU] backend=d3d12 video-process-queue=true vendor-encoder=true media-foundation-device=D3D12",
         );
 
         Ok(Self {
             d3d12_device: d3d12_device.clone(),
             video_process_queue,
-            video_encode_queue,
             decoder_device_manager: device_manager.clone(),
             device_manager,
             reset_token,

@@ -129,6 +129,13 @@ pub struct ExportCompositionVideoTask {
     input: ExportCompositionVideoInput,
 }
 
+pub(crate) fn export_composition_video_sync(
+    input: ExportCompositionVideoInput,
+) -> Result<(), String> {
+    let mut task = ExportCompositionVideoTask { input };
+    task.compute().map_err(|error| error.to_string())
+}
+
 impl Task for ExportCompositionVideoTask {
     type Output = ();
     type JsValue = ();

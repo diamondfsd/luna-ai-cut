@@ -6,8 +6,8 @@ use windows::core::Interface;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Direct3D12::{
     ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12Device, ID3D12Fence,
-    ID3D12Resource, D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS, D3D12_FENCE_FLAG_NONE,
-    D3D12_HEAP_FLAG_NONE, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_BARRIER,
+    ID3D12Resource, D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS, D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAGS,
+    D3D12_HEAP_FLAG_NONE, D3D12_HEAP_FLAG_SHARED, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_BARRIER,
     D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
     D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC,
     D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAGS, D3D12_RESOURCE_STATES,
@@ -232,7 +232,13 @@ impl VideoConverter {
         width: u32,
         height: u32,
     ) -> Result<ID3D12Resource, String> {
-        self.take_bgra_texture(width, height)
+        self.create_texture(
+            width,
+            height,
+            DXGI_FORMAT_B8G8R8A8_UNORM,
+            D3D12_RESOURCE_FLAGS(1),
+            D3D12_HEAP_FLAG_SHARED,
+        )
     }
 
     fn blit_decoded_surface(
@@ -291,8 +297,13 @@ impl VideoConverter {
         // to the video-process queue without reading pixels back.
         self.enqueue_wgpu_ready_wait()?;
 
-        let output =
-            self.create_texture(width, height, DXGI_FORMAT_NV12, D3D12_RESOURCE_FLAGS(0))?;
+        let output = self.create_texture(
+            width,
+            height,
+            DXGI_FORMAT_NV12,
+            D3D12_RESOURCE_FLAGS(0),
+            D3D12_HEAP_FLAG_SHARED,
+        )?;
         if let Err(error) =
             self.blit_resource(&input, 0, width, height, &output, width, height, None, true)
         {
@@ -314,6 +325,7 @@ impl VideoConverter {
         }
 
         let resource = match format {
+            EncoderPixelFormat::Bgra8 => frame.resource.clone(),
             EncoderPixelFormat::Nv12 => {
                 self.bgra_to_nv12(&frame.resource, frame.width, frame.height)?
             }
@@ -345,6 +357,7 @@ impl VideoConverter {
             height,
             DXGI_FORMAT_B8G8R8A8_UNORM,
             D3D12_RESOURCE_FLAGS(1),
+            D3D12_HEAP_FLAG_NONE,
         )
     }
 
@@ -410,6 +423,7 @@ impl VideoConverter {
         height: u32,
         format: DXGI_FORMAT,
         flags: D3D12_RESOURCE_FLAGS,
+        heap_flags: D3D12_HEAP_FLAGS,
     ) -> Result<ID3D12Resource, String> {
         let desc = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
@@ -434,7 +448,7 @@ impl VideoConverter {
         unsafe {
             self.d3d12_device.CreateCommittedResource(
                 &heap_properties,
-                D3D12_HEAP_FLAG_NONE,
+                heap_flags,
                 &desc,
                 D3D12_RESOURCE_STATE_COMMON,
                 None,

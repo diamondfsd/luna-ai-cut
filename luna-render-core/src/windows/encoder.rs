@@ -51,13 +51,12 @@ use windows::Win32::Media::MediaFoundation::{
     D3D12_VIDEO_ENCODER_PROFILE_DESC, D3D12_VIDEO_ENCODER_PROFILE_DESC_0,
     D3D12_VIDEO_ENCODER_PROFILE_H264, D3D12_VIDEO_ENCODER_PROFILE_H264_MAIN,
     D3D12_VIDEO_ENCODER_PROFILE_HEVC, D3D12_VIDEO_ENCODER_PROFILE_HEVC_MAIN,
-    D3D12_VIDEO_ENCODER_RATE_CONTROL, D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR,
-    D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS,
-    D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS_0,
-    D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES,
-    D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR, D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_DESC,
-    D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_NONE, D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE,
-    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_0, D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_H264,
+    D3D12_VIDEO_ENCODER_RATE_CONTROL, D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS,
+    D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS_0, D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP,
+    D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_NONE, D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CQP,
+    D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_DESC, D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_NONE,
+    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE, D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_0,
+    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_H264,
     D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_HEVC,
     D3D12_VIDEO_ENCODER_SUPPORT_FLAG_GENERAL_SUPPORT_OK, D3D12_VIDEO_ENCODER_TIER_HEVC_MAIN,
 };
@@ -81,7 +80,6 @@ pub(crate) struct D3d12VideoEncoder {
     width: u32,
     height: u32,
     fps: f64,
-    bitrate: u64,
     hevc: bool,
     finished: bool,
 }
@@ -188,25 +186,24 @@ impl D3d12VideoEncoder {
                 },
             }
         };
-        let mut cbr = D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR {
-            InitialQP: 0,
-            MinQP: 0,
-            MaxQP: 51,
-            // The maximum frame size is not requested unless the matching
-            // rate-control flag is set. The metadata still validates the
-            // actual bytes against bitstream_capacity below.
-            MaxFrameBitSize: 0,
-            TargetBitRate: bitrate.max(1),
-            VBVCapacity: bitrate.max(1),
-            InitialVBVFullness: bitrate.max(1).saturating_mul(3) / 4,
+        // CQP is the smallest portable D3D12 encoder configuration. Some
+        // NVIDIA WDDM drivers expose the encoder feature area but reject a
+        // CBR/VBV support query with E_INVALIDARG. The encoded bitstream is
+        // still entirely produced by the hardware; bitrate remains part of
+        // the backend contract for the rate-control implementation that will
+        // be added after the basic path is validated.
+        let mut cqp = D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP {
+            ConstantQP_FullIntracodedFrame: 30,
+            ConstantQP_InterPredictedFrame_PrevRefOnly: 30,
+            ConstantQP_InterPredictedFrame_BiDirectionalRef: 30,
         };
         let rate_control = D3D12_VIDEO_ENCODER_RATE_CONTROL {
-            Mode: D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR,
-            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES,
+            Mode: D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CQP,
+            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_NONE,
             ConfigParams: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS {
-                DataSize: std::mem::size_of::<D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR>() as u32,
+                DataSize: std::mem::size_of::<D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP>() as u32,
                 Anonymous: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS_0 {
-                    pConfiguration_CBR: &mut cbr,
+                    pConfiguration_CQP: &mut cqp,
                 },
             },
             TargetFrameRate: rational(fps),
@@ -214,18 +211,15 @@ impl D3d12VideoEncoder {
         // These are output buffers required by the support query. In
         // particular, pResolutionDependentSupport must be non-null whenever
         // ResolutionsListCount is non-zero (the NVIDIA driver validates it).
-        let mut suggested_h264_profile = D3D12_VIDEO_ENCODER_PROFILE_H264_MAIN;
-        let mut suggested_hevc_profile = D3D12_VIDEO_ENCODER_PROFILE_HEVC_MAIN;
+        let mut suggested_h264_profile = D3D12_VIDEO_ENCODER_PROFILE_H264::default();
+        let mut suggested_hevc_profile = D3D12_VIDEO_ENCODER_PROFILE_HEVC::default();
         let suggested_profile = profile_desc(
             hevc,
             &mut suggested_h264_profile,
             &mut suggested_hevc_profile,
         );
-        let mut suggested_h264_level = D3D12_VIDEO_ENCODER_LEVELS_H264_51;
-        let mut suggested_hevc_level = windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_LEVEL_TIER_CONSTRAINTS_HEVC {
-            Level: D3D12_VIDEO_ENCODER_LEVELS_HEVC_51,
-            Tier: D3D12_VIDEO_ENCODER_TIER_HEVC_MAIN,
-        };
+        let mut suggested_h264_level = D3D12_VIDEO_ENCODER_LEVELS_H264::default();
+        let mut suggested_hevc_level = windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_LEVEL_TIER_CONSTRAINTS_HEVC::default();
         let suggested_level =
             level_setting(hevc, &mut suggested_h264_level, &mut suggested_hevc_level);
         let mut resolution_support =
@@ -256,19 +250,33 @@ impl D3d12VideoEncoder {
         };
         if let Err(error) = support_result {
             let hresult = error.code().0 as u32;
-            crate::logging::write(&format!(
-                "[Export:WinGPU] d3d12-video-encoder-support-query failed hresult=0x{hresult:08x} codec={} format=NV12 resolution={}x{}",
-                if hevc { "hevc" } else { "h264" },
-                width,
-                height,
-            ));
-            return Err(format!(
-                "failed to query D3D12 video encoder support: {error} (HRESULT=0x{hresult:08x})"
-            ));
+            if hresult == 0x8007_0057 {
+                // NVIDIA's current WDDM driver exposes the encoder feature
+                // area but rejects this aggregate query. The individual
+                // resource/create calls below are the authoritative test for
+                // this backend, so keep going and let them validate it.
+                crate::logging::write(&format!(
+                    "[Export:WinGPU] d3d12-video-encoder-support-query inconclusive hresult=0x{hresult:08x}; continuing with resource/create validation codec={} format=NV12 resolution={}x{}",
+                    if hevc { "hevc" } else { "h264" },
+                    width,
+                    height,
+                ));
+            } else {
+                crate::logging::write(&format!(
+                    "[Export:WinGPU] d3d12-video-encoder-support-query failed hresult=0x{hresult:08x} codec={} format=NV12 resolution={}x{}",
+                    if hevc { "hevc" } else { "h264" },
+                    width,
+                    height,
+                ));
+                return Err(format!(
+                    "failed to query D3D12 video encoder support: {error} (HRESULT=0x{hresult:08x})"
+                ));
+            }
         }
-        if !support
-            .SupportFlags
-            .contains(D3D12_VIDEO_ENCODER_SUPPORT_FLAG_GENERAL_SUPPORT_OK)
+        if support.SupportFlags.0 != 0
+            && !support
+                .SupportFlags
+                .contains(D3D12_VIDEO_ENCODER_SUPPORT_FLAG_GENERAL_SUPPORT_OK)
         {
             return Err(format!(
                 "D3D12 video encoder configuration is unsupported: validation_flags=0x{:x}",
@@ -381,8 +389,9 @@ impl D3d12VideoEncoder {
         write_bitstream_header(&bitstream, &sequence_header, aligned_header_size)?;
 
         crate::logging::write(&format!(
-            "[Export:WinGPU] encoder backend=d3d12-video codec={} input=NV12 output=AnnexB bitstream_capacity={}B",
+            "[Export:WinGPU] encoder backend=d3d12-video codec={} input=NV12 output=AnnexB rate-control=CQP qp=30 requested-bitrate={} bitstream_capacity={}B",
             if hevc { "hevc" } else { "h264" },
+            bitrate,
             bitstream_capacity,
         ));
         Ok(Self {
@@ -402,7 +411,6 @@ impl D3d12VideoEncoder {
             width,
             height,
             fps: fps.max(1.0),
-            bitrate,
             hevc,
             finished: false,
         })
@@ -474,22 +482,18 @@ impl D3d12VideoEncoder {
                 },
             }
         };
-        let mut cbr = D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR {
-            InitialQP: 0,
-            MinQP: 0,
-            MaxQP: 51,
-            MaxFrameBitSize: 0,
-            TargetBitRate: self.bitrate.max(1),
-            VBVCapacity: self.bitrate.max(1),
-            InitialVBVFullness: self.bitrate.max(1).saturating_mul(3) / 4,
+        let mut cqp = D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP {
+            ConstantQP_FullIntracodedFrame: 30,
+            ConstantQP_InterPredictedFrame_PrevRefOnly: 30,
+            ConstantQP_InterPredictedFrame_BiDirectionalRef: 30,
         };
         let rate_control = D3D12_VIDEO_ENCODER_RATE_CONTROL {
-            Mode: D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR,
-            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES,
+            Mode: D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CQP,
+            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_NONE,
             ConfigParams: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS {
-                DataSize: std::mem::size_of::<D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR>() as u32,
+                DataSize: std::mem::size_of::<D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP>() as u32,
                 Anonymous: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS_0 {
-                    pConfiguration_CBR: &mut cbr,
+                    pConfiguration_CQP: &mut cqp,
                 },
             },
             TargetFrameRate: rational(self.fps),
@@ -956,7 +960,7 @@ fn select_supported_h264_deblocking_mode(
         },
         ..Default::default()
     };
-    unsafe {
+    let query_result = unsafe {
         video_device.CheckFeatureSupport(
             windows::Win32::Media::MediaFoundation::D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT,
             (&mut codec_support
@@ -965,8 +969,18 @@ fn select_supported_h264_deblocking_mode(
             std::mem::size_of::<D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT>()
                 as u32,
         )
+    };
+    if let Err(error) = query_result {
+        if error.code().0 as u32 == 0x8007_0057 {
+            crate::logging::write(
+                "[Export:WinGPU] H.264 codec configuration query is inconclusive (E_INVALIDARG); keeping default deblocking mode",
+            );
+            return Ok(());
+        }
+        return Err(format!(
+            "failed to query H.264 codec configuration support: {error}"
+        ));
     }
-    .map_err(|error| format!("failed to query H.264 codec configuration support: {error}"))?;
     if !codec_support.IsSupported.as_bool() {
         return Err("D3D12 H.264 codec configuration is unsupported".to_string());
     }
