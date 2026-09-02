@@ -153,7 +153,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     onImageScaleChange,
   })
   const layersRef = useRef<PreviewLayer[]>(layers)
-  const layersRevisionRef = useRef(0)
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const videoElementCalledRef = useRef(false)
   const renderingRef = useRef(false)
@@ -166,10 +165,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<RenderInitFailure | null>(null)
   const [retrying, setRetrying] = useState(false)
-  if (layersRef.current !== layers) {
-    layersRevisionRef.current += 1
-    layersRef.current = layers
-  }
+  layersRef.current = layers
   activeRef.current = active
 
   useLayoutEffect(() => {
@@ -274,7 +270,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       return
     }
 
-    const renderRevision = layersRevisionRef.current
     const renderLayers = layersWithVideoTime()
     if (renderLayers.length === 0) return
 
@@ -304,10 +299,9 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       // 使用异步方法，避免阻塞主线程
       const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, compositionTime, effectiveMaxSide)
       if (destroyRef.current || !activeRef.current) return
-      if (layersRevisionRef.current !== renderRevision) {
-        renderQueuedRef.current = true
-        return
-      }
+      // A newer parameter snapshot may arrive while the native renderer is
+      // preparing this frame. Paint this completed snapshot; the queued
+      // render in finally will immediately catch up to the latest value.
 
       if (traceFirstRender) {
         logger.info('[预览诊断] 首次画面渲染完成', {

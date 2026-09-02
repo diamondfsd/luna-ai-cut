@@ -50,6 +50,7 @@ export function WebGpuVideoPreview({
   const rendererRef = useRef<WebGpuVideoRenderer | null>(null)
   const rendererInitializedRef = useRef(false)
   const layersSignatureRef = useRef<string | null>(null)
+  const layerSyncInFlightRef = useRef<Promise<void> | null>(null)
   const latestLayersRef = useRef(layers)
   const latestPlaybackRef = useRef({ active, playing, time })
   latestLayersRef.current = layers
@@ -66,6 +67,35 @@ export function WebGpuVideoPreview({
   })
   const callbackRef = useRef({ onVideoElement, onError, onRender })
   callbackRef.current = { onVideoElement, onError, onRender }
+
+  function syncLatestLayers(): Promise<void> {
+    const renderer = rendererRef.current
+    if (!renderer || !rendererInitializedRef.current) return Promise.resolve()
+    if (layerSyncInFlightRef.current) return layerSyncInFlightRef.current
+
+    const nextLayers = latestLayersRef.current
+    const nextSignature = JSON.stringify(nextLayers)
+    if (layersSignatureRef.current === nextSignature) return Promise.resolve()
+    layersSignatureRef.current = nextSignature
+
+    const request = renderer.setLayers(nextLayers)
+    const trackedRequest = request.then(
+      () => {
+        if (layerSyncInFlightRef.current !== trackedRequest) return
+        layerSyncInFlightRef.current = null
+        if (rendererRef.current !== renderer || !rendererInitializedRef.current) return
+        if (JSON.stringify(latestLayersRef.current) !== layersSignatureRef.current) {
+          return syncLatestLayers()
+        }
+      },
+      (error: unknown) => {
+        if (layerSyncInFlightRef.current === trackedRequest) layerSyncInFlightRef.current = null
+        throw error
+      },
+    )
+    layerSyncInFlightRef.current = trackedRequest
+    return trackedRequest
+  }
 
   useLayoutEffect(() => {
     onViewportChange?.()
@@ -105,19 +135,11 @@ export function WebGpuVideoPreview({
     }
     window.addEventListener('resize', resize)
 
-    const applyLatestLayers = () => {
-      const nextLayers = latestLayersRef.current
-      const nextSignature = JSON.stringify(nextLayers)
-      if (layersSignatureRef.current === nextSignature) return Promise.resolve()
-      layersSignatureRef.current = nextSignature
-      return renderer.setLayers(nextLayers)
-    }
-
     void renderer.initialize()
       .then(() => {
         rendererInitializedRef.current = true
         logger.info('[PreviewDebug] WebGPU initialized')
-        return applyLatestLayers()
+        return syncLatestLayers()
       })
       .then(() => {
         const nextLayers = latestLayersRef.current
@@ -155,12 +177,13 @@ export function WebGpuVideoPreview({
   }, [maxSide])
 
   useEffect(() => {
-    const renderer = rendererRef.current
-    if (!renderer || !rendererInitializedRef.current || layersSignatureRef.current === layersSignature) return
-    layersSignatureRef.current = layersSignature
-    void renderer.setLayers(layers).catch((error: unknown) => {
+    if (!rendererRef.current || !rendererInitializedRef.current || layersSignatureRef.current === layersSignature) return
+    void syncLatestLayers().catch((error: unknown) => {
       callbackRef.current.onError(error instanceof Error ? error.message : String(error))
     })
+    // The renderer consumes the latest layer ref; the effect only wakes it up
+    // when React receives a newer preview snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, layersSignature])
 
   useEffect(() => {

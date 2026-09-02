@@ -102,7 +102,7 @@ export interface GpuVideoEntry {
   ready: boolean
   resource: GpuImageResource | null
   uploadCanvas: GpuUploadCanvas | null
-  lastUploadedFrame: number
+  lastUploadedVideoTime: number
 }
 
 export interface GpuMaskResource {

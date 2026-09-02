@@ -1,30 +1,18 @@
-import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { promisify } from 'node:util'
 
-import ffmpegPath from 'ffmpeg-static'
 
 import { expect, test } from './fixtures/lunaElectron'
 
-const execFileAsync = promisify(execFile)
+const projectRoot = path.resolve(import.meta.dirname, '..')
+const videoPath = path.join(projectRoot, 'electron', 'media', 'obs-demo', 'obs-demo.mp4')
 
 test('workspace color slider previews live and commits one history entry', async ({ lunaApp }) => {
-  if (!ffmpegPath) throw new Error('ffmpeg test fixture unavailable')
-
-  const videoPath = path.join(lunaApp.temporaryRoot, 'color-slider.mp4')
-  await execFileAsync(ffmpegPath, [
-    '-f', 'lavfi',
-    '-i', 'testsrc2=size=640x360:rate=24',
-    '-t', '1',
-    '-pix_fmt', 'yuv420p',
-    '-c:v', 'libx264',
-    '-movflags', '+faststart',
-    '-y',
-    videoPath,
-  ])
+  if (!existsSync(videoPath)) throw new Error(`workspace video fixture unavailable: ${videoPath}`)
 
   const projectName = `color slider ${Date.now()}`
   await lunaApp.page.evaluate(async ({ name, sourcePath }) => {
+    await window.luna.saveSettings({ experimentalWebGpuPreview: false })
     await window.luna.workspace.createProject(name, [{
       id: 'color-slider-video',
       name: 'color-slider.mp4',
@@ -41,6 +29,7 @@ test('workspace color slider previews live and commits one history entry', async
   await expect(project).toBeVisible()
   await project.click()
   await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas')).toBeVisible({ timeout: 30_000 })
+  await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 30_000 })
 
   const control = lunaApp.page.locator('.workspace-param-slider').nth(2)
   const slider = control.locator('.workspace-slider-root')
@@ -56,18 +45,17 @@ test('workspace color slider previews live and commits one history entry', async
   await lunaApp.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await lunaApp.page.mouse.down()
   const handle = slider.locator('[role="slider"]')
-  await lunaApp.page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2)
+  for (const ratio of [0.75, 0.6, 0.8, 0.7, 0.25]) {
+    await lunaApp.page.mouse.move(box.x + box.width * ratio, box.y + box.height / 2, { steps: 4 })
+  }
 
   const draggedValue = await handle.getAttribute('aria-valuenow')
   expect(Number(draggedValue)).not.toBe(0)
-  await lunaApp.page.waitForTimeout(100)
-  await expect(handle).not.toHaveAttribute('aria-valuenow', '0')
-  await expect.poll(async () => Buffer.compare(await previewSignature(), originalSignature) !== 0).toBe(true)
+  await expect.poll(async () => Buffer.compare(await previewSignature(), originalSignature) !== 0, { timeout: 2_000 }).toBe(true)
+  const lowExposureSignature = await previewSignature()
 
-  for (const ratio of [0.6, 0.8, 0.7]) {
-    await lunaApp.page.mouse.move(box.x + box.width * ratio, box.y + box.height / 2)
-    await expect.poll(async () => Buffer.compare(await previewSignature(), originalSignature) !== 0).toBe(true)
-  }
+  await lunaApp.page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2, { steps: 4 })
+  await expect.poll(async () => Buffer.compare(await previewSignature(), lowExposureSignature) !== 0, { timeout: 2_000 }).toBe(true)
 
   await lunaApp.page.mouse.up()
 

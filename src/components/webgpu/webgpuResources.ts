@@ -150,7 +150,7 @@ export class WebGpuResourceManager {
       video.muted = key !== audioEnabledKey
       video.crossOrigin = 'anonymous'
       video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
-      const entry: GpuVideoEntry = { key, video, ready: false, resource: null, uploadCanvas: null, lastUploadedFrame: -1 }
+      const entry: GpuVideoEntry = { key, video, ready: false, resource: null, uploadCanvas: null, lastUploadedVideoTime: -1 }
       logger.info('[PreviewDebug] video element created', {
         key,
         src: video.src,
@@ -352,6 +352,7 @@ export class WebGpuResourceManager {
     const [width, height] = calcRenderSize(entry.video.videoWidth || 1280, entry.video.videoHeight || 720, layerMaxSide)
     if (!entry.resource || entry.resource.width !== width || entry.resource.height !== height) {
       entry.resource?.texture.destroy?.()
+      entry.lastUploadedVideoTime = -1
       entry.resource = {
         // Chromium's video upload path uses an internal render pass on some
         // backends, so the destination must also allow render attachment use.
@@ -385,43 +386,44 @@ export class WebGpuResourceManager {
         })
       }
     }
-    if (entry.lastUploadedFrame !== this.callbacks.getFrameCounter()) {
-      const firstUpload = entry.lastUploadedFrame < 0
-      const upload = await prepareScaledUploadSource(
-        entry.video,
-        entry.video.videoWidth || width,
-        entry.video.videoHeight || height,
-        width,
-        height,
-        entry.uploadCanvas ?? undefined,
-      )
-      if (upload.source !== entry.video) entry.uploadCanvas = upload.source as typeof entry.uploadCanvas
-      try {
-        await this.withGpuValidationScope('WebGPU 视频纹理上传', () => {
-          device.queue.copyExternalImageToTexture(
-            { source: upload.source },
-            { texture: entry.resource!.texture },
-            { width, height },
-          )
-        })
-      } finally {
-        upload.dispose()
-      }
-      entry.lastUploadedFrame = this.callbacks.getFrameCounter()
-      if (firstUpload) {
-        logger.info('[PreviewDebug] first video texture upload submitted', {
-          key: entry.key,
-          frameCounter: entry.lastUploadedFrame,
-          currentTime: entry.video.currentTime,
-          readyState: entry.video.readyState,
-          videoWidth: entry.video.videoWidth,
-          videoHeight: entry.video.videoHeight,
-          textureWidth: width,
-          textureHeight: height,
-          textureFormat: VIDEO_TEXTURE_FORMAT,
-          scaledThroughCanvas: upload.source !== entry.video,
-        })
-      }
+    const currentVideoTime = entry.video.currentTime
+    if (!entry.resource) throw new Error('WebGPU 视频纹理尚未准备好')
+    if (Math.abs(entry.lastUploadedVideoTime - currentVideoTime) <= 0.0001) return entry.resource
+    const firstUpload = entry.lastUploadedVideoTime < 0
+    const upload = await prepareScaledUploadSource(
+      entry.video,
+      entry.video.videoWidth || width,
+      entry.video.videoHeight || height,
+      width,
+      height,
+      entry.uploadCanvas ?? undefined,
+    )
+    if (upload.source !== entry.video) entry.uploadCanvas = upload.source as typeof entry.uploadCanvas
+    try {
+      await this.withGpuValidationScope('WebGPU 视频纹理上传', () => {
+        device.queue.copyExternalImageToTexture(
+          { source: upload.source },
+          { texture: entry.resource!.texture },
+          { width, height },
+        )
+      })
+    } finally {
+      upload.dispose()
+    }
+    entry.lastUploadedVideoTime = currentVideoTime
+    if (firstUpload) {
+      logger.info('[PreviewDebug] first video texture upload submitted', {
+        key: entry.key,
+        frameCounter: this.callbacks.getFrameCounter(),
+        currentTime: entry.video.currentTime,
+        readyState: entry.video.readyState,
+        videoWidth: entry.video.videoWidth,
+        videoHeight: entry.video.videoHeight,
+        textureWidth: width,
+        textureHeight: height,
+        textureFormat: VIDEO_TEXTURE_FORMAT,
+        scaledThroughCanvas: upload.source !== entry.video,
+      })
     }
     return entry.resource
   }

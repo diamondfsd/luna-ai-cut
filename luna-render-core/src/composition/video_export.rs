@@ -265,11 +265,10 @@ impl Task for ExportCompositionVideoTask {
         }
 
         #[cfg(target_os = "windows")]
-        // Keep the Windows zero-copy path opt-in while its D3D11/D3D12
-        // interop stability is being verified. The default uses the
-        // system-memory-compatible path and still lets FFmpeg select a
-        // working hardware encoder when one is available.
-        let mut windows_gpu_needs_compatible = true;
+        // Prefer the Windows D3D11/D3D12 shared-texture path. It keeps the
+        // composited frames on the GPU and lets Media Foundation feed the
+        // hardware encoder without a per-frame CPU readback.
+        let mut windows_gpu_needs_compatible = false;
 
         #[cfg(target_os = "windows")]
         let windows_zero_copy_disabled =
@@ -310,8 +309,8 @@ impl Task for ExportCompositionVideoTask {
                 })
                 .unwrap_or(false);
 
-            // The native Media Foundation path is opt-in. All other Windows
-            // hardware exports use the compatible FFmpeg path first.
+            // The compatible FFmpeg path remains available through explicit
+            // configuration or when the native path fails.
             let force_compatible_path = windows_zero_copy_disabled
                 || force_compatible_encoder
                 || (!force_media_foundation_encoder && force_compatible_input);
@@ -327,7 +326,7 @@ impl Task for ExportCompositionVideoTask {
                     "[Export:WinGPU] selecting zero-copy path by explicit input configuration",
                 );
             } else {
-                log_write("[Export:WinGPU] selecting compatible path by default");
+                log_write("[Export:WinGPU] selecting zero-copy path by default");
             }
         }
 
