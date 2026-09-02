@@ -13,6 +13,13 @@ export interface ExportPreviewSource {
   path: string
   layers: PreviewLayer[]
   outputSize: { width: number; height: number }
+  timeline?: {
+    path: string
+    startTime: number
+    duration: number
+    thumbnailDuration: number
+    editable: boolean
+  }
 }
 
 interface ExportPreviewPaneProps {
@@ -38,9 +45,11 @@ function formatTime(seconds: number): string {
 }
 
 export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: ExportPreviewPaneProps) {
-  const duration = livePhotoSource?.duration ?? 0
-  const sourceStartTime = livePhotoSource?.startTime ?? 0
-  const thumbnailDuration = livePhotoSource?.thumbnailDuration ?? duration
+  const timeline = livePhotoSource ?? source.timeline
+  const duration = timeline?.duration ?? 0
+  const sourceStartTime = timeline?.startTime ?? 0
+  const thumbnailDuration = timeline?.thumbnailDuration ?? duration
+  const timelineEditable = livePhotoSource ? true : Boolean(source.timeline?.editable)
   const liveSelected = Boolean(livePhotoSource && value.exportFormats.some((format) => format !== 'video'))
   const minimumRange = liveSelected ? LIVE_DURATION : 0.1
   const exportStart = clamp(value.trimStartTime, 0, Math.max(0, duration - minimumRange))
@@ -54,12 +63,12 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(playbackStart + (liveSelected ? cover : 0))
   const { thumbnails, loading } = useTrimThumbnails({
-    videoPath: livePhotoSource?.path ?? '',
+    videoPath: timeline?.path ?? '',
     duration: thumbnailDuration,
   })
 
   const timelineThumbnails = useMemo(() => {
-    if (!livePhotoSource || thumbnails.length < 2 || thumbnailDuration <= 0) return thumbnails
+    if (!timeline || thumbnails.length < 2 || thumbnailDuration <= 0) return thumbnails
     const lastIndex = thumbnails.length - 1
     return thumbnails.map((_, index) => {
       const progress = lastIndex > 0 ? index / lastIndex : 0
@@ -67,13 +76,13 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
       const cachedIndex = Math.round(clamp(sourceTime / thumbnailDuration, 0, 1) * lastIndex)
       return thumbnails[cachedIndex]
     })
-  }, [duration, livePhotoSource, sourceStartTime, thumbnailDuration, thumbnails])
+  }, [duration, sourceStartTime, thumbnailDuration, thumbnails, timeline])
 
   const previewLayers = useMemo(() => source.layers.map((layer) => (
-    livePhotoSource && layer.isVideo
+    timeline && layer.isVideo
       ? { ...layer, videoTime: sourceStartTime + previewAnchor, videoDuration: Math.max(0.1, playbackEnd - playbackStart) }
       : layer
-  )), [livePhotoSource, playbackEnd, playbackStart, previewAnchor, source.layers, sourceStartTime])
+  )), [playbackEnd, playbackStart, previewAnchor, source.layers, sourceStartTime, timeline])
 
   const seekPreview = useCallback((relativeTime: number) => {
     const nextTime = clamp(relativeTime, playbackStart, playbackEnd - (liveSelected ? 0.01 : 0))
@@ -173,11 +182,13 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
         />
       </div>
 
-      {livePhotoSource ? (
+      {timeline ? (
         <div className="export-preview-trim">
-          <div className="export-preview-cover-time">
-            {liveSelected ? `Live 图 ${formatTime(liveStart)} – ${formatTime(liveStart + LIVE_DURATION)} · 封面 ${formatTime(liveStart + cover)}` : '拖动两端调整导出长度'}
-          </div>
+          {liveSelected || timelineEditable ? (
+            <div className="export-preview-cover-time">
+              {liveSelected ? `Live 图 ${formatTime(liveStart)} – ${formatTime(liveStart + LIVE_DURATION)} · 封面 ${formatTime(liveStart + cover)}` : '拖动两端调整导出长度'}
+            </div>
+          ) : null}
           <div className="export-preview-strip">
             {loading ? <div className="export-preview-loading">正在准备画面…</div> : null}
             <TrimStrip
@@ -190,8 +201,8 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
               onTogglePlay={togglePreview}
               onSeek={seekPreview}
               onPlayheadChange={changePlayhead}
-              onStartTimeChange={changeExportStart}
-              onEndTimeChange={changeExportEnd}
+              onStartTimeChange={timelineEditable ? changeExportStart : undefined}
+              onEndTimeChange={timelineEditable ? changeExportEnd : undefined}
               secondaryFixedRange={liveSelected ? {
                 startTime: liveStart,
                 duration: LIVE_DURATION,
@@ -203,10 +214,12 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
               thumbnails={timelineThumbnails}
             />
           </div>
-          <div className="export-preview-help">
-            <span>蓝色范围为视频导出片段</span>
-            <span>{liveSelected ? '橙色范围为 Live 图片段' : '可在这里再次截取'}</span>
-          </div>
+          {timelineEditable || liveSelected ? (
+            <div className="export-preview-help">
+              <span>蓝色范围为视频导出片段</span>
+              <span>{liveSelected ? '橙色范围为 Live 图片段' : '可在这里再次截取'}</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
