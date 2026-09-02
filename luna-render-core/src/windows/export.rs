@@ -87,6 +87,13 @@ struct ExportVideoInput {
 struct FfmpegVideoDecoder {
     process: Child,
     stdout: ChildStdout,
+    ffmpeg_path: String,
+    source_path: String,
+    start_time: f64,
+    fps: f64,
+    hardware_download_format: String,
+    hardware: bool,
+    frames_read: u64,
     width: u32,
     height: u32,
     frame_bytes: usize,
@@ -106,24 +113,91 @@ impl FfmpegVideoDecoder {
         let scale = (max_side as f64 / max_edge as f64).min(1.0);
         let width = ((info.width as f64 * scale).round() as u32).max(2) & !1;
         let height = ((info.height as f64 * scale).round() as u32).max(2) & !1;
+        let hardware_download_format = if info.pixel_format.contains("10")
+            || info.pixel_format.contains("12")
+            || info.pixel_format.contains("16")
+        {
+            "p010le"
+        } else {
+            "nv12"
+        }
+        .to_string();
+        let (process, stdout) = Self::spawn(
+            ffmpeg_path,
+            source_path,
+            start_time,
+            fps,
+            width,
+            height,
+            true,
+            &hardware_download_format,
+        )?;
+        crate::logging::write(&format!(
+            "[Export:WinGPU] decoder=ffmpeg-d3d11va codec={} source_format={} download_format={}",
+            info.codec_name, info.pixel_format, hardware_download_format,
+        ));
+        Ok(Self {
+            process,
+            stdout,
+            ffmpeg_path: ffmpeg_path.to_string(),
+            source_path: source_path.to_string(),
+            start_time,
+            fps,
+            hardware_download_format,
+            hardware: true,
+            frames_read: 0,
+            width,
+            height,
+            frame_bytes: (width * height * 4) as usize,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spawn(
+        ffmpeg_path: &str,
+        source_path: &str,
+        start_time: f64,
+        fps: f64,
+        width: u32,
+        height: u32,
+        hardware: bool,
+        hardware_download_format: &str,
+    ) -> Result<(Child, ChildStdout), String> {
+        let mut args = vec![
+            "-loglevel".to_string(),
+            "error".to_string(),
+            "-ss".to_string(),
+            format!("{start_time:.6}"),
+        ];
+        if hardware {
+            args.extend([
+                "-hwaccel".to_string(),
+                "d3d11va".to_string(),
+                "-hwaccel_output_format".to_string(),
+                "d3d11".to_string(),
+            ]);
+        }
+        args.extend([
+            "-i".to_string(),
+            normalize_local_path(source_path),
+            "-vf".to_string(),
+            if hardware {
+                format!(
+                    "hwdownload,format={hardware_download_format},scale={width}:{height}:flags=lanczos,format=rgba"
+                )
+            } else {
+                format!("scale={width}:{height}:flags=lanczos,format=rgba")
+            },
+            "-r".to_string(),
+            fps.to_string(),
+            "-pix_fmt".to_string(),
+            "rgba".to_string(),
+            "-f".to_string(),
+            "rawvideo".to_string(),
+            "pipe:1".to_string(),
+        ]);
         let mut process = command(ffmpeg_path)
-            .args([
-                "-ss",
-                &format!("{start_time:.6}"),
-                "-i",
-                &normalize_local_path(source_path),
-                "-vf",
-                &format!("scale={width}:{height}:flags=lanczos"),
-                "-r",
-                &fps.to_string(),
-                "-pix_fmt",
-                "rgba",
-                "-f",
-                "rawvideo",
-                "-loglevel",
-                "error",
-                "pipe:1",
-            ])
+            .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -133,23 +207,46 @@ impl FfmpegVideoDecoder {
             .stdout
             .take()
             .ok_or_else(|| "compatible video decoder did not provide output".to_string())?;
-        Ok(Self {
-            process,
-            stdout,
-            width,
-            height,
-            frame_bytes: (width * height * 4) as usize,
-        })
+        Ok((process, stdout))
     }
 
     fn read(&mut self) -> Result<Option<Vec<u8>>, String> {
         let mut rgba = vec![0; self.frame_bytes];
         match self.stdout.read_exact(&mut rgba) {
-            Ok(()) => Ok(Some(rgba)),
+            Ok(()) => {
+                self.frames_read += 1;
+                Ok(Some(rgba))
+            }
             Err(error) => {
-                let status = self.process.try_wait().ok().flatten();
+                let status = if error.kind() == std::io::ErrorKind::UnexpectedEof {
+                    self.process.wait().ok()
+                } else {
+                    self.process.try_wait().ok().flatten()
+                };
                 if status.is_some_and(|status| status.success()) {
                     Ok(None)
+                } else if self.hardware {
+                    let _ = self.process.kill();
+                    let _ = self.process.wait();
+                    let resume_time = self.start_time + self.frames_read as f64 / self.fps.max(1.0);
+                    crate::logging::write(&format!(
+                        "[Export:WinGPU] decoder=ffmpeg-software fallback_reason={} status={status:?} resume={resume_time:.6}",
+                        error,
+                    ));
+                    let (process, stdout) = Self::spawn(
+                        &self.ffmpeg_path,
+                        &self.source_path,
+                        resume_time,
+                        self.fps,
+                        self.width,
+                        self.height,
+                        false,
+                        &self.hardware_download_format,
+                    )?;
+                    self.process = process;
+                    self.stdout = stdout;
+                    self.hardware = false;
+                    self.read()
                 } else {
                     Err(format!(
                         "compatible video decoder stopped early: {error}; status={status:?}"
