@@ -178,39 +178,6 @@ impl VideoConverter {
         })
     }
 
-    pub(crate) fn decode_to_bgra_for_export(
-        &mut self,
-        frame: &DecodedFrame,
-    ) -> Result<ID3D12Resource, String> {
-        self.decode_to_bgra_for_export_inner(frame, false)
-    }
-
-    pub(crate) fn decode_to_bgra_for_export_synchronized(
-        &mut self,
-        frame: &DecodedFrame,
-    ) -> Result<ID3D12Resource, String> {
-        self.decode_to_bgra_for_export_inner(frame, true)
-    }
-
-    fn decode_to_bgra_for_export_inner(
-        &mut self,
-        frame: &DecodedFrame,
-        wait_for_completion: bool,
-    ) -> Result<ID3D12Resource, String> {
-        let output = self.take_bgra_texture(frame.width, frame.height)?;
-        if let Err(error) = self.blit_decoded_surface(
-            frame,
-            &output,
-            frame.width,
-            frame.height,
-            wait_for_completion,
-        ) {
-            self.recycle_bgra_texture(output, frame.width, frame.height);
-            return Err(error);
-        }
-        Ok(output)
-    }
-
     pub(crate) fn decode_to_bgra_scaled(
         &mut self,
         frame: &DecodedFrame,
@@ -225,6 +192,15 @@ impl VideoConverter {
             return Err(error);
         }
         Ok(output)
+    }
+
+    pub(crate) fn wait_for_external_surface(
+        &self,
+        fence: &ID3D12Fence,
+        value: u64,
+    ) -> Result<(), String> {
+        unsafe { self.wgpu_queue.Wait(fence, value) }
+            .map_err(|error| format!("failed to wait for external video surface: {error}"))
     }
 
     pub(crate) fn create_composition_target(
@@ -373,21 +349,12 @@ impl VideoConverter {
         }
     }
 
-    pub(crate) fn unwrap_for_wgpu(
+    pub(crate) fn wrap_external_for_wgpu(
         &mut self,
         resource: &ID3D12Resource,
+        fence: &ID3D12Fence,
+        release_fence_value: u64,
     ) -> Result<D3d12TextureLease, String> {
-        self.lease_for_wgpu(resource)
-    }
-
-    pub(crate) fn wrap_for_wgpu(
-        &mut self,
-        resource: &ID3D12Resource,
-    ) -> Result<D3d12TextureLease, String> {
-        self.lease_for_wgpu(resource)
-    }
-
-    fn lease_for_wgpu(&mut self, resource: &ID3D12Resource) -> Result<D3d12TextureLease, String> {
         if self.process_in_flight_value != 0 {
             unsafe {
                 self.wgpu_queue
@@ -395,13 +362,11 @@ impl VideoConverter {
             }
             .map_err(|error| format!("failed to wait for video-process work: {error}"))?;
         }
-
-        let release_fence_value = self.allocate_fence_value();
         Ok(D3d12TextureLease {
             resource: resource.clone(),
             process_queue: self.process_queue.clone(),
             wgpu_queue: self.wgpu_queue.clone(),
-            fence: self.fence.clone(),
+            fence: fence.clone(),
             release_fence_value,
             release_signal_submitted: false,
             returned: false,

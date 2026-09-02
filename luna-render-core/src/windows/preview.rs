@@ -209,7 +209,10 @@ impl NativePreviewRuntime {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => entry.insert(VideoDecoder::open(
                 path,
-                &self.interop.decoder_device_manager,
+                self.interop
+                    .decoder_device_manager
+                    .as_ref()
+                    .ok_or_else(|| "Media Foundation preview decoder is unavailable".to_string())?,
             )?),
         };
         let rotation = decoder.info().rotation_degrees;

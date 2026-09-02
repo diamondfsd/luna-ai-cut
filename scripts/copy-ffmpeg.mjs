@@ -49,9 +49,10 @@ const destDir = join(process.cwd(), 'resources', 'ffmpeg')
 const cacheDir = join(process.cwd(), '.ffmpeg-cache')
 const legacyStaticReleaseTag = 'b6.1.1'
 const windowsFfmpegVersion = '8.1.2'
-const windowsFfmpegArchiveName = `ffmpeg-${windowsFfmpegVersion}-essentials_build.zip`
+const windowsFfmpegArchiveName = `ffmpeg-${windowsFfmpegVersion}-full_build-shared.zip`
 const windowsFfmpegUpstreamUrl = `https://github.com/GyanD/codexffmpeg/releases/download/${windowsFfmpegVersion}/${windowsFfmpegArchiveName}`
-const windowsFfmpegCacheKey = `ffmpeg-win32-x64-${windowsFfmpegVersion}-essentials`
+const windowsFfmpegCacheKey = `ffmpeg-win32-x64-${windowsFfmpegVersion}-full-shared`
+const windowsSharedExtractDir = join(cacheDir, `ffmpeg-${windowsFfmpegVersion}-full_build-shared`)
 const darwinArm64FfprobeSha256 = 'bb2db6f5d8cef919da12fbf592119a987202a8c060a886f3cab091f9cab90b64'
 let windowsBundlePromise = null
 
@@ -170,6 +171,7 @@ function verifyD3d12Encoders(filePath) {
 }
 
 function findExtractedFile(root, fileName) {
+  if (!existsSync(root)) return null
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const entryPath = join(root, entry.name)
     if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) return entryPath
@@ -217,14 +219,23 @@ async function prepareWindowsBundle() {
       const ffmpegCachePath = join(cacheDir, windowsFfmpegCacheKey)
       const ffprobeCachePath = join(cacheDir, `${windowsFfmpegCacheKey}-ffprobe`)
 
-      if (!existsSync(ffmpegCachePath) || !existsSync(ffprobeCachePath)) {
+      let extractedFfmpeg = findExtractedFile(windowsSharedExtractDir, 'ffmpeg.exe')
+      let extractedFfprobe = findExtractedFile(windowsSharedExtractDir, 'ffprobe.exe')
+      let extractedAvcodec = findExtractedFile(windowsSharedExtractDir, 'avcodec.lib')
+
+      if (!extractedFfmpeg || !extractedFfprobe || !extractedAvcodec) {
         const localBinDir = process.env.LUNA_FFMPEG_8_1_2_BIN_DIR
         const localFfmpegPath = localBinDir ? join(localBinDir, 'ffmpeg.exe') : null
         const localFfprobePath = localBinDir ? join(localBinDir, 'ffprobe.exe') : null
 
         if (localFfmpegPath && localFfprobePath && existsSync(localFfmpegPath) && existsSync(localFfprobePath)) {
-          copyFileSync(localFfmpegPath, ffmpegCachePath)
-          copyFileSync(localFfprobePath, ffprobeCachePath)
+          const localRoot = dirname(localBinDir)
+          if (!existsSync(join(localRoot, 'include', 'libavcodec', 'avcodec.h')) || !existsSync(join(localRoot, 'lib', 'avcodec.lib'))) {
+            throw new Error(`LUNA_FFMPEG_8_1_2_BIN_DIR must point to the bin directory of the full shared build`)
+          }
+          extractedFfmpeg = localFfmpegPath
+          extractedFfprobe = localFfprobePath
+          extractedAvcodec = join(localRoot, 'lib', 'avcodec.lib')
         } else {
           const archivePath = join(cacheDir, windowsFfmpegArchiveName)
           if (!existsSync(archivePath)) {
@@ -245,25 +256,58 @@ async function prepareWindowsBundle() {
             }
           }
 
-          const extractDir = join(cacheDir, `${windowsFfmpegCacheKey}-extracted`)
-          rmSync(extractDir, { recursive: true, force: true })
-          mkdirSync(extractDir, { recursive: true })
-          extractWindowsZip(archivePath, extractDir)
+          rmSync(windowsSharedExtractDir, { recursive: true, force: true })
+          mkdirSync(windowsSharedExtractDir, { recursive: true })
+          extractWindowsZip(archivePath, windowsSharedExtractDir)
 
-          const extractedFfmpeg = findExtractedFile(extractDir, 'ffmpeg.exe')
-          const extractedFfprobe = findExtractedFile(extractDir, 'ffprobe.exe')
-          if (!extractedFfmpeg || !extractedFfprobe) {
-            throw new Error(`Windows FFmpeg ${windowsFfmpegVersion} archive does not contain ffmpeg.exe and ffprobe.exe`)
+          extractedFfmpeg = findExtractedFile(windowsSharedExtractDir, 'ffmpeg.exe')
+          extractedFfprobe = findExtractedFile(windowsSharedExtractDir, 'ffprobe.exe')
+          extractedAvcodec = findExtractedFile(windowsSharedExtractDir, 'avcodec.lib')
+          if (!extractedFfmpeg || !extractedFfprobe || !extractedAvcodec) {
+            throw new Error(`Windows FFmpeg ${windowsFfmpegVersion} shared archive is incomplete`)
           }
-          copyFileSync(extractedFfmpeg, ffmpegCachePath)
-          copyFileSync(extractedFfprobe, ffprobeCachePath)
         }
       }
 
-      return { ffmpegPath: ffmpegCachePath, ffprobePath: ffprobeCachePath }
+      copyFileSync(extractedFfmpeg, ffmpegCachePath)
+      copyFileSync(extractedFfprobe, ffprobeCachePath)
+      const binDir = dirname(extractedFfmpeg)
+      const sharedRoot = dirname(binDir)
+
+      return { ffmpegPath: ffmpegCachePath, ffprobePath: ffprobeCachePath, binDir, sharedRoot }
     })()
   }
   return windowsBundlePromise
+}
+
+function copyWindowsSharedRuntime(bundle) {
+  for (const fileName of readdirSync(bundle.binDir)) {
+    if (!/^(?:av|sw).+\.dll$/i.test(fileName)) continue
+    copyFileIfChanged(join(bundle.binDir, fileName), join(destDir, fileName))
+  }
+  const license = join(bundle.sharedRoot, 'LICENSE')
+  if (existsSync(license)) copyFileIfChanged(license, join(destDir, 'FFmpeg-LICENSE.txt'))
+}
+
+function copyFileIfChanged(source, destination) {
+  if (existsSync(destination)) {
+    const sourceStat = statSync(source)
+    const destinationStat = statSync(destination)
+    if (sourceStat.size === destinationStat.size) {
+      const sourceHash = createHash('sha256').update(readFileSync(source)).digest('hex')
+      const destinationHash = createHash('sha256').update(readFileSync(destination)).digest('hex')
+      if (sourceHash === destinationHash) return
+    }
+  }
+
+  try {
+    copyFileSync(source, destination)
+  } catch (error) {
+    if (error?.code === 'EBUSY' || error?.code === 'EPERM') {
+      throw new Error(`Cannot update ${destination} because it is in use. Close the running app and retry.`, { cause: error })
+    }
+    throw error
+  }
 }
 
 // ─── ffmpeg ────────────────────────────────────
@@ -273,12 +317,13 @@ async function copyFfmpeg() {
 
   if (targetPlatform === 'win32' && targetArch === 'x64') {
     const bundle = await prepareWindowsBundle()
-    copyFileSync(bundle.ffmpegPath, dest)
+    copyWindowsSharedRuntime(bundle)
+    copyFileIfChanged(bundle.ffmpegPath, dest)
     if (targetPlatform === process.platform && targetArch === process.arch) {
       verifyExecutable(dest, 'ffmpeg')
       verifyD3d12Encoders(dest)
     }
-    console.log(`[copy-ffmpeg] ✓ FFmpeg ${windowsFfmpegVersion} with D3D12VA encoders → ${dest}`)
+    console.log(`[copy-ffmpeg] ✓ FFmpeg ${windowsFfmpegVersion} shared runtime with D3D12VA encoders → ${dest}`)
     return
   }
 
@@ -341,7 +386,8 @@ async function copyFfprobe() {
     if (targetPlatform === 'win32' && targetArch === 'x64') {
       const bundle = await prepareWindowsBundle()
       const dest = join(destDir, `ffprobe${ext}`)
-      copyFileSync(bundle.ffprobePath, dest)
+      copyWindowsSharedRuntime(bundle)
+      copyFileIfChanged(bundle.ffprobePath, dest)
       if (targetPlatform === process.platform && targetArch === process.arch) {
         verifyExecutable(dest, 'ffprobe')
       }

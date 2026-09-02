@@ -54,6 +54,14 @@ for (const fileName of readdirSync(rcDir)) {
 }
 
 if (isWin) {
+  const ffmpeg = spawnSync(process.execPath, [join(root, 'scripts', 'copy-ffmpeg.mjs'), '--target', 'win32', '--arch', targetArch], {
+    cwd: root,
+    stdio: 'inherit',
+  })
+  if (ffmpeg.status !== 0) {
+    console.error('[build-native] ❌ FFmpeg shared runtime preparation failed')
+    process.exit(1)
+  }
   await prepareDxcRuntime({ rootDir: root, outputDir: rcDir, arch: targetArch })
 }
 
@@ -168,6 +176,16 @@ for (const runtimeDir of runtimeDirs) {
     if (!/^onnxruntime.*\.dll$/i.test(fileName) && !/^libonnxruntime.*\.(dylib|so)/i.test(fileName)) continue
     const runtimeDest = join(rcDir, fileName)
     copyFileSync(join(runtimeDir, fileName), runtimeDest)
+    console.log('[build-native] ✅', runtimeDest)
+  }
+}
+
+if (isWin) {
+  const ffmpegRuntimeDir = join(root, 'resources', 'ffmpeg')
+  for (const fileName of readdirSync(ffmpegRuntimeDir)) {
+    if (!/^(?:avformat-62|avcodec-62|avutil-60|swresample-6)\.dll$/i.test(fileName)) continue
+    const runtimeDest = join(rcDir, fileName)
+    copyFileSync(join(ffmpegRuntimeDir, fileName), runtimeDest)
     console.log('[build-native] ✅', runtimeDest)
   }
 }

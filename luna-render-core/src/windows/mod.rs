@@ -4,6 +4,7 @@ mod decoder;
 mod device;
 mod encoder_backend;
 mod export;
+mod ffmpeg_d3d11;
 mod nvenc;
 mod preview;
 mod preview_surface;
@@ -67,9 +68,8 @@ pub(crate) fn export_video(
     legacy_input_mode: bool,
 ) -> Result<(), String> {
     let _com = ComGuard::start()?;
-    let _mf = MediaFoundationGuard::start()?;
     let (d3d12_device, d3d12_queue) = compositor.dx12_device_and_queue()?;
-    let interop = device::InteropDevice::new(&d3d12_device)?;
+    let interop = device::InteropDevice::new_for_export(&d3d12_device)?;
     crate::logging::write(&format!(
         "[Export:WinGPU] backend=vendor-encoder pixel_transport=GPU bitstream_readback=CPU",
     ));
