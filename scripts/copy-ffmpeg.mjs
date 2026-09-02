@@ -11,6 +11,7 @@
  *   node scripts/copy-ffmpeg.mjs --target darwin --arch arm64  # 为 macOS arm64 准备
  */
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, chmodSync, createWriteStream, statSync, rmSync, renameSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
@@ -116,6 +117,16 @@ function verifyTargetArchitecture(path, label) {
   console.log(`[copy-ffmpeg] ✓ ${label} 架构校验通过: ${targetArch}`)
 }
 
+function verifyExecutable(filePath, label) {
+  const result = spawnSync(filePath, ['-version'], {
+    stdio: 'ignore',
+    windowsHide: true,
+    timeout: 15_000,
+  })
+  if (result.error) throw new Error(`${label} failed to start: ${result.error.message}`)
+  if (result.status !== 0) throw new Error(`${label} exited with status ${result.status ?? 'unknown'} signal ${result.signal ?? 'none'}`)
+}
+
 // ─── ffmpeg ────────────────────────────────────
 
 async function copyFfmpeg() {
@@ -131,10 +142,12 @@ async function copyFfmpeg() {
         copyFileSync(src, dest)
         if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
         verifyTargetArchitecture(dest, 'ffmpeg')
+        verifyExecutable(dest, 'ffmpeg')
         console.log(`[copy-ffmpeg] ✓ ffmpeg → ${dest}`)
         return
       }
-    } catch {
+    } catch (error) {
+      console.warn(`[copy-ffmpeg] local ffmpeg-static is unusable; downloading from GitCode: ${error instanceof Error ? error.message : String(error)}`)
       console.warn('[copy-ffmpeg] ffmpeg-static not found locally, will download')
     }
   }
@@ -167,6 +180,7 @@ async function copyFfmpeg() {
   copyFileSync(cachePath, dest)
   if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
   verifyTargetArchitecture(dest, 'ffmpeg')
+  if (targetPlatform === process.platform && targetArch === process.arch) verifyExecutable(dest, 'ffmpeg')
   console.log(`[copy-ffmpeg] ✓ ffmpeg → ${dest}`)
 }
 
