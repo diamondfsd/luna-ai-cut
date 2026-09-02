@@ -13,7 +13,7 @@
  *
  * 日志输出到 test-output/luna-rc-test.log
  */
-// Windows tests use the compatible FFmpeg path by default; pass --native to opt into zero-copy.
+// Windows hardware tests always exercise the native D3D12 video path.
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -31,7 +31,10 @@ if (existsSync(dxcPath)) process.env.LUNA_DXC_PATH = dxcPath
 
 // ── FFmpeg/FFprobe 路径 ──
 let ffmpeg, ffprobe
-try {
+if (process.env.LUNA_FFMPEG_PATH && process.env.LUNA_FFPROBE_PATH) {
+  ffmpeg = process.env.LUNA_FFMPEG_PATH
+  ffprobe = process.env.LUNA_FFPROBE_PATH
+} else try {
   ffmpeg = _require.resolve('ffmpeg-static')
   ffmpeg = join(ffmpeg, '..', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
   const ffprobeStatic = _require.resolve('ffprobe-static/package.json')
@@ -44,8 +47,6 @@ try {
 // ── 参数 ──
 const inputPath = process.argv.find((value, index) => index > 1 && !value.startsWith('--'))
 const softwareMode = process.argv.includes('--software')
-const nativeMode = process.argv.includes('--native')
-const compatibleMode = !nativeMode
 if (!inputPath) {
   console.error('Usage: node scripts/test-gpu-export.mjs <video-path>')
   process.exit(1)
@@ -55,15 +56,10 @@ if (!existsSync(inputPath)) {
   process.exit(1)
 }
 
-// Keep the three test modes deterministic even when a developer has stale
-// Windows export overrides in the parent shell.
-if (process.platform === 'win32' && !softwareMode) {
-  process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER = nativeMode ? 'mf' : 'ffmpeg'
-  delete process.env.LUNA_WINDOWS_GPU_EXPORT_INPUT
-} else {
-  delete process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER
-  delete process.env.LUNA_WINDOWS_GPU_EXPORT_INPUT
-}
+// Do not allow stale environment overrides to select a removed legacy path.
+delete process.env.LUNA_WINDOWS_GPU_EXPORT_ENCODER
+delete process.env.LUNA_WINDOWS_GPU_EXPORT_INPUT
+delete process.env.LUNA_DISABLE_WINDOWS_ZERO_COPY_EXPORT
 
 const outDir = join(root, 'test-output')
 mkdirSync(outDir, { recursive: true })
@@ -75,7 +71,8 @@ try { rmSync(logPath) } catch {}
 try { rmSync(outputPath) } catch {}
 // 清理临时文件
 for (const f of ['.test-gpu-export.mp4.', '.test-gpu-export.mp4.ffmpeg-fallback-partial.mp4',
-  '.test-gpu-export.mp4.audio-mux-partial.mp4', '.test-gpu-export.mp4.win-gpu-partial.mp4']) {
+  '.test-gpu-export.mp4.audio-mux-partial.mp4', '.test-gpu-export.mp4.d3d12-bitstream.partial',
+  '.test-gpu-export.mp4.d3d12-video.partial.mp4', '.test-gpu-export.mp4.win-gpu-partial.mp4']) {
   try { rmSync(join(outDir, f)) } catch {}
 }
 
@@ -330,13 +327,10 @@ async function main() {
     // 提取关键日志
     const gpuAdapter = lines.find(l => l.includes('GPU adapter:') || l.includes('GPU adapter selected:'))
     const winGpuStart = lines.filter(l => l.includes('[Export:WinGPU] automatic attempt'))
-    const winGpuCompatible = lines.filter(l => l.includes('[Export:WinGPU] compatible path start'))
     const winGpuCpuReadback = lines.filter(l => l.includes('transport=cpu-readback'))
-    const winGpuCapabilities = lines.filter(l => l.includes('[Export:WinGPU] capabilities'))
     const winGpuDecoder = lines.filter(l => l.includes('[Export:WinGPU] decoder=media-foundation'))
     const winGpuPipeline = lines.filter(l => l.includes('[Export:WinGPU] pipeline='))
     const winGpuCompleted = lines.filter(l => /\[Export:WinGPU\] completed\s*$/.test(l))
-    const winGpuCompatibleCompleted = lines.filter(l => l.includes('[Export:WinGPU] completed via compatible hardware path'))
     const winGpuFallback = lines.filter(l => l.includes('[Export:WinGPU] unavailable'))
     const ffmpegFallback = lines.filter(l => l.includes('[Export:FFmpeg]'))
     const audioMux = lines.filter(l => l.includes('[Export:Audio]'))
@@ -357,21 +351,13 @@ async function main() {
       console.log(`  Encoder detect: ${encoderDetect.map(l => l.split(']').slice(1).join(']').trim()).join('; ')}`)
     }
     console.log(`  WinGPU native attempt: ${winGpuStart.length}`)
-    console.log(`  WinGPU compatible CPU transport: ${winGpuCompatible.length}`)
     console.log(`  CPU readback frames: ${winGpuCpuReadback.length}`)
-    if (winGpuCapabilities.length) {
-      const capability = winGpuCapabilities[winGpuCapabilities.length - 1]
-      const d3d11on12 = capability.match(/d3d11on12=(true|false)/)?.[1] ?? '?'
-      const h264 = capability.match(/h264=(true|false)/)?.[1] ?? '?'
-      const hevc = capability.match(/hevc=(true|false)/)?.[1] ?? '?'
-      console.log(`  WinGPU capabilities: D3D11On12=${d3d11on12} H.264=${h264} HEVC=${hevc}`)
-    }
     if (winGpuDecoder.length) {
       const decoder = winGpuDecoder[winGpuDecoder.length - 1]
       const output = decoder.match(/output=([^ ]+)/)?.[1] ?? '?'
       const size = decoder.match(/size=([^ ]+)/)?.[1] ?? '?'
-      const sharing = decoder.match(/sharing=([^ ]+)/)?.[1] ?? '?'
-      console.log(`  WinGPU decoder: Media Foundation ${output} ${size} sharing=${sharing}`)
+      const transport = decoder.match(/transport=([^ ]+)/)?.[1] ?? '?'
+      console.log(`  WinGPU decoder: Media Foundation ${output} ${size} transport=${transport}`)
     } else if (process.platform === 'win32' && winGpuStart.length) {
       console.log('  WinGPU decoder: not reached (see fallback reason)')
     }
@@ -383,7 +369,6 @@ async function main() {
       console.log(`  WinGPU pipeline: ${stages} sync=${sync} readback=${readback}`)
     }
     console.log(`  WinGPU completed: ${winGpuCompleted.length}`)
-    console.log(`  WinGPU compatible completed: ${winGpuCompatibleCompleted.length}`)
     console.log(`  WinGPU fallback: ${winGpuFallback.length}`)
     if (winGpuFallback.length) {
       const reason = winGpuFallback[winGpuFallback.length - 1]
@@ -391,28 +376,18 @@ async function main() {
       console.log(`  Fallback reason: ${reason}`)
     }
     console.log(`  FFmpeg fallback logs: ${ffmpegFallback.length}`)
-    const usedCpuReadback = winGpuCompatible.length > 0 || winGpuCpuReadback.length > 0
     if (process.platform === 'win32' && !softwareMode) {
       const backend = gpuAdapter?.match(/backend=(\w+)/)?.[1]
-      if (compatibleMode) {
-        if (winGpuCompatible.length === 0) verificationIssues.push('compatible mode did not start the compatible path')
-        if (winGpuCompatibleCompleted.length === 0) verificationIssues.push('compatible mode did not complete')
-        if (!usedCpuReadback) verificationIssues.push('compatible mode did not report CPU transport')
-      } else {
-        const pipeline = winGpuPipeline[winGpuPipeline.length - 1] ?? ''
-        if (backend !== 'Dx12') verificationIssues.push(`native backend is ${backend ?? '?'}, expected Dx12`)
-        if (!lines.some(l => l.includes('selecting zero-copy path by explicit Media Foundation configuration'))) verificationIssues.push('native mode was not selected explicitly')
-        if (winGpuStart.length === 0) verificationIssues.push('native path was not attempted')
-        if (winGpuCompleted.length === 0) verificationIssues.push('native path did not complete')
-        if (winGpuFallback.length > 0) verificationIssues.push('native path fell back to another export path')
-        if (winGpuCompatible.length > 0) verificationIssues.push('native log contains compatible path')
-        if (winGpuCpuReadback.length > 0) verificationIssues.push('native log contains CPU readback transport')
-        if (!/sync=d3d12-fence\b/.test(pipeline)) verificationIssues.push('native pipeline is missing d3d12-fence synchronization')
-        if (!/readback=false\b/.test(pipeline)) verificationIssues.push('native pipeline is not marked readback=false')
-        if (!lines.some(l => /encoder-transform .*hardware_url=true/.test(l))) verificationIssues.push('native encoder was not verified as hardware MFT')
-        if (!lines.some(l => l.includes('interop adapter-luid'))) verificationIssues.push('missing interop adapter-luid diagnostic')
-        if (!lines.some(l => l.includes('[Export:WinGPU:Timing]'))) verificationIssues.push('missing WinGPU timing diagnostic')
-      }
+      const pipeline = winGpuPipeline[winGpuPipeline.length - 1] ?? ''
+      if (backend !== 'Dx12') verificationIssues.push(`native backend is ${backend ?? '?'}, expected Dx12`)
+      if (winGpuStart.length === 0) verificationIssues.push('native path was not attempted')
+      if (winGpuCompleted.length === 0) verificationIssues.push('native path did not complete')
+      if (winGpuFallback.length > 0) verificationIssues.push('native path fell back to CPU FFmpeg')
+      if (winGpuCpuReadback.length > 0) verificationIssues.push('native log contains CPU pixel readback transport')
+      if (!/sync=d3d12-fence\b/.test(pipeline)) verificationIssues.push('native pipeline is missing d3d12-fence synchronization')
+      if (!lines.some(l => /backend=d3d12-video pixel_transport=GPU bitstream_readback=CPU/.test(l))) verificationIssues.push('native path did not report GPU pixel transport')
+      if (!lines.some(l => l.includes('d3d12 adapter-luid'))) verificationIssues.push('missing D3D12 adapter-luid diagnostic')
+      if (!lines.some(l => l.includes('[Export:WinGPU:Timing]'))) verificationIssues.push('missing WinGPU timing diagnostic')
       if (ffmpegFallback.length > 0) verificationIssues.push('FFmpeg fallback path was used')
     }
     winGpuSuccess = verificationIssues.length === 0
@@ -434,7 +409,7 @@ async function main() {
   const testPassed = exportSuccess && outputExists && (process.platform !== 'win32' || winGpuSuccess)
   if (testPassed) {
     console.log(process.platform === 'win32' && !softwareMode
-      ? compatibleMode
+      ? false
         ? '  ✅ TEST PASSED — compatible hardware export succeeded'
         : '  ✅ TEST PASSED — native WinGPU export succeeded without CPU readback'
       : '  ✅ TEST PASSED — Export succeeded')

@@ -265,84 +265,7 @@ impl Task for ExportCompositionVideoTask {
         }
 
         #[cfg(target_os = "windows")]
-        // Prefer the Windows D3D11/D3D12 shared-texture path. It keeps the
-        // composited frames on the GPU and lets Media Foundation feed the
-        // hardware encoder without a per-frame CPU readback.
-        let mut windows_gpu_needs_compatible = false;
-
-        #[cfg(target_os = "windows")]
-        let windows_zero_copy_disabled =
-            std::env::var_os("LUNA_DISABLE_WINDOWS_ZERO_COPY_EXPORT").is_some();
-
-        #[cfg(target_os = "windows")]
         if hardware_requested {
-            let force_zero_copy_input = std::env::var("LUNA_WINDOWS_GPU_EXPORT_INPUT")
-                .map(|value| {
-                    matches!(
-                        value.to_ascii_lowercase().as_str(),
-                        "zero-copy" | "zerocopy" | "d3d11on12"
-                    )
-                })
-                .unwrap_or(false);
-            let force_compatible_input = std::env::var("LUNA_WINDOWS_GPU_EXPORT_INPUT")
-                .map(|value| {
-                    matches!(
-                        value.to_ascii_lowercase().as_str(),
-                        "system-memory" | "system-memory-upload" | "cpu"
-                    )
-                })
-                .unwrap_or(false);
-            let force_media_foundation_encoder = std::env::var("LUNA_WINDOWS_GPU_EXPORT_ENCODER")
-                .map(|value| {
-                    matches!(
-                        value.to_ascii_lowercase().as_str(),
-                        "mf" | "media-foundation"
-                    )
-                })
-                .unwrap_or(false);
-            let force_compatible_encoder = std::env::var("LUNA_WINDOWS_GPU_EXPORT_ENCODER")
-                .map(|value| {
-                    matches!(
-                        value.to_ascii_lowercase().as_str(),
-                        "qsv" | "nvenc" | "amf" | "ffmpeg"
-                    )
-                })
-                .unwrap_or(false);
-
-            // The compatible FFmpeg path remains available through explicit
-            // configuration or when the native path fails.
-            let force_compatible_path = windows_zero_copy_disabled
-                || force_compatible_encoder
-                || (!force_media_foundation_encoder && force_compatible_input);
-            if force_compatible_path {
-                windows_gpu_needs_compatible = true;
-                log_write("[Export:WinGPU] selecting compatible path by explicit configuration");
-            } else if force_media_foundation_encoder {
-                windows_gpu_needs_compatible = false;
-                log_write("[Export:WinGPU] selecting zero-copy path by explicit Media Foundation configuration");
-            } else if force_zero_copy_input {
-                windows_gpu_needs_compatible = false;
-                log_write(
-                    "[Export:WinGPU] selecting zero-copy path by explicit input configuration",
-                );
-            } else {
-                log_write("[Export:WinGPU] selecting zero-copy path by default");
-            }
-        }
-
-        #[cfg(target_os = "windows")]
-        if hardware_requested && !windows_gpu_needs_compatible && !windows_zero_copy_disabled {
-            let system_memory_decode = std::env::var("LUNA_WINDOWS_GPU_EXPORT_INPUT")
-                .map(|value| {
-                    !matches!(
-                        value.to_ascii_lowercase().as_str(),
-                        "zero-copy" | "zerocopy" | "d3d11on12"
-                    )
-                })
-                // Native Windows export should first keep decoded frames on the
-                // D3D11/D3D12 path. The compatible path below explicitly opts
-                // into a system-memory upload when native interop fails.
-                .unwrap_or(false);
             let bitrate_bps = bitrate
                 .trim_end_matches(['k', 'K'])
                 .parse::<u64>()
@@ -350,11 +273,7 @@ impl Task for ExportCompositionVideoTask {
                 .saturating_mul(1_000);
             log_write(&format!(
                 "[Export:WinGPU] automatic attempt output={} frames={} fps={} bitrate={} input={}",
-                self.input.output_path,
-                total_frames,
-                fps,
-                bitrate_bps,
-                "d3d11-native-shared-texture",
+                self.input.output_path, total_frames, fps, bitrate_bps, "d3d12-gpu",
             ));
             let windows_result = crate::lock_export(|compositor| {
                 compositor.clear_video_decoders();
@@ -369,7 +288,7 @@ impl Task for ExportCompositionVideoTask {
                     bitrate_bps,
                     include_audio,
                     task.as_ref(),
-                    system_memory_decode,
+                    false,
                 )
             });
             match windows_result {
@@ -384,15 +303,10 @@ impl Task for ExportCompositionVideoTask {
                     return Err(error)
                 }
                 Err(error) => {
-                    windows_gpu_needs_compatible = true;
                     log_write(&format!(
-                        "[Export:WinGPU] unavailable, falling back to compatible path: {}",
+                        "[Export:WinGPU] unavailable, falling back to CPU FFmpeg path: {}",
                         error
                     ));
-                    // D3D11On12 / Media Foundation failures can leave wgpu's shared D3D12
-                    // device unusable. Recreate only the export compositor before the
-                    // compatible or CPU encoding fallback starts; the preview compositor
-                    // remains untouched.
                     crate::reset_export_compositor().map_err(|reset_error| {
                         napi::Error::from_reason(format!(
                             "Windows GPU export failed ({error}); export renderer recovery failed: {reset_error}"
@@ -412,63 +326,6 @@ impl Task for ExportCompositionVideoTask {
         } else {
             "libx264".to_string()
         };
-
-        #[cfg(target_os = "windows")]
-        if windows_gpu_needs_compatible && encoder != "libx264" {
-            let compatible_system_memory_decode = std::env::var("LUNA_WINDOWS_GPU_EXPORT_INPUT")
-                .map(|value| {
-                    matches!(
-                        value.to_ascii_lowercase().as_str(),
-                        "system-memory" | "system-memory-upload" | "cpu"
-                    )
-                })
-                .unwrap_or(true);
-            let compatible_result = crate::lock_export(|compositor| {
-                compositor.clear_video_decoders();
-                crate::windows::export_video_with_hardware_encoder(
-                    compositor,
-                    &self.input.ffmpeg_path,
-                    &self.input.ffprobe_path,
-                    &self.input.output_path,
-                    &self.input.composition,
-                    fps,
-                    total_frames,
-                    &bitrate,
-                    include_audio,
-                    &encoder,
-                    task.as_ref(),
-                    compatible_system_memory_decode,
-                )
-            });
-            match compatible_result {
-                Ok(()) => {
-                    log_write("[Export:WinGPU] completed via compatible hardware path");
-                    if let Some(ref id) = self.input.task_id {
-                        cleanup_task(id);
-                    }
-                    return Ok(());
-                }
-                Err(error) if task.as_ref().is_some_and(|state| state.is_cancelled()) => {
-                    return Err(error)
-                }
-                Err(error) => {
-                    log_write(&format!(
-                        "[Export:WinGPU] compatible path unavailable, using software transport: {}",
-                        error
-                    ));
-                    crate::reset_export_compositor().map_err(|reset_error| {
-                        napi::Error::from_reason(format!(
-                            "Windows compatible export failed ({error}); export renderer recovery failed: {reset_error}"
-                        ))
-                    })?;
-                    if let Some(ref state) = task {
-                        state
-                            .current_frame
-                            .store(0, std::sync::atomic::Ordering::SeqCst);
-                    }
-                }
-            }
-        }
 
         let mut args = vec![
             "-y".to_string(),

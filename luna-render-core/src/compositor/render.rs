@@ -790,9 +790,8 @@ impl Compositor {
         if !readback {
             #[cfg(target_os = "windows")]
             if return_output_to_common {
-                // D3D11On12 UnwrapUnderlyingResource hands wgpu a COMMON resource.
-                // ReturnUnderlyingResource requires the fence to cover work that has
-                // brought every checked-out resource back to COMMON as well.
+                // Native D3D12 video queues consume resources from COMMON. The
+                // external handoff fence covers all resources checked out by wgpu.
                 let external_count = self
                     .textures
                     .values()

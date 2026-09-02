@@ -96,10 +96,9 @@ fn ensure_export_compositor() -> napi::Result<()> {
             return Ok(());
         }
     }
-    // The export path creates D3D11On12 and Media Foundation objects of its own.
-    // Sharing the wgpu/D3D12 device with the live native preview lets two D3D11On12
-    // devices operate on the same queue concurrently, which can trigger device
-    // removal on Windows drivers (observed as 0x887A0005 on Intel GPUs).
+    // The export path creates its own Media Foundation and D3D12 video objects.
+    // Keeping the export compositor isolated from the live native preview avoids
+    // concurrent ownership of the same D3D12 queue by two workflows.
     #[cfg(target_os = "windows")]
     let replacement = {
         let log_path = COMPOSITOR_LOG_PATH

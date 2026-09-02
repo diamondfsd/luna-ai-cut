@@ -15,15 +15,26 @@ async function canvasSignature(page: Page): Promise<string> {
   })
 }
 
-async function openWorkspaceMedia(page: Page, options: { name: string; sourcePath: string; kind: 'image' | 'video'; webGpu: boolean }): Promise<void> {
-  await page.evaluate(async ({ name, sourcePath, kind, webGpu }) => {
+async function openWorkspaceMedia(page: Page, options: { name: string; sourcePath: string; kind: 'image' | 'video'; webGpu: boolean; initialContrast?: number }): Promise<void> {
+  await page.evaluate(async ({ name, sourcePath, kind, webGpu, initialContrast }) => {
     await window.luna.saveSettings({ experimentalWebGpuPreview: webGpu })
-    await window.luna.workspace.createProject(name, [{
+    const asset = {
       id: 'live-color-preview-image',
       name: kind === 'video' ? 'live-color-preview.mp4' : 'live-color-preview.jpg',
       path: sourcePath,
       kind,
-    }])
+    }
+    if (initialContrast !== undefined) Object.assign(asset, {
+      pipeline: {
+        color: {
+          contrast: initialContrast,
+          glowStrength: 0,
+          glowRadius: 35,
+          glowThreshold: 65,
+        },
+      },
+    })
+    await window.luna.workspace.createProject(name, [asset])
   }, options)
 
   await page.reload()
@@ -44,6 +55,10 @@ async function exerciseLiveExposure(page: Page): Promise<void> {
   await expect(handle).toHaveAttribute('aria-valuenow', '0')
   const box = await slider.boundingBox()
   if (!box) throw new Error('color slider is not laid out')
+  const sliderMin = Number(await handle.getAttribute('aria-valuemin'))
+  const sliderMax = Number(await handle.getAttribute('aria-valuemax'))
+  const sliderStepAttribute = Number(await handle.getAttribute('aria-valuestep'))
+  const sliderStep = Number.isFinite(sliderStepAttribute) && sliderStepAttribute > 0 ? sliderStepAttribute : 1
 
   const originalPreview = await canvasSignature(page)
   await page.evaluate(() => {
@@ -56,14 +71,25 @@ async function exerciseLiveExposure(page: Page): Promise<void> {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
   try {
-    await page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2)
-    expect(Number(await handle.getAttribute('aria-valuenow'))).not.toBe(0)
-    await expect.poll(() => canvasSignature(page)).not.toBe(originalPreview)
+    const moveSliderWhilePressed = async (fromRatio: number, toRatio: number): Promise<void> => {
+      const steps = 24
+      for (let step = 1; step <= steps; step += 1) {
+        const ratio = fromRatio + ((toRatio - fromRatio) * step) / steps
+        await page.mouse.move(box.x + box.width * ratio, box.y + box.height / 2)
+        const expected = sliderMin + (sliderMax - sliderMin) * ratio
+        const tolerance = Math.max(sliderStep, 0.01) + 0.01
+        await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(expected - tolerance)
+        await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBeLessThanOrEqual(expected + tolerance)
+        await page.waitForTimeout(12)
+      }
+    }
+
+    await moveSliderWhilePressed(0.5, 0.75)
     expect(await page.evaluate(() => (window as Window & { __colorSliderPointerUpCount?: number }).__colorSliderPointerUpCount ?? 0)).toBe(0)
+    await expect.poll(() => canvasSignature(page)).not.toBe(originalPreview)
     const highExposurePreview = await canvasSignature(page)
 
-    await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2)
-    expect(Number(await handle.getAttribute('aria-valuenow'))).not.toBe(0)
+    await moveSliderWhilePressed(0.75, 0.25)
     await expect.poll(() => canvasSignature(page)).not.toBe(highExposurePreview)
     expect(await page.evaluate(() => (window as Window & { __colorSliderPointerUpCount?: number }).__colorSliderPointerUpCount ?? 0)).toBe(0)
 
@@ -89,6 +115,20 @@ test('workspace color slider updates a WebGPU video preview while pointer remain
   if (!existsSync(videoPath)) throw new Error(`workspace video fixture unavailable: ${videoPath}`)
   const projectName = `live video color preview ${Date.now()}`
   await openWorkspaceMedia(lunaApp.page, { name: projectName, sourcePath: videoPath, kind: 'video', webGpu: true })
+  await exerciseLiveExposure(lunaApp.page)
+  expect(lunaApp.runtimeErrors).toEqual([])
+})
+
+test('workspace color slider keeps existing color while a WebGPU video preview is dragged', async ({ lunaApp }) => {
+  if (!existsSync(videoPath)) throw new Error(`workspace video fixture unavailable: ${videoPath}`)
+  const projectName = `live committed color preview ${Date.now()}`
+  await openWorkspaceMedia(lunaApp.page, {
+    name: projectName,
+    sourcePath: videoPath,
+    kind: 'video',
+    webGpu: true,
+    initialContrast: 30,
+  })
   await exerciseLiveExposure(lunaApp.page)
   expect(lunaApp.runtimeErrors).toEqual([])
 })

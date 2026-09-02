@@ -7,7 +7,7 @@
 ```text
 FFmpeg 负责跨平台媒体 I/O（解码/封装/音频）
 wgpu 负责画面渲染（合成/缩放/旋转/透明度/水印/调色）
-Windows Media Foundation 负责把 D3D11 视频纹理直接交给系统硬件编码器
+Windows Media Foundation 负责把 D3D12 视频资源直接交给系统视频编码器
 ```
 
 不要让 FFmpeg 做视觉逻辑，避免预览和导出两套算法。
@@ -31,7 +31,7 @@ Rust napi
         └─ export_file()
               ├─ export_image()   → FFmpeg 解码图片 → wgpu 渲染 → FFmpeg 编码图片
               └─ export_video()
-                    ├─ Windows GPU → Media Foundation/D3D11 texture → 硬件编码
+                    ├─ Windows GPU → Media Foundation/D3D12 resource → D3D12 硬件编码
                     └─ 其他平台/回退 → wgpu 渲染 → CPU readback → FFmpeg 编码
 ```
 
@@ -49,7 +49,7 @@ Compositor::render(canvas_width, canvas_height, &layers)
 |-------|----------------------|------------------------|
 | 渲染核心 | `Compositor::render()` | `Compositor::render()` |
 | 输入   | 已加载 GPU 纹理          | 图片/视频解码后上传 GPU        |
-| 输出   | RGBA → JS / Canvas   | Windows D3D11/NV12 texture 或 RGBA → FFmpeg |
+| 输出   | RGBA → JS / Canvas   | Windows D3D12/NV12 resource 或 RGBA → FFmpeg |
 | 分辨率  | 预览尺寸 (≤1440px)      | 导出尺寸 (原始分辨率)          |
 | 目标   | 实时显示                 | 写入磁盘                  |
 
@@ -87,9 +87,9 @@ Windows 硬件导出使用以下链路：
 
 ```
 Media Foundation 解码
-  → D3D11On12 / D3D11 视频颜色转换
+  → D3D12 Video Processor 颜色转换
   → wgpu D3D12 合成
-  → D3D11 BGRA → NV12 GPU 转换
+  → D3D12 BGRA → NV12 GPU 转换
   → Media Foundation Sink Writer 硬件编码
 ```
 
@@ -120,7 +120,7 @@ Windows native 路径通过 Media Foundation 枚举并实际验证硬件视频 M
 
 | 平台/后端 | 编码实现 | 纹理传输 |
 |-----------|----------|----------|
-| Windows 通用 | Media Foundation hardware MFT | D3D11/D3D12 texture，零 CPU readback |
+| Windows 通用 | D3D12 Video Encoder | D3D12 resource，只有压缩码流回读 |
 | Windows NVIDIA 兼容 | `h264_nvenc` | CPU readback 后的 RGBA pipe |
 | Windows AMD 兼容 | `h264_amf` | CPU readback 后的 RGBA pipe |
 | Windows Intel 兼容 | `h264_qsv` | CPU readback 后的 RGBA pipe |

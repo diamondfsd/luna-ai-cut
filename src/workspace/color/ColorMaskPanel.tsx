@@ -11,6 +11,8 @@ import { MaskPanel } from '../mask/MaskPanel'
 import { featherMaskPreview, sampleMaskBilinear } from '../mask/maskPreviewSampling'
 import { ColorPanel } from './ColorPanel'
 import { normalizeColorMaskName, reorderColorMaskLayers, type ColorMaskDropPosition } from './colorMaskLayerOperations'
+import { logger } from '../../lib/rendererLogger'
+import { summarizePreviewColor } from '../../components/previewDiagnostics'
 import './ColorMaskPanel.css'
 
 const THUMBNAIL_WIDTH = 68
@@ -128,14 +130,30 @@ export function ColorMaskPanel() {
   const [renameState, setRenameState] = useState<{ id: string; originalName: string; value: string } | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: ColorMaskDropPosition } | null>(null)
+  const colorPreviewSequenceRef = useRef(0)
 
   useEffect(() => {
+    logger.info('[PreviewDebug] color panel clearing preview', {
+      reason: 'active-mask-change',
+      activeLayerId: mask.activeLayerId,
+    })
     clearPreview()
   }, [clearPreview, mask.activeLayerId])
 
-  useEffect(() => () => clearPreview(), [clearPreview])
+  useEffect(() => () => {
+    logger.info('[PreviewDebug] color panel clearing preview', { reason: 'unmount' })
+    clearPreview()
+  }, [clearPreview])
 
   const previewColorChange = (color: Partial<typeof selectedColor>): void => {
+    const sequence = ++colorPreviewSequenceRef.current
+    logger.info('[PreviewDebug] color preview update requested', {
+      sequence,
+      activeMaskId,
+      patch: color,
+      selectedColor: summarizePreviewColor(selectedColor),
+      previewGlobalColor: summarizePreviewColor(edit.previewPipeline.color),
+    })
     updatePreview((pipeline) => activeMaskId
       ? {
           ...pipeline,
@@ -147,6 +165,13 @@ export function ColorMaskPanel() {
   }
 
   const commitColorChange = (color: Partial<typeof selectedColor>): void => {
+    logger.info('[PreviewDebug] color commit requested', {
+      activeMaskId,
+      patch: color,
+      selectedColor: summarizePreviewColor(selectedColor),
+      pipelineColor: summarizePreviewColor(edit.pipeline.color),
+      previewGlobalColor: summarizePreviewColor(edit.previewPipeline.color),
+    })
     if (!activeMaskId) {
       edit.updateWorkspacePanel({ color })
       return

@@ -26,6 +26,6 @@ fn main() {
         println!("cargo:rerun-if-changed=src/macos/preview_surface.m");
     }
 
-    // Windows 原生链路通过 windows-rs 直接链接 D3D11On12 与 Media Foundation。
-    // 不需要额外 C/C++ bridge；不支持的机器仍由 Rust 导出层回退到 FFmpeg。
+    // Windows native video work uses windows-rs for D3D12 and Media Foundation.
+    // No C/C++ bridge is required; unsupported machines use the Rust FFmpeg fallback.
 }

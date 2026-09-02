@@ -4,7 +4,6 @@ mod decoder;
 mod device;
 mod encoder;
 mod export;
-mod native_converter;
 mod preview;
 mod preview_surface;
 
@@ -24,7 +23,7 @@ impl ComGuard {
     pub(crate) fn start() -> Result<Self, String> {
         unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }
             .ok()
-            .map_err(|error| format!("无法初始化视频工作线程: {error}"))?;
+            .map_err(|error| format!("failed to initialize the video worker thread: {error}"))?;
         Ok(Self)
     }
 }
@@ -40,7 +39,7 @@ pub(crate) struct MediaFoundationGuard;
 impl MediaFoundationGuard {
     pub(crate) fn start() -> Result<Self, String> {
         unsafe { MFStartup(MF_VERSION, MFSTARTUP_FULL) }
-            .map_err(|error| format!("无法启动系统视频服务: {error}"))?;
+            .map_err(|error| format!("failed to start the system video service: {error}"))?;
         Ok(Self)
     }
 }
@@ -51,10 +50,7 @@ impl Drop for MediaFoundationGuard {
     }
 }
 
-/// Windows 零回读导出入口。
-///
-/// Media Foundation 解码、D3D11 视频处理、wgpu 合成与硬件编码均使用同一
-/// D3D12 队列，成功路径不会读取或复制 CPU 像素。
+/// Windows zero-copy export entry point.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn export_video(
     compositor: &mut Compositor,
@@ -67,7 +63,7 @@ pub(crate) fn export_video(
     bitrate: u64,
     include_audio: bool,
     task: Option<&Arc<TaskState>>,
-    system_memory_decode: bool,
+    legacy_input_mode: bool,
 ) -> Result<(), String> {
     let _com = ComGuard::start()?;
     let _mf = MediaFoundationGuard::start()?;
@@ -76,18 +72,18 @@ pub(crate) fn export_video(
     let encoders = capabilities::probe_hardware_encoders()?;
 
     crate::logging::write(&format!(
-        "[Export:WinGPU] capabilities d3d11-native=true shared-texture=true d3d11on12=true h264={} hevc={}",
+        "[Export:WinGPU] backend=d3d12-video pixel_transport=GPU bitstream_readback=CPU h264={} hevc={}",
         encoders.h264, encoders.hevc,
     ));
     if !encoders.any() {
-        return Err("未找到可用的系统硬件视频编码器".to_string());
+        return Err("no usable hardware video encoder was found".to_string());
     }
     let hevc = !encoders.h264 && encoders.hevc;
-
     crate::logging::write(&format!(
-        "[Export:WinGPU] pipeline=mf-d3d11-decode,d3d11-video-process,shared-nt-handle,wgpu-compose,mf-{} sync=d3d12-fence readback=false",
+        "[Export:WinGPU] pipeline=mf-d3d12-decode,d3d12-video-process,wgpu-compose,d3d12-video-encode codec={} sync=d3d12-fence",
         if hevc { "hevc" } else { "h264" },
     ));
+
     let result = export::run(
         compositor,
         ffmpeg_path,
@@ -103,57 +99,10 @@ pub(crate) fn export_video(
         &interop,
         &d3d12_device,
         &d3d12_queue,
-        system_memory_decode,
+        legacy_input_mode,
     );
     if result.is_err() {
-        interop.log_device_status("native export failure");
-    }
-    result
-}
-
-/// Windows 硬件解码 + GPU 合成 + FFmpeg 硬件编码的兼容路径。
-///
-/// Media Foundation Sink Writer 的 D3D11On12 纹理输入在部分驱动上会触发设备移除，
-/// 因此这里仅把最终合成帧传给已经实际探测可用的硬件编码器。视频解码和合成仍然不走
-/// FFmpeg 软解。
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn export_video_with_hardware_encoder(
-    compositor: &mut Compositor,
-    ffmpeg_path: &str,
-    ffprobe_path: &str,
-    output_path: &str,
-    composition: &CompositionInput,
-    fps: f64,
-    total_frames: u64,
-    bitrate: &str,
-    include_audio: bool,
-    encoder: &str,
-    task: Option<&Arc<TaskState>>,
-    system_memory_decode: bool,
-) -> Result<(), String> {
-    let _com = ComGuard::start()?;
-    let _mf = MediaFoundationGuard::start()?;
-    let (d3d12_device, d3d12_queue) = compositor.dx12_device_and_queue()?;
-    let interop = device::InteropDevice::new(&d3d12_device)?;
-    let result = export::run_hardware_encoder(
-        compositor,
-        ffmpeg_path,
-        ffprobe_path,
-        output_path,
-        composition,
-        fps,
-        total_frames,
-        bitrate,
-        include_audio,
-        encoder,
-        task,
-        &interop,
-        &d3d12_device,
-        &d3d12_queue,
-        system_memory_decode,
-    );
-    if result.is_err() {
-        interop.log_device_status("compatible export failure");
+        interop.log_device_status("d3d12 export failure");
     }
     result
 }

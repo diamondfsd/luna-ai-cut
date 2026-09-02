@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { Slider as RadixSlider } from 'radix-ui'
+import { logger } from '../../lib/rendererLogger'
 
 interface ParamSliderProps {
   label: ReactNode
@@ -48,7 +49,9 @@ export function ParamSlider({
   const pointerStartValueRef = useRef(value)
   const latestSliderValueRef = useRef(value)
   const skipNextCommitRef = useRef<number | null>(null)
+  const sliderEventSequenceRef = useRef(0)
   const commitMode = onCommit !== undefined
+  const diagnosticLabel = typeof label === 'string' ? label : 'parameter'
   const displayValue = numericInputValue(value, formatValue)
   const sliderDisplayValue = numericInputValue(commitMode ? sliderValue : value, formatValue)
   const renderedValue = commitMode ? sliderValue : value
@@ -102,6 +105,15 @@ export function ParamSlider({
   function flushSliderChange(next: number): void {
     const pointerCommit = pointerSessionRef.current || draggingRef.current
     const committedValue = pointerCommit ? latestSliderValueRef.current : next
+    logger.info('[PreviewDebug] workspace slider commit event', {
+      label: diagnosticLabel,
+      sequence: ++sliderEventSequenceRef.current,
+      eventValue: next,
+      committedValue,
+      pointerCommit,
+      pointerSession: pointerSessionRef.current,
+      dragging: draggingRef.current,
+    })
     if (!Number.isFinite(committedValue)) return
     if (skipNextCommitRef.current === committedValue) {
       skipNextCommitRef.current = null
@@ -165,11 +177,23 @@ export function ParamSlider({
             pointerStartValueRef.current = latestSliderValueRef.current
             skipNextCommitRef.current = null
             draggingRef.current = true
+            logger.info('[PreviewDebug] workspace slider pointer down', {
+              label: diagnosticLabel,
+              sequence: ++sliderEventSequenceRef.current,
+              value: latestSliderValueRef.current,
+            })
           }}
           onValueChange={([v]) => {
             latestSliderValueRef.current = v
             if (onCommit) setSliderValue(v)
             if (!onCommit || onPreviewChange) scheduleSliderChange(v)
+            logger.info('[PreviewDebug] workspace slider value change', {
+              label: diagnosticLabel,
+              sequence: ++sliderEventSequenceRef.current,
+              value: v,
+              pointerSession: pointerSessionRef.current,
+              dragging: draggingRef.current,
+            })
           }}
           onValueCommit={([v]) => flushSliderChange(v)}
           onPointerUp={() => flushSliderChange(latestSliderValueRef.current)}

@@ -162,6 +162,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     : mediaDevice
       ? mediaDevice.lut?.restore ?? null
       : (isConnected ? activeDevice?.lut?.restore ?? null : null)
+  const restoreLutKey = restoreLut === undefined
+    ? 'pending'
+    : restoreLut === null
+      ? 'none'
+      : `${restoreLut.fileName}|${restoreLut.label}|${restoreLut.description ?? ''}`
   const connectedDeviceMetadata = useMemo(
     () => isConnected && activeDevice
       ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
@@ -589,6 +594,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   useLayoutEffect(() => {
     if (!settingsReady) return
     const asset = media.currentProject?.assets[media.activeIndex]
+    logger.info('[PreviewDebug] workspace pipeline initialization requested', {
+      workspaceAssetKey,
+      restoreLutKey,
+    })
     edit.setCropActive(false)
     edit.setTransformDraft(null)
     edit.setCropPreset('original')
@@ -605,7 +614,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         if (edit.activeTool === 'trim') edit.setActiveTool('filter')
       }
     }
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, restoreLut, settingsReady])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, restoreLutKey, settingsReady])
 
   useEffect(() => {
     if (restoreLut === undefined) return
