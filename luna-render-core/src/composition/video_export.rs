@@ -1,6 +1,6 @@
 use super::frame::render_composition_frame_with;
 use super::timeline::{
-    ffmpeg_fallback_temp_path, infer_composition_duration, infer_composition_fps,
+    ffmpeg_fallback_temp_path, infer_composition_duration, infer_composition_fps, is_video_source,
 };
 use super::*;
 use crate::media::command;
@@ -142,11 +142,31 @@ impl Task for ExportCompositionVideoTask {
             .filter_map(|layer| layer.mask_timeline.as_ref())
             .map(|timeline| timeline.frames.len())
             .sum::<usize>();
+        let layer_kinds = self
+            .input
+            .composition
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(index, layer)| {
+                format!(
+                    "{index}:{}->{}",
+                    layer.source.source_type.as_deref().unwrap_or("auto"),
+                    if is_video_source(&layer.source) {
+                        "video"
+                    } else {
+                        "static"
+                    },
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
         log_write(&format!(
-            "[Export:Rust:Video] canvas={}x{} layers={} mask_timeline_frames={}",
+            "[Export:Rust:Video] canvas={}x{} layers={} kinds=[{}] mask_timeline_frames={}",
             self.input.composition.canvas.width,
             self.input.composition.canvas.height,
             self.input.composition.layers.len(),
+            layer_kinds,
             mask_timeline_frames,
         ));
         let fps = self
