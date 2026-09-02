@@ -71,6 +71,9 @@ luna-render-core/luna-punctuation-worker
 luna-render-core/luna-punctuation-worker.exe
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
+luna-render-core/av*.dll
+luna-render-core/sw*.dll
+luna-render-core/*.dll.tmp
 luna-render-core/DXC-LICENSE-*.txt
 luna-render-core/ASR-LICENSE-*.txt
 worktrees/

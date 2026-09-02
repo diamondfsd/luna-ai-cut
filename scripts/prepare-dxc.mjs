@@ -71,9 +71,15 @@ function download(url, redirects = 5) {
 function extract(zip, entryName, destination) {
   const entry = zip.getEntry(entryName)
   if (!entry) throw new Error(`DXC package entry is missing: ${entryName}`)
+  const data = entry.getData()
+  if (existsSync(destination)) {
+    const existingHash = sha256(destination)
+    const extractedHash = createHash('sha256').update(data).digest('hex')
+    if (existingHash === extractedHash) return
+  }
   const temporary = `${destination}.tmp`
   rmSync(temporary, { force: true })
-  writeFileSync(temporary, entry.getData())
+  writeFileSync(temporary, data)
   rmSync(destination, { force: true })
   renameSync(temporary, destination)
 }

@@ -485,7 +485,7 @@ fn register_raw_resource(
     Ok((register.registeredResource, map.mappedResource))
 }
 
-fn create_d3d11_device(
+pub(crate) fn create_d3d11_device(
     d3d12_device: &ID3D12Device,
 ) -> Result<(ID3D11Device1, ID3D11DeviceContext), String> {
     let luid = unsafe { d3d12_device.GetAdapterLuid() };
