@@ -22,6 +22,172 @@ use napi::{Env, Task};
 use napi_derive::napi;
 pub use native_preview::*;
 
+/// Run the Windows GPU video export without Electron or N-API.
+///
+/// This is intentionally a small diagnostic surface for validating the same
+/// WGPU -> D3D12 video-process -> D3D12 video-encode path used by the app.
+#[cfg(target_os = "windows")]
+pub fn run_windows_gpu_export_diagnostic(
+    input_path: &str,
+    ffmpeg_path: &str,
+    ffprobe_path: &str,
+    output_path: &str,
+    log_path: &str,
+    max_seconds: Option<f64>,
+    include_audio: bool,
+) -> Result<(), String> {
+    let mut compositor = Compositor::new(Some(log_path))?;
+    let info = media::probe_video_info(ffprobe_path, input_path)?;
+    let fps = info.fps.max(1.0);
+    let duration = max_seconds
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.min(info.duration_secs.max(0.1)))
+        .unwrap_or_else(|| info.duration_secs.max(0.1));
+    let width = info.width.max(2) & !1;
+    let height = info.height.max(2) & !1;
+
+    let composition: CompositionInput = serde_json::from_value(serde_json::json!({
+        "version": 1,
+        "canvas": {
+            "width": width,
+            "height": height,
+            "fps": fps,
+            "duration": duration
+        },
+        "layers": [{
+            "id": "windows-gpu-export-test-source",
+            "layer_type": "media",
+            "source": {
+                "path": input_path,
+                "source_type": "video",
+                "time": {
+                    "offset": 0.0,
+                    "start": 0.0,
+                    "duration": duration,
+                    "loop_enabled": false
+                }
+            },
+            "rect": {
+                "x": 0.0,
+                "y": 0.0,
+                "w": width,
+                "h": height
+            },
+            "fit": "stretch",
+            "opacity": 1.0,
+            "z_index": 0
+        }]
+    }))
+    .map_err(|error| format!("failed to create diagnostic composition: {error}"))?;
+    let total_frames = (duration * fps).round().max(1.0) as u64;
+    let bitrate = 50_000_000;
+
+    log!(
+        "[Export:WinGPU:RustTest] input={} output={} canvas={}x{} fps={:.6} duration={:.3} frames={} include_audio={}",
+        input_path,
+        output_path,
+        width,
+        height,
+        fps,
+        duration,
+        total_frames,
+        include_audio,
+    );
+    windows::export_video(
+        &mut compositor,
+        ffmpeg_path,
+        ffprobe_path,
+        output_path,
+        &composition,
+        fps,
+        total_frames,
+        bitrate,
+        include_audio,
+        None,
+        false,
+    )
+}
+
+/// Run a caller-provided composition through the Windows GPU export path.
+///
+/// The composition is intentionally passed through unchanged so this entry
+/// point can validate the layer contract independently from Electron.
+#[cfg(target_os = "windows")]
+pub fn run_windows_gpu_export_composition_diagnostic(
+    composition: CompositionInput,
+    ffmpeg_path: &str,
+    ffprobe_path: &str,
+    output_path: &str,
+    log_path: &str,
+    max_seconds: Option<f64>,
+    include_audio: bool,
+    require_gpu: bool,
+) -> Result<(), String> {
+    let fps = composition.canvas.fps.unwrap_or(30.0).max(1.0);
+    let source_path = composition
+        .layers
+        .iter()
+        .find(|layer| {
+            layer.source.source_type.as_deref() == Some("video")
+                || layer.source.path.to_ascii_lowercase().ends_with(".mp4")
+        })
+        .map(|layer| layer.source.path.as_str())
+        .ok_or_else(|| "diagnostic composition has no video layer".to_string())?;
+    let probed = media::probe_video_info(ffprobe_path, source_path)?;
+    let duration = max_seconds
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.min(probed.duration_secs.max(0.1)))
+        .or(composition.canvas.duration)
+        .unwrap_or_else(|| probed.duration_secs.max(0.1));
+    let total_frames = (duration * fps).round().max(1.0) as u64;
+
+    log!(
+        "[Export:WinGPU:RustTest] composition-input layers={} source={} canvas={}x{} fps={:.6} duration={:.3} frames={} include_audio={} require_gpu={}",
+        composition.layers.len(),
+        source_path,
+        composition.canvas.width,
+        composition.canvas.height,
+        fps,
+        duration,
+        total_frames,
+        include_audio,
+        require_gpu,
+    );
+
+    if require_gpu {
+        let mut compositor = Compositor::new(Some(log_path))?;
+        return windows::export_video(
+            &mut compositor,
+            ffmpeg_path,
+            ffprobe_path,
+            output_path,
+            &composition,
+            fps,
+            total_frames,
+            50_000_000,
+            include_audio,
+            None,
+            false,
+        );
+    }
+
+    if let Ok(mut guard) = COMPOSITOR_LOG_PATH.lock() {
+        *guard = Some(log_path.to_string());
+    }
+    composition::export_composition_video_sync(ExportCompositionVideoInput {
+        ffmpeg_path: ffmpeg_path.to_string(),
+        ffprobe_path: ffprobe_path.to_string(),
+        output_path: output_path.to_string(),
+        composition,
+        fps: Some(fps),
+        duration: Some(duration),
+        hardware: Some(true),
+        task_id: None,
+        quality_preset: Some("high".to_string()),
+        include_audio: Some(include_audio),
+    })
+}
+
 // ── 跨模块日志宏 ──
 macro_rules! log {
     ($($arg:tt)*) => {

@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdout, Stdio};
 use std::sync::Arc;
 
 use windows::Win32::Graphics::Direct3D12::{ID3D12CommandQueue, ID3D12Device, ID3D12Resource};
@@ -15,7 +16,7 @@ use crate::compositor::{
     PreviewTextureInfo,
 };
 use crate::export::TaskState;
-use crate::media::decode_static_image_scaled;
+use crate::media::{command, decode_static_image_scaled, normalize_local_path, probe_video_info};
 
 use super::converter::{D3d12TextureLease, VideoConverter};
 use super::decoder::VideoDecoder;
@@ -28,7 +29,7 @@ fn temporary_bitstream_path(output: &str) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("export.mp4");
-    path.with_file_name(format!(".{file_name}.d3d12-bitstream.partial"))
+    path.with_file_name(format!(".{file_name}.gpu-bitstream.partial"))
 }
 
 fn temporary_video_path(output: &str) -> PathBuf {
@@ -37,7 +38,7 @@ fn temporary_video_path(output: &str) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("export.mp4");
-    path.with_file_name(format!(".{file_name}.d3d12-video.partial.mp4"))
+    path.with_file_name(format!(".{file_name}.gpu-video.partial.mp4"))
 }
 
 fn remove_existing(path: &Path) -> Result<(), String> {
@@ -83,6 +84,89 @@ struct ExportVideoInput {
     lease: D3d12TextureLease,
 }
 
+struct FfmpegVideoDecoder {
+    process: Child,
+    stdout: ChildStdout,
+    width: u32,
+    height: u32,
+    frame_bytes: usize,
+}
+
+impl FfmpegVideoDecoder {
+    fn open(
+        ffmpeg_path: &str,
+        ffprobe_path: &str,
+        source_path: &str,
+        start_time: f64,
+        fps: f64,
+        max_side: u32,
+    ) -> Result<Self, String> {
+        let info = probe_video_info(ffprobe_path, source_path)?;
+        let max_edge = info.width.max(info.height).max(1);
+        let scale = (max_side as f64 / max_edge as f64).min(1.0);
+        let width = ((info.width as f64 * scale).round() as u32).max(2) & !1;
+        let height = ((info.height as f64 * scale).round() as u32).max(2) & !1;
+        let mut process = command(ffmpeg_path)
+            .args([
+                "-ss",
+                &format!("{start_time:.6}"),
+                "-i",
+                &normalize_local_path(source_path),
+                "-vf",
+                &format!("scale={width}:{height}:flags=lanczos"),
+                "-r",
+                &fps.to_string(),
+                "-pix_fmt",
+                "rgba",
+                "-f",
+                "rawvideo",
+                "-loglevel",
+                "error",
+                "pipe:1",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("failed to start compatible video decoder: {error}"))?;
+        let stdout = process
+            .stdout
+            .take()
+            .ok_or_else(|| "compatible video decoder did not provide output".to_string())?;
+        Ok(Self {
+            process,
+            stdout,
+            width,
+            height,
+            frame_bytes: (width * height * 4) as usize,
+        })
+    }
+
+    fn read(&mut self) -> Result<Option<Vec<u8>>, String> {
+        let mut rgba = vec![0; self.frame_bytes];
+        match self.stdout.read_exact(&mut rgba) {
+            Ok(()) => Ok(Some(rgba)),
+            Err(error) => {
+                let status = self.process.try_wait().ok().flatten();
+                if status.is_some_and(|status| status.success()) {
+                    Ok(None)
+                } else {
+                    Err(format!(
+                        "compatible video decoder stopped early: {error}; status={status:?}"
+                    ))
+                }
+            }
+        }
+    }
+}
+
+impl Drop for FfmpegVideoDecoder {
+    fn drop(&mut self) {
+        let _ = self.process.kill();
+        let _ = self.process.wait();
+    }
+}
+
 fn finish_export_video_inputs(
     converter: &mut VideoConverter,
     inputs: Vec<ExportVideoInput>,
@@ -114,7 +198,6 @@ pub(crate) fn run(
     interop: &InteropDevice,
     d3d12_device: &ID3D12Device,
     d3d12_queue: &ID3D12CommandQueue,
-    capabilities: super::capabilities::EncoderCapabilities,
     _legacy_input_mode: bool,
 ) -> Result<(), String> {
     let bitstream_path = temporary_bitstream_path(output_path);
@@ -129,14 +212,9 @@ pub(crate) fn run(
         fps,
         bitrate,
     };
-    let mut encoder = EncoderManager::new(
-        config,
-        capabilities,
-        d3d12_device,
-        &interop.video_encode_queue,
-    )?;
+    let mut encoder = EncoderManager::new(config, d3d12_device, d3d12_queue)?;
     let mut bitstream = File::create(&bitstream_path)
-        .map_err(|error| format!("failed to create D3D12 bitstream output: {error}"))?;
+        .map_err(|error| format!("failed to create GPU bitstream output: {error}"))?;
     let headers = encoder.headers()?;
     bitstream
         .write_all(&headers.data)
@@ -174,7 +252,7 @@ pub(crate) fn run(
     }
     bitstream
         .flush()
-        .map_err(|error| format!("failed to flush D3D12 bitstream output: {error}"))?;
+        .map_err(|error| format!("failed to flush GPU bitstream output: {error}"))?;
 
     package_bitstream(
         ffmpeg_path,
@@ -266,6 +344,7 @@ fn encode_frames(
     bitstream: &mut File,
 ) -> Result<(), String> {
     let mut decoders: HashMap<String, VideoDecoder> = HashMap::new();
+    let mut ffmpeg_decoders: HashMap<String, FfmpegVideoDecoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
     let mut unavailable_optional_assets = HashSet::new();
     let mut mask_textures: HashMap<String, u32> = HashMap::new();
@@ -301,55 +380,84 @@ fn encode_frames(
                     (0, 1, 1)
                 } else if layer.is_video {
                     let key = format!("{}@slot{}", layer.file_path, layer_index);
-                    let decoder = match decoders.entry(key) {
-                        std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-                        std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
-                            VideoDecoder::open(&layer.file_path, &interop.decoder_device_manager)?,
-                        ),
+                    let decoded = if let Some(decoder) = decoders.get_mut(&key) {
+                        decoder.read_frame_at_seconds(layer.video_time)
+                    } else {
+                        match VideoDecoder::open(&layer.file_path, &interop.decoder_device_manager)
+                        {
+                            Ok(mut decoder) => {
+                                let result = decoder.read_frame_at_seconds(layer.video_time);
+                                decoders.insert(key.clone(), decoder);
+                                result
+                            }
+                            Err(error) => Err(error),
+                        }
                     };
-                    let rotation = decoder.info().rotation_degrees;
-                    if rotation != 0 && layer.transform.orientation == 0.0 {
-                        layer.transform.orientation = rotation as f64;
-                    }
-                    let Some(decoded) = decoder.read_frame_at_seconds(layer.video_time)? else {
-                        continue;
-                    };
-                    if !decoder_logged {
-                        crate::logging::write(&format!(
+                    if let Ok(Some(decoded)) = decoded {
+                        if !decoder_logged {
+                            crate::logging::write(&format!(
                                 "[Export:WinGPU] decoder=media-foundation format={} size={}x{} transport=GPU",
                                 decoded.format.label(),
                                 decoded.width,
                                 decoded.height,
                             ));
-                        decoder_logged = true;
-                    }
-                    let bgra = converter.decode_to_bgra_for_export(&decoded)?;
-                    // The video-process queue may still be writing this texture. Keep
-                    // the GPU-only lease until the compositor submission has finished.
-                    let lease = converter.wrap_for_wgpu(&bgra)?;
-                    let resource = lease.resource().clone();
-                    input_resources.push(ExportVideoInput {
-                        resource: bgra,
-                        width: decoded.width,
-                        height: decoded.height,
-                        lease,
-                    });
-                    let texture = unsafe {
-                        compositor.wrap_external_dx12_texture(
-                            resource,
+                            decoder_logged = true;
+                        }
+                        let bgra = converter.decode_to_bgra_for_export(&decoded)?;
+                        let lease = converter.wrap_for_wgpu(&bgra)?;
+                        let resource = lease.resource().clone();
+                        input_resources.push(ExportVideoInput {
+                            resource: bgra,
+                            width: decoded.width,
+                            height: decoded.height,
+                            lease,
+                        });
+                        let texture = unsafe {
+                            compositor.wrap_external_dx12_texture(
+                                resource,
+                                decoded.width,
+                                decoded.height,
+                                wgpu::TextureUsages::TEXTURE_BINDING,
+                                true,
+                            )?
+                        };
+                        let texture_id = compositor.register_external_texture(
+                            texture,
                             decoded.width,
                             decoded.height,
-                            wgpu::TextureUsages::TEXTURE_BINDING,
-                            true,
-                        )?
-                    };
-                    let texture_id = compositor.register_external_texture(
-                        texture,
-                        decoded.width,
-                        decoded.height,
-                    );
-                    transient_texture_ids.push(texture_id);
-                    (texture_id, decoded.width, decoded.height)
+                        );
+                        transient_texture_ids.push(texture_id);
+                        (texture_id, decoded.width, decoded.height)
+                    } else {
+                        if !ffmpeg_decoders.contains_key(&key) {
+                            let native_error = decoded
+                                .err()
+                                .unwrap_or_else(|| "video stream ended before export".to_string());
+                            crate::logging::write(&format!(
+                                "[Export:WinGPU] decoder=ffmpeg-rgba reason={} pixel-upload=GPU",
+                                native_error,
+                            ));
+                            ffmpeg_decoders.insert(
+                                key.clone(),
+                                FfmpegVideoDecoder::open(
+                                    ffmpeg_path,
+                                    ffprobe_path,
+                                    &layer.file_path,
+                                    layer.video_time,
+                                    fps,
+                                    composition.canvas.width.max(composition.canvas.height),
+                                )?,
+                            );
+                        }
+                        let decoder = ffmpeg_decoders.get_mut(&key).unwrap();
+                        let Some(rgba) = decoder.read()? else {
+                            continue;
+                        };
+                        let texture_id =
+                            compositor.load_texture(&rgba, decoder.width, decoder.height)?;
+                        transient_texture_ids.push(texture_id);
+                        (texture_id, decoder.width, decoder.height)
+                    }
                 } else if let Some(cached) = static_textures.get(&layer.file_path).copied() {
                     cached
                 } else {
@@ -415,11 +523,24 @@ fn encode_frames(
                     )?
                     .layers
             };
-            compositor.render_for_native_export(
+            let render_resource = converter
+                .create_composition_target(composition.canvas.width, composition.canvas.height)?;
+            let render_texture = unsafe {
+                compositor.wrap_external_dx12_texture(
+                    render_resource.clone(),
+                    composition.canvas.width,
+                    composition.canvas.height,
+                    wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    false,
+                )?
+            };
+            compositor.render_into_external_texture(
+                render_texture,
                 composition.canvas.width,
                 composition.canvas.height,
                 &planned_layers,
-            )
+            )?;
+            Ok(render_resource)
         })();
 
         let cleanup_result = if render_result.is_err() {
@@ -450,9 +571,10 @@ fn encode_frames(
         if let Some(lease_error) = lease_error {
             return Err(lease_error);
         }
+        compositor.wait_for_gpu()?;
 
         let frame = GpuFrame::rgba8(
-            render_resource,
+            render_resource.clone(),
             composition.canvas.width,
             composition.canvas.height,
         );
@@ -469,7 +591,7 @@ fn encode_frames(
         }
         if frame_index % log_interval == 0 || frame_index + 1 == total_frames {
             crate::logging::write(&format!(
-                "[Export:WinGPU:Timing] backend=d3d12-video frame={}/{} frame_ms={:.1} elapsed_ms={:.0}",
+                "[Export:WinGPU:Timing] backend=vendor-gpu frame={}/{} frame_ms={:.1} elapsed_ms={:.0}",
                 frame_index + 1,
                 total_frames,
                 frame_started.elapsed().as_secs_f64() * 1000.0,
@@ -482,7 +604,7 @@ fn encode_frames(
         let _ = compositor.release_texture(texture_id);
     }
     crate::logging::write(&format!(
-        "[Export:WinGPU:Timing] backend=d3d12-video frames={} total_ms={:.0}",
+        "[Export:WinGPU:Timing] backend=vendor-gpu frames={} total_ms={:.0}",
         total_frames,
         started.elapsed().as_secs_f64() * 1000.0,
     ));

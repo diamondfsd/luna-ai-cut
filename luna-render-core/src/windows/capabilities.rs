@@ -188,19 +188,24 @@ fn diagnose_video_interfaces(index: u32, device: &ID3D12Device) -> D3d12EncoderC
     if !video_encode_supported {
         return D3d12EncoderCapabilities::default();
     }
+    // Some NVIDIA drivers expose the encoder feature area but return
+    // E_INVALIDARG for the codec-only query. Treat that query as inconclusive
+    // and let the full encoder-support/create path validate the configuration.
     D3d12EncoderCapabilities {
         h264: probe_video_encoder_codec(
             index,
             &video_device,
             "h264",
             D3D12_VIDEO_ENCODER_CODEC_H264,
-        ),
+        )
+        .unwrap_or(true),
         hevc: probe_video_encoder_codec(
             index,
             &video_device,
             "hevc",
             D3D12_VIDEO_ENCODER_CODEC_HEVC,
-        ),
+        )
+        .unwrap_or(true),
     }
 }
 
@@ -242,7 +247,7 @@ fn probe_video_encoder_codec(
     video_device: &ID3D12VideoDevice,
     codec_name: &str,
     codec: windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_CODEC,
-) -> bool {
+) -> Option<bool> {
     let mut support = D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC {
         NodeIndex: 0,
         Codec: codec,
@@ -261,14 +266,21 @@ fn probe_video_encoder_codec(
             crate::logging::write(&format!(
                 "[Export:WinGPU:Diagnostics] adapter index={index} feature=EncoderCodec codec={codec_name} result=ok supported={supported}"
             ));
-            supported
+            Some(supported)
         }
         Err(error) => {
-            log_hresult(
-                &format!("adapter index={index} feature=EncoderCodec codec={codec_name}"),
-                &error,
-            );
-            false
+            if error.code().0 as u32 == 0x8007_0057 {
+                crate::logging::write(&format!(
+                    "[Export:WinGPU:Diagnostics] adapter index={index} feature=EncoderCodec codec={codec_name} result=inconclusive hr=0x80070057"
+                ));
+                None
+            } else {
+                log_hresult(
+                    &format!("adapter index={index} feature=EncoderCodec codec={codec_name}"),
+                    &error,
+                );
+                None
+            }
         }
     }
 }

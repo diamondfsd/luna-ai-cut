@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "canvas": {
+    "width": 3840,
+    "height": 2160,
+    "fps": 29.97003,
+    "duration": 2.0
+  },
+  "layers": [
+    {
+      "id": "windows-gpu-export-test-source",
+      "layer_type": "media",
+      "source": {
+        "path": "C:\\Users\\admin\\Downloads\\VID_20260830_202350_532.mp4",
+        "source_type": "video",
+        "time": {
+          "offset": 0.0,
+          "start": 0.0,
+          "duration": 2.0,
+          "loop_enabled": false
+        }
+      },
+      "rect": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 1.0,
+        "h": 1.0
+      },
+      "fit": "cover",
+      "opacity": 1.0,
+      "z_index": 0
+    }
+  ]
+}
