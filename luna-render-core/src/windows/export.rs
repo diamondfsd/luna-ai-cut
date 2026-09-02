@@ -580,6 +580,15 @@ fn export_frames(
                 return Err("导出已取消".to_string());
             }
             let frame_started = std::time::Instant::now();
+            let log_stage = |stage: &str| {
+                if frame_index < 3 {
+                    crate::logging::write(&format!(
+                        "[Export:WinGPU:Stage] frame={} stage={stage}",
+                        frame_index + 1
+                    ));
+                }
+            };
+            log_stage("start");
             let time = frame_index as f64 / fps;
             let layer_inputs = composition_layers(composition, time);
             retain_layer_mask_textures(compositor, &mut mask_textures, &layer_inputs);
@@ -590,8 +599,7 @@ fn export_frames(
             let mut decoded_frames = Vec::new();
             let mut input_leases: Vec<NativeTextureLease> = Vec::new();
             let mut input_bgra: Vec<NativeSharedTexture> = Vec::new();
-            let mut output_bgra: Option<NativeSharedTexture> = None;
-            let mut output_lease: Option<NativeTextureLease> = None;
+            let mut rendered_resource = None;
 
             let render_result = (|| -> Result<(), String> {
                 for (layer_index, mut layer) in layer_inputs.into_iter().enumerate() {
@@ -621,6 +629,7 @@ fn export_frames(
                         let Some(decoded) = decoder.read_frame_at_seconds(layer.video_time)? else {
                             continue;
                         };
+                        log_stage("decoded");
                         let decoded_width = decoded.width;
                         let decoded_height = decoded.height;
                         if !decoder_logged {
@@ -636,7 +645,9 @@ fn export_frames(
                             decoder_logged = true;
                         }
                         let bgra = converter.decode_to_bgra_for_export(&decoded)?;
+                        log_stage("decoded-to-bgra");
                         let lease = converter.wrap_for_wgpu(&bgra)?;
+                        log_stage("bgra-wrapped");
                         let resource = lease.resource().clone();
                         input_bgra.push(bgra);
                         input_leases.push(lease);
@@ -722,29 +733,12 @@ fn export_frames(
                         .layers
                 };
 
-                let target = converter.create_composition_target(
-                    composition.canvas.width,
-                    composition.canvas.height,
-                )?;
-                let lease = converter.wrap_for_wgpu(&target)?;
-                let resource = lease.resource().clone();
-                output_bgra = Some(target);
-                output_lease = Some(lease);
-                let output_texture = unsafe {
-                    compositor.wrap_external_dx12_texture(
-                        resource,
-                        composition.canvas.width,
-                        composition.canvas.height,
-                        wgpu::TextureUsages::RENDER_ATTACHMENT,
-                        false,
-                    )?
-                };
-                compositor.render_into_external_texture(
-                    output_texture,
+                rendered_resource = Some(compositor.render_for_native_export(
                     composition.canvas.width,
                     composition.canvas.height,
                     &planned_layers,
-                )?;
+                )?);
+                log_stage("composited");
                 Ok(())
             })();
 
@@ -764,11 +758,6 @@ fn export_frames(
                     sync_error.get_or_insert(error);
                 }
             }
-            if let Some(lease) = output_lease {
-                if let Err(error) = lease.finish() {
-                    sync_error.get_or_insert(error);
-                }
-            }
             if let Err(error) = render_result {
                 return Err(match sync_error {
                     Some(sync) => format!("{error}; 清理显卡画面失败: {sync}"),
@@ -776,19 +765,29 @@ fn export_frames(
                 });
             }
             cleanup_result?;
+            log_stage("leases-finished");
             if let Some(error) = sync_error {
                 return Err(error);
             }
-            let output_bgra = output_bgra.ok_or_else(|| "合成画面没有生成".to_string())?;
+            let rendered_resource =
+                rendered_resource.ok_or_else(|| "合成画面没有生成".to_string())?;
+            let output_bgra = converter.copy_wgpu_to_shared(
+                &rendered_resource,
+                composition.canvas.width,
+                composition.canvas.height,
+            )?;
+            log_stage("wgpu-to-shared");
             let nv12 = converter.bgra_to_nv12(
                 output_bgra,
                 composition.canvas.width,
                 composition.canvas.height,
             )?;
+            log_stage("bgra-to-nv12");
             for texture in input_bgra {
                 converter.recycle_bgra_texture(texture);
             }
             writer.append(&nv12, frame_index)?;
+            log_stage("encoded");
 
             if let Some(state) = task {
                 state

@@ -31,6 +31,7 @@ export interface VideoStateEntry {
   renderW: number
   renderH: number
   prevVideoTime: number
+  lastUploadedVideoTime: number
   ready: boolean
 }
 
@@ -90,8 +91,6 @@ interface RenderFrameOptions {
   maxSide: number
   textureVersion: number
   getTextureVersion: () => number
-  renderRevision: number
-  getRenderRevision: () => number
   isDestroyed: () => boolean
 }
 
@@ -215,6 +214,13 @@ async function videoTexture(
 
   const context = entry.offscreen?.getContext('2d', { willReadFrequently: true })
   if (!context || !entry.offscreen) return null
+  const currentVideoTime = entry.video.currentTime
+  // Color-only preview updates should reuse the paused frame. Re-reading the
+  // video into RGBA and sending it through IPC for every slider tick makes the
+  // preview queue fall behind the drag.
+  if (entry.textureId > 0 && Math.abs(entry.lastUploadedVideoTime - currentVideoTime) <= 0.0001) {
+    return entry.textureId
+  }
   context.clearRect(0, 0, entry.renderW, entry.renderH)
   context.drawImage(entry.video, 0, 0, entry.renderW, entry.renderH)
   const imageData = context.getImageData(0, 0, entry.renderW, entry.renderH)
@@ -235,6 +241,7 @@ async function videoTexture(
     await lrc.updateTexture(entry.textureId, rgba as unknown as Buffer)
     if (videoStates.get(entry.key) !== entry) return null
   }
+  entry.lastUploadedVideoTime = currentVideoTime
   return entry.textureId
 }
 
@@ -266,8 +273,6 @@ export async function renderMultipleLayerVideoFrame(
     maxSide,
     textureVersion,
     getTextureVersion,
-    renderRevision,
-    getRenderRevision,
     isDestroyed,
   } = options
   const renderLayers: Array<Record<string, unknown> & { zIndex: number }> = []
@@ -392,7 +397,7 @@ export async function renderMultipleLayerVideoFrame(
   if (isDestroyed() || getTextureVersion() !== textureVersion) return 'stale'
 
   const pixels = await lrc.renderFrame(outputWidth, outputHeight, renderLayers, frameCompositionTime)
-  if (isDestroyed() || getRenderRevision() !== renderRevision) return 'stale'
+  if (isDestroyed()) return 'stale'
   canvas.width = outputWidth
   canvas.height = outputHeight
   const displayContext = canvas.getContext('2d')
@@ -422,6 +427,7 @@ export function releasePreviewTextures(
     if (entry.textureId <= 0) continue
     void lrc.releaseTexture(entry.textureId).catch(() => {})
     entry.textureId = 0
+    entry.lastUploadedVideoTime = -1
   }
   for (const [filePath, textureId] of imageTextures) {
     void lrc.releaseTexture(textureId).catch(() => {})

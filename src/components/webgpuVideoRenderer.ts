@@ -69,7 +69,6 @@ export class WebGpuVideoRenderer {
   private imageResourcesInvalidated = false
   private readonly renderWaiters = new Set<RenderWaiter>()
   private resizeQueued = false
-  private renderRevision = 0
   private frameCounter = 0
   private renderFrameId = 0
   private playbackFrameId = 0
@@ -218,7 +217,6 @@ export class WebGpuVideoRenderer {
     this.configureCanvasContext()
     this.outputTexture?.texture.destroy?.()
     this.outputTexture = null
-    this.renderRevision += 1
     this.scheduleRender()
   }
 
@@ -238,7 +236,6 @@ export class WebGpuVideoRenderer {
     const nextMaxSide = Math.max(1, Math.round(maxSide))
     if (nextMaxSide === this.options.maxSide) return
     this.options.maxSide = nextMaxSide
-    this.renderRevision += 1
     if (this.renderInFlight) {
       this.imageResourcesInvalidated = true
       this.renderQueued = true
@@ -273,7 +270,6 @@ export class WebGpuVideoRenderer {
       this.lastLayerSummary = summary
       logger.info('[WebGPU诊断] 图层已同步', { count: layers.length, summary })
     }
-    this.renderRevision += 1
     await this.resources.syncVideoElements(this.layers)
     if (!this.destroyed) this.scheduleRender()
   }
@@ -360,7 +356,6 @@ export class WebGpuVideoRenderer {
     }
     const seekMs = performance.now() - seekStartedAt
     if (this.destroyed || this.failed) throw new Error(this.lastFailureReason || 'WebGPU 渲染器已停止')
-    this.renderRevision += 1
     if (firstVideoTargetConflict && exportFrame - this.lastVideoTargetConflictLogFrame >= 30) {
       this.lastVideoTargetConflictLogFrame = exportFrame
       logger.warn('[WebGPU诊断] 同一视频源出现多个导出目标时间，已使用最后一个目标时间', {
@@ -657,7 +652,6 @@ export class WebGpuVideoRenderer {
     this.renderInFlight = true
     this.renderQueued = false
     this.frameCounter += 1
-    const revision = this.renderRevision
     const currentLayers = this.layers
     try {
       const waitingVideos = currentLayers.filter((layer) => {
@@ -742,7 +736,11 @@ export class WebGpuVideoRenderer {
         await this.layerRenderer.drawLayers(groupLayers, target.texture.createView(), target.width, target.height, this.compositionTime, new Map())
         overrides.set(group, target)
       }
-      if (revision !== this.renderRevision || this.destroyed) return
+      // A newer parameter snapshot may arrive while this frame is being
+      // prepared. Present this completed snapshot instead of discarding it;
+      // setLayers() has already queued another render for the latest snapshot.
+      // This keeps the preview moving during a long drag while still allowing
+      // intermediate parameter values to be skipped.
       const outputLayers = currentLayers.filter((layer) => (
         layer.precomposeRole !== 'input'
         && !(layer.precomposeRole === 'output' && layer.precomposeGroup && skippedGroups.has(layer.precomposeGroup))
@@ -756,7 +754,7 @@ export class WebGpuVideoRenderer {
         this.compositionTime,
         overrides,
       )
-      if (revision !== this.renderRevision || this.destroyed) return
+      if (this.destroyed) return
       if (this.options.presentToCanvas !== false) {
         if (!context) throw new Error('WebGPU 画布上下文尚未初始化')
         const presentationTexture = context.getCurrentTexture()

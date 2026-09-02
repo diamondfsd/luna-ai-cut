@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 
-use windows::core::{Interface, BOOL};
+use windows::core::Interface;
 use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL};
 use windows::Win32::Graphics::Direct3D11::{
     ID3D11Device, ID3D11Device5, ID3D11DeviceContext, ID3D11DeviceContext4, ID3D11Fence,
     ID3D11Resource, ID3D11Texture2D, ID3D11VideoContext, ID3D11VideoDevice, ID3D11VideoProcessor,
     ID3D11VideoProcessorEnumerator, D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE,
-    D3D11_BIND_VIDEO_ENCODER, D3D11_FENCE_FLAG_SHARED, D3D11_QUERY_DESC, D3D11_QUERY_EVENT,
-    D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_TEX2D_VPIV,
-    D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+    D3D11_BIND_VIDEO_ENCODER, D3D11_FENCE_FLAG_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
+    D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
     D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE, D3D11_VIDEO_PROCESSOR_ALPHA_FILL_MODE_OPAQUE,
     D3D11_VIDEO_PROCESSOR_CONTENT_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC,
     D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC,
@@ -18,10 +17,16 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_VPOV_DIMENSION_TEXTURE2D,
 };
 use windows::Win32::Graphics::Direct3D12::{
-    ID3D12CommandQueue, ID3D12Device, ID3D12Fence, ID3D12Resource,
+    ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12Device, ID3D12Fence,
+    ID3D12GraphicsCommandList, ID3D12Resource, D3D12_COMMAND_LIST_TYPE_DIRECT,
+    D3D12_FENCE_FLAG_NONE, D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+    D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+    D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE,
+    D3D12_RESOURCE_TRANSITION_BARRIER,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_NV12, DXGI_RATIONAL, DXGI_SAMPLE_DESC,
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_NV12, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_RATIONAL,
+    DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
     IDXGIResource1, DXGI_SHARED_RESOURCE_READ, DXGI_SHARED_RESOURCE_WRITE,
@@ -44,15 +49,47 @@ struct VideoProcessorState {
     processor: ID3D11VideoProcessor,
 }
 
+fn transition_barrier(
+    resource: &ID3D12Resource,
+    state_before: windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATES,
+    state_after: windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATES,
+) -> windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_BARRIER {
+    windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_BARRIER {
+        Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+        Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
+        Anonymous: D3D12_RESOURCE_BARRIER_0 {
+            Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
+                pResource: ManuallyDrop::new(Some(resource.clone())),
+                Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                StateBefore: state_before,
+                StateAfter: state_after,
+            }),
+        },
+    }
+}
+
+unsafe fn release_barrier_resource(
+    barrier: &mut windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_BARRIER,
+) {
+    // The Windows bindings model the D3D12 union members as ManuallyDrop.
+    // Release the temporary COM reference after ResourceBarrier has consumed
+    // the descriptor so the per-frame copy path does not leak references.
+    let transition = (&mut barrier.Anonymous as *mut D3D12_RESOURCE_BARRIER_0)
+        .cast::<D3D12_RESOURCE_TRANSITION_BARRIER>();
+    let resource = &mut (*transition).pResource as *mut _;
+    ManuallyDrop::drop(&mut *resource);
+}
+
 /// A BGRA texture allocated by the ordinary D3D11 device and opened by the
 /// wgpu D3D12 device through an NT shared handle. No pixel data crosses the
 /// CPU boundary.
 pub(crate) struct NativeSharedTexture {
     d3d11: ID3D11Texture2D,
+    processing: ID3D11Texture2D,
     d3d12: ID3D12Resource,
+    format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT,
     width: u32,
     height: u32,
-    ready_value: u64,
 }
 
 impl NativeSharedTexture {
@@ -63,18 +100,21 @@ impl NativeSharedTexture {
     fn d3d11(&self) -> &ID3D11Texture2D {
         &self.d3d11
     }
+
+    fn processing(&self) -> &ID3D11Texture2D {
+        &self.processing
+    }
 }
 
-/// Holds one shared texture checked out by wgpu. The D3D12 queue signals the
-/// shared fence after the wgpu submission; D3D11 waits on that fence before it
-/// reuses the texture for the next video-process operation.
+/// Holds one shared texture checked out by wgpu.
+///
+/// `render_into_external_texture` waits for the wgpu submission before this
+/// lease is finished. That CPU-side completion point is the ownership handoff
+/// back to the native D3D11 path. Do not enqueue a D3D12 signal followed by a
+/// D3D11 context wait here: NVIDIA drivers can stop making progress on this
+/// cross-API asynchronous return path after a few frames.
 pub(crate) struct NativeTextureLease {
     resource: ID3D12Resource,
-    context: ID3D11DeviceContext4,
-    fence11: ID3D11Fence,
-    fence12: ID3D12Fence,
-    queue: ID3D12CommandQueue,
-    release_value: u64,
     returned: bool,
 }
 
@@ -87,11 +127,9 @@ impl NativeTextureLease {
         if self.returned {
             return Ok(());
         }
-        unsafe { self.queue.Signal(&self.fence12, self.release_value) }
-            .map_err(|error| format!("native D3D12 queue signal failed: {error}"))?;
-        unsafe { self.context.Wait(&self.fence11, self.release_value) }
-            .map_err(|error| format!("native D3D11 queue wait failed: {error}"))?;
-        unsafe { self.context.Flush() };
+        // The caller has already waited for the wgpu submission that used the
+        // resource. Keeping the handoff CPU-ordered avoids the D3D11/D3D12
+        // shared-fence return sequence that can deadlock on NVIDIA/Windows.
         self.returned = true;
         Ok(())
     }
@@ -121,13 +159,16 @@ pub(crate) struct NativeVideoConverter {
     video_context: ID3D11VideoContext,
     d3d12_device: ID3D12Device,
     d3d12_queue: ID3D12CommandQueue,
+    copy_allocator: ID3D12CommandAllocator,
+    copy_list: ID3D12GraphicsCommandList,
+    copy_fence: ID3D12Fence,
+    next_copy_fence_value: u64,
     fence11: ID3D11Fence,
     fence12: ID3D12Fence,
     next_fence_value: u64,
-    completion_query: windows::Win32::Graphics::Direct3D11::ID3D11Query,
-    last_ready_value: Option<u64>,
+    blit_count: u64,
     video_processors: HashMap<VideoProcessorKey, VideoProcessorState>,
-    reusable_bgra: HashMap<(u32, u32), Vec<NativeSharedTexture>>,
+    reusable_bgra: HashMap<(u32, u32, i32), Vec<NativeSharedTexture>>,
 }
 
 impl NativeVideoConverter {
@@ -147,6 +188,18 @@ impl NativeVideoConverter {
             .cast::<ID3D11DeviceContext4>()
             .map_err(|error| format!("native D3D11 fence synchronization unavailable: {error}"))?;
 
+        let copy_allocator: ID3D12CommandAllocator =
+            unsafe { d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT) }
+                .map_err(|error| format!("native D3D12 copy allocator creation failed: {error}"))?;
+        let copy_list: ID3D12GraphicsCommandList = unsafe {
+            d3d12_device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &copy_allocator, None)
+        }
+        .map_err(|error| format!("native D3D12 copy list creation failed: {error}"))?;
+        unsafe { copy_list.Close() }
+            .map_err(|error| format!("native D3D12 copy list initialization failed: {error}"))?;
+        let copy_fence: ID3D12Fence = unsafe { d3d12_device.CreateFence(0, D3D12_FENCE_FLAG_NONE) }
+            .map_err(|error| format!("native D3D12 copy fence creation failed: {error}"))?;
+
         let device5 = device
             .cast::<ID3D11Device5>()
             .map_err(|error| format!("native D3D11 shared fence unavailable: {error}"))?;
@@ -163,19 +216,8 @@ impl NativeVideoConverter {
         let _ = unsafe { CloseHandle(fence_handle) };
         open_result.map_err(|error| format!("native D3D12 fence import failed: {error}"))?;
         let fence12 = fence12.ok_or_else(|| "native D3D12 fence was not returned".to_string())?;
-
-        let query_desc = D3D11_QUERY_DESC {
-            Query: D3D11_QUERY_EVENT,
-            MiscFlags: 0,
-        };
-        let mut completion_query = None;
-        unsafe { device.CreateQuery(&query_desc, Some(&mut completion_query)) }
-            .map_err(|error| format!("native D3D11 completion query creation failed: {error}"))?;
-        let completion_query = completion_query
-            .ok_or_else(|| "native D3D11 completion query was not returned".to_string())?;
-
         crate::logging::write(
-            "[Export:WinGPU] native bridge=d3d11-video-processor,shared-nt-handle,d3d12-fence",
+            "[Export:WinGPU] native bridge=d3d11-video-processor,shared-nt-handle,cpu-fence-completion",
         );
         Ok(Self {
             device: device.clone(),
@@ -185,11 +227,14 @@ impl NativeVideoConverter {
             video_context,
             d3d12_device: d3d12_device.clone(),
             d3d12_queue: d3d12_queue.clone(),
+            copy_allocator,
+            copy_list,
+            copy_fence,
+            next_copy_fence_value: 1,
             fence11,
             fence12,
             next_fence_value: 1,
-            completion_query,
-            last_ready_value: None,
+            blit_count: 0,
             video_processors: HashMap::new(),
             reusable_bgra: HashMap::new(),
         })
@@ -199,58 +244,52 @@ impl NativeVideoConverter {
         &mut self,
         frame: &DecodedFrame,
     ) -> Result<NativeSharedTexture, String> {
-        let mut output = self.take_shared_bgra_texture(frame.width, frame.height)?;
+        crate::logging::write_once("[Export:WinGPU:NativeBridge] create=begin");
+        let output =
+            self.take_shared_bgra_texture(frame.width, frame.height, DXGI_FORMAT_B8G8R8A8_UNORM)?;
+        crate::logging::write_once("[Export:WinGPU:NativeBridge] create=complete");
         let result = match &frame.surface {
-            DecodedSurface::D3d11(texture) => self.blit(
-                texture,
-                frame.array_slice,
-                frame.width,
-                frame.height,
-                output.d3d11(),
-                output.width,
-                output.height,
-                true,
-                false,
-            ),
+            DecodedSurface::D3d11(texture) => self
+                .blit(
+                    texture,
+                    frame.array_slice,
+                    frame.width,
+                    frame.height,
+                    output.processing(),
+                    output.width,
+                    output.height,
+                    true,
+                )
+                .and_then(|()| self.copy_processing_to_shared(&output)),
             DecodedSurface::D3d12 { .. } => Err(
                 "native D3D11 bridge received a D3D12 decoder surface; use the D3D11 manager"
                     .to_string(),
             ),
         };
         if let Err(error) = result {
-            self.last_ready_value = None;
             self.recycle_bgra_texture(output);
             return Err(error);
         }
-        self.mark_ready(&mut output);
         Ok(output)
     }
 
-    pub(crate) fn create_composition_target(
+    pub(crate) fn copy_wgpu_to_shared(
         &mut self,
+        source: &ID3D12Resource,
         width: u32,
         height: u32,
     ) -> Result<NativeSharedTexture, String> {
-        self.take_shared_bgra_texture(width, height)
+        let output = self.take_shared_bgra_texture(width, height, DXGI_FORMAT_R8G8B8A8_UNORM)?;
+        self.copy_d3d12_resource(source, output.resource(), width, height)?;
+        Ok(output)
     }
 
     pub(crate) fn wrap_for_wgpu(
         &mut self,
         texture: &NativeSharedTexture,
     ) -> Result<NativeTextureLease, String> {
-        if texture.ready_value != 0 {
-            unsafe { self.d3d12_queue.Wait(&self.fence12, texture.ready_value) }
-                .map_err(|error| format!("native D3D12 queue wait failed: {error}"))?;
-        }
-        let release_value = self.next_fence_value;
-        self.next_fence_value = self.next_fence_value.saturating_add(1);
         Ok(NativeTextureLease {
             resource: texture.d3d12.clone(),
-            context: self.context4.clone(),
-            fence11: self.fence11.clone(),
-            fence12: self.fence12.clone(),
-            queue: self.d3d12_queue.clone(),
-            release_value,
             returned: false,
         })
     }
@@ -279,18 +318,16 @@ impl NativeVideoConverter {
             &output,
             width,
             height,
-            false,
             true,
         )?;
         self.recycle_bgra_texture(input);
         Ok(output)
     }
 
-    pub(crate) fn recycle_bgra_texture(&mut self, mut texture: NativeSharedTexture) {
-        texture.ready_value = 0;
-        let pool = self
-            .reusable_bgra
-            .entry((texture.width, texture.height))
+    pub(crate) fn recycle_bgra_texture(&mut self, texture: NativeSharedTexture) {
+        let pools = &mut self.reusable_bgra;
+        let pool = pools
+            .entry((texture.width, texture.height, texture.format.0))
             .or_default();
         if pool.len() < MAX_REUSABLE_BGRA_PER_SIZE {
             pool.push(texture);
@@ -301,35 +338,43 @@ impl NativeVideoConverter {
         &mut self,
         width: u32,
         height: u32,
+        format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT,
     ) -> Result<NativeSharedTexture, String> {
-        if let Some(texture) = self
-            .reusable_bgra
-            .get_mut(&(width, height))
+        let pools = &mut self.reusable_bgra;
+        if let Some(texture) = pools
+            .get_mut(&(width, height, format.0))
             .and_then(|pool| pool.pop())
         {
             return Ok(texture);
         }
+        let processing = self.create_texture(
+            width,
+            height,
+            DXGI_FORMAT_B8G8R8A8_UNORM,
+            D3D11_BIND_RENDER_TARGET.0 as u32,
+        )?;
+        crate::logging::write_once("[Export:WinGPU:NativeBridge] processing=created");
         let desc = D3D11_TEXTURE2D_DESC {
             Width: width,
             Height: height,
             MipLevels: 1,
             ArraySize: 1,
-            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            Format: format,
             SampleDesc: DXGI_SAMPLE_DESC {
                 Count: 1,
                 Quality: 0,
             },
             Usage: D3D11_USAGE_DEFAULT,
-            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+            // A video-processor input view does not require render or shader
+            // binding flags. This is the shape used by the reference bridge.
+            BindFlags: 0,
             CPUAccessFlags: 0,
-            // wgpu's D3D12 queue cannot acquire an IDXGIKeyedMutex. The
-            // shared fence below is the ownership transfer mechanism.
-            MiscFlags: (D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0 | D3D11_RESOURCE_MISC_SHARED.0)
-                as u32,
+            MiscFlags: D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0 as u32,
         };
         let mut d3d11 = None;
         unsafe { self.device.CreateTexture2D(&desc, None, Some(&mut d3d11)) }
             .map_err(|error| format!("native shared BGRA texture creation failed: {error}"))?;
+        crate::logging::write_once("[Export:WinGPU:NativeBridge] shared=created");
         let d3d11 =
             d3d11.ok_or_else(|| "native shared BGRA texture was not returned".to_string())?;
         let resource11 = d3d11
@@ -355,14 +400,120 @@ impl NativeVideoConverter {
             d3d12.ok_or_else(|| "native D3D12 shared texture was not returned".to_string())?;
         Ok(NativeSharedTexture {
             d3d11,
+            processing,
             d3d12,
+            format,
             width,
             height,
-            ready_value: 0,
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
+    fn copy_d3d12_resource(
+        &mut self,
+        source: &ID3D12Resource,
+        destination: &ID3D12Resource,
+        width: u32,
+        height: u32,
+    ) -> Result<(), String> {
+        let source_desc = unsafe { source.GetDesc() };
+        let destination_desc = unsafe { destination.GetDesc() };
+        if source_desc.Dimension
+            != windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_DIMENSION_TEXTURE2D
+            || destination_desc.Dimension
+                != windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_DIMENSION_TEXTURE2D
+            || source_desc.Width != width as u64
+            || destination_desc.Width != width as u64
+            || source_desc.Height != height
+            || destination_desc.Height != height
+            || source_desc.Format
+                != windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM
+                && source_desc.Format
+                    != windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+            || destination_desc.Format
+                != windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM
+        {
+            return Err(format!(
+                "native D3D12 RGBA8 bridge metadata mismatch: source={}x{} format={} destination={}x{} format={}",
+                source_desc.Width,
+                source_desc.Height,
+                source_desc.Format.0,
+                destination_desc.Width,
+                destination_desc.Height,
+                destination_desc.Format.0,
+            ));
+        }
+
+        unsafe { self.copy_allocator.Reset() }
+            .map_err(|error| format!("native D3D12 copy allocator reset failed: {error}"))?;
+        unsafe { self.copy_list.Reset(&self.copy_allocator, None) }
+            .map_err(|error| format!("native D3D12 copy list reset failed: {error}"))?;
+
+        let mut before = [
+            transition_barrier(
+                source,
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_SOURCE,
+            ),
+            transition_barrier(
+                destination,
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+            ),
+        ];
+        unsafe { self.copy_list.ResourceBarrier(&before) };
+        unsafe { self.copy_list.CopyResource(destination, source) };
+        let mut after = [
+            transition_barrier(
+                source,
+                D3D12_RESOURCE_STATE_COPY_SOURCE,
+                D3D12_RESOURCE_STATE_COMMON,
+            ),
+            transition_barrier(
+                destination,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_COMMON,
+            ),
+        ];
+        unsafe { self.copy_list.ResourceBarrier(&after) };
+        unsafe { self.copy_list.Close() }
+            .map_err(|error| format!("native D3D12 copy list close failed: {error}"))?;
+        let command_list: ID3D12CommandList = self
+            .copy_list
+            .cast()
+            .map_err(|error| format!("native D3D12 copy list cast failed: {error}"))?;
+        unsafe { self.d3d12_queue.ExecuteCommandLists(&[Some(command_list)]) };
+        let fence_value = self.next_copy_fence_value;
+        self.next_copy_fence_value = self.next_copy_fence_value.saturating_add(1);
+        unsafe { self.d3d12_queue.Signal(&self.copy_fence, fence_value) }
+            .map_err(|error| format!("native D3D12 copy fence signal failed: {error}"))?;
+        self.wait_for_d3d12_copy(fence_value)?;
+        unsafe {
+            for barrier in &mut before {
+                release_barrier_resource(barrier);
+            }
+            for barrier in &mut after {
+                release_barrier_resource(barrier);
+            }
+        }
+        Ok(())
+    }
+
+    fn wait_for_d3d12_copy(&self, fence_value: u64) -> Result<(), String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let complete = unsafe { self.copy_fence.GetCompletedValue() };
+            if complete >= fence_value {
+                return Ok(());
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(format!(
+                    "native D3D12 RGBA8 bridge copy timed out at {complete}/{fence_value}"
+                ));
+            }
+            std::thread::yield_now();
+        }
+    }
+
     fn blit(
         &mut self,
         input: &ID3D11Texture2D,
@@ -372,9 +523,19 @@ impl NativeVideoConverter {
         output: &ID3D11Texture2D,
         output_width: u32,
         output_height: u32,
-        signal_d3d12: bool,
         wait_for_completion: bool,
     ) -> Result<(), String> {
+        let blit_id = self.blit_count;
+        self.blit_count = self.blit_count.saturating_add(1);
+        let log_phase = |phase: &str| {
+            if blit_id < 4 {
+                crate::logging::write(&format!(
+                    "[Export:WinGPU:NativeBlit] id={} phase={phase} wait={wait_for_completion}",
+                    blit_id + 1
+                ));
+            }
+        };
+        log_phase("start");
         let content = D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
             InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
             InputFrameRate: DXGI_RATIONAL {
@@ -484,54 +645,44 @@ impl NativeVideoConverter {
                 std::slice::from_ref(&stream),
             )
         };
+        log_phase("video-processor-returned");
         unsafe { ManuallyDrop::drop(&mut stream.pInputSurface) };
         result.map_err(|error| format!("native video processor blit failed: {error}"))?;
-
-        if signal_d3d12 {
-            let ready_value = self.next_fence_value;
-            self.next_fence_value = self.next_fence_value.saturating_add(1);
-            unsafe { self.context4.Signal(&self.fence11, ready_value) }
-                .map_err(|error| format!("native D3D11 ready fence signal failed: {error}"))?;
-            unsafe { self.context.Flush() };
-            // The caller assigns this value to the shared texture immediately
-            // after this function returns through `mark_ready`.
-            self.last_ready_value = Some(ready_value);
-        }
         if wait_for_completion {
-            self.wait_for_blit()?;
+            log_phase("before-fence");
+            self.wait_for_native_completion()?;
+            log_phase("fence-complete");
         }
         Ok(())
     }
 
-    fn wait_for_blit(&self) -> Result<(), String> {
+    fn copy_processing_to_shared(&mut self, texture: &NativeSharedTexture) -> Result<(), String> {
         unsafe {
-            self.context.End(&self.completion_query);
-            self.context.Flush();
+            self.context
+                .CopyResource(texture.d3d11(), texture.processing());
         }
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        self.wait_for_native_completion()
+    }
+
+    fn wait_for_native_completion(&mut self) -> Result<(), String> {
+        let fence_value = self.next_fence_value;
+        self.next_fence_value = self.next_fence_value.saturating_add(1);
+        unsafe { self.context4.Signal(&self.fence11, fence_value) }
+            .map_err(|error| format!("native D3D11 fence signal failed: {error}"))?;
+        unsafe { self.context.Flush() };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         loop {
-            let mut complete = BOOL::default();
-            unsafe {
-                self.context.GetData(
-                    &self.completion_query,
-                    Some((&mut complete as *mut BOOL).cast()),
-                    std::mem::size_of::<BOOL>() as u32,
-                    windows::Win32::Graphics::Direct3D11::D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
-                )
-            }
-            .map_err(|error| format!("native video processor wait failed: {error}"))?;
-            if complete.as_bool() {
+            let complete = unsafe { self.fence12.GetCompletedValue() };
+            if complete >= fence_value {
                 return Ok(());
             }
             if std::time::Instant::now() >= deadline {
-                return Err("native video processor wait timed out".to_string());
+                return Err(format!(
+                    "native D3D11 fence wait timed out at {complete}/{fence_value}"
+                ));
             }
             std::thread::yield_now();
         }
-    }
-
-    fn mark_ready(&mut self, texture: &mut NativeSharedTexture) {
-        texture.ready_value = self.last_ready_value.take().unwrap_or(0);
     }
 
     fn create_texture(
