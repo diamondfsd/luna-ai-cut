@@ -10,8 +10,9 @@
  *
  * 要求：目标需通过 rustup 安装，如 rustup target add x86_64-pc-windows-msvc
  */
+import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, readdirSync, rmSync } from 'node:fs'
+import { chmodSync, closeSync, copyFileSync, existsSync, openSync, readSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
@@ -41,6 +42,46 @@ const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
 const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker']
+
+function filesMatch(leftPath, rightPath) {
+  if (!existsSync(rightPath)) return false
+  const fileSize = statSync(leftPath).size
+  if (fileSize !== statSync(rightPath).size) return false
+
+  const leftFd = openSync(leftPath, 'r')
+  const rightFd = openSync(rightPath, 'r')
+  const leftBuffer = Buffer.allocUnsafe(1024 * 1024)
+  const rightBuffer = Buffer.allocUnsafe(leftBuffer.length)
+  try {
+    let offset = 0
+    while (offset < fileSize) {
+      const chunkSize = Math.min(leftBuffer.length, fileSize - offset)
+      const leftBytes = readSync(leftFd, leftBuffer, 0, chunkSize, offset)
+      const rightBytes = readSync(rightFd, rightBuffer, 0, chunkSize, offset)
+      if (leftBytes !== rightBytes) return false
+      if (leftBytes === 0) return false
+      if (!leftBuffer.subarray(0, leftBytes).equals(rightBuffer.subarray(0, rightBytes))) return false
+      offset += leftBytes
+    }
+    return true
+  } finally {
+    closeSync(leftFd)
+    closeSync(rightFd)
+  }
+}
+
+function copyArtifact(src, dest) {
+  if (filesMatch(src, dest)) return false
+  try {
+    copyFileSync(src, dest)
+    return true
+  } catch (error) {
+    if (isWin && (error?.code === 'EPERM' || error?.code === 'EBUSY')) {
+      throw new Error(`Cannot update ${dest} because Luna AI Cut is still using it. Close the running app and retry the build.`, { cause: error })
+    }
+    throw error
+  }
+}
 
 // The build output directory is shared by platform builds on developer machines.
 // Remove incompatible leftovers before copying the current target's artifacts.
@@ -175,22 +216,17 @@ for (const runtimeDir of runtimeDirs) {
   for (const fileName of readdirSync(runtimeDir)) {
     if (!/^onnxruntime.*\.dll$/i.test(fileName) && !/^libonnxruntime.*\.(dylib|so)/i.test(fileName)) continue
     const runtimeDest = join(rcDir, fileName)
-    copyFileSync(join(runtimeDir, fileName), runtimeDest)
+    copyArtifact(join(runtimeDir, fileName), runtimeDest)
     console.log('[build-native] ✅', runtimeDest)
   }
 }
 
 if (isWin) {
   const ffmpegRuntimeDir = join(root, 'resources', 'ffmpeg')
-  const ffmpegDllPattern = /^(?:avcodec|avdevice|avfilter|avformat|avutil|postproc|swresample|swscale)-\d+\.dll$/i
-  for (const fileName of readdirSync(rcDir)) {
-    if (!ffmpegDllPattern.test(fileName)) continue
-    rmSync(join(rcDir, fileName), { force: true })
-  }
   for (const fileName of readdirSync(ffmpegRuntimeDir)) {
     if (!/^(?:avformat-62|avcodec-62|avutil-60|swresample-6)\.dll$/i.test(fileName)) continue
     const runtimeDest = join(rcDir, fileName)
-    copyFileSync(join(ffmpegRuntimeDir, fileName), runtimeDest)
+    copyArtifact(join(ffmpegRuntimeDir, fileName), runtimeDest)
     console.log('[build-native] ✅', runtimeDest)
   }
 }
@@ -201,7 +237,7 @@ const src = target
   : join(rcDir, 'target', 'release', libName)
 
 const dest = join(rcDir, 'luna-render-core.node')
-copyFileSync(src, dest)
+copyArtifact(src, dest)
 prepareMacArtifact(dest, 'forbidden')
 console.log('[build-native] ✅', dest)
 
@@ -209,7 +245,7 @@ for (const baseName of workerBaseNames.slice(0, 5)) {
   const workerName = isWin ? `${baseName}.exe` : baseName
   const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
   const workerDest = join(rcDir, workerName)
-  copyFileSync(workerSrc, workerDest)
+  copyArtifact(workerSrc, workerDest)
   if (!isWin) chmodSync(workerDest, 0o755)
   prepareMacArtifact(workerDest, isMacX64 ? 'required' : 'optional')
   console.log('[build-native] ✅', workerDest)
@@ -222,7 +258,7 @@ if (!existsSync(asrWorkerSrc)) {
   process.exit(1)
 }
 const asrWorkerDest = join(rcDir, asrWorkerName)
-copyFileSync(asrWorkerSrc, asrWorkerDest)
+copyArtifact(asrWorkerSrc, asrWorkerDest)
 if (!isWin) chmodSync(asrWorkerDest, 0o755)
 prepareMacArtifact(asrWorkerDest, isMacX64 ? 'required' : 'optional')
 if (!target) {
