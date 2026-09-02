@@ -54,6 +54,11 @@ test('workspace color slider previews live and commits one history entry', async
   await expect.poll(async () => Buffer.compare(await previewSignature(), originalSignature) !== 0, { timeout: 2_000 }).toBe(true)
   const lowExposureSignature = await previewSignature()
 
+  for (let sample = 0; sample < 12; sample += 1) {
+    await lunaApp.page.waitForTimeout(40)
+    expect(Buffer.compare(await previewSignature(), originalSignature)).not.toBe(0)
+  }
+
   await lunaApp.page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2, { steps: 4 })
   await expect.poll(async () => Buffer.compare(await previewSignature(), lowExposureSignature) !== 0, { timeout: 2_000 }).toBe(true)
 

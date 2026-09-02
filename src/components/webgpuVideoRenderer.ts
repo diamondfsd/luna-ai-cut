@@ -66,6 +66,7 @@ export class WebGpuVideoRenderer {
   private renderInFlight = false
   private renderQueued = false
   private directRenderQueued = false
+  private renderRevision = 0
   private imageResourcesInvalidated = false
   private readonly renderWaiters = new Set<RenderWaiter>()
   private resizeQueued = false
@@ -217,6 +218,7 @@ export class WebGpuVideoRenderer {
     this.configureCanvasContext()
     this.outputTexture?.texture.destroy?.()
     this.outputTexture = null
+    this.renderRevision += 1
     this.scheduleRender()
   }
 
@@ -236,6 +238,7 @@ export class WebGpuVideoRenderer {
     const nextMaxSide = Math.max(1, Math.round(maxSide))
     if (nextMaxSide === this.options.maxSide) return
     this.options.maxSide = nextMaxSide
+    this.renderRevision += 1
     if (this.renderInFlight) {
       this.imageResourcesInvalidated = true
       this.renderQueued = true
@@ -257,6 +260,7 @@ export class WebGpuVideoRenderer {
     const playbackTimelineChanged = playbackLayerSignature !== this.playbackLayerSignature
     this.playbackLayerSignature = playbackLayerSignature
     this.layers = layers
+    this.renderRevision += 1
     logger.info('[PreviewDebug] renderer setLayers', {
       layerCount: layers.length,
       videoLayers: layers.filter((layer) => layer.isVideo).map((layer) => ({ key: videoLayerKey(layer), path: layer.filePath })),
@@ -652,6 +656,7 @@ export class WebGpuVideoRenderer {
     this.renderInFlight = true
     this.renderQueued = false
     this.frameCounter += 1
+    const revision = this.renderRevision
     const currentLayers = this.layers
     try {
       const waitingVideos = currentLayers.filter((layer) => {
@@ -736,11 +741,7 @@ export class WebGpuVideoRenderer {
         await this.layerRenderer.drawLayers(groupLayers, target.texture.createView(), target.width, target.height, this.compositionTime, new Map())
         overrides.set(group, target)
       }
-      // A newer parameter snapshot may arrive while this frame is being
-      // prepared. Present this completed snapshot instead of discarding it;
-      // setLayers() has already queued another render for the latest snapshot.
-      // This keeps the preview moving during a long drag while still allowing
-      // intermediate parameter values to be skipped.
+      if (revision !== this.renderRevision || this.destroyed) return
       const outputLayers = currentLayers.filter((layer) => (
         layer.precomposeRole !== 'input'
         && !(layer.precomposeRole === 'output' && layer.precomposeGroup && skippedGroups.has(layer.precomposeGroup))
@@ -754,7 +755,7 @@ export class WebGpuVideoRenderer {
         this.compositionTime,
         overrides,
       )
-      if (this.destroyed) return
+      if (revision !== this.renderRevision || this.destroyed) return
       if (this.options.presentToCanvas !== false) {
         if (!context) throw new Error('WebGPU 画布上下文尚未初始化')
         const presentationTexture = context.getCurrentTexture()

@@ -66,6 +66,11 @@ async function exerciseLiveExposure(page: Page): Promise<void> {
     expect(Number(await handle.getAttribute('aria-valuenow'))).not.toBe(0)
     await expect.poll(() => canvasSignature(page)).not.toBe(highExposurePreview)
     expect(await page.evaluate(() => (window as Window & { __colorSliderPointerUpCount?: number }).__colorSliderPointerUpCount ?? 0)).toBe(0)
+
+    for (let sample = 0; sample < 12; sample += 1) {
+      await page.waitForTimeout(40)
+      expect(await canvasSignature(page)).not.toBe(originalPreview)
+    }
   } finally {
     await page.mouse.up()
   }

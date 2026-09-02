@@ -12,7 +12,7 @@
  */
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, chmodSync, createWriteStream, statSync, rmSync, renameSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, chmodSync, createWriteStream, statSync, rmSync, renameSync, readFileSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import https from 'node:https'
@@ -47,8 +47,13 @@ const targetArch = archIndex !== -1 ? process.argv[archIndex + 1] : process.arch
 const ext = targetPlatform === 'win32' ? '.exe' : ''
 const destDir = join(process.cwd(), 'resources', 'ffmpeg')
 const cacheDir = join(process.cwd(), '.ffmpeg-cache')
-const staticReleaseTag = 'b6.1.1'
+const legacyStaticReleaseTag = 'b6.1.1'
+const windowsFfmpegVersion = '8.1.2'
+const windowsFfmpegArchiveName = `ffmpeg-${windowsFfmpegVersion}-essentials_build.zip`
+const windowsFfmpegUpstreamUrl = `https://github.com/GyanD/codexffmpeg/releases/download/${windowsFfmpegVersion}/${windowsFfmpegArchiveName}`
+const windowsFfmpegCacheKey = `ffmpeg-win32-x64-${windowsFfmpegVersion}-essentials`
 const darwinArm64FfprobeSha256 = 'bb2db6f5d8cef919da12fbf592119a987202a8c060a886f3cab091f9cab90b64'
+let windowsBundlePromise = null
 
 console.log(`[copy-ffmpeg] target: ${targetPlatform}-${targetArch}, build: ${process.platform}-${process.arch}`)
 
@@ -64,7 +69,7 @@ function httpGet(url) {
   })
 }
 
-async function downloadFile(url, dest, maxRedirects = 5) {
+async function downloadFile(url, dest, { gzip = false, maxRedirects = 5 } = {}) {
   let currentUrl = url
   for (let i = 0; i <= maxRedirects; i++) {
     const res = await httpGet(currentUrl)
@@ -77,7 +82,7 @@ async function downloadFile(url, dest, maxRedirects = 5) {
       res.resume()
       throw new Error(`HTTP ${res.statusCode}`)
     }
-    await pipeline(res, createGunzip(), createWriteStream(dest))
+    await pipeline(gzip ? res.pipe(createGunzip()) : res, createWriteStream(dest))
     return
   }
   throw new Error(`Too many redirects (${maxRedirects})`)
@@ -90,7 +95,28 @@ async function downloadStaticBinary(name, releaseTag, platform, arch, dest) {
   const upstreamUrl = `https://github.com/eugeneware/ffmpeg-static/releases/download/${releaseTag}/${fileName}`
   const url = buildDependencyUrl(fileName, upstreamUrl)
   console.log(`[copy-ffmpeg] Downloading ${name} from ${url} ...`)
-  await downloadFile(url, dest)
+  await downloadFile(url, dest, { gzip: true })
+}
+
+async function downloadWindowsArchive(dest) {
+  const mirrorUrl = buildDependencyUrl(windowsFfmpegArchiveName, windowsFfmpegUpstreamUrl)
+  const urls = mirrorUrl === windowsFfmpegUpstreamUrl
+    ? [windowsFfmpegUpstreamUrl]
+    : [mirrorUrl, windowsFfmpegUpstreamUrl]
+  let lastError = null
+
+  for (const url of urls) {
+    try {
+      console.log(`[copy-ffmpeg] Downloading Windows FFmpeg ${windowsFfmpegVersion} from ${url} ...`)
+      await downloadFile(url, dest)
+      return
+    } catch (error) {
+      lastError = error
+      console.warn(`[copy-ffmpeg] Windows FFmpeg download failed from ${url}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  throw lastError ?? new Error('Windows FFmpeg archive download failed')
 }
 
 function verifySha256(path, expected, label) {
@@ -127,10 +153,134 @@ function verifyExecutable(filePath, label) {
   if (result.status !== 0) throw new Error(`${label} exited with status ${result.status ?? 'unknown'} signal ${result.signal ?? 'none'}`)
 }
 
+function verifyD3d12Encoders(filePath) {
+  const result = spawnSync(filePath, ['-hide_banner', '-encoders'], {
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 15_000,
+  })
+  if (result.error) throw new Error(`FFmpeg encoder probe failed: ${result.error.message}`)
+  if (result.status !== 0) throw new Error(`FFmpeg encoder probe exited with status ${result.status ?? 'unknown'}`)
+
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
+  const missing = ['h264_d3d12va', 'hevc_d3d12va'].filter((encoder) => !output.includes(encoder))
+  if (missing.length > 0) {
+    throw new Error(`FFmpeg ${windowsFfmpegVersion} is missing D3D12VA encoder(s): ${missing.join(', ')}`)
+  }
+}
+
+function findExtractedFile(root, fileName) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const entryPath = join(root, entry.name)
+    if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) return entryPath
+    if (entry.isDirectory()) {
+      const match = findExtractedFile(entryPath, fileName)
+      if (match) return match
+    }
+  }
+  return null
+}
+
+function escapePowerShellLiteral(value) {
+  return value.replaceAll("'", "''")
+}
+
+function extractWindowsZip(archivePath, destination) {
+  const command = [
+    'Expand-Archive',
+    `-LiteralPath '${escapePowerShellLiteral(archivePath)}'`,
+    `-DestinationPath '${escapePowerShellLiteral(destination)}'`,
+    '-Force',
+  ].join(' ')
+  const result = spawnSync('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-Command',
+    command,
+  ], {
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 120_000,
+  })
+  if (result.error) throw new Error(`Windows FFmpeg archive extraction failed: ${result.error.message}`)
+  if (result.status !== 0) {
+    throw new Error(`Windows FFmpeg archive extraction failed: ${(result.stderr || result.stdout || '').trim()}`)
+  }
+}
+
+async function prepareWindowsBundle() {
+  if (targetPlatform !== 'win32' || targetArch !== 'x64') return null
+  if (!windowsBundlePromise) {
+    windowsBundlePromise = (async () => {
+      const ffmpegCachePath = join(cacheDir, windowsFfmpegCacheKey)
+      const ffprobeCachePath = join(cacheDir, `${windowsFfmpegCacheKey}-ffprobe`)
+
+      if (!existsSync(ffmpegCachePath) || !existsSync(ffprobeCachePath)) {
+        const localBinDir = process.env.LUNA_FFMPEG_8_1_2_BIN_DIR
+        const localFfmpegPath = localBinDir ? join(localBinDir, 'ffmpeg.exe') : null
+        const localFfprobePath = localBinDir ? join(localBinDir, 'ffprobe.exe') : null
+
+        if (localFfmpegPath && localFfprobePath && existsSync(localFfmpegPath) && existsSync(localFfprobePath)) {
+          copyFileSync(localFfmpegPath, ffmpegCachePath)
+          copyFileSync(localFfprobePath, ffprobeCachePath)
+        } else {
+          const archivePath = join(cacheDir, windowsFfmpegArchiveName)
+          if (!existsSync(archivePath)) {
+            const tmpPath = `${archivePath}.tmp`
+            try {
+              rmSync(tmpPath, { force: true })
+              const localArchive = process.env.LUNA_FFMPEG_8_1_2_ARCHIVE
+              if (localArchive) {
+                if (!existsSync(localArchive)) throw new Error(`local archive not found: ${localArchive}`)
+                copyFileSync(localArchive, tmpPath)
+              } else {
+                await downloadWindowsArchive(tmpPath)
+              }
+              renameSync(tmpPath, archivePath)
+            } catch (error) {
+              rmSync(tmpPath, { force: true })
+              throw error
+            }
+          }
+
+          const extractDir = join(cacheDir, `${windowsFfmpegCacheKey}-extracted`)
+          rmSync(extractDir, { recursive: true, force: true })
+          mkdirSync(extractDir, { recursive: true })
+          extractWindowsZip(archivePath, extractDir)
+
+          const extractedFfmpeg = findExtractedFile(extractDir, 'ffmpeg.exe')
+          const extractedFfprobe = findExtractedFile(extractDir, 'ffprobe.exe')
+          if (!extractedFfmpeg || !extractedFfprobe) {
+            throw new Error(`Windows FFmpeg ${windowsFfmpegVersion} archive does not contain ffmpeg.exe and ffprobe.exe`)
+          }
+          copyFileSync(extractedFfmpeg, ffmpegCachePath)
+          copyFileSync(extractedFfprobe, ffprobeCachePath)
+        }
+      }
+
+      return { ffmpegPath: ffmpegCachePath, ffprobePath: ffprobeCachePath }
+    })()
+  }
+  return windowsBundlePromise
+}
+
 // ─── ffmpeg ────────────────────────────────────
 
 async function copyFfmpeg() {
   const dest = join(destDir, `ffmpeg${ext}`)
+
+  if (targetPlatform === 'win32' && targetArch === 'x64') {
+    const bundle = await prepareWindowsBundle()
+    copyFileSync(bundle.ffmpegPath, dest)
+    if (targetPlatform === process.platform && targetArch === process.arch) {
+      verifyExecutable(dest, 'ffmpeg')
+      verifyD3d12Encoders(dest)
+    }
+    console.log(`[copy-ffmpeg] ✓ FFmpeg ${windowsFfmpegVersion} with D3D12VA encoders → ${dest}`)
+    return
+  }
 
   if (targetPlatform === process.platform && targetArch === process.arch) {
     // 同平台同架构：从 ffmpeg-static 复制（npm install 时已下载好的）
@@ -161,14 +311,14 @@ async function copyFfmpeg() {
     try {
       // 先清空可能残留的临时文件，下载到 .tmp，完成后再改名，避免断下载导致缓存不全
       try { rmSync(tmpPath, { force: true }) } catch { /* ignore */ }
-      await downloadStaticBinary('ffmpeg', staticReleaseTag, targetPlatform, targetArch, tmpPath)
+      await downloadStaticBinary('ffmpeg', legacyStaticReleaseTag, targetPlatform, targetArch, tmpPath)
       renameSync(tmpPath, cachePath)
       if (targetPlatform !== 'win32') chmodSync(cachePath, 0o755)
       console.log(`[copy-ffmpeg] ✓ ffmpeg 已下载到缓存 → ${cachePath}`)
     } catch (err) {
       try { rmSync(tmpPath, { force: true }) } catch { /* ignore */ }
       console.error(`[copy-ffmpeg] ✗ 下载 ffmpeg 失败: ${err.message}`)
-      console.error(`  尝试手动下载: https://github.com/eugeneware/ffmpeg-static/releases/tag/${staticReleaseTag}`)
+      console.error(`  尝试手动下载: https://github.com/eugeneware/ffmpeg-static/releases/tag/${legacyStaticReleaseTag}`)
       process.exit(1)
     }
   } else {
@@ -188,6 +338,17 @@ async function copyFfmpeg() {
 
 async function copyFfprobe() {
   try {
+    if (targetPlatform === 'win32' && targetArch === 'x64') {
+      const bundle = await prepareWindowsBundle()
+      const dest = join(destDir, `ffprobe${ext}`)
+      copyFileSync(bundle.ffprobePath, dest)
+      if (targetPlatform === process.platform && targetArch === process.arch) {
+        verifyExecutable(dest, 'ffprobe')
+      }
+      console.log(`[copy-ffmpeg] ✓ FFprobe ${windowsFfmpegVersion} → ${dest}`)
+      return
+    }
+
     const pkgDir = dirname(require.resolve('ffprobe-static/package.json'))
     let src = join(pkgDir, 'bin', targetPlatform, targetArch, `ffprobe${ext}`)
 
@@ -199,7 +360,7 @@ async function copyFfprobe() {
         const tmpPath = src + '.tmp'
         try {
           rmSync(tmpPath, { force: true })
-          await downloadStaticBinary('ffprobe', staticReleaseTag, targetPlatform, targetArch, tmpPath)
+          await downloadStaticBinary('ffprobe', legacyStaticReleaseTag, targetPlatform, targetArch, tmpPath)
           verifySha256(tmpPath, darwinArm64FfprobeSha256, 'ffprobe')
           renameSync(tmpPath, src)
         } catch (err) {
