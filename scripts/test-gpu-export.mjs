@@ -137,7 +137,7 @@ async function main() {
       id: 'layer-0',
       source: {
         path: inputPath,
-        source_type: 'video',
+        sourceType: 'video',
         time: { offset: 0, start: 0, duration },
       },
       rect: { x: 0, y: 0, w: 1, h: 1 },
@@ -262,6 +262,13 @@ async function main() {
       const mean = (bytes) => bytes.length
         ? [...bytes].reduce((sum, value) => sum + value, 0) / bytes.length
         : 0
+      const meanAbsoluteDifference = (left, right) => {
+        const length = Math.min(left.length, right.length)
+        if (!length) return 0
+        let total = 0
+        for (let index = 0; index < length; index += 1) total += Math.abs(left[index] - right[index])
+        return total / length
+      }
       const frameStats = (bytes) => {
         const pixels = Math.floor(bytes.length / 3)
         const colors = new Map()
@@ -288,8 +295,11 @@ async function main() {
       const outputStats = outputFrames.map(frameStats)
       const sampledInputMeans = sampleIndices.map(index => inputMeans[index] ?? 0)
       const sampledOutputMeans = sampleIndices.map(index => outputMeans[index] ?? 0)
+      const inputMotion = Math.max(...sampleIndices.map(index => meanAbsoluteDifference(inputFrames[0] ?? Buffer.alloc(0), inputFrames[index] ?? Buffer.alloc(0))))
+      const outputMotion = Math.max(...sampleIndices.map(index => meanAbsoluteDifference(outputFrames[0] ?? Buffer.alloc(0), outputFrames[index] ?? Buffer.alloc(0))))
       console.log(`  All-frame RGB diagnostics: input=${inputFrames.length} output=${outputFrames.length}`)
       console.log(`  Sampled RGB means: frames=${sampleIndices.join(',')} input=${sampledInputMeans.map(value => value.toFixed(2)).join(',')} output=${sampledOutputMeans.map(value => value.toFixed(2)).join(',')}`)
+      console.log(`  Sampled motion: input=${inputMotion.toFixed(2)} output=${outputMotion.toFixed(2)}`)
       if (inputStats[0] && outputStats[0]) {
         console.log(`  First-frame colors: input=${inputStats[0].uniqueColors} (dominant ${(inputStats[0].dominantRatio * 100).toFixed(1)}%) output=${outputStats[0].uniqueColors} (dominant ${(outputStats[0].dominantRatio * 100).toFixed(1)}%)`)
       }
@@ -301,6 +311,9 @@ async function main() {
         } else if (inputStats[index].dominantRatio < 0.98 && outputStats[index].dominantRatio >= 0.98) {
           verificationIssues.push(`output frame ${index} is effectively a solid color`)
         }
+      }
+      if (inputMotion >= 3 && outputMotion < Math.min(2, inputMotion * 0.1)) {
+        verificationIssues.push(`output video is frozen despite source motion (input=${inputMotion.toFixed(2)}, output=${outputMotion.toFixed(2)})`)
       }
     } catch (e) {
       console.log('  ⚠️  Could not probe output:', e.message)

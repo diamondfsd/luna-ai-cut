@@ -2,18 +2,19 @@ use super::*;
 use crate::media::command;
 
 pub(crate) fn is_video_source(source: &CompositionSource) -> bool {
-    match source.source_type.as_deref().unwrap_or("auto") {
-        "video" => true,
-        "image" => false,
-        _ => {
-            let lower = source.path.to_lowercase();
-            [
-                ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".insv", ".lrv",
-            ]
-            .iter()
-            .any(|ext| lower.ends_with(ext))
-        }
+    if source.source_type.as_deref() == Some("video") {
+        return true;
     }
+
+    // `source_type` is supplied by the renderer and is not an instruction to
+    // freeze a video on one frame. Keep known video containers dynamic even
+    // when an older snapshot or bridge incorrectly labels them as an image.
+    let lower = source.path.to_lowercase();
+    [
+        ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".insv", ".lrv",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext))
 }
 
 fn layer_time(source: &CompositionSource, composition_time: f64) -> f64 {
@@ -414,9 +415,10 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
 #[cfg(test)]
 mod tests {
     use super::{
-        composition_layers, layer_time, mask_timeline_frame, mask_track_transform, reveal_progress,
-        CompositionInput, CompositionReveal, CompositionSource, CompositionSourceTime,
-        MaskTimeline, MaskTimelineFrame, MaskTimelineTransform, MaskTrack, MaskTrackKeyframe,
+        composition_layers, is_video_source, layer_time, mask_timeline_frame, mask_track_transform,
+        reveal_progress, CompositionInput, CompositionReveal, CompositionSource,
+        CompositionSourceTime, MaskTimeline, MaskTimelineFrame, MaskTimelineTransform, MaskTrack,
+        MaskTrackKeyframe,
     };
 
     fn sample_mask_track() -> MaskTrack {
@@ -578,6 +580,17 @@ mod tests {
         assert_eq!(layer_time(&source, 0.0), 5.0);
         assert_eq!(layer_time(&source, 0.8), 5.0);
         assert_eq!(layer_time(&source, 1.5), 5.5);
+    }
+
+    #[test]
+    fn video_container_cannot_be_forced_to_static_image() {
+        let source = CompositionSource {
+            path: "clip.MP4".to_string(),
+            source_type: Some("image".to_string()),
+            time: None,
+        };
+
+        assert!(is_video_source(&source));
     }
 
     #[test]
