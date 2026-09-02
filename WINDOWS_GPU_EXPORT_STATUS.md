@@ -62,13 +62,13 @@ windows-gpu-export-test OK
 
 测试源是 4K HEVC Main 10。Windows 导出不再初始化或尝试 Media Foundation，直接在 Rust 进程内通过 FFmpeg/libavcodec 启动 D3D11VA 解码，并把共享 BGRA 资源交给 WGPU。Media Foundation 仍只用于现有 Windows 原生预览，不参与导出。
 
-本次 10 秒严格 GPU 导出日志确认使用了 D3D11VA，没有触发软件解码兜底：
+本次 10 秒严格 GPU 导出日志确认使用了 D3D11VA 和三帧流水线，没有触发软件解码兜底：
 
 ```text
 decoder=ffmpeg-in-process-d3d11va transport=D3D11-shared-to-D3D12
 media-foundation-device=disabled
-encoder backend=nvenc-directx api=13.0 codec=h264 input=BGRA-via-D3D11-video-process
-backend=vendor-gpu frames=298 total_ms=16184
+encoder backend=nvenc-directx api=13.0 codec=h264 input=BGRA-via-D3D11-video-process pipeline_depth=3
+backend=vendor-gpu frames=298 total_ms=11484
 ```
 
 输出检查结果：
@@ -84,9 +84,15 @@ file size: 61,469,658 bytes
 
 第 5 秒画面已抽取检查，没有发现空帧、损坏或颜色通道错误。
 
-此前 FFmpeg D3D11VA 子进程方案需要执行 `D3D11VA -> P010 -> CPU RGBA -> WGPU 上传`，同一段素材耗时 `24.562s`。进程内共享纹理方案首次验证为 `17.478s`，跳过 Media Foundation 后本轮为 `16.184s`。相对旧子进程方案本轮缩短约 34%，也快于此前约 `22.8s` 的真实导出结果。单轮间存在 GPU 和缓存波动，不能把约 1.2 秒差值全部视为跳过 Media Foundation 的固定收益；主要收益是移除了兼容性差且必然失败的启动分支。
+此前 FFmpeg D3D11VA 子进程方案需要执行 `D3D11VA -> P010 -> CPU RGBA -> WGPU 上传`，同一段素材耗时 `24.562s`。进程内共享纹理方案首次验证为 `17.478s`，跳过 Media Foundation 后为 `16.184s`，启用三帧流水线后为 `11.484s`。流水线相对稳定基线缩短 `4.700s`，约 29%；相对旧子进程方案缩短约 53%。单轮间存在 GPU 和缓存波动，数据用于判断优化量级，不视为所有机器上的固定收益。
 
-双向共享 fence 保证 D3D11 写完后 WGPU 才采样、WGPU 用完后 D3D11 才复用纹理。FFmpeg 返回的物理 HEVC texture 高度是 2176，但有效帧高度来自 `AVFrame`，按 2160 处理，避免把对齐填充行带入画面。
+共享 fence 保证 D3D11 写完后 WGPU 才采样、WGPU 用完后 D3D11 才复用对应纹理，并保证 WGPU 合成完成后 D3D11 才开始颜色转换。FFmpeg 返回的物理 HEVC texture 高度是 2176，但有效帧高度来自 `AVFrame`，按 2160 处理，避免把对齐填充行带入画面。
+
+## 三帧流水线
+
+流水线使用三张 D3D11VA 解码共享纹理轮转，以及三组持久注册的 NV12 纹理和 NVENC bitstream buffer。WGPU 与 D3D11 通过 GPU fence 交接，不再在每帧成功路径调用 CPU 阻塞等待；NVENC 延迟两个输入帧回收输出，结束时再按帧号依次取回剩余三帧。
+
+10 秒无水印严格 GPU 测试为 298 帧、`11.484s`；加入 Luna Ultra 中文水印并保留源 AAC 音频后，帧循环为 `11.587s`。最终文件的视频为 H.264 4K `yuv420p`、298 帧、`9.943267s`，音频为 AAC、`9.941s`。第 5 秒画面、水印位置和颜色均已检查，视频时间戳按约 33.367ms 单调递增。
 
 解码降级顺序仍然保留：进程内 FFmpeg D3D11VA 不可用时，退回 FFmpeg D3D11VA 子进程和 CPU RGBA 传输；该路径也失败时，再退回 FFmpeg 软件解码。不会再退回 Media Foundation。严格模式只禁止软件编码，不禁止兼容解码兜底。
 
@@ -114,8 +120,8 @@ NVENC -> AMF -> QSV/oneVPL -> FFmpeg 软件兜底
 & 'C:\Users\admin\luna-ai-cut\luna-render-core\target\debug\windows-gpu-export-test.exe' `
   --seconds 10 `
   --require-gpu `
-  --output 'C:\Users\admin\luna-ai-cut\test-output\windows-gpu-export-no-mf-10s.mp4' `
-  --log 'C:\Users\admin\luna-ai-cut\test-output\windows-gpu-export-no-mf-10s.log'
+  --output 'C:\Users\admin\luna-ai-cut\test-output\windows-gpu-export-pipeline-10s.mp4' `
+  --log 'C:\Users\admin\luna-ai-cut\test-output\windows-gpu-export-pipeline-10s.log'
 ```
 
 测试程序直接运行时出现的 `Load Node-API ... GetProcAddress failed` 来自没有 Electron/Node 宿主的独立 Rust 二进制，不影响 GPU 导出结果。

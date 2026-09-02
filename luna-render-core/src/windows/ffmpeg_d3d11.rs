@@ -25,6 +25,7 @@ use super::decoder::SurfaceFormat;
 use super::device::InteropDevice;
 
 const ERROR_BUFFER_SIZE: usize = 1024;
+const DECODE_SURFACE_COUNT: usize = 3;
 
 #[repr(C)]
 struct NativeFrame {
@@ -64,10 +65,17 @@ unsafe extern "C" {
 
 pub(crate) struct FfmpegD3d11Frame {
     pub(crate) resource: ID3D12Resource,
+    pub(crate) surface_index: usize,
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) format: SurfaceFormat,
     pub(crate) ready_fence_value: u64,
+}
+
+struct SharedDecodeSurface {
+    texture: ID3D11Texture2D,
+    resource: ID3D12Resource,
+    release_fence_value: u64,
 }
 
 pub(crate) struct FfmpegD3d11Decoder {
@@ -76,9 +84,9 @@ pub(crate) struct FfmpegD3d11Decoder {
     native: *mut NativeDecoder,
     d3d11_device: ID3D11Device1,
     d3d12_device: ID3D12Device,
-    shared_texture: Option<ID3D11Texture2D>,
-    shared_resource: Option<ID3D12Resource>,
+    shared_surfaces: Vec<SharedDecodeSurface>,
     shared_description: Option<(u32, u32, i32)>,
+    next_surface: usize,
 }
 
 impl FfmpegD3d11Decoder {
@@ -109,9 +117,9 @@ impl FfmpegD3d11Decoder {
             native,
             d3d11_device: d3d11_device.clone(),
             d3d12_device: d3d12_device.clone(),
-            shared_texture: None,
-            shared_resource: None,
+            shared_surfaces: Vec::new(),
             shared_description: None,
+            next_surface: 0,
         })
     }
 
@@ -164,16 +172,16 @@ impl FfmpegD3d11Decoder {
         let scale = (max_side as f64 / max_edge as f64).min(1.0);
         let width = ((native_frame.width as f64 * scale).round() as u32).max(2) & !1;
         let height = ((native_frame.height as f64 * scale).round() as u32).max(2) & !1;
-        self.ensure_shared_texture(width, height)?;
-        interop.wait_for_d3d11_decode_write()?;
+        self.ensure_shared_textures(width, height)?;
+        let surface_index = self.next_surface;
+        self.next_surface = (self.next_surface + 1) % self.shared_surfaces.len();
+        let surface = &self.shared_surfaces[surface_index];
+        interop.wait_for_d3d11_decode_write(surface.release_fence_value)?;
         let mut conversion_error = [0_u8; ERROR_BUFFER_SIZE];
         let conversion_result = unsafe {
             luna_ffmpeg_d3d11_convert_current(
                 self.native,
-                self.shared_texture
-                    .as_ref()
-                    .ok_or_else(|| "shared D3D11 decode texture is unavailable".to_string())?
-                    .as_raw(),
+                surface.texture.as_raw(),
                 conversion_error.as_mut_ptr().cast(),
                 conversion_error.len() as u32,
             )
@@ -183,11 +191,8 @@ impl FfmpegD3d11Decoder {
         }
         let ready_fence_value = interop.signal_d3d11_decode_ready()?;
         Ok(Some(FfmpegD3d11Frame {
-            resource: self
-                .shared_resource
-                .as_ref()
-                .ok_or_else(|| "shared D3D12 decode texture is unavailable".to_string())?
-                .clone(),
+            resource: surface.resource.clone(),
+            surface_index,
             width,
             height,
             format: SurfaceFormat::Bgra8,
@@ -196,11 +201,38 @@ impl FfmpegD3d11Decoder {
     }
 
     #[cfg(luna_ffmpeg_shared)]
-    fn ensure_shared_texture(&mut self, width: u32, height: u32) -> Result<(), String> {
+    pub(crate) fn set_surface_release(
+        &mut self,
+        surface_index: usize,
+        release_fence_value: u64,
+    ) -> Result<(), String> {
+        let surface = self
+            .shared_surfaces
+            .get_mut(surface_index)
+            .ok_or_else(|| "invalid FFmpeg decode surface index".to_string())?;
+        surface.release_fence_value = release_fence_value;
+        Ok(())
+    }
+
+    #[cfg(not(luna_ffmpeg_shared))]
+    pub(crate) fn set_surface_release(
+        &mut self,
+        _surface_index: usize,
+        _release_fence_value: u64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    #[cfg(luna_ffmpeg_shared)]
+    fn ensure_shared_textures(&mut self, width: u32, height: u32) -> Result<(), String> {
         let dxgi_format = windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM.0;
-        if self.shared_description == Some((width, height, dxgi_format)) {
+        if self.shared_description == Some((width, height, dxgi_format))
+            && self.shared_surfaces.len() == DECODE_SURFACE_COUNT
+        {
             return Ok(());
         }
+        self.shared_surfaces.clear();
+        self.next_surface = 0;
         let description = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
             Alignment: 0,
@@ -220,35 +252,41 @@ impl FfmpegD3d11Decoder {
             self.d3d12_device
                 .GetCustomHeapProperties(0, D3D12_HEAP_TYPE_DEFAULT)
         };
-        let mut resource = None;
-        unsafe {
-            self.d3d12_device.CreateCommittedResource(
-                &heap_properties,
-                D3D12_HEAP_FLAG_SHARED,
-                &description,
-                D3D12_RESOURCE_STATE_COMMON,
-                None,
-                &mut resource,
-            )
+        for _ in 0..DECODE_SURFACE_COUNT {
+            let mut resource = None;
+            unsafe {
+                self.d3d12_device.CreateCommittedResource(
+                    &heap_properties,
+                    D3D12_HEAP_FLAG_SHARED,
+                    &description,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    None,
+                    &mut resource,
+                )
+            }
+            .map_err(|error| format!("failed to create shared D3D12 decode texture: {error}"))?;
+            let resource: ID3D12Resource = resource
+                .ok_or_else(|| "D3D12 did not return a shared decode texture".to_string())?;
+            let handle = unsafe {
+                self.d3d12_device.CreateSharedHandle(
+                    &resource,
+                    None,
+                    0x1000_0000,
+                    windows::core::PCWSTR::null(),
+                )
+            }
+            .map_err(|error| format!("failed to create D3D12 decode texture handle: {error}"))?;
+            let opened: Result<ID3D11Texture2D, String> = unsafe {
+                self.d3d11_device.OpenSharedResource1(handle)
+            }
+            .map_err(|error| format!("failed to open D3D12 decode texture in D3D11: {error}"));
+            let _ = unsafe { windows::Win32::Foundation::CloseHandle(handle) };
+            self.shared_surfaces.push(SharedDecodeSurface {
+                texture: opened?,
+                resource,
+                release_fence_value: 0,
+            });
         }
-        .map_err(|error| format!("failed to create shared D3D12 decode texture: {error}"))?;
-        let resource: ID3D12Resource =
-            resource.ok_or_else(|| "D3D12 did not return a shared decode texture".to_string())?;
-        let handle = unsafe {
-            self.d3d12_device.CreateSharedHandle(
-                &resource,
-                None,
-                0x1000_0000,
-                windows::core::PCWSTR::null(),
-            )
-        }
-        .map_err(|error| format!("failed to create D3D12 decode texture handle: {error}"))?;
-        let opened: Result<ID3D11Texture2D, String> =
-            unsafe { self.d3d11_device.OpenSharedResource1(handle) }
-                .map_err(|error| format!("failed to open D3D12 decode texture in D3D11: {error}"));
-        let _ = unsafe { windows::Win32::Foundation::CloseHandle(handle) };
-        self.shared_texture = Some(opened?);
-        self.shared_resource = Some(resource);
         self.shared_description = Some((width, height, dxgi_format));
         Ok(())
     }

@@ -25,7 +25,6 @@ pub(crate) struct InteropDevice {
     ffmpeg_d3d11_context: ID3D11DeviceContext4,
     ffmpeg_d3d11_fence: ID3D11Fence,
     ffmpeg_fence_value: AtomicU64,
-    ffmpeg_wgpu_release_value: AtomicU64,
 }
 
 impl InteropDevice {
@@ -102,7 +101,6 @@ impl InteropDevice {
             ffmpeg_d3d11_context,
             ffmpeg_d3d11_fence,
             ffmpeg_fence_value: AtomicU64::new(1),
-            ffmpeg_wgpu_release_value: AtomicU64::new(0),
         })
     }
 
@@ -116,8 +114,7 @@ impl InteropDevice {
         Ok(value)
     }
 
-    pub(crate) fn wait_for_d3d11_decode_write(&self) -> Result<(), String> {
-        let value = self.ffmpeg_wgpu_release_value.load(Ordering::SeqCst);
+    pub(crate) fn wait_for_d3d11_decode_write(&self, value: u64) -> Result<(), String> {
         if value == 0 {
             return Ok(());
         }
@@ -129,10 +126,7 @@ impl InteropDevice {
     }
 
     pub(crate) fn reserve_ffmpeg_wgpu_release(&self) -> u64 {
-        let value = self.ffmpeg_fence_value.fetch_add(1, Ordering::SeqCst);
-        self.ffmpeg_wgpu_release_value
-            .store(value, Ordering::SeqCst);
-        value
+        self.ffmpeg_fence_value.fetch_add(1, Ordering::SeqCst)
     }
 
     pub(crate) fn log_device_status(&self, stage: &str) {
