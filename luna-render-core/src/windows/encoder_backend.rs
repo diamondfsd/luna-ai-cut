@@ -122,7 +122,11 @@ pub(crate) trait EncoderBackend {
     fn kind(&self) -> EncoderBackendKind;
     fn codec(&self) -> VideoCodec;
     fn input_format(&self) -> EncoderPixelFormat;
-    fn encode(&mut self, frame: EncoderFrame, frame_index: u64) -> Result<EncodedPacket, String>;
+    fn encode(
+        &mut self,
+        frame: EncoderFrame,
+        frame_index: u64,
+    ) -> Result<Vec<EncodedPacket>, String>;
     fn flush(&mut self) -> Result<Vec<EncodedPacket>, String>;
     fn headers(&self) -> Result<CodecHeaders, String>;
 }
@@ -174,7 +178,7 @@ impl EncoderManager {
         &mut self,
         frame: EncoderFrame,
         frame_index: u64,
-    ) -> Result<EncodedPacket, String> {
+    ) -> Result<Vec<EncodedPacket>, String> {
         self.backend.encode(frame, frame_index)
     }
 

@@ -557,7 +557,12 @@ fn encode_frames(
                                             &interop.ffmpeg_d3d12_fence,
                                             frame.ready_fence_value,
                                         )?;
-                                        Ok((frame.resource, frame.width, frame.height))
+                                        Ok((
+                                            frame.resource,
+                                            frame.width,
+                                            frame.height,
+                                            frame.surface_index,
+                                        ))
                                     })
                                     .transpose()
                             })
@@ -566,8 +571,12 @@ fn encode_frames(
                     };
 
                     match gpu_frame {
-                        Ok(Some((bgra, width, height))) => {
+                        Ok(Some((bgra, width, height, surface_index))) => {
                             let release_value = interop.reserve_ffmpeg_wgpu_release();
+                            ffmpeg_gpu_decoders
+                                .get_mut(&key)
+                                .ok_or_else(|| "FFmpeg GPU decoder disappeared".to_string())?
+                                .set_surface_release(surface_index, release_value)?;
                             let lease = converter.wrap_external_for_wgpu(
                                 &bgra,
                                 &interop.ffmpeg_d3d12_fence,
@@ -749,18 +758,17 @@ fn encode_frames(
         if let Some(lease_error) = lease_error {
             return Err(lease_error);
         }
-        compositor.wait_for_gpu()?;
-
         let frame = GpuFrame::rgba8(
             render_resource.clone(),
             composition.canvas.width,
             composition.canvas.height,
         );
         let encoded_frame = converter.convert_for_encoder(&frame, encoder.input_format())?;
-        let packet = encoder.encode(encoded_frame, frame_index)?;
-        bitstream
-            .write_all(&packet.data)
-            .map_err(|error| format!("failed to write encoded bitstream packet: {error}"))?;
+        for packet in encoder.encode(encoded_frame, frame_index)? {
+            bitstream
+                .write_all(&packet.data)
+                .map_err(|error| format!("failed to write encoded bitstream packet: {error}"))?;
+        }
 
         if let Some(state) = task {
             state
