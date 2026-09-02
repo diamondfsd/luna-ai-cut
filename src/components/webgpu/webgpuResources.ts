@@ -30,6 +30,7 @@ import type {
 
 const IDENTITY_MASK_RGBA = new Uint8Array([255, 255, 255, 255])
 const IDENTITY_SOURCE_RGBA = new Uint8Array([255, 255, 255, 255])
+const VIDEO_TEXTURE_FORMAT = 'rgba8unorm-srgb'
 
 export interface WebGpuResourceCallbacks {
   getDevice: () => GpuDevice | null
@@ -358,9 +359,10 @@ export class WebGpuResourceManager {
           device,
           width,
           height,
-          // Keep external video data in a plain unorm texture. Chromium's
-          // Windows backend rejects or blanks some sRGB external-image copies.
-          'rgba8unorm',
+          // Video frames are display-encoded sRGB after Chromium's media
+          // conversion. Mark the texture accordingly so sampling decodes to
+          // linear light before the shared color pipeline runs.
+          VIDEO_TEXTURE_FORMAT,
           TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING | TEXTURE_USAGE_RENDER_ATTACHMENT,
         ),
         width,
@@ -376,6 +378,7 @@ export class WebGpuResourceManager {
           sourceHeight: entry.video.videoHeight || height,
           textureWidth: width,
           textureHeight: height,
+          textureFormat: VIDEO_TEXTURE_FORMAT,
           renderWidth: this.callbacks.getRenderSize().width,
           renderHeight: this.callbacks.getRenderSize().height,
           maxSide: layerMaxSide,
@@ -415,6 +418,7 @@ export class WebGpuResourceManager {
           videoHeight: entry.video.videoHeight,
           textureWidth: width,
           textureHeight: height,
+          textureFormat: VIDEO_TEXTURE_FORMAT,
           scaledThroughCanvas: upload.source !== entry.video,
         })
       }
