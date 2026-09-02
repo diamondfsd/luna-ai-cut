@@ -125,13 +125,17 @@ function resolveCargo() {
   // 优先用 rustup 工具链的 cargo（支持交叉编译目标）
   const rustupCargo = join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'cargo')
   if (existsSync(rustupCargo)) return rustupCargo
+  const cargoHome = process.env.CARGO_HOME || join(homedir(), '.cargo')
+  const cargoProxy = join(cargoHome, 'bin', process.platform === 'win32' ? 'cargo.exe' : 'cargo')
+  if (existsSync(cargoProxy)) return cargoProxy
   return 'cargo'
 }
 
 const cargoBin = resolveCargo()
 
 // 使用 rustup 工具链时，强制指定同 toolchain 的 rustc（避免 PATH 中的 Homebrew rustc 干扰）
-const rustcBin = cargoBin !== 'cargo'
+const macRustupCargo = join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'cargo')
+const rustcBin = cargoBin === macRustupCargo
   ? join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'rustc')
   : undefined
 
