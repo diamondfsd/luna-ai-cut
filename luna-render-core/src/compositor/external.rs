@@ -103,9 +103,8 @@ impl Compositor {
             self.device.create_texture_from_hal::<wgpu::hal::api::Dx12>(
                 hal_texture,
                 &descriptor,
-                // UnwrapUnderlyingResource transitions the resource to COMMON.
-                // wgpu's DX12 PRESENT usage maps to COMMON, so declare the real
-                // initial state instead of bypassing wgpu's state tracker.
+                // D3D12 video handoff leaves the resource in COMMON. wgpu's DX12
+                // PRESENT usage maps to COMMON, so declare that state explicitly.
                 wgpu::wgt::TextureUses::PRESENT,
             )
         })
@@ -118,8 +117,8 @@ impl Compositor {
         canvas_height: u32,
         layers: &[RenderLayer],
     ) -> Result<windows::Win32::Graphics::Direct3D12::ID3D12Resource, String> {
-        // Keep the compositor target wgpu-owned. It is returned to COMMON by
-        // render_impl, then the native bridge performs the cross-API copy.
+        // Keep the compositor target wgpu-owned and return it to COMMON so the
+        // D3D12 video processing/encoding queues can consume it directly.
         self.render_impl(canvas_width, canvas_height, layers, false, true)?;
         let (texture, _, _) = self
             .output_texture

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 
 import { logger } from '../lib/rendererLogger'
 import type { PreviewLayer } from '../shared/types'
+import { previewLayerSignature, summarizePreviewLayers } from './previewDiagnostics'
 import { WebGpuVideoRenderer } from './webgpuVideoRenderer'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './WebGpuVideoPreview.css'
@@ -53,6 +54,7 @@ export function WebGpuVideoPreview({
   const layerSyncInFlightRef = useRef<Promise<void> | null>(null)
   const latestLayersRef = useRef(layers)
   const latestPlaybackRef = useRef({ active, playing, time })
+  const layerSyncSequenceRef = useRef(0)
   latestLayersRef.current = layers
   latestPlaybackRef.current = { active, playing, time }
   const layersSignature = JSON.stringify(layers)
@@ -71,18 +73,31 @@ export function WebGpuVideoPreview({
   function syncLatestLayers(): Promise<void> {
     const renderer = rendererRef.current
     if (!renderer || !rendererInitializedRef.current) return Promise.resolve()
-    if (layerSyncInFlightRef.current) return layerSyncInFlightRef.current
 
     const nextLayers = latestLayersRef.current
     const nextSignature = JSON.stringify(nextLayers)
+    const syncSequence = ++layerSyncSequenceRef.current
+    logger.info('[PreviewDebug] WebGPU layer sync requested', {
+      syncSequence,
+      inFlight: Boolean(layerSyncInFlightRef.current),
+      layerSignature: previewLayerSignature(nextLayers),
+      layers: summarizePreviewLayers(nextLayers),
+    })
+    if (layerSyncInFlightRef.current) return layerSyncInFlightRef.current
     if (layersSignatureRef.current === nextSignature) return Promise.resolve()
     layersSignatureRef.current = nextSignature
 
+    logger.info('[PreviewDebug] WebGPU layer sync started', { syncSequence, layerSignature: previewLayerSignature(nextLayers) })
     const request = renderer.setLayers(nextLayers)
     const trackedRequest = request.then(
       () => {
         if (layerSyncInFlightRef.current !== trackedRequest) return
         layerSyncInFlightRef.current = null
+        logger.info('[PreviewDebug] WebGPU layer sync completed', {
+          syncSequence,
+          requestedSignature: previewLayerSignature(nextLayers),
+          latestSignature: previewLayerSignature(latestLayersRef.current),
+        })
         if (rendererRef.current !== renderer || !rendererInitializedRef.current) return
         if (JSON.stringify(latestLayersRef.current) !== layersSignatureRef.current) {
           return syncLatestLayers()

@@ -370,7 +370,7 @@ fn apply_command(
             *current_time = time.max(0.0);
             *playing = false;
             // The swap chain already contains the last presented frame. Re-rendering here
-            // forces an unnecessary D3D11On12 synchronization and can stall on Windows.
+            // forces an unnecessary D3D12 synchronization and can stall on Windows.
             // An initial pending render remains pending; explicit seeks still request a frame.
         }
         PreviewCommand::Seek(time) => {

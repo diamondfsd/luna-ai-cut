@@ -13,6 +13,7 @@ import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { usePreviewResolution } from './usePreviewResolution'
 import { logger } from '../lib/rendererLogger'
+import { previewLayerSignature, summarizePreviewColor, summarizePreviewLayers } from './previewDiagnostics'
 import {
   buildLayers,
   calcAspectRatio,
@@ -40,6 +41,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [previewError, setPreviewError] = useState<string | null>(null)
   const previewErrorToastRef = useRef<string | null>(null)
   const rendererSelectionLogRef = useRef('')
+  const previewSnapshotLogRef = useRef('')
+  const previewSnapshotSequenceRef = useRef(0)
   const prevUrlRef = useRef<string | null>(null)
   // ── 视频控件状态 ──
   const videoRef = useRef<HTMLMediaElement | null>(null)
@@ -404,6 +407,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
+  const layersDiagnosticSignature = useMemo(() => previewLayerSignature(layers), [layers])
   const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
     isDisplayVideo,
     layers,
@@ -418,6 +422,23 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const compositionTime = primaryVideoLayer
     ? compositionTimeForVideoLayer(primaryVideoLayer, currentTime)
     : Math.max(0, currentTime)
+  const previewSnapshotKey = `${layersDiagnosticSignature}|${JSON.stringify(summarizePreviewColor(pipeline?.color))}|${displayUrl ?? ''}|${compositionTime}`
+
+  useEffect(() => {
+    if (previewSnapshotLogRef.current === previewSnapshotKey) return
+    previewSnapshotLogRef.current = previewSnapshotKey
+    const snapshot = ++previewSnapshotSequenceRef.current
+    logger.info('[PreviewDebug] PreviewStage snapshot', {
+      snapshot,
+      displayUrl,
+      pending,
+      currentTime,
+      compositionTime,
+      pipelineColor: summarizePreviewColor(pipeline?.color),
+      layerSignature: layersDiagnosticSignature,
+      layers: summarizePreviewLayers(layers),
+    })
+  }, [compositionTime, currentTime, displayUrl, layers, layersDiagnosticSignature, pending, pipeline, previewSnapshotKey])
   const previewCanvasWidth = previewCanvas?.width ?? null
   const previewCanvasHeight = previewCanvas?.height ?? null
   const rendererSelectionSignature = [

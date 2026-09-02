@@ -1,5 +1,6 @@
 import { logger } from '../lib/rendererLogger'
 import type { PreviewLayer } from '../shared/types'
+import { previewLayerSignature, summarizePreviewLayers } from './previewDiagnostics'
 import { videoLayerKey } from './multipleLayerVideoFrameRenderer'
 import { WEBGPU_COMPOSITOR_SHADER } from './webgpuShader'
 import {
@@ -84,6 +85,7 @@ export class WebGpuVideoRenderer {
   private layerSignature = ''
   private exportFrameCounter = 0
   private lastVideoTargetConflictLogFrame = -Infinity
+  private layerSyncSequence = 0
 
 
   constructor(canvas: WebGpuRenderCanvas, options: WebGpuVideoRendererOptions) {
@@ -250,7 +252,15 @@ export class WebGpuVideoRenderer {
 
   async setLayers(layers: PreviewLayer[]): Promise<void> {
     if (!this.initialized || this.destroyed || this.failed) return
+    const syncSequence = ++this.layerSyncSequence
     const layerSignature = JSON.stringify(layers)
+    logger.info('[PreviewDebug] renderer setLayers requested', {
+      syncSequence,
+      sameAsPrevious: layerSignature === this.layerSignature,
+      layerSignature: previewLayerSignature(layers),
+      layers: summarizePreviewLayers(layers),
+      renderRevision: this.renderRevision,
+    })
     if (layerSignature === this.layerSignature) return
     this.layerSignature = layerSignature
     const playbackLayerSignature = layers
@@ -262,8 +272,12 @@ export class WebGpuVideoRenderer {
     this.layers = layers
     this.renderRevision += 1
     logger.info('[PreviewDebug] renderer setLayers', {
+      syncSequence,
       layerCount: layers.length,
       videoLayers: layers.filter((layer) => layer.isVideo).map((layer) => ({ key: videoLayerKey(layer), path: layer.filePath })),
+      layerSignature: previewLayerSignature(layers),
+      layers: summarizePreviewLayers(layers),
+      renderRevision: this.renderRevision,
       canvas: { width: this.renderWidth, height: this.renderHeight },
     })
     if (this.active && this.playing && playbackTimelineChanged) {
@@ -656,8 +670,17 @@ export class WebGpuVideoRenderer {
     this.renderInFlight = true
     this.renderQueued = false
     this.frameCounter += 1
+    const renderId = this.frameCounter
     const revision = this.renderRevision
     const currentLayers = this.layers
+    logger.info('[PreviewDebug] render started', {
+      renderId,
+      revision,
+      layerSignature: previewLayerSignature(currentLayers),
+      layers: summarizePreviewLayers(currentLayers),
+      compositionTime: this.compositionTime,
+      renderSize: { width: this.renderWidth, height: this.renderHeight },
+    })
     try {
       const waitingVideos = currentLayers.filter((layer) => {
         if (!layer.isVideo) return false
@@ -741,7 +764,15 @@ export class WebGpuVideoRenderer {
         await this.layerRenderer.drawLayers(groupLayers, target.texture.createView(), target.width, target.height, this.compositionTime, new Map())
         overrides.set(group, target)
       }
-      if (revision !== this.renderRevision || this.destroyed) return
+      if (revision !== this.renderRevision || this.destroyed) {
+        logger.warn('[PreviewDebug] render dropped before output draw', {
+          renderId,
+          revision,
+          currentRevision: this.renderRevision,
+          destroyed: this.destroyed,
+        })
+        return
+      }
       const outputLayers = currentLayers.filter((layer) => (
         layer.precomposeRole !== 'input'
         && !(layer.precomposeRole === 'output' && layer.precomposeGroup && skippedGroups.has(layer.precomposeGroup))
@@ -755,7 +786,15 @@ export class WebGpuVideoRenderer {
         this.compositionTime,
         overrides,
       )
-      if (revision !== this.renderRevision || this.destroyed) return
+      if (revision !== this.renderRevision || this.destroyed) {
+        logger.warn('[PreviewDebug] render dropped before canvas submit', {
+          renderId,
+          revision,
+          currentRevision: this.renderRevision,
+          destroyed: this.destroyed,
+        })
+        return
+      }
       if (this.options.presentToCanvas !== false) {
         if (!context) throw new Error('WebGPU 画布上下文尚未初始化')
         const presentationTexture = context.getCurrentTexture()
@@ -766,6 +805,12 @@ export class WebGpuVideoRenderer {
           { width: output.width, height: output.height, depthOrArrayLayers: 1 },
         )
         device.queue.submit([copyEncoder.finish()])
+        logger.info('[PreviewDebug] render submitted', {
+          renderId,
+          revision,
+          layerSignature: previewLayerSignature(currentLayers),
+          layers: summarizePreviewLayers(currentLayers),
+        })
         if (!this.firstRenderLogged) {
           logger.info('[PreviewDebug] presentation copy submitted', {
             output: { width: output.width, height: output.height },
