@@ -5,6 +5,7 @@ import https from 'node:https'
 import { basename, dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import {
+  BUILD_DEPENDENCY_DOWNLOAD_BASE,
   BUILD_DEPENDENCY_OWNER,
   BUILD_DEPENDENCY_RELEASE_TAG,
   BUILD_DEPENDENCY_REPO,
@@ -204,4 +205,4 @@ for (const artifact of artifacts) {
 
 release = await getRelease()
 for (const artifact of artifacts) verifyReleaseAsset(release, artifact)
-console.log(`[publish-build-dependencies] Release: https://gitcode.com/${owner}/${repo}/releases/${BUILD_DEPENDENCY_RELEASE_TAG}`)
+console.log(`[publish-build-dependencies] Download base: ${BUILD_DEPENDENCY_DOWNLOAD_BASE}`)

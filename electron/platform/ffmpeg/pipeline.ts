@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import * as path from 'node:path'
+import { existsSync } from 'node:fs'
 import { app } from 'electron'
 import { logMainInfo } from '../../infrastructure/loggerService'
 import { createRequire } from 'node:module'
@@ -8,15 +9,25 @@ const _require = createRequire(import.meta.url)
 
 // ─── FFmpeg 二进制路径 ─────────────────────────────
 
+function devResourcePath(name: 'ffmpeg' | 'ffprobe'): string | null {
+  const ext = process.platform === 'win32' ? '.exe' : ''
+  const appRoot = process.env.APP_ROOT ?? path.join(import.meta.dirname, '..')
+  const candidate = path.join(appRoot, 'resources', 'ffmpeg', `${name}${ext}`)
+  return existsSync(candidate) ? candidate : null
+}
+
 export function getFfmpegPath(): string {
   if (app.isPackaged) {
     const ext = process.platform === 'win32' ? '.exe' : ''
     return path.join(process.resourcesPath, 'ffmpeg', `ffmpeg${ext}`)
   }
+  const preparedPath = devResourcePath('ffmpeg')
+  if (preparedPath) return preparedPath
   try {
+    const exportedPath = _require('ffmpeg-static')
+    if (typeof exportedPath === 'string') return exportedPath
     const resolved = _require.resolve('ffmpeg-static')
-    const pkgDir = path.dirname(resolved)
-    return path.join(pkgDir, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+    return path.join(path.dirname(resolved), process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
   } catch {
     return 'ffmpeg'
   }
@@ -222,6 +233,8 @@ export function getFfprobePath(): string {
     const ext = process.platform === 'win32' ? '.exe' : ''
     return path.join(process.resourcesPath, 'ffmpeg', `ffprobe${ext}`)
   }
+  const preparedPath = devResourcePath('ffprobe')
+  if (preparedPath) return preparedPath
   try {
     const pkgDir = path.dirname(_require.resolve('ffprobe-static/package.json'))
     return path.join(pkgDir, 'bin', process.platform, process.arch, `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)

@@ -16,7 +16,7 @@
   "homepage": "https://github.com/diamondfsd/luna-ai-cut#readme",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/build-native.mjs && node scripts/copy-dolby-tools.mjs",
+    "predev": "node scripts/copy-ffmpeg.mjs && node scripts/verify-ffmpeg.mjs && node scripts/build-native.mjs && node scripts/copy-dolby-tools.mjs",
     "dev": "vite",
     "build": "node scripts/build-native.mjs && tsc && vite build && node scripts/copy-ffmpeg.mjs && node scripts/copy-dolby-tools.mjs && electron-builder",
     "init:rust": "node scripts/setup-rust.mjs",

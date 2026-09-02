@@ -14,7 +14,7 @@ export const TEXTURE_USAGE_RENDER_ATTACHMENT = 0x10
 export const BUFFER_USAGE_UNIFORM = 0x40
 export const PARAM_FLOAT_COUNT = 440
 export const IDENTITY_MASK_RGBA = new Uint8Array([255, 255, 255, 255])
-export const IDENTITY_SOURCE_RGBA = new Uint8Array([255, 255, 255])
+export const IDENTITY_SOURCE_RGBA = new Uint8Array([255, 255, 255, 255])
 
 export function getWebGpuNavigator(): GpuNavigator | null {
   return (navigator as Navigator & { gpu?: GpuNavigator }).gpu ?? null
