@@ -1,14 +1,12 @@
-import { app } from 'electron'
 import { execFile } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
 import { logMainWarn, logMainError } from '../infrastructure/loggerService'
+import { getFfmpegPath } from '../platform/ffmpeg/pipeline'
 
 const execFileAsync = promisify(execFile)
-const _require = createRequire(import.meta.url)
 
 /** 临时文件路径：下载完成前先写 .tmp，完成后 rename 到最终路径 */
 function partialPathFor(destination: string): string {
@@ -26,23 +24,6 @@ export const THUMBNAIL_SUBDIR = 'thumbnails'
 
 /** 并发数 = CPU 核心数 - 1（至少 2，最多 8） */
 const WORKER_COUNT = Math.max(2, Math.min(8, os.cpus().length - 1))
-
-/** 获取 ffmpeg 二进制路径（打包后取 resources，开发环境取 ffmpeg-static） */
-function getFfmpegPath(): string {
-  let ffmpegPath: string
-  if (app.isPackaged) {
-    const ext = process.platform === 'win32' ? '.exe' : ''
-    ffmpegPath = path.join(process.resourcesPath, 'ffmpeg', `ffmpeg${ext}`)
-  } else {
-    try {
-      const p = _require('ffmpeg-static') as string
-      ffmpegPath = p
-    } catch {
-      ffmpegPath = 'ffmpeg'
-    }
-  }
-  return ffmpegPath
-}
 
 /** 安全化文件名（替换路径分隔符和特殊字符） */
 export function safeId(id: string): string {

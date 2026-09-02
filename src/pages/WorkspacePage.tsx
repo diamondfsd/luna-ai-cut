@@ -937,6 +937,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               outputBaseName: item.outputBaseName,
               layers,
               outputSize,
+              sourceDuration,
               startTime: item.startTime,
               endTime: item.endTime,
             }))
@@ -947,6 +948,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               outputBaseName,
               layers,
               outputSize,
+              sourceDuration,
               startTime: normalizedTrimStart,
               endTime: normalizedTrimEnd,
             }]
@@ -960,6 +962,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             outputBaseName: item.outputBaseName,
             layers,
             outputSize,
+            sourceDuration,
             time: item.time,
           } : {
             id: `${asset.id}-${item.markerId}`,
@@ -968,6 +971,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             outputBaseName: item.outputBaseName,
             layers,
             outputSize,
+            sourceDuration,
             startTime: item.startTime,
             endTime: item.endTime,
             coverTime: item.coverTime,
@@ -1120,6 +1124,33 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     }
   }, [creativeModeId, pageActive])
 
+  const exportDialogSummary = summarizeWorkspaceMixedExport(exportDialogPlan)
+  const exportDialogPreviewSource = useMemo(() => {
+    const timedItems = exportDialogPlan.filter((item) => (
+      (item.kind === 'video' || item.kind === 'live')
+      && item.startTime !== undefined
+      && item.endTime !== undefined
+      && item.sourceDuration !== undefined
+    ))
+    const sourcePaths = new Set(timedItems.map((item) => item.sourcePath))
+    if (sourcePaths.size !== 1) return undefined
+    const videoItems = timedItems.filter((item) => item.kind === 'video')
+    const item = videoItems[0] ?? timedItems[0]
+    if (!item || item.startTime === undefined || item.endTime === undefined || item.sourceDuration === undefined) return undefined
+    return {
+      path: item.sourcePath,
+      layers: item.layers,
+      outputSize: item.outputSize,
+      timeline: {
+        path: item.sourcePath,
+        startTime: item.startTime,
+        duration: Math.max(0.1, item.endTime - item.startTime),
+        thumbnailDuration: item.sourceDuration,
+        editable: videoItems.length === 1,
+      },
+    }
+  }, [exportDialogPlan])
+
   // ── Empty state — 列表页独立布局，不使用详情页的 workspace-layout 网格 ──
   if (!media.currentProject && media.media.length === 0) {
     return (
@@ -1139,7 +1170,6 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     : exportableSelectionCount > 1
       ? `导出 ${exportableSelectionCount} 个`
       : '导出'
-  const exportDialogSummary = summarizeWorkspaceMixedExport(exportDialogPlan)
 
   return (
     <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}${immersive ? ' is-immersive' : ''}`}>
@@ -1314,6 +1344,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         description={exportDialogSummary.text ? `本次包含${exportDialogSummary.text}。` : undefined}
         onOpenChange={setExportDialogOpen}
         initialConfig={exportDialogInitialConfig}
+        previewSource={exportDialogPreviewSource}
         outputAvailability={{
           video: exportDialogSummary.video > 0,
           photo: exportDialogSummary.photo > 0,
