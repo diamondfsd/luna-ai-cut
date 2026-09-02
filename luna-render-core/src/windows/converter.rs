@@ -35,6 +35,7 @@ use windows::Win32::Media::MediaFoundation::{
 };
 
 use super::decoder::{DecodedFrame, DecodedSurface};
+use super::encoder_backend::{EncoderFrame, EncoderPixelFormat, GpuFrame, GpuPixelFormat};
 
 const MAX_REUSABLE_BGRA_PER_SIZE: usize = 4;
 const PROCESS_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -298,6 +299,34 @@ impl VideoConverter {
             return Err(error);
         }
         Ok(output)
+    }
+
+    pub(crate) fn convert_for_encoder(
+        &mut self,
+        frame: &GpuFrame,
+        format: EncoderPixelFormat,
+    ) -> Result<EncoderFrame, String> {
+        if frame.format != GpuPixelFormat::Rgba8 {
+            return Err(format!(
+                "D3D12 frame converter does not support compositor format {:?}",
+                frame.format
+            ));
+        }
+
+        let resource = match format {
+            EncoderPixelFormat::Nv12 => {
+                self.bgra_to_nv12(&frame.resource, frame.width, frame.height)?
+            }
+            EncoderPixelFormat::P010 => {
+                return Err("D3D12 P010 conversion is not implemented yet".to_string());
+            }
+        };
+        Ok(EncoderFrame::new(
+            resource,
+            frame.width,
+            frame.height,
+            format,
+        ))
     }
 
     fn take_bgra_texture(&mut self, width: u32, height: u32) -> Result<ID3D12Resource, String> {

@@ -15,9 +15,10 @@
  */
 // Windows hardware tests always exercise the native D3D12 video path.
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
@@ -29,20 +30,232 @@ process.env.APP_ROOT = root
 const dxcPath = join(root, 'luna-render-core', process.platform === 'win32' ? 'dxcompiler.dll' : 'libdxcompiler.dylib')
 if (existsSync(dxcPath)) process.env.LUNA_DXC_PATH = dxcPath
 
-// ── FFmpeg/FFprobe 路径 ──
-let ffmpeg, ffprobe
-if (process.env.LUNA_FFMPEG_PATH && process.env.LUNA_FFPROBE_PATH) {
-  ffmpeg = process.env.LUNA_FFMPEG_PATH
-  ffprobe = process.env.LUNA_FFPROBE_PATH
-} else try {
-  ffmpeg = _require.resolve('ffmpeg-static')
-  ffmpeg = join(ffmpeg, '..', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
-  const ffprobeStatic = _require.resolve('ffprobe-static/package.json')
-  ffprobe = join(ffprobeStatic, '..', 'bin', process.platform, process.arch,
-    process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
-} catch {
-  ffmpeg = 'ffmpeg'; ffprobe = 'ffprobe'
+// Resolve the executable names independently so one explicit environment
+// override does not get ignored just because the other one is absent.
+const isWindows = process.platform === 'win32'
+const executableNames = {
+  ffmpeg: isWindows ? 'ffmpeg.exe' : 'ffmpeg',
+  ffprobe: isWindows ? 'ffprobe.exe' : 'ffprobe',
 }
+
+function isFile(path) {
+  try {
+    return existsSync(path) && statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
+
+function isDirectory(path) {
+  try {
+    return existsSync(path) && statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function optionalJoin(base, ...parts) {
+  return base ? join(base, ...parts) : null
+}
+
+function normalizeConfiguredPath(value) {
+  const trimmed = value.trim()
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+function configuredExecutable(value, executableName) {
+  const configured = normalizeConfiguredPath(value)
+  const path = configured.includes('\\') || configured.includes('/')
+    ? resolvePath(configured)
+    : configured
+  const candidates = [path]
+  if (isDirectory(path)) {
+    candidates.unshift(join(path, executableName), join(path, 'bin', executableName))
+  }
+  return candidates.find(isFile) ?? path
+}
+
+function addUniquePath(paths, path) {
+  if (!path) return
+  const key = path.toLowerCase()
+  if (!paths.some(item => item.toLowerCase() === key)) paths.push(path)
+}
+
+function discoverLocalExecutables() {
+  const roots = []
+  const downloads = optionalJoin(process.env.USERPROFILE || homedir(), 'Downloads')
+  const localAppData = process.env.LOCALAPPDATA
+  const programFiles = process.env.ProgramW6432 || process.env.ProgramFiles
+  const programFilesX86 = process.env['ProgramFiles(x86)']
+  for (const path of [
+    downloads,
+    tmpdir(),
+    join(tmpdir(), '1'),
+    optionalJoin(localAppData, 'ffmpeg'),
+    optionalJoin(localAppData, 'FFmpeg'),
+    optionalJoin(programFiles, 'ffmpeg'),
+    optionalJoin(programFiles, 'FFmpeg'),
+    optionalJoin(programFilesX86, 'ffmpeg'),
+    optionalJoin(programFilesX86, 'FFmpeg'),
+  ]) addUniquePath(roots, path)
+
+  const discovered = { ffmpeg: [], ffprobe: [] }
+  const interestingDirectory = /ffmpeg|ffprobe|8[._-]?1[._-]?2|812|luna|bin/i
+  const visit = (directory, depth) => {
+    if (depth > 4) return
+    let entries
+    try {
+      entries = readdirSync(directory, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const child = join(directory, entry.name)
+      const lowerName = entry.name.toLowerCase()
+      if (entry.isFile()) {
+        if (lowerName === executableNames.ffmpeg.toLowerCase()) discovered.ffmpeg.push(child)
+        if (lowerName === executableNames.ffprobe.toLowerCase()) discovered.ffprobe.push(child)
+      } else if (entry.isDirectory() && depth < 4
+        && (depth === 0 || interestingDirectory.test(entry.name))) {
+        visit(child, depth + 1)
+      }
+    }
+  }
+  for (const rootPath of roots) visit(rootPath, 0)
+  return discovered
+}
+
+function packageExecutable(toolName) {
+  try {
+    if (toolName === 'ffmpeg') {
+      return join(_require.resolve('ffmpeg-static'), '..', executableNames.ffmpeg)
+    }
+    const ffprobeStatic = _require.resolve('ffprobe-static/package.json')
+    return join(ffprobeStatic, '..', 'bin', process.platform, process.arch, executableNames.ffprobe)
+  } catch {
+    return null
+  }
+}
+
+function expectedVersion(version) {
+  return typeof version === 'string' && /^8\.1\.2(?:$|[-+])/i.test(version)
+}
+
+async function commandPath(command) {
+  if (isWindows) {
+    try {
+      const { stdout } = await execAsync('where.exe', [command], { timeout: 3000, windowsHide: true })
+      return stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? command
+    } catch {
+      return command
+    }
+  }
+  return command
+}
+
+async function inspectExecutable(candidate, toolName) {
+  try {
+    const { stdout, stderr } = await execAsync(candidate.path, ['-version'], {
+      timeout: 5000,
+      maxBuffer: 2 * 1024 * 1024,
+      windowsHide: true,
+    })
+    const output = `${stdout}\n${stderr}`
+    const versionMatch = output.match(new RegExp(`\\b${toolName}\\s+version\\s+([^\\s]+)`, 'i'))
+    const version = versionMatch?.[1] ?? null
+    return {
+      ...candidate,
+      available: true,
+      path: await commandPath(candidate.path === toolName ? toolName : candidate.path),
+      version,
+      isExpectedVersion: expectedVersion(version),
+    }
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || error).split(/\r?\n/)[0]
+    return { ...candidate, available: false, error: detail }
+  }
+}
+
+async function resolveTool(toolName, envName, localExecutables) {
+  const executableName = executableNames[toolName]
+  const candidates = []
+  const configured = process.env[envName]?.trim()
+  if (configured) {
+    candidates.push({
+      path: configuredExecutable(configured, executableName),
+      source: envName,
+    })
+  }
+  for (const path of [
+    join(root, 'resources', 'ffmpeg', executableName),
+    join(root, 'resources', 'ffmpeg', 'bin', executableName),
+  ]) candidates.push({ path, source: 'repository resources/ffmpeg' })
+  for (const path of localExecutables[toolName]) {
+    candidates.push({ path, source: 'local FFmpeg 8.1.2 search' })
+  }
+  candidates.push({ path: toolName, source: 'PATH' })
+  const packagedPath = packageExecutable(toolName)
+  if (packagedPath) candidates.push({ path: packagedPath, source: 'ffmpeg-static package fallback' })
+
+  const attempts = []
+  let fallback = null
+  const seen = new Set()
+  for (const candidate of candidates) {
+    const key = candidate.path.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    const result = await inspectExecutable(candidate, toolName)
+    attempts.push(result)
+    if (!result.available) continue
+    if (candidate.source === envName || candidate.source === 'repository resources/ffmpeg') return { ...result, attempts }
+    if (result.isExpectedVersion) return { ...result, attempts }
+    fallback ??= result
+  }
+  if (fallback) return { ...fallback, attempts }
+  const failures = attempts.map(attempt => `${attempt.source}: ${attempt.error}`).join('; ')
+  throw new Error(`Unable to find a usable ${toolName} executable. ${failures || 'No candidates were found.'}`)
+}
+
+async function resolveFfmpegTools() {
+  const startedAt = Date.now()
+  const localExecutables = discoverLocalExecutables()
+  const [ffmpegResult, ffprobeResult] = await Promise.all([
+    resolveTool('ffmpeg', 'LUNA_FFMPEG_PATH', localExecutables),
+    resolveTool('ffprobe', 'LUNA_FFPROBE_PATH', localExecutables),
+  ])
+  return {
+    ffmpeg: ffmpegResult,
+    ffprobe: ffprobeResult,
+    elapsed: (Date.now() - startedAt) / 1000,
+  }
+}
+
+function printFfmpegToolchain(toolchain) {
+  console.log('\n── FFmpeg toolchain ──')
+  console.log('  Selection order: environment override > repository resources/ffmpeg > local FFmpeg 8.1.2 > PATH/package fallback')
+  for (const [name, result] of [['ffmpeg', toolchain.ffmpeg], ['ffprobe', toolchain.ffprobe]]) {
+    const version = result.version ?? 'unknown'
+    const versionStatus = result.isExpectedVersion ? 'OK (8.1.2)' : 'WARNING (expected 8.1.2)'
+    console.log(`  ${name}: ${result.path}`)
+    console.log(`    source: ${result.source}`)
+    console.log(`    version: ${version} ${versionStatus}`)
+    const failedAttempts = result.attempts.filter(attempt => !attempt.available)
+    for (const attempt of failedAttempts) {
+      console.log(`    skipped ${attempt.source}: ${attempt.error}`)
+    }
+  }
+  const ffmpegCore = toolchain.ffmpeg.version?.match(/^\d+\.\d+\.\d+/)?.[0]
+  const ffprobeCore = toolchain.ffprobe.version?.match(/^\d+\.\d+\.\d+/)?.[0]
+  if (ffmpegCore && ffprobeCore && ffmpegCore !== ffprobeCore) {
+    console.log(`  WARNING: ffmpeg/ffprobe versions differ (${ffmpegCore} vs ${ffprobeCore})`)
+  }
+  console.log(`  Tool resolution: ${toolchain.elapsed.toFixed(2)}s`)
+}
+
+let ffmpeg, ffprobe
 
 // ── 参数 ──
 const inputPath = process.argv.find((value, index) => index > 1 && !value.startsWith('--'))
@@ -77,18 +290,32 @@ for (const f of ['.test-gpu-export.mp4.', '.test-gpu-export.mp4.ffmpeg-fallback-
 }
 
 async function main() {
+  const testStartedAt = Date.now()
+  const stageTimings = []
+  const recordStage = (name, startedAt) => {
+    const seconds = (Date.now() - startedAt) / 1000
+    stageTimings.push({ name, seconds })
+    return seconds
+  }
+  const toolchain = await resolveFfmpegTools()
+  ffmpeg = toolchain.ffmpeg.path
+  ffprobe = toolchain.ffprobe.path
+
   console.log('══════════════════════════════════════════════')
   console.log('  GPU Export Test')
   console.log('══════════════════════════════════════════════')
-  console.log('FFmpeg: ', ffmpeg)
-  console.log('FFprobe:', ffprobe)
+  printFfmpegToolchain(toolchain)
   console.log('Input:  ', inputPath)
   console.log('Output: ', outputPath)
   console.log('Log:    ', logPath)
   console.log('Platform:', process.platform, process.arch)
+  if (isWindows && !softwareMode) {
+    console.log('  Export contract: D3D12-only native path; CPU pixel readback/fallback fails the test')
+  }
 
   // ── 1. Probe 源文件 ──
   console.log('\n── Step 1: Probe source ──')
+  const probeStartedAt = Date.now()
   const { stdout: probeOut } = await execAsync(ffprobe, [
     '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', inputPath,
   ], { timeout: 10000 })
@@ -107,9 +334,11 @@ async function main() {
   }
   console.log('  4K gate: UHD source accepted')
   console.log(`  Audio: ${hasAudio ? '✅ ' + probe.streams.find(s => s.codec_type === 'audio').codec_name : '❌ none'}`)
+  recordStage('Source probe', probeStartedAt)
 
   // ── 2. Load Native Core ──
   console.log('\n── Step 2: Load luna-render-core ──')
+  const nativeStartedAt = Date.now()
   const nativePath = join(root, 'luna-render-core', 'luna-render-core.node')
   if (!existsSync(nativePath)) {
     console.error('❌ luna-render-core.node not found at', nativePath)
@@ -122,9 +351,11 @@ async function main() {
   // 初始化 compositor（带独立日志文件）
   lrc.initCompositor(logPath)
   console.log('  Compositor initialized (log →', logPath + ')')
+  recordStage('Native load + compositor init', nativeStartedAt)
 
   // ── 3. Build composition ──
   console.log('\n── Step 3: Build composition ──')
+  const compositionStartedAt = Date.now()
   const duration = Math.min(parseFloat(vs.duration) || 5, 10) // 最多 10 秒
   const fps = 30
   const composition = {
@@ -145,9 +376,12 @@ async function main() {
   }
   console.log(`  Canvas: ${vs.width}x${vs.height} @ ${fps}fps, ${duration}s`)
   console.log(`  Layers: 1 (video)`)
+  recordStage('Composition build', compositionStartedAt)
 
   // ── 4. Export ──
   console.log(`\n── Step 4: Export (hardware=${!softwareMode}) ──`)
+  console.log(`  Export tools: ffmpeg=${toolchain.ffmpeg.version ?? 'unknown'} @ ${ffmpeg}`)
+  console.log(`                ffprobe=${toolchain.ffprobe.version ?? 'unknown'} @ ${ffprobe}`)
   const startTime = Date.now()
   let exportSuccess = true
   let exportError = null
@@ -179,18 +413,19 @@ async function main() {
       qualityPreset: 'high',
     })
     clearInterval(progressInterval)
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    const elapsed = recordStage('Export', startTime).toFixed(1)
     console.log(`\n  ✅ Export completed in ${elapsed}s`)
   } catch (err) {
     clearInterval(progressInterval)
     exportSuccess = false
     exportError = err.message
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    const elapsed = recordStage('Export', startTime).toFixed(1)
     console.log(`\n  ❌ Export failed after ${elapsed}s: ${err.message}`)
   }
 
   // ── 5. 检查输出 ──
   console.log('\n── Step 5: Verify output ──')
+  const verificationStartedAt = Date.now()
   if (!existsSync(outputPath)) {
     console.log('  ❌ Output file does not exist!')
   } else {
@@ -317,9 +552,11 @@ async function main() {
       verificationIssues.push(`output probe failed: ${e.message}`)
     }
   }
+  recordStage('Output verification', verificationStartedAt)
 
   // ── 6. 分析日志 ──
   console.log('\n── Step 6: Log analysis ──')
+  const logAnalysisStartedAt = Date.now()
   if (existsSync(logPath)) {
     const log = readFileSync(logPath, 'utf-8')
     const lines = log.split('\n')
@@ -372,7 +609,7 @@ async function main() {
     console.log(`  WinGPU fallback: ${winGpuFallback.length}`)
     if (winGpuFallback.length) {
       const reason = winGpuFallback[winGpuFallback.length - 1]
-        .split(/falling back to (?:compatible path|FFmpeg):/)[1]?.trim()
+        .split(/falling back to (?:compatible path|CPU )?FFmpeg(?: path)?:/)[1]?.trim()
       console.log(`  Fallback reason: ${reason}`)
     }
     console.log(`  FFmpeg fallback logs: ${ffmpegFallback.length}`)
@@ -384,10 +621,15 @@ async function main() {
       if (winGpuCompleted.length === 0) verificationIssues.push('native path did not complete')
       if (winGpuFallback.length > 0) verificationIssues.push('native path fell back to CPU FFmpeg')
       if (winGpuCpuReadback.length > 0) verificationIssues.push('native log contains CPU pixel readback transport')
-      if (!/sync=d3d12-fence\b/.test(pipeline)) verificationIssues.push('native pipeline is missing d3d12-fence synchronization')
-      if (!lines.some(l => /backend=d3d12-video pixel_transport=GPU bitstream_readback=CPU/.test(l))) verificationIssues.push('native path did not report GPU pixel transport')
+      // A capability failure happens before the pipeline is constructed. Only
+      // enforce the zero-copy contract after the native encoder has actually
+      // started, otherwise the report hides the first actionable failure.
+      if (winGpuCompleted.length > 0) {
+        if (!/sync=d3d12-fence\b/.test(pipeline)) verificationIssues.push('native pipeline is missing d3d12-fence synchronization')
+        if (!lines.some(l => /backend=d3d12-video pixel_transport=GPU bitstream_readback=CPU/.test(l))) verificationIssues.push('native path did not report GPU pixel transport')
+        if (!lines.some(l => l.includes('[Export:WinGPU:Timing]'))) verificationIssues.push('missing WinGPU timing diagnostic')
+      }
       if (!lines.some(l => l.includes('d3d12 adapter-luid'))) verificationIssues.push('missing D3D12 adapter-luid diagnostic')
-      if (!lines.some(l => l.includes('[Export:WinGPU:Timing]'))) verificationIssues.push('missing WinGPU timing diagnostic')
       if (ffmpegFallback.length > 0) verificationIssues.push('FFmpeg fallback path was used')
     }
     winGpuSuccess = verificationIssues.length === 0
@@ -396,9 +638,15 @@ async function main() {
       audioMux.forEach(l => console.log(`    ${l.split('] ').slice(1).join('] ')}`))
     }
   }
+  recordStage('Log analysis', logAnalysisStartedAt)
 
   // ── 总结 ──
   console.log('\n══════════════════════════════════════════════')
+  console.log('Stage timings:')
+  for (const stage of stageTimings) {
+    console.log(`  ${stage.name}: ${stage.seconds.toFixed(2)}s`)
+  }
+  console.log(`  Total test: ${((Date.now() - testStartedAt) / 1000).toFixed(2)}s`)
   const outputExists = existsSync(outputPath)
   if (!outputExists) verificationIssues.push('output file does not exist')
   if (!exportSuccess) verificationIssues.push(`export failed: ${exportError ?? 'unknown error'}`)

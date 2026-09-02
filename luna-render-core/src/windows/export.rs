@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -15,10 +17,10 @@ use crate::compositor::{
 use crate::export::TaskState;
 use crate::media::decode_static_image_scaled;
 
-use super::converter::VideoConverter;
+use super::converter::{D3d12TextureLease, VideoConverter};
 use super::decoder::VideoDecoder;
 use super::device::InteropDevice;
-use super::encoder::VideoEncoder;
+use super::encoder_backend::{EncoderConfig, EncoderManager, GpuFrame, VideoCodec};
 
 fn temporary_bitstream_path(output: &str) -> PathBuf {
     let path = Path::new(output);
@@ -74,6 +76,29 @@ impl Drop for TemporaryArtifacts {
     }
 }
 
+struct ExportVideoInput {
+    resource: ID3D12Resource,
+    width: u32,
+    height: u32,
+    lease: D3d12TextureLease,
+}
+
+fn finish_export_video_inputs(
+    converter: &mut VideoConverter,
+    inputs: Vec<ExportVideoInput>,
+) -> Option<String> {
+    let mut first_error = None;
+    for input in inputs {
+        match input.lease.finish() {
+            Ok(()) => converter.recycle_bgra_texture(input.resource, input.width, input.height),
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        };
+    }
+    first_error
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run(
     compositor: &mut Compositor,
@@ -85,11 +110,11 @@ pub(crate) fn run(
     total_frames: u64,
     bitrate: u64,
     include_audio: bool,
-    hevc: bool,
     task: Option<&Arc<TaskState>>,
     interop: &InteropDevice,
     d3d12_device: &ID3D12Device,
     d3d12_queue: &ID3D12CommandQueue,
+    capabilities: super::capabilities::EncoderCapabilities,
     _legacy_input_mode: bool,
 ) -> Result<(), String> {
     let bitstream_path = temporary_bitstream_path(output_path);
@@ -98,20 +123,29 @@ pub(crate) fn run(
 
     let mut converter =
         VideoConverter::new(d3d12_device, &interop.video_process_queue, d3d12_queue)?;
-    let mut encoder = VideoEncoder::new(
-        &bitstream_path,
-        d3d12_device,
-        &interop.video_encode_queue,
-        composition.canvas.width,
-        composition.canvas.height,
+    let config = EncoderConfig {
+        width: composition.canvas.width,
+        height: composition.canvas.height,
         fps,
         bitrate,
-        hevc,
+    };
+    let mut encoder = EncoderManager::new(
+        config,
+        capabilities,
+        d3d12_device,
+        &interop.video_encode_queue,
     )?;
+    let mut bitstream = File::create(&bitstream_path)
+        .map_err(|error| format!("failed to create D3D12 bitstream output: {error}"))?;
+    let headers = encoder.headers()?;
+    bitstream
+        .write_all(&headers.data)
+        .map_err(|error| format!("failed to write codec headers: {error}"))?;
 
     crate::logging::write(&format!(
-        "[Export:WinGPU] backend=d3d12-video pixel_transport=GPU bitstream_readback=CPU codec={} output={}",
-        if hevc { "hevc" } else { "h264" },
+        "[Export:WinGPU] backend={} pixel_transport=GPU bitstream_readback=CPU codec={} output={}",
+        encoder.backend_kind().label(),
+        encoder.codec().label(),
         output_path,
     ));
 
@@ -126,10 +160,29 @@ pub(crate) fn run(
         interop,
         &mut converter,
         &mut encoder,
+        &mut bitstream,
     )?;
-    encoder.finish()?;
+    for packet in encoder.flush()? {
+        crate::logging::write(&format!(
+            "[Export:WinGPU] flushed packet frame_index={} bytes={}",
+            packet.frame_index,
+            packet.data.len()
+        ));
+        bitstream
+            .write_all(&packet.data)
+            .map_err(|error| format!("failed to write flushed bitstream packet: {error}"))?;
+    }
+    bitstream
+        .flush()
+        .map_err(|error| format!("failed to flush D3D12 bitstream output: {error}"))?;
 
-    package_bitstream(ffmpeg_path, &bitstream_path, &video_path, fps, hevc)?;
+    package_bitstream(
+        ffmpeg_path,
+        &bitstream_path,
+        &video_path,
+        fps,
+        encoder.codec() == VideoCodec::Hevc,
+    )?;
 
     let completed_output = if include_audio {
         mux_primary_audio(
@@ -209,7 +262,8 @@ fn encode_frames(
     task: Option<&Arc<TaskState>>,
     interop: &InteropDevice,
     converter: &mut VideoConverter,
-    encoder: &mut VideoEncoder,
+    encoder: &mut EncoderManager,
+    bitstream: &mut File,
 ) -> Result<(), String> {
     let mut decoders: HashMap<String, VideoDecoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
@@ -229,8 +283,7 @@ fn encode_frames(
         retain_layer_mask_textures(compositor, &mut mask_textures, &layer_inputs);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
         let mut transient_texture_ids = Vec::new();
-        let mut input_resources: Vec<(ID3D12Resource, u32, u32)> = Vec::new();
-        let mut input_leases = Vec::new();
+        let mut input_resources = Vec::new();
 
         let render_result = (|| -> Result<ID3D12Resource, String> {
             for (layer_index, mut layer) in layer_inputs.into_iter().enumerate() {
@@ -274,9 +327,13 @@ fn encode_frames(
                     // The video-process queue may still be writing this texture. Keep
                     // the GPU-only lease until the compositor submission has finished.
                     let lease = converter.wrap_for_wgpu(&bgra)?;
-                    let resource = bgra.clone();
-                    input_resources.push((bgra, decoded.width, decoded.height));
-                    input_leases.push(lease);
+                    let resource = lease.resource().clone();
+                    input_resources.push(ExportVideoInput {
+                        resource: bgra,
+                        width: decoded.width,
+                        height: decoded.height,
+                        lease,
+                    });
                     let texture = unsafe {
                         compositor.wrap_external_dx12_texture(
                             resource,
@@ -365,31 +422,26 @@ fn encode_frames(
             )
         })();
 
-        for texture_id in transient_texture_ids {
-            compositor.unregister_external_texture(texture_id);
-        }
         let cleanup_result = if render_result.is_err() {
+            // Keep the external wrappers alive until any partially submitted
+            // wgpu work has stopped using their D3D12 resources.
             compositor.wait_for_gpu()
         } else {
             Ok(())
         };
-
-        let mut lease_error = None;
-        for lease in input_leases {
-            if let Err(error) = lease.finish() {
-                lease_error.get_or_insert(error);
-            }
+        for texture_id in transient_texture_ids {
+            compositor.unregister_external_texture(texture_id);
         }
+        let lease_error = finish_export_video_inputs(converter, input_resources);
 
         let render_resource = match render_result {
             Ok(resource) => resource,
             Err(error) => {
                 cleanup_result?;
                 if let Some(lease_error) = lease_error {
-                    return Err(format!("{error}; GPU texture handoff failed: {lease_error}"));
-                }
-                for (resource, width, height) in input_resources {
-                    converter.recycle_bgra_texture(resource, width, height);
+                    return Err(format!(
+                        "{error}; GPU texture handoff failed: {lease_error}"
+                    ));
                 }
                 return Err(error);
             }
@@ -398,16 +450,17 @@ fn encode_frames(
         if let Some(lease_error) = lease_error {
             return Err(lease_error);
         }
-        for (resource, width, height) in input_resources {
-            converter.recycle_bgra_texture(resource, width, height);
-        }
 
-        let nv12 = converter.bgra_to_nv12(
-            &render_resource,
+        let frame = GpuFrame::rgba8(
+            render_resource,
             composition.canvas.width,
             composition.canvas.height,
-        )?;
-        encoder.append(&nv12, frame_index)?;
+        );
+        let encoded_frame = converter.convert_for_encoder(&frame, encoder.input_format())?;
+        let packet = encoder.encode(encoded_frame, frame_index)?;
+        bitstream
+            .write_all(&packet.data)
+            .map_err(|error| format!("failed to write encoded bitstream packet: {error}"))?;
 
         if let Some(state) = task {
             state
