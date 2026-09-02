@@ -12,6 +12,7 @@ import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTra
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { usePreviewResolution } from './usePreviewResolution'
+import { logger } from '../lib/rendererLogger'
 import {
   buildLayers,
   calcAspectRatio,
@@ -38,6 +39,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [renderedCanvasKey, setRenderedCanvasKey] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const previewErrorToastRef = useRef<string | null>(null)
+  const rendererSelectionLogRef = useRef('')
   const prevUrlRef = useRef<string | null>(null)
   // ── 视频控件状态 ──
   const videoRef = useRef<HTMLMediaElement | null>(null)
@@ -416,6 +418,36 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const compositionTime = primaryVideoLayer
     ? compositionTimeForVideoLayer(primaryVideoLayer, currentTime)
     : Math.max(0, currentTime)
+  const previewCanvasWidth = previewCanvas?.width ?? null
+  const previewCanvasHeight = previewCanvas?.height ?? null
+  const rendererSelectionSignature = [
+    displayUrl ?? '',
+    isDisplayVideo,
+    webGpuPreviewEnabled,
+    webGpuPreviewFailed,
+    useCompositionVideoRenderer,
+    useWebGpuPreview,
+    layers.length,
+    previewCanvasWidth,
+    previewCanvasHeight,
+  ].join('|')
+
+  useEffect(() => {
+    if (rendererSelectionLogRef.current === rendererSelectionSignature) return
+    rendererSelectionLogRef.current = rendererSelectionSignature
+    logger.info('[PreviewDebug] renderer selected', {
+      source: displayUrl,
+      isDisplayVideo,
+      webGpuPreviewEnabled,
+      webGpuPreviewFailed,
+      useCompositionVideoRenderer,
+      useWebGpuPreview,
+      layerCount: layers.length,
+      canvas: previewCanvasWidth == null || previewCanvasHeight == null
+        ? null
+        : { width: previewCanvasWidth, height: previewCanvasHeight },
+    })
+  }, [displayUrl, isDisplayVideo, layers.length, previewCanvasHeight, previewCanvasWidth, rendererSelectionSignature, useCompositionVideoRenderer, useWebGpuPreview, webGpuPreviewEnabled, webGpuPreviewFailed])
 
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current

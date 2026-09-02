@@ -79,6 +79,9 @@ export class WebGpuVideoRenderer {
   private lastFailureReason = ''
   private lastLayerSummary = ''
   private firstRenderLogged = false
+  private firstRenderStartedLogged = false
+  private waitingVideoSignature = ''
+  private layerSignature = ''
   private exportFrameCounter = 0
   private lastVideoTargetConflictLogFrame = -Infinity
 
@@ -247,6 +250,9 @@ export class WebGpuVideoRenderer {
 
   async setLayers(layers: PreviewLayer[]): Promise<void> {
     if (!this.initialized || this.destroyed || this.failed) return
+    const layerSignature = JSON.stringify(layers)
+    if (layerSignature === this.layerSignature) return
+    this.layerSignature = layerSignature
     const playbackLayerSignature = layers
       .filter((layer) => layer.isVideo)
       .map((layer) => `${videoLayerKey(layer)}:${numberOr(layer.videoTime, 0)}:${numberOr(layer.videoOffset, 0)}`)
@@ -254,6 +260,11 @@ export class WebGpuVideoRenderer {
     const playbackTimelineChanged = playbackLayerSignature !== this.playbackLayerSignature
     this.playbackLayerSignature = playbackLayerSignature
     this.layers = layers
+    logger.info('[PreviewDebug] renderer setLayers', {
+      layerCount: layers.length,
+      videoLayers: layers.filter((layer) => layer.isVideo).map((layer) => ({ key: videoLayerKey(layer), path: layer.filePath })),
+      canvas: { width: this.renderWidth, height: this.renderHeight },
+    })
     if (this.active && this.playing && playbackTimelineChanged) {
       this.playbackStartCompositionTime = this.compositionTime
     }
@@ -273,6 +284,18 @@ export class WebGpuVideoRenderer {
     this.active = active
     this.playing = playing
     this.compositionTime = Math.max(0, Number.isFinite(time) ? time : 0)
+    logger.info('[PreviewDebug] renderer setPlayback', {
+      active,
+      playing,
+      time: this.compositionTime,
+      videoEntries: [...this.resources.videoEntries].map((entry) => ({
+        key: entry.key,
+        ready: entry.ready,
+        readyState: entry.video.readyState,
+        currentTime: entry.video.currentTime,
+        duration: entry.video.duration,
+      })),
+    })
     if (playing && active && !wasPlaying) this.playbackStartCompositionTime = this.compositionTime
     if (!playing || !active) this.playbackStartCompositionTime = null
     for (const entry of this.resources.videoEntries) {
@@ -637,6 +660,54 @@ export class WebGpuVideoRenderer {
     const revision = this.renderRevision
     const currentLayers = this.layers
     try {
+      const waitingVideos = currentLayers.filter((layer) => {
+        if (!layer.isVideo) return false
+        if (layer.activeStart != null && this.compositionTime < layer.activeStart) return false
+        if (layer.activeEnd != null && this.compositionTime >= layer.activeEnd) return false
+        const entry = this.resources.entryForLayer(layer)
+        return !entry || !entry.ready || (entry.video.readyState < 2 && !entry.resource)
+      })
+      if (waitingVideos.length > 0) {
+        const waitingSignature = waitingVideos
+          .map((layer) => {
+            const entry = this.resources.entryForLayer(layer)
+            return `${videoLayerKey(layer)}:${entry?.video.readyState ?? 0}`
+          })
+          .join('|')
+        if (waitingSignature !== this.waitingVideoSignature) {
+          this.waitingVideoSignature = waitingSignature
+          logger.info('[PreviewDebug] waiting for video frame before rendering', {
+            videos: waitingVideos.map((layer) => {
+              const entry = this.resources.entryForLayer(layer)
+              return {
+                key: videoLayerKey(layer),
+                ready: entry?.ready ?? false,
+                readyState: entry?.video.readyState ?? 0,
+              }
+            }),
+          })
+        }
+        return
+      }
+      this.waitingVideoSignature = ''
+      if (!this.firstRenderStartedLogged) {
+        this.firstRenderStartedLogged = true
+        logger.info('[PreviewDebug] first render started', {
+          layerCount: currentLayers.length,
+          videoLayers: currentLayers.filter((layer) => layer.isVideo).map((layer) => {
+            const entry = this.resources.entryForLayer(layer)
+            return {
+              key: videoLayerKey(layer),
+              ready: entry?.ready ?? false,
+              readyState: entry?.video.readyState ?? 0,
+              currentTime: entry?.video.currentTime ?? null,
+              videoWidth: entry?.video.videoWidth ?? 0,
+              videoHeight: entry?.video.videoHeight ?? 0,
+            }
+          }),
+          renderSize: { width: this.renderWidth, height: this.renderHeight },
+        })
+      }
       this.syncVideoClocks()
       const groups = new Map<string, PreviewLayer[]>()
       for (const layer of currentLayers) {
@@ -696,6 +767,14 @@ export class WebGpuVideoRenderer {
           { width: output.width, height: output.height, depthOrArrayLayers: 1 },
         )
         device.queue.submit([copyEncoder.finish()])
+        if (!this.firstRenderLogged) {
+          logger.info('[PreviewDebug] presentation copy submitted', {
+            output: { width: output.width, height: output.height },
+            canvas: this.canvasSnapshot(),
+            presentationFormat: this.presentationFormat,
+            renderFormat: this.canvasFormat,
+          })
+        }
       }
       if (this.options.waitForGpu) await device.queue.onSubmittedWorkDone?.()
       if (!this.destroyed) {

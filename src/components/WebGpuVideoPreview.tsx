@@ -48,6 +48,13 @@ export function WebGpuVideoPreview({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<WebGpuVideoRenderer | null>(null)
+  const rendererInitializedRef = useRef(false)
+  const layersSignatureRef = useRef<string | null>(null)
+  const latestLayersRef = useRef(layers)
+  const latestPlaybackRef = useRef({ active, playing, time })
+  latestLayersRef.current = layers
+  latestPlaybackRef.current = { active, playing, time }
+  const layersSignature = JSON.stringify(layers)
   const imageInteraction = useCanvasViewportInteraction({
     layers,
     canvasRef,
@@ -68,6 +75,15 @@ export function WebGpuVideoPreview({
     const canvas = canvasRef.current
     if (!canvas) return
     let cancelled = false
+    logger.info('[PreviewDebug] WebGPU component mounted', {
+      canvasWidth,
+      canvasHeight,
+      maxSide,
+      active,
+      playing,
+      time,
+      canvas: { width: canvas.width, height: canvas.height },
+    })
     const renderer = new WebGpuVideoRenderer(canvas, {
       canvasWidth,
       canvasHeight,
@@ -89,9 +105,27 @@ export function WebGpuVideoPreview({
     }
     window.addEventListener('resize', resize)
 
+    const applyLatestLayers = () => {
+      const nextLayers = latestLayersRef.current
+      const nextSignature = JSON.stringify(nextLayers)
+      if (layersSignatureRef.current === nextSignature) return Promise.resolve()
+      layersSignatureRef.current = nextSignature
+      return renderer.setLayers(nextLayers)
+    }
+
     void renderer.initialize()
-      .then(() => renderer.setLayers(layers))
-      .then(() => renderer.setPlayback(active, playing, time))
+      .then(() => {
+        rendererInitializedRef.current = true
+        logger.info('[PreviewDebug] WebGPU initialized')
+        return applyLatestLayers()
+      })
+      .then(() => {
+        const nextLayers = latestLayersRef.current
+        logger.info('[PreviewDebug] WebGPU layers synchronized', { layerCount: nextLayers.length })
+        const playback = latestPlaybackRef.current
+        return renderer.setPlayback(playback.active, playback.playing, playback.time)
+      })
+      .then(() => logger.info('[PreviewDebug] WebGPU playback synchronized', latestPlaybackRef.current))
       .catch((error: unknown) => {
         if (cancelled) return
         callbackRef.current.onError(error instanceof Error ? error.message : String(error))
@@ -99,6 +133,9 @@ export function WebGpuVideoPreview({
 
     return () => {
       cancelled = true
+      rendererInitializedRef.current = false
+      layersSignatureRef.current = null
+      logger.info('[PreviewDebug] WebGPU component unmounted')
       resizeObserver?.disconnect()
       window.removeEventListener('resize', resize)
       rendererRef.current = null
@@ -118,10 +155,13 @@ export function WebGpuVideoPreview({
   }, [maxSide])
 
   useEffect(() => {
-    void rendererRef.current?.setLayers(layers).catch((error: unknown) => {
+    const renderer = rendererRef.current
+    if (!renderer || !rendererInitializedRef.current || layersSignatureRef.current === layersSignature) return
+    layersSignatureRef.current = layersSignature
+    void renderer.setLayers(layers).catch((error: unknown) => {
       callbackRef.current.onError(error instanceof Error ? error.message : String(error))
     })
-  }, [layers])
+  }, [layers, layersSignature])
 
   useEffect(() => {
     void rendererRef.current?.setPlayback(active, playing, time).catch((error: unknown) => {

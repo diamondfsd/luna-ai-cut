@@ -21,6 +21,23 @@
 - GitCode `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf`
 - 在 macOS 上构建 Windows x64 时，需要安装并验证 `cargo-xwin`；Windows 主机直接使用本机 Rust 工具链
 
+## 构建依赖下载地址规则
+
+构建依赖的国内镜像统一使用 GitCode Release，不要把 GitHub Release 地址直接写入客户端或本地下载逻辑。当前固定配置为：
+
+- 仓库：`diamondfsd/luna-ai-cut-package-release`
+- Release tag：`build-dependencies-v1.0.0`
+- 下载地址格式：`https://gitcode.com/<owner>/<repo>/releases/download/<release-tag>/<file-name>`
+- FFmpeg 示例：`https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/build-dependencies-v1.0.0/ffmpeg-win32-x64.gz`
+
+其中 `releases/download` 是固定路径。不要使用 `.../releases/<release-tag>/<file-name>`，后者是错误的下载地址格式；也不要把 GitCode API 的 Release 查询或上传地址当作文件下载地址。
+
+相关实现入口：
+
+- `scripts/build-dependency-sources.mjs`：维护仓库、Release tag 和下载地址基址
+- `scripts/copy-ffmpeg.mjs`：下载、校验并准备 FFmpeg/ffprobe
+- `scripts/publish-build-dependencies.mjs`：将固定构建依赖上传并校验到上述 Release
+
 ## 版本号规则
 
 默认发版为**补丁版本号升级**（patch version bump），即 `X.Y.Z` → `X.Y.(Z+1)`，例如 `v1.1.2` → `v1.1.3`。

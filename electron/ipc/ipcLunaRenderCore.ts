@@ -103,6 +103,19 @@ function rcLog(msg: string): void {
   } catch { /* ignore */ }
 }
 
+function describeExecutable(filePath: string): string {
+  try {
+    const info = statSync(filePath)
+    return JSON.stringify({ path: filePath, exists: true, isFile: info.isFile(), size: info.size })
+  } catch (error) {
+    return JSON.stringify({
+      path: filePath,
+      exists: false,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
 function waitForChildProcess(child: ChildProcessWithoutNullStreams): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
   return new Promise((resolve, reject) => {
     child.once('error', reject)
@@ -494,6 +507,14 @@ export function register(ctx: RegisterContext): void {
       const progressExportId = exportItemId ?? renderTaskId
       const fileName = fileNameFromPath(outputPath)
       rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition?.layers?.length ?? 0} audio=${includeAudio !== false}`)
+      rcLog(`lrc:exportCompositionVideo runtime ${JSON.stringify({
+        mode: app.isPackaged ? 'packaged' : 'development',
+        appPath: app.getAppPath(),
+        resourcesPath: process.resourcesPath,
+        cwd: process.cwd(),
+        ffmpeg: describeExecutable(ffmpegPath),
+        ffprobe: describeExecutable(ffprobePath),
+      })}`)
       if (exportTaskId && exportItemId) {
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
         _event.sender?.send('export:progress', {

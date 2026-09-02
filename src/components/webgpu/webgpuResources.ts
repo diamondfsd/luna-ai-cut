@@ -29,7 +29,7 @@ import type {
 } from './webgpuTypes'
 
 const IDENTITY_MASK_RGBA = new Uint8Array([255, 255, 255, 255])
-const IDENTITY_SOURCE_RGBA = new Uint8Array([255, 255, 255])
+const IDENTITY_SOURCE_RGBA = new Uint8Array([255, 255, 255, 255])
 
 export interface WebGpuResourceCallbacks {
   getDevice: () => GpuDevice | null
@@ -124,6 +124,10 @@ export class WebGpuResourceManager {
       if (layer.isVideo) required.set(videoLayerKey(layer), layer)
     }
     const audioEnabledKey = required.size === 1 ? required.keys().next().value : null
+    logger.info('[PreviewDebug] sync video elements', {
+      required: [...required.entries()].map(([key, layer]) => ({ key, path: layer.filePath })),
+      existing: this.videos.size,
+    })
     for (const [key, entry] of this.videos) {
       if (required.has(key)) continue
       entry.video.pause()
@@ -146,17 +150,57 @@ export class WebGpuResourceManager {
       video.crossOrigin = 'anonymous'
       video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
       const entry: GpuVideoEntry = { key, video, ready: false, resource: null, uploadCanvas: null, lastUploadedFrame: -1 }
+      logger.info('[PreviewDebug] video element created', {
+        key,
+        src: video.src,
+        preload: video.preload,
+        muted: video.muted,
+      })
       video.addEventListener('loadeddata', () => {
         if (this.destroyed || this.videos.get(key) !== entry) return
         entry.ready = true
+        logger.info('[PreviewDebug] video loadeddata', {
+          key,
+          readyState: video.readyState,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          duration: video.duration,
+          currentTime: video.currentTime,
+          networkState: video.networkState,
+        })
         if (this.callbacks.isPlaying() && this.callbacks.isActive()) void entry.video.play().catch(() => undefined)
         this.callbacks.onVideoReady()
       })
-      video.addEventListener('loadedmetadata', () => this.callbacks.onVideoMetadata())
+      video.addEventListener('loadedmetadata', () => {
+        logger.info('[PreviewDebug] video loadedmetadata', {
+          key,
+          readyState: video.readyState,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          duration: video.duration,
+          networkState: video.networkState,
+        })
+        this.callbacks.onVideoMetadata()
+      })
+      video.addEventListener('canplay', () => {
+        logger.info('[PreviewDebug] video canplay', {
+          key,
+          readyState: video.readyState,
+          currentTime: video.currentTime,
+        })
+        this.callbacks.scheduleRender()
+      })
       video.addEventListener('seeked', () => this.callbacks.onVideoSeeked())
       video.addEventListener('timeupdate', () => this.callbacks.onVideoTimeUpdate())
       video.addEventListener('error', () => {
         if (this.destroyed || this.callbacks.isDestroyed()) return
+        logger.error('[PreviewDebug] video element error', {
+          key,
+          src: video.src,
+          readyState: video.readyState,
+          networkState: video.networkState,
+          mediaError: video.error ? { code: video.error.code, message: video.error.message } : null,
+        })
         this.callbacks.onVideoError(`视频无法在 WebGPU 预览中打开（错误代码 ${video.error?.code ?? '未知'}）`)
       })
       this.videos.set(key, entry)
@@ -291,6 +335,9 @@ export class WebGpuResourceManager {
   private async videoResource(layer: PreviewLayer, entry: GpuVideoEntry): Promise<GpuImageResource> {
     const device = this.device
     if (!device || !entry.ready) throw new Error('视频尚未准备好')
+    // A seek can briefly lower readyState after the first frame has already
+    // been uploaded. Keep the previous texture until the new frame is ready.
+    if (entry.video.readyState < 2 && entry.resource) return entry.resource
     const displayMaxSide = Math.max(this.callbacks.getRenderSize().width, this.callbacks.getRenderSize().height)
     const canvasSize = this.callbacks.getCanvasSize()
     const qualityMaxSide = computeLayerDecodeMaxSide(
@@ -336,6 +383,7 @@ export class WebGpuResourceManager {
       }
     }
     if (entry.lastUploadedFrame !== this.callbacks.getFrameCounter()) {
+      const firstUpload = entry.lastUploadedFrame < 0
       const upload = await prepareScaledUploadSource(
         entry.video,
         entry.video.videoWidth || width,
@@ -357,6 +405,19 @@ export class WebGpuResourceManager {
         upload.dispose()
       }
       entry.lastUploadedFrame = this.callbacks.getFrameCounter()
+      if (firstUpload) {
+        logger.info('[PreviewDebug] first video texture upload submitted', {
+          key: entry.key,
+          frameCounter: entry.lastUploadedFrame,
+          currentTime: entry.video.currentTime,
+          readyState: entry.video.readyState,
+          videoWidth: entry.video.videoWidth,
+          videoHeight: entry.video.videoHeight,
+          textureWidth: width,
+          textureHeight: height,
+          scaledThroughCanvas: upload.source !== entry.video,
+        })
+      }
     }
     return entry.resource
   }
