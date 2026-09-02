@@ -182,6 +182,11 @@ for (const runtimeDir of runtimeDirs) {
 
 if (isWin) {
   const ffmpegRuntimeDir = join(root, 'resources', 'ffmpeg')
+  const ffmpegDllPattern = /^(?:avcodec|avdevice|avfilter|avformat|avutil|postproc|swresample|swscale)-\d+\.dll$/i
+  for (const fileName of readdirSync(rcDir)) {
+    if (!ffmpegDllPattern.test(fileName)) continue
+    rmSync(join(rcDir, fileName), { force: true })
+  }
   for (const fileName of readdirSync(ffmpegRuntimeDir)) {
     if (!/^(?:avformat-62|avcodec-62|avutil-60|swresample-6)\.dll$/i.test(fileName)) continue
     const runtimeDest = join(rcDir, fileName)

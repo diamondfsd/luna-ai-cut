@@ -15,6 +15,8 @@ import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
 import { failStartup, installStartupExperience } from './infrastructure/startupWindowService'
 
 async function boot(): Promise<void> {
+  configureWindowsNativeRuntime()
+
   // 开发模式跳过热更新，避免本地代码被热更新覆盖
   if (!app.isPackaged) {
     process.env.LUNA_BOOT_SOURCE = 'development'
@@ -60,6 +62,16 @@ async function boot(): Promise<void> {
   // 加载 asar 内置的 fallback 版本
   process.env.LUNA_BOOT_SOURCE = 'bundled'
   await import('./appMain.ts')
+}
+
+function configureWindowsNativeRuntime(): void {
+  if (!app.isPackaged || process.platform !== 'win32') return
+
+  const runtimeDir = join(process.resourcesPath, 'ffmpeg')
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH'
+  const entries = (process.env[pathKey] ?? '').split(';').filter(Boolean)
+  if (entries.some((entry) => entry.toLowerCase() === runtimeDir.toLowerCase())) return
+  process.env[pathKey] = [runtimeDir, ...entries].join(';')
 }
 
 /**
