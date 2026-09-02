@@ -156,6 +156,11 @@ const artifacts = [
     sha256: '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',
   },
   {
+    fileName: 'ffmpeg-8.1.2-essentials_build.zip',
+    path: join(root, '.ffmpeg-cache', 'ffmpeg-8.1.2-essentials_build.zip'),
+    sha256: '091e659d96a2782b0babe0eb37bfb320ce1afe5d8079b3ae36fcc9bc30066f2d',
+  },
+  {
     fileName: 'ffprobe-darwin-arm64.gz',
     path: join(root, '.ffmpeg-cache', 'ffprobe-darwin-arm64.gz'),
     sha256: 'd986a8ec7b030899fe66a8a288ed809a3543338705a3ce178cfb85869c5d80be',
@@ -187,14 +192,23 @@ const artifacts = [
   },
 ]
 
-for (const artifact of artifacts) {
+const onlyIndex = process.argv.indexOf('--only')
+const onlyFileName = onlyIndex >= 0 ? process.argv[onlyIndex + 1] : null
+const selectedArtifacts = onlyFileName
+  ? artifacts.filter((artifact) => artifact.fileName === onlyFileName)
+  : artifacts
+if (selectedArtifacts.length === 0) {
+  throw new Error(`未找到待上传附件: ${onlyFileName}`)
+}
+
+for (const artifact of selectedArtifacts) {
   if (!existsSync(artifact.path)) throw new Error(`缺少待上传文件: ${artifact.path}`)
   const actual = sha256File(artifact.path)
   if (actual !== artifact.sha256) throw new Error(`${basename(artifact.path)} 本地 SHA256 不匹配`)
 }
 
 let release = await ensureRelease()
-for (const artifact of artifacts) {
+for (const artifact of selectedArtifacts) {
   if (!releaseAssets(release).some((asset) => asset.name === artifact.fileName)) {
     await uploadAsset(artifact)
     release = await getRelease()
@@ -204,5 +218,5 @@ for (const artifact of artifacts) {
 }
 
 release = await getRelease()
-for (const artifact of artifacts) verifyReleaseAsset(release, artifact)
+for (const artifact of selectedArtifacts) verifyReleaseAsset(release, artifact)
 console.log(`[publish-build-dependencies] Download base: ${BUILD_DEPENDENCY_DOWNLOAD_BASE}`)

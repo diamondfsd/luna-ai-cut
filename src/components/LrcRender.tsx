@@ -142,6 +142,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
   const activeRef = useRef(active)
+  const layersRevisionRef = useRef(0)
   const rafRef = useRef(0)
   const imageInteraction = useCanvasViewportInteraction({
     layers,
@@ -165,7 +166,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<RenderInitFailure | null>(null)
   const [retrying, setRetrying] = useState(false)
-  layersRef.current = layers
+  if (layersRef.current !== layers) {
+    layersRevisionRef.current += 1
+    layersRef.current = layers
+  }
   activeRef.current = active
 
   useLayoutEffect(() => {
@@ -270,6 +274,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       return
     }
 
+    const renderRevision = layersRevisionRef.current
     const renderLayers = layersWithVideoTime()
     if (renderLayers.length === 0) return
 
@@ -299,9 +304,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       // 使用异步方法，避免阻塞主线程
       const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, compositionTime, effectiveMaxSide)
       if (destroyRef.current || !activeRef.current) return
-      // A newer parameter snapshot may arrive while the native renderer is
-      // preparing this frame. Paint this completed snapshot; the queued
-      // render in finally will immediately catch up to the latest value.
+      if (layersRevisionRef.current !== renderRevision) {
+        renderQueuedRef.current = true
+        return
+      }
 
       if (traceFirstRender) {
         logger.info('[预览诊断] 首次画面渲染完成', {

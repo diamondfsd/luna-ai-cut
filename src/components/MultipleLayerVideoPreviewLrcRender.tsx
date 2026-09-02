@@ -37,6 +37,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       const scheduledRenderRef = useRef(0)
       const renderingRef = useRef(false)
       const renderQueuedRef = useRef(false)
+      const layersRevisionRef = useRef(0)
       const [ready, setReady] = useState(false)
       const [fatalError, setFatalError] = useState<string | null>(null)
       const imageInteraction = useCanvasViewportInteraction({
@@ -50,7 +51,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       })
 
       const layersRef = useRef(layers)
-      layersRef.current = layers
+      if (layersRef.current !== layers) {
+        layersRevisionRef.current += 1
+        layersRef.current = layers
+      }
       activeRef.current = active
       const playingRef = useRef(playing)
       playingRef.current = playing
@@ -190,7 +194,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
       useImperativeHandle(ref, () => ({
         scheduleRender: () => { if (readyRef.current) scheduleRender() },
-        setLayers: (newLayers: PreviewLayer[]) => { layersRef.current = newLayers },
+        setLayers: (newLayers: PreviewLayer[]) => {
+          if (layersRef.current !== newLayers) layersRevisionRef.current += 1
+          layersRef.current = newLayers
+        },
       // eslint-disable-next-line react-hooks/exhaustive-deps
       }), [])
 
@@ -404,6 +411,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         renderQueuedRef.current = false
         // 快照当前纹理版本，渲染完成后检查是否有纹理在此期间被释放
         const versionAtStart = textureVersionRef.current
+        const layersRevisionAtStart = layersRevisionRef.current
 
         try {
           const result = await renderMultipleLayerVideoFrame({
@@ -418,6 +426,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             maxSide: maxSideRef.current,
             textureVersion: versionAtStart,
             getTextureVersion: () => textureVersionRef.current,
+            renderRevision: layersRevisionAtStart,
+            getRenderRevision: () => layersRevisionRef.current,
             isDestroyed: () => destroyRef.current,
           })
           if (result === 'stale') {
