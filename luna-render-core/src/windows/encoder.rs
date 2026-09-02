@@ -1,38 +1,37 @@
-use std::fs::{File, OpenOptions};
-use std::io::Write;
 use std::mem::ManuallyDrop;
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use windows::core::Interface;
 use windows::Win32::Graphics::Direct3D12::{
     ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12Device, ID3D12Fence,
-    ID3D12GraphicsCommandList, ID3D12Resource, D3D12_COMMAND_LIST_TYPE_COPY,
-    D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE,
-    D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE,
-    D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_READBACK,
-    D3D12_MEMORY_POOL_UNKNOWN, D3D12_RANGE, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0,
-    D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE,
-    D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER,
-    D3D12_RESOURCE_FLAGS, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST,
-    D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ,
-    D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE, D3D12_RESOURCE_TRANSITION_BARRIER,
-    D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+    ID3D12Resource, D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+    D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT,
+    D3D12_HEAP_TYPE_READBACK, D3D12_MEMORY_POOL_UNKNOWN, D3D12_RANGE, D3D12_RESOURCE_BARRIER,
+    D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+    D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC,
+    D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_FLAGS, D3D12_RESOURCE_STATE_COMMON,
+    D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ, D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE,
+    D3D12_RESOURCE_TRANSITION_BARRIER, D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_NV12, DXGI_RATIONAL, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Media::MediaFoundation::{
     ID3D12VideoDevice3, ID3D12VideoEncodeCommandList2, ID3D12VideoEncoder, ID3D12VideoEncoderHeap,
+    D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT,
+    D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOLUTION_SUPPORT_LIMITS,
+    D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOURCE_REQUIREMENTS,
+    D3D12_FEATURE_DATA_VIDEO_ENCODER_SUPPORT, D3D12_FEATURE_VIDEO_ENCODER_RESOURCE_REQUIREMENTS,
     D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION, D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_0,
     D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264,
     D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_DIRECT_MODES_DISABLED,
     D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_FLAG_NONE,
     D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_SLICES_DEBLOCKING_MODE_0_ALL_LUMA_CHROMA_SLICE_BLOCK_EDGES_ALWAYS_FILTERED,
     D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_HEVC,
-    D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOURCE_REQUIREMENTS,
-    D3D12_FEATURE_DATA_VIDEO_ENCODER_SUPPORT, D3D12_FEATURE_VIDEO_ENCODER_RESOURCE_REQUIREMENTS,
-    D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_HEVC_FLAG_NONE, D3D12_VIDEO_ENCODER_CODEC_H264,
+    D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_HEVC_FLAG_NONE,
+    D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT,
+    D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_0,
+    D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264, D3D12_VIDEO_ENCODER_CODEC_H264,
     D3D12_VIDEO_ENCODER_CODEC_HEVC, D3D12_VIDEO_ENCODER_COMPRESSED_BITSTREAM,
     D3D12_VIDEO_ENCODER_ENCODEFRAME_INPUT_ARGUMENTS,
     D3D12_VIDEO_ENCODER_ENCODEFRAME_OUTPUT_ARGUMENTS,
@@ -40,10 +39,9 @@ use windows::Win32::Media::MediaFoundation::{
     D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME,
     D3D12_VIDEO_ENCODER_FRAME_TYPE_H264_IDR_FRAME, D3D12_VIDEO_ENCODER_FRAME_TYPE_HEVC_IDR_FRAME,
     D3D12_VIDEO_ENCODER_HEAP_DESC, D3D12_VIDEO_ENCODER_HEAP_FLAG_NONE,
-    D3D12_VIDEO_ENCODER_LEVELS_H264, D3D12_VIDEO_ENCODER_LEVELS_H264_51,
-    D3D12_VIDEO_ENCODER_LEVELS_HEVC_51, D3D12_VIDEO_ENCODER_LEVEL_SETTING,
-    D3D12_VIDEO_ENCODER_LEVEL_SETTING_0,
-    D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_NONE,
+    D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_NONE, D3D12_VIDEO_ENCODER_LEVELS_H264,
+    D3D12_VIDEO_ENCODER_LEVELS_H264_51, D3D12_VIDEO_ENCODER_LEVELS_HEVC_51,
+    D3D12_VIDEO_ENCODER_LEVEL_SETTING, D3D12_VIDEO_ENCODER_LEVEL_SETTING_0,
     D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_MAXIMUM,
     D3D12_VIDEO_ENCODER_OUTPUT_METADATA, D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA,
     D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_0,
@@ -56,18 +54,17 @@ use windows::Win32::Media::MediaFoundation::{
     D3D12_VIDEO_ENCODER_RATE_CONTROL, D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR,
     D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS,
     D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS_0,
-    D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_NONE, D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR,
-    D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_DESC, D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_NONE,
-    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE, D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_0,
-    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_H264,
-    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_HEVC, D3D12_VIDEO_ENCODER_SUPPORT_FLAG_GENERAL_SUPPORT_OK,
-    D3D12_VIDEO_ENCODER_TIER_HEVC_MAIN,
+    D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES,
+    D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR, D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_DESC,
+    D3D12_VIDEO_ENCODER_SEQUENCE_CONTROL_FLAG_NONE, D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE,
+    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_0, D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_H264,
+    D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_HEVC,
+    D3D12_VIDEO_ENCODER_SUPPORT_FLAG_GENERAL_SUPPORT_OK, D3D12_VIDEO_ENCODER_TIER_HEVC_MAIN,
 };
 
-const METADATA_BUFFER_SIZE: u64 = 256;
 const ENCODE_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
 
-pub(crate) struct VideoEncoder {
+pub(crate) struct D3d12VideoEncoder {
     queue: ID3D12CommandQueue,
     allocator: ID3D12CommandAllocator,
     command_list: ID3D12VideoEncodeCommandList2,
@@ -77,9 +74,6 @@ pub(crate) struct VideoEncoder {
     metadata: ID3D12Resource,
     resolved_metadata: ID3D12Resource,
     bitstream_capacity: u64,
-    bitstream_alignment: u64,
-    metadata_size: u64,
-    metadata_alignment: u64,
     sequence_header: Vec<u8>,
     aligned_header_size: u64,
     fence: ID3D12Fence,
@@ -89,14 +83,11 @@ pub(crate) struct VideoEncoder {
     fps: f64,
     bitrate: u64,
     hevc: bool,
-    output_path: PathBuf,
-    output: Option<File>,
     finished: bool,
 }
 
-impl VideoEncoder {
+impl D3d12VideoEncoder {
     pub(crate) fn new(
-        output_path: &Path,
         device: &ID3D12Device,
         queue: &ID3D12CommandQueue,
         width: u32,
@@ -108,17 +99,6 @@ impl VideoEncoder {
         if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
             return Err("D3D12 video encoder requires non-zero even dimensions".to_string());
         }
-        if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|error| format!("failed to create encoder output directory: {error}"))?;
-        }
-        let output = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(output_path)
-            .map_err(|error| format!("failed to open D3D12 bitstream output: {error}"))?;
-
         let video_device: ID3D12VideoDevice3 = device
             .cast()
             .map_err(|error| format!("D3D12 video encoder is unavailable: {error}"))?;
@@ -155,6 +135,9 @@ impl VideoEncoder {
         } else {
             D3D12_VIDEO_ENCODER_CODEC_H264
         };
+        if !hevc {
+            select_supported_h264_deblocking_mode(&video_device, profile, &mut h264_config)?;
+        }
         let mut h264_level = D3D12_VIDEO_ENCODER_LEVELS_H264_51;
         let mut hevc_level = windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_LEVEL_TIER_CONSTRAINTS_HEVC {
             Level: D3D12_VIDEO_ENCODER_LEVELS_HEVC_51,
@@ -178,14 +161,14 @@ impl VideoEncoder {
         };
         let mut h264_gop = D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_H264 {
             GOPLength: 1,
-            PPicturePeriod: 1,
+            PPicturePeriod: 0,
             pic_order_cnt_type: 0,
             log2_max_frame_num_minus4: 0,
             log2_max_pic_order_cnt_lsb_minus4: 0,
         };
         let mut hevc_gop = D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_HEVC {
             GOPLength: 1,
-            PPicturePeriod: 1,
+            PPicturePeriod: 0,
             log2_max_pic_order_cnt_lsb_minus4: 0,
         };
         let codec_gop = if hevc {
@@ -209,14 +192,17 @@ impl VideoEncoder {
             InitialQP: 0,
             MinQP: 0,
             MaxQP: 51,
-            MaxFrameBitSize: encoded_buffer_capacity(width, height).saturating_mul(8),
+            // The maximum frame size is not requested unless the matching
+            // rate-control flag is set. The metadata still validates the
+            // actual bytes against bitstream_capacity below.
+            MaxFrameBitSize: 0,
             TargetBitRate: bitrate.max(1),
             VBVCapacity: bitrate.max(1),
-            InitialVBVFullness: bitrate.max(1) / 2,
+            InitialVBVFullness: bitrate.max(1).saturating_mul(3) / 4,
         };
         let rate_control = D3D12_VIDEO_ENCODER_RATE_CONTROL {
             Mode: D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR,
-            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_NONE,
+            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES,
             ConfigParams: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS {
                 DataSize: std::mem::size_of::<D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR>() as u32,
                 Anonymous: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS_0 {
@@ -225,6 +211,25 @@ impl VideoEncoder {
             },
             TargetFrameRate: rational(fps),
         };
+        // These are output buffers required by the support query. In
+        // particular, pResolutionDependentSupport must be non-null whenever
+        // ResolutionsListCount is non-zero (the NVIDIA driver validates it).
+        let mut suggested_h264_profile = D3D12_VIDEO_ENCODER_PROFILE_H264_MAIN;
+        let mut suggested_hevc_profile = D3D12_VIDEO_ENCODER_PROFILE_HEVC_MAIN;
+        let suggested_profile = profile_desc(
+            hevc,
+            &mut suggested_h264_profile,
+            &mut suggested_hevc_profile,
+        );
+        let mut suggested_h264_level = D3D12_VIDEO_ENCODER_LEVELS_H264_51;
+        let mut suggested_hevc_level = windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_LEVEL_TIER_CONSTRAINTS_HEVC {
+            Level: D3D12_VIDEO_ENCODER_LEVELS_HEVC_51,
+            Tier: D3D12_VIDEO_ENCODER_TIER_HEVC_MAIN,
+        };
+        let suggested_level =
+            level_setting(hevc, &mut suggested_h264_level, &mut suggested_hevc_level);
+        let mut resolution_support =
+            D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOLUTION_SUPPORT_LIMITS::default();
         let mut support = D3D12_FEATURE_DATA_VIDEO_ENCODER_SUPPORT {
             NodeIndex: 0,
             Codec: codec,
@@ -237,16 +242,30 @@ impl VideoEncoder {
             ResolutionsListCount: 1,
             pResolutionList: &resolution,
             MaxReferenceFramesInDPB: 0,
+            SuggestedProfile: suggested_profile,
+            SuggestedLevel: suggested_level,
+            pResolutionDependentSupport: &mut resolution_support,
             ..Default::default()
         };
-        unsafe {
+        let support_result = unsafe {
             video_device.CheckFeatureSupport(
                 windows::Win32::Media::MediaFoundation::D3D12_FEATURE_VIDEO_ENCODER_SUPPORT,
                 (&mut support as *mut D3D12_FEATURE_DATA_VIDEO_ENCODER_SUPPORT).cast(),
                 std::mem::size_of::<D3D12_FEATURE_DATA_VIDEO_ENCODER_SUPPORT>() as u32,
             )
+        };
+        if let Err(error) = support_result {
+            let hresult = error.code().0 as u32;
+            crate::logging::write(&format!(
+                "[Export:WinGPU] d3d12-video-encoder-support-query failed hresult=0x{hresult:08x} codec={} format=NV12 resolution={}x{}",
+                if hevc { "hevc" } else { "h264" },
+                width,
+                height,
+            ));
+            return Err(format!(
+                "failed to query D3D12 video encoder support: {error} (HRESULT=0x{hresult:08x})"
+            ));
         }
-        .map_err(|error| format!("failed to query D3D12 video encoder support: {error}"))?;
         if !support
             .SupportFlags
             .contains(D3D12_VIDEO_ENCODER_SUPPORT_FLAG_GENERAL_SUPPORT_OK)
@@ -268,23 +287,28 @@ impl VideoEncoder {
         unsafe {
             video_device.CheckFeatureSupport(
                 D3D12_FEATURE_VIDEO_ENCODER_RESOURCE_REQUIREMENTS,
-                (&mut requirements
-                    as *mut D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOURCE_REQUIREMENTS)
+                (&mut requirements as *mut D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOURCE_REQUIREMENTS)
                     .cast(),
                 std::mem::size_of::<D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOURCE_REQUIREMENTS>()
                     as u32,
             )
         }
-        .map_err(|error| format!("failed to query D3D12 video encoder resource requirements: {error}"))?;
+        .map_err(|error| {
+            format!("failed to query D3D12 video encoder resource requirements: {error}")
+        })?;
         if !requirements.IsSupported.as_bool() {
             return Err("D3D12 video encoder resource requirements are unsupported".to_string());
         }
-        let bitstream_alignment = u64::from(requirements.CompressedBitstreamBufferAccessAlignment.max(1));
-        let metadata_alignment = u64::from(requirements.EncoderMetadataBufferAccessAlignment.max(1));
+        let bitstream_alignment =
+            u64::from(requirements.CompressedBitstreamBufferAccessAlignment.max(1));
+        let metadata_alignment =
+            u64::from(requirements.EncoderMetadataBufferAccessAlignment.max(1));
         let metadata_size = align_up(
-            u64::from(requirements.MaxEncoderOutputMetadataBufferSize.max(
-                std::mem::size_of::<D3D12_VIDEO_ENCODER_OUTPUT_METADATA>() as u32,
-            )),
+            u64::from(
+                requirements
+                    .MaxEncoderOutputMetadataBufferSize
+                    .max(std::mem::size_of::<D3D12_VIDEO_ENCODER_OUTPUT_METADATA>() as u32),
+            ),
             metadata_alignment,
         );
         crate::logging::write(&format!(
@@ -319,10 +343,8 @@ impl VideoEncoder {
         .map_err(|error| format!("failed to create D3D12 video-encode command list: {error}"))?;
         unsafe { command_list.Close() }
             .map_err(|error| format!("failed to close D3D12 video-encode command list: {error}"))?;
-        let bitstream_capacity = align_up(
-            encoded_buffer_capacity(width, height),
-            bitstream_alignment,
-        );
+        let bitstream_capacity =
+            align_up(encoded_buffer_capacity(width, height), bitstream_alignment);
         let bitstream = create_buffer(
             device,
             D3D12_HEAP_TYPE_READBACK,
@@ -373,9 +395,6 @@ impl VideoEncoder {
             metadata,
             resolved_metadata,
             bitstream_capacity,
-            bitstream_alignment,
-            metadata_size,
-            metadata_alignment,
             sequence_header,
             aligned_header_size,
             fence,
@@ -385,8 +404,6 @@ impl VideoEncoder {
             fps: fps.max(1.0),
             bitrate,
             hevc,
-            output_path: output_path.to_path_buf(),
-            output: Some(output),
             finished: false,
         })
     }
@@ -395,7 +412,7 @@ impl VideoEncoder {
         &mut self,
         input: &ID3D12Resource,
         frame_index: u64,
-    ) -> Result<(), String> {
+    ) -> Result<Vec<u8>, String> {
         let desc = unsafe { input.GetDesc() };
         if desc.Format != DXGI_FORMAT_NV12
             || desc.Width != u64::from(self.width)
@@ -430,14 +447,14 @@ impl VideoEncoder {
 
         let mut h264_gop = D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_H264 {
             GOPLength: 1,
-            PPicturePeriod: 1,
+            PPicturePeriod: 0,
             pic_order_cnt_type: 0,
             log2_max_frame_num_minus4: 0,
             log2_max_pic_order_cnt_lsb_minus4: 0,
         };
         let mut hevc_gop = D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE_HEVC {
             GOPLength: 1,
-            PPicturePeriod: 1,
+            PPicturePeriod: 0,
             log2_max_pic_order_cnt_lsb_minus4: 0,
         };
         let gop = if self.hevc {
@@ -461,14 +478,14 @@ impl VideoEncoder {
             InitialQP: 0,
             MinQP: 0,
             MaxQP: 51,
-            MaxFrameBitSize: self.bitstream_capacity.saturating_mul(8),
+            MaxFrameBitSize: 0,
             TargetBitRate: self.bitrate.max(1),
             VBVCapacity: self.bitrate.max(1),
-            InitialVBVFullness: self.bitrate.max(1) / 2,
+            InitialVBVFullness: self.bitrate.max(1).saturating_mul(3) / 4,
         };
         let rate_control = D3D12_VIDEO_ENCODER_RATE_CONTROL {
             Mode: D3D12_VIDEO_ENCODER_RATE_CONTROL_MODE_CBR,
-            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_NONE,
+            Flags: D3D12_VIDEO_ENCODER_RATE_CONTROL_FLAG_ENABLE_VBV_SIZES,
             ConfigParams: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS {
                 DataSize: std::mem::size_of::<D3D12_VIDEO_ENCODER_RATE_CONTROL_CBR>() as u32,
                 Anonymous: D3D12_VIDEO_ENCODER_RATE_CONTROL_CONFIGURATION_PARAMS_0 {
@@ -494,8 +511,10 @@ impl VideoEncoder {
         h264_picture.FrameType = D3D12_VIDEO_ENCODER_FRAME_TYPE_H264_IDR_FRAME;
         h264_picture.pic_parameter_set_id = 0;
         h264_picture.idr_pic_id = frame_index as u32;
-        h264_picture.PictureOrderCountNumber = frame_index as u32;
-        h264_picture.FrameDecodingOrderNumber = frame_index as u32;
+        // Every frame is currently an IDR. Reset the picture order at each
+        // random-access point so it matches the generated SPS/PPS contract.
+        h264_picture.PictureOrderCountNumber = 0;
+        h264_picture.FrameDecodingOrderNumber = 0;
         let mut hevc_picture = D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA_HEVC::default();
         hevc_picture.FrameType = D3D12_VIDEO_ENCODER_FRAME_TYPE_HEVC_IDR_FRAME;
         hevc_picture.PictureOrderCountNumber = frame_index as u32;
@@ -584,7 +603,7 @@ impl VideoEncoder {
         let mut h264_profile = D3D12_VIDEO_ENCODER_PROFILE_H264_MAIN;
         let mut hevc_profile = D3D12_VIDEO_ENCODER_PROFILE_HEVC_MAIN;
         let profile = profile_desc(self.hevc, &mut h264_profile, &mut hevc_profile);
-        let resolve_input =
+        let mut resolve_input =
             windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_RESOLVE_METADATA_INPUT_ARGUMENTS {
                 EncoderCodec: if self.hevc {
                     D3D12_VIDEO_ENCODER_CODEC_HEVC
@@ -603,7 +622,7 @@ impl VideoEncoder {
                         Offset: 0,
                     },
             };
-        let resolve_output =
+        let mut resolve_output =
             windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_RESOLVE_METADATA_OUTPUT_ARGUMENTS {
                 ResolvedLayoutMetadata:
                     D3D12_VIDEO_ENCODER_ENCODE_OPERATION_METADATA_BUFFER {
@@ -656,28 +675,26 @@ impl VideoEncoder {
             },
             written,
         )?;
-        let output = self
-            .output
-            .as_mut()
-            .ok_or_else(|| "D3D12 bitstream output is already closed".to_string())?
-            .write_all(if frame_index == 0 {
-                &self.sequence_header
-            } else {
-                &[]
-            })
-            .map_err(|error| format!("failed to write encoded bitstream: {error}"))?;
-        output
-            .write_all(&bytes)
-            .map_err(|error| format!("failed to write encoded bitstream: {error}"))?;
-        Ok(())
+        Ok(bytes)
     }
 
-    pub(crate) fn finish(mut self) -> Result<(), String> {
-        if let Some(mut output) = self.output.take() {
-            output
-                .flush()
-                .map_err(|error| format!("failed to flush D3D12 bitstream: {error}"))?;
-        }
+    pub(crate) fn is_hevc(&self) -> bool {
+        self.hevc
+    }
+
+    pub(crate) fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub(crate) fn headers(&self) -> &[u8] {
+        &self.sequence_header
+    }
+
+    pub(crate) fn finish(&mut self) -> Result<(), String> {
         self.finished = true;
         Ok(())
     }
@@ -687,18 +704,6 @@ impl VideoEncoder {
             .map_err(|error| format!("failed to reset D3D12 video-encode allocator: {error}"))?;
         unsafe { self.command_list.Reset(&self.allocator) }
             .map_err(|error| format!("failed to reset D3D12 video-encode command list: {error}"))
-    }
-
-    fn begin_copy_command_list(&self) -> Result<(), String> {
-        unsafe { self.copy_allocator.Reset() }
-            .map_err(|error| format!("failed to reset D3D12 copy allocator: {error}"))?;
-        unsafe {
-            self.copy_command_list.Reset(
-                &self.copy_allocator,
-                None::<&windows::Win32::Graphics::Direct3D12::ID3D12PipelineState>,
-            )
-        }
-        .map_err(|error| format!("failed to reset D3D12 copy command list: {error}"))
     }
 
     fn submit_video_and_wait(&mut self) -> Result<(), String> {
@@ -729,34 +734,6 @@ impl VideoEncoder {
         }
     }
 
-    fn submit_copy_and_wait(&mut self) -> Result<(), String> {
-        unsafe { self.copy_command_list.Close() }
-            .map_err(|error| format!("failed to close D3D12 copy command list: {error}"))?;
-        let command_list: ID3D12CommandList = self
-            .copy_command_list
-            .cast()
-            .map_err(|error| format!("failed to cast D3D12 copy command list: {error}"))?;
-        unsafe { self.copy_queue.ExecuteCommandLists(&[Some(command_list)]) };
-        let fence_value = self.next_fence_value;
-        self.next_fence_value = self.next_fence_value.saturating_add(1);
-        unsafe { self.copy_queue.Signal(&self.fence, fence_value) }
-            .map_err(|error| format!("failed to signal D3D12 copy fence: {error}"))?;
-        let deadline = std::time::Instant::now() + ENCODE_WAIT_TIMEOUT;
-        loop {
-            let completed = unsafe { self.fence.GetCompletedValue() };
-            if completed >= fence_value {
-                return Ok(());
-            }
-            if completed == u64::MAX {
-                return Err("D3D12 device was removed during encoded bitstream copy".to_string());
-            }
-            if std::time::Instant::now() >= deadline {
-                return Err("timed out waiting for encoded bitstream copy".to_string());
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    }
-
     fn read_metadata(&self) -> Result<D3D12_VIDEO_ENCODER_OUTPUT_METADATA, String> {
         let range = D3D12_RANGE {
             Begin: 0,
@@ -764,45 +741,256 @@ impl VideoEncoder {
         };
         let mut pointer = std::ptr::null_mut();
         unsafe {
-            self.metadata_readback
+            self.resolved_metadata
                 .Map(0, Some(&range as *const _), Some(&mut pointer))
         }
         .map_err(|error| format!("failed to map D3D12 encode metadata: {error}"))?;
         let metadata = unsafe { *(pointer as *const D3D12_VIDEO_ENCODER_OUTPUT_METADATA) };
-        unsafe { self.metadata_readback.Unmap(0, Some(&range as *const _)) };
+        unsafe { self.resolved_metadata.Unmap(0, Some(&range as *const _)) };
         Ok(metadata)
     }
 
-    fn readback_bytes(&self, length: u64) -> Result<Vec<u8>, String> {
+    fn readback_bytes(&self, offset: u64, length: u64) -> Result<Vec<u8>, String> {
         let range = D3D12_RANGE {
-            Begin: 0,
-            End: length as usize,
+            Begin: offset as usize,
+            End: (offset + length) as usize,
         };
         let mut pointer = std::ptr::null_mut();
         unsafe {
-            self.bitstream_readback
+            self.bitstream
                 .Map(0, Some(&range as *const _), Some(&mut pointer))
         }
         .map_err(|error| format!("failed to map D3D12 encoded bitstream: {error}"))?;
-        let bytes = unsafe { std::slice::from_raw_parts(pointer as *const u8, length as usize) };
+        let bytes = unsafe {
+            std::slice::from_raw_parts(pointer.cast::<u8>().add(offset as usize), length as usize)
+        };
         let result = bytes.to_vec();
-        unsafe { self.bitstream_readback.Unmap(0, Some(&range as *const _)) };
+        unsafe { self.bitstream.Unmap(0, Some(&range as *const _)) };
         Ok(result)
     }
 }
 
-impl Drop for VideoEncoder {
+impl Drop for D3d12VideoEncoder {
     fn drop(&mut self) {
-        self.output.take();
-        if !self.finished {
-            let _ = std::fs::remove_file(&self.output_path);
+        let _ = self.finished;
+    }
+}
+
+fn align_up(value: u64, alignment: u64) -> u64 {
+    if alignment <= 1 {
+        return value;
+    }
+    value
+        .saturating_add(alignment - 1)
+        .checked_div(alignment)
+        .unwrap_or(0)
+        .saturating_mul(alignment)
+}
+
+struct BitWriter {
+    bytes: Vec<u8>,
+    current: u8,
+    bit_count: u8,
+}
+
+impl BitWriter {
+    fn new() -> Self {
+        Self {
+            bytes: Vec::new(),
+            current: 0,
+            bit_count: 0,
         }
     }
+
+    fn bit(&mut self, value: bool) {
+        self.current = (self.current << 1) | u8::from(value);
+        self.bit_count += 1;
+        if self.bit_count == 8 {
+            self.bytes.push(self.current);
+            self.current = 0;
+            self.bit_count = 0;
+        }
+    }
+
+    fn bits(&mut self, value: u32, count: u8) {
+        for shift in (0..count).rev() {
+            self.bit(value & (1 << shift) != 0);
+        }
+    }
+
+    fn unsigned_exp_golomb(&mut self, value: u32) {
+        let code_num = value.saturating_add(1);
+        let width = 32 - code_num.leading_zeros();
+        for _ in 1..width {
+            self.bit(false);
+        }
+        self.bits(code_num, width as u8);
+    }
+
+    fn signed_exp_golomb(&mut self, value: i32) {
+        let code_num = if value <= 0 {
+            value.unsigned_abs().saturating_mul(2)
+        } else {
+            value as u32 * 2 - 1
+        };
+        self.unsigned_exp_golomb(code_num);
+    }
+
+    fn finish(mut self) -> Vec<u8> {
+        self.bit(true);
+        while self.bit_count != 0 {
+            self.bit(false);
+        }
+        self.bytes
+    }
+}
+
+fn annex_b_nal(nal_type: u8, rbsp: &[u8]) -> Vec<u8> {
+    let mut nal = vec![0, 0, 0, 1, nal_type];
+    let mut zero_count = 0;
+    for &byte in rbsp {
+        if zero_count >= 2 && byte <= 3 {
+            nal.push(3);
+            zero_count = 0;
+        }
+        nal.push(byte);
+        if byte == 0 {
+            zero_count += 1;
+        } else {
+            zero_count = 0;
+        }
+    }
+    nal
+}
+
+fn h264_sequence_header(width: u32, height: u32) -> Vec<u8> {
+    let coded_width = width.div_ceil(16) * 16;
+    let coded_height = height.div_ceil(16) * 16;
+    let mut sps = BitWriter::new();
+    sps.bits(77, 8); // Main profile
+    sps.bits(0, 8); // constraint flags and reserved bits
+    sps.bits(51, 8); // level 5.1 supports 4K30
+    sps.unsigned_exp_golomb(0); // seq_parameter_set_id
+    sps.unsigned_exp_golomb(0); // log2_max_frame_num_minus4
+    sps.unsigned_exp_golomb(0); // pic_order_cnt_type
+    sps.unsigned_exp_golomb(0); // log2_max_pic_order_cnt_lsb_minus4
+    sps.unsigned_exp_golomb(1); // max_num_ref_frames
+    sps.bit(false); // gaps_in_frame_num_value_allowed_flag
+    sps.unsigned_exp_golomb(coded_width / 16 - 1);
+    sps.unsigned_exp_golomb(coded_height / 16 - 1);
+    sps.bit(true); // frame_mbs_only_flag
+    sps.bit(true); // direct_8x8_inference_flag
+    let crop_right = (coded_width - width) / 2;
+    let crop_bottom = (coded_height - height) / 2;
+    let cropped = crop_right != 0 || crop_bottom != 0;
+    sps.bit(cropped);
+    if cropped {
+        sps.unsigned_exp_golomb(0); // crop_left
+        sps.unsigned_exp_golomb(crop_right);
+        sps.unsigned_exp_golomb(0); // crop_top
+        sps.unsigned_exp_golomb(crop_bottom);
+    }
+    sps.bit(false); // vui_parameters_present_flag
+
+    let mut pps = BitWriter::new();
+    pps.unsigned_exp_golomb(0); // pic_parameter_set_id
+    pps.unsigned_exp_golomb(0); // seq_parameter_set_id
+    pps.bit(false); // entropy_coding_mode_flag (CAVLC)
+    pps.bit(false); // bottom_field_pic_order_in_frame_present_flag
+    pps.unsigned_exp_golomb(0); // num_slice_groups_minus1
+    pps.unsigned_exp_golomb(0); // num_ref_idx_l0_default_active_minus1
+    pps.unsigned_exp_golomb(0); // num_ref_idx_l1_default_active_minus1
+    pps.bit(false); // weighted_pred_flag
+    pps.bits(0, 2); // weighted_bipred_idc
+    pps.signed_exp_golomb(0); // pic_init_qp_minus26
+    pps.signed_exp_golomb(0); // pic_init_qs_minus26
+    pps.signed_exp_golomb(0); // chroma_qp_index_offset
+    pps.bit(true); // deblocking_filter_control_present_flag
+    pps.bit(false); // constrained_intra_pred_flag
+    pps.bit(false); // redundant_pic_cnt_present_flag
+
+    let mut result = annex_b_nal(0x67, &sps.finish());
+    result.extend(annex_b_nal(0x68, &pps.finish()));
+    result
+}
+
+fn write_bitstream_header(
+    resource: &ID3D12Resource,
+    header: &[u8],
+    aligned_size: u64,
+) -> Result<(), String> {
+    let mut pointer = std::ptr::null_mut();
+    unsafe { resource.Map(0, None, Some(&mut pointer)) }
+        .map_err(|error| format!("failed to map D3D12 bitstream header: {error}"))?;
+    unsafe {
+        let destination =
+            std::slice::from_raw_parts_mut(pointer.cast::<u8>(), aligned_size as usize);
+        destination.fill(0);
+        destination[..header.len()].copy_from_slice(header);
+        resource.Unmap(0, None);
+    }
+    Ok(())
 }
 
 fn encoded_buffer_capacity(width: u32, height: u32) -> u64 {
     let pixels = u64::from(width).saturating_mul(u64::from(height));
     pixels.saturating_mul(2).saturating_add(4 * 1024 * 1024)
+}
+
+fn select_supported_h264_deblocking_mode(
+    video_device: &ID3D12VideoDevice3,
+    profile: D3D12_VIDEO_ENCODER_PROFILE_DESC,
+    config: &mut D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264,
+) -> Result<(), String> {
+    let mut h264_support = D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264::default();
+    let mut codec_support = D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT {
+        NodeIndex: 0,
+        Codec: D3D12_VIDEO_ENCODER_CODEC_H264,
+        Profile: profile,
+        CodecSupportLimits: D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT {
+            DataSize: std::mem::size_of::<D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_H264>()
+                as u32,
+            Anonymous: D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT_0 {
+                pH264Support: &mut h264_support,
+            },
+        },
+        ..Default::default()
+    };
+    unsafe {
+        video_device.CheckFeatureSupport(
+            windows::Win32::Media::MediaFoundation::D3D12_FEATURE_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT,
+            (&mut codec_support
+                as *mut D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT)
+                .cast(),
+            std::mem::size_of::<D3D12_FEATURE_DATA_VIDEO_ENCODER_CODEC_CONFIGURATION_SUPPORT>()
+                as u32,
+        )
+    }
+    .map_err(|error| format!("failed to query H.264 codec configuration support: {error}"))?;
+    if !codec_support.IsSupported.as_bool() {
+        return Err("D3D12 H.264 codec configuration is unsupported".to_string());
+    }
+
+    if h264_support.DisableDeblockingFilterSupportedModes.contains(
+        windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_SLICES_DEBLOCKING_MODE_FLAG_0_ALL_LUMA_CHROMA_SLICE_BLOCK_EDGES_ALWAYS_FILTERED,
+    ) {
+        config.DisableDeblockingFilterConfig =
+            D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_SLICES_DEBLOCKING_MODE_0_ALL_LUMA_CHROMA_SLICE_BLOCK_EDGES_ALWAYS_FILTERED;
+        return Ok(());
+    }
+
+    if h264_support.DisableDeblockingFilterSupportedModes.contains(
+        windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_SLICES_DEBLOCKING_MODE_FLAG_1_DISABLE_ALL_SLICE_BLOCK_EDGES,
+    ) {
+        config.DisableDeblockingFilterConfig =
+            windows::Win32::Media::MediaFoundation::D3D12_VIDEO_ENCODER_CODEC_CONFIGURATION_H264_SLICES_DEBLOCKING_MODE_1_DISABLE_ALL_SLICE_BLOCK_EDGES;
+        crate::logging::write(
+            "[Export:WinGPU] H.264 deblocking filter is unavailable; using the driver's disable mode",
+        );
+        return Ok(());
+    }
+
+    Err("D3D12 H.264 driver exposes no usable deblocking mode".to_string())
 }
 
 fn profile_desc(

@@ -667,7 +667,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       ...(connectedDeviceMetadata ?? {}),
       exifModel,
     }) ?? ''
-    if ((isLegacyBorderTitle(currentTitle) || !currentTitle) && currentTitle !== deviceTitle) {
+    // Legacy titles are normalized to an empty custom title. If the resolved
+    // device title is itself legacy, there is no useful value to persist and
+    // committing it would clear an active color preview on every render.
+    const hasConcreteDeviceTitle = Boolean(deviceTitle) && !isLegacyBorderTitle(deviceTitle)
+    if (hasConcreteDeviceTitle && (isLegacyBorderTitle(currentTitle) || !currentTitle) && currentTitle !== deviceTitle) {
       edit.commitPatch({ border: { title: deviceTitle } })
     }
   }, [borderMetadata, connectedDeviceMetadata, edit.commitPatch, edit.pipeline.border.title, media.activeMedia])

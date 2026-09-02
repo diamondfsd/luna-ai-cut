@@ -3,6 +3,7 @@ mod converter;
 mod decoder;
 mod device;
 mod encoder;
+mod encoder_backend;
 mod export;
 mod preview;
 mod preview_surface;
@@ -69,7 +70,7 @@ pub(crate) fn export_video(
     let _mf = MediaFoundationGuard::start()?;
     let (d3d12_device, d3d12_queue) = compositor.dx12_device_and_queue()?;
     let interop = device::InteropDevice::new(&d3d12_device)?;
-    let encoders = capabilities::probe_hardware_encoders()?;
+    let encoders = capabilities::probe_hardware_encoders(&d3d12_device)?;
 
     crate::logging::write(&format!(
         "[Export:WinGPU] backend=d3d12-video pixel_transport=GPU bitstream_readback=CPU h264={} hevc={}",
@@ -78,10 +79,10 @@ pub(crate) fn export_video(
     if !encoders.any() {
         return Err("no usable hardware video encoder was found".to_string());
     }
-    let hevc = !encoders.h264 && encoders.hevc;
+    let preferred_codec = if encoders.h264 { "h264" } else { "hevc" };
     crate::logging::write(&format!(
         "[Export:WinGPU] pipeline=mf-d3d12-decode,d3d12-video-process,wgpu-compose,d3d12-video-encode codec={} sync=d3d12-fence",
-        if hevc { "hevc" } else { "h264" },
+        preferred_codec,
     ));
 
     let result = export::run(
@@ -94,11 +95,11 @@ pub(crate) fn export_video(
         total_frames,
         bitrate,
         include_audio,
-        hevc,
         task,
         &interop,
         &d3d12_device,
         &d3d12_queue,
+        encoders,
         legacy_input_mode,
     );
     if result.is_err() {

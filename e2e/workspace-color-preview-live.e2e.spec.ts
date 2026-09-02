@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
-import type { Page } from '@playwright/test'
+import type { ConsoleMessage, Page } from '@playwright/test'
 import { expect, test } from './fixtures/lunaElectron'
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
@@ -61,6 +61,25 @@ async function exerciseLiveExposure(page: Page): Promise<void> {
   const sliderStep = Number.isFinite(sliderStepAttribute) && sliderStepAttribute > 0 ? sliderStepAttribute : 1
 
   const originalPreview = await canvasSignature(page)
+  const previewTrace: Array<{ base: string; exposure: number | null; at: number }> = []
+  const traceReads: Promise<void>[] = []
+  let dragStartedAt = Number.POSITIVE_INFINITY
+  const traceConsole = (message: ConsoleMessage): void => {
+    if (message.type() !== 'info' || !message.text().includes('[PreviewDebug] preview state applied')) return
+    const metadataArg = message.args().at(-1)
+    if (!metadataArg) return
+    const at = Date.now()
+    traceReads.push(metadataArg.jsonValue().then((value) => {
+      if (!value || typeof value !== 'object') return
+      const metadata = value as { base?: unknown; nextColor?: { exposure?: unknown } }
+      previewTrace.push({
+        base: typeof metadata.base === 'string' ? metadata.base : '',
+        exposure: typeof metadata.nextColor?.exposure === 'number' ? metadata.nextColor.exposure : null,
+        at,
+      })
+    }).catch(() => undefined))
+  }
+  page.on('console', traceConsole)
   await page.evaluate(() => {
     const target = window as Window & { __colorSliderPointerUpCount?: number }
     target.__colorSliderPointerUpCount = 0
@@ -69,6 +88,7 @@ async function exerciseLiveExposure(page: Page): Promise<void> {
     }, { capture: true })
   })
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  dragStartedAt = Date.now()
   await page.mouse.down()
   try {
     const moveSliderWhilePressed = async (fromRatio: number, toRatio: number): Promise<void> => {
@@ -99,9 +119,18 @@ async function exerciseLiveExposure(page: Page): Promise<void> {
     }
   } finally {
     await page.mouse.up()
+    await Promise.all(traceReads)
+    page.off('console', traceConsole)
   }
 
   await expect(control.locator('input.workspace-param-value-input')).not.toHaveValue('0')
+  const dragTrace = previewTrace
+    .filter((entry) => entry.at >= dragStartedAt)
+    .sort((left, right) => left.at - right.at)
+  expect(dragTrace.length).toBeGreaterThan(2)
+  const previewUpdates = dragTrace.filter((entry) => entry.exposure !== null)
+  expect(previewUpdates.length).toBeGreaterThan(2)
+  expect(previewUpdates.slice(1).map((entry) => entry.base)).not.toContain('pipeline')
 }
 
 test('workspace color slider updates an image preview while pointer remains down', async ({ lunaApp }) => {
