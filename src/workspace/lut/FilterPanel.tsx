@@ -149,9 +149,9 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
       if (activeLutId === lut.filePath || activeLutId === lut.id) {
         onChange(null)
       }
-      toast.success('滤镜已删除')
+      toast.success('Lut 已删除')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '无法删除这个滤镜')
+      toast.error(err instanceof Error ? err.message : '无法删除这个 Lut')
     } finally {
       setDeletingLutPath(null)
     }
@@ -205,7 +205,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <path d="m21 15-5-5L5 21" />
               </svg>
-              <span>选择一个滤镜</span>
+              <span>选择一个 Lut</span>
             </div>
           )}
           {activeLutInfo ? (
@@ -253,7 +253,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <button className="filter-reset" onClick={() => { onChange(null); }} title="重置滤镜">
+                  <button className="filter-reset" onClick={() => { onChange(null); }} title="重置 Lut">
                     <RotateCcw size={11} />
                   </button>
                 </div>
@@ -274,7 +274,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
         </section>
 
         <div className="filter-groups-toolbar">
-          <span>滤镜分类</span>
+          <span>Lut 分类</span>
           <Button
             variant="ghost"
             size="mini"
@@ -297,7 +297,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
                 className="lut-category-accordion"
                 title={<><span>{category}</span><span className="lut-category-count">{items.length}</span></>}
                 actions={editable ? (
-                  <Tooltip content={editing ? '完成编辑' : '编辑自定义滤镜'}>
+                  <Tooltip content={editing ? '完成编辑' : '编辑自定义 Lut'}>
                     <IconButton
                       variant="ghost"
                       size="mini"
@@ -333,7 +333,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
               </Accordion>
             )
           }) : (
-            <div className="filter-empty">{searchKey ? '没有匹配的滤镜' : '暂无可用滤镜'}</div>
+            <div className="filter-empty">{searchKey ? '没有匹配的 Lut' : '暂无可用 Lut'}</div>
           )}
         </main>
       </div>
