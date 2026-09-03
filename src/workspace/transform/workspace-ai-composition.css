@@ -1,4 +1,4 @@
-.workspace-ai-composition-panel {
-  padding: 12px 0 14px;
-  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+.workspace-ai-composition-button {
+  width: 100%;
+  min-width: 0;
 }

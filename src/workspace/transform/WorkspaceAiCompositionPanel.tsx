@@ -42,6 +42,9 @@ export function WorkspaceAiCompositionPanel({
   useEffect(() => {
     requestIdRef.current += 1
     setBusy(false)
+    return () => {
+      requestIdRef.current += 1
+    }
   }, [filePath, frameTime, sourceAspect, orientation, rotate, aspectRatio])
 
   async function analyze(): Promise<void> {
@@ -87,16 +90,16 @@ export function WorkspaceAiCompositionPanel({
   }
 
   return (
-    <section className="workspace-ai-composition-panel" aria-label="AI 构图">
-      <Button
-        variant="secondary"
-        size="compact"
-        icon={busy ? <Loader2 className="spin" size={14} /> : <Sparkles size={14} />}
-        disabled={!filePath || busy}
-        onClick={() => void analyze()}
-      >
-        {busy ? '构图中' : 'AI 构图'}
-      </Button>
-    </section>
+    <Button
+      className="workspace-ai-composition-button"
+      variant="secondary"
+      size="compact"
+      icon={busy ? <Loader2 className="spin" size={14} /> : <Sparkles size={14} />}
+      disabled={!filePath || busy}
+      onClick={() => void analyze()}
+      aria-label="AI 构图"
+    >
+      {busy ? '构图中' : 'AI 构图'}
+    </Button>
   )
 }

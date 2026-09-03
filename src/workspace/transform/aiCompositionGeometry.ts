@@ -18,6 +18,7 @@ export interface AiCropCandidateSet {
 }
 
 const MIN_SUGGESTION_SCORE_GAIN = 0.01
+const MAX_SCORABLE_CANDIDATES = 31
 
 function sourceBoundsToFrameBounds(bounds: CompositionBounds, options: CropConstraintOptions): CompositionBounds {
   const points = [
@@ -73,20 +74,36 @@ export function compositionCropCandidates(
     : [0.92, 0.82, 0.72]
   const anchors = [1 / 3, 0.5, 2 / 3]
   const candidates: CropRect[] = []
-  for (const scale of scales) {
+  const addCandidate = (scale: number, anchorX: number, anchorY: number): void => {
+    if (candidates.length >= MAX_SCORABLE_CANDIDATES) return
     const width = base.w * scale
     const height = base.h * scale
+    const candidate = fitCropInsideImage(clampCrop({
+      x: subjectBounds.x + subjectBounds.width / 2 - anchorX * width,
+      y: subjectBounds.y + subjectBounds.height / 2 - anchorY * height,
+      w: width,
+      h: height,
+    }), options.sourceAspect, options.orientation, options.rotate)
+    if (cropContainsBounds(candidate, subjectBounds) && !candidates.some((existing) => sameCrop(existing, candidate))) {
+      candidates.push(candidate)
+    }
+  }
+  for (const scale of scales) {
     for (const anchorX of anchors) {
       for (const anchorY of anchors) {
-        const candidate = fitCropInsideImage(clampCrop({
-          x: subjectBounds.x + subjectBounds.width / 2 - anchorX * width,
-          y: subjectBounds.y + subjectBounds.height / 2 - anchorY * height,
-          w: width,
-          h: height,
-        }), options.sourceAspect, options.orientation, options.rotate)
-        if (cropContainsBounds(candidate, subjectBounds)) candidates.push(candidate)
+        addCandidate(scale, anchorX, anchorY)
       }
     }
+  }
+  // Add two extra composition styles within the scorer's 32-crop request limit:
+  // a wider environmental frame and a tighter subject-focused frame.
+  for (const [scale, anchorX, anchorY] of [
+    [1, 1 / 3, 0.5],
+    [1, 2 / 3, 0.5],
+    [0.62, 0.5, 0.5],
+    [0.62, 0.5, 1 / 3],
+  ] as const) {
+    addCandidate(scale, anchorX, anchorY)
   }
   const effectiveCurrentCrop = currentCrop
     ? fitCropInsideImage(clampCrop(currentCrop), options.sourceAspect, options.orientation, options.rotate)
