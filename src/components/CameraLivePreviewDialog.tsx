@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CameraOff, Copy, Radio, Square } from 'lucide-react'
 
-import { Button, Dialog, LoadingIndicator, toast } from '../ui'
+import { Button, Dialog, IconButton, LoadingIndicator, toast } from '../ui'
 import { buildCodecString, detectCodec, drainAccessUnits, splitNalUnits } from '../lib/annexB'
 import type { CameraVideoStreamStatus } from '../shared/types'
 import '../styles/camera-live-preview.css'
@@ -248,6 +248,49 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
 
   const waiting = !error && (!status || status.state === 'starting' || (status.state === 'running' && !hasFrame))
   const unsupported = status?.state === 'unsupported'
+  const isObsStreaming = Boolean(status?.obsStreamUrl)
+  const canControlObs = status?.state === 'running'
+
+  const footer = (
+    <div className={`camera-live-preview-footer${isObsStreaming ? ' is-streaming' : ''}`}>
+      {isObsStreaming ? (
+        <div className="camera-live-preview-obs-url" aria-live="polite">
+          <span>OBS 推流地址</span>
+          <div className="camera-live-preview-obs-url-value">
+            <code>{status?.obsStreamUrl}</code>
+            <IconButton
+              variant="ghost"
+              size="mini"
+              icon={<Copy size={14} />}
+              aria-label="复制 OBS 推流地址"
+              title="复制 OBS 推流地址"
+              onClick={() => void copyObsUrl()}
+              disabled={obsBusy}
+            />
+          </div>
+        </div>
+      ) : null}
+      <Button
+        variant="secondary"
+        size="compact"
+        onClick={() => onOpenChange(false)}
+      >
+        关闭
+      </Button>
+      {canControlObs ? (
+        <Button
+          variant={isObsStreaming ? 'danger' : 'secondary'}
+          size="compact"
+          icon={isObsStreaming ? <Square size={13} /> : <Radio size={15} />}
+          onClick={() => void toggleObsStream()}
+          disabled={obsBusy}
+        >
+          {obsBusy ? '准备中...' : isObsStreaming ? '停止推流' : '启动推流'}
+        </Button>
+      ) : null}
+      {obsError && <span className="camera-live-preview-obs-error" role="alert">{obsError}</span>}
+    </div>
+  )
 
   return (
     <Dialog
@@ -256,7 +299,7 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
       title="相机预览"
       className="camera-live-preview-dialog"
       tone="dark"
-      footer={<Button variant="secondary" onClick={() => onOpenChange(false)}>关闭</Button>}
+      footer={footer}
     >
       <div className="camera-live-preview-body">
         <div
@@ -294,59 +337,6 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
           ) : null}
           {status && status.frames > 0 ? <span className="camera-live-preview-count">已接收画面</span> : null}
         </div>
-        {status?.state === 'running' && (
-          <section className="camera-live-preview-obs" aria-label="OBS 推送">
-            <div className="camera-live-preview-obs-heading">
-              <div className="camera-live-preview-obs-title">
-                <Radio size={16} />
-                <strong>OBS 推送</strong>
-                <span className={`camera-live-preview-obs-state${status.obsStreamUrl ? ' active' : ''}`}>
-                  {status.obsStreamUrl ? '已开启' : '未开启'}
-                </span>
-              </div>
-              <p>把当前相机画面提供给 OBS。添加 OBS 媒体源时填入下方地址，关闭预览后会自动停止。</p>
-            </div>
-            {status.obsStreamUrl ? (
-              <div className="camera-live-preview-obs-actions">
-                <div className="camera-live-preview-obs-url">
-                  <span>OBS 地址</span>
-                  <code>{status.obsStreamUrl}</code>
-                </div>
-                <div className="camera-live-preview-obs-buttons">
-                  <Button
-                    variant="secondary"
-                    size="mini"
-                    icon={<Copy size={14} />}
-                    onClick={() => void copyObsUrl()}
-                    disabled={obsBusy}
-                  >
-                    复制地址
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="mini"
-                    icon={<Square size={13} />}
-                    onClick={() => void toggleObsStream()}
-                    disabled={obsBusy}
-                  >
-                    停止
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Button
-                variant="secondary"
-                size="compact"
-                icon={<Radio size={15} />}
-                onClick={() => void toggleObsStream()}
-                disabled={obsBusy}
-              >
-                {obsBusy ? '正在准备 OBS 地址...' : '启动 OBS 推送'}
-              </Button>
-            )}
-            {obsError && <span className="camera-live-preview-obs-error" role="alert">{obsError}</span>}
-          </section>
-        )}
       </div>
     </Dialog>
   )

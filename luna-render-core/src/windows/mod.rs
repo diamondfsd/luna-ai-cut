@@ -2,6 +2,7 @@ mod capabilities;
 mod converter;
 mod decoder;
 mod device;
+mod encoder;
 mod encoder_backend;
 mod export;
 mod ffmpeg_d3d11;
@@ -73,9 +74,9 @@ pub(crate) fn export_video(
     crate::logging::write(&format!(
         "[Export:WinGPU] backend=vendor-encoder pixel_transport=GPU bitstream_readback=CPU",
     ));
-    crate::logging::write(&format!(
-        "[Export:WinGPU] pipeline=decode-to-gpu,wgpu-d3d12-compose,d3d11-video-process-bgra-to-nv12,vendor-encode,ffmpeg-mux",
-    ));
+    crate::logging::write(
+        "[Export:WinGPU] pipeline=decode-to-gpu,wgpu-d3d12-compose,d3d11-video-process-bgra-to-nv12,vendor-encode,ffmpeg-mux sync=d3d12-fence readback=cpu-bitstream-only",
+    );
 
     let result = export::run(
         compositor,
