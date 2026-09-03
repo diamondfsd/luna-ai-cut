@@ -261,6 +261,9 @@ export async function autoJoinDeviceWifi(
     ssid: candidateSsid,
     timeoutMs: 30000,
     password,
+    // macOS may hide the current SSID from CoreWLAN even after association.
+    // The Luna network address and camera control handshake below are the actual connection checks.
+    skipSsidVerification: Boolean(endpoint),
   })
   logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
     sessionKey,
@@ -296,21 +299,6 @@ export async function autoJoinDeviceWifi(
       ssid: candidateSsid,
       wifiPasswordRequired: true,
       message: `已尝试连接 ${candidateSsid}，但本机未获取 Luna Wi-Fi 地址（192.168.42.x），未建立相机连接`,
-    }
-  }
-  if (network.ssid && network.ssid.trim().toLocaleLowerCase() !== candidateSsid.trim().toLocaleLowerCase()) {
-    logMainWarn('[设备 Wi-Fi] 当前 SSID 与目标网络不一致', {
-      sessionKey,
-      targetSsid: candidateSsid,
-      currentSsid: network.ssid,
-      address: network.address,
-    })
-    return {
-      attempted: true,
-      connected: false,
-      ssid: network.ssid,
-      wifiPasswordRequired: true,
-      message: `当前 Wi-Fi 为 ${network.ssid}，不是目标网络 ${candidateSsid}`,
     }
   }
   if (endpoint) {

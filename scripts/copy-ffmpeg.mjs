@@ -22,8 +22,9 @@ import { pipeline } from 'node:stream/promises'
 import { buildDependencyUrl } from './build-dependency-sources.mjs'
 
 const require = createRequire(import.meta.url)
+const { path7za } = require('7zip-bin')
 
-// ─── 代理配置（从环境变量读取，加速 GitHub 访问） ─────
+// ─── 代理配置（从环境变量读取，加速构建依赖下载） ─────
 
 const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
   || process.env.HTTP_PROXY || process.env.http_proxy || ''
@@ -38,6 +39,46 @@ if (proxyUrl) {
   }
 }
 
+function loadGitCodeToken() {
+  if (process.env.GITCODE_TOKEN) return process.env.GITCODE_TOKEN
+
+  let directory = process.cwd()
+  for (let depth = 0; depth < 4; depth += 1) {
+    const configPath = join(directory, 'scripts', 'deploy-release.conf')
+    if (existsSync(configPath)) {
+      for (const line of readFileSync(configPath, 'utf8').split(/\r?\n/)) {
+        const match = line.match(/^\s*(?:export\s+)?GITCODE_TOKEN=(.*)$/)
+        if (!match) continue
+        let value = match[1].trim()
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1)
+        }
+        return value
+      }
+      return null
+    }
+    const parent = dirname(directory)
+    if (parent === directory) break
+    directory = parent
+  }
+  return null
+}
+
+const gitCodeToken = loadGitCodeToken()
+
+function requestHeaders(url) {
+  if (!gitCodeToken) return undefined
+  try {
+    const hostname = new URL(url).hostname
+    if (hostname === 'gitcode.com' || hostname.endsWith('.gitcode.com')) {
+      return { 'PRIVATE-TOKEN': gitCodeToken }
+    }
+  } catch {
+    // Let the request report malformed URLs without leaking credentials.
+  }
+  return undefined
+}
+
 // ─── 解析目标平台/架构参数 ────────────────────────
 
 const targetIndex = process.argv.indexOf('--target')
@@ -49,10 +90,11 @@ const destDir = join(process.cwd(), 'resources', 'ffmpeg')
 const cacheDir = join(process.cwd(), '.ffmpeg-cache')
 const legacyStaticReleaseTag = 'b6.1.1'
 const windowsFfmpegVersion = '8.1.2'
-const windowsFfmpegArchiveName = `ffmpeg-${windowsFfmpegVersion}-full_build-shared.zip`
+const windowsFfmpegArchiveName = `ffmpeg-${windowsFfmpegVersion}-full_build-shared.7z`
 const windowsFfmpegUpstreamUrl = `https://github.com/GyanD/codexffmpeg/releases/download/${windowsFfmpegVersion}/${windowsFfmpegArchiveName}`
 const windowsFfmpegCacheKey = `ffmpeg-win32-x64-${windowsFfmpegVersion}-full-shared`
 const windowsSharedExtractDir = join(cacheDir, `ffmpeg-${windowsFfmpegVersion}-full_build-shared`)
+const windowsFfmpegSha256 = 'cba748035c21ce1431d0823c7a3a711f38616f89f87a265dceddf9b7f6749d2d'
 const darwinArm64FfprobeSha256 = 'bb2db6f5d8cef919da12fbf592119a987202a8c060a886f3cab091f9cab90b64'
 let windowsBundlePromise = null
 
@@ -65,8 +107,9 @@ mkdirSync(cacheDir, { recursive: true })
 
 function httpGet(url) {
   const mod = url.startsWith('https:') ? https : http
+  const headers = requestHeaders(url)
   return new Promise((resolve, reject) => {
-    mod.get(url, { agent: proxyAgent }, (res) => resolve(res)).on('error', reject)
+    mod.get(url, headers ? { agent: proxyAgent, headers } : { agent: proxyAgent }, (res) => resolve(res)).on('error', reject)
   })
 }
 
@@ -183,25 +226,8 @@ function findExtractedFile(root, fileName) {
   return null
 }
 
-function escapePowerShellLiteral(value) {
-  return value.replaceAll("'", "''")
-}
-
-function extractWindowsZip(archivePath, destination) {
-  const command = [
-    'Expand-Archive',
-    `-LiteralPath '${escapePowerShellLiteral(archivePath)}'`,
-    `-DestinationPath '${escapePowerShellLiteral(destination)}'`,
-    '-Force',
-  ].join(' ')
-  const result = spawnSync('powershell.exe', [
-    '-NoProfile',
-    '-NonInteractive',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-Command',
-    command,
-  ], {
+function extractWindowsArchive(archivePath, destination) {
+  const result = spawnSync(path7za, ['x', archivePath, `-o${destination}`, '-y'], {
     encoding: 'utf8',
     windowsHide: true,
     timeout: 120_000,
@@ -255,10 +281,11 @@ async function prepareWindowsBundle() {
               throw error
             }
           }
+          verifySha256(archivePath, windowsFfmpegSha256, 'Windows FFmpeg archive')
 
           rmSync(windowsSharedExtractDir, { recursive: true, force: true })
           mkdirSync(windowsSharedExtractDir, { recursive: true })
-          extractWindowsZip(archivePath, windowsSharedExtractDir)
+          extractWindowsArchive(archivePath, windowsSharedExtractDir)
 
           extractedFfmpeg = findExtractedFile(windowsSharedExtractDir, 'ffmpeg.exe')
           extractedFfprobe = findExtractedFile(windowsSharedExtractDir, 'ffprobe.exe')
