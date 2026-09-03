@@ -364,6 +364,11 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                   onCropPresetChange={onCropPresetChange}
                   onCropSizeChange={onCropSizeChange}
                 />
+              </Accordion>
+              <div className="workspace-crop-panel-actions">
+                <Button variant="secondary" size="compact" icon={<X size={14} />} onClick={edit.cancelCrop}>
+                  取消
+                </Button>
                 <WorkspaceAiCompositionPanel
                   filePath={mediaCtx.activeMedia?.path ?? null}
                   frameTime={mediaCtx.activeMedia?.kind === 'video' ? currentTime : undefined}
@@ -377,13 +382,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                     crop,
                   }))}
                 />
-              </Accordion>
-              <div className="workspace-crop-panel-actions">
-                <Button variant="secondary" size="compact" icon={<X size={14} />} onClick={edit.cancelCrop}>
-                  取消
-                </Button>
                 <Button variant="primary" size="compact" icon={<Check size={14} />} onClick={edit.confirmCrop}>
-                  完成裁剪
+                  确认
                 </Button>
               </div>
             </>

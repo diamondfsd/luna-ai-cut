@@ -63,6 +63,7 @@ const cropWithSubjectOutsideCurrent = geometry.compositionCropCandidates(
 assert.ok(cropWithSubjectOutsideCurrent)
 assert.equal(cropWithSubjectOutsideCurrent.currentIndex, cropWithSubjectOutsideCurrent.candidates.length - 1)
 assert.deepEqual(cropWithSubjectOutsideCurrent.candidates[cropWithSubjectOutsideCurrent.currentIndex], { x: 0, y: 0, w: 0.2, h: 0.2 })
+assert.ok(cropWithSubjectOutsideCurrent.candidates.length <= 32, '候选裁剪数量必须保持在评分接口限制内')
 
 const currentCropIsBest = geometry.compositionCropCandidates(
   { x: 0.35, y: 0.35, width: 0.1, height: 0.1 },
