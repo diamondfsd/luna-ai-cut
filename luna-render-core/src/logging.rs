@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
+static ONCE_MESSAGES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 pub(crate) fn init(log_path: &str) {
     std::panic::set_hook(Box::new(|info| {
@@ -39,6 +41,17 @@ pub(crate) fn write(message: &str) {
             let _ = writeln!(file, "{}", line);
             let _ = file.flush();
         }
+    }
+}
+
+pub(crate) fn write_once(message: &str) {
+    let seen = ONCE_MESSAGES.get_or_init(|| Mutex::new(HashSet::new()));
+    let should_write = seen
+        .lock()
+        .map(|mut messages| messages.insert(message.to_string()))
+        .unwrap_or(true);
+    if should_write {
+        write(message);
     }
 }
 

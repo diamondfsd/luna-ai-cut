@@ -10,7 +10,7 @@ import { normalizeFaceGroupingThreshold } from './aiSelectionFaceGroups'
 import { readAiSelectionItemCache, writeAiSelectionItemCache } from './aiSelectionItemCache'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot } from './aiSelectionOperations'
-import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideoPeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
+import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
 import { createAiSelectionPersonAvatar } from './aiSelectionPersonAvatar'
 import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, renameGlobalPerson, restoreGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
 import { prepareAiSelectionReanalysis, preserveAiSelectionUserDecisions } from './aiSelectionReanalysis'
@@ -199,14 +199,12 @@ async function runSession(session: StoredSession): Promise<void> {
     session.phase = 'ranking'
     await updateAndPersist(session)
 
-    // 人物与内容证据增量补充结果；保持进度可见，但不限制页面操作。
+    // 统一补充画面、人物和构图证据；保持进度可见，但不限制页面操作。
     try {
-      await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
+      await analyzeRecommendationEvidence(analysisContext(session), [...photos, ...videos].map((item) => item.id), controller.signal)
       session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
       rebuildSelectionResult(session, recommendationsFinalized(session))
       await updateAndPersist(session)
-      await analyzeVideoPeopleOnDemand(analysisContext(session), videos.map((item) => item.id), controller.signal)
-      session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
     } catch (error) {
       if (abortLike(error)) throw error
     }

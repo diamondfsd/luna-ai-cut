@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use crate::composition::CompositionInput;
+use crate::composition::{infer_composition_duration, CompositionInput};
 
 mod lifecycle;
 pub use lifecycle::{create_native_preview_session, destroy_native_preview_session};
@@ -165,6 +165,12 @@ fn run_native_preview_session(
         height: input.bounds.height,
         scale_factor: input.bounds.scale_factor,
     };
+    let preview_duration = input
+        .composition
+        .canvas
+        .duration
+        .filter(|duration| duration.is_finite() && *duration > 0.0)
+        .or_else(|| infer_composition_duration(&input.ffprobe_path, &input.composition));
     let mut runtime = match NativePreviewRuntime::new(
         {
             #[cfg(target_os = "macos")]
@@ -248,19 +254,35 @@ fn run_native_preview_session(
             Err(RecvTimeoutError::Disconnected) => break,
         }
 
+        if let Some(duration) =
+            preview_duration.filter(|duration| playing && current_time >= *duration)
+        {
+            current_time = duration;
+            playing = false;
+            // Keep the last decoded frame on the surface. The clock element emits
+            // its own ended event; the native worker must not advance beyond it.
+            render_requested = false;
+        }
+
         #[cfg(target_os = "windows")]
         runtime.pump_events();
 
         let now = Instant::now();
         if playing && now >= next_frame_at {
             current_time = play_started_time + now.duration_since(play_started_at).as_secs_f64();
-            render_requested = true;
+            if let Some(duration) = preview_duration.filter(|duration| current_time >= *duration) {
+                current_time = duration;
+                playing = false;
+                render_requested = false;
+            } else {
+                render_requested = true;
+            }
             next_frame_at = now + frame_interval;
         }
+        stats
+            .current_time_bits
+            .store(current_time.to_bits(), Ordering::Relaxed);
         if render_requested {
-            stats
-                .current_time_bits
-                .store(current_time.to_bits(), Ordering::Relaxed);
             match runtime.render(current_time) {
                 Ok(result) => {
                     if result.presented {
@@ -348,7 +370,7 @@ fn apply_command(
             *current_time = time.max(0.0);
             *playing = false;
             // The swap chain already contains the last presented frame. Re-rendering here
-            // forces an unnecessary D3D11On12 synchronization and can stall on Windows.
+            // forces an unnecessary D3D12 synchronization and can stall on Windows.
             // An initial pending render remains pending; explicit seeks still request a frame.
         }
         PreviewCommand::Seek(time) => {

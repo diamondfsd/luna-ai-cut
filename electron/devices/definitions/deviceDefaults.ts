@@ -3,6 +3,7 @@ import goUltraConfig from './configs/go-ultra.json'
 import pocket3Config from './configs/pocket-3.json'
 import pocket4Config from './configs/pocket-4.json'
 import pocket4ProConfig from './configs/pocket-4-pro.json'
+import action5ProConfig from './configs/action-5-pro.json'
 import type { DeviceDefinition } from '../../../src/shared/types'
 
 export const DEFAULT_DEVICE = lunaUltraConfig as DeviceDefinition
@@ -10,6 +11,7 @@ export const GO_ULTRA_DEVICE = goUltraConfig as DeviceDefinition
 export const POCKET_3_DEVICE = pocket3Config as DeviceDefinition
 export const POCKET_4_DEVICE = pocket4Config as DeviceDefinition
 export const POCKET_4_PRO_DEVICE = pocket4ProConfig as DeviceDefinition
+export const ACTION_5_PRO_DEVICE = action5ProConfig as DeviceDefinition
 
 /** 通过 deviceId 获取设备定义 */
 export function deviceDefinitionFor(deviceId?: string): DeviceDefinition {
@@ -22,6 +24,8 @@ export function deviceDefinitionFor(deviceId?: string): DeviceDefinition {
       return POCKET_4_DEVICE
     case 'dji-pocket-4-pro':
       return POCKET_4_PRO_DEVICE
+    case 'dji-action-5-pro':
+      return ACTION_5_PRO_DEVICE
     case 'luna-ultra':
     default:
       return DEFAULT_DEVICE
@@ -41,6 +45,7 @@ export function allDeviceDefinitions(): DeviceDefinition[] {
     POCKET_3_DEVICE,
     POCKET_4_DEVICE,
     POCKET_4_PRO_DEVICE,
+    ACTION_5_PRO_DEVICE,
   ]
 }
 

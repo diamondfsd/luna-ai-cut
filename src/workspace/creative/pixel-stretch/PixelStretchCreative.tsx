@@ -2,6 +2,8 @@ import { ArrowLeft, Brush, Download, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
+import { WebGpuVideoPreview } from '../../../components/WebGpuVideoPreview'
+import { useApp } from '../../../context/AppContext'
 import type { MediaMetadata, PixelStretchFlowShape, PixelStretchPathPoint, PreviewLayer, WorkspacePixelStretchState } from '../../../shared/types'
 import { Button, IconButton, LoadingIndicator, SegmentedControl, toast } from '../../../ui'
 import { useDeviceWatermark } from '../../../hooks/useDeviceWatermark'
@@ -17,6 +19,8 @@ import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
 import { CreativeCompareButton } from '../shared/CreativeCompareButton'
+import { CreativePreviewQualitySelect } from '../shared/CreativePreviewQualitySelect'
+import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import { preparePreciseSubjectModelIfNeeded } from '../shared/preparePreciseSubjectModel'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
@@ -49,6 +53,7 @@ import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 
 const DEFAULT_INTENSITY = 100
 export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
+  const { settings } = useApp()
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
@@ -90,6 +95,7 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const [maskEditing, setMaskEditing] = useState(false)
   const [showOriginal, setShowOriginal] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [webGpuPreviewFailed, setWebGpuPreviewFailed] = useState(false)
   const requestRef = useRef<string | null>(null)
   const automaticAttemptRef = useRef<string | null>(null)
   const saveTimerRef = useRef<number | null>(null)
@@ -98,6 +104,8 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const stageRef = useRef<HTMLDivElement>(null)
   const isImage = activeAsset?.kind === 'image'
   const activeMaskPath = maskOwnerId === activeAsset?.id ? maskPath : null
+  const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
+  const useWebGpuPreview = isImage && (settings?.experimentalWebGpuPreview ?? true) && !webGpuPreviewFailed
   const isHorizontalPreset = preset === 'left' || preset === 'right' || preset === 'horizontal'
   const creativeMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === PIXEL_STRETCH_MASK_LAYER_ID)
   const activeCreativeMaskLayer = creativeMaskLayer?.path === activeMaskPath ? creativeMaskLayer : undefined
@@ -129,13 +137,17 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   }, [parameterOwnerKey])
 
   useEffect(() => {
+    setWebGpuPreviewFailed(false)
+  }, [activeAssetId])
+
+  useEffect(() => {
     const restoredMaskPath = pixelStretchStateForAsset(media.currentProject, activeAssetId)?.maskPath ?? null
     setMaskPath(restoredMaskPath)
     setMaskOwnerId(restoredMaskPath ? activeAssetId ?? null : null)
     maskLayerOwnerRef.current = null
     setSubjectBounds(null)
     setMaskData(null)
-    setSourceSize(null)
+    // 保留上一张图片的画布尺寸，避免切换素材时卸载 WebGPU 预览并重新申请设备。
     setMetadata(null)
     if (!activeAsset || activeAsset.kind !== 'image') return
     let cancelled = false
@@ -282,7 +294,16 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const effectLayers = useMemo(() => activeMaskPath && subjectBounds && sourceSize
     ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: activeCreativeMaskLayer?.inverted, maskFeather: activeCreativeMaskLayer?.feather, subjectBounds, sourceAspect: sourceSize.width / sourceSize.height, flowShape, flowLength, flowCurve, flowWidth, flowEndWidth, flowPoints })
     : [], [activeCreativeMaskLayer?.feather, activeCreativeMaskLayer?.inverted, activeMaskPath, angle, baseLayers, flowCurve, flowEndWidth, flowLength, flowPoints, flowShape, flowWidth, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
-  const previewLayers = showOriginal ? baseLayers : effectLayers.length ? effectLayers : baseLayers
+  const previewLayers = useMemo(() => {
+    const layers = showOriginal ? baseLayers : effectLayers.length ? effectLayers : baseLayers
+    if (!projectId) return layers
+    return layers.map((layer) => layer.maskPath || layer.maskTimeline ? { ...layer, maskProjectId: projectId } : layer)
+  }, [baseLayers, effectLayers, projectId, showOriginal])
+
+  const handleWebGpuPreviewError = useCallback(() => {
+    setWebGpuPreviewFailed(true)
+    toast.error('预览加速暂时不可用，已切回通用预览')
+  }, [])
 
   function changeSubjectModel(value: NonNullable<WorkspacePixelStretchState['subjectModel']>): void {
     if (value === subjectModel) return
@@ -471,10 +492,10 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
   }
 
   return <section className="pixel-stretch-page">
-    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
+    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /><CreativePreviewQualitySelect value={previewQuality} onChange={changePreviewQuality} /></header>
     <div className="pixel-stretch-preview">
       {activeAsset && !isImage ? <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>像素拉伸目前支持图片素材</span></div>
-        : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
+        : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}>{useWebGpuPreview ? <WebGpuVideoPreview className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={previewMaxSide} playing={false} interactiveImageLayerIndexes={[]} onError={handleWebGpuPreviewError} /> : <LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={previewMaxSide} interactiveImageLayerIndexes={[]} onError={toast.error} />}{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
           : activeAsset && isImage ? <img className="pixel-stretch-source-fallback" src={assetSourceUrl(activeAsset)} alt="" />
             : <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要制作效果的图片</span></div>}
     </div>

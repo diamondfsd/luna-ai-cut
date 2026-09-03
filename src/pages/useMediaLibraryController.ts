@@ -67,6 +67,7 @@ export function useMediaLibraryController(pageType: PageType) {
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [loadingDownloads, setLoadingDownloads] = useState(false)
   const loadingCameraRef = useRef(false)
+  const cameraLoadRequestRef = useRef(0)
   const loadingDownloadsRef = useRef(false)
 
   // ── 下载队列 ──
@@ -328,7 +329,14 @@ export function useMediaLibraryController(pageType: PageType) {
   async function loadCameraLibrary(): Promise<void> {
     if (!settings || loadingCameraRef.current) return
     loadingCameraRef.current = true
+    const loadRequestId = cameraLoadRequestRef.current + 1
+    cameraLoadRequestRef.current = loadRequestId
     setLoadingFiles(true)
+    setFiles([])
+    setSelected(new Set())
+    setCacheFailedIds(new Set())
+    requestedThumbnailIdsRef.current.clear()
+    requestedFrameRateIdsRef.current.clear()
     const t0 = performance.now()
     try {
       const host = settings.cameraHost
@@ -345,7 +353,29 @@ export function useMediaLibraryController(pageType: PageType) {
       if (!status.connected) throw new Error(status.message)
       logger.info('[媒体库] 媒体源检查完成', { mode: sourceMode, elapsedMs: Math.round(performance.now() - tCheck) })
       const tList = performance.now()
-      const lunaFiles = await window.luna.cameraSource.listFiles(sourceOptions)
+      const lunaFiles = await window.luna.cameraSource.listFiles(sourceOptions, ({ pageNumber, files: pageFiles }) => {
+        if (cameraLoadRequestRef.current !== loadRequestId) return
+        logger.info('[媒体库] 收到设备文件分页', {
+          mode: sourceMode,
+          pageNumber,
+          pageFileCount: pageFiles.length,
+        })
+        setFiles((current) => {
+          const next = [...current]
+          const indexes = new Map(current.map((file, index) => [file.id, index]))
+          for (const file of pageFiles) {
+            const index = indexes.get(file.id)
+            if (index === undefined) {
+              indexes.set(file.id, next.length)
+              next.push(file)
+            } else {
+              next[index] = file
+            }
+          }
+          return next
+        })
+      })
+      if (cameraLoadRequestRef.current !== loadRequestId) return
       logger.info('[媒体库] listFiles 完成', { mode: sourceMode, fileCount: lunaFiles.length, elapsedMs: Math.round(performance.now() - tList) })
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logger.info('[媒体库] 设备文件加载完成', { mode: sourceMode, host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })

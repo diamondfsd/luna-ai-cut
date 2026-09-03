@@ -19,7 +19,7 @@ const compilerOptions = {
 }
 const compiled = ts.transpileModule(source, { compilerOptions }).outputText
 const watermarkGeometryCompiled = ts.transpileModule(watermarkGeometrySource, { compilerOptions }).outputText
-const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\n/, '')}`, { compilerOptions }).outputText
+const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\r?\n/, '')}`, { compilerOptions }).outputText
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
 const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText
@@ -73,7 +73,7 @@ watermarkClose(
 )
 watermarkClose(
   watermarkGeometry.resolveDjiWatermarkPositioning(watermarkSettings('dji_pocket_4_pro', 'top-right', 540), 1080, 1920),
-  { marginX: 0.66, marginY: 0.028, targetWidth: 0.16 },
+  { marginX: 0.565, marginY: 0.01375, targetWidth: 0.35 },
   'Pocket 4 Pro 9:16 size 10 right top placement',
 )
 watermarkClose(
@@ -101,10 +101,11 @@ assert.deepEqual(
   ]),
   [
     { id: 'same', kind: 'photo', time: 2, note: 'opening' },
+    { id: 'invalid-live', kind: 'live', startTime: 5, endTime: 7, coverTime: 6, note: '' },
     { id: 'same-2', kind: 'video', startTime: 6, endTime: 8, note: '' },
     { id: 'later', kind: 'live', startTime: 12, endTime: 15, coverTime: 13.5, note: 'second shot' },
   ],
-  'output markers require explicit kinds and are validated, deduplicated, trimmed, and sorted',
+  'output markers require explicit kinds and are validated, deduplicated, and sorted',
 )
 assert.deepEqual(
   videoOutputMarkers.livePhotoRangeAround(0.5, 10),
@@ -129,6 +130,40 @@ assert.deepEqual(
   videoOutputMarkers.livePhotoRangeAround(10, 10),
   { startTime: 7, endTime: 10, coverTime: 9.99 },
   'Live covers remain inside the range at the source end',
+)
+assert.deepEqual(
+  videoOutputMarkers.resizeLivePhotoRange(4, 7, 5.5, 5, 20),
+  { startTime: 3, endTime: 8, coverTime: 5.5 },
+  'Live duration expands around the existing range center',
+)
+assert.deepEqual(
+  videoOutputMarkers.resizeLivePhotoRange(0, 3, 1, 5, 20),
+  { startTime: 0, endTime: 5, coverTime: 1 },
+  'Live duration expands forward at the source start',
+)
+assert.deepEqual(
+  videoOutputMarkers.resizeLivePhotoRange(17, 20, 18, 5, 20),
+  { startTime: 15, endTime: 20, coverTime: 18 },
+  'Live duration expands backward at the source end',
+)
+assert.deepEqual(
+  videoOutputMarkers.livePhotoSelectionForMarker([
+    { id: 'live', kind: 'live', startTime: 3, endTime: 7, coverTime: 4, note: '' },
+  ], 'live'),
+  { markerId: 'live', startTime: 3, endTime: 7, coverTime: 4 },
+  'the timeline selection is derived from the persisted Live marker',
+)
+assert.equal(
+  videoOutputMarkers.livePhotoSelectionForMarker([
+    { id: 'live', kind: 'live', startTime: 3, endTime: 7, coverTime: 4, note: '' },
+  ], 'missing'),
+  null,
+  'the timeline selection clears when its marker no longer exists',
+)
+assert.deepEqual(
+  videoOutputMarkers.resizeLivePhotoRange(4, 7, 5.5, 8, 20),
+  { startTime: 3, endTime: 8, coverTime: 5.5 },
+  'Live duration is capped at five seconds',
 )
 assert.deepEqual(
   videoOutputMarkers.normalizeVideoOutputMarkers([{ id: 'last', kind: 'photo', time: 10, note: '' }], 10),

@@ -155,6 +155,10 @@
   overflow-y: auto;
 }
 
+.triple-stitch-preview-quality {
+  margin-left: auto;
+}
+
 .triple-stitch-panel-head {
   display: flex;
   align-items: center;
@@ -202,6 +206,11 @@
   font-weight: 600;
 }
 
+.triple-stitch-section-hint {
+  color: #8f8f8f;
+  font-size: 11px;
+}
+
 .triple-stitch-section .workspace-param-slider {
   min-width: 0;
 }
@@ -237,9 +246,23 @@
 }
 
 /* ── 水印切换 ── */
+.triple-stitch-watermark-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #d8d8d8;
+  font-size: 13px;
+}
+
 .triple-stitch-watermark-toggle {
   display: flex;
   gap: 8px;
+}
+
+.triple-stitch-watermark-empty {
+  color: #8f8f8f;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .triple-stitch-wm-btn {

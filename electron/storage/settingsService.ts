@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { DEFAULT_DEVICE } from '../devices/definitions/deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
 import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
-import type { AppSettings } from '../../src/shared/types'
+import type { AppSettings, WatermarkPlacement, WatermarkPosition } from '../../src/shared/types'
 
 function settingsPath(): string {
   if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
@@ -14,6 +14,14 @@ function settingsPath(): string {
 
 function legacyPath(): string {
   return legacySettingsPath(app.getPath('userData'))
+}
+
+let settingsOperation: Promise<void> = Promise.resolve()
+
+function enqueueSettingsOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const next = settingsOperation.then(operation, operation)
+  settingsOperation = next.then(() => undefined, () => undefined)
+  return next
 }
 
 export function cacheDir(baseDir: string): string {
@@ -68,7 +76,9 @@ function defaultSettings(): AppSettings {
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
     cameraPreviewQuality: 'proxy',
-    experimentalGpuPreview: false,
+    experimentalWebGpuPreview: true,
+    // 视频导出统一使用 Rust/wgpu；保留该字段仅用于兼容旧版本设置。
+    experimentalWebGpuExport: false,
     organizeDownloadsByDate: false,
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
@@ -79,6 +89,39 @@ function defaultSettings(): AppSettings {
     mockTcpPort: DEFAULT_DEVICE.mock.tcpPort,
     mockRateMbps: DEFAULT_DEVICE.mock.rateMbps,
   }
+}
+
+const WATERMARK_POSITIONS = new Set<WatermarkPosition>([
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+])
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function normalizeDefaultWatermarkPlacement(value: unknown): WatermarkPlacement | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const placement = value as Partial<WatermarkPlacement>
+  if (placement.mode === 'preset' && WATERMARK_POSITIONS.has(placement.anchor as WatermarkPosition) && finiteNumber(placement.insetOnShortEdge)) {
+    return {
+      mode: 'preset',
+      anchor: placement.anchor as WatermarkPosition,
+      insetOnShortEdge: Math.min(0.25, Math.max(0, placement.insetOnShortEdge)),
+    }
+  }
+  if (placement.mode === 'free' && finiteNumber(placement.centerX) && finiteNumber(placement.centerY)) {
+    return {
+      mode: 'free',
+      centerX: Math.min(1, Math.max(0, placement.centerX)),
+      centerY: Math.min(1, Math.max(0, placement.centerY)),
+    }
+  }
+  return undefined
 }
 
 type StoredSettings = Partial<AppSettings> & { downloadDir?: string }
@@ -108,9 +151,15 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   ].includes(String(saved?.defaultWatermarkPosition))
     ? saved?.defaultWatermarkPosition
     : defaults.defaultWatermarkPosition
-  merged.experimentalGpuPreview = typeof saved?.experimentalGpuPreview === 'boolean'
-    ? saved.experimentalGpuPreview
-    : defaults.experimentalGpuPreview
+  const savedDefaultWatermarkSize = saved?.defaultWatermarkSizeOnCanvasWidth
+  merged.defaultWatermarkSizeOnCanvasWidth = finiteNumber(savedDefaultWatermarkSize)
+    ? Math.min(0.8, Math.max(0.08, savedDefaultWatermarkSize))
+    : undefined
+  merged.defaultWatermarkPlacement = normalizeDefaultWatermarkPlacement(saved?.defaultWatermarkPlacement)
+  merged.experimentalWebGpuPreview = typeof saved?.experimentalWebGpuPreview === 'boolean'
+    ? saved.experimentalWebGpuPreview : defaults.experimentalWebGpuPreview
+  // 浏览器 WebGPU 导出已移除，覆盖旧版本保存的 true，避免升级后继续走慢路径。
+  merged.experimentalWebGpuExport = false
   merged.cameraPreviewQuality = saved?.cameraPreviewQuality === 'original' || saved?.cameraPreviewQuality === 'proxy'
     ? saved.cameraPreviewQuality
     : defaults.cameraPreviewQuality
@@ -140,6 +189,7 @@ async function readSettingsWithoutWriting(): Promise<AppSettings> {
 }
 
 export async function getSettings(): Promise<AppSettings> {
+  await settingsOperation
   const stored = await readSettingsFile()
   const saved = stored.value
   if (!saved) {
@@ -148,24 +198,44 @@ export async function getSettings(): Promise<AppSettings> {
     return defaults
   }
   const merged = mergeSettings(saved)
-  if (stored.fromLegacyPath || (saved.downloadDir && !saved.baseDir)) await writeSettingsFile(merged)
+  if (
+    stored.fromLegacyPath
+    || (saved.downloadDir && !saved.baseDir)
+    || saved.experimentalWebGpuExport === true
+  ) {
+    await writeSettingsFile(merged)
+  }
   return merged
 }
 
 async function writeSettingsFile(settings: AppSettings): Promise<void> {
-  await fs.mkdir(path.dirname(settingsPath()), { recursive: true })
-  await fs.writeFile(settingsPath(), JSON.stringify(settings, null, 2), 'utf-8')
+  const targetPath = settingsPath()
+  const directory = path.dirname(targetPath)
+  const temporaryPath = `${targetPath}.${process.pid}.tmp`
+  await fs.mkdir(directory, { recursive: true })
+  await fs.writeFile(temporaryPath, JSON.stringify(settings, null, 2), 'utf-8')
+  try {
+    await fs.rename(temporaryPath, targetPath)
+  } catch (error) {
+    await fs.rm(temporaryPath, { force: true })
+    throw error
+  }
 }
 
-export async function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
-  const current = await readSettingsWithoutWriting()
-  const next = {
-    ...current,
-    ...partial,
-  }
-  next.cacheDir = cacheDir(next.baseDir)
-  await writeSettingsFile(next)
-  return next
+export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
+  return enqueueSettingsOperation(async () => {
+    const current = await readSettingsWithoutWriting()
+    const next = {
+      ...current,
+      ...partial,
+      experimentalWebGpuPreview: partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
+      // 视频导出统一使用 Rust/wgpu；忽略旧客户端传入的导出加速开关。
+      experimentalWebGpuExport: false,
+    }
+    next.cacheDir = cacheDir(next.baseDir)
+    await writeSettingsFile(next)
+    return next
+  })
 }
 
 export async function chooseBaseDir(): Promise<string | null> {

@@ -161,7 +161,14 @@ export function register(ctx: IpcContext): void {
       ? await dialog.showOpenDialog(parentWindow, options)
       : await dialog.showOpenDialog(options)
     if (result.canceled || result.filePaths.length === 0) return null
-    return copyLocalFilesToDirectory(sourcePaths, result.filePaths[0])
+    return copyLocalFilesToDirectory(sourcePaths, result.filePaths[0], (failure) => {
+      logMainError('[export] 文件复制失败', {
+        sourcePath: failure.sourcePath,
+        outputDir: result.filePaths[0],
+        userMessage: failure.userMessage,
+        ...failure.details,
+      })
+    })
   })
   ipcMain.handle('luna:cacheFile', async (_event, params: string | { sourceUrl: string; previewUrl?: string | null }) => {
     // 兼容旧格式（直接传 sourceUrl 字符串）
@@ -374,7 +381,7 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('luna:metadata', async (_event, file: LunaFile, cachedPath?: string | null) => {
     return ctx.enqueuePreviewTask(async () => {
-      await ctx.ensureCameraSessionForFile(file)
+      await ctx.ensureCameraSessionForFile(file, undefined, cachedPath)
       return getMediaMetadata(file, cachedPath)
     }, 1)
   })
@@ -397,12 +404,31 @@ export function register(ctx: IpcContext): void {
 
     const controller = new AbortController()
     ctx.activeDownloadControllers.add(controller)
+    const task = downloadFiles(files, localResourcesDir, (progress: DownloadProgress) => {
+      ctx.win?.webContents.send('download:progress', progress)
+    }, controller.signal, settings.organizeDownloadsByDate ?? false)
+    ctx.activeDownloadTasks.add(task)
     try {
-      return await downloadFiles(files, localResourcesDir, (progress: DownloadProgress) => {
-        ctx.win?.webContents.send('download:progress', progress)
-      }, controller.signal, settings.organizeDownloadsByDate ?? false)
+      return await task
     } finally {
       ctx.activeDownloadControllers.delete(controller)
+      ctx.activeDownloadTasks.delete(task)
     }
+  })
+
+  ipcMain.handle('luna:cancelDownloads', async () => {
+    const controllers = [...ctx.activeDownloadControllers]
+    const tasks = [...ctx.activeDownloadTasks]
+    logMainInfo('[下载] 收到取消请求', {
+      activeControllerCount: controllers.length,
+      activeTaskCount: tasks.length,
+    })
+    for (const controller of controllers) controller.abort()
+    const results = await Promise.allSettled(tasks)
+    logMainInfo('[下载] 取消请求处理完成', {
+      activeControllerCount: ctx.activeDownloadControllers.size,
+      activeTaskCount: ctx.activeDownloadTasks.size,
+      rejectedTaskCount: results.filter((result) => result.status === 'rejected').length,
+    })
   })
 }

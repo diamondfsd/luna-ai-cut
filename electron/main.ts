@@ -9,12 +9,14 @@
  */
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
 import { failStartup, installStartupExperience } from './infrastructure/startupWindowService'
 
 async function boot(): Promise<void> {
+  configureWindowsNativeRuntime()
+
   // 开发模式跳过热更新，避免本地代码被热更新覆盖
   if (!app.isPackaged) {
     process.env.LUNA_BOOT_SOURCE = 'development'
@@ -31,8 +33,7 @@ async function boot(): Promise<void> {
   // 检查是否有有效的热更新版本
   let hotVersion = readHotVersion(versionFile)
 
-  // 热更新只能覆盖完全相同的稳定安装版。Beta/RC 必须使用安装包内置代码，
-  // 避免旧热更新同时替换主进程、页面和原生模块。
+  // 热更新只能覆盖完全相同的安装版本，避免旧热更新覆盖其他版本的代码。
   const appVersion = app.getVersion()
   if (hotVersion && !canLoadHotUpdate(appVersion, hotVersion)) {
     console.log(`[hot-update] 热更新 ${hotVersion} 与安装版本 ${appVersion} 不兼容，丢弃旧热更新`)
@@ -61,6 +62,16 @@ async function boot(): Promise<void> {
   // 加载 asar 内置的 fallback 版本
   process.env.LUNA_BOOT_SOURCE = 'bundled'
   await import('./appMain.ts')
+}
+
+function configureWindowsNativeRuntime(): void {
+  if (!app.isPackaged || process.platform !== 'win32') return
+
+  const runtimeDir = join(process.resourcesPath, 'ffmpeg')
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH'
+  const entries = (process.env[pathKey] ?? '').split(';').filter(Boolean)
+  if (entries.some((entry) => entry.toLowerCase() === runtimeDir.toLowerCase())) return
+  process.env[pathKey] = [runtimeDir, ...entries].join(';')
 }
 
 /**
@@ -102,6 +113,11 @@ function readHotVersion(filePath: string): string | null {
     return null
   }
 }
+
+// The lock is acquired before appMain.ts is loaded. Apply the E2E userData
+// override here as well, otherwise tests still contend with the user's app.
+const e2eUserDataDir = process.env.LUNA_E2E_USER_DATA_DIR
+if (!app.isPackaged && e2eUserDataDir) app.setPath('userData', resolve(e2eUserDataDir))
 
 const singleInstanceLock = app.requestSingleInstanceLock()
 if (!singleInstanceLock) {

@@ -1,31 +1,19 @@
-import { Camera, Check, Wifi } from 'lucide-react'
-
-import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
+import type { DeviceDefinition } from '../shared/types'
 import { Button } from '../ui'
-import lunaIcon from '../../public/luna-icon.png'
 import './SupportedDeviceList.css'
 
 interface SupportedDeviceListProps {
   activeDevice?: DeviceDefinition
   devices: DeviceDefinition[]
-  connection: ConnectionStatus | null
   disabled?: boolean
   onSelect: (deviceId: string) => Promise<void>
 }
 
 function supportedDevices(devices: DeviceDefinition[]): DeviceDefinition[] {
-  return devices.filter((device) => device.id === 'luna-ultra' && device.connectionSupported !== false)
+  return devices.filter((device) => device.connectionSupported !== false && (device.protocol === 'insta360' || device.protocol === 'go-ultra' || device.protocol === 'dji'))
 }
 
-function deviceVisual(device: DeviceDefinition) {
-  if (device.protocol === 'insta360') {
-    return <img src={lunaIcon} alt="" />
-  }
-  return <Camera size={30} strokeWidth={1.6} />
-}
-
-export function SupportedDeviceList({ activeDevice, devices, connection, disabled = false, onSelect }: SupportedDeviceListProps) {
-  const connected = Boolean(connection?.httpOk && connection.controlOk)
+export function SupportedDeviceList({ activeDevice, devices, disabled = false, onSelect }: SupportedDeviceListProps) {
   const options = supportedDevices(devices)
 
   return (
@@ -48,13 +36,8 @@ export function SupportedDeviceList({ activeDevice, devices, connection, disable
               disabled={disabled}
               onClick={() => void onSelect(device.id)}
             >
-              <span className="supported-device-visual insta360">
-                {deviceVisual(device)}
-              </span>
               <span className="supported-device-copy">
                 <strong>{device.name}</strong>
-                <small>{device.vendor}</small>
-                <em>{selected && connected ? <><Check size={12} />当前连接</> : selected ? '待连接' : <><Wifi size={12} />支持连接</>}</em>
               </span>
             </Button>
           )

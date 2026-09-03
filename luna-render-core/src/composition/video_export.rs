@@ -1,6 +1,6 @@
 use super::frame::render_composition_frame_with;
 use super::timeline::{
-    ffmpeg_fallback_temp_path, infer_composition_duration, infer_composition_fps,
+    ffmpeg_fallback_temp_path, infer_composition_duration, infer_composition_fps, is_video_source,
 };
 use super::*;
 use crate::media::command;
@@ -11,13 +11,14 @@ use napi_derive::napi;
 static HW_ENCODER_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// 用一个 1x1 纯色帧实际测试编码器是否能正常初始化并输出
+/// 用一个标准尺寸的纯色帧实际测试编码器是否能正常初始化并输出。
 /// 这能捕获编译支持但运行时不可用的情况（如 nvcuda.dll 缺失）
 fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
-    // H.264 hardware encoders commonly reject 1x1 input. Use a small,
-    // standards-compliant frame so supported encoders are not rejected.
-    const TEST_WIDTH: usize = 64;
-    const TEST_HEIGHT: usize = 64;
+    // Some hardware encoders reject very small frames even when the encoder is
+    // available. 1280x720 avoids that false negative while keeping the probe
+    // independent of the user's export resolution.
+    const TEST_WIDTH: usize = 1280;
+    const TEST_HEIGHT: usize = 720;
     let mut args = vec![
         "-y".to_string(),
         "-hide_banner".to_string(),
@@ -53,7 +54,7 @@ fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
         .stderr(Stdio::piped())
         .spawn()
         .and_then(|mut child| {
-            // 写入 4 字节 RGBA（1x1 像素）
+            // 写入一帧 RGBA。
             if let Some(ref mut stdin) = child.stdin {
                 use std::io::Write;
                 let frame = vec![0u8; TEST_WIDTH * TEST_HEIGHT * 4];
@@ -128,6 +129,13 @@ pub struct ExportCompositionVideoTask {
     input: ExportCompositionVideoInput,
 }
 
+pub(crate) fn export_composition_video_sync(
+    input: ExportCompositionVideoInput,
+) -> Result<(), String> {
+    let mut task = ExportCompositionVideoTask { input };
+    task.compute().map_err(|error| error.to_string())
+}
+
 impl Task for ExportCompositionVideoTask {
     type Output = ();
     type JsValue = ();
@@ -141,11 +149,31 @@ impl Task for ExportCompositionVideoTask {
             .filter_map(|layer| layer.mask_timeline.as_ref())
             .map(|timeline| timeline.frames.len())
             .sum::<usize>();
+        let layer_kinds = self
+            .input
+            .composition
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(index, layer)| {
+                format!(
+                    "{index}:{}->{}",
+                    layer.source.source_type.as_deref().unwrap_or("auto"),
+                    if is_video_source(&layer.source) {
+                        "video"
+                    } else {
+                        "static"
+                    },
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
         log_write(&format!(
-            "[Export:Rust:Video] canvas={}x{} layers={} mask_timeline_frames={}",
+            "[Export:Rust:Video] canvas={}x{} layers={} kinds=[{}] mask_timeline_frames={}",
             self.input.composition.canvas.width,
             self.input.composition.canvas.height,
             self.input.composition.layers.len(),
+            layer_kinds,
             mask_timeline_frames,
         ));
         let fps = self
@@ -173,11 +201,7 @@ impl Task for ExportCompositionVideoTask {
                 .store(total_frames, std::sync::atomic::Ordering::SeqCst);
         }
 
-        let encoder = if self.input.hardware.unwrap_or(true) {
-            best_hardware_encoder(&self.input.ffmpeg_path).unwrap_or_else(|| "libx264".to_string())
-        } else {
-            "libx264".to_string()
-        };
+        let hardware_requested = self.input.hardware.unwrap_or(true);
         let preset = self
             .input
             .quality_preset
@@ -248,17 +272,15 @@ impl Task for ExportCompositionVideoTask {
         }
 
         #[cfg(target_os = "windows")]
-        if self.input.hardware.unwrap_or(true)
-            && std::env::var_os("LUNA_WINDOWS_ZERO_COPY_EXPORT").is_some()
-        {
+        if hardware_requested {
             let bitrate_bps = bitrate
                 .trim_end_matches(['k', 'K'])
                 .parse::<u64>()
                 .unwrap_or(50_000)
                 .saturating_mul(1_000);
             log_write(&format!(
-                "[Export:WinGPU] start output={} frames={} fps={} bitrate={}",
-                self.input.output_path, total_frames, fps, bitrate_bps,
+                "[Export:WinGPU] automatic attempt output={} frames={} fps={} bitrate={} input={}",
+                self.input.output_path, total_frames, fps, bitrate_bps, "d3d12-gpu",
             ));
             let windows_result = crate::lock_export(|compositor| {
                 compositor.clear_video_decoders();
@@ -273,6 +295,7 @@ impl Task for ExportCompositionVideoTask {
                     bitrate_bps,
                     include_audio,
                     task.as_ref(),
+                    false,
                 )
             });
             match windows_result {
@@ -288,12 +311,9 @@ impl Task for ExportCompositionVideoTask {
                 }
                 Err(error) => {
                     log_write(&format!(
-                        "[Export:WinGPU] unavailable, falling back to FFmpeg: {}",
+                        "[Export:WinGPU] unavailable, falling back to CPU FFmpeg path: {}",
                         error
                     ));
-                    // D3D11On12 / Media Foundation failures can leave wgpu's shared D3D12
-                    // device unusable. Recreate only the export compositor before the CPU
-                    // encoding fallback starts; the preview compositor remains untouched.
                     crate::reset_export_compositor().map_err(|reset_error| {
                         napi::Error::from_reason(format!(
                             "Windows GPU export failed ({error}); export renderer recovery failed: {reset_error}"
@@ -307,6 +327,12 @@ impl Task for ExportCompositionVideoTask {
                 }
             }
         }
+
+        let encoder = if hardware_requested {
+            best_hardware_encoder(&self.input.ffmpeg_path).unwrap_or_else(|| "libx264".to_string())
+        } else {
+            "libx264".to_string()
+        };
 
         let mut args = vec![
             "-y".to_string(),
@@ -356,6 +382,7 @@ impl Task for ExportCompositionVideoTask {
             std::fs::create_dir_all(parent)
                 .map_err(|e| napi::Error::from_reason(format!("create output dir: {}", e)))?;
         }
+        let fallback_started = std::time::Instant::now();
 
         let mut child = command(&self.input.ffmpeg_path)
             .args(args)
@@ -388,9 +415,31 @@ impl Task for ExportCompositionVideoTask {
                     &self.input.composition,
                     time,
                     None,
-                    Some(fps),
+                    // The decoder pipe is consumed one frame per export tick;
+                    // applying an output -r here can make FFmpeg resample the
+                    // first frame and is unnecessary because the encoder is
+                    // already configured with the composition FPS.
+                    None,
                 )
             })?;
+            if frame == 0 {
+                let mut sums = [0u64; 4];
+                for pixel in rgba.chunks_exact(4) {
+                    for (channel, value) in pixel.iter().enumerate() {
+                        sums[channel] += u64::from(*value);
+                    }
+                }
+                let pixel_count = (rgba.len() / 4).max(1) as f64;
+                log_write(&format!(
+                    "[Export:FFmpeg] first-frame RGBA bytes={} mean={:.2},{:.2},{:.2},{:.2} first={:?}",
+                    rgba.len(),
+                    sums[0] as f64 / pixel_count,
+                    sums[1] as f64 / pixel_count,
+                    sums[2] as f64 / pixel_count,
+                    sums[3] as f64 / pixel_count,
+                    &rgba[..rgba.len().min(16)],
+                ));
+            }
             if let Err(e) = stdin.write_all(&rgba) {
                 // 写入 pipe 失败（通常是 Broken pipe），说明 ffmpeg 编码器已提前退出。
                 // 关闭 stdin 并等待子进程获取 stderr 中的真实错误原因。
@@ -426,6 +475,11 @@ impl Task for ExportCompositionVideoTask {
                 stderr.trim()
             )));
         }
+        log_write(&format!(
+            "[Export:FFmpeg:Timing] summary frames={} total_ms={:.0}",
+            total_frames,
+            fallback_started.elapsed().as_secs_f64() * 1000.0,
+        ));
         let completed_output = if include_audio {
             log_write(&format!(
                 "[Export:FFmpeg] fallback 编码完成，开始音频合并 temp={}",

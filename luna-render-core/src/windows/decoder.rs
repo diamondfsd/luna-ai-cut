@@ -1,23 +1,22 @@
 use std::ptr;
 
 use windows::core::{Interface, GUID, HSTRING};
-use windows::Win32::Graphics::Direct3D11::{ID3D11Resource, ID3D11Texture2D, D3D11_TEXTURE2D_DESC};
-use windows::Win32::Graphics::Direct3D11on12::ID3D11On12Device2;
-use windows::Win32::Graphics::Direct3D12::{ID3D12CommandQueue, ID3D12Resource};
+use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_NV12,
     DXGI_FORMAT_P010,
 };
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFDXGIBuffer, IMFDXGIDeviceManager, IMFMediaType, IMFSample, IMFSourceReader,
-    MFCreateAttributes, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video,
-    MFVideoFormat_HEVC, MFVideoFormat_NV12, MFVideoFormat_P010, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
+    IMFAttributes, IMFD3D12SynchronizationObjectCommands, IMFDXGIBuffer, IMFDXGIDeviceManager,
+    IMFMediaType, IMFSample, IMFSourceReader, MFCreateAttributes, MFCreateMediaType,
+    MFCreateSourceReaderFromURL, MFMediaType_Video, MFVideoFormat_HEVC, MFVideoFormat_NV12,
+    MFVideoFormat_P010, MF_D3D12_SYNCHRONIZATION_OBJECT, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
     MF_MT_SUBTYPE, MF_MT_VIDEO_PROFILE, MF_MT_VIDEO_ROTATION,
     MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
     MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR,
     MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED, MF_SOURCE_READERF_STREAMTICK,
     MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_D3D_MANAGER,
-    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+    MF_SOURCE_READER_FIRST_VIDEO_STREAM,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 
@@ -43,6 +42,36 @@ impl SurfaceFormat {
     }
 }
 
+/// A frame owned by Media Foundation and backed by a D3D12 resource.
+pub(crate) enum DecodedSurface {
+    D3d12 {
+        resource: ID3D12Resource,
+        synchronization: IMFD3D12SynchronizationObjectCommands,
+    },
+}
+
+impl DecodedSurface {
+    pub(crate) fn transport_label(&self) -> &'static str {
+        match self {
+            Self::D3d12 { .. } => "d3d12-resource",
+        }
+    }
+
+    pub(crate) fn resource(&self) -> &ID3D12Resource {
+        match self {
+            Self::D3d12 { resource, .. } => resource,
+        }
+    }
+
+    pub(crate) fn synchronization(&self) -> &IMFD3D12SynchronizationObjectCommands {
+        match self {
+            Self::D3d12 {
+                synchronization, ..
+            } => synchronization,
+        }
+    }
+}
+
 impl From<DXGI_FORMAT> for SurfaceFormat {
     fn from(value: DXGI_FORMAT) -> Self {
         match value {
@@ -62,13 +91,12 @@ pub(crate) struct DecoderInfo {
     pub(crate) output_format: SurfaceFormat,
 }
 
-/// 一帧由 Media Foundation 持有的 Direct3D 视频表面。
-///
-/// `sample` 必须与纹理一起存活；部分硬件解码器会在 sample 释放后立即复用表面。
+/// One decoded video frame. The sample is retained for the lifetime of the
+/// resource because some hardware decoders recycle surfaces with the sample.
 pub(crate) struct DecodedFrame {
     #[allow(dead_code)]
     sample: IMFSample,
-    pub(crate) texture: ID3D11Texture2D,
+    pub(crate) surface: DecodedSurface,
     pub(crate) timestamp_100ns: i64,
     pub(crate) subresource_index: u32,
     pub(crate) array_slice: u32,
@@ -85,6 +113,7 @@ pub(crate) struct VideoDecoder {
 }
 
 impl VideoDecoder {
+    /// Open a hardware-backed Source Reader using the D3D12 MF manager.
     pub(crate) fn open(path: &str, device_manager: &IMFDXGIDeviceManager) -> Result<Self, String> {
         let attributes = create_reader_attributes(device_manager)?;
         let source = HSTRING::from(path);
@@ -99,11 +128,11 @@ impl VideoDecoder {
         let native_type = unsafe { reader.GetNativeMediaType(video_stream, 0) }
             .map_err(|error| format!("无法读取视频格式: {error}"))?;
         let output_subtype = preferred_output_subtype(&native_type);
-        set_output_type(&reader, output_subtype).or_else(|first_error| {
+        set_output_type(&reader, output_subtype, &native_type).or_else(|first_error| {
             if output_subtype == MFVideoFormat_NV12 {
                 return Err(first_error);
             }
-            set_output_type(&reader, MFVideoFormat_NV12).map_err(|fallback_error| {
+            set_output_type(&reader, MFVideoFormat_NV12, &native_type).map_err(|fallback_error| {
                 format!("{first_error}; NV12 回退也不可用: {fallback_error}")
             })
         })?;
@@ -133,8 +162,8 @@ impl VideoDecoder {
         &self.info
     }
 
-    /// 读取目标时间处或其后的第一帧。向后读取时使用 Source Reader seek，
-    /// 向前播放时保持顺序解码，避免每帧重新定位到关键帧。
+    /// Read the first frame at or after the requested timestamp. Sequential
+    /// reads are kept in place; a seek is used for backwards or distant reads.
     pub(crate) fn read_frame_at(
         &mut self,
         timestamp_100ns: i64,
@@ -164,7 +193,7 @@ impl VideoDecoder {
         &mut self,
         seconds: f64,
     ) -> Result<Option<DecodedFrame>, String> {
-        let timestamp = (seconds.max(0.0) * TICKS_PER_SECOND).round() as i64;
+        let timestamp = seconds_to_timestamp(seconds);
         self.read_frame_at(timestamp)
     }
 
@@ -240,6 +269,13 @@ impl VideoDecoder {
     }
 }
 
+fn seconds_to_timestamp(seconds: f64) -> i64 {
+    // Media timestamps are quantized to the source time base. Flooring
+    // avoids asking for one tick past a frame whose exact timestamp is below
+    // the requested presentation time.
+    (seconds.max(0.0) * TICKS_PER_SECOND).floor() as i64
+}
+
 fn create_reader_attributes(
     device_manager: &IMFDXGIDeviceManager,
 ) -> Result<IMFAttributes, String> {
@@ -251,7 +287,6 @@ fn create_reader_attributes(
         unsafe {
             attributes.SetUnknown(&MF_SOURCE_READER_D3D_MANAGER, device_manager)?;
             attributes.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1)?;
-            attributes.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1)?;
         }
         Ok(())
     })()
@@ -259,11 +294,18 @@ fn create_reader_attributes(
     Ok(attributes)
 }
 
-fn set_output_type(reader: &IMFSourceReader, subtype: GUID) -> Result<(), String> {
+fn set_output_type(
+    reader: &IMFSourceReader,
+    subtype: GUID,
+    native_type: &IMFMediaType,
+) -> Result<(), String> {
     let media_type =
         unsafe { MFCreateMediaType() }.map_err(|error| format!("无法创建解码输出格式: {error}"))?;
     (|| -> windows::core::Result<()> {
         unsafe {
+            // Preserve allocator, geometry, timing and color metadata selected
+            // by the decoder. Some hardware paths reject a bare pixel type.
+            native_type.CopyAllItems(&media_type)?;
             media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
             media_type.SetGUID(&MF_MT_SUBTYPE, &subtype)?;
             reader.SetCurrentMediaType(
@@ -320,58 +362,45 @@ fn decoded_surface(sample: IMFSample, timestamp_100ns: i64) -> Result<DecodedFra
         .map_err(|error| format!("无法取得解码画面缓冲区: {error}"))?;
     let dxgi_buffer = buffer
         .cast::<IMFDXGIBuffer>()
-        .map_err(|_| "解码器返回了内存画面，未进入显卡表面路径".to_string())?;
+        .map_err(|_| "解码器返回了 CPU 画面，无法保持显卡零拷贝".to_string())?;
 
-    let mut raw_texture = ptr::null_mut();
-    unsafe { dxgi_buffer.GetResource(&ID3D11Texture2D::IID, &mut raw_texture) }
-        .map_err(|error| format!("无法取得 Direct3D 视频表面: {error}"))?;
-    if raw_texture.is_null() {
-        return Err("Direct3D 视频表面为空".to_string());
-    }
-    let texture = unsafe { ID3D11Texture2D::from_raw(raw_texture) };
     let subresource_index = unsafe { dxgi_buffer.GetSubresourceIndex() }
-        .map_err(|error| format!("无法取得视频表面层索引: {error}"))?;
-    let mut desc = D3D11_TEXTURE2D_DESC::default();
-    unsafe { texture.GetDesc(&mut desc) };
+        .map_err(|error| format!("无法取得解码画面子资源索引: {error}"))?;
+    let mut raw_resource = ptr::null_mut();
+    unsafe { dxgi_buffer.GetResource(&ID3D12Resource::IID, &mut raw_resource) }
+        .map_err(|error| format!("解码器没有返回 D3D12 画面资源: {error}"))?;
+    if raw_resource.is_null() {
+        return Err("D3D12 解码画面为空".to_string());
+    }
+    let resource = unsafe { ID3D12Resource::from_raw(raw_resource) };
 
+    let mut raw_sync = ptr::null_mut();
+    unsafe {
+        dxgi_buffer.GetUnknown(
+            &MF_D3D12_SYNCHRONIZATION_OBJECT,
+            &IMFD3D12SynchronizationObjectCommands::IID,
+            &mut raw_sync,
+        )
+    }
+    .map_err(|error| format!("无法取得 D3D12 解码同步对象: {error}"))?;
+    if raw_sync.is_null() {
+        return Err("D3D12 解码同步对象为空".to_string());
+    }
+    let synchronization = unsafe { IMFD3D12SynchronizationObjectCommands::from_raw(raw_sync) };
+    let desc = unsafe { resource.GetDesc() };
     Ok(DecodedFrame {
         sample,
-        texture,
+        surface: DecodedSurface::D3d12 {
+            resource,
+            synchronization,
+        },
         timestamp_100ns,
         subresource_index,
-        array_slice: subresource_index / desc.MipLevels.max(1),
-        width: desc.Width,
-        height: desc.Height,
+        array_slice: subresource_index / u32::from(desc.MipLevels).max(1),
+        width: desc.Width as u32,
+        height: desc.Height as u32,
         format: SurfaceFormat::from(desc.Format),
     })
-}
-
-/// 验证解码表面确实属于当前 D3D11On12 设备，并能取得同一 wgpu 队列可用的
-/// D3D12 资源。这里只做所有权往返，不向队列提交工作，因此无需附带 fence。
-pub(crate) fn validate_d3d12_interop(
-    frame: &DecodedFrame,
-    d3d11on12: &ID3D11On12Device2,
-    queue: &ID3D12CommandQueue,
-) -> Result<(), String> {
-    if !matches!(frame.format, SurfaceFormat::Nv12 | SurfaceFormat::P010) {
-        return Err(format!(
-            "显卡解码输出格式不受支持: {} ({:?})",
-            frame.format.label(),
-            frame.format,
-        ));
-    }
-    let resource11 = frame
-        .texture
-        .cast::<ID3D11Resource>()
-        .map_err(|error| format!("无法取得 Direct3D 视频资源: {error}"))?;
-    let resource12: ID3D12Resource =
-        unsafe { d3d11on12.UnwrapUnderlyingResource(&resource11, queue) }
-            .map_err(|error| format!("无法共享显卡解码表面: {error}"))?;
-
-    let return_result =
-        unsafe { d3d11on12.ReturnUnderlyingResource(&resource11, 0, ptr::null(), ptr::null()) };
-    drop(resource12);
-    return_result.map_err(|error| format!("无法归还显卡解码表面: {error}"))
 }
 
 fn media_subtype_to_surface_format(subtype: GUID) -> SurfaceFormat {
@@ -390,4 +419,15 @@ fn stream_index(value: i32) -> u32 {
 
 fn flag_is_set(flags: u32, flag: i32) -> bool {
     flags & flag as u32 != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::seconds_to_timestamp;
+
+    #[test]
+    fn seconds_to_timestamp_does_not_skip_quantized_last_frame() {
+        assert_eq!(seconds_to_timestamp(89.0 / 30.0), 29_666_666);
+        assert_eq!(seconds_to_timestamp(-1.0), 0);
+    }
 }

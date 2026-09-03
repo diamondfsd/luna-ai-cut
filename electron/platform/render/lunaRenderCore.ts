@@ -185,7 +185,9 @@ export function getNative(): LunaRenderCoreNative {
   const packagedNative = join(process.resourcesPath || '', 'luna-render-core', 'luna-render-core.node')
   // 热更新的 appMain 会将 APP_ROOT 指向 userData/.luna-hot，必须优先加载
   // 其中已切换的新原生模块；正式安装包则回退到 resources 目录。
-  const candidates = [appRootNative, packagedNative]
+  const candidates = app.isPackaged
+    ? (process.env.APP_ROOT ? [appRootNative, packagedNative] : [packagedNative])
+    : [appRootNative]
   const attempts: string[] = []
   for (const nodePath of candidates) {
     try {

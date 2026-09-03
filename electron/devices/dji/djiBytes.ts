@@ -9,6 +9,15 @@ export interface DjiMessage {
   payload: Buffer
 }
 
+export const DJI_APP_DEVICE_INFO = Buffer.from([
+  0x00, 0x41, 0x50, 0x50,
+  ...Array(37).fill(0),
+  0x02,
+  ...Array(8).fill(0),
+  0x02, 0x08,
+  ...Array(10).fill(0),
+])
+
 export function crc8(data: Uint8Array, initial = 0x77, polynomial = 0x8c): number {
   let crc = initial & 0xff
   for (const value of data) {
@@ -95,6 +104,23 @@ export function decodeDjiMessage(data: Uint8Array, offset = 0): { message: DjiMe
     },
     next: offset + length,
   }
+}
+
+export function responseToDjiRequest(message: DjiMessage): Buffer {
+  const target = ((message.target & 0xff) << 8) | ((message.target >>> 8) & 0xff)
+  const payload = message.cmdSet === 0x00 && message.cmdId === 0x81
+    ? DJI_APP_DEVICE_INFO
+    : message.cmdSet === 0x07 && message.cmdId === 0x46
+      ? Buffer.from([0x00])
+      : message.payload
+  return encodeDjiMessage({
+    target,
+    id: message.id,
+    flags: 0xc0,
+    cmdSet: message.cmdSet,
+    cmdId: message.cmdId,
+    payload,
+  })
 }
 
 export function findDjiMessages(data: Uint8Array): DjiMessage[] {

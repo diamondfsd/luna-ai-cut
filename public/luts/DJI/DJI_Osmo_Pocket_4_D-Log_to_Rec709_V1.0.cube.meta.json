@@ -1,0 +1,9 @@
+{
+  "name": "Osmo Pocket 4 D-Log to Rec.709",
+  "description": "DJI official Log restoration LUT for Osmo Pocket 4.",
+  "isTechnical": true,
+  "deviceId": "dji-pocket-4",
+  "sourcePage": "https://www.dji.com/cn/downloads/softwares/osmo-pocket-4-dlog-to-rec709-lut",
+  "sourceUrl": "https://terra-1-g.djicdn.com/851d20f7b9f64838a34cd02351370894/HG214%20Lut/DJI%20OSMO%20Pocket%204%20D-Log%20to%20Rec.709%20V1.0.cube",
+  "sha256": "ca8bc7d3bf382512ed9501137c8b88d1829ae9b22a84965d7d2e1339f615de72"
+}

@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 import { AppNav } from '../components/AppNav'
-import { HotUpdateBanner } from '../components/HotUpdateBanner'
-import { UpdateBanner } from '../components/UpdateBanner'
 import { PreviewModalHost } from '../components/PreviewModalHost'
+import { GlobalDownloadProgress } from '../components/GlobalDownloadProgress'
 import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
 import { DownloadProgressProvider } from '../context/DownloadProgressContext'
@@ -19,6 +18,8 @@ import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
+import { ObsStreamDemoPage } from '../pages/ObsStreamDemoPage'
+import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
@@ -31,7 +32,7 @@ export function AppRoutes() {
     chooseWiredCamera,
     connectDevice,
     prepareConnection,
-    preparedDjiWifi,
+    preparedWifi,
     selectDevice,
     connectionMode,
     disconnectDevice,
@@ -55,17 +56,17 @@ export function AppRoutes() {
 
   async function chooseBaseDir(): Promise<void> {
     const dir = await window.luna.chooseBaseDir()
-    if (dir) setSettings(await window.luna.saveSettings({ baseDir: dir }))
+    if (dir) setSettings(await window.luna.getSettings())
   }
 
   async function chooseLocalResourcesDir(): Promise<void> {
     const dir = await window.luna.chooseLocalResourcesDir()
-    if (dir) setSettings(await window.luna.saveSettings({ localResourcesDir: dir }))
+    if (dir) setSettings(await window.luna.getSettings())
   }
 
   async function chooseExportDir(): Promise<void> {
     const dir = await window.luna.chooseExportDir()
-    if (dir) setSettings(await window.luna.saveSettings({ exportDir: dir }))
+    if (dir) setSettings(await window.luna.getSettings())
   }
 
   function openDirectory(targetPath: string | null | undefined): void {
@@ -82,9 +83,11 @@ export function AppRoutes() {
 
   const developerMode = settings?.developerMode ?? false
   const debugVisible = import.meta.env.DEV || hiddenDevMode
+  const obsStreamDemoVisible = !window.luna.isPackaged
   const location = useLocation()
   const activePath = location.pathname === '/' ? '/library' : location.pathname
   const isActive = (path: string) => activePath === path
+  const settingsRoute = activePath === '/settings'
 
   // ── 路由访问权限表：path → 是否有权访问 ──
   // 加新路由时，在这里加一行，再在下面加 <section> 即可
@@ -93,12 +96,23 @@ export function AppRoutes() {
     ['/local-resources', true],
     ['/ai-selection', true],
     ['/workspace', true],
+    ['/obs-stream', obsStreamDemoVisible],
     ['/settings', true],
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
     ['/device-debug', debugVisible],
   ]
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
+
+  useEffect(() => {
+    logger.info('[导航诊断] 路由状态', {
+      hash: window.location.hash,
+      pathname: location.pathname,
+      activePath,
+      isKnownRoute,
+      settingsRoute,
+    })
+  }, [activePath, isKnownRoute, location.pathname, settingsRoute])
 
   // ── 特殊处理 ──
   if (location.pathname === '/') return <Navigate to="/library" replace />
@@ -116,15 +130,15 @@ export function AppRoutes() {
 
   return (
     <ExportProgressProvider>
-      <main className="app">
+      <DownloadProgressProvider>
+        <main className="app">
         <AppNav
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
         onChangeConnection={disconnectDevice}
       />
-      <UpdateBanner />
-      <HotUpdateBanner />
+      <GlobalDownloadProgress visible={!isActive('/library')} />
 
       <div className="route-stack" key={pagesKey}>
 
@@ -138,7 +152,7 @@ export function AppRoutes() {
               settings={settings}
               onConnect={connectDevice}
               onPrepareConnection={prepareConnection}
-              preparedDjiWifi={preparedDjiWifi}
+              preparedWifi={preparedWifi}
               onDeviceChange={selectDevice}
               connectionMode={connectionMode}
               onConnectionModeChange={setConnectionMode}
@@ -148,17 +162,13 @@ export function AppRoutes() {
           )}
           {(cameraLibraryMounted || !showDeviceConnect) && (
             <div hidden={showDeviceConnect}>
-              <DownloadProgressProvider>
-                <CameraMediaPage />
-              </DownloadProgressProvider>
+              <CameraMediaPage />
             </div>
           )}
         </AppRoute>
 
         <AppRoute path="/local-resources">
-          <DownloadProgressProvider>
-            <LocalMediaPage />
-          </DownloadProgressProvider>
+          <LocalMediaPage />
         </AppRoute>
 
         <AppRoute path="/ai-selection" preserve={false}>
@@ -171,6 +181,10 @@ export function AppRoutes() {
             onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
           />
+        </AppRoute>
+
+        <AppRoute path="/obs-stream" preserve={false}>
+          <ObsStreamDemoPage />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>
@@ -210,7 +224,8 @@ export function AppRoutes() {
 
         <PreviewModalHost />
       </div>
-    </main>
+        </main>
+      </DownloadProgressProvider>
     </ExportProgressProvider>
   )
 }

@@ -11,7 +11,12 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { platform } from 'node:os'
+import { homedir, platform } from 'node:os'
+import { delimiter, join } from 'node:path'
+
+const cargoHome = process.env.CARGO_HOME || join(homedir(), '.cargo')
+const cargoBinDir = join(cargoHome, 'bin')
+process.env.PATH = [cargoBinDir, process.env.PATH].filter(Boolean).join(delimiter)
 
 // ── 解析需要安装的 target ──
 const cliTarget = process.argv.includes('--target')
@@ -56,10 +61,6 @@ if (!hasRustup && !hasCargo) {
     }
   }
 
-  // 更新 PATH，使后续命令能找到 rustup/cargo
-  const { homedir } = await import('node:os')
-  const cargoHome = process.env.CARGO_HOME || `${homedir()}/.cargo`
-  process.env.PATH = `${cargoHome}/bin:${process.env.PATH}`
 } else {
   console.log('[setup-rust] ✅ rustup/cargo already available')
 }

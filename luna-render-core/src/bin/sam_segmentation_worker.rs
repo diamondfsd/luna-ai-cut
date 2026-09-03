@@ -20,7 +20,9 @@ fn run() -> Result<(), String> {
         args[7].parse().map_err(|_| "点击位置无效".to_string())?,
         args[8].parse().map_err(|_| "点击位置无效".to_string())?,
     )?;
-    if result.width != args[5].parse::<u32>().unwrap_or_default() || result.height != args[6].parse::<u32>().unwrap_or_default() {
+    if result.width != args[5].parse::<u32>().unwrap_or_default()
+        || result.height != args[6].parse::<u32>().unwrap_or_default()
+    {
         return Err("SAM 蒙版尺寸异常".to_string());
     }
     fs::write(&args[4], result.bytes).map_err(|error| format!("无法保存蒙版: {error}"))?;

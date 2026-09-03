@@ -20,7 +20,7 @@ interface DeviceConnectionContextValue {
   activeDevice: DeviceDefinition | undefined
   cameraLibraryMounted: boolean
   connectDevice: (rootPath?: string, deviceId?: string, wireless?: CameraMediaSourceOptions['wireless']) => Promise<void>
-  prepareConnection: () => Promise<CameraMediaSourcePreparationResult | null>
+  prepareConnection: (preferExistingConnection?: boolean) => Promise<CameraMediaSourcePreparationResult | null>
   selectDevice: (deviceId: string) => Promise<void>
   chooseWiredCamera: () => Promise<void>
   connectionMode: CameraConnectionMode
@@ -34,7 +34,7 @@ interface DeviceConnectionContextValue {
   showDeviceConnect: boolean
   sourceMode: CameraConnectionMode
   sourceCapabilities: CameraMediaSourceCapabilities
-  preparedDjiWifi: CameraMediaSourcePreparationResult['credentials'] | null
+  preparedWifi: CameraMediaSourcePreparationResult['credentials'] | null
   startMockServer: (deviceId?: string, settings?: Partial<AppSettings>) => Promise<void>
   stopMockServer: (deviceId?: string) => Promise<void>
 }
@@ -134,10 +134,10 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   const [mockServerStatuses, setMockServerStatuses] = useState<MockServerStatus[]>([])
   const [cameraLibraryMounted, setCameraLibraryMounted] = useState(false)
   const [connectionMode, setConnectionModeState] = useState<CameraConnectionMode>('wireless')
-  const [preparedDjiWifi, setPreparedDjiWifi] = useState<CameraMediaSourcePreparationResult['credentials'] & { deviceId: string } | null>(null)
+  const [preparedWifi, setPreparedWifi] = useState<CameraMediaSourcePreparationResult['credentials'] & { deviceId: string } | null>(null)
 
   const activeDevice = useMemo(() => activeDeviceFor(settings, devices), [devices, settings])
-  const isConnected = devicePhase === 'connected' && Boolean(connection?.httpOk && connection.controlOk)
+  const isConnected = devicePhase === 'connected' && Boolean(connection?.controlOk)
   const showDeviceConnect = !isConnected
   const sourceCapabilities = (connection as CameraMediaSourceStatus | null)?.capabilities ?? EMPTY_CAPABILITIES
 
@@ -248,11 +248,12 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
 
       setDevicePhase('checking')
       const t0 = performance.now()
-      const preparedWifi = preparedDjiWifi?.deviceId === deviceId ? preparedDjiWifi : null
-      const wireless = wirelessOverride ?? (preparedWifi ? {
+      const devicePreparedWifi = preparedWifi?.deviceId === deviceId ? preparedWifi : null
+      const wireless = wirelessOverride ?? (devicePreparedWifi ? {
         preparation: 'bluetooth' as const,
-        ssid: preparedWifi.ssid,
-        password: preparedWifi.password,
+        ssid: devicePreparedWifi.ssid,
+        password: devicePreparedWifi.password,
+        autoJoin: true,
       } : undefined)
       const status = await Promise.race([
         window.luna.cameraSource.connect({
@@ -294,7 +295,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     }
   }
 
-  async function prepareConnection(): Promise<CameraMediaSourcePreparationResult | null> {
+  async function prepareConnection(preferExistingConnection = false): Promise<CameraMediaSourcePreparationResult | null> {
     const latestSettings = await window.luna.getSettings().catch(() => settings)
     const deviceId = latestSettings?.activeDeviceId ?? activeDevice?.id
     const device = devices.find((item) => item.id === deviceId) ?? activeDevice
@@ -307,9 +308,14 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
 
     setDevicePhase('checking')
     try {
-      const result = await window.luna.cameraSource.prepareConnection({ mode: 'wireless', deviceId, host })
+      const result = await window.luna.cameraSource.prepareConnection({
+        mode: 'wireless',
+        deviceId,
+        host,
+        preferExistingConnection,
+      })
       if (result.credentials) {
-        setPreparedDjiWifi({ ...result.credentials, deviceId })
+        setPreparedWifi({ ...result.credentials, deviceId })
       }
       setConnection({
         deviceId,
@@ -326,7 +332,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       const message = userFacingConnectionError(error)
       setConnection({ host, httpOk: false, controlOk: false, message })
       setDevicePhase('idle')
-      return { mode: 'wireless', preparation: 'already-connected', message }
+      return { mode: 'wireless', preparation: 'already-connected', requiresManualWifi: true, message }
     }
   }
 
@@ -344,7 +350,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     setConnection(null)
     setDevicePhase('idle')
     setCameraLibraryMounted(false)
-    setPreparedDjiWifi(null)
+    setPreparedWifi(null)
     setConnectionModeState('wireless')
 
     const nextSettings = await window.luna.saveSettings({
@@ -400,7 +406,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     setConnection(null)
     setDevicePhase('idle')
     setCameraLibraryMounted(false)
-    setPreparedDjiWifi(null)
+    setPreparedWifi(null)
     setSettings(await window.luna.saveSettings({ cameraConnectionMode: mode }))
   }
 
@@ -414,7 +420,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     setConnection(null)
     setDevicePhase('idle')
     setCameraLibraryMounted(false)
-    setPreparedDjiWifi(null)
+    setPreparedWifi(null)
   }
 
   async function chooseMockMediaDir(deviceId = activeDevice?.id): Promise<void> {
@@ -480,7 +486,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         showDeviceConnect,
         sourceMode: connectionMode,
         sourceCapabilities,
-        preparedDjiWifi,
+        preparedWifi,
         setConnectionMode,
         startMockServer,
         stopMockServer,

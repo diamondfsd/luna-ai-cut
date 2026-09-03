@@ -90,6 +90,18 @@ export class LunaUltraProtocol implements DeviceProtocol {
     }
 
     const connectedStatus = await client.checkStatus()
+    if (!connectedStatus.controlOk) {
+      client.stopKeepAlive()
+      client.close()
+      logMainWarn(`[设备协议] 连接验证失败`, {
+        host,
+        httpOk: connectedStatus.httpOk,
+        controlOk: connectedStatus.controlOk,
+        message: connectedStatus.message,
+      })
+      return withDeviceInfo(connectedStatus, this.definition)
+    }
+
     client.onKeepAliveFailed = this.onConnectionLost ?? null
     client.startKeepAlive()
     await saveSettings({
@@ -292,6 +304,10 @@ async function listStorageFiles(client: LunaClient, storages: DeviceStorageOptio
       const storageId = storages[index]?.id ?? 'unknown'
       logMainWarn(`[存储读取] 存储不可用`, { storageId, reason: result.reason instanceof Error ? result.reason.message : String(result.reason) })
     }
+  }
+
+  if (results.length > 0 && groups.length === 0) {
+    throw new Error('相机存储均无法读取，请检查相机连接后重试')
   }
 
   return groups.flat().sort((a, b) => {

@@ -7,8 +7,11 @@ import {
   buildFileCommand,
   buildStreamHello,
   inspectFrameChecksum,
+  MEDIA_VIDEO,
+  parseMediaFrame,
   parseRawResponse,
   UCD2_FILE,
+  UCD2_MEDIA,
   UCD2_MAGIC,
   UCD2_STREAM,
 } from './insta360TcpCodec'
@@ -23,7 +26,10 @@ import {
 export { insta360PacketChecksum } from './insta360TcpCodec'
 export type { Insta360RawResponse } from './insta360TcpCodec'
 
+export type Insta360VideoFrameListener = (data: Buffer) => void
+
 const CODE_GET_FILE_LIST = 13
+const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
 const MEDIA_TYPE_ALL = 2
 const CARD_LOCATION_INTERNAL = 2
@@ -115,6 +121,46 @@ export function connectSocket(host: string, port: number, timeoutMs: number, loc
   })
 }
 
+/**
+ * Probe the Luna control endpoint with the same one-way UCD2 STREAM greeting
+ * used by the persistent control session. Luna does not guarantee a reply to
+ * this greeting, so a successful TCP write is the protocol-level confirmation.
+ */
+export async function probeInsta360StreamHandshake(host: string, port: number, timeoutMs = 1500): Promise<void> {
+  const startedAt = Date.now()
+  const normalizedHost = tcpHost(host)
+  const socket = await connectSocket(normalizedHost, port, timeoutMs)
+  try {
+    const packet = buildStreamHello(0x24)
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const timer = setTimeout(() => finish(new Error(`Luna STREAM 握手写入超时（${normalizedHost}:${port}）`)), timeoutMs)
+      const cleanup = (): void => {
+        clearTimeout(timer)
+        socket.off('error', onError)
+      }
+      const finish = (error?: Error): void => {
+        if (settled) return
+        settled = true
+        cleanup()
+        if (error) reject(error)
+        else resolve()
+      }
+      const onError = (error: Error): void => finish(error)
+      socket.once('error', onError)
+      socket.write(packet, (error) => finish(error ?? undefined))
+    })
+    logMainInfo('[Insta360TCP] Luna STREAM 握手探测成功', {
+      host: normalizedHost,
+      port,
+      packetBytes: packet.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+  } finally {
+    socket.destroy()
+  }
+}
+
 function builtCommand(label: string, seq: number, code: number, requestId: number, body: Buffer): ExactCommand {
   return {
     label,
@@ -171,6 +217,7 @@ export class Insta360TcpSession {
     label?: string
     startedAt: number
   }>()
+  private readonly videoListeners = new Set<Insta360VideoFrameListener>()
   constructor(
     private readonly host: string,
     private readonly port: number,
@@ -214,6 +261,11 @@ export class Insta360TcpSession {
     this.socket?.destroy()
     this.socket = null
     this.rejectAll()
+  }
+
+  subscribeVideo(listener: Insta360VideoFrameListener): () => void {
+    this.videoListeners.add(listener)
+    return () => this.videoListeners.delete(listener)
   }
 
   async refresh(): Promise<void> {
@@ -342,13 +394,17 @@ export class Insta360TcpSession {
         this.buffer = this.buffer.subarray(start)
       }
       if (this.buffer.length < 8) return
+      if (this.buffer.length < 12) return
 
       const type = this.buffer[6]
-      const frameLen = type === UCD2_STREAM
-        ? 16
-        : type === UCD2_FILE && this.buffer.length >= 12
-          ? 12 + this.buffer.readUInt32LE(8) + 4
-          : 0
+      const frameLen = type === UCD2_STREAM || type === UCD2_FILE || type === UCD2_MEDIA
+        ? 12 + this.buffer.readUInt32LE(8) + 4
+        : 0
+      if (frameLen > 8 * 1024 * 1024) {
+        logMainWarn('[Insta360TCP] 收到异常大的媒体帧长度', { type, frameLen })
+        this.buffer = this.buffer.subarray(8)
+        continue
+      }
       if (frameLen === 0) {
         logMainWarn('[Insta360TCP] 收到未知帧类型', {
           version: this.buffer[4],
@@ -367,6 +423,14 @@ export class Insta360TcpSession {
 
       const frame = this.buffer.subarray(0, frameLen)
       this.buffer = this.buffer.subarray(frameLen)
+      if (type === UCD2_MEDIA) {
+        const media = parseMediaFrame(frame)
+        if (media?.substream === MEDIA_VIDEO && media.data.length > 0) {
+          logMainDebug('[Insta360TCP] 收到视频媒体帧', { frameBytes: media.data.length })
+          for (const listener of this.videoListeners) listener(media.data)
+        }
+        continue
+      }
       if (type !== UCD2_FILE) {
         logMainDebug('[Insta360TCP] 收到 STREAM 帧', { seq: frame[7], frameBytes: frame.length })
         continue
@@ -417,5 +481,35 @@ export class Insta360TcpSession {
     const value = this.seq & 0xff
     this.seq = (this.seq + 1) & 0xff
     return value
+  }
+}
+
+/**
+ * Verify the Luna control endpoint with a request/response command.
+ * A successful TCP connect or write alone is not enough because a routed or
+ * virtual interface can accept the connection without being the camera.
+ */
+export async function probeInsta360ControlResponse(
+  host: string,
+  port: number,
+  timeoutMs = 3000,
+): Promise<Insta360RawResponse> {
+  const startedAt = Date.now()
+  const session = new Insta360TcpSession(tcpHost(host), port)
+  try {
+    await session.open()
+    const response = await session.sendCommand(CODE_GET_CURRENT_CAPTURE_STATUS, Buffer.alloc(0), timeoutMs)
+    logMainInfo('[Insta360TCP] Luna 控制指令响应探测成功', {
+      host: tcpHost(host),
+      port,
+      commandCode: CODE_GET_CURRENT_CAPTURE_STATUS,
+      responseCode: response.code,
+      requestId: response.requestId,
+      bodyBytes: response.body.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return response
+  } finally {
+    session.close()
   }
 }

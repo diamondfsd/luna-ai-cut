@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
+import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useStorageMigration } from '../hooks/useStorageMigration'
-import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
+import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition, WatermarkSettings } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
@@ -75,9 +75,9 @@ export function SettingsPage({
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
+  const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
-  const [gpuPreviewConfirmOpen, setGpuPreviewConfirmOpen] = useState(false)
   const [organizeDownloadsDialogOpen, setOrganizeDownloadsDialogOpen] = useState(false)
   const [organizingDownloads, setOrganizingDownloads] = useState(false)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, setSettings)
@@ -132,22 +132,27 @@ export function SettingsPage({
     if (stats) setFreshCacheStats(stats)
   }
 
-  function handleDefaultWatermarkChange(watermark: { enabled: boolean; position: NonNullable<AppSettings['defaultWatermarkPosition']> }): void {
+  function handleDefaultWatermarkChange(watermark: Pick<WatermarkSettings, 'enabled' | 'position' | 'sizeOnCanvasWidth' | 'placement'>): void {
     if (!settings) return
+    const placementChanged = JSON.stringify(settings.defaultWatermarkPlacement) !== JSON.stringify(watermark.placement)
     if (
       settings.defaultWatermarkEnabled === watermark.enabled
       && settings.defaultWatermarkPosition === watermark.position
+      && settings.defaultWatermarkSizeOnCanvasWidth === watermark.sizeOnCanvasWidth
+      && !placementChanged
     ) return
     const patch = {
       defaultWatermarkEnabled: watermark.enabled,
       defaultWatermarkPosition: watermark.position,
+      defaultWatermarkSizeOnCanvasWidth: watermark.sizeOnCanvasWidth,
+      defaultWatermarkPlacement: watermark.placement,
     }
     setSettings((current) => (current ? { ...current, ...patch } : current))
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
-  function saveGpuPreviewSetting(enabled: boolean): void {
-    const patch = { experimentalGpuPreview: enabled }
+  function saveWebGpuPreviewSetting(enabled: boolean): void {
+    const patch = { experimentalWebGpuPreview: enabled }
     setSettings((current) => (current ? { ...current, ...patch } : current))
     void window.luna.saveSettings(patch).then(setSettings)
   }
@@ -330,21 +335,18 @@ export function SettingsPage({
         </section>
 
         <section className="settings-group">
-          <h2 className="settings-group-title">实验性功能</h2>
+          <h2 className="settings-group-title">预览加速</h2>
           <div className="settings-card">
             <article className="settings-row">
               <div className="settings-row-copy">
-                <span>GPU 预览加速</span>
-                <em>减少预览和时间跳转时的等待；部分设备上可能存在显示兼容问题</em>
+                <span>预览加速</span>
+                <em>{settings?.experimentalWebGpuPreview ? '预览优先使用画面加速' : '使用通用预览方式'}</em>
               </div>
               <Switch
-                checked={settings?.experimentalGpuPreview ?? false}
+                checked={settings?.experimentalWebGpuPreview ?? false}
                 disabled={!settings}
-                ariaLabel="GPU 预览加速"
-                onCheckedChange={(enabled) => {
-                  if (enabled) setGpuPreviewConfirmOpen(true)
-                  else saveGpuPreviewSetting(false)
-                }}
+                ariaLabel="预览加速"
+                onCheckedChange={saveWebGpuPreviewSetting}
               />
             </article>
           </div>
@@ -401,7 +403,7 @@ export function SettingsPage({
             <article className="settings-row">
               <div className="settings-row-copy">
                 <span>日志</span>
-                <strong>{logDir || '正在读取'}</strong>
+                <strong>{logDir || '正在读取'} · 可导出当天诊断信息</strong>
               </div>
               <div className="settings-row-actions">
                 <Button variant="secondary" size="compact" onClick={() => {
@@ -419,6 +421,26 @@ export function SettingsPage({
                 }} icon={<Trash2 size={15} />}>
                   清空
                 </Button>
+                <Button
+                  variant="primary"
+                  size="compact"
+                  disabled={exportingDiagnostics}
+                  onClick={async () => {
+                    setExportingDiagnostics(true)
+                    try {
+                      const outputPath = await window.luna.exportDiagnosticsBundle()
+                      await window.luna.openPath(outputPath)
+                      toast.success('诊断包已导出')
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : '诊断包导出失败')
+                    } finally {
+                      setExportingDiagnostics(false)
+                    }
+                  }}
+                  icon={<Archive size={15} />}
+                >
+                  {exportingDiagnostics ? '导出中' : '导出诊断包'}
+                </Button>
               </div>
             </article>
           </div>
@@ -431,21 +453,6 @@ export function SettingsPage({
         onDefaultChange={handleDefaultWatermarkChange}
       />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
-      <Dialog
-        open={gpuPreviewConfirmOpen}
-        onOpenChange={setGpuPreviewConfirmOpen}
-        title="开启 GPU 预览加速？"
-        description="部分 Windows 设备可能出现黑屏、无法预览或画面异常。如果遇到这些情况，请返回设置关闭 GPU 预览加速。"
-        footer={(
-          <>
-            <Button variant="secondary" onClick={() => setGpuPreviewConfirmOpen(false)}>取消</Button>
-            <Button variant="primary" onClick={() => {
-              setGpuPreviewConfirmOpen(false)
-              saveGpuPreviewSetting(true)
-            }}>仍然开启</Button>
-          </>
-        )}
-      />
       <Dialog
         open={organizeDownloadsDialogOpen}
         onOpenChange={(open) => {

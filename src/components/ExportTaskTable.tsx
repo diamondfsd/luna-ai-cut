@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
+import { AlertCircle, Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Eye, FileDown, Film, ImageIcon, Loader2, Trash2, X, XCircle } from 'lucide-react'
 
 import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
 import { showPreviewModal } from './previewModalService'
 import { useExportProgress } from '../context/ExportProgressContext'
-import { Dialog, IconButton, toast } from '../ui'
+import { Button, Dialog, IconButton, toast } from '../ui'
 import { Table, type Column } from '../ui/Table'
 import '../styles/export-tasks.css'
 
@@ -137,6 +137,8 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   // 任务级错误详情弹窗
   const [taskErrorDialog, setTaskErrorDialog] = useState<{ task: ExportTaskRecord; errorText: string } | null>(null)
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const loadTasks = async () => {
     setLoading(true)
@@ -213,6 +215,26 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
       }),
     )
     await window.luna.exportTask.cancel(taskId)
+  }
+
+  const activeTaskCount = tasks.filter((task) => task.status === 'exporting' || task.status === 'pending').length
+  const canClear = tasks.length > 0 && activeTaskCount === 0 && !clearing
+
+  const handleClearTasks = async (): Promise<void> => {
+    if (!canClear) return
+    setClearing(true)
+    try {
+      await window.luna.exportTask.clear()
+      setTasks([])
+      setExpandedTasks(new Set())
+      setPage(1)
+      setClearConfirmOpen(false)
+      toast.success('导出记录已清除')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '清除导出记录失败')
+    } finally {
+      setClearing(false)
+    }
   }
 
   const statusIcon = (task: ExportTaskRecord) => {
@@ -324,6 +346,22 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   return (
     <>
+      <div className="et-toolbar">
+        <span className="et-toolbar-summary">
+          {tasks.length > 0 ? `${tasks.length} 条记录` : '暂无记录'}
+        </span>
+        <Button
+          variant="danger"
+          size="compact"
+          icon={<Trash2 size={14} />}
+          disabled={!canClear}
+          title={activeTaskCount > 0 ? '导出进行中，暂不能清除记录' : '清除全部导出记录'}
+          onClick={() => setClearConfirmOpen(true)}
+        >
+          清除记录
+        </Button>
+      </div>
+
       <Table
         columns={columns}
         data={pageTasks}
@@ -384,6 +422,26 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
             </button>
           </div>
         </Dialog>
+      )}
+
+      {clearConfirmOpen && (
+        <Dialog
+          open={clearConfirmOpen}
+          onOpenChange={setClearConfirmOpen}
+          title="清除导出记录"
+          description="只会清除记录，不会删除已经导出的文件。"
+          className="et-confirm-dialog"
+          footer={
+            <>
+              <Button variant="secondary" size="compact" onClick={() => setClearConfirmOpen(false)} disabled={clearing}>
+                取消
+              </Button>
+              <Button variant="danger" size="compact" onClick={() => void handleClearTasks()} disabled={clearing}>
+                {clearing ? '清除中...' : '确认清除'}
+              </Button>
+            </>
+          }
+        />
       )}
 
     </>

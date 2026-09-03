@@ -56,6 +56,8 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dragHighlighted, setDragHighlighted] = useState<Set<number>>(new Set())
   const [formatInfoByPath, setFormatInfoByPath] = useState<Map<string, MediaFormatInfo>>(new Map())
+  const pendingFormatInfoPathsRef = useRef(new Set<string>())
+  const mountedRef = useRef(true)
   const visibleMedia = mediaList
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => !supportedMediaKinds || supportedMediaKinds.includes(item.kind))
@@ -63,30 +65,37 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
   const visibleIndexSet = new Set(visibleIndices)
 
   useEffect(() => {
-    let canceled = false
-    const missingItems = mediaList.filter((item) => !formatInfoByPath.has(item.path))
+    const missingItems = mediaList.filter((item) => (
+      !formatInfoByPath.has(item.path) && !pendingFormatInfoPathsRef.current.has(item.path)
+    ))
     if (missingItems.length === 0) return
+    for (const item of missingItems) pendingFormatInfoPathsRef.current.add(item.path)
 
     void Promise.all(missingItems.map(async (item) => {
       try {
-        const [info, duration] = await Promise.all([
-          window.luna.workspace.getMediaFormatInfo(item.path),
-          item.kind === 'video' ? window.luna.workspace.getVideoDuration(item.path).catch(() => null) : Promise.resolve(null),
-        ])
-        return [item.path, { ...info, duration }] as const
+        const info = await window.luna.workspace.getMediaFormatInfo(item.path)
+        return [item.path, info] as const
       } catch {
         return [item.path, { dolbyVision: false, iLog: false, raw: false, duration: null }] as const
       }
     })).then((entries) => {
-      if (canceled) return
+      if (!mountedRef.current) return
       setFormatInfoByPath((current) => {
         const next = new Map(current)
         for (const [filePath, info] of entries) next.set(filePath, info)
         return next
       })
+    }).finally(() => {
+      for (const item of missingItems) pendingFormatInfoPathsRef.current.delete(item.path)
     })
-    return () => { canceled = true }
   }, [formatInfoByPath, mediaList])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   function handleClick(index: number, event: MouseEvent): void {
     containerRef.current?.focus({ preventScroll: true })

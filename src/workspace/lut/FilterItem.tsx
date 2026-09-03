@@ -179,7 +179,7 @@ export function FilterItem({
         </Tooltip>
       )}
       {active && !hideName && <div className="check">✓</div>}
-      {!hideName && <div className="name">{name}</div>}
+      {!hideName && <div className="name" title={name}>{name}</div>}
     </article>
   )
 }

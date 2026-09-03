@@ -31,6 +31,7 @@ export type { PreviewLayer }
 
 export interface LrcRenderProps {
   layers: PreviewLayer[]
+  active?: boolean
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   className?: string
   onError?: (error: string) => void
@@ -114,6 +115,7 @@ const layersEqual = (prevLayers: PreviewLayer[], nextLayers: PreviewLayer[]): bo
 export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
   {
     layers,
+    active = true,
     canvasRef: extRef,
     className,
     onError,
@@ -139,6 +141,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const internalRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
+  const activeRef = useRef(active)
+  const layersRevisionRef = useRef(0)
   const rafRef = useRef(0)
   const imageInteraction = useCanvasViewportInteraction({
     layers,
@@ -162,7 +166,11 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<RenderInitFailure | null>(null)
   const [retrying, setRetrying] = useState(false)
-  layersRef.current = layers
+  if (layersRef.current !== layers) {
+    layersRevisionRef.current += 1
+    layersRef.current = layers
+  }
+  activeRef.current = active
 
   useLayoutEffect(() => {
     onViewportChange?.()
@@ -260,12 +268,13 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   async function renderPreviewFrame() {
     const lrc = getLRC()
     const canvas = canvasRef.current
-    if (!lrc || !canvas || destroyRef.current) return
+    if (!lrc || !canvas || destroyRef.current || !activeRef.current) return
     if (renderingRef.current) {
       renderQueuedRef.current = true
       return
     }
 
+    const renderRevision = layersRevisionRef.current
     const renderLayers = layersWithVideoTime()
     if (renderLayers.length === 0) return
 
@@ -294,7 +303,11 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       }
       // 使用异步方法，避免阻塞主线程
       const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, compositionTime, effectiveMaxSide)
-      if (destroyRef.current) return
+      if (destroyRef.current || !activeRef.current) return
+      if (layersRevisionRef.current !== renderRevision) {
+        renderQueuedRef.current = true
+        return
+      }
 
       if (traceFirstRender) {
         logger.info('[预览诊断] 首次画面渲染完成', {
@@ -342,7 +355,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   useEffect(() => {
     lastMediaSizeRef.current = [0, 0]
 
-    if (!ready) return
+    if (!ready || !active) return
     const currentKeys = new Set(layers.filter((layer) => layer.isVideo).map(layerKey))
 
     for (const [key, video] of videosRef.current) {
@@ -393,10 +406,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     }
 
     void renderPreviewFrame()
-  }, [canvasHeight, canvasWidth, compositionTime, layers, maxSide, ready])
+  }, [active, canvasHeight, canvasWidth, compositionTime, layers, maxSide, ready])
 
   useEffect(() => {
-    if (!ready || !layers.some((layer) => layer.isVideo)) return
+    if (!ready || !active || !layers.some((layer) => layer.isVideo)) return
 
     function loop() {
       const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
@@ -413,7 +426,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
     rafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [ready, layers])
+  }, [active, ready, layers])
 
   useImperativeHandle(ref, () => ({
     async exportImage(outputPath: string, width: number, height: number, format: string, quality: number) {
@@ -482,6 +495,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   return (
     prevProps.canvasWidth === nextProps.canvasWidth &&
     prevProps.canvasHeight === nextProps.canvasHeight &&
+    prevProps.active === nextProps.active &&
     prevProps.maxSide === nextProps.maxSide &&
     prevProps.compositionTime === nextProps.compositionTime &&
     prevProps.className === nextProps.className &&

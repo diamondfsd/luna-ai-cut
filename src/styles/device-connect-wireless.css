@@ -49,6 +49,14 @@
   color: #b45309;
 }
 
+.device-connect-wireless-header-actions {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px !important;
+  min-width: max-content !important;
+}
+
 .device-connect-wireless-credentials {
   display: grid;
   gap: 8px;
@@ -101,5 +109,10 @@
 
   .device-connect-wireless-state {
     justify-self: start;
+  }
+
+  .device-connect-wireless-header-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }

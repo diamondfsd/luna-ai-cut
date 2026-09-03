@@ -2,15 +2,17 @@ import { Check, CircleAlert, Pencil, RotateCcw, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Accordion, Button, IconButton, Popover, PopoverContent, PopoverTrigger, Switch, Tooltip, toast } from '../../ui'
+import type { DeviceLutRestoreConfig } from '../../shared/types/device'
 import { type LutFileInfo } from './builtinLuts'
 import { FilterItem } from './FilterItem'
 import { LutImportDialog } from './LutImportDialog'
 import { lutManager } from './LutManager'
 import { ParamSlider } from '../components/ParamSlider'
-import { findLunaUltraRestoreLut, isLunaUltraRestoreLut, isLunaUltraTechnicalLut } from './lunaUltraRestoreLut'
+import { findDeviceRestoreLut, isDeviceRestoreLut, isTechnicalLut } from './restoreLuts'
 import './FilterPanel.css'
 
 interface FilterPanelProps {
+  restoreLut?: DeviceLutRestoreConfig | null
   restoreLutId: string | null
   onRestoreChange: (lutId: string | null) => void
   activeLutId: string | null
@@ -23,7 +25,7 @@ interface FilterPanelProps {
   searchKey?: string
 }
 
-export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
+export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [openCategory, setOpenCategory] = useState<string | null>(null)
@@ -40,8 +42,8 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
     [allLuts, activeLutId],
   )
   const activeLutCategory = activeLutInfo?.category
-  const restoreLut = useMemo(() => findLunaUltraRestoreLut(allLuts), [allLuts])
-  const restoreActive = isLunaUltraRestoreLut(restoreLutId)
+  const restoreLut = useMemo(() => findDeviceRestoreLut(allLuts, restoreLutConfig), [allLuts, restoreLutConfig])
+  const restoreActive = isDeviceRestoreLut(restoreLutId, restoreLutConfig)
 
   // 解析 lutDir
   async function resolveLutDir(): Promise<string> {
@@ -65,7 +67,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
       setAllLuts(luts)
       const cats: string[] = []
       const seen = new Set<string>()
-      for (const lut of luts.filter((item) => !isLunaUltraTechnicalLut(item.filePath))) {
+      for (const lut of luts.filter((item) => !isTechnicalLut(item))) {
         if (!seen.has(lut.category)) {
           seen.add(lut.category)
           cats.push(lut.category)
@@ -91,7 +93,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
   }, [refreshLuts])
 
   const visibleGroups = useMemo(() => {
-    let result = allLuts.filter((lut) => !isLunaUltraTechnicalLut(lut.filePath))
+    let result = allLuts.filter((lut) => !isTechnicalLut(lut))
     if (searchKey) {
       const kw = searchKey.toLowerCase()
       result = result.filter((l) => l.name.toLowerCase().includes(kw))
@@ -147,9 +149,9 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
       if (activeLutId === lut.filePath || activeLutId === lut.id) {
         onChange(null)
       }
-      toast.success('滤镜已删除')
+      toast.success('Lut 已删除')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '无法删除这个滤镜')
+      toast.error(err instanceof Error ? err.message : '无法删除这个 Lut')
     } finally {
       setDeletingLutPath(null)
     }
@@ -166,14 +168,20 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
         <section className="lut-restore-row">
           <span>
             <strong>LUT 还原</strong>
-            <small>{lutsLoading ? '正在准备...' : lutsError ? '暂时不可用' : 'Rec.709 还原'}</small>
+            <small>{lutsLoading
+              ? '正在准备...'
+              : lutsError
+                ? '暂时不可用'
+                : restoreLutConfig
+                  ? (restoreLut ? restoreLutConfig.label : '资源未就绪')
+                  : '当前设备不支持'}</small>
           </span>
           {lutsError ? (
             <Button variant="ghost" size="mini" onClick={() => void refreshLuts()}>重试</Button>
           ) : (
             <Switch
               checked={restoreActive}
-              disabled={lutsLoading || !restoreLut}
+              disabled={lutsLoading || !restoreLutConfig || !restoreLut}
               ariaLabel="LUT 还原"
               onCheckedChange={handleRestoreChange}
             />
@@ -197,13 +205,13 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <path d="m21 15-5-5L5 21" />
               </svg>
-              <span>选择一个滤镜</span>
+              <span>选择一个 Lut</span>
             </div>
           )}
           {activeLutInfo ? (
             <div className="current-info">
               <div className="current-top">
-                <span className="current-name">{activeLutInfo.name}</span>
+                <span className="current-name" title={activeLutInfo.name}>{activeLutInfo.name}</span>
                 <div className="current-actions">
                   <Popover>
                     <PopoverTrigger asChild>
@@ -245,7 +253,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <button className="filter-reset" onClick={() => { onChange(null); }} title="重置滤镜">
+                  <button className="filter-reset" onClick={() => { onChange(null); }} title="重置 Lut">
                     <RotateCcw size={11} />
                   </button>
                 </div>
@@ -266,7 +274,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
         </section>
 
         <div className="filter-groups-toolbar">
-          <span>滤镜分类</span>
+          <span>Lut 分类</span>
           <Button
             variant="ghost"
             size="mini"
@@ -289,7 +297,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
                 className="lut-category-accordion"
                 title={<><span>{category}</span><span className="lut-category-count">{items.length}</span></>}
                 actions={editable ? (
-                  <Tooltip content={editing ? '完成编辑' : '编辑自定义滤镜'}>
+                  <Tooltip content={editing ? '完成编辑' : '编辑自定义 Lut'}>
                     <IconButton
                       variant="ghost"
                       size="mini"
@@ -325,7 +333,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
               </Accordion>
             )
           }) : (
-            <div className="filter-empty">{searchKey ? '没有匹配的滤镜' : '暂无可用滤镜'}</div>
+            <div className="filter-empty">{searchKey ? '没有匹配的 Lut' : '暂无可用 Lut'}</div>
           )}
         </main>
       </div>

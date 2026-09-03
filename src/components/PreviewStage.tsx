@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { LrcRender } from './LrcRender'
 import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
-import { NativeGpuVideoPreview } from './NativeGpuVideoPreview'
+import { WebGpuVideoPreview } from './WebGpuVideoPreview'
 import { PreviewStageError } from './PreviewStageError'
 import { useApp } from '../context/AppContext'
 import type { PreviewLayer } from '../shared/types'
@@ -12,6 +12,8 @@ import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTra
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { usePreviewResolution } from './usePreviewResolution'
+import { logger } from '../lib/rendererLogger'
+import { previewLayerSignature, summarizePreviewColor, summarizePreviewLayers } from './previewDiagnostics'
 import {
   buildLayers,
   calcAspectRatio,
@@ -29,7 +31,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
-  const { settings } = useApp()
+  const { settings, setSettings } = useApp()
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   // ── 媒体分辨率 ──
@@ -38,26 +40,43 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [renderedCanvasKey, setRenderedCanvasKey] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const previewErrorToastRef = useRef<string | null>(null)
+  const rendererSelectionLogRef = useRef('')
+  const previewSnapshotLogRef = useRef('')
+  const previewSnapshotSequenceRef = useRef(0)
   const prevUrlRef = useRef<string | null>(null)
   // ── 视频控件状态 ──
   const videoRef = useRef<HTMLMediaElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [nativePreviewFailed, setNativePreviewFailed] = useState(false)
-  const gpuPreviewEnabled = settings?.experimentalGpuPreview ?? false
+  const webGpuPreviewEnabled = settings?.experimentalWebGpuPreview ?? false
+  const [webGpuPreviewFailed, setWebGpuPreviewFailed] = useState(false)
+  const webGpuPreviewAutoDisabledRef = useRef(false)
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
   const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
+  const playbackIntentRef = useRef(false)
+  const playRequestRef = useRef(0)
   const wasPlayingBeforeSeekRef = useRef(false) // 记录 seek 前是否在播放
   const shouldResumePlaybackRef = useRef(false) // 记录是否需要在渲染完成后恢复播放
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
   const resolution = usePreviewResolution(layoutUrl)
-  useEffect(() => setNativePreviewFailed(false), [gpuPreviewEnabled])
+  useEffect(() => {
+    setWebGpuPreviewFailed(false)
+    if (!webGpuPreviewEnabled) webGpuPreviewAutoDisabledRef.current = false
+  }, [webGpuPreviewEnabled])
+  const requestPlayback = useCallback((video: HTMLMediaElement) => {
+    const requestId = ++playRequestRef.current
+    const play = () => {
+      if (playRequestRef.current !== requestId || videoRef.current !== video || !playbackIntentRef.current) return
+      video.play().catch(() => {})
+    }
+    play()
+  }, [])
   // 暴露给父组件的视频控制 API
   useImperativeHandle(ref, () => ({
     seek: (time: number) => {
@@ -65,20 +84,31 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       setCurrentTime(time)
     },
     togglePlay: () => {
-      if (!videoRef.current) return
-      if (videoRef.current.paused) videoRef.current.play().catch(() => {})
-      else videoRef.current.pause()
+      const video = videoRef.current
+      if (!video) return
+      shouldResumePlaybackRef.current = false
+      if (!video.paused) {
+        playRequestRef.current += 1
+        playbackIntentRef.current = false
+        setPlaying(false)
+        video.pause()
+      } else {
+        playbackIntentRef.current = true
+        setPlaying(true)
+        requestPlayback(video)
+      }
     },
     getCurrentTime: () => videoRef.current?.currentTime ?? currentTime,
     getDuration: () => videoRef.current?.duration ?? duration,
     isPlaying: () => videoRef.current ? !videoRef.current.paused : playing,
-  }), [currentTime, duration, playing])
+  }), [currentTime, duration, playing, requestPlayback])
 
   // 暴露 video 元素并绑定事件
   const handleVideoElement = useCallback((el: HTMLMediaElement | null) => {
     if (videoRef.current === el) return
     // 解绑旧元素
     if (videoRef.current) {
+      playRequestRef.current += 1
       videoRef.current.onplay = null
       videoRef.current.onpause = null
       videoRef.current.ontimeupdate = null
@@ -87,14 +117,27 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     }
     videoRef.current = el
     if (el) {
-      setPlaying(!el.paused)
+      playbackIntentRef.current = !el.paused
+      setPlaying(playbackIntentRef.current)
       setCurrentTime(el.currentTime)
       setDuration(el.duration || 0)
       el.onplay = () => {
+        if (!playbackIntentRef.current) {
+          el.pause()
+          return
+        }
         setPlaying(true)
         onPlayStateChange?.({ playing: true, currentTime: el.currentTime, duration: el.duration || 0 })
       }
       el.onpause = () => {
+        // 渲染器的旧暂停命令可能晚于新的播放命令到达；当前仍有播放意图时，
+        // 不要把这个过期事件传播成用户暂停。
+        if (playbackIntentRef.current && !el.ended) {
+          setPlaying(true)
+          requestPlayback(el)
+          return
+        }
+        playbackIntentRef.current = false
         setPlaying(false)
         onPlayStateChange?.({ playing: false, currentTime: el.currentTime, duration: el.duration || 0 })
       }
@@ -107,25 +150,29 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         onPlayStateChange?.({ playing: !el.paused, currentTime: el.currentTime, duration: el.duration || 0 })
       }
       el.onended = () => {
+        playRequestRef.current += 1
+        shouldResumePlaybackRef.current = false
+        playbackIntentRef.current = false
         setPlaying(false)
         setCurrentTime(el.duration || el.currentTime)
         if (livePlaying) setLivePlaying(false)
         onPlayStateChange?.({ playing: false, currentTime: el.duration || el.currentTime, duration: el.duration || 0 })
       }
       if (livePlaying && isDisplayVideo) {
+        playbackIntentRef.current = true
         el.currentTime = 0
-        el.play().catch(() => {})
+        requestPlayback(el)
       }
     } else {
+      playbackIntentRef.current = false
       setPlaying(false)
       setCurrentTime(0)
       setDuration(0)
     }
-  }, [livePlaying, isDisplayVideo])
+  }, [isDisplayVideo, livePlaying, onPlayStateChange, requestPlayback])
 
   useEffect(() => {
     let canceled = false
-    setNativePreviewFailed(false)
     setLivePlaying(false)
     setLiveVideoUrl(null)
     if (!isLivePhoto || !url) return
@@ -148,11 +195,18 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   }, [url, isLivePhoto])
 
   function togglePlay() {
-    if (!videoRef.current) return
-    if (videoRef.current.paused) {
-      videoRef.current.play().catch(() => {})
+    const video = videoRef.current
+    if (!video) return
+    shouldResumePlaybackRef.current = false
+    if (video.paused) {
+      playbackIntentRef.current = true
+      setPlaying(true)
+      requestPlayback(video)
     } else {
-      videoRef.current.pause()
+      playRequestRef.current += 1
+      playbackIntentRef.current = false
+      setPlaying(false)
+      video.pause()
     }
   }
 
@@ -168,6 +222,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     // 拖动开始时，如果正在播放，暂停视频
     if (videoRef.current && !videoRef.current.paused) {
       wasPlayingBeforeSeekRef.current = true
+      playRequestRef.current += 1
+      playbackIntentRef.current = false
       videoRef.current.pause()
     } else {
       wasPlayingBeforeSeekRef.current = false
@@ -191,9 +247,19 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   useEffect(() => {
     if (!livePlaying || !isDisplayVideo || !videoRef.current) return
+    playbackIntentRef.current = true
     videoRef.current.currentTime = 0
-    videoRef.current.play().catch(() => {})
-  }, [livePlaying, isDisplayVideo, displayUrl])
+    requestPlayback(videoRef.current)
+  }, [livePlaying, isDisplayVideo, displayUrl, requestPlayback])
+
+  useEffect(() => {
+    if (active) return
+    playRequestRef.current += 1
+    playbackIntentRef.current = false
+    shouldResumePlaybackRef.current = false
+    setLivePlaying(false)
+    videoRef.current?.pause()
+  }, [active])
 
   // url 变化时显示 loading，onRender 时取消
   useEffect(() => {
@@ -224,10 +290,13 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const canvasRenderKey = previewCanvas && displayUrl
     ? `${displayUrl}\n${previewCanvas.width}x${previewCanvas.height}`
     : null
+  // 切换素材或画布尺寸时销毁旧渲染实例，避免旧的异步渲染结果回写当前 loading 状态。
+  const rendererKey = canvasRenderKey ?? 'empty'
   const canvasAwaitingRender = canvasRenderKey !== null && renderedCanvasKey !== canvasRenderKey
 
   function handleRender() {
     previewErrorToastRef.current = null
+    setPreviewError(null)
     setRenderedCanvasKey(canvasRenderKey)
     setLoading(false)
     // 裁剪模式会在“最终裁剪画布”和“原始工作画布”之间切换。
@@ -236,13 +305,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     // 渲染完成后，检查是否需要恢复播放
     if (shouldResumePlaybackRef.current && videoRef.current) {
       shouldResumePlaybackRef.current = false
-      videoRef.current.play().catch(() => {})
+      playbackIntentRef.current = true
+      requestPlayback(videoRef.current)
     }
   }
 
-  function handleRenderFailure(reason: string) {
+  function handleRenderFailure(reason: string, showToast = true) {
     console.warn('[PreviewStage] preview render failed', { reason })
-    if (previewErrorToastRef.current !== reason) {
+    if (showToast && previewErrorToastRef.current !== reason) {
       previewErrorToastRef.current = reason
       toast.error('预览暂时无法显示，请重试或重置当前素材')
     }
@@ -250,6 +320,23 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     setRenderedCanvasKey(canvasRenderKey)
     setLoading(false)
     shouldResumePlaybackRef.current = false
+  }
+
+  function handleWebGpuPreviewFailure(reason: string) {
+    console.error('[PreviewStage] WebGPU preview failed', { reason })
+    setWebGpuPreviewFailed(true)
+    const isResourceFailure = reason.includes('调色文件') || reason.includes('字体文件')
+    const userMessage = isResourceFailure ? '调色文件暂时无法读取' : '预览加速暂时不可用'
+    handleRenderFailure(userMessage, false)
+    if (previewErrorToastRef.current !== reason) {
+      previewErrorToastRef.current = reason
+      toast.error(`${userMessage}，已切回通用预览`)
+    }
+    if (isResourceFailure) return
+    if (webGpuPreviewAutoDisabledRef.current || !settings?.experimentalWebGpuPreview) return
+    webGpuPreviewAutoDisabledRef.current = true
+    setSettings((current) => (current ? { ...current, experimentalWebGpuPreview: false } : current))
+    void window.luna.saveSettings({ experimentalWebGpuPreview: false }).catch(() => undefined)
   }
 
   useEffect(() => {
@@ -320,22 +407,68 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
+  const layersDiagnosticSignature = useMemo(() => previewLayerSignature(layers), [layers])
   const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
     isDisplayVideo,
     layers,
     keepCompositionVideoRenderer,
   )
-  const useNativeGpuPreview = isDisplayVideo
-    && gpuPreviewEnabled
+  const useWebGpuPreview = webGpuPreviewEnabled
+    && !webGpuPreviewFailed
     && !livePlaying
     && !useCompositionVideoRenderer
-    && !cropActive
-    && viewScale === 'fit'
-    && !nativePreviewFailed
+    && Boolean(previewCanvas)
   const primaryVideoLayer = layers.find((layer) => layer.isVideo)
   const compositionTime = primaryVideoLayer
     ? compositionTimeForVideoLayer(primaryVideoLayer, currentTime)
     : Math.max(0, currentTime)
+  const previewSnapshotKey = `${layersDiagnosticSignature}|${JSON.stringify(summarizePreviewColor(pipeline?.color))}|${displayUrl ?? ''}|${compositionTime}`
+
+  useEffect(() => {
+    if (previewSnapshotLogRef.current === previewSnapshotKey) return
+    previewSnapshotLogRef.current = previewSnapshotKey
+    const snapshot = ++previewSnapshotSequenceRef.current
+    logger.info('[PreviewDebug] PreviewStage snapshot', {
+      snapshot,
+      displayUrl,
+      pending,
+      currentTime,
+      compositionTime,
+      pipelineColor: summarizePreviewColor(pipeline?.color),
+      layerSignature: layersDiagnosticSignature,
+      layers: summarizePreviewLayers(layers),
+    })
+  }, [compositionTime, currentTime, displayUrl, layers, layersDiagnosticSignature, pending, pipeline, previewSnapshotKey])
+  const previewCanvasWidth = previewCanvas?.width ?? null
+  const previewCanvasHeight = previewCanvas?.height ?? null
+  const rendererSelectionSignature = [
+    displayUrl ?? '',
+    isDisplayVideo,
+    webGpuPreviewEnabled,
+    webGpuPreviewFailed,
+    useCompositionVideoRenderer,
+    useWebGpuPreview,
+    layers.length,
+    previewCanvasWidth,
+    previewCanvasHeight,
+  ].join('|')
+
+  useEffect(() => {
+    if (rendererSelectionLogRef.current === rendererSelectionSignature) return
+    rendererSelectionLogRef.current = rendererSelectionSignature
+    logger.info('[PreviewDebug] renderer selected', {
+      source: displayUrl,
+      isDisplayVideo,
+      webGpuPreviewEnabled,
+      webGpuPreviewFailed,
+      useCompositionVideoRenderer,
+      useWebGpuPreview,
+      layerCount: layers.length,
+      canvas: previewCanvasWidth == null || previewCanvasHeight == null
+        ? null
+        : { width: previewCanvasWidth, height: previewCanvasHeight },
+    })
+  }, [displayUrl, isDisplayVideo, layers.length, previewCanvasHeight, previewCanvasWidth, rendererSelectionSignature, useCompositionVideoRenderer, useWebGpuPreview, webGpuPreviewEnabled, webGpuPreviewFailed])
 
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current
@@ -410,25 +543,29 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          {useNativeGpuPreview && previewCanvas ? (
-            <NativeGpuVideoPreview
+          {useWebGpuPreview && previewCanvas ? (
+            <WebGpuVideoPreview
+              key={rendererKey}
               layers={layers}
               canvasWidth={previewCanvas.width}
               canvasHeight={previewCanvas.height}
+              maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
               active={active}
               playing={playing}
               time={compositionTime}
+              imageScale={viewScale === 'fit' ? null : viewScale / 100}
+              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
+              onViewportChange={syncCanvasMetrics}
+              viewportKey={viewportKey}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
-              onFallback={(reason) => {
-                console.warn('[PreviewStage] native GPU preview fallback', { reason })
-                handleRenderFailure(reason)
-                setNativePreviewFailed(true)
-              }}
+              onError={handleWebGpuPreviewFailure}
             />
           ) : isDisplayVideo && !useCompositionVideoRenderer ? (
             <MultipleLayerVideoPreviewLrcRender
+              key={rendererKey}
               layers={layers}
+              active={active}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
@@ -443,7 +580,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
             />
           ) : (
             <LrcRender
+              key={rendererKey}
               layers={layers}
+              active={active}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}

@@ -6,6 +6,8 @@ import type { OriginalFileExportRequest } from '../../src/shared/types'
 import * as exportTaskService from '../export/exportTaskService'
 import type { IpcContext } from './context'
 import { exportOriginalFile } from '../export/originalFileExportService'
+import { fileOperationErrorDetails, friendlyFileOperationError, userFacingFileOperationError } from '../storage/fileOperationDiagnostics.ts'
+import { logMainError, logMainInfo } from '../infrastructure/loggerService'
 
 export function register(ctx: IpcContext): void {
   ipcMain.handle('workspace:exportOriginalFile', async (event, request: OriginalFileExportRequest) => {
@@ -48,12 +50,25 @@ export function register(ctx: IpcContext): void {
         throw error
       }
       await sendProgress(100, 'done')
+      logMainInfo('[export] 原片导出成功', {
+        sourcePath: request.sourcePath,
+        outputPath: request.outputPath,
+      })
       return { path: request.outputPath }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
       const canceled = controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')
+      const message = canceled ? (error instanceof Error ? error.message : String(error)) : friendlyFileOperationError(error, 'export')
+      if (!canceled) {
+        logMainError('[export] 原片导出失败', {
+          sourcePath: request.sourcePath,
+          outputPath: request.outputPath,
+          temporaryPathPattern: `${request.outputPath}.partial-*`,
+          userMessage: message,
+          ...fileOperationErrorDetails(error, request.outputPath),
+        })
+      }
       await sendProgress(100, canceled ? 'canceled' : 'failed', message)
-      throw error
+      throw canceled ? error : userFacingFileOperationError(error, 'export')
     } finally {
       ctx.activeExportControllers.delete(controllerKey)
     }

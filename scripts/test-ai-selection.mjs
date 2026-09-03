@@ -105,6 +105,36 @@ assert.ok(bright.quality.reasons.includes('画面严重过曝'))
 assert.equal(hammingDistance(dark.perceptualHash, dark.perceptualHash), 0)
 assert.equal(hammingDistance('0000000000000000', '000000000000000f'), 4)
 
+const composedWithSubjectMask = item('subject-composed', '2026-07-18T01:00:00.000Z', {
+  compositionEvidence: {
+    version: 'relic2-cpc-composition-v1',
+    source: 'relic2-cpc',
+    detected: true,
+    confidence: 0.75,
+    coverage: 0.08,
+    bounds: { x: 0.28, y: 0.28, width: 0.12, height: 0.2 },
+    score: { raw: 2.4, normalized: 0.8 },
+    reason: 'ReLIC++ CPC 构图评分 80',
+  },
+})
+const composedAtCorner = item('subject-corner', '2026-07-18T01:00:01.000Z', {
+  compositionEvidence: {
+    version: 'relic2-cpc-composition-v1',
+    source: 'relic2-cpc',
+    detected: true,
+    confidence: 0.75,
+    coverage: 0.08,
+    bounds: { x: 0.01, y: 0.01, width: 0.12, height: 0.2 },
+    score: { raw: 0.6, normalized: 0.2 },
+    reason: 'ReLIC++ CPC 构图评分 20',
+  },
+})
+applySelectionPlan([composedWithSubjectMask, composedAtCorner], [], 'balanced')
+assert.ok(
+  composedWithSubjectMask.scores.composition.normalized > composedAtCorner.scores.composition.normalized,
+  '通用主体蒙版也应参与构图评分',
+)
+
 const nightTags = deriveBasicSemanticTags({
   ...item('night', new Date(2026, 5, 20, 20, 18).toISOString()),
   quality: { ...quality(), luminanceMean: 68 },
@@ -179,6 +209,24 @@ const peopleProgress = aiSelectionAnalysisProgress({
   ],
 })
 assert.deepEqual([peopleProgress.phaseCompleted, peopleProgress.phaseTotal], [2, 3], '人物阶段应显示独立的实际处理进度')
+const evidenceProgress = aiSelectionAnalysisProgress({
+  phase: 'evidence',
+  counts: { total: 2, completed: 2 },
+  items: [
+    item('evidence-photo', '2026-07-18T01:01:10.000Z', {
+      contentTagVersion: 'content-v1',
+      personEvidence: { detected: false },
+      compositionEvidence: { version: 'relic2-cpc-composition-v1', score: { raw: 1.5, normalized: 0.5 } },
+    }),
+    item('evidence-video', '2026-07-18T01:01:11.000Z', {
+      kind: 'video',
+      duration: 2,
+      personEvidence: { detected: false },
+      compositionEvidence: { version: 'relic2-cpc-composition-v1', score: { raw: 1.8, normalized: 0.6 } },
+    }),
+  ],
+})
+assert.deepEqual([evidenceProgress.phaseCompleted, evidenceProgress.phaseTotal], [5, 5], '混合素材的画面、人物和构图进度应完整计数')
 const manuallyKept = item('manual-reanalysis', '2026-07-18T01:01:03.000Z', { state: 'kept', decisionSource: 'user', personEvidence: { detected: true } })
 const reanalysisSession = { status: 'ready', phase: 'done', error: '旧错误', items: [manuallyKept, item('ai-reanalysis', '2026-07-18T01:01:04.000Z', { state: 'kept' })] }
 prepareAiSelectionReanalysis(reanalysisSession)

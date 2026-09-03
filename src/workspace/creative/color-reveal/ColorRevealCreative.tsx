@@ -14,6 +14,8 @@ import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { loadCreativeImageSize, normalizeCreativePipeline } from '../shared/creativeMedia'
+import { CreativePreviewQualitySelect } from '../shared/CreativePreviewQualitySelect'
+import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import {
   colorRevealCreativeDuration,
   colorRevealTransitionMax,
@@ -55,6 +57,7 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
   const projectSaveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
   const currentTimeRef = useRef(0)
@@ -276,6 +279,7 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
         </Button>
         <span>色彩还原</span>
         <WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} />
+        <CreativePreviewQualitySelect className="color-reveal-preview-quality" value={previewQuality} onChange={changePreviewQuality} />
       </header>
 
       <div className="color-reveal-preview">
@@ -289,6 +293,7 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
               layers={previewLayers}
               canvasWidth={outputSize.width}
               canvasHeight={outputSize.height}
+              maxSide={previewMaxSide}
               playing={playing && currentTime >= effectStart}
               compositionTime={isImage ? currentTime : undefined}
               decodeQuality={1}

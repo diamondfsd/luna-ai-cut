@@ -6,6 +6,14 @@ export const UCD2_MAGIC = Buffer.from('UCD2')
 export const UCD2_FILE = 0x04
 export const UCD2_STREAM = 0x05
 export const UCD2_MSG = 0x03
+/** Live video packets share the control TCP connection with command replies. */
+export const UCD2_MEDIA = 0x01
+export const MEDIA_VIDEO = 0x20
+
+export interface Insta360MediaFrame {
+  substream: number
+  data: Buffer
+}
 
 export interface Insta360RawResponse {
   code: number
@@ -108,6 +116,19 @@ export function parseRawResponse(payload: Buffer): Insta360RawResponse | null {
     flags: raw.readUInt32LE(5),
     body: raw.subarray(9),
     trailer: payload.subarray(4 + rawLen, 4 + rawLen + 4),
+  }
+}
+
+/** Parse the payload of a complete UCD2 MEDIA frame. */
+export function parseMediaFrame(frame: Buffer): Insta360MediaFrame | null {
+  if (frame.length < 25 || frame[6] !== UCD2_MEDIA) return null
+  const declared = frame.readUInt32LE(8)
+  const frameEnd = 12 + declared
+  if (declared <= 9 || frame.length < frameEnd + 4) return null
+  const media = frame.subarray(12, frameEnd)
+  return {
+    substream: media[0]!,
+    data: media.subarray(9),
   }
 }
 

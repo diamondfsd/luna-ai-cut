@@ -40,7 +40,7 @@ export function DevPage({
   const configSummary = useMemo(() => {
     const bluetooth = activeDevice?.bluetooth
     if (!bluetooth) return '未配置 BLE 占位参数'
-    return `${bluetooth.namePrefixes.join(' / ') || '任意设备'} · ${bluetooth.serviceUuid}`
+    return `${bluetooth.scanServiceUuids.join(' / ') || '任意设备'} · ${bluetooth.serviceUuid}`
   }, [activeDevice])
 
   return (

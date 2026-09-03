@@ -19,6 +19,17 @@ function sendLog(level: LogLevel, message: string, meta?: unknown): void {
   }
 }
 
+function formatConsoleArgument(value: unknown): string {
+  try {
+    const serialized = serializeDiagnosticValue(value)
+    if (serialized === undefined) return 'undefined'
+    if (typeof serialized === 'string') return serialized
+    return JSON.stringify(serialized) ?? String(serialized)
+  } catch {
+    try { return String(value) } catch { return '[无法记录的日志参数]' }
+  }
+}
+
 /** 导出相关日志 */
 export function logExport(message: string, meta?: unknown): void {
   try {
@@ -72,11 +83,11 @@ export function initRendererLogger(): void {
   const originalWarn = console.warn.bind(console)
   const originalError = console.error.bind(console)
   console.warn = (...args: unknown[]) => {
-    if (!_fromLogger) sendLog('warn', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
+    if (!_fromLogger) sendLog('warn', args.map(formatConsoleArgument).join(' '))
     originalWarn(...args)
   }
   console.error = (...args: unknown[]) => {
-    if (!_fromLogger) sendLog('error', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
+    if (!_fromLogger) sendLog('error', args.map(formatConsoleArgument).join(' '))
     originalError(...args)
   }
 

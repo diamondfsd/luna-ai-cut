@@ -1,15 +1,16 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { localThumbnailUrl, safeName } from '../media/filePathUtils'
-import { downloadToFile, downloadToFileWithRetry, isAbortError } from '../media/fileDownloadService'
+import { cleanupDownloadPartial, downloadToFileWithRetry, isAbortError } from '../media/fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from '../media/thumbnailService'
 import { logMainError, logMainInfo, logMainWarn } from '../infrastructure/loggerService'
 import { recordDownloadedFileSource } from '../media/mediaSourceManifestService'
 import { friendlyDownloadError, prepareDownloadDirectory } from '../media/downloadDirectoryService'
 import { downloadDestinationFor, findDownloadedPath } from '../media/downloadStorageService'
+import { fileOperationErrorDetails } from './fileOperationDiagnostics.ts'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -94,16 +95,45 @@ function rawCompanionAsFile(file: LunaFile): LunaFile | null {
   }
 }
 
-async function copyIfPresent(source: string, destination: string): Promise<boolean> {
+async function cleanupDownloadPartials(
+  files: LunaFile[],
+  outputDir: string,
+  organizeByDate: boolean,
+): Promise<void> {
+  const destinations = files.flatMap((file) => {
+    const rawFile = rawCompanionAsFile(file)
+    const destination = downloadDestinationFor(outputDir, file, organizeByDate)
+    const rawDestination = rawFile ? downloadDestinationFor(outputDir, rawFile, organizeByDate) : null
+    return rawDestination ? [destination, rawDestination] : [destination]
+  })
+  await Promise.all(destinations.map((destination) => cleanupDownloadPartial(destination)))
+}
+
+async function downloadCachedFile(
+  file: LunaFile,
+  source: string,
+  destination: string,
+  onProgress: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
+  signal?: AbortSignal,
+): Promise<boolean> {
   try {
-    await fs.access(source)
-    await fs.mkdir(path.dirname(destination), { recursive: true })
-    const partialPath = partialPathFor(destination)
-    await fs.rm(partialPath, { force: true })
-    await fs.copyFile(source, partialPath)
-    await fs.rename(partialPath, destination)
+    const sourceSize = await fileSize(source)
+    if (sourceSize <= 0) return false
+    await downloadToFileWithRetry(
+      { name: file.name, bytes: sourceSize, sourceUrl: pathToFileURL(source).toString() },
+      destination,
+      onProgress,
+      signal,
+    )
     return true
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) throw error
+    logMainWarn('[download] 缓存复制到目标目录失败，改为从相机下载', {
+      fileName: file.name,
+      sourcePath: source,
+      destination,
+      ...fileOperationErrorDetails(error, destination),
+    })
     return false
   }
 }
@@ -160,11 +190,14 @@ function logFinalDownloadCanceled(file: LunaFile, destination: string): void {
   })
 }
 
-function logFinalDownloadFailure(file: LunaFile, destination: string, error: string): void {
+function logFinalDownloadFailure(file: LunaFile, destination: string, error: unknown, userMessage: string): void {
   logMainError('[download] 下载失败', {
     fileName: file.name,
+    sourceUrl: sourceUrlFor(file),
     destination,
-    reason: error,
+    partialPath: partialPathFor(destination),
+    userMessage,
+    ...fileOperationErrorDetails(error, destination),
   })
 }
 
@@ -175,8 +208,7 @@ async function recordDownloadedSource(outputDir: string, destination: string, fi
     logMainWarn('[download] 素材已下载，但来源信息保存失败', {
       fileName: file.name,
       destination,
-      code: error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined,
-      reason: error instanceof Error ? error.message : String(error),
+      ...fileOperationErrorDetails(error, destination),
     })
   }
 }
@@ -233,7 +265,7 @@ export async function previewFile(file: LunaFile): Promise<PreviewResult> {
 
   // 4. 从相机下载到缓存
   if (file.kind === 'image') {
-    await downloadToFile({ ...file, sourceUrl }, cachedPath)
+    await downloadToFileWithRetry({ ...file, sourceUrl }, cachedPath)
     return {
       fileName: file.name,
       kind: file.kind,
@@ -248,7 +280,7 @@ export async function previewFile(file: LunaFile): Promise<PreviewResult> {
       ? { name: file.previewName, sourceUrl: file.previewUrl, bytes: null }
       : { ...file, sourceUrl }
     const lrvPath = path.join(previewDir, safeName(file.previewName ?? file.name))
-    await downloadToFile(lrvItem, lrvPath)
+    await downloadToFileWithRetry(lrvItem, lrvPath)
     return {
       fileName: file.name,
       kind: file.kind,
@@ -310,7 +342,7 @@ export async function resolveLocalThumbnails(files: LunaFile[], localResourcesDi
  * 返回下载后的缓存文件路径，或 null 失败。
  */
 async function downloadWithLog(file: LunaFile, url: string, destPath: string): Promise<string> {
-  return downloadToFile(
+  return downloadToFileWithRetry(
     { name: file.previewName ?? file.name, sourceUrl: url, bytes: file.bytes },
     destPath,
   )
@@ -362,8 +394,19 @@ export async function cacheFile(file: LunaFile): Promise<string | null> {
 
     if (file.kind === 'video' && file.previewName && file.previewUrl) {
       const lrvPath = path.join(cacheDir, safeName(file.previewName))
-      await downloadWithLog(file, file.previewUrl, lrvPath)
-      return lrvPath
+      try {
+        await downloadWithLog(file, file.previewUrl, lrvPath)
+        return lrvPath
+      } catch (error) {
+        // DJI cameras can advertise a proxy convention without exposing the sidecar for every clip.
+        // Keep the proxy as the fast path, then fall back to the original instead of making the
+        // thumbnail/preview unavailable because the optional sidecar returned 404.
+        logMainWarn(`[cacheFile] 代理预览不可用，改用原始素材`, {
+          fileName: file.name,
+          previewUrl: file.previewUrl,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
     if (file.kind === 'video') {
       const destPath = path.join(cacheDir, safeName(file.name))
@@ -420,10 +463,19 @@ export async function downloadFiles(
   organizeByDate = false,
 ): Promise<DownloadSummary> {
   const summary: DownloadSummary = { completed: [], failed: [], canceled: [] }
-  outputDir = await prepareDownloadDirectory(outputDir)
+  try {
+    outputDir = await prepareDownloadDirectory(outputDir)
+  } catch (error) {
+    logMainError('[download] 下载目录准备失败', {
+      outputDir,
+      ...fileOperationErrorDetails(error, outputDir),
+    })
+    throw error
+  }
 
   for (const [index, file] of files.entries()) {
     if (signal?.aborted) {
+      await cleanupDownloadPartials(files, outputDir, organizeByDate)
       summary.canceled.push({ name: file.name })
       break
     }
@@ -432,6 +484,10 @@ export async function downloadFiles(
     const rawFile = rawCompanionAsFile(file)
     const rawDestination = rawFile ? downloadDestinationFor(outputDir, rawFile, organizeByDate) : null
     const totalBytes = downloadTotalBytes(file)
+    let resolvedMainBytes = file.bytes
+    let resolvedRawBytes = rawFile?.bytes ?? null
+    let downloadedMainProgressBytes = 0
+    let resolvedTotalBytes = totalBytes
     try {
       const existingFinal = await fileSize(destination)
       const existingRaw = rawDestination ? await fileSize(rawDestination) : 0
@@ -457,44 +513,63 @@ export async function downloadFiles(
       const previewDir = await previewCacheDir()
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
-      if (!rawFile && canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
+      if (!rawFile && canCopyCachedFile && await downloadCachedFile(file, cachedPath, destination, (progress) => {
+        const progressTotal = totalBytes ?? progress.total
+        onProgress({
+          ...progress,
+          index,
+          totalFiles: files.length,
+          total: progressTotal,
+          percent: progressTotal ? Math.min(100, ((progress.downloaded ?? 0) / progressTotal) * 100) : progress.percent,
+          status: 'downloading',
+        })
+      }, signal)) {
+        const downloadedBytes = await fileSize(destination)
         await recordDownloadedSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
           totalFiles: files.length,
-          downloaded: file.bytes ?? 0,
-          total: totalBytes,
+          downloaded: downloadedBytes,
+          total: totalBytes ?? downloadedBytes,
           percent: 100,
           speedBps: 0,
           status: 'done',
           destinationPath: destination,
         })
         summary.completed.push({ name: file.name, path: destination })
-        logFinalDownloadSuccess(file, destination, file.bytes, { copyFromUrl: cachedPath })
+        logFinalDownloadSuccess(file, destination, downloadedBytes, { copyFromUrl: cachedPath })
         continue
       }
 
       await downloadToFileWithRetry({ ...file, sourceUrl: sourceUrlFor(file) }, destination, (progress) => {
+        downloadedMainProgressBytes = progress.downloaded
+        if (progress.total !== null) resolvedMainBytes = progress.total
+        const progressTotal = totalBytes ?? (rawFile ? null : resolvedMainBytes)
+        if (progressTotal !== null) resolvedTotalBytes = progressTotal
         onProgress({
           ...progress,
           index,
           totalFiles: files.length,
-          total: totalBytes,
-          percent: totalBytes ? Math.min(100, ((progress.downloaded ?? 0) / totalBytes) * 100) : progress.percent,
+          total: resolvedTotalBytes,
+          percent: resolvedTotalBytes ? Math.min(100, ((progress.downloaded ?? 0) / resolvedTotalBytes) * 100) : progress.percent,
           status: 'downloading',
         })
       }, signal)
 
       if (rawFile && rawDestination) {
         await downloadToFileWithRetry({ ...rawFile, sourceUrl: sourceUrlFor(rawFile) }, rawDestination, (progress) => {
-          const downloaded = (file.bytes ?? 0) + progress.downloaded
+          if (progress.total !== null) resolvedRawBytes = progress.total
+          const downloaded = downloadedMainProgressBytes + progress.downloaded
+          const progressTotal = totalBytes
+            ?? (resolvedMainBytes !== null && resolvedRawBytes !== null ? resolvedMainBytes + resolvedRawBytes : null)
+          if (progressTotal !== null) resolvedTotalBytes = progressTotal
           onProgress({
             ...progress,
             fileName: file.name,
             downloaded,
-            total: totalBytes,
-            percent: totalBytes ? Math.min(100, (downloaded / totalBytes) * 100) : progress.percent,
+            total: resolvedTotalBytes,
+            percent: resolvedTotalBytes ? Math.min(100, (downloaded / resolvedTotalBytes) * 100) : progress.percent,
             index,
             totalFiles: files.length,
             status: 'downloading',
@@ -503,12 +578,15 @@ export async function downloadFiles(
         await recordDownloadedSource(outputDir, rawDestination, rawFile)
       }
 
+      const downloadedMainBytes = await fileSize(destination)
+      const downloadedRawBytes = rawDestination ? await fileSize(rawDestination) : 0
+      const downloadedBytes = downloadedMainBytes + downloadedRawBytes
       onProgress({
         fileName: file.name,
         index,
         totalFiles: files.length,
-        downloaded: totalBytes ?? file.bytes ?? 0,
-        total: totalBytes,
+        downloaded: downloadedBytes,
+        total: resolvedTotalBytes ?? downloadedBytes,
         percent: 100,
         speedBps: 0,
         status: 'done',
@@ -516,19 +594,20 @@ export async function downloadFiles(
       })
       await recordDownloadedSource(outputDir, destination, file)
       summary.completed.push({ name: file.name, path: destination })
-      logFinalDownloadSuccess(file, destination, totalBytes)
+      logFinalDownloadSuccess(file, destination, downloadedBytes)
     } catch (error) {
       if (signal?.aborted || isAbortError(error)) {
         const partialSize = await fileSize(destination)
           + await fileSize(partialPathFor(destination))
           + (rawDestination ? await fileSize(rawDestination) + await fileSize(partialPathFor(rawDestination)) : 0)
+        await cleanupDownloadPartials(files, outputDir, organizeByDate)
         onProgress({
           fileName: file.name,
           index,
           totalFiles: files.length,
           downloaded: partialSize,
-          total: totalBytes,
-          percent: totalBytes ? Math.min(100, (partialSize / totalBytes) * 100) : null,
+          total: resolvedTotalBytes,
+          percent: resolvedTotalBytes ? Math.min(100, (partialSize / resolvedTotalBytes) * 100) : null,
           speedBps: 0,
           status: 'canceled',
         })
@@ -538,13 +617,13 @@ export async function downloadFiles(
       }
 
       const message = friendlyDownloadError(error)
-      logFinalDownloadFailure(file, destination, message)
+      logFinalDownloadFailure(file, destination, error, message)
       onProgress({
         fileName: file.name,
         index,
         totalFiles: files.length,
         downloaded: 0,
-        total: totalBytes,
+        total: resolvedTotalBytes,
         percent: null,
         speedBps: 0,
         status: 'failed',

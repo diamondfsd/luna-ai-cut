@@ -300,6 +300,99 @@
   height: 30px;
 }
 
+/* 离开相机页后仍保留一个可操作的下载状态入口 */
+.global-download-progress {
+  position: fixed;
+  right: 24px;
+  bottom: 22px;
+  z-index: 24;
+  width: min(560px, calc(100vw - 48px));
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+.global-download-progress-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.global-download-progress-info {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.global-download-progress-info strong,
+.global-download-progress-info span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-download-progress-info strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.global-download-progress-info span {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.global-download-progress-percent {
+  color: var(--blue);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.global-download-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.global-download-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 0.25s ease;
+}
+
+@media (max-width: 640px) {
+  .global-download-progress {
+    right: 16px;
+    bottom: 16px;
+    width: calc(100vw - 32px);
+  }
+
+  .global-download-progress-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .global-download-progress-percent {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .global-download-progress-row .ui-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
 /* ====== 水印设置工具栏 ====== */
 .watermark-popover.ui-popover-content {
   width: auto;

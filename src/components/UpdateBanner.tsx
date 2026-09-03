@@ -1,35 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ExternalLink, FileText } from 'lucide-react'
 import type { UpdateInfo } from '../shared/types'
 import { Button } from '../ui/Button'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
 
 interface UpdateBannerProps {
-  onCheck?: (info: UpdateInfo | null) => void
+  updateInfo?: UpdateInfo | null
 }
 
-export function UpdateBanner({ onCheck }: UpdateBannerProps) {
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+export function UpdateBanner({ updateInfo = null }: UpdateBannerProps) {
   const [dismissed, setDismissed] = useState(false)
   const [showReleaseNotes, setShowReleaseNotes] = useState(false)
-
-  useEffect(() => {
-    // 启动时主动检查
-    void window.luna.checkForUpdates().then((info) => {
-      if (info) {
-        setUpdateInfo(info)
-        onCheck?.(info)
-      }
-    })
-
-    // 监听主进程推送的更新通知
-    const unsub = window.luna.onUpdateAvailable((info) => {
-      setUpdateInfo(info)
-      onCheck?.(info)
-    })
-
-    return unsub
-  }, [onCheck])
 
   if (!updateInfo || dismissed) return null
 

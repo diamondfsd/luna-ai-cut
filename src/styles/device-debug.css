@@ -209,6 +209,23 @@
   overflow-wrap: anywhere;
 }
 
+.dd-wifi-password {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dd-wifi-password > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dd-wifi-password strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* ---- 文件列表 ---- */
 
 .dd-file-list {

@@ -1,9 +1,21 @@
 import { createHash } from 'node:crypto'
 import { chmodSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import https from 'node:https'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import AdmZip from 'adm-zip'
+import { buildDependencyUrl } from './build-dependency-sources.mjs'
+
+const require = createRequire(import.meta.url)
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
+  || process.env.HTTP_PROXY || process.env.http_proxy || ''
+let proxyAgent
+if (proxyUrl) {
+  const { HttpsProxyAgent } = require('https-proxy-agent')
+  proxyAgent = new HttpsProxyAgent(proxyUrl)
+  console.log(`[copy-dolby-tools] 使用代理: ${proxyUrl}`)
+}
 
 const targetIndex = process.argv.indexOf('--target')
 const target = targetIndex >= 0 ? process.argv[targetIndex + 1] : process.platform
@@ -18,11 +30,13 @@ const releases = {
   darwin: {
     dovi: {
       url: `https://github.com/quietvoid/dovi_tool/releases/download/${version}/dovi_tool-${version}-universal-macOS.zip`,
+      fileName: `dovi_tool-${version}-universal-macOS.zip`,
       sha256: 'b113c83fed2d8d7ed9e43f0428d02fa0d0030e20965fc24a3cd4d48597d88685',
       binary: 'dovi_tool',
     },
     bento: {
       url: `https://www.bok.net/Bento4/binaries/Bento4-SDK-${bentoVersion}.universal-apple-macosx.zip`,
+      fileName: `Bento4-SDK-${bentoVersion}.universal-apple-macosx.zip`,
       sha256: '0570cf0dd59f362904d6f1cb472cbf4cdd37928fb0fe28e4c7f98c460e8e0ced',
       binary: 'mp4mux',
     },
@@ -30,11 +44,13 @@ const releases = {
   win32: {
     dovi: {
       url: `https://github.com/quietvoid/dovi_tool/releases/download/${version}/dovi_tool-${version}-x86_64-pc-windows-msvc.zip`,
+      fileName: `dovi_tool-${version}-x86_64-pc-windows-msvc.zip`,
       sha256: '37ae198f2a535c910befad39fc09c21cded76bf3ef2d5459d542e58c2c158311',
       binary: 'dovi_tool.exe',
     },
     bento: {
       url: `https://www.bok.net/Bento4/binaries/Bento4-SDK-${bentoVersion}.x86_64-microsoft-win32.zip`,
+      fileName: `Bento4-SDK-${bentoVersion}.x86_64-microsoft-win32.zip`,
       sha256: '6916a390f75878872594be74554b8b54ab220bb29812424441a8e1ecc9a6ac5e',
       binary: 'mp4mux.exe',
     },
@@ -58,6 +74,7 @@ function sha256(filePath) {
 function get(url, redirects = 5) {
   return new Promise((resolve, reject) => {
     https.get(url, {
+      agent: proxyAgent,
       headers: {
         Accept: 'application/octet-stream',
         'User-Agent': 'Luna-AI-Cut-Build/1.0',
@@ -91,7 +108,7 @@ async function archiveFor(name, release) {
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       rmSync(partial, { force: true })
       try {
-        const response = await get(release.url)
+        const response = await get(buildDependencyUrl(release.fileName, release.url))
         await pipeline(response, createWriteStream(partial))
         if (sha256(partial) !== release.sha256) throw new Error(`${name} SHA256 verification failed`)
         renameSync(partial, archive)

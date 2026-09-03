@@ -9,6 +9,8 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ColorMaskPanel } from '../color/ColorMaskPanel'
 import { FilterPanel } from '../lut/FilterPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
+import { WorkspaceAiCompositionPanel } from '../transform/WorkspaceAiCompositionPanel'
+import { frameAspect } from '../transform/cropGeometry'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
 import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
@@ -89,7 +91,7 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 const BEAUTY_ENABLED = import.meta.env.VITE_BEAUTY !== 'false'
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
-  { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
+  { value: 'filter', label: 'Lut', icon: <Paintbrush size={22} /> },
   ...(BEAUTY_ENABLED ? [{ value: 'beauty' as const, label: '美颜', icon: <ScanFace size={22} /> }] : []),
   { value: 'removal', label: '对象消除', icon: <Eraser size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
@@ -106,7 +108,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'subtitles') return '字幕'
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
-  if (tool === 'filter') return '滤镜'
+  if (tool === 'filter') return 'Lut'
   if (tool === 'beauty') return '美颜'
   if (tool === 'removal') return '对象消除'
   if (tool === 'creative') return '创意'
@@ -134,15 +136,26 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
   const mask = useWorkspaceMask()
-  const { activeDevice, isConnected } = useDeviceConnection()
+  const { activeDevice, devices, isConnected } = useDeviceConnection()
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
   const cropHeight = edit.cropSize.height || refH
+  const cropAspectRatio = useMemo(() => {
+    if (edit.cropPreset === 'free') return null
+    if (edit.cropPreset === 'original') return frameAspect(canvas.sourceAspect, edit.activeTransform.orientation)
+    return cropWidth / Math.max(cropHeight, 1)
+  }, [canvas.sourceAspect, cropHeight, cropWidth, edit.activeTransform.orientation, edit.cropPreset])
   const defaultBorderTitle = borderTitleForDevice(
     isConnected && activeDevice
       ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
       : mediaCtx.activeMedia ?? {},
   ) ?? ''
+  const mediaDevice = mediaCtx.activeMedia?.sourceDeviceId
+    ? devices.find((device) => device.id === mediaCtx.activeMedia?.sourceDeviceId)
+    : undefined
+  const restoreLut = mediaDevice
+    ? mediaDevice.lut?.restore
+    : (isConnected ? activeDevice?.lut?.restore : undefined)
 
   // 滤镜搜索关键字
   const [filterSearchKey, setFilterSearchKey] = useState('')
@@ -235,7 +248,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
         <header className="workspace-tool-panel-header">
           {activeTool === 'filter' ? (
             <>
-              <h2 className="filter-panel-title">滤镜</h2>
+              <h2 className="filter-panel-title">Lut</h2>
               <label className="filter-search-header">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" strokeWidth="2" />
@@ -243,7 +256,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                 </svg>
                 <input
                   type="search"
-                  placeholder="搜索滤镜"
+                  placeholder="搜索 Lut"
                   value={filterSearchKey}
                   onChange={(e) => setFilterSearchKey(e.target.value)}
                 />
@@ -304,6 +317,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
             <WorkspaceCreativePanel onSelect={onOpenCreative} />
           ) : activeTool === 'filter' ? (
             <FilterPanel
+              restoreLut={restoreLut}
               restoreLutId={edit.pipeline.logRestore.activeId}
               onRestoreChange={(activeId) => edit.updateWorkspacePanel({ logRestore: { activeId } })}
               activeLutId={edit.pipeline.lutFilter.activeId}
@@ -355,8 +369,21 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                 <Button variant="secondary" size="compact" icon={<X size={14} />} onClick={edit.cancelCrop}>
                   取消
                 </Button>
+                <WorkspaceAiCompositionPanel
+                  filePath={mediaCtx.activeMedia?.path ?? null}
+                  frameTime={mediaCtx.activeMedia?.kind === 'video' ? currentTime : undefined}
+                  sourceAspect={canvas.sourceAspect}
+                  orientation={edit.activeTransform.orientation}
+                  rotate={edit.activeTransform.rotate}
+                  aspectRatio={cropAspectRatio}
+                  crop={edit.activeTransform.crop}
+                  onApply={(crop) => edit.setTransformDraft((current) => ({
+                    ...(current ?? edit.pipeline.transform),
+                    crop,
+                  }))}
+                />
                 <Button variant="primary" size="compact" icon={<Check size={14} />} onClick={edit.confirmCrop}>
-                  完成裁剪
+                  确认
                 </Button>
               </div>
             </>

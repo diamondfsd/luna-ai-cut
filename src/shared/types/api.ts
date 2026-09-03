@@ -30,9 +30,12 @@ import type {
 } from './aiSelection'
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
+import type { CameraVideoStreamApi } from './cameraVideoStream'
+import type { ObsStreamDemoApi } from './obsStreamDemo'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
+import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -68,6 +71,40 @@ export interface WorkspaceSegmentationProgress {
   phase: 'model' | 'preparing' | 'recognizing'
   label: string
   percent: number | null
+}
+
+export interface WorkspaceCompositionAnalysisRequest {
+  requestId: string
+  filePath: string
+  /** 视频素材取帧时间；图片素材忽略。 */
+  frameTime?: number
+}
+
+export interface WorkspaceCompositionCrop {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface WorkspaceCompositionCropScoreRequest extends WorkspaceCompositionAnalysisRequest {
+  crops: WorkspaceCompositionCrop[]
+}
+
+export interface DjiBluetoothRendererEvent {
+  token: string
+  event: 'notification' | 'disconnected' | 'stage'
+  characteristic?: string
+  payloadHex?: string
+  message?: string
+}
+
+export interface LunaBluetoothRendererEvent {
+  token: string
+  event: 'notification' | 'disconnected' | 'stage'
+  characteristic?: string
+  payloadHex?: string
+  message?: string
 }
 
 export interface WorkspaceMaskTrackingRequest {
@@ -160,13 +197,16 @@ export interface WorkspaceSegmentationModelStatus {
 }
 
 export interface LunaApi {
+  isPackaged: boolean
   startupReady(): void
   setFullScreen(enabled: boolean): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
   getLogDir: () => Promise<string>
+  exportDiagnosticsBundle: () => Promise<string>
   clearLogs: () => Promise<void>
+  getPathForFile: (file: File) => string
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>
@@ -192,7 +232,15 @@ export interface LunaApi {
   openDevTools(): Promise<void>
   scanBluetoothDevices(timeoutMs?: number): Promise<BluetoothDeviceCandidate[]>
   cancelBluetoothScan(): Promise<void>
+  djiBluetooth: {
+    emit(event: DjiBluetoothRendererEvent): void
+  }
+  lunaBluetooth: {
+    emit(event: LunaBluetoothRendererEvent): void
+  }
   cameraSource: CameraMediaSourceApi
+  cameraVideoStream: CameraVideoStreamApi
+  obsStreamDemo: ObsStreamDemoApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>
@@ -293,7 +341,9 @@ export interface LunaApi {
     deleteColorMask(projectId: string, filePath: string): Promise<void>
     cleanupColorMasks(projectId: string, retainedPaths: string[]): Promise<{ deleted: number; retained: number }>
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
-    getMediaFormatInfo(filePath: string): Promise<{ dolbyVision: boolean; iLog: boolean; raw: boolean }>
+    loadFont(filePath: string): Promise<ArrayBuffer>
+    loadLut(filePath: string): Promise<ArrayBuffer>
+    getMediaFormatInfo(filePath: string): Promise<{ dolbyVision: boolean; iLog: boolean; raw: boolean; duration: number | null }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
     getVideoDuration(filePath: string): Promise<number>
@@ -303,6 +353,8 @@ export interface LunaApi {
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>
     prepareSegmentationModels(modelIds: SegmentationModelId[]): Promise<void>
+    analyzeComposition(request: WorkspaceCompositionAnalysisRequest): Promise<CompositionEvidence>
+    scoreCompositionCrops(request: WorkspaceCompositionCropScoreRequest): Promise<CompositionScore[]>
     segmentImage(request: WorkspaceSegmentationRequest): Promise<{
       requestId: string
       width: number
@@ -358,14 +410,12 @@ export interface LunaApi {
   onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void): () => void
   onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void): () => void
   checkForUpdates(): Promise<UpdateInfo | null>
-  onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   listReleaseNotes(): Promise<ReleaseNoteItem[]>
   getHotUpdateVersion(): Promise<string | null>
   checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   applyHotUpdate(info: HotUpdateCheckResult): Promise<{ success: boolean; error?: string }>
   clearHotUpdate(): Promise<void>
   relaunchApp(): Promise<void>
-  onHotUpdateAvailable(callback: (info: HotUpdateCheckResult) => void): () => void
 }
 
 export interface DeviceDebugApi {

@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use windows::Win32::Foundation::HWND;
-use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
+use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 
 use crate::composition::{composition_layers, retain_layer_mask_textures, CompositionInput};
 use crate::compositor::{
@@ -10,7 +9,7 @@ use crate::compositor::{
 };
 use crate::media::{decode_static_image_scaled, fit_output_size};
 
-use super::converter::{D3d12TextureLease, VideoConverter};
+use super::converter::VideoConverter;
 use super::decoder::VideoDecoder;
 use super::device::InteropDevice;
 use super::preview_surface::{PreviewBounds, PreviewSurface};
@@ -21,7 +20,7 @@ const MAX_FRAME_CACHE_BYTES: u64 = 256 * 1024 * 1024;
 pub(crate) struct NativePreviewRuntime {
     compositor: Compositor,
     surface: PreviewSurface,
-    _interop: InteropDevice,
+    interop: InteropDevice,
     converter: VideoConverter,
     ffmpeg_path: String,
     ffprobe_path: String,
@@ -33,15 +32,13 @@ pub(crate) struct NativePreviewRuntime {
     mask_textures: HashMap<String, u32>,
     desired_visible: bool,
     has_presented: bool,
-    // 字段按声明顺序释放：所有解码器和 D3D 资源必须先销毁，
-    // 最后再关闭 Media Foundation 和 COM。
     _media_foundation: MediaFoundationGuard,
     _com: ComGuard,
 }
 
 struct CachedVideoFrame {
     time: f64,
-    texture: ID3D11Texture2D,
+    resource: ID3D12Resource,
     width: u32,
     height: u32,
 }
@@ -63,22 +60,22 @@ impl NativePreviewRuntime {
     ) -> Result<Self, String> {
         let com = ComGuard::start()?;
         let media_foundation = MediaFoundationGuard::start()?;
-        let _ = log_path;
-        let compositor = crate::new_shared_compositor()?;
+        let compositor = Compositor::new(log_path)?;
         let (device, queue) = compositor.dx12_device_and_queue()?;
-        let interop = InteropDevice::new(&device, &queue)?;
-        let converter = VideoConverter::new(
-            &interop.d3d11_device,
-            &interop.d3d11_context,
-            &interop.d3d11on12_device,
-            &device,
+        let interop = InteropDevice::new(&device)?;
+        let converter = VideoConverter::new(&device, &interop.video_process_queue, &queue)?;
+        let surface = PreviewSurface::new(
+            windows::Win32::Foundation::HWND(parent as *mut _),
             &queue,
+            bounds,
         )?;
-        let surface = PreviewSurface::new(HWND(parent as *mut _), &queue, bounds)?;
+        crate::logging::write(
+            "[Preview:WinGPU] backend=d3d12-video pixel_transport=GPU bitstream_readback=CPU",
+        );
         Ok(Self {
             compositor,
             surface,
-            _interop: interop,
+            interop,
             converter,
             ffmpeg_path,
             ffprobe_path,
@@ -99,11 +96,50 @@ impl NativePreviewRuntime {
         let previous_max_side = self.surface.width.max(self.surface.height);
         self.surface.set_bounds(&self.compositor, bounds)?;
         if self.surface.width.max(self.surface.height) != previous_max_side {
-            self.frame_cache.clear();
+            self.clear_frame_cache();
         }
         self.surface
             .set_visible(self.desired_visible && self.has_presented);
         Ok(())
+    }
+
+    fn clear_frame_cache(&mut self) {
+        let cached = std::mem::take(&mut self.frame_cache);
+        for frames in cached.into_values() {
+            for frame in frames {
+                self.converter
+                    .recycle_bgra_texture(frame.resource, frame.width, frame.height);
+            }
+        }
+    }
+
+    fn retain_active_resources(&mut self, active: &HashSet<&str>) {
+        let stale_frame_keys = self
+            .frame_cache
+            .keys()
+            .filter(|key| !active.iter().any(|path| key.starts_with(*path)))
+            .cloned()
+            .collect::<Vec<_>>();
+        for key in stale_frame_keys {
+            if let Some(frames) = self.frame_cache.remove(&key) {
+                for frame in frames {
+                    self.converter
+                        .recycle_bgra_texture(frame.resource, frame.width, frame.height);
+                }
+            }
+        }
+
+        let stale_static_paths = self
+            .static_textures
+            .keys()
+            .filter(|path| !active.contains(path.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        for path in stale_static_paths {
+            if let Some((texture_id, _, _)) = self.static_textures.remove(&path) {
+                let _ = self.compositor.release_texture(texture_id);
+            }
+        }
     }
 
     pub(crate) fn set_visible(&mut self, visible: bool) {
@@ -120,22 +156,21 @@ impl NativePreviewRuntime {
             .layers
             .iter()
             .map(|layer| layer.source.path.as_str())
-            .collect::<std::collections::HashSet<_>>();
+            .collect::<HashSet<_>>();
         let previous_active = self
             .composition
             .layers
             .iter()
             .map(|layer| layer.source.path.as_str())
-            .collect::<std::collections::HashSet<_>>();
+            .collect::<HashSet<_>>();
         if active != previous_active {
-            self.frame_cache.clear();
+            self.clear_frame_cache();
             self.decoders.clear();
         } else {
             self.decoders
                 .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
-            self.frame_cache
-                .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
         }
+        self.retain_active_resources(&active);
         self.composition = composition;
     }
 
@@ -145,7 +180,7 @@ impl NativePreviewRuntime {
         path: &str,
         time: f64,
         max_side: u32,
-    ) -> Result<Option<(ID3D11Texture2D, u32, u32, u32, bool)>, String> {
+    ) -> Result<Option<(ID3D12Resource, u32, u32, u32, bool)>, String> {
         if let Some(frame) = self.frame_cache.get(key).and_then(|frames| {
             frames
                 .iter()
@@ -162,45 +197,60 @@ impl NativePreviewRuntime {
                 .map(|decoder| decoder.info().rotation_degrees)
                 .unwrap_or(0);
             return Ok(Some((
-                frame.texture.clone(),
+                frame.resource.clone(),
                 frame.width,
                 frame.height,
                 rotation,
                 true,
             )));
         }
+
         let decoder = match self.decoders.entry(key.to_string()) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(VideoDecoder::open(path, &self._interop.device_manager)?)
-            }
+            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(VideoDecoder::open(
+                path,
+                self.interop
+                    .decoder_device_manager
+                    .as_ref()
+                    .ok_or_else(|| "Media Foundation preview decoder is unavailable".to_string())?,
+            )?),
         };
         let rotation = decoder.info().rotation_degrees;
         let Some(frame) = decoder.read_frame_at_seconds(time)? else {
             return Ok(None);
         };
         let (width, height) = fit_output_size(frame.width, frame.height, max_side.max(1));
-        let texture = self
+        let resource = self
             .converter
             .decode_to_bgra_scaled(&frame, width, height)?;
         let frame_time = frame.timestamp_100ns as f64 / 10_000_000.0;
-        let frames = self.frame_cache.entry(key.to_string()).or_default();
-        frames.push_back(CachedVideoFrame {
-            time: frame_time,
-            texture: texture.clone(),
-            width,
-            height,
-        });
-        while frames.len() > 3
-            || frames
-                .iter()
-                .map(|frame| frame.width as u64 * frame.height as u64 * 4)
-                .sum::<u64>()
-                > MAX_FRAME_CACHE_BYTES
-        {
-            frames.pop_front();
+        let evicted = {
+            let frames = self.frame_cache.entry(key.to_string()).or_default();
+            frames.push_back(CachedVideoFrame {
+                time: frame_time,
+                resource: resource.clone(),
+                width,
+                height,
+            });
+            let mut evicted = Vec::new();
+            while frames.len() > 3
+                || frames
+                    .iter()
+                    .map(|frame| frame.width as u64 * frame.height as u64 * 4)
+                    .sum::<u64>()
+                    > MAX_FRAME_CACHE_BYTES
+            {
+                if let Some(frame) = frames.pop_front() {
+                    evicted.push(frame);
+                }
+            }
+            evicted
+        };
+        for frame in evicted {
+            self.converter
+                .recycle_bgra_texture(frame.resource, frame.width, frame.height);
         }
-        Ok(Some((texture, width, height, rotation, false)))
+        Ok(Some((resource, width, height, rotation, false)))
     }
 
     pub(crate) fn render(&mut self, time: f64) -> Result<NativePreviewRenderResult, String> {
@@ -211,7 +261,6 @@ impl NativePreviewRuntime {
         retain_layer_mask_textures(&mut self.compositor, &mut self.mask_textures, &layer_inputs);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
         let mut texture_ids = Vec::new();
-        let mut leases: Vec<D3d12TextureLease> = Vec::new();
         let mut hits = 0;
         let mut misses = 0;
 
@@ -229,12 +278,13 @@ impl NativePreviewRuntime {
                         (0, 1, 1)
                     } else if layer.is_video {
                         let key = format!("{}@slot{}", layer.file_path, index);
-                        let Some((bgra, width, height, rotation, cache_hit)) = self.video_frame(
-                            &key,
-                            &layer.file_path,
-                            layer.video_time,
-                            output_width.max(output_height),
-                        )?
+                        let Some((resource, width, height, rotation, cache_hit)) = self
+                            .video_frame(
+                                &key,
+                                &layer.file_path,
+                                layer.video_time,
+                                output_width.max(output_height),
+                            )?
                         else {
                             continue;
                         };
@@ -246,10 +296,9 @@ impl NativePreviewRuntime {
                         } else {
                             misses += 1;
                         }
-                        let lease = self.converter.unwrap_for_wgpu(&bgra)?;
                         let texture = unsafe {
                             self.compositor.wrap_external_dx12_texture(
-                                lease.resource().clone(),
+                                resource,
                                 width,
                                 height,
                                 wgpu::TextureUsages::TEXTURE_BINDING,
@@ -260,7 +309,6 @@ impl NativePreviewRuntime {
                             .compositor
                             .register_external_texture(texture, width, height);
                         texture_ids.push(id);
-                        leases.push(lease);
                         (id, width, height)
                     } else if let Some(cached) = self.static_textures.get(&layer.file_path).copied()
                     {
@@ -297,6 +345,7 @@ impl NativePreviewRuntime {
                             .insert(layer.file_path.clone(), (id, width, height));
                         (id, width, height)
                     };
+
                 if let Some(mask_path) = layer.mask_path.as_deref() {
                     let mask_id = if let Some(id) = self.mask_textures.get(mask_path).copied() {
                         id
@@ -324,6 +373,7 @@ impl NativePreviewRuntime {
                     },
                 ));
             }
+
             let planned = self
                 .compositor
                 .plan_preview(
@@ -355,18 +405,13 @@ impl NativePreviewRuntime {
         for id in texture_ids {
             self.compositor.unregister_external_texture(id);
         }
-        let cleanup_result = self.compositor.wait_for_gpu();
-        let mut sync_error = None;
-        for lease in leases {
-            if let Err(error) = lease.finish() {
-                sync_error.get_or_insert(error);
-            }
-        }
+        let cleanup_result = if result.is_err() {
+            self.compositor.wait_for_gpu()
+        } else {
+            Ok(())
+        };
         result?;
         cleanup_result?;
-        if let Some(error) = sync_error {
-            return Err(error);
-        }
         self.surface.present()?;
         if !self.has_presented {
             self.has_presented = true;

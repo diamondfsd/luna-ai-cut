@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Download, FileText, Info, KeyRound, List, Play, Plug, RotateCcw, Wifi } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Download, FileText, Info, KeyRound, List, Play, Plug, RotateCcw, Wifi } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import type { DeviceDebugDiagnosticsResult, DeviceDebugFileListResult, DeviceDebugTestStep, Insta360DeviceInfo } from '../shared/types'
@@ -29,6 +29,15 @@ const AUTH_STATE_LABELS: Record<string, string> = {
   failed: '授权失败',
 }
 
+function maskedDeviceInfo(info: Insta360DeviceInfo | null): Record<string, unknown> | null {
+  if (!info) return null
+  return {
+    ...info,
+    wifiPassword: info.wifiPassword ? '已隐藏' : undefined,
+    rawStrings: info.rawStrings.filter((value) => value !== info.wifiPassword),
+  }
+}
+
 export function DeviceDebugPage() {
   const navigate = useNavigate()
   const [host, setHost] = useState(DEFAULT_HOST)
@@ -39,6 +48,7 @@ export function DeviceDebugPage() {
   const [files, setFiles] = useState<Array<{ name: string; size: number | null; url: string }>>([])
   const [httpResults, setHttpResults] = useState<HttpProbe[]>([])
   const [deviceInfo, setDeviceInfo] = useState<Insta360DeviceInfo | null>(null)
+  const [wifiPasswordCopied, setWifiPasswordCopied] = useState(false)
   const [diagnostics, setDiagnostics] = useState<DeviceDebugDiagnosticsResult | null>(null)
   const [testSteps, setTestSteps] = useState<DeviceDebugTestStep[]>([])
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -108,7 +118,7 @@ export function DeviceDebugPage() {
       setHttpOk(result.http.some((item) => item.ok))
       setControlOk(result.tcp.some((item) => item.ok))
       addLog(result.success ? 'info' : 'warn', result.summary, {
-        deviceInfo: result.deviceInfo,
+        deviceInfo: maskedDeviceInfo(result.deviceInfo),
         auth: result.auth,
         files: result.files.length,
         http: result.http.map((item) => ({ path: item.path, ok: item.ok, status: item.status, error: item.error })),
@@ -117,6 +127,19 @@ export function DeviceDebugPage() {
       addLog('error', `获取设备信息异常: ${String(error)}`)
     } finally {
       setBusy(null)
+    }
+  }
+
+  async function copyWifiPassword(): Promise<void> {
+    const password = deviceInfo?.wifiPassword
+    if (!password) return
+    try {
+      await navigator.clipboard.writeText(password)
+      setWifiPasswordCopied(true)
+      toast.success('Wi-Fi 密码已复制')
+      window.setTimeout(() => setWifiPasswordCopied(false), 1500)
+    } catch {
+      toast.error('复制失败，请重试')
     }
   }
 
@@ -290,7 +313,19 @@ export function DeviceDebugPage() {
               {deviceInfo.serial && <span>序列号：{deviceInfo.serial}</span>}
               {deviceInfo.firmware && <span>固件：{deviceInfo.firmware}</span>}
               {deviceInfo.ssid && <span>SSID：{deviceInfo.ssid}</span>}
-              {deviceInfo.wifiPassword && <span>Wi-Fi 密码：{deviceInfo.wifiPassword}</span>}
+              {deviceInfo.wifiPassword && (
+                <div className="dd-wifi-password">
+                  <span>Wi-Fi 密码：<strong aria-label="Wi-Fi 密码已隐藏">••••••••</strong></span>
+                  <Button
+                    variant="ghost"
+                    size="mini"
+                    onClick={() => void copyWifiPassword()}
+                    icon={wifiPasswordCopied ? <Check size={13} /> : <Copy size={13} />}
+                  >
+                    {wifiPasswordCopied ? '已复制密码' : '复制密码'}
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <p className="dd-hint">点击“获取设备信息”读取 GET_OPTIONS 返回的设备信息。</p>

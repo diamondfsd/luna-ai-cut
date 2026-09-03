@@ -18,6 +18,21 @@ pub struct ExportCompositionImageTask {
     input: ExportCompositionImageInput,
 }
 
+fn jpeg_encoder_options(quality: f64) -> Vec<String> {
+    // FFmpeg's MJPEG quantizer uses 1 as the highest quality and 31 as the lowest.
+    let quality = quality.clamp(1.0, 100.0);
+    let ffmpeg_q = ((100.0 - quality) * 30.0 / 99.0 + 1.0).round() as u32;
+    vec![
+        "-c:v".to_string(),
+        "mjpeg".to_string(),
+        // 4:4:4 avoids chroma subsampling on fine details, text, and watermarks.
+        "-pix_fmt".to_string(),
+        "yuvj444p".to_string(),
+        "-q:v".to_string(),
+        ffmpeg_q.to_string(),
+    ]
+}
+
 impl Task for ExportCompositionImageTask {
     type Output = ();
     type JsValue = ();
@@ -61,15 +76,7 @@ impl Task for ExportCompositionImageTask {
         ];
         match format.as_str() {
             "jpeg" | "jpg" => {
-                let ffmpeg_q = ((100.0 - quality) * 24.0 / 99.0 + 1.0) as u32;
-                args.extend_from_slice(&[
-                    "-c:v".to_string(),
-                    "mjpeg".to_string(),
-                    "-pix_fmt".to_string(),
-                    "yuvj420p".to_string(),
-                    "-q:v".to_string(),
-                    ffmpeg_q.to_string(),
-                ]);
+                args.extend(jpeg_encoder_options(quality));
             }
             "png" => {
                 args.extend_from_slice(&["-c:v".to_string(), "png".to_string()]);
@@ -142,4 +149,26 @@ pub fn export_composition_image_async(
     input: ExportCompositionImageInput,
 ) -> AsyncTask<ExportCompositionImageTask> {
     AsyncTask::new(ExportCompositionImageTask { input })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::jpeg_encoder_options;
+
+    #[test]
+    fn jpeg_quality_100_uses_full_chroma_and_best_quantizer() {
+        let options = jpeg_encoder_options(100.0);
+        assert!(options
+            .windows(2)
+            .any(|pair| pair == ["-pix_fmt", "yuvj444p"]));
+        assert!(options.windows(2).any(|pair| pair == ["-q:v", "1"]));
+    }
+
+    #[test]
+    fn jpeg_quality_range_maps_to_ffmpeg_quantizer_range() {
+        let low = jpeg_encoder_options(1.0);
+        let high = jpeg_encoder_options(100.0);
+        assert!(low.windows(2).any(|pair| pair == ["-q:v", "31"]));
+        assert!(high.windows(2).any(|pair| pair == ["-q:v", "1"]));
+    }
 }

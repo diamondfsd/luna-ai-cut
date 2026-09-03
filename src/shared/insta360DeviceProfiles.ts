@@ -58,6 +58,14 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
     exifModelPatterns: [/DJI\s*Osmo\s*Pocket\s*4(?!\s*P)/i, /OsmoPocket4(?!P)/i],
     defaultWatermarkStyle: 'dji_pocket_4',
   },
+  {
+    id: 'dji-action-5-pro',
+    displayName: 'Osmo Action 5 Pro',
+    cameraType: 'DJI OsmoAction5Pro',
+    deviceNamePatterns: [/DJI\s*Osmo\s*Action\s*5\s*Pro/i, /OsmoAction5Pro/i],
+    exifModelPatterns: [/DJI\s*Osmo\s*Action\s*5\s*Pro/i, /OsmoAction5Pro/i],
+    defaultWatermarkStyle: 'dji_action_5_pro',
+  },
 ]
 
 export function deviceProfileForId(deviceId?: string | null): Insta360DeviceProfile | null {

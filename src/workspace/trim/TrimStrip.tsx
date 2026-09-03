@@ -19,7 +19,7 @@ interface TrimStripProps {
   /** 固定时长模式：选区不可缩放，只能整体拖动。 */
   fixedDuration?: number
   onFixedStartChange?: (time: number) => void
-  /** 叠加在主截取范围内的固定时长选区（例如 Live 图 3 秒范围）。 */
+  /** 叠加在主截取范围内的固定时长选区（例如 Live 图范围）。 */
   secondaryFixedRange?: {
     startTime: number
     duration: number
@@ -378,6 +378,7 @@ export function TrimStrip({
   const secondaryCoverX = secondaryFixedRange?.coverTime === undefined
     ? null
     : timeToX(secondaryFixedRange.coverTime) - secondaryLeftX
+  const rangeEditable = Boolean(onStartTimeChange && onEndTimeChange)
   const rulerTicks = useMemo(() => {
     if (duration <= 0) return []
     const count = 5
@@ -457,16 +458,20 @@ export function TrimStrip({
         ) : null}
 
         {/* ── 左侧把手 ── */}
-        <div className="workspace-trim-handle" onPointerDown={(e) => handlePointerDown('left-handle', e)} style={{ left: leftHandleX }}>
-          <span className="workspace-trim-handle-time">{formatPreciseTime(startTime)}</span>
-          <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
-        </div>
+        {rangeEditable ? (
+          <div className="workspace-trim-handle" onPointerDown={(e) => handlePointerDown('left-handle', e)} style={{ left: leftHandleX }}>
+            <span className="workspace-trim-handle-time">{formatPreciseTime(startTime)}</span>
+            <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
+          </div>
+        ) : null}
 
         {/* ── 右侧把手 ── */}
-        <div className="workspace-trim-handle workspace-trim-handle-right" onPointerDown={(e) => handlePointerDown('right-handle', e)} style={{ left: rightHandleX }}>
-          <span className="workspace-trim-handle-time">{formatPreciseTime(endTime)}</span>
-          <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
-        </div>
+        {rangeEditable ? (
+          <div className="workspace-trim-handle workspace-trim-handle-right" onPointerDown={(e) => handlePointerDown('right-handle', e)} style={{ left: rightHandleX }}>
+            <span className="workspace-trim-handle-time">{formatPreciseTime(endTime)}</span>
+            <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
+          </div>
+        ) : null}
 
         {/* ── 播放头 ── */}
         <div className="workspace-trim-playhead" onPointerDown={(e) => handlePointerDown('playhead', e)} style={{ left: playheadX }}>

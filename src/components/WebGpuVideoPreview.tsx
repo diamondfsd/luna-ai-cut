@@ -1,0 +1,232 @@
+import { useEffect, useLayoutEffect, useRef } from 'react'
+
+import { logger } from '../lib/rendererLogger'
+import type { PreviewLayer } from '../shared/types'
+import { previewLayerSignature, summarizePreviewLayers } from './previewDiagnostics'
+import { WebGpuVideoRenderer } from './webgpuVideoRenderer'
+import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
+import './WebGpuVideoPreview.css'
+
+interface WebGpuVideoPreviewProps {
+  layers: PreviewLayer[]
+  canvasWidth: number
+  canvasHeight: number
+  maxSide: number
+  className?: string
+  active?: boolean
+  playing: boolean
+  time?: number
+  imageScale?: number | null
+  maxImageScale?: number
+  viewportKey?: string
+  interactiveImageLayerIndexes?: readonly number[]
+  onImageScaleChange?: (scale: number | null) => void
+  onViewportChange?: () => void
+  onVideoElement?: (element: HTMLMediaElement | null) => void
+  onError: (reason: string) => void
+  onRender?: () => void
+}
+
+export function WebGpuVideoPreview({
+  layers,
+  canvasWidth,
+  canvasHeight,
+  maxSide,
+  className,
+  active = true,
+  playing,
+  time = 0,
+  imageScale,
+  maxImageScale = 5,
+  viewportKey,
+  interactiveImageLayerIndexes = layers.length > 0 ? [0] : [],
+  onImageScaleChange,
+  onViewportChange,
+  onVideoElement,
+  onError,
+  onRender,
+}: WebGpuVideoPreviewProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
+  const rendererRef = useRef<WebGpuVideoRenderer | null>(null)
+  const rendererInitializedRef = useRef(false)
+  const layersSignatureRef = useRef<string | null>(null)
+  const layerSyncInFlightRef = useRef<Promise<void> | null>(null)
+  const latestLayersRef = useRef(layers)
+  const latestPlaybackRef = useRef({ active, playing, time })
+  const layerSyncSequenceRef = useRef(0)
+  latestLayersRef.current = layers
+  latestPlaybackRef.current = { active, playing, time }
+  const layersSignature = JSON.stringify(layers)
+  const imageInteraction = useCanvasViewportInteraction({
+    layers,
+    canvasRef,
+    interactiveImageLayerIndexes,
+    viewportKey,
+    maxImageScale,
+    imageScale,
+    onImageScaleChange,
+  })
+  const callbackRef = useRef({ onVideoElement, onError, onRender })
+  callbackRef.current = { onVideoElement, onError, onRender }
+
+  function syncLatestLayers(): Promise<void> {
+    const renderer = rendererRef.current
+    if (!renderer || !rendererInitializedRef.current) return Promise.resolve()
+
+    const nextLayers = latestLayersRef.current
+    const nextSignature = JSON.stringify(nextLayers)
+    const syncSequence = ++layerSyncSequenceRef.current
+    logger.info('[PreviewDebug] WebGPU layer sync requested', {
+      syncSequence,
+      inFlight: Boolean(layerSyncInFlightRef.current),
+      layerSignature: previewLayerSignature(nextLayers),
+      layers: summarizePreviewLayers(nextLayers),
+    })
+    if (layerSyncInFlightRef.current) return layerSyncInFlightRef.current
+    if (layersSignatureRef.current === nextSignature) return Promise.resolve()
+    layersSignatureRef.current = nextSignature
+
+    logger.info('[PreviewDebug] WebGPU layer sync started', { syncSequence, layerSignature: previewLayerSignature(nextLayers) })
+    const request = renderer.setLayers(nextLayers)
+    const trackedRequest = request.then(
+      () => {
+        if (layerSyncInFlightRef.current !== trackedRequest) return
+        layerSyncInFlightRef.current = null
+        logger.info('[PreviewDebug] WebGPU layer sync completed', {
+          syncSequence,
+          requestedSignature: previewLayerSignature(nextLayers),
+          latestSignature: previewLayerSignature(latestLayersRef.current),
+        })
+        if (rendererRef.current !== renderer || !rendererInitializedRef.current) return
+        if (JSON.stringify(latestLayersRef.current) !== layersSignatureRef.current) {
+          return syncLatestLayers()
+        }
+      },
+      (error: unknown) => {
+        if (layerSyncInFlightRef.current === trackedRequest) layerSyncInFlightRef.current = null
+        throw error
+      },
+    )
+    layerSyncInFlightRef.current = trackedRequest
+    return trackedRequest
+  }
+
+  useLayoutEffect(() => {
+    onViewportChange?.()
+  }, [imageInteraction.style, onViewportChange])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    let cancelled = false
+    logger.info('[PreviewDebug] WebGPU component mounted', {
+      canvasWidth,
+      canvasHeight,
+      maxSide,
+      active,
+      playing,
+      time,
+      canvas: { width: canvas.width, height: canvas.height },
+    })
+    const renderer = new WebGpuVideoRenderer(canvas, {
+      canvasWidth,
+      canvasHeight,
+      maxSide,
+      onVideoElement: (element) => callbackRef.current.onVideoElement?.(element),
+      onError: (reason) => {
+        logger.error('[WebGPU诊断] 预览组件收到渲染错误', { reason })
+        callbackRef.current.onError(reason)
+      },
+      onRender: () => callbackRef.current.onRender?.(),
+    })
+    rendererRef.current = renderer
+    const resize = () => renderer.resize()
+    const frame = frameRef.current
+    let resizeObserver: ResizeObserver | null = null
+    if (frame && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(resize)
+      resizeObserver.observe(frame)
+    }
+    window.addEventListener('resize', resize)
+
+    void renderer.initialize()
+      .then(() => {
+        rendererInitializedRef.current = true
+        logger.info('[PreviewDebug] WebGPU initialized')
+        return syncLatestLayers()
+      })
+      .then(() => {
+        const nextLayers = latestLayersRef.current
+        logger.info('[PreviewDebug] WebGPU layers synchronized', { layerCount: nextLayers.length })
+        const playback = latestPlaybackRef.current
+        return renderer.setPlayback(playback.active, playback.playing, playback.time)
+      })
+      .then(() => logger.info('[PreviewDebug] WebGPU playback synchronized', latestPlaybackRef.current))
+      .catch((error: unknown) => {
+        if (cancelled) return
+        callbackRef.current.onError(error instanceof Error ? error.message : String(error))
+      })
+
+    return () => {
+      cancelled = true
+      rendererInitializedRef.current = false
+      layersSignatureRef.current = null
+      logger.info('[PreviewDebug] WebGPU component unmounted')
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', resize)
+      rendererRef.current = null
+      renderer.destroy()
+      callbackRef.current.onVideoElement?.(null)
+    }
+    // The renderer owns its browser GPU resources for the lifetime of this canvas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    rendererRef.current?.setRenderSize(canvasWidth, canvasHeight)
+  }, [canvasHeight, canvasWidth])
+
+  useEffect(() => {
+    rendererRef.current?.setMaxSide(maxSide)
+  }, [maxSide])
+
+  useEffect(() => {
+    if (!rendererRef.current || !rendererInitializedRef.current || layersSignatureRef.current === layersSignature) return
+    void syncLatestLayers().catch((error: unknown) => {
+      callbackRef.current.onError(error instanceof Error ? error.message : String(error))
+    })
+    // The renderer consumes the latest layer ref; the effect only wakes it up
+    // when React receives a newer preview snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers, layersSignature])
+
+  useEffect(() => {
+    void rendererRef.current?.setPlayback(active, playing, time).catch((error: unknown) => {
+      callbackRef.current.onError(error instanceof Error ? error.message : String(error))
+    })
+  }, [active, playing, time])
+
+  return (
+    <div
+      ref={frameRef}
+      className="webgpu-video-preview-frame"
+      style={{ aspectRatio: `${canvasWidth} / ${canvasHeight}` }}
+    >
+      <canvas
+        ref={canvasRef}
+        className={`webgpu-video-preview${className ? ` ${className}` : ''}${imageInteraction.interactive ? ' is-interactive' : ''}${imageInteraction.dragging ? ' is-dragging' : ''}`}
+        width={canvasWidth}
+        height={canvasHeight}
+        style={imageInteraction.style}
+        onPointerDown={imageInteraction.onPointerDown}
+        onPointerMove={imageInteraction.onPointerMove}
+        onPointerUp={imageInteraction.onPointerEnd}
+        onPointerCancel={imageInteraction.onPointerEnd}
+        onWheel={imageInteraction.onWheel}
+        onDoubleClick={imageInteraction.onDoubleClick}
+        aria-label="视频预览"
+      />
+    </div>
+  )
+}

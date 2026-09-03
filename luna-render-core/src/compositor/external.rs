@@ -36,8 +36,44 @@ impl Compositor {
         width: u32,
         height: u32,
         usage: wgpu::TextureUsages,
-        initialized: bool,
+        _initialized: bool,
     ) -> Result<wgpu::Texture, String> {
+        let raw_desc = unsafe { resource.GetDesc() };
+        let (expected_format, wgpu_format) = match raw_desc.Format {
+            windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM
+            | windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM_SRGB => {
+                (raw_desc.Format, wgpu::TextureFormat::Bgra8UnormSrgb)
+            }
+            windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM
+            | windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => {
+                (raw_desc.Format, wgpu::TextureFormat::Rgba8UnormSrgb)
+            }
+            _ => {
+                return Err(format!(
+                    "external D3D12 texture format is unsupported: got {}",
+                    raw_desc.Format.0
+                ));
+            }
+        };
+        if raw_desc.Format != expected_format {
+            return Err(format!(
+                "external D3D12 texture format mismatch: expected {}, got {}",
+                expected_format.0, raw_desc.Format.0
+            ));
+        }
+        if raw_desc.Width != width as u64 || raw_desc.Height != height {
+            return Err(format!(
+                "external D3D12 texture size mismatch: expected {}x{}, got {}x{}",
+                width, height, raw_desc.Width, raw_desc.Height
+            ));
+        }
+        crate::logging::write_once(&format!(
+            "[D3D12] wrap external texture raw={}x{} dxgi_format={} wgpu_format={wgpu_format:?} initial_state=COMMON usage={usage:?}",
+            raw_desc.Width,
+            raw_desc.Height,
+            raw_desc.Format.0
+        ));
+
         let size = wgpu::Extent3d {
             width,
             height,
@@ -46,7 +82,7 @@ impl Compositor {
         let hal_texture = unsafe {
             wgpu::hal::dx12::Device::texture_from_raw(
                 resource,
-                wgpu::TextureFormat::Bgra8UnormSrgb,
+                wgpu_format,
                 wgpu::TextureDimension::D2,
                 size,
                 1,
@@ -59,7 +95,7 @@ impl Compositor {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu_format,
             usage,
             view_formats: &[],
         };
@@ -67,13 +103,30 @@ impl Compositor {
             self.device.create_texture_from_hal::<wgpu::hal::api::Dx12>(
                 hal_texture,
                 &descriptor,
-                if initialized {
-                    wgpu::wgt::TextureUses::RESOURCE
-                } else {
-                    wgpu::wgt::TextureUses::UNINITIALIZED
-                },
+                // D3D12 video handoff leaves the resource in COMMON. wgpu's DX12
+                // PRESENT usage maps to COMMON, so declare that state explicitly.
+                wgpu::wgt::TextureUses::PRESENT,
             )
         })
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn render_for_native_export(
+        &mut self,
+        canvas_width: u32,
+        canvas_height: u32,
+        layers: &[RenderLayer],
+    ) -> Result<windows::Win32::Graphics::Direct3D12::ID3D12Resource, String> {
+        // Keep the compositor target wgpu-owned and return it to COMMON so the
+        // D3D12 video processing/encoding queues can consume it directly.
+        self.render_impl(canvas_width, canvas_height, layers, false, true)?;
+        let (texture, _, _) = self
+            .output_texture
+            .as_ref()
+            .ok_or_else(|| "native export render produced no output texture".to_string())?;
+        let hal_texture = unsafe { texture.as_hal::<wgpu::hal::api::Dx12>() }
+            .ok_or_else(|| "native export output is not a D3D12 texture".to_string())?;
+        Ok(unsafe { hal_texture.raw_resource().clone() })
     }
 
     #[cfg(target_os = "macos")]
@@ -155,12 +208,19 @@ impl Compositor {
         let previous = self
             .output_texture
             .replace((target, canvas_width, canvas_height));
+        let return_output_to_common = cfg!(target_os = "windows");
         let result = self
-            .render_impl(canvas_width, canvas_height, layers, false, false)
+            .render_impl(
+                canvas_width,
+                canvas_height,
+                layers,
+                false,
+                return_output_to_common,
+            )
             .map(|_| ());
-        if let Some((texture, _, _)) = self.output_texture.take() {
+        if let Some((_texture, _, _)) = self.output_texture.take() {
             #[cfg(target_os = "windows")]
-            texture.destroy();
+            _texture.destroy();
         }
         self.output_texture = previous;
         result
@@ -213,14 +273,14 @@ impl Compositor {
     /// 移除逐帧外部纹理。
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn unregister_external_texture(&mut self, texture_id: u32) {
-        if let Some(entry) = self.textures.remove(&texture_id) {
+        if let Some(_entry) = self.textures.remove(&texture_id) {
             #[cfg(target_os = "windows")]
-            entry.texture.destroy();
+            _entry.texture.destroy();
         }
     }
 
     /// 等待 GPU 完成所有已提交的工作（用于跨 API 同步）。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "windows")]
     pub(crate) fn wait_for_gpu(&self) -> Result<(), String> {
         self.device
             .poll(wgpu::PollType::Wait {

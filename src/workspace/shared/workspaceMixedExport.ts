@@ -5,6 +5,8 @@ import {
   resolveExportConfig,
 } from '../../components/previewStageExport'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
+import { logExport } from '../../lib/rendererLogger'
+import { resolveWorkspaceVideoExportRange } from './workspaceExportRange'
 
 export interface WorkspaceMixedExportPlanItem {
   id: string
@@ -13,6 +15,7 @@ export interface WorkspaceMixedExportPlanItem {
   outputBaseName: string
   layers: PreviewLayer[]
   outputSize: { width: number; height: number }
+  sourceDuration?: number
   startTime?: number
   endTime?: number
   time?: number
@@ -109,6 +112,8 @@ export async function queueWorkspaceMixedExport(
 ): Promise<{ taskId: string; itemCount: number }> {
   const stamp = Date.now()
   const entries = selectedEntries(plan, exportDir, config, stamp)
+  const videoPlans = plan.filter((item) => item.kind === 'video')
+  const adjustableVideoId = videoPlans.length === 1 ? videoPlans[0].id : null
   if (entries.length === 0) throw new Error('请至少选择一种导出内容')
   if (entries.some((entry) => entry.format === 'apple-live') && !window.navigator.platform.includes('Mac')) {
     throw new Error('Apple Live 图仅支持在 Mac 上导出')
@@ -252,9 +257,22 @@ export async function queueWorkspaceMixedExport(
         try {
           await report(entry, index, 0, 'exporting')
           const resolved = resolveExportConfig(config, entry.plan.outputSize.width, entry.plan.outputSize.height)
+          logExport('[导出诊断] 工作台导出尺寸解析', {
+            sourcePath: entry.plan.sourcePath,
+            planOutputSize: entry.plan.outputSize,
+            resolutionSetting: config.resolution,
+            resolvedSize: { width: resolved.width, height: resolved.height },
+          })
           if (entry.plan.kind === 'video') {
-            const startTime = entry.plan.startTime ?? 0
-            const endTime = entry.plan.endTime ?? startTime + 0.1
+            const planStart = entry.plan.startTime ?? 0
+            const planEnd = entry.plan.endTime ?? planStart + 0.1
+            const { startTime, endTime } = resolveWorkspaceVideoExportRange(
+              planStart,
+              planEnd,
+              config.trimStartTime,
+              config.trimEndTime,
+              entry.plan.id === adjustableVideoId,
+            )
             await exportPreviewVideo({
               exportDir,
               fileName: fileName(entry.outputPath),

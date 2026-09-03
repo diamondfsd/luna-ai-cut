@@ -186,7 +186,12 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                       const paths = ctrl.selectedFiles
                         .map((f) => f.downloadFilePath ?? f.localPath ?? '')
                         .filter(Boolean)
-                      if (paths.length > 0) showBatchExportModal(paths[0], paths, { enableILogRestoreOption: true })
+                      if (paths.length > 0) showBatchExportModal(paths[0], paths, {
+                        enableILogRestoreOption: true,
+                        mediaFileForPath: (filePath) => ctrl.selectedFiles.find((file) => (
+                          (file.downloadFilePath ?? file.localPath) === filePath
+                        )),
+                      })
                     }}>
                       导出 ({ctrl.selectedFiles.length})
                     </Button>
@@ -345,7 +350,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
               ctrl.markFileDownloaded(fileName, path)
               void ctrl.restoreDownloadedRecords()
             }}
-            onQueueClear={() => { ctrl.setDownloadQueue([]); ctrl.setActiveDownloadFileNames(new Set()) }}
+            onQueueClear={() => { ctrl.setDownloadQueue([]) }}
             onQueueShift={(fileName) => { ctrl.setDownloadQueue((current) => current.filter((file) => file.name !== fileName)) }}
             onRevealFile={ctrl.revealFileByPath}
           />

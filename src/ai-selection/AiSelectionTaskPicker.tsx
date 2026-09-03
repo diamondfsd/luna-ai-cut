@@ -17,8 +17,10 @@ interface AiSelectionTaskPickerProps {
 
 function statusText(session: AiSelectionSession): string {
   if (session.status === 'analyzing' && session.phase === 'photos') return '正在整理照片，可选片'
+  if (session.status === 'analyzing' && session.phase === 'evidence') return '正在分析画面、人物和构图，可选片'
   if (session.status === 'analyzing' && session.phase === 'content') return '正在理解画面，可选片'
   if (session.status === 'analyzing' && session.phase === 'people') return '正在识别人物，可选片'
+  if (session.status === 'analyzing' && session.phase === 'composition') return '正在评估构图，可选片'
   if (session.status === 'analyzing' && session.phase === 'videos') return '正在添加视频，可选片'
   return ({
     queued: '等待整理',

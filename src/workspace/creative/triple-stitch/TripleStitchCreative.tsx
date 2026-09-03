@@ -1,11 +1,11 @@
-import { ArrowDown, ArrowLeft, ArrowUp, Download, EyeOff, Minus, Move, Plus, RotateCcw } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, Download, Minus, Move, Plus, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
 import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../../../shared/types'
 import type { CompositionInput, PreviewLayer, VideoExportSettings } from '../../../shared/types'
-import { Button, IconButton, VideoControls, toast } from '../../../ui'
+import { Button, IconButton, Switch, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
@@ -15,9 +15,11 @@ import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImpo
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
-import { inferDeviceProfile } from '../../../shared/insta360DeviceProfiles'
+import { deviceProfileForId, inferDeviceProfile } from '../../../shared/insta360DeviceProfiles'
 import { useTripleStitchPlayback } from './useTripleStitchPlayback'
 import { useTripleStitchSources, type TripleStitchSource } from './useTripleStitchSources'
+import { CreativePreviewQualitySelect } from '../shared/CreativePreviewQualitySelect'
+import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import {
   createDefaultSlotEdits,
@@ -104,10 +106,25 @@ function buildSlotLogoLayer(slotIndex: number, imagePath: string): PreviewLayer 
   }
 }
 
+function watermarkDeviceIdForSlot(
+  slot: TripleStitchSource | undefined,
+  connectedDeviceMetadata: { sourceDeviceId?: string; sourceDeviceName?: string; cameraType?: string; watermarkProfileId?: string } | null,
+): string | null {
+  return inferDeviceProfile(slot?.asset ?? {})?.id
+    ?? inferDeviceProfile(connectedDeviceMetadata ?? {})?.id
+    ?? null
+}
+
+function defaultWatermarkStylesForDevices(deviceIds: readonly (string | null)[]): string[] {
+  return Array.from({ length: 3 }, (_, index) => (
+    watermarkStyleOptionsForDevice(deviceIds[index])[0]?.value ?? ''
+  ))
+}
+
 function buildTripleStitchComposition(
   slots: TripleStitchSource[],
   edits: SlotEdit[],
-  watermarkInfo: { imagePath: string } | null,
+  watermarkInfos: Array<{ imagePath: string } | null>,
 ): CompositionInput | null {
   if (slots.length !== 3 || slots.some(({ sourceReady }) => !sourceReady)) return null
 
@@ -140,19 +157,19 @@ function buildTripleStitchComposition(
   }))
 
   // 每个 slot 底部固定 Logo（通过 positioning 保持宽高比 + 自动定位到各 slot 底部）
-  const logoLayers: CompositionInput['layers'] = watermarkInfo
-    ? Array.from({ length: slots.length }, (_, i) => {
-        const logo = buildSlotLogoLayer(i, watermarkInfo.imagePath)
-        return {
-          id: `slot-${i + 1}-logo`,
-          source: { path: logo.filePath, sourceType: 'image' as const },
-          rect: { x: 0, y: 0, w: 1, h: 1 },
-          opacity: 1,
-          zIndex: logo.zIndex,
-          positioning: logo.positioning as CompositionInput['layers'][number]['positioning'],
-        }
-      })
-    : []
+  const logoLayers: CompositionInput['layers'] = slots.flatMap((_, i) => {
+    const watermarkInfo = watermarkInfos[i]
+    if (!watermarkInfo) return []
+    const logo = buildSlotLogoLayer(i, watermarkInfo.imagePath)
+    return [{
+      id: `slot-${i + 1}-logo`,
+      source: { path: logo.filePath, sourceType: 'image' as const },
+      rect: { x: 0, y: 0, w: 1, h: 1 },
+      opacity: 1,
+      zIndex: logo.zIndex,
+      positioning: logo.positioning as CompositionInput['layers'][number]['positioning'],
+    }]
+  })
 
   return {
     version: 1,
@@ -210,20 +227,6 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const [selectedIds, setSelectedIds] = useState<string[]>(initialState.selectedIds)
   const [activeSlot, setActiveSlot] = useState(initialState.activeSlot)
   const [slotEdits, setSlotEdits] = useState<SlotEdit[]>(initialState.slotEdits)
-  const watermarkDeviceId = useMemo(() => {
-    const selectedAssets = selectedIds
-      .map((id) => media.media.find((asset) => asset.id === id))
-      .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset))
-    const activeAsset = selectedAssets[activeSlot]
-    return inferDeviceProfile(activeAsset ?? {})?.id
-      ?? selectedAssets.map((asset) => inferDeviceProfile(asset)?.id).find(Boolean)
-      ?? inferDeviceProfile(connectedDeviceMetadata ?? {})?.id
-      ?? null
-  }, [activeSlot, connectedDeviceMetadata, media.media, selectedIds])
-  const watermarkOptions = useMemo(
-    () => watermarkStyleOptionsForDevice(watermarkDeviceId),
-    [watermarkDeviceId],
-  )
   const previewPlayback = useTripleStitchPlayback(EXPORT_DURATION)
   const [busy, setBusy] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
@@ -241,6 +244,15 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
   }
   const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; width: number; height: number } | null>(null)
   const slotSources = useTripleStitchSources(media.media, selectedIds)
+  const slotWatermarkDeviceIds = useMemo(
+    () => slotSources.map((slot) => watermarkDeviceIdForSlot(slot, connectedDeviceMetadata)),
+    [connectedDeviceMetadata, slotSources],
+  )
+  const watermarkOptions = useMemo(
+    () => watermarkStyleOptionsForDevice(slotWatermarkDeviceIds[activeSlot] ?? null),
+    [activeSlot, slotWatermarkDeviceIds],
+  )
+  const activeWatermarkDeviceName = deviceProfileForId(slotWatermarkDeviceIds[activeSlot])?.displayName
 
   // 诊断日志：监控 slotSources 变化（引用变化意味着重新计算了）
   useEffect(() => {
@@ -255,39 +267,51 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
   const compositionVersionRef = useRef(0)
 
   // ── 水印：从当前素材或连接设备的配置读取 ──
-  const [watermarkStyle, setWatermarkStyle] = useState<string>(initialState.watermarkStyle)
-  const [watermarkInfo, setWatermarkInfo] = useState<{ imagePath: string } | null>(null)
+  const [watermarkStyles, setWatermarkStyles] = useState<string[]>(initialState.watermarkStyles)
+  const [watermarkEnabled, setWatermarkEnabled] = useState<boolean[]>(initialState.watermarkEnabled)
+  const [watermarkInfos, setWatermarkInfos] = useState<Array<{ imagePath: string } | null>>([])
 
   useEffect(() => {
-    // 空值是用户主动关闭水印的持久化状态，设备切换时不能自动恢复。
-    if (!watermarkStyle || watermarkOptions.some((option) => option.value === watermarkStyle)) return
-    setWatermarkStyle(watermarkOptions[0]?.value ?? '')
-  }, [watermarkOptions, watermarkStyle])
-
-  useEffect(() => {
-    if (!watermarkStyle) {
-      setWatermarkInfo(null)
-      return
+    const nextStyles = Array.from({ length: 3 }, (_, index) => {
+      const options = watermarkStyleOptionsForDevice(slotWatermarkDeviceIds[index] ?? null)
+      const style = watermarkStyles[index] ?? ''
+      if (options.length === 0) return ''
+      return style && options.some((option) => option.value === style)
+        ? style
+        : options[0]?.value ?? ''
+    })
+    if (nextStyles.some((style, index) => style !== watermarkStyles[index]) || watermarkStyles.length !== 3) {
+      setWatermarkStyles(nextStyles)
     }
+
+    const nextEnabled = Array.from({ length: 3 }, (_, index) => (
+      (slotWatermarkDeviceIds[index] ? watermarkEnabled[index] : false) ?? false
+    ))
+    if (nextEnabled.some((enabled, index) => enabled !== watermarkEnabled[index]) || watermarkEnabled.length !== 3) {
+      setWatermarkEnabled(nextEnabled)
+    }
+  }, [slotWatermarkDeviceIds, watermarkEnabled, watermarkStyles])
+
+  useEffect(() => {
     let cancelled = false
-    window.luna.getWatermarkPath(watermarkStyle, 'image')
-      .then((info) => {
-        if (!cancelled) {
-          setWatermarkInfo({
-            imagePath: info.filePath,
-          })
-        }
-      })
-      .catch(() => {})
+    const styles = watermarkStyles.map((style, index) => watermarkEnabled[index] ? style : '')
+    void Promise.all(styles.map((style) => style
+      ? window.luna.getWatermarkPath(style, 'image').then((info) => ({ imagePath: info.filePath })).catch(() => null)
+      : Promise.resolve(null),
+    )).then((infos) => {
+      if (!cancelled) setWatermarkInfos(infos)
+    })
     return () => { cancelled = true }
-  }, [watermarkStyle])
+  }, [watermarkEnabled, watermarkStyles])
 
   useEffect(() => {
     const state = {
       selectedIds,
       activeSlot,
       slotEdits,
-      watermarkStyle,
+      watermarkStyle: watermarkEnabled[activeSlot] ? watermarkStyles[activeSlot] ?? '' : '',
+      watermarkStyles,
+      watermarkEnabled,
       exportFrameTime,
     }
     saveTripleStitchState(workspaceStateKey, state)
@@ -309,7 +333,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       projectSaveTimerRef.current = null
       window.luna.workspace.saveProject(nextProject).catch(() => {})
     }, 300)
-  }, [activeSlot, selectedIds, slotEdits, watermarkStyle, exportFrameTime, workspaceStateKey])
+  }, [activeSlot, selectedIds, slotEdits, watermarkEnabled, watermarkStyles, exportFrameTime, workspaceStateKey])
 
   useEffect(() => () => {
     if (projectSaveTimerRef.current === null) return
@@ -323,13 +347,13 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
     const version = ++compositionVersionRef.current
     let cancelled = false
     ;(async () => {
-      const result = buildTripleStitchComposition(slotSources, slotEdits, watermarkInfo)
+      const result = buildTripleStitchComposition(slotSources, slotEdits, watermarkInfos)
       if (!cancelled && version === compositionVersionRef.current) {
         setComposition(result)
       }
     })()
     return () => { cancelled = true }
-  }, [slotSources, slotEdits, watermarkInfo])
+  }, [slotSources, slotEdits, watermarkInfos])
   const canExport = Boolean(composition) && !busy
 
   // 判断是否包含视频素材
@@ -359,14 +383,14 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
     }))
 
     // 每个 slot 底部固定 Logo
-    const logoLayers: PreviewLayer[] = watermarkInfo
-      ? Array.from({ length: slotSources.length }, (_, i) =>
-          buildSlotLogoLayer(i, watermarkInfo.imagePath)
-        )
-      : []
+    const logoLayers: PreviewLayer[] = slotSources.flatMap((_, i) => {
+      const watermarkInfo = watermarkInfos[i]
+      return watermarkInfo ? [buildSlotLogoLayer(i, watermarkInfo.imagePath)] : []
+    })
 
     return [...mediaLayers, ...logoLayers]
-  }, [slotSources, slotEdits, watermarkInfo, previewPlayback.seekTime])
+  }, [slotSources, slotEdits, watermarkInfos, previewPlayback.seekTime])
+  const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
   const activeSource = slotSources[activeSlot]
   const activeDuration = activeSource?.duration
@@ -427,8 +451,25 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
     setSelectedIds([])
     setSlotEdits(createDefaultSlotEdits())
     setActiveSlot(0)
-    setWatermarkStyle(defaultWatermarkStyle)
+    const defaultStyles = defaultWatermarkStylesForDevices(slotWatermarkDeviceIds)
+    setWatermarkStyles(defaultStyles)
+    setWatermarkEnabled(defaultStyles.map((style) => Boolean(style)))
     previewPlayback.reset()
+  }
+
+  function setActiveWatermarkStyle(style: string): void {
+    setWatermarkStyles((current) => current.map((item, index) => index === activeSlot ? style : item))
+    setWatermarkEnabled((current) => current.map((enabled, index) => index === activeSlot ? true : enabled))
+  }
+
+  function setActiveWatermarkEnabled(enabled: boolean): void {
+    if (enabled && !watermarkStyles[activeSlot]) {
+      const fallbackStyle = watermarkOptions[0]?.value
+      if (fallbackStyle) {
+        setWatermarkStyles((current) => current.map((item, index) => index === activeSlot ? fallbackStyle : item))
+      }
+    }
+    setWatermarkEnabled((current) => current.map((item, index) => index === activeSlot ? enabled : item))
   }
 
   function nudgeActiveScale(delta: number): void {
@@ -445,6 +486,16 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       return next
     })
     setSlotEdits((current) => {
+      const next = [...current]
+      ;[next[activeSlot], next[target]] = [next[target], next[activeSlot]]
+      return next
+    })
+    setWatermarkStyles((current) => {
+      const next = [...current]
+      ;[next[activeSlot], next[target]] = [next[target], next[activeSlot]]
+      return next
+    })
+    setWatermarkEnabled((current) => {
       const next = [...current]
       ;[next[activeSlot], next[target]] = [next[target], next[activeSlot]]
       return next
@@ -736,6 +787,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
         </Button>
         <span>Live 三拼</span>
         <WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} />
+        <CreativePreviewQualitySelect className="triple-stitch-preview-quality" value={previewQuality} onChange={changePreviewQuality} />
       </header>
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board ui-video-controls-host">
@@ -744,6 +796,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
             layers={previewLayers}
             canvasWidth={CANVAS_WIDTH}
             canvasHeight={CANVAS_HEIGHT}
+            maxSide={previewMaxSide}
             playing={previewPlayback.playing}
             decodeQuality={1.0}
             onError={(message) => toast.error(message)}
@@ -914,37 +967,46 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
           </div>
         </div>
 
-        {watermarkOptions.length > 0 && (
-          <div className="triple-stitch-section">
+        <div className="triple-stitch-section">
+          <div className="triple-stitch-section-head">
             <div className="triple-stitch-section-title">水印</div>
-            <div className="triple-stitch-watermark-toggle">
-              <button
-                type="button"
-                className={`triple-stitch-wm-btn${watermarkStyle === '' ? ' active' : ''}`}
-                aria-pressed={watermarkStyle === ''}
-                onClick={() => setWatermarkStyle('')}
-              >
-                <EyeOff size={24} aria-hidden="true" />
-                <span>关闭</span>
-              </button>
-              {watermarkOptions.map((opt) => {
-                const thumbSrc = WM_SRC[opt.value]?.image
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={`triple-stitch-wm-btn${watermarkStyle === opt.value ? ' active' : ''}`}
-                    aria-pressed={watermarkStyle === opt.value}
-                    onClick={() => setWatermarkStyle(opt.value)}
-                  >
-                    {thumbSrc && <img src={thumbSrc} alt={opt.label} />}
-                    <span>{opt.label}</span>
-                  </button>
-                )
-              })}
-            </div>
+            <span className="triple-stitch-section-hint">
+              {activeWatermarkDeviceName ? `${activeWatermarkDeviceName} · ` : ''}第 {activeSlot + 1} 画面
+            </span>
           </div>
-        )}
+          {watermarkOptions.length > 0 ? (
+            <>
+              <div className="triple-stitch-watermark-switch-row">
+                <span>使用水印</span>
+                <Switch
+                  ariaLabel={`第 ${activeSlot + 1} 画面水印`}
+                  checked={Boolean(watermarkEnabled[activeSlot])}
+                  onCheckedChange={setActiveWatermarkEnabled}
+                />
+              </div>
+              <div className="triple-stitch-watermark-toggle">
+                {watermarkOptions.map((opt) => {
+                  const thumbSrc = WM_SRC[opt.value]?.image
+                  const selected = watermarkEnabled[activeSlot] && watermarkStyles[activeSlot] === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`triple-stitch-wm-btn${selected ? ' active' : ''}`}
+                      aria-pressed={selected}
+                      onClick={() => setActiveWatermarkStyle(opt.value)}
+                    >
+                      {thumbSrc && <img src={thumbSrc} alt={opt.label} />}
+                      <span>{opt.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="triple-stitch-watermark-empty">当前画面没有可用的设备水印</div>
+          )}
+        </div>
 
         <div className="triple-stitch-section">
           <div className="triple-stitch-section-title">导出格式</div>

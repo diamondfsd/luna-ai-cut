@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 
 import type { PreviewSize } from './htmlPreviewGeometry'
+import { zoomOffsetAroundPoint } from './previewViewportGeometry'
 
 interface ViewportState {
   scale: number
@@ -90,10 +91,10 @@ export function useHtmlPreviewViewport(options: {
     const rect = container.getBoundingClientRect()
     setView((current) => {
       const scale = Math.max(1, Math.min(metrics.maxScale, nextScale))
-      const ratio = scale / current.scale
       const anchorX = clientX == null ? 0 : clientX - (rect.left + rect.width / 2)
       const anchorY = clientY == null ? 0 : clientY - (rect.top + rect.height / 2)
-      return clampView(metrics, scale, current.x + anchorX * (1 - ratio), current.y + anchorY * (1 - ratio))
+      const offset = zoomOffsetAroundPoint(current, current.scale, scale, anchorX, anchorY)
+      return clampView(metrics, scale, offset.x, offset.y)
     })
   }, [containerRef, contentRef, mediaSize])
 
