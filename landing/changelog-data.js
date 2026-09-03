@@ -2,6 +2,18 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.0",
+    "title": "v1.8.0",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>实时视频预览</strong>：支持查看相机实时画面和当前视频分辨率。</li>\n<li><strong>水印设置</strong>：支持在编辑和导出流程中管理水印。</li>\n<li><strong>DJI 相机媒体管理</strong>：支持浏览、预览、下载和删除相机中的媒体。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li>修复部分 WebGPU 预览、调色和播放过程中的画面异常。</li>\n<li>修复视频导出预览、遮罩编辑和素材文件操作中的稳定性问题。</li>\n<li>修复 Luna 与 DJI 相机在 Bluetooth、Wi-Fi 和 TCP 连接过程中的问题。</li>\n<li>修复图片导出 HDR 信息保留和部分导出参数处理问题。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li>优化 Windows 视频导出速度、兼容性和硬件加速失败时的回退处理。</li>\n<li>优化相机自动入网、媒体浏览和下载流程。</li>\n<li>优化工作台预览、调色滑块和编辑面板交互。</li>\n<li>完善 macOS、Windows 三平台安装包的运行库隔离和发布流程。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>发布 macOS Apple Silicon、macOS Intel 和 Windows x64 安装包。</li>\n<li>macOS 安装包已完成 Developer ID 签名和 Apple 公证。</li>\n<li>更新项目版本至 <code>1.8.0</code>。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.7.1-hot.1",
+    "title": "v1.7.1-hot.1 — 热更新发布说明",
+    "bodyHtml": "<h3>改进</h3>\n<ul>\n<li><strong>媒体详情更完整</strong>：视频预览支持显示分辨率、帧率、编码、码率、时长、文件大小、拍摄信息等更多内容。</li>\n<li><strong>原始视频读取更稳定</strong>：本地素材优先读取原文件；相机素材按需读取远程内容，不需要先缓存完整视频。</li>\n<li><strong>预览更沉浸</strong>：支持系统级全屏预览，左右切换素材，控制按钮会在鼠标静止后自动隐藏。</li>\n<li><strong>全屏入口更集中</strong>：全屏、缩放和切换按钮统一放在预览画面中，视频控制条不再显示重复的全屏按钮。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.7.1",
     "title": "v1.7.1",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>原片预览与下载</strong>：支持在预览窗口查看相机原始视频，并可直接下载单个素材。</li>\n<li><strong>手机分享</strong>：支持将本地媒体通过临时分享页面发送到手机，提供更完整的分享操作和下载体验。</li>\n<li><strong>本地媒体分享服务</strong>：增加分享文件整理、压缩和访问能力，支持在设置中管理相关选项。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>缩略图滚动</strong>：修复缩略图条无法正确响应垂直滚轮的问题。</li>\n<li><strong>提示位置</strong>：调整工作区工具提示的位置，减少对编辑内容的遮挡。</li>\n<li><strong>模拟相机访问</strong>：支持媒体请求独立于短暂的连接会话，便于本地调试和录制。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li>优化预览窗口头部、缩略图条和分享弹窗的操作布局。</li>\n<li>补充相机媒体页和设置页中的分享入口与状态展示。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新项目版本至 <code>1.7.1</code>。</li>\n</ul>",
