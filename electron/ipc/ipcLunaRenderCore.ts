@@ -27,6 +27,7 @@ import { getLogDir, logMainError, logMainInfo, logMainWarn } from '../infrastruc
 import { RUNTIME_RESOURCE_DEFINITIONS } from '../infrastructure/runtimeResourceDefinitions'
 import { loadRuntimeResource } from '../infrastructure/runtimeResourceService'
 import { embedJpegSourceMetadata, embedVideoSourceMetadata } from '../export/exportSourceMetadata'
+import { fileOperationErrorDetails, userFacingFileOperationError, friendlyFileOperationError } from '../storage/fileOperationDiagnostics.ts'
 
 interface RegisterContext {
   activeNativeExportTasks: Set<string>
@@ -292,7 +293,7 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       rcLog(`ERROR in ${label}: ${msg}`)
-      logMainError('[LRC] 调用失败', { label, error: msg })
+      logMainError('[LRC] 调用失败', { label, ...fileOperationErrorDetails(err) })
       throw err
     }
   }) as unknown as T
@@ -453,28 +454,51 @@ export function register(ctx: RegisterContext): void {
         })
       }
 
-      await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: await resolveRuntimePaths(composition), format, quality })
       const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
         ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
-      await embedJpegSourceMetadata(outputPath, sourcePath).catch((error) => {
-        logMainWarn('[导出] 无法写入图片来源信息', {
-          outputPath,
-          error: error instanceof Error ? error.message : String(error),
+      try {
+        await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: await resolveRuntimePaths(composition), format, quality })
+        await embedJpegSourceMetadata(outputPath, sourcePath).catch((error) => {
+          logMainWarn('[导出] 图片已生成，但来源信息写入失败', {
+            outputPath,
+            ...fileOperationErrorDetails(error, outputPath),
+          })
         })
-      })
 
-      if (exportTaskId && exportItemId) {
-        _event.sender?.send('export:progress', {
-          exportId: exportItemId,
-          taskId: exportTaskId,
-          fileName: outputPath.split(/[\\/]/).pop(),
-          percent: 100,
-          status: 'done',
-          destinationPath: outputPath,
+        if (exportTaskId && exportItemId) {
+          _event.sender?.send('export:progress', {
+            exportId: exportItemId,
+            taskId: exportTaskId,
+            fileName: outputPath.split(/[\\/]/).pop(),
+            percent: 100,
+            status: 'done',
+            destinationPath: outputPath,
+          })
+          await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
+        }
+        rcLog('lrc:exportCompositionImage done')
+      } catch (error) {
+        const message = friendlyFileOperationError(error, 'export')
+        logMainError('[export] 图片导出失败', {
+          outputPath,
+          sourcePath,
+          userMessage: message,
+          ...fileOperationErrorDetails(error, outputPath),
         })
-        await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
+        if (exportTaskId && exportItemId) {
+          await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error: message }).catch(() => {})
+          _event.sender?.send('export:progress', {
+            exportId: exportItemId,
+            taskId: exportTaskId,
+            fileName: outputPath.split(/[\\/]/).pop(),
+            percent: 100,
+            status: 'failed',
+            destinationPath: outputPath,
+            error: message,
+          })
+        }
+        throw userFacingFileOperationError(error, 'export')
       }
-      rcLog('lrc:exportCompositionImage done')
     },
   ))
 
@@ -506,6 +530,8 @@ export function register(ctx: RegisterContext): void {
       const renderTaskId = taskId ?? exportItemId ?? `composition_${Date.now()}`
       const progressExportId = exportItemId ?? renderTaskId
       const fileName = fileNameFromPath(outputPath)
+      const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
+        ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
       rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition?.layers?.length ?? 0} audio=${includeAudio !== false}`)
       rcLog(`lrc:exportCompositionVideo runtime ${JSON.stringify({
         mode: app.isPackaged ? 'packaged' : 'development',
@@ -559,12 +585,10 @@ export function register(ctx: RegisterContext): void {
           qualityPreset,
           includeAudio,
         })
-        const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
-          ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
         await embedVideoSourceMetadata(ffmpegPath, outputPath, sourcePath).catch((error) => {
-          logMainWarn('[导出] 无法写入来源设备信息', {
+          logMainWarn('[导出] 视频已生成，但来源设备信息写入失败', {
             outputPath,
-            error: error instanceof Error ? error.message : String(error),
+            ...fileOperationErrorDetails(error, outputPath),
           })
         })
         if (exportTaskId && exportItemId) {
@@ -579,7 +603,13 @@ export function register(ctx: RegisterContext): void {
           })
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = friendlyFileOperationError(error, 'export')
+        logMainError('[export] 视频导出失败', {
+          outputPath,
+          sourcePath,
+          userMessage: message,
+          ...fileOperationErrorDetails(error, outputPath),
+        })
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error: message }).catch(() => {})
           _event.sender?.send('export:progress', {
@@ -592,7 +622,7 @@ export function register(ctx: RegisterContext): void {
             error: message,
           })
         }
-        throw error
+        throw userFacingFileOperationError(error, 'export')
       } finally {
         clearInterval(progressTimer)
         ctx.activeNativeExportTasks.delete(renderTaskId)
@@ -620,7 +650,18 @@ export function register(ctx: RegisterContext): void {
       if (!Number.isFinite(fps) || fps <= 0 || !Number.isFinite(duration) || duration <= 0) {
         throw new Error('WebGPU 视频导出时间参数无效')
       }
-      await mkdir(dirname(outputPath), { recursive: true })
+      try {
+        await mkdir(dirname(outputPath), { recursive: true })
+      } catch (error) {
+        const message = friendlyFileOperationError(error, 'export')
+        logMainError('[export] WebGPU 视频导出目录准备失败', {
+          outputPath,
+          sourcePath,
+          userMessage: message,
+          ...fileOperationErrorDetails(error, outputPath),
+        })
+        throw userFacingFileOperationError(error, 'export')
+      }
       const safeSourcePath = typeof sourcePath === 'string' && sourcePath.trim().length > 0 ? sourcePath : null
       const safeStartTime = Number.isFinite(sourceStartTime) ? Math.max(0, sourceStartTime) : 0
       const videoInput = ['-f', 'h264', '-r', String(fps), '-i', 'pipe:0']
@@ -649,6 +690,11 @@ export function register(ctx: RegisterContext): void {
       })
       child.once('error', (error) => {
         rcLog(`lrc:webgpu-video process error session=${sessionId} error=${error.message}`)
+        logMainError('[export] WebGPU 视频封装进程异常', {
+          sessionId,
+          outputPath,
+          ...fileOperationErrorDetails(error, outputPath),
+        })
       })
       ctx.activeExportEncoders.set(sessionId, child)
       webGpuSessions.set(sessionId, { outputPath, sourcePath: safeSourcePath, stderr })
@@ -660,36 +706,49 @@ export function register(ctx: RegisterContext): void {
     async (_event: IpcMainInvokeEvent, sessionId: string, data: Uint8Array) => {
       const child = ctx.activeExportEncoders.get(sessionId)
       if (!child || child.stdin.destroyed || child.exitCode !== null) throw new Error('WebGPU 视频导出会话不可用')
+      const session = webGpuSessions.get(sessionId)
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
       if (bytes.byteLength === 0) return
-      if (!child.stdin.write(Buffer.from(bytes))) {
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            cleanup()
-            reject(new Error('WebGPU 视频输出管道等待超时'))
-          }, 30_000)
-          const onDrain = () => {
-            cleanup()
-            resolve()
-          }
-          const onError = (error: Error) => {
-            cleanup()
-            reject(error)
-          }
-          const onClose = () => {
-            cleanup()
-            reject(new Error('WebGPU 视频封装进程已提前退出'))
-          }
-          const cleanup = () => {
-            clearTimeout(timeout)
-            child.stdin.off('drain', onDrain)
-            child.stdin.off('error', onError)
-            child.off('close', onClose)
-          }
-          child.stdin.once('drain', onDrain)
-          child.stdin.once('error', onError)
-          child.once('close', onClose)
+      try {
+        if (!child.stdin.write(Buffer.from(bytes))) {
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              cleanup()
+              reject(new Error('WebGPU 视频输出管道等待超时'))
+            }, 30_000)
+            const onDrain = () => {
+              cleanup()
+              resolve()
+            }
+            const onError = (error: Error) => {
+              cleanup()
+              reject(error)
+            }
+            const onClose = () => {
+              cleanup()
+              reject(new Error('WebGPU 视频封装进程已提前退出'))
+            }
+            const cleanup = () => {
+              clearTimeout(timeout)
+              child.stdin.off('drain', onDrain)
+              child.stdin.off('error', onError)
+              child.off('close', onClose)
+            }
+            child.stdin.once('drain', onDrain)
+            child.stdin.once('error', onError)
+            child.once('close', onClose)
+          })
+        }
+      } catch (error) {
+        const outputPath = session?.outputPath
+        const message = friendlyFileOperationError(error, 'export')
+        logMainError('[export] WebGPU 视频写入失败', {
+          sessionId,
+          outputPath,
+          userMessage: message,
+          ...fileOperationErrorDetails(error, outputPath),
         })
+        throw userFacingFileOperationError(error, 'export')
       }
     },
   ))
@@ -701,20 +760,33 @@ export function register(ctx: RegisterContext): void {
       if (!child || !session) throw new Error('WebGPU 视频导出会话不可用')
       ctx.activeExportEncoders.delete(sessionId)
       webGpuSessions.delete(sessionId)
-      child.stdin.end()
-      const result = await waitForChildProcess(child)
-      if (result.code !== 0) {
-        throw new Error(`WebGPU 视频封装失败${session.stderr.value ? `: ${session.stderr.value.trim()}` : `（退出码 ${result.code ?? '未知'}）`}`)
-      }
-      if (session.sourcePath) {
-        await embedVideoSourceMetadata(getFfmpegPath(), session.outputPath, session.sourcePath).catch((error) => {
-          logMainWarn('[导出] WebGPU 视频无法写入来源设备信息', {
-            outputPath: session.outputPath,
-            error: error instanceof Error ? error.message : String(error),
+      try {
+        child.stdin.end()
+        const result = await waitForChildProcess(child)
+        if (result.code !== 0) {
+          throw new Error(`WebGPU 视频封装失败${session.stderr.value ? `: ${session.stderr.value.trim()}` : `（退出码 ${result.code ?? '未知'}）`}`)
+        }
+        if (session.sourcePath) {
+          await embedVideoSourceMetadata(getFfmpegPath(), session.outputPath, session.sourcePath).catch((error) => {
+            logMainWarn('[导出] WebGPU 视频已生成，但来源设备信息写入失败', {
+              outputPath: session.outputPath,
+              ...fileOperationErrorDetails(error, session.outputPath),
+            })
           })
+        }
+        rcLog(`lrc:webgpu-video-end session=${sessionId} output=${session.outputPath}`)
+      } catch (error) {
+        const message = friendlyFileOperationError(error, 'export')
+        logMainError('[export] WebGPU 视频导出失败', {
+          sessionId,
+          outputPath: session.outputPath,
+          sourcePath: session.sourcePath,
+          userMessage: message,
+          stderr: session.stderr.value.trim() || undefined,
+          ...fileOperationErrorDetails(error, session.outputPath),
         })
+        throw userFacingFileOperationError(error, 'export')
       }
-      rcLog(`lrc:webgpu-video-end session=${sessionId} output=${session.outputPath}`)
     },
   ))
 

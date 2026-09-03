@@ -10,6 +10,7 @@ import { logMainError, logMainInfo, logMainWarn } from '../infrastructure/logger
 import { recordDownloadedFileSource } from '../media/mediaSourceManifestService'
 import { friendlyDownloadError, prepareDownloadDirectory } from '../media/downloadDirectoryService'
 import { downloadDestinationFor, findDownloadedPath } from '../media/downloadStorageService'
+import { fileOperationErrorDetails } from './fileOperationDiagnostics.ts'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -127,6 +128,12 @@ async function downloadCachedFile(
     return true
   } catch (error) {
     if (signal?.aborted || isAbortError(error)) throw error
+    logMainWarn('[download] 缓存复制到目标目录失败，改为从相机下载', {
+      fileName: file.name,
+      sourcePath: source,
+      destination,
+      ...fileOperationErrorDetails(error, destination),
+    })
     return false
   }
 }
@@ -183,11 +190,14 @@ function logFinalDownloadCanceled(file: LunaFile, destination: string): void {
   })
 }
 
-function logFinalDownloadFailure(file: LunaFile, destination: string, error: string): void {
+function logFinalDownloadFailure(file: LunaFile, destination: string, error: unknown, userMessage: string): void {
   logMainError('[download] 下载失败', {
     fileName: file.name,
+    sourceUrl: sourceUrlFor(file),
     destination,
-    reason: error,
+    partialPath: partialPathFor(destination),
+    userMessage,
+    ...fileOperationErrorDetails(error, destination),
   })
 }
 
@@ -198,8 +208,7 @@ async function recordDownloadedSource(outputDir: string, destination: string, fi
     logMainWarn('[download] 素材已下载，但来源信息保存失败', {
       fileName: file.name,
       destination,
-      code: error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined,
-      reason: error instanceof Error ? error.message : String(error),
+      ...fileOperationErrorDetails(error, destination),
     })
   }
 }
@@ -454,7 +463,15 @@ export async function downloadFiles(
   organizeByDate = false,
 ): Promise<DownloadSummary> {
   const summary: DownloadSummary = { completed: [], failed: [], canceled: [] }
-  outputDir = await prepareDownloadDirectory(outputDir)
+  try {
+    outputDir = await prepareDownloadDirectory(outputDir)
+  } catch (error) {
+    logMainError('[download] 下载目录准备失败', {
+      outputDir,
+      ...fileOperationErrorDetails(error, outputDir),
+    })
+    throw error
+  }
 
   for (const [index, file] of files.entries()) {
     if (signal?.aborted) {
@@ -600,7 +617,7 @@ export async function downloadFiles(
       }
 
       const message = friendlyDownloadError(error)
-      logFinalDownloadFailure(file, destination, message)
+      logFinalDownloadFailure(file, destination, error, message)
       onProgress({
         fileName: file.name,
         index,
