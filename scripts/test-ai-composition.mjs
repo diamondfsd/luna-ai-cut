@@ -13,7 +13,7 @@ const suggestionWithoutImports = suggestionSource
   .replace("import type { CompositionBounds } from '../../shared/compositionAnalysis'\n", '')
   .replace("import { compositionScoreForBounds } from '../../shared/compositionAnalysis'\n", '')
   .replace("import type { CropRect } from '../shared/editPipeline'\n", '')
-  .replace("import { clampCrop, fitCropInsideImage, framePointToSourceUv, maxCropInsideImage, sourceUvToFramePoint, type CropConstraintOptions } from './cropGeometry'\n", '')
+  .replace("import { clampCrop, fitCropInsideImage, framePointToSourceUv, maxCropInsideImage, sameCrop, sourceUvToFramePoint, type CropConstraintOptions } from './cropGeometry'\n", '')
 
 const compiled = ts.transpileModule(`${sharedSource}\n${cropSource}\n${suggestionWithoutImports}`, {
   compilerOptions: {
@@ -63,6 +63,24 @@ const cropWithSubjectOutsideCurrent = geometry.compositionCropCandidates(
 assert.ok(cropWithSubjectOutsideCurrent)
 assert.equal(cropWithSubjectOutsideCurrent.currentIndex, cropWithSubjectOutsideCurrent.candidates.length - 1)
 assert.deepEqual(cropWithSubjectOutsideCurrent.candidates[cropWithSubjectOutsideCurrent.currentIndex], { x: 0, y: 0, w: 0.2, h: 0.2 })
+
+const currentCropIsBest = geometry.compositionCropCandidates(
+  { x: 0.35, y: 0.35, width: 0.1, height: 0.1 },
+  { sourceAspect: 1, orientation: 0, rotate: 0, aspectRatio: null },
+  { x: 0, y: 0, w: 1, h: 1 },
+)
+assert.ok(currentCropIsBest)
+const currentCropScores = currentCropIsBest.candidates.map((_, index) => index === currentCropIsBest.currentIndex ? 1 : 0)
+assert.equal(
+  geometry.suggestCompositionCrop(
+    { x: 0.35, y: 0.35, width: 0.1, height: 0.1 },
+    { sourceAspect: 1, orientation: 0, rotate: 0, aspectRatio: null },
+    { x: 0, y: 0, w: 1, h: 1 },
+    currentCropScores,
+  ),
+  null,
+  '当前裁剪已经是最佳结果时不应提供空操作建议',
+)
 
 const rotated = geometry.suggestCompositionCrop(
   { x: 0.2, y: 0.15, width: 0.25, height: 0.25 },

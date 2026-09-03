@@ -590,23 +590,32 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     }
   }, [edit, settingsReady, workspaceAssetKey])
 
-  // ── Initialize pipeline / reset crop/trim when active asset changes ──
+  // ── Initialize pipeline when active asset changes ──
   useLayoutEffect(() => {
     if (!settingsReady) return
     const asset = media.currentProject?.assets[media.activeIndex]
+    const keepCropMode = edit.cropActive || edit.activeTool === 'crop'
     logger.info('[PreviewDebug] workspace pipeline initialization requested', {
       workspaceAssetKey,
       restoreLutKey,
     })
-    edit.setCropActive(false)
-    edit.setTransformDraft(null)
     edit.setCropPreset('original')
     const compatibility = normalizePersistedPipelinePatch(asset?.pipeline)
     if (compatibility.resetColor && asset && !colorResetNoticeRef.current.has(asset.id)) {
       colorResetNoticeRef.current.add(asset.id)
       toast.show('当前素材的旧版调色参数已重置')
     }
-    edit.initializePipeline(normalizePipeline(asset?.pipeline, defaultPipelineRef.current, restoreLut))
+    const nextPipeline = normalizePipeline(asset?.pipeline, defaultPipelineRef.current, restoreLut)
+    edit.initializePipeline(nextPipeline)
+    if (keepCropMode) {
+      // The previous draft belongs to the old asset. Start the crop overlay from the
+      // new asset's persisted transform while keeping the crop tool selected.
+      edit.setTransformDraft(nextPipeline.transform)
+      edit.setCropActive(true)
+    } else {
+      edit.setCropActive(false)
+      edit.setTransformDraft(null)
+    }
     if (media.activeMedia && !isVideoPath(media.activeMedia.path)) {
       // 图片不显示截取，退出截取模式
       if (edit.trimActive) {
