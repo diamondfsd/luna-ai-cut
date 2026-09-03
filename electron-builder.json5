@@ -40,17 +40,17 @@
       "filter": ["*.cube", "*.cube.meta.json"]
     },
     {
-      "from": "resources/ffmpeg",
+      "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/ffmpeg",
       "to": "ffmpeg",
       "filter": ["**/*"]
     },
     {
-      "from": "resources/dolby-vision",
+      "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/dolby-vision",
       "to": "dolby-vision",
       "filter": ["dovi_tool", "dovi_tool.exe", "mp4mux", "mp4mux.exe"]
     },
     {
-      "from": "luna-render-core",
+      "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/luna-render-core",
       "to": "luna-render-core",
       "filter": [
         "luna-render-core.node",

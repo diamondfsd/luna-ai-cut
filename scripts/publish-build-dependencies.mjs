@@ -151,6 +151,11 @@ function verifyReleaseAsset(release, artifact) {
 const root = process.cwd()
 const artifacts = [
   {
+    fileName: 'onnxruntime-osx-x86_64-1.23.2.tgz',
+    path: join(root, '.onnxruntime-cache', '1.23.2', 'x86_64', 'onnxruntime-osx-x86_64-1.23.2.tgz'),
+    sha256: 'd10359e16347b57d9959f7e80a225a5b4a66ed7d7e007274a15cae86836485a6',
+  },
+  {
     fileName: 'ffmpeg-win32-x64.gz',
     path: join(root, '.ffmpeg-cache', 'ffmpeg-win32-x64.gz'),
     sha256: '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',

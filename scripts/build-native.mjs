@@ -17,6 +17,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
 import { prepareDxcRuntime } from './prepare-dxc.mjs'
+import { ensureMacX64OnnxRuntime } from './prepare-macos-x64-runtime.mjs'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
@@ -88,7 +89,9 @@ function copyArtifact(src, dest) {
 for (const fileName of readdirSync(rcDir)) {
   const isIncompatible = isWin
     ? workerBaseNames.includes(fileName) || /\.(dylib|so(?:\..*)?)$/i.test(fileName)
-    : /\.(exe|dll)$/i.test(fileName) || /^DXC-LICENSE-.*\.txt$/i.test(fileName)
+    : /\.(exe|dll)$/i.test(fileName)
+      || /^DXC-LICENSE-.*\.txt$/i.test(fileName)
+      || (isMac && !isMacX64 && /^libonnxruntime.*\.dylib$/i.test(fileName))
   if (!isIncompatible) continue
   rmSync(join(rcDir, fileName), { force: true })
   console.log('[build-native] removed incompatible artifact:', fileName)
@@ -187,6 +190,12 @@ const macRustupCargo = join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-
 const rustcBin = cargoBin === macRustupCargo
   ? join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'rustc')
   : undefined
+
+if (isMacX64 && process.platform === 'darwin') {
+  const runtimeDir = await ensureMacX64OnnxRuntime({ rootDir: root, nativeDir: rcDir })
+  process.env.ORT_LIB_LOCATION = runtimeDir
+  process.env.ORT_PREFER_DYNAMIC_LINK = '1'
+}
 
 // ── cargo build ──
 const buildArgs = useCargoXwin
