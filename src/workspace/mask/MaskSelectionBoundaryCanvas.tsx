@@ -3,7 +3,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 
 import { createMaskSelectionBoundary, drawMaskSelectionBoundary } from './maskSelectionBoundary'
 
 export interface MaskSelectionBoundaryHandle {
-  show: (mask: Float32Array) => void
+  show: (mask: Float32Array, maskWidth?: number, maskHeight?: number) => void
   clear: () => void
 }
 
@@ -25,11 +25,11 @@ export const MaskSelectionBoundaryCanvas = forwardRef<MaskSelectionBoundaryHandl
     if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
   }, [])
 
-  const show = useCallback((mask: Float32Array) => {
+  const show = useCallback((mask: Float32Array, maskWidth = width, maskHeight = height) => {
     boundaryRef.current = {
-      path: createMaskSelectionBoundary(mask, width, height),
-      width,
-      height,
+      path: createMaskSelectionBoundary(mask, maskWidth, maskHeight),
+      width: maskWidth,
+      height: maskHeight,
     }
     if (animationRef.current !== null) return
     const animate = (time: number): void => {

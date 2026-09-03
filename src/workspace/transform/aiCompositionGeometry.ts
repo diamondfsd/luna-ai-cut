@@ -1,7 +1,7 @@
 import type { CompositionBounds } from '../../shared/compositionAnalysis'
 import { compositionScoreForBounds } from '../../shared/compositionAnalysis'
 import type { CropRect } from '../shared/editPipeline'
-import { clampCrop, fitCropInsideImage, framePointToSourceUv, maxCropInsideImage, sourceUvToFramePoint, type CropConstraintOptions } from './cropGeometry'
+import { clampCrop, fitCropInsideImage, framePointToSourceUv, maxCropInsideImage, sameCrop, sourceUvToFramePoint, type CropConstraintOptions } from './cropGeometry'
 
 export interface AiCropSuggestion {
   crop: CropRect
@@ -16,6 +16,8 @@ export interface AiCropCandidateSet {
   candidates: CropRect[]
   currentIndex: number
 }
+
+const MIN_SUGGESTION_SCORE_GAIN = 0.01
 
 function sourceBoundsToFrameBounds(bounds: CompositionBounds, options: CropConstraintOptions): CompositionBounds {
   const points = [
@@ -118,6 +120,11 @@ export function suggestCompositionCrop(
   const currentScore = hasModelScores
     ? scores[currentIndex]
     : scoreCrop(candidates[currentIndex], subjectBounds)
+  // Do not present the current crop as an actionable recommendation. Model scores can
+  // be very close, so require a small but meaningful improvement before moving the frame.
+  if (bestIndex === currentIndex || sameCrop(candidates[bestIndex], candidates[currentIndex]) || score <= currentScore + MIN_SUGGESTION_SCORE_GAIN) {
+    return null
+  }
   return {
     crop: candidates[bestIndex],
     score,
