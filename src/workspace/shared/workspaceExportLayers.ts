@@ -54,6 +54,10 @@ export function buildWorkspaceExportLayers(
         restoreLutId: pipeline.logRestore.activeId ?? undefined,
         lutId: pipeline.lutFilter.activeId ?? undefined,
         lutIntensity: pipeline.lutFilter.intensity,
+        isVideo: main[0]?.isVideo,
+        videoTime: main[0]?.videoTime,
+        videoOffset: main[0]?.videoOffset,
+        videoDuration: main[0]?.videoDuration,
       },
     })
     const adjustedBorderLayers = applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline)
