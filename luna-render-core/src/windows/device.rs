@@ -7,7 +7,8 @@ use windows::Win32::Graphics::Direct3D11::{
 };
 use windows::Win32::Graphics::Direct3D12::{
     ID3D12CommandQueue, ID3D12Device, ID3D12Fence, D3D12_COMMAND_LIST_TYPE,
-    D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE,
+    D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS,
+    D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE,
 };
 use windows::Win32::Media::MediaFoundation::{IMFDXGIDeviceManager, MFCreateDXGIDeviceManager};
 
@@ -19,6 +20,7 @@ use windows::Win32::Media::MediaFoundation::{IMFDXGIDeviceManager, MFCreateDXGID
 pub(crate) struct InteropDevice {
     pub(crate) d3d12_device: ID3D12Device,
     pub(crate) video_process_queue: ID3D12CommandQueue,
+    pub(crate) video_encode_queue: Option<ID3D12CommandQueue>,
     pub(crate) decoder_device_manager: Option<IMFDXGIDeviceManager>,
     pub(crate) ffmpeg_d3d11_device: ID3D11Device1,
     pub(crate) ffmpeg_d3d12_fence: ID3D12Fence,
@@ -51,6 +53,19 @@ impl InteropDevice {
             D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS,
             "D3D12 video process",
         )?;
+        let video_encode_queue = match create_video_queue(
+            d3d12_device,
+            D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE,
+            "D3D12 video encode",
+        ) {
+            Ok(queue) => Some(queue),
+            Err(error) => {
+                crate::logging::write(&format!(
+                    "[Export:WinGPU] d3d12 video encode queue unavailable detail={error}"
+                ));
+                None
+            }
+        };
         let decoder_device_manager = if enable_media_foundation {
             let d3d12_unknown: IUnknown = d3d12_device
                 .cast()
@@ -88,13 +103,15 @@ impl InteropDevice {
         let ffmpeg_d3d12_fence = ffmpeg_d3d12_fence?;
 
         crate::logging::write(&format!(
-            "[Export:WinGPU] backend=d3d12 video-process-queue=true vendor-encoder=true media-foundation-device={}",
+            "[Export:WinGPU] backend=d3d12 video-process-queue=true video-encode-queue={} vendor-encoder=true media-foundation-device={}",
+            video_encode_queue.is_some(),
             if enable_media_foundation { "D3D12" } else { "disabled" },
         ));
 
         Ok(Self {
             d3d12_device: d3d12_device.clone(),
             video_process_queue,
+            video_encode_queue,
             decoder_device_manager,
             ffmpeg_d3d11_device,
             ffmpeg_d3d12_fence,

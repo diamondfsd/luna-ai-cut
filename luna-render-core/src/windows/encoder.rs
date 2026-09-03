@@ -4,12 +4,13 @@ use std::time::Duration;
 use windows::core::Interface;
 use windows::Win32::Graphics::Direct3D12::{
     ID3D12CommandAllocator, ID3D12CommandList, ID3D12CommandQueue, ID3D12Device, ID3D12Fence,
-    ID3D12Resource, D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-    D3D12_FENCE_FLAG_NONE, D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT,
-    D3D12_HEAP_TYPE_READBACK, D3D12_MEMORY_POOL_UNKNOWN, D3D12_RANGE, D3D12_RESOURCE_BARRIER,
-    D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-    D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC,
-    D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_FLAGS, D3D12_RESOURCE_STATE_COMMON,
+    ID3D12GraphicsCommandList, ID3D12Resource, D3D12_COMMAND_LIST_TYPE_DIRECT,
+    D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_FENCE_FLAG_NONE,
+    D3D12_HEAP_FLAG_NONE, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_READBACK,
+    D3D12_MEMORY_POOL_UNKNOWN, D3D12_RANGE, D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0,
+    D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_BARRIER_FLAG_NONE,
+    D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER,
+    D3D12_RESOURCE_FLAGS, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE,
     D3D12_RESOURCE_STATE_VIDEO_ENCODE_READ, D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE,
     D3D12_RESOURCE_TRANSITION_BARRIER, D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 };
@@ -67,14 +68,19 @@ pub(crate) struct D3d12VideoEncoder {
     queue: ID3D12CommandQueue,
     allocator: ID3D12CommandAllocator,
     command_list: ID3D12VideoEncodeCommandList2,
+    copy_queue: ID3D12CommandQueue,
+    copy_allocator: ID3D12CommandAllocator,
+    copy_command_list: ID3D12GraphicsCommandList,
     encoder: ID3D12VideoEncoder,
     heap: ID3D12VideoEncoderHeap,
     bitstream: ID3D12Resource,
+    bitstream_readback: ID3D12Resource,
     metadata: ID3D12Resource,
     resolved_metadata: ID3D12Resource,
+    resolved_metadata_readback: ID3D12Resource,
     bitstream_capacity: u64,
     sequence_header: Vec<u8>,
-    aligned_header_size: u64,
+    metadata_size: u64,
     fence: ID3D12Fence,
     next_fence_value: u64,
     width: u32,
@@ -88,6 +94,7 @@ impl D3d12VideoEncoder {
     pub(crate) fn new(
         device: &ID3D12Device,
         queue: &ID3D12CommandQueue,
+        copy_queue: &ID3D12CommandQueue,
         width: u32,
         height: u32,
         fps: f64,
@@ -186,12 +193,9 @@ impl D3d12VideoEncoder {
                 },
             }
         };
-        // CQP is the smallest portable D3D12 encoder configuration. Some
-        // NVIDIA WDDM drivers expose the encoder feature area but reject a
-        // CBR/VBV support query with E_INVALIDARG. The encoded bitstream is
-        // still entirely produced by the hardware; bitrate remains part of
-        // the backend contract for the rate-control implementation that will
-        // be added after the basic path is validated.
+        // CQP is the most portable D3D12 encoder configuration. In
+        // particular, Intel drivers may reject the CBR/VBV support query even
+        // when their hardware encoder is available.
         let mut cqp = D3D12_VIDEO_ENCODER_RATE_CONTROL_CQP {
             ConstantQP_FullIntracodedFrame: 30,
             ConstantQP_InterPredictedFrame_PrevRefOnly: 30,
@@ -250,10 +254,10 @@ impl D3d12VideoEncoder {
         };
         if let Err(error) = support_result {
             let hresult = error.code().0 as u32;
-            if hresult == 0x8007_0057 {
-                // NVIDIA's current WDDM driver exposes the encoder feature
-                // area but rejects this aggregate query. The individual
-                // resource/create calls below are the authoritative test for
+            if is_inconclusive_support_query_hresult(hresult) {
+                // Some WDDM drivers expose the encoder feature area but
+                // reject this aggregate query. The individual resource and
+                // encoder creation calls below are the authoritative test for
                 // this backend, so keep going and let them validate it.
                 crate::logging::write(&format!(
                     "[Export:WinGPU] d3d12-video-encoder-support-query inconclusive hresult=0x{hresult:08x}; continuing with resource/create validation codec={} format=NV12 resolution={}x{}",
@@ -351,13 +355,29 @@ impl D3d12VideoEncoder {
         .map_err(|error| format!("failed to create D3D12 video-encode command list: {error}"))?;
         unsafe { command_list.Close() }
             .map_err(|error| format!("failed to close D3D12 video-encode command list: {error}"))?;
+        let copy_allocator: ID3D12CommandAllocator =
+            unsafe { device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT) }.map_err(
+                |error| format!("failed to create D3D12 encoder copy allocator: {error}"),
+            )?;
+        let copy_command_list: ID3D12GraphicsCommandList = unsafe {
+            device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &copy_allocator, None)
+        }
+        .map_err(|error| format!("failed to create D3D12 encoder copy command list: {error}"))?;
+        unsafe { copy_command_list.Close() }
+            .map_err(|error| format!("failed to close D3D12 encoder copy command list: {error}"))?;
         let bitstream_capacity =
             align_up(encoded_buffer_capacity(width, height), bitstream_alignment);
         let bitstream = create_buffer(
             device,
-            D3D12_HEAP_TYPE_READBACK,
+            D3D12_HEAP_TYPE_DEFAULT,
             bitstream_capacity,
             D3D12_RESOURCE_STATE_COMMON,
+        )?;
+        let bitstream_readback = create_buffer(
+            device,
+            D3D12_HEAP_TYPE_READBACK,
+            bitstream_capacity,
+            windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_COPY_DEST,
         )?;
         let metadata = create_buffer(
             device,
@@ -367,9 +387,15 @@ impl D3d12VideoEncoder {
         )?;
         let resolved_metadata = create_buffer(
             device,
-            D3D12_HEAP_TYPE_READBACK,
+            D3D12_HEAP_TYPE_DEFAULT,
             metadata_size,
             D3D12_RESOURCE_STATE_COMMON,
+        )?;
+        let resolved_metadata_readback = create_buffer(
+            device,
+            D3D12_HEAP_TYPE_READBACK,
+            metadata_size,
+            windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_COPY_DEST,
         )?;
         let fence: ID3D12Fence = unsafe { device.CreateFence(0, D3D12_FENCE_FLAG_NONE) }
             .map_err(|error| format!("failed to create D3D12 video-encode fence: {error}"))?;
@@ -379,17 +405,16 @@ impl D3d12VideoEncoder {
         } else {
             h264_sequence_header(width, height)
         };
-        let aligned_header_size = align_up(sequence_header.len() as u64, bitstream_alignment);
-        if aligned_header_size > bitstream_capacity {
+        if sequence_header.len() as u64 > bitstream_capacity {
             return Err(format!(
                 "D3D12 encoder sequence header is larger than the bitstream buffer: {} > {}",
-                aligned_header_size, bitstream_capacity
+                sequence_header.len(),
+                bitstream_capacity
             ));
         }
-        write_bitstream_header(&bitstream, &sequence_header, aligned_header_size)?;
 
         crate::logging::write(&format!(
-            "[Export:WinGPU] encoder backend=d3d12-video codec={} input=NV12 output=AnnexB rate-control=CQP qp=30 requested-bitrate={} bitstream_capacity={}B",
+            "[Export:WinGPU] encoder backend=d3d12-video codec={} input=NV12 output=AnnexB rate-control=CQP qp=30 requested-bitrate={} bitstream_capacity={}B output_copy=direct-to-readback",
             if hevc { "hevc" } else { "h264" },
             bitrate,
             bitstream_capacity,
@@ -398,14 +423,19 @@ impl D3d12VideoEncoder {
             queue: queue.clone(),
             allocator,
             command_list,
+            copy_queue: copy_queue.clone(),
+            copy_allocator,
+            copy_command_list,
             encoder,
             heap,
             bitstream,
+            bitstream_readback,
             metadata,
             resolved_metadata,
+            resolved_metadata_readback,
             bitstream_capacity,
             sequence_header,
-            aligned_header_size,
+            metadata_size,
             fence,
             next_fence_value: 1,
             width,
@@ -551,20 +581,12 @@ impl D3d12VideoEncoder {
             PictureControlDesc: picture,
             pInputFrame: ManuallyDrop::new(Some(input.clone())),
             InputFrameSubresource: 0,
-            CurrentFrameBitstreamMetadataSize: if frame_index == 0 {
-                self.aligned_header_size as u32
-            } else {
-                0
-            },
+            CurrentFrameBitstreamMetadataSize: 0,
         };
         let mut output_args = D3D12_VIDEO_ENCODER_ENCODEFRAME_OUTPUT_ARGUMENTS {
             Bitstream: D3D12_VIDEO_ENCODER_COMPRESSED_BITSTREAM {
                 pBuffer: ManuallyDrop::new(Some(self.bitstream.clone())),
-                FrameStartOffset: if frame_index == 0 {
-                    self.aligned_header_size
-                } else {
-                    0
-                },
+                FrameStartOffset: 0,
             },
             ReconstructedPicture: Default::default(),
             EncoderOutputMetadata: D3D12_VIDEO_ENCODER_ENCODE_OPERATION_METADATA_BUFFER {
@@ -671,14 +693,8 @@ impl D3d12VideoEncoder {
             ));
         }
 
-        let bytes = self.readback_bytes(
-            if frame_index == 0 {
-                self.aligned_header_size
-            } else {
-                0
-            },
-            written,
-        )?;
+        self.copy_bitstream_and_wait(written)?;
+        let bytes = self.readback_bytes(0, written)?;
         Ok(bytes)
     }
 
@@ -718,10 +734,102 @@ impl D3d12VideoEncoder {
             .cast()
             .map_err(|error| format!("failed to cast D3D12 video-encode command list: {error}"))?;
         unsafe { self.queue.ExecuteCommandLists(&[Some(command_list)]) };
-        let fence_value = self.next_fence_value;
+        let encode_fence_value = self.next_fence_value;
         self.next_fence_value = self.next_fence_value.saturating_add(1);
-        unsafe { self.queue.Signal(&self.fence, fence_value) }
+        unsafe { self.queue.Signal(&self.fence, encode_fence_value) }
             .map_err(|error| format!("failed to signal D3D12 video-encode fence: {error}"))?;
+
+        // The video queue writes DEFAULT-heap resources. Let the copy queue
+        // wait for that work, then copy only the metadata first. The metadata
+        // tells us how many bitstream bytes need to cross back to the CPU.
+        unsafe { self.copy_queue.Wait(&self.fence, encode_fence_value) }
+            .map_err(|error| format!("failed to wait for D3D12 video output copy: {error}"))?;
+        self.begin_copy_command_list()?;
+        let mut metadata_barriers = vec![transition_barrier(
+            &self.resolved_metadata,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+        )];
+        unsafe { self.copy_command_list.ResourceBarrier(&metadata_barriers) };
+        release_barriers(&mut metadata_barriers);
+        unsafe {
+            self.copy_command_list.CopyBufferRegion(
+                &self.resolved_metadata_readback,
+                0,
+                &self.resolved_metadata,
+                0,
+                self.metadata_size,
+            );
+        }
+        let mut metadata_restore_barriers = vec![transition_barrier(
+            &self.resolved_metadata,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_COMMON,
+        )];
+        unsafe {
+            self.copy_command_list
+                .ResourceBarrier(&metadata_restore_barriers)
+        };
+        release_barriers(&mut metadata_restore_barriers);
+        self.submit_copy_command_list_and_wait("metadata")
+    }
+
+    fn copy_bitstream_and_wait(&mut self, length: u64) -> Result<(), String> {
+        self.begin_copy_command_list()?;
+        let mut barriers = vec![transition_barrier(
+            &self.bitstream,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+        )];
+        unsafe { self.copy_command_list.ResourceBarrier(&barriers) };
+        release_barriers(&mut barriers);
+        unsafe {
+            self.copy_command_list.CopyBufferRegion(
+                &self.bitstream_readback,
+                0,
+                &self.bitstream,
+                0,
+                length,
+            );
+        }
+        let mut restore_barriers = vec![transition_barrier(
+            &self.bitstream,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_COMMON,
+        )];
+        unsafe { self.copy_command_list.ResourceBarrier(&restore_barriers) };
+        release_barriers(&mut restore_barriers);
+        self.submit_copy_command_list_and_wait("bitstream")
+    }
+
+    fn begin_copy_command_list(&mut self) -> Result<(), String> {
+        unsafe { self.copy_allocator.Reset() }
+            .map_err(|error| format!("failed to reset D3D12 encoder copy allocator: {error}"))?;
+        unsafe { self.copy_command_list.Reset(&self.copy_allocator, None) }
+            .map_err(|error| format!("failed to reset D3D12 encoder copy command list: {error}"))
+    }
+
+    fn submit_copy_command_list_and_wait(&mut self, output: &str) -> Result<(), String> {
+        unsafe { self.copy_command_list.Close() }.map_err(|error| {
+            format!("failed to close D3D12 {output} copy command list: {error}")
+        })?;
+        let copy_command_list: ID3D12CommandList = self
+            .copy_command_list
+            .cast()
+            .map_err(|error| format!("failed to cast D3D12 {output} copy command list: {error}"))?;
+        unsafe {
+            self.copy_queue
+                .ExecuteCommandLists(&[Some(copy_command_list)])
+        };
+        let copy_fence_value = self.next_fence_value;
+        self.next_fence_value = self.next_fence_value.saturating_add(1);
+        unsafe { self.copy_queue.Signal(&self.fence, copy_fence_value) }
+            .map_err(|error| format!("failed to signal D3D12 {output} copy fence: {error}"))?;
+
+        self.wait_for_fence(copy_fence_value, &format!("D3D12 {output} output copy"))
+    }
+
+    fn wait_for_fence(&self, fence_value: u64, operation: &str) -> Result<(), String> {
         let deadline = std::time::Instant::now() + ENCODE_WAIT_TIMEOUT;
         loop {
             let completed = unsafe { self.fence.GetCompletedValue() };
@@ -729,10 +837,10 @@ impl D3d12VideoEncoder {
                 return Ok(());
             }
             if completed == u64::MAX {
-                return Err("D3D12 device was removed during video encoding".to_string());
+                return Err(format!("D3D12 device was removed during {operation}"));
             }
             if std::time::Instant::now() >= deadline {
-                return Err("timed out waiting for D3D12 video encoding".to_string());
+                return Err(format!("timed out waiting for {operation}"));
             }
             std::thread::sleep(Duration::from_millis(1));
         }
@@ -745,12 +853,15 @@ impl D3d12VideoEncoder {
         };
         let mut pointer = std::ptr::null_mut();
         unsafe {
-            self.resolved_metadata
+            self.resolved_metadata_readback
                 .Map(0, Some(&range as *const _), Some(&mut pointer))
         }
-        .map_err(|error| format!("failed to map D3D12 encode metadata: {error}"))?;
+        .map_err(|error| format!("failed to map D3D12 encode metadata readback: {error}"))?;
         let metadata = unsafe { *(pointer as *const D3D12_VIDEO_ENCODER_OUTPUT_METADATA) };
-        unsafe { self.resolved_metadata.Unmap(0, Some(&range as *const _)) };
+        unsafe {
+            self.resolved_metadata_readback
+                .Unmap(0, Some(&range as *const _))
+        };
         Ok(metadata)
     }
 
@@ -761,15 +872,15 @@ impl D3d12VideoEncoder {
         };
         let mut pointer = std::ptr::null_mut();
         unsafe {
-            self.bitstream
+            self.bitstream_readback
                 .Map(0, Some(&range as *const _), Some(&mut pointer))
         }
-        .map_err(|error| format!("failed to map D3D12 encoded bitstream: {error}"))?;
+        .map_err(|error| format!("failed to map D3D12 encoded bitstream readback: {error}"))?;
         let bytes = unsafe {
             std::slice::from_raw_parts(pointer.cast::<u8>().add(offset as usize), length as usize)
         };
         let result = bytes.to_vec();
-        unsafe { self.bitstream.Unmap(0, Some(&range as *const _)) };
+        unsafe { self.bitstream_readback.Unmap(0, Some(&range as *const _)) };
         Ok(result)
     }
 }
@@ -918,27 +1029,13 @@ fn h264_sequence_header(width: u32, height: u32) -> Vec<u8> {
     result
 }
 
-fn write_bitstream_header(
-    resource: &ID3D12Resource,
-    header: &[u8],
-    aligned_size: u64,
-) -> Result<(), String> {
-    let mut pointer = std::ptr::null_mut();
-    unsafe { resource.Map(0, None, Some(&mut pointer)) }
-        .map_err(|error| format!("failed to map D3D12 bitstream header: {error}"))?;
-    unsafe {
-        let destination =
-            std::slice::from_raw_parts_mut(pointer.cast::<u8>(), aligned_size as usize);
-        destination.fill(0);
-        destination[..header.len()].copy_from_slice(header);
-        resource.Unmap(0, None);
-    }
-    Ok(())
-}
-
 fn encoded_buffer_capacity(width: u32, height: u32) -> u64 {
     let pixels = u64::from(width).saturating_mul(u64::from(height));
     pixels.saturating_mul(2).saturating_add(4 * 1024 * 1024)
+}
+
+fn is_inconclusive_support_query_hresult(hresult: u32) -> bool {
+    matches!(hresult, 0x8007_0057 | 0x887A_0020)
 }
 
 fn select_supported_h264_deblocking_mode(
@@ -971,7 +1068,7 @@ fn select_supported_h264_deblocking_mode(
         )
     };
     if let Err(error) = query_result {
-        if error.code().0 as u32 == 0x8007_0057 {
+        if is_inconclusive_support_query_hresult(error.code().0 as u32) {
             crate::logging::write(
                 "[Export:WinGPU] H.264 codec configuration query is inconclusive (E_INVALIDARG); keeping default deblocking mode",
             );

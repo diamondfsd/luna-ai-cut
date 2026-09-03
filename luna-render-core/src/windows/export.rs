@@ -345,7 +345,12 @@ pub(crate) fn run(
         fps,
         bitrate,
     };
-    let mut encoder = EncoderManager::new(config, d3d12_device, d3d12_queue)?;
+    let mut encoder = EncoderManager::new(
+        config,
+        d3d12_device,
+        d3d12_queue,
+        interop.video_encode_queue.as_ref(),
+    )?;
     let mut bitstream = File::create(&bitstream_path)
         .map_err(|error| format!("failed to create GPU bitstream output: {error}"))?;
     let headers = encoder.headers()?;
