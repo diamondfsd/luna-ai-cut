@@ -162,7 +162,6 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
     <video
       src={liveVideoUrl}
       autoPlay
-      muted
       playsInline
       onLoadedMetadata={(event) => rememberMediaSize(event.currentTarget.videoWidth, event.currentTarget.videoHeight)}
       onError={() => setMediaError(true)}
