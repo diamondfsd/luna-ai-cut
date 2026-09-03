@@ -5,8 +5,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, IconButton, Input, Tooltip, toast } from '../../ui'
 import { filePathToPreviewUrl } from '../../lib/fileUtils'
 import {
+  DEFAULT_LIVE_PHOTO_DURATION,
+  MAX_LIVE_PHOTO_DURATION,
+  MIN_LIVE_PHOTO_DURATION,
   livePhotoRangeAround,
   normalizeVideoOutputMarkers,
+  resizeLivePhotoRange,
   type VideoOutputMarker,
 } from './videoOutputMarkers'
 
@@ -73,6 +77,11 @@ function parseTimeInput(text: string): number {
   return total
 }
 
+function formatLiveDuration(seconds: number): string {
+  const rounded = Math.round(seconds * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
 function markerIcon(marker: VideoOutputMarker): React.ReactNode {
   if (marker.kind === 'photo') return <Camera size={15} />
   if (marker.kind === 'live') return <Images size={15} />
@@ -88,6 +97,7 @@ function markerLabel(marker: VideoOutputMarker): string {
 interface MarkerRowProps {
   marker: VideoOutputMarker
   displayLabel: string
+  duration: number
   selected: boolean
   autoFocus: boolean
   onSelect: () => void
@@ -95,14 +105,17 @@ interface MarkerRowProps {
   onDelete: () => void
   videoPath: string | null
   onCoverTimeChange: (time: number) => void
+  onDurationChange: (duration: number) => void
   currentTime: number
   playing: boolean
   onTogglePreview: () => void
   onPreviewTimeChange: (time: number) => void
 }
 
-function MarkerRow({ marker, displayLabel, selected, autoFocus, onSelect, onNoteCommit, onDelete, videoPath, onCoverTimeChange, currentTime, playing, onTogglePreview, onPreviewTimeChange }: MarkerRowProps) {
+function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSelect, onNoteCommit, onDelete, videoPath, onCoverTimeChange, onDurationChange, currentTime, playing, onTogglePreview, onPreviewTimeChange }: MarkerRowProps) {
   const [note, setNote] = useState(marker.note || displayLabel)
+  const [liveDurationText, setLiveDurationText] = useState(marker.kind === 'live' ? formatLiveDuration(marker.endTime - marker.startTime) : '')
+  const liveDurationFocusedRef = useRef(false)
   const thumbnailVideoRef = useRef<HTMLVideoElement>(null)
   useEffect(() => {
     setNote(marker.note || displayLabel)
@@ -110,6 +123,10 @@ function MarkerRow({ marker, displayLabel, selected, autoFocus, onSelect, onNote
 
   const liveMarker = marker.kind === 'live' ? marker : null
   const videoMarker = marker.kind === 'video' ? marker : null
+  const liveDuration = liveMarker ? liveMarker.endTime - liveMarker.startTime : null
+  useEffect(() => {
+    if (!liveDurationFocusedRef.current && liveDuration !== null) setLiveDurationText(formatLiveDuration(liveDuration))
+  }, [liveDuration, marker.id])
   const thumbnailTime = marker.kind === 'photo'
     ? marker.time
     : marker.kind === 'live'
@@ -203,7 +220,7 @@ function MarkerRow({ marker, displayLabel, selected, autoFocus, onSelect, onNote
         {marker.kind === 'photo' ? <span className="workspace-trim-marker-time">{formatSeconds(marker.time)}</span> : null}
         {liveMarker ? (
           <div className="workspace-trim-live-cover-control">
-            <span>封面</span>
+            <span className="workspace-trim-live-cover-label">封面</span>
             <RadixSlider.Root
               className="workspace-trim-live-cover-slider"
               value={[liveMarker.coverTime]}
@@ -222,7 +239,38 @@ function MarkerRow({ marker, displayLabel, selected, autoFocus, onSelect, onNote
               </RadixSlider.Track>
               <RadixSlider.Thumb className="workspace-trim-live-cover-thumb" aria-label="Live 图封面" />
             </RadixSlider.Root>
-            <strong>{formatCompactSeconds(liveMarker.startTime)} - {formatCompactSeconds(liveMarker.endTime)}</strong>
+            <span className="workspace-trim-live-duration-label">时长</span>
+            <Input
+              className="workspace-trim-live-duration-input"
+              variant="compact"
+              type="number"
+              min={MIN_LIVE_PHOTO_DURATION}
+              max={MAX_LIVE_PHOTO_DURATION}
+              step={0.1}
+              value={liveDurationText}
+              aria-label={`${displayLabel}时长（秒）`}
+              onFocus={() => {
+                liveDurationFocusedRef.current = true
+                onSelect()
+              }}
+              onChange={(event) => setLiveDurationText(event.target.value)}
+              onBlur={() => {
+                liveDurationFocusedRef.current = false
+                const parsed = Number(liveDurationText)
+                const maximum = Math.min(MAX_LIVE_PHOTO_DURATION, Math.floor(duration * 10) / 10)
+                const clampedDuration = Math.min(maximum, Math.max(MIN_LIVE_PHOTO_DURATION, parsed))
+                const nextDuration = Number.isFinite(parsed)
+                  ? Math.min(maximum, Math.round(clampedDuration * 10) / 10)
+                  : liveMarker.endTime - liveMarker.startTime
+                onDurationChange(nextDuration)
+                setLiveDurationText(formatLiveDuration(nextDuration))
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+              }}
+              onClick={(event) => event.stopPropagation()}
+            />
+            <span className="workspace-trim-live-duration-unit">秒</span>
           </div>
         ) : null}
         {videoMarker ? (
@@ -282,7 +330,6 @@ export function TrimPanel({
   useEffect(() => {
     if (focusedInputRef.current !== 'end') setEndText(formatSeconds(endTime))
   }, [endTime])
-
   const commitStart = useCallback(() => {
     focusedInputRef.current = null
     const parsed = parseTimeInput(startText)
@@ -339,9 +386,9 @@ export function TrimPanel({
   }
 
   const beginLiveSelection = () => {
-    const range = livePhotoRangeAround(currentTime, duration)
+    const range = livePhotoRangeAround(currentTime, duration, DEFAULT_LIVE_PHOTO_DURATION)
     if (!range) {
-      toast.error('视频不足 3 秒，无法添加 Live 图片段')
+      toast.error(`视频不足 ${formatLiveDuration(DEFAULT_LIVE_PHOTO_DURATION)} 秒，无法添加 Live 图片段`)
       return
     }
     const marker = { id: crypto.randomUUID(), kind: 'live' as const, ...range, note: '' }
@@ -366,22 +413,46 @@ export function TrimPanel({
     onSelectMarker(nextMarker)
   }
 
+  const setLiveDuration = (marker: Extract<VideoOutputMarker, { kind: 'live' }>, liveDuration: number) => {
+    const range = resizeLivePhotoRange(
+      marker.startTime,
+      marker.endTime,
+      marker.coverTime,
+      liveDuration,
+      duration,
+    )
+    if (!range) return
+    const nextMarker = { ...marker, ...range }
+    onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
+    onLiveSelectionChange({
+      markerId: nextMarker.id,
+      startTime: nextMarker.startTime,
+      endTime: nextMarker.endTime,
+      coverTime: nextMarker.coverTime,
+    })
+    onSelectMarker(nextMarker)
+  }
+
   const deleteMarker = (id: string) => {
     if (activeMarkerId === id) onActiveMarkerChange(null)
     if (liveSelection?.markerId === id) onLiveSelectionChange(null)
     onMarkersChange(markers.filter((marker) => marker.id !== id))
   }
 
-  const selectMarker = (marker: VideoOutputMarker) => {
+  const selectMarker = (marker: VideoOutputMarker, seekToMarker = true) => {
     onActiveMarkerChange(marker.id)
     setNewMarkerId(null)
-    onLiveSelectionChange(marker.kind === 'live' ? {
-      markerId: marker.id,
-      startTime: marker.startTime,
-      endTime: marker.endTime,
-      coverTime: marker.coverTime,
-    } : null)
-    onSelectMarker(marker)
+    if (marker.kind === 'live') {
+      onLiveSelectionChange({
+        markerId: marker.id,
+        startTime: marker.startTime,
+        endTime: marker.endTime,
+        coverTime: marker.coverTime,
+      })
+    } else {
+      onLiveSelectionChange(null)
+    }
+    if (seekToMarker) onSelectMarker(marker)
   }
 
   const counts = markers.reduce((result, marker) => ({ ...result, [marker.kind]: result[marker.kind] + 1 }), {
@@ -442,7 +513,7 @@ export function TrimPanel({
             variant={liveSelection ? 'primary' : 'secondary'}
             size="mini"
             icon={<Images size={14} />}
-            disabled={duration < 3}
+            disabled={duration < DEFAULT_LIVE_PHOTO_DURATION}
             onClick={beginLiveSelection}
           >
             Live 图
@@ -456,6 +527,7 @@ export function TrimPanel({
                 key={marker.id}
                 marker={marker}
                 displayLabel={`${marker.kind === 'live' ? 'Live' : markerLabel(marker)} ${String(markerIdsByKind[marker.kind].indexOf(marker.id) + 1).padStart(2, '0')}`}
+                duration={duration}
                 selected={marker.id === activeMarkerId}
                 autoFocus={marker.id === newMarkerId}
                 onSelect={() => selectMarker(marker)}
@@ -463,11 +535,13 @@ export function TrimPanel({
                 onDelete={() => deleteMarker(marker.id)}
                 videoPath={videoPath}
                 onCoverTimeChange={(time) => { if (marker.kind === 'live') setLiveCover(marker, time) }}
+                onDurationChange={(liveDuration) => { if (marker.kind === 'live') setLiveDuration(marker, liveDuration) }}
                 currentTime={currentTime}
                 playing={marker.id === playingMarkerId}
                 onTogglePreview={() => {
                   if (marker.kind !== 'live' && marker.kind !== 'video') return
-                  selectMarker(marker)
+                  // 播放按钮只切换左侧预览，避免重复 seek 到封面导致无法暂停当前片段。
+                  selectMarker(marker, false)
                   onToggleMarkerPreview(marker)
                 }}
                 onPreviewTimeChange={(time) => {

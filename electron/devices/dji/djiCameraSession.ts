@@ -1,16 +1,27 @@
 import { getSettings, saveSettings } from '../../storage/fileService'
+import type { BrowserWindow } from 'electron'
 import net from 'node:net'
-import type { CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../../src/shared/types'
+import type { CameraDeleteResult, CameraMediaSourceFilePageCallback, CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../../src/shared/types'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
 import type { DjiWifiCredentials } from './djiBleSession'
-import { encodeDjiMessage, hex, newInstallIdentity, packString } from './djiBytes'
-import { isPrimaryMedia, isProxyMedia, mediaStem, parseCompositeManifest, type DjiManifestFile } from './djiManifest'
-import { DjiUdpTransport, decodeDumlFromUdp, type DjiUdpCommand, type DjiUdpPacket } from './djiUdpTransport'
-import { DefaultDjiWirelessPreparation, type DjiWirelessPreparation } from './djiWirelessPreparation'
+import { encodeDjiMessage, hex, newInstallIdentity, packString, type DjiMessage } from './djiBytes'
+import { isPrimaryMedia, isProxyMedia, markSharedManifestHandles, mediaStem, parseCompositeManifest, type DjiManifestFile } from './djiManifest'
+import { buildDjiDeletePayload } from './djiDeleteCodec'
+import { DjiUdpTransport, decodeDumlMessagesFromUdp, decodeDumlMessagesFromUdpStream, type DjiUdpCommand, type DjiUdpPacket } from './djiUdpTransport'
+import { DefaultDjiWirelessPreparation, type DjiWirelessPreparation, waitForDjiHostReachable } from './djiWirelessPreparation'
 import { mockTcpPortForHost, mockUdpPortForHost } from '../../devtools/mock/mockServerService'
-import { captureDateFromMediaSource } from '../../media/mediaCaptureDate'
 import { labelsFor } from '../../media/filePathUtils'
 import { lunaMediaAdapter } from '../common/deviceMedia'
+import { djiErrorDetails, djiMessageDetails } from './djiLog'
+import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import {
+  DJI_MANIFEST_PAGE_SIZE,
+  hasManifestPageAfter,
+  manifestBatchHasStabilized,
+  olderManifestCursor,
+  seedManifestCursor,
+  stepManifestPage,
+} from './djiManifestPagination'
 
 interface DjiEndpoint {
   host: string
@@ -37,8 +48,9 @@ function httpBase(endpoint: DjiEndpoint): string {
 }
 
 function mediaUrl(endpoint: DjiEndpoint, storage: number, cameraPath: string): string {
-  const params = new URLSearchParams({ storage: String(storage), path: cameraPath })
-  return `${httpBase(endpoint)}/v2?${params.toString()}`
+  // Match Osmosis' camera URL exactly. DJI's embedded HTTP server expects the path separators in the
+  // query value and some firmware builds do not decode an encoded "%2F" in this parameter.
+  return `${httpBase(endpoint)}/v2?storage=${storage}&path=${cameraPath}`
 }
 
 function sizeText(bytes: number | null): string {
@@ -64,6 +76,102 @@ function listQuery(counter: number, cursor: number): Buffer {
   return query
 }
 
+const MANIFEST_TRIGGER = hex('4a040e1001000000000001000000')
+const INITIAL_INTERNAL_CURSOR = 0x40000001
+const MAX_MANIFEST_PAGES = 256
+const MANIFEST_MAX_WINDOW_MS = 800
+const MANIFEST_QUIET_WINDOW_MS = 400
+const DJI_DELETE_RESPONSE_TIMEOUT_MS = 10_000
+const DJI_DELETE_STATUS_OK = 0x0000
+const DJI_DELETE_STATUS_HANDLE_NOT_FOUND = 0x00d6
+
+interface ManifestPage {
+  sd: DjiManifestFile[]
+  internal: DjiManifestFile[]
+  fallback: DjiManifestFile[]
+}
+
+type DjiManifestPageCallback = (freshFiles: DjiManifestFile[], loadedFiles: DjiManifestFile[], pageNumber: number) => void | Promise<void>
+
+function djiCommand(cmdSet: number, cmdId: number, payload: Buffer, id = 0x8026, flags = 0x40): DjiUdpCommand {
+  return { target: 0x0102, id, cmdSet, cmdId, flags, payload }
+}
+
+function djiFileId(profileId: string, file: Pick<DjiManifestFile, 'storageId' | 'path'>): string {
+  return `dji:${profileId}:${file.storageId}:${file.path}`
+}
+
+function djiPathForFile(file: LunaFile): string {
+  const idParts = file.id.split(':')
+  return idParts[0] === 'dji' && idParts.length >= 4 ? idParts.slice(3).join(':') : file.sourceUrl
+}
+
+function deleteStatusFromPackets(packets: readonly DjiUdpPacket[]): number | null {
+  const messages = [
+    ...decodeDumlMessagesFromUdpStream(packets),
+    ...packets.flatMap((packet) => decodeDumlMessagesFromUdp(packet)),
+  ]
+  const response = messages.find((message) => message.cmdSet === 0x00 && message.cmdId === 0x28 && message.payload.length >= 2)
+  return response ? response.payload.readUInt16LE(0) : null
+}
+
+function isManifestDataPacket(packet: DjiUdpPacket): boolean {
+  if (packet.packetType === 0x03) return true
+  return decodeDumlMessagesFromUdp(packet).some((message) =>
+    message.cmdSet === 0x00 && message.cmdId === 0x27 && message.payload[0] === 0x4a && message.payload[1] === 0x01,
+  )
+}
+
+const PREVIEW_LIVE_STATE = hex('0300000000040000000701')
+const PREVIEW_START_TRIGGER = hex('0400')
+const PREVIEW_READY_TRIGGER = hex('0101')
+const PREVIEW_APP_PRESENCE = hex('1700162373415050000000000002')
+const PREVIEW_APP_HEARTBEAT = hex('1a00000000')
+const PREVIEW_CAMERA_HEARTBEAT = hex('040000000000000000')
+const PREVIEW_PRESENCE_DELAY_MS = 20
+const PREVIEW_IDENTITY_DELAY_MS = 92
+const PREVIEW_READY_DELAY_MS = 127
+const PREVIEW_VIDEO_ENABLE_DELAY_MS = 4
+const PREVIEW_HEARTBEAT_DELAY_MS = 6
+const PREVIEW_HEARTBEAT_GAPS_MS = [4, 6]
+const PREVIEW_LIVE_STATE_DELAY_MS = 7
+const PREVIEW_HEARTBEAT_INTERVAL_MS = 1000
+const PREVIEW_REGISTRATION_INTERVAL_MS = 1000
+
+function previewAppDeviceInfo(): Buffer {
+  const payload = Buffer.alloc(64)
+  payload.write('APP', 1, 'ascii')
+  payload[34] = 0x02
+  payload[41] = 0x02
+  payload[42] = 0x08
+  return payload
+}
+
+function previewCommand(
+  target: number,
+  cmdSet: number,
+  cmdId: number,
+  payload: Buffer,
+  flags = 0x40,
+  routingClass = 0,
+  routingTail = 0,
+): DjiUdpCommand {
+  return {
+    target,
+    id: 0x8004,
+    cmdSet,
+    cmdId,
+    flags,
+    payload,
+    routingClass,
+    routingTail,
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length)
   let nextIndex = 0
@@ -80,17 +188,27 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
 export class DjiCameraSession {
   readonly profile: DjiModelProfile
   private readonly endpoint: DjiEndpoint
-  private readonly udp: DjiUdpTransport
+  private udp: DjiUdpTransport
   private readonly wirelessPreparation: DjiWirelessPreparation
   private credentials: DjiWifiCredentials | null = null
   private connected = false
-  private pocket3PlaybackPrepared = false
+  private playbackPrepared = false
+  private playbackConfirmed = false
+  private previewActive = false
+  private previewRequested = false
+  private previewStartPromise: Promise<void> | null = null
+  private previewGeneration = 0
+  private previewAppHeartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private previewCameraHeartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private previewRegistrationTimer: ReturnType<typeof setInterval> | null = null
+  private previewHeartbeatCounter = 0
+  private deleteCounter = 0
 
-  constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation) {
+  constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation, win: BrowserWindow | null = null) {
     this.profile = djiProfileForDevice(deviceId)
     this.endpoint = endpointFor(host, this.profile)
     this.udp = new DjiUdpTransport(this.endpoint.host, this.endpoint.udpPort)
-    this.wirelessPreparation = wirelessPreparation ?? new DefaultDjiWirelessPreparation(deviceId, host, installIdentity)
+    this.wirelessPreparation = wirelessPreparation ?? new DefaultDjiWirelessPreparation(deviceId, host, installIdentity, undefined, win)
   }
 
   get host(): string {
@@ -98,71 +216,440 @@ export class DjiCameraSession {
   }
 
   async connect(options: CameraMediaSourceOptions = { mode: 'wireless', deviceId: this.deviceId, host: this.host }): Promise<CameraMediaSourceStatus> {
+    const startedAt = Date.now()
+    logMainInfo('[DJI 连接] 相机会话连接开始', {
+      deviceId: this.deviceId,
+      host: this.host,
+      httpPort: this.endpoint.httpPort,
+      tcpPort: this.endpoint.tcpPort,
+      udpPort: this.endpoint.udpPort,
+      alreadyConnected: this.connected,
+      preparation: options.wireless?.preparation ?? 'bluetooth-auto',
+      autoJoin: options.wireless?.autoJoin === true,
+      preferExistingConnection: options.preferExistingConnection === true,
+      hasSsid: Boolean(options.wireless?.ssid?.trim()),
+      hasPassword: Boolean(options.wireless?.password),
+    })
     if (!this.connected) {
+      try {
       const preparation = await this.wirelessPreparation.prepare(options)
       this.credentials = preparation.credentials ?? null
+      logMainInfo('[DJI 连接] Wi-Fi 准备完成', {
+        deviceId: this.deviceId,
+        host: this.host,
+        preparation: preparation.mode,
+        elapsedMs: Date.now() - startedAt,
+      })
+      if (!options.wireless?.autoJoin) {
+        await waitForDjiHostReachable(this.endpoint.host, this.deviceId)
+      }
       await this.tcpPoke()
+      logMainInfo('[DJI 连接] TCP 唤醒完成', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+      })
       await this.udp.handshake()
+      logMainInfo('[DJI 连接] UDP 握手完成', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+      })
       await this.registerCamera()
       this.connected = true
-      return this.status(`${preparation.message}，UDP 会话已建立`)
+      const status = this.status(`${preparation.message}，UDP 会话已建立`)
+      logMainInfo('[DJI 连接] 相机会话连接完成', {
+        deviceId: this.deviceId,
+        host: this.host,
+        preparation: preparation.mode,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return status
+      } catch (error) {
+        logMainError('[DJI 连接] 相机会话连接失败', {
+          deviceId: this.deviceId,
+          host: this.host,
+          elapsedMs: Date.now() - startedAt,
+          connected: this.connected,
+          ...djiErrorDetails(error),
+        })
+        throw error
+      }
     }
+    logMainDebug('[DJI 连接] 复用已建立的相机会话', {
+      deviceId: this.deviceId,
+      host: this.host,
+      elapsedMs: Date.now() - startedAt,
+    })
     return this.status('DJI 相机连接已保持')
   }
 
+  subscribePreviewPackets(listener: (packet: DjiUdpPacket) => void): () => void {
+    return this.udp.subscribePackets((packet) => {
+      if (packet.packetType === 0x02) listener(packet)
+    })
+  }
+
+  previewTransportState(): ReturnType<DjiUdpTransport['previewTransportState']> {
+    return this.udp.previewTransportState()
+  }
+
+  startPreview(): Promise<void> {
+    if (this.previewActive) return Promise.resolve()
+    if (this.previewStartPromise) return this.previewStartPromise
+
+    const generation = ++this.previewGeneration
+    const task = this.startPreviewInternal(generation).finally(() => {
+      if (this.previewStartPromise === task) this.previewStartPromise = null
+    })
+    this.previewStartPromise = task
+    return task
+  }
+
+  async stopPreview(): Promise<void> {
+    const startPromise = this.previewStartPromise
+    const wasRunning = this.previewActive || this.previewRequested || Boolean(startPromise)
+    ++this.previewGeneration
+    this.stopPreviewTimers()
+    this.previewRequested = false
+    await startPromise?.catch(() => undefined)
+    if (!wasRunning || !this.connected) return
+
+    try {
+      await this.udp.sendCommand(djiCommand(0x02, 0x0c, hex('01010000'), 0x8004))
+      logMainDebug('[DJI 预览] 已发送停止预览命令', { deviceId: this.deviceId })
+    } catch (error) {
+      logMainWarn('[DJI 预览] 停止预览命令失败，继续清理本地会话', {
+        deviceId: this.deviceId,
+        ...djiErrorDetails(error),
+      })
+    }
+  }
+
+  private async startPreviewInternal(generation: number): Promise<void> {
+    const startedAt = Date.now()
+    try {
+      if (!this.connected) await this.connect()
+      if (!this.isPreviewGenerationCurrent(generation)) return
+      this.udp.stopKeepAlive()
+      this.stopPreviewTimers()
+      this.previewRequested = true
+      this.udp.startAckTimer(20)
+
+      const previewStart = previewCommand(0xf002, 0x00, 0x2b, PREVIEW_START_TRIGGER, 0x40, 0x60, 0x75)
+      // Live view and media browsing use different camera-wide modes. Leave browsing first so a
+      // preview opened after the media grid does not keep the camera in playback.
+      await this.udp.commandAndCollect(
+        djiCommand(0x02, 0x0c, hex('01010000'), 0x8004),
+        450,
+      )
+      if (!this.isPreviewGenerationCurrent(generation)) return
+      this.playbackPrepared = false
+      this.playbackConfirmed = false
+
+      const previewChannel = await this.udp.synchronizePreviewChannel(previewStart, 500)
+      if (!this.isPreviewGenerationCurrent(generation)) return
+
+      if (!previewChannel.probed) await this.sendPreviewCommand(generation, previewStart)
+      await this.previewDelay(generation, PREVIEW_PRESENCE_DELAY_MS)
+      await this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, PREVIEW_APP_PRESENCE))
+      await this.sendPreviewCommand(generation, previewCommand(0x0302, 0x03, 0xda, hex('05ffffffff')))
+      await this.previewDelay(generation, PREVIEW_IDENTITY_DELAY_MS)
+      await this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x81, previewAppDeviceInfo(), 0x80))
+      await this.previewDelay(generation, PREVIEW_READY_DELAY_MS)
+      await this.sendPreviewCommand(generation, previewCommand(0xf002, 0x00, 0x2b, PREVIEW_READY_TRIGGER))
+      await this.previewDelay(generation, PREVIEW_VIDEO_ENABLE_DELAY_MS)
+      await this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x82, Buffer.from([0x00]), 0x80))
+      await this.previewDelay(generation, PREVIEW_HEARTBEAT_DELAY_MS)
+
+      this.previewHeartbeatCounter = 0
+      for (const [index, marker] of [0x01, 0x05, 0x05].entries()) {
+        await this.sendPreviewCommand(generation, previewCommand(
+          0x2802,
+          0x00,
+          0x4f,
+          Buffer.from([marker, 0x00, this.previewHeartbeatCounter, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff]),
+        ))
+        const gap = PREVIEW_HEARTBEAT_GAPS_MS[index]
+        if (gap != null) await this.previewDelay(generation, gap)
+      }
+      this.previewHeartbeatCounter = 1
+      await this.previewDelay(generation, PREVIEW_LIVE_STATE_DELAY_MS)
+      await this.sendPreviewCommand(generation, previewCommand(0x0102, 0x01, 0x01, PREVIEW_LIVE_STATE, 0x00))
+      if (!this.isPreviewGenerationCurrent(generation)) return
+
+      this.previewActive = true
+      this.previewCameraHeartbeatTimer = setInterval(() => {
+        void this.sendPreviewCommand(generation, previewCommand(0x0102, 0x00, 0x4f, PREVIEW_CAMERA_HEARTBEAT)).catch((error: unknown) => {
+          logMainWarn('[DJI 预览] 相机心跳发送失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
+        })
+      }, PREVIEW_HEARTBEAT_INTERVAL_MS)
+      this.previewAppHeartbeatTimer = setInterval(() => {
+        const payload = Buffer.from(PREVIEW_APP_HEARTBEAT)
+        payload[4] = this.previewHeartbeatCounter & 0xff
+        this.previewHeartbeatCounter = (this.previewHeartbeatCounter + 1) & 0xff
+        void this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, payload, 0x80)).catch((error: unknown) => {
+          logMainWarn('[DJI 预览] 应用心跳发送失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
+        })
+      }, PREVIEW_HEARTBEAT_INTERVAL_MS)
+      this.previewRegistrationTimer = setInterval(() => {
+        void Promise.all([
+          this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x81, previewAppDeviceInfo(), 0x80)),
+          this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x82, Buffer.from([0x00]), 0x80)),
+        ]).catch((error: unknown) => {
+          logMainWarn('[DJI 预览] 预览注册续期失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
+        })
+      }, PREVIEW_REGISTRATION_INTERVAL_MS)
+      logMainInfo('[DJI 预览] 预览启动序列已发送', {
+        deviceId: this.deviceId,
+        host: this.host,
+        heartbeatIntervalMs: PREVIEW_HEARTBEAT_INTERVAL_MS,
+        elapsedMs: Date.now() - startedAt,
+      })
+    } catch (error) {
+      this.stopPreviewTimers()
+      this.udp.stopAckTimer()
+      logMainError('[DJI 预览] 预览启动失败', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
+  }
+
+  private async sendPreviewCommand(generation: number, command: DjiUdpCommand): Promise<void> {
+    if (!this.isPreviewGenerationCurrent(generation)) return
+    await this.udp.sendCommand(command)
+  }
+
+  private async previewDelay(generation: number, milliseconds: number): Promise<void> {
+    await delay(milliseconds)
+    if (!this.isPreviewGenerationCurrent(generation)) return
+  }
+
+  private isPreviewGenerationCurrent(generation: number): boolean {
+    return generation === this.previewGeneration
+  }
+
+  private stopPreviewTimers(): void {
+    if (this.previewAppHeartbeatTimer) clearInterval(this.previewAppHeartbeatTimer)
+    if (this.previewCameraHeartbeatTimer) clearInterval(this.previewCameraHeartbeatTimer)
+    if (this.previewRegistrationTimer) clearInterval(this.previewRegistrationTimer)
+    this.previewAppHeartbeatTimer = null
+    this.previewCameraHeartbeatTimer = null
+    this.previewRegistrationTimer = null
+    this.previewActive = false
+    this.previewHeartbeatCounter = 0
+    this.udp.stopAckTimer()
+  }
+
   async prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult> {
-    const preparation = await this.wirelessPreparation.prepare(options)
-    this.credentials = preparation.credentials ?? null
-    return {
-      mode: 'wireless',
-      preparation: preparation.mode,
-      credentials: preparation.credentials,
-      capabilities: this.wirelessPreparation.capabilities,
-      message: preparation.message,
+    const startedAt = Date.now()
+    logMainInfo('[DJI 连接] 连接准备入口开始', {
+      deviceId: this.deviceId,
+      host: this.host,
+      preparation: options.wireless?.preparation ?? 'bluetooth-auto',
+      autoJoin: options.wireless?.autoJoin === true,
+      hasSsid: Boolean(options.wireless?.ssid?.trim()),
+      hasPassword: Boolean(options.wireless?.password),
+    })
+    try {
+      const preparation = await this.wirelessPreparation.prepare(options)
+      this.credentials = preparation.credentials ?? null
+      const result = {
+        mode: 'wireless' as const,
+        preparation: preparation.mode,
+        credentials: preparation.credentials,
+        requiresManualWifi: preparation.requiresManualWifi,
+        capabilities: this.wirelessPreparation.capabilities,
+        message: preparation.message,
+      }
+      logMainInfo('[DJI 连接] 连接准备入口完成', {
+        deviceId: this.deviceId,
+        host: this.host,
+        preparation: preparation.mode,
+        hasCredentials: Boolean(preparation.credentials),
+        elapsedMs: Date.now() - startedAt,
+      })
+      return result
+    } catch (error) {
+      logMainError('[DJI 连接] 连接准备入口失败', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
     }
   }
 
   async check(options?: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus> {
+    const startedAt = Date.now()
+    logMainInfo('[DJI 连接] 连接检查开始', { deviceId: this.deviceId, host: this.host })
     try {
       await this.connect(options)
+      logMainInfo('[DJI 连接] 连接检查成功', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+      })
       return this.status('DJI 相机连接正常')
     } catch (error) {
+      logMainWarn('[DJI 连接] 连接检查失败', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
       return this.status(error instanceof Error ? error.message : String(error), false)
     }
   }
 
-  async listFiles(storageId = 'all', options?: CameraMediaSourceOptions): Promise<LunaFile[]> {
-    if (!this.connected) await this.connect(options)
-    if (this.profile.playback === 'pocket3' && !this.pocket3PlaybackPrepared) {
-      await this.enterPocket3Playback()
-      this.pocket3PlaybackPrepared = true
+  async listFiles(storageId = 'all', options?: CameraMediaSourceOptions, onPage?: CameraMediaSourceFilePageCallback): Promise<LunaFile[]> {
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体] 媒体清单读取开始', {
+      deviceId: this.deviceId,
+      host: this.host,
+      storageId,
+      connected: this.connected,
+    })
+    try {
+      if (!this.connected) await this.connect(options)
+      await this.ensurePlayback()
+      const files = await this.requestManifest(storageId, async (freshFiles, loadedFiles, pageNumber) => {
+        if (!onPage) return
+        const primary = freshFiles
+          .filter(isPrimaryMedia)
+          .filter((file) => storageId === 'all' || file.storageId === storageId)
+        if (primary.length === 0) return
+        const proxies = loadedFiles.filter(isProxyMedia)
+        await onPage({
+          pageNumber,
+          // Do not expose destructive handles from a partial page. The final manifest pass marks
+          // duplicate handles across all storages before exposing them to the UI.
+          files: await mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies, false)),
+        })
+      })
+      const primary = files.filter(isPrimaryMedia)
+      const proxies = files.filter(isProxyMedia)
+      const result = await mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies))
+      logMainInfo('[DJI 媒体] 媒体清单读取完成', {
+        deviceId: this.deviceId,
+        host: this.host,
+        storageId,
+        manifestCount: files.length,
+        primaryCount: primary.length,
+        proxyCount: proxies.length,
+        resultCount: result.length,
+        previewUrlCount: result.filter((file) => Boolean(file.previewUrl)).length,
+        thumbnailUrlCount: result.filter((file) => Boolean(file.thumbnailUrl)).length,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return result
+    } catch (error) {
+      logMainError('[DJI 媒体] 媒体清单读取失败', {
+        deviceId: this.deviceId,
+        host: this.host,
+        storageId,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
     }
-    const storageIds = storageId === 'all' ? this.profile.storageIds : [storageId]
-    const files: DjiManifestFile[] = []
-    for (const [index, id] of storageIds.entries()) {
-      const cursor = id === 'sdcard' ? 0x00000001 : 0x40000001
-      const manifest = await this.requestManifest(index + 1, cursor, id)
-      files.push(...manifest)
-    }
-    const primary = files.filter(isPrimaryMedia)
-    const proxies = files.filter(isProxyMedia)
-    return mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies))
   }
 
   async close(): Promise<void> {
+    const startedAt = Date.now()
+    logMainInfo('[DJI 连接] 关闭相机会话开始', {
+      deviceId: this.deviceId,
+      host: this.host,
+      connected: this.connected,
+      playbackPrepared: this.playbackPrepared,
+    })
+    await this.stopPreview()
     this.connected = false
-    this.pocket3PlaybackPrepared = false
+    const shouldLeavePlayback = this.playbackPrepared && this.profile.playback !== 'pocket3'
+    this.udp.stopKeepAlive()
+    if (shouldLeavePlayback) {
+      try {
+        await this.udp.sendCommand(djiCommand(0x02, 0x0c, hex('01010000'), 0x8004))
+        logMainDebug('[DJI 媒体] 已发送退出回放命令', { deviceId: this.deviceId })
+      } catch (error) {
+        logMainWarn('[DJI 媒体] 退出回放命令失败，继续关闭会话', {
+          deviceId: this.deviceId,
+          ...djiErrorDetails(error),
+        })
+      }
+    }
+    this.playbackPrepared = false
+    this.playbackConfirmed = false
     this.udp.close()
-    await this.wirelessPreparation.close()
+    try {
+      await this.wirelessPreparation.close()
+    } catch (error) {
+      logMainError('[DJI 连接] 关闭蓝牙准备会话失败', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
+    logMainInfo('[DJI 连接] 关闭相机会话完成', {
+      deviceId: this.deviceId,
+      host: this.host,
+      elapsedMs: Date.now() - startedAt,
+    })
   }
 
   private async registerCamera(): Promise<void> {
-    await this.udp.sendCommand({ target: 0x0802, id: 0x8001, cmdSet: 0x00, cmdId: 0x81, flags: 0x40, payload: hex('00415050000000000000000000000000000000000000000000000000000000000000000000000200000000000000020800000000000000000000') })
-    await this.udp.sendCommand({ target: 0x0102, id: 0x8002, cmdSet: 0x00, cmdId: 0x88, flags: 0x40, payload: hex('170046237c415050000000000002') })
-    await this.udp.sendCommand({ target: 0x0302, id: 0x8003, cmdSet: 0x03, cmdId: 0xda, flags: 0x40, payload: hex('05ffffffff') })
+    const commands = [
+      {
+        name: '注册应用',
+        message: { target: 0x0802, id: 0x8001, cmdSet: 0x00, cmdId: 0x81, flags: 0x40, payload: hex('00415050000000000000000000000000000000000000000000000000000000000000000000000200000000000000020800000000000000000000') },
+      },
+      {
+        name: '发送应用在线状态',
+        message: { target: 0x0102, id: 0x8002, cmdSet: 0x00, cmdId: 0x88, flags: 0x40, payload: hex('170046237c415050000000000002') },
+      },
+      {
+        name: '初始化设备状态',
+        message: { target: 0x0302, id: 0x8003, cmdSet: 0x03, cmdId: 0xda, flags: 0x40, payload: hex('05ffffffff') },
+      },
+    ] as const
+    const startedAt = Date.now()
+    logMainInfo('[DJI 连接] 相机注册开始', { deviceId: this.deviceId, commandCount: commands.length })
+    for (const [index, command] of commands.entries()) {
+      const commandStartedAt = Date.now()
+      logMainDebug(`[DJI 连接] 发送注册阶段：${command.name}`, {
+        deviceId: this.deviceId,
+        index: index + 1,
+        ...djiMessageDetails(command.message),
+      })
+      try {
+        await this.udp.sendCommand(command.message)
+        logMainDebug(`[DJI 连接] 注册阶段完成：${command.name}`, {
+          deviceId: this.deviceId,
+          index: index + 1,
+          elapsedMs: Date.now() - commandStartedAt,
+        })
+      } catch (error) {
+        logMainError(`[DJI 连接] 注册阶段失败：${command.name}`, {
+          deviceId: this.deviceId,
+          index: index + 1,
+          elapsedMs: Date.now() - commandStartedAt,
+          ...djiErrorDetails(error),
+        })
+        throw error
+      }
+    }
+    logMainInfo('[DJI 连接] 相机注册完成', { deviceId: this.deviceId, elapsedMs: Date.now() - startedAt })
   }
 
   private async tcpPoke(): Promise<void> {
+    const startedAt = Date.now()
     const frame = encodeDjiMessage({
       target: 0x0702,
       id: 0x8092,
@@ -171,41 +658,538 @@ export class DjiCameraSession {
       flags: 0x40,
       payload: Buffer.concat([packString(this.installIdentity), packString('osmo')]),
     })
+    logMainDebug('[DJI 连接] TCP 唤醒开始', {
+      deviceId: this.deviceId,
+      host: this.endpoint.host,
+      port: this.endpoint.tcpPort,
+      payloadBytes: frame.length,
+      timeoutMs: 1200,
+    })
     await new Promise<void>((resolve) => {
       const socket = net.createConnection({ host: this.endpoint.host, port: this.endpoint.tcpPort })
-      const finish = (): void => { socket.destroy(); resolve() }
-      socket.setTimeout(1200, finish)
-      socket.once('error', finish)
-      socket.once('connect', () => {
-        socket.write(frame, () => setTimeout(finish, 40))
+      let finished = false
+      let outcome = 'pending'
+      const finish = (reason: string): void => {
+        if (finished) return
+        finished = true
+        outcome = reason
+        socket.destroy()
+        resolve()
+      }
+      socket.setTimeout(1200, () => finish('timeout'))
+      socket.once('error', (error) => {
+        logMainDebug('[DJI 连接] TCP 唤醒发生 socket 错误', {
+          deviceId: this.deviceId,
+          host: this.endpoint.host,
+          port: this.endpoint.tcpPort,
+          ...djiErrorDetails(error),
+        })
+        finish('error')
       })
+      socket.once('connect', () => {
+        logMainDebug('[DJI 连接] TCP 唤醒已建立连接，开始发送握手帧', {
+          deviceId: this.deviceId,
+          host: this.endpoint.host,
+          port: this.endpoint.tcpPort,
+          elapsedMs: Date.now() - startedAt,
+        })
+        socket.write(frame, () => setTimeout(() => finish('write-complete'), 40))
+      })
+      socket.once('timeout', () => logMainDebug('[DJI 连接] TCP 唤醒等待超时', { deviceId: this.deviceId }))
+      socket.once('close', () => logMainDebug('[DJI 连接] TCP 唤醒结束', {
+        deviceId: this.deviceId,
+        host: this.endpoint.host,
+        port: this.endpoint.tcpPort,
+        outcome,
+        elapsedMs: Date.now() - startedAt,
+      }))
     })
   }
 
-  private async requestManifest(counter: number, cursor: number, storageId: string): Promise<DjiManifestFile[]> {
-    const responseCounters = new Set([counter])
-    let packets: DjiUdpPacket[]
-    if (this.profile.playback === 'pocket3') {
-      const pageCounter = counter + 1
-      responseCounters.add(pageCounter)
-      const command = (payload: Buffer): DjiUdpCommand => ({ target: 0x0102, id: 0x8026, cmdSet: 0x00, cmdId: 0x26, flags: 0x40, payload })
-      packets = await this.udp.commandSequenceAndCollect([
-        command(listQuery(counter, 1)),
-        command(hex('4a040e1001000000000001000000')),
-        command(listQuery(pageCounter, cursor)),
-      ], 1500)
-    } else {
-      packets = await this.udp.commandAndCollect({ target: 0x0102, id: 0x8026, cmdSet: 0x00, cmdId: 0x26, flags: 0x40, payload: listQuery(counter, cursor) }, 1200)
+  private async requestManifest(storageId: string, onPage?: DjiManifestPageCallback): Promise<DjiManifestFile[]> {
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体] 请求相机媒体清单', {
+      deviceId: this.deviceId,
+      storageId,
+      pageSize: DJI_MANIFEST_PAGE_SIZE,
+      maxPages: MAX_MANIFEST_PAGES,
+    })
+    const files: DjiManifestFile[] = []
+    const seen = new Set<string>()
+    let cursor = INITIAL_INTERNAL_CURSOR
+    let pageNumber = 0
+    let reconnects = 0
+
+    while (pageNumber < MAX_MANIFEST_PAGES) {
+      const page = await this.requestManifestPage(cursor, storageId)
+      const pageFiles = page.sd.length > 0 || page.internal.length > 0
+        ? [...page.sd, ...page.internal]
+        : page.fallback
+
+      // A camera may drop the datalink after a couple of pages. Rebuild only the current session and
+      // retry the same cursor once; a genuinely empty final page then exits on the second attempt.
+      if (pageNumber > 0 && pageFiles.length === 0 && reconnects < 1) {
+        reconnects += 1
+        logMainWarn('[DJI 媒体] 旧页请求未收到清单，重建会话后重试', { deviceId: this.deviceId, pageNumber, cursor })
+        await this.reopenDatalinkSession()
+        continue
+      }
+      reconnects = 0
+
+      if (pageFiles.length === 0) break
+      const pageStep = pageNumber === 0
+        ? stepManifestPage(Number.MAX_SAFE_INTEGER, pageFiles, seen)
+        : stepManifestPage(cursor, pageFiles, seen)
+      files.push(...pageStep.fresh)
+
+      await onPage?.(pageStep.fresh, files, pageNumber + 1)
+
+      const pageCursor = pageNumber === 0
+        ? seedManifestCursor(page.internal)
+        : pageStep.nextCursor
+      const internalPageIsFull = page.internal.length >= DJI_MANIFEST_PAGE_SIZE
+      logMainInfo('[DJI 媒体] 清单分页完成', {
+        deviceId: this.deviceId,
+        pageNumber: pageNumber + 1,
+        pageFileCount: pageFiles.length,
+        sdCount: page.sd.length,
+        internalCount: page.internal.length,
+        freshCount: pageStep.fresh.length,
+        totalCount: files.length,
+        cursor: pageCursor,
+        moreAvailable: internalPageIsFull && pageCursor > 0 && pageStep.fresh.length > 0,
+      })
+
+      if (pageNumber === 0) {
+        cursor = pageCursor
+        if (!hasManifestPageAfter(page.internal.length, cursor)) break
+      } else {
+        const advanced = olderManifestCursor(cursor, pageFiles) !== null
+        cursor = pageStep.nextCursor
+        if (!internalPageIsFull || !advanced || !pageStep.moreAvailable) break
+      }
+      pageNumber += 1
     }
-    const chunks: Buffer[] = []
-    for (const packet of packets) {
-      const message = decodeDumlFromUdp(packet)
-      if (!message || message.cmdSet !== 0x00 || message.cmdId !== 0x27 || message.payload.length < 10) continue
-      const payload = message.payload
-      if (payload[0] === 0x4a && payload[1] === 0x01 && responseCounters.has(payload[4])) chunks.push(payload.subarray(10))
+
+    if (pageNumber >= MAX_MANIFEST_PAGES) {
+      logMainWarn('[DJI 媒体] 清单分页达到安全上限', { deviceId: this.deviceId, maxPages: MAX_MANIFEST_PAGES, totalCount: files.length })
     }
-    if (chunks.length === 0) return []
-    return parseCompositeManifest(Buffer.concat(chunks), storageId)
+
+    const normalizedFiles = markSharedManifestHandles(files)
+    const selected = storageId === 'all' ? normalizedFiles : normalizedFiles.filter((file) => file.storageId === storageId)
+    logMainInfo('[DJI 媒体] 清单读取完成', {
+      deviceId: this.deviceId,
+      storageId,
+      pageCount: pageNumber + (files.length > 0 ? 1 : 0),
+      fileCount: selected.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return selected
+  }
+
+  async deleteFiles(files: LunaFile[], options?: CameraMediaSourceOptions): Promise<CameraDeleteResult> {
+    if (files.length === 0) return { deleted: [], failed: [] }
+
+    const failAll = (error: string): CameraDeleteResult => ({
+      deleted: [],
+      failed: files.map((file) => ({ path: djiPathForFile(file), error })),
+    })
+    const expectedIdPrefix = `dji:${this.profile.id}:`
+    if (files.some((file) => (
+      !file.id.startsWith(expectedIdPrefix) ||
+      (file.sourceDeviceId !== undefined && file.sourceDeviceId !== this.profile.deviceId)
+    ))) {
+      return failAll('选中的素材不属于当前 DJI 相机，请刷新后重试')
+    }
+    if (files.some((file) => (
+      file.cameraDeleteHandle === undefined ||
+      !Number.isInteger(file.cameraDeleteHandle) ||
+      file.cameraDeleteHandle <= 0 ||
+      file.cameraDeleteHandle > 0xffffffff
+    ))) {
+      return failAll('相机暂时无法确认选中的素材，请刷新后重试')
+    }
+
+    const startedAt = Date.now()
+    logMainInfo('[DJI 删除] 相机素材删除开始', {
+      deviceId: this.deviceId,
+      host: this.host,
+      requestedCount: files.length,
+    })
+    if (!this.connected) await this.connect(options)
+    await this.ensurePlayback()
+
+    // Refresh the manifest immediately before deletion so a stale UI handle can never be sent.
+    const currentManifest = await this.requestManifest('all')
+    const currentById = new Map(
+      currentManifest
+        .filter(isPrimaryMedia)
+        .map((file) => [djiFileId(this.profile.id, file), file] as const),
+    )
+    const targets = files.map((file) => currentById.get(file.id) ?? null)
+    if (targets.some((file) => file === null)) {
+      logMainWarn('[DJI 删除] 选中的素材已不在最新清单中，未发送删除命令', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        missingCount: targets.filter((file) => file === null).length,
+      })
+      return failAll('选中的素材已变化，请刷新后重试')
+    }
+
+    const targetFiles = targets.filter((file): file is DjiManifestFile => file !== null)
+    if (files.some((file, index) => (
+      file.cameraDeleteHandle !== undefined && file.cameraDeleteHandle !== targetFiles[index]?.handle
+    ))) {
+      logMainWarn('[DJI 删除] 页面句柄已变化，未发送删除命令', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+      })
+      return failAll('选中的素材已变化，请刷新后重试')
+    }
+    const handles = targetFiles.map((file) => file.handle)
+    if (
+      targetFiles.some((file) => file.handle <= 0 || file.handleShared) ||
+      new Set(handles).size !== handles.length
+    ) {
+      logMainWarn('[DJI 删除] 选中的素材没有可靠的唯一句柄，未发送删除命令', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        handles,
+      })
+      return failAll('相机暂时无法确认选中的素材，请刷新后重试')
+    }
+
+    if (this.profile.playback !== 'pocket3') {
+      try {
+        const playbackPackets = await this.udp.commandAndCollect(
+          djiCommand(0x02, 0x0c, hex('01010001'), 0x8004),
+          900,
+        )
+        const playbackStatus = playbackPackets
+          .flatMap((packet) => decodeDumlMessagesFromUdp(packet))
+          .find((message) => message.cmdSet === 0x02 && message.cmdId === 0x0c && message.payload.length > 0)
+          ?.payload[0]
+        if (playbackStatus !== 0) {
+          logMainWarn('[DJI 删除] 删除前未确认相机处于回放模式，未发送删除命令', {
+            deviceId: this.deviceId,
+            playbackStatus,
+          })
+          return failAll('相机未确认处于回放状态，请刷新后重试')
+        }
+      } catch (error) {
+        logMainWarn('[DJI 删除] 删除前回放确认失败，未发送删除命令', {
+          deviceId: this.deviceId,
+          ...djiErrorDetails(error),
+        })
+        return failAll('相机未确认处于回放状态，请刷新后重试')
+      }
+    }
+
+    const counter = this.nextDeleteCounter()
+    const payload = buildDjiDeletePayload(handles, counter)
+    let responsePackets: DjiUdpPacket[] = []
+    try {
+      responsePackets = await this.udp.commandAndCollect(
+        djiCommand(0x00, 0x28, payload),
+        DJI_DELETE_RESPONSE_TIMEOUT_MS,
+      )
+    } catch (error) {
+      logMainWarn('[DJI 删除] 删除命令发送后未能正常收集响应，开始核对清单', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      return this.verifyDeleteResult(targetFiles)
+    }
+
+    const status = deleteStatusFromPackets(responsePackets)
+    if (status === DJI_DELETE_STATUS_OK) {
+      logMainInfo('[DJI 删除] 相机确认删除素材', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return { deleted: targetFiles.map((file) => file.path), failed: [] }
+    }
+    if (status === DJI_DELETE_STATUS_HANDLE_NOT_FOUND) {
+      logMainWarn('[DJI 删除] 相机未找到一个或多个素材句柄', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        status,
+      })
+      return failAll('相机没有找到选中的素材，请刷新后重试')
+    }
+    if (status !== null) {
+      logMainWarn('[DJI 删除] 相机拒绝删除素材', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        status,
+      })
+      return failAll('相机拒绝删除素材，请刷新后重试')
+    }
+
+    logMainWarn('[DJI 删除] 未收到删除结果，禁止重发命令并开始核对清单', {
+      deviceId: this.deviceId,
+      requestedCount: files.length,
+      packetCount: responsePackets.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return this.verifyDeleteResult(targetFiles)
+  }
+
+  private nextDeleteCounter(): number {
+    this.deleteCounter = (this.deleteCounter + 1) >>> 0
+    if (this.deleteCounter === 0) this.deleteCounter = 1
+    return this.deleteCounter
+  }
+
+  private async verifyDeleteResult(targetFiles: DjiManifestFile[]): Promise<CameraDeleteResult> {
+    try {
+      const currentManifest = await this.requestManifest('all')
+      const remainingHandles = new Set(
+        currentManifest
+          .filter(isPrimaryMedia)
+          .map((file) => file.handle)
+          .filter((handle) => handle > 0),
+      )
+      const deleted: string[] = []
+      const failed: CameraDeleteResult['failed'] = []
+      for (const file of targetFiles) {
+        if (remainingHandles.has(file.handle)) {
+          failed.push({ path: file.path, error: '未确认相机已删除该素材，请刷新后重试' })
+        } else {
+          deleted.push(file.path)
+        }
+      }
+      return { deleted, failed }
+    } catch (error) {
+      logMainWarn('[DJI 删除] 删除结果核对失败', {
+        deviceId: this.deviceId,
+        ...djiErrorDetails(error),
+      })
+      return {
+        deleted: [],
+        failed: targetFiles.map((file) => ({ path: file.path, error: '未确认相机已删除该素材，请刷新后检查' })),
+      }
+    }
+  }
+
+  private async requestManifestPage(internalCursor: number, storageId: string): Promise<ManifestPage> {
+    const startedAt = Date.now()
+    const packets: DjiUdpPacket[] = []
+    let lastManifestCount = -1
+    let stableBatches = 0
+    let stopReason = '达到最大接收窗口'
+
+    // The camera sends the manifest through a reliable downlink. Keep the same query -> trigger ->
+    // internal-query cadence as Osmosis and ACK every receive window.
+    const initialPackets = await this.udp.commandAndCollect(
+      djiCommand(0x00, 0x26, listQuery(1, 0x00000001)),
+      MANIFEST_MAX_WINDOW_MS,
+      {
+        quietDurationMs: MANIFEST_QUIET_WINDOW_MS,
+        isActivity: isManifestDataPacket,
+        quietFromStart: true,
+      },
+    )
+    packets.push(...initialPackets)
+    await this.udp.sendAck()
+    for (let batch = 1; batch < 15; batch += 1) {
+      const batchStartedAt = Date.now()
+      // Keep the query/trigger cadence intact, then stop a receive burst early once the
+      // reliable downlink has gone quiet. The maximum window still protects delayed fragments.
+      const received = await this.udp.collectUntilQuiet(
+        MANIFEST_MAX_WINDOW_MS,
+        MANIFEST_QUIET_WINDOW_MS,
+        isManifestDataPacket,
+        batch < 3 || lastManifestCount > 0,
+        {
+          isComplete: batch >= 3
+            ? (windowPackets) => this.parseManifestCounter([...packets, ...windowPackets], 2, 'storage_internal').length >= DJI_MANIFEST_PAGE_SIZE
+            : undefined,
+        },
+      )
+      packets.push(...received)
+      await this.udp.sendAck()
+      let sentCommand: string | null = null
+      if (batch === 1) {
+        await this.udp.sendCommand(djiCommand(0x00, 0x26, MANIFEST_TRIGGER))
+        sentCommand = 'manifest-trigger'
+      }
+      if (batch === 2) {
+        await this.udp.sendCommand(djiCommand(0x00, 0x26, listQuery(2, internalCursor)))
+        sentCommand = 'internal-storage-query'
+      }
+      const internalCount = this.parseManifestCounter(packets, 2, 'storage_internal').length
+      if (manifestBatchHasStabilized(batch, internalCount, lastManifestCount)) {
+        stableBatches += 1
+        stopReason = '清单数量连续一轮稳定'
+        logMainDebug('[DJI 媒体] 清单接收提前结束', { internalCursor, batch, internalCount, stopReason })
+        break
+      } else {
+        stableBatches = 0
+      }
+      lastManifestCount = internalCount
+      logMainDebug('[DJI 媒体] 清单接收窗口完成', {
+        internalCursor,
+        batch,
+        receivedPackets: received.length,
+        totalPackets: packets.length,
+        parsedInternalCount: internalCount,
+        stableBatches,
+        sentCommand,
+        elapsedMs: Date.now() - batchStartedAt,
+      })
+    }
+
+    const sd = this.parseManifestCounter(packets, 1, 'sdcard')
+    const internal = this.parseManifestCounter(packets, 2, 'storage_internal')
+    const fallbackChunks = this.manifestChunks(packets)
+    const fallbackStorage = storageId === 'all' ? 'sdcard' : storageId
+    const fallback = sd.length === 0 && internal.length === 0 && fallbackChunks.length > 0
+      ? parseCompositeManifest(Buffer.concat(fallbackChunks), fallbackStorage)
+      : []
+    const packetTypes = packets.reduce<Record<string, number>>((counts, packet) => {
+      const key = `0x${packet.packetType.toString(16).padStart(2, '0')}`
+      counts[key] = (counts[key] ?? 0) + 1
+      return counts
+    }, {})
+    logMainDebug('[DJI 媒体] 清单分页收包完成', {
+      internalCursor,
+      packetCount: packets.length,
+      packetTypes,
+      sdCount: sd.length,
+      internalCount: internal.length,
+      fallbackCount: fallback.length,
+      stopReason,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return { sd, internal, fallback }
+  }
+
+  private async reopenDatalinkSession(): Promise<void> {
+    this.udp.stopKeepAlive()
+    this.udp.close()
+    this.udp = new DjiUdpTransport(this.endpoint.host, this.endpoint.udpPort)
+    this.playbackPrepared = false
+    this.playbackConfirmed = false
+    await this.udp.handshake()
+    await this.registerCamera()
+    await this.ensurePlayback()
+  }
+
+  private manifestChunks(packets: DjiUdpPacket[], counter?: number): Buffer[] {
+    const streamMessages = decodeDumlMessagesFromUdpStream(packets)
+    const packetMessages = packets.flatMap((packet) => decodeDumlMessagesFromUdp(packet))
+    const extract = (messages: DjiMessage[]): Buffer[] => {
+      const chunks: Buffer[] = []
+      for (const message of messages) {
+        if (message.cmdSet !== 0x00 || message.cmdId !== 0x27 || message.payload.length < 10) continue
+        const payload = message.payload
+        if (payload[0] !== 0x4a || payload[1] !== 0x01 || (counter !== undefined && payload[4] !== counter)) continue
+        chunks.push(payload.subarray(10))
+      }
+      return chunks
+    }
+    const streamChunks = extract(streamMessages)
+    if (streamChunks.length > 0) return streamChunks
+    return extract(packetMessages)
+  }
+
+  private parseManifestCounter(packets: DjiUdpPacket[], counter: number, storageId: string): DjiManifestFile[] {
+    const chunks = this.manifestChunks(packets, counter)
+    return chunks.length > 0 ? parseCompositeManifest(Buffer.concat(chunks), storageId) : []
+  }
+
+  private async ensurePlayback(): Promise<void> {
+    if (this.playbackPrepared) {
+      logMainDebug('[DJI 媒体] 复用已准备好的回放浏览会话', {
+        deviceId: this.deviceId,
+        playbackConfirmed: this.playbackConfirmed,
+      })
+      return
+    }
+
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体] 进入回放浏览模式开始', {
+      deviceId: this.deviceId,
+      model: this.profile.id,
+      playbackProtocol: this.profile.playback,
+    })
+    try {
+      if (this.profile.playback === 'pocket3') {
+        await this.enterPocket3Playback()
+        this.playbackConfirmed = true
+      } else {
+        this.playbackConfirmed = await this.enterStandardPlayback()
+      }
+
+      const presence = djiCommand(0x00, 0x88, hex('170046237c415050000000000002'), 0x8002)
+      const reassert = djiCommand(0x02, 0x0c, hex('01010001'), 0x8004)
+      await this.udp.startKeepAlive(presence, this.playbackConfirmed && this.profile.playback !== 'pocket3' ? reassert : undefined)
+      this.playbackPrepared = true
+      logMainInfo('[DJI 媒体] 已进入回放浏览会话', {
+        deviceId: this.deviceId,
+        playbackConfirmed: this.playbackConfirmed,
+        keepAliveReassert: this.playbackConfirmed && this.profile.playback !== 'pocket3',
+        elapsedMs: Date.now() - startedAt,
+      })
+    } catch (error) {
+      logMainError('[DJI 媒体] 进入回放浏览模式失败', {
+        deviceId: this.deviceId,
+        model: this.profile.id,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
+  }
+
+  private async enterStandardPlayback(): Promise<boolean> {
+    const command = djiCommand(0x02, 0x0c, hex('01010001'), 0x8004)
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const startedAt = Date.now()
+      const packets = await this.udp.commandAndCollect(command, 900)
+      let commandStatus: number | null = null
+      let cameraReportsPlayback = false
+      for (const packet of packets) {
+        for (const message of decodeDumlMessagesFromUdp(packet)) {
+          if (message.cmdSet === 0x02 && message.cmdId === 0x0c && message.payload.length > 0) {
+            commandStatus = message.payload[0]
+          }
+          if (message.cmdSet === 0x02 && message.cmdId === 0x80 && message.payload.length >= 4) {
+            cameraReportsPlayback = (message.payload.readUInt32LE(0) & 0x40000000) !== 0
+          }
+        }
+      }
+      logMainDebug('[DJI 媒体] 回放模式响应', {
+        deviceId: this.deviceId,
+        attempt,
+        packetCount: packets.length,
+        commandStatus,
+        cameraReportsPlayback,
+        elapsedMs: Date.now() - startedAt,
+      })
+      if (cameraReportsPlayback) {
+        logMainInfo('[DJI 媒体] 检测到相机回放状态位', { deviceId: this.deviceId, attempt })
+        return true
+      }
+      // On the standard Pocket 4 path, a successful 0x02/0x0c reply is enough to accept the mode
+      // change. The playback bit is still preferred when the camera pushes it during this window;
+      // the "ACK does not change mode" exception is Pocket 3, which uses the separate 0x01/0x01 path.
+      if (commandStatus === 0) {
+        logMainInfo('[DJI 媒体] 相机确认进入回放模式', { deviceId: this.deviceId, attempt })
+        return true
+      }
+      if (commandStatus !== null && commandStatus !== 0) {
+        logMainInfo('[DJI 媒体] 相机拒绝进入回放', { deviceId: this.deviceId, status: commandStatus, attempt })
+        return false
+      }
+      if (attempt < 3) await delay(120)
+    }
+    logMainInfo('[DJI 媒体] 回放命令已发送但未收到状态确认', { deviceId: this.deviceId })
+    return false
   }
 
   private async enterPocket3Playback(): Promise<void> {
@@ -220,25 +1204,38 @@ export class DjiCameraSession {
     const prelude = hex('0300000000040000000701')
     const enter = hex('0000000000040000000401')
     const commands = Array.from({ length: 27 }, (_, index) => command(index < 6 ? prelude : enter))
-    await this.udp.commandSequenceAndCollect(commands, 2000, 50)
+    const startedAt = Date.now()
+    logMainInfo('[DJI 媒体] Pocket 3 进入回放模式开始', {
+      deviceId: this.deviceId,
+      commandCount: commands.length,
+      intervalMs: 50,
+    })
+    const packets = await this.udp.commandSequenceAndCollect(commands, 2000, 50)
+    logMainInfo('[DJI 媒体] Pocket 3 回放模式命令完成', {
+      deviceId: this.deviceId,
+      packetCount: packets.length,
+      elapsedMs: Date.now() - startedAt,
+    })
   }
 
-  private async toLunaFile(file: DjiManifestFile, proxies: DjiManifestFile[]): Promise<LunaFile> {
+  private async toLunaFile(file: DjiManifestFile, proxies: DjiManifestFile[], includeDeleteHandle = true): Promise<LunaFile> {
     const storageNumberValue = storageNumber(file.storageId)
     const sourceUrl = mediaUrl(this.endpoint, storageNumberValue, file.path)
-    const head = await fetch(sourceUrl, { method: 'HEAD' }).catch(() => null)
-    const length = head?.ok ? Number(head.headers.get('content-length') ?? NaN) : NaN
-    const bytes = Number.isFinite(length) ? length : null
+    const bytes = file.bytes
+    const proxyPath = file.proxyPath ?? (file.extension === 'MP4' || file.extension === 'MOV' || file.extension === 'OSV' || file.extension === 'INSV'
+      ? `${file.path.slice(0, file.path.lastIndexOf('.'))}.${file.name.startsWith('CAM_') ? 'XRF' : 'LRF'}`
+      : null)
     const proxy = proxies.find((candidate) => mediaStem(candidate.name) === mediaStem(file.name) && candidate.storageId === file.storageId)
-    const previewUrl = proxy ? mediaUrl(this.endpoint, storageNumberValue, proxy.path) : null
+    const previewPath = proxy?.path ?? proxyPath
+    const previewUrl = previewPath ? mediaUrl(this.endpoint, storageNumberValue, previewPath) : null
     const kind = file.extension === 'JPG' || file.extension === 'JPEG' || file.extension === 'DNG' || file.extension === 'HEIC' ? 'image' : 'video'
-    const capturedAt = await captureDateFromMediaSource(sourceUrl, kind)
-      ?? lunaMediaAdapter.capturedAt(file.name)
+    const capturedAt = lunaMediaAdapter.capturedAt(file.name)
     const labels = labelsFor(capturedAt)
-    const baseId = `dji:${this.profile.id}:${file.storageId}:${file.path}`
+    const baseId = djiFileId(this.profile.id, file)
     return {
       id: baseId,
       storageId: file.storageId,
+      ...(includeDeleteHandle && file.handle > 0 && !file.handleShared ? { cameraDeleteHandle: file.handle } : {}),
       storageLabel: storageLabel(file.storageId),
       sourceDeviceId: this.profile.deviceId,
       sourceDeviceName: this.profile.name,
@@ -257,11 +1254,12 @@ export class DjiCameraSession {
       groupDay: labels.groupDay,
       groupHour: labels.groupHour,
       videoKey: null,
-      previewName: proxy?.name ?? null,
+      ...(file.durationSeconds && file.durationSeconds > 0 ? { duration: file.durationSeconds } : {}),
+      previewName: proxy?.name ?? (previewPath ? previewPath.slice(previewPath.lastIndexOf('/') + 1) : null),
       previewUrl,
       cacheFilePath: null,
       downloadFilePath: null,
-      thumbnailUrl: null,
+      thumbnailUrl: file.thumbPath ? mediaUrl(this.endpoint, storageNumberValue, file.thumbPath) : null,
       isLivePhoto: false,
       livePhotoVideoName: null,
       livePhotoVideoUrl: null,
@@ -293,7 +1291,7 @@ export class DjiCameraSession {
         copyToLocal: true,
         create: false,
         update: false,
-        delete: false,
+        delete: true,
         watch: true,
         connection: this.wirelessPreparation.capabilities,
       },
@@ -311,12 +1309,18 @@ async function installIdentity(): Promise<string> {
   return identity
 }
 
-export async function djiSessionFor(deviceId: string, host: string): Promise<DjiCameraSession> {
+export async function djiSessionFor(deviceId: string, host: string, win: BrowserWindow | null = null): Promise<DjiCameraSession> {
   const key = `${deviceId}:${host}`
   const existing = djiSessions.get(key)
-  if (existing) return existing
-  const session = new DjiCameraSession(deviceId, host, await installIdentity())
+  if (existing) {
+    logMainDebug('[DJI 连接] 复用相机会话对象', { deviceId, host })
+    return existing
+  }
+  const startedAt = Date.now()
+  logMainInfo('[DJI 连接] 创建相机会话对象', { deviceId, host })
+  const session = new DjiCameraSession(deviceId, host, await installIdentity(), undefined, win)
   djiSessions.set(key, session)
+  logMainInfo('[DJI 连接] 相机会话对象创建完成', { deviceId, host, elapsedMs: Date.now() - startedAt })
   return session
 }
 
@@ -324,5 +1328,22 @@ export async function disconnectDjiSession(deviceId: string, host: string): Prom
   const key = `${deviceId}:${host}`
   const session = djiSessions.get(key)
   djiSessions.delete(key)
-  if (session) await session.close()
+  if (!session) {
+    logMainDebug('[DJI 连接] 没有需要断开的相机会话对象', { deviceId, host })
+    return
+  }
+  const startedAt = Date.now()
+  logMainInfo('[DJI 连接] 断开相机会话对象', { deviceId, host })
+  try {
+    await session.close()
+    logMainInfo('[DJI 连接] 相机会话对象已断开', { deviceId, host, elapsedMs: Date.now() - startedAt })
+  } catch (error) {
+    logMainError('[DJI 连接] 断开相机会话对象失败', {
+      deviceId,
+      host,
+      elapsedMs: Date.now() - startedAt,
+      ...djiErrorDetails(error),
+    })
+    throw error
+  }
 }

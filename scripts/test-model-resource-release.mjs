@@ -7,20 +7,20 @@ import {
 
 const registry = await loadModelRegistry()
 const artifacts = buildModelArtifacts(registry)
-const allModels = [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.SAM_MODELS, ...registry.INPAINT_MODELS, registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]
+const allModels = [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.COMPOSITION_MODELS, ...registry.SAM_MODELS, ...registry.INPAINT_MODELS, registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_ASR_TOKENS_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]
 const gitCodePrefix = `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/${MODEL_RELEASE_TAG}/`
-const subtitleModelIds = new Set([registry.SUBTITLE_ASR_MODEL.id, registry.SUBTITLE_VAD_MODEL.id, registry.SUBTITLE_PUNCTUATION_MODEL.id])
+const subtitleModelIds = new Set([registry.SUBTITLE_ASR_MODEL.id, registry.SUBTITLE_ASR_TOKENS_MODEL.id, registry.SUBTITLE_VAD_MODEL.id, registry.SUBTITLE_PUNCTUATION_MODEL.id])
 const isModelScopeSource = (url) => /^https:\/\/(www\.)?modelscope\.cn\//.test(url)
 const isDomesticRuntimeSource = (url) => isModelScopeSource(url) || url.startsWith(gitCodePrefix)
 
-assert.equal(allModels.length, 15, '当前注册表应登记 15 个生产模型')
-assert.equal(artifacts.length, 16, '当前注册表应映射为 16 个模型文件')
+assert.equal(allModels.length, 17, '当前注册表应登记 17 个生产模型')
+assert.equal(artifacts.length, 18, '当前注册表应映射为 18 个模型文件')
 assert.equal(new Set(artifacts.map((artifact) => artifact.fileName)).size, artifacts.length, 'Release 文件名不得重复')
 assert.equal(new Set(artifacts.map((artifact) => artifact.sha256)).size, artifacts.length, '相同权重必须复用一个 Release 附件')
-assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 16, '每个模型文件角色都必须被覆盖')
+assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 18, '每个模型文件角色都必须被覆盖')
 
 for (const artifact of artifacts) {
-  assert.match(artifact.fileName, /^[a-zA-Z0-9._-]+\.(onnx|bin|gguf)$/)
+  assert.match(artifact.fileName, /^[a-zA-Z0-9._-]+\.(onnx|bin|gguf|txt)$/)
   assert.match(artifact.sha256, /^[a-f0-9]{64}$/)
   assert.ok(artifact.sizeBytes > 0)
   assert.ok(artifact.sourceUrls.length > 0)
@@ -47,7 +47,7 @@ for (const model of allModels) {
   }
 }
 
-for (const model of [registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]) {
+for (const model of [registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_ASR_TOKENS_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]) {
   assert.ok(isModelScopeSource(model.url), `${model.id} 必须从 ModelScope 下载`)
   assert.equal(model.mirrors, undefined, `${model.id} 不得配置其他下载源`)
   assert.equal(model.upstreamUrl, undefined, `${model.id} 不得配置其他上游下载源`)

@@ -3,7 +3,7 @@
   "name": "Osmo Pocket 3",
   "vendor": "DJI",
   "protocol": "dji",
-  "mediaCapabilities": { "delete": false },
+  "mediaCapabilities": { "delete": true },
   "defaultHost": "192.168.2.1",
   "httpPort": 80,
   "controlPort": 7001,
@@ -30,5 +30,12 @@
   "watermarkStyles": [
     { "value": "dji_pocket_3", "label": "DJI 标准", "videoFileName": "ic_watermark_dji_pocket_3", "imageFileName": "ic_watermark_dji_pocket_3" },
     { "value": "dji_pocket_3_clean", "label": "简洁标识", "videoFileName": "ic_watermark_dji_pocket_3_clean", "imageFileName": "ic_watermark_dji_pocket_3_clean" }
-  ]
+  ],
+  "lut": {
+    "restore": {
+      "fileName": "DJI_Osmo_Pocket_3_D-Log_M_to_Rec709_V1.cube",
+      "label": "D-Log M 转 Rec.709",
+      "description": "DJI 官方 Osmo Pocket 3 Log 还原 LUT"
+    }
+  }
 }

@@ -5,8 +5,9 @@
 ## 设计原则
 
 ```text
-FFmpeg 负责媒体 I/O（解码/编码/封装/音频）
+FFmpeg 负责跨平台媒体 I/O（解码/封装/音频）
 wgpu 负责画面渲染（合成/缩放/旋转/透明度/水印/调色）
+Windows Media Foundation 负责把 D3D12 视频资源直接交给系统视频编码器
 ```
 
 不要让 FFmpeg 做视觉逻辑，避免预览和导出两套算法。
@@ -27,9 +28,11 @@ Rust napi
   ├─ render_layers_to_file()
   │     └─ 已有 GPU 纹理 → wgpu 渲染 → FFmpeg 编码图片
   │
-  └─ export_file()
-        ├─ export_image()   → FFmpeg 解码图片 → wgpu 渲染 → FFmpeg 编码图片
-        └─ export_video()   → FFmpeg 逐帧解码 → wgpu 渲染 → FFmpeg 编码 + 音频封装
+        └─ export_file()
+              ├─ export_image()   → FFmpeg 解码图片 → wgpu 渲染 → FFmpeg 编码图片
+              └─ export_video()
+                    ├─ Windows GPU → Media Foundation/D3D12 resource → D3D12 硬件编码
+                    └─ 其他平台/回退 → wgpu 渲染 → CPU readback → FFmpeg 编码
 ```
 
 ---
@@ -46,7 +49,7 @@ Compositor::render(canvas_width, canvas_height, &layers)
 |-------|----------------------|------------------------|
 | 渲染核心 | `Compositor::render()` | `Compositor::render()` |
 | 输入   | 已加载 GPU 纹理          | 图片/视频解码后上传 GPU        |
-| 输出   | RGBA → JS / Canvas   | RGBA → FFmpeg 编码 → 文件 |
+| 输出   | RGBA → JS / Canvas   | Windows D3D12/NV12 resource 或 RGBA → FFmpeg |
 | 分辨率  | 预览尺寸 (≤1440px)      | 导出尺寸 (原始分辨率)          |
 | 目标   | 实时显示                 | 写入磁盘                  |
 
@@ -78,18 +81,22 @@ JPEG/PNG/WebP → 写入磁盘
 
 图片只需 readback 一次，性能压力小。
 
-### 4. `export_video()` — 视频导出（V2 升级）
+### 4. `export_video()` — 视频导出
+
+Windows 硬件导出使用以下链路：
 
 ```
-1. ffprobe 探测 → VideoInfo { 宽高/帧率/源码率/音频信息 }
-2. detect_h264_encoders() 探测本机可用编码器
-3. choose_bitrate() 按分辨率+帧率+源码率+质量预设计算码率
-4. 创建 FFmpeg decode pipe（逐帧 RGBA rawvideo）
-5. 创建 wgpu 动态纹理（每帧复用）
-6. 创建 FFmpeg encode pipe（双输入：pipe:0 视频帧 + 源文件音频）
-7. 逐帧循环：read → update_texture → render → write encode stdin
-8. 关闭 pipe，检查退出码，清理纹理
+Media Foundation 解码
+  → D3D12 Video Processor 颜色转换
+  → wgpu D3D12 合成
+  → D3D12 BGRA → NV12 GPU 转换
+  → Media Foundation Sink Writer 硬件编码
 ```
+
+该路径不把完整视频帧读回 CPU。系统会根据当前 wgpu 使用的 DXGI 设备选择
+NVIDIA、AMD 或 Intel 可用的硬件 MFT。只有 native 路径失败时，才回退到
+兼容路径（GPU 合成后 CPU readback，再交给 FFmpeg 的 `h264_nvenc`、
+`h264_amf` 或 `h264_qsv`）。
 
 **每帧处理**：
 ```rust
@@ -106,16 +113,19 @@ decode_pipe.read_exact(frame_rgba)
 
 ### 编码器探测
 
-运行时执行 `ffmpeg -hide_banner -encoders`，解析输出中是否包含硬件编码器。
+Windows native 路径通过 Media Foundation 枚举并实际验证硬件视频 MFT；兼容路径
+才运行 `ffmpeg -hide_banner -encoders` 检查 FFmpeg 编码器。
 
 优先级（按平台）：
 
-| macOS | Windows | Linux |
-|-------|---------|-------|
-| h264_videotoolbox | h264_nvenc | h264_nvenc |
-| libx264 | h264_qsv | h264_qsv |
-| | h264_amf | h264_vaapi |
-| | libx264 | libx264 |
+| 平台/后端 | 编码实现 | 纹理传输 |
+|-----------|----------|----------|
+| Windows 通用 | D3D12 Video Encoder | D3D12 resource，只有压缩码流回读 |
+| Windows NVIDIA 兼容 | `h264_nvenc` | CPU readback 后的 RGBA pipe |
+| Windows AMD 兼容 | `h264_amf` | CPU readback 后的 RGBA pipe |
+| Windows Intel 兼容 | `h264_qsv` | CPU readback 后的 RGBA pipe |
+| macOS | VideoToolbox | Metal/CVPixelBuffer |
+| Linux | VAAPI/其他 FFmpeg 编码器 | 按平台回退 |
 
 ### 码率策略
 
@@ -179,15 +189,11 @@ ffmpeg \
 
 ---
 
-## 第一版暂不做的功能
+## 当前仍未覆盖的功能
 
-- 真正 GPU 零拷贝（metal texture → videotoolbox）
-- 硬件解码 surface 直接接 wgpu
 - 多视频源精确时间线同步
 - VFR 时间戳精确保留
 - 音频混音 / 多音轨
 - 字幕轨
 - 动效关键帧 / 转场
-- GPU 异步多缓冲流水线
-- 取消导出 / 进度回调（留 V3）
-- 临时文件 rename 策略
+- Windows 多缓冲异步编码流水线

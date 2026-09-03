@@ -1,5 +1,8 @@
 name: Publish Hot Update
 
+# 默认热更新是 universal 纯 JS 包，由本地发布脚本生成并上传。
+# 本工作流只在检测到原生模块变更时构建三平台原生 artifact；手动触发也按原生例外流程处理。
+
 on:
   push:
     tags:
@@ -7,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Hot update version, e.g. 1.5.1-hot.4'
+        description: 'Native hot-update version, e.g. 1.5.1-hot.4'
         required: true
 
 permissions:

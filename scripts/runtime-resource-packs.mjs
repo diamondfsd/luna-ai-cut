@@ -239,7 +239,7 @@ export async function publishRuntimeResourceRelease(build, {
     }
     verified.push({ name, url, ...remote })
   }
-  return { releaseUrl: `https://gitcode.com/${owner}/${repo}/releases/tag/${RESOURCE_RELEASE_TAG}`, verified }
+  return { releaseUrl: `https://gitcode.com/${owner}/${repo}/releases/${RESOURCE_RELEASE_TAG}`, verified }
 }
 
 export function inspectZip(path) {

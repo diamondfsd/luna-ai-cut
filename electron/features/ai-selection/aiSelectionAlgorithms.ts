@@ -344,17 +344,7 @@ function personScore(item: AiSelectionItem, purpose: AiSelectionPurpose): { raw:
 }
 
 function compositionScore(item: AiSelectionItem): { raw: number | null; normalized: number } {
-  const bounds = item.personEvidence?.bounds
-  if (!bounds) return { raw: null, normalized: 0.5 }
-  const centerX = bounds.x + bounds.width / 2
-  const centerY = bounds.y + bounds.height / 2
-  const anchors = [1 / 3, 0.5, 2 / 3]
-  const distance = Math.min(...anchors.flatMap((x) => anchors.map((y) => Math.hypot(centerX - x, centerY - y))))
-  const placement = Math.max(0, 1 - distance / 0.48)
-  const coverage = bounds.width * bounds.height
-  const scale = coverage < 0.015 ? coverage / 0.015 : coverage > 0.7 ? Math.max(0, 1 - (coverage - 0.7) / 0.3) : 1
-  const normalized = placement * 0.65 + scale * 0.35
-  return { raw: Number(distance.toFixed(4)), normalized }
+  return item.compositionEvidence?.score ?? { raw: null, normalized: 0.5 }
 }
 
 const TRAVEL_TAGS = new Set(['风景', '自然风景', '城市', '建筑', '天空', '水面', '海洋', '山体', '美食', '人物', '动物'])
@@ -406,7 +396,7 @@ function refreshScores(item: AiSelectionItem, grouped: boolean, purpose: AiSelec
   const dimensions = [
     item.quality ? item.scores.quality : null,
     item.personEvidence?.detected === true || purpose === 'people' ? item.scores.people : null,
-    item.personEvidence?.bounds ? item.scores.composition : null,
+    item.compositionEvidence?.score.raw !== null ? item.scores.composition : null,
     relevance.raw !== null ? item.scores.relevance : null,
     diversity.raw !== null ? item.scores.diversity : null,
   ].filter((value): value is AiSelectionItem['scores']['quality'] => value !== null)

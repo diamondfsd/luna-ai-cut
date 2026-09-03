@@ -1,4 +1,4 @@
-import type { CustomWatermarkAsset, WatermarkPosition, WatermarkSettings } from './watermark'
+import type { CustomWatermarkAsset, WatermarkPlacement, WatermarkPosition, WatermarkSettings } from './watermark'
 import type { CameraConnectionMode } from './cameraMediaSource'
 import type { MockServerConfig } from './mock'
 
@@ -23,6 +23,7 @@ export interface AppSettings {
   mountedCameraRoot?: string
   activeDeviceId?: string
   djiInstallIdentity?: string
+  lunaInstallIdentity?: string
   deviceStorage?: Record<string, string>
   deviceWatermark?: Record<string, WatermarkSettings>
   developerMode?: boolean
@@ -37,6 +38,10 @@ export interface AppSettings {
   defaultWatermarkEnabled?: boolean
   /** 新素材与重置素材使用的默认水印位置。 */
   defaultWatermarkPosition?: WatermarkPosition
+  /** 新素材与重置素材使用的默认水印宽度，占画面宽度的比例。 */
+  defaultWatermarkSizeOnCanvasWidth?: number
+  /** 新素材与重置素材使用的默认水印位置，可保存预设或自由位置。 */
+  defaultWatermarkPlacement?: WatermarkPlacement
   /** 批量导出最近一次有效的水印设置。 */
   recentWatermarkSettings?: WatermarkSettings
   /** 用户已导入的自定义水印库，按最近导入顺序排列。 */
@@ -49,8 +54,10 @@ export interface AppSettings {
   workspacePreviewQuality?: WorkspacePreviewQuality
   /** 相机媒体预览最近一次选择的画质。 */
   cameraPreviewQuality?: CameraPreviewQuality
-  /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
-  experimentalGpuPreview?: boolean
+  /** Chromium WebGPU 预览；内测版本固定开启，保留字段仅用于兼容旧设置。 */
+  experimentalWebGpuPreview?: boolean
+  /** GPU 导出；内测版本固定开启，保留字段仅用于兼容旧设置。 */
+  experimentalWebGpuExport?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean
   /** 手机分享时额外公开的目录，只扫描目录本身和下一层子目录。 */

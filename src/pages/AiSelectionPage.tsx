@@ -23,8 +23,10 @@ type SelectionStage = 'overview' | 'recommended' | 'scenes' | 'compare' | 'peopl
 
 function statusLabel(status: string, phase?: string): string {
   if (status === 'analyzing' && phase === 'photos') return '正在整理照片'
+  if (status === 'analyzing' && phase === 'evidence') return '正在分析画面、人物和构图'
   if (status === 'analyzing' && phase === 'content') return '正在理解画面'
   if (status === 'analyzing' && phase === 'people') return '正在识别人物'
+  if (status === 'analyzing' && phase === 'composition') return '正在评估构图'
   if (status === 'analyzing' && phase === 'videos') return '正在添加视频'
   return ({ queued: '等待整理', indexing: '正在添加素材', analyzing: '正在整理', paused: '已暂停', interrupted: '整理可继续', ready: '整理完成', completed: '已创建项目', failed: '整理失败', canceled: '已取消' } as Record<string, string>)[status] ?? status
 }
@@ -72,10 +74,11 @@ function mediaFileForSelection(item: AiSelectionItem): LunaFile {
     groupHour: item.capturedAt.slice(0, 13),
     videoKey: null,
     previewName: null,
-    previewUrl: item.thumbnailUrl ?? item.videoKeyframes[0]?.thumbnailUrl ?? null,
+    previewUrl: item.videoKeyframes[0]?.thumbnailUrl ?? null,
     cacheFilePath: item.path,
     downloadFilePath: null,
-    thumbnailUrl: item.thumbnailUrl,
+    // 交给 MediaCard -> ThumbImage -> useFileCache 统一生成本地缩略图。
+    thumbnailUrl: null,
     isLivePhoto: false,
     livePhotoVideoName: null,
     livePhotoVideoUrl: null,
@@ -400,7 +403,7 @@ export function AiSelectionPage() {
       }}
       onRevealPath={() => undefined}
       onRevealProgress={() => undefined}
-      onDragStart={item.state === 'kept' ? () => window.luna.startFileDrag(selectedItems.map((candidate) => candidate.path), item.thumbnailUrl) : undefined}
+      onDragStart={item.state === 'kept' ? () => window.luna.startFileDrag(selectedItems.map((candidate) => candidate.path), null) : undefined}
       overlay={<>{showFaceBoxes && <AiSelectionFaceOverlay item={item} faces={faceBoxesByItem.get(item.id) ?? []} />}<div className="ai-selection-card-badges">
         {isAiRecommended(item) && <span className="ai-selection-recommendation-badge"><Sparkles size={12} />AI 推荐</span>}
         {stage === 'scenes' && (groupsByItem.get(item.id)?.itemIds.length ?? 0) > 1 && <span className="ai-selection-group-badge"><Layers3 size={11} />{groupsByItem.get(item.id)?.itemIds.length}</span>}
@@ -457,7 +460,7 @@ export function AiSelectionPage() {
           {stage === 'compare' && pendingGroups.map((group, index) => {
             const cover = itemsById.get(group.representativeId) ?? itemsById.get(group.itemIds[0])
             return <button key={group.id} type="button" className={`ai-selection-compare-filter${activeGroup?.id === group.id ? ' active' : ''}`} aria-label={`查看相似组 ${index + 1}，${group.itemIds.length} 项素材`} onClick={() => { setGroupId(group.id); setFocusedId('') }}>
-              <span className="ai-selection-compare-cover">{cover && <ThumbImage src={cover.thumbnailUrl ?? cover.path} alt="" />}</span>
+              <span className="ai-selection-compare-cover">{cover && <ThumbImage src={cover.path} alt="" />}</span>
               <strong>{group.itemIds.length}</strong>
             </button>
           })}

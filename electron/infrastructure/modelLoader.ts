@@ -1,14 +1,17 @@
 import { app } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { COMPOSITION_MODELS, type CompositionModelId } from '../../src/shared/compositionModels'
 import { AI_SELECTION_MODELS, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AiSelectionModelId, type SamSegmentationModelId, type SegmentationModelId, type SingleFileSegmentationModelId } from '../../src/shared/segmentationModels'
 import { loadVerifiedModelFile } from './modelFileService'
 import { SharedLoadRegistry } from './sharedLoadRegistry'
 import { hasCachedModelFiles } from './modelCacheStatus'
+import { logMainError } from './loggerService'
 
-export type ModelId = SingleFileSegmentationModelId | AiSelectionModelId
+export type ModelId = SingleFileSegmentationModelId | AiSelectionModelId | CompositionModelId
 
 interface ModelDefinition {
+  name: string
   fileName: string
   version: string
   url: string
@@ -48,7 +51,8 @@ export interface ModelCacheStatus {
   sizeBytes: number
 }
 
-export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries([...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...AI_SELECTION_MODELS].map((model) => [model.id, {
+export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries([...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...AI_SELECTION_MODELS, ...COMPOSITION_MODELS].map((model) => [model.id, {
+    name: model.name,
     fileName: 'model.onnx',
     version: model.version,
     url: model.url,
@@ -68,18 +72,33 @@ async function loadModelFile(
   definition: Pick<ModelDefinition, 'fileName' | 'url' | 'mirrors' | 'sha256' | 'sizeBytes'>,
   onProgress?: (progress: ModelLoadProgress) => void,
   signal?: AbortSignal,
+  label = '模型',
 ): Promise<string> {
-  return loadVerifiedModelFile(modelDir, definition, { onProgress, signal })
+  return loadVerifiedModelFile(modelDir, definition, { onProgress, signal, label })
 }
 
 async function loadModelOnce(id: ModelId, onProgress?: (progress: ModelLoadProgress) => void, signal?: AbortSignal): Promise<LoadedModel> {
   const definition = MODEL_REGISTRY[id]
   if (!definition) throw new Error(`未知模型: ${id}`)
   const modelDir = path.join(app.getPath('userData'), 'models', id)
-  await mkdir(modelDir, { recursive: true })
-  const modelPath = await loadModelFile(modelDir, definition, onProgress, signal)
-  await writeFile(path.join(modelDir, 'model.json'), JSON.stringify({ id, ...definition }, null, 2), 'utf8')
-  return { id, path: modelPath, sha256: definition.sha256, license: definition.license, source: definition.source }
+  try {
+    await mkdir(modelDir, { recursive: true })
+    const modelPath = await loadModelFile(modelDir, definition, onProgress, signal, `模型「${definition.name}」(${id})`)
+    await writeFile(path.join(modelDir, 'model.json'), JSON.stringify({ id, ...definition }, null, 2), 'utf8')
+    return { id, path: modelPath, sha256: definition.sha256, license: definition.license, source: definition.source }
+  } catch (error) {
+    if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw error
+    const message = error instanceof Error ? error.message : String(error)
+    logMainError('[模型] 准备失败', {
+      modelId: id,
+      modelName: definition.name,
+      fileName: definition.fileName,
+      url: definition.url,
+      mirrors: definition.mirrors ?? [],
+      error: message,
+    })
+    throw new Error(`模型「${definition.name}」(${id})准备失败：${message}`)
+  }
 }
 
 /** 下载并校验模型；缓存命中时不会访问网络。 */
@@ -96,15 +115,16 @@ async function loadSamModelOnce(id: SamSegmentationModelId, onProgress?: (progre
   const modelDir = path.join(app.getPath('userData'), 'models', definition.id)
   await mkdir(modelDir, { recursive: true })
   const totalBytes = definition.sizeBytes
+  const modelLabel = `点选模型「${definition.name}」(${id})`
   const visionEncoderPath = await loadModelFile(modelDir, definition.files.visionEncoder, (progress) => {
     onProgress?.({ completedBytes: progress.completedBytes, totalBytes })
-  }, signal)
+  }, signal, modelLabel)
   const promptDecoderPath = await loadModelFile(modelDir, definition.files.promptDecoder, (progress) => {
     onProgress?.({
       completedBytes: definition.files.visionEncoder.sizeBytes + progress.completedBytes,
       totalBytes,
     })
-  }, signal)
+  }, signal, modelLabel)
   await writeFile(path.join(modelDir, 'model.json'), JSON.stringify(definition, null, 2), 'utf8')
   return {
     id: definition.id,

@@ -41,6 +41,8 @@ pub struct AudioInfo {
 
 #[allow(dead_code)]
 pub struct VideoInfo {
+    pub codec_name: String,
+    pub pixel_format: String,
     pub width: u32,
     pub height: u32,
     pub fps: f64,
@@ -136,6 +138,8 @@ pub fn probe_video_info(ffprobe: &str, input: &str) -> Result<VideoInfo, String>
     };
 
     Ok(VideoInfo {
+        codec_name: video["codec_name"].as_str().unwrap_or_default().to_string(),
+        pixel_format: video["pix_fmt"].as_str().unwrap_or_default().to_string(),
         width,
         height,
         fps,

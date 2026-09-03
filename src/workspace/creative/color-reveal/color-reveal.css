@@ -140,6 +140,10 @@
   border-top: 1px solid #333;
 }
 
+.color-reveal-preview-quality {
+  margin-left: auto;
+}
+
 .color-reveal-media-strip {
   grid-column: 1;
   grid-row: 3;

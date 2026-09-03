@@ -33,10 +33,13 @@ release
 __pycache__/
 *.py[cod]
 resources/ffmpeg/
+resources/dji-ble-helper/
 .ffmpeg-cache/
 resources/dolby-vision/
 .dolby-tools-cache/
 .dxc-cache/
+.onnxruntime-cache/
+.package-resources/
 docs/*
 !docs/camera-media-architecture.md
 
@@ -46,6 +49,7 @@ scripts/deploy-release.conf
 # Test resources
 test-resources/
 test-results/
+test-output/
 dist*
 release*/
 backups/
@@ -54,6 +58,7 @@ backups/
 .worktrees/
 luna-render-core/target/
 *.node
+luna-render-core/libonnxruntime*.dylib
 luna-render-core/sam-segmentation-worker
 luna-render-core/sam-segmentation-worker.exe
 luna-render-core/semantic-segmentation-worker
@@ -68,6 +73,9 @@ luna-render-core/luna-punctuation-worker
 luna-render-core/luna-punctuation-worker.exe
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
+luna-render-core/av*.dll
+luna-render-core/sw*.dll
+luna-render-core/*.dll.tmp
 luna-render-core/DXC-LICENSE-*.txt
 luna-render-core/ASR-LICENSE-*.txt
 worktrees/

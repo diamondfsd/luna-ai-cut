@@ -8,6 +8,7 @@ import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import type { CustomWatermarkAsset, PreviewLayer, WatermarkPosition, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   DEFAULT_WATERMARK_WIDTH_RATIO,
+  DEFAULT_DJI_PORTRAIT_WIDTH_RATIO,
   defaultWatermarkPlacement,
   effectiveWatermarkPlacement,
   resolveDjiWatermarkPositioning,
@@ -31,6 +32,9 @@ function legacyPositioning(isLandscape: boolean, anchor: WatermarkPositioning['a
 }
 function usesAdvancedGeometry(settings: WatermarkSettingsType): boolean {
   return usesCustomWatermark(settings)
+    || settings.sourceKind === 'builtin'
+    || settings.sizeOnCanvasWidth !== undefined
+    || settings.placement !== undefined
 }
 
 function builtinWatermarkPosition(position: WatermarkPosition): Exclude<WatermarkPosition, 'top-center'> {
@@ -46,10 +50,10 @@ export function buildWatermarkStaticLayer(
   if (!filePath) return null
   const width = mediaSize?.width ?? (isLandscape ? 16 : 9)
   const height = mediaSize?.height ?? (isLandscape ? 9 : 16)
-  const positioning = usesDjiBuiltinWatermark(settings)
-    ? resolveDjiWatermarkPositioning(settings, width, height)
-    : usesAdvancedGeometry(settings)
+  const positioning = usesAdvancedGeometry(settings)
     ? resolveWatermarkPositioning(settings, width, height)
+    : usesDjiBuiltinWatermark(settings)
+      ? resolveDjiWatermarkPositioning(settings, width, height)
     : legacyPositioning(isLandscape, builtinWatermarkPosition(settings.position))
   return {
     filePath,
@@ -131,7 +135,9 @@ function PositionGrid({ settings, custom, onChange }: {
   custom: boolean
   onChange: (position: WatermarkPosition) => void
 }) {
-  const placement = custom ? effectiveWatermarkPlacement(settings) : null
+  const placement = custom || settings.sourceKind === 'builtin'
+    ? effectiveWatermarkPlacement(settings)
+    : null
   const activePosition = placement?.mode === 'preset' ? placement.anchor : custom ? null : builtinWatermarkPosition(settings.position)
   return (
     <div className="wm-position-grid" role="group" aria-label="水印位置">
@@ -208,7 +214,7 @@ export function WatermarkSettings({
     deviceMetadata?.watermarkProfileId,
   ])
   const defaultWatermarkWidthRatio = resolvedMediaSize && resolvedMediaSize.height > resolvedMediaSize.width
-    ? 0.35
+    ? DEFAULT_DJI_PORTRAIT_WIDTH_RATIO
     : DEFAULT_WATERMARK_WIDTH_RATIO
 
   useEffect(() => {
@@ -295,7 +301,15 @@ export function WatermarkSettings({
     } else if (next.enabled && builtinAvailable) {
       const info = await window.luna.getWatermarkPath(next.style, watermarkKind).catch(() => null)
       if (seq !== enrichSeqRef.current) return
-      next = { ...next, sourceKind: 'builtin', imagePath: info?.filePath, imageWidth: info?.width, imageHeight: info?.height }
+      next = {
+        ...next,
+        sourceKind: 'builtin',
+        imagePath: info?.filePath,
+        imageWidth: info?.width,
+        imageHeight: info?.height,
+        sizeOnCanvasWidth: next.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio,
+        placement: next.placement ?? defaultWatermarkPlacement(next.position),
+      }
     } else if (!builtinAvailable) {
       next = { ...next, style: '', imagePath: undefined, imageWidth: undefined, imageHeight: undefined }
     }
@@ -371,14 +385,16 @@ export function WatermarkSettings({
   }
 
   function changePosition(position: WatermarkPosition): void {
-    const patch: Partial<WatermarkSettingsType> = { position }
-    if (usesCustomWatermark(settingsRef.current)) {
-      patch.placement = defaultWatermarkPlacement(position)
+    const patch: Partial<WatermarkSettingsType> = {
+      position,
+      placement: defaultWatermarkPlacement(position),
     }
     void enrichAndChange(patch)
   }
 
-  const selectedSourceKind = builtinAvailable ? currentSettings.sourceKind ?? 'builtin' : 'custom'
+  const selectedSourceKind = preferencesOnly
+    ? 'builtin'
+    : builtinAvailable ? currentSettings.sourceKind ?? 'builtin' : 'custom'
   const customSelected = selectedSourceKind === 'custom' && usesCustomWatermark(currentSettings)
   const sourceOptions: Array<{ value: 'builtin' | 'custom'; label: string }> = builtinAvailable
     ? [{ value: 'builtin', label: '内置' }, { value: 'custom', label: '自定义' }]
@@ -432,10 +448,10 @@ export function WatermarkSettings({
       {(selectedSourceKind === 'builtin' || customSelected) && (
         <SettingsSection>
           <PositionGrid settings={currentSettings} custom={customSelected} onChange={changePosition} />
-          {!preferencesOnly && customSelected && (
+          {(selectedSourceKind === 'builtin' || customSelected) && (
             <div className="wm-appearance-controls">
               <WatermarkSlider label="大小" value={(currentSettings.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio) * 100} min={8} max={80} onChange={(value) => void enrichAndChange({ sizeOnCanvasWidth: value / 100 })} />
-              <WatermarkSlider label="透明度" value={(currentSettings.opacity ?? 1) * 100} min={0} max={100} onChange={(value) => void enrichAndChange({ opacity: value / 100 })} />
+              {!preferencesOnly && customSelected && <WatermarkSlider label="透明度" value={(currentSettings.opacity ?? 1) * 100} min={0} max={100} onChange={(value) => void enrichAndChange({ opacity: value / 100 })} />}
             </div>
           )}
         </SettingsSection>

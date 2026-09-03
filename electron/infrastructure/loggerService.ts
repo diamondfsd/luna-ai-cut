@@ -1,7 +1,9 @@
 import { app } from 'electron'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import AdmZip from 'adm-zip'
 import { currentBaseDir, logDirForBaseDir } from '../storage/settingsService'
+import { releaseChannelForVersion } from '../../src/shared/hotUpdateCompatibility'
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 
@@ -155,6 +157,83 @@ export function clearLogs(): void {
   } catch {
     // 目录可能还不存在
   }
+}
+
+function addFileIfPresent(zip: AdmZip, filePath: string, entryName: string): void {
+  try {
+    if (fs.statSync(filePath).isFile()) zip.addLocalFile(filePath, path.dirname(entryName), path.basename(entryName))
+  } catch {
+    // 日志文件可能在导出期间轮换或尚未创建，跳过即可。
+  }
+}
+
+function addDirectoryIfPresent(zip: AdmZip, directory: string, entryName: string): void {
+  try {
+    if (fs.statSync(directory).isDirectory()) zip.addLocalFolder(directory, entryName)
+  } catch {
+    // 没有崩溃转储目录时仍可导出其他诊断信息。
+  }
+}
+
+/** 导出当前运行实例的诊断信息，供用户反馈问题时附带。 */
+export function exportDiagnosticsBundle(): string {
+  const directory = logDir()
+  ensureDir(directory)
+  const today = localDateKey()
+  const zip = new AdmZip()
+  const includedFiles: string[] = []
+
+  try {
+    for (const file of fs.readdirSync(directory)) {
+      if (!file.endsWith('.log') || !file.includes(today)) continue
+      const fullPath = path.join(directory, file)
+      addFileIfPresent(zip, fullPath, `logs/${file}`)
+      includedFiles.push(file)
+    }
+  } catch {
+    // 目录读取失败时仍然生成带有环境信息的诊断包。
+  }
+
+  for (const file of ['startup.log', 'luna-rc.log']) {
+    const fullPath = path.join(directory, file)
+    addFileIfPresent(zip, fullPath, `logs/${file}`)
+    try {
+      if (fs.statSync(fullPath).isFile()) includedFiles.push(file)
+    } catch {
+      // optional log
+    }
+  }
+
+  const crashDirectory = path.join(directory, 'crash-dumps')
+  addDirectoryIfPresent(zip, crashDirectory, 'crash-dumps')
+
+  const appVersion = app.getVersion()
+  const channel = releaseChannelForVersion(appVersion)?.channel ?? 'unknown'
+  const diagnostics = {
+    exportedAt: new Date().toISOString(),
+    appVersion,
+    channel,
+    packaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    bootSource: process.env.LUNA_BOOT_SOURCE ?? 'unknown',
+    logDate: today,
+    logDirectory: path.basename(directory),
+    includedFiles: [...new Set(includedFiles)],
+    hasCrashDumps: fs.existsSync(crashDirectory),
+  }
+  zip.addFile('diagnostics.json', Buffer.from(JSON.stringify(diagnostics, null, 2), 'utf8'))
+
+  const exportDirectory = app.getPath('downloads')
+  ensureDir(exportDirectory)
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const outputPath = path.join(exportDirectory, `LunaAI-Cut-diagnostics-${stamp}.zip`)
+  zip.writeZip(outputPath)
+  logMainInfo('[诊断] 诊断包已导出', { outputPath: path.basename(outputPath), includedFiles: diagnostics.includedFiles })
+  return outputPath
 }
 
 /** 初始化日志系统 */

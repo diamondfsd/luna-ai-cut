@@ -10,9 +10,11 @@ interface CurvePanelProps {
   value: EditPipeline['color']
   modified: boolean
   onChange: (patch: Partial<EditPipeline['color']>) => void
+  onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
 }
 
-export function CurvePanel({ value, modified, onChange }: CurvePanelProps) {
+export function CurvePanel({ value, modified, onChange, onPreviewChange }: CurvePanelProps) {
+  const previewChange = onPreviewChange ?? onChange
   const activeCurveChannel = value.curve.activeChannel
   const activePoints = value.curve.points[activeCurveChannel]
 
@@ -36,9 +38,9 @@ export function CurvePanel({ value, modified, onChange }: CurvePanelProps) {
         onChange={(activeChannel) => onChange({ curve: { ...value.curve, activeChannel: activeChannel as ToneCurveChannel } })}
       />
       <CurvePreview points={activePoints} onChange={(points) => updateCurve(activeCurveChannel, points)} />
-      <ParamSlider label="输入黑点" value={value.levelsBlack} {...sliderRange(EDIT_PARAMETER_RANGES.levels.black)} onChange={(levelsBlack) => onChange({ levelsBlack })} />
-      <ParamSlider label="中间调" value={value.levelsGray} {...sliderRange(EDIT_PARAMETER_RANGES.levels.gray)} onChange={(levelsGray) => onChange({ levelsGray })} />
-      <ParamSlider label="输入白点" value={value.levelsWhite} {...sliderRange(EDIT_PARAMETER_RANGES.levels.white)} onChange={(levelsWhite) => onChange({ levelsWhite })} />
+      <ParamSlider label="输入黑点" value={value.levelsBlack} {...sliderRange(EDIT_PARAMETER_RANGES.levels.black)} onChange={(levelsBlack) => onChange({ levelsBlack })} onPreviewChange={(levelsBlack) => previewChange({ levelsBlack })} onCommit={(levelsBlack) => onChange({ levelsBlack })} />
+      <ParamSlider label="中间调" value={value.levelsGray} {...sliderRange(EDIT_PARAMETER_RANGES.levels.gray)} onChange={(levelsGray) => onChange({ levelsGray })} onPreviewChange={(levelsGray) => previewChange({ levelsGray })} onCommit={(levelsGray) => onChange({ levelsGray })} />
+      <ParamSlider label="输入白点" value={value.levelsWhite} {...sliderRange(EDIT_PARAMETER_RANGES.levels.white)} onChange={(levelsWhite) => onChange({ levelsWhite })} onPreviewChange={(levelsWhite) => previewChange({ levelsWhite })} onCommit={(levelsWhite) => onChange({ levelsWhite })} />
     </Accordion>
   )
 }

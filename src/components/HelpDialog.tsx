@@ -14,6 +14,7 @@ interface HelpDialogProps {
 }
 
 export function HelpDialog({ children }: HelpDialogProps) {
+  const [open, setOpen] = useState(false)
   const [checking, setChecking] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [noUpdate, setNoUpdate] = useState(false)
@@ -27,30 +28,27 @@ export function HelpDialog({ children }: HelpDialogProps) {
   const [showHotNotes, setShowHotNotes] = useState(false)
 
   useEffect(() => {
-    window.luna.getHotUpdateVersion().then(v => setHotVersion(v)).catch(() => {})
-    window.luna.checkForHotUpdates()
-      .then(result => { if (result) setHotUpdateCheck(result) })
-      .catch(() => {})
-    checkForUpdatesSilently()
-  }, [])
-
-  async function checkForUpdatesSilently(): Promise<void> {
-    try {
-      const info = await window.luna.checkForUpdates()
-      if (info) setUpdateInfo(info)
-      else setNoUpdate(true)
-    } catch { setNoUpdate(true) }
-  }
+    if (!open) return
+    window.luna.getHotUpdateVersion().then(v => setHotVersion(v)).catch(() => setHotVersion(null))
+  }, [open])
 
   async function handleCheckUpdate(): Promise<void> {
     setChecking(true)
     setNoUpdate(false)
     setUpdateInfo(null)
+    setHotUpdateCheck(null)
     try {
-      const info = await window.luna.checkForUpdates()
-      if (info) setUpdateInfo(info)
-      else setNoUpdate(true)
-    } catch { setNoUpdate(true) }
+      // 只有用户在帮助窗口中点击“检查更新”后才访问更新服务。
+      const [info, hotInfo] = await Promise.all([
+        window.luna.checkForUpdates().catch(() => null),
+        window.luna.checkForHotUpdates().catch(() => null),
+      ])
+      setUpdateInfo(info)
+      setHotUpdateCheck(hotInfo)
+      setNoUpdate(!info && !hotInfo)
+    } catch {
+      setNoUpdate(true)
+    }
     finally { setChecking(false) }
   }
 
@@ -80,14 +78,14 @@ export function HelpDialog({ children }: HelpDialogProps) {
   async function handleDeleteHotUpdate(): Promise<void> {
     try { await window.luna.clearHotUpdate() } catch { /* ignore */ }
     setHotVersion(null)
-    window.luna.checkForHotUpdates()
-      .then(result => { if (result) setHotUpdateCheck(result) })
-      .catch(() => {})
+    setHotUpdateCheck(null)
   }
 
   return (
     <>
       <Dialog
+        open={open}
+        onOpenChange={setOpen}
         trigger={children ?? (
           <button className="nav-icon-button" title="帮助与反馈">
             <HelpCircle size={15} />

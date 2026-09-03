@@ -35,6 +35,8 @@ export interface CameraMediaSourcePreparationResult {
     password: string
   }
   capabilities?: CameraMediaSourceConnectionCapabilities
+  /** 需要用户先在系统 Wi-Fi 中连接相机，再点击开始连接。 */
+  requiresManualWifi?: boolean
   message: string
 }
 
@@ -50,6 +52,8 @@ export interface CameraMediaSourceOptions {
   mode: CameraConnectionMode
   deviceId?: string
   host?: string
+  /** 连接入口可先探测相机地址，避免已连通时重复走蓝牙和 Wi-Fi 切换。 */
+  preferExistingConnection?: boolean
   storageId?: string
   rootPath?: string
   wireless?: {
@@ -57,10 +61,17 @@ export interface CameraMediaSourceOptions {
     preparation?: CameraMediaSourceWirelessPreparation
     ssid?: string
     password?: string
-    /** 预留给未来的系统 Wi-Fi 自动加入能力，默认关闭。 */
+    /** 使用提供的 Wi-Fi 凭据时，是否先自动切换系统网络。 */
     autoJoin?: boolean
   }
 }
+
+export interface CameraMediaSourceFilePage {
+  pageNumber: number
+  files: LunaFile[]
+}
+
+export type CameraMediaSourceFilePageCallback = (page: CameraMediaSourceFilePage) => void | Promise<void>
 
 export interface CameraMediaSourceStatus extends ConnectionStatus {
   mode: CameraConnectionMode
@@ -78,10 +89,10 @@ export interface CameraMediaSourceStatus extends ConnectionStatus {
 export interface CameraMediaSourceAdapter {
   connect(): Promise<CameraMediaSourceStatus>
   check(): Promise<CameraMediaSourceStatus>
-  listFiles(): Promise<LunaFile[]>
+  listFiles(onPage?: CameraMediaSourceFilePageCallback): Promise<LunaFile[]>
   deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult>
   disconnect(): Promise<void>
-  prepareConnection?(): Promise<CameraMediaSourcePreparationResult>
+  prepareConnection?(options?: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
 }
 
 export interface CameraMediaSourceApi {
@@ -90,7 +101,7 @@ export interface CameraMediaSourceApi {
   connect(options: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus>
   prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
   check(options: CameraMediaSourceOptions): Promise<CameraMediaSourceStatus>
-  listFiles(options: CameraMediaSourceOptions): Promise<LunaFile[]>
+  listFiles(options: CameraMediaSourceOptions, onPage?: CameraMediaSourceFilePageCallback): Promise<LunaFile[]>
   deleteFiles(files: LunaFile[], options: CameraMediaSourceOptions): Promise<CameraDeleteResult>
   disconnect(options: CameraMediaSourceOptions): Promise<void>
 }

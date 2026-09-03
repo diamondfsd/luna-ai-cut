@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
 import * as https from 'node:https'
 import * as path from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 
 import type { DownloadProgress, LunaFile } from '../../src/shared/types'
@@ -15,6 +16,10 @@ function isFileUrl(url: string): boolean {
 
 function partialPathFor(destination: string): string {
   return `${destination}.tmp`
+}
+
+export async function cleanupDownloadPartial(destination: string): Promise<void> {
+  await fs.rm(partialPathFor(destination), { force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined)
 }
 
 async function fileSize(filePath: string): Promise<number> {
@@ -41,8 +46,24 @@ function responseTotal(statusCode: number | undefined, headers: http.IncomingHtt
 
   return statusCode === 206 ? existing + length : length
 }
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', cancel)
+      resolve()
+    }, ms)
+    const cancel = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', cancel)
+      reject(abortError())
+    }
+    signal?.addEventListener('abort', cancel, { once: true })
+  })
 }
 
 function abortError(): Error {
@@ -55,22 +76,75 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
-function isTransientDownloadError(error: unknown): boolean {
+export function isTransientDownloadError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const message = error.message.toLowerCase()
-  const code = 'code' in error ? String(error.code) : ''
+  const code = 'code' in error ? String(error.code).toUpperCase() : ''
   return (
     message === 'aborted'
     || message.includes('socket hang up')
     || message.includes('premature close')
+    || message.includes('下载请求超时')
+    || message.includes('timeout')
     || code === 'ECONNRESET'
     || code === 'EPIPE'
     || code === 'ETIMEDOUT'
+    || code === 'EHOSTUNREACH'
+    || code === 'ENETUNREACH'
+    || code === 'ECONNREFUSED'
+    || code === 'ENETDOWN'
+    || code === 'EAI_AGAIN'
+    || code === 'EBUSY'
+    || message.includes('resource busy or locked')
   )
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw abortError()
+}
+
+type DownloadProgressUpdate = Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>
+
+/**
+ * 传输过程统一由这个 reporter 节流并计算速度。
+ * 只依赖已读字节，不依赖目标文件是否及时刷新到磁盘，因此有线磁盘和网络响应使用同一套逻辑。
+ */
+function createProgressReporter(
+  fileName: string,
+  total: number | null,
+  onProgress?: (progress: DownloadProgressUpdate) => void,
+): { emit: (downloaded: number, force?: boolean) => void; stop: () => void } {
+  let latestDownloaded = 0
+  let lastEmitAt = 0
+  let lastSampleAt = Date.now()
+  let lastSampleBytes = 0
+  const emit = (downloaded: number, force = false): void => {
+    latestDownloaded = Math.max(latestDownloaded, downloaded)
+    if (!onProgress) return
+    const now = Date.now()
+    if (!force && now - lastEmitAt < 120) return
+    const elapsed = Math.max((now - lastSampleAt) / 1000, 0.001)
+    const speedBps = Math.max(0, latestDownloaded - lastSampleBytes) / elapsed
+    onProgress({
+      fileName,
+      downloaded: latestDownloaded,
+      total,
+      percent: total ? Math.min(100, (latestDownloaded / total) * 100) : null,
+      speedBps,
+    })
+    lastEmitAt = now
+    lastSampleAt = now
+    lastSampleBytes = latestDownloaded
+  }
+  const timer = onProgress ? setInterval(() => emit(latestDownloaded, true), 250) : null
+  timer?.unref?.()
+
+  return {
+    emit,
+    stop: () => {
+      if (timer) clearInterval(timer)
+    },
+  }
 }
 
 function httpGet(url: string, headers: Record<string, string>, signal?: AbortSignal): Promise<http.IncomingMessage> {
@@ -107,13 +181,19 @@ export async function downloadToFile(
   signal?: AbortSignal,
 ): Promise<string> {
   await fs.mkdir(path.dirname(destination), { recursive: true })
-  throwIfAborted(signal)
+  try {
+    throwIfAborted(signal)
+  } catch (error) {
+    await cleanupDownloadPartial(destination)
+    throw error
+  }
   const itemSourceUrl = item.sourceUrl || item.url
   if (!itemSourceUrl) throw new Error(`缺少下载地址：${item.name}`)
 
   if (isFileUrl(itemSourceUrl)) {
     const sourcePath = fileURLToPath(itemSourceUrl)
     const sourceSize = (await fs.stat(sourcePath)).size
+    if (sourceSize <= 0) throw new Error(`下载内容为空：${item.name}`)
     const existingFinal = await fileSize(destination)
     if (existingFinal > 0) {
       onProgress?.({
@@ -127,58 +207,43 @@ export async function downloadToFile(
     }
 
     const partialPath = partialPathFor(destination)
-    await fs.rm(partialPath, { force: true })
+    await fs.rm(partialPath, { force: true, maxRetries: 5, retryDelay: 200 })
+    throwIfAborted(signal)
     const input = createReadStream(sourcePath)
     const output = createWriteStream(partialPath)
     let copied = 0
-    const startedAt = Date.now()
-    let lastEmit = 0
+    const reporter = createProgressReporter(item.name, sourceSize, onProgress)
+    reporter.emit(0, true)
 
-    await new Promise<void>((resolve, reject) => {
-      const cancel = (): void => {
-        input.destroy(abortError())
-        output.destroy(abortError())
-        reject(abortError())
-      }
-      signal?.addEventListener('abort', cancel, { once: true })
-      input.on('data', (chunk: Buffer) => {
-        if (signal?.aborted) {
-          cancel()
-          return
-        }
-        copied += chunk.length
-        const now = Date.now()
-        if (now - lastEmit > 120 || copied >= sourceSize) {
-          const elapsed = Math.max((now - startedAt) / 1000, 0.001)
-          onProgress?.({
-            fileName: item.name,
-            downloaded: copied,
-            total: sourceSize,
-            percent: sourceSize ? Math.min(100, (copied / sourceSize) * 100) : 100,
-            speedBps: copied / elapsed,
-          })
-          lastEmit = now
-        }
-      })
-      input.on('error', reject)
-      output.on('error', reject)
-      output.on('finish', () => {
-        signal?.removeEventListener('abort', cancel)
-        resolve()
-      })
-      input.pipe(output)
-    })
+    const onData = (chunk: Buffer): void => {
+      copied += chunk.length
+      reporter.emit(copied)
+    }
+    input.on('data', onData)
+    try {
+      await pipeline(
+        input as unknown as NodeJS.ReadableStream,
+        output as unknown as NodeJS.WritableStream,
+        { signal },
+      )
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+      throw error
+    } finally {
+      input.off('data', onData)
+      reporter.stop()
+    }
 
-    throwIfAborted(signal)
-    await fs.rename(partialPath, destination)
-    onProgress?.({
-      fileName: item.name,
-      downloaded: copied,
-      total: sourceSize,
-      percent: 100,
-      speedBps: 0,
-    })
-    return destination
+    try {
+      reporter.emit(copied, true)
+      throwIfAborted(signal)
+      if (copied <= 0) throw new Error(`下载内容为空：${item.name}`)
+      await fs.rename(partialPath, destination)
+      return destination
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+      throw error
+    }
   }
 
   const existingFinal = await fileSize(destination)
@@ -194,66 +259,78 @@ export async function downloadToFile(
   }
 
   const partialPath = partialPathFor(destination)
-  await fs.rm(partialPath, { force: true })
+  let existingPartial = await fileSize(partialPath)
+  if (existingPartial < 0) existingPartial = 0
 
-  const response = await httpGet(itemSourceUrl, {}, signal)
+  let response: http.IncomingMessage
+  try {
+    response = await httpGet(
+      itemSourceUrl,
+      existingPartial > 0 ? { Range: `bytes=${existingPartial}-`, Connection: 'close' } : { Connection: 'close' },
+      signal,
+    )
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+    throw error
+  }
 
-  if (response.statusCode !== 200) {
+  if (response.statusCode !== 200 && response.statusCode !== 206) {
     response.destroy()
     throw new Error(`HTTP ${response.statusCode ?? '未知'}：${item.name}`)
   }
 
-  const total = responseTotal(response.statusCode, response.headers, 0) ?? item.bytes
-  const output = createWriteStream(partialPath, { flags: 'w' })
-  let downloaded = 0
-  const startedAt = Date.now()
-  let lastEmit = 0
-
-  await new Promise<void>((resolve, reject) => {
-    const cancel = (): void => {
-      response.destroy(abortError())
-      output.destroy(abortError())
-      reject(abortError())
-    }
-    signal?.addEventListener('abort', cancel, { once: true })
-    response.on('data', (chunk: Buffer) => {
-      if (signal?.aborted) {
-        cancel()
-        return
-      }
-      downloaded += chunk.length
-      const now = Date.now()
-      if (now - lastEmit > 120 || (total !== null && downloaded >= total)) {
-        const elapsed = Math.max((now - startedAt) / 1000, 0.001)
-        onProgress?.({
-          fileName: item.name,
-          downloaded,
-          total,
-          percent: total ? Math.min(100, (downloaded / total) * 100) : null,
-          speedBps: downloaded / elapsed,
-        })
-        lastEmit = now
-      }
-    })
-    response.on('error', reject)
-    output.on('error', reject)
-    output.on('finish', () => {
-      signal?.removeEventListener('abort', cancel)
-      resolve()
-    })
-    response.pipe(output)
-  })
-
-  throwIfAborted(signal)
-  if (total !== null && downloaded < total) {
-    throw new Error(`下载不完整：${downloaded}/${total}`)
+  let append = existingPartial > 0 && response.statusCode === 206
+  if (append) {
+    const contentRange = String(response.headers['content-range'] ?? '')
+    const rangeStart = contentRange.match(/^bytes\s+(\d+)-\d+\/(?:\d+|\*)$/i)?.[1]
+    append = Number(rangeStart) === existingPartial
   }
 
-  await fs.rename(partialPath, destination)
-  return destination
+  // Some camera firmware accepts Range but answers with the complete file. Reusing that body at the
+  // old offset would corrupt the media, so truncate and treat it as a fresh download.
+  const startOffset = append ? existingPartial : 0
+  const total = responseTotal(response.statusCode, response.headers, startOffset) ?? item.bytes
+  const output = createWriteStream(partialPath, { flags: append ? 'a' : 'w' })
+  let downloaded = startOffset
+  const reporter = createProgressReporter(item.name, total, onProgress)
+  reporter.emit(downloaded, true)
+
+  const onData = (chunk: Buffer): void => {
+    downloaded += chunk.length
+    reporter.emit(downloaded)
+  }
+  response.on('data', onData)
+  try {
+    await pipeline(
+      response as unknown as NodeJS.ReadableStream,
+      output as unknown as NodeJS.WritableStream,
+      { signal },
+    )
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+    throw error
+  } finally {
+    response.off('data', onData)
+    reporter.stop()
+  }
+
+  try {
+    reporter.emit(downloaded, true)
+    throwIfAborted(signal)
+    if (total !== null && downloaded < total) {
+      throw new Error(`下载不完整：${downloaded}/${total}`)
+    }
+    if (downloaded <= 0) throw new Error(`下载内容为空：${item.name}`)
+
+    await fs.rename(partialPath, destination)
+    return destination
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) await cleanupDownloadPartial(destination)
+    throw error
+  }
 }
 
-export async function downloadToFileWithRetry(
+async function downloadToFileWithRetryInternal(
   item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string },
   destination: string,
   onProgress?: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
@@ -267,9 +344,35 @@ export async function downloadToFileWithRetry(
       if (signal?.aborted || isAbortError(error)) throw abortError()
       if (!isTransientDownloadError(error) || attempt === maxAttempts - 1) throw error
 
-      await delay(350 * (attempt + 1))
+      await delay(350 * (attempt + 1), signal)
     }
   }
 
   throw new Error(`下载失败：${item.name}`)
+}
+
+const activeDownloadTasks = new Map<string, Promise<string>>()
+
+function downloadTaskKey(destination: string): string {
+  const resolved = path.resolve(destination)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+export function downloadToFileWithRetry(
+  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string },
+  destination: string,
+  onProgress?: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const key = downloadTaskKey(destination)
+  const activeTask = activeDownloadTasks.get(key)
+  if (activeTask) return activeTask
+
+  const task = downloadToFileWithRetryInternal(item, destination, onProgress, signal)
+  activeDownloadTasks.set(key, task)
+  const clearTask = (): void => {
+    if (activeDownloadTasks.get(key) === task) activeDownloadTasks.delete(key)
+  }
+  void task.then(clearTask, clearTask)
+  return task
 }

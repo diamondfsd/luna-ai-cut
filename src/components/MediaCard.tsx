@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Check, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
+import { downloadProgressPercent } from '../lib/downloadProgress'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { ThumbImage } from './ThumbImage'
@@ -62,19 +63,20 @@ export function MediaCard({
   useEffect(() => {
     if (file.kind !== 'video') return
     const unsub = window.luna.onVideoFrameRateReady((data) => {
-      if (data.fileId === file.id && data.duration != null) {
+      const matches = data.fileId === file.id || data.fileName === file.name
+      if (matches && data.duration != null) {
         setVideoDuration(data.duration)
       }
-      if (data.fileId === file.id && data.dolbyVision != null) {
+      if (matches && data.dolbyVision != null) {
         setDetectedDolbyVision(data.dolbyVision)
         setDetectedDolbyVisionProfile(data.dolbyVisionProfile ?? null)
       }
-      if (data.fileId === file.id && data.iLog != null) {
+      if (matches && data.iLog != null) {
         setDetectedILog(data.iLog)
       }
     })
     return () => { unsub() }
-  }, [file.id, file.kind])
+  }, [file.id, file.kind, file.name])
 
   const handleCacheReady = useCallback((cacheFilePath: string) => {
     if (file.kind !== 'video' || (file.duration != null && file.dolbyVision != null && file.iLog != null)) return
@@ -86,7 +88,7 @@ export function MediaCard({
   const dolbyVisionProfile = file.dolbyVisionProfile ?? detectedDolbyVisionProfile
   const isILog = file.iLog ?? detectedILog ?? false
 
-  const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
+  const progressValue = progress ? downloadProgressPercent(progress) : 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
   const localPath = file.downloadFilePath ?? file.localPath
   const downloadedPath = localPath
@@ -153,8 +155,10 @@ export function MediaCard({
         <ThumbImage
           src={file.sourceUrl}
           previewSrc={file.previewUrl}
+          thumbnailSrc={file.thumbnailUrl}
           preloadBottom={300}
           alt={file.name}
+          cacheWhenUsingRemoteThumbnail={file.kind === 'video'}
           onCacheReady={handleCacheReady}
         />
         {file.kind === 'video' && effectiveDuration != null ? (

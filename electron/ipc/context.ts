@@ -8,15 +8,18 @@ import type { LunaFile } from '../../src/shared/types'
 export interface IpcContext {
   win: BrowserWindow | null
   clients: Map<string, LunaClient>
+  lunaClientFor: (host?: string, controlPort?: number) => LunaClient
+  lunaControlPortFor: (host: string) => number
   goUltraClients: Map<string, GoUltraClient>
   activeDownloadControllers: Set<AbortController>
+  activeDownloadTasks: Set<Promise<unknown>>
   activeExportControllers: Map<string, AbortController>
   activeExportEncoders: Map<string, ChildProcessWithoutNullStreams>
   activeNativeExportTasks: Set<string>
   previewCacheTasks: Map<string, Promise<boolean>>
   videoFrameRateTasks: Map<string, Promise<number | null>>
   enqueuePreviewTask: <T>(run: () => Promise<T>, priority?: number) => Promise<T>
-  ensureCameraSessionForFile: (file: LunaFile, url?: string) => Promise<void>
+  ensureCameraSessionForFile: (file: LunaFile, url?: string, localPath?: string | null) => Promise<void>
   lunaProtocol: () => LunaUltraProtocol
   goUltraProtocol: () => GoUltraProtocol
 }

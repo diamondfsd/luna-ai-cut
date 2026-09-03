@@ -2,6 +2,8 @@ import { ArrowLeft, Download, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
+import { WebGpuVideoPreview } from '../../../components/WebGpuVideoPreview'
+import { useApp } from '../../../context/AppContext'
 import { useDeviceWatermark } from '../../../hooks/useDeviceWatermark'
 import type { MediaMetadata, PreviewLayer, WorkspaceOnlyYourColorState } from '../../../shared/types'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
@@ -15,6 +17,8 @@ import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize, normalizeCreativePipeline } from '../shared/creativeMedia'
 import { CreativeCompareButton } from '../shared/CreativeCompareButton'
+import { CreativePreviewQualitySelect } from '../shared/CreativePreviewQualitySelect'
+import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import { subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
 import { exportOnlyYourColorBatch } from './onlyYourColorBatchExport'
@@ -47,6 +51,7 @@ import {
 import './only-your-color.css'
 
 export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
+  const { settings } = useApp()
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const activeAsset = media.activeMedia
@@ -76,6 +81,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState('')
   const [effectRenderedMaskPath, setEffectRenderedMaskPath] = useState<string | null>(null)
+  const [webGpuPreviewFailed, setWebGpuPreviewFailed] = useState(false)
   const requestRef = useRef<string | null>(null)
   const pendingEffectToastRef = useRef<string | null>(null)
   const activeAssetIdRef = useRef(activeAssetId)
@@ -86,6 +92,8 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   const maskLayerOwnerRef = useRef<string | null>(null)
   const isImage = activeAsset?.kind === 'image'
   const activeMaskPath = maskOwnerId === activeAssetId ? maskPath : null
+  const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
+  const useWebGpuPreview = isImage && (settings?.experimentalWebGpuPreview ?? true) && !webGpuPreviewFailed
   const subjectMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === ONLY_YOUR_COLOR_MASK_LAYER_ID)
   const backgroundMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID)
 
@@ -106,12 +114,16 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   }, [ownerKey])
 
   useEffect(() => {
+    setWebGpuPreviewFailed(false)
+  }, [activeAssetId])
+
+  useEffect(() => {
     const restoredPath = onlyYourColorStateForAsset(media.currentProject, activeAssetId)?.maskPath ?? null
     setMaskPath(restoredPath)
     setMaskOwnerId(restoredPath ? activeAssetId ?? null : null)
     maskLayerOwnerRef.current = null
     setMaskData(null)
-    setSourceSize(null)
+    // 保留上一张图片的画布尺寸，避免切换素材时卸载 WebGPU 预览并重新申请设备。
     setMetadata(null)
     pendingEffectToastRef.current = null
     setEffectRenderedMaskPath(null)
@@ -254,7 +266,16 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
       backgroundMaskInverted: backgroundMaskLayer?.inverted,
     })
     : baseLayers, [activeAsset, activeMaskPath, backgroundBrightness, backgroundContrast, backgroundExposure, backgroundMaskLayer, baseLayers, intensity, subjectExposure, subjectMaskLayer, subjectSaturation, subjectVibrance])
-  const previewLayers = showOriginal ? baseLayers : effectLayers
+  const previewLayers = useMemo(() => {
+    const layers = showOriginal ? baseLayers : effectLayers
+    if (!projectId) return layers
+    return layers.map((layer) => layer.maskPath || layer.maskTimeline ? { ...layer, maskProjectId: projectId } : layer)
+  }, [baseLayers, effectLayers, projectId, showOriginal])
+
+  const handleWebGpuPreviewError = useCallback(() => {
+    setWebGpuPreviewFailed(true)
+    toast.error('预览加速暂时不可用，已切回通用预览')
+  }, [])
 
   function recognizeSubject(value: NonNullable<WorkspaceOnlyYourColorState['subjectModel']>): void {
     if (segmenting) return
@@ -449,10 +470,10 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
   }, [activeAssetId, edit.pipeline, exportCount, exportableIndices, exporting, media, segmenting])
 
   return <section className="only-your-color-page">
-    <header className="only-your-color-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>只有你的色彩</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="only-your-color-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
+    <header className="only-your-color-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>只有你的色彩</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="only-your-color-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /><CreativePreviewQualitySelect value={previewQuality} onChange={changePreviewQuality} /></header>
     <div className="only-your-color-preview">
       {activeAsset && !isImage ? <div className="only-your-color-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>只有你的色彩目前支持图片素材</span></div>
-        : previewLayers.length && outputSize ? <div className={`only-your-color-stage${pointPicking ? ' is-point-picking' : ''}`} data-effect-rendered={activeMaskPath && effectRenderedMaskPath === activeMaskPath ? 'true' : 'false'} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} onRender={handleEffectRender} />{!showOriginal && pointPicking && <span className="only-your-color-point-hint">点击要保留色彩的主体</span>}</div>
+        : previewLayers.length && outputSize ? <div className={`only-your-color-stage${pointPicking ? ' is-point-picking' : ''}`} data-effect-rendered={activeMaskPath && effectRenderedMaskPath === activeMaskPath ? 'true' : 'false'} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}>{useWebGpuPreview ? <WebGpuVideoPreview className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={previewMaxSide} playing={false} interactiveImageLayerIndexes={[]} onError={handleWebGpuPreviewError} onRender={handleEffectRender} /> : <LrcRender className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={previewMaxSide} interactiveImageLayerIndexes={[]} onError={toast.error} onRender={handleEffectRender} />}{!showOriginal && pointPicking && <span className="only-your-color-point-hint">点击要保留色彩的主体</span>}</div>
           : activeAsset && isImage ? <img className="only-your-color-source-fallback" src={assetSourceUrl(activeAsset)} alt="" />
             : <div className="only-your-color-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要突出色彩主体的图片</span></div>}
     </div>

@@ -1,0 +1,173 @@
+.camera-live-preview-dialog.ui-dialog-content {
+  width: min(980px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 40px));
+}
+
+.camera-live-preview-dialog .ui-dialog-header {
+  gap: 2px;
+  padding: 12px 20px 10px;
+}
+
+.camera-live-preview-dialog .ui-dialog-header [data-radix-dialog-title] {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.camera-live-preview-body {
+  display: flex;
+  overflow-y: auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 20px 18px;
+}
+
+.camera-live-preview-stage {
+  position: relative;
+  display: grid;
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: 280px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: #050609;
+}
+
+.camera-live-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.camera-live-preview-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 13px;
+}
+
+.camera-live-preview-placeholder .loading-indicator {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.camera-live-preview-error {
+  padding: 24px;
+  color: #ffb4ae;
+  text-align: center;
+}
+
+.camera-live-preview-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+}
+
+.camera-live-preview-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.camera-live-preview-dot.active {
+  background: #32d74b;
+}
+
+.camera-live-preview-count {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.camera-live-preview-resolution {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+
+.camera-live-preview-resolution + .camera-live-preview-count {
+  margin-left: 8px;
+}
+
+.camera-live-preview-footer {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  align-items: center;
+  justify-content: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.camera-live-preview-footer.is-streaming {
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  justify-content: stretch;
+}
+
+.camera-live-preview-obs-url {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.camera-live-preview-obs-url > span {
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 10px;
+}
+
+.camera-live-preview-obs-url-value {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.camera-live-preview-obs-url code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.camera-live-preview-obs-url-value code {
+  flex: 1;
+}
+
+.camera-live-preview-obs-error {
+  grid-column: 1 / -1;
+  color: #ffb4ae;
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .camera-live-preview-dialog.ui-dialog-content {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .camera-live-preview-body {
+    padding: 10px 12px 14px;
+  }
+
+  .camera-live-preview-stage {
+    min-height: 200px;
+  }
+
+  .camera-live-preview-footer {
+    grid-template-columns: repeat(2, minmax(0, max-content));
+  }
+
+  .camera-live-preview-footer.is-streaming {
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+  }
+}

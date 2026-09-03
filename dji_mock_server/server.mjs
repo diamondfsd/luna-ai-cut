@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createReadStream, existsSync } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, stat, unlink } from 'node:fs/promises'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createTcpServer } from 'node:net'
 import dgram from 'node:dgram'
@@ -14,7 +14,7 @@ for (let index = 2; index < process.argv.length; index += 1) {
 
 const rootDir = path.resolve(String(args.get('--root') || process.env.DJI_MOCK_ROOT || '.'))
 const requestedModel = args.get('--model')
-const model = requestedModel === 'pocket3' || requestedModel === 'pocket4pro' ? requestedModel : 'pocket4'
+const model = requestedModel === 'pocket3' || requestedModel === 'pocket4pro' || requestedModel === 'action5pro' ? requestedModel : 'pocket4'
 const host = String(args.get('--host') || process.env.DJI_MOCK_HOST || '127.0.0.1')
 const httpPort = Number(args.get('--http-port') || process.env.DJI_MOCK_HTTP_PORT || 18080)
 const tcpPort = Number(args.get('--tcp-port') || process.env.DJI_MOCK_TCP_PORT || 17001)
@@ -23,9 +23,11 @@ const dropAfterBytes = Math.max(0, Number(args.get('--drop-after-bytes') || proc
 const rateMbps = Math.max(0, Number(args.get('--rate-mbps') || process.env.DJI_MOCK_RATE_MBPS || 30))
 const modelData = model === 'pocket4pro'
   ? { name: 'Osmo Pocket 4 Pro', localName: 'OsmoPocket4P-6E55', modelNumber: 34, productType: 218, advert: '000000ee0004bd6e5620da000010' }
-  : model === 'pocket3'
-    ? { name: 'Osmo Pocket 3', localName: 'OsmoPocket3', modelNumber: 32, productType: null, advert: '2000' }
-    : { name: 'Osmo Pocket 4', localName: 'OsmoPocket4-ACPT', modelNumber: 33, productType: null, advert: '210000be0000ee8dd9a000000000' }
+  : model === 'action5pro'
+    ? { name: 'Osmo Action 5 Pro', localName: 'OsmoAction5Pro-AC204', modelNumber: 21, productType: 235, advert: '000000ee0004bd6e5620eb000010' }
+    : model === 'pocket3'
+      ? { name: 'Osmo Pocket 3', localName: 'OsmoPocket3', modelNumber: 32, productType: null, advert: '2000' }
+      : { name: 'Osmo Pocket 4', localName: 'OsmoPocket4-ACPT', modelNumber: 33, productType: null, advert: '210000be0000ee8dd9a000000000' }
 const filesByStorage = [[], []]
 const filesByCameraPath = new Map()
 const droppedPaths = new Set()
@@ -121,7 +123,7 @@ function handleBleExchange(frameHex) {
     return { framesHex: [bleResponse(request, 0x07, 0x07, Buffer.concat([Buffer.from([0]), packString(ssid)]))] }
   }
   if (request.cmdSet === 0x07 && request.cmdId === 0x0e) {
-    const password = model === 'pocket4pro' ? 'pocket4-pro-mock-pass' : model === 'pocket3' ? 'pocket3-mock-pass' : 'pocket4-mock-pass'
+    const password = model === 'pocket4pro' ? 'pocket4-pro-mock-pass' : model === 'action5pro' ? 'action5-pro-mock-pass' : model === 'pocket3' ? 'pocket3-mock-pass' : 'pocket4-mock-pass'
     return { framesHex: [bleResponse(request, 0x07, 0x0e, Buffer.concat([Buffer.from([0]), packString(password)]))] }
   }
   if (request.cmdSet === 0x53 && request.cmdId === 0x10) return { framesHex: [bleResponse(request, 0x53, 0x10, Buffer.from([1, 0, 0, 0]))] }
@@ -167,12 +169,18 @@ function nameField(value) {
   return Buffer.concat([Buffer.from([0x0d, bytes.length]), bytes])
 }
 
+function manifestHandle(storage, index) {
+  const handleBase = model === 'action5pro'
+    ? (storage === 1 ? 0x40040000 : 0x00040000)
+    : storage === 1 ? 0x40100000 : model === 'pocket3' ? 0x00040000 : 0x00100000
+  const handleStep = model === 'action5pro' || model === 'pocket3' ? 0x10 : 0x40
+  return (handleBase + index * handleStep) >>> 0
+}
+
 function manifestFor(storageFiles, storage) {
-  const body = [u32(storageFiles.length)]
+  const body = [u32(model === 'action5pro' ? 0 : storageFiles.length)]
   for (const [index, file] of storageFiles.entries()) {
-    const handleBase = storage === 1 ? 0x40100000 : model === 'pocket3' ? 0x00040000 : 0x00100000
-    const handleStep = model === 'pocket3' ? 0x10 : 0x40
-    const handle = handleBase + index * handleStep
+    const handle = file.handle ?? manifestHandle(storage, index)
     const head = Buffer.alloc(48)
     head.writeUInt32LE(handle >>> 0, 0)
     head[8] = 0x03
@@ -204,7 +212,48 @@ function responsePayload(request) {
   return Buffer.from([0, 0])
 }
 
-function handleUdp(socket, data, address) {
+async function deleteReply(socket, address, request, sessionId, sequence) {
+  const count = request.payload[0] || 0
+  const expectedLength = 1 + count * 4
+  let status = 0
+  let targets = []
+  if (count === 0 || request.payload.length < expectedLength) {
+    status = 1
+  } else {
+    const handles = Array.from({ length: count }, (_, index) => request.payload.readUInt32LE(1 + index * 4))
+    targets = handles.map((handle) => {
+      for (let storage = 0; storage < filesByStorage.length; storage += 1) {
+        const index = filesByStorage[storage].findIndex((file) => file.handle === handle)
+        if (index >= 0) return { storage, index, entry: filesByStorage[storage][index] }
+      }
+      return null
+    })
+    if (targets.some((target) => target === null)) {
+      status = 0x00d6
+    } else {
+      try {
+        for (const target of targets) await unlink(target.entry.filePath)
+        for (const target of [...targets].sort((a, b) => b.storage - a.storage || b.index - a.index)) {
+          filesByStorage[target.storage].splice(target.index, 1)
+          filesByCameraPath.delete(`${target.storage}:${target.entry.cameraPath}`)
+        }
+      } catch {
+        status = 1
+      }
+    }
+  }
+  sendUdp(
+    socket,
+    address,
+    0x05,
+    encodeDuml({ target: request.target, id: request.id, cmdSet: 0x00, cmdId: 0x28, payload: Buffer.from([status & 0xff, (status >>> 8) & 0xff]) }),
+    sessionId,
+    sequence,
+  )
+  log('delete', { count, status, deletedCount: status === 0 ? targets.length : 0 })
+}
+
+async function handleUdp(socket, data, address) {
   const packet = parseUdp(data)
   if (!packet) return
   if (packet.packetType === 0x00) {
@@ -219,6 +268,10 @@ function handleUdp(socket, data, address) {
   if (request.cmdSet === 0x00 && request.cmdId === 0x26) {
     const cursor = request.payload.length >= 14 ? request.payload.readUInt32LE(10) : 1
     manifestReply(socket, address, { ...request, sessionId: packet.sessionId }, (cursor & 0x40000000) !== 0 ? 1 : 0)
+    return
+  }
+  if (request.cmdSet === 0x00 && request.cmdId === 0x28) {
+    await deleteReply(socket, address, request, packet.sessionId, udpSequence++)
     return
   }
   sendUdp(socket, address, 0x05, encodeDuml({ target: request.target, id: request.id, cmdSet: request.cmdSet, cmdId: request.cmdId, payload: responsePayload(request) }), packet.sessionId, udpSequence++)
@@ -269,7 +322,10 @@ async function loadFiles() {
   } else {
     await loadStorage(rootDir, model === 'pocket3' ? 0 : 1)
   }
-  filesByStorage.forEach((files) => files.sort((a, b) => a.name.localeCompare(b.name)))
+  filesByStorage.forEach((files, storage) => {
+    files.sort((a, b) => a.name.localeCompare(b.name))
+    files.forEach((file, index) => { file.handle = manifestHandle(storage, index) })
+  })
 }
 
 function contentType(filePath) {
@@ -328,7 +384,9 @@ function jsonResponse(response, value, status = 200) {
 async function start() {
   await loadFiles()
   const udp = dgram.createSocket('udp4')
-  udp.on('message', (data, address) => handleUdp(udp, data, address))
+  udp.on('message', (data, address) => {
+    void handleUdp(udp, data, address).catch((error) => log('udp-error', { error: error instanceof Error ? error.message : String(error) }))
+  })
   await new Promise((resolve, reject) => { udp.once('error', reject); udp.bind(udpPort, host, resolve) })
   const tcp = createTcpServer((socket) => { socket.on('data', () => log('tcp-poke')); setTimeout(() => socket.end(), 50) })
   await new Promise((resolve, reject) => { tcp.once('error', reject); tcp.listen(tcpPort, host, resolve) })

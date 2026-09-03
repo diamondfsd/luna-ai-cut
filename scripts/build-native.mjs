@@ -10,20 +10,22 @@
  *
  * 要求：目标需通过 rustup 安装，如 rustup target add x86_64-pc-windows-msvc
  */
+import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, readdirSync } from 'node:fs'
+import { chmodSync, closeSync, copyFileSync, existsSync, openSync, readSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
 import { prepareDxcRuntime } from './prepare-dxc.mjs'
+import { ensureMacX64OnnxRuntime } from './prepare-macos-x64-runtime.mjs'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
-const asrSourceDir = join(root, 'vendor', 'funasr-paraformer')
 
 // ── 确定目标平台 ──
 const target = process.env.CROSS_TARGET || ''
 const targetLower = target.toLowerCase()
+const useCargoXwin = process.env.CARGO_XWIN === '1' && targetLower.includes('windows-msvc')
 
 // 从 target 推断平台；没有 target 则用当前主机
 const isWin = targetLower.includes('windows') || (!target && process.platform === 'win32')
@@ -40,8 +42,70 @@ const targetArch = targetLower.includes('aarch64')
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
+const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker']
+
+function filesMatch(leftPath, rightPath) {
+  if (!existsSync(rightPath)) return false
+  const fileSize = statSync(leftPath).size
+  if (fileSize !== statSync(rightPath).size) return false
+
+  const leftFd = openSync(leftPath, 'r')
+  const rightFd = openSync(rightPath, 'r')
+  const leftBuffer = Buffer.allocUnsafe(1024 * 1024)
+  const rightBuffer = Buffer.allocUnsafe(leftBuffer.length)
+  try {
+    let offset = 0
+    while (offset < fileSize) {
+      const chunkSize = Math.min(leftBuffer.length, fileSize - offset)
+      const leftBytes = readSync(leftFd, leftBuffer, 0, chunkSize, offset)
+      const rightBytes = readSync(rightFd, rightBuffer, 0, chunkSize, offset)
+      if (leftBytes !== rightBytes) return false
+      if (leftBytes === 0) return false
+      if (!leftBuffer.subarray(0, leftBytes).equals(rightBuffer.subarray(0, rightBytes))) return false
+      offset += leftBytes
+    }
+    return true
+  } finally {
+    closeSync(leftFd)
+    closeSync(rightFd)
+  }
+}
+
+function copyArtifact(src, dest) {
+  if (filesMatch(src, dest)) return false
+  try {
+    copyFileSync(src, dest)
+    return true
+  } catch (error) {
+    if (isWin && (error?.code === 'EPERM' || error?.code === 'EBUSY')) {
+      throw new Error(`Cannot update ${dest} because Luna AI Cut is still using it. Close the running app and retry the build.`, { cause: error })
+    }
+    throw error
+  }
+}
+
+// The build output directory is shared by platform builds on developer machines.
+// Remove incompatible leftovers before copying the current target's artifacts.
+for (const fileName of readdirSync(rcDir)) {
+  const isIncompatible = isWin
+    ? workerBaseNames.includes(fileName) || /\.(dylib|so(?:\..*)?)$/i.test(fileName)
+    : /\.(exe|dll)$/i.test(fileName)
+      || /^DXC-LICENSE-.*\.txt$/i.test(fileName)
+      || (isMac && !isMacX64 && /^libonnxruntime.*\.dylib$/i.test(fileName))
+  if (!isIncompatible) continue
+  rmSync(join(rcDir, fileName), { force: true })
+  console.log('[build-native] removed incompatible artifact:', fileName)
+}
 
 if (isWin) {
+  const ffmpeg = spawnSync(process.execPath, [join(root, 'scripts', 'copy-ffmpeg.mjs'), '--target', 'win32', '--arch', targetArch], {
+    cwd: root,
+    stdio: 'inherit',
+  })
+  if (ffmpeg.status !== 0) {
+    console.error('[build-native] ❌ FFmpeg shared runtime preparation failed')
+    process.exit(1)
+  }
   await prepareDxcRuntime({ rootDir: root, outputDir: rcDir, arch: targetArch })
 }
 
@@ -113,51 +177,32 @@ function resolveCargo() {
   // 优先用 rustup 工具链的 cargo（支持交叉编译目标）
   const rustupCargo = join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'cargo')
   if (existsSync(rustupCargo)) return rustupCargo
+  const cargoHome = process.env.CARGO_HOME || join(homedir(), '.cargo')
+  const cargoProxy = join(cargoHome, 'bin', process.platform === 'win32' ? 'cargo.exe' : 'cargo')
+  if (existsSync(cargoProxy)) return cargoProxy
   return 'cargo'
 }
 
 const cargoBin = resolveCargo()
 
-function resolveCmake() {
-  if (process.env.CMAKE_BIN) return process.env.CMAKE_BIN
-  if (process.platform !== 'win32') return 'cmake'
-
-  const programFiles = process.env.ProgramFiles || 'C:\\Program Files'
-  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
-  const candidates = [
-    join(programFiles, 'CMake', 'bin', 'cmake.exe'),
-    join(programFilesX86, 'CMake', 'bin', 'cmake.exe'),
-  ]
-  for (const edition of ['Community', 'Professional', 'Enterprise', 'BuildTools']) {
-    candidates.push(
-      join(
-        programFiles,
-        'Microsoft Visual Studio',
-        '2022',
-        edition,
-        'Common7',
-        'IDE',
-        'CommonExtensions',
-        'Microsoft',
-        'CMake',
-        'CMake',
-        'bin',
-        'cmake.exe',
-      ),
-    )
-  }
-  return candidates.find((candidate) => existsSync(candidate)) || 'cmake'
-}
-
-const cmakeBin = resolveCmake()
-
 // 使用 rustup 工具链时，强制指定同 toolchain 的 rustc（避免 PATH 中的 Homebrew rustc 干扰）
-const rustcBin = cargoBin !== 'cargo'
+const macRustupCargo = join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'cargo')
+const rustcBin = cargoBin === macRustupCargo
   ? join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'rustc')
   : undefined
 
+if (isMacX64 && process.platform === 'darwin') {
+  const runtimeDir = await ensureMacX64OnnxRuntime({ rootDir: root, nativeDir: rcDir })
+  process.env.ORT_LIB_LOCATION = runtimeDir
+  process.env.ORT_PREFER_DYNAMIC_LINK = '1'
+}
+
 // ── cargo build ──
-const buildArgs = target ? ['build', '--release', '--target', target] : ['build', '--release']
+const buildArgs = useCargoXwin
+  ? ['xwin', 'build', '--release', '--target', target]
+  : target
+    ? ['build', '--release', '--target', target]
+    : ['build', '--release']
 
 console.log('[build-native] cargo build...', cargoBin, buildArgs.join(' '))
 const build = spawnSync(cargoBin, buildArgs, {
@@ -167,46 +212,6 @@ const build = spawnSync(cargoBin, buildArgs, {
 })
 if (build.status !== 0) {
   console.error('[build-native] ❌ cargo build failed')
-  process.exit(1)
-}
-
-// Paraformer 使用官方 FunASR GGUF/ggml 原生实现，保持为独立进程以隔离内存与故障。
-const asrBuildKey = target || `${process.platform}-${process.arch}`
-const asrBuildDir = join(rcDir, 'target', `funasr-${asrBuildKey}`)
-const asrConfigureArgs = [
-  '-S', asrSourceDir,
-  '-B', asrBuildDir,
-  '-DCMAKE_BUILD_TYPE=Release',
-]
-if (process.env.FUNASR_LLAMA_SOURCE_DIR) {
-  asrConfigureArgs.push(`-DFETCHCONTENT_SOURCE_DIR_LLAMA=${process.env.FUNASR_LLAMA_SOURCE_DIR}`)
-}
-if (isMac) {
-  asrConfigureArgs.push(`-DCMAKE_OSX_ARCHITECTURES=${targetArch === 'x64' ? 'x86_64' : 'arm64'}`)
-  asrConfigureArgs.push('-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0')
-} else if (isWin && process.platform === 'win32') {
-  asrConfigureArgs.push('-A', targetArch === 'arm64' ? 'ARM64' : targetArch === 'ia32' ? 'Win32' : 'x64')
-}
-console.log('[build-native] cmake configure Paraformer worker...')
-const asrConfigure = spawnSync(cmakeBin, asrConfigureArgs, { cwd: root, stdio: 'inherit' })
-if (asrConfigure.status !== 0) {
-  if (asrConfigure.error) console.error(`[build-native] CMake could not start: ${asrConfigure.error.message}`)
-  console.error('[build-native] ❌ Paraformer worker configure failed')
-  process.exit(1)
-}
-console.log('[build-native] cmake build Paraformer worker...')
-const asrBuild = spawnSync(cmakeBin, [
-  '--build', asrBuildDir,
-  '--config', 'Release',
-  '--target', 'luna-asr-worker',
-  '--parallel',
-], {
-  cwd: root,
-  stdio: 'inherit',
-})
-if (asrBuild.status !== 0) {
-  if (asrBuild.error) console.error(`[build-native] CMake could not start: ${asrBuild.error.message}`)
-  console.error('[build-native] ❌ Paraformer worker build failed')
   process.exit(1)
 }
 
@@ -220,7 +225,17 @@ for (const runtimeDir of runtimeDirs) {
   for (const fileName of readdirSync(runtimeDir)) {
     if (!/^onnxruntime.*\.dll$/i.test(fileName) && !/^libonnxruntime.*\.(dylib|so)/i.test(fileName)) continue
     const runtimeDest = join(rcDir, fileName)
-    copyFileSync(join(runtimeDir, fileName), runtimeDest)
+    copyArtifact(join(runtimeDir, fileName), runtimeDest)
+    console.log('[build-native] ✅', runtimeDest)
+  }
+}
+
+if (isWin) {
+  const ffmpegRuntimeDir = join(root, 'resources', 'ffmpeg')
+  for (const fileName of readdirSync(ffmpegRuntimeDir)) {
+    if (!/^(?:avformat-62|avcodec-62|avutil-60|swresample-6)\.dll$/i.test(fileName)) continue
+    const runtimeDest = join(rcDir, fileName)
+    copyArtifact(join(ffmpegRuntimeDir, fileName), runtimeDest)
     console.log('[build-native] ✅', runtimeDest)
   }
 }
@@ -231,41 +246,35 @@ const src = target
   : join(rcDir, 'target', 'release', libName)
 
 const dest = join(rcDir, 'luna-render-core.node')
-copyFileSync(src, dest)
+copyArtifact(src, dest)
 prepareMacArtifact(dest, 'forbidden')
 console.log('[build-native] ✅', dest)
 
-for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker']) {
+for (const baseName of workerBaseNames.slice(0, 5)) {
   const workerName = isWin ? `${baseName}.exe` : baseName
   const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
   const workerDest = join(rcDir, workerName)
-  copyFileSync(workerSrc, workerDest)
+  copyArtifact(workerSrc, workerDest)
   if (!isWin) chmodSync(workerDest, 0o755)
   prepareMacArtifact(workerDest, isMacX64 ? 'required' : 'optional')
   console.log('[build-native] ✅', workerDest)
 }
 
 const asrWorkerName = isWin ? 'luna-asr-worker.exe' : 'luna-asr-worker'
-const asrCandidates = [
-  join(asrBuildDir, 'Release', asrWorkerName),
-  join(asrBuildDir, asrWorkerName),
-]
-const asrWorkerSrc = asrCandidates.find((candidate) => existsSync(candidate))
-if (!asrWorkerSrc) {
-  console.error(`[build-native] ❌ Paraformer worker artifact missing: ${asrCandidates.join(', ')}`)
+const asrWorkerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), asrWorkerName)
+if (!existsSync(asrWorkerSrc)) {
+  console.error(`[build-native] ❌ Paraformer worker artifact missing: ${asrWorkerSrc}`)
   process.exit(1)
 }
+const asrWorkerDest = join(rcDir, asrWorkerName)
+copyArtifact(asrWorkerSrc, asrWorkerDest)
+if (!isWin) chmodSync(asrWorkerDest, 0o755)
+prepareMacArtifact(asrWorkerDest, isMacX64 ? 'required' : 'optional')
 if (!target) {
-  const asrHealthCheck = spawnSync(asrWorkerSrc, ['--health-check'], { stdio: 'inherit' })
+  const asrHealthCheck = spawnSync(asrWorkerDest, ['--health-check'], { stdio: 'inherit' })
   if (asrHealthCheck.status !== 0) {
     console.error('[build-native] ASR worker health check failed')
     process.exit(1)
   }
 }
-const asrWorkerDest = join(rcDir, asrWorkerName)
-copyFileSync(asrWorkerSrc, asrWorkerDest)
-if (!isWin) chmodSync(asrWorkerDest, 0o755)
-prepareMacArtifact(asrWorkerDest, 'forbidden')
-copyFileSync(join(asrSourceDir, 'LICENSE-FunASR'), join(rcDir, 'ASR-LICENSE-FunASR.txt'))
-copyFileSync(join(asrSourceDir, 'LICENSE-llama.cpp'), join(rcDir, 'ASR-LICENSE-llama.cpp.txt'))
 console.log('[build-native] ✅', asrWorkerDest)

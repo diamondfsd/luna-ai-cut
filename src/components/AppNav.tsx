@@ -1,4 +1,5 @@
-import { MonitorCog, Unplug } from 'lucide-react'
+import { useState } from 'react'
+import { Camera, MonitorCog, Radio, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -6,6 +7,8 @@ import { useExportProgress } from '../context/ExportProgressContext'
 import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
 import { SendToPhoneDialog } from './SendToPhoneDialog'
+import { CameraLivePreviewDialog } from './CameraLivePreviewDialog'
+import { IconButton, Tooltip } from '../ui'
 import '../styles/nav.css'
 
 interface AppNavProps {
@@ -17,7 +20,9 @@ interface AppNavProps {
 
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
   const { exportProgress } = useExportProgress()
-  const connected = Boolean(connection?.httpOk && connection.controlOk)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const obsStreamDemoVisible = !window.luna.isPackaged
+  const connected = Boolean(connection?.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`
@@ -39,6 +44,12 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台
           </NavLink>
+          {obsStreamDemoVisible && (
+            <NavLink to="/obs-stream" className={({ isActive }) => (isActive ? 'active' : '')}>
+              <Radio size={14} aria-hidden="true" />
+              OBS 推流
+            </NavLink>
+          )}
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>
@@ -57,6 +68,18 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
         <div className="nav-status">
           <span className={connected ? 'status-dot ok' : 'status-dot'} />
           <span>{statusText}</span>
+          {connected && (
+            <Tooltip content="打开相机预览">
+              <IconButton
+                variant="ghost"
+                size="mini"
+                icon={<Camera size={15} />}
+                aria-label="打开相机预览"
+                title="打开相机预览"
+                onClick={() => setPreviewOpen(true)}
+              />
+            </Tooltip>
+          )}
           {sourceMode === 'wireless' && (
             <button className="nav-icon-button" onClick={() => window.luna.openWifiSettings()} title="打开 Wi-Fi 设置">
               <MonitorCog size={15} />
@@ -73,6 +96,14 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           />
           <SendToPhoneDialog />
           <HelpDialog />
+          <CameraLivePreviewDialog
+            open={previewOpen}
+            connected={connected}
+            deviceId={activeDevice?.id}
+            host={connection?.host}
+            mode={sourceMode}
+            onOpenChange={setPreviewOpen}
+          />
         </div>
       </div>
     </nav>

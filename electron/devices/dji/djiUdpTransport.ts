@@ -1,21 +1,37 @@
 import dgram from 'node:dgram'
 import { randomInt } from 'node:crypto'
 import { decodeDjiMessage, encodeDjiMessage, type DjiMessage } from './djiBytes'
+import { buildAckPayload, buildRoutingHeader, cameraChannelFromPacket, nextSequenceForCameraChannel } from './djiUdpProtocol'
+import { djiErrorDetails, djiMessageDetails } from './djiLog'
+import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
 export interface DjiUdpPacket {
   packetType: number
   sessionId: number
   sequence: number
   payload: Buffer
+  raw: Buffer
 }
 
 export type DjiUdpCommand = Omit<DjiMessage, 'flags' | 'cmdSet' | 'cmdId'> & {
   flags?: number
   cmdSet: number
   cmdId: number
+  routingClass?: number
+  routingTail?: number
+}
+
+export type PacketActivityPredicate = (packet: DjiUdpPacket) => boolean
+
+export interface DjiUdpCollectionOptions {
+  quietDurationMs?: number
+  isActivity?: PacketActivityPredicate
+  quietFromStart?: boolean
+  isComplete?: (packets: readonly DjiUdpPacket[]) => boolean
 }
 
 const HANDSHAKE = Buffer.from('000064006400c005140000640000019001c005140000640014006400c00514000064000101040102', 'hex')
+const DJI_PREVIEW_RECV_BUFFER_BYTES = 4 * 1024 * 1024
 
 export function udpHeader(packetType: number, payloadLength: number, sessionId: number, sequence: number): Buffer {
   const total = 8 + payloadLength
@@ -37,16 +53,8 @@ export function parseUdpPacket(data: Uint8Array): DjiUdpPacket | null {
     sessionId: data[2] | (data[3] << 8),
     sequence: data[4] | (data[5] << 8),
     payload: Buffer.from(data.subarray(8, total)),
+    raw: Buffer.from(data.subarray(0, total)),
   }
-}
-
-export function buildRoutingHeader(sequence: number, counter: number): Buffer {
-  const header = Buffer.alloc(12)
-  header.writeUInt16LE((sequence - 8) & 0xffff, 0)
-  header.writeUInt16LE(sequence & 0xffff, 2)
-  header[8] = counter & 0xff
-  header[9] = 0x01
-  return header
 }
 
 export function buildHandshakePayload(baseSequence: number): Buffer {
@@ -55,9 +63,55 @@ export function buildHandshakePayload(baseSequence: number): Buffer {
   return payload
 }
 
+/**
+ * Find every CRC-valid DUML frame in a datalink datagram.
+ *
+ * The camera's outer UDP packet type is not stable across firmware/reply classes. Osmosis therefore
+ * scans the complete datagram instead of assuming packet type 0x05 and a fixed routing offset. Keep
+ * the same behavior here: normal camera replies have a 12-byte routing prefix, but scanning also
+ * handles status/data variants and packets containing more than one DUML frame.
+ */
+export function decodeDumlMessagesFromUdp(packet: DjiUdpPacket): DjiMessage[] {
+  const messages: DjiMessage[] = []
+  const payload = packet.payload
+  for (let offset = 0; offset + 13 <= payload.length; offset += 1) {
+    const decoded = decodeDjiMessage(payload, offset)
+    if (decoded) messages.push(decoded.message)
+  }
+  return messages
+}
+
+function decodeDumlMessagesFromStream(data: Uint8Array): DjiMessage[] {
+  const messages: DjiMessage[] = []
+  let offset = 0
+  while (offset + 13 <= data.length) {
+    const decoded = decodeDjiMessage(data, offset)
+    if (decoded) {
+      messages.push(decoded.message)
+    }
+    // Keep scanning one byte at a time, like osmosis. Some datalink replies wrap another DUML frame
+    // inside the first frame; jumping to decoded.next would hide that nested media response.
+    offset += 1
+  }
+  return messages
+}
+
+/**
+ * Decode the reliable media stream the camera sends as pktType=0x03.
+ *
+ * A DUML frame may cross UDP datagram boundaries. The 20 bytes preceding the stream in each
+ * datagram (8-byte transport header + 12-byte routing header) must be removed before concatenating;
+ * otherwise those headers are injected into a frame and its CRC can never validate.
+ */
+export function decodeDumlMessagesFromUdpStream(packets: readonly DjiUdpPacket[]): DjiMessage[] {
+  const parts = packets
+    .filter((packet) => packet.packetType === 0x03 && packet.payload.length > 12)
+    .map((packet) => packet.payload.subarray(12))
+  return parts.length > 0 ? decodeDumlMessagesFromStream(Buffer.concat(parts)) : []
+}
+
 export function decodeDumlFromUdp(packet: DjiUdpPacket): DjiMessage | null {
-  if (packet.packetType !== 0x05 || packet.payload.length <= 12) return null
-  return decodeDjiMessage(packet.payload, 12)?.message ?? null
+  return decodeDumlMessagesFromUdp(packet)[0] ?? null
 }
 
 export function encodeDumlUdpPacket(
@@ -65,27 +119,103 @@ export function encodeDumlUdpPacket(
   sessionId: number,
   sequence: number,
   counter: number,
+  routingClass = 0,
+  routingTail = 0,
 ): Buffer {
-  const routing = buildRoutingHeader(sequence, counter)
+  const routing = buildRoutingHeader(sequence, counter, routingClass, routingTail)
   const frame = encodeDjiMessage(message)
   return Buffer.concat([udpHeader(0x05, routing.length + frame.length, sessionId, sequence), routing, frame])
+}
+
+function packetTypeCounts(packets: readonly DjiUdpPacket[]): Record<string, number> {
+  return packets.reduce<Record<string, number>>((counts, packet) => {
+    const key = `0x${packet.packetType.toString(16).padStart(2, '0')}`
+    counts[key] = (counts[key] ?? 0) + 1
+    return counts
+  }, {})
 }
 
 export class DjiUdpTransport {
   private socket: dgram.Socket | null = null
   private sessionId = randomInt(0x1000, 0xfffe)
   private sequence = randomInt(0x1000, 0xf000) & 0xfff8
+  private baseSequence = this.sequence
   private counter = 0
+  private dumlSequence = 0xa000
+  private rxType2Sequence = this.sequence
+  private rxType3Sequence = this.sequence
+  private peerAckedTxSequence = this.sequence
+  private lastTxSequence = this.sequence
+  private seenType2 = false
+  private seenType3 = false
+  private cameraChannel: number | null = null
+  private sequenceSynchronized = false
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null
+  private reassertTimer: ReturnType<typeof setInterval> | null = null
+  private ackTimer: ReturnType<typeof setInterval> | null = null
+  private keepAliveMessageHandler: ((data: Buffer) => void) | null = null
+  private socketMessageHandler: ((data: Buffer) => void) | null = null
+  private readonly packetListeners = new Set<(packet: DjiUdpPacket) => void>()
+  private lastAckAt = 0
 
   constructor(private readonly host: string, private readonly port: number) {}
 
   async open(): Promise<void> {
-    if (this.socket) return
+    if (this.socket) {
+      logMainDebug('[DJI UDP] 复用已打开的 UDP socket', { host: this.host, port: this.port })
+      return
+    }
+    const startedAt = Date.now()
+    logMainInfo('[DJI UDP] 打开 UDP socket', { host: this.host, port: this.port })
+    // DJI keeps sequence state per datalink session. Reusing the same values after a close can
+    // complete the handshake while silently dropping every command that follows it.
+    this.sessionId = randomInt(0x1000, 0xfffe)
+    this.sequence = randomInt(0x1000, 0xf000) & 0xfff8
+    this.baseSequence = this.sequence
+    this.counter = 0
+    this.dumlSequence = 0xa000
+    this.rxType2Sequence = this.baseSequence
+    this.rxType3Sequence = this.baseSequence
+    this.peerAckedTxSequence = this.baseSequence
+    this.lastTxSequence = this.baseSequence
+    this.seenType2 = false
+    this.seenType3 = false
+    this.cameraChannel = null
+    this.sequenceSynchronized = false
+    this.lastAckAt = 0
     const socket = dgram.createSocket('udp4')
+    try {
+      socket.setRecvBufferSize(DJI_PREVIEW_RECV_BUFFER_BYTES)
+    } catch {
+      // Some platforms reject enlarging the UDP receive buffer; the default remains usable.
+    }
     this.socket = socket
+    this.socketMessageHandler = (data: Buffer): void => {
+      const packet = parseUdpPacket(data)
+      if (packet) this.observe(packet)
+    }
+    socket.on('message', this.socketMessageHandler)
     await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error): void => { socket.off('listening', onListening); reject(error) }
-      const onListening = (): void => { socket.off('error', onError); resolve() }
+      const onError = (error: Error): void => {
+        socket.off('listening', onListening)
+        logMainError('[DJI UDP] UDP socket 打开失败', {
+          host: this.host,
+          port: this.port,
+          elapsedMs: Date.now() - startedAt,
+          ...djiErrorDetails(error),
+        })
+        reject(error)
+      }
+      const onListening = (): void => {
+        socket.off('error', onError)
+        logMainInfo('[DJI UDP] UDP socket 已打开', {
+          host: this.host,
+          port: this.port,
+          localAddress: socket.address(),
+          elapsedMs: Date.now() - startedAt,
+        })
+        resolve()
+      }
       socket.once('error', onError)
       socket.once('listening', onListening)
       socket.bind(0, '0.0.0.0')
@@ -93,30 +223,191 @@ export class DjiUdpTransport {
   }
 
   async handshake(): Promise<void> {
+    const startedAt = Date.now()
+    logMainInfo('[DJI UDP] 握手开始', { host: this.host, port: this.port, timeoutMs: 1500 })
     await this.open()
     const payload = buildHandshakePayload(this.sequence)
-    const reply = await this.request(Buffer.concat([udpHeader(0x00, payload.length, this.sessionId, this.sequence), payload]), 1500)
-    if (!reply.some((packet) => packet.packetType === 0x00)) throw new Error(`DJI UDP ${this.port} 握手超时`)
-    this.sequence = (this.sequence + 8) & 0xffff
+    try {
+      // Handshake datagrams use transport sequence zero. The random base is carried in the
+      // handshake payload and reliable command sequencing starts at cameraChannel + 8.
+      const reply = await this.request(Buffer.concat([udpHeader(0x00, payload.length, this.sessionId, 0), payload]), 1500)
+      const packetTypes = reply.reduce<Record<string, number>>((counts, packet) => {
+        const key = `0x${packet.packetType.toString(16).padStart(2, '0')}`
+        counts[key] = (counts[key] ?? 0) + 1
+        return counts
+      }, {})
+      logMainDebug('[DJI UDP] 握手响应收包完成', {
+        host: this.host,
+        port: this.port,
+        packetCount: reply.length,
+        packetTypes,
+        elapsedMs: Date.now() - startedAt,
+      })
+      if (!reply.some((packet) => packet.packetType === 0x00)) {
+        logMainWarn('[DJI UDP] 握手未收到有效 0x00 响应', {
+          host: this.host,
+          port: this.port,
+          packetCount: reply.length,
+          packetTypes,
+          elapsedMs: Date.now() - startedAt,
+        })
+        throw new Error(`DJI UDP ${this.port} 握手超时`)
+      }
+    } catch (error) {
+      logMainError('[DJI UDP] 握手失败', {
+        host: this.host,
+        port: this.port,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
+    if (!this.synchronizeSequenceToCameraChannel()) {
+      // Keep the legacy base-sequence fallback for mock/older devices that do not emit a reliable
+      // packet during the handshake window. A real Pocket 4 will be aligned before preview starts.
+      this.sequence = (this.sequence + 8) & 0xffff
+    }
+    logMainInfo('[DJI UDP] 握手完成', { host: this.host, port: this.port, elapsedMs: Date.now() - startedAt })
   }
 
   async sendCommand(message: DjiUdpCommand): Promise<void> {
-    await this.open()
+    await this.sendCommandAtSequence(message, this.sequence, true)
+  }
+
+  private createCommandPacket(message: DjiUdpCommand, sequence: number, advanceSequence: boolean): Buffer {
     this.counter += 1
-    const packet = encodeDumlUdpPacket({ ...message, flags: message.flags ?? 0x40 }, this.sessionId, this.sequence, this.counter)
-    await this.send(packet)
-    this.sequence = (this.sequence + 8) & 0xffff
+    const packet = encodeDumlUdpPacket(
+      { ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 },
+      this.sessionId,
+      sequence,
+      this.counter,
+      message.routingClass ?? 0,
+      message.routingTail ?? 0,
+    )
+    if (advanceSequence) this.sequence = (sequence + 8) & 0xffff
+    this.lastTxSequence = sequence
+    return packet
+  }
+
+  private async sendCommandAtSequence(message: DjiUdpCommand, sequence: number, advanceSequence: boolean): Promise<void> {
+    await this.open()
+    await this.send(this.createCommandPacket(message, sequence, advanceSequence))
+  }
+
+  /**
+   * Pocket 4 may not publish its reliable channel until the live-view trigger
+   * is sent. Probe with the unsequenced trigger, learn the route prefix, then
+   * continue the command stream at cameraChannel + 8 as in dji-mimo.
+   */
+  async synchronizePreviewChannel(trigger: DjiUdpCommand, timeoutMs = 500): Promise<{
+    cameraChannel: number
+    nextSequence: number
+    probed: boolean
+  }> {
+    await this.open()
+    if (this.cameraChannel !== null) {
+      this.synchronizeSequenceToCameraChannel()
+      return {
+        cameraChannel: this.cameraChannel,
+        nextSequence: this.sequence,
+        probed: false,
+      }
+    }
+
+    const startedAt = Date.now()
+    const probePacket = this.createCommandPacket(trigger, 0, false)
+    const packets = await this.collectPackets(timeoutMs, {
+      isComplete: () => this.cameraChannel !== null,
+    }, probePacket)
+    if (this.cameraChannel === null) {
+      throw new Error(`DJI 预览可靠通道同步超时（收到 ${packets.length} 个响应包）`)
+    }
+
+    const cameraChannel: number = this.cameraChannel
+    this.synchronizeSequenceToCameraChannel()
+    logMainInfo('[DJI UDP] 预览可靠通道已同步', {
+      host: this.host,
+      port: this.port,
+      cameraChannel: `0x${cameraChannel.toString(16).padStart(4, '0')}`,
+      nextSequence: `0x${this.sequence.toString(16).padStart(4, '0')}`,
+      packetCount: packets.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return {
+      cameraChannel,
+      nextSequence: this.sequence,
+      probed: true,
+    }
+  }
+
+  private synchronizeSequenceToCameraChannel(): boolean {
+    if (this.cameraChannel === null) return false
+    if (this.sequenceSynchronized) return true
+    this.sequence = nextSequenceForCameraChannel(this.cameraChannel)
+    this.peerAckedTxSequence = this.cameraChannel
+    this.lastTxSequence = this.cameraChannel
+    this.sequenceSynchronized = true
+    return true
+  }
+
+  previewTransportState(): {
+    baseSequence: number
+    cameraChannel: number | null
+    nextSequence: number
+    sequenceSynchronized: boolean
+  } {
+    return {
+      baseSequence: this.baseSequence,
+      cameraChannel: this.cameraChannel,
+      nextSequence: this.sequence,
+      sequenceSynchronized: this.sequenceSynchronized,
+    }
   }
 
   async commandAndCollect(
     message: DjiUdpCommand,
     durationMs: number,
+    options: DjiUdpCollectionOptions = {},
   ): Promise<DjiUdpPacket[]> {
+    const startedAt = Date.now()
     await this.open()
     this.counter += 1
-    const packet = encodeDumlUdpPacket({ ...message, flags: message.flags ?? 0x40 }, this.sessionId, this.sequence, this.counter)
+    const sequence = this.sequence
+    const packet = encodeDumlUdpPacket(
+      { ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 },
+      this.sessionId,
+      sequence,
+      this.counter,
+      message.routingClass ?? 0,
+      message.routingTail ?? 0,
+    )
     this.sequence = (this.sequence + 8) & 0xffff
-    return this.request(packet, durationMs)
+    this.lastTxSequence = sequence
+    logMainDebug('[DJI UDP] 命令发送并收集响应开始', {
+      host: this.host,
+      port: this.port,
+      durationMs,
+      ...djiMessageDetails({ ...message, flags: message.flags ?? 0x40 }),
+    })
+    try {
+      const packets = await this.collectPackets(durationMs, options, packet)
+      logMainDebug('[DJI UDP] 命令发送并收集响应完成', {
+        host: this.host,
+        port: this.port,
+        packetCount: packets.length,
+        packetTypes: packetTypeCounts(packets),
+        elapsedMs: Date.now() - startedAt,
+      })
+      return packets
+    } catch (error) {
+      logMainError('[DJI UDP] 命令发送并收集响应失败', {
+        host: this.host,
+        port: this.port,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
   }
 
   async commandSequenceAndCollect(
@@ -124,17 +415,36 @@ export class DjiUdpTransport {
     durationMs: number,
     intervalMs = 0,
   ): Promise<DjiUdpPacket[]> {
+    const startedAt = Date.now()
     await this.open()
     const socket = this.socket
     if (!socket) throw new Error('DJI UDP 尚未打开')
+    logMainDebug('[DJI UDP] 命令序列发送并收集响应开始', {
+      host: this.host,
+      port: this.port,
+      commandCount: messages.length,
+      durationMs,
+      intervalMs,
+    })
     return new Promise((resolve, reject) => {
       const packets: DjiUdpPacket[] = []
       const onMessage = (data: Buffer): void => {
         const packet = parseUdpPacket(data)
-        if (packet) packets.push(packet)
+        if (packet) {
+          this.observe(packet)
+          packets.push(packet)
+        }
       }
       const timer = setTimeout(() => {
         socket.off('message', onMessage)
+        logMainDebug('[DJI UDP] 命令序列收集完成', {
+          host: this.host,
+          port: this.port,
+          commandCount: messages.length,
+          packetCount: packets.length,
+          packetTypes: packetTypeCounts(packets),
+          elapsedMs: Date.now() - startedAt,
+        })
         resolve(packets)
       }, durationMs)
       socket.on('message', onMessage)
@@ -142,9 +452,18 @@ export class DjiUdpTransport {
         try {
           for (const [index, message] of messages.entries()) {
             this.counter += 1
-            const packet = encodeDumlUdpPacket({ ...message, flags: message.flags ?? 0x40 }, this.sessionId, this.sequence, this.counter)
+            const sequence = this.sequence
+            const packet = encodeDumlUdpPacket(
+              { ...message, id: this.nextDumlId(), flags: message.flags ?? 0x40 },
+              this.sessionId,
+              sequence,
+              this.counter,
+              message.routingClass ?? 0,
+              message.routingTail ?? 0,
+            )
             this.sequence = (this.sequence + 8) & 0xffff
             await this.send(packet)
+            this.lastTxSequence = sequence
             if (intervalMs > 0 && index + 1 < messages.length) {
               await new Promise((wait) => setTimeout(wait, intervalMs))
             }
@@ -152,6 +471,13 @@ export class DjiUdpTransport {
         } catch (error) {
           clearTimeout(timer)
           socket.off('message', onMessage)
+          logMainError('[DJI UDP] 命令序列发送失败', {
+            host: this.host,
+            port: this.port,
+            commandCount: messages.length,
+            elapsedMs: Date.now() - startedAt,
+            ...djiErrorDetails(error),
+          })
           reject(error)
         }
       })()
@@ -159,48 +485,240 @@ export class DjiUdpTransport {
   }
 
   async collect(durationMs = 700): Promise<DjiUdpPacket[]> {
+    return this.collectPackets(durationMs)
+  }
+
+  /**
+   * Collect a burst without waiting through the whole maximum window after the stream goes quiet.
+   * The maximum is retained because DJI may pause between reliable downlink fragments.
+   */
+  async collectUntilQuiet(
+    maxDurationMs = 800,
+    quietDurationMs = 400,
+    isActivity: PacketActivityPredicate = () => true,
+    quietFromStart = false,
+    options: DjiUdpCollectionOptions = {},
+  ): Promise<DjiUdpPacket[]> {
+    return this.collectPackets(maxDurationMs, { ...options, quietDurationMs, isActivity, quietFromStart })
+  }
+
+  private async collectPackets(
+    maxDurationMs: number,
+    options: DjiUdpCollectionOptions = {},
+    packetToSend?: Buffer,
+  ): Promise<DjiUdpPacket[]> {
     const socket = this.socket
     if (!socket) return []
-    return new Promise((resolve) => {
+    const quietDurationMs = options.quietDurationMs ?? null
+    const isActivity = options.isActivity ?? (() => true)
+    return new Promise((resolve, reject) => {
       const packets: DjiUdpPacket[] = []
-      const timer = setTimeout(() => {
+      let finished = false
+      let quietTimer: ReturnType<typeof setTimeout> | null = null
+      const finish = (): void => {
+        if (finished) return
+        finished = true
+        clearTimeout(maxTimer)
+        if (quietTimer) clearTimeout(quietTimer)
         socket.off('message', onMessage)
         resolve(packets)
-      }, durationMs)
+      }
+      const armQuietTimer = (): void => {
+        if (quietDurationMs === null) return
+        if (quietTimer) clearTimeout(quietTimer)
+        quietTimer = setTimeout(finish, quietDurationMs)
+      }
       const onMessage = (data: Buffer): void => {
         const packet = parseUdpPacket(data)
-        if (packet) packets.push(packet)
+        if (!packet) return
+        this.observe(packet)
+        packets.push(packet)
+        if (isActivity(packet)) armQuietTimer()
+        if (options.isComplete?.(packets)) finish()
       }
+      const maxTimer = setTimeout(finish, maxDurationMs)
       socket.on('message', onMessage)
-      void timer
+      if (quietDurationMs !== null && options.quietFromStart) armQuietTimer()
+      if (packetToSend) {
+        void this.send(packetToSend).catch((error: unknown) => {
+          if (finished) return
+          finished = true
+          clearTimeout(maxTimer)
+          if (quietTimer) clearTimeout(quietTimer)
+          socket.off('message', onMessage)
+          reject(error)
+        })
+      }
     })
   }
 
   async request(packet: Buffer, timeoutMs: number): Promise<DjiUdpPacket[]> {
+    if (!this.socket) throw new Error('DJI UDP 尚未打开')
+    return this.collectPackets(timeoutMs, {}, packet)
+  }
+
+  /**
+   * Keep the camera's browse session alive. The 0x00/0x88 presence beat is separate from the
+   * playback command: playback is a camera-wide mode and DJI drops it roughly one second after
+   * the last app presence frame.
+   */
+  async startKeepAlive(presence: DjiUdpCommand, reassert?: DjiUdpCommand): Promise<void> {
+    const startedAt = Date.now()
+    logMainDebug('[DJI UDP] 启动回放会话保活', {
+      host: this.host,
+      port: this.port,
+      reassertEnabled: Boolean(reassert),
+    })
+    await this.open()
+    this.stopKeepAlive()
     const socket = this.socket
     if (!socket) throw new Error('DJI UDP 尚未打开')
-    return new Promise((resolve, reject) => {
-      const packets: DjiUdpPacket[] = []
-      const timer = setTimeout(() => {
-        socket.off('message', onMessage)
-        resolve(packets)
-      }, timeoutMs)
-      const onMessage = (data: Buffer): void => {
-        const parsed = parseUdpPacket(data)
-        if (parsed) packets.push(parsed)
-      }
-      socket.on('message', onMessage)
-      void this.send(packet).catch((error: unknown) => {
-        clearTimeout(timer)
-        socket.off('message', onMessage)
-        reject(error)
+
+    const onMessage = (data: Buffer): void => {
+      const packet = parseUdpPacket(data)
+      if (packet) this.observe(packet)
+    }
+    this.keepAliveMessageHandler = onMessage
+    socket.on('message', onMessage)
+
+    try {
+      await this.sendCommand(presence)
+      await this.sendAck()
+    } catch (error) {
+      this.stopKeepAlive()
+      logMainError('[DJI UDP] 启动回放会话保活失败', {
+        host: this.host,
+        port: this.port,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
       })
+      throw error
+    }
+
+    this.keepAliveTimer = setInterval(() => {
+      void this.sendCommand(presence).catch(() => undefined)
+      void this.sendAck().catch(() => undefined)
+    }, 1000)
+    if (reassert) {
+      this.reassertTimer = setInterval(() => {
+        void this.sendCommand(reassert).catch(() => undefined)
+      }, 10000)
+    }
+    logMainInfo('[DJI UDP] 回放会话保活已启动', {
+      host: this.host,
+      port: this.port,
+      reassertEnabled: Boolean(reassert),
+      elapsedMs: Date.now() - startedAt,
     })
   }
 
+  stopKeepAlive(): void {
+    if (this.keepAliveTimer) clearInterval(this.keepAliveTimer)
+    if (this.reassertTimer) clearInterval(this.reassertTimer)
+    this.keepAliveTimer = null
+    this.reassertTimer = null
+    if (this.keepAliveMessageHandler) this.socket?.off('message', this.keepAliveMessageHandler)
+    this.keepAliveMessageHandler = null
+  }
+
+  subscribePackets(listener: (packet: DjiUdpPacket) => void): () => void {
+    this.packetListeners.add(listener)
+    const socket = this.socket
+    if (!socket) {
+      this.packetListeners.delete(listener)
+      throw new Error('DJI UDP 尚未打开')
+    }
+    const onMessage = (data: Buffer): void => {
+      const packet = parseUdpPacket(data)
+      if (packet) {
+        this.observe(packet)
+        listener(packet)
+      }
+    }
+    socket.on('message', onMessage)
+    return () => {
+      socket.off('message', onMessage)
+      this.packetListeners.delete(listener)
+    }
+  }
+
+  /** Send the 34-byte pktType=0x04 sliding-window acknowledgement used by Osmosis. */
+  async sendAck(): Promise<void> {
+    const socket = this.socket
+    if (!socket) return
+    const payload = buildAckPayload(
+      this.rxType2Sequence,
+      this.rxType3Sequence,
+      this.peerAckedTxSequence,
+      this.lastTxSequence,
+    )
+    await this.send(Buffer.concat([udpHeader(0x04, payload.length, this.sessionId, 0), payload]))
+  }
+
+  startAckTimer(intervalMs = 20): void {
+    if (this.ackTimer) return
+    void this.sendAck().catch(() => undefined)
+    this.ackTimer = setInterval(() => {
+      void this.sendAck().catch(() => undefined)
+    }, intervalMs)
+  }
+
+  stopAckTimer(): void {
+    if (this.ackTimer) clearInterval(this.ackTimer)
+    this.ackTimer = null
+  }
+
   close(): void {
+    logMainDebug('[DJI UDP] 关闭 UDP socket', { host: this.host, port: this.port })
+    this.stopKeepAlive()
+    this.stopAckTimer()
+    this.packetListeners.clear()
+    if (this.socketMessageHandler) this.socket?.off('message', this.socketMessageHandler)
+    this.socketMessageHandler = null
     this.socket?.close()
     this.socket = null
+  }
+
+  private observe(packet: DjiUdpPacket): void {
+    // Keep the same three moving ACK windows as Osmosis. The manifest stream is normally delivered
+    // as pktType 0x03, while pktType 0x01 carries the camera's ACK of our outgoing sequence.
+    if (packet.sequence !== 0) {
+      if (packet.packetType === 0x02) {
+        this.rxType2Sequence = packet.sequence
+        this.seenType2 = true
+      } else if (packet.packetType === 0x03) {
+        this.rxType3Sequence = packet.sequence
+        this.seenType3 = true
+      }
+    }
+    const cameraChannel = cameraChannelFromPacket(packet)
+    if (cameraChannel !== null && cameraChannel !== this.cameraChannel) {
+      this.cameraChannel = cameraChannel
+      logMainDebug('[DJI UDP] 收到相机可靠通道', {
+        host: this.host,
+        port: this.port,
+        packetType: `0x${packet.packetType.toString(16).padStart(2, '0')}`,
+        cameraChannel: `0x${cameraChannel.toString(16).padStart(4, '0')}`,
+      })
+    }
+    if (packet.packetType === 0x01 && packet.payload.length >= 26) {
+      const statusType2 = packet.payload.readUInt16LE(2)
+      const statusType3 = packet.payload.readUInt16LE(10)
+      const statusAckTx = packet.payload.readUInt16LE(16)
+      if (!this.seenType2 && statusType2 !== 0) this.rxType2Sequence = statusType2
+      if (!this.seenType3 && statusType3 !== 0) this.rxType3Sequence = statusType3
+      if (statusAckTx !== 0) this.peerAckedTxSequence = statusAckTx
+    }
+    if (packet.packetType === 0x05 && Date.now() - this.lastAckAt >= 100) {
+      this.lastAckAt = Date.now()
+      void this.sendAck().catch(() => undefined)
+    }
+  }
+
+  private nextDumlId(): number {
+    const id = this.dumlSequence
+    this.dumlSequence = (this.dumlSequence + 1) & 0xffff
+    return id
   }
 
   private async send(packet: Buffer): Promise<void> {

@@ -5,6 +5,7 @@ import { promisify } from 'node:util'
 
 import { readMediaDeviceInfo } from '../media/exifReader'
 import { normalizeJpegExifSegment } from '../media/jpegExifMetadata'
+import { buildJpegHdrMetadata, extractJpegIccSegments } from '../media/jpegHdrMetadata'
 
 const execFileAsync = promisify(execFile)
 
@@ -40,10 +41,18 @@ export async function embedJpegSourceMetadata(outputPath: string, sourcePath?: s
   if (!sourcePath || !/\.jpe?g$/i.test(outputPath)) return false
   const [source, output] = await Promise.all([readFile(sourcePath), readFile(outputPath)])
   const sourceExif = jpegExifSegment(source)
-  if (!sourceExif || output[0] !== 0xff || output[1] !== 0xd8) return false
-  const exif = normalizeJpegExifSegment(sourceExif, output)
+  if (output[0] !== 0xff || output[1] !== 0xd8) return false
+  const exif = sourceExif ? normalizeJpegExifSegment(sourceExif, output) : null
+  const leadingSegments = [
+    ...(exif ? [exif] : []),
+    ...extractJpegIccSegments(source),
+  ]
   const insertAt = jpegMetadataInsertOffset(output)
-  await writeFile(outputPath, Buffer.concat([output.subarray(0, insertAt), exif, output.subarray(insertAt)]))
+  const hdr = buildJpegHdrMetadata(source, output, leadingSegments, insertAt)
+  const segments = [...leadingSegments, ...(hdr?.segments ?? [])]
+  if (segments.length === 0) return false
+  const enriched = Buffer.concat([output.subarray(0, insertAt), ...segments, output.subarray(insertAt)])
+  await writeFile(outputPath, hdr ? Buffer.concat([enriched, hdr.gainMapImage]) : enriched)
   return true
 }
 

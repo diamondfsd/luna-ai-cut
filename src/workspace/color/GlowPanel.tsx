@@ -9,9 +9,11 @@ interface GlowPanelProps {
   value: EditPipeline['color']
   modified: boolean
   onChange: (patch: Partial<EditPipeline['color']>) => void
+  onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
 }
 
-export function GlowPanel({ value, modified, onChange }: GlowPanelProps) {
+export function GlowPanel({ value, modified, onChange, onPreviewChange }: GlowPanelProps) {
+  const previewChange = onPreviewChange ?? onChange
   return (
     <Accordion
       title="辉光"
@@ -28,9 +30,9 @@ export function GlowPanel({ value, modified, onChange }: GlowPanelProps) {
         </button>
       )}
     >
-      <ParamSlider label="强度" value={value.glowStrength} {...sliderRange(EDIT_PARAMETER_RANGES.color.glowStrength)} onChange={(glowStrength) => onChange({ glowStrength })} formatValue={String} />
-      <ParamSlider label="范围" value={value.glowRadius} {...sliderRange(EDIT_PARAMETER_RANGES.color.glowRadius)} onChange={(glowRadius) => onChange({ glowRadius })} formatValue={String} />
-      <ParamSlider label="高光阈值" value={value.glowThreshold} {...sliderRange(EDIT_PARAMETER_RANGES.color.glowThreshold)} onChange={(glowThreshold) => onChange({ glowThreshold })} formatValue={String} />
+      <ParamSlider label="强度" value={value.glowStrength} {...sliderRange(EDIT_PARAMETER_RANGES.color.glowStrength)} onChange={(glowStrength) => onChange({ glowStrength })} onPreviewChange={(glowStrength) => previewChange({ glowStrength })} onCommit={(glowStrength) => onChange({ glowStrength })} formatValue={String} />
+      <ParamSlider label="范围" value={value.glowRadius} {...sliderRange(EDIT_PARAMETER_RANGES.color.glowRadius)} onChange={(glowRadius) => onChange({ glowRadius })} onPreviewChange={(glowRadius) => previewChange({ glowRadius })} onCommit={(glowRadius) => onChange({ glowRadius })} formatValue={String} />
+      <ParamSlider label="高光阈值" value={value.glowThreshold} {...sliderRange(EDIT_PARAMETER_RANGES.color.glowThreshold)} onChange={(glowThreshold) => onChange({ glowThreshold })} onPreviewChange={(glowThreshold) => previewChange({ glowThreshold })} onCommit={(glowThreshold) => onChange({ glowThreshold })} formatValue={String} />
     </Accordion>
   )
 }

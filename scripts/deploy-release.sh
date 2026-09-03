@@ -2,22 +2,23 @@
 set -euo pipefail
 
 # ============================================================
-# deploy-release.sh — 从 GitHub Release 下载产物并上传到 GitCode
+# deploy-release.sh — 上传本地产物到 GitCode
 #
 # 用法:
-#   ./scripts/deploy-release.sh                 # 自动取 package.json 版本，下载 + 上传
-#   ./scripts/deploy-release.sh v1.3.0          # 手动指定版本，下载 + 上传
+#   ./scripts/deploy-release.sh                 # 读取本地 release/<版本>/，上传
+#   ./scripts/deploy-release.sh v1.3.0         # 手动指定版本，读取本地并上传
+#   ./scripts/deploy-release.sh --from-github v1.3.0  # 显式使用 GitHub 产物
 #
 # 前置条件:
-#   - gh CLI 已安装并登录
 #   - GITCODE_TOKEN 环境变量已设置，或 deploy-release.conf 已配置
 #
 # 流程:
-#   1. 从 GitHub Release 下载构建产物（macOS DMG + Windows EXE）
-#   2. 在 GitCode 创建 Release
-#   3. 上传产物到 GitCode Release
-#   4. 更新 mirror 仓库 README
-#   5. 更新 Landing 页面下载地址
+#   1. 默认从本地 release/<版本>/ 读取构建产物（macOS DMG + Windows EXE）
+#   2. 只有显式指定 --from-github 时才从 GitHub Release 下载产物
+#   3. 在 GitCode 创建 Release
+#   4. 上传产物到 GitCode Release
+#   5. 更新 mirror 仓库 README
+#   6. 更新 Landing 页面下载地址
 # ============================================================
 
 # ── 加载本地配置（如有） ──
@@ -25,13 +26,35 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/deploy-release.conf"
 if [ -f "$CONF_FILE" ]; then
   source "$CONF_FILE"
+else
+  COMMON_GIT_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [ -n "$COMMON_GIT_DIR" ]; then
+    PRIMARY_CONF="$(cd "$(dirname "$COMMON_GIT_DIR")" && pwd)/scripts/deploy-release.conf"
+    if [ -f "$PRIMARY_CONF" ]; then
+      source "$PRIMARY_CONF"
+    fi
+  fi
 fi
 
 # ── 参数解析 ──
 PKG_VER="$(node -p "require('./package.json').version")"
-DEFAULT_TAG="v${PKG_VER}"
-TAG="${1:-$DEFAULT_TAG}"
+SOURCE_MODE="local"
+TAG=""
+for arg in "$@"; do
+  case "$arg" in
+    --from-github) SOURCE_MODE="github" ;;
+    v*) TAG="$arg" ;;
+    *) echo "未知参数: ${arg}" >&2; exit 1 ;;
+  esac
+done
+TAG="${TAG:-v${PKG_VER}}"
 RELEASE_NOTES="${SCRIPT_DIR}/../RELEASE_NOTES_${TAG}.md"
+if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+  IS_BETA=true
+else
+  IS_BETA=false
+fi
+GITCODE_TAG="$TAG"
 
 if [ ! -f "$RELEASE_NOTES" ]; then
   echo "发布说明文件不存在: ${RELEASE_NOTES}" >&2
@@ -45,6 +68,8 @@ GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
 GITCODE_DL="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 GITHUB_REPO="${GITHUB_REPO:-diamondfsd/luna-ai-cut}"
 DOWNLOAD_DIR="release"
+RELEASE_VERSION="${TAG#v}"
+GITCODE_TAG_URL="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$GITCODE_TAG")"
 
 # ── 颜色 ──
 RED='\033[0;31m'
@@ -59,48 +84,71 @@ warn()  { echo -e "${YELLOW}  ⚠${NC} $*"; }
 err()   { echo -e "${RED}  ✗${NC} $*"; }
 
 # ============================================================
-# 第一步：从 GitHub Release 下载构建产物
+# 第一步：准备构建产物
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"
-info "  Luna AI Cut ${TAG} — 从 GitHub 下载构建产物"
+info "  Luna AI Cut ${TAG} — 准备发布产物"
 info "═══════════════════════════════════════════════════════════"
 echo ""
 
-info "清理旧下载目录..."
-rm -rf "${DOWNLOAD_DIR:?}"/*
-mkdir -p "$DOWNLOAD_DIR"
-ok "目录已清理"
+if [ "$SOURCE_MODE" = "local" ]; then
+  LOCAL_RELEASE_DIR="${DOWNLOAD_DIR}/${RELEASE_VERSION}"
+  info "读取本地产物目录 ${LOCAL_RELEASE_DIR}/..."
+  if [ ! -d "$LOCAL_RELEASE_DIR" ]; then
+    err "本地产物目录不存在，请先完成三平台构建: ${LOCAL_RELEASE_DIR}"
+    exit 1
+  fi
+else
+  info "清理旧下载目录..."
+  rm -rf "${DOWNLOAD_DIR:?}"/*
+  mkdir -p "$DOWNLOAD_DIR"
+  ok "目录已清理"
 
-info "检查 gh CLI..."
-if ! command -v gh &>/dev/null; then
-  err "请先安装 gh CLI 并登录 (brew install gh && gh auth login)"
-  exit 1
+  info "检查 gh CLI..."
+  if ! command -v gh &>/dev/null; then
+    err "请先安装 gh CLI 并登录 (brew install gh && gh auth login)"
+    exit 1
+  fi
+
+  info "检查 GitHub Release ${TAG}..."
+  if ! gh release view "$TAG" --repo "$GITHUB_REPO" &>/dev/null; then
+    err "GitHub Release ${TAG} 不存在，请先创建 Release"
+    info "运行: gh release create ${TAG} --title \"${TAG}\" --notes \"...\""
+    exit 1
+  fi
+  ok "Release 存在"
+
+  info "下载构建产物到 ${DOWNLOAD_DIR}/..."
+  gh release download "$TAG" \
+    --repo "$GITHUB_REPO" \
+    --dir "$DOWNLOAD_DIR" \
+    --pattern "*.dmg" \
+    --pattern "*.exe"
+  ok "下载完成"
 fi
-
-info "检查 GitHub Release ${TAG}..."
-if ! gh release view "$TAG" --repo "$GITHUB_REPO" &>/dev/null; then
-  err "GitHub Release ${TAG} 不存在，请先创建 Release"
-  info "运行: gh release create ${TAG} --title \"${TAG}\" --notes \"...\""
-  exit 1
-fi
-ok "Release 存在"
-
-info "下载构建产物到 ${DOWNLOAD_DIR}/..."
-gh release download "$TAG" \
-  --repo "$GITHUB_REPO" \
-  --dir "$DOWNLOAD_DIR" \
-  --pattern "*.dmg" \
-  --pattern "*.exe"
-ok "下载完成"
 
 # 列出下载的产物
 FILES=()
-while IFS= read -r f; do FILES+=("$f"); done < <(find "$DOWNLOAD_DIR" \( -name "*.dmg" -o -name "*.exe" \) -type f 2>/dev/null || true)
+if [ "$SOURCE_MODE" = "local" ]; then
+  while IFS= read -r f; do FILES+=("$f"); done < <(find "$LOCAL_RELEASE_DIR" -maxdepth 1 \( -name "*.dmg" -o -name "*.exe" \) -type f 2>/dev/null || true)
+else
+  while IFS= read -r f; do FILES+=("$f"); done < <(find "$DOWNLOAD_DIR" \( -name "*.dmg" -o -name "*.exe" \) -type f 2>/dev/null || true)
+fi
 
 if [ ${#FILES[@]} -eq 0 ]; then
   err "未找到下载的构建产物（.dmg / .exe）"
   exit 1
+fi
+
+if [ "$SOURCE_MODE" = "local" ]; then
+  mac_arm_count="$(find "$LOCAL_RELEASE_DIR" -maxdepth 1 -type f -name '*-arm64.dmg' | wc -l | tr -d ' ')"
+  mac_x64_count="$(find "$LOCAL_RELEASE_DIR" -maxdepth 1 -type f -name '*-x64.dmg' | wc -l | tr -d ' ')"
+  win_count="$(find "$LOCAL_RELEASE_DIR" -maxdepth 1 -type f -name '*.exe' | wc -l | tr -d ' ')"
+  if [ "$mac_arm_count" -lt 1 ] || [ "$mac_x64_count" -lt 1 ] || [ "$win_count" -lt 1 ]; then
+    err "本地产物不完整，需要 macOS ARM64、macOS x64、Windows x64 各至少一个安装包"
+    exit 1
+  fi
 fi
 
 for f in "${FILES[@]}"; do
@@ -114,21 +162,22 @@ done
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"
-info "  GitCode Release — ${TAG}"
+info "  GitCode Release — ${GITCODE_TAG}"
 info "═══════════════════════════════════════════════════════════"
 echo ""
 
 API_BASE="https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}"
 
 info "创建 Release..."
+RELEASE_BODY="$(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1], encoding="utf-8").read()))' "$RELEASE_NOTES")"
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API_BASE}/releases" \
   -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "$(cat <<-END
 {
-  "tag_name": "${TAG}",
-  "name": "${TAG}",
-  "body": "Luna AI Cut ${TAG} 发布，详见 https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
+  "tag_name": "${GITCODE_TAG}",
+  "name": "${GITCODE_TAG}",
+  "body": ${RELEASE_BODY}
 }
 END
 )" ) || true
@@ -159,7 +208,7 @@ for filepath in "${FILES[@]}"; do
 
   # 获取 OBS 上传地址
   upload_json=$(curl -sS \
-    "${API_BASE}/releases/${TAG}/upload_url?file_name=${encoded_name}" \
+    "${API_BASE}/releases/${GITCODE_TAG_URL}/upload_url?file_name=${encoded_name}" \
     -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
   upload_url=$(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
@@ -186,6 +235,13 @@ for filepath in "${FILES[@]}"; do
     ok "${filename} 上传完成" || err "${filename} 上传失败"
 done
 
+if [ "$IS_BETA" = true ]; then
+  echo ""
+  ok "内测版本 ${TAG} 已发布到 GitCode Release ${GITCODE_TAG}"
+  info "不会更新公开下载页或稳定版 README"
+  info "  https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${GITCODE_TAG}"
+  exit 0
+fi
 
 # ============================================================
 # 第四步：更新 README
@@ -198,7 +254,7 @@ echo ""
 
 # 获取 release 详情得到附件名称
 release_json=$(curl -sS \
-  "${API_BASE}/releases/tags/${TAG}" \
+  "${API_BASE}/releases/tags/${GITCODE_TAG_URL}" \
   -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
 mac_arm_name=$(echo "$release_json" | python3 -c "
@@ -225,9 +281,9 @@ for a in d.get('assets',[]):
 
 # API 返回的 browser_download_url 使用 api.gitcode.com，公开下载会返回 404。
 # README 与 Landing 页面统一使用 GitCode Release 的公开下载域名。
-mac_arm_url="${GITCODE_DL}/${TAG}/${mac_arm_name}"
-mac_x64_url="${GITCODE_DL}/${TAG}/${mac_x64_name}"
-win_url="${GITCODE_DL}/${TAG}/${win_name}"
+mac_arm_url="${GITCODE_DL}/${GITCODE_TAG}/${mac_arm_name}"
+mac_x64_url="${GITCODE_DL}/${GITCODE_TAG}/${mac_x64_name}"
+win_url="${GITCODE_DL}/${GITCODE_TAG}/${win_name}"
 
 echo "  macOS ARM64: ${mac_arm_name:-<未上传>}"
 echo "  macOS x64:   ${mac_x64_name:-<未上传>}"
@@ -366,5 +422,5 @@ fi
 echo ""
 info "═══════════════════════════════════════════════════════════"
 ok  "全部完成！${TAG} 已发布到 GitCode"
-info "  ${API_BASE}/releases/tag/${TAG}"
+info "  https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}"
 echo ""

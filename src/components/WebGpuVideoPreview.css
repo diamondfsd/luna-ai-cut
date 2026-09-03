@@ -1,0 +1,31 @@
+.webgpu-video-preview-frame {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100% - 42px);
+  margin-bottom: 42px;
+  overflow: hidden;
+  background: #000;
+}
+
+.webgpu-video-preview-frame .webgpu-video-preview {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.webgpu-video-preview-frame .webgpu-video-preview.is-interactive {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.webgpu-video-preview-frame .webgpu-video-preview.is-dragging {
+  cursor: grabbing;
+}

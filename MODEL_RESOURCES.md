@@ -15,7 +15,7 @@ Luna AI Cut 的 ONNX 权重不提交到代码仓库，也不打入安装包。�
 - 仓库：`diamondfsd/luna-ai-cut-package-release`
 - Tag：`model-resources-v<清单版本>`
 - 当前 Tag：`model-resources-v1.0.0`
-- 清单：`model-resources-v1.0.0-r3.json`
+- 清单：`model-resources-v1.0.0-r4.json`
 - 单文件模型：`<model-id>.onnx`
 - SAM 编码器：`<model-id>-vision-encoder.onnx`
 - 内容完全相同的权重只上传一次，多模型通过清单共同引用。

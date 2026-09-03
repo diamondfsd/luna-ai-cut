@@ -26,6 +26,7 @@ import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import { WorkspacePreviewToolbar } from '../workspace/components/WorkspacePreviewToolbar'
 import type { WorkspaceViewScale } from '../workspace/components/WorkspacePreviewToolbar'
+import { WorkspacePreviewViewport } from '../workspace/components/WorkspacePreviewViewport'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
@@ -34,7 +35,7 @@ import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativ
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import type { LivePhotoSelection } from '../workspace/trim/TrimPanel'
-import { buildVideoOutputExportItems, LIVE_PHOTO_DURATION } from '../workspace/trim/videoOutputMarkers'
+import { buildVideoOutputExportItems, livePhotoSelectionForMarker } from '../workspace/trim/videoOutputMarkers'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { BeautyMaskOverlay } from '../workspace/beauty/BeautyMaskOverlay'
 import { BeautyRetouchOverlay } from '../workspace/beauty/BeautyRetouchOverlay'
@@ -53,16 +54,27 @@ import {
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
+import { isDeviceRestoreLut } from '../workspace/lut/restoreLuts'
+import type { DeviceLutRestoreConfig } from '../shared/types/device'
 import { borderTitleForDevice, isLegacyBorderTitle } from '../shared/insta360DeviceProfiles'
 import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspace/removal/removalOperations'
 import { beautyClipboardSettings } from '../workspace/beauty/beautyLayers'
 import { prepareBeautyPasteTargets } from '../workspace/beauty/beautyPaste'
+import { logger } from '../lib/rendererLogger'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
-function normalizePipeline(value: unknown, defaultPipeline: EditPipeline = createDefaultPipeline()): EditPipeline {
+function normalizePipeline(
+  value: unknown,
+  defaultPipeline: EditPipeline = createDefaultPipeline(),
+  restoreLut?: DeviceLutRestoreConfig | null,
+): EditPipeline {
   const { patch } = normalizePersistedPipelinePatch(value)
-  return mergePipeline(structuredClone(defaultPipeline), patch)
+  const pipeline = mergePipeline(structuredClone(defaultPipeline), patch)
+  if (restoreLut !== undefined && pipeline.logRestore.activeId && !isDeviceRestoreLut(pipeline.logRestore.activeId, restoreLut)) {
+    pipeline.logRestore.activeId = null
+  }
+  return pipeline
 }
 
 function removalSourcePath(asset: WorkspaceProjectAsset | undefined, compareOriginal = false): string | undefined {
@@ -88,7 +100,8 @@ interface WorkspacePageProps {
 
 type WorkspaceRuntimeResource = 'fonts' | 'luts'
 const RUNTIME_RESOURCE_RETRY_DELAY_MS = 5_000
-const RUNTIME_RESOURCE_MAX_ATTEMPTS = 100
+const RUNTIME_RESOURCE_RETRY_DELAYS_MS = [2_000, RUNTIME_RESOURCE_RETRY_DELAY_MS] as const
+const RUNTIME_RESOURCE_MAX_ATTEMPTS = RUNTIME_RESOURCE_RETRY_DELAYS_MS.length + 1
 
 function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promise<void> {
   const renderCore = (window as unknown as {
@@ -98,22 +111,32 @@ function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promis
 }
 
 export function WorkspacePage({ creativeModeId, onCreativeModeChange, pageActive }: WorkspacePageProps) {
-  // 非活跃时不渲染：AppRoute 的 preserve 只隐藏不卸载，不跳过会导致 context 消费者持续响应全局 state 变化
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
+
+  useEffect(() => {
+    logger.info('[导航诊断] 工作台活动状态', {
+      hash: window.location.hash,
+      pathname: location.pathname,
+      pageActive,
+      detailMounted: pageActive,
+    })
+  }, [location.pathname, pageActive])
 
   return (
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
         <WorkspaceCanvasProvider>
           <WorkspaceMaskProvider active={pageActive && (!creativeModeId || creativeModeId === 'pixel-stretch')}>
-            <ErrorBoundary>
-              <WorkspacePageInner
-                creativeModeId={creativeModeId}
-                onCreativeModeChange={onCreativeModeChange}
-                pageActive={pageActive}
-              />
-            </ErrorBoundary>
+            {pageActive && (
+              <ErrorBoundary>
+                <WorkspacePageInner
+                  creativeModeId={creativeModeId}
+                  onCreativeModeChange={onCreativeModeChange}
+                  pageActive={pageActive}
+                />
+              </ErrorBoundary>
+            )}
           </WorkspaceMaskProvider>
         </WorkspaceCanvasProvider>
       </WorkspaceMediaProvider>
@@ -129,7 +152,21 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
   const { settings, setSettings } = useApp()
-  const { activeDevice, isConnected } = useDeviceConnection()
+  const { activeDevice, devices, isConnected } = useDeviceConnection()
+  const mediaDevice = media.activeMedia?.sourceDeviceId
+    ? devices.find((device) => device.id === media.activeMedia?.sourceDeviceId)
+    : undefined
+  // 设备列表异步加载期间保留旧值，列表就绪后再按设备清理不适用的 LUT。
+  const restoreLut = devices.length === 0
+    ? undefined
+    : mediaDevice
+      ? mediaDevice.lut?.restore ?? null
+      : (isConnected ? activeDevice?.lut?.restore ?? null : null)
+  const restoreLutKey = restoreLut === undefined
+    ? 'pending'
+    : restoreLut === null
+      ? 'none'
+      : `${restoreLut.fileName}|${restoreLut.label}|${restoreLut.description ?? ''}`
   const connectedDeviceMetadata = useMemo(
     () => isConnected && activeDevice
       ? { sourceDeviceId: activeDevice.id, sourceDeviceName: activeDevice.name, cameraType: activeDevice.name, watermarkProfileId: activeDevice.id }
@@ -155,11 +192,59 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
+  const [immersive, setImmersive] = useState(false)
+  const workspaceWasActiveRef = useRef(false)
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const pasteInProgressRef = useRef(false)
   const colorResetNoticeRef = useRef(new Set<string>())
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
   const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
+
+  const enterImmersive = useCallback(() => {
+    setImmersive(true)
+    void window.luna.setFullScreen(true).catch(() => setImmersive(false))
+  }, [])
+
+  const exitImmersive = useCallback(() => {
+    setImmersive(false)
+    void window.luna.setFullScreen(false).catch(() => {})
+  }, [])
+
+  const toggleImmersive = useCallback(() => {
+    if (immersive) exitImmersive()
+    else enterImmersive()
+  }, [enterImmersive, exitImmersive, immersive])
+
+  useEffect(() => {
+    if (!pageActive) {
+      if (workspaceWasActiveRef.current) {
+        workspaceWasActiveRef.current = false
+        setImmersive(false)
+        void window.luna.setFullScreen(false)
+      }
+      return
+    }
+
+    workspaceWasActiveRef.current = true
+    return window.luna.onFullScreenChange(setImmersive)
+  }, [pageActive])
+
+  useEffect(() => () => {
+    if (workspaceWasActiveRef.current) void window.luna.setFullScreen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!pageActive || !immersive) return
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') exitImmersive()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [exitImmersive, immersive, pageActive])
+
+  useEffect(() => {
+    if (creativeModeId && immersive) exitImmersive()
+  }, [creativeModeId, exitImmersive, immersive])
   useEffect(() => {
     if (!pageActive) return
     let disposed = false
@@ -178,10 +263,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           setRuntimeResourceLoading((current) => ({ ...current, [kind]: false }))
           return
         }
-        console.warn(`[Workspace] ${label}资源第 ${attempt} 次下载失败，5 秒后重试:`, error)
+        const retryDelay = RUNTIME_RESOURCE_RETRY_DELAYS_MS[attempt - 1] ?? RUNTIME_RESOURCE_RETRY_DELAY_MS
+        console.warn(`[Workspace] ${label}资源第 ${attempt} 次下载失败，${retryDelay} 毫秒后重试:`, error)
         retryTimers.push(window.setTimeout(() => {
           void prepare(kind, attempt + 1)
-        }, RUNTIME_RESOURCE_RETRY_DELAY_MS))
+        }, retryDelay))
       }
     }
     void prepare('fonts')
@@ -214,7 +300,6 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [trimDuration, setTrimDuration] = useState(0)
   const [trimDurationSourcePath, setTrimDurationSourcePath] = useState<string | null>(null)
   const [trimPlaying, setTrimPlaying] = useState(false)
-  const [livePhotoSelection, setLivePhotoSelection] = useState<LivePhotoSelection | null>(null)
   const [activeOutputMarkerId, setActiveOutputMarkerId] = useState<string | null>(null)
   const [playingOutputMarkerId, setPlayingOutputMarkerId] = useState<string | null>(null)
   const markerPlaybackRangeRef = useRef<{
@@ -232,11 +317,21 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const activeVideoMarker = edit.pipeline.outputMarkers.find((marker): marker is Extract<EditPipeline['outputMarkers'][number], { kind: 'video' }> => (
     marker.kind === 'video' && marker.id === activeOutputMarkerId
   ))
+  const playingOutputMarker = edit.pipeline.outputMarkers.find((marker) => marker.id === playingOutputMarkerId)
+  const playingOutputRange = playingOutputMarker && playingOutputMarker.kind !== 'photo'
+    ? { startTime: playingOutputMarker.startTime, endTime: playingOutputMarker.endTime }
+    : undefined
   const activeVideoMarkerRef = useRef(activeVideoMarker)
   activeVideoMarkerRef.current = activeVideoMarker
+  const livePhotoSelection = useMemo(
+    () => livePhotoSelectionForMarker(edit.pipeline.outputMarkers, activeOutputMarkerId),
+    [activeOutputMarkerId, edit.pipeline.outputMarkers],
+  )
+  const handleLivePhotoSelectionChange = useCallback((selection: LivePhotoSelection | null) => {
+    if (selection) setActiveOutputMarkerId(selection.markerId)
+  }, [])
 
   useEffect(() => {
-    setLivePhotoSelection(null)
     setActiveOutputMarkerId(null)
     setPlayingOutputMarkerId(null)
     markerPlaybackRangeRef.current = null
@@ -298,7 +393,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       if (previewRef.current?.isPlaying()) previewRef.current.togglePlay()
       return
     }
-    if (markerRange && !state.playing) {
+    // seek 或渲染切换可能短暂触发暂停事件，不能因此中断刚刚发起的标记播放。
+    // 用户主动暂停会先清除 markerRange；这里只处理视频自然播放到片段末尾后的暂停。
+    if (markerRange && !state.playing && state.currentTime >= markerRange.endTime - 0.05) {
       markerPlaybackRangeRef.current = null
       setPlayingOutputMarkerId(null)
     }
@@ -314,6 +411,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
   // ── 截取控制 ──
   const handleTrimSeek = useCallback((time: number) => {
+    markerPlaybackRangeRef.current = null
+    setPlayingOutputMarkerId(null)
     if (previewRef.current) {
       previewRef.current.seek(time)
     }
@@ -479,19 +578,44 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     [edit.cropActive, mask.editing, watermarkLayer, borderLayer, subtitleLayer],
   )
 
-  // ── Initialize pipeline / reset crop/trim when active asset changes ──
+  // 切换项目或素材时，不能把上一个项目的截取模式带过来。
+  const workspaceAssetKey = `${media.currentProject?.id ?? 'transient'}:${media.activeIndex}:${media.activeMedia?.path ?? ''}`
+  const previousWorkspaceAssetKeyRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!settingsReady || previousWorkspaceAssetKeyRef.current === workspaceAssetKey) return
+    previousWorkspaceAssetKeyRef.current = workspaceAssetKey
+    if (edit.trimActive) {
+      edit.deactivateTrim()
+      if (edit.activeTool === 'trim') edit.setActiveTool('color')
+    }
+  }, [edit, settingsReady, workspaceAssetKey])
+
+  // ── Initialize pipeline when active asset changes ──
   useLayoutEffect(() => {
     if (!settingsReady) return
     const asset = media.currentProject?.assets[media.activeIndex]
-    edit.setCropActive(false)
-    edit.setTransformDraft(null)
+    const keepCropMode = edit.cropActive || edit.activeTool === 'crop'
+    logger.info('[PreviewDebug] workspace pipeline initialization requested', {
+      workspaceAssetKey,
+      restoreLutKey,
+    })
     edit.setCropPreset('original')
     const compatibility = normalizePersistedPipelinePatch(asset?.pipeline)
     if (compatibility.resetColor && asset && !colorResetNoticeRef.current.has(asset.id)) {
       colorResetNoticeRef.current.add(asset.id)
       toast.show('当前素材的旧版调色参数已重置')
     }
-    edit.initializePipeline(normalizePipeline(asset?.pipeline, defaultPipelineRef.current))
+    const nextPipeline = normalizePipeline(asset?.pipeline, defaultPipelineRef.current, restoreLut)
+    edit.initializePipeline(nextPipeline)
+    if (keepCropMode) {
+      // The previous draft belongs to the old asset. Start the crop overlay from the
+      // new asset's persisted transform while keeping the crop tool selected.
+      edit.setTransformDraft(nextPipeline.transform)
+      edit.setCropActive(true)
+    } else {
+      edit.setCropActive(false)
+      edit.setTransformDraft(null)
+    }
     if (media.activeMedia && !isVideoPath(media.activeMedia.path)) {
       // 图片不显示截取，退出截取模式
       if (edit.trimActive) {
@@ -499,7 +623,16 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         if (edit.activeTool === 'trim') edit.setActiveTool('filter')
       }
     }
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, settingsReady])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, restoreLutKey, settingsReady])
+
+  useEffect(() => {
+    if (restoreLut === undefined) return
+    const activeRestoreLut = edit.pipeline.logRestore.activeId
+    if (!activeRestoreLut || isDeviceRestoreLut(activeRestoreLut, restoreLut)) return
+    edit.applySystemUpdate((pipeline) => pipeline.logRestore.activeId
+      ? { ...pipeline, logRestore: { activeId: null } }
+      : pipeline)
+  }, [edit.applySystemUpdate, edit.pipeline.logRestore.activeId, restoreLut])
 
   useEffect(() => {
     setMediaSize(null)
@@ -543,7 +676,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       ...(connectedDeviceMetadata ?? {}),
       exifModel,
     }) ?? ''
-    if ((isLegacyBorderTitle(currentTitle) || !currentTitle) && currentTitle !== deviceTitle) {
+    // Legacy titles are normalized to an empty custom title. If the resolved
+    // device title is itself legacy, there is no useful value to persist and
+    // committing it would clear an active color preview on every render.
+    const hasConcreteDeviceTitle = Boolean(deviceTitle) && !isLegacyBorderTitle(deviceTitle)
+    if (hasConcreteDeviceTitle && (isLegacyBorderTitle(currentTitle) || !currentTitle) && currentTitle !== deviceTitle) {
       edit.commitPatch({ border: { title: deviceTitle } })
     }
   }, [borderMetadata, connectedDeviceMetadata, edit.commitPatch, edit.pipeline.border.title, media.activeMedia])
@@ -768,6 +905,17 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         const untrimmedPipeline = isVideoPath(asset.path) ? mergePipeline(pipeline, { trim: null }) : pipeline
         const layers = buildWorkspaceExportLayers(sourcePath, resolution, untrimmedPipeline, borderMeta, true, projectAsset?.subtitles, asset)
         const outputSize = outputSizeForTransform(resolution, untrimmedPipeline.transform)
+        logger.info('[导出诊断] 工作台尺寸参数', {
+          assetPath: asset.path,
+          sourcePath,
+          sourceResolution: resolution,
+          outputSize,
+          resolutionSetting: '待导出弹窗选择',
+          transform: {
+            orientation: untrimmedPipeline.transform.orientation,
+            crop: untrimmedPipeline.transform.crop,
+          },
+        })
 
         if (!isVideoPath(asset.path)) {
           return [{
@@ -798,6 +946,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               outputBaseName: item.outputBaseName,
               layers,
               outputSize,
+              sourceDuration,
               startTime: item.startTime,
               endTime: item.endTime,
             }))
@@ -808,6 +957,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               outputBaseName,
               layers,
               outputSize,
+              sourceDuration,
               startTime: normalizedTrimStart,
               endTime: normalizedTrimEnd,
             }]
@@ -821,6 +971,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             outputBaseName: item.outputBaseName,
             layers,
             outputSize,
+            sourceDuration,
             time: item.time,
           } : {
             id: `${asset.id}-${item.markerId}`,
@@ -829,6 +980,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             outputBaseName: item.outputBaseName,
             layers,
             outputSize,
+            sourceDuration,
             startTime: item.startTime,
             endTime: item.endTime,
             coverTime: item.coverTime,
@@ -981,6 +1133,33 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     }
   }, [creativeModeId, pageActive])
 
+  const exportDialogSummary = summarizeWorkspaceMixedExport(exportDialogPlan)
+  const exportDialogPreviewSource = useMemo(() => {
+    const timedItems = exportDialogPlan.filter((item) => (
+      (item.kind === 'video' || item.kind === 'live')
+      && item.startTime !== undefined
+      && item.endTime !== undefined
+      && item.sourceDuration !== undefined
+    ))
+    const sourcePaths = new Set(timedItems.map((item) => item.sourcePath))
+    if (sourcePaths.size !== 1) return undefined
+    const videoItems = timedItems.filter((item) => item.kind === 'video')
+    const item = videoItems[0] ?? timedItems[0]
+    if (!item || item.startTime === undefined || item.endTime === undefined || item.sourceDuration === undefined) return undefined
+    return {
+      path: item.sourcePath,
+      layers: item.layers,
+      outputSize: item.outputSize,
+      timeline: {
+        path: item.sourcePath,
+        startTime: item.startTime,
+        duration: Math.max(0.1, item.endTime - item.startTime),
+        thumbnailDuration: item.sourceDuration,
+        editable: videoItems.length === 1,
+      },
+    }
+  }, [exportDialogPlan])
+
   // ── Empty state — 列表页独立布局，不使用详情页的 workspace-layout 网格 ──
   if (!media.currentProject && media.media.length === 0) {
     return (
@@ -1000,10 +1179,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     : exportableSelectionCount > 1
       ? `导出 ${exportableSelectionCount} 个`
       : '导出'
-  const exportDialogSummary = summarizeWorkspaceMixedExport(exportDialogPlan)
 
   return (
-    <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}`}>
+    <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}${immersive ? ' is-immersive' : ''}`}>
       {creativeModeId ? (
         <WorkspaceCreativeFactory
           creativeModeId={creativeModeId}
@@ -1031,38 +1209,44 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           />
 
           {/* ── Rust/wgpu 预览组件 ── */}
-          <PreviewStage
-            ref={previewRef}
-            url={activeSourcePath ?? null}
-            active={pageActive}
-            isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
-            pending={!media.activeMedia}
-            pipeline={stagePipeline}
-            maskProjectId={media.currentProject?.id}
-            extraLayers={combinedExtraLayers}
-            cropActive={edit.cropActive}
-            hideControls={edit.trimActive}
-            onMetricsChange={canvas.setPreviewMetrics}
-            onMediaSize={handleMediaSize}
-            renderOverlay={() => (
-              edit.cropActive
-                ? <CropOverlay />
-                : mask.editing
-                  ? <MaskOverlay />
-                  : edit.activeTool === 'beauty' && edit.beautyRetouchActive && edit.beautyRetouchMode
-                    ? <BeautyRetouchOverlay />
-                    : edit.beautyMaskPreview
-                    ? <BeautyMaskOverlay currentTime={trimCurrentTime} />
-                    : null
-            )}
-            viewScale={viewScale}
-            onViewScaleChange={setViewScale}
-            onFitScaleChange={setFitScalePercent}
-            viewportKey={media.activeMedia?.path}
-            previewMaxSide={workspacePreviewMaxSide(previewQuality)}
-            keepCompositionVideoRenderer={keepCompositionVideoRenderer}
-            onPlayStateChange={handlePlayStateChange}
-          />
+          <WorkspacePreviewViewport
+            immersive={immersive}
+            disabled={!hasActiveMedia}
+            onToggleImmersive={toggleImmersive}
+          >
+            <PreviewStage
+              ref={previewRef}
+              url={activeSourcePath ?? null}
+              active={pageActive}
+              isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
+              pending={!media.activeMedia}
+              pipeline={stagePipeline}
+              maskProjectId={media.currentProject?.id}
+              extraLayers={combinedExtraLayers}
+              cropActive={edit.cropActive}
+              hideControls={edit.trimActive}
+              onMetricsChange={canvas.setPreviewMetrics}
+              onMediaSize={handleMediaSize}
+              renderOverlay={() => (
+                edit.cropActive
+                  ? <CropOverlay />
+                  : mask.editing
+                    ? <MaskOverlay />
+                    : edit.activeTool === 'beauty' && edit.beautyRetouchActive && edit.beautyRetouchMode
+                      ? <BeautyRetouchOverlay />
+                      : edit.beautyMaskPreview
+                      ? <BeautyMaskOverlay currentTime={trimCurrentTime} />
+                      : null
+              )}
+              viewScale={viewScale}
+              onViewScaleChange={setViewScale}
+              onFitScaleChange={setFitScalePercent}
+              viewportKey={media.activeMedia?.path}
+              previewMaxSide={workspacePreviewMaxSide(previewQuality)}
+              keepCompositionVideoRenderer={keepCompositionVideoRenderer}
+              onPlayStateChange={handlePlayStateChange}
+            />
+          </WorkspacePreviewViewport>
 
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
@@ -1070,7 +1254,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             currentTime={trimCurrentTime}
             onTrimSeek={handleTrimSeek}
             livePhotoSelection={livePhotoSelection}
-            onLivePhotoSelectionChange={setLivePhotoSelection}
+            onLivePhotoSelectionChange={handleLivePhotoSelectionChange}
             activeMarkerId={activeOutputMarkerId}
             onActiveMarkerChange={setActiveOutputMarkerId}
             playingMarkerId={playingOutputMarkerId}
@@ -1091,46 +1275,47 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
                 ? () => handleToggleMarkerPreview(activeVideoMarker)
                 : handleTrimTogglePlay}
               onSeek={handleTrimSeek}
+              playheadRange={playingOutputRange}
               onStartTimeChange={handleStartTimeChange}
               onEndTimeChange={handleEndTimeChange}
               outputMarkers={edit.pipeline.outputMarkers}
               secondaryFixedRange={livePhotoSelection ? {
                 startTime: livePhotoSelection.startTime,
-                duration: LIVE_PHOTO_DURATION,
+                duration: livePhotoSelection.endTime - livePhotoSelection.startTime,
                 coverTime: livePhotoSelection.coverTime,
                 label: `Live ${String(edit.pipeline.outputMarkers
                   .filter((marker) => marker.kind === 'live')
                   .findIndex((marker) => marker.id === livePhotoSelection.markerId) + 1).padStart(2, '0')}`,
                 onStartChange: (startTime) => {
                   const current = livePhotoSelection
-                  const delta = startTime - current.startTime
-                  const endTime = startTime + LIVE_PHOTO_DURATION
-                  const next = {
-                    markerId: current.markerId,
-                    startTime,
-                    endTime,
-                    coverTime: Math.max(startTime, Math.min(current.coverTime + delta, endTime - 0.01)),
-                  }
-                  setLivePhotoSelection(next)
-                  edit.commitPatch({
-                    outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
-                      marker.kind === 'live' && marker.id === current.markerId
-                        ? { ...marker, startTime: next.startTime, endTime: next.endTime, coverTime: next.coverTime }
-                        : marker
-                    )),
-                  })
+                  edit.commitUpdate((pipeline) => ({
+                    ...pipeline,
+                    outputMarkers: pipeline.outputMarkers.map((marker) => {
+                      if (marker.kind !== 'live' || marker.id !== current.markerId) return marker
+                      const delta = startTime - marker.startTime
+                      const liveDuration = marker.endTime - marker.startTime
+                      const maxStart = Math.max(0, activeTrimDuration - liveDuration)
+                      const nextStart = Math.max(0, Math.min(startTime, maxStart))
+                      const nextEnd = nextStart + liveDuration
+                      return {
+                        ...marker,
+                        startTime: nextStart,
+                        endTime: nextEnd,
+                        coverTime: Math.max(nextStart, Math.min(marker.coverTime + delta, nextEnd - 0.01)),
+                      }
+                    }),
+                  }))
                 },
                 onCoverTimeChange: (coverTime) => {
                   const current = livePhotoSelection
-                  const next = { ...current, coverTime }
-                  setLivePhotoSelection(next)
-                  edit.commitPatch({
-                    outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
+                  edit.commitUpdate((pipeline) => ({
+                    ...pipeline,
+                    outputMarkers: pipeline.outputMarkers.map((marker) => (
                       marker.kind === 'live' && marker.id === current.markerId
-                        ? { ...marker, coverTime }
+                        ? { ...marker, coverTime: Math.max(marker.startTime, Math.min(coverTime, marker.endTime - 0.01)) }
                         : marker
                     )),
-                  })
+                  }))
                 },
               } : undefined}
               thumbnails={thumbnails}
@@ -1168,6 +1353,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         description={exportDialogSummary.text ? `本次包含${exportDialogSummary.text}。` : undefined}
         onOpenChange={setExportDialogOpen}
         initialConfig={exportDialogInitialConfig}
+        previewSource={exportDialogPreviewSource}
         outputAvailability={{
           video: exportDialogSummary.video > 0,
           photo: exportDialogSummary.photo > 0,

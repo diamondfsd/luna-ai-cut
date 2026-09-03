@@ -1,5 +1,6 @@
 import type { DeviceDefinition, WifiDebugStatus } from '../../../src/shared/types'
 import { connectWifiNetwork, disconnectWifiNetwork, getWifiDebugStatus, scanWifiNetworks } from './wifiDebugService'
+import { probeInsta360ControlResponse } from '../../devices/insta360/insta360TcpProtocol'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
 export interface WifiAutoJoinResult {
@@ -10,12 +11,20 @@ export interface WifiAutoJoinResult {
   message: string
 }
 
+export interface WifiCameraEndpoint {
+  host: string
+  port: number
+  protocol: 'insta360-stream'
+}
+
 interface WifiRestoreSession {
   cameraSsid: string
   previousSsid: string | null
 }
 
 const restoreSessions = new Map<string, WifiRestoreSession>()
+const CAMERA_HANDSHAKE_WAIT_MS = 10000
+const CAMERA_HANDSHAKE_RETRY_DELAY_MS = 250
 
 function matchesConfiguredSsid(ssid: string, includes: string[]): boolean {
   const normalized = ssid.trim().toLocaleLowerCase()
@@ -42,6 +51,87 @@ function hasLunaWifiAddress(status?: WifiDebugStatus): boolean {
   return addresses.some(isLunaWifiAddress)
 }
 
+async function waitForCameraHandshake(
+  endpoint: WifiCameraEndpoint,
+  sessionKey: string,
+): Promise<{ ok: boolean; lastError: string | null }> {
+  const startedAt = Date.now()
+  const deadline = startedAt + CAMERA_HANDSHAKE_WAIT_MS
+  let attempts = 0
+  let lastError: string | null = null
+  while (Date.now() < deadline) {
+    attempts += 1
+    try {
+      const response = await probeInsta360ControlResponse(endpoint.host, endpoint.port)
+      if (response.code !== 200) throw new Error(`Luna 控制指令返回 ${response.code}`)
+      logMainInfo('[设备 Wi-Fi] 相机控制通道握手成功', {
+        sessionKey,
+        host: endpoint.host,
+        port: endpoint.port,
+        responseCode: response.code,
+        attempts,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return { ok: true, lastError: null }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+      logMainInfo('[设备 Wi-Fi] 相机控制通道尚不可用，继续等待', {
+        sessionKey,
+        host: endpoint.host,
+        port: endpoint.port,
+        attempt: attempts,
+        elapsedMs: Date.now() - startedAt,
+        error: lastError,
+      })
+    }
+    await new Promise((resolve) => setTimeout(resolve, CAMERA_HANDSHAKE_RETRY_DELAY_MS))
+  }
+  logMainWarn('[设备 Wi-Fi] 相机控制通道握手失败', {
+    sessionKey,
+    host: endpoint.host,
+    port: endpoint.port,
+    attempts,
+    elapsedMs: Date.now() - startedAt,
+    error: lastError,
+  })
+  return { ok: false, lastError }
+}
+
+async function waitForLunaWifiAddress(
+  sessionKey: string,
+): Promise<{ address: string; ssid: string | null } | null> {
+  const startedAt = Date.now()
+  const deadline = startedAt + CAMERA_HANDSHAKE_WAIT_MS
+  let attempts = 0
+  while (Date.now() < deadline) {
+    attempts += 1
+    const status = await getWifiDebugStatus().catch(() => null)
+    if (status?.success && hasLunaWifiAddress(status.data)) {
+      const address = [
+        status.data?.ipAddress,
+        ...(status.data?.ipAddresses ?? []).map((item) => item.address),
+      ].find((item): item is string => typeof item === 'string' && isLunaWifiAddress(item))
+      if (address) {
+        logMainInfo('[设备 Wi-Fi] 已获取 Luna 网段地址', {
+          sessionKey,
+          address,
+          ssid: status.data?.ssid,
+          attempts,
+          elapsedMs: Date.now() - startedAt,
+        })
+        return { address, ssid: status.data?.ssid ?? null }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, CAMERA_HANDSHAKE_RETRY_DELAY_MS))
+  }
+  logMainWarn('[设备 Wi-Fi] 切换后未获取 Luna 网段地址', {
+    sessionKey,
+    attempts,
+    elapsedMs: Date.now() - startedAt,
+  })
+  return null
+}
+
 /**
  * 仅按设备定义发现目标热点。本机已有 Luna 网段地址时直接视为已经连好网络；
  * 其他情况必须由用户输入密码后再尝试连接。
@@ -51,8 +141,9 @@ export async function autoJoinDeviceWifi(
   sessionKey = 'default',
   password?: string,
   requestedSsid?: string,
+  endpoint?: WifiCameraEndpoint,
 ): Promise<WifiAutoJoinResult> {
-  if (process.platform !== 'darwin' || !config?.autoJoin || config.ssidIncludes.length === 0) {
+  if ((process.platform !== 'darwin' && process.platform !== 'win32') || !config?.autoJoin || config.ssidIncludes.length === 0) {
     return skipped('未启用设备 Wi-Fi 自动连接')
   }
 
@@ -72,16 +163,50 @@ export async function autoJoinDeviceWifi(
       localAddress,
       ssid: currentSsid,
     })
-    return {
-      attempted: false,
-      connected: true,
-      ssid: currentSsid ?? undefined,
-      message: `已连接 Luna Wi-Fi${localAddress ? `（本机地址 ${localAddress}）` : ''}`,
+    if (endpoint) {
+      const handshake = await waitForCameraHandshake(endpoint, sessionKey)
+      if (!handshake.ok) {
+        logMainWarn('[设备 Wi-Fi] Luna 网段地址存在但控制握手未通过，继续执行 Wi-Fi 准备', {
+          sessionKey,
+          localAddress,
+          host: endpoint.host,
+          port: endpoint.port,
+          error: handshake.lastError,
+        })
+      } else {
+        return {
+          attempted: false,
+          connected: true,
+          ssid: currentSsid ?? undefined,
+          message: `已连接 Luna Wi-Fi${localAddress ? `（本机地址 ${localAddress}）` : ''}`,
+        }
+      }
+    } else {
+      return {
+        attempted: false,
+        connected: true,
+        ssid: currentSsid ?? undefined,
+        message: `已连接 Luna Wi-Fi${localAddress ? `（本机地址 ${localAddress}）` : ''}`,
+      }
     }
   }
-  if (currentSsid && matchesConfiguredSsid(currentSsid, config.ssidIncludes)) {
-    logMainInfo('[设备 Wi-Fi] 当前已连接目标网络', { sessionKey, ssid: currentSsid })
-    return { attempted: false, connected: true, ssid: currentSsid, message: `已连接设备 Wi-Fi：${currentSsid}` }
+  if (currentSsid && matchesConfiguredSsid(currentSsid, config.ssidIncludes) && hasLunaWifiAddress(current?.data)) {
+    logMainInfo('[设备 Wi-Fi] 当前已连接目标网络，开始控制通道确认', { sessionKey, ssid: currentSsid })
+    if (endpoint) {
+      const handshake = await waitForCameraHandshake(endpoint, sessionKey)
+      if (handshake.ok) {
+        return { attempted: false, connected: true, ssid: currentSsid, message: `已连接设备 Wi-Fi：${currentSsid}` }
+      }
+      logMainWarn('[设备 Wi-Fi] 当前 SSID 匹配但控制握手未通过，继续执行 Wi-Fi 准备', {
+        sessionKey,
+        ssid: currentSsid,
+        host: endpoint.host,
+        port: endpoint.port,
+        error: handshake.lastError,
+      })
+    } else {
+      return { attempted: false, connected: true, ssid: currentSsid, message: `已连接设备 Wi-Fi：${currentSsid}` }
+    }
   }
 
   const manualSsid = requestedSsid?.trim()
@@ -130,12 +255,15 @@ export async function autoJoinDeviceWifi(
     currentSsid,
     security: candidateSecurity,
     credentialSource: 'user-provided-wifi-password',
-    connectionStrategy: 'corewlan-password-stdin',
+    connectionStrategy: process.platform === 'win32' ? 'netsh-profile' : 'corewlan-password-stdin',
   })
   const joined = await connectWifiNetwork({
     ssid: candidateSsid,
     timeoutMs: 30000,
     password,
+    // macOS may hide the current SSID from CoreWLAN even after association.
+    // The Luna network address and camera control handshake below are the actual connection checks.
+    skipSsidVerification: Boolean(endpoint),
   })
   logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
     sessionKey,
@@ -163,17 +291,26 @@ export async function autoJoinDeviceWifi(
   }
 
   const joinedSsid = joined.data?.ssid
-  if (joinedSsid && joinedSsid !== candidateSsid && !matchesConfiguredSsid(joinedSsid, config.ssidIncludes)) {
-    logMainWarn('[设备 Wi-Fi] 切换结果未匹配目标', {
-      sessionKey,
-      targetSsid: candidateSsid,
-      joinedSsid,
-    })
+  const network = await waitForLunaWifiAddress(sessionKey)
+  if (!network) {
     return {
       attempted: true,
       connected: false,
       ssid: candidateSsid,
-      message: `系统未切换到目标 Wi-Fi，当前网络为 ${joinedSsid}（目标：${candidateSsid}）`,
+      wifiPasswordRequired: true,
+      message: `已尝试连接 ${candidateSsid}，但本机未获取 Luna Wi-Fi 地址（192.168.42.x），未建立相机连接`,
+    }
+  }
+  if (endpoint) {
+    const handshake = await waitForCameraHandshake(endpoint, sessionKey)
+    if (!handshake.ok) {
+      return {
+        attempted: true,
+        connected: false,
+        ssid: candidateSsid,
+        wifiPasswordRequired: true,
+        message: `已尝试连接 ${candidateSsid}，但未能通过相机控制通道确认连接。请检查 Wi-Fi 密码后重试`,
+      }
     }
   }
 
@@ -186,6 +323,7 @@ export async function autoJoinDeviceWifi(
     sessionKey,
     targetSsid: candidateSsid,
     joinedSsid: joinedSsid ?? candidateSsid,
+    endpoint: endpoint ? `${endpoint.host}:${endpoint.port}` : null,
   })
   return {
     attempted: true,

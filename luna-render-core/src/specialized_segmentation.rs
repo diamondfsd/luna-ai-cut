@@ -13,6 +13,7 @@ const DINOV2_SIZE: usize = 224;
 const DINOV2_DIMENSION: usize = 384;
 const SFACE_SIZE: usize = 112;
 const SFACE_DIMENSION: usize = 128;
+const RELIC_CPC_SIZE: usize = 224;
 
 pub fn preprocess_yolo(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, YOLO_SIZE, None)
@@ -34,6 +35,14 @@ pub fn preprocess_birefnet(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(
         rgb,
         SUBJECT_SIZE,
+        Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
+    )
+}
+
+fn preprocess_relic_cpc(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    preprocess(
+        rgb,
+        RELIC_CPC_SIZE,
         Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
     )
 }
@@ -250,12 +259,12 @@ pub fn yolo_instance_map(
             .ceil()
             .clamp(0.0, output_size as f32) as usize;
         for y in y1..y2 {
-            let input_y = pad_y as f32
-                + (y as f32 + 0.5) * scaled_height as f32 / output_size as f32;
+            let input_y =
+                pad_y as f32 + (y as f32 + 0.5) * scaled_height as f32 / output_size as f32;
             let prototype_y = input_y * prototype_height as f32 / YOLO_SIZE as f32 - 0.5;
             for x in x1..x2 {
-                let input_x = pad_x as f32
-                    + (x as f32 + 0.5) * scaled_width as f32 / output_size as f32;
+                let input_x =
+                    pad_x as f32 + (x as f32 + 0.5) * scaled_width as f32 / output_size as f32;
                 let prototype_x = input_x * prototype_width as f32 / YOLO_SIZE as f32 - 0.5;
                 let mut logit = 0.0f32;
                 for channel in 0..prototype_channels {
@@ -414,6 +423,7 @@ pub enum SpecializedSession {
     BirefNet(Session),
     FaceParsing(Session),
     HumanParsing(Session),
+    Relic2Cpc(Session),
 }
 
 impl SpecializedSession {
@@ -432,6 +442,7 @@ impl SpecializedSession {
             "birefnet-general-lite" => Ok(Self::BirefNet(session(model_path)?)),
             "face-parsing" => Ok(Self::FaceParsing(session(model_path)?)),
             "human-parsing" => Ok(Self::HumanParsing(session(model_path)?)),
+            "relic2-cpc" => Ok(Self::Relic2Cpc(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -505,8 +516,36 @@ impl SpecializedSession {
             Self::HumanParsing(session) => {
                 segment_human_parsing_with_session(session, rgb, output_size)
             }
+            Self::Relic2Cpc(session) => score_relic2_cpc_with_session(session, rgb, output_size),
         }
     }
+}
+
+fn score_relic2_cpc_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if output_size != 1 {
+        return Err("ReLIC++ CPC 输出尺寸不兼容".to_string());
+    }
+    let input = preprocess_relic_cpc(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, RELIC_CPC_SIZE, RELIC_CPC_SIZE], input))
+        .map_err(|error| format!("创建 ReLIC++ CPC 输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("ReLIC++ CPC 推理失败: {error}"))?;
+    let (_, output) = outputs
+        .iter()
+        .next()
+        .ok_or_else(|| "ReLIC++ CPC 缺少输出".to_string())?;
+    let (shape, values) = output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("读取 ReLIC++ CPC 输出失败: {error}"))?;
+    if values.len() != 1 || shape.iter().product::<i64>() != 1 || !values[0].is_finite() {
+        return Err("ReLIC++ CPC 输出尺寸无效".to_string());
+    }
+    Ok(values[0].to_le_bytes().to_vec())
 }
 
 fn segment_face_parsing_with_session(
@@ -1200,13 +1239,10 @@ mod tests {
     #[test]
     fn yolo_instance_map_keeps_instances_separate_and_prefers_stronger_overlap() {
         let detections = vec![
-            0.0, 0.0, 400.0, 640.0, 0.8, 2.0, 2.0,
-            240.0, 0.0, 640.0, 640.0, 0.9, 2.0, 2.0,
+            0.0, 0.0, 400.0, 640.0, 0.8, 2.0, 2.0, 240.0, 0.0, 640.0, 640.0, 0.9, 2.0, 2.0,
         ];
-        let bytes = yolo_instance_map(
-            &detections, 2, 7, &[1.0], 1, 1, 1, 640, 640, 0, 0, 4,
-        )
-        .unwrap();
+        let bytes =
+            yolo_instance_map(&detections, 2, 7, &[1.0], 1, 1, 1, 640, 640, 0, 0, 4).unwrap();
         let ids = bytes
             .chunks_exact(2)
             .map(|value| u16::from_le_bytes([value[0], value[1]]))
@@ -1248,6 +1284,20 @@ mod tests {
         let input = preprocess_dinov2(&rgb).unwrap();
         assert_eq!(input.len(), 3 * DINOV2_SIZE * DINOV2_SIZE);
         assert!(input.iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn relic_cpc_preprocessing_uses_chw_imagenet_normalization() {
+        let plane = RELIC_CPC_SIZE * RELIC_CPC_SIZE;
+        let mut rgb = vec![127u8; plane * 3];
+        rgb[0] = 0;
+        rgb[1] = 127;
+        rgb[2] = 255;
+        let input = preprocess_relic_cpc(&rgb).unwrap();
+        assert_eq!(input.len(), 3 * plane);
+        assert!((input[0] - ((0.0 - 0.485) / 0.229)).abs() < 1e-6);
+        assert!((input[plane] - ((127.0 / 255.0 - 0.456) / 0.224)).abs() < 1e-6);
+        assert!((input[plane * 2] - ((255.0 / 255.0 - 0.406) / 0.225)).abs() < 1e-6);
     }
 
     #[test]

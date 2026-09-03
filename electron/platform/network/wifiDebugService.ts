@@ -145,6 +145,29 @@ function parseWindowsScan(raw: string): WifiDebugNetwork[] {
   return networks.filter((network) => network.ssid)
 }
 
+function parseWindowsWifiStatus(raw: string, snapshot: ReturnType<typeof systemNetworkSnapshot>): WifiDebugStatus {
+  const value = (labels: string[]): string | null => {
+    const match = raw.match(new RegExp(`^\\s*(?:${labels.join('|')})\\s*:\\s*(.*)$`, 'im'))
+    const result = match?.[1]?.trim()
+    return result || null
+  }
+
+  const ssid = value(['SSID'])
+  return {
+    platform: 'win32',
+    interfaceName: value(['Interface Name', 'Name', '接口名称']) ?? snapshot.interfaceName,
+    connected: Boolean(ssid),
+    ssid,
+    bssid: value(['BSSID']),
+    signal: value(['Signal', '信号']),
+    security: value(['Authentication', '身份验证']),
+    ipAddress: snapshot.ipAddress,
+    ipAddresses: snapshot.ipAddresses,
+    interfaces: snapshot.interfaces,
+    raw,
+  }
+}
+
 function jsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -256,8 +279,10 @@ async function connectDarwinWifiWithPassword(
   password: string,
   timeoutMs: number,
   bssid?: string,
+  skipSsidVerification = false,
 ): Promise<WifiDebugResult<WifiDebugStatus>> {
   const args = ['connect', '--ssid', ssid, '--password-stdin']
+  if (skipSsidVerification) args.push('--skip-ssid-verification')
   if (bssid) args.push('--bssid', bssid)
   const result = await runCoreWlan<unknown>(args, Math.min(Math.max(timeoutMs, 10000), 30000), password)
   if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
@@ -272,6 +297,11 @@ async function connectDarwinWifiWithPassword(
 export async function getWifiDebugStatus(): Promise<WifiDebugResult<WifiDebugStatus>> {
   try {
     const snapshot = systemNetworkSnapshot()
+    if (process.platform === 'win32') {
+      const raw = await runCommand('netsh', ['wlan', 'show', 'interfaces'], 8000)
+      const status = parseWindowsWifiStatus(raw, snapshot)
+      return ok(status.connected ? 'Windows Wi-Fi 状态已刷新' : 'Windows 当前未连接 Wi-Fi', status, raw)
+    }
     if (process.platform === 'darwin') {
       const result = await runCoreWlan<unknown>(['status'], 8000)
       if (result.success) {
@@ -367,9 +397,10 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
   try {
     if (process.platform === 'darwin') {
       if (options.password) {
-        return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid)
+        return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid, options.skipSsidVerification)
       }
       const args = ['connect', '--ssid', ssid]
+      if (options.skipSsidVerification) args.push('--skip-ssid-verification')
       if (options.bssid) args.push('--bssid', options.bssid)
       const result = await runCoreWlan<unknown>(args, timeoutMs)
       if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
@@ -383,7 +414,21 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
       try {
         await runCommand('netsh', ['wlan', 'add', 'profile', `filename=${profilePath}`, 'user=current'], timeoutMs)
         const raw = await runCommand('netsh', ['wlan', 'connect', `name=${ssid}`, `ssid=${ssid}`], timeoutMs)
-        const status = await getWifiDebugStatus()
+        const deadline = Date.now() + Math.min(Math.max(timeoutMs, 8000), 12000)
+        let status = await getWifiDebugStatus()
+        while (status.success && status.data?.ssid !== ssid && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          status = await getWifiDebugStatus()
+        }
+        if (status.success && status.data?.ssid !== ssid) {
+          return {
+            ...status,
+            success: false,
+            code: 'WIFI_SSID_NOT_MATCHED',
+            message: `Windows 未切换到目标 Wi-Fi，当前网络为 ${status.data?.ssid ?? '未连接'}`,
+            raw,
+          }
+        }
         return {
           ...status,
           message: status.success ? `已尝试连接 ${ssid}` : status.message,

@@ -1,0 +1,181 @@
+import { randomUUID } from 'node:crypto'
+import type { BrowserWindow } from 'electron'
+
+import type {
+  CameraMediaSourceConnectionCapabilities,
+  CameraMediaSourceOptions,
+  CameraMediaSourcePreparationResult,
+  CameraMediaSourceWirelessPreparation,
+  WifiDebugStatus,
+} from '../../../src/shared/types'
+import { getSettings, saveSettings } from '../../storage/fileService'
+import { getWifiDebugStatus } from '../../platform/network/wifiDebugService'
+import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import { LunaBleSession } from './lunaBleSession'
+import type { LunaWifiCredentials } from './lunaBleCodec'
+import { createElectronLunaBleTransport } from './lunaBleWebBluetoothTransport'
+
+const MANUAL_WIFI_MESSAGE = '未能通过蓝牙读取相机 Wi-Fi 信息，请打开系统 Wi-Fi 设置手动连接相机热点，连接完成后再点击“开始连接”'
+
+export type LunaWirelessPreparationMode = CameraMediaSourceWirelessPreparation
+
+export interface LunaWirelessPreparation {
+  readonly capabilities: CameraMediaSourceConnectionCapabilities
+  prepare(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
+}
+
+function isLoopbackHost(host: string): boolean {
+  try {
+    const hostname = new URL(host.includes('://') ? host : `http://${host}`).hostname
+    return hostname === '127.0.0.1' || hostname === 'localhost'
+  } catch {
+    return false
+  }
+}
+
+function isLunaWifiAddress(address: string): boolean {
+  const match = address.trim().match(/^192\.168\.42\.(\d{1,3})$/)
+  return Boolean(match && Number(match[1]) <= 255)
+}
+
+function hasLunaWifiAddress(status?: WifiDebugStatus): boolean {
+  const addresses = [
+    status?.ipAddress,
+    ...(status?.ipAddresses ?? []).map((item) => item.address),
+  ].filter((address): address is string => Boolean(address))
+  return addresses.some(isLunaWifiAddress)
+}
+
+async function lunaInstallIdentity(): Promise<string> {
+  const settings = await getSettings()
+  if (settings.lunaInstallIdentity) return settings.lunaInstallIdentity
+  const identity = randomUUID().replace(/-/g, '').slice(0, 32)
+  await saveSettings({ lunaInstallIdentity: identity })
+  return identity
+}
+
+function manualResult(
+  message: string,
+  capabilities: CameraMediaSourceConnectionCapabilities,
+): CameraMediaSourcePreparationResult {
+  return {
+    mode: 'wireless',
+    preparation: 'already-connected',
+    requiresManualWifi: true,
+    capabilities,
+    message,
+  }
+}
+
+function suppliedCredentials(options: CameraMediaSourceOptions): LunaWifiCredentials | null {
+  const ssid = options.wireless?.ssid?.trim()
+  if (!ssid) return null
+  return { ssid, password: options.wireless?.password ?? '' }
+}
+
+/** Reads Luna's Wi-Fi credentials over BLE and leaves network switching to the shared Wi-Fi service. */
+export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
+  private bluetoothAvailable: boolean | null = null
+
+  constructor(
+    private readonly deviceId: string,
+    private readonly host: string,
+    private readonly win: BrowserWindow | null,
+  ) {}
+
+  get capabilities(): CameraMediaSourceConnectionCapabilities {
+    const platformSupportsBluetooth = process.platform === 'darwin' || process.platform === 'win32' || isLoopbackHost(this.host)
+    const bluetoothAvailable = this.bluetoothAvailable ?? platformSupportsBluetooth
+    return {
+      bluetoothActivation: false,
+      bluetoothWifiCredentials: bluetoothAvailable,
+      automaticWifiJoin: process.platform === 'darwin' || process.platform === 'win32',
+      manualWifiCredentials: true,
+    }
+  }
+
+  async prepare(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult> {
+    const wireless = options.wireless
+    const startedAt = Date.now()
+    logMainInfo('[Luna Wi-Fi] 连接准备开始', {
+      deviceId: this.deviceId,
+      host: this.host,
+      platform: process.platform,
+      preparation: wireless?.preparation ?? 'bluetooth-auto',
+      preferExistingConnection: options.preferExistingConnection === true,
+      hasSsid: Boolean(wireless?.ssid?.trim()),
+      hasPassword: Boolean(wireless?.password),
+    })
+
+    if (isLoopbackHost(this.host)) {
+      return { mode: 'wireless', preparation: 'already-connected', message: '模拟设备使用本机网络' }
+    }
+
+    const current = await getWifiDebugStatus().catch(() => null)
+    if (current?.success && hasLunaWifiAddress(current.data)) {
+      logMainInfo('[Luna Wi-Fi] 当前本机已有 192.168.42.x 地址，跳过蓝牙和 Wi-Fi 切换', {
+        deviceId: this.deviceId,
+        host: this.host,
+        ssid: current.data?.ssid,
+        ipAddress: current.data?.ipAddress,
+      })
+      return { mode: 'wireless', preparation: 'already-connected', message: '已检测到 Luna Wi-Fi 网段，将直接验证相机控制连接' }
+    }
+
+    const supplied = suppliedCredentials(options)
+    if (supplied) {
+      const preparation = wireless?.preparation === 'bluetooth' ? 'bluetooth' : 'manual-wifi'
+      return {
+        mode: 'wireless',
+        preparation,
+        credentials: supplied,
+        capabilities: this.capabilities,
+        message: preparation === 'bluetooth'
+          ? `已使用蓝牙取得的 Wi-Fi 信息：${supplied.ssid}`
+          : `已使用手动输入的 Wi-Fi：${supplied.ssid}`,
+      }
+    }
+
+    const transport = createElectronLunaBleTransport(this.win)
+    if (!transport) {
+      this.bluetoothAvailable = false
+      return manualResult(MANUAL_WIFI_MESSAGE, this.capabilities)
+    }
+
+    const availability = await transport.checkAvailability()
+    if (availability === false) {
+      this.bluetoothAvailable = false
+      await transport.close().catch(() => undefined)
+      return manualResult('未检测到可用的蓝牙适配器，请打开系统 Wi-Fi 设置手动连接相机热点，连接完成后再点击“开始连接”', this.capabilities)
+    }
+    if (availability === true) this.bluetoothAvailable = true
+
+    const identity = await lunaInstallIdentity()
+    const session = new LunaBleSession({ deviceId: this.deviceId, win: this.win, transport, authorizationId: identity })
+    try {
+      const credentials = await session.readWifiCredentials()
+      logMainInfo('[Luna Wi-Fi] 已通过蓝牙读取 Wi-Fi 信息', {
+        deviceId: this.deviceId,
+        ssid: credentials.ssid,
+        passwordLength: credentials.password.length,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return {
+        mode: 'wireless',
+        preparation: 'bluetooth',
+        credentials,
+        capabilities: this.capabilities,
+        message: `已通过蓝牙取得 Wi-Fi 信息：${credentials.ssid}`,
+      }
+    } catch (error) {
+      logMainWarn('[Luna Wi-Fi] 蓝牙读取 Wi-Fi 信息失败，回退系统 Wi-Fi', {
+        deviceId: this.deviceId,
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return manualResult(MANUAL_WIFI_MESSAGE, this.capabilities)
+    } finally {
+      await session.close().catch(() => undefined)
+    }
+  }
+}

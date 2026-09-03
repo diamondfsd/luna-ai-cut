@@ -1,0 +1,9 @@
+{
+  "name": "Osmo Action 5 Pro D-Log M to Rec.709",
+  "description": "DJI official Log restoration LUT for Osmo Action 5 Pro.",
+  "isTechnical": true,
+  "deviceId": "dji-action-5-pro",
+  "sourcePage": "https://www.dji.com/cn/downloads/softwares/dji-osmo-action-5-pro-d-log-m-to-rec-709-vivid-lut",
+  "sourceUrl": "https://terra-1-g.djicdn.com/851d20f7b9f64838a34cd02351370894/AC204%E8%BD%AF%E4%BB%B6/DJI%20OSMO%20Action%205%20Pro%20D-Log%20M%20to%20Rec.709%20V1.cube",
+  "sha256": "b18162854ab47702068410c33afa98a8cb6eef159fc5a04ce0e65fad0fd8947e"
+}

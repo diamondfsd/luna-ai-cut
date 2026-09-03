@@ -19,6 +19,7 @@ export function prepareAiSelectionReanalysis(session: StoredAiSelectionSession):
       embeddingError: null,
       quality: null,
       personEvidence: null,
+      compositionEvidence: null,
       videoKeyframes: [],
       semanticTags: [item.kind === 'image' ? '照片' : '视频', '等待分析'],
       contentTags: [],

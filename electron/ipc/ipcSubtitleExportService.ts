@@ -5,6 +5,8 @@ import path from 'node:path'
 import { subtitleTrackToSrt } from '../../src/shared/subtitleTrack'
 import type { WorkspaceSubtitleTrack } from '../../src/shared/types'
 import { safeName } from '../media/filePathUtils'
+import { fileOperationErrorDetails, friendlyFileOperationError, userFacingFileOperationError } from '../storage/fileOperationDiagnostics.ts'
+import { logMainError } from '../infrastructure/loggerService'
 
 interface SubtitleExportRequest {
   sourcePath: string
@@ -27,7 +29,17 @@ export function register(): void {
     const owner = BrowserWindow.fromWebContents(event.sender)
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
     if (result.canceled || !result.filePath) return null
-    await writeFile(result.filePath, content, { encoding: 'utf8', mode: 0o600 })
+    try {
+      await writeFile(result.filePath, content, { encoding: 'utf8', mode: 0o600 })
+    } catch (error) {
+      const message = friendlyFileOperationError(error, 'export')
+      logMainError('[export] 字幕导出失败', {
+        outputPath: result.filePath,
+        userMessage: message,
+        ...fileOperationErrorDetails(error, result.filePath),
+      })
+      throw userFacingFileOperationError(error, 'export')
+    }
     return { path: result.filePath }
   })
 }

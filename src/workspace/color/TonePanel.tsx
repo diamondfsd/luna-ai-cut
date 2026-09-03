@@ -10,9 +10,11 @@ interface TonePanelProps {
   value: EditPipeline['color']
   modified: boolean
   onChange: (patch: Partial<EditPipeline['color']>) => void
+  onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
 }
 
-export function TonePanel({ value, modified, onChange }: TonePanelProps) {
+export function TonePanel({ value, modified, onChange, onPreviewChange }: TonePanelProps) {
+  const previewChange = onPreviewChange ?? onChange
   return (
     <Accordion
       title="影调"
@@ -24,17 +26,17 @@ export function TonePanel({ value, modified, onChange }: TonePanelProps) {
         </button>
       }
     >
-      <ParamSlider label="曝光" value={value.exposure} {...sliderRange(EDIT_PARAMETER_RANGES.color.exposure)} onChange={(exposure) => onChange({ exposure })} formatValue={exposureValue} />
-      <ParamSlider label="对比度" value={value.contrast} {...sliderRange(EDIT_PARAMETER_RANGES.color.contrast)} onChange={(contrast) => onChange({ contrast })} />
-      <ParamSlider label="亮度" value={value.brightness} {...sliderRange(EDIT_PARAMETER_RANGES.color.brightness)} onChange={(brightness) => onChange({ brightness })} />
-      <ParamSlider label="高光" value={value.highlights} {...sliderRange(EDIT_PARAMETER_RANGES.color.highlights)} onChange={(highlights) => onChange({ highlights })} />
-      <ParamSlider label="阴影" value={value.shadows} {...sliderRange(EDIT_PARAMETER_RANGES.color.shadows)} onChange={(shadows) => onChange({ shadows })} />
-      <ParamSlider label="白色" value={value.whites} {...sliderRange(EDIT_PARAMETER_RANGES.color.whites)} onChange={(whites) => onChange({ whites })} />
-      <ParamSlider label="黑色" value={value.blacks} {...sliderRange(EDIT_PARAMETER_RANGES.color.blacks)} onChange={(blacks) => onChange({ blacks })} />
-      <ParamSlider label="清晰度" value={value.clarity} {...sliderRange(EDIT_PARAMETER_RANGES.color.clarity)} onChange={(clarity) => onChange({ clarity })} />
-      <ParamSlider label="纹理" value={value.texture} {...sliderRange(EDIT_PARAMETER_RANGES.color.texture)} onChange={(texture) => onChange({ texture })} />
-      <ParamSlider label="鲜艳度" value={value.vibrance} {...sliderRange(EDIT_PARAMETER_RANGES.color.vibrance)} onChange={(vibrance) => onChange({ vibrance })} />
-      <ParamSlider label="饱和度" value={value.saturation} {...sliderRange(EDIT_PARAMETER_RANGES.color.saturation)} onChange={(saturation) => onChange({ saturation })} />
+      <ParamSlider label="曝光" value={value.exposure} {...sliderRange(EDIT_PARAMETER_RANGES.color.exposure)} onChange={(exposure) => onChange({ exposure })} onPreviewChange={(exposure) => previewChange({ exposure })} onCommit={(exposure) => onChange({ exposure })} formatValue={exposureValue} />
+      <ParamSlider label="对比度" value={value.contrast} {...sliderRange(EDIT_PARAMETER_RANGES.color.contrast)} onChange={(contrast) => onChange({ contrast })} onPreviewChange={(contrast) => previewChange({ contrast })} onCommit={(contrast) => onChange({ contrast })} />
+      <ParamSlider label="亮度" value={value.brightness} {...sliderRange(EDIT_PARAMETER_RANGES.color.brightness)} onChange={(brightness) => onChange({ brightness })} onPreviewChange={(brightness) => previewChange({ brightness })} onCommit={(brightness) => onChange({ brightness })} />
+      <ParamSlider label="高光" value={value.highlights} {...sliderRange(EDIT_PARAMETER_RANGES.color.highlights)} onChange={(highlights) => onChange({ highlights })} onPreviewChange={(highlights) => previewChange({ highlights })} onCommit={(highlights) => onChange({ highlights })} />
+      <ParamSlider label="阴影" value={value.shadows} {...sliderRange(EDIT_PARAMETER_RANGES.color.shadows)} onChange={(shadows) => onChange({ shadows })} onPreviewChange={(shadows) => previewChange({ shadows })} onCommit={(shadows) => onChange({ shadows })} />
+      <ParamSlider label="白色" value={value.whites} {...sliderRange(EDIT_PARAMETER_RANGES.color.whites)} onChange={(whites) => onChange({ whites })} onPreviewChange={(whites) => previewChange({ whites })} onCommit={(whites) => onChange({ whites })} />
+      <ParamSlider label="黑色" value={value.blacks} {...sliderRange(EDIT_PARAMETER_RANGES.color.blacks)} onChange={(blacks) => onChange({ blacks })} onPreviewChange={(blacks) => previewChange({ blacks })} onCommit={(blacks) => onChange({ blacks })} />
+      <ParamSlider label="清晰度" value={value.clarity} {...sliderRange(EDIT_PARAMETER_RANGES.color.clarity)} onChange={(clarity) => onChange({ clarity })} onPreviewChange={(clarity) => previewChange({ clarity })} onCommit={(clarity) => onChange({ clarity })} />
+      <ParamSlider label="纹理" value={value.texture} {...sliderRange(EDIT_PARAMETER_RANGES.color.texture)} onChange={(texture) => onChange({ texture })} onPreviewChange={(texture) => previewChange({ texture })} onCommit={(texture) => onChange({ texture })} />
+      <ParamSlider label="鲜艳度" value={value.vibrance} {...sliderRange(EDIT_PARAMETER_RANGES.color.vibrance)} onChange={(vibrance) => onChange({ vibrance })} onPreviewChange={(vibrance) => previewChange({ vibrance })} onCommit={(vibrance) => onChange({ vibrance })} />
+      <ParamSlider label="饱和度" value={value.saturation} {...sliderRange(EDIT_PARAMETER_RANGES.color.saturation)} onChange={(saturation) => onChange({ saturation })} onPreviewChange={(saturation) => previewChange({ saturation })} onCommit={(saturation) => onChange({ saturation })} />
     </Accordion>
   )
 }

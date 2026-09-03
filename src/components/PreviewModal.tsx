@@ -18,7 +18,8 @@ import type { DolbyVisionProbeResult, LunaFile, PreviewLayer, WatermarkSettings 
 import { usesCustomWatermark } from '../shared/watermarkGeometry'
 import { Button, Dialog, IconButton, toast } from '../ui'
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react'
-import { findLunaUltraRestoreLut } from '../workspace/lut/lunaUltraRestoreLut'
+import type { DeviceDefinition } from '../shared/types/device'
+import { findDeviceRestoreLut } from '../workspace/lut/restoreLuts'
 import { lutManager } from '../workspace/lut/LutManager'
 import '../styles/modal.css'
 
@@ -53,6 +54,22 @@ function isHttpPath(filePath: string | null): boolean {
   return Boolean(filePath?.startsWith('http'))
 }
 
+function normalizedDeviceValue(value: string): string {
+  return value.trim().toLocaleLowerCase('en-US')
+}
+
+function deviceForMediaFile(file: LunaFile | undefined, devices: DeviceDefinition[]): DeviceDefinition | undefined {
+  if (!file) return undefined
+  if (file.sourceDeviceId) {
+    const byId = devices.find((device) => device.id === file.sourceDeviceId)
+    if (byId) return byId
+  }
+  const names = [file.sourceDeviceName, file.cameraType]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map(normalizedDeviceValue)
+  return devices.find((device) => names.includes(normalizedDeviceValue(device.name)))
+}
+
 export function PreviewModal({
   filePath,
   filePathList,
@@ -61,8 +78,8 @@ export function PreviewModal({
   proxyPreviewPaths,
   batchExportMode,
   enableILogRestoreOption,
-  onFilePathChange,
   mediaFileForPath,
+  onFilePathChange,
   isFileSelected,
   onSetFileSelected,
   originalVideoUrls,
@@ -354,10 +371,22 @@ export function PreviewModal({
           if (isVideoPath(sourcePath)) restoreByPath.set(sourcePath, await window.luna.detectILog(sourcePath))
         }))
       }
-      let restoreLutPath: string | null = null
+      const restoreLutsByPath = new Map<string, string>()
       if ([...restoreByPath.values()].some(Boolean)) {
-        restoreLutPath = findLunaUltraRestoreLut(await lutManager.discoverLuts())?.filePath ?? null
-        if (!restoreLutPath) throw new Error('未找到 I-Log 还原资源，请稍后重试')
+        const [luts, devices] = await Promise.all([
+          lutManager.discoverLuts(),
+          window.luna.listDevices(),
+        ])
+        for (const sourcePath of exportList) {
+          if (restoreByPath.get(sourcePath) !== true) continue
+          const mediaFile = mediaFileForPath?.(sourcePath)
+          const device = deviceForMediaFile(mediaFile, devices)
+          const restoreLut = findDeviceRestoreLut(luts, device?.lut?.restore)
+          if (!restoreLut) {
+            throw new Error(`${device?.name ?? '当前设备'}没有可用的 Log 还原资源`)
+          }
+          restoreLutsByPath.set(sourcePath, restoreLut.filePath)
+        }
       }
 
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
@@ -373,7 +402,8 @@ export function PreviewModal({
           resolution,
           usesCustomWatermark(watermarkSettings) || canUseBuiltinWatermark ? watermarkSettings : null,
         )
-        if (restoreILog && layers[0] && restoreLutPath) layers[0] = { ...layers[0], restoreLutId: restoreLutPath }
+        const sourceRestoreLutPath = restoreLutsByPath.get(sourcePath)
+        if (restoreILog && layers[0] && sourceRestoreLutPath) layers[0] = { ...layers[0], restoreLutId: sourceRestoreLutPath }
         return {
           sourcePath,
           layers,
@@ -450,7 +480,7 @@ export function PreviewModal({
                     proxyPreview={proxyPreview && !useOriginalPreview}
                     watermarkLayer={lightweightPreview ? watermarkLayers[0] : undefined}
                     watermarkSettings={lightweightPreview ? watermarkSettings : undefined}
-                    watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled && watermarkSettings.sourceKind === 'custom')}
+                    watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled)}
                     onWatermarkChange={lightweightPreview ? handleWatermarkChange : undefined}
                   />
                 </div>

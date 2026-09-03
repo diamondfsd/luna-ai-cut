@@ -4,6 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { friendlyDownloadError, prepareDownloadDirectory } from '../electron/media/downloadDirectoryService.ts'
+import { fileOperationErrorDetails, friendlyFileOperationError } from '../electron/storage/fileOperationDiagnostics.ts'
 import { existingDragFiles } from '../electron/platform/files/nativeFileDragService.ts'
 import { readSourceRecord, recordDownloadedFileSource } from '../electron/media/mediaSourceManifestService.ts'
 import { migrateBaseDirectory } from '../electron/storage/settingsMigration.ts'
@@ -17,6 +18,23 @@ try {
   assert.equal(friendlyDownloadError({ code: 'ENOSPC' }), '下载目录空间不足，请清理空间后重试')
   assert.equal(friendlyDownloadError({ code: 'EROFS' }), '下载目录不可写，请重新选择一个可用目录')
   assert.equal(friendlyDownloadError({ code: 'ENODEV' }), '下载目录不可用，请确认移动硬盘已连接后重试')
+  assert.match(friendlyFileOperationError({ code: 'EFBIG' }, 'export'), /NTFS 或 exFAT/)
+  assert.match(friendlyFileOperationError(new Error('The file size exceeds the limit allowed'), 'export'), /NTFS 或 exFAT/)
+  assert.match(friendlyFileOperationError('Access is denied', 'export'), /不可写/)
+  assert.match(friendlyFileOperationError('There is not enough space on the disk', 'export'), /空间不足/)
+  assert.match(friendlyFileOperationError(new Error('There is not enough space on the disk'), 'export'), /空间不足/)
+  assert.match(friendlyFileOperationError(new Error('Access is denied'), 'export'), /不可写/)
+  assert.match(friendlyFileOperationError(new Error('The device is not ready'), 'export'), /移动硬盘已连接/)
+  assert.match(friendlyFileOperationError(new Error('The system cannot find the path specified'), 'export'), /移动硬盘已连接/)
+  assert.match(friendlyFileOperationError(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }), 'export'), /停止响应/)
+  assert.match(friendlyFileOperationError(new Error('The process cannot access the file because it is being used by another process'), 'export'), /占用/)
+  const wrappedError = Object.assign(new Error('导出位置不可写'), {
+    cause: Object.assign(new Error('Access is denied'), { code: 'EACCES', syscall: 'open', path: 'E:\\Luna\\output.mp4' }),
+  })
+  const details = fileOperationErrorDetails(wrappedError, 'E:\\Luna\\output.mp4')
+  assert.equal(details.code, 'EACCES', 'FILE-DOWNLOAD-P1: 包装错误应保留原始错误码')
+  assert.equal(details.syscall, 'open', 'FILE-DOWNLOAD-P1: 日志应保留系统调用')
+  assert.equal(details.path, 'E:\\Luna\\output.mp4', 'FILE-DOWNLOAD-P1: 日志应保留失败路径')
   assert.deepEqual(
     migrateBaseDirectory({ downloadDir: '/legacy/base', localResourcesDir: '/external/media' }, '/default/base'),
     { baseDir: '/legacy/base', localResourcesDir: '/external/media' },

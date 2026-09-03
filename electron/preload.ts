@@ -1,6 +1,7 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import type {
   AppSettings,
+  CameraMediaSourceFilePage,
   DeviceDebugApi,
   DeviceDebugEvent,
   DeviceConnectOptions,
@@ -17,11 +18,12 @@ import type {
   WorkspaceSegmentationRequest,
   WorkspaceMaskTrackingRequest,
   WorkspaceObjectRemovalRequest,
-  UpdateInfo,
   VideoExportSettings,
   DolbyVisionWatermarkExportRequest,
   CustomWatermarkAsset,
   WatermarkSettings,
+  DjiBluetoothRendererEvent,
+  LunaBluetoothRendererEvent,
   WifiConnectOptions,
   WifiDebugApi,
   WifiHttpRequestOptions,
@@ -43,6 +45,13 @@ interface ExportItemUpdate {
   destinationPath?: string
 }
 
+interface WebGpuVideoProbeResult {
+  duration: number | null
+  fps: number | null
+  width: number | null
+  height: number | null
+}
+
 interface LunaExportTaskApi {
   create(name: string, items?: ExportItemInput[], taskId?: string): Promise<ExportTaskRecord>
   addItems(taskId: string, items: ExportItemInput[]): Promise<void>
@@ -54,6 +63,7 @@ interface LunaExportTaskApi {
 }
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
+  isPackaged: ipcRenderer.sendSync('app:is-packaged') === true,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
@@ -69,7 +79,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     return ipcRenderer.invoke('log:export', message, meta)
   },
   getLogDir: () => ipcRenderer.invoke('log:getDir'),
+  exportDiagnosticsBundle: () => ipcRenderer.invoke('log:export-bundle'),
   clearLogs: () => ipcRenderer.invoke('log:clear'),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:save', settings),
   listDevices: () => ipcRenderer.invoke('devices:list'),
@@ -95,15 +107,44 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   openDevTools: () => ipcRenderer.invoke('devtools:open'),
   scanBluetoothDevices: (timeoutMs?: number) => ipcRenderer.invoke('bluetooth:scanNative', timeoutMs),
   cancelBluetoothScan: () => ipcRenderer.invoke('bluetooth:cancelScan'),
+  djiBluetooth: {
+    emit: (event: DjiBluetoothRendererEvent) => ipcRenderer.send('dji-web-bluetooth:event', event),
+  },
+  lunaBluetooth: {
+    emit: (event: LunaBluetoothRendererEvent) => ipcRenderer.send('luna-web-bluetooth:event', event),
+  },
   cameraSource: {
     detectMounted: () => ipcRenderer.invoke('camera-source:detect-mounted'),
     chooseMounted: () => ipcRenderer.invoke('camera-source:choose-mounted'),
     connect: (options) => ipcRenderer.invoke('camera-source:connect', options),
     prepareConnection: (options) => ipcRenderer.invoke('camera-source:prepare-connection', options),
     check: (options) => ipcRenderer.invoke('camera-source:check', options),
-    listFiles: (options) => ipcRenderer.invoke('camera-source:list-files', options),
+    listFiles: (options, onPage) => {
+      if (!onPage) return ipcRenderer.invoke('camera-source:list-files', options)
+      const requestId = `camera-files-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const listener = (_event: Electron.IpcRendererEvent, value: CameraMediaSourceFilePage & { requestId?: string }) => {
+        if (value?.requestId !== requestId) return
+        onPage({ pageNumber: value.pageNumber, files: value.files })
+      }
+      ipcRenderer.on('camera-source:files-page', listener)
+      return ipcRenderer.invoke('camera-source:list-files', options, requestId).finally(() => {
+        ipcRenderer.off('camera-source:files-page', listener)
+      })
+    },
     deleteFiles: (files, options) => ipcRenderer.invoke('camera-source:delete-files', files, options),
     disconnect: (options) => ipcRenderer.invoke('camera-source:disconnect', options),
+  },
+  cameraVideoStream: {
+    start: (options) => ipcRenderer.invoke('camera-video-stream:start', options),
+    stop: (options) => ipcRenderer.invoke('camera-video-stream:stop', options),
+    startObs: (options) => ipcRenderer.invoke('camera-video-stream:start-obs', options),
+    stopObs: (options) => ipcRenderer.invoke('camera-video-stream:stop-obs', options),
+    status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
+  },
+  obsStreamDemo: {
+    status: () => ipcRenderer.invoke('obs-stream-demo:status'),
+    start: () => ipcRenderer.invoke('obs-stream-demo:start'),
+    stop: () => ipcRenderer.invoke('obs-stream-demo:stop'),
   },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
@@ -169,6 +210,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     deleteColorMask: (projectId: string, filePath: string) => ipcRenderer.invoke('workspace:deleteColorMask', projectId, filePath),
     cleanupColorMasks: (projectId: string, retainedPaths: string[]) => ipcRenderer.invoke('workspace:cleanupColorMasks', projectId, retainedPaths),
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
+    loadFont: (filePath: string) => ipcRenderer.invoke('workspace:loadFont', filePath),
+    loadLut: (filePath: string) => ipcRenderer.invoke('workspace:loadLut', filePath),
     getMediaFormatInfo: (filePath: string) => ipcRenderer.invoke('workspace:getMediaFormatInfo', filePath),
     getMediaResolution: (filePath: string) => ipcRenderer.invoke('workspace:getMediaResolution', filePath),
     getVideoDuration: (filePath: string) => ipcRenderer.invoke('workspace:getVideoDuration', filePath),
@@ -178,6 +221,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     readColorMetadata: (filePath: string) => ipcRenderer.invoke('workspace:readColorMetadata', filePath),
     getSegmentationModelStatus: (modelId: import('../src/shared/segmentationModels').SegmentationModelId) => ipcRenderer.invoke('workspace:getSegmentationModelStatus', modelId),
     prepareSegmentationModels: (modelIds: import('../src/shared/segmentationModels').SegmentationModelId[]) => ipcRenderer.invoke('workspace:prepareSegmentationModels', modelIds),
+    analyzeComposition: (request: import('../src/shared/types').WorkspaceCompositionAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeComposition', request),
+    scoreCompositionCrops: (request: import('../src/shared/types').WorkspaceCompositionCropScoreRequest) => ipcRenderer.invoke('workspace:scoreCompositionCrops', request),
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
     segmentInstances: (request: import('../src/shared/types').WorkspaceInstanceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentInstances', request),
     analyzeBeauty: (request: import('../src/shared/types').WorkspaceBeautyAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeBeauty', request),
@@ -256,11 +301,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     return () => ipcRenderer.off('luna:video-frame-rate-ready', listener)
   },
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
-  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, info: UpdateInfo): void => callback(info)
-    ipcRenderer.on('update:available', listener)
-    return () => ipcRenderer.off('update:available', listener)
-  },
   listReleaseNotes: () => ipcRenderer.invoke('release-notes:list'),
 
   // ── 导出任务记录（统一 API） ──
@@ -316,11 +356,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   applyHotUpdate: (info: HotUpdateCheckResult) => ipcRenderer.invoke('hot-update:apply', info),
   clearHotUpdate: () => ipcRenderer.invoke('hot-update:clear'),
   relaunchApp: () => ipcRenderer.invoke('hot-update:relaunch'),
-  onHotUpdateAvailable: (callback: (info: HotUpdateCheckResult) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, info: HotUpdateCheckResult): void => callback(info)
-    ipcRenderer.on('hot-update:available', listener)
-    return () => ipcRenderer.off('hot-update:available', listener)
-  },
 }
 
 const wifiDebugApi: WifiDebugApi = {
@@ -419,6 +454,22 @@ const lunaRenderCoreApi = {
     exportItemId?: string,
     includeAudio?: boolean,
   ) => ipcRenderer.invoke('lrc:exportCompositionVideo', outputPath, composition, fps, duration, hardware, taskId, qualityPreset, exportTaskId, exportItemId, includeAudio),
+  webGpuVideoBegin: (
+    sessionId: string,
+    outputPath: string,
+    sourcePath: string | null,
+    width: number,
+    height: number,
+    fps: number,
+    duration: number,
+    sourceStartTime: number,
+    includeAudio: boolean,
+  ) => ipcRenderer.invoke('lrc:webgpu-video-begin', sessionId, outputPath, sourcePath, width, height, fps, duration, sourceStartTime, includeAudio),
+  webGpuVideoProbe: (sourcePath: string): Promise<WebGpuVideoProbeResult> =>
+    ipcRenderer.invoke('lrc:webgpu-video-probe', sourcePath),
+  webGpuVideoWrite: (sessionId: string, data: Uint8Array) => ipcRenderer.invoke('lrc:webgpu-video-write', sessionId, data),
+  webGpuVideoEnd: (sessionId: string) => ipcRenderer.invoke('lrc:webgpu-video-end', sessionId),
+  webGpuVideoCancel: (sessionId: string) => ipcRenderer.invoke('lrc:webgpu-video-cancel', sessionId),
   cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
   getExportTaskProgress: (taskId: string) => ipcRenderer.invoke('lrc:getExportTaskProgress', taskId),
   resolveRenderSource: (originalPath: string, cacheDir: string) => ipcRenderer.invoke('lrc:resolveRenderSource', originalPath, cacheDir),

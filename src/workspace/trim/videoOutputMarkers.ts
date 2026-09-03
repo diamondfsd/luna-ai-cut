@@ -1,4 +1,8 @@
-export const LIVE_PHOTO_DURATION = 3
+export const DEFAULT_LIVE_PHOTO_DURATION = 3
+export const MIN_LIVE_PHOTO_DURATION = 0.1
+export const MAX_LIVE_PHOTO_DURATION = 5
+/** @deprecated Use DEFAULT_LIVE_PHOTO_DURATION for new code. */
+export const LIVE_PHOTO_DURATION = DEFAULT_LIVE_PHOTO_DURATION
 const MIN_VIDEO_SEGMENT_DURATION = 0.1
 const MAX_NOTE_LENGTH = 200
 
@@ -26,6 +30,24 @@ export interface PhotoOutputMarker extends VideoOutputMarkerBase {
 }
 
 export type VideoOutputMarker = VideoSegmentOutputMarker | LivePhotoOutputMarker | PhotoOutputMarker
+
+export function livePhotoSelectionForMarker(
+  markers: VideoOutputMarker[],
+  markerId: string | null,
+): { markerId: string; startTime: number; endTime: number; coverTime: number } | null {
+  if (!markerId) return null
+  const marker = markers.find((candidate): candidate is LivePhotoOutputMarker => (
+    candidate.kind === 'live' && candidate.id === markerId
+  ))
+  return marker
+    ? {
+        markerId: marker.id,
+        startTime: marker.startTime,
+        endTime: marker.endTime,
+        coverTime: marker.coverTime,
+      }
+    : null
+}
 
 export interface VideoOutputExportItem {
   markerId: string
@@ -66,14 +88,48 @@ function normalizeNote(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, MAX_NOTE_LENGTH) : ''
 }
 
-export function livePhotoRangeAround(time: number, duration: number): { startTime: number; endTime: number; coverTime: number } | null {
-  if (!Number.isFinite(duration) || duration < LIVE_PHOTO_DURATION) return null
+export function clampLivePhotoDuration(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_LIVE_PHOTO_DURATION
+  return Math.min(MAX_LIVE_PHOTO_DURATION, Math.max(MIN_LIVE_PHOTO_DURATION, value))
+}
+
+export function livePhotoRangeAround(
+  time: number,
+  duration: number,
+  liveDuration = DEFAULT_LIVE_PHOTO_DURATION,
+): { startTime: number; endTime: number; coverTime: number } | null {
+  const safeLiveDuration = clampLivePhotoDuration(liveDuration)
+  if (!Number.isFinite(duration) || duration < safeLiveDuration) return null
   const safeTime = Math.max(0, Math.min(Number.isFinite(time) ? time : 0, duration))
-  const startTime = Math.max(0, Math.min(safeTime - LIVE_PHOTO_DURATION / 2, duration - LIVE_PHOTO_DURATION))
+  const startTime = Math.max(0, Math.min(safeTime - safeLiveDuration / 2, duration - safeLiveDuration))
   return {
     startTime,
-    endTime: startTime + LIVE_PHOTO_DURATION,
-    coverTime: Math.min(safeTime, startTime + LIVE_PHOTO_DURATION - 0.01),
+    endTime: startTime + safeLiveDuration,
+    coverTime: Math.min(safeTime, startTime + safeLiveDuration - 0.01),
+  }
+}
+
+export function resizeLivePhotoRange(
+  startTime: number,
+  endTime: number,
+  coverTime: number,
+  requestedDuration: number,
+  sourceDuration: number,
+): { startTime: number; endTime: number; coverTime: number } | null {
+  if (![startTime, endTime, coverTime, requestedDuration, sourceDuration].every(Number.isFinite)) return null
+  const maximumDuration = Math.min(MAX_LIVE_PHOTO_DURATION, Math.floor(sourceDuration * 10) / 10)
+  if (maximumDuration < MIN_LIVE_PHOTO_DURATION) return null
+
+  const clampedDuration = Math.min(maximumDuration, Math.max(MIN_LIVE_PHOTO_DURATION, requestedDuration))
+  const nextDuration = Math.min(maximumDuration, Math.round(clampedDuration * 10) / 10)
+  const center = (startTime + endTime) / 2
+  const nextStart = Math.max(0, Math.min(center - nextDuration / 2, sourceDuration - nextDuration))
+  const nextEnd = nextStart + nextDuration
+
+  return {
+    startTime: nextStart,
+    endTime: nextEnd,
+    coverTime: Math.max(nextStart, Math.min(coverTime, nextEnd - 0.01)),
   }
 }
 
@@ -106,7 +162,8 @@ export function normalizeVideoOutputMarkers(value: unknown, sourceDuration?: num
     if (startTime < 0 || endTime > maximumTime) return null
 
     if (marker.kind === 'live') {
-      if (Math.abs(endTime - startTime - LIVE_PHOTO_DURATION) > 0.01) return null
+      const liveDuration = endTime - startTime
+      if (liveDuration < MIN_LIVE_PHOTO_DURATION || liveDuration > MAX_LIVE_PHOTO_DURATION) return null
       const coverTime = Number(marker.coverTime)
       if (!Number.isFinite(coverTime) || coverTime < startTime || coverTime >= endTime) return null
       return {

@@ -1,5 +1,5 @@
 fn sample_image(uv: vec2<f32>) -> vec3<f32> {
-    return textureSample(src_texture, src_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0))).rgb;
+    return textureSampleLevel(src_texture, src_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
 }
 
 fn blur3(uv: vec2<f32>) -> vec3<f32> {

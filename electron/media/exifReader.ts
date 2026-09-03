@@ -2,9 +2,9 @@ import { open } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
-import path from 'node:path'
 import { promisify } from 'node:util'
 import { getFfprobePath } from '../platform/ffmpeg/pipeline'
+import { mediaKindFromPath } from '../../src/lib/fileUtils'
 
 export interface MediaDeviceInfo {
   make: string
@@ -13,7 +13,6 @@ export interface MediaDeviceInfo {
   serialNumber?: string
 }
 
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.insv', '.lrv', '.lrf', '.xrf'])
 const execFileAsync = promisify(execFile)
 const REMOTE_TAIL_BYTES = 1024 * 1024
 const REMOTE_REQUEST_TIMEOUT_MS = 15_000
@@ -118,12 +117,7 @@ async function readInsta360VideoDeviceInfo(source: string): Promise<MediaDeviceI
 }
 
 function isVideoSource(source: string): boolean {
-  try {
-    const pathname = /^https?:\/\//i.test(source) ? new URL(source).pathname : source
-    return VIDEO_EXTENSIONS.has(path.extname(pathname).toLowerCase())
-  } catch {
-    return false
-  }
+  return mediaKindFromPath(source) === 'video'
 }
 
 export async function readMediaDeviceInfo(source?: string): Promise<MediaDeviceInfo | null> {

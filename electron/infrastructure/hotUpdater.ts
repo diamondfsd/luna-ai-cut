@@ -17,8 +17,13 @@
 import { app } from 'electron'
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { canLoadHotUpdate, stableReleaseVersion } from '../../src/shared/hotUpdateCompatibility'
+import {
+  canLoadHotUpdate,
+  compareHotUpdateVersions,
+  releaseChannelForVersion,
+} from '../../src/shared/hotUpdateCompatibility'
 import { installHotUpdateArchive, type HotUpdateIntegrity } from './hotUpdateArchiveService'
+import { logMainInfo, logMainWarn } from './loggerService'
 
 // ── 常量 ──
 
@@ -74,35 +79,15 @@ export function getCurrentHotVersion(): string | null {
     const version = typeof data.version === 'string' ? data.version : null
     if (!version) return null
     if (!HOT_APP_FILES.every((file) => existsSync(join(HOT_DIR(), file)))) {
-      console.log('[hot-update] 本地热更新内容不完整，将重新下载')
+      logMainWarn('[hot-update] 本地热更新内容不完整，将重新下载')
       return null
     }
     return version
   } catch (err) {
-    console.log(`[hot-update] getCurrentHotVersion: 读取失败`, err)
+    logMainWarn('[hot-update] 读取本地版本失败', { error: err instanceof Error ? err.message : String(err) })
     return null
   }
 }
-
-// ── 版本比较 ──
-
-/**
- * 比较两个版本号（如 "1.3.1-hot.2"）
- * 返回 1 (a > b) / 0 (a === b) / -1 (a < b)
- */
-function compareVersions(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split(/[-.]/).filter(Boolean)
-  const pb = b.replace(/^v/, '').split(/[-.]/).filter(Boolean)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = Number(pa[i]) || 0
-    const nb = Number(pb[i]) || 0
-    if (na > nb) return 1
-    if (na < nb) return -1
-  }
-  return 0
-}
-
-// ── GitCode API ──
 
 // ── GitCode API ──
 
@@ -114,17 +99,16 @@ function compareVersions(a: string, b: string): number {
  */
 async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdateManifest | null> {
   try {
-    const res = await fetch(`${GITCODE_API}/releases/tags/${releaseTag}`)
+    const res = await fetch(`${GITCODE_API}/releases/tags/${encodeURIComponent(releaseTag)}`)
     if (!res.ok) return null
 
     const data = await res.json() as { assets?: Array<{ name: string; browser_download_url?: string }> }
     const assets = data.assets ?? []
 
     const platform = currentPlatformPackage()
-    const platformPattern = new RegExp(
-      `^renderer-(\\d+\\.\\d+\\.\\d+-hot\\.\\d+)-${platform}\\.zip$`,
-    )
-    const universalPattern = /^renderer-(\d+\.\d+\.\d+-hot\.\d+)\.zip$/
+    const hotVersionPattern = '(\\d+\\.\\d+\\.\\d+(?:-beta\\.\\d+)?-hot\\.\\d+)'
+    const platformPattern = new RegExp(`^renderer-${hotVersionPattern}-${platform}\\.zip$`)
+    const universalPattern = new RegExp(`^renderer-${hotVersionPattern}\\.zip$`)
     const hotZips = assets.flatMap((asset) => {
       const platformMatch = asset.name.match(platformPattern)
       if (platformMatch) return [{ ...asset, version: platformMatch[1], platformSpecific: true }]
@@ -139,7 +123,7 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
 
     // 先选择最新版本；同一版本同时存在两种包时，再优先当前平台包。
     hotZips.sort((a, b) => {
-      const versionOrder = compareVersions(b.version, a.version)
+      const versionOrder = compareHotUpdateVersions(b.version, a.version)
       if (versionOrder !== 0) return versionOrder
       return Number(b.platformSpecific) - Number(a.platformSpecific)
     })
@@ -159,9 +143,13 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
       zipName: latest.name,
       minAppVersion: releaseTag.replace(/^v/, ''),
       integrity,
-      notesUrl: notesAsset?.browser_download_url,
+      notesUrl: notesAsset ? `${GITCODE_DL}/${releaseTag}/${notesAsset.name}` : undefined,
     }
-  } catch {
+  } catch (error) {
+    logMainWarn('[hot-update] 查询 GitCode Release 失败', {
+      releaseTag,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }
@@ -186,7 +174,13 @@ async function fetchHotUpdateIntegrity(
     if (!entry || typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)) return undefined
     if (typeof entry.sizeBytes !== 'number' || !Number.isInteger(entry.sizeBytes) || entry.sizeBytes <= 0) return undefined
     return { sha256: entry.sha256, sizeBytes: entry.sizeBytes }
-  } catch {
+  } catch (error) {
+    logMainWarn('[hot-update] 读取完整性清单失败', {
+      releaseTag,
+      version,
+      zipName,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return undefined
   }
 }
@@ -199,18 +193,38 @@ async function fetchHotUpdateIntegrity(
  */
 export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null> {
   // 开发模式跳过热更新检查，避免本地开发时弹通知
-  if (!app.isPackaged) return null
+  if (!app.isPackaged) {
+    logMainInfo('[hot-update] 开发模式跳过检查')
+    return null
+  }
 
   const appVersion = app.getVersion()
-  // 预发布安装包只能使用随安装包发布并验证过的代码与原生模块。
-  if (!stableReleaseVersion(appVersion)) return null
-  const releaseTag = `v${appVersion}`
+  const appRelease = releaseChannelForVersion(appVersion)
+  if (!appRelease) {
+    logMainWarn('[hot-update] 当前安装包版本不在支持的更新通道中', { appVersion })
+    return null
+  }
+  const releaseTag = appRelease.releaseTag
+  logMainInfo('[hot-update] 开始检查', {
+    appVersion: appRelease.version,
+    channel: appRelease.channel,
+    releaseTag,
+  })
 
   const manifest = await fetchLatestHotUpdateViaAPI(releaseTag)
-  if (!manifest) return null
+  if (!manifest) {
+    logMainInfo('[hot-update] 没有找到可用热更新', { releaseTag })
+    return null
+  }
 
   // 检查 minAppVersion 约束
-  if (compareVersions(appVersion, manifest.minAppVersion) < 0) {
+  const minAppRelease = releaseChannelForVersion(manifest.minAppVersion)
+  if (!minAppRelease || minAppRelease.version !== appRelease.version) {
+    logMainWarn('[hot-update] 热更新最低版本不匹配', {
+      appVersion: appRelease.version,
+      minAppVersion: manifest.minAppVersion,
+      hotVersion: manifest.version,
+    })
     return null
   }
 
@@ -221,7 +235,8 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
 
   // 与本地热更新版本比较
   const localVersion = getCurrentHotVersion()
-  if (localVersion && compareVersions(manifest.version, localVersion) <= 0) {
+  if (localVersion && compareHotUpdateVersions(manifest.version, localVersion) <= 0) {
+    logMainInfo('[hot-update] 本地热更新已是最新', { localVersion, remoteVersion: manifest.version })
     return null
   }
 
@@ -240,6 +255,13 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
     } catch { /* 获取发布说明失败不影响热更新 */ }
   }
 
+  logMainInfo('[hot-update] 发现可用热更新', {
+    channel: appRelease.channel,
+    releaseTag,
+    version: manifest.version,
+    zipName: manifest.zipName,
+    hasIntegrity: Boolean(manifest.integrity),
+  })
   return { version: manifest.version, downloadUrl, manifest, notes }
 }
 
@@ -258,6 +280,13 @@ async function applyHotUpdateOnce(info: HotUpdateCheckResult): Promise<void> {
   if (!canLoadHotUpdate(app.getVersion(), info.version)) {
     throw new Error('此热更新与当前安装版本不匹配')
   }
+  logMainInfo('[hot-update] 开始下载并安装', {
+    appVersion: app.getVersion(),
+    version: info.version,
+    zipName: info.manifest.zipName,
+    sizeBytes: info.manifest.integrity?.sizeBytes,
+    hasIntegrity: Boolean(info.manifest.integrity),
+  })
   await installHotUpdateArchive(HOT_DIR(), {
     version: info.version,
     zipName: info.manifest.zipName,
@@ -270,6 +299,7 @@ async function applyHotUpdateOnce(info: HotUpdateCheckResult): Promise<void> {
 export function clearHotUpdate(): void {
   const hotDir = HOT_DIR()
   rmSync(hotDir, { recursive: true, force: true })
+  logMainInfo('[hot-update] 已清理本地热更新')
 }
 
 /**

@@ -3,7 +3,6 @@ import { execFile } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
 import * as path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import exifr from 'exifr'
 
 import type { AiMediaQualityMetrics, AiSelectionItem, AiSelectionPreset, AiSelectionScores } from '../../../src/shared/types'
@@ -268,7 +267,8 @@ export async function analyzeIndexedMedia(
     width: metadata.width,
     height: metadata.height,
     duration: metadata.duration,
-    thumbnailUrl: media.kind === 'image' ? pathToFileURL(media.path).toString() : null,
+    // 原图不能作为 thumbnailUrl，否则前端会绕过缩略图缓存直接加载大图。
+    thumbnailUrl: null,
     exactHash: computeExactHash ? await fullFileHash(media.path, signal) : null,
     perceptualHash: media.kind === 'image' ? analyses[0].perceptualHash : null,
     luminanceHistogram: media.kind === 'image' ? analyses[0].histogram : null,
@@ -278,6 +278,7 @@ export async function analyzeIndexedMedia(
     embeddingError,
     quality,
     personEvidence: null,
+    compositionEvidence: null,
     videoKeyframes: [],
     videoSegments: [],
     semanticTags,
@@ -305,7 +306,7 @@ export function failedItem(media: IndexedMedia, error: unknown): AiSelectionItem
     width: null,
     height: null,
     duration: null,
-    thumbnailUrl: media.kind === 'image' ? pathToFileURL(media.path).toString() : null,
+    thumbnailUrl: null,
     exactHash: null,
     perceptualHash: null,
     luminanceHistogram: null,
@@ -315,6 +316,7 @@ export function failedItem(media: IndexedMedia, error: unknown): AiSelectionItem
     embeddingError: null,
     quality: null,
     personEvidence: null,
+    compositionEvidence: null,
     videoKeyframes: [],
     videoSegments: [],
     semanticTags: [media.kind === 'image' ? '照片' : '视频', '读取失败'],
@@ -342,7 +344,7 @@ export function pendingItem(media: IndexedMedia): AiSelectionItem {
     width: null,
     height: null,
     duration: null,
-    thumbnailUrl: media.kind === 'image' ? pathToFileURL(media.path).toString() : null,
+    thumbnailUrl: null,
     exactHash: null,
     perceptualHash: null,
     luminanceHistogram: null,
@@ -352,6 +354,7 @@ export function pendingItem(media: IndexedMedia): AiSelectionItem {
     embeddingError: null,
     quality: null,
     personEvidence: null,
+    compositionEvidence: null,
     videoKeyframes: [],
     videoSegments: [],
     semanticTags: [media.kind === 'image' ? '照片' : '视频', '等待分析'],

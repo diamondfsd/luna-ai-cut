@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { Slider as RadixSlider } from 'radix-ui'
+import { logger } from '../../lib/rendererLogger'
 
 interface ParamSliderProps {
   label: ReactNode
@@ -8,6 +9,7 @@ interface ParamSliderProps {
   max: number
   step?: number
   onChange: (value: number) => void
+  onPreviewChange?: (value: number) => void
   onCommit?: (value: number) => void
   formatValue?: (value: number) => string
 }
@@ -29,14 +31,12 @@ export function ParamSlider({
   max,
   step = 1,
   onChange,
+  onPreviewChange,
   onCommit,
   formatValue = formatSigned,
 }: ParamSliderProps) {
   const accessibleLabel = typeof label === 'string' ? label : '参数'
   const zeroRatio = max - min > 0 ? (0 - min) / (max - min) : 0.5
-  const valueRatio = max - min > 0 ? (value - min) / (max - min) : 0.5
-  const fillLeft = Math.min(zeroRatio, valueRatio) * 100
-  const fillWidth = Math.abs(valueRatio - zeroRatio) * 100
 
   const [editValue, setEditValue] = useState(() => formatValue(value))
   const [editing, setEditing] = useState(false)
@@ -44,14 +44,33 @@ export function ParamSlider({
   const inputRef = useRef<HTMLInputElement>(null)
   const rafRef = useRef<number | null>(null)
   const pendingValueRef = useRef<number | null>(null)
+  const draggingRef = useRef(false)
+  const pointerSessionRef = useRef(false)
+  const pointerStartValueRef = useRef(value)
+  const latestSliderValueRef = useRef(value)
+  const skipNextCommitRef = useRef<number | null>(null)
+  const sliderEventSequenceRef = useRef(0)
+  const commitMode = onCommit !== undefined
+  const diagnosticLabel = typeof label === 'string' ? label : 'parameter'
   const displayValue = numericInputValue(value, formatValue)
+  const sliderDisplayValue = numericInputValue(commitMode ? sliderValue : value, formatValue)
+  const renderedValue = commitMode ? sliderValue : value
+  const renderedValueRatio = max - min > 0 ? (renderedValue - min) / (max - min) : 0.5
+  const renderedFillLeft = Math.min(zeroRatio, renderedValueRatio) * 100
+  const renderedFillWidth = Math.abs(renderedValueRatio - zeroRatio) * 100
 
   useEffect(() => {
     if (!editing) {
       setEditValue(displayValue)
     }
-    if (onCommit) setSliderValue(value)
-  }, [displayValue, editing, onCommit, value])
+  }, [displayValue, editing])
+
+  useEffect(() => {
+    if (commitMode && !draggingRef.current) {
+      setSliderValue(value)
+      latestSliderValueRef.current = value
+    }
+  }, [commitMode, value])
 
   function commit() {
     const parsed = Number(editValue)
@@ -59,7 +78,12 @@ export function ParamSlider({
       setEditValue(formatValue(value))
     } else {
       const next = Math.min(max, Math.max(min, parsed))
-      ;(onCommit ?? onChange)(next)
+      if (onCommit) {
+        setSliderValue(next)
+        latestSliderValueRef.current = next
+      }
+      const commitChange = onCommit ?? onChange
+      commitChange(next)
     }
     setEditing(false)
   }
@@ -71,19 +95,49 @@ export function ParamSlider({
       rafRef.current = null
       const pending = pendingValueRef.current
       pendingValueRef.current = null
-      if (pending !== null) onChange(pending)
+      if (pending !== null) {
+        const previewChange = onPreviewChange ?? (onCommit ? null : onChange)
+        previewChange?.(pending)
+      }
     })
   }
 
   function flushSliderChange(next: number): void {
+    const pointerCommit = pointerSessionRef.current || draggingRef.current
+    const committedValue = pointerCommit ? latestSliderValueRef.current : next
+    logger.info('[PreviewDebug] workspace slider commit event', {
+      label: diagnosticLabel,
+      sequence: ++sliderEventSequenceRef.current,
+      eventValue: next,
+      committedValue,
+      pointerCommit,
+      pointerSession: pointerSessionRef.current,
+      dragging: draggingRef.current,
+    })
+    if (!Number.isFinite(committedValue)) return
+    if (skipNextCommitRef.current === committedValue) {
+      skipNextCommitRef.current = null
+      pointerSessionRef.current = false
+      draggingRef.current = false
+      return
+    }
+    if (pointerCommit && committedValue === pointerStartValueRef.current) {
+      pointerSessionRef.current = false
+      draggingRef.current = false
+      return
+    }
     pendingValueRef.current = null
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-    setSliderValue(next)
+    setSliderValue(committedValue)
+    latestSliderValueRef.current = committedValue
+    if (pointerCommit) skipNextCommitRef.current = committedValue
+    pointerSessionRef.current = false
+    draggingRef.current = false
     const commitChange = onCommit ?? onChange
-    commitChange(next)
+    commitChange(committedValue)
   }
 
   useEffect(() => {
@@ -104,7 +158,7 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
-          value={editing ? editValue : displayValue}
+          value={editing ? editValue : onCommit ? sliderDisplayValue : displayValue}
           onChange={(e) => { setEditing(true); setEditValue(e.currentTarget.value) }}
           onFocus={() => { setEditValue(displayValue); setEditing(true) }}
           onBlur={commit}
@@ -114,17 +168,41 @@ export function ParamSlider({
       <div className="workspace-range-wrap">
         <RadixSlider.Root
           className="workspace-slider-root"
-          value={[onCommit ? sliderValue : value]}
+          value={[commitMode ? sliderValue : value]}
           min={min}
           max={max}
           step={step}
-          onValueChange={([v]) => { if (onCommit) setSliderValue(v); else scheduleSliderChange(v) }}
+          onPointerDown={() => {
+            pointerSessionRef.current = true
+            pointerStartValueRef.current = latestSliderValueRef.current
+            skipNextCommitRef.current = null
+            draggingRef.current = true
+            logger.info('[PreviewDebug] workspace slider pointer down', {
+              label: diagnosticLabel,
+              sequence: ++sliderEventSequenceRef.current,
+              value: latestSliderValueRef.current,
+            })
+          }}
+          onValueChange={([v]) => {
+            latestSliderValueRef.current = v
+            if (onCommit) setSliderValue(v)
+            if (!onCommit || onPreviewChange) scheduleSliderChange(v)
+            logger.info('[PreviewDebug] workspace slider value change', {
+              label: diagnosticLabel,
+              sequence: ++sliderEventSequenceRef.current,
+              value: v,
+              pointerSession: pointerSessionRef.current,
+              dragging: draggingRef.current,
+            })
+          }}
           onValueCommit={([v]) => flushSliderChange(v)}
+          onPointerUp={() => flushSliderChange(latestSliderValueRef.current)}
+          onPointerCancel={() => flushSliderChange(latestSliderValueRef.current)}
         >
           <RadixSlider.Track className="workspace-slider-track">
             <div
               className="workspace-slider-fill"
-              style={{ left: `${fillLeft}%`, width: `${fillWidth}%` }}
+              style={{ left: `${renderedFillLeft}%`, width: `${renderedFillWidth}%` }}
             />
             <div
               className="workspace-slider-zero"

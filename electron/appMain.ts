@@ -1,14 +1,15 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkForUpdates } from './infrastructure/updateService'
-import { checkForHotUpdates, getCurrentHotVersion } from './infrastructure/hotUpdater'
+import { getCurrentHotVersion } from './infrastructure/hotUpdater'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
 import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './infrastructure/loggerService'
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrastructure/crashDiagnostics'
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
+import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
+import { stopObsStreamDemoOnQuit } from './media/obs-demo/obsMp4StreamService'
 
 import {
   getLocalResourcesDir,
@@ -31,10 +32,12 @@ import { createPreviewTaskQueue } from './media/previewTaskQueue'
 import { activateMainWindow, appIconPath, appTrayIconPath, createMainWindow, getMainWindowCloseBehavior, setMainWindowCloseBehavior } from './application/windowService'
 import { createAppTray, destroyAppTray } from './application/trayService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './devtools/device-debug/handlers'
-import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './platform/render/lunaRenderCore'
+import { cancelExportTask, resetRenderCompatibilityBlock } from './platform/render/lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './features/segmentation/specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './features/segmentation/segmentationModelPrefetchService'
 import { stopLocalMediaShare } from './media/local-share/localMediaShareService'
+import { installDjiWebBluetoothHandlers } from './devices/dji/djiWebBluetoothTransport'
+import { installLunaWebBluetoothHandlers } from './devices/insta360/lunaBleWebBluetoothTransport'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -70,6 +73,7 @@ let win: BrowserWindow | null
 const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()
 const activeDownloadControllers = new Set<AbortController>()
+const activeDownloadTasks = new Set<Promise<unknown>>()
 const activeExportControllers = new Map<string, AbortController>()
 const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
 const activeNativeExportTasks = new Set<string>()
@@ -79,6 +83,8 @@ const enqueuePreviewTask = createPreviewTaskQueue(2)
 
 /** 停止所有客户端的保活并清理 */
 function stopAllKeepAlive(): void {
+  void stopAllCameraVideoStreams()
+  void stopObsStreamDemoOnQuit()
   for (const client of clients.values()) {
     client.stopKeepAlive()
     client.close()
@@ -222,7 +228,34 @@ async function ensureCameraSessionForUrl(url: string | null | undefined): Promis
   client.startKeepAlive()
 }
 
-async function ensureCameraSessionForFile(file: LunaFile, url = file.sourceUrl || file.url): Promise<void> {
+function localPathExists(value: string | null | undefined): boolean {
+  if (!value) return false
+  try {
+    return existsSync(value.startsWith('file:') ? fileURLToPath(value) : value)
+  } catch {
+    return false
+  }
+}
+
+async function ensureCameraSessionForFile(
+  file: LunaFile,
+  url = file.sourceUrl || file.url,
+  localPath?: string | null,
+): Promise<void> {
+  if ([localPath, file.downloadFilePath, file.localPath, file.cacheFilePath].some(localPathExists)) return
+
+  const settings = await getSettings()
+  const deviceId = file.sourceDeviceId ?? settings.activeDeviceId ?? DEFAULT_DEVICE.id
+  const device = deviceDefinitionFor(deviceId)
+  if (device.protocol !== 'insta360') {
+    logMainInfo('[预览] 跳过不适用的 Luna 相机连接', {
+      fileName: file.name,
+      sourceDeviceId: file.sourceDeviceId ?? null,
+      activeDeviceId: settings.activeDeviceId ?? null,
+      protocol: device.protocol ?? null,
+    })
+    return
+  }
   await ensureCameraSessionForUrl(url)
 }
 
@@ -244,16 +277,12 @@ function createWindow(): void {
     },
     getWindowCloseBehavior: getMainWindowCloseBehavior,
   })
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    installDjiWebBluetoothHandlers(win)
+    installLunaWebBluetoothHandlers(win)
+  }
   attachWindowCrashDiagnostics(win)
   win.webContents.once('did-finish-load', () => {
-    setTimeout(() => {
-      void warmupRenderCore().then(
-        () => logMainInfo('[LRC] 后台预热完成'),
-        (error) => logMainWarn('[LRC] 后台预热失败，将在首次使用时重试', {
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      )
-    }, 200)
     setTimeout(() => startSegmentationModelPrefetch(), 1_000)
   })
 }
@@ -306,6 +335,10 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
+  ipcMain.on('app:is-packaged', (event) => {
+    event.returnValue = app.isPackaged
+  })
+
   // appMain.ts 只负责应用生命周期、共享上下文组装和 IPC 模块注册。
   // 具体 IPC 实现必须拆分到 electron/ipc/ipc*.ts 或独立服务模块中，
   // 并通过 Vite 的 import.meta.glob 自动发现注册，避免在这里堆业务逻辑。
@@ -314,8 +347,11 @@ function registerIpc(): void {
       return win
     },
     clients,
+    lunaClientFor: clientFor,
+    lunaControlPortFor: controlPortForCurrentSettings,
     goUltraClients,
     activeDownloadControllers,
+    activeDownloadTasks,
     activeExportControllers,
     activeExportEncoders,
     activeNativeExportTasks,
@@ -467,44 +503,6 @@ function registerIpc(): void {
   })
 }
 
-/**
- * 每天最多自动检查一次更新
- */
-function scheduleUpdateCheck(): void {
-  const CHECK_FILE = join(app.getPath('userData'), '.last-update-check')
-  const HOT_CHECK_FILE = join(app.getPath('userData'), '.last-hot-update-check')
-  const today = new Date().toISOString().slice(0, 10) // "2026-06-25"
-
-  // 延迟 2s 执行首次检查
-  setTimeout(async () => {
-    // 开发环境下跳过所有更新检查
-    if (!app.isPackaged) return
-
-    // 全量更新检查：受每日限制
-    if (existsSync(CHECK_FILE) && readFileSync(CHECK_FILE, 'utf-8').trim() === today) {
-      // 今天已检查过全量更新，跳过
-    } else {
-      const info = await checkForUpdates()
-      if (info && win && !win.isDestroyed()) {
-        win.webContents.send('update:available', info)
-      }
-      // 记录检查日期
-      mkdirSync(app.getPath('userData'), { recursive: true })
-      writeFileSync(CHECK_FILE, today, 'utf-8')
-    }
-
-    // 热更新检查：每天最多一次，避免频繁启动应用时重复请求服务
-    if (!existsSync(HOT_CHECK_FILE) || readFileSync(HOT_CHECK_FILE, 'utf-8').trim() !== today) {
-      const hotInfo = await checkForHotUpdates()
-      if (hotInfo && win && !win.isDestroyed()) {
-        win.webContents.send('hot-update:available', hotInfo)
-      }
-      mkdirSync(app.getPath('userData'), { recursive: true })
-      writeFileSync(HOT_CHECK_FILE, today, 'utf-8')
-    }
-  }, 2_000)
-}
-
 /** 创建应用菜单，保留文本编辑快捷键（剪切/复制/粘贴/全选） */
 function createAppMenu(): void {
   const isMac = process.platform === 'darwin'
@@ -578,7 +576,6 @@ app.whenReady().then(async () => {
     createMainWindow: createWindow,
   })
   registerIpc()
-  scheduleUpdateCheck()
   const settings = await getSettings()
   setMainWindowCloseBehavior(settings.windowCloseBehavior)
   createWindow()

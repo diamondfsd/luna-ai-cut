@@ -4,11 +4,13 @@ import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 
 const source = await readFile(new URL('../src/components/htmlPreviewGeometry.ts', import.meta.url), 'utf8')
+const fileUtilsSource = await readFile(new URL('../src/lib/fileUtils.ts', import.meta.url), 'utf8')
 const watermarkGeometrySource = await readFile(new URL('../src/shared/watermarkGeometry.ts', import.meta.url), 'utf8')
 const watermarkLibrarySource = await readFile(new URL('../src/shared/watermarkLibrary.ts', import.meta.url), 'utf8')
 const rendererSelectionSource = await readFile(new URL('../src/components/previewRendererSelection.ts', import.meta.url), 'utf8')
 const previewLayerTimingSource = await readFile(new URL('../src/components/previewLayerTiming.ts', import.meta.url), 'utf8')
 const nativePreviewOcclusionSource = await readFile(new URL('../src/components/nativePreviewOcclusion.ts', import.meta.url), 'utf8')
+const previewViewportGeometrySource = await readFile(new URL('../src/components/previewViewportGeometry.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -17,6 +19,14 @@ const compiled = ts.transpileModule(source, {
   },
 }).outputText
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const fileUtilsCompiled = ts.transpileModule(fileUtilsSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+  },
+}).outputText
+const fileUtils = await import(`data:text/javascript;base64,${Buffer.from(fileUtilsCompiled).toString('base64')}`)
 const watermarkGeometryCompiled = ts.transpileModule(watermarkGeometrySource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -57,10 +67,24 @@ const nativePreviewOcclusionCompiled = ts.transpileModule(nativePreviewOcclusion
   },
 }).outputText
 const nativePreviewOcclusion = await import(`data:text/javascript;base64,${Buffer.from(nativePreviewOcclusionCompiled).toString('base64')}`)
+const previewViewportGeometryCompiled = ts.transpileModule(previewViewportGeometrySource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+  },
+}).outputText
+const previewViewportGeometry = await import(`data:text/javascript;base64,${Buffer.from(previewViewportGeometryCompiled).toString('base64')}`)
 
 function close(actual, expected, message) {
   assert.ok(Math.abs(actual - expected) < 0.0001, `${message}: expected ${expected}, got ${actual}`)
 }
+
+const firstZoom = previewViewportGeometry.zoomOffsetAroundPoint({ x: 0, y: 0 }, 1, 2, 200, -120)
+close(firstZoom.x, -200, 'first zoom keeps the cursor anchor horizontally fixed')
+close(firstZoom.y, 120, 'first zoom keeps the cursor anchor vertically fixed')
+const secondZoom = previewViewportGeometry.zoomOffsetAroundPoint(firstZoom, 2, 4, 200, -120)
+close(secondZoom.x, -600, 'repeated zoom keeps the same cursor anchor horizontally fixed')
+close(secondZoom.y, 360, 'repeated zoom keeps the same cursor anchor vertically fixed')
 
 const landscape = geometry.containPreviewSize({ width: 1000, height: 800 }, { width: 1920, height: 1080 })
 close(landscape.width, 1000, 'landscape preview width')
@@ -68,6 +92,11 @@ close(landscape.height, 562.5, 'landscape preview height')
 const portrait = geometry.containPreviewSize({ width: 1000, height: 800 }, { width: 1080, height: 1920 })
 close(portrait.width, 450, 'rotated portrait preview width')
 close(portrait.height, 800, 'rotated portrait preview height')
+
+const djiOriginalUrl = 'http://192.168.2.1/v2?storage=1&path=DCIM/DJI_001/DJI_0001.MP4'
+assert.equal(fileUtils.fileNameFromPath(djiOriginalUrl), 'DJI_0001.MP4', 'DJI media endpoint exposes the original file name')
+assert.equal(fileUtils.extensionFromPath(djiOriginalUrl), '.mp4', 'DJI media endpoint exposes the original extension')
+assert.equal(fileUtils.mediaKindFromPath(djiOriginalUrl), 'video', 'DJI original media URL is recognized as video')
 
 const layer = {
   positioning: {
@@ -134,6 +163,27 @@ const moved = watermarkGeometry.resolveWatermarkPositioning({
 }, 1080, 1920)
 assert.ok((moved.marginX ?? 0) + moved.targetWidth <= 1, 'free watermark stays inside right edge')
 assert.ok((moved.marginY ?? 0) >= 0, 'free watermark stays inside vertical bounds')
+const builtinSettings = {
+  ...customSettings,
+  sourceKind: 'builtin',
+  style: 'luna_ultra',
+  customAsset: undefined,
+  imagePath: '/tmp/luna.png',
+}
+const movedBuiltin = watermarkGeometry.resolveWatermarkPositioning({
+  ...builtinSettings,
+  sizeOnCanvasWidth: 0.4,
+  placement: { mode: 'free', centerX: 0.22, centerY: 0.31 },
+}, 1920, 1080)
+const defaultPortraitBuiltin = watermarkGeometry.resolveWatermarkPositioning({
+  ...builtinSettings,
+  sizeOnCanvasWidth: undefined,
+  placement: undefined,
+}, 1080, 1920)
+close(movedBuiltin.targetWidth, 0.4, 'built-in watermark uses the editable size')
+close(movedBuiltin.marginX, 0.02, 'built-in watermark uses the editable horizontal position')
+close(movedBuiltin.marginY, 0.31 - movedBuiltin.targetWidth * 1920 / 1080 / 4 / 2, 'built-in watermark uses the editable vertical position')
+close(defaultPortraitBuiltin.targetWidth, 0.35, 'built-in portrait watermark keeps the default size')
 
 const firstAsset = { id: 'first', filePath: '/tmp/first.png' }
 const secondAsset = { id: 'second', filePath: '/tmp/second.png' }
@@ -212,8 +262,8 @@ assert.equal(
     videoLayer,
     { ...videoLayer, layerType: 'local-color', maskPath: '/tmp/mask.pgm' },
   ]),
-  true,
-  'masked video preview uses the composition renderer that loads linear mask textures',
+  false,
+  'masked video preview keeps the direct renderer that uploads mask textures',
 )
 assert.equal(
   rendererSelection.requiresCompositionVideoRenderer(false, [

@@ -6,6 +6,8 @@ import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
+import { logExport } from '../lib/rendererLogger'
+import { resolveVideoExportResolution, normalizeVideoDimensions } from '../lib/videoExportResolution'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -71,22 +73,7 @@ export function resolveExportResolution(
   originalHeight: number,
   resolution: VideoResolution,
 ): { width: number; height: number } {
-  if (resolution === 'original' || resolution === undefined) {
-    return { width: originalWidth, height: originalHeight }
-  }
-
-  const aspect = originalWidth / originalHeight
-
-  switch (resolution) {
-    case '1080p':
-      return { width: Math.round(1080 * aspect), height: 1080 }
-    case '2k':
-      return { width: 2560, height: Math.round(2560 / aspect) }
-    case '4k':
-      return { width: 3840, height: Math.round(3840 / aspect) }
-    default:
-      return { width: originalWidth, height: originalHeight }
-  }
+  return resolveVideoExportResolution(originalWidth, originalHeight, resolution)
 }
 
 /** 根据帧率预设解析数值，'original' 返回 null（由 Rust 决定） */
@@ -140,7 +127,7 @@ export function resolveExportConfig(
 } {
   const res = config?.resolution
     ? resolveExportResolution(originalWidth, originalHeight, config.resolution)
-    : { width: originalWidth, height: originalHeight }
+    : normalizeVideoDimensions(originalWidth, originalHeight)
 
   return {
     width: res.width,
@@ -249,29 +236,39 @@ export async function exportPreviewVideo(params: {
     if (!taskId || !itemId) return
     emitLocalExportProgress({ exportId: itemId, taskId, taskName, fileName: params.fileName, index, totalFiles, percent, status, destinationPath: path, error })
   }
-  let stopProgressWatcher = false
   let lastPercent = 0
-  const progressWatcher = renderTaskId && (params.onProgress || (taskId && itemId)) ? (async () => {
-    while (!stopProgressWatcher) {
-      const progress = await renderCoreProgress(renderTaskId).catch(() => null)
-      if (progress) {
-        const currentFrame = Number(progress[0])
-        const totalFrames = Number(progress[1])
-        if (totalFrames > 1) {
-          const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
-          if (percent > lastPercent) {
-            lastPercent = percent
-            await params.onProgress?.(percent)
-            if (taskId && itemId) {
-              await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
-              emitVideoProgress(percent, 'exporting')
-            }
+  const reportVideoProgress = async (percent: number): Promise<void> => {
+    if (percent <= lastPercent) return
+    lastPercent = percent
+    await params.onProgress?.(percent)
+    if (taskId && itemId) {
+      await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
+      emitVideoProgress(percent, 'exporting')
+    }
+  }
+  logExport('[导出诊断] 视频渲染路径', {
+    renderer: 'rust-wgpu',
+    reason: '浏览器端导出加速已移除，统一使用原生 wgpu 导出',
+  })
+  let stopProgressWatcher = false
+  const progressWatchers: Promise<void>[] = []
+  const startNativeProgressWatcher = (): void => {
+    if (progressWatchers.length > 0 || !renderTaskId || (!params.onProgress && !(taskId && itemId))) return
+    progressWatchers.push((async () => {
+      while (!stopProgressWatcher) {
+        const progress = await renderCoreProgress(renderTaskId).catch(() => null)
+        if (progress) {
+          const currentFrame = Number(progress[0])
+          const totalFrames = Number(progress[1])
+          if (totalFrames > 1) {
+            const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
+            await reportVideoProgress(percent)
           }
         }
+        await wait(500)
       }
-      await wait(500)
-    }
-  })() : null
+    })())
+  }
 
   try {
     const exportFps = params.fps ?? null
@@ -281,18 +278,30 @@ export async function exportPreviewVideo(params: {
       params.height,
       { fps: exportFps ?? undefined },
     )
-    await lrc().exportCompositionVideo(
-      path,
-      composition,
-      exportFps,
-      null,
-      true,
-      renderTaskId,
-      params.qualityPreset ?? 'high',
-      taskId,
-      itemId,
-      params.includeAudio !== false,
-    )
+    logExport('[导出诊断] 视频最终参数', {
+      sourcePaths: [...new Set(params.layers.map((layer) => layer.filePath).filter(Boolean))],
+      requestedSize: { width: params.width, height: params.height },
+      compositionCanvas: composition.canvas,
+      fps: exportFps,
+      qualityPreset: params.qualityPreset ?? 'high',
+      includeAudio: params.includeAudio !== false,
+    })
+    const exportWithNative = async (): Promise<void> => {
+      startNativeProgressWatcher()
+      await lrc().exportCompositionVideo(
+        path,
+        composition,
+        exportFps,
+        null,
+        true,
+        renderTaskId,
+        params.qualityPreset ?? 'high',
+        taskId,
+        itemId,
+        params.includeAudio !== false,
+      )
+    }
+    await exportWithNative()
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
       emitVideoProgress(100, 'done')
@@ -306,7 +315,7 @@ export async function exportPreviewVideo(params: {
     throw error
   } finally {
     stopProgressWatcher = true
-    await progressWatcher?.catch(() => {})
+    await Promise.all(progressWatchers).catch(() => {})
   }
   return { path, name: params.fileName }
 }

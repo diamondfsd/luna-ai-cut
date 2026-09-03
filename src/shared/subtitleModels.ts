@@ -1,29 +1,44 @@
 const MODELSCOPE = 'https://www.modelscope.cn/models'
-const PARAFORMER_REVISION = '6231c426de8033aa6e5aeceaea63b4645afce449'
-const FSMN_VAD_REVISION = 'f04fc3013641c8d59c156e2cbf171c1ad596f74d'
+const PARAFORMER_REVISION = '95cf6ebc2800a761d97cbb9142a3536d47dec8c7'
+const PARAFORMER_MODEL_SHA256 = '3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec'
+const PARAFORMER_TOKENS_SHA256 = '4b2d964e18b9cf139b473003b6698fb2ed9a2a5ec55b93daa677b28f578897aa'
+const SILERO_VAD_REVISION = 'e638eca036c3722da77f53a5f032500f1d033a34'
+const SILERO_VAD_SHA256 = '2623a2953f6ff3d2c1e61740c6cdb7168133479b267dfef114a4a3cc5bdd788f'
 
 export const SUBTITLE_ASR_MODEL = {
-  id: 'paraformer-zh-q8',
-  fileName: 'paraformer-q8.gguf',
-  sizeBytes: 236_929_024,
-  sha256: '42bf76ea1575a336aaca4c1b7c01a82b79113e6d04d0d6b799561bfcf07ee011',
-  url: `${MODELSCOPE}/FunAudioLLM/Paraformer-GGUF/resolve/${PARAFORMER_REVISION}/paraformer-q8.gguf`,
-  version: `paraformer-gguf-${PARAFORMER_REVISION.slice(0, 8)}-q8`,
+  id: 'paraformer-zh-small-onnx-int8',
+  fileName: 'paraformer-zh-small-int8.onnx',
+  sizeBytes: 81_828_675,
+  sha256: PARAFORMER_MODEL_SHA256,
+  url: `${MODELSCOPE}/pengzhendong/sherpa-onnx-paraformer-zh-small/resolve/${PARAFORMER_REVISION}/model.int8.onnx`,
+  version: `sherpa-onnx-paraformer-zh-small-${PARAFORMER_REVISION.slice(0, 8)}-int8`,
   license: 'Apache-2.0',
-  licenseUrl: 'https://www.modelscope.cn/models/FunAudioLLM/Paraformer-GGUF',
-  source: 'https://www.modelscope.cn/models/FunAudioLLM/Paraformer-GGUF',
+  licenseUrl: 'https://www.modelscope.cn/models/pengzhendong/sherpa-onnx-paraformer-zh-small',
+  source: 'https://www.modelscope.cn/models/pengzhendong/sherpa-onnx-paraformer-zh-small',
+} as const
+
+export const SUBTITLE_ASR_TOKENS_MODEL = {
+  id: 'paraformer-zh-small-onnx-tokens',
+  fileName: 'paraformer-zh-small-tokens.txt',
+  sizeBytes: 75_352,
+  sha256: PARAFORMER_TOKENS_SHA256,
+  url: `${MODELSCOPE}/pengzhendong/sherpa-onnx-paraformer-zh-small/resolve/${PARAFORMER_REVISION}/tokens.txt`,
+  version: `sherpa-onnx-paraformer-zh-small-${PARAFORMER_REVISION.slice(0, 8)}-tokens`,
+  license: 'Apache-2.0',
+  licenseUrl: 'https://www.modelscope.cn/models/pengzhendong/sherpa-onnx-paraformer-zh-small',
+  source: 'https://www.modelscope.cn/models/pengzhendong/sherpa-onnx-paraformer-zh-small',
 } as const
 
 export const SUBTITLE_VAD_MODEL = {
-  id: 'fsmn-vad-gguf',
-  fileName: 'fsmn-vad.gguf',
-  sizeBytes: 1_720_512,
-  sha256: '1270f2559c495f4e7b6e739541151027d360761a3fda43fc147034f5719f5479',
-  url: `${MODELSCOPE}/FunAudioLLM/fsmn-vad-GGUF/resolve/${FSMN_VAD_REVISION}/fsmn-vad.gguf`,
-  version: `fsmn-vad-gguf-${FSMN_VAD_REVISION.slice(0, 8)}`,
+  id: 'silero-vad-v5-onnx',
+  fileName: 'silero_vad.onnx',
+  sizeBytes: 2_327_524,
+  sha256: SILERO_VAD_SHA256,
+  url: `${MODELSCOPE}/pengzhendong/silero-vad/resolve/${SILERO_VAD_REVISION}/silero_vad.onnx`,
+  version: `silero-vad-v5-${SILERO_VAD_REVISION.slice(0, 8)}`,
   license: 'Apache-2.0',
-  licenseUrl: 'https://www.modelscope.cn/models/FunAudioLLM/fsmn-vad-GGUF',
-  source: 'https://www.modelscope.cn/models/FunAudioLLM/fsmn-vad-GGUF',
+  licenseUrl: 'https://www.modelscope.cn/models/pengzhendong/silero-vad',
+  source: 'https://www.modelscope.cn/models/pengzhendong/silero-vad',
 } as const
 
 const PUNCTUATION_REVISION = '8177426a1240345bd35b21616475ddcf425d5288'

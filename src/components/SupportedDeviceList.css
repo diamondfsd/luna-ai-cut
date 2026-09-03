@@ -51,14 +51,13 @@
 .supported-device-card.ui-btn {
   display: flex;
   min-width: 0;
-  min-height: 72px;
+  min-height: 48px;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
   border-color: var(--hairline);
   border-radius: 8px;
   background: var(--canvas);
-  padding: 9px;
+  padding: 12px;
   text-align: left;
   white-space: normal;
 }
@@ -69,79 +68,23 @@
   background: color-mix(in srgb, var(--blue) 5%, var(--canvas));
 }
 
-.supported-device-visual {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  place-items: center;
-  overflow: hidden;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--blue) 8%, var(--parchment));
-  color: var(--blue);
-}
-
-.supported-device-visual img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.supported-device-visual img.supported-device-character {
-  object-fit: cover;
-  padding: 0;
-}
-
-.supported-device-visual.dji {
-  background: color-mix(in srgb, var(--ink) 8%, var(--parchment));
-  color: var(--ink);
-}
-
 .supported-device-copy {
   display: grid;
   min-width: 0;
   align-content: center;
-  gap: 3px;
-}
-
-.supported-device-copy strong,
-.supported-device-copy small,
-.supported-device-copy em {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .supported-device-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ink);
   font-size: 12px;
   font-weight: 600;
 }
 
-.supported-device-copy small {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.supported-device-copy em {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--blue);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 600;
-}
-
 @media (max-width: 760px) {
   .supported-device-card.ui-btn {
-    min-height: 80px;
-  }
-
-  .supported-device-visual {
-    width: 56px;
-    height: 56px;
-    flex-basis: 56px;
-    border-radius: 16px;
+    min-height: 48px;
   }
 }

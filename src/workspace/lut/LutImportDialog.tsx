@@ -31,8 +31,6 @@ interface ImportResult {
   skipped: number
 }
 
-type ElectronFile = File & { path?: string }
-
 interface LutImportRenderCore {
   importCubeFile(sourcePath: string, folderName: string, lutDir: string, targetName: string | undefined, metadata: { name: string }): Promise<{ path: string }>
 }
@@ -64,6 +62,14 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
   )
 
   const hasImportable = importableCount > 0
+
+  function getFilePath(file: File): string {
+    try {
+      return window.luna.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  }
 
   /* ── resolve LUT dir ── */
 
@@ -120,7 +126,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
           file,
           name: file.name,
           displayName: file.name.replace(/\.cube$/i, ''),
-          sourcePath: (file as ElectronFile).path || file.name,
+          sourcePath: '',
           status: 'error',
           statusText: '不支持的文件格式',
           conflictAction: 'skip',
@@ -130,16 +136,18 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
       const nameWithoutExt = file.name.replace(/\.cube$/i, '')
       const lookupKey = `${folderName}/${nameWithoutExt}`
       const isDuplicate = existingLutKeys.has(lookupKey)
+      const sourcePath = getFilePath(file)
+      const hasSourcePath = Boolean(sourcePath)
 
       return {
         id: crypto.randomUUID(),
         file,
         name: file.name,
         displayName: nameWithoutExt,
-        sourcePath: (file as ElectronFile).path || file.name,
-        status: isDuplicate ? 'duplicate' : 'ready',
-        statusText: isDuplicate ? '重复名称' : '正常',
-        conflictAction: isDuplicate ? 'rename' : 'overwrite',
+        sourcePath,
+        status: !hasSourcePath ? 'error' : isDuplicate ? 'duplicate' : 'ready',
+        statusText: !hasSourcePath ? '无法读取文件路径' : isDuplicate ? '重复名称' : '正常',
+        conflictAction: !hasSourcePath || isDuplicate ? 'skip' : 'overwrite',
       }
     },
     [folderName, existingLutKeys],
@@ -258,7 +266,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
       )
 
       try {
-        const sourcePath = (entry.file as ElectronFile).path
+        const sourcePath = entry.sourcePath
         if (!sourcePath) throw new Error('无法获取文件路径')
 
         // 如果显示名与原始文件名不同，用显示名作为目标名称
@@ -432,7 +440,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
                     </div>
                     {/* 原始文件名 */}
                     <div className="lut-import-origin-cell">
-                      <span className="lut-import-origin-name">{entry.name}</span>
+                      <span className="lut-import-origin-name" title={entry.name}>{entry.name}</span>
                     </div>
                     {/* 状态 */}
                     <div className="lut-import-status-cell">

@@ -112,6 +112,7 @@ impl Compositor {
         ffprobe: &str,
         file_path: &str,
         video_time: f64,
+        decode_max_side: u32,
         fps: Option<f64>,
     ) -> Result<Option<(Vec<u8>, u32, u32)>, String> {
         // ── 已标记结束的视频 → 直接跳过 ──
@@ -146,13 +147,27 @@ impl Compositor {
                         video_time,
                     );
                     self.remove_video_decoder(file_path);
-                    return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time, fps);
+                    return self.read_video_frame(
+                        ffmpeg,
+                        ffprobe,
+                        file_path,
+                        video_time,
+                        decode_max_side,
+                        fps,
+                    );
                 }
             }
 
             // 正常读取下一帧
             let mut rgba = vec![0u8; dec.frame_bytes];
-            if dec.stdout.read_exact(&mut rgba).is_err() {
+            if let Err(error) = dec.stdout.read_exact(&mut rgba) {
+                let child_status = dec.process.try_wait().ok().flatten();
+                log!(
+                    "read_video_frame [{}] pipe read failed error={} child_status={:?}",
+                    file_path,
+                    error,
+                    child_status,
+                );
                 if self.no_video_decoder_restart {
                     log!(
                         "read_video_frame [{}] pipe EOF, finishing decoder",
@@ -164,18 +179,34 @@ impl Compositor {
                 } else {
                     log!("read_video_frame [{}] pipe EOF, restarting", file_path);
                     self.remove_video_decoder(file_path);
-                    return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time, fps);
+                    return self.read_video_frame(
+                        ffmpeg,
+                        ffprobe,
+                        file_path,
+                        video_time,
+                        decode_max_side,
+                        fps,
+                    );
                 }
             }
             dec.current_time = video_time;
+            if video_time.abs() < 0.0001 {
+                log!(
+                    "read_video_frame [{}] decoded first RGBA bytes={} first={:?}",
+                    file_path,
+                    rgba.len(),
+                    &rgba[..rgba.len().min(16)],
+                );
+            }
             return Ok(Some((rgba, dec.scaled_w, dec.scaled_h)));
         }
 
         // ── 首次或换文件：spawn 持久 pipe ──
         let (vw, vh) = self.probe_video(ffprobe, file_path)?;
         let max_edge = vw.max(vh);
-        let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
-            let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
+        let decode_max_side = decode_max_side.max(1);
+        let (dw, dh) = if max_edge > decode_max_side {
+            let s = decode_max_side as f64 / max_edge as f64;
             (
                 (vw as f64 * s).round().max(1.0) as u32,
                 (vh as f64 * s).round().max(1.0) as u32,
@@ -210,42 +241,37 @@ impl Compositor {
 
         let mut proc = command(ffmpeg)
             .args(args)
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("ffmpeg spawn {}: {}", file_path, e))?;
 
         let stdout = proc.stdout.take().ok_or_else(|| "no stdout".to_string())?;
-        let stderr_buf = proc.stderr.take();
 
         // 读第1帧
         let mut rgba = vec![0u8; frame_bytes];
         let mut child_stdout = stdout;
         if let Err(e) = child_stdout.read_exact(&mut rgba) {
-            let stderr_msg = stderr_buf
-                .and_then(|mut s| {
-                    let mut buf = String::new();
-                    s.read_to_string(&mut buf).ok().map(|_| buf)
-                })
-                .unwrap_or_default();
+            let child_status = proc.try_wait().ok().flatten();
             log!(
-                "read_first_frame FAIL [{}] time={:.3} expected={}x{} frame_bytes={} stderr=[{}]",
+                "read_first_frame FAIL [{}] time={:.3} expected={}x{} frame_bytes={} error={} child_status={:?}",
                 file_path,
                 video_time,
                 dw,
                 dh,
                 frame_bytes,
-                stderr_msg
+                e,
+                child_status,
             );
+            let _ = proc.kill();
+            let _ = proc.wait();
             if self.no_video_decoder_restart {
                 // 导出模式：首次解码失败 → 标记结束，不中断导出
                 self.video_decoding_ended.insert(file_path.to_string());
                 return Ok(None);
             } else {
-                return Err(format!(
-                    "read first frame {}: {}  stderr={}",
-                    file_path, e, stderr_msg
-                ));
+                return Err(format!("read first frame {}: {}", file_path, e));
             }
         }
 
@@ -270,6 +296,14 @@ impl Compositor {
             dw,
             dh,
         );
+        if video_time.abs() < 0.0001 {
+            log!(
+                "read_video_frame [{}] decoded first RGBA bytes={} first={:?}",
+                file_path,
+                rgba.len(),
+                &rgba[..rgba.len().min(16)],
+            );
+        }
         Ok(Some((rgba, dw, dh)))
     }
 
@@ -282,7 +316,7 @@ impl Compositor {
         ffmpeg: &str,
         ffprobe: &str,
         layer: &PreviewLayerInput,
-        _decode_max_side: u32,
+        decode_max_side: u32,
         fps: Option<f64>,
     ) -> Result<Option<u32>, String> {
         // ── 有 pipe 解码器：直接读下一帧（顺序读取最可靠） ──
@@ -298,7 +332,14 @@ impl Compositor {
             if (layer.video_time - current_time).abs() < 0.001 {
                 return Ok(Some(texture_id));
             }
-            match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)? {
+            match self.read_video_frame(
+                ffmpeg,
+                ffprobe,
+                &layer.file_path,
+                layer.video_time,
+                decode_max_side,
+                fps,
+            )? {
                 Some((rgba, dw, dh)) => {
                     // seek 跳转时 read_video_frame 内部可能已释放旧纹理（remove_video_decoder → release_texture）
                     if self.textures.contains_key(&texture_id) {
@@ -317,7 +358,14 @@ impl Compositor {
         }
 
         // ── 无 pipe 解码器：优先创建 pipe + 读第1帧 ──
-        match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)? {
+        match self.read_video_frame(
+            ffmpeg,
+            ffprobe,
+            &layer.file_path,
+            layer.video_time,
+            decode_max_side,
+            fps,
+        )? {
             Some((rgba, dw, dh)) => {
                 let texture_id = self.load_texture(&rgba, dw, dh)?;
                 if let Some(decoder) = self.video_decoders.get_mut(&layer.file_path) {

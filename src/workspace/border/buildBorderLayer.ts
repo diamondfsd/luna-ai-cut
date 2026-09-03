@@ -196,7 +196,7 @@ export interface BuildBorderLayerOptions {
   deviceMetadata?: DeviceMetadataLike | null
   /** 当前素材。带 media 层的预设可借此重新安排照片在画布中的位置。 */
   mediaPath?: string | null
-  mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'restoreLutId' | 'lutId' | 'lutIntensity' | 'isVideo' | 'maskPath' | 'maskOpacity' | 'maskInverted' | 'maskFeather'>
+  mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'restoreLutId' | 'lutId' | 'lutIntensity' | 'isVideo' | 'videoTime' | 'videoOffset' | 'videoDuration' | 'maskPath' | 'maskOpacity' | 'maskInverted' | 'maskFeather'>
 }
 
 /** JSON 预设直接转换为 wgpu 原生层，不在浏览器中进行任何栅格化。 */
@@ -287,6 +287,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         layerType: 'media',
         layoutRole: isBlurBackground ? 'background' : 'content',
         filePath: mediaPath,
+        isVideo: mediaLayerStyle?.isVideo ?? isVideoMedia,
         restoreLutId: isBlurBackground ? undefined : mediaLayerStyle?.restoreLutId,
         lutId: isBlurBackground ? undefined : mediaLayerStyle?.lutId,
         lutIntensity: isBlurBackground ? undefined : mediaLayerStyle?.lutIntensity,

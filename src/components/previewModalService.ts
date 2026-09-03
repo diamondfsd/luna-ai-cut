@@ -1,3 +1,5 @@
+import type { LunaFile } from '../shared/types'
+
 export interface PreviewState {
   filePath: string
   fileList: string[]
@@ -13,6 +15,8 @@ export interface PreviewState {
   lightweightPreview?: boolean
   /** 允许本地资源导出时自动还原 I-Log。 */
   enableILogRestoreOption?: boolean
+  /** 根据文件路径提供素材来源设备，用于选择设备专用的 Log 还原 LUT。 */
+  mediaFileForPath?: (filePath: string) => LunaFile | undefined
 }
 
 interface PreviewModalOptions {
@@ -20,6 +24,7 @@ interface PreviewModalOptions {
   isFileSelected?: (filePath: string) => boolean
   onSetFileSelected?: (filePath: string, selected: boolean) => void
   lightweightPreview?: boolean
+  mediaFileForPath?: (filePath: string) => LunaFile | undefined
 }
 
 type SetStateFn = (state: PreviewState | null) => void
@@ -50,7 +55,7 @@ export function showPreviewModal(
 export function showBatchExportModal(
   filePath: string,
   fileList: string[],
-  options?: { enableILogRestoreOption?: boolean },
+  options?: Pick<PreviewState, 'enableILogRestoreOption' | 'mediaFileForPath'>,
 ): void {
   setPreviewState?.({ filePath, fileList, batchExportMode: true, lightweightPreview: true, ...options })
 }
