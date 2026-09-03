@@ -1,5 +1,6 @@
 use windows::Win32::Graphics::Direct3D12::{ID3D12CommandQueue, ID3D12Device, ID3D12Resource};
 
+use super::encoder::D3d12VideoEncoder;
 use super::nvenc::NvencEncoder;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,7 @@ impl VideoCodec {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EncoderBackendKind {
+    D3d12Video,
     Nvenc,
     Amf,
     Qsv,
@@ -31,11 +33,18 @@ pub(crate) enum EncoderBackendKind {
 
 impl EncoderBackendKind {
     pub(crate) fn priority_order() -> &'static [Self] {
-        &[Self::Nvenc, Self::Amf, Self::Qsv, Self::Ffmpeg]
+        &[
+            Self::Nvenc,
+            Self::D3d12Video,
+            Self::Amf,
+            Self::Qsv,
+            Self::Ffmpeg,
+        ]
     }
 
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::D3d12Video => "d3d12-video",
             Self::Nvenc => "nvenc",
             Self::Amf => "amf",
             Self::Qsv => "qsv",
@@ -139,7 +148,8 @@ impl EncoderManager {
     pub(crate) fn new(
         config: EncoderConfig,
         device: &ID3D12Device,
-        queue: &ID3D12CommandQueue,
+        wgpu_queue: &ID3D12CommandQueue,
+        video_encode_queue: Option<&ID3D12CommandQueue>,
     ) -> Result<Self, String> {
         let backend_order = EncoderBackendKind::priority_order()
             .iter()
@@ -147,19 +157,57 @@ impl EncoderManager {
             .collect::<Vec<_>>()
             .join(",");
         crate::logging::write(&format!(
-            "[Export:WinGPU] encoder-manager backend-priority={} implemented=nvenc",
+            "[Export:WinGPU] encoder-manager backend-priority={} implemented=nvenc,d3d12-video",
             backend_order,
         ));
 
-        let backend = NvencEncoder::new(device, queue, config).map_err(|nvenc_error| {
-            format!(
-                "no vendor GPU encoder is available; nvenc={nvenc_error}; amf=not implemented; qsv=not implemented"
-            )
-        })?;
-        crate::logging::write("[Export:WinGPU] encoder-manager selected backend=nvenc codec=h264");
-        Ok(Self {
-            backend: Box::new(backend),
-        })
+        let nvenc_error = match NvencEncoder::new(device, wgpu_queue, config) {
+            Ok(backend) => {
+                crate::logging::write(
+                    "[Export:WinGPU] encoder-manager selected backend=nvenc codec=h264",
+                );
+                return Ok(Self {
+                    backend: Box::new(backend),
+                });
+            }
+            Err(error) => error,
+        };
+        crate::logging::write(&format!(
+            "[Export:WinGPU] encoder-manager nvenc unavailable detail={nvenc_error}"
+        ));
+
+        let mut d3d12_errors = Vec::new();
+        if let Some(video_encode_queue) = video_encode_queue {
+            for (hevc, codec) in [(false, "h264"), (true, "hevc")] {
+                match D3d12VideoEncoder::new(
+                    device,
+                    video_encode_queue,
+                    wgpu_queue,
+                    config.width,
+                    config.height,
+                    config.fps,
+                    config.bitrate,
+                    hevc,
+                ) {
+                    Ok(backend) => {
+                        crate::logging::write(&format!(
+                            "[Export:WinGPU] encoder-manager selected backend=d3d12-video codec={codec}"
+                        ));
+                        return Ok(Self {
+                            backend: Box::new(D3d12VideoBackend(backend)),
+                        });
+                    }
+                    Err(error) => d3d12_errors.push(format!("{codec}={error}")),
+                }
+            }
+        } else {
+            d3d12_errors.push("video-encode-queue=unavailable".to_string());
+        }
+
+        let d3d12_error = d3d12_errors.join("; ");
+        Err(format!(
+            "no hardware video encoder is available; nvenc={nvenc_error}; d3d12-video={d3d12_error}; amf=not implemented; qsv=covered by d3d12-video"
+        ))
     }
 
     pub(crate) fn backend_kind(&self) -> EncoderBackendKind {
@@ -191,6 +239,60 @@ impl EncoderManager {
     }
 }
 
+struct D3d12VideoBackend(D3d12VideoEncoder);
+
+impl EncoderBackend for D3d12VideoBackend {
+    fn kind(&self) -> EncoderBackendKind {
+        EncoderBackendKind::D3d12Video
+    }
+
+    fn codec(&self) -> VideoCodec {
+        if self.0.is_hevc() {
+            VideoCodec::Hevc
+        } else {
+            VideoCodec::H264
+        }
+    }
+
+    fn input_format(&self) -> EncoderPixelFormat {
+        EncoderPixelFormat::Nv12
+    }
+
+    fn encode(
+        &mut self,
+        frame: EncoderFrame,
+        frame_index: u64,
+    ) -> Result<Vec<EncodedPacket>, String> {
+        if frame.format != self.input_format()
+            || frame.width != self.0.width()
+            || frame.height != self.0.height()
+        {
+            return Err(format!(
+                "D3D12 backend received incompatible frame: format={:?} size={}x{} expected format={:?} size={}x{}",
+                frame.format,
+                frame.width,
+                frame.height,
+                self.input_format(),
+                self.0.width(),
+                self.0.height(),
+            ));
+        }
+        let data = self.0.append(&frame.resource, frame_index)?;
+        Ok(vec![EncodedPacket { data, frame_index }])
+    }
+
+    fn flush(&mut self) -> Result<Vec<EncodedPacket>, String> {
+        self.0.finish()?;
+        Ok(Vec::new())
+    }
+
+    fn headers(&self) -> Result<CodecHeaders, String> {
+        Ok(CodecHeaders {
+            data: self.0.headers().to_vec(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::EncoderBackendKind;
@@ -201,6 +303,7 @@ mod tests {
             EncoderBackendKind::priority_order(),
             &[
                 EncoderBackendKind::Nvenc,
+                EncoderBackendKind::D3d12Video,
                 EncoderBackendKind::Amf,
                 EncoderBackendKind::Qsv,
                 EncoderBackendKind::Ffmpeg,
