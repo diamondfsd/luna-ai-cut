@@ -29,6 +29,7 @@
 - Release tag：`build-dependencies-v1.0.0`
 - 下载地址格式：`https://gitcode.com/<owner>/<repo>/releases/download/<release-tag>/<file-name>`
 - FFmpeg 示例：`https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/build-dependencies-v1.0.0/ffmpeg-win32-x64.gz`
+- Windows GPU 构建依赖：`ffmpeg-8.1.2-full_build-shared.7z`，本地下载会读取 `GITCODE_TOKEN` 或 `scripts/deploy-release.conf` 并携带 GitCode 私有令牌
 
 其中 `releases/download` 是固定路径。不要使用 `.../releases/<release-tag>/<file-name>`，后者是错误的下载地址格式；也不要把 GitCode API 的 Release 查询或上传地址当作文件下载地址。
 

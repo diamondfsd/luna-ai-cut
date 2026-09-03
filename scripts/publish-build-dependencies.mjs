@@ -161,6 +161,11 @@ const artifacts = [
     sha256: '091e659d96a2782b0babe0eb37bfb320ce1afe5d8079b3ae36fcc9bc30066f2d',
   },
   {
+    fileName: 'ffmpeg-8.1.2-full_build-shared.7z',
+    path: join(root, '.ffmpeg-cache', 'ffmpeg-8.1.2-full_build-shared.7z'),
+    sha256: 'cba748035c21ce1431d0823c7a3a711f38616f89f87a265dceddf9b7f6749d2d',
+  },
+  {
     fileName: 'ffprobe-darwin-arm64.gz',
     path: join(root, '.ffmpeg-cache', 'ffprobe-darwin-arm64.gz'),
     sha256: 'd986a8ec7b030899fe66a8a288ed809a3543338705a3ce178cfb85869c5d80be',
