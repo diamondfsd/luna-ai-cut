@@ -3,7 +3,7 @@
   "name": "Osmo Action 5 Pro",
   "vendor": "DJI",
   "protocol": "dji",
-  "mediaCapabilities": { "delete": false },
+  "mediaCapabilities": { "delete": true },
   "defaultHost": "192.168.2.1",
   "httpPort": 80,
   "controlPort": 7001,

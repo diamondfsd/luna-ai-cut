@@ -3,6 +3,7 @@ export interface DjiManifestFile {
   name: string
   thumbPath: string | null
   handle: number
+  handleShared?: boolean
   bytes: number | null
   extension: string
   durationSeconds?: number
@@ -141,6 +142,19 @@ export function isPrimaryMedia(file: DjiManifestFile): boolean {
 
 export function isProxyMedia(file: DjiManifestFile): boolean {
   return PROXY_EXTENSIONS.has(file.extension)
+}
+
+/** A duplicate handle is unsafe to use for a destructive camera command. */
+export function markSharedManifestHandles(files: readonly DjiManifestFile[]): DjiManifestFile[] {
+  const counts = new Map<number, number>()
+  for (const file of files) {
+    if (file.handle > 0) counts.set(file.handle, (counts.get(file.handle) ?? 0) + 1)
+  }
+  return files.map((file) => (
+    file.handle > 0 && (counts.get(file.handle) ?? 0) > 1
+      ? { ...file, handleShared: true }
+      : file
+  ))
 }
 
 export function mediaStem(name: string): string {

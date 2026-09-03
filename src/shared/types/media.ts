@@ -13,6 +13,8 @@ export interface RelatedMediaFile {
 export interface LunaFile {
   id: string
   storageId?: string
+  /** DJI 清单中的媒体句柄，仅由对应相机媒体源提供。 */
+  cameraDeleteHandle?: number
   storageLabel?: string
   sourceDeviceId?: string
   sourceDeviceName?: string

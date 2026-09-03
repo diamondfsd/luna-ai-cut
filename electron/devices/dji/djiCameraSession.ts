@@ -1,11 +1,12 @@
 import { getSettings, saveSettings } from '../../storage/fileService'
 import type { BrowserWindow } from 'electron'
 import net from 'node:net'
-import type { CameraMediaSourceFilePageCallback, CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../../src/shared/types'
+import type { CameraDeleteResult, CameraMediaSourceFilePageCallback, CameraMediaSourceOptions, CameraMediaSourcePreparationResult, CameraMediaSourceStatus, ConnectionStatus, LunaFile } from '../../../src/shared/types'
 import { djiProfileForDevice, type DjiModelProfile } from './djiModels'
 import type { DjiWifiCredentials } from './djiBleSession'
 import { encodeDjiMessage, hex, newInstallIdentity, packString, type DjiMessage } from './djiBytes'
-import { isPrimaryMedia, isProxyMedia, mediaStem, parseCompositeManifest, type DjiManifestFile } from './djiManifest'
+import { isPrimaryMedia, isProxyMedia, markSharedManifestHandles, mediaStem, parseCompositeManifest, type DjiManifestFile } from './djiManifest'
+import { buildDjiDeletePayload } from './djiDeleteCodec'
 import { DjiUdpTransport, decodeDumlMessagesFromUdp, decodeDumlMessagesFromUdpStream, type DjiUdpCommand, type DjiUdpPacket } from './djiUdpTransport'
 import { DefaultDjiWirelessPreparation, type DjiWirelessPreparation, waitForDjiHostReachable } from './djiWirelessPreparation'
 import { mockTcpPortForHost, mockUdpPortForHost } from '../../devtools/mock/mockServerService'
@@ -80,6 +81,9 @@ const INITIAL_INTERNAL_CURSOR = 0x40000001
 const MAX_MANIFEST_PAGES = 256
 const MANIFEST_MAX_WINDOW_MS = 800
 const MANIFEST_QUIET_WINDOW_MS = 400
+const DJI_DELETE_RESPONSE_TIMEOUT_MS = 10_000
+const DJI_DELETE_STATUS_OK = 0x0000
+const DJI_DELETE_STATUS_HANDLE_NOT_FOUND = 0x00d6
 
 interface ManifestPage {
   sd: DjiManifestFile[]
@@ -91,6 +95,24 @@ type DjiManifestPageCallback = (freshFiles: DjiManifestFile[], loadedFiles: DjiM
 
 function djiCommand(cmdSet: number, cmdId: number, payload: Buffer, id = 0x8026, flags = 0x40): DjiUdpCommand {
   return { target: 0x0102, id, cmdSet, cmdId, flags, payload }
+}
+
+function djiFileId(profileId: string, file: Pick<DjiManifestFile, 'storageId' | 'path'>): string {
+  return `dji:${profileId}:${file.storageId}:${file.path}`
+}
+
+function djiPathForFile(file: LunaFile): string {
+  const idParts = file.id.split(':')
+  return idParts[0] === 'dji' && idParts.length >= 4 ? idParts.slice(3).join(':') : file.sourceUrl
+}
+
+function deleteStatusFromPackets(packets: readonly DjiUdpPacket[]): number | null {
+  const messages = [
+    ...decodeDumlMessagesFromUdpStream(packets),
+    ...packets.flatMap((packet) => decodeDumlMessagesFromUdp(packet)),
+  ]
+  const response = messages.find((message) => message.cmdSet === 0x00 && message.cmdId === 0x28 && message.payload.length >= 2)
+  return response ? response.payload.readUInt16LE(0) : null
 }
 
 function isManifestDataPacket(packet: DjiUdpPacket): boolean {
@@ -180,6 +202,7 @@ export class DjiCameraSession {
   private previewCameraHeartbeatTimer: ReturnType<typeof setInterval> | null = null
   private previewRegistrationTimer: ReturnType<typeof setInterval> | null = null
   private previewHeartbeatCounter = 0
+  private deleteCounter = 0
 
   constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation, win: BrowserWindow | null = null) {
     this.profile = djiProfileForDevice(deviceId)
@@ -504,7 +527,9 @@ export class DjiCameraSession {
         const proxies = loadedFiles.filter(isProxyMedia)
         await onPage({
           pageNumber,
-          files: await mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies)),
+          // Do not expose destructive handles from a partial page. The final manifest pass marks
+          // duplicate handles across all storages before exposing them to the UI.
+          files: await mapWithConcurrency(primary, 4, (file) => this.toLunaFile(file, proxies, false)),
         })
       })
       const primary = files.filter(isPrimaryMedia)
@@ -750,7 +775,8 @@ export class DjiCameraSession {
       logMainWarn('[DJI 媒体] 清单分页达到安全上限', { deviceId: this.deviceId, maxPages: MAX_MANIFEST_PAGES, totalCount: files.length })
     }
 
-    const selected = storageId === 'all' ? files : files.filter((file) => file.storageId === storageId)
+    const normalizedFiles = markSharedManifestHandles(files)
+    const selected = storageId === 'all' ? normalizedFiles : normalizedFiles.filter((file) => file.storageId === storageId)
     logMainInfo('[DJI 媒体] 清单读取完成', {
       deviceId: this.deviceId,
       storageId,
@@ -759,6 +785,194 @@ export class DjiCameraSession {
       elapsedMs: Date.now() - startedAt,
     })
     return selected
+  }
+
+  async deleteFiles(files: LunaFile[], options?: CameraMediaSourceOptions): Promise<CameraDeleteResult> {
+    if (files.length === 0) return { deleted: [], failed: [] }
+
+    const failAll = (error: string): CameraDeleteResult => ({
+      deleted: [],
+      failed: files.map((file) => ({ path: djiPathForFile(file), error })),
+    })
+    const expectedIdPrefix = `dji:${this.profile.id}:`
+    if (files.some((file) => (
+      !file.id.startsWith(expectedIdPrefix) ||
+      (file.sourceDeviceId !== undefined && file.sourceDeviceId !== this.profile.deviceId)
+    ))) {
+      return failAll('选中的素材不属于当前 DJI 相机，请刷新后重试')
+    }
+    if (files.some((file) => (
+      file.cameraDeleteHandle === undefined ||
+      !Number.isInteger(file.cameraDeleteHandle) ||
+      file.cameraDeleteHandle <= 0 ||
+      file.cameraDeleteHandle > 0xffffffff
+    ))) {
+      return failAll('相机暂时无法确认选中的素材，请刷新后重试')
+    }
+
+    const startedAt = Date.now()
+    logMainInfo('[DJI 删除] 相机素材删除开始', {
+      deviceId: this.deviceId,
+      host: this.host,
+      requestedCount: files.length,
+    })
+    if (!this.connected) await this.connect(options)
+    await this.ensurePlayback()
+
+    // Refresh the manifest immediately before deletion so a stale UI handle can never be sent.
+    const currentManifest = await this.requestManifest('all')
+    const currentById = new Map(
+      currentManifest
+        .filter(isPrimaryMedia)
+        .map((file) => [djiFileId(this.profile.id, file), file] as const),
+    )
+    const targets = files.map((file) => currentById.get(file.id) ?? null)
+    if (targets.some((file) => file === null)) {
+      logMainWarn('[DJI 删除] 选中的素材已不在最新清单中，未发送删除命令', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        missingCount: targets.filter((file) => file === null).length,
+      })
+      return failAll('选中的素材已变化，请刷新后重试')
+    }
+
+    const targetFiles = targets.filter((file): file is DjiManifestFile => file !== null)
+    if (files.some((file, index) => (
+      file.cameraDeleteHandle !== undefined && file.cameraDeleteHandle !== targetFiles[index]?.handle
+    ))) {
+      logMainWarn('[DJI 删除] 页面句柄已变化，未发送删除命令', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+      })
+      return failAll('选中的素材已变化，请刷新后重试')
+    }
+    const handles = targetFiles.map((file) => file.handle)
+    if (
+      targetFiles.some((file) => file.handle <= 0 || file.handleShared) ||
+      new Set(handles).size !== handles.length
+    ) {
+      logMainWarn('[DJI 删除] 选中的素材没有可靠的唯一句柄，未发送删除命令', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        handles,
+      })
+      return failAll('相机暂时无法确认选中的素材，请刷新后重试')
+    }
+
+    if (this.profile.playback !== 'pocket3') {
+      try {
+        const playbackPackets = await this.udp.commandAndCollect(
+          djiCommand(0x02, 0x0c, hex('01010001'), 0x8004),
+          900,
+        )
+        const playbackStatus = playbackPackets
+          .flatMap((packet) => decodeDumlMessagesFromUdp(packet))
+          .find((message) => message.cmdSet === 0x02 && message.cmdId === 0x0c && message.payload.length > 0)
+          ?.payload[0]
+        if (playbackStatus !== 0) {
+          logMainWarn('[DJI 删除] 删除前未确认相机处于回放模式，未发送删除命令', {
+            deviceId: this.deviceId,
+            playbackStatus,
+          })
+          return failAll('相机未确认处于回放状态，请刷新后重试')
+        }
+      } catch (error) {
+        logMainWarn('[DJI 删除] 删除前回放确认失败，未发送删除命令', {
+          deviceId: this.deviceId,
+          ...djiErrorDetails(error),
+        })
+        return failAll('相机未确认处于回放状态，请刷新后重试')
+      }
+    }
+
+    const counter = this.nextDeleteCounter()
+    const payload = buildDjiDeletePayload(handles, counter)
+    let responsePackets: DjiUdpPacket[] = []
+    try {
+      responsePackets = await this.udp.commandAndCollect(
+        djiCommand(0x00, 0x28, payload),
+        DJI_DELETE_RESPONSE_TIMEOUT_MS,
+      )
+    } catch (error) {
+      logMainWarn('[DJI 删除] 删除命令发送后未能正常收集响应，开始核对清单', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      return this.verifyDeleteResult(targetFiles)
+    }
+
+    const status = deleteStatusFromPackets(responsePackets)
+    if (status === DJI_DELETE_STATUS_OK) {
+      logMainInfo('[DJI 删除] 相机确认删除素材', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        elapsedMs: Date.now() - startedAt,
+      })
+      return { deleted: targetFiles.map((file) => file.path), failed: [] }
+    }
+    if (status === DJI_DELETE_STATUS_HANDLE_NOT_FOUND) {
+      logMainWarn('[DJI 删除] 相机未找到一个或多个素材句柄', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        status,
+      })
+      return failAll('相机没有找到选中的素材，请刷新后重试')
+    }
+    if (status !== null) {
+      logMainWarn('[DJI 删除] 相机拒绝删除素材', {
+        deviceId: this.deviceId,
+        requestedCount: files.length,
+        status,
+      })
+      return failAll('相机拒绝删除素材，请刷新后重试')
+    }
+
+    logMainWarn('[DJI 删除] 未收到删除结果，禁止重发命令并开始核对清单', {
+      deviceId: this.deviceId,
+      requestedCount: files.length,
+      packetCount: responsePackets.length,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return this.verifyDeleteResult(targetFiles)
+  }
+
+  private nextDeleteCounter(): number {
+    this.deleteCounter = (this.deleteCounter + 1) >>> 0
+    if (this.deleteCounter === 0) this.deleteCounter = 1
+    return this.deleteCounter
+  }
+
+  private async verifyDeleteResult(targetFiles: DjiManifestFile[]): Promise<CameraDeleteResult> {
+    try {
+      const currentManifest = await this.requestManifest('all')
+      const remainingHandles = new Set(
+        currentManifest
+          .filter(isPrimaryMedia)
+          .map((file) => file.handle)
+          .filter((handle) => handle > 0),
+      )
+      const deleted: string[] = []
+      const failed: CameraDeleteResult['failed'] = []
+      for (const file of targetFiles) {
+        if (remainingHandles.has(file.handle)) {
+          failed.push({ path: file.path, error: '未确认相机已删除该素材，请刷新后重试' })
+        } else {
+          deleted.push(file.path)
+        }
+      }
+      return { deleted, failed }
+    } catch (error) {
+      logMainWarn('[DJI 删除] 删除结果核对失败', {
+        deviceId: this.deviceId,
+        ...djiErrorDetails(error),
+      })
+      return {
+        deleted: [],
+        failed: targetFiles.map((file) => ({ path: file.path, error: '未确认相机已删除该素材，请刷新后检查' })),
+      }
+    }
   }
 
   private async requestManifestPage(internalCursor: number, storageId: string): Promise<ManifestPage> {
@@ -1004,7 +1218,7 @@ export class DjiCameraSession {
     })
   }
 
-  private async toLunaFile(file: DjiManifestFile, proxies: DjiManifestFile[]): Promise<LunaFile> {
+  private async toLunaFile(file: DjiManifestFile, proxies: DjiManifestFile[], includeDeleteHandle = true): Promise<LunaFile> {
     const storageNumberValue = storageNumber(file.storageId)
     const sourceUrl = mediaUrl(this.endpoint, storageNumberValue, file.path)
     const bytes = file.bytes
@@ -1017,10 +1231,11 @@ export class DjiCameraSession {
     const kind = file.extension === 'JPG' || file.extension === 'JPEG' || file.extension === 'DNG' || file.extension === 'HEIC' ? 'image' : 'video'
     const capturedAt = lunaMediaAdapter.capturedAt(file.name)
     const labels = labelsFor(capturedAt)
-    const baseId = `dji:${this.profile.id}:${file.storageId}:${file.path}`
+    const baseId = djiFileId(this.profile.id, file)
     return {
       id: baseId,
       storageId: file.storageId,
+      ...(includeDeleteHandle && file.handle > 0 && !file.handleShared ? { cameraDeleteHandle: file.handle } : {}),
       storageLabel: storageLabel(file.storageId),
       sourceDeviceId: this.profile.deviceId,
       sourceDeviceName: this.profile.name,
@@ -1076,7 +1291,7 @@ export class DjiCameraSession {
         copyToLocal: true,
         create: false,
         update: false,
-        delete: false,
+        delete: true,
         watch: true,
         connection: this.wirelessPreparation.capabilities,
       },

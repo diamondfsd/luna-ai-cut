@@ -393,8 +393,10 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
     }
   }
 
-  async deleteFiles(): Promise<CameraDeleteResult> {
-    return { deleted: [], failed: [{ path: '', error: 'DJI 相机暂不支持在应用中删除相机素材' }] }
+  async deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult> {
+    const { deviceId, host } = await this.values()
+    const session = await djiSessionFor(deviceId, host, this.ctx.win)
+    return session.deleteFiles(files, this.options)
   }
 
   async disconnect(): Promise<void> {
