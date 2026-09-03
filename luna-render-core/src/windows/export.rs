@@ -499,6 +499,7 @@ fn encode_frames(
         let layer_inputs = composition_layers(composition, time);
         retain_layer_mask_textures(compositor, &mut mask_textures, &layer_inputs);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
+        let mut decoded_video_textures: HashMap<(String, u64), (u32, u32, u32)> = HashMap::new();
         let mut transient_texture_ids = Vec::new();
         let mut input_resources = Vec::new();
 
@@ -517,138 +518,152 @@ fn encode_frames(
                 ) {
                     (0, 1, 1)
                 } else if layer.is_video {
-                    let key = format!("{}@slot{}", layer.file_path, layer_index);
-                    if !ffmpeg_gpu_decoders.contains_key(&key)
-                        && !unavailable_ffmpeg_gpu_decoders.contains(&key)
-                    {
-                        match FfmpegD3d11Decoder::open(
-                            ffmpeg_path,
-                            &layer.file_path,
-                            &interop.ffmpeg_d3d11_device,
-                            &interop.d3d12_device,
-                        ) {
-                            Ok(decoder) => {
-                                crate::logging::write(
-                                    "[Export:WinGPU] decoder=ffmpeg-in-process-d3d11va transport=D3D11-shared-to-D3D12",
-                                );
-                                ffmpeg_gpu_decoders.insert(key.clone(), decoder);
-                            }
-                            Err(error) => {
-                                crate::logging::write(&format!(
-                                    "[Export:WinGPU] decoder=ffmpeg-d3d11va-subprocess reason=in-process-unavailable detail={error}",
-                                ));
-                                unavailable_ffmpeg_gpu_decoders.insert(key.clone());
-                            }
-                        }
-                    }
-
-                    let gpu_frame = if let Some(decoder) = ffmpeg_gpu_decoders.get_mut(&key) {
-                        decoder
-                            .read_frame_at_seconds(
-                                layer.video_time,
-                                composition.canvas.width.max(composition.canvas.height),
-                                interop,
-                            )
-                            .and_then(|frame| {
-                                frame
-                                    .map(|frame| {
-                                        if frame.format != super::decoder::SurfaceFormat::Bgra8 {
-                                            return Err(format!(
-                                                "FFmpeg returned unsupported D3D11 format {}",
-                                                frame.format.label()
-                                            ));
-                                        }
-                                        converter.wait_for_external_surface(
-                                            &interop.ffmpeg_d3d12_fence,
-                                            frame.ready_fence_value,
-                                        )?;
-                                        Ok((
-                                            frame.resource,
-                                            frame.width,
-                                            frame.height,
-                                            frame.surface_index,
-                                        ))
-                                    })
-                                    .transpose()
-                            })
+                    let frame_key = (layer.file_path.clone(), layer.video_time.to_bits());
+                    if let Some(decoded) = decoded_video_textures.get(&frame_key).copied() {
+                        decoded
                     } else {
-                        Ok(None)
-                    };
-
-                    match gpu_frame {
-                        Ok(Some((bgra, width, height, surface_index))) => {
-                            let release_value = interop.reserve_ffmpeg_wgpu_release();
-                            ffmpeg_gpu_decoders
-                                .get_mut(&key)
-                                .ok_or_else(|| "FFmpeg GPU decoder disappeared".to_string())?
-                                .set_surface_release(surface_index, release_value)?;
-                            let lease = converter.wrap_external_for_wgpu(
-                                &bgra,
-                                &interop.ffmpeg_d3d12_fence,
-                                release_value,
-                            )?;
-                            register_d3d12_video_texture_with_lease(
-                                compositor,
-                                &mut input_resources,
-                                &mut transient_texture_ids,
-                                bgra,
-                                width,
-                                height,
-                                lease,
-                                false,
-                            )?
-                        }
-                        Ok(None) if ffmpeg_gpu_decoders.contains_key(&key) => continue,
-                        Err(error) => {
-                            ffmpeg_gpu_decoders.remove(&key);
-                            unavailable_ffmpeg_gpu_decoders.insert(key.clone());
-                            crate::logging::write(&format!(
-                                "[Export:WinGPU] decoder=ffmpeg-d3d11va-subprocess reason=in-process-failed detail={error}",
-                            ));
-                            let decoder = FfmpegVideoDecoder::open(
+                        let key = format!("{}@slot{}", layer.file_path, layer_index);
+                        if !ffmpeg_gpu_decoders.contains_key(&key)
+                            && !unavailable_ffmpeg_gpu_decoders.contains(&key)
+                        {
+                            match FfmpegD3d11Decoder::open(
                                 ffmpeg_path,
-                                ffprobe_path,
                                 &layer.file_path,
-                                layer.video_time,
-                                fps,
-                                composition.canvas.width.max(composition.canvas.height),
-                            )?;
-                            ffmpeg_decoders.insert(key.clone(), decoder);
-                            let decoder = ffmpeg_decoders.get_mut(&key).unwrap();
-                            let Some(rgba) = decoder.read()? else {
-                                continue;
-                            };
-                            let texture_id =
-                                compositor.load_texture(&rgba, decoder.width, decoder.height)?;
-                            transient_texture_ids.push(texture_id);
-                            (texture_id, decoder.width, decoder.height)
-                        }
-                        Ok(None) => {
-                            if !ffmpeg_decoders.contains_key(&key) {
-                                crate::logging::write(
-                                    "[Export:WinGPU] decoder=ffmpeg-rgba reason=in-process-unavailable pixel-upload=GPU",
-                                );
-                                ffmpeg_decoders.insert(
-                                    key.clone(),
-                                    FfmpegVideoDecoder::open(
-                                        ffmpeg_path,
-                                        ffprobe_path,
-                                        &layer.file_path,
-                                        layer.video_time,
-                                        fps,
-                                        composition.canvas.width.max(composition.canvas.height),
-                                    )?,
-                                );
+                                &interop.ffmpeg_d3d11_device,
+                                &interop.d3d12_device,
+                            ) {
+                                Ok(decoder) => {
+                                    crate::logging::write(
+                                        "[Export:WinGPU] decoder=ffmpeg-in-process-d3d11va transport=D3D11-shared-to-D3D12",
+                                    );
+                                    ffmpeg_gpu_decoders.insert(key.clone(), decoder);
+                                }
+                                Err(error) => {
+                                    crate::logging::write(&format!(
+                                        "[Export:WinGPU] decoder=ffmpeg-d3d11va-subprocess reason=in-process-unavailable detail={error}",
+                                    ));
+                                    unavailable_ffmpeg_gpu_decoders.insert(key.clone());
+                                }
                             }
-                            let decoder = ffmpeg_decoders.get_mut(&key).unwrap();
-                            let Some(rgba) = decoder.read()? else {
-                                continue;
-                            };
-                            let texture_id =
-                                compositor.load_texture(&rgba, decoder.width, decoder.height)?;
-                            transient_texture_ids.push(texture_id);
-                            (texture_id, decoder.width, decoder.height)
                         }
+
+                        let gpu_frame = if let Some(decoder) = ffmpeg_gpu_decoders.get_mut(&key) {
+                            decoder
+                                .read_frame_at_seconds(
+                                    layer.video_time,
+                                    composition.canvas.width.max(composition.canvas.height),
+                                    interop,
+                                )
+                                .and_then(|frame| {
+                                    frame
+                                        .map(|frame| {
+                                            if frame.format != super::decoder::SurfaceFormat::Bgra8
+                                            {
+                                                return Err(format!(
+                                                    "FFmpeg returned unsupported D3D11 format {}",
+                                                    frame.format.label()
+                                                ));
+                                            }
+                                            converter.wait_for_external_surface(
+                                                &interop.ffmpeg_d3d12_fence,
+                                                frame.ready_fence_value,
+                                            )?;
+                                            Ok((
+                                                frame.resource,
+                                                frame.width,
+                                                frame.height,
+                                                frame.surface_index,
+                                            ))
+                                        })
+                                        .transpose()
+                                })
+                        } else {
+                            Ok(None)
+                        };
+
+                        let decoded = match gpu_frame {
+                            Ok(Some((bgra, width, height, surface_index))) => {
+                                let release_value = interop.reserve_ffmpeg_wgpu_release();
+                                ffmpeg_gpu_decoders
+                                    .get_mut(&key)
+                                    .ok_or_else(|| "FFmpeg GPU decoder disappeared".to_string())?
+                                    .set_surface_release(surface_index, release_value)?;
+                                let lease = converter.wrap_external_for_wgpu(
+                                    &bgra,
+                                    &interop.ffmpeg_d3d12_fence,
+                                    release_value,
+                                )?;
+                                register_d3d12_video_texture_with_lease(
+                                    compositor,
+                                    &mut input_resources,
+                                    &mut transient_texture_ids,
+                                    bgra,
+                                    width,
+                                    height,
+                                    lease,
+                                    false,
+                                )?
+                            }
+                            Ok(None) if ffmpeg_gpu_decoders.contains_key(&key) => continue,
+                            Err(error) => {
+                                ffmpeg_gpu_decoders.remove(&key);
+                                unavailable_ffmpeg_gpu_decoders.insert(key.clone());
+                                crate::logging::write(&format!(
+                                    "[Export:WinGPU] decoder=ffmpeg-d3d11va-subprocess reason=in-process-failed detail={error}",
+                                ));
+                                let decoder = FfmpegVideoDecoder::open(
+                                    ffmpeg_path,
+                                    ffprobe_path,
+                                    &layer.file_path,
+                                    layer.video_time,
+                                    fps,
+                                    composition.canvas.width.max(composition.canvas.height),
+                                )?;
+                                ffmpeg_decoders.insert(key.clone(), decoder);
+                                let decoder = ffmpeg_decoders.get_mut(&key).unwrap();
+                                let Some(rgba) = decoder.read()? else {
+                                    continue;
+                                };
+                                let texture_id = compositor.load_texture(
+                                    &rgba,
+                                    decoder.width,
+                                    decoder.height,
+                                )?;
+                                transient_texture_ids.push(texture_id);
+                                (texture_id, decoder.width, decoder.height)
+                            }
+                            Ok(None) => {
+                                if !ffmpeg_decoders.contains_key(&key) {
+                                    crate::logging::write(
+                                        "[Export:WinGPU] decoder=ffmpeg-rgba reason=in-process-unavailable pixel-upload=GPU",
+                                    );
+                                    ffmpeg_decoders.insert(
+                                        key.clone(),
+                                        FfmpegVideoDecoder::open(
+                                            ffmpeg_path,
+                                            ffprobe_path,
+                                            &layer.file_path,
+                                            layer.video_time,
+                                            fps,
+                                            composition.canvas.width.max(composition.canvas.height),
+                                        )?,
+                                    );
+                                }
+                                let decoder = ffmpeg_decoders.get_mut(&key).unwrap();
+                                let Some(rgba) = decoder.read()? else {
+                                    continue;
+                                };
+                                let texture_id = compositor.load_texture(
+                                    &rgba,
+                                    decoder.width,
+                                    decoder.height,
+                                )?;
+                                transient_texture_ids.push(texture_id);
+                                (texture_id, decoder.width, decoder.height)
+                            }
+                        };
+                        decoded_video_textures.insert(frame_key, decoded);
+                        decoded
                     }
                 } else if let Some(cached) = static_textures.get(&layer.file_path).copied() {
                     cached
