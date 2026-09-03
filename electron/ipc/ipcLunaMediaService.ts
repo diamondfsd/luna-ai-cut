@@ -161,7 +161,14 @@ export function register(ctx: IpcContext): void {
       ? await dialog.showOpenDialog(parentWindow, options)
       : await dialog.showOpenDialog(options)
     if (result.canceled || result.filePaths.length === 0) return null
-    return copyLocalFilesToDirectory(sourcePaths, result.filePaths[0])
+    return copyLocalFilesToDirectory(sourcePaths, result.filePaths[0], (failure) => {
+      logMainError('[export] 文件复制失败', {
+        sourcePath: failure.sourcePath,
+        outputDir: result.filePaths[0],
+        userMessage: failure.userMessage,
+        ...failure.details,
+      })
+    })
   })
   ipcMain.handle('luna:cacheFile', async (_event, params: string | { sourceUrl: string; previewUrl?: string | null }) => {
     // 兼容旧格式（直接传 sourceUrl 字符串）

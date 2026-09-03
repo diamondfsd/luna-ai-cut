@@ -3,8 +3,15 @@ import { copyFile, mkdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { FileCopyResult } from '../../src/shared/types'
+import { fileOperationErrorDetails, friendlyFileOperationError, userFacingFileOperationError } from '../storage/fileOperationDiagnostics.ts'
 
 const MAX_COPY_FILES = 1_000
+
+export interface LocalFileCopyFailure {
+  sourcePath: string
+  userMessage: string
+  details: Record<string, unknown>
+}
 
 export function sourcePathsForCopy(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -38,8 +45,22 @@ async function copyWithAvailableName(sourcePath: string, destinationDir: string)
   throw new Error('目标文件夹中存在过多同名素材')
 }
 
-export async function copyLocalFilesToDirectory(sourcePaths: string[], destinationDir: string): Promise<FileCopyResult> {
-  await mkdir(destinationDir, { recursive: true })
+export async function copyLocalFilesToDirectory(
+  sourcePaths: string[],
+  destinationDir: string,
+  onFailure?: (failure: LocalFileCopyFailure) => void,
+): Promise<FileCopyResult> {
+  try {
+    await mkdir(destinationDir, { recursive: true })
+  } catch (error) {
+    const message = friendlyFileOperationError(error, 'copy')
+    onFailure?.({
+      sourcePath: destinationDir,
+      userMessage: message,
+      details: fileOperationErrorDetails(error, destinationDir),
+    })
+    throw userFacingFileOperationError(error, 'copy')
+  }
   let copiedCount = 0
   let failedCount = 0
   const resolvedDestination = path.resolve(destinationDir)
@@ -51,8 +72,13 @@ export async function copyLocalFilesToDirectory(sourcePaths: string[], destinati
       if (!(await stat(resolvedSource)).isFile()) throw new Error('素材文件不可用')
       await copyWithAvailableName(resolvedSource, resolvedDestination)
       copiedCount += 1
-    } catch {
+    } catch (error) {
       failedCount += 1
+      onFailure?.({
+        sourcePath,
+        userMessage: friendlyFileOperationError(error, 'copy'),
+        details: fileOperationErrorDetails(error, resolvedDestination),
+      })
     }
   }
 

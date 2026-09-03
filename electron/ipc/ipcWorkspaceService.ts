@@ -49,6 +49,7 @@ import { RUNTIME_RESOURCE_DEFINITIONS } from '../infrastructure/runtimeResourceD
 import { loadRuntimeResource } from '../infrastructure/runtimeResourceService'
 import type { IpcContext } from './context'
 import { selectPrimaryVideoStream, selectVideoFrame, type FfprobeVideoEntry } from '../media/videoResolution'
+import { fileOperationErrorDetails, friendlyFileOperationError, userFacingFileOperationError } from '../storage/fileOperationDiagnostics.ts'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const FONT_EXTENSIONS = new Set(['.otf', '.ttf'])
@@ -886,13 +887,24 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('workspace:copyFile', async (_event, sourcePath: string) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
-    await mkdir(settings.exportDir, { recursive: true })
     const baseName = path.basename(sourcePath)
     const ext = path.extname(baseName).toLowerCase()
     const nameBase = path.basename(baseName, ext) || 'workspace'
     const fileName = safeName(`${nameBase}_workspace_${Date.now()}${ext}`)
     const destinationPath = path.join(settings.exportDir, fileName)
-    await cp(sourcePath, destinationPath, { force: true })
+    try {
+      await mkdir(settings.exportDir, { recursive: true })
+      await cp(sourcePath, destinationPath, { force: true })
+    } catch (error) {
+      const message = friendlyFileOperationError(error, 'export')
+      logMainError('[export] 工作区文件导出失败', {
+        sourcePath,
+        outputPath: destinationPath,
+        userMessage: message,
+        ...fileOperationErrorDetails(error, destinationPath),
+      })
+      throw userFacingFileOperationError(error, 'export')
+    }
 
     const kind = VIDEO_EXTENSIONS.has(ext) ? 'video' : 'image'
     const taskName = `${nameBase}导出`
@@ -926,7 +938,17 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs = false, recordTask = true, coverTimeSeconds?: number) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
-    await mkdir(settings.exportDir, { recursive: true })
+    try {
+      await mkdir(settings.exportDir, { recursive: true })
+    } catch (error) {
+      const message = friendlyFileOperationError(error, 'export')
+      logMainError('[export] Live 图导出目录准备失败', {
+        outputDir: settings.exportDir,
+        userMessage: message,
+        ...fileOperationErrorDetails(error, settings.exportDir),
+      })
+      throw userFacingFileOperationError(error, 'export')
+    }
 
     if (appleLivePhoto && process.platform !== 'darwin') {
       throw new Error('Apple Live 图仅支持在 Mac 上导出')
@@ -952,6 +974,18 @@ export function register(ctx: IpcContext): void {
         ])
       }
       await combineLivePhoto(workingImagePath, workingVideoPath, destinationPath ?? '', appleFolder, coverTimeSeconds)
+    } catch (error) {
+      const message = friendlyFileOperationError(error, 'export')
+      logMainError('[export] Live 图导出失败', {
+        sourceImagePath: imagePath,
+        sourceVideoPath: videoPath,
+        outputDir: settings.exportDir,
+        outputPath: destinationPath,
+        appleFolder,
+        userMessage: message,
+        ...fileOperationErrorDetails(error, destinationPath ?? appleFolder ?? settings.exportDir),
+      })
+      throw userFacingFileOperationError(error, 'export')
     } finally {
       await rm(workingImagePath, { force: true }).catch(() => undefined)
       await rm(workingVideoPath, { force: true }).catch(() => undefined)
