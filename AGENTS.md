@@ -175,15 +175,6 @@ Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要
 - 日常开发只运行与改动直接相关的测试、类型检查和变更范围 Lint；共享基础设施或公共契约变更运行相邻回归；完整 Electron、视觉、全量模型、三平台和完整套件只在里程碑、RC 或发布前执行。
 - 对重复、脆弱、长期缓慢且不能定位真实故障的测试，应合并、替换或删除，不以测试数量作为质量指标。
 
-### 日志排查规则
-
-- 排查运行时问题前，先读取当前运行实例的 `settings.json`，再确定日志目录和相关配置；不要先凭经验搜索旧日志。
-- 普通运行实例的设置文件使用 `app.getPath('appData')/LunaAI-Cut/settings.json`，对应代码为 `electron/storage/settingsStorage.ts` 中的 `stableSettingsPath`。
-- 隔离运行实例（设置了 `LUNA_E2E_USER_DATA_DIR`）的设置文件使用 `<userData>/settings.json`。需要确认实例时，优先读取该文件中的 `baseDir`、`activeDeviceId`、`cameraHost` 和连接模式。
-- 当前真机调试实例由用户明确指定为 `/Users/zhouchao/临时目录/lunaaicut/settings.json`，本次日志目录为 `/Users/zhouchao/临时目录/lunaaicut/logs`。后续针对这个实例只查看该目录下当前日期和当前版本的 `main-*.log`、`renderer-*.log`、`startup.log` 及必要的崩溃文件；不要搜索旧工作树、旧安装目录或其他用户目录中的日志。
-- 当前设置格式没有单独的 `logsDir` 字段时，源代码默认按 `<baseDir>/logs` 推导日志目录；如果用户提供了当前运行实例的明确日志目录，按该实例实际目录排查，并记录设置文件与运行日志目录不一致这一事实，不要擅自用旧目录替代它。
-- 日志分析应先按时间筛选当前版本日志，再用明确的错误关键词定位上下文；涉及网络问题时同时核对 `activeDeviceId`、目标主机、当前 SSID、扫描结果、连接结果和本机 IP，避免把热点无公网误判为设备连接失败。
-
 Electron E2E 必须统一使用 Playwright Test。禁止新增基于 `agent-browser`、手写 CDP 客户端或其他测试执行器的 Electron E2E；临时人工排查不能替代仓库内的 Playwright 用例。
 
 - 使用 `@playwright/test` 的 `_electron.launch()` 直接启动已构建应用，不通过外部 CDP 端口或全局浏览器自动化 CLI 控制 Electron。
