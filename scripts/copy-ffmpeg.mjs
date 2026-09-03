@@ -103,6 +103,24 @@ console.log(`[copy-ffmpeg] target: ${targetPlatform}-${targetArch}, build: ${pro
 mkdirSync(destDir, { recursive: true })
 mkdirSync(cacheDir, { recursive: true })
 
+// The three local packaging commands share resources/ffmpeg. Remove files
+// belonging to the previous target before copying the current platform set.
+function removeIncompatibleArtifacts() {
+  for (const fileName of readdirSync(destDir)) {
+    const isWindowsArtifact = /\.dll$/i.test(fileName)
+      || fileName.toLowerCase().endsWith('.exe')
+      || fileName === 'FFmpeg-LICENSE.txt'
+    const isUnixArtifact = fileName === 'ffmpeg' || fileName === 'ffprobe'
+      || /\.(dylib|so(?:\..*)?)$/i.test(fileName)
+    const shouldRemove = targetPlatform === 'win32' ? isUnixArtifact : isWindowsArtifact
+    if (!shouldRemove) continue
+    rmSync(join(destDir, fileName), { force: true })
+    console.log('[copy-ffmpeg] removed incompatible artifact:', fileName)
+  }
+}
+
+removeIncompatibleArtifacts()
+
 // ─── 下载文件（自动跟随重定向） ─────────────────────
 
 function httpGet(url) {

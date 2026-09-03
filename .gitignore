@@ -38,6 +38,8 @@ resources/dji-ble-helper/
 resources/dolby-vision/
 .dolby-tools-cache/
 .dxc-cache/
+.onnxruntime-cache/
+.package-resources/
 docs/*
 !docs/camera-media-architecture.md
 
