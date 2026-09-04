@@ -510,6 +510,9 @@ function normalizeReferenceMatch(value: unknown): ReferenceMatchSettings | null 
   if (typeof input.targetAssetId !== 'string' || !input.targetAssetId.trim()) return null
   const resultKind = input.resultKind === 'image' || input.resultKind === 'lut' ? input.resultKind : null
   if (!resultKind) return null
+  // 旧版 AI 追色把 256px 输出放大成图片，细节已经不可恢复；让用户重新生成
+  // 新版 AI LUT，避免项目重新打开后继续加载模糊结果。
+  if (input.method === 'neural-preset' && resultKind === 'image') return null
   return {
     enabled: input.enabled !== false,
     method: input.method as ReferenceMatchMethod,

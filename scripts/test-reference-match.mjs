@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-const { generateReferenceMatchLut } = await import('../src/workspace/color/referenceMatch.ts')
+const { generatePairedReferenceMatchLut, generateReferenceMatchLut } = await import('../src/workspace/color/referenceMatch.ts')
 const { saveReferenceMatchLut } = await import('../electron/features/color/referenceMatchService.ts')
 
 function image(pixels, width = 4) {
@@ -40,6 +40,19 @@ const matched = generateReferenceMatchLut(source, warmReference, { gridSize: 5, 
 const matchedRows = cubeRows(matched.cube)
 assert.equal(matchedRows.length, 5 ** 3)
 assert.ok(matchedRows.some((row, index) => row.some((value) => Math.abs(value - identityRows[index][0]) > 0.02)), 'reference match did not change the LUT')
+
+const transformed = image(source.data
+  ? Array.from({ length: source.width * source.height }, (_, index) => {
+      const offset = index * 4
+      return [Math.min(255, source.data[offset] + 24), source.data[offset + 1], Math.max(0, source.data[offset + 2] - 16)]
+    })
+  : [])
+const paired = generatePairedReferenceMatchLut(source, transformed, { maxSamples: 100 })
+const pairedRows = cubeRows(paired.cube)
+assert.equal(paired.stats.method, 'neural-preset')
+assert.equal(paired.stats.gridSize, 17)
+assert.equal(pairedRows.length, 17 ** 3)
+assert.ok(pairedRows.every((row) => row.length === 3 && row.every((value) => Number.isFinite(value) && value >= 0 && value <= 1)), 'paired AI LUT contains invalid values')
 
 for (const method of ['reinhard', 'kantorovich', 'forgy', 'wasserstein']) {
   const result = generateReferenceMatchLut(source, warmReference, {
@@ -92,6 +105,17 @@ try {
   const metadata = JSON.parse(await readFile(`${saved.path}.meta.json`, 'utf8'))
   assert.equal(metadata.kind, 'reference-match')
   assert.equal(metadata.referenceAssetId, 'reference-1')
+
+  const pairedSaved = await saveReferenceMatchLut({ baseDir: storageDir }, {
+    cube: paired.cube,
+    name: '测试 AI 追色',
+    method: 'neural-preset',
+    referenceAssetId: 'reference-1',
+    referenceName: '参考图.jpg',
+    targetAssetId: 'target-1',
+    targetName: '目标图.jpg',
+  })
+  assert.equal((await stat(pairedSaved.path)).isFile(), true)
 } finally {
   await rm(storageDir, { recursive: true, force: true })
 }

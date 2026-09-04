@@ -32,20 +32,18 @@ export interface WorkspaceReferenceMatchLutResult {
   category: string
 }
 
-export interface WorkspaceReferenceMatchImageRequest {
+export interface WorkspaceReferenceMatchAiLutRequest {
   targetPath: string
   referencePath: string
-  targetWidth: number
-  targetHeight: number
   referenceName: string
   targetName: string
   referenceAssetId: string
   targetAssetId: string
 }
 
-export interface WorkspaceReferenceMatchImageResult {
+export interface WorkspaceReferenceMatchAiLutResult {
   path: string
-  width: number
-  height: number
+  name: string
+  category: string
   modelVersion: string
 }
