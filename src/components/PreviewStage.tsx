@@ -49,6 +49,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [muted, setMuted] = useState(false)
+  const mutedRef = useRef(false)
+  mutedRef.current = muted
   const webGpuPreviewEnabled = settings?.experimentalWebGpuPreview ?? false
   const [webGpuPreviewFailed, setWebGpuPreviewFailed] = useState(false)
   const webGpuPreviewAutoDisabledRef = useRef(false)
@@ -117,6 +120,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     }
     videoRef.current = el
     if (el) {
+      el.muted = mutedRef.current
       playbackIntentRef.current = !el.paused
       setPlaying(playbackIntentRef.current)
       setCurrentTime(el.currentTime)
@@ -208,6 +212,16 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       setPlaying(false)
       video.pause()
     }
+  }
+
+  function toggleMute() {
+    const video = videoRef.current
+    setMuted((current) => {
+      const next = !current
+      mutedRef.current = next
+      if (video) video.muted = next
+      return next
+    })
   }
 
   function handleSeek(time: number) {
@@ -632,6 +646,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
           onSeek={handleSeek}
           onSeekStart={handleSeekStart}
           onSeekEnd={handleSeekEnd}
+          muted={muted}
+          onToggleMute={toggleMute}
         />
       )}
     </div>
