@@ -110,7 +110,25 @@
   gap: 6px;
 }
 
-.workspace-reference-match-method label {
+.workspace-reference-match-method .ui-btn-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.workspace-reference-match-method .ui-btn-group-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  height: auto;
+  justify-content: flex-start;
+  padding: 7px 10px;
+  line-height: 1.25;
+  text-align: left;
+  white-space: normal;
+}
+
+.workspace-reference-match-method > span {
   color: var(--ink);
   font-size: 11px;
   font-weight: 600;

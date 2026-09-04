@@ -12,6 +12,7 @@ import {
   loadModelRegistry,
   MODEL_RELEASE_TAG,
   SUBTITLE_MODEL_MANIFEST_NAME,
+  gitCodeReleaseDownloadUrl,
   publishModelRelease,
   writeModelManifest,
 } from './model-resource-release.mjs'
@@ -50,7 +51,7 @@ const artifacts = buildModelArtifacts(registry).filter((artifact) => (
 let lastProgress = ''
 
 async function existingManifestArtifacts() {
-  const manifestUrl = `https://gitcode.com/${owner}/${repo}/releases/download/${MODEL_RELEASE_TAG}/${MODEL_RELEASE_TAG}.json`
+  const manifestUrl = gitCodeReleaseDownloadUrl({ owner, repo, fileName: MODEL_RELEASE_TAG + '.json' })
   const response = await fetch(manifestUrl, { redirect: 'follow' })
   if (response.status === 404) return []
   if (!response.ok) throw new Error(`读取现有模型清单失败: HTTP ${response.status}`)

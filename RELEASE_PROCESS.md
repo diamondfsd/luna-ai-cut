@@ -33,6 +33,14 @@
 
 其中 `releases/download` 是固定路径。不要使用 `.../releases/<release-tag>/<file-name>`，后者是错误的下载地址格式；也不要把 GitCode API 的 Release 查询或上传地址当作文件下载地址。
 
+模型和其他 Release 附件沿用同一规则。下载地址必须由网页域名、仓库、Release tag 和附件文件名组成：
+
+```text
+https://gitcode.com/<owner>/<repo>/releases/download/<release-tag>/<file-name>
+```
+
+模型资源当前使用 `model-resources-v1.0.0` 作为 Release tag；manifest 修订名（如 `model-resources-v1.0.0-r4.json`）只属于附件文件名，不能替代或追加到 Release tag。API 返回的 `browser_download_url`、`api.gitcode.com` 地址和上传接口返回的临时 CDN URL 都不写入客户端。发布验证使用实际 GET/断点下载，不用 HEAD 作为唯一判断。
+
 相关实现入口：
 
 - `scripts/build-dependency-sources.mjs`：维护仓库、Release tag 和下载地址基址

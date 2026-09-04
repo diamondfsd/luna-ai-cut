@@ -1,23 +1,35 @@
 import assert from 'node:assert/strict'
 import {
   buildModelArtifacts,
+  gitCodeReleaseDownloadUrl,
   loadModelRegistry,
   MODEL_RELEASE_TAG,
 } from './model-resource-release.mjs'
 
 const registry = await loadModelRegistry()
 const artifacts = buildModelArtifacts(registry)
-const allModels = [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.COMPOSITION_MODELS, ...registry.SAM_MODELS, ...registry.INPAINT_MODELS, registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_ASR_TOKENS_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]
+const allModels = [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.COMPOSITION_MODELS, ...registry.REFERENCE_MATCH_MODELS, ...registry.SAM_MODELS, ...registry.INPAINT_MODELS, registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_ASR_TOKENS_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]
 const gitCodePrefix = `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/${MODEL_RELEASE_TAG}/`
 const subtitleModelIds = new Set([registry.SUBTITLE_ASR_MODEL.id, registry.SUBTITLE_ASR_TOKENS_MODEL.id, registry.SUBTITLE_VAD_MODEL.id, registry.SUBTITLE_PUNCTUATION_MODEL.id])
 const isModelScopeSource = (url) => /^https:\/\/(www\.)?modelscope\.cn\//.test(url)
 const isDomesticRuntimeSource = (url) => isModelScopeSource(url) || url.startsWith(gitCodePrefix)
 
-assert.equal(allModels.length, 17, '当前注册表应登记 17 个生产模型')
-assert.equal(artifacts.length, 18, '当前注册表应映射为 18 个模型文件')
+assert.equal(
+  gitCodeReleaseDownloadUrl({ fileName: 'neural-preset-v1-256.onnx' }),
+  `${gitCodePrefix}neural-preset-v1-256.onnx`,
+  'GitCode Release 地址必须使用 releases/download/<tag>/<file-name>',
+)
+assert.equal(
+  gitCodeReleaseDownloadUrl({ fileName: 'model-resources-v1.0.0-r4.json' }),
+  `${gitCodePrefix}model-resources-v1.0.0-r4.json`,
+  'manifest 修订号只能出现在文件名，不能成为 Release tag',
+)
+
+assert.equal(allModels.length, 18, '当前注册表应登记 18 个生产模型')
+assert.equal(artifacts.length, 19, '当前注册表应映射为 19 个模型文件')
 assert.equal(new Set(artifacts.map((artifact) => artifact.fileName)).size, artifacts.length, 'Release 文件名不得重复')
 assert.equal(new Set(artifacts.map((artifact) => artifact.sha256)).size, artifacts.length, '相同权重必须复用一个 Release 附件')
-assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 18, '每个模型文件角色都必须被覆盖')
+assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 19, '每个模型文件角色都必须被覆盖')
 
 for (const artifact of artifacts) {
   assert.match(artifact.fileName, /^[a-zA-Z0-9._-]+\.(onnx|bin|gguf|txt)$/)

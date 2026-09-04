@@ -20,6 +20,7 @@ export interface WorkspacePipelineClipboardData {
   effects: EditPipeline['effects']
   logRestore: EditPipeline['logRestore']
   lutFilter: EditPipeline['lutFilter']
+  referenceMatch?: EditPipeline['referenceMatch']
   watermark: EditPipeline['watermark']
   border: EditPipeline['border']
   beauty?: BeautyClipboardSettings
@@ -40,6 +41,7 @@ interface WorkspaceEditValue {
   pipeline: EditPipeline
   previewPipeline: EditPipeline
   comparePipeline: EditPipeline
+  referenceMatch: EditPipeline['referenceMatch']
   canUndo: boolean
   canRedo: boolean
   undo: () => void
@@ -161,6 +163,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
         effects: DEFAULT_PIPELINE.effects,
         logRestore: DEFAULT_PIPELINE.logRestore,
         lutFilter: DEFAULT_PIPELINE.lutFilter,
+        referenceMatch: DEFAULT_PIPELINE.referenceMatch,
         colorMasks: [],
         beautyMasks: [],
         border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
@@ -178,6 +181,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       effects: structuredClone(pipeline.effects),
       logRestore: structuredClone(pipeline.logRestore),
       lutFilter: structuredClone(pipeline.lutFilter),
+      referenceMatch: structuredClone(pipeline.referenceMatch),
       watermark: structuredClone(pipeline.watermark),
       border: structuredClone(pipeline.border),
       beauty: structuredClone(beautyClipboardSettings(pipeline)),
@@ -267,6 +271,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipeline,
     previewPipeline,
     comparePipeline,
+    referenceMatch: pipeline.referenceMatch,
     canUndo,
     canRedo,
     undo,

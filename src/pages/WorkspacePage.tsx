@@ -42,7 +42,7 @@ import { BeautyRetouchOverlay } from '../workspace/beauty/BeautyRetouchOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
+import { applyLocalColorToSourceMediaLayers, applyReferenceMatchToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { buildSubtitleLayers } from '../workspace/subtitles/subtitleLayers'
@@ -197,6 +197,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const pasteInProgressRef = useRef(false)
   const colorResetNoticeRef = useRef(new Set<string>())
+  const referenceAssetRef = useRef(media.referenceAsset)
+  referenceAssetRef.current = media.referenceAsset
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
   const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
 
@@ -557,7 +559,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       },
     })
     return sourcePath
-      ? applyLocalColorToSourceMediaLayers(layers, sourcePath, stagePipeline)
+      ? applyLocalColorToSourceMediaLayers(
+          applyReferenceMatchToSourceMediaLayers(layers, sourcePath, stagePipeline),
+          sourcePath,
+          stagePipeline,
+        )
       : layers
   }, [activeSourcePath, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia, media.activeMedia?.path])
 
@@ -607,6 +613,14 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     }
     const nextPipeline = normalizePipeline(asset?.pipeline, defaultPipelineRef.current, restoreLut)
     edit.initializePipeline(nextPipeline)
+    const persistedReference = nextPipeline.referenceMatch?.referenceAssetId
+      ? media.media.find((candidate) => candidate.id === nextPipeline.referenceMatch?.referenceAssetId) ?? null
+      : null
+    const retainedReference = referenceAssetRef.current
+    const retainedReferenceAvailable = Boolean(
+      retainedReference && media.media.some((candidate) => candidate.id === retainedReference.id && candidate.path === retainedReference.path),
+    )
+    media.setReferenceAsset(persistedReference ?? (retainedReferenceAvailable ? retainedReference : null))
     if (keepCropMode) {
       // The previous draft belongs to the old asset. Start the crop overlay from the
       // new asset's persisted transform while keeping the crop tool selected.
@@ -623,7 +637,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         if (edit.activeTool === 'trim') edit.setActiveTool('filter')
       }
     }
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, restoreLutKey, settingsReady])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, media.setReferenceAsset, restoreLutKey, settingsReady])
 
   useEffect(() => {
     if (restoreLut === undefined) return
@@ -738,6 +752,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       effects: data.effects,
       logRestore: data.logRestore,
       lutFilter: data.lutFilter,
+      referenceMatch: data.referenceMatch,
       watermark: data.watermark,
       border: data.border,
     }
@@ -842,6 +857,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           effects: structuredClone(pipe.effects),
           logRestore: structuredClone(pipe.logRestore),
           lutFilter: structuredClone(pipe.lutFilter),
+          referenceMatch: structuredClone(pipe.referenceMatch),
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),
           beauty: beauty ? structuredClone(beauty) : undefined,

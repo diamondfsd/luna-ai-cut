@@ -1,15 +1,19 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
-import type { AppSettings, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from '../../../src/shared/types'
+import type { AppSettings, WorkspaceReferenceMatchImageRequest, WorkspaceReferenceMatchImageResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from '../../../src/shared/types'
 import { safeName } from '../../media/filePathUtils.ts'
 
-const CATEGORY = 'AI追色'
+const CACHE_CATEGORY = 'reference-match'
 const LUT_SIZE = 33
 const MAX_CUBE_BYTES = 8 * 1024 * 1024
+const AI_INPUT_SIZE = 256
+const execFileAsync = promisify(execFile)
 
-function lutRoot(settings: AppSettings): string {
-  return path.resolve(settings.lutDir || path.join(settings.baseDir, 'luts'))
+function referenceMatchRoot(settings: AppSettings): string {
+  return path.resolve(settings.baseDir, 'cache', CACHE_CATEGORY)
 }
 
 function validateCube(cube: string): void {
@@ -46,7 +50,7 @@ export async function saveReferenceMatchLut(
 
   const displayName = cleanName(request.name)
   const fileBaseName = cleanName(`${displayName}_${Date.now()}`)
-  const directory = path.join(lutRoot(settings), CATEGORY)
+  const directory = referenceMatchRoot(settings)
   const destination = path.join(directory, `${fileBaseName}.cube`)
   const metadata = {
     name: displayName,
@@ -70,5 +74,97 @@ export async function saveReferenceMatchLut(
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => undefined)
   }
-  return { path: destination, name: displayName, category: CATEGORY }
+  return { path: destination, name: displayName, category: CACHE_CATEGORY }
+}
+
+async function getFfmpegPathAtRuntime(): Promise<string> {
+  const { getFfmpegPath } = await import('../../platform/ffmpeg/pipeline')
+  return getFfmpegPath()
+}
+
+async function getWorkerPathAtRuntime(): Promise<string> {
+  const { app } = await import('electron')
+  const executable = process.platform === 'win32' ? 'neural-preset-worker.exe' : 'neural-preset-worker'
+  const appRoot = process.env.APP_ROOT ?? path.join(import.meta.dirname, '..', '..')
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'luna-render-core', executable)
+    : path.join(appRoot, 'luna-render-core', executable)
+}
+
+function positiveDimension(value: number, label: string): number {
+  const dimension = Math.round(Number(value))
+  if (!Number.isInteger(dimension) || dimension < 1 || dimension > 16_384) throw new Error(`${label}尺寸无效`)
+  return dimension
+}
+
+async function decodeRgb(filePath: string): Promise<Buffer> {
+  const { stdout } = await execFileAsync(await getFfmpegPathAtRuntime(), [
+    '-v', 'error',
+    '-i', filePath,
+    '-vf', `scale=${AI_INPUT_SIZE}:${AI_INPUT_SIZE}:flags=lanczos`,
+    '-frames:v', '1',
+    '-f', 'rawvideo',
+    '-pix_fmt', 'rgb24',
+    'pipe:1',
+  ], { encoding: 'buffer', maxBuffer: AI_INPUT_SIZE * AI_INPUT_SIZE * 3 + 1024 })
+  const bytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+  if (bytes.byteLength !== AI_INPUT_SIZE * AI_INPUT_SIZE * 3) throw new Error('无法读取追色图片')
+  return bytes
+}
+
+async function encodePng(rgbPath: string, outputPath: string, width: number, height: number): Promise<void> {
+  await execFileAsync(await getFfmpegPathAtRuntime(), [
+    '-v', 'error',
+    '-f', 'rawvideo',
+    '-pixel_format', 'rgb24',
+    '-video_size', `${AI_INPUT_SIZE}x${AI_INPUT_SIZE}`,
+    '-i', rgbPath,
+    '-vf', `scale=${width}:${height}:flags=lanczos`,
+    '-frames:v', '1',
+    '-f', 'image2',
+    '-c:v', 'png',
+    '-y', outputPath,
+  ], { maxBuffer: 16 * 1024 })
+}
+
+export async function generateReferenceMatchImage(
+  settings: AppSettings,
+  request: WorkspaceReferenceMatchImageRequest,
+): Promise<WorkspaceReferenceMatchImageResult> {
+  if (!request.targetPath || !request.referencePath || !request.targetAssetId || !request.referenceAssetId) {
+    throw new Error('追色素材信息不完整')
+  }
+  const width = positiveDimension(request.targetWidth, '目标图片')
+  const height = positiveDimension(request.targetHeight, '目标图片')
+  const { loadModel } = await import('../../infrastructure/modelLoader')
+  const model = await loadModel('neural-preset-v1-256')
+  await fs.mkdir(referenceMatchRoot(settings), { recursive: true })
+  const directory = await fs.mkdtemp(path.join(referenceMatchRoot(settings), '.neural-preset-'))
+  const contentPath = path.join(directory, 'content.rgb')
+  const stylePath = path.join(directory, 'style.rgb')
+  const outputRgbPath = path.join(directory, 'colored-content.rgb')
+  const outputName = safeName(`AI追色_${request.targetName}_${request.referenceName}_${Date.now()}`)
+  const destination = path.join(referenceMatchRoot(settings), `${outputName}.png`)
+  try {
+    const [content, style] = await Promise.all([decodeRgb(request.targetPath), decodeRgb(request.referencePath)])
+    await Promise.all([fs.writeFile(contentPath, content, { mode: 0o600 }), fs.writeFile(stylePath, style, { mode: 0o600 })])
+    await execFileAsync(await getWorkerPathAtRuntime(), [model.path, contentPath, stylePath, outputRgbPath], { timeout: 120_000, maxBuffer: 64 * 1024 })
+    await encodePng(outputRgbPath, destination, width, height)
+    await fs.writeFile(`${destination}.meta.json`, JSON.stringify({
+      name: outputName,
+      kind: 'reference-match-image',
+      method: 'neural-preset',
+      model: { id: model.id, version: 'v1-256', sha256: model.sha256 },
+      referenceAssetId: request.referenceAssetId,
+      targetAssetId: request.targetAssetId,
+      referenceName: request.referenceName,
+      targetName: request.targetName,
+      generatedAt: new Date().toISOString(),
+      width,
+      height,
+    }, null, 2), { encoding: 'utf8', mode: 0o600 })
+    return { path: destination, width, height, modelVersion: 'v1-256' }
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined)
+  }
 }
