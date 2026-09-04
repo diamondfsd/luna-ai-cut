@@ -1,0 +1,123 @@
+.workspace-reference-match-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.workspace-reference-match-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.workspace-reference-match-intro svg {
+  flex: 0 0 auto;
+  color: var(--blue);
+  margin-top: 1px;
+}
+
+.workspace-reference-match-intro > div {
+  display: grid;
+  gap: 3px;
+}
+
+.workspace-reference-match-intro strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.workspace-reference-match-intro span {
+  color: var(--muted);
+}
+
+.workspace-reference-match-preview-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-reference-match-preview {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.workspace-reference-match-preview > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-reference-match-preview img,
+.workspace-reference-match-empty-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--parchment);
+  object-fit: cover;
+}
+
+.workspace-reference-match-empty-thumb {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.workspace-reference-match-preview strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-reference-match-arrow {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.workspace-reference-match-reference-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-reference-match-status,
+.workspace-reference-match-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.workspace-reference-match-status {
+  padding: 9px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--parchment) 55%, transparent);
+}
+
+.workspace-reference-match-note {
+  display: block;
+}
+
+.workspace-reference-match-method {
+  display: grid;
+  gap: 6px;
+}
+
+.workspace-reference-match-method label {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.workspace-reference-match-method small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}

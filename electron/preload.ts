@@ -212,6 +212,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
     loadFont: (filePath: string) => ipcRenderer.invoke('workspace:loadFont', filePath),
     loadLut: (filePath: string) => ipcRenderer.invoke('workspace:loadLut', filePath),
+    saveReferenceMatchLut: (request: import('../src/shared/types').WorkspaceReferenceMatchLutRequest) => ipcRenderer.invoke('workspace:saveReferenceMatchLut', request),
     getMediaFormatInfo: (filePath: string) => ipcRenderer.invoke('workspace:getMediaFormatInfo', filePath),
     getMediaResolution: (filePath: string) => ipcRenderer.invoke('workspace:getMediaResolution', filePath),
     getVideoDuration: (filePath: string) => ipcRenderer.invoke('workspace:getVideoDuration', filePath),
