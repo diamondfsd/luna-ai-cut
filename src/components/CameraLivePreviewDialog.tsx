@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CameraOff, Copy, Radio, Square } from 'lucide-react'
+import { CameraOff, Copy, Maximize2, Minimize2, Radio, Square } from 'lucide-react'
 
-import { Button, Dialog, IconButton, LoadingIndicator, toast } from '../ui'
+import { Button, Dialog, IconButton, LoadingIndicator, toast, Tooltip } from '../ui'
 import { buildCodecString, detectCodec, drainAccessUnits, splitNalUnits } from '../lib/annexB'
 import type { CameraVideoStreamStatus } from '../shared/types'
 import '../styles/camera-live-preview.css'
@@ -181,6 +181,7 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
   const [obsBusy, setObsBusy] = useState(false)
   const [hasFrame, setHasFrame] = useState(false)
   const [streamDimensions, setStreamDimensions] = useState<{ width: number; height: number } | null>(null)
+  const [immersive, setImmersive] = useState(false)
   const handleFrame = useCallback((dimensions: { width: number; height: number }) => {
     setHasFrame(true)
     setStreamDimensions((current) => (
@@ -217,6 +218,52 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
       void window.luna.cameraVideoStream.stop({ mode, deviceId, host })
     }
   }, [connected, deviceId, host, mode, open])
+
+  const enterImmersive = useCallback(() => {
+    setImmersive(true)
+    void window.luna.setFullScreen(true).catch(() => setImmersive(false))
+  }, [])
+
+  const exitImmersive = useCallback(() => {
+    setImmersive(false)
+    void window.luna.setFullScreen(false).catch(() => {})
+  }, [])
+
+  const toggleImmersive = useCallback(() => {
+    if (immersive) exitImmersive()
+    else enterImmersive()
+  }, [enterImmersive, exitImmersive, immersive])
+
+  useEffect(() => {
+    if (!open) return
+    const unsubscribe = window.luna.onFullScreenChange(setImmersive)
+    return () => {
+      unsubscribe()
+      void window.luna.setFullScreen(false)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if ((open && connected) || !immersive) return
+    exitImmersive()
+  }, [connected, exitImmersive, immersive, open])
+
+  useEffect(() => {
+    if (!open || !immersive) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      exitImmersive()
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [exitImmersive, immersive, open])
+
+  function handleOpenChange(nextOpen: boolean): void {
+    if (!nextOpen && immersive) exitImmersive()
+    onOpenChange(nextOpen)
+  }
 
   async function toggleObsStream(): Promise<void> {
     if (!status || obsBusy) return
@@ -273,7 +320,7 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
       <Button
         variant="secondary"
         size="compact"
-        onClick={() => onOpenChange(false)}
+        onClick={() => handleOpenChange(false)}
       >
         关闭
       </Button>
@@ -295,17 +342,28 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
       title="相机预览"
-      className="camera-live-preview-dialog"
+      className={`camera-live-preview-dialog${immersive ? ' is-immersive' : ''}`}
       tone="dark"
       footer={footer}
     >
       <div className="camera-live-preview-body">
         <div
           className="camera-live-preview-stage"
-          style={streamDimensions ? { aspectRatio: `${streamDimensions.width} / ${streamDimensions.height}` } : undefined}
+          style={streamDimensions && !immersive ? { aspectRatio: `${streamDimensions.width} / ${streamDimensions.height}` } : undefined}
         >
+          <Tooltip content={immersive ? '退出全屏' : '全屏预览'}>
+            <IconButton
+              variant="light"
+              className="camera-live-preview-fullscreen-toggle"
+              icon={immersive ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+              onClick={toggleImmersive}
+              title={immersive ? '退出全屏' : '全屏预览'}
+              aria-label={immersive ? '退出全屏' : '全屏预览'}
+              aria-pressed={immersive}
+            />
+          </Tooltip>
           {status?.streamUrl && status.state === 'running' && !unsupported ? (
             <LiveCanvas url={status.streamUrl} onFrame={handleFrame} onError={handleError} />
           ) : null}
