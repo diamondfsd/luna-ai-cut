@@ -119,7 +119,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
       case 'go-ultra':
         return this.ctx.goUltraProtocol()
       case 'insta360':
-        return this.ctx.lunaProtocol()
+        return this.ctx.lunaProtocol(definition.id)
       default:
         throw new Error(`暂不支持 ${definition.name} 的媒体协议`)
     }
