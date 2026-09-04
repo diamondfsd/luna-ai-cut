@@ -8,13 +8,43 @@ import { safeName } from '../../media/filePathUtils.ts'
 import { generatePairedReferenceMatchLut, type ReferenceMatchImage } from '../../../src/workspace/color/referenceMatch.ts'
 
 const CACHE_CATEGORY = 'reference-match'
+const PROJECTS_DIR = 'workspace-projects'
+const PROJECT_FILE = 'project.json'
+const MAX_PROJECT_ID_LENGTH = 100
 const LUT_SIZES = new Set([17, 33])
 const MAX_CUBE_BYTES = 8 * 1024 * 1024
 const AI_INPUT_SIZE = 256
 const execFileAsync = promisify(execFile)
 
-function referenceMatchRoot(settings: AppSettings): string {
-  return path.resolve(settings.baseDir, 'cache', CACHE_CATEGORY)
+async function referenceMatchRoot(settings: AppSettings, projectId: string): Promise<string> {
+  if (!projectId) throw new Error('追色项目不完整')
+  if (
+    projectId.length > MAX_PROJECT_ID_LENGTH
+    || projectId === '.'
+    || projectId === '..'
+    || !/^[\w.-]+$/.test(projectId)
+  ) {
+    throw new Error('项目标识无效')
+  }
+  const projectRoot = path.resolve(settings.baseDir, PROJECTS_DIR)
+  const projectDirectory = path.resolve(projectRoot, projectId)
+  const relativeProjectPath = path.relative(projectRoot, projectDirectory)
+  if (!relativeProjectPath || relativeProjectPath === '..' || relativeProjectPath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeProjectPath)) {
+    throw new Error('项目目录无效')
+  }
+  const projectStats = await fs.lstat(projectDirectory).catch(() => null)
+  if (!projectStats?.isDirectory() || projectStats.isSymbolicLink()) throw new Error('项目目录无效')
+  await fs.access(path.join(projectDirectory, PROJECT_FILE))
+
+  const realProjectDirectory = await fs.realpath(projectDirectory)
+  const directory = path.join(realProjectDirectory, 'cache', CACHE_CATEGORY)
+  await fs.mkdir(directory, { recursive: true })
+  const realDirectory = await fs.realpath(directory)
+  const relative = path.relative(realProjectDirectory, realDirectory)
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('追色缓存目录无效')
+  }
+  return realDirectory
 }
 
 function validateCube(cube: string): void {
@@ -51,7 +81,7 @@ export async function saveReferenceMatchLut(
 
   const displayName = cleanName(request.name)
   const fileBaseName = cleanName(`${displayName}_${Date.now()}`)
-  const directory = referenceMatchRoot(settings)
+  const directory = await referenceMatchRoot(settings, request.projectId)
   const destination = path.join(directory, `${fileBaseName}.cube`)
   const metadata = {
     name: displayName,
@@ -127,13 +157,13 @@ export async function generateReferenceMatchAiLut(
   }
   const { loadModel } = await import('../../infrastructure/modelLoader')
   const model = await loadModel('neural-preset-v1-256')
-  await fs.mkdir(referenceMatchRoot(settings), { recursive: true })
-  const directory = await fs.mkdtemp(path.join(referenceMatchRoot(settings), '.neural-preset-'))
+  const root = await referenceMatchRoot(settings, request.projectId)
+  const directory = await fs.mkdtemp(path.join(root, '.neural-preset-'))
   const contentPath = path.join(directory, 'content.rgb')
   const stylePath = path.join(directory, 'style.rgb')
   const outputRgbPath = path.join(directory, 'colored-content.rgb')
   const outputName = safeName(`AI追色_${request.targetName}_${request.referenceName}_${Date.now()}`)
-  const destination = path.join(referenceMatchRoot(settings), `${outputName}.cube`)
+  const destination = path.join(root, `${outputName}.cube`)
   try {
     const [content, style] = await Promise.all([decodeRgb(request.targetPath), decodeRgb(request.referencePath)])
     await Promise.all([fs.writeFile(contentPath, content, { mode: 0o600 }), fs.writeFile(stylePath, style, { mode: 0o600 })])

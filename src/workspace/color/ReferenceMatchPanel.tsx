@@ -69,10 +69,16 @@ export function ReferenceMatchPanel() {
       if (targetIsReference) toast.error('请切换到需要追色的目标素材')
       return
     }
+    const projectId = media.currentProject?.id
+    if (!projectId) {
+      toast.error('请先将素材加入项目后再使用 AI 追色')
+      return
+    }
     const generationId = ++generationRef.current
     setGenerating(true)
     try {
       const generated = await window.luna.workspace.generateReferenceMatchAiLut({
+        projectId,
         targetPath: target.path,
         referencePath: reference.path,
         referenceName: reference.name,
@@ -109,7 +115,7 @@ export function ReferenceMatchPanel() {
 
   const targetThumbnail = target ? thumbnails[target.id]?.thumbnailUrl : null
   const referenceThumbnail = reference ? thumbnails[reference.id]?.thumbnailUrl : null
-  const canGenerate = Boolean(target?.kind === 'image' && reference?.kind === 'image' && referenceAvailable && !targetIsReference && !generating)
+  const canGenerate = Boolean(media.currentProject?.id && target?.kind === 'image' && reference?.kind === 'image' && referenceAvailable && !targetIsReference && !generating)
 
   const handleStrengthChange = (value: number): void => {
     setStrength(value)

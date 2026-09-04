@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -91,8 +91,14 @@ for (const method of ['reinhard', 'kantorovich', 'forgy', 'wasserstein']) {
 
 const storageDir = await mkdtemp(join(tmpdir(), 'luna-reference-match-'))
 try {
+  const projectId = 'project-1'
+  const projectDirectory = join(storageDir, 'workspace-projects', projectId)
+  await mkdir(projectDirectory, { recursive: true })
+  await writeFile(join(projectDirectory, 'project.json'), JSON.stringify({ id: projectId, assets: [] }))
+  const realProjectDirectory = await realpath(projectDirectory)
   const fullSize = generateReferenceMatchLut(source, warmReference, { gridSize: 33, maxSamples: 100 })
   const saved = await saveReferenceMatchLut({ baseDir: storageDir }, {
+    projectId,
     cube: fullSize.cube,
     name: '测试参考图追色',
     method: 'reinhard',
@@ -107,6 +113,7 @@ try {
   assert.equal(metadata.referenceAssetId, 'reference-1')
 
   const pairedSaved = await saveReferenceMatchLut({ baseDir: storageDir }, {
+    projectId,
     cube: paired.cube,
     name: '测试 AI 追色',
     method: 'neural-preset',
@@ -116,6 +123,7 @@ try {
     targetName: '目标图.jpg',
   })
   assert.equal((await stat(pairedSaved.path)).isFile(), true)
+  assert.equal(pairedSaved.path.startsWith(join(realProjectDirectory, 'cache', 'reference-match')), true)
 } finally {
   await rm(storageDir, { recursive: true, force: true })
 }
