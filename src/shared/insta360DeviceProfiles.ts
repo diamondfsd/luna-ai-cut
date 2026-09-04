@@ -27,6 +27,14 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
     supportsBorderLogo: true,
   },
   {
+    id: 'luna-pro',
+    displayName: 'Luna Pro',
+    cameraType: 'Insta360 Luna Pro',
+    deviceNamePatterns: [/Insta360\s+Luna\s+Pro/i, /Luna\s+Pro/i, /Z05/i],
+    exifModelPatterns: [/Insta360\s+Luna\s+Pro/i, /Luna\s+Pro/i, /Z05/i],
+    defaultWatermarkStyle: 'luna_pro_cn',
+  },
+  {
     id: 'go-ultra',
     displayName: 'GO Ultra',
     cameraType: 'Insta360 GO Ultra',
@@ -44,7 +52,7 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
   },
   {
     id: 'dji-pocket-4-pro',
-    displayName: 'Osmo Pocket 4 Pro',
+    displayName: 'Osmo Pocket 4P',
     cameraType: 'DJI OsmoPocket4P',
     deviceNamePatterns: [/DJI\s*Osmo\s*Pocket\s*4\s*P/i, /OsmoPocket4P/i, /PP-041/i],
     exifModelPatterns: [/DJI\s*Osmo\s*Pocket\s*4\s*P/i, /OsmoPocket4P/i, /PP-041/i],
@@ -119,6 +127,8 @@ const LEGACY_BORDER_TITLES = new Set([
   'insta360',
   'insta360 luna ultra',
   'luna ultra',
+  'insta360 luna pro',
+  'luna pro',
 ])
 
 export function isLegacyBorderTitle(title?: string | null): boolean {

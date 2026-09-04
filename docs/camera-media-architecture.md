@@ -17,7 +17,7 @@ CameraMediaSourceApi
 cameraMediaSourceFor()  根据 DeviceDefinition.protocol 注册适配器
         |
 媒体适配器
-  Insta360(Luna)   Insta360(GO Ultra)   DJI(Pocket 4 / 4 Pro)   Mounted
+  Insta360(Luna)   Insta360(GO Ultra)   DJI(Pocket 4 / 4P)   Mounted
         |
 厂商协议实现 + 可选连接准备策略
 ```
@@ -44,11 +44,11 @@ cameraMediaSourceFor()  根据 DeviceDefinition.protocol 注册适配器
 
 连接准备通过 `CameraMediaSourceOptions.wireless` 传递。密码只作为本次连接参数使用，不写入应用设置。DJI 额外提供 `prepareConnection()`：先通过蓝牙读取 Wi-Fi 信息并断开 BLE，用户手动切换 Wi-Fi 后再调用统一的 `connect()`。未来需要系统 Wi-Fi 自动加入时，只新增对应策略实现，不改变素材列表接口。
 
-## Luna Ultra Wi-Fi 连接确认
+## Luna Wi-Fi 连接确认
 
 macOS 的 CoreWLAN 在应用缺少定位/无线网络相关权限，或系统版本限制时，可能在 Wi-Fi 已经关联成功后仍返回空 SSID。`interface.ssid()` 为空不能作为“未连接”的判断，也不能阻断 Luna Ultra 的自动连接流程。
 
-Luna Ultra 自动连接的确认链路固定为：
+Luna Ultra 和 Luna Pro 使用相同的 Wi-Fi/TCP 控制链路，自动连接的确认链路固定为：
 
 ```text
 CoreWLAN 发起连接
@@ -66,12 +66,12 @@ SSID 只用于扫描、日志和界面展示。实际连接状态以相机控制
 
 | protocol | 设备 | 媒体实现 |
 | --- | --- | --- |
-| `insta360` | Luna Ultra | `LunaUltraProtocol` |
+| `insta360` | Luna Ultra / Luna Pro | `LunaUltraProtocol`（共用 Wi-Fi 协议） |
 | `go-ultra` | GO Ultra | `GoUltraProtocol` |
-| `dji` | Osmo Pocket 4 / 4 Pro | `DjiCameraSession` |
+| `dji` | Osmo Pocket 4 / 4P | `DjiCameraSession` |
 | `mode=wired` | 任意已挂载相机磁盘 | `MountedCameraMediaSource` |
 
-新增设备时，优先新增设备定义和协议注册项，不在连接服务里增加基于设备 ID 的条件分支。机型差异（例如 Pocket 4 与 Pocket 4 Pro 的识别字段、端口和 Mock model）放入设备 profile/config。
+新增设备时，优先新增设备定义和协议注册项，不在连接服务里增加基于设备 ID 的条件分支。机型差异（例如 Pocket 4 与 Pocket 4P 的识别字段、端口和 Mock model）放入设备 profile/config。
 
 ## DJI 无线准备策略
 
@@ -104,13 +104,13 @@ DJI Mock 服务同时提供：
 pnpm mock:dji -- --root /path/to/media --model pocket4
 ```
 
-Pocket 4 Pro 使用 `--model pocket4pro`。素材目录可以直接放文件，也可以按 `sdcard/` 和 `internal/` 分目录。应用中选择对应 DJI 设备，把地址设为 `127.0.0.1:18080`，连接后应能验证 BLE 准备、UDP 清单读取、HTTP HEAD 和媒体预览。
+Pocket 4P 使用 `--model pocket4pro`（内部参数保持兼容）。素材目录可以直接放文件，也可以按 `sdcard/` 和 `internal/` 分目录。应用中选择对应 DJI 设备，把地址设为 `127.0.0.1:18080`，连接后应能验证 BLE 准备、UDP 清单读取、HTTP HEAD 和媒体预览。
 
 应用内 Mock Server 也会根据当前设备定义中的 `protocol` 和 `mock.model` 启动对应服务。
 
 ## 后续实现顺序
 
-1. 在真实 macOS 和 Windows 设备上验证 Pocket 4 / Pocket 4 Pro 的连接、通知分片和 Wi-Fi 信息读取；保持 `DjiBleTransport` 字节协议接口不变。
+1. 在真实 macOS 和 Windows 设备上验证 Pocket 4 / Pocket 4P 的连接、通知分片和 Wi-Fi 信息读取；保持 `DjiBleTransport` 字节协议接口不变。
 2. 根据用户输入补齐系统 Wi-Fi 连接策略；默认仍允许用户手动切换 Wi-Fi。
 3. 为设备定义补充每个机型的存储、预览、删除和连接能力矩阵。
 4. 新增设备时只增加 profile、协议实现和 Mock fixture，并复用 `CameraMediaSourceApi`。

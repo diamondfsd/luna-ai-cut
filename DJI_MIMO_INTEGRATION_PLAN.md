@@ -1,6 +1,6 @@
 # DJI Mimo 协议接入计划
 
-> 状态：Pocket 4 / Pocket 4 Pro 协议基线、mock 服务和 Electron Web Bluetooth transport 已实现，真实 BLE/Wi-Fi 硬件链路待验收
+> 状态：Pocket 4 / Pocket 4P 协议基线、mock 服务和 Electron Web Bluetooth transport 已实现，真实 BLE/Wi-Fi 硬件链路待验收
 >
 > 日期：2026-08-23
 >
@@ -8,7 +8,7 @@
 >
 > 本文记录接入方案、当前实现边界和后续硬件工作；不修改 Osmosis，只移植协议行为。
 
-当前先以 **Pocket 4 为协议基线，Pocket 4 Pro 为紧随其后的 mock 验收目标**。按照当前工作区的约束，不等待或运行 Osmosis/项目测试套件，先以 mock service 完成应用链路验收，再进入真实硬件适配。
+当前先以 **Pocket 4 为协议基线，Pocket 4P 为紧随其后的 mock 验收目标**。按照当前工作区的约束，不等待或运行 Osmosis/项目测试套件，先以 mock service 完成应用链路验收，再进入真实硬件适配。
 
 ## 1. 结论先行
 
@@ -27,7 +27,7 @@ DJI Osmo 的接入不能按“扫描 Wi-Fi、输入密码、访问 HTTP”实现
 
 建议把 Osmosis 当作协议和行为参考，移植其中的纯协议逻辑；不要把 Android Activity、Android Bluetooth、Android Wi-Fi API 直接搬进 Luna。Luna 的实现应放在 Electron 主进程和 Web Bluetooth/系统网络桥接层，React 渲染进程只负责展示连接阶段和素材结果。
 
-第一版建议直接以 **Osmo Pocket 4 / Pocket 4 Pro** 为目标，但分成两个硬件验收顺序：先用 Pocket 4 建立完整链路基线，再用 Pocket 4 Pro 验证新 BLE 广播格式、双存储和 AP 掉线恢复。无人机 QuickTransfer、Osmo 360/WPA3、删除和复杂控制能力放到后续阶段。这样可以先验证最核心的 BLE 取凭据和桌面切换 Wi-Fi 风险，同时尽早覆盖 Pocket 4 Pro 的差异。
+第一版建议直接以 **Osmo Pocket 4 / Pocket 4P** 为目标，但分成两个硬件验收顺序：先用 Pocket 4 建立完整链路基线，再用 Pocket 4P 验证新 BLE 广播格式、双存储和 AP 掉线恢复。无人机 QuickTransfer、Osmo 360/WPA3、删除和复杂控制能力放到后续阶段。这样可以先验证最核心的 BLE 取凭据和桌面切换 Wi-Fi 风险，同时尽早覆盖 Pocket 4P 的差异。
 
 ## 2. 已检查的代码
 
@@ -72,15 +72,15 @@ Osmosis 不只依赖设备名称。它从 DJI 公司标识 `0x08AA` 的 manufact
 | Osmo Nano | `0x0019` | UDP 9004 + TCP 7001 poke | 已有 Osmosis 硬件验证 |
 | Osmo Pocket 3 | `0x0020` | UDP 9004 + TCP 7001 poke | 需要先进入播放模式再列文件 |
 | Osmo Pocket 4 | `0x0021` | UDP 9004 + TCP 7001 poke | 第一台基线；双存储 |
-| Osmo Pocket 4 Pro | `0x0022` | UDP 9004 + TCP 7001 poke | 第二台验收；新 BLE 广播格式，需重点验证掉线恢复 |
+| Osmo Pocket 4P | `0x0022` | UDP 9004 + TCP 7001 poke | 第二台验收；新 BLE 广播格式，需重点验证掉线恢复 |
 
 第一版应保留未知型号的原始广播数据和原始型号 ID，不能因为名称匹配失败就丢弃设备。未知型号先进入“已发现、暂不支持”的状态，不自动发送破坏性命令。
 
-### 3.2 Pocket 4 / Pocket 4 Pro 的实际覆盖情况
+### 3.2 Pocket 4 / Pocket 4P 的实际覆盖情况
 
-Osmosis 的 README 将 Pocket 4 / Pocket 4 Pro 标为 `Verified on hardware`，但代码注释和测试资产显示两者的验证深度并不完全相同：
+Osmosis 的 README 将 Pocket 4 / Pocket 4P 标为 `Verified on hardware`，但代码注释和测试资产显示两者的验证深度并不完全相同：
 
-| 项目 | Pocket 4 | Pocket 4 Pro |
+| 项目 | Pocket 4 | Pocket 4P |
 | --- | --- | --- |
 | BLE 型号识别 | 经典格式，manufacturer payload 前两字节为 `0x0021` | 新格式，payload byte 5 的 flag 置位，byte 10-11 为 product type `218/HG224`，映射为 `0x0022` |
 | 配对、取凭据、AP、UDP | 已确认 | 已确认 |
@@ -245,12 +245,12 @@ Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事�
 
 交付物：
 
-- 确认第一台目标设备和系统，固定为 Osmo Pocket 4；同时准备 Osmo Pocket 4 Pro 作为第二验收设备；
+- 确认第一台目标设备和系统，固定为 Osmo Pocket 4；同时准备 Osmo Pocket 4P 作为第二验收设备；
 - 建立设备测试表：首次配对、已配对重连、拒绝确认、BLE 断线、Wi-Fi 切换、AP 未出现、UDP 握手失败、下载中断；
-- 固化至少一组 Pocket 4 和一组 Pocket 4 Pro 的脱敏 BLE/DUML 抓包或字节 fixture；密码和真实个人网络信息不得进入仓库；
+- 固化至少一组 Pocket 4 和一组 Pocket 4P 的脱敏 BLE/DUML 抓包或字节 fixture；密码和真实个人网络信息不得进入仓库；
 - 核对 MIT 代码引用的保留范围和致谢；协议文档只作为参考，第三方实现代码移植时保留原许可证要求。
 
-验收：Pocket 4 能确认广播型号、BLE 服务和特征，并明确实际 MTU 行为；Pocket 4 Pro 能确认新格式 product type `218/HG224` 不会被识别为未知型号。
+验收：Pocket 4 能确认广播型号、BLE 服务和特征，并明确实际 MTU 行为；Pocket 4P 能确认新格式 product type `218/HG224` 不会被识别为未知型号。
 
 ### Phase 1：纯 TypeScript 协议内核
 
@@ -294,11 +294,11 @@ Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事�
 
 - `dgram` UDP transport 和 TCP-7001 poke；
 - Camera session 注册、播放模式、清单分页、保活和关闭；
-- Pocket 4 的照片、视频、预览文件和大小/时间解析；Pocket 4 Pro 的同类数据使用独立 fixture 校验；
+- Pocket 4 的照片、视频、预览文件和大小/时间解析；Pocket 4P 的同类数据使用独立 fixture 校验；
 - 生成带 storage/path/handle 的稳定 `LunaFile`；
 - 复用 Luna 缓存和可恢复下载，保留原始扩展名与下载名策略。
 
-验收：Pocket 4 真实硬件连接后能读取媒体网格，打开预览，下载一个小文件和一个大文件；Pocket 4 Pro 先完成跨两个存储的清单和预览，再验证大文件传输中 AP 掉线后的恢复或明确失败，不产生错误完成记录。
+验收：Pocket 4 真实硬件连接后能读取媒体网格，打开预览，下载一个小文件和一个大文件；Pocket 4P 先完成跨两个存储的清单和预览，再验证大文件传输中 AP 掉线后的恢复或明确失败，不产生错误完成记录。
 
 ### Phase 5：Luna 正式产品流程
 
@@ -318,7 +318,7 @@ Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事�
 
 - Electron Web Bluetooth transport 和 Windows Wi-Fi handoff；
 - Action 5/Xtra 10004/no-poke 分支；
-- 其他机型的双存储、Action 1 index 清单等差异；Pocket 4 / Pocket 4 Pro 不再作为后续扩展项；
+- 其他机型的双存储、Action 1 index 清单等差异；Pocket 4 / Pocket 4P 不再作为后续扩展项；
 - 无人机 `DJI FLY` token、9003、`0x51` session-open 和 DCF 清单作为独立协议族；
 - 只有经过硬件验证的能力才加入设备 profile 的“支持”状态。
 
@@ -375,7 +375,7 @@ Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事�
 
 ## 8. 评审时需要确认的问题
 
-1. 是否确认以 Pocket 4 作为第一台基线设备、Pocket 4 Pro 作为第二台紧随验收设备？Osmosis 已有两者的硬件验证，但 P4P 的 AP 掉线恢复仍需单独覆盖。
+1. 是否确认以 Pocket 4 作为第一台基线设备、Pocket 4P 作为第二台紧随验收设备？Osmosis 已有两者的硬件验证，但 P4P 的 AP 掉线恢复仍需单独覆盖。
 2. 第一版是否只支持 macOS，还是必须同步支持 Windows？如果没有 Windows BLE 实机和开发环境，建议先把 Windows 标为未支持，避免做出不可验收的抽象。
 3. 是否接受应用连接 DJI 时临时切换系统 Wi-Fi，并在断开后恢复原网络？这是桌面端区别于 Android `bindProcessToNetwork` 的最大产品约束。
 4. 第一版是否只做“浏览、预览、下载”？建议明确关闭删除、收藏、相机控制和无人机 QuickTransfer。
@@ -386,22 +386,22 @@ Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事�
 
 评审通过后按以下顺序开工：
 
-1. 先锁定 Pocket 4，完成 BLE 广播、服务、特征、MTU 和一组脱敏抓包记录；随后补采 Pocket 4 Pro 的新格式广播和清单记录；
+1. 先锁定 Pocket 4，完成 BLE 广播、服务、特征、MTU 和一组脱敏抓包记录；随后补采 Pocket 4P 的新格式广播和清单记录；
 2. 只写 TypeScript 协议内核和 fixture 测试，不接 UI；
 3. 完成 macOS/Windows Electron Web Bluetooth 长连接实机验收，先实现取 SSID/密码，不急着列媒体；
 4. 完成 Wi-Fi handoff 和 `192.168.2.1` 探测；
-5. 移植 UDP 握手和最小媒体清单，先验证 Pocket 4 的一个照片和一个视频下载，再验证 Pocket 4 Pro 的双存储清单；
+5. 移植 UDP 握手和最小媒体清单，先验证 Pocket 4 的一个照片和一个视频下载，再验证 Pocket 4P 的双存储清单；
 6. 再接入 `CameraMediaSource`、连接页面和现有下载队列；
 7. 最后扩展机型、Windows、删除和无人机能力。
 
-当前建议的第一阶段完成定义是：**在 Pocket 4 上，用户不手工输入 Wi-Fi 密码，完成 BLE 配对确认、自动加入相机 Wi-Fi、读取双存储媒体清单并下载文件；随后在 Pocket 4 Pro 上完成新格式 BLE 识别、双存储清单和掉线恢复验收。**
+当前建议的第一阶段完成定义是：**在 Pocket 4 上，用户不手工输入 Wi-Fi 密码，完成 BLE 配对确认、自动加入相机 Wi-Fi、读取双存储媒体清单并下载文件；随后在 Pocket 4P 上完成新格式 BLE 识别、双存储清单和掉线恢复验收。**
 
 ## 10. 当前已落地内容
 
 ### 协议内核
 
 - `electron/dji/djiBytes.ts`：DJI CRC8/CRC16、DUML 帧、PackString 和多帧扫描；
-- `electron/dji/djiModels.ts`：Pocket 4 经典广播和 Pocket 4 Pro 新广播（`productType=218`）解析；
+- `electron/dji/djiModels.ts`：Pocket 4 经典广播和 Pocket 4P 新广播（`productType=218`）解析；
 - `electron/dji/djiBleSession.ts`：`fff0/fff4/fff5`、`07/45`、`07/46`、`07/07`、`07/0e` 的顺序状态机，以及同协议 mock BLE 适配器；
 - `electron/dji/djiUdpTransport.ts`：9004 数据链路、握手、路由头、DUML UDP 包；
 - `electron/dji/djiManifest.ts`：CompositePack 路径、缩略图、句柄和双存储清单解析；
@@ -409,9 +409,9 @@ Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事�
 
 ### Luna 接入
 
-- 新增 `dji-pocket-4`、`dji-pocket-4-pro` 设备 profile；
+- 新增 `dji-pocket-4`、`dji-pocket-4-pro` 设备 profile（对外显示名为 Pocket 4P）；
 - `CameraMediaSource` 已按 `dji-*` 路由到 DJI 会话；
-- 设置页可切换 Pocket 4 / Pocket 4 Pro，切换时同步本地 mock 端口配置；
+- 设置页可切换 Pocket 4 / Pocket 4P，切换时同步本地 mock 端口配置；
 - Electron 开发者模式根据当前 DJI 设备自动启动 `dji_mock_server`，发行包也会携带服务脚本；
 - 第一版 capability 关闭删除，只开放连接、浏览、预览和下载。
 
@@ -419,6 +419,6 @@ Electron Web Bluetooth 会话通过主进程 IPC 接收异步通知和断开事�
 
 入口：`dji_mock_server/server.mjs`，说明：`dji_mock_server/README.md`。
 
-服务端口默认使用本地 `HTTP 18080`、`TCP 17001`、`UDP 19004`，与真实设备的 `80/7001/9004` 分开，避免误连。`--drop-after-bytes` 可模拟 Pocket 4 Pro 下载中 AP 掉线；素材根目录包含 `sdcard/` 和 `internal/` 时会生成双存储清单。
+服务端口默认使用本地 `HTTP 18080`、`TCP 17001`、`UDP 19004`，与真实设备的 `80/7001/9004` 分开，避免误连。`--drop-after-bytes` 可模拟 Pocket 4P 下载中 AP 掉线；素材根目录包含 `sdcard/` 和 `internal/` 时会生成双存储清单。
 
-当前仍明确保留的硬件工作：真实 macOS/Windows Electron Web Bluetooth 长连接、系统 Wi-Fi 切换/恢复，以及 Pocket 4 Pro 真实掉线后的断点恢复。当前非 loopback 地址会给出明确错误，不会伪装成已支持的真实连接。
+当前仍明确保留的硬件工作：真实 macOS/Windows Electron Web Bluetooth 长连接、系统 Wi-Fi 切换/恢复，以及 Pocket 4P 真实掉线后的断点恢复。当前非 loopback 地址会给出明确错误，不会伪装成已支持的真实连接。

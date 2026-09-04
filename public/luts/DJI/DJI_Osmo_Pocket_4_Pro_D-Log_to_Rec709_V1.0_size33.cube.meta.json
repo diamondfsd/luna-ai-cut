@@ -1,6 +1,6 @@
 {
-  "name": "Osmo Pocket 4 Pro D-Log to Rec.709",
-  "description": "DJI official Log restoration LUT for Osmo Pocket 4 Pro.",
+  "name": "Osmo Pocket 4P D-Log to Rec.709",
+  "description": "DJI official Log restoration LUT for Osmo Pocket 4P.",
   "isTechnical": true,
   "deviceId": "dji-pocket-4-pro",
   "sourcePage": "https://www.dji.com/cn/downloads/softwares/osmo-pocket-4p-dlog-to-rec709-lut-size33",
