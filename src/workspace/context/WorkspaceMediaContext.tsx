@@ -17,6 +17,8 @@ interface WorkspaceMediaValue {
   setSelectedIndices: React.Dispatch<React.SetStateAction<Set<number>>>
   brokenPaths: Set<string>
   setBrokenPaths: React.Dispatch<React.SetStateAction<Set<string>>>
+  referenceAsset: WorkspaceMediaAsset | null
+  setReferenceAsset: React.Dispatch<React.SetStateAction<WorkspaceMediaAsset | null>>
   editorOpen: boolean
   handleSelectionChange: (clickedIndex: number, modifiers: { shift: boolean; ctrl: boolean; meta: boolean }) => void
   openProject: (project: WorkspaceProject) => void
