@@ -2,6 +2,8 @@ import { ArrowLeft, Play, ScanLine } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
+import { WebGpuVideoPreview } from '../../../components/WebGpuVideoPreview'
+import { useApp } from '../../../context/AppContext'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { type PixelFlowSubjectDirection, type PreviewLayer, type WorkspacePixelFlowState } from '../../../shared/types'
 import { Button, LoadingIndicator, VideoControls, toast } from '../../../ui'
@@ -38,6 +40,7 @@ import './pixel-flow.css'
 export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
+  const { settings } = useApp()
   const activeAsset = media.activeMedia
   const activeAssetId = activeAsset?.id
   const projectId = media.currentProject?.id
@@ -64,6 +67,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [mediaDuration, setMediaDuration] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [webGpuPreviewFailed, setWebGpuPreviewFailed] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const saveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
@@ -72,6 +76,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const attemptedAssetRef = useRef<string | null>(null)
   const depthBuildRef = useRef<string | null>(null)
   const { previewQuality, previewMaxSide, changePreviewQuality } = useCreativePreviewQuality()
+  const useWebGpuPreview = (settings?.experimentalWebGpuPreview ?? true) && !webGpuPreviewFailed
 
   useEffect(() => {
     for (const requestId of requestRef.current) void window.luna.workspace.cancelSegmentation(requestId)
@@ -102,6 +107,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setPlaying(false)
     attemptedAssetRef.current = null
     depthBuildRef.current = null
+    setWebGpuPreviewFailed(false)
   // Only restore when the selected asset or project changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAssetId, projectId])
@@ -352,12 +358,13 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     if (!activeAsset || !sourceSize) return []
     return [buildPixelFlowLayer({
       asset: activeAsset,
+      maskProjectId: projectId,
       maskPath: depthMaskPath ?? undefined,
       playbackDuration,
       pipeline: edit.pipeline,
       settings: effectSettings,
     })]
-  }, [activeAsset, depthMaskPath, edit.pipeline, effectSettings, playbackDuration, sourceSize])
+  }, [activeAsset, depthMaskPath, edit.pipeline, effectSettings, playbackDuration, projectId, sourceSize])
   const previewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, previewMaxSide / Math.max(sourceSize.width, sourceSize.height))
@@ -398,6 +405,10 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }
 
   const handleError = useCallback((message: string) => toast.error(message), [])
+  const handleWebGpuPreviewError = useCallback(() => {
+    setWebGpuPreviewFailed(true)
+    toast.error('预览加速暂时不可用，已切回通用预览')
+  }, [])
 
   const { allowedFormats, exportableAssets, exporting, handleExport, hasImages: exportHasImages, initialConfig: exportInitialConfig } = usePixelFlowBatchExport({
     activeAsset,
@@ -422,7 +433,17 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       {activeAsset ? <div className={`pixel-flow-stage${sourceSize ? sourceSize.width > sourceSize.height ? ' is-landscape' : ' is-portrait' : ''}`}>
         <div className="pixel-flow-render-surface">
           {previewLayers.length > 0 && previewSize && <>
-            <LrcRender
+            {useWebGpuPreview ? <WebGpuVideoPreview
+              className="pixel-flow-canvas"
+              layers={previewLayers}
+              canvasWidth={previewSize.width}
+              canvasHeight={previewSize.height}
+              maxSide={previewMaxSide}
+              playing={playing && playbackReady}
+              time={currentTime}
+              interactiveImageLayerIndexes={[]}
+              onError={handleWebGpuPreviewError}
+            /> : <LrcRender
               className="pixel-flow-canvas"
               layers={previewLayers}
               canvasWidth={previewSize.width}
@@ -431,7 +452,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
               compositionTime={currentTime}
               interactiveImageLayerIndexes={[]}
               onError={handleError}
-            />
+            />}
           </>}
         </div>
         {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>生成中</span></div>}

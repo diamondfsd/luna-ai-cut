@@ -17,7 +17,15 @@ export function staticPreviewFrameKey(
   canvasHeight: number | undefined,
   maxSide: number,
 ): string | null {
-  if (layers.some((layer) => layer.isVideo)) return null
+  if (layers.some((layer) => (
+    layer.isVideo
+    || layer.pixelFlow
+    || layer.reveal
+    || layer.maskTimeline
+    || layer.maskTrack
+    || layer.activeStart != null
+    || layer.activeEnd != null
+  ))) return null
   return JSON.stringify({ canvasWidth, canvasHeight, maxSide, layers })
 }
 

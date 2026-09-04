@@ -9,12 +9,13 @@ export type PixelFlowEffectSettings = Pick<WorkspacePixelFlowState,
 
 export function buildPixelFlowLayer(options: {
   asset: WorkspaceMediaAsset
+  maskProjectId?: string
   maskPath?: string
   playbackDuration: number
   pipeline: EditPipeline
   settings: PixelFlowEffectSettings
 }): PreviewLayer {
-  const { asset, maskPath, pipeline, playbackDuration, settings } = options
+  const { asset, maskProjectId, maskPath, pipeline, playbackDuration, settings } = options
   return {
     layerType: 'pixel-flow',
     filePath: asset.path,
@@ -36,6 +37,7 @@ export function buildPixelFlowLayer(options: {
     restoreLutId: pipeline.logRestore.activeId ?? undefined,
     lutId: pipeline.lutFilter.activeId ?? undefined,
     lutIntensity: pipeline.lutFilter.intensity,
+    maskProjectId,
     maskPath,
     pixelFlow: {
       ...settings,

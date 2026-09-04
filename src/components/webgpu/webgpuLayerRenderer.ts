@@ -103,6 +103,7 @@ export class WebGpuLayerRenderer {
         frame,
         layerResources.restoreLut.size,
         layerResources.lut.size,
+        time,
       )
       const paramsBuffer = this.bufferForLayer(device, index)
       device.queue.writeBuffer(paramsBuffer, 0, params)

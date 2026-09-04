@@ -152,7 +152,7 @@ async function hasCanvasVideoFramePixels(frame: VideoFrameLike, width: number, h
 
 interface ComparisonApi {
   initialize(config: ComparisonConfig): Promise<{ navigatorGpu: boolean }>
-  renderFeature(id: string): Promise<{ elapsedMs: number; layerCount: number }>
+  renderFeature(id: string, playing?: boolean): Promise<{ elapsedMs: number; layerCount: number }>
   measureVideo(id: string, durationMs: number): Promise<VideoBenchmarkResult>
   exportVideo(id: string, frameCount: number, fps: number, codec: string, bitrate: number): Promise<WebCodecsExportResult>
   destroy(): void
@@ -308,18 +308,18 @@ pageWindow.lunaWebGpuComparison = {
     return { navigatorGpu: 'gpu' in navigator }
   },
 
-  async renderFeature(id: string): Promise<{ elapsedMs: number; layerCount: number }> {
+  async renderFeature(id: string, playing = false): Promise<{ elapsedMs: number; layerCount: number }> {
     if (!renderer || !config) throw new Error('WebGPU standalone renderer is not initialized')
     const feature = config.features.find((entry) => entry.id === id)
     if (!feature) throw new Error(`Unknown comparison feature: ${id}`)
     const startedAt = performance.now()
     const rendered = waitForRender()
     await renderer.setLayers(feature.layers)
-    await renderer.setPlayback(true, false, feature.time)
+    await renderer.setPlayback(true, playing, feature.time)
     await rendered
     // Resource uploads schedule a follow-up frame; wait for the settled frame.
     const settled = waitForRender()
-    await renderer.setPlayback(true, false, feature.time)
+    await renderer.setPlayback(true, playing, feature.time)
     await settled
     // Let the browser complete the submitted GPU work before Playwright captures the canvas.
     await new Promise<void>((resolve) => {
