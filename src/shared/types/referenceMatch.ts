@@ -16,6 +16,7 @@ export interface ReferenceMatchSettings {
 }
 
 export interface WorkspaceReferenceMatchLutRequest {
+  projectId: string
   cube: string
   name: string
   description?: string
@@ -33,6 +34,7 @@ export interface WorkspaceReferenceMatchLutResult {
 }
 
 export interface WorkspaceReferenceMatchAiLutRequest {
+  projectId: string
   targetPath: string
   referencePath: string
   referenceName: string

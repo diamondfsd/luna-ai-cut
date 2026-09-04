@@ -134,7 +134,7 @@ export interface EditPipeline {
     /** 滤镜强度 1-100，默认 100 */
     intensity: number
   }
-  /** 当前照片的参考图追色结果；结果文件保存在本地缓存目录。 */
+  /** 当前照片的参考图追色结果；结果文件保存在当前项目的缓存目录。 */
   referenceMatch: ReferenceMatchSettings | null
   watermark: WatermarkSettings
   border: BorderSettings
