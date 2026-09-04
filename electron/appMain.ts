@@ -157,7 +157,8 @@ function clientFor(host = DEFAULT_HOST, controlPort = DEFAULT_DEVICE.controlPort
   return client
 }
 
-function lunaProtocol(): LunaUltraProtocol {
+function lunaProtocol(deviceId = DEFAULT_DEVICE.id): LunaUltraProtocol {
+  const definition = deviceDefinitionFor(deviceId)
   return new LunaUltraProtocol(
     clientFor,
     (host) => controlPortForCurrentSettings(host),
@@ -165,6 +166,7 @@ function lunaProtocol(): LunaUltraProtocol {
       logMainWarn(`[设备协议] 连接丢失回调触发，通知渲染进程`)
       win?.webContents.send('luna:connection-lost')
     },
+    definition,
   )
 }
 
@@ -393,9 +395,10 @@ function registerIpc(): void {
       case 'go-ultra':
         protocol = goUltraProtocol()
         break
+      case 'luna-pro':
       case 'luna-ultra':
       default:
-        protocol = lunaProtocol()
+        protocol = lunaProtocol(deviceId)
         break
     }
 
@@ -422,7 +425,7 @@ function registerIpc(): void {
           protocol = goUltraProtocol()
           break
         default:
-          protocol = lunaProtocol()
+          protocol = lunaProtocol(deviceId)
           break
       }
       const status = await protocol.checkStatus(normalizedHost)
@@ -451,7 +454,7 @@ function registerIpc(): void {
           break
         }
         default: {
-          const protocol = lunaProtocol()
+          const protocol = lunaProtocol(deviceId)
           files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
         }
       }
@@ -480,7 +483,10 @@ function registerIpc(): void {
     const settings = await getSettings()
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
-    if (deviceId !== DEFAULT_DEVICE.id) throw new Error('当前设备暂不支持在应用中删除相机素材')
+    const definition = deviceDefinitionFor(deviceId)
+    if (definition.protocol !== 'insta360' || definition.mediaCapabilities?.delete === false) {
+      throw new Error('当前设备暂不支持在应用中删除相机素材')
+    }
 
     const cameraPaths = cameraPathsForFiles(files, normalizedHost)
     logMainInfo('[相机删除] 收到删除请求', {
@@ -489,7 +495,7 @@ function registerIpc(): void {
       pathCount: cameraPaths.length,
     })
     try {
-      return await lunaProtocol().deleteFiles(cameraPaths, {
+      return await lunaProtocol(deviceId).deleteFiles(cameraPaths, {
         deviceId,
         host: normalizedHost,
       })

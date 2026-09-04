@@ -1,6 +1,6 @@
 import { getSettings, saveSettings } from '../../storage/fileService'
 import { DEFAULT_HOST, LunaClient } from '../insta360/lunaProtocol'
-import { DEFAULT_DEVICE, GO_ULTRA_DEVICE } from '../definitions/deviceDefaults'
+import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, LUNA_PRO_DEVICE } from '../definitions/deviceDefaults'
 import { GoUltraClient, AuthState } from '../go-ultra/protocol'
 import { logMainInfo, logMainWarn, logMainError } from '../../infrastructure/loggerService'
 import type { CameraDeleteResult, ConnectionStatus, DeviceConnectOptions, DeviceDefinition, DeviceStorageOption, LunaFile } from '../../../src/shared/types'
@@ -26,17 +26,20 @@ function withDeviceInfo(status: ConnectionStatus, definition: DeviceDefinition):
 }
 
 // ============================================================
-// Luna Ultra 协议实现
+// Luna Wi-Fi 协议实现。Luna Ultra 与 Luna Pro 共用同一套 TCP/HTTP 协议。
 // ============================================================
 
 export class LunaUltraProtocol implements DeviceProtocol {
-  readonly definition = DEFAULT_DEVICE
+  readonly definition: DeviceDefinition
 
   constructor(
     private readonly clientFor: (host?: string, controlPort?: number) => LunaClient,
     private readonly controlPortForHost: (host: string) => number = () => DEFAULT_DEVICE.controlPort,
     private readonly onConnectionLost?: ConnectionLostHandler,
-  ) {}
+    definition: DeviceDefinition = DEFAULT_DEVICE,
+  ) {
+    this.definition = definition
+  }
 
   async wakeDevice(): Promise<void> {
     // Reserved for Bluetooth wake-up / Wi-Fi info discovery on devices that support it.
@@ -273,6 +276,8 @@ export function protocolForDevice(
   switch (deviceId) {
     case 'go-ultra':
       return new GoUltraProtocol(goUltraClientFactory, onConnectionLost)
+    case 'luna-pro':
+      return new LunaUltraProtocol(lunaClientFactory, controlPortForHost, onConnectionLost, LUNA_PRO_DEVICE)
     case 'luna-ultra':
     default:
       return new LunaUltraProtocol(lunaClientFactory, controlPortForHost, onConnectionLost)
