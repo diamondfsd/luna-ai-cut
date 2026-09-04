@@ -101,7 +101,8 @@ export function buildFileCommand(seq: number, code: number, requestId: number, b
 }
 
 export function buildStreamHello(seq: number): Buffer {
-  return buildUcd2(UCD2_STREAM, seq, Buffer.concat([Buffer.alloc(4), Buffer.from('f6cc4f09', 'hex')]))
+  const frameWithoutTrailer = buildUcd2(UCD2_STREAM, seq, Buffer.alloc(4))
+  return Buffer.concat([frameWithoutTrailer, checksumTrailer(frameWithoutTrailer)])
 }
 
 export function parseRawResponse(payload: Buffer): Insta360RawResponse | null {

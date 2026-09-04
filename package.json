@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.8.0",
   "packageManager": "pnpm@11.1.3",
-  "description": "Insta360 Luna Ultra Wi-Fi 桌面媒体管理工具",
+  "description": "Insta360 Luna Ultra / Luna Pro Wi-Fi 桌面媒体管理工具",
   "author": "diamondfsd",
   "license": "MIT",
   "repository": {
@@ -67,7 +67,9 @@
     "test:ai-selection": "node scripts/run-ai-selection-tests.mjs && node --experimental-strip-types scripts/test-ai-selection-file-copy.mjs",
     "test:custom-luts": "node --experimental-strip-types scripts/test-custom-lut-library.mjs",
     "test:ai-selection:e2e": "node scripts/test-ai-selection-e2e.mjs",
+    "test:device-registry": "node scripts/test-device-registry.mjs",
     "test:protocol": "node scripts/verify-luna-protocol.mjs",
+    "test:luna-tcp-heartbeat": "node --experimental-strip-types scripts/test-luna-tcp-heartbeat.mjs",
     "test:dji-bluetooth": "node --experimental-strip-types scripts/test-dji-web-bluetooth.mjs",
     "test:luna-ble": "node --experimental-strip-types scripts/test-luna-ble-protocol.mjs",
     "test:camera-video-stream": "node --experimental-strip-types scripts/test-camera-video-stream.mjs",

@@ -604,7 +604,7 @@ export function DeviceConnectPage({
               variant="pill"
               value={wifiSsid}
               onChange={(event) => setWifiSsid(event.target.value)}
-              placeholder="例如 Luna Ultra 9P4FM5.OSC"
+              placeholder="例如 Luna Ultra 或 Luna Pro 的 Wi-Fi 名称"
               autoFocus={!wifiSsid}
               fullWidth
             />

@@ -244,8 +244,8 @@ export class Insta360TcpSession {
       this.rejectAll()
     })
 
-    const helloSeq = this.nextSeq()
-    socket.write(buildStreamHello(helloSeq))
+    const helloSeq = this.sendStreamFrame('握手')
+    if (helloSeq === null) throw new Error('控制会话未打开')
     logMainInfo('[Insta360TCP] STREAM 握手已发送', { host: this.host, port: this.port, seq: helloSeq })
     // 连接只需要完成 STREAM 握手。设备信息/字符串查询不是建立媒体连接的必要条件，
     // 也避免在密码未知时额外请求相机配置。
@@ -273,8 +273,8 @@ export class Insta360TcpSession {
       await this.open()
       return
     }
-    const seq = this.nextSeq()
-    this.socket?.write(buildStreamHello(seq))
+    const seq = this.sendStreamFrame('保活')
+    if (seq === null) throw new Error('控制会话未打开')
     logMainDebug('[Insta360TCP] STREAM 保活已发送', { seq })
   }
 
@@ -379,6 +379,23 @@ export class Insta360TcpSession {
     })
   }
 
+  private sendStreamFrame(label: string): number | null {
+    const socket = this.socket
+    if (!socket || socket.destroyed) return null
+
+    const seq = this.nextSeq()
+    const packet = buildStreamHello(seq)
+    socket.write(packet)
+    const checksum = inspectFrameChecksum(packet)
+    logMainDebug('[Insta360TCP] STREAM 帧已发送', {
+      label,
+      seq,
+      frameBytes: packet.length,
+      checksumOk: checksum?.ok ?? null,
+    })
+    return seq
+  }
+
   private onData(data: Buffer): void {
     logMainDebug('[Insta360TCP] 收到 socket 数据', { chunkBytes: data.length, bufferedBefore: this.buffer.length })
     this.buffer = Buffer.concat([this.buffer, data])
@@ -432,6 +449,15 @@ export class Insta360TcpSession {
         continue
       }
       if (type !== UCD2_FILE) {
+        const checksum = inspectFrameChecksum(frame)
+        if (checksum && !checksum.ok) {
+          logMainWarn('[Insta360TCP] STREAM 帧校验不一致', {
+            seq: frame[7],
+            frameBytes: frame.length,
+            received: checksum.received,
+            calculated: checksum.calculated,
+          })
+        }
         logMainDebug('[Insta360TCP] 收到 STREAM 帧', { seq: frame[7], frameBytes: frame.length })
         continue
       }

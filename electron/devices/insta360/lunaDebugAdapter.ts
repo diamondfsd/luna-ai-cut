@@ -7,7 +7,7 @@
 
 import * as net from 'node:net'
 
-import { LunaClient } from './lunaProtocol'
+import { LUNA_WIFI_HEARTBEAT_INTERVAL_MS, LunaClient } from './lunaProtocol'
 import { DEFAULT_DEVICE } from '../definitions/deviceDefaults'
 import { runInsta360TcpDiagnostics } from './insta360TcpDiagnostics'
 import { logMainInfo } from '../../infrastructure/loggerService'
@@ -210,7 +210,7 @@ export class LunaDebugAdapter implements IDeviceDebugProtocol {
   }
 
   startKeepAlive(intervalMs?: number): void {
-    this.client?.startKeepAlive(intervalMs ?? 5000)
+    this.client?.startKeepAlive(intervalMs ?? LUNA_WIFI_HEARTBEAT_INTERVAL_MS)
   }
 
   stopKeepAlive(): void {

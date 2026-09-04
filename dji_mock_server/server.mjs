@@ -22,7 +22,7 @@ const udpPort = Number(args.get('--udp-port') || process.env.DJI_MOCK_UDP_PORT |
 const dropAfterBytes = Math.max(0, Number(args.get('--drop-after-bytes') || process.env.DJI_MOCK_DROP_AFTER_BYTES || 0))
 const rateMbps = Math.max(0, Number(args.get('--rate-mbps') || process.env.DJI_MOCK_RATE_MBPS || 30))
 const modelData = model === 'pocket4pro'
-  ? { name: 'Osmo Pocket 4 Pro', localName: 'OsmoPocket4P-6E55', modelNumber: 34, productType: 218, advert: '000000ee0004bd6e5620da000010' }
+  ? { name: 'Osmo Pocket 4P', localName: 'OsmoPocket4P-6E55', modelNumber: 34, productType: 218, advert: '000000ee0004bd6e5620da000010' }
   : model === 'action5pro'
     ? { name: 'Osmo Action 5 Pro', localName: 'OsmoAction5Pro-AC204', modelNumber: 21, productType: 235, advert: '000000ee0004bd6e5620eb000010' }
     : model === 'pocket3'

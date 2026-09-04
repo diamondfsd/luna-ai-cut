@@ -1,7 +1,7 @@
 import { DEFAULT_DEVICE } from '../definitions/deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from '../../infrastructure/loggerService'
 import { Insta360TcpSession, probeInsta360ControlResponse, type Insta360VideoFrameListener } from './insta360TcpProtocol'
-import { buildKeepAliveOptionsBody, buildStartLiveStreamBody, CODE_START_LIVE_STREAM, CODE_STOP_LIVE_STREAM } from './lunaControlMessages'
+import { buildStartLiveStreamBody, CODE_START_LIVE_STREAM, CODE_STOP_LIVE_STREAM } from './lunaControlMessages'
 import { parseLunaFilePaths } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../../../src/shared/types'
 
@@ -10,6 +10,8 @@ export const CAMERA_PATH = DEFAULT_DEVICE.storages.find((storage) => storage.def
 
 const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
+/** 官方 OpenWifiCmd 的 WIFI_HEART_BEAT 调度周期。 */
+export const LUNA_WIFI_HEARTBEAT_INTERVAL_MS = 1500
 
 function tcpHost(host: string): string {
   try {
@@ -109,9 +111,10 @@ export class LunaClient {
   }
 
   /** 启动后台保活，定期刷新控制会话。 */
-  startKeepAlive(intervalMs = 3000): void {
+  startKeepAlive(intervalMs = LUNA_WIFI_HEARTBEAT_INTERVAL_MS): void {
     logMainInfo(`[保活] 启动后台保活`, { host: this.host, intervalMs })
     this.stopKeepAlive()
+    this.keepAliveFailures = 0
     this.keeperTimer = setInterval(async () => {
       if (this.keepAliveInFlight) {
         logMainDebug(`[保活] 上一次保活仍在执行，跳过本轮`, { host: this.host })
@@ -130,7 +133,7 @@ export class LunaClient {
           error: error instanceof Error ? error.message : String(error),
         })
         if (this.keepAliveFailures >= 2) {
-          logMainWarn(`[保活] HTTP 连续探测失败，断开连接`, { host: this.host, failures: this.keepAliveFailures })
+          logMainWarn(`[保活] TCP 心跳连续失败，断开连接`, { host: this.host, failures: this.keepAliveFailures })
           this.stopKeepAlive()
           this.onKeepAliveFailed?.()
         }
@@ -151,15 +154,8 @@ export class LunaClient {
       if (!session) throw new Error('控制会话未打开')
 
       try {
-        // UCD2 STREAM hello — 刷新控制通道活跃状态。
+        // 官方 WIFI_HEART_BEAT 是无响应、单向的 UCD2 HeartBeat 帧。
         await session.refresh()
-
-        // CODE_GET_CURRENT_CAPTURE_STATUS (15) — 轻量状态查询，用作主心跳。
-        await session.sendCommand(15, Buffer.alloc(0), 2000)
-
-        // CODE_GET_OPTIONS (8) — 追加一个轻量 options 查询，模拟真实操作流量，降低相机休眠/断链概率。
-        const optionsBody = buildKeepAliveOptionsBody()
-        await session.sendCommand(8, optionsBody, 2000)
       } catch (error) {
         logMainWarn(`[保活] TCP 控制会话心跳失败，重置后重连`, {
           host: this.host,
