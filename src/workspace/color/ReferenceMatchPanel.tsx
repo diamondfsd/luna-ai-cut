@@ -1,14 +1,12 @@
 import { Image as ImageIcon, Loader2, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { Button, ButtonGroup, IconButton, toast } from '../../ui'
-import type { ReferenceMatchMethod } from '../../shared/types/referenceMatch'
+import { Button, IconButton, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { workspaceImageCache, type ImageCacheEntry } from '../shared/imageCache'
 import { ParamSlider } from '../components/ParamSlider'
 import { lutManager } from '../lut/LutManager'
-import { generateReferenceMatchLut, imageBitmapToReferenceMatchImage } from './referenceMatch'
 import './ReferenceMatchPanel.css'
 
 function sameAsset(left: { id: string; path: string } | null, right: { id: string; path: string } | null): boolean {
@@ -22,7 +20,6 @@ export function ReferenceMatchPanel() {
   const reference = media.referenceAsset
   const [thumbnails, setThumbnails] = useState<Record<string, ImageCacheEntry>>({})
   const [strength, setStrength] = useState(edit.pipeline.referenceMatch?.strength ?? 100)
-  const [method, setMethod] = useState<ReferenceMatchMethod>(edit.pipeline.referenceMatch?.method ?? 'neural-preset')
   const [generating, setGenerating] = useState(false)
   const generationRef = useRef(0)
   const referenceAvailable = Boolean(reference && media.media.some((asset) => asset.id === reference.id && asset.path === reference.path))
@@ -30,8 +27,7 @@ export function ReferenceMatchPanel() {
 
   useEffect(() => {
     setStrength(edit.pipeline.referenceMatch?.strength ?? 100)
-    setMethod(edit.pipeline.referenceMatch?.method ?? 'neural-preset')
-  }, [edit.pipeline.referenceMatch?.method, edit.pipeline.referenceMatch?.strength, target?.id, target?.path])
+  }, [edit.pipeline.referenceMatch?.strength, target?.id, target?.path])
 
   useEffect(() => {
     if (reference && !referenceAvailable) media.setReferenceAsset(null)
@@ -76,74 +72,33 @@ export function ReferenceMatchPanel() {
     const generationId = ++generationRef.current
     setGenerating(true)
     try {
-      if (method === 'neural-preset') {
-        if (target.kind !== 'image' || reference.kind !== 'image') {
-          toast.error('AI追色目前只支持照片')
-          return
-        }
-        const generated = await window.luna.workspace.generateReferenceMatchAiLut({
-          targetPath: target.path,
-          referencePath: reference.path,
-          referenceName: reference.name,
-          targetName: target.name,
-          referenceAssetId: reference.id,
-          targetAssetId: target.id,
-        })
-        edit.commitPatch({
-          referenceMatch: {
-            enabled: true,
-            method,
-            strength,
-            referenceAssetId: reference.id,
-            referenceName: reference.name,
-            targetAssetId: target.id,
-            targetName: target.name,
-            resultPath: generated.path,
-            resultKind: 'lut',
-            generatedAt: new Date().toISOString(),
-            modelVersion: generated.modelVersion,
-          },
-          lutFilter: { activeId: generated.path, intensity: strength },
-        })
-      } else {
-        const [targetEntry, referenceEntry] = await Promise.all([
-          workspaceImageCache.generate(target.path),
-          workspaceImageCache.generate(reference.path),
-        ])
-        const result = generateReferenceMatchLut(
-          imageBitmapToReferenceMatchImage(targetEntry.previewBitmap),
-          imageBitmapToReferenceMatchImage(referenceEntry.previewBitmap),
-          { method, strength: 1 },
-        )
-        const saved = await window.luna.workspace.saveReferenceMatchLut({
-          cube: result.cube,
-          name: `参考图追色 · ${reference.name} · ${methodLabel(method)}`,
-          description: `使用${methodLabel(method)}，根据「${reference.name}」为「${target.name}」生成的追色效果`,
-          method,
+      const generated = await window.luna.workspace.generateReferenceMatchAiLut({
+        targetPath: target.path,
+        referencePath: reference.path,
+        referenceName: reference.name,
+        targetName: target.name,
+        referenceAssetId: reference.id,
+        targetAssetId: target.id,
+      })
+      edit.commitPatch({
+        referenceMatch: {
+          enabled: true,
+          method: 'neural-preset',
+          strength,
           referenceAssetId: reference.id,
           referenceName: reference.name,
           targetAssetId: target.id,
           targetName: target.name,
-        })
-        edit.commitPatch({
-          referenceMatch: {
-            enabled: true,
-            method,
-            strength,
-            referenceAssetId: reference.id,
-            referenceName: reference.name,
-            targetAssetId: target.id,
-            targetName: target.name,
-            resultPath: saved.path,
-            resultKind: 'lut',
-            generatedAt: new Date().toISOString(),
-          },
-          lutFilter: { activeId: saved.path, intensity: strength },
-        })
-      }
+          resultPath: generated.path,
+          resultKind: 'lut',
+          generatedAt: new Date().toISOString(),
+          modelVersion: generated.modelVersion,
+        },
+        lutFilter: { activeId: generated.path, intensity: strength },
+      })
       if (generationRef.current !== generationId) return
       lutManager.clearCache()
-      toast.success(method === 'neural-preset' ? 'AI追色已生成并应用到当前照片' : '追色效果已生成并应用到当前照片')
+      toast.success('AI追色已生成并应用到当前照片')
     } catch (error) {
       if (generationRef.current !== generationId) return
       toast.error(error instanceof Error ? error.message : '追色失败，请稍后重试')
@@ -154,7 +109,7 @@ export function ReferenceMatchPanel() {
 
   const targetThumbnail = target ? thumbnails[target.id]?.thumbnailUrl : null
   const referenceThumbnail = reference ? thumbnails[reference.id]?.thumbnailUrl : null
-  const canGenerate = Boolean(target && reference && referenceAvailable && !targetIsReference && !generating)
+  const canGenerate = Boolean(target?.kind === 'image' && reference?.kind === 'image' && referenceAvailable && !targetIsReference && !generating)
 
   const handleStrengthChange = (value: number): void => {
     setStrength(value)
@@ -168,14 +123,6 @@ export function ReferenceMatchPanel() {
 
   return (
     <div className="workspace-reference-match-panel">
-      <div className="workspace-reference-match-intro">
-        <Sparkles size={16} aria-hidden="true" />
-        <div>
-          <strong>参考图追色</strong>
-          <span>先将当前照片设为参考图，再切换到目标素材。</span>
-        </div>
-      </div>
-
       <div className="workspace-reference-match-preview-row">
         <div className="workspace-reference-match-preview">
           <span>{target?.kind === 'video' ? '当前视频' : '当前照片'}</span>
@@ -212,12 +159,6 @@ export function ReferenceMatchPanel() {
         )}
       </div>
 
-      {targetIsReference ? (
-        <div className="workspace-reference-match-status">当前素材就是参考图，请切换到需要追色的目标素材。</div>
-      ) : !reference ? (
-        <div className="workspace-reference-match-status">尚未设置参考图。</div>
-      ) : null}
-
       <ParamSlider
         label="追色强度"
         value={strength}
@@ -228,17 +169,6 @@ export function ReferenceMatchPanel() {
         formatValue={(value) => `${Math.round(value)}%`}
       />
 
-      <div className="workspace-reference-match-method">
-        <span>追色算法</span>
-        <ButtonGroup
-          ariaLabel="追色算法"
-          value={method}
-          onChange={setMethod}
-          options={REFERENCE_MATCH_METHODS.map(({ value, label }) => ({ value, label }))}
-        />
-        <small>{methodDescription(method)}</small>
-      </div>
-
       <Button
         variant="primary"
         size="compact"
@@ -246,36 +176,8 @@ export function ReferenceMatchPanel() {
         disabled={!canGenerate}
         onClick={() => void generate()}
       >
-        {generating ? '正在生成' : '生成并应用追色'}
+        {generating ? 'AI追色中' : 'AI追色'}
       </Button>
-      <small className="workspace-reference-match-note">AI追色结果和传统追色文件会保存在本地缓存中，强度调整会立即作用于当前照片。</small>
     </div>
   )
-}
-
-const REFERENCE_MATCH_METHODS: Array<{ value: ReferenceMatchMethod; label: string }> = [
-  { value: 'neural-preset', label: 'AI追色' },
-  { value: 'reinhard', label: 'Reinhard · 统计匹配' },
-  { value: 'kantorovich', label: 'Kantorovich · 线性传输' },
-  { value: 'forgy', label: 'Forgy · 调色板匹配' },
-  { value: 'wasserstein', label: 'Wasserstein · 非线性传输' },
-]
-
-function methodLabel(method: ReferenceMatchMethod): string {
-  return REFERENCE_MATCH_METHODS.find((item) => item.value === method)?.label ?? 'Reinhard · 统计匹配'
-}
-
-function methodDescription(method: ReferenceMatchMethod): string {
-  switch (method) {
-    case 'neural-preset':
-      return '使用 Neural-Preset 模型根据参考图生成完整追色结果，适合照片。'
-    case 'kantorovich':
-      return '按整体色彩相关性进行线性调整，适合统一光线和色调。'
-    case 'forgy':
-      return '提取双方主色并柔和匹配，适合风景、产品和明显色块。'
-    case 'wasserstein':
-      return '多轮匹配复杂颜色分布，效果更强但生成时间更长。'
-    default:
-      return '按明暗和色彩统计进行稳妥匹配，适合作为默认选择。'
-  }
 }

@@ -92,7 +92,7 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 const BEAUTY_ENABLED = import.meta.env.VITE_BEAUTY !== 'false'
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
-  { value: 'reference-match', label: '参考图追色', icon: <Palette size={22} /> },
+  { value: 'reference-match', label: 'AI追色', icon: <Palette size={22} /> },
   { value: 'filter', label: 'Lut', icon: <Paintbrush size={22} /> },
   ...(BEAUTY_ENABLED ? [{ value: 'beauty' as const, label: '美颜', icon: <ScanFace size={22} /> }] : []),
   { value: 'removal', label: '对象消除', icon: <Eraser size={22} /> },
@@ -114,7 +114,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'beauty') return '美颜'
   if (tool === 'removal') return '对象消除'
   if (tool === 'creative') return '创意'
-  if (tool === 'reference-match') return '参考图追色'
+  if (tool === 'reference-match') return 'AI追色'
   return '调色与蒙版'
 }
 
