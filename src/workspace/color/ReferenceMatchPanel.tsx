@@ -76,21 +76,14 @@ export function ReferenceMatchPanel() {
     const generationId = ++generationRef.current
     setGenerating(true)
     try {
-      const [targetEntry, referenceEntry] = await Promise.all([
-        workspaceImageCache.generate(target.path),
-        workspaceImageCache.generate(reference.path),
-      ])
-      const previous = edit.pipeline.referenceMatch
       if (method === 'neural-preset') {
         if (target.kind !== 'image' || reference.kind !== 'image') {
           toast.error('AI追色目前只支持照片')
           return
         }
-        const generated = await window.luna.workspace.generateReferenceMatchImage({
+        const generated = await window.luna.workspace.generateReferenceMatchAiLut({
           targetPath: target.path,
           referencePath: reference.path,
-          targetWidth: targetEntry.width,
-          targetHeight: targetEntry.height,
           referenceName: reference.name,
           targetName: target.name,
           referenceAssetId: reference.id,
@@ -106,15 +99,17 @@ export function ReferenceMatchPanel() {
             targetAssetId: target.id,
             targetName: target.name,
             resultPath: generated.path,
-            resultKind: 'image',
+            resultKind: 'lut',
             generatedAt: new Date().toISOString(),
             modelVersion: generated.modelVersion,
           },
-          ...(previous?.resultKind === 'lut' && edit.pipeline.lutFilter.activeId === previous.resultPath
-            ? { lutFilter: { activeId: null } }
-            : {}),
+          lutFilter: { activeId: generated.path, intensity: strength },
         })
       } else {
+        const [targetEntry, referenceEntry] = await Promise.all([
+          workspaceImageCache.generate(target.path),
+          workspaceImageCache.generate(reference.path),
+        ])
         const result = generateReferenceMatchLut(
           imageBitmapToReferenceMatchImage(targetEntry.previewBitmap),
           imageBitmapToReferenceMatchImage(referenceEntry.previewBitmap),

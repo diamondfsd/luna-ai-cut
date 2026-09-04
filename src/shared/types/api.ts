@@ -36,7 +36,7 @@ import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaSh
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
-import type { WorkspaceReferenceMatchImageRequest, WorkspaceReferenceMatchImageResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
+import type { WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchAiLutResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -345,7 +345,7 @@ export interface LunaApi {
     loadFont(filePath: string): Promise<ArrayBuffer>
     loadLut(filePath: string): Promise<ArrayBuffer>
     saveReferenceMatchLut(request: WorkspaceReferenceMatchLutRequest): Promise<WorkspaceReferenceMatchLutResult>
-    generateReferenceMatchImage(request: WorkspaceReferenceMatchImageRequest): Promise<WorkspaceReferenceMatchImageResult>
+    generateReferenceMatchAiLut(request: WorkspaceReferenceMatchAiLutRequest): Promise<WorkspaceReferenceMatchAiLutResult>
     getMediaFormatInfo(filePath: string): Promise<{ dolbyVision: boolean; iLog: boolean; raw: boolean; duration: number | null }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>

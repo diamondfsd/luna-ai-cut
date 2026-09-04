@@ -45,6 +45,7 @@ const DEFAULT_GRID_SIZE = 33
 const DEFAULT_MAX_SAMPLES = 8_192
 const DEFAULT_N_COLORS = 8
 const DEFAULT_N_SLICES = 20
+const PAIRED_GRID_SIZE = 17
 const EPSILON = 1e-6
 
 function clamp(value: number, min = 0, max = 1): number {
@@ -569,6 +570,150 @@ export function generateReferenceMatchLut(
       referenceSamples: referenceLabs.length,
       gridSize,
       method,
+    },
+  }
+}
+
+/**
+ * 将 AI 的低分辨率输出转换为颜色映射 LUT。
+ *
+ * Neural-Preset 的输出固定为 256x256，不能直接作为高分辨率照片层使用，
+ * 否则放大后的结果会把原图细节一起覆盖。这里只记录“原始颜色 -> AI 颜色”
+ * 的对应关系，最终仍由渲染器把 LUT 应用到原始照片上。
+ */
+export function generatePairedReferenceMatchLut(
+  source: ReferenceMatchImage,
+  transformed: ReferenceMatchImage,
+  options: Pick<ReferenceMatchOptions, 'maxSamples'> = {},
+): ReferenceMatchLutResult {
+  if (source.width !== transformed.width || source.height !== transformed.height) {
+    throw new Error('AI追色输入尺寸不一致')
+  }
+  const pixelCount = source.width * source.height
+  const sourceLength = Math.floor(source.data.length / 4)
+  const transformedLength = Math.floor(transformed.data.length / 4)
+  if (!Number.isFinite(pixelCount) || pixelCount <= 0 || sourceLength < pixelCount || transformedLength < pixelCount) {
+    throw new Error('AI追色输入没有可用画面')
+  }
+
+  const maxSamples = Number.isFinite(options.maxSamples) && (options.maxSamples ?? 0) > 0
+    ? Math.floor(options.maxSamples!)
+    : pixelCount
+  const stride = Math.max(1, Math.ceil(Math.sqrt(pixelCount / Math.max(1, maxSamples))))
+  const gridSize = PAIRED_GRID_SIZE
+  const binCount = gridSize ** 3
+  const sums = new Float64Array(binCount * 3)
+  const counts = new Uint32Array(binCount)
+
+  const binIndex = (red: number, green: number, blue: number): number => (
+    (blue * gridSize + green) * gridSize + red
+  )
+
+  for (let y = 0; y < source.height; y += stride) {
+    for (let x = 0; x < source.width; x += stride) {
+      const offset = (y * source.width + x) * 4
+      if (source.data[offset + 3] < 2 || transformed.data[offset + 3] < 2) continue
+      const sourceRed = clamp(source.data[offset] / 255)
+      const sourceGreen = clamp(source.data[offset + 1] / 255)
+      const sourceBlue = clamp(source.data[offset + 2] / 255)
+      const index = binIndex(
+        Math.round(sourceRed * (gridSize - 1)),
+        Math.round(sourceGreen * (gridSize - 1)),
+        Math.round(sourceBlue * (gridSize - 1)),
+      )
+      const sumOffset = index * 3
+      sums[sumOffset] += clamp(transformed.data[offset] / 255)
+      sums[sumOffset + 1] += clamp(transformed.data[offset + 1] / 255)
+      sums[sumOffset + 2] += clamp(transformed.data[offset + 2] / 255)
+      counts[index] += 1
+    }
+  }
+
+  const mapped = new Float64Array(binCount * 3)
+  const known = new Uint8Array(binCount)
+  for (let index = 0; index < binCount; index += 1) {
+    if (counts[index] === 0) continue
+    const sumOffset = index * 3
+    mapped[sumOffset] = sums[sumOffset] / counts[index]
+    mapped[sumOffset + 1] = sums[sumOffset + 1] / counts[index]
+    mapped[sumOffset + 2] = sums[sumOffset + 2] / counts[index]
+    known[index] = 1
+  }
+
+  // 颜色空间中未被源图覆盖的网格点用邻域传播补齐，避免 LUT 出现空洞跳变。
+  for (let pass = 0; pass < gridSize * 2; pass += 1) {
+    const additions: Array<[number, number, number, number]> = []
+    for (let blue = 0; blue < gridSize; blue += 1) {
+      for (let green = 0; green < gridSize; green += 1) {
+        for (let red = 0; red < gridSize; red += 1) {
+          const index = binIndex(red, green, blue)
+          if (known[index]) continue
+          let weightTotal = 0
+          let redTotal = 0
+          let greenTotal = 0
+          let blueTotal = 0
+          for (let db = -1; db <= 1; db += 1) {
+            for (let dg = -1; dg <= 1; dg += 1) {
+              for (let dr = -1; dr <= 1; dr += 1) {
+                if (dr === 0 && dg === 0 && db === 0) continue
+                const neighborRed = red + dr
+                const neighborGreen = green + dg
+                const neighborBlue = blue + db
+                if (neighborRed < 0 || neighborRed >= gridSize || neighborGreen < 0 || neighborGreen >= gridSize || neighborBlue < 0 || neighborBlue >= gridSize) continue
+                const neighborIndex = binIndex(neighborRed, neighborGreen, neighborBlue)
+                if (!known[neighborIndex]) continue
+                const distance = Math.sqrt(dr * dr + dg * dg + db * db)
+                const weight = 1 / distance
+                const neighborOffset = neighborIndex * 3
+                redTotal += mapped[neighborOffset] * weight
+                greenTotal += mapped[neighborOffset + 1] * weight
+                blueTotal += mapped[neighborOffset + 2] * weight
+                weightTotal += weight
+              }
+            }
+          }
+          if (weightTotal > 0) additions.push([index, redTotal / weightTotal, greenTotal / weightTotal, blueTotal / weightTotal])
+        }
+      }
+    }
+    if (additions.length === 0) break
+    for (const [index, red, green, blue] of additions) {
+      const offset = index * 3
+      mapped[offset] = red
+      mapped[offset + 1] = green
+      mapped[offset + 2] = blue
+      known[index] = 1
+    }
+  }
+
+  const lines = [
+    'TITLE "Luna AI Reference Match"',
+    `LUT_3D_SIZE ${gridSize}`,
+    'DOMAIN_MIN 0.0 0.0 0.0',
+    'DOMAIN_MAX 1.0 1.0 1.0',
+  ]
+  for (let blue = 0; blue < gridSize; blue += 1) {
+    for (let green = 0; green < gridSize; green += 1) {
+      for (let red = 0; red < gridSize; red += 1) {
+        const index = binIndex(red, green, blue)
+        const offset = index * 3
+        const fallback = [
+          red / (gridSize - 1),
+          green / (gridSize - 1),
+          blue / (gridSize - 1),
+        ]
+        lines.push(`${formatCubeValue(known[index] ? mapped[offset] : fallback[0])} ${formatCubeValue(known[index] ? mapped[offset + 1] : fallback[1])} ${formatCubeValue(known[index] ? mapped[offset + 2] : fallback[2])}`)
+      }
+    }
+  }
+
+  return {
+    cube: `${lines.join('\n')}\n`,
+    stats: {
+      sourceSamples: Math.ceil(source.width / stride) * Math.ceil(source.height / stride),
+      referenceSamples: Math.ceil(source.width / stride) * Math.ceil(source.height / stride),
+      gridSize,
+      method: 'neural-preset',
     },
   }
 }

@@ -343,7 +343,7 @@ export function pipelineTransformToRenderTransform(transform: EditPipeline['tran
   }
 }
 
-/** 将 AI 追色结果作为独立图片层叠加，强度变化只影响透明度，不重新推理。 */
+/** 兼容旧版 AI 图片结果；新版 AI 追色使用 LUT，不会经过这条低分辨率图片路径。 */
 export function buildReferenceMatchImageLayer(
   base: PreviewLayer,
   pipeline: EditPipeline,

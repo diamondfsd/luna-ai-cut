@@ -70,8 +70,10 @@ impl NeuralPresetSession {
 
         let min = values.iter().copied().fold(f32::INFINITY, f32::min);
         let max = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let signed_output = min < -0.05 && max <= 1.2;
-        let byte_output = max > 1.5;
+        // Neural-Preset 导出的 colored_content 是归一化浮点 RGB，网络末端可能
+        // 有轻微 overshoot（例如负值或略高于 1），不能用 1.5 判断成字节图。
+        let signed_output = min < -0.5 && max <= 1.5;
+        let byte_output = max > 8.0;
         let mut result = vec![0u8; PIXELS * 3];
         for pixel in 0..PIXELS {
             for channel in 0..3 {
