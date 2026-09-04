@@ -1,4 +1,4 @@
-import { Pause, Play } from 'lucide-react'
+import { Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import { Slider as RadixSlider } from 'radix-ui'
 
 import { IconButton } from './IconButton'
@@ -12,6 +12,8 @@ export interface VideoControlsProps {
   onSeek: (time: number) => void
   onSeekStart?: () => void
   onSeekEnd?: () => void
+  muted?: boolean
+  onToggleMute?: () => void
   step?: number
   className?: string
   disabled?: boolean
@@ -32,6 +34,8 @@ export function VideoControls({
   onSeek,
   onSeekStart,
   onSeekEnd,
+  muted = false,
+  onToggleMute,
   step = 0.1,
   className,
   disabled = false,
@@ -68,6 +72,19 @@ export function VideoControls({
         </RadixSlider.Track>
         <RadixSlider.Thumb className="ui-video-controls-thumb" aria-label="视频进度" />
       </RadixSlider.Root>
+      {onToggleMute && (
+        <IconButton
+          className="ui-video-controls-button ui-video-controls-mute-button"
+          variant="ghost"
+          size="mini"
+          icon={muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          disabled={disabled}
+          onClick={onToggleMute}
+          title={muted ? '打开声音' : '关闭声音'}
+          aria-label={muted ? '打开声音' : '关闭声音'}
+          aria-pressed={muted}
+        />
+      )}
       <span className="ui-video-controls-time">
         {formatTime(currentTime)} / {formatTime(duration)}
       </span>
