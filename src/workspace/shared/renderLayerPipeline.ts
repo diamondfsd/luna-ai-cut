@@ -343,6 +343,64 @@ export function pipelineTransformToRenderTransform(transform: EditPipeline['tran
   }
 }
 
+/** 将 AI 追色结果作为独立图片层叠加，强度变化只影响透明度，不重新推理。 */
+export function buildReferenceMatchImageLayer(
+  base: PreviewLayer,
+  pipeline: EditPipeline,
+): PreviewLayer | null {
+  const match = pipeline.referenceMatch
+  if (!match?.enabled || match.resultKind !== 'image' || !match.resultPath) return null
+  const opacity = Math.min(1, Math.max(0, match.strength / 100))
+  if (opacity <= 0) return null
+  return {
+    ...base,
+    layerType: 'media',
+    filePath: match.resultPath,
+    isVideo: false,
+    opacity,
+    color: base.color,
+    // Keep the generated image above the source photo but below border/text layers.
+    zIndex: (base.zIndex ?? 0) + 0.001,
+    restoreLutId: base.restoreLutId,
+    lutId: base.lutId,
+    lutIntensity: base.lutIntensity,
+    maskPath: undefined,
+    maskOpacity: undefined,
+    maskInverted: undefined,
+    maskFeather: undefined,
+    maskTrack: undefined,
+    maskTimeline: undefined,
+    precomposeGroup: undefined,
+    precomposeRole: undefined,
+  }
+}
+
+/** 相框中的清晰主图也需要覆盖 AI 追色结果，柔焦背景保持原有版式。 */
+export function applyReferenceMatchToSourceMediaLayers(
+  layers: PreviewLayer[],
+  sourcePath: string,
+  pipeline: EditPipeline,
+): PreviewLayer[] {
+  const match = pipeline.referenceMatch
+  if (!match?.enabled || match.resultKind !== 'image' || !match.resultPath) return layers
+  const opacity = Math.min(1, Math.max(0, match.strength / 100))
+  if (opacity <= 0) return layers
+  return layers.flatMap((layer) => {
+    if (layer.layerType !== 'media' || layer.filePath !== sourcePath || layer.layoutRole === 'background') return [layer]
+    return [layer, {
+      ...layer,
+      filePath: match.resultPath,
+      isVideo: false,
+      opacity: layer.opacity * opacity,
+      color: layer.color,
+      zIndex: layer.zIndex + 0.001,
+      restoreLutId: layer.restoreLutId,
+      lutId: layer.lutId,
+      lutIntensity: layer.lutIntensity,
+    }]
+  })
+}
+
 /** 调整裁剪结果所在的画布矩形，因此不会改写或重新解释已有裁剪区域。 */
 export function applyBorderMediaLayout(
   layer: PreviewLayer,

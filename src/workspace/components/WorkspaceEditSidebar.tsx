@@ -202,7 +202,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
     creative: false,
-    'reference-match': false,
+    'reference-match': Boolean(edit.pipeline.referenceMatch),
     mask: edit.pipeline.colorMasks.length > 0,
     removal: Boolean(mediaCtx.currentProject?.assets[mediaCtx.activeIndex]?.removal?.operations.length),
     subtitles: Boolean(mediaCtx.currentProject?.assets[mediaCtx.activeIndex]?.subtitles?.cues.length),

@@ -20,6 +20,24 @@ Luna AI Cut 的 ONNX 权重不提交到代码仓库，也不打入安装包。�
 - SAM 编码器：`<model-id>-vision-encoder.onnx`
 - 内容完全相同的权重只上传一次，多模型通过清单共同引用。
 
+Neural-Preset `neural-preset-v1-256` 的代码许可为 MIT；上游 README 将预训练权重标注为研究用途，本项目当前仅作开源非商业集成。官方来源和许可证文件记录在 `src/shared/referenceMatchModels.ts`，发布前不得将其用于商业产品而不重新审计。
+
+### GitCode 附件地址
+
+客户端使用 GitCode 网页域名的固定 Release 下载格式：
+
+```text
+https://gitcode.com/<owner>/<repo>/releases/download/<release-tag>/<file-name>
+```
+
+本项目当前模型 Release 的 `<release-tag>` 是 `model-resources-v1.0.0`。例如 Neural-Preset 的地址是：
+
+```text
+https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/neural-preset-v1-256.onnx
+```
+
+`model-resources-v1.0.0-r4.json` 中的 `-r4` 是 manifest 附件的文件名修订号，不是 Release tag。禁止使用 `api.gitcode.com` 的 API 地址、API 返回的 `browser_download_url`、`.../releases/<tag>/<file>` 或上传后返回的临时 CDN 跳转地址作为客户端 URL。GitCode 下载验证必须执行实际 GET/断点下载；部分 HEAD 请求会被服务端拒绝，不能用 HEAD 结果代替下载验证。
+
 Release 附件必须由模型注册表中的非 GitCode 源地址下载。发布流程会先校验登记大小和 SHA256，上传后再从 GitCode 回读并执行同样校验；任一步失败都视为发布失败。
 
 ## 维护流程

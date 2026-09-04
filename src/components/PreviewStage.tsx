@@ -8,7 +8,7 @@ import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls, toast } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
-import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyBorderMediaLayout, buildLocalColorPrecomposition, buildReferenceMatchImageLayer, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { usePreviewResolution } from './usePreviewResolution'
@@ -392,6 +392,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         : applyBorderMediaLayout(styledMain, pipeline.border)
       main.splice(0, 1, ...buildLocalColorPrecomposition(main[0], pipeline, 'workspace-local-color')
         .map((layer) => ({ ...layer, maskProjectId })))
+      const referenceLayer = buildReferenceMatchImageLayer(styledMain, pipeline)
+      if (referenceLayer) main.push(referenceLayer)
     }
     const m = main[0]
     if (!m) {
