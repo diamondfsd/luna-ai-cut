@@ -11,9 +11,31 @@
 }
 
 .workspace-reference-match-preview {
+  position: relative;
   display: grid;
   min-width: 0;
   gap: 5px;
+}
+
+.workspace-reference-match-reference-preview > .ui-icon-btn {
+  position: absolute;
+  top: 22px;
+  right: 6px;
+  z-index: 1;
+  display: grid;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--parchment) 88%, var(--canvas));
+  color: var(--ink);
+  line-height: 0;
+}
+
+.workspace-reference-match-reference-preview > .ui-icon-btn > svg {
+  display: block;
 }
 
 .workspace-reference-match-preview > span {
@@ -56,4 +78,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.workspace-reference-match-reference-actions > .ui-btn {
+  min-width: 0;
+  flex: 1 1 0;
+  white-space: nowrap;
 }

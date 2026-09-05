@@ -4,6 +4,30 @@
   max-height: none;
 }
 
+.workspace-import-dialog.ui-dialog-content .ui-dialog-close {
+  top: 18px;
+  right: 18px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: var(--parchment);
+  color: var(--ink);
+  line-height: 0;
+}
+
+.workspace-import-dialog.ui-dialog-content .ui-dialog-close:hover {
+  background: color-mix(in srgb, var(--parchment) 70%, var(--ink));
+  color: var(--ink);
+}
+
+.workspace-import-dialog.ui-dialog-content .ui-dialog-close > svg {
+  display: block;
+}
+
 .workspace-import-body {
   min-height: 0;
   overflow: hidden;

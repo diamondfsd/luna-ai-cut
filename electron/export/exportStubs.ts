@@ -76,7 +76,8 @@ export async function runExportJob<T extends string>(
         index: 0, totalFiles: task.totalCount,
         percent: status === 'failed' || status === 'canceled' ? null : progress,
         status, taskId: task.id, taskName: task.name,
-        destinationPath: (extra as any)?.destinationPath, error: (extra as any)?.error,
+        destinationPath: typeof extra?.destinationPath === 'string' ? extra.destinationPath : undefined,
+        error: typeof extra?.error === 'string' ? extra.error : undefined,
       })
     }
   }

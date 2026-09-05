@@ -18,6 +18,8 @@ import {
   getExportTaskProgress as lrcGetExportTaskProgress,
   resetRenderCompatibilityBlock,
 } from '../platform/render/lunaRenderCore'
+import type { CompositionInput } from '../platform/render/lunaRenderCore'
+import type { PreviewLayer } from '../../src/shared/types'
 
 // 导入纹理管理方法
 import { getNative, cleanNativeInput } from '../platform/render/lunaRenderCore'
@@ -280,9 +282,12 @@ async function validateWebGpuVideoProbePath(sourcePath: unknown): Promise<string
 }
 
 /** 包装 handler：自动 catch 异常并记日志 */
-function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
+function safe<Args extends unknown[], Result>(
+  label: string,
+  fn: (...args: Args) => Promise<Result>,
+): (...args: Args) => Promise<Result> {
   let firstCall = true
-  return (async (...args: any[]) => {
+  return async (...args: Args): Promise<Result> => {
     const traceThisCall = firstCall
     firstCall = false
     if (traceThisCall) logMainInfo('[LRC] 首次调用开始', { label })
@@ -296,7 +301,7 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
       logMainError('[LRC] 调用失败', { label, ...fileOperationErrorDetails(err) })
       throw err
     }
-  }) as unknown as T
+  }
 }
 
 export function register(ctx: RegisterContext): void {
@@ -396,7 +401,7 @@ export function register(ctx: RegisterContext): void {
   ))
 
   ipcMain.handle('lrc:renderFrame', safe('renderFrame',
-    async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: any[], compositionTime?: number) => {
+    async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: PreviewLayer[], compositionTime?: number) => {
       return getNative().renderFrame(
         canvasWidth,
         canvasHeight,
@@ -413,7 +418,7 @@ export function register(ctx: RegisterContext): void {
   ))
 
   ipcMain.handle('lrc:renderCompositionFrame', safe('renderCompositionFrame',
-    async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
+    async (_event: IpcMainInvokeEvent, composition: CompositionInput, time: number, maxSide?: number) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       return lrcRenderCompositionFrame(ffmpegPath, ffprobePath, await resolveRuntimePaths(composition), time, maxSide)
@@ -421,7 +426,7 @@ export function register(ctx: RegisterContext): void {
   ))
 
   ipcMain.handle('lrc:renderCompositionFrameAsync', safe('renderCompositionFrameAsync',
-    async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
+    async (_event: IpcMainInvokeEvent, composition: CompositionInput, time: number, maxSide?: number) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       return lrcRenderCompositionFrameAsync(ffmpegPath, ffprobePath, await resolveRuntimePaths(composition), time, maxSide)
@@ -432,7 +437,7 @@ export function register(ctx: RegisterContext): void {
     async (
       _event: IpcMainInvokeEvent,
       outputPath: string,
-      composition: any,
+      composition: CompositionInput,
       format: string,
       quality: number,
       exportTaskId?: string,
@@ -454,8 +459,8 @@ export function register(ctx: RegisterContext): void {
         })
       }
 
-      const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
-        ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
+      const sourcePath = composition.layers.find((layer) => layer.layerType === 'media')?.source.path
+        ?? composition.layers.find((layer) => Boolean(layer.source.path))?.source.path
       try {
         await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: await resolveRuntimePaths(composition), format, quality })
         await embedJpegSourceMetadata(outputPath, sourcePath).catch((error) => {
@@ -515,7 +520,7 @@ export function register(ctx: RegisterContext): void {
     async (
       _event: IpcMainInvokeEvent,
       outputPath: string,
-      composition: any,
+      composition: CompositionInput,
       fps: number | null,
       duration: number | null,
       hardware: boolean,
@@ -530,9 +535,9 @@ export function register(ctx: RegisterContext): void {
       const renderTaskId = taskId ?? exportItemId ?? `composition_${Date.now()}`
       const progressExportId = exportItemId ?? renderTaskId
       const fileName = fileNameFromPath(outputPath)
-      const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
-        ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
-      rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition?.layers?.length ?? 0} audio=${includeAudio !== false}`)
+      const sourcePath = composition.layers.find((layer) => layer.layerType === 'media')?.source.path
+        ?? composition.layers.find((layer) => Boolean(layer.source.path))?.source.path
+      rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition.layers.length} audio=${includeAudio !== false}`)
       rcLog(`lrc:exportCompositionVideo runtime ${JSON.stringify({
         mode: app.isPackaged ? 'packaged' : 'development',
         appPath: app.getAppPath(),

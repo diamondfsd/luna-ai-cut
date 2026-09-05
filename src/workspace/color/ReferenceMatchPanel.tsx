@@ -6,7 +6,6 @@ import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { workspaceImageCache, type ImageCacheEntry } from '../shared/imageCache'
 import { ParamSlider } from '../components/ParamSlider'
-import { lutManager } from '../lut/LutManager'
 import './ReferenceMatchPanel.css'
 
 function sameAsset(left: { id: string; path: string } | null, right: { id: string; path: string } | null): boolean {
@@ -93,6 +92,7 @@ export function ReferenceMatchPanel() {
           strength,
           referenceAssetId: reference.id,
           referenceName: reference.name,
+          referencePath: reference.path,
           targetAssetId: target.id,
           targetName: target.name,
           resultPath: generated.path,
@@ -100,10 +100,8 @@ export function ReferenceMatchPanel() {
           generatedAt: new Date().toISOString(),
           modelVersion: generated.modelVersion,
         },
-        lutFilter: { activeId: generated.path, intensity: strength },
       })
       if (generationRef.current !== generationId) return
-      lutManager.clearCache()
       toast.success('AI追色已生成并应用到当前照片')
     } catch (error) {
       if (generationRef.current !== generationId) return
@@ -123,23 +121,32 @@ export function ReferenceMatchPanel() {
     if (!current) return
     edit.updateWorkspacePanel({
       referenceMatch: { ...current, strength: value },
-      ...(current.resultKind === 'lut' ? { lutFilter: { intensity: value } } : {}),
     })
   }
 
   return (
     <div className="workspace-reference-match-panel">
       <div className="workspace-reference-match-preview-row">
+        <div className="workspace-reference-match-preview workspace-reference-match-reference-preview">
+          <span>参考图</span>
+          {referenceThumbnail ? <img src={referenceThumbnail} alt="参考图预览" /> : <div className="workspace-reference-match-empty-thumb"><ImageIcon size={20} /></div>}
+          <strong title={reference?.name}>{reference?.name ?? '尚未设置'}</strong>
+          {reference && (
+            <IconButton
+              variant="circle"
+              size="mini"
+              icon={<X size={14} />}
+              aria-label="清除参考图"
+              title="清除参考图"
+              onClick={() => media.setReferenceAsset(null)}
+            />
+          )}
+        </div>
+        <div className="workspace-reference-match-arrow" aria-hidden="true">→</div>
         <div className="workspace-reference-match-preview">
           <span>{target?.kind === 'video' ? '当前视频' : '当前照片'}</span>
           {targetThumbnail ? <img src={targetThumbnail} alt="当前素材预览" /> : <div className="workspace-reference-match-empty-thumb"><ImageIcon size={20} /></div>}
           <strong title={target?.name}>{target?.name ?? '未选择素材'}</strong>
-        </div>
-        <div className="workspace-reference-match-arrow" aria-hidden="true">→</div>
-        <div className="workspace-reference-match-preview">
-          <span>参考图</span>
-          {referenceThumbnail ? <img src={referenceThumbnail} alt="参考图预览" /> : <div className="workspace-reference-match-empty-thumb"><ImageIcon size={20} /></div>}
-          <strong title={reference?.name}>{reference?.name ?? '尚未设置'}</strong>
         </div>
       </div>
 
@@ -151,18 +158,17 @@ export function ReferenceMatchPanel() {
           disabled={target?.kind !== 'image'}
           onClick={setCurrentAsReference}
         >
-          {reference ? '更新为当前照片' : '将当前照片设为参考图'}
+          {reference ? '更新参考图' : '设为参考图'}
         </Button>
-        {reference && (
-          <IconButton
-            variant="ghost"
-            size="compact"
-            icon={<X size={15} />}
-            aria-label="清除参考图"
-            title="清除参考图"
-            onClick={() => media.setReferenceAsset(null)}
-          />
-        )}
+        <Button
+          variant="primary"
+          size="compact"
+          icon={generating ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
+          disabled={!canGenerate}
+          onClick={() => void generate()}
+        >
+          {generating ? '追色中' : 'AI追色'}
+        </Button>
       </div>
 
       <ParamSlider
@@ -174,16 +180,6 @@ export function ReferenceMatchPanel() {
         onChange={handleStrengthChange}
         formatValue={(value) => `${Math.round(value)}%`}
       />
-
-      <Button
-        variant="primary"
-        size="compact"
-        icon={generating ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
-        disabled={!canGenerate}
-        onClick={() => void generate()}
-      >
-        {generating ? 'AI追色中' : 'AI追色'}
-      </Button>
     </div>
   )
 }

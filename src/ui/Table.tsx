@@ -82,7 +82,7 @@ export function Table<T>({
                   )}
                   {columns.map((col) => (
                     <td key={col.key} className={col.className}>
-                      {col.render ? col.render(row, index) : (row as any)[col.key] ?? '—'}
+                      {col.render ? col.render(row, index) : ((row as Record<string, unknown>)[col.key] as ReactNode) ?? '—'}
                     </td>
                   ))}
                 </tr>

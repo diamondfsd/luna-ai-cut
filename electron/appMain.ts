@@ -38,6 +38,7 @@ import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from '.
 import { stopLocalMediaShare } from './media/local-share/localMediaShareService'
 import { installDjiWebBluetoothHandlers } from './devices/dji/djiWebBluetoothTransport'
 import { installLunaWebBluetoothHandlers } from './devices/insta360/lunaBleWebBluetoothTransport'
+import type { IpcContext } from './ipc/context'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -342,7 +343,7 @@ function registerIpc(): void {
   // appMain.ts 只负责应用生命周期、共享上下文组装和 IPC 模块注册。
   // 具体 IPC 实现必须拆分到 electron/ipc/ipc*.ts 或独立服务模块中，
   // 并通过 Vite 的 import.meta.glob 自动发现注册，避免在这里堆业务逻辑。
-  const ctx = {
+  const ctx: IpcContext = {
     get win() {
       return win
     },
@@ -361,10 +362,10 @@ function registerIpc(): void {
     ensureCameraSessionForFile,
     lunaProtocol,
     goUltraProtocol,
-  } as const
+  }
   const ipcModules = import.meta.glob('./ipc/ipc*.ts', { eager: true })
   for (const [, mod] of Object.entries(ipcModules)) {
-    const fn = (mod as any).register
+    const fn = (mod as { register?: (context: IpcContext) => void }).register
     if (typeof fn === 'function') fn(ctx)
   }
 

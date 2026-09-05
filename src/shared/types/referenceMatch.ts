@@ -7,6 +7,8 @@ export interface ReferenceMatchSettings {
   strength: number
   referenceAssetId: string
   referenceName: string
+  /** 参考图在生成结果时的本地路径；重新粘贴时优先按素材 ID 解析最新路径。 */
+  referencePath?: string
   targetAssetId: string
   targetName: string
   resultPath: string
