@@ -6,6 +6,37 @@
 
 应用更新统一为手动触发：启动应用不会访问更新服务，也不会自动下载或安装更新。用户需要打开顶部问号窗口，点击“检查更新”，再分别点击安装包或热更新的更新按钮。
 
+### macOS Release 签名与公证硬性要求
+
+`v1.8.1` 已发布到 GitCode 的 macOS ARM64 和 x64 安装包没有完成 Developer ID Application 签名和 Apple 公证，属于历史遗留包。从 `v1.8.2` 起，所有上传到 GitCode 正式 Release 的 macOS 安装包必须完成并通过以下检查：
+
+- 使用 Developer ID Application 签名，不得使用 Ad Hoc 签名。
+- 启用 hardened runtime。
+- 完成 Apple notarization，并将公证票据 stapling 到最终发布产物。
+- macOS ARM64 和 x64 必须分别构建、分别验证；任一架构不通过都不得上传。
+- Ad Hoc 包只允许本地调试和开发验证，禁止上传到正式 GitCode Release。
+
+发布前必须检查最终 DMG 及其中的 `.app`。以下命令在 macOS 上执行，路径按实际产物调整：
+
+```bash
+# 对 ARM64 和 x64 的每个 DMG 都执行一次
+hdiutil attach "release/<版本号>/LunaAICut-Mac-<版本号>-Installer-<架构>.dmg" \
+  -nobrowse -readonly -mountpoint /tmp/luna-ai-cut-release
+
+APP_PATH="/tmp/luna-ai-cut-release/Luna AI Cut.app"
+DMG_PATH="release/<版本号>/LunaAICut-Mac-<版本号>-Installer-<架构>.dmg"
+
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+codesign --display --verbose=4 "$APP_PATH" 2>&1 | grep 'Authority=Developer ID Application'
+spctl --assess --type execute --verbose=4 "$APP_PATH"
+xcrun stapler validate "$APP_PATH"
+xcrun stapler validate "$DMG_PATH"
+
+hdiutil detach /tmp/luna-ai-cut-release
+```
+
+只要签名身份、公证票据或 `spctl` 检查任一失败，立即停止发布并重新构建；不得执行 `scripts/deploy-release.sh`。发布记录中应保留 ARM64、x64 两个产物的检查结果。
+
 ### 热更新默认发布约定
 
 后续所有热更新默认发布一个 `universal` 平台无关的纯 JS 包，适用于 macOS ARM64、macOS x64 和 Windows x64。发布时不需要选择平台，标准命令是 `./scripts/build-hot-update.sh`；同一个正式版本线可以继续发布 `hot.1`、`hot.2` 等后续热更新。
@@ -98,10 +129,14 @@ git tag -f v<新版本号>
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm run pack:mac:arm64
-pnpm run pack:mac:x64
+# 正式 GitCode Release 必须使用签名和公证配置构建 macOS 包
+pnpm run pack:mac:official:arm64
+source scripts/apple-notarize.local
+pnpm run pack:mac:signed:x64
 pnpm run pack:win:x64
 ```
+
+`pnpm run pack:mac:arm64` 和 `pnpm run pack:mac:x64` 生成的是 Ad Hoc 调试包，只能用于本地验证，不能作为 GitCode 正式 Release 产物。
 
 在 macOS 上首次构建 Windows x64 前，先确认交叉编译工具可用：
 
@@ -112,6 +147,10 @@ cargo xwin --version
 如果命令不存在，先执行 `cargo install cargo-xwin`，再重新构建 Windows 安装包。
 
 构建完成后，确认 `release/<版本号>/` 同时包含 `*-arm64.dmg`、`*-x64.dmg` 和 Windows `.exe` 文件，再执行下一步上传。
+
+### 5a. macOS 签名与公证检查
+
+按照“macOS Release 签名与公证硬性要求”逐一检查 ARM64 和 x64 的 DMG 及 `.app`。必须确认签名身份为 Developer ID Application、公证票据已装订，并且 `codesign`、`spctl`、`xcrun stapler validate` 全部成功。检查未通过时禁止进入 GitCode 上传步骤。
 
 ### 6. 推送代码
 
