@@ -2,6 +2,12 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.2",
+    "title": "v1.8.2",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>改善相机 Wi-Fi 连接失败处理</strong>：自动连接失败时明确提示用户复制密码并在系统 Wi-Fi 中连接相机热点，完成后返回应用重试。</li>\n<li><strong>保留手动连接所需信息</strong>：连接失败后继续显示相机热点名称，并支持复制 Wi-Fi 密码或重新输入密码。</li>\n<li><strong>修复 macOS Intel 下载入口</strong>：落地页独立展示 Apple 芯片和 Intel 芯片的 macOS 安装包，避免用户找不到 x64 下载地址。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>简化设备连接提示</strong>：缩短连接页中的状态、诊断和磁盘说明，让处理步骤更清晰。</li>\n<li><strong>优化跨平台发布检查</strong>：正式 macOS Release 包必须完成 Developer ID 签名、Apple 公证和票据装订后才能上传到 GitCode。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新项目版本至 <code>1.8.2</code>。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
     "version": "1.8.1",
     "title": "v1.8.1",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>支持 Luna Pro</strong>：新增 Luna Pro 的设备识别、连接、媒体管理、水印资源和实时预览支持。</li>\n<li><strong>实时预览增强</strong>：支持全屏查看、视频静音和更稳定的画面解码。</li>\n<li><strong>更多相机接入能力</strong>：完善 DJI 相机媒体浏览、下载、删除以及连接流程。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li>修复纯图片素材在 Pixel Flow 预览中动画不再推进的问题。</li>\n<li>修复部分 WebGPU 预览、调色和播放过程中的画面异常。</li>\n<li>改进 Insta360 相机 Wi-Fi 保活和连接帧处理，降低预览过程中断开的概率。</li>\n<li>修复 DJI Pocket 4P 设备识别和媒体协议中的兼容性问题。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li>仅 Luna 系列设备显示导航栏右上角的相机实时预览入口，DJI 等暂不支持实时预览的设备不再显示该图标。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>macOS 原生辅助工具改为在打包阶段预编译，用户安装后无需安装 Xcode 或开发者工具。</li>\n<li>完善 macOS、Windows 三平台安装包和热更新资源的发布流程。</li>\n<li>更新项目版本至 <code>1.8.1</code>。</li>\n</ul>",
