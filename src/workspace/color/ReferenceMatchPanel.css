@@ -17,9 +17,9 @@
   gap: 5px;
 }
 
-.workspace-reference-match-reference-preview > .ui-icon-btn {
+.workspace-reference-match-reference-preview > .ui-icon-btn,
+.workspace-reference-match-target-thumb > .ui-icon-btn {
   position: absolute;
-  top: 22px;
   right: 6px;
   z-index: 1;
   display: grid;
@@ -32,6 +32,14 @@
   background: color-mix(in srgb, var(--parchment) 88%, var(--canvas));
   color: var(--ink);
   line-height: 0;
+}
+
+.workspace-reference-match-reference-preview > .ui-icon-btn {
+  top: 22px;
+}
+
+.workspace-reference-match-target-thumb > .ui-icon-btn {
+  top: 6px;
 }
 
 .workspace-reference-match-reference-preview > .ui-icon-btn > svg {
@@ -77,13 +85,6 @@
 .workspace-reference-match-target-thumb {
   position: relative;
   min-width: 0;
-}
-
-.workspace-reference-match-remove-button.ui-btn {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  z-index: 1;
 }
 
 .workspace-reference-match-reference-actions {
