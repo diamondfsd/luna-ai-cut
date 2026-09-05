@@ -227,6 +227,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     requestedDeviceId?: string,
     wirelessOverride?: CameraMediaSourceOptions['wireless'],
   ): Promise<void> {
+    let connectionWireless: CameraMediaSourceOptions['wireless'] | undefined
     try {
       const latestSettings = await window.luna.getSettings().catch(() => settings)
       const deviceId = requestedDeviceId ?? latestSettings?.activeDeviceId ?? activeDevice?.id
@@ -255,6 +256,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         password: devicePreparedWifi.password,
         autoJoin: true,
       } : undefined)
+      connectionWireless = wireless
       const status = await Promise.race([
         window.luna.cameraSource.connect({
           mode,
@@ -288,9 +290,20 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       }
     } catch (error) {
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
-      const errMsg = userFacingConnectionError(error)
+      const manualWifiRequired = connectionWireless?.autoJoin === true && Boolean(connectionWireless.ssid?.trim())
+      const errMsg = manualWifiRequired
+        ? '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点'
+        : userFacingConnectionError(error)
       logger.error('[设备连接] 连接异常', { host, error: errMsg })
-      setConnection({ host, httpOk: false, controlOk: false, message: errMsg })
+      setConnection({
+        host,
+        httpOk: false,
+        controlOk: false,
+        wifiSsid: manualWifiRequired ? connectionWireless?.ssid : undefined,
+        wifiPasswordRequired: manualWifiRequired,
+        wifiManualConnectionRequired: manualWifiRequired,
+        message: errMsg,
+      })
       setDevicePhase('error')
     }
   }

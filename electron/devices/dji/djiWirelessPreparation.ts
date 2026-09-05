@@ -60,7 +60,7 @@ function pingArgs(host: string): string[] {
 const PING_COMMAND_TIMEOUT_MS = 1200
 const HOST_REACHABLE_TIMEOUT_MS = 8000
 const HOST_REACHABLE_RETRY_DELAY_MS = 150
-const MANUAL_WIFI_MESSAGE = '未检测到可用的蓝牙适配器。请打开系统 Wi-Fi 设置，手动连接相机热点；连接完成后返回应用，再点击“开始连接”'
+const MANUAL_WIFI_MESSAGE = '请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试'
 
 function sleep(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs))
@@ -411,7 +411,7 @@ export class DefaultDjiWirelessPreparation implements DjiWirelessPreparation {
     return {
       mode: 'already-connected',
       requiresManualWifi: true,
-      message: '未能通过 DJI 蓝牙读取 Wi-Fi 信息，请使用系统 Wi-Fi 工具手动连接相机热点，连接完成后回来点击“开始连接”',
+      message: MANUAL_WIFI_MESSAGE,
     }
   }
 

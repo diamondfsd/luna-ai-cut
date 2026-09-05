@@ -41,6 +41,7 @@ export interface ConnectionStatus {
   diagnosticsRaw?: string
   wifiSsid?: string
   wifiPasswordRequired?: boolean
+  wifiManualConnectionRequired?: boolean
   host: string
   httpOk: boolean
   controlOk: boolean
