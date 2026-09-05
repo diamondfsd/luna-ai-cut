@@ -82,6 +82,7 @@ export function DeviceConnectPage({
   const [wifiPassword, setWifiPassword] = useState('')
   const [wifiPasswordError, setWifiPasswordError] = useState<string | null>(null)
   const [wifiPasswordConnecting, setWifiPasswordConnecting] = useState(false)
+  const [wifiManualFallbackEditing, setWifiManualFallbackEditing] = useState(false)
   const [wirelessPreparation, setWirelessPreparation] = useState<CameraMediaSourcePreparationResult | null>(null)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
@@ -91,6 +92,9 @@ export function DeviceConnectPage({
   const isBluetoothWifiWireless = !isWired && (activeDevice?.protocol === 'dji' || activeDevice?.id === 'luna-ultra')
   const canAutoJoinWifi = !isWired && activeDevice?.wifi?.autoJoin === true
   const wifiCredentials = preparedWifi ?? wirelessPreparation?.credentials ?? null
+  const wifiManualConnectionRequired = !isWired && connection?.wifiManualConnectionRequired === true
+  const showWifiManualFallback = wifiManualConnectionRequired && !wifiManualFallbackEditing
+  const copyableWifiPassword = wifiCredentials?.password || wifiPassword
   const needsSystemWifi = isBluetoothWifiWireless && Boolean(wirelessPreparation && !wifiCredentials)
   const deviceInfo = connection?.deviceInfo
   const deviceRows = [
@@ -115,12 +119,12 @@ export function DeviceConnectPage({
     ? isWired ? '正在查找相机磁盘' : '正在建立相机会话'
     : isError ? `${deviceName} 连接失败` : `准备连接 ${deviceName}`
   const statusDescription = isChecking
-    ? isWired ? '正在检查已选择的相机磁盘和素材目录' : '正在检测相机服务并建立控制会话'
+    ? isWired ? '正在检查相机磁盘' : '正在检测相机'
     : connection?.message ?? (isWired
-      ? '请选择相机磁盘后连接，即可浏览其中的相机素材'
+      ? '选择相机磁盘后连接'
       : canAutoJoinWifi
-        ? '开始连接时会先检测设备 Wi-Fi；如果连接失败，会提示输入 Wi-Fi 密码后重试'
-        : '连接相机 Wi-Fi 后，即可浏览和下载相机素材')
+        ? '将自动连接相机 Wi-Fi'
+        : '连接相机 Wi-Fi 后浏览素材')
   const statusLabel = isChecking ? '检测中' : isError ? '需要处理' : '等待连接'
   const refreshMountedVolumes = useCallback(async (): Promise<void> => {
     if (!isWired) {
@@ -154,6 +158,7 @@ export function DeviceConnectPage({
       setWifiSsid('')
       setWifiPasswordError(null)
       setWifiPassword('')
+      setWifiManualFallbackEditing(false)
       return
     }
     if (connection?.controlOk) {
@@ -161,12 +166,14 @@ export function DeviceConnectPage({
       setWifiSsid('')
       setWifiPasswordError(null)
       setWifiPassword('')
+      setWifiManualFallbackEditing(false)
       return
     }
     if (connection?.wifiPasswordRequired && !wifiPasswordConnecting) {
       setWifiPasswordDialogOpen(true)
       setWifiSsid(connection.wifiSsid ?? '')
       setWifiPasswordError(connection.message.startsWith('请输入 ') ? null : connection.message)
+      setWifiManualFallbackEditing(false)
     }
   }, [connection, isWired, wifiPasswordConnecting])
 
@@ -176,6 +183,7 @@ export function DeviceConnectPage({
     setWifiSsid('')
     setWifiPasswordError(null)
     setWifiPassword('')
+    setWifiManualFallbackEditing(false)
   }
 
   async function handleConnect(): Promise<void> {
@@ -236,19 +244,29 @@ export function DeviceConnectPage({
       })
     } finally {
       setWifiPasswordConnecting(false)
-      setWifiPassword('')
     }
   }
 
   async function copyWifiPassword(): Promise<void> {
-    if (!wifiCredentials?.password) return
+    if (!copyableWifiPassword) return
     try {
-      await navigator.clipboard.writeText(wifiCredentials.password)
+      await navigator.clipboard.writeText(copyableWifiPassword)
       setWifiPasswordCopied(true)
       window.setTimeout(() => setWifiPasswordCopied(false), 1500)
     } catch {
       setWifiPasswordCopied(false)
     }
+  }
+
+  function openWifiSettingsFromDialog(): void {
+    closeWifiPasswordDialog()
+    void window.luna.openWifiSettings()
+  }
+
+  function editWifiPasswordInDialog(): void {
+    setWifiManualFallbackEditing(true)
+    setWifiPasswordError(null)
+    setWifiPassword('')
   }
 
   async function handleChooseWiredCamera(): Promise<void> {
@@ -304,7 +322,7 @@ export function DeviceConnectPage({
     const text = diagnosticsResult ?? connection?.diagnosticsRaw
     if (!text) return
     const copied = await copyDiagnostics(text)
-    setDiagnosticsNotice(copied ? '诊断信息已复制，请粘贴发送给开发者。' : '自动复制失败，请点击“复制反馈信息”后发送给开发者。')
+    setDiagnosticsNotice(copied ? '已复制诊断信息，请发送给开发者。' : '复制失败，请点击“复制反馈信息”。')
   }
 
   async function handleRunDiagnostics(): Promise<void> {
@@ -318,7 +336,7 @@ export function DeviceConnectPage({
       const report = JSON.stringify(result, null, 2)
       setDiagnosticsResult(report)
       const copied = await copyDiagnostics(report)
-      setDiagnosticsNotice(copied ? '诊断完成，信息已自动复制，请粘贴发送给开发者。' : '诊断完成，但自动复制失败，请点击“复制反馈信息”后发送给开发者。')
+      setDiagnosticsNotice(copied ? '诊断完成，信息已复制。' : '诊断完成，请手动复制反馈信息。')
     } catch (error) {
       const report = JSON.stringify({
         error: error instanceof Error ? error.message : String(error),
@@ -326,7 +344,7 @@ export function DeviceConnectPage({
       }, null, 2)
       setDiagnosticsResult(report)
       const copied = await copyDiagnostics(report)
-      setDiagnosticsNotice(copied ? '诊断完成，信息已自动复制，请粘贴发送给开发者。' : '诊断完成，但自动复制失败，请点击“复制反馈信息”后发送给开发者。')
+      setDiagnosticsNotice(copied ? '诊断完成，信息已复制。' : '诊断完成，请手动复制反馈信息。')
     } finally {
       setDiagnosticsRunning(false)
     }
@@ -431,8 +449,8 @@ export function DeviceConnectPage({
             <p className="device-connect-tip">
               <Info size={14} />
               <span>{isWired
-                ? '请在相机上选择磁盘或 U 盘模式；删除相机素材前会再次确认'
-                : '相机 Wi-Fi 可能无法访问互联网，素材导入后可切回常用网络'}</span>
+                ? '开启相机磁盘模式；删除素材前会确认'
+                : '相机 Wi-Fi 仅用于连接相机'}</span>
             </p>
 
             {isBluetoothWifiWireless && (
@@ -453,7 +471,7 @@ export function DeviceConnectPage({
                 <div className="device-connect-volumes-header">
                   <div>
                     <p className="device-connect-section-title">已检测到的相机磁盘</p>
-                    <span>选择一个磁盘后只访问其中的相机素材</span>
+                    <span>只读取所选磁盘</span>
                   </div>
                   <Button
                     variant="secondary"
@@ -467,7 +485,7 @@ export function DeviceConnectPage({
                 </div>
                 {mountedVolumesError && <Alert variant="error" message={mountedVolumesError} />}
                 {!mountedVolumesError && mountedVolumes.length === 0 && !mountedVolumesLoading && (
-                  <p className="device-connect-volumes-empty">还没有发现可读取的相机磁盘。请确认相机已选择磁盘或 U 盘模式，然后刷新。</p>
+                  <p className="device-connect-volumes-empty">未发现相机磁盘，请开启磁盘模式后刷新。</p>
                 )}
                 {mountedVolumes.length > 0 && (
                   <div className="device-connect-volume-list">
@@ -498,7 +516,7 @@ export function DeviceConnectPage({
                 <div className="device-connect-diagnostics-header">
                   <div>
                     <p className="device-connect-section-title">连接诊断</p>
-                    <span>检测网络状态并生成反馈信息</span>
+                    <span>生成反馈信息</span>
                   </div>
                   <div className="device-connect-diagnostics-actions">
                     <Button
@@ -522,7 +540,7 @@ export function DeviceConnectPage({
                   </div>
                 </div>
                 <p className="device-connect-diagnostics-hint">
-                  诊断信息只会复制到剪贴板，不会自动上传。
+                  信息只复制到剪贴板，不会上传。
                 </p>
                 {diagnosticsNotice && <Alert variant="info" message={diagnosticsNotice} />}
                 {(diagnosticsResult ?? connection?.diagnosticsRaw) && (
@@ -579,53 +597,83 @@ export function DeviceConnectPage({
           if (open) setWifiPasswordDialogOpen(true)
           else closeWifiPasswordDialog()
         }}
-        title={`输入 ${deviceName} 的 Wi-Fi 密码`}
-        description="如果列表中没有找到热点，请手动填写 Wi-Fi 名称和密码。"
+        title={showWifiManualFallback ? `手动连接 ${deviceName} Wi-Fi` : `输入 ${deviceName} 的 Wi-Fi 密码`}
+        description={showWifiManualFallback ? '复制密码，在系统 Wi-Fi 中连接相机热点。' : '填写 Wi-Fi 名称和密码。'}
         className="device-connect-wifi-password-dialog"
         closeOnMaskClick={!wifiPasswordConnecting}
         footer={(
           <>
             <Button variant="secondary" disabled={wifiPasswordConnecting} onClick={closeWifiPasswordDialog}>取消</Button>
-            <Button
-              variant="primary"
-              disabled={wifiPasswordConnecting || !wifiSsid.trim() || !wifiPassword}
-              onClick={() => void handleWifiPasswordConnect()}
-              icon={<KeyRound size={16} />}
-            >
-              {wifiPasswordConnecting ? '正在连接' : '连接'}
-            </Button>
+            {showWifiManualFallback ? (
+              <Button variant="primary" onClick={openWifiSettingsFromDialog} icon={<MonitorCog size={16} />}>
+                打开 Wi-Fi 设置
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                disabled={wifiPasswordConnecting || !wifiSsid.trim() || !wifiPassword}
+                onClick={() => void handleWifiPasswordConnect()}
+                icon={<KeyRound size={16} />}
+              >
+                {wifiPasswordConnecting ? '正在连接' : '连接'}
+              </Button>
+            )}
           </>
         )}
       >
         <div className="device-connect-wifi-password-body">
-          <label className="device-connect-wifi-password-field">
-            <span>Wi-Fi 名称</span>
-            <Input
-              variant="pill"
-              value={wifiSsid}
-              onChange={(event) => setWifiSsid(event.target.value)}
-              placeholder="例如 Luna Ultra 9P4FM5.OSC"
-              autoFocus={!wifiSsid}
-              fullWidth
-            />
-          </label>
-          <label className="device-connect-wifi-password-field">
-            <span>Wi-Fi 密码</span>
-            <Input
-              variant="pill"
-              type="password"
-              value={wifiPassword}
-              onChange={(event) => setWifiPassword(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && wifiPassword) void handleWifiPasswordConnect()
-              }}
-              placeholder="输入密码"
-              autoFocus={Boolean(wifiSsid)}
-              fullWidth
-            />
-          </label>
-          {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
-          <p>应用不会读取系统中已保存的 Wi-Fi 密码。</p>
+          {showWifiManualFallback ? (
+            <div className="device-connect-wifi-password-fallback">
+              {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
+              <div className="device-connect-wifi-password-ssid">
+                <span>Wi-Fi 名称</span>
+                <strong title={wifiSsid}>{wifiSsid || '相机热点'}</strong>
+              </div>
+              <p>复制密码，在系统 Wi-Fi 中连接相机热点，完成后返回应用重试。</p>
+              <Button
+                variant="secondary"
+                onClick={() => void copyWifiPassword()}
+                disabled={!copyableWifiPassword}
+                icon={wifiPasswordCopied ? <Check size={16} /> : <Copy size={16} />}
+              >
+                {wifiPasswordCopied ? '已复制密码' : '复制 Wi-Fi 密码'}
+              </Button>
+              <Button variant="ghost" size="compact" onClick={editWifiPasswordInDialog} icon={<KeyRound size={15} />}>
+                重新输入密码
+              </Button>
+            </div>
+          ) : (
+            <>
+              <label className="device-connect-wifi-password-field">
+                <span>Wi-Fi 名称</span>
+                <Input
+                  variant="pill"
+                  value={wifiSsid}
+                  onChange={(event) => setWifiSsid(event.target.value)}
+                  placeholder="输入 Wi-Fi 名称"
+                  autoFocus={!wifiSsid}
+                  fullWidth
+                />
+              </label>
+              <label className="device-connect-wifi-password-field">
+                <span>Wi-Fi 密码</span>
+                <Input
+                  variant="pill"
+                  type="password"
+                  value={wifiPassword}
+                  onChange={(event) => setWifiPassword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && wifiPassword) void handleWifiPasswordConnect()
+                  }}
+                  placeholder="输入密码"
+                  autoFocus={Boolean(wifiSsid)}
+                  fullWidth
+                />
+              </label>
+              {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
+              <p>不会读取系统保存的 Wi-Fi 密码。</p>
+            </>
+          )}
         </div>
       </Dialog>
     </section>

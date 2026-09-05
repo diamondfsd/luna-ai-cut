@@ -34,6 +34,7 @@ __pycache__/
 *.py[cod]
 resources/ffmpeg/
 resources/dji-ble-helper/
+resources/macos-native/
 .ffmpeg-cache/
 resources/dolby-vision/
 .dolby-tools-cache/

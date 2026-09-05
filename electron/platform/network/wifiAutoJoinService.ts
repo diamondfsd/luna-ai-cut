@@ -8,6 +8,7 @@ export interface WifiAutoJoinResult {
   connected: boolean
   ssid?: string
   wifiPasswordRequired?: boolean
+  wifiManualConnectionRequired?: boolean
   message: string
 }
 
@@ -280,12 +281,13 @@ export async function autoJoinDeviceWifi(
       code: joined.code,
       message: joined.message,
     })
-    const message = `${joined.message}。请检查 ${candidateSsid} 的 Wi-Fi 名称和密码`
+    const message = '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点'
     return {
       attempted: true,
       connected: false,
       ssid: candidateSsid,
       wifiPasswordRequired,
+      wifiManualConnectionRequired: true,
       message,
     }
   }
@@ -298,7 +300,8 @@ export async function autoJoinDeviceWifi(
       connected: false,
       ssid: candidateSsid,
       wifiPasswordRequired: true,
-      message: `已尝试连接 ${candidateSsid}，但本机未获取 Luna Wi-Fi 地址（192.168.42.x），未建立相机连接`,
+      wifiManualConnectionRequired: true,
+      message: '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点',
     }
   }
   if (endpoint) {
@@ -309,7 +312,8 @@ export async function autoJoinDeviceWifi(
         connected: false,
         ssid: candidateSsid,
         wifiPasswordRequired: true,
-        message: `已尝试连接 ${candidateSsid}，但未能通过相机控制通道确认连接。请检查 Wi-Fi 密码后重试`,
+        wifiManualConnectionRequired: true,
+        message: '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点',
       }
     }
   }

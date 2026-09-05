@@ -19,6 +19,22 @@ export default async function afterPack(context) {
   const entitlementsPath = join(context.packager.projectDir, 'build', 'entitlements.mac.plist')
   if (!existsSync(appPath)) throw new Error(`Ad Hoc 签名目标不存在：${appPath}`)
 
+  const helperDir = join(appPath, 'Contents', 'Resources', 'macos-native')
+  const helperNames = ['bluetoothCoreScanner', 'wifiCoreWlan', 'livetool']
+  for (const helperName of helperNames) {
+    const helperPath = join(helperDir, helperName)
+    if (!existsSync(helperPath)) throw new Error(`macOS helper 不存在：${helperPath}`)
+    execFileSync('codesign', [
+      '--force',
+      '--verbose',
+      '--sign',
+      '-',
+      '--entitlements',
+      entitlementsPath,
+      helperPath,
+    ], { stdio: 'inherit' })
+  }
+
   execFileSync('codesign', [
     '--deep',
     '--force',

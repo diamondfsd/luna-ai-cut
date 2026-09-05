@@ -1,0 +1,39 @@
+{
+  "id": "luna-pro",
+  "name": "Luna Pro",
+  "vendor": "Insta360",
+  "protocol": "insta360",
+  "mediaCapabilities": { "delete": true },
+  "defaultHost": "192.168.42.1",
+  "httpPort": 80,
+  "controlPort": 6666,
+  "wifi": {
+    "autoJoin": true,
+    "ssidIncludes": ["luna"]
+  },
+  "mock": {
+    "host": "127.0.0.1",
+    "httpPort": 18084,
+    "tcpPort": 6668,
+    "udpPort": 19006,
+    "rateMbps": 30
+  },
+  "storages": [
+    {
+      "id": "storage_internal",
+      "label": "内置存储",
+      "path": "/storage_internal/DCIM/",
+      "default": true
+    },
+    {
+      "id": "sdcard",
+      "label": "SD 卡",
+      "path": "/DCIM/",
+      "default": false
+    }
+  ],
+  "watermarkStyles": [
+    { "value": "luna_pro_cn", "label": "中文", "videoFileName": "ic_watermark_luna_pro_cn", "imageFileName": "ic_watermark_luna_pro_image_cn" },
+    { "value": "luna_pro", "label": "标准", "videoFileName": "ic_watermark_luna_pro", "imageFileName": "ic_watermark_luna_pro_image" }
+  ]
+}

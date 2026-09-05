@@ -48,6 +48,24 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+/** Match the native compositor's source-time based pixel-flow timeline. */
+export function pixelFlowProgressAt(layer: PreviewLayer, compositionTime: number): number {
+  const effect = layer.pixelFlow
+  if (!effect) return 0
+
+  const explicitProgress = effect.progress
+  if (typeof explicitProgress === 'number' && Number.isFinite(explicitProgress)) {
+    return clamp(explicitProgress, 0, 1)
+  }
+
+  const sourceTime = Math.max(
+    0,
+    numberOr(layer.videoTime, 0) + numberOr(compositionTime, 0) - numberOr(layer.videoOffset, 0),
+  )
+  const duration = Math.max(0.1, numberOr(effect.duration, 1))
+  return clamp(sourceTime / duration, 0, 1)
+}
+
 function parseHexColor(value: string | undefined, fallback: [number, number, number, number]): [number, number, number, number] {
   const hex = value?.trim().replace(/^#/, '')
   if (!hex || (hex.length !== 6 && hex.length !== 8) || !/^[0-9a-f]+$/i.test(hex)) return fallback
@@ -207,6 +225,7 @@ export function createLayerParams(
   frame: [number, number] | undefined,
   restoreLutSize: number,
   lutSize: number,
+  compositionTime: number,
 ): Float32Array {
   const data = new Float32Array(PARAM_FLOAT_COUNT)
   const offset = { value: 0 }
@@ -321,7 +340,7 @@ export function createLayerParams(
   writeMatrixRows(data, offset, Array.from({ length: 4 }, (_, row) => [
     stretchPath[row * 2] ?? 0, stretchPath[row * 2 + 1] ?? 0, stretchPath[row * 2 + 2] ?? 0, stretchPath[row * 2 + 3] ?? 0,
   ]))
-  writeVec4(data, offset, [pixelFlow ? 1 : 0, clamp(numberOr(pixelFlow?.progress, 0), 0, 1), clamp(numberOr(pixelFlow?.pixelCount, 500), 24, 500), clamp(numberOr(pixelFlow?.lightWidth, 32), 1, 32)])
+  writeVec4(data, offset, [pixelFlow ? 1 : 0, pixelFlowProgressAt(layer, compositionTime), clamp(numberOr(pixelFlow?.pixelCount, 500), 24, 500), clamp(numberOr(pixelFlow?.lightWidth, 32), 1, 32)])
   writeVec4(data, offset, [
     clamp(numberOr(pixelFlow?.rainLength, 58), 0, 100) / 100,
     clamp(numberOr(pixelFlow?.flowStrength, 78), 0, 100) / 100,

@@ -35,7 +35,7 @@ const runRoot = await mkdtemp(path.join(tmpdir(), 'luna-webgpu-direct-comparison
 const outputRoot = path.resolve(process.env.LUNA_WEBGPU_COMPARISON_OUTPUT_DIR ?? runRoot)
 const lowResImagePath = path.join(runRoot, 'photo-960.jpg')
 const maskPath = path.join(runRoot, 'comparison-mask.pgm')
-const FEATURES = ['baseline', 'mask', 'lut', 'subtitle', 'watermark', 'border', 'creative']
+const FEATURES = ['baseline', 'mask', 'lut', 'subtitle', 'watermark', 'border', 'creative', 'pixel-flow-start', 'pixel-flow-middle']
 
 function renderColor(overrides = {}) {
   return {
@@ -130,6 +130,27 @@ function featureLayers(sourcePath, feature, resources) {
       shapeLayer({ dstX: 0.955, dstY: 0.07, dstW: 0.045, dstH: 0.86, zIndex: 20 }),
       textLayer({ dstX: 0.06, dstY: 0.945, dstW: 0.4, dstH: 0.04, zIndex: 21, content: 'LUNA ULTRA | 2026', fontSize: 18, textColor: '#444444' }),
     ]
+  }
+  if (feature === 'pixel-flow-start' || feature === 'pixel-flow-middle') {
+    return [mediaLayer(sourcePath, {
+      layerType: 'pixel-flow',
+      pixelFlow: {
+        duration: 1,
+        pixelCount: 160,
+        lightWidth: 8,
+        initialSaturation: 0,
+        initialBrightness: 0,
+        subjectDirection: 'down',
+        rainSpeed: 50,
+        rainLength: 58,
+        flowStrength: 78,
+        subjectDelay: 34,
+        bloomStrength: 28,
+        filterStrength: 50,
+        colorTransition: 0.5,
+        segmented: false,
+      },
+    })]
   }
   return creativeLayers(sourcePath)
 }
@@ -259,7 +280,10 @@ async function runWebGpu(features, browserFeatures, width, height) {
     assert.equal(initialized?.navigatorGpu, true, '当前 Chromium 没有可用的 WebGPU')
     for (const feature of features) {
       const startedAt = performance.now()
-      const state = await page.evaluate((id) => window.lunaWebGpuComparison?.renderFeature(id), feature.id)
+      const state = await page.evaluate(({ id, playing }) => window.lunaWebGpuComparison?.renderFeature(id, playing), {
+        id: feature.id,
+        playing: feature.id === 'pixel-flow-middle',
+      })
       const outputPath = path.join(outputRoot, `${feature.id}-webgpu.png`)
       await page.locator('#comparison-canvas').screenshot({ path: outputPath })
       const info = await stat(outputPath)
@@ -292,8 +316,9 @@ assert.equal(parsedLut.size, 65, 'Luna Ultra 内置 LUT 应为 65³')
 assert.equal(parsedLut.rgba.length, 65 ** 3 * 4, '65³ LUT RGBA 数据尺寸不正确')
 const fontData = (await readFile(FONT_PATH)).toString('base64')
 
-const nativeFeatures = FEATURES.map((id) => ({ id, time: id === 'creative' ? 0.5 : 0, layers: featureLayers(lowResImagePath, id, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH }) }))
-const browserFeatures = FEATURES.map((id) => ({ id, time: id === 'creative' ? 0.5 : 0, layers: featureLayers(imageDataUrl, id, { maskPath: 'fixture://mask', lutPath: 'fixture://lut', watermarkPath: watermarkDataUrl }) }))
+const featureTime = (id) => id === 'creative' || id === 'pixel-flow-middle' ? 0.5 : 0
+const nativeFeatures = FEATURES.map((id) => ({ id, time: featureTime(id), layers: featureLayers(lowResImagePath, id, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH }) }))
+const browserFeatures = FEATURES.map((id) => ({ id, time: featureTime(id), layers: featureLayers(imageDataUrl, id, { maskPath: 'fixture://mask', lutPath: 'fixture://lut', watermarkPath: watermarkDataUrl }) }))
 
 const nativeMeasurements = await runNative(nativeFeatures, width, height)
 const webgpuResult = await runWebGpu(nativeFeatures, {
@@ -339,3 +364,11 @@ assert.ok(comparisons.every((entry) => (
   && entry.webgpuPixels.nonTransparentPixels > 0
   && entry.webgpuPixels.meanRgb.some((channel) => channel > 2)
 )))
+const pixelFlowStart = webgpuResult.measurements.find((entry) => entry.feature === 'pixel-flow-start')
+const pixelFlowMiddle = webgpuResult.measurements.find((entry) => entry.feature === 'pixel-flow-middle')
+assert.ok(pixelFlowStart && pixelFlowMiddle, '缺少像素流光时间轴回归结果')
+const pixelFlowTimelineDifference = comparePixels(pixelFlowStart.raw, pixelFlowMiddle.raw)
+assert.ok(
+  pixelFlowTimelineDifference.differentPixelRatio > 0.03,
+  `像素流光播放帧没有随时间变化: differentPixelRatio=${pixelFlowTimelineDifference.differentPixelRatio}`,
+)

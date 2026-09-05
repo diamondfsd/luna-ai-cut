@@ -37,7 +37,7 @@ async function readStandardVideoDeviceInfo(localPath: string): Promise<MediaDevi
 function parseInsta360VideoDeviceInfo(buffer: Buffer): MediaDeviceInfo | null {
   const tail = buffer.toString('latin1')
   const searchable = tail.replace(/[^ -~]/g, ' ')
-  const model = /Insta360\s+(Luna Ultra|GO Ultra)/i.exec(searchable)?.[1] ?? null
+  const model = /Insta360\s+(Luna Ultra|Luna Pro|GO Ultra)/i.exec(searchable)?.[1] ?? null
   if (!model) return null
   const firmware = /\bv\d+\.\d+(?:\.\d+)+\b/i.exec(searchable)?.[0]
   const serialNumber = /\bBTLB[A-Z0-9]{8,}\b/i.exec(searchable)?.[0]
