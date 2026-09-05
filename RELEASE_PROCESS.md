@@ -35,7 +35,21 @@ xcrun stapler validate "$DMG_PATH"
 hdiutil detach /tmp/luna-ai-cut-release
 ```
 
-只要签名身份、公证票据或 `spctl` 检查任一失败，立即停止发布并重新构建；不得执行 `scripts/deploy-release.sh`。发布记录中应保留 ARM64、x64 两个产物的检查结果。
+`electron-builder` 完成的公证主要作用于 `.app`。如果最终 DMG 的 `xcrun stapler validate` 提示没有票据，必须先对最终 DMG 单独提交公证并装订票据：
+
+```bash
+source scripts/apple-notarize.local
+xcrun notarytool submit "$DMG_PATH" \
+  --key "$APPLE_API_KEY" \
+  --key-id "$APPLE_API_KEY_ID" \
+  --issuer "$APPLE_API_ISSUER" \
+  --wait \
+  --output-format json
+xcrun stapler staple "$DMG_PATH"
+xcrun stapler validate "$DMG_PATH"
+```
+
+只要签名身份、公证结果或 `spctl` 检查失败，立即停止发布并重新构建；不得执行 `scripts/deploy-release.sh`。DMG 仅在完成上述最终公证装订并验证通过后才能上传。发布记录中应保留 ARM64、x64 两个产物的检查结果。
 
 ### 热更新默认发布约定
 
