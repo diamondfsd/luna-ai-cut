@@ -1,7 +1,7 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { EditPipeline, PipelinePatch } from '../shared/editPipeline'
-import { DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
+import { mergePipeline } from '../shared/editPipeline'
 import type { HistoryGroup } from '../shared/editHistory'
 import { toast } from '../../ui'
 import { type CropPreset } from '../transform/TransformPanel'
@@ -20,6 +20,7 @@ export interface WorkspacePipelineClipboardData {
   effects: EditPipeline['effects']
   logRestore: EditPipeline['logRestore']
   lutFilter: EditPipeline['lutFilter']
+  referenceMatch?: EditPipeline['referenceMatch']
   watermark: EditPipeline['watermark']
   border: EditPipeline['border']
   beauty?: BeautyClipboardSettings
@@ -39,7 +40,7 @@ interface WorkspaceEditValue {
   // Pipeline & History
   pipeline: EditPipeline
   previewPipeline: EditPipeline
-  comparePipeline: EditPipeline
+  referenceMatch: EditPipeline['referenceMatch']
   canUndo: boolean
   canRedo: boolean
   undo: () => void
@@ -153,22 +154,6 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       : draftPipeline),
     [cropMachine.cropActive, cropMachine.transformDraft, draftPipeline],
   )
-  const comparePipeline = useMemo(
-    () => {
-      if (!compareOriginal) return previewPipeline
-      return mergePipeline(previewPipeline, {
-        color: DEFAULT_PIPELINE.color,
-        effects: DEFAULT_PIPELINE.effects,
-        logRestore: DEFAULT_PIPELINE.logRestore,
-        lutFilter: DEFAULT_PIPELINE.lutFilter,
-        colorMasks: [],
-        beautyMasks: [],
-        border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
-      })
-    },
-    [compareOriginal, previewPipeline],
-  )
-
   // Clipboard
   const copyPipeline = useCallback((source?: { assetId: string; projectId: string | null }) => {
     const data: WorkspacePipelineClipboardData = {
@@ -178,6 +163,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       effects: structuredClone(pipeline.effects),
       logRestore: structuredClone(pipeline.logRestore),
       lutFilter: structuredClone(pipeline.lutFilter),
+      referenceMatch: structuredClone(pipeline.referenceMatch),
       watermark: structuredClone(pipeline.watermark),
       border: structuredClone(pipeline.border),
       beauty: structuredClone(beautyClipboardSettings(pipeline)),
@@ -266,7 +252,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   const value = useMemo<WorkspaceEditValue>(() => ({
     pipeline,
     previewPipeline,
-    comparePipeline,
+    referenceMatch: pipeline.referenceMatch,
     canUndo,
     canRedo,
     undo,
@@ -301,7 +287,6 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   }), [
     pipeline,
     previewPipeline,
-    comparePipeline,
     canUndo,
     canRedo,
     undo,

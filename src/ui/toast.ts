@@ -8,8 +8,28 @@ export interface ToastDetail {
 
 const TOAST_EVENT = 'luna:toast'
 
+const PARENTHETICAL_TEXT = /（[^（）]*）|\([^()]*\)/g
+
+export function normalizeToastMessage(message: string): string {
+  let normalized = message
+  let previous = ''
+
+  while (normalized !== previous) {
+    previous = normalized
+    normalized = normalized.replace(PARENTHETICAL_TEXT, '')
+  }
+
+  return normalized
+    .replace(/[（）()]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([，。！？：；,.!?])/g, '$1')
+    .trim()
+}
+
 function dispatch(detail: ToastDetail) {
-  window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail }))
+  const message = normalizeToastMessage(detail.message)
+  if (!message) return
+  window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: { ...detail, message } }))
 }
 
 export const toast = {

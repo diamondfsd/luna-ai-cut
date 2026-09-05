@@ -9,6 +9,19 @@ import { buildJpegHdrMetadata, extractJpegIccSegments } from '../media/jpegHdrMe
 
 const execFileAsync = promisify(execFile)
 
+export interface JpegSourceMetadataOptions {
+  /**
+   * Rendered exports are encoded as SDR/sRGB. Keep source color metadata off
+   * by default so a viewer does not apply the source HDR transform again.
+   */
+  preserveSourceColorMetadata?: boolean
+}
+
+export interface JpegSourceMetadataResult {
+  segments: Buffer[]
+  gainMapImage?: Buffer
+}
+
 function jpegExifSegment(bytes: Buffer): Buffer | null {
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null
   let offset = 2
@@ -37,23 +50,43 @@ function jpegMetadataInsertOffset(bytes: Buffer): number {
   return offset
 }
 
-export async function embedJpegSourceMetadata(outputPath: string, sourcePath?: string): Promise<boolean> {
+export async function embedJpegSourceMetadata(
+  outputPath: string,
+  sourcePath?: string,
+  options: JpegSourceMetadataOptions = {},
+): Promise<boolean> {
   if (!sourcePath || !/\.jpe?g$/i.test(outputPath)) return false
   const [source, output] = await Promise.all([readFile(sourcePath), readFile(outputPath)])
+  const metadata = buildJpegSourceMetadata(source, output, options)
+  if (!metadata) return false
+  const insertAt = jpegMetadataInsertOffset(output)
+  const enriched = Buffer.concat([output.subarray(0, insertAt), ...metadata.segments, output.subarray(insertAt)])
+  await writeFile(outputPath, metadata.gainMapImage ? Buffer.concat([enriched, metadata.gainMapImage]) : enriched)
+  return true
+}
+
+export function buildJpegSourceMetadata(
+  source: Buffer,
+  output: Buffer,
+  options: JpegSourceMetadataOptions = {},
+): JpegSourceMetadataResult | null {
+  if (output[0] !== 0xff || output[1] !== 0xd8) return null
+
   const sourceExif = jpegExifSegment(source)
-  if (output[0] !== 0xff || output[1] !== 0xd8) return false
-  const exif = sourceExif ? normalizeJpegExifSegment(sourceExif, output) : null
   const leadingSegments = [
-    ...(exif ? [exif] : []),
-    ...extractJpegIccSegments(source),
+    ...(sourceExif ? [normalizeJpegExifSegment(sourceExif, output)] : []),
+    ...(options.preserveSourceColorMetadata ? extractJpegIccSegments(source) : []),
   ]
   const insertAt = jpegMetadataInsertOffset(output)
-  const hdr = buildJpegHdrMetadata(source, output, leadingSegments, insertAt)
+  const hdr = options.preserveSourceColorMetadata
+    ? buildJpegHdrMetadata(source, output, leadingSegments, insertAt)
+    : null
   const segments = [...leadingSegments, ...(hdr?.segments ?? [])]
-  if (segments.length === 0) return false
-  const enriched = Buffer.concat([output.subarray(0, insertAt), ...segments, output.subarray(insertAt)])
-  await writeFile(outputPath, hdr ? Buffer.concat([enriched, hdr.gainMapImage]) : enriched)
-  return true
+  if (segments.length === 0 && !hdr) return null
+  return {
+    segments,
+    ...(hdr?.gainMapImage ? { gainMapImage: hdr.gainMapImage } : {}),
+  }
 }
 
 export async function embedVideoSourceMetadata(

@@ -32,6 +32,10 @@ name = "luna-asr-worker"
 path = "src/bin/luna_asr_worker.rs"
 
 [[bin]]
+name = "neural-preset-worker"
+path = "src/bin/neural_preset_worker.rs"
+
+[[bin]]
 name = "windows-gpu-export-test"
 path = "src/bin/windows_gpu_export_test.rs"
 

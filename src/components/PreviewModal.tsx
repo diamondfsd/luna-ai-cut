@@ -417,7 +417,7 @@ export function PreviewModal({
         hasVideoInBatch ? exportConfig : null,
         { appleLivePhoto: exportAppleLivePhoto },
       )
-      toast.success(`已加入导出队列 (${sources.length} 个文件)`)
+      toast.success(`已加入导出队列，共 ${sources.length} 个文件`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '导出失败')
     } finally {

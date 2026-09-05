@@ -2,13 +2,14 @@ import { app } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { COMPOSITION_MODELS, type CompositionModelId } from '../../src/shared/compositionModels'
+import { REFERENCE_MATCH_MODELS, type ReferenceMatchModelId } from '../../src/shared/referenceMatchModels'
 import { AI_SELECTION_MODELS, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AiSelectionModelId, type SamSegmentationModelId, type SegmentationModelId, type SingleFileSegmentationModelId } from '../../src/shared/segmentationModels'
 import { loadVerifiedModelFile } from './modelFileService'
 import { SharedLoadRegistry } from './sharedLoadRegistry'
 import { hasCachedModelFiles } from './modelCacheStatus'
 import { logMainError } from './loggerService'
 
-export type ModelId = SingleFileSegmentationModelId | AiSelectionModelId | CompositionModelId
+export type ModelId = SingleFileSegmentationModelId | AiSelectionModelId | CompositionModelId | ReferenceMatchModelId
 
 interface ModelDefinition {
   name: string
@@ -51,7 +52,7 @@ export interface ModelCacheStatus {
   sizeBytes: number
 }
 
-export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries([...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...AI_SELECTION_MODELS, ...COMPOSITION_MODELS].map((model) => [model.id, {
+export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries([...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...AI_SELECTION_MODELS, ...COMPOSITION_MODELS, ...REFERENCE_MATCH_MODELS].map((model) => [model.id, {
     name: model.name,
     fileName: 'model.onnx',
     version: model.version,

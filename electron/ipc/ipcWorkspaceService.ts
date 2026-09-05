@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceBeautyAnalysisRequest, WorkspaceCompositionAnalysisRequest, WorkspaceCompositionCropScoreRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../../src/shared/types'
+import type { WorkspaceBeautyAnalysisRequest, WorkspaceCompositionAnalysisRequest, WorkspaceCompositionCropScoreRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchLutRequest, WorkspaceSegmentationRequest } from '../../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from '../export/exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from '../storage/fileService'
@@ -32,6 +32,7 @@ import {
 } from '../features/color/colorPresetsService'
 import { loadWorkspacePreview } from '../features/workspace/workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from '../media/trimThumbnailCacheService'
+import { generateReferenceMatchAiLut, saveReferenceMatchLut } from '../features/color/referenceMatchService'
 import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from '../infrastructure/modelLoader'
 import { automaticSegmentationTarget, isSamSegmentationModel, modelForSegmentationRequest, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../../src/shared/segmentationModels'
 import { segmentSamInWorker } from '../features/segmentation/samSegmentationService'
@@ -327,6 +328,16 @@ export function register(ctx: IpcContext): void {
     const result = new ArrayBuffer(data.byteLength)
     new Uint8Array(result).set(data)
     return result
+  })
+
+  ipcMain.handle('workspace:saveReferenceMatchLut', async (_event, request: WorkspaceReferenceMatchLutRequest) => {
+    const settings = await getSettings()
+    return saveReferenceMatchLut(settings, request)
+  })
+
+  ipcMain.handle('workspace:generateReferenceMatchAiLut', async (_event, request: WorkspaceReferenceMatchAiLutRequest) => {
+    const settings = await getSettings()
+    return generateReferenceMatchAiLut(settings, request)
   })
 
   ipcMain.handle('workspace:getMediaFormatInfo', async (_event, filePath: string) => {

@@ -2,7 +2,7 @@ import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata, WorkspaceSubtitleTrack } from '../../shared/types'
 import type { DeviceMetadataLike } from '../../shared/insta360DeviceProfiles'
-import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from './renderLayerPipeline'
+import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, applyReferenceMatchToSourceMediaLayers, buildLocalColorPrecomposition, buildReferenceMatchImageLayer, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 import { buildSubtitleLayers } from '../subtitles/subtitleLayers'
@@ -38,6 +38,8 @@ export function buildWorkspaceExportLayers(
   const watermarkLayers = layers.slice(1)
   const result = main[0] ? [{ ...layers[0], ...main[0] }] : layers.slice(0, 1)
   if (result[0]) result.splice(0, 1, ...buildLocalColorPrecomposition(result[0], pipeline, 'workspace-export-local-color'))
+  const referenceLayer = main[0] ? buildReferenceMatchImageLayer(main[0], pipeline) : null
+  if (referenceLayer) result.push(referenceLayer)
 
   // 边框层（如果有元数据）
   if (pipeline.border.enabled && borderMetadata !== undefined) {
@@ -60,7 +62,11 @@ export function buildWorkspaceExportLayers(
         videoDuration: main[0]?.videoDuration,
       },
     })
-    const adjustedBorderLayers = applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline)
+    const adjustedBorderLayers = applyReferenceMatchToSourceMediaLayers(
+      applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline),
+      sourcePath,
+      pipeline,
+    )
     result.push(
       ...placeWatermarkOnFramedContent(watermarkLayers, adjustedBorderLayers),
       ...adjustedBorderLayers,

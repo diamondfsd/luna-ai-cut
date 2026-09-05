@@ -131,7 +131,7 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     maskOpacity: beautyLayerOpacityForRendering(pipeline, layer),
     maskInverted: layer.inverted,
     maskFeather: layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather,
-    maskTrack: layer.track,
+    maskTrack: layer.track?.algorithmVersion === 2 ? layer.track : undefined,
     maskTimeline: layer.timeline,
   }))
 }
@@ -341,6 +341,73 @@ export function pipelineTransformToRenderTransform(transform: EditPipeline['tran
     flipV: transform.flipV,
     scale: transform.scale,
   }
+}
+
+/**
+ * 构建参考图追色层。
+ *
+ * AI LUT 不是普通 LUT 的选择项，而是当前照片的独立叠加层：底层继续使用
+ * 用户选择的普通 LUT，上层只挂 AI LUT，并用图层透明度控制追色强度。
+ * 这样两套配置可以分别保存和调整。
+ */
+export function buildReferenceMatchImageLayer(
+  base: PreviewLayer,
+  pipeline: EditPipeline,
+): PreviewLayer | null {
+  const match = pipeline.referenceMatch
+  if (!match?.enabled || !match.resultPath) return null
+  const opacity = Math.min(1, Math.max(0, match.strength / 100))
+  if (opacity <= 0) return null
+  if (match.resultKind === 'lut') {
+    return {
+      ...base,
+      layerType: 'media',
+      lutId: match.resultPath,
+      lutIntensity: 100,
+      opacity: base.opacity * opacity,
+      // Keep the technical restore LUT and regular color adjustments on the
+      // independent AI layer so its output matches the previous single-layer path.
+      zIndex: (base.zIndex ?? 0) + 0.001,
+    }
+  }
+  return {
+    ...base,
+    layerType: 'media',
+    filePath: match.resultPath,
+    isVideo: false,
+    opacity,
+    color: base.color,
+    // Keep the generated image above the source photo but below border/text layers.
+    zIndex: (base.zIndex ?? 0) + 0.001,
+    restoreLutId: base.restoreLutId,
+    lutId: base.lutId,
+    lutIntensity: base.lutIntensity,
+    maskPath: undefined,
+    maskOpacity: undefined,
+    maskInverted: undefined,
+    maskFeather: undefined,
+    maskTrack: undefined,
+    maskTimeline: undefined,
+    precomposeGroup: undefined,
+    precomposeRole: undefined,
+  }
+}
+
+/** 相框中的清晰主图也需要覆盖 AI 追色结果，柔焦背景保持原有版式。 */
+export function applyReferenceMatchToSourceMediaLayers(
+  layers: PreviewLayer[],
+  sourcePath: string,
+  pipeline: EditPipeline,
+): PreviewLayer[] {
+  const match = pipeline.referenceMatch
+  if (!match?.enabled || !match.resultPath) return layers
+  const opacity = Math.min(1, Math.max(0, match.strength / 100))
+  if (opacity <= 0) return layers
+  return layers.flatMap((layer) => {
+    if (layer.layerType !== 'media' || layer.filePath !== sourcePath || layer.layoutRole === 'background') return [layer]
+    const referenceLayer = buildReferenceMatchImageLayer(layer, pipeline)
+    return referenceLayer ? [layer, referenceLayer] : [layer]
+  })
 }
 
 /** 调整裁剪结果所在的画布矩形，因此不会改写或重新解释已有裁剪区域。 */

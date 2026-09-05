@@ -1,4 +1,4 @@
-import { ArrowLeft, Captions, Check, Crop, Eraser, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, ScanFace, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, Captions, Check, Crop, Eraser, Image, ImagePlus, Loader2, Paintbrush, Palette, RotateCcw, ScanFace, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
@@ -24,8 +24,9 @@ import { WorkspaceCreativePanel } from '../creative/WorkspaceCreativeFactory'
 import type { CreativeModeId } from '../creative/creativeCatalog'
 import { BeautyPanel } from '../beauty/BeautyPanel'
 import { SubtitlePanel } from '../subtitles/SubtitlePanel'
+import { ReferenceMatchPanel } from '../color/ReferenceMatchPanel'
 
-export type WorkspaceTool = 'beauty' | 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal' | 'subtitles'
+export type WorkspaceTool = 'beauty' | 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal' | 'subtitles' | 'reference-match'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -91,6 +92,7 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 const BEAUTY_ENABLED = import.meta.env.VITE_BEAUTY !== 'false'
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
+  { value: 'reference-match', label: 'AI追色', icon: <Palette size={22} /> },
   { value: 'filter', label: 'Lut', icon: <Paintbrush size={22} /> },
   ...(BEAUTY_ENABLED ? [{ value: 'beauty' as const, label: '美颜', icon: <ScanFace size={22} /> }] : []),
   { value: 'removal', label: '对象消除', icon: <Eraser size={22} /> },
@@ -112,6 +114,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'beauty') return '美颜'
   if (tool === 'removal') return '对象消除'
   if (tool === 'creative') return '创意'
+  if (tool === 'reference-match') return 'AI追色'
   return '调色与蒙版'
 }
 
@@ -199,6 +202,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
     creative: false,
+    'reference-match': Boolean(edit.pipeline.referenceMatch),
     mask: edit.pipeline.colorMasks.length > 0,
     removal: Boolean(mediaCtx.currentProject?.assets[mediaCtx.activeIndex]?.removal?.operations.length),
     subtitles: Boolean(mediaCtx.currentProject?.assets[mediaCtx.activeIndex]?.subtitles?.cues.length),
@@ -315,6 +319,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
         <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}${activeTool === 'creative' ? ' is-creative-panel' : ''}${activeTool === 'subtitles' ? ' is-subtitle-panel' : ''}`}>
           {activeTool === 'creative' ? (
             <WorkspaceCreativePanel onSelect={onOpenCreative} />
+          ) : activeTool === 'reference-match' ? (
+            <ReferenceMatchPanel />
           ) : activeTool === 'filter' ? (
             <FilterPanel
               restoreLut={restoreLut}

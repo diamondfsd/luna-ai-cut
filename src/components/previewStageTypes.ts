@@ -17,6 +17,7 @@ export interface PreviewStageProps {
   pending?: boolean
   extraLayers?: PreviewLayer[]
   pipeline?: EditPipeline
+  compareOriginal?: boolean
   maskProjectId?: string
   cropActive?: boolean
   hideControls?: boolean
@@ -28,6 +29,7 @@ export interface PreviewStageProps {
   onFitScaleChange?: (scale: number) => void
   viewportKey?: string
   previewMaxSide?: number
+  forceSdrPreview?: boolean
   keepCompositionVideoRenderer?: boolean
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }

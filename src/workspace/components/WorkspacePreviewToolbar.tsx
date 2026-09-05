@@ -95,9 +95,6 @@ export function WorkspacePreviewToolbar({
       <div className="workspace-toolbar-group workspace-toolbar-left">
         <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>返回工作台</Button>
         <WorkspaceMediaImportButtons onAddMedia={onImport} onImportLocal={onImportLocal} />
-        <Tooltip content="重置">
-          <IconButton variant="ghost" size="compact" icon={<RotateCcw size={16} />} disabled={!hasActiveMedia} onClick={resetAdjustments} />
-        </Tooltip>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="撤销">
           <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} aria-label="撤销" disabled={!edit.canUndo || mask.busy} onClick={edit.undo} />
@@ -106,10 +103,10 @@ export function WorkspacePreviewToolbar({
           <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} aria-label="重做" disabled={!edit.canRedo || mask.busy} onClick={edit.redo} />
         </Tooltip>
         <div className="workspace-toolbar-divider" />
-        <Tooltip content="复制效果（含美颜和边框）">
+        <Tooltip content="复制效果">
           <IconButton variant="ghost" size="compact" icon={<Copy size={16} />} aria-label="复制效果" disabled={!hasActiveMedia} onClick={onCopy} />
         </Tooltip>
-        <Tooltip content="粘贴效果（自动重新识别美颜区域）">
+        <Tooltip content="粘贴效果">
           <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={16} />} aria-label="粘贴效果" onClick={onPaste} />
         </Tooltip>
         {media.brokenPaths.size > 0 && (
@@ -155,6 +152,15 @@ export function WorkspacePreviewToolbar({
           </Tooltip>
         </div>
         <div className="workspace-toolbar-divider" />
+        <Button
+          variant="toolbar"
+          size="compact"
+          icon={<RotateCcw size={14} />}
+          disabled={!hasActiveMedia}
+          onClick={resetAdjustments}
+        >
+          重置
+        </Button>
         <Button
           variant={edit.compareOriginal ? 'toolbar-primary' : 'toolbar'}
           size="compact"

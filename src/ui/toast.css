@@ -16,24 +16,29 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 20px;
-  border-radius: 999px;
-  background: #333;
-  color: #fff;
-  font-size: 14px;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: var(--ink);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 13px;
   line-height: 1.4;
   white-space: nowrap;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
   pointer-events: auto;
   animation: toast-in 0.25s ease;
 }
 
 .toast-error {
-  background: #b91c1c;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #7a3431;
 }
 
 .toast-success {
-  background: #166534;
+  border-color: color-mix(in srgb, var(--blue) 78%, white);
+  background: var(--blue);
 }
 
 @keyframes toast-in {

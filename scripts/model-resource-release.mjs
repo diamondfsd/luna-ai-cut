@@ -17,6 +17,16 @@ export const DEFAULT_GITCODE_REPO = 'luna-ai-cut-package-release'
 
 const require = createRequire(import.meta.url)
 
+export function gitCodeReleaseDownloadUrl({
+  owner = DEFAULT_GITCODE_OWNER,
+  repo = DEFAULT_GITCODE_REPO,
+  releaseTag = MODEL_RELEASE_TAG,
+  fileName,
+}) {
+  if (!fileName) throw new Error('GitCode Release 附件文件名不能为空')
+  return `https://gitcode.com/${owner}/${repo}/releases/download/${releaseTag}/${encodeURIComponent(fileName)}`
+}
+
 export async function loadModelRegistry(rootDir = process.cwd()) {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-model-registry-'))
   try {
@@ -24,6 +34,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
     const sources = [
       path.join(sourceRoot, 'segmentationModels.ts'),
       path.join(sourceRoot, 'compositionModels.ts'),
+      path.join(sourceRoot, 'referenceMatchModels.ts'),
       path.join(sourceRoot, 'ade20kSegmentationTargets.ts'),
       path.join(sourceRoot, 'inpaintModels.ts'),
       path.join(sourceRoot, 'subtitleModels.ts'),
@@ -50,6 +61,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
     return {
       ...require(path.join(temporaryRoot, 'src', 'shared', 'segmentationModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'compositionModels.js')),
+      ...require(path.join(temporaryRoot, 'src', 'shared', 'referenceMatchModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'inpaintModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'subtitleModels.js')),
     }
@@ -74,7 +86,7 @@ function addArtifact(artifacts, artifact) {
 
 export function buildModelArtifacts(registry) {
   const artifacts = []
-  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.COMPOSITION_MODELS, ...registry.INPAINT_MODELS]) {
+  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.COMPOSITION_MODELS, ...registry.REFERENCE_MATCH_MODELS, ...registry.INPAINT_MODELS]) {
     addArtifact(artifacts, {
       fileName: `${model.id}.onnx`,
       sizeBytes: model.sizeBytes,
@@ -239,7 +251,6 @@ export async function downloadModelArtifacts(artifacts, outputDir, onProgress) {
 }
 
 export async function writeModelManifest(artifacts, outputDir, owner = DEFAULT_GITCODE_OWNER, repo = DEFAULT_GITCODE_REPO, manifestName = MODEL_MANIFEST_NAME) {
-  const downloadBase = `https://gitcode.com/${owner}/${repo}/releases/download/${MODEL_RELEASE_TAG}`
   const manifest = {
     schemaVersion: 1,
     releaseTag: MODEL_RELEASE_TAG,
@@ -250,7 +261,7 @@ export async function writeModelManifest(artifacts, outputDir, owner = DEFAULT_G
       delete manifestArtifact.path
       return {
         ...manifestArtifact,
-        url: `${downloadBase}/${encodeURIComponent(artifact.fileName)}`,
+        url: gitCodeReleaseDownloadUrl({ owner, repo, fileName: artifact.fileName }),
       }
     }),
   }
@@ -336,12 +347,11 @@ export async function publishModelRelease({ artifacts, manifestPath, token, owne
       release = await getRelease(api, token)
     }
   }
-  const downloadBase = `https://gitcode.com/${owner}/${repo}/releases/download/${MODEL_RELEASE_TAG}`
   const verified = []
   for (const upload of uploads) {
     if (!releaseAssets(release).some((asset) => asset.name === upload.fileName)) throw new Error(`GitCode Release 缺少附件: ${upload.fileName}`)
     onProgress?.({ phase: 'verify', upload })
-    const url = `${downloadBase}/${encodeURIComponent(upload.fileName)}`
+    const url = gitCodeReleaseDownloadUrl({ owner, repo, fileName: upload.fileName })
     verified.push({ fileName: upload.fileName, url, ...await verifyDownload(url, upload) })
   }
   return { releaseUrl: `https://gitcode.com/${owner}/${repo}/releases/${MODEL_RELEASE_TAG}`, verified }
