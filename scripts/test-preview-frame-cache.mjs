@@ -22,6 +22,8 @@ assert.equal(getStaticPreviewFrame('frame-1')?.pixels[0], 1)
 const key = staticPreviewFrameKey([{ filePath: '/tmp/result.png', dstX: 0, dstY: 0, dstW: 1, dstH: 1 }], 1280, 720, 1440)
 assert.ok(key?.includes('/tmp/result.png'))
 assert.equal(staticPreviewFrameKey([{ filePath: '/tmp/video.mp4', dstX: 0, dstY: 0, dstW: 1, dstH: 1, isVideo: true }], 1280, 720, 1440), null)
+assert.equal(staticPreviewFrameKey([{ filePath: '/tmp/pixel.png', dstX: 0, dstY: 0, dstW: 1, dstH: 1, pixelFlow: { duration: 3 } }], 1280, 720, 1440), null)
+assert.equal(staticPreviewFrameKey([{ filePath: '/tmp/reveal.png', dstX: 0, dstY: 0, dstW: 1, dstH: 1, reveal: { direction: 'left-to-right', start: 0, duration: 1 } }], 1280, 720, 1440), null)
 
 setPreviewResolution('/tmp/original.png', { width: 4000, height: 3000 })
 assert.deepEqual(getPreviewResolution('/tmp/original.png'), { width: 4000, height: 3000 })

@@ -25,6 +25,7 @@ const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version
 const versionPattern = new RegExp(`^${packageVersion.replaceAll('.', '\\.')}-hot\\.\\d+$`)
 const supportedPlatforms = ['darwin-arm64', 'darwin-x64', 'win32-x64', 'universal']
 const requestedPlatform = valueAfter('--platform')
+const macosHelperNames = ['bluetoothCoreScanner', 'wifiCoreWlan', 'livetool']
 
 function loadLocalConfig() {
   const configPath = join('scripts', 'deploy-release.conf')
@@ -70,11 +71,6 @@ function addAppFiles(zip) {
     const normalized = file.replaceAll('\\', '/')
     return !normalized.startsWith('dist/fonts/') && !normalized.startsWith('dist/luts/')
   })
-  if (existsSync('electron')) {
-    for (const file of readdirSync('electron').filter((name) => name.endsWith('.swift'))) {
-      zip.addLocalFile(join('electron', file), 'swift')
-    }
-  }
   for (const file of readdirSync('.').filter((name) => name.startsWith('RELEASE_NOTES_v') && name.endsWith('.md'))) {
     zip.addLocalFile(file)
   }
@@ -97,6 +93,14 @@ for (const platform of platforms) {
     const nativePath = join(nativeDir, platform, 'luna-render-core.node')
     if (!existsSync(nativePath)) throw new Error(`缺少 ${platform} 原生模块: ${nativePath}`)
     zip.addLocalFile(nativePath, 'pending-native')
+    if (platform.startsWith('darwin-')) {
+      const macosNativeDir = join(nativeDir, platform, 'macos-native')
+      for (const helperName of macosHelperNames) {
+        const helperPath = join(macosNativeDir, helperName)
+        if (!existsSync(helperPath)) throw new Error(`缺少 ${platform} macOS helper: ${helperPath}`)
+        zip.addLocalFile(helperPath, 'macos-native')
+      }
+    }
     if (platform === 'win32-x64') {
       for (const file of [
         'dxcompiler.dll',

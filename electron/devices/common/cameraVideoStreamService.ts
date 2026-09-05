@@ -21,7 +21,7 @@ export function cameraVideoStreamFor(ctx: IpcContext, options: CameraVideoStream
   if (existing) return existing
 
   const definition = deviceDefinitionFor(options.deviceId)
-  const adapter = options.mode === 'wireless' && definition.id === 'luna-ultra'
+  const adapter = options.mode === 'wireless' && (definition.id === 'luna-ultra' || definition.id === 'luna-pro')
     ? new LunaVideoStreamAdapter(ctx, options)
     : options.mode === 'wireless' && definition.protocol === 'dji'
       ? new DjiVideoStreamAdapter(ctx, options)

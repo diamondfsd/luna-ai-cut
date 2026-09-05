@@ -620,7 +620,10 @@ export class WebGpuVideoRenderer {
   }
 
   private syncVideoClocks(): void {
-    const playbackTime = this.playbackStartCompositionTime ?? this.currentPlaybackCompositionTime()
+    const hasVideoLayers = this.layers.some((layer) => layer.isVideo)
+    const playbackTime = hasVideoLayers
+      ? this.playbackStartCompositionTime ?? this.currentPlaybackCompositionTime()
+      : this.compositionTime
     if (this.playing) this.compositionTime = playbackTime
     let primaryVideoReady = false
     for (const layer of this.layers) {
@@ -635,7 +638,7 @@ export class WebGpuVideoRenderer {
       const threshold = this.playing ? 0.15 : 0.01
       if (Math.abs(entry.video.currentTime - target) > threshold) entry.video.currentTime = target
     }
-    if (this.playbackStartCompositionTime !== null && primaryVideoReady) {
+    if (this.playbackStartCompositionTime !== null && (!hasVideoLayers || primaryVideoReady)) {
       this.playbackStartCompositionTime = null
     }
   }

@@ -2,9 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
 import type { BluetoothDeviceCandidate } from '../../../src/shared/types'
-import { getSwiftScriptPath } from '../macos/swiftUtils'
+import { getMacosHelperPath } from '../macos/swiftUtils'
 
-const CORE_BLUETOOTH_SCANNER_PATH = getSwiftScriptPath('bluetoothCoreScanner.swift')
+const CORE_BLUETOOTH_SCANNER_PATH = getMacosHelperPath('bluetoothCoreScanner')
 
 /** Swift 扫描器返回的完整设备信息（比 BluetoothDeviceCandidate 多字段） */
 interface ExtendedDeviceInfo extends BluetoothDeviceCandidate {
@@ -44,7 +44,7 @@ export async function scanBluetoothDevices(timeoutMs = 8000): Promise<NativeBlue
   cancelBluetoothScan()
 
   return new Promise<NativeBluetoothScanResult>((resolve) => {
-    const child = spawn('swift', [CORE_BLUETOOTH_SCANNER_PATH, String(timeoutMs)], {
+    const child = spawn(CORE_BLUETOOTH_SCANNER_PATH, [String(timeoutMs)], {
       windowsHide: true,
     })
     activeScanProcess = child

@@ -16,11 +16,11 @@ import type {
   WifiPortCheckOptions,
   WifiPortCheckResult,
 } from '../../../src/shared/types'
-import { getSwiftScriptPath } from '../macos/swiftUtils'
+import { getMacosHelperPath } from '../macos/swiftUtils'
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_WIFI_TIMEOUT_MS = 15000
-const COREWLAN_HELPER_PATH = getSwiftScriptPath('wifiCoreWlan.swift')
+const COREWLAN_HELPER_PATH = getMacosHelperPath('wifiCoreWlan')
 
 async function runCommand(command: string, args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS): Promise<string> {
   const { stdout, stderr } = await execFileAsync(command, args, {
@@ -203,7 +203,7 @@ function normalizeWifiNetwork(value: unknown): WifiDebugNetwork {
 
 function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('swift', [COREWLAN_HELPER_PATH, ...args], { windowsHide: true })
+    const child = spawn(COREWLAN_HELPER_PATH, args, { windowsHide: true })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => {
@@ -239,11 +239,11 @@ function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string): 
 
 async function runCoreWlan<T>(args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS, stdin?: string): Promise<WifiDebugResult<T>> {
   if (!existsSync(COREWLAN_HELPER_PATH)) {
-    return fail('未找到 CoreWLAN helper', 'COREWLAN_HELPER_NOT_FOUND')
+    return fail('未找到 macOS Wi-Fi helper，请重新安装应用', 'COREWLAN_HELPER_NOT_FOUND')
   }
 
   const raw = stdin === undefined
-    ? await runCommand('swift', [COREWLAN_HELPER_PATH, ...args], timeoutMs)
+    ? await runCommand(COREWLAN_HELPER_PATH, args, timeoutMs)
     : await runCoreWlanCommand(args, timeoutMs, stdin)
   const jsonStart = raw.indexOf('{')
   const jsonEnd = raw.lastIndexOf('}')

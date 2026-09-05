@@ -119,7 +119,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
       case 'go-ultra':
         return this.ctx.goUltraProtocol()
       case 'insta360':
-        return this.ctx.lunaProtocol()
+        return this.ctx.lunaProtocol(definition.id)
       default:
         throw new Error(`暂不支持 ${definition.name} 的媒体协议`)
     }
@@ -131,7 +131,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     const wifiSessionKey = `${deviceId}:${host}`
     const loopback = isLoopbackHost(host)
     const wifiJoin = loopback
-      ? { attempted: false, connected: true, message: '模拟设备使用本机网络' }
+      ? { attempted: false, connected: true, wifiManualConnectionRequired: false, message: '模拟设备使用本机网络' }
       : await autoJoinDeviceWifi(
         definition.wifi,
         wifiSessionKey,
@@ -151,6 +151,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         controlOk: false,
         wifiSsid: wifiJoin.ssid,
         wifiPasswordRequired: wifiJoin.wifiPasswordRequired,
+        wifiManualConnectionRequired: wifiJoin.wifiManualConnectionRequired,
         message: wifiJoin.message,
       }, definition, host)
     }
@@ -170,6 +171,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
           ...statusWithWifiMessage,
           wifiSsid: statusWithWifiMessage.wifiSsid ?? wifiJoin.ssid,
           wifiPasswordRequired: wifiJoin.wifiPasswordRequired,
+          wifiManualConnectionRequired: wifiJoin.wifiManualConnectionRequired,
           message: restore?.attempted
             ? `${statusWithWifiMessage.message}；${restore.message}`
             : statusWithWifiMessage.message,

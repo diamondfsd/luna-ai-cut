@@ -56,7 +56,7 @@ export const DJI_MODEL_PROFILES: Record<DjiModelId, DjiModelProfile> = {
     },
   },
   pocket4pro: {
-    id: 'pocket4pro', deviceId: 'dji-pocket-4-pro', name: 'Osmo Pocket 4 Pro', modelNumber: 0x22,
+    id: 'pocket4pro', deviceId: 'dji-pocket-4-pro', name: 'Osmo Pocket 4P', modelNumber: 0x22,
     productType: 218, advertisement: POCKET_4_PRO_ADVERT, localName: 'OsmoPocket4P-6E55',
     udpPort: 9004, tcpPort: 7001, httpPort: 80, mockUdpPort: 19005, mockTcpPort: 17003, mockHttpPort: 18083,
     storageIds: ['sdcard', 'storage_internal'], playback: 'standard',

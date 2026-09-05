@@ -11,7 +11,7 @@ import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { logMainInfo, logMainError } from '../infrastructure/loggerService'
 import { getFfmpegPath } from '../platform/ffmpeg/pipeline'
-import { getSwiftScriptPath } from '../platform/macos/swiftUtils'
+import { getMacosHelperPath } from '../platform/macos/swiftUtils'
 
 const execFileAsync = promisify(execFile)
 const MOTION_PHOTO_BRANDS = new Set(['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'qt  ', 'MSNV'])
@@ -172,11 +172,11 @@ async function exportAppleLivePhotoPair(
   }
 
   try {
-    const livetoolPath = getSwiftScriptPath('livetool.swift')
+    const livetoolPath = getMacosHelperPath('livetool')
     const tempPrefix = path.join(folderPath, `_${baseName}_live`)
-    const args = [livetoolPath, imgDest, vidDest, tempPrefix]
+    const args = [imgDest, vidDest, tempPrefix]
     if (coverTimeSeconds !== undefined) args.push(String(coverTimeSeconds))
-    await execFileAsync('swift', args, { timeout: 30000 })
+    await execFileAsync(livetoolPath, args, { timeout: 30000 })
     await fs.rename(`${tempPrefix}.jpg`, imgDest)
     await fs.rename(`${tempPrefix}.mov`, vidDest)
   } catch (err) {

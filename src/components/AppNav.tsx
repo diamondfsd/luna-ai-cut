@@ -23,6 +23,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   const [previewOpen, setPreviewOpen] = useState(false)
   const obsStreamDemoVisible = !window.luna.isPackaged
   const connected = Boolean(connection?.controlOk)
+  const cameraPreviewSupported = activeDevice?.id === 'luna-ultra' || activeDevice?.id === 'luna-pro'
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`
@@ -68,7 +69,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
         <div className="nav-status">
           <span className={connected ? 'status-dot ok' : 'status-dot'} />
           <span>{statusText}</span>
-          {connected && (
+          {connected && cameraPreviewSupported && (
             <Tooltip content="打开相机预览">
               <IconButton
                 variant="ghost"
@@ -96,14 +97,16 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           />
           <SendToPhoneDialog />
           <HelpDialog />
-          <CameraLivePreviewDialog
-            open={previewOpen}
-            connected={connected}
-            deviceId={activeDevice?.id}
-            host={connection?.host}
-            mode={sourceMode}
-            onOpenChange={setPreviewOpen}
-          />
+          {cameraPreviewSupported && (
+            <CameraLivePreviewDialog
+              open={previewOpen}
+              connected={connected}
+              deviceId={activeDevice?.id}
+              host={connection?.host}
+              mode={sourceMode}
+              onOpenChange={setPreviewOpen}
+            />
+          )}
         </div>
       </div>
     </nav>
