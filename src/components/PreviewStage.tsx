@@ -8,6 +8,7 @@ import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls, toast } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
+import { DEFAULT_PIPELINE } from '../workspace/shared/editPipeline'
 import { applyBorderMediaLayout, buildLocalColorPrecomposition, buildReferenceMatchImageLayer, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
@@ -23,12 +24,38 @@ import type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
 import './PreviewStage.css'
 
 const PREVIEW_LOADING_TIMEOUT_MS = 12_000
+
+function neutralizeComparisonLayers(
+  layers: PreviewLayer[],
+  pipeline: PreviewStageProps['pipeline'],
+): PreviewLayer[] {
+  const identityColor = pipelineColorToRenderColor(DEFAULT_PIPELINE.color)
+  const referenceResultPath = pipeline?.referenceMatch?.enabled
+    ? pipeline.referenceMatch.resultPath
+    : undefined
+
+  return layers.map((layer) => {
+    const isReferenceMatchLayer = Boolean(referenceResultPath && (
+      layer.filePath === referenceResultPath
+      || layer.lutId === referenceResultPath
+    ))
+    return {
+      ...layer,
+      color: layer.color ? identityColor : layer.color,
+      restoreLutId: undefined,
+      lutId: undefined,
+      lutIntensity: undefined,
+      ...(isReferenceMatchLayer ? { opacity: 0 } : {}),
+    }
+  })
+}
+
 export { buildLayers, calcAspectRatio } from './previewStageGeometry'
 export type { MediaResolution } from './previewStageGeometry'
 export type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
+    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, compareOriginal = false, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, forceSdrPreview = false, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const { settings, setSettings } = useApp()
@@ -64,6 +91,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const playRequestRef = useRef(0)
   const wasPlayingBeforeSeekRef = useRef(false) // 记录 seek 前是否在播放
   const shouldResumePlaybackRef = useRef(false) // 记录是否需要在渲染完成后恢复播放
+  const viewportKeyRef = useRef(viewportKey)
+  const attachedVideoViewportKeyRef = useRef<string | undefined>(undefined)
+  const detachedVideoPlaybackRef = useRef<{ viewportKey?: string; time: number; playing: boolean } | null>(null)
+  viewportKeyRef.current = viewportKey
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
@@ -108,22 +139,49 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   // 暴露 video 元素并绑定事件
   const handleVideoElement = useCallback((el: HTMLMediaElement | null) => {
+    const previousVideo = videoRef.current
     if (videoRef.current === el) return
     // 解绑旧元素
-    if (videoRef.current) {
+    if (previousVideo) {
+      if (previousVideo !== el) {
+        detachedVideoPlaybackRef.current = {
+          viewportKey: attachedVideoViewportKeyRef.current,
+          time: Number.isFinite(previousVideo.currentTime) ? previousVideo.currentTime : 0,
+          playing: playbackIntentRef.current || !previousVideo.paused,
+        }
+      }
       playRequestRef.current += 1
-      videoRef.current.onplay = null
-      videoRef.current.onpause = null
-      videoRef.current.ontimeupdate = null
-      videoRef.current.onloadedmetadata = null
-      videoRef.current.onended = null
+      previousVideo.onplay = null
+      previousVideo.onpause = null
+      previousVideo.ontimeupdate = null
+      previousVideo.onloadedmetadata = null
+      previousVideo.onended = null
     }
     videoRef.current = el
     if (el) {
       el.muted = mutedRef.current
-      playbackIntentRef.current = !el.paused
-      setPlaying(playbackIntentRef.current)
-      setCurrentTime(el.currentTime)
+      const detachedPlayback = detachedVideoPlaybackRef.current
+      const shouldRestorePlayback = isDisplayVideo
+        && detachedPlayback
+        && detachedPlayback.viewportKey !== undefined
+        && viewportKeyRef.current !== undefined
+        && detachedPlayback.viewportKey === viewportKeyRef.current
+      if (shouldRestorePlayback) {
+        const restoreTime = detachedPlayback.time
+        playbackIntentRef.current = detachedPlayback.playing
+        setPlaying(detachedPlayback.playing)
+        setCurrentTime(restoreTime)
+        if (Number.isFinite(restoreTime) && Math.abs(el.currentTime - restoreTime) > 0.01) {
+          el.currentTime = restoreTime
+        }
+        if (detachedPlayback.playing) requestPlayback(el)
+      } else {
+        playbackIntentRef.current = !el.paused
+        setPlaying(playbackIntentRef.current)
+        setCurrentTime(el.currentTime)
+      }
+      detachedVideoPlaybackRef.current = null
+      attachedVideoViewportKeyRef.current = viewportKeyRef.current
       setDuration(el.duration || 0)
       el.onplay = () => {
         if (!playbackIntentRef.current) {
@@ -168,10 +226,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         requestPlayback(el)
       }
     } else {
-      playbackIntentRef.current = false
-      setPlaying(false)
-      setCurrentTime(0)
-      setDuration(0)
+      attachedVideoViewportKeyRef.current = undefined
+      if (!isDisplayVideo) {
+        detachedVideoPlaybackRef.current = null
+        playbackIntentRef.current = false
+        setPlaying(false)
+        setCurrentTime(0)
+        setDuration(0)
+      }
     }
   }, [isDisplayVideo, livePlaying, onPlayStateChange, requestPlayback])
 
@@ -417,15 +479,19 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     return [...main, ...adjusted]
   }, [cropActive, extraLayers, pipeline, restoreLutFilePath, lutFilePath, maskProjectId])
 
-  const layers = useMemo(() => {
+  const baseLayers = useMemo(() => {
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
+  const layers = useMemo(
+    () => compareOriginal ? neutralizeComparisonLayers(baseLayers, pipeline) : baseLayers,
+    [baseLayers, compareOriginal, pipeline],
+  )
   // LUT output must be compared in the same SDR/sRGB path as export. Remount
   // the preview renderer when a LUT is added or removed so its canvas format
   // cannot stay in the previous HDR mode.
   const hasColorLut = layers.some((layer) => Boolean(layer.restoreLutId || layer.lutId))
-  const rendererKey = `${canvasRenderKey ?? 'empty'}|${hasColorLut ? 'sdr' : 'hdr'}`
+  const rendererKey = `${canvasRenderKey ?? 'empty'}|${hasColorLut || forceSdrPreview ? 'sdr' : 'hdr'}`
   const layersDiagnosticSignature = useMemo(() => previewLayerSignature(layers), [layers])
   const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
     isDisplayVideo,
@@ -579,6 +645,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               onRender={handleRender}
               onVideoElement={handleVideoElement}
               onError={handleWebGpuPreviewFailure}
+              forceSdr={forceSdrPreview}
             />
           ) : isDisplayVideo && !useCompositionVideoRenderer ? (
             <MultipleLayerVideoPreviewLrcRender

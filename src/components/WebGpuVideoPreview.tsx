@@ -25,6 +25,7 @@ interface WebGpuVideoPreviewProps {
   onVideoElement?: (element: HTMLMediaElement | null) => void
   onError: (reason: string) => void
   onRender?: () => void
+  forceSdr?: boolean
 }
 
 export function WebGpuVideoPreview({
@@ -45,6 +46,7 @@ export function WebGpuVideoPreview({
   onVideoElement,
   onError,
   onRender,
+  forceSdr = false,
 }: WebGpuVideoPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
@@ -137,7 +139,7 @@ export function WebGpuVideoPreview({
       // LUTs are authored and exported in the SDR/sRGB pipeline. Keep those
       // previews on the matching path so grading colors do not shift under
       // the display's HDR tone mapping.
-      hdrPresentation: !hasColorLut,
+      hdrPresentation: !hasColorLut && !forceSdr,
       onVideoElement: (element) => callbackRef.current.onVideoElement?.(element),
       onError: (reason) => {
         logger.error('[WebGPU诊断] 预览组件收到渲染错误', { reason })
