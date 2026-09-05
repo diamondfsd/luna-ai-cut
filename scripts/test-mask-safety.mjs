@@ -612,6 +612,43 @@ try {
   }))
   assert.match(migratedLegacyLut.logRestore.activeId, /Luna_I-Log_to_Rec709_BT1886_s65_v2\.cube$/)
   assert.equal(migratedLegacyLut.lutFilter.activeId, null, 'legacy restoration LUT must leave the creative filter slot')
+  const aiLutPath = '/workspace-projects/project-1/cache/reference-match/ai-target.cube'
+  const aiReferenceMatch = {
+    enabled: true,
+    method: 'neural-preset',
+    strength: 42,
+    referenceAssetId: 'reference-1',
+    referenceName: '参考图.jpg',
+    referencePath: '/photos/reference.jpg',
+    targetAssetId: 'target-1',
+    targetName: '目标图.jpg',
+    resultPath: aiLutPath,
+    resultKind: 'lut',
+    generatedAt: new Date(0).toISOString(),
+    modelVersion: 'v1-256',
+  }
+  const migratedAiPipeline = pipelineSerialization.deserializePipeline(JSON.stringify({
+    lutFilter: { activeId: aiLutPath, intensity: 42 },
+    referenceMatch: aiReferenceMatch,
+  }))
+  assert.equal(migratedAiPipeline.lutFilter.activeId, null, 'AI LUT must not occupy the creative filter slot')
+  const aiBaseLayer = {
+    filePath: '/photos/target.jpg',
+    dstX: 0,
+    dstY: 0,
+    dstW: 1,
+    dstH: 1,
+    srcX: 0,
+    srcY: 0,
+    srcW: 1,
+    srcH: 1,
+    opacity: 1,
+    zIndex: 0,
+  }
+  const aiLayer = renderModule.buildReferenceMatchImageLayer(aiBaseLayer, migratedAiPipeline)
+  assert.equal(aiLayer?.lutId, aiLutPath, 'AI追色 must render through its own LUT layer')
+  assert.equal(aiLayer?.lutIntensity, 100, 'AI LUT layer must use full LUT strength and blend by opacity')
+  assert.equal(aiLayer?.opacity, 0.42, 'AI追色强度 must control the independent layer opacity')
   assert.deepEqual(
     componentRasterization.composeMaskComponents(80, 40, reopenedPipeline.colorMasks[0].components, () => null),
     componentRasterization.composeMaskComponents(80, 40, stressPipeline.colorMasks[0].components, () => null),
@@ -799,7 +836,7 @@ try {
   )
   assert.deepEqual(
     framedLayers.map((layer) => layer.filePath),
-    ['/image.jpg', '/image.jpg', '/image.jpg', '/logo.png'],
+    ['/image.jpg', '/image.jpg', '/image.jpg', '/image.jpg', '/logo.png'],
     'frame media layers must receive local color copies without affecting other media',
   )
   assert.deepEqual(
@@ -1138,14 +1175,14 @@ try {
     asset: pixelFlowAsset,
     maskPath: recognizedPixelFlowMask.depthMaskPath,
     playbackDuration: 6,
-    pipeline: editPipeline.createDefaultPipeline(),
+    pipeline: pipelineModule.createDefaultPipeline(),
     settings: pixelFlowSettings,
   })
   const pixelFlowComposition = renderComposition.buildCompositionFromPreviewLayers([pixelFlowLayer], 1920, 1080, { duration: 6 })
   assert.equal(pixelFlowLayer.maskPath, recognizedPixelFlowMask.depthMaskPath)
   assert.equal(pixelFlowComposition.layers[0].maskPath, recognizedPixelFlowMask.depthMaskPath, 'pixel flow export must preserve the preview mask path')
   assert.equal(pixelFlowComposition.layers[0].pixelFlow.segmented, true, 'pixel flow export must keep segmented rendering enabled')
-  const pixelFlowPipeline = editPipeline.createDefaultPipeline()
+  const pixelFlowPipeline = pipelineModule.createDefaultPipeline()
   pixelFlowPipeline.color.exposure = 0.75
   pixelFlowPipeline.lutFilter.activeId = '/filters/look.cube'
   pixelFlowPipeline.lutFilter.intensity = 64

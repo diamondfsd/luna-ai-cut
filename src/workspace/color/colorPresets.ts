@@ -11,7 +11,7 @@ export interface ColorPreset {
 
 function getLuna(): typeof window.luna {
   if (typeof window === 'undefined') throw new Error('不在浏览器环境')
-  return (window as any).luna
+  return window.luna
 }
 
 /** 加载所有用户预设 */

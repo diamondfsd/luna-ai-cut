@@ -92,7 +92,7 @@ export function SettingsPage({
     if (clickCountRef.current >= 5) {
       clickCountRef.current = 0
       setHiddenDevMode(true)
-      toast.success('开发者模式已激活（重启后失效）')
+      toast.success('开发者模式已激活')
       return
     }
 

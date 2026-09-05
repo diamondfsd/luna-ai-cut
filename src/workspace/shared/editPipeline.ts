@@ -8,10 +8,12 @@ import { framePresetDefaultSettings } from '../border/borderPresets'
 import { isLegacyBorderTitle } from '../../shared/insta360DeviceProfiles'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 import { normalizeVideoOutputMarkers, type VideoOutputMarker } from '../trim/videoOutputMarkers'
+import type { ReferenceMatchMethod, ReferenceMatchSettings } from '../../shared/types/referenceMatch'
 export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTimeline, ColorMaskTimelineFrame, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 export type { VideoOutputMarker } from '../trim/videoOutputMarkers'
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
+export type { ReferenceMatchMethod, ReferenceMatchSettings } from '../../shared/types/referenceMatch'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
 export type HslChannelKey = 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'magenta'
 export interface CurvePoint {
@@ -132,6 +134,8 @@ export interface EditPipeline {
     /** 滤镜强度 1-100，默认 100 */
     intensity: number
   }
+  /** 当前素材的参考图追色结果；结果文件保存在当前项目的缓存目录。 */
+  referenceMatch: ReferenceMatchSettings | null
   watermark: WatermarkSettings
   border: BorderSettings
 }
@@ -147,6 +151,7 @@ export type PipelinePatch = {
   effects?: Partial<EditPipeline['effects']>
   logRestore?: Partial<EditPipeline['logRestore']>
   lutFilter?: Partial<EditPipeline['lutFilter']>
+  referenceMatch?: ReferenceMatchSettings | null
   watermark?: Partial<EditPipeline['watermark']>
   border?: Partial<EditPipeline['border']>
 }
@@ -237,6 +242,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     activeId: null,
     intensity: 30,
   },
+  referenceMatch: null,
   watermark: {
     enabled: true,
     style: '',
@@ -406,6 +412,15 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   const levels = EDIT_PARAMETER_RANGES.levels
   const effects = EDIT_PARAMETER_RANGES.effects
 
+  const referenceMatch = normalizeReferenceMatch(pipeline.referenceMatch)
+  const lutFilter = { ...DEFAULT_PIPELINE.lutFilter, ...pipeline.lutFilter }
+  // AI 追色使用独立渲染层。清理早期版本曾写入普通 LUT 槽位的结果，避免
+  // 重新打开项目后普通 LUT 面板继续显示 AI 生成文件。
+  if (referenceMatch?.resultKind === 'lut' && lutFilter.activeId === referenceMatch.resultPath) {
+    lutFilter.activeId = null
+    lutFilter.intensity = DEFAULT_PIPELINE.lutFilter.intensity
+  }
+
   // Normalize trim: ensure valid range, or null
   let trim: VideoTrimState | null = null
   if (pipeline.trim && Number.isFinite(pipeline.trim.startTime) && Number.isFinite(pipeline.trim.endTime)) {
@@ -488,6 +503,37 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       sharpen: clampNumber(pipeline.effects.sharpen, effects.sharpen),
       denoise: clampNumber(pipeline.effects.denoise, effects.denoise),
     },
+    lutFilter,
+    referenceMatch,
+  }
+}
+
+function normalizeReferenceMatch(value: unknown): ReferenceMatchSettings | null {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Partial<ReferenceMatchSettings>
+  const methods: ReferenceMatchMethod[] = ['neural-preset', 'reinhard', 'kantorovich', 'forgy', 'wasserstein']
+  if (!methods.includes(input.method as ReferenceMatchMethod)) return null
+  if (typeof input.resultPath !== 'string' || !input.resultPath.trim()) return null
+  if (typeof input.referenceAssetId !== 'string' || !input.referenceAssetId.trim()) return null
+  if (typeof input.targetAssetId !== 'string' || !input.targetAssetId.trim()) return null
+  const resultKind = input.resultKind === 'image' || input.resultKind === 'lut' ? input.resultKind : null
+  if (!resultKind) return null
+  // 旧版 AI 追色把 256px 输出放大成图片，细节已经不可恢复；让用户重新生成
+  // 新版 AI LUT，避免项目重新打开后继续加载模糊结果。
+  if (input.method === 'neural-preset' && resultKind === 'image') return null
+  return {
+    enabled: input.enabled !== false,
+    method: input.method as ReferenceMatchMethod,
+    strength: clampNumber(Number(input.strength ?? 100), { min: 0, max: 100 }),
+    referenceAssetId: input.referenceAssetId,
+    referenceName: typeof input.referenceName === 'string' ? input.referenceName : '',
+    ...(typeof input.referencePath === 'string' && input.referencePath.trim() ? { referencePath: input.referencePath } : {}),
+    targetAssetId: input.targetAssetId,
+    targetName: typeof input.targetName === 'string' ? input.targetName : '',
+    resultPath: input.resultPath,
+    resultKind,
+    generatedAt: typeof input.generatedAt === 'string' ? input.generatedAt : new Date(0).toISOString(),
+    ...(typeof input.modelVersion === 'string' ? { modelVersion: input.modelVersion } : {}),
   }
 }
 
@@ -589,6 +635,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
     effects: { ...pipeline.effects, ...patch.effects },
     logRestore: { ...pipeline.logRestore, ...patch.logRestore, ...(legacyRestoreId ? { activeId: legacyRestoreId } : {}) },
     lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter, ...(legacyRestoreId ? { activeId: null } : {}) },
+    referenceMatch: patch.referenceMatch !== undefined ? patch.referenceMatch : pipeline.referenceMatch,
     watermark: { ...pipeline.watermark, ...patch.watermark },
     border: { ...pipeline.border, ...patch.border },
   })

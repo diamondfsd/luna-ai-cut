@@ -42,7 +42,7 @@ const targetArch = targetLower.includes('aarch64')
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
-const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker']
+const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker', 'neural-preset-worker']
 
 function filesMatch(leftPath, rightPath) {
   if (!existsSync(rightPath)) return false
@@ -250,7 +250,7 @@ copyArtifact(src, dest)
 prepareMacArtifact(dest, 'forbidden')
 console.log('[build-native] ✅', dest)
 
-for (const baseName of workerBaseNames.slice(0, 5)) {
+for (const baseName of workerBaseNames.filter((name) => name !== 'luna-asr-worker')) {
   const workerName = isWin ? `${baseName}.exe` : baseName
   const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
   const workerDest = join(rcDir, workerName)

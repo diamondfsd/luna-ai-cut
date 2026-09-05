@@ -72,6 +72,8 @@ luna-render-core/luna-asr-worker
 luna-render-core/luna-asr-worker.exe
 luna-render-core/luna-punctuation-worker
 luna-render-core/luna-punctuation-worker.exe
+luna-render-core/neural-preset-worker
+luna-render-core/neural-preset-worker.exe
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
 luna-render-core/av*.dll

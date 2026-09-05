@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom'
 import {
   DEFAULT_VIDEO_EXPORT_SETTINGS,
   type VideoExportSettings,
+  type WorkspaceMediaAsset,
   type WorkspaceProject,
   type WorkspaceProjectAsset,
 } from '../shared/types'
@@ -42,7 +43,7 @@ import { BeautyRetouchOverlay } from '../workspace/beauty/BeautyRetouchOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
+import { applyLocalColorToSourceMediaLayers, applyReferenceMatchToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { buildSubtitleLayers } from '../workspace/subtitles/subtitleLayers'
@@ -77,8 +78,8 @@ function normalizePipeline(
   return pipeline
 }
 
-function removalSourcePath(asset: WorkspaceProjectAsset | undefined, compareOriginal = false): string | undefined {
-  if (!asset || compareOriginal) return asset?.path
+function removalSourcePath(asset: WorkspaceProjectAsset | undefined): string | undefined {
+  if (!asset) return undefined
   return latestReadyRemovalOperation(asset.removal?.operations ?? [])?.resultPath ?? asset.path
 }
 
@@ -197,8 +198,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const pasteInProgressRef = useRef(false)
   const colorResetNoticeRef = useRef(new Set<string>())
+  const referenceAssetRef = useRef(media.referenceAsset)
+  referenceAssetRef.current = media.referenceAsset
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
-  const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
+  // 对比只切换预览图层参数，保持同一个源媒体，避免重新创建视频元素和预览画布。
+  const activeSourcePath = removalSourcePath(activeProjectAsset) ?? media.activeMedia?.path
 
   const enterImmersive = useCallback(() => {
     setImmersive(true)
@@ -499,12 +503,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     edit.commitPatch({ trim: { startTime: edit.pipeline.trim?.startTime ?? 0, endTime: time } })
   }, [activeVideoMarker, edit])
 
-  // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
-  const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
+  // ── 当前显示的管线：对比模式只在 PreviewStage 内临时调整图层参数 ──
+  const displayPipeline = edit.previewPipeline
   const stagePipeline = useMemo(() => {
-    const visiblePipeline = edit.compareOriginal
-      ? edit.comparePipeline
-      : edit.cropActive
+    const visiblePipeline = edit.cropActive
         ? mergePipeline(edit.pipeline, {
             transform: {
               ...(edit.transformDraft ?? edit.pipeline.transform),
@@ -516,7 +518,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     return mergePipeline(visiblePipeline, {
       border: { ...visiblePipeline.border, enabled: false },
     })
-  }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
+  }, [displayPipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
   const keepCompositionVideoRenderer = false
 
   const finalCanvasSize = useMemo(() => {
@@ -557,7 +559,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       },
     })
     return sourcePath
-      ? applyLocalColorToSourceMediaLayers(layers, sourcePath, stagePipeline)
+      ? applyReferenceMatchToSourceMediaLayers(
+          applyLocalColorToSourceMediaLayers(layers, sourcePath, stagePipeline),
+          sourcePath,
+          stagePipeline,
+        )
       : layers
   }, [activeSourcePath, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia, media.activeMedia?.path])
 
@@ -607,6 +613,16 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     }
     const nextPipeline = normalizePipeline(asset?.pipeline, defaultPipelineRef.current, restoreLut)
     edit.initializePipeline(nextPipeline)
+    const retainedReference = referenceAssetRef.current
+    const retainedReferenceAvailable = Boolean(
+      retainedReference && media.media.some((candidate) => candidate.id === retainedReference.id && candidate.path === retainedReference.path),
+    )
+    const persistedReference = nextPipeline.referenceMatch?.referenceAssetId
+      ? media.media.find((candidate) => candidate.id === nextPipeline.referenceMatch?.referenceAssetId) ?? null
+      : null
+    // 参考图是当前工作区的会话选择。切换到已有追色结果的素材时，不能让该素材
+    // 过去保存的参考图覆盖用户刚刚选择的新参考图。
+    media.setReferenceAsset(retainedReferenceAvailable ? retainedReference : persistedReference)
     if (keepCropMode) {
       // The previous draft belongs to the old asset. Start the crop overlay from the
       // new asset's persisted transform while keeping the crop tool selected.
@@ -623,7 +639,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         if (edit.activeTool === 'trim') edit.setActiveTool('filter')
       }
     }
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, restoreLutKey, settingsReady])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, media.setReferenceAsset, restoreLutKey, settingsReady])
 
   useEffect(() => {
     if (restoreLut === undefined) return
@@ -738,6 +754,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       effects: data.effects,
       logRestore: data.logRestore,
       lutFilter: data.lutFilter,
+      referenceMatch: data.referenceMatch,
       watermark: data.watermark,
       border: data.border,
     }
@@ -753,16 +770,51 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       return
     }
 
+    const aiReferenceMatch = data.referenceMatch?.enabled
+      && data.referenceMatch.method === 'neural-preset'
+      && data.referenceMatch.resultKind === 'lut'
+      ? data.referenceMatch
+      : null
+    const pasteProjectId = media.currentProject?.id
+    if (aiReferenceMatch && !pasteProjectId) {
+      toast.error('AI追色只能应用到项目中的照片')
+      return
+    }
+
     pasteInProgressRef.current = true
     try {
       const nextPipelines = new Map<number, EditPipeline>()
+      if (aiReferenceMatch) {
+        toast.show(`正在为 ${targetIndices.size} 个目标照片重新生成 AI 追色`, 10_000)
+      }
       for (const index of targetIndices) {
         const asset = media.media[index]
         if (!asset) continue
         const current = index === media.activeIndex
           ? edit.pipeline
           : normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
-        nextPipelines.set(index, mergePipeline(current, patch))
+        const merged = mergePipeline(current, aiReferenceMatch ? { ...patch, referenceMatch: null } : patch)
+        if (!aiReferenceMatch) {
+          nextPipelines.set(index, merged)
+          continue
+        }
+
+        if (asset.kind !== 'image') {
+          // AI 追色面板只支持照片，避免把源照片的目标专属 LUT 错贴到视频上。
+          nextPipelines.set(index, mergePipeline(merged, { referenceMatch: null }))
+          continue
+        }
+
+        const isSourceAsset = data.sourceAssetId === asset.id
+          && (data.sourceProjectId ?? null) === (media.currentProject?.id ?? null)
+        const referenceMatch = isSourceAsset
+          ? {
+              ...aiReferenceMatch,
+              targetAssetId: asset.id,
+              targetName: asset.name,
+            }
+          : await generatePastedAiReferenceMatch(asset, aiReferenceMatch, pasteProjectId!)
+        nextPipelines.set(index, mergePipeline(merged, { referenceMatch }))
       }
 
       if (data.beauty) {
@@ -811,19 +863,48 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
       if (targetIndices.has(media.activeIndex)) {
         const activePipeline = nextPipelines.get(media.activeIndex)
-        edit.commitPatch(activePipeline ? {
-          ...patch,
-          colorMasks: activePipeline.colorMasks,
-          beautyMasks: activePipeline.beautyMasks,
-        } : patch)
+        if (activePipeline) edit.commitUpdate(() => activePipeline)
       }
       toast.success(data.beauty
         ? `已重新识别并粘贴到 ${targetIndices.size} 个素材`
-        : `已粘贴到 ${targetIndices.size} 个素材`)
+        : aiReferenceMatch
+          ? `已重新生成并粘贴到 ${targetIndices.size} 个素材`
+          : `已粘贴到 ${targetIndices.size} 个素材`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '粘贴效果失败')
     } finally {
       pasteInProgressRef.current = false
+    }
+  }
+
+  async function generatePastedAiReferenceMatch(
+    target: WorkspaceMediaAsset,
+    sourceMatch: NonNullable<EditPipeline['referenceMatch']>,
+    projectId: string,
+  ): Promise<NonNullable<EditPipeline['referenceMatch']>> {
+    const referenceAsset = media.media.find((asset) => asset.id === sourceMatch.referenceAssetId)
+    if (referenceAsset?.kind === 'video') throw new Error('AI追色的参考图必须是照片')
+    const referencePath = referenceAsset?.path ?? sourceMatch.referencePath
+    if (!referencePath) throw new Error('参考图已不在当前工作区，无法重新生成 AI 追色')
+    const generated = await window.luna.workspace.generateReferenceMatchAiLut({
+      projectId,
+      targetPath: target.path,
+      referencePath,
+      referenceName: referenceAsset?.name ?? sourceMatch.referenceName,
+      targetName: target.name,
+      referenceAssetId: sourceMatch.referenceAssetId,
+      targetAssetId: target.id,
+    })
+    return {
+      ...sourceMatch,
+      referenceName: referenceAsset?.name ?? sourceMatch.referenceName,
+      referencePath,
+      targetAssetId: target.id,
+      targetName: target.name,
+      resultPath: generated.path,
+      resultKind: 'lut',
+      generatedAt: new Date().toISOString(),
+      modelVersion: generated.modelVersion,
     }
   }
 
@@ -842,6 +923,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           effects: structuredClone(pipe.effects),
           logRestore: structuredClone(pipe.logRestore),
           lutFilter: structuredClone(pipe.lutFilter),
+          referenceMatch: structuredClone(pipe.referenceMatch),
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),
           beauty: beauty ? structuredClone(beauty) : undefined,
@@ -989,6 +1071,15 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       }))
       const plan = sourceGroups.flat()
       const summary = summarizeWorkspaceMixedExport(plan)
+      if (summary.photo > 0 && summary.video === 0 && summary.live === 0) {
+        const result = await queueWorkspaceMixedExport(plan, settings.exportDir, {
+          ...DEFAULT_VIDEO_EXPORT_SETTINGS,
+          exportFormats: [],
+          exportPhotos: true,
+        })
+        toast.success(`已加入导出队列: ${result.itemCount} 个结果`)
+        return
+      }
       const exportFormats: VideoExportSettings['exportFormats'] = [
         ...(summary.video > 0 ? ['video' as const] : []),
         ...(summary.live > 0 ? ['google-live' as const] : []),
@@ -1038,6 +1129,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   // Refs for values accessed in stable event listeners
   const cropActiveRef = useRef(false)
   const activeMediaRef = useRef(media.activeMedia)
+  const activeIndexRef = useRef(media.activeIndex)
   const mediaLengthRef = useRef(media.media.length)
   const selectedIndicesRef = useRef(new Set<number>())
   const copyPipelineRef = useRef(handleCopyPipeline)
@@ -1057,6 +1149,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       && Boolean(edit.beautyRetouchMode)
   }, [edit.activeTool, edit.beautyRetouchActive, edit.beautyRetouchMode])
   useEffect(() => { activeMediaRef.current = media.activeMedia }, [media.activeMedia])
+  useEffect(() => { activeIndexRef.current = media.activeIndex }, [media.activeIndex])
   useEffect(() => { mediaLengthRef.current = media.media.length }, [media.media.length])
   useEffect(() => { selectedIndicesRef.current = media.selectedIndices }, [media.selectedIndices])
   copyPipelineRef.current = handleCopyPipeline
@@ -1089,6 +1182,31 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       if (inInput) return
       const hasTextSelection = (window.getSelection()?.toString() ?? '').length > 0
       const workspaceStripActive = document.activeElement instanceof HTMLElement && Boolean(document.activeElement.closest('.workspace-media-strip'))
+
+      if (
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+        && !event.shiftKey
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && activeMediaRef.current
+        && !cropActiveRef.current
+        && !maskEditingRef.current
+        && !beautyRetouchEditingRef.current
+        && !(event.target instanceof HTMLElement && event.target.closest('.workspace-trim-live-cover'))
+        && !(event.target instanceof HTMLElement && event.target.closest('[role="dialog"], .ui-dialog-content'))
+      ) {
+        const direction = event.key === 'ArrowLeft' ? -1 : 1
+        const nextIndex = Math.max(0, Math.min(mediaLengthRef.current - 1, activeIndexRef.current + direction))
+        if (nextIndex !== activeIndexRef.current) {
+          event.preventDefault()
+          event.stopPropagation()
+          activeIndexRef.current = nextIndex
+          media.setActiveIndex(nextIndex)
+          media.setSelectedIndices(new Set([nextIndex]))
+        }
+        return
+      }
 
       if ((event.code === 'Delete' || event.code === 'Backspace') && activeMediaRef.current && !cropActiveRef.current && !maskEditingRef.current) {
         const removalCount = selectedIndicesRef.current.size || 1
@@ -1221,6 +1339,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
               pending={!media.activeMedia}
               pipeline={stagePipeline}
+              compareOriginal={edit.compareOriginal}
               maskProjectId={media.currentProject?.id}
               extraLayers={combinedExtraLayers}
               cropActive={edit.cropActive}
@@ -1243,6 +1362,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               onFitScaleChange={setFitScalePercent}
               viewportKey={media.activeMedia?.path}
               previewMaxSide={workspacePreviewMaxSide(previewQuality)}
+              forceSdrPreview={Boolean(
+                edit.previewPipeline.logRestore.activeId
+                || edit.previewPipeline.lutFilter.activeId
+                || (edit.previewPipeline.referenceMatch?.enabled && edit.previewPipeline.referenceMatch.resultKind === 'lut'),
+              )}
               keepCompositionVideoRenderer={keepCompositionVideoRenderer}
               onPlayStateChange={handlePlayStateChange}
             />

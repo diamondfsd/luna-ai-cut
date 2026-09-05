@@ -37,6 +37,7 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
   const [activeIndex, setActiveIndex] = useState(routeState?.initialIndex ?? 0)
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
   const [brokenPaths, setBrokenPaths] = useState<Set<string>>(new Set())
+  const [referenceAsset, setReferenceAsset] = useState<WorkspaceMediaAsset | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const latestProjectsRef = useRef(new Map<string, WorkspaceProject>())
 
@@ -58,6 +59,7 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
 
   useEffect(() => {
     setBrokenPaths(new Set())
+    setReferenceAsset(null)
     if (routeState?.project) {
       setCurrentProject(routeState.project)
       setActiveIndex(Math.min(routeState.initialIndex ?? 0, routeState.project.assets.length - 1))
@@ -129,12 +131,14 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
 
   const openProject = useCallback((project: WorkspaceProject) => {
     setBrokenPaths(new Set())
+    setReferenceAsset(null)
     setCurrentProject(latestProjectsRef.current.get(project.id) ?? project)
     setActiveIndex(0)
   }, [])
 
   const backToProjects = useCallback(() => {
     setBrokenPaths(new Set())
+    setReferenceAsset(null)
     const latestProject = currentProject
     if (latestProject) {
       setProjects((prev) => {
@@ -249,6 +253,8 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
     setSelectedIndices,
     brokenPaths,
     setBrokenPaths,
+    referenceAsset,
+    setReferenceAsset,
     media,
     activeMedia,
     editorOpen,

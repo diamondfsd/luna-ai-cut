@@ -151,6 +151,8 @@
 
 面向用户可见的组件文案、提示、弹窗、按钮、空状态、错误说明等，不要出现偏开发人员的专业术语（例如 JSON、IPC、WebGL、pipeline、缓存键、序列化等）。需要表达技术实现时，转换成用户能理解的结果或行为，例如“编辑内容会自动保存”“项目会保存在本地资源中”。
 
+补充要求：所有软件 UI 交互文案必须精简，只表达必要的动作或结果。不要自行添加介绍、解释、状态说明、引导语或后续操作。同一操作不重复弹出多条 Toast；成功 Toast 只保留简短结果，例如“追色成功”。需求未指定的新文案优先复用已有名称，不凭空扩写。
+
 ## 组件库选择
 
 **优先使用 radix-ui 进行二次封装**。radix-ui 已作为 monorepo 全量安装（`npm install radix-ui`），所有 Radix 基元通过 `radix-ui/*` 路径导入，按需使用。
@@ -206,6 +208,14 @@ Luna AI Cut 是一款面向 Insta360 Luna Ultra 相机的桌面媒体管理。
 - 本项目计划持续叠加 ONNX 模型。优先使用统一的 ONNX 推理运行时、统一的模型清单和平台资源目录，避免为每个模型重复引入不同推理框架。
 - ONNX 模型运行时下载源只允许 ModelScope（魔搭社区）和 Luna GitCode resource release：ModelScope 中完全相同的固定模型文件优先，GitCode 镜像其次；没有字节一致的 ModelScope 文件时只使用 GitCode。境外官方上游仅保留为发布来源、许可与哈希审计信息，不得进入客户端 `url` 或 `mirrors`。不得为命中国内源而替换成不同模型或权重；多个运行时源必须匹配同一大小与 SHA256，并统一通过 `electron/modelLoader.ts` 和通用断点续传下载器加载，不把模型二进制提交到代码仓库或打入安装包。
 - 发布 GitCode 安装包、runtime resources 或模型镜像时，凭证配置默认读取主仓库 `${PROJECT_ROOT}/scripts/deploy-release.conf`。该文件已被 Git 忽略，不得打印、复制到工作树或提交；文件不存在、字段缺失或凭证失效时再请求用户提供。
+
+### GitCode Release 下载地址规则
+
+- GitCode Release 附件的客户端公开下载地址固定为：`https://gitcode.com/<owner>/<repo>/releases/download/<release-tag>/<file-name>`。
+- 本项目模型资源使用 Release tag `model-resources-v1.0.0`；manifest 的修订名（例如 `model-resources-v1.0.0-r4.json`）只是附件文件名，不能拼进 URL 的 `<release-tag>`。
+- 示例：`https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/neural-preset-v1-256.onnx`。
+- 不得使用 `.../releases/<release-tag>/<file-name>`、`api.gitcode.com`、API 返回的 `browser_download_url` 或 `raw.gitcode.com/archive/refs/heads/...` 作为客户端附件地址。API 只用于查询/上传；上传接口返回的临时 CDN 跳转地址也不能写入代码。
+- 需要拼接地址时优先调用 `scripts/model-resource-release.mjs` 的统一 URL helper，并用 GET/断点下载验证，不用 HEAD 请求判断 GitCode 附件是否可下载。
 
 ### 核心流程
 
