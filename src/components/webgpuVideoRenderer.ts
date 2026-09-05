@@ -12,6 +12,7 @@ import {
   createTexture,
   getWebGpuContext,
   getWebGpuNavigator,
+  HDR_SOURCE_TEXTURE_FORMAT,
   srgbFormatFor,
   playAndWaitForVideoFrame,
   seekVideo,
@@ -51,6 +52,7 @@ export class WebGpuVideoRenderer {
   private shader: GpuShaderModule | null = null
   private canvasFormat = ''
   private presentationFormat = ''
+  private hdrPresentationEnabled = false
   private outputTexture: GpuImageResource | null = null
   private canvasWidth: number
   private canvasHeight: number
@@ -98,6 +100,7 @@ export class WebGpuVideoRenderer {
       getCanvasSize: () => ({ width: this.canvasWidth, height: this.canvasHeight }),
       getRenderSize: () => ({ width: this.renderWidth, height: this.renderHeight }),
       getMaxSide: () => this.options.maxSide,
+      getSourceTextureFormat: () => this.hdrPresentationEnabled ? HDR_SOURCE_TEXTURE_FORMAT : 'rgba8unorm-srgb',
       getFrameCounter: () => this.frameCounter,
       isPlaying: () => this.playing,
       isActive: () => this.active,
@@ -120,6 +123,7 @@ export class WebGpuVideoRenderer {
       getDevice: () => this.device,
       getSampler: () => this.sampler,
       getBindGroupLayout: () => this.bindGroupLayout,
+      isHdrPresentationEnabled: () => this.hdrPresentationEnabled,
       pipelineFor: (blendMode) => this.pipelineFor(blendMode),
     }, this.resources)
     // WebGPU captures the canvas size when its context is created. Resize the
@@ -174,10 +178,14 @@ export class WebGpuVideoRenderer {
       this.canvasFormat = this.options.captureFormat === 'rgba'
         ? 'rgba8unorm-srgb'
         : srgbFormatFor(this.presentationFormat)
-      this.configureCanvasContext()
+      this.hdrPresentationEnabled = this.options.hdrPresentation === true && this.options.captureFormat !== 'rgba'
+        ? this.tryConfigureHdrCanvas()
+        : false
+      if (!this.hdrPresentationEnabled) this.configureCanvasContext()
       logger.info('[WebGPU诊断] 画布已配置', {
         presentationFormat: this.presentationFormat,
         renderFormat: this.canvasFormat,
+        hdrPresentationEnabled: this.hdrPresentationEnabled,
         canvas: this.canvasSnapshot(),
       })
       this.createGpuObjects()
@@ -205,6 +213,10 @@ export class WebGpuVideoRenderer {
       })
       throw error
     }
+  }
+
+  isHdrPresentationEnabled(): boolean {
+    return this.hdrPresentationEnabled
   }
 
   resize(): void {
@@ -472,9 +484,42 @@ export class WebGpuVideoRenderer {
       device,
       format: this.presentationFormat,
       colorSpace: 'srgb',
+      ...(this.hdrPresentationEnabled ? { toneMapping: { mode: 'extended' } } : {}),
       usage: TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_RENDER_ATTACHMENT,
       alphaMode: 'premultiplied',
     })
+  }
+
+  private tryConfigureHdrCanvas(): boolean {
+    const context = this.context
+    const device = this.device
+    if (!context || !device) return false
+    try {
+      context.configure({
+        device,
+        format: 'rgba16float',
+        // The compositor and AI-generated LUTs use sRGB primaries. HDR is
+        // enabled through the float canvas and extended tone mapping; using
+        // P3 here would reinterpret the LUT result and shift its colors.
+        colorSpace: 'srgb',
+        toneMapping: { mode: 'extended' },
+        usage: TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_RENDER_ATTACHMENT,
+        alphaMode: 'premultiplied',
+      })
+      this.presentationFormat = 'rgba16float'
+      this.canvasFormat = 'rgba16float'
+      logger.info('[WebGPU诊断] HDR 画布配置成功', {
+        format: this.presentationFormat,
+        colorSpace: 'srgb',
+        toneMapping: 'extended',
+      })
+      return true
+    } catch (error) {
+      logger.warn('[WebGPU诊断] HDR 画布不可用，回退到 SDR', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return false
+    }
   }
 
   private canvasSnapshot(): {

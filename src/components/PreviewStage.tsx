@@ -304,8 +304,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const canvasRenderKey = previewCanvas && displayUrl
     ? `${displayUrl}\n${previewCanvas.width}x${previewCanvas.height}`
     : null
-  // 切换素材或画布尺寸时销毁旧渲染实例，避免旧的异步渲染结果回写当前 loading 状态。
-  const rendererKey = canvasRenderKey ?? 'empty'
   const canvasAwaitingRender = canvasRenderKey !== null && renderedCanvasKey !== canvasRenderKey
 
   function handleRender() {
@@ -423,6 +421,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
+  // LUT output must be compared in the same SDR/sRGB path as export. Remount
+  // the preview renderer when a LUT is added or removed so its canvas format
+  // cannot stay in the previous HDR mode.
+  const hasColorLut = layers.some((layer) => Boolean(layer.restoreLutId || layer.lutId))
+  const rendererKey = `${canvasRenderKey ?? 'empty'}|${hasColorLut ? 'sdr' : 'hdr'}`
   const layersDiagnosticSignature = useMemo(() => previewLayerSignature(layers), [layers])
   const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
     isDisplayVideo,

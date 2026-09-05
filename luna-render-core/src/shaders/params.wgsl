@@ -61,6 +61,7 @@ struct LayerParams {
     lut_size: f32,
     lut_intensity: f32,
     sampling_quality: f32,
+    hdr_output: f32,
     mask_params: vec4<f32>,
     mask_transform: vec4<f32>,
     procedural: vec4<f32>,

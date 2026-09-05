@@ -673,7 +673,8 @@ impl Compositor {
                     } else {
                         0.0
                     },
-                    lut_padding: [0.0; 3],
+                    hdr_output: 0.0,
+                    lut_padding: [0.0; 2],
                     mask_params: mask_params(layer),
                     mask_transform: layer
                         .mask_transform

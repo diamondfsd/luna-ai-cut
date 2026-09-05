@@ -8,6 +8,7 @@ export interface WebGpuLayerRendererCallbacks {
   getDevice: () => GpuDevice | null
   getSampler: () => GpuSampler | null
   getBindGroupLayout: () => object | null
+  isHdrPresentationEnabled: () => boolean
   pipelineFor: (blendMode: PreviewLayer['blendMode']) => GpuPipeline
 }
 
@@ -104,6 +105,7 @@ export class WebGpuLayerRenderer {
         layerResources.restoreLut.size,
         layerResources.lut.size,
         time,
+        this.callbacks.isHdrPresentationEnabled(),
       )
       const paramsBuffer = this.bufferForLayer(device, index)
       device.queue.writeBuffer(paramsBuffer, 0, params)
