@@ -8,11 +8,11 @@ import { detectDownloadPlatform } from './download-platform.js'
 
 // ★ 由 deploy-release.sh 自动更新 ★
 const LATEST_RELEASE = {
-  tag: 'v1.8.0',
-  label: 'v1.8.0',
-  gitcode_mac_arm: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.8.0/LunaAICut-Mac-1.8.0-Installer-arm64.dmg',
-  gitcode_mac_x64: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.8.0/LunaAICut-Mac-1.8.0-Installer-x64.dmg',
-  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.8.0/LunaAICut-Windows-1.8.0-Setup-x64.exe',
+  tag: 'v1.8.1',
+  label: 'v1.8.1',
+  gitcode_mac_arm: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.8.1/LunaAICut-Mac-1.8.1-Installer-arm64.dmg',
+  gitcode_mac_x64: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.8.1/LunaAICut-Mac-1.8.1-Installer-x64.dmg',
+  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.8.1/LunaAICut-Windows-1.8.1-Setup-x64.exe',
 }
 
 // ── 版本号渲染 ──────────────────────────────────────────

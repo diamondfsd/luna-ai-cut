@@ -2,6 +2,18 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.1",
+    "title": "v1.8.1",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>支持 Luna Pro</strong>：新增 Luna Pro 的设备识别、连接、媒体管理、水印资源和实时预览支持。</li>\n<li><strong>实时预览增强</strong>：支持全屏查看、视频静音和更稳定的画面解码。</li>\n<li><strong>更多相机接入能力</strong>：完善 DJI 相机媒体浏览、下载、删除以及连接流程。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li>修复纯图片素材在 Pixel Flow 预览中动画不再推进的问题。</li>\n<li>修复部分 WebGPU 预览、调色和播放过程中的画面异常。</li>\n<li>改进 Insta360 相机 Wi-Fi 保活和连接帧处理，降低预览过程中断开的概率。</li>\n<li>修复 DJI Pocket 4P 设备识别和媒体协议中的兼容性问题。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li>仅 Luna 系列设备显示导航栏右上角的相机实时预览入口，DJI 等暂不支持实时预览的设备不再显示该图标。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>macOS 原生辅助工具改为在打包阶段预编译，用户安装后无需安装 Xcode 或开发者工具。</li>\n<li>完善 macOS、Windows 三平台安装包和热更新资源的发布流程。</li>\n<li>更新项目版本至 <code>1.8.1</code>。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.8.0-hot.1",
+    "title": "v1.8.0-hot.1 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>恢复 Pixel Flow 预览动画</strong>：修复纯图片素材预览时动画时间不再推进的问题。</li>\n<li><strong>改进相机连接稳定性</strong>：调整 Insta360 相机的 Wi‑Fi 保活和连接帧处理，降低预览过程中断开的概率。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>支持更多 Insta360 设备</strong>：补充 Luna Pro 等设备的识别、连接和媒体预览支持。</li>\n<li><strong>相机预览支持全屏</strong>：可在相机直播预览中进入或退出全屏查看。</li>\n<li><strong>视频预览支持静音</strong>：在视频控制栏中快速打开或关闭声音。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.8.0",
     "title": "v1.8.0",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>实时视频预览</strong>：支持查看相机实时画面和当前视频分辨率。</li>\n<li><strong>水印设置</strong>：支持在编辑和导出流程中管理水印。</li>\n<li><strong>DJI 相机媒体管理</strong>：支持浏览、预览、下载和删除相机中的媒体。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li>修复部分 WebGPU 预览、调色和播放过程中的画面异常。</li>\n<li>修复视频导出预览、遮罩编辑和素材文件操作中的稳定性问题。</li>\n<li>修复 Luna 与 DJI 相机在 Bluetooth、Wi-Fi 和 TCP 连接过程中的问题。</li>\n<li>修复图片导出 HDR 信息保留和部分导出参数处理问题。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li>优化 Windows 视频导出速度、兼容性和硬件加速失败时的回退处理。</li>\n<li>优化相机自动入网、媒体浏览和下载流程。</li>\n<li>优化工作台预览、调色滑块和编辑面板交互。</li>\n<li>完善 macOS、Windows 三平台安装包的运行库隔离和发布流程。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>发布 macOS Apple Silicon、macOS Intel 和 Windows x64 安装包。</li>\n<li>macOS 安装包已完成 Developer ID 签名和 Apple 公证。</li>\n<li>更新项目版本至 <code>1.8.0</code>。</li>\n</ul>",
