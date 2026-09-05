@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Loader2, Sparkles, X } from 'lucide-react'
+import { Image as ImageIcon, Loader2, RotateCcw, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button, IconButton, toast } from '../../ui'
@@ -198,16 +198,16 @@ export function ReferenceMatchPanel() {
           <div className="workspace-reference-match-target-thumb">
             {targetThumbnail ? <img src={targetThumbnail} alt="当前素材预览" /> : <div className="workspace-reference-match-empty-thumb"><ImageIcon size={20} /></div>}
             {edit.pipeline.referenceMatch && (
-              <Button
-                className="workspace-reference-match-remove-button"
-                variant="danger"
+              <IconButton
+                className="workspace-reference-match-reset-button"
+                variant="circle"
                 size="mini"
-                icon={<X size={13} />}
+                icon={<RotateCcw size={14} />}
                 disabled={generating}
+                aria-label="重置追色"
+                title="重置追色"
                 onClick={removeReferenceMatch}
-              >
-                移除追色
-              </Button>
+              />
             )}
           </div>
           <strong title={target?.name}>{target?.name ?? '未选择素材'}</strong>
