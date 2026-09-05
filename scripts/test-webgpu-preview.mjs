@@ -35,7 +35,8 @@ const runRoot = await mkdtemp(path.join(tmpdir(), 'luna-webgpu-direct-comparison
 const outputRoot = path.resolve(process.env.LUNA_WEBGPU_COMPARISON_OUTPUT_DIR ?? runRoot)
 const lowResImagePath = path.join(runRoot, 'photo-960.jpg')
 const maskPath = path.join(runRoot, 'comparison-mask.pgm')
-const FEATURES = ['baseline', 'mask', 'lut', 'subtitle', 'watermark', 'border', 'creative', 'pixel-flow-start', 'pixel-flow-middle']
+const aiLutPath = path.join(runRoot, 'ai-reference-match.cube')
+const FEATURES = ['baseline', 'mask', 'lut', 'ai-lut-full', 'opacity', 'ai-lut', 'subtitle', 'watermark', 'border', 'creative', 'pixel-flow-start', 'pixel-flow-middle']
 
 function renderColor(overrides = {}) {
   return {
@@ -106,6 +107,20 @@ function featureLayers(sourcePath, feature, resources) {
     })]
   }
   if (feature === 'lut') return [mediaLayer(sourcePath, { lutId: resources.lutPath, lutIntensity: 62 })]
+  if (feature === 'ai-lut') return [
+    mediaLayer(sourcePath),
+    mediaLayer(sourcePath, {
+      zIndex: 0.001,
+      lutId: resources.aiLutPath,
+      lutIntensity: 100,
+      opacity: 0.42,
+    }),
+  ]
+  if (feature === 'ai-lut-full') return [mediaLayer(sourcePath, { lutId: resources.aiLutPath, lutIntensity: 100 })]
+  if (feature === 'opacity') return [
+    mediaLayer(sourcePath),
+    mediaLayer(sourcePath, { zIndex: 0.001, opacity: 0.42 }),
+  ]
   if (feature === 'subtitle') {
     return [base,
       shapeLayer({ dstX: 0.28, dstY: 0.79, dstW: 0.44, dstH: 0.1, zIndex: 900,
@@ -175,6 +190,26 @@ async function createLowResolutionImage() {
   const stream = JSON.parse(stdout).streams?.[0]
   assert.ok(stream?.width && stream?.height, '低分辨率照片尺寸读取失败')
   return { width: stream.width, height: stream.height }
+}
+
+function createAiLut(size = 17) {
+  const lines = [
+    'TITLE "Luna AI Reference Match Fixture"',
+    `LUT_3D_SIZE ${size}`,
+    'DOMAIN_MIN 0.0 0.0 0.0',
+    'DOMAIN_MAX 1.0 1.0 1.0',
+  ]
+  for (let blue = 0; blue < size; blue += 1) {
+    for (let green = 0; green < size; green += 1) {
+      for (let red = 0; red < size; red += 1) {
+        const r = red / (size - 1)
+        const g = green / (size - 1)
+        const b = blue / (size - 1)
+        lines.push(`${(r * 0.88 + g * 0.12).toFixed(6)} ${(g * 0.84 + b * 0.16).toFixed(6)} ${(b * 0.9 + r * 0.1).toFixed(6)}`)
+      }
+    }
+  }
+  return `${lines.join('\n')}\n`
 }
 
 async function encodePng(raw, width, height, outputPath) {
@@ -270,14 +305,17 @@ async function runWebGpu(features, browserFeatures, width, height) {
     }
   })
   const measurements = []
+  let hdrPresentationEnabled = false
   try {
     await page.goto(`http://127.0.0.1:${port}/webgpu-comparison.html`, { waitUntil: 'domcontentloaded' })
     const initialized = await page.evaluate((next) => window.lunaWebGpuComparison?.initialize(next), {
       canvasWidth: width, canvasHeight: height, maxSide: canvasMaxSide, lutText: browserFeatures.lutText,
       fontPath: browserFeatures.fontPath, fontData: browserFeatures.fontData,
-      mask: browserFeatures.mask, features: browserFeatures.features,
+      mask: browserFeatures.mask, features: browserFeatures.features, lutTexts: browserFeatures.lutTexts,
+      hdrPresentation: process.env.LUNA_WEBGPU_HDR === '1',
     })
     assert.equal(initialized?.navigatorGpu, true, '当前 Chromium 没有可用的 WebGPU')
+    hdrPresentationEnabled = initialized?.hdrPresentationEnabled === true
     for (const feature of features) {
       const startedAt = performance.now()
       const state = await page.evaluate(({ id, playing }) => window.lunaWebGpuComparison?.renderFeature(id, playing), {
@@ -296,7 +334,7 @@ async function runWebGpu(features, browserFeatures, width, height) {
     await browser.close().catch(() => undefined)
     await vite.close().catch(() => undefined)
   }
-  return { measurements, runtimeErrors, runtimeWarnings }
+  return { measurements, runtimeErrors, runtimeWarnings, hdrPresentationEnabled }
 }
 
 await mkdir(outputRoot, { recursive: true })
@@ -311,18 +349,20 @@ await writeFile(maskPath, Buffer.concat([Buffer.from(`P5\n${mask.width} ${mask.h
 const imageDataUrl = `data:image/jpeg;base64,${(await readFile(lowResImagePath)).toString('base64')}`
 const watermarkDataUrl = `data:image/png;base64,${(await readFile(WATERMARK_PATH)).toString('base64')}`
 const lutText = await readFile(LUT_PATH, 'utf8')
+const aiLutText = createAiLut(17)
+await writeFile(aiLutPath, aiLutText, 'utf8')
 const parsedLut = parseWebGpuCube(lutText)
 assert.equal(parsedLut.size, 65, 'Luna Ultra 内置 LUT 应为 65³')
 assert.equal(parsedLut.rgba.length, 65 ** 3 * 4, '65³ LUT RGBA 数据尺寸不正确')
 const fontData = (await readFile(FONT_PATH)).toString('base64')
 
 const featureTime = (id) => id === 'creative' || id === 'pixel-flow-middle' ? 0.5 : 0
-const nativeFeatures = FEATURES.map((id) => ({ id, time: featureTime(id), layers: featureLayers(lowResImagePath, id, { maskPath, lutPath: LUT_PATH, watermarkPath: WATERMARK_PATH }) }))
-const browserFeatures = FEATURES.map((id) => ({ id, time: featureTime(id), layers: featureLayers(imageDataUrl, id, { maskPath: 'fixture://mask', lutPath: 'fixture://lut', watermarkPath: watermarkDataUrl }) }))
+const nativeFeatures = FEATURES.map((id) => ({ id, time: featureTime(id), layers: featureLayers(lowResImagePath, id, { maskPath, lutPath: LUT_PATH, aiLutPath, watermarkPath: WATERMARK_PATH }) }))
+const browserFeatures = FEATURES.map((id) => ({ id, time: featureTime(id), layers: featureLayers(imageDataUrl, id, { maskPath: 'fixture://mask', lutPath: 'fixture://lut', aiLutPath: 'fixture://ai-lut', watermarkPath: watermarkDataUrl }) }))
 
 const nativeMeasurements = await runNative(nativeFeatures, width, height)
 const webgpuResult = await runWebGpu(nativeFeatures, {
-  features: browserFeatures, lutText, fontPath: FONT_PATH, fontData,
+  features: browserFeatures, lutText, lutTexts: { 'fixture://lut': lutText, 'fixture://ai-lut': aiLutText }, fontPath: FONT_PATH, fontData,
   mask: { width: mask.width, height: mask.height, bytes: [...mask.bytes] },
 }, width, height)
 const comparisons = FEATURES.map((feature) => {
@@ -334,8 +374,10 @@ const comparisons = FEATURES.map((feature) => {
 
 const report = {
   generatedAt: new Date().toISOString(), mode: 'standalone-rust-vs-webgpu',
+  hdrPresentationRequested: process.env.LUNA_WEBGPU_HDR === '1',
+  hdrPresentationEnabled: webgpuResult.hdrPresentationEnabled,
   source: { original: inputPath, normalized: lowResImagePath, width, height, maxSide: canvasMaxSide },
-  resourcePolicy: { oneImage: true, maxSide: canvasMaxSide, videos: false, ai: false, electron: false, chromiumPages: 1 },
+  resourcePolicy: { oneImage: true, maxSide: canvasMaxSide, videos: false, ai: 'lut-fixture', electron: false, chromiumPages: 1 },
   comparisons, runtimeErrors: webgpuResult.runtimeErrors, runtimeWarnings: webgpuResult.runtimeWarnings, outputRoot,
 }
 const reportPath = path.join(outputRoot, 'report.json')
@@ -355,10 +397,22 @@ assert.deepEqual(webgpuResult.runtimeErrors, [])
 assert.deepEqual(webgpuResult.runtimeWarnings, [])
 const baselineComparison = comparisons.find((entry) => entry.feature === 'baseline')
 assert.ok(baselineComparison, '缺少 baseline 颜色空间对照结果')
-assert.ok(
-  baselineComparison.pixelComparison.meanAbsDelta < 8,
-  `WebGPU baseline 颜色空间不一致: meanAbsDelta=${baselineComparison.pixelComparison.meanAbsDelta}`,
-)
+if (process.env.LUNA_WEBGPU_HDR !== '1') {
+  assert.ok(
+    baselineComparison.pixelComparison.meanAbsDelta < 8,
+    `WebGPU baseline 颜色空间不一致: meanAbsDelta=${baselineComparison.pixelComparison.meanAbsDelta}`,
+  )
+}
+if (process.env.LUNA_WEBGPU_HDR !== '1') {
+  for (const feature of ['ai-lut-full', 'ai-lut']) {
+    const comparison = comparisons.find((entry) => entry.feature === feature)
+    assert.ok(comparison, `缺少 ${feature} AI LUT 对照结果`)
+    assert.ok(
+      comparison.pixelComparison.meanAbsDelta < 8,
+      `WebGPU ${feature} 颜色空间不一致: meanAbsDelta=${comparison.pixelComparison.meanAbsDelta}`,
+    )
+  }
+}
 assert.ok(comparisons.every((entry) => (
   entry.rustPixels.nonTransparentPixels > 0
   && entry.webgpuPixels.nonTransparentPixels > 0

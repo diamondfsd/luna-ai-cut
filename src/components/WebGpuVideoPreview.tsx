@@ -69,6 +69,7 @@ export function WebGpuVideoPreview({
   })
   const callbackRef = useRef({ onVideoElement, onError, onRender })
   callbackRef.current = { onVideoElement, onError, onRender }
+  const hasColorLut = layers.some((layer) => Boolean(layer.restoreLutId || layer.lutId))
 
   function syncLatestLayers(): Promise<void> {
     const renderer = rendererRef.current
@@ -133,6 +134,10 @@ export function WebGpuVideoPreview({
       canvasWidth,
       canvasHeight,
       maxSide,
+      // LUTs are authored and exported in the SDR/sRGB pipeline. Keep those
+      // previews on the matching path so grading colors do not shift under
+      // the display's HDR tone mapping.
+      hdrPresentation: !hasColorLut,
       onVideoElement: (element) => callbackRef.current.onVideoElement?.(element),
       onError: (reason) => {
         logger.error('[WebGPU诊断] 预览组件收到渲染错误', { reason })

@@ -30,13 +30,12 @@ import type {
 
 const IDENTITY_MASK_RGBA = new Uint8Array([255, 255, 255, 255])
 const IDENTITY_SOURCE_RGBA = new Uint8Array([255, 255, 255, 255])
-const VIDEO_TEXTURE_FORMAT = 'rgba8unorm-srgb'
-
 export interface WebGpuResourceCallbacks {
   getDevice: () => GpuDevice | null
   getCanvasSize: () => { width: number; height: number }
   getRenderSize: () => { width: number; height: number }
   getMaxSide: () => number
+  getSourceTextureFormat: () => string
   getFrameCounter: () => number
   isPlaying: () => boolean
   isActive: () => boolean
@@ -302,14 +301,17 @@ export class WebGpuResourceManager {
     if (!device) throw new Error('WebGPU 设备未初始化')
     const source = await this.loadImage(path)
     const [width, height] = calcRenderSize(source.width || 1, source.height || 1, this.callbacks.getMaxSide())
+    const textureFormat = this.callbacks.getSourceTextureFormat()
     const texture = createTexture(
       device,
       width,
       height,
-      'rgba8unorm-srgb',
+      textureFormat,
       TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING | TEXTURE_USAGE_RENDER_ATTACHMENT,
     )
-    if (this.callbacks.rasterizeImages) {
+    // Reading through an 8-bit canvas would discard extended-range values.
+    // HDR previews must stay on the external-image upload path.
+    if (this.callbacks.rasterizeImages && textureFormat === 'rgba8unorm-srgb') {
       const rasterCanvas = document.createElement('canvas')
       rasterCanvas.width = width
       rasterCanvas.height = height
@@ -363,7 +365,7 @@ export class WebGpuResourceManager {
           // Video frames are display-encoded sRGB after Chromium's media
           // conversion. Mark the texture accordingly so sampling decodes to
           // linear light before the shared color pipeline runs.
-          VIDEO_TEXTURE_FORMAT,
+          this.callbacks.getSourceTextureFormat(),
           TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING | TEXTURE_USAGE_RENDER_ATTACHMENT,
         ),
         width,
@@ -379,7 +381,7 @@ export class WebGpuResourceManager {
           sourceHeight: entry.video.videoHeight || height,
           textureWidth: width,
           textureHeight: height,
-          textureFormat: VIDEO_TEXTURE_FORMAT,
+          textureFormat: this.callbacks.getSourceTextureFormat(),
           renderWidth: this.callbacks.getRenderSize().width,
           renderHeight: this.callbacks.getRenderSize().height,
           maxSide: layerMaxSide,
@@ -421,7 +423,7 @@ export class WebGpuResourceManager {
         videoHeight: entry.video.videoHeight,
         textureWidth: width,
         textureHeight: height,
-        textureFormat: VIDEO_TEXTURE_FORMAT,
+        textureFormat: this.callbacks.getSourceTextureFormat(),
         scaledThroughCanvas: upload.source !== entry.video,
       })
     }

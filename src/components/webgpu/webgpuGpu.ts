@@ -39,6 +39,8 @@ export function srgbFormatFor(format: string): string {
   return format
 }
 
+export const HDR_SOURCE_TEXTURE_FORMAT = 'rgba16float'
+
 export function writeTexture(device: GpuDevice, texture: ReturnType<GpuDevice['createTexture']>, data: Uint8Array, width: number, height: number, depth = 1): void {
   device.queue.writeTexture(
     { texture },

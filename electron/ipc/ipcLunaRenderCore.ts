@@ -463,7 +463,12 @@ export function register(ctx: RegisterContext): void {
         ?? composition.layers.find((layer) => Boolean(layer.source.path))?.source.path
       try {
         await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: await resolveRuntimePaths(composition), format, quality })
-        await embedJpegSourceMetadata(outputPath, sourcePath).catch((error) => {
+        // The render core outputs SDR/sRGB pixels. Do not copy the source HDR
+        // gain map or ICC profile back onto the rendered JPEG, otherwise an
+        // HDR-aware viewer applies the source brightness transform a second time.
+        await embedJpegSourceMetadata(outputPath, sourcePath, {
+          preserveSourceColorMetadata: false,
+        }).catch((error) => {
           logMainWarn('[导出] 图片已生成，但来源信息写入失败', {
             outputPath,
             ...fileOperationErrorDetails(error, outputPath),

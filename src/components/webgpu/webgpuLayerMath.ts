@@ -226,6 +226,7 @@ export function createLayerParams(
   restoreLutSize: number,
   lutSize: number,
   compositionTime: number,
+  hdrOutput = false,
 ): Float32Array {
   const data = new Float32Array(PARAM_FLOAT_COUNT)
   const offset = { value: 0 }
@@ -309,7 +310,8 @@ export function createLayerParams(
     restoreLutSize, lutSize, numberOr(layer.lutIntensity, 100),
     positioningFor(layer.positioning, canvasWidth, canvasHeight) ? 1 : 0,
   ]) writeScalar(data, offset, numberOr(value, 0))
-  offset.value += 3
+  writeScalar(data, offset, hdrOutput ? 1 : 0)
+  offset.value += 2
   writeVec4(data, offset, [
     maskPresent ? clamp(numberOr(layer.maskOpacity, 1), 0, 1) : 1,
     maskPresent && layer.maskInverted ? 1 : 0,

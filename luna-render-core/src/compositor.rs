@@ -128,7 +128,10 @@ struct GpuLayerParams {
     lut_size: f32,
     lut_intensity: f32,
     sampling_quality: f32,
-    lut_padding: [f32; 3],
+    // Keep the WGSL scalar explicitly present. The remaining two floats are
+    // the alignment padding before the following vec4 field.
+    hdr_output: f32,
+    lut_padding: [f32; 2],
     mask_params: [f32; 4],
     mask_transform: [f32; 4],
     procedural: [f32; 4],

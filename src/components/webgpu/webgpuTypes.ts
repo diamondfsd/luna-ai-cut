@@ -122,6 +122,8 @@ export interface WebGpuVideoRendererOptions {
   maxSide: number
   /** Use an RGBA offscreen target when the caller only needs raw readback. */
   captureFormat?: 'rgba'
+  /** Try to present the interactive preview through an extended HDR canvas. */
+  hdrPresentation?: boolean
   waitForGpu?: boolean
   rasterizeImages?: boolean
   presentToCanvas?: boolean

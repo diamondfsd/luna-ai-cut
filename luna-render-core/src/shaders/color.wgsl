@@ -112,7 +112,11 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
 
     // HSL is a perceptual control, so perform it in display-encoded space.
     // Linear-light HSL exaggerates small channel differences in smooth skies.
-    var hsl = rgb_to_hsl(linear_to_srgb(sat3(c)));
+    // Keep HDR headroom while applying the perceptual controls. HSL itself
+    // operates on normalized display values, so restore the linear headroom
+    // after the conversion instead of clipping highlights to SDR.
+    let hsl_scale = select(1.0, max(1.0, max(c.r, max(c.g, c.b))), params.hdr_output > 0.5);
+    var hsl = rgb_to_hsl(linear_to_srgb(sat3(c / hsl_scale)));
     var source_hsl = hsl;
     var hsl_activity = 0.0;
     for (var i = 0u; i < 12u; i = i + 1u) {
@@ -159,7 +163,7 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     } else {
         hsl.z = hsl.z * (1.0 + safe_luminance_adjustment);
     }
-    c = srgb_to_linear(hsl_to_rgb(hsl));
+    c = srgb_to_linear(hsl_to_rgb(hsl)) * hsl_scale;
 
     c = c + detail * params.sharpen / 100.0 * 1.5;
     c = apply_lut(c);
@@ -168,7 +172,10 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
         let threshold = params.glow.z / 100.0;
         let glow_sample = apply_restore_lut(aperture_highlight_blur(tex_coord, glow_radius, threshold));
         let glow = sat3(glow_sample * params.glow.x / 100.0 * 0.9);
-        c = vec3<f32>(1.0) - (vec3<f32>(1.0) - sat3(c)) * (vec3<f32>(1.0) - glow);
+        let hdr_base = max(c, vec3<f32>(0.0));
+        let sdr_glow = vec3<f32>(1.0) - (vec3<f32>(1.0) - sat3(c)) * (vec3<f32>(1.0) - glow);
+        let hdr_glow = hdr_base + (vec3<f32>(1.0) - sat3(hdr_base)) * glow;
+        c = select(sdr_glow, hdr_glow, params.hdr_output > 0.5);
     }
     let reveal_progress = params.text_meta.w;
     if (reveal_progress > 0.001 && reveal_progress < 0.999) {
@@ -176,28 +183,30 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
         let edge_alpha = (1.0 - smoothstep(0.0, 0.8, edge_distance_px)) * 0.28;
         c = mix(c, vec3<f32>(1.0), sat1(edge_alpha));
     }
-    return sat3(c);
+    return select(sat3(c), max(c, vec3<f32>(0.0)), params.hdr_output > 0.5);
 }
 
 fn apply_lut(color: vec3<f32>) -> vec3<f32> {
     if (params.lut_size <= 0.0) {
         return color;
     }
-    let encoded_color = linear_to_srgb(sat3(color));
+    let hdr_scale = select(1.0, max(1.0, max(color.r, max(color.g, color.b))), params.hdr_output > 0.5);
+    let encoded_color = linear_to_srgb(sat3(color / hdr_scale));
     let lut_size = params.lut_size;
     let scale = (lut_size - 1.0) / lut_size;
     let offset = 0.5 / lut_size;
     let uvw = encoded_color * scale + offset;
     let lut_color = textureSampleLevel(lut_texture, lut_sampler, uvw, 0.0).rgb;
     let intensity = sat1(params.lut_intensity / 100.0);
-    return srgb_to_linear(mix(encoded_color, lut_color, intensity));
+    return srgb_to_linear(mix(encoded_color, lut_color, intensity)) * hdr_scale;
 }
 
 fn apply_restore_lut(color: vec3<f32>) -> vec3<f32> {
     if (params.restore_lut_size <= 0.0) {
         return color;
     }
-    let encoded_color = linear_to_srgb(sat3(color));
+    let hdr_scale = select(1.0, max(1.0, max(color.r, max(color.g, color.b))), params.hdr_output > 0.5);
+    let encoded_color = linear_to_srgb(sat3(color / hdr_scale));
     let scale = (params.restore_lut_size - 1.0) / params.restore_lut_size;
     let offset = 0.5 / params.restore_lut_size;
     let lut_color = textureSampleLevel(
@@ -206,7 +215,7 @@ fn apply_restore_lut(color: vec3<f32>) -> vec3<f32> {
         encoded_color * scale + offset,
         0.0,
     ).rgb;
-    return srgb_to_linear(lut_color);
+    return srgb_to_linear(lut_color) * hdr_scale;
 }
 
 fn linear_to_srgb(color: vec3<f32>) -> vec3<f32> {

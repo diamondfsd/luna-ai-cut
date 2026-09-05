@@ -15,10 +15,12 @@ interface ComparisonConfig {
   presentationHeight?: number
   maxSide: number
   lutText: string
+  lutTexts?: Record<string, string>
   fontPath: string
   fontData: string
   mask: { width: number; height: number; bytes: number[] }
   features: ComparisonFeature[]
+  hdrPresentation?: boolean
   waitForGpu?: boolean
   captureMode?: 'canvas' | 'readback'
 }
@@ -151,7 +153,7 @@ async function hasCanvasVideoFramePixels(frame: VideoFrameLike, width: number, h
 }
 
 interface ComparisonApi {
-  initialize(config: ComparisonConfig): Promise<{ navigatorGpu: boolean }>
+  initialize(config: ComparisonConfig): Promise<{ navigatorGpu: boolean; hdrPresentationEnabled: boolean }>
   renderFeature(id: string, playing?: boolean): Promise<{ elapsedMs: number; layerCount: number }>
   measureVideo(id: string, durationMs: number): Promise<VideoBenchmarkResult>
   exportVideo(id: string, frameCount: number, fps: number, codec: string, bitrate: number): Promise<WebCodecsExportResult>
@@ -252,7 +254,7 @@ function videoQuality(video: HTMLVideoElement): VideoQualitySnapshot {
 function installStandaloneApi(next: ComparisonConfig): void {
   let fontBytes: ArrayBuffer | null = null
   const workspace = {
-    loadLut: async () => new TextEncoder().encode(next.lutText).buffer,
+    loadLut: async (filePath: string) => new TextEncoder().encode(next.lutTexts?.[filePath] ?? next.lutText).buffer,
     loadFont: async (filePath: string) => {
       if (filePath !== next.fontPath) throw new Error(`standalone font fixture is missing: ${filePath}`)
       if (!fontBytes) {
@@ -273,7 +275,7 @@ function installStandaloneApi(next: ComparisonConfig): void {
 }
 
 pageWindow.lunaWebGpuComparison = {
-  async initialize(next: ComparisonConfig): Promise<{ navigatorGpu: boolean }> {
+  async initialize(next: ComparisonConfig): Promise<{ navigatorGpu: boolean; hdrPresentationEnabled: boolean }> {
     if (renderer) throw new Error('WebGPU standalone renderer already initialized')
     config = next
     const presentationWidth = next.presentationWidth ?? next.canvasWidth
@@ -287,6 +289,7 @@ pageWindow.lunaWebGpuComparison = {
       canvasWidth: next.canvasWidth,
       canvasHeight: next.canvasHeight,
       maxSide: next.maxSide,
+      hdrPresentation: next.hdrPresentation,
       // Canvas VideoFrame capture is the synchronization point for export.
       // Interactive preview leaves this disabled unless explicitly requested.
       waitForGpu: next.captureMode === 'canvas' ? true : next.waitForGpu ?? false,
@@ -305,7 +308,7 @@ pageWindow.lunaWebGpuComparison = {
       },
     })
     await renderer.initialize()
-    return { navigatorGpu: 'gpu' in navigator }
+    return { navigatorGpu: 'gpu' in navigator, hdrPresentationEnabled: renderer.isHdrPresentationEnabled() }
   },
 
   async renderFeature(id: string, playing = false): Promise<{ elapsedMs: number; layerCount: number }> {
