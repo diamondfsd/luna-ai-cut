@@ -25,26 +25,19 @@ const isChineseUser =
   (navigator.languages && navigator.languages.some((l) => l.startsWith('zh')))
 
 // ── 工具函数 ──────────────────────────────────────────
-function isDmg(name) {
-  return /\.dmg$/i.test(name)
-}
 function isSetupExe(name) {
   return /Setup.*\.exe$/i.test(name) || /LunaAICut.*\.exe$/i.test(name)
 }
 
 let detectedChip = 'arm64'
-let chipDetectionConfidence = 'recommended'
 
 // ── DOM 引用 ──────────────────────────────────────────
-const macCard = document.getElementById('dl-mac')
+const macArmCard = document.getElementById('dl-mac-arm')
+const macX64Card = document.getElementById('dl-mac-x64')
 const winCard = document.getElementById('dl-win')
-const macRegion = document.getElementById('dl-mac-region')
+const macArmRegion = document.getElementById('dl-mac-arm-region')
+const macX64Region = document.getElementById('dl-mac-x64-region')
 const winRegion = document.getElementById('dl-win-region')
-const macChipSelect = document.getElementById('dl-mac-chip')
-const macChipSelector = document.getElementById('dl-mac-chip-selector')
-const macSubtitle = document.getElementById('dl-mac-subtitle')
-const macBadge = document.getElementById('dl-mac-badge')
-const macRecommendation = document.getElementById('dl-mac-recommendation')
 
 document.addEventListener('DOMContentLoaded', async () => {
   // ── 平滑滚动 ──
@@ -69,63 +62,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const platform = await detectDownloadPlatform()
   if (platform.platform === 'mac') {
     detectedChip = platform.chip
-    chipDetectionConfidence = platform.confidence
-    if (macRecommendation) macRecommendation.hidden = false
-    if (macChipSelector) {
-      macChipSelector.classList.toggle(
-        'is-auto-arm',
-        platform.chip === 'arm64' && platform.confidence === 'high',
-      )
-    }
-  }
-  updateChipUI()
-
-  // ── 芯片选择切换 ──
-  if (macChipSelect) {
-    macChipSelect.addEventListener('change', () => {
-      macChipSelect.dataset.userChanged = 'true'
-      chipDetectionConfidence = 'manual'
-      updateChipUI()
-      setDownloadLinks()
-    })
+    updateRecommendedCard()
   }
 
   // ── 设置下载链接 ──
   setDownloadLinks()
 })
 
-// ── 更新芯片选择器 UI ─────────────────────────────────
-function updateChipUI() {
-  if (!macChipSelect) return
-  // 如果检测到当前芯片且用户未手动切换过，自动选中
-  if (!macChipSelect.dataset.userChanged) {
-    macChipSelect.value = detectedChip
-  }
-  const chip = macChipSelect.value
-
-  // 更新副标题和徽章
-  if (macSubtitle) {
-    macSubtitle.textContent = chip === 'arm64' ? 'Apple Silicon（M 系列芯片）' : 'Intel 芯片（x64）'
-  }
-  if (macBadge) {
-    macBadge.textContent = chip === 'arm64' ? '.dmg · ARM64 · 免费' : '.dmg · x64 · 免费'
-  }
-  if (macRecommendation) {
-    const chipName = chip === 'arm64' ? 'Apple 芯片版' : 'Intel 版'
-    if (chipDetectionConfidence === 'manual') {
-      macRecommendation.textContent = `已选择 ${chipName}`
-    } else if (chipDetectionConfidence === 'high') {
-      macRecommendation.textContent = `已识别此 Mac，为你推荐 ${chipName}`
-    } else {
-      macRecommendation.textContent = `浏览器未提供芯片型号，优先推荐 ${chipName}`
-    }
-  }
-}
-
-// ── 获取当前选中的 Mac 下载 URL ────────────────────────
-function currentMacUrl() {
-  const chip = macChipSelect ? macChipSelect.value : detectedChip
-  return chip === 'arm64' ? LATEST_RELEASE.gitcode_mac_arm : LATEST_RELEASE.gitcode_mac_x64
+// ── 高亮当前 Mac 架构 ─────────────────────────────────
+function updateRecommendedCard() {
+  macArmCard?.classList.toggle('is-recommended', detectedChip === 'arm64')
+  macX64Card?.classList.toggle('is-recommended', detectedChip === 'x64')
 }
 
 // ── 根据地区设置下载链接 ──────────────────────────────
@@ -134,19 +81,19 @@ function setDownloadLinks() {
   const isMac = /macintosh|mac os x/.test(ua)
 
   // 高亮当前平台
-  if (isMac && macCard) {
-    macCard.style.borderColor = '#2997ff'
-    macCard.style.background = 'rgba(41, 151, 255, 0.08)'
-    // 显示芯片选择器
-    if (macChipSelect) macChipSelect.style.display = 'inline-block'
+  if (isMac) {
+    updateRecommendedCard()
   } else if (!isMac && winCard) {
     winCard.style.borderColor = '#2997ff'
     winCard.style.background = 'rgba(41, 151, 255, 0.08)'
   }
 
   // 优先使用 embed 的地址，否则 fallback 到 GitCode 仓库页
-  const macUrl =
-    currentMacUrl() ||
+  const macArmUrl =
+    LATEST_RELEASE.gitcode_mac_arm ||
+    'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases'
+  const macX64Url =
+    LATEST_RELEASE.gitcode_mac_x64 ||
     'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases'
   const winUrl =
     LATEST_RELEASE.gitcode_win ||
@@ -155,15 +102,13 @@ function setDownloadLinks() {
   // 地区标记文字
   const regionLabel = isChineseUser ? '🇨🇳 国内加速' : '🌐 GitHub'
 
-  if (macCard) {
-    macCard.href = macUrl
-  }
+  if (macArmCard) macArmCard.href = macArmUrl
+  if (macX64Card) macX64Card.href = macX64Url
   if (winCard) {
     winCard.href = winUrl
   }
-  if (macRegion) {
-    macRegion.textContent = regionLabel
-  }
+  if (macArmRegion) macArmRegion.textContent = regionLabel
+  if (macX64Region) macX64Region.textContent = regionLabel
   if (winRegion) {
     winRegion.textContent = regionLabel
   }
@@ -185,16 +130,13 @@ function fetchGitHubRelease() {
       const macX64Asset = assets.find((a) => /-x64\.dmg$/i.test(a.name))
       const winAsset = assets.find((a) => isSetupExe(a.name))
 
-      // 国际用户走 GitHub 直链
-      if (!isChineseUser) {
-        if (macArmAsset && macX64Asset && macCard) {
-          const chip = macChipSelect ? macChipSelect.value : detectedChip
-          macCard.href = chip === 'arm64'
-            ? macArmAsset.browser_download_url
-            : macX64Asset.browser_download_url
-        }
+      // 仅当 GitHub 已发布同一版本时，国际用户才走 GitHub 直链。
+      if (!isChineseUser && data.tag_name === LATEST_RELEASE.tag) {
+        if (macArmAsset && macArmCard) macArmCard.href = macArmAsset.browser_download_url
+        if (macX64Asset && macX64Card) macX64Card.href = macX64Asset.browser_download_url
         if (winAsset && winCard) winCard.href = winAsset.browser_download_url
-        if (macRegion) macRegion.textContent = '🌐 国际下载'
+        if (macArmRegion) macArmRegion.textContent = '🌐 国际下载'
+        if (macX64Region) macX64Region.textContent = '🌐 国际下载'
         if (winRegion) winRegion.textContent = '🌐 国际下载'
       }
     })

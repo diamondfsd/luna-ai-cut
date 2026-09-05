@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { detectMacArchitecture, isMacBrowser } from '../landing/download-platform.js'
+
+const landingHtml = await readFile(new URL('../landing/index.html', import.meta.url), 'utf8')
+assert.match(landingHtml, /id="dl-mac-arm"/, 'Landing page must expose an Apple Silicon download entry')
+assert.match(landingHtml, /id="dl-mac-x64"/, 'Landing page must expose an Intel x64 download entry')
+assert.doesNotMatch(landingHtml, /id="dl-mac-chip"/, 'Landing page must not hide the Intel entry in a chip selector')
 
 const safariMac = {
   userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
