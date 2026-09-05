@@ -78,8 +78,8 @@ function normalizePipeline(
   return pipeline
 }
 
-function removalSourcePath(asset: WorkspaceProjectAsset | undefined, compareOriginal = false): string | undefined {
-  if (!asset || compareOriginal) return asset?.path
+function removalSourcePath(asset: WorkspaceProjectAsset | undefined): string | undefined {
+  if (!asset) return undefined
   return latestReadyRemovalOperation(asset.removal?.operations ?? [])?.resultPath ?? asset.path
 }
 
@@ -201,7 +201,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const referenceAssetRef = useRef(media.referenceAsset)
   referenceAssetRef.current = media.referenceAsset
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
-  const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
+  // 对比只切换预览图层参数，保持同一个源媒体，避免重新创建视频元素和预览画布。
+  const activeSourcePath = removalSourcePath(activeProjectAsset) ?? media.activeMedia?.path
 
   const enterImmersive = useCallback(() => {
     setImmersive(true)
@@ -502,12 +503,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     edit.commitPatch({ trim: { startTime: edit.pipeline.trim?.startTime ?? 0, endTime: time } })
   }, [activeVideoMarker, edit])
 
-  // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
-  const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
+  // ── 当前显示的管线：对比模式只在 PreviewStage 内临时调整图层参数 ──
+  const displayPipeline = edit.previewPipeline
   const stagePipeline = useMemo(() => {
-    const visiblePipeline = edit.compareOriginal
-      ? edit.comparePipeline
-      : edit.cropActive
+    const visiblePipeline = edit.cropActive
         ? mergePipeline(edit.pipeline, {
             transform: {
               ...(edit.transformDraft ?? edit.pipeline.transform),
@@ -519,7 +518,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     return mergePipeline(visiblePipeline, {
       border: { ...visiblePipeline.border, enabled: false },
     })
-  }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
+  }, [displayPipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
   const keepCompositionVideoRenderer = false
 
   const finalCanvasSize = useMemo(() => {
@@ -1072,6 +1071,15 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       }))
       const plan = sourceGroups.flat()
       const summary = summarizeWorkspaceMixedExport(plan)
+      if (summary.photo > 0 && summary.video === 0 && summary.live === 0) {
+        const result = await queueWorkspaceMixedExport(plan, settings.exportDir, {
+          ...DEFAULT_VIDEO_EXPORT_SETTINGS,
+          exportFormats: [],
+          exportPhotos: true,
+        })
+        toast.success(`已加入导出队列: ${result.itemCount} 个结果`)
+        return
+      }
       const exportFormats: VideoExportSettings['exportFormats'] = [
         ...(summary.video > 0 ? ['video' as const] : []),
         ...(summary.live > 0 ? ['google-live' as const] : []),
@@ -1331,6 +1339,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
               pending={!media.activeMedia}
               pipeline={stagePipeline}
+              compareOriginal={edit.compareOriginal}
               maskProjectId={media.currentProject?.id}
               extraLayers={combinedExtraLayers}
               cropActive={edit.cropActive}
@@ -1353,6 +1362,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               onFitScaleChange={setFitScalePercent}
               viewportKey={media.activeMedia?.path}
               previewMaxSide={workspacePreviewMaxSide(previewQuality)}
+              forceSdrPreview={Boolean(
+                edit.previewPipeline.logRestore.activeId
+                || edit.previewPipeline.lutFilter.activeId
+                || (edit.previewPipeline.referenceMatch?.enabled && edit.previewPipeline.referenceMatch.resultKind === 'lut'),
+              )}
               keepCompositionVideoRenderer={keepCompositionVideoRenderer}
               onPlayStateChange={handlePlayStateChange}
             />
