@@ -441,7 +441,7 @@ export function AiSelectionPage() {
       <div className="ai-selection-sidebar-footer">
         {selectedItems.length > 0 && <span className="ai-selection-sidebar-footer-title">当前已选中 {selectedItems.length} 个素材</span>}
         <Button variant="secondary" disabled={!selectedItems.length} onClick={exportSelectedItems}>导出</Button>
-        <Button variant="secondary" disabled={!selectedVisibleItems.length || copyingSelectedItems} onClick={() => void copySelectedItems()}>{copyingSelectedItems ? '正在复制...' : `复制到文件夹 (${selectedVisibleItems.length})`}</Button>
+        <Button variant="secondary" disabled={!selectedVisibleItems.length || copyingSelectedItems} onClick={() => void copySelectedItems()}>{copyingSelectedItems ? '正在复制...' : '复制到文件夹'}</Button>
         <Button variant="primary" className="ai-selection-create-project" disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目</Button>
       </div>
     </aside>
