@@ -181,13 +181,6 @@ if [ "$UPLOAD_ONLY" = false ]; then
     const normalized = f.replaceAll('\\\\', '/');
     return !normalized.startsWith('dist/fonts/') && !normalized.startsWith('dist/luts/');
   });
-  if (require('fs').existsSync('electron')) {
-    const swiftFiles = require('fs').readdirSync('electron').filter(f => f.endsWith('.swift'));
-    for (const f of swiftFiles) {
-      zip.addLocalFile('electron/' + f, 'swift');
-    }
-    console.log('  ✓ 已添加 ' + swiftFiles.length + ' 个 Swift 文件');
-  }
   for (const f of require('fs').readdirSync('.').filter(f => f.startsWith('RELEASE_NOTES_v') && f.endsWith('.md'))) {
     zip.addLocalFile(f);
   }

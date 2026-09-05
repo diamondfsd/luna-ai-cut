@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -16,10 +16,10 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-function archiveBytes(files) {
+function archiveBytes(files, executableFiles = []) {
   const zip = new AdmZip()
   for (const [filePath, content] of Object.entries(files)) {
-    zip.addFile(filePath, Buffer.from(content))
+    zip.addFile(filePath, Buffer.from(content), '', executableFiles.includes(filePath) ? 0o755 : undefined)
   }
   return zip.toBuffer()
 }
@@ -52,7 +52,8 @@ try {
     'dist-electron/luna-appMain.js': 'new main',
     'dist-electron/preload.mjs': 'new preload',
     'dist/index.html': 'new page',
-  })
+    'macos-native/livetool': 'compiled helper',
+  }, ['macos-native/livetool'])
   const hotDir = path.join(temporaryRoot, '.luna-hot')
   await seedInstalledUpdate(hotDir)
 
@@ -72,6 +73,8 @@ try {
   })
   assert.equal(verifiedFetches, 2, '校验下载应在一次操作内重试')
   assert.equal(await readFile(path.join(hotDir, 'dist-electron/luna-appMain.js'), 'utf8'), 'new main')
+  assert.equal(await readFile(path.join(hotDir, 'macos-native/livetool'), 'utf8'), 'compiled helper')
+  assert.notEqual((await stat(path.join(hotDir, 'macos-native/livetool'))).mode & 0o111, 0, 'macOS helper 必须保留可执行权限')
   assert.equal(JSON.parse(await readFile(path.join(hotDir, 'version.json'), 'utf8')).version, '1.7.0-hot.2')
   assert.equal(existsSync(path.join(hotDir, '.install-staging')), false, '安装临时目录必须清理')
 
