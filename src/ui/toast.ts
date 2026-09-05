@@ -7,6 +7,7 @@ export interface ToastDetail {
 }
 
 const TOAST_EVENT = 'luna:toast'
+const MAX_TOAST_DURATION = 3000
 
 const PARENTHETICAL_TEXT = /（[^（）]*）|\([^()]*\)/g
 
@@ -29,7 +30,9 @@ export function normalizeToastMessage(message: string): string {
 function dispatch(detail: ToastDetail) {
   const message = normalizeToastMessage(detail.message)
   if (!message) return
-  window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: { ...detail, message } }))
+  window.dispatchEvent(new CustomEvent(TOAST_EVENT, {
+    detail: { ...detail, message, duration: Math.min(detail.duration, MAX_TOAST_DURATION) },
+  }))
 }
 
 export const toast = {
@@ -39,7 +42,7 @@ export const toast = {
   success(message: string, duration = 3000) {
     dispatch({ message, type: 'success', duration })
   },
-  error(message: string, duration = 4000) {
+  error(message: string, duration = 3000) {
     dispatch({ message, type: 'error', duration })
   },
   /** @internal */
