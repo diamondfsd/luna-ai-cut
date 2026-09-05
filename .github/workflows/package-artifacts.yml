@@ -1,6 +1,9 @@
 name: Package Artifacts
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       target:
