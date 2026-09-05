@@ -74,6 +74,18 @@
   font-size: 16px;
 }
 
+.workspace-reference-match-target-thumb {
+  position: relative;
+  min-width: 0;
+}
+
+.workspace-reference-match-remove-button.ui-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 1;
+}
+
 .workspace-reference-match-reference-actions {
   display: flex;
   align-items: center;

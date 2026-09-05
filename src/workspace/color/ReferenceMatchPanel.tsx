@@ -2,11 +2,15 @@ import { Image as ImageIcon, Loader2, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button, IconButton, toast } from '../../ui'
+import type { ReferenceMatchMethod } from '../../shared/types/referenceMatch'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { workspaceImageCache, type ImageCacheEntry } from '../shared/imageCache'
 import { ParamSlider } from '../components/ParamSlider'
+import { generateReferenceMatchLut, imageBitmapToReferenceMatchImage } from './referenceMatch'
 import './ReferenceMatchPanel.css'
+
+const VIDEO_REFERENCE_MATCH_METHOD: ReferenceMatchMethod = 'reinhard'
 
 function sameAsset(left: { id: string; path: string } | null, right: { id: string; path: string } | null): boolean {
   return Boolean(left && right && (left.id === right.id || left.path === right.path))
@@ -60,7 +64,6 @@ export function ReferenceMatchPanel() {
       return
     }
     media.setReferenceAsset({ ...target })
-    toast.success('已将当前照片设为参考图')
   }
 
   const generate = async (): Promise<void> => {
@@ -70,12 +73,54 @@ export function ReferenceMatchPanel() {
     }
     const projectId = media.currentProject?.id
     if (!projectId) {
-      toast.error('请先将素材加入项目后再使用 AI 追色')
+      toast.error('请先将素材加入项目后再使用 AI追色')
       return
     }
     const generationId = ++generationRef.current
     setGenerating(true)
     try {
+      if (target.kind === 'video') {
+        if (reference.kind !== 'image') throw new Error('参考图必须是照片')
+        const [targetEntry, referenceEntry] = await Promise.all([
+          workspaceImageCache.generate(target.path),
+          workspaceImageCache.generate(reference.path),
+        ])
+        const result = generateReferenceMatchLut(
+          imageBitmapToReferenceMatchImage(targetEntry.previewBitmap),
+          imageBitmapToReferenceMatchImage(referenceEntry.previewBitmap),
+          { method: VIDEO_REFERENCE_MATCH_METHOD },
+        )
+        const saved = await window.luna.workspace.saveReferenceMatchLut({
+          projectId,
+          cube: result.cube,
+          name: `AI追色 · ${reference.name}`,
+          description: `根据「${reference.name}」为「${target.name}」生成的 AI追色效果`,
+          method: VIDEO_REFERENCE_MATCH_METHOD,
+          referenceAssetId: reference.id,
+          referenceName: reference.name,
+          targetAssetId: target.id,
+          targetName: target.name,
+        })
+        edit.commitPatch({
+          referenceMatch: {
+            enabled: true,
+            method: VIDEO_REFERENCE_MATCH_METHOD,
+            strength,
+            referenceAssetId: reference.id,
+            referenceName: reference.name,
+            referencePath: reference.path,
+            targetAssetId: target.id,
+            targetName: target.name,
+            resultPath: saved.path,
+            resultKind: 'lut',
+            generatedAt: new Date().toISOString(),
+          },
+        })
+        if (generationRef.current !== generationId) return
+        toast.success('追色成功')
+        return
+      }
+
       const generated = await window.luna.workspace.generateReferenceMatchAiLut({
         projectId,
         targetPath: target.path,
@@ -102,7 +147,7 @@ export function ReferenceMatchPanel() {
         },
       })
       if (generationRef.current !== generationId) return
-      toast.success('AI追色已生成并应用到当前照片')
+      toast.success('追色成功')
     } catch (error) {
       if (generationRef.current !== generationId) return
       toast.error(error instanceof Error ? error.message : '追色失败，请稍后重试')
@@ -113,7 +158,7 @@ export function ReferenceMatchPanel() {
 
   const targetThumbnail = target ? thumbnails[target.id]?.thumbnailUrl : null
   const referenceThumbnail = reference ? thumbnails[reference.id]?.thumbnailUrl : null
-  const canGenerate = Boolean(media.currentProject?.id && target?.kind === 'image' && reference?.kind === 'image' && referenceAvailable && !targetIsReference && !generating)
+  const canGenerate = Boolean(media.currentProject?.id && (target?.kind === 'image' || target?.kind === 'video') && reference?.kind === 'image' && referenceAvailable && !targetIsReference && !generating)
 
   const handleStrengthChange = (value: number): void => {
     setStrength(value)
@@ -122,6 +167,11 @@ export function ReferenceMatchPanel() {
     edit.updateWorkspacePanel({
       referenceMatch: { ...current, strength: value },
     })
+  }
+
+  const removeReferenceMatch = (): void => {
+    if (!edit.pipeline.referenceMatch || generating) return
+    edit.commitPatch({ referenceMatch: null })
   }
 
   return (
@@ -145,7 +195,21 @@ export function ReferenceMatchPanel() {
         <div className="workspace-reference-match-arrow" aria-hidden="true">→</div>
         <div className="workspace-reference-match-preview">
           <span>{target?.kind === 'video' ? '当前视频' : '当前照片'}</span>
-          {targetThumbnail ? <img src={targetThumbnail} alt="当前素材预览" /> : <div className="workspace-reference-match-empty-thumb"><ImageIcon size={20} /></div>}
+          <div className="workspace-reference-match-target-thumb">
+            {targetThumbnail ? <img src={targetThumbnail} alt="当前素材预览" /> : <div className="workspace-reference-match-empty-thumb"><ImageIcon size={20} /></div>}
+            {edit.pipeline.referenceMatch && (
+              <Button
+                className="workspace-reference-match-remove-button"
+                variant="danger"
+                size="mini"
+                icon={<X size={13} />}
+                disabled={generating}
+                onClick={removeReferenceMatch}
+              >
+                移除追色
+              </Button>
+            )}
+          </div>
           <strong title={target?.name}>{target?.name ?? '未选择素材'}</strong>
         </div>
       </div>
@@ -167,7 +231,7 @@ export function ReferenceMatchPanel() {
           disabled={!canGenerate}
           onClick={() => void generate()}
         >
-          {generating ? '追色中' : 'AI追色'}
+          {generating ? 'AI追色中' : 'AI追色'}
         </Button>
       </div>
 
