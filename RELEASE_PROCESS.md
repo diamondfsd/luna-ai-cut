@@ -237,6 +237,8 @@ pnpm run publish:hot -- --version 1.8.0-beta.1-hot.1 --upload
 
 仅当用户明确要求 GitHub Actions/Release 时，才使用 `gh release` 或推送会触发打包的 `v*` tag。此路径由 `.github/workflows/package-artifacts.yml` 负责构建和挂载附件，不改变默认的本地编译上传流程。
 
+GitHub Actions 的 macOS 自动构建只生成 Ad Hoc 包，不导入 Developer ID 证书、不执行 Apple notarization，也不需要配置 macOS 签名或公证 Secrets。GitHub Release 产物不能直接作为 GitCode 正式 Release 产物；上传 GitCode 前仍必须按本文件的 macOS 签名与公证流程重新构建并验证。
+
 ## 日常热更新发布
 
 当只需要推送增量修复，且当前正式版发布后从未通过热更新修改原生模块时，使用本地脚本生成默认的 `universal` 纯 JS 热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为 JavaScript 热更新内容，无需重复构建三份平台包。例如产物为 `renderer-1.7.1-hot.1.zip`，客户端会从 GitCode Release 附件中使用这个通用包。
