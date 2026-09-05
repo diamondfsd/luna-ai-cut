@@ -35,12 +35,12 @@ export function WirelessConnectionPanel({
           <p className="device-connect-section-title">Wi-Fi 连接准备</p>
           <span>
             {hasCredentials
-              ? '已通过蓝牙取得相机 Wi-Fi 信息，点击连接时会自动切换到相机 Wi-Fi'
+              ? '已获取 Wi-Fi，点击连接自动切换'
               : bluetoothUnsupported
-                ? '未检测到可用蓝牙，请打开系统 Wi-Fi 设置手动连接相机热点，连接完成后再点击“开始连接”'
+                ? '未检测到蓝牙，请在系统 Wi-Fi 中连接相机热点'
                 : preparation
                   ? preparation.message
-                  : '点击“开始连接”后会自动尝试通过蓝牙获取相机 Wi-Fi 信息'}
+                  : '点击“开始连接”自动获取 Wi-Fi'}
           </span>
         </div>
         <div className="device-connect-wireless-header-actions">
@@ -85,7 +85,7 @@ export function WirelessConnectionPanel({
         <div className="device-connect-wireless-system">
           <p className="device-connect-section-title">请使用系统 Wi-Fi 连接工具</p>
           <p>
-            点击上方“打开 Wi-Fi 设置”，在系统中手动连接相机热点。连接完成后返回应用，再点击“开始连接”；应用不会自动切换系统网络。
+            请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试。
           </p>
         </div>
       )}

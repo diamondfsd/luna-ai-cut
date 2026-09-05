@@ -15,7 +15,7 @@ import { LunaBleSession } from './lunaBleSession'
 import type { LunaWifiCredentials } from './lunaBleCodec'
 import { createElectronLunaBleTransport } from './lunaBleWebBluetoothTransport'
 
-const MANUAL_WIFI_MESSAGE = '未能通过蓝牙读取相机 Wi-Fi 信息，请打开系统 Wi-Fi 设置手动连接相机热点，连接完成后再点击“开始连接”'
+const MANUAL_WIFI_MESSAGE = '请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试'
 
 export type LunaWirelessPreparationMode = CameraMediaSourceWirelessPreparation
 
@@ -146,7 +146,7 @@ export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
     if (availability === false) {
       this.bluetoothAvailable = false
       await transport.close().catch(() => undefined)
-      return manualResult('未检测到可用的蓝牙适配器，请打开系统 Wi-Fi 设置手动连接相机热点，连接完成后再点击“开始连接”', this.capabilities)
+      return manualResult('请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试', this.capabilities)
     }
     if (availability === true) this.bluetoothAvailable = true
 
