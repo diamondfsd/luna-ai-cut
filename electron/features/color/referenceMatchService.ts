@@ -15,6 +15,14 @@ const LUT_SIZES = new Set([17, 33])
 const MAX_CUBE_BYTES = 8 * 1024 * 1024
 const AI_INPUT_SIZE = 256
 const execFileAsync = promisify(execFile)
+let aiLutGenerationQueue: Promise<void> = Promise.resolve()
+
+function enqueueAiLutGeneration<T>(task: () => Promise<T>): Promise<T> {
+  const result = aiLutGenerationQueue.then(() => task())
+  // 单次任务失败后仍允许后续粘贴继续处理。
+  aiLutGenerationQueue = result.then(() => undefined, () => undefined)
+  return result
+}
 
 async function referenceMatchRoot(settings: AppSettings, projectId: string): Promise<string> {
   if (!projectId) throw new Error('追色项目不完整')
@@ -148,7 +156,7 @@ function rgbBufferToReferenceMatchImage(data: Buffer): ReferenceMatchImage {
   return { width: AI_INPUT_SIZE, height: AI_INPUT_SIZE, data: rgba }
 }
 
-export async function generateReferenceMatchAiLut(
+async function generateReferenceMatchAiLutInternal(
   settings: AppSettings,
   request: WorkspaceReferenceMatchAiLutRequest,
 ): Promise<WorkspaceReferenceMatchAiLutResult> {
@@ -165,8 +173,10 @@ export async function generateReferenceMatchAiLut(
   const outputName = safeName(`AI追色_${request.targetName}_${request.referenceName}_${Date.now()}`)
   const destination = path.join(root, `${outputName}.cube`)
   try {
-    const [content, style] = await Promise.all([decodeRgb(request.targetPath), decodeRgb(request.referencePath)])
-    await Promise.all([fs.writeFile(contentPath, content, { mode: 0o600 }), fs.writeFile(stylePath, style, { mode: 0o600 })])
+    const content = await decodeRgb(request.targetPath)
+    const style = await decodeRgb(request.referencePath)
+    await fs.writeFile(contentPath, content, { mode: 0o600 })
+    await fs.writeFile(stylePath, style, { mode: 0o600 })
     await execFileAsync(await getWorkerPathAtRuntime(), [model.path, contentPath, stylePath, outputRgbPath], { timeout: 120_000, maxBuffer: 64 * 1024 })
     const transformed = await fs.readFile(outputRgbPath)
     const result = generatePairedReferenceMatchLut(
@@ -192,4 +202,12 @@ export async function generateReferenceMatchAiLut(
   } finally {
     await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined)
   }
+}
+
+/** AI 追色共用一个主进程队列，复制粘贴多张照片时不会并发启动模型任务。 */
+export function generateReferenceMatchAiLut(
+  settings: AppSettings,
+  request: WorkspaceReferenceMatchAiLutRequest,
+): Promise<WorkspaceReferenceMatchAiLutResult> {
+  return enqueueAiLutGeneration(() => generateReferenceMatchAiLutInternal(settings, request))
 }

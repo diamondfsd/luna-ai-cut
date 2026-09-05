@@ -62,8 +62,8 @@ export function buildWorkspaceExportLayers(
         videoDuration: main[0]?.videoDuration,
       },
     })
-    const adjustedBorderLayers = applyLocalColorToSourceMediaLayers(
-      applyReferenceMatchToSourceMediaLayers(borderLayers, sourcePath, pipeline),
+    const adjustedBorderLayers = applyReferenceMatchToSourceMediaLayers(
+      applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline),
       sourcePath,
       pipeline,
     )

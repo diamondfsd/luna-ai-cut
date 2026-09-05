@@ -413,6 +413,13 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   const effects = EDIT_PARAMETER_RANGES.effects
 
   const referenceMatch = normalizeReferenceMatch(pipeline.referenceMatch)
+  const lutFilter = { ...DEFAULT_PIPELINE.lutFilter, ...pipeline.lutFilter }
+  // AI 追色使用独立渲染层。清理早期版本曾写入普通 LUT 槽位的结果，避免
+  // 重新打开项目后普通 LUT 面板继续显示 AI 生成文件。
+  if (referenceMatch?.resultKind === 'lut' && lutFilter.activeId === referenceMatch.resultPath) {
+    lutFilter.activeId = null
+    lutFilter.intensity = DEFAULT_PIPELINE.lutFilter.intensity
+  }
 
   // Normalize trim: ensure valid range, or null
   let trim: VideoTrimState | null = null
@@ -496,6 +503,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       sharpen: clampNumber(pipeline.effects.sharpen, effects.sharpen),
       denoise: clampNumber(pipeline.effects.denoise, effects.denoise),
     },
+    lutFilter,
     referenceMatch,
   }
 }
@@ -519,6 +527,7 @@ function normalizeReferenceMatch(value: unknown): ReferenceMatchSettings | null 
     strength: clampNumber(Number(input.strength ?? 100), { min: 0, max: 100 }),
     referenceAssetId: input.referenceAssetId,
     referenceName: typeof input.referenceName === 'string' ? input.referenceName : '',
+    ...(typeof input.referencePath === 'string' && input.referencePath.trim() ? { referencePath: input.referencePath } : {}),
     targetAssetId: input.targetAssetId,
     targetName: typeof input.targetName === 'string' ? input.targetName : '',
     resultPath: input.resultPath,
