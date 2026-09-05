@@ -38,7 +38,7 @@ jobs:
           base_version="${version%%-hot.*}"
           release_tag="v${base_version}"
           include_native=true
-          if git rev-parse "$release_tag" >/dev/null 2>&1 && git diff --quiet "$release_tag" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
+          if git rev-parse "$release_tag" >/dev/null 2>&1 && git diff --quiet "$release_tag" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs scripts/build-macos-helpers.mjs electron/platform/macos electron/lunaRenderCore.ts; then
             include_native=false
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -57,12 +57,15 @@ jobs:
           - os: macos-latest
             platform: darwin-arm64
             cross_target: ''
+            helper_arch: arm64
           - os: macos-latest
             platform: darwin-x64
             cross_target: x86_64-apple-darwin
+            helper_arch: x64
           - os: windows-latest
             platform: win32-x64
             cross_target: ''
+            helper_arch: ''
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +97,14 @@ jobs:
         env:
           CROSS_TARGET: ${{ matrix.cross_target }}
         run: node scripts/build-native.mjs
-      - uses: actions/upload-artifact@v4
+      - name: Build macOS helpers
+        if: startsWith(matrix.platform, 'darwin-')
+        env:
+          MACOS_HELPER_ARCH: ${{ matrix.helper_arch }}
+        run: node scripts/build-macos-helpers.mjs --arch "$MACOS_HELPER_ARCH"
+      - name: Upload Windows native artifact
+        if: matrix.platform == 'win32-x64'
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}
           path: |
@@ -102,4 +112,13 @@ jobs:
             luna-render-core/dxcompiler.dll
             luna-render-core/dxil.dll
             luna-render-core/DXC-LICENSE-*.txt
+          if-no-files-found: error
+      - name: Upload macOS native artifact
+        if: startsWith(matrix.platform, 'darwin-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: |
+            luna-render-core/luna-render-core.node
+            resources/macos-native/*
           if-no-files-found: error

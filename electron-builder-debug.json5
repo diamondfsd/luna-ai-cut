@@ -45,11 +45,6 @@
       "filter": ["**/*.png"]
     },
     {
-      "from": "electron/platform/macos",
-      "to": "swift",
-      "filter": ["*.swift"]
-    },
-    {
       "from": "electron/platform/windows",
       "to": "native",
       "filter": ["*.ps1"]
@@ -68,11 +63,21 @@
     "artifactName": "LunaDeviceDebug-Mac-${version}-${arch}.${ext}",
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
+    "binaries": [
+      "Contents/Resources/macos-native/bluetoothCoreScanner",
+      "Contents/Resources/macos-native/wifiCoreWlan",
+      "Contents/Resources/macos-native/livetool"
+    ],
     "hardenedRuntime": true,
     "extraResources": [
       {
         "from": "node_modules/7zip-bin/mac/${arch}/7za",
         "to": "tools/7za"
+      },
+      {
+        "from": "resources/macos-native",
+        "to": "macos-native",
+        "filter": ["*"]
       }
     ],
     "extendInfo": {

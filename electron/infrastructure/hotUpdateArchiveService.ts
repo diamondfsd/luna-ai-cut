@@ -9,7 +9,7 @@ const REQUIRED_FILES = [
   'dist-electron/preload.mjs',
   'dist/index.html',
 ]
-const INSTALL_ENTRIES = ['dist-electron', 'dist', 'pending-native', 'swift', 'package.json']
+const INSTALL_ENTRIES = ['dist-electron', 'dist', 'pending-native', 'macos-native', 'swift', 'package.json']
 const DOWNLOAD_ATTEMPTS = 3
 
 export interface HotUpdateIntegrity {
@@ -206,7 +206,8 @@ function installArchive(hotDir: string, archivePath: string, version: string): v
 
   try {
     const zip = inspectArchive(archivePath)
-    zip.extractAllTo(extractDir, true)
+    // macOS native helpers must retain their executable bit after extraction.
+    zip.extractAllTo(extractDir, true, true)
     const contentRoot = resolveContentRoot(extractDir)
     writeFileSync(
       path.join(contentRoot, 'package.json'),

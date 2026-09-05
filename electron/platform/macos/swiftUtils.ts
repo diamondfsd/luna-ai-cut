@@ -1,49 +1,42 @@
 /**
- * swiftUtils.ts — Swift 脚本路径解析
+ * swiftUtils.ts — macOS 原生 helper 路径解析
  *
- * 提供统一的 Swift 脚本路径获取方法，依次查找：
- * 1. 热更新目录（userData/.luna-hot/swift/）
- * 2. 打包资源目录（Resources/swift/）
- * 3. 旧版打包路径（Resources/，兼容 <1.5.0 的 livetool.swift）
- * 4. 开发目录（electron/platform/macos/）
+ * 原生 helper 在构建阶段由 Swift 编译，运行时只执行已编译的二进制。
+ * 查找顺序：
+ * 1. 热更新目录（userData/.luna-hot/macos-native/）
+ * 2. 打包资源目录（Resources/macos-native/）
+ * 3. 开发目录（resources/macos-native/）
  */
 import { app } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const HOT_SWIFT_DIR = () => join(app.getPath('userData'), '.luna-hot', 'swift')
-const RESOURCES_SWIFT_DIR = () => join(process.resourcesPath, 'swift')
+const HOT_MACOS_NATIVE_DIR = () => join(app.getPath('userData'), '.luna-hot', 'macos-native')
+const RESOURCES_MACOS_NATIVE_DIR = () => join(process.resourcesPath, 'macos-native')
+const DEV_MACOS_NATIVE_DIR = () => join(app.getAppPath(), 'resources', 'macos-native')
 const HOT_NATIVE_DIR = () => join(app.getPath('userData'), '.luna-hot', 'native')
 const RESOURCES_NATIVE_DIR = () => join(process.resourcesPath, 'native')
-const RESOURCES_LEGACY_DIR = () => process.resourcesPath // 旧版: Resources/livetool.swift
-const DEV_SWIFT_DIR = () => join(app.getAppPath(), 'electron', 'platform', 'macos')
 const DEV_NATIVE_DIR = () => join(app.getAppPath(), 'electron', 'platform', 'windows')
 
 /**
- * 获取 Swift 脚本的完整路径。
- * @param scriptName 脚本文件名，如 "livetool.swift"、"bluetoothCoreScanner.swift"
+ * 获取已编译 macOS helper 的完整路径。
+ * @param helperName helper 名称，如 "livetool"、"bluetoothCoreScanner"
  */
-export function getSwiftScriptPath(scriptName: string): string {
+export function getMacosHelperPath(helperName: string): string {
   // 1. 热更新目录（热更新 zip 解压后）
   if (app.isPackaged) {
-    const hotPath = join(HOT_SWIFT_DIR(), scriptName)
+    const hotPath = join(HOT_MACOS_NATIVE_DIR(), helperName)
     if (existsSync(hotPath)) return hotPath
   }
 
-  // 2. 新版打包资源目录（extraResources → Resources/swift/）
+  // 2. 安装包资源目录（extraResources → Resources/macos-native/）
   if (app.isPackaged) {
-    const resPath = join(RESOURCES_SWIFT_DIR(), scriptName)
+    const resPath = join(RESOURCES_MACOS_NATIVE_DIR(), helperName)
     if (existsSync(resPath)) return resPath
   }
 
-  // 3. 旧版打包路径 — 兼容 <1.5.0 安装包（livetool.swift 直接放 Resources/）
-  if (app.isPackaged) {
-    const legacyPath = join(RESOURCES_LEGACY_DIR(), scriptName)
-    if (existsSync(legacyPath)) return legacyPath
-  }
-
-  // 4. 开发目录
-  return join(DEV_SWIFT_DIR(), scriptName)
+  // 3. 开发目录。构建脚本会在这里生成可执行文件。
+  return join(DEV_MACOS_NATIVE_DIR(), helperName)
 }
 
 /** 获取非 Swift 原生 helper（例如 Windows PowerShell BLE bridge）的完整路径。 */
