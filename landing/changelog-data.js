@@ -2,6 +2,12 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.3",
+    "title": "v1.8.3",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>AI 追色</strong>：支持选择参考照片，将参考照片的色彩风格应用到当前照片，并可继续调整和保存结果。</li>\n<li><strong>批量应用 AI 追色</strong>：复制效果到多个照片时，会为每张目标照片重新生成匹配结果，避免不同照片直接共用同一份效果。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复预览对比逻辑</strong>：查看原图时不再重新创建视频预览，减少画面闪烁和播放状态变化。</li>\n<li><strong>修复 AI 追色复制结果</strong>：切换素材或重新打开项目后，参考照片和追色结果能够正确恢复。</li>\n<li><strong>改善预览与导出一致性</strong>：修复部分 WebGPU 预览、色彩处理和图片信息保留问题。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li><strong>调整工作区布局</strong>：优化编辑区域、工具入口和操作提示，减少常用功能的查找成本。</li>\n<li><strong>统一提示时长</strong>：所有提示最长显示 3 秒，错误提示和长时间操作提示也不再超过此时长。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新项目版本至 <code>1.8.3</code>。</li>\n<li>发布 macOS Apple 芯片、macOS Intel 和 Windows x64 安装包。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
     "version": "1.8.2",
     "title": "v1.8.2",
     "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>改善相机 Wi-Fi 连接失败处理</strong>：自动连接失败时明确提示用户复制密码并在系统 Wi-Fi 中连接相机热点，完成后返回应用重试。</li>\n<li><strong>保留手动连接所需信息</strong>：连接失败后继续显示相机热点名称，并支持复制 Wi-Fi 密码或重新输入密码。</li>\n<li><strong>修复 macOS Intel 下载入口</strong>：落地页独立展示 Apple 芯片和 Intel 芯片的 macOS 安装包，避免用户找不到 x64 下载地址。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>简化设备连接提示</strong>：缩短连接页中的状态、诊断和磁盘说明，让处理步骤更清晰。</li>\n<li><strong>优化跨平台发布检查</strong>：正式 macOS Release 包必须完成 Developer ID 签名、Apple 公证和票据装订后才能上传到 GitCode。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新项目版本至 <code>1.8.2</code>。</li>\n</ul>",
