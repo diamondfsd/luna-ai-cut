@@ -87,6 +87,7 @@ export function resolveExportFps(frameRate: VideoFrameRate): number | null {
  * 根据质量预设映射到 Rust QualityPreset 字符串
  *
  * Rust 侧定义:
+ * - 'original'   → 使用源视频码率
  * - 'small'       → ~12 Mbps
  * - 'standard'    → ~24 Mbps
  * - 'high'        → ~50 Mbps
@@ -97,7 +98,7 @@ export function resolveExportQualityPreset(
   customBitrate?: number,
 ): string | undefined {
   switch (quality) {
-    case 'original': return undefined
+    case 'original': return 'original'
     case 'low': return 'small'
     case 'medium': return 'standard'
     case 'high': return 'high'
@@ -330,6 +331,8 @@ export async function exportPreviewLivePhoto(params: {
   appleLivePhoto: boolean
   /** 是否保留视频片段中的音频。 */
   includeAudio?: boolean
+  /** 视频编码质量预设。 */
+  qualityPreset?: string
   /** 导出任务 ID（写入任务记录） */
   exportTaskId?: string
   /** 子任务 ID */
@@ -381,7 +384,7 @@ export async function exportPreviewLivePhoto(params: {
       width: params.width,
       height: params.height,
       layers: params.videoLayers,
-      qualityPreset: 'high',
+      qualityPreset: params.qualityPreset ?? 'high',
       includeAudio: params.includeAudio,
     })
     emitProgress(65, 'exporting')
@@ -560,6 +563,9 @@ async function runBatchExportQueue(
             const videoUrl = videoResult.source
             if (videoUrl) {
               const videoRes = await window.luna.workspace.getMediaResolution(videoUrl).catch(() => res)
+              const liveQualityPreset = exportConfig
+                ? resolveExportConfig(exportConfig, videoRes.width, videoRes.height).qualityPreset ?? 'high'
+                : 'high'
               const videoLayers: PreviewLayer[] = exportLayers.map((layer, i) =>
                 i === 0 ? { ...layer, filePath: videoUrl, isVideo: true } : layer,
               )
@@ -587,6 +593,7 @@ async function runBatchExportQueue(
                     imageLayers: exportLayers, videoLayers,
                     appleLivePhoto: false,
                     includeAudio: exportConfig?.includeAudio !== false,
+                    qualityPreset: liveQualityPreset,
                     exportTaskId: taskId, exportItemId: entry.id,
                     taskName, index: entry.index, totalFiles: entries.length,
                   })
@@ -613,6 +620,7 @@ async function runBatchExportQueue(
                     imageLayers: exportLayers, videoLayers,
                     appleLivePhoto: true,
                     includeAudio: exportConfig?.includeAudio !== false,
+                    qualityPreset: liveQualityPreset,
                     exportTaskId: taskId, exportItemId: appleItemId,
                     taskName, index: entry.index, totalFiles: entries.length,
                   })
@@ -641,6 +649,7 @@ async function runBatchExportQueue(
                   videoLayers,
                   appleLivePhoto: false,
                   includeAudio: exportConfig?.includeAudio !== false,
+                  qualityPreset: liveQualityPreset,
                   exportTaskId: taskId,
                   exportItemId: entry.id,
                   taskName,

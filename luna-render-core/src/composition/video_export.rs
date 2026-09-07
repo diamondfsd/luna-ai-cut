@@ -6,6 +6,34 @@ use super::*;
 use crate::media::command;
 use napi_derive::napi;
 
+const DEFAULT_ORIGINAL_BITRATE_BPS: u64 = 50_000_000;
+
+fn primary_source_bitrate(ffprobe_path: &str, composition: &CompositionInput) -> Option<u64> {
+    composition
+        .layers
+        .iter()
+        .find(|layer| is_video_source(&layer.source))
+        .and_then(|layer| probe_video_info(ffprobe_path, &layer.source.path).ok())
+        .map(|info| info.src_bitrate)
+        .filter(|bitrate| *bitrate > 0)
+}
+
+fn parse_bitrate_bps(value: &str) -> Option<u64> {
+    let trimmed = value.trim();
+    let (number, multiplier) = if let Some(value) = trimmed.strip_suffix(['k', 'K']) {
+        (value, 1_000)
+    } else if let Some(value) = trimmed.strip_suffix(['m', 'M']) {
+        (value, 1_000_000)
+    } else {
+        (trimmed, 1)
+    };
+    number
+        .parse::<u64>()
+        .ok()
+        .filter(|value| *value > 0)
+        .map(|value| value.saturating_mul(multiplier))
+}
+
 /// ffmpeg 路径 -> 最佳可用硬件 H.264 编码器缓存。
 /// None 表示已检测过，无可用硬件编码器（使用 libx264）。
 static HW_ENCODER_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
@@ -129,6 +157,19 @@ pub struct ExportCompositionVideoTask {
     input: ExportCompositionVideoInput,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::parse_bitrate_bps;
+
+    #[test]
+    fn parses_bitrate_units_for_platform_encoders() {
+        assert_eq!(parse_bitrate_bps("50000000"), Some(50_000_000));
+        assert_eq!(parse_bitrate_bps("50000k"), Some(50_000_000));
+        assert_eq!(parse_bitrate_bps("50M"), Some(50_000_000));
+        assert_eq!(parse_bitrate_bps("invalid"), None);
+    }
+}
+
 pub(crate) fn export_composition_video_sync(
     input: ExportCompositionVideoInput,
 ) -> Result<(), String> {
@@ -208,7 +249,15 @@ impl Task for ExportCompositionVideoTask {
             .as_deref()
             .map(QualityPreset::from_str)
             .unwrap_or(QualityPreset::High);
+        let source_bitrate = if matches!(&preset, QualityPreset::Original) {
+            primary_source_bitrate(&self.input.ffprobe_path, &self.input.composition)
+        } else {
+            None
+        };
         let bitrate: String = match preset {
+            QualityPreset::Original => source_bitrate
+                .unwrap_or(DEFAULT_ORIGINAL_BITRATE_BPS)
+                .to_string(),
             QualityPreset::Small => "12000k".to_string(),
             QualityPreset::Standard => "24000k".to_string(),
             QualityPreset::High => "50000k".to_string(),
@@ -222,11 +271,7 @@ impl Task for ExportCompositionVideoTask {
         // ── macOS GPU Export ──
         #[cfg(target_os = "macos")]
         if self.input.hardware.unwrap_or(true) {
-            let bitrate_bps = bitrate
-                .trim_end_matches(['k', 'K'])
-                .parse::<u64>()
-                .unwrap_or(50_000)
-                .saturating_mul(1_000);
+            let bitrate_bps = parse_bitrate_bps(&bitrate).unwrap_or(DEFAULT_ORIGINAL_BITRATE_BPS);
             log_write(&format!(
                 "[Export:MacGPU] start output={} frames={} fps={} bitrate={}",
                 self.input.output_path, total_frames, fps, bitrate_bps,
@@ -273,11 +318,7 @@ impl Task for ExportCompositionVideoTask {
 
         #[cfg(target_os = "windows")]
         if hardware_requested {
-            let bitrate_bps = bitrate
-                .trim_end_matches(['k', 'K'])
-                .parse::<u64>()
-                .unwrap_or(50_000)
-                .saturating_mul(1_000);
+            let bitrate_bps = parse_bitrate_bps(&bitrate).unwrap_or(DEFAULT_ORIGINAL_BITRATE_BPS);
             log_write(&format!(
                 "[Export:WinGPU] automatic attempt output={} frames={} fps={} bitrate={} input={}",
                 self.input.output_path, total_frames, fps, bitrate_bps, "d3d12-gpu",
