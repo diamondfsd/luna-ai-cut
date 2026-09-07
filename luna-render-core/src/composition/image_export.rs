@@ -18,11 +18,16 @@ pub struct ExportCompositionImageTask {
     input: ExportCompositionImageInput,
 }
 
+// FFmpeg's MJPEG encoder clamps custom quantization values to a minimum of 4.
+// Applying it to the quality-100 path avoids the encoder's much coarser default
+// matrix, which otherwise makes a full-resolution export unexpectedly small.
+const JPEG_MINIMUM_QUANT_MATRIX: &str = "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4";
+
 fn jpeg_encoder_options(quality: f64) -> Vec<String> {
     // FFmpeg's MJPEG quantizer uses 1 as the highest quality and 31 as the lowest.
     let quality = quality.clamp(1.0, 100.0);
     let ffmpeg_q = ((100.0 - quality) * 30.0 / 99.0 + 1.0).round() as u32;
-    vec![
+    let mut options = vec![
         "-c:v".to_string(),
         "mjpeg".to_string(),
         // 4:4:4 avoids chroma subsampling on fine details, text, and watermarks.
@@ -30,7 +35,16 @@ fn jpeg_encoder_options(quality: f64) -> Vec<String> {
         "yuvj444p".to_string(),
         "-q:v".to_string(),
         ffmpeg_q.to_string(),
-    ]
+    ];
+    if quality >= 100.0 {
+        options.extend([
+            "-intra_matrix".to_string(),
+            JPEG_MINIMUM_QUANT_MATRIX.to_string(),
+            "-chroma_intra_matrix".to_string(),
+            JPEG_MINIMUM_QUANT_MATRIX.to_string(),
+        ]);
+    }
+    options
 }
 
 impl Task for ExportCompositionImageTask {
@@ -153,7 +167,7 @@ pub fn export_composition_image_async(
 
 #[cfg(test)]
 mod tests {
-    use super::jpeg_encoder_options;
+    use super::{jpeg_encoder_options, JPEG_MINIMUM_QUANT_MATRIX};
 
     #[test]
     fn jpeg_quality_100_uses_full_chroma_and_best_quantizer() {
@@ -162,6 +176,12 @@ mod tests {
             .windows(2)
             .any(|pair| pair == ["-pix_fmt", "yuvj444p"]));
         assert!(options.windows(2).any(|pair| pair == ["-q:v", "1"]));
+        assert!(options
+            .windows(2)
+            .any(|pair| pair == ["-intra_matrix", JPEG_MINIMUM_QUANT_MATRIX]));
+        assert!(options
+            .windows(2)
+            .any(|pair| pair == ["-chroma_intra_matrix", JPEG_MINIMUM_QUANT_MATRIX]));
     }
 
     #[test]
@@ -170,5 +190,6 @@ mod tests {
         let high = jpeg_encoder_options(100.0);
         assert!(low.windows(2).any(|pair| pair == ["-q:v", "31"]));
         assert!(high.windows(2).any(|pair| pair == ["-q:v", "1"]));
+        assert!(!low.iter().any(|option| option == "-intra_matrix"));
     }
 }
