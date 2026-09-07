@@ -6,6 +6,7 @@ import {
   type BatchExportSource,
 } from '../../components/previewStageExport'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
+import { createDirectoryExportNameAllocator } from '../../lib/exportNameAllocator'
 
 const LIVE_DURATION = 3
 const MAX_COVER_TIME = LIVE_DURATION - 0.01
@@ -64,12 +65,13 @@ export async function queueWorkspaceFormatsExport(
 
   const stamp = Date.now()
   const name = baseName(source)
+  const allocateName = await createDirectoryExportNameAllocator(exportDir)
   const taskName = '工作台导出'
   const items = formats.map((format) => ({
     id: `workspace_${format}_${stamp}`,
     format,
     sourcePath: source.sourcePath,
-    outputPath: filePath(exportDir, `${name}_${stamp}${formatSuffix(format)}`),
+    outputPath: filePath(exportDir, allocateName(`${name}${formatSuffix(format)}`)),
     label: formatLabel(format),
     ...(format === 'apple-live' ? { openTarget: 'photos' as const, previewable: false } : {}),
   }))

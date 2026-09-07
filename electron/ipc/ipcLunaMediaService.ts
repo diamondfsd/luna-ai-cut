@@ -29,6 +29,7 @@ import { enqueueThumbnailGeneration, thumbnailDir } from '../media/thumbnailServ
 import { detectInsta360ILog } from '../media/iLogDetection'
 import { existingDragFiles } from '../platform/files/nativeFileDragService'
 import { copyLocalFilesToDirectory, sourcePathsForCopy } from '../media/localFileCopyService'
+import { availableExportPath } from '../export/exportPathService'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
   const ext = path.extname(mediaFileNameForPath(filePath)).toLowerCase()
@@ -144,6 +145,14 @@ function dragIcon(files: string[], thumbnailUrl: unknown): Electron.NativeImage 
 }
 
 export function register(ctx: IpcContext): void {
+  ipcMain.handle('exports:availablePath', async (_event, desiredPath: unknown) => {
+    if (typeof desiredPath !== 'string' || !path.isAbsolute(desiredPath)) throw new Error('导出路径无效')
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    const relative = path.relative(path.resolve(settings.exportDir), path.resolve(desiredPath))
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('导出路径无效')
+    return availableExportPath(desiredPath)
+  })
   ipcMain.on('files:start-drag', (event, requestedPaths: unknown, requestedThumbnailUrl: unknown) => {
     const files = existingDragFiles(requestedPaths)
     if (files.length === 0) return

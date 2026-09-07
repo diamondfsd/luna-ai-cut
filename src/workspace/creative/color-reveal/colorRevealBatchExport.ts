@@ -6,6 +6,7 @@ import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { loadCreativeImageSize } from '../shared/creativeMedia'
 import { canUseDeviceWatermark } from '../../../hooks/useDeviceWatermark'
+import { createDirectoryExportNameAllocator } from '../../../lib/exportNameAllocator'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import { colorRevealCreativeDuration, colorRevealTransitionMax, IMAGE_CREATIVE_DURATION } from './colorRevealConfig'
 import { buildColorRevealLayers } from './colorRevealLayers'
@@ -59,6 +60,7 @@ function outputBaseName(name: string): string {
 export async function queueColorRevealBatchExport(options: ColorRevealBatchExportOptions): Promise<number> {
   const api = renderApi()
   const stamp = Date.now()
+  const allocateName = await createDirectoryExportNameAllocator(options.exportDir)
   const entries = await Promise.all(options.sources.map(async ({ asset, pipeline }, index) => {
     const isImage = asset.kind === 'image'
     const resolution = isImage
@@ -108,7 +110,7 @@ export async function queueColorRevealBatchExport(options: ColorRevealBatchExpor
     })
     composition.canvas.duration = creativeDuration
     const itemId = `color_reveal_${stamp}_${index}`
-    const fileName = `${outputBaseName(asset.name)}-color-reveal-${stamp}-${index + 1}.mp4`
+    const fileName = allocateName(`${outputBaseName(asset.name)}-color-reveal.mp4`)
     return {
       asset,
       itemId,

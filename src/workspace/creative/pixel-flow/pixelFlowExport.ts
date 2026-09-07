@@ -1,4 +1,5 @@
 import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
+import { createDirectoryExportNameAllocator } from '../../../lib/exportNameAllocator'
 import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, type CompositionInput, type PreviewLayer, type VideoExportSettings, type WorkspaceMediaAsset } from '../../../shared/types'
 
@@ -75,10 +76,9 @@ function buildExportPlan(
   exportDir: string,
   stamp: number,
   index: number,
-  total: number,
+  allocateName: (desiredName: string) => string,
 ): PixelFlowExportPlan {
   const baseName = outputBaseName(options.asset.name)
-  const suffix = total > 1 ? `-${index + 1}` : ''
   const liveFormats = options.asset.kind === 'image'
     ? [...new Set(options.config.exportFormats.filter(
         (format): format is LiveExportEntry['format'] => format === 'google-live' || format === 'apple-live',
@@ -87,12 +87,12 @@ function buildExportPlan(
   return {
     video: options.config.exportFormats.includes('video') ? {
       id: `pixel_flow_video_${stamp}_${index}`,
-      outputPath: filePath(exportDir, `${baseName}-pixel-flow-${stamp}${suffix}.mp4`),
+      outputPath: filePath(exportDir, allocateName(`${baseName}-pixel-flow.mp4`)),
     } : undefined,
     live: liveFormats.map((format) => ({
       id: `pixel_flow_${format}_${stamp}_${index}`,
       format,
-      outputPath: filePath(exportDir, `${baseName}-pixel-flow-${format}-${stamp}${suffix}.jpg`),
+      outputPath: filePath(exportDir, allocateName(`${baseName}-pixel-flow-${format}.jpg`)),
     })),
   }
 }
@@ -259,7 +259,8 @@ export async function queuePixelFlowExports(exports: PixelFlowExportOptions[]): 
   if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
   const exportDir = settings.exportDir
   const stamp = Date.now()
-  const plans = exports.map((options, index) => buildExportPlan(options, exportDir, stamp, index, exports.length))
+  const allocateName = await createDirectoryExportNameAllocator(exportDir)
+  const plans = exports.map((options, index) => buildExportPlan(options, exportDir, stamp, index, allocateName))
   const items = exports.flatMap((options, index) => planItems(options, plans[index]))
   if (items.length === 0) throw new Error('请至少选择一种导出格式')
   const task = await window.luna.exportTask.create('像素流光', items)

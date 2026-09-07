@@ -51,6 +51,7 @@ import { loadRuntimeResource } from '../infrastructure/runtimeResourceService'
 import type { IpcContext } from './context'
 import { selectPrimaryVideoStream, selectVideoFrame, type FfprobeVideoEntry } from '../media/videoResolution'
 import { fileOperationErrorDetails, friendlyFileOperationError, userFacingFileOperationError } from '../storage/fileOperationDiagnostics.ts'
+import { availableExportPath } from '../export/exportPathService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const FONT_EXTENSIONS = new Set(['.otf', '.ttf'])
@@ -901,8 +902,9 @@ export function register(ctx: IpcContext): void {
     const baseName = path.basename(sourcePath)
     const ext = path.extname(baseName).toLowerCase()
     const nameBase = path.basename(baseName, ext) || 'workspace'
-    const fileName = safeName(`${nameBase}_workspace_${Date.now()}${ext}`)
-    const destinationPath = path.join(settings.exportDir, fileName)
+    const desiredFileName = safeName(`${nameBase}${ext}`)
+    const destinationPath = await availableExportPath(path.join(settings.exportDir, desiredFileName))
+    const fileName = path.basename(destinationPath)
     try {
       await mkdir(settings.exportDir, { recursive: true })
       await cp(sourcePath, destinationPath, { force: true })
@@ -968,8 +970,10 @@ export function register(ctx: IpcContext): void {
     const baseName = safeName(path.basename(name, path.extname(name)) || 'preview-live')
     const destinationPath = appleLivePhoto
       ? undefined  // Apple Live 不产出合成 .jpg，JPG+MOV 对在 appleFolder
-      : path.join(settings.exportDir, `${baseName}_${Date.now()}.jpg`)
-    const appleFolder = appleLivePhoto ? path.join(settings.exportDir, `${baseName}_apple_${Date.now()}`) : undefined
+      : await availableExportPath(path.join(settings.exportDir, `${baseName}.jpg`))
+    const appleFolder = appleLivePhoto
+      ? await availableExportPath(path.join(settings.exportDir, baseName))
+      : undefined
     let workingImagePath = imagePath
     let workingVideoPath = videoPath
     if (preserveInputs) {
