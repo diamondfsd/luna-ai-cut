@@ -6,6 +6,7 @@ import {
 } from '../../components/previewStageExport'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
 import { logExport } from '../../lib/rendererLogger'
+import { createDirectoryExportNameAllocator } from '../../lib/exportNameAllocator'
 import { resolveWorkspaceVideoExportRange } from './workspaceExportRange'
 
 export interface WorkspaceMixedExportPlanItem {
@@ -51,6 +52,7 @@ function selectedEntries(
   exportDir: string,
   config: VideoExportSettings,
   stamp: number,
+  allocateName: (desiredName: string) => string,
 ): QueueEntry[] {
   const formats = new Set(config.exportFormats)
   return plan.flatMap((item): QueueEntry[] => {
@@ -60,7 +62,7 @@ function selectedEntries(
         id: `mixed_${item.id}_video_${stamp}`,
         plan: item,
         format: 'video',
-        outputPath: joinPath(exportDir, `${item.outputBaseName}_${stamp}.mp4`),
+        outputPath: joinPath(exportDir, allocateName(`${item.outputBaseName}.mp4`)),
         label: '普通视频',
       }]
     }
@@ -70,7 +72,7 @@ function selectedEntries(
         id: `mixed_${item.id}_photo_${stamp}`,
         plan: item,
         format: 'photo',
-        outputPath: joinPath(exportDir, `${item.outputBaseName}_${stamp}.jpg`),
+        outputPath: joinPath(exportDir, allocateName(`${item.outputBaseName}.jpg`)),
         label: '照片',
       }]
     }
@@ -80,7 +82,7 @@ function selectedEntries(
         id: `mixed_${item.id}_${format}_${stamp}`,
         plan: item,
         format,
-        outputPath: joinPath(exportDir, `${item.outputBaseName}_${format === 'apple-live' ? 'apple_live' : 'google_live'}_${stamp}.jpg`),
+        outputPath: joinPath(exportDir, allocateName(`${item.outputBaseName}_${format === 'apple-live' ? 'apple_live' : 'google_live'}.jpg`)),
         label: format === 'apple-live' ? 'Apple Live 图' : '通用 Live 图',
       }))
   })
@@ -111,7 +113,8 @@ export async function queueWorkspaceMixedExport(
   config: VideoExportSettings,
 ): Promise<{ taskId: string; itemCount: number }> {
   const stamp = Date.now()
-  const entries = selectedEntries(plan, exportDir, config, stamp)
+  const allocateName = await createDirectoryExportNameAllocator(exportDir)
+  const entries = selectedEntries(plan, exportDir, config, stamp, allocateName)
   const videoPlans = plan.filter((item) => item.kind === 'video')
   const adjustableVideoId = videoPlans.length === 1 ? videoPlans[0].id : null
   if (entries.length === 0) throw new Error('请至少选择一种导出内容')

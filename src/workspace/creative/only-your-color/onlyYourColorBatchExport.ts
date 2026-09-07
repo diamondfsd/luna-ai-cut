@@ -1,5 +1,6 @@
 import { exportPreviewImage } from '../../../components/previewStageExport'
 import { canUseDeviceWatermark } from '../../../hooks/useDeviceWatermark'
+import { createDirectoryExportNameAllocator } from '../../../lib/exportNameAllocator'
 import type { WorkspaceMediaAsset, WorkspaceOnlyYourColorState, WorkspaceProject } from '../../../shared/types'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import type { EditPipeline } from '../../shared/editPipeline'
@@ -44,9 +45,9 @@ export async function exportOnlyYourColorBatch(options: OnlyYourColorBatchExport
   const exportDir = settings.exportDir
 
   const stamp = Date.now()
+  const allocateName = await createDirectoryExportNameAllocator(exportDir)
   const entries = options.sources.map(({ asset, pipeline }, index) => {
-    const suffix = options.sources.length > 1 ? `-${index + 1}` : ''
-    const fileName = `${outputBaseName(asset.name)}-only-your-color-${stamp}${suffix}.png`
+    const fileName = allocateName(`${outputBaseName(asset.name)}-only-your-color.png`)
     return {
       asset,
       pipeline,

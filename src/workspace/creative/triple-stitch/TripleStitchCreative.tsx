@@ -625,9 +625,8 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       if (!settings.exportDir) throw new Error('导出目录未配置')
       const exportDir = settings.exportDir
       const stamp = Date.now()
-      const baseName = `triple-stitch-${stamp}`
-      const videoFileName = `${baseName}.mp4`
-      const videoPath = outputPath(exportDir, videoFileName)
+      const baseName = 'triple-stitch'
+      const videoPath = await window.luna.getAvailableExportPath(outputPath(exportDir, `${baseName}.mp4`))
 
       const resolved = resolveExportConfig(config, CANVAS_WIDTH, CANVAS_HEIGHT)
       const scaledComposition: CompositionInput = {
@@ -722,7 +721,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       if (liveItemIds.length > 0) await reportLiveProgress(60)
 
       // Live 与 Apple Live 共享同一个视频和同一张封面，缓存文件在封装后继续保留。
-      const sharedLiveImagePath = outputPath(exportDir, `${baseName}_live-frame.jpg`)
+      const sharedLiveImagePath = outputPath(exportDir, `.${baseName}_${stamp}_live-frame.jpg`)
       if (liveItemIds.length > 0) {
         await window.luna.workspace.extractVideoFrame(videoPath, sharedLiveImagePath, exportFrameTime)
         await reportLiveProgress(75)

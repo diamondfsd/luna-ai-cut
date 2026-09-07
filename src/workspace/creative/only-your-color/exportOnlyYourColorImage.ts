@@ -1,4 +1,5 @@
 import { exportPreviewImage } from '../../../components/previewStageExport'
+import { createDirectoryExportNameAllocator } from '../../../lib/exportNameAllocator'
 import type { PreviewLayer, WorkspaceMediaAsset } from '../../../shared/types'
 
 interface ExportOnlyYourColorImageOptions {
@@ -12,8 +13,9 @@ export async function exportOnlyYourColorImage(options: ExportOnlyYourColorImage
   const settings = await window.luna.getSettings()
   if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
   const stamp = Date.now()
+  const allocateName = await createDirectoryExportNameAllocator(settings.exportDir)
   const name = options.asset.name.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]+/g, '-').trim() || 'only-your-color'
-  const fileName = `${name}-only-your-color-${stamp}.png`
+  const fileName = allocateName(`${name}-only-your-color.png`)
   const outputPath = `${settings.exportDir.replace(/[\\/]$/, '')}/${fileName}`
   const itemId = `only_your_color_${stamp}`
   const task = await window.luna.exportTask.create('只有你的色彩', [{ id: itemId, sourcePath: options.asset.path, outputPath, label: '创意图片' }])

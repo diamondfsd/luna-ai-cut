@@ -7,6 +7,7 @@ import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
 import { logExport } from '../lib/rendererLogger'
+import { createDirectoryExportNameAllocator } from '../lib/exportNameAllocator'
 import { resolveVideoExportResolution, normalizeVideoDimensions } from '../lib/videoExportResolution'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
@@ -572,8 +573,6 @@ async function runBatchExportQueue(
               const baseName = baseNameFromPath(entry.sourcePath)
               if (appleLivePhoto) {
                 // Apple Live 开启：创建 2 个独立子任务（Live + Apple Live）
-                const liveStamp = Date.now()
-
                 // 先更新原 entry 为 Live 图导出
                 await window.luna.exportTask.updateItem(taskId, entry.id, {
                   label: 'Live 图导出',
@@ -607,13 +606,13 @@ async function runBatchExportQueue(
                   {
                     id: appleItemId,
                     sourcePath: entry.sourcePath,
-                    outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg`,
+                    outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive.jpg`,
                     label: 'Apple Live 图导出',
                     openTarget: 'photos',
                     previewable: false,
                   },
                 ])
-                emitLocalExportProgress({ exportId: appleItemId, taskId, taskName, fileName: `${baseName}_appleLive_${liveStamp}.jpg`, index: entry.index, totalFiles: entries.length, percent: 0, status: 'exporting', destinationPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg` })
+                emitLocalExportProgress({ exportId: appleItemId, taskId, taskName, fileName: `${baseName}_appleLive.jpg`, index: entry.index, totalFiles: entries.length, percent: 0, status: 'exporting', destinationPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive.jpg` })
                 try {
                   await exportPreviewLivePhoto({
                     name: baseName, exportDir, width: videoRes.width, height: videoRes.height,
@@ -781,6 +780,7 @@ export async function exportBatchFiles(
 
   // 生成子任务列表
   const stamp = Date.now()
+  const allocateName = await createDirectoryExportNameAllocator(exportDir)
   const entries: BatchExportEntry[] = sourceItems.map((source, index) => {
     const fp = source.sourcePath
     const baseName = source.outputBaseName || baseNameFromPath(fp)
@@ -792,7 +792,7 @@ export async function exportBatchFiles(
     return {
       id: `batch_${baseName}_${stamp}_${Math.random().toString(36).slice(2, 6)}`,
       sourcePath: fp,
-      outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_${stamp}${ext}`,
+      outputPath: `${exportDir.replace(/[\\/]$/, '')}/${allocateName(`${baseName}${ext}`)}`,
       layers: snapshotPreviewLayers(source.layers),
       outputSize: source.outputSize,
       passthrough,

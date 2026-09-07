@@ -153,6 +153,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   listSampleFiles: () => ipcRenderer.invoke('luna:listSampleFiles'),
   listDownloadedFiles: () => ipcRenderer.invoke('downloads:listFiles'),
   listExportFiles: (exportDir?: string) => ipcRenderer.invoke('exports:listFiles', exportDir),
+  getAvailableExportPath: (desiredPath: string) => ipcRenderer.invoke('exports:availablePath', desiredPath),
   previewFile: (file: LunaFile, files: LunaFile[]) => ipcRenderer.invoke('luna:previewFile', file, files),
   previewLivePhoto: (sourceUrl: string) => ipcRenderer.invoke('luna:previewLivePhoto', sourceUrl),
   resolveThumbnail: (filePath: string, kind?: string) => ipcRenderer.invoke('luna:resolveThumbnail', filePath, kind),

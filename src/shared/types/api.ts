@@ -249,6 +249,7 @@ export interface LunaApi {
   listSampleFiles(): Promise<LunaFile[]>
   listDownloadedFiles(): Promise<LunaFile[]>
   listExportFiles(exportDir?: string): Promise<LunaFile[]>
+  getAvailableExportPath(desiredPath: string): Promise<string>
   previewFile(file: LunaFile, files: LunaFile[]): Promise<PreviewResult>
   previewLivePhoto(sourceUrl: string): Promise<PreviewResult>
   previewWithWatermark(file: LunaFile, sourcePath: string, settings: WatermarkSettings): Promise<PreviewResult>
