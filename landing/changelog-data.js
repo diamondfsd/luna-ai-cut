@@ -2,9 +2,15 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.4",
+    "title": "v1.8.4",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>批量 AI 追色</strong>：选择多个素材后，会为每个素材分别生成并保存追色结果，避免多个素材共用同一份效果。</li>\n<li><strong>复制素材路径</strong>：可从素材菜单复制单个或多个素材的本地路径。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>导出文件名</strong>：首次导出保留素材原名；目标目录已有同名文件时，自动追加 <code>(1)</code>、<code>(2)</code> 等后缀。</li>\n<li><strong>批量追色反馈</strong>：追色过程中显示处理进度，并反馈成功和失败的素材数量。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复图片导出质量</strong>：修复高质量、全尺寸图片导出结果异常变小的问题。</li>\n<li><strong>修复原画视频码率</strong>：原画质量会根据源视频码率导出，修复部分平台下码率解析不准确的问题。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
     "version": "1.8.3",
     "title": "v1.8.3",
-    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>AI 追色</strong>：支持选择参考照片，将参考照片的色彩风格应用到当前照片，并可继续调整和保存结果。</li>\n<li><strong>批量应用 AI 追色</strong>：复制效果到多个照片时，会为每张目标照片重新生成匹配结果，避免不同照片直接共用同一份效果。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复预览对比逻辑</strong>：查看原图时不再重新创建视频预览，减少画面闪烁和播放状态变化。</li>\n<li><strong>修复 AI 追色复制结果</strong>：切换素材或重新打开项目后，参考照片和追色结果能够正确恢复。</li>\n<li><strong>改善预览与导出一致性</strong>：修复部分 WebGPU 预览、色彩处理和图片信息保留问题。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li><strong>调整工作区布局</strong>：优化编辑区域、工具入口和操作提示，减少常用功能的查找成本。</li>\n<li><strong>统一提示时长</strong>：所有提示最长显示 3 秒，错误提示和长时间操作提示也不再超过此时长。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新项目版本至 <code>1.8.3</code>。</li>\n<li>发布 macOS Apple 芯片、macOS Intel 和 Windows x64 安装包。</li>\n</ul>",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>AI 追色</strong>：支持选择参考照片，将参考照片的色彩风格应用到当前照片，并可继续调整和保存结果。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复预览对比逻辑</strong>：查看原图时不再重新创建视频预览，减少画面闪烁和播放状态变化。</li>\n<li><strong>修复 AI 追色复制结果</strong>：切换素材或重新打开项目后，参考照片和追色结果能够正确恢复。</li>\n<li><strong>改善预览与导出一致性</strong>：修复部分 WebGPU 预览、色彩处理和图片信息保留问题。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li><strong>调整工作区布局</strong>：优化编辑区域、工具入口和操作提示，减少常用功能的查找成本。</li>\n<li><strong>统一提示时长</strong>：所有提示最长显示 3 秒，错误提示和长时间操作提示也不再超过此时长。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新项目版本至 <code>1.8.3</code>。</li>\n<li>发布 macOS Apple 芯片、macOS Intel 和 Windows x64 安装包。</li>\n</ul>",
     "isHotfix": false
   },
   {
