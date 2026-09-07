@@ -135,6 +135,7 @@ Windows native 路径通过 Media Foundation 枚举并实际验证硬件视频 M
 
 | 预设 | 倍数 | 说明 |
 |------|------|------|
+| Original | 源视频码率 | 重新编码时保持源视频的视频流码率 |
 | Small | default × 0.5 | 适合分享 |
 | Standard | default × 1.0 | 平衡体积和画质 |
 | High | default × 1.5 | 适合二次编辑 |

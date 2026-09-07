@@ -70,6 +70,7 @@ pub fn cleanup_task(task_id: &str) {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum QualityPreset {
+    Original,
     Small,
     Standard,
     High,
@@ -80,6 +81,7 @@ pub enum QualityPreset {
 impl QualityPreset {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
+            "original" => QualityPreset::Original,
             "small" => QualityPreset::Small,
             "high" => QualityPreset::High,
             "original-like" | "originallike" => QualityPreset::OriginalLike,
@@ -91,6 +93,16 @@ impl QualityPreset {
                 QualityPreset::Standard
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QualityPreset;
+
+    #[test]
+    fn recognizes_original_quality_preset() {
+        assert_eq!(QualityPreset::from_str("original"), QualityPreset::Original);
     }
 }
 

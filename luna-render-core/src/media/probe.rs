@@ -48,7 +48,9 @@ pub struct VideoInfo {
     pub fps: f64,
     pub duration_secs: f64,
     pub frame_count: Option<u64>,
-    pub src_bitrate: u32,
+    /// Video stream bitrate in bits per second. Container bitrate is used only
+    /// when the video stream does not expose one.
+    pub src_bitrate: u64,
     pub audio: AudioInfo,
 }
 
@@ -122,10 +124,7 @@ pub fn probe_video_info(ffprobe: &str, input: &str) -> Result<VideoInfo, String>
         frame_count,
         duration_secs,
     );
-    let src_bitrate = parsed["format"]["bit_rate"]
-        .as_str()
-        .and_then(|bitrate| bitrate.parse::<u32>().ok())
-        .unwrap_or(0);
+    let src_bitrate = resolve_source_bitrate(&video["bit_rate"], &parsed["format"]["bit_rate"]);
 
     let audio_stream = streams
         .iter()
@@ -148,6 +147,23 @@ pub fn probe_video_info(ffprobe: &str, input: &str) -> Result<VideoInfo, String>
         src_bitrate,
         audio,
     })
+}
+
+fn parse_bitrate(value: &serde_json::Value) -> Option<u64> {
+    value
+        .as_str()
+        .and_then(|bitrate| bitrate.parse::<u64>().ok())
+        .or_else(|| value.as_u64())
+        .filter(|bitrate| *bitrate > 0)
+}
+
+fn resolve_source_bitrate(
+    video_stream_bitrate: &serde_json::Value,
+    container_bitrate: &serde_json::Value,
+) -> u64 {
+    parse_bitrate(video_stream_bitrate)
+        .or_else(|| parse_bitrate(container_bitrate))
+        .unwrap_or(0)
 }
 
 fn video_display_dimensions(stream: &serde_json::Value, input: &str) -> Result<(u32, u32), String> {
@@ -218,7 +234,32 @@ fn select_fps(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_fps, select_fps};
+    use super::{parse_bitrate, parse_fps, resolve_source_bitrate, select_fps};
+
+    #[test]
+    fn parses_positive_bitrate_values() {
+        assert_eq!(
+            parse_bitrate(&serde_json::json!("50000000")),
+            Some(50_000_000)
+        );
+        assert_eq!(parse_bitrate(&serde_json::json!("N/A")), None);
+        assert_eq!(parse_bitrate(&serde_json::json!(0)), None);
+    }
+
+    #[test]
+    fn prefers_video_stream_bitrate_over_container_bitrate() {
+        assert_eq!(
+            resolve_source_bitrate(
+                &serde_json::json!("50000000"),
+                &serde_json::json!("51000000"),
+            ),
+            50_000_000
+        );
+        assert_eq!(
+            resolve_source_bitrate(&serde_json::json!("N/A"), &serde_json::json!("51000000"),),
+            51_000_000
+        );
+    }
 
     #[test]
     fn preserves_ntsc_fractional_frame_rate() {
