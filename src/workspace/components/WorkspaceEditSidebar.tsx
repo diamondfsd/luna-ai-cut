@@ -119,6 +119,7 @@ function titleForTool(tool: WorkspaceTool): string {
 }
 
 interface WorkspaceEditSidebarProps {
+  defaultPipeline: EditPipeline
   mediaSize?: { w: number; h: number } | null
   duration: number
   currentTime: number
@@ -134,7 +135,7 @@ interface WorkspaceEditSidebarProps {
   onOpenCreative: (modeId: CreativeModeId) => void
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimSeek, livePhotoSelection, onLivePhotoSelectionChange, activeMarkerId, onActiveMarkerChange, playingMarkerId, onToggleMarkerPreview, allowWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ defaultPipeline, mediaSize, duration, currentTime, onTrimSeek, livePhotoSelection, onLivePhotoSelectionChange, activeMarkerId, onActiveMarkerChange, playingMarkerId, onToggleMarkerPreview, allowWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -320,7 +321,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
           {activeTool === 'creative' ? (
             <WorkspaceCreativePanel onSelect={onOpenCreative} />
           ) : activeTool === 'reference-match' ? (
-            <ReferenceMatchPanel />
+            <ReferenceMatchPanel defaultPipeline={defaultPipeline} />
           ) : activeTool === 'filter' ? (
             <FilterPanel
               restoreLut={restoreLut}

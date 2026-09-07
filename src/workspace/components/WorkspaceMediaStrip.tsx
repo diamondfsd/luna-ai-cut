@@ -1,4 +1,4 @@
-import { FolderOpen } from 'lucide-react'
+import { Copy, FolderOpen } from 'lucide-react'
 import { type MouseEvent, type WheelEvent, useEffect, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset, WorkspaceMediaKind } from '../../shared/types'
@@ -219,6 +219,39 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
     }
   }
 
+  async function copyAssetPaths(index: number): Promise<void> {
+    const indices = selectedIndices.size > 1
+      ? [...selectedIndices].filter((selectedIndex) => !supportedMediaKinds || visibleIndexSet.has(selectedIndex)).sort((left, right) => left - right)
+      : [index]
+    const paths = indices
+      .map((selectedIndex) => mediaList[selectedIndex]?.path)
+      .filter((filePath): filePath is string => Boolean(filePath))
+    if (paths.length === 0) return
+
+    const text = paths.join('\n')
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.setAttribute('readonly', '')
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        try {
+          textarea.select()
+          if (!document.execCommand('copy')) throw new Error('copy failed')
+        } finally {
+          document.body.removeChild(textarea)
+        }
+      }
+      toast.success('素材路径已复制')
+    } catch {
+      toast.error('复制素材路径失败')
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -272,6 +305,10 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
               </button>
             </ContextMenuTrigger>
             <ContextMenuContent>
+              <ContextMenuItem onSelect={() => void copyAssetPaths(index)}>
+                <Copy size={15} />
+                复制素材路径
+              </ContextMenuItem>
               <ContextMenuItem onSelect={() => void revealAsset(item.path)}>
                 <FolderOpen size={15} />
                 打开所在文件夹

@@ -1373,6 +1373,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           </WorkspacePreviewViewport>
 
           <WorkspaceEditSidebar
+            defaultPipeline={defaultPipelineRef.current}
             mediaSize={mediaSize}
             duration={activeTrimDuration}
             currentTime={trimCurrentTime}
