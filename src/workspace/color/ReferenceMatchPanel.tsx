@@ -2,10 +2,12 @@ import { Image as ImageIcon, Loader2, RotateCcw, Sparkles, X } from 'lucide-reac
 import { useEffect, useRef, useState } from 'react'
 
 import { Button, IconButton, toast } from '../../ui'
+import type { WorkspaceMediaAsset } from '../../shared/types'
 import type { ReferenceMatchMethod } from '../../shared/types/referenceMatch'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { workspaceImageCache, type ImageCacheEntry } from '../shared/imageCache'
+import { createDefaultPipeline, mergePipeline, normalizePersistedPipelinePatch, type EditPipeline } from '../shared/editPipeline'
 import { ParamSlider } from '../components/ParamSlider'
 import { generateReferenceMatchLut, imageBitmapToReferenceMatchImage } from './referenceMatch'
 import './ReferenceMatchPanel.css'
@@ -16,15 +18,32 @@ function sameAsset(left: { id: string; path: string } | null, right: { id: strin
   return Boolean(left && right && (left.id === right.id || left.path === right.path))
 }
 
-export function ReferenceMatchPanel() {
+type ReferenceMatch = NonNullable<EditPipeline['referenceMatch']>
+
+interface ReferenceMatchPanelProps {
+  defaultPipeline?: EditPipeline
+}
+
+export function ReferenceMatchPanel({ defaultPipeline = createDefaultPipeline() }: ReferenceMatchPanelProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
-  const target = media.activeMedia
   const reference = media.referenceAsset
+  const selectedTargets = [...(media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex]))]
+    .sort((left, right) => left - right)
+    .map((index) => media.media[index])
+    .filter((asset): asset is WorkspaceMediaAsset => Boolean(asset) && !sameAsset(asset, reference))
+  const target = media.activeMedia
   const [thumbnails, setThumbnails] = useState<Record<string, ImageCacheEntry>>({})
   const [strength, setStrength] = useState(edit.pipeline.referenceMatch?.strength ?? 100)
   const [generating, setGenerating] = useState(false)
+  const [generationProgress, setGenerationProgress] = useState({ completed: 0, total: 0 })
   const generationRef = useRef(0)
+  const activeMediaRef = useRef(media.activeMedia)
+  const currentProjectRef = useRef(media.currentProject)
+  const pipelineRef = useRef(edit.pipeline)
+  activeMediaRef.current = media.activeMedia
+  currentProjectRef.current = media.currentProject
+  pipelineRef.current = edit.pipeline
   const referenceAvailable = Boolean(reference && media.media.some((asset) => asset.id === reference.id && asset.path === reference.path))
   const targetIsReference = sameAsset(target, reference)
 
@@ -66,8 +85,72 @@ export function ReferenceMatchPanel() {
     media.setReferenceAsset({ ...target })
   }
 
+  const generateTargetMatch = async (targetAsset: WorkspaceMediaAsset, projectId: string): Promise<ReferenceMatch> => {
+    if (!reference) throw new Error('请先设置参考图')
+    if (targetAsset.kind === 'video') {
+      if (reference.kind !== 'image') throw new Error('参考图必须是照片')
+      const [targetEntry, referenceEntry] = await Promise.all([
+        workspaceImageCache.generate(targetAsset.path),
+        workspaceImageCache.generate(reference.path),
+      ])
+      const result = generateReferenceMatchLut(
+        imageBitmapToReferenceMatchImage(targetEntry.previewBitmap),
+        imageBitmapToReferenceMatchImage(referenceEntry.previewBitmap),
+        { method: VIDEO_REFERENCE_MATCH_METHOD },
+      )
+      const saved = await window.luna.workspace.saveReferenceMatchLut({
+        projectId,
+        cube: result.cube,
+        name: `AI追色 · ${reference.name}`,
+        description: `根据「${reference.name}」为「${targetAsset.name}」生成的 AI追色效果`,
+        method: VIDEO_REFERENCE_MATCH_METHOD,
+        referenceAssetId: reference.id,
+        referenceName: reference.name,
+        targetAssetId: targetAsset.id,
+        targetName: targetAsset.name,
+      })
+      return {
+        enabled: true,
+        method: VIDEO_REFERENCE_MATCH_METHOD,
+        strength,
+        referenceAssetId: reference.id,
+        referenceName: reference.name,
+        referencePath: reference.path,
+        targetAssetId: targetAsset.id,
+        targetName: targetAsset.name,
+        resultPath: saved.path,
+        resultKind: 'lut',
+        generatedAt: new Date().toISOString(),
+      }
+    }
+
+    const generated = await window.luna.workspace.generateReferenceMatchAiLut({
+      projectId,
+      targetPath: targetAsset.path,
+      referencePath: reference.path,
+      referenceName: reference.name,
+      targetName: targetAsset.name,
+      referenceAssetId: reference.id,
+      targetAssetId: targetAsset.id,
+    })
+    return {
+      enabled: true,
+      method: 'neural-preset',
+      strength,
+      referenceAssetId: reference.id,
+      referenceName: reference.name,
+      referencePath: reference.path,
+      targetAssetId: targetAsset.id,
+      targetName: targetAsset.name,
+      resultPath: generated.path,
+      resultKind: 'lut',
+      generatedAt: new Date().toISOString(),
+      modelVersion: generated.modelVersion,
+    }
+  }
+
   const generate = async (): Promise<void> => {
-    if (!target || !reference || !referenceAvailable || targetIsReference || generating) {
+    if (!reference || !referenceAvailable || selectedTargets.length === 0 || generating) {
       if (targetIsReference) toast.error('请切换到需要追色的目标素材')
       return
     }
@@ -78,87 +161,65 @@ export function ReferenceMatchPanel() {
     }
     const generationId = ++generationRef.current
     setGenerating(true)
+    setGenerationProgress({ completed: 0, total: selectedTargets.length })
     try {
-      if (target.kind === 'video') {
-        if (reference.kind !== 'image') throw new Error('参考图必须是照片')
-        const [targetEntry, referenceEntry] = await Promise.all([
-          workspaceImageCache.generate(target.path),
-          workspaceImageCache.generate(reference.path),
-        ])
-        const result = generateReferenceMatchLut(
-          imageBitmapToReferenceMatchImage(targetEntry.previewBitmap),
-          imageBitmapToReferenceMatchImage(referenceEntry.previewBitmap),
-          { method: VIDEO_REFERENCE_MATCH_METHOD },
-        )
-        const saved = await window.luna.workspace.saveReferenceMatchLut({
-          projectId,
-          cube: result.cube,
-          name: `AI追色 · ${reference.name}`,
-          description: `根据「${reference.name}」为「${target.name}」生成的 AI追色效果`,
-          method: VIDEO_REFERENCE_MATCH_METHOD,
-          referenceAssetId: reference.id,
-          referenceName: reference.name,
-          targetAssetId: target.id,
-          targetName: target.name,
-        })
-        edit.commitPatch({
-          referenceMatch: {
-            enabled: true,
-            method: VIDEO_REFERENCE_MATCH_METHOD,
-            strength,
-            referenceAssetId: reference.id,
-            referenceName: reference.name,
-            referencePath: reference.path,
-            targetAssetId: target.id,
-            targetName: target.name,
-            resultPath: saved.path,
-            resultKind: 'lut',
-            generatedAt: new Date().toISOString(),
-          },
-        })
-        if (generationRef.current !== generationId) return
-        toast.success('追色成功')
-        return
+      const generatedMatches = new Map<string, ReferenceMatch>()
+      let failedCount = 0
+      for (let index = 0; index < selectedTargets.length; index += 1) {
+        const targetAsset = selectedTargets[index]
+        try {
+          generatedMatches.set(targetAsset.id, await generateTargetMatch(targetAsset, projectId))
+        } catch {
+          failedCount += 1
+        } finally {
+          if (generationRef.current === generationId) {
+            setGenerationProgress({ completed: index + 1, total: selectedTargets.length })
+          }
+        }
       }
-
-      const generated = await window.luna.workspace.generateReferenceMatchAiLut({
-        projectId,
-        targetPath: target.path,
-        referencePath: reference.path,
-        referenceName: reference.name,
-        targetName: target.name,
-        referenceAssetId: reference.id,
-        targetAssetId: target.id,
-      })
-      edit.commitPatch({
-        referenceMatch: {
-          enabled: true,
-          method: 'neural-preset',
-          strength,
-          referenceAssetId: reference.id,
-          referenceName: reference.name,
-          referencePath: reference.path,
-          targetAssetId: target.id,
-          targetName: target.name,
-          resultPath: generated.path,
-          resultKind: 'lut',
-          generatedAt: new Date().toISOString(),
-          modelVersion: generated.modelVersion,
-        },
-      })
       if (generationRef.current !== generationId) return
-      toast.success('追色成功')
+      if (generatedMatches.size === 0) throw new Error('追色失败，请稍后重试')
+
+      const currentActiveAssetId = activeMediaRef.current?.id
+      const nextProject = currentProjectRef.current
+        ? {
+            ...currentProjectRef.current,
+            assets: currentProjectRef.current.assets.map((asset) => {
+              const match = generatedMatches.get(asset.id)
+              if (!match) return asset
+              const currentPipeline = asset.id === currentActiveAssetId
+                ? pipelineRef.current
+                : mergePipeline(structuredClone(defaultPipeline), normalizePersistedPipelinePatch(asset.pipeline).patch)
+              return { ...asset, pipeline: mergePipeline(currentPipeline, { referenceMatch: match }) }
+            }),
+            updatedAt: new Date().toISOString(),
+          }
+        : null
+      if (!nextProject) throw new Error('请先将素材加入项目后再使用 AI追色')
+      media.setCurrentProject(nextProject)
+      await window.luna.workspace.saveProject(nextProject)
+      const activeMatch = currentActiveAssetId ? generatedMatches.get(currentActiveAssetId) : undefined
+      if (activeMatch) edit.commitPatch({ referenceMatch: activeMatch })
+
+      if (failedCount > 0) {
+        toast.error(`已应用到 ${generatedMatches.size} 个素材，${failedCount} 个素材追色失败`)
+      } else {
+        toast.success(generatedMatches.size > 1 ? `追色成功，已应用到 ${generatedMatches.size} 个素材` : '追色成功')
+      }
     } catch (error) {
       if (generationRef.current !== generationId) return
       toast.error(error instanceof Error ? error.message : '追色失败，请稍后重试')
     } finally {
-      if (generationRef.current === generationId) setGenerating(false)
+      if (generationRef.current === generationId) {
+        setGenerating(false)
+        setGenerationProgress({ completed: 0, total: 0 })
+      }
     }
   }
 
   const targetThumbnail = target ? thumbnails[target.id]?.thumbnailUrl : null
   const referenceThumbnail = reference ? thumbnails[reference.id]?.thumbnailUrl : null
-  const canGenerate = Boolean(media.currentProject?.id && (target?.kind === 'image' || target?.kind === 'video') && reference?.kind === 'image' && referenceAvailable && !targetIsReference && !generating)
+  const canGenerate = Boolean(media.currentProject?.id && selectedTargets.length > 0 && reference?.kind === 'image' && referenceAvailable && !generating)
 
   const handleStrengthChange = (value: number): void => {
     setStrength(value)
@@ -231,7 +292,9 @@ export function ReferenceMatchPanel() {
           disabled={!canGenerate}
           onClick={() => void generate()}
         >
-          {generating ? 'AI追色中' : 'AI追色'}
+          {generating
+            ? `AI追色中${generationProgress.total > 1 ? ` ${generationProgress.completed}/${generationProgress.total}` : ''}`
+            : selectedTargets.length > 1 ? `AI追色（${selectedTargets.length}个）` : 'AI追色'}
         </Button>
       </div>
 
