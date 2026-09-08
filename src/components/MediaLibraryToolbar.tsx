@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Film, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -18,6 +18,7 @@ import {
   toast,
 } from '../ui'
 import type { WorkspaceProject } from '../shared/types'
+import type { AiEditorMediaSource } from '../shared/aiEditor'
 
 interface MediaLibraryToolbarProps {
   mode: 'camera' | 'local'
@@ -69,6 +70,18 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
       .filter(Boolean)
     if (paths.length === 0) return
     navigate('/ai-selection', { state: { paths, label: selectedScope ? `已选 ${paths.length} 个素材` : `本地资源 ${paths.length} 个素材` } })
+  }
+
+  function openAiEditor(files = ctrl.selectedFiles): void {
+    const media: AiEditorMediaSource[] = files
+      .filter((file) => (file.kind === 'image' || file.kind === 'video'))
+      .map((file) => {
+        const path = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath ?? ''
+        if (!path) return null
+        return { path, name: file.name, kind: file.kind as 'image' | 'video' }
+      })
+      .filter((file): file is AiEditorMediaSource => Boolean(file))
+    navigate('/ai-editor', { state: { media } })
   }
 
   async function handleCreateProject(): Promise<void> {
@@ -154,6 +167,15 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                 </Button>
                 {isLocal ? (
                   <>
+                    <Button
+                      variant="primary"
+                      size="compact"
+                      disabled={!canSendToWorkspace}
+                      icon={<Film size={14} />}
+                      onClick={() => openAiEditor()}
+                    >
+                      AI 剪辑 ({workspaceMedia.length})
+                    </Button>
                     <Button variant="secondary" size="compact" disabled={!canSendToWorkspace} icon={<Sparkles size={14} />} onClick={() => openAiSelection(ctrl.selectedFiles, true)}>
                       AI 选片 ({workspaceMedia.length})
                     </Button>
@@ -226,9 +248,14 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
               <span className="toolbar-date">{currentDate}</span>
               <div className="library-controls">
                 {isLocal && (
-                  <Button className="library-ai-selection-btn" variant="primary" size="compact" icon={<Sparkles size={13} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiSelection()}>
-                    AI 选片
-                  </Button>
+                  <>
+                    <Button className="library-ai-selection-btn" variant="primary" size="compact" icon={<Film size={13} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiEditor(ctrl.filteredFiles)}>
+                      AI 剪辑
+                    </Button>
+                    <Button className="library-ai-selection-btn" variant="secondary" size="compact" icon={<Sparkles size={13} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiSelection()}>
+                      AI 选片
+                    </Button>
+                  </>
                 )}
                 <ButtonGroup
                   options={[

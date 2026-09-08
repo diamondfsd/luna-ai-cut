@@ -37,6 +37,7 @@ import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } fr
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
 import type { WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchAiLutResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
+import type { AiEditorFileApi } from './aiEditor'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -200,6 +201,7 @@ export interface WorkspaceSegmentationModelStatus {
 export interface LunaApi {
   isPackaged: boolean
   startupReady(): void
+  aiEditor: AiEditorFileApi
   setFullScreen(enabled: boolean): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
