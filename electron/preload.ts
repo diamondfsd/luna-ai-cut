@@ -67,6 +67,10 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   isPackaged: ipcRenderer.sendSync('app:is-packaged') === true,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   aiEditor: {
+    project: {
+      load: (projectId) => ipcRenderer.invoke('ai-editor:load-project', projectId),
+      save: (projectId, editorDocument) => ipcRenderer.invoke('ai-editor:save-project', projectId, editorDocument),
+    },
     showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),
     readFile: (filePath) => ipcRenderer.invoke('ai-editor:read-file', filePath),

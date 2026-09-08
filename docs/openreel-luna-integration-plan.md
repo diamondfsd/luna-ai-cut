@@ -141,7 +141,7 @@ window.openreel.lunaProject
 | 批次 | 范围 | 结果 | 状态 |
 | --- | --- | --- | --- |
 | 0 | 文档、数据边界和兼容策略 | 确认 Luna 项目为主档，确定 `editor/openreel.json`、资产 ID 和协议边界 | 已完成，本批 |
-| 1 | 项目启动和保存 | `/ai-editor` 改为按 `projectId` 打开；OpenReel 关闭独立正式项目列表，读写项目目录中的编辑文档 | 待处理 |
+| 1 | 项目启动和保存 | `/ai-editor` 按 `projectId` 打开；OpenReel 读写项目目录中的 `editor/openreel.json`，嵌入项目跳过 IndexedDB 自动保存 | 已完成，本批 |
 | 2 | 原生素材导入 | 通过 Electron 选择本地文件，主进程探测元数据、生成缩略图并登记到 Luna 项目；移除 `DataTransfer + File` 导入主路径 | 待处理 |
 | 3 | 桌面媒体播放 | 实现受控本地媒体协议、Range/seek、原始文件/代理切换和缺失素材重连 | 待处理 |
 | 4 | AI 素材索引 | 将现有分析结果按项目资产关联，提供质量、人物、内容、构图、关键帧和分段查询；支持按需分析、取消和缓存 | 待处理 |
@@ -151,15 +151,16 @@ window.openreel.lunaProject
 
 ## 第一批建议先做什么
 
-第一批代码不要同时实现全部 AI 能力，先完成项目主档和编辑器启动契约：
+第一批代码不要同时实现全部 AI 能力，先完成项目主档和编辑器启动契约。本批已完成：
 
-1. 给 `/ai-editor` 增加 `projectId` 路由状态和项目加载状态。
-2. 在 Electron 项目服务中增加 OpenReel 编辑文档的读取、原子保存、删除和版本校验。
-3. 让 iframe 启动时接收项目快照和资产摘要，OpenReel 时间线中的媒体 ID 与 Luna 资产 ID 对齐。
-4. 先把当前 `DataTransfer` 导入改为“选择/登记资产”的桥接接口，但暂时可以保留旧 Blob 导入作为兼容回退。
-5. 增加项目切换、关闭和异常退出时的保存测试。
+1. 给 `/ai-editor` 增加 `projectId` 路由状态和项目加载状态；无项目 ID 时返回工作台。
+2. 在 Electron 项目服务中增加 `editor/openreel.json` 的读取、格式校验和临时文件原子保存。
+3. iframe 通过窄桥接接口加载/保存项目文档；没有编辑文档时按 Luna 项目 ID 创建空 OpenReel 项目。
+4. 嵌入 Luna 项目跳过 OpenReel IndexedDB 自动保存，改用编辑文档防抖保存和 `pagehide` 刷新；`forceSave()` 也统一走项目目录。
+5. 保留当前 `DataTransfer` 导入作为兼容路径；原生素材登记和资产引用留到第二批。
+6. 增加 Luna 项目加载、空文档初始化和安全序列化的定向测试。
 
-只有第一批验证“重启后能重新打开同一项目、时间线和素材关系不丢失”后，再做媒体协议和 AI 工具，避免在错误的项目边界上继续堆能力。
+本批已验证项目文档契约和构建；“重启后能重新打开同一项目、时间线和素材关系不丢失”还需要第二批完成原生素材引用后，进行 Electron 重启验收。
 
 ## 数据安全和性能约束
 
@@ -208,3 +209,11 @@ window.openreel.lunaProject
 - 已确定第一原则：Luna 项目主档 + OpenReel 编辑文档 + 项目资产引用，避免两套项目状态和两份媒体副本。
 - 本批只更新计划文档，未修改功能代码；下一批从项目启动和保存契约开始。
 
+### 2026-09-08：完成第一批项目启动和保存
+
+- 工作台项目卡可以按 `projectId` 打开 AI 剪辑；没有项目 ID 不再直接打开独立编辑器。
+- Electron 在 `<baseDir>/workspace-projects/<projectId>/editor/openreel.json` 中保存编辑文档，使用临时文件 + 原子替换，并校验项目主体结构。
+- OpenReel iframe 新增 `lunaProject` 桥接、`luna-editor` 路由和加载门控；空文档会创建使用 Luna 项目 ID 的空项目。
+- Luna 项目不进入 OpenReel IndexedDB 自动保存，编辑变化通过防抖队列写回项目目录，窗口隐藏时尝试刷新。
+- 验证通过：OpenReel web 类型检查、Luna 项目定向测试 3/3、OpenReel lint（0 errors）和根仓库 `pnpm run build:app`。
+- 已知边界：本批尚未把本地素材登记为 OpenReel 资产引用，旧的 iframe `DataTransfer + File` 导入仍作为兼容路径；下一批处理原生素材导入。

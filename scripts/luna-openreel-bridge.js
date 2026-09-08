@@ -9,6 +9,10 @@
   // OpenReel only checks for fs to enable native project and export storage.
   // Keeping platform unset leaves the editor in its regular web UI.
   window.openreel = Object.assign(window.openreel || {}, {
+    lunaProject: {
+      load: (projectId) => parentApi().project.load(projectId),
+      save: (projectId, editorDocument) => parentApi().project.save(projectId, editorDocument),
+    },
     fs: {
       showSaveDialog: (options) => parentApi().showSaveDialog(options),
       showOpenDialog: (options) => parentApi().showOpenDialog(options),

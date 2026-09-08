@@ -7,6 +7,8 @@ import { fileSha256 } from '../../media/resumableDownloadService'
 
 const PROJECTS_DIR = 'workspace-projects'
 const PROJECT_FILE = 'project.json'
+const EDITOR_DIR = 'editor'
+const EDITOR_FILE = 'openreel.json'
 const MAX_PROJECT_ID_LENGTH = 100
 
 const projectOperations = new Map<string, Promise<void>>()
@@ -48,6 +50,10 @@ function projectDir(baseDir: string, id: string): string {
 
 function projectJsonPath(baseDir: string, id: string): string {
   return path.join(projectDir(baseDir, id), PROJECT_FILE)
+}
+
+function editorDocumentPath(baseDir: string, id: string): string {
+  return path.join(projectDir(baseDir, id), EDITOR_DIR, EDITOR_FILE)
 }
 
 function removalDir(baseDir: string, projectId: string): string {
@@ -224,6 +230,74 @@ async function writeProjectUnlocked(baseDir: string, project: WorkspaceProject):
 
 async function writeProject(baseDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
   return withProjectOperation(baseDir, project.id, () => writeProjectUnlocked(baseDir, project))
+}
+
+function validateEditorDocument(content: string): void {
+  if (typeof content !== 'string' || content.trim().length === 0) throw new Error('编辑文档为空')
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    throw new Error('编辑文档格式无效')
+  }
+  if (!parsed || typeof parsed !== 'object') throw new Error('编辑文档格式无效')
+  const candidate = parsed as Record<string, unknown>
+  const project = candidate.project && typeof candidate.project === 'object'
+    ? candidate.project as Record<string, unknown>
+    : candidate
+  if (typeof project.id !== 'string' || typeof project.name !== 'string'
+    || !project.mediaLibrary || typeof project.mediaLibrary !== 'object'
+    || !project.timeline || typeof project.timeline !== 'object') {
+    throw new Error('编辑文档缺少项目内容')
+  }
+}
+
+function isMissingFile(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
+}
+
+export interface WorkspaceEditorDocument {
+  projectId: string
+  projectName: string
+  editorDocument: string | null
+}
+
+export async function loadWorkspaceEditorDocument(baseDir: string, projectId: string): Promise<WorkspaceEditorDocument> {
+  const project = await readProject(projectJsonPath(baseDir, projectId))
+  if (!project) throw new Error('项目不存在')
+
+  let editorDocument: string | null = null
+  try {
+    editorDocument = await fs.readFile(editorDocumentPath(baseDir, projectId), 'utf8')
+    validateEditorDocument(editorDocument)
+  } catch (error) {
+    if (!isMissingFile(error)) throw error
+  }
+
+  return { projectId: project.id, projectName: project.name, editorDocument }
+}
+
+export async function saveWorkspaceEditorDocument(baseDir: string, projectId: string, editorDocument: string): Promise<void> {
+  validateEditorDocument(editorDocument)
+  await withProjectOperation(baseDir, projectId, async () => {
+    const project = await readProject(projectJsonPath(baseDir, projectId))
+    if (!project) throw new Error('项目不存在')
+    const directory = await ensureProjectDirectory(baseDir, projectId)
+    const editorDirectory = path.join(directory, EDITOR_DIR)
+    await fs.mkdir(editorDirectory, { recursive: true })
+    const destination = path.join(editorDirectory, EDITOR_FILE)
+    const temporary = path.join(
+      editorDirectory,
+      `.${EDITOR_FILE}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`,
+    )
+    const serialized = `${editorDocument.trim()}\n`
+    try {
+      await fs.writeFile(temporary, serialized, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+      await fs.rename(temporary, destination)
+    } finally {
+      await fs.rm(temporary, { force: true }).catch(() => undefined)
+    }
+  })
 }
 
 export async function listWorkspaceProjects(baseDir: string): Promise<WorkspaceProject[]> {

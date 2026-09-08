@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
 import './AiEditorPage.css'
 
 interface AiEditorLocationState {
+  projectId?: string
   media?: AiEditorMediaSource[]
 }
 
@@ -67,12 +68,21 @@ async function importMediaIntoFrame(frame: HTMLIFrameElement, sources: AiEditorM
 
 export function AiEditorPage() {
   const location = useLocation()
+  const navigate = useNavigate()
   const mediaSources = mediaSourcesFromState(location.state)
+  const state = location.state as AiEditorLocationState | null
+  const projectId = new URLSearchParams(location.search).get('projectId')?.trim()
+    || (typeof state?.projectId === 'string' ? state.projectId.trim() : '')
   const frameRef = useRef<HTMLIFrameElement>(null)
   const importStartedRef = useRef(false)
   const [loaded, setLoaded] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importFailed, setImportFailed] = useState(false)
+
+  useEffect(() => {
+    if (projectId || mediaSources.length > 0) return
+    navigate('/workspace', { replace: true })
+  }, [mediaSources.length, navigate, projectId])
 
   async function handleFrameLoad(): Promise<void> {
     setLoaded(true)
@@ -96,13 +106,17 @@ export function AiEditorPage() {
           {importFailed ? '素材导入失败' : importing ? '正在导入素材' : '正在打开 AI 剪辑'}
         </div>
       )}
-      <iframe
-        ref={frameRef}
-        className="ai-editor-frame"
-        title="AI 剪辑"
-        src={mediaSources.length > 0 ? './ai-editor/index.html#/new' : './ai-editor/index.html'}
-        onLoad={() => void handleFrameLoad()}
-      />
+      {(projectId || mediaSources.length > 0) && (
+        <iframe
+          ref={frameRef}
+          className="ai-editor-frame"
+          title="AI 剪辑"
+          src={projectId
+            ? `./ai-editor/index.html#/luna-editor?projectId=${encodeURIComponent(projectId)}`
+            : './ai-editor/index.html#/new'}
+          onLoad={() => void handleFrameLoad()}
+        />
+      )}
     </div>
   )
 }

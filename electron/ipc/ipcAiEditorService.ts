@@ -6,6 +6,8 @@ import path from 'node:path'
 
 import type { AiEditorFileDialogOptions, AiEditorFileFilter } from '../../src/shared/types'
 import { revealFile } from '../storage/systemFileService'
+import { getSettings } from '../storage/fileService'
+import { loadWorkspaceEditorDocument, saveWorkspaceEditorDocument } from '../features/workspace/workspaceProjectService'
 
 interface OpenWriteHandle {
   filePath: string
@@ -67,6 +69,16 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
 }
 
 export function register(): void {
+  ipcMain.handle('ai-editor:load-project', async (_event, projectId: string) => {
+    const settings = await getSettings()
+    return loadWorkspaceEditorDocument(settings.baseDir, projectId)
+  })
+
+  ipcMain.handle('ai-editor:save-project', async (_event, projectId: string, editorDocument: string) => {
+    const settings = await getSettings()
+    await saveWorkspaceEditorDocument(settings.baseDir, projectId, editorDocument)
+  })
+
   ipcMain.handle('ai-editor:show-save-dialog', async (event, options: AiEditorFileDialogOptions) => {
     const dialogOptions: Electron.SaveDialogOptions = {
       defaultPath: typeof options?.defaultPath === 'string' ? options.defaultPath : undefined,
