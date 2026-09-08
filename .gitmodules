@@ -1,0 +1,4 @@
+[submodule "vendor/openreel"]
+	path = vendor/openreel
+	url = https://github.com/Augani/openreel-video.git
+	branch = main
