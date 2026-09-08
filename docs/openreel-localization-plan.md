@@ -167,6 +167,15 @@
 - AI 对话式剪辑不是图片生成链路：对话面板通过 `chat-store` 组织会话，`llm-transport` 调用 OpenAI/Anthropic 兼容接口，`@openreel/agent` 的 `runTurn` 负责工具调用循环，`LiveEditorHost` 再将工具转为 `project-store.executeAction()` 的可撤销编辑。详细链路见 [`docs/openreel-ai-dialogue-architecture.md`](openreel-ai-dialogue-architecture.md)。
 - 当前状态：图片生成关闭；阶段 4 继续处理检查器剩余功能面板，阶段 6 仍需审计动态英文文案。
 
+### 2026-09-08：存档画面理解能力审计
+
+- 当前 Agent 工具注册表约有 307 个工具，主要覆盖项目、时间线、音频、字幕、效果、动效和 3D 编辑动作。
+- 当前没有通用的视频画面理解工具，不能直接识别用户视频中的人物、物体、动作、镜头语义或场景内容。
+- 已有的 `render_motion_frame`、`render_creation_preview` 和 `preview_frame` 只能查看生成结果或多机位指定时间的预览；`inspect_3d_model` 是 3D 文件结构检查；多机位活动区间和 Whisper 转录也不属于通用视觉理解。
+- Agent 循环和 Anthropic 适配层已具备传递 Base64 图片的能力，但 OpenAI 兼容适配层当前只发送工具结果文本，图片还没有转换为 `image_url`。
+- 详细结论、文件位置和后续微调顺序已写入 [`docs/openreel-ai-dialogue-architecture.md`](openreel-ai-dialogue-architecture.md) 的“画面理解能力审计”章节。
+- 本次只更新研究文档，未修改 OpenReel 功能代码；后续微调前先围绕帧提取、统一多模态传递、视觉模型能力检查和超时/取消策略制定小批次方案。
+
 ## 每阶段更新模板
 
 处理阶段：
