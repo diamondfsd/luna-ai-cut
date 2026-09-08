@@ -21,7 +21,7 @@
 | 1 | 截图主路径 | `App.tsx`、`WorkspaceModeTabs.tsx`、`components/editor/AIGenTab.tsx`、`components/editor/InspectorPanel.tsx` | AI 生成面板、视频/动效标签、右侧未选择状态及相关属性无明显英文混排 | 已完成 |
 | 2 | 编辑器外壳与欢迎页 | `desktop/**`、`components/welcome/**`、`components/editor/settings/**` | 欢迎页、编辑器加载态、窗口操作、设置页和更新提示完成汉化 | 已完成 |
 | 3 | 素材、预览与时间线 | `components/editor/AssetsPanel.tsx`、`Preview.tsx`、`Timeline.tsx`、`components/editor/timeline/**`、`components/editor/dialogs/**` | 导入素材、播放器、时间线工具、菜单、导出/压缩/尺寸提示完成汉化 | 已完成 |
-| 4 | 检查器与 AI 操作 | `components/editor/inspector/**`、`components/editor/chat/**`、`components/editor/kieai/**`（已在阶段 1 处理的 `InspectorPanel.tsx` 除外） | 属性面板、字幕、调色、效果、AI 对话、生成器的标签、空状态、错误和提示完成汉化 | 待处理 |
+| 4 | 检查器与 AI 操作 | `components/editor/inspector/**`、`components/editor/chat/**`（已在阶段 1 处理的 `InspectorPanel.tsx` 除外） | 属性面板、字幕、调色、效果和 AI 对话的标签、空状态、错误和提示完成汉化；图片生成保持关闭 | 进行中 |
 | 5 | 动效设计 | `motion/**` | 动效工具栏、图层、属性、曲线、动效时间线、预设和导出相关界面完成汉化 | 待处理 |
 | 6 | 动态兜底与审计 | `scripts/luna-openreel-locale.js`，必要时新增检查脚本 | 只补充无法在源码稳定处理的动态文案；不使用宽泛替换误伤用户内容；生成可审计的遗漏清单 | 待处理 |
 | 7 | 回归验收 | 根目录构建、OpenReel 子模块检查、现有 Playwright E2E | 构建通过、主路径行为不回归、渲染器无新增错误、关键 UI 文案为中文 | 待处理 |
@@ -147,7 +147,7 @@
 - 保留的技术标识：效果类型、着色器 id、滤镜预设 id、参数名、MIME 类型、CSS 值、`VHS`、`Super 8` 和用户输入的搜索内容；不改变效果参数和项目数据结构。
 - 阶段 6 审计项：`ShaderPreviewBrowser` 内部的动态着色器名称、集合名、搜索提示和空状态，以及生成着色器/ Paper 着色器的动态名称尚未修改，避免在本批跨越动态兜底范围。
 - 检查命令及结果：`git diff --check`、`git -C vendor/openreel diff --check` 和 `pnpm run build:app` 均通过；构建仅保留原有 chunk 过大、Browserslist、动态导入和 Baseline 数据提示。
-- 是否通过当前子批次验收：是；阶段 4 尚未完成，继续处理聊天、KieAI 和其他具体功能面板。
+- 是否通过当前子批次验收：是；阶段 4 尚未完成，继续处理其他具体功能面板。
 
 ### 2026-09-08：阶段 4 聊天面板批次验收完成
 
@@ -157,7 +157,15 @@
 - 保留的技术标识：`OpenAI`、`Anthropic`、`API`、`URL`、`ID`、`GET /models`、`CORS`、工具名、模型名、模型 ID、对话标题、用户输入、Markdown 内容、JSON 参数和上游错误原文；内部 provider/status/action 值未改变。
 - 阶段 6 审计项：上游服务返回的英文错误、模型返回的 Markdown 文案和对话历史中的用户/模型内容未做宽泛翻译，避免改变原始信息；测试文件中的英文断言未修改。
 - 检查命令及结果：`git -C vendor/openreel diff --check` 和 `pnpm run build:app` 均通过；构建仅保留原有 chunk 过大、Browserslist、动态导入和 Baseline 数据提示。
-- 是否通过当前子批次验收：是；阶段 4 尚未完成，继续处理 KieAI 和其他具体功能面板。
+- 是否通过当前子批次验收：是；阶段 4 尚未完成，继续处理其他具体功能面板。
+
+### 2026-09-08：关闭图片生成并记录 AI 对话式剪辑架构
+
+- 已关闭图片生成用户入口：素材缩略图不再显示 KieAI 创建/重试操作，应用不再启动 KieAI 后台轮询，AI 工具页不再承诺图片生成，设置页不再显示图片生成聚合服务或其 API 密钥入口。
+- 保留的兼容数据：`MediaItem` 中已有的 KieAI 任务字段、底层服务实现和历史项目数据未删除；它们不再从当前 UI 触发，也不参与本应用启动流程，避免旧项目导入时因字段缺失失败。
+- 本批修改文件：`apps/web/src/components/editor/AssetsPanel.tsx`、`App.tsx`、`components/editor/AIGenTab.tsx`、`components/editor/settings/GeneralPanel.tsx`、`components/editor/settings/localization.ts`、`stores/settings-store.ts`。
+- AI 对话式剪辑不是图片生成链路：对话面板通过 `chat-store` 组织会话，`llm-transport` 调用 OpenAI/Anthropic 兼容接口，`@openreel/agent` 的 `runTurn` 负责工具调用循环，`LiveEditorHost` 再将工具转为 `project-store.executeAction()` 的可撤销编辑。详细链路见 [`docs/openreel-ai-dialogue-architecture.md`](openreel-ai-dialogue-architecture.md)。
+- 当前状态：图片生成关闭；阶段 4 继续处理检查器剩余功能面板，阶段 6 仍需审计动态英文文案。
 
 ## 每阶段更新模板
 
