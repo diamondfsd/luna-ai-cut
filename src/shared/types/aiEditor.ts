@@ -8,7 +8,19 @@ export interface AiEditorFileDialogOptions {
   filters?: AiEditorFileFilter[]
 }
 
+export interface AiEditorProjectSnapshot {
+  projectId: string
+  projectName: string
+  editorDocument: string | null
+}
+
+export interface AiEditorProjectApi {
+  load(projectId: string): Promise<AiEditorProjectSnapshot>
+  save(projectId: string, editorDocument: string): Promise<void>
+}
+
 export interface AiEditorFileApi {
+  project: AiEditorProjectApi
   showSaveDialog(options: AiEditorFileDialogOptions): Promise<string | null>
   showOpenDialog(options: AiEditorFileDialogOptions): Promise<string | null>
   readFile(filePath: string): Promise<string>

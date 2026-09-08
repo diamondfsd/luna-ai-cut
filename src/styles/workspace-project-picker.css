@@ -136,8 +136,17 @@
   opacity: 0;
 }
 
+.workspace-project-ai-editor {
+  position: absolute;
+  right: 46px;
+  bottom: 14px;
+  opacity: 0;
+}
+
 .workspace-project-card:hover .workspace-project-delete,
-.workspace-project-delete:focus-visible {
+.workspace-project-delete:focus-visible,
+.workspace-project-card:hover .workspace-project-ai-editor,
+.workspace-project-ai-editor:focus-visible {
   opacity: 1;
 }
 
