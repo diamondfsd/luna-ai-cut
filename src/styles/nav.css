@@ -35,6 +35,7 @@
 .nav-links a {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   height: 44px;
   padding: 0 14px;
   color: var(--muted);

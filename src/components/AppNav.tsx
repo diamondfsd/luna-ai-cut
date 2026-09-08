@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Camera, MonitorCog, Radio, Unplug } from 'lucide-react'
+import { Camera, Film, MonitorCog, Radio, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -41,6 +41,10 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           </NavLink>
           <NavLink to="/ai-selection" className={({ isActive }) => (isActive ? 'active' : '')}>
             AI 选片
+          </NavLink>
+          <NavLink to="/ai-editor" className={({ isActive }) => (isActive ? 'active' : '')}>
+            <Film size={14} aria-hidden="true" />
+            AI 剪辑
           </NavLink>
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台

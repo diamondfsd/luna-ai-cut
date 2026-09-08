@@ -30,6 +30,7 @@ import type {
   WifiPortCheckOptions,
   ExportTaskRecord,
   OriginalFileExportRequest,
+  AiEditorFileApi,
 } from '../src/shared/types'
 
 interface ExportItemInput {
@@ -65,6 +66,19 @@ interface LunaExportTaskApi {
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   isPackaged: ipcRenderer.sendSync('app:is-packaged') === true,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
+  aiEditor: {
+    showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
+    showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),
+    readFile: (filePath) => ipcRenderer.invoke('ai-editor:read-file', filePath),
+    readFileBytes: (filePath) => ipcRenderer.invoke('ai-editor:read-file-bytes', filePath),
+    tempFilePath: (extension) => ipcRenderer.invoke('ai-editor:temp-file-path', extension),
+    writeFile: (filePath, data) => ipcRenderer.invoke('ai-editor:write-file', filePath, data),
+    openWrite: (filePath) => ipcRenderer.invoke('ai-editor:open-write', filePath),
+    writeChunk: (handleId, data, position) => ipcRenderer.invoke('ai-editor:write-chunk', handleId, data, position),
+    closeWrite: (handleId) => ipcRenderer.invoke('ai-editor:close-write', handleId),
+    abortWrite: (handleId) => ipcRenderer.invoke('ai-editor:abort-write', handleId),
+    revealInFolder: (filePath) => ipcRenderer.invoke('ai-editor:reveal-in-folder', filePath),
+  } satisfies AiEditorFileApi,
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean): void => callback(isFullScreen)

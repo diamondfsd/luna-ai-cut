@@ -16,6 +16,7 @@ import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
+import { AiEditorPage } from '../pages/AiEditorPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { ObsStreamDemoPage } from '../pages/ObsStreamDemoPage'
@@ -95,6 +96,7 @@ export function AppRoutes() {
     ['/library', true],
     ['/local-resources', true],
     ['/ai-selection', true],
+    ['/ai-editor', true],
     ['/workspace', true],
     ['/obs-stream', obsStreamDemoVisible],
     ['/settings', true],
@@ -173,6 +175,10 @@ export function AppRoutes() {
 
         <AppRoute path="/ai-selection" preserve={false}>
           <AiSelectionPage />
+        </AppRoute>
+
+        <AppRoute path="/ai-editor" preserve={false}>
+          <AiEditorPage />
         </AppRoute>
 
         <AppRoute path="/workspace">
