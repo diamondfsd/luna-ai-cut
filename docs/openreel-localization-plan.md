@@ -149,6 +149,16 @@
 - 检查命令及结果：`git diff --check`、`git -C vendor/openreel diff --check` 和 `pnpm run build:app` 均通过；构建仅保留原有 chunk 过大、Browserslist、动态导入和 Baseline 数据提示。
 - 是否通过当前子批次验收：是；阶段 4 尚未完成，继续处理聊天、KieAI 和其他具体功能面板。
 
+### 2026-09-08：阶段 4 聊天面板批次验收完成
+
+- 修改文件：`components/editor/chat/ChatComposer.tsx`、`ChatErrorCard.tsx`、`ChatHistoryPanel.tsx`、`ChatMessage.tsx`、`ChatPanel.tsx`、`InlineConfirmCard.tsx`、`MarkdownMessage.tsx`、`ProviderModelPicker.tsx`、`ToolCallCard.tsx`。
+- 已覆盖中文：聊天空状态、建议操作、输入区、发送/停止、对话历史、模型连接、模型加载、试运行/自动批准、撤销/新建/关闭、确认操作、错误分类与设置入口、工具调用状态、参数/结果标题和代码复制按钮。
+- 新增或确认术语：`AI 编辑器`、`通过对话编辑`、`对话历史`、`服务地址`、`模型 ID`、`API 密钥`、`试运行`、`自动批准`、`工具调用`、`令牌`。
+- 保留的技术标识：`OpenAI`、`Anthropic`、`API`、`URL`、`ID`、`GET /models`、`CORS`、工具名、模型名、模型 ID、对话标题、用户输入、Markdown 内容、JSON 参数和上游错误原文；内部 provider/status/action 值未改变。
+- 阶段 6 审计项：上游服务返回的英文错误、模型返回的 Markdown 文案和对话历史中的用户/模型内容未做宽泛翻译，避免改变原始信息；测试文件中的英文断言未修改。
+- 检查命令及结果：`git -C vendor/openreel diff --check` 和 `pnpm run build:app` 均通过；构建仅保留原有 chunk 过大、Browserslist、动态导入和 Baseline 数据提示。
+- 是否通过当前子批次验收：是；阶段 4 尚未完成，继续处理 KieAI 和其他具体功能面板。
+
 ## 每阶段更新模板
 
 处理阶段：
