@@ -139,6 +139,16 @@
 - 检查命令及结果：`git diff --check`、`git -C vendor/openreel diff --check` 和 `pnpm run build:app` 均通过；构建仅保留原有 chunk 过大、Browserslist 和动态导入提示。
 - 是否通过当前子批次验收：是；继续处理阶段 4 的效果、聊天和 KieAI 面板。
 
+### 2026-09-08：阶段 4 视频效果与滤镜预设批次验收完成
+
+- 修改文件：`components/editor/inspector/FilterPresetsPanel.tsx`、`components/editor/inspector/VideoEffectsSection.tsx`。
+- 已覆盖中文：滤镜分类、预设名称与描述、效果标签、应用/清除提示、视频效果名称、参数标签、效果分类、搜索、预览、复制/粘贴/删除、启用/停用和效果堆栈空状态。
+- 新增或确认术语：`滤镜预设`、`一键调色`、`视频效果`、`材质效果`、`色调分离`、`双调`、`色差`、`胶片颗粒`、`效果堆栈`、`中点`、`中心 X/Y`。
+- 保留的技术标识：效果类型、着色器 id、滤镜预设 id、参数名、MIME 类型、CSS 值、`VHS`、`Super 8` 和用户输入的搜索内容；不改变效果参数和项目数据结构。
+- 阶段 6 审计项：`ShaderPreviewBrowser` 内部的动态着色器名称、集合名、搜索提示和空状态，以及生成着色器/ Paper 着色器的动态名称尚未修改，避免在本批跨越动态兜底范围。
+- 检查命令及结果：`git diff --check`、`git -C vendor/openreel diff --check` 和 `pnpm run build:app` 均通过；构建仅保留原有 chunk 过大、Browserslist、动态导入和 Baseline 数据提示。
+- 是否通过当前子批次验收：是；阶段 4 尚未完成，继续处理聊天、KieAI 和其他具体功能面板。
+
 ## 每阶段更新模板
 
 处理阶段：
