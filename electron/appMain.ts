@@ -471,7 +471,7 @@ function registerIpc(): void {
       })
       // 将已存在于下载目录或缓存的本地路径写回文件对象
       const nextSettings = await getSettings()
-      await resolveLocalThumbnails(files, getLocalResourcesDir(nextSettings))
+      await resolveLocalThumbnails(files, [getLocalResourcesDir(nextSettings), ...(nextSettings.downloadDirectories ?? [])])
       return files
     } catch (error) {
       logMainError(`[文件读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })

@@ -108,6 +108,18 @@ function localSourcePath(sourceUrl: string): string | null {
   return sourceUrl
 }
 
+function directoryList(values: Array<string | undefined>): string[] {
+  return [...new Set(values
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => path.resolve(value.trim())))]
+}
+
+function requestedDirectory(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || !path.isAbsolute(value.trim())) throw new Error('目标目录无效')
+  return path.resolve(value.trim())
+}
+
 const MAX_DRAG_ICON_SIZE = 96
 
 function resizeDragIcon(image: Electron.NativeImage): Electron.NativeImage {
@@ -148,9 +160,12 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('exports:availablePath', async (_event, desiredPath: unknown) => {
     if (typeof desiredPath !== 'string' || !path.isAbsolute(desiredPath)) throw new Error('导出路径无效')
     const settings = await getSettings()
-    if (!settings.exportDir) throw new Error('未设置导出目录')
-    const relative = path.relative(path.resolve(settings.exportDir), path.resolve(desiredPath))
-    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('导出路径无效')
+    const roots = directoryList([settings.exportDir, ...(settings.exportDirectories ?? [])])
+    const target = path.resolve(desiredPath)
+    if (roots.length === 0 || !roots.some((root) => {
+      const relative = path.relative(root, target)
+      return !relative.startsWith('..') && !path.isAbsolute(relative)
+    })) throw new Error('导出路径无效')
     return availableExportPath(desiredPath)
   })
   ipcMain.on('files:start-drag', (event, requestedPaths: unknown, requestedThumbnailUrl: unknown) => {
@@ -352,19 +367,18 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('downloads:listFiles', async () => {
     const settings = await getSettings()
-    const resolvedDir = getLocalResourcesDir(settings)
-    const files = await listDownloadedFiles(resolvedDir)
-    if (resolvedDir) {
-      await resolveLocalThumbnails(files, resolvedDir)
-    }
+    const roots = directoryList([getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])])
+    const files = await listDownloadedFiles(roots)
+    await resolveLocalThumbnails(files, roots)
     return files
   })
 
   ipcMain.handle('exports:listFiles', async (_event, exportDir?: string) => {
     const settings = await getSettings()
-    const resolvedDir = exportDir || settings.exportDir || ''
-    if (!resolvedDir) return []
-    return listExportFiles(resolvedDir)
+    const roots = exportDir
+      ? directoryList([exportDir])
+      : directoryList([settings.exportDir, ...(settings.exportDirectories ?? [])])
+    return listExportFiles(roots)
   })
 
   ipcMain.handle('luna:resolveThumbnail', async (_event, filePath: string, kind?: string) => {
@@ -406,16 +420,17 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('files:openPhotosApp', async () => openPhotosApp())
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
 
-  ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[]) => {
+  ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], targetDir?: unknown) => {
     const settings = await getSettings()
-    const localResourcesDir = getLocalResourcesDir(settings)
+    const requestedTargetDir = requestedDirectory(targetDir)
+    const localResourcesDir = requestedTargetDir ?? getLocalResourcesDir(settings)
     logMainInfo(`[下载] 开始下载文件`, { fileCount: files.length, fileNames: files.map((file) => file.name).slice(0, 5).join(', ') + (files.length > 5 ? `...(+${files.length - 5})` : '') })
 
     const controller = new AbortController()
     ctx.activeDownloadControllers.add(controller)
     const task = downloadFiles(files, localResourcesDir, (progress: DownloadProgress) => {
       ctx.win?.webContents.send('download:progress', progress)
-    }, controller.signal, settings.organizeDownloadsByDate ?? false)
+    }, controller.signal, requestedTargetDir ? false : settings.organizeDownloadsByDate ?? false)
     ctx.activeDownloadTasks.add(task)
     try {
       return await task

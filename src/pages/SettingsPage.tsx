@@ -169,6 +169,18 @@ export function SettingsPage({
     }
   }
 
+  async function saveTransferDirectorySetting(enabled: boolean): Promise<void> {
+    if (!settings) return
+    const previous = settings.chooseTransferDirectoryBeforeAction ?? false
+    setSettings((current) => (current ? { ...current, chooseTransferDirectoryBeforeAction: enabled } : current))
+    try {
+      setSettings(await window.luna.saveSettings({ chooseTransferDirectoryBeforeAction: enabled }))
+    } catch (error) {
+      setSettings((current) => (current ? { ...current, chooseTransferDirectoryBeforeAction: previous } : current))
+      toast.error(error instanceof Error ? error.message : '目录选择设置保存失败')
+    }
+  }
+
   async function saveWindowCloseBehavior(hide: boolean): Promise<void> {
     if (!settings) return
     const previous = settings.windowCloseBehavior ?? 'quit'
@@ -262,6 +274,18 @@ export function SettingsPage({
                   onCheckedChange={(enabled) => void saveDownloadOrganizationSetting(enabled)}
                 />
               </div>
+            </article>
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>每次下载/导出前选择目录</span>
+                <em>{settings?.chooseTransferDirectoryBeforeAction ? '操作前选择本次目标目录' : '使用默认下载和导出目录'}</em>
+              </div>
+              <Switch
+                checked={settings?.chooseTransferDirectoryBeforeAction ?? false}
+                disabled={!settings}
+                ariaLabel="每次下载/导出前选择目录"
+                onCheckedChange={(enabled) => void saveTransferDirectorySetting(enabled)}
+              />
             </article>
             <DirectorySettingRow
               label="导出目录"

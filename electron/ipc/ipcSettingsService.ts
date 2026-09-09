@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain } from 'electron'
+import { app, dialog, ipcMain, type OpenDialogOptions } from 'electron'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { AppSettings } from '../../src/shared/types'
@@ -128,6 +128,19 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('settings:chooseBaseDir', () => chooseBaseDir())
   ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
   ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())
+  ipcMain.handle('settings:chooseTransferDirectory', async (_event, kind: unknown, defaultPath?: unknown) => {
+    const transferKind = kind === 'export' ? 'export' : kind === 'download' ? 'download' : null
+    if (!transferKind) throw new Error('目标目录类型无效')
+    const options: OpenDialogOptions = {
+      ...(typeof defaultPath === 'string' && path.isAbsolute(defaultPath) ? { defaultPath } : {}),
+      properties: ['openDirectory', 'createDirectory'],
+      title: transferKind === 'export' ? '选择导出目标目录' : '选择下载目标目录',
+    }
+    const result = ctx.win
+      ? await dialog.showOpenDialog(ctx.win, options)
+      : await dialog.showOpenDialog(options)
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
   ipcMain.handle('settings:chooseLutDir', () => chooseLutDir())
   ipcMain.handle('settings:listCustomLuts', () => listCustomLuts())
   ipcMain.handle('settings:deleteCustomLut', (_event, filePath: string) => deleteCustomLut(filePath))

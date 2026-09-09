@@ -30,6 +30,7 @@ import {
 } from './colorRevealConfig'
 import { buildColorRevealLayers } from './colorRevealLayers'
 import { queueColorRevealBatchExport } from './colorRevealBatchExport'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../../../lib/transferDirectory'
 import './color-reveal.css'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import type { CreativeModuleProps } from '../creativeCatalog'
@@ -236,13 +237,15 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
     handleSeek(0)
   }
 
-  async function handleExport(config: VideoExportSettings): Promise<void> {
-    if (exporting || exportCount === 0) return
-    setExportDialogOpen(false)
-    setExporting(true)
+  async function handleExport(config: VideoExportSettings): Promise<boolean> {
+    if (exporting || exportCount === 0) return false
     try {
       const settings = await window.luna.getSettings()
-      if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
+      if (!settings.exportDir && !settings.chooseTransferDirectoryBeforeAction) throw new Error('请先在设置中选择导出目录')
+      const exportDir = await resolveTransferDirectory('export', settings)
+      if (!exportDir) return false
+      if (settings.chooseTransferDirectoryBeforeAction) await rememberTransferDirectory('export', exportDir, settings)
+      setExporting(true)
       const sources = exportableIndices.map((index) => {
         const asset = media.media[index]
         return {
@@ -254,7 +257,7 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
       })
       const count = await queueColorRevealBatchExport({
         sources,
-        exportDir: settings.exportDir,
+        exportDir,
         config,
         saturation,
         gray,
@@ -264,8 +267,10 @@ export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, support
         stageMode,
       })
       toast.success(count > 1 ? `已加入导出队列：${count} 个素材` : '已加入生成任务')
+      return true
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '视频生成失败')
+      return false
     } finally {
       setExporting(false)
     }

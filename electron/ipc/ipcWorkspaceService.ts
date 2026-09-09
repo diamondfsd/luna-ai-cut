@@ -879,17 +879,22 @@ export function register(ctx: IpcContext): void {
     return { path: outputPath, name: path.basename(outputPath) }
   })
 
-  ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs = false, recordTask = true, coverTimeSeconds?: number) => {
+  ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs = false, recordTask = true, coverTimeSeconds?: number, requestedOutputDir?: unknown) => {
     const settings = await getSettings()
-    if (!settings.exportDir) throw new Error('未设置导出目录')
+    const outputDir = requestedOutputDir === undefined || requestedOutputDir === null || requestedOutputDir === ''
+      ? settings.exportDir
+      : typeof requestedOutputDir === 'string' && path.isAbsolute(requestedOutputDir.trim())
+        ? path.resolve(requestedOutputDir.trim())
+        : null
+    if (!outputDir) throw new Error('未设置导出目录')
     try {
-      await mkdir(settings.exportDir, { recursive: true })
+      await mkdir(outputDir, { recursive: true })
     } catch (error) {
       const message = friendlyFileOperationError(error, 'export')
       logMainError('[export] Live 图导出目录准备失败', {
-        outputDir: settings.exportDir,
+        outputDir,
         userMessage: message,
-        ...fileOperationErrorDetails(error, settings.exportDir),
+        ...fileOperationErrorDetails(error, outputDir),
       })
       throw userFacingFileOperationError(error, 'export')
     }
@@ -901,16 +906,16 @@ export function register(ctx: IpcContext): void {
     const baseName = safeName(path.basename(name, path.extname(name)) || 'preview-live')
     const destinationPath = appleLivePhoto
       ? undefined  // Apple Live 不产出合成 .jpg，JPG+MOV 对在 appleFolder
-      : await availableExportPath(path.join(settings.exportDir, `${baseName}.jpg`))
+      : await availableExportPath(path.join(outputDir, `${baseName}.jpg`))
     const appleFolder = appleLivePhoto
-      ? await availableExportPath(path.join(settings.exportDir, baseName))
+      ? await availableExportPath(path.join(outputDir, baseName))
       : undefined
     let workingImagePath = imagePath
     let workingVideoPath = videoPath
     if (preserveInputs) {
       const workingStamp = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-      workingImagePath = path.join(settings.exportDir, `.${baseName}_${workingStamp}.jpg`)
-      workingVideoPath = path.join(settings.exportDir, `.${baseName}_${workingStamp}${path.extname(videoPath) || '.mp4'}`)
+      workingImagePath = path.join(outputDir, `.${baseName}_${workingStamp}.jpg`)
+      workingVideoPath = path.join(outputDir, `.${baseName}_${workingStamp}${path.extname(videoPath) || '.mp4'}`)
     }
     try {
       if (preserveInputs) {
@@ -925,11 +930,11 @@ export function register(ctx: IpcContext): void {
       logMainError('[export] Live 图导出失败', {
         sourceImagePath: imagePath,
         sourceVideoPath: videoPath,
-        outputDir: settings.exportDir,
+        outputDir,
         outputPath: destinationPath,
         appleFolder,
         userMessage: message,
-        ...fileOperationErrorDetails(error, destinationPath ?? appleFolder ?? settings.exportDir),
+        ...fileOperationErrorDetails(error, destinationPath ?? appleFolder ?? outputDir),
       })
       throw userFacingFileOperationError(error, 'export')
     } finally {

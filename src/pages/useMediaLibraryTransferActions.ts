@@ -2,6 +2,12 @@ import type { Dispatch, SetStateAction } from 'react'
 
 import type { AppSettings, DownloadProgress, LunaFile } from '../shared/types'
 import type { ViewMode } from './useMediaLibraryController'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../lib/transferDirectory'
+
+export interface DownloadQueueItem {
+  file: LunaFile
+  targetDir?: string
+}
 
 interface TransferActionProps {
   files: LunaFile[]
@@ -11,7 +17,7 @@ interface TransferActionProps {
   setDeleteError: (value: string | null) => void
   setDeletingLocalFiles: (value: boolean) => void
   setDownloadProgress: Dispatch<SetStateAction<Map<string, DownloadProgress>>>
-  setDownloadQueue: Dispatch<SetStateAction<LunaFile[]>>
+  setDownloadQueue: Dispatch<SetStateAction<DownloadQueueItem[]>>
   setDownloadedFiles: Dispatch<SetStateAction<LunaFile[]>>
   setExportedFiles: Dispatch<SetStateAction<LunaFile[]>>
   setFiles: Dispatch<SetStateAction<LunaFile[]>>
@@ -122,9 +128,22 @@ export function useMediaLibraryTransferActions({
   async function startDownload(): Promise<void> {
     if (!settings || selectedFiles.length === 0) return
 
+    let targetDir: string | undefined
+    try {
+      const selectedTargetDir = await resolveTransferDirectory('download', settings)
+      if (!selectedTargetDir) return
+      if (settings.chooseTransferDirectoryBeforeAction) {
+        targetDir = selectedTargetDir
+        await rememberTransferDirectory('download', targetDir, settings)
+      }
+    } catch (error) {
+      console.error('选择下载目录失败', error)
+      return
+    }
+
     let toDownload = selectedFiles
     {
-      const records = await window.luna.getDownloadedRecords(selectedFiles)
+      const records = await window.luna.getDownloadedRecords(selectedFiles, targetDir)
       const recordByName = new Map(records.map((record) => [record.fileName, record]))
       if (records.length > 0) {
         for (const record of records) {
@@ -176,16 +195,33 @@ export function useMediaLibraryTransferActions({
       return next
     })
     setDownloadQueue((current) => {
-      const currentActive = current.filter((file) => activeNames.has(file.name))
-      const queued = new Set(currentActive.map((file) => file.name))
-      return [...currentActive, ...toDownload.filter((file) => !queued.has(file.name))]
+      const currentActive = current.filter((item) => activeNames.has(item.file.name))
+      const queued = new Set(currentActive.map((item) => item.file.name))
+      return [
+        ...currentActive,
+        ...toDownload
+          .filter((file) => !queued.has(file.name))
+          .map((file) => ({ file, targetDir })),
+      ]
     })
   }
 
   async function downloadOne(file: LunaFile): Promise<void> {
     if (!settings) return
+    let targetDir: string | undefined
+    try {
+      const selectedTargetDir = await resolveTransferDirectory('download', settings)
+      if (!selectedTargetDir) return
+      if (settings.chooseTransferDirectoryBeforeAction) {
+        targetDir = selectedTargetDir
+        await rememberTransferDirectory('download', targetDir, settings)
+      }
+    } catch (error) {
+      console.error('选择下载目录失败', error)
+      return
+    }
     {
-      const records = await window.luna.getDownloadedRecords([file])
+      const records = await window.luna.getDownloadedRecords([file], targetDir)
       const existing = records[0]
       if (existing) {
         markFileDownloaded(file.name, existing.path)
@@ -226,7 +262,11 @@ export function useMediaLibraryTransferActions({
       }
       return next
     })
-    setDownloadQueue((current) => (current.some((item) => item.name === file.name) ? current : [...current, file]))
+    setDownloadQueue((current) => (
+      current.some((item) => item.file.name === file.name)
+        ? current
+        : [...current, { file, targetDir }]
+    ))
   }
 
   async function deleteSelectedLocalFiles(): Promise<void> {

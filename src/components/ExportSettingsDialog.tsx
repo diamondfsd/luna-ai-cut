@@ -27,7 +27,7 @@ interface ExportSettingsDialogProps {
   initialConfig?: VideoExportSettings
   allowedFormats?: VideoExportFormat[]
   outputAvailability?: { video: boolean; photo: boolean; live: boolean }
-  onConfirm: (config: VideoExportSettings) => void | Promise<void>
+  onConfirm: (config: VideoExportSettings) => void | boolean | Promise<void | boolean>
 }
 
 /**
@@ -90,7 +90,8 @@ export function ExportSettingsDialog({
     if (isBusy) return
     setInternalLoading(true)
     try {
-      await onConfirm(exportConfig)
+      const confirmed = await onConfirm(exportConfig)
+      if (confirmed === false) return
       setExportConfig(defaultConfig)
       onOpenChange(false)
     } finally {
