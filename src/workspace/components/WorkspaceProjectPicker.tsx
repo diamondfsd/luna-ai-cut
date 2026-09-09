@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Film, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../../shared/types'
@@ -16,7 +15,6 @@ function generatedProjectName(count: number): string {
 
 export function WorkspaceProjectPicker() {
   const { projects, projectLoading, openProject, deleteProject, renameProject, createProject } = useWorkspaceMedia()
-  const navigate = useNavigate()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; project: WorkspaceProject } | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameProjectId, setRenameProjectId] = useState('')
@@ -35,11 +33,6 @@ export function WorkspaceProjectPicker() {
 
   function closeContextMenu(): void {
     setContextMenu(null)
-  }
-
-  function openAiEditor(event: React.MouseEvent, project: WorkspaceProject): void {
-    event.stopPropagation()
-    navigate(`/ai-editor?projectId=${encodeURIComponent(project.id)}`)
   }
 
   function handleRenameClick(): void {
@@ -111,15 +104,6 @@ export function WorkspaceProjectPicker() {
               <strong>{project.name}</strong>
               <span>{project.assets.length} 个素材</span>
             </button>
-            <IconButton
-              variant="ghost"
-              size="mini"
-              className="workspace-project-ai-editor"
-              icon={<Film size={14} />}
-              aria-label={`在 AI 剪辑中打开 ${project.name}`}
-              title="打开 AI 剪辑"
-              onClick={(event) => openAiEditor(event, project)}
-            />
             <IconButton
               variant="ghost"
               size="mini"

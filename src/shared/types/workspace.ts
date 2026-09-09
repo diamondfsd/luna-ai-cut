@@ -13,6 +13,11 @@ export interface WorkspaceMediaAsset {
   watermarkProfileId?: string
   thumbnailUrl?: string | null
   isLivePhoto?: boolean
+  duration?: number
+  width?: number
+  height?: number
+  frameRate?: number
+  fileSize?: number
 }
 
 export type WorkspaceMediaKind = WorkspaceMediaAsset['kind']
