@@ -234,7 +234,8 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         [deviceId]: storageId,
       },
     })
-    await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
+    const settings = await getSettings()
+    await resolveLocalThumbnails(files, [getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])])
     return files
   }
 
@@ -376,7 +377,8 @@ class DjiCameraMediaSource implements CameraMediaSourceAdapter {
         cameraHost: host,
         deviceStorage: { ...(await getSettings()).deviceStorage, [deviceId]: storageId },
       })
-      await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
+      const settings = await getSettings()
+      await resolveLocalThumbnails(files, [getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])])
       logMainInfo('[DJI 媒体入口] list-files 完成', {
         deviceId,
         host,
@@ -458,7 +460,8 @@ class MountedCameraMediaSource implements CameraMediaSourceAdapter {
     const volumes = await resolveMountedCameraVolumes(rootPath)
     if (volumes.length === 0) throw new Error('未检测到包含 DCIM 的相机磁盘')
     const files = await listMountedCameraFilesFromVolumes(volumes, deviceId)
-    await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
+    const settings = await getSettings()
+    await resolveLocalThumbnails(files, [getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])])
     return files
   }
 

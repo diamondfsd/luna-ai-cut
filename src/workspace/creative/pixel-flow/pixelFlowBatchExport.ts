@@ -10,6 +10,7 @@ interface PixelFlowBatchExportOptions {
   project: WorkspaceProject
   assets: WorkspaceMediaAsset[]
   config: VideoExportSettings
+  exportDir: string
   settings: PixelFlowEffectSettings
   onProgress?: (label: string) => void
 }
@@ -95,7 +96,7 @@ export async function queuePixelFlowBatchExport(options: PixelFlowBatchExportOpt
           : ['video'] as VideoExportSettings['exportFormats'],
       },
     }
-  }))
+  }), options.exportDir)
 
   return { queuedCount, failedCount, resolvedStates }
 }

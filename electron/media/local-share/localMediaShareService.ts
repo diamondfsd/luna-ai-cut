@@ -122,7 +122,7 @@ async function createResource(
 
 async function localResources(): Promise<ShareResourceRecord[]> {
   const settings = await getSettings()
-  const files = await listDownloadedFiles(getLocalResourcesDir(settings))
+  const files = await listDownloadedFiles([getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])])
   const resources = await Promise.all(files.map((file) => createResource('local', file.localPath ?? file.downloadFilePath ?? '')))
   return resources.filter((resource): resource is ShareResourceRecord => resource !== null)
 }

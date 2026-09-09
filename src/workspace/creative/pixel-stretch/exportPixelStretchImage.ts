@@ -7,21 +7,20 @@ interface ExportPixelStretchImageOptions {
   layers: PreviewLayer[]
   width: number
   height: number
+  exportDir: string
 }
 
 export async function exportPixelStretchImage(options: ExportPixelStretchImageOptions): Promise<void> {
-  const settings = await window.luna.getSettings()
-  if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
   const stamp = Date.now()
-  const allocateName = await createDirectoryExportNameAllocator(settings.exportDir)
+  const allocateName = await createDirectoryExportNameAllocator(options.exportDir)
   const name = options.asset.name.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]+/g, '-').trim() || 'pixel-stretch'
   const fileName = allocateName(`${name}-pixel-stretch.png`)
-  const outputPath = `${settings.exportDir.replace(/[\\/]$/, '')}/${fileName}`
+  const outputPath = `${options.exportDir.replace(/[\\/]$/, '')}/${fileName}`
   const itemId = `pixel_stretch_${stamp}`
   const task = await window.luna.exportTask.create('像素拉伸', [{ id: itemId, sourcePath: options.asset.path, outputPath, label: '创意图片' }])
   try {
     await exportPreviewImage({
-      exportDir: settings.exportDir,
+      exportDir: options.exportDir,
       fileName,
       width: options.width,
       height: options.height,
