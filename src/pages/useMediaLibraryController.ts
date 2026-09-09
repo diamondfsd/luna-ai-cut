@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { DownloadProgress, LunaFile, PreviewResult } from '../shared/types'
-import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
+import { useMediaLibraryTransferActions, type DownloadQueueItem } from './useMediaLibraryTransferActions'
 import { useCameraMediaDelete } from './useCameraMediaDelete'
 import { useApp } from '../context/AppContext'
 import { useOptionalDownloadProgress } from '../context/DownloadProgressContext'
@@ -71,7 +71,7 @@ export function useMediaLibraryController(pageType: PageType) {
   const loadingDownloadsRef = useRef(false)
 
   // ── 下载队列 ──
-  const [downloadQueue, setDownloadQueue] = useState<LunaFile[]>([])
+  const [downloadQueue, setDownloadQueue] = useState<DownloadQueueItem[]>([])
   const [activeDownloadFileNames, setActiveDownloadFileNames] = useState<Set<string>>(new Set())
   const [cacheFailedIds, setCacheFailedIds] = useState<Set<string>>(new Set())
   const requestedThumbnailIdsRef = useRef(new Set<string>())
@@ -189,7 +189,7 @@ export function useMediaLibraryController(pageType: PageType) {
     }
     // loadExportLibrary is declared in this controller and intentionally runs only when the view inputs change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLocal, viewMode, settings?.exportDir])
+  }, [isLocal, viewMode, settings?.chooseTransferDirectoryBeforeAction, settings?.exportDir, settings?.exportDirectories])
 
   // 本地页：下载完成后自动刷新
   const prevDoneCountRef = useRef(0)
@@ -412,9 +412,9 @@ export function useMediaLibraryController(pageType: PageType) {
   }
 
   async function loadExportLibrary(): Promise<void> {
-    if (!settings?.exportDir) return
+    if (!settings?.exportDir && !settings?.chooseTransferDirectoryBeforeAction && (settings?.exportDirectories?.length ?? 0) === 0) return
     try {
-      const exportFiles = await window.luna.listExportFiles(settings.exportDir)
+      const exportFiles = await window.luna.listExportFiles()
       setExportedFiles(exportFiles)
     } catch (error) {
       console.error(error)
