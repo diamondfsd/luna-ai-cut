@@ -18,7 +18,6 @@ import {
   toast,
 } from '../ui'
 import type { WorkspaceProject } from '../shared/types'
-import type { AiEditorMediaSource } from '../shared/aiEditor'
 
 interface MediaLibraryToolbarProps {
   mode: 'camera' | 'local'
@@ -73,14 +72,14 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
   }
 
   function openAiEditor(files = ctrl.selectedFiles): void {
-    const media: AiEditorMediaSource[] = files
+    const media = files
       .filter((file) => (file.kind === 'image' || file.kind === 'video'))
       .map((file) => {
         const path = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath ?? ''
         if (!path) return null
         return { path, name: file.name, kind: file.kind as 'image' | 'video' }
       })
-      .filter((file): file is AiEditorMediaSource => Boolean(file))
+      .filter((file): file is NonNullable<typeof file> => Boolean(file))
     navigate('/ai-editor', { state: { media } })
   }
 

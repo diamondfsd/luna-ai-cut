@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Camera, Film, MonitorCog, Radio, Unplug } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { useExportProgress } from '../context/ExportProgressContext'
@@ -19,6 +19,7 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
+  const navigate = useNavigate()
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
   const obsStreamDemoVisible = !window.luna.isPackaged
@@ -28,6 +29,14 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   const statusText = connected
     ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`
     : `${deviceName} 未连接`
+
+  function openAiEditorProjects(event: React.MouseEvent<HTMLAnchorElement>): void {
+    event.preventDefault()
+    navigate('/ai-editor', {
+      replace: true,
+      state: { view: 'projects', entryId: Date.now() },
+    })
+  }
 
   return (
     <nav className="global-nav">
@@ -42,7 +51,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/ai-selection" className={({ isActive }) => (isActive ? 'active' : '')}>
             AI 选片
           </NavLink>
-          <NavLink to="/ai-editor" className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink to="/ai-editor" onClick={openAiEditorProjects} className={({ isActive }) => (isActive ? 'active' : '')}>
             <Film size={14} aria-hidden="true" />
             AI 剪辑
           </NavLink>
