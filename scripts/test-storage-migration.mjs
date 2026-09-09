@@ -17,12 +17,14 @@ try {
   const legacyMetadataDir = path.join(root, 'legacy', 'cache_metadata')
   const legacyAiSelectionDir = path.join(root, 'legacy', 'ai-selection')
   const projectDir = path.join(oldBaseDir, 'workspace-projects', 'project-1')
+  const aiProjectDir = path.join(oldBaseDir, 'ai-editor-projects', 'ai-project-1')
   const sourceFile = path.join(localResourcesDir, 'clip.mp4')
   const removalFile = path.join(projectDir, 'removal', 'mask.pgm')
 
   await Promise.all([
     fs.mkdir(path.dirname(sourceFile), { recursive: true }),
     fs.mkdir(path.dirname(removalFile), { recursive: true }),
+    fs.mkdir(path.join(aiProjectDir, 'editor'), { recursive: true }),
     fs.mkdir(exportDir, { recursive: true }),
     fs.mkdir(lutDir, { recursive: true }),
     fs.mkdir(path.join(cacheDir, 'previews'), { recursive: true }),
@@ -45,6 +47,22 @@ try {
       assets: [{ id: 'asset-1', name: 'clip.mp4', path: sourceFile, kind: 'video' }],
       creative: { onlyYourColor: { maskPath: removalFile } },
     }, null, 2)),
+    fs.writeFile(path.join(aiProjectDir, 'project.json'), JSON.stringify({
+      id: 'ai-project-1',
+      name: 'AI 剪辑项目',
+      dir: aiProjectDir,
+      createdAt: '2026-09-09T00:00:00.000Z',
+      updatedAt: '2026-09-09T00:00:00.000Z',
+      assets: [],
+    }, null, 2)),
+    fs.writeFile(path.join(aiProjectDir, 'editor', 'openreel.json'), JSON.stringify({
+      project: {
+        id: 'ai-project-1',
+        name: 'AI 剪辑项目',
+        mediaLibrary: { items: [{ sourcePath: sourceFile }] },
+        timeline: { duration: 0, tracks: [] },
+      },
+    }, null, 2)),
   ])
 
   const settings = {
@@ -63,7 +81,10 @@ try {
 
   const newSourceFile = path.join(targetDir, 'localResources', 'clip.mp4')
   const newRemovalFile = path.join(targetDir, 'workspace-projects', 'project-1', 'removal', 'mask.pgm')
+  const newAiProjectDir = path.join(targetDir, 'ai-editor-projects', 'ai-project-1')
   const migratedProject = JSON.parse(await fs.readFile(path.join(targetDir, 'workspace-projects', 'project-1', 'project.json'), 'utf8'))
+  const migratedAiProject = JSON.parse(await fs.readFile(path.join(newAiProjectDir, 'project.json'), 'utf8'))
+  const migratedAiDocument = JSON.parse(await fs.readFile(path.join(newAiProjectDir, 'editor', 'openreel.json'), 'utf8'))
   assert.equal(await fs.readFile(newSourceFile, 'utf8'), 'downloaded-media', '已下载素材应迁移到新的目录')
   assert.equal(await fs.readFile(path.join(targetDir, 'export', 'clip.mp4'), 'utf8'), 'exported-media', '导出内容应迁移到新的目录')
   assert.equal(await fs.readFile(path.join(targetDir, 'luts', 'favorite.cube'), 'utf8'), 'TITLE "favorite"', 'LUT 应迁移到新的目录')
@@ -74,11 +95,15 @@ try {
   assert.equal(migratedProject.dir, path.join(targetDir, 'workspace-projects', 'project-1'), '项目目录引用应更新')
   assert.equal(migratedProject.assets[0].path, newSourceFile, '项目素材引用应更新')
   assert.equal(migratedProject.creative.onlyYourColor.maskPath, newRemovalFile, '项目内的相关文件引用应更新')
+  assert.equal(migratedAiProject.dir, newAiProjectDir, 'AI 剪辑项目目录引用应更新')
+  assert.equal(migratedAiDocument.project.mediaLibrary.items[0].sourcePath, newSourceFile, 'AI 剪辑素材引用应更新')
+  assert.ok(result.movedDirectories.includes('aiEditorProjects'), 'AI 剪辑项目目录应参与迁移')
   assert.equal(result.settings.baseDir, targetDir, '基础目录设置应更新')
   assert.equal(result.settings.localResourcesDir, path.join(targetDir, 'localResources'), '下载目录设置应更新')
   assert.equal(result.oldDataRemoved, true, '完成迁移后应清理旧数据')
   await assert.rejects(fs.access(sourceFile), '迁移完成后旧下载素材应被清理')
   await assert.rejects(fs.access(removalFile), '迁移完成后旧项目文件应被清理')
+  await assert.rejects(fs.access(path.join(aiProjectDir, 'editor', 'openreel.json')), '迁移完成后旧 AI 剪辑项目应被清理')
   await assert.rejects(fs.access(path.join(cacheDir, 'previews', 'clip-preview.mp4')), '迁移完成后旧缓存应被清理')
   await assert.rejects(fs.access(path.join(legacyMetadataDir, 'clip.json')), '迁移完成后旧素材信息缓存应被清理')
   await assert.rejects(fs.access(path.join(legacyAiSelectionDir, 'session.json')), '迁移完成后旧智能选片缓存应被清理')

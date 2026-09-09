@@ -295,6 +295,21 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 - 图标文件在 `build/` 目录（icon.icns / icon.ico / icon.png）
 - 打包产物输出到 `release/` 目录
 
+### 日志定位
+- 应用日志固定写入当前设置 `baseDir` 下的 `logs/`，不要从系统日志、第三方应用日志或其他项目目录查找。
+- 优先查看当天的 `main-YYYY-MM-DD-<version>.log`（主进程）和 `renderer-YYYY-MM-DD-<version>.log`（渲染进程）。本机排查可先读取个人记忆文件 `~/memory/luna-ai-cut.md` 获取当前机器的 `baseDir`；没有该文件时通过应用的“日志目录”接口确认。
+- 日志目录实现位于 `electron/infrastructure/loggerService.ts`，路径规则位于 `electron/storage/settingsService.ts` 的 `logDirForBaseDir()`；不确定 `baseDir` 时先通过应用的“日志目录”接口或 `window.luna.getLogDir()` 确认，再读取该目录。
+- OpenReel 重开项目、保存和素材恢复问题，优先检索：`ProjectStore`、`LunaProjectPersistence`、`ProjectManager`、`ai-editor`、`read-file-bytes`、`sourcePath`。
+
+### OpenReel 与 Electron 原生交互约束
+
+- 当前 `AiEditorPage` 将 `vendor/openreel/apps/web` 作为 iframe 嵌入 Luna，使用 Luna 自己的 Electron 主进程；不要直接把 OpenReel 上游 `apps/desktop` 宿主合并进来，除非明确要替换 Luna 的主窗口、生命周期、IPC 和打包体系。
+- OpenReel iframe 所需的文件、项目、素材选择和导出等原生能力，统一经过父窗口 `window.luna`、`electron/preload.ts`、`electron/ipc/`，再由 `scripts/luna-openreel-bridge.js` 暴露给 iframe。OpenReel renderer 不得直接调用 Node.js 或 Electron API。
+- 当前嵌入场景不要设置 `window.openreel.platform = "desktop"`。该标记会让 OpenReel 切换到上游独立 desktop UI，而不是继续使用 Luna 的嵌入式编辑器。
+- 工作台项目和 OpenReel AI 剪辑项目是两套独立数据：工作台固定使用 `baseDir/workspace-projects/<id>/`，AI 剪辑固定使用 `baseDir/ai-editor-projects/<id>/`。两者不得复用同一个目录或同一个项目服务；删除、重命名、保存和迁移都必须保持边界独立。
+- `parent` 窗口和 iframe 属于不同 JavaScript realm。二进制结果跨窗口后不能依赖 iframe 侧的 `value instanceof ArrayBuffer` 判断父窗口返回值；所有 `readFileBytes` 或类似接口必须在 bridge 层复制、归一化为 iframe 当前 realm 的 `ArrayBuffer`，并兼容 `ArrayBuffer`、TypedArray 及结构化克隆后的字节对象。
+- 新增或修改 OpenReel 原生能力时，必须同步检查共享类型、preload、IPC handler、iframe bridge 和对应测试；优先沿用上游的精确字节切片方式，并在修改后至少运行 `pnpm run build:app`。
+
 ### CI 打包
 - 推送 `v*` tag 时自动触发
 - 工作流文件：`.github/workflows/package-artifacts.yml`

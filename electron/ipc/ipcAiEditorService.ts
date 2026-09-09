@@ -7,7 +7,15 @@ import path from 'node:path'
 import type { AiEditorFileDialogOptions, AiEditorFileFilter } from '../../src/shared/types'
 import { revealFile } from '../storage/systemFileService'
 import { getSettings } from '../storage/fileService'
-import { loadWorkspaceEditorDocument, saveWorkspaceEditorDocument } from '../features/workspace/workspaceProjectService'
+import {
+  createAiEditorProject,
+  deleteAiEditorProject,
+  listAiEditorProjects,
+  loadAiEditorProject,
+  renameAiEditorProject,
+  saveAiEditorProject,
+} from '../features/ai-editor/aiEditorProjectService'
+import { logMainError, logMainInfo } from '../infrastructure/loggerService'
 
 interface OpenWriteHandle {
   filePath: string
@@ -15,6 +23,28 @@ interface OpenWriteHandle {
 }
 
 const writeHandles = new Map<string, OpenWriteHandle>()
+
+function editorDocumentSummary(editorDocument: string): {
+  documentBytes: number
+  mediaCount?: number
+  sourcePathCount?: number
+} {
+  const summary = { documentBytes: Buffer.byteLength(editorDocument, 'utf8') }
+  try {
+    const document = JSON.parse(editorDocument) as {
+      mediaLibrary?: { items?: Array<{ sourcePath?: unknown }> }
+    }
+    const items = document.mediaLibrary?.items
+    if (!Array.isArray(items)) return summary
+    return {
+      ...summary,
+      mediaCount: items.length,
+      sourcePathCount: items.filter((item) => typeof item?.sourcePath === 'string').length,
+    }
+  } catch {
+    return summary
+  }
+}
 
 function absoluteFilePath(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim() || !path.isAbsolute(value)) {
@@ -69,14 +99,84 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
 }
 
 export function register(): void {
-  ipcMain.handle('ai-editor:load-project', async (_event, projectId: string) => {
+  ipcMain.handle('ai-editor:list-projects', async () => {
     const settings = await getSettings()
-    return loadWorkspaceEditorDocument(settings.baseDir, projectId)
+    const projects = await listAiEditorProjects(settings.baseDir)
+    return projects.map((project) => ({
+      projectId: project.id,
+      projectName: project.name,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    }))
+  })
+
+  ipcMain.handle('ai-editor:create-project', async (_event, name: string, assets: import('../../src/shared/types').WorkspaceMediaAsset[] = []) => {
+    const settings = await getSettings()
+    const project = await createAiEditorProject(settings.baseDir, name, assets)
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    }
+  })
+
+  ipcMain.handle('ai-editor:load-project', async (_event, projectId: string) => {
+    try {
+      const settings = await getSettings()
+      const snapshot = await loadAiEditorProject(settings.baseDir, projectId)
+      logMainInfo('[AI 剪辑] 加载项目完成', {
+        projectId,
+        hasEditorDocument: Boolean(snapshot.editorDocument),
+        ...(snapshot.editorDocument ? editorDocumentSummary(snapshot.editorDocument) : {}),
+      })
+      return snapshot
+    } catch (error) {
+      logMainError('[AI 剪辑] 加载项目失败', {
+        projectId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
   })
 
   ipcMain.handle('ai-editor:save-project', async (_event, projectId: string, editorDocument: string) => {
+    try {
+      const settings = await getSettings()
+      await saveAiEditorProject(settings.baseDir, projectId, editorDocument)
+      logMainInfo('[AI 剪辑] 保存项目完成', { projectId, ...editorDocumentSummary(editorDocument) })
+    } catch (error) {
+      logMainError('[AI 剪辑] 保存项目失败', {
+        projectId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('ai-editor:delete-project', async (_event, projectId: string) => {
+    try {
+      const settings = await getSettings()
+      await deleteAiEditorProject(settings.baseDir, projectId)
+      logMainInfo('[AI 剪辑] 删除项目完成', { projectId })
+    } catch (error) {
+      logMainError('[AI 剪辑] 删除项目失败', {
+        projectId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  })
+
+  ipcMain.handle('ai-editor:rename-project', async (_event, projectId: string, name: string) => {
     const settings = await getSettings()
-    await saveWorkspaceEditorDocument(settings.baseDir, projectId, editorDocument)
+    const project = await renameAiEditorProject(settings.baseDir, projectId, name)
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    }
   })
 
   ipcMain.handle('ai-editor:show-save-dialog', async (event, options: AiEditorFileDialogOptions) => {
@@ -104,13 +204,34 @@ export function register(): void {
     return result.canceled ? null : result.filePaths[0] ?? null
   })
 
-  ipcMain.handle('ai-editor:read-file', (_event, filePath: string) => (
-    readFile(absoluteFilePath(filePath, '文件'), 'utf8')
-  ))
+  ipcMain.handle('ai-editor:read-file', async (_event, filePath: string) => {
+    try {
+      const target = absoluteFilePath(filePath, '文件')
+      const content = await readFile(target, 'utf8')
+      logMainInfo('[AI 剪辑] 读取文件完成', { fileName: path.basename(target), bytes: Buffer.byteLength(content, 'utf8') })
+      return content
+    } catch (error) {
+      logMainError('[AI 剪辑] 读取文件失败', {
+        fileName: typeof filePath === 'string' ? path.basename(filePath) : undefined,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  })
 
   ipcMain.handle('ai-editor:read-file-bytes', async (_event, filePath: string) => {
-    const bytes = await readFile(absoluteFilePath(filePath, '文件'))
-    return Uint8Array.from(bytes).buffer
+    try {
+      const target = absoluteFilePath(filePath, '文件')
+      const bytes = await readFile(target)
+      logMainInfo('[AI 剪辑] 读取素材完成', { fileName: path.basename(target), bytes: bytes.byteLength })
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    } catch (error) {
+      logMainError('[AI 剪辑] 读取素材失败', {
+        fileName: typeof filePath === 'string' ? path.basename(filePath) : undefined,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
   })
 
   ipcMain.handle('ai-editor:temp-file-path', async (_event, extension: string) => {

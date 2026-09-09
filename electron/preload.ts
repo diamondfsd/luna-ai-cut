@@ -67,8 +67,12 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   aiEditor: {
     project: {
+      list: () => ipcRenderer.invoke('ai-editor:list-projects'),
+      create: (name, assets) => ipcRenderer.invoke('ai-editor:create-project', name, assets),
       load: (projectId) => ipcRenderer.invoke('ai-editor:load-project', projectId),
       save: (projectId, editorDocument) => ipcRenderer.invoke('ai-editor:save-project', projectId, editorDocument),
+      delete: (projectId) => ipcRenderer.invoke('ai-editor:delete-project', projectId),
+      rename: (projectId, name) => ipcRenderer.invoke('ai-editor:rename-project', projectId, name),
     },
     showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
 import type { WorkspaceMediaAsset } from '../shared/types'
+import { logger } from '../lib/rendererLogger'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import './AiEditorPage.css'
 
@@ -99,18 +100,62 @@ async function waitForMediaInput(frame: HTMLIFrameElement): Promise<HTMLInputEle
   throw new Error('OpenReel 素材面板未准备好')
 }
 
+async function sendInitialMediaSources(
+  frame: HTMLIFrameElement,
+  assets: AiEditorMediaSource[],
+): Promise<void> {
+  const target = frame.contentWindow
+  if (!target) throw new Error('OpenReel 素材页面不可用')
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      window.removeEventListener('message', handleMessage)
+      reject(new Error('OpenReel 素材路径交接超时'))
+    }, 5_000)
+    const handleMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== target || !event.data || typeof event.data !== 'object') return
+      const message = event.data as { source?: unknown; type?: unknown }
+      if (message.source !== 'luna-openreel' || message.type !== 'initial-media-sources-ready') return
+      window.clearTimeout(timeoutId)
+      window.removeEventListener('message', handleMessage)
+      resolve()
+    }
+    window.addEventListener('message', handleMessage)
+    target.postMessage({
+      source: 'luna-host',
+      type: 'initial-media-sources',
+      assets,
+    }, '*')
+  })
+}
+
 async function importMediaIntoFrame(frame: HTMLIFrameElement, sources: AiEditorMediaSource[]): Promise<void> {
   const input = await waitForMediaInput(frame)
   const transfer = new DataTransfer()
+  const importedSources: AiEditorMediaSource[] = []
   for (const source of sources) {
-    const response = await fetch(fileUrlForPath(source.path))
-    if (!response.ok) throw new Error(`无法读取 ${source.name}`)
-    const blob = await response.blob()
+    let blob: Blob | null = null
+    if (!/^file:\/\//i.test(source.path)) {
+      try {
+        const bytes = await window.luna.aiEditor.readFileBytes(source.path)
+        if (bytes.byteLength > 0) blob = new Blob([bytes], { type: fileTypeForName(source.name, source.kind) })
+      } catch {
+        // Browser file URLs remain a fallback for web development and legacy paths.
+      }
+    }
+    if (!blob) {
+      const response = await fetch(fileUrlForPath(source.path))
+      if (!response.ok) throw new Error(`无法读取 ${source.name}`)
+      blob = await response.blob()
+    }
+    importedSources.push({ ...source, size: blob.size })
+    logger.info('[AI 剪辑] 初始素材读取完成', { name: source.name, bytes: blob.size })
     transfer.items.add(new File([blob], source.name, {
       type: blob.type || fileTypeForName(source.name, source.kind),
       lastModified: Date.now(),
     }))
   }
+  await sendInitialMediaSources(frame, importedSources)
   input.files = transfer.files
   input.dispatchEvent(new Event('change', { bubbles: true }))
 }
@@ -122,9 +167,10 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const importStartedRef = useRef(false)
   const pendingChooseAssetsRef = useRef<ChooseAssetsRequest | null>(null)
   const pendingChooseAssetsTargetRef = useRef<WindowProxy | null>(null)
-  const [editorView, setEditorView] = useState<{ mode: 'projects' | 'media'; media: AiEditorMediaSource[]; revision: number }>({
+  const [editorView, setEditorView] = useState<{ mode: 'projects' | 'media'; media: AiEditorMediaSource[]; projectId: string | null; revision: number }>({
     mode: 'projects',
     media: [],
+    projectId: null,
     revision: 0,
   })
   const [loaded, setLoaded] = useState(false)
@@ -137,8 +183,8 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
     if (!active) return
     const mediaSources = mediaSourcesFromState(locationState)
     const nextView = !isProjectListRequest(locationState) && mediaSources.length > 0
-      ? { mode: 'media' as const, media: mediaSources }
-      : { mode: 'projects' as const, media: [] }
+      ? { mode: 'media' as const, media: mediaSources, projectId: null as string | null }
+      : { mode: 'projects' as const, media: [], projectId: null as string | null }
     const pendingRequest = pendingChooseAssetsRef.current
     const pendingTarget = pendingChooseAssetsTargetRef.current
     if (pendingRequest && pendingTarget) postChooseAssetsResult(pendingTarget, pendingRequest, [])
@@ -154,6 +200,32 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
       ...nextView,
       revision: previous.revision + 1,
     }))
+
+    if (nextView.mode !== 'media') return
+
+    let cancelled = false
+    const assets = mediaSources.map((source, index) => ({
+      id: `openreel-${Date.now()}-${index}`,
+      name: source.name,
+      path: source.path,
+      kind: source.kind,
+    }))
+    void window.luna.aiEditor.project.create('AI 剪辑项目', assets)
+      .then((project) => {
+        if (cancelled) return
+        setEditorView((previous) => ({ ...previous, projectId: project.projectId }))
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        logger.error('[AI 剪辑] 创建本地项目失败', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        setImportFailed(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [active, location.key, locationState])
 
   useEffect(() => {
@@ -248,13 +320,21 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
 
   async function handleFrameLoad(): Promise<void> {
     setLoaded(true)
-    if (editorView.mode !== 'media' || editorView.media.length === 0 || importStartedRef.current || !frameRef.current) return
+    logger.info('[AI 剪辑] OpenReel iframe 已加载', {
+      mode: editorView.mode,
+      mediaCount: editorView.media.length,
+    })
+    if (editorView.mode !== 'media' || !editorView.projectId || editorView.media.length === 0 || importStartedRef.current || !frameRef.current) return
     importStartedRef.current = true
     setImporting(true)
     try {
       await importMediaIntoFrame(frameRef.current, editorView.media)
+      logger.info('[AI 剪辑] 初始素材已交给 OpenReel', { mediaCount: editorView.media.length })
     } catch (error) {
-      console.error('[AI 剪辑] 导入素材失败', error)
+      logger.error('[AI 剪辑] 导入素材失败', {
+        mediaCount: editorView.media.length,
+        error: error instanceof Error ? error.message : String(error),
+      })
       setImportFailed(true)
     } finally {
       setImporting(false)
@@ -270,10 +350,14 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
       )}
       <iframe
         ref={frameRef}
-        key={`${editorView.mode}-${editorView.revision}`}
+        key={`${editorView.mode}-${editorView.projectId ?? 'pending'}-${editorView.revision}`}
         className="ai-editor-frame"
         title="AI 剪辑"
-        src={editorView.mode === 'media' ? './ai-editor/index.html#/new' : './ai-editor/index.html#/projects'}
+        src={editorView.mode === 'media'
+          ? editorView.projectId
+            ? `./ai-editor/index.html#/luna-editor?projectId=${encodeURIComponent(editorView.projectId)}`
+            : './ai-editor/index.html#/new'
+          : './ai-editor/index.html#/projects'}
         onLoad={() => void handleFrameLoad()}
       />
       <WorkspaceImportDialog

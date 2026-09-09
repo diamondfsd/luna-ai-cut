@@ -1,5 +1,6 @@
 (() => {
   const CHOOSE_ASSETS_TIMEOUT_MS = 60_000
+  let pendingImportAssets = []
 
   const parentApi = () => {
     const parentWindow = window.parent
@@ -8,12 +9,86 @@
     return api
   }
 
+  const parentLog = (level, message, meta) => {
+    try {
+      const parentWindow = window.parent
+      const log = parentWindow !== window ? parentWindow.luna?.log : undefined
+      if (typeof log === 'function') log(level, `[OpenReel] ${message}`, meta)
+    } catch {
+      // Logging must not affect editor behavior.
+    }
+  }
+
+  const logValue = (value) => {
+    if (value instanceof Error) return { name: value.name, message: value.message, stack: value.stack }
+    if (typeof value === 'string') return value
+    try {
+      const serialized = JSON.stringify(value)
+      return serialized === undefined ? String(value) : serialized
+    } catch {
+      try { return String(value) } catch { return '[unserializable]' }
+    }
+  }
+
+  // OpenReel runs in the iframe realm. Forward its console output to the host
+  // renderer log; the host logger keeps the original level where possible.
+  for (const level of ['debug', 'log', 'info', 'warn', 'error']) {
+    const original = typeof console[level] === 'function' ? console[level].bind(console) : null
+    if (!original) continue
+    console[level] = (...args) => {
+      original(...args)
+      const [first, ...rest] = args
+      const firstValue = first === undefined ? '' : logValue(first)
+      const message = typeof firstValue === 'string' ? firstValue : JSON.stringify(firstValue)
+      parentLog(level, message || '', rest.length > 0 ? { args: rest.map(logValue) } : undefined)
+    }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return
+    const message = event.data
+    if (!message || message.source !== 'luna-host' || message.type !== 'initial-media-sources') return
+    pendingImportAssets = Array.isArray(message.assets)
+      ? message.assets.filter((asset) => asset && typeof asset.path === 'string' && typeof asset.name === 'string')
+      : []
+    try {
+      window.parent.postMessage({
+        source: 'luna-openreel',
+        type: 'initial-media-sources-ready',
+      }, '*')
+    } catch {
+      // The host will time out and report the failed handoff.
+    }
+  })
+
+  const matchImportAsset = (name, size) => {
+    const index = pendingImportAssets.findIndex((asset) => asset.name === name && (asset.size === undefined || asset.size === size))
+    if (index < 0) return null
+    const [asset] = pendingImportAssets.splice(index, 1)
+    return asset
+  }
+
   const parentLunaApi = () => {
     const parentWindow = window.parent
     const api = parentWindow !== window ? parentWindow.luna : undefined
     if (!api) throw new Error('Luna 媒体服务不可用')
     return api
   }
+
+  // The parent preload may return an ArrayBuffer from a different window
+  // realm. Copy it into this iframe's realm before OpenReel checks its type.
+  const localArrayBuffer = (value) => {
+    if (value instanceof ArrayBuffer) return value
+    if (ArrayBuffer.isView(value)) {
+      return new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice().buffer
+    }
+    if (value && typeof value === 'object' && typeof value.byteLength === 'number') {
+      return new Uint8Array(value).slice().buffer
+    }
+    throw new TypeError('素材数据格式无效')
+  }
+
+  const readFileBytes = async (filePath) => localArrayBuffer(await parentApi().readFileBytes(filePath))
 
   const chooseAssets = (projectId, existingPaths = []) => {
     const parentWindow = window.parent
@@ -63,19 +138,24 @@
   // Keeping platform unset leaves the editor in its regular web UI.
   window.openreel = Object.assign(window.openreel || {}, {
     lunaProject: {
+      list: () => parentApi().project.list(),
+      create: (name) => parentApi().project.create(name),
       load: (projectId) => parentApi().project.load(projectId),
       save: (projectId, editorDocument) => parentApi().project.save(projectId, editorDocument),
+      delete: (projectId) => parentApi().project.delete(projectId),
+      rename: (projectId, name) => parentApi().project.rename(projectId, name),
       chooseAssets,
     },
     lunaMedia: {
-      readFileBytes: (sourcePath) => parentApi().readFileBytes(sourcePath),
+      readFileBytes,
       resolveThumbnail: (sourcePath, kind) => parentLunaApi().resolveThumbnail(sourcePath, kind),
+      matchImportAsset,
     },
     fs: {
       showSaveDialog: (options) => parentApi().showSaveDialog(options),
       showOpenDialog: (options) => parentApi().showOpenDialog(options),
       readFile: (filePath) => parentApi().readFile(filePath),
-      readFileBytes: (filePath) => parentApi().readFileBytes(filePath),
+      readFileBytes,
       tempFilePath: (extension) => parentApi().tempFilePath(extension),
       writeFile: (filePath, data) => parentApi().writeFile(filePath, data),
       openWrite: (filePath) => parentApi().openWrite(filePath),

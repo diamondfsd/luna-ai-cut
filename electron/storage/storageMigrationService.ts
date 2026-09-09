@@ -3,7 +3,7 @@ import * as path from 'node:path'
 
 import type { AppSettings, StorageMigrationResult } from '../../src/shared/types'
 
-type StorageDirectoryKey = 'projects' | 'downloads' | 'exports' | 'luts' | 'cache' | 'previews' | 'metadata' | 'aiSelection'
+type StorageDirectoryKey = 'projects' | 'aiEditorProjects' | 'downloads' | 'exports' | 'luts' | 'cache' | 'previews' | 'metadata' | 'aiSelection'
 
 interface StorageDirectory {
   key: StorageDirectoryKey
@@ -80,6 +80,12 @@ export function createStorageMigrationPlan(
         label: '工作台项目',
         source: path.resolve(settings.baseDir, 'workspace-projects'),
         destination: path.join(target, 'workspace-projects'),
+      },
+      {
+        key: 'aiEditorProjects',
+        label: 'AI 剪辑项目',
+        source: path.resolve(settings.baseDir, 'ai-editor-projects'),
+        destination: path.join(target, 'ai-editor-projects'),
       },
       {
         key: 'downloads',
@@ -241,22 +247,32 @@ function remapProjectValue(value: unknown, mappings: StorageDirectory[]): unknow
   )
 }
 
-async function rewriteWorkspaceProjectPaths(plan: StorageMigrationPlan): Promise<void> {
-  const projects = plan.directories.find((directory) => directory.key === 'projects')
-  if (!projects || !await directoryExists(projects.destination)) return
-  const entries = await fs.readdir(projects.destination, { withFileTypes: true })
-  await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
-    const projectPath = path.join(projects.destination, entry.name, 'project.json')
-    try {
-      const raw = await fs.readFile(projectPath, 'utf8')
-      const project = JSON.parse(raw) as unknown
-      const remapped = remapProjectValue(project, plan.directories)
-      await fs.writeFile(projectPath, `${JSON.stringify(remapped, null, 2)}\n`, 'utf8')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
-      throw new Error('无法更新项目中的素材位置')
-    }
-  }))
+async function rewriteProjectPaths(plan: StorageMigrationPlan): Promise<void> {
+  const projectDirectories = plan.directories.filter((directory) => (
+    directory.key === 'projects' || directory.key === 'aiEditorProjects'
+  ))
+  for (const projects of projectDirectories) {
+    if (!await directoryExists(projects.destination)) continue
+    const entries = await fs.readdir(projects.destination, { withFileTypes: true })
+    await Promise.all(entries.filter((entry) => entry.isDirectory()).flatMap((entry) => {
+      const projectDirectory = path.join(projects.destination, entry.name)
+      const projectFiles = [path.join(projectDirectory, 'project.json')]
+      if (projects.key === 'aiEditorProjects') {
+        projectFiles.push(path.join(projectDirectory, 'editor', 'openreel.json'))
+      }
+      return projectFiles.map(async (projectPath) => {
+        try {
+          const raw = await fs.readFile(projectPath, 'utf8')
+          const project = JSON.parse(raw) as unknown
+          const remapped = remapProjectValue(project, plan.directories)
+          await fs.writeFile(projectPath, `${JSON.stringify(remapped, null, 2)}\n`, 'utf8')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+          throw new Error('无法更新项目中的素材位置')
+        }
+      })
+    }))
+  }
 }
 
 async function removeCopiedDirectories(directories: StorageDirectory[]): Promise<void> {
@@ -303,7 +319,7 @@ export async function migrateLocalStorage(
       }
     }
 
-    await rewriteWorkspaceProjectPaths(plan)
+    await rewriteProjectPaths(plan)
 
     for (const directory of existingDirectories) {
       const currentStats = await directoryStats(directory.source)

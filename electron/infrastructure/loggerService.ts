@@ -123,7 +123,8 @@ export function logMainError(message: string, meta?: unknown): void {
 
 /** 渲染进程发来的日志由这个函数写入 renderer 日志文件 */
 export function logRendererMessage(level: string, message: string, meta?: unknown): void {
-  const lvl = (['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(level) ? level : 'INFO') as LogLevel
+  const normalizedLevel = typeof level === 'string' ? level.toUpperCase() : 'INFO'
+  const lvl = (['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(normalizedLevel) ? normalizedLevel : 'INFO') as LogLevel
   writeLog(RENDERER_PREFIX, lvl, message, meta)
 }
 

@@ -297,6 +297,11 @@ export async function saveWorkspaceEditorDocument(baseDir: string, projectId: st
     } finally {
       await fs.rm(temporary, { force: true }).catch(() => undefined)
     }
+
+    await writeProjectUnlocked(baseDir, {
+      ...project,
+      updatedAt: new Date().toISOString(),
+    })
   })
 }
 
