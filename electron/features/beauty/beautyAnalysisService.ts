@@ -6,11 +6,10 @@ import { loadModel, MODEL_REGISTRY, type ModelId, type ModelLoadProgress } from 
 import { logMainInfo } from '../../infrastructure/loggerService'
 import { extractFaceBoxesInWorker, segmentSpecializedInSecondaryWorker, segmentSpecializedInWorker } from '../segmentation/specializedSegmentationService'
 import { detectFaceBlemishes } from './beautyBlemishDetection'
-import { bodySkinMaskFromHumanLabels, faceSkinMaskFromSamples, personMaskFromHumanLabels, softenBeautyMask } from './beautySkinSegmentation'
+import { bodySkinMaskFromHumanLabels, faceSkinMaskFromSamples, softenBeautyMask } from './beautySkinSegmentation'
 
 const INPUT_SIZE = 640
 const MASK_SIZE = 1024
-const VIDEO_MASK_SIZE = 512
 const FACE_PARSE_SIZE = 512
 const HUMAN_PARSE_SIZE = 512
 const FACE_SKIN_FEATHER_RADIUS = 10
@@ -40,13 +39,12 @@ interface FaceSkinAssessment {
   featureSamples: number
 }
 
-function decodeImage(filePath: string, signal: AbortSignal, frameTime?: number): Promise<{ rgb: Buffer; layout: SourceLayout }> {
+function decodeImage(filePath: string, signal: AbortSignal): Promise<{ rgb: Buffer; layout: SourceLayout }> {
   return new Promise((resolve, reject) => {
-    const decodeAt = (requestedTime: number | undefined, allowEndFallback: boolean, hardwareAcceleration = true): void => {
+    const decode = (hardwareAcceleration = true): void => {
       const args = [
         '-v', 'error',
         ...(hardwareAcceleration ? ['-hwaccel', 'auto'] : []),
-        ...(requestedTime == null ? [] : ['-ss', requestedTime.toFixed(3)]),
         '-i', filePath, '-frames:v', '1',
         '-vf', `scale=${INPUT_SIZE}:${INPUT_SIZE}:force_original_aspect_ratio=decrease:flags=bilinear,pad=${INPUT_SIZE}:${INPUT_SIZE}:(ow-iw)/2:(oh-ih)/2:color=0x727272`,
         '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1',
@@ -58,17 +56,13 @@ function decodeImage(filePath: string, signal: AbortSignal, frameTime?: number):
       }, (error, stdout) => {
         if (error) {
           if (hardwareAcceleration && !signal.aborted) {
-            decodeAt(requestedTime, allowEndFallback, false)
+            decode(false)
             return
           }
           return reject(error)
         }
         const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
         if (rgb.byteLength !== INPUT_SIZE * INPUT_SIZE * 3) {
-          if (allowEndFallback && requestedTime != null && requestedTime > 0 && !signal.aborted) {
-            decodeAt(Math.max(0, requestedTime - 0.25), false, hardwareAcceleration)
-            return
-          }
           reject(new Error('美颜分析画面读取不完整'))
           return
         }
@@ -94,7 +88,7 @@ function decodeImage(filePath: string, signal: AbortSignal, frameTime?: number):
         resolve({ rgb, layout })
       })
     }
-    decodeAt(frameTime, frameTime != null)
+    decode()
   })
 }
 
@@ -223,8 +217,6 @@ export async function analyzeBeauty(
   filePath: string,
   signal: AbortSignal,
   report?: (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null) => void,
-  frameTime?: number,
-  videoFrame = false,
 ): Promise<WorkspaceBeautyAnalysisResult> {
   const started = performance.now()
   report?.('model', '正在准备美颜模型', null)
@@ -248,12 +240,12 @@ export async function analyzeBeauty(
 
   report?.('preparing', '正在读取图片', null)
   const prepareStarted = performance.now()
-  const { rgb, layout } = await decodeImage(filePath, signal, frameTime)
+  const { rgb, layout } = await decodeImage(filePath, signal)
   const imagePrepareMs = performance.now() - prepareStarted
 
-  report?.('recognizing', videoFrame ? '正在识别人脸和皮肤' : '正在识别人脸、皮肤和面部瑕疵', null)
+  report?.('recognizing', '正在识别人脸、皮肤和面部瑕疵', null)
   const inferenceStarted = performance.now()
-  const outputSize = videoFrame ? VIDEO_MASK_SIZE : MASK_SIZE
+  const outputSize = MASK_SIZE
   const humanRgb = resizeContent(rgb, layout, HUMAN_PARSE_SIZE)
   const [faces, humanResult] = await Promise.all([
     extractFaceBoxesInWorker(faceDetector.path, rgb, layout, signal),
@@ -289,15 +281,13 @@ export async function analyzeBeauty(
     })
     if (!assessment.mask) continue
     acceptedFaceCount += 1
-    if (!videoFrame) {
-      const blemishes = detectFaceBlemishes(crop.rgb, parsed.bytes, FACE_PARSE_SIZE)
-      compositeFaceMask(acneMask, blemishes.acneMask, crop, layout, outputSize)
-      compositeFaceMask(spotMask, blemishes.spotMask, crop, layout, outputSize)
-      compositeFaceMask(wrinkleMask, blemishes.wrinkleMask, crop, layout, outputSize)
-      acneCount += blemishes.acneCount
-      spotCount += blemishes.spotCount
-      wrinkleCount += blemishes.wrinkleCount
-    }
+    const blemishes = detectFaceBlemishes(crop.rgb, parsed.bytes, FACE_PARSE_SIZE)
+    compositeFaceMask(acneMask, blemishes.acneMask, crop, layout, outputSize)
+    compositeFaceMask(spotMask, blemishes.spotMask, crop, layout, outputSize)
+    compositeFaceMask(wrinkleMask, blemishes.wrinkleMask, crop, layout, outputSize)
+    acneCount += blemishes.acneCount
+    spotCount += blemishes.spotCount
+    wrinkleCount += blemishes.wrinkleCount
     compositeFaceLabels(
       skinSamples,
       protectedSamples,
@@ -329,7 +319,6 @@ export async function analyzeBeauty(
     outputSize,
     BODY_SKIN_FEATHER_RADIUS,
   )
-  const trackingGuideMask = personMaskFromHumanLabels(humanResult.bytes, HUMAN_PARSE_SIZE, outputSize)
   const inferenceMs = performance.now() - inferenceStarted
   return {
     requestId,
@@ -341,7 +330,6 @@ export async function analyzeBeauty(
     wrinkleCount,
     faceMask: toArrayBuffer(softFaceMask),
     skinMask: toArrayBuffer(skinMask),
-    trackingGuideMask: toArrayBuffer(trackingGuideMask),
     acneMask: toArrayBuffer(acneMask),
     spotMask: toArrayBuffer(spotMask),
     wrinkleMask: toArrayBuffer(wrinkleMask),

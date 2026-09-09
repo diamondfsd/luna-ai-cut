@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@techstark/opencv-js':
-        specifier: 5.0.0-release.1
-        version: 5.0.0-release.1
       adm-zip:
         specifier: ^0.5.17
         version: 0.5.18
@@ -1305,9 +1302,6 @@ packages:
     resolution: {integrity: sha512-BfzEnDJOt9T8M989/lA37EcJgat01wLRnoi5dQf3QzOH7jzpqTAzdDbVfRljVr5r+jzKqpbHeyOfAaXxAd0PAA==}
     cpu: [x64]
     os: [win32]
-
-  '@techstark/opencv-js@5.0.0-release.1':
-    resolution: {integrity: sha512-PIm+eB0MFtieXoNC2GRao0dv/02sehG+Nv2nSW5D6pQm6J/4WqvDHm0RyoqOmGYQm67jdGiaOdIeTShCY3PIUg==}
 
   '@tootallnate/once@2.0.1':
     resolution: {integrity: sha512-HqmEUIGRJ5fSXchkVgR5F7qn48bDBzv0kWj/Kfu5e6uci4UlEeng4331LnBkWffb++Ei3FOVLxo8JJWMFBDMeQ==}
@@ -4137,8 +4131,6 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.62.2':
     optional: true
-
-  '@techstark/opencv-js@5.0.0-release.1': {}
 
   '@tootallnate/once@2.0.1': {}
 
