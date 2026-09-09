@@ -62,7 +62,7 @@ export interface AppSettings {
   organizeDownloadsByDate?: boolean
   /** 每次下载或导出前是否选择本次目标目录。 */
   chooseTransferDirectoryBeforeAction?: boolean
-  /** 用户选择过的额外下载目录，用于本地资源库扫描。 */
+  /** 用户选择过的额外下载目录，用于相机列表判断文件是否已下载。 */
   downloadDirectories?: string[]
   /** 用户选择过的额外导出目录，用于本地导出库扫描。 */
   exportDirectories?: string[]

@@ -367,7 +367,9 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('downloads:listFiles', async () => {
     const settings = await getSettings()
-    const roots = directoryList([getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])])
+    // 本地资源列表只展示设置中的固定下载目录。按次选择的目录仅用于保存文件，
+    // 仍由相机列表的下载状态检查使用，但不作为本地资源列表的扫描入口。
+    const roots = directoryList([getLocalResourcesDir(settings)])
     const files = await listDownloadedFiles(roots)
     await resolveLocalThumbnails(files, roots)
     return files
