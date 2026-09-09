@@ -132,15 +132,17 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     const loopback = isLoopbackHost(host)
     const wifiJoin = loopback
       ? { attempted: false, connected: true, wifiManualConnectionRequired: false, message: '模拟设备使用本机网络' }
-      : await autoJoinDeviceWifi(
-        definition.wifi,
-        wifiSessionKey,
-        this.options.wireless?.password,
-        this.options.wireless?.ssid,
-        definition.protocol === 'insta360'
-          ? { host, port: definition.controlPort, protocol: 'insta360-stream' }
-          : undefined,
-      )
+      : this.options.wireless?.preparation === 'already-connected'
+        ? { attempted: false, connected: true, message: '已使用当前系统 Wi-Fi' }
+        : await autoJoinDeviceWifi(
+          definition.wifi,
+          wifiSessionKey,
+          this.options.wireless?.password,
+          this.options.wireless?.ssid,
+          definition.protocol === 'insta360'
+            ? { host, port: definition.controlPort, protocol: 'insta360-stream' }
+            : undefined,
+        )
     const protocol = this.protocol(definition)
     if (!loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected && wifiJoin.wifiPasswordRequired) {
       return wirelessStatus({
@@ -203,7 +205,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         message: '当前设备可以直接使用已连接的网络',
       }
     }
-    this.lunaPreparation = new DefaultLunaWirelessPreparation(deviceId, host, this.ctx.win)
+    this.lunaPreparation = new DefaultLunaWirelessPreparation(deviceId, host, this.ctx.win, definition.controlPort)
     const result = await this.lunaPreparation.prepare({ ...this.options, ...options })
     return {
       ...result,
