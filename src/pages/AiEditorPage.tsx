@@ -205,14 +205,20 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
 
   async function enrichWorkspaceAssets(assets: WorkspaceMediaAsset[]): Promise<WorkspaceMediaAsset[]> {
     return Promise.all(assets.map(async (asset) => {
-      const [resolution, duration] = await Promise.all([
+      const [resolution, duration, thumbnailUrl] = await Promise.all([
         window.luna.workspace.getMediaResolution(asset.path).catch(() => null),
         asset.kind === 'video'
           ? window.luna.workspace.getVideoDuration(asset.path).catch(() => 0)
           : Promise.resolve(0),
+        asset.kind === 'video'
+          ? window.luna.resolveThumbnail(asset.path, asset.kind).catch(() => null)
+          : asset.thumbnailUrl
+            ? Promise.resolve(asset.thumbnailUrl)
+            : window.luna.resolveThumbnail(asset.path, asset.kind).catch(() => null),
       ])
       return {
         ...asset,
+        thumbnailUrl,
         width: resolution?.width ?? asset.width ?? 0,
         height: resolution?.height ?? asset.height ?? 0,
         duration: duration || asset.duration || 0,

@@ -8,6 +8,13 @@
     return api
   }
 
+  const parentLunaApi = () => {
+    const parentWindow = window.parent
+    const api = parentWindow !== window ? parentWindow.luna : undefined
+    if (!api) throw new Error('Luna 媒体服务不可用')
+    return api
+  }
+
   const chooseAssets = (projectId, existingPaths = []) => {
     const parentWindow = window.parent
     if (parentWindow === window) return Promise.reject(new Error('Luna 素材选择器不可用'))
@@ -59,6 +66,10 @@
       load: (projectId) => parentApi().project.load(projectId),
       save: (projectId, editorDocument) => parentApi().project.save(projectId, editorDocument),
       chooseAssets,
+    },
+    lunaMedia: {
+      readFileBytes: (sourcePath) => parentApi().readFileBytes(sourcePath),
+      resolveThumbnail: (sourcePath, kind) => parentLunaApi().resolveThumbnail(sourcePath, kind),
     },
     fs: {
       showSaveDialog: (options) => parentApi().showSaveDialog(options),

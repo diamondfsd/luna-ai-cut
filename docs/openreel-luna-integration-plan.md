@@ -257,3 +257,11 @@ window.openreel.lunaProject
 - 根据界面反馈移除项目列表页顶部重复 header，避免同时出现两个“新建项目”入口。
 - 项目列表保留下方的标题和单一新建入口；编辑器返回项目列表仍使用编辑器左上角图标按钮。
 - 验证通过：OpenReel 页面变更范围 Lint、OpenReel 与根仓库类型检查、`pnpm run build:app` 和 `git diff --check`。
+
+### 2026-09-09：修复本地素材缩略图与预览恢复
+
+- 修复工作区素材弹窗把视频源文件路径直接写入 `thumbnailUrl` 的问题；视频统一由宿主通过 Electron 生成独立首帧缩略图，旧项目恢复时也会重新校正视频缩略图。
+- OpenReel 新增 `lunaMedia` 桌面桥接：本地引用素材导入时读取源文件建立可解码 `File`，项目重启后依据 `sourcePath` 重新加载；读取失败才标记为缺失，不再因自动保存清空 Blob 而误报缺失。
+- 引用素材补充文件名和大小信息，保留原路径、资产 ID 和原有项目边界；异步恢复只更新当前项目仍存在的素材，避免切换或删除后被旧任务写回。
+- 已验证：OpenReel `src/stores/project-store.test.ts` 与 `project-manager.luna.test.ts` 共 `84 passed、4 skipped`，OpenReel web 类型检查、根仓库类型检查、`pnpm run build:app`、桥接脚本语法检查和 `git diff --check` 均通过；子模块变更范围 Lint 仍只有既有 `console.info` warning。
+- 当前为兼容性修复：项目持久化仍只保存路径，但运行时会通过现有读取接口把整个文件读入 Blob 供 OpenReel 既有解码链路使用。大文件的 Range 读取、受控媒体协议和代理复用仍是后续性能批次，不能将本批视为最终的大文件媒体架构。
