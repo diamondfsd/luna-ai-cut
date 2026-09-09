@@ -164,7 +164,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   requestVideoFrameRate: (file: LunaFile, cachedPath?: string | null) =>
     ipcRenderer.invoke('luna:requestVideoFrameRate', file, cachedPath),
   detectILog: (filePath: string) => ipcRenderer.invoke('luna:detectILog', filePath),
-  downloadFiles: (files: LunaFile[]) => ipcRenderer.invoke('luna:downloadFiles', files),
+  downloadFiles: (files: LunaFile[], targetDir?: string) => ipcRenderer.invoke('luna:downloadFiles', files, targetDir),
   cancelDownloads: () => ipcRenderer.invoke('luna:cancelDownloads'),
   exportFiles: (files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),

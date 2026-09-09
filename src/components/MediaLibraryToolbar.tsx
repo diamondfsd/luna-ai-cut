@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { showBatchExportModal } from './previewModalService'
 import { DownloadProgressModal } from './DownloadProgressModal'
+import { ExternalDownloadDirectoryDialog } from './ExternalDownloadDirectoryDialog'
 import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './WorkspaceProjectDialogs'
 import { formatBytes } from '../lib/format'
 import { useDownloadProgress } from '../context/DownloadProgressContext'
@@ -378,6 +379,10 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
       />
 
       {/* 导出弹窗已迁移到 PreviewModal（showBatchExportModal） */}
+      <ExternalDownloadDirectoryDialog
+        open={ctrl.externalDownloadDirectory !== null}
+        onDecision={ctrl.resolveExternalDownloadDirectory}
+      />
     </>
   )
 }
