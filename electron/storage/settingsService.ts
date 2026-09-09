@@ -80,6 +80,9 @@ function defaultSettings(): AppSettings {
     // 视频导出统一使用 Rust/wgpu；保留该字段仅用于兼容旧版本设置。
     experimentalWebGpuExport: false,
     organizeDownloadsByDate: false,
+    chooseTransferDirectoryBeforeAction: false,
+    downloadDirectories: [],
+    exportDirectories: [],
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
     windowCloseBehavior: 'hide',
@@ -166,6 +169,17 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.organizeDownloadsByDate = typeof saved?.organizeDownloadsByDate === 'boolean'
     ? saved.organizeDownloadsByDate
     : defaults.organizeDownloadsByDate
+  merged.chooseTransferDirectoryBeforeAction = typeof saved?.chooseTransferDirectoryBeforeAction === 'boolean'
+    ? saved.chooseTransferDirectoryBeforeAction
+    : defaults.chooseTransferDirectoryBeforeAction
+  const normalizeDirectoryList = (value: unknown, fallback: string[]): string[] => {
+    if (!Array.isArray(value)) return fallback
+    return [...new Set(value
+      .filter((directory): directory is string => typeof directory === 'string' && path.isAbsolute(directory.trim()))
+      .map((directory) => path.resolve(directory.trim())))]
+  }
+  merged.downloadDirectories = normalizeDirectoryList(saved?.downloadDirectories, defaults.downloadDirectories ?? [])
+  merged.exportDirectories = normalizeDirectoryList(saved?.exportDirectories, defaults.exportDirectories ?? [])
   const savedShareDirectories = saved?.localMediaShareDirectories
   merged.localMediaShareDirectories = Array.isArray(savedShareDirectories)
     ? savedShareDirectories.filter((directory): directory is string => typeof directory === 'string' && directory.trim().length > 0)

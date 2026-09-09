@@ -60,6 +60,12 @@ export interface AppSettings {
   experimentalWebGpuExport?: boolean
   /** 新下载是否按拍摄日期放入 YYYY-MM-DD 子目录。 */
   organizeDownloadsByDate?: boolean
+  /** 每次下载或导出前是否选择本次目标目录。 */
+  chooseTransferDirectoryBeforeAction?: boolean
+  /** 用户选择过的额外下载目录，用于本地资源库扫描。 */
+  downloadDirectories?: string[]
+  /** 用户选择过的额外导出目录，用于本地导出库扫描。 */
+  exportDirectories?: string[]
   /** 手机分享时额外公开的目录，只扫描目录本身和下一层子目录。 */
   localMediaShareDirectories?: string[]
   /** 手机分享时拖入的文件路径，应用重启后会继续尝试共享。 */

@@ -22,6 +22,7 @@ import { useCreativePreviewQuality } from '../shared/useCreativePreviewQuality'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import { subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
 import { exportOnlyYourColorBatch } from './onlyYourColorBatchExport'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../../../lib/transferDirectory'
 import { calculateOnlyYourColorAutoToneForFile } from './onlyYourColorAutoTone'
 import { buildOnlyYourColorLayers } from './onlyYourColorLayers'
 import {
@@ -417,6 +418,11 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
     setExporting(true)
     setExportProgress('准备导出')
     try {
+      const currentSettings = await window.luna.getSettings()
+      if (!currentSettings.exportDir && !currentSettings.chooseTransferDirectoryBeforeAction) throw new Error('请先在设置中选择导出目录')
+      const exportDir = await resolveTransferDirectory('export', currentSettings)
+      if (!exportDir) return
+      if (currentSettings.chooseTransferDirectoryBeforeAction) await rememberTransferDirectory('export', exportDir, currentSettings)
       const result = await exportOnlyYourColorBatch({
         project,
         sources: exportableIndices.map((index) => {
@@ -428,6 +434,7 @@ export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, suppo
               : normalizeCreativePipeline((asset as { pipeline?: unknown }).pipeline),
           }
         }),
+        exportDir,
         onProgress: setExportProgress,
       })
       if (Object.keys(result.recognizedStates).length > 0) {

@@ -38,25 +38,27 @@ export { getMediaMetadata, getVideoFrameRate } from '../media/mediaMetadataServi
 export { clearCache, deleteLocalFiles, getCacheStats, openPath, openPhotosApp, revealFile } from './systemFileService'
 
 // listExportFiles — moved from deleted exportService.ts
-export async function listExportFiles(exportDir: string): Promise<import('../../src/shared/types').LunaFile[]> {
+export async function listExportFiles(exportDirs: string | string[]): Promise<import('../../src/shared/types').LunaFile[]> {
   const { readdir, stat } = await import('node:fs/promises')
   const { join } = await import('node:path')
   const files: import('../../src/shared/types').LunaFile[] = []
-  try {
-    const entries = await readdir(exportDir, { withFileTypes: true })
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || !entry.isFile()) continue
-      const fullPath = join(exportDir, entry.name)
-      const s = await stat(fullPath)
-      files.push({
-        id: entry.name, name: entry.name, downloadName: entry.name,
-        url: '', sourceUrl: '', kind: 'image',
-        extension: entry.name.split('.').pop() || '',
-        bytes: s.size, width: 0, height: 0,
-        downloadFilePath: fullPath, localPath: fullPath,
-      } as unknown as import('../../src/shared/types').LunaFile)
-    }
-  } catch { /* ignore */ }
+  for (const exportDir of [...new Set((Array.isArray(exportDirs) ? exportDirs : [exportDirs]).filter(Boolean))]) {
+    try {
+      const entries = await readdir(exportDir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || !entry.isFile()) continue
+        const fullPath = join(exportDir, entry.name)
+        const s = await stat(fullPath)
+        files.push({
+          id: fullPath, name: entry.name, downloadName: entry.name,
+          url: '', sourceUrl: '', kind: 'image',
+          extension: entry.name.split('.').pop() || '',
+          bytes: s.size, width: 0, height: 0,
+          downloadFilePath: fullPath, localPath: fullPath,
+        } as unknown as import('../../src/shared/types').LunaFile)
+      }
+    } catch { /* ignore */ }
+  }
   return files
 }
 
@@ -304,9 +306,10 @@ export async function previewFile(file: LunaFile): Promise<PreviewResult> {
  *
  * 这里只做轻量文件存在性检查，避免列表初始化阶段产生大量 I/O/ffprobe/缓存工作。
  */
-export async function resolveLocalThumbnails(files: LunaFile[], localResourcesDir: string): Promise<void> {
+export async function resolveLocalThumbnails(files: LunaFile[], localResourcesDirs: string | string[]): Promise<void> {
   if (files.length === 0) return
   const cacheDir = await previewCacheDir()
+  const roots = [...new Set((Array.isArray(localResourcesDirs) ? localResourcesDirs : [localResourcesDirs]).filter(Boolean))]
 
   // 一次性读取缩略图目录文件清单
   const thumbFileSet = new Set<string>()
@@ -321,7 +324,8 @@ export async function resolveLocalThumbnails(files: LunaFile[], localResourcesDi
   for (const file of files) {
     // --- 下载目录中已存在 ---
     try {
-      const dest = await findDownloadedPath(localResourcesDir, file, true)
+      const destinations = await Promise.all(roots.map((root) => findDownloadedPath(root, file, true)))
+      const dest = destinations.find((candidate): candidate is string => Boolean(candidate))
       if (dest) {
         file.localPath = dest
         file.downloadFilePath = dest

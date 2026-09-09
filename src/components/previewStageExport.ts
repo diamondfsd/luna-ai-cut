@@ -397,6 +397,7 @@ export async function exportPreviewLivePhoto(params: {
     })
     const result = await window.luna.workspace.exportRenderedLivePhoto(
       params.name, tempImagePath, tempVideoPath, params.appleLivePhoto,
+      false, true, undefined, outputDir,
     )
 
     if (taskId && itemId) {

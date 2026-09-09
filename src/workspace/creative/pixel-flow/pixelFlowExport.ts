@@ -1,5 +1,6 @@
 import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
 import { createDirectoryExportNameAllocator } from '../../../lib/exportNameAllocator'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../../../lib/transferDirectory'
 import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, type CompositionInput, type PreviewLayer, type VideoExportSettings, type WorkspaceMediaAsset } from '../../../shared/types'
 
@@ -203,6 +204,7 @@ async function runImageLiveExport(
           true,
           false,
           coverTime,
+          exportDir,
         )
         await reportLiveEntry(task, entry, index, entries.length, 100, 'done', result.path)
       } catch (error) {
@@ -253,11 +255,13 @@ async function runVideoExport(
   })
 }
 
-export async function queuePixelFlowExports(exports: PixelFlowExportOptions[]): Promise<number> {
+export async function queuePixelFlowExports(exports: PixelFlowExportOptions[], requestedExportDir?: string): Promise<number> {
   if (exports.length === 0) return 0
   const settings = await window.luna.getSettings()
-  if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
-  const exportDir = settings.exportDir
+  if (!settings.exportDir && !settings.chooseTransferDirectoryBeforeAction && !requestedExportDir) throw new Error('请先在设置中选择导出目录')
+  const exportDir = requestedExportDir ?? await resolveTransferDirectory('export', settings)
+  if (!exportDir) return 0
+  if (!requestedExportDir && settings.chooseTransferDirectoryBeforeAction) await rememberTransferDirectory('export', exportDir, settings)
   const stamp = Date.now()
   const allocateName = await createDirectoryExportNameAllocator(exportDir)
   const plans = exports.map((options, index) => buildExportPlan(options, exportDir, stamp, index, allocateName))

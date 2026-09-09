@@ -214,6 +214,7 @@ export interface LunaApi {
   chooseBaseDir(): Promise<string | null>
   chooseLocalResourcesDir(): Promise<string | null>
   chooseExportDir(): Promise<string | null>
+  chooseTransferDirectory(kind: 'download' | 'export', defaultPath?: string): Promise<string | null>
   chooseLutDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
   chooseCustomWatermarks(): Promise<CustomWatermarkAsset[]>
@@ -259,7 +260,7 @@ export interface LunaApi {
   resolveThumbnail(filePath: string, kind?: string): Promise<string | null>
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   detectILog(filePath: string): Promise<boolean>
-  downloadFiles(files: LunaFile[]): Promise<DownloadSummary>
+  downloadFiles(files: LunaFile[], targetDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
   exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
@@ -279,7 +280,7 @@ export interface LunaApi {
     addFiles(filePaths: string[]): Promise<LocalMediaShareStatus>
     removeFile(filePath: string): Promise<LocalMediaShareStatus>
   }
-  getDownloadedRecords(files: LunaFile[]): Promise<DownloadRecord[]>
+  getDownloadedRecords(files: LunaFile[], targetDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>
   startFileDrag(filePaths: string[], thumbnailUrl?: string | null): void
@@ -397,7 +398,7 @@ export interface LunaApi {
     deleteProject(projectId: string): Promise<void>
     renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
     extractVideoFrame(videoPath: string, outputPath: string, frameTime: number): Promise<{ path: string; name: string }>
-    exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean, recordTask?: boolean, coverTimeSeconds?: number): Promise<{ path: string; name: string }>
+    exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean, recordTask?: boolean, coverTimeSeconds?: number, outputDir?: string): Promise<{ path: string; name: string }>
     exportOriginalFile(request: OriginalFileExportRequest): Promise<{ path: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     listColorPresets(): Promise<Array<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>>

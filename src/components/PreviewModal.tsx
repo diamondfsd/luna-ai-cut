@@ -12,6 +12,7 @@ import { useFileCache } from '../hooks/useFileCache'
 import { canUseDeviceWatermark } from '../hooks/useDeviceWatermark'
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../lib/transferDirectory'
 import { getIsLivePhoto } from '../shared/livePhoto'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, lockDolbyVisionExportSettings } from '../shared/types'
 import type { DolbyVisionProbeResult, LunaFile, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
@@ -363,7 +364,7 @@ export function PreviewModal({
 
     try {
       const settings = await window.luna.getSettings()
-      if (!settings.exportDir) { toast.error('导出目录未配置'); return }
+      if (!settings.exportDir && !settings.chooseTransferDirectoryBeforeAction) { toast.error('导出目录未配置'); return }
 
       const restoreByPath = new Map<string, boolean>()
       if (exportConfig.autoRestoreILog) {
@@ -411,9 +412,14 @@ export function PreviewModal({
         }
       }))
 
+      const exportDir = await resolveTransferDirectory('export', settings)
+      if (!exportDir) return
+      if (settings.chooseTransferDirectoryBeforeAction) {
+        await rememberTransferDirectory('export', exportDir, settings)
+      }
       await exportBatchFiles(
         sources,
-        settings.exportDir,
+        exportDir,
         hasVideoInBatch ? exportConfig : null,
         { appleLivePhoto: exportAppleLivePhoto },
       )

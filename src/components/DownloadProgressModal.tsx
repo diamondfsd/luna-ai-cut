@@ -6,11 +6,12 @@ import { downloadProgressPercent, overallDownloadProgress } from '../lib/downloa
 import { subscribeThumbnailReady } from '../lib/thumbnailReady'
 import { useDownloadProgress } from '../context/DownloadProgressContext'
 import type { DownloadProgress, LunaFile } from '../shared/types'
+import type { DownloadQueueItem } from '../pages/useMediaLibraryTransferActions'
 import { Button, DropdownPanel, IconButton } from '../ui'
 import '../styles/download-progress.css'
 
 interface DownloadProgressModalProps {
-  downloadQueue: LunaFile[]
+  downloadQueue: DownloadQueueItem[]
   downloadProgress: Map<string, DownloadProgress>
   activeFileNames: Set<string>
   setDownloadProgress: React.Dispatch<React.SetStateAction<Map<string, DownloadProgress>>>
@@ -87,14 +88,15 @@ export function DownloadProgressModal({
   useEffect(() => {
     queueRef.current = downloadQueue
     if (downloadQueue.length > 0) setCanceling(false)
-    for (const file of downloadQueue) {
-      fileSnapshotsRef.current.set(file.name, file)
+    for (const item of downloadQueue) {
+      fileSnapshotsRef.current.set(item.file.name, item.file)
     }
   }, [downloadQueue])
 
   // 对下载队列中的文件主动请求缩略图缓存
   useEffect(() => {
-    for (const file of downloadQueue) {
+    for (const item of downloadQueue) {
+      const file = item.file
       if (file.thumbnailUrl || requestedThumbnailIdsRef.current.has(file.id)) continue
       requestedThumbnailIdsRef.current.add(file.id)
       window.luna.cacheFile({ sourceUrl: file.sourceUrl, previewUrl: file.previewUrl }).catch(() => {
@@ -117,7 +119,8 @@ export function DownloadProgressModal({
       }
       // 也尝试从 downloadQueue 匹配（snapshot 可能未及时更新）
       if (!updated) {
-        for (const file of queueRef.current) {
+        for (const item of queueRef.current) {
+          const file = item.file
           if (file.id === fileId || file.name === fileName) {
             readyThumbnailUrlsRef.current.set(file.name, thumbnailUrl)
             break
@@ -142,7 +145,8 @@ export function DownloadProgressModal({
 
   const MAX_CONCURRENT = 2
 
-  async function downloadFile(file: LunaFile): Promise<void> {
+  async function downloadFile(item: DownloadQueueItem): Promise<void> {
+    const { file, targetDir } = item
     setDownloadProgress((current) => {
       const next = new Map(current)
       const existing = next.get(file.name)
@@ -162,7 +166,7 @@ export function DownloadProgressModal({
     })
 
     try {
-      const summary = await window.luna.downloadFiles([file])
+      const summary = await window.luna.downloadFiles([file], targetDir)
       const completed = summary.completed.find((item) => item.name === file.name)
       if (completed) onFileDownloadedRef.current(file.name, completed.path)
       const failed = summary.failed.find((item) => item.name === file.name)
@@ -221,7 +225,7 @@ export function DownloadProgressModal({
         return next
       })
     } finally {
-      queueRef.current = queueRef.current.filter((item) => item.name !== file.name)
+      queueRef.current = queueRef.current.filter((current) => current.file.name !== file.name)
       onQueueShiftRef.current(file.name)
     }
   }
@@ -236,7 +240,7 @@ export function DownloadProgressModal({
         while (queueRef.current.length > 0) {
           // 过滤掉已完成或已存在的项
           queueRef.current = queueRef.current.filter((item) => {
-            const p = downloadProgress.get(item.name)
+            const p = downloadProgress.get(item.file.name)
             return p?.status !== 'done' && p?.status !== 'exists'
           })
 
