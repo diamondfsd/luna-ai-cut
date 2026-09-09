@@ -1,13 +1,15 @@
-import type { Dispatch, SetStateAction } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import type { AppSettings, DownloadProgress, LunaFile } from '../shared/types'
 import type { ViewMode } from './useMediaLibraryController'
-import { rememberTransferDirectory, resolveTransferDirectory } from '../lib/transferDirectory'
+import { isWithinConfiguredTransferDirectory, rememberTransferDirectory, resolveTransferDirectory } from '../lib/transferDirectory'
 
 export interface DownloadQueueItem {
   file: LunaFile
   targetDir?: string
 }
+
+export type ExternalDownloadDirectoryDecision = 'confirm' | 'reselect' | 'cancel'
 
 interface TransferActionProps {
   files: LunaFile[]
@@ -58,6 +60,50 @@ export function useMediaLibraryTransferActions({
   loadDownloadedLibrary,
   loadExportLibrary,
 }: TransferActionProps) {
+  const [externalDownloadDirectory, setExternalDownloadDirectory] = useState<string | null>(null)
+  const externalDirectoryDecisionRef = useRef<((decision: ExternalDownloadDirectoryDecision) => void) | null>(null)
+
+  useEffect(() => () => {
+    externalDirectoryDecisionRef.current?.('cancel')
+    externalDirectoryDecisionRef.current = null
+  }, [])
+
+  function resolveExternalDownloadDirectory(decision: ExternalDownloadDirectoryDecision): void {
+    const resolve = externalDirectoryDecisionRef.current
+    externalDirectoryDecisionRef.current = null
+    setExternalDownloadDirectory(null)
+    resolve?.(decision)
+  }
+
+  function waitForExternalDownloadDirectory(directory: string): Promise<ExternalDownloadDirectoryDecision> {
+    externalDirectoryDecisionRef.current?.('cancel')
+    setExternalDownloadDirectory(directory)
+    return new Promise((resolve) => {
+      externalDirectoryDecisionRef.current = resolve
+    })
+  }
+
+  async function chooseDownloadDirectory(currentSettings: AppSettings): Promise<string | null> {
+    let selectedDirectory = await resolveTransferDirectory('download', currentSettings)
+    if (!selectedDirectory) return null
+
+    while (
+      currentSettings.chooseTransferDirectoryBeforeAction
+      && !isWithinConfiguredTransferDirectory('download', selectedDirectory, currentSettings)
+    ) {
+      const decision = await waitForExternalDownloadDirectory(selectedDirectory)
+      if (decision === 'cancel') return null
+      if (decision === 'confirm') break
+      selectedDirectory = await resolveTransferDirectory('download', currentSettings)
+      if (!selectedDirectory) return null
+    }
+
+    if (currentSettings.chooseTransferDirectoryBeforeAction) {
+      await rememberTransferDirectory('download', selectedDirectory, currentSettings)
+    }
+    return selectedDirectory
+  }
+
   function markFileDownloaded(fileName: string, path: string): void {
     setFiles((current) => current.map((file) => (
       file.name === fileName ? markDownloaded(file, path) : file
@@ -130,11 +176,10 @@ export function useMediaLibraryTransferActions({
 
     let targetDir: string | undefined
     try {
-      const selectedTargetDir = await resolveTransferDirectory('download', settings)
+      const selectedTargetDir = await chooseDownloadDirectory(settings)
       if (!selectedTargetDir) return
       if (settings.chooseTransferDirectoryBeforeAction) {
         targetDir = selectedTargetDir
-        await rememberTransferDirectory('download', targetDir, settings)
       }
     } catch (error) {
       console.error('选择下载目录失败', error)
@@ -210,11 +255,10 @@ export function useMediaLibraryTransferActions({
     if (!settings) return
     let targetDir: string | undefined
     try {
-      const selectedTargetDir = await resolveTransferDirectory('download', settings)
+      const selectedTargetDir = await chooseDownloadDirectory(settings)
       if (!selectedTargetDir) return
       if (settings.chooseTransferDirectoryBeforeAction) {
         targetDir = selectedTargetDir
-        await rememberTransferDirectory('download', targetDir, settings)
       }
     } catch (error) {
       console.error('选择下载目录失败', error)
@@ -314,7 +358,9 @@ export function useMediaLibraryTransferActions({
   return {
     deleteSelectedLocalFiles,
     downloadOne,
+    externalDownloadDirectory,
     markFileDownloaded,
+    resolveExternalDownloadDirectory,
     restoreDownloadedRecords,
     startDownload,
   }
