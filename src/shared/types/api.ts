@@ -108,61 +108,6 @@ export interface LunaBluetoothRendererEvent {
   message?: string
 }
 
-export interface WorkspaceMaskTrackingRequest {
-  requestId: string
-  filePath: string
-  direction: 'forward' | 'backward'
-  anchorTime: number
-  /** 向前追踪时的最远时间，不设则追踪到视频末尾。 */
-  endTime?: number
-  maskWidth: number
-  maskHeight: number
-  maskBytes: ArrayBuffer | Uint8Array
-  /** 相似变换适合刚性区域；稠密蒙版用于身体等非刚性区域。 */
-  mode?: 'similarity' | 'dense-mask'
-  /** 稠密追踪的目标轮廓约束，不会成为最终效果蒙版。 */
-  guideMaskBytes?: ArrayBuffer | Uint8Array
-  guideMaskWidth?: number
-  guideMaskHeight?: number
-  initialTransform?: {
-    translateX: number
-    translateY: number
-    scale: number
-    rotation: number
-  }
-}
-
-export interface WorkspaceMaskTrackingProgress {
-  requestId: string
-  direction: 'forward' | 'backward'
-  percent: number
-  time: number
-  confidence: number
-}
-
-export interface WorkspaceMaskTrackingResult {
-  requestId: string
-  direction: 'forward' | 'backward'
-  anchorTime: number
-  keyframes: Array<{
-    time: number
-    translateX: number
-    translateY: number
-    scale: number
-    rotation: number
-    confidence: number
-  }>
-  masks?: Array<{
-    time: number
-    width: number
-    height: number
-    bytes: ArrayBuffer
-    confidence: number
-  }>
-  completed: boolean
-  stoppedReason?: string
-}
-
 export interface WorkspaceObjectRemovalRequest {
   requestId: string
   projectId: string
@@ -382,8 +327,6 @@ export interface LunaApi {
     chooseSubtitleFont(): Promise<WorkspaceSubtitleFontAsset | null>
     exportSubtitlesSrt(request: { sourcePath: string; track: WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }): Promise<{ path: string } | null>
     cancelSegmentation(requestId: string): Promise<boolean>
-    trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
-    cancelMaskTracking(requestId: string): Promise<boolean>
     prepareObjectRemoval(): Promise<void>
     releaseObjectRemoval(): Promise<void>
     removeObject(request: WorkspaceObjectRemovalRequest): Promise<WorkspaceObjectRemovalResult>
@@ -408,7 +351,6 @@ export interface LunaApi {
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void
   onWorkspaceSegmentationProgress(callback: (progress: WorkspaceSegmentationProgress) => void): () => void
-  onWorkspaceMaskTrackingProgress(callback: (progress: WorkspaceMaskTrackingProgress) => void): () => void
   onWorkspaceSubtitleProgress(callback: (progress: WorkspaceSubtitleProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
   onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void): () => void

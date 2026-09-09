@@ -340,7 +340,7 @@ export function WorkspaceEditSidebar({ defaultPipeline, mediaSize, duration, cur
           ) : activeTool === 'color' ? (
             <ColorMaskPanel />
           ) : activeTool === 'beauty' ? (
-            <BeautyPanel duration={duration} />
+            <BeautyPanel />
           ) : activeTool === 'removal' ? (
             <RemovalPanel />
           ) : activeTool === 'subtitles' ? (

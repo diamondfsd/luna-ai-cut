@@ -22,7 +22,6 @@ interface AnalyzeBeautyForPipelineOptions {
   filePath: string
   parameters: BeautyParameters
   enabled?: boolean
-  frameTime?: number
   onStatus?: (status: string) => void
   shouldContinue?: () => boolean
 }
@@ -34,11 +33,10 @@ export async function analyzeBeautyForPipeline({
   filePath,
   parameters,
   enabled = true,
-  frameTime,
   onStatus,
   shouldContinue = () => true,
 }: AnalyzeBeautyForPipelineOptions): Promise<BeautyAnalysisForPipelineResult | null> {
-  const result = await window.luna.workspace.analyzeBeauty({ requestId, filePath, frameTime })
+  const result = await window.luna.workspace.analyzeBeauty({ requestId, filePath })
   if (!shouldContinue()) return null
   onStatus?.('正在保存美颜区域')
   const [faceSaved, bodySaved, acneSaved, spotSaved, wrinkleSaved] = await Promise.all([

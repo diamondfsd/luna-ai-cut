@@ -16,7 +16,6 @@ import type {
   WorkspaceMediaAsset,
   WorkspaceProject,
   WorkspaceSegmentationRequest,
-  WorkspaceMaskTrackingRequest,
   WorkspaceObjectRemovalRequest,
   VideoExportSettings,
   DolbyVisionWatermarkExportRequest,
@@ -234,8 +233,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     chooseSubtitleFont: () => ipcRenderer.invoke('workspace:chooseSubtitleFont'),
     exportSubtitlesSrt: (request: { sourcePath: string; track: import('../src/shared/types').WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }) => ipcRenderer.invoke('workspace:exportSubtitlesSrt', request),
     cancelSegmentation: (requestId: string) => ipcRenderer.invoke('workspace:cancelSegmentation', requestId),
-    trackMask: (request: WorkspaceMaskTrackingRequest) => ipcRenderer.invoke('workspace:trackMask', request),
-    cancelMaskTracking: (requestId: string) => ipcRenderer.invoke('workspace:cancelMaskTracking', requestId),
     prepareObjectRemoval: () => ipcRenderer.invoke('workspace:prepareObjectRemoval'),
     releaseObjectRemoval: () => ipcRenderer.invoke('workspace:releaseObjectRemoval'),
     removeObject: (request: WorkspaceObjectRemovalRequest) => ipcRenderer.invoke('workspace:removeObject', request),
@@ -271,11 +268,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceSegmentationProgress): void => callback(progress)
     ipcRenderer.on('workspace:segmentation-progress', listener)
     return () => ipcRenderer.off('workspace:segmentation-progress', listener)
-  },
-  onWorkspaceMaskTrackingProgress: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceMaskTrackingProgress): void => callback(progress)
-    ipcRenderer.on('workspace:mask-tracking-progress', listener)
-    return () => ipcRenderer.off('workspace:mask-tracking-progress', listener)
   },
   onWorkspaceSubtitleProgress: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').WorkspaceSubtitleProgress): void => callback(progress)

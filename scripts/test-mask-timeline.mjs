@@ -32,4 +32,4 @@ assert.equal(sampleTimes[0], 0)
 assert.equal(sampleTimes.at(-1), 1.95)
 assert.equal(sampleTimes.includes(2), false)
 
-console.log('video beauty timeline tests passed')
+console.log('Mask timeline tests passed')
