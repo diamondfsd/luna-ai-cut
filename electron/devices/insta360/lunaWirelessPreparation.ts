@@ -6,16 +6,16 @@ import type {
   CameraMediaSourceOptions,
   CameraMediaSourcePreparationResult,
   CameraMediaSourceWirelessPreparation,
-  WifiDebugStatus,
 } from '../../../src/shared/types'
 import { getSettings, saveSettings } from '../../storage/fileService'
-import { getWifiDebugStatus } from '../../platform/network/wifiDebugService'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import { LunaBleSession } from './lunaBleSession'
 import type { LunaWifiCredentials } from './lunaBleCodec'
 import { createElectronLunaBleTransport } from './lunaBleWebBluetoothTransport'
+import { probeInsta360ControlResponse } from './insta360TcpProtocol'
 
 const MANUAL_WIFI_MESSAGE = '请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试'
+const LUNA_CONTROL_PROBE_TIMEOUT_MS = 1500
 
 export type LunaWirelessPreparationMode = CameraMediaSourceWirelessPreparation
 
@@ -31,19 +31,6 @@ function isLoopbackHost(host: string): boolean {
   } catch {
     return false
   }
-}
-
-function isLunaWifiAddress(address: string): boolean {
-  const match = address.trim().match(/^192\.168\.42\.(\d{1,3})$/)
-  return Boolean(match && Number(match[1]) <= 255)
-}
-
-function hasLunaWifiAddress(status?: WifiDebugStatus): boolean {
-  const addresses = [
-    status?.ipAddress,
-    ...(status?.ipAddresses ?? []).map((item) => item.address),
-  ].filter((address): address is string => Boolean(address))
-  return addresses.some(isLunaWifiAddress)
 }
 
 async function lunaInstallIdentity(): Promise<string> {
@@ -81,6 +68,7 @@ export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
     private readonly deviceId: string,
     private readonly host: string,
     private readonly win: BrowserWindow | null,
+    private readonly controlPort = 6666,
   ) {}
 
   get capabilities(): CameraMediaSourceConnectionCapabilities {
@@ -111,15 +99,31 @@ export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
       return { mode: 'wireless', preparation: 'already-connected', message: '模拟设备使用本机网络' }
     }
 
-    const current = await getWifiDebugStatus().catch(() => null)
-    if (current?.success && hasLunaWifiAddress(current.data)) {
-      logMainInfo('[Luna Wi-Fi] 当前本机已有 192.168.42.x 地址，跳过蓝牙和 Wi-Fi 切换', {
+    try {
+      const response = await probeInsta360ControlResponse(this.host, this.controlPort, LUNA_CONTROL_PROBE_TIMEOUT_MS)
+      if (response.code === 200) {
+        logMainInfo('[Luna Wi-Fi] 目标控制通道可达，跳过蓝牙和 Wi-Fi 检测', {
+          deviceId: this.deviceId,
+          host: this.host,
+          port: this.controlPort,
+          responseCode: response.code,
+          elapsedMs: Date.now() - startedAt,
+        })
+        return { mode: 'wireless', preparation: 'already-connected', message: '已检测到相机网络，将直接建立连接' }
+      }
+      logMainWarn('[Luna Wi-Fi] 目标控制通道返回异常，继续准备网络', {
         deviceId: this.deviceId,
         host: this.host,
-        ssid: current.data?.ssid,
-        ipAddress: current.data?.ipAddress,
+        port: this.controlPort,
+        responseCode: response.code,
       })
-      return { mode: 'wireless', preparation: 'already-connected', message: '已检测到 Luna Wi-Fi 网段，将直接验证相机控制连接' }
+    } catch (error) {
+      logMainInfo('[Luna Wi-Fi] 目标控制通道暂不可达，继续准备网络', {
+        deviceId: this.deviceId,
+        host: this.host,
+        port: this.controlPort,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
 
     const supplied = suppliedCredentials(options)
