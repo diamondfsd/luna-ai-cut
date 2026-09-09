@@ -506,6 +506,8 @@ export function useMediaLibraryController(pageType: PageType) {
     markFileDownloaded,
     restoreDownloadedRecords,
     startDownload,
+    externalDownloadDirectory,
+    resolveExternalDownloadDirectory,
   } = useMediaLibraryTransferActions({
     files,
     selectedFiles,
@@ -621,6 +623,8 @@ export function useMediaLibraryController(pageType: PageType) {
     downloading,
     startDownload,
     downloadOne,
+    externalDownloadDirectory,
+    resolveExternalDownloadDirectory,
     markFileDownloaded,
     restoreDownloadedRecords,
     revealDownloadedFile,
