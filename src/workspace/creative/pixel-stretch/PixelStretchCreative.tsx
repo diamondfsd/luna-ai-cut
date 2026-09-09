@@ -28,6 +28,7 @@ import { PixelStretchEffectControls } from './PixelStretchEffectControls'
 import { buildPixelStretchLayers, erodeMaskOnePixel, invertMask, subjectBoundsFromMask, suggestPixelStretchPreset, type SubjectBounds } from './pixelStretchLayers'
 import { PIXEL_STRETCH_MASK_LAYER_ID, pixelStretchMaskLayer } from './pixelStretchMask'
 import { exportPixelStretchImage } from './exportPixelStretchImage'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../../../lib/transferDirectory'
 import {
   DEFAULT_PIXEL_STRETCH_ANGLE,
   DEFAULT_PIXEL_STRETCH_CONTROL_OFFSET,
@@ -406,7 +407,12 @@ export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, suppor
     if (!activeAsset || !outputSize || !activeMaskPath || exporting) return
     setExporting(true)
     try {
-      await exportPixelStretchImage({ asset: activeAsset, layers: effectLayers, width: outputSize.width, height: outputSize.height })
+      const currentSettings = await window.luna.getSettings()
+      if (!currentSettings.exportDir && !currentSettings.chooseTransferDirectoryBeforeAction) throw new Error('请先在设置中选择导出目录')
+      const exportDir = await resolveTransferDirectory('export', currentSettings)
+      if (!exportDir) return
+      if (currentSettings.chooseTransferDirectoryBeforeAction) await rememberTransferDirectory('export', exportDir, currentSettings)
+      await exportPixelStretchImage({ asset: activeAsset, layers: effectLayers, width: outputSize.width, height: outputSize.height, exportDir })
       toast.success('图片已导出')
     } catch (error) {
       const message = error instanceof Error ? error.message : '图片导出失败'

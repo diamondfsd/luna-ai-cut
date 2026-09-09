@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type MutableRefObject } from 'react'
 
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, type VideoExportFormat, type VideoExportSettings, type WorkspaceMediaAsset, type WorkspaceMediaKind, type WorkspaceProject } from '../../../shared/types'
 import { toast } from '../../../ui'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../../../lib/transferDirectory'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { queuePixelFlowBatchExport } from './pixelFlowBatchExport'
 import { PIXEL_FLOW_IMAGE_EXPORT_SETTINGS } from './pixelFlowExport'
@@ -42,12 +43,21 @@ export function usePixelFlowBatchExport(options: UsePixelFlowBatchExportOptions)
   const handleExport = useCallback(async (config: VideoExportSettings) => {
     const project = options.pendingProjectRef.current ?? media.currentProject
     if (!project || exportableAssets.length === 0) return
-    setExporting(true)
     try {
+      const currentSettings = await window.luna.getSettings()
+      if (!currentSettings.exportDir && !currentSettings.chooseTransferDirectoryBeforeAction) {
+        toast.error('请先在设置中选择导出目录')
+        return false
+      }
+      const exportDir = await resolveTransferDirectory('export', currentSettings)
+      if (!exportDir) return false
+      if (currentSettings.chooseTransferDirectoryBeforeAction) await rememberTransferDirectory('export', exportDir, currentSettings)
+      setExporting(true)
       const result = await queuePixelFlowBatchExport({
         project,
         assets: exportableAssets,
         config,
+        exportDir,
         settings: options.effectSettings,
       })
       if (Object.keys(result.resolvedStates).length > 0) {
@@ -78,9 +88,10 @@ export function usePixelFlowBatchExport(options: UsePixelFlowBatchExportOptions)
       if (result.failedCount === 0) toast.success(`已加入 ${result.queuedCount} 个导出任务`)
       else if (result.queuedCount > 0) toast.show(`已加入 ${result.queuedCount} 个，${result.failedCount} 个准备失败`)
       else toast.error('没有可导出的素材，请查看素材是否可用')
+      return true
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '无法开始导出')
-      throw error
+      return false
     } finally {
       setExporting(false)
     }

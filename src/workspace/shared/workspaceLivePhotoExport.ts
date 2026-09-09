@@ -188,6 +188,7 @@ export async function queueWorkspaceFormatsExport(
               true,
               false,
               cover,
+              exportDir,
             )
             await report(format, 100, 'done', result.path)
           } catch (error) {

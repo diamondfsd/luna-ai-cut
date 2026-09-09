@@ -32,10 +32,10 @@ export async function getDownloadedRecords(files: LunaFile[], outputDir: string,
   return records
 }
 
-export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]> {
+export async function listDownloadedFiles(outputDirs: string | string[]): Promise<LunaFile[]> {
   const files: LunaFile[] = []
 
-  async function appendFile(filePath: string): Promise<void> {
+  async function appendFile(filePath: string, outputDir: string): Promise<void> {
     const name = path.basename(filePath)
     const kind = lunaMediaAdapter.mediaKind(name)
     if (kind === 'unknown' || kind === 'lrv' || name.endsWith('.tmp') || isGeneratedLivePreviewName(name)) return
@@ -78,21 +78,23 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
     }, sourceRecord))
   }
 
-  async function walk(dir: string): Promise<void> {
+  async function walk(dir: string, outputDir: string): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
       const entryPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) await walk(entryPath)
-      else if (entry.isFile()) await appendFile(entryPath)
+      if (entry.isDirectory()) await walk(entryPath, outputDir)
+      else if (entry.isFile()) await appendFile(entryPath, outputDir)
     }
   }
 
-  try {
-    await walk(outputDir)
-  } catch (err) {
-    logMainWarn(`[listDownloadedFiles] 读取失败`, { outputDir, error: err instanceof Error ? err.message : String(err) })
-    return []
+  const roots = [...new Set((Array.isArray(outputDirs) ? outputDirs : [outputDirs]).filter(Boolean))]
+  for (const outputDir of roots) {
+    try {
+      await walk(outputDir, outputDir)
+    } catch (err) {
+      logMainWarn(`[listDownloadedFiles] 读取失败`, { outputDir, error: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   return lunaMediaAdapter.attachRelatedFiles(files)

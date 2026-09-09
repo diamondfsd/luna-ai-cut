@@ -62,6 +62,7 @@ import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspac
 import { beautyClipboardSettings } from '../workspace/beauty/beautyLayers'
 import { prepareBeautyPasteTargets } from '../workspace/beauty/beautyPaste'
 import { logger } from '../lib/rendererLogger'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../lib/transferDirectory'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -188,7 +189,6 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exportDialogPlan, setExportDialogPlan] = useState<WorkspaceMixedExportPlanItem[]>([])
   const [exportDialogInitialConfig, setExportDialogInitialConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
-  const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
   const [fitScalePercent, setFitScalePercent] = useState(100)
@@ -944,7 +944,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     setExportEnqueuing(true)
     try {
       const settings = await window.luna.getSettings()
-      if (!settings.exportDir) {
+      if (!settings.exportDir && !settings.chooseTransferDirectoryBeforeAction) {
         toast.error('导出目录未配置')
         return
       }
@@ -1072,7 +1072,12 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       const plan = sourceGroups.flat()
       const summary = summarizeWorkspaceMixedExport(plan)
       if (summary.photo > 0 && summary.video === 0 && summary.live === 0) {
-        const result = await queueWorkspaceMixedExport(plan, settings.exportDir, {
+        const exportDir = await resolveTransferDirectory('export', settings)
+        if (!exportDir) return
+        if (settings.chooseTransferDirectoryBeforeAction) {
+          await rememberTransferDirectory('export', exportDir, settings)
+        }
+        const result = await queueWorkspaceMixedExport(plan, exportDir, {
           ...DEFAULT_VIDEO_EXPORT_SETTINGS,
           exportFormats: [],
           exportPhotos: true,
@@ -1090,7 +1095,6 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         exportFormats,
         exportPhotos: summary.photo > 0,
       })
-      setExportDialogDir(settings.exportDir)
       setExportDialogOpen(true)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导出失败')
@@ -1485,7 +1489,16 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           live: exportDialogSummary.live > 0,
         }}
         onConfirm={async (config) => {
-          const result = await queueWorkspaceMixedExport(exportDialogPlan, exportDialogDir, config)
+          const currentSettings = await window.luna.getSettings()
+          if (!currentSettings.exportDir && !currentSettings.chooseTransferDirectoryBeforeAction) {
+            throw new Error('导出目录未配置')
+          }
+          const exportDir = await resolveTransferDirectory('export', currentSettings)
+          if (!exportDir) return false
+          if (currentSettings.chooseTransferDirectoryBeforeAction) {
+            await rememberTransferDirectory('export', exportDir, currentSettings)
+          }
+          const result = await queueWorkspaceMixedExport(exportDialogPlan, exportDir, config)
           toast.success(`已加入导出队列: ${result.itemCount} 个结果`)
         }}
       />
