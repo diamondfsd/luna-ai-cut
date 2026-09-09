@@ -13,7 +13,7 @@ import { deriveBasicSemanticTags } from './aiSelectionTags'
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif', '.avif'])
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.m2ts', '.insv', '.m4v'])
-const SKIPPED_DIRECTORIES = new Set(['cache', 'cache_previews', '.luna-cache', 'workspace-projects'])
+const SKIPPED_DIRECTORIES = new Set(['cache', 'cache_previews', '.luna-cache', 'workspace-projects', 'ai-editor-projects'])
 
 export interface IndexedMedia {
   id: string

@@ -1,3 +1,5 @@
+import type { WorkspaceMediaAsset } from './workspace'
+
 export interface AiEditorFileFilter {
   name: string
   extensions: string[]
@@ -14,9 +16,20 @@ export interface AiEditorProjectSnapshot {
   editorDocument: string | null
 }
 
+export interface AiEditorProjectSummary {
+  projectId: string
+  projectName: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface AiEditorProjectApi {
+  list(): Promise<AiEditorProjectSummary[]>
+  create(name: string, assets?: WorkspaceMediaAsset[]): Promise<AiEditorProjectSummary>
   load(projectId: string): Promise<AiEditorProjectSnapshot>
   save(projectId: string, editorDocument: string): Promise<void>
+  delete(projectId: string): Promise<void>
+  rename(projectId: string, name: string): Promise<AiEditorProjectSummary>
 }
 
 export interface AiEditorFileApi {
