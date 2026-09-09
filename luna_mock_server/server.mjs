@@ -20,6 +20,9 @@ const CAMERA_DIR_NAMES = ['Camera01', 'Camera02', 'Camera03']
 const UCD2_MAGIC = Buffer.from('UCD2')
 const UCD2_FILE = 0x04
 const UCD2_STREAM = 0x05
+const CODE_GET_FILE_LIST = 13
+const CODE_GET_CURRENT_CAPTURE_STATUS = 15
+const STATUS_OK = 200
 const authGate = createHttpAuthGate(3000)
 const deletedCameraPaths = new Set()
 
@@ -178,9 +181,12 @@ async function responseForUcd2Frame(frame) {
   const raw = frame.subarray(rawOffset, rawOffset + rawLen)
   const code = raw.readUInt16LE(0)
   const requestId = raw.readUInt16LE(3)
-  if (code === 13) {
+  if (code === CODE_GET_FILE_LIST) {
     const body = await fileListResponseBody(fileListRequest(raw.subarray(9)))
-    return buildUcd2(UCD2_FILE, seq, buildRawResponse(200, requestId, body))
+    return buildUcd2(UCD2_FILE, seq, buildRawResponse(STATUS_OK, requestId, body))
+  }
+  if (code === CODE_GET_CURRENT_CAPTURE_STATUS) {
+    return buildUcd2(UCD2_FILE, seq, buildRawResponse(STATUS_OK, requestId))
   }
   if (code === 12) {
     for (const cameraPath of parseDeletePaths(raw.subarray(9))) {
