@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceBeautyAnalysisRequest, WorkspaceCompositionAnalysisRequest, WorkspaceCompositionCropScoreRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchLutRequest, WorkspaceSegmentationRequest } from '../../src/shared/types'
+import type { WorkspaceBeautyAnalysisRequest, WorkspaceCompositionAnalysisRequest, WorkspaceCompositionCropScoreRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchLutRequest, WorkspaceSegmentationRequest } from '../../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from '../export/exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from '../storage/fileService'
@@ -41,7 +41,6 @@ import { segmentSpecializedInWorker } from '../features/segmentation/specialized
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from '../features/segmentation/colorMaskService'
 import { SegmentationTaskRegistry } from '../features/segmentation/segmentationTaskRegistry'
 import { beginForegroundSegmentation } from '../features/segmentation/segmentationModelPrefetchService'
-import { trackMaskInWorker } from '../features/segmentation/maskTrackingService'
 import { removeObject } from '../features/segmentation/inpaintService'
 import { inpaintWorkerService } from '../features/segmentation/inpaintWorkerService'
 import { analyzeBeauty } from '../features/beauty/beautyAnalysisService'
@@ -234,7 +233,6 @@ export function register(ctx: IpcContext): void {
   const videoProbeTasks = new Map<string, Promise<VideoProbeResult>>()
   const mediaResolutionTasks = new Map<string, Promise<MediaResolutionResult>>()
   const segmentationTasks = new SegmentationTaskRegistry()
-  const trackingTasks = new SegmentationTaskRegistry()
   const removalTasks = new SegmentationTaskRegistry()
   const watchedSenders = new Set<number>()
   const watchSender = (sender: Electron.WebContents): void => {
@@ -242,7 +240,6 @@ export function register(ctx: IpcContext): void {
     watchedSenders.add(sender.id)
     const cancelSenderTasks = (): void => {
       segmentationTasks.cancelOwner(sender.id)
-      trackingTasks.cancelOwner(sender.id)
       removalTasks.cancelOwner(sender.id)
       inpaintWorkerService.release(sender.id)
     }
@@ -397,11 +394,6 @@ export function register(ctx: IpcContext): void {
     }
   })
 
-  ipcMain.handle('workspace:cancelMaskTracking', (event, requestId: string) => {
-    if (typeof requestId !== 'string' || requestId.length === 0) return false
-    return trackingTasks.cancel(event.sender.id, requestId)
-  })
-
   ipcMain.handle('workspace:cancelObjectRemoval', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
     return removalTasks.cancel(event.sender.id, requestId)
@@ -444,65 +436,6 @@ export function register(ctx: IpcContext): void {
       return await removeObject(request, settings.baseDir, resolution.width, resolution.height, event.sender.id, task.controller.signal)
     } finally {
       removalTasks.finish(task)
-    }
-  })
-
-  ipcMain.handle('workspace:trackMask', async (event, request: WorkspaceMaskTrackingRequest) => {
-    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('蒙版追踪任务标识无效')
-    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || !VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('蒙版追踪仅支持视频素材')
-    if (request.direction !== 'forward' && request.direction !== 'backward') throw new Error('蒙版追踪方向无效')
-    const anchorTime = Number(request.anchorTime)
-    const requestedEndTime = request.endTime == null ? undefined : Number(request.endTime)
-    const maskWidth = Math.round(Number(request.maskWidth))
-    const maskHeight = Math.round(Number(request.maskHeight))
-    const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
-    const mode = request.mode === 'dense-mask' ? 'dense-mask' : 'similarity'
-    const guideMaskBytes = request.guideMaskBytes instanceof Uint8Array
-      ? request.guideMaskBytes
-      : request.guideMaskBytes ? new Uint8Array(request.guideMaskBytes) : undefined
-    const guideMaskWidth = Math.round(Number(request.guideMaskWidth ?? maskWidth))
-    const guideMaskHeight = Math.round(Number(request.guideMaskHeight ?? maskHeight))
-    if (!Number.isFinite(anchorTime) || anchorTime < 0) throw new Error('蒙版追踪起始时间无效')
-    if (requestedEndTime != null && !Number.isFinite(requestedEndTime)) throw new Error('蒙版追踪结束时间无效')
-    if (maskWidth <= 0 || maskHeight <= 0 || maskWidth * maskHeight > 16_777_216 || maskBytes.byteLength !== maskWidth * maskHeight) throw new Error('蒙版追踪数据无效')
-    if (mode === 'dense-mask' && (!guideMaskBytes || guideMaskWidth <= 0 || guideMaskHeight <= 0 || guideMaskWidth * guideMaskHeight > 16_777_216 || guideMaskBytes.byteLength !== guideMaskWidth * guideMaskHeight)) throw new Error('人物轮廓追踪数据无效')
-    let selectedPixels = 0
-    for (const value of maskBytes) if (value >= 16) selectedPixels += 1
-    if (selectedPixels < 16) throw new Error('请先创建有效蒙版再开始追踪')
-
-    const task = trackingTasks.begin(event.sender.id, request.requestId)
-    watchSender(event.sender)
-    try {
-      const [probe, resolution] = await Promise.all([
-        enqueueVideoProbe(request.filePath),
-        enqueueMediaResolution(request.filePath),
-      ])
-      const duration = probe.duration ?? NaN
-      if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
-      const boundedAnchorTime = Math.min(anchorTime, duration)
-      const endTime = requestedEndTime == null ? undefined : Math.min(Math.max(requestedEndTime, 0), duration)
-      if (request.direction === 'forward' && endTime != null && endTime < boundedAnchorTime) throw new Error('蒙版追踪结束时间不能早于起始时间')
-      const result = await trackMaskInWorker({
-        ...request,
-        anchorTime: boundedAnchorTime,
-        endTime,
-        maskWidth,
-        maskHeight,
-        maskBytes,
-        mode,
-        guideMaskBytes,
-        guideMaskWidth,
-        guideMaskHeight,
-        duration,
-        sourceWidth: resolution.width,
-        sourceHeight: resolution.height,
-      }, getFfmpegPath(), task.controller.signal, (progress) => {
-        if (!trackingTasks.isActive(task) || event.sender.isDestroyed()) return
-        event.sender.send('workspace:mask-tracking-progress', { requestId: request.requestId, direction: request.direction, ...progress })
-      })
-      return result
-    } finally {
-      trackingTasks.finish(task)
     }
   })
 
@@ -569,9 +502,7 @@ export function register(ctx: IpcContext): void {
   })
   ipcMain.handle('workspace:analyzeBeauty', async (event, request: WorkspaceBeautyAnalysisRequest) => {
     if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('美颜任务标识无效')
-    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('美颜素材无效')
-    const frameTime = request.frameTime == null ? undefined : Number(request.frameTime)
-    if (frameTime !== undefined && (!Number.isFinite(frameTime) || frameTime < 0)) throw new Error('美颜取帧时间无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('美颜当前仅支持图片')
     const task = segmentationTasks.begin(event.sender.id, request.requestId)
     watchSender(event.sender)
     const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
@@ -579,7 +510,7 @@ export function register(ctx: IpcContext): void {
       event.sender.send('workspace:segmentation-progress', { requestId: request.requestId, phase, label, percent })
     }
     try {
-      return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress, frameTime, request.videoFrame === true)
+      return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress)
     } finally {
       segmentationTasks.finish(task)
     }
