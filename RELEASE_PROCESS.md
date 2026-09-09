@@ -198,7 +198,28 @@ cargo xwin --version
 git push origin <发布分支>
 ```
 
-本地构建不依赖 GitHub Actions。Git tag 可以保留在本地用于标记版本；只有用户明确要求 GitHub Actions/Release 时，才推送会触发打包 workflow 的 `v*` tag。
+本地构建不依赖 GitHub Actions。默认 GitCode 发布只需推送发布分支，Git tag 可以保留在本地用于标记版本。
+
+如果需要 GitHub Actions/Release，必须额外显式推送 `v*` tag；推送分支不会自动推送本地 tag：
+
+```bash
+git push origin v<版本号>
+```
+
+推送前先确认远端没有同名 tag，或远端 tag 已指向目标 commit：
+
+```bash
+git rev-parse v<版本号>
+git ls-remote --tags origin "refs/tags/v<版本号>"
+```
+
+如果第 4 步使用 `git tag -f` 重新指向了一个已经存在于远端的 tag，必须明确同步更新：
+
+```bash
+git push --force origin v<版本号>
+```
+
+只有用户明确要求 GitHub Actions/Release 时，才执行上述 tag 推送。
 
 ### 6b. 上传到 GitCode（默认路径）
 
@@ -262,6 +283,14 @@ pnpm run publish:hot -- --version 1.8.0-beta.1-hot.1 --upload
 | `--target main` | 指定目标分支 |
 
 仅当用户明确要求 GitHub Actions/Release 时，才使用 `gh release` 或推送会触发打包的 `v*` tag。此路径由 `.github/workflows/package-artifacts.yml` 负责构建和挂载附件，不改变默认的本地编译上传流程。
+
+GitHub 路径的最小检查应确认远端 tag 已存在，再等待对应的 `Package Artifacts` workflow：
+
+```bash
+git ls-remote --exit-code --tags origin "refs/tags/v<版本号>"
+gh run list --workflow package-artifacts.yml --branch v<版本号>
+gh release view v<版本号>
+```
 
 GitHub Actions 的 macOS 自动构建只生成 Ad Hoc 包，不导入 Developer ID 证书、不执行 Apple notarization，也不需要配置 macOS 签名或公证 Secrets。GitHub Release 产物不能直接作为 GitCode 正式 Release 产物；上传 GitCode 前仍必须按本文件的 macOS 签名与公证流程重新构建并验证。
 
