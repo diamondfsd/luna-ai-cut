@@ -74,7 +74,10 @@ export function WorkspaceImportDialog({
         cameraType: file.cameraType,
         cameraSerial: file.cameraSerial,
         watermarkProfileId: file.watermarkProfileId,
-        thumbnailUrl: thumbnailPath ? filePathToPreviewUrl(thumbnailPath) : null,
+        // 视频原文件不能作为 <img> 缩略图；AI 剪辑宿主会为视频生成独立首帧。
+        thumbnailUrl: file.kind === 'image' && thumbnailPath
+          ? (file.thumbnailUrl ?? filePathToPreviewUrl(thumbnailPath))
+          : null,
         isLivePhoto: file.isLivePhoto,
         duration: file.duration ?? 0,
         frameRate: file.frameRate ?? 0,
