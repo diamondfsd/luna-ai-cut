@@ -21,6 +21,7 @@ export interface OnlyYourColorBatchSource {
 interface OnlyYourColorBatchExportOptions {
   project: WorkspaceProject
   sources: OnlyYourColorBatchSource[]
+  exportDir: string
   onProgress?: (label: string) => void
 }
 
@@ -40,9 +41,7 @@ function outputPath(exportDir: string, fileName: string): string {
 
 export async function exportOnlyYourColorBatch(options: OnlyYourColorBatchExportOptions): Promise<OnlyYourColorBatchExportResult> {
   if (options.sources.length === 0) throw new Error('请选择需要导出的图片')
-  const settings = await window.luna.getSettings()
-  if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
-  const exportDir = settings.exportDir
+  const exportDir = options.exportDir
 
   const stamp = Date.now()
   const allocateName = await createDirectoryExportNameAllocator(exportDir)

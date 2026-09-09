@@ -351,7 +351,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
               void ctrl.restoreDownloadedRecords()
             }}
             onQueueClear={() => { ctrl.setDownloadQueue([]) }}
-            onQueueShift={(fileName) => { ctrl.setDownloadQueue((current) => current.filter((file) => file.name !== fileName)) }}
+            onQueueShift={(fileName) => { ctrl.setDownloadQueue((current) => current.filter((item) => item.file.name !== fileName)) }}
             onRevealFile={ctrl.revealFileByPath}
           />
         )}

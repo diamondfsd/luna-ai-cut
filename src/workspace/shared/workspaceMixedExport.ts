@@ -241,6 +241,7 @@ export async function queueWorkspaceMixedExport(
                   true,
                   false,
                   coverTime - startTime,
+                  exportDir,
                 )
                 await report(liveEntry, entries.indexOf(liveEntry), 100, 'done', result.path)
               } catch (error) {

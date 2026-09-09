@@ -7,6 +7,7 @@ import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../../../shared/types'
 import type { CompositionInput, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, Switch, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
+import { rememberTransferDirectory, resolveTransferDirectory } from '../../../lib/transferDirectory'
 import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { useDeviceConnection } from '../../../context/DeviceConnectionContext'
@@ -557,7 +558,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
     }
     try {
       const settings = await window.luna.getSettings()
-      if (!settings.exportDir) throw new Error('导出目录未配置')
+      if (!settings.exportDir && !settings.chooseTransferDirectoryBeforeAction) throw new Error('导出目录未配置')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导出目录未配置')
       return
@@ -570,11 +571,22 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
     await handleExportConfirm(DEFAULT_VIDEO_EXPORT_SETTINGS)
   }
 
-  async function handleExportConfirm(config: VideoExportSettings): Promise<void> {
-    if (!composition || busy) return
+  async function handleExportConfirm(config: VideoExportSettings): Promise<boolean> {
+    if (!composition || busy) return false
     if (exportFormats.size === 0) {
       toast.error('请至少选择一种导出格式')
-      return
+      return false
+    }
+    let exportDir: string | null = null
+    try {
+      const settings = await window.luna.getSettings()
+      if (!settings.exportDir && !settings.chooseTransferDirectoryBeforeAction) throw new Error('导出目录未配置')
+      exportDir = await resolveTransferDirectory('export', settings)
+      if (!exportDir) return false
+      if (settings.chooseTransferDirectoryBeforeAction) await rememberTransferDirectory('export', exportDir, settings)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '导出目录未配置')
+      return false
     }
     setBusy(true)
     setExportDialogOpen(false)
@@ -621,9 +633,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
       toast.error(message)
     }
     try {
-      const settings = await window.luna.getSettings()
-      if (!settings.exportDir) throw new Error('导出目录未配置')
-      const exportDir = settings.exportDir
+      if (!exportDir) throw new Error('导出目录未配置')
       const stamp = Date.now()
       const baseName = 'triple-stitch'
       const videoPath = await window.luna.getAvailableExportPath(outputPath(exportDir, `${baseName}.mp4`))
@@ -735,7 +745,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
         try {
           await window.luna.exportTask.updateItem(task.id, liveItemId, { status: 'exporting', progress: 90 }).catch(() => {})
           const result = await window.luna.workspace.exportRenderedLivePhoto(
-            `${baseName}_live`, sharedLiveImagePath, videoPath, false, true,
+            `${baseName}_live`, sharedLiveImagePath, videoPath, false, true, false, undefined, exportDir,
           )
           await window.luna.exportTask.updateItem(task.id, liveItemId, {
             status: 'done', progress: 100, destinationPath: result.path,
@@ -756,7 +766,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
         try {
           await window.luna.exportTask.updateItem(task.id, appleItemId, { status: 'exporting', progress: 90 }).catch(() => {})
           const result = await window.luna.workspace.exportRenderedLivePhoto(
-            `${baseName}_appleLive`, sharedLiveImagePath, videoPath, true, true,
+            `${baseName}_appleLive`, sharedLiveImagePath, videoPath, true, true, false, undefined, exportDir,
           )
           await window.luna.exportTask.updateItem(task.id, appleItemId, {
             status: 'done', progress: 100, destinationPath: result.path,
@@ -771,8 +781,10 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
         }
       }
       })().catch(reportTaskFailure)
+      return true
     } catch (error) {
       await reportTaskFailure(error)
+      return false
     } finally {
       setBusy(false)
     }
@@ -1062,7 +1074,7 @@ export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, suppor
         confirmLabel="确认导出"
         confirmLoadingLabel="加入中..."
         onConfirm={async (config) => {
-          await handleExportConfirm(config)
+          return handleExportConfirm(config)
         }}
       />
     </section>
