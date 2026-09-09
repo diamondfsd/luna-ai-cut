@@ -199,7 +199,9 @@ export function DeviceConnectPage({
         if (result?.requiresManualWifi) return
       }
       const wireless = isBluetoothWifiWireless
-        ? credentials
+        ? connection?.wifiManualConnectionRequired
+          ? { preparation: 'already-connected' as const }
+          : credentials
           ? {
               preparation: 'bluetooth' as const,
               ssid: credentials.ssid,
@@ -209,7 +211,9 @@ export function DeviceConnectPage({
           : preparation
             ? { preparation: 'already-connected' as const }
             : undefined
-        : undefined
+        : !isWired && connection?.wifiManualConnectionRequired
+          ? { preparation: 'already-connected' as const }
+          : undefined
       await onConnect(undefined, undefined, wireless)
     } finally {
       setConnecting(false)

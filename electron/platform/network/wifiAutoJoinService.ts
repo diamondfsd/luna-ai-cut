@@ -21,11 +21,13 @@ export interface WifiCameraEndpoint {
 interface WifiRestoreSession {
   cameraSsid: string
   previousSsid: string | null
+  endpoint?: WifiCameraEndpoint
 }
 
 const restoreSessions = new Map<string, WifiRestoreSession>()
 const CAMERA_HANDSHAKE_WAIT_MS = 10000
 const CAMERA_HANDSHAKE_RETRY_DELAY_MS = 250
+const INITIAL_CAMERA_PROBE_TIMEOUT_MS = 1500
 
 function matchesConfiguredSsid(ssid: string, includes: string[]): boolean {
   const normalized = ssid.trim().toLocaleLowerCase()
@@ -98,6 +100,31 @@ async function waitForCameraHandshake(
   return { ok: false, lastError }
 }
 
+async function probeCameraEndpoint(endpoint: WifiCameraEndpoint, sessionKey: string): Promise<boolean> {
+  const startedAt = Date.now()
+  try {
+    const response = await probeInsta360ControlResponse(endpoint.host, endpoint.port, INITIAL_CAMERA_PROBE_TIMEOUT_MS)
+    if (response.code !== 200) throw new Error(`Luna 控制指令返回 ${response.code}`)
+    logMainInfo('[设备 Wi-Fi] 目标控制通道可达，跳过 Wi-Fi 检测', {
+      sessionKey,
+      host: endpoint.host,
+      port: endpoint.port,
+      responseCode: response.code,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return true
+  } catch (error) {
+    logMainInfo('[设备 Wi-Fi] 目标控制通道暂不可达，继续 Wi-Fi 准备', {
+      sessionKey,
+      host: endpoint.host,
+      port: endpoint.port,
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return false
+  }
+}
+
 async function waitForLunaWifiAddress(
   sessionKey: string,
 ): Promise<{ address: string; ssid: string | null } | null> {
@@ -152,6 +179,15 @@ export async function autoJoinDeviceWifi(
     sessionKey,
     matchRule: config.ssidIncludes,
   })
+
+  if (endpoint && await probeCameraEndpoint(endpoint, sessionKey)) {
+    return {
+      attempted: false,
+      connected: true,
+      message: '已检测到相机网络',
+    }
+  }
+
   const current = await getWifiDebugStatus().catch(() => null)
   const currentSsid = current?.success ? current.data?.ssid : null
   if (hasLunaWifiAddress(current?.data)) {
@@ -162,51 +198,12 @@ export async function autoJoinDeviceWifi(
     logMainInfo('[设备 Wi-Fi] 当前地址已在 Luna 网段，跳过系统 Wi-Fi 切换', {
       sessionKey,
       localAddress,
-      ssid: currentSsid,
     })
-    if (endpoint) {
-      const handshake = await waitForCameraHandshake(endpoint, sessionKey)
-      if (!handshake.ok) {
-        logMainWarn('[设备 Wi-Fi] Luna 网段地址存在但控制握手未通过，继续执行 Wi-Fi 准备', {
-          sessionKey,
-          localAddress,
-          host: endpoint.host,
-          port: endpoint.port,
-          error: handshake.lastError,
-        })
-      } else {
-        return {
-          attempted: false,
-          connected: true,
-          ssid: currentSsid ?? undefined,
-          message: `已连接 Luna Wi-Fi${localAddress ? `（本机地址 ${localAddress}）` : ''}`,
-        }
-      }
-    } else {
-      return {
-        attempted: false,
-        connected: true,
-        ssid: currentSsid ?? undefined,
-        message: `已连接 Luna Wi-Fi${localAddress ? `（本机地址 ${localAddress}）` : ''}`,
-      }
-    }
-  }
-  if (currentSsid && matchesConfiguredSsid(currentSsid, config.ssidIncludes) && hasLunaWifiAddress(current?.data)) {
-    logMainInfo('[设备 Wi-Fi] 当前已连接目标网络，开始控制通道确认', { sessionKey, ssid: currentSsid })
-    if (endpoint) {
-      const handshake = await waitForCameraHandshake(endpoint, sessionKey)
-      if (handshake.ok) {
-        return { attempted: false, connected: true, ssid: currentSsid, message: `已连接设备 Wi-Fi：${currentSsid}` }
-      }
-      logMainWarn('[设备 Wi-Fi] 当前 SSID 匹配但控制握手未通过，继续执行 Wi-Fi 准备', {
-        sessionKey,
-        ssid: currentSsid,
-        host: endpoint.host,
-        port: endpoint.port,
-        error: handshake.lastError,
-      })
-    } else {
-      return { attempted: false, connected: true, ssid: currentSsid, message: `已连接设备 Wi-Fi：${currentSsid}` }
+    return {
+      attempted: false,
+      connected: true,
+      ssid: currentSsid ?? undefined,
+      message: `已连接设备 Wi-Fi${currentSsid ? `：${currentSsid}` : ''}${localAddress ? `（本机地址 ${localAddress}）` : ''}`,
     }
   }
 
@@ -293,20 +290,21 @@ export async function autoJoinDeviceWifi(
   }
 
   const joinedSsid = joined.data?.ssid
-  const network = await waitForLunaWifiAddress(sessionKey)
-  if (!network) {
-    return {
-      attempted: true,
-      connected: false,
-      ssid: candidateSsid,
-      wifiPasswordRequired: true,
-      wifiManualConnectionRequired: true,
-      message: '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点',
-    }
-  }
   if (endpoint) {
     const handshake = await waitForCameraHandshake(endpoint, sessionKey)
     if (!handshake.ok) {
+      return {
+        attempted: true,
+        connected: false,
+        ssid: candidateSsid,
+        wifiPasswordRequired: true,
+        wifiManualConnectionRequired: true,
+        message: '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点',
+      }
+    }
+  } else {
+    const network = await waitForLunaWifiAddress(sessionKey)
+    if (!network) {
       return {
         attempted: true,
         connected: false,
@@ -321,6 +319,7 @@ export async function autoJoinDeviceWifi(
   restoreSessions.set(sessionKey, {
     cameraSsid: candidateSsid,
     previousSsid: currentSsid ?? null,
+    endpoint,
   })
 
   logMainInfo('[设备 Wi-Fi] 自动连接成功', {
@@ -338,7 +337,7 @@ export async function autoJoinDeviceWifi(
 }
 
 /**
- * 恢复自动切换前的 Wi-Fi。只有当前仍是相机热点时才执行，避免覆盖用户在连接期间的手动选择。
+ * 恢复自动切换前的 Wi-Fi。只有目标地址或相机网段仍可确认时才执行，避免覆盖用户的手动选择。
  */
 export async function restoreDeviceWifi(sessionKey = 'default'): Promise<WifiAutoJoinResult> {
   const session = restoreSessions.get(sessionKey)
@@ -349,11 +348,12 @@ export async function restoreDeviceWifi(sessionKey = 'default'): Promise<WifiAut
 
   const current = await getWifiDebugStatus().catch(() => null)
   const currentSsid = current?.success ? current.data?.ssid : null
-  if (currentSsid !== session.cameraSsid) {
+  const targetReachable = session.endpoint ? await probeCameraEndpoint(session.endpoint, sessionKey) : false
+  if (!targetReachable && !hasLunaWifiAddress(current?.data)) {
     logMainInfo('[设备 Wi-Fi] 用户已切换网络，不执行恢复', { sessionKey, cameraSsid: session.cameraSsid, currentSsid })
     return {
       attempted: false,
-      connected: Boolean(currentSsid),
+      connected: Boolean(current?.data?.connected),
       ssid: currentSsid ?? undefined,
       message: currentSsid
         ? `当前 Wi-Fi 已由用户切换为 ${currentSsid}，不覆盖手动选择`
