@@ -244,3 +244,16 @@ window.openreel.lunaProject
 - Luna 的 AI 剪辑菜单改为进入 `#/projects`；该入口不受 OpenReel “启动时跳过”设置影响，解决打开后直接进入剪辑页的问题。
 - 项目数据仍由 OpenReel 自己保存和恢复，未引入 Luna 工作台项目列表，也未改变两个项目域的边界。
 - 验证通过：OpenReel monorepo 类型检查、OpenReel 项目存储测试（81 passed、4 skipped）、子模块 Lint（0 errors）、根仓库类型检查、`pnpm run build:app` 和 `git diff --check`。
+
+### 2026-09-09：调整项目列表与编辑器层级
+
+- 明确 AI 剪辑交互层级：项目列表是模块首页，编辑器是打开项目后的第二层页面。
+- 移除项目列表中的“返回编辑器”按钮，避免首页出现不符合层级的反向入口。
+- 在编辑器左上角增加“返回项目列表”图标按钮，点击后进入 `#/projects`，当前项目继续由 OpenReel 自动保存管理。
+- 验证通过：OpenReel monorepo 类型检查、变更范围 Lint、根仓库类型检查、`pnpm run build:app` 和 `git diff --check`。
+
+### 2026-09-09：移除项目列表重复 header
+
+- 根据界面反馈移除项目列表页顶部重复 header，避免同时出现两个“新建项目”入口。
+- 项目列表保留下方的标题和单一新建入口；编辑器返回项目列表仍使用编辑器左上角图标按钮。
+- 验证通过：OpenReel 页面变更范围 Lint、OpenReel 与根仓库类型检查、`pnpm run build:app` 和 `git diff --check`。
