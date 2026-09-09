@@ -416,22 +416,25 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
         const raw = await runCommand('netsh', ['wlan', 'connect', `name=${ssid}`, `ssid=${ssid}`], timeoutMs)
         const deadline = Date.now() + Math.min(Math.max(timeoutMs, 8000), 12000)
         let status = await getWifiDebugStatus()
-        while (status.success && status.data?.ssid !== ssid && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 250))
-          status = await getWifiDebugStatus()
-        }
-        if (status.success && status.data?.ssid !== ssid) {
-          return {
-            ...status,
-            success: false,
-            code: 'WIFI_SSID_NOT_MATCHED',
-            message: `Windows 未切换到目标 Wi-Fi，当前网络为 ${status.data?.ssid ?? '未连接'}`,
-            raw,
+        if (!options.skipSsidVerification) {
+          while (status.success && status.data?.ssid !== ssid && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 250))
+            status = await getWifiDebugStatus()
+          }
+          if (status.success && status.data?.ssid !== ssid) {
+            return {
+              ...status,
+              success: false,
+              code: 'WIFI_SSID_NOT_MATCHED',
+              message: `Windows 未切换到目标 Wi-Fi，当前网络为 ${status.data?.ssid ?? '未连接'}`,
+              raw,
+            }
           }
         }
         return {
           ...status,
-          message: status.success ? `已尝试连接 ${ssid}` : status.message,
+          success: options.skipSsidVerification ? true : status.success,
+          message: options.skipSsidVerification || status.success ? `已尝试连接 ${ssid}` : status.message,
           raw,
         }
       } finally {
