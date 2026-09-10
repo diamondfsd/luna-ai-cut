@@ -12,8 +12,12 @@
   const parentLog = (level, message, meta) => {
     try {
       const parentWindow = window.parent
-      const log = parentWindow !== window ? parentWindow.luna?.log : undefined
-      if (typeof log === 'function') log(level, `[OpenReel] ${message}`, meta)
+      if (parentWindow === window) return
+      const taggedMessage = `[OpenReel] ${message}`
+      const openReelLog = parentWindow.luna?.logOpenReel
+      if (typeof openReelLog === 'function') openReelLog(level, taggedMessage, meta)
+      const rendererLog = parentWindow.luna?.log
+      if (typeof rendererLog === 'function') rendererLog(level, taggedMessage, meta)
     } catch {
       // Logging must not affect editor behavior.
     }
@@ -43,6 +47,19 @@
       parentLog(level, message || '', rest.length > 0 ? { args: rest.map(logValue) } : undefined)
     }
   }
+
+  window.addEventListener('error', (event) => {
+    parentLog('error', '[全局异常]', {
+      message: event.message,
+      filename: event.filename,
+      line: event.lineno,
+      column: event.colno,
+      error: logValue(event.error),
+    })
+  }, true)
+  window.addEventListener('unhandledrejection', (event) => {
+    parentLog('error', '[未处理的异步异常]', { reason: logValue(event.reason) })
+  })
 
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent) return
@@ -165,4 +182,6 @@
       revealInFolder: (filePath) => parentApi().revealInFolder(filePath),
     },
   })
+
+  parentLog('info', '[bridge] ready')
 })()

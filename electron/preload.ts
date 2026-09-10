@@ -96,6 +96,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)
   },
+  logOpenReel: (level: string, message: string, meta?: unknown) => {
+    ipcRenderer.send('log:openreel', level, message, meta)
+  },
   logExport: (message: string, meta?: unknown) => {
     return ipcRenderer.invoke('log:export', message, meta)
   },

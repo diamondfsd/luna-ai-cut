@@ -1,6 +1,6 @@
 import { BrowserWindow, app, dialog, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -15,14 +15,25 @@ import {
   renameAiEditorProject,
   saveAiEditorProject,
 } from '../features/ai-editor/aiEditorProjectService'
-import { logMainError, logMainInfo } from '../infrastructure/loggerService'
+import { logMainError, logMainInfo, logOpenReelMessage } from '../infrastructure/loggerService'
 
 interface OpenWriteHandle {
   filePath: string
   handle: FileHandle
+  bytesWritten: number
 }
 
 const writeHandles = new Map<string, OpenWriteHandle>()
+
+function logAiEditorInfo(message: string, meta?: unknown): void {
+  logMainInfo(message, meta)
+  logOpenReelMessage('INFO', message, meta)
+}
+
+function logAiEditorError(message: string, meta?: unknown): void {
+  logMainError(message, meta)
+  logOpenReelMessage('ERROR', message, meta)
+}
 
 function editorDocumentSummary(editorDocument: string): {
   documentBytes: number
@@ -94,8 +105,29 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
   const entry = writeHandles.get(handleId)
   if (!entry) return
   writeHandles.delete(handleId)
-  await entry.handle.close().catch(() => undefined)
-  if (removeFile) await rm(entry.filePath, { force: true }).catch(() => undefined)
+  const fileName = path.basename(entry.filePath)
+  try {
+    await entry.handle.close()
+    if (removeFile) {
+      await rm(entry.filePath, { force: true })
+      logAiEditorInfo('[AI 剪辑] 导出文件已取消', { fileName, bytes: entry.bytesWritten })
+      return
+    }
+    const file = await stat(entry.filePath)
+    logAiEditorInfo('[AI 剪辑] 导出文件写入完成', {
+      fileName,
+      bytesWritten: entry.bytesWritten,
+      fileBytes: file.size,
+    })
+  } catch (error) {
+    if (removeFile) await rm(entry.filePath, { force: true }).catch(() => undefined)
+    logAiEditorError('[AI 剪辑] 导出文件写入失败', {
+      fileName,
+      bytesWritten: entry.bytesWritten,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    if (!removeFile) throw error
+  }
 }
 
 export function register(): void {
@@ -125,14 +157,14 @@ export function register(): void {
     try {
       const settings = await getSettings()
       const snapshot = await loadAiEditorProject(settings.baseDir, projectId)
-      logMainInfo('[AI 剪辑] 加载项目完成', {
+      logAiEditorInfo('[AI 剪辑] 加载项目完成', {
         projectId,
         hasEditorDocument: Boolean(snapshot.editorDocument),
         ...(snapshot.editorDocument ? editorDocumentSummary(snapshot.editorDocument) : {}),
       })
       return snapshot
     } catch (error) {
-      logMainError('[AI 剪辑] 加载项目失败', {
+      logAiEditorError('[AI 剪辑] 加载项目失败', {
         projectId,
         error: error instanceof Error ? error.message : String(error),
       })
@@ -144,9 +176,9 @@ export function register(): void {
     try {
       const settings = await getSettings()
       await saveAiEditorProject(settings.baseDir, projectId, editorDocument)
-      logMainInfo('[AI 剪辑] 保存项目完成', { projectId, ...editorDocumentSummary(editorDocument) })
+      logAiEditorInfo('[AI 剪辑] 保存项目完成', { projectId, ...editorDocumentSummary(editorDocument) })
     } catch (error) {
-      logMainError('[AI 剪辑] 保存项目失败', {
+      logAiEditorError('[AI 剪辑] 保存项目失败', {
         projectId,
         error: error instanceof Error ? error.message : String(error),
       })
@@ -158,9 +190,9 @@ export function register(): void {
     try {
       const settings = await getSettings()
       await deleteAiEditorProject(settings.baseDir, projectId)
-      logMainInfo('[AI 剪辑] 删除项目完成', { projectId })
+      logAiEditorInfo('[AI 剪辑] 删除项目完成', { projectId })
     } catch (error) {
-      logMainError('[AI 剪辑] 删除项目失败', {
+      logAiEditorError('[AI 剪辑] 删除项目失败', {
         projectId,
         error: error instanceof Error ? error.message : String(error),
       })
@@ -189,7 +221,12 @@ export function register(): void {
     const result = owner
       ? await dialog.showSaveDialog(owner, dialogOptions)
       : await dialog.showSaveDialog(dialogOptions)
-    return result.canceled || !result.filePath ? null : result.filePath
+    const filePath = result.canceled || !result.filePath ? null : result.filePath
+    logAiEditorInfo('[AI 剪辑] 导出位置已选择', {
+      fileName: filePath ? path.basename(filePath) : null,
+      canceled: result.canceled,
+    })
+    return filePath
   })
 
   ipcMain.handle('ai-editor:show-open-dialog', async (event, options: AiEditorFileDialogOptions) => {
@@ -208,10 +245,10 @@ export function register(): void {
     try {
       const target = absoluteFilePath(filePath, '文件')
       const content = await readFile(target, 'utf8')
-      logMainInfo('[AI 剪辑] 读取文件完成', { fileName: path.basename(target), bytes: Buffer.byteLength(content, 'utf8') })
+      logAiEditorInfo('[AI 剪辑] 读取文件完成', { fileName: path.basename(target), bytes: Buffer.byteLength(content, 'utf8') })
       return content
     } catch (error) {
-      logMainError('[AI 剪辑] 读取文件失败', {
+      logAiEditorError('[AI 剪辑] 读取文件失败', {
         fileName: typeof filePath === 'string' ? path.basename(filePath) : undefined,
         error: error instanceof Error ? error.message : String(error),
       })
@@ -223,10 +260,10 @@ export function register(): void {
     try {
       const target = absoluteFilePath(filePath, '文件')
       const bytes = await readFile(target)
-      logMainInfo('[AI 剪辑] 读取素材完成', { fileName: path.basename(target), bytes: bytes.byteLength })
+      logAiEditorInfo('[AI 剪辑] 读取素材完成', { fileName: path.basename(target), bytes: bytes.byteLength })
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     } catch (error) {
-      logMainError('[AI 剪辑] 读取素材失败', {
+      logAiEditorError('[AI 剪辑] 读取素材失败', {
         fileName: typeof filePath === 'string' ? path.basename(filePath) : undefined,
         error: error instanceof Error ? error.message : String(error),
       })
@@ -248,12 +285,28 @@ export function register(): void {
   })
 
   ipcMain.handle('ai-editor:open-write', async (_event, filePath: string) => {
-    const target = absoluteFilePath(filePath, '文件')
-    await mkdir(path.dirname(target), { recursive: true })
-    const handle = await open(target, 'w', 0o600)
-    const handleId = randomUUID()
-    writeHandles.set(handleId, { filePath: target, handle })
-    return handleId
+    const fileName = typeof filePath === 'string' ? path.basename(filePath) : undefined
+    try {
+      const target = absoluteFilePath(filePath, '文件')
+      await mkdir(path.dirname(target), { recursive: true })
+      let overwriting = false
+      try {
+        overwriting = (await stat(target)).isFile()
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      const handle = await open(target, 'w', 0o600)
+      const handleId = randomUUID()
+      writeHandles.set(handleId, { filePath: target, handle, bytesWritten: 0 })
+      logAiEditorInfo('[AI 剪辑] 开始写入导出文件', { fileName: path.basename(target), overwriting })
+      return handleId
+    } catch (error) {
+      logAiEditorError('[AI 剪辑] 打开导出文件失败', {
+        fileName,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
   })
 
   ipcMain.handle('ai-editor:write-chunk', async (_event, handleId: string, data: ArrayBuffer | Uint8Array, position: number) => {
@@ -266,6 +319,7 @@ export function register(): void {
       const result = await entry.handle.write(bytes, offset, bytes.byteLength - offset, start + offset)
       if (result.bytesWritten <= 0) throw new Error('文件写入失败')
       offset += result.bytesWritten
+      entry.bytesWritten += result.bytesWritten
     }
   })
 

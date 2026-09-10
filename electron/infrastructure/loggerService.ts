@@ -9,6 +9,7 @@ type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 
 const MAIN_PREFIX = 'main'
 const RENDERER_PREFIX = 'renderer'
+const OPENREEL_PREFIX = 'openreel'
 
 function logDir(): string {
   return logDirForBaseDir(currentBaseDir())
@@ -77,6 +78,11 @@ function formatLog(level: LogLevel, message: string, meta?: unknown): string {
   return `[${localTimestamp()}] [${level}] ${safeMsg}${metaStr}\n`
 }
 
+function normalizeLogLevel(level: string): LogLevel {
+  const normalizedLevel = typeof level === 'string' ? level.toUpperCase() : 'INFO'
+  return (['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(normalizedLevel) ? normalizedLevel : 'INFO') as LogLevel
+}
+
 /** 每次启动只保留当天日志，避免历史调试输出干扰问题定位。 */
 function cleanOldLogs(): void {
   try {
@@ -123,14 +129,17 @@ export function logMainError(message: string, meta?: unknown): void {
 
 /** 渲染进程发来的日志由这个函数写入 renderer 日志文件 */
 export function logRendererMessage(level: string, message: string, meta?: unknown): void {
-  const normalizedLevel = typeof level === 'string' ? level.toUpperCase() : 'INFO'
-  const lvl = (['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(normalizedLevel) ? normalizedLevel : 'INFO') as LogLevel
-  writeLog(RENDERER_PREFIX, lvl, message, meta)
+  writeLog(RENDERER_PREFIX, normalizeLogLevel(level), message, meta)
+}
+
+/** OpenReel iframe 日志单独写文件，同时由 bridge 镜像到 renderer 日志。 */
+export function logOpenReelMessage(level: string, message: string, meta?: unknown): void {
+  writeLog(OPENREEL_PREFIX, normalizeLogLevel(level), message, meta)
 }
 
 /** 导出相关日志（同时写入 main 和 renderer 日志）双写 */
 export function logExport(level: string, message: string, meta?: unknown): void {
-  const lvl = (['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(level) ? level : 'INFO') as LogLevel
+  const lvl = normalizeLogLevel(level)
   writeLog(MAIN_PREFIX, lvl, `[EXPORT] ${message}`, meta)
   writeLog(RENDERER_PREFIX, lvl, `[EXPORT] ${message}`, meta)
 }

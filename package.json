@@ -51,6 +51,7 @@
     "test:semantic-worker": "node scripts/test-semantic-worker-protocol.mjs",
     "test:subtitles": "node --experimental-strip-types scripts/test-subtitle-protocol.mjs && node --experimental-strip-types scripts/test-subtitle-segmentation.mjs && node --experimental-strip-types scripts/test-subtitle-track.mjs && node scripts/test-workspace-subtitle-storage.mjs",
     "test:e2e": "pnpm run build:app && playwright test",
+    "test:openreel-bridge": "node scripts/test-openreel-bridge.mjs",
     "test:model-loader": "node scripts/test-model-loader.mjs",
     "test:model-resources": "node scripts/test-model-resource-release.mjs",
     "test:downloads": "node scripts/test-resumable-download.mjs && node scripts/test-media-download.mjs",
