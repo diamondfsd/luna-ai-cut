@@ -5,7 +5,7 @@ import { getCurrentHotVersion } from './infrastructure/hotUpdater'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
-import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './infrastructure/loggerService'
+import { initLogger, logMainInfo, logMainError, logMainWarn } from './infrastructure/loggerService'
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrastructure/crashDiagnostics'
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
 import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
@@ -370,16 +370,6 @@ function registerIpc(): void {
     const fn = (mod as { register?: (context: IpcContext) => void }).register
     if (typeof fn === 'function') fn(ctx)
   }
-
-  // ── 渲染进程日志广播 ──
-  ipcMain.on('log:renderer', (_event, level: string, message: string, meta?: unknown) => {
-    logRendererMessage(level, message, meta)
-  })
-  ipcMain.on('log:main', (_event, level: string, message: string, meta?: unknown) => {
-    if (level === 'error') logMainError(message, meta)
-    else if (level === 'warn') logMainWarn(message, meta)
-    else logMainInfo(message, meta)
-  })
 
   // ── 设备调试 ──
   registerDeviceDebugHandlers(() => win)
