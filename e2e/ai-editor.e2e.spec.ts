@@ -1,5 +1,7 @@
 import { expect, test } from './fixtures/lunaElectron'
+import { spawn } from 'node:child_process'
 import { access, readFile, stat } from 'node:fs/promises'
+import { createInterface } from 'node:readline'
 import path from 'node:path'
 
 test('AI 剪辑导航打开 OpenReel 编辑器', async ({ lunaApp }) => {
@@ -9,6 +11,56 @@ test('AI 剪辑导航打开 OpenReel 编辑器', async ({ lunaApp }) => {
   await expect(editorFrame).toBeVisible()
   await expect(editorFrame.contentFrame().locator('#root')).not.toBeEmpty({ timeout: 30_000 })
 
+  expect(lunaApp.runtimeErrors).toEqual([])
+})
+
+test('AI 剪辑通过本机 MCP 返回工具并执行操作', async ({ lunaApp }) => {
+  const sourcePath = path.resolve(import.meta.dirname, '../build/icon.png')
+  await lunaApp.page.evaluate((source) => {
+    history.pushState({ usr: { media: [{ path: source, name: 'icon.png', kind: 'image' }] }, key: 'mcp-test' }, '', '#/ai-editor')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, sourcePath)
+
+  const editorFrame = lunaApp.page.locator('iframe[title="AI 剪辑"]')
+  const editor = editorFrame.contentFrame()
+  await expect(editor.locator('#root')).not.toBeEmpty({ timeout: 30_000 })
+  await expect(editor.getByText('icon.png', { exact: true })).toBeVisible({ timeout: 30_000 })
+
+  const endpointPath = path.join(lunaApp.temporaryRoot, 'user-data', '.luna-ai-cut', 'mcp-endpoint.json')
+  const endpoint = JSON.parse(await readFile(endpointPath, 'utf8')) as { url: string; token: string }
+  const client = spawn(process.execPath, [path.resolve(import.meta.dirname, '../scripts/luna-mcp.mjs')], {
+    env: { ...process.env, LUNA_MCP_ENDPOINT: endpointPath },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const output = createInterface({ input: client.stdout, crlfDelay: Infinity })
+  const outputIterator = output[Symbol.asyncIterator]()
+  const nextResponse = async () => JSON.parse((await outputIterator.next()).value as string) as {
+    result?: { tools?: Array<{ name?: string }>; content?: Array<{ text?: string }> }
+  }
+
+  try {
+    client.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })}\n`)
+    expect((await nextResponse()).result).toBeTruthy()
+    client.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })}\n`)
+    const tools = (await nextResponse()).result?.tools ?? []
+    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['rename_project', 'add_track', 'create_text_clip']))
+
+    client.stdin.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'rename_project', arguments: { name: 'MCP 测试项目' } },
+    })}\n`)
+    const renameResult = (await nextResponse()).result?.content?.[0]?.text
+    expect(renameResult ? JSON.parse(renameResult) : null).toMatchObject({ ok: true })
+  } finally {
+    client.stdin.end()
+    client.kill()
+    output.close()
+  }
+
+  expect(endpoint.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/rpc$/)
+  expect(endpoint.token).toMatch(/^[a-f0-9]{64}$/)
   expect(lunaApp.runtimeErrors).toEqual([])
 })
 

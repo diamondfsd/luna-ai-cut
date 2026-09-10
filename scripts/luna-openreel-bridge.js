@@ -1,6 +1,7 @@
 (() => {
   const CHOOSE_ASSETS_TIMEOUT_MS = 60_000
   let pendingImportAssets = []
+  let mcpRequestHandler = null
 
   const parentApi = () => {
     const parentWindow = window.parent
@@ -61,10 +62,37 @@
     parentLog('error', '[未处理的异步异常]', { reason: logValue(event.reason) })
   })
 
-  window.addEventListener('message', (event) => {
+  window.addEventListener('message', async (event) => {
     if (event.source !== window.parent) return
     const message = event.data
-    if (!message || message.source !== 'luna-host' || message.type !== 'initial-media-sources') return
+    if (!message || message.source !== 'luna-host') return
+
+    if (message.type === 'mcp-request') {
+      const response = typeof mcpRequestHandler === 'function'
+        ? await Promise.resolve(mcpRequestHandler({
+          callId: message.callId,
+          kind: message.kind,
+          name: message.name,
+          args: message.args,
+        })).catch((error) => ({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+        : { ok: false, error: 'AI 剪辑工具尚未准备好' }
+      try {
+        window.parent.postMessage({
+          source: 'luna-openreel',
+          type: 'mcp-response',
+          callId: message.callId,
+          response,
+        }, '*')
+      } catch {
+        // The host request will time out and report the failed handoff.
+      }
+      return
+    }
+
+    if (message.type !== 'initial-media-sources') return
     pendingImportAssets = Array.isArray(message.assets)
       ? message.assets.filter((asset) => asset && typeof asset.path === 'string' && typeof asset.name === 'string')
       : []
@@ -154,6 +182,14 @@
   // OpenReel only checks for fs to enable native project and export storage.
   // Keeping platform unset leaves the editor in its regular web UI.
   window.openreel = Object.assign(window.openreel || {}, {
+    mcp: {
+      onRequest: (handler) => {
+        mcpRequestHandler = handler
+        return () => {
+          if (mcpRequestHandler === handler) mcpRequestHandler = null
+        }
+      },
+    },
     lunaProject: {
       list: () => parentApi().project.list(),
       create: (name) => parentApi().project.create(name),

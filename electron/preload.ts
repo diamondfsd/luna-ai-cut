@@ -74,6 +74,21 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       delete: (projectId) => ipcRenderer.invoke('ai-editor:delete-project', projectId),
       rename: (projectId, name) => ipcRenderer.invoke('ai-editor:rename-project', projectId, name),
     },
+    mcp: {
+      onRequest: (callback) => {
+        const listener = (_event: Electron.IpcRendererEvent, request: import('../src/shared/types').AiEditorMcpRequest): void => {
+          Promise.resolve(callback(request)).then(
+            (response) => ipcRenderer.send('ai-editor:mcp-response', request.callId, response),
+            (error: unknown) => ipcRenderer.send('ai-editor:mcp-response', request.callId, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          )
+        }
+        ipcRenderer.on('ai-editor:mcp-request', listener)
+        return () => ipcRenderer.off('ai-editor:mcp-request', listener)
+      },
+    },
     showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),
     readFile: (filePath) => ipcRenderer.invoke('ai-editor:read-file', filePath),

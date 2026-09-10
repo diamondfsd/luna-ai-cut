@@ -4,9 +4,11 @@ import vm from 'node:vm'
 
 const source = await readFile(new URL('./luna-openreel-bridge.js', import.meta.url), 'utf8')
 const listeners = new Map()
+const postedMessages = []
 const openReelLogs = []
 const rendererLogs = []
 const hostWindow = {
+  postMessage: (message) => postedMessages.push(message),
   luna: {
     logOpenReel: (...args) => openReelLogs.push(args),
     log: (...args) => rendererLogs.push(args),
@@ -59,5 +61,28 @@ assert.equal(openReelLogs[2][0], 'error')
 assert.match(openReelLogs[2][1], /^\[OpenReel\] /)
 assert.equal(openReelLogs[2][2].reason.message, 'promise failed')
 assert.equal(rendererLogs.length, openReelLogs.length)
+
+const removeMcpHandler = iframeWindow.openreel.mcp.onRequest(async (request) => ({
+  ok: true,
+  result: { echoed: request.name, args: request.args },
+}))
+await listeners.get('message')({
+  source: hostWindow,
+  data: {
+    source: 'luna-host',
+    type: 'mcp-request',
+    callId: 'mcp-test',
+    kind: 'callTool',
+    name: 'rename_project',
+    args: { name: '测试项目' },
+  },
+})
+assert.deepEqual(JSON.parse(JSON.stringify(postedMessages.at(-1))), {
+  source: 'luna-openreel',
+  type: 'mcp-response',
+  callId: 'mcp-test',
+  response: { ok: true, result: { echoed: 'rename_project', args: { name: '测试项目' } } },
+})
+removeMcpHandler()
 
 console.log('OpenReel bridge logging passed')

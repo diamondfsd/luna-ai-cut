@@ -32,8 +32,26 @@ export interface AiEditorProjectApi {
   rename(projectId: string, name: string): Promise<AiEditorProjectSummary>
 }
 
+export interface AiEditorMcpRequest {
+  callId: string
+  kind: 'listTools' | 'callTool'
+  name?: string
+  args?: Record<string, unknown>
+}
+
+export interface AiEditorMcpResponse {
+  ok: boolean
+  result?: unknown
+  error?: string
+}
+
+export interface AiEditorMcpApi {
+  onRequest(callback: (request: AiEditorMcpRequest) => Promise<AiEditorMcpResponse>): () => void
+}
+
 export interface AiEditorFileApi {
   project: AiEditorProjectApi
+  mcp: AiEditorMcpApi
   showSaveDialog(options: AiEditorFileDialogOptions): Promise<string | null>
   showOpenDialog(options: AiEditorFileDialogOptions): Promise<string | null>
   readFile(filePath: string): Promise<string>

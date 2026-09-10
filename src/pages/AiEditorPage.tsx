@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
-import type { WorkspaceMediaAsset } from '../shared/types'
+import type { AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import './AiEditorPage.css'
@@ -25,6 +25,18 @@ interface ChooseAssetsRequest {
   existingPaths: string[]
 }
 
+interface PendingMcpRequest {
+  resolve: (response: AiEditorMcpResponse) => void
+  timer: number
+}
+
+interface McpFrameResponse {
+  source: 'luna-openreel'
+  type: 'mcp-response'
+  callId: string
+  response: AiEditorMcpResponse
+}
+
 function isChooseAssetsRequest(value: unknown): value is ChooseAssetsRequest {
   if (!value || typeof value !== 'object') return false
   const message = value as Partial<ChooseAssetsRequest>
@@ -34,6 +46,15 @@ function isChooseAssetsRequest(value: unknown): value is ChooseAssetsRequest {
     && typeof message.projectId === 'string'
     && Array.isArray(message.existingPaths)
     && message.existingPaths.every((path) => typeof path === 'string')
+}
+
+function isMcpFrameResponse(value: unknown): value is McpFrameResponse {
+  if (!value || typeof value !== 'object') return false
+  const message = value as Partial<McpFrameResponse>
+  return message.source === 'luna-openreel'
+    && message.type === 'mcp-response'
+    && typeof message.callId === 'string'
+    && Boolean(message.response && typeof message.response === 'object')
 }
 
 function isMediaSource(value: unknown): value is AiEditorMediaSource {
@@ -167,6 +188,7 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const importStartedRef = useRef(false)
   const pendingChooseAssetsRef = useRef<ChooseAssetsRequest | null>(null)
   const pendingChooseAssetsTargetRef = useRef<WindowProxy | null>(null)
+  const pendingMcpRequestsRef = useRef(new Map<string, PendingMcpRequest>())
   const [editorView, setEditorView] = useState<{ mode: 'projects' | 'media'; media: AiEditorMediaSource[]; projectId: string | null; revision: number }>({
     mode: 'projects',
     media: [],
@@ -178,6 +200,37 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const [importFailed, setImportFailed] = useState(false)
   const [chooseAssetsOpen, setChooseAssetsOpen] = useState(false)
   const [chooseAssetsExistingPaths, setChooseAssetsExistingPaths] = useState<string[]>([])
+
+  useEffect(() => {
+    const pendingMcpRequests = pendingMcpRequestsRef.current
+    const offRequest = window.luna.aiEditor.mcp.onRequest(async (request: AiEditorMcpRequest) => {
+      if (!active) return { ok: false, error: 'AI 剪辑页面未打开' }
+      const target = frameRef.current?.contentWindow
+      if (!target) return { ok: false, error: 'AI 剪辑页面尚未加载' }
+
+      return await new Promise<AiEditorMcpResponse>((resolve) => {
+        const timer = window.setTimeout(() => {
+          pendingMcpRequests.delete(request.callId)
+          resolve({ ok: false, error: 'AI 剪辑响应超时' })
+        }, 60_000)
+        pendingMcpRequests.set(request.callId, { resolve, timer })
+        target.postMessage({
+          source: 'luna-host',
+          type: 'mcp-request',
+          ...request,
+        }, '*')
+      })
+    })
+
+    return () => {
+      offRequest()
+      for (const request of pendingMcpRequests.values()) {
+        window.clearTimeout(request.timer)
+        request.resolve({ ok: false, error: 'AI 剪辑页面已关闭' })
+      }
+      pendingMcpRequests.clear()
+    }
+  }, [active])
 
   useEffect(() => {
     if (!active) return
@@ -230,6 +283,16 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
 
   useEffect(() => {
     function handleMessage(event: MessageEvent<unknown>): void {
+      if (event.source === frameRef.current?.contentWindow && isMcpFrameResponse(event.data)) {
+        const pending = pendingMcpRequestsRef.current.get(event.data.callId)
+        if (pending) {
+          pendingMcpRequestsRef.current.delete(event.data.callId)
+          window.clearTimeout(pending.timer)
+          pending.resolve(event.data.response)
+        }
+        return
+      }
+
       const request = isChooseAssetsRequest(event.data) ? event.data : null
       if (!request) return
       if (event.source !== frameRef.current?.contentWindow) return
