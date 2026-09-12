@@ -28,9 +28,21 @@ export function HelpDialog({ children }: HelpDialogProps) {
   const [showHotNotes, setShowHotNotes] = useState(false)
 
   useEffect(() => {
-    if (!open) return
-    window.luna.getHotUpdateVersion().then(v => setHotVersion(v)).catch(() => setHotVersion(null))
-  }, [open])
+    let cancelled = false
+    void Promise.all([
+      window.luna.getHotUpdateVersion(),
+      window.luna.getAutomaticHotUpdate(),
+    ]).then(([version, automaticHotUpdate]) => {
+      if (cancelled) return
+      setHotVersion(version)
+      setHotUpdateCheck(automaticHotUpdate)
+    }).catch(() => {
+      if (cancelled) return
+      setHotVersion(null)
+      setHotUpdateCheck(null)
+    })
+    return () => { cancelled = true }
+  }, [])
 
   async function handleCheckUpdate(): Promise<void> {
     setChecking(true)
@@ -38,7 +50,7 @@ export function HelpDialog({ children }: HelpDialogProps) {
     setUpdateInfo(null)
     setHotUpdateCheck(null)
     try {
-      // 只有用户在帮助窗口中点击“检查更新”后才访问更新服务。
+      // 安装包更新仍由用户手动检查；此按钮也会立即重新检查热更新。
       const [info, hotInfo] = await Promise.all([
         window.luna.checkForUpdates().catch(() => null),
         window.luna.checkForHotUpdates().catch(() => null),

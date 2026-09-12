@@ -52,6 +52,8 @@ export interface CameraMediaSourceOptions {
   mode: CameraConnectionMode
   deviceId?: string
   host?: string
+  /** 用于取消超时或被新连接替代的后台连接任务。 */
+  connectionAttemptId?: string
   /** 连接入口可先探测相机地址，避免已连通时重复走蓝牙和 Wi-Fi 切换。 */
   preferExistingConnection?: boolean
   storageId?: string

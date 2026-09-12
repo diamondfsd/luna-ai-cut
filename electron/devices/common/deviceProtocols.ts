@@ -9,7 +9,7 @@ export interface DeviceProtocol {
   readonly definition: DeviceDefinition
   wakeDevice(): Promise<void>
   checkStatus(host?: string): Promise<ConnectionStatus>
-  connect(options?: DeviceConnectOptions): Promise<ConnectionStatus>
+  connect(options?: DeviceConnectOptions, isCancelled?: () => boolean): Promise<ConnectionStatus>
   listFiles(options?: DeviceConnectOptions): Promise<LunaFile[]>
   deleteFiles(cameraPaths: string[], options?: DeviceConnectOptions): Promise<CameraDeleteResult>
   disconnect(host?: string): Promise<void>
@@ -52,7 +52,7 @@ export class LunaUltraProtocol implements DeviceProtocol {
     return withDeviceInfo(await client.checkStatus(), this.definition)
   }
 
-  async connect(options?: DeviceConnectOptions): Promise<ConnectionStatus> {
+  async connect(options?: DeviceConnectOptions, isCancelled?: () => boolean): Promise<ConnectionStatus> {
     const settings = await getSettings()
     const host = options?.host || settings.cameraHost || this.definition.defaultHost
     logMainInfo(`[设备协议] 开始连接设备`, { device: this.definition.name, host })
@@ -61,13 +61,51 @@ export class LunaUltraProtocol implements DeviceProtocol {
 
     // 连接入口优先建立 6666 控制会话；失败后再做状态探测，用于返回更明确的错误信息。
     const MAX_RETRIES = 3
+    let lastStatus: ConnectionStatus | null = null
     for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
+      if (isCancelled?.()) {
+        client.close()
+        throw new Error('设备连接已取消')
+      }
       try {
         await client.connect()
-        break
+        if (isCancelled?.()) {
+          client.close()
+          throw new Error('设备连接已取消')
+        }
+
+        const connectedStatus = await client.checkStatus()
+        lastStatus = connectedStatus
+        if (connectedStatus.controlOk) {
+          client.onKeepAliveFailed = this.onConnectionLost ?? null
+          client.startKeepAlive()
+          await saveSettings({
+            activeDeviceId: this.definition.id,
+            cameraHost: client.host,
+          })
+          logMainInfo(`[设备协议] 连接完成`, { device: this.definition.name, host })
+          return withDeviceInfo({ ...connectedStatus, message: `已连接 ${this.definition.name}` }, this.definition)
+        }
+
+        client.stopKeepAlive()
+        client.close()
+        logMainWarn(`[设备协议] 第 ${attempt + 1}/${MAX_RETRIES} 次连接验证失败`, {
+          host,
+          httpOk: connectedStatus.httpOk,
+          controlOk: connectedStatus.controlOk,
+          message: connectedStatus.message,
+        })
       } catch (error) {
+        if (isCancelled?.()) {
+          client.close()
+          throw error
+        }
+
+        client.stopKeepAlive()
+        client.close()
+
         if (attempt >= MAX_RETRIES - 1) {
-          const status = await client.checkStatus()
+          const status = lastStatus ?? await client.checkStatus()
           logMainWarn(`[设备协议] 控制会话连接失败`, {
             host,
             attempts: MAX_RETRIES,
@@ -88,31 +126,17 @@ export class LunaUltraProtocol implements DeviceProtocol {
           host,
           error: error instanceof Error ? error.message : String(error),
         })
+      }
+      if (attempt < MAX_RETRIES - 1) {
         await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 800 : 3000))
       }
     }
-
-    const connectedStatus = await client.checkStatus()
-    if (!connectedStatus.controlOk) {
-      client.stopKeepAlive()
-      client.close()
-      logMainWarn(`[设备协议] 连接验证失败`, {
-        host,
-        httpOk: connectedStatus.httpOk,
-        controlOk: connectedStatus.controlOk,
-        message: connectedStatus.message,
-      })
-      return withDeviceInfo(connectedStatus, this.definition)
-    }
-
-    client.onKeepAliveFailed = this.onConnectionLost ?? null
-    client.startKeepAlive()
-    await saveSettings({
-      activeDeviceId: this.definition.id,
-      cameraHost: client.host,
-    })
-    logMainInfo(`[设备协议] 连接完成`, { device: this.definition.name, host })
-    return withDeviceInfo({ ...connectedStatus, message: `已连接 ${this.definition.name}` }, this.definition)
+    return withDeviceInfo(lastStatus ?? {
+      host,
+      httpOk: false,
+      controlOk: false,
+      message: '连接失败',
+    }, this.definition)
   }
 
   async listFiles(options?: DeviceConnectOptions): Promise<LunaFile[]> {
@@ -174,13 +198,14 @@ export class GoUltraProtocol implements DeviceProtocol {
     return withDeviceInfo(await client.checkStatus(), this.definition)
   }
 
-  async connect(options?: DeviceConnectOptions): Promise<ConnectionStatus> {
+  async connect(options?: DeviceConnectOptions, isCancelled?: () => boolean): Promise<ConnectionStatus> {
     const settings = await getSettings()
     const host = options?.host || settings.cameraHost || this.definition.defaultHost
     logMainInfo(`[GoUltraProtocol] 开始连接`, { device: this.definition.name, host })
 
     // 端口检测
     const client = this.clientFor(host)
+    if (isCancelled?.()) throw new Error('设备连接已取消')
     const status = await client.checkStatus()
     logMainInfo(`[GoUltraProtocol] 端口检测结果`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
 

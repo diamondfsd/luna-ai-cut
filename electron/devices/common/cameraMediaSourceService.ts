@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { cameraPathsForFiles } from './cameraDeletePaths'
 import { deviceDefinitionFor } from '../definitions/deviceDefaults'
 import { getLocalResourcesDir, getSettings, resolveLocalThumbnails, saveSettings } from '../../storage/fileService'
@@ -22,8 +24,8 @@ import type {
 } from '../../../src/shared/types'
 import { djiSessionFor, disconnectDjiSession } from '../dji/djiCameraSession'
 import { djiErrorDetails } from '../dji/djiLog'
-import { DefaultLunaWirelessPreparation, type LunaWirelessPreparation } from '../insta360/lunaWirelessPreparation'
-import { autoJoinDeviceWifi, restoreDeviceWifi } from '../../platform/network/wifiAutoJoinService'
+import { DefaultLunaWirelessPreparation } from '../insta360/lunaWirelessPreparation'
+import { autoJoinDeviceWifi, type WifiAutoJoinResult } from '../../platform/network/wifiAutoJoinService'
 import { stopCameraVideoStream } from './cameraVideoStreamService'
 import { logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
@@ -95,9 +97,32 @@ function attachSourceDevice(files: LunaFile[], deviceId: string): LunaFile[] {
   }))
 }
 
-class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
-  private lunaPreparation: LunaWirelessPreparation | null = null
+interface ActiveWirelessConnection {
+  readonly id: string
+  readonly abortController: AbortController
+  cancelled: boolean
+  cleanup?: () => Promise<void>
+}
 
+const activeWirelessConnections = new Map<string, ActiveWirelessConnection>()
+
+function beginWirelessConnection(sessionKey: string, requestedId?: string): ActiveWirelessConnection {
+  const previous = activeWirelessConnections.get(sessionKey)
+  if (previous) {
+    previous.cancelled = true
+    previous.abortController.abort()
+    void previous.cleanup?.().catch(() => undefined)
+  }
+  const current = { id: requestedId ?? randomUUID(), abortController: new AbortController(), cancelled: false }
+  activeWirelessConnections.set(sessionKey, current)
+  return current
+}
+
+function isCurrentWirelessConnection(sessionKey: string, attempt: ActiveWirelessConnection): boolean {
+  return activeWirelessConnections.get(sessionKey) === attempt && !attempt.cancelled
+}
+
+class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
   constructor(
     private readonly ctx: IpcContext,
     private readonly options: CameraMediaSourceOptions,
@@ -129,36 +154,56 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
     const { deviceId, host, storageId } = await this.values()
     const definition = deviceDefinitionFor(deviceId)
     const wifiSessionKey = `${deviceId}:${host}`
+    const attempt = beginWirelessConnection(wifiSessionKey, this.options.connectionAttemptId)
+    const isCancelled = (): boolean => !isCurrentWirelessConnection(wifiSessionKey, attempt)
     const loopback = isLoopbackHost(host)
-    const wifiJoin = loopback
-      ? { attempted: false, connected: true, wifiManualConnectionRequired: false, message: '模拟设备使用本机网络' }
-      : this.options.wireless?.preparation === 'already-connected'
-        ? { attempted: false, connected: true, message: '已使用当前系统 Wi-Fi' }
-        : await autoJoinDeviceWifi(
-          definition.wifi,
-          wifiSessionKey,
-          this.options.wireless?.password,
-          this.options.wireless?.ssid,
-          definition.protocol === 'insta360'
-            ? { host, port: definition.controlPort, protocol: 'insta360-stream' }
-            : undefined,
-        )
     const protocol = this.protocol(definition)
-    if (!loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected && wifiJoin.wifiPasswordRequired) {
-      return wirelessStatus({
-        deviceId,
-        deviceName: definition.name,
-        host,
-        httpOk: false,
-        controlOk: false,
-        wifiSsid: wifiJoin.ssid,
-        wifiPasswordRequired: wifiJoin.wifiPasswordRequired,
-        wifiManualConnectionRequired: wifiJoin.wifiManualConnectionRequired,
-        message: wifiJoin.message,
-      }, definition, host)
+    let wifiJoin: WifiAutoJoinResult = {
+      attempted: false,
+      connected: true,
+      message: '已使用当前系统 Wi-Fi',
     }
     try {
-      const status = await protocol.connect({ deviceId, host, storageId })
+      if (isCancelled()) throw new Error('设备连接已取消')
+
+      // 切换系统 Wi-Fi 前关闭旧控制 socket，避免把旧网络上的连接误判为存活。
+      if (!loopback && this.options.wireless?.preparation !== 'already-connected' && definition.protocol === 'insta360') {
+        await protocol.disconnect(host)
+      }
+
+      wifiJoin = loopback
+        ? { attempted: false, connected: true, wifiManualConnectionRequired: false, message: '模拟设备使用本机网络' }
+        : this.options.wireless?.preparation === 'already-connected'
+          ? { attempted: false, connected: true, message: '已使用当前系统 Wi-Fi' }
+          : await autoJoinDeviceWifi(
+            definition.wifi,
+            wifiSessionKey,
+            this.options.wireless?.password,
+            this.options.wireless?.ssid,
+            definition.protocol === 'insta360'
+              ? { host, port: definition.controlPort, protocol: 'insta360-stream' }
+              : undefined,
+            isCancelled,
+            attempt.abortController.signal,
+          )
+
+      if (isCancelled()) throw new Error('设备连接已取消')
+      if (wifiJoin.cancelled) throw new Error('设备连接已取消')
+      if (!loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected && wifiJoin.wifiPasswordRequired) {
+        return wirelessStatus({
+          deviceId,
+          deviceName: definition.name,
+          host,
+          httpOk: false,
+          controlOk: false,
+          wifiSsid: wifiJoin.ssid,
+          wifiPasswordRequired: wifiJoin.wifiPasswordRequired,
+          wifiManualConnectionRequired: wifiJoin.wifiManualConnectionRequired,
+          message: wifiJoin.message,
+        }, definition, host)
+      }
+      const status = await protocol.connect({ deviceId, host, storageId }, isCancelled)
+      if (isCancelled()) throw new Error('设备连接已取消')
       await saveSettings({ cameraConnectionMode: 'wireless', activeDeviceId: deviceId, cameraHost: host })
       const statusWithWifiMessage = withWifiFailureMessage(
         status,
@@ -166,17 +211,12 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         !loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected,
       )
       if (!status.controlOk) {
-        const restore = wifiJoin.attempted && wifiJoin.connected
-          ? await restoreDeviceWifi(wifiSessionKey).catch(() => null)
-          : null
         return wirelessStatus({
           ...statusWithWifiMessage,
           wifiSsid: statusWithWifiMessage.wifiSsid ?? wifiJoin.ssid,
           wifiPasswordRequired: wifiJoin.wifiPasswordRequired,
           wifiManualConnectionRequired: wifiJoin.wifiManualConnectionRequired,
-          message: restore?.attempted
-            ? `${statusWithWifiMessage.message}；${restore.message}`
-            : statusWithWifiMessage.message,
+          message: statusWithWifiMessage.message,
         }, definition, host)
       }
       return wirelessStatus({
@@ -184,13 +224,14 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         message: wifiJoin.connected ? `${wifiJoin.message}，${status.message}` : status.message,
       }, definition, host)
     } catch (error) {
+      if (isCancelled()) throw error
       const detail = error instanceof Error ? error.message : String(error)
       const wifiHint = !loopback && definition.wifi?.autoJoin && !wifiJoin.connected ? `${wifiJoin.message}。` : ''
-      const restore = wifiJoin.attempted && wifiJoin.connected
-        ? await restoreDeviceWifi(wifiSessionKey).catch(() => null)
-        : null
-      const restoreHint = restore?.attempted ? `。${restore.message}` : ''
-      throw new Error(`${wifiHint}${detail}${restoreHint}`)
+      throw new Error(`${wifiHint}${detail}`)
+    } finally {
+      if (activeWirelessConnections.get(wifiSessionKey) === attempt) {
+        activeWirelessConnections.delete(wifiSessionKey)
+      }
     }
   }
 
@@ -205,11 +246,22 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
         message: '当前设备可以直接使用已连接的网络',
       }
     }
-    this.lunaPreparation = new DefaultLunaWirelessPreparation(deviceId, host, this.ctx.win, definition.controlPort)
-    const result = await this.lunaPreparation.prepare({ ...this.options, ...options })
-    return {
-      ...result,
-      capabilities: result.capabilities ?? this.lunaPreparation.capabilities,
+    const sessionKey = `${deviceId}:${host}`
+    const attempt = beginWirelessConnection(sessionKey, options.connectionAttemptId ?? this.options.connectionAttemptId)
+    const isCancelled = (): boolean => !isCurrentWirelessConnection(sessionKey, attempt)
+    try {
+      const preparation = new DefaultLunaWirelessPreparation(deviceId, host, this.ctx.win, definition.controlPort)
+      attempt.cleanup = () => preparation.close()
+      const result = await preparation.prepare({ ...this.options, ...options })
+      if (isCancelled()) throw new Error('设备连接已取消')
+      return {
+        ...result,
+        capabilities: result.capabilities ?? preparation.capabilities,
+      }
+    } finally {
+      if (activeWirelessConnections.get(sessionKey) === attempt) {
+        activeWirelessConnections.delete(sessionKey)
+      }
     }
   }
 
@@ -249,12 +301,23 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
   async disconnect(): Promise<void> {
     const { deviceId, host } = await this.values()
     const wifiSessionKey = `${deviceId}:${host}`
-    try {
-      await stopCameraVideoStream({ mode: 'wireless', deviceId, host })
-      await this.protocol(deviceDefinitionFor(deviceId)).disconnect(host)
-    } finally {
-      await restoreDeviceWifi(wifiSessionKey).catch(() => undefined)
+    const active = activeWirelessConnections.get(wifiSessionKey)
+    if (active && this.options.connectionAttemptId && active.id !== this.options.connectionAttemptId) {
+      logMainInfo('[设备连接] 忽略旧连接任务的断开请求', {
+        sessionKey: wifiSessionKey,
+        requestedAttemptId: this.options.connectionAttemptId,
+        activeAttemptId: active.id,
+      })
+      return
     }
+    if (active) {
+      active.cancelled = true
+      active.abortController.abort()
+      activeWirelessConnections.delete(wifiSessionKey)
+    }
+    await active?.cleanup?.().catch(() => undefined)
+    await stopCameraVideoStream({ mode: 'wireless', deviceId, host })
+    await this.protocol(deviceDefinitionFor(deviceId)).disconnect(host)
   }
 }
 
