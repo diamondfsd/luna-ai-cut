@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Cable, Camera, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, KeyRound, MonitorCog, RefreshCw, Wifi } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Cable, Camera, Check, CheckCircle2, Copy, FolderOpen, HardDrive, HelpCircle, Info, KeyRound, MonitorCog, RefreshCw, Wifi, X } from 'lucide-react'
 
 import type { AppSettings, CameraConnectionMode, CameraMediaSourceOptions, CameraMediaSourcePreparationResult, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MountedCameraVolume } from '../shared/types'
 import { SupportedDeviceList } from '../components/SupportedDeviceList'
@@ -43,6 +43,7 @@ interface DeviceConnectPageProps {
   phase: DeviceConnectionPhase
   settings: AppSettings | null
   onConnect: (rootPath?: string, deviceId?: string, wireless?: CameraMediaSourceOptions['wireless']) => Promise<void>
+  onCancelConnection: () => Promise<void>
   onPrepareConnection: (preferExistingConnection?: boolean) => Promise<CameraMediaSourcePreparationResult | null>
   preparedWifi: CameraMediaSourcePreparationResult['credentials'] | null
   onDeviceChange: (deviceId: string) => Promise<void>
@@ -59,6 +60,7 @@ export function DeviceConnectPage({
   phase,
   settings,
   onConnect,
+  onCancelConnection,
   onPrepareConnection,
   preparedWifi,
   onDeviceChange,
@@ -68,6 +70,7 @@ export function DeviceConnectPage({
   onStorageMigrated,
 }: DeviceConnectPageProps) {
   const [connecting, setConnecting] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false)
   const [diagnosticsRunning, setDiagnosticsRunning] = useState(false)
   const [diagnosticsResult, setDiagnosticsResult] = useState<string | null>(null)
@@ -84,6 +87,7 @@ export function DeviceConnectPage({
   const [wifiPasswordConnecting, setWifiPasswordConnecting] = useState(false)
   const [wifiManualFallbackEditing, setWifiManualFallbackEditing] = useState(false)
   const [wirelessPreparation, setWirelessPreparation] = useState<CameraMediaSourcePreparationResult | null>(null)
+  const cancelRequestedRef = useRef(false)
   const { migrating, migrationResult, restarting, migrate, restart } = useStorageMigration(settings, onStorageMigrated)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
@@ -187,12 +191,14 @@ export function DeviceConnectPage({
   }
 
   async function handleConnect(): Promise<void> {
+    cancelRequestedRef.current = false
     setConnecting(true)
     try {
       let preparation = wirelessPreparation
       let credentials = wifiCredentials
       if (isBluetoothWifiWireless && !credentials && (!preparation || (preparation.preparation === 'already-connected' && !preparation.requiresManualWifi))) {
         const result = await onPrepareConnection(true)
+        if (cancelRequestedRef.current) return
         setWirelessPreparation(result)
         preparation = result
         credentials = result?.credentials ?? null
@@ -222,11 +228,25 @@ export function DeviceConnectPage({
 
   async function handleReadWirelessWifi(): Promise<void> {
     if (!isBluetoothWifiWireless || connecting || isChecking) return
+    cancelRequestedRef.current = false
     setConnecting(true)
     try {
       const result = await onPrepareConnection()
+      if (cancelRequestedRef.current) return
       setWirelessPreparation(result)
     } finally {
+      setConnecting(false)
+    }
+  }
+
+  async function handleCancelConnection(): Promise<void> {
+    if (cancelling) return
+    cancelRequestedRef.current = true
+    setCancelling(true)
+    try {
+      await onCancelConnection()
+    } finally {
+      setCancelling(false)
       setConnecting(false)
     }
   }
@@ -439,6 +459,16 @@ export function DeviceConnectPage({
               >
                 {isWired ? '检测并连接' : isError ? '重新连接' : '开始连接'}
               </Button>
+              {isChecking && (
+                <Button
+                  variant="secondary"
+                  disabled={cancelling}
+                  onClick={() => void handleCancelConnection()}
+                  icon={<X size={16} />}
+                >
+                  {cancelling ? '正在取消' : '取消连接'}
+                </Button>
+              )}
               {isWired ? (
                 <Button variant="secondary" onClick={() => void handleChooseWiredCamera()} icon={<FolderOpen size={16} />}>
                   选择相机磁盘
@@ -607,7 +637,18 @@ export function DeviceConnectPage({
         closeOnMaskClick={!wifiPasswordConnecting}
         footer={(
           <>
-            <Button variant="secondary" disabled={wifiPasswordConnecting} onClick={closeWifiPasswordDialog}>取消</Button>
+            {wifiPasswordConnecting ? (
+              <Button
+                variant="secondary"
+                disabled={cancelling}
+                onClick={() => void handleCancelConnection()}
+                icon={<X size={16} />}
+              >
+                {cancelling ? '正在取消' : '取消连接'}
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={closeWifiPasswordDialog}>取消</Button>
+            )}
             {showWifiManualFallback ? (
               <Button variant="primary" onClick={openWifiSettingsFromDialog} icon={<MonitorCog size={16} />}>
                 打开 Wi-Fi 设置

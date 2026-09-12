@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { getCurrentHotVersion } from './infrastructure/hotUpdater'
+import { checkForHotUpdatesDaily, getCurrentHotVersion } from './infrastructure/hotUpdater'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
@@ -586,6 +586,7 @@ app.whenReady().then(async () => {
   const settings = await getSettings()
   setMainWindowCloseBehavior(settings.windowCloseBehavior)
   createWindow()
+  void checkForHotUpdatesDaily()
 
   // 设置窗口标题（含版本号，有热更新则追加 hot build 号）
   const hotVersion = !app.isPackaged ? null : getCurrentHotVersion()

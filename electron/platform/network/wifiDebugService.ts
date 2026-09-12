@@ -22,9 +22,10 @@ const execFileAsync = promisify(execFile)
 const DEFAULT_WIFI_TIMEOUT_MS = 15000
 const COREWLAN_HELPER_PATH = getMacosHelperPath('wifiCoreWlan')
 
-async function runCommand(command: string, args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS): Promise<string> {
+async function runCommand(command: string, args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS, signal?: AbortSignal): Promise<string> {
   const { stdout, stderr } = await execFileAsync(command, args, {
     timeout: timeoutMs,
+    signal,
     windowsHide: true,
     maxBuffer: 1024 * 1024 * 4,
   })
@@ -201,15 +202,36 @@ function normalizeWifiNetwork(value: unknown): WifiDebugNetwork {
   }
 }
 
-function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string): Promise<string> {
+function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(COREWLAN_HELPER_PATH, args, { windowsHide: true })
     let stdout = ''
     let stderr = ''
+    let settled = false
     const timer = setTimeout(() => {
       child.kill('SIGKILL')
-      reject(new Error(`CoreWLAN helper 超时（${timeoutMs}ms）`))
+      finishReject(new Error(`CoreWLAN helper 超时（${timeoutMs}ms）`))
     }, timeoutMs)
+
+    const cleanup = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', handleAbort)
+    }
+    const finishReject = (error: Error): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    const handleAbort = (): void => {
+      child.kill('SIGKILL')
+      finishReject(new Error('Wi-Fi 连接已取消'))
+    }
+    if (signal?.aborted) {
+      handleAbort()
+      return
+    }
+    signal?.addEventListener('abort', handleAbort, { once: true })
 
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
@@ -217,16 +239,17 @@ function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string): 
     child.stderr.on('data', (chunk: string) => { stderr += chunk })
     child.stdin.on('error', () => undefined)
     child.once('error', (error) => {
-      clearTimeout(timer)
-      reject(error)
+      finishReject(error)
     })
     child.once('close', (code) => {
-      clearTimeout(timer)
+      if (settled) return
       const raw = `${stdout}${stderr ? `\n${stderr}` : ''}`.trim()
       if (code !== 0 && !stdout) {
-        reject(new Error(raw || `CoreWLAN helper 退出码 ${code ?? '未知'}`))
+        finishReject(new Error(raw || `CoreWLAN helper 退出码 ${code ?? '未知'}`))
         return
       }
+      settled = true
+      cleanup()
       resolve(raw)
     })
 
@@ -237,14 +260,14 @@ function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string): 
   })
 }
 
-async function runCoreWlan<T>(args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS, stdin?: string): Promise<WifiDebugResult<T>> {
+async function runCoreWlan<T>(args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS, stdin?: string, signal?: AbortSignal): Promise<WifiDebugResult<T>> {
   if (!existsSync(COREWLAN_HELPER_PATH)) {
     return fail('未找到 macOS Wi-Fi helper，请重新安装应用', 'COREWLAN_HELPER_NOT_FOUND')
   }
 
   const raw = stdin === undefined
-    ? await runCommand(COREWLAN_HELPER_PATH, args, timeoutMs)
-    : await runCoreWlanCommand(args, timeoutMs, stdin)
+    ? await runCommand(COREWLAN_HELPER_PATH, args, timeoutMs, signal)
+    : await runCoreWlanCommand(args, timeoutMs, stdin, signal)
   const jsonStart = raw.indexOf('{')
   const jsonEnd = raw.lastIndexOf('}')
   if (jsonStart < 0 || jsonEnd < jsonStart) {
@@ -280,11 +303,12 @@ async function connectDarwinWifiWithPassword(
   timeoutMs: number,
   bssid?: string,
   skipSsidVerification = false,
+  signal?: AbortSignal,
 ): Promise<WifiDebugResult<WifiDebugStatus>> {
   const args = ['connect', '--ssid', ssid, '--password-stdin']
   if (skipSsidVerification) args.push('--skip-ssid-verification')
   if (bssid) args.push('--bssid', bssid)
-  const result = await runCoreWlan<unknown>(args, Math.min(Math.max(timeoutMs, 10000), 30000), password)
+  const result = await runCoreWlan<unknown>(args, Math.min(Math.max(timeoutMs, 10000), 30000), password, signal)
   if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
   const status = normalizeWifiStatus(result.data, result.raw)
   return ok(
@@ -389,7 +413,7 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;')
 }
 
-export async function connectWifiNetwork(options: WifiConnectOptions): Promise<WifiDebugResult<WifiDebugStatus>> {
+export async function connectWifiNetwork(options: WifiConnectOptions, signal?: AbortSignal): Promise<WifiDebugResult<WifiDebugStatus>> {
   const ssid = options.ssid.trim()
   const timeoutMs = options.timeoutMs ?? DEFAULT_WIFI_TIMEOUT_MS
   if (!ssid) return fail('请输入 SSID', 'SSID_REQUIRED')
@@ -397,12 +421,12 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
   try {
     if (process.platform === 'darwin') {
       if (options.password) {
-        return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid, options.skipSsidVerification)
+        return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid, options.skipSsidVerification, signal)
       }
       const args = ['connect', '--ssid', ssid]
       if (options.skipSsidVerification) args.push('--skip-ssid-verification')
       if (options.bssid) args.push('--bssid', options.bssid)
-      const result = await runCoreWlan<unknown>(args, timeoutMs)
+      const result = await runCoreWlan<unknown>(args, timeoutMs, undefined, signal)
       if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
       const status = normalizeWifiStatus(result.data, result.raw)
       return ok(result.message || `CoreWLAN 已尝试连接 ${ssid}`, { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
@@ -412,12 +436,13 @@ export async function connectWifiNetwork(options: WifiConnectOptions): Promise<W
       const profilePath = path.join(os.tmpdir(), `luna-wifi-${Date.now()}.xml`)
       await fs.writeFile(profilePath, windowsWifiProfile({ ...options, ssid }), 'utf8')
       try {
-        await runCommand('netsh', ['wlan', 'add', 'profile', `filename=${profilePath}`, 'user=current'], timeoutMs)
-        const raw = await runCommand('netsh', ['wlan', 'connect', `name=${ssid}`, `ssid=${ssid}`], timeoutMs)
+        await runCommand('netsh', ['wlan', 'add', 'profile', `filename=${profilePath}`, 'user=current'], timeoutMs, signal)
+        const raw = await runCommand('netsh', ['wlan', 'connect', `name=${ssid}`, `ssid=${ssid}`], timeoutMs, signal)
         const deadline = Date.now() + Math.min(Math.max(timeoutMs, 8000), 12000)
         let status = await getWifiDebugStatus()
         if (!options.skipSsidVerification) {
           while (status.success && status.data?.ssid !== ssid && Date.now() < deadline) {
+            if (signal?.aborted) throw new Error('Wi-Fi 连接已取消')
             await new Promise((resolve) => setTimeout(resolve, 250))
             status = await getWifiDebugStatus()
           }

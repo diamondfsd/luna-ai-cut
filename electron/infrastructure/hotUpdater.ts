@@ -12,16 +12,19 @@
  *   dist/
  *     index.html       ← 热更新的渲染层
  *     assets/*         ← 热更新的 JS/CSS
+ *
+ * 每日自动检查状态保存在 userData/.luna-hot-check.json，不随热更新内容清理。
  */
 
 import { app } from 'electron'
-import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   canLoadHotUpdate,
   compareHotUpdateVersions,
   releaseChannelForVersion,
 } from '../../src/shared/hotUpdateCompatibility'
+import { localDateKey, shouldRunDailyCheck } from '../../src/shared/dailyCheck'
 import { installHotUpdateArchive, type HotUpdateIntegrity } from './hotUpdateArchiveService'
 import { logMainInfo, logMainWarn } from './loggerService'
 
@@ -29,6 +32,7 @@ import { logMainInfo, logMainWarn } from './loggerService'
 
 const HOT_DIR = () => join(app.getPath('userData'), '.luna-hot')
 const VERSION_FILE = () => join(HOT_DIR(), 'version.json')
+const DAILY_CHECK_FILE = () => join(app.getPath('userData'), '.luna-hot-check.json')
 const HOT_APP_FILES = [
   'dist-electron/luna-appMain.js',
   'dist-electron/preload.mjs',
@@ -38,6 +42,8 @@ const HOT_APP_FILES = [
 const GITCODE_API = 'https://api.gitcode.com/api/v5/repos/diamondfsd/luna-ai-cut-package-release'
 const GITCODE_DL = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download'
 let activeHotUpdate: Promise<void> | null = null
+let activeDailyHotUpdateCheck: Promise<HotUpdateCheckResult | null> | null = null
+let activeHotUpdateCheck: Promise<HotUpdateCheckResult | null> | null = null
 
 function currentPlatformPackage(): string {
   if (process.platform === 'darwin') {
@@ -191,7 +197,13 @@ async function fetchHotUpdateIntegrity(
  * 检查是否有可用的热更新
  * 返回 null 表示没有新版本
  */
-export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null> {
+export function checkForHotUpdates(): Promise<HotUpdateCheckResult | null> {
+  if (activeHotUpdateCheck) return activeHotUpdateCheck
+  activeHotUpdateCheck = checkForHotUpdatesOnce().finally(() => { activeHotUpdateCheck = null })
+  return activeHotUpdateCheck
+}
+
+async function checkForHotUpdatesOnce(): Promise<HotUpdateCheckResult | null> {
   // 开发模式跳过热更新检查，避免本地开发时弹通知
   if (!app.isPackaged) {
     logMainInfo('[hot-update] 开发模式跳过检查')
@@ -263,6 +275,94 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
     hasIntegrity: Boolean(manifest.integrity),
   })
   return { version: manifest.version, downloadUrl, manifest, notes }
+}
+
+interface StoredDailyHotUpdateCheck {
+  checkedDate: string
+  appVersion: string
+  result: HotUpdateCheckResult | null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object'
+}
+
+function isHotUpdateCheckResult(value: unknown): value is HotUpdateCheckResult {
+  if (!isRecord(value) || typeof value.version !== 'string' || typeof value.downloadUrl !== 'string') return false
+  if (!isRecord(value.manifest)) return false
+  if (value.manifest.version !== value.version
+    || typeof value.manifest.version !== 'string'
+    || typeof value.manifest.zipName !== 'string'
+    || typeof value.manifest.minAppVersion !== 'string') return false
+  if (value.notes !== undefined && typeof value.notes !== 'string') return false
+  return true
+}
+
+function readStoredDailyHotUpdateCheck(): HotUpdateCheckResult | null | undefined {
+  try {
+    const data = JSON.parse(readFileSync(DAILY_CHECK_FILE(), 'utf8')) as Partial<StoredDailyHotUpdateCheck>
+    if (data.appVersion !== app.getVersion() || shouldRunDailyCheck(data.checkedDate)) return undefined
+    if (data.result === null) return null
+    if (!isHotUpdateCheckResult(data.result)) return undefined
+    if (!canLoadHotUpdate(app.getVersion(), data.result.version)) return null
+    const localVersion = getCurrentHotVersion()
+    return localVersion && compareHotUpdateVersions(data.result.version, localVersion) <= 0
+      ? null
+      : data.result
+  } catch {
+    return undefined
+  }
+}
+
+function persistDailyHotUpdateCheck(
+  result: HotUpdateCheckResult | null,
+  checkedDate: string,
+  appVersion: string,
+): void {
+  const filePath = DAILY_CHECK_FILE()
+  const temporaryPath = `${filePath}.${process.pid}.tmp`
+  try {
+    mkdirSync(app.getPath('userData'), { recursive: true })
+    const data: StoredDailyHotUpdateCheck = {
+      checkedDate,
+      appVersion,
+      result,
+    }
+    writeFileSync(temporaryPath, JSON.stringify(data), { encoding: 'utf8', mode: 0o600 })
+    renameSync(temporaryPath, filePath)
+  } catch (error) {
+    rmSync(temporaryPath, { force: true })
+    logMainWarn('[hot-update] 无法保存每日检查状态', { error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/** 启动时每日最多检查一次；只查询，不下载或安装。 */
+export function checkForHotUpdatesDaily(): Promise<HotUpdateCheckResult | null> {
+  if (!app.isPackaged) return Promise.resolve(null)
+  if (activeDailyHotUpdateCheck) return activeDailyHotUpdateCheck
+
+  const cached = readStoredDailyHotUpdateCheck()
+  if (cached !== undefined) return Promise.resolve(cached)
+
+  const checkedDate = localDateKey()
+  const appVersion = app.getVersion()
+  activeDailyHotUpdateCheck = checkForHotUpdates()
+    .catch((error) => {
+      logMainWarn('[hot-update] 每日自动检查失败', { error: error instanceof Error ? error.message : String(error) })
+      return null
+    })
+    .then((result) => {
+      persistDailyHotUpdateCheck(result, checkedDate, appVersion)
+      return result
+    })
+  return activeDailyHotUpdateCheck
+}
+
+/** 获取本次启动的自动检查结果，供帮助窗口展示。 */
+export async function getDailyHotUpdateResult(): Promise<HotUpdateCheckResult | null> {
+  if (!app.isPackaged) return null
+  if (activeDailyHotUpdateCheck) return activeDailyHotUpdateCheck
+  return readStoredDailyHotUpdateCheck() ?? null
 }
 
 // ── 下载与应用 ──

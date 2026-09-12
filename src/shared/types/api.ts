@@ -359,6 +359,7 @@ export interface LunaApi {
   checkForUpdates(): Promise<UpdateInfo | null>
   listReleaseNotes(): Promise<ReleaseNoteItem[]>
   getHotUpdateVersion(): Promise<string | null>
+  getAutomaticHotUpdate(): Promise<HotUpdateCheckResult | null>
   checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   applyHotUpdate(info: HotUpdateCheckResult): Promise<{ success: boolean; error?: string }>
   clearHotUpdate(): Promise<void>
