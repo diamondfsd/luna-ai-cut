@@ -34,6 +34,9 @@ const droppedPaths = new Set()
 let bleArmed = false
 let blePaired = false
 let udpSequence = 0
+let liveVideoTimer = null
+let liveVideoPeer = null
+let liveVideoFrameNo = 0
 
 function log(event, details = {}) {
   process.stdout.write(`${JSON.stringify({ event, model, ...details })}\n`)
@@ -148,10 +151,59 @@ function udpHeader(packetType, payloadLength, sessionId, sequence) {
   return header
 }
 
-function sendUdp(socket, address, packetType, frame, sessionId, sequence) {
-  const routing = Buffer.alloc(12)
+function sendUdp(socket, address, packetType, frame, sessionId, sequence, routing = Buffer.alloc(12)) {
   const packet = Buffer.concat([udpHeader(packetType, routing.length + frame.length, sessionId, sequence), routing, frame])
   socket.send(packet, address.port, address.address)
+}
+
+function mockVideoAccessUnit() {
+  if (model === 'pocket3') {
+    return Buffer.from('000000016764001facd9405005bb01100000000168ee3cb00000000165888421a0', 'hex')
+  }
+  return Buffer.from('0000000140010c01ffff01600000000142010160000000014401c0f00000000126010203', 'hex')
+}
+
+function sendMockVideo(socket) {
+  if (!liveVideoPeer) return
+  const { address, sessionId } = liveVideoPeer
+  const accessUnit = mockVideoAccessUnit()
+  const sequence = udpSequence++
+  if (model === 'pocket3') {
+    const routing = Buffer.alloc(12)
+    routing[8] = liveVideoFrameNo & 0xff
+    routing[9] = 0
+    routing[10] = 0
+    liveVideoFrameNo = (liveVideoFrameNo + 1) & 0xff
+    sendUdp(socket, address, 0x02, Buffer.concat([
+      Buffer.from([0x00, 0x00, 0x01, 0xff]),
+      Buffer.alloc(4),
+      Buffer.alloc(8),
+      accessUnit,
+    ]), sessionId, sequence, routing)
+    return
+  }
+  const sizedFragment = Buffer.concat([
+    Buffer.from([0x00, 0x00, 0x01, 0xff]),
+    u32(accessUnit.length),
+    Buffer.alloc(8),
+    accessUnit,
+  ])
+  sendUdp(socket, address, 0x02, sizedFragment, sessionId, sequence)
+}
+
+function startMockVideo(socket, address, sessionId) {
+  liveVideoPeer = { address: { address: address.address, port: address.port }, sessionId }
+  if (liveVideoTimer) return
+  sendMockVideo(socket)
+  liveVideoTimer = setInterval(() => sendMockVideo(socket), 200)
+  log('video-start', { remote: `${address.address}:${address.port}` })
+}
+
+function stopMockVideo() {
+  if (liveVideoTimer) clearInterval(liveVideoTimer)
+  liveVideoTimer = null
+  liveVideoPeer = null
+  log('video-stop')
 }
 
 function pathField(subtype, value) {
@@ -275,6 +327,16 @@ async function handleUdp(socket, data, address) {
     return
   }
   sendUdp(socket, address, 0x05, encodeDuml({ target: request.target, id: request.id, cmdSet: request.cmdSet, cmdId: request.cmdId, payload: responsePayload(request) }), packet.sessionId, udpSequence++)
+  const startsLiveView =
+    (request.cmdSet === 0x02 && request.cmdId === 0x68) ||
+    (request.cmdSet === 0x09 && request.cmdId === 0xa8) ||
+    (request.cmdSet === 0x01 && request.cmdId === 0x01)
+  if (startsLiveView) {
+    startMockVideo(socket, address, packet.sessionId)
+  }
+  if (request.cmdSet === 0x02 && request.cmdId === 0x0c && request.payload[0] === 0x01) {
+    stopMockVideo()
+  }
 }
 
 function extensionOf(name) {
@@ -415,7 +477,7 @@ async function start() {
   })
   await new Promise((resolve, reject) => { http.once('error', reject); http.listen(httpPort, host, resolve) })
   log('ready', { rootDir, udpPort, tcpPort, httpPort, rateMbps, dropAfterBytes, storageCounts: filesByStorage.map((files) => files.length) })
-  const stop = () => { udp.close(); tcp.close(); http.close(); process.exit(0) }
+  const stop = () => { stopMockVideo(); udp.close(); tcp.close(); http.close(); process.exit(0) }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
 }
