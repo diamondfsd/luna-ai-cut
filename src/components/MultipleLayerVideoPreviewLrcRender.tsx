@@ -466,7 +466,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         if (!ready || !active) return
         scheduleRender()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [active, layers, ready])
+      }, [active, compositionTime, layers, ready])
 
       // ── 错误状态 UI ──
       if (fatalError) {
