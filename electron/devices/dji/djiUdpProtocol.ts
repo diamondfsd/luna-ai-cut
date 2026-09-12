@@ -18,7 +18,10 @@ export function buildRoutingHeader(
 
 /** The reliable route/window prefix carries the camera channel in its first two bytes. */
 export function cameraChannelFromPacket(packet: { packetType: number; payload: Uint8Array }): number | null {
-  if (packet.packetType !== 0x01 && packet.packetType !== 0x02 && packet.packetType !== 0x03) return null
+  // OpenPocketCine learns the peer channel from payload bytes 0-1 for every inbound
+  // datagram except the window ACK. This includes the 0x00 handshake reply; Pocket
+  // publishes the reliable channel there before the first command response arrives.
+  if (packet.packetType === 0x04) return null
   if (packet.payload.length < 2) return null
   const channel = packet.payload[0]! | (packet.payload[1]! << 8)
   return channel === 0 ? null : channel
@@ -29,10 +32,9 @@ export function nextSequenceForCameraChannel(cameraChannel: number): number {
 }
 
 export function buildAckPayload(
-  rxType2Sequence: number,
-  rxType3Sequence: number,
-  peerAckedTxSequence: number,
-  lastTxSequence: number,
+  videoSequence: number,
+  ackedDataSequence: number,
+  extraSequence: number,
 ): Buffer {
   const group = (value: number): Buffer => {
     const result = Buffer.alloc(8)
@@ -41,14 +43,9 @@ export function buildAckPayload(
     return result
   }
   return Buffer.concat([
-    group(rxType2Sequence),
-    group(rxType3Sequence),
-    Buffer.from([
-      peerAckedTxSequence & 0xff,
-      (peerAckedTxSequence >>> 8) & 0xff,
-      lastTxSequence & 0xff,
-      (lastTxSequence >>> 8) & 0xff,
-    ]),
-    Buffer.alloc(6),
+    group(videoSequence),
+    group(ackedDataSequence),
+    group(extraSequence),
+    Buffer.alloc(2),
   ])
 }

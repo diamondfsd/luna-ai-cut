@@ -7,13 +7,22 @@ import type { DjiWifiCredentials } from './djiBleSession'
 import { encodeDjiMessage, hex, newInstallIdentity, packString, type DjiMessage } from './djiBytes'
 import { isPrimaryMedia, isProxyMedia, markSharedManifestHandles, mediaStem, parseCompositeManifest, type DjiManifestFile } from './djiManifest'
 import { buildDjiDeletePayload } from './djiDeleteCodec'
-import { DjiUdpTransport, decodeDumlMessagesFromUdp, decodeDumlMessagesFromUdpStream, type DjiUdpCommand, type DjiUdpPacket } from './djiUdpTransport'
+import { DjiDumlStreamAssembler, DjiUdpTransport, decodeDumlMessagesFromUdp, decodeDumlMessagesFromUdpStream, type DjiUdpCommand, type DjiUdpPacket } from './djiUdpTransport'
 import { DefaultDjiWirelessPreparation, type DjiWirelessPreparation, waitForDjiHostReachable } from './djiWirelessPreparation'
 import { mockTcpPortForHost, mockUdpPortForHost } from '../../devtools/mock/mockServerService'
 import { labelsFor } from '../../media/filePathUtils'
 import { lunaMediaAdapter } from '../common/deviceMedia'
 import { djiErrorDetails, djiMessageDetails } from './djiLog'
 import { logMainDebug, logMainError, logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import {
+  djiPocketFirstPictureKick,
+  djiPocketFirstPictureOriginal,
+  djiPocketVideoFormatPayload,
+  parseDjiPocketSubscribePush,
+  parseDjiPocketVideoFormat,
+  parseDjiPocketVideoFormats,
+  type DjiPocketVideoFormat,
+} from './djiPocketProtocol'
 import {
   DJI_MANIFEST_PAGE_SIZE,
   hasManifestPageAfter,
@@ -125,9 +134,19 @@ function isManifestDataPacket(packet: DjiUdpPacket): boolean {
 const PREVIEW_LIVE_STATE = hex('0300000000040000000701')
 const PREVIEW_START_TRIGGER = hex('0400')
 const PREVIEW_READY_TRIGGER = hex('0101')
-const PREVIEW_APP_PRESENCE = hex('1700162373415050000000000002')
-const PREVIEW_APP_HEARTBEAT = hex('1a00000000')
+const POCKET_APP_PRESENCE = hex('170046237c415050000000000002')
+const LEGACY_APP_PRESENCE = hex('1700162373415050000000000002')
+const LEGACY_APP_HEARTBEAT = hex('1a00000000')
 const PREVIEW_CAMERA_HEARTBEAT = hex('040000000000000000')
+const PREVIEW_LIVE_ENABLE = hex('00040200000000000000')
+const PREVIEW_LIVE_PREPARE = Buffer.from([0x08])
+const PREVIEW_SUBSCRIPTION_KEYS = [
+  'camcap_mode_profile', 'camcap_video_format', 'camcap_fov', 'camcap_iso',
+  'camcap_shutter', 'camcap_photo_storage_format', 'camcap_color_mode', 'cam_storage',
+  'cam_status', 'timecode_info', 'cam_expo_param', 'cam_video_param_v2', 'cam_record_time',
+  'cam_image_effect', 'cam_lens_state', 'cam_fov', 'cam_audio_status_v2',
+]
+const PREVIEW_FIRST_SUBSCRIPTION_ID = 0x69df
 const PREVIEW_PRESENCE_DELAY_MS = 20
 const PREVIEW_IDENTITY_DELAY_MS = 92
 const PREVIEW_READY_DELAY_MS = 127
@@ -138,12 +157,33 @@ const PREVIEW_LIVE_STATE_DELAY_MS = 7
 const PREVIEW_HEARTBEAT_INTERVAL_MS = 1000
 const PREVIEW_REGISTRATION_INTERVAL_MS = 1000
 
-function previewAppDeviceInfo(): Buffer {
+function pocketAppDeviceInfo(): Buffer {
+  const payload = Buffer.alloc(62)
+  payload.write('APP', 1, 'ascii')
+  payload[41] = 0x02
+  payload[50] = 0x02
+  payload[51] = 0x08
+  return payload
+}
+
+function legacyAppDeviceInfo(): Buffer {
   const payload = Buffer.alloc(64)
   payload.write('APP', 1, 'ascii')
   payload[34] = 0x02
   payload[41] = 0x02
   payload[42] = 0x08
+  return payload
+}
+
+function previewSubscriptionPayload(name: string, subscriptionId: number): Buffer {
+  const nameBytes = Buffer.from(name, 'utf8')
+  const payload = Buffer.alloc(4 + 4 + 3 + 2 + 2 + nameBytes.length + 4)
+  payload[0] = 0x02
+  payload[1] = 0x02
+  payload.writeUInt32LE(subscriptionId >>> 0, 4)
+  payload.writeUInt16LE(nameBytes.length + 6, 11)
+  payload.writeUInt16LE(nameBytes.length, 13)
+  nameBytes.copy(payload, 15)
   return payload
 }
 
@@ -203,6 +243,17 @@ export class DjiCameraSession {
   private previewRegistrationTimer: ReturnType<typeof setInterval> | null = null
   private previewHeartbeatCounter = 0
   private deleteCounter = 0
+  private unsubscribePocketStatus: (() => void) | null = null
+  private unsubscribePreviewPacketForwarder: (() => void) | null = null
+  private readonly previewPacketListeners = new Set<(packet: DjiUdpPacket) => void>()
+  private readonly pocketStatusStream = new DjiDumlStreamAssembler()
+  private pocketVideoFormat: DjiPocketVideoFormat | null = null
+  private pocketVideoFormats: DjiPocketVideoFormat[] = []
+  private pocket3FormatPoked = false
+
+  private usesPocketProtocol(): boolean {
+    return this.profile.id === 'pocket3' || this.profile.id === 'pocket4' || this.profile.id === 'pocket4pro'
+  }
 
   constructor(private readonly deviceId: string, host: string, private readonly installIdentity: string, wirelessPreparation?: DjiWirelessPreparation, win: BrowserWindow | null = null) {
     this.profile = djiProfileForDevice(deviceId)
@@ -255,6 +306,12 @@ export class DjiCameraSession {
         host: this.host,
         elapsedMs: Date.now() - startedAt,
       })
+      this.resetPocketStatus()
+      this.bindPreviewPacketForwarder()
+      this.subscribePocketStatus()
+      // The camera's reliable downlink is shared by registration, control replies, and video.
+      // Start the 40 Hz window ACK pump before registration so subscriptions cannot stall it.
+      this.udp.startAckTimer(25)
       await this.registerCamera()
       this.connected = true
       const status = this.status(`${preparation.message}，UDP 会话已建立`)
@@ -266,6 +323,12 @@ export class DjiCameraSession {
       })
       return status
       } catch (error) {
+        this.unsubscribePocketStatus?.()
+        this.unsubscribePocketStatus = null
+        this.unsubscribePreviewPacketForwarder?.()
+        this.unsubscribePreviewPacketForwarder = null
+        this.udp.stopAckTimer()
+        this.udp.close()
         logMainError('[DJI 连接] 相机会话连接失败', {
           deviceId: this.deviceId,
           host: this.host,
@@ -285,9 +348,8 @@ export class DjiCameraSession {
   }
 
   subscribePreviewPackets(listener: (packet: DjiUdpPacket) => void): () => void {
-    return this.udp.subscribePackets((packet) => {
-      if (packet.packetType === 0x02) listener(packet)
-    })
+    this.previewPacketListeners.add(listener)
+    return () => this.previewPacketListeners.delete(listener)
   }
 
   previewTransportState(): ReturnType<DjiUdpTransport['previewTransportState']> {
@@ -315,6 +377,13 @@ export class DjiCameraSession {
     await startPromise?.catch(() => undefined)
     if (!wasRunning || !this.connected) return
 
+    if (this.usesPocketProtocol()) {
+      // Pocket's 0x02/0x0c command changes the camera-wide playback mode. It is not a live-view
+      // stop command, so stopping the local consumer must not put the camera into gallery mode.
+      logMainDebug('[DJI 预览] Pocket 已停止本地预览会话', { deviceId: this.deviceId })
+      return
+    }
+
     try {
       await this.udp.sendCommand(djiCommand(0x02, 0x0c, hex('01010000'), 0x8004))
       logMainDebug('[DJI 预览] 已发送停止预览命令', { deviceId: this.deviceId })
@@ -326,6 +395,93 @@ export class DjiCameraSession {
     }
   }
 
+  /** Run Pocket 3's one-shot first-picture encoder kick after the initial live entry stayed black. */
+  async recoverPocket3FirstPicture(): Promise<boolean> {
+    if (this.profile.id !== 'pocket3' || this.pocket3FormatPoked || !this.connected) return false
+    const generation = this.previewGeneration
+    this.pocket3FormatPoked = true
+    const original = djiPocketFirstPictureOriginal(this.pocketVideoFormat)
+    const kick = djiPocketFirstPictureKick(original, this.pocketVideoFormats)
+    logMainInfo('[DJI 预览] Pocket 3 执行首帧编码器恢复', {
+      deviceId: this.deviceId,
+      original: `0x${original.resolution.toString(16)}:${original.frameRate.toString(16)}`,
+      kick: `0x${kick.resolution.toString(16)}:${kick.frameRate.toString(16)}`,
+      availableFormatCount: this.pocketVideoFormats.length,
+    })
+
+    if (!this.isPreviewGenerationCurrent(generation)) return false
+    await this.sendPreviewCommand(generation, djiCommand(0x02, 0x18, djiPocketVideoFormatPayload(kick)))
+    await delay(800)
+    if (!this.isPreviewGenerationCurrent(generation)) return false
+    await this.sendPreviewCommand(generation, djiCommand(0x02, 0x18, djiPocketVideoFormatPayload(original)))
+    await delay(800)
+    if (!this.isPreviewGenerationCurrent(generation)) return false
+    await this.sendPreviewCommand(generation, previewCommand(0x0802, 0x09, 0xa8, PREVIEW_LIVE_ENABLE))
+    return true
+  }
+
+  /** Recover a silent live feed without tearing down the local stream or the last frame. */
+  async recoverPreviewEnable(): Promise<boolean> {
+    if (!this.connected || !this.previewRequested) return false
+    const generation = this.previewGeneration
+    await this.sendPreviewCommand(generation, previewCommand(0x0802, 0x09, 0xa8, PREVIEW_LIVE_ENABLE))
+    return this.isPreviewGenerationCurrent(generation)
+  }
+
+  /** Rebind only the UDP socket and keep the negotiated DJI session/sequence alive. */
+  async rebuildPreviewUdp(reason = '预览无数据'): Promise<void> {
+    if (!this.connected || !this.previewRequested) return
+    await this.udp.rebuildSocket(reason)
+    await this.recoverPreviewEnable()
+  }
+
+  /** Start a new UDP handshake on the current Wi-Fi path while keeping the preview consumer alive. */
+  async rejoinPreviewDatalink(): Promise<void> {
+    if (!this.connected || !this.previewRequested) return
+    const generation = this.previewGeneration
+    const startedAt = Date.now()
+    logMainWarn('[DJI 预览] 开始重新加入实时预览会话', { deviceId: this.deviceId, host: this.host })
+    this.stopPreviewTimers()
+    this.previewActive = false
+    this.replaceUdpTransport()
+    try {
+      await this.udp.handshake()
+      this.udp.startAckTimer(25)
+      this.bindPreviewPacketForwarder()
+      this.subscribePocketStatus()
+      await this.registerCamera()
+      if (!this.isPreviewGenerationCurrent(generation) || !this.previewRequested) return
+      this.playbackPrepared = false
+      this.playbackConfirmed = false
+      if (this.usesPocketProtocol()) await this.startPocketPreview(generation)
+      else await this.startLegacyPreview(generation)
+      if (!this.isPreviewGenerationCurrent(generation) || !this.previewRequested) return
+      this.previewActive = true
+      this.startPreviewTimers(generation)
+      logMainInfo('[DJI 预览] 重新加入实时预览会话完成', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+      })
+    } catch (error) {
+      this.connected = false
+      this.stopPreviewTimers()
+      this.unsubscribePocketStatus?.()
+      this.unsubscribePocketStatus = null
+      this.unsubscribePreviewPacketForwarder?.()
+      this.unsubscribePreviewPacketForwarder = null
+      this.udp.stopAckTimer()
+      this.udp.close()
+      logMainError('[DJI 预览] 重新加入实时预览会话失败', {
+        deviceId: this.deviceId,
+        host: this.host,
+        elapsedMs: Date.now() - startedAt,
+        ...djiErrorDetails(error),
+      })
+      throw error
+    }
+  }
+
   private async startPreviewInternal(generation: number): Promise<void> {
     const startedAt = Date.now()
     try {
@@ -334,81 +490,24 @@ export class DjiCameraSession {
       this.udp.stopKeepAlive()
       this.stopPreviewTimers()
       this.previewRequested = true
-      this.udp.startAckTimer(20)
+      this.pocket3FormatPoked = false
+      this.udp.startAckTimer(25)
 
-      const previewStart = previewCommand(0xf002, 0x00, 0x2b, PREVIEW_START_TRIGGER, 0x40, 0x60, 0x75)
-      // Live view and media browsing use different camera-wide modes. Leave browsing first so a
-      // preview opened after the media grid does not keep the camera in playback.
-      await this.udp.commandAndCollect(
-        djiCommand(0x02, 0x0c, hex('01010000'), 0x8004),
-        450,
-      )
-      if (!this.isPreviewGenerationCurrent(generation)) return
-      this.playbackPrepared = false
-      this.playbackConfirmed = false
-
-      const previewChannel = await this.udp.synchronizePreviewChannel(previewStart, 500)
-      if (!this.isPreviewGenerationCurrent(generation)) return
-
-      if (!previewChannel.probed) await this.sendPreviewCommand(generation, previewStart)
-      await this.previewDelay(generation, PREVIEW_PRESENCE_DELAY_MS)
-      await this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, PREVIEW_APP_PRESENCE))
-      await this.sendPreviewCommand(generation, previewCommand(0x0302, 0x03, 0xda, hex('05ffffffff')))
-      await this.previewDelay(generation, PREVIEW_IDENTITY_DELAY_MS)
-      await this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x81, previewAppDeviceInfo(), 0x80))
-      await this.previewDelay(generation, PREVIEW_READY_DELAY_MS)
-      await this.sendPreviewCommand(generation, previewCommand(0xf002, 0x00, 0x2b, PREVIEW_READY_TRIGGER))
-      await this.previewDelay(generation, PREVIEW_VIDEO_ENABLE_DELAY_MS)
-      await this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x82, Buffer.from([0x00]), 0x80))
-      await this.previewDelay(generation, PREVIEW_HEARTBEAT_DELAY_MS)
-
-      this.previewHeartbeatCounter = 0
-      for (const [index, marker] of [0x01, 0x05, 0x05].entries()) {
-        await this.sendPreviewCommand(generation, previewCommand(
-          0x2802,
-          0x00,
-          0x4f,
-          Buffer.from([marker, 0x00, this.previewHeartbeatCounter, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff]),
-        ))
-        const gap = PREVIEW_HEARTBEAT_GAPS_MS[index]
-        if (gap != null) await this.previewDelay(generation, gap)
-      }
-      this.previewHeartbeatCounter = 1
-      await this.previewDelay(generation, PREVIEW_LIVE_STATE_DELAY_MS)
-      await this.sendPreviewCommand(generation, previewCommand(0x0102, 0x01, 0x01, PREVIEW_LIVE_STATE, 0x00))
+      if (this.usesPocketProtocol()) await this.startPocketPreview(generation)
+      else await this.startLegacyPreview(generation)
       if (!this.isPreviewGenerationCurrent(generation)) return
 
       this.previewActive = true
-      this.previewCameraHeartbeatTimer = setInterval(() => {
-        void this.sendPreviewCommand(generation, previewCommand(0x0102, 0x00, 0x4f, PREVIEW_CAMERA_HEARTBEAT)).catch((error: unknown) => {
-          logMainWarn('[DJI 预览] 相机心跳发送失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
-        })
-      }, PREVIEW_HEARTBEAT_INTERVAL_MS)
-      this.previewAppHeartbeatTimer = setInterval(() => {
-        const payload = Buffer.from(PREVIEW_APP_HEARTBEAT)
-        payload[4] = this.previewHeartbeatCounter & 0xff
-        this.previewHeartbeatCounter = (this.previewHeartbeatCounter + 1) & 0xff
-        void this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, payload, 0x80)).catch((error: unknown) => {
-          logMainWarn('[DJI 预览] 应用心跳发送失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
-        })
-      }, PREVIEW_HEARTBEAT_INTERVAL_MS)
-      this.previewRegistrationTimer = setInterval(() => {
-        void Promise.all([
-          this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x81, previewAppDeviceInfo(), 0x80)),
-          this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x82, Buffer.from([0x00]), 0x80)),
-        ]).catch((error: unknown) => {
-          logMainWarn('[DJI 预览] 预览注册续期失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
-        })
-      }, PREVIEW_REGISTRATION_INTERVAL_MS)
+      this.startPreviewTimers(generation)
       logMainInfo('[DJI 预览] 预览启动序列已发送', {
         deviceId: this.deviceId,
         host: this.host,
+        protocol: this.usesPocketProtocol() ? 'pocket' : 'legacy',
         heartbeatIntervalMs: PREVIEW_HEARTBEAT_INTERVAL_MS,
         elapsedMs: Date.now() - startedAt,
       })
     } catch (error) {
       this.stopPreviewTimers()
-      this.udp.stopAckTimer()
       logMainError('[DJI 预览] 预览启动失败', {
         deviceId: this.deviceId,
         host: this.host,
@@ -417,6 +516,61 @@ export class DjiCameraSession {
       })
       throw error
     }
+  }
+
+  private async startPocketPreview(generation: number): Promise<void> {
+    if (this.playbackPrepared) {
+      // The media browser owns the playback lease. Leave it only when this session actually entered
+      // that mode; an idle Pocket must receive the live pair without a mode-changing command first.
+      await this.sendPreviewCommand(generation, djiCommand(0x02, 0x0c, hex('01010000'), 0x8004))
+      this.playbackPrepared = false
+      this.playbackConfirmed = false
+    }
+    await this.sendPreviewCommand(generation, previewCommand(0x0102, 0x02, 0x68, PREVIEW_LIVE_PREPARE))
+    await this.sendPreviewCommand(generation, previewCommand(0x0802, 0x09, 0xa8, PREVIEW_LIVE_ENABLE))
+  }
+
+  private async startLegacyPreview(generation: number): Promise<void> {
+    const previewStart = previewCommand(0xf002, 0x00, 0x2b, PREVIEW_START_TRIGGER, 0x40, 0x60, 0x75)
+    // Live view and media browsing use different camera-wide modes. Leave browsing first so a
+    // preview opened after the media grid does not keep the camera in playback.
+    await this.udp.commandAndCollect(
+      djiCommand(0x02, 0x0c, hex('01010000'), 0x8004),
+      450,
+    )
+    if (!this.isPreviewGenerationCurrent(generation)) return
+    this.playbackPrepared = false
+    this.playbackConfirmed = false
+
+    const previewChannel = await this.udp.synchronizePreviewChannel(previewStart, 500)
+    if (!this.isPreviewGenerationCurrent(generation)) return
+
+    if (!previewChannel.probed) await this.sendPreviewCommand(generation, previewStart)
+    await this.previewDelay(generation, PREVIEW_PRESENCE_DELAY_MS)
+    await this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, LEGACY_APP_PRESENCE))
+    await this.sendPreviewCommand(generation, previewCommand(0x0302, 0x03, 0xda, hex('05ffffffff')))
+    await this.previewDelay(generation, PREVIEW_IDENTITY_DELAY_MS)
+    await this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x81, legacyAppDeviceInfo(), 0x80))
+    await this.previewDelay(generation, PREVIEW_READY_DELAY_MS)
+    await this.sendPreviewCommand(generation, previewCommand(0xf002, 0x00, 0x2b, PREVIEW_READY_TRIGGER))
+    await this.previewDelay(generation, PREVIEW_VIDEO_ENABLE_DELAY_MS)
+    await this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x82, Buffer.from([0x00]), 0x80))
+    await this.previewDelay(generation, PREVIEW_HEARTBEAT_DELAY_MS)
+
+    this.previewHeartbeatCounter = 0
+    for (const [index, marker] of [0x01, 0x05, 0x05].entries()) {
+      await this.sendPreviewCommand(generation, previewCommand(
+        0x2802,
+        0x00,
+        0x4f,
+        Buffer.from([marker, 0x00, this.previewHeartbeatCounter, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff]),
+      ))
+      const gap = PREVIEW_HEARTBEAT_GAPS_MS[index]
+      if (gap != null) await this.previewDelay(generation, gap)
+    }
+    this.previewHeartbeatCounter = 1
+    await this.previewDelay(generation, PREVIEW_LIVE_STATE_DELAY_MS)
+    await this.sendPreviewCommand(generation, previewCommand(0x0102, 0x01, 0x01, PREVIEW_LIVE_STATE, 0x00))
   }
 
   private async sendPreviewCommand(generation: number, command: DjiUdpCommand): Promise<void> {
@@ -433,6 +587,40 @@ export class DjiCameraSession {
     return generation === this.previewGeneration
   }
 
+  private startPreviewTimers(generation: number): void {
+    if (this.usesPocketProtocol()) {
+      // Pocket holds the live session with the same app-presence frame used during registration.
+      // Re-sending 0x09/0xa8 or the old camera heartbeat resets/interrupts its encoder.
+      this.previewAppHeartbeatTimer = setInterval(() => {
+        void this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, POCKET_APP_PRESENCE)).catch((error: unknown) => {
+          logMainWarn('[DJI 预览] 应用心跳发送失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
+        })
+      }, PREVIEW_HEARTBEAT_INTERVAL_MS)
+      return
+    }
+    this.previewCameraHeartbeatTimer = setInterval(() => {
+      void this.sendPreviewCommand(generation, previewCommand(0x0102, 0x00, 0x4f, PREVIEW_CAMERA_HEARTBEAT)).catch((error: unknown) => {
+        logMainWarn('[DJI 预览] 相机心跳发送失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
+      })
+    }, PREVIEW_HEARTBEAT_INTERVAL_MS)
+    this.previewAppHeartbeatTimer = setInterval(() => {
+      const payload = Buffer.from(LEGACY_APP_HEARTBEAT)
+      payload[4] = this.previewHeartbeatCounter & 0xff
+      this.previewHeartbeatCounter = (this.previewHeartbeatCounter + 1) & 0xff
+      void this.sendPreviewCommand(generation, previewCommand(0x2802, 0x00, 0x88, payload, 0x80)).catch((error: unknown) => {
+        logMainWarn('[DJI 预览] 应用心跳发送失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
+      })
+    }, PREVIEW_HEARTBEAT_INTERVAL_MS)
+    this.previewRegistrationTimer = setInterval(() => {
+      void Promise.all([
+        this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x81, legacyAppDeviceInfo(), 0x80)),
+        this.sendPreviewCommand(generation, previewCommand(0x4802, 0x00, 0x82, Buffer.from([0x00]), 0x80)),
+      ]).catch((error: unknown) => {
+        logMainWarn('[DJI 预览] 预览注册续期失败', { deviceId: this.deviceId, error: error instanceof Error ? error.message : String(error) })
+      })
+    }, PREVIEW_REGISTRATION_INTERVAL_MS)
+  }
+
   private stopPreviewTimers(): void {
     if (this.previewAppHeartbeatTimer) clearInterval(this.previewAppHeartbeatTimer)
     if (this.previewCameraHeartbeatTimer) clearInterval(this.previewCameraHeartbeatTimer)
@@ -442,7 +630,14 @@ export class DjiCameraSession {
     this.previewRegistrationTimer = null
     this.previewActive = false
     this.previewHeartbeatCounter = 0
-    this.udp.stopAckTimer()
+  }
+
+  private bindPreviewPacketForwarder(): void {
+    this.unsubscribePreviewPacketForwarder?.()
+    this.unsubscribePreviewPacketForwarder = this.udp.subscribePackets((packet) => {
+      if (packet.packetType !== 0x02) return
+      for (const listener of this.previewPacketListeners) listener(packet)
+    })
   }
 
   async prepareConnection(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult> {
@@ -585,6 +780,12 @@ export class DjiCameraSession {
     }
     this.playbackPrepared = false
     this.playbackConfirmed = false
+    this.unsubscribePocketStatus?.()
+    this.unsubscribePocketStatus = null
+    this.unsubscribePreviewPacketForwarder?.()
+    this.unsubscribePreviewPacketForwarder = null
+    this.previewPacketListeners.clear()
+    this.resetPocketStatus()
     this.udp.close()
     try {
       await this.wirelessPreparation.close()
@@ -605,31 +806,65 @@ export class DjiCameraSession {
   }
 
   private async registerCamera(): Promise<void> {
-    const commands = [
-      {
-        name: '注册应用',
-        message: { target: 0x0802, id: 0x8001, cmdSet: 0x00, cmdId: 0x81, flags: 0x40, payload: hex('00415050000000000000000000000000000000000000000000000000000000000000000000000200000000000000020800000000000000000000') },
-      },
-      {
-        name: '发送应用在线状态',
-        message: { target: 0x0102, id: 0x8002, cmdSet: 0x00, cmdId: 0x88, flags: 0x40, payload: hex('170046237c415050000000000002') },
-      },
-      {
-        name: '初始化设备状态',
-        message: { target: 0x0302, id: 0x8003, cmdSet: 0x03, cmdId: 0xda, flags: 0x40, payload: hex('05ffffffff') },
-      },
-    ] as const
+    const commands: Array<{ name: string; message: DjiUdpCommand }> = this.usesPocketProtocol()
+      ? [
+        {
+          name: '注册应用',
+          // Pocket routes registration to DM368 (type 0x08, id 2) and requires command flags 0x80.
+          message: { target: 0x4802, id: 0x8001, cmdSet: 0x00, cmdId: 0x81, flags: 0x80, payload: pocketAppDeviceInfo() },
+        },
+        {
+          name: '发送应用在线状态',
+          message: { target: 0x2802, id: 0x8002, cmdSet: 0x00, cmdId: 0x88, flags: 0x40, payload: POCKET_APP_PRESENCE },
+        },
+        {
+          name: '初始化设备状态',
+          message: { target: 0x0302, id: 0x8003, cmdSet: 0x03, cmdId: 0xda, flags: 0x40, payload: hex('05ffffffff') },
+        },
+      ]
+      : [
+        {
+          name: '注册应用',
+          message: { target: 0x0802, id: 0x8001, cmdSet: 0x00, cmdId: 0x81, flags: 0x40, payload: legacyAppDeviceInfo() },
+        },
+        {
+          name: '发送应用在线状态',
+          message: { target: 0x0102, id: 0x8002, cmdSet: 0x00, cmdId: 0x88, flags: 0x40, payload: LEGACY_APP_PRESENCE },
+        },
+        {
+          name: '初始化设备状态',
+          message: { target: 0x0302, id: 0x8003, cmdSet: 0x03, cmdId: 0xda, flags: 0x40, payload: hex('05ffffffff') },
+        },
+      ]
+    if (this.usesPocketProtocol()) {
+      let subscriptionId = PREVIEW_FIRST_SUBSCRIPTION_ID
+      for (const name of PREVIEW_SUBSCRIPTION_KEYS) {
+        commands.push({
+          name: `订阅相机状态：${name}`,
+          message: {
+            target: 0x2802,
+            id: 0x8004,
+            cmdSet: 0x00,
+            cmdId: 0x99,
+            flags: 0x40,
+            payload: previewSubscriptionPayload(name, subscriptionId),
+          },
+        })
+        subscriptionId += 1
+      }
+    }
     const startedAt = Date.now()
     logMainInfo('[DJI 连接] 相机注册开始', { deviceId: this.deviceId, commandCount: commands.length })
     for (const [index, command] of commands.entries()) {
       const commandStartedAt = Date.now()
+      const message = { ...command.message, flags: command.message.flags ?? 0x40 }
       logMainDebug(`[DJI 连接] 发送注册阶段：${command.name}`, {
         deviceId: this.deviceId,
         index: index + 1,
-        ...djiMessageDetails(command.message),
+        ...djiMessageDetails(message),
       })
       try {
-        await this.udp.sendCommand(command.message)
+        await this.udp.sendCommand(message)
         logMainDebug(`[DJI 连接] 注册阶段完成：${command.name}`, {
           deviceId: this.deviceId,
           index: index + 1,
@@ -645,7 +880,33 @@ export class DjiCameraSession {
         throw error
       }
     }
+    await delay(150)
     logMainInfo('[DJI 连接] 相机注册完成', { deviceId: this.deviceId, elapsedMs: Date.now() - startedAt })
+  }
+
+  private resetPocketStatus(): void {
+    this.pocketVideoFormat = null
+    this.pocketVideoFormats = []
+    this.pocket3FormatPoked = false
+    this.pocketStatusStream.reset()
+  }
+
+  private subscribePocketStatus(): void {
+    if (!this.usesPocketProtocol()) return
+    this.unsubscribePocketStatus?.()
+    this.unsubscribePocketStatus = this.udp.subscribePackets((packet) => {
+      for (const message of this.pocketStatusStream.feed(packet)) {
+        if (message.cmdSet !== 0x00 || message.cmdId !== 0x99) continue
+        const push = parseDjiPocketSubscribePush(message.payload)
+        if (!push) continue
+        if (push.name === 'cam_video_param_v2') {
+          this.pocketVideoFormat = parseDjiPocketVideoFormat(push.value) ?? this.pocketVideoFormat
+        } else if (push.name === 'camcap_video_format') {
+          const formats = parseDjiPocketVideoFormats(push.value)
+          if (formats.length > 0) this.pocketVideoFormats = formats
+        }
+      }
+    })
   }
 
   private async tcpPoke(): Promise<void> {
@@ -1069,14 +1330,26 @@ export class DjiCameraSession {
   }
 
   private async reopenDatalinkSession(): Promise<void> {
+    this.replaceUdpTransport()
+    await this.udp.handshake()
+    this.udp.startAckTimer(25)
+    this.bindPreviewPacketForwarder()
+    this.subscribePocketStatus()
+    await this.registerCamera()
+    await this.ensurePlayback()
+  }
+
+  private replaceUdpTransport(): void {
+    this.unsubscribePocketStatus?.()
+    this.unsubscribePocketStatus = null
+    this.unsubscribePreviewPacketForwarder?.()
+    this.unsubscribePreviewPacketForwarder = null
     this.udp.stopKeepAlive()
     this.udp.close()
     this.udp = new DjiUdpTransport(this.endpoint.host, this.endpoint.udpPort)
+    this.resetPocketStatus()
     this.playbackPrepared = false
     this.playbackConfirmed = false
-    await this.udp.handshake()
-    await this.registerCamera()
-    await this.ensurePlayback()
   }
 
   private manifestChunks(packets: DjiUdpPacket[], counter?: number): Buffer[] {
@@ -1125,7 +1398,9 @@ export class DjiCameraSession {
         this.playbackConfirmed = await this.enterStandardPlayback()
       }
 
-      const presence = djiCommand(0x00, 0x88, hex('170046237c415050000000000002'), 0x8002)
+      const presence = this.usesPocketProtocol()
+        ? previewCommand(0x2802, 0x00, 0x88, POCKET_APP_PRESENCE, 0x40)
+        : djiCommand(0x00, 0x88, LEGACY_APP_PRESENCE, 0x8002)
       const reassert = djiCommand(0x02, 0x0c, hex('01010001'), 0x8004)
       await this.udp.startKeepAlive(presence, this.playbackConfirmed && this.profile.playback !== 'pocket3' ? reassert : undefined)
       this.playbackPrepared = true
