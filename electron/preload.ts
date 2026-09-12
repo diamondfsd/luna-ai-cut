@@ -348,6 +348,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
 
   // ── 热更新 ──
   getHotUpdateVersion: () => ipcRenderer.invoke('hot-update:current-version'),
+  getAutomaticHotUpdate: () => ipcRenderer.invoke('hot-update:automatic-result'),
   checkForHotUpdates: () => ipcRenderer.invoke('hot-update:check'),
   applyHotUpdate: (info: HotUpdateCheckResult) => ipcRenderer.invoke('hot-update:apply', info),
   clearHotUpdate: () => ipcRenderer.invoke('hot-update:clear'),

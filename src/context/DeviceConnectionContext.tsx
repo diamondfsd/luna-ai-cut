@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useApp } from './AppContext'
 import { logger } from '../lib/rendererLogger'
 import type {
@@ -135,6 +135,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   const [cameraLibraryMounted, setCameraLibraryMounted] = useState(false)
   const [connectionMode, setConnectionModeState] = useState<CameraConnectionMode>('wireless')
   const [preparedWifi, setPreparedWifi] = useState<CameraMediaSourcePreparationResult['credentials'] & { deviceId: string } | null>(null)
+  const connectionAttemptIdRef = useRef<string | null>(null)
 
   const activeDevice = useMemo(() => activeDeviceFor(settings, devices), [devices, settings])
   const isConnected = devicePhase === 'connected' && Boolean(connection?.controlOk)
@@ -176,6 +177,10 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     return window.luna.onConnectionLost(() => {
       if (connectionMode !== 'wireless') return
+      if (connectionAttemptIdRef.current) {
+        logger.warn('[设备连接] 忽略连接过程中的旧断开通知', { connectionAttemptId: connectionAttemptIdRef.current })
+        return
+      }
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
       logger.warn('[设备连接] 连接丢失', { host })
       setConnection({ host, httpOk: false, controlOk: false, message: '设备连接已断开' })
@@ -184,6 +189,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         mode: 'wireless',
         deviceId: settings?.activeDeviceId ?? activeDevice?.id,
         host,
+        connectionAttemptId: connectionAttemptIdRef.current ?? undefined,
       }).catch(() => window.luna.disconnect())
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -228,6 +234,8 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     wirelessOverride?: CameraMediaSourceOptions['wireless'],
   ): Promise<void> {
     let connectionWireless: CameraMediaSourceOptions['wireless'] | undefined
+    let connectionHost = ''
+    const connectionAttemptId = `connection-${Date.now()}-${Math.random().toString(36).slice(2)}`
     try {
       const latestSettings = await window.luna.getSettings().catch(() => settings)
       const deviceId = requestedDeviceId ?? latestSettings?.activeDeviceId ?? activeDevice?.id
@@ -238,6 +246,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
           ? latestSettings.cameraHost
           : requestedDevice?.defaultHost
         : latestSettings?.cameraHost ?? activeDevice?.defaultHost
+      connectionHost = host ?? ''
       logger.info('[设备连接] 发起连接', { mode, deviceId, host, rootPath })
       if (!deviceId || (mode === 'wireless' && !host)) {
         const errMsg = '未配置设备连接地址'
@@ -247,6 +256,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         return
       }
 
+      connectionAttemptIdRef.current = connectionAttemptId
       setDevicePhase('checking')
       const t0 = performance.now()
       const devicePreparedWifi = preparedWifi?.deviceId === deviceId ? preparedWifi : null
@@ -257,16 +267,29 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         autoJoin: true,
       } : undefined)
       connectionWireless = wireless
+      const sourceOptions: CameraMediaSourceOptions = {
+        mode,
+        deviceId,
+        host,
+        rootPath: rootPath || latestSettings?.mountedCameraRoot,
+        wireless,
+        connectionAttemptId,
+      }
+      let timedOut = false
       const status = await Promise.race([
-        window.luna.cameraSource.connect({
-          mode,
-          deviceId,
-          host,
-          rootPath: rootPath || latestSettings?.mountedCameraRoot,
-          wireless,
+        window.luna.cameraSource.connect(sourceOptions),
+        connectionTimeoutStatus(mode, host ?? '').then((timeoutStatus) => {
+          timedOut = true
+          return timeoutStatus
         }),
-        connectionTimeoutStatus(mode, host ?? ''),
       ])
+      if (timedOut) {
+        logger.warn('[设备连接] 连接超时，取消后台连接任务', { deviceId, host, connectionAttemptId })
+        await window.luna.cameraSource.disconnect(sourceOptions).catch((error) => {
+          logger.warn('[设备连接] 取消超时连接失败', { deviceId, host, error: error instanceof Error ? error.message : String(error) })
+        })
+      }
+      if (connectionAttemptIdRef.current !== connectionAttemptId) return
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       const enrichedStatus = status.connected || mode === 'wired' ? status : await enrichConnectionStatus(status)
       setConnection(enrichedStatus)
@@ -289,7 +312,8 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         })
       }
     } catch (error) {
-      const host = settings?.cameraHost || activeDevice?.defaultHost || ''
+      if (connectionAttemptIdRef.current !== connectionAttemptId) return
+      const host = connectionHost || settings?.cameraHost || activeDevice?.defaultHost || ''
       const manualWifiRequired = connectionWireless?.autoJoin === true && Boolean(connectionWireless.ssid?.trim())
       const errMsg = manualWifiRequired
         ? '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点'
@@ -305,10 +329,15 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         message: errMsg,
       })
       setDevicePhase('error')
+    } finally {
+      if (connectionAttemptIdRef.current === connectionAttemptId) {
+        connectionAttemptIdRef.current = null
+      }
     }
   }
 
   async function prepareConnection(preferExistingConnection = false): Promise<CameraMediaSourcePreparationResult | null> {
+    const connectionAttemptId = `preparation-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const latestSettings = await window.luna.getSettings().catch(() => settings)
     const deviceId = latestSettings?.activeDeviceId ?? activeDevice?.id
     const device = devices.find((item) => item.id === deviceId) ?? activeDevice
@@ -319,6 +348,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       return null
     }
 
+    connectionAttemptIdRef.current = connectionAttemptId
     setDevicePhase('checking')
     try {
       const result = await window.luna.cameraSource.prepareConnection({
@@ -326,7 +356,9 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         deviceId,
         host,
         preferExistingConnection,
+        connectionAttemptId,
       })
+      if (connectionAttemptIdRef.current !== connectionAttemptId) return null
       if (result.credentials) {
         setPreparedWifi({ ...result.credentials, deviceId })
       }
@@ -342,10 +374,15 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       setDevicePhase('idle')
       return result
     } catch (error) {
+      if (connectionAttemptIdRef.current !== connectionAttemptId) return null
       const message = userFacingConnectionError(error)
       setConnection({ host, httpOk: false, controlOk: false, message })
       setDevicePhase('idle')
       return { mode: 'wireless', preparation: 'already-connected', requiresManualWifi: true, message }
+    } finally {
+      if (connectionAttemptIdRef.current === connectionAttemptId) {
+        connectionAttemptIdRef.current = null
+      }
     }
   }
 
@@ -358,6 +395,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       deviceId: settings?.activeDeviceId ?? activeDevice?.id,
       host: settings?.cameraHost,
       rootPath: settings?.mountedCameraRoot,
+      connectionAttemptId: connectionAttemptIdRef.current ?? undefined,
     }).catch(() => undefined)
 
     setConnection(null)
@@ -413,6 +451,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         deviceId: settings?.activeDeviceId,
         host: settings?.cameraHost,
         rootPath: settings?.mountedCameraRoot,
+        connectionAttemptId: connectionAttemptIdRef.current ?? undefined,
       }).catch(() => undefined)
     }
     setConnectionModeState(mode)
@@ -424,11 +463,14 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   }
 
   async function disconnectDevice(): Promise<void> {
+    const connectionAttemptId = connectionAttemptIdRef.current
+    connectionAttemptIdRef.current = null
     await window.luna.cameraSource.disconnect({
       mode: connectionMode,
       deviceId: settings?.activeDeviceId,
       host: settings?.cameraHost,
       rootPath: settings?.mountedCameraRoot,
+      connectionAttemptId: connectionAttemptId ?? undefined,
     }).catch(() => undefined)
     setConnection(null)
     setDevicePhase('idle')

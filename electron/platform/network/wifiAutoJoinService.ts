@@ -1,5 +1,5 @@
 import type { DeviceDefinition, WifiDebugStatus } from '../../../src/shared/types'
-import { connectWifiNetwork, disconnectWifiNetwork, getWifiDebugStatus, scanWifiNetworks } from './wifiDebugService'
+import { connectWifiNetwork, getWifiDebugStatus, scanWifiNetworks } from './wifiDebugService'
 import { probeInsta360ControlResponse } from '../../devices/insta360/insta360TcpProtocol'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
@@ -9,6 +9,7 @@ export interface WifiAutoJoinResult {
   ssid?: string
   wifiPasswordRequired?: boolean
   wifiManualConnectionRequired?: boolean
+  cancelled?: boolean
   message: string
 }
 
@@ -18,13 +19,6 @@ export interface WifiCameraEndpoint {
   protocol: 'insta360-stream'
 }
 
-interface WifiRestoreSession {
-  cameraSsid: string
-  previousSsid: string | null
-  endpoint?: WifiCameraEndpoint
-}
-
-const restoreSessions = new Map<string, WifiRestoreSession>()
 const CAMERA_HANDSHAKE_WAIT_MS = 10000
 const CAMERA_HANDSHAKE_RETRY_DELAY_MS = 250
 const INITIAL_CAMERA_PROBE_TIMEOUT_MS = 1500
@@ -39,6 +33,10 @@ function matchesConfiguredSsid(ssid: string, includes: string[]): boolean {
 
 function skipped(message: string, wifiPasswordRequired = false): WifiAutoJoinResult {
   return { attempted: false, connected: false, wifiPasswordRequired, message }
+}
+
+function cancelled(): WifiAutoJoinResult {
+  return { attempted: false, connected: false, cancelled: true, message: '设备连接已取消' }
 }
 
 function isLunaWifiAddress(address: string): boolean {
@@ -57,12 +55,14 @@ function hasLunaWifiAddress(status?: WifiDebugStatus): boolean {
 async function waitForCameraHandshake(
   endpoint: WifiCameraEndpoint,
   sessionKey: string,
+  isCancelled?: () => boolean,
 ): Promise<{ ok: boolean; lastError: string | null }> {
   const startedAt = Date.now()
   const deadline = startedAt + CAMERA_HANDSHAKE_WAIT_MS
   let attempts = 0
   let lastError: string | null = null
   while (Date.now() < deadline) {
+    if (isCancelled?.()) return { ok: false, lastError: '设备连接已取消' }
     attempts += 1
     try {
       const response = await probeInsta360ControlResponse(endpoint.host, endpoint.port)
@@ -87,6 +87,7 @@ async function waitForCameraHandshake(
         error: lastError,
       })
     }
+    if (isCancelled?.()) return { ok: false, lastError: '设备连接已取消' }
     await new Promise((resolve) => setTimeout(resolve, CAMERA_HANDSHAKE_RETRY_DELAY_MS))
   }
   logMainWarn('[设备 Wi-Fi] 相机控制通道握手失败', {
@@ -127,11 +128,13 @@ async function probeCameraEndpoint(endpoint: WifiCameraEndpoint, sessionKey: str
 
 async function waitForLunaWifiAddress(
   sessionKey: string,
+  isCancelled?: () => boolean,
 ): Promise<{ address: string; ssid: string | null } | null> {
   const startedAt = Date.now()
   const deadline = startedAt + CAMERA_HANDSHAKE_WAIT_MS
   let attempts = 0
   while (Date.now() < deadline) {
+    if (isCancelled?.()) return null
     attempts += 1
     const status = await getWifiDebugStatus().catch(() => null)
     if (status?.success && hasLunaWifiAddress(status.data)) {
@@ -150,6 +153,7 @@ async function waitForLunaWifiAddress(
         return { address, ssid: status.data?.ssid ?? null }
       }
     }
+    if (isCancelled?.()) return null
     await new Promise((resolve) => setTimeout(resolve, CAMERA_HANDSHAKE_RETRY_DELAY_MS))
   }
   logMainWarn('[设备 Wi-Fi] 切换后未获取 Luna 网段地址', {
@@ -170,10 +174,14 @@ export async function autoJoinDeviceWifi(
   password?: string,
   requestedSsid?: string,
   endpoint?: WifiCameraEndpoint,
+  isCancelled?: () => boolean,
+  signal?: AbortSignal,
 ): Promise<WifiAutoJoinResult> {
+  const cancelledByCaller = (): boolean => Boolean(signal?.aborted || isCancelled?.())
   if ((process.platform !== 'darwin' && process.platform !== 'win32') || !config?.autoJoin || config.ssidIncludes.length === 0) {
     return skipped('未启用设备 Wi-Fi 自动连接')
   }
+  if (cancelledByCaller()) return cancelled()
 
   logMainInfo('[设备 Wi-Fi] 开始自动连接', {
     sessionKey,
@@ -181,6 +189,7 @@ export async function autoJoinDeviceWifi(
   })
 
   if (endpoint && await probeCameraEndpoint(endpoint, sessionKey)) {
+    if (cancelledByCaller()) return cancelled()
     return {
       attempted: false,
       connected: true,
@@ -189,6 +198,7 @@ export async function autoJoinDeviceWifi(
   }
 
   const current = await getWifiDebugStatus().catch(() => null)
+  if (cancelledByCaller()) return cancelled()
   const currentSsid = current?.success ? current.data?.ssid : null
   if (hasLunaWifiAddress(current?.data)) {
     const localAddress = [
@@ -262,7 +272,8 @@ export async function autoJoinDeviceWifi(
     // macOS may hide the current SSID from CoreWLAN even after association.
     // The Luna network address and camera control handshake below are the actual connection checks.
     skipSsidVerification: Boolean(endpoint),
-  })
+  }, signal)
+  if (cancelledByCaller()) return cancelled()
   logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
     sessionKey,
     ssid: candidateSsid,
@@ -291,7 +302,8 @@ export async function autoJoinDeviceWifi(
 
   const joinedSsid = joined.data?.ssid
   if (endpoint) {
-    const handshake = await waitForCameraHandshake(endpoint, sessionKey)
+    const handshake = await waitForCameraHandshake(endpoint, sessionKey, cancelledByCaller)
+    if (cancelledByCaller()) return cancelled()
     if (!handshake.ok) {
       return {
         attempted: true,
@@ -303,7 +315,8 @@ export async function autoJoinDeviceWifi(
       }
     }
   } else {
-    const network = await waitForLunaWifiAddress(sessionKey)
+    const network = await waitForLunaWifiAddress(sessionKey, cancelledByCaller)
+    if (cancelledByCaller()) return cancelled()
     if (!network) {
       return {
         attempted: true,
@@ -316,12 +329,6 @@ export async function autoJoinDeviceWifi(
     }
   }
 
-  restoreSessions.set(sessionKey, {
-    cameraSsid: candidateSsid,
-    previousSsid: currentSsid ?? null,
-    endpoint,
-  })
-
   logMainInfo('[设备 Wi-Fi] 自动连接成功', {
     sessionKey,
     targetSsid: candidateSsid,
@@ -333,53 +340,5 @@ export async function autoJoinDeviceWifi(
     connected: true,
     ssid: candidateSsid,
     message: `已连接设备 Wi-Fi：${candidateSsid}`,
-  }
-}
-
-/**
- * 恢复自动切换前的 Wi-Fi。只有目标地址或相机网段仍可确认时才执行，避免覆盖用户的手动选择。
- */
-export async function restoreDeviceWifi(sessionKey = 'default'): Promise<WifiAutoJoinResult> {
-  const session = restoreSessions.get(sessionKey)
-  if (!session) return skipped('没有需要恢复的设备 Wi-Fi')
-  restoreSessions.delete(sessionKey)
-
-  logMainInfo('[设备 Wi-Fi] 准备恢复连接前网络', { sessionKey, cameraSsid: session.cameraSsid, previousSsid: session.previousSsid })
-
-  const current = await getWifiDebugStatus().catch(() => null)
-  const currentSsid = current?.success ? current.data?.ssid : null
-  const targetReachable = session.endpoint ? await probeCameraEndpoint(session.endpoint, sessionKey) : false
-  if (!targetReachable && !hasLunaWifiAddress(current?.data)) {
-    logMainInfo('[设备 Wi-Fi] 用户已切换网络，不执行恢复', { sessionKey, cameraSsid: session.cameraSsid, currentSsid })
-    return {
-      attempted: false,
-      connected: Boolean(current?.data?.connected),
-      ssid: currentSsid ?? undefined,
-      message: currentSsid
-        ? `当前 Wi-Fi 已由用户切换为 ${currentSsid}，不覆盖手动选择`
-        : '当前未连接 Wi-Fi，不覆盖手动选择',
-    }
-  }
-
-  if (!session.previousSsid) {
-    const result = await disconnectWifiNetwork()
-    logMainInfo('[设备 Wi-Fi] 已处理原网络为空的恢复', { sessionKey, success: result.success, message: result.message })
-    return {
-      attempted: true,
-      connected: false,
-      ssid: undefined,
-      message: result.success ? '已断开相机 Wi-Fi' : `恢复原 Wi-Fi 失败：${result.message}`,
-    }
-  }
-
-  const result = await connectWifiNetwork({ ssid: session.previousSsid })
-  logMainInfo('[设备 Wi-Fi] 恢复原网络完成', { sessionKey, ssid: session.previousSsid, success: result.success, message: result.message })
-  return {
-    attempted: true,
-    connected: result.success,
-    ssid: session.previousSsid,
-    message: result.success
-      ? `已恢复原 Wi-Fi：${session.previousSsid}`
-      : `恢复原 Wi-Fi 失败：${result.message}`,
   }
 }

@@ -11,7 +11,7 @@ import { getSettings, saveSettings } from '../../storage/fileService'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import { LunaBleSession } from './lunaBleSession'
 import type { LunaWifiCredentials } from './lunaBleCodec'
-import { createElectronLunaBleTransport } from './lunaBleWebBluetoothTransport'
+import { createElectronLunaBleTransport, type LunaBleTransport } from './lunaBleWebBluetoothTransport'
 import { probeInsta360ControlResponse } from './insta360TcpProtocol'
 
 const MANUAL_WIFI_MESSAGE = '请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试'
@@ -22,6 +22,7 @@ export type LunaWirelessPreparationMode = CameraMediaSourceWirelessPreparation
 export interface LunaWirelessPreparation {
   readonly capabilities: CameraMediaSourceConnectionCapabilities
   prepare(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult>
+  close(): Promise<void>
 }
 
 function isLoopbackHost(host: string): boolean {
@@ -63,6 +64,9 @@ function suppliedCredentials(options: CameraMediaSourceOptions): LunaWifiCredent
 /** Reads Luna's Wi-Fi credentials over BLE and leaves network switching to the shared Wi-Fi service. */
 export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
   private bluetoothAvailable: boolean | null = null
+  private activeTransport: LunaBleTransport | null = null
+  private activeSession: LunaBleSession | null = null
+  private closed = false
 
   constructor(
     private readonly deviceId: string,
@@ -83,6 +87,7 @@ export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
   }
 
   async prepare(options: CameraMediaSourceOptions): Promise<CameraMediaSourcePreparationResult> {
+    this.closed = false
     const wireless = options.wireless
     const startedAt = Date.now()
     logMainInfo('[Luna Wi-Fi] 连接准备开始', {
@@ -126,6 +131,8 @@ export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
       })
     }
 
+    this.throwIfClosed()
+
     const supplied = suppliedCredentials(options)
     if (supplied) {
       const preparation = wireless?.preparation === 'bluetooth' ? 'bluetooth' : 'manual-wifi'
@@ -145,41 +152,69 @@ export class DefaultLunaWirelessPreparation implements LunaWirelessPreparation {
       this.bluetoothAvailable = false
       return manualResult(MANUAL_WIFI_MESSAGE, this.capabilities)
     }
+    this.activeTransport = transport
 
-    const availability = await transport.checkAvailability()
-    if (availability === false) {
-      this.bluetoothAvailable = false
-      await transport.close().catch(() => undefined)
-      return manualResult('请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试', this.capabilities)
-    }
-    if (availability === true) this.bluetoothAvailable = true
-
-    const identity = await lunaInstallIdentity()
-    const session = new LunaBleSession({ deviceId: this.deviceId, win: this.win, transport, authorizationId: identity })
     try {
-      const credentials = await session.readWifiCredentials()
-      logMainInfo('[Luna Wi-Fi] 已通过蓝牙读取 Wi-Fi 信息', {
-        deviceId: this.deviceId,
-        ssid: credentials.ssid,
-        passwordLength: credentials.password.length,
-        elapsedMs: Date.now() - startedAt,
-      })
-      return {
-        mode: 'wireless',
-        preparation: 'bluetooth',
-        credentials,
-        capabilities: this.capabilities,
-        message: `已通过蓝牙取得 Wi-Fi 信息：${credentials.ssid}`,
+      const availability = await transport.checkAvailability()
+      this.throwIfClosed()
+      if (availability === false) {
+        this.bluetoothAvailable = false
+        return manualResult('请在系统 Wi-Fi 中连接相机热点，完成后返回应用重试', this.capabilities)
       }
-    } catch (error) {
-      logMainWarn('[Luna Wi-Fi] 蓝牙读取 Wi-Fi 信息失败，回退系统 Wi-Fi', {
-        deviceId: this.deviceId,
-        elapsedMs: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      return manualResult(MANUAL_WIFI_MESSAGE, this.capabilities)
+      if (availability === true) this.bluetoothAvailable = true
+
+      const identity = await lunaInstallIdentity()
+      this.throwIfClosed()
+      const session = new LunaBleSession({ deviceId: this.deviceId, win: this.win, transport, authorizationId: identity })
+      this.activeSession = session
+      try {
+        const credentials = await session.readWifiCredentials()
+        this.throwIfClosed()
+        logMainInfo('[Luna Wi-Fi] 已通过蓝牙读取 Wi-Fi 信息', {
+          deviceId: this.deviceId,
+          ssid: credentials.ssid,
+          passwordLength: credentials.password.length,
+          elapsedMs: Date.now() - startedAt,
+        })
+        return {
+          mode: 'wireless',
+          preparation: 'bluetooth',
+          credentials,
+          capabilities: this.capabilities,
+          message: `已通过蓝牙取得 Wi-Fi 信息：${credentials.ssid}`,
+        }
+      } catch (error) {
+        if (this.closed) throw new Error('设备连接已取消')
+        logMainWarn('[Luna Wi-Fi] 蓝牙读取 Wi-Fi 信息失败，回退系统 Wi-Fi', {
+          deviceId: this.deviceId,
+          elapsedMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return manualResult(MANUAL_WIFI_MESSAGE, this.capabilities)
+      } finally {
+        if (this.activeSession === session) this.activeSession = null
+        await session.close().catch(() => undefined)
+      }
     } finally {
-      await session.close().catch(() => undefined)
+      if (this.activeTransport === transport) this.activeTransport = null
+      if (!this.activeSession) await transport.close().catch(() => undefined)
     }
+  }
+
+  async close(): Promise<void> {
+    this.closed = true
+    const session = this.activeSession
+    const transport = this.activeTransport
+    this.activeSession = null
+    this.activeTransport = null
+    if (session) {
+      await session.close().catch(() => undefined)
+      return
+    }
+    await transport?.close().catch(() => undefined)
+  }
+
+  private throwIfClosed(): void {
+    if (this.closed) throw new Error('设备连接已取消')
   }
 }
