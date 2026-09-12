@@ -1,7 +1,13 @@
 import { app, ipcMain } from 'electron'
 import { join } from 'node:path'
 import type { HotUpdateCheckResult } from '../infrastructure/hotUpdater'
-import { applyHotUpdate, checkForHotUpdates, clearHotUpdate, getCurrentHotVersion } from '../infrastructure/hotUpdater'
+import {
+  applyHotUpdate,
+  checkForHotUpdates,
+  clearHotUpdate,
+  getCurrentHotVersion,
+  getDailyHotUpdateResult,
+} from '../infrastructure/hotUpdater'
 import { logMainError, logMainInfo } from '../infrastructure/loggerService'
 import { listReleaseNotes } from '../infrastructure/releaseNotesService'
 import { checkForUpdates } from '../infrastructure/updateService'
@@ -22,6 +28,8 @@ export function register(): void {
   ipcMain.handle('hot-update:current-version', () => {
     return getCurrentHotVersion()
   })
+
+  ipcMain.handle('hot-update:automatic-result', async () => getDailyHotUpdateResult())
 
   ipcMain.handle('hot-update:check', async (): Promise<HotUpdateCheckResult | null> => {
     logMainInfo('[热更新] 用户手动检查')

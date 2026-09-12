@@ -153,6 +153,7 @@ export function AppRoutes() {
               phase={devicePhase}
               settings={settings}
               onConnect={connectDevice}
+              onCancelConnection={disconnectDevice}
               onPrepareConnection={prepareConnection}
               preparedWifi={preparedWifi}
               onDeviceChange={selectDevice}
