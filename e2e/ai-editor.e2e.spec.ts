@@ -10,7 +10,7 @@ test('AI 剪辑导航打开 OpenReel 编辑器', async ({ lunaApp }) => {
   const editorFrame = lunaApp.page.locator('iframe[title="AI 剪辑"]')
   await expect(editorFrame).toBeVisible()
   await expect(editorFrame.contentFrame().locator('#root')).not.toBeEmpty({ timeout: 30_000 })
-  await lunaApp.page.getByRole('button', { name: '复制 Agent 提示词' }).click()
+  await editorFrame.contentFrame().getByRole('button', { name: '复制 Agent 提示词' }).click()
   await expect(lunaApp.page.getByText('Agent 提示词已复制', { exact: true })).toBeVisible()
   const copiedPrompt = await lunaApp.page.evaluate(() => navigator.clipboard.readText())
   expect(copiedPrompt).toContain('luna-mcp.mjs')
@@ -153,7 +153,7 @@ if (process.env.LUNA_EXTERNAL_AGENT_TEST === '1') {
     await expect(editor.locator('#root')).not.toBeEmpty({ timeout: 30_000 })
     await expect(editor.getByRole('button', { name: 'AI 剪辑项目' })).toBeVisible({ timeout: 30_000 })
 
-    await lunaApp.page.getByRole('button', { name: '复制 Agent 提示词' }).click()
+    await editor.getByRole('button', { name: '复制 Agent 提示词' }).click()
     await expect(lunaApp.page.getByText('Agent 提示词已复制', { exact: true })).toBeVisible()
     const prompt = await lunaApp.page.evaluate(() => navigator.clipboard.readText())
     const endpointPath = path.join(lunaApp.temporaryRoot, 'user-data', '.luna-ai-cut', 'mcp-endpoint.json')

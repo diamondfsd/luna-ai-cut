@@ -178,7 +178,7 @@ export function AppRoutes() {
           <AiSelectionPage />
         </AppRoute>
 
-        <AppRoute path="/ai-editor">
+        <AppRoute path="/ai-editor" preserve>
           <AiEditorPage active={isActive('/ai-editor')} />
         </AppRoute>
 

@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Copy } from 'lucide-react'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
 import type { AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
-import { Button, toast } from '../ui'
+import { toast } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import { buildAiEditorAgentPrompt } from './aiEditorAgentPrompt'
 import './AiEditorPage.css'
@@ -44,6 +43,11 @@ interface McpFrameResponse {
   response: AiEditorMcpResponse
 }
 
+interface CopyAgentPromptRequest {
+  source: 'luna-openreel'
+  type: 'copy-agent-prompt'
+}
+
 function isChooseAssetsRequest(value: unknown): value is ChooseAssetsRequest {
   if (!value || typeof value !== 'object') return false
   const message = value as Partial<ChooseAssetsRequest>
@@ -62,6 +66,12 @@ function isMcpFrameResponse(value: unknown): value is McpFrameResponse {
     && message.type === 'mcp-response'
     && typeof message.callId === 'string'
     && Boolean(message.response && typeof message.response === 'object')
+}
+
+function isCopyAgentPromptRequest(value: unknown): value is CopyAgentPromptRequest {
+  if (!value || typeof value !== 'object') return false
+  const message = value as Partial<CopyAgentPromptRequest>
+  return message.source === 'luna-openreel' && message.type === 'copy-agent-prompt'
 }
 
 function isMediaSource(value: unknown): value is AiEditorMediaSource {
@@ -192,7 +202,11 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const location = useLocation()
   const locationState = location.state
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const activeRef = useRef(active)
   const importStartedRef = useRef(false)
+  const initializedRef = useRef(false)
+  const handledLocationKeyRef = useRef<string | null>(null)
+  const initializationTokenRef = useRef(0)
   const pendingChooseAssetsRef = useRef<ChooseAssetsRequest | null>(null)
   const pendingChooseAssetsTargetRef = useRef<WindowProxy | null>(null)
   const pendingMcpRequestsRef = useRef(new Map<string, PendingMcpRequest>())
@@ -209,9 +223,13 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const [chooseAssetsExistingPaths, setChooseAssetsExistingPaths] = useState<string[]>([])
 
   useEffect(() => {
+    activeRef.current = active
+  }, [active])
+
+  useEffect(() => {
     const pendingMcpRequests = pendingMcpRequestsRef.current
     const offRequest = window.luna.aiEditor.mcp.onRequest(async (request: AiEditorMcpRequest) => {
-      if (!active) return { ok: false, error: 'AI 剪辑页面未打开' }
+      if (!activeRef.current) return { ok: false, error: 'AI 剪辑页面未打开' }
       const target = frameRef.current?.contentWindow
       if (!target) return { ok: false, error: 'AI 剪辑页面尚未加载' }
 
@@ -237,11 +255,17 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
       }
       pendingMcpRequests.clear()
     }
-  }, [active])
+  }, [])
 
   useEffect(() => {
-    if (!active) return
+    if (!active || location.pathname !== '/ai-editor') return
     const mediaSources = mediaSourcesFromState(locationState)
+    const hasExplicitRequest = mediaSources.length > 0 || isProjectListRequest(locationState)
+    if (hasExplicitRequest && handledLocationKeyRef.current === location.key) return
+    if (!hasExplicitRequest && initializedRef.current) return
+
+    initializedRef.current = true
+    handledLocationKeyRef.current = location.key
     const initialAssets: AiEditorFrameAsset[] = mediaSources.map((source, index) => ({
       id: `openreel-${Date.now()}-${index}`,
       name: source.name,
@@ -267,26 +291,23 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
       revision: previous.revision + 1,
     }))
 
+    const initializationToken = initializationTokenRef.current + 1
+    initializationTokenRef.current = initializationToken
     if (nextView.mode !== 'media') return
 
-    let cancelled = false
     void window.luna.aiEditor.project.create('AI 剪辑项目', nextView.media)
       .then((project) => {
-        if (cancelled) return
+        if (initializationTokenRef.current !== initializationToken) return
         setEditorView((previous) => ({ ...previous, projectId: project.projectId }))
       })
       .catch((error: unknown) => {
-        if (cancelled) return
+        if (initializationTokenRef.current !== initializationToken) return
         logger.error('[AI 剪辑] 创建本地项目失败', {
           error: error instanceof Error ? error.message : String(error),
         })
         setImportFailed(true)
       })
-
-    return () => {
-      cancelled = true
-    }
-  }, [active, location.key, locationState])
+  }, [active, location.key, location.pathname, locationState])
 
   useEffect(() => {
     function handleMessage(event: MessageEvent<unknown>): void {
@@ -300,9 +321,14 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
         return
       }
 
+      if (event.source !== frameRef.current?.contentWindow) return
+      if (isCopyAgentPromptRequest(event.data)) {
+        void copyAgentPrompt()
+        return
+      }
+
       const request = isChooseAssetsRequest(event.data) ? event.data : null
       if (!request) return
-      if (event.source !== frameRef.current?.contentWindow) return
 
       const previousRequest = pendingChooseAssetsRef.current
       const previousTarget = pendingChooseAssetsTargetRef.current
@@ -426,16 +452,6 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
 
   return (
     <div className="ai-editor-page">
-      <div className="ai-editor-agent-toolbar">
-        <Button
-          variant="toolbar"
-          size="compact"
-          icon={<Copy size={14} />}
-          onClick={() => void copyAgentPrompt()}
-        >
-          复制 Agent 提示词
-        </Button>
-      </div>
       {(!loaded || importing || importFailed) && (
         <div className="ai-editor-loading" role="status">
           {importFailed ? '素材导入失败' : importing ? '正在导入素材' : '正在打开 AI 剪辑'}
