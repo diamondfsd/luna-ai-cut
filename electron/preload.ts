@@ -90,6 +90,22 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
         return () => ipcRenderer.off('ai-editor:mcp-request', listener)
       },
     },
+    agent: {
+      createRequest: (request, projectId) => ipcRenderer.invoke('ai-editor:agent-create-request', request, projectId ?? null),
+      updateRequest: (sessionId, request) => ipcRenderer.invoke('ai-editor:agent-update-request', sessionId, request),
+      cancelRequest: (sessionId) => ipcRenderer.invoke('ai-editor:agent-cancel-request', sessionId),
+      getSnapshot: () => ipcRenderer.invoke('ai-editor:agent-snapshot'),
+      onEvent: (callback) => {
+        const listener = (_event: Electron.IpcRendererEvent, value: import('../src/shared/types').AiEditorAgentEvent): void => callback(value)
+        ipcRenderer.on('ai-editor:agent-event', listener)
+        return () => ipcRenderer.off('ai-editor:agent-event', listener)
+      },
+      onActivate: (callback) => {
+        const listener = (): void => callback()
+        ipcRenderer.on('ai-editor:agent-activate', listener)
+        return () => ipcRenderer.off('ai-editor:agent-activate', listener)
+      },
+    },
     listLocalMedia: (query) => ipcRenderer.invoke('ai-editor:list-local-media', query),
     getLocalMedia: (mediaId) => ipcRenderer.invoke('ai-editor:get-local-media', mediaId),
     readLocalMediaBytes: (mediaId) => ipcRenderer.invoke('ai-editor:read-local-media-bytes', mediaId),

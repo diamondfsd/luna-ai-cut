@@ -2,6 +2,8 @@
   const CHOOSE_ASSETS_TIMEOUT_MS = 60_000
   let pendingImportAssets = []
   let mcpRequestHandler = null
+  let agentEventHandler = null
+  let agentActivateHandler = null
 
   const parentApi = () => {
     const parentWindow = window.parent
@@ -89,6 +91,26 @@
       } catch {
         // The host request will time out and report the failed handoff.
       }
+      return
+    }
+
+    if (message.type === 'agent-event') {
+      if (typeof agentEventHandler === 'function') agentEventHandler(message.event)
+      return
+    }
+
+    if (message.type === 'agent-state') {
+      const events = message.snapshot && Array.isArray(message.snapshot.events)
+        ? message.snapshot.events
+        : []
+      if (typeof agentEventHandler === 'function') {
+        for (const event of events) agentEventHandler(event)
+      }
+      return
+    }
+
+    if (message.type === 'agent-activate') {
+      if (typeof agentActivateHandler === 'function') agentActivateHandler()
       return
     }
 
@@ -192,6 +214,24 @@
         mcpRequestHandler = handler
         return () => {
           if (mcpRequestHandler === handler) mcpRequestHandler = null
+        }
+      },
+    },
+    lunaAgent: {
+      createRequest: (request, projectId) => parentApi().agent.createRequest(request, projectId),
+      updateRequest: (sessionId, request) => parentApi().agent.updateRequest(sessionId, request),
+      cancelRequest: (sessionId) => parentApi().agent.cancelRequest(sessionId),
+      getSnapshot: () => parentApi().agent.getSnapshot(),
+      onEvent: (handler) => {
+        agentEventHandler = handler
+        return () => {
+          if (agentEventHandler === handler) agentEventHandler = null
+        }
+      },
+      onActivate: (handler) => {
+        agentActivateHandler = handler
+        return () => {
+          if (agentActivateHandler === handler) agentActivateHandler = null
         }
       },
     },

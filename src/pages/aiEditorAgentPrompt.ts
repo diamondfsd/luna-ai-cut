@@ -10,7 +10,7 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
 
 请按下面方式连接 Luna AI Cut：
 
-1. 先确认 Luna AI Cut 已启动，并且用户已经打开“AI 剪辑”页面；用户不需要预先创建或打开项目。
+1. 先确认 Luna AI Cut 已启动；用户不需要预先打开 AI 剪辑页面，也不需要预先创建项目。
 2. 在你的 MCP 配置中加入以下服务（把 command/args 原样保留）：
 
 {
@@ -30,12 +30,16 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
 2. 调用 tools/list，读取每个工具的说明和 inputSchema。
 3. 立即调用 get_editing_skill，完整阅读返回的 Luna 剪辑 skill；在此之前不要创建项目或修改项目。
 4. 只使用 tools/list 返回的工具，并严格按照 inputSchema 组装 arguments，不要猜参数名。
-5. 按用户要求调用剪辑工具，每次调用都等待结果，再进行下一步。
-6. 编辑完成后项目会自动保存，直接向用户简要汇报完成内容即可；除删除素材外，不要要求用户二次确认。
+5. 调用 wait_for_edit_request 等待 Luna 聊天页的剪辑要求。收到任务后调用 activate_luna_window，把 Luna 显示到前台并打开外部 Agent 进度面板。
+6. 领取任务后再次调用 get_editing_skill，确保页面切换或重新加载后仍已读取剪辑 skill。
+7. 使用返回的 sessionId 和 revision 贯穿本次任务；先调用 report_edit_progress 上报开始，再按要求调用剪辑工具，每次调用都等待结果。
+8. 每个工具结果中的 lunaAgent.requestChanged 都要检查。如果为 true，或修改工具返回 REQUEST_UPDATED，立即调用 get_edit_request 获取最新要求，再重新规划后继续。
+9. 在分析素材、创建项目、导入素材、剪辑、字幕、保存和导出等阶段调用 report_edit_progress，完成或失败时必须调用 report_edit_result。
+10. 不要在外部 Agent 对话中输出普通解释、剪辑方案或最终总结；状态和结果全部通过 report_edit_progress、report_edit_result 暴露给 Luna。除删除素材外，不要要求用户二次确认。
 
 除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源，inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、inspect_local_media 和 transcribe_local_media 可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
 
-当用户要求你“从素材库自己创建项目”“不要用户手动建项目”“剪辑最近一次出游/最近拍摄”等任务时，严格按这个流程执行：
+当 Luna 通过 wait_for_edit_request 返回任务后，如果要求你“从素材库自己创建项目”“不要用户手动建项目”“剪辑最近一次出游/最近拍摄”等任务时，严格按这个流程执行：
 1. 先调用 list_local_media，按 capturedAt 和 groupDay 找到相关拍摄；有明确日期时优先传 from/to，素材较多时传足够大的 limit。
 2. 先调用 inspect_local_media 的 overview 模式查看候选素材返回的代表帧。list_local_media 的元数据不能用于判断画面内容。
 3. 根据代表帧选择候选素材；对准备使用的视频调用 inspect_local_media 的 detail 模式检查开头、中间和结尾帧，确认入点和出点。
@@ -55,7 +59,7 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
 
 如果用户明确要继续已有项目，先调用 list_projects，再根据结果调用 open_project；如果用户没有要求新建或切换项目，继续操作当前已打开项目。
 
-常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、transcribe_local_media、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition。具体参数以 tools/list 的实时结果为准。
+常用任务工具包括：wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、transcribe_local_media、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition。具体参数以 tools/list 的实时结果为准。
 
 执行剪辑时请遵守：
 
@@ -65,6 +69,9 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
 - 先用 overview 做批量概览，再用 detail 检查少量候选视频，不要读取所有原始视频或逐帧分析全部素材。
 - 口播类任务以 transcribe_local_media 返回的语音字幕和时间轴为主要依据；先纠正文字并确定删除区间，再剪视频和重建字幕，不要求先理解画面。
 - 先理解用户的剪辑目标，再按“轨道/素材 -> 裁剪或分割 -> 字幕或文字 -> 转场”的顺序执行。
+- 任务开始和每个主要阶段都要调用 report_edit_progress；不要只在任务结束时回报。
+- 每次工具返回后检查 lunaAgent.requestChanged；用户修改要求时，以最新 revision 为准继续执行。
+- 任务结束必须调用 report_edit_result；不要依赖普通文本回复向 Luna 汇报结果。
 - 直接执行用户要求的项目操作，包括删除时间线片段、覆盖和导出，不要等待用户二次确认；删除素材前必须请求用户确认，确认后使用确认令牌完成删除。
 - 工具返回错误时停止继续修改，说明错误原因，不要重复盲目调用。
 
@@ -75,6 +82,6 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
   "arguments": { "name": "旅行短片" }
 }
 
-项目会自动保存，不需要额外调用 save_project，也不要要求用户点击保存。删除素材仍需先请求用户确认；确认后调用 confirm_media_deletion 完成删除。
+项目会自动保存，不需要额外调用 save_project，也不要要求用户点击保存。任务结果仍必须调用 report_edit_result。删除素材仍需先请求用户确认；确认后调用 confirm_media_deletion 完成删除。
 `
 }

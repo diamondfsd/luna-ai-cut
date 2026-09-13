@@ -4,7 +4,8 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import type { AiEditorMcpContent, AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
+import type { AiEditorAgentPhase, AiEditorMcpContent, AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
+import { AgentSessionManager, type AgentToolResult } from './agentSessionManager'
 
 const MCP_PROTOCOL_VERSION = '2024-11-05'
 const MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -39,6 +40,8 @@ export interface LunaMcpEndpoint {
 export interface LunaMcpServerOptions {
   homeDir?: string
   requestRenderer(request: AiEditorMcpRequest): Promise<AiEditorMcpResponse>
+  agentSession?: AgentSessionManager
+  activateWindow?: () => void | Promise<void>
 }
 
 export interface LunaMcpServer {
@@ -83,6 +86,218 @@ function contentForResponse(response: AiEditorMcpResponse): AiEditorMcpContent[]
   return [{ type: 'text', text: textForResult(response.result) }]
 }
 
+const AGENT_TASK_TOOLS = [
+  {
+    name: 'wait_for_edit_request',
+    description: 'Wait for and claim the latest user editing request from Luna AI Cut. Call this before editing tools.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agentId: { type: 'string', description: 'Optional stable name for this external Agent.' },
+        timeoutSec: { type: 'number', minimum: 5, maximum: 900, description: 'How long to wait when there is no queued request. Defaults to 300 seconds.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_edit_request',
+    description: 'Get the latest user editing request and revision. Call this whenever the user changes the request or before a major editing phase.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        knownRevision: { type: 'integer', minimum: 1 },
+      },
+      required: ['sessionId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'report_edit_progress',
+    description: 'Report the current editing phase and progress to Luna AI Cut. Do not write a natural-language status reply instead of using this tool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        revision: { type: 'integer', minimum: 1 },
+        phase: { type: 'string', enum: ['waiting', 'analyzing_media', 'creating_project', 'importing_media', 'editing', 'captioning', 'saving', 'exporting', 'completed', 'failed', 'cancelled'] },
+        progress: { type: 'number', minimum: 0, maximum: 100 },
+        message: { type: 'string' },
+      },
+      required: ['sessionId', 'revision', 'phase', 'progress', 'message'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'report_edit_result',
+    description: 'Report the final edit result to Luna AI Cut. The Luna chat page uses this structured result as the authoritative completion message.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        revision: { type: 'integer', minimum: 1 },
+        status: { type: 'string', enum: ['completed', 'failed', 'cancelled'] },
+        summary: { type: 'string' },
+        projectId: { type: 'string' },
+        projectName: { type: 'string' },
+        exportPath: { type: 'string' },
+      },
+      required: ['sessionId', 'revision', 'status'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'activate_luna_window',
+    description: 'Show Luna AI Cut, bring it to the foreground, open the AI editing page, and show the external Agent progress panel.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'cancel_edit_request',
+    description: 'Cancel an active Luna editing request when the user asks the Agent to stop.',
+    inputSchema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' } },
+      required: ['sessionId'],
+      additionalProperties: false,
+    },
+  },
+] as const
+
+const AGENT_TOOL_NAMES = new Set<string>(AGENT_TASK_TOOLS.map((tool) => tool.name))
+
+function stringArg(args: Record<string, unknown>, name: string): string | null {
+  const value = args[name]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function numberArg(args: Record<string, unknown>, name: string): number | undefined {
+  const value = args[name]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function agentToolResponse(result: AgentToolResult | Record<string, unknown>): AiEditorMcpResponse {
+  return { ok: true, result }
+}
+
+function agentInvalidParams(message: string): AiEditorMcpResponse {
+  return agentToolResponse({
+    ok: false,
+    summary: message,
+    error: { code: 'INVALID_PARAMS', message },
+  })
+}
+
+async function handleAgentTaskTool(
+  name: string,
+  args: Record<string, unknown>,
+  options: LunaMcpServerOptions,
+): Promise<AiEditorMcpResponse | null> {
+  if (!AGENT_TOOL_NAMES.has(name)) return null
+  const manager = options.agentSession
+  if (!manager) return agentToolResponse({
+    ok: false,
+    summary: '外部 Agent 任务服务不可用',
+    error: { code: 'UNSUPPORTED', message: '外部 Agent 任务服务不可用' },
+  })
+
+  try {
+    if (name === 'wait_for_edit_request') {
+      const result = await manager.waitForRequest(stringArg(args, 'agentId'), numberArg(args, 'timeoutSec'))
+      if (result.state === 'claimed') await options.activateWindow?.()
+      return agentToolResponse({
+        ok: true,
+        summary: result.state === 'claimed' ? '已领取 Luna 剪辑任务' : '当前没有新的剪辑任务',
+        data: result,
+      })
+    }
+
+    if (name === 'get_edit_request') {
+      const sessionId = stringArg(args, 'sessionId')
+      if (!sessionId) return agentInvalidParams('缺少 sessionId')
+      const result = manager.getRequest(sessionId, numberArg(args, 'knownRevision'))
+      return agentToolResponse({
+        ok: true,
+        summary: result.changed ? '用户剪辑要求已更新' : '剪辑要求没有变化',
+        data: result,
+      })
+    }
+
+    if (name === 'report_edit_progress') {
+      const sessionId = stringArg(args, 'sessionId')
+      const revision = numberArg(args, 'revision')
+      const phase = stringArg(args, 'phase') as AiEditorAgentPhase | null
+      const progress = numberArg(args, 'progress')
+      const message = stringArg(args, 'message')
+      if (!sessionId || revision === undefined || !phase || progress === undefined || !message) {
+        return agentInvalidParams('缺少进度上报参数')
+      }
+      return agentToolResponse(manager.reportProgress(sessionId, revision, phase, progress, message))
+    }
+
+    if (name === 'report_edit_result') {
+      const sessionId = stringArg(args, 'sessionId')
+      const revision = numberArg(args, 'revision')
+      const status = stringArg(args, 'status')
+      if (!sessionId || revision === undefined || (status !== 'completed' && status !== 'failed' && status !== 'cancelled')) {
+        return agentInvalidParams('缺少结果上报参数')
+      }
+      return agentToolResponse(manager.reportResult(
+        sessionId,
+        revision,
+        status,
+        stringArg(args, 'summary') ?? undefined,
+        stringArg(args, 'projectId') ?? undefined,
+        stringArg(args, 'projectName') ?? undefined,
+        stringArg(args, 'exportPath') ?? undefined,
+      ))
+    }
+
+    if (name === 'activate_luna_window') {
+      await options.activateWindow?.()
+      return agentToolResponse({ ok: true, summary: 'Luna AI Cut 已切到前台' })
+    }
+
+    const sessionId = stringArg(args, 'sessionId')
+    if (!sessionId) return agentInvalidParams('缺少 sessionId')
+    return agentToolResponse({ ok: true, summary: '已请求停止剪辑任务', data: manager.cancelRequest(sessionId) })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return agentToolResponse({ ok: false, summary: message, error: { code: 'AGENT_SESSION_ERROR', message } })
+  }
+}
+
+function addAgentContext(result: unknown, manager?: AgentSessionManager): unknown {
+  const context = manager?.activeContext()
+  const record = asRecord(result)
+  if (!context || !record) return result
+  const existingData = asRecord(record.data)
+  return {
+    ...record,
+    data: {
+      ...(existingData ?? (record.data === undefined ? {} : { value: record.data })),
+      lunaAgent: {
+        sessionId: context.sessionId,
+        requestRevision: context.revision,
+        requestChanged: context.changed,
+        ...(context.changed ? { latestRequest: context.request } : {}),
+      },
+    },
+  }
+}
+
+function isReadOnlyAgentTool(name: string): boolean {
+  return name === 'get_editing_skill'
+    || name.startsWith('list_')
+    || name.startsWith('get_')
+    || name.startsWith('inspect_')
+    || name.startsWith('preview_')
+    || name.startsWith('probe_')
+}
+
 async function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -116,7 +331,7 @@ function authorized(request: IncomingMessage, token: string): boolean {
 
 async function handleRpc(
   raw: unknown,
-  requestRenderer: LunaMcpServerOptions['requestRenderer'],
+  options: LunaMcpServerOptions,
 ): Promise<JsonRpcResponse | null> {
   const request = asRecord(raw) as JsonRpcRequest | null
   const rawId = request?.id
@@ -149,12 +364,13 @@ async function handleRpc(
   if (method === 'ping') return { jsonrpc: '2.0', id, result: {} }
 
   if (method === 'tools/list') {
-    const bridgeResponse = await requestRenderer({
+    const bridgeResponse = await options.requestRenderer({
       callId: randomUUID(),
       kind: 'listTools',
     })
     if (!bridgeResponse.ok) return jsonRpcError(id, -32000, bridgeResponse.error ?? 'AI 剪辑页面不可用')
-    return { jsonrpc: '2.0', id, result: { tools: bridgeResponse.result ?? [] } }
+    const rendererTools = Array.isArray(bridgeResponse.result) ? bridgeResponse.result : []
+    return { jsonrpc: '2.0', id, result: { tools: [...AGENT_TASK_TOOLS, ...rendererTools] } }
   }
 
   if (method === 'tools/call') {
@@ -162,24 +378,80 @@ async function handleRpc(
     const name = typeof params?.name === 'string' ? params.name : ''
     if (!name) return jsonRpcError(id, -32602, '缺少工具名称')
     const args = asRecord(params?.arguments) ?? {}
-    const bridgeResponse = await requestRenderer({
-      callId: randomUUID(),
+    const taskResult = await handleAgentTaskTool(name, args, options)
+    if (taskResult) {
+      const taskRecord = asRecord(taskResult.result)
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: contentForResponse(taskResult),
+          isError: taskRecord?.ok === false,
+          ...(taskResult.result && typeof taskResult.result === 'object'
+            ? { structuredContent: taskResult.result }
+            : {}),
+        },
+      }
+    }
+
+    const callId = randomUUID()
+    const requiresFreshRequest = Boolean(options.agentSession) && !isReadOnlyAgentTool(name)
+    if (requiresFreshRequest) {
+      const gate = options.agentSession?.gateActiveTool()
+      if (gate && !gate.allowed) {
+        const blocked = {
+          ok: false,
+          summary: gate.error?.message ?? '任务不可用',
+          data: { session: gate.session },
+          error: gate.error,
+        }
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: JSON.stringify(blocked) }],
+            isError: true,
+            structuredContent: blocked,
+          },
+        }
+      }
+    }
+
+    options.agentSession?.toolStarted(callId, name, args)
+    const startedAt = Date.now()
+    const bridgeResponse = await options.requestRenderer({
+      callId,
       kind: 'callTool',
       name,
       args,
     })
-    if (!bridgeResponse.ok) return jsonRpcError(id, -32000, bridgeResponse.error ?? 'AI 剪辑页面不可用')
+    const durationMs = Date.now() - startedAt
+    if (!bridgeResponse.ok) {
+      options.agentSession?.toolFinished(callId, name, args, false, bridgeResponse.error ?? 'AI 剪辑页面不可用', durationMs)
+      return jsonRpcError(id, -32000, bridgeResponse.error ?? 'AI 剪辑页面不可用')
+    }
 
-    const toolResult = asRecord(bridgeResponse.result)
+    const contextualResult = addAgentContext(bridgeResponse.result, options.agentSession)
+    const toolResult = asRecord(contextualResult)
+    options.agentSession?.toolFinished(
+      callId,
+      name,
+      args,
+      toolResult?.ok !== false,
+      typeof toolResult?.summary === 'string' ? toolResult.summary : '工具调用完成',
+      durationMs,
+    )
     const isError = toolResult?.ok === false
     return {
       jsonrpc: '2.0',
       id,
       result: {
-        content: contentForResponse(bridgeResponse),
+        content: contextualResult === bridgeResponse.result
+          ? contentForResponse(bridgeResponse)
+          : [{ type: 'text', text: textForResult(contextualResult) }, ...contentForResponse(bridgeResponse).filter((item) => item.type !== 'text')],
         isError,
-        ...(bridgeResponse.result && typeof bridgeResponse.result === 'object'
-          ? { structuredContent: bridgeResponse.result }
+        ...(contextualResult && typeof contextualResult === 'object'
+          ? { structuredContent: contextualResult }
           : {}),
       },
     }
@@ -192,7 +464,7 @@ async function handleHttpRequest(
   request: IncomingMessage,
   response: ServerResponse,
   token: string,
-  requestRenderer: LunaMcpServerOptions['requestRenderer'],
+  options: LunaMcpServerOptions,
 ): Promise<void> {
   if (request.method !== 'POST' || request.url !== '/rpc') {
     writeJson(response, 404, { error: 'Not found' })
@@ -206,7 +478,7 @@ async function handleHttpRequest(
   try {
     const body = await readBody(request)
     const parsed = JSON.parse(body) as unknown
-    const result = await handleRpc(parsed, requestRenderer)
+    const result = await handleRpc(parsed, options)
     if (result === null) {
       response.statusCode = 204
       response.end()
@@ -231,7 +503,7 @@ export function createLunaMcpServer(options: LunaMcpServerOptions): LunaMcpServe
 
       const token = randomBytes(32).toString('hex')
       server = createServer((request, response) => {
-        void handleHttpRequest(request, response, token, options.requestRenderer)
+        void handleHttpRequest(request, response, token, options)
       })
       await new Promise<void>((resolve, reject) => {
         const current = server as Server

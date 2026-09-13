@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
-import type { AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
+import type { AiEditorAgentEvent, AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
 import { toast } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
@@ -202,11 +202,11 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const location = useLocation()
   const locationState = location.state
   const frameRef = useRef<HTMLIFrameElement>(null)
-  const activeRef = useRef(active)
   const importStartedRef = useRef(false)
   const initializedRef = useRef(false)
   const handledLocationKeyRef = useRef<string | null>(null)
   const initializationTokenRef = useRef(0)
+  const pendingAgentActivationRef = useRef(false)
   const pendingChooseAssetsRef = useRef<ChooseAssetsRequest | null>(null)
   const pendingChooseAssetsTargetRef = useRef<WindowProxy | null>(null)
   const pendingMcpRequestsRef = useRef(new Map<string, PendingMcpRequest>())
@@ -223,13 +223,8 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const [chooseAssetsExistingPaths, setChooseAssetsExistingPaths] = useState<string[]>([])
 
   useEffect(() => {
-    activeRef.current = active
-  }, [active])
-
-  useEffect(() => {
     const pendingMcpRequests = pendingMcpRequestsRef.current
     const offRequest = window.luna.aiEditor.mcp.onRequest(async (request: AiEditorMcpRequest) => {
-      if (!activeRef.current) return { ok: false, error: 'AI 剪辑页面未打开' }
       const target = frameRef.current?.contentWindow
       if (!target) return { ok: false, error: 'AI 剪辑页面尚未加载' }
 
@@ -254,6 +249,28 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
         request.resolve({ ok: false, error: 'AI 剪辑页面已关闭' })
       }
       pendingMcpRequests.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    const postAgentEvent = (event: AiEditorAgentEvent): void => {
+      frameRef.current?.contentWindow?.postMessage({
+        source: 'luna-host',
+        type: 'agent-event',
+        event,
+      }, '*')
+    }
+    const offEvent = window.luna.aiEditor.agent.onEvent(postAgentEvent)
+    const offActivate = window.luna.aiEditor.agent.onActivate(() => {
+      pendingAgentActivationRef.current = true
+      frameRef.current?.contentWindow?.postMessage({
+        source: 'luna-host',
+        type: 'agent-activate',
+      }, '*')
+    })
+    return () => {
+      offEvent()
+      offActivate()
     }
   }, [])
 
@@ -420,6 +437,25 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
       mode: editorView.mode,
       mediaCount: editorView.media.length,
     })
+    try {
+      const snapshot = await window.luna.aiEditor.agent.getSnapshot()
+      frameRef.current?.contentWindow?.postMessage({
+        source: 'luna-host',
+        type: 'agent-state',
+        snapshot,
+      }, '*')
+      if (pendingAgentActivationRef.current) {
+        pendingAgentActivationRef.current = false
+        frameRef.current?.contentWindow?.postMessage({
+          source: 'luna-host',
+          type: 'agent-activate',
+        }, '*')
+      }
+    } catch (error) {
+      logger.warn('[AI 剪辑] 外部 Agent 状态同步失败', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
     if (editorView.mode !== 'media' || !editorView.projectId || editorView.media.length === 0 || importStartedRef.current || !frameRef.current) return
     importStartedRef.current = true
     setImporting(true)

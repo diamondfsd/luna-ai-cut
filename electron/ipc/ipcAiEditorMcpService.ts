@@ -5,6 +5,8 @@ import path from 'node:path'
 import type { AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
 import type { IpcContext } from './context'
 import { createLunaMcpServer, type LunaMcpServer } from '../mcp/lunaMcpServer'
+import { activateAgentWindow } from './ipcAiEditorAgentService'
+import { agentSessionManager } from '../mcp/agentSessionManager'
 
 interface PendingRendererRequest {
   resolve: (response: AiEditorMcpResponse) => void
@@ -58,6 +60,8 @@ export function register(context: IpcContext): void {
   mcpServer = createLunaMcpServer({
     homeDir: process.env.LUNA_E2E_USER_DATA_DIR ?? app.getPath('home'),
     requestRenderer: (request) => requestRenderer(context, request),
+    agentSession: agentSessionManager,
+    activateWindow: () => activateAgentWindow(context),
   })
   void mcpServer.start().catch((error: unknown) => {
     console.error('[MCP] 本机服务启动失败', error)
