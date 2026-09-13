@@ -44,9 +44,17 @@ cameraMediaSourceFor()  根据 DeviceDefinition.protocol 注册适配器
 
 连接准备通过 `CameraMediaSourceOptions.wireless` 传递。密码只作为本次连接参数使用，不写入应用设置。DJI 额外提供 `prepareConnection()`：先通过蓝牙读取 Wi-Fi 信息并断开 BLE，用户手动切换 Wi-Fi 后再调用统一的 `connect()`。未来需要系统 Wi-Fi 自动加入时，只新增对应策略实现，不改变素材列表接口。
 
+## Wi-Fi / SSID 识别约束
+
+当前支持的桌面计算机环境中，受操作系统、无线网卡厂商安全策略和权限限制影响，系统不能稳定识别当前已连接的 SSID。SSID 为空或读取失败是正常兼容性情况，不能据此判断 Wi-Fi 未连接、连接失败、是否发生回切，也不能触发恢复旧 Wi-Fi。
+
+各厂商通过蓝牙获取 Wi-Fi 信息的目的，是取得相机热点自己的连接凭据。蓝牙读取到的目标 SSID 和密码可以交给 macOS/Windows 系统网络接口用于连接；目标 SSID 是连接参数，不是通过系统读取“当前 SSID”的替代判断标准。
+
+连接状态必须使用与厂商网络实际通信的结果确认：优先检查相机网段地址，其次完成厂商控制端口或协议握手。当前 SSID 只允许用于可选的扫描、日志和界面展示，不得作为自动连接成功、失败、重试或网络恢复的标准。
+
 ## Luna Wi-Fi 连接确认
 
-macOS 的 CoreWLAN 在应用缺少定位/无线网络相关权限，或系统版本限制时，可能在 Wi-Fi 已经关联成功后仍返回空 SSID。`interface.ssid()` 为空不能作为“未连接”的判断，也不能阻断 Luna Ultra 的自动连接流程。
+macOS 的 CoreWLAN 在应用缺少定位/无线网络相关权限，或系统版本限制时，可能在 Wi-Fi 已经关联成功后仍返回空 SSID。`interface.ssid()` 为空不能作为“未连接”的判断，也不能阻断 Luna Ultra 的自动连接流程。该约束同样适用于其他桌面厂商和 Windows 实现。
 
 Luna Ultra 和 Luna Pro 使用相同的 Wi-Fi/TCP 控制链路，自动连接的确认链路固定为：
 
@@ -58,7 +66,7 @@ CoreWLAN 发起连接
   -> 建立正常 Luna TCP 会话
 ```
 
-SSID 只用于扫描、日志和界面展示。实际连接状态以相机控制端口的 UCD2 STREAM 探测为准；Luna 不保证对该单向 hello 返回响应，因此 TCP 连接和握手帧写入成功就是此阶段的协议确认。失败时才提示检查 Wi-Fi 名称和密码。
+当前网络 SSID 只用于扫描、日志和界面展示。实际连接状态以相机控制端口的 UCD2 STREAM 探测为准；Luna 不保证对该单向 hello 返回响应，因此 TCP 连接和握手帧写入成功就是此阶段的协议确认。失败时才提示检查蓝牙取得的 Wi-Fi 凭据和相机状态。
 
 ## 设备注册
 

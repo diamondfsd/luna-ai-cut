@@ -153,15 +153,27 @@ func targetNetwork(interface: CWInterface, ssid: String, bssid: String?) throws 
   }
 }
 
-func waitForAssociation(interface: CWInterface, ssid: String, timeout: TimeInterval) -> Bool {
+func waitForAssociation(interface: CWInterface, bssid: String?, timeout: TimeInterval) -> Bool {
+  let expectedBssid = bssid?.lowercased()
+  guard let expectedBssid, !expectedBssid.isEmpty else {
+    return true
+  }
+
+  func matchesTarget() -> Bool {
+    guard let currentBssid = interface.bssid()?.lowercased() else {
+      return false
+    }
+    return currentBssid == expectedBssid
+  }
+
   let deadline = Date().addingTimeInterval(timeout)
   while Date() < deadline {
-    if interface.ssid() == ssid {
+    if matchesTarget() {
       return true
     }
     Thread.sleep(forTimeInterval: 0.25)
   }
-  return interface.ssid() == ssid
+  return matchesTarget()
 }
 
 guard let command = CommandLine.arguments.dropFirst().first else {
@@ -202,7 +214,6 @@ do {
 
     for (attempt, delay) in retryDelays.enumerated() {
       if delay > 0 {
-        interface.disassociate()
         Thread.sleep(forTimeInterval: delay)
       }
 
@@ -213,11 +224,11 @@ do {
         }
 
         try interface.associate(to: network, password: password)
-        if skipSsidVerification || waitForAssociation(interface: interface, ssid: ssid, timeout: 3.5) {
+        if skipSsidVerification || waitForAssociation(interface: interface, bssid: network.bssid, timeout: 3.5) {
           result(success: true, message: "CoreWLAN 已连接 \(ssid)", data: statusPayload(interface: interface))
           exit(0)
         }
-        lastMessage = "CoreWLAN 连接请求未确认成功：当前 Wi-Fi 为 \(interface.ssid() ?? "未连接")"
+        lastMessage = "CoreWLAN 连接请求未确认成功：目标网络关联状态不可用"
       } catch {
         lastMessage = error.localizedDescription
       }
