@@ -2,6 +2,36 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.5",
+    "title": "v1.8.5",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>DJI Pocket 实时预览</strong>：支持 DJI Pocket 设备的实时预览和媒体访问。</li>\n<li><strong>按次选择传输目录</strong>：下载素材时可以为当前操作选择目标目录。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>Luna Wi-Fi 连接</strong>：自动切换 Wi-Fi 失败后只尝试一次，并提示用户在系统 Wi-Fi 中手动连接后检查。</li>\n<li><strong>连接诊断</strong>：记录 Wi-Fi 状态变化和相机控制通道握手结果，便于定位连接问题。</li>\n<li><strong>连接页布局</strong>：整理 Wi-Fi 失败提示、名称和密码展示及诊断入口，减少重复信息。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 DJI 预览链路</strong>：改善相机连接、UDP 传输和预览状态处理。</li>\n<li><strong>保护下载目录</strong>：下载到未配置目录前增加明确提醒。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.8.4-hot.4",
+    "title": "v1.8.4-hot.4",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复自定义下载目录未生效</strong>：按次选择的目录现在会正确作为本次下载位置。</li>\n<li><strong>增加外部目录提示</strong>：下载到设置目录之外时，会提示该文件无法在本地资源中预览，并支持确认下载或重新选择目录。</li>\n<li><strong>优化目录判断</strong>：设置下载目录下的子目录不再触发外部目录提示。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.8.4-hot.3",
+    "title": "v1.8.4-hot.3",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复本地资源列表范围</strong>：本地资源只展示设置中下载目录里的文件，按次选择的其他下载目录不再自动加入列表。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.8.4-hot.2",
+    "title": "v1.8.4-hot.2",
+    "bodyHtml": "<h3>改进</h3>\n<ul>\n<li><strong>支持按次选择下载和导出目录</strong>：开启设置后，每次下载或导出前都可以选择目标目录；批量操作只需选择一次。</li>\n<li><strong>支持自定义资源目录</strong>：所选目录会加入本地媒体库扫描，便于统一管理和搜索素材。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.8.4-hot.1",
+    "title": "v1.8.4-hot.1",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Luna Wi-Fi 重连</strong>：已在系统中手动连接相机热点后，点击重新连接不再误报 Wi-Fi 密码错误。</li>\n<li><strong>提升跨平台连接判断</strong>：优先确认相机地址是否可达，不再依赖部分平台无法读取的当前 Wi-Fi 名称。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.8.4",
     "title": "v1.8.4",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>批量 AI 追色</strong>：选择多个素材后，会为每个素材分别生成并保存追色结果，避免多个素材共用同一份效果。</li>\n<li><strong>复制素材路径</strong>：可从素材菜单复制单个或多个素材的本地路径。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>导出文件名</strong>：首次导出保留素材原名；目标目录已有同名文件时，自动追加 <code>(1)</code>、<code>(2)</code> 等后缀。</li>\n<li><strong>批量追色反馈</strong>：追色过程中显示处理进度，并反馈成功和失败的素材数量。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复图片导出质量</strong>：修复高质量、全尺寸图片导出结果异常变小的问题。</li>\n<li><strong>修复原画视频码率</strong>：原画质量会根据源视频码率导出，修复部分平台下码率解析不准确的问题。</li>\n</ul>",
