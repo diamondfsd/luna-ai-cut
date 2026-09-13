@@ -1,5 +1,6 @@
 import { app, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
+import path from 'node:path'
 
 import type { AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
 import type { IpcContext } from './context'
@@ -34,6 +35,11 @@ function requestRenderer(context: IpcContext, request: AiEditorMcpRequest): Prom
 export function register(context: IpcContext): void {
   if (registered) return
   registered = true
+
+  ipcMain.handle('ai-editor:mcp-launcher-path', () => {
+    if (app.isPackaged) return null
+    return path.join(app.getAppPath(), 'scripts', 'luna-mcp.mjs')
+  })
 
   ipcMain.on('ai-editor:mcp-response', (event, callId: unknown, response: unknown) => {
     if (event.sender !== context.win?.webContents || typeof callId !== 'string') return

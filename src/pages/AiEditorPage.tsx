@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import { Copy } from 'lucide-react'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
 import type { AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
+import { Button, toast } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
+import { buildAiEditorAgentPrompt } from './aiEditorAgentPrompt'
 import './AiEditorPage.css'
 
 interface AiEditorLocationState {
@@ -15,6 +18,10 @@ interface AiEditorLocationState {
 
 interface AiEditorPageProps {
   active: boolean
+}
+
+interface AiEditorFrameAsset extends AiEditorMediaSource {
+  id: string
 }
 
 interface ChooseAssetsRequest {
@@ -123,7 +130,7 @@ async function waitForMediaInput(frame: HTMLIFrameElement): Promise<HTMLInputEle
 
 async function sendInitialMediaSources(
   frame: HTMLIFrameElement,
-  assets: AiEditorMediaSource[],
+  assets: AiEditorFrameAsset[],
 ): Promise<void> {
   const target = frame.contentWindow
   if (!target) throw new Error('OpenReel 素材页面不可用')
@@ -150,10 +157,10 @@ async function sendInitialMediaSources(
   })
 }
 
-async function importMediaIntoFrame(frame: HTMLIFrameElement, sources: AiEditorMediaSource[]): Promise<void> {
+async function importMediaIntoFrame(frame: HTMLIFrameElement, sources: AiEditorFrameAsset[]): Promise<void> {
   const input = await waitForMediaInput(frame)
   const transfer = new DataTransfer()
-  const importedSources: AiEditorMediaSource[] = []
+  const importedSources: AiEditorFrameAsset[] = []
   for (const source of sources) {
     let blob: Blob | null = null
     if (!/^file:\/\//i.test(source.path)) {
@@ -189,7 +196,7 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   const pendingChooseAssetsRef = useRef<ChooseAssetsRequest | null>(null)
   const pendingChooseAssetsTargetRef = useRef<WindowProxy | null>(null)
   const pendingMcpRequestsRef = useRef(new Map<string, PendingMcpRequest>())
-  const [editorView, setEditorView] = useState<{ mode: 'projects' | 'media'; media: AiEditorMediaSource[]; projectId: string | null; revision: number }>({
+  const [editorView, setEditorView] = useState<{ mode: 'projects' | 'media'; media: AiEditorFrameAsset[]; projectId: string | null; revision: number }>({
     mode: 'projects',
     media: [],
     projectId: null,
@@ -235,8 +242,14 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   useEffect(() => {
     if (!active) return
     const mediaSources = mediaSourcesFromState(locationState)
+    const initialAssets: AiEditorFrameAsset[] = mediaSources.map((source, index) => ({
+      id: `openreel-${Date.now()}-${index}`,
+      name: source.name,
+      path: source.path,
+      kind: source.kind,
+    }))
     const nextView = !isProjectListRequest(locationState) && mediaSources.length > 0
-      ? { mode: 'media' as const, media: mediaSources, projectId: null as string | null }
+      ? { mode: 'media' as const, media: initialAssets, projectId: null as string | null }
       : { mode: 'projects' as const, media: [], projectId: null as string | null }
     const pendingRequest = pendingChooseAssetsRef.current
     const pendingTarget = pendingChooseAssetsTargetRef.current
@@ -257,13 +270,7 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
     if (nextView.mode !== 'media') return
 
     let cancelled = false
-    const assets = mediaSources.map((source, index) => ({
-      id: `openreel-${Date.now()}-${index}`,
-      name: source.name,
-      path: source.path,
-      kind: source.kind,
-    }))
-    void window.luna.aiEditor.project.create('AI 剪辑项目', assets)
+    void window.luna.aiEditor.project.create('AI 剪辑项目', nextView.media)
       .then((project) => {
         if (cancelled) return
         setEditorView((previous) => ({ ...previous, projectId: project.projectId }))
@@ -404,8 +411,31 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
     }
   }
 
+  async function copyAgentPrompt(): Promise<void> {
+    try {
+      const launcherPath = await window.luna.aiEditor.mcp.getLauncherPath()
+      await navigator.clipboard.writeText(buildAiEditorAgentPrompt(launcherPath))
+      toast.success('Agent 提示词已复制')
+    } catch (error) {
+      logger.error('[AI 剪辑] 复制 Agent 提示词失败', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      toast.error('复制失败，请重试')
+    }
+  }
+
   return (
     <div className="ai-editor-page">
+      <div className="ai-editor-agent-toolbar">
+        <Button
+          variant="toolbar"
+          size="compact"
+          icon={<Copy size={14} />}
+          onClick={() => void copyAgentPrompt()}
+        >
+          复制 Agent 提示词
+        </Button>
+      </div>
       {(!loaded || importing || importFailed) && (
         <div className="ai-editor-loading" role="status">
           {importFailed ? '素材导入失败' : importing ? '正在导入素材' : '正在打开 AI 剪辑'}

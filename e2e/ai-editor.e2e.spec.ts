@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures/lunaElectron'
 import { spawn } from 'node:child_process'
-import { access, readFile, stat } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
 import path from 'node:path'
 
@@ -10,6 +10,12 @@ test('AI 剪辑导航打开 OpenReel 编辑器', async ({ lunaApp }) => {
   const editorFrame = lunaApp.page.locator('iframe[title="AI 剪辑"]')
   await expect(editorFrame).toBeVisible()
   await expect(editorFrame.contentFrame().locator('#root')).not.toBeEmpty({ timeout: 30_000 })
+  await lunaApp.page.getByRole('button', { name: '复制 Agent 提示词' }).click()
+  await expect(lunaApp.page.getByText('Agent 提示词已复制', { exact: true })).toBeVisible()
+  const copiedPrompt = await lunaApp.page.evaluate(() => navigator.clipboard.readText())
+  expect(copiedPrompt).toContain('luna-mcp.mjs')
+  expect(copiedPrompt).toContain('tools/list')
+  expect(copiedPrompt).toContain('tools/call')
 
   expect(lunaApp.runtimeErrors).toEqual([])
 })
@@ -63,6 +69,109 @@ test('AI 剪辑通过本机 MCP 返回工具并执行操作', async ({ lunaApp }
   expect(endpoint.token).toMatch(/^[a-f0-9]{64}$/)
   expect(lunaApp.runtimeErrors).toEqual([])
 })
+
+test('AI 剪辑通过本机 MCP 查询并导入最近本地素材', async ({ lunaApp }) => {
+  const localResourcesDir = path.join(lunaApp.temporaryRoot, 'downloads', 'localResources')
+  await mkdir(localResourcesDir, { recursive: true })
+  await copyFile(
+    path.resolve(import.meta.dirname, '../build/icon.png'),
+    path.join(localResourcesDir, 'IMG_20260830_202400_001.png'),
+  )
+
+  await lunaApp.page.getByRole('link', { name: 'AI 剪辑' }).click()
+  const editorFrame = lunaApp.page.locator('iframe[title="AI 剪辑"]')
+  await expect(editorFrame.contentFrame().locator('#root')).not.toBeEmpty({ timeout: 30_000 })
+
+  const endpointPath = path.join(lunaApp.temporaryRoot, 'user-data', '.luna-ai-cut', 'mcp-endpoint.json')
+  const client = spawn(process.execPath, [path.resolve(import.meta.dirname, '../scripts/luna-mcp.mjs')], {
+    env: { ...process.env, LUNA_MCP_ENDPOINT: endpointPath },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const output = createInterface({ input: client.stdout, crlfDelay: Infinity })
+  const outputIterator = output[Symbol.asyncIterator]()
+  const nextResponse = async () => JSON.parse((await outputIterator.next()).value as string) as {
+    result?: {
+      tools?: Array<{ name?: string }>
+      content?: Array<{ text?: string }>
+    }
+  }
+  const call = async (id: number, name: string, arguments_: Record<string, unknown>) => {
+    client.stdin.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name, arguments: arguments_ },
+    })}\n`)
+    return nextResponse()
+  }
+
+  try {
+    client.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })}\n`)
+    await nextResponse()
+    client.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })}\n`)
+    const tools = (await nextResponse()).result?.tools ?? []
+    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['list_local_media', 'import_local_media']))
+
+    const created = await call(3, 'create_project', { name: '本地素材查询测试项目' })
+    expect(created.result?.content?.[0]?.text ? JSON.parse(created.result.content[0].text) : null).toMatchObject({ ok: true })
+
+    const listed = await call(4, 'list_local_media', { limit: 10 })
+    const listedResult = listed.result?.content?.[0]?.text ? JSON.parse(listed.result.content[0].text) : null
+    expect(listedResult).toMatchObject({ ok: true, data: [{ name: 'IMG_20260830_202400_001.png', groupDay: '2026-08-30' }] })
+
+    const mediaId = listedResult.data[0].mediaId as string
+    const imported = await call(5, 'import_local_media', { mediaIds: [mediaId] })
+    expect(imported.result?.content?.[0]?.text ? JSON.parse(imported.result.content[0].text) : null).toMatchObject({ ok: true })
+
+    const media = await call(6, 'list_media', {})
+    expect(media.result?.content?.[0]?.text ? JSON.parse(media.result.content[0].text) : null).toMatchObject({
+      ok: true,
+      data: [{ name: 'IMG_20260830_202400_001.png', type: 'image' }],
+    })
+  } finally {
+    client.stdin.end()
+    client.kill()
+    output.close()
+  }
+
+  expect(lunaApp.runtimeErrors).toEqual([])
+})
+
+if (process.env.LUNA_EXTERNAL_AGENT_TEST === '1') {
+  test('AI 剪辑支持外部 MCP 子 Agent 实际修改并保存项目', async ({ lunaApp }) => {
+    const handshakePath = process.env.LUNA_EXTERNAL_AGENT_HANDSHAKE
+    if (!handshakePath) throw new Error('缺少 LUNA_EXTERNAL_AGENT_HANDSHAKE')
+
+    const sourcePath = path.resolve(import.meta.dirname, '../build/icon.png')
+    await lunaApp.page.evaluate((source) => {
+      history.pushState({ usr: { media: [{ path: source, name: 'icon.png', kind: 'image' }] }, key: 'external-agent-test' }, '', '#/ai-editor')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, sourcePath)
+
+    const editorFrame = lunaApp.page.locator('iframe[title="AI 剪辑"]')
+    const editor = editorFrame.contentFrame()
+    await expect(editor.locator('#root')).not.toBeEmpty({ timeout: 30_000 })
+    await expect(editor.getByRole('button', { name: 'AI 剪辑项目' })).toBeVisible({ timeout: 30_000 })
+
+    await lunaApp.page.getByRole('button', { name: '复制 Agent 提示词' }).click()
+    await expect(lunaApp.page.getByText('Agent 提示词已复制', { exact: true })).toBeVisible()
+    const prompt = await lunaApp.page.evaluate(() => navigator.clipboard.readText())
+    const endpointPath = path.join(lunaApp.temporaryRoot, 'user-data', '.luna-ai-cut', 'mcp-endpoint.json')
+    const markerPath = path.join(lunaApp.temporaryRoot, 'external-agent-done')
+    await writeFile(handshakePath, `${JSON.stringify({ endpointPath, markerPath, prompt })}\n`, 'utf8')
+
+    await expect.poll(async () => {
+      try {
+        return await readFile(markerPath, 'utf8')
+      } catch {
+        return ''
+      }
+    }, { timeout: 300_000, intervals: [250, 1_000] }).toBe('done\n')
+
+    await expect(editor.getByRole('textbox', { name: '项目名称' })).toHaveValue('外部子 Agent 测试项目')
+    expect(lunaApp.runtimeErrors).toEqual([])
+  })
+}
 
 test('AI 剪辑通过 Luna 文件桥接保存项目并写出导出文件', async ({ lunaApp }) => {
   await lunaApp.page.getByRole('link', { name: 'AI 剪辑' }).click()

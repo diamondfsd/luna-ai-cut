@@ -1,4 +1,6 @@
 .ai-editor-page {
+  display: flex;
+  flex-direction: column;
   position: relative;
   width: 100%;
   height: calc(100vh - 44px);
@@ -9,9 +11,19 @@
 
 .ai-editor-frame {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
+  height: auto;
   border: 0;
+  background: #15171b;
+}
+
+.ai-editor-agent-toolbar {
+  display: flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
   background: #15171b;
 }
 

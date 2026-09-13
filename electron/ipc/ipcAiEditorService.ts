@@ -4,9 +4,14 @@ import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { AiEditorFileDialogOptions, AiEditorFileFilter } from '../../src/shared/types'
+import type { AiEditorFileDialogOptions, AiEditorFileFilter, AiEditorLocalMediaQuery } from '../../src/shared/types'
 import { revealFile } from '../storage/systemFileService'
 import { getSettings } from '../storage/fileService'
+import {
+  getAiEditorLocalMedia,
+  listAiEditorLocalMedia,
+  readAiEditorLocalMediaBytes,
+} from '../features/ai-editor/aiEditorLocalMediaService'
 import {
   createAiEditorProject,
   deleteAiEditorProject,
@@ -131,6 +136,20 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
 }
 
 export function register(): void {
+  ipcMain.handle('ai-editor:list-local-media', async (_event, query: AiEditorLocalMediaQuery = {}) => {
+    return listAiEditorLocalMedia(query)
+  })
+
+  ipcMain.handle('ai-editor:get-local-media', async (_event, mediaId: string) => {
+    const media = await getAiEditorLocalMedia(mediaId)
+    const { filePath: _filePath, ...publicMedia } = media
+    return publicMedia
+  })
+
+  ipcMain.handle('ai-editor:read-local-media-bytes', (_event, mediaId: string) => {
+    return readAiEditorLocalMediaBytes(mediaId)
+  })
+
   ipcMain.handle('ai-editor:list-projects', async () => {
     const settings = await getSettings()
     const projects = await listAiEditorProjects(settings.baseDir)

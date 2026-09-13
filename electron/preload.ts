@@ -75,6 +75,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       rename: (projectId, name) => ipcRenderer.invoke('ai-editor:rename-project', projectId, name),
     },
     mcp: {
+      getLauncherPath: () => ipcRenderer.invoke('ai-editor:mcp-launcher-path'),
       onRequest: (callback) => {
         const listener = (_event: Electron.IpcRendererEvent, request: import('../src/shared/types').AiEditorMcpRequest): void => {
           Promise.resolve(callback(request)).then(
@@ -89,6 +90,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
         return () => ipcRenderer.off('ai-editor:mcp-request', listener)
       },
     },
+    listLocalMedia: (query) => ipcRenderer.invoke('ai-editor:list-local-media', query),
+    getLocalMedia: (mediaId) => ipcRenderer.invoke('ai-editor:get-local-media', mediaId),
+    readLocalMediaBytes: (mediaId) => ipcRenderer.invoke('ai-editor:read-local-media-bytes', mediaId),
     showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),
     readFile: (filePath) => ipcRenderer.invoke('ai-editor:read-file', filePath),
