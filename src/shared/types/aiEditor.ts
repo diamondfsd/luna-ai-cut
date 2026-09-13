@@ -140,6 +140,77 @@ export interface AiEditorMcpResponse {
   content?: AiEditorMcpContent[]
 }
 
+export type AiEditorAgentSessionStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export type AiEditorAgentPhase =
+  | 'waiting'
+  | 'analyzing_media'
+  | 'creating_project'
+  | 'importing_media'
+  | 'editing'
+  | 'captioning'
+  | 'saving'
+  | 'exporting'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export interface AiEditorAgentSession {
+  sessionId: string
+  request: string
+  revision: number
+  projectId: string | null
+  status: AiEditorAgentSessionStatus
+  phase: AiEditorAgentPhase
+  progress: number
+  message: string
+  createdAt: string
+  updatedAt: string
+  cancelRequested: boolean
+  agentId: string | null
+  result?: {
+    projectId?: string
+    projectName?: string
+    exportPath?: string
+    summary?: string
+  }
+}
+
+export type AiEditorAgentEvent =
+  | {
+      type: 'session-created' | 'session-claimed' | 'request-updated' | 'progress' | 'result' | 'error' | 'cancel-requested' | 'cancelled'
+      sequence: number
+      timestamp: string
+      session: AiEditorAgentSession
+      message?: string
+    }
+  | {
+      type: 'tool-start' | 'tool-finished'
+      sequence: number
+      timestamp: string
+      session: AiEditorAgentSession
+      callId: string
+      toolName: string
+      args?: Record<string, unknown>
+      ok?: boolean
+      summary?: string
+      durationMs?: number
+    }
+
+export interface AiEditorAgentSnapshot {
+  session: AiEditorAgentSession | null
+  events: AiEditorAgentEvent[]
+}
+
+export interface AiEditorAgentApi {
+  createRequest(request: string, projectId?: string | null): Promise<AiEditorAgentSession>
+  updateRequest(sessionId: string, request: string): Promise<AiEditorAgentSession>
+  cancelRequest(sessionId: string): Promise<AiEditorAgentSession>
+  getSnapshot(): Promise<AiEditorAgentSnapshot>
+  onEvent(callback: (event: AiEditorAgentEvent) => void): () => void
+  onActivate(callback: () => void): () => void
+}
+
 export interface AiEditorMcpApi {
   onRequest(callback: (request: AiEditorMcpRequest) => Promise<AiEditorMcpResponse>): () => void
   getLauncherPath(): Promise<string | null>
@@ -148,6 +219,7 @@ export interface AiEditorMcpApi {
 export interface AiEditorFileApi {
   project: AiEditorProjectApi
   mcp: AiEditorMcpApi
+  agent: AiEditorAgentApi
   listLocalMedia(query?: AiEditorLocalMediaQuery): Promise<AiEditorLocalMedia[]>
   getLocalMedia(mediaId: string): Promise<AiEditorLocalMedia>
   readLocalMediaBytes(mediaId: string): Promise<ArrayBuffer>
