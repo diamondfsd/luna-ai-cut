@@ -208,9 +208,11 @@ function stopMockVideo() {
 
 function pathField(subtype, value) {
   const bytes = Buffer.from(value, 'latin1')
-  const field = Buffer.alloc(6 + bytes.length)
+  // CompositePack's length includes the six-byte field header, while the
+  // two-byte tag/length prefix is outside that count.
+  const field = Buffer.alloc(8 + bytes.length)
   field[0] = 0x1a
-  field[1] = field.length - 2
+  field[1] = 6 + bytes.length
   field[5] = subtype
   bytes.copy(field, 6)
   return field
