@@ -11,6 +11,7 @@ interface PendingRendererRequest {
   timer: NodeJS.Timeout
 }
 
+const MCP_RENDERER_REQUEST_TIMEOUT_MS = 15 * 60 * 1_000
 let registered = false
 let mcpServer: LunaMcpServer | null = null
 const pending = new Map<string, PendingRendererRequest>()
@@ -26,7 +27,7 @@ function requestRenderer(context: IpcContext, request: AiEditorMcpRequest): Prom
     const timer = setTimeout(() => {
       pending.delete(callId)
       resolve({ ok: false, error: 'AI 剪辑响应超时，请确认项目已打开' })
-    }, 60_000)
+    }, MCP_RENDERER_REQUEST_TIMEOUT_MS)
     pending.set(callId, { resolve, timer })
     window.webContents.send('ai-editor:mcp-request', { ...request, callId })
   })
