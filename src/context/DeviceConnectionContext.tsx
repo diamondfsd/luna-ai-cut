@@ -316,7 +316,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       const host = connectionHost || settings?.cameraHost || activeDevice?.defaultHost || ''
       const manualWifiRequired = connectionWireless?.autoJoin === true && Boolean(connectionWireless.ssid?.trim())
       const errMsg = manualWifiRequired
-        ? '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点'
+        ? '自动连接失败'
         : userFacingConnectionError(error)
       logger.error('[设备连接] 连接异常', { host, error: errMsg })
       setConnection({

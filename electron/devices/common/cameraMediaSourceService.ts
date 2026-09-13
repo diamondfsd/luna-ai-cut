@@ -168,6 +168,7 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
 
       // 切换系统 Wi-Fi 前关闭旧控制 socket，避免把旧网络上的连接误判为存活。
       if (!loopback && this.options.wireless?.preparation !== 'already-connected' && definition.protocol === 'insta360') {
+        logMainInfo('[设备 Wi-Fi] 连接前关闭相机 TCP 会话（不操作系统 Wi-Fi）', { deviceId, host })
         await protocol.disconnect(host)
       }
 
@@ -189,6 +190,14 @@ class WirelessCameraMediaSource implements CameraMediaSourceAdapter {
 
       if (isCancelled()) throw new Error('设备连接已取消')
       if (wifiJoin.cancelled) throw new Error('设备连接已取消')
+      logMainInfo('[设备 Wi-Fi] 系统 Wi-Fi 阶段结束，开始连接相机控制通道', {
+        deviceId,
+        host,
+        attempted: wifiJoin.attempted,
+        connected: wifiJoin.connected,
+        ssid: wifiJoin.ssid ?? null,
+        message: wifiJoin.message,
+      })
       if (!loopback && definition.wifi?.autoJoin === true && !wifiJoin.connected && wifiJoin.wifiPasswordRequired) {
         return wirelessStatus({
           deviceId,

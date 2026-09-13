@@ -1,4 +1,4 @@
-import type { DeviceDefinition, WifiDebugStatus } from '../../../src/shared/types'
+import type { DeviceDefinition, WifiDebugResult, WifiDebugStatus } from '../../../src/shared/types'
 import { connectWifiNetwork, getWifiDebugStatus, scanWifiNetworks } from './wifiDebugService'
 import { probeInsta360ControlResponse } from '../../devices/insta360/insta360TcpProtocol'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
@@ -19,9 +19,33 @@ export interface WifiCameraEndpoint {
   protocol: 'insta360-stream'
 }
 
-const CAMERA_HANDSHAKE_WAIT_MS = 10000
-const CAMERA_HANDSHAKE_RETRY_DELAY_MS = 250
+const WIFI_JOIN_MAX_ATTEMPTS = 2
+const CAMERA_HANDSHAKE_WAIT_MS = 1000
+const CAMERA_HANDSHAKE_RETRY_DELAY_MS = 100
 const INITIAL_CAMERA_PROBE_TIMEOUT_MS = 1500
+
+function wifiStatusForLog(result: WifiDebugResult<WifiDebugStatus> | null | undefined): Record<string, unknown> {
+  const data = result?.data
+  return {
+    success: result?.success ?? null,
+    code: result?.code ?? null,
+    message: result?.message ?? null,
+    connected: data?.connected ?? null,
+    ssid: data?.ssid ?? null,
+    bssid: data?.bssid ?? null,
+    interfaceName: data?.interfaceName ?? null,
+    ipAddress: data?.ipAddress ?? null,
+    ipAddresses: data?.ipAddresses?.map((item) => ({
+      interfaceName: item.interfaceName,
+      address: item.address,
+      family: item.family,
+    })) ?? [],
+  }
+}
+
+function wifiStateKey(status: Record<string, unknown>): string {
+  return JSON.stringify(status)
+}
 
 function matchesConfiguredSsid(ssid: string, includes: string[]): boolean {
   const normalized = ssid.trim().toLocaleLowerCase()
@@ -56,6 +80,7 @@ async function waitForCameraHandshake(
   endpoint: WifiCameraEndpoint,
   sessionKey: string,
   isCancelled?: () => boolean,
+  onAttempt?: (phase: string) => void,
 ): Promise<{ ok: boolean; lastError: string | null }> {
   const startedAt = Date.now()
   const deadline = startedAt + CAMERA_HANDSHAKE_WAIT_MS
@@ -64,8 +89,10 @@ async function waitForCameraHandshake(
   while (Date.now() < deadline) {
     if (isCancelled?.()) return { ok: false, lastError: '设备连接已取消' }
     attempts += 1
+    onAttempt?.(`相机握手第 ${attempts} 次`)
     try {
-      const response = await probeInsta360ControlResponse(endpoint.host, endpoint.port)
+      const remainingMs = Math.max(100, Math.min(CAMERA_HANDSHAKE_WAIT_MS, deadline - Date.now()))
+      const response = await probeInsta360ControlResponse(endpoint.host, endpoint.port, remainingMs)
       if (response.code !== 200) throw new Error(`Luna 控制指令返回 ${response.code}`)
       logMainInfo('[设备 Wi-Fi] 相机控制通道握手成功', {
         sessionKey,
@@ -88,7 +115,9 @@ async function waitForCameraHandshake(
       })
     }
     if (isCancelled?.()) return { ok: false, lastError: '设备连接已取消' }
-    await new Promise((resolve) => setTimeout(resolve, CAMERA_HANDSHAKE_RETRY_DELAY_MS))
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) break
+    await new Promise((resolve) => setTimeout(resolve, Math.min(CAMERA_HANDSHAKE_RETRY_DELAY_MS, remainingMs)))
   }
   logMainWarn('[设备 Wi-Fi] 相机控制通道握手失败', {
     sessionKey,
@@ -176,6 +205,7 @@ export async function autoJoinDeviceWifi(
   isCancelled?: () => boolean,
   signal?: AbortSignal,
 ): Promise<WifiAutoJoinResult> {
+  const operationId = `wifi-auto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const cancelledByCaller = (): boolean => Boolean(signal?.aborted || isCancelled?.())
   if ((process.platform !== 'darwin' && process.platform !== 'win32') || !config?.autoJoin || config.ssidIncludes.length === 0) {
     return skipped('未启用设备 Wi-Fi 自动连接')
@@ -183,12 +213,49 @@ export async function autoJoinDeviceWifi(
   if (cancelledByCaller()) return cancelled()
 
   logMainInfo('[设备 Wi-Fi] 开始自动连接', {
+    operationId,
     sessionKey,
     matchRule: config.ssidIncludes,
+    requestedSsid: requestedSsid?.trim() || null,
+    passwordProvided: Boolean(password),
+    endpoint: endpoint ? `${endpoint.host}:${endpoint.port}` : null,
   })
+
+  let lastObservedWifiState: string | null = null
+  let lastWifiObservationAt = 0
+  let pendingWifiObservation: Promise<void> | null = null
+  const observeWifiState = (phase: string, force = false): void => {
+    if (pendingWifiObservation || (!force && Date.now() - lastWifiObservationAt < 750)) return
+    lastWifiObservationAt = Date.now()
+    pendingWifiObservation = getWifiDebugStatus()
+      .then((status) => {
+        const summary = wifiStatusForLog(status)
+        const state = wifiStateKey(summary)
+        if (force || state !== lastObservedWifiState) {
+          logMainInfo('[设备 Wi-Fi] 连接期间系统状态变化', { operationId, sessionKey, phase, status: summary })
+          lastObservedWifiState = state
+        }
+      })
+      .catch((error) => {
+        logMainWarn('[设备 Wi-Fi] 连接期间读取系统状态失败', {
+          operationId,
+          sessionKey,
+          phase,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+      .finally(() => {
+        pendingWifiObservation = null
+      })
+  }
 
   if (endpoint && await probeCameraEndpoint(endpoint, sessionKey)) {
     if (cancelledByCaller()) return cancelled()
+    logMainInfo('[设备 Wi-Fi] 已检测到目标相机网络，不调用系统 Wi-Fi 连接', {
+      operationId,
+      sessionKey,
+      endpoint: `${endpoint.host}:${endpoint.port}`,
+    })
     return {
       attempted: false,
       connected: true,
@@ -196,7 +263,21 @@ export async function autoJoinDeviceWifi(
     }
   }
 
-  const current = await getWifiDebugStatus().catch(() => null)
+  const current = await getWifiDebugStatus().catch((error) => {
+    logMainWarn('[设备 Wi-Fi] 读取连接前系统状态失败', {
+      operationId,
+      sessionKey,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  })
+  logMainInfo('[设备 Wi-Fi] 调用系统连接前的网络状态', {
+    operationId,
+    sessionKey,
+    status: wifiStatusForLog(current),
+  })
+  lastObservedWifiState = wifiStateKey(wifiStatusForLog(current))
+  lastWifiObservationAt = Date.now()
   if (cancelledByCaller()) return cancelled()
   const currentSsid = current?.success ? current.data?.ssid : null
   if (hasLunaWifiAddress(current?.data)) {
@@ -205,6 +286,7 @@ export async function autoJoinDeviceWifi(
       ...(current?.data?.ipAddresses ?? []).map((item) => item.address),
     ].find((address): address is string => address != null && isLunaWifiAddress(address))
     logMainInfo('[设备 Wi-Fi] 当前地址已在 Luna 网段，跳过系统 Wi-Fi 切换', {
+      operationId,
       sessionKey,
       localAddress,
     })
@@ -257,6 +339,7 @@ export async function autoJoinDeviceWifi(
   }
 
   logMainInfo('[设备 Wi-Fi] 找到目标网络，准备连接', {
+    operationId,
     sessionKey,
     ssid: candidateSsid,
     currentSsid,
@@ -264,101 +347,128 @@ export async function autoJoinDeviceWifi(
     credentialSource: 'user-provided-wifi-password',
     connectionStrategy: process.platform === 'win32' ? 'netsh-profile' : 'corewlan-password-stdin',
   })
-  const joined = await connectWifiNetwork({
-    ssid: candidateSsid,
-    timeoutMs: 30000,
-    password,
-    // The current system SSID is not reliable on desktop platforms. Luna's
-    // control-channel handshake below is the actual connection confirmation.
-    skipSsidVerification: true,
-  }, signal)
-  if (cancelledByCaller()) return cancelled()
-  logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
-    sessionKey,
-    ssid: candidateSsid,
-    success: joined.success,
-    code: joined.code,
-    message: joined.message,
-  })
-  if (!joined.success) {
-    const wifiPasswordRequired = true
-    logMainWarn('[设备 Wi-Fi] 切换失败', {
+  let lastJoinResult: WifiDebugResult<WifiDebugStatus> | null = null
+  let lastHandshakeError: string | null = null
+
+  for (let attempt = 1; attempt <= WIFI_JOIN_MAX_ATTEMPTS; attempt += 1) {
+    if (cancelledByCaller()) return cancelled()
+    logMainInfo('[设备 Wi-Fi] 开始系统 Wi-Fi 连接尝试', {
+      operationId,
       sessionKey,
+      attempt,
+      maxAttempts: WIFI_JOIN_MAX_ATTEMPTS,
       ssid: candidateSsid,
+    })
+
+    const joined = await connectWifiNetwork({
+      ssid: candidateSsid,
+      timeoutMs: 30000,
+      password,
+      // The current system SSID is not reliable on desktop platforms. Luna's
+      // control-channel handshake below is the actual connection confirmation.
+      skipSsidVerification: true,
+    }, signal)
+    lastJoinResult = joined
+    if (cancelledByCaller()) return cancelled()
+    logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
+      operationId,
+      sessionKey,
+      attempt,
+      maxAttempts: WIFI_JOIN_MAX_ATTEMPTS,
+      ssid: candidateSsid,
+      success: joined.success,
       code: joined.code,
       message: joined.message,
+      status: wifiStatusForLog(joined),
     })
-    return {
-      attempted: true,
-      connected: false,
-      ssid: candidateSsid,
-      wifiPasswordRequired,
-      wifiManualConnectionRequired: true,
-      message: '未能连接到相机 Wi-Fi，请确认相机已开机且密码正确后重试',
-    }
-  }
 
-  const joinedSsid = joined.data?.ssid
-  if (endpoint) {
-    const handshake = await waitForCameraHandshake(endpoint, sessionKey, cancelledByCaller)
-    if (cancelledByCaller()) return cancelled()
-    if (!handshake.ok) {
+    const joinedSsid = joined.data?.ssid
+    observeWifiState(`系统连接命令返回（第 ${attempt}/${WIFI_JOIN_MAX_ATTEMPTS} 轮）`, true)
+    if (endpoint) {
+      observeWifiState(`开始等待相机控制握手（第 ${attempt}/${WIFI_JOIN_MAX_ATTEMPTS} 轮）`, true)
+      const handshake = await waitForCameraHandshake(endpoint, sessionKey, cancelledByCaller, (phase) => observeWifiState(`${phase}（连接轮次 ${attempt}）`))
+      if (cancelledByCaller()) return cancelled()
+      if (handshake.ok) {
+        logMainInfo('[设备 Wi-Fi] 自动连接成功', {
+          operationId,
+          sessionKey,
+          attempt,
+          targetSsid: candidateSsid,
+          joinedSsid: joinedSsid ?? candidateSsid,
+          endpoint: `${endpoint.host}:${endpoint.port}`,
+        })
+        return {
+          attempted: true,
+          connected: true,
+          ssid: candidateSsid,
+          message: `已连接设备 Wi-Fi：${candidateSsid}`,
+        }
+      }
+
+      lastHandshakeError = handshake.lastError
       const afterHandshake = await getWifiDebugStatus().catch(() => null)
-      logMainWarn('[设备 Wi-Fi] 控制握手失败后的网络状态', {
+      logMainWarn('[设备 Wi-Fi] 自动连接失败，等待用户在系统 Wi-Fi 中连接', {
+        operationId,
         sessionKey,
+        attempt,
+        maxAttempts: WIFI_JOIN_MAX_ATTEMPTS,
         targetSsid: candidateSsid,
         joinedSsid,
-        connected: afterHandshake?.success ? afterHandshake.data?.connected : null,
-        interfaceName: afterHandshake?.success ? afterHandshake.data?.interfaceName : null,
-        bssid: afterHandshake?.success ? afterHandshake.data?.bssid : null,
-        ipAddress: afterHandshake?.success ? afterHandshake.data?.ipAddress : null,
-        ipAddresses: afterHandshake?.success ? afterHandshake.data?.ipAddresses : null,
+        systemConnectionSuccess: joined.success,
+        status: wifiStatusForLog(afterHandshake),
         error: handshake.lastError,
       })
-      return {
-        attempted: true,
-        connected: false,
-        ssid: candidateSsid,
-        wifiPasswordRequired: true,
-        wifiManualConnectionRequired: true,
-        message: '相机 Wi-Fi 已尝试连接，但相机未响应，请确认相机已开机后重试',
+    } else {
+      const network = joined.success
+        ? await waitForLunaWifiAddress(sessionKey, cancelledByCaller)
+        : null
+      if (cancelledByCaller()) return cancelled()
+      if (network) {
+        logMainInfo('[设备 Wi-Fi] 自动连接成功', {
+          operationId,
+          sessionKey,
+          attempt,
+          targetSsid: candidateSsid,
+          joinedSsid: joinedSsid ?? candidateSsid,
+        })
+        return {
+          attempted: true,
+          connected: true,
+          ssid: candidateSsid,
+          message: `已连接设备 Wi-Fi：${candidateSsid}`,
+        }
       }
-    }
-  } else {
-    const network = await waitForLunaWifiAddress(sessionKey, cancelledByCaller)
-    if (cancelledByCaller()) return cancelled()
-    if (!network) {
+
       const afterAddressWait = await getWifiDebugStatus().catch(() => null)
-      logMainWarn('[设备 Wi-Fi] 获取地址失败后的网络状态', {
+      logMainWarn('[设备 Wi-Fi] 未获取相机网段地址，等待用户在系统 Wi-Fi 中连接', {
+        operationId,
         sessionKey,
+        attempt,
+        maxAttempts: WIFI_JOIN_MAX_ATTEMPTS,
         targetSsid: candidateSsid,
-        connected: afterAddressWait?.success ? afterAddressWait.data?.connected : null,
-        interfaceName: afterAddressWait?.success ? afterAddressWait.data?.interfaceName : null,
-        bssid: afterAddressWait?.success ? afterAddressWait.data?.bssid : null,
-        ipAddress: afterAddressWait?.success ? afterAddressWait.data?.ipAddress : null,
-        ipAddresses: afterAddressWait?.success ? afterAddressWait.data?.ipAddresses : null,
+        status: wifiStatusForLog(afterAddressWait),
       })
-      return {
-        attempted: true,
-        connected: false,
-        ssid: candidateSsid,
-        wifiPasswordRequired: true,
-        wifiManualConnectionRequired: true,
-        message: '未能获取相机 Wi-Fi 地址，请确认相机已开机且密码正确后重试',
-      }
+    }
+
+    if (attempt < WIFI_JOIN_MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 300))
     }
   }
 
-  logMainInfo('[设备 Wi-Fi] 自动连接成功', {
+  logMainWarn('[设备 Wi-Fi] 自动连接失败，等待用户手动连接后重试', {
+    operationId,
     sessionKey,
-    targetSsid: candidateSsid,
-    joinedSsid: joinedSsid ?? candidateSsid,
-    endpoint: endpoint ? `${endpoint.host}:${endpoint.port}` : null,
+    ssid: candidateSsid,
+    attempts: WIFI_JOIN_MAX_ATTEMPTS,
+    lastJoinResult: wifiStatusForLog(lastJoinResult),
+    lastHandshakeError,
   })
   return {
     attempted: true,
-    connected: true,
+    connected: false,
     ssid: candidateSsid,
-    message: `已连接设备 Wi-Fi：${candidateSsid}`,
+    wifiPasswordRequired: true,
+    wifiManualConnectionRequired: true,
+    message: '请在系统 Wi-Fi 中连接相机热点，连接后返回此处点击“重新连接”',
   }
 }

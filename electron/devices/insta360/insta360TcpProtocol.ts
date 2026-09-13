@@ -227,11 +227,11 @@ export class Insta360TcpSession {
     return this.socket !== null && !this.socket.destroyed
   }
 
-  async open(): Promise<void> {
+  async open(connectTimeoutMs = 1500): Promise<void> {
     if (this.isOpen) return
     const startedAt = Date.now()
     logMainInfo('[Insta360TCP] 开始建立控制会话', { host: this.host, port: this.port })
-    const socket = await connectSocket(tcpHost(this.host), this.port, 1500)
+    const socket = await connectSocket(tcpHost(this.host), this.port, connectTimeoutMs)
     this.socket = socket
     this.buffer = Buffer.alloc(0)
     socket.on('data', (data) => this.onData(Buffer.isBuffer(data) ? data : Buffer.from(data)))
@@ -521,10 +521,12 @@ export async function probeInsta360ControlResponse(
   timeoutMs = 3000,
 ): Promise<Insta360RawResponse> {
   const startedAt = Date.now()
+  const deadline = startedAt + timeoutMs
   const session = new Insta360TcpSession(tcpHost(host), port)
   try {
-    await session.open()
-    const response = await session.sendCommand(CODE_GET_CURRENT_CAPTURE_STATUS, Buffer.alloc(0), timeoutMs)
+    await session.open(Math.min(timeoutMs, 1500))
+    const remainingMs = Math.max(1, deadline - Date.now())
+    const response = await session.sendCommand(CODE_GET_CURRENT_CAPTURE_STATUS, Buffer.alloc(0), remainingMs)
     logMainInfo('[Insta360TCP] Luna 控制指令响应探测成功', {
       host: tcpHost(host),
       port,
