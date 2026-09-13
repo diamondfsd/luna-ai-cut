@@ -21,7 +21,7 @@ const clientSource = source('electron/devices/insta360/lunaProtocol.ts')
 
 for (const signature of [
   'export class Insta360TcpSession',
-  'async open()',
+  'async open(',
   'async sendCommand(',
   'async listFilePaths(',
   'async deleteFilePaths(',
