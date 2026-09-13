@@ -50,6 +50,7 @@
     "test:pixel-flow:render": "node scripts/build-native.mjs && node scripts/test-pixel-flow-render.mjs",
     "test:semantic-worker": "node scripts/test-semantic-worker-protocol.mjs",
     "test:subtitles": "node --experimental-strip-types scripts/test-subtitle-protocol.mjs && node --experimental-strip-types scripts/test-subtitle-segmentation.mjs && node --experimental-strip-types scripts/test-subtitle-track.mjs && node scripts/test-workspace-subtitle-storage.mjs",
+    "test:ai-editor-speech": "node --experimental-strip-types scripts/test-ai-editor-speech-chunking.mjs",
     "test:e2e": "pnpm run build:app && playwright test",
     "mcp:stdio": "node scripts/luna-mcp.mjs",
     "test:luna-mcp": "node scripts/test-luna-mcp-stdio.mjs",

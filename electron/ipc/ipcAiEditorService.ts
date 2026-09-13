@@ -4,7 +4,12 @@ import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { AiEditorFileDialogOptions, AiEditorFileFilter, AiEditorLocalMediaQuery } from '../../src/shared/types'
+import type {
+  AiEditorFileDialogOptions,
+  AiEditorFileFilter,
+  AiEditorLocalMediaInspectionOptions,
+  AiEditorLocalMediaQuery,
+} from '../../src/shared/types'
 import { revealFile } from '../storage/systemFileService'
 import { getSettings } from '../storage/fileService'
 import {
@@ -12,6 +17,8 @@ import {
   listAiEditorLocalMedia,
   readAiEditorLocalMediaBytes,
 } from '../features/ai-editor/aiEditorLocalMediaService'
+import { inspectAiEditorLocalMedia } from '../features/ai-editor/aiEditorMediaAnalysisService'
+import { transcribeAiEditorLocalMedia } from '../features/ai-editor/aiEditorSpeechService'
 import {
   createAiEditorProject,
   deleteAiEditorProject,
@@ -142,12 +149,21 @@ export function register(): void {
 
   ipcMain.handle('ai-editor:get-local-media', async (_event, mediaId: string) => {
     const media = await getAiEditorLocalMedia(mediaId)
-    const { filePath: _filePath, ...publicMedia } = media
+    const publicMedia = { ...media }
+    Reflect.deleteProperty(publicMedia, 'filePath')
     return publicMedia
   })
 
   ipcMain.handle('ai-editor:read-local-media-bytes', (_event, mediaId: string) => {
     return readAiEditorLocalMediaBytes(mediaId)
+  })
+
+  ipcMain.handle('ai-editor:inspect-local-media', async (_event, mediaIds: string[], options: AiEditorLocalMediaInspectionOptions = {}) => {
+    return inspectAiEditorLocalMedia(mediaIds, options)
+  })
+
+  ipcMain.handle('ai-editor:transcribe-local-media', async (_event, mediaId: string, options = {}) => {
+    return transcribeAiEditorLocalMedia(mediaId, options)
   })
 
   ipcMain.handle('ai-editor:list-projects', async () => {

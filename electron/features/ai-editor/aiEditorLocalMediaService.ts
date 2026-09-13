@@ -94,6 +94,19 @@ export async function getAiEditorLocalMedia(mediaId: string): Promise<LocalMedia
   return file
 }
 
+export async function getAiEditorLocalMediaFiles(mediaIds: readonly string[]): Promise<LocalMediaFile[]> {
+  const files = await listLocalMediaFiles()
+  const byId = new Map(files.map((file) => [file.mediaId, file]))
+  return mediaIds.map((mediaId) => {
+    if (typeof mediaId !== 'string' || !mediaId.startsWith(MEDIA_ID_PREFIX)) {
+      throw new Error('本地素材 ID 无效，请先调用 list_local_media')
+    }
+    const file = byId.get(mediaId)
+    if (!file) throw new Error('本地素材不存在或已被移除，请重新调用 list_local_media')
+    return file
+  })
+}
+
 export async function readAiEditorLocalMediaBytes(mediaId: string): Promise<ArrayBuffer> {
   const file = await getAiEditorLocalMedia(mediaId)
   const bytes = await fs.readFile(file.filePath)

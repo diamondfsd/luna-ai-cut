@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import type { AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
+import type { AiEditorMcpContent, AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
 
 const MCP_PROTOCOL_VERSION = '2024-11-05'
 const MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -76,6 +76,11 @@ function textForResult(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function contentForResponse(response: AiEditorMcpResponse): AiEditorMcpContent[] {
+  if (response.content && response.content.length > 0) return [...response.content]
+  return [{ type: 'text', text: textForResult(response.result) }]
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -171,7 +176,7 @@ async function handleRpc(
       jsonrpc: '2.0',
       id,
       result: {
-        content: [{ type: 'text', text: textForResult(bridgeResponse.result) }],
+        content: contentForResponse(bridgeResponse),
         isError,
         ...(bridgeResponse.result && typeof bridgeResponse.result === 'object'
           ? { structuredContent: bridgeResponse.result }

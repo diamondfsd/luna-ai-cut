@@ -137,6 +137,8 @@
   const listLocalMedia = (query) => parentApi().listLocalMedia(query)
   const getLocalMedia = (mediaId) => parentApi().getLocalMedia(mediaId)
   const readLocalMediaBytes = async (mediaId) => localArrayBuffer(await parentApi().readLocalMediaBytes(mediaId))
+  const inspectLocalMedia = (mediaIds, options) => parentApi().inspectLocalMedia(mediaIds, options)
+  const transcribeLocalMedia = (mediaId, options) => parentApi().transcribeLocalMedia(mediaId, options)
 
   const chooseAssets = (projectId, existingPaths = []) => {
     const parentWindow = window.parent
@@ -207,6 +209,8 @@
       listLocalMedia,
       getLocalMedia,
       readLocalMediaBytes,
+      inspectLocalMedia,
+      transcribeLocalMedia,
       resolveThumbnail: (sourcePath, kind) => parentLunaApi().resolveThumbnail(sourcePath, kind),
       matchImportAsset,
     },
