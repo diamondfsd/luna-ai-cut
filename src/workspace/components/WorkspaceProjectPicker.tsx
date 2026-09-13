@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Film, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../../shared/types'
@@ -14,6 +15,7 @@ function generatedProjectName(count: number): string {
 }
 
 export function WorkspaceProjectPicker() {
+  const navigate = useNavigate()
   const { projects, projectLoading, openProject, deleteProject, renameProject, createProject } = useWorkspaceMedia()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; project: WorkspaceProject } | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -82,6 +84,9 @@ export function WorkspaceProjectPicker() {
       <header className="workspace-project-header">
         <div><h2>工作台项目</h2><span>{projectLoading ? '加载中...' : `${projects.length} 个项目`}</span></div>
         <div className="workspace-project-header-actions">
+          <Button variant="secondary" size="compact" icon={<Film size={14} />} onClick={() => navigate('/ai-editor')}>
+            AI 剪辑
+          </Button>
           <Button variant="primary" size="compact" icon={<Plus color='white' size={14} />} onClick={() => setCreateOpen(true)}>
             新建项目
           </Button>
