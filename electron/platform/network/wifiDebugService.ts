@@ -17,10 +17,30 @@ import type {
   WifiPortCheckResult,
 } from '../../../src/shared/types'
 import { getMacosHelperPath } from '../macos/swiftUtils'
+import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_WIFI_TIMEOUT_MS = 15000
 const COREWLAN_HELPER_PATH = getMacosHelperPath('wifiCoreWlan')
+
+function wifiStatusForLog(result: WifiDebugResult<WifiDebugStatus> | null | undefined): Record<string, unknown> {
+  const data = result?.data
+  return {
+    success: result?.success ?? null,
+    code: result?.code ?? null,
+    message: result?.message ?? null,
+    connected: data?.connected ?? null,
+    ssid: data?.ssid ?? null,
+    bssid: data?.bssid ?? null,
+    interfaceName: data?.interfaceName ?? null,
+    ipAddress: data?.ipAddress ?? null,
+    ipAddresses: data?.ipAddresses?.map((item) => ({
+      interfaceName: item.interfaceName,
+      address: item.address,
+      family: item.family,
+    })) ?? [],
+  }
+}
 
 async function runCommand(command: string, args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS, signal?: AbortSignal): Promise<string> {
   const { stdout, stderr } = await execFileAsync(command, args, {
@@ -204,11 +224,19 @@ function normalizeWifiNetwork(value: unknown): WifiDebugNetwork {
 
 function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
+    const callId = `corewlan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    logMainInfo('[系统 Wi-Fi] macOS helper 开始执行', {
+      callId,
+      args,
+      timeoutMs,
+      passwordViaStdin: stdin !== undefined,
+    })
     const child = spawn(COREWLAN_HELPER_PATH, args, { windowsHide: true })
     let stdout = ''
     let stderr = ''
     let settled = false
     const timer = setTimeout(() => {
+      logMainWarn('[系统 Wi-Fi] macOS helper 超时并终止', { callId, args, timeoutMs })
       child.kill('SIGKILL')
       finishReject(new Error(`CoreWLAN helper 超时（${timeoutMs}ms）`))
     }, timeoutMs)
@@ -224,6 +252,7 @@ function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string, s
       reject(error)
     }
     const handleAbort = (): void => {
+      logMainWarn('[系统 Wi-Fi] macOS helper 被取消', { callId, args })
       child.kill('SIGKILL')
       finishReject(new Error('Wi-Fi 连接已取消'))
     }
@@ -245,11 +274,25 @@ function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string, s
       if (settled) return
       const raw = `${stdout}${stderr ? `\n${stderr}` : ''}`.trim()
       if (code !== 0 && !stdout) {
+        logMainWarn('[系统 Wi-Fi] macOS helper 异常退出', {
+          callId,
+          args,
+          exitCode: code,
+          stdoutBytes: Buffer.byteLength(stdout),
+          stderrBytes: Buffer.byteLength(stderr),
+        })
         finishReject(new Error(raw || `CoreWLAN helper 退出码 ${code ?? '未知'}`))
         return
       }
       settled = true
       cleanup()
+      logMainInfo('[系统 Wi-Fi] macOS helper 执行结束', {
+        callId,
+        args,
+        exitCode: code,
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: Buffer.byteLength(stderr),
+      })
       resolve(raw)
     })
 
@@ -262,12 +305,31 @@ function runCoreWlanCommand(args: string[], timeoutMs: number, stdin?: string, s
 
 async function runCoreWlan<T>(args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS, stdin?: string, signal?: AbortSignal): Promise<WifiDebugResult<T>> {
   if (!existsSync(COREWLAN_HELPER_PATH)) {
+    logMainWarn('[系统 Wi-Fi] 未找到 macOS helper', { args, timeoutMs })
     return fail('未找到 macOS Wi-Fi helper，请重新安装应用', 'COREWLAN_HELPER_NOT_FOUND')
   }
 
-  const raw = stdin === undefined
-    ? await runCommand(COREWLAN_HELPER_PATH, args, timeoutMs, signal)
-    : await runCoreWlanCommand(args, timeoutMs, stdin, signal)
+  const callId = `corewlan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  logMainInfo('[系统 Wi-Fi] macOS helper 请求', {
+    callId,
+    args,
+    timeoutMs,
+    passwordViaStdin: stdin !== undefined,
+  })
+  let raw: string
+  try {
+    raw = stdin === undefined
+      ? await runCommand(COREWLAN_HELPER_PATH, args, timeoutMs, signal)
+      : await runCoreWlanCommand(args, timeoutMs, stdin, signal)
+  } catch (error) {
+    logMainWarn('[系统 Wi-Fi] macOS helper 请求失败', {
+      callId,
+      args,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+  logMainInfo('[系统 Wi-Fi] macOS helper 返回', { callId, args, rawBytes: Buffer.byteLength(raw) })
   const jsonStart = raw.indexOf('{')
   const jsonEnd = raw.lastIndexOf('}')
   if (jsonStart < 0 || jsonEnd < jsonStart) {
@@ -416,20 +478,42 @@ function escapeXml(value: string): string {
 export async function connectWifiNetwork(options: WifiConnectOptions, signal?: AbortSignal): Promise<WifiDebugResult<WifiDebugStatus>> {
   const ssid = options.ssid.trim()
   const timeoutMs = options.timeoutMs ?? DEFAULT_WIFI_TIMEOUT_MS
-  if (!ssid) return fail('请输入 SSID', 'SSID_REQUIRED')
+  const requestId = `wifi-connect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  if (!ssid) {
+    const result = fail<WifiDebugStatus>('请输入 SSID', 'SSID_REQUIRED')
+    logMainWarn('[系统 Wi-Fi] 连接请求缺少 SSID', { requestId })
+    return result
+  }
+
+  logMainInfo('[系统 Wi-Fi] 连接请求开始', {
+    requestId,
+    platform: process.platform,
+    ssid,
+    bssid: options.bssid ?? null,
+    timeoutMs,
+    skipSsidVerification: options.skipSsidVerification === true,
+    passwordProvided: Boolean(options.password),
+  })
 
   try {
     if (process.platform === 'darwin') {
       if (options.password) {
-        return connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid, options.skipSsidVerification, signal)
+        const result = await connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid, options.skipSsidVerification, signal)
+        logMainInfo('[系统 Wi-Fi] 连接请求结束', { requestId, result: wifiStatusForLog(result) })
+        return result
       }
       const args = ['connect', '--ssid', ssid]
       if (options.skipSsidVerification) args.push('--skip-ssid-verification')
       if (options.bssid) args.push('--bssid', options.bssid)
       const result = await runCoreWlan<unknown>(args, timeoutMs, undefined, signal)
-      if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
+      if (!result.success) {
+        logMainInfo('[系统 Wi-Fi] 连接请求结束', { requestId, result: wifiStatusForLog(result as WifiDebugResult<WifiDebugStatus>) })
+        return result as WifiDebugResult<WifiDebugStatus>
+      }
       const status = normalizeWifiStatus(result.data, result.raw)
-      return ok(result.message || `CoreWLAN 已尝试连接 ${ssid}`, { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
+      const connectionResult = ok(result.message || `CoreWLAN 已尝试连接 ${ssid}`, { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
+      logMainInfo('[系统 Wi-Fi] 连接请求结束', { requestId, result: wifiStatusForLog(connectionResult) })
+      return connectionResult
     }
 
     if (process.platform === 'win32') {
@@ -456,45 +540,64 @@ export async function connectWifiNetwork(options: WifiConnectOptions, signal?: A
             }
           }
         }
-        return {
+        const connectionResult = {
           ...status,
           success: options.skipSsidVerification ? true : status.success,
           message: options.skipSsidVerification || status.success ? `已尝试连接 ${ssid}` : status.message,
           raw,
         }
+        logMainInfo('[系统 Wi-Fi] 连接请求结束', { requestId, result: wifiStatusForLog(connectionResult) })
+        return connectionResult
       } finally {
         await fs.unlink(profilePath).catch(() => undefined)
       }
     }
 
-    return unsupported()
+    const result = unsupported<WifiDebugStatus>()
+    logMainInfo('[系统 Wi-Fi] 连接请求结束', { requestId, result: wifiStatusForLog(result) })
+    return result
   } catch (error) {
-    return errorResult(error, 'WIFI_CONNECT_ERROR')
+    const result = errorResult<WifiDebugStatus>(error, 'WIFI_CONNECT_ERROR')
+    logMainWarn('[系统 Wi-Fi] 连接请求异常结束', { requestId, result: wifiStatusForLog(result) })
+    return result
   }
 }
 
 export async function disconnectWifiNetwork(): Promise<WifiDebugResult<WifiDebugStatus>> {
+  const requestId = `wifi-disconnect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  logMainInfo('[系统 Wi-Fi] 断开请求开始', { requestId, platform: process.platform })
   try {
     if (process.platform === 'darwin') {
       const result = await runCoreWlan<unknown>(['disconnect'], 12000)
-      if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
+      if (!result.success) {
+        logMainInfo('[系统 Wi-Fi] 断开请求结束', { requestId, result: wifiStatusForLog(result as WifiDebugResult<WifiDebugStatus>) })
+        return result as WifiDebugResult<WifiDebugStatus>
+      }
       const status = normalizeWifiStatus(result.data, result.raw)
-      return ok(result.message || 'CoreWLAN 已断开当前 Wi-Fi', { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
+      const disconnectResult = ok(result.message || 'CoreWLAN 已断开当前 Wi-Fi', { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
+      logMainInfo('[系统 Wi-Fi] 断开请求结束', { requestId, result: wifiStatusForLog(disconnectResult) })
+      return disconnectResult
     }
 
     if (process.platform === 'win32') {
       const raw = await runCommand('netsh', ['wlan', 'disconnect'], 8000)
       const status = await getWifiDebugStatus()
-      return {
+      const disconnectResult = {
         ...status,
         message: status.success ? '已尝试断开当前 Wi-Fi' : status.message,
         raw,
       }
+      logMainInfo('[系统 Wi-Fi] 断开请求结束', { requestId, result: wifiStatusForLog(disconnectResult) })
+      return disconnectResult
     }
 
-    return unsupported()
+    const result = unsupported<WifiDebugStatus>()
+    logMainInfo('[系统 Wi-Fi] 断开请求结束', { requestId, result: wifiStatusForLog(result) })
+    return result
   } catch (error) {
-    return errorResult(error, 'WIFI_DISCONNECT_ERROR')
+    const result = errorResult<WifiDebugStatus>(error, 'WIFI_DISCONNECT_ERROR')
+    logMainWarn('[系统 Wi-Fi] 断开请求异常结束', { requestId, result: wifiStatusForLog(result) })
+    return result
   }
 }
 
