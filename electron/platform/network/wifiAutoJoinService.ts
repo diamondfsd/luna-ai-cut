@@ -129,7 +129,7 @@ async function probeCameraEndpoint(endpoint: WifiCameraEndpoint, sessionKey: str
 async function waitForLunaWifiAddress(
   sessionKey: string,
   isCancelled?: () => boolean,
-): Promise<{ address: string; ssid: string | null } | null> {
+): Promise<{ address: string } | null> {
   const startedAt = Date.now()
   const deadline = startedAt + CAMERA_HANDSHAKE_WAIT_MS
   let attempts = 0
@@ -146,11 +146,10 @@ async function waitForLunaWifiAddress(
         logMainInfo('[设备 Wi-Fi] 已获取 Luna 网段地址', {
           sessionKey,
           address,
-          ssid: status.data?.ssid,
           attempts,
           elapsedMs: Date.now() - startedAt,
         })
-        return { address, ssid: status.data?.ssid ?? null }
+        return { address }
       }
     }
     if (isCancelled?.()) return null
@@ -269,9 +268,9 @@ export async function autoJoinDeviceWifi(
     ssid: candidateSsid,
     timeoutMs: 30000,
     password,
-    // macOS may hide the current SSID from CoreWLAN even after association.
-    // The Luna network address and camera control handshake below are the actual connection checks.
-    skipSsidVerification: Boolean(endpoint),
+    // The current system SSID is not reliable on desktop platforms. Luna's
+    // control-channel handshake below is the actual connection confirmation.
+    skipSsidVerification: true,
   }, signal)
   if (cancelledByCaller()) return cancelled()
   logMainInfo('[设备 Wi-Fi] 系统配置连接结果', {
@@ -289,14 +288,13 @@ export async function autoJoinDeviceWifi(
       code: joined.code,
       message: joined.message,
     })
-    const message = '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点'
     return {
       attempted: true,
       connected: false,
       ssid: candidateSsid,
       wifiPasswordRequired,
       wifiManualConnectionRequired: true,
-      message,
+      message: '未能连接到相机 Wi-Fi，请确认相机已开机且密码正确后重试',
     }
   }
 
@@ -305,26 +303,48 @@ export async function autoJoinDeviceWifi(
     const handshake = await waitForCameraHandshake(endpoint, sessionKey, cancelledByCaller)
     if (cancelledByCaller()) return cancelled()
     if (!handshake.ok) {
+      const afterHandshake = await getWifiDebugStatus().catch(() => null)
+      logMainWarn('[设备 Wi-Fi] 控制握手失败后的网络状态', {
+        sessionKey,
+        targetSsid: candidateSsid,
+        joinedSsid,
+        connected: afterHandshake?.success ? afterHandshake.data?.connected : null,
+        interfaceName: afterHandshake?.success ? afterHandshake.data?.interfaceName : null,
+        bssid: afterHandshake?.success ? afterHandshake.data?.bssid : null,
+        ipAddress: afterHandshake?.success ? afterHandshake.data?.ipAddress : null,
+        ipAddresses: afterHandshake?.success ? afterHandshake.data?.ipAddresses : null,
+        error: handshake.lastError,
+      })
       return {
         attempted: true,
         connected: false,
         ssid: candidateSsid,
         wifiPasswordRequired: true,
         wifiManualConnectionRequired: true,
-        message: '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点',
+        message: '相机 Wi-Fi 已尝试连接，但相机未响应，请确认相机已开机后重试',
       }
     }
   } else {
     const network = await waitForLunaWifiAddress(sessionKey, cancelledByCaller)
     if (cancelledByCaller()) return cancelled()
     if (!network) {
+      const afterAddressWait = await getWifiDebugStatus().catch(() => null)
+      logMainWarn('[设备 Wi-Fi] 获取地址失败后的网络状态', {
+        sessionKey,
+        targetSsid: candidateSsid,
+        connected: afterAddressWait?.success ? afterAddressWait.data?.connected : null,
+        interfaceName: afterAddressWait?.success ? afterAddressWait.data?.interfaceName : null,
+        bssid: afterAddressWait?.success ? afterAddressWait.data?.bssid : null,
+        ipAddress: afterAddressWait?.success ? afterAddressWait.data?.ipAddress : null,
+        ipAddresses: afterAddressWait?.success ? afterAddressWait.data?.ipAddresses : null,
+      })
       return {
         attempted: true,
         connected: false,
         ssid: candidateSsid,
         wifiPasswordRequired: true,
         wifiManualConnectionRequired: true,
-        message: '自动连接失败，请复制 Wi-Fi 密码，在系统 Wi-Fi 中手动连接相机热点',
+        message: '未能获取相机 Wi-Fi 地址，请确认相机已开机且密码正确后重试',
       }
     }
   }
