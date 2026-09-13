@@ -441,7 +441,7 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
     try {
       const launcherPath = await window.luna.aiEditor.mcp.getLauncherPath()
       await navigator.clipboard.writeText(buildAiEditorAgentPrompt(launcherPath))
-      toast.success('Agent 提示词已复制')
+      toast.success('已复制提示词，请粘贴到对应的任意 AI Agent 里面去')
     } catch (error) {
       logger.error('[AI 剪辑] 复制 Agent 提示词失败', {
         error: error instanceof Error ? error.message : String(error),
