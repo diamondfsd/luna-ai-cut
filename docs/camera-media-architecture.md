@@ -42,6 +42,8 @@ cameraMediaSourceFor()  根据 DeviceDefinition.protocol 注册适配器
 - `connection.automaticWifiJoin`
 - `connection.manualWifiCredentials`
 
+连接 DJI 相机并进入媒体库后，顶部连接状态右侧的相机按钮会打开实时预览。该入口仅在无线连接可用时显示；预览流由 DJI UDP 会话接收，再通过本机视频流提供给桌面端播放。
+
 连接准备通过 `CameraMediaSourceOptions.wireless` 传递。密码只作为本次连接参数使用，不写入应用设置。DJI 额外提供 `prepareConnection()`：先通过蓝牙读取 Wi-Fi 信息并断开 BLE，用户手动切换 Wi-Fi 后再调用统一的 `connect()`。未来需要系统 Wi-Fi 自动加入时，只新增对应策略实现，不改变素材列表接口。
 
 ## Wi-Fi / SSID 识别约束
@@ -95,6 +97,19 @@ DJI 媒体会话分为两步：
 - `already-connected`：跳过 BLE，直接复用用户已经连接好的相机 Wi-Fi
 
 真实 BLE transport 由 Electron Web Bluetooth 承载，macOS 和 Windows 都通过 `DjiBleTransport` 接入。媒体清单、下载、预览和删除能力不需要重新实现。
+
+DJI 原始素材删除使用媒体命令 `cmdSet=0x00`、`cmdId=0x28`。请求负载按以下顺序编码：
+
+```text
+[count:u8]
+[count × handle:u32 LE]
+[counter:u32 LE]
+00
+[count:u32 LE]
+01 01 00 00
+```
+
+应用会在发送前重新读取清单并校验句柄，收到相机确认后才从媒体库移除条目；删除失败或句柄过期时不会重发删除命令。
 
 ## Mock 验收
 
