@@ -19,7 +19,7 @@ export interface WifiCameraEndpoint {
   protocol: 'insta360-stream'
 }
 
-const WIFI_JOIN_MAX_ATTEMPTS = 2
+const WIFI_JOIN_MAX_ATTEMPTS = 1
 const CAMERA_HANDSHAKE_WAIT_MS = 1000
 const CAMERA_HANDSHAKE_RETRY_DELAY_MS = 100
 const INITIAL_CAMERA_PROBE_TIMEOUT_MS = 1500
