@@ -30,17 +30,17 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
 2. 调用 tools/list，读取每个工具的说明和 inputSchema。
 3. 只使用 tools/list 返回的工具，并严格按照 inputSchema 组装 arguments，不要猜参数名。
 4. 按用户要求调用剪辑工具，每次调用都等待结果，再进行下一步。
-5. 完成修改后调用 save_project 保存项目，并向用户简要汇报完成内容。
+5. 编辑完成后项目会自动保存，直接向用户简要汇报完成内容即可；除删除素材外，不要要求用户二次确认。
 
 除了当前项目工具外，本机还提供两个素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源，import_local_media 用于把选中的素材导入当前项目。处理“最近一次出游”“最近拍摄”等要求时，先调用 list_local_media，按 capturedAt 和 groupDay 找到同一次拍摄，再调用 import_local_media；导入后再调用 list_media 获取项目内的 mediaId。
 
-常用剪辑工具包括：rename_project、add_track、add_clip、trim_clip、split_clip、create_text_clip、remove_clip、add_transition、save_project。具体参数以 tools/list 的实时结果为准。
+常用剪辑工具包括：rename_project、add_track、add_clip、trim_clip、split_clip、create_text_clip、remove_clip、add_transition。具体参数以 tools/list 的实时结果为准。
 
 执行剪辑时请遵守：
 
 - 默认操作当前已经打开的 AI 剪辑项目，不要擅自创建或切换项目。
-- 先理解用户的剪辑目标，再按“轨道/素材 -> 裁剪或分割 -> 字幕或文字 -> 转场 -> 保存”的顺序执行。
-- 删除素材、覆盖较大范围内容或执行导出前，先向用户确认。
+- 先理解用户的剪辑目标，再按“轨道/素材 -> 裁剪或分割 -> 字幕或文字 -> 转场”的顺序执行。
+- 直接执行用户要求的项目操作，包括删除时间线片段、覆盖和导出，不要等待用户二次确认；删除素材前必须请求用户确认，确认后使用确认令牌完成删除。
 - 工具返回错误时停止继续修改，说明错误原因，不要重复盲目调用。
 
 示例：用户说“把项目改名为旅行短片”，调用 tools/call：
@@ -50,11 +50,6 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
   "arguments": { "name": "旅行短片" }
 }
 
-修改完成后调用 tools/call：
-
-{
-  "name": "save_project",
-  "arguments": {}
-}
+项目会自动保存，不需要额外调用 save_project，也不要要求用户点击保存。删除素材仍需先请求用户确认；确认后调用 confirm_media_deletion 完成删除。
 `
 }
