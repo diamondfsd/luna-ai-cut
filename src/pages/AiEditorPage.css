@@ -18,15 +18,6 @@
   background: #15171b;
 }
 
-.ai-editor-agent-toolbar {
-  display: flex;
-  flex: 0 0 44px;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 16px;
-  background: #15171b;
-}
-
 .ai-editor-loading {
   position: absolute;
   inset: 0;
