@@ -36,7 +36,7 @@ import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativ
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import type { LivePhotoSelection } from '../workspace/trim/TrimPanel'
-import { buildVideoOutputExportItems, livePhotoSelectionForMarker } from '../workspace/trim/videoOutputMarkers'
+import { buildVideoOutputExportItems, findInvalidVideoOutputMarker, livePhotoSelectionForMarker } from '../workspace/trim/videoOutputMarkers'
 import { constrainTrimEnd, constrainTrimStart, frameIndexAtTime, snapTimeToFrame, sourceEndFrame, timeAtFrame } from '../workspace/trim/frameTime'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { BeautyMaskOverlay } from '../workspace/beauty/BeautyMaskOverlay'
@@ -1028,6 +1028,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           }]
         }
 
+        const invalidMarker = findInvalidVideoOutputMarker(pipeline.outputMarkers, sourceDuration)
+        if (invalidMarker) {
+          throw new Error(`${asset.name} 的第 ${invalidMarker.index + 1} 个${invalidMarker.label}无效：${invalidMarker.reason}`)
+        }
         const markerItems = buildVideoOutputExportItems(outputBaseName, pipeline.outputMarkers, sourceDuration)
         if (markerItems.length !== pipeline.outputMarkers.length) {
           throw new Error(`${asset.name} 有无效的导出标记，请调整后再导出`)
