@@ -7,6 +7,7 @@ import type { IpcContext } from './context'
 import { createLunaMcpServer, type LunaMcpServer } from '../mcp/lunaMcpServer'
 import { activateAgentWindow } from './ipcAiEditorAgentService'
 import { agentSessionManager } from '../mcp/agentSessionManager'
+import { musicGenerationService } from '../features/audio/musicGenerationService'
 
 interface PendingRendererRequest {
   resolve: (response: AiEditorMcpResponse) => void
@@ -62,6 +63,7 @@ export function register(context: IpcContext): void {
     requestRenderer: (request) => requestRenderer(context, request),
     agentSession: agentSessionManager,
     activateWindow: () => activateAgentWindow(context),
+    musicGeneration: musicGenerationService,
   })
   void mcpServer.start().catch((error: unknown) => {
     console.error('[MCP] 本机服务启动失败', error)

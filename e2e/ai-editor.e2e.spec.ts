@@ -55,6 +55,16 @@ test('AI 剪辑通过本机 MCP 返回工具并执行操作', async ({ lunaApp }
       jsonrpc: '2.0',
       id: 3,
       method: 'tools/call',
+      params: { name: 'start_edit_session', arguments: { request: '将当前项目改名为 MCP 测试项目', agentId: 'e2e-rename' } },
+    })}\n`)
+    const started = await nextResponse()
+    expect(started.result?.content?.[0]?.text ? JSON.parse(started.result.content[0].text) : null)
+      .toMatchObject({ ok: true, data: { state: 'claimed' } })
+
+    client.stdin.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
       params: { name: 'rename_project', arguments: { name: 'MCP 测试项目' } },
     })}\n`)
     const renameResult = (await nextResponse()).result?.content?.[0]?.text
@@ -112,18 +122,25 @@ test('AI 剪辑通过本机 MCP 查询并导入最近本地素材', async ({ lun
     const tools = (await nextResponse()).result?.tools ?? []
     expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['list_local_media', 'import_local_media']))
 
-    const created = await call(3, 'create_project', { name: '本地素材查询测试项目' })
+    const started = await call(3, 'start_edit_session', {
+      request: '从最近本地素材创建一个测试项目并导入素材',
+      agentId: 'e2e-local-media',
+    })
+    expect(started.result?.content?.[0]?.text ? JSON.parse(started.result.content[0].text) : null)
+      .toMatchObject({ ok: true, data: { state: 'claimed' } })
+
+    const created = await call(4, 'create_project', { name: '本地素材查询测试项目' })
     expect(created.result?.content?.[0]?.text ? JSON.parse(created.result.content[0].text) : null).toMatchObject({ ok: true })
 
-    const listed = await call(4, 'list_local_media', { limit: 10 })
+    const listed = await call(5, 'list_local_media', { limit: 10 })
     const listedResult = listed.result?.content?.[0]?.text ? JSON.parse(listed.result.content[0].text) : null
     expect(listedResult).toMatchObject({ ok: true, data: [{ name: 'IMG_20260830_202400_001.png', groupDay: '2026-08-30' }] })
 
     const mediaId = listedResult.data[0].mediaId as string
-    const imported = await call(5, 'import_local_media', { mediaIds: [mediaId] })
+    const imported = await call(6, 'import_local_media', { mediaIds: [mediaId] })
     expect(imported.result?.content?.[0]?.text ? JSON.parse(imported.result.content[0].text) : null).toMatchObject({ ok: true })
 
-    const media = await call(6, 'list_media', {})
+    const media = await call(7, 'list_media', {})
     expect(media.result?.content?.[0]?.text ? JSON.parse(media.result.content[0].text) : null).toMatchObject({
       ok: true,
       data: [{ name: 'IMG_20260830_202400_001.png', type: 'image' }],

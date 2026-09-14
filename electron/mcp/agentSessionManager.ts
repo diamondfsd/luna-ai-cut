@@ -20,6 +20,16 @@ export interface AgentToolResult {
   error?: AgentToolError
 }
 
+export class AgentSessionError extends Error {
+  readonly code: string
+
+  constructor(code: string, message: string) {
+    super(message)
+    this.name = 'AgentSessionError'
+    this.code = code
+  }
+}
+
 export interface AgentWaitResult {
   ok: true
   state: 'claimed' | 'idle'
@@ -153,6 +163,38 @@ export class AgentSessionManager {
     return copySession(this.session)
   }
 
+  startExternalRequest(
+    request: string,
+    agentId: string | null = null,
+    projectId: string | null = null,
+  ): AgentWaitResult {
+    const trimmed = request.trim()
+    if (!trimmed) throw new AgentSessionError('INVALID_REQUEST', '剪辑要求不能为空')
+
+    const normalizedAgentId = agentId?.trim() || null
+    const current = this.session
+    if (current && ACTIVE_STATUSES.has(current.status)) {
+      const sameRequest = current.request === trimmed
+      const sameAgent = !normalizedAgentId || !current.agentId || current.agentId === normalizedAgentId
+      if (sameRequest && sameAgent) {
+        if (current.status === 'queued') return this.claim(current, normalizedAgentId)
+        return { ok: true, state: 'claimed', session: copySession(current) }
+      }
+      throw new AgentSessionError('SESSION_ALREADY_ACTIVE', '已有其他剪辑任务正在执行，请先完成或停止当前任务')
+    }
+
+    const created = this.createRequest(trimmed, projectId)
+    if (created.status !== 'queued') {
+      if (this.session?.agentId === normalizedAgentId) {
+        return { ok: true, state: 'claimed', session: copySession(this.session) }
+      }
+      throw new AgentSessionError('SESSION_ALREADY_CLAIMED', '剪辑任务已被其他 Agent 领取')
+    }
+    const claimed = this.claim(created, normalizedAgentId)
+    this.resolveWaitersAsIdle()
+    return claimed
+  }
+
   updateRequest(sessionId: string, request: string): AiEditorAgentSession {
     const current = this.requireSession(sessionId)
     const trimmed = request.trim()
@@ -190,6 +232,7 @@ export class AgentSessionManager {
         updatedAt: nowIso(),
       }
       this.emit({ type: 'cancelled', session: this.session, message: '任务已取消' })
+      this.resolveWaitersAsIdle()
       return copySession(this.session)
     }
 
@@ -207,6 +250,10 @@ export class AgentSessionManager {
     const current = this.session
     if (current?.status === 'queued') return this.claim(current, agentId)
     if (current?.status === 'running') {
+      const normalizedAgentId = agentId?.trim() || null
+      if (normalizedAgentId && current.agentId && current.agentId !== normalizedAgentId) {
+        throw new AgentSessionError('SESSION_ALREADY_CLAIMED', '当前剪辑任务已被其他 Agent 领取')
+      }
       return {
         ok: true,
         state: 'claimed',
@@ -306,7 +353,15 @@ export class AgentSessionManager {
   }
 
   gateActiveTool(): AgentToolGate | null {
-    if (!this.activeSessionId || this.session?.sessionId !== this.activeSessionId || !this.session) return null
+    if (!this.session) return null
+    if (!this.activeSessionId || this.session.sessionId !== this.activeSessionId) {
+      if (!TERMINAL_STATUSES.has(this.session.status)) return null
+      return {
+        session: copySession(this.session),
+        allowed: false,
+        error: { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束，不能继续修改' },
+      }
+    }
     const session = this.session
     if (session.cancelRequested) {
       return {
@@ -338,7 +393,7 @@ export class AgentSessionManager {
 
   toolStarted(callId: string, toolName: string, args: Record<string, unknown>): void {
     const active = this.gateActiveTool()
-    if (!active) return
+    if (!active || !active.allowed) return
     this.emit({
       type: 'tool-start',
       session: active.session,
@@ -372,13 +427,20 @@ export class AgentSessionManager {
 
   private requireSession(sessionId: string): AiEditorAgentSession {
     if (!sessionId || !this.session || this.session.sessionId !== sessionId) {
-      throw new Error('剪辑任务不存在')
+      throw new AgentSessionError('SESSION_NOT_FOUND', '剪辑任务不存在或已被替换，请重新调用 wait_for_edit_request')
     }
     return this.session
   }
 
   private gate(sessionId: string, revision: number): AgentToolGate {
     const current = this.requireSession(sessionId)
+    if (!this.activeSessionId || current.sessionId !== this.activeSessionId || TERMINAL_STATUSES.has(current.status)) {
+      return {
+        session: copySession(current),
+        allowed: false,
+        error: { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束或尚未被 Agent 领取，不能继续修改' },
+      }
+    }
     if (current.cancelRequested) {
       return {
         session: copySession(current),
@@ -416,6 +478,15 @@ export class AgentSessionManager {
     if (!waiter || !this.session || this.session.status !== 'queued') return
     clearTimeout(waiter.timer)
     waiter.resolve(this.claim(this.session, waiter.agentId))
+  }
+
+  private resolveWaitersAsIdle(): void {
+    while (this.waiters.length > 0) {
+      const waiter = this.waiters.shift()
+      if (!waiter) continue
+      clearTimeout(waiter.timer)
+      waiter.resolve({ ok: true, state: 'idle' })
+    }
   }
 
   private emit(input: AgentEventInput): void {
