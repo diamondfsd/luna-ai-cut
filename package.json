@@ -28,7 +28,7 @@
     "build:resources": "node scripts/publish-runtime-resources.mjs",
     "publish:models": "node scripts/publish-model-resources.mjs --upload",
     "build:models": "node scripts/publish-model-resources.mjs",
-    "test:workspace": "node scripts/test-workspace-geometry.mjs && node --experimental-strip-types scripts/test-preview-frame-cache.mjs && node --experimental-strip-types scripts/test-workspace-export-range.mjs",
+    "test:workspace": "node scripts/test-workspace-geometry.mjs && node scripts/test-frame-time.mjs && node --experimental-strip-types scripts/test-preview-frame-cache.mjs && node --experimental-strip-types scripts/test-workspace-export-range.mjs",
     "test:reference-match": "node --experimental-strip-types scripts/test-reference-match.mjs",
     "test:ai-composition": "node scripts/test-ai-composition.mjs",
     "test:inpaint": "node --experimental-strip-types scripts/test-inpaint-mask.mjs && node --experimental-strip-types scripts/test-removal-operations.mjs && node scripts/test-workspace-removal-storage.mjs",

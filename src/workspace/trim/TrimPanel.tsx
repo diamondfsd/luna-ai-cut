@@ -13,6 +13,18 @@ import {
   resizeLivePhotoRange,
   type VideoOutputMarker,
 } from './videoOutputMarkers'
+import {
+  constrainTrimEnd,
+  constrainTrimStart,
+  frameCountForDuration,
+  frameDuration,
+  frameIndexAtTime,
+  lastSourceFrameTime,
+  minimumTrimFrameCount,
+  snapTimeToFrame,
+  sourceEndFrame,
+  timeAtFrame,
+} from './frameTime'
 
 import './TrimPanel.css'
 
@@ -21,6 +33,7 @@ interface TrimPanelProps {
   endTime: number
   currentTime: number
   duration: number
+  frameRate?: number | null
   markers: VideoOutputMarker[]
   onStartTimeChange: (time: number) => void
   onEndTimeChange: (time: number) => void
@@ -45,7 +58,7 @@ export interface LivePhotoSelection {
 
 function formatSeconds(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '00:00.000'
-  const totalMs = Math.floor(seconds * 1000)
+  const totalMs = Math.round(seconds * 1000)
   const mins = Math.floor(totalMs / 60000)
   const secs = Math.floor((totalMs % 60000) / 1000)
   const ms = totalMs % 1000
@@ -98,6 +111,7 @@ interface MarkerRowProps {
   marker: VideoOutputMarker
   displayLabel: string
   duration: number
+  frameRate?: number | null
   selected: boolean
   autoFocus: boolean
   onSelect: () => void
@@ -105,6 +119,7 @@ interface MarkerRowProps {
   onDelete: () => void
   videoPath: string | null
   onCoverTimeChange: (time: number) => void
+  onRangeFrameChange: (kind: 'start' | 'end', value: string) => void
   onDurationChange: (duration: number) => void
   currentTime: number
   playing: boolean
@@ -112,7 +127,7 @@ interface MarkerRowProps {
   onPreviewTimeChange: (time: number) => void
 }
 
-function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSelect, onNoteCommit, onDelete, videoPath, onCoverTimeChange, onDurationChange, currentTime, playing, onTogglePreview, onPreviewTimeChange }: MarkerRowProps) {
+function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFocus, onSelect, onNoteCommit, onDelete, videoPath, onCoverTimeChange, onRangeFrameChange, onDurationChange, currentTime, playing, onTogglePreview, onPreviewTimeChange }: MarkerRowProps) {
   const [note, setNote] = useState(marker.note || displayLabel)
   const [liveDurationText, setLiveDurationText] = useState(marker.kind === 'live' ? formatLiveDuration(marker.endTime - marker.startTime) : '')
   const liveDurationFocusedRef = useRef(false)
@@ -124,6 +139,16 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
   const liveMarker = marker.kind === 'live' ? marker : null
   const videoMarker = marker.kind === 'video' ? marker : null
   const liveDuration = liveMarker ? liveMarker.endTime - liveMarker.startTime : null
+  const liveCoverMax = liveMarker
+    ? Math.max(liveMarker.startTime, lastSourceFrameTime(liveMarker.endTime, frameRate))
+    : 0
+  const liveStartFrame = liveMarker ? frameIndexAtTime(liveMarker.startTime, frameRate) : 0
+  const liveEndFrame = liveMarker
+    ? Math.max(liveStartFrame, frameIndexAtTime(liveMarker.endTime, frameRate) - 1)
+    : 0
+  const liveCoverFrame = liveMarker
+    ? Math.max(liveStartFrame, Math.min(frameIndexAtTime(liveMarker.coverTime, frameRate), liveEndFrame))
+    : 0
   useEffect(() => {
     if (!liveDurationFocusedRef.current && liveDuration !== null) setLiveDurationText(formatLiveDuration(liveDuration))
   }, [liveDuration, marker.id])
@@ -218,15 +243,16 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
           </Tooltip>
         </div>
         {marker.kind === 'photo' ? <span className="workspace-trim-marker-time">{formatSeconds(marker.time)}</span> : null}
+        {marker.kind === 'photo' ? <span className="workspace-trim-marker-time">帧 {frameIndexAtTime(marker.time, frameRate)}</span> : null}
         {liveMarker ? (
           <div className="workspace-trim-live-cover-control">
             <span className="workspace-trim-live-cover-label">封面</span>
             <RadixSlider.Root
               className="workspace-trim-live-cover-slider"
-              value={[liveMarker.coverTime]}
+              value={[Math.max(liveMarker.startTime, Math.min(snapTimeToFrame(liveMarker.coverTime, frameRate), liveCoverMax))]}
               min={liveMarker.startTime}
-              max={liveMarker.endTime - 0.01}
-              step={0.01}
+              max={liveCoverMax}
+              step={frameDuration(frameRate)}
               onPointerDown={onSelect}
               onValueChange={([time]) => {
                 const video = thumbnailVideoRef.current
@@ -246,7 +272,7 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
               type="number"
               min={MIN_LIVE_PHOTO_DURATION}
               max={MAX_LIVE_PHOTO_DURATION}
-              step={0.1}
+              step={frameDuration(frameRate)}
               value={liveDurationText}
               aria-label={`${displayLabel}时长（秒）`}
               onFocus={() => {
@@ -257,10 +283,10 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
               onBlur={() => {
                 liveDurationFocusedRef.current = false
                 const parsed = Number(liveDurationText)
-                const maximum = Math.min(MAX_LIVE_PHOTO_DURATION, Math.floor(duration * 10) / 10)
+                const maximum = Math.min(MAX_LIVE_PHOTO_DURATION, duration)
                 const clampedDuration = Math.min(maximum, Math.max(MIN_LIVE_PHOTO_DURATION, parsed))
                 const nextDuration = Number.isFinite(parsed)
-                  ? Math.min(maximum, Math.round(clampedDuration * 10) / 10)
+                  ? clampedDuration
                   : liveMarker.endTime - liveMarker.startTime
                 onDurationChange(nextDuration)
                 setLiveDurationText(formatLiveDuration(nextDuration))
@@ -271,6 +297,54 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
               onClick={(event) => event.stopPropagation()}
             />
             <span className="workspace-trim-live-duration-unit">秒</span>
+            <div className="workspace-trim-live-range-control">
+              <span>封面:</span>
+              <Input
+                className="workspace-trim-live-range-input"
+                variant="compact"
+                type="number"
+                min={liveStartFrame}
+                max={liveEndFrame}
+                step={1}
+                value={liveCoverFrame}
+                aria-label={`${displayLabel}封面帧`}
+                onChange={(event) => {
+                  const frame = Number(event.target.value)
+                  if (!Number.isInteger(frame)) return
+                  const clamped = Math.max(liveStartFrame, Math.min(frame, liveEndFrame))
+                  onCoverTimeChange(timeAtFrame(clamped, frameRate))
+                }}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <span>帧</span>
+              <span>范围:</span>
+              <Input
+                className="workspace-trim-live-range-input"
+                variant="compact"
+                type="number"
+                min={0}
+                max={Math.max(0, liveEndFrame - frameCountForDuration(MIN_LIVE_PHOTO_DURATION, frameRate, MIN_LIVE_PHOTO_DURATION, MAX_LIVE_PHOTO_DURATION) + 1)}
+                step={1}
+                value={liveStartFrame}
+                aria-label={`${displayLabel}开始帧`}
+                onChange={(event) => onRangeFrameChange('start', event.target.value)}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <span>-</span>
+              <Input
+                className="workspace-trim-live-range-input"
+                variant="compact"
+                type="number"
+                min={liveStartFrame + frameCountForDuration(MIN_LIVE_PHOTO_DURATION, frameRate, MIN_LIVE_PHOTO_DURATION, MAX_LIVE_PHOTO_DURATION) - 1}
+                max={Math.max(liveEndFrame, sourceEndFrame(duration, frameRate) - 1)}
+                step={1}
+                value={liveEndFrame}
+                aria-label={`${displayLabel}结束帧`}
+                onChange={(event) => onRangeFrameChange('end', event.target.value)}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <span>帧</span>
+            </div>
           </div>
         ) : null}
         {videoMarker ? (
@@ -279,11 +353,11 @@ function MarkerRow({ marker, displayLabel, duration, selected, autoFocus, onSele
             <RadixSlider.Root
               className="workspace-trim-video-progress-slider"
               value={[selected
-                ? Math.max(videoMarker.startTime, Math.min(currentTime, videoMarker.endTime))
+                ? Math.max(videoMarker.startTime, Math.min(snapTimeToFrame(currentTime, frameRate), videoMarker.endTime))
                 : videoMarker.startTime]}
               min={videoMarker.startTime}
               max={videoMarker.endTime}
-              step={0.01}
+              step={frameDuration(frameRate)}
               onPointerDown={onSelect}
               onValueChange={([time]) => onPreviewTimeChange(time)}
             >
@@ -305,6 +379,7 @@ export function TrimPanel({
   endTime,
   currentTime,
   duration,
+  frameRate,
   markers,
   onStartTimeChange,
   onEndTimeChange,
@@ -325,26 +400,44 @@ export function TrimPanel({
   const focusedInputRef = useRef<'start' | 'end' | null>(null)
 
   useEffect(() => {
-    if (focusedInputRef.current !== 'start') setStartText(formatSeconds(startTime))
-  }, [startTime])
+    if (focusedInputRef.current !== 'start') setStartText(formatSeconds(snapTimeToFrame(startTime, frameRate, duration)))
+  }, [duration, frameRate, startTime])
   useEffect(() => {
-    if (focusedInputRef.current !== 'end') setEndText(formatSeconds(endTime))
-  }, [endTime])
+    if (focusedInputRef.current !== 'end') setEndText(formatSeconds(snapTimeToFrame(endTime, frameRate, duration)))
+  }, [duration, endTime, frameRate])
   const commitStart = useCallback(() => {
     focusedInputRef.current = null
     const parsed = parseTimeInput(startText)
-    const next = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, endTime - 0.1)) : startTime
+    const next = Number.isFinite(parsed)
+      ? constrainTrimStart(parsed, endTime, duration, frameRate)
+      : startTime
     onStartTimeChange(next)
     setStartText(formatSeconds(next))
-  }, [endTime, onStartTimeChange, startText, startTime])
+  }, [duration, endTime, frameRate, onStartTimeChange, startText, startTime])
 
   const commitEnd = useCallback(() => {
     focusedInputRef.current = null
     const parsed = parseTimeInput(endText)
-    const next = Number.isFinite(parsed) ? Math.max(startTime + 0.1, Math.min(parsed, duration)) : endTime
+    const next = Number.isFinite(parsed)
+      ? constrainTrimEnd(parsed, startTime, duration, frameRate)
+      : endTime
     onEndTimeChange(next)
     setEndText(formatSeconds(next))
-  }, [duration, endText, endTime, onEndTimeChange, startTime])
+  }, [duration, endText, endTime, frameRate, onEndTimeChange, startTime])
+
+  const commitFrame = useCallback((kind: 'start' | 'end', value: string) => {
+    const frame = Number(value)
+    if (!Number.isInteger(frame) || frame < 0) return
+    if (kind === 'start') {
+      const next = constrainTrimStart(timeAtFrame(frame, frameRate), endTime, duration, frameRate)
+      onStartTimeChange(next)
+      setStartText(formatSeconds(next))
+      return
+    }
+    const next = constrainTrimEnd(timeAtFrame(frame, frameRate), startTime, duration, frameRate)
+    onEndTimeChange(next)
+    setEndText(formatSeconds(next))
+  }, [duration, endTime, frameRate, onEndTimeChange, onStartTimeChange, startTime])
 
   const addMarker = (marker: VideoOutputMarker) => {
     const nextMarkers = normalizeVideoOutputMarkers([...markers, marker], duration)
@@ -358,9 +451,13 @@ export function TrimPanel({
     const lastVideoEnd = markers.reduce((latestEnd, marker) => (
       marker.kind === 'video' ? Math.max(latestEnd, marker.endTime) : latestEnd
     ), 0)
-    const nextStartTime = lastVideoEnd > 0 ? lastVideoEnd : startTime
-    const nextEndTime = endTime > nextStartTime + 0.09 ? endTime : duration
-    if (nextEndTime <= nextStartTime + 0.09) {
+    const nextStartTime = snapTimeToFrame(lastVideoEnd > 0 ? lastVideoEnd : startTime, frameRate, duration)
+    const minimumDuration = minimumTrimFrameCount(frameRate) * frameDuration(frameRate)
+    let nextEndTime = snapTimeToFrame(endTime, frameRate, duration)
+    if (nextEndTime < nextStartTime + minimumDuration) {
+      nextEndTime = constrainTrimEnd(duration, nextStartTime, duration, frameRate)
+    }
+    if (nextEndTime < nextStartTime + minimumDuration) {
       toast.show('视频末尾没有可添加的片段')
       return
     }
@@ -374,8 +471,8 @@ export function TrimPanel({
   }
 
   const addPhoto = () => {
-    const time = Math.min(currentTime, Math.max(0, duration - 0.001))
-    const existing = markers.find((marker) => marker.kind === 'photo' && Math.abs(marker.time - time) < 0.01)
+    const time = Math.min(snapTimeToFrame(currentTime, frameRate), lastSourceFrameTime(duration, frameRate))
+    const existing = markers.find((marker) => marker.kind === 'photo' && Math.abs(marker.time - time) < frameDuration(frameRate) / 2)
     if (existing) {
       onActiveMarkerChange(existing.id)
       onSelectMarker(existing)
@@ -386,7 +483,7 @@ export function TrimPanel({
   }
 
   const beginLiveSelection = () => {
-    const range = livePhotoRangeAround(currentTime, duration, DEFAULT_LIVE_PHOTO_DURATION)
+    const range = livePhotoRangeAround(currentTime, duration, DEFAULT_LIVE_PHOTO_DURATION, frameRate)
     if (!range) {
       toast.error(`视频不足 ${formatLiveDuration(DEFAULT_LIVE_PHOTO_DURATION)} 秒，无法添加 Live 图片段`)
       return
@@ -401,7 +498,10 @@ export function TrimPanel({
   }
 
   const setLiveCover = (marker: Extract<VideoOutputMarker, { kind: 'live' }>, coverTime: number) => {
-    const nextCoverTime = Math.max(marker.startTime, Math.min(coverTime, marker.endTime - 0.01))
+    const nextCoverTime = Math.max(
+      marker.startTime,
+      Math.min(snapTimeToFrame(coverTime, frameRate), lastSourceFrameTime(marker.endTime, frameRate)),
+    )
     const nextMarker = { ...marker, coverTime: nextCoverTime }
     onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
     onLiveSelectionChange({
@@ -420,9 +520,75 @@ export function TrimPanel({
       marker.coverTime,
       liveDuration,
       duration,
+      frameRate,
     )
     if (!range) return
     const nextMarker = { ...marker, ...range }
+    onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
+    onLiveSelectionChange({
+      markerId: nextMarker.id,
+      startTime: nextMarker.startTime,
+      endTime: nextMarker.endTime,
+      coverTime: nextMarker.coverTime,
+    })
+    onSelectMarker(nextMarker)
+  }
+
+  const setLiveRangeFrame = (
+    marker: Extract<VideoOutputMarker, { kind: 'live' }>,
+    kind: 'start' | 'end',
+    value: string,
+  ) => {
+    const frame = Number(value)
+    if (value.trim() === '') return
+    if (!Number.isInteger(frame) || frame < 0) {
+      toast.error('Live 图帧范围无效')
+      return
+    }
+
+    const minimumFrameCount = frameCountForDuration(
+      MIN_LIVE_PHOTO_DURATION,
+      frameRate,
+      MIN_LIVE_PHOTO_DURATION,
+      MAX_LIVE_PHOTO_DURATION,
+    )
+    const maximumFrameCount = frameCountForDuration(
+      MAX_LIVE_PHOTO_DURATION,
+      frameRate,
+      MIN_LIVE_PHOTO_DURATION,
+      MAX_LIVE_PHOTO_DURATION,
+    )
+    const sourceFrameCount = sourceEndFrame(duration, frameRate)
+    if (sourceFrameCount < minimumFrameCount) return
+
+    const currentStartFrame = frameIndexAtTime(marker.startTime, frameRate)
+    const currentEndFrame = frameIndexAtTime(marker.endTime, frameRate) - 1
+    const nextStartFrame = kind === 'start'
+      ? frame
+      : currentStartFrame
+    const nextEndFrame = kind === 'end'
+      ? frame
+      : currentEndFrame
+    const nextFrameCount = nextEndFrame - nextStartFrame + 1
+    if (
+      nextStartFrame < 0
+      || nextEndFrame < nextStartFrame
+      || nextEndFrame >= sourceFrameCount
+      || nextFrameCount < minimumFrameCount
+      || nextFrameCount > maximumFrameCount
+    ) {
+      toast.error('Live 图帧范围无效')
+      return
+    }
+    const nextMarker = {
+      ...marker,
+      startTime: timeAtFrame(nextStartFrame, frameRate),
+      endTime: timeAtFrame(nextEndFrame + 1, frameRate),
+      coverTime: timeAtFrame(
+        Math.max(nextStartFrame, Math.min(frameIndexAtTime(marker.coverTime, frameRate), nextEndFrame)),
+        frameRate,
+      ),
+    }
     onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
     onLiveSelectionChange({
       markerId: nextMarker.id,
@@ -471,29 +637,55 @@ export function TrimPanel({
       <div className="workspace-param-group">
         <div className="workspace-param-row">
           <label className="workspace-param-label">开始时间</label>
-          <Input
-            className="workspace-trim-time-input"
-            variant="compact"
-            fullWidth
-            value={startText}
-            onChange={(event) => setStartText(event.target.value)}
-            onFocus={() => { focusedInputRef.current = 'start' }}
-            onBlur={commitStart}
-            onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
-          />
+          <div className="workspace-trim-time-value">
+            <Input
+              className="workspace-trim-time-input"
+              variant="compact"
+              fullWidth
+              value={startText}
+              onChange={(event) => setStartText(event.target.value)}
+              onFocus={() => { focusedInputRef.current = 'start' }}
+              onBlur={commitStart}
+              onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
+            />
+            <span className="workspace-trim-frame-label">开始帧</span>
+            <Input
+              className="workspace-trim-frame-input"
+              variant="compact"
+              type="number"
+              min={0}
+              step={1}
+              value={frameIndexAtTime(startTime, frameRate)}
+              aria-label="开始帧"
+              onChange={(event) => commitFrame('start', event.target.value)}
+            />
+          </div>
         </div>
         <div className="workspace-param-row">
           <label className="workspace-param-label">结束时间</label>
-          <Input
-            className="workspace-trim-time-input"
-            variant="compact"
-            fullWidth
-            value={endText}
-            onChange={(event) => setEndText(event.target.value)}
-            onFocus={() => { focusedInputRef.current = 'end' }}
-            onBlur={commitEnd}
-            onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
-          />
+          <div className="workspace-trim-time-value">
+            <Input
+              className="workspace-trim-time-input"
+              variant="compact"
+              fullWidth
+              value={endText}
+              onChange={(event) => setEndText(event.target.value)}
+              onFocus={() => { focusedInputRef.current = 'end' }}
+              onBlur={commitEnd}
+              onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
+            />
+            <span className="workspace-trim-frame-label">结束帧</span>
+            <Input
+              className="workspace-trim-frame-input"
+              variant="compact"
+              type="number"
+              min={0}
+              step={1}
+              value={frameIndexAtTime(endTime, frameRate)}
+              aria-label="结束帧"
+              onChange={(event) => commitFrame('end', event.target.value)}
+            />
+          </div>
         </div>
         <div className="workspace-param-row">
           <label className="workspace-param-label">截取后时长</label>
@@ -528,6 +720,7 @@ export function TrimPanel({
                 marker={marker}
                 displayLabel={`${marker.kind === 'live' ? 'Live' : markerLabel(marker)} ${String(markerIdsByKind[marker.kind].indexOf(marker.id) + 1).padStart(2, '0')}`}
                 duration={duration}
+                frameRate={frameRate}
                 selected={marker.id === activeMarkerId}
                 autoFocus={marker.id === newMarkerId}
                 onSelect={() => selectMarker(marker)}
@@ -535,6 +728,7 @@ export function TrimPanel({
                 onDelete={() => deleteMarker(marker.id)}
                 videoPath={videoPath}
                 onCoverTimeChange={(time) => { if (marker.kind === 'live') setLiveCover(marker, time) }}
+                onRangeFrameChange={(kind, value) => { if (marker.kind === 'live') setLiveRangeFrame(marker, kind, value) }}
                 onDurationChange={(liveDuration) => { if (marker.kind === 'live') setLiveDuration(marker, liveDuration) }}
                 currentTime={currentTime}
                 playing={marker.id === playingMarkerId}

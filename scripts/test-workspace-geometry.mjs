@@ -10,6 +10,7 @@ const pixelStretchStateSource = await readFile(new URL('../src/workspace/creativ
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
 const previewQualitySource = await readFile(new URL('../src/workspace/shared/workspacePreviewQuality.ts', import.meta.url), 'utf8')
 const videoOutputMarkersSource = await readFile(new URL('../src/workspace/trim/videoOutputMarkers.ts', import.meta.url), 'utf8')
+const frameTimeSource = await readFile(new URL('../src/workspace/trim/frameTime.ts', import.meta.url), 'utf8')
 const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/features/ai-selection/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
@@ -23,7 +24,12 @@ const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pi
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
 const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText
-const videoOutputMarkersCompiled = ts.transpileModule(videoOutputMarkersSource, { compilerOptions }).outputText
+const frameTimeCompiled = ts.transpileModule(frameTimeSource, { compilerOptions }).outputText
+const frameTimeModuleUrl = `data:text/javascript;base64,${Buffer.from(frameTimeCompiled).toString('base64')}`
+const videoOutputMarkersCompiled = ts.transpileModule(
+  videoOutputMarkersSource.replace("from './frameTime.ts'", `from '${frameTimeModuleUrl}'`),
+  { compilerOptions },
+).outputText
 const aiSelectionWorkspaceAssetsCompiled = ts.transpileModule(aiSelectionWorkspaceAssetsSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)

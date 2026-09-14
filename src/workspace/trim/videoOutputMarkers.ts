@@ -1,3 +1,5 @@
+import { frameCountForDuration, frameIndexAtTime, normalizeFrameRate, sourceEndFrame, timeAtFrame } from './frameTime.ts'
+
 export const DEFAULT_LIVE_PHOTO_DURATION = 3
 export const MIN_LIVE_PHOTO_DURATION = 0.1
 export const MAX_LIVE_PHOTO_DURATION = 5
@@ -97,9 +99,35 @@ export function livePhotoRangeAround(
   time: number,
   duration: number,
   liveDuration = DEFAULT_LIVE_PHOTO_DURATION,
+  frameRate?: number | null,
 ): { startTime: number; endTime: number; coverTime: number } | null {
   const safeLiveDuration = clampLivePhotoDuration(liveDuration)
   if (!Number.isFinite(duration) || duration < safeLiveDuration) return null
+
+  if (frameRate != null) {
+    const fps = normalizeFrameRate(frameRate)
+    const liveFrameCount = frameCountForDuration(
+      safeLiveDuration,
+      fps,
+      MIN_LIVE_PHOTO_DURATION,
+      MAX_LIVE_PHOTO_DURATION,
+    )
+    const sourceFrameCount = sourceEndFrame(duration, fps)
+    if (sourceFrameCount < liveFrameCount) return null
+    const centerFrame = Math.max(0, Math.min(frameIndexAtTime(time, fps), sourceFrameCount))
+    const startFrame = Math.max(0, Math.min(
+      centerFrame - Math.floor(liveFrameCount / 2),
+      sourceFrameCount - liveFrameCount,
+    ))
+    const endFrame = startFrame + liveFrameCount
+    const coverFrame = Math.max(startFrame, Math.min(centerFrame, endFrame - 1))
+    return {
+      startTime: timeAtFrame(startFrame, fps),
+      endTime: timeAtFrame(endFrame, fps),
+      coverTime: timeAtFrame(coverFrame, fps),
+    }
+  }
+
   const safeTime = Math.max(0, Math.min(Number.isFinite(time) ? time : 0, duration))
   const startTime = Math.max(0, Math.min(safeTime - safeLiveDuration / 2, duration - safeLiveDuration))
   return {
@@ -115,8 +143,42 @@ export function resizeLivePhotoRange(
   coverTime: number,
   requestedDuration: number,
   sourceDuration: number,
+  frameRate?: number | null,
 ): { startTime: number; endTime: number; coverTime: number } | null {
   if (![startTime, endTime, coverTime, requestedDuration, sourceDuration].every(Number.isFinite)) return null
+
+  if (frameRate != null) {
+    const fps = normalizeFrameRate(frameRate)
+    const sourceFrameCount = sourceEndFrame(sourceDuration, fps)
+    const minimumFrameCount = frameCountForDuration(MIN_LIVE_PHOTO_DURATION, fps, MIN_LIVE_PHOTO_DURATION, MAX_LIVE_PHOTO_DURATION)
+    const maximumFrameCount = Math.min(
+      Math.floor(MAX_LIVE_PHOTO_DURATION * fps),
+      sourceFrameCount,
+    )
+    if (maximumFrameCount < minimumFrameCount) return null
+    const nextFrameCount = frameCountForDuration(
+      requestedDuration,
+      fps,
+      MIN_LIVE_PHOTO_DURATION,
+      maximumFrameCount / fps,
+    )
+    const centerFrame = Math.round(((startTime + endTime) / 2) * fps)
+    const nextStartFrame = Math.max(0, Math.min(
+      centerFrame - Math.floor(nextFrameCount / 2),
+      sourceFrameCount - nextFrameCount,
+    ))
+    const nextEndFrame = nextStartFrame + nextFrameCount
+    const coverFrame = Math.max(
+      nextStartFrame,
+      Math.min(frameIndexAtTime(coverTime, fps), nextEndFrame - 1),
+    )
+    return {
+      startTime: timeAtFrame(nextStartFrame, fps),
+      endTime: timeAtFrame(nextEndFrame, fps),
+      coverTime: timeAtFrame(coverFrame, fps),
+    }
+  }
+
   const maximumDuration = Math.min(MAX_LIVE_PHOTO_DURATION, Math.floor(sourceDuration * 10) / 10)
   if (maximumDuration < MIN_LIVE_PHOTO_DURATION) return null
 
