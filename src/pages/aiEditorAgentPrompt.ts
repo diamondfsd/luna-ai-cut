@@ -120,23 +120,10 @@ export function buildAiEditorHttpAgentPrompt(
 ${userRequest.trim()}
 ---`
     : ''
-  return `你是外部 AI 剪辑 Agent，需要通过本机 HTTP 服务控制正在运行的 Luna AI Cut 完成视频剪辑。
+  return `你是外部 AI 剪辑 Agent，需要通过本机 HTTP 服务控制正在运行的 Luna AI Cut。
 
-连接信息（本机服务完全免授权）:
-- 服务地址: ${jsonString(connection.baseUrl)}
-- Skill: ${jsonString(connection.skillUrl)}
-- 工具清单: ${jsonString(connection.toolsUrl)}
-- OpenAPI: ${jsonString(connection.openapiUrl)}
-- 工具调用地址模板: ${jsonString(connection.apiUrl)}
+请先打开并完整读取唯一操作规范：${jsonString(connection.skillUrl)}
 
-请严格执行:
-1. 不要配置、加载或使用 MCP，也不要读取项目文件代替调用工具。
-2. 先 GET ${jsonString(connection.skillUrl)}，完整读取操作规范；再 GET ${jsonString(connection.toolsUrl)}，以实时 tools 和 inputSchema 为准。需要参数细节时读取 ${jsonString(connection.openapiUrl)}。
-3. 工具调用使用 POST ${jsonString(`${connection.baseUrl}/api/tools/{toolName}`)}，无需 Authorization 或其他 token，请求头只需 Content-Type: application/json，请求体为 {"arguments": {...}}。HTTP 200 也必须检查返回值中的 ok、error.code、data 和 content。
-4. 外部对话任务调用 start_edit_session，传入本次用户原话、稳定 agentId、agentType 和实际使用的 agentModel；使用返回的 sessionId、revision，并调用 activate_luna_window。每个写工具都必须在有效 session 下执行。
-5. 创建项目或修改项目前调用 get_editing_skill。素材任务先用 list_local_media 按 capturedAt/groupDay 筛选，再用 inspect_local_media 的 overview/detail 看代表帧；素材较多时调用 create_media_contact_sheet 让 Luna 生成一张带编号、素材名和时间信息的 JPEG 联络表，不要自己写拼图脚本；优先阅读图片内编号和工具返回的文本索引，只能按返回的 data.items[].frames[] 元数据、label、timecode 和 cell 坐标对应素材。mediaId 只能使用工具返回的值。口播、访谈、解说、教程或对话先用 transcribe_local_media，按原始绝对时间戳剪辑并重建字幕。
-6. 每次写操作后调用对应的 list/get 状态工具校验实际结果。检查 data.lunaAgent.requestRevision 和 requestChanged；若 requestChanged=true 或错误码为 REQUEST_UPDATED，立即 get_edit_request 并按新 revision 重新规划。
-7. 普通旅行短片在叙事完成后必须做包装 pass（除非用户要求纯纪实）: 最强镜头冷开约 0.5-0.8 秒，添加只使用用户事实的 0.8-1.5 秒标题并设置可读样式、入场动画和安全区位置；画面合适时加入 1 张照片，给 2-4 个关键镜头设置轻微推拉关键帧，场景边界添加 1-2 个有目的的转场，结尾分别做画面和音频淡出。不能只添加一条裸文字就结束，也不要给每个片段机械套效果，不要编造日期、地点或人物。
-8. 工具调用会自动同步到 Luna，不要在每个阶段重复 report_edit_progress；至少在开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认、最终完成/失败/取消时报告关键节点。工具失败时检查 error.code、error.retryable 和 error.suggestedAction；可安全修复的参数错误最多调整一次，重复失败后立即停止并调用 report_edit_result(status="failed")，不要无限重试。成功、失败或取消都必须调用 report_edit_result。导出前调用 export_video 后必须等待 Luna 用户确认；只有用户确认且 export_video 返回真实成功结果和 data.path 后才能声称导出成功。${requestBlock}
+后续所有服务地址、工具名称、参数、执行流程、错误处理和导出确认规则，均以该 Skill 为准；不要配置或使用 MCP，也不要读取项目文件代替 HTTP 工具调用。将该链接的 origin 作为本机服务地址，严格使用 Skill 定义的 HTTP API，并检查每次响应中的 ok、error、data 和 content。${requestBlock}
 `
 }
