@@ -58,6 +58,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
         path,
         kind: file.kind as 'image' | 'video',
         isLivePhoto: file.isLivePhoto ?? false,
+        frameRate: file.frameRate,
       }
     })
     .filter((file): file is NonNullable<typeof file> => Boolean(file))

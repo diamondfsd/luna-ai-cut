@@ -13,6 +13,8 @@ export interface WorkspaceMediaAsset {
   watermarkProfileId?: string
   thumbnailUrl?: string | null
   isLivePhoto?: boolean
+  /** 源视频帧率；缺失时工作台按 30fps 处理。 */
+  frameRate?: number
 }
 
 export type WorkspaceMediaKind = WorkspaceMediaAsset['kind']

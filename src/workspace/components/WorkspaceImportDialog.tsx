@@ -74,6 +74,7 @@ export function WorkspaceImportDialog({
         watermarkProfileId: file.watermarkProfileId,
         thumbnailUrl: thumbnailPath ? filePathToPreviewUrl(thumbnailPath) : null,
         isLivePhoto: file.isLivePhoto,
+        frameRate: file.frameRate,
       })
       return result
     }, [])

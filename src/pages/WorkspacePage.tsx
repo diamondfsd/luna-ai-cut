@@ -37,6 +37,7 @@ import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import type { LivePhotoSelection } from '../workspace/trim/TrimPanel'
 import { buildVideoOutputExportItems, livePhotoSelectionForMarker } from '../workspace/trim/videoOutputMarkers'
+import { constrainTrimEnd, constrainTrimStart, frameIndexAtTime, snapTimeToFrame, sourceEndFrame, timeAtFrame } from '../workspace/trim/frameTime'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { BeautyMaskOverlay } from '../workspace/beauty/BeautyMaskOverlay'
 import { BeautyRetouchOverlay } from '../workspace/beauty/BeautyRetouchOverlay'
@@ -315,6 +316,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     ? media.activeMedia.path
     : null
   const activeTrimVideoPath = edit.trimActive ? activeVideoPath : null
+  const activeVideoFrameRate = media.activeMedia?.frameRate
   const activeVideoPathRef = useRef<string | null>(activeVideoPath)
   activeVideoPathRef.current = activeVideoPath
   const activeTrimDuration = trimDurationSourcePath === activeVideoPath ? trimDuration : 0
@@ -331,6 +333,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     () => livePhotoSelectionForMarker(edit.pipeline.outputMarkers, activeOutputMarkerId),
     [activeOutputMarkerId, edit.pipeline.outputMarkers],
   )
+
   const handleLivePhotoSelectionChange = useCallback((selection: LivePhotoSelection | null) => {
     if (selection) setActiveOutputMarkerId(selection.markerId)
   }, [])
@@ -415,13 +418,14 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
   // ── 截取控制 ──
   const handleTrimSeek = useCallback((time: number) => {
+    const seekTime = snapTimeToFrame(time, activeVideoFrameRate, activeTrimDuration > 0 ? activeTrimDuration : undefined)
     markerPlaybackRangeRef.current = null
     setPlayingOutputMarkerId(null)
     if (previewRef.current) {
-      previewRef.current.seek(time)
+      previewRef.current.seek(seekTime)
     }
-    setTrimCurrentTime(time)
-  }, [])
+    setTrimCurrentTime(seekTime)
+  }, [activeTrimDuration, activeVideoFrameRate])
 
   const handleTrimTogglePlay = useCallback(() => {
     if (!previewRef.current) return
@@ -477,31 +481,45 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
   const handleStartTimeChange = useCallback((time: number) => {
     if (activeVideoMarker) {
+      const nextStart = constrainTrimStart(time, activeVideoMarker.endTime, activeTrimDuration, activeVideoFrameRate)
       edit.commitPatch({
         outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
           marker.kind === 'video' && marker.id === activeVideoMarker.id
-            ? { ...marker, startTime: Math.min(time, marker.endTime - 0.1) }
+            ? { ...marker, startTime: nextStart }
             : marker
         )),
       })
       return
     }
-    edit.commitPatch({ trim: { startTime: time, endTime: edit.pipeline.trim?.endTime ?? activeTrimDuration } })
-  }, [activeTrimDuration, activeVideoMarker, edit])
+    const currentEnd = edit.pipeline.trim?.endTime ?? activeTrimDuration
+    edit.commitPatch({
+      trim: {
+        startTime: constrainTrimStart(time, currentEnd, activeTrimDuration, activeVideoFrameRate),
+        endTime: currentEnd,
+      },
+    })
+  }, [activeTrimDuration, activeVideoFrameRate, activeVideoMarker, edit])
 
   const handleEndTimeChange = useCallback((time: number) => {
     if (activeVideoMarker) {
+      const nextEnd = constrainTrimEnd(time, activeVideoMarker.startTime, activeTrimDuration, activeVideoFrameRate)
       edit.commitPatch({
         outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
           marker.kind === 'video' && marker.id === activeVideoMarker.id
-            ? { ...marker, endTime: Math.max(time, marker.startTime + 0.1) }
+            ? { ...marker, endTime: nextEnd }
             : marker
         )),
       })
       return
     }
-    edit.commitPatch({ trim: { startTime: edit.pipeline.trim?.startTime ?? 0, endTime: time } })
-  }, [activeVideoMarker, edit])
+    const currentStart = edit.pipeline.trim?.startTime ?? 0
+    edit.commitPatch({
+      trim: {
+        startTime: currentStart,
+        endTime: constrainTrimEnd(time, currentStart, activeTrimDuration, activeVideoFrameRate),
+      },
+    })
+  }, [activeTrimDuration, activeVideoFrameRate, activeVideoMarker, edit])
 
   // ── 当前显示的管线：对比模式只在 PreviewStage 内临时调整图层参数 ──
   const displayPipeline = edit.previewPipeline
@@ -1012,7 +1030,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
         const markerItems = buildVideoOutputExportItems(outputBaseName, pipeline.outputMarkers, sourceDuration)
         if (markerItems.length !== pipeline.outputMarkers.length) {
-          throw new Error(`${asset.name} 有导出标记超出视频范围，请删除后重新添加`)
+          throw new Error(`${asset.name} 有无效的导出标记，请调整后再导出`)
         }
         const normalizedTrimStart = Math.max(0, Math.min(trimStart, Math.max(0, sourceDuration - 0.1)))
         const normalizedTrimEnd = Math.max(
@@ -1396,6 +1414,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           {edit.trimActive ? (
             <TrimStrip
               duration={activeTrimDuration}
+              frameRate={activeVideoFrameRate}
               startTime={activeVideoMarker?.startTime ?? edit.pipeline.trim?.startTime ?? 0}
               endTime={activeVideoMarker?.endTime ?? edit.pipeline.trim?.endTime ?? activeTrimDuration}
               currentTime={trimCurrentTime}
@@ -1421,16 +1440,28 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
                     ...pipeline,
                     outputMarkers: pipeline.outputMarkers.map((marker) => {
                       if (marker.kind !== 'live' || marker.id !== current.markerId) return marker
-                      const delta = startTime - marker.startTime
-                      const liveDuration = marker.endTime - marker.startTime
-                      const maxStart = Math.max(0, activeTrimDuration - liveDuration)
-                      const nextStart = Math.max(0, Math.min(startTime, maxStart))
+                      const startFrame = frameIndexAtTime(marker.startTime, activeVideoFrameRate)
+                      const liveFrameCount = Math.max(1, frameIndexAtTime(marker.endTime, activeVideoFrameRate) - startFrame)
+                      const liveDuration = timeAtFrame(liveFrameCount, activeVideoFrameRate)
+                      const maxStartFrame = Math.max(0, sourceEndFrame(activeTrimDuration, activeVideoFrameRate) - liveFrameCount)
+                      const nextStartFrame = Math.max(0, Math.min(
+                        frameIndexAtTime(startTime, activeVideoFrameRate),
+                        maxStartFrame,
+                      ))
+                      const nextStart = timeAtFrame(nextStartFrame, activeVideoFrameRate)
                       const nextEnd = nextStart + liveDuration
+                      const coverFrame = Math.max(
+                        nextStartFrame,
+                        Math.min(
+                          frameIndexAtTime(marker.coverTime, activeVideoFrameRate) + nextStartFrame - startFrame,
+                          nextStartFrame + liveFrameCount - 1,
+                        ),
+                      )
                       return {
                         ...marker,
                         startTime: nextStart,
                         endTime: nextEnd,
-                        coverTime: Math.max(nextStart, Math.min(marker.coverTime + delta, nextEnd - 0.01)),
+                        coverTime: timeAtFrame(coverFrame, activeVideoFrameRate),
                       }
                     }),
                   }))
@@ -1441,7 +1472,19 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
                     ...pipeline,
                     outputMarkers: pipeline.outputMarkers.map((marker) => (
                       marker.kind === 'live' && marker.id === current.markerId
-                        ? { ...marker, coverTime: Math.max(marker.startTime, Math.min(coverTime, marker.endTime - 0.01)) }
+                        ? {
+                            ...marker,
+                            coverTime: timeAtFrame(
+                              Math.max(
+                                frameIndexAtTime(marker.startTime, activeVideoFrameRate),
+                                Math.min(
+                                  frameIndexAtTime(coverTime, activeVideoFrameRate),
+                                  frameIndexAtTime(marker.endTime, activeVideoFrameRate) - 1,
+                                ),
+                              ),
+                              activeVideoFrameRate,
+                            ),
+                          }
                         : marker
                     )),
                   }))

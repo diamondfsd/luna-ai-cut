@@ -16,6 +16,7 @@ import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/ty
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel, type LivePhotoSelection } from '../trim/TrimPanel'
+import { constrainTrimEnd, constrainTrimStart } from '../trim/frameTime'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useDeviceConnection } from '../../context/DeviceConnectionContext'
 import { borderTitleForDevice } from '../../shared/insta360DeviceProfiles'
@@ -400,6 +401,7 @@ export function WorkspaceEditSidebar({ defaultPipeline, mediaSize, duration, cur
               endTime={edit.pipeline.trim?.endTime ?? duration}
               currentTime={currentTime}
               duration={duration}
+              frameRate={mediaCtx.activeMedia?.frameRate}
               markers={edit.pipeline.outputMarkers}
               liveSelection={livePhotoSelection}
               onLiveSelectionChange={onLivePhotoSelectionChange}
@@ -411,11 +413,15 @@ export function WorkspaceEditSidebar({ defaultPipeline, mediaSize, duration, cur
               onMarkerPreviewTimeChange={onTrimSeek}
               onStartTimeChange={(time) => {
                 const end = edit.pipeline.trim?.endTime ?? duration
-                edit.commitPatch({ trim: { startTime: time, endTime: Math.max(time + 0.1, end) } })
+                const nextStart = constrainTrimStart(time, end, duration, mediaCtx.activeMedia?.frameRate)
+                const nextEnd = constrainTrimEnd(end, nextStart, duration, mediaCtx.activeMedia?.frameRate)
+                edit.commitPatch({ trim: { startTime: nextStart, endTime: nextEnd } })
               }}
               onEndTimeChange={(time) => {
                 const curStart = edit.pipeline.trim?.startTime ?? 0
-                edit.commitPatch({ trim: { startTime: curStart, endTime: time } })
+                const nextEnd = constrainTrimEnd(time, curStart, duration, mediaCtx.activeMedia?.frameRate)
+                const nextStart = constrainTrimStart(curStart, nextEnd, duration, mediaCtx.activeMedia?.frameRate)
+                edit.commitPatch({ trim: { startTime: nextStart, endTime: nextEnd } })
               }}
               onMarkersChange={(outputMarkers) => edit.commitPatch({ outputMarkers })}
               onSelectMarker={(marker) => {

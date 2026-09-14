@@ -36,6 +36,39 @@
   text-align: right;
 }
 
+.workspace-trim-time-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 58px;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.workspace-trim-frame-label {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.workspace-trim-frame-input {
+  width: 58px;
+  min-width: 0;
+  flex: 0 0 58px;
+  padding-inline: 5px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+
+.workspace-trim-frame-input::-webkit-inner-spin-button,
+.workspace-trim-frame-input::-webkit-outer-spin-button,
+.workspace-trim-live-range-input::-webkit-inner-spin-button,
+.workspace-trim-live-range-input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
 .workspace-trim-duration-display {
   padding-right: 10px;
   font-size: 12px;
@@ -286,10 +319,32 @@
 
 .workspace-trim-live-cover-label,
 .workspace-trim-live-duration-label,
-.workspace-trim-live-duration-unit {
+.workspace-trim-live-duration-unit,
+.workspace-trim-live-range-control > span {
   color: var(--muted);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.workspace-trim-live-range-control {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: auto 42px auto auto 42px auto 42px auto;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-trim-live-range-input {
+  width: 42px;
+  min-width: 0;
+  flex: 0 0 42px;
+  padding-inline: 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  -moz-appearance: textfield;
 }
 
 .workspace-trim-video-progress-control strong {

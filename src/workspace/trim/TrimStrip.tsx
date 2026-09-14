@@ -1,11 +1,13 @@
 import { Pause, Play } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VideoOutputMarker } from './videoOutputMarkers'
+import { constrainTrimEnd, constrainTrimStart, frameDuration, lastSourceFrameTime, snapTimeToFrame } from './frameTime'
 
 import './TrimStrip.css'
 
 interface TrimStripProps {
   duration: number
+  frameRate?: number | null
   startTime: number
   endTime: number
   currentTime: number
@@ -47,12 +49,12 @@ function formatShortTime(seconds: number): string {
 }
 
 function formatPreciseTime(seconds: number): string {
-  const centiseconds = Math.max(0, Math.round((Number.isFinite(seconds) ? seconds : 0) * 100))
-  const hours = Math.floor(centiseconds / 360000)
-  const minutes = Math.floor((centiseconds % 360000) / 6000)
-  const secs = Math.floor((centiseconds % 6000) / 100)
-  const fraction = centiseconds % 100
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(fraction).padStart(2, '0')}`
+  const milliseconds = Math.max(0, Math.round((Number.isFinite(seconds) ? seconds : 0) * 1000))
+  const hours = Math.floor(milliseconds / 3600000)
+  const minutes = Math.floor((milliseconds % 3600000) / 60000)
+  const secs = Math.floor((milliseconds % 60000) / 1000)
+  const fraction = milliseconds % 1000
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(fraction).padStart(3, '0')}`
 }
 
 function formatRulerTime(seconds: number): string {
@@ -65,6 +67,7 @@ function formatRulerTime(seconds: number): string {
 
 export function TrimStrip({
   duration,
+  frameRate,
   startTime,
   endTime,
   currentTime,
@@ -179,7 +182,11 @@ export function TrimStrip({
   // ── 坐标转换 ──
   const pxPerSec = duration > 0 && trackWidth > 0 ? trackWidth / duration : 0
   const timeToX = useCallback((t: number) => Math.max(0, Math.min(t * pxPerSec, trackWidth)), [pxPerSec, trackWidth])
-  const xToTime = useCallback((x: number) => pxPerSec > 0 ? Math.max(0, Math.min(x / pxPerSec, duration)) : 0, [pxPerSec, duration])
+  const xToTime = useCallback((x: number) => pxPerSec > 0
+    ? snapTimeToFrame(Math.max(0, Math.min(x / pxPerSec, duration)), frameRate, duration)
+    : 0, [duration, frameRate, pxPerSec])
+  const snapTime = useCallback((time: number) => snapTimeToFrame(time, frameRate, duration), [duration, frameRate])
+  const frameStep = frameDuration(frameRate)
 
   // ── Drag（无 rAF 节流，直接指针响应） ──
   const dragRef = useRef<{
@@ -198,11 +205,17 @@ export function TrimStrip({
     if (!target) return
     target.setPointerCapture(e.pointerId)
     const dragType = fixedDuration && (type === 'left-handle' || type === 'right-handle') ? 'fixed-range' : type
-    dragRef.current = { type: dragType, startX: e.clientX, startTime: currentTime, startStartTime: startTime, startEndTime: endTime }
+    dragRef.current = {
+      type: dragType,
+      startX: e.clientX,
+      startTime: snapTime(currentTime),
+      startStartTime: snapTime(startTime),
+      startEndTime: snapTime(endTime),
+    }
     lastSeekRef.current = -1
     setDragging(dragType)
-    if (dragType === 'left-handle' || dragType === 'right-handle') onSeek(startTime)
-  }, [currentTime, startTime, endTime, fixedDuration, onSeek])
+    if (dragType === 'left-handle' || dragType === 'right-handle') onSeek(dragType === 'left-handle' ? snapTime(startTime) : snapTime(endTime))
+  }, [currentTime, endTime, fixedDuration, onSeek, snapTime, startTime])
 
   const handleTrackPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
@@ -214,19 +227,19 @@ export function TrimStrip({
     const targetTime = xToTime(x)
     if (fixedDuration) {
       const nextStart = targetTime >= startTime && targetTime <= endTime
-        ? startTime
-        : Math.max(0, Math.min(targetTime - fixedDuration / 2, duration - fixedDuration))
+        ? snapTime(startTime)
+        : Math.max(0, Math.min(snapTime(targetTime - fixedDuration / 2), duration - fixedDuration))
       e.currentTarget.setPointerCapture(e.pointerId)
       lastSeekRef.current = -1
       dragRef.current = {
         type: 'fixed-range',
         startX: e.clientX,
         startTime: targetTime,
-        startStartTime: nextStart,
-        startEndTime: nextStart + fixedDuration,
+        startStartTime: snapTime(nextStart),
+        startEndTime: snapTime(nextStart + fixedDuration),
       }
       setDragging('fixed-range')
-      if (nextStart !== startTime) onFixedStartChange?.(nextStart)
+      if (nextStart !== snapTime(startTime)) onFixedStartChange?.(nextStart)
       return
     }
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -234,14 +247,14 @@ export function TrimStrip({
       type: 'playhead',
       startX: e.clientX,
       startTime: targetTime,
-      startStartTime: startTime,
-      startEndTime: endTime,
+    startStartTime: snapTime(startTime),
+    startEndTime: snapTime(endTime),
     }
     lastSeekRef.current = targetTime
     setDragging('playhead')
     onSeek(targetTime)
     onPlayheadChange?.(targetTime)
-  }, [startTime, endTime, fixedDuration, duration, timeToX, xToTime, onSeek, onPlayheadChange, onFixedStartChange])
+  }, [duration, endTime, fixedDuration, onFixedStartChange, onPlayheadChange, onSeek, snapTime, startTime, timeToX, xToTime])
 
   const handleSecondaryPointerDown = useCallback((e: React.PointerEvent) => {
     if (!secondaryFixedRange) return
@@ -254,12 +267,12 @@ export function TrimStrip({
     dragRef.current = {
       type: 'secondary-fixed-range',
       startX: e.clientX,
-      startTime: secondaryFixedRange.startTime,
-      startStartTime: secondaryFixedRange.startTime,
-      startEndTime: secondaryFixedRange.startTime + secondaryFixedRange.duration,
+      startTime: snapTime(secondaryFixedRange.startTime),
+      startStartTime: snapTime(secondaryFixedRange.startTime),
+      startEndTime: snapTime(secondaryFixedRange.startTime + secondaryFixedRange.duration),
     }
     setDragging('secondary-fixed-range')
-  }, [secondaryFixedRange])
+  }, [secondaryFixedRange, snapTime])
 
   const handleSecondaryCoverPointerDown = useCallback((e: React.PointerEvent) => {
     if (!secondaryFixedRange || secondaryFixedRange.coverTime === undefined) return
@@ -272,73 +285,57 @@ export function TrimStrip({
     dragRef.current = {
       type: 'secondary-cover',
       startX: e.clientX,
-      startTime: secondaryFixedRange.coverTime,
-      startStartTime: secondaryFixedRange.startTime,
-      startEndTime: secondaryFixedRange.startTime + secondaryFixedRange.duration,
+      startTime: snapTime(secondaryFixedRange.coverTime),
+      startStartTime: snapTime(secondaryFixedRange.startTime),
+      startEndTime: snapTime(secondaryFixedRange.startTime + secondaryFixedRange.duration),
     }
     setDragging('secondary-cover')
-    onSeek(secondaryFixedRange.coverTime)
-  }, [onSeek, secondaryFixedRange])
-
-  const handleSecondaryCoverKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!secondaryFixedRange || secondaryFixedRange.coverTime === undefined) return
-    let nextTime: number | null = null
-    if (e.key === 'ArrowLeft') nextTime = secondaryFixedRange.coverTime - 0.1
-    if (e.key === 'ArrowRight') nextTime = secondaryFixedRange.coverTime + 0.1
-    if (e.key === 'Home') nextTime = secondaryFixedRange.startTime
-    if (e.key === 'End') nextTime = secondaryFixedRange.startTime + secondaryFixedRange.duration - 0.01
-    if (nextTime === null) return
-    e.preventDefault()
-    const clamped = Math.max(
-      secondaryFixedRange.startTime,
-      Math.min(nextTime, secondaryFixedRange.startTime + secondaryFixedRange.duration - 0.01),
-    )
-    secondaryFixedRange.onCoverTimeChange?.(clamped)
-    onSeek(clamped)
-  }, [onSeek, secondaryFixedRange])
+    onSeek(snapTime(secondaryFixedRange.coverTime))
+  }, [onSeek, secondaryFixedRange, snapTime])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current
-    if (!drag.type) return
+    if (!drag.type || pxPerSec <= 0) return
     const dx = e.clientX - drag.startX
     const dt = dx / pxPerSec
     let target: number
     let doStart = false, doEnd = false
 
     if (drag.type === 'secondary-cover' && secondaryFixedRange) {
-      target = Math.max(drag.startStartTime, Math.min(drag.startTime + dt, drag.startEndTime - 0.01))
-      if (Math.abs(target - lastSeekRef.current) < 0.01) return
+      const maxCover = lastSourceFrameTime(drag.startEndTime, frameRate)
+      target = Math.max(drag.startStartTime, Math.min(snapTime(drag.startTime + dt), maxCover))
+      if (Math.abs(target - lastSeekRef.current) < frameStep / 2) return
       lastSeekRef.current = target
       secondaryFixedRange.onCoverTimeChange?.(target)
       onSeek(target)
       return
     } else if (drag.type === 'secondary-fixed-range' && secondaryFixedRange) {
       const maxStart = Math.max(0, duration - secondaryFixedRange.duration)
-      target = Math.max(0, Math.min(drag.startStartTime + dt, maxStart))
-      if (Math.abs(target - lastSeekRef.current) < 0.01) return
+      target = Math.max(0, Math.min(snapTime(drag.startStartTime + dt), maxStart))
+      if (Math.abs(target - lastSeekRef.current) < frameStep / 2) return
       lastSeekRef.current = target
       secondaryFixedRange.onStartChange(target)
       // The large preview follows the Live range start while the whole capsule moves.
       onSeek(target)
       return
     } else if (drag.type === 'fixed-range' && fixedDuration) {
-      target = Math.max(0, Math.min(drag.startStartTime + dt, duration - fixedDuration))
-      if (Math.abs(target - lastSeekRef.current) < 0.01) return
+      target = Math.max(0, Math.min(snapTime(drag.startStartTime + dt), duration - fixedDuration))
+      if (Math.abs(target - lastSeekRef.current) < frameStep / 2) return
       lastSeekRef.current = target
       onFixedStartChange?.(target)
       return
     } else if (drag.type === 'left-handle') {
-      target = Math.max(0, Math.min(drag.startStartTime + dt, endTime - 0.1))
+      target = constrainTrimStart(drag.startStartTime + dt, endTime, duration, frameRate)
       doStart = true
     } else if (drag.type === 'right-handle') {
-      target = Math.max(startTime + 0.1, Math.min(drag.startEndTime + dt, duration))
+      target = constrainTrimEnd(drag.startEndTime + dt, startTime, duration, frameRate)
       doEnd = true
     } else {
-      target = Math.max(0, Math.min(drag.startTime + dt, duration))
+      target = snapTime(drag.startTime + dt)
     }
 
     // 最小跳变阈值避免冗余 seek
-    if (Math.abs(target - lastSeekRef.current) < 0.033) return
+    if (Math.abs(target - lastSeekRef.current) < frameStep / 2) return
     lastSeekRef.current = target
 
     if (doStart) {
@@ -352,19 +349,19 @@ export function TrimStrip({
       onSeek(target)
       onPlayheadChange?.(target)
     }
-  }, [pxPerSec, startTime, endTime, duration, fixedDuration, secondaryFixedRange, onStartTimeChange, onEndTimeChange, onFixedStartChange, onSeek, onPlayheadChange])
+  }, [duration, endTime, fixedDuration, frameRate, frameStep, onEndTimeChange, onFixedStartChange, onPlayheadChange, onSeek, onStartTimeChange, pxPerSec, secondaryFixedRange, snapTime, startTime])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current
     const target = trackRef.current
     if (target) target.releasePointerCapture(e.pointerId)
-    if (drag.type === 'right-handle') onSeek(drag.startStartTime)
+    if (drag.type === 'right-handle') onSeek(endTime)
     dragRef.current.type = null
     setDragging(null)
-  }, [onSeek])
+  }, [endTime, onSeek])
 
   // ── 位置 ──
-  const displayTime = playing && animatePlayhead ? animatedTime : currentTime
+  const displayTime = snapTime(playing && animatePlayhead ? animatedTime : currentTime)
   const leftHandleX = timeToX(startTime)
   const rightHandleX = timeToX(endTime)
   // 把手层级高于播放头，因此播放头可以准确到达范围端点而不影响拖动。
@@ -377,7 +374,7 @@ export function TrimStrip({
     : 0
   const secondaryCoverX = secondaryFixedRange?.coverTime === undefined
     ? null
-    : timeToX(secondaryFixedRange.coverTime) - secondaryLeftX
+    : timeToX(snapTime(secondaryFixedRange.coverTime)) - secondaryLeftX
   const rangeEditable = Boolean(onStartTimeChange && onEndTimeChange)
   const rulerTicks = useMemo(() => {
     if (duration <= 0) return []
@@ -442,14 +439,7 @@ export function TrimStrip({
               <div
                 className="workspace-trim-live-cover"
                 style={{ left: secondaryCoverX }}
-                role="slider"
-                tabIndex={0}
-                aria-label="Live 图封面"
-                aria-valuemin={secondaryFixedRange.startTime}
-                aria-valuemax={secondaryFixedRange.startTime + secondaryFixedRange.duration}
-                aria-valuenow={secondaryFixedRange.coverTime}
                 onPointerDown={handleSecondaryCoverPointerDown}
-                onKeyDown={handleSecondaryCoverKeyDown}
               >
                 <i />
               </div>
@@ -459,7 +449,11 @@ export function TrimStrip({
 
         {/* ── 左侧把手 ── */}
         {rangeEditable ? (
-          <div className="workspace-trim-handle" onPointerDown={(e) => handlePointerDown('left-handle', e)} style={{ left: leftHandleX }}>
+          <div
+            className="workspace-trim-handle"
+            onPointerDown={(e) => handlePointerDown('left-handle', e)}
+            style={{ left: leftHandleX }}
+          >
             <span className="workspace-trim-handle-time">{formatPreciseTime(startTime)}</span>
             <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
           </div>
@@ -467,14 +461,22 @@ export function TrimStrip({
 
         {/* ── 右侧把手 ── */}
         {rangeEditable ? (
-          <div className="workspace-trim-handle workspace-trim-handle-right" onPointerDown={(e) => handlePointerDown('right-handle', e)} style={{ left: rightHandleX }}>
+          <div
+            className="workspace-trim-handle workspace-trim-handle-right"
+            onPointerDown={(e) => handlePointerDown('right-handle', e)}
+            style={{ left: rightHandleX }}
+          >
             <span className="workspace-trim-handle-time">{formatPreciseTime(endTime)}</span>
             <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
           </div>
         ) : null}
 
         {/* ── 播放头 ── */}
-        <div className="workspace-trim-playhead" onPointerDown={(e) => handlePointerDown('playhead', e)} style={{ left: playheadX }}>
+        <div
+          className="workspace-trim-playhead"
+          onPointerDown={(e) => handlePointerDown('playhead', e)}
+          style={{ left: playheadX }}
+        >
           <div className="workspace-trim-playhead-diamond" />
           <div className="workspace-trim-playhead-line" />
           <div className="workspace-trim-playhead-time">{formatShortTime(displayTime)}</div>
