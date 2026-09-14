@@ -38,7 +38,7 @@
 
 .workspace-trim-time-value {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 58px;
+  grid-template-columns: minmax(0, 1fr) auto 72px;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -51,9 +51,9 @@
 }
 
 .workspace-trim-frame-input {
-  width: 58px;
+  width: 72px;
   min-width: 0;
-  flex: 0 0 58px;
+  flex: 0 0 72px;
 }
 
 .workspace-trim-duration-display {
@@ -316,7 +316,7 @@
 .workspace-trim-live-range-control {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: auto 42px auto auto 42px auto 42px auto;
+  grid-template-columns: auto minmax(52px, 1fr) auto auto minmax(52px, 1fr) auto minmax(52px, 1fr) auto;
   align-items: center;
   gap: 3px;
   width: 100%;
@@ -326,9 +326,8 @@
 }
 
 .workspace-trim-live-range-input {
-  width: 42px;
+  width: 100%;
   min-width: 0;
-  flex: 0 0 42px;
 }
 
 .workspace-trim-video-progress-control strong {
