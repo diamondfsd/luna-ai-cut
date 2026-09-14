@@ -534,9 +534,14 @@ export class AgentSessionManager {
   toolStarted(callId: string, toolName: string, args: Record<string, unknown>): void {
     const active = this.gateActiveTool()
     if (!active || !active.allowed) return
+    this.session = {
+      ...active.session,
+      message: '正在执行编辑操作',
+      updatedAt: nowIso(),
+    }
     this.emit({
       type: 'tool-start',
-      session: active.session,
+      session: this.session,
       callId,
       toolName,
       args,

@@ -53,6 +53,20 @@ assert.equal(externalManager.gateActiveTool()?.allowed, true)
 const retry = externalManager.startExternalRequest('我8月29号出去玩了，帮我剪个30秒短片', 'external-editor')
 assert.equal(retry.session?.sessionId, external.session?.sessionId)
 
+externalManager.toolStarted('contact-sheet-1', 'create_media_contact_sheet', {})
+externalManager.toolFinished(
+  'contact-sheet-1',
+  'create_media_contact_sheet',
+  {},
+  false,
+  '联络表渲染失败',
+  10,
+  { code: 'CONTACT_SHEET_RENDER_FAILED', message: '联络表渲染失败' },
+)
+assert.equal(externalManager.snapshot().session?.message, '联络表渲染失败')
+externalManager.toolStarted('list-media-1', 'list_local_media', {})
+assert.equal(externalManager.snapshot().session?.message, '正在执行编辑操作')
+
 assert.throws(
   () => externalManager.startExternalRequest('另一个任务', 'external-editor'),
   (error) => error instanceof AgentSessionError && error.code === 'SESSION_ALREADY_ACTIVE',

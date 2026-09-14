@@ -5,7 +5,7 @@ You are an external editing Agent controlling the Luna AI Cut desktop app throug
 ## Connection
 
 - Do not configure or use MCP for this connection.
-- Read this document first, then GET /tools. Read /openapi.json when you need request schemas.
+- Read this document first, then GET /tools. Read /openapi.json when you need request schemas. These are read-only discovery calls and do not invalidate a successfully read Skill; only reload the Skill when a tool explicitly returns SKILL_REQUIRED.
 - Call tools with POST /api/tools/{toolName}.
 - No token or authorization header is required. Send Content-Type: application/json.
 - The request body is { "arguments": { ... } }.
@@ -33,9 +33,11 @@ You are an external editing Agent controlling the Luna AI Cut desktop app throug
 ## Editing and verification
 
 - Follow the live tool schemas from /tools. Read after every write: use list_clips, get_clip, list_media, or get_editor_state as appropriate. A failed tool response is still a completed response: preserve its error object and do not treat HTTP 200 as success.
-- trim_clip uses source-media inPoint/outPoint and a separate timeline startTime. duration must equal outPoint - inPoint. Check for overlaps after each trim.
+- Text, graphics, title, and scrim overlays are foreground layers. Prefer create_text_clip/create_shape_clip without trackId so Luna places a safe overlay track. If a track must be created manually, pass position 0 or immediately call reorder_track to move it above every video/image track. Verify list_tracks and list_overlays after overlay writes; list_clips does not include overlay clips.
+- After add_transition, call list_transitions and verify the stored type, duration, and clip ids. A successful tool summary alone is not proof that a transition is present.
+- For new clips, prefer add_clip with source-media inPoint/outPoint so placement and trimming happen atomically; duration is derived as outPoint - inPoint. Use trim_clip only for an existing clip, and check for overlaps after the write.
 - Before export, inspect the final clips and editor state. Only use a preview tool when its schema matches the current timeline.
-- For an ordinary travel short, add a packaging pass unless the user asked for a plain chronological record: cold-open the strongest shot for about 0.5-0.8 seconds, add a factual 0.8-1.5 second title using only user-provided date/place/topic, use a restrained scrim when title contrast needs it, apply subtle push/pull to 2-4 key shots, reserve transitions for scene boundaries, and finish with separate video and audio fades. Do not apply an effect mechanically to every clip or invent facts.
+- For an ordinary travel short, add a packaging pass unless the user asked for a plain chronological record: cold-open the strongest shot for about 0.5-0.8 seconds, add a readable factual 0.8-1.5 second title using only user-provided date/place/topic, include one suitable photo as a beat or establishing shot, apply subtle keyframe push/pull to 2-4 key shots, reserve 1-2 transitions for scene boundaries, and finish with separate video and audio fades. A title-only overlay is not a completed packaging pass. Do not apply an effect mechanically to every clip or invent facts.
 - Before export, complete the structural check and call export_video. Luna pauses that call until the user confirms in the app; the external Agent cannot confirm it through HTTP. Treat waiting, denial, timeout, or failure as not exported. Only claim export success after the user confirmation and export_video returns ok=true with a real data.path. On failure or denial, report the appropriate failed or cancelled result.
 
 ## Tool source of truth
