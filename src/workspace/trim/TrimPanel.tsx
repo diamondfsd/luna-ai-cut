@@ -132,7 +132,7 @@ function FrameNumberInput({ value, ariaLabel, onChange, onStep, className, onCli
           className="workspace-trim-number-step"
           variant="ghost"
           size="mini"
-          icon={<ChevronUp size={11} strokeWidth={2.5} />}
+          icon={<ChevronUp size={9} strokeWidth={2.5} />}
           aria-label={`${ariaLabel}增加一帧`}
           onClick={(event) => {
             event.stopPropagation()
@@ -143,7 +143,7 @@ function FrameNumberInput({ value, ariaLabel, onChange, onStep, className, onCli
           className="workspace-trim-number-step"
           variant="ghost"
           size="mini"
-          icon={<ChevronDown size={11} strokeWidth={2.5} />}
+          icon={<ChevronDown size={9} strokeWidth={2.5} />}
           aria-label={`${ariaLabel}减少一帧`}
           onClick={(event) => {
             event.stopPropagation()
