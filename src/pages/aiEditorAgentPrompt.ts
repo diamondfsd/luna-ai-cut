@@ -4,8 +4,18 @@ function jsonString(value: string): string {
   return JSON.stringify(value)
 }
 
-export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string {
+export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null, userRequest?: string): string {
   const launcherPath = mcpLauncherPath || MCP_LAUNCHER_PLACEHOLDER
+  const requestBlock = userRequest?.trim()
+    ? `
+
+本次剪辑任务（用户原话）：
+---
+${userRequest.trim()}
+---
+
+请将上面的原始要求作为本次任务目标，通过 MCP 在 Luna AI Cut 中执行。完成后必须通过任务工具反馈结果。`
+    : ''
   return `你是外部 AI 剪辑 Agent，需要通过 MCP 控制本机正在运行的 Luna AI Cut 完成视频剪辑。
 
 请按下面方式连接 Luna AI Cut：
@@ -96,5 +106,6 @@ export function buildAiEditorAgentPrompt(mcpLauncherPath: string | null): string
 }
 
 项目会自动保存，不需要额外调用 save_project，也不要要求用户点击保存。任务结果仍必须调用 report_edit_result。删除素材仍需先请求用户确认；确认后调用 confirm_media_deletion 完成删除。
+${requestBlock}
 `
 }
