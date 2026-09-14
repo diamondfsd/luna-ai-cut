@@ -54,19 +54,51 @@
   width: 58px;
   min-width: 0;
   flex: 0 0 58px;
-  padding-inline: 5px;
+}
+
+.workspace-trim-number-input {
+  position: relative;
+  min-width: 0;
+}
+
+.workspace-trim-number-input-field {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 5px 20px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: right;
   -moz-appearance: textfield;
 }
 
-.workspace-trim-frame-input::-webkit-inner-spin-button,
-.workspace-trim-frame-input::-webkit-outer-spin-button,
-.workspace-trim-live-range-input::-webkit-inner-spin-button,
-.workspace-trim-live-range-input::-webkit-outer-spin-button {
+.workspace-trim-number-input-field::-webkit-inner-spin-button,
+.workspace-trim-number-input-field::-webkit-outer-spin-button {
   margin: 0;
   -webkit-appearance: none;
+}
+
+.workspace-trim-number-stepper {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  width: 17px;
+  border-left: 1px solid var(--hairline);
+}
+
+.workspace-trim-number-stepper .workspace-trim-number-step.ui-icon-btn {
+  width: 16px;
+  height: 14px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  color: var(--muted);
+}
+
+.workspace-trim-number-stepper .workspace-trim-number-step.ui-icon-btn:hover {
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
 }
 
 .workspace-trim-duration-display {
@@ -340,11 +372,6 @@
   width: 42px;
   min-width: 0;
   flex: 0 0 42px;
-  padding-inline: 4px;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  -moz-appearance: textfield;
 }
 
 .workspace-trim-video-progress-control strong {

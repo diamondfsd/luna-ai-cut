@@ -1,6 +1,6 @@
-import { Camera, CircleCheck, Images, Pause, Play, Plus, Trash2, Video } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, CircleCheck, Images, Pause, Play, Plus, Trash2, Video } from 'lucide-react'
 import { Slider as RadixSlider } from 'radix-ui'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEventHandler } from 'react'
 
 import { Button, IconButton, Input, Tooltip, toast } from '../../ui'
 import { filePathToPreviewUrl } from '../../lib/fileUtils'
@@ -16,13 +16,11 @@ import {
 import {
   constrainTrimEnd,
   constrainTrimStart,
-  frameCountForDuration,
   frameDuration,
   frameIndexAtTime,
   lastSourceFrameTime,
   minimumTrimFrameCount,
   snapTimeToFrame,
-  sourceEndFrame,
   timeAtFrame,
 } from './frameTime'
 
@@ -105,6 +103,56 @@ function markerLabel(marker: VideoOutputMarker): string {
   if (marker.kind === 'photo') return '照片'
   if (marker.kind === 'live') return 'Live 图'
   return '视频'
+}
+
+interface FrameNumberInputProps {
+  value: number
+  ariaLabel: string
+  onChange: (value: string) => void
+  onStep: (delta: number) => void
+  className: string
+  onClick?: MouseEventHandler<HTMLInputElement>
+}
+
+function FrameNumberInput({ value, ariaLabel, onChange, onStep, className, onClick }: FrameNumberInputProps) {
+  return (
+    <div className={`workspace-trim-number-input ${className}`}>
+      <Input
+        className="workspace-trim-number-input-field"
+        variant="compact"
+        type="number"
+        step={1}
+        value={value}
+        aria-label={ariaLabel}
+        onChange={(event) => onChange(event.target.value)}
+        onClick={onClick}
+      />
+      <div className="workspace-trim-number-stepper">
+        <IconButton
+          className="workspace-trim-number-step"
+          variant="ghost"
+          size="mini"
+          icon={<ChevronUp size={11} strokeWidth={2.5} />}
+          aria-label={`${ariaLabel}增加一帧`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onStep(1)
+          }}
+        />
+        <IconButton
+          className="workspace-trim-number-step"
+          variant="ghost"
+          size="mini"
+          icon={<ChevronDown size={11} strokeWidth={2.5} />}
+          aria-label={`${ariaLabel}减少一帧`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onStep(-1)
+          }}
+        />
+      </div>
+    </div>
+  )
 }
 
 interface MarkerRowProps {
@@ -299,48 +347,39 @@ function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFo
             <span className="workspace-trim-live-duration-unit">秒</span>
             <div className="workspace-trim-live-range-control">
               <span>封面:</span>
-              <Input
+              <FrameNumberInput
                 className="workspace-trim-live-range-input"
-                variant="compact"
-                type="number"
-                min={liveStartFrame}
-                max={liveEndFrame}
-                step={1}
                 value={liveCoverFrame}
-                aria-label={`${displayLabel}封面帧`}
-                onChange={(event) => {
-                  const frame = Number(event.target.value)
+                ariaLabel={`${displayLabel}封面帧`}
+                onChange={(value) => {
+                  const frame = Number(value)
                   if (!Number.isInteger(frame)) return
                   const clamped = Math.max(liveStartFrame, Math.min(frame, liveEndFrame))
                   onCoverTimeChange(timeAtFrame(clamped, frameRate))
+                }}
+                onStep={(delta) => {
+                  const frame = Math.max(liveStartFrame, Math.min(liveCoverFrame + delta, liveEndFrame))
+                  onCoverTimeChange(timeAtFrame(frame, frameRate))
                 }}
                 onClick={(event) => event.stopPropagation()}
               />
               <span>帧</span>
               <span>范围:</span>
-              <Input
+              <FrameNumberInput
                 className="workspace-trim-live-range-input"
-                variant="compact"
-                type="number"
-                min={0}
-                max={Math.max(0, liveEndFrame - frameCountForDuration(MIN_LIVE_PHOTO_DURATION, frameRate, MIN_LIVE_PHOTO_DURATION, MAX_LIVE_PHOTO_DURATION) + 1)}
-                step={1}
                 value={liveStartFrame}
-                aria-label={`${displayLabel}开始帧`}
-                onChange={(event) => onRangeFrameChange('start', event.target.value)}
+                ariaLabel={`${displayLabel}开始帧`}
+                onChange={(value) => onRangeFrameChange('start', value)}
+                onStep={(delta) => onRangeFrameChange('start', String(liveStartFrame + delta))}
                 onClick={(event) => event.stopPropagation()}
               />
               <span>-</span>
-              <Input
+              <FrameNumberInput
                 className="workspace-trim-live-range-input"
-                variant="compact"
-                type="number"
-                min={liveStartFrame + frameCountForDuration(MIN_LIVE_PHOTO_DURATION, frameRate, MIN_LIVE_PHOTO_DURATION, MAX_LIVE_PHOTO_DURATION) - 1}
-                max={Math.max(liveEndFrame, sourceEndFrame(duration, frameRate) - 1)}
-                step={1}
                 value={liveEndFrame}
-                aria-label={`${displayLabel}结束帧`}
-                onChange={(event) => onRangeFrameChange('end', event.target.value)}
+                ariaLabel={`${displayLabel}结束帧`}
+                onChange={(value) => onRangeFrameChange('end', value)}
+                onStep={(delta) => onRangeFrameChange('end', String(liveEndFrame + delta))}
                 onClick={(event) => event.stopPropagation()}
               />
               <span>帧</span>
@@ -541,25 +580,7 @@ export function TrimPanel({
   ) => {
     const frame = Number(value)
     if (value.trim() === '') return
-    if (!Number.isInteger(frame) || frame < 0) {
-      toast.error('Live 图帧范围无效')
-      return
-    }
-
-    const minimumFrameCount = frameCountForDuration(
-      MIN_LIVE_PHOTO_DURATION,
-      frameRate,
-      MIN_LIVE_PHOTO_DURATION,
-      MAX_LIVE_PHOTO_DURATION,
-    )
-    const maximumFrameCount = frameCountForDuration(
-      MAX_LIVE_PHOTO_DURATION,
-      frameRate,
-      MIN_LIVE_PHOTO_DURATION,
-      MAX_LIVE_PHOTO_DURATION,
-    )
-    const sourceFrameCount = sourceEndFrame(duration, frameRate)
-    if (sourceFrameCount < minimumFrameCount) return
+    if (!Number.isFinite(frame)) return
 
     const currentStartFrame = frameIndexAtTime(marker.startTime, frameRate)
     const currentEndFrame = frameIndexAtTime(marker.endTime, frameRate) - 1
@@ -569,17 +590,6 @@ export function TrimPanel({
     const nextEndFrame = kind === 'end'
       ? frame
       : currentEndFrame
-    const nextFrameCount = nextEndFrame - nextStartFrame + 1
-    if (
-      nextStartFrame < 0
-      || nextEndFrame < nextStartFrame
-      || nextEndFrame >= sourceFrameCount
-      || nextFrameCount < minimumFrameCount
-      || nextFrameCount > maximumFrameCount
-    ) {
-      toast.error('Live 图帧范围无效')
-      return
-    }
     const nextMarker = {
       ...marker,
       startTime: timeAtFrame(nextStartFrame, frameRate),
@@ -649,15 +659,12 @@ export function TrimPanel({
               onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
             />
             <span className="workspace-trim-frame-label">开始帧</span>
-            <Input
+            <FrameNumberInput
               className="workspace-trim-frame-input"
-              variant="compact"
-              type="number"
-              min={0}
-              step={1}
               value={frameIndexAtTime(startTime, frameRate)}
-              aria-label="开始帧"
-              onChange={(event) => commitFrame('start', event.target.value)}
+              ariaLabel="开始帧"
+              onChange={(value) => commitFrame('start', value)}
+              onStep={(delta) => commitFrame('start', String(frameIndexAtTime(startTime, frameRate) + delta))}
             />
           </div>
         </div>
@@ -675,15 +682,12 @@ export function TrimPanel({
               onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
             />
             <span className="workspace-trim-frame-label">结束帧</span>
-            <Input
+            <FrameNumberInput
               className="workspace-trim-frame-input"
-              variant="compact"
-              type="number"
-              min={0}
-              step={1}
               value={frameIndexAtTime(endTime, frameRate)}
-              aria-label="结束帧"
-              onChange={(event) => commitFrame('end', event.target.value)}
+              ariaLabel="结束帧"
+              onChange={(value) => commitFrame('end', value)}
+              onStep={(delta) => commitFrame('end', String(frameIndexAtTime(endTime, frameRate) + delta))}
             />
           </div>
         </div>

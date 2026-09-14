@@ -446,7 +446,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   return {
     ...pipeline,
     trim,
-    outputMarkers: normalizeVideoOutputMarkers(pipeline.outputMarkers),
+    outputMarkers: normalizeVideoOutputMarkers(pipeline.outputMarkers, undefined, { preserveInvalidRanges: true }),
     colorMask: null,
     colorMasks,
     beautyMasks,
