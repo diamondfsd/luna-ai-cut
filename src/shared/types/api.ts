@@ -1,4 +1,4 @@
-import type { AppSettings, CacheStats, CustomLutFile, StorageMigrationResult } from './settings'
+import type { AppSettings, CacheStats, CustomLutFile, NasSyncSettings, StorageMigrationResult } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, FileCopyResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
@@ -37,6 +37,7 @@ import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } fr
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
 import type { WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchAiLutResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
+import type { NasSyncEnqueueResult, NasSyncStatus } from './nasSync'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -232,6 +233,14 @@ export interface LunaApi {
   copyFilesToDirectory(filePaths: string[]): Promise<FileCopyResult | null>
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
+  nasSync: {
+    getStatus(): Promise<NasSyncStatus>
+    probe(config?: NasSyncSettings): Promise<{ ok: boolean; message?: string }>
+    syncFiles(filePaths: string[]): Promise<NasSyncEnqueueResult>
+    retryFailed(): Promise<number>
+    cancelPending(): Promise<void>
+  }
+  onNasSyncProgress(callback: (status: NasSyncStatus) => void): () => void
   readExifModel(localPath: string): Promise<string | null>
   getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<{ filePath: string; width: number; height: number }>
   getBorderLogoPath(logoId: string): Promise<string>

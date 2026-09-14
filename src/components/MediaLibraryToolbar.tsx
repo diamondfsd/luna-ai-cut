@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, CloudUpload, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -9,6 +9,7 @@ import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './Wor
 import { formatBytes } from '../lib/format'
 import { useDownloadProgress } from '../context/DownloadProgressContext'
 import { useMediaLib } from '../pages/useMediaLibraryController'
+import { useApp } from '../context/AppContext'
 import {
   Button,
   ButtonGroup,
@@ -29,6 +30,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
   const isCamera = mode === 'camera'
   const isLocal = mode === 'local'
   const ctrl = useMediaLib()
+  const { settings } = useApp()
   const { downloadProgress, setDownloadProgress } = useDownloadProgress()
 
   const haveSelection = ctrl.selectedFiles.length > 0
@@ -43,7 +45,10 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
   const navigate = useNavigate()
   const localFilePaths = isLocal
     ? ctrl.selectedFiles
-      .map((file) => file.downloadFilePath ?? file.localPath ?? null)
+      .flatMap((file) => [
+        file.downloadFilePath ?? file.localPath ?? null,
+        file.rawCompanion?.downloadFilePath ?? file.rawCompanion?.localPath ?? null,
+      ])
       .filter((filePath): filePath is string => filePath !== null)
     : []
 
@@ -63,6 +68,20 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
     })
     .filter((file): file is NonNullable<typeof file> => Boolean(file))
   const canSendToWorkspace = isLocal && workspaceMedia.length > 0
+  const canSyncToNas = isLocal && localFilePaths.length > 0 && settings?.nasSync?.enabled === true
+
+  async function syncSelectedToNas(): Promise<void> {
+    if (!canSyncToNas) {
+      toast.error(settings?.nasSync?.enabled ? '请先完成 NAS 配置' : '请先开启 NAS 同步')
+      return
+    }
+    try {
+      const result = await window.luna.nasSync.syncFiles(localFilePaths)
+      toast.success(result.queued > 0 ? `已加入 ${result.queued} 个文件` : '文件已同步')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '加入 NAS 同步失败')
+    }
+  }
 
   function openAiSelection(files = ctrl.filteredFiles, selectedScope = false): void {
     const paths = files
@@ -179,6 +198,15 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                     </Button>
                     <Button variant="secondary" size="compact" disabled={localFilePaths.length === 0 || copyingLocalFiles} onClick={() => void copySelectedLocalFiles()}>
                       {copyingLocalFiles ? '正在复制...' : '复制到文件夹'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="compact"
+                      disabled={!canSyncToNas}
+                      icon={<CloudUpload size={14} />}
+                      onClick={() => void syncSelectedToNas()}
+                    >
+                      同步到 NAS
                     </Button>
                     <Button variant="danger" size="compact" onClick={() => ctrl.setShowDeleteDialog(true)}>
                       <Trash2 size={14} />

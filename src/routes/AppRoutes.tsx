@@ -8,6 +8,7 @@ import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
 import { DownloadProgressProvider } from '../context/DownloadProgressContext'
 import { ExportProgressProvider } from '../context/ExportProgressContext'
+import { NasSyncProgressProvider } from '../context/NasSyncProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { invalidateThumbnailReady } from '../lib/thumbnailReady'
 import { CameraMediaPage } from '../pages/CameraMediaPage'
@@ -131,6 +132,7 @@ export function AppRoutes() {
   return (
     <ExportProgressProvider>
       <DownloadProgressProvider>
+        <NasSyncProgressProvider>
         <main className="app">
         <AppNav
         connection={connection}
@@ -226,6 +228,7 @@ export function AppRoutes() {
         <PreviewModalHost />
       </div>
         </main>
+        </NasSyncProgressProvider>
       </DownloadProgressProvider>
     </ExportProgressProvider>
   )

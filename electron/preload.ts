@@ -29,6 +29,9 @@ import type {
   WifiPortCheckOptions,
   ExportTaskRecord,
   OriginalFileExportRequest,
+  NasSyncEnqueueResult,
+  NasSyncSettings,
+  NasSyncStatus,
 } from '../src/shared/types'
 
 interface ExportItemInput {
@@ -192,6 +195,18 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   copyFilesToDirectory: (filePaths: string[]) => ipcRenderer.invoke('files:copy-to-directory', filePaths),
   openPhotosApp: () => ipcRenderer.invoke('files:openPhotosApp'),
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
+  nasSync: {
+    getStatus: (): Promise<NasSyncStatus> => ipcRenderer.invoke('nas-sync:status'),
+    probe: (config?: NasSyncSettings): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('nas-sync:probe', config),
+    syncFiles: (filePaths: string[]): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-files', filePaths),
+    retryFailed: (): Promise<number> => ipcRenderer.invoke('nas-sync:retry-failed'),
+    cancelPending: (): Promise<void> => ipcRenderer.invoke('nas-sync:cancel-pending'),
+  },
+  onNasSyncProgress: (callback: (status: NasSyncStatus) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: NasSyncStatus): void => callback(status)
+    ipcRenderer.on('nas-sync:progress', listener)
+    return () => ipcRenderer.off('nas-sync:progress', listener)
+  },
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind) as Promise<{ filePath: string; width: number; height: number }>,
   getBorderLogoPath: (logoId: string) => ipcRenderer.invoke('luna:getBorderLogoPath', logoId) as Promise<string>,
