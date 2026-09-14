@@ -33,6 +33,10 @@ export interface PhotoOutputMarker extends VideoOutputMarkerBase {
 
 export type VideoOutputMarker = VideoSegmentOutputMarker | LivePhotoOutputMarker | PhotoOutputMarker
 
+interface NormalizeVideoOutputMarkersOptions {
+  preserveInvalidRanges?: boolean
+}
+
 export function livePhotoSelectionForMarker(
   markers: VideoOutputMarker[],
   markerId: string | null,
@@ -195,8 +199,13 @@ export function resizeLivePhotoRange(
   }
 }
 
-export function normalizeVideoOutputMarkers(value: unknown, sourceDuration?: number): VideoOutputMarker[] {
+export function normalizeVideoOutputMarkers(
+  value: unknown,
+  sourceDuration?: number,
+  options?: NormalizeVideoOutputMarkersOptions,
+): VideoOutputMarker[] {
   if (!Array.isArray(value)) return []
+  const preserveInvalidRanges = options?.preserveInvalidRanges === true
   const maximumTime = Number.isFinite(sourceDuration) && Number(sourceDuration) >= 0
     ? Number(sourceDuration)
     : Number.POSITIVE_INFINITY
@@ -221,13 +230,14 @@ export function normalizeVideoOutputMarkers(value: unknown, sourceDuration?: num
     if (!Number.isFinite(marker.startTime) || !Number.isFinite(marker.endTime)) return null
     const startTime = Number(marker.startTime)
     const endTime = Number(marker.endTime)
-    if (startTime < 0 || endTime > maximumTime) return null
+    if (!preserveInvalidRanges && (startTime < 0 || endTime > maximumTime)) return null
 
     if (marker.kind === 'live') {
       const liveDuration = endTime - startTime
-      if (liveDuration < MIN_LIVE_PHOTO_DURATION || liveDuration > MAX_LIVE_PHOTO_DURATION) return null
+      if (!preserveInvalidRanges && (liveDuration < MIN_LIVE_PHOTO_DURATION || liveDuration > MAX_LIVE_PHOTO_DURATION)) return null
       const coverTime = Number(marker.coverTime)
-      if (!Number.isFinite(coverTime) || coverTime < startTime || coverTime >= endTime) return null
+      if (!Number.isFinite(coverTime)) return null
+      if (!preserveInvalidRanges && (coverTime < startTime || coverTime >= endTime)) return null
       return {
         id: normalizeId(marker.id, index, usedIds),
         kind: 'live',
@@ -238,7 +248,7 @@ export function normalizeVideoOutputMarkers(value: unknown, sourceDuration?: num
       }
     }
 
-    if (endTime < startTime + MIN_VIDEO_SEGMENT_DURATION) return null
+    if (!preserveInvalidRanges && endTime < startTime + MIN_VIDEO_SEGMENT_DURATION) return null
     return {
       id: normalizeId(marker.id, index, usedIds),
       kind: 'video',

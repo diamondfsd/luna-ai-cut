@@ -113,6 +113,15 @@ assert.deepEqual(
   ],
   'output markers require explicit kinds and are validated, deduplicated, and sorted',
 )
+assert.equal(
+  videoOutputMarkers.normalizeVideoOutputMarkers(
+    [{ id: 'editing-live', kind: 'live', startTime: 0, endTime: 8, coverTime: 1, note: '' }],
+    undefined,
+    { preserveInvalidRanges: true },
+  ).length,
+  1,
+  'editing keeps invalid ranges until export validation',
+)
 assert.deepEqual(
   videoOutputMarkers.livePhotoRangeAround(0.5, 10),
   { startTime: 0, endTime: 3, coverTime: 0.5 },
