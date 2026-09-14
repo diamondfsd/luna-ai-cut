@@ -7,6 +7,16 @@ export type CameraPreviewQuality = 'proxy' | 'original'
 
 export type WindowCloseBehavior = 'quit' | 'hide'
 
+export interface NasSyncSettings {
+  enabled: boolean
+  autoSync: boolean
+  server: string
+  share: string
+  remotePath: string
+  username: string
+  password: string
+}
+
 export interface CustomLutFile {
   filePath: string
   fileName: string
@@ -72,6 +82,8 @@ export interface AppSettings {
   localMediaShareFiles?: string[]
   /** 点击窗口关闭按钮时退出应用，还是只隐藏窗口。 */
   windowCloseBehavior?: WindowCloseBehavior
+  /** SMB NAS 同步配置。密码按产品要求直接保存在应用设置中。 */
+  nasSync?: NasSyncSettings
 }
 
 export interface CacheStats {

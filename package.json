@@ -95,6 +95,7 @@
     "pack:debug:mac:x64": "CROSS_TARGET=x86_64-apple-darwin node scripts/build-native.mjs && node scripts/build-macos-helpers.mjs --arch x64 && npm run build:debug && node scripts/copy-dolby-tools.mjs --target darwin --arch x64 && env -u CSC_NAME -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --config electron-builder-debug.json5 --mac dmg --x64 --publish never"
   },
   "dependencies": {
+    "@marsaud/smb2": "0.18.0",
     "adm-zip": "^0.5.17",
     "exifr": "^7.1.3",
     "lucide-react": "^1.21.0",

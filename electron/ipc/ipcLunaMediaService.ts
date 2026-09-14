@@ -30,6 +30,8 @@ import { detectInsta360ILog } from '../media/iLogDetection'
 import { existingDragFiles } from '../platform/files/nativeFileDragService'
 import { copyLocalFilesToDirectory, sourcePathsForCopy } from '../media/localFileCopyService'
 import { availableExportPath } from '../export/exportPathService'
+import { safeName } from '../media/filePathUtils'
+import { nasSyncService } from '../media/nasSyncService'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
   const ext = path.extname(mediaFileNameForPath(filePath)).toLowerCase()
@@ -435,7 +437,20 @@ export function register(ctx: IpcContext): void {
     }, controller.signal, requestedTargetDir ? false : settings.organizeDownloadsByDate ?? false)
     ctx.activeDownloadTasks.add(task)
     try {
-      return await task
+      const summary = await task
+      if (settings.nasSync?.enabled && settings.nasSync.autoSync && summary.completed.length > 0) {
+        const syncPaths = summary.completed.flatMap((completed) => {
+          const sourceFile = files.find((file) => file.name === completed.name)
+          const rawName = sourceFile?.rawCompanion?.downloadName
+          return rawName
+            ? [completed.path, path.join(path.dirname(completed.path), safeName(rawName))]
+            : [completed.path]
+        })
+        void nasSyncService.enqueueFiles(syncPaths).catch((error) => {
+          logMainWarn('[下载] 自动加入 NAS 同步失败', { error: error instanceof Error ? error.message : String(error) })
+        })
+      }
+      return summary
     } finally {
       ctx.activeDownloadControllers.delete(controller)
       ctx.activeDownloadTasks.delete(task)

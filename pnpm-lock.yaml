@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@marsaud/smb2':
+        specifier: 0.18.0
+        version: 0.18.0
       adm-zip:
         specifier: ^0.5.17
         version: 0.5.18
@@ -453,6 +456,10 @@ packages:
   '@malept/flatpak-bundler@0.4.0':
     resolution: {integrity: sha512-9QOtNffcOF/c1seMCDnjckb3R9WHcG34tky+FHpNKKCW0wc/scYLwMtO+ptyGUfMW0/b/n4qRiALlaFHc9Oj7Q==}
     engines: {node: '>= 10.0.0'}
+
+  '@marsaud/smb2@0.18.0':
+    resolution: {integrity: sha512-DxOVZCX0uDe3S9QQqXk6mnnQ7nEaqI5gPwuNQ7dDQCXY00Qp0CIa5N1LNYKCcW1DYTJceOvRvNujL5hgnQmqOA==}
+    engines: {node: '>=5.10'}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -2356,6 +2363,10 @@ packages:
   normalize-wheel@1.0.1:
     resolution: {integrity: sha512-1OnlAPZ3zgrk8B91HyRj+eVv+kS5u+Z0SCsak6Xil/kmgEia50ga7zfkumayonZrImffAxPU/5WcyGhzetHNPA==}
 
+  ntlm@0.1.3:
+    resolution: {integrity: sha512-pPlHxhAegZP4QAaOYd51vRd6VXTGfF7VLKJwuwN0iEB1aIi3SnqXYuS/bH/6wWBOq+Ehdil49mHm1Nseon085w==}
+    engines: {'0': node}
+
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
 
@@ -3293,6 +3304,11 @@ snapshots:
       tmp-promise: 3.0.3
     transitivePeerDependencies:
       - supports-color
+
+  '@marsaud/smb2@0.18.0':
+    dependencies:
+      ntlm: 0.1.3
+      readable-stream: 3.6.2
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -5320,6 +5336,8 @@ snapshots:
   normalize-path@3.0.0: {}
 
   normalize-wheel@1.0.1: {}
+
+  ntlm@0.1.3: {}
 
   once@1.4.0:
     dependencies:

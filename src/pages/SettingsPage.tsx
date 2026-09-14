@@ -8,6 +8,7 @@ import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition, Water
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
+import { NasSyncSettings } from '../components/NasSyncSettings'
 import { Button, Dialog, Input, Select, Switch, toast } from '../ui'
 import '../styles/settings.css'
 import '../styles/download-storage-settings.css'
@@ -326,6 +327,8 @@ export function SettingsPage({
             </article>
           </div>
         </section>
+
+        <NasSyncSettings settings={settings} setSettings={setSettings} />
 
         <section className="settings-group">
           <h2 className="settings-group-title">应用行为</h2>

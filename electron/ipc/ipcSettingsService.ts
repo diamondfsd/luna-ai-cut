@@ -18,6 +18,7 @@ import {
 } from '../storage/storageMigrationService'
 import { organizeDownloadedFiles } from '../media/downloadStorageService'
 import { setMainWindowCloseBehavior } from '../application/windowService'
+import { nasSyncService } from '../media/nasSyncService'
 import type { IpcContext } from './context'
 
 let storageMigrationInProgress = false
@@ -121,6 +122,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', async (_event, settings: Partial<AppSettings>) => {
     const next = await saveSettings(settings)
+    await nasSyncService.handleSettingsChanged(next)
     setMainWindowCloseBehavior(next.windowCloseBehavior)
     return next
   })

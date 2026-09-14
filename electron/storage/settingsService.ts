@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { DEFAULT_DEVICE } from '../devices/definitions/deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
 import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
-import type { AppSettings, WatermarkPlacement, WatermarkPosition } from '../../src/shared/types'
+import type { AppSettings, NasSyncSettings, WatermarkPlacement, WatermarkPosition } from '../../src/shared/types'
 
 function settingsPath(): string {
   if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
@@ -17,6 +17,9 @@ function legacyPath(): string {
 }
 
 let settingsOperation: Promise<void> = Promise.resolve()
+
+const DEFAULT_NAS_SHARE = 'lunaaicut'
+const DEFAULT_NAS_REMOTE_PATH = 'lunaaicut'
 
 function enqueueSettingsOperation<T>(operation: () => Promise<T>): Promise<T> {
   const next = settingsOperation.then(operation, operation)
@@ -86,6 +89,15 @@ function defaultSettings(): AppSettings {
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
     windowCloseBehavior: 'hide',
+    nasSync: {
+      enabled: false,
+      autoSync: false,
+      server: '',
+      share: DEFAULT_NAS_SHARE,
+      remotePath: DEFAULT_NAS_REMOTE_PATH,
+      username: '',
+      password: '',
+    },
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,
@@ -192,6 +204,17 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.windowCloseBehavior = savedWindowCloseBehavior === 'hide' || savedWindowCloseBehavior === 'quit'
     ? savedWindowCloseBehavior
     : defaults.windowCloseBehavior
+  const savedNasSync = saved?.nasSync
+  const defaultNasSync = defaults.nasSync as NasSyncSettings
+  merged.nasSync = {
+    enabled: typeof savedNasSync?.enabled === 'boolean' ? savedNasSync.enabled : defaultNasSync.enabled,
+    autoSync: typeof savedNasSync?.autoSync === 'boolean' ? savedNasSync.autoSync : defaultNasSync.autoSync,
+    server: typeof savedNasSync?.server === 'string' ? savedNasSync.server.trim() : defaultNasSync.server,
+    share: DEFAULT_NAS_SHARE,
+    remotePath: DEFAULT_NAS_REMOTE_PATH,
+    username: typeof savedNasSync?.username === 'string' ? savedNasSync.username : defaultNasSync.username,
+    password: typeof savedNasSync?.password === 'string' ? savedNasSync.password : defaultNasSync.password,
+  }
   if (!merged.localResourcesDir) {
     merged.localResourcesDir = getLocalResourcesDir(merged)
   }
@@ -245,6 +268,13 @@ export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings
       experimentalWebGpuPreview: partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
       // 视频导出统一使用 Rust/wgpu；忽略旧客户端传入的导出加速开关。
       experimentalWebGpuExport: false,
+    }
+    if (next.nasSync) {
+      next.nasSync = {
+        ...next.nasSync,
+        share: DEFAULT_NAS_SHARE,
+        remotePath: DEFAULT_NAS_REMOTE_PATH,
+      }
     }
     next.cacheDir = cacheDir(next.baseDir)
     await writeSettingsFile(next)
