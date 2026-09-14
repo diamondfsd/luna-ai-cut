@@ -123,6 +123,17 @@ assert.equal(
   'editing keeps invalid ranges until export validation',
 )
 assert.deepEqual(
+  videoOutputMarkers.findInvalidVideoOutputMarker([
+    { id: 'bad-cover', kind: 'live', startTime: 0, endTime: 3, coverTime: 4, note: '' },
+  ], 10),
+  {
+    index: 0,
+    label: 'Live 图',
+    reason: '封面位置必须在 Live 图范围内',
+  },
+  'export validation reports the marker and the exact Live cover reason',
+)
+assert.deepEqual(
   videoOutputMarkers.livePhotoRangeAround(0.5, 10),
   { startTime: 0, endTime: 3, coverTime: 0.5 },
   'Live ranges stay three seconds near the source start',

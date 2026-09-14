@@ -94,6 +94,64 @@ function normalizeNote(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, MAX_NOTE_LENGTH) : ''
 }
 
+export interface VideoOutputMarkerValidationIssue {
+  index: number
+  label: string
+  reason: string
+}
+
+function markerValidationReason(marker: VideoOutputMarker, maximumTime: number): string | null {
+  if (marker.kind === 'photo') {
+    if (!Number.isFinite(marker.time)) return '照片位置不是有效数字'
+    if (marker.time < 0 || marker.time > maximumTime || (maximumTime > 0 && marker.time >= maximumTime)) {
+      return '照片位置超出视频时长'
+    }
+    return null
+  }
+
+  if (!Number.isFinite(marker.startTime) || !Number.isFinite(marker.endTime)) {
+    return '开始或结束位置不是有效数字'
+  }
+  if (marker.startTime < 0) return '开始位置不能小于 0 秒'
+  if (marker.endTime > maximumTime) return '结束位置超出视频时长'
+
+  if (marker.kind === 'live') {
+    const liveDuration = marker.endTime - marker.startTime
+    if (liveDuration < MIN_LIVE_PHOTO_DURATION) return `Live 图时长不能少于 ${MIN_LIVE_PHOTO_DURATION} 秒`
+    if (liveDuration > MAX_LIVE_PHOTO_DURATION) return `Live 图时长不能超过 ${MAX_LIVE_PHOTO_DURATION} 秒`
+    if (!Number.isFinite(marker.coverTime)) return '封面位置不是有效数字'
+    if (marker.coverTime < marker.startTime || marker.coverTime >= marker.endTime) {
+      return '封面位置必须在 Live 图范围内'
+    }
+    return null
+  }
+
+  if (marker.endTime < marker.startTime + MIN_VIDEO_SEGMENT_DURATION) {
+    return `视频片段时长不能少于 ${MIN_VIDEO_SEGMENT_DURATION} 秒`
+  }
+  return null
+}
+
+export function findInvalidVideoOutputMarker(
+  markers: VideoOutputMarker[],
+  sourceDuration: number,
+): VideoOutputMarkerValidationIssue | null {
+  const maximumTime = Number.isFinite(sourceDuration) && sourceDuration >= 0
+    ? sourceDuration
+    : Number.POSITIVE_INFINITY
+
+  for (const [index, marker] of markers.entries()) {
+    const reason = markerValidationReason(marker, maximumTime)
+    if (!reason) continue
+    return {
+      index,
+      label: marker.kind === 'photo' ? '照片' : marker.kind === 'live' ? 'Live 图' : '视频片段',
+      reason,
+    }
+  }
+  return null
+}
+
 export function clampLivePhotoDuration(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_LIVE_PHOTO_DURATION
   return Math.min(MAX_LIVE_PHOTO_DURATION, Math.max(MIN_LIVE_PHOTO_DURATION, value))
