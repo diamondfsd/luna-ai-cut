@@ -24,7 +24,6 @@ const nativeWorkerNames = [
   'luna-punctuation-worker',
   'luna-asr-worker',
   'neural-preset-worker',
-  'musicgen-worker',
 ]
 
 if (!['darwin-arm64', 'darwin-x64', 'win32-x64'].includes(targetName)) {

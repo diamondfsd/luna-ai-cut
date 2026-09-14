@@ -38,7 +38,6 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
       path.join(sourceRoot, 'ade20kSegmentationTargets.ts'),
       path.join(sourceRoot, 'inpaintModels.ts'),
       path.join(sourceRoot, 'subtitleModels.ts'),
-      path.join(sourceRoot, 'musicGenModels.ts'),
     ]
     const program = ts.createProgram(sources, {
       target: ts.ScriptTarget.ES2022,
@@ -65,7 +64,6 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
       ...require(path.join(temporaryRoot, 'src', 'shared', 'referenceMatchModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'inpaintModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'subtitleModels.js')),
-      ...require(path.join(temporaryRoot, 'src', 'shared', 'musicGenModels.js')),
     }
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true })
@@ -130,20 +128,6 @@ export function buildModelArtifacts(registry) {
       license: model.license,
       source: model.source,
       licenseUrl: model.licenseUrl,
-    })
-  }
-  for (const file of registry.MUSICGEN_MODEL_FILE_DEFINITIONS) {
-    addArtifact(artifacts, {
-      fileName: file.fileName,
-      sizeBytes: file.sizeBytes,
-      sha256: file.sha256,
-      sourceUrls: nonGitCodeSources(file),
-      models: [{ modelId: registry.MUSICGEN_MODEL_ID, role: file.fileName }],
-      version: registry.MUSICGEN_MODEL_VERSION,
-      license: registry.MUSICGEN_MODEL_INFO.license,
-      source: registry.MUSICGEN_MODEL_INFO.source,
-      licenseUrl: registry.MUSICGEN_MODEL_INFO.licenseUrl,
-      upstreamModel: registry.MUSICGEN_MODEL_INFO.upstreamModel,
     })
   }
   for (const artifact of artifacts) {

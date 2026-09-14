@@ -1,11 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
 import type { AiEditorAgentPhase, AiEditorMcpContent, AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
-import { AgentSessionError, AgentSessionManager, type AgentToolResult } from './agentSessionManager.ts'
+import { AgentSessionError, AgentSessionManager, type AgentToolError, type AgentToolResult } from './agentSessionManager.ts'
+import { LUNA_HTTP_SKILL } from './lunaHttpSkill.ts'
 
 const MCP_PROTOCOL_VERSION = '2024-11-05'
 const MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -33,8 +34,20 @@ interface JsonRpcResponse {
 export interface LunaMcpEndpoint {
   version: 1
   url: string
-  token: string
+  baseUrl: string
+  skillUrl: string
+  toolsUrl: string
+  openapiUrl: string
+  apiUrl: string
   pid: number
+}
+
+export interface LunaHttpConnection {
+  baseUrl: string
+  skillUrl: string
+  toolsUrl: string
+  openapiUrl: string
+  apiUrl: string
 }
 
 export interface LunaMcpServerOptions {
@@ -42,19 +55,11 @@ export interface LunaMcpServerOptions {
   requestRenderer(request: AiEditorMcpRequest): Promise<AiEditorMcpResponse>
   agentSession?: AgentSessionManager
   activateWindow?: () => void | Promise<void>
-  musicGeneration?: MusicGenerationGateway
-}
-
-export interface MusicGenerationGateway {
-  getStatus(): Promise<unknown>
-  start(request: { prompt: string; durationSec: number; outputPath?: string }): Promise<unknown>
-  getTask(taskId: string): unknown
-  generate(request: { prompt: string; durationSec: number; outputPath?: string }): Promise<unknown>
-  cancel(taskId: string): unknown
 }
 
 export interface LunaMcpServer {
   start(): Promise<LunaMcpEndpoint>
+  getEndpoint(): Promise<LunaMcpEndpoint>
   stop(): Promise<void>
   endpointPath: string
 }
@@ -90,35 +95,161 @@ function textForResult(value: unknown): string {
   }
 }
 
+function exportPathFromToolResult(value: unknown): string | null {
+  const result = asRecord(value)
+  if (result?.ok !== true) return null
+  const data = asRecord(result.data)
+  const exportPath = data?.path ?? data?.outputPath
+  return typeof exportPath === 'string' && exportPath.trim() ? exportPath.trim() : null
+}
+
+function agentToolErrorFromResult(value: unknown): AgentToolError | undefined {
+  const record = asRecord(value)
+  const error = asRecord(record?.error)
+  if (typeof error?.code !== 'string' || typeof error.message !== 'string') return undefined
+  return {
+    code: error.code,
+    message: error.message,
+    ...(typeof error.retryable === 'boolean' ? { retryable: error.retryable } : {}),
+    ...(typeof error.suggestedAction === 'string' ? { suggestedAction: error.suggestedAction } : {}),
+  }
+}
+
 function contentForResponse(response: AiEditorMcpResponse): AiEditorMcpContent[] {
   if (response.content && response.content.length > 0) return [...response.content]
   return [{ type: 'text', text: textForResult(response.result) }]
 }
 
+function contentWithAgentContext(
+  response: AiEditorMcpResponse,
+  contextualResult: unknown,
+): AiEditorMcpContent[] {
+  const content = contentForResponse(response)
+  const contextualText: AiEditorMcpContent = {
+    type: 'text',
+    text: textForResult(contextualResult),
+  }
+  const firstTextIndex = content.findIndex((item) => item.type === 'text')
+  if (firstTextIndex < 0) return [contextualText, ...content]
+  return content.map((item, index) => index === firstTextIndex ? contextualText : item)
+}
+
+interface ToolCatalog {
+  tools: unknown[]
+  editorToolsReady: boolean
+  message?: string
+}
+
+async function getToolCatalog(options: LunaMcpServerOptions): Promise<ToolCatalog> {
+  let bridgeResponse: AiEditorMcpResponse
+  try {
+    bridgeResponse = await options.requestRenderer({
+      callId: randomUUID(),
+      kind: 'listTools',
+    })
+  } catch (error) {
+    return {
+      tools: [...AGENT_TASK_TOOLS],
+      editorToolsReady: false,
+      message: error instanceof Error ? error.message : String(error),
+    }
+  }
+  if (!bridgeResponse.ok) {
+    return {
+      tools: [...AGENT_TASK_TOOLS],
+      editorToolsReady: false,
+      message: bridgeResponse.error ?? 'AI 剪辑页面尚未加载，请领取任务后激活 Luna 并重新获取工具清单',
+    }
+  }
+  const rendererTools = Array.isArray(bridgeResponse.result) ? bridgeResponse.result : []
+  return {
+    tools: [...AGENT_TASK_TOOLS, ...rendererTools],
+    editorToolsReady: rendererTools.length > 0,
+  }
+}
+
+function toolName(value: unknown): string | null {
+  const record = asRecord(value)
+  return typeof record?.name === 'string' && record.name.trim() ? record.name : null
+}
+
+function openApiDocument(baseUrl: string, catalog: ToolCatalog): Record<string, unknown> {
+  const paths: Record<string, unknown> = {}
+  for (const tool of catalog.tools) {
+    const record = asRecord(tool)
+    const name = toolName(tool)
+    if (!record || !name) continue
+    paths[`/api/tools/${encodeURIComponent(name)}`] = {
+      post: {
+        operationId: `call_${name}`,
+        summary: typeof record.description === 'string' ? record.description : name,
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  arguments: record.inputSchema ?? { type: 'object' },
+                },
+                additionalProperties: true,
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Tool result' },
+        },
+      },
+    }
+  }
+  return {
+    openapi: '3.1.0',
+    info: {
+      title: 'Luna AI Cut Local Agent API',
+      version: '1.0.0',
+      description: 'Local HTTP tool API for controlling the Luna AI Cut desktop editor.',
+    },
+    servers: [{ url: baseUrl }],
+    paths,
+    'x-luna': {
+      skill: '/skill.md',
+      tools: '/tools',
+      editorToolsReady: catalog.editorToolsReady,
+      ...(catalog.message ? { message: catalog.message } : {}),
+    },
+  }
+}
+
 const AGENT_TASK_TOOLS = [
   {
     name: 'start_edit_session',
-    description: 'Create and immediately claim an editing session for a request that came from outside Luna AI Cut, such as another Agent chat. Use the exact user request; do not invent a sessionId.',
+    description: 'Create and immediately claim an editing session for a request that came from outside Luna AI Cut. Include the exact user request, a stable agentId, the Agent category, and the actual model name; do not invent a sessionId or identity.',
     inputSchema: {
       type: 'object',
       properties: {
         request: { type: 'string', minLength: 1, description: 'The exact user editing request received by the external Agent.' },
-        agentId: { type: 'string', description: 'Optional stable name for this external Agent.' },
+        agentId: { type: 'string', minLength: 1, description: 'Stable identifier for this external Agent.' },
+        agentType: { type: 'string', minLength: 1, description: 'Agent category or role, for example WorkBuddy external editing Agent.' },
+        agentModel: { type: 'string', minLength: 1, description: 'The model name actually used by this Agent.' },
         projectId: { type: 'string', description: 'Optional existing project id to associate with the session.' },
       },
-      required: ['request'],
+      required: ['request', 'agentId', 'agentType', 'agentModel'],
       additionalProperties: false,
     },
   },
   {
     name: 'wait_for_edit_request',
-    description: 'Wait for and claim the latest user editing request from Luna AI Cut. Call this before editing tools.',
+    description: 'Wait for and claim the latest user editing request from Luna AI Cut. Register the Agent identity when waiting or claiming.',
     inputSchema: {
       type: 'object',
       properties: {
-        agentId: { type: 'string', description: 'Optional stable name for this external Agent.' },
+        agentId: { type: 'string', minLength: 1, description: 'Stable identifier for this external Agent.' },
+        agentType: { type: 'string', minLength: 1, description: 'Agent category or role, for example WorkBuddy external editing Agent.' },
+        agentModel: { type: 'string', minLength: 1, description: 'The model name actually used by this Agent.' },
         timeoutSec: { type: 'number', minimum: 5, maximum: 900, description: 'How long to wait when there is no queued request. Defaults to 300 seconds.' },
       },
+      required: ['agentId', 'agentType', 'agentModel'],
       additionalProperties: false,
     },
   },
@@ -190,68 +321,7 @@ const AGENT_TASK_TOOLS = [
   },
 ] as const
 
-const MUSIC_TOOLS = [
-  {
-    name: 'get_music_generation_status',
-    description: 'Return the local MusicGen model status and recent background-music tasks. This tool never downloads models or dependencies.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'generate_music',
-    description: 'Generate a local WAV background-music clip with MusicGen. Use instrumental, no-vocals wording by default; the duration is limited to 1-30 seconds per clip.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: { type: 'string', minLength: 1, maxLength: 2_000, description: 'A concise description of instrumental background music.' },
-        durationSec: { type: 'number', minimum: 1, maximum: 30, default: 10, description: 'Clip duration in seconds.' },
-        outputPath: { type: 'string', description: 'Optional WAV path under the local generated-audio directory.' },
-      },
-      required: ['prompt'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'start_music_generation',
-    description: 'Start local MusicGen background-music generation and return a task id immediately. Poll with get_music_generation or cancel it with cancel_music_generation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        prompt: { type: 'string', minLength: 1, maxLength: 2_000 },
-        durationSec: { type: 'number', minimum: 1, maximum: 30, default: 10 },
-        outputPath: { type: 'string', description: 'Optional WAV path under the local generated-audio directory.' },
-      },
-      required: ['prompt'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'get_music_generation',
-    description: 'Return the status, progress, error, or output of a MusicGen generation task.',
-    inputSchema: {
-      type: 'object',
-      properties: { taskId: { type: 'string', minLength: 1 } },
-      required: ['taskId'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'cancel_music_generation',
-    description: 'Cancel a running local MusicGen generation task.',
-    inputSchema: {
-      type: 'object',
-      properties: { taskId: { type: 'string', minLength: 1 } },
-      required: ['taskId'],
-      additionalProperties: false,
-    },
-  },
-] as const
-
 const AGENT_TOOL_NAMES = new Set<string>(AGENT_TASK_TOOLS.map((tool) => tool.name))
-const MUSIC_TOOL_NAMES = new Set<string>(MUSIC_TOOLS.map((tool) => tool.name))
 
 function stringArg(args: Record<string, unknown>, name: string): string | null {
   const value = args[name]
@@ -311,11 +381,18 @@ async function handleAgentTaskTool(
   try {
     if (name === 'start_edit_session') {
       const request = stringArg(args, 'request')
-      if (!request) return agentInvalidParams('缺少 request，请传入用户原始剪辑要求')
+      const agentId = stringArg(args, 'agentId')
+      const agentType = stringArg(args, 'agentType')
+      const agentModel = stringArg(args, 'agentModel')
+      if (!request || !agentId || !agentType || !agentModel) {
+        return agentInvalidParams('请同时上报 request、agentId、agentType 和 agentModel')
+      }
       const result = manager.startExternalRequest(
         request,
-        stringArg(args, 'agentId'),
+        agentId,
         stringArg(args, 'projectId'),
+        agentType,
+        agentModel,
       )
       await options.activateWindow?.()
       return agentToolResponse({
@@ -326,7 +403,18 @@ async function handleAgentTaskTool(
     }
 
     if (name === 'wait_for_edit_request') {
-      const result = await manager.waitForRequest(stringArg(args, 'agentId'), numberArg(args, 'timeoutSec'))
+      const agentId = stringArg(args, 'agentId')
+      const agentType = stringArg(args, 'agentType')
+      const agentModel = stringArg(args, 'agentModel')
+      if (!agentId || !agentType || !agentModel) {
+        return agentInvalidParams('请同时上报 agentId、agentType 和 agentModel')
+      }
+      const result = await manager.waitForRequest(
+        agentId,
+        numberArg(args, 'timeoutSec'),
+        agentType,
+        agentModel,
+      )
       if (result.state === 'claimed') await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
@@ -376,7 +464,6 @@ async function handleAgentTaskTool(
         stringArg(args, 'summary') ?? undefined,
         stringArg(args, 'projectId') ?? undefined,
         stringArg(args, 'projectName') ?? undefined,
-        stringArg(args, 'exportPath') ?? undefined,
       ))
     }
 
@@ -392,54 +479,6 @@ async function handleAgentTaskTool(
     const message = error instanceof Error ? error.message : String(error)
     const code = error instanceof AgentSessionError ? error.code : 'AGENT_SESSION_ERROR'
     return agentToolResponse({ ok: false, summary: message, error: { code, message } })
-  }
-}
-
-function musicToolResponse(data: unknown): AiEditorMcpResponse {
-  return { ok: true, result: { ok: true, summary: '音乐工具调用完成', data } }
-}
-
-function musicToolError(code: string, message: string): AiEditorMcpResponse {
-  return {
-    ok: true,
-    result: { ok: false, summary: message, error: { code, message } },
-  }
-}
-
-async function handleMusicTool(
-  name: string,
-  args: Record<string, unknown>,
-  gateway?: MusicGenerationGateway,
-): Promise<AiEditorMcpResponse | null> {
-  if (!MUSIC_TOOL_NAMES.has(name)) return null
-  if (!gateway) return musicToolError('UNSUPPORTED', '本地音乐工具不可用')
-
-  try {
-    if (name === 'get_music_generation_status') return musicToolResponse(await gateway.getStatus())
-
-    const prompt = stringArg(args, 'prompt')
-    const durationSec = args.durationSec === undefined ? 10 : numberArg(args, 'durationSec')
-    const outputPath = stringArg(args, 'outputPath') ?? undefined
-    if (name === 'generate_music' || name === 'start_music_generation') {
-      if (!prompt) return musicToolError('INVALID_PARAMS', '缺少 prompt，请描述需要的背景音乐')
-      if (durationSec === undefined || durationSec < 1 || durationSec > 30) return musicToolError('INVALID_PARAMS', 'durationSec 必须在 1 到 30 秒之间')
-      const request = { prompt, durationSec, ...(outputPath ? { outputPath } : {}) }
-      return musicToolResponse(name === 'generate_music'
-        ? await gateway.generate(request)
-        : await gateway.start(request))
-    }
-
-    const taskId = stringArg(args, 'taskId')
-    if (!taskId) return musicToolError('INVALID_PARAMS', '缺少 taskId')
-    if (name === 'get_music_generation') {
-      const result = gateway.getTask(taskId)
-      if (!result) return musicToolError('TASK_NOT_FOUND', 'MusicGen 任务不存在')
-      return musicToolResponse(result)
-    }
-    return musicToolResponse(gateway.cancel(taskId))
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return musicToolError('MUSIC_GENERATION_FAILED', message)
   }
 }
 
@@ -467,6 +506,7 @@ function isReadOnlyAgentTool(name: string): boolean {
     || name.startsWith('list_')
     || name.startsWith('get_')
     || name.startsWith('inspect_')
+    || name === 'create_media_contact_sheet'
     || name.startsWith('preview_')
     || name.startsWith('probe_')
 }
@@ -496,10 +536,6 @@ function writeJson(response: ServerResponse, status: number, value: unknown): vo
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.setHeader('Content-Length', Buffer.byteLength(body))
   response.end(body)
-}
-
-function authorized(request: IncomingMessage, token: string): boolean {
-  return request.headers.authorization === `Bearer ${token}`
 }
 
 async function handleRpc(
@@ -537,32 +573,18 @@ async function handleRpc(
   if (method === 'ping') return { jsonrpc: '2.0', id, result: {} }
 
   if (method === 'tools/list') {
-    const bridgeResponse = await options.requestRenderer({
-      callId: randomUUID(),
-      kind: 'listTools',
-    })
-    if (!bridgeResponse.ok) {
-      return {
-        jsonrpc: '2.0',
-        id,
-        result: {
-          tools: [...AGENT_TASK_TOOLS, ...MUSIC_TOOLS],
-          _meta: {
-            luna: {
-              editorToolsReady: false,
-              message: bridgeResponse.error ?? 'AI 剪辑页面尚未加载，请领取任务后激活 Luna 并重新调用 tools/list',
-            },
-          },
-        },
-      }
-    }
-    const rendererTools = Array.isArray(bridgeResponse.result) ? bridgeResponse.result : []
+    const catalog = await getToolCatalog(options)
     return {
       jsonrpc: '2.0',
       id,
       result: {
-        tools: [...AGENT_TASK_TOOLS, ...MUSIC_TOOLS, ...rendererTools],
-        _meta: { luna: { editorToolsReady: rendererTools.length > 0 } },
+        tools: catalog.tools,
+        _meta: {
+          luna: {
+            editorToolsReady: catalog.editorToolsReady,
+            ...(catalog.message ? { message: catalog.message } : {}),
+          },
+        },
       },
     }
   }
@@ -589,9 +611,7 @@ async function handleRpc(
     }
 
     const callId = randomUUID()
-    const requiresFreshRequest = Boolean(options.agentSession)
-      && !MUSIC_TOOL_NAMES.has(name)
-      && !isReadOnlyAgentTool(name)
+    const requiresFreshRequest = Boolean(options.agentSession) && !isReadOnlyAgentTool(name)
     if (requiresFreshRequest) {
       const gate = options.agentSession?.gateActiveTool()
       if (!gate) {
@@ -632,18 +652,49 @@ async function handleRpc(
       }
     }
 
-    const musicResult = await handleMusicTool(name, args, options.musicGeneration)
-    if (musicResult) {
-      const result = addAgentContext(musicResult.result, options.agentSession)
-      const record = asRecord(result)
-      return {
-        jsonrpc: '2.0',
-        id,
-        result: {
-          content: [{ type: 'text', text: textForResult(result) }],
-          isError: record?.ok === false,
-          ...(record ? { structuredContent: record } : {}),
-        },
+    let exportSession: { sessionId: string; revision: number } | null = null
+    if (name === 'export_video' && options.agentSession) {
+      const gate = options.agentSession.gateActiveTool()
+      if (!gate || !gate.allowed) {
+        const blocked = {
+          ok: false,
+          summary: gate?.error?.message ?? '请先领取剪辑任务',
+          data: gate ? { session: gate.session } : undefined,
+          error: gate?.error ?? { code: 'SESSION_REQUIRED', message: '请先领取剪辑任务' },
+        }
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: textForResult(blocked) }],
+            isError: true,
+            structuredContent: blocked,
+          },
+        }
+      }
+      exportSession = { sessionId: gate.session.sessionId, revision: gate.session.revision }
+      const confirmation = await options.agentSession.waitForExportConfirmation(
+        gate.session.sessionId,
+        gate.session.revision,
+      )
+      if (!confirmation.approved) {
+        const blocked = {
+          ok: false,
+          summary: confirmation.message ?? '用户未确认导出',
+          error: {
+            code: confirmation.code ?? 'EXPORT_CONFIRMATION_REQUIRED',
+            message: confirmation.message ?? '用户未确认导出，未执行导出',
+          },
+        }
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: textForResult(blocked) }],
+            isError: true,
+            structuredContent: blocked,
+          },
+        }
       }
     }
 
@@ -666,7 +717,15 @@ async function handleRpc(
         },
       }, options.agentSession)
       const failureRecord = asRecord(failure)
-      options.agentSession?.toolFinished(callId, name, args, false, bridgeResponse.error ?? 'AI 剪辑页面不可用', durationMs)
+      options.agentSession?.toolFinished(
+        callId,
+        name,
+        args,
+        false,
+        bridgeResponse.error ?? 'AI 剪辑页面不可用',
+        durationMs,
+        { code: 'EDITOR_UNAVAILABLE', message: bridgeResponse.error ?? 'AI 剪辑页面不可用', retryable: true },
+      )
       return {
         jsonrpc: '2.0',
         id,
@@ -680,6 +739,14 @@ async function handleRpc(
 
     const contextualResult = addAgentContext(bridgeResponse.result, options.agentSession)
     const toolResult = asRecord(contextualResult)
+    const toolError = toolResult?.ok === false ? agentToolErrorFromResult(toolResult) : undefined
+    if (name === 'export_video' && exportSession && toolResult?.ok === true) {
+      options.agentSession?.recordExportResult(
+        exportSession.sessionId,
+        exportSession.revision,
+        exportPathFromToolResult(bridgeResponse.result),
+      )
+    }
     options.agentSession?.toolFinished(
       callId,
       name,
@@ -687,6 +754,7 @@ async function handleRpc(
       toolResult?.ok !== false,
       typeof toolResult?.summary === 'string' ? toolResult.summary : '工具调用完成',
       durationMs,
+      toolError,
     )
     const isError = toolResult?.ok === false
     return {
@@ -695,7 +763,7 @@ async function handleRpc(
       result: {
         content: contextualResult === bridgeResponse.result
           ? contentForResponse(bridgeResponse)
-          : [{ type: 'text', text: textForResult(contextualResult) }, ...contentForResponse(bridgeResponse).filter((item) => item.type !== 'text')],
+          : contentWithAgentContext(bridgeResponse, contextualResult),
         isError,
         ...(contextualResult && typeof contextualResult === 'object'
           ? { structuredContent: contextualResult }
@@ -707,24 +775,145 @@ async function handleRpc(
   return jsonRpcError(id, -32601, `不支持的方法: ${method}`)
 }
 
+function httpToolPayload(rpcResponse: JsonRpcResponse): Record<string, unknown> {
+  if (rpcResponse.error) {
+    return {
+      ok: false,
+      summary: rpcResponse.error.message,
+      error: {
+        code: `RPC_${rpcResponse.error.code}`,
+        message: rpcResponse.error.message,
+      },
+    }
+  }
+
+  const rpcResult = asRecord(rpcResponse.result)
+  const structured = asRecord(rpcResult?.structuredContent)
+  const content = Array.isArray(rpcResult?.content) ? rpcResult?.content : undefined
+  if (!structured) {
+    return {
+      ok: false,
+      summary: '工具返回了无效结果',
+      ...(content ? { content } : {}),
+    }
+  }
+
+  // The renderer bridge wraps its ToolResult in { ok, result }. HTTP callers
+  // receive the ToolResult directly while retaining session metadata and images.
+  const nested = asRecord(structured.result)
+  const sessionContext = asRecord(asRecord(structured.data)?.lunaAgent)
+  const payload = nested && typeof nested.ok === 'boolean'
+    ? {
+        ...nested,
+        ...(sessionContext
+          ? { data: { ...(asRecord(nested.data) ?? {}), lunaAgent: sessionContext } }
+          : {}),
+      }
+    : { ...structured }
+  return {
+    ...payload,
+    ...(content ? { content } : {}),
+    ...(rpcResult?.isError === true ? { isError: true } : {}),
+  }
+}
+
+function writeText(response: ServerResponse, status: number, value: string, contentType: string): void {
+  response.statusCode = status
+  response.setHeader('Content-Type', contentType)
+  response.setHeader('Content-Length', Buffer.byteLength(value))
+  response.end(value)
+}
+
+function setCorsHeaders(response: ServerResponse): void {
+  response.setHeader('Access-Control-Allow-Origin', '*')
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+}
+
 async function handleHttpRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  token: string,
+  baseUrl: string,
   options: LunaMcpServerOptions,
 ): Promise<void> {
-  if (request.method !== 'POST' || request.url !== '/rpc') {
-    writeJson(response, 404, { error: 'Not found' })
-    return
-  }
-  if (!authorized(request, token)) {
-    writeJson(response, 401, { error: 'Unauthorized' })
+  setCorsHeaders(response)
+  if (request.method === 'OPTIONS') {
+    response.statusCode = 204
+    response.end()
     return
   }
 
+  const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+  if (request.method === 'GET' && (pathname === '/' || pathname === '/.well-known/agent')) {
+    writeJson(response, 200, {
+      name: 'Luna AI Cut',
+      agent: true,
+      protocol: 'http',
+      version: '1.0.0',
+      baseUrl,
+      skill: `${baseUrl}/skill.md`,
+      tools: `${baseUrl}/tools`,
+      openapi: `${baseUrl}/openapi.json`,
+      api: `${baseUrl}/api/tools/{toolName}`,
+    })
+    return
+  }
+
+  if (request.method === 'GET' && pathname === '/skill.md') {
+    response.setHeader('Cache-Control', 'no-store')
+    writeText(response, 200, LUNA_HTTP_SKILL, 'text/markdown; charset=utf-8')
+    return
+  }
+
+  if (request.method === 'GET' && (pathname === '/tools' || pathname === '/openapi.json')) {
+    const catalog = await getToolCatalog(options)
+    if (pathname === '/tools') {
+      writeJson(response, 200, {
+        ok: true,
+        tools: catalog.tools,
+        meta: {
+          luna: {
+            editorToolsReady: catalog.editorToolsReady,
+            ...(catalog.message ? { message: catalog.message } : {}),
+          },
+        },
+      })
+    } else {
+      writeJson(response, 200, openApiDocument(baseUrl, catalog))
+    }
+    return
+  }
+
+  if (request.method !== 'POST' || (pathname !== '/rpc' && !pathname.startsWith('/api/tools/'))) {
+    writeJson(response, 404, { error: 'Not found' })
+    return
+  }
   try {
     const body = await readBody(request)
-    const parsed = JSON.parse(body) as unknown
+    const parsed = body.trim() ? JSON.parse(body) as unknown : {}
+    if (pathname.startsWith('/api/tools/')) {
+      const encodedName = pathname.slice('/api/tools/'.length)
+      const name = decodeURIComponent(encodedName)
+      if (!name || name.includes('/')) {
+        writeJson(response, 404, { error: 'Tool not found' })
+        return
+      }
+      const bodyRecord = asRecord(parsed) ?? {}
+      const args = asRecord(bodyRecord.arguments) ?? bodyRecord
+      const rpcResponse = await handleRpc({
+        jsonrpc: '2.0',
+        id: randomUUID(),
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }, options)
+      if (!rpcResponse) {
+        response.statusCode = 204
+        response.end()
+        return
+      }
+      writeJson(response, 200, httpToolPayload(rpcResponse))
+      return
+    }
     const result = await handleRpc(parsed, options)
     if (result === null) {
       response.statusCode = 204
@@ -742,41 +931,66 @@ export function createLunaMcpServer(options: LunaMcpServerOptions): LunaMcpServe
   const endpointPath = endpointPathFor(homeDir)
   let server: Server | null = null
   let endpoint: LunaMcpEndpoint | null = null
+  let startPromise: Promise<LunaMcpEndpoint> | null = null
+  let baseUrl = ''
 
   return {
     endpointPath,
     async start(): Promise<LunaMcpEndpoint> {
       if (server && endpoint) return endpoint
+      if (startPromise) return startPromise
 
-      const token = randomBytes(32).toString('hex')
-      server = createServer((request, response) => {
-        void handleHttpRequest(request, response, token, options)
-      })
-      await new Promise<void>((resolve, reject) => {
-        const current = server as Server
-        current.once('error', reject)
-        current.listen(0, '127.0.0.1', () => {
-          current.off('error', reject)
-          resolve()
+      startPromise = (async () => {
+        server = createServer((request, response) => {
+          void handleHttpRequest(request, response, baseUrl, options)
         })
-      })
+        await new Promise<void>((resolve, reject) => {
+          const current = server as Server
+          current.once('error', reject)
+          current.listen(0, '127.0.0.1', () => {
+            current.off('error', reject)
+            resolve()
+          })
+        })
 
-      const address = server.address()
-      if (!address || typeof address === 'string') throw new Error('MCP 服务启动失败')
-      endpoint = {
-        version: 1,
-        url: `http://127.0.0.1:${address.port}/rpc`,
-        token,
-        pid: process.pid,
+        const address = server?.address()
+        if (!address || typeof address === 'string') throw new Error('本机 Agent 服务启动失败')
+        baseUrl = `http://127.0.0.1:${address.port}`
+        endpoint = {
+          version: 1,
+          url: `${baseUrl}/rpc`,
+          baseUrl,
+          skillUrl: `${baseUrl}/skill.md`,
+          toolsUrl: `${baseUrl}/tools`,
+          openapiUrl: `${baseUrl}/openapi.json`,
+          apiUrl: `${baseUrl}/api/tools/{toolName}`,
+          pid: process.pid,
+        }
+        await mkdir(path.dirname(endpointPath), { recursive: true })
+        await writeFile(endpointPath, `${JSON.stringify(endpoint, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+        return endpoint
+      })()
+
+      try {
+        return await startPromise
+      } catch (error) {
+        startPromise = null
+        const current = server
+        server = null
+        baseUrl = ''
+        if (current) await new Promise<void>((resolve) => current.close(() => resolve()))
+        throw error
       }
-      await mkdir(path.dirname(endpointPath), { recursive: true })
-      await writeFile(endpointPath, `${JSON.stringify(endpoint, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
-      return endpoint
+    },
+    async getEndpoint(): Promise<LunaMcpEndpoint> {
+      return await this.start()
     },
     async stop(): Promise<void> {
       const current = server
       server = null
       endpoint = null
+      baseUrl = ''
+      startPromise = null
       if (current) {
         await new Promise<void>((resolve) => current.close(() => resolve()))
       }

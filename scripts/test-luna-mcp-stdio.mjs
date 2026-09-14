@@ -7,8 +7,9 @@ import path from 'node:path'
 import { createInterface } from 'node:readline'
 
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'luna-mcp-stdio-'))
-const token = 'stdio-test-token'
+const requestHeaders = []
 const server = createServer(async (request, response) => {
+  requestHeaders.push(request.headers)
   const chunks = []
   for await (const chunk of request) chunks.push(Buffer.from(chunk))
   const message = JSON.parse(Buffer.concat(chunks).toString('utf8'))
@@ -33,7 +34,6 @@ try {
   await writeFile(endpointPath, JSON.stringify({
     version: 1,
     url: `http://127.0.0.1:${address.port}/rpc`,
-    token,
   }))
 
   const child = spawn(process.execPath, [path.resolve(import.meta.dirname, 'luna-mcp.mjs')], {
@@ -52,6 +52,7 @@ try {
   assert.equal((await nextResponse()).result.serverInfo.name, 'test')
   child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })}\n`)
   assert.equal((await nextResponse()).result.tools[0].name, 'test_tool')
+  assert.equal(requestHeaders.every((headers) => headers.authorization === undefined), true)
 
   child.kill()
   output.close()

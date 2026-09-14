@@ -73,6 +73,57 @@ export interface AiEditorLocalMediaInspectionResult {
   items: AiEditorLocalMediaInspectionItem[]
 }
 
+export interface AiEditorLocalMediaContactSheetOptions {
+  mode?: AiEditorLocalMediaInspectionMode
+  maxWidth?: number
+  columns?: number
+}
+
+export interface AiEditorLocalMediaContactSheetCell {
+  mediaId: string
+  frameIndex: number
+  frameId: string
+  timeSec: number
+  sheetIndex: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface AiEditorLocalMediaContactSheetItem {
+  mediaId: string
+  name: string
+  kind: 'image' | 'video'
+  duration?: number
+  capturedAt: string | null
+  frames: Array<{
+    timeSec: number
+    mimeType: 'image/jpeg'
+    /** Original preview frame used by the renderer to add contact-sheet labels. */
+    base64: string
+  }>
+  error?: string
+}
+
+export interface AiEditorLocalMediaContactSheetResult {
+  mode: AiEditorLocalMediaInspectionMode
+  maxWidth: number
+  items: AiEditorLocalMediaContactSheetItem[]
+  contactSheet: {
+    mimeType: 'image/jpeg'
+    base64: string
+    width: number
+    height: number
+    columns: number
+    rows: number
+    cellWidth: number
+    cellHeight: number
+    gap: number
+    cells: AiEditorLocalMediaContactSheetCell[]
+  }
+}
+
 export interface AiEditorLocalMediaTranscriptionOptions {
   /** Recognition range start in the original video's timeline. */
   startSec?: number
@@ -142,6 +193,8 @@ export interface AiEditorMcpResponse {
 
 export type AiEditorAgentSessionStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 
+export type AiEditorAgentExportConfirmation = 'idle' | 'pending'
+
 export type AiEditorAgentPhase =
   | 'waiting'
   | 'analyzing_media'
@@ -168,6 +221,9 @@ export interface AiEditorAgentSession {
   updatedAt: string
   cancelRequested: boolean
   agentId: string | null
+  agentType: string | null
+  agentModel: string | null
+  exportConfirmation: AiEditorAgentExportConfirmation
   result?: {
     projectId?: string
     projectName?: string
@@ -176,9 +232,16 @@ export interface AiEditorAgentSession {
   }
 }
 
+export interface AiEditorAgentToolError {
+  code: string
+  message: string
+  retryable?: boolean
+  suggestedAction?: string
+}
+
 export type AiEditorAgentEvent =
   | {
-      type: 'session-created' | 'session-claimed' | 'request-updated' | 'progress' | 'result' | 'error' | 'cancel-requested' | 'cancelled'
+      type: 'session-created' | 'session-claimed' | 'request-updated' | 'progress' | 'result' | 'error' | 'cancel-requested' | 'cancelled' | 'export-confirmation-required' | 'export-confirmed' | 'export-denied'
       sequence: number
       timestamp: string
       session: AiEditorAgentSession
@@ -194,6 +257,7 @@ export type AiEditorAgentEvent =
       args?: Record<string, unknown>
       ok?: boolean
       summary?: string
+      error?: AiEditorAgentToolError
       durationMs?: number
     }
 
@@ -206,6 +270,8 @@ export interface AiEditorAgentApi {
   createRequest(request: string, projectId?: string | null): Promise<AiEditorAgentSession>
   updateRequest(sessionId: string, request: string): Promise<AiEditorAgentSession>
   cancelRequest(sessionId: string): Promise<AiEditorAgentSession>
+  confirmExport(sessionId: string): Promise<AiEditorAgentSession>
+  denyExport(sessionId: string): Promise<AiEditorAgentSession>
   getSnapshot(): Promise<AiEditorAgentSnapshot>
   onEvent(callback: (event: AiEditorAgentEvent) => void): () => void
   onActivate(callback: () => void): () => void
@@ -214,6 +280,15 @@ export interface AiEditorAgentApi {
 export interface AiEditorMcpApi {
   onRequest(callback: (request: AiEditorMcpRequest) => Promise<AiEditorMcpResponse>): () => void
   getLauncherPath(): Promise<string | null>
+  getHttpConnection(): Promise<AiEditorHttpConnection | null>
+}
+
+export interface AiEditorHttpConnection {
+  baseUrl: string
+  skillUrl: string
+  toolsUrl: string
+  openapiUrl: string
+  apiUrl: string
 }
 
 export interface AiEditorFileApi {
@@ -224,6 +299,7 @@ export interface AiEditorFileApi {
   getLocalMedia(mediaId: string): Promise<AiEditorLocalMedia>
   readLocalMediaBytes(mediaId: string): Promise<ArrayBuffer>
   inspectLocalMedia(mediaIds: string[], options?: AiEditorLocalMediaInspectionOptions): Promise<AiEditorLocalMediaInspectionResult>
+  createMediaContactSheet(mediaIds: string[], options?: AiEditorLocalMediaContactSheetOptions): Promise<AiEditorLocalMediaContactSheetResult>
   transcribeLocalMedia(mediaId: string, options?: AiEditorLocalMediaTranscriptionOptions): Promise<AiEditorLocalMediaTranscriptionResult>
   showSaveDialog(options: AiEditorFileDialogOptions): Promise<string | null>
   showOpenDialog(options: AiEditorFileDialogOptions): Promise<string | null>

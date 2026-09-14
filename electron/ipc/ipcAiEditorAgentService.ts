@@ -50,6 +50,18 @@ export function register(context: IpcContext): void {
     return agentSessionManager.cancelRequest(normalizedSessionId)
   })
 
+  ipcMain.handle('ai-editor:agent-confirm-export', (_event, sessionId: unknown) => {
+    const normalizedSessionId = stringOrNull(sessionId)
+    if (!normalizedSessionId) throw new Error('剪辑任务不存在')
+    return agentSessionManager.confirmExport(normalizedSessionId)
+  })
+
+  ipcMain.handle('ai-editor:agent-deny-export', (_event, sessionId: unknown) => {
+    const normalizedSessionId = stringOrNull(sessionId)
+    if (!normalizedSessionId) throw new Error('剪辑任务不存在')
+    return agentSessionManager.denyExport(normalizedSessionId)
+  })
+
   ipcMain.handle('ai-editor:agent-snapshot', () => agentSessionManager.snapshot())
 
   ipcMain.handle('ai-editor:agent-activate-window', () => {
