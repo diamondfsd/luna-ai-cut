@@ -319,6 +319,8 @@
   grid-template-columns: auto 42px auto auto 42px auto 42px auto;
   align-items: center;
   gap: 3px;
+  width: 100%;
+  min-width: 0;
   color: var(--muted);
   font-size: 10px;
 }
