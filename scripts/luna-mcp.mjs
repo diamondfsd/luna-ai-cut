@@ -12,7 +12,7 @@ const endpointPath = process.env.LUNA_MCP_ENDPOINT
 async function loadEndpoint() {
   try {
     const value = JSON.parse(await readFile(endpointPath, 'utf8'))
-    if (!value || typeof value.url !== 'string' || typeof value.token !== 'string') {
+    if (!value || typeof value.url !== 'string') {
       throw new Error('本机 MCP endpoint 文件无效')
     }
     return value
@@ -29,10 +29,7 @@ async function forward(message) {
   const endpoint = await loadEndpoint()
   const response = await fetch(endpoint.url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${endpoint.token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(message),
   })
   if (response.status === 204) return null

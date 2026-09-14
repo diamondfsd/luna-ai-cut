@@ -76,6 +76,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     },
     mcp: {
       getLauncherPath: () => ipcRenderer.invoke('ai-editor:mcp-launcher-path'),
+      getHttpConnection: () => ipcRenderer.invoke('ai-editor:mcp-http-connection'),
       onRequest: (callback) => {
         const listener = (_event: Electron.IpcRendererEvent, request: import('../src/shared/types').AiEditorMcpRequest): void => {
           Promise.resolve(callback(request)).then(
@@ -94,6 +95,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
       createRequest: (request, projectId) => ipcRenderer.invoke('ai-editor:agent-create-request', request, projectId ?? null),
       updateRequest: (sessionId, request) => ipcRenderer.invoke('ai-editor:agent-update-request', sessionId, request),
       cancelRequest: (sessionId) => ipcRenderer.invoke('ai-editor:agent-cancel-request', sessionId),
+      confirmExport: (sessionId) => ipcRenderer.invoke('ai-editor:agent-confirm-export', sessionId),
+      denyExport: (sessionId) => ipcRenderer.invoke('ai-editor:agent-deny-export', sessionId),
       getSnapshot: () => ipcRenderer.invoke('ai-editor:agent-snapshot'),
       onEvent: (callback) => {
         const listener = (_event: Electron.IpcRendererEvent, value: import('../src/shared/types').AiEditorAgentEvent): void => callback(value)
@@ -110,6 +113,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     getLocalMedia: (mediaId) => ipcRenderer.invoke('ai-editor:get-local-media', mediaId),
     readLocalMediaBytes: (mediaId) => ipcRenderer.invoke('ai-editor:read-local-media-bytes', mediaId),
     inspectLocalMedia: (mediaIds, options) => ipcRenderer.invoke('ai-editor:inspect-local-media', mediaIds, options),
+    createMediaContactSheet: (mediaIds, options) => ipcRenderer.invoke('ai-editor:create-media-contact-sheet', mediaIds, options),
     transcribeLocalMedia: (mediaId, options) => ipcRenderer.invoke('ai-editor:transcribe-local-media', mediaId, options),
     showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),

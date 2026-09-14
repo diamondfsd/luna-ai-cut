@@ -55,8 +55,6 @@
     "mcp:stdio": "node scripts/luna-mcp.mjs",
     "test:luna-mcp": "node scripts/test-luna-mcp-stdio.mjs",
     "test:ai-editor-agent": "node --experimental-strip-types scripts/test-ai-editor-agent-session.mjs",
-    "test:musicgen-model": "node --experimental-strip-types scripts/test-musicgen-model.mjs",
-    "test:musicgen-generation": "node scripts/test-musicgen-generation.mjs",
     "test:luna-mcp-agent-contract": "node --experimental-strip-types scripts/test-luna-mcp-agent-contract.mjs",
     "test:openreel-bridge": "node scripts/test-openreel-bridge.mjs",
     "test:model-loader": "node scripts/test-model-loader.mjs",

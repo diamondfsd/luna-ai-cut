@@ -161,6 +161,7 @@
   const getLocalMedia = (mediaId) => parentApi().getLocalMedia(mediaId)
   const readLocalMediaBytes = async (mediaId) => localArrayBuffer(await parentApi().readLocalMediaBytes(mediaId))
   const inspectLocalMedia = (mediaIds, options) => parentApi().inspectLocalMedia(mediaIds, options)
+  const createMediaContactSheet = (mediaIds, options) => parentApi().createMediaContactSheet(mediaIds, options)
   const transcribeLocalMedia = (mediaId, options) => parentApi().transcribeLocalMedia(mediaId, options)
 
   const chooseAssets = (projectId, existingPaths = []) => {
@@ -271,6 +272,8 @@
       createRequest: (request, projectId) => parentApi().agent.createRequest(request, projectId),
       updateRequest: (sessionId, request) => parentApi().agent.updateRequest(sessionId, request),
       cancelRequest: (sessionId) => parentApi().agent.cancelRequest(sessionId),
+      confirmExport: (sessionId) => parentApi().agent.confirmExport(sessionId),
+      denyExport: (sessionId) => parentApi().agent.denyExport(sessionId),
       getSnapshot: () => parentApi().agent.getSnapshot(),
       onEvent: (handler) => {
         agentEventHandler = handler
@@ -300,6 +303,7 @@
       getLocalMedia,
       readLocalMediaBytes,
       inspectLocalMedia,
+      createMediaContactSheet,
       transcribeLocalMedia,
       resolveThumbnail: (sourcePath, kind) => parentLunaApi().resolveThumbnail(sourcePath, kind),
       matchImportAsset,

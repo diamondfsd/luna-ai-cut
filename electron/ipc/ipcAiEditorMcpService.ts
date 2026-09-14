@@ -7,7 +7,6 @@ import type { IpcContext } from './context'
 import { createLunaMcpServer, type LunaMcpServer } from '../mcp/lunaMcpServer'
 import { activateAgentWindow } from './ipcAiEditorAgentService'
 import { agentSessionManager } from '../mcp/agentSessionManager'
-import { musicGenerationService } from '../features/audio/musicGenerationService'
 
 interface PendingRendererRequest {
   resolve: (response: AiEditorMcpResponse) => void
@@ -45,6 +44,18 @@ export function register(context: IpcContext): void {
     return path.join(app.getAppPath(), 'scripts', 'luna-mcp.mjs')
   })
 
+  ipcMain.handle('ai-editor:mcp-http-connection', async () => {
+    if (!mcpServer) return null
+    const endpoint = await mcpServer.getEndpoint()
+    return {
+      baseUrl: endpoint.baseUrl,
+      skillUrl: endpoint.skillUrl,
+      toolsUrl: endpoint.toolsUrl,
+      openapiUrl: endpoint.openapiUrl,
+      apiUrl: endpoint.apiUrl,
+    }
+  })
+
   ipcMain.on('ai-editor:mcp-response', (event, callId: unknown, response: unknown) => {
     if (event.sender !== context.win?.webContents || typeof callId !== 'string') return
     const request = pending.get(callId)
@@ -63,7 +74,6 @@ export function register(context: IpcContext): void {
     requestRenderer: (request) => requestRenderer(context, request),
     agentSession: agentSessionManager,
     activateWindow: () => activateAgentWindow(context),
-    musicGeneration: musicGenerationService,
   })
   void mcpServer.start().catch((error: unknown) => {
     console.error('[MCP] 本机服务启动失败', error)

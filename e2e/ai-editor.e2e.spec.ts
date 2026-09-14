@@ -8,14 +8,17 @@ test('AI 剪辑导航打开 OpenReel 编辑器', async ({ lunaApp }) => {
   await lunaApp.page.getByRole('link', { name: 'AI 剪辑' }).click()
 
   const editorFrame = lunaApp.page.locator('iframe[title="AI 剪辑"]')
+  const editor = editorFrame.contentFrame()
   await expect(editorFrame).toBeVisible()
-  await expect(editorFrame.contentFrame().locator('#root')).not.toBeEmpty({ timeout: 30_000 })
-  await editorFrame.contentFrame().getByRole('button', { name: '复制 Agent 提示词' }).click()
-  await expect(lunaApp.page.getByText('Agent 提示词已复制', { exact: true })).toBeVisible()
+  await expect(editor.locator('#root')).not.toBeEmpty({ timeout: 30_000 })
+  await editor.getByRole('textbox', { name: '剪辑目标' }).fill('生成一个 30 秒旅行短片')
+  await editor.getByRole('button', { name: '生成剪辑提示词' }).click()
+  await expect(editor.getByText('剪辑提示词已生成', { exact: true })).toBeVisible()
+  await editor.getByRole('button', { name: '复制提示词' }).click()
   const copiedPrompt = await lunaApp.page.evaluate(() => navigator.clipboard.readText())
-  expect(copiedPrompt).toContain('luna-mcp.mjs')
-  expect(copiedPrompt).toContain('tools/list')
-  expect(copiedPrompt).toContain('tools/call')
+  expect(copiedPrompt).toContain('/skill.md')
+  expect(copiedPrompt).toContain('/api/tools/')
+  expect(copiedPrompt).not.toContain('Authorization: Bearer')
 
   expect(lunaApp.runtimeErrors).toEqual([])
 })
@@ -33,7 +36,7 @@ test('AI 剪辑通过本机 MCP 返回工具并执行操作', async ({ lunaApp }
   await expect(editor.getByText('icon.png', { exact: true })).toBeVisible({ timeout: 30_000 })
 
   const endpointPath = path.join(lunaApp.temporaryRoot, 'user-data', '.luna-ai-cut', 'mcp-endpoint.json')
-  const endpoint = JSON.parse(await readFile(endpointPath, 'utf8')) as { url: string; token: string }
+  const endpoint = JSON.parse(await readFile(endpointPath, 'utf8')) as { url: string; token?: unknown }
   const client = spawn(process.execPath, [path.resolve(import.meta.dirname, '../scripts/luna-mcp.mjs')], {
     env: { ...process.env, LUNA_MCP_ENDPOINT: endpointPath },
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -41,7 +44,7 @@ test('AI 剪辑通过本机 MCP 返回工具并执行操作', async ({ lunaApp }
   const output = createInterface({ input: client.stdout, crlfDelay: Infinity })
   const outputIterator = output[Symbol.asyncIterator]()
   const nextResponse = async () => JSON.parse((await outputIterator.next()).value as string) as {
-    result?: { tools?: Array<{ name?: string }>; content?: Array<{ text?: string }> }
+    result?: { tools?: Array<{ name?: string }>; content?: Array<{ type?: string; text?: string }> }
   }
 
   try {
@@ -55,7 +58,15 @@ test('AI 剪辑通过本机 MCP 返回工具并执行操作', async ({ lunaApp }
       jsonrpc: '2.0',
       id: 3,
       method: 'tools/call',
-      params: { name: 'start_edit_session', arguments: { request: '将当前项目改名为 MCP 测试项目', agentId: 'e2e-rename' } },
+      params: {
+        name: 'start_edit_session',
+        arguments: {
+          request: '将当前项目改名为 MCP 测试项目',
+          agentId: 'e2e-rename',
+          agentType: 'Playwright E2E agent',
+          agentModel: 'e2e-model',
+        },
+      },
     })}\n`)
     const started = await nextResponse()
     expect(started.result?.content?.[0]?.text ? JSON.parse(started.result.content[0].text) : null)
@@ -76,7 +87,7 @@ test('AI 剪辑通过本机 MCP 返回工具并执行操作', async ({ lunaApp }
   }
 
   expect(endpoint.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/rpc$/)
-  expect(endpoint.token).toMatch(/^[a-f0-9]{64}$/)
+  expect(endpoint.token).toBeUndefined()
   expect(lunaApp.runtimeErrors).toEqual([])
 })
 
@@ -102,7 +113,7 @@ test('AI 剪辑通过本机 MCP 查询并导入最近本地素材', async ({ lun
   const nextResponse = async () => JSON.parse((await outputIterator.next()).value as string) as {
     result?: {
       tools?: Array<{ name?: string }>
-      content?: Array<{ text?: string }>
+      content?: Array<{ type?: string; text?: string }>
     }
   }
   const call = async (id: number, name: string, arguments_: Record<string, unknown>) => {
@@ -125,25 +136,47 @@ test('AI 剪辑通过本机 MCP 查询并导入最近本地素材', async ({ lun
     const started = await call(3, 'start_edit_session', {
       request: '从最近本地素材创建一个测试项目并导入素材',
       agentId: 'e2e-local-media',
+      agentType: 'Playwright E2E agent',
+      agentModel: 'e2e-model',
     })
     expect(started.result?.content?.[0]?.text ? JSON.parse(started.result.content[0].text) : null)
       .toMatchObject({ ok: true, data: { state: 'claimed' } })
 
-    const created = await call(4, 'create_project', { name: '本地素材查询测试项目' })
+    const skill = await call(4, 'get_editing_skill', {})
+    expect(skill.result?.content?.[0]?.text ? JSON.parse(skill.result.content[0].text) : null).toMatchObject({ ok: true })
+
+    const created = await call(5, 'create_project', { name: '本地素材查询测试项目' })
     expect(created.result?.content?.[0]?.text ? JSON.parse(created.result.content[0].text) : null).toMatchObject({ ok: true })
 
-    const listed = await call(5, 'list_local_media', { limit: 10 })
+    const listed = await call(6, 'list_local_media', { limit: 10 })
     const listedResult = listed.result?.content?.[0]?.text ? JSON.parse(listed.result.content[0].text) : null
-    expect(listedResult).toMatchObject({ ok: true, data: [{ name: 'IMG_20260830_202400_001.png', groupDay: '2026-08-30' }] })
+    expect(listedResult).toMatchObject({ ok: true, data: { value: [{ name: 'IMG_20260830_202400_001.png', groupDay: '2026-08-30' }] } })
 
-    const mediaId = listedResult.data[0].mediaId as string
-    const imported = await call(6, 'import_local_media', { mediaIds: [mediaId] })
+    const mediaId = listedResult.data.value[0].mediaId as string
+    const contactSheet = await call(7, 'create_media_contact_sheet', { mediaIds: [mediaId], columns: 1 })
+    expect(contactSheet.result?.content?.some((item) => item.type === 'image')).toBe(true)
+    const contactSheetResult = contactSheet.result?.content?.[0]?.text ? JSON.parse(contactSheet.result.content[0].text) : null
+    expect(contactSheetResult).toMatchObject({
+      ok: true,
+      data: {
+        contactSheet: { columns: 1, rows: 1, labeled: true },
+        items: [{ frames: [{
+          frameId: `${mediaId}#0`,
+          label: '#01',
+          timecode: '00:00.0',
+          cell: { sheetIndex: 0 },
+        }] }],
+      },
+    })
+    expect(contactSheet.result?.content?.[1]?.text).toContain(`#01 | IMG_20260830_202400_001.png | PHOTO`)
+
+    const imported = await call(8, 'import_local_media', { mediaIds: [mediaId] })
     expect(imported.result?.content?.[0]?.text ? JSON.parse(imported.result.content[0].text) : null).toMatchObject({ ok: true })
 
-    const media = await call(7, 'list_media', {})
+    const media = await call(9, 'list_media', {})
     expect(media.result?.content?.[0]?.text ? JSON.parse(media.result.content[0].text) : null).toMatchObject({
       ok: true,
-      data: [{ name: 'IMG_20260830_202400_001.png', type: 'image' }],
+      data: { value: [{ name: 'IMG_20260830_202400_001.png', type: 'image' }] },
     })
   } finally {
     client.stdin.end()
@@ -170,8 +203,10 @@ if (process.env.LUNA_EXTERNAL_AGENT_TEST === '1') {
     await expect(editor.locator('#root')).not.toBeEmpty({ timeout: 30_000 })
     await expect(editor.getByRole('button', { name: 'AI 剪辑项目' })).toBeVisible({ timeout: 30_000 })
 
-    await editor.getByRole('button', { name: '复制 Agent 提示词' }).click()
-    await expect(lunaApp.page.getByText('Agent 提示词已复制', { exact: true })).toBeVisible()
+    await editor.getByRole('textbox', { name: '剪辑目标' }).fill('将当前项目改名并保存')
+    await editor.getByRole('button', { name: '生成剪辑提示词' }).click()
+    await expect(editor.getByText('剪辑提示词已生成', { exact: true })).toBeVisible()
+    await editor.getByRole('button', { name: '复制提示词' }).click()
     const prompt = await lunaApp.page.evaluate(() => navigator.clipboard.readText())
     const endpointPath = path.join(lunaApp.temporaryRoot, 'user-data', '.luna-ai-cut', 'mcp-endpoint.json')
     const markerPath = path.join(lunaApp.temporaryRoot, 'external-agent-done')

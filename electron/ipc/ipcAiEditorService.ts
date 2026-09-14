@@ -7,6 +7,7 @@ import path from 'node:path'
 import type {
   AiEditorFileDialogOptions,
   AiEditorFileFilter,
+  AiEditorLocalMediaContactSheetOptions,
   AiEditorLocalMediaInspectionOptions,
   AiEditorLocalMediaQuery,
 } from '../../src/shared/types'
@@ -17,7 +18,7 @@ import {
   listAiEditorLocalMedia,
   readAiEditorLocalMediaBytes,
 } from '../features/ai-editor/aiEditorLocalMediaService'
-import { inspectAiEditorLocalMedia } from '../features/ai-editor/aiEditorMediaAnalysisService'
+import { createAiEditorLocalMediaContactSheet, inspectAiEditorLocalMedia } from '../features/ai-editor/aiEditorMediaAnalysisService'
 import { transcribeAiEditorLocalMedia } from '../features/ai-editor/aiEditorSpeechService'
 import {
   createAiEditorProject,
@@ -160,6 +161,10 @@ export function register(): void {
 
   ipcMain.handle('ai-editor:inspect-local-media', async (_event, mediaIds: string[], options: AiEditorLocalMediaInspectionOptions = {}) => {
     return inspectAiEditorLocalMedia(mediaIds, options)
+  })
+
+  ipcMain.handle('ai-editor:create-media-contact-sheet', async (_event, mediaIds: string[], options: AiEditorLocalMediaContactSheetOptions = {}) => {
+    return createAiEditorLocalMediaContactSheet(mediaIds, options)
   })
 
   ipcMain.handle('ai-editor:transcribe-local-media', async (_event, mediaId: string, options = {}) => {

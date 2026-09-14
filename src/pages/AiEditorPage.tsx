@@ -5,7 +5,7 @@ import type { AiEditorMediaSource } from '../shared/aiEditor'
 import type { AiEditorAgentEvent, AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
-import { buildAiEditorAgentPrompt } from './aiEditorAgentPrompt'
+import { buildAiEditorHttpAgentPrompt } from './aiEditorAgentPrompt'
 import './AiEditorPage.css'
 
 interface AiEditorLocationState {
@@ -366,13 +366,14 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
         const request = event.data
         const target = frameRef.current?.contentWindow
         if (!target) return
-        void window.luna.aiEditor.mcp.getLauncherPath()
-          .then((launcherPath) => {
+        void window.luna.aiEditor.mcp.getHttpConnection()
+          .then((connection) => {
+            if (!connection) throw new Error('本机 Agent 服务尚未启动')
             postAgentPromptResponse(target, {
               source: 'luna-host',
               type: 'agent-prompt-generated',
               requestId: request.requestId,
-              prompt: buildAiEditorAgentPrompt(launcherPath, request.request),
+              prompt: buildAiEditorHttpAgentPrompt(connection, request.request),
             })
           })
           .catch((error: unknown) => {
