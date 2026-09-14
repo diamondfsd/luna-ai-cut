@@ -192,10 +192,10 @@ function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFo
     : 0
   const liveStartFrame = liveMarker ? frameIndexAtTime(liveMarker.startTime, frameRate) : 0
   const liveEndFrame = liveMarker
-    ? Math.max(liveStartFrame, frameIndexAtTime(liveMarker.endTime, frameRate) - 1)
+    ? frameIndexAtTime(liveMarker.endTime, frameRate) - 1
     : 0
   const liveCoverFrame = liveMarker
-    ? Math.max(liveStartFrame, Math.min(frameIndexAtTime(liveMarker.coverTime, frameRate), liveEndFrame))
+    ? frameIndexAtTime(liveMarker.coverTime, frameRate)
     : 0
   useEffect(() => {
     if (!liveDurationFocusedRef.current && liveDuration !== null) setLiveDurationText(formatLiveDuration(liveDuration))
@@ -354,12 +354,10 @@ function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFo
                 onChange={(value) => {
                   const frame = Number(value)
                   if (!Number.isInteger(frame)) return
-                  const clamped = Math.max(liveStartFrame, Math.min(frame, liveEndFrame))
-                  onCoverTimeChange(timeAtFrame(clamped, frameRate))
+                  onCoverTimeChange(timeAtFrame(frame, frameRate))
                 }}
                 onStep={(delta) => {
-                  const frame = Math.max(liveStartFrame, Math.min(liveCoverFrame + delta, liveEndFrame))
-                  onCoverTimeChange(timeAtFrame(frame, frameRate))
+                  onCoverTimeChange(timeAtFrame(liveCoverFrame + delta, frameRate))
                 }}
                 onClick={(event) => event.stopPropagation()}
               />
@@ -537,10 +535,7 @@ export function TrimPanel({
   }
 
   const setLiveCover = (marker: Extract<VideoOutputMarker, { kind: 'live' }>, coverTime: number) => {
-    const nextCoverTime = Math.max(
-      marker.startTime,
-      Math.min(snapTimeToFrame(coverTime, frameRate), lastSourceFrameTime(marker.endTime, frameRate)),
-    )
+    const nextCoverTime = snapTimeToFrame(coverTime, frameRate)
     const nextMarker = { ...marker, coverTime: nextCoverTime }
     onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
     onLiveSelectionChange({
@@ -594,10 +589,7 @@ export function TrimPanel({
       ...marker,
       startTime: timeAtFrame(nextStartFrame, frameRate),
       endTime: timeAtFrame(nextEndFrame + 1, frameRate),
-      coverTime: timeAtFrame(
-        Math.max(nextStartFrame, Math.min(frameIndexAtTime(marker.coverTime, frameRate), nextEndFrame)),
-        frameRate,
-      ),
+      coverTime: marker.coverTime,
     }
     onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
     onLiveSelectionChange({
