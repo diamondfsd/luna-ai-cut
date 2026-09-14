@@ -295,47 +295,6 @@ function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFo
               onClick={(event) => event.stopPropagation()}
             />
             <span className="workspace-trim-live-duration-unit">秒</span>
-            <div className="workspace-trim-live-range-control">
-              <span>封面:</span>
-              <Input
-                className="workspace-trim-live-range-input"
-                variant="compact"
-                type="number"
-                step={1}
-                value={liveCoverFrame}
-                aria-label={`${displayLabel}封面帧`}
-                onChange={(event) => {
-                  const frame = Number(event.target.value)
-                  if (!Number.isInteger(frame)) return
-                  onCoverTimeChange(timeAtFrame(frame, frameRate))
-                }}
-                onClick={(event) => event.stopPropagation()}
-              />
-              <span>帧</span>
-              <span>范围:</span>
-              <Input
-                className="workspace-trim-live-range-input"
-                variant="compact"
-                type="number"
-                step={1}
-                value={liveStartFrame}
-                aria-label={`${displayLabel}开始帧`}
-                onChange={(event) => onRangeFrameChange('start', event.target.value)}
-                onClick={(event) => event.stopPropagation()}
-              />
-              <span>-</span>
-              <Input
-                className="workspace-trim-live-range-input"
-                variant="compact"
-                type="number"
-                step={1}
-                value={liveEndFrame}
-                aria-label={`${displayLabel}结束帧`}
-                onChange={(event) => onRangeFrameChange('end', event.target.value)}
-                onClick={(event) => event.stopPropagation()}
-              />
-              <span>帧</span>
-            </div>
           </div>
         ) : null}
         {videoMarker ? (
@@ -361,6 +320,49 @@ function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFo
           </div>
         ) : null}
       </div>
+      {liveMarker ? (
+        <div className="workspace-trim-live-range-control">
+          <span>封面:</span>
+          <Input
+            className="workspace-trim-live-range-input"
+            variant="compact"
+            type="number"
+            step={1}
+            value={liveCoverFrame}
+            aria-label={`${displayLabel}封面帧`}
+            onChange={(event) => {
+              const frame = Number(event.target.value)
+              if (!Number.isInteger(frame)) return
+              onCoverTimeChange(timeAtFrame(frame, frameRate))
+            }}
+            onClick={(event) => event.stopPropagation()}
+          />
+          <span>帧</span>
+          <span>范围:</span>
+          <Input
+            className="workspace-trim-live-range-input"
+            variant="compact"
+            type="number"
+            step={1}
+            value={liveStartFrame}
+            aria-label={`${displayLabel}开始帧`}
+            onChange={(event) => onRangeFrameChange('start', event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+          />
+          <span>-</span>
+          <Input
+            className="workspace-trim-live-range-input"
+            variant="compact"
+            type="number"
+            step={1}
+            value={liveEndFrame}
+            aria-label={`${displayLabel}结束帧`}
+            onChange={(event) => onRangeFrameChange('end', event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+          />
+          <span>帧</span>
+        </div>
+      ) : null}
     </div>
   )
 }
