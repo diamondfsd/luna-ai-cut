@@ -51,12 +51,16 @@
 }
 
 .workspace-trim-frame-input {
+  display: block;
   width: 58px;
+  max-width: 58px;
   min-width: 0;
-  flex: 0 0 58px;
+  flex: none;
+  justify-self: start;
 }
 
 .workspace-trim-number-input {
+  display: block;
   position: relative;
   min-width: 0;
 }
@@ -68,6 +72,7 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: right;
+  flex: none;
   -moz-appearance: textfield;
 }
 
@@ -370,9 +375,12 @@
 }
 
 .workspace-trim-live-range-input {
+  display: block;
   width: 42px;
+  max-width: 42px;
   min-width: 0;
-  flex: 0 0 42px;
+  flex: none;
+  justify-self: start;
 }
 
 .workspace-trim-video-progress-control strong {
