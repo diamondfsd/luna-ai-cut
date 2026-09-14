@@ -1,6 +1,6 @@
-import { Camera, ChevronDown, ChevronUp, CircleCheck, Images, Pause, Play, Plus, Trash2, Video } from 'lucide-react'
+import { Camera, CircleCheck, Images, Pause, Play, Plus, Trash2, Video } from 'lucide-react'
 import { Slider as RadixSlider } from 'radix-ui'
-import { useCallback, useEffect, useRef, useState, type MouseEventHandler } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button, IconButton, Input, Tooltip, toast } from '../../ui'
 import { filePathToPreviewUrl } from '../../lib/fileUtils'
@@ -103,56 +103,6 @@ function markerLabel(marker: VideoOutputMarker): string {
   if (marker.kind === 'photo') return '照片'
   if (marker.kind === 'live') return 'Live 图'
   return '视频'
-}
-
-interface FrameNumberInputProps {
-  value: number
-  ariaLabel: string
-  onChange: (value: string) => void
-  onStep: (delta: number) => void
-  className: string
-  onClick?: MouseEventHandler<HTMLInputElement>
-}
-
-function FrameNumberInput({ value, ariaLabel, onChange, onStep, className, onClick }: FrameNumberInputProps) {
-  return (
-    <div className={`workspace-trim-number-input ${className}`}>
-      <Input
-        className="workspace-trim-number-input-field"
-        variant="compact"
-        type="number"
-        step={1}
-        value={value}
-        aria-label={ariaLabel}
-        onChange={(event) => onChange(event.target.value)}
-        onClick={onClick}
-      />
-      <div className="workspace-trim-number-stepper">
-        <IconButton
-          className="workspace-trim-number-step"
-          variant="ghost"
-          size="mini"
-          icon={<ChevronUp size={9} strokeWidth={2.5} />}
-          aria-label={`${ariaLabel}增加一帧`}
-          onClick={(event) => {
-            event.stopPropagation()
-            onStep(1)
-          }}
-        />
-        <IconButton
-          className="workspace-trim-number-step"
-          variant="ghost"
-          size="mini"
-          icon={<ChevronDown size={9} strokeWidth={2.5} />}
-          aria-label={`${ariaLabel}减少一帧`}
-          onClick={(event) => {
-            event.stopPropagation()
-            onStep(-1)
-          }}
-        />
-      </div>
-    </div>
-  )
 }
 
 interface MarkerRowProps {
@@ -347,37 +297,41 @@ function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFo
             <span className="workspace-trim-live-duration-unit">秒</span>
             <div className="workspace-trim-live-range-control">
               <span>封面:</span>
-              <FrameNumberInput
+              <Input
                 className="workspace-trim-live-range-input"
+                variant="compact"
+                type="number"
+                step={1}
                 value={liveCoverFrame}
-                ariaLabel={`${displayLabel}封面帧`}
-                onChange={(value) => {
-                  const frame = Number(value)
+                aria-label={`${displayLabel}封面帧`}
+                onChange={(event) => {
+                  const frame = Number(event.target.value)
                   if (!Number.isInteger(frame)) return
                   onCoverTimeChange(timeAtFrame(frame, frameRate))
-                }}
-                onStep={(delta) => {
-                  onCoverTimeChange(timeAtFrame(liveCoverFrame + delta, frameRate))
                 }}
                 onClick={(event) => event.stopPropagation()}
               />
               <span>帧</span>
               <span>范围:</span>
-              <FrameNumberInput
+              <Input
                 className="workspace-trim-live-range-input"
+                variant="compact"
+                type="number"
+                step={1}
                 value={liveStartFrame}
-                ariaLabel={`${displayLabel}开始帧`}
-                onChange={(value) => onRangeFrameChange('start', value)}
-                onStep={(delta) => onRangeFrameChange('start', String(liveStartFrame + delta))}
+                aria-label={`${displayLabel}开始帧`}
+                onChange={(event) => onRangeFrameChange('start', event.target.value)}
                 onClick={(event) => event.stopPropagation()}
               />
               <span>-</span>
-              <FrameNumberInput
+              <Input
                 className="workspace-trim-live-range-input"
+                variant="compact"
+                type="number"
+                step={1}
                 value={liveEndFrame}
-                ariaLabel={`${displayLabel}结束帧`}
-                onChange={(value) => onRangeFrameChange('end', value)}
-                onStep={(delta) => onRangeFrameChange('end', String(liveEndFrame + delta))}
+                aria-label={`${displayLabel}结束帧`}
+                onChange={(event) => onRangeFrameChange('end', event.target.value)}
                 onClick={(event) => event.stopPropagation()}
               />
               <span>帧</span>
@@ -651,12 +605,14 @@ export function TrimPanel({
               onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
             />
             <span className="workspace-trim-frame-label">开始帧</span>
-            <FrameNumberInput
+            <Input
               className="workspace-trim-frame-input"
+              variant="compact"
+              type="number"
+              step={1}
               value={frameIndexAtTime(startTime, frameRate)}
-              ariaLabel="开始帧"
-              onChange={(value) => commitFrame('start', value)}
-              onStep={(delta) => commitFrame('start', String(frameIndexAtTime(startTime, frameRate) + delta))}
+              aria-label="开始帧"
+              onChange={(event) => commitFrame('start', event.target.value)}
             />
           </div>
         </div>
@@ -674,12 +630,14 @@ export function TrimPanel({
               onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
             />
             <span className="workspace-trim-frame-label">结束帧</span>
-            <FrameNumberInput
+            <Input
               className="workspace-trim-frame-input"
+              variant="compact"
+              type="number"
+              step={1}
               value={frameIndexAtTime(endTime, frameRate)}
-              ariaLabel="结束帧"
-              onChange={(value) => commitFrame('end', value)}
-              onStep={(delta) => commitFrame('end', String(frameIndexAtTime(endTime, frameRate) + delta))}
+              aria-label="结束帧"
+              onChange={(event) => commitFrame('end', event.target.value)}
             />
           </div>
         </div>
