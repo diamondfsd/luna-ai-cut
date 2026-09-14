@@ -192,9 +192,13 @@ async function renderContactSheet(
       Buffer.from(frame.base64, 'base64'),
     )))
     const filter = [
-      // Use an explicit fit calculation so rounding can never make the
-      // scaled frame larger than the pad target.
-      `scale=w='if(gt(iw*${cellHeight},ih*${cellWidth}),${cellWidth},-2)':h='if(gt(iw*${cellHeight},ih*${cellWidth}),-2,${cellHeight})'`,
+      // Normalize pixel aspect ratio before fitting. Some camera frames carry
+      // a non-square SAR; without this, FFmpeg can round the fitted output
+      // one pixel beyond the pad target and abort the entire sheet.
+      'setsar=1',
+      // Truncate both dimensions to even values inside the target cell.
+      // Using -2 for the unconstrained dimension can round 135px to 136px.
+      `scale=w='trunc(min(${cellWidth}/iw\\,${cellHeight}/ih)*iw/2)*2':h='trunc(min(${cellWidth}/iw\\,${cellHeight}/ih)*ih/2)*2'`,
       `pad=w=${cellWidth}:h=${cellHeight}:x=(ow-iw)/2:y=(oh-ih)/2:color=0x111111`,
       `tile=${columns}x${rows}:padding=${CONTACT_SHEET_GAP}:margin=${CONTACT_SHEET_GAP}:color=0x111111`,
     ].join(',')

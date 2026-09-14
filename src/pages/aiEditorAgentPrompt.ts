@@ -57,7 +57,7 @@ ${userRequest.trim()}
 3. 使用联络表时优先阅读图片内的编号和工具返回的文本索引；只能根据 data.items[].frames[] 中显式的 label、mediaId、frameIndex、frameId、timeSec、timecode 和 cell 坐标判断每个格子对应关系，不能让 Agent 自己写拼图脚本，也不能只按图片顺序猜测。若当前多模态客户端无法稳定对应，退化为每次只传一个 mediaId。
 4. 根据代表帧选择候选素材；对准备使用的视频调用 inspect_local_media 的 detail 模式检查开头、中间和结尾帧，确认入点和出点。
 5. 根据画面内容选择需要的 mediaId，调用 create_project 创建项目。项目会自动落盘、设为当前项目并自动进入编辑器，不要要求用户手动创建项目。
-6. 调用 import_local_media，把选中的 mediaId 导入刚创建的当前项目。读取 data.status、importedMediaIds、failedMediaIds 和逐条 results；部分成功时不要重复导入成功项，先 list_media 核对，再只处理失败项。
+6. 调用 import_local_media，把选中的 mediaId 导入刚创建的当前项目；每批最多 4 个。该工具会立即返回 jobId，必须轮询 get_local_media_import_status，直到 status 为 completed、partial 或 failed，processing 期间不得继续编辑。读取 importedMediaIds、failedMediaIds 和逐条 results；部分成功时不要重复导入成功项，先 list_media 核对，再只处理失败项。若 HTTP 请求超时，不要重复提交原批次，继续轮询原 jobId。
 7. 导入后调用 list_media 获取项目内的 mediaId，再继续添加轨道、片段、裁剪、字幕、转场和导出。
 
 当用户明确说“口播”“访谈”“解说”“教程”“演讲”或“对话”时，使用口播专用流程：
@@ -72,7 +72,7 @@ ${userRequest.trim()}
 
 如果用户明确要继续已有项目，先调用 list_projects，再根据结果调用 open_project；如果用户没有要求新建或切换项目，继续操作当前已打开项目。
 
-常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
+常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、import_local_media、get_local_media_import_status、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
 
 执行剪辑时请遵守：
 
@@ -87,7 +87,7 @@ ${userRequest.trim()}
 - add_transition 成功后用 list_transitions 核对实际类型、时长和两端 clipId；没有读回结果时不得把转场说成已生效。
 - 新增片段优先在一次 add_clip 中传入素材内的 inPoint/outPoint，让落位和裁剪原子完成，duration 自动等于 outPoint-inPoint；未传入时才加入完整源素材再 trim_clip。trim_clip 的时间点是素材内时间，startTime 是时间线位置且不会因 trim 自动改变。每次写入后立即 list_clips/get_clip 校验时间、轨道和重叠情况。
 - 每次写操作后都要读取对应状态确认实际生效。发现结果不一致时停止继续写入，读取状态并只修正一次。
-- 导入结果为 PARTIAL_SUCCESS 时按逐条 results 处理，不要整批重试。全部失败时停止并上报 failed。
+- 导入结果为 PARTIAL_SUCCESS 时按逐条 results 处理，不要整批重试；若 status 仍为 queued/processing，不得继续编辑。全部失败时停止并上报 failed。工具失败后必须查看 error.code、error.retryable 和 error.suggestedAction；只有明确可修复且 retryable=true 时最多调整一次，重复失败立即上报 failed。
 - 导出前用 list_clips/get_editor_state 做结构自检；若 tools/list 中存在且 schema 适用于当前项目的预览工具，再抽查片头、主要切点和片尾。当前 preview_frame 可能只适用于要求 groupId/timeMs 的多机位场景，schema 不匹配时不要强行调用。
 - 普通旅行/出游短片在用户没有要求纯纪实时，叙事剪辑完成后必须再做一次包装 pass：最强画面先冷开约 0.5-0.8 秒，再用 create_text_clip + update_text_clip 添加 0.8-1.5 秒事实可靠的标题，显式传入可读 style、fade 或 slide-up 入场动画和安全区 transform；画面合适时至少加入 1 张照片作为节奏停顿或定场，并用 add_keyframe/set_clip_keyframes 给 2-4 个关键视频或照片做轻微 push/pull；在场景边界添加 1-2 个有目的的转场，片尾用视频 opacity 关键帧和 set_clip_fade 分别收束。标题需要可读性时才加低透明度 create_shape_clip scrim。不要只添加一条裸文字就结束，也不要给每个片段机械套效果；文字只用用户提供的日期/地点/主题，不编造事实。
 - 工具调用会自动进入 Luna 的进度面板；report_edit_progress 只报告关键节点：开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认，以及必要的最终状态。
