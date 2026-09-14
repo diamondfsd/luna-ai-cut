@@ -22,6 +22,7 @@ interface ModelFileOptions {
   onProgress?: (progress: ModelFileProgress) => void
   fetcher?: typeof fetch
   label?: string
+  maxBytes?: number
 }
 
 export { writeAll }
@@ -33,7 +34,7 @@ export async function loadVerifiedModelFile(
 ): Promise<string> {
   const downloadOptions: DownloadOptions = {
     ...options,
-    maxBytes: MAX_MODEL_BYTES,
+    maxBytes: options.maxBytes ?? MAX_MODEL_BYTES,
     label: options.label ?? '模型',
     onProgress: options.onProgress
       ? ({ completedBytes, totalBytes }) => options.onProgress?.({ completedBytes, totalBytes })

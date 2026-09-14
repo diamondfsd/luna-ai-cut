@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { AiEditorAgentPhase, AiEditorMcpContent, AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
-import { AgentSessionManager, type AgentToolResult } from './agentSessionManager'
+import { AgentSessionError, AgentSessionManager, type AgentToolResult } from './agentSessionManager.ts'
 
 const MCP_PROTOCOL_VERSION = '2024-11-05'
 const MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -42,6 +42,15 @@ export interface LunaMcpServerOptions {
   requestRenderer(request: AiEditorMcpRequest): Promise<AiEditorMcpResponse>
   agentSession?: AgentSessionManager
   activateWindow?: () => void | Promise<void>
+  musicGeneration?: MusicGenerationGateway
+}
+
+export interface MusicGenerationGateway {
+  getStatus(): Promise<unknown>
+  start(request: { prompt: string; durationSec: number; outputPath?: string }): Promise<unknown>
+  getTask(taskId: string): unknown
+  generate(request: { prompt: string; durationSec: number; outputPath?: string }): Promise<unknown>
+  cancel(taskId: string): unknown
 }
 
 export interface LunaMcpServer {
@@ -88,6 +97,20 @@ function contentForResponse(response: AiEditorMcpResponse): AiEditorMcpContent[]
 
 const AGENT_TASK_TOOLS = [
   {
+    name: 'start_edit_session',
+    description: 'Create and immediately claim an editing session for a request that came from outside Luna AI Cut, such as another Agent chat. Use the exact user request; do not invent a sessionId.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        request: { type: 'string', minLength: 1, description: 'The exact user editing request received by the external Agent.' },
+        agentId: { type: 'string', description: 'Optional stable name for this external Agent.' },
+        projectId: { type: 'string', description: 'Optional existing project id to associate with the session.' },
+      },
+      required: ['request'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'wait_for_edit_request',
     description: 'Wait for and claim the latest user editing request from Luna AI Cut. Call this before editing tools.',
     inputSchema: {
@@ -120,7 +143,7 @@ const AGENT_TASK_TOOLS = [
       properties: {
         sessionId: { type: 'string' },
         revision: { type: 'integer', minimum: 1 },
-        phase: { type: 'string', enum: ['waiting', 'analyzing_media', 'creating_project', 'importing_media', 'editing', 'captioning', 'saving', 'exporting', 'completed', 'failed', 'cancelled'] },
+        phase: { type: 'string', enum: ['waiting', 'analyzing_media', 'creating_project', 'importing_media', 'editing', 'captioning', 'saving', 'exporting'] },
         progress: { type: 'number', minimum: 0, maximum: 100 },
         message: { type: 'string' },
       },
@@ -167,7 +190,68 @@ const AGENT_TASK_TOOLS = [
   },
 ] as const
 
+const MUSIC_TOOLS = [
+  {
+    name: 'get_music_generation_status',
+    description: 'Return the local MusicGen model status and recent background-music tasks. This tool never downloads models or dependencies.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'generate_music',
+    description: 'Generate a local WAV background-music clip with MusicGen. Use instrumental, no-vocals wording by default; the duration is limited to 1-30 seconds per clip.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', minLength: 1, maxLength: 2_000, description: 'A concise description of instrumental background music.' },
+        durationSec: { type: 'number', minimum: 1, maximum: 30, default: 10, description: 'Clip duration in seconds.' },
+        outputPath: { type: 'string', description: 'Optional WAV path under the local generated-audio directory.' },
+      },
+      required: ['prompt'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'start_music_generation',
+    description: 'Start local MusicGen background-music generation and return a task id immediately. Poll with get_music_generation or cancel it with cancel_music_generation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', minLength: 1, maxLength: 2_000 },
+        durationSec: { type: 'number', minimum: 1, maximum: 30, default: 10 },
+        outputPath: { type: 'string', description: 'Optional WAV path under the local generated-audio directory.' },
+      },
+      required: ['prompt'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_music_generation',
+    description: 'Return the status, progress, error, or output of a MusicGen generation task.',
+    inputSchema: {
+      type: 'object',
+      properties: { taskId: { type: 'string', minLength: 1 } },
+      required: ['taskId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'cancel_music_generation',
+    description: 'Cancel a running local MusicGen generation task.',
+    inputSchema: {
+      type: 'object',
+      properties: { taskId: { type: 'string', minLength: 1 } },
+      required: ['taskId'],
+      additionalProperties: false,
+    },
+  },
+] as const
+
 const AGENT_TOOL_NAMES = new Set<string>(AGENT_TASK_TOOLS.map((tool) => tool.name))
+const MUSIC_TOOL_NAMES = new Set<string>(MUSIC_TOOLS.map((tool) => tool.name))
 
 function stringArg(args: Record<string, unknown>, name: string): string | null {
   const value = args[name]
@@ -177,6 +261,26 @@ function stringArg(args: Record<string, unknown>, name: string): string | null {
 function numberArg(args: Record<string, unknown>, name: string): number | undefined {
   const value = args[name]
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function integerArg(args: Record<string, unknown>, name: string): number | undefined {
+  const value = numberArg(args, name)
+  return value !== undefined && Number.isInteger(value) ? value : undefined
+}
+
+const AGENT_PROGRESS_PHASES = new Set<AiEditorAgentPhase>([
+  'waiting',
+  'analyzing_media',
+  'creating_project',
+  'importing_media',
+  'editing',
+  'captioning',
+  'saving',
+  'exporting',
+])
+
+function isAgentProgressPhase(value: string | null): value is AiEditorAgentPhase {
+  return value !== null && AGENT_PROGRESS_PHASES.has(value as AiEditorAgentPhase)
 }
 
 function agentToolResponse(result: AgentToolResult | Record<string, unknown>): AiEditorMcpResponse {
@@ -205,20 +309,40 @@ async function handleAgentTaskTool(
   })
 
   try {
+    if (name === 'start_edit_session') {
+      const request = stringArg(args, 'request')
+      if (!request) return agentInvalidParams('缺少 request，请传入用户原始剪辑要求')
+      const result = manager.startExternalRequest(
+        request,
+        stringArg(args, 'agentId'),
+        stringArg(args, 'projectId'),
+      )
+      await options.activateWindow?.()
+      return agentToolResponse({
+        ok: true,
+        summary: '已创建并领取外部剪辑任务',
+        data: result,
+      })
+    }
+
     if (name === 'wait_for_edit_request') {
       const result = await manager.waitForRequest(stringArg(args, 'agentId'), numberArg(args, 'timeoutSec'))
       if (result.state === 'claimed') await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
         summary: result.state === 'claimed' ? '已领取 Luna 剪辑任务' : '当前没有新的剪辑任务',
-        data: result,
+        data: result.state === 'idle'
+          ? { ...result, nextAction: '如任务来自外部对话，请调用 start_edit_session 并传入用户原始要求' }
+          : result,
       })
     }
 
     if (name === 'get_edit_request') {
       const sessionId = stringArg(args, 'sessionId')
       if (!sessionId) return agentInvalidParams('缺少 sessionId')
-      const result = manager.getRequest(sessionId, numberArg(args, 'knownRevision'))
+      const knownRevision = args.knownRevision === undefined ? undefined : integerArg(args, 'knownRevision')
+      if (args.knownRevision !== undefined && knownRevision === undefined) return agentInvalidParams('knownRevision 必须是正整数')
+      const result = manager.getRequest(sessionId, knownRevision)
       return agentToolResponse({
         ok: true,
         summary: result.changed ? '用户剪辑要求已更新' : '剪辑要求没有变化',
@@ -228,11 +352,11 @@ async function handleAgentTaskTool(
 
     if (name === 'report_edit_progress') {
       const sessionId = stringArg(args, 'sessionId')
-      const revision = numberArg(args, 'revision')
-      const phase = stringArg(args, 'phase') as AiEditorAgentPhase | null
+      const revision = integerArg(args, 'revision')
+      const phase = stringArg(args, 'phase')
       const progress = numberArg(args, 'progress')
       const message = stringArg(args, 'message')
-      if (!sessionId || revision === undefined || !phase || progress === undefined || !message) {
+      if (!sessionId || revision === undefined || !isAgentProgressPhase(phase) || progress === undefined || progress < 0 || progress > 100 || !message) {
         return agentInvalidParams('缺少进度上报参数')
       }
       return agentToolResponse(manager.reportProgress(sessionId, revision, phase, progress, message))
@@ -240,7 +364,7 @@ async function handleAgentTaskTool(
 
     if (name === 'report_edit_result') {
       const sessionId = stringArg(args, 'sessionId')
-      const revision = numberArg(args, 'revision')
+      const revision = integerArg(args, 'revision')
       const status = stringArg(args, 'status')
       if (!sessionId || revision === undefined || (status !== 'completed' && status !== 'failed' && status !== 'cancelled')) {
         return agentInvalidParams('缺少结果上报参数')
@@ -266,7 +390,56 @@ async function handleAgentTaskTool(
     return agentToolResponse({ ok: true, summary: '已请求停止剪辑任务', data: manager.cancelRequest(sessionId) })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return agentToolResponse({ ok: false, summary: message, error: { code: 'AGENT_SESSION_ERROR', message } })
+    const code = error instanceof AgentSessionError ? error.code : 'AGENT_SESSION_ERROR'
+    return agentToolResponse({ ok: false, summary: message, error: { code, message } })
+  }
+}
+
+function musicToolResponse(data: unknown): AiEditorMcpResponse {
+  return { ok: true, result: { ok: true, summary: '音乐工具调用完成', data } }
+}
+
+function musicToolError(code: string, message: string): AiEditorMcpResponse {
+  return {
+    ok: true,
+    result: { ok: false, summary: message, error: { code, message } },
+  }
+}
+
+async function handleMusicTool(
+  name: string,
+  args: Record<string, unknown>,
+  gateway?: MusicGenerationGateway,
+): Promise<AiEditorMcpResponse | null> {
+  if (!MUSIC_TOOL_NAMES.has(name)) return null
+  if (!gateway) return musicToolError('UNSUPPORTED', '本地音乐工具不可用')
+
+  try {
+    if (name === 'get_music_generation_status') return musicToolResponse(await gateway.getStatus())
+
+    const prompt = stringArg(args, 'prompt')
+    const durationSec = args.durationSec === undefined ? 10 : numberArg(args, 'durationSec')
+    const outputPath = stringArg(args, 'outputPath') ?? undefined
+    if (name === 'generate_music' || name === 'start_music_generation') {
+      if (!prompt) return musicToolError('INVALID_PARAMS', '缺少 prompt，请描述需要的背景音乐')
+      if (durationSec === undefined || durationSec < 1 || durationSec > 30) return musicToolError('INVALID_PARAMS', 'durationSec 必须在 1 到 30 秒之间')
+      const request = { prompt, durationSec, ...(outputPath ? { outputPath } : {}) }
+      return musicToolResponse(name === 'generate_music'
+        ? await gateway.generate(request)
+        : await gateway.start(request))
+    }
+
+    const taskId = stringArg(args, 'taskId')
+    if (!taskId) return musicToolError('INVALID_PARAMS', '缺少 taskId')
+    if (name === 'get_music_generation') {
+      const result = gateway.getTask(taskId)
+      if (!result) return musicToolError('TASK_NOT_FOUND', 'MusicGen 任务不存在')
+      return musicToolResponse(result)
+    }
+    return musicToolResponse(gateway.cancel(taskId))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return musicToolError('MUSIC_GENERATION_FAILED', message)
   }
 }
 
@@ -368,9 +541,30 @@ async function handleRpc(
       callId: randomUUID(),
       kind: 'listTools',
     })
-    if (!bridgeResponse.ok) return jsonRpcError(id, -32000, bridgeResponse.error ?? 'AI 剪辑页面不可用')
+    if (!bridgeResponse.ok) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          tools: [...AGENT_TASK_TOOLS, ...MUSIC_TOOLS],
+          _meta: {
+            luna: {
+              editorToolsReady: false,
+              message: bridgeResponse.error ?? 'AI 剪辑页面尚未加载，请领取任务后激活 Luna 并重新调用 tools/list',
+            },
+          },
+        },
+      }
+    }
     const rendererTools = Array.isArray(bridgeResponse.result) ? bridgeResponse.result : []
-    return { jsonrpc: '2.0', id, result: { tools: [...AGENT_TASK_TOOLS, ...rendererTools] } }
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: {
+        tools: [...AGENT_TASK_TOOLS, ...MUSIC_TOOLS, ...rendererTools],
+        _meta: { luna: { editorToolsReady: rendererTools.length > 0 } },
+      },
+    }
   }
 
   if (method === 'tools/call') {
@@ -395,10 +589,31 @@ async function handleRpc(
     }
 
     const callId = randomUUID()
-    const requiresFreshRequest = Boolean(options.agentSession) && !isReadOnlyAgentTool(name)
+    const requiresFreshRequest = Boolean(options.agentSession)
+      && !MUSIC_TOOL_NAMES.has(name)
+      && !isReadOnlyAgentTool(name)
     if (requiresFreshRequest) {
       const gate = options.agentSession?.gateActiveTool()
-      if (gate && !gate.allowed) {
+      if (!gate) {
+        const blocked = {
+          ok: false,
+          summary: '请先领取或创建剪辑任务',
+          error: {
+            code: 'SESSION_REQUIRED',
+            message: '请先调用 wait_for_edit_request；如果任务来自外部对话，请调用 start_edit_session',
+          },
+        }
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: JSON.stringify(blocked) }],
+            isError: true,
+            structuredContent: blocked,
+          },
+        }
+      }
+      if (!gate.allowed) {
         const blocked = {
           ok: false,
           summary: gate.error?.message ?? '任务不可用',
@@ -417,6 +632,21 @@ async function handleRpc(
       }
     }
 
+    const musicResult = await handleMusicTool(name, args, options.musicGeneration)
+    if (musicResult) {
+      const result = addAgentContext(musicResult.result, options.agentSession)
+      const record = asRecord(result)
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{ type: 'text', text: textForResult(result) }],
+          isError: record?.ok === false,
+          ...(record ? { structuredContent: record } : {}),
+        },
+      }
+    }
+
     options.agentSession?.toolStarted(callId, name, args)
     const startedAt = Date.now()
     const bridgeResponse = await options.requestRenderer({
@@ -427,8 +657,25 @@ async function handleRpc(
     })
     const durationMs = Date.now() - startedAt
     if (!bridgeResponse.ok) {
+      const failure = addAgentContext({
+        ok: false,
+        summary: bridgeResponse.error ?? 'AI 剪辑页面不可用',
+        error: {
+          code: 'EDITOR_UNAVAILABLE',
+          message: bridgeResponse.error ?? 'AI 剪辑页面不可用',
+        },
+      }, options.agentSession)
+      const failureRecord = asRecord(failure)
       options.agentSession?.toolFinished(callId, name, args, false, bridgeResponse.error ?? 'AI 剪辑页面不可用', durationMs)
-      return jsonRpcError(id, -32000, bridgeResponse.error ?? 'AI 剪辑页面不可用')
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{ type: 'text', text: textForResult(failure) }],
+          isError: true,
+          ...(failureRecord ? { structuredContent: failureRecord } : {}),
+        },
+      }
     }
 
     const contextualResult = addAgentContext(bridgeResponse.result, options.agentSession)

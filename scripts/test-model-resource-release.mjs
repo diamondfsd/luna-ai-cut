@@ -26,13 +26,20 @@ assert.equal(
 )
 
 assert.equal(allModels.length, 18, '当前注册表应登记 18 个生产模型')
-assert.equal(artifacts.length, 19, '当前注册表应映射为 19 个模型文件')
+assert.equal(artifacts.length, 24, '当前注册表应映射为 24 个模型文件')
 assert.equal(new Set(artifacts.map((artifact) => artifact.fileName)).size, artifacts.length, 'Release 文件名不得重复')
 assert.equal(new Set(artifacts.map((artifact) => artifact.sha256)).size, artifacts.length, '相同权重必须复用一个 Release 附件')
-assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 19, '每个模型文件角色都必须被覆盖')
+assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 24, '每个模型文件角色都必须被覆盖')
+
+assert.equal(registry.MUSICGEN_MODEL_FILE_DEFINITIONS.length, 5, 'MusicGen 小模型应包含五个运行文件')
+for (const file of registry.MUSICGEN_MODEL_FILE_DEFINITIONS) {
+  assert.ok(file.url.startsWith(gitCodePrefix), `${file.fileName} 运行时必须从 GitCode Release 下载`)
+  assert.ok(file.upstreamUrl.startsWith('https://huggingface.co/'), `${file.fileName} 必须保留上游审计地址`)
+  assert.ok(artifacts.some((artifact) => artifact.fileName === file.fileName && artifact.sha256 === file.sha256), `${file.fileName} 必须进入统一模型清单`)
+}
 
 for (const artifact of artifacts) {
-  assert.match(artifact.fileName, /^[a-zA-Z0-9._-]+\.(onnx|bin|gguf|txt)$/)
+  assert.match(artifact.fileName, /^[a-zA-Z0-9._-]+\.(json|onnx|bin|gguf|txt)$/)
   assert.match(artifact.sha256, /^[a-f0-9]{64}$/)
   assert.ok(artifact.sizeBytes > 0)
   assert.ok(artifact.sourceUrls.length > 0)
