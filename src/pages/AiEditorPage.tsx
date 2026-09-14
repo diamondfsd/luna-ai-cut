@@ -4,7 +4,6 @@ import { useLocation } from 'react-router-dom'
 import type { AiEditorMediaSource } from '../shared/aiEditor'
 import type { AiEditorAgentEvent, AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
-import { toast } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import { buildAiEditorAgentPrompt } from './aiEditorAgentPrompt'
 import './AiEditorPage.css'
@@ -43,9 +42,19 @@ interface McpFrameResponse {
   response: AiEditorMcpResponse
 }
 
-interface CopyAgentPromptRequest {
+interface GenerateAgentPromptRequest {
   source: 'luna-openreel'
-  type: 'copy-agent-prompt'
+  type: 'generate-agent-prompt'
+  requestId: string
+  request: string
+}
+
+interface AgentPromptResponse {
+  source: 'luna-host'
+  type: 'agent-prompt-generated'
+  requestId: string
+  prompt?: string
+  error?: string
 }
 
 function isChooseAssetsRequest(value: unknown): value is ChooseAssetsRequest {
@@ -68,10 +77,24 @@ function isMcpFrameResponse(value: unknown): value is McpFrameResponse {
     && Boolean(message.response && typeof message.response === 'object')
 }
 
-function isCopyAgentPromptRequest(value: unknown): value is CopyAgentPromptRequest {
+function isGenerateAgentPromptRequest(value: unknown): value is GenerateAgentPromptRequest {
   if (!value || typeof value !== 'object') return false
-  const message = value as Partial<CopyAgentPromptRequest>
-  return message.source === 'luna-openreel' && message.type === 'copy-agent-prompt'
+  const message = value as Partial<GenerateAgentPromptRequest>
+  return message.source === 'luna-openreel'
+    && message.type === 'generate-agent-prompt'
+    && typeof message.requestId === 'string'
+    && typeof message.request === 'string'
+    && message.request.trim().length > 0
+}
+
+function postAgentPromptResponse(target: WindowProxy, response: AgentPromptResponse): void {
+  try {
+    target.postMessage(response, '*')
+  } catch (error) {
+    logger.error('[AI 剪辑] 返回 Agent 提示词失败', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 function isMediaSource(value: unknown): value is AiEditorMediaSource {
@@ -339,8 +362,27 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
       }
 
       if (event.source !== frameRef.current?.contentWindow) return
-      if (isCopyAgentPromptRequest(event.data)) {
-        void copyAgentPrompt()
+      if (isGenerateAgentPromptRequest(event.data)) {
+        const request = event.data
+        const target = frameRef.current?.contentWindow
+        if (!target) return
+        void window.luna.aiEditor.mcp.getLauncherPath()
+          .then((launcherPath) => {
+            postAgentPromptResponse(target, {
+              source: 'luna-host',
+              type: 'agent-prompt-generated',
+              requestId: request.requestId,
+              prompt: buildAiEditorAgentPrompt(launcherPath, request.request),
+            })
+          })
+          .catch((error: unknown) => {
+            postAgentPromptResponse(target, {
+              source: 'luna-host',
+              type: 'agent-prompt-generated',
+              requestId: request.requestId,
+              error: error instanceof Error ? error.message : '无法生成剪辑提示词',
+            })
+          })
         return
       }
 
@@ -470,19 +512,6 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
       setImportFailed(true)
     } finally {
       setImporting(false)
-    }
-  }
-
-  async function copyAgentPrompt(): Promise<void> {
-    try {
-      const launcherPath = await window.luna.aiEditor.mcp.getLauncherPath()
-      await navigator.clipboard.writeText(buildAiEditorAgentPrompt(launcherPath))
-      toast.success('已复制提示词，请粘贴到对应的任意 AI Agent 里面去')
-    } catch (error) {
-      logger.error('[AI 剪辑] 复制 Agent 提示词失败', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-      toast.error('复制失败，请重试')
     }
   }
 

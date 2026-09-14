@@ -1,5 +1,6 @@
 (() => {
   const CHOOSE_ASSETS_TIMEOUT_MS = 60_000
+  const AGENT_PROMPT_TIMEOUT_MS = 30_000
   let pendingImportAssets = []
   let mcpRequestHandler = null
   let agentEventHandler = null
@@ -206,6 +207,54 @@
     })
   }
 
+  const generateAgentPrompt = (request) => {
+    const parentWindow = window.parent
+    if (parentWindow === window) return Promise.reject(new Error('Luna 提示词服务不可用'))
+    const normalizedRequest = typeof request === 'string' ? request.trim() : ''
+    if (!normalizedRequest) return Promise.reject(new Error('剪辑要求不能为空'))
+    const requestId = globalThis.crypto?.randomUUID?.() || `agent-prompt-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    return new Promise((resolve, reject) => {
+      let settled = false
+      const finish = (callback, value) => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timeoutId)
+        window.removeEventListener('message', handleMessage)
+        window.removeEventListener('pagehide', handlePageHide)
+        callback(value)
+      }
+      const handleMessage = (event) => {
+        if (event.source !== parentWindow) return
+        const message = event.data
+        if (!message || message.source !== 'luna-host' || message.type !== 'agent-prompt-generated') return
+        if (message.requestId !== requestId) return
+        if (typeof message.prompt === 'string' && message.prompt.trim()) {
+          finish(resolve, message.prompt)
+        } else {
+          finish(reject, new Error(typeof message.error === 'string' ? message.error : '无法生成剪辑提示词'))
+        }
+      }
+      const handlePageHide = () => finish(reject, new Error('AI 剪辑页面已关闭'))
+      const timeoutId = window.setTimeout(() => {
+        finish(reject, new Error('生成剪辑提示词超时'))
+      }, AGENT_PROMPT_TIMEOUT_MS)
+
+      window.addEventListener('message', handleMessage)
+      window.addEventListener('pagehide', handlePageHide)
+      try {
+        parentWindow.postMessage({
+          source: 'luna-openreel',
+          type: 'generate-agent-prompt',
+          requestId,
+          request: normalizedRequest,
+        }, '*')
+      } catch (error) {
+        finish(reject, error instanceof Error ? error : new Error('无法生成剪辑提示词'))
+      }
+    })
+  }
+
   // OpenReel only checks for fs to enable native project and export storage.
   // Keeping platform unset leaves the editor in its regular web UI.
   window.openreel = Object.assign(window.openreel || {}, {
@@ -218,6 +267,7 @@
       },
     },
     lunaAgent: {
+      generatePrompt: (request) => generateAgentPrompt(request),
       createRequest: (request, projectId) => parentApi().agent.createRequest(request, projectId),
       updateRequest: (sessionId, request) => parentApi().agent.updateRequest(sessionId, request),
       cancelRequest: (sessionId) => parentApi().agent.cancelRequest(sessionId),

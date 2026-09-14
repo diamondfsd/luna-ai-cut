@@ -19,6 +19,11 @@ const iframeWindow = {
   addEventListener: (type, listener) => {
     listeners.set(type, listener)
   },
+  removeEventListener: (type, listener) => {
+    if (listeners.get(type) === listener) listeners.delete(type)
+  },
+  setTimeout,
+  clearTimeout,
 }
 const consoleMethods = Object.fromEntries(
   ['debug', 'log', 'info', 'warn', 'error'].map((level) => [level, () => {}]),
@@ -84,5 +89,22 @@ assert.deepEqual(JSON.parse(JSON.stringify(postedMessages.at(-1))), {
   response: { ok: true, result: { echoed: 'rename_project', args: { name: '测试项目' } } },
 })
 removeMcpHandler()
+
+const promptPromise = iframeWindow.openreel.lunaAgent.generatePrompt('剪一条 30 秒旅行短片')
+const promptRequest = JSON.parse(JSON.stringify(postedMessages.at(-1)))
+assert.equal(promptRequest.source, 'luna-openreel')
+assert.equal(promptRequest.type, 'generate-agent-prompt')
+assert.equal(promptRequest.request, '剪一条 30 秒旅行短片')
+const promptRequestId = promptRequest.requestId
+listeners.get('message')({
+  source: hostWindow,
+  data: {
+    source: 'luna-host',
+    type: 'agent-prompt-generated',
+    requestId: promptRequestId,
+    prompt: '完整剪辑提示词',
+  },
+})
+assert.equal(await promptPromise, '完整剪辑提示词')
 
 console.log('OpenReel bridge logging passed')
