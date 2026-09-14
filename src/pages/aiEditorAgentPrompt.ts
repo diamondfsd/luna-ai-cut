@@ -41,6 +41,7 @@ ${userRequest.trim()}
 1. 完成 MCP initialize，调用 tools/list 并检查 _meta.luna.editorToolsReady；严格按实时 inputSchema 组装参数，不要猜工具名或参数名。
 2. 如果 editorToolsReady 为 false，说明编辑器 iframe 尚未加载。此时先调用 wait_for_edit_request 并携带稳定 agentId、agentType 和实际使用的 agentModel；若返回 state=idle 且当前请求来自外部 Agent 对话，调用 start_edit_session 传入本次对话中的用户原始剪辑要求和同一身份。拿到任务后调用 activate_luna_window，再重新调用 tools/list，直到编辑工具可用；不要在列表不完整时猜参数。
 3. editorToolsReady 为 true 后，再调用 get_editing_skill，完整阅读返回的内置 skill；在此之前不要创建项目或修改项目。
+   tools/list 和 openapi.json 只是只读发现，不会让已读取的 Skill 失效；成功读取 Skill 后不要因为重新查询工具而重复读取，除非工具明确返回 SKILL_REQUIRED。
 4. 领取或创建成功后使用返回的 sessionId 和 revision，并在 start_edit_session/wait_for_edit_request 中如实上报 agentId、agentType 和 agentModel。agentType 是 Agent 的归属或角色，agentModel 是实际使用的模型名称，不要编造。收到 state=claimed 后调用 activate_luna_window（即使 wait 已自动激活也可再次调用）。
 5. 不要伪造 sessionId，也不要用任意字符串调用 get_edit_request。所有创建项目、导入素材、时间线修改、字幕、文字、转场、效果、保存和导出都必须挂在有效 session 上。
 6. 每次工具结果都检查 ok、error.code、结构化 data 以及 data.lunaAgent.requestRevision/requestChanged。requestChanged 为 true 或收到 REQUEST_UPDATED 时，立即调用 get_edit_request，使用新 revision 重新规划，不继续旧计划。
@@ -71,7 +72,7 @@ ${userRequest.trim()}
 
 如果用户明确要继续已有项目，先调用 list_projects，再根据结果调用 open_project；如果用户没有要求新建或切换项目，继续操作当前已打开项目。
 
-常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、list_media、list_clips、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
+常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
 
 执行剪辑时请遵守：
 
@@ -82,11 +83,13 @@ ${userRequest.trim()}
 - mediaId 必须来自 list_local_media 的结构化返回，不要手抄文件名或用正则拼接 ID。
 - 口播类任务以 transcribe_local_media 返回的语音字幕和时间轴为主要依据；先纠正文字并确定删除区间，再剪视频和重建字幕，不要求先理解画面。
 - 先理解用户的剪辑目标，再按“轨道/素材 -> 裁剪或分割 -> 字幕或文字 -> 转场”的顺序执行。
-- add_clip 默认放入完整源素材；trim_clip 的 inPoint/outPoint 是素材内时间，duration 必须等于 outPoint-inPoint，startTime 是时间线位置且不会因 trim 自动改变。trim 要逐条串行调用，写入后立即 list_clips/get_clip 校验 startTime、inPoint、outPoint、duration、轨道和重叠情况。
+- 文字、图形、标题和 scrim 属于前景包装层。优先直接使用 create_text_clip/create_shape_clip 让 Luna 自动放置轨道，不要先手动追加 text/graphics 轨道；若必须手动建轨道，position 使用 0（最上层），或创建后立即用 reorder_track 移到所有视频/图片轨道上方。写入后用 list_tracks + list_overlays 核对 layer=overlay、trackIndex 和时间范围。
+- add_transition 成功后用 list_transitions 核对实际类型、时长和两端 clipId；没有读回结果时不得把转场说成已生效。
+- 新增片段优先在一次 add_clip 中传入素材内的 inPoint/outPoint，让落位和裁剪原子完成，duration 自动等于 outPoint-inPoint；未传入时才加入完整源素材再 trim_clip。trim_clip 的时间点是素材内时间，startTime 是时间线位置且不会因 trim 自动改变。每次写入后立即 list_clips/get_clip 校验时间、轨道和重叠情况。
 - 每次写操作后都要读取对应状态确认实际生效。发现结果不一致时停止继续写入，读取状态并只修正一次。
 - 导入结果为 PARTIAL_SUCCESS 时按逐条 results 处理，不要整批重试。全部失败时停止并上报 failed。
 - 导出前用 list_clips/get_editor_state 做结构自检；若 tools/list 中存在且 schema 适用于当前项目的预览工具，再抽查片头、主要切点和片尾。当前 preview_frame 可能只适用于要求 groupId/timeMs 的多机位场景，schema 不匹配时不要强行调用。
-- 普通旅行/出游短片在用户没有要求纯纪实时，叙事剪辑完成后必须再做一次包装 pass：最强画面先冷开约 0.5-0.8 秒，再用 create_text_clip + update_text_clip 添加 0.8-1.5 秒事实可靠的标题，必要时用低透明度 create_shape_clip 做 scrim；只给 2-4 个关键镜头轻微 push/pull，远中近景形成节奏，场景边界才使用少量转场，结尾做视频 opacity 和音频 fade 的分别收束。文字只用用户提供的日期/地点/主题，不编造事实，不给每段机械套效果。
+- 普通旅行/出游短片在用户没有要求纯纪实时，叙事剪辑完成后必须再做一次包装 pass：最强画面先冷开约 0.5-0.8 秒，再用 create_text_clip + update_text_clip 添加 0.8-1.5 秒事实可靠的标题，显式传入可读 style、fade 或 slide-up 入场动画和安全区 transform；画面合适时至少加入 1 张照片作为节奏停顿或定场，并用 add_keyframe/set_clip_keyframes 给 2-4 个关键视频或照片做轻微 push/pull；在场景边界添加 1-2 个有目的的转场，片尾用视频 opacity 关键帧和 set_clip_fade 分别收束。标题需要可读性时才加低透明度 create_shape_clip scrim。不要只添加一条裸文字就结束，也不要给每个片段机械套效果；文字只用用户提供的日期/地点/主题，不编造事实。
 - 工具调用会自动进入 Luna 的进度面板；report_edit_progress 只报告关键节点：开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认，以及必要的最终状态。
 - 每次工具返回后检查 lunaAgent.requestChanged；用户修改要求时，以最新 revision 为准继续执行。
 - 任务结束必须调用 report_edit_result；不要依赖普通文本回复向 Luna 汇报结果。
@@ -133,7 +136,7 @@ ${userRequest.trim()}
 4. 外部对话任务调用 start_edit_session，传入本次用户原话、稳定 agentId、agentType 和实际使用的 agentModel；使用返回的 sessionId、revision，并调用 activate_luna_window。每个写工具都必须在有效 session 下执行。
 5. 创建项目或修改项目前调用 get_editing_skill。素材任务先用 list_local_media 按 capturedAt/groupDay 筛选，再用 inspect_local_media 的 overview/detail 看代表帧；素材较多时调用 create_media_contact_sheet 让 Luna 生成一张带编号、素材名和时间信息的 JPEG 联络表，不要自己写拼图脚本；优先阅读图片内编号和工具返回的文本索引，只能按返回的 data.items[].frames[] 元数据、label、timecode 和 cell 坐标对应素材。mediaId 只能使用工具返回的值。口播、访谈、解说、教程或对话先用 transcribe_local_media，按原始绝对时间戳剪辑并重建字幕。
 6. 每次写操作后调用对应的 list/get 状态工具校验实际结果。检查 data.lunaAgent.requestRevision 和 requestChanged；若 requestChanged=true 或错误码为 REQUEST_UPDATED，立即 get_edit_request 并按新 revision 重新规划。
-7. 普通旅行短片在叙事完成后必须做包装 pass（除非用户要求纯纪实）: 最强镜头冷开约 0.5-0.8 秒，添加只使用用户事实的 0.8-1.5 秒标题，必要时加低透明度压暗层；2-4 个关键镜头做轻微推拉，场景边界使用少量转场，结尾分别做画面和音频淡出。不要给每个片段机械套效果，不要编造日期、地点或人物。
+7. 普通旅行短片在叙事完成后必须做包装 pass（除非用户要求纯纪实）: 最强镜头冷开约 0.5-0.8 秒，添加只使用用户事实的 0.8-1.5 秒标题并设置可读样式、入场动画和安全区位置；画面合适时加入 1 张照片，给 2-4 个关键镜头设置轻微推拉关键帧，场景边界添加 1-2 个有目的的转场，结尾分别做画面和音频淡出。不能只添加一条裸文字就结束，也不要给每个片段机械套效果，不要编造日期、地点或人物。
 8. 工具调用会自动同步到 Luna，不要在每个阶段重复 report_edit_progress；至少在开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认、最终完成/失败/取消时报告关键节点。工具失败时检查 error.code、error.retryable 和 error.suggestedAction；可安全修复的参数错误最多调整一次，重复失败后立即停止并调用 report_edit_result(status="failed")，不要无限重试。成功、失败或取消都必须调用 report_edit_result。导出前调用 export_video 后必须等待 Luna 用户确认；只有用户确认且 export_video 返回真实成功结果和 data.path 后才能声称导出成功。${requestBlock}
 `
 }

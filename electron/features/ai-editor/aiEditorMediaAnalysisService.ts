@@ -192,8 +192,10 @@ async function renderContactSheet(
       Buffer.from(frame.base64, 'base64'),
     )))
     const filter = [
-      `scale=w=${cellWidth}:h=${cellHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2`,
-      `pad=${cellWidth}:${cellHeight}:(ow-iw)/2:(oh-ih)/2:color=0x111111`,
+      // Use an explicit fit calculation so rounding can never make the
+      // scaled frame larger than the pad target.
+      `scale=w='if(gt(iw*${cellHeight},ih*${cellWidth}),${cellWidth},-2)':h='if(gt(iw*${cellHeight},ih*${cellWidth}),-2,${cellHeight})'`,
+      `pad=w=${cellWidth}:h=${cellHeight}:x=(ow-iw)/2:y=(oh-ih)/2:color=0x111111`,
       `tile=${columns}x${rows}:padding=${CONTACT_SHEET_GAP}:margin=${CONTACT_SHEET_GAP}:color=0x111111`,
     ].join(',')
     const result = await execFileAsync(getFfmpegPath(), [
