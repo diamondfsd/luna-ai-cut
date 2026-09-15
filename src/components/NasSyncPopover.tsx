@@ -75,7 +75,7 @@ export function NasSyncPopover() {
   const stateLabel = status.state === 'ready' && status.canceledFiles > 0 && status.pendingFiles === 0
     ? '已取消'
     : statusLabel(status.state)
-  const taskCount = status.pendingFiles + status.failedFiles + status.canceledFiles
+  const taskCount = status.completedFiles + status.pendingFiles + status.failedFiles + status.canceledFiles
   const canClearFinished = status.completedFiles > 0 || status.canceledFiles > 0 || status.failedFiles > 0
 
   async function resumeTasks(): Promise<void> {
