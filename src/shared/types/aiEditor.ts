@@ -301,6 +301,7 @@ export interface AiEditorFileApi {
   inspectLocalMedia(mediaIds: string[], options?: AiEditorLocalMediaInspectionOptions): Promise<AiEditorLocalMediaInspectionResult>
   createMediaContactSheet(mediaIds: string[], options?: AiEditorLocalMediaContactSheetOptions): Promise<AiEditorLocalMediaContactSheetResult>
   transcribeLocalMedia(mediaId: string, options?: AiEditorLocalMediaTranscriptionOptions): Promise<AiEditorLocalMediaTranscriptionResult>
+  transcribeAudioSamples(samples: Float32Array, options?: AiEditorLocalMediaTranscriptionOptions): Promise<AiEditorLocalMediaTranscriptionResult>
   showSaveDialog(options: AiEditorFileDialogOptions): Promise<string | null>
   showOpenDialog(options: AiEditorFileDialogOptions): Promise<string | null>
   readFile(filePath: string): Promise<string>
