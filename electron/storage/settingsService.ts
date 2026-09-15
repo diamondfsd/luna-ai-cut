@@ -90,6 +90,7 @@ function defaultSettings(): AppSettings {
       enabled: false,
       autoSync: false,
       server: '',
+      port: 445,
       share: '',
       remotePath: '',
       username: '',
@@ -114,6 +115,10 @@ const WATERMARK_POSITIONS = new Set<WatermarkPosition>([
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function validNasPort(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65_535
 }
 
 function normalizeDefaultWatermarkPlacement(value: unknown): WatermarkPlacement | undefined {
@@ -203,10 +208,12 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
     : defaults.windowCloseBehavior
   const savedNasSync = saved?.nasSync
   const defaultNasSync = defaults.nasSync as NasSyncSettings
+  const savedNasPort = savedNasSync?.port
   merged.nasSync = {
     enabled: typeof savedNasSync?.enabled === 'boolean' ? savedNasSync.enabled : defaultNasSync.enabled,
     autoSync: typeof savedNasSync?.autoSync === 'boolean' ? savedNasSync.autoSync : defaultNasSync.autoSync,
     server: typeof savedNasSync?.server === 'string' ? savedNasSync.server.trim() : defaultNasSync.server,
+    port: validNasPort(savedNasPort) ? savedNasPort : defaultNasSync.port,
     share: typeof savedNasSync?.share === 'string' ? savedNasSync.share.trim() : defaultNasSync.share,
     remotePath: typeof savedNasSync?.remotePath === 'string' ? savedNasSync.remotePath.trim() : defaultNasSync.remotePath,
     username: typeof savedNasSync?.username === 'string' ? savedNasSync.username : defaultNasSync.username,
@@ -272,6 +279,7 @@ export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings
         share: next.nasSync.share.trim(),
         remotePath: next.nasSync.remotePath.trim(),
       }
+      if (!validNasPort(next.nasSync.port)) throw new Error('NAS 端口必须是 1 到 65535 的整数')
       if (next.nasSync.enabled && (!next.nasSync.share || !next.nasSync.remotePath)) throw new Error('请先连接 NAS 并选择共享和同步目录')
     }
     next.cacheDir = cacheDir(next.baseDir)

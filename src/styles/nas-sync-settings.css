@@ -48,7 +48,7 @@
 .nas-directory-picker {
   display: grid;
   gap: 14px;
-  padding: 2px 0;
+  padding: 18px 20px 20px;
 }
 
 .nas-directory-picker label {
@@ -67,6 +67,7 @@
 
 .nas-settings-actions {
   display: flex;
+  flex-wrap: wrap;
   grid-column: 1 / -1;
   justify-content: flex-end;
   gap: 8px;
@@ -85,5 +86,9 @@
 
   .nas-settings-actions .ui-btn {
     flex: 1;
+  }
+
+  .nas-settings-actions .ui-btn:last-child {
+    flex-basis: 100%;
   }
 }

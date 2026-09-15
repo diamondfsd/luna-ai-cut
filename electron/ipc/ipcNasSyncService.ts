@@ -16,6 +16,7 @@ export function register(ctx: IpcContext): void {
     if (!Array.isArray(filePaths)) throw new Error('请选择要同步的文件')
     return nasSyncService.enqueueFiles(filePaths.filter((value): value is string => typeof value === 'string'))
   })
+  ipcMain.handle('nas-sync:sync-local-resources', () => nasSyncService.syncLocalResources())
   ipcMain.handle('nas-sync:retry-failed', () => nasSyncService.retryFailed())
   ipcMain.handle('nas-sync:cancel-pending', () => nasSyncService.cancelPending())
 }

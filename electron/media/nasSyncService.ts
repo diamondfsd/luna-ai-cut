@@ -101,8 +101,19 @@ function isConnectionConfigured(config: NasSyncSettings | undefined): config is 
   )
 }
 
+function validNasPort(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65_535
+}
+
 function isConfigured(config: NasSyncSettings | undefined): config is NasSyncSettings {
-  return isConnectionConfigured(config) && config.remotePath.trim().length > 0
+  return isConnectionConfigured(config) && validNasPort(config.port) && config.remotePath.trim().length > 0
+}
+
+function isMissingLocalPath(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === 'ENOENT'
 }
 
 function statePathFor(settings: AppSettings): string {
@@ -196,6 +207,7 @@ export class NasSyncService {
     const settings = await getSettings()
     const config = configOverride ?? settings.nasSync
     if (!isConnectionConfigured(config)) return { ok: false, message: '请先填写服务器地址' }
+    if (!validNasPort(config.port)) return { ok: false, message: 'NAS 端口必须是 1 到 65535 的整数' }
     let transport: NasTransport | null = null
     try {
       transport = new SmbTransport(config)
@@ -304,6 +316,35 @@ export class NasSyncService {
       this.startWorkerIfNeeded()
     }
     return result
+  }
+
+  async syncLocalResources(): Promise<NasSyncEnqueueResult> {
+    const settings = await getSettings()
+    if (!settings.nasSync?.enabled) throw new Error('请先开启 NAS 同步')
+    if (!isConfigured(settings.nasSync)) throw new Error('请先填写服务器地址')
+
+    const root = path.resolve(getLocalResourcesDir(settings))
+    const filePaths: string[] = []
+
+    async function walk(directory: string): Promise<void> {
+      const entries = await fs.readdir(directory, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || entry.name.endsWith('.tmp')) continue
+        const entryPath = path.join(directory, entry.name)
+        if (entry.isDirectory()) await walk(entryPath)
+        else if (entry.isFile()) filePaths.push(entryPath)
+      }
+    }
+
+    try {
+      await walk(root)
+    } catch (error) {
+      if (isMissingLocalPath(error)) return { queued: 0, skipped: 0 }
+      logMainWarn('[NAS] 本地资源目录读取失败', { root, error: rawErrorMessage(error) })
+      throw new Error('本地资源目录读取失败')
+    }
+
+    return this.enqueueFiles(filePaths)
   }
 
   async retryFailed(): Promise<number> {

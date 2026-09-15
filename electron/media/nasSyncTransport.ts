@@ -98,6 +98,7 @@ export class SmbTransport implements NasTransport {
   constructor(config: NasSyncSettings) {
     this.config = config
     this.client = new SMB2Client(serverHost(config.server), {
+      port: config.port,
       connectTimeout: 10_000,
       requestTimeout: 30_000,
     })
@@ -130,6 +131,7 @@ export class SmbTransport implements NasTransport {
   async listShares(): Promise<NasShare[]> {
     const client = new ShareDiscoveryClient({
       host: serverHost(this.config.server),
+      port: this.config.port,
       username: this.config.username,
       password: this.config.password,
       connectTimeout: 10_000,

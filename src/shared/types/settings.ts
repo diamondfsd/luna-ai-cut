@@ -11,6 +11,7 @@ export interface NasSyncSettings {
   enabled: boolean
   autoSync: boolean
   server: string
+  port: number
   share: string
   remotePath: string
   username: string
