@@ -1,0 +1,30 @@
+{
+  "name": "@openpocketcine/mock-camera",
+  "version": "0.1.0",
+  "description": "Dependency-free DJI Osmo DUML/SoftAP mock for OpenPocketCine protocol tests",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./protocol": "./protocol.js",
+    "./state": "./state.js",
+    "./server": "./server.js"
+  },
+  "bin": {
+    "opc-mock-camera": "./server.js"
+  },
+  "files": [
+    "index.js",
+    "protocol.js",
+    "state.js",
+    "server.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  }
+}

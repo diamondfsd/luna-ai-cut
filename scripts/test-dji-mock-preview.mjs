@@ -1,118 +1,114 @@
 /* global Buffer, process */
-
 import assert from 'node:assert/strict'
-import { once } from 'node:events'
-import { mkdtemp, rm } from 'node:fs/promises'
+import test from 'node:test'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import dgram from 'node:dgram'
+import { once } from 'node:events'
+import { setTimeout as delay } from 'node:timers/promises'
+import { DjiPreviewReassembler } from '../electron/devices/dji/djiPreview.ts'
+import { parseMockArgs } from '../dji_mock_server/server.mjs'
+import { configureMockLogging } from '../dji_mock_server/logging.mjs'
+import { openMockSession } from './helpers/djiMockSession.mjs'
+import './test-dji-mock-client-preview.mjs'
 
-const handshakePayload = Buffer.from(
-  '341200640064c005140000640000019001c005140000640014006400c00514000064000101040102',
-  'hex',
-)
-
-function udpHeader(packetType, payloadLength, sessionId, sequence) {
-  const header = Buffer.alloc(8)
-  header.writeUInt16LE(0x8000 | ((8 + payloadLength) & 0x3fff), 0)
-  header.writeUInt16LE(sessionId, 2)
-  header.writeUInt16LE(sequence, 4)
-  header[6] = packetType
-  header[7] = header.subarray(0, 7).reduce((sum, value) => sum ^ value, 0)
-  return header
-}
-
-function commandPacket(frame, sessionId, sequence) {
-  const routing = Buffer.alloc(12)
-  return Buffer.concat([
-    udpHeader(0x05, routing.length + frame.length, sessionId, sequence),
-    routing,
-    frame,
-  ])
-}
-
-function parsePacket(data) {
-  if (data.length < 8) return null
-  const total = data.readUInt16LE(0) & 0x3fff
-  if (total < 8 || total > data.length) return null
-  return { packetType: data[6], payload: data.subarray(8, total) }
-}
-
-function send(socket, packet, port) {
-  return new Promise((resolve, reject) => {
-    socket.send(packet, port, '127.0.0.1', (error) => error ? reject(error) : resolve())
-  })
-}
-
-function waitForPackets(socket, predicate, count, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const packets = []
-    const timer = setTimeout(() => {
-      socket.off('message', onMessage)
-      reject(new Error(`等待 DJI Mock 预览包超时（收到 ${packets.length}/${count}）`))
-    }, timeoutMs)
-    const onMessage = (data) => {
-      const packet = parsePacket(data)
-      if (!packet || !predicate(packet)) return
-      packets.push(packet)
-      if (packets.length < count) return
-      clearTimeout(timer)
-      socket.off('message', onMessage)
-      resolve(packets)
-    }
-    socket.on('message', onMessage)
-  })
-}
-
-async function startMock(model, ports, root) {
-  const child = spawn(process.execPath, [
-    'dji_mock_server/server.mjs', '--model', model, '--root', root,
-    '--http-port', String(ports.http), '--udp-port', String(ports.udp), '--tcp-port', String(ports.tcp),
-  ], { stdio: ['ignore', 'pipe', 'pipe'] })
-  const ready = new Promise((resolve, reject) => {
-    child.stdout.on('data', (chunk) => {
-      if (chunk.toString().includes('"event":"ready"')) resolve()
-    })
-    child.stderr.on('data', (chunk) => process.stderr.write(chunk))
-    child.once('error', reject)
-  })
-  await ready
-  return child
-}
-
-async function verifyModel(model, ports, root) {
-  const child = await startMock(model, ports, root)
-  const socket = dgram.createSocket('udp4')
-  try {
-    await new Promise((resolve, reject) => {
-      socket.once('error', reject)
-      socket.bind(0, '127.0.0.1', resolve)
-    })
-    const sessionId = 0x2345
-    await send(socket, Buffer.concat([udpHeader(0x00, handshakePayload.length, sessionId, 0), handshakePayload]), ports.udp)
-    await waitForPackets(socket, (packet) => packet.packetType === 0x00, 1, 1000)
-
-    const { encodeDjiMessage } = await import('../electron/devices/dji/djiBytes.ts')
-    const liveFrame = model === 'pocket3'
-      ? encodeDjiMessage({ target: 0x0102, id: 0xa000, flags: 0x40, cmdSet: 0x01, cmdId: 0x01, payload: Buffer.from('0300000000040000000701', 'hex') })
-      : encodeDjiMessage({ target: 0x0102, id: 0xa000, flags: 0x40, cmdSet: 0x02, cmdId: 0x68, payload: Buffer.from([0x08]) })
-    const packets = waitForPackets(socket, (packet) => packet.packetType === 0x02, 2, 1500)
-    await send(socket, commandPacket(liveFrame, sessionId, 8), ports.udp)
-    assert.equal((await packets).length, 2)
-  } finally {
-    socket.close()
-    if (!child.killed) child.kill('SIGTERM')
-    await once(child, 'close')
+test('DJI Mock default logging suppresses packet floods but retains diagnostics', () => {
+  const events = []
+  const server = { log: (event, details) => events.push({ event, details }) }
+  configureMockLogging(server)
+  for (let index = 0; index < 1000; index += 1) {
+    server.log('rx', { pktType: '0x04' })
+    server.log('tx', { label: 'video' })
+    server.log('command', { valid: true })
+    server.log('invalid', { reason: 'bad frame' })
+    server.log('command', { valid: false, reason: 'invalid delete payload' })
   }
-}
+  server.log('ready')
+  server.log('error', { error: 'socket error' })
+  server.log('stop')
+  assert.deepEqual(events.map(({ event }) => event), ['invalid', 'command', 'ready', 'error', 'stop'])
+  const verbose = { log: (event) => events.push({ event }) }
+  configureMockLogging(verbose, true)
+  verbose.log('rx')
+  assert.equal(events.at(-1).event, 'rx')
+  assert.equal(parseMockArgs(['--verbose-log']).verboseLog, true)
+})
 
-const root = await mkdtemp(path.join(tmpdir(), 'luna-dji-preview-'))
-try {
-  await verifyModel('pocket3', { http: 18183, tcp: 17183, udp: 19183 }, root)
-  await verifyModel('pocket4', { http: 18184, tcp: 17184, udp: 19184 }, root)
-} finally {
-  await rm(root, { recursive: true, force: true })
-}
+test('DJI preview entrypoint starts the copied service with existing root alias', async (t) => {
+  assert.equal(parseMockArgs([]).strictProtocol, true)
+  assert.equal(parseMockArgs(['--root', '/tmp']).mediaRoot, path.resolve('/tmp'))
+  assert.throws(() => parseMockArgs(['--unknown']), /unknown argument/)
+  const child = spawn(process.execPath, ['dji_mock_server/server.mjs', '--udp-port', '0', '--tcp-port', '0', '--http-port', '0'])
+  const closed = once(child, 'close')
+  t.after(async () => { child.kill('SIGTERM'); await closed })
+  await new Promise((resolve, reject) => {
+    let output = ''
+    const timer = setTimeout(() => reject(new Error('Mock startup timeout')), 3000)
+    child.stdout.on('data', (chunk) => {
+      output += chunk.toString()
+      const events = output.trim().split('\n').flatMap((line) => {
+        try { return [JSON.parse(line)] } catch { return [] }
+      })
+      if (events.filter((event) => event.event === 'ready').length !== 3) return
+      clearTimeout(timer)
+      resolve()
+    })
+    child.once('error', (error) => { clearTimeout(timer); reject(error) })
+    child.once('exit', (code) => { clearTimeout(timer); reject(new Error('Mock exited: ' + code)) })
+  })
+})
 
-console.log('DJI mock live preview tests passed')
+for (const model of ['pocket3', 'pocket4', 'pocket4pro', 'nano']) {
+  test('DJI preview strict UDP reassembles complete frames for ' + model, async (t) => {
+    const root = await mkdtemp(path.join(tmpdir(), 'luna-dji-preview-'))
+    t.after(() => rm(root, { recursive: true, force: true }))
+    const source = path.join(root, 'preview.hex')
+    const codec = model === 'pocket3' || model === 'nano' ? 'h264' : 'h265'
+    const accessUnit = Buffer.concat([
+      Buffer.from(codec === 'h264' ? '000000016764001f0000000168ee06000000016588' : '0000000140010200000001420304000000014405000000012606', 'hex'),
+      Buffer.alloc(2500, 0x55),
+    ])
+    await writeFile(source, accessUnit.toString('hex') + '\n', 'ascii')
+    const session = await openMockSession(t, { model, videoSource: source })
+    const units = []
+    let onUnit
+    const nextUnit = () => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Preview frame reassembly timeout')), 1500)
+      onUnit = (unit) => { clearTimeout(timer); onUnit = undefined; resolve(unit) }
+    })
+    const reassembler = new DjiPreviewReassembler((unit) => { units.push(unit); onUnit?.(unit) })
+    session.socket.on('message', (raw) => {
+      if (raw[6] !== 2) return
+      reassembler.feed({ raw, packetType: 2, sessionId: raw.readUInt16LE(2), sequence: raw.readUInt16LE(4), payload: raw.subarray(8) })
+    })
+    const firstFrame = nextUnit()
+    await session.enableLive()
+    await firstFrame
+    assert.ok(units.length > 0, 'Mock fragments must produce a complete preview frame')
+    assert.deepEqual(units[0].data, accessUnit)
+    assert.equal(units[0].codec, codec)
+    assert.equal(units[0].parts, 3)
+    assert.equal(reassembler.snapshot().droppedPartialMessages, 0)
+
+    const fault = async (value) => {
+      const response = await fetch(session.baseUrl + '/control', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'fault', name: 'dropVideo', value }),
+      })
+      assert.equal(response.status, 200)
+      await response.json()
+    }
+    await fault(true)
+    await delay(50)
+    const count = units.length
+    await delay(80)
+    assert.equal(units.length, count)
+    const resumed = nextUnit()
+    await fault(false)
+    await resumed
+    assert.ok(units.length > count)
+    assert.deepEqual(units.at(-1).data, accessUnit)
+    assert.equal(session.server.metrics.rejectedCommands, 0)
+  })
+}
