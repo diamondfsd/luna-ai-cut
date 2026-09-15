@@ -49,3 +49,23 @@ export interface NasSyncEnqueueResult {
   queued: number
   skipped: number
 }
+
+export interface NasRemoteFile {
+  name: string
+  size: number
+}
+
+export type NasShareType = 'disk' | 'ipc' | 'print' | 'special'
+
+export interface NasShare {
+  name: string
+  type: NasShareType
+  comment: string
+}
+
+export interface NasSyncProbeResult {
+  ok: boolean
+  message?: string
+  shares?: NasShare[]
+  directories?: string[]
+}

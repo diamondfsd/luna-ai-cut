@@ -11,6 +11,7 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('nas-sync:status', () => nasSyncService.getStatus())
   ipcMain.handle('nas-sync:probe', (_event, config) => nasSyncService.probe(config))
+  ipcMain.handle('nas-sync:list-files', () => nasSyncService.listFiles())
   ipcMain.handle('nas-sync:sync-files', (_event, filePaths: unknown) => {
     if (!Array.isArray(filePaths)) throw new Error('请选择要同步的文件')
     return nasSyncService.enqueueFiles(filePaths.filter((value): value is string => typeof value === 'string'))

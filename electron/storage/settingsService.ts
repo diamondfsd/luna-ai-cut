@@ -18,9 +18,6 @@ function legacyPath(): string {
 
 let settingsOperation: Promise<void> = Promise.resolve()
 
-const DEFAULT_NAS_SHARE = 'lunaaicut'
-const DEFAULT_NAS_REMOTE_PATH = 'lunaaicut'
-
 function enqueueSettingsOperation<T>(operation: () => Promise<T>): Promise<T> {
   const next = settingsOperation.then(operation, operation)
   settingsOperation = next.then(() => undefined, () => undefined)
@@ -93,8 +90,8 @@ function defaultSettings(): AppSettings {
       enabled: false,
       autoSync: false,
       server: '',
-      share: DEFAULT_NAS_SHARE,
-      remotePath: DEFAULT_NAS_REMOTE_PATH,
+      share: '',
+      remotePath: '',
       username: '',
       password: '',
     },
@@ -210,8 +207,8 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
     enabled: typeof savedNasSync?.enabled === 'boolean' ? savedNasSync.enabled : defaultNasSync.enabled,
     autoSync: typeof savedNasSync?.autoSync === 'boolean' ? savedNasSync.autoSync : defaultNasSync.autoSync,
     server: typeof savedNasSync?.server === 'string' ? savedNasSync.server.trim() : defaultNasSync.server,
-    share: DEFAULT_NAS_SHARE,
-    remotePath: DEFAULT_NAS_REMOTE_PATH,
+    share: typeof savedNasSync?.share === 'string' ? savedNasSync.share.trim() : defaultNasSync.share,
+    remotePath: typeof savedNasSync?.remotePath === 'string' ? savedNasSync.remotePath.trim() : defaultNasSync.remotePath,
     username: typeof savedNasSync?.username === 'string' ? savedNasSync.username : defaultNasSync.username,
     password: typeof savedNasSync?.password === 'string' ? savedNasSync.password : defaultNasSync.password,
   }
@@ -272,9 +269,10 @@ export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings
     if (next.nasSync) {
       next.nasSync = {
         ...next.nasSync,
-        share: DEFAULT_NAS_SHARE,
-        remotePath: DEFAULT_NAS_REMOTE_PATH,
+        share: next.nasSync.share.trim(),
+        remotePath: next.nasSync.remotePath.trim(),
       }
+      if (next.nasSync.enabled && (!next.nasSync.share || !next.nasSync.remotePath)) throw new Error('请先连接 NAS 并选择共享和同步目录')
     }
     next.cacheDir = cacheDir(next.baseDir)
     await writeSettingsFile(next)

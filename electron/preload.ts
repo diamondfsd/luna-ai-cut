@@ -30,6 +30,8 @@ import type {
   ExportTaskRecord,
   OriginalFileExportRequest,
   NasSyncEnqueueResult,
+  NasRemoteFile,
+  NasSyncProbeResult,
   NasSyncSettings,
   NasSyncStatus,
 } from '../src/shared/types'
@@ -197,7 +199,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
   nasSync: {
     getStatus: (): Promise<NasSyncStatus> => ipcRenderer.invoke('nas-sync:status'),
-    probe: (config?: NasSyncSettings): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('nas-sync:probe', config),
+    probe: (config?: NasSyncSettings): Promise<NasSyncProbeResult> => ipcRenderer.invoke('nas-sync:probe', config),
+    listFiles: (): Promise<NasRemoteFile[]> => ipcRenderer.invoke('nas-sync:list-files'),
     syncFiles: (filePaths: string[]): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-files', filePaths),
     retryFailed: (): Promise<number> => ipcRenderer.invoke('nas-sync:retry-failed'),
     cancelPending: (): Promise<void> => ipcRenderer.invoke('nas-sync:cancel-pending'),

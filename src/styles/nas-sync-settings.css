@@ -23,6 +23,48 @@
   font-size: 12px;
 }
 
+.nas-selected-directory {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nas-selected-directory > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nas-selected-directory > strong {
+  min-height: 32px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nas-directory-picker {
+  display: grid;
+  gap: 14px;
+  padding: 2px 0;
+}
+
+.nas-directory-picker label {
+  display: grid;
+  gap: 6px;
+}
+
+.nas-directory-picker label > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nas-directory-dialog.ui-dialog-content {
+  width: min(420px, calc(100vw - 32px));
+}
+
 .nas-settings-actions {
   display: flex;
   grid-column: 1 / -1;
