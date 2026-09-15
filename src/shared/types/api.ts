@@ -244,6 +244,7 @@ export interface LunaApi {
     syncLocalResources(): Promise<NasSyncEnqueueResult>
     retryFailed(): Promise<number>
     cancelPending(): Promise<void>
+    clearFinished(): Promise<number>
   }
   onNasSyncProgress(callback: (status: NasSyncStatus) => void): () => void
   readExifModel(localPath: string): Promise<string | null>

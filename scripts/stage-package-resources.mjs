@@ -55,7 +55,7 @@ function isNativeFile(fileName) {
       || fileName === 'dxil.dll'
       || /^DXC-LICENSE-.*\.txt$/i.test(fileName)
   }
-  return fileName === 'luna-render-core.node'
+  return fileName === 'luna-render-core.node' || fileName === 'luna-smb2-worker' || fileName === 'luna-smb2-worker.exe'
     || nativeWorkerNames.includes(fileName)
     || /\.(dylib|so(?:\..*)?)$/i.test(fileName)
 }

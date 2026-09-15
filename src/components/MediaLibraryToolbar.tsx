@@ -70,17 +70,33 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
     })
     .filter((file): file is NonNullable<typeof file> => Boolean(file))
   const canSendToWorkspace = isLocal && workspaceMedia.length > 0
-  const canSyncToNas = isLocal && localFilePaths.length > 0 && settings?.nasSync?.enabled === true
+  const nasSyncEnabled = settings?.nasSync?.enabled === true
+  const canSyncToNas = isLocal && localFilePaths.length > 0 && nasSyncEnabled
 
   async function syncSelectedToNas(): Promise<void> {
     if (!canSyncToNas) {
-      toast.error(settings?.nasSync?.enabled ? '请先完成 NAS 配置' : '请先开启 NAS 同步')
+      if (!nasSyncEnabled) navigate('/settings', { state: { nasSetup: true } })
+      else toast.error('请先完成 NAS 配置')
       return
     }
     try {
       const result = await window.luna.nasSync.syncFiles(localFilePaths)
       if (result.queued > 0) showProgress()
       else toast.success('文件已同步')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '加入 NAS 同步失败')
+    }
+  }
+
+  async function syncAllLocalResources(): Promise<void> {
+    if (!nasSyncEnabled) {
+      navigate('/settings', { state: { nasSetup: true } })
+      return
+    }
+    try {
+      const result = await window.luna.nasSync.syncLocalResources()
+      if (result.queued > 0) showProgress()
+      else toast.success('没有新的文件需要同步')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加入 NAS 同步失败')
     }
@@ -205,7 +221,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                     <Button
                       variant="secondary"
                       size="compact"
-                      disabled={!canSyncToNas}
+                      disabled={localFilePaths.length === 0}
                       icon={<CloudUpload size={14} />}
                       onClick={() => void syncSelectedToNas()}
                     >
@@ -259,9 +275,14 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
               <span className="toolbar-date">{currentDate}</span>
               <div className="library-controls">
                 {isLocal && (
-                  <Button className="library-ai-selection-btn" variant="primary" size="compact" icon={<Sparkles size={13} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiSelection()}>
-                    AI 选片
-                  </Button>
+                  <>
+                    <Button className="library-ai-selection-btn" variant="primary" size="compact" icon={<Sparkles size={13} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiSelection()}>
+                      AI 选片
+                    </Button>
+                    <Button variant="secondary" size="compact" icon={<CloudUpload size={14} />} onClick={() => void syncAllLocalResources()}>
+                      同步全部
+                    </Button>
+                  </>
                 )}
                 <ButtonGroup
                   options={[

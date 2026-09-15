@@ -1,5 +1,5 @@
-import { createReadStream } from 'node:fs'
-import { pipeline } from 'node:stream/promises'
+import { spawn } from 'node:child_process'
+import { join } from 'node:path'
 
 import { Client as SMB2Client } from 'node-smb2'
 import { Client as ShareDiscoveryClient } from 'smb3-client'
@@ -12,7 +12,7 @@ export interface NasRemoteStat {
 
 export interface NasTransport {
   listShares(): Promise<NasShare[]>
-  probe(): Promise<string[]>
+  probe(remotePath?: string): Promise<string[]>
   listFiles(remotePath: string): Promise<NasRemoteFile[]>
   ensureDirectory(remotePath: string): Promise<void>
   stat(remotePath: string): Promise<NasRemoteStat | null>
@@ -32,6 +32,16 @@ const SMB_STATUS_NAMES: Record<number, string> = {
   0xc00000c9: 'STATUS_NETWORK_NAME_DELETED',
   0xc0000120: 'STATUS_CANCELLED',
   0xc000020c: 'STATUS_CONNECTION_DISCONNECTED',
+}
+
+// node-smb2 splits writes into roughly 64 KiB SMB requests. Feeding it a larger
+// chunk lets its write stream submit those requests concurrently instead of
+// waiting for every request before the next one is created.
+function smbWorkerPath(): string {
+  const executable = process.platform === 'win32' ? 'luna-smb2-worker.exe' : 'luna-smb2-worker'
+  if (process.env.LUNA_SMB_WORKER_PATH) return process.env.LUNA_SMB_WORKER_PATH
+  const root = process.env.APP_ROOT ?? process.cwd()
+  return join(root, 'luna-render-core', executable)
 }
 
 export function nasErrorCode(error: unknown): string {
@@ -153,14 +163,14 @@ export class SmbTransport implements NasTransport {
     }
   }
 
-  async probe(): Promise<string[]> {
-    const entries = await this.entries('')
+  async probe(remotePath = ''): Promise<string[]> {
+    const entries = await this.entries(remotePath)
     const directories = entries
       .filter((entry) => entry.type === 'Directory')
       .map((entry) => entryName(entry.filename))
       .filter((name) => name.length > 0)
       .sort((left, right) => left.localeCompare(right, 'zh-CN'))
-    return ['/', ...directories]
+    return directories
   }
 
   async listFiles(remotePath: string): Promise<NasRemoteFile[]> {
@@ -207,30 +217,50 @@ export class SmbTransport implements NasTransport {
     onProgress: (bytes: number) => void,
     signal?: AbortSignal,
   ): Promise<void> {
-    const source = createReadStream(sourcePath)
-    let destination: { destroy(): void } | null = null
-    let completed = false
-    let copied = 0
-    const onData = (chunk: Buffer): void => {
-      copied += chunk.length
-      onProgress(copied)
-    }
-    try {
-      destination = await (await this.tree()).createFileWriteStream(clientPath(remotePath)) as unknown as { destroy(): void }
-      source.on('data', onData)
-      await pipeline(
-        source as unknown as NodeJS.ReadableStream,
-        destination as unknown as NodeJS.WritableStream,
-        { signal },
-      )
-      completed = true
-      onProgress(copied)
-    } finally {
-      source.off('data', onData)
-      if (!completed) {
-        source.destroy()
-        destination?.destroy()
+    await this.copyFileWithRust(sourcePath, remotePath, onProgress, signal)
+  }
+
+  private async copyFileWithRust(sourcePath: string, remotePath: string, onProgress: (bytes: number) => void, signal?: AbortSignal): Promise<void> {
+    const child = spawn(smbWorkerPath(), [], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        LUNA_SMB_HOST: serverHost(this.config.server),
+        LUNA_SMB_PORT: String(this.config.port),
+        LUNA_SMB_USER: this.config.username,
+        LUNA_SMB_PASSWORD: this.config.password,
+        LUNA_SMB_SHARE: this.config.share,
+        LUNA_SMB_SOURCE: sourcePath,
+        LUNA_SMB_REMOTE_PATH: remotePath.replace(/\\/g, '/'),
+      },
+    })
+    let stderr = ''
+    let stdout = ''
+    const abort = () => child.kill()
+    signal?.addEventListener('abort', abort, { once: true })
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk
+      const lines = stdout.split('\n')
+      stdout = lines.pop() ?? ''
+      for (const line of lines) {
+        try {
+          const value = JSON.parse(line) as { bytes?: unknown }
+          if (typeof value.bytes === 'number') onProgress(value.bytes)
+        } catch { /* ignore non-progress output */ }
       }
+    })
+    child.stderr.on('data', (chunk: string) => { stderr += chunk })
+    try {
+      const code = await new Promise<number | null>((resolve, reject) => {
+        child.once('error', reject)
+        child.once('close', resolve)
+      })
+      if (signal?.aborted) throw new Error('NAS 同步已取消')
+      if (code !== 0) throw new Error(stderr.trim() || `Rust SMB worker exited with code ${code ?? 'unknown'}`)
+    } finally {
+      signal?.removeEventListener('abort', abort)
     }
   }
 

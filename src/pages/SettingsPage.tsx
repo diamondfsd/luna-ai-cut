@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
@@ -73,6 +74,7 @@ export function SettingsPage({
   settings,
   setSettings,
 }: SettingsPageProps) {
+  const location = useLocation()
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
@@ -328,7 +330,7 @@ export function SettingsPage({
           </div>
         </section>
 
-        <NasSyncSettings settings={settings} setSettings={setSettings} />
+        <NasSyncSettings settings={settings} setSettings={setSettings} openSetup={location.state?.nasSetup === true} />
 
         <section className="settings-group">
           <h2 className="settings-group-title">应用行为</h2>

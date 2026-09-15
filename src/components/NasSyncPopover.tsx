@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Clock3, CloudUpload, FolderCog, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Clock3, CloudUpload, FolderCog, Loader2, RefreshCw, Trash2, X, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { formatBytes } from '../lib/format'
@@ -13,6 +13,7 @@ function statusLabel(state: string): string {
     case 'syncing': return '同步中'
     case 'error': return '有文件失败'
     case 'not-configured': return '未配置 NAS'
+    case 'disabled': return '未启用'
     default: return '已完成'
   }
 }
@@ -66,7 +67,6 @@ export function NasSyncPopover() {
   const { status, refresh, progressPopoverOpen, setProgressPopoverOpen } = useNasSyncProgress()
   const navigate = useNavigate()
   const enabled = settings?.nasSync?.enabled === true
-  if (!enabled) return null
 
   const percent = Math.round(status.percent ?? 0)
   const hasPending = status.pendingFiles > 0
@@ -75,6 +75,7 @@ export function NasSyncPopover() {
     ? '已取消'
     : statusLabel(status.state)
   const taskCount = status.pendingFiles + status.failedFiles + status.canceledFiles
+  const canClearFinished = status.completedFiles > 0 || status.canceledFiles > 0
 
   async function resumeTasks(): Promise<void> {
     try {
@@ -92,6 +93,16 @@ export function NasSyncPopover() {
       await refresh()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '取消失败')
+    }
+  }
+
+  async function clearFinished(): Promise<void> {
+    try {
+      const count = await window.luna.nasSync.clearFinished()
+      await refresh()
+      if (count > 0) toast.success(`已清除 ${count} 条记录`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '清除记录失败')
     }
   }
 
@@ -120,11 +131,11 @@ export function NasSyncPopover() {
           <CloudUpload size={17} aria-hidden="true" />
         </div>
 
-        {status.state === 'not-configured' ? (
+        {!enabled || status.state === 'not-configured' ? (
           <div className="nas-sync-empty">
-            <span>请先完成 NAS 配置</span>
-            <Button variant="primary" size="compact" icon={<FolderCog size={14} />} onClick={() => { setProgressPopoverOpen(false); navigate('/settings') }}>
-              去设置
+            <span>尚未启用</span>
+            <Button variant="primary" size="compact" icon={<FolderCog size={14} />} onClick={() => { setProgressPopoverOpen(false); navigate('/settings', { state: { nasSetup: true } }) }}>
+              配置 NAS
             </Button>
           </div>
         ) : (
@@ -147,11 +158,16 @@ export function NasSyncPopover() {
             {status.lastError && <div className="nas-sync-error">{status.lastError}</div>}
             <div className="nas-sync-task-list-header">
               <span>任务</span>
-              <span>
-                {status.taskItemsTruncated
-                  ? `显示 ${status.taskItems.length} / ${taskCount}`
-                  : status.taskItems.length}
-              </span>
+              <div className="nas-sync-task-list-tools">
+                <span>
+                  {status.taskItemsTruncated
+                    ? `显示 ${status.taskItems.length} / ${taskCount}`
+                    : status.taskItems.length}
+                </span>
+                <Button variant="ghost" size="mini" disabled={!canClearFinished} icon={<Trash2 size={13} />} onClick={() => void clearFinished()}>
+                  清除已完成
+                </Button>
+              </div>
             </div>
             <div className="nas-sync-task-list" role="list" aria-label="NAS 同步任务">
               {status.taskItems.length > 0 ? status.taskItems.map((item) => (

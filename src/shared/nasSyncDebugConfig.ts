@@ -9,4 +9,5 @@ export const DEFAULT_NAS_DEBUG_CONFIG: NasSyncSettings = {
   remotePath: '/',
   username: 'demo',
   password: 'demo',
+  concurrency: 3,
 }

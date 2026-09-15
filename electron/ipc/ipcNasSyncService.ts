@@ -21,4 +21,5 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('nas-sync:sync-local-resources', () => nasSyncService.syncLocalResources())
   ipcMain.handle('nas-sync:retry-failed', () => nasSyncService.retryFailed())
   ipcMain.handle('nas-sync:cancel-pending', () => nasSyncService.cancelPending())
+  ipcMain.handle('nas-sync:clear-finished', () => nasSyncService.clearFinished())
 }

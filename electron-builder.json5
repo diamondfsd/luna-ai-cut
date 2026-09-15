@@ -68,6 +68,8 @@
         "luna-punctuation-worker.exe",
         "neural-preset-worker",
         "neural-preset-worker.exe",
+        "luna-smb2-worker",
+        "luna-smb2-worker.exe",
         "*.dylib",
         "*.dll",
         "*.so*",

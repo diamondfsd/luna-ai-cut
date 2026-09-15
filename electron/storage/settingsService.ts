@@ -95,6 +95,7 @@ function defaultSettings(): AppSettings {
       remotePath: '',
       username: '',
       password: '',
+      concurrency: 3,
     },
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
@@ -224,6 +225,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
     remotePath: typeof savedNasSync?.remotePath === 'string' ? savedNasSync.remotePath.trim() : defaultNasSync.remotePath,
     username: typeof savedNasSync?.username === 'string' ? savedNasSync.username : defaultNasSync.username,
     password: typeof savedNasSync?.password === 'string' ? savedNasSync.password : defaultNasSync.password,
+    concurrency: typeof savedNasSync?.concurrency === 'number' && Number.isFinite(savedNasSync.concurrency)
+      ? Math.min(10, Math.max(1, Math.round(savedNasSync.concurrency)))
+      : defaultNasSync.concurrency,
   }
   if (hasLegacyNasDebugMode) merged.nasSync = restoreLegacyNasSyncConfig(saved?.nasSyncDebugPrevious, defaultNasSync)
   const legacySettings = merged as AppSettings & LegacyNasSyncDebugSettings
@@ -253,6 +257,9 @@ function restoreLegacyNasSyncConfig(value: unknown, fallback: NasSyncSettings): 
     remotePath,
     username: typeof source.username === 'string' ? source.username : fallback.username,
     password: typeof source.password === 'string' ? source.password : fallback.password,
+    concurrency: typeof source.concurrency === 'number' && Number.isFinite(source.concurrency)
+      ? Math.min(10, Math.max(1, Math.round(source.concurrency)))
+      : fallback.concurrency,
   }
 }
 

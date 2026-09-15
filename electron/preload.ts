@@ -208,6 +208,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     syncLocalResources: (): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-local-resources'),
     retryFailed: (): Promise<number> => ipcRenderer.invoke('nas-sync:retry-failed'),
     cancelPending: (): Promise<void> => ipcRenderer.invoke('nas-sync:cancel-pending'),
+    clearFinished: (): Promise<number> => ipcRenderer.invoke('nas-sync:clear-finished'),
   },
   onNasSyncProgress: (callback: (status: NasSyncStatus) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: NasSyncStatus): void => callback(status)

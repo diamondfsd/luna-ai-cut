@@ -16,6 +16,7 @@ export interface NasSyncSettings {
   remotePath: string
   username: string
   password: string
+  concurrency: number
 }
 
 export interface CustomLutFile {

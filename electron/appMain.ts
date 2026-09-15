@@ -63,6 +63,11 @@ installCrashDiagnostics()
 // │ │ └── preload.mjs
 // │
 process.env.APP_ROOT = path.join(__dirname, '..')
+process.env.LUNA_SMB_WORKER_PATH = path.join(
+  app.isPackaged ? process.resourcesPath : process.env.APP_ROOT,
+  'luna-render-core',
+  process.platform === 'win32' ? 'luna-smb2-worker.exe' : 'luna-smb2-worker',
+)
 
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
