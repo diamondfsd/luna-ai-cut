@@ -493,7 +493,10 @@ export function TrimPanel({
   }
 
   const setLiveCover = (marker: Extract<VideoOutputMarker, { kind: 'live' }>, coverTime: number) => {
-    const nextCoverTime = snapTimeToFrame(coverTime, frameRate)
+    const startFrame = frameIndexAtTime(marker.startTime, frameRate)
+    const endFrame = frameIndexAtTime(marker.endTime, frameRate) - 1
+    const nextCoverFrame = Math.max(startFrame, Math.min(frameIndexAtTime(coverTime, frameRate), endFrame))
+    const nextCoverTime = timeAtFrame(nextCoverFrame, frameRate)
     const nextMarker = { ...marker, coverTime: nextCoverTime }
     onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
     onLiveSelectionChange({
@@ -547,7 +550,10 @@ export function TrimPanel({
       ...marker,
       startTime: timeAtFrame(nextStartFrame, frameRate),
       endTime: timeAtFrame(nextEndFrame + 1, frameRate),
-      coverTime: marker.coverTime,
+      coverTime: timeAtFrame(
+        Math.max(nextStartFrame, Math.min(frameIndexAtTime(marker.coverTime, frameRate), nextEndFrame)),
+        frameRate,
+      ),
     }
     onMarkersChange(markers.map((candidate) => candidate.id === marker.id ? nextMarker : candidate))
     onLiveSelectionChange({
