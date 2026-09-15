@@ -358,7 +358,43 @@ async function currentDarwinWifiSsid(interfaceName?: string | null): Promise<str
   }
 }
 
-/** A password supplied by the user is passed directly to CoreWLAN. */
+/** Uses Apple's networksetup command as the primary macOS Wi-Fi join path. */
+async function connectDarwinWifiWithNetworksetup(
+  ssid: string,
+  password: string | undefined,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<WifiDebugResult<WifiDebugStatus>> {
+  const device = await preferredDarwinWifiDevice()
+  if (!device) return fail('未找到 macOS Wi-Fi 网卡', 'WIFI_INTERFACE_NOT_FOUND')
+
+  const args = ['-setairportnetwork', device, ssid]
+  if (password) args.push(password)
+  const commandRaw = await runCommand('/usr/sbin/networksetup', args, timeoutMs, signal)
+  const status = await getWifiDebugStatus().catch(() => null)
+  const current = status?.data
+  const raw = [commandRaw, status?.raw].filter(Boolean).join('\n')
+
+  return ok(
+    `networksetup 已尝试连接 ${ssid}`,
+    {
+      platform: 'darwin',
+      interfaceName: current?.interfaceName ?? device,
+      connected: current?.connected ?? true,
+      ssid: current?.ssid ?? ssid,
+      bssid: current?.bssid ?? null,
+      signal: current?.signal ?? null,
+      security: current?.security ?? null,
+      ipAddress: current?.ipAddress ?? firstWirelessIpv4(),
+      ipAddresses: current?.ipAddresses,
+      interfaces: current?.interfaces,
+      raw: current?.raw,
+    },
+    raw,
+  )
+}
+
+/** A password supplied by the user is passed directly to CoreWLAN as fallback. */
 async function connectDarwinWifiWithPassword(
   ssid: string,
   password: string,
@@ -497,6 +533,20 @@ export async function connectWifiNetwork(options: WifiConnectOptions, signal?: A
 
   try {
     if (process.platform === 'darwin') {
+      if (options.preferNetworksetup && !options.bssid) {
+        try {
+          const result = await connectDarwinWifiWithNetworksetup(ssid, options.password, timeoutMs, signal)
+          logMainInfo('[系统 Wi-Fi] 连接请求结束', { requestId, result: wifiStatusForLog(result) })
+          return result
+        } catch (networksetupError) {
+          logMainWarn('[系统 Wi-Fi] networksetup 连接失败，回退 CoreWLAN', {
+            requestId,
+            ssid,
+            error: networksetupError instanceof Error ? networksetupError.message : String(networksetupError),
+          })
+        }
+      }
+
       if (options.password) {
         const result = await connectDarwinWifiWithPassword(ssid, options.password, timeoutMs, options.bssid, options.skipSsidVerification, signal)
         logMainInfo('[系统 Wi-Fi] 连接请求结束', { requestId, result: wifiStatusForLog(result) })

@@ -41,6 +41,8 @@ export interface WifiConnectOptions {
   timeoutMs?: number
   /** 当前 SSID 不可靠的平台仍可通过目标 IP 确认设备热点。 */
   skipSsidVerification?: boolean
+  /** 设备自动连接时优先使用 macOS networksetup。 */
+  preferNetworksetup?: boolean
 }
 
 export interface WifiPortCheckOptions {

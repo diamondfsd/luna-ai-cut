@@ -364,6 +364,7 @@ export async function autoJoinDeviceWifi(
       ssid: candidateSsid,
       timeoutMs: 30000,
       password,
+      preferNetworksetup: true,
       // The current system SSID is not reliable on desktop platforms. Luna's
       // control-channel handshake below is the actual connection confirmation.
       skipSsidVerification: true,
