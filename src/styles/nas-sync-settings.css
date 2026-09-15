@@ -1,94 +1,25 @@
-.nas-settings-card .settings-row-copy span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.nas-settings-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 18px;
-  padding: 18px 22px 20px;
-  border-top: 1px solid var(--hairline);
-}
-
-.nas-settings-form label {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.nas-settings-form label > span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.nas-selected-directory {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.nas-selected-directory > span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.nas-selected-directory > strong {
-  min-height: 32px;
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 32px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nas-directory-picker {
-  display: grid;
-  gap: 14px;
-  padding: 18px 20px 20px;
-}
-
-.nas-directory-picker label {
-  display: grid;
-  gap: 6px;
-}
-
-.nas-directory-picker label > span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.nas-directory-dialog.ui-dialog-content {
-  width: min(420px, calc(100vw - 32px));
-}
-
-.nas-settings-actions {
-  display: flex;
-  flex-wrap: wrap;
-  grid-column: 1 / -1;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 2px;
-}
-
-@media (max-width: 640px) {
-  .nas-settings-form {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .nas-settings-actions {
-    grid-column: auto;
-    justify-content: stretch;
-  }
-
-  .nas-settings-actions .ui-btn {
-    flex: 1;
-  }
-
-  .nas-settings-actions .ui-btn:last-child {
-    flex-basis: 100%;
-  }
-}
+.nas-settings-card .settings-row-copy span { display: inline-flex; align-items: center; gap: 6px; }
+.nas-setup-row { min-height: 72px; }
+.nas-manual-sync { display: flex; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid var(--hairline); }
+.nas-setup-progress { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 18px 20px 0; }
+.nas-setup-progress span { display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--hairline); border-radius: 50%; color: var(--muted); font-size: 12px; }
+.nas-setup-progress span.is-current, .nas-setup-progress span.is-complete { border-color: var(--blue); background: var(--blue); color: #fff; }
+.nas-setup-progress i { width: 44px; height: 1px; background: var(--hairline); }
+.nas-setup-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; padding: 20px; }
+.nas-setup-form label { display: grid; gap: 6px; min-width: 0; }
+.nas-setup-form label > span { color: var(--muted); font-size: 12px; }
+.nas-directory-picker { display: grid; gap: 10px; padding: 18px 20px 20px; }
+.nas-directory-location { display: flex; align-items: center; min-height: 28px; gap: 6px; }
+.nas-directory-location strong { overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.nas-directory-list { display: grid; align-content: start; min-height: 220px; max-height: min(420px, 50vh); overflow-y: auto; border: 1px solid var(--hairline); border-radius: 8px; }
+.nas-directory-list .nas-directory-item.ui-btn { display: grid; grid-template-columns: 20px minmax(0, 1fr) 18px; width: 100%; height: 44px; padding: 0 12px; border: 0; border-bottom: 1px solid var(--hairline); border-radius: 0; color: var(--ink); text-align: left; }
+.nas-directory-list .nas-directory-item.ui-btn:last-child { border-bottom: 0; }
+.nas-directory-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nas-directory-item svg:last-child { color: var(--muted); }
+.nas-directory-empty { display: grid; min-height: 220px; place-items: center; color: var(--muted); font-size: 13px; }
+.nas-setup-complete { display: grid; justify-items: center; gap: 10px; padding: 42px 20px; text-align: center; }
+.nas-setup-complete svg { color: var(--blue); }
+.nas-setup-complete strong { color: var(--ink); font-size: 15px; }
+.nas-setup-complete span { max-width: 100%; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.nas-setup-dialog.ui-dialog-content { width: min(480px, calc(100vw - 32px)); }
+@media (max-width: 520px) { .nas-setup-form { grid-template-columns: 1fr; } }

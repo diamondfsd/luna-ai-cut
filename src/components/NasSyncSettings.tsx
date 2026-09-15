@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, FolderSync, HardDrive, Link, Save } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Check, ChevronRight, Folder, FolderCog, FolderSync, HardDrive, Settings2 } from 'lucide-react'
 
 import { useNasSyncProgress } from '../context/NasSyncProgressContext'
 import type { AppSettings, NasShare, NasSyncSettings as NasSettings } from '../shared/types'
-import { Button, Dialog, Input, Select, Switch, toast } from '../ui'
+import { Button, Dialog, IconButton, Input, Switch, Tooltip, toast } from '../ui'
 import '../styles/nas-sync-settings.css'
 
 const emptyConfig: NasSettings = {
@@ -15,127 +15,111 @@ const emptyConfig: NasSettings = {
   remotePath: '',
   username: '',
   password: '',
+  concurrency: 3,
 }
+type SetupStep = 'connection' | 'directory' | 'complete'
 
 interface NasSyncSettingsProps {
   settings: AppSettings | null
   setSettings: (updater: AppSettings | ((current: AppSettings | null) => AppSettings | null)) => void
+  openSetup?: boolean
 }
 
 function configFromSettings(settings: AppSettings | null): NasSettings {
   return { ...emptyConfig, ...(settings?.nasSync ?? {}) }
 }
 
-function directoryLabel(directory: string): string {
-  return directory === '/' ? '共享根目录' : directory
+function joinDirectory(parent: string, child: string): string {
+  return [parent === '/' ? '' : parent, child].filter(Boolean).join('/')
 }
 
-export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps) {
+function parentDirectory(directory: string): string {
+  const parts = directory.split('/').filter(Boolean)
+  parts.pop()
+  return parts.length === 0 ? '/' : parts.join('/')
+}
+
+function targetLabel(config: NasSettings): string {
+  if (!config.share || !config.remotePath) return '未配置'
+  return `${config.share}${config.remotePath === '/' ? '' : ` / ${config.remotePath}`}`
+}
+
+export function NasSyncSettings({ settings, setSettings, openSetup = false }: NasSyncSettingsProps) {
   const { showProgress } = useNasSyncProgress()
   const [form, setForm] = useState<NasSettings>(() => configFromSettings(settings))
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [step, setStep] = useState<SetupStep>('connection')
   const [busy, setBusy] = useState(false)
-  const [checking, setChecking] = useState(false)
   const [syncingLocalResources, setSyncingLocalResources] = useState(false)
   const [shareOptions, setShareOptions] = useState<NasShare[]>([])
   const [directoryOptions, setDirectoryOptions] = useState<string[]>([])
   const [selectedShare, setSelectedShare] = useState('')
   const [selectedDirectory, setSelectedDirectory] = useState('')
-  const [directoryDialogOpen, setDirectoryDialogOpen] = useState(false)
   const [loadingDirectories, setLoadingDirectories] = useState(false)
   const directoryRequestId = useRef(0)
+  const openedFromNavigation = useRef(false)
 
   useEffect(() => {
-    const next = configFromSettings(settings)
-    setForm(next)
-    setSelectedShare(next.share)
-    setSelectedDirectory(next.remotePath)
+    setForm(configFromSettings(settings))
   }, [settings])
-
-  function updateForm(patch: Partial<NasSettings>): void {
-    setForm((current) => ({ ...current, ...patch }))
-  }
-
-  function updateConnection(patch: Partial<NasSettings>): void {
-    setForm((current) => ({ ...current, ...patch, share: '', remotePath: '' }))
-    setSelectedShare('')
-    setSelectedDirectory('')
-  }
 
   const connectionReady = Boolean(form.server.trim())
   const validPort = Number.isInteger(form.port) && form.port >= 1 && form.port <= 65535
   const configured = connectionReady && validPort && Boolean(form.share.trim()) && Boolean(form.remotePath.trim())
 
-  const savedConfig = settings?.nasSync
-  const configSaved = Boolean(savedConfig
-    && savedConfig.enabled === form.enabled
-    && savedConfig.autoSync === form.autoSync
-    && savedConfig.server === form.server.trim()
-    && savedConfig.port === form.port
-    && savedConfig.share === form.share.trim()
-    && savedConfig.remotePath === form.remotePath.trim()
-    && savedConfig.username === form.username
-    && savedConfig.password === form.password)
-
   function normalizedConfig(config: NasSettings): NasSettings {
-    return { ...config, server: config.server.trim(), share: config.share.trim(), remotePath: config.remotePath.trim() }
-  }
-
-  async function saveConfig(): Promise<void> {
-    if (!configured) {
-      toast.error('请先连接 NAS 并选择共享和同步目录')
-      return
-    }
-    setBusy(true)
-    try {
-      const nextConfig = normalizedConfig(form)
-      const next = await window.luna.saveSettings({ nasSync: nextConfig })
-      setSettings(next)
-      setForm(configFromSettings(next))
-      toast.success('NAS 配置已保存')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'NAS 配置保存失败')
-    } finally {
-      setBusy(false)
+    return {
+      ...config,
+      server: config.server.trim(),
+      share: config.share.trim(),
+      remotePath: config.remotePath.trim(),
+      concurrency: Math.min(10, Math.max(1, Math.round(config.concurrency || 3))),
     }
   }
 
-  async function syncLocalResources(): Promise<void> {
-    if (!form.enabled || !configured) {
-      toast.error('请先完成 NAS 配置')
-      return
-    }
-    if (!configSaved) {
-      toast.error('请先保存 NAS 配置')
-      return
-    }
-    setSyncingLocalResources(true)
-    try {
-      const result = await window.luna.nasSync.syncLocalResources()
-      if (result.queued > 0) showProgress()
-      else toast.success('没有新的文件需要同步')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '同步本地资源失败')
-    } finally {
-      setSyncingLocalResources(false)
+  function updateConnection(patch: Partial<NasSettings>): void {
+    setForm((current) => ({ ...current, ...patch, share: '', remotePath: '' }))
+  }
+
+  function closeWizard(open: boolean): void {
+    if (!open && busy) return
+    setWizardOpen(open)
+    if (!open) {
+      directoryRequestId.current += 1
+      setForm(configFromSettings(settings))
     }
   }
 
-  async function loadDirectories(share: string): Promise<void> {
+  const openWizard = useCallback((): void => {
+    const config = configFromSettings(settings)
+    setForm(config)
+    setStep('connection')
+    setShareOptions([])
+    setDirectoryOptions([])
+    setSelectedShare(config.share)
+    setSelectedDirectory(config.remotePath)
+    setWizardOpen(true)
+  }, [settings])
+
+  useEffect(() => {
+    if (!openSetup || openedFromNavigation.current) return
+    openedFromNavigation.current = true
+    openWizard()
+  }, [openSetup, openWizard])
+
+  async function loadDirectories(share: string, remotePath: string): Promise<void> {
     const requestId = directoryRequestId.current + 1
     directoryRequestId.current = requestId
     setLoadingDirectories(true)
     try {
-      const result = await window.luna.nasSync.probe(normalizedConfig({ ...form, share, remotePath: '' }))
+      const result = await window.luna.nasSync.probe(normalizedConfig({ ...form, share, remotePath }))
       if (requestId !== directoryRequestId.current) return
       if (!result.ok) {
         toast.error(result.message ?? 'NAS 连接失败')
         setDirectoryOptions([])
         return
       }
-      const directories = result.directories ?? []
-      setDirectoryOptions(directories)
-      setSelectedDirectory(form.share === share && directories.includes(form.remotePath) ? form.remotePath : '')
-      if (directories.length === 0) toast.error('NAS 共享中没有可选目录')
+      setDirectoryOptions(result.directories ?? [])
     } catch (error) {
       if (requestId !== directoryRequestId.current) return
       setDirectoryOptions([])
@@ -145,8 +129,12 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
     }
   }
 
-  async function probe(): Promise<void> {
-    setChecking(true)
+  async function continueToDirectory(): Promise<void> {
+    if (!connectionReady || !validPort) {
+      toast.error('请填写服务器地址和端口')
+      return
+    }
+    setBusy(true)
     try {
       const result = await window.luna.nasSync.probe(normalizedConfig({ ...form, share: '', remotePath: '' }))
       if (!result.ok) {
@@ -158,30 +146,78 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
         toast.error('NAS 中没有可用共享目录')
         return
       }
-      const previousShare = shares.some((share) => share.name === form.share) ? form.share : ''
       setShareOptions(shares)
-      setSelectedShare(previousShare)
-      setDirectoryOptions([])
+      setSelectedShare('')
       setSelectedDirectory('')
-      setDirectoryDialogOpen(true)
-      if (previousShare) await loadDirectories(previousShare)
+      setDirectoryOptions([])
+      setStep('directory')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'NAS 连接失败')
     } finally {
-      setChecking(false)
+      setBusy(false)
     }
   }
 
-  function confirmDirectory(): void {
-    if (!selectedShare || !selectedDirectory) {
-      toast.error('请选择共享和同步目录')
+  async function openShare(share: string): Promise<void> {
+    setSelectedShare(share)
+    setSelectedDirectory('/')
+    await loadDirectories(share, '/')
+  }
+
+  async function openDirectory(directory: string): Promise<void> {
+    if (!selectedShare) return
+    const next = joinDirectory(selectedDirectory, directory)
+    setSelectedDirectory(next)
+    await loadDirectories(selectedShare, next)
+  }
+
+  async function goBackDirectory(): Promise<void> {
+    if (!selectedShare) return
+    if (selectedDirectory === '/') {
+      directoryRequestId.current += 1
+      setSelectedShare('')
+      setSelectedDirectory('')
+      setDirectoryOptions([])
+      setLoadingDirectories(false)
       return
     }
-    updateForm({ share: selectedShare, remotePath: selectedDirectory })
-    setDirectoryDialogOpen(false)
+    const next = parentDirectory(selectedDirectory)
+    setSelectedDirectory(next)
+    await loadDirectories(selectedShare, next)
+  }
+
+  function continueToComplete(): void {
+    if (!selectedShare || !selectedDirectory) {
+      toast.error('请选择同步目录')
+      return
+    }
+    setForm((current) => ({ ...current, share: selectedShare, remotePath: selectedDirectory }))
+    setStep('complete')
+  }
+
+  async function saveConfiguration(): Promise<void> {
+    const nextConfig = normalizedConfig({
+      ...form,
+      share: selectedShare,
+      remotePath: selectedDirectory,
+      enabled: true,
+    })
+    setBusy(true)
+    try {
+      const next = await window.luna.saveSettings({ nasSync: nextConfig })
+      setSettings(next)
+      setForm(configFromSettings(next))
+      setWizardOpen(false)
+      toast.success('NAS 已配置')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'NAS 配置保存失败')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function saveSwitch(patch: Partial<NasSettings>): Promise<void> {
+    if (!settings) return
     const previous = form
     const nextConfig = normalizedConfig({ ...previous, ...patch })
     setForm(nextConfig)
@@ -197,120 +233,81 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
     }
   }
 
+  async function syncLocalResources(): Promise<void> {
+    if (!form.enabled || !configured) return
+    setSyncingLocalResources(true)
+    try {
+      const result = await window.luna.nasSync.syncLocalResources()
+      if (result.queued > 0) showProgress()
+      else toast.success('没有新的文件需要同步')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '同步本地资源失败')
+    } finally {
+      setSyncingLocalResources(false)
+    }
+  }
+
+  const wizardFooter = step === 'connection'
+    ? <><Button variant="secondary" size="compact" onClick={() => closeWizard(false)}>取消</Button><Button variant="primary" size="compact" disabled={busy} icon={<ChevronRight size={14} />} onClick={() => void continueToDirectory()}>{busy ? '连接中' : '下一步'}</Button></>
+    : step === 'directory'
+      ? <><Button variant="secondary" size="compact" onClick={() => setStep('connection')}>上一步</Button><Button variant="primary" size="compact" disabled={loadingDirectories || !selectedShare || !selectedDirectory} icon={<ChevronRight size={14} />} onClick={continueToComplete}>下一步</Button></>
+      : <><Button variant="secondary" size="compact" onClick={() => setStep('directory')}>上一步</Button><Button variant="primary" size="compact" disabled={busy} icon={<Check size={14} />} onClick={() => void saveConfiguration()}>{busy ? '保存中' : '完成配置'}</Button></>
+
   return (
     <section className="settings-group">
       <h2 className="settings-group-title">NAS 同步</h2>
       <div className="settings-card nas-settings-card">
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span><HardDrive size={15} aria-hidden="true" />启用 NAS 同步</span>
-            <em>{form.enabled ? '可将本地文件同步到 NAS' : '未启用'}</em>
-          </div>
-          <Switch checked={form.enabled} disabled={!settings || (!form.enabled && !configured)} ariaLabel="启用 NAS 同步" onCheckedChange={(enabled) => void saveSwitch({ enabled, autoSync: enabled ? true : form.autoSync })} />
-        </article>
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>自动同步新下载</span>
-            <em>{form.autoSync ? '本地下载完成后自动同步' : '仅手动同步已选文件'}</em>
-          </div>
-          <Switch
-            checked={form.autoSync}
-            disabled={!settings || !form.enabled || !configured}
-            ariaLabel="自动同步新下载"
-            onCheckedChange={(autoSync) => void saveSwitch({ autoSync })}
-          />
-        </article>
-        <div className="nas-settings-form">
-          <label>
-            <span>服务器地址</span>
-            <Input variant="compact" fullWidth value={form.server} placeholder="例如 192.168.1.20" onChange={(event) => updateConnection({ server: event.target.value })} />
-          </label>
-          <label>
-            <span>端口</span>
-            <Input
-              variant="compact"
-              type="number"
-              min={1}
-              max={65535}
-              step={1}
-              fullWidth
-              value={form.port}
-              onChange={(event) => updateConnection({ port: Number(event.target.value) || 0 })}
-            />
-          </label>
-          <label>
-            <span>用户名</span>
-            <Input variant="compact" fullWidth value={form.username} onChange={(event) => updateConnection({ username: event.target.value })} />
-          </label>
-          <label>
-            <span>密码</span>
-            <Input variant="compact" type="password" fullWidth value={form.password} onChange={(event) => updateConnection({ password: event.target.value })} />
-          </label>
-          <div className="nas-selected-directory">
-            <span>共享 / 同步目录</span>
-            <strong>{form.share && form.remotePath ? `${form.share} / ${directoryLabel(form.remotePath)}` : '未选择'}</strong>
-          </div>
-          <div className="nas-settings-actions">
-            <Button variant="secondary" size="compact" disabled={checking || !connectionReady} icon={<Link size={14} />} onClick={() => void probe()}>
-              {checking ? '连接中' : '连接并选择目录'}
-            </Button>
-            <Button variant="primary" size="compact" disabled={busy || !configured} icon={<Save size={14} />} onClick={() => void saveConfig()}>
-              {busy ? '保存中' : '保存配置'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="compact"
-              disabled={!form.enabled || !configured || !configSaved || syncingLocalResources}
-              icon={<FolderSync size={14} />}
-              onClick={() => void syncLocalResources()}
-            >
-              {syncingLocalResources ? '同步中' : '同步本地资源目录'}
-            </Button>
-          </div>
-        </div>
-      </div>
-      <Dialog
-        open={directoryDialogOpen}
-        onOpenChange={setDirectoryDialogOpen}
-        title="选择同步目录"
-        description="先选择共享，再选择同步目录"
-        className="nas-directory-dialog"
-        footer={(
+        {!configured ? (
+          <article className="settings-row nas-setup-row">
+            <div className="settings-row-copy">
+              <span><HardDrive size={15} aria-hidden="true" />NAS 同步</span>
+              <em>未配置</em>
+            </div>
+            <Button variant="primary" size="compact" icon={<FolderCog size={14} />} disabled={!settings} onClick={openWizard}>开始配置</Button>
+          </article>
+        ) : (
           <>
-            <Button variant="secondary" size="compact" onClick={() => setDirectoryDialogOpen(false)}>取消</Button>
-            <Button variant="primary" size="compact" disabled={!selectedShare || !selectedDirectory || loadingDirectories} icon={<FolderOpen size={14} />} onClick={confirmDirectory}>选择目录</Button>
+            <article className="settings-row">
+              <div className="settings-row-copy"><span><HardDrive size={15} aria-hidden="true" />同步位置</span><strong>{targetLabel(form)}</strong></div>
+              <Button variant="secondary" size="compact" icon={<Settings2 size={14} />} onClick={openWizard}>重新配置</Button>
+            </article>
+            <article className="settings-row nas-concurrency-row">
+              <div className="settings-row-copy"><span>同步并发数量</span><em>同时上传的文件数，范围 1 到 10</em></div>
+              <Input
+                variant="compact"
+                type="number"
+                min={1}
+                max={10}
+                step={1}
+                value={form.concurrency}
+                aria-label="同步并发数量"
+                onChange={(event) => setForm((current) => ({ ...current, concurrency: Number(event.target.value) || 1 }))}
+              />
+            </article>
+            <article className="settings-row">
+              <div className="settings-row-copy"><span>启用 NAS 同步</span><em>{form.enabled ? '已启用' : '已暂停'}</em></div>
+              <Switch checked={form.enabled} disabled={!settings} ariaLabel="启用 NAS 同步" onCheckedChange={(enabled) => void saveSwitch({ enabled })} />
+            </article>
+            <article className="settings-row">
+              <div className="settings-row-copy"><span>自动同步新下载</span><em>{form.autoSync ? '已开启' : '已关闭'}</em></div>
+              <Switch checked={form.autoSync} disabled={!settings || !form.enabled} ariaLabel="自动同步新下载" onCheckedChange={(autoSync) => void saveSwitch({ autoSync })} />
+            </article>
+            <div className="nas-manual-sync">
+              <Button variant="primary" size="compact" disabled={!form.enabled || syncingLocalResources} icon={<FolderSync size={14} />} onClick={() => void syncLocalResources()}>{syncingLocalResources ? '同步中' : '立即同步'}</Button>
+            </div>
           </>
         )}
-      >
-        <div className="nas-directory-picker">
-          <label>
-            <span>共享目录</span>
-            <Select
-              variant="compact"
-              fullWidth
-              options={shareOptions.map((share) => ({ value: share.name, label: share.name }))}
-              value={selectedShare}
-              placeholder="请选择共享目录"
-              onValueChange={(share) => {
-                setSelectedShare(share)
-                setSelectedDirectory('')
-                void loadDirectories(share)
-              }}
-            />
-          </label>
-          <label>
-            <span>同步目录</span>
-            <Select
-              variant="compact"
-              fullWidth
-              options={directoryOptions.map((directory) => ({ value: directory, label: directoryLabel(directory) }))}
-              value={selectedDirectory}
-              placeholder={loadingDirectories ? '读取中' : '请选择同步目录'}
-              disabled={!selectedShare || loadingDirectories || directoryOptions.length === 0}
-              onValueChange={setSelectedDirectory}
-            />
-          </label>
+      </div>
+
+      <Dialog open={wizardOpen} onOpenChange={closeWizard} title="配置 NAS 同步" className="nas-setup-dialog" footer={wizardFooter} closeOnMaskClick={!busy}>
+        <div className="nas-setup-progress" aria-label={`第 ${step === 'connection' ? 1 : step === 'directory' ? 2 : 3} 步，共 3 步`}>
+          <span className={step === 'connection' ? 'is-current' : 'is-complete'}>1</span><i />
+          <span className={step === 'directory' ? 'is-current' : step === 'complete' ? 'is-complete' : ''}>2</span><i />
+          <span className={step === 'complete' ? 'is-current' : ''}>3</span>
         </div>
+        {step === 'connection' && <div className="nas-setup-form"><label><span>SMB 服务器 IP</span><Input variant="compact" fullWidth value={form.server} placeholder="例如 192.168.1.20" onChange={(event) => updateConnection({ server: event.target.value })} /></label><label><span>端口</span><Input variant="compact" type="number" min={1} max={65535} step={1} fullWidth value={form.port} onChange={(event) => updateConnection({ port: Number(event.target.value) || 0 })} /></label><label><span>用户名</span><Input variant="compact" fullWidth value={form.username} onChange={(event) => updateConnection({ username: event.target.value })} /></label><label><span>密码</span><Input variant="compact" type="password" fullWidth value={form.password} onChange={(event) => updateConnection({ password: event.target.value })} /></label></div>}
+        {step === 'directory' && <div className="nas-directory-picker"><div className="nas-directory-location">{selectedShare && <Tooltip content="返回上一级"><IconButton variant="ghost" size="mini" icon={<ArrowLeft size={16} />} aria-label="返回上一级" onClick={() => void goBackDirectory()} /></Tooltip>}<strong>{selectedShare ? `${selectedShare}${selectedDirectory === '/' ? '' : ` / ${selectedDirectory}`}` : '选择共享目录'}</strong></div><div className="nas-directory-list" aria-busy={loadingDirectories}>{!selectedShare && shareOptions.map((share) => <Button key={share.name} variant="secondary" className="nas-directory-item" onClick={() => void openShare(share.name)}><Folder size={18} /><span>{share.name}</span><ChevronRight size={17} /></Button>)}{selectedShare && !loadingDirectories && directoryOptions.map((directory) => <Button key={directory} variant="secondary" className="nas-directory-item" onClick={() => void openDirectory(directory)}><Folder size={18} /><span>{directory}</span><ChevronRight size={17} /></Button>)}{selectedShare && !loadingDirectories && directoryOptions.length === 0 && <div className="nas-directory-empty">没有子目录</div>}{loadingDirectories && <div className="nas-directory-empty">读取中</div>}</div></div>}
+        {step === 'complete' && <div className="nas-setup-complete"><Check size={24} aria-hidden="true" /><strong>确认同步位置</strong><span>{targetLabel({ ...form, share: selectedShare, remotePath: selectedDirectory })}</span></div>}
       </Dialog>
     </section>
   )

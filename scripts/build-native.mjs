@@ -42,7 +42,7 @@ const targetArch = targetLower.includes('aarch64')
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
-const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker', 'neural-preset-worker']
+const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker', 'neural-preset-worker', 'luna-smb2-worker']
 
 function filesMatch(leftPath, rightPath) {
   if (!existsSync(rightPath)) return false

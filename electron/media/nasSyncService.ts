@@ -307,7 +307,7 @@ export class NasSyncService {
       transport = new SmbTransport(config)
       const shares = await transport.listShares()
       if (!config.share.trim()) return { ok: true, shares }
-      const directories = await transport.probe()
+      const directories = await transport.probe(config.remotePath)
       return { ok: true, shares, directories }
     } catch (error) {
       logMainWarn('[NAS] 连接检测失败', { error: rawErrorMessage(error) })
@@ -482,6 +482,19 @@ export class NasSyncService {
     this.currentController?.abort()
     await this.persist(settings)
     this.emit(settings)
+  }
+
+  async clearFinished(): Promise<number> {
+    const settings = this.getEffectiveSettings(await getSettings())
+    await this.ensureLoaded(settings)
+    const before = this.state.items.length
+    this.state.items = this.state.items.filter((item) => item.state !== 'synced' && item.state !== 'canceled')
+    const removed = before - this.state.items.length
+    if (removed > 0) {
+      await this.persist(settings)
+      this.emit(settings)
+    }
+    return removed
   }
 
   private async ensureLoaded(settings: AppSettings): Promise<void> {

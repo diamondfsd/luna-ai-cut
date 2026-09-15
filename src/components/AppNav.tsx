@@ -10,7 +10,6 @@ import { SendToPhoneDialog } from './SendToPhoneDialog'
 import { CameraLivePreviewDialog } from './CameraLivePreviewDialog'
 import { NasSyncPopover } from './NasSyncPopover'
 import { IconButton, Tooltip } from '../ui'
-import { useApp } from '../context/AppContext'
 import '../styles/nav.css'
 
 interface AppNavProps {
@@ -21,7 +20,6 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
-  const { settings } = useApp()
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
   const obsStreamDemoVisible = !window.luna.isPackaged
@@ -98,7 +96,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
               <Unplug size={15} />
             </button>
           )}
-          {settings?.nasSync?.enabled === true && <NasSyncPopover />}
+          <NasSyncPopover />
           <ExportProgressModal
             exportProgress={exportProgress}
             onRevealFile={(path) => void window.luna.revealFile(path)}

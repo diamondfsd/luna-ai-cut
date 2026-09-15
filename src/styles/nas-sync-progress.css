@@ -139,6 +139,12 @@
   font-size: 12px;
 }
 
+.nas-sync-task-list-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .nas-sync-task-list {
   max-height: 250px;
   margin: 0 16px 12px;
