@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 
 import { safeName } from '../../media/filePathUtils.ts'
 import { getSettings } from '../../storage/fileService.ts'
-import { generatedMusicMediaId } from './musicMedia.ts'
+import { assignAiEditorMediaId } from '../ai-editor/aiEditorMediaCatalog.ts'
 
 const execFileAsync = promisify(execFile)
 const WORKER_TIMEOUT_MS = 180_000
@@ -172,7 +172,7 @@ export async function generateBackgroundMusic(dsl: string, name?: string): Promi
       ? result.duration_seconds
       : 0
     return {
-      mediaId: generatedMusicMediaId(outputPath),
+      mediaId: await assignAiEditorMediaId(settings.baseDir, outputPath, 'audio'),
       name: fileName,
       kind: 'audio',
       durationSec,
