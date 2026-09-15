@@ -43,6 +43,7 @@ const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
 const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker', 'neural-preset-worker', 'luna-smb2-worker']
+const onnxWorkerNames = new Set(workerBaseNames.filter((name) => name !== 'luna-smb2-worker'))
 
 function filesMatch(leftPath, rightPath) {
   if (!existsSync(rightPath)) return false
@@ -256,7 +257,10 @@ for (const baseName of workerBaseNames.filter((name) => name !== 'luna-asr-worke
   const workerDest = join(rcDir, workerName)
   copyArtifact(workerSrc, workerDest)
   if (!isWin) chmodSync(workerDest, 0o755)
-  prepareMacArtifact(workerDest, isMacX64 ? 'required' : 'optional')
+  const onnxRuntimePolicy = onnxWorkerNames.has(baseName)
+    ? (isMacX64 ? 'required' : 'optional')
+    : 'forbidden'
+  prepareMacArtifact(workerDest, onnxRuntimePolicy)
   console.log('[build-native] ✅', workerDest)
 }
 

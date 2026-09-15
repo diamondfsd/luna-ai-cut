@@ -309,3 +309,7 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 - 工作流文件：`.github/workflows/package-artifacts.yml`
 - macOS: macos-latest runner，生成 DMG
 - Windows: windows-latest runner，生成 NSIS 安装包
+
+### 发布构建说明
+- 推送正式版 tag 后，GitHub Actions 会异步执行三平台打包；本地可同时运行 `pnpm pack:mac:arm64` 或 `pnpm pack:mac:x64`，不需要等待 GitHub Actions 完成。
+- 本地产物位于 `release/<版本>/`。三平台产物齐全后可运行 `./scripts/deploy-release.sh v<版本>` 发布 GitCode；本地缺少某个平台时，再使用 `--from-github` 获取远程产物。
