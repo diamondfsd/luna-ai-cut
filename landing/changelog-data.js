@@ -2,6 +2,12 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.7",
+    "title": "v1.8.7 - 安装包发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>DJI 相机媒体管理</strong>：支持浏览、预览、下载和删除 DJI 相机中的媒体。</li>\n<li><strong>NAS 同步</strong>：支持配置 SMB 共享目录，手动同步本地资源，并在新素材下载完成后自动同步到 NAS。</li>\n<li><strong>帧级精确修剪</strong>：视频修剪支持按帧调整起止位置，并可直接输入帧数。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>同步任务管理</strong>：统一显示同步进度、待完成和失败文件，支持继续同步与取消待同步。</li>\n<li><strong>重复文件处理</strong>：已同步且未变化的文件会自动跳过，NAS 中已有相同文件时不会重复上传。</li>\n<li><strong>连接与预览稳定性</strong>：改善 DJI 预览、相机连接和 NAS 同步过程中的状态处理。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复日期目录同步失败</strong>：同步到日期子目录时会先创建目标目录。</li>\n<li><strong>修复取消后的任务显示</strong>：取消同步后任务仍会保留在列表中，可继续同步。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
     "version": "1.8.5",
     "title": "v1.8.5",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>DJI Pocket 实时预览</strong>：支持 DJI Pocket 设备的实时预览和媒体访问。</li>\n<li><strong>按次选择传输目录</strong>：下载素材时可以为当前操作选择目标目录。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>Luna Wi-Fi 连接</strong>：自动切换 Wi-Fi 失败后只尝试一次，并提示用户在系统 Wi-Fi 中手动连接后检查。</li>\n<li><strong>连接诊断</strong>：记录 Wi-Fi 状态变化和相机控制通道握手结果，便于定位连接问题。</li>\n<li><strong>连接页布局</strong>：整理 Wi-Fi 失败提示、名称和密码展示及诊断入口，减少重复信息。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 DJI 预览链路</strong>：改善相机连接、UDP 传输和预览状态处理。</li>\n<li><strong>保护下载目录</strong>：下载到未配置目录前增加明确提醒。</li>\n</ul>",
