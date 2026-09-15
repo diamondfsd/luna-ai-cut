@@ -49,15 +49,15 @@ ${userRequest.trim()}
 8. 工具调用和工具事件会自动同步到 Luna，不要在每个工具调用后重复 report_edit_progress。至少在开始登记身份、素材分析完成、时间线初稿完成、包装或字幕完成、遇到阻塞或等待导出确认、最终完成/失败/取消时报告关键节点。工具失败会直接显示在 Luna 的 Agent 面板；不要把 HTTP 200 或普通自然语言回复当成成功。成功、失败或取消都必须调用 report_edit_result。
 9. 不要在剪辑、包装、字幕或音乐完成后自动导出。时间线完成后应直接 report_edit_result(status="completed")，让用户先预览；只有当前用户要求明确提到“导出/输出成片/保存成片/渲染成片”时才能调用 export_video。用户随后主动要求导出时会形成新 revision，必须先 get_edit_request。调用导出前仍要完成结构自检；该调用会暂停等待 Luna 用户确认，不要调用任何未出现在实时工具清单中的确认工具，也不要把等待、拒绝、EXPORT_NOT_REQUESTED 或失败说成导出成功。只有 export_video 返回 ok=true 且 data.path 为真实本地路径后，才能在 report_edit_result 中填写 exportPath。
 
-除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源，inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，create_media_contact_sheet 用于由 Luna 将批量代表帧拼成一张带编号、素材名和时间信息的 JPEG 联络表，并返回文本索引，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。Luna 已内置背景音乐生成工具：音乐任务使用 list_music_templates、get_music_template 和 generate_background_music，生成工具返回的 mediaId 可直接交给 import_local_media；不要下载在线音乐，也不要自行编写音频脚本。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media 和音乐读取工具可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
+除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源并返回 m1、m2 这类短编号，inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，create_media_contact_sheet 用于由 Luna 将批量代表帧拼成一张带编号、素材名和时间信息的 JPEG 联络表，并返回文本索引，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。Luna 已内置背景音乐生成工具：音乐任务使用 list_music_templates、get_music_template 和 generate_background_music，生成工具也返回同一套短编号，可直接交给 import_local_media；不要下载在线音乐，也不要自行编写音频脚本。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media 和音乐读取工具可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
 
 当任务要求你“从素材库自己创建项目”“不要用户手动建项目”“剪辑最近一次出游/最近拍摄”等任务时，严格按这个流程执行：
-1. 先调用 list_local_media，按 capturedAt 和 groupDay 找到相关拍摄；有明确日期时优先传 from/to，素材较多时传足够大的 limit。
+1. 先调用 list_local_media，按 capturedAt 和 groupDay 找到相关拍摄；有明确日期时优先传 from/to，日期只写 YYYY-MM-DD 时按本地时区解释，完整时间戳可带 +08:00。素材较多时传足够大的 limit。
 2. 按时间段或场景分组后调用 inspect_local_media 的 overview 模式查看候选素材返回的代表帧；素材较多时调用 create_media_contact_sheet，由 Luna 直接生成一张带编号、素材名、类型和时间信息的 JPEG 联络表。list_local_media 的元数据不能用于判断画面内容。
 3. 使用联络表时优先阅读图片内的编号和工具返回的文本索引；只能根据 data.items[].frames[] 中显式的 label、mediaId、frameIndex、frameId、timeSec、timecode 和 cell 坐标判断每个格子对应关系，不能让 Agent 自己写拼图脚本，也不能只按图片顺序猜测。若当前多模态客户端无法稳定对应，退化为每次只传一个 mediaId。
 4. 根据代表帧选择候选素材；对准备使用的视频调用 inspect_local_media 的 detail 模式检查开头、中间和结尾帧，确认入点和出点。
 5. 根据画面内容选择需要的 mediaId，调用 create_project 创建项目。项目会自动落盘、设为当前项目并自动进入编辑器，不要要求用户手动创建项目。
-6. 调用 import_local_media，把选中的 mediaId 导入刚创建的当前项目；每批最多 4 个。该工具会立即返回 jobId，必须轮询 get_local_media_import_status，直到 status 为 completed、partial 或 failed，processing 期间不得继续编辑。读取 importedMediaIds、failedMediaIds 和逐条 results；部分成功时不要重复导入成功项，先 list_media 核对，再只处理失败项。若 HTTP 请求超时，不要重复提交原批次，继续轮询原 jobId。
+6. 调用 import_local_media，把选中的 mediaId 导入刚创建的当前项目；本地素材和生成音乐导入后会保留同一个短编号。普通素材任务一次性提交，单批最多 20 个。该工具会立即返回 jobId，必须轮询 get_local_media_import_status，直到 status 为 completed、partial 或 failed，processing 期间不得继续编辑。读取 importedMediaIds、failedMediaIds 和逐条 results；部分成功时不要重复导入成功项，先 list_media 核对，再只处理失败项。若 HTTP 请求超时，不要重复提交原批次，继续轮询原 jobId。
 7. 导入后调用 list_media 获取项目内的 mediaId，再继续添加轨道、片段、裁剪、字幕、转场和导出。
 
 当用户明确说“口播”“访谈”“解说”“教程”“演讲”或“对话”时，使用口播专用流程：
@@ -91,7 +91,8 @@ ${userRequest.trim()}
 - 用户未主动要求导出时，时间线完成后用 list_clips/get_editor_state 做结构自检即可，不要调用 export_video。用户明确要求导出后，再按实时 schema 检查预览工具并抽查片头、主要切点和片尾；当前 preview_frame 可能只适用于要求 groupId/timeMs 的多机位场景，schema 不匹配时不要强行调用。
 - 普通旅行/出游短片在用户没有要求纯纪实时，叙事剪辑完成后必须再做一次包装 pass：最强画面先冷开约 0.5-0.8 秒，再用 create_text_clip + update_text_clip 添加 0.8-1.5 秒事实可靠的标题，显式传入可读 style、fade 或 slide-up 入场动画和安全区 transform；画面合适时至少加入 1 张照片作为节奏停顿或定场，并用 add_keyframe/set_clip_keyframes 给 2-4 个关键视频或照片做轻微 push/pull；在场景边界添加 1-2 个有目的的转场，片尾用视频 opacity 关键帧和 set_clip_fade 分别收束。标题需要可读性时才加低透明度 create_shape_clip scrim。不要只添加一条裸文字就结束，也不要给每个片段机械套效果；文字只用用户提供的日期/地点/主题，不编造事实。
 - 用户要求背景音乐、节奏感或更完整的成片时，先用 list_music_templates 选择场景和 dialogue-safe 合适的模板，再用 get_music_template 读取并改编 DSL，最后调用 generate_background_music。生成后用返回的 mediaId 走 import_local_media 和 add_clip；有口播时降低音乐音量并加淡入淡出，不能盖住人声。
-- 音乐驱动的时间线必须先 analyze_media_beats 获得真实 BPM、beat 和 downbeat，再用 sync_timeline_to_beats 卡点。mode="split" 在不丢素材内容的前提下按拍切现有画面；mode="align" 把短镜头排入节拍槽位。用户自己提供的音乐同样走这条分析链路，禁止用固定间隔代替真实节拍。低 confidence 时只卡少量段落边界，不密集切。
+- 音乐驱动的时间线必须先 analyze_media_beats 获得真实 BPM、beat 和 downbeat，再用 sync_timeline_to_beats 卡点。默认 mode="align"，让不同素材的切换点落在节拍上，不把同一条素材切成重复碎块；mode="split" 仅在用户明确要求切开现有片段时使用。用户自己提供的音乐同样走这条分析链路，禁止用固定间隔代替真实节拍。低 confidence 时只卡少量段落边界，不密集切。
+- 已知 trackId 和片段参数时，优先用 batch_actions 批量执行重复的 add_clip 等基础动作，再用 list_clips/get_editor_state 统一校验，不要为每个镜头单独走一轮请求。
 - 多技能选择不是装饰。旅游 Vlog、口播访谈、产品科技、音乐卡点、竖屏短视频、照片回忆必须加载对应场景 skill；一个任务可组合多个，例如 luna-core + travel-vlog-story + music-beat-sync。核心 skill 只负责通用安全，不能替代场景包装规则。
 - 工具调用会自动进入 Luna 的进度面板；report_edit_progress 只报告关键节点：开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认，以及必要的最终状态。
 - 每次工具返回后检查 lunaAgent.requestChanged；用户修改要求时，以最新 revision 为准继续执行。
