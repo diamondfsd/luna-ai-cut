@@ -425,12 +425,14 @@ export function TrimPanel({
       const next = constrainTrimStart(timeAtFrame(frame, frameRate), endTime, duration, frameRate)
       onStartTimeChange(next)
       setStartText(formatSeconds(next))
+      onMarkerPreviewTimeChange(next)
       return
     }
     const next = constrainTrimEnd(timeAtFrame(frame, frameRate), startTime, duration, frameRate)
     onEndTimeChange(next)
     setEndText(formatSeconds(next))
-  }, [duration, endTime, frameRate, onEndTimeChange, onStartTimeChange, startTime])
+    onMarkerPreviewTimeChange(next)
+  }, [duration, endTime, frameRate, onEndTimeChange, onMarkerPreviewTimeChange, onStartTimeChange, startTime])
 
   const addMarker = (marker: VideoOutputMarker) => {
     const nextMarkers = normalizeVideoOutputMarkers([...markers, marker], duration)
@@ -555,6 +557,7 @@ export function TrimPanel({
       coverTime: nextMarker.coverTime,
     })
     onSelectMarker(nextMarker)
+    onMarkerPreviewTimeChange(timeAtFrame(kind === 'start' ? nextStartFrame : nextEndFrame, frameRate))
   }
 
   const deleteMarker = (id: string) => {
