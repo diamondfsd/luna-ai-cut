@@ -37,7 +37,7 @@ export default defineConfig({
           worker: {
             format: 'es',
             rollupOptions: {
-              external: [/^node:/, 'fs', 'crypto'],
+              external: [/^node:/, 'fs', 'crypto', 'node-smb2', 'smb3-client'],
               output: {
                 banner: "import { fileURLToPath as __lunaFileURLToPath } from 'node:url'; import { dirname as __lunaDirname } from 'node:path'; const __dirname = __lunaDirname(__lunaFileURLToPath(import.meta.url));",
               },
@@ -45,6 +45,7 @@ export default defineConfig({
           },
           build: {
             rollupOptions: {
+              external: ['node-smb2', 'smb3-client'],
               output: {
                 chunkFileNames: 'luna-[name].js',
               },

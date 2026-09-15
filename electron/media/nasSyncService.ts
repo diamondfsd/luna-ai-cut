@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import type { AppSettings, NasSyncEnqueueResult, NasSyncItem, NasSyncSettings, NasSyncStatus } from '../../src/shared/types'
+import type { AppSettings, NasRemoteFile, NasSyncEnqueueResult, NasSyncItem, NasSyncProbeResult, NasSyncSettings, NasSyncStatus } from '../../src/shared/types'
 import { getLocalResourcesDir, getSettings } from '../storage/fileService'
 import { logMainError, logMainInfo, logMainWarn } from '../infrastructure/loggerService'
 import {
@@ -10,6 +10,8 @@ import {
   remoteFilePath,
   remoteRootPath,
   remoteTemporaryPath,
+  nasErrorCode,
+  nasErrorMessage,
   SmbTransport,
   type NasTransport,
 } from './nasSyncTransport'
@@ -28,11 +30,11 @@ function now(): string {
 }
 
 function errorCode(error: unknown): string {
-  return error && typeof error === 'object' && 'code' in error ? String(error.code).toUpperCase() : ''
+  return nasErrorCode(error)
 }
 
 function rawErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return nasErrorMessage(error)
 }
 
 function userFacingNasError(error: unknown): string {
@@ -41,8 +43,8 @@ function userFacingNasError(error: unknown): string {
   if (code.includes('LOGON') || code.includes('AUTH') || code.includes('PASSWORD')) return '账号或密码错误'
   if (code.includes('ACCESS_DENIED') || code.includes('WRITE_PROTECT')) return '没有 NAS 写入权限'
   if (code.includes('DISK_FULL') || code.includes('QUOTA')) return 'NAS 存储空间不足'
+  if (code.includes('OBJECT_NAME_NOT_FOUND') || code.includes('OBJECT_PATH_NOT_FOUND') || code === 'STATUS_BAD_NETWORK_NAME') return 'NAS 共享目录不存在'
   if (code.includes('BAD_NETWORK') || code.includes('NETWORK') || code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'EHOSTUNREACH' || code === 'ENETUNREACH') return 'NAS 暂时不可达'
-  if (code.includes('OBJECT_NAME_NOT_FOUND') || code.includes('OBJECT_PATH_NOT_FOUND')) return 'NAS 共享目录不存在'
   if (message.includes('the share is not valid')) return 'NAS 共享配置无效'
   if (message.includes('enoent') || message.includes('no such file')) return '本地文件已不存在'
   return `NAS 同步失败：${rawErrorMessage(error)}`
@@ -87,7 +89,7 @@ function abortError(error: unknown): boolean {
   return error instanceof Error && (error.name === 'AbortError' || error.message === 'NAS 同步已取消')
 }
 
-function isConfigured(config: NasSyncSettings | undefined): config is NasSyncSettings {
+function isConnectionConfigured(config: NasSyncSettings | undefined): config is NasSyncSettings {
   return Boolean(
     config
     && typeof config.server === 'string'
@@ -95,9 +97,12 @@ function isConfigured(config: NasSyncSettings | undefined): config is NasSyncSet
     && typeof config.remotePath === 'string'
     && typeof config.username === 'string'
     && typeof config.password === 'string'
-    && config.server.trim()
-    && config.share.trim(),
+    && config.server.trim(),
   )
+}
+
+function isConfigured(config: NasSyncSettings | undefined): config is NasSyncSettings {
+  return isConnectionConfigured(config) && config.remotePath.trim().length > 0
 }
 
 function statePathFor(settings: AppSettings): string {
@@ -187,18 +192,33 @@ export class NasSyncService {
     return this.statusFor(settings)
   }
 
-  async probe(configOverride?: NasSyncSettings): Promise<{ ok: boolean; message?: string }> {
+  async probe(configOverride?: NasSyncSettings): Promise<NasSyncProbeResult> {
     const settings = await getSettings()
     const config = configOverride ?? settings.nasSync
-    if (!isConfigured(config)) return { ok: false, message: '请先填写服务器地址' }
+    if (!isConnectionConfigured(config)) return { ok: false, message: '请先填写服务器地址' }
     let transport: NasTransport | null = null
     try {
       transport = new SmbTransport(config)
-      await transport.probe()
-      return { ok: true }
+      const shares = await transport.listShares()
+      if (!config.share.trim()) return { ok: true, shares }
+      const directories = await transport.probe()
+      return { ok: true, shares, directories }
     } catch (error) {
       logMainWarn('[NAS] 连接检测失败', { error: rawErrorMessage(error) })
       return { ok: false, message: userFacingNasError(error) }
+    } finally {
+      transport?.close()
+    }
+  }
+
+  async listFiles(): Promise<NasRemoteFile[]> {
+    const settings = await getSettings()
+    const config = settings.nasSync
+    if (!isConfigured(config)) throw new Error('请先完成 NAS 配置')
+    let transport: NasTransport | null = null
+    try {
+      transport = new SmbTransport(config)
+      return await transport.listFiles(remoteRootPath(config))
     } finally {
       transport?.close()
     }
