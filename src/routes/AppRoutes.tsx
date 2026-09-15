@@ -106,6 +106,12 @@ export function AppRoutes() {
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
 
   useEffect(() => {
+    if (isKnownRoute && location.pathname !== '/' && !__DEBUG_STANDALONE__) {
+      window.luna.trackPageOpened(activePath)
+    }
+  }, [activePath, isKnownRoute, location.pathname])
+
+  useEffect(() => {
     logger.info('[导航诊断] 路由状态', {
       hash: window.location.hash,
       pathname: location.pathname,

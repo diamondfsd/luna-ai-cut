@@ -146,6 +146,7 @@ export interface WorkspaceSegmentationModelStatus {
 export interface LunaApi {
   isPackaged: boolean
   startupReady(): void
+  trackPageOpened(path: string): void
   setFullScreen(enabled: boolean): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void

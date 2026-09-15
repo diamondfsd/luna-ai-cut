@@ -10,6 +10,7 @@ import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrast
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
 import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
 import { stopObsStreamDemoOnQuit } from './media/obs-demo/obsMp4StreamService'
+import { createUsageAnalytics } from './infrastructure/usageAnalytics'
 
 import {
   getLocalResourcesDir,
@@ -71,6 +72,17 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
+const usageAnalytics = createUsageAnalytics({
+  enabled: !process.env.LUNA_E2E_USER_DATA_DIR,
+  userData: app.getPath('userData'),
+  appVersion: process.env.LUNA_BOOT_SOURCE?.startsWith('hot-update:')
+    ? process.env.LUNA_BOOT_SOURCE.slice('hot-update:'.length)
+    : app.getVersion(),
+  osName: process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : process.platform,
+  osVersion: process.getSystemVersion(),
+  arch: process.arch,
+  environment: app.isPackaged ? 'production' : 'development',
+})
 const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()
 const activeDownloadControllers = new Set<AbortController>()
@@ -338,6 +350,11 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
+  ipcMain.on('usage:page-opened', (event, page: unknown) => {
+    if (win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame) {
+      void usageAnalytics.pageOpened(page)
+    }
+  })
   ipcMain.on('app:is-packaged', (event) => {
     event.returnValue = app.isPackaged
   })
@@ -563,6 +580,7 @@ function createAppMenu(): void {
 }
 
 app.whenReady().then(async () => {
+  void usageAnalytics.opened()
   initLogger()
   logMainInfo('应用启动', { codeSource: process.env.LUNA_BOOT_SOURCE ?? 'unknown' })
   recoverLegacyRenderInitGuardOnce()
