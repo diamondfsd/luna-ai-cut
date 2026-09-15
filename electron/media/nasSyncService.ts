@@ -123,12 +123,12 @@ function syncPriority(left: NasSyncItem, right: NasSyncItem): number {
   return sourceCreatedAt(left) - sourceCreatedAt(right) || left.queuedAt.localeCompare(right.queuedAt)
 }
 
-function pendingItemWindow(items: NasSyncItem[]): Pick<NasSyncStatus, 'pendingItems' | 'pendingItemsTruncated'> {
+function taskItemWindow(items: NasSyncItem[]): Pick<NasSyncStatus, 'taskItems' | 'taskItemsTruncated'> {
   const tasks = items
-    .filter((item) => item.state === 'queued' || item.state === 'syncing' || item.state === 'failed')
+    .filter((item) => item.state === 'queued' || item.state === 'syncing' || item.state === 'failed' || item.state === 'canceled')
     .sort(syncPriority)
   return {
-    pendingItems: tasks.slice(0, MAX_STATUS_FILES).map((item) => ({
+    taskItems: tasks.slice(0, MAX_STATUS_FILES).map((item) => ({
       id: item.id,
       fileName: item.fileName,
       targetPath: item.targetPath,
@@ -138,7 +138,7 @@ function pendingItemWindow(items: NasSyncItem[]): Pick<NasSyncStatus, 'pendingIt
       state: item.state,
       error: item.error,
     })),
-    pendingItemsTruncated: tasks.length > MAX_STATUS_FILES,
+    taskItemsTruncated: tasks.length > MAX_STATUS_FILES,
   }
 }
 
@@ -453,7 +453,7 @@ export class NasSyncService {
     await this.ensureLoaded(settings)
     let count = 0
     for (const item of this.state.items) {
-      if (item.state !== 'failed') continue
+      if (item.state !== 'failed' && item.state !== 'canceled') continue
       item.state = 'queued'
       item.downloadedBytes = 0
       item.error = undefined
@@ -541,7 +541,7 @@ export class NasSyncService {
     const pendingItems = activeItems.filter((item) => item.state === 'queued' || item.state === 'syncing')
     const failedItems = activeItems.filter((item) => item.state === 'failed')
     const current = this.currentItemId ? items.find((item) => item.id === this.currentItemId) : undefined
-    const itemWindow = pendingItemWindow(activeItems)
+    const itemWindow = taskItemWindow(items)
     const totalBytes = activeItems.every((item) => item.bytes !== null)
       ? activeItems.reduce((sum, item) => sum + (item.bytes ?? 0), 0)
       : null
