@@ -115,6 +115,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     inspectLocalMedia: (mediaIds, options) => ipcRenderer.invoke('ai-editor:inspect-local-media', mediaIds, options),
     createMediaContactSheet: (mediaIds, options) => ipcRenderer.invoke('ai-editor:create-media-contact-sheet', mediaIds, options),
     transcribeLocalMedia: (mediaId, options) => ipcRenderer.invoke('ai-editor:transcribe-local-media', mediaId, options),
+    transcribeAudioSamples: (samples, options) => ipcRenderer.invoke('ai-editor:transcribe-audio-samples', samples, options),
     showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),
     readFile: (filePath) => ipcRenderer.invoke('ai-editor:read-file', filePath),

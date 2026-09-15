@@ -163,6 +163,7 @@
   const inspectLocalMedia = (mediaIds, options) => parentApi().inspectLocalMedia(mediaIds, options)
   const createMediaContactSheet = (mediaIds, options) => parentApi().createMediaContactSheet(mediaIds, options)
   const transcribeLocalMedia = (mediaId, options) => parentApi().transcribeLocalMedia(mediaId, options)
+  const transcribeAudioSamples = (samples, options) => parentApi().transcribeAudioSamples(samples, options)
 
   const chooseAssets = (projectId, existingPaths = []) => {
     const parentWindow = window.parent
@@ -305,6 +306,7 @@
       inspectLocalMedia,
       createMediaContactSheet,
       transcribeLocalMedia,
+      transcribeAudioSamples,
       resolveThumbnail: (sourcePath, kind) => parentLunaApi().resolveThumbnail(sourcePath, kind),
       matchImportAsset,
     },

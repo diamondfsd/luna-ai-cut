@@ -19,7 +19,7 @@ import {
   readAiEditorLocalMediaBytes,
 } from '../features/ai-editor/aiEditorLocalMediaService'
 import { createAiEditorLocalMediaContactSheet, inspectAiEditorLocalMedia } from '../features/ai-editor/aiEditorMediaAnalysisService'
-import { transcribeAiEditorLocalMedia } from '../features/ai-editor/aiEditorSpeechService'
+import { transcribeAiEditorAudioSamples, transcribeAiEditorLocalMedia } from '../features/ai-editor/aiEditorSpeechService'
 import {
   createAiEditorProject,
   deleteAiEditorProject,
@@ -169,6 +169,10 @@ export function register(): void {
 
   ipcMain.handle('ai-editor:transcribe-local-media', async (_event, mediaId: string, options = {}) => {
     return transcribeAiEditorLocalMedia(mediaId, options)
+  })
+
+  ipcMain.handle('ai-editor:transcribe-audio-samples', async (_event, samples: Float32Array, options = {}) => {
+    return transcribeAiEditorAudioSamples(samples, options)
   })
 
   ipcMain.handle('ai-editor:list-projects', async () => {

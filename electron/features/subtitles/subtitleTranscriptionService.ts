@@ -1,8 +1,9 @@
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { stat } from 'node:fs/promises'
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { cpus } from 'node:os'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { WorkspaceSubtitleProgress, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from '../../../src/shared/types'
 import { SUBTITLE_ASR_MODEL } from '../../../src/shared/subtitleModels'
 import { segmentSubtitleUnits, subtitleUnitsFromCues } from '../../../src/shared/subtitleSegmentation'
@@ -196,5 +197,52 @@ export async function transcribeVideo(
     signal.removeEventListener('abort', abort)
     if (ffmpeg.exitCode === null) terminate(ffmpeg)
     if (worker.exitCode === null) terminate(worker)
+  }
+}
+
+function wavFileFromFloat32(samples: Float32Array, sampleRate: number): Buffer {
+  const data = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength)
+  const wav = Buffer.alloc(44 + data.byteLength)
+  wav.write('RIFF', 0, 'ascii')
+  wav.writeUInt32LE(36 + data.byteLength, 4)
+  wav.write('WAVE', 8, 'ascii')
+  wav.write('fmt ', 12, 'ascii')
+  wav.writeUInt32LE(16, 16)
+  wav.writeUInt16LE(3, 20)
+  wav.writeUInt16LE(1, 22)
+  wav.writeUInt32LE(sampleRate, 24)
+  wav.writeUInt32LE(sampleRate * 4, 28)
+  wav.writeUInt16LE(4, 32)
+  wav.writeUInt16LE(32, 34)
+  wav.write('data', 36, 'ascii')
+  wav.writeUInt32LE(data.byteLength, 40)
+  data.copy(wav, 44)
+  return wav
+}
+
+/** Run the native Sherpa pipeline on audio already decoded by the embedded editor. */
+export async function transcribeAudioSamples(
+  request: Omit<WorkspaceSubtitleTranscriptionRequest, 'filePath'> & { samples: Float32Array },
+  signal: AbortSignal,
+  onProgress: (progress: WorkspaceSubtitleProgress) => void,
+): Promise<WorkspaceSubtitleTranscriptionResult> {
+  if (!(request.samples instanceof Float32Array) || request.samples.length === 0) {
+    throw new Error('没有可识别的音频数据')
+  }
+  const sampleRate = 16_000
+  const tempDir = path.join(app.getPath('temp'), 'luna-sherpa')
+  const filePath = path.join(tempDir, `audio-${randomUUID()}.wav`)
+  await mkdir(tempDir, { recursive: true })
+  await writeFile(filePath, wavFileFromFloat32(request.samples, sampleRate), { mode: 0o600 })
+  try {
+    return await transcribeVideo({
+      requestId: request.requestId,
+      filePath,
+      startMs: request.startMs,
+      endMs: request.endMs,
+      language: request.language,
+    }, signal, onProgress)
+  } finally {
+    await rm(filePath, { force: true }).catch(() => undefined)
   }
 }
