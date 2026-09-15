@@ -2,6 +2,12 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.8.8",
+    "title": "v1.8.8 - 安装包发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复安装后无法启动</strong>：NAS 共享连接已统一由本地 Rust 服务处理，不再依赖缺失的运行时模块。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
     "version": "1.8.7",
     "title": "v1.8.7 - 安装包发布说明",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>DJI 相机媒体管理</strong>：支持浏览、预览、下载和删除 DJI 相机中的媒体。</li>\n<li><strong>NAS 同步</strong>：支持配置 SMB 共享目录，手动同步本地资源，并在新素材下载完成后自动同步到 NAS。</li>\n<li><strong>帧级精确修剪</strong>：视频修剪支持按帧调整起止位置，并可直接输入帧数。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>同步任务管理</strong>：统一显示同步进度、待完成和失败文件，支持继续同步与取消待同步。</li>\n<li><strong>重复文件处理</strong>：已同步且未变化的文件会自动跳过，NAS 中已有相同文件时不会重复上传。</li>\n<li><strong>连接与预览稳定性</strong>：改善 DJI 预览、相机连接和 NAS 同步过程中的状态处理。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复日期目录同步失败</strong>：同步到日期子目录时会先创建目标目录。</li>\n<li><strong>修复取消后的任务显示</strong>：取消同步后任务仍会保留在列表中，可继续同步。</li>\n</ul>",
