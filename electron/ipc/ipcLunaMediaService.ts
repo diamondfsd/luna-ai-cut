@@ -438,7 +438,8 @@ export function register(ctx: IpcContext): void {
     ctx.activeDownloadTasks.add(task)
     try {
       const summary = await task
-      if (settings.nasSync?.enabled && settings.nasSync.autoSync && summary.completed.length > 0) {
+      const effectiveSettings = nasSyncService.getEffectiveSettings(settings)
+      if (effectiveSettings.nasSync?.enabled && effectiveSettings.nasSync.autoSync && summary.completed.length > 0) {
         const syncPaths = summary.completed.flatMap((completed) => {
           const sourceFile = files.find((file) => file.name === completed.name)
           const rawName = sourceFile?.rawCompanion?.downloadName

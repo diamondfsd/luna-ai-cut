@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FolderOpen, FolderSync, HardDrive, Link, Save } from 'lucide-react'
 
+import { useNasSyncProgress } from '../context/NasSyncProgressContext'
 import type { AppSettings, NasShare, NasSyncSettings as NasSettings } from '../shared/types'
 import { Button, Dialog, Input, Select, Switch, toast } from '../ui'
 import '../styles/nas-sync-settings.css'
@@ -30,6 +31,7 @@ function directoryLabel(directory: string): string {
 }
 
 export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps) {
+  const { showProgress } = useNasSyncProgress()
   const [form, setForm] = useState<NasSettings>(() => configFromSettings(settings))
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
@@ -109,7 +111,8 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
     setSyncingLocalResources(true)
     try {
       const result = await window.luna.nasSync.syncLocalResources()
-      toast.success(result.queued > 0 ? `已加入 ${result.queued} 个文件` : '没有新的文件需要同步')
+      if (result.queued > 0) showProgress()
+      else toast.success('没有新的文件需要同步')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '同步本地资源失败')
     } finally {

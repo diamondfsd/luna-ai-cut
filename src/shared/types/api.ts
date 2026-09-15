@@ -235,6 +235,8 @@ export interface LunaApi {
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
   nasSync: {
     getStatus(): Promise<NasSyncStatus>
+    setDebugMode(enabled: boolean): Promise<NasSyncSettings>
+    getDebugLocalRoot(): Promise<string | null>
     probe(config?: NasSyncSettings): Promise<NasSyncProbeResult>
     listFiles(): Promise<NasRemoteFile[]>
     syncFiles(filePaths: string[]): Promise<NasSyncEnqueueResult>

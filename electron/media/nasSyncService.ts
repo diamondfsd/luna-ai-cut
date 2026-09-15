@@ -1,7 +1,10 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
+import { DEFAULT_NAS_DEBUG_CONFIG } from '../../src/shared/nasSyncDebugConfig'
 import type { AppSettings, NasRemoteFile, NasSyncEnqueueResult, NasSyncItem, NasSyncProbeResult, NasSyncSettings, NasSyncStatus } from '../../src/shared/types'
 import { getLocalResourcesDir, getSettings } from '../storage/fileService'
 import { logMainError, logMainInfo, logMainWarn } from '../infrastructure/loggerService'
@@ -24,6 +27,8 @@ interface PersistedNasSyncState {
 }
 
 const MAX_ATTEMPTS = 3
+const MAX_STATUS_FILES = 100
+const execFileAsync = promisify(execFile)
 
 function now(): string {
   return new Date().toISOString()
@@ -43,7 +48,8 @@ function userFacingNasError(error: unknown): string {
   if (code.includes('LOGON') || code.includes('AUTH') || code.includes('PASSWORD')) return '账号或密码错误'
   if (code.includes('ACCESS_DENIED') || code.includes('WRITE_PROTECT')) return '没有 NAS 写入权限'
   if (code.includes('DISK_FULL') || code.includes('QUOTA')) return 'NAS 存储空间不足'
-  if (code.includes('OBJECT_NAME_NOT_FOUND') || code.includes('OBJECT_PATH_NOT_FOUND') || code === 'STATUS_BAD_NETWORK_NAME') return 'NAS 共享目录不存在'
+  if (code === 'STATUS_BAD_NETWORK_NAME') return 'NAS 共享目录不存在'
+  if (code.includes('OBJECT_NAME_NOT_FOUND') || code.includes('OBJECT_PATH_NOT_FOUND')) return 'NAS 目标路径不存在'
   if (code.includes('BAD_NETWORK') || code.includes('NETWORK') || code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'EHOSTUNREACH' || code === 'ENETUNREACH') return 'NAS 暂时不可达'
   if (message.includes('the share is not valid')) return 'NAS 共享配置无效'
   if (message.includes('enoent') || message.includes('no such file')) return '本地文件已不存在'
@@ -109,6 +115,43 @@ function isConfigured(config: NasSyncSettings | undefined): config is NasSyncSet
   return isConnectionConfigured(config) && validNasPort(config.port) && config.remotePath.trim().length > 0
 }
 
+function sourceCreatedAt(item: NasSyncItem): number {
+  return item.sourceCreatedAtMs ?? item.sourceMtimeMs ?? 0
+}
+
+function syncPriority(left: NasSyncItem, right: NasSyncItem): number {
+  return sourceCreatedAt(left) - sourceCreatedAt(right) || left.queuedAt.localeCompare(right.queuedAt)
+}
+
+function pendingItemWindow(items: NasSyncItem[]): Pick<NasSyncStatus, 'pendingItems' | 'pendingItemsTruncated'> {
+  const tasks = items
+    .filter((item) => item.state === 'queued' || item.state === 'syncing' || item.state === 'failed')
+    .sort(syncPriority)
+  return {
+    pendingItems: tasks.slice(0, MAX_STATUS_FILES).map((item) => ({
+      id: item.id,
+      fileName: item.fileName,
+      targetPath: item.targetPath,
+      bytes: item.bytes,
+      downloadedBytes: item.downloadedBytes,
+      sourceCreatedAtMs: item.sourceCreatedAtMs,
+      state: item.state,
+      error: item.error,
+    })),
+    pendingItemsTruncated: tasks.length > MAX_STATUS_FILES,
+  }
+}
+
+function commandLineArgument(command: string, name: string): string | null {
+  const match = command.match(new RegExp(`--${name}(?:=|\\s+)(?:"([^"]+)"|'([^']+)'|(\\S+))`))
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null
+}
+
+function isLoopbackNasHost(value: string): boolean {
+  const host = value.trim().toLowerCase().replace(/^smb:\/\//, '').replace(/^\[|\]$/g, '')
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+}
+
 function isMissingLocalPath(error: unknown): boolean {
   return typeof error === 'object'
     && error !== null
@@ -139,6 +182,10 @@ function normalizeItem(value: Partial<NasSyncItem>): NasSyncItem | null {
   const state: NasSyncItem['state'] = value.state === 'synced' || value.state === 'failed' || value.state === 'canceled' || value.state === 'syncing'
     ? value.state
     : 'queued'
+  const sourceMtimeMs = typeof value.sourceMtimeMs === 'number' && Number.isFinite(value.sourceMtimeMs) ? value.sourceMtimeMs : null
+  const sourceCreatedAtMs = typeof value.sourceCreatedAtMs === 'number' && Number.isFinite(value.sourceCreatedAtMs)
+    ? value.sourceCreatedAtMs
+    : sourceMtimeMs
   return {
     id: value.id,
     sourcePath: value.sourcePath,
@@ -146,7 +193,8 @@ function normalizeItem(value: Partial<NasSyncItem>): NasSyncItem | null {
     fileName: typeof value.fileName === 'string' ? value.fileName : path.basename(value.sourcePath),
     bytes: typeof value.bytes === 'number' && Number.isFinite(value.bytes) ? value.bytes : null,
     sourceSize: typeof value.sourceSize === 'number' && Number.isFinite(value.sourceSize) ? value.sourceSize : null,
-    sourceMtimeMs: typeof value.sourceMtimeMs === 'number' && Number.isFinite(value.sourceMtimeMs) ? value.sourceMtimeMs : null,
+    sourceMtimeMs,
+    sourceCreatedAtMs,
     state: state === 'syncing' ? 'queued' : state,
     attempts: typeof value.attempts === 'number' && Number.isFinite(value.attempts) ? value.attempts : 0,
     downloadedBytes: 0,
@@ -167,44 +215,90 @@ export class NasSyncService {
   private currentSpeedBps = 0
   private lastProgressAt = 0
   private lastProgressBytes = 0
+  private lastProgressEmitAt = 0
   private pauseRequested = false
   private cancelRequested = false
   private onProgress: ((status: NasSyncStatus) => void) | null = null
+  private debugConfig: NasSyncSettings | null = null
 
   setProgressListener(listener: ((status: NasSyncStatus) => void) | null): void {
     this.onProgress = listener
   }
 
-  async initialize(): Promise<void> {
+  getEffectiveSettings(settings: AppSettings): AppSettings {
+    if (!this.debugConfig) return settings
+    return { ...settings, nasSync: { ...this.debugConfig } }
+  }
+
+  isDebugMode(): boolean {
+    return this.debugConfig !== null
+  }
+
+  async setDebugMode(enabled: boolean): Promise<NasSyncSettings> {
+    this.debugConfig = enabled ? { ...DEFAULT_NAS_DEBUG_CONFIG } : null
     const settings = await getSettings()
+    await this.handleSettingsChanged(settings)
+    return this.getEffectiveSettings(settings).nasSync ?? { ...DEFAULT_NAS_DEBUG_CONFIG, enabled: false, autoSync: false }
+  }
+
+  async getDebugLocalRoot(): Promise<string | null> {
+    if (!this.debugConfig || process.platform === 'win32' || !isLoopbackNasHost(this.debugConfig.server)) return null
+    try {
+      const configuredRoot = process.env.LUNA_NAS_DEBUG_ROOT
+      if (configuredRoot && path.isAbsolute(configuredRoot)) {
+        const stats = await fs.stat(configuredRoot).catch(() => null)
+        if (stats?.isDirectory()) return path.resolve(configuredRoot)
+      }
+
+      const { stdout } = await execFileAsync('/bin/ps', ['-axo', 'command='])
+      for (const command of stdout.split('\n')) {
+        if (!command.includes('luna-ai-cut-smb-demo') && !command.includes('go run .')) continue
+        const listen = commandLineArgument(command, 'listen')
+        if (!listen?.endsWith(`:${this.debugConfig.port}`)) continue
+        const share = commandLineArgument(command, 'share')
+        if (share && share.toLowerCase() !== this.debugConfig.share.toLowerCase()) continue
+        const root = commandLineArgument(command, 'root')
+        if (!root || !path.isAbsolute(root)) continue
+        const stats = await fs.stat(root).catch(() => null)
+        if (stats?.isDirectory()) return path.resolve(root)
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  async initialize(): Promise<void> {
+    const settings = this.getEffectiveSettings(await getSettings())
     await this.ensureLoaded(settings)
     this.emit(settings)
     this.startWorkerIfNeeded()
   }
 
   async handleSettingsChanged(settings: AppSettings): Promise<void> {
-    await this.ensureLoaded(settings)
-    if (!settings.nasSync?.enabled) {
+    const effectiveSettings = this.getEffectiveSettings(settings)
+    await this.ensureLoaded(effectiveSettings)
+    if (!effectiveSettings.nasSync?.enabled) {
       this.pauseRequested = true
       this.currentController?.abort()
-      this.emit(settings)
+      this.emit(effectiveSettings)
       return
     }
     // Keep the pause marker until an in-flight copy has observed the abort. This
     // prevents a quick disable/enable sequence from turning a paused item into a failure.
     if (!this.currentController) this.pauseRequested = false
-    this.emit(settings)
+    this.emit(effectiveSettings)
     this.startWorkerIfNeeded()
   }
 
   async getStatus(): Promise<NasSyncStatus> {
-    const settings = await getSettings()
+    const settings = this.getEffectiveSettings(await getSettings())
     await this.ensureLoaded(settings)
     return this.statusFor(settings)
   }
 
   async probe(configOverride?: NasSyncSettings): Promise<NasSyncProbeResult> {
-    const settings = await getSettings()
+    const settings = this.getEffectiveSettings(await getSettings())
     const config = configOverride ?? settings.nasSync
     if (!isConnectionConfigured(config)) return { ok: false, message: '请先填写服务器地址' }
     if (!validNasPort(config.port)) return { ok: false, message: 'NAS 端口必须是 1 到 65535 的整数' }
@@ -224,7 +318,7 @@ export class NasSyncService {
   }
 
   async listFiles(): Promise<NasRemoteFile[]> {
-    const settings = await getSettings()
+    const settings = this.getEffectiveSettings(await getSettings())
     const config = settings.nasSync
     if (!isConfigured(config)) throw new Error('请先完成 NAS 配置')
     let transport: NasTransport | null = null
@@ -237,7 +331,7 @@ export class NasSyncService {
   }
 
   async enqueueFiles(filePaths: string[]): Promise<NasSyncEnqueueResult> {
-    const settings = await getSettings()
+    const settings = this.getEffectiveSettings(await getSettings())
     if (!settings.nasSync?.enabled) throw new Error('请先开启 NAS 同步')
     if (!isConfigured(settings.nasSync)) throw new Error('请先填写服务器地址')
     await this.ensureLoaded(settings)
@@ -278,6 +372,9 @@ export class NasSyncService {
         result.skipped += 1
         continue
       }
+      const sourceCreatedAtMs = Number.isFinite(stats.birthtimeMs) && stats.birthtimeMs > 0
+        ? stats.birthtimeMs
+        : stats.mtimeMs
       const item: NasSyncItem = existing ?? {
         id: randomUUID(),
         sourcePath,
@@ -286,6 +383,7 @@ export class NasSyncService {
         bytes: stats.size,
         sourceSize: stats.size,
         sourceMtimeMs: stats.mtimeMs,
+        sourceCreatedAtMs,
         state: 'queued',
         attempts: 0,
         downloadedBytes: 0,
@@ -299,6 +397,7 @@ export class NasSyncService {
         bytes: stats.size,
         sourceSize: stats.size,
         sourceMtimeMs: stats.mtimeMs,
+        sourceCreatedAtMs,
         state: 'queued',
         attempts: 0,
         downloadedBytes: 0,
@@ -319,7 +418,7 @@ export class NasSyncService {
   }
 
   async syncLocalResources(): Promise<NasSyncEnqueueResult> {
-    const settings = await getSettings()
+    const settings = this.getEffectiveSettings(await getSettings())
     if (!settings.nasSync?.enabled) throw new Error('请先开启 NAS 同步')
     if (!isConfigured(settings.nasSync)) throw new Error('请先填写服务器地址')
 
@@ -348,7 +447,7 @@ export class NasSyncService {
   }
 
   async retryFailed(): Promise<number> {
-    const settings = await getSettings()
+    const settings = this.getEffectiveSettings(await getSettings())
     if (!settings.nasSync?.enabled) throw new Error('请先开启 NAS 同步')
     if (!isConfigured(settings.nasSync)) throw new Error('请先填写服务器地址')
     await this.ensureLoaded(settings)
@@ -371,7 +470,7 @@ export class NasSyncService {
   }
 
   async cancelPending(): Promise<void> {
-    const settings = await getSettings()
+    const settings = this.getEffectiveSettings(await getSettings())
     await this.ensureLoaded(settings)
     this.cancelRequested = true
     for (const item of this.state.items) {
@@ -442,6 +541,7 @@ export class NasSyncService {
     const pendingItems = activeItems.filter((item) => item.state === 'queued' || item.state === 'syncing')
     const failedItems = activeItems.filter((item) => item.state === 'failed')
     const current = this.currentItemId ? items.find((item) => item.id === this.currentItemId) : undefined
+    const itemWindow = pendingItemWindow(activeItems)
     const totalBytes = activeItems.every((item) => item.bytes !== null)
       ? activeItems.reduce((sum, item) => sum + (item.bytes ?? 0), 0)
       : null
@@ -474,6 +574,7 @@ export class NasSyncService {
       lastError: this.state.lastError,
       updatedAt: now(),
       failedItems: failedItems.slice(-10).map((item) => ({ id: item.id, fileName: item.fileName, error: item.error ?? '同步失败' })),
+      ...itemWindow,
     }
   }
 
@@ -489,14 +590,16 @@ export class NasSyncService {
   private async runWorker(): Promise<void> {
     let running = true
     while (running) {
-      const settings = await getSettings()
+      const settings = this.getEffectiveSettings(await getSettings())
       await this.ensureLoaded(settings)
       if (!settings.nasSync?.enabled || !isConfigured(settings.nasSync)) {
         this.emit(settings)
         running = false
         return
       }
-      const item = this.state.items.find((candidate) => candidate.state === 'queued')
+      const item = this.state.items
+        .filter((candidate) => candidate.state === 'queued')
+        .sort(syncPriority)[0]
       if (!item) {
         this.emit(settings)
         running = false
@@ -509,6 +612,7 @@ export class NasSyncService {
       this.currentSpeedBps = 0
       this.lastProgressAt = Date.now()
       this.lastProgressBytes = 0
+      this.lastProgressEmitAt = 0
       item.state = 'syncing'
       item.attempts += 1
       item.downloadedBytes = 0
@@ -526,7 +630,7 @@ export class NasSyncService {
         this.state.lastError = null
         logMainInfo('[NAS] 文件同步成功', { fileName: item.fileName, targetPath: item.targetPath })
       } catch (error) {
-        const latestSettings = await getSettings().catch(() => settings)
+        const latestSettings = await getSettings().then((next) => this.getEffectiveSettings(next)).catch(() => settings)
         if (abortError(error) && (this.pauseRequested || !latestSettings.nasSync?.enabled)) {
           item.state = 'queued'
           item.downloadedBytes = 0
@@ -550,7 +654,7 @@ export class NasSyncService {
         this.lastProgressAt = 0
         this.lastProgressBytes = 0
         await this.persist(settings)
-        this.emit(await getSettings().catch(() => settings))
+        this.emit(await getSettings().then((next) => this.getEffectiveSettings(next)).catch(() => settings))
       }
     }
   }
@@ -576,10 +680,10 @@ export class NasSyncService {
       try {
         transport = new SmbTransport(config)
         await transport.ensureDirectory(rootPath)
+        await transport.ensureDirectory(remoteFilePath(config, pathPartsForTarget(item.targetPath)))
         const existing = await transport.stat(targetPath)
         if (existing && !existing.isDirectory && existing.size === localStats.size) return
         if (existing) throw new Error('目标已有不同内容')
-        await transport.ensureDirectory(remoteFilePath(config, pathPartsForTarget(item.targetPath)))
         await transport.copyFile(item.sourcePath, temporaryPath, (bytes) => {
           const timestamp = Date.now()
           const elapsedMs = timestamp - this.lastProgressAt
@@ -587,7 +691,10 @@ export class NasSyncService {
           this.lastProgressAt = timestamp
           this.lastProgressBytes = bytes
           item.downloadedBytes = bytes
-          this.emit(settings)
+          if (timestamp - this.lastProgressEmitAt >= 80) {
+            this.lastProgressEmitAt = timestamp
+            this.emit(settings)
+          }
         }, signal)
         const temporaryStats = await transport.stat(temporaryPath)
         if (!temporaryStats || temporaryStats.size !== localStats.size) throw new Error('NAS 文件校验失败')

@@ -40,6 +40,51 @@
   gap: 8px;
 }
 
+.nas-debug-paths {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+
+.nas-debug-paths > div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.nas-debug-paths span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nas-debug-paths strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nas-debug-path-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nas-debug-path-value strong {
+  flex: 1;
+}
+
+.nas-debug-path-value .ui-btn {
+  flex: 0 0 auto;
+}
+
 .mock-server-list {
   display: grid;
   gap: 12px;
@@ -129,6 +174,15 @@
 
   .mock-server-config-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nas-debug-paths > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .nas-debug-path-value {
+    align-items: flex-start;
   }
 
   .mock-server-config-grid label:first-child {

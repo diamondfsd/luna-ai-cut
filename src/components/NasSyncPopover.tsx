@@ -1,10 +1,10 @@
-import { CheckCircle2, CloudUpload, FolderCog, RefreshCw, X } from 'lucide-react'
-import { useState } from 'react'
+import { AlertCircle, CheckCircle2, Clock3, CloudUpload, FolderCog, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useNasSyncProgress } from '../context/NasSyncProgressContext'
+import type { NasSyncFileStatus } from '../shared/types'
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, Tooltip, toast } from '../ui'
 import '../styles/nas-sync-progress.css'
 
@@ -22,10 +22,48 @@ function timeLabel(value: string | null): string {
   return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function createdAtLabel(value: number | null): string {
+  if (!value) return '未知创建时间'
+  return new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function taskStateLabel(state: NasSyncFileStatus['state']): string {
+  switch (state) {
+    case 'syncing': return '同步中'
+    case 'failed': return '失败'
+    case 'synced': return '已完成'
+    case 'canceled': return '已取消'
+    default: return '等待同步'
+  }
+}
+
+function TaskStateIcon({ state }: { state: NasSyncFileStatus['state'] }) {
+  switch (state) {
+    case 'syncing': return <Loader2 className="nas-sync-task-spinner" size={14} aria-hidden="true" />
+    case 'failed': return <AlertCircle size={14} aria-hidden="true" />
+    case 'synced': return <CheckCircle2 size={14} aria-hidden="true" />
+    case 'canceled': return <XCircle size={14} aria-hidden="true" />
+    default: return <Clock3 size={14} aria-hidden="true" />
+  }
+}
+
+function taskDetail(item: NasSyncFileStatus): string {
+  if (item.state === 'failed') return item.error ?? '同步失败'
+  if (item.state === 'syncing') {
+    const percent = item.bytes && item.bytes > 0 ? Math.min(100, Math.round((item.downloadedBytes / item.bytes) * 100)) : 0
+    return `${taskStateLabel(item.state)} ${percent}%`
+  }
+  return taskStateLabel(item.state)
+}
+
 export function NasSyncPopover() {
   const { settings } = useApp()
-  const { status, refresh } = useNasSyncProgress()
-  const [open, setOpen] = useState(false)
+  const { status, refresh, progressPopoverOpen, setProgressPopoverOpen } = useNasSyncProgress()
   const navigate = useNavigate()
   const enabled = settings?.nasSync?.enabled === true
   if (!enabled) return null
@@ -54,7 +92,7 @@ export function NasSyncPopover() {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={progressPopoverOpen} onOpenChange={setProgressPopoverOpen}>
       <Tooltip content="查看 NAS 同步">
         <PopoverTrigger asChild>
           <span className="nas-sync-nav-trigger">
@@ -81,7 +119,7 @@ export function NasSyncPopover() {
         {status.state === 'not-configured' ? (
           <div className="nas-sync-empty">
             <span>请先完成 NAS 配置</span>
-            <Button variant="primary" size="compact" icon={<FolderCog size={14} />} onClick={() => { setOpen(false); navigate('/settings') }}>
+            <Button variant="primary" size="compact" icon={<FolderCog size={14} />} onClick={() => { setProgressPopoverOpen(false); navigate('/settings') }}>
               去设置
             </Button>
           </div>
@@ -97,26 +135,34 @@ export function NasSyncPopover() {
             <div className="nas-sync-progress-track" aria-label={`NAS 同步进度 ${percent}%`}>
               <span style={{ width: `${percent}%` }} />
             </div>
-            <div className="nas-sync-current">
-              <span>{status.currentFileName ?? (status.totalFiles > 0 ? '等待同步' : '暂无同步任务')}</span>
-              {status.currentFileName && <span>{formatBytes(status.currentDownloadedBytes)} / {formatBytes(status.currentTotalBytes)}</span>}
-            </div>
             <div className="nas-sync-meta">
               <span>速度 {formatBytes(status.speedBps)}/s</span>
               <span>失败 {status.failedFiles}</span>
               <span>上次 {timeLabel(status.lastSyncedAt)}</span>
             </div>
             {status.lastError && <div className="nas-sync-error">{status.lastError}</div>}
-            {status.failedItems.length > 0 && (
-              <div className="nas-sync-failed-list">
-                {status.failedItems.slice(-3).map((item) => (
-                  <div key={item.id}>
-                    <span>{item.fileName}</span>
-                    <small>{item.error}</small>
+            <div className="nas-sync-task-list-header">
+              <span>待完成</span>
+              <span>
+                {status.pendingItemsTruncated
+                  ? `显示 ${status.pendingItems.length} / ${status.pendingFiles + status.failedFiles}`
+                  : status.pendingItems.length}
+              </span>
+            </div>
+            <div className="nas-sync-task-list" role="list" aria-label="NAS 待完成文件">
+              {status.pendingItems.length > 0 ? status.pendingItems.map((item) => (
+                <div className={`nas-sync-task is-${item.state}`} role="listitem" key={item.id}>
+                  <span className="nas-sync-task-icon"><TaskStateIcon state={item.state} /></span>
+                  <div className="nas-sync-task-copy">
+                    <span title={item.fileName}>{item.fileName}</span>
+                    <small title={item.targetPath}>{item.targetPath} · {createdAtLabel(item.sourceCreatedAtMs)}</small>
                   </div>
-                ))}
-              </div>
-            )}
+                  <span className="nas-sync-task-detail" title={taskDetail(item)}>{taskDetail(item)}</span>
+                </div>
+              )) : (
+                <div className="nas-sync-task-empty">暂无待同步文件</div>
+              )}
+            </div>
             <div className="nas-sync-actions">
               <Button variant="secondary" size="compact" disabled={!canRetry} icon={<RefreshCw size={14} />} onClick={() => void retryFailed()}>
                 重试失败

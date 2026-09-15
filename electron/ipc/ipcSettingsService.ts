@@ -119,12 +119,14 @@ async function chooseWritableStorageTarget(
 }
 
 export function register(ctx: IpcContext): void {
-  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:get', async () => nasSyncService.getEffectiveSettings(await getSettings()))
   ipcMain.handle('settings:save', async (_event, settings: Partial<AppSettings>) => {
-    const next = await saveSettings(settings)
+    const persistentPatch: Partial<AppSettings> = { ...settings }
+    if (nasSyncService.isDebugMode()) delete persistentPatch.nasSync
+    const next = await saveSettings(persistentPatch)
     await nasSyncService.handleSettingsChanged(next)
     setMainWindowCloseBehavior(next.windowCloseBehavior)
-    return next
+    return nasSyncService.getEffectiveSettings(next)
   })
   ipcMain.handle('devices:list', () => deviceDefinitions())
   ipcMain.handle('settings:chooseBaseDir', () => chooseBaseDir())

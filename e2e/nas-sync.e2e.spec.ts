@@ -6,8 +6,13 @@ test('真实 NAS 可连接、选择目录并同步本地文件', async ({ lunaAp
   const fileName = `LUNA_NAS_E2E_${Date.now()}.png`
   const localResourcesDir = path.join(lunaApp.temporaryRoot, 'downloads', 'localResources')
   const localFilePath = path.join(localResourcesDir, fileName)
+  const nestedDirName = '2026-09-15'
+  const nestedFileName = `NESTED_${fileName}`
+  const nestedFilePath = path.join(localResourcesDir, nestedDirName, nestedFileName)
   await mkdir(localResourcesDir, { recursive: true })
+  await mkdir(path.join(localResourcesDir, nestedDirName), { recursive: true })
   await copyFile(path.resolve(import.meta.dirname, '..', 'build', 'icon.png'), localFilePath)
+  await copyFile(path.resolve(import.meta.dirname, '..', 'build', 'icon.png'), nestedFilePath)
   const localStats = await stat(localFilePath)
 
   const page = lunaApp.page
@@ -64,9 +69,12 @@ test('真实 NAS 可连接、选择目录并同步本地文件', async ({ lunaAp
     .toMatchObject({ enabled: true, autoSync: true })
 
   await page.getByRole('button', { name: '同步本地资源目录', exact: true }).click()
+  const progressPopover = page.locator('.nas-sync-popover')
+  await expect(progressPopover).toBeVisible()
+  await expect(progressPopover).toContainText(fileName)
 
   await expect.poll(async () => (await page.evaluate(() => window.luna.nasSync.getStatus())), { timeout: 60_000 })
-    .toMatchObject({ state: 'ready', pendingFiles: 0, failedFiles: 0, completedFiles: 1 })
+    .toMatchObject({ state: 'ready', pendingFiles: 0, failedFiles: 0, completedFiles: 2 })
 
   const remoteFiles = await page.evaluate(() => window.luna.nasSync.listFiles())
   expect(remoteFiles).toEqual(expect.arrayContaining([
