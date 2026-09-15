@@ -310,6 +310,45 @@ const AGENT_TASK_TOOLS = [
     },
   },
   {
+    name: 'list_music_templates',
+    description: 'List built-in background-music templates. Use this before writing a Music DSL when the user asks for music, BGM, or a stronger rhythmic edit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tag: { type: 'string', description: 'Optional template tag such as travel, cinematic, upbeat, or dialogue-safe.' },
+        scene: { type: 'string', description: 'Optional scene tag such as travel, documentary, product, or holiday.' },
+        dialogueSafe: { type: 'boolean', description: 'When true, only return arrangements suitable under narration or dialogue.' },
+        limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum number of templates to return. Defaults to 50.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_music_template',
+    description: 'Get one built-in music template and its editable compact Music DSL. Adapt the DSL instead of returning or rendering the original user request.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        templateId: { type: 'string', minLength: 1, description: 'Template id returned by list_music_templates.' },
+      },
+      required: ['templateId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'generate_background_music',
+    description: 'Render a compact Music DSL to an instrumental WAV inside Luna, register it as local audio media, and return the mediaId to import with import_local_media. Do not pass a natural-language brief or JSON note array.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dsl: { type: 'string', minLength: 1, description: 'A compact video-bgm DSL document. Start with bgm 1, then duration, tempo, meter, sections, and tracks.' },
+        name: { type: 'string', maxLength: 120, description: 'Optional user-facing file name without a path.' },
+      },
+      required: ['dsl'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'cancel_edit_request',
     description: 'Cancel an active Luna editing request when the user asks the Agent to stop.',
     inputSchema: {
@@ -322,6 +361,7 @@ const AGENT_TASK_TOOLS = [
 ] as const
 
 const AGENT_TOOL_NAMES = new Set<string>(AGENT_TASK_TOOLS.map((tool) => tool.name))
+const MUSIC_TOOL_NAMES = new Set(['list_music_templates', 'get_music_template', 'generate_background_music'])
 
 function stringArg(args: Record<string, unknown>, name: string): string | null {
   const value = args[name]
@@ -365,12 +405,138 @@ function agentInvalidParams(message: string): AiEditorMcpResponse {
   })
 }
 
+async function handleMusicTool(
+  name: string,
+  args: Record<string, unknown>,
+  options: LunaMcpServerOptions,
+  callId: string,
+): Promise<AiEditorMcpResponse | null> {
+  if (!MUSIC_TOOL_NAMES.has(name)) return null
+
+  if (name === 'generate_background_music') {
+    const gate = options.agentSession?.gateActiveTool()
+    if (!gate || !gate.allowed) {
+      const message = gate?.error?.message ?? '请先领取或创建剪辑任务'
+      return agentToolResponse({
+        ok: false,
+        summary: message,
+        data: gate ? { session: gate.session } : undefined,
+        error: gate?.error ?? { code: 'SESSION_REQUIRED', message },
+      })
+    }
+  }
+
+  const startedAt = Date.now()
+  options.agentSession?.toolStarted(callId, name, args)
+  const invalid = (message: string): AiEditorMcpResponse => {
+    options.agentSession?.toolFinished(
+      callId,
+      name,
+      args,
+      false,
+      message,
+      Date.now() - startedAt,
+      { code: 'INVALID_PARAMS', message },
+    )
+    return agentInvalidParams(message)
+  }
+  try {
+    const music = await import('../features/music/musicGenerationService.ts')
+    if (name === 'list_music_templates') {
+      const limit = args.limit === undefined ? undefined : integerArg(args, 'limit')
+      if (args.limit !== undefined && limit === undefined) return invalid('limit 必须是正整数')
+      const templates = await music.listMusicTemplates({
+        tag: stringArg(args, 'tag') ?? undefined,
+        scene: stringArg(args, 'scene') ?? undefined,
+        dialogueSafe: typeof args.dialogueSafe === 'boolean' ? args.dialogueSafe : undefined,
+        limit,
+      })
+      const result = addAgentContext({
+        ok: true,
+        summary: `找到 ${templates.length} 个背景音乐模板`,
+        data: { templates },
+      }, options.agentSession)
+      options.agentSession?.toolFinished(callId, name, args, true, `找到 ${templates.length} 个背景音乐模板`, Date.now() - startedAt)
+      return agentToolResponse(result as Record<string, unknown>)
+    }
+
+    if (name === 'get_music_template') {
+      const templateId = stringArg(args, 'templateId')
+      if (!templateId) return invalid('缺少 templateId')
+      const template = await music.getMusicTemplate(templateId)
+      const result = addAgentContext({
+        ok: true,
+        summary: `已读取音乐模板 ${templateId}`,
+        data: { template },
+      }, options.agentSession)
+      options.agentSession?.toolFinished(callId, name, args, true, `已读取音乐模板 ${templateId}`, Date.now() - startedAt)
+      return agentToolResponse(result as Record<string, unknown>)
+    }
+
+    const dsl = typeof args.dsl === 'string' && args.dsl.trim() ? args.dsl : null
+    if (!dsl) return invalid('缺少 dsl')
+    const generated = await music.generateBackgroundMusic(dsl, stringArg(args, 'name') ?? undefined)
+    const summary = `已生成背景音乐 ${generated.name}（${generated.durationSec.toFixed(2)} 秒）`
+    const result = addAgentContext({
+      ok: true,
+      summary,
+      data: generated,
+    }, options.agentSession)
+    options.agentSession?.toolFinished(callId, name, args, true, summary, Date.now() - startedAt)
+    return agentToolResponse(result as Record<string, unknown>)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const templateNotFound = name === 'get_music_template'
+      && /unknown music template|音乐模板内容无效/i.test(message)
+    const invalidDsl = name === 'generate_background_music'
+      && /^line \d+:/m.test(message)
+    const runtimeUnavailable = /SoundFont was not found|luna-bgm-worker|ENOENT|Cannot find module/i.test(message)
+    const toolError = templateNotFound
+      ? {
+          code: 'MUSIC_TEMPLATE_NOT_FOUND',
+          message,
+          retryable: false,
+          suggestedAction: '重新调用 list_music_templates，并使用返回的 templateId。',
+        }
+      : invalidDsl
+        ? {
+            code: 'MUSIC_DSL_INVALID',
+            message,
+            retryable: false,
+            suggestedAction: '按错误行号修正 Music DSL，再调用一次；不要重复原参数。',
+          }
+        : runtimeUnavailable
+          ? {
+              code: 'MUSIC_RUNTIME_UNAVAILABLE',
+              message,
+              retryable: false,
+              suggestedAction: '停止音乐生成并上报失败；这是 Luna 本地音乐运行时缺失，不是 DSL 参数问题。',
+            }
+          : {
+              code: 'MUSIC_RENDER_FAILED',
+              message,
+              retryable: false,
+              suggestedAction: '检查 Music DSL 的时值和轨道定义；修正后再调用一次，不要重复原参数。',
+            }
+    const failure = {
+      ok: false,
+      summary: message,
+      error: toolError,
+    }
+    options.agentSession?.toolFinished(callId, name, args, false, message, Date.now() - startedAt, toolError)
+    return agentToolResponse(failure)
+  }
+}
+
 async function handleAgentTaskTool(
   name: string,
   args: Record<string, unknown>,
   options: LunaMcpServerOptions,
+  callId: string,
 ): Promise<AiEditorMcpResponse | null> {
   if (!AGENT_TOOL_NAMES.has(name)) return null
+  const musicResult = await handleMusicTool(name, args, options, callId)
+  if (musicResult) return musicResult
   const manager = options.agentSession
   if (!manager) return agentToolResponse({
     ok: false,
@@ -594,7 +760,8 @@ async function handleRpc(
     const name = typeof params?.name === 'string' ? params.name : ''
     if (!name) return jsonRpcError(id, -32602, '缺少工具名称')
     const args = asRecord(params?.arguments) ?? {}
-    const taskResult = await handleAgentTaskTool(name, args, options)
+    const callId = randomUUID()
+    const taskResult = await handleAgentTaskTool(name, args, options, callId)
     if (taskResult) {
       const taskRecord = asRecord(taskResult.result)
       return {
@@ -610,7 +777,6 @@ async function handleRpc(
       }
     }
 
-    const callId = randomUUID()
     const requiresFreshRequest = Boolean(options.agentSession) && !isReadOnlyAgentTool(name)
     if (requiresFreshRequest) {
       const gate = options.agentSession?.gateActiveTool()

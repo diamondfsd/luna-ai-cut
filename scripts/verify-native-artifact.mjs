@@ -13,6 +13,7 @@ const windowsNativeFiles = [
   'luna-inpaint-worker.exe',
   'luna-punctuation-worker.exe',
   'luna-asr-worker.exe',
+  'luna-bgm-worker.exe',
   'dxcompiler.dll',
   'dxil.dll',
 ]

@@ -1,0 +1,73 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/ode-to-joy/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Ode to Joy; composer: Ludwig van Beethoven
+# category: classical
+# scenes: cinematic, elegant, dramatic, documentary
+bgm 1
+dur 30
+bpm 120
+ts 4/4
+sec b1 1
+  ch D
+  t melody c0 i0 v34 m
+    p q F#4 F#4 G4 A4
+sec b2 1
+  ch D
+  t melody c0 i0 v34 m
+    p q A4 G4 F#4 E4
+sec b3 1
+  ch D
+  t melody c0 i0 v34 m
+    p q D4 D4 E4 F#4
+sec b4 1
+  ch D
+  t melody c0 i0 v34 m
+    p e F#4 . . E4 E4 d0.5
+sec b5 1
+  ch D
+  t melody c0 i0 v34 m
+    p q F#4 F#4 G4 A4
+sec b6 1
+  ch D
+  t melody c0 i0 v34 m
+    p q A4 G4 F#4 E4
+sec b7 1
+  ch D
+  t melody c0 i0 v34 m
+    p q D4 D4 E4 F#4
+sec b8 1
+  ch D
+  t melody c0 i0 v34 m
+    p e E4 . . D4 D4 d0.5
+sec b9 1
+  ch D
+  t melody c0 i0 v34 m
+    p q E4 E4 F#4 D4
+sec b10 1
+  ch D
+  t melody c0 i0 v34 m
+    p e E4 . F#4 G4 F#4 . D4 d0.5
+sec b11 1
+  ch D
+  t melody c0 i0 v34 m
+    p e E4 . F#4 G4 F#4 . E4 d0.5
+sec b12 1
+  ch D
+  t melody c0 i0 v34 m
+    p q D4 E4 A3
+sec b13 1
+  ch D
+  t melody c0 i0 v34 m
+    p q F#4 F#4 G4 A4
+sec b14 1
+  ch D
+  t melody c0 i0 v34 m
+    p q A4 G4 F#4 E4
+sec b15 1
+  ch D
+  t melody c0 i0 v34 m
+    p q D4 D4 E4 F#4
+sec b16 1
+  ch D
+  t melody c0 i0 v34 m
+    p e E4 . . D4 D4 d0.5

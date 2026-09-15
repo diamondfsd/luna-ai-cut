@@ -1,0 +1,13 @@
+bgm 1
+dur 30
+bpm 84
+ts 4/4
+sec main 4x3
+  ch Dm Bb F C
+  t e c0 i4 v34 m
+    p off c d.28
+  t b c1 i33 v42 l
+    p q r 5 r 5 d.6
+  t d c9 v42
+    p e hat hat hat hat hat hat hat hat d.08
+    p q kick - snare - d.12

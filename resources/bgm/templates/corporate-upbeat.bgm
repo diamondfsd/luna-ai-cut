@@ -1,0 +1,15 @@
+bgm 1
+dur 30
+bpm 118
+ts 4/4
+sec main 4x4
+  ch C G Am F
+  var +2
+  t p c0 i89 v28 m
+    p w c d4
+  t b c1 i38 v46 l
+    p q r 5 r 5 d.65
+  t k c2 i4 v28 h
+    p off c d.25
+  t d c9 v52
+    p q kick snare kick snare d.12

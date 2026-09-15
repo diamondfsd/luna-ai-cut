@@ -1,0 +1,45 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/good-christian-men-rejoice/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Good Christian Men Rejoice; composer: Traditional
+# category: carol
+# scenes: holiday, festive, cozy, family
+bgm 1
+dur 30
+bpm 96
+ts 6/8
+sec b1 1
+  ch G
+  t melody c0 i0 v34 m
+    p e G4 B4 . C5 D5 d0.5
+sec b2 1
+  ch G
+  t melody c0 i0 v34 m
+    p e E5 F#5 . G5 F#5 d0.5
+sec b3 1
+  ch G
+  t melody c0 i0 v34 m
+    p e F#5 B4 . C5 D5 d0.5
+sec b4 1
+  ch G
+  t melody c0 i0 v34 m
+    p e E5 F#5 . G5 F#5 d0.5
+sec b5 1
+  ch G
+  t melody c0 i0 v34 m
+    p e . F#5 . G5 F#5 d0.5
+sec b6 1
+  ch G
+  t melody c0 i0 v34 m
+    p e E5 D5 . C5 B4 d0.5
+sec b7 1
+  ch G
+  t melody c0 i0 v34 m
+    p e . B4 . . B4
+sec b8 1
+  ch G
+  t melody c0 i0 v34 m
+    p e . C5 . C5 D5 d0.5
+sec b9 1
+  ch G
+  t melody c0 i0 v34 m
+    p e C5 B4 . C5 D5 d0.5

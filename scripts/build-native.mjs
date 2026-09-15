@@ -16,11 +16,14 @@ import { chmodSync, closeSync, copyFileSync, existsSync, openSync, readSync, rea
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
+import { ensureBgmAssets } from './copy-bgm-assets.mjs'
 import { prepareDxcRuntime } from './prepare-dxc.mjs'
 import { ensureMacX64OnnxRuntime } from './prepare-macos-x64-runtime.mjs'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
+
+await ensureBgmAssets({ rootDir: root })
 
 // ── 确定目标平台 ──
 const target = process.env.CROSS_TARGET || ''
@@ -42,7 +45,7 @@ const targetArch = targetLower.includes('aarch64')
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
-const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker', 'neural-preset-worker']
+const workerBaseNames = ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-punctuation-worker', 'luna-asr-worker', 'luna-bgm-worker', 'neural-preset-worker']
 
 function filesMatch(leftPath, rightPath) {
   if (!existsSync(rightPath)) return false

@@ -1,0 +1,25 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/symphony-no-5-motif/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Symphony No. 5 (opening motif); composer: Ludwig van Beethoven
+# category: classical
+# scenes: cinematic, elegant, dramatic, documentary
+bgm 1
+dur 30
+bpm 108
+ts 2/4
+sec b1 1
+  ch Cm
+  t melody c0 i0 v34 m
+    p e . G4 G4 G4 d0.5
+sec b2 1
+  ch Cm
+  t melody c0 i0 v34 m
+    p w Eb4
+sec b3 1
+  ch Cm
+  t melody c0 i0 v34 m
+    p e . F4 F4 F4 d0.5
+sec b4 1
+  ch Cm
+  t melody c0 i0 v34 m
+    p w D4

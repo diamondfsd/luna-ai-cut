@@ -1,0 +1,85 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/mary-had-a-little-lamb/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Mary Had a Little Lamb; composer: Traditional
+# category: first
+# scenes: kids, education, playful, friendly
+bgm 1
+dur 30
+bpm 120
+ts 1/4
+sec b1 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b2 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b3 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b4 1
+  ch C
+  t melody c0 i0 v34 m
+    p w D4
+sec b5 1
+  ch C
+  t melody c0 i0 v34 m
+    p w E4
+sec b6 1
+  ch C
+  t melody c0 i0 v34 m
+    p w E4
+sec b7 1
+  ch C
+  t melody c0 i0 v34 m
+    p w D4
+sec b8 1
+  ch C
+  t melody c0 i0 v34 m
+    p w E4
+sec b9 1
+  ch C
+  t melody c0 i0 v34 m
+    p w F4
+sec b10 1
+  ch C
+  t melody c0 i0 v34 m
+    p w G4
+sec b11 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b12 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b13 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b14 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b15 1
+  ch C
+  t melody c0 i0 v34 m
+    p w D4
+sec b16 1
+  ch C
+  t melody c0 i0 v34 m
+    p w E4
+sec b17 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4
+sec b18 1
+  ch C
+  t melody c0 i0 v34 m
+    p w G4
+sec b19 1
+  ch C
+  t melody c0 i0 v34 m
+    p w C4

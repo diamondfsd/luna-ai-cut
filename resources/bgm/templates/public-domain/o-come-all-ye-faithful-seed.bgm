@@ -1,0 +1,57 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/o-come-all-ye-faithful/song.json
+# license: CC0-1.0; public-domain melody data
+# title: O Come All Ye Faithful; composer: John Francis Wade
+# category: seasonal
+# scenes: holiday, festive, cozy, family
+bgm 1
+dur 30
+bpm 100
+ts 4/4
+sec b1 1
+  ch F
+  t melody c0 i0 v34 m
+    p q F4 F4 G4 A4
+sec b2 1
+  ch F
+  t melody c0 i0 v34 m
+    p q C5 A4 . A4
+sec b3 1
+  ch F
+  t melody c0 i0 v34 m
+    p q . Bb4 C5 D5
+sec b4 1
+  ch F
+  t melody c0 i0 v34 m
+    p q C5 A4
+sec b5 1
+  ch F
+  t melody c0 i0 v34 m
+    p q . C5 C5 D5
+sec b6 1
+  ch F
+  t melody c0 i0 v34 m
+    p q E5 F5 G5
+sec b7 1
+  ch F
+  t melody c0 i0 v34 m
+    p q G5 . E5 F5
+sec b8 1
+  ch F
+  t melody c0 i0 v34 m
+    p q G5 A5 G5
+sec b9 1
+  ch F
+  t melody c0 i0 v34 m
+    p q . . A5 G5
+sec b10 1
+  ch F
+  t melody c0 i0 v34 m
+    p q F5 E5 D5 C5
+sec b11 1
+  ch F
+  t melody c0 i0 v34 m
+    p q . C5 . D5
+sec b12 1
+  ch F
+  t melody c0 i0 v34 m
+    p q E5 F5 E5 C5

@@ -1,0 +1,33 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/au-clair-de-la-lune/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Au Clair de la Lune; composer: Traditional (French)
+# category: first
+# scenes: kids, education, playful, friendly
+bgm 1
+dur 30
+bpm 100
+ts 4/4
+sec b1 1
+  ch C
+  t melody c0 i0 v34 m
+    p q C4 D4 E4 C4
+sec b2 1
+  ch C
+  t melody c0 i0 v34 m
+    p q C4 D4 E4 C4
+sec b3 1
+  ch C
+  t melody c0 i0 v34 m
+    p q E4 F4 G4
+sec b4 1
+  ch C
+  t melody c0 i0 v34 m
+    p q G4 A4 G4 F4
+sec b5 1
+  ch C
+  t melody c0 i0 v34 m
+    p q E4 C4 D4 E4
+sec b6 1
+  ch C
+  t melody c0 i0 v34 m
+    p h C4 C4
