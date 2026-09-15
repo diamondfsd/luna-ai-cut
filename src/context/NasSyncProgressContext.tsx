@@ -23,8 +23,8 @@ const emptyStatus: NasSyncStatus = {
   lastError: null,
   updatedAt: new Date(0).toISOString(),
   failedItems: [],
-  pendingItems: [],
-  pendingItemsTruncated: false,
+  taskItems: [],
+  taskItemsTruncated: false,
 }
 
 interface NasSyncProgressContextValue {

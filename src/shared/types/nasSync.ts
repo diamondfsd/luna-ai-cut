@@ -55,8 +55,8 @@ export interface NasSyncStatus {
   lastError: string | null
   updatedAt: string
   failedItems: Array<{ id: string; fileName: string; error: string }>
-  pendingItems: NasSyncFileStatus[]
-  pendingItemsTruncated: boolean
+  taskItems: NasSyncFileStatus[]
+  taskItemsTruncated: boolean
 }
 
 export interface NasSyncEnqueueResult {

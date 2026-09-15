@@ -70,9 +70,13 @@ export function NasSyncPopover() {
 
   const percent = Math.round(status.percent ?? 0)
   const hasPending = status.pendingFiles > 0
-  const canRetry = status.failedFiles > 0 && status.state !== 'not-configured'
+  const canResume = (status.failedFiles > 0 || status.canceledFiles > 0) && status.state !== 'not-configured'
+  const stateLabel = status.state === 'ready' && status.canceledFiles > 0 && status.pendingFiles === 0
+    ? '已取消'
+    : statusLabel(status.state)
+  const taskCount = status.pendingFiles + status.failedFiles + status.canceledFiles
 
-  async function retryFailed(): Promise<void> {
+  async function resumeTasks(): Promise<void> {
     try {
       const count = await window.luna.nasSync.retryFailed()
       await refresh()
@@ -103,7 +107,7 @@ export function NasSyncPopover() {
               aria-label="查看 NAS 同步"
               title="查看 NAS 同步"
             />
-            {(hasPending || status.failedFiles > 0) && <span className="nas-sync-nav-dot" />}
+            {(hasPending || status.failedFiles > 0 || status.canceledFiles > 0) && <span className="nas-sync-nav-dot" />}
           </span>
         </PopoverTrigger>
       </Tooltip>
@@ -111,7 +115,7 @@ export function NasSyncPopover() {
         <div className="nas-sync-popover-header">
           <div>
             <strong>NAS 同步</strong>
-            <span>{statusLabel(status.state)}</span>
+            <span>{stateLabel}</span>
           </div>
           <CloudUpload size={17} aria-hidden="true" />
         </div>
@@ -142,15 +146,15 @@ export function NasSyncPopover() {
             </div>
             {status.lastError && <div className="nas-sync-error">{status.lastError}</div>}
             <div className="nas-sync-task-list-header">
-              <span>待完成</span>
+              <span>任务</span>
               <span>
-                {status.pendingItemsTruncated
-                  ? `显示 ${status.pendingItems.length} / ${status.pendingFiles + status.failedFiles}`
-                  : status.pendingItems.length}
+                {status.taskItemsTruncated
+                  ? `显示 ${status.taskItems.length} / ${taskCount}`
+                  : status.taskItems.length}
               </span>
             </div>
-            <div className="nas-sync-task-list" role="list" aria-label="NAS 待完成文件">
-              {status.pendingItems.length > 0 ? status.pendingItems.map((item) => (
+            <div className="nas-sync-task-list" role="list" aria-label="NAS 同步任务">
+              {status.taskItems.length > 0 ? status.taskItems.map((item) => (
                 <div className={`nas-sync-task is-${item.state}`} role="listitem" key={item.id}>
                   <span className="nas-sync-task-icon"><TaskStateIcon state={item.state} /></span>
                   <div className="nas-sync-task-copy">
@@ -164,8 +168,8 @@ export function NasSyncPopover() {
               )}
             </div>
             <div className="nas-sync-actions">
-              <Button variant="secondary" size="compact" disabled={!canRetry} icon={<RefreshCw size={14} />} onClick={() => void retryFailed()}>
-                重试失败
+              <Button variant="secondary" size="compact" disabled={!canResume} icon={<RefreshCw size={14} />} onClick={() => void resumeTasks()}>
+                继续同步
               </Button>
               <Button variant="secondary" size="compact" disabled={!hasPending} icon={<X size={14} />} onClick={() => void cancelPending()}>
                 取消待同步
