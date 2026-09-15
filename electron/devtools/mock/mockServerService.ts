@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import path from 'node:path'
+import { getFfmpegPath } from '../../platform/ffmpeg/pipeline'
 
 import { DEFAULT_DEVICE, deviceDefinitionFor, deviceDefinitions } from '../../devices/definitions/deviceDefaults'
 import { getSettings, saveSettings } from '../../storage/settingsService'
@@ -169,13 +170,13 @@ export async function startMockServer(deviceId?: string, partial?: Partial<AppSe
 
   const child = spawn(process.execPath, [
     mockServerScriptPath(device.protocol === 'dji'),
-    '--root', startingStatus.rootDir,
+    device.protocol === 'dji' ? '--media-root' : '--root', startingStatus.rootDir,
     '--host', startingStatus.host,
     '--http-port', String(startingStatus.httpPort),
     '--tcp-port', String(startingStatus.tcpPort),
     '--udp-port', String(startingStatus.udpPort),
-    '--rate-mbps', String(startingStatus.rateMbps),
-    ...(device.protocol === 'dji' ? ['--model', device.mock.model || 'pocket4'] : []),
+    ...(device.protocol === 'dji' ? [] : ['--rate-mbps', String(startingStatus.rateMbps)]),
+    ...(device.protocol === 'dji' ? ['--model', device.mock.model || 'pocket4', '--ffmpeg', getFfmpegPath()] : []),
   ])
   const runningStatus = { ...startingStatus, running: true, message: 'Mock Server 运行中' }
   mockProcesses.set(targetDeviceId, { child, status: runningStatus })

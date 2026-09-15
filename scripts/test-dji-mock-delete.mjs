@@ -1,105 +1,60 @@
 /* global Buffer */
-
 import assert from 'node:assert/strict'
-import { once } from 'node:events'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import test from 'node:test'
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
-import dgram from 'node:dgram'
-import { request } from 'node:http'
-
 import { buildDjiDeletePayload } from '../electron/devices/dji/djiDeleteCodec.ts'
-import { decodeDjiMessage, encodeDjiMessage } from '../electron/devices/dji/djiBytes.ts'
+import { openMockSession } from './helpers/djiMockSession.mjs'
 
-const root = await mkdtemp(path.join(tmpdir(), 'luna-dji-delete-'))
-const httpPort = 18182
-const udpPort = 19182
-const tcpPort = 17182
-const cameraPath = 'DCIM/DJI_001/clip.JPG'
-const filePath = path.join(root, 'sdcard', 'clip.JPG')
-let child
+test('DJI delete strict UDP removes catalog entries without deleting fixture files', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'luna-dji-delete-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const media = [
+    { path: 'DCIM/100MEDIA/test.MP4', thumbPath: 'MISC/THM/100MEDIA/test.scr', handle: 0x40000001, sizeBytes: 10, durationSeconds: 1, storage: 1, resolution: '1920x1080', fps: 25 },
+    { path: 'DCIM/100MEDIA/other.MP4', thumbPath: 'MISC/THM/100MEDIA/other.scr', handle: 0x40000002, sizeBytes: 10, durationSeconds: 1, storage: 1, resolution: '1920x1080', fps: 25 },
+  ]
+  const fixture = path.join(root, media[0].path)
+  await mkdir(path.dirname(fixture), { recursive: true })
+  await writeFile(fixture, 'mock media')
+  const session = await openMockSession(t, { media, mediaRoot: root })
+  const mediaUrl = session.baseUrl + '/v2?storage=1&path=' + encodeURIComponent(media[0].path)
+  const before = await fetch(mediaUrl)
+  assert.equal(before.status, 200)
+  assert.equal(await before.text(), 'mock media')
 
-function udpPacket(frame, sessionId = 1, sequence = 1) {
-  const routing = Buffer.alloc(12)
-  const payload = Buffer.concat([routing, frame])
-  const header = Buffer.alloc(8)
-  header.writeUInt16LE(0x8000 | (8 + payload.length), 0)
-  header.writeUInt16LE(sessionId, 2)
-  header.writeUInt16LE(sequence, 4)
-  header[6] = 0x05
-  header[7] = header.subarray(0, 7).reduce((sum, value) => sum ^ value, 0)
-  return Buffer.concat([header, payload])
-}
+  const issueDelete = (payload) => session.issue({ cmdSet: 0, cmdId: 0x28, payload })
+  // Keep upstream's captured variant; do not teach the Mock to accept our client.
+  const validPayload = Buffer.alloc(18)
+  validPayload[0] = 1
+  validPayload.writeUInt32LE(media[0].handle, 1)
+  validPayload.writeUInt32LE(1, 5)
+  validPayload.set([1, 1], 10)
 
-function httpStatus(url) {
-  return new Promise((resolve, reject) => {
-    const req = request(url, { method: 'HEAD' }, (response) => {
-      response.resume()
-      response.once('end', () => resolve(response.statusCode))
-    })
-    req.once('error', reject)
-    req.end()
-  })
-}
+  const invalidPayload = Buffer.from(validPayload)
+  invalidPayload[17] = 1
+  assert.deepEqual(await issueDelete(invalidPayload), Buffer.from([0xdf]))
+  assert.equal(session.server.state.media.length, 2)
 
-async function sendDelete(handle) {
-  const socket = dgram.createSocket('udp4')
-  const requestFrame = encodeDjiMessage({
-    target: 0x0102,
-    id: 0x8026,
-    flags: 0x40,
-    cmdSet: 0x00,
-    cmdId: 0x28,
-    payload: buildDjiDeletePayload([handle], 1),
-  })
-  const response = new Promise((resolve, reject) => {
-    socket.once('error', reject)
-    socket.once('message', (data) => {
-      const decoded = decodeDjiMessage(data, 20)
-      if (!decoded) reject(new Error('mock 返回了无法解析的 DUML 删除响应'))
-      else resolve(decoded.message)
-    })
-  })
-  await new Promise((resolve, reject) => {
-    socket.send(udpPacket(requestFrame), udpPort, '127.0.0.1', (error) => error ? reject(error) : resolve())
-  })
-  const message = await response
-  socket.close()
-  return message
-}
+  // This explicitly exposes the existing client/upstream wire disagreement.
+  const clientPayload = buildDjiDeletePayload([media[0].handle], 1)
+  assert.notDeepEqual(clientPayload, validPayload)
+  assert.deepEqual(await issueDelete(clientPayload), Buffer.from([0xdf]))
+  assert.equal(session.server.state.media.length, 2)
 
-try {
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, 'mock media')
-  child = spawn(process.execPath, [
-    'dji_mock_server/server.mjs', '--model', 'pocket4', '--root', root,
-    '--http-port', String(httpPort), '--udp-port', String(udpPort), '--tcp-port', String(tcpPort),
-  ], { stdio: ['ignore', 'pipe', 'pipe'] })
-  const ready = new Promise((resolve, reject) => {
-    child.stdout.on('data', (chunk) => {
-      if (chunk.toString().includes('"event":"ready"')) resolve()
-    })
-    child.once('error', reject)
-    child.stderr.on('data', (chunk) => process.stderr.write(chunk))
-  })
-  await ready
+  assert.deepEqual(await issueDelete(validPayload), Buffer.from([0]))
+  assert.deepEqual(session.server.state.media.map((file) => file.handle), [media[1].handle])
+  assert.deepEqual(await session.replay(), Buffer.from([0]))
+  assert.equal(session.server.state.media.length, 1)
+  assert.equal(session.server.metrics.duplicatePackets, 1)
+  const after = await fetch(mediaUrl)
+  assert.equal(after.status, 404)
+  await after.text()
+  const thumbnail = await fetch(session.baseUrl + '/v2?storage=1&path=' + encodeURIComponent(media[0].thumbPath))
+  assert.equal(thumbnail.status, 404)
+  await thumbnail.text()
+  assert.equal(await readFile(fixture, 'utf8'), 'mock media')
 
-  assert.equal(await httpStatus(`http://127.0.0.1:${httpPort}/v2?storage=0&path=${cameraPath}`), 200)
-  const deleted = await sendDelete(0x00100000)
-  assert.equal(deleted.cmdSet, 0x00)
-  assert.equal(deleted.cmdId, 0x28)
-  assert.equal(deleted.payload.readUInt16LE(0), 0x0000)
-  assert.equal(await httpStatus(`http://127.0.0.1:${httpPort}/v2?storage=0&path=${cameraPath}`), 404)
-
-  const missing = await sendDelete(0x00100000)
-  assert.equal(missing.payload.readUInt16LE(0), 0x00d6)
-} finally {
-  if (child && !child.killed) {
-    child.kill('SIGTERM')
-    await once(child, 'close')
-  }
-  await rm(root, { recursive: true, force: true })
-}
-
-console.log('DJI mock delete integration test passed')
+  assert.deepEqual(await issueDelete(validPayload), Buffer.from([0xd9]))
+  assert.equal(session.server.state.media.length, 1)
+})
