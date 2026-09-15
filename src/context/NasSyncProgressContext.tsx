@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { NasSyncStatus } from '../shared/types'
+import { toast } from '../ui'
 import { useApp } from './AppContext'
 
 const emptyStatus: NasSyncStatus = {
@@ -58,7 +59,9 @@ export function NasSyncProgressProvider({ children }: { children: ReactNode }) {
   }, [settings])
 
   useEffect(() => {
-    if (status.state === 'syncing' && previousState.current !== 'syncing') setProgressPopoverOpen(true)
+    if (status.state === 'syncing' && previousState.current === 'offline') {
+      toast.success('网络已恢复，正在同步')
+    }
     previousState.current = status.state
   }, [status.state])
 

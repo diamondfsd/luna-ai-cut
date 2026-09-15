@@ -28,6 +28,8 @@ interface PersistedNasSyncState {
 
 const MAX_ATTEMPTS = 3
 const MAX_STATUS_FILES = 100
+const NETWORK_RETRY_DELAY_MS = 5_000
+const NETWORK_RETRY_WINDOW_MS = 30 * 60 * 1_000
 const execFileAsync = promisify(execFile)
 
 function now(): string {
@@ -152,6 +154,24 @@ function isLoopbackNasHost(value: string): boolean {
   return host === '127.0.0.1' || host === 'localhost' || host === '::1'
 }
 
+function nasHost(value: string): string {
+  return value.trim().replace(/^smb:\/\//i, '').replace(/^\\+/, '').split(/[\\/]/, 1)[0].trim()
+}
+
+async function hostReachable(host: string): Promise<boolean> {
+  const args = process.platform === 'win32'
+    ? ['-n', '1', '-w', '1000', host]
+    : process.platform === 'darwin'
+      ? ['-c', '1', '-W', '1000', host]
+      : ['-c', '1', '-W', '1', host]
+  try {
+    await execFileAsync('ping', args, { timeout: 2_000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function isMissingLocalPath(error: unknown): boolean {
   return typeof error === 'object'
     && error !== null
@@ -218,6 +238,9 @@ export class NasSyncService {
   private lastProgressEmitAt = 0
   private pauseRequested = false
   private cancelRequested = false
+  private offline = false
+  private networkRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private networkRetryUntil = 0
   private onProgress: ((status: NasSyncStatus) => void) | null = null
   private debugConfig: NasSyncSettings | null = null
 
@@ -280,6 +303,9 @@ export class NasSyncService {
     await this.ensureLoaded(effectiveSettings)
     if (!effectiveSettings.nasSync?.enabled) {
       this.pauseRequested = true
+      this.offline = false
+      this.networkRetryUntil = 0
+      this.clearNetworkRetry()
       this.currentController?.abort()
       this.emit(effectiveSettings)
       return
@@ -287,6 +313,8 @@ export class NasSyncService {
     // Keep the pause marker until an in-flight copy has observed the abort. This
     // prevents a quick disable/enable sequence from turning a paused item into a failure.
     if (!this.currentController) this.pauseRequested = false
+    this.networkRetryUntil = 0
+    this.clearNetworkRetry()
     this.emit(effectiveSettings)
     this.startWorkerIfNeeded()
   }
@@ -410,6 +438,7 @@ export class NasSyncService {
     }
     if (changed) {
       this.state.lastError = null
+      this.networkRetryUntil = 0
       await this.persist(settings)
       this.emit(settings)
       this.startWorkerIfNeeded()
@@ -480,6 +509,11 @@ export class NasSyncService {
       item.updatedAt = now()
     }
     this.currentController?.abort()
+    if (!this.state.items.some((item) => item.state === 'queued')) {
+      this.offline = false
+      this.networkRetryUntil = 0
+      this.clearNetworkRetry()
+    }
     await this.persist(settings)
     this.emit(settings)
   }
@@ -565,6 +599,7 @@ export class NasSyncService {
     if (!config?.enabled) state = 'disabled'
     else if (!isConfigured(config)) state = 'not-configured'
     else if (current) state = 'syncing'
+    else if (this.offline && pendingItems.length > 0) state = 'offline'
     else if (failedItems.length > 0) state = 'error'
     return {
       state,
@@ -600,6 +635,37 @@ export class NasSyncService {
     })
   }
 
+  private clearNetworkRetry(): void {
+    if (!this.networkRetryTimer) return
+    clearTimeout(this.networkRetryTimer)
+    this.networkRetryTimer = null
+  }
+
+  private scheduleNetworkRetry(): void {
+    if (this.networkRetryTimer) return
+    if (Date.now() >= this.networkRetryUntil) return
+    this.networkRetryTimer = setTimeout(() => {
+      this.networkRetryTimer = null
+      this.startWorkerIfNeeded()
+    }, NETWORK_RETRY_DELAY_MS)
+  }
+
+  private async nasAvailable(config: NasSyncSettings): Promise<boolean> {
+    if (!await hostReachable(nasHost(config.server))) return false
+    let transport: NasTransport | null = null
+    try {
+      transport = new SmbTransport(config)
+      await transport.probe(config.remotePath)
+      return true
+    } catch (error) {
+      // Authentication, permission, and directory problems should still be
+      // reported by the queued upload. Only connection failures wait for retry.
+      return !isRetryableNasError(error)
+    } finally {
+      transport?.close()
+    }
+  }
+
   private async runWorker(): Promise<void> {
     let running = true
     while (running) {
@@ -614,10 +680,24 @@ export class NasSyncService {
         .filter((candidate) => candidate.state === 'queued')
         .sort(syncPriority)[0]
       if (!item) {
+        this.offline = false
+        this.networkRetryUntil = 0
+        this.clearNetworkRetry()
         this.emit(settings)
         running = false
         return
       }
+      if (!await this.nasAvailable(settings.nasSync)) {
+        if (this.networkRetryUntil === 0) this.networkRetryUntil = Date.now() + NETWORK_RETRY_WINDOW_MS
+        this.offline = true
+        this.emit(settings)
+        this.scheduleNetworkRetry()
+        running = false
+        return
+      }
+      this.offline = false
+      this.networkRetryUntil = 0
+      this.clearNetworkRetry()
       this.pauseRequested = false
       this.cancelRequested = false
       this.currentItemId = item.id
@@ -633,6 +713,7 @@ export class NasSyncService {
       item.updatedAt = now()
       await this.persist(settings)
       this.emit(settings)
+      let retryWhenNetworkReturns = false
       try {
         await this.syncItem(item, settings, this.currentController.signal)
         item.state = 'synced'
@@ -652,6 +733,14 @@ export class NasSyncService {
           item.state = 'canceled'
           item.downloadedBytes = 0
           item.error = undefined
+        } else if (isRetryableNasError(error)) {
+          item.state = 'queued'
+          item.downloadedBytes = 0
+          item.error = undefined
+          if (this.networkRetryUntil === 0) this.networkRetryUntil = Date.now() + NETWORK_RETRY_WINDOW_MS
+          this.offline = true
+          this.scheduleNetworkRetry()
+          retryWhenNetworkReturns = true
         } else {
           item.state = 'failed'
           item.downloadedBytes = 0
@@ -668,6 +757,10 @@ export class NasSyncService {
         this.lastProgressBytes = 0
         await this.persist(settings)
         this.emit(await getSettings().then((next) => this.getEffectiveSettings(next)).catch(() => settings))
+      }
+      if (retryWhenNetworkReturns) {
+        running = false
+        return
       }
     }
   }

@@ -97,6 +97,12 @@
   transition: width 160ms ease;
 }
 
+.nas-sync-offline {
+  padding: 10px 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .nas-sync-current {
   justify-content: space-between;
   gap: 12px;

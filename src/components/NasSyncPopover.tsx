@@ -14,6 +14,7 @@ function statusLabel(state: string): string {
     case 'error': return '有文件失败'
     case 'not-configured': return '未配置 NAS'
     case 'disabled': return '未启用'
+    case 'offline': return '等待网络'
     default: return '已完成'
   }
 }
@@ -150,6 +151,7 @@ export function NasSyncPopover() {
             <div className="nas-sync-progress-track" aria-label={`NAS 同步进度 ${percent}%`}>
               <span style={{ width: `${percent}%` }} />
             </div>
+            {status.state === 'offline' && <div className="nas-sync-offline">30 分钟内连接局域网后会自动同步</div>}
             <div className="nas-sync-meta">
               <span>速度 {formatBytes(status.speedBps)}/s</span>
               <span>失败 {status.failedFiles}</span>
