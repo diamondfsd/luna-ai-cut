@@ -199,6 +199,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
   nasSync: {
     getStatus: (): Promise<NasSyncStatus> => ipcRenderer.invoke('nas-sync:status'),
+    setDebugMode: (enabled: boolean): Promise<NasSyncSettings> => ipcRenderer.invoke('nas-sync:set-debug-mode', enabled),
+    getDebugLocalRoot: (): Promise<string | null> => ipcRenderer.invoke('nas-sync:get-debug-local-root'),
     probe: (config?: NasSyncSettings): Promise<NasSyncProbeResult> => ipcRenderer.invoke('nas-sync:probe', config),
     listFiles: (): Promise<NasRemoteFile[]> => ipcRenderer.invoke('nas-sync:list-files'),
     syncFiles: (filePaths: string[]): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-files', filePaths),

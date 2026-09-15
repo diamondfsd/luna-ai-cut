@@ -10,6 +10,7 @@ import { formatBytes } from '../lib/format'
 import { useDownloadProgress } from '../context/DownloadProgressContext'
 import { useMediaLib } from '../pages/useMediaLibraryController'
 import { useApp } from '../context/AppContext'
+import { useNasSyncProgress } from '../context/NasSyncProgressContext'
 import {
   Button,
   ButtonGroup,
@@ -31,6 +32,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
   const isLocal = mode === 'local'
   const ctrl = useMediaLib()
   const { settings } = useApp()
+  const { showProgress } = useNasSyncProgress()
   const { downloadProgress, setDownloadProgress } = useDownloadProgress()
 
   const haveSelection = ctrl.selectedFiles.length > 0
@@ -77,7 +79,8 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
     }
     try {
       const result = await window.luna.nasSync.syncFiles(localFilePaths)
-      toast.success(result.queued > 0 ? `已加入 ${result.queued} 个文件` : '文件已同步')
+      if (result.queued > 0) showProgress()
+      else toast.success('文件已同步')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '加入 NAS 同步失败')
     }

@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { NasSyncStatus } from '../shared/types'
 import { useApp } from './AppContext'
@@ -23,11 +23,16 @@ const emptyStatus: NasSyncStatus = {
   lastError: null,
   updatedAt: new Date(0).toISOString(),
   failedItems: [],
+  pendingItems: [],
+  pendingItemsTruncated: false,
 }
 
 interface NasSyncProgressContextValue {
   status: NasSyncStatus
   refresh: () => Promise<void>
+  progressPopoverOpen: boolean
+  setProgressPopoverOpen: (open: boolean) => void
+  showProgress: () => void
 }
 
 const Ctx = createContext<NasSyncProgressContextValue | null>(null)
@@ -35,6 +40,8 @@ const Ctx = createContext<NasSyncProgressContextValue | null>(null)
 export function NasSyncProgressProvider({ children }: { children: ReactNode }) {
   const { settings } = useApp()
   const [status, setStatus] = useState<NasSyncStatus>(emptyStatus)
+  const [progressPopoverOpen, setProgressPopoverOpen] = useState(false)
+  const previousState = useRef<NasSyncStatus['state']>(emptyStatus.state)
 
   useEffect(() => {
     let canceled = false
@@ -50,7 +57,25 @@ export function NasSyncProgressProvider({ children }: { children: ReactNode }) {
     }
   }, [settings])
 
-  return <Ctx.Provider value={{ status, refresh: async () => setStatus(await window.luna.nasSync.getStatus()) }}>{children}</Ctx.Provider>
+  useEffect(() => {
+    if (status.state === 'syncing' && previousState.current !== 'syncing') setProgressPopoverOpen(true)
+    previousState.current = status.state
+  }, [status.state])
+
+  const showProgress = useCallback((): void => setProgressPopoverOpen(true), [])
+
+  return (
+    <Ctx.Provider value={{
+      status,
+      refresh: async () => setStatus(await window.luna.nasSync.getStatus()),
+      progressPopoverOpen,
+      setProgressPopoverOpen,
+      showProgress,
+    }}
+    >
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export function useNasSyncProgress(): NasSyncProgressContextValue {

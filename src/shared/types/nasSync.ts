@@ -16,12 +16,24 @@ export interface NasSyncItem {
   bytes: number | null
   sourceSize: number | null
   sourceMtimeMs: number | null
+  sourceCreatedAtMs: number | null
   state: NasSyncItemState
   attempts: number
   downloadedBytes: number
   error?: string
   queuedAt: string
   updatedAt: string
+}
+
+export interface NasSyncFileStatus {
+  id: string
+  fileName: string
+  targetPath: string
+  bytes: number | null
+  downloadedBytes: number
+  sourceCreatedAtMs: number | null
+  state: NasSyncItemState
+  error?: string
 }
 
 export interface NasSyncStatus {
@@ -43,6 +55,8 @@ export interface NasSyncStatus {
   lastError: string | null
   updatedAt: string
   failedItems: Array<{ id: string; fileName: string; error: string }>
+  pendingItems: NasSyncFileStatus[]
+  pendingItemsTruncated: boolean
 }
 
 export interface NasSyncEnqueueResult {

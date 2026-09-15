@@ -10,6 +10,8 @@ export function register(ctx: IpcContext): void {
   void nasSyncService.initialize()
 
   ipcMain.handle('nas-sync:status', () => nasSyncService.getStatus())
+  ipcMain.handle('nas-sync:set-debug-mode', (_event, enabled: unknown) => nasSyncService.setDebugMode(enabled === true))
+  ipcMain.handle('nas-sync:get-debug-local-root', () => nasSyncService.getDebugLocalRoot())
   ipcMain.handle('nas-sync:probe', (_event, config) => nasSyncService.probe(config))
   ipcMain.handle('nas-sync:list-files', () => nasSyncService.listFiles())
   ipcMain.handle('nas-sync:sync-files', (_event, filePaths: unknown) => {
