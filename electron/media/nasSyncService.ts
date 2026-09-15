@@ -522,7 +522,7 @@ export class NasSyncService {
     const settings = this.getEffectiveSettings(await getSettings())
     await this.ensureLoaded(settings)
     const before = this.state.items.length
-    this.state.items = this.state.items.filter((item) => item.state !== 'synced' && item.state !== 'canceled')
+    this.state.items = this.state.items.filter((item) => item.state !== 'synced' && item.state !== 'canceled' && item.state !== 'failed')
     const removed = before - this.state.items.length
     if (removed > 0) {
       await this.persist(settings)
