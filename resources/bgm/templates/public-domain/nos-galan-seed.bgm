@@ -1,0 +1,41 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/nos-galan/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Nos Galan; composer: Traditional
+# category: carol
+# scenes: holiday, festive, cozy, family
+bgm 1
+dur 30
+bpm 120
+ts 4/4
+sec b1 1
+  ch F
+  t melody c0 i0 v34 m
+    p e C5 . . Bb4 A4 . G4 d0.5
+sec b2 1
+  ch F
+  t melody c0 i0 v34 m
+    p q F4 G4 A4 F4
+sec b3 1
+  ch F
+  t melody c0 i0 v34 m
+    p e G4 A4 Bb4 G4 A4 . . G4 d0.5
+sec b4 1
+  ch F
+  t melody c0 i0 v34 m
+    p q F4 E4 F4
+sec b5 1
+  ch F
+  t melody c0 i0 v34 m
+    p e G4 . . A4 Bb4 . G4 d0.5
+sec b6 1
+  ch F
+  t melody c0 i0 v34 m
+    p e A4 . . Bb4 C5 . G4 d0.5
+sec b7 1
+  ch F
+  t melody c0 i0 v34 m
+    p e A4 Bb4 C5 . D5 E5 F5 d0.5
+sec b8 1
+  ch F
+  t melody c0 i0 v34 m
+    p q E5 D5 C5

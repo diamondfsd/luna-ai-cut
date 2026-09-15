@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import http from 'node:http'
@@ -150,6 +151,11 @@ function verifyReleaseAsset(release, artifact) {
 
 const root = process.cwd()
 const artifacts = [
+  {
+    fileName: 'GeneralUser.sf2',
+    path: join(root, 'resources', 'bgm', 'soundfonts', 'GeneralUser.sf2'),
+    sha256: 'f45b6b4a68b6bf3d792fcbb6d7de24dc701a0f89c5900a21ef3aaece993b839a',
+  },
   {
     fileName: 'onnxruntime-osx-x86_64-1.23.2.tgz',
     path: join(root, '.onnxruntime-cache', '1.23.2', 'x86_64', 'onnxruntime-osx-x86_64-1.23.2.tgz'),

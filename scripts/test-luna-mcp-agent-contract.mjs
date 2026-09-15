@@ -76,12 +76,15 @@ try {
   assert.equal(httpTools.ok, true)
   assert.equal(httpTools.meta.luna.editorToolsReady, false)
   assert.ok(httpTools.tools.some((tool) => tool.name === 'start_edit_session'))
+  assert.ok(httpTools.tools.some((tool) => tool.name === 'generate_background_music'))
+  assert.ok(httpTools.tools.some((tool) => tool.name === 'list_music_templates'))
 
   const openApiResponse = await fetch(endpoint.openapiUrl)
   assert.equal(openApiResponse.status, 200)
   const openApi = await openApiResponse.json()
   assert.equal(openApi.openapi, '3.1.0')
   assert.ok(openApi.paths['/api/tools/start_edit_session'])
+  assert.ok(openApi.paths['/api/tools/generate_background_music'])
   assert.equal(openApi.security, undefined)
   assert.equal(openApi.components, undefined)
 
@@ -109,6 +112,12 @@ try {
   assert.equal(blocked.result.isError, true)
   assert.equal(blocked.result.structuredContent.error.code, 'SESSION_REQUIRED')
   assert.equal(rendererCalls.filter((call) => call.kind === 'callTool').length, 0)
+
+  const blockedMusic = await httpCall('generate_background_music', {
+    dsl: 'bgm 1\ndur 1\nbpm 120\nts 4/4',
+  })
+  assert.equal(blockedMusic.ok, false)
+  assert.equal(blockedMusic.error.code, 'SESSION_REQUIRED')
 
   const missingIdentity = await rpc(endpoint, 3.5, 'tools/call', {
     name: 'start_edit_session',

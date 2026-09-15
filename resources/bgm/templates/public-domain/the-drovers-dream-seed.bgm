@@ -1,0 +1,41 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/the-drovers-dream/song.json
+# license: CC0-1.0; public-domain melody data
+# title: The Drover's Dream; composer: Traditional (Australian)
+# category: australian
+# scenes: travel, outdoors, heritage, upbeat
+bgm 1
+dur 30
+bpm 80
+ts 4/4
+sec b1 1
+  ch G
+  t melody c0 i0 v34 m
+    p q G4 G4 A4 B4
+sec b2 1
+  ch G
+  t melody c0 i0 v34 m
+    p q C5 D5 . D5
+sec b3 1
+  ch G
+  t melody c0 i0 v34 m
+    p q E5 D5 C5 B4
+sec b4 1
+  ch G
+  t melody c0 i0 v34 m
+    p q A4 G4
+sec b5 1
+  ch G
+  t melody c0 i0 v34 m
+    p q . G4 A4 B4
+sec b6 1
+  ch G
+  t melody c0 i0 v34 m
+    p q C5 D5 . D5
+sec b7 1
+  ch G
+  t melody c0 i0 v34 m
+    p q E5 D5 C5 B4
+sec b8 1
+  ch G
+  t melody c0 i0 v34 m
+    p q A4 G4

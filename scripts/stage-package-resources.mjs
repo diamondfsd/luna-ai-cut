@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import process from 'node:process'
 
 const root = resolve(import.meta.dirname, '..')
 const targetIndex = process.argv.indexOf('--target')
@@ -13,6 +14,7 @@ const targetName = `${target}-${arch}`
 const sourceDirectories = {
   ffmpeg: join(root, 'resources', 'ffmpeg'),
   dolby: join(root, 'resources', 'dolby-vision'),
+  bgm: join(root, 'resources', 'bgm'),
   native: join(root, 'luna-render-core'),
 }
 const stageRoot = join(root, '.package-resources', targetName)
@@ -23,6 +25,7 @@ const nativeWorkerNames = [
   'luna-inpaint-worker',
   'luna-punctuation-worker',
   'luna-asr-worker',
+  'luna-bgm-worker',
   'neural-preset-worker',
 ]
 
@@ -77,5 +80,7 @@ rmSync(stageRoot, { recursive: true, force: true })
 copySelectedDirectory(sourceDirectories.ffmpeg, join(stageRoot, 'ffmpeg'), isFfmpegFile)
 copySelectedDirectory(sourceDirectories.dolby, join(stageRoot, 'dolby-vision'), isDolbyFile)
 copySelectedDirectory(sourceDirectories.native, join(stageRoot, 'luna-render-core'), isNativeFile)
+if (!existsSync(sourceDirectories.bgm)) throw new Error(`构建资源目录不存在：${sourceDirectories.bgm}`)
+cpSync(sourceDirectories.bgm, join(stageRoot, 'bgm'), { recursive: true, dereference: false })
 
 console.log(`[stage-package-resources] ${targetName} -> ${stageRoot}`)

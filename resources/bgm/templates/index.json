@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "template_license": "Project-local original arrangements; source projects are listed as syntax or algorithm references.",
+  "templates": [
+    {
+      "id": "corporate-upbeat",
+      "file": "corporate-upbeat.bgm",
+      "tags": ["corporate", "upbeat", "product", "technology", "dialogue-safe"],
+      "tempo_bpm": 118,
+      "density": "medium",
+      "dialogue_safe": true,
+      "description": "Bright pluck accents, restrained bass, pad harmony, and a light backbeat.",
+      "source_basis": ["alda-lang/alda", "tidalcycles/Tidal", "ideoforms/isobar"]
+    },
+    {
+      "id": "calm-tech",
+      "file": "calm-tech.bgm",
+      "tags": ["calm", "technology", "explainer", "ambient", "dialogue-safe"],
+      "tempo_bpm": 88,
+      "density": "low",
+      "dialogue_safe": true,
+      "description": "Warm pad, soft electric piano, and a sparse high-register pulse.",
+      "source_basis": ["alda-lang/alda", "ideoforms/isobar"]
+    },
+    {
+      "id": "warm-piano",
+      "file": "warm-piano.bgm",
+      "tags": ["warm", "piano", "story", "documentary", "dialogue-safe"],
+      "tempo_bpm": 82,
+      "density": "low",
+      "dialogue_safe": true,
+      "description": "Soft piano arpeggios with sustained strings and a quiet bass foundation.",
+      "source_basis": ["alda-lang/alda", "cuthbertLab/music21"]
+    },
+    {
+      "id": "lofi-study",
+      "file": "lofi-study.bgm",
+      "tags": ["lofi", "study", "relaxed", "rhythmic"],
+      "tempo_bpm": 84,
+      "density": "medium",
+      "dialogue_safe": false,
+      "description": "Electric piano chords, syncopated bass, soft hats, and a restrained beat.",
+      "source_basis": ["tidalcycles/Tidal", "ideoforms/isobar"]
+    },
+    {
+      "id": "cinematic-ambient",
+      "file": "cinematic-ambient.bgm",
+      "tags": ["cinematic", "ambient", "documentary", "emotional", "dialogue-safe"],
+      "tempo_bpm": 72,
+      "density": "low",
+      "dialogue_safe": true,
+      "description": "Slow evolving pad, strings, and minimal piano movement without drums.",
+      "source_basis": ["alda-lang/alda", "cuthbertLab/music21"]
+    },
+    {
+      "id": "playful-product",
+      "file": "playful-product.bgm",
+      "tags": ["playful", "friendly", "app", "education", "product"],
+      "tempo_bpm": 112,
+      "density": "medium",
+      "dialogue_safe": false,
+      "description": "Marimba-like hook, simple bass motion, bright chords, and a light groove.",
+      "source_basis": ["tidalcycles/strudel", "ideoforms/isobar"]
+    }
+  ]
+}

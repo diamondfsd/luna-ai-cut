@@ -1,0 +1,57 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/ding-dong/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Ding Dong; composer: Traditional
+# category: carol
+# scenes: holiday, festive, cozy, family
+bgm 1
+dur 30
+bpm 116
+ts 4/4
+sec b1 1
+  ch C
+  t melody c0 i0 v34 m
+    p e D4 . D4 . Eb5 D4 C4 Bb4 d0.5
+sec b2 1
+  ch C
+  t melody c0 i0 v34 m
+    p q A4 . . A4
+sec b3 1
+  ch C
+  t melody c0 i0 v34 m
+    p q Bb4 D4 D4 C4
+sec b4 1
+  ch C
+  t melody c0 i0 v34 m
+    p h D4 D4
+sec b5 1
+  ch C
+  t melody c0 i0 v34 m
+    p e A5 . G5 F5 G5 . A5 F5 d0.5
+sec b6 1
+  ch C
+  t melody c0 i0 v34 m
+    p e G5 . F5 Eb5 F5 . G5 Eb5 d0.5
+sec b7 1
+  ch C
+  t melody c0 i0 v34 m
+    p e F5 . Eb5 D4 Eb5 . F5 D4 d0.5
+sec b8 1
+  ch C
+  t melody c0 i0 v34 m
+    p e Eb5 . D4 C4 D4 . Eb5 C4 d0.5
+sec b9 1
+  ch C
+  t melody c0 i0 v34 m
+    p e D4 . C4 Bb4 C4 . D4 Bb4 d0.5
+sec b10 1
+  ch C
+  t melody c0 i0 v34 m
+    p e C4 . . Bb4 A4 . A4 d0.5
+sec b11 1
+  ch C
+  t melody c0 i0 v34 m
+    p q Bb4 D4 D4 C4
+sec b12 1
+  ch C
+  t melody c0 i0 v34 m
+    p h D4 D4

@@ -1,0 +1,12 @@
+bgm 1
+dur 30
+bpm 72
+ts 4/4
+sec main 4x3
+  ch Em C G D
+  t p c0 i89 v25 m
+    p w c d4
+  t s c1 i48 v22 m
+    p w c d4
+  t n c2 i0 v18 h
+    p h 3 5 d.7

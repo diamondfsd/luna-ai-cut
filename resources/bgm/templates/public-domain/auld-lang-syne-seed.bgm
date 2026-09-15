@@ -1,0 +1,29 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/auld-lang-syne/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Auld Lang Syne; composer: Traditional (Scottish)
+# category: folk
+# scenes: documentary, travel, nature, nostalgic
+bgm 1
+dur 30
+bpm 88
+ts 4/4
+sec b1 1
+  ch D
+  t melody c0 i0 v34 m
+    p q A4 D4 D4 D4
+sec b2 1
+  ch D
+  t melody c0 i0 v34 m
+    p q E4 F#4 D4 E4
+sec b3 1
+  ch D
+  t melody c0 i0 v34 m
+    p q F#4 G4 A4 B4
+sec b4 1
+  ch D
+  t melody c0 i0 v34 m
+    p q A4 G4 F#4 E4
+sec b5 1
+  ch D
+  t melody c0 i0 v34 m
+    p q F#4 D4 . D4

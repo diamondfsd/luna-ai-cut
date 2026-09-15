@@ -1,0 +1,25 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/eine-kleine-nachtmusik/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Eine kleine Nachtmusik (theme); composer: Wolfgang Amadeus Mozart
+# category: classical
+# scenes: cinematic, elegant, dramatic, documentary
+bgm 1
+dur 30
+bpm 132
+ts 4/4
+sec b1 1
+  ch G
+  t melody c0 i0 v34 m
+    p e G4 . . D4 G4 . . D4 d0.5
+sec b2 1
+  ch G
+  t melody c0 i0 v34 m
+    p e G4 D4 G4 B4 D5 d0.5
+sec b3 1
+  ch G
+  t melody c0 i0 v34 m
+    p e C5 . . A4 C5 . . A4 d0.5
+sec b4 1
+  ch G
+  t melody c0 i0 v34 m
+    p e C5 A4 F#4 A4 D4 d0.5

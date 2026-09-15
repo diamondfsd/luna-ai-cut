@@ -50,6 +50,11 @@
       "filter": ["dovi_tool", "dovi_tool.exe", "mp4mux", "mp4mux.exe"]
     },
     {
+      "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/bgm",
+      "to": "bgm",
+      "filter": ["**/*"]
+    },
+    {
       "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/luna-render-core",
       "to": "luna-render-core",
       "filter": [
@@ -64,6 +69,8 @@
         "luna-inpaint-worker.exe",
         "luna-asr-worker",
         "luna-asr-worker.exe",
+        "luna-bgm-worker",
+        "luna-bgm-worker.exe",
         "luna-punctuation-worker",
         "luna-punctuation-worker.exe",
         "neural-preset-worker",

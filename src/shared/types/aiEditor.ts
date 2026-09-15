@@ -27,7 +27,7 @@ export interface AiEditorProjectSummary {
 export interface AiEditorLocalMedia {
   mediaId: string
   name: string
-  kind: 'image' | 'video'
+  kind: 'image' | 'video' | 'audio'
   bytes: number
   capturedAt: string | null
   modifiedAt: string
@@ -41,7 +41,7 @@ export interface AiEditorLocalMediaQuery {
   limit?: number
   from?: string
   to?: string
-  kind?: 'image' | 'video'
+  kind?: 'image' | 'video' | 'audio'
 }
 
 export type AiEditorLocalMediaInspectionMode = 'overview' | 'detail'

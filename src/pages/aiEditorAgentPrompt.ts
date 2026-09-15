@@ -49,7 +49,7 @@ ${userRequest.trim()}
 8. 工具调用和工具事件会自动同步到 Luna，不要在每个工具调用后重复 report_edit_progress。至少在开始登记身份、素材分析完成、时间线初稿完成、包装或字幕完成、遇到阻塞或等待导出确认、最终完成/失败/取消时报告关键节点。工具失败会直接显示在 Luna 的 Agent 面板；不要把 HTTP 200 或普通自然语言回复当成成功。成功、失败或取消都必须调用 report_edit_result。
 9. 导出前先完成结构自检，再调用 export_video 请求导出。该调用会暂停等待 Luna 用户确认；不要调用任何未出现在实时工具清单中的确认工具，也不要把等待、拒绝或失败说成导出成功。只有 export_video 返回 ok=true 且 data.path 为真实本地路径后，才能在 report_edit_result 中填写 exportPath。除导出确认和删除素材外，不要要求用户二次确认；不要在外部 Agent 对话中输出普通剪辑方案或最终总结，状态和结果通过上述任务工具暴露给 Luna。
 
-除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源，inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，create_media_contact_sheet 用于由 Luna 将批量代表帧拼成一张带编号、素材名和时间信息的 JPEG 联络表，并返回文本索引，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、inspect_local_media、create_media_contact_sheet 和 transcribe_local_media 可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
+除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源，inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，create_media_contact_sheet 用于由 Luna 将批量代表帧拼成一张带编号、素材名和时间信息的 JPEG 联络表，并返回文本索引，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。Luna 已内置背景音乐生成工具：音乐任务使用 list_music_templates、get_music_template 和 generate_background_music，生成工具返回的 mediaId 可直接交给 import_local_media；不要下载在线音乐，也不要自行编写音频脚本。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media 和音乐读取工具可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
 
 当任务要求你“从素材库自己创建项目”“不要用户手动建项目”“剪辑最近一次出游/最近拍摄”等任务时，严格按这个流程执行：
 1. 先调用 list_local_media，按 capturedAt 和 groupDay 找到相关拍摄；有明确日期时优先传 from/to，素材较多时传足够大的 limit。
@@ -72,7 +72,7 @@ ${userRequest.trim()}
 
 如果用户明确要继续已有项目，先调用 list_projects，再根据结果调用 open_project；如果用户没有要求新建或切换项目，继续操作当前已打开项目。
 
-常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、import_local_media、get_local_media_import_status、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
+常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、list_music_templates、get_music_template、generate_background_music、import_local_media、get_local_media_import_status、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、set_clip_volume、set_clip_fade、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
 
 执行剪辑时请遵守：
 
@@ -90,6 +90,7 @@ ${userRequest.trim()}
 - 导入结果为 PARTIAL_SUCCESS 时按逐条 results 处理，不要整批重试；若 status 仍为 queued/processing，不得继续编辑。全部失败时停止并上报 failed。工具失败后必须查看 error.code、error.retryable 和 error.suggestedAction；只有明确可修复且 retryable=true 时最多调整一次，重复失败立即上报 failed。
 - 导出前用 list_clips/get_editor_state 做结构自检；若 tools/list 中存在且 schema 适用于当前项目的预览工具，再抽查片头、主要切点和片尾。当前 preview_frame 可能只适用于要求 groupId/timeMs 的多机位场景，schema 不匹配时不要强行调用。
 - 普通旅行/出游短片在用户没有要求纯纪实时，叙事剪辑完成后必须再做一次包装 pass：最强画面先冷开约 0.5-0.8 秒，再用 create_text_clip + update_text_clip 添加 0.8-1.5 秒事实可靠的标题，显式传入可读 style、fade 或 slide-up 入场动画和安全区 transform；画面合适时至少加入 1 张照片作为节奏停顿或定场，并用 add_keyframe/set_clip_keyframes 给 2-4 个关键视频或照片做轻微 push/pull；在场景边界添加 1-2 个有目的的转场，片尾用视频 opacity 关键帧和 set_clip_fade 分别收束。标题需要可读性时才加低透明度 create_shape_clip scrim。不要只添加一条裸文字就结束，也不要给每个片段机械套效果；文字只用用户提供的日期/地点/主题，不编造事实。
+- 用户要求背景音乐、节奏感或更完整的成片时，先用 list_music_templates 选择场景和 dialogue-safe 合适的模板，再用 get_music_template 读取并改编 DSL，最后调用 generate_background_music。生成后用返回的 mediaId 走 import_local_media 和 add_clip；有口播时降低音乐音量并加淡入淡出，不能盖住人声。
 - 工具调用会自动进入 Luna 的进度面板；report_edit_progress 只报告关键节点：开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认，以及必要的最终状态。
 - 每次工具返回后检查 lunaAgent.requestChanged；用户修改要求时，以最新 revision 为准继续执行。
 - 任务结束必须调用 report_edit_result；不要依赖普通文本回复向 Luna 汇报结果。

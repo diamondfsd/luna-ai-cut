@@ -631,6 +631,7 @@ dependencies = [
  "ort",
  "pollster",
  "rustfft",
+ "rustysynth",
  "serde",
  "serde_json",
  "swash",
@@ -1256,6 +1257,12 @@ name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+
+[[package]]
+name = "rustysynth"
+version = "1.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3ca93af923df5fc03beddbf464242620fd24daa9e10f9ecd56eb9571eb7ba38"
 
 [[package]]
 name = "schannel"

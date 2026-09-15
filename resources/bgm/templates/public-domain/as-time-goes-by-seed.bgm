@@ -1,0 +1,73 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/as-time-goes-by/song.json
+# license: CC0-1.0; public-domain melody data
+# title: As Time Goes By; composer: Herman Hupfeld
+# category: jazz
+# scenes: vintage, lounge, retro, lifestyle
+bgm 1
+dur 30
+bpm 80
+ts 4/4
+sec b1 1
+  ch F
+  t melody c0 i0 v34 m
+    p q C4 C4 C4 C4
+sec b2 1
+  ch F
+  t melody c0 i0 v34 m
+    p e A4 . . G4 F4 d0.5
+sec b3 1
+  ch F
+  t melody c0 i0 v34 m
+    p q G4 G4 G4 G4
+sec b4 1
+  ch F
+  t melody c0 i0 v34 m
+    p e E4 . . F4 G4 d0.5
+sec b5 1
+  ch F
+  t melody c0 i0 v34 m
+    p q A4 A4 A4 A4
+sec b6 1
+  ch F
+  t melody c0 i0 v34 m
+    p e C5 . . Bb4 A4 d0.5
+sec b7 1
+  ch F
+  t melody c0 i0 v34 m
+    p q G4 A4 G4 F4
+sec b8 1
+  ch F
+  t melody c0 i0 v34 m
+    p w C4
+sec b9 1
+  ch F
+  t melody c0 i0 v34 m
+    p q C5 C5 C5 C5
+sec b10 1
+  ch F
+  t melody c0 i0 v34 m
+    p e A4 . . G4 F4 d0.5
+sec b11 1
+  ch F
+  t melody c0 i0 v34 m
+    p q G4 G4 G4 G4
+sec b12 1
+  ch F
+  t melody c0 i0 v34 m
+    p e E4 . . F4 G4 d0.5
+sec b13 1
+  ch F
+  t melody c0 i0 v34 m
+    p q A4 G4 F4 E4
+sec b14 1
+  ch F
+  t melody c0 i0 v34 m
+    p h F4 G4
+sec b15 1
+  ch F
+  t melody c0 i0 v34 m
+    p q A4 G4 F4 E4
+sec b16 1
+  ch F
+  t melody c0 i0 v34 m
+    p w F4

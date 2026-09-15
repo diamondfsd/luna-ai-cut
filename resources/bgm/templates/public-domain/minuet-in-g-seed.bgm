@@ -1,0 +1,57 @@
+# source: https://github.com/pepperhorn/opensongs-json/blob/3a0a6ff8c5d6beff3a59a2058c094aa43811946b/songs/minuet-in-g/song.json
+# license: CC0-1.0; public-domain melody data
+# title: Minuet in G; composer: Christian Petzold
+# category: classical
+# scenes: cinematic, elegant, dramatic, documentary
+bgm 1
+dur 30
+bpm 120
+ts 3/4
+sec b1 1
+  ch G
+  t melody c0 i0 v34 m
+    p q G4 A4 B4
+sec b2 1
+  ch G
+  t melody c0 i0 v34 m
+    p q C5 D5 E5
+sec b3 1
+  ch G
+  t melody c0 i0 v34 m
+    p q D5 B4 G4
+sec b4 1
+  ch G
+  t melody c0 i0 v34 m
+    p h A4 G4
+sec b5 1
+  ch G
+  t melody c0 i0 v34 m
+    p q A4 B4 C5
+sec b6 1
+  ch G
+  t melody c0 i0 v34 m
+    p q D5 E5 F#5
+sec b7 1
+  ch G
+  t melody c0 i0 v34 m
+    p h G5 D5
+sec b8 1
+  ch G
+  t melody c0 i0 v34 m
+    p w G5
+sec b9 1
+  ch G
+  t melody c0 i0 v34 m
+    p h G5 A5
+sec b10 1
+  ch G
+  t melody c0 i0 v34 m
+    p q B5 C6 D6
+sec b11 1
+  ch G
+  t melody c0 i0 v34 m
+    p q C6 B4 A4
+sec b12 1
+  ch G
+  t melody c0 i0 v34 m
+    p h G4 G4

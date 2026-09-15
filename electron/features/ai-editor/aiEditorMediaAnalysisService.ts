@@ -144,7 +144,11 @@ export async function inspectAiEditorLocalMedia(
 
   const maxWidth = normalizeMaxWidth(options.maxWidth)
   const files = await getAiEditorLocalMediaFiles(uniqueMediaIds)
-  const items = await mapWithConcurrency(files, ANALYSIS_CONCURRENCY, async (file): Promise<AiEditorLocalMediaInspectionItem> => {
+  const visualFiles = files.map((file) => {
+    if (file.kind === 'audio') throw new Error(`音频素材 ${file.name} 不支持画面分析`)
+    return file as typeof file & { kind: 'image' | 'video' }
+  })
+  const items = await mapWithConcurrency(visualFiles, ANALYSIS_CONCURRENCY, async (file): Promise<AiEditorLocalMediaInspectionItem> => {
     const times = frameTimes(file.kind, file.duration, mode)
     try {
       const frames = await mapWithConcurrency(times, 2, async (timeSec) => ({
