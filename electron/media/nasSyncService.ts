@@ -127,7 +127,7 @@ function syncPriority(left: NasSyncItem, right: NasSyncItem): number {
 
 function taskItemWindow(items: NasSyncItem[]): Pick<NasSyncStatus, 'taskItems' | 'taskItemsTruncated'> {
   const tasks = items
-    .filter((item) => item.state === 'queued' || item.state === 'syncing' || item.state === 'failed' || item.state === 'canceled')
+    .filter((item) => item.state === 'queued' || item.state === 'syncing' || item.state === 'synced' || item.state === 'failed' || item.state === 'canceled')
     .sort(syncPriority)
   return {
     taskItems: tasks.slice(0, MAX_STATUS_FILES).map((item) => ({
