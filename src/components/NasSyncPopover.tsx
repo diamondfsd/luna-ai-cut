@@ -76,7 +76,7 @@ export function NasSyncPopover() {
     ? '已取消'
     : statusLabel(status.state)
   const taskCount = status.pendingFiles + status.failedFiles + status.canceledFiles
-  const canClearFinished = status.completedFiles > 0 || status.canceledFiles > 0
+  const canClearFinished = status.completedFiles > 0 || status.canceledFiles > 0 || status.failedFiles > 0
 
   async function resumeTasks(): Promise<void> {
     try {
@@ -167,7 +167,7 @@ export function NasSyncPopover() {
                     : status.taskItems.length}
                 </span>
                 <Button variant="ghost" size="mini" disabled={!canClearFinished} icon={<Trash2 size={13} />} onClick={() => void clearFinished()}>
-                  清除已完成
+                  清除记录
                 </Button>
               </div>
             </div>
