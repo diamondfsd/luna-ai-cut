@@ -144,6 +144,7 @@
   padding: 18px 20px 12px;
 }
 
+.ui-dialog-header .ui-dialog-title,
 .ui-dialog-header [data-radix-dialog-title] {
   margin: 0;
   font-size: 17px;
@@ -152,6 +153,7 @@
   padding-right: 40px; /* 给关闭按钮留空间 */
 }
 
+.ui-dialog-header .ui-dialog-description,
 .ui-dialog-header [data-radix-dialog-description] {
   margin: 0;
   color: var(--muted);

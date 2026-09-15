@@ -238,6 +238,7 @@ export interface LunaApi {
     probe(config?: NasSyncSettings): Promise<NasSyncProbeResult>
     listFiles(): Promise<NasRemoteFile[]>
     syncFiles(filePaths: string[]): Promise<NasSyncEnqueueResult>
+    syncLocalResources(): Promise<NasSyncEnqueueResult>
     retryFailed(): Promise<number>
     cancelPending(): Promise<void>
   }

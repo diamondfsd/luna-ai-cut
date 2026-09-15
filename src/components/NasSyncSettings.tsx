@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, HardDrive, Link, Save } from 'lucide-react'
+import { FolderOpen, FolderSync, HardDrive, Link, Save } from 'lucide-react'
 
 import type { AppSettings, NasShare, NasSyncSettings as NasSettings } from '../shared/types'
 import { Button, Dialog, Input, Select, Switch, toast } from '../ui'
@@ -9,6 +9,7 @@ const emptyConfig: NasSettings = {
   enabled: false,
   autoSync: false,
   server: '',
+  port: 445,
   share: '',
   remotePath: '',
   username: '',
@@ -32,6 +33,7 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
   const [form, setForm] = useState<NasSettings>(() => configFromSettings(settings))
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [syncingLocalResources, setSyncingLocalResources] = useState(false)
   const [shareOptions, setShareOptions] = useState<NasShare[]>([])
   const [directoryOptions, setDirectoryOptions] = useState<string[]>([])
   const [selectedShare, setSelectedShare] = useState('')
@@ -58,7 +60,19 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
   }
 
   const connectionReady = Boolean(form.server.trim())
-  const configured = connectionReady && Boolean(form.share.trim()) && Boolean(form.remotePath.trim())
+  const validPort = Number.isInteger(form.port) && form.port >= 1 && form.port <= 65535
+  const configured = connectionReady && validPort && Boolean(form.share.trim()) && Boolean(form.remotePath.trim())
+
+  const savedConfig = settings?.nasSync
+  const configSaved = Boolean(savedConfig
+    && savedConfig.enabled === form.enabled
+    && savedConfig.autoSync === form.autoSync
+    && savedConfig.server === form.server.trim()
+    && savedConfig.port === form.port
+    && savedConfig.share === form.share.trim()
+    && savedConfig.remotePath === form.remotePath.trim()
+    && savedConfig.username === form.username
+    && savedConfig.password === form.password)
 
   function normalizedConfig(config: NasSettings): NasSettings {
     return { ...config, server: config.server.trim(), share: config.share.trim(), remotePath: config.remotePath.trim() }
@@ -80,6 +94,26 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
       toast.error(error instanceof Error ? error.message : 'NAS 配置保存失败')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function syncLocalResources(): Promise<void> {
+    if (!form.enabled || !configured) {
+      toast.error('请先完成 NAS 配置')
+      return
+    }
+    if (!configSaved) {
+      toast.error('请先保存 NAS 配置')
+      return
+    }
+    setSyncingLocalResources(true)
+    try {
+      const result = await window.luna.nasSync.syncLocalResources()
+      toast.success(result.queued > 0 ? `已加入 ${result.queued} 个文件` : '没有新的文件需要同步')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '同步本地资源失败')
+    } finally {
+      setSyncingLocalResources(false)
     }
   }
 
@@ -169,7 +203,7 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
             <span><HardDrive size={15} aria-hidden="true" />启用 NAS 同步</span>
             <em>{form.enabled ? '可将本地文件同步到 NAS' : '未启用'}</em>
           </div>
-          <Switch checked={form.enabled} disabled={!settings || (!form.enabled && !configured)} ariaLabel="启用 NAS 同步" onCheckedChange={(enabled) => void saveSwitch({ enabled })} />
+          <Switch checked={form.enabled} disabled={!settings || (!form.enabled && !configured)} ariaLabel="启用 NAS 同步" onCheckedChange={(enabled) => void saveSwitch({ enabled, autoSync: enabled ? true : form.autoSync })} />
         </article>
         <article className="settings-row">
           <div className="settings-row-copy">
@@ -189,6 +223,19 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
             <Input variant="compact" fullWidth value={form.server} placeholder="例如 192.168.1.20" onChange={(event) => updateConnection({ server: event.target.value })} />
           </label>
           <label>
+            <span>端口</span>
+            <Input
+              variant="compact"
+              type="number"
+              min={1}
+              max={65535}
+              step={1}
+              fullWidth
+              value={form.port}
+              onChange={(event) => updateConnection({ port: Number(event.target.value) || 0 })}
+            />
+          </label>
+          <label>
             <span>用户名</span>
             <Input variant="compact" fullWidth value={form.username} onChange={(event) => updateConnection({ username: event.target.value })} />
           </label>
@@ -206,6 +253,15 @@ export function NasSyncSettings({ settings, setSettings }: NasSyncSettingsProps)
             </Button>
             <Button variant="primary" size="compact" disabled={busy || !configured} icon={<Save size={14} />} onClick={() => void saveConfig()}>
               {busy ? '保存中' : '保存配置'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={!form.enabled || !configured || !configSaved || syncingLocalResources}
+              icon={<FolderSync size={14} />}
+              onClick={() => void syncLocalResources()}
+            >
+              {syncingLocalResources ? '同步中' : '同步本地资源目录'}
             </Button>
           </div>
         </div>

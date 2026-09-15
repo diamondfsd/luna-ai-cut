@@ -202,6 +202,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     probe: (config?: NasSyncSettings): Promise<NasSyncProbeResult> => ipcRenderer.invoke('nas-sync:probe', config),
     listFiles: (): Promise<NasRemoteFile[]> => ipcRenderer.invoke('nas-sync:list-files'),
     syncFiles: (filePaths: string[]): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-files', filePaths),
+    syncLocalResources: (): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-local-resources'),
     retryFailed: (): Promise<number> => ipcRenderer.invoke('nas-sync:retry-failed'),
     cancelPending: (): Promise<void> => ipcRenderer.invoke('nas-sync:cancel-pending'),
   },
