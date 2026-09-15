@@ -82,6 +82,12 @@ const usageAnalytics = createUsageAnalytics({
   osVersion: process.getSystemVersion(),
   arch: process.arch,
   environment: app.isPackaged ? 'production' : 'development',
+  onResult: (result) => {
+    const message = `[PostHog] ${result.success ? '上报成功' : '上报失败'}`
+    if (result.success) logMainInfo(message, result)
+    else logMainWarn(message, result)
+    if (!app.isPackaged) console.info(message, result)
+  },
 })
 const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()

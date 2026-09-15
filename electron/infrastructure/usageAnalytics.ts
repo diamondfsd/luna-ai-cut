@@ -21,6 +21,7 @@ interface UsageOptions {
   arch: string
   environment: 'development' | 'production'
   send?: typeof fetch
+  onResult?: (result: { event: string; page?: string; success: boolean; status?: number; error?: string }) => void
 }
 
 export function createUsageAnalytics(options: UsageOptions) {
@@ -53,7 +54,7 @@ export function createUsageAnalytics(options: UsageOptions) {
     try {
       identity ??= loadIdentity()
       const distinctId = await identity
-      await (options.send ?? fetch)(ENDPOINT, {
+      const response = await (options.send ?? fetch)(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(5000),
@@ -75,8 +76,11 @@ export function createUsageAnalytics(options: UsageOptions) {
           },
         }),
       })
-    } catch {
+      options.onResult?.({ event, page, success: response.ok, status: response.status })
+      await response.body?.cancel()
+    } catch (error) {
       // Statistics must never interrupt startup or navigation; no offline backlog.
+      options.onResult?.({ event, page, success: false, error: error instanceof Error ? error.name : 'UnknownError' })
     } finally {
       pending -= 1
     }

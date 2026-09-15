@@ -6,6 +6,7 @@ import { createUsageAnalytics } from '../electron/infrastructure/usageAnalytics.
 
 const root = await mkdtemp(join(tmpdir(), 'luna-usage-'))
 const events = []
+const results = []
 const options = {
   enabled: true,
   userData: root,
@@ -14,6 +15,7 @@ const options = {
   osVersion: '15.0',
   arch: 'arm64',
   environment: 'development',
+  onResult: result => results.push(result),
   send: async (url, request) => {
     assert.equal(url, 'https://eu.i.posthog.com/i/v0/e/')
     events.push(JSON.parse(request.body))
@@ -46,7 +48,13 @@ try {
   await disabled.opened()
   await disabled.pageOpened('/settings')
   assert.equal(events.length, 5)
+  assert.ok(results.every(result => result.success && result.status === 200))
+  await createUsageAnalytics({ ...options, send: async () => new Response('', { status: 403 }) }).opened()
+  assert.equal(results.at(-1).success, false)
+  assert.equal(results.at(-1).status, 403)
   await createUsageAnalytics({ ...options, send: async () => { throw new Error('offline') } }).opened()
+  assert.equal(results.at(-1).success, false)
+  assert.equal(results.at(-1).error, 'Error')
   await createUsageAnalytics({ ...options, userData: join(root, 'usage-id', 'invalid') }).opened()
 } finally {
   await rm(root, { recursive: true, force: true })

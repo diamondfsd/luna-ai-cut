@@ -104,12 +104,13 @@ export function AppRoutes() {
     ['/device-debug', debugVisible],
   ]
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
+  const debugStandalone = typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__
 
   useEffect(() => {
-    if (isKnownRoute && location.pathname !== '/' && !__DEBUG_STANDALONE__) {
+    if (isKnownRoute && location.pathname !== '/' && !debugStandalone) {
       window.luna.trackPageOpened(activePath)
     }
-  }, [activePath, isKnownRoute, location.pathname])
+  }, [activePath, debugStandalone, isKnownRoute, location.pathname])
 
   useEffect(() => {
     logger.info('[导航诊断] 路由状态', {
@@ -127,7 +128,7 @@ export function AppRoutes() {
   if (!isKnownRoute) return <Navigate to={developerMode ? '/developer' : '/library'} replace />
 
   // 独立调试包：只渲染设备调试页面，无导航、无路由切换
-  if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {
+  if (debugStandalone) {
     return (
       <main className="app">
         <DeviceDebugPage />
