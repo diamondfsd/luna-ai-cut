@@ -40,7 +40,7 @@ ${userRequest.trim()}
 
 1. 完成 MCP initialize，调用 tools/list 并检查 _meta.luna.editorToolsReady；严格按实时 inputSchema 组装参数，不要猜工具名或参数名。
 2. 如果 editorToolsReady 为 false，说明编辑器 iframe 尚未加载。此时先调用 wait_for_edit_request 并携带稳定 agentId、agentType 和实际使用的 agentModel；若返回 state=idle 且当前请求来自外部 Agent 对话，调用 start_edit_session 传入本次对话中的用户原始剪辑要求和同一身份。拿到任务后调用 activate_luna_window，再重新调用 tools/list，直到编辑工具可用；不要在列表不完整时猜参数。
-3. editorToolsReady 为 true 后，再调用 get_editing_skill，完整阅读返回的内置 skill；在此之前不要创建项目或修改项目。
+3. editorToolsReady 为 true 后，先调用 list_editing_skills 扫描所有 SKILL.md 的 description 和 references，根据用户任务选择 luna-core 加 1-3 个场景 skill，再调用 get_editing_skill（skillIds 传所选 id）并完整阅读返回的 SKILL.md；skill 内链接到相关 reference 时，用 get_editing_skill_resource 按需读取。在此之前不要创建项目或修改项目。
    tools/list 和 openapi.json 只是只读发现，不会让已读取的 Skill 失效；成功读取 Skill 后不要因为重新查询工具而重复读取，除非工具明确返回 SKILL_REQUIRED。
 4. 领取或创建成功后使用返回的 sessionId 和 revision，并在 start_edit_session/wait_for_edit_request 中如实上报 agentId、agentType 和 agentModel。agentType 是 Agent 的归属或角色，agentModel 是实际使用的模型名称，不要编造。收到 state=claimed 后调用 activate_luna_window（即使 wait 已自动激活也可再次调用）。
 5. 不要伪造 sessionId，也不要用任意字符串调用 get_edit_request。所有创建项目、导入素材、时间线修改、字幕、文字、转场、效果、保存和导出都必须挂在有效 session 上。
@@ -72,7 +72,7 @@ ${userRequest.trim()}
 
 如果用户明确要继续已有项目，先调用 list_projects，再根据结果调用 open_project；如果用户没有要求新建或切换项目，继续操作当前已打开项目。
 
-常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、list_music_templates、get_music_template、generate_background_music、import_local_media、get_local_media_import_status、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、set_clip_volume、set_clip_fade、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
+常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：list_editing_skills、get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、list_music_templates、get_music_template、generate_background_music、analyze_media_beats、sync_timeline_to_beats、import_local_media、get_local_media_import_status、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、set_clip_volume、set_clip_fade、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
 
 执行剪辑时请遵守：
 
@@ -91,6 +91,8 @@ ${userRequest.trim()}
 - 用户未主动要求导出时，时间线完成后用 list_clips/get_editor_state 做结构自检即可，不要调用 export_video。用户明确要求导出后，再按实时 schema 检查预览工具并抽查片头、主要切点和片尾；当前 preview_frame 可能只适用于要求 groupId/timeMs 的多机位场景，schema 不匹配时不要强行调用。
 - 普通旅行/出游短片在用户没有要求纯纪实时，叙事剪辑完成后必须再做一次包装 pass：最强画面先冷开约 0.5-0.8 秒，再用 create_text_clip + update_text_clip 添加 0.8-1.5 秒事实可靠的标题，显式传入可读 style、fade 或 slide-up 入场动画和安全区 transform；画面合适时至少加入 1 张照片作为节奏停顿或定场，并用 add_keyframe/set_clip_keyframes 给 2-4 个关键视频或照片做轻微 push/pull；在场景边界添加 1-2 个有目的的转场，片尾用视频 opacity 关键帧和 set_clip_fade 分别收束。标题需要可读性时才加低透明度 create_shape_clip scrim。不要只添加一条裸文字就结束，也不要给每个片段机械套效果；文字只用用户提供的日期/地点/主题，不编造事实。
 - 用户要求背景音乐、节奏感或更完整的成片时，先用 list_music_templates 选择场景和 dialogue-safe 合适的模板，再用 get_music_template 读取并改编 DSL，最后调用 generate_background_music。生成后用返回的 mediaId 走 import_local_media 和 add_clip；有口播时降低音乐音量并加淡入淡出，不能盖住人声。
+- 音乐驱动的时间线必须先 analyze_media_beats 获得真实 BPM、beat 和 downbeat，再用 sync_timeline_to_beats 卡点。mode="split" 在不丢素材内容的前提下按拍切现有画面；mode="align" 把短镜头排入节拍槽位。用户自己提供的音乐同样走这条分析链路，禁止用固定间隔代替真实节拍。低 confidence 时只卡少量段落边界，不密集切。
+- 多技能选择不是装饰。旅游 Vlog、口播访谈、产品科技、音乐卡点、竖屏短视频、照片回忆必须加载对应场景 skill；一个任务可组合多个，例如 luna-core + travel-vlog-story + music-beat-sync。核心 skill 只负责通用安全，不能替代场景包装规则。
 - 工具调用会自动进入 Luna 的进度面板；report_edit_progress 只报告关键节点：开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认，以及必要的最终状态。
 - 每次工具返回后检查 lunaAgent.requestChanged；用户修改要求时，以最新 revision 为准继续执行。
 - 任务结束必须调用 report_edit_result；不要依赖普通文本回复向 Luna 汇报结果。
