@@ -5,6 +5,11 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { AiEditorAgentPhase, AiEditorMcpContent, AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
+import type {
+  GeneratedMusic,
+  MusicTemplateDocument,
+  MusicTemplateSummary,
+} from '../features/music/musicGenerationService.ts'
 import { AgentSessionError, AgentSessionManager, type AgentToolError, type AgentToolResult } from './agentSessionManager.ts'
 import { LUNA_HTTP_SKILL } from './lunaHttpSkill.ts'
 
@@ -55,6 +60,16 @@ export interface LunaMcpServerOptions {
   requestRenderer(request: AiEditorMcpRequest): Promise<AiEditorMcpResponse>
   agentSession?: AgentSessionManager
   activateWindow?: () => void | Promise<void>
+  musicTools?: {
+    listMusicTemplates(options?: {
+      tag?: string
+      scene?: string
+      dialogueSafe?: boolean
+      limit?: number
+    }): Promise<MusicTemplateSummary[]>
+    getMusicTemplate(templateId: string): Promise<MusicTemplateDocument>
+    generateBackgroundMusic(dsl: string, name?: string): Promise<GeneratedMusic>
+  }
 }
 
 export interface LunaMcpServer {
@@ -393,6 +408,23 @@ function isAgentProgressPhase(value: string | null): value is AiEditorAgentPhase
   return value !== null && AGENT_PROGRESS_PHASES.has(value as AiEditorAgentPhase)
 }
 
+function requestExplicitlyAsksForExport(request: string): boolean {
+  const normalized = request.trim().toLowerCase()
+  if (!normalized) return false
+
+  const declined = [
+    /(?:先|暂时|现在)?不要导出/,
+    /(?:先|暂时|现在)?别导出/,
+    /(?:先|暂时|现在)?无需导出/,
+    /(?:剪辑完后|完成后|稍后|之后)?再(?:考虑|决定)?[\s\S]{0,4}导出/,
+    /\b(?:do not|don't|dont|without)\s+(?:export|render|save)\b/,
+  ].some((pattern) => pattern.test(normalized))
+  if (declined) return false
+
+  return /(导出|导出视频|导出音频|输出成片|导出成片|生成成片|保存成片|渲染成片)/.test(normalized)
+    || /\b(?:export|render|save)(?:\s+(?:the|this|a))?\s+(?:video|audio|movie|file)\b/.test(normalized)
+}
+
 function agentToolResponse(result: AgentToolResult | Record<string, unknown>): AiEditorMcpResponse {
   return { ok: true, result }
 }
@@ -441,7 +473,18 @@ async function handleMusicTool(
     return agentInvalidParams(message)
   }
   try {
-    const music = await import('../features/music/musicGenerationService.ts')
+    const music = options.musicTools
+    if (!music) {
+      const message = 'Luna 内置音乐引擎不可用，请重启应用后重试'
+      const error = {
+        code: 'MUSIC_RUNTIME_UNAVAILABLE',
+        message,
+        retryable: false,
+        suggestedAction: '停止音乐生成并上报失败；这是 Luna 本地音乐运行时未注册，不是 DSL 参数问题。',
+      }
+      options.agentSession?.toolFinished(callId, name, args, false, message, Date.now() - startedAt, error)
+      return agentToolResponse({ ok: false, summary: message, error })
+    }
     if (name === 'list_music_templates') {
       const limit = args.limit === undefined ? undefined : integerArg(args, 'limit')
       if (args.limit !== undefined && limit === undefined) return invalid('limit 必须是正整数')
@@ -819,7 +862,7 @@ async function handleRpc(
     }
 
     let exportSession: { sessionId: string; revision: number } | null = null
-    if (name === 'export_video' && options.agentSession) {
+    if ((name === 'export_video' || name === 'export_audio') && options.agentSession) {
       const gate = options.agentSession.gateActiveTool()
       if (!gate || !gate.allowed) {
         const blocked = {
@@ -838,18 +881,16 @@ async function handleRpc(
           },
         }
       }
-      exportSession = { sessionId: gate.session.sessionId, revision: gate.session.revision }
-      const confirmation = await options.agentSession.waitForExportConfirmation(
-        gate.session.sessionId,
-        gate.session.revision,
-      )
-      if (!confirmation.approved) {
+      if (!requestExplicitlyAsksForExport(gate.session.request)) {
         const blocked = {
           ok: false,
-          summary: confirmation.message ?? '用户未确认导出',
+          summary: '用户尚未明确要求导出，请先交付可预览的时间线',
+          data: { session: gate.session },
           error: {
-            code: confirmation.code ?? 'EXPORT_CONFIRMATION_REQUIRED',
-            message: confirmation.message ?? '用户未确认导出，未执行导出',
+            code: 'EXPORT_NOT_REQUESTED',
+            message: '当前用户要求没有明确要求导出，不能自动调用导出',
+            retryable: false,
+            suggestedAction: '不要继续调用导出；完成时间线后按 completed 上报，并等待用户预览后主动提出导出。',
           },
         }
         return {
@@ -860,6 +901,32 @@ async function handleRpc(
             isError: true,
             structuredContent: blocked,
           },
+        }
+      }
+      if (name === 'export_video') {
+        exportSession = { sessionId: gate.session.sessionId, revision: gate.session.revision }
+        const confirmation = await options.agentSession.waitForExportConfirmation(
+          gate.session.sessionId,
+          gate.session.revision,
+        )
+        if (!confirmation.approved) {
+          const blocked = {
+            ok: false,
+            summary: confirmation.message ?? '用户未确认导出',
+            error: {
+              code: confirmation.code ?? 'EXPORT_CONFIRMATION_REQUIRED',
+              message: confirmation.message ?? '用户未确认导出，未执行导出',
+            },
+          }
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: textForResult(blocked) }],
+              isError: true,
+              structuredContent: blocked,
+            },
+          }
         }
       }
     }

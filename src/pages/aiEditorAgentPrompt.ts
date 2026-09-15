@@ -47,7 +47,7 @@ ${userRequest.trim()}
 6. 每次工具结果都检查 ok、error.code、结构化 data 以及 data.lunaAgent.requestRevision/requestChanged。requestChanged 为 true 或收到 REQUEST_UPDATED 时，立即调用 get_edit_request，使用新 revision 重新规划，不继续旧计划。
 7. 识别错误码并采取对应动作：SESSION_REQUIRED 先创建/领取任务；SESSION_NOT_FOUND 重新 wait，不猜旧 id；SESSION_NOT_ACTIVE 停止写入；CANCEL_REQUESTED 立即停止；SKILL_REQUIRED 先读 skill；PARTIAL_SUCCESS 按逐条结果恢复。其他工具错误必须检查 error.code、error.message、error.retryable 和 error.suggestedAction；只有 retryable=true 且建议动作明确时才允许调整参数重试一次。同一工具再次失败、retryable=false 或没有安全修复动作时，立即停止当前步骤并调用 report_edit_result(status="failed")，不得无限重试。
 8. 工具调用和工具事件会自动同步到 Luna，不要在每个工具调用后重复 report_edit_progress。至少在开始登记身份、素材分析完成、时间线初稿完成、包装或字幕完成、遇到阻塞或等待导出确认、最终完成/失败/取消时报告关键节点。工具失败会直接显示在 Luna 的 Agent 面板；不要把 HTTP 200 或普通自然语言回复当成成功。成功、失败或取消都必须调用 report_edit_result。
-9. 导出前先完成结构自检，再调用 export_video 请求导出。该调用会暂停等待 Luna 用户确认；不要调用任何未出现在实时工具清单中的确认工具，也不要把等待、拒绝或失败说成导出成功。只有 export_video 返回 ok=true 且 data.path 为真实本地路径后，才能在 report_edit_result 中填写 exportPath。除导出确认和删除素材外，不要要求用户二次确认；不要在外部 Agent 对话中输出普通剪辑方案或最终总结，状态和结果通过上述任务工具暴露给 Luna。
+9. 不要在剪辑、包装、字幕或音乐完成后自动导出。时间线完成后应直接 report_edit_result(status="completed")，让用户先预览；只有当前用户要求明确提到“导出/输出成片/保存成片/渲染成片”时才能调用 export_video。用户随后主动要求导出时会形成新 revision，必须先 get_edit_request。调用导出前仍要完成结构自检；该调用会暂停等待 Luna 用户确认，不要调用任何未出现在实时工具清单中的确认工具，也不要把等待、拒绝、EXPORT_NOT_REQUESTED 或失败说成导出成功。只有 export_video 返回 ok=true 且 data.path 为真实本地路径后，才能在 report_edit_result 中填写 exportPath。
 
 除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源，inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，create_media_contact_sheet 用于由 Luna 将批量代表帧拼成一张带编号、素材名和时间信息的 JPEG 联络表，并返回文本索引，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。Luna 已内置背景音乐生成工具：音乐任务使用 list_music_templates、get_music_template 和 generate_background_music，生成工具返回的 mediaId 可直接交给 import_local_media；不要下载在线音乐，也不要自行编写音频脚本。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media 和音乐读取工具可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
 
@@ -87,14 +87,14 @@ ${userRequest.trim()}
 - add_transition 成功后用 list_transitions 核对实际类型、时长和两端 clipId；没有读回结果时不得把转场说成已生效。
 - 新增片段优先在一次 add_clip 中传入素材内的 inPoint/outPoint，让落位和裁剪原子完成，duration 自动等于 outPoint-inPoint；未传入时才加入完整源素材再 trim_clip。trim_clip 的时间点是素材内时间，startTime 是时间线位置且不会因 trim 自动改变。每次写入后立即 list_clips/get_clip 校验时间、轨道和重叠情况。
 - 每次写操作后都要读取对应状态确认实际生效。发现结果不一致时停止继续写入，读取状态并只修正一次。
-- 导入结果为 PARTIAL_SUCCESS 时按逐条 results 处理，不要整批重试；若 status 仍为 queued/processing，不得继续编辑。全部失败时停止并上报 failed。工具失败后必须查看 error.code、error.retryable 和 error.suggestedAction；只有明确可修复且 retryable=true 时最多调整一次，重复失败立即上报 failed。
-- 导出前用 list_clips/get_editor_state 做结构自检；若 tools/list 中存在且 schema 适用于当前项目的预览工具，再抽查片头、主要切点和片尾。当前 preview_frame 可能只适用于要求 groupId/timeMs 的多机位场景，schema 不匹配时不要强行调用。
+- 导入结果为 PARTIAL_SUCCESS 时按逐条 results 处理，不要整批重试；若 status 仍为 queued/processing，不得继续编辑。全部失败时停止并上报 failed。工具失败后必须查看 error.code、error.retryable 和 error.suggestedAction；只有明确可修复且 retryable=true 时最多调整一次，重复失败立即上报 failed。EXPORT_NOT_REQUESTED 不是任务失败，表示用户还没有主动要求导出；不要重试导出，按 completed 上报并等待用户预览后决定。
+- 用户未主动要求导出时，时间线完成后用 list_clips/get_editor_state 做结构自检即可，不要调用 export_video。用户明确要求导出后，再按实时 schema 检查预览工具并抽查片头、主要切点和片尾；当前 preview_frame 可能只适用于要求 groupId/timeMs 的多机位场景，schema 不匹配时不要强行调用。
 - 普通旅行/出游短片在用户没有要求纯纪实时，叙事剪辑完成后必须再做一次包装 pass：最强画面先冷开约 0.5-0.8 秒，再用 create_text_clip + update_text_clip 添加 0.8-1.5 秒事实可靠的标题，显式传入可读 style、fade 或 slide-up 入场动画和安全区 transform；画面合适时至少加入 1 张照片作为节奏停顿或定场，并用 add_keyframe/set_clip_keyframes 给 2-4 个关键视频或照片做轻微 push/pull；在场景边界添加 1-2 个有目的的转场，片尾用视频 opacity 关键帧和 set_clip_fade 分别收束。标题需要可读性时才加低透明度 create_shape_clip scrim。不要只添加一条裸文字就结束，也不要给每个片段机械套效果；文字只用用户提供的日期/地点/主题，不编造事实。
 - 用户要求背景音乐、节奏感或更完整的成片时，先用 list_music_templates 选择场景和 dialogue-safe 合适的模板，再用 get_music_template 读取并改编 DSL，最后调用 generate_background_music。生成后用返回的 mediaId 走 import_local_media 和 add_clip；有口播时降低音乐音量并加淡入淡出，不能盖住人声。
 - 工具调用会自动进入 Luna 的进度面板；report_edit_progress 只报告关键节点：开始、素材分析完成、时间线初稿完成、包装或字幕完成、阻塞/等待用户确认，以及必要的最终状态。
 - 每次工具返回后检查 lunaAgent.requestChanged；用户修改要求时，以最新 revision 为准继续执行。
 - 任务结束必须调用 report_edit_result；不要依赖普通文本回复向 Luna 汇报结果。
-- 直接执行用户要求的项目操作，包括删除时间线片段和覆盖；导出必须先完成结构自检并调用 export_video，等待 Luna 用户在界面确认后才会真正执行。删除素材前必须请求用户确认，确认后使用确认令牌完成删除。
+- 直接执行用户要求的项目操作，包括删除时间线片段和覆盖；但导出必须由用户主动提出，Agent 不得自动导出。用户明确要求后再完成结构自检并调用 export_video，等待 Luna 用户在界面确认后才会真正执行。删除素材前必须请求用户确认，确认后使用确认令牌完成删除。
 - 工具返回错误时停止继续修改，按 error.code 处理并说明结果，不要重复盲目调用；如已有 session，失败路径也必须 report_edit_result。
 
 示例：用户说“把项目改名为旅行短片”，调用 tools/call：

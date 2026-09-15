@@ -179,6 +179,19 @@ try {
   assert.equal(edit.result.structuredContent.ok, true)
   assert.equal(edit.result.structuredContent.data.lunaAgent.requestChanged, false)
 
+  const exportNotRequested = await httpCall('export_video', { format: 'mp4' })
+  assert.equal(exportNotRequested.ok, false)
+  assert.equal(exportNotRequested.error.code, 'EXPORT_NOT_REQUESTED')
+  assert.equal(rendererCalls.filter((call) => call.name === 'export_video').length, 0)
+
+  const updatedForExport = manager.updateRequest(session.sessionId, '剪一个 30 秒旅行短片，完成后导出')
+  const acknowledgedExport = await rpc(endpoint, 7, 'tools/call', {
+    name: 'get_edit_request',
+    arguments: { sessionId: session.sessionId, knownRevision: session.revision },
+  })
+  assert.equal(acknowledgedExport.result.structuredContent.data.changed, true)
+  assert.equal(acknowledgedExport.result.structuredContent.data.session.revision, updatedForExport.revision)
+
   const exportPromise = httpCall('export_video', { format: 'mp4' })
   await new Promise((resolve) => setTimeout(resolve, 25))
   assert.equal(manager.snapshot().session.exportConfirmation, 'pending')
@@ -194,7 +207,7 @@ try {
     name: 'report_edit_result',
     arguments: {
       sessionId: session.sessionId,
-      revision: session.revision,
+      revision: updatedForExport.revision,
       status: 'completed',
       summary: '测试完成',
       exportPath: '/tmp/forged-path.mp4',

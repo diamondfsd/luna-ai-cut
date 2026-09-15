@@ -5,6 +5,11 @@ import path from 'node:path'
 import type { AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
 import type { IpcContext } from './context'
 import { createLunaMcpServer, type LunaMcpServer } from '../mcp/lunaMcpServer'
+import {
+  generateBackgroundMusic,
+  getMusicTemplate,
+  listMusicTemplates,
+} from '../features/music/musicGenerationService.ts'
 import { activateAgentWindow } from './ipcAiEditorAgentService'
 import { agentSessionManager } from '../mcp/agentSessionManager'
 
@@ -74,6 +79,11 @@ export function register(context: IpcContext): void {
     requestRenderer: (request) => requestRenderer(context, request),
     agentSession: agentSessionManager,
     activateWindow: () => activateAgentWindow(context),
+    musicTools: {
+      listMusicTemplates,
+      getMusicTemplate,
+      generateBackgroundMusic,
+    },
   })
   void mcpServer.start().catch((error: unknown) => {
     console.error('[MCP] 本机服务启动失败', error)
