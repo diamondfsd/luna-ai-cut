@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
-import { createAiEditorUserStoppedResult } from '../shared/types/aiEditor'
 import type { AiEditorAgentEvent, AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
@@ -34,6 +33,22 @@ interface ChooseAssetsRequest {
 interface PendingMcpRequest {
   resolve: (response: AiEditorMcpResponse) => void
   timer: number
+}
+
+function createUserStoppedMcpResponse(): AiEditorMcpResponse {
+  return {
+    ok: true,
+    result: {
+      ok: false,
+      summary: '用户已停止',
+      error: {
+        code: 'USER_STOPPED',
+        message: '用户已停止',
+        retryable: false,
+        suggestedAction: '不要重试当前任务',
+      },
+    },
+  }
 }
 
 interface McpFrameResponse {
@@ -279,10 +294,9 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
   useEffect(() => {
     const postAgentEvent = (event: AiEditorAgentEvent): void => {
       if (event.type === 'cancelled' && event.session.cancelRequested) {
-        const stopped = createAiEditorUserStoppedResult()
         for (const pending of pendingMcpRequestsRef.current.values()) {
           window.clearTimeout(pending.timer)
-          pending.resolve({ ok: true, result: stopped })
+          pending.resolve(createUserStoppedMcpResponse())
         }
         pendingMcpRequestsRef.current.clear()
       }
