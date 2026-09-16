@@ -1,3 +1,5 @@
+import { frameCountForDuration, frameIndexAtTime, normalizeFrameRate, sourceEndFrame, timeAtFrame } from './frameTime.ts'
+
 export const DEFAULT_LIVE_PHOTO_DURATION = 3
 export const MIN_LIVE_PHOTO_DURATION = 0.1
 export const MAX_LIVE_PHOTO_DURATION = 5
@@ -30,6 +32,10 @@ export interface PhotoOutputMarker extends VideoOutputMarkerBase {
 }
 
 export type VideoOutputMarker = VideoSegmentOutputMarker | LivePhotoOutputMarker | PhotoOutputMarker
+
+interface NormalizeVideoOutputMarkersOptions {
+  preserveInvalidRanges?: boolean
+}
 
 export function livePhotoSelectionForMarker(
   markers: VideoOutputMarker[],
@@ -88,6 +94,64 @@ function normalizeNote(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, MAX_NOTE_LENGTH) : ''
 }
 
+export interface VideoOutputMarkerValidationIssue {
+  index: number
+  label: string
+  reason: string
+}
+
+function markerValidationReason(marker: VideoOutputMarker, maximumTime: number): string | null {
+  if (marker.kind === 'photo') {
+    if (!Number.isFinite(marker.time)) return '照片位置不是有效数字'
+    if (marker.time < 0 || marker.time > maximumTime || (maximumTime > 0 && marker.time >= maximumTime)) {
+      return '照片位置超出视频时长'
+    }
+    return null
+  }
+
+  if (!Number.isFinite(marker.startTime) || !Number.isFinite(marker.endTime)) {
+    return '开始或结束位置不是有效数字'
+  }
+  if (marker.startTime < 0) return '开始位置不能小于 0 秒'
+  if (marker.endTime > maximumTime) return '结束位置超出视频时长'
+
+  if (marker.kind === 'live') {
+    const liveDuration = marker.endTime - marker.startTime
+    if (liveDuration < MIN_LIVE_PHOTO_DURATION) return `Live 图时长不能少于 ${MIN_LIVE_PHOTO_DURATION} 秒`
+    if (liveDuration > MAX_LIVE_PHOTO_DURATION) return `Live 图时长不能超过 ${MAX_LIVE_PHOTO_DURATION} 秒`
+    if (!Number.isFinite(marker.coverTime)) return '封面位置不是有效数字'
+    if (marker.coverTime < marker.startTime || marker.coverTime >= marker.endTime) {
+      return '封面位置必须在 Live 图范围内'
+    }
+    return null
+  }
+
+  if (marker.endTime < marker.startTime + MIN_VIDEO_SEGMENT_DURATION) {
+    return `视频片段时长不能少于 ${MIN_VIDEO_SEGMENT_DURATION} 秒`
+  }
+  return null
+}
+
+export function findInvalidVideoOutputMarker(
+  markers: VideoOutputMarker[],
+  sourceDuration: number,
+): VideoOutputMarkerValidationIssue | null {
+  const maximumTime = Number.isFinite(sourceDuration) && sourceDuration >= 0
+    ? sourceDuration
+    : Number.POSITIVE_INFINITY
+
+  for (const [index, marker] of markers.entries()) {
+    const reason = markerValidationReason(marker, maximumTime)
+    if (!reason) continue
+    return {
+      index,
+      label: marker.kind === 'photo' ? '照片' : marker.kind === 'live' ? 'Live 图' : '视频片段',
+      reason,
+    }
+  }
+  return null
+}
+
 export function clampLivePhotoDuration(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_LIVE_PHOTO_DURATION
   return Math.min(MAX_LIVE_PHOTO_DURATION, Math.max(MIN_LIVE_PHOTO_DURATION, value))
@@ -97,9 +161,35 @@ export function livePhotoRangeAround(
   time: number,
   duration: number,
   liveDuration = DEFAULT_LIVE_PHOTO_DURATION,
+  frameRate?: number | null,
 ): { startTime: number; endTime: number; coverTime: number } | null {
   const safeLiveDuration = clampLivePhotoDuration(liveDuration)
   if (!Number.isFinite(duration) || duration < safeLiveDuration) return null
+
+  if (frameRate != null) {
+    const fps = normalizeFrameRate(frameRate)
+    const liveFrameCount = frameCountForDuration(
+      safeLiveDuration,
+      fps,
+      MIN_LIVE_PHOTO_DURATION,
+      MAX_LIVE_PHOTO_DURATION,
+    )
+    const sourceFrameCount = sourceEndFrame(duration, fps)
+    if (sourceFrameCount < liveFrameCount) return null
+    const centerFrame = Math.max(0, Math.min(frameIndexAtTime(time, fps), sourceFrameCount))
+    const startFrame = Math.max(0, Math.min(
+      centerFrame - Math.floor(liveFrameCount / 2),
+      sourceFrameCount - liveFrameCount,
+    ))
+    const endFrame = startFrame + liveFrameCount
+    const coverFrame = Math.max(startFrame, Math.min(centerFrame, endFrame - 1))
+    return {
+      startTime: timeAtFrame(startFrame, fps),
+      endTime: timeAtFrame(endFrame, fps),
+      coverTime: timeAtFrame(coverFrame, fps),
+    }
+  }
+
   const safeTime = Math.max(0, Math.min(Number.isFinite(time) ? time : 0, duration))
   const startTime = Math.max(0, Math.min(safeTime - safeLiveDuration / 2, duration - safeLiveDuration))
   return {
@@ -115,8 +205,42 @@ export function resizeLivePhotoRange(
   coverTime: number,
   requestedDuration: number,
   sourceDuration: number,
+  frameRate?: number | null,
 ): { startTime: number; endTime: number; coverTime: number } | null {
   if (![startTime, endTime, coverTime, requestedDuration, sourceDuration].every(Number.isFinite)) return null
+
+  if (frameRate != null) {
+    const fps = normalizeFrameRate(frameRate)
+    const sourceFrameCount = sourceEndFrame(sourceDuration, fps)
+    const minimumFrameCount = frameCountForDuration(MIN_LIVE_PHOTO_DURATION, fps, MIN_LIVE_PHOTO_DURATION, MAX_LIVE_PHOTO_DURATION)
+    const maximumFrameCount = Math.min(
+      Math.floor(MAX_LIVE_PHOTO_DURATION * fps),
+      sourceFrameCount,
+    )
+    if (maximumFrameCount < minimumFrameCount) return null
+    const nextFrameCount = frameCountForDuration(
+      requestedDuration,
+      fps,
+      MIN_LIVE_PHOTO_DURATION,
+      maximumFrameCount / fps,
+    )
+    const centerFrame = Math.round(((startTime + endTime) / 2) * fps)
+    const nextStartFrame = Math.max(0, Math.min(
+      centerFrame - Math.floor(nextFrameCount / 2),
+      sourceFrameCount - nextFrameCount,
+    ))
+    const nextEndFrame = nextStartFrame + nextFrameCount
+    const coverFrame = Math.max(
+      nextStartFrame,
+      Math.min(frameIndexAtTime(coverTime, fps), nextEndFrame - 1),
+    )
+    return {
+      startTime: timeAtFrame(nextStartFrame, fps),
+      endTime: timeAtFrame(nextEndFrame, fps),
+      coverTime: timeAtFrame(coverFrame, fps),
+    }
+  }
+
   const maximumDuration = Math.min(MAX_LIVE_PHOTO_DURATION, Math.floor(sourceDuration * 10) / 10)
   if (maximumDuration < MIN_LIVE_PHOTO_DURATION) return null
 
@@ -133,8 +257,13 @@ export function resizeLivePhotoRange(
   }
 }
 
-export function normalizeVideoOutputMarkers(value: unknown, sourceDuration?: number): VideoOutputMarker[] {
+export function normalizeVideoOutputMarkers(
+  value: unknown,
+  sourceDuration?: number,
+  options?: NormalizeVideoOutputMarkersOptions,
+): VideoOutputMarker[] {
   if (!Array.isArray(value)) return []
+  const preserveInvalidRanges = options?.preserveInvalidRanges === true
   const maximumTime = Number.isFinite(sourceDuration) && Number(sourceDuration) >= 0
     ? Number(sourceDuration)
     : Number.POSITIVE_INFINITY
@@ -159,13 +288,14 @@ export function normalizeVideoOutputMarkers(value: unknown, sourceDuration?: num
     if (!Number.isFinite(marker.startTime) || !Number.isFinite(marker.endTime)) return null
     const startTime = Number(marker.startTime)
     const endTime = Number(marker.endTime)
-    if (startTime < 0 || endTime > maximumTime) return null
+    if (!preserveInvalidRanges && (startTime < 0 || endTime > maximumTime)) return null
 
     if (marker.kind === 'live') {
       const liveDuration = endTime - startTime
-      if (liveDuration < MIN_LIVE_PHOTO_DURATION || liveDuration > MAX_LIVE_PHOTO_DURATION) return null
+      if (!preserveInvalidRanges && (liveDuration < MIN_LIVE_PHOTO_DURATION || liveDuration > MAX_LIVE_PHOTO_DURATION)) return null
       const coverTime = Number(marker.coverTime)
-      if (!Number.isFinite(coverTime) || coverTime < startTime || coverTime >= endTime) return null
+      if (!Number.isFinite(coverTime)) return null
+      if (!preserveInvalidRanges && (coverTime < startTime || coverTime >= endTime)) return null
       return {
         id: normalizeId(marker.id, index, usedIds),
         kind: 'live',
@@ -176,7 +306,7 @@ export function normalizeVideoOutputMarkers(value: unknown, sourceDuration?: num
       }
     }
 
-    if (endTime < startTime + MIN_VIDEO_SEGMENT_DURATION) return null
+    if (!preserveInvalidRanges && endTime < startTime + MIN_VIDEO_SEGMENT_DURATION) return null
     return {
       id: normalizeId(marker.id, index, usedIds),
       kind: 'video',

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
@@ -8,6 +9,7 @@ import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition, Water
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { StorageMigrationDialog } from '../components/StorageMigrationDialog'
+import { NasSyncSettings } from '../components/NasSyncSettings'
 import { Button, Dialog, Input, Select, Switch, toast } from '../ui'
 import '../styles/settings.css'
 import '../styles/download-storage-settings.css'
@@ -72,6 +74,7 @@ export function SettingsPage({
   settings,
   setSettings,
 }: SettingsPageProps) {
+  const location = useLocation()
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
@@ -326,6 +329,8 @@ export function SettingsPage({
             </article>
           </div>
         </section>
+
+        <NasSyncSettings settings={settings} setSettings={setSettings} openSetup={location.state?.nasSetup === true} />
 
         <section className="settings-group">
           <h2 className="settings-group-title">应用行为</h2>

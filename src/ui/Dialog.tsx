@@ -136,12 +136,19 @@ export function Dialog({
         <RadixDialog.Content
           className={`ui-dialog-content ${isFullscreen ? 'ui-dialog-fullscreen' : ''} ${tone === 'dark' ? 'ui-dialog-dark' : ''} ${className ?? ''}`}
           style={{ zIndex: cZ }}
-          onInteractOutside={closeOnMaskClick ? undefined : (e) => e.preventDefault()}
+          onInteractOutside={(event) => {
+            const target = event.target
+            if (target instanceof Element && target.closest('.ui-select-content')) {
+              event.preventDefault()
+              return
+            }
+            if (!closeOnMaskClick) event.preventDefault()
+          }}
         >
           {!isFullscreen && title && (
             <DialogHeader>
-              <RadixDialog.Title>{title}</RadixDialog.Title>
-              {description && <RadixDialog.Description>{description}</RadixDialog.Description>}
+              <RadixDialog.Title className="ui-dialog-title">{title}</RadixDialog.Title>
+              {description && <RadixDialog.Description className="ui-dialog-description">{description}</RadixDialog.Description>}
             </DialogHeader>
           )}
           {children}

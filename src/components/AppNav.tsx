@@ -8,6 +8,7 @@ import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
 import { SendToPhoneDialog } from './SendToPhoneDialog'
 import { CameraLivePreviewDialog } from './CameraLivePreviewDialog'
+import { NasSyncPopover } from './NasSyncPopover'
 import { IconButton, Tooltip } from '../ui'
 import '../styles/nav.css'
 
@@ -23,7 +24,11 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
   const [previewOpen, setPreviewOpen] = useState(false)
   const obsStreamDemoVisible = !window.luna.isPackaged
   const connected = Boolean(connection?.controlOk)
-  const cameraPreviewSupported = activeDevice?.id === 'luna-ultra' || activeDevice?.id === 'luna-pro'
+  const cameraPreviewSupported = sourceMode === 'wireless' && (
+    activeDevice?.id === 'luna-ultra' ||
+    activeDevice?.id === 'luna-pro' ||
+    activeDevice?.protocol === 'dji'
+  )
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`
@@ -95,6 +100,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
               <Unplug size={15} />
             </button>
           )}
+          <NasSyncPopover />
           <ExportProgressModal
             exportProgress={exportProgress}
             onRevealFile={(path) => void window.luna.revealFile(path)}

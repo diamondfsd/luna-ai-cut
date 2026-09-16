@@ -10,6 +10,7 @@ const pixelStretchStateSource = await readFile(new URL('../src/workspace/creativ
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
 const previewQualitySource = await readFile(new URL('../src/workspace/shared/workspacePreviewQuality.ts', import.meta.url), 'utf8')
 const videoOutputMarkersSource = await readFile(new URL('../src/workspace/trim/videoOutputMarkers.ts', import.meta.url), 'utf8')
+const frameTimeSource = await readFile(new URL('../src/workspace/trim/frameTime.ts', import.meta.url), 'utf8')
 const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/features/ai-selection/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
@@ -23,7 +24,12 @@ const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pi
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
 const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText
-const videoOutputMarkersCompiled = ts.transpileModule(videoOutputMarkersSource, { compilerOptions }).outputText
+const frameTimeCompiled = ts.transpileModule(frameTimeSource, { compilerOptions }).outputText
+const frameTimeModuleUrl = `data:text/javascript;base64,${Buffer.from(frameTimeCompiled).toString('base64')}`
+const videoOutputMarkersCompiled = ts.transpileModule(
+  videoOutputMarkersSource.replace("from './frameTime.ts'", `from '${frameTimeModuleUrl}'`),
+  { compilerOptions },
+).outputText
 const aiSelectionWorkspaceAssetsCompiled = ts.transpileModule(aiSelectionWorkspaceAssetsSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
@@ -106,6 +112,26 @@ assert.deepEqual(
     { id: 'later', kind: 'live', startTime: 12, endTime: 15, coverTime: 13.5, note: 'second shot' },
   ],
   'output markers require explicit kinds and are validated, deduplicated, and sorted',
+)
+assert.equal(
+  videoOutputMarkers.normalizeVideoOutputMarkers(
+    [{ id: 'editing-live', kind: 'live', startTime: 0, endTime: 8, coverTime: 1, note: '' }],
+    undefined,
+    { preserveInvalidRanges: true },
+  ).length,
+  1,
+  'editing keeps invalid ranges until export validation',
+)
+assert.deepEqual(
+  videoOutputMarkers.findInvalidVideoOutputMarker([
+    { id: 'bad-cover', kind: 'live', startTime: 0, endTime: 3, coverTime: 4, note: '' },
+  ], 10),
+  {
+    index: 0,
+    label: 'Live 图',
+    reason: '封面位置必须在 Live 图范围内',
+  },
+  'export validation reports the marker and the exact Live cover reason',
 )
 assert.deepEqual(
   videoOutputMarkers.livePhotoRangeAround(0.5, 10),
