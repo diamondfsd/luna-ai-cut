@@ -116,6 +116,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     },
     listLocalMedia: (query) => ipcRenderer.invoke('ai-editor:list-local-media', query),
     getLocalMedia: (mediaId) => ipcRenderer.invoke('ai-editor:get-local-media', mediaId),
+    getLocalMediaMetadata: (mediaIds) => ipcRenderer.invoke('ai-editor:get-local-media-metadata', mediaIds),
     readLocalMediaBytes: (mediaId) => ipcRenderer.invoke('ai-editor:read-local-media-bytes', mediaId),
     inspectLocalMedia: (mediaIds, options) => ipcRenderer.invoke('ai-editor:inspect-local-media', mediaIds, options),
     createMediaContactSheet: (mediaIds, options) => ipcRenderer.invoke('ai-editor:create-media-contact-sheet', mediaIds, options),

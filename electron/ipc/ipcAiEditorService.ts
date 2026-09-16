@@ -18,6 +18,7 @@ import {
   listAiEditorLocalMedia,
   readAiEditorLocalMediaBytes,
 } from '../features/ai-editor/aiEditorLocalMediaService'
+import { getAiEditorLocalMediaMetadata } from '../features/ai-editor/aiEditorMediaMetadataService'
 import { createAiEditorLocalMediaContactSheet, inspectAiEditorLocalMedia } from '../features/ai-editor/aiEditorMediaAnalysisService'
 import { transcribeAiEditorAudioSamples, transcribeAiEditorLocalMedia } from '../features/ai-editor/aiEditorSpeechService'
 import {
@@ -153,6 +154,10 @@ export function register(): void {
     const publicMedia = { ...media }
     Reflect.deleteProperty(publicMedia, 'filePath')
     return publicMedia
+  })
+
+  ipcMain.handle('ai-editor:get-local-media-metadata', async (_event, mediaIds: string[]) => {
+    return getAiEditorLocalMediaMetadata(mediaIds)
   })
 
   ipcMain.handle('ai-editor:read-local-media-bytes', (_event, mediaId: string) => {

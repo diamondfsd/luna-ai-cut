@@ -159,6 +159,7 @@
   const readFileBytes = async (filePath) => localArrayBuffer(await parentApi().readFileBytes(filePath))
   const listLocalMedia = (query) => parentApi().listLocalMedia(query)
   const getLocalMedia = (mediaId) => parentApi().getLocalMedia(mediaId)
+  const getLocalMediaMetadata = (mediaIds) => parentApi().getLocalMediaMetadata(mediaIds)
   const readLocalMediaBytes = async (mediaId) => localArrayBuffer(await parentApi().readLocalMediaBytes(mediaId))
   const inspectLocalMedia = (mediaIds, options) => parentApi().inspectLocalMedia(mediaIds, options)
   const createMediaContactSheet = (mediaIds, options) => parentApi().createMediaContactSheet(mediaIds, options)
@@ -302,6 +303,7 @@
       readFileBytes,
       listLocalMedia,
       getLocalMedia,
+      getLocalMediaMetadata,
       readLocalMediaBytes,
       inspectLocalMedia,
       createMediaContactSheet,
