@@ -1,4 +1,4 @@
-import type { AppSettings, CacheStats, CustomLutFile, StorageMigrationResult } from './settings'
+import type { AppSettings, CacheStats, CustomLutFile, NasSyncSettings, StorageMigrationResult } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, FileCopyResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
@@ -38,6 +38,7 @@ import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSu
 import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
 import type { WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchAiLutResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
 import type { AiEditorFileApi } from './aiEditor'
+import type { NasRemoteFile, NasSyncEnqueueResult, NasSyncProbeResult, NasSyncStatus } from './nasSync'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -147,6 +148,7 @@ export interface LunaApi {
   isPackaged: boolean
   startupReady(): void
   aiEditor: AiEditorFileApi
+  trackPageOpened(path: string): void
   setFullScreen(enabled: boolean): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
@@ -235,6 +237,19 @@ export interface LunaApi {
   copyFilesToDirectory(filePaths: string[]): Promise<FileCopyResult | null>
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
+  nasSync: {
+    getStatus(): Promise<NasSyncStatus>
+    setDebugMode(enabled: boolean): Promise<NasSyncSettings>
+    getDebugLocalRoot(): Promise<string | null>
+    probe(config?: NasSyncSettings): Promise<NasSyncProbeResult>
+    listFiles(): Promise<NasRemoteFile[]>
+    syncFiles(filePaths: string[]): Promise<NasSyncEnqueueResult>
+    syncLocalResources(): Promise<NasSyncEnqueueResult>
+    retryFailed(): Promise<number>
+    cancelPending(): Promise<void>
+    clearFinished(): Promise<number>
+  }
+  onNasSyncProgress(callback: (status: NasSyncStatus) => void): () => void
   readExifModel(localPath: string): Promise<string | null>
   getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<{ filePath: string; width: number; height: number }>
   getBorderLogoPath(logoId: string): Promise<string>

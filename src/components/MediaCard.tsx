@@ -136,7 +136,14 @@ export function MediaCard({
         <IconButton variant="light" className="downloaded-folder-btn" onClick={() => onRevealPath(downloadedPath)} title="在文件夹中显示" icon={<FolderOpen size={14} />} />
       ) : (
         selectVisible && (
-          <IconButton variant="ghost" className="select-chip" onClick={() => onToggle(file)} title="选择" icon={selected ? <Check size={15} /> : undefined} />
+          <IconButton
+            variant="ghost"
+            className="select-chip"
+            onClick={() => onToggle(file)}
+            title="选择"
+            aria-label={selected ? `取消选择 ${file.name}` : `选择 ${file.name}`}
+            icon={selected ? <Check size={15} /> : undefined}
+          />
         )
       )}
       <div

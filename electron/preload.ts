@@ -30,6 +30,11 @@ import type {
   ExportTaskRecord,
   OriginalFileExportRequest,
   AiEditorFileApi,
+  NasSyncEnqueueResult,
+  NasRemoteFile,
+  NasSyncProbeResult,
+  NasSyncSettings,
+  NasSyncStatus,
 } from '../src/shared/types'
 
 interface ExportItemInput {
@@ -128,6 +133,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     abortWrite: (handleId) => ipcRenderer.invoke('ai-editor:abort-write', handleId),
     revealInFolder: (filePath) => ipcRenderer.invoke('ai-editor:reveal-in-folder', filePath),
   } satisfies AiEditorFileApi,
+  trackPageOpened: (path: string) => ipcRenderer.send('usage:page-opened', path),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean): void => callback(isFullScreen)
@@ -259,6 +265,23 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   copyFilesToDirectory: (filePaths: string[]) => ipcRenderer.invoke('files:copy-to-directory', filePaths),
   openPhotosApp: () => ipcRenderer.invoke('files:openPhotosApp'),
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
+  nasSync: {
+    getStatus: (): Promise<NasSyncStatus> => ipcRenderer.invoke('nas-sync:status'),
+    setDebugMode: (enabled: boolean): Promise<NasSyncSettings> => ipcRenderer.invoke('nas-sync:set-debug-mode', enabled),
+    getDebugLocalRoot: (): Promise<string | null> => ipcRenderer.invoke('nas-sync:get-debug-local-root'),
+    probe: (config?: NasSyncSettings): Promise<NasSyncProbeResult> => ipcRenderer.invoke('nas-sync:probe', config),
+    listFiles: (): Promise<NasRemoteFile[]> => ipcRenderer.invoke('nas-sync:list-files'),
+    syncFiles: (filePaths: string[]): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-files', filePaths),
+    syncLocalResources: (): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-local-resources'),
+    retryFailed: (): Promise<number> => ipcRenderer.invoke('nas-sync:retry-failed'),
+    cancelPending: (): Promise<void> => ipcRenderer.invoke('nas-sync:cancel-pending'),
+    clearFinished: (): Promise<number> => ipcRenderer.invoke('nas-sync:clear-finished'),
+  },
+  onNasSyncProgress: (callback: (status: NasSyncStatus) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: NasSyncStatus): void => callback(status)
+    ipcRenderer.on('nas-sync:progress', listener)
+    return () => ipcRenderer.off('nas-sync:progress', listener)
+  },
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind) as Promise<{ filePath: string; width: number; height: number }>,
   getBorderLogoPath: (logoId: string) => ipcRenderer.invoke('luna:getBorderLogoPath', logoId) as Promise<string>,

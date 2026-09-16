@@ -8,6 +8,7 @@ import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
 import { DownloadProgressProvider } from '../context/DownloadProgressContext'
 import { ExportProgressProvider } from '../context/ExportProgressContext'
+import { NasSyncProgressProvider } from '../context/NasSyncProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { invalidateThumbnailReady } from '../lib/thumbnailReady'
 import { CameraMediaPage } from '../pages/CameraMediaPage'
@@ -105,6 +106,13 @@ export function AppRoutes() {
     ['/device-debug', debugVisible],
   ]
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
+  const debugStandalone = typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__
+
+  useEffect(() => {
+    if (isKnownRoute && location.pathname !== '/' && !debugStandalone) {
+      window.luna.trackPageOpened(activePath)
+    }
+  }, [activePath, debugStandalone, isKnownRoute, location.pathname])
 
   useEffect(() => {
     logger.info('[导航诊断] 路由状态', {
@@ -122,7 +130,7 @@ export function AppRoutes() {
   if (!isKnownRoute) return <Navigate to={developerMode ? '/developer' : '/library'} replace />
 
   // 独立调试包：只渲染设备调试页面，无导航、无路由切换
-  if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {
+  if (debugStandalone) {
     return (
       <main className="app">
         <DeviceDebugPage />
@@ -133,6 +141,7 @@ export function AppRoutes() {
   return (
     <ExportProgressProvider>
       <DownloadProgressProvider>
+        <NasSyncProgressProvider>
         <main className="app">
         <AppNav
         connection={connection}
@@ -232,6 +241,7 @@ export function AppRoutes() {
         <PreviewModalHost />
       </div>
         </main>
+        </NasSyncProgressProvider>
       </DownloadProgressProvider>
     </ExportProgressProvider>
   )

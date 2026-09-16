@@ -1,0 +1,276 @@
+.nas-sync-nav-trigger {
+  position: relative;
+  display: inline-flex;
+}
+
+.nas-sync-nav-dot {
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--canvas);
+  border-radius: 50%;
+  background: #0066cc;
+}
+
+.nas-sync-popover.ui-popover-content {
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 80px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.nas-sync-popover-header,
+.nas-sync-popover-footer,
+.nas-sync-current,
+.nas-sync-meta,
+.nas-sync-actions,
+.nas-sync-progress-summary {
+  display: flex;
+  align-items: center;
+}
+
+.nas-sync-popover-header {
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.nas-sync-popover-header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.nas-sync-popover-header strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.nas-sync-popover-header span,
+.nas-sync-popover-footer,
+.nas-sync-meta,
+.nas-sync-current span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nas-sync-popover-header > svg {
+  color: var(--blue);
+}
+
+.nas-sync-progress-summary {
+  justify-content: space-between;
+  padding: 16px 16px 8px;
+}
+
+.nas-sync-progress-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.nas-sync-progress-summary strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.nas-sync-progress-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nas-sync-progress-track {
+  height: 6px;
+  margin: 0 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--hairline);
+}
+
+.nas-sync-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 160ms ease;
+}
+
+.nas-sync-offline {
+  padding: 10px 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nas-sync-current {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 0;
+}
+
+.nas-sync-current span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nas-sync-meta {
+  gap: 12px;
+  padding: 8px 16px 12px;
+}
+
+.nas-sync-error,
+.nas-sync-empty {
+  margin: 0 16px 12px;
+}
+
+.nas-sync-error {
+  padding: 8px 10px;
+  border-left: 2px solid #c53030;
+  background: #fff5f5;
+  color: #a12828;
+  font-size: 12px;
+}
+
+.nas-sync-task-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 16px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nas-sync-task-list-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nas-sync-task-list {
+  max-height: 250px;
+  margin: 0 16px 12px;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+
+.nas-sync-task {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) minmax(72px, auto);
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 8px 10px;
+}
+
+.nas-sync-task:last-child {
+  border-bottom: 0;
+}
+
+.nas-sync-task-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.nas-sync-task.is-syncing .nas-sync-task-icon,
+.nas-sync-task.is-synced .nas-sync-task-icon {
+  color: var(--blue);
+}
+
+.nas-sync-task.is-failed .nas-sync-task-icon,
+.nas-sync-task.is-failed .nas-sync-task-detail {
+  color: #a12828;
+}
+
+.nas-sync-task-spinner {
+  animation: nas-sync-spin 900ms linear infinite;
+}
+
+@keyframes nas-sync-spin {
+  to { transform: rotate(360deg); }
+}
+
+.nas-sync-task-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.nas-sync-task-copy span,
+.nas-sync-task-copy small,
+.nas-sync-task-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nas-sync-task-copy span {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.nas-sync-task-copy small,
+.nas-sync-task-detail {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.nas-sync-task-detail {
+  text-align: right;
+}
+
+.nas-sync-task-empty {
+  padding: 28px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.nas-sync-actions {
+  gap: 8px;
+  padding: 0 16px 14px;
+}
+
+.nas-sync-empty {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.nas-sync-empty .ui-btn {
+  justify-content: center;
+}
+
+.nas-sync-popover-footer {
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.nas-sync-popover-footer span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .nas-sync-task {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .nas-sync-task-detail {
+    grid-column: 2;
+    text-align: left;
+  }
+}

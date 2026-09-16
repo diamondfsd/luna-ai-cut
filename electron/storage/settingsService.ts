@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { DEFAULT_DEVICE } from '../devices/definitions/deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
 import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
-import type { AppSettings, WatermarkPlacement, WatermarkPosition } from '../../src/shared/types'
+import type { AppSettings, NasSyncSettings, WatermarkPlacement, WatermarkPosition } from '../../src/shared/types'
 
 function settingsPath(): string {
   if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
@@ -86,6 +86,17 @@ function defaultSettings(): AppSettings {
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
     windowCloseBehavior: 'hide',
+    nasSync: {
+      enabled: false,
+      autoSync: false,
+      server: '',
+      port: 445,
+      share: '',
+      remotePath: '',
+      username: '',
+      password: '',
+      concurrency: 3,
+    },
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,
@@ -105,6 +116,10 @@ const WATERMARK_POSITIONS = new Set<WatermarkPosition>([
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function validNasPort(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65_535
 }
 
 function normalizeDefaultWatermarkPlacement(value: unknown): WatermarkPlacement | undefined {
@@ -127,7 +142,12 @@ function normalizeDefaultWatermarkPlacement(value: unknown): WatermarkPlacement 
   return undefined
 }
 
-type StoredSettings = Partial<AppSettings> & { downloadDir?: string }
+type LegacyNasSyncDebugSettings = {
+  nasSyncDebugMode?: boolean
+  nasSyncDebugPrevious?: unknown
+}
+
+type StoredSettings = Partial<AppSettings> & { downloadDir?: string } & LegacyNasSyncDebugSettings
 
 async function readSettingsFile() {
   return readStoredSettings<StoredSettings>(settingsPath(), legacyPath())
@@ -142,6 +162,7 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
     baseDir: savedSettings.baseDir,
     cacheDir: cacheDir(savedSettings.baseDir),
   }
+  const hasLegacyNasDebugMode = saved?.nasSyncDebugMode === true
   merged.defaultWatermarkEnabled = typeof saved?.defaultWatermarkEnabled === 'boolean'
     ? saved.defaultWatermarkEnabled
     : defaults.defaultWatermarkEnabled
@@ -192,10 +213,61 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.windowCloseBehavior = savedWindowCloseBehavior === 'hide' || savedWindowCloseBehavior === 'quit'
     ? savedWindowCloseBehavior
     : defaults.windowCloseBehavior
+  const savedNasSync = saved?.nasSync
+  const defaultNasSync = defaults.nasSync as NasSyncSettings
+  const savedNasPort = savedNasSync?.port
+  merged.nasSync = {
+    enabled: typeof savedNasSync?.enabled === 'boolean' ? savedNasSync.enabled : defaultNasSync.enabled,
+    autoSync: typeof savedNasSync?.autoSync === 'boolean' ? savedNasSync.autoSync : defaultNasSync.autoSync,
+    server: typeof savedNasSync?.server === 'string' ? savedNasSync.server.trim() : defaultNasSync.server,
+    port: validNasPort(savedNasPort) ? savedNasPort : defaultNasSync.port,
+    share: typeof savedNasSync?.share === 'string' ? savedNasSync.share.trim() : defaultNasSync.share,
+    remotePath: typeof savedNasSync?.remotePath === 'string' ? savedNasSync.remotePath.trim() : defaultNasSync.remotePath,
+    username: typeof savedNasSync?.username === 'string' ? savedNasSync.username : defaultNasSync.username,
+    password: typeof savedNasSync?.password === 'string' ? savedNasSync.password : defaultNasSync.password,
+    concurrency: typeof savedNasSync?.concurrency === 'number' && Number.isFinite(savedNasSync.concurrency)
+      ? Math.min(10, Math.max(1, Math.round(savedNasSync.concurrency)))
+      : defaultNasSync.concurrency,
+  }
+  if (hasLegacyNasDebugMode) merged.nasSync = restoreLegacyNasSyncConfig(saved?.nasSyncDebugPrevious, defaultNasSync)
+  const legacySettings = merged as AppSettings & LegacyNasSyncDebugSettings
+  delete legacySettings.nasSyncDebugMode
+  delete legacySettings.nasSyncDebugPrevious
   if (!merged.localResourcesDir) {
     merged.localResourcesDir = getLocalResourcesDir(merged)
   }
   return merged
+}
+
+function restoreLegacyNasSyncConfig(value: unknown, fallback: NasSyncSettings): NasSyncSettings {
+  const source = value && typeof value === 'object'
+    ? value as Partial<Record<keyof NasSyncSettings, unknown>>
+    : {}
+  const server = typeof source.server === 'string' ? source.server.trim() : fallback.server
+  const share = typeof source.share === 'string' ? source.share.trim() : fallback.share
+  const remotePath = typeof source.remotePath === 'string' ? source.remotePath.trim() : fallback.remotePath
+  const configured = Boolean(server && share && remotePath && validNasPort(source.port))
+  const enabled = configured && source.enabled === true
+  return {
+    enabled,
+    autoSync: enabled && source.autoSync === true,
+    server,
+    port: validNasPort(source.port) ? source.port : fallback.port,
+    share,
+    remotePath,
+    username: typeof source.username === 'string' ? source.username : fallback.username,
+    password: typeof source.password === 'string' ? source.password : fallback.password,
+    concurrency: typeof source.concurrency === 'number' && Number.isFinite(source.concurrency)
+      ? Math.min(10, Math.max(1, Math.round(source.concurrency)))
+      : fallback.concurrency,
+  }
+}
+
+function hasLegacyNasSyncDebugSettings(saved: StoredSettings | null): boolean {
+  return Boolean(saved && (
+    Object.prototype.hasOwnProperty.call(saved, 'nasSyncDebugMode')
+    || Object.prototype.hasOwnProperty.call(saved, 'nasSyncDebugPrevious')
+  ))
 }
 
 async function readSettingsWithoutWriting(): Promise<AppSettings> {
@@ -216,6 +288,7 @@ export async function getSettings(): Promise<AppSettings> {
     stored.fromLegacyPath
     || (saved.downloadDir && !saved.baseDir)
     || saved.experimentalWebGpuExport === true
+    || hasLegacyNasSyncDebugSettings(saved)
   ) {
     await writeSettingsFile(merged)
   }
@@ -245,6 +318,18 @@ export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings
       experimentalWebGpuPreview: partial.experimentalWebGpuPreview ?? current.experimentalWebGpuPreview,
       // 视频导出统一使用 Rust/wgpu；忽略旧客户端传入的导出加速开关。
       experimentalWebGpuExport: false,
+    }
+    const legacySettings = next as AppSettings & LegacyNasSyncDebugSettings
+    delete legacySettings.nasSyncDebugMode
+    delete legacySettings.nasSyncDebugPrevious
+    if (next.nasSync) {
+      next.nasSync = {
+        ...next.nasSync,
+        share: next.nasSync.share.trim(),
+        remotePath: next.nasSync.remotePath.trim(),
+      }
+      if (!validNasPort(next.nasSync.port)) throw new Error('NAS 端口必须是 1 到 65535 的整数')
+      if (next.nasSync.enabled && (!next.nasSync.share || !next.nasSync.remotePath)) throw new Error('请先连接 NAS 并选择共享和同步目录')
     }
     next.cacheDir = cacheDir(next.baseDir)
     await writeSettingsFile(next)

@@ -1,7 +1,9 @@
-import { FolderOpen, Play, RotateCcw, Server, Settings, Square } from 'lucide-react'
+import { Bug, FolderOpen, Play, RotateCcw, Server, Settings, Square } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
+import { DEFAULT_NAS_DEBUG_CONFIG } from '../shared/nasSyncDebugConfig'
 import type { AppSettings, DeviceDefinition, MockServerConfig, MockServerStatus } from '../shared/types'
-import { Button, Input, Switch } from '../ui'
+import { Button, Input, Switch, toast } from '../ui'
 import '../styles/mock-server-debug.css'
 
 interface DeveloperTabProps {
@@ -48,6 +50,27 @@ function numericSetting(value: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function isNasDebugConfig(config: AppSettings['nasSync']): boolean {
+  return Boolean(config
+    && config.enabled === DEFAULT_NAS_DEBUG_CONFIG.enabled
+    && config.autoSync === DEFAULT_NAS_DEBUG_CONFIG.autoSync
+    && config.server === DEFAULT_NAS_DEBUG_CONFIG.server
+    && config.port === DEFAULT_NAS_DEBUG_CONFIG.port
+    && config.share === DEFAULT_NAS_DEBUG_CONFIG.share
+    && config.remotePath === DEFAULT_NAS_DEBUG_CONFIG.remotePath
+    && config.username === DEFAULT_NAS_DEBUG_CONFIG.username
+    && config.password === DEFAULT_NAS_DEBUG_CONFIG.password)
+}
+
+function nasTargetPath(config: AppSettings['nasSync']): string {
+  if (!config?.server.trim() || !config.share.trim()) return '未配置'
+  const host = config.server.trim().replace(/^smb:\/\//i, '').replace(/\/+$/, '')
+  const share = config.share.trim().replace(/^\/+|\/+$/g, '')
+  const remotePath = config.remotePath.trim().replace(/^\/+|\/+$/g, '')
+  const port = config.port === 445 ? '' : `:${config.port}`
+  return `smb://${host}${port}/${[share, remotePath].filter(Boolean).join('/')}`
+}
+
 export function DeveloperTab({
   activeDevice,
   devices,
@@ -60,6 +83,39 @@ export function DeveloperTab({
   chooseMockMediaDir,
   openDirectory,
 }: DeveloperTabProps) {
+  const [nasDebugBusy, setNasDebugBusy] = useState(false)
+  const [nasLocalRoot, setNasLocalRoot] = useState<string | null>(null)
+  const [nasLocalRootLoading, setNasLocalRootLoading] = useState(false)
+  const nasDebugEnabled = isNasDebugConfig(settings?.nasSync)
+  const localBaseDir = settings?.localResourcesDir ?? settings?.baseDir ?? '加载中'
+  const nasBaseDir = nasTargetPath(settings?.nasSync)
+  const nasLocalRootLabel = !nasDebugEnabled
+    ? '未启用'
+    : nasLocalRootLoading ? '读取中' : nasLocalRoot ?? '未找到本地共享目录'
+
+  useEffect(() => {
+    let canceled = false
+    if (!nasDebugEnabled) {
+      setNasLocalRoot(null)
+      setNasLocalRootLoading(false)
+      return
+    }
+    setNasLocalRootLoading(true)
+    void window.luna.nasSync.getDebugLocalRoot()
+      .then((root) => {
+        if (!canceled) setNasLocalRoot(root)
+      })
+      .catch(() => {
+        if (!canceled) setNasLocalRoot(null)
+      })
+      .finally(() => {
+        if (!canceled) setNasLocalRootLoading(false)
+      })
+    return () => {
+      canceled = true
+    }
+  }, [nasDebugEnabled, settings?.nasSync?.port, settings?.nasSync?.server, settings?.nasSync?.share])
+
   async function toggleDeveloperMode(): Promise<void> {
     if (developerMode) {
       await stopMockServer()
@@ -70,6 +126,19 @@ export function DeveloperTab({
 
     const updated = await window.luna.saveSettings({ developerMode: true })
     setSettings(updated)
+  }
+
+  async function toggleNasDebugMode(enabled: boolean): Promise<void> {
+    if (!settings) return
+    setNasDebugBusy(true)
+    try {
+      const nasSync = await window.luna.nasSync.setDebugMode(enabled)
+      setSettings((current) => (current ? { ...current, nasSync } : current))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'NAS 调试配置保存失败')
+    } finally {
+      setNasDebugBusy(false)
+    }
   }
 
   function updateConfig(device: DeviceDefinition, patch: Partial<MockServerConfig>): void {
@@ -131,6 +200,47 @@ export function DeveloperTab({
               开发者工具
             </Button>
             <Switch checked={developerMode} onCheckedChange={() => void toggleDeveloperMode()} ariaLabel="开发者模式" />
+          </div>
+        </div>
+      </section>
+
+      <section className="ble-debug-panel developer-mode-panel nas-debug-panel">
+        <h2><Bug size={17} /> NAS 调试</h2>
+        <div className="developer-mode-row">
+          <div>
+            <div className="developer-mode-title">NAS 调试模式</div>
+            <em>开启后使用本地 SMB demo 配置</em>
+          </div>
+          <Switch
+            checked={nasDebugEnabled}
+            disabled={!settings || nasDebugBusy}
+            onCheckedChange={(enabled) => void toggleNasDebugMode(enabled)}
+            ariaLabel="NAS 调试模式"
+          />
+        </div>
+        <div className="nas-debug-paths">
+          <div>
+            <span>同步来源</span>
+            <strong title={localBaseDir}>{localBaseDir}</strong>
+          </div>
+          <div>
+            <span>NAS 地址</span>
+            <strong title={nasBaseDir}>{nasBaseDir}</strong>
+          </div>
+          <div>
+            <span>NAS 实际目录</span>
+            <div className="nas-debug-path-value">
+              <strong title={nasLocalRootLabel}>{nasLocalRootLabel}</strong>
+              <Button
+                variant="secondary"
+                size="mini"
+                disabled={!nasLocalRoot}
+                icon={<FolderOpen size={13} />}
+                onClick={() => nasLocalRoot && openDirectory(nasLocalRoot)}
+              >
+                打开
+              </Button>
+            </div>
           </div>
         </div>
       </section>

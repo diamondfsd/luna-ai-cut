@@ -121,6 +121,7 @@ export default defineConfig({
           },
           build: {
             rollupOptions: {
+              external: [],
               output: {
                 chunkFileNames: 'luna-[name].js',
               },

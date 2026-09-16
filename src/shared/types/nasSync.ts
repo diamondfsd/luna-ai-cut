@@ -1,0 +1,85 @@
+export type NasSyncConnectionState =
+  | 'disabled'
+  | 'not-configured'
+  | 'ready'
+  | 'syncing'
+  | 'offline'
+  | 'error'
+
+export type NasSyncItemState = 'queued' | 'syncing' | 'synced' | 'failed' | 'canceled'
+
+export interface NasSyncItem {
+  id: string
+  sourcePath: string
+  targetPath: string
+  fileName: string
+  bytes: number | null
+  sourceSize: number | null
+  sourceMtimeMs: number | null
+  sourceCreatedAtMs: number | null
+  state: NasSyncItemState
+  attempts: number
+  downloadedBytes: number
+  error?: string
+  queuedAt: string
+  updatedAt: string
+}
+
+export interface NasSyncFileStatus {
+  id: string
+  fileName: string
+  targetPath: string
+  bytes: number | null
+  downloadedBytes: number
+  sourceCreatedAtMs: number | null
+  state: NasSyncItemState
+  error?: string
+}
+
+export interface NasSyncStatus {
+  state: NasSyncConnectionState
+  totalFiles: number
+  completedFiles: number
+  pendingFiles: number
+  failedFiles: number
+  canceledFiles: number
+  totalBytes: number | null
+  completedBytes: number
+  currentFileName: string | null
+  currentDownloadedBytes: number
+  currentTotalBytes: number | null
+  speedBps: number
+  percent: number | null
+  remotePath: string | null
+  lastSyncedAt: string | null
+  lastError: string | null
+  updatedAt: string
+  failedItems: Array<{ id: string; fileName: string; error: string }>
+  taskItems: NasSyncFileStatus[]
+  taskItemsTruncated: boolean
+}
+
+export interface NasSyncEnqueueResult {
+  queued: number
+  skipped: number
+}
+
+export interface NasRemoteFile {
+  name: string
+  size: number
+}
+
+export type NasShareType = 'disk' | 'ipc' | 'print' | 'special'
+
+export interface NasShare {
+  name: string
+  type: NasShareType
+  comment: string
+}
+
+export interface NasSyncProbeResult {
+  ok: boolean
+  message?: string
+  shares?: NasShare[]
+  directories?: string[]
+}
