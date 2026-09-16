@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { AiEditorMediaSource } from '../shared/aiEditor'
+import { createAiEditorUserStoppedResult } from '../shared/types/aiEditor'
 import type { AiEditorAgentEvent, AiEditorMcpRequest, AiEditorMcpResponse, WorkspaceMediaAsset } from '../shared/types'
 import { logger } from '../lib/rendererLogger'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
@@ -277,6 +278,14 @@ export function AiEditorPage({ active }: AiEditorPageProps) {
 
   useEffect(() => {
     const postAgentEvent = (event: AiEditorAgentEvent): void => {
+      if (event.type === 'cancelled' && event.session.cancelRequested) {
+        const stopped = createAiEditorUserStoppedResult()
+        for (const pending of pendingMcpRequestsRef.current.values()) {
+          window.clearTimeout(pending.timer)
+          pending.resolve({ ok: true, result: stopped })
+        }
+        pendingMcpRequestsRef.current.clear()
+      }
       frameRef.current?.contentWindow?.postMessage({
         source: 'luna-host',
         type: 'agent-event',

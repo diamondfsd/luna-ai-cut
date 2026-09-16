@@ -28,11 +28,14 @@ const progress = manager.reportProgress(created.sessionId, 2, 'captioning', 60, 
 assert.equal(progress.ok, true)
 
 const cancelled = manager.cancelRequest(created.sessionId)
+assert.equal(cancelled.status, 'cancelled')
 assert.equal(cancelled.cancelRequested, true)
-assert.equal(manager.gateActiveTool()?.error?.code, 'CANCEL_REQUESTED')
+assert.equal(manager.gateActiveTool()?.error?.code, 'USER_STOPPED')
+assert.equal(manager.gateActiveTool()?.error?.retryable, false)
 
 const result = manager.reportResult(created.sessionId, 2, 'cancelled', '用户已停止')
-assert.equal(result.ok, true)
+assert.equal(result.ok, false)
+assert.equal(result.error?.code, 'USER_STOPPED')
 assert.equal(manager.snapshot().session?.status, 'cancelled')
 
 assert.deepEqual(events.map((event) => event.type), [
@@ -40,8 +43,7 @@ assert.deepEqual(events.map((event) => event.type), [
   'session-claimed',
   'request-updated',
   'progress',
-  'cancel-requested',
-  'result',
+  'cancelled',
 ])
 
 const externalManager = new AgentSessionManager()

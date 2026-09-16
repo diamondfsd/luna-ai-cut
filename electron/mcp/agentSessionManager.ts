@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { AI_EDITOR_USER_STOPPED_ERROR } from '../../src/shared/types/aiEditor.ts'
 import type {
   AiEditorAgentEvent,
   AiEditorAgentPhase,
@@ -258,34 +259,24 @@ export class AgentSessionManager {
     const current = this.requireSession(sessionId)
     if (TERMINAL_STATUSES.has(current.status)) return copySession(current)
 
-    if (current.status === 'queued') {
-      this.session = {
-        ...current,
-        status: 'cancelled',
-        phase: 'cancelled',
-        message: '任务已取消',
-        cancelRequested: true,
-        exportConfirmation: 'idle',
-        updatedAt: nowIso(),
-      }
-      this.emit({ type: 'cancelled', session: this.session, message: '任务已取消' })
-      this.resolveWaitersAsIdle()
-      return copySession(this.session)
-    }
-
     this.resolveExportConfirmation({
       approved: false,
-      code: 'CANCEL_REQUESTED',
-      message: '用户已取消任务，已停止待确认的导出',
+      code: AI_EDITOR_USER_STOPPED_ERROR.code,
+      message: AI_EDITOR_USER_STOPPED_ERROR.message,
     })
 
     this.session = {
       ...current,
+      status: 'cancelled',
+      phase: 'cancelled',
+      message: AI_EDITOR_USER_STOPPED_ERROR.message,
       cancelRequested: true,
-      message: '正在请求 Agent 停止',
+      exportConfirmation: 'idle',
       updatedAt: nowIso(),
     }
-    this.emit({ type: 'cancel-requested', session: this.session, message: '正在请求 Agent 停止' })
+    this.activeSessionId = null
+    this.emit({ type: 'cancelled', session: this.session, message: AI_EDITOR_USER_STOPPED_ERROR.message })
+    this.resolveWaitersAsIdle()
     return copySession(this.session)
   }
 
@@ -453,6 +444,13 @@ export class AgentSessionManager {
     projectName?: string,
   ): AgentToolResult {
     const current = this.requireSession(sessionId)
+    if (current.status === 'cancelled' && current.cancelRequested) {
+      return {
+        ok: false,
+        summary: AI_EDITOR_USER_STOPPED_ERROR.message,
+        error: { ...AI_EDITOR_USER_STOPPED_ERROR },
+      }
+    }
     const gate = status === 'cancelled' && current.cancelRequested && revision === current.revision
       ? { session: copySession(current), allowed: true }
       : this.gate(sessionId, revision)
@@ -492,7 +490,9 @@ export class AgentSessionManager {
       return {
         session: copySession(this.session),
         allowed: false,
-        error: { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束，不能继续修改' },
+        error: this.session.status === 'cancelled'
+          ? { ...AI_EDITOR_USER_STOPPED_ERROR }
+          : { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束，不能继续修改' },
       }
     }
     const session = this.session
@@ -500,7 +500,7 @@ export class AgentSessionManager {
       return {
         session: copySession(session),
         allowed: false,
-        error: { code: 'CANCEL_REQUESTED', message: '用户已请求停止任务，请停止继续编辑' },
+        error: { ...AI_EDITOR_USER_STOPPED_ERROR },
       }
     }
     if (session.exportConfirmation === 'pending') {
@@ -592,14 +592,16 @@ export class AgentSessionManager {
       return {
         session: copySession(current),
         allowed: false,
-        error: { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束或尚未被 Agent 领取，不能继续修改' },
+        error: current.status === 'cancelled'
+          ? { ...AI_EDITOR_USER_STOPPED_ERROR }
+          : { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束或尚未被 Agent 领取，不能继续修改' },
       }
     }
     if (current.cancelRequested) {
       return {
         session: copySession(current),
         allowed: false,
-        error: { code: 'CANCEL_REQUESTED', message: '用户已请求停止任务' },
+        error: { ...AI_EDITOR_USER_STOPPED_ERROR },
       }
     }
     if (current.exportConfirmation === 'pending') {

@@ -4,7 +4,14 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import type { AiEditorAgentPhase, AiEditorMcpContent, AiEditorMcpRequest, AiEditorMcpResponse } from '../../src/shared/types'
+import {
+  AI_EDITOR_USER_STOPPED_ERROR,
+  createAiEditorUserStoppedResult,
+  type AiEditorAgentPhase,
+  type AiEditorMcpContent,
+  type AiEditorMcpRequest,
+  type AiEditorMcpResponse,
+} from '../../src/shared/types/aiEditor.ts'
 import type {
   GeneratedMusic,
   MusicTemplateDocument,
@@ -429,6 +436,42 @@ function agentToolResponse(result: AgentToolResult | Record<string, unknown>): A
   return { ok: true, result }
 }
 
+function userStoppedResponse(): AiEditorMcpResponse {
+  return agentToolResponse(createAiEditorUserStoppedResult())
+}
+
+function requestRendererWithCancellation(
+  options: LunaMcpServerOptions,
+  request: AiEditorMcpRequest,
+): Promise<AiEditorMcpResponse> {
+  const manager = options.agentSession
+  if (!manager) return options.requestRenderer(request)
+
+  return new Promise<AiEditorMcpResponse>((resolve, reject) => {
+    let settled = false
+    const unsubscribe = manager.subscribe((event) => {
+      if (event.type !== 'cancelled' || !event.session.cancelRequested || settled) return
+      settled = true
+      unsubscribe()
+      resolve(userStoppedResponse())
+    })
+    void options.requestRenderer(request).then(
+      (response) => {
+        if (settled) return
+        settled = true
+        unsubscribe()
+        resolve(response)
+      },
+      (error: unknown) => {
+        if (settled) return
+        settled = true
+        unsubscribe()
+        reject(error)
+      },
+    )
+  })
+}
+
 function agentInvalidParams(message: string): AiEditorMcpResponse {
   return agentToolResponse({
     ok: false,
@@ -578,9 +621,22 @@ async function handleAgentTaskTool(
   callId: string,
 ): Promise<AiEditorMcpResponse | null> {
   if (!AGENT_TOOL_NAMES.has(name)) return null
+  const manager = options.agentSession
+  if (manager) {
+    const currentSession = manager.snapshot().session
+    if (
+      currentSession?.status === 'cancelled'
+      && currentSession.cancelRequested
+      && name !== 'start_edit_session'
+      && name !== 'wait_for_edit_request'
+      && name !== 'activate_luna_window'
+    ) {
+      return userStoppedResponse()
+    }
+  }
+
   const musicResult = await handleMusicTool(name, args, options, callId)
   if (musicResult) return musicResult
-  const manager = options.agentSession
   if (!manager) return agentToolResponse({
     ok: false,
     summary: '外部 Agent 任务服务不可用',
@@ -910,13 +966,16 @@ async function handleRpc(
           gate.session.revision,
         )
         if (!confirmation.approved) {
+          const confirmationError = confirmation.code === AI_EDITOR_USER_STOPPED_ERROR.code
+            ? { ...AI_EDITOR_USER_STOPPED_ERROR }
+            : {
+                code: confirmation.code ?? 'EXPORT_CONFIRMATION_REQUIRED',
+                message: confirmation.message ?? '用户未确认导出，未执行导出',
+              }
           const blocked = {
             ok: false,
             summary: confirmation.message ?? '用户未确认导出',
-            error: {
-              code: confirmation.code ?? 'EXPORT_CONFIRMATION_REQUIRED',
-              message: confirmation.message ?? '用户未确认导出，未执行导出',
-            },
+            error: confirmationError,
           }
           return {
             jsonrpc: '2.0',
@@ -933,7 +992,7 @@ async function handleRpc(
 
     options.agentSession?.toolStarted(callId, name, args)
     const startedAt = Date.now()
-    const bridgeResponse = await options.requestRenderer({
+    const bridgeResponse = await requestRendererWithCancellation(options, {
       callId,
       kind: 'callTool',
       name,

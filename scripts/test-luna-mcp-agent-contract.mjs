@@ -10,6 +10,10 @@ const homeDir = await mkdtemp(path.join(os.tmpdir(), 'luna-mcp-agent-contract-')
 const manager = new AgentSessionManager()
 const rendererCalls = []
 const agentEvents = []
+let releaseSlowRenderer
+const slowRenderer = new Promise((resolve) => {
+  releaseSlowRenderer = resolve
+})
 manager.subscribe((event) => agentEvents.push(event))
 let activations = 0
 const server = createLunaMcpServer({
@@ -37,6 +41,7 @@ const server = createLunaMcpServer({
     if (request.name === 'export_video') {
       return { ok: true, result: { ok: true, summary: '视频已导出', data: { path: '/tmp/luna-export.mp4' } } }
     }
+    if (request.name === 'add_clip') return await slowRenderer
     return { ok: true, result: { ok: true, summary: '测试写入完成' } }
   },
 })
@@ -216,12 +221,38 @@ try {
   assert.equal(completed.result.structuredContent.ok, true)
   assert.equal(manager.snapshot().session.result.exportPath, '/tmp/luna-export.mp4')
 
+  const restarted = await rpc(endpoint, 9.5, 'tools/call', {
+    name: 'start_edit_session',
+    arguments: {
+      request: '再剪一个 10 秒片段',
+      agentId: 'contract-test',
+      agentType: 'HTTP contract test agent',
+      agentModel: 'test-model',
+    },
+  })
+  const restartedSession = restarted.result.structuredContent.data.session
+  const inFlight = httpCall('add_clip', { mediaId: 'local-media:a' })
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  assert.equal(manager.snapshot().session.status, 'running')
+  manager.cancelRequest(restartedSession.sessionId)
+  const stopped = await Promise.race([
+    inFlight,
+    new Promise((resolve) => setTimeout(() => resolve(null), 1_000)),
+  ])
+  assert.ok(stopped)
+  assert.equal(stopped.ok, false)
+  assert.equal(stopped.error.code, 'USER_STOPPED')
+  assert.equal(stopped.error.retryable, false)
+  assert.equal(stopped.error.suggestedAction, '不要重试当前任务')
+  releaseSlowRenderer({ ok: true, result: { ok: true, summary: '不应继续执行' } })
+
   const lateEdit = await rpc(endpoint, 10, 'tools/call', {
     name: 'create_project',
     arguments: {},
   })
   assert.equal(lateEdit.result.isError, true)
-  assert.equal(lateEdit.result.structuredContent.error.code, 'SESSION_NOT_ACTIVE')
+  assert.equal(lateEdit.result.structuredContent.error.code, 'USER_STOPPED')
+  assert.equal(lateEdit.result.structuredContent.error.retryable, false)
 
   console.log('Luna MCP agent contract tests passed')
 } finally {

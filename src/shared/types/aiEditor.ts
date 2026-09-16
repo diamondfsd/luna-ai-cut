@@ -191,6 +191,25 @@ export interface AiEditorMcpResponse {
   content?: AiEditorMcpContent[]
 }
 
+export const AI_EDITOR_USER_STOPPED_ERROR = {
+  code: 'USER_STOPPED',
+  message: '用户已停止',
+  retryable: false,
+  suggestedAction: '不要重试当前任务',
+} as const
+
+export function createAiEditorUserStoppedResult(): {
+  ok: false
+  summary: string
+  error: typeof AI_EDITOR_USER_STOPPED_ERROR
+} {
+  return {
+    ok: false,
+    summary: AI_EDITOR_USER_STOPPED_ERROR.message,
+    error: { ...AI_EDITOR_USER_STOPPED_ERROR },
+  }
+}
+
 export type AiEditorAgentSessionStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export type AiEditorAgentExportConfirmation = 'idle' | 'pending'
