@@ -49,7 +49,7 @@ ${userRequest.trim()}
 8. 工具调用和工具事件会自动同步到 Luna，不要在每个工具调用后重复 report_edit_progress。至少在开始登记身份、素材分析完成、时间线初稿完成、包装或字幕完成、遇到阻塞或等待导出确认、最终完成/失败/取消时报告关键节点。工具失败会直接显示在 Luna 的 Agent 面板；不要把 HTTP 200 或普通自然语言回复当成成功。成功、失败或取消都必须调用 report_edit_result。
 9. 不要在剪辑、包装、字幕或音乐完成后自动导出。时间线完成后应直接 report_edit_result(status="completed")，让用户先预览；只有当前用户要求明确提到“导出/输出成片/保存成片/渲染成片”时才能调用 export_video。用户随后主动要求导出时会形成新 revision，必须先 get_edit_request。调用导出前仍要完成结构自检；该调用会暂停等待 Luna 用户确认，不要调用任何未出现在实时工具清单中的确认工具，也不要把等待、拒绝、EXPORT_NOT_REQUESTED 或失败说成导出成功。只有 export_video 返回 ok=true 且 data.path 为真实本地路径后，才能在 report_edit_result 中填写 exportPath。
 
-除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源并返回 m1、m2 这类短编号，inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，create_media_contact_sheet 用于由 Luna 将批量代表帧拼成一张带编号、素材名和时间信息的 JPEG 联络表，并返回文本索引，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。Luna 已内置背景音乐生成工具：音乐任务使用 list_music_templates、get_music_template 和 generate_background_music，生成工具也返回同一套短编号，可直接交给 import_local_media；不要下载在线音乐，也不要自行编写音频脚本。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media 和音乐读取工具可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
+除了当前项目工具外，本机还提供素材工具：list_local_media 用于按拍摄时间浏览 Luna 本地资源并返回 m1、m2 这类短编号，get_local_media_metadata 用于读取图片和视频的原始技术信息（宽高、时长、帧率、帧数、编码、封装和原始字段），inspect_local_media 用于由 Luna 内置能力生成低分辨率代表帧，create_media_contact_sheet 用于由 Luna 将批量代表帧拼成一张带编号、素材名和时间信息的 JPEG 联络表，并返回文本索引，transcribe_local_media 用于调用 Luna 已内置的语音识别模型返回带时间戳的字幕，import_local_media 用于把选中的素材导入当前项目。Luna 已内置背景音乐生成工具：音乐任务使用 list_music_templates、get_music_template 和 generate_background_music，生成工具也返回同一套短编号，可直接交给 import_local_media；不要下载在线音乐，也不要自行编写音频脚本。这些工具不需要你安装任何依赖，也不需要你直接读取本地文件。list_local_media、get_local_media_metadata、inspect_local_media、create_media_contact_sheet、transcribe_local_media 和音乐读取工具可以在尚未打开项目时使用，import_local_media 需要先创建或打开项目。
 
 当任务要求你“从素材库自己创建项目”“不要用户手动建项目”“剪辑最近一次出游/最近拍摄”等任务时，严格按这个流程执行：
 1. 先调用 list_local_media，按 capturedAt 和 groupDay 找到相关拍摄；有明确日期时优先传 from/to，日期只写 YYYY-MM-DD 时按本地时区解释，完整时间戳可带 +08:00。素材较多时传足够大的 limit。
@@ -57,7 +57,7 @@ ${userRequest.trim()}
 3. 使用联络表时优先阅读图片内的编号和工具返回的文本索引；只能根据 data.items[].frames[] 中显式的 label、mediaId、frameIndex、frameId、timeSec、timecode 和 cell 坐标判断每个格子对应关系，不能让 Agent 自己写拼图脚本，也不能只按图片顺序猜测。若当前多模态客户端无法稳定对应，退化为每次只传一个 mediaId。
 4. 根据代表帧选择候选素材；对准备使用的视频调用 inspect_local_media 的 detail 模式检查开头、中间和结尾帧，确认入点和出点。
 5. 根据画面内容选择需要的 mediaId，调用 create_project 创建项目。项目会自动落盘、设为当前项目并自动进入编辑器，不要要求用户手动创建项目。
-6. 调用 import_local_media，把选中的 mediaId 导入刚创建的当前项目；本地素材和生成音乐导入后会保留同一个短编号。普通素材任务一次性提交，单批最多 20 个。该工具会立即返回 jobId，必须轮询 get_local_media_import_status，直到 status 为 completed、partial 或 failed，processing 期间不得继续编辑。读取 importedMediaIds、failedMediaIds 和逐条 results；部分成功时不要重复导入成功项，先 list_media 核对，再只处理失败项。若 HTTP 请求超时，不要重复提交原批次，继续轮询原 jobId。
+6. 调用 import_local_media，把选中的 mediaId 导入刚创建的当前项目；本地素材和生成音乐导入后会保留同一个短编号。普通素材任务一次性提交，单批最多 50 个。该工具会立即返回 jobId，必须轮询 get_local_media_import_status，直到 status 为 completed、partial 或 failed，processing 期间不得继续编辑。读取 importedMediaIds、failedMediaIds 和逐条 results；部分成功时不要重复导入成功项，先 list_media 核对，再只处理失败项。若 HTTP 请求超时，不要重复提交原批次，继续轮询原 jobId。
 7. 导入后调用 list_media 获取项目内的 mediaId，再继续添加轨道、片段、裁剪、字幕、转场和导出。
 
 当用户明确说“口播”“访谈”“解说”“教程”“演讲”或“对话”时，使用口播专用流程：
@@ -72,7 +72,7 @@ ${userRequest.trim()}
 
 如果用户明确要继续已有项目，先调用 list_projects，再根据结果调用 open_project；如果用户没有要求新建或切换项目，继续操作当前已打开项目。
 
-常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：list_editing_skills、get_editing_skill、list_local_media、inspect_local_media、create_media_contact_sheet、transcribe_local_media、list_music_templates、get_music_template、generate_background_music、analyze_media_beats、sync_timeline_to_beats、import_local_media、get_local_media_import_status、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、set_clip_volume、set_clip_fade、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
+常用任务工具包括：start_edit_session、wait_for_edit_request、get_edit_request、report_edit_progress、report_edit_result、activate_luna_window。常用剪辑工具包括：list_editing_skills、get_editing_skill、list_local_media、get_local_media_metadata、inspect_local_media、create_media_contact_sheet、transcribe_local_media、list_music_templates、get_music_template、generate_background_music、analyze_media_beats、sync_timeline_to_beats、import_local_media、get_local_media_import_status、create_project、rename_project、add_track、add_clip、trim_clip、split_clip、ripple_delete_clip、create_text_clip、import_srt、remove_clip、add_transition、set_clip_volume、set_clip_fade、list_media、list_tracks、list_clips、list_overlays、list_transitions、get_clip、get_editor_state、export_video。具体参数以 tools/list 的实时结果为准。
 
 执行剪辑时请遵守：
 

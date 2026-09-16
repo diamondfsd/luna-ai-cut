@@ -44,6 +44,37 @@ export interface AiEditorLocalMediaQuery {
   kind?: 'image' | 'video' | 'audio'
 }
 
+export interface AiEditorLocalMediaMetadata {
+  mediaId: string
+  name: string
+  kind: 'image' | 'video' | 'audio'
+  bytes: number
+  capturedAt: string | null
+  modifiedAt: string
+  groupDay: string
+  sourceDeviceName?: string
+  sourceDeviceId?: string
+  extension: string
+  mimeType: string
+  width: number | null
+  height: number | null
+  durationSec: number | null
+  frameRate: number | null
+  frameCount: number | null
+  videoCodec: string | null
+  audioCodecs: string[]
+  formatName: string | null
+  raw: {
+    ffprobe: {
+      streams: unknown[]
+      format: Record<string, unknown> | null
+      chapters: unknown[]
+    } | null
+    exif: unknown | null
+  }
+  error?: string
+}
+
 export type AiEditorLocalMediaInspectionMode = 'overview' | 'detail'
 
 export interface AiEditorLocalMediaInspectionOptions {
@@ -316,6 +347,7 @@ export interface AiEditorFileApi {
   agent: AiEditorAgentApi
   listLocalMedia(query?: AiEditorLocalMediaQuery): Promise<AiEditorLocalMedia[]>
   getLocalMedia(mediaId: string): Promise<AiEditorLocalMedia>
+  getLocalMediaMetadata(mediaIds: string[]): Promise<AiEditorLocalMediaMetadata[]>
   readLocalMediaBytes(mediaId: string): Promise<ArrayBuffer>
   inspectLocalMedia(mediaIds: string[], options?: AiEditorLocalMediaInspectionOptions): Promise<AiEditorLocalMediaInspectionResult>
   createMediaContactSheet(mediaIds: string[], options?: AiEditorLocalMediaContactSheetOptions): Promise<AiEditorLocalMediaContactSheetResult>
