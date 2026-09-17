@@ -6,6 +6,7 @@ import { AppRoutes } from './routes/AppRoutes'
 import { ToastProvider } from './ui'
 import { preloadWatermarkPaths } from './shared/watermarkAssets'
 import { preloadBorderLogoPaths } from './workspace/border/logoAssets'
+import { HotUpdateStartupDialog } from './components/HotUpdateStartupDialog'
 
 function App() {
   const navigate = useNavigate()
@@ -23,6 +24,7 @@ function App() {
     <AppProvider>
       <DeviceConnectionProvider>
         <ToastProvider>
+          <HotUpdateStartupDialog />
           <AppRoutes />
         </ToastProvider>
       </DeviceConnectionProvider>
