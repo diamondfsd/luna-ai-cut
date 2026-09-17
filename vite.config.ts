@@ -108,6 +108,7 @@ export default defineConfig({
     electron({
       main: {
         entry: 'electron/main.ts',
+        onstart: process.env.LUNA_DEV_NO_AUTO_START === '1' ? () => undefined : undefined,
         vite: {
           base: './',
           worker: {

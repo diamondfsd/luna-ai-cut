@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import type {
   AiEditorFileDialogOptions,
@@ -47,10 +47,9 @@ export function getAiEditorWindow(): BrowserWindow | null {
 }
 
 function aiEditorUrl(projectId: string): string {
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL
   const route = `#/luna-editor?projectId=${encodeURIComponent(projectId)}`
-  if (devServerUrl) return `${devServerUrl}/ai-editor/index.html${route}`
-  return `file://${path.join(process.env.APP_ROOT ?? app.getAppPath(), 'dist', 'ai-editor', 'index.html')}${route}`
+  const editorPath = path.join(process.env.APP_ROOT ?? app.getAppPath(), 'dist', 'ai-editor', 'index.html')
+  return `${pathToFileURL(editorPath).toString()}${route}`
 }
 
 function logAiEditorInfo(message: string, meta?: unknown): void {
