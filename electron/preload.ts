@@ -71,6 +71,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   isPackaged: ipcRenderer.sendSync('app:is-packaged') === true,
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   aiEditor: {
+    openWindow: (assets = []) => ipcRenderer.invoke('ai-editor:open-window', assets),
     project: {
       list: () => ipcRenderer.invoke('ai-editor:list-projects'),
       create: (name, assets) => ipcRenderer.invoke('ai-editor:create-project', name, assets),

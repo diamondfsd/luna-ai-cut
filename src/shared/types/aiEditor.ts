@@ -342,6 +342,7 @@ export interface AiEditorHttpConnection {
 }
 
 export interface AiEditorFileApi {
+  openWindow(assets?: WorkspaceMediaAsset[]): Promise<void>
   project: AiEditorProjectApi
   mcp: AiEditorMcpApi
   agent: AiEditorAgentApi

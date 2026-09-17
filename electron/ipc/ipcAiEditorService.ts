@@ -11,6 +11,7 @@ import type {
   AiEditorLocalMediaInspectionOptions,
   AiEditorLocalMediaQuery,
 } from '../../src/shared/types'
+import type { WorkspaceMediaAsset } from '../../src/shared/types/workspace'
 import { revealFile } from '../storage/systemFileService'
 import { getSettings } from '../storage/fileService'
 import {
@@ -38,6 +39,14 @@ interface OpenWriteHandle {
 }
 
 const writeHandles = new Map<string, OpenWriteHandle>()
+let aiEditorWindow: BrowserWindow | null = null
+
+function aiEditorUrl(projectId: string): string {
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL
+  const route = `#/luna-editor?projectId=${encodeURIComponent(projectId)}`
+  if (devServerUrl) return `${devServerUrl}/ai-editor/index.html${route}`
+  return `file://${path.join(process.env.APP_ROOT ?? app.getAppPath(), 'dist', 'ai-editor', 'index.html')}${route}`
+}
 
 function logAiEditorInfo(message: string, meta?: unknown): void {
   logMainInfo(message, meta)
@@ -145,6 +154,36 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
 }
 
 export function register(): void {
+  ipcMain.handle('ai-editor:open-window', async (event, assets: WorkspaceMediaAsset[] = []) => {
+    if (aiEditorWindow && !aiEditorWindow.isDestroyed()) {
+      aiEditorWindow.show()
+      aiEditorWindow.focus()
+      return
+    }
+
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const settings = await getSettings()
+    const project = await createAiEditorProject(settings.baseDir, 'AI 剪辑项目', Array.isArray(assets) ? assets : [])
+    aiEditorWindow = new BrowserWindow({
+      title: 'AI 剪辑',
+      width: 1440,
+      height: 900,
+      minWidth: 1100,
+      minHeight: 700,
+      parent: owner ?? undefined,
+      show: false,
+      webPreferences: {
+        preload: path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'preload.mjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: false,
+      },
+    })
+    aiEditorWindow.once('ready-to-show', () => aiEditorWindow?.show())
+    aiEditorWindow.once('closed', () => { aiEditorWindow = null })
+    await aiEditorWindow.loadURL(aiEditorUrl(project.id))
+  })
+
   ipcMain.handle('ai-editor:list-local-media', async (_event, query: AiEditorLocalMediaQuery = {}) => {
     return listAiEditorLocalMedia(query)
   })

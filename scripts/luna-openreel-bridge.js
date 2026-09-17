@@ -8,7 +8,8 @@
 
   const parentApi = () => {
     const parentWindow = window.parent
-    const api = parentWindow !== window ? parentWindow.luna?.aiEditor : undefined
+    const hostWindow = parentWindow !== window ? parentWindow : window
+    const api = hostWindow.luna?.aiEditor
     if (!api) throw new Error('Luna 文件服务不可用')
     return api
   }
@@ -138,7 +139,8 @@
 
   const parentLunaApi = () => {
     const parentWindow = window.parent
-    const api = parentWindow !== window ? parentWindow.luna : undefined
+    const hostWindow = parentWindow !== window ? parentWindow : window
+    const api = hostWindow.luna
     if (!api) throw new Error('Luna 媒体服务不可用')
     return api
   }

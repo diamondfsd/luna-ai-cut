@@ -209,8 +209,7 @@ async function sendInitialMediaSources(
 async function importMediaIntoFrame(frame: HTMLIFrameElement, sources: AiEditorFrameAsset[]): Promise<void> {
   const input = await waitForMediaInput(frame)
   const transfer = new DataTransfer()
-  const importedSources: AiEditorFrameAsset[] = []
-  for (const source of sources) {
+  const loadedSources = await Promise.all(sources.map(async (source) => {
     let blob: Blob | null = null
     if (!/^file:\/\//i.test(source.path)) {
       try {
@@ -225,13 +224,17 @@ async function importMediaIntoFrame(frame: HTMLIFrameElement, sources: AiEditorF
       if (!response.ok) throw new Error(`无法读取 ${source.name}`)
       blob = await response.blob()
     }
-    importedSources.push({ ...source, size: blob.size })
     logger.info('[AI 剪辑] 初始素材读取完成', { name: source.name, bytes: blob.size })
-    transfer.items.add(new File([blob], source.name, {
+    return {
+      source: { ...source, size: blob.size },
+      file: new File([blob], source.name, {
       type: blob.type || fileTypeForName(source.name, source.kind),
       lastModified: Date.now(),
-    }))
-  }
+      }),
+    }
+  }))
+  const importedSources = loadedSources.map(({ source }) => source)
+  for (const { file } of loadedSources) transfer.items.add(file)
   await sendInitialMediaSources(frame, importedSources)
   input.files = transfer.files
   input.dispatchEvent(new Event('change', { bubbles: true }))
