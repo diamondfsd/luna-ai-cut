@@ -1,0 +1,66 @@
+{
+  "name": "openreel",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Professional video, audio, and photo editing in your browser",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @openreel/web dev",
+    "build:wasm": "pnpm --filter @openreel/core build:wasm",
+    "build": "pnpm build:wasm && pnpm --filter @openreel/web build",
+    "preview": "pnpm --filter @openreel/web preview",
+    "deploy": "pnpm build && pnpm --filter @openreel/web deploy",
+    "deploy:preview": "pnpm build && pnpm --filter @openreel/web deploy:preview",
+    "test": "pnpm -r test:run",
+    "test:watch": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "check:mobile-offline": "node scripts/check-mobile-offline.mjs",
+    "check:retired-cloud-gpu": "node scripts/check-retired-cloud-gpu.mjs",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean",
+    "claude:help": "cat scripts/claude-review.md",
+    "issues": "gh issue list --label needs-claude-review",
+    "prs": "gh pr list --label needs-claude-review"
+  },
+  "keywords": [
+    "video-editor",
+    "audio-editor",
+    "browser-based",
+    "webcodecs",
+    "webgpu",
+    "react",
+    "typescript",
+    "open-source",
+    "video-editing",
+    "timeline",
+    "color-grading",
+    "export"
+  ],
+  "author": "Augustus Otu and Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Augani/openreel-video.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Augani/openreel-video/issues"
+  },
+  "homepage": "https://openreel.video",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "dependencies": {
+    "@ffmpeg/core": "0.12.6",
+    "@ffmpeg/core-mt": "0.12.6",
+    "mediabunny": "^1.25.3"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@astryxdesign/cli": "^0.1.1"
+  }
+}

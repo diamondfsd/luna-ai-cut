@@ -1,0 +1,331 @@
+import type { Transform, Keyframe, ClipMetadata } from "../types/timeline";
+import type { Point2D } from "../video/transform-animator";
+
+// Re-export Point2D for convenience
+export type { Point2D } from "../video/transform-animator";
+
+export interface GraphicClip {
+  readonly id: string;
+  readonly trackId: string;
+  readonly startTime: number;
+  readonly duration: number;
+  readonly type: GraphicType;
+  readonly transform: Transform;
+  readonly keyframes: Keyframe[];
+  /** Ordered visual effects applied after the graphic is rasterized. */
+  readonly effects?: import("../types/timeline").Effect[];
+  readonly blendMode?: import("../video/types").BlendMode;
+  readonly blendOpacity?: number;
+  readonly emphasisAnimation?: EmphasisAnimation;
+  readonly metadata?: ClipMetadata;
+}
+
+export type GraphicType = "shape" | "svg" | "sticker" | "emoji";
+
+export interface ShapeClip extends GraphicClip {
+  readonly type: "shape";
+  readonly shapeType: ShapeType;
+  readonly style: ShapeStyle;
+  readonly points?: Point2D[]; // For polygon/path shapes
+}
+
+export interface SVGClip extends GraphicClip {
+  readonly type: "svg";
+  readonly svgContent: string;
+  readonly viewBox: ViewBox;
+  readonly preserveAspectRatio: PreserveAspectRatio;
+  readonly colorStyle?: SVGColorStyle;
+  readonly entryAnimation?: GraphicAnimation;
+  readonly exitAnimation?: GraphicAnimation;
+  readonly emphasisAnimation?: EmphasisAnimation;
+}
+
+export interface SVGColorStyle {
+  readonly tintColor?: string;
+  readonly tintOpacity?: number;
+  readonly colorMode: "none" | "tint" | "replace";
+}
+
+export interface GraphicAnimation {
+  readonly type: GraphicAnimationType;
+  readonly duration: number;
+  readonly easing: string;
+}
+
+export type GraphicAnimationType =
+  | "none"
+  | "fade"
+  | "slide-left"
+  | "slide-right"
+  | "slide-up"
+  | "slide-down"
+  | "scale"
+  | "rotate"
+  | "bounce"
+  | "pop"
+  | "draw"
+  | "wipe-left"
+  | "wipe-right"
+  | "wipe-up"
+  | "wipe-down"
+  | "reveal-center"
+  | "reveal-edges"
+  | "elastic"
+  | "flip-horizontal"
+  | "flip-vertical";
+
+export type EmphasisAnimationType =
+  | "none"
+  | "pulse"
+  | "shake"
+  | "bounce"
+  | "float"
+  | "spin"
+  | "flash"
+  | "heartbeat"
+  | "swing"
+  | "wobble"
+  | "jello"
+  | "rubber-band"
+  | "tada"
+  | "vibrate"
+  | "flicker"
+  | "glow"
+  | "breathe"
+  | "wave"
+  | "tilt"
+  | "zoom-pulse"
+  | "focus-zoom"
+  | "pan-left"
+  | "pan-right"
+  | "pan-up"
+  | "pan-down"
+  | "ken-burns";
+
+export interface EmphasisAnimation {
+  readonly type: EmphasisAnimationType;
+  readonly speed: number;
+  readonly intensity: number;
+  readonly loop: boolean;
+  readonly focusPoint?: { x: number; y: number };
+  readonly zoomScale?: number;
+  readonly holdDuration?: number;
+  readonly startTime?: number;
+  readonly animationDuration?: number;
+}
+
+export const DEFAULT_EMPHASIS_ANIMATION: EmphasisAnimation = {
+  type: "none",
+  speed: 1,
+  intensity: 1,
+  loop: true,
+};
+
+export const DEFAULT_SVG_COLOR_STYLE: SVGColorStyle = {
+  colorMode: "none",
+  tintColor: "#ffffff",
+  tintOpacity: 1,
+};
+
+export const DEFAULT_GRAPHIC_ANIMATION: GraphicAnimation = {
+  type: "none",
+  duration: 0.5,
+  easing: "ease-out",
+};
+
+export interface StickerClip extends GraphicClip {
+  readonly type: "sticker" | "emoji";
+  readonly imageUrl: string;
+  readonly category?: string;
+  readonly name?: string;
+}
+
+export const SHAPE_TYPES = [
+  "rectangle",
+  "circle",
+  "ellipse",
+  "triangle",
+  "arrow",
+  "line",
+  "polygon",
+  "path",
+  "star",
+  "mesh-cube",
+  "mesh-sphere",
+  "mesh-torus",
+  "mesh-cone",
+  "mesh-cylinder",
+  "mesh-icosahedron",
+] as const;
+
+export type ShapeType = (typeof SHAPE_TYPES)[number];
+
+export interface ShapeStyle {
+  readonly fill: FillStyle;
+  readonly stroke: StrokeStyle;
+  readonly shadow?: ShadowStyle;
+  /** Layered/multiple shadows (drop + inset). Rendered in array order under the
+   *  shape; when present these are used in addition to `shadow`. */
+  readonly shadows?: readonly ShadowStyle[];
+  readonly cornerRadius?: number; // For rectangles (uniform)
+  /** Per-corner radii; overrides `cornerRadius` when present (pill tabs, top-rounded cards). */
+  readonly cornerRadii?: CornerRadii;
+  readonly points?: number; // For stars (number of points)
+  readonly innerRadius?: number; // For stars (inner radius ratio 0-1)
+  /** Material parameters used when ShapeType is one of the mesh-*
+   *  3D primitives. Ignored for 2D shapes. */
+  readonly material3d?: Material3DStyle;
+}
+
+export interface CornerRadii {
+  readonly topLeft: number;
+  readonly topRight: number;
+  readonly bottomRight: number;
+  readonly bottomLeft: number;
+}
+
+export interface Material3DStyle {
+  readonly kind: "basic" | "physical";
+  readonly metalness?: number;
+  readonly roughness?: number;
+}
+
+export type MotionShaderParamValue = number | string;
+
+export interface MotionShaderFill {
+  readonly shaderId: string;
+  readonly params: Record<string, MotionShaderParamValue>;
+}
+
+export interface FillStyle {
+  readonly type: "solid" | "gradient" | "none" | "shader";
+  readonly color?: string;
+  readonly gradient?: GradientStyle;
+  readonly shader?: MotionShaderFill;
+  readonly opacity: number;
+}
+
+export interface GradientStyle {
+  readonly type: "linear" | "radial" | "conic";
+  readonly angle?: number; // For linear + conic gradients (degrees)
+  /** Center for radial/conic gradients, normalized 0-1 within the shape bounds (default 0.5,0.5). */
+  readonly center?: { readonly x: number; readonly y: number };
+  readonly stops: GradientStop[];
+}
+
+export interface GradientStop {
+  readonly offset: number; // 0-1
+  readonly color: string;
+  /** Optional per-stop opacity 0-1, multiplied into the stop color's alpha. */
+  readonly opacity?: number;
+}
+
+export interface StrokeStyle {
+  readonly color: string;
+  readonly width: number;
+  readonly opacity: number;
+  readonly dashArray?: number[];
+  readonly dashOffset?: number;
+  readonly lineCap?: "butt" | "round" | "square";
+  readonly lineJoin?: "miter" | "round" | "bevel";
+  /** Gradient stroke; overrides the solid `color` when present. */
+  readonly gradient?: GradientStyle;
+}
+
+export interface ShadowStyle {
+  readonly color: string;
+  readonly blur: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  /** Grows (>0) or shrinks (<0) the shadow shape before blurring (CSS box-shadow spread). */
+  readonly spread?: number;
+  /** Inset shadow (rendered inside the shape) instead of an outer drop shadow. */
+  readonly inset?: boolean;
+}
+
+export interface ViewBox {
+  readonly minX: number;
+  readonly minY: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export type PreserveAspectRatio =
+  | "none"
+  | "xMinYMin"
+  | "xMidYMin"
+  | "xMaxYMin"
+  | "xMinYMid"
+  | "xMidYMid"
+  | "xMaxYMid"
+  | "xMinYMax"
+  | "xMidYMax"
+  | "xMaxYMax";
+
+export interface ArrowProperties {
+  readonly headWidth: number;
+  readonly headLength: number;
+  readonly tailWidth: number;
+  readonly curved?: boolean;
+  readonly doubleHeaded?: boolean;
+}
+
+export interface StickerItem {
+  readonly id: string;
+  readonly name: string;
+  readonly category: string;
+  readonly imageUrl: string;
+  readonly tags?: string[];
+}
+
+export interface EmojiItem {
+  readonly id: string;
+  readonly emoji: string;
+  readonly name: string;
+  readonly category: string;
+}
+
+export const DEFAULT_SHAPE_STYLE: ShapeStyle = {
+  fill: {
+    type: "solid",
+    color: "#3b82f6",
+    opacity: 1,
+  },
+  stroke: {
+    color: "#1d4ed8",
+    width: 2,
+    opacity: 1,
+  },
+};
+
+export const DEFAULT_GRAPHIC_TRANSFORM: Transform = {
+  position: { x: 0.5, y: 0.5 }, // Normalized 0-1
+  scale: { x: 1, y: 1 },
+  rotation: 0,
+  anchor: { x: 0.5, y: 0.5 },
+  opacity: 1,
+};
+
+export interface GraphicRenderResult {
+  readonly canvas: HTMLCanvasElement | OffscreenCanvas;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface CreateShapeParams {
+  readonly id?: string;
+  readonly shapeType: ShapeType;
+  readonly width: number;
+  readonly height: number;
+  readonly style?: Partial<ShapeStyle>;
+  readonly arrowProps?: ArrowProperties;
+  readonly points?: Point2D[];
+  readonly metadata?: ClipMetadata;
+}
+
+export interface SVGImportResult {
+  readonly svgContent: string;
+  readonly viewBox: ViewBox;
+  readonly width: number;
+  readonly height: number;
+}

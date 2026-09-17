@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@openreel/core": ["./packages/core/src/index.ts"],
+      "@openreel/core/*": ["./packages/core/src/*"],
+      "@openreel/agent": ["./packages/agent/src/index.ts"],
+      "@openreel/agent/*": ["./packages/agent/src/*"],
+      "@openreel/creation-bindings": ["./packages/creation-bindings/src/index.ts"],
+      "@openreel/creation-bindings/*": ["./packages/creation-bindings/src/*"],
+      "@openreel/creation-agent": ["./packages/creation-agent/src/index.ts"],
+      "@openreel/creation-agent/*": ["./packages/creation-agent/src/*"],
+      "@openreel/creation-schema": ["./packages/creation-schema/src/index.ts"],
+      "@openreel/creation-schema/*": ["./packages/creation-schema/src/*"],
+      "@openreel/image-core": ["./packages/image-core/src/index.ts"],
+      "@openreel/image-core/*": ["./packages/image-core/src/*"],
+      "@openreel/ui": ["./packages/ui/src/index.ts"],
+      "@openreel/ui/*": ["./packages/ui/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "build"]
+}

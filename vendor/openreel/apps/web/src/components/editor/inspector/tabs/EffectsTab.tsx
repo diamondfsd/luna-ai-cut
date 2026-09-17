@@ -1,0 +1,431 @@
+import React from "react";
+import { Sparkles, Trash2, Zap } from "@/icons/lucide-compat";
+import { ToolcraftButton as Button } from "@openreel/ui";
+import { ToolcraftCard as Card } from "@openreel/ui";
+import { ToolcraftIconButton as IconButton } from "@openreel/ui";
+import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftTextInputControl } from "@openreel/ui";
+import type {
+  AppliedEditingTemplate,
+  Clip,
+  EditingTemplate,
+  EditingTemplatePrimitive,
+} from "@openreel/core";
+import {
+  VideoEffectsSection,
+  GreenScreenSection,
+  PiPSection,
+  MaskSection,
+  MotionTrackingSection,
+  NestedSequenceSection,
+  AdjustmentLayerSection,
+  BackgroundRemovalSection,
+  BehindSubjectSection,
+} from "../";
+import { InspectorSection } from "../shell/InspectorSection";
+import { MockToggle } from "../shell/InspectorControls";
+import { PropertySlider } from "../shell/PropertySlider";
+import {
+  EditingTemplateControls,
+  mergeEditingTemplateControlValues,
+} from "../../panels/EditingTemplateControls";
+import { toast } from "../../../../stores/notification-store";
+import { ParticleEffectsSectionWrapper } from "./ParticleEffectsSectionWrapper";
+
+interface EffectsTabClip {
+  duration: number;
+  startTime: number;
+}
+
+export interface EffectsTabProps {
+  clipId: string;
+  clipType: string | null;
+  selectedClip: EffectsTabClip | null;
+  selectedTimelineClip: Clip | null;
+  showVideoControls: boolean;
+  showVideoEffects: boolean;
+  showTextSection: boolean;
+  appliedEditingTemplates: AppliedEditingTemplate[];
+  getEditingTemplate: (templateId: string) => EditingTemplate | undefined;
+  removeEditingTemplateApplication: (
+    clipId: string,
+    applicationId: string,
+  ) => boolean;
+  expandedRecipeApplicationId: string | null;
+  setExpandedRecipeApplicationId: React.Dispatch<
+    React.SetStateAction<string | null>
+  >;
+  recipeControlValues: Record<
+    string,
+    Record<string, EditingTemplatePrimitive>
+  >;
+  setRecipeControlValues: React.Dispatch<
+    React.SetStateAction<
+      Record<string, Record<string, EditingTemplatePrimitive>>
+    >
+  >;
+  handleRecipeControlChange: (
+    applicationId: string,
+    controlId: string,
+    value: EditingTemplatePrimitive,
+  ) => void;
+  handleToggleRecipeControls: (
+    applicationId: string,
+    templateId: string,
+    controlValues?: Record<string, unknown>,
+  ) => void;
+  handleResetRecipeControls: (
+    applicationId: string,
+    templateId: string,
+    controlValues?: Record<string, unknown>,
+  ) => void;
+  handleUpdateRecipeControls: (
+    applicationId: string,
+    templateId: string,
+    controlValues?: Record<string, unknown>,
+  ) => void;
+  chromaKeyEnabled: boolean;
+  keyColor: string;
+  tolerance: number;
+  handleChromaKeyToggle: (enabled: boolean) => void;
+  handleKeyColorChange: (hexColor: string) => void;
+  handleToleranceChange: (tolerance: number) => void;
+}
+
+export const EffectsTab: React.FC<EffectsTabProps> = ({
+  clipId,
+  clipType,
+  selectedClip,
+  selectedTimelineClip,
+  showVideoControls,
+  showVideoEffects,
+  showTextSection,
+  appliedEditingTemplates,
+  getEditingTemplate,
+  removeEditingTemplateApplication,
+  expandedRecipeApplicationId,
+  setExpandedRecipeApplicationId,
+  recipeControlValues,
+  setRecipeControlValues,
+  handleRecipeControlChange,
+  handleToggleRecipeControls,
+  handleResetRecipeControls,
+  handleUpdateRecipeControls,
+  chromaKeyEnabled,
+  keyColor,
+  tolerance,
+  handleChromaKeyToggle,
+  handleKeyColorChange,
+  handleToleranceChange,
+}) => {
+  return (
+    <>
+      {showVideoControls && selectedTimelineClip && (appliedEditingTemplates.length > 0 || (selectedTimelineClip.effects && selectedTimelineClip.effects.length > 0)) && (
+        <InspectorSection
+          title={`已应用（${appliedEditingTemplates.length + (selectedTimelineClip.effects?.filter((e: { metadata?: { templateSource?: unknown } }) => !e.metadata?.templateSource).length || 0)}）`}
+          sectionId="applied-effects"
+          defaultOpen={true}
+        >
+          <div className="space-y-2">
+            {appliedEditingTemplates.map((application) => {
+              const template = getEditingTemplate(application.templateId);
+              const canEdit = Boolean(template?.controls?.length);
+              const isExpanded =
+                expandedRecipeApplicationId === application.applicationId;
+              const currentControlValues = template
+                ? recipeControlValues[application.applicationId] ||
+                  mergeEditingTemplateControlValues(
+                    template,
+                    application.controlValues,
+                  )
+                : undefined;
+
+              return (
+                <Card
+                  key={application.applicationId}
+                  variant="muted"
+                  padding={2}
+                  className="border border-border bg-bg-2/70"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <Sparkles size={11} className="text-primary shrink-0" />
+                      <Text
+                        type="supporting"
+                        color="primary"
+                        className="truncate text-[11px] font-medium"
+                      >
+                        {application.name}
+                      </Text>
+                      <Text
+                        type="supporting"
+                        color="secondary"
+                        className="shrink-0 text-[9px] capitalize"
+                      >
+                        {application.category?.replace(/-/g, " ") || "预设"}
+                      </Text>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      {canEdit && (
+                        <Button
+                          label="编辑"
+                          onClick={() =>
+                            handleToggleRecipeControls(
+                              application.applicationId,
+                              application.templateId,
+                              application.controlValues,
+                            )
+                          }
+                          variant={isExpanded ? "secondary" : "ghost"}
+                          size="sm"
+                          className={isExpanded ? "bg-primary/15 text-primary" : "text-fg-3"}
+                        />
+                      )}
+                      <IconButton
+                        label="删除预设"
+                        onClick={() => {
+                          const removed = removeEditingTemplateApplication(
+                            selectedTimelineClip.id,
+                            application.applicationId,
+                          );
+                          if (!removed) {
+                            toast.error("无法删除预设", "无法从此片段删除预设。");
+                            return;
+                          }
+                          setRecipeControlValues((current) => {
+                            const next = { ...current };
+                            delete next[application.applicationId];
+                            return next;
+                          });
+                          if (expandedRecipeApplicationId === application.applicationId) {
+                            setExpandedRecipeApplicationId(null);
+                          }
+                        }}
+                        variant="ghost"
+                        size="sm"
+                        icon={<Trash2 size={11} aria-hidden />}
+                        className="text-fg-3 hover:text-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  {isExpanded && template && currentControlValues && (
+                    <div className="mt-2 space-y-3 rounded-lg border border-border/80 bg-bg-1/80 p-2.5">
+                      <EditingTemplateControls
+                        template={template}
+                        values={currentControlValues}
+                        onChange={(controlId, value) =>
+                          handleRecipeControlChange(
+                            application.applicationId,
+                            controlId,
+                            value,
+                          )
+                        }
+                      />
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          label="重置"
+                          onClick={() =>
+                            handleResetRecipeControls(
+                              application.applicationId,
+                              application.templateId,
+                              application.controlValues,
+                            )
+                          }
+                          variant="secondary"
+                          size="sm"
+                        />
+                        <Button
+                          label="更新"
+                          onClick={() =>
+                            handleUpdateRecipeControls(
+                              application.applicationId,
+                              application.templateId,
+                              application.controlValues,
+                            )
+                          }
+                          variant="primary"
+                          size="sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+
+            {selectedTimelineClip.effects
+              ?.filter((e: { metadata?: { templateSource?: unknown } }) => !e.metadata?.templateSource)
+              .map((effect: { id: string; type: string; enabled?: boolean }) => (
+                <Card
+                  key={effect.id}
+                  variant="muted"
+                  padding={2}
+                  className="flex items-center justify-between gap-2 border border-border bg-bg-2/70"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Zap size={11} className="text-amber-400 shrink-0" />
+                    <Text
+                      type="supporting"
+                      color="primary"
+                      className="truncate text-[11px] font-medium capitalize"
+                    >
+                      {effect.type.replace(/-/g, " ")}
+                    </Text>
+                  </div>
+                  <Text
+                    type="supporting"
+                    color={effect.enabled !== false ? "active" : "secondary"}
+                    className={`text-[9px] font-medium ${
+                      effect.enabled !== false ? "text-green-400" : ""
+                    }`}
+                  >
+                    {effect.enabled !== false ? "开启" : "关闭"}
+                  </Text>
+                </Card>
+              ))}
+          </div>
+        </InspectorSection>
+      )}
+
+      {clipType === "video" && (
+        <InspectorSection title="移除背景" sectionId="background-removal" defaultOpen={false}>
+          <BackgroundRemovalSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {/* Particle Effects - Visual particle systems */}
+      {(clipType === "video" ||
+        clipType === "image" ||
+        clipType === "text" ||
+        clipType === "shape" ||
+        clipType === "svg" ||
+        clipType === "sticker") &&
+        selectedClip && (
+          <InspectorSection
+            title="粒子效果"
+            sectionId="particle-effects"
+            defaultOpen={false}
+          >
+            <ParticleEffectsSectionWrapper
+              clipId={clipId}
+              clipDuration={selectedClip.duration}
+              clipStartTime={selectedClip.startTime}
+            />
+          </InspectorSection>
+        )}
+
+      {/* Chroma Key - Using ChromaKeyEngine - Only for video/image */}
+      {showVideoControls && (
+        <InspectorSection title="色度键（绿幕）">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Text type="supporting" color="secondary" className="text-[10px]">
+                启用
+              </Text>
+              <MockToggle
+                ariaLabel="启用色度键"
+                checked={chromaKeyEnabled}
+                onChange={handleChromaKeyToggle}
+              />
+            </div>
+            {chromaKeyEnabled && (
+              <>
+                <div className="flex items-center justify-between">
+                  <Text type="supporting" color="secondary" className="text-[10px]">
+                    键控颜色
+                  </Text>
+                  <ToolcraftTextInputControl
+                    label="键控颜色"
+                    isLabelHidden
+                    size="sm"
+                    width={96}
+                    value={keyColor}
+                    onChange={handleKeyColorChange}
+                    startIcon={
+                      <span
+                        aria-hidden
+                        className="block h-4 w-4 rounded-sm border border-border"
+                        style={{ backgroundColor: keyColor }}
+                      />
+                    }
+                  />
+                </div>
+                <PropertySlider
+                  label="容差"
+                  value={tolerance}
+                  onChange={handleToleranceChange}
+                  min={0}
+                  max={100}
+                  formatValue={(value) => `${Math.round(value)}%`}
+                />
+              </>
+            )}
+          </div>
+        </InspectorSection>
+      )}
+
+      {/* Motion Tracking - Using MotionTrackingEngine - Only for video/image */}
+      {showVideoControls && (
+        <InspectorSection title="运动跟踪" sectionId="motion-tracking">
+          <MotionTrackingSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {showVideoEffects && (
+        <InspectorSection title="视频效果" sectionId="video-effects">
+          <VideoEffectsSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {showVideoControls && (
+        <InspectorSection
+          title="绿幕"
+          sectionId="green-screen"
+          defaultOpen={false}
+        >
+          <GreenScreenSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {/* Picture-in-Picture Section */}
+      {showVideoControls && (
+        <InspectorSection
+          title="画中画"
+          sectionId="pip"
+          defaultOpen={false}
+        >
+          <PiPSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {showVideoControls && (
+        <InspectorSection title="蒙版" sectionId="masking" defaultOpen={false}>
+          <MaskSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {showVideoControls && (
+        <InspectorSection title="嵌套序列" defaultOpen={false}>
+          <NestedSequenceSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {showVideoControls && (
+        <InspectorSection title="调整图层" defaultOpen={false}>
+          <AdjustmentLayerSection clipId={clipId} />
+        </InspectorSection>
+      )}
+
+      {showTextSection && (
+        <InspectorSection
+          title="主体后文字"
+          sectionId="text-behind-subject"
+          defaultOpen={false}
+        >
+          <BehindSubjectSection clipId={clipId} />
+        </InspectorSection>
+      )}
+    </>
+  );
+};

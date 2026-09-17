@@ -1,0 +1,198 @@
+import type { GraphicAnimation, GraphicAnimationType } from "./types";
+
+export interface SVGAnimationPresetInfo {
+  id: GraphicAnimationType;
+  name: string;
+  description: string;
+  category: "entrance" | "emphasis" | "exit";
+  defaultDuration: number;
+  defaultEasing: string;
+}
+
+export const SVG_ANIMATION_PRESETS: SVGAnimationPresetInfo[] = [
+  {
+    id: "none",
+    name: "None",
+    description: "No animation",
+    category: "entrance",
+    defaultDuration: 0,
+    defaultEasing: "linear",
+  },
+  {
+    id: "fade",
+    name: "Fade",
+    description: "Smooth fade in/out",
+    category: "entrance",
+    defaultDuration: 0.5,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "slide-left",
+    name: "Slide from Right",
+    description: "Slide in from the right side",
+    category: "entrance",
+    defaultDuration: 0.6,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "slide-right",
+    name: "Slide from Left",
+    description: "Slide in from the left side",
+    category: "entrance",
+    defaultDuration: 0.6,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "slide-up",
+    name: "Slide from Bottom",
+    description: "Slide in from below",
+    category: "entrance",
+    defaultDuration: 0.6,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "slide-down",
+    name: "Slide from Top",
+    description: "Slide in from above",
+    category: "entrance",
+    defaultDuration: 0.6,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "scale",
+    name: "Scale",
+    description: "Scale from zero to full size",
+    category: "entrance",
+    defaultDuration: 0.5,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "rotate",
+    name: "Rotate",
+    description: "Spin and fade in",
+    category: "entrance",
+    defaultDuration: 0.8,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "bounce",
+    name: "Bounce",
+    description: "Bouncy elastic effect",
+    category: "entrance",
+    defaultDuration: 0.8,
+    defaultEasing: "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+  },
+  {
+    id: "pop",
+    name: "Pop",
+    description: "Quick pop with overshoot",
+    category: "entrance",
+    defaultDuration: 0.5,
+    defaultEasing: "cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+  },
+  {
+    id: "draw",
+    name: "Draw",
+    description: "SVG stroke drawing effect",
+    category: "entrance",
+    defaultDuration: 1.2,
+    defaultEasing: "ease-in-out",
+  },
+  {
+    id: "wipe-left",
+    name: "Wipe Left",
+    description: "Reveal from left edge",
+    category: "entrance",
+    defaultDuration: 0.7,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "wipe-right",
+    name: "Wipe Right",
+    description: "Reveal from right edge",
+    category: "entrance",
+    defaultDuration: 0.7,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "wipe-up",
+    name: "Wipe Up",
+    description: "Reveal from bottom",
+    category: "entrance",
+    defaultDuration: 0.7,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "wipe-down",
+    name: "Wipe Down",
+    description: "Reveal from top",
+    category: "entrance",
+    defaultDuration: 0.7,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "reveal-center",
+    name: "Reveal Center",
+    description: "Expand from center",
+    category: "entrance",
+    defaultDuration: 0.6,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "reveal-edges",
+    name: "Reveal Edges",
+    description: "Collapse to center",
+    category: "entrance",
+    defaultDuration: 0.6,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "elastic",
+    name: "Elastic",
+    description: "Elastic bounce effect",
+    category: "entrance",
+    defaultDuration: 1.0,
+    defaultEasing: "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+  },
+  {
+    id: "flip-horizontal",
+    name: "Flip Horizontal",
+    description: "3D horizontal flip",
+    category: "entrance",
+    defaultDuration: 0.8,
+    defaultEasing: "ease-out",
+  },
+  {
+    id: "flip-vertical",
+    name: "Flip Vertical",
+    description: "3D vertical flip",
+    category: "entrance",
+    defaultDuration: 0.8,
+    defaultEasing: "ease-out",
+  },
+];
+
+export function getSVGPresetInfo(
+  preset: GraphicAnimationType,
+): SVGAnimationPresetInfo | undefined {
+  return SVG_ANIMATION_PRESETS.find((p) => p.id === preset);
+}
+
+export function createDefaultSVGAnimation(
+  preset: GraphicAnimationType,
+): GraphicAnimation {
+  const info = getSVGPresetInfo(preset);
+  if (!info) {
+    return {
+      type: "none",
+      duration: 0,
+      easing: "linear",
+    };
+  }
+
+  return {
+    type: preset,
+    duration: info.defaultDuration,
+    easing: info.defaultEasing,
+  };
+}

@@ -1,0 +1,1012 @@
+import type { Timeline, Track, Clip, Effect } from "../types/timeline";
+import type { AudioEffectParams } from "../types/effects";
+import type { MediaItem, Project } from "../types/project";
+import type {
+  AudioEngineConfig,
+  AudioTrackRenderInfo,
+  AudioClipRenderInfo,
+  AudioChannelState,
+  RenderedAudio,
+  LoudnessMetrics,
+  TimeRange,
+} from "./types";
+import { DEFAULT_AUDIO_CONFIG } from "./types";
+import { AudioEffectsEngine } from "./audio-effects-engine";
+import {
+  getPanFromAudioEffects,
+  splitProfileAwareNoiseReductionEffects,
+} from "./audio-effect-routing";
+import {
+  resolveClipAudioEffects,
+  resolveClipVolumeAutomation,
+} from "./clip-audio-resolution";
+import { scheduleVolumeAutomationOnGain } from "./clip-volume-automation";
+import { scheduleClipFadeEnvelope } from "./clip-fade-envelope";
+import { getTrackTransitionAudioFades } from "./transition-audio-fades";
+import {
+  getMediaItemCapabilities,
+  trackHasAudioItems,
+} from "../timeline/timeline-items";
+
+const SEGMENTED_AUDIO_DECODE_THRESHOLD_SECONDS = 120;
+
+type MediaBunnyAudioInput = {
+  getPrimaryAudioTrack(): Promise<import("mediabunny").InputAudioTrack | null>;
+  getAudioTracks(): Promise<import("mediabunny").InputAudioTrack[]>;
+  [Symbol.dispose]?: () => void;
+};
+
+class SegmentedAudioDecoder {
+  private input: MediaBunnyAudioInput | null = null;
+  private sink: InstanceType<typeof import("mediabunny").AudioBufferSink> | null = null;
+  private initialized = false;
+
+  constructor(
+    private readonly file: File | Blob,
+    private readonly audioTrackIndex: number = 0,
+  ) {}
+
+  async initialize(): Promise<boolean> {
+    if (this.initialized) return true;
+
+    try {
+      const { Input, ALL_FORMATS, BlobSource, AudioBufferSink } =
+        await import("mediabunny");
+
+      this.input = new Input({
+        source: new BlobSource(this.file),
+        formats: ALL_FORMATS,
+      }) as unknown as MediaBunnyAudioInput;
+
+      const audioTracks = await this.input.getAudioTracks();
+      let audioTrack = audioTracks[this.audioTrackIndex] ?? null;
+      if (!audioTrack && this.audioTrackIndex === 0) {
+        audioTrack = (await this.input.getPrimaryAudioTrack()) ?? audioTracks[0] ?? null;
+      }
+
+      if (!audioTrack) {
+        this.dispose();
+        return false;
+      }
+
+      const canDecode = await audioTrack.canDecode();
+      if (!canDecode) {
+        this.dispose();
+        return false;
+      }
+
+      this.sink = new AudioBufferSink(audioTrack);
+      this.initialized = true;
+      return true;
+    } catch {
+      this.dispose();
+      return false;
+    }
+  }
+
+  async *buffers(
+    startTime: number,
+    endTime: number,
+  ): AsyncGenerator<import("mediabunny").WrappedAudioBuffer, void, unknown> {
+    if (!this.sink) {
+      return;
+    }
+
+    for await (const wrapped of this.sink.buffers(startTime, endTime)) {
+      yield wrapped;
+    }
+  }
+
+  dispose(): void {
+    if (this.input) {
+      this.input[Symbol.dispose]?.();
+      this.input = null;
+    }
+
+    this.sink = null;
+    this.initialized = false;
+  }
+}
+
+/**
+ * AudioEngine handles audio rendering and mixing for video projects.
+ * Manages audio context, multiple tracks, and applies effects.
+ *
+ * Usage:
+ * ```ts
+ * const engine = new AudioEngine({ sampleRate: 48000 });
+ * await engine.initialize();
+ * const audio = await engine.renderAudio(project, 0, 5);
+ * ```
+ */
+export class AudioEngine {
+  private audioContext: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private initialized = false;
+  private config: AudioEngineConfig;
+  private trackNodes: Map<string, AudioTrackNodes> = new Map();
+  private mediaBuffers: Map<string, AudioBuffer> = new Map();
+  private noAudioMedia: Set<string> = new Set();
+  private segmentedAudioDecoders: Map<string, SegmentedAudioDecoder> = new Map();
+  private effectsEngine: AudioEffectsEngine | null = null;
+
+  /**
+   * Creates a new AudioEngine instance.
+   *
+   * @param config - Optional audio configuration
+   */
+  constructor(config: Partial<AudioEngineConfig> = {}) {
+    this.config = { ...DEFAULT_AUDIO_CONFIG, ...config };
+  }
+
+  /**
+   * Initializes the AudioEngine and creates the audio context.
+   * Must be called before rendering audio.
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      this.audioContext = new AudioContext({
+        sampleRate: this.config.sampleRate,
+        latencyHint: this.config.latencyHint,
+      });
+
+      this.masterGain = this.audioContext.createGain();
+      this.masterGain.connect(this.audioContext.destination);
+      this.effectsEngine = new AudioEffectsEngine();
+      await this.effectsEngine.initialize();
+
+      this.initialized = true;
+    } catch (error) {
+      throw new Error(
+        `AudioEngine initialization failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Checks if the AudioEngine is initialized.
+   *
+   * @returns true if engine is ready for rendering, false otherwise
+   */
+  isInitialized(): boolean {
+    return this.initialized;
+  }
+
+  /**
+   * Gets the underlying Web Audio API AudioContext.
+   * Useful for advanced audio processing and effects.
+   *
+   * @returns AudioContext instance
+   * @throws Error if engine is not initialized
+   */
+  getAudioContext(): AudioContext {
+    this.ensureInitialized();
+    return this.audioContext!;
+  }
+
+  private ensureInitialized(): void {
+    if (!this.initialized || !this.audioContext) {
+      throw new Error("AudioEngine not initialized. Call initialize() first.");
+    }
+  }
+
+  /**
+   * Renders audio for a time range, mixing all active audio tracks.
+   * Respects muting, solo, and effects on each track.
+   *
+   * @param project - The project containing timeline and media
+   * @param startTime - Start time in seconds
+   * @param duration - Duration to render in seconds
+   * @returns Rendered audio buffer with metadata
+   */
+  async renderAudio(
+    project: Project,
+    startTime: number,
+    duration: number,
+  ): Promise<RenderedAudio> {
+    this.ensureInitialized();
+
+    const { mediaLibrary, settings } = project;
+    const sampleRate = settings.sampleRate || this.config.sampleRate;
+    const channels = settings.channels || this.config.channels;
+    const safeDuration = Math.max(duration, 0.001);
+    const frameCount = Math.max(1, Math.ceil(safeDuration * sampleRate));
+    const offlineContext = new OfflineAudioContext(
+      channels,
+      frameCount,
+      sampleRate,
+    );
+    const audioTracks = this.getAudioTracksAtTime(
+      project,
+      startTime,
+      duration,
+    );
+    const hasSoloTracks = audioTracks.some((t) => t.solo);
+    for (const trackInfo of audioTracks) {
+      if (this.isTrackMuted(trackInfo, hasSoloTracks)) continue;
+
+      for (const clipInfo of trackInfo.clips) {
+        const mediaItem = mediaLibrary.items.find(
+          (m) => m.id === clipInfo.mediaId,
+        );
+        if (!mediaItem) continue;
+        await this.renderClipToContext(
+          offlineContext,
+          mediaItem,
+          clipInfo,
+          startTime,
+        );
+      }
+    }
+    const renderedBuffer = await offlineContext.startRendering();
+
+    return {
+      buffer: renderedBuffer,
+      startTime,
+      duration,
+      channels,
+      sampleRate,
+    };
+  }
+
+  /**
+   * Determines if a track should be muted during rendering.
+   * Accounts for both explicit muting and solo mode logic.
+   *
+   * @param trackInfo - Track render information with mute/solo flags
+   * @param hasSoloTracks - Whether any tracks have solo enabled
+   * @returns true if the track should be muted, false otherwise
+   */
+  isTrackMuted(
+    trackInfo: AudioTrackRenderInfo,
+    hasSoloTracks: boolean,
+  ): boolean {
+    if (trackInfo.muted) return true;
+    if (hasSoloTracks && !trackInfo.solo) return true;
+
+    return false;
+  }
+
+  /**
+   * Gets which tracks are audible based on mute and solo state.
+   *
+   * @param tracks - Array of tracks to evaluate
+   * @returns Map of trackId to audibility boolean
+   */
+  getEffectiveTrackAudibility(tracks: Track[]): Map<string, boolean> {
+    const audibility = new Map<string, boolean>();
+    const hasSoloTracks = tracks.some((t) => t.solo);
+
+    for (const track of tracks) {
+      // Track is audible if:
+      // 1. Not muted AND
+      // 2. Either no tracks are soloed OR this track is soloed
+      const isAudible = !track.muted && (!hasSoloTracks || track.solo);
+      audibility.set(track.id, isAudible);
+    }
+
+    return audibility;
+  }
+
+  private getAudioTracksAtTime(
+    project: Project,
+    startTime: number,
+    duration: number,
+  ): AudioTrackRenderInfo[] {
+    const result: AudioTrackRenderInfo[] = [];
+    const endTime = startTime + duration;
+    const { timeline, mediaLibrary } = project;
+
+    timeline.tracks.forEach((track, index) => {
+      const clips = this.getClipsInRange(track, startTime, endTime).filter(
+        (clip) =>
+          getMediaItemCapabilities(
+            mediaLibrary.items.find((item) => item.id === clip.mediaId),
+          ).audio,
+      );
+      if (clips.length === 0) return;
+
+      result.push({
+        trackId: track.id,
+        index,
+        muted: track.muted,
+        solo: track.solo,
+        clips: clips.map((clip) =>
+          this.createClipRenderInfo(clip, startTime, endTime, timeline, track),
+        ),
+      });
+    });
+
+    return result;
+  }
+
+  private getClipsInRange(
+    track: Track,
+    startTime: number,
+    endTime: number,
+  ): Clip[] {
+    return track.clips.filter((clip) => {
+      const clipEnd = clip.startTime + clip.duration;
+      return clip.startTime < endTime && clipEnd > startTime;
+    });
+  }
+
+  private createClipRenderInfo(
+    clip: Clip,
+    rangeStart: number,
+    rangeEnd: number,
+    timeline: Timeline,
+    track: Track,
+  ): AudioClipRenderInfo {
+    const clipStart = Math.max(clip.startTime, rangeStart);
+    const clipEnd = Math.min(clip.startTime + clip.duration, rangeEnd);
+    const offsetInClip = clipStart - clip.startTime;
+    const sourceTime = clip.inPoint + offsetInClip;
+    const clipAudioEffects = resolveClipAudioEffects(clip, timeline);
+    const pan = getPanFromAudioEffects(
+      clipAudioEffects.length > 0 ? clipAudioEffects : clip.effects,
+    );
+    const transitionFades = getTrackTransitionAudioFades(track, clip.id);
+
+    return {
+      clipId: clip.id,
+      mediaId: clip.mediaId,
+      sourceTime,
+      clipOffset: offsetInClip,
+      timelineStartTime: clipStart,
+      duration: clipEnd - clipStart,
+      clipDuration: clip.duration,
+      volume: clip.volume,
+      volumeAutomation: resolveClipVolumeAutomation(clip, timeline),
+      pan,
+      effects: clipAudioEffects,
+      fadeIn: Math.max(clip.fade?.fadeIn ?? 0, transitionFades.fadeIn),
+      fadeOut: Math.max(clip.fade?.fadeOut ?? 0, transitionFades.fadeOut),
+      speed: (clip as any).speed || 1,
+      reversed: (clip as any).reversed || false,
+      audioTrackIndex: clip.audioTrackIndex,
+    };
+  }
+
+  private async getAudioBuffer(
+    mediaItem: MediaItem,
+    context: BaseAudioContext,
+    audioTrackIndex: number = 0,
+  ): Promise<AudioBuffer | null> {
+    const cacheKey = `${mediaItem.id}:${audioTrackIndex}`;
+    const cached = this.mediaBuffers.get(cacheKey);
+    if (cached) return cached;
+    if (this.noAudioMedia.has(cacheKey)) return null;
+
+    if (!mediaItem.blob) {
+      console.warn(`No blob available for media item ${mediaItem.id}`);
+      return null;
+    }
+
+    try {
+      const audioBuffer = await this.extractAudioFromVideo(
+        mediaItem,
+        context,
+        audioTrackIndex,
+      );
+      if (audioBuffer) {
+        this.mediaBuffers.set(cacheKey, audioBuffer);
+        return audioBuffer;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "NoAudioStreamError") {
+        this.noAudioMedia.add(cacheKey);
+        return null;
+      }
+    }
+
+    if (audioTrackIndex === 0) {
+      try {
+        const arrayBuffer = await mediaItem.blob.arrayBuffer();
+        const audioBuffer = await context.decodeAudioData(arrayBuffer);
+        this.mediaBuffers.set(cacheKey, audioBuffer);
+        return audioBuffer;
+      } catch {
+        this.noAudioMedia.add(cacheKey);
+        return null;
+      }
+    }
+
+    this.noAudioMedia.add(cacheKey);
+    return null;
+  }
+
+  private async extractAudioFromVideo(
+    mediaItem: MediaItem,
+    context: BaseAudioContext,
+    audioTrackIndex: number = 0,
+  ): Promise<AudioBuffer | null> {
+    if (!mediaItem.blob) return null;
+
+    try {
+      const { extractAudioWav } = await import("../media/extract-audio");
+      const wavBlob = await extractAudioWav(mediaItem.blob, audioTrackIndex);
+      const arrayBuffer = await wavBlob.arrayBuffer();
+      return await context.decodeAudioData(arrayBuffer);
+    } catch (error) {
+      if (error instanceof Error && error.name === "NoAudioStreamError") {
+        throw error;
+      }
+      return null;
+    }
+  }
+
+  private async renderClipToContext(
+    context: OfflineAudioContext,
+    mediaItem: MediaItem,
+    clipInfo: AudioClipRenderInfo,
+    renderStartTime: number,
+  ): Promise<void> {
+    if (this.shouldUseSegmentedAudioDecoding(mediaItem, clipInfo)) {
+      const renderedSegment = await this.renderClipToContextFromSegments(
+        context,
+        mediaItem,
+        clipInfo,
+        renderStartTime,
+      );
+      if (renderedSegment) {
+        return;
+      }
+    }
+
+    const audioBuffer = await this.getAudioBuffer(mediaItem, context, clipInfo.audioTrackIndex ?? 0);
+    if (!audioBuffer) {
+      return;
+    }
+
+    const { volumeGainNode, fadeGainNode } = this.createClipOutputNodes(
+      context,
+      clipInfo,
+    );
+    const source = context.createBufferSource();
+
+    const speed = clipInfo.speed || 1;
+    const reversed = clipInfo.reversed || false;
+
+    const processedClip = await this.processClipBuffer(audioBuffer, clipInfo);
+
+    source.buffer = processedClip.buffer;
+
+    source.playbackRate.value = reversed ? -speed : speed;
+
+    source.connect(volumeGainNode);
+    const contextStartTime = Math.max(
+      0,
+      clipInfo.timelineStartTime - renderStartTime,
+    );
+    this.applyVolumeAutomation(volumeGainNode, clipInfo, contextStartTime);
+    this.applyFades(fadeGainNode, clipInfo, contextStartTime);
+
+    const startOffset = reversed
+      ? processedClip.buffer.duration - processedClip.startOffset
+      : processedClip.startOffset;
+
+    source.start(
+      contextStartTime,
+      Math.max(0, startOffset),
+      Math.min(clipInfo.duration, processedClip.renderDuration),
+    );
+  }
+
+  private shouldUseSegmentedAudioDecoding(
+    mediaItem: MediaItem,
+    clipInfo: AudioClipRenderInfo,
+  ): boolean {
+    return (
+      mediaItem.metadata.duration >= SEGMENTED_AUDIO_DECODE_THRESHOLD_SECONDS &&
+      (clipInfo.speed || 1) === 1 &&
+      !clipInfo.reversed &&
+      !clipInfo.effects.some((effect) => effect.enabled)
+    );
+  }
+
+  private async processClipBuffer(
+    audioBuffer: AudioBuffer,
+    clipInfo: AudioClipRenderInfo,
+  ): Promise<{
+    buffer: AudioBuffer;
+    startOffset: number;
+    renderDuration: number;
+  }> {
+    const enabledEffects = clipInfo.effects.filter(
+      (effect) =>
+        effect.enabled && effect.type !== "pan" && effect.type !== "fadeIn" && effect.type !== "fadeOut",
+    );
+
+    if (
+      enabledEffects.length === 0 ||
+      (clipInfo.speed ?? 1) !== 1 ||
+      clipInfo.reversed ||
+      !this.effectsEngine
+    ) {
+      return {
+        buffer: audioBuffer,
+        startOffset: clipInfo.sourceTime,
+        renderDuration: clipInfo.duration,
+      };
+    }
+
+    const segmentBuffer = this.extractAudioSegment(
+      audioBuffer,
+      clipInfo.sourceTime,
+      clipInfo.duration,
+    );
+    const { profileAwareNoiseEffects, realtimeEffects } =
+      splitProfileAwareNoiseReductionEffects(enabledEffects);
+
+    let processedBuffer = segmentBuffer;
+
+    for (const effect of profileAwareNoiseEffects) {
+      const params = effect.params as AudioEffectParams["noiseReduction"];
+      if (!params.profile) {
+        continue;
+      }
+
+      processedBuffer = await this.effectsEngine.applyNoiseReductionWithProfileData(
+        processedBuffer,
+        params.profile,
+        params.reduction ?? 0.5,
+        params.focus ?? "balanced",
+        params.threshold ?? -40,
+      );
+    }
+
+    if (realtimeEffects.length > 0) {
+      const result = await this.effectsEngine.applyEffectChain(
+        processedBuffer,
+        realtimeEffects,
+      );
+      processedBuffer = result.buffer;
+    }
+
+    return {
+      buffer: processedBuffer,
+      startOffset: 0,
+      renderDuration: processedBuffer.duration,
+    };
+  }
+
+  private extractAudioSegment(
+    sourceBuffer: AudioBuffer,
+    startTime: number,
+    duration: number,
+  ): AudioBuffer {
+    const startSample = Math.max(0, Math.floor(startTime * sourceBuffer.sampleRate));
+    const length = Math.max(1, Math.ceil(duration * sourceBuffer.sampleRate));
+    const segmentBuffer = this.audioContext!.createBuffer(
+      sourceBuffer.numberOfChannels,
+      length,
+      sourceBuffer.sampleRate,
+    );
+
+    for (let channel = 0; channel < sourceBuffer.numberOfChannels; channel++) {
+      const sourceData = sourceBuffer.getChannelData(channel);
+      const targetData = segmentBuffer.getChannelData(channel);
+
+      for (let index = 0; index < length; index++) {
+        targetData[index] = sourceData[startSample + index] || 0;
+      }
+    }
+
+    return segmentBuffer;
+  }
+
+  private async renderClipToContextFromSegments(
+    context: OfflineAudioContext,
+    mediaItem: MediaItem,
+    clipInfo: AudioClipRenderInfo,
+    renderStartTime: number,
+  ): Promise<boolean> {
+    const decoder = await this.getSegmentedAudioDecoder(mediaItem, clipInfo.audioTrackIndex ?? 0);
+    if (!decoder) {
+      return false;
+    }
+
+    const rangeStart = Math.max(0, clipInfo.sourceTime);
+    const rangeEnd = rangeStart + clipInfo.duration;
+    if (rangeEnd <= rangeStart) {
+      return false;
+    }
+
+    const { volumeGainNode, fadeGainNode } = this.createClipOutputNodes(
+      context,
+      clipInfo,
+    );
+    const contextStartTime = Math.max(
+      0,
+      clipInfo.timelineStartTime - renderStartTime,
+    );
+    this.applyVolumeAutomation(volumeGainNode, clipInfo, contextStartTime);
+    this.applyFades(fadeGainNode, clipInfo, contextStartTime);
+
+    let rendered = false;
+
+    for await (const wrapped of decoder.buffers(rangeStart, rangeEnd)) {
+      const bufferStart = wrapped.timestamp;
+      const bufferEnd = wrapped.timestamp + wrapped.duration;
+      const overlapStart = Math.max(rangeStart, bufferStart);
+      const overlapEnd = Math.min(rangeEnd, bufferEnd);
+
+      if (overlapEnd <= overlapStart) {
+        continue;
+      }
+
+      const source = context.createBufferSource();
+      source.buffer = wrapped.buffer;
+      source.connect(volumeGainNode);
+      source.start(
+        contextStartTime + (overlapStart - rangeStart),
+        overlapStart - bufferStart,
+        overlapEnd - overlapStart,
+      );
+      rendered = true;
+    }
+
+    return rendered;
+  }
+
+  private createClipOutputNodes(
+    context: OfflineAudioContext,
+    clipInfo: AudioClipRenderInfo,
+  ): {
+    volumeGainNode: GainNode;
+    fadeGainNode: GainNode;
+    pannerNode: StereoPannerNode;
+  } {
+    const volumeGainNode = context.createGain();
+    volumeGainNode.gain.value = clipInfo.volume;
+
+    const fadeGainNode = context.createGain();
+    fadeGainNode.gain.value = 1;
+
+    const pannerNode = context.createStereoPanner();
+    pannerNode.pan.value = Math.max(-1, Math.min(1, clipInfo.pan));
+
+    volumeGainNode.connect(fadeGainNode);
+    fadeGainNode.connect(pannerNode);
+    pannerNode.connect(context.destination);
+
+    return { volumeGainNode, fadeGainNode, pannerNode };
+  }
+
+  private applyVolumeAutomation(
+    gainNode: GainNode,
+    clipInfo: AudioClipRenderInfo,
+    startTime: number,
+  ): void {
+    scheduleVolumeAutomationOnGain(
+      gainNode,
+      clipInfo.volumeAutomation,
+      clipInfo.volume,
+      clipInfo.clipOffset,
+      clipInfo.duration,
+      startTime,
+    );
+  }
+
+  private async getSegmentedAudioDecoder(
+    mediaItem: MediaItem,
+    audioTrackIndex: number = 0,
+  ): Promise<SegmentedAudioDecoder | null> {
+    if (!mediaItem.blob) {
+      return null;
+    }
+
+    const cacheKey = `${mediaItem.id}:${audioTrackIndex}`;
+    const cached = this.segmentedAudioDecoders.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const decoder = new SegmentedAudioDecoder(mediaItem.blob, audioTrackIndex);
+    const initialized = await decoder.initialize();
+    if (!initialized) {
+      return null;
+    }
+
+    this.segmentedAudioDecoders.set(cacheKey, decoder);
+    return decoder;
+  }
+
+  private applyFades(
+    gainNode: GainNode,
+    clipInfo: AudioClipRenderInfo,
+    startTime: number,
+  ): void {
+    scheduleClipFadeEnvelope(gainNode.gain, {
+      startTime,
+      clipOffset: clipInfo.clipOffset,
+      rangeDuration: clipInfo.duration,
+      clipDuration: clipInfo.clipDuration,
+      fadeIn: clipInfo.fadeIn,
+      fadeOut: clipInfo.fadeOut,
+    });
+  }
+
+  async mixTracks(
+    buffers: AudioBuffer[],
+    volumes: number[],
+    pans: number[],
+  ): Promise<AudioBuffer> {
+    this.ensureInitialized();
+
+    if (buffers.length === 0) {
+      return this.audioContext!.createBuffer(
+        this.config.channels,
+        this.config.sampleRate,
+        this.config.sampleRate,
+      );
+    }
+    const maxLength = Math.max(...buffers.map((b) => b.length));
+    const sampleRate = buffers[0].sampleRate;
+    const offlineContext = new OfflineAudioContext(
+      this.config.channels,
+      maxLength,
+      sampleRate,
+    );
+    for (let i = 0; i < buffers.length; i++) {
+      const source = offlineContext.createBufferSource();
+      source.buffer = buffers[i];
+
+      const gain = offlineContext.createGain();
+      gain.gain.value = volumes[i] ?? 1;
+
+      const panner = offlineContext.createStereoPanner();
+      panner.pan.value = Math.max(-1, Math.min(1, pans[i] ?? 0));
+
+      source.connect(gain);
+      gain.connect(panner);
+      panner.connect(offlineContext.destination);
+
+      source.start(0);
+    }
+
+    return offlineContext.startRendering();
+  }
+
+  getChannelStates(project: Project): AudioChannelState[] {
+    return project.timeline.tracks
+      .filter((track) => trackHasAudioItems(project, track.id))
+      .map((track) => ({
+        trackId: track.id,
+        volume: 1, // Default volume, would be stored in track
+        pan: 0, // Default pan
+        muted: track.muted,
+        solo: track.solo,
+        peakLevel: 0,
+        rmsLevel: 0,
+      }));
+  }
+
+  async applyEffect(buffer: AudioBuffer, effect: Effect): Promise<AudioBuffer> {
+    this.ensureInitialized();
+
+    if (!effect.enabled) return buffer;
+
+    const offlineContext = new OfflineAudioContext(
+      buffer.numberOfChannels,
+      buffer.length,
+      buffer.sampleRate,
+    );
+
+    const source = offlineContext.createBufferSource();
+    source.buffer = buffer;
+    const effectNode = this.createEffectNode(offlineContext, effect);
+
+    if (effectNode) {
+      source.connect(effectNode);
+      effectNode.connect(offlineContext.destination);
+    } else {
+      source.connect(offlineContext.destination);
+    }
+
+    source.start(0);
+    return offlineContext.startRendering();
+  }
+
+  private createEffectNode(
+    context: BaseAudioContext,
+    effect: Effect,
+  ): AudioNode | null {
+    const params = effect.params as Record<string, number>;
+
+    switch (effect.type) {
+      case "gain":
+        const gainNode = context.createGain();
+        gainNode.gain.value = params.value ?? 1;
+        return gainNode;
+
+      case "pan":
+        const pannerNode = context.createStereoPanner();
+        pannerNode.pan.value = Math.max(-1, Math.min(1, params.value ?? 0));
+        return pannerNode;
+
+      case "eq":
+        return this.createEQNode(context, effect);
+
+      case "compressor":
+        const compressor = context.createDynamicsCompressor();
+        compressor.threshold.value = params.threshold ?? -24;
+        compressor.ratio.value = params.ratio ?? 4;
+        compressor.attack.value = params.attack ?? 0.003;
+        compressor.release.value = params.release ?? 0.25;
+        compressor.knee.value = params.knee ?? 30;
+        return compressor;
+
+      case "delay":
+        const delay = context.createDelay(2);
+        delay.delayTime.value = params.time ?? 0.5;
+        return delay;
+
+      default:
+        return null;
+    }
+  }
+
+  private createEQNode(
+    context: BaseAudioContext,
+    effect: Effect,
+  ): AudioNode | null {
+    const bands = (
+      effect.params as {
+        bands?: Array<{
+          type: string;
+          frequency: number;
+          gain: number;
+          q: number;
+        }>;
+      }
+    ).bands;
+    if (!bands || bands.length === 0) return null;
+
+    let firstNode: BiquadFilterNode | null = null;
+    let lastNode: BiquadFilterNode | null = null;
+
+    for (const band of bands) {
+      const filter = context.createBiquadFilter();
+      filter.type = band.type as BiquadFilterType;
+      filter.frequency.value = band.frequency;
+      filter.gain.value = band.gain;
+      filter.Q.value = band.q;
+
+      if (!firstNode) {
+        firstNode = filter;
+      }
+      if (lastNode) {
+        lastNode.connect(filter);
+      }
+      lastNode = filter;
+    }
+
+    return firstNode;
+  }
+
+  detectSilence(buffer: AudioBuffer, threshold: number = -60): TimeRange[] {
+    const silentRanges: TimeRange[] = [];
+    const channelData = buffer.getChannelData(0);
+    const sampleRate = buffer.sampleRate;
+    const thresholdLinear = Math.pow(10, threshold / 20);
+
+    let silenceStart: number | null = null;
+    const windowSize = Math.floor(sampleRate * 0.1); // 100ms window
+
+    for (let i = 0; i < channelData.length; i += windowSize) {
+      const end = Math.min(i + windowSize, channelData.length);
+      let maxAmp = 0;
+
+      for (let j = i; j < end; j++) {
+        maxAmp = Math.max(maxAmp, Math.abs(channelData[j]));
+      }
+
+      const isSilent = maxAmp < thresholdLinear;
+      const currentTime = i / sampleRate;
+
+      if (isSilent && silenceStart === null) {
+        silenceStart = currentTime;
+      } else if (!isSilent && silenceStart !== null) {
+        silentRanges.push({ start: silenceStart, end: currentTime });
+        silenceStart = null;
+      }
+    }
+    if (silenceStart !== null) {
+      silentRanges.push({
+        start: silenceStart,
+        end: buffer.duration,
+      });
+    }
+
+    return silentRanges;
+  }
+
+  measureLoudness(buffer: AudioBuffer): LoudnessMetrics {
+    const channelData = buffer.getChannelData(0);
+    let sumSquares = 0;
+    let peak = 0;
+
+    for (let i = 0; i < channelData.length; i++) {
+      const sample = channelData[i];
+      sumSquares += sample * sample;
+      peak = Math.max(peak, Math.abs(sample));
+    }
+
+    const rms = Math.sqrt(sumSquares / channelData.length);
+    const rmsDb = 20 * Math.log10(rms || 0.0001);
+    const peakDb = 20 * Math.log10(peak || 0.0001);
+
+    // Approximate LUFS (simplified - real implementation would use K-weighting)
+    const lufs = rmsDb - 0.691; // Rough approximation
+
+    return {
+      integrated: lufs,
+      shortTerm: lufs,
+      momentary: lufs,
+      truePeak: peakDb,
+      range: 10, // Placeholder
+    };
+  }
+
+  clearCache(): void {
+    this.mediaBuffers.clear();
+
+    for (const decoder of this.segmentedAudioDecoders.values()) {
+      decoder.dispose();
+    }
+    this.segmentedAudioDecoders.clear();
+  }
+
+  async resume(): Promise<void> {
+    if (this.audioContext?.state === "suspended") {
+      await this.audioContext.resume();
+    }
+  }
+
+  async suspend(): Promise<void> {
+    if (this.audioContext?.state === "running") {
+      await this.audioContext.suspend();
+    }
+  }
+
+  async dispose(): Promise<void> {
+    this.clearCache();
+    this.trackNodes.clear();
+    await this.effectsEngine?.dispose();
+    this.effectsEngine = null;
+
+    if (this.audioContext) {
+      await this.audioContext.close();
+      this.audioContext = null;
+    }
+
+    this.masterGain = null;
+    this.initialized = false;
+  }
+}
+
+interface AudioTrackNodes {
+  gainNode: GainNode;
+  pannerNode: StereoPannerNode;
+  effectNodes: AudioNode[];
+}
+let audioEngineInstance: AudioEngine | null = null;
+
+export function getAudioEngine(): AudioEngine {
+  if (!audioEngineInstance) {
+    audioEngineInstance = new AudioEngine();
+  }
+  return audioEngineInstance;
+}
+
+export async function initializeAudioEngine(): Promise<AudioEngine> {
+  const engine = getAudioEngine();
+  await engine.initialize();
+  return engine;
+}

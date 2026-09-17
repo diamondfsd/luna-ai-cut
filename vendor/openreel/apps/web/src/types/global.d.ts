@@ -1,0 +1,625 @@
+export {};
+
+export interface OpenReelHardwareInfo {
+  cpu: { model: string; physicalCores: number; logicalCores: number };
+  memory: { totalBytes: number; freeBytes: number };
+  gpus: string[];
+  encoders: string[];
+  platform: "darwin" | "win32" | "linux";
+  arch: string;
+}
+
+export interface OpenReelExportStartArgs {
+  width: number;
+  height: number;
+  frameRate: number;
+  codec: string;
+  format: string;
+  bitrateKbps: number;
+  outputPath: string;
+  totalFrames: number;
+  audioSampleRate: number;
+  audioChannels: number;
+  encodeMode?: "fast" | "balanced" | "smallest";
+  quality?: number;
+  proresProfile?: "proxy" | "lt" | "standard" | "hq" | "4444" | "4444xq";
+}
+
+export interface OpenReelExportSession {
+  jobId: string;
+}
+
+export interface OpenReelAuroraRenderPreviewArgs {
+  scene: unknown;
+  assets: unknown[];
+  width: number;
+  height: number;
+  background?: string;
+  timeSeconds?: number;
+  quality?: "preview" | "final";
+}
+
+export interface OpenReelAuroraPreviewSessionStartArgs
+  extends OpenReelAuroraRenderPreviewArgs {
+  sessionId?: string;
+}
+
+export interface OpenReelAuroraPreviewSessionStartResult {
+  sessionId: string;
+}
+
+export interface OpenReelAuroraSequenceSessionStartArgs
+  extends Omit<OpenReelAuroraRenderPreviewArgs, "timeSeconds"> {
+  sessionId?: string;
+  frameRate: number;
+  durationSeconds: number;
+}
+
+export interface OpenReelAuroraSequenceSessionStartResult {
+  sessionId: string;
+}
+
+export interface OpenReelAuroraRenderPreviewResult {
+  backend: "native" | "cpu";
+  pngBase64: string;
+  dataUri: string;
+  width: number;
+  height: number;
+  coveredPixels: number;
+  shadowedPixels: number;
+  renderMs: number;
+}
+
+export type OpenReelAuroraPreviewSessionEvent =
+  | {
+      kind: "update";
+      sessionId: string;
+      stage: "draft" | "refine" | "final";
+      progress: number;
+      done: boolean;
+      targetWidth: number;
+      targetHeight: number;
+      result: OpenReelAuroraRenderPreviewResult;
+    }
+  | {
+      kind: "error";
+      sessionId: string;
+      done: true;
+      error: string;
+    };
+
+export type OpenReelAuroraSequenceSessionEvent =
+  | {
+      kind: "frame";
+      sessionId: string;
+      frameIndex: number;
+      totalFrames: number;
+      timeSeconds: number;
+      progress: number;
+      done: boolean;
+      result: {
+        backend: "native" | "cpu";
+        rgba: Uint8Array;
+        width: number;
+        height: number;
+        coveredPixels: number;
+        shadowedPixels: number;
+        renderMs: number;
+      };
+    }
+  | {
+      kind: "error";
+      sessionId: string;
+      done: true;
+      error: string;
+    };
+
+export interface OpenReelMcpStatus {
+  running: boolean;
+  url: string;
+  port: number;
+  token: string;
+  shimPath: string;
+  endpointFile: string;
+}
+
+export interface OpenReelRiggingBackendProbe {
+  available: boolean;
+  provider: "blender";
+  mode?: "configured" | "bundled" | "system";
+  path?: string;
+  version?: string;
+  error?: string;
+}
+
+export interface OpenReelRiggingWarning {
+  code: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+}
+
+export interface OpenReelRigHumanoidModelArgs {
+  modelUrl: string;
+  outputPath?: string;
+  name?: string;
+  heightMeters?: number;
+  overwriteExisting?: boolean;
+}
+
+export interface OpenReelRigHumanoidModelResult {
+  ok: boolean;
+  provider: "blender";
+  inputUrl: string;
+  outputUrl?: string;
+  outputPath?: string;
+  armatureName?: string;
+  createdArmature: boolean;
+  preservedExistingArmature: boolean;
+  skinnedMeshCount: number;
+  meshCount: number;
+  boneCount: number;
+  warnings: OpenReelRiggingWarning[];
+  error?: string;
+}
+
+export type OpenReelUpdaterStatus =
+  | { state: "checking" }
+  | { state: "available"; version: string }
+  | { state: "none" }
+  | { state: "downloading"; percent: number }
+  | { state: "downloaded"; version: string }
+  | { state: "error"; message: string };
+
+export interface OpenReelLunaProjectSnapshot {
+  projectId: string;
+  projectName: string;
+  editorDocument: string | null;
+}
+
+export interface OpenReelLunaProjectSummary {
+  projectId: string;
+  projectName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpenReelLunaAsset {
+  id: string;
+  name: string;
+  path: string;
+  kind: "image" | "video";
+  thumbnailUrl?: string | null;
+  sourceDeviceId?: string;
+  sourceDeviceName?: string;
+  cameraType?: string;
+  cameraSerial?: string;
+  watermarkProfileId?: string;
+  isLivePhoto?: boolean;
+  duration?: number;
+  width?: number;
+  height?: number;
+  frameRate?: number;
+  fileSize?: number;
+}
+
+export type OpenReelAgentSessionStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type OpenReelAgentPhase =
+  | "waiting"
+  | "analyzing_media"
+  | "creating_project"
+  | "importing_media"
+  | "editing"
+  | "captioning"
+  | "saving"
+  | "exporting"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface OpenReelAgentSession {
+  sessionId: string;
+  request: string;
+  revision: number;
+  projectId: string | null;
+  status: OpenReelAgentSessionStatus;
+  phase: OpenReelAgentPhase;
+  progress: number;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  cancelRequested: boolean;
+  agentId: string | null;
+  agentType: string | null;
+  agentModel: string | null;
+  exportConfirmation: "idle" | "pending";
+  result?: {
+    projectId?: string;
+    projectName?: string;
+    exportPath?: string;
+    summary?: string;
+  };
+}
+
+export interface OpenReelAgentEvent {
+  type: "session-created" | "session-claimed" | "request-updated" | "progress" | "result" | "error" | "cancel-requested" | "cancelled" | "export-confirmation-required" | "export-confirmed" | "export-denied" | "tool-start" | "tool-finished";
+  sequence: number;
+  timestamp: string;
+  session: OpenReelAgentSession;
+  message?: string;
+  callId?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  ok?: boolean;
+  summary?: string;
+  error?: {
+    code: string;
+    message: string;
+    retryable?: boolean;
+    suggestedAction?: string;
+  };
+  durationMs?: number;
+}
+
+export interface OpenReelAgentSnapshot {
+  session: OpenReelAgentSession | null;
+  events: OpenReelAgentEvent[];
+}
+
+export interface OpenReelAgentApi {
+  generatePrompt(request: string): Promise<string>;
+  createRequest(request: string, projectId?: string | null): Promise<OpenReelAgentSession>;
+  updateRequest(sessionId: string, request: string): Promise<OpenReelAgentSession>;
+  cancelRequest(sessionId: string): Promise<OpenReelAgentSession>;
+  confirmExport(sessionId: string): Promise<OpenReelAgentSession>;
+  denyExport(sessionId: string): Promise<OpenReelAgentSession>;
+  getSnapshot(): Promise<OpenReelAgentSnapshot>;
+  onEvent(handler: (event: OpenReelAgentEvent) => void): () => void;
+  onActivate(handler: () => void): () => void;
+}
+
+declare global {
+  interface Window {
+    openreel?: {
+      platform: "desktop";
+      publicOrigin: string;
+      probeHardware(): Promise<OpenReelHardwareInfo>;
+      onMenuAction(cb: (id: string) => void): () => void;
+      fs: {
+        showSaveDialog(opts: {
+          defaultPath: string;
+          filters: { name: string; extensions: string[] }[];
+        }): Promise<string | null>;
+        showOpenDialog(opts: {
+          filters: { name: string; extensions: string[] }[];
+        }): Promise<string | null>;
+        readFile(path: string): Promise<string>;
+        readFileBytes(path: string): Promise<ArrayBuffer>;
+        tempFilePath(ext: string): Promise<string>;
+        writeFile(path: string, data: string): Promise<void>;
+        openWrite(path: string): Promise<string>;
+        writeChunk(handleId: string, data: ArrayBuffer | Uint8Array, position: number): Promise<void>;
+        closeWrite(handleId: string): Promise<void>;
+        abortWrite(handleId: string): Promise<void>;
+        revealInFolder(path: string): Promise<void>;
+      };
+      keychain: {
+        get(id: string): Promise<string | null>;
+        set(id: string, value: string): Promise<void>;
+        delete(id: string): Promise<void>;
+      };
+      export: {
+        start(args: OpenReelExportStartArgs): Promise<OpenReelExportSession>;
+        writeAudioWav(jobId: string, wav: ArrayBuffer): Promise<void>;
+        writeAudioChunk(jobId: string, chunk: ArrayBuffer, position: number): Promise<void>;
+        finishAudio(jobId: string): Promise<void>;
+        cancel(jobId: string): Promise<void>;
+      };
+      aurora?: {
+        renderPreview(
+          args: OpenReelAuroraRenderPreviewArgs,
+        ): Promise<OpenReelAuroraRenderPreviewResult>;
+        startPreviewSession(
+          args: OpenReelAuroraPreviewSessionStartArgs,
+        ): Promise<OpenReelAuroraPreviewSessionStartResult>;
+        cancelPreviewSession(sessionId: string): Promise<void>;
+        onPreviewEvent(
+          cb: (event: OpenReelAuroraPreviewSessionEvent) => void,
+        ): () => void;
+        startSequenceSession(
+          args: OpenReelAuroraSequenceSessionStartArgs,
+        ): Promise<OpenReelAuroraSequenceSessionStartResult>;
+        cancelSequenceSession(sessionId: string): Promise<void>;
+        onSequenceEvent(
+          cb: (event: OpenReelAuroraSequenceSessionEvent) => void,
+        ): () => void;
+      };
+      cloud: {
+        fetch(
+          service:
+            | "elevenlabs"
+            | "openai"
+            | "anthropic"
+            | "openai-compatible"
+            | "anthropic-compatible",
+          path: string,
+          options?: {
+            method?: string;
+            headers?: Record<string, string>;
+            body?: string;
+            baseUrl?: string;
+          },
+        ): Promise<{ status: number; statusText: string; headers: Record<string, string>; body: ArrayBuffer }>;
+      };
+      win: {
+        minimize(): Promise<void>;
+        toggleMaximize(): Promise<void>;
+        close(): Promise<void>;
+        isMaximized(): Promise<boolean>;
+      };
+      lifecycle: {
+        onQueryUnsaved(handler: () => boolean): () => void;
+        onFlush(handler: () => Promise<void>): () => void;
+      };
+      updater: {
+        onStatus(cb: (status: OpenReelUpdaterStatus) => void): () => void;
+        download(): Promise<void>;
+        install(): Promise<void>;
+      };
+      lunaProject?: {
+        list(): Promise<OpenReelLunaProjectSummary[]>;
+        create(name: string): Promise<OpenReelLunaProjectSummary>;
+        load(projectId: string): Promise<OpenReelLunaProjectSnapshot>;
+        save(projectId: string, editorDocument: string): Promise<void>;
+        delete(projectId: string): Promise<void>;
+        rename(projectId: string, name: string): Promise<OpenReelLunaProjectSummary>;
+        chooseAssets(projectId: string, existingPaths?: string[]): Promise<OpenReelLunaAsset[]>;
+      };
+      lunaMedia?: {
+        readFileBytes(sourcePath: string): Promise<ArrayBuffer>;
+        listLocalMedia(query?: {
+          limit?: number;
+          from?: string;
+          to?: string;
+          kind?: "image" | "video" | "audio";
+        }): Promise<Array<{
+          mediaId: string;
+          name: string;
+          kind: "image" | "video" | "audio";
+          bytes: number;
+          capturedAt: string | null;
+          modifiedAt: string;
+          groupDay: string;
+          sourceDeviceName?: string;
+          sourceDeviceId?: string;
+          duration?: number;
+        }>>;
+        getLocalMedia(mediaId: string): Promise<{
+          mediaId: string;
+          name: string;
+          kind: "image" | "video" | "audio";
+          bytes: number;
+          capturedAt: string | null;
+          modifiedAt: string;
+          groupDay: string;
+          sourceDeviceName?: string;
+          sourceDeviceId?: string;
+          duration?: number;
+        }>;
+        getLocalMediaMetadata(mediaIds: string[]): Promise<Array<{
+          mediaId: string;
+          name: string;
+          kind: "image" | "video" | "audio";
+          bytes: number;
+          capturedAt: string | null;
+          modifiedAt: string;
+          groupDay: string;
+          sourceDeviceName?: string;
+          sourceDeviceId?: string;
+          extension: string;
+          mimeType: string;
+          width: number | null;
+          height: number | null;
+          durationSec: number | null;
+          frameRate: number | null;
+          frameCount: number | null;
+          videoCodec: string | null;
+          audioCodecs: string[];
+          formatName: string | null;
+          raw: {
+            ffprobe: {
+              streams: unknown[];
+              format: Record<string, unknown> | null;
+              chapters: unknown[];
+            } | null;
+            exif: unknown | null;
+          };
+          error?: string;
+        }>>;
+        readLocalMediaBytes(mediaId: string): Promise<ArrayBuffer>;
+        inspectLocalMedia(mediaIds: string[], options?: {
+          mode?: "overview" | "detail";
+          maxWidth?: number;
+        }): Promise<{
+          mode: "overview" | "detail";
+          maxWidth: number;
+          items: Array<{
+            mediaId: string;
+            name: string;
+            kind: "image" | "video";
+            duration?: number;
+            capturedAt: string | null;
+            frames: Array<{
+              timeSec: number;
+              mimeType: "image/jpeg";
+              base64: string;
+            }>;
+            error?: string;
+          }>;
+        }>;
+        createMediaContactSheet(mediaIds: string[], options?: {
+          mode?: "overview" | "detail";
+          maxWidth?: number;
+          columns?: number;
+        }): Promise<{
+          mode: "overview" | "detail";
+          maxWidth: number;
+          items: Array<{
+            mediaId: string;
+            name: string;
+            kind: "image" | "video";
+            duration?: number;
+            capturedAt: string | null;
+            frames: Array<{
+              timeSec: number;
+              mimeType: "image/jpeg";
+              base64: string;
+            }>;
+            error?: string;
+          }>;
+          contactSheet: {
+            mimeType: "image/jpeg";
+            base64: string;
+            width: number;
+            height: number;
+            columns: number;
+            rows: number;
+            cellWidth: number;
+            cellHeight: number;
+            gap: number;
+            cells: Array<{
+              mediaId: string;
+              frameIndex: number;
+              frameId: string;
+              timeSec: number;
+              sheetIndex: number;
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+            }>;
+          };
+        }>;
+        transcribeLocalMedia(mediaId: string, options?: {
+          startSec?: number;
+          endSec?: number;
+          chunkDurationSec?: number;
+          overlapSec?: number;
+        }): Promise<{
+          mediaId: string;
+          name: string;
+          durationSec: number;
+          requestedRange: { startSec: number; endSec: number };
+          chunkDurationSec: number;
+          overlapSec: number;
+          chunks: Array<{
+            index: number;
+            startSec: number;
+            endSec: number;
+            recognitionStartSec: number;
+            recognitionEndSec: number;
+            cueCount: number;
+          }>;
+          requestId: string;
+          language: string;
+          cues: Array<{
+            id: string;
+            startMs: number;
+            endMs: number;
+            text: string;
+            source: "generated" | "edited";
+          }>;
+          model: { id: string; version: string; sha256: string };
+          sourceFingerprint: { size: number; modifiedAtMs: number };
+          performance: {
+            modelLoadMs: number;
+            inferenceMs: number;
+            audioMs: number;
+            totalMs: number;
+          };
+        }>;
+        transcribeAudioSamples(samples: Float32Array, options?: {
+          chunkDurationSec?: number;
+          overlapSec?: number;
+        }): Promise<{
+          mediaId: string;
+          name: string;
+          durationSec: number;
+          requestedRange: { startSec: number; endSec: number };
+          chunkDurationSec: number;
+          overlapSec: number;
+          chunks: Array<{
+            index: number;
+            startSec: number;
+            endSec: number;
+            recognitionStartSec: number;
+            recognitionEndSec: number;
+            cueCount: number;
+          }>;
+          requestId: string;
+          language: string;
+          cues: Array<{
+            id: string;
+            startMs: number;
+            endMs: number;
+            text: string;
+            source: "generated" | "edited";
+          }>;
+          model: { id: string; version: string; sha256: string };
+          sourceFingerprint: { size: number; modifiedAtMs: number };
+          performance: {
+            modelLoadMs: number;
+            inferenceMs: number;
+            audioMs: number;
+            totalMs: number;
+          };
+        }>;
+        resolveThumbnail(sourcePath: string, kind?: "image" | "video"): Promise<string | null>;
+        matchImportAsset?(name: string, size: number): (OpenReelLunaAsset & { size?: number }) | null;
+      };
+      crash: {
+        report(payload: { message: string; stack?: string; type?: string; context?: unknown }): void;
+      };
+      mcp?: {
+        onRequest(
+          handler: (req: {
+            callId: string;
+            kind: "listTools" | "callTool";
+            name?: string;
+            args?: Record<string, unknown>;
+          }) => Promise<{ ok: boolean; result?: unknown; error?: string }>,
+        ): () => void;
+        getStatus(): Promise<OpenReelMcpStatus>;
+        rotateToken(): Promise<OpenReelMcpStatus>;
+        testConnection(): Promise<{ ok: boolean; message?: string; toolCount?: number }>;
+      };
+      lunaAgent?: OpenReelAgentApi;
+      media: {
+        generateProxy(args: { srcPath: string; preset: "low" | "medium" | "high" }): Promise<{ outPath: string }>;
+        transcode(args: {
+          srcPath: string;
+          container?: "mp4" | "webm" | "mov";
+          videoBitrateKbps?: number;
+          audioBitrateKbps?: number;
+        }): Promise<{ outPath: string }>;
+        extractAudioWav(args: { srcPath: string; streamIndex?: number }): Promise<{ outPath: string }>;
+        probeAudioStreams(args: { srcPath: string }): Promise<{
+          streams: { index: number; codec: string; channels: number; sampleRate: number; language?: string }[];
+        }>;
+        fetchUrl(args: { url: string; maxBytes?: number }): Promise<{
+          ok: boolean;
+          status: number;
+          statusText: string;
+          contentType: string;
+          body: ArrayBuffer;
+          error?: string;
+        }>;
+      };
+      rigging?: {
+        probeBackend(): Promise<OpenReelRiggingBackendProbe>;
+        rigHumanoidModel(
+          args: OpenReelRigHumanoidModelArgs,
+        ): Promise<OpenReelRigHumanoidModelResult>;
+      };
+    };
+  }
+}

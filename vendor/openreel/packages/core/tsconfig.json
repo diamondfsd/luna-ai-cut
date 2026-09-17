@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@openreel/core": ["./src/index.ts"],
+      "@openreel/core/*": ["./src/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["src/wasm/**/assembly"]
+}

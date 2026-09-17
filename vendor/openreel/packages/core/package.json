@@ -1,0 +1,53 @@
+{
+  "name": "@openreel/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./*": {
+      "import": "./src/*.ts",
+      "types": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "build:wasm": "npm run build:wasm:fft && npm run build:wasm:wav && npm run build:wasm:beat",
+    "build:wasm:fft": "asc src/wasm/fft/assembly/index.ts -o src/wasm/fft/build/fft.wasm --optimize --runtime stub",
+    "build:wasm:wav": "asc src/wasm/wav/assembly/index.ts -o src/wasm/wav/build/wav.wasm --optimize --runtime stub",
+    "build:wasm:beat": "asc src/wasm/beat-detection/assembly/index.ts -o src/wasm/beat-detection/build/beat.wasm --optimize --runtime stub"
+  },
+  "devDependencies": {
+    "@types/three": "^0.182.0",
+    "@types/uuid": "^11.0.0",
+    "assemblyscript": "^0.27.0",
+    "fast-check": "^3.19.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "0.12.6",
+    "@ffmpeg/core-mt": "0.12.6",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@mediapipe/tasks-vision": "^0.10.35",
+    "@paper-design/shaders": "^0.0.76",
+    "gsap": "^3.14.2",
+    "idb-keyval": "^6.2.2",
+    "immer": "^11.0.1",
+    "mediabunny": "^1.25.3",
+    "onnxruntime-web": "1.21.0",
+    "polygon-clipping": "0.15.7",
+    "three": "^0.182.0",
+    "uuid": "^13.0.0",
+    "yaml": "^2.4.2"
+  }
+}

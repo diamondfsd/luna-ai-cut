@@ -1,0 +1,76 @@
+import type { RenderedFrame } from "../video/types";
+import type { RenderedAudio } from "../audio/types";
+
+export type PlaybackState = "stopped" | "playing" | "paused" | "seeking";
+
+export interface PlaybackConfig {
+  readonly frameRate: number;
+  readonly audioBufferSize: number;
+  readonly frameBufferAhead: number;
+  readonly audioLookahead: number;
+  readonly frameRenderTimeout: number;
+  readonly enableAudio: boolean;
+  readonly enableVideo: boolean;
+}
+
+export const DEFAULT_PLAYBACK_CONFIG: PlaybackConfig = {
+  frameRate: 30,
+  audioBufferSize: 4096,
+  frameBufferAhead: 5,
+  audioLookahead: 0.1,
+  frameRenderTimeout: 100, // 100ms as per requirement 6.3
+  enableAudio: true,
+  enableVideo: true,
+};
+
+export type PlaybackEventType =
+  | "play"
+  | "pause"
+  | "stop"
+  | "seek"
+  | "timeupdate"
+  | "ended"
+  | "error"
+  | "statechange"
+  | "framerendered"
+  | "bufferunderrun";
+
+export interface PlaybackEvent {
+  readonly type: PlaybackEventType;
+  readonly time: number;
+  readonly state: PlaybackState;
+  readonly error?: Error;
+  readonly frame?: RenderedFrame;
+}
+
+export type PlaybackEventListener = (event: PlaybackEvent) => void;
+
+export interface ScrubRequest {
+  readonly time: number;
+  readonly requestedAt: number;
+  readonly priority: number;
+}
+
+export interface PlaybackStats {
+  readonly currentTime: number;
+  readonly duration: number;
+  readonly state: PlaybackState;
+  readonly fps: number;
+  readonly droppedFrames: number;
+  readonly audioBufferHealth: number;
+  readonly videoBufferHealth: number;
+  readonly avgFrameRenderTime: number;
+}
+
+export interface FrameRenderResult {
+  readonly frame: RenderedFrame | null;
+  readonly renderTime: number;
+  readonly fromCache: boolean;
+  readonly timedOut: boolean;
+}
+
+export interface AudioRenderResult {
+  readonly audio: RenderedAudio | null;
+  readonly renderTime: number;
+  readonly success: boolean;
+}

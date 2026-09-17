@@ -1,0 +1,3 @@
+interface:
+  display_name: "Music Beat Sync"
+  short_description: "Music analysis and beat-synced cuts"

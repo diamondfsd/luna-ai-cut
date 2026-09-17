@@ -1,0 +1,253 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   OpenReel Editor — v2 design tokens (cinematic dark, emerald)
+   All values are CSS variables. Components use Tailwind utilities
+   that map to these via tailwind.config.js.
+   ============================================================ */
+@layer base {
+  :root {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+      system-ui, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+
+    /* density */
+    --d-text: 12.5px;
+    --d-text-sm: 11px;
+
+    /* timeline */
+    --tl-height: 58vh;
+    --tl-track: 56px;
+    --tl-rail: 196px;
+
+    /* layout */
+    --media-w: 460px;
+    --inspector-w: 360px;
+    --topbar-h: 40px;
+    --toolnav-h: 64px;
+
+    color-scheme: dark;
+  }
+
+  /* light theme — Claude Design "Editor" mock (emerald brand accent, Inter) */
+  :root,
+  [data-theme="light"] {
+    --bg: #f4f4f6;            /* window / app background */
+    --bg-1: #ffffff;          /* cards & elevated surfaces */
+    --bg-2: #f0f0f3;          /* recessed insets, pills, search fields */
+    --bg-3: #ececed;          /* segmented-control track */
+    --bg-elev: #ffffff;
+    --border: #e7e7ea;        /* card / input borders */
+    --border-strong: #d4d4d8;
+    --fg: #1d1d1f;            /* primary text */
+    --fg-2: #3a3a3c;          /* secondary text */
+    --fg-3: #7c7c82;          /* tertiary / labels */
+    --fg-muted: #9a9a9f;      /* muted / placeholder */
+    --hover: #f0f0f3;
+    --selected: #e6f9f1;      /* emerald-soft selected state */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.16);
+    --track-bg: #f7f7f9;
+    --tl-bg: #ffffff;
+    --waveform: #8cc79a;
+    /* preview stage: white so the area around the monitor matches the
+       other white surfaces instead of a grey cinema stage */
+    --stage-bg: #ffffff;
+    --screen-bg: #ffffff;
+
+    /* accent (brand emerald #10b981 — matches the OpenReel logo) */
+    --accent: #10b981;
+    --accent-strong: #059669;
+    --accent-soft: #e6f9f1;
+    --accent-fg: #ffffff;
+    --accent-glow: rgba(16, 185, 129, 0.35);
+
+    /* clip palette */
+    --c-video: #6a9bd8;
+    --c-text: #e8a44a;
+    --c-audio: #8cc79a;
+    --c-music: #14b8a6;
+  }
+
+  /* dark theme — cinematic, near-black like reference */
+  [data-theme="dark"],
+  .dark {
+    --bg: oklch(0.12 0.005 240);
+    --bg-1: oklch(0.16 0.006 240);
+    --bg-2: oklch(0.2 0.007 240);
+    --bg-3: oklch(0.24 0.008 240);
+    --bg-elev: oklch(0.22 0.007 240);
+    --border: oklch(0.26 0.008 240);
+    --border-strong: oklch(0.34 0.01 240);
+    --fg: oklch(0.97 0.003 240);
+    --fg-2: oklch(0.78 0.008 240);
+    --fg-3: oklch(0.6 0.012 240);
+    --fg-muted: oklch(0.48 0.012 240);
+    --hover: oklch(0.22 0.009 240);
+    --selected: oklch(0.30 0.03 162);
+    --shadow-sm: 0 1px 0 oklch(0 0 0 / 0.4), 0 1px 2px oklch(0 0 0 / 0.3);
+    --shadow-md: 0 1px 0 oklch(0 0 0 / 0.5), 0 6px 24px oklch(0 0 0 / 0.4);
+    --shadow-lg: 0 1px 0 oklch(0 0 0 / 0.6), 0 24px 60px oklch(0 0 0 / 0.5);
+    --track-bg: oklch(0.12 0.006 240);
+    --tl-bg: oklch(0.1 0.005 240);
+    --waveform: oklch(0.78 0.16 162 / 0.85);
+    --stage-bg: oklch(0.08 0.004 240);
+    /* the preview "screen" itself (canvas + letterbox): black in dark */
+    --screen-bg: oklch(0 0 0);
+
+    /* accent (brand emerald — matches the OpenReel logo) */
+    --accent: oklch(0.7 0.15 162);
+    --accent-strong: oklch(0.63 0.16 162);
+    --accent-soft: oklch(0.7 0.15 162 / 0.2);
+    --accent-fg: oklch(0.99 0 0);
+    --accent-glow: oklch(0.7 0.15 162 / 0.45);
+  }
+
+  [data-density="compact"] {
+    --d-text: 12px;
+    --d-text-sm: 10.5px;
+    --tl-track: 46px;
+    --tl-rail: 168px;
+    --toolnav-h: 56px;
+    --topbar-h: 36px;
+  }
+
+  /* Legacy shadcn/ui hsl tokens — kept so existing primitives
+     (DropdownMenu, Tooltip, Dialog, etc.) keep working until they
+     migrate to the new tokens. */
+  :root,
+  [data-theme="light"] {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent-hsl: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --input: 240 6% 90%;
+    --ring: 160 84% 39%;
+    --radius: 0.625rem;
+  }
+
+  [data-theme="dark"],
+  .dark {
+    --background: 220 12% 9%;
+    --foreground: 0 0% 95%;
+    --card: 220 10% 13%;
+    --card-foreground: 0 0% 95%;
+    --popover: 220 10% 13%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 158 64% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 8% 18%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 220 8% 18%;
+    --muted-foreground: 220 8% 65%;
+    --accent-hsl: 220 8% 22%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 95%;
+    --input: 220 8% 24%;
+    --ring: 158 64% 52%;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: var(--d-text);
+    color: var(--fg);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.005em;
+  }
+
+  button { cursor: pointer; }
+}
+
+/* ---------- helper utility classes (small, layout-only) ---------- */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------- scrollbar ---------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-muted);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+}
+
+/* ---------- hover tooltip via [data-tip] ---------- */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg-1);
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  white-space: nowrap;
+  z-index: 100;
+  pointer-events: none;
+  font-weight: 500;
+}
+
+/* Downward variant — for tools at a container's top edge where an upward
+   tooltip would be clipped by the panel's overflow. */
+[data-tip-bottom] { position: relative; }
+[data-tip-bottom]:hover::after {
+  content: attr(data-tip-bottom);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg-1);
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  white-space: nowrap;
+  z-index: 100;
+  pointer-events: none;
+  font-weight: 500;
+}

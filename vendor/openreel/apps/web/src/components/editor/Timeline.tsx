@@ -1,0 +1,1736 @@
+import React, {
+  useRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  Undo2,
+  Redo2,
+  Layers,
+  Maximize2,
+  Minimize2,
+  Music,
+  Type,
+  Scissors,
+  Copy,
+  Delete,
+  CornerDownLeft,
+  CornerDownRight,
+  ChevronUp,
+  ChevronDown,
+  Trash2,
+  Plus,
+  ChevronDown as ChevronDownIcon,
+  Magnet,
+  Rows3,
+  Rows2,
+  ZoomIn,
+  ZoomOut,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+  Volume2,
+  VolumeX,
+  Pencil,
+} from "@/icons/lucide-compat";
+import { ToolcraftIconButton as IconButton } from "@openreel/ui";
+import {
+  ToolcraftDropdownMenu as DropdownMenu,
+  type ToolcraftDropdownMenuOption as DropdownMenuOption,
+  ToolcraftPopover as Popover,
+  ToolcraftText as Text,
+} from "@openreel/ui";
+import { useProjectStore } from "../../stores/project-store";
+import { useTimelineStore, ZOOM_PRESETS } from "../../stores/timeline-store";
+import { useUIStore } from "../../stores/ui-store";
+import { toast } from "../../stores/notification-store";
+import { useEngineStore } from "../../stores/engine-store";
+import { getPlaybackBridge } from "../../bridges/playback-bridge";
+import { trackHasAudioItems, trackHasVisualItems } from "@openreel/core";
+import {
+  deleteTimelineItem,
+  duplicateTimelineItem,
+  getTimelineItemRanges,
+  getSplittableTimelineItemIds,
+  getTimelineMarqueeSelection,
+  splitTimelineItem,
+  trimTimelineItemToPlayhead,
+} from "../../utils/timeline-item-actions";
+import {
+  Playhead,
+  TimeRuler,
+  TrackHeader,
+  TrackLane,
+  BeatMarkerOverlay,
+  MarkerIndicator,
+  getTrackInfo,
+} from "./timeline/index";
+import {
+  filterTrackLayerEntries,
+  type TrackLayerFilter,
+} from "./timeline/track-layer-filter";
+import { getTrackDragAutoScrollDelta } from "./timeline/track-drag-auto-scroll";
+import {
+  moveLinkedCaptions,
+  trimLinkedCaptions,
+} from "../../utils/linked-caption-edit";
+import { CaptionBatchSelectButton } from "./timeline/CaptionBatchSelectButton";
+
+const TRACK_LAYER_FILTERS: readonly {
+  id: TrackLayerFilter;
+  label: string;
+}[] = [
+  { id: "all", label: "全部" },
+  { id: "video", label: "视频" },
+  { id: "image", label: "图片" },
+  { id: "audio", label: "音频" },
+  { id: "text", label: "文字" },
+  { id: "graphics", label: "图形" },
+];
+
+const ADD_TRACK_ROW_HEIGHT = 36;
+const TIMELINE_SCROLLBAR_SIZE = 10;
+
+export const Timeline: React.FC = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const tracksRef = useRef<HTMLDivElement>(null);
+  const trackHeadersRef = useRef<HTMLDivElement>(null);
+  const suppressNextBackgroundClickRef = useRef(false);
+  const trackDragPointerYRef = useRef<number | null>(null);
+  const trackDragAutoScrollFrameRef = useRef<number | null>(null);
+
+  const {
+    project,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    addTrack,
+    duplicateTrack,
+    reorderTrack,
+    removeMarker,
+    updateMarker,
+    updateClipKeyframes,
+    rippleDeleteClip,
+    hideTrack,
+    lockTrack,
+    muteTrack,
+    soloTrack,
+    renameTrack,
+    removeTrack,
+  } = useProjectStore();
+  const tracks = project.timeline.tracks;
+
+  const [draggedTrackId, setDraggedTrackId] = React.useState<string | null>(
+    null,
+  );
+
+  const stopTrackDrag = useCallback(() => {
+    if (trackDragAutoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(trackDragAutoScrollFrameRef.current);
+      trackDragAutoScrollFrameRef.current = null;
+    }
+    trackDragPointerYRef.current = null;
+    setDraggedTrackId(null);
+  }, []);
+
+  const startTrackDragAutoScroll = useCallback(() => {
+    if (trackDragAutoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(trackDragAutoScrollFrameRef.current);
+    }
+
+    const scrollFrame = () => {
+      const viewport = tracksRef.current;
+      const pointerY = trackDragPointerYRef.current;
+
+      if (viewport && pointerY !== null) {
+        const rect = viewport.getBoundingClientRect();
+        const maxScrollTop = Math.max(
+          0,
+          viewport.scrollHeight - viewport.clientHeight,
+        );
+        const delta = getTrackDragAutoScrollDelta(
+          pointerY,
+          rect.top,
+          rect.bottom,
+          viewport.scrollTop,
+          maxScrollTop,
+        );
+
+        if (delta !== 0) {
+          viewport.scrollTop = Math.max(
+            0,
+            Math.min(maxScrollTop, viewport.scrollTop + delta),
+          );
+        }
+      }
+
+      trackDragAutoScrollFrameRef.current = requestAnimationFrame(scrollFrame);
+    };
+
+    trackDragAutoScrollFrameRef.current = requestAnimationFrame(scrollFrame);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (trackDragAutoScrollFrameRef.current !== null) {
+        cancelAnimationFrame(trackDragAutoScrollFrameRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!draggedTrackId) return;
+
+    const trackPointerAcrossEditor = (event: DragEvent) => {
+      trackDragPointerYRef.current = event.clientY;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    };
+
+    // Capture the native drag event before child controls or the context-menu
+    // wrapper can consume it. This makes the entire header column participate
+    // in edge scrolling, including gaps exposed as the list moves underneath
+    // a stationary pointer.
+    window.addEventListener("dragover", trackPointerAcrossEditor, true);
+    return () => {
+      window.removeEventListener("dragover", trackPointerAcrossEditor, true);
+    };
+  }, [draggedTrackId]);
+
+  const {
+    playheadPosition,
+    playbackState,
+    pixelsPerSecond,
+    scrollX,
+    scrollY,
+    viewportWidth,
+    setScrollX,
+    setScrollY,
+    setViewportDimensions,
+    zoomIn,
+    zoomOut,
+    setZoom,
+    trackHeight,
+    setTrackHeight,
+    setTrackHeightById,
+    getTrackHeight,
+  } = useTimelineStore();
+
+  const [showLayersPanel, setShowLayersPanel] = useState(false);
+  const [trackLayerQuery, setTrackLayerQuery] = useState("");
+  const [trackLayerFilter, setTrackLayerFilter] =
+    useState<TrackLayerFilter>("all");
+  const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
+  const [trackNameDraft, setTrackNameDraft] = useState("");
+  const [pendingTrackDeleteId, setPendingTrackDeleteId] = useState<string | null>(
+    null,
+  );
+
+  const startTrackRename = useCallback((trackId: string, name: string) => {
+    setRenamingTrackId(trackId);
+    setTrackNameDraft(name);
+  }, []);
+
+  const finishTrackRename = useCallback(
+    (commit: boolean) => {
+      if (commit && renamingTrackId && trackNameDraft.trim()) {
+        void renameTrack(renamingTrackId, trackNameDraft.trim());
+      }
+      setRenamingTrackId(null);
+      setTrackNameDraft("");
+    },
+    [renameTrack, renamingTrackId, trackNameDraft],
+  );
+  const pendingTrackDelete = tracks.find(
+    (track) => track.id === pendingTrackDeleteId,
+  );
+  const filteredTrackEntries = useMemo(
+    () => filterTrackLayerEntries(tracks, trackLayerQuery, trackLayerFilter),
+    [trackLayerFilter, trackLayerQuery, tracks],
+  );
+
+  const {
+    select,
+    selectMultiple,
+    clearSelection,
+    getSelectedClipIds,
+    selectedItems,
+    snapSettings,
+    toggleSnap,
+    timelineMaximized,
+    toggleTimelineMaximized,
+  } = useUIStore();
+  const selectedClipIds = getSelectedClipIds();
+  const splittableSelectedClipIds = useMemo(
+    () =>
+      getSplittableTimelineItemIds(project, selectedClipIds, playheadPosition),
+    [playheadPosition, project, selectedClipIds],
+  );
+  const selectedMediaClipIds = useMemo(
+    () =>
+      selectedClipIds.filter((clipId) =>
+        tracks.some((track) => track.clips.some((clip) => clip.id === clipId)),
+      ),
+    [selectedClipIds, tracks],
+  );
+  const canRippleDelete =
+    selectedMediaClipIds.length > 0 &&
+    selectedMediaClipIds.length === selectedClipIds.length;
+
+  const { getTitleEngine, getGraphicsEngine } = useEngineStore();
+  const titleEngine = getTitleEngine();
+  const allTextClips = useMemo(() => {
+    return titleEngine?.getAllTextClips() ?? [];
+  }, [titleEngine, project.modifiedAt]);
+
+  const getTextClipsForTrack = useCallback(
+    (trackId: string) => {
+      return allTextClips.filter((tc) => tc.trackId === trackId);
+    },
+    [allTextClips],
+  );
+
+  const graphicsEngine = getGraphicsEngine();
+  const allShapeClips = useMemo(() => {
+    const shapes = graphicsEngine?.getAllShapeClips() ?? [];
+    const svgs = graphicsEngine?.getAllSVGClips() ?? [];
+    const stickers = graphicsEngine?.getAllStickerClips() ?? [];
+    return [...shapes, ...svgs, ...stickers];
+  }, [graphicsEngine, project.modifiedAt]);
+
+  const getShapeClipsForTrack = useCallback(
+    (trackId: string) => {
+      return allShapeClips.filter((sc) => sc.trackId === trackId);
+    },
+    [allShapeClips],
+  );
+  const [isBoxSelecting, setIsBoxSelecting] = React.useState(false);
+  const [selectionBox, setSelectionBox] = React.useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+    additive: boolean;
+  } | null>(null);
+
+  const timelineDuration = useMemo(() => {
+    let maxEnd = 0;
+    for (const track of tracks) {
+      for (const clip of track.clips) {
+        const end = clip.startTime + clip.duration;
+        if (end > maxEnd) maxEnd = end;
+      }
+    }
+    for (const clip of [...allTextClips, ...allShapeClips]) {
+      maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
+    }
+    return Math.max(maxEnd, 60); // Minimum 60 seconds
+  }, [tracks, allTextClips, allShapeClips]);
+
+  const playheadSnapPoints = useMemo(() => {
+    const points = new Set<number>();
+    for (const track of tracks) {
+      for (const clip of track.clips) {
+        points.add(clip.startTime);
+        points.add(clip.startTime + clip.duration);
+      }
+    }
+    for (const clip of [...allTextClips, ...allShapeClips]) {
+      points.add(clip.startTime);
+      points.add(clip.startTime + clip.duration);
+    }
+    return Array.from(points).sort((a, b) => a - b);
+  }, [tracks, allTextClips, allShapeClips]);
+
+  const totalTracksHeight = useMemo(() => {
+    let height = 0;
+    for (const track of tracks) {
+      height += getTrackHeight(track.id, track.type);
+    }
+    return height;
+  }, [tracks, getTrackHeight]);
+
+  const trackHeightsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const track of tracks) {
+      map.set(track.id, getTrackHeight(track.id, track.type));
+    }
+    return map;
+  }, [tracks, getTrackHeight]);
+
+  useEffect(() => {
+    const el = tracksRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const pointerX = e.clientX - rect.left;
+        const { pixelsPerSecond: pps, setZoom: applyZoom } =
+          useTimelineStore.getState();
+        const timeAtCursor = (pointerX + el.scrollLeft) / pps;
+        const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+        const next = Math.max(
+          ZOOM_PRESETS.MIN,
+          Math.min(ZOOM_PRESETS.MAX, pps * factor),
+        );
+        if (next === pps) return;
+        applyZoom(next);
+        requestAnimationFrame(() => {
+          el.scrollLeft = Math.max(0, timeAtCursor * next - pointerX);
+        });
+      } else if (e.shiftKey && e.deltaY !== 0) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const handleTrackDragStart = useCallback(
+    (e: React.DragEvent, trackId: string) => {
+      e.dataTransfer.setData("trackId", trackId);
+      e.dataTransfer.effectAllowed = "move";
+      trackDragPointerYRef.current = e.clientY;
+      setDraggedTrackId(trackId);
+      startTrackDragAutoScroll();
+    },
+    [startTrackDragAutoScroll],
+  );
+
+  const handleTrackDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    trackDragPointerYRef.current = e.clientY;
+  }, []);
+
+  const handleTrackDrop = useCallback(
+    async (e: React.DragEvent, targetTrackId: string) => {
+      e.preventDefault();
+      const sourceTrackId = e.dataTransfer.getData("trackId");
+      stopTrackDrag();
+
+      if (sourceTrackId && sourceTrackId !== targetTrackId) {
+        const targetIndex = tracks.findIndex((t) => t.id === targetTrackId);
+        if (targetIndex !== -1) {
+          await reorderTrack(sourceTrackId, targetIndex);
+        }
+      }
+    },
+    [tracks, reorderTrack, stopTrackDrag],
+  );
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setViewportDimensions(
+          entry.contentRect.width,
+          entry.contentRect.height,
+        );
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [setViewportDimensions]);
+
+  useEffect(() => {
+    if (playbackState !== "playing") return;
+    const el = tracksRef.current;
+    if (!el) return;
+
+    const playheadPixels = playheadPosition * pixelsPerSecond;
+    // Keep the playhead in the left portion of the viewport during playback so
+    // most of the upcoming timeline stays visible. When it crosses near the
+    // right edge (or jumps out of view via a seek/loop), page the view so the
+    // playhead lands back near the left with the rest as lookahead — instead of
+    // pinning it at the end on a long timeline.
+    const leftMargin = Math.min(Math.max(viewportWidth * 0.12, 60), 220);
+    const followThreshold = scrollX + viewportWidth - leftMargin;
+
+    if (playheadPixels > followThreshold || playheadPixels < scrollX) {
+      el.scrollLeft = Math.max(0, playheadPixels - leftMargin);
+    }
+  }, [playheadPosition, playbackState, pixelsPerSecond, scrollX, viewportWidth]);
+
+  const handleSelectClip = useCallback(
+    (clipId: string, addToSelection: boolean) => {
+      const isTextClip = allTextClips.some((tc) => tc.id === clipId);
+      if (isTextClip) {
+        const textClip = allTextClips.find((tc) => tc.id === clipId);
+        select(
+          { type: "text-clip", id: clipId, trackId: textClip?.trackId },
+          addToSelection,
+        );
+        return;
+      }
+      const isShapeClip = allShapeClips.some((sc) => sc.id === clipId);
+      if (isShapeClip) {
+        const shapeClip = allShapeClips.find((sc) => sc.id === clipId);
+        select(
+          { type: "shape-clip", id: clipId, trackId: shapeClip?.trackId },
+          addToSelection,
+        );
+        return;
+      }
+
+      let trackId: string | undefined;
+      for (const track of tracks) {
+        if (track.clips.some((c) => c.id === clipId)) {
+          trackId = track.id;
+          break;
+        }
+      }
+      select({ type: "clip", id: clipId, trackId }, addToSelection);
+    },
+    [tracks, select, allTextClips, allShapeClips],
+  );
+
+  const handleSelectTransition = useCallback(
+    (transitionId: string, trackId: string) => {
+      select({ type: "transition", id: transitionId, trackId });
+    },
+    [select],
+  );
+
+  const selectedTransitionId =
+    selectedItems.find((item) => item.type === "transition")?.id ?? null;
+
+  const [selectedKeyframeIds, setSelectedKeyframeIds] = useState<string[]>([]);
+
+  const handleKeyframeSelect = useCallback(
+    (keyframeId: string, addToSelection: boolean) => {
+      if (addToSelection) {
+        setSelectedKeyframeIds((prev) =>
+          prev.includes(keyframeId)
+            ? prev.filter((id) => id !== keyframeId)
+            : [...prev, keyframeId]
+        );
+      } else {
+        setSelectedKeyframeIds([keyframeId]);
+      }
+    },
+    []
+  );
+
+  const handleKeyframeMove = useCallback(
+    (keyframeId: string, newTime: number) => {
+      for (const track of tracks) {
+        for (const clip of track.clips) {
+          const keyframe = clip.keyframes?.find((kf) => kf.id === keyframeId);
+          if (keyframe) {
+            const updatedKeyframes = clip.keyframes?.map((kf) =>
+              kf.id === keyframeId ? { ...kf, time: Math.max(0, newTime) } : kf
+            );
+            if (updatedKeyframes) {
+              updateClipKeyframes(clip.id, updatedKeyframes);
+            }
+            return;
+          }
+        }
+      }
+    },
+    [tracks, updateClipKeyframes]
+  );
+
+  const handleKeyframeDelete = useCallback(
+    (keyframeId: string) => {
+      for (const track of tracks) {
+        for (const clip of track.clips) {
+          const keyframe = clip.keyframes?.find((kf) => kf.id === keyframeId);
+          if (keyframe) {
+            const updatedKeyframes = clip.keyframes?.filter(
+              (kf) => kf.id !== keyframeId
+            );
+            if (updatedKeyframes) {
+              updateClipKeyframes(clip.id, updatedKeyframes);
+            }
+            setSelectedKeyframeIds((prev) =>
+              prev.filter((id) => id !== keyframeId)
+            );
+            return;
+          }
+        }
+      }
+    },
+    [tracks, updateClipKeyframes]
+  );
+
+  const handleSplit = useCallback(async () => {
+    const store = useProjectStore.getState();
+    for (const clipId of splittableSelectedClipIds) {
+      await splitTimelineItem(
+        store,
+        clipId,
+        playheadPosition,
+      );
+    }
+  }, [playheadPosition, splittableSelectedClipIds]);
+
+  const handleDelete = useCallback(async () => {
+    if (selectedClipIds.length === 0) return;
+
+    const store = useProjectStore.getState();
+    for (const id of selectedClipIds) {
+      await deleteTimelineItem(store, id);
+    }
+    clearSelection();
+  }, [selectedClipIds, clearSelection]);
+
+  const handleDuplicate = useCallback(async () => {
+    if (selectedClipIds.length === 0) return;
+
+    const store = useProjectStore.getState();
+    for (const id of selectedClipIds) {
+      await duplicateTimelineItem(store, id);
+    }
+  }, [selectedClipIds]);
+
+  const handleRippleDelete = useCallback(async () => {
+    if (!canRippleDelete) return;
+    for (const id of selectedMediaClipIds) {
+      await rippleDeleteClip(id);
+    }
+    clearSelection();
+  }, [canRippleDelete, clearSelection, rippleDeleteClip, selectedMediaClipIds]);
+
+  const handleTrimToPlayhead = useCallback(
+    async (trimStart: boolean) => {
+      const store = useProjectStore.getState();
+      for (const id of splittableSelectedClipIds) {
+        await trimTimelineItemToPlayhead(
+          store,
+          id,
+          playheadPosition,
+          trimStart,
+        );
+      }
+    },
+    [playheadPosition, splittableSelectedClipIds],
+  );
+
+  const handleBackgroundClick = useCallback(() => {
+    if (suppressNextBackgroundClickRef.current) {
+      suppressNextBackgroundClickRef.current = false;
+      return;
+    }
+    clearSelection();
+  }, [clearSelection]);
+
+  const handleBoxSelectionStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest(".clip-component")) return;
+
+      const rect = tracksRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      // Convert viewport coordinates to timeline coordinates by accounting for scroll position
+      const x = e.clientX - rect.left + scrollX;
+      const y = e.clientY - rect.top + scrollY;
+
+      setIsBoxSelecting(true);
+      setSelectionBox({
+        startX: x,
+        startY: y,
+        currentX: x,
+        currentY: y,
+        additive: e.shiftKey || e.metaKey || e.ctrlKey,
+      });
+    },
+    [scrollX, scrollY],
+  );
+
+  const handleBoxSelectionMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isBoxSelecting || !selectionBox) return;
+
+      const rect = tracksRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = e.clientX - rect.left + scrollX;
+      const y = e.clientY - rect.top + scrollY;
+
+      setSelectionBox({
+        ...selectionBox,
+        currentX: x,
+        currentY: y,
+      });
+    },
+    [isBoxSelecting, selectionBox, scrollX, scrollY],
+  );
+
+  const handleBoxSelectionEnd = useCallback(() => {
+    if (!isBoxSelecting || !selectionBox) {
+      setIsBoxSelecting(false);
+      setSelectionBox(null);
+      return;
+    }
+
+    // Convert pixel coordinates to timeline time using current zoom level
+    const minX = Math.min(selectionBox.startX, selectionBox.currentX);
+    const maxX = Math.max(selectionBox.startX, selectionBox.currentX);
+    const minTime = minX / pixelsPerSecond;
+    const maxTime = maxX / pixelsPerSecond;
+    const isMarqueeGesture =
+      Math.abs(selectionBox.currentX - selectionBox.startX) > 3 ||
+      Math.abs(selectionBox.currentY - selectionBox.startY) > 3;
+    if (isMarqueeGesture) {
+      suppressNextBackgroundClickRef.current = true;
+    }
+
+    const marqueeItems = getTimelineMarqueeSelection(
+      project,
+      {
+        minTime,
+        maxTime,
+        minY: Math.min(selectionBox.startY, selectionBox.currentY),
+        maxY: Math.max(selectionBox.startY, selectionBox.currentY),
+      },
+      getTrackHeight,
+    );
+
+    if (selectionBox.additive) {
+      const merged = [...selectedItems];
+      for (const item of marqueeItems) {
+        if (!merged.some((selected) => selected.id === item.id)) {
+          merged.push(item);
+        }
+      }
+      selectMultiple(merged);
+    } else if (marqueeItems.length > 0) {
+      selectMultiple(marqueeItems);
+    } else {
+      clearSelection();
+    }
+
+    setIsBoxSelecting(false);
+    setSelectionBox(null);
+  }, [
+    isBoxSelecting,
+    selectionBox,
+    pixelsPerSecond,
+    project,
+    getTrackHeight,
+    selectMultiple,
+    selectedItems,
+    clearSelection,
+  ]);
+
+  useEffect(() => {
+    if (!isBoxSelecting) return;
+
+    const handleMouseUp = () => handleBoxSelectionEnd();
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
+  }, [isBoxSelecting, handleBoxSelectionEnd]);
+
+  const handleDropMedia = useCallback(
+    async (trackId: string, mediaId: string, startTime: number) => {
+      await useProjectStore
+        .getState()
+        .placeMediaClip(mediaId, trackId || undefined, startTime);
+    },
+    [],
+  );
+
+  const handleMoveClip = useCallback(
+    async (clipId: string, newStartTime: number, targetTrackId?: string) => {
+      const store = useProjectStore.getState();
+      const sourceClip = store.getClip(clipId);
+      const isOverlay = Boolean(
+        store.getTextClip(clipId) ||
+          store.getShapeClip(clipId) ||
+          store.getSVGClip(clipId) ||
+          store.getStickerClip(clipId),
+      );
+      const result = targetTrackId
+        ? await store.moveTimelineItem(clipId, newStartTime, targetTrackId)
+        : isOverlay
+          ? store.updateOverlayClipTiming(clipId, {
+              startTime: newStartTime,
+            })
+            ? { success: true as const }
+            : { success: false as const }
+          : await store.moveClip(clipId, newStartTime);
+      if (result.success && sourceClip) {
+        moveLinkedCaptions(useProjectStore.getState(), sourceClip, newStartTime);
+      }
+    },
+    [],
+  );
+
+  const [snapIndicatorTime, setSnapIndicatorTime] = React.useState<
+    number | null
+  >(null);
+
+  const handleSnapIndicator = useCallback((time: number | null) => {
+    setSnapIndicatorTime(time);
+  }, []);
+
+  const handleTrimTextClip = useCallback(
+    (clipId: string, edge: "left" | "right", newTime: number) => {
+      const store = useProjectStore.getState();
+      const textClip = store.getTextClip(clipId);
+      if (!textClip) return;
+      const newDuration =
+        edge === "left"
+          ? Math.max(0.1, textClip.startTime + textClip.duration - newTime)
+          : Math.max(0.1, newTime - textClip.startTime);
+      store.updateOverlayClipTiming(clipId, {
+        ...(edge === "left" ? { startTime: newTime } : {}),
+        duration: newDuration,
+      });
+    },
+    [],
+  );
+
+  const handleMoveTextClip = useCallback(
+    async (clipId: string, newStartTime: number, targetTrackId?: string) => {
+      await handleMoveClip(clipId, Math.max(0, newStartTime), targetTrackId);
+    },
+    [handleMoveClip],
+  );
+
+  const handleTrimShapeClip = useCallback(
+    (clipId: string, edge: "left" | "right", newTime: number) => {
+      const store = useProjectStore.getState();
+      const graphicClip =
+        store.getShapeClip(clipId) ||
+        store.getSVGClip(clipId) ||
+        store.getStickerClip(clipId);
+      if (!graphicClip) return;
+      const newDuration =
+        edge === "left"
+          ? Math.max(
+              0.1,
+              graphicClip.startTime + graphicClip.duration - newTime,
+            )
+          : Math.max(0.1, newTime - graphicClip.startTime);
+
+      store.updateOverlayClipTiming(clipId, {
+        ...(edge === "left" ? { startTime: newTime } : {}),
+        duration: newDuration,
+      });
+    },
+    [],
+  );
+
+  const handleTrimClip = useCallback(
+    (clipId: string, edge: "left" | "right", newTime: number) => {
+      const clip = tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
+      if (!clip) return;
+
+      const oldDuration = clip.duration;
+      const newDuration =
+        edge === "left"
+          ? Math.max(0.1, clip.startTime + clip.duration - newTime)
+          : Math.max(0.1, newTime - clip.startTime);
+
+      const updates =
+        edge === "left"
+          ? {
+              startTime: newTime,
+              duration: newDuration,
+            }
+          : {
+              duration: newDuration,
+            };
+
+      const adjustedKeyframes = clip.keyframes.map((kf) => {
+        if (kf.id.startsWith("kf-exit-")) {
+          const relativeTime = kf.time - oldDuration;
+          return { ...kf, time: newDuration + relativeTime };
+        }
+        return kf;
+      });
+
+      useProjectStore.setState((state) => ({
+        project: {
+          ...state.project,
+          timeline: {
+            ...state.project.timeline,
+            tracks: state.project.timeline.tracks.map((track) => ({
+              ...track,
+              clips: track.clips.map((c) =>
+                c.id === clipId
+                  ? { ...c, ...updates, keyframes: adjustedKeyframes }
+                  : c,
+              ),
+            })),
+          },
+          modifiedAt: Date.now(),
+        },
+      }));
+      const newStartTime = edge === "left" ? newTime : clip.startTime;
+      trimLinkedCaptions(
+        useProjectStore.getState(),
+        clip,
+        newStartTime,
+        newStartTime + newDuration,
+      );
+    },
+    [tracks],
+  );
+
+  const visualOrderTracks = useMemo(() => tracks, [tracks]);
+  const addTrackItems: DropdownMenuOption[] = useMemo(
+    () => [
+      {
+        label: "轨道",
+        icon: <Layers size={16} className="text-foreground" aria-hidden />,
+        onClick: () => addTrack("video", undefined, { mode: "standard" }),
+      },
+      {
+        label: "对白",
+        icon: <Music size={16} className="text-clip-audio" aria-hidden />,
+        onClick: () =>
+          addTrack("video", undefined, {
+            mode: "standard",
+            role: "dialogue",
+            name: "对白",
+          }),
+      },
+      {
+        label: "音乐",
+        icon: <Music size={16} className="text-clip-audio" aria-hidden />,
+        onClick: () =>
+          addTrack("video", undefined, {
+            mode: "standard",
+            role: "music",
+            name: "音乐",
+          }),
+      },
+      {
+        label: "字幕",
+        icon: <Type size={16} className="text-clip-text" aria-hidden />,
+        onClick: () =>
+          addTrack("video", undefined, {
+            mode: "standard",
+            role: "captions",
+            name: "字幕",
+          }),
+      },
+    ],
+    [addTrack],
+  );
+
+  // Small, mockup-styled timeline tool button
+  const TLTool = ({
+    onClick,
+    disabled,
+    active,
+    title,
+    children,
+    extra,
+  }: {
+    onClick?: () => void;
+    disabled?: boolean;
+    active?: boolean;
+    title?: string;
+    children: React.ReactNode;
+    extra?: React.ReactNode;
+  }) => (
+    <button
+      type="button"
+      aria-label={title ?? "时间线工具"}
+      onClick={onClick}
+      disabled={disabled}
+      data-tip-bottom={title}
+      className={`relative grid place-items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+        active ? "text-accent" : "text-fg-muted hover:text-fg-2"
+      }`}
+    >
+      {children}
+      {extra}
+    </button>
+  );
+
+  return (
+    <div
+      data-tour="timeline"
+      className="h-full bg-tl-bg flex flex-col min-h-0 relative overflow-hidden"
+    >
+      {/* ── Timeline toolbar (mock: 48px line-icon tools + emerald zoom slider) ── */}
+      <div className="flex items-center h-12 px-4 gap-4 bg-bg-1 border-b border-border shrink-0 relative z-50">
+        <TLTool onClick={undo} disabled={!canUndo()} title="撤销 (⌘Z)">
+          <Undo2 size={16} aria-hidden />
+        </TLTool>
+        <TLTool onClick={redo} disabled={!canRedo()} title="重做 (⇧⌘Z)">
+          <Redo2 size={16} aria-hidden />
+        </TLTool>
+
+        <div className="w-px h-[18px] bg-border" />
+
+        <TLTool
+          onClick={handleSplit}
+          disabled={splittableSelectedClipIds.length === 0}
+          title="分割 (S)"
+        >
+          <Scissors size={16} aria-hidden />
+        </TLTool>
+        <TLTool
+          onClick={() => handleTrimToPlayhead(true)}
+          disabled={splittableSelectedClipIds.length === 0}
+          title="裁剪到播放头起点 (Q)"
+        >
+          <CornerDownLeft size={16} aria-hidden />
+        </TLTool>
+        <TLTool
+          onClick={() => handleTrimToPlayhead(false)}
+          disabled={splittableSelectedClipIds.length === 0}
+          title="裁剪到播放头终点 (W)"
+        >
+          <CornerDownRight size={16} aria-hidden />
+        </TLTool>
+        <TLTool
+          onClick={handleDelete}
+          disabled={selectedClipIds.length === 0}
+          title="删除 (Del)"
+        >
+          <Trash2 size={16} aria-hidden />
+        </TLTool>
+        <TLTool
+          onClick={handleDuplicate}
+          disabled={selectedClipIds.length === 0}
+          title="复制 (⌘D)"
+        >
+          <Copy size={16} aria-hidden />
+        </TLTool>
+        <TLTool
+          onClick={handleRippleDelete}
+          disabled={!canRippleDelete}
+          title="波纹删除 (⇧Del)"
+        >
+          <Delete size={16} aria-hidden />
+        </TLTool>
+
+        <div className="w-px h-[18px] bg-border" />
+
+        <DropdownMenu
+          items={addTrackItems}
+          placement="above"
+          menuWidth={192}
+          hasChevron
+          button={{
+            label: "添加轨道",
+            size: "sm",
+            variant: "ghost",
+            icon: <Plus size={16} aria-hidden />,
+            endContent: (
+              <ChevronDownIcon size={9} className="text-fg-muted" aria-hidden />
+            ),
+          }}
+        />
+
+        <Popover
+          isOpen={showLayersPanel}
+          onOpenChange={(open) => {
+            setShowLayersPanel(open);
+            if (!open) {
+              finishTrackRename(false);
+              setPendingTrackDeleteId(null);
+            }
+          }}
+          placement="above"
+          alignment="start"
+          width={340}
+          label="轨道层"
+          content={
+            <>
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-border bg-bg-2">
+                <span className="text-xs font-semibold text-fg">轨道层</span>
+                <span className="text-[10px] tabular-nums text-fg-3">
+                  {filteredTrackEntries.length}/{tracks.length}
+                </span>
+              </div>
+              {pendingTrackDelete ? (
+                <div
+                  role="alertdialog"
+                  aria-label={`删除 ${pendingTrackDelete.name}`}
+                  className="border-b border-danger/30 bg-danger/10 px-3 py-2.5"
+                >
+                  <p className="text-[11px] font-semibold text-danger">
+                    删除“{pendingTrackDelete.name}”？
+                  </p>
+                  <p className="mt-0.5 text-[10px] leading-relaxed text-fg-3">
+                    该轨道中的片段将被移除，可以撤销此操作。
+                  </p>
+                  <div className="mt-2 flex justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPendingTrackDeleteId(null)}
+                      className="h-7 rounded-md border border-border bg-bg-1 px-2.5 text-[10px] font-semibold text-fg-2 hover:bg-hover"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void removeTrack(pendingTrackDelete.id);
+                        setPendingTrackDeleteId(null);
+                      }}
+                      className="h-7 rounded-md bg-danger px-2.5 text-[10px] font-semibold text-white hover:opacity-90"
+                    >
+                      删除轨道
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="space-y-2 border-b border-border px-3 py-2.5">
+                <input
+                  type="search"
+                  value={trackLayerQuery}
+                  onChange={(event) => setTrackLayerQuery(event.currentTarget.value)}
+                  placeholder="搜索轨道"
+                  aria-label="搜索轨道层"
+                  className="h-8 w-full rounded-md border border-border bg-bg-1 px-2.5 text-[11px] text-fg outline-none placeholder:text-fg-muted focus:border-accent"
+                />
+                <div
+                  className="flex gap-1 overflow-x-auto pb-0.5"
+                  role="group"
+                  aria-label="轨道层类型"
+                >
+                  {TRACK_LAYER_FILTERS.map((filter) => {
+                    const count =
+                      filter.id === "all"
+                        ? tracks.length
+                        : tracks.filter((track) => track.type === filter.id).length;
+                    return (
+                      <button
+                        key={filter.id}
+                        type="button"
+                        aria-pressed={trackLayerFilter === filter.id}
+                        onClick={() => setTrackLayerFilter(filter.id)}
+                        className={`h-6 shrink-0 rounded-md border px-2 text-[9px] font-semibold transition-colors ${
+                          trackLayerFilter === filter.id
+                            ? "border-accent bg-accent-soft text-accent"
+                            : "border-border bg-bg-2 text-fg-3 hover:border-accent/50 hover:text-fg"
+                        }`}
+                      >
+                        {filter.label} {count}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="p-2 max-h-60 overflow-y-auto">
+                {tracks.length === 0 ? (
+                  <Text type="supporting" color="secondary" className="text-xs text-fg-muted text-center py-6">
+                    暂无轨道
+                  </Text>
+                ) : filteredTrackEntries.length === 0 ? (
+                  <Text
+                    type="supporting"
+                    color="secondary"
+                    className="block py-6 text-center text-xs text-fg-muted"
+                  >
+                    没有符合筛选条件的轨道
+                  </Text>
+                ) : (
+                  <div className="space-y-0.5">
+                    {filteredTrackEntries.map(({ track, index }) => {
+                      const info = getTrackInfo(track, index);
+                      const name = track.name || info.label;
+                      const isVisual = trackHasVisualItems(project, track.id);
+                      const isAudio = trackHasAudioItems(project, track.id);
+                      return (
+                        <div
+                          key={track.id}
+                          className="flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-hover group transition-colors cursor-default"
+                        >
+                          <div
+                            className={`w-7 h-7 rounded-md flex items-center justify-center ${info.bgLight}`}
+                          >
+                            <info.icon size={14} className={info.textColor} aria-hidden />
+                          </div>
+                          {renamingTrackId === track.id ? (
+                            <input
+                              autoFocus
+                              aria-label={`重命名 ${name}`}
+                              value={trackNameDraft}
+                              onChange={(event) =>
+                                setTrackNameDraft(event.currentTarget.value)
+                              }
+                              onBlur={() => finishTrackRename(true)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  finishTrackRename(true);
+                                } else if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  finishTrackRename(false);
+                                }
+                              }}
+                              className="h-7 min-w-0 flex-1 rounded-md border border-accent bg-bg-1 px-2 text-[11px] font-medium text-fg outline-none"
+                            />
+                          ) : (
+                            <span
+                              className="flex-1 truncate text-[11px] font-medium text-fg"
+                              onDoubleClick={() => startTrackRename(track.id, name)}
+                            >
+                              {name}
+                            </span>
+                          )}
+                          <div className="flex gap-0.5 opacity-60 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                            <IconButton
+                              label={`重命名 ${name}`}
+                              icon={<Pencil size={12} aria-hidden />}
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => startTrackRename(track.id, name)}
+                            />
+                            <IconButton
+                              label={`复制 ${name}`}
+                              icon={<Copy size={12} aria-hidden />}
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => void duplicateTrack(track.id)}
+                            />
+                            <IconButton
+                              label={`删除 ${name}`}
+                              icon={<Trash2 size={12} aria-hidden />}
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setPendingTrackDeleteId(track.id)}
+                            />
+                            {isVisual ? (
+                              <IconButton
+                                label={`${track.hidden ? "显示" : "隐藏"} ${name}`}
+                                icon={
+                                  track.hidden ? (
+                                    <EyeOff size={12} aria-hidden />
+                                  ) : (
+                                    <Eye size={12} aria-hidden />
+                                  )
+                                }
+                                size="sm"
+                                variant={track.hidden ? "secondary" : "ghost"}
+                                aria-pressed={track.hidden}
+                                onClick={() => void hideTrack(track.id, !track.hidden)}
+                              />
+                            ) : null}
+                            {isAudio ? (
+                              <>
+                                <IconButton
+                                  label={`${track.muted ? "取消静音" : "静音"} ${name}`}
+                                  icon={
+                                    track.muted ? (
+                                      <VolumeX size={12} aria-hidden />
+                                    ) : (
+                                      <Volume2 size={12} aria-hidden />
+                                    )
+                                  }
+                                  size="sm"
+                                  variant={track.muted ? "secondary" : "ghost"}
+                                  aria-pressed={track.muted}
+                                  onClick={() => void muteTrack(track.id, !track.muted)}
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={`${track.solo ? "清除独奏" : "独奏"} ${name}`}
+                                  aria-pressed={track.solo}
+                                  onClick={() => void soloTrack(track.id, !track.solo)}
+                                  className={`flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-[10px] font-black transition-colors ${
+                                    track.solo
+                                      ? "bg-status-warning text-black"
+                                      : "text-fg-muted hover:bg-hover hover:text-fg"
+                                  }`}
+                                >
+                                  S
+                                </button>
+                              </>
+                            ) : null}
+                            <IconButton
+                              label={`${track.locked ? "解锁" : "锁定"} ${name}`}
+                              icon={
+                                track.locked ? (
+                                  <Unlock size={12} aria-hidden />
+                                ) : (
+                                  <Lock size={12} aria-hidden />
+                                )
+                              }
+                              size="sm"
+                              variant={track.locked ? "secondary" : "ghost"}
+                              aria-pressed={track.locked}
+                              onClick={() => void lockTrack(track.id, !track.locked)}
+                            />
+                            <IconButton
+                              label={`将 ${name} 上移`}
+                              icon={<ChevronUp size={12} aria-hidden />}
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                index > 0 && reorderTrack(track.id, index - 1)
+                              }
+                              isDisabled={index === 0}
+                            />
+                            <IconButton
+                              label={`将 ${name} 下移`}
+                              icon={<ChevronDown size={12} aria-hidden />}
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                index < tracks.length - 1 &&
+                                reorderTrack(track.id, index + 1)
+                              }
+                              isDisabled={index === tracks.length - 1}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          }
+        >
+          <IconButton
+            label="管理轨道层"
+            icon={<Layers size={16} aria-hidden />}
+            size="sm"
+            variant={showLayersPanel ? "secondary" : "ghost"}
+            data-tip-bottom="轨道层"
+          />
+        </Popover>
+
+        <CaptionBatchSelectButton />
+
+        <div className="ml-auto flex items-center gap-3">
+          {/* Zoom control (mock: minus / emerald slider track + knob / plus) */}
+          <div className="flex items-center gap-2.5">
+            <TLTool onClick={zoomOut} title="缩小">
+              <ZoomOut size={16} aria-hidden />
+            </TLTool>
+            <div className="relative h-5 w-[150px]">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-0 top-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-bg-2"
+              />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-accent"
+                style={{
+                  width: `${Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      ((pixelsPerSecond - ZOOM_PRESETS.MIN) /
+                        (ZOOM_PRESETS.MAX - ZOOM_PRESETS.MIN)) *
+                        100,
+                    ),
+                  )}%`,
+                }}
+              />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-sm"
+                style={{
+                  left: `${Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      ((pixelsPerSecond - ZOOM_PRESETS.MIN) /
+                        (ZOOM_PRESETS.MAX - ZOOM_PRESETS.MIN)) *
+                        100,
+                    ),
+                  )}%`,
+                }}
+              />
+              <input
+                type="range"
+                aria-label="时间线缩放"
+                aria-valuetext={`${Math.round(pixelsPerSecond)} 像素/秒`}
+                min={ZOOM_PRESETS.MIN}
+                max={ZOOM_PRESETS.MAX}
+                step={1}
+                value={pixelsPerSecond}
+                onChange={(event) => setZoom(Number(event.currentTarget.value))}
+                className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
+              />
+            </div>
+            <TLTool onClick={zoomIn} title="放大">
+              <ZoomIn size={16} aria-hidden />
+            </TLTool>
+          </div>
+
+          <div className="w-px h-[18px] bg-border" />
+
+          <div className="flex items-center gap-1">
+            <TLTool
+              onClick={toggleSnap}
+              active={snapSettings.enabled}
+              title={snapSettings.enabled ? "吸附已开启 (N)" : "吸附已关闭 (N)"}
+            >
+              <Magnet size={16} />
+            </TLTool>
+
+            <TLTool
+              onClick={() => {
+                setTrackHeight(64);
+                useTimelineStore.setState({ trackHeights: {} });
+              }}
+              active={trackHeight >= 52}
+              title="大轨道"
+            >
+              <Rows3 size={16} />
+            </TLTool>
+            <TLTool
+              onClick={() => {
+                setTrackHeight(40);
+                useTimelineStore.setState({ trackHeights: {} });
+              }}
+              active={trackHeight < 52}
+              title="紧凑轨道"
+            >
+              <Rows2 size={16} />
+            </TLTool>
+
+            <TLTool
+              onClick={toggleTimelineMaximized}
+              active={timelineMaximized}
+              title={
+                timelineMaximized
+                  ? "恢复布局"
+                  : "最大化时间线（更多空间）"
+              }
+            >
+              {timelineMaximized ? (
+                <Minimize2 size={16} />
+              ) : (
+                <Maximize2 size={16} />
+              )}
+            </TLTool>
+          </div>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="flex-1 flex flex-col overflow-hidden relative"
+        onClick={handleBackgroundClick}
+      >
+        <div className="flex shrink-0">
+          <div className="w-[170px] h-[34px] bg-bg-1 border-b border-r border-border shrink-0" />
+          <div className="flex-1 overflow-hidden relative bg-bg-1 border-b border-border">
+            <div
+              style={{
+                width: `${timelineDuration * pixelsPerSecond}px`,
+                transform: `translateX(-${scrollX}px)`,
+              }}
+            >
+              <TimeRuler
+                duration={timelineDuration}
+                pixelsPerSecond={pixelsPerSecond}
+                scrollX={scrollX}
+                viewportWidth={viewportWidth}
+                snapPoints={playheadSnapPoints}
+                onSeek={(time) => {
+                  const bridge = getPlaybackBridge();
+                  bridge.scrubTo(time);
+                }}
+                onScrubStart={() => {
+                  const bridge = getPlaybackBridge();
+                  bridge.startScrubbing();
+                }}
+                onScrubEnd={() => {
+                  const bridge = getPlaybackBridge();
+                  bridge.endScrubbing();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 flex overflow-hidden">
+          <div
+            ref={trackHeadersRef}
+            data-testid="timeline-track-headers-scroll"
+            className="w-[170px] bg-bg-1 border-r border-border shrink-0 z-20 overflow-y-auto overflow-x-hidden scrollbar-none overscroll-contain"
+            onDragOverCapture={handleTrackDragOver}
+            onScroll={(e) => {
+              const nextScrollTop = e.currentTarget.scrollTop;
+              const timeline = tracksRef.current;
+              if (timeline && Math.abs(timeline.scrollTop - nextScrollTop) > 0.5) {
+                timeline.scrollTop = nextScrollTop;
+              }
+              setScrollY(nextScrollTop);
+            }}
+          >
+            <div className="flex flex-col">
+              {visualOrderTracks.map((track, i) => {
+                const keyframeCount = track.clips.reduce(
+                  (sum, clip) => sum + (clip.keyframes?.length || 0),
+                  0
+                );
+                return (
+                  <div
+                    key={track.id}
+                    className={draggedTrackId === track.id ? "opacity-50" : ""}
+                  >
+                    <TrackHeader
+                      track={track}
+                      index={i}
+                      onDragStart={handleTrackDragStart}
+                      onDragOver={handleTrackDragOver}
+                      onDrop={handleTrackDrop}
+                      onDragEnd={stopTrackDrag}
+                      keyframeCount={keyframeCount}
+                    />
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() =>
+                  addTrack("video", undefined, { mode: "standard" })
+                }
+                className="mx-3 my-1 h-7 flex items-center justify-center gap-1.5 rounded-[7px] border border-dashed border-border-strong text-fg-muted hover:text-fg-2 hover:border-fg-3 transition-colors"
+                aria-label="添加轨道"
+              >
+                <Plus size={16} aria-hidden />
+              </button>
+              <div
+                aria-hidden="true"
+                style={{ height: TIMELINE_SCROLLBAR_SIZE }}
+              />
+            </div>
+          </div>
+
+          <div
+            ref={tracksRef}
+            data-testid="timeline-tracks-scroll"
+            className="flex-1 bg-background relative overflow-auto custom-scrollbar"
+            onScroll={(e) => {
+              setScrollX(e.currentTarget.scrollLeft);
+              const nextScrollTop = e.currentTarget.scrollTop;
+              const headers = trackHeadersRef.current;
+              if (headers && Math.abs(headers.scrollTop - nextScrollTop) > 0.5) {
+                headers.scrollTop = nextScrollTop;
+              }
+              setScrollY(nextScrollTop);
+            }}
+            onMouseDown={handleBoxSelectionStart}
+            onMouseMove={handleBoxSelectionMove}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (draggedTrackId) {
+                e.dataTransfer.dropEffect = "move";
+                trackDragPointerYRef.current = e.clientY;
+                return;
+              }
+              e.dataTransfer.dropEffect = "copy";
+              const element = tracksRef.current;
+              if (!element) return;
+              const rect = element.getBoundingClientRect();
+              const edgeSize = 56;
+              const maxStep = 24;
+              const horizontal =
+                e.clientX < rect.left + edgeSize
+                  ? -maxStep * (1 - (e.clientX - rect.left) / edgeSize)
+                  : e.clientX > rect.right - edgeSize
+                    ? maxStep * (1 - (rect.right - e.clientX) / edgeSize)
+                    : 0;
+              const vertical =
+                e.clientY < rect.top + edgeSize
+                  ? -maxStep * (1 - (e.clientY - rect.top) / edgeSize)
+                  : e.clientY > rect.bottom - edgeSize
+                    ? maxStep * (1 - (rect.bottom - e.clientY) / edgeSize)
+                    : 0;
+              if (horizontal || vertical) {
+                element.scrollBy({ left: horizontal, top: vertical });
+              }
+            }}
+            onDrop={async (e) => {
+              e.preventDefault();
+
+              const rect = tracksRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              const x = e.clientX - rect.left + (tracksRef.current?.scrollLeft ?? 0);
+              const rawTime = Math.max(0, x / pixelsPerSecond);
+
+              const allClips = getTimelineItemRanges(project);
+              let snappedTime = rawTime;
+              if (snapSettings.enabled) {
+                const threshold = snapSettings.snapThreshold / pixelsPerSecond;
+                let bestDist = Infinity;
+                for (const clip of allClips) {
+                  const clipEnd = clip.startTime + clip.duration;
+                  const distToEnd = Math.abs(rawTime - clipEnd);
+                  const distToStart = Math.abs(rawTime - clip.startTime);
+                  if (distToEnd < threshold && distToEnd < bestDist) {
+                    bestDist = distToEnd;
+                    snappedTime = clipEnd;
+                  }
+                  if (distToStart < threshold && distToStart < bestDist) {
+                    bestDist = distToStart;
+                    snappedTime = clip.startTime;
+                  }
+                }
+                if (snapSettings.snapToPlayhead) {
+                  const distToPlayhead = Math.abs(rawTime - playheadPosition);
+                  if (distToPlayhead < threshold && distToPlayhead < bestDist) {
+                    snappedTime = playheadPosition;
+                  }
+                }
+              }
+
+              // External OS file drop (e.g. from Windows Explorer)
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const { importMedia, placeMediaClip } = useProjectStore.getState();
+                for (const file of Array.from(e.dataTransfer.files)) {
+                  try {
+                    const beforeIds = new Set(
+                      useProjectStore.getState().project.mediaLibrary.items.map(i => i.id)
+                    );
+                    const result = await importMedia(file);
+                    if (result.success) {
+                      const newItem = useProjectStore
+                        .getState()
+                        .project.mediaLibrary.items.find(i => !beforeIds.has(i.id));
+                      if (newItem) {
+                        await placeMediaClip(newItem.id, undefined, snappedTime);
+                        const track = useProjectStore
+                          .getState()
+                          .project.timeline.tracks.find(t =>
+                            t.clips.some(c => c.mediaId === newItem.id)
+                          );
+                        if (track) {
+                          toast.success(`已添加到 ${track.name}`, file.name);
+                        }
+                      }
+                    }
+                  } catch (err) {
+                    console.error("[Timeline] External file drop failed:", err);
+                  }
+                }
+                return;
+              }
+
+              // Internal drag from assets panel
+              try {
+                const rawData = e.dataTransfer.getData("application/json");
+                if (!rawData) return;
+                const data = JSON.parse(rawData);
+                if (!data?.mediaId) return;
+                handleDropMedia("", data.mediaId, snappedTime);
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            <div
+              style={{ width: `${timelineDuration * pixelsPerSecond}px` }}
+              className="min-w-full"
+            >
+              {visualOrderTracks.map((track) => (
+                <TrackLane
+                  key={track.id}
+                  track={track}
+                  allTracks={visualOrderTracks}
+                  pixelsPerSecond={pixelsPerSecond}
+                  selectedClipIds={selectedClipIds}
+                  textClips={getTextClipsForTrack(track.id)}
+                  shapeClips={getShapeClipsForTrack(track.id)}
+                  trackHeights={trackHeightsMap}
+                  timelineRef={tracksRef}
+                  onSelectClip={handleSelectClip}
+                  onDropMedia={handleDropMedia}
+                  onMoveClip={handleMoveClip}
+                  onSnapIndicator={handleSnapIndicator}
+                  onTrimClip={handleTrimClip}
+                  onTrimTextClip={handleTrimTextClip}
+                  onMoveTextClip={handleMoveTextClip}
+                  onTrimShapeClip={handleTrimShapeClip}
+                  scrollX={scrollX}
+                  trackHeight={getTrackHeight(track.id, track.type)}
+                  onResizeTrack={setTrackHeightById}
+                  onKeyframeSelect={handleKeyframeSelect}
+                  onKeyframeMove={handleKeyframeMove}
+                  onKeyframeDelete={handleKeyframeDelete}
+                  selectedKeyframeIds={selectedKeyframeIds}
+                  onSelectTransition={handleSelectTransition}
+                  selectedTransitionId={selectedTransitionId}
+                />
+              ))}
+
+              <div
+                aria-hidden="true"
+                style={{ height: ADD_TRACK_ROW_HEIGHT }}
+              />
+
+              <BeatMarkerOverlay
+                pixelsPerSecond={pixelsPerSecond}
+                scrollX={scrollX}
+                viewportWidth={viewportWidth}
+                totalHeight={totalTracksHeight}
+              />
+
+              {project.timeline.markers.map((marker) => (
+                <MarkerIndicator
+                  key={marker.id}
+                  marker={marker}
+                  pixelsPerSecond={pixelsPerSecond}
+                  scrollX={scrollX}
+                  onSeek={(time) => {
+                    const bridge = getPlaybackBridge();
+                    bridge.scrubTo(time);
+                  }}
+                  onRemove={removeMarker}
+                  onUpdate={updateMarker}
+                />
+              ))}
+
+              {snapIndicatorTime !== null && (
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-yellow-400 z-30 pointer-events-none"
+                  style={{ left: `${snapIndicatorTime * pixelsPerSecond}px` }}
+                >
+                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-yellow-400 rounded-full" />
+                </div>
+              )}
+
+              {isBoxSelecting && selectionBox && (
+                <div
+                  className="absolute border-2 border-primary bg-primary/10 pointer-events-none z-40"
+                  style={{
+                    left:
+                      Math.min(selectionBox.startX, selectionBox.currentX) -
+                      scrollX,
+                    top:
+                      Math.min(selectionBox.startY, selectionBox.currentY) -
+                      scrollY,
+                    width: Math.abs(
+                      selectionBox.currentX - selectionBox.startX,
+                    ),
+                    height: Math.abs(
+                      selectionBox.currentY - selectionBox.startY,
+                    ),
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <Playhead
+          position={playheadPosition}
+          pixelsPerSecond={pixelsPerSecond}
+          scrollX={scrollX}
+          headerOffset={170}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default Timeline;

@@ -89,3 +89,9 @@ luna-render-core/DXC-LICENSE-*.txt
 luna-render-core/ASR-LICENSE-*.txt
 worktrees/
 *com*.jpg
+# OpenReel is vendored into this repository; dependencies and generated output
+# stay local and are rebuilt by scripts/build-openreel.mjs.
+vendor/openreel/node_modules/
+vendor/openreel/apps/web/dist/
+vendor/openreel/**/dist/
+vendor/openreel/**/.vite/

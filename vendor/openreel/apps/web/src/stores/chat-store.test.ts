@@ -1,0 +1,674 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { RunTurnInput, RunTurnResult } from "@openreel/agent";
+
+const h = vi.hoisted(() => ({
+  runTurn: vi.fn(),
+  getSecret: vi.fn(async () => "test-key"),
+  isSessionUnlocked: vi.fn(() => true),
+  makeBYOKClient: vi.fn(() => ({ complete: vi.fn() })),
+  undo: vi.fn(async () => ({ success: true })),
+  projectState: { hasOpenProject: true, projectId: "project-a" },
+  undoStackSize: 0,
+  settings: {
+    defaultLlmProvider: "openai-compatible" as string | null,
+    llmBaseUrl: "https://gateway.example/v1",
+    llmModel: "account-tool-model",
+    configuredServices: ["openai-compatible"] as string[],
+    agentDryRun: false,
+  },
+}));
+
+vi.mock("@openreel/agent", () => ({
+  runTurn: h.runTurn,
+  toAnthropicTools: () => [],
+  toOpenAITools: () => [],
+  buildSystemPrompt: () => "system",
+  selectToolsForPrompt: () => [],
+}));
+
+vi.mock("../services/secure-storage", () => ({
+  isSessionUnlocked: h.isSessionUnlocked,
+  getSecret: h.getSecret,
+}));
+
+vi.mock("../services/agent/live-host", () => ({
+  LiveEditorHost: class {},
+}));
+
+vi.mock("../services/agent/llm-transport", () => ({
+  makeBYOKClient: h.makeBYOKClient,
+}));
+
+vi.mock("./settings-store", () => ({
+  useSettingsStore: {
+    getState: () => h.settings,
+  },
+}));
+
+vi.mock("./project-store", () => ({
+  useProjectStore: {
+    getState: () => ({
+      hasOpenProject: h.projectState.hasOpenProject,
+      project: { id: h.projectState.projectId },
+      undo: h.undo,
+      actionExecutor: {
+        getHistory: () => ({ getUndoStackSize: () => h.undoStackSize }),
+      },
+    }),
+  },
+}));
+
+import { useChatStore } from "./chat-store";
+import { useChatHistoryStore } from "./chat-history-store";
+
+type RunTurnImpl = (input: RunTurnInput) => Promise<RunTurnResult>;
+type RunTurnImplLoose = (
+  input: RunTurnInput,
+) => Promise<Omit<RunTurnResult, "usage"> & Partial<Pick<RunTurnResult, "usage">>>;
+const impl = (fn: RunTurnImplLoose): RunTurnImpl => async (input) => {
+  const result = await fn(input);
+  return { usage: { inputTokens: 0, outputTokens: 0 }, ...result };
+};
+
+const flush = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
+const store = () => useChatStore.getState();
+
+describe("chat-store", () => {
+  beforeEach(() => {
+    store().reset();
+    useChatHistoryStore.getState().clearHistory();
+    vi.clearAllMocks();
+    h.getSecret.mockResolvedValue("test-key");
+    h.isSessionUnlocked.mockReturnValue(true);
+    h.undo.mockResolvedValue({ success: true });
+    h.projectState.hasOpenProject = true;
+    h.projectState.projectId = "project-a";
+    h.settings.defaultLlmProvider = "openai-compatible";
+    h.settings.llmBaseUrl = "https://gateway.example/v1";
+    h.settings.llmModel = "account-tool-model";
+    h.settings.configuredServices = ["openai-compatible"];
+    h.settings.agentDryRun = false;
+    h.undoStackSize = 0;
+  });
+
+  it("refuses to run without an open project", async () => {
+    h.projectState.hasOpenProject = false;
+    await store().send("hello");
+    expect(h.runTurn).not.toHaveBeenCalled();
+    expect(store().error).toMatch(/project/i);
+    expect(store().status).toBe("idle");
+  });
+
+  it("refuses to run when the secure session is locked", async () => {
+    h.isSessionUnlocked.mockReturnValue(false);
+    await store().send("hello");
+    expect(h.runTurn).not.toHaveBeenCalled();
+    expect(store().error).toMatch(/unlock/i);
+  });
+
+  it("ignores empty input", async () => {
+    await store().send("   ");
+    expect(h.runTurn).not.toHaveBeenCalled();
+    expect(store().messages).toHaveLength(0);
+  });
+
+  it("runs a turn and records user + assistant messages", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ onEvent, messages }) => {
+        onEvent?.({ type: "text_delta", text: "working" });
+        onEvent?.({ type: "turn_complete", text: "Done!" });
+        return {
+          text: "Done!",
+          messages: [
+            ...messages,
+            { role: "assistant", content: "Done!", toolUses: [] },
+          ],
+          toolCalls: 0,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    await store().send("hello");
+    const st = store();
+    expect(st.status).toBe("idle");
+    expect(st.lastTurnCommitted).toBe(true);
+    expect(st.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(st.messages[0].text).toBe("hello");
+    expect(st.messages[1].text).toBe("Done!");
+    expect(st.conversation.at(-1)).toEqual({
+      role: "assistant",
+      content: "Done!",
+      toolUses: [],
+    });
+  });
+
+  it("saves completed conversations and starts a fresh chat", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "Done!",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("Create an opening title");
+    const saved = useChatHistoryStore.getState().conversations[0];
+    expect(saved).toMatchObject({
+      projectId: "project-a",
+      title: "Create an opening title",
+    });
+
+    store().newChat();
+
+    expect(store().messages).toEqual([]);
+    expect(store().currentConversationId).toBeNull();
+    expect(useChatHistoryStore.getState().conversations[0].id).toBe(saved.id);
+  });
+
+  it("opens a saved conversation for viewing and follow-up", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "Done!",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+    await store().send("Fix the intro");
+    const savedId = useChatHistoryStore.getState().conversations[0].id;
+    store().newChat();
+
+    store().openConversation(savedId);
+
+    expect(store().currentConversationId).toBe(savedId);
+    expect(store().messages[0].text).toBe("Fix the intro");
+    expect(store().conversation[0]).toEqual({
+      role: "user",
+      content: "Fix the intro",
+    });
+  });
+
+  it("uses the final result text even when an adapter emits no text event", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "## Finished\n\n- Updated the intro",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("update intro");
+
+    expect(store().messages.at(-1)?.text).toBe("## Finished\n\n- Updated the intro");
+  });
+
+  it("explains empty model replies and output-limit stops", async () => {
+    h.runTurn
+      .mockImplementationOnce(
+        impl(async ({ messages }) => ({
+          text: "",
+          messages,
+          toolCalls: 0,
+          stoppedReason: "end_turn",
+          committed: true,
+        })),
+      )
+      .mockImplementationOnce(
+        impl(async ({ messages }) => ({
+          text: "Partial",
+          messages,
+          toolCalls: 0,
+          stoppedReason: "budget",
+          committed: true,
+        })),
+      );
+
+    await store().send("first");
+    expect(store().messages.at(-1)?.notice).toMatch(/empty response/i);
+
+    await store().send("second");
+    expect(store().messages.at(-1)?.text).toBe("Partial");
+    expect(store().messages.at(-1)?.notice).toMatch(/response or token limit/i);
+  });
+
+  it("passes a custom provider model ID through to the BYOK client", async () => {
+    h.settings.llmModel = "gpt-custom-account-model";
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "ok",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("hello");
+
+    expect(h.makeBYOKClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openai-compatible",
+        model: "gpt-custom-account-model",
+      }),
+    );
+  });
+
+  it("runs against a keyless OpenAI-compatible endpoint", async () => {
+    h.settings.defaultLlmProvider = "openai-compatible";
+    h.settings.llmBaseUrl = "http://localhost:11434/v1/";
+    h.settings.llmModel = "llama3.2";
+    h.settings.configuredServices = [];
+    h.isSessionUnlocked.mockReturnValue(false);
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "ok",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("hello local model");
+
+    expect(h.getSecret).not.toHaveBeenCalled();
+    expect(h.makeBYOKClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openai-compatible",
+        model: "llama3.2",
+        baseUrl: "http://localhost:11434/v1",
+        apiKey: "",
+      }),
+    );
+    expect(h.runTurn).toHaveBeenCalledOnce();
+  });
+
+  it("blocks a compatible provider until endpoint and model are configured", async () => {
+    h.settings.defaultLlmProvider = "openai-compatible";
+    h.settings.llmModel = "";
+
+    await store().send("hello");
+
+    expect(h.runTurn).not.toHaveBeenCalled();
+    expect(store().error).toMatch(/model id/i);
+  });
+
+  it("requires the user to choose an API format", async () => {
+    h.settings.defaultLlmProvider = null;
+
+    await store().send("hello");
+
+    expect(h.runTurn).not.toHaveBeenCalled();
+    expect(store().error).toMatch(/api format/i);
+  });
+
+  it("runs against an Anthropic-compatible endpoint", async () => {
+    h.settings.defaultLlmProvider = "anthropic-compatible";
+    h.settings.llmBaseUrl = "https://anthropic-gateway.example/v1/messages";
+    h.settings.llmModel = "gateway/claude-tool-model";
+    h.settings.configuredServices = [];
+    h.isSessionUnlocked.mockReturnValue(false);
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "ok",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("hello compatible model");
+
+    expect(h.makeBYOKClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "anthropic-compatible",
+        model: "gateway/claude-tool-model",
+        baseUrl: "https://anthropic-gateway.example/v1",
+        apiKey: "",
+      }),
+    );
+    expect(h.runTurn).toHaveBeenCalledOnce();
+  });
+
+  it("clears the conversation when the open project changes", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "ok",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+    store().setProjectContext("project-a");
+    await store().send("edit project A");
+    expect(store().messages.length).toBeGreaterThan(0);
+
+    store().setProjectContext("project-b");
+
+    expect(store().projectId).toBe("project-b");
+    expect(store().messages).toHaveLength(0);
+    expect(store().conversation).toHaveLength(0);
+  });
+
+  it("returns to an actionable error state when a turn throws", async () => {
+    h.runTurn.mockRejectedValue(new Error("provider unavailable"));
+
+    await store().send("hello");
+
+    expect(store().status).toBe("error");
+    expect(store().error).toBe("provider unavailable");
+    expect(store().abortController).toBeNull();
+  });
+
+  it("accumulates token usage across turns", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "ok",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+        usage: { inputTokens: 100, outputTokens: 40 },
+      })),
+    );
+
+    await store().send("one");
+    await store().send("two");
+
+    expect(store().usage).toEqual({ inputTokens: 200, outputTokens: 80 });
+  });
+
+  it("reflects tool calls and results on the assistant message", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ onEvent }) => {
+        const call = { id: "t1", name: "addTextClip", args: { text: "Hi" } };
+        onEvent?.({ type: "tool_call", call });
+        onEvent?.({
+          type: "tool_result",
+          call,
+          result: { ok: true, summary: "Added text" },
+        });
+        onEvent?.({ type: "turn_complete", text: "Added." });
+        return {
+          text: "Added.",
+          messages: [],
+          toolCalls: 1,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    await store().send("add text");
+    const assistant = store().messages.find((m) => m.role === "assistant");
+    expect(assistant?.toolCalls).toHaveLength(1);
+    expect(assistant?.toolCalls[0].status).toBe("done");
+    expect(assistant?.toolCalls[0].result?.summary).toBe("Added text");
+  });
+
+  it("marks rejected tool results distinctly from errors", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ onEvent }) => {
+        const call = { id: "t1", name: "deleteClip", args: {} };
+        onEvent?.({ type: "tool_call", call });
+        onEvent?.({
+          type: "tool_result",
+          call,
+          result: {
+            ok: false,
+            summary: "Rejected by user",
+            error: { code: "REJECTED", message: "User rejected this action" },
+          },
+        });
+        return {
+          text: "",
+          messages: [],
+          toolCalls: 1,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    await store().send("delete");
+    const assistant = store().messages.find((m) => m.role === "assistant");
+    expect(assistant?.toolCalls[0].status).toBe("rejected");
+  });
+
+  it("gates media deletion through the confirmation state", async () => {
+    let decision: string | undefined;
+    h.runTurn.mockImplementation(
+      impl(async ({ onEvent, confirmGate }) => {
+        const call = { id: "t1", name: "delete_media", args: { mediaId: "m1" } };
+        onEvent?.({ type: "tool_call", call });
+        decision = await confirmGate!(call);
+        onEvent?.({
+          type: "tool_result",
+          call,
+          result: { ok: true, summary: "Deleted" },
+        });
+        return {
+          text: "ok",
+          messages: [],
+          toolCalls: 1,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    const pending = store().send("delete clip");
+    await flush();
+    expect(store().status).toBe("awaiting_confirm");
+    expect(store().pendingConfirm?.call.name).toBe("delete_media");
+
+    store().resolveConfirm("approve");
+    await pending;
+
+    expect(decision).toBe("approve");
+    expect(store().status).toBe("idle");
+    expect(store().pendingConfirm).toBeNull();
+  });
+
+  it("stop() rejects a pending media deletion", async () => {
+    let decision: string | undefined;
+    h.runTurn.mockImplementation(
+      impl(async ({ confirmGate }) => {
+        decision = await confirmGate!({
+          id: "t1",
+          name: "delete_media",
+          args: { mediaId: "m1" },
+        });
+        return {
+          text: "",
+          messages: [],
+          toolCalls: 1,
+          stoppedReason: "end_turn",
+          committed: false,
+        };
+      }),
+    );
+
+    const pending = store().send("delete media");
+    await flush();
+    expect(store().status).toBe("awaiting_confirm");
+
+    store().stop();
+    await pending;
+
+    expect(decision).toBe("reject");
+    expect(store().pendingConfirm).toBeNull();
+  });
+
+  it("undoLastTurn undoes once and clears the committed flag", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("do something");
+    expect(store().lastTurnCommitted).toBe(true);
+
+    await store().undoLastTurn();
+    expect(h.undo).toHaveBeenCalledTimes(1);
+    expect(store().lastTurnCommitted).toBe(false);
+
+    await store().undoLastTurn();
+    expect(h.undo).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces an error result as error status", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ onEvent, messages }) => {
+        onEvent?.({
+          type: "error",
+          error: { code: "LOOP_ERROR", message: "boom" },
+        });
+        return {
+          text: "",
+          messages,
+          toolCalls: 0,
+          stoppedReason: "error",
+          committed: false,
+        };
+      }),
+    );
+
+    await store().send("break it");
+    expect(store().status).toBe("error");
+    expect(store().error).toBe("boom");
+    expect(store().lastTurnCommitted).toBe(false);
+  });
+
+  it("passes dryRun to runTurn when the dry-run policy is on", async () => {
+    h.settings.agentDryRun = true;
+    let sawDryRun: boolean | undefined;
+    h.runTurn.mockImplementation(
+      impl(async ({ dryRun, messages }) => {
+        sawDryRun = dryRun;
+        return {
+          text: "planned",
+          messages,
+          toolCalls: 0,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    await store().send("plan an edit");
+    expect(sawDryRun).toBe(true);
+  });
+
+  it("discards an in-flight completion after reset()", async () => {
+    let release: (() => void) | undefined;
+    h.runTurn.mockImplementation(
+      impl(
+        () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve({
+                text: "late",
+                messages: [{ role: "assistant", content: "late", toolUses: [] }],
+                toolCalls: 0,
+                stoppedReason: "end_turn",
+                committed: true,
+              });
+          }),
+      ),
+    );
+    const pending = store().send("hi");
+    await flush();
+    expect(store().messages.length).toBeGreaterThan(0);
+    store().reset();
+    expect(store().messages).toHaveLength(0);
+    release?.();
+    await pending;
+    // The superseded completion must not write messages/committed back.
+    expect(store().messages).toHaveLength(0);
+    expect(store().lastTurnCommitted).toBe(false);
+  });
+
+  it("undoLastTurn becomes a no-op once a later edit lands on the undo stack", async () => {
+    h.undoStackSize = 0;
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "",
+        messages,
+        toolCalls: 1,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+    await store().send("do");
+    expect(store().lastTurnCommitted).toBe(true);
+    // Simulate a manual edit after the turn (undo stack advanced).
+    h.undoStackSize = 3;
+    await store().undoLastTurn();
+    expect(h.undo).not.toHaveBeenCalled();
+    expect(store().lastTurnCommitted).toBe(false);
+  });
+
+  it("ignores a second send while a turn is running", async () => {
+    let release: (() => void) | undefined;
+    h.runTurn.mockImplementation(
+      impl(
+        () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve({
+                text: "",
+                messages: [],
+                toolCalls: 0,
+                stoppedReason: "end_turn",
+                committed: true,
+              });
+          }),
+      ),
+    );
+    const first = store().send("first");
+    await flush();
+    expect(store().status).toBe("running");
+    await store().send("second");
+    expect(h.runTurn).toHaveBeenCalledTimes(1);
+    expect(store().messages.filter((m) => m.role === "user")).toHaveLength(1);
+    release?.();
+    await first;
+  });
+
+  it("reset clears conversation state", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+    await store().send("hi");
+    expect(store().messages.length).toBeGreaterThan(0);
+
+    store().reset();
+    expect(store().messages).toHaveLength(0);
+    expect(store().conversation).toHaveLength(0);
+    expect(store().lastTurnCommitted).toBe(false);
+    expect(store().status).toBe("idle");
+  });
+});
