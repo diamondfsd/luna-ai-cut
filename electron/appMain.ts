@@ -614,8 +614,9 @@ app.whenReady().then(async () => {
   registerIpc()
   const settings = await getSettings()
   setMainWindowCloseBehavior(settings.windowCloseBehavior)
-  createWindow()
+  // 先建立自动检查 Promise，再创建窗口，避免渲染层读取结果时遇到启动竞态。
   void checkForHotUpdatesDaily()
+  createWindow()
 
   // 设置窗口标题（含版本号，有热更新则追加 hot build 号）
   const hotVersion = !app.isPackaged ? null : getCurrentHotVersion()

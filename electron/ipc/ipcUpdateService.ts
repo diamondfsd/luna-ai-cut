@@ -29,7 +29,11 @@ export function register(): void {
     return getCurrentHotVersion()
   })
 
-  ipcMain.handle('hot-update:automatic-result', async () => getDailyHotUpdateResult())
+  ipcMain.handle('hot-update:automatic-result', async () => {
+    const result = await getDailyHotUpdateResult()
+    logMainInfo('[热更新] 返回启动检查结果', { available: Boolean(result), version: result?.version ?? null })
+    return result
+  })
 
   ipcMain.handle('hot-update:check', async (): Promise<HotUpdateCheckResult | null> => {
     logMainInfo('[热更新] 用户手动检查')
