@@ -120,7 +120,11 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
         return { path, name: file.name, kind: file.kind as 'image' | 'video' }
       })
       .filter((file): file is NonNullable<typeof file> => Boolean(file))
-    navigate('/ai-editor', { state: { media } })
+    void window.luna.aiEditor.openWindow(media.map((item) => ({
+      ...item,
+      id: `${item.path}:${item.name}`,
+      thumbnailUrl: null,
+    })))
   }
 
   async function handleCreateProject(): Promise<void> {
