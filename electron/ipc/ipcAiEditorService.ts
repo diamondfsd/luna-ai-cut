@@ -46,8 +46,8 @@ export function getAiEditorWindow(): BrowserWindow | null {
   return aiEditorWindow && !aiEditorWindow.isDestroyed() ? aiEditorWindow : null
 }
 
-function aiEditorUrl(projectId: string): string {
-  const route = `#/luna-editor?projectId=${encodeURIComponent(projectId)}`
+function aiEditorUrl(projectId: string | null = null): string {
+  const route = projectId ? `#/luna-editor?projectId=${encodeURIComponent(projectId)}` : '#/projects'
   const editorPath = path.join(process.env.APP_ROOT ?? app.getAppPath(), 'dist', 'ai-editor', 'index.html')
   return `${pathToFileURL(editorPath).toString()}${route}`
 }
@@ -159,14 +159,21 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
 
 export function register(): void {
   ipcMain.handle('ai-editor:open-window', async (event, assets: WorkspaceMediaAsset[] = []) => {
-    if (getAiEditorWindow()) {
-      aiEditorWindow?.show()
+    const importedAssets = Array.isArray(assets) ? assets : []
+    const settings = importedAssets.length > 0 ? await getSettings() : null
+    const project = settings
+      ? await createAiEditorProject(settings.baseDir, 'AI 剪辑项目', importedAssets)
+      : null
+    const targetUrl = aiEditorUrl(project?.id ?? null)
+
+    const existingWindow = getAiEditorWindow()
+    if (existingWindow) {
+      await existingWindow.loadURL(targetUrl)
+      existingWindow.show()
       return
     }
 
     const owner = BrowserWindow.fromWebContents(event.sender)
-    const settings = await getSettings()
-    const project = await createAiEditorProject(settings.baseDir, 'AI 剪辑项目', Array.isArray(assets) ? assets : [])
     aiEditorWindow = new BrowserWindow({
       title: 'AI 剪辑',
       width: 1440,
@@ -184,7 +191,7 @@ export function register(): void {
     })
     aiEditorWindow.once('ready-to-show', () => aiEditorWindow?.show())
     aiEditorWindow.once('closed', () => { aiEditorWindow = null })
-    await aiEditorWindow.loadURL(aiEditorUrl(project.id))
+    await aiEditorWindow.loadURL(targetUrl)
   })
 
   ipcMain.handle('ai-editor:list-local-media', async (_event, query: AiEditorLocalMediaQuery = {}) => {

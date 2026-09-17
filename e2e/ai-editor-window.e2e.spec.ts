@@ -4,9 +4,13 @@ import path from 'node:path'
 import { expect, test } from './fixtures/lunaElectron'
 
 test('AI 剪辑独立窗口打开项目并导入素材', async ({ lunaApp }) => {
+  await expect(lunaApp.page).toHaveURL(/#\/library$/)
+  const originalUrl = lunaApp.page.url()
   const editorWindowPromise = lunaApp.app.waitForEvent('window')
-  await lunaApp.page.getByRole('link', { name: 'AI 剪辑' }).click()
+  await lunaApp.page.getByRole('button', { name: 'AI 剪辑' }).click()
   const editor = await editorWindowPromise
+
+  await expect(lunaApp.page).toHaveURL(originalUrl)
 
   const runtimeErrors: string[] = []
   editor.on('pageerror', (error) => runtimeErrors.push(error.message))
@@ -16,8 +20,12 @@ test('AI 剪辑独立窗口打开项目并导入素材', async ({ lunaApp }) => 
     runtimeErrors.push(message.text())
   })
 
+  await expect(editor).toHaveURL(/#\/projects$/)
+  await expect(editor.getByText('我的项目', { exact: true })).toBeVisible({ timeout: 30_000 })
+  await editor.getByRole('button', { name: '新建项目', exact: true }).click()
+  await editor.getByRole('textbox', { name: '项目名称' }).fill('独立窗口导入测试')
+  await editor.getByRole('button', { name: '创建项目', exact: true }).click()
   await expect(editor.getByRole('button', { name: '素材', exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(editor.getByText('项目打开失败', { exact: true })).toHaveCount(0)
 
   const assetPaths = [
     path.resolve('public/pocket3.png'),
