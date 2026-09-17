@@ -5,6 +5,7 @@
   let mcpRequestHandler = null
   let agentEventHandler = null
   let agentActivateHandler = null
+  const embeddedInLuna = window.parent !== window
 
   const parentApi = () => {
     const parentWindow = window.parent
@@ -299,7 +300,9 @@
       save: (projectId, editorDocument) => parentApi().project.save(projectId, editorDocument),
       delete: (projectId) => parentApi().project.delete(projectId),
       rename: (projectId, name) => parentApi().project.rename(projectId, name),
-      chooseAssets,
+      // The embedded page uses Luna's workspace picker. The standalone
+      // editor must use OpenReel's native file input instead.
+      chooseAssets: embeddedInLuna ? chooseAssets : undefined,
     },
     lunaMedia: {
       readFileBytes,

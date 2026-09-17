@@ -11,6 +11,7 @@ import {
   listMusicTemplates,
 } from '../features/music/musicGenerationService.ts'
 import { activateAgentWindow } from './ipcAiEditorAgentService'
+import { getAiEditorWindow } from './ipcAiEditorService'
 import { agentSessionManager } from '../mcp/agentSessionManager'
 
 interface PendingRendererRequest {
@@ -24,7 +25,7 @@ let mcpServer: LunaMcpServer | null = null
 const pending = new Map<string, PendingRendererRequest>()
 
 function requestRenderer(context: IpcContext, request: AiEditorMcpRequest): Promise<AiEditorMcpResponse> {
-  const window = context.win
+  const window = getAiEditorWindow() ?? context.win
   if (!window || window.isDestroyed()) {
     return Promise.resolve({ ok: false, error: 'AI 剪辑窗口未打开' })
   }
@@ -61,8 +62,8 @@ export function register(context: IpcContext): void {
     }
   })
 
-  ipcMain.on('ai-editor:mcp-response', (event, callId: unknown, response: unknown) => {
-    if (event.sender !== context.win?.webContents || typeof callId !== 'string') return
+  ipcMain.on('ai-editor:mcp-response', (_event, callId: unknown, response: unknown) => {
+    if (typeof callId !== 'string') return
     const request = pending.get(callId)
     if (!request) return
     pending.delete(callId)

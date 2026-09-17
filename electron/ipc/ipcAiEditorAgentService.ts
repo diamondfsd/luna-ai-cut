@@ -1,7 +1,6 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 
 import type { AiEditorAgentSession } from '../../src/shared/types'
-import { activateMainWindow } from '../application/windowService'
 import { agentSessionManager } from '../mcp/agentSessionManager'
 import type { IpcContext } from './context'
 
@@ -20,8 +19,9 @@ function requireRequest(value: unknown): string {
 export function activateAgentWindow(context: IpcContext): void {
   const window = context.win
   if (!window || window.isDestroyed()) throw new Error('Luna AI Cut 窗口不可用')
-  activateMainWindow(window)
-  window.webContents.send('ai-editor:agent-activate')
+  for (const target of BrowserWindow.getAllWindows()) {
+    if (!target.isDestroyed()) target.webContents.send('ai-editor:agent-activate')
+  }
 }
 
 export function register(context: IpcContext): void {
@@ -29,9 +29,9 @@ export function register(context: IpcContext): void {
   registered = true
 
   agentSessionManager.subscribe((event) => {
-    const window = context.win
-    if (!window || window.isDestroyed()) return
-    window.webContents.send('ai-editor:agent-event', event)
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('ai-editor:agent-event', event)
+    }
   })
 
   ipcMain.handle('ai-editor:agent-create-request', (_event, request: unknown, projectId: unknown) =>

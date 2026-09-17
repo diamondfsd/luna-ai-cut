@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import type {
   AiEditorFileDialogOptions,
@@ -40,6 +41,10 @@ interface OpenWriteHandle {
 
 const writeHandles = new Map<string, OpenWriteHandle>()
 let aiEditorWindow: BrowserWindow | null = null
+
+export function getAiEditorWindow(): BrowserWindow | null {
+  return aiEditorWindow && !aiEditorWindow.isDestroyed() ? aiEditorWindow : null
+}
 
 function aiEditorUrl(projectId: string): string {
   const devServerUrl = process.env.VITE_DEV_SERVER_URL
@@ -155,9 +160,8 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
 
 export function register(): void {
   ipcMain.handle('ai-editor:open-window', async (event, assets: WorkspaceMediaAsset[] = []) => {
-    if (aiEditorWindow && !aiEditorWindow.isDestroyed()) {
-      aiEditorWindow.show()
-      aiEditorWindow.focus()
+    if (getAiEditorWindow()) {
+      aiEditorWindow?.show()
       return
     }
 
@@ -173,7 +177,7 @@ export function register(): void {
       parent: owner ?? undefined,
       show: false,
       webPreferences: {
-        preload: path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'preload.mjs'),
+        preload: path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.mjs'),
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: false,

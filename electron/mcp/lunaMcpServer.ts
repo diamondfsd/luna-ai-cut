@@ -324,7 +324,7 @@ const AGENT_TASK_TOOLS = [
   },
   {
     name: 'activate_luna_window',
-    description: 'Show Luna AI Cut, bring it to the foreground, open the AI editing page, and show the external Agent progress panel.',
+    description: 'Notify Luna AI Cut to open the AI editing page and show the external Agent progress panel without bringing the app to the foreground.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -734,7 +734,7 @@ async function handleAgentTaskTool(
 
     if (name === 'activate_luna_window') {
       await options.activateWindow?.()
-      return agentToolResponse({ ok: true, summary: 'Luna AI Cut 已切到前台' })
+      return agentToolResponse({ ok: true, summary: '已通知 Luna AI Cut 显示剪辑进度' })
     }
 
     const sessionId = stringArg(args, 'sessionId')
