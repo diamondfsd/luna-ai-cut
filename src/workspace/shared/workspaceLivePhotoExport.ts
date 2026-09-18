@@ -7,9 +7,9 @@ import {
 } from '../../components/previewStageExport'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
 import { createDirectoryExportNameAllocator } from '../../lib/exportNameAllocator'
+import { resolveLivePhotoCoverTime } from './livePhotoFrameTime'
 
 const LIVE_DURATION = 3
-const MAX_COVER_TIME = LIVE_DURATION - 0.01
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -141,7 +141,7 @@ export async function queueWorkspaceFormatsExport(
       const liveFormats = formats.filter((format) => format !== 'video')
       if (liveFormats.length === 0) return
       const start = clamp(config.liveStartTime, trimStart, Math.max(trimStart, trimEnd - LIVE_DURATION))
-      const cover = clamp(config.liveCoverTime, 0, MAX_COVER_TIME)
+      const cover = resolveLivePhotoCoverTime(0, LIVE_DURATION, config.liveCoverTime, resolved.fps)
       const tempPrefix = `.${name}_live_${stamp}`
       const tempVideoName = `${tempPrefix}.mp4`
       const tempImageName = `${tempPrefix}.jpg`
