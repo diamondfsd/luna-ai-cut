@@ -8,6 +8,7 @@ import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../..
 import { logExport } from '../../lib/rendererLogger'
 import { createDirectoryExportNameAllocator } from '../../lib/exportNameAllocator'
 import { resolveWorkspaceVideoExportRange } from './workspaceExportRange'
+import { resolveLivePhotoCoverTime } from './livePhotoFrameTime'
 
 export interface WorkspaceMixedExportPlanItem {
   id: string
@@ -190,6 +191,7 @@ export async function queueWorkspaceMixedExport(
           }
           const duration = endTime - startTime
           const resolved = resolveExportConfig(config, entry.plan.outputSize.width, entry.plan.outputSize.height)
+          const safeCoverTime = resolveLivePhotoCoverTime(startTime, duration, coverTime, resolved.fps)
           const tempPrefix = `.${entry.plan.outputBaseName}_${stamp}`
           const tempVideoName = `${tempPrefix}.mp4`
           const tempImageName = `${tempPrefix}.jpg`
@@ -226,7 +228,7 @@ export async function queueWorkspaceMixedExport(
               fileName: tempImageName,
               width: resolved.width,
               height: resolved.height,
-              layers: offsetVideoLayers(entry.plan.layers, coverTime, 0.1),
+              layers: offsetVideoLayers(entry.plan.layers, safeCoverTime, 0.1),
               format: 'jpeg',
               quality: 100,
             })
@@ -240,7 +242,7 @@ export async function queueWorkspaceMixedExport(
                   liveEntry.format === 'apple-live',
                   true,
                   false,
-                  coverTime - startTime,
+                  safeCoverTime - startTime,
                   exportDir,
                 )
                 await report(liveEntry, entries.indexOf(liveEntry), 100, 'done', result.path)
