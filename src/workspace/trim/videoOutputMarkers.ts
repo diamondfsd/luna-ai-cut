@@ -117,7 +117,6 @@ function markerValidationReason(marker: VideoOutputMarker, maximumTime: number):
 
   if (marker.kind === 'live') {
     const liveDuration = marker.endTime - marker.startTime
-    if (liveDuration < MIN_LIVE_PHOTO_DURATION) return `Live 图时长不能少于 ${MIN_LIVE_PHOTO_DURATION} 秒`
     if (liveDuration > MAX_LIVE_PHOTO_DURATION) return `Live 图时长不能超过 ${MAX_LIVE_PHOTO_DURATION} 秒`
     if (!Number.isFinite(marker.coverTime)) return '封面位置不是有效数字'
     if (marker.coverTime < marker.startTime || marker.coverTime >= marker.endTime) {
@@ -212,7 +211,7 @@ export function resizeLivePhotoRange(
   if (frameRate != null) {
     const fps = normalizeFrameRate(frameRate)
     const sourceFrameCount = sourceEndFrame(sourceDuration, fps)
-    const minimumFrameCount = frameCountForDuration(MIN_LIVE_PHOTO_DURATION, fps, MIN_LIVE_PHOTO_DURATION, MAX_LIVE_PHOTO_DURATION)
+    const minimumFrameCount = 1
     const maximumFrameCount = Math.min(
       Math.floor(MAX_LIVE_PHOTO_DURATION * fps),
       sourceFrameCount,
@@ -221,7 +220,7 @@ export function resizeLivePhotoRange(
     const nextFrameCount = frameCountForDuration(
       requestedDuration,
       fps,
-      MIN_LIVE_PHOTO_DURATION,
+      0,
       maximumFrameCount / fps,
     )
     const centerFrame = Math.round(((startTime + endTime) / 2) * fps)
@@ -242,9 +241,9 @@ export function resizeLivePhotoRange(
   }
 
   const maximumDuration = Math.min(MAX_LIVE_PHOTO_DURATION, Math.floor(sourceDuration * 10) / 10)
-  if (maximumDuration < MIN_LIVE_PHOTO_DURATION) return null
+  if (maximumDuration <= 0) return null
 
-  const clampedDuration = Math.min(maximumDuration, Math.max(MIN_LIVE_PHOTO_DURATION, requestedDuration))
+  const clampedDuration = Math.min(maximumDuration, Math.max(0.1, requestedDuration))
   const nextDuration = Math.min(maximumDuration, Math.round(clampedDuration * 10) / 10)
   const center = (startTime + endTime) / 2
   const nextStart = Math.max(0, Math.min(center - nextDuration / 2, sourceDuration - nextDuration))
@@ -292,7 +291,7 @@ export function normalizeVideoOutputMarkers(
 
     if (marker.kind === 'live') {
       const liveDuration = endTime - startTime
-      if (!preserveInvalidRanges && (liveDuration < MIN_LIVE_PHOTO_DURATION || liveDuration > MAX_LIVE_PHOTO_DURATION)) return null
+      if (!preserveInvalidRanges && (liveDuration <= 0 || liveDuration > MAX_LIVE_PHOTO_DURATION)) return null
       const coverTime = Number(marker.coverTime)
       if (!Number.isFinite(coverTime)) return null
       if (!preserveInvalidRanges && (coverTime < startTime || coverTime >= endTime)) return null
