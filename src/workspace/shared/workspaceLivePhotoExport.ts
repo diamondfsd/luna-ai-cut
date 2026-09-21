@@ -9,7 +9,7 @@ import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../..
 import { createDirectoryExportNameAllocator } from '../../lib/exportNameAllocator'
 import { resolveLivePhotoCoverTime } from './livePhotoFrameTime'
 
-const LIVE_DURATION = 3
+const DEFAULT_LIVE_DURATION = 3
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -53,12 +53,10 @@ export async function queueWorkspaceFormatsExport(
   if (!source.layers?.some((layer) => layer.isVideo)) throw new Error('当前素材不是视频')
   const formats = [...new Set(config.exportFormats)]
   if (formats.length === 0) throw new Error('请至少选择一种导出格式')
-  const hasLive = formats.some((format) => format !== 'video')
-  if (hasLive && (!source.mediaDuration || source.mediaDuration < LIVE_DURATION)) throw new Error('视频不足 3 秒')
   const mediaDuration = source.mediaDuration ?? source.layers.find((layer) => layer.isVideo)?.videoDuration ?? 0
   const trimStart = clamp(config.trimStartTime ?? 0, 0, Math.max(0, mediaDuration - 0.1))
   const trimEnd = clamp(config.trimEndTime ?? mediaDuration, trimStart + 0.1, mediaDuration)
-  if (hasLive && trimEnd - trimStart < LIVE_DURATION) throw new Error('Live 图需要至少保留 3 秒视频')
+  const liveDuration = Math.min(DEFAULT_LIVE_DURATION, Math.max(0.1, trimEnd - trimStart))
   if (formats.includes('apple-live') && !window.navigator.platform.includes('Mac')) {
     throw new Error('Apple Live 图仅支持在 Mac 上导出')
   }
@@ -140,8 +138,8 @@ export async function queueWorkspaceFormatsExport(
 
       const liveFormats = formats.filter((format) => format !== 'video')
       if (liveFormats.length === 0) return
-      const start = clamp(config.liveStartTime, trimStart, Math.max(trimStart, trimEnd - LIVE_DURATION))
-      const cover = resolveLivePhotoCoverTime(0, LIVE_DURATION, config.liveCoverTime, resolved.fps)
+      const start = clamp(config.liveStartTime, trimStart, Math.max(trimStart, trimEnd - liveDuration))
+      const cover = resolveLivePhotoCoverTime(0, liveDuration, config.liveCoverTime, resolved.fps)
       const tempPrefix = `.${name}_live_${stamp}`
       const tempVideoName = `${tempPrefix}.mp4`
       const tempImageName = `${tempPrefix}.jpg`
@@ -155,7 +153,7 @@ export async function queueWorkspaceFormatsExport(
           fileName: tempVideoName,
           width: resolved.width,
           height: resolved.height,
-          layers: offsetVideoLayers(source.layers!, start, LIVE_DURATION),
+          layers: offsetVideoLayers(source.layers!, start, liveDuration),
           fps: resolved.fps,
           qualityPreset: resolved.qualityPreset ?? 'high',
           includeAudio: resolved.includeAudio,
@@ -171,7 +169,7 @@ export async function queueWorkspaceFormatsExport(
           fileName: tempImageName,
           width: resolved.width,
           height: resolved.height,
-          layers: offsetVideoLayers(source.layers!, start + cover, LIVE_DURATION),
+          layers: offsetVideoLayers(source.layers!, start + cover, liveDuration),
           format: 'jpeg',
           quality: 100,
         })

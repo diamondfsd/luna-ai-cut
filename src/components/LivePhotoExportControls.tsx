@@ -14,7 +14,6 @@ interface LivePhotoExportControlsProps {
 
 export function LivePhotoExportControls({ value, duration, allowedFormats, outputAvailability, onChange }: LivePhotoExportControlsProps) {
   const isMac = window.navigator.platform.includes('Mac')
-  const liveSelected = value.exportFormats.some((format) => format !== 'video')
   const videoAvailable = outputAvailability?.video ?? true
   const photoAvailable = outputAvailability?.photo ?? false
   const liveAvailable = outputAvailability?.live ?? true
@@ -26,11 +25,8 @@ export function LivePhotoExportControls({ value, duration, allowedFormats, outpu
     if (checked && format !== 'video') {
       let trimStartTime = Math.max(0, value.trimStartTime)
       let trimEndTime = Math.min(duration, value.trimEndTime ?? duration)
-      if (trimEndTime - trimStartTime < 3) {
-        trimEndTime = Math.min(duration, trimStartTime + 3)
-        trimStartTime = Math.max(0, trimEndTime - 3)
-      }
-      const liveStartTime = Math.min(Math.max(value.liveStartTime, trimStartTime), trimEndTime - 3)
+      const liveDuration = Math.min(3, Math.max(0.1, trimEndTime - trimStartTime))
+      const liveStartTime = Math.min(Math.max(value.liveStartTime, trimStartTime), trimEndTime - liveDuration)
       onChange({ ...value, exportFormats: formats, trimStartTime, trimEndTime, liveStartTime })
       return
     }
@@ -75,9 +71,6 @@ export function LivePhotoExportControls({ value, duration, allowedFormats, outpu
           </div>
         ))}
       </div>
-      {liveAvailable && liveSelected && duration < 3 ? (
-        <div className="live-photo-export-message">视频不足 3 秒，无法导出 Live 图</div>
-      ) : null}
     </div>
   )
 }

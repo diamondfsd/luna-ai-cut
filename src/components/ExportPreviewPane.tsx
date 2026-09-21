@@ -7,7 +7,6 @@ import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewL
 import './ExportPreviewPane.css'
 
 const LIVE_DURATION = 3
-const MAX_COVER_TIME = LIVE_DURATION - 0.01
 
 export interface ExportPreviewSource {
   path: string
@@ -51,13 +50,15 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
   const thumbnailDuration = timeline?.thumbnailDuration ?? duration
   const timelineEditable = livePhotoSource ? true : Boolean(source.timeline?.editable)
   const liveSelected = Boolean(livePhotoSource && value.exportFormats.some((format) => format !== 'video'))
-  const minimumRange = liveSelected ? LIVE_DURATION : 0.1
+  const minimumRange = 0.1
   const exportStart = clamp(value.trimStartTime, 0, Math.max(0, duration - minimumRange))
   const exportEnd = clamp(value.trimEndTime ?? duration, exportStart + minimumRange, duration)
-  const liveStart = clamp(value.liveStartTime, exportStart, Math.max(exportStart, exportEnd - LIVE_DURATION))
-  const cover = clamp(value.liveCoverTime, 0, MAX_COVER_TIME)
+  const liveDuration = Math.min(LIVE_DURATION, Math.max(0.1, exportEnd - exportStart))
+  const maxCoverTime = liveDuration - 0.01
+  const liveStart = clamp(value.liveStartTime, exportStart, Math.max(exportStart, exportEnd - liveDuration))
+  const cover = clamp(value.liveCoverTime, 0, maxCoverTime)
   const playbackStart = liveSelected ? liveStart : exportStart
-  const playbackEnd = liveSelected ? liveStart + LIVE_DURATION : exportEnd
+  const playbackEnd = liveSelected ? liveStart + liveDuration : exportEnd
   const previewAnchor = liveSelected ? liveStart + cover : exportStart
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -93,14 +94,14 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
 
   const changePlayhead = useCallback((relativeTime: number) => {
     if (!liveSelected) return
-    const nextTime = clamp(relativeTime, liveStart, liveStart + MAX_COVER_TIME)
+    const nextTime = clamp(relativeTime, liveStart, liveStart + maxCoverTime)
     onChange({ ...value, liveCoverTime: nextTime - liveStart })
   }, [liveSelected, liveStart, onChange, value])
 
   const changeExportStart = useCallback((nextStart: number) => {
     const start = clamp(nextStart, 0, exportEnd - minimumRange)
     const nextLiveStart = liveSelected
-      ? clamp(liveStart, start, exportEnd - LIVE_DURATION)
+      ? clamp(liveStart, start, exportEnd - liveDuration)
       : value.liveStartTime
     setPlaying(false)
     setCurrentTime(start)
@@ -110,7 +111,7 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
   const changeExportEnd = useCallback((nextEnd: number) => {
     const end = clamp(nextEnd, exportStart + minimumRange, duration)
     const nextLiveStart = liveSelected
-      ? clamp(liveStart, exportStart, end - LIVE_DURATION)
+      ? clamp(liveStart, exportStart, end - liveDuration)
       : value.liveStartTime
     setPlaying(false)
     setCurrentTime(exportStart)
@@ -118,7 +119,7 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
   }, [duration, exportStart, liveSelected, liveStart, minimumRange, onChange, value])
 
   const moveLiveRange = useCallback((nextStart: number) => {
-    const start = clamp(nextStart, exportStart, exportEnd - LIVE_DURATION)
+    const start = clamp(nextStart, exportStart, exportEnd - liveDuration)
     const nextTime = start + cover
     setPlaying(false)
     setCurrentTime(nextTime)
@@ -186,7 +187,7 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
         <div className="export-preview-trim">
           {liveSelected || timelineEditable ? (
             <div className="export-preview-cover-time">
-              {liveSelected ? `Live 图 ${formatTime(liveStart)} – ${formatTime(liveStart + LIVE_DURATION)} · 封面 ${formatTime(liveStart + cover)}` : '拖动两端调整导出长度'}
+              {liveSelected ? `Live 图 ${formatTime(liveStart)} – ${formatTime(liveStart + liveDuration)} · 封面 ${formatTime(liveStart + cover)}` : '拖动两端调整导出长度'}
             </div>
           ) : null}
           <div className="export-preview-strip">
@@ -205,11 +206,11 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
               onEndTimeChange={timelineEditable ? changeExportEnd : undefined}
               secondaryFixedRange={liveSelected ? {
                 startTime: liveStart,
-                duration: LIVE_DURATION,
+                duration: liveDuration,
                 label: 'Live 图',
                 onStartChange: moveLiveRange,
               } : undefined}
-              playheadRange={liveSelected ? { startTime: liveStart, endTime: liveStart + LIVE_DURATION } : undefined}
+              playheadRange={liveSelected ? { startTime: liveStart, endTime: liveStart + liveDuration } : undefined}
               animatePlayhead={false}
               thumbnails={timelineThumbnails}
             />
