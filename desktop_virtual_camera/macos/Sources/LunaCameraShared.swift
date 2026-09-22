@@ -39,14 +39,10 @@ public final class LunaCameraSharedFrameStore: @unchecked Sendable {
     public init() {}
 
     public static func sharedURL() -> URL? {
-#if DEBUG
-        return URL(fileURLWithPath: "/tmp").appendingPathComponent(frameFileName)
-#else
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
         )?.appendingPathComponent(frameFileName)
             ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(frameFileName)
-#endif
     }
 
     /// Publishes a tightly packed BGRA frame through the App Group container.

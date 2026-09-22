@@ -203,19 +203,27 @@ final class LunaHevcDecoder {
 
     private static func splitAnnexB(_ data: Data) -> [Data] {
         let bytes = Array(data)
-        var starts: [Int] = []
+        var starts: [(dataOffset: Int, prefixLength: Int)] = []
         var i = 0
-        while i + 3 < bytes.count {
-            if bytes[i] == 0 && bytes[i + 1] == 0 && bytes[i + 2] == 1 {
-                starts.append(i + 3); i += 3
-            } else if i + 4 < bytes.count && bytes[i] == 0 && bytes[i + 1] == 0 && bytes[i + 2] == 0 && bytes[i + 3] == 1 {
-                starts.append(i + 4); i += 4
-            } else { i += 1 }
+        while i + 3 <= bytes.count {
+            if i + 4 <= bytes.count,
+               bytes[i] == 0, bytes[i + 1] == 0, bytes[i + 2] == 0, bytes[i + 3] == 1 {
+                starts.append((i + 4, 4))
+                i += 4
+            } else if bytes[i] == 0, bytes[i + 1] == 0, bytes[i + 2] == 1 {
+                starts.append((i + 3, 3))
+                i += 3
+            } else {
+                i += 1
+            }
         }
-        return starts.enumerated().map { index, start in
-            let end = index + 1 < starts.count ? starts[index + 1] - (bytes[starts[index + 1] - 3] == 1 ? 3 : 4) : bytes.count
-            return Data(bytes[start..<end])
-        }.filter { !$0.isEmpty }
+        return starts.enumerated().compactMap { index, start in
+            let end = index + 1 < starts.count
+                ? starts[index + 1].dataOffset - starts[index + 1].prefixLength
+                : bytes.count
+            guard start.dataOffset < end else { return nil }
+            return Data(bytes[start.dataOffset..<end])
+        }
     }
 
     private func nalType(_ nal: Data) -> Int { Int((nal.first ?? 0) >> 1) & 0x3F }
