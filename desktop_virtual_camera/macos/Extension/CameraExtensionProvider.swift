@@ -44,6 +44,8 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
 	private var _whiteStripeIsAscending: Bool = false
 
+	private var _lastFrameBytes: Data?
+
 	init(localizedName: String) {
 
 		super.init()
@@ -128,12 +130,25 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 				let rowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
 				memset(bufferPtr, 0, rowBytes * height)
 
-				if let sharedFrame = LunaCameraSharedFrameStore.readLatestBGRA(),
+				let sharedFrame = LunaCameraSharedFrameStore.readLatestBGRA()
+				if let sharedFrame,
 				   sharedFrame.width == width,
 				   sharedFrame.height == height,
-				   sharedFrame.bytes.count == rowBytes * height {
-					sharedFrame.bytes.withUnsafeBytes { bytes in
-						memcpy(bufferPtr, bytes.baseAddress!, sharedFrame.bytes.count)
+				   sharedFrame.bytes.count == width * 4 * height {
+					self._lastFrameBytes = sharedFrame.bytes
+				}
+				if let frameBytes = self._lastFrameBytes,
+				   frameBytes.count == width * 4 * height {
+					let sourceRowBytes = width * 4
+					frameBytes.withUnsafeBytes { bytes in
+						guard let source = bytes.baseAddress else { return }
+						for row in 0..<height {
+							memcpy(
+								bufferPtr.advanced(by: row * rowBytes),
+								source.advanced(by: row * sourceRowBytes),
+								sourceRowBytes
+							)
+						}
 					}
 					CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
 					var sbuf: CMSampleBuffer!
