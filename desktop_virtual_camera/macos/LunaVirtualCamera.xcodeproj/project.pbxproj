@@ -11,6 +11,7 @@
 		3FEBD87903117C43E9BE8C41 /* LunaTcpHevcReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F67B6CAD70763CE978A045 /* LunaTcpHevcReceiver.swift */; };
 		431D73DEF11C356783FB8BBF /* LunaCameraShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C810D1259B11A0AC3E00E33 /* LunaCameraShared.swift */; };
 		6D0698900A6C2639B3A10140 /* LunaCameraShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C810D1259B11A0AC3E00E33 /* LunaCameraShared.swift */; };
+		872C1219EB34AE3C349ADAAE /* LunaAudioRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55803D3BBE846C6E74863A1C /* LunaAudioRenderer.swift */; };
 		B58ECDEF6199C2F00684842F /* LunaHevcDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CEB2A02C7A5E5E68EB40AB /* LunaHevcDecoder.swift */; };
 		BD25EC35C554C0049DEF9C11 /* LunaCameraExtension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 46B594BCE6D528EC77F0E439 /* LunaCameraExtension.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CBE18AA73932311B601CB92F /* CameraExtensionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB94658947A7D7536E3029FB /* CameraExtensionProvider.swift */; };
@@ -43,6 +44,7 @@
 /* Begin PBXFileReference section */
 		368DDB9D8D4A0E8B77B1358D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		46B594BCE6D528EC77F0E439 /* LunaCameraExtension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = LunaCameraExtension.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
+		55803D3BBE846C6E74863A1C /* LunaAudioRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaAudioRenderer.swift; sourceTree = "<group>"; };
 		57CEB2A02C7A5E5E68EB40AB /* LunaHevcDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaHevcDecoder.swift; sourceTree = "<group>"; };
 		722D9D880B2B2B948797FAE8 /* LunaCameraHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LunaCameraHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C810D1259B11A0AC3E00E33 /* LunaCameraShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaCameraShared.swift; sourceTree = "<group>"; };
@@ -66,6 +68,7 @@
 			isa = PBXGroup;
 			children = (
 				B860E34B962EFDC53F03DE89 /* Info.plist */,
+				55803D3BBE846C6E74863A1C /* LunaAudioRenderer.swift */,
 				57CEB2A02C7A5E5E68EB40AB /* LunaHevcDecoder.swift */,
 				D4F67B6CAD70763CE978A045 /* LunaTcpHevcReceiver.swift */,
 				368DDB9D8D4A0E8B77B1358D /* main.swift */,
@@ -181,6 +184,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				872C1219EB34AE3C349ADAAE /* LunaAudioRenderer.swift in Sources */,
 				431D73DEF11C356783FB8BBF /* LunaCameraShared.swift in Sources */,
 				B58ECDEF6199C2F00684842F /* LunaHevcDecoder.swift in Sources */,
 				3FEBD87903117C43E9BE8C41 /* LunaTcpHevcReceiver.swift in Sources */,

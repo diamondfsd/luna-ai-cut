@@ -7,10 +7,11 @@ private let extensionIdentifier = "com.diamondfsd.luna.virtualcamera.host.extens
 final class AppDelegate: NSObject, NSApplicationDelegate, OSSystemExtensionRequestDelegate {
     private var activationRequest: OSSystemExtensionRequest?
     private var hevcReceiver: LunaTcpHevcReceiver?
+    private let audioRenderer = LunaAudioRenderer()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let decoder = LunaHevcDecoder()
-        hevcReceiver = try? LunaTcpHevcReceiver(decoder: decoder)
+        hevcReceiver = try? LunaTcpHevcReceiver(decoder: decoder, audioRenderer: audioRenderer)
         hevcReceiver?.start()
         let request = OSSystemExtensionRequest.activationRequest(
             forExtensionWithIdentifier: extensionIdentifier,
@@ -42,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, OSSystemExtensionReque
 
     func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
         os_log(.error, "Luna camera extension activation failed: %{public}@", error.localizedDescription)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        audioRenderer.stop()
     }
 }
 

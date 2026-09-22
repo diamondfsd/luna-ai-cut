@@ -18,6 +18,7 @@ export type DesktopVirtualCameraExtensionState =
 
 export interface DesktopVirtualCameraOptions {
   port?: number
+  audioDelayMs?: number
 }
 
 export interface DesktopVirtualCameraStatus {
@@ -31,6 +32,9 @@ export interface DesktopVirtualCameraStatus {
   extensionInstalled: boolean
   extensionEnabled: boolean
   extensionState: DesktopVirtualCameraExtensionState
+  virtualMicrophoneInstalled: boolean
+  virtualMicrophoneAvailable: boolean
+  virtualMicrophoneName: string
   hostRunning: boolean
   receiverConnected: boolean
   transport: 'usb-aoa'
@@ -43,6 +47,16 @@ export interface DesktopVirtualCameraStatus {
   frames: number
   bytes: number
   lastFrameAt: string | null
+  videoFrames: number
+  videoBytes: number
+  lastVideoFrameAt: string | null
+  audioFrames: number
+  audioBytes: number
+  lastAudioFrameAt: string | null
+  audioSource: number | null
+  audioSampleRate: number | null
+  audioChannels: number | null
+  audioDelayMs: number
   startedAt: string | null
   message: string
   error: string | null
@@ -52,6 +66,7 @@ export interface DesktopVirtualCameraApi {
   status(): Promise<DesktopVirtualCameraStatus>
   install(): Promise<DesktopVirtualCameraStatus>
   start(options: DesktopVirtualCameraOptions): Promise<DesktopVirtualCameraStatus>
+  setAudioDelay(audioDelayMs: number): Promise<DesktopVirtualCameraStatus>
   stop(): Promise<DesktopVirtualCameraStatus>
   openExtensionSettings(): Promise<void>
   revealInstallSource(): Promise<void>

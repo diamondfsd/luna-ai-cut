@@ -114,17 +114,49 @@
   font-weight: 650;
 }
 
-.live-console-app-download {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+.live-console-setup {
   margin-top: 18px;
   border-radius: 6px;
-  padding: 12px 14px;
+  padding: 16px;
   background: color-mix(in srgb, var(--blue) 6%, transparent);
   color: var(--ink);
-  font-size: 12px;
+}
+
+.live-console-setup ol {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-console-setup li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-console-setup li > span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.live-console-setup li p {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+}
+
+.live-console-setup > .ui-btn {
+  margin-top: 16px;
 }
 
 .live-console-metrics {
@@ -152,6 +184,28 @@
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.live-console-audio-delay {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 18px;
+}
+
+.live-console-audio-delay > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.live-console-audio-delay output {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 
 .live-console-error {
@@ -185,8 +239,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .live-console-app-download {
+  .live-console-setup li {
     align-items: flex-start;
-    flex-direction: column;
+    flex-wrap: wrap;
+  }
+
+  .live-console-setup > .ui-btn {
+    width: 100%;
   }
 }

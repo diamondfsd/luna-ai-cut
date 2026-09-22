@@ -8,10 +8,17 @@ import { fileURLToPath } from 'node:url'
 const MAGIC = Buffer.from([0x55, 0x43, 0x44, 0x32])
 const MEDIA_TYPE = 0x01
 const VIDEO_STREAM_TYPE = 0x20
+const AUDIO_STREAM_TYPE = 0x21
+const AUDIO_CODEC_PCM16_LE = 0x01
 const MAX_FRAME_BYTES = 32 * 1024 * 1024
 
-export function encodeMediaFrame(sequence, timestampMicros, hevc) {
-  const rawLength = 9 + hevc.length
+export function encodeMediaFrame(
+  sequence,
+  timestampMicros,
+  payload,
+  streamType = VIDEO_STREAM_TYPE,
+) {
+  const rawLength = 9 + payload.length
   const frame = Buffer.allocUnsafe(12 + rawLength + 4)
   MAGIC.copy(frame, 0)
   frame[4] = 0x01
@@ -19,9 +26,9 @@ export function encodeMediaFrame(sequence, timestampMicros, hevc) {
   frame[6] = MEDIA_TYPE
   frame[7] = sequence & 0xff
   frame.writeUInt32LE(rawLength, 8)
-  frame[12] = VIDEO_STREAM_TYPE
+  frame[12] = streamType
   frame.writeBigUInt64LE(BigInt(timestampMicros), 13)
-  hevc.copy(frame, 21)
+  payload.copy(frame, 21)
   frame.fill(0, frame.length - 4)
   return frame
 }
@@ -39,18 +46,60 @@ export function parseMediaFrame(frame) {
   if (frame[6] !== MEDIA_TYPE) return { status: 'unsupported', totalLength, reason: 'media-type' }
 
   const payload = frame.subarray(12, 12 + rawLength)
-  if (payload[0] !== VIDEO_STREAM_TYPE) {
-    return { status: 'unsupported', totalLength, reason: 'stream-type' }
+  if (payload.length < 9) return { status: 'invalid', totalLength, reason: 'payload-header' }
+  const streamType = payload[0]
+  const timestampMicros = payload.readBigUInt64LE(1)
+  const body = payload.subarray(9)
+  if (streamType === VIDEO_STREAM_TYPE) {
+    if (body.length === 0) return { status: 'invalid', totalLength, reason: 'empty-video' }
+    return {
+      status: 'ok',
+      totalLength,
+      sequence: frame[7],
+      streamType,
+      timestampMicros,
+      body,
+      hevc: body,
+    }
   }
 
-  const hevc = payload.subarray(9)
-  if (hevc.length === 0) return { status: 'invalid', reason: 'empty-payload' }
+  if (streamType === AUDIO_STREAM_TYPE) {
+    if (body.length < 12) return { status: 'invalid', totalLength, reason: 'audio-header' }
+    if (body[0] !== AUDIO_CODEC_PCM16_LE) {
+      return { status: 'unsupported', totalLength, reason: 'audio-codec' }
+    }
+    const sampleRate = body.readUInt32LE(2)
+    const channels = body[6]
+    const sampleCount = body.readUInt32LE(8)
+    const pcm16Le = body.subarray(12)
+    if (channels < 1 || sampleRate < 1 || pcm16Le.length !== sampleCount * channels * 2) {
+      return { status: 'invalid', totalLength, reason: 'audio-payload' }
+    }
+    return {
+      status: 'ok',
+      totalLength,
+      sequence: frame[7],
+      streamType,
+      timestampMicros,
+      body,
+      audio: {
+        codec: body[0],
+        source: body[1],
+        sampleRate,
+        channels,
+        sampleCount,
+        pcm16Le,
+      },
+    }
+  }
+
   return {
     status: 'ok',
     totalLength,
     sequence: frame[7],
-    timestampMicros: payload.readBigUInt64LE(1),
-    hevc,
+    streamType,
+    timestampMicros,
+    body,
   }
 }
 
@@ -84,6 +133,21 @@ function runSelfTest() {
   assert.equal(parsed.timestampMicros, 123456n)
   assert.deepEqual(parsed.hevc, hevc)
 
+  const pcm = Buffer.from([0x01, 0x02, 0x03, 0x04])
+  const audioBody = Buffer.alloc(12 + pcm.length)
+  audioBody[0] = AUDIO_CODEC_PCM16_LE
+  audioBody[1] = 0x01
+  audioBody.writeUInt32LE(48000, 2)
+  audioBody[6] = 1
+  audioBody.writeUInt32LE(2, 8)
+  pcm.copy(audioBody, 12)
+  const audioFrame = encodeMediaFrame(8, 223344, audioBody, AUDIO_STREAM_TYPE)
+  const parsedAudio = parseMediaFrame(audioFrame)
+  assert.equal(parsedAudio.status, 'ok')
+  assert.equal(parsedAudio.audio.sampleRate, 48000)
+  assert.equal(parsedAudio.audio.channels, 1)
+  assert.deepEqual(parsedAudio.audio.pcm16Le, pcm)
+
   const split = Buffer.concat([Buffer.from([0x00, 0x11]), frame, frame])
   const frames = []
   const pending = consumeFrames(split, (value) => frames.push(value))
@@ -108,6 +172,7 @@ Options:
   --host <address>       Listen address, default 127.0.0.1
   --port <port>          Listen port, default 4184
   --output <file>        Write received HEVC Annex-B access units
+  --audio-output <file>  Write received PCM16-LE audio samples
   --timeout <seconds>    Fail when no frame arrives within this time
   --max-frames <count>   Exit successfully after this many frames
   --self-test            Validate the UCD2 parser without opening a socket
@@ -128,14 +193,21 @@ async function runReceiver() {
   const maxFramesRaw = argumentValue('--max-frames', '0')
   const maxFrames = Number.parseInt(maxFramesRaw, 10)
   const outputPath = argumentValue('--output', null)
+  const audioOutputPath = argumentValue('--audio-output', null)
 
   let socket = null
   let pending = Buffer.alloc(0)
   let frames = 0
   let bytes = 0
   let lastSequence = null
+  let videoFrames = 0
+  let videoBytes = 0
+  let audioFrames = 0
+  let audioBytes = 0
+  let audioFormat = null
   let finishing = false
   const output = outputPath ? createWriteStream(outputPath) : null
+  const audioOutput = audioOutputPath ? createWriteStream(audioOutputPath) : null
   const startedAt = Date.now()
 
   const server = createServer((connection) => {
@@ -151,9 +223,24 @@ async function runReceiver() {
           frames += 1
           bytes += frame.totalLength
           lastSequence = frame.sequence
-          output?.write(frame.hevc)
-          if (frames === 1) {
+          if (frame.streamType === VIDEO_STREAM_TYPE) {
+            videoFrames += 1
+            videoBytes += frame.totalLength
+            output?.write(frame.hevc)
+          } else if (frame.streamType === AUDIO_STREAM_TYPE) {
+            audioFrames += 1
+            audioBytes += frame.totalLength
+            audioFormat = {
+              source: frame.audio.source,
+              sampleRate: frame.audio.sampleRate,
+              channels: frame.audio.channels,
+            }
+            audioOutput?.write(frame.audio.pcm16Le)
+          }
+          if (videoFrames === 1 && frame.streamType === VIDEO_STREAM_TYPE) {
             console.log(`[receiver] first HEVC access unit: ${frame.hevc.length} bytes, timestamp=${frame.timestampMicros}`)
+          } else if (audioFrames === 1 && frame.streamType === AUDIO_STREAM_TYPE) {
+            console.log(`[receiver] first PCM16 audio chunk: ${frame.audio.pcm16Le.length} bytes, ${frame.audio.sampleRate}Hz/${frame.audio.channels}ch`)
           } else if (frames % 30 === 0) {
             const seconds = Math.max((Date.now() - startedAt) / 1000, 0.001)
             console.log(`[receiver] frames=${frames} bytes=${bytes} rate=${(frames / seconds).toFixed(1)} fps`)
@@ -186,7 +273,19 @@ async function runReceiver() {
     socket?.destroy()
     await new Promise((resolve) => server.close(() => resolve()))
     if (output) await new Promise((resolve, reject) => output.end((error) => error ? reject(error) : resolve()))
-    console.log(JSON.stringify({ frames, bytes, lastSequence, output: outputPath }, null, 2))
+    if (audioOutput) await new Promise((resolve, reject) => audioOutput.end((error) => error ? reject(error) : resolve()))
+    console.log(JSON.stringify({
+      frames,
+      bytes,
+      videoFrames,
+      videoBytes,
+      audioFrames,
+      audioBytes,
+      audioFormat,
+      lastSequence,
+      output: outputPath,
+      audioOutput: audioOutputPath,
+    }, null, 2))
     process.exitCode = code
   }
 

@@ -26,6 +26,10 @@ Luna 咔手机 App
 视频帧不经过 React IPC，也不写入磁盘。Electron 主进程从 USB Bulk 端点读取手机发来的
 UCD2 包，保持原字节不变并转发给 Host。
 
+音频使用同一个 UCD2 外层帧但 stream type 为 `0x21`。Electron 在主进程统计并转发给
+Camera Host，Host 再把 PCM 写入 `Luna Virtual Microphone`。完整设计见
+[`audio-pipeline.md`](audio-pipeline.md)。
+
 ## 代码边界
 
 | 层 | 路径 | 职责 |
@@ -42,7 +46,8 @@ UCD2 包，保持原字节不变并转发给 Host。
 
 - `status`：检查 Host 是否安装/运行、扩展是否启用、当前输出帧数。
 - `install`：把已签名的 `LunaCameraHost.app` 安装到 `/Applications` 并启动一次。
-- `start`：启动 Host 和 USB AOA 扫描；手机连接并输出后，把完整 UCD2 帧转发到 4184。
+- `start`：启动 Host 和 USB AOA 扫描；手机连接并输出后，把音视频 UCD2 帧转发到 4184。
+- `setAudioDelay`：实时设置 `-10000..10000 ms` 的声音漂移。
 - `stop`：停止输出连接；保留 Host 进程和系统扩展注册，便于快速再次启动。
 - `openExtensionSettings`：打开系统设置中的扩展管理页。
 
@@ -61,6 +66,8 @@ pnpm build:desktop-camera
 ```text
 resources/desktop-virtual-camera/LunaCameraHost.app
   -> Contents/Resources/desktop-virtual-camera/LunaCameraHost.app
+resources/desktop-virtual-camera/LunaVirtualMicrophone.driver
+  -> Contents/Resources/desktop-virtual-camera/LunaVirtualMicrophone.driver
 ```
 
 要求：
@@ -93,6 +100,7 @@ Host App 必须位于 `/Applications`，否则系统会拒绝加载 Camera Exten
 
 - 当前仅支持 macOS 15 及以上。
 - 当前手机端已实现 USB AOA 输出桥，桌面端接收完整 UCD2 帧。
+- 当前已实现手机麦克风/外部输入的 PCM16 传输和 macOS 虚拟麦克风。
 - Windows 使用 Windows 11 `MFCreateVirtualCamera` 与软件 Media Source DLL，
   当前仅有实施方案，原生实现尚未完成。细节见
   [`../windows/README.md`](../windows/README.md)。

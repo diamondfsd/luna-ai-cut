@@ -36,10 +36,12 @@ USB AOA 描述、UCD2 帧格式和本机 TCP Host 协议是稳定边界。修改
 ## 必读顺序
 
 1. [`docs/app-stream-bridge.md`](docs/app-stream-bridge.md) - USB AOA 完整接入方式。
-2. [`docs/protocol.md`](docs/protocol.md) - UCD2 字节格式。
-3. [`macos/README.md`](macos/README.md) - 已工作的 macOS Host 和 Camera Extension。
-4. [`windows/README.md`](windows/README.md) - Windows 11 Media Foundation 实施方案。
-5. [`docs/luna-ai-cut-integration.md`](docs/luna-ai-cut-integration.md) - Electron、直播控制台和验收。
+2. [`docs/usb-output-protocol.md`](docs/usb-output-protocol.md) - 桌面端必须实现的完整 USB 输出协议。
+3. [`docs/protocol.md`](docs/protocol.md) - UCD2 字节格式速查。
+4. [`docs/audio-pipeline.md`](docs/audio-pipeline.md) - 手机音频采集、USB 音频包和未来混音。
+5. [`macos/README.md`](macos/README.md) - 已工作的 macOS Host 和 Camera Extension。
+6. [`windows/README.md`](windows/README.md) - Windows 11 Media Foundation 实施方案。
+7. [`docs/luna-ai-cut-integration.md`](docs/luna-ai-cut-integration.md) - Electron、直播控制台和验收。
 
 ## Desktop 接入点
 
@@ -81,8 +83,16 @@ description  = Luna USB video output
 
 - macOS 15+：Host、VideoToolbox、App Group 帧共享、Camera Extension 已实现并验证。
 - 手机端：USB AOA 输出桥和 UCD2 封装已存在。
+- 音频传输：PCM16 `0x21` 发送、USB 解复用和桌面统计已接入。
+- macOS 虚拟麦克风：Host PCM renderer 和 Core Audio HAL 驱动已实现。
 - Luna AI Cut：直播控制台、USB AOA 接收器、Host 生命周期和 IPC 已接入。
 - Windows 11：Media Foundation 方案已核验，原生 source DLL 和 Host 尚未实现。
+
+尚未实现：
+
+- Windows 系统虚拟麦克风。
+- 手机端同时采集两个麦克风。
+- 桌面端多路音频混音和自动音画同步。
 
 ## Windows 下一步
 
@@ -91,6 +101,7 @@ description  = Luna USB video output
 3. 实现 `LunaVirtualCameraSource.dll` 和 `LunaVirtualCameraHost.exe`。
 4. Windows Host 继续监听本机 TCP 4184，接收 Electron 转发的同一 UCD2 帧。
 5. 用 Windows 相机、`ImageCapture` 和视频会议软件验收。
+6. 接入 Windows 虚拟音频设备或 VB-CABLE 联调路径。
 
 Windows 最低版本为 Windows 11 build `10.0.22000`，不实现 Windows 10 路径。
 
@@ -116,6 +127,8 @@ pnpm build:desktop-camera
 ## 代码纪律
 
 - 不把电脑直连相机 Wi-Fi 作为正式虚拟摄像头输入。
+- 不把音频塞进 Camera Extension；麦克风和摄像头是两个系统设备。
+- 新增数据类型使用新的 stream type，保持 `0x20` 视频和 `0x21` 音频兼容。
 - 不把 HEVC 解码放进 macOS Camera Extension；Windows 同样放在 Host 侧。
 - 不改变 AOA 匹配字符串，除非手机端 `usb_accessory_filter.xml` 同步修改。
 - 不把 Windows COM source 注册到 `HKCU`，必须使用 `HKLM`。

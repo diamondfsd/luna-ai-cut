@@ -86,6 +86,7 @@ function defaultSettings(): AppSettings {
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
     windowCloseBehavior: 'hide',
+    liveAudioDelayMs: 0,
     nasSync: {
       enabled: false,
       autoSync: false,
@@ -213,6 +214,10 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.windowCloseBehavior = savedWindowCloseBehavior === 'hide' || savedWindowCloseBehavior === 'quit'
     ? savedWindowCloseBehavior
     : defaults.windowCloseBehavior
+  const savedLiveAudioDelay = saved?.liveAudioDelayMs
+  merged.liveAudioDelayMs = finiteNumber(savedLiveAudioDelay)
+    ? Math.min(10_000, Math.max(-10_000, Math.round(savedLiveAudioDelay)))
+    : defaults.liveAudioDelayMs
   const savedNasSync = saved?.nasSync
   const defaultNasSync = defaults.nasSync as NasSyncSettings
   const savedNasPort = savedNasSync?.port
@@ -331,6 +336,7 @@ export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings
       if (!validNasPort(next.nasSync.port)) throw new Error('NAS 端口必须是 1 到 65535 的整数')
       if (next.nasSync.enabled && (!next.nasSync.share || !next.nasSync.remotePath)) throw new Error('请先连接 NAS 并选择共享和同步目录')
     }
+    next.liveAudioDelayMs = Math.min(10_000, Math.max(-10_000, Math.round(next.liveAudioDelayMs ?? 0)))
     next.cacheDir = cacheDir(next.baseDir)
     await writeSettingsFile(next)
     return next

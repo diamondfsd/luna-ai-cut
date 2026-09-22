@@ -156,6 +156,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     status: () => ipcRenderer.invoke('desktop-virtual-camera:status'),
     install: () => ipcRenderer.invoke('desktop-virtual-camera:install'),
     start: (options) => ipcRenderer.invoke('desktop-virtual-camera:start', options),
+    setAudioDelay: (audioDelayMs: number) => ipcRenderer.invoke('desktop-virtual-camera:set-audio-delay', audioDelayMs),
     stop: () => ipcRenderer.invoke('desktop-virtual-camera:stop'),
     openExtensionSettings: () => ipcRenderer.invoke('desktop-virtual-camera:open-extension-settings'),
     revealInstallSource: () => ipcRenderer.invoke('desktop-virtual-camera:reveal-install-source'),

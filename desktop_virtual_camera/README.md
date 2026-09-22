@@ -22,6 +22,13 @@ Luna 相机实时预览
   -> LunaCameraSharedFrameStore
   -> macOS Camera Extension
   -> 系统摄像头
+
+手机麦克风
+  -> PCM16 / UCD2 stream 0x21
+  -> LunaAudioRenderer
+  -> Luna Virtual Microphone Sink
+  -> Luna Virtual Microphone
+  -> 系统麦克风
 ```
 
 ## 目录
@@ -48,6 +55,7 @@ desktop_virtual_camera/
 ## 当前阶段
 
 - 手机端：已实现 USB AOA 输出桥、HEVC access unit 订阅和 UCD2 封装。
+- 音频：已实现 PCM16 采集、`0x21` USB 帧、桌面解复用、macOS 虚拟麦克风。
 - macOS：已实现 Host、HEVC 解码、App Group 最新帧共享和 Camera Extension。
 - Luna AI Cut：已实现 `/live-console`、USB AOA 接收、Electron IPC、Host 管理和授权指引。
 - Windows：已完成 Windows 11 Media Foundation 方案的 API 核验，但没有可发布实现；
@@ -95,6 +103,8 @@ Camera Extension 只能由位于 `/Applications` 的 Host App 申请安装。
 - USB 数据线连接手机和电脑后，Android 需要授予 USB Accessory 权限。
 - 电脑端 AOA 描述必须与手机端 `usb_accessory_filter.xml` 完全一致。
 - 电脑的网络接口不参与相机连接，只用于直播平台推流。
+
+音频和混音设计见 [`docs/audio-pipeline.md`](docs/audio-pipeline.md)。
 
 ## 抓包回放
 

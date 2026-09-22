@@ -7,7 +7,13 @@ import { createConnection, type Socket } from 'node:net'
 import { promisify } from 'node:util'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
-import { UsbAoaReceiver, type UsbAoaState, type UsbAoaStatus } from './usbAoaReceiver'
+import {
+  USB_STREAM_AUDIO,
+  USB_STREAM_VIDEO,
+  UsbAoaReceiver,
+  type UsbAoaState,
+  type UsbAoaStatus,
+} from './usbAoaReceiver'
 import type {
   DesktopVirtualCameraExtensionState,
   DesktopVirtualCameraOptions,
@@ -20,12 +26,18 @@ const EXTENSION_IDENTIFIER = 'com.diamondfsd.luna.virtualcamera.host.extension'
 const APP_NAME = 'LunaCameraHost.app'
 const INSTALLED_HOST_PATH = `/Applications/${APP_NAME}`
 const HOST_EXECUTABLE_PATH = `${INSTALLED_HOST_PATH}/Contents/MacOS/LunaCameraHost`
+const MICROPHONE_DRIVER_NAME = 'LunaVirtualMicrophone.driver'
+const INSTALLED_MICROPHONE_PATH = `/Library/Audio/Plug-Ins/HAL/${MICROPHONE_DRIVER_NAME}`
+const MICROPHONE_NAME = 'Luna Virtual Microphone'
 const DEFAULT_PORT = 4184
+const AUDIO_DELAY_STREAM = 0x22
 
 interface ActiveSession {
   state: 'starting' | 'running' | 'stopping'
   socket: Socket
   receiver: UsbAoaReceiver
+  audioDelayMs: number
+  sequence: number
   startedAt: string
   error: string | null
 }
@@ -39,6 +51,15 @@ const IDLE_USB_STATUS: UsbAoaStatus = {
   frames: 0,
   bytes: 0,
   lastFrameAt: null,
+  videoFrames: 0,
+  videoBytes: 0,
+  lastVideoFrameAt: null,
+  audioFrames: 0,
+  audioBytes: 0,
+  lastAudioFrameAt: null,
+  audioSource: null,
+  audioSampleRate: null,
+  audioChannels: null,
   error: null,
 }
 
@@ -66,6 +87,28 @@ function sourcePathOrThrow(): string {
     throw new Error('未找到已签名的 LunaCameraHost.app。请先运行 pnpm build:desktop-camera。')
   }
   return source
+}
+
+function microphoneSourcePath(): string | null {
+  const candidates = app.isPackaged
+    ? [join(process.resourcesPath, 'desktop-virtual-camera', MICROPHONE_DRIVER_NAME)]
+    : [
+        join(app.getAppPath(), 'desktop_virtual_camera', 'macos', '.build', MICROPHONE_DRIVER_NAME),
+        join(app.getAppPath(), 'resources', 'desktop-virtual-camera', MICROPHONE_DRIVER_NAME),
+      ]
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+function clampAudioDelay(value: number | undefined): number {
+  return Math.min(10_000, Math.max(-10_000, Math.round(value ?? 0)))
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function appleScriptQuote(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
 async function isHostRunning(): Promise<boolean> {
@@ -124,6 +167,7 @@ function statusMessage(
   state: DesktopVirtualCameraState,
   extensionState: DesktopVirtualCameraExtensionState,
   sourceAvailable: boolean,
+  microphoneInstalled: boolean,
   usb: UsbAoaStatus,
 ): string {
   if (state === 'unsupported') {
@@ -137,7 +181,8 @@ function statusMessage(
   if (state === 'stopping') return '正在停止虚拟摄像头输出'
   if (state === 'needs-approval') return '等待在系统设置中启用 Luna Virtual Camera Extension'
   if (extensionState === 'not-found' && sourceAvailable) return 'Luna Camera Host 尚未安装'
-  if (state === 'ready') return '相机扩展已启用，连接手机 USB 后即可输出'
+  if (state === 'ready' && !microphoneInstalled) return '虚拟麦克风尚未安装'
+  if (state === 'ready') return '音视频组件已就绪，连接手机 USB 后即可输出'
   return '尚未安装可用的 Luna Camera Host'
 }
 
@@ -145,6 +190,8 @@ export async function getDesktopVirtualCameraStatus(): Promise<DesktopVirtualCam
   const unsupported = process.platform !== 'darwin'
   const hostInstalled = !unsupported && existsSync(INSTALLED_HOST_PATH)
   const source = unsupported ? null : installSourcePath()
+  const microphoneSource = unsupported ? null : microphoneSourcePath()
+  const microphoneInstalled = !unsupported && existsSync(INSTALLED_MICROPHONE_PATH)
   const extension = unsupported
     ? { installed: false, enabled: false, state: 'unknown' as const }
     : await readExtensionState()
@@ -163,6 +210,9 @@ export async function getDesktopVirtualCameraStatus(): Promise<DesktopVirtualCam
     extensionInstalled: extension.installed,
     extensionEnabled: extension.enabled,
     extensionState: extension.state,
+    virtualMicrophoneInstalled: microphoneInstalled,
+    virtualMicrophoneAvailable: Boolean(microphoneSource),
+    virtualMicrophoneName: MICROPHONE_NAME,
     hostRunning,
     receiverConnected: usb.state === 'connected' || usb.state === 'streaming',
     transport: 'usb-aoa',
@@ -175,8 +225,18 @@ export async function getDesktopVirtualCameraStatus(): Promise<DesktopVirtualCam
     frames: usb.frames,
     bytes: usb.bytes,
     lastFrameAt: usb.lastFrameAt,
+    videoFrames: usb.videoFrames,
+    videoBytes: usb.videoBytes,
+    lastVideoFrameAt: usb.lastVideoFrameAt,
+    audioFrames: usb.audioFrames,
+    audioBytes: usb.audioBytes,
+    lastAudioFrameAt: usb.lastAudioFrameAt,
+    audioSource: usb.audioSource,
+    audioSampleRate: usb.audioSampleRate,
+    audioChannels: usb.audioChannels,
+    audioDelayMs: activeSession?.audioDelayMs ?? 0,
     startedAt: activeSession?.startedAt ?? null,
-    message: activeSession?.error ?? usb.error ?? statusMessage(state, extension.state, Boolean(source), usb),
+    message: activeSession?.error ?? usb.error ?? statusMessage(state, extension.state, Boolean(source), microphoneInstalled, usb),
     error: activeSession?.error ?? usb.error ?? null,
   }
 }
@@ -189,20 +249,75 @@ async function stageHostApp(source: string): Promise<void> {
   renameSync(stagedPath, INSTALLED_HOST_PATH)
 }
 
+async function installMicrophoneDriver(source: string): Promise<void> {
+  if (existsSync(INSTALLED_MICROPHONE_PATH)) return
+  const installDir = '/Library/Audio/Plug-Ins/HAL'
+  const stagedPath = `${installDir}/.${MICROPHONE_DRIVER_NAME}.${process.pid}.staged`
+  const command = [
+    `/usr/bin/install -d -m 755 ${shellQuote(installDir)}`,
+    `/bin/rm -rf ${shellQuote(stagedPath)}`,
+    `/usr/bin/ditto ${shellQuote(source)} ${shellQuote(stagedPath)}`,
+    `/usr/sbin/chown -R root:wheel ${shellQuote(stagedPath)}`,
+    `/usr/bin/find ${shellQuote(stagedPath)} -type d -exec /bin/chmod 755 {} +`,
+    `/usr/bin/find ${shellQuote(stagedPath)} -type f -exec /bin/chmod 644 {} +`,
+    `/bin/chmod 755 ${shellQuote(`${stagedPath}/Contents/MacOS/LunaVirtualMicrophone`)}`,
+    `/usr/bin/codesign --verify --strict ${shellQuote(stagedPath)}`,
+    `/bin/rm -rf ${shellQuote(INSTALLED_MICROPHONE_PATH)}`,
+    `/bin/mv ${shellQuote(stagedPath)} ${shellQuote(INSTALLED_MICROPHONE_PATH)}`,
+    '/usr/bin/killall -9 coreaudiod 2>/dev/null || true',
+  ].join('\n')
+  await execFileAsync('/usr/bin/osascript', [
+    '-e',
+    `do shell script ${appleScriptQuote(command)} with administrator privileges`,
+  ], { encoding: 'utf8' })
+}
+
 export function installDesktopVirtualCameraHost(): Promise<DesktopVirtualCameraStatus> {
   if (operation) return operation
   const task = (async () => {
     if (process.platform !== 'darwin') return getDesktopVirtualCameraStatus()
     const source = sourcePathOrThrow()
-    await stageHostApp(source)
+    if (!existsSync(INSTALLED_HOST_PATH)) await stageHostApp(source)
+    const microphoneSource = microphoneSourcePath()
+    if (microphoneSource) await installMicrophoneDriver(microphoneSource)
     await execFileAsync('/usr/bin/open', [INSTALLED_HOST_PATH], { encoding: 'utf8' })
-    logMainInfo('[虚拟摄像头] Luna Camera Host 已安装', { source })
+    logMainInfo('[虚拟摄像头] 音视频组件已安装', { source, microphoneSource })
     return getDesktopVirtualCameraStatus()
   })().finally(() => {
     operation = null
   })
   operation = task
   return task
+}
+
+function makeAudioDelayFrame(delayMs: number, sequence: number): Buffer {
+  const frame = Buffer.alloc(29)
+  Buffer.from([0x55, 0x43, 0x44, 0x32]).copy(frame, 0)
+  frame[4] = 0x01
+  frame[5] = 0x0c
+  frame[6] = 0x01
+  frame[7] = sequence & 0xff
+  frame.writeUInt32LE(13, 8)
+  frame[12] = AUDIO_DELAY_STREAM
+  frame.writeBigUInt64LE(BigInt(Date.now()) * 1_000n, 13)
+  frame.writeInt32LE(clampAudioDelay(delayMs), 21)
+  return frame
+}
+
+function sendAudioDelay(session: ActiveSession): void {
+  if (session.socket.destroyed || !session.socket.writable) return
+  session.sequence = (session.sequence + 1) & 0xff
+  session.socket.write(makeAudioDelayFrame(session.audioDelayMs, session.sequence))
+}
+
+export async function setDesktopVirtualCameraAudioDelay(delayMs: number): Promise<DesktopVirtualCameraStatus> {
+  const session = activeSession
+  if (session) {
+    session.audioDelayMs = clampAudioDelay(delayMs)
+    sendAudioDelay(session)
+    return getDesktopVirtualCameraStatus()
+  }
+  return getDesktopVirtualCameraStatus()
 }
 
 async function waitForHost(): Promise<void> {
@@ -258,16 +373,19 @@ export function startDesktopVirtualCamera(options: DesktopVirtualCameraOptions):
     const socket = await connectToHost(port)
     const receiver = new UsbAoaReceiver((frame) => {
       if (activeSession?.receiver !== receiver || socket.destroyed || !socket.writable || socket.writableNeedDrain) return
-      socket.write(frame)
+      if (frame.streamType === USB_STREAM_VIDEO || frame.streamType === USB_STREAM_AUDIO) socket.write(frame.raw)
     })
     const session: ActiveSession = {
       state: 'running',
       socket,
       receiver,
+      audioDelayMs: clampAudioDelay(options.audioDelayMs),
+      sequence: 0,
       startedAt: new Date().toISOString(),
       error: null,
     }
     activeSession = session
+    sendAudioDelay(session)
     socket.once('close', () => {
       if (activeSession === session) session.error = '虚拟摄像头接收连接已断开'
     })
