@@ -20,6 +20,7 @@ import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { ObsStreamDemoPage } from '../pages/ObsStreamDemoPage'
+import { LiveConsolePage } from '../pages/LiveConsolePage'
 import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
@@ -97,6 +98,7 @@ export function AppRoutes() {
     ['/local-resources', true],
     ['/ai-selection', true],
     ['/workspace', true],
+    ['/live-console', true],
     ['/obs-stream', obsStreamDemoVisible],
     ['/settings', true],
     ['/developer', developerMode],
@@ -195,6 +197,10 @@ export function AppRoutes() {
 
         <AppRoute path="/obs-stream" preserve={false}>
           <ObsStreamDemoPage />
+        </AppRoute>
+
+        <AppRoute path="/live-console" preserve={false}>
+          <LiveConsolePage />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>

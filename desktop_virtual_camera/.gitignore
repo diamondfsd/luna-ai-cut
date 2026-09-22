@@ -1,0 +1,7 @@
+/target/
+/build/
+/macos/.build/
+/tools/recovered/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+.DS_Store

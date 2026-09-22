@@ -2,3 +2,4 @@ allowBuilds:
   electron: true
   esbuild: true
   ffmpeg-static: true
+  usb: true
