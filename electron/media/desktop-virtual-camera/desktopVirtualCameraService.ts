@@ -56,6 +56,8 @@ interface ActiveSession {
   livePreview: LivePreviewStreamService
   outputEnabled: boolean
   outputError: string | null
+  outputReconnectTimer: NodeJS.Timeout | null
+  outputReconnectInFlight: boolean
   audioSourceMode: DesktopAudioSourceMode
   audioMonitor: WebContents | null
   startedAt: string
@@ -149,16 +151,18 @@ async function readExtensionState(): Promise<{
 }> {
   try {
     const output = await execText('/usr/bin/systemextensionsctl', ['list'])
-    const line = output.split('\n').find((entry) => entry.includes(EXTENSION_IDENTIFIER))
-    if (!line) return { installed: false, enabled: false, state: 'not-found' }
-    const stateText = line.match(/\[([^\]]+)]\s*$/)?.[1] ?? ''
-    if (stateText.includes('activated enabled')) {
+    const entries = output
+      .split('\n')
+      .filter((entry) => entry.includes(EXTENSION_IDENTIFIER))
+      .map((entry) => entry.match(/\[([^\]]+)]\s*$/)?.[1]?.trim() ?? '')
+    if (entries.length === 0) return { installed: false, enabled: false, state: 'not-found' }
+    if (entries.some((stateText) => stateText.includes('activated enabled'))) {
       return { installed: true, enabled: true, state: 'enabled' }
     }
-    if (stateText.includes('waiting for user')) {
+    if (entries.some((stateText) => stateText.includes('waiting for user'))) {
       return { installed: true, enabled: false, state: 'waiting-approval' }
     }
-    if (stateText.includes('activated disabled') || stateText.includes('disabled')) {
+    if (entries.some((stateText) => stateText.includes('activated disabled') || stateText.includes('disabled'))) {
       return { installed: true, enabled: false, state: 'disabled' }
     }
     return { installed: true, enabled: false, state: 'unknown' }
@@ -343,6 +347,14 @@ function sendAudioDelay(session: ActiveSession): void {
   session.socket.write(makeAudioDelayFrame(session.audioDelayMs, session.sequence))
 }
 
+function updateSessionZoom(session: ActiveSession, value: number): void {
+  if (!session.capabilities) return
+  session.capabilities = {
+    ...session.capabilities,
+    zoom: { ...session.capabilities.zoom, current: value },
+  }
+}
+
 function makeAudioFrame(frame: DesktopAudioInputFrame, sequence: number): Buffer {
   const sampleRate = Math.round(frame.sampleRate)
   const channels = Math.round(frame.channels)
@@ -410,6 +422,9 @@ export async function sendDesktopControlCommand(command: DesktopControlCommand):
   if (!session) throw new Error('手机 USB 尚未连接')
   const requestId = randomUUID()
   await session.receiver.sendControl({ ...command, version: 1, requestId })
+  if (command.type === 'zoom.preview' || command.type === 'zoom.set') {
+    updateSessionZoom(session, command.value)
+  }
   return requestId
 }
 
@@ -444,6 +459,57 @@ function connectToHost(port: number, timeoutMs = 5_000): Promise<Socket> {
   })
 }
 
+function scheduleOutputReconnect(session: ActiveSession, delayMs = 1_500): void {
+  if (!session.outputEnabled || session.outputReconnectTimer) return
+  session.outputReconnectTimer = setTimeout(() => {
+    session.outputReconnectTimer = null
+    void reconnectOutput(session)
+  }, delayMs)
+}
+
+async function reconnectOutput(session: ActiveSession): Promise<void> {
+  if (activeSession !== session || !session.outputEnabled || session.outputReconnectInFlight) return
+  session.outputReconnectInFlight = true
+  try {
+    const runtime = await getDesktopVirtualCameraStatus()
+    const unavailable = outputUnavailableReason(runtime)
+    if (unavailable) {
+      session.outputEnabled = false
+      session.outputError = unavailable
+      return
+    }
+    if (!await isHostRunning()) {
+      await execFileAsync('/usr/bin/open', [INSTALLED_HOST_PATH], { encoding: 'utf8' })
+      await waitForHost()
+    }
+    const socket = await connectToHost(runtime.port)
+    if (activeSession !== session || !session.outputEnabled) {
+      socket.destroy()
+      return
+    }
+    session.socket = socket
+    session.outputError = null
+    socket.once('close', () => {
+      if (activeSession !== session || session.socket !== socket) return
+      session.socket = null
+      if (!session.outputEnabled || session.state === 'stopping') return
+      session.outputError = '虚拟摄像头输出正在恢复'
+      scheduleOutputReconnect(session)
+    })
+    sendAudioDelay(session)
+    logMainInfo('[虚拟摄像头] 输出连接已恢复', { port: runtime.port })
+  } catch (error) {
+    if (activeSession !== session || !session.outputEnabled) return
+    session.outputError = '虚拟摄像头输出正在恢复'
+    logMainWarn('[虚拟摄像头] 输出连接恢复失败', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    scheduleOutputReconnect(session)
+  } finally {
+    session.outputReconnectInFlight = false
+  }
+}
+
 export function startDesktopVirtualCamera(options: DesktopVirtualCameraOptions): Promise<DesktopVirtualCameraStatus> {
   if (operation) return operation
   const task = (async () => {
@@ -457,7 +523,11 @@ export function startDesktopVirtualCamera(options: DesktopVirtualCameraOptions):
         if (activeSession?.receiver === receiver) {
           activeSession.lastControlResult = frame.controlResult
           if (frame.controlResult.type === 'capabilities.get' && frame.controlResult.ok && frame.controlResult.data) {
-            activeSession.capabilities = frame.controlResult.data as DesktopControlCapabilities
+            const nextCapabilities = frame.controlResult.data as DesktopControlCapabilities
+            const currentZoom = activeSession.capabilities?.zoom.current
+            activeSession.capabilities = currentZoom == null
+              ? nextCapabilities
+              : { ...nextCapabilities, zoom: { ...nextCapabilities.zoom, current: currentZoom } }
           }
         }
         return
@@ -494,6 +564,8 @@ export function startDesktopVirtualCamera(options: DesktopVirtualCameraOptions):
       livePreview,
       outputEnabled: false,
       outputError: null,
+      outputReconnectTimer: null,
+      outputReconnectInFlight: false,
       audioSourceMode: 'phone',
       audioMonitor: null,
       startedAt: new Date().toISOString(),
@@ -537,20 +609,9 @@ export async function startDesktopVirtualCameraOutput(): Promise<DesktopVirtualC
       return getDesktopVirtualCameraStatus()
     }
 
-    if (!await isHostRunning()) {
-      await execFileAsync('/usr/bin/open', [INSTALLED_HOST_PATH], { encoding: 'utf8' })
-      await waitForHost()
-    }
-    const socket = await connectToHost(runtime.port)
-    session.socket = socket
     session.outputEnabled = true
     session.outputError = null
-    socket.once('close', () => {
-      if (activeSession !== session) return
-      session.outputEnabled = false
-      session.outputError = '虚拟摄像头输出连接已断开'
-    })
-    sendAudioDelay(session)
+    await reconnectOutput(session)
     logMainInfo('[虚拟摄像头] 输出已开启', { port: runtime.port })
     return getDesktopVirtualCameraStatus()
   })().finally(() => {
@@ -567,6 +628,8 @@ export async function stopDesktopVirtualCameraOutput(): Promise<DesktopVirtualCa
     if (!session) return getDesktopVirtualCameraStatus()
     session.outputEnabled = false
     session.outputError = null
+    if (session.outputReconnectTimer) clearTimeout(session.outputReconnectTimer)
+    session.outputReconnectTimer = null
     session.socket?.end()
     session.socket?.destroy()
     session.socket = null
@@ -585,6 +648,7 @@ export async function stopDesktopVirtualCameraOutput(): Promise<DesktopVirtualCa
 
 function clearPublishedFrame(): void {
   const candidates = [
+    '/private/tmp/luna-virtual-camera/latest-bgra.frame',
     '/tmp/latest-bgra.frame',
     join(homedir(), 'Library', 'Group Containers', '8B6J8663PS.com.diamondfsd.luna.virtualcamera', 'latest-bgra.frame'),
   ]
