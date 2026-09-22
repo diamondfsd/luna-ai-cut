@@ -90,6 +90,8 @@ export function LiveControlPanel({
   } | null>(null)
   const gimbalTimerRef = useRef<number | null>(null)
   const gimbalValueRef = useRef({ horizontal: 0, vertical: 0 })
+  const zoomSessionRef = useRef<string | null>(null)
+  const zoomControlledRef = useRef(false)
   const [selection, setSelection] = useState<NormalizedVideoRegion | null>(null)
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null)
   const [zoomValue, setZoomValue] = useState(1)
@@ -187,7 +189,12 @@ export function LiveControlPanel({
   useEffect(() => {
     const next = status.capabilities
     if (!next) return
-    setZoomValue(next.zoom.current)
+    const sessionKey = status.startedAt ?? 'active'
+    if (zoomSessionRef.current !== sessionKey) {
+      zoomSessionRef.current = sessionKey
+      zoomControlledRef.current = false
+    }
+    if (!zoomControlledRef.current) setZoomValue(next.zoom.current)
     if (next.audio.options.length > 0) {
       const options = next.audio.options.map((option) => ({ ...option, label: audioOptionLabel(option) }))
       setPhoneMicrophoneOptions(options)
@@ -199,7 +206,7 @@ export function LiveControlPanel({
             : options.find((option) => option.kind === 'phone-microphone')?.id ?? options[0]?.id ?? 'phone-microphone'
       ))
     }
-  }, [status.capabilities])
+  }, [status.capabilities, status.startedAt])
 
   useEffect(() => {
     const pane = previewPaneRef.current
@@ -429,10 +436,15 @@ export function LiveControlPanel({
                   ariaLabel="焦段"
                   disabled={disabled || !capabilities?.zoom.supported}
                   onValueChange={(value) => {
+                    zoomControlledRef.current = true
                     setZoomValue(value)
                     send({ type: 'zoom.preview', value })
                   }}
-                  onValueCommit={(value) => send({ type: 'zoom.set', value })}
+                  onValueCommit={(value) => {
+                    zoomControlledRef.current = true
+                    setZoomValue(value)
+                    send({ type: 'zoom.set', value })
+                  }}
                 />
                 <div className="live-zoom-range">
                   <output>{formatZoom(zoomValue)}</output>

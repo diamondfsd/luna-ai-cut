@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, OSSystemExtensionReque
     private let audioRenderer = LunaAudioRenderer()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ProcessInfo.processInfo.disableAutomaticTermination("Luna virtual camera output is active")
         let decoder = LunaHevcDecoder()
         hevcReceiver = try? LunaTcpHevcReceiver(decoder: decoder, audioRenderer: audioRenderer)
         hevcReceiver?.start()
