@@ -1,6 +1,7 @@
 import usb from 'usb'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import type { DesktopControlCommand, DesktopControlResult } from '../../../src/shared/types'
 
 const ACCESSORY_VID = 0x18d1
 const ACCESSORY_PIDS = new Set([0x2d00, 0x2d01, 0x2d04, 0x2d05, 0x2d06, 0x2d07])
@@ -11,7 +12,49 @@ const SCAN_INTERVAL_MS = 1_000
 const LIBUSB_TRANSFER_TYPE_BULK = 2
 export const USB_STREAM_VIDEO = 0x20
 export const USB_STREAM_AUDIO = 0x21
+export const USB_STREAM_CONTROL_COMMAND = 0x30
+export const USB_STREAM_CONTROL_RESULT = 0x31
 export const USB_AUDIO_CODEC_PCM16_LE = 0x01
+
+export type UsbControlRequest = DesktopControlCommand & {
+  version: 1
+  requestId: string
+}
+
+export interface DesktopMediaReceiver {
+  status(): UsbAoaStatus
+  start(): void
+  stop(): Promise<void>
+  sendControl(request: UsbControlRequest): Promise<void>
+}
+
+export function idleUsbStatus(
+  message: string,
+  transport: UsbAoaStatus['transport'] = 'usb-aoa',
+): UsbAoaStatus {
+  return {
+    state: 'idle',
+    transport,
+    message,
+    deviceLabel: null,
+    vendorId: null,
+    productId: null,
+    frames: 0,
+    bytes: 0,
+    lastFrameAt: null,
+    videoFrames: 0,
+    videoBytes: 0,
+    lastVideoFrameAt: null,
+    audioFrames: 0,
+    audioBytes: 0,
+    lastAudioFrameAt: null,
+    audioSource: null,
+    audioSampleRate: null,
+    audioChannels: null,
+    controlReady: false,
+    error: null,
+  }
+}
 
 const KNOWN_ANDROID_VENDOR_IDS = new Set([
   0x04e8, // Samsung
@@ -32,6 +75,7 @@ export type UsbAoaState = 'idle' | 'waiting' | 'switching' | 'connected' | 'stre
 
 export interface UsbAoaStatus {
   state: UsbAoaState
+  transport: 'usb-aoa' | 'ios-tcp'
   message: string
   deviceLabel: string | null
   vendorId: number | null
@@ -48,6 +92,7 @@ export interface UsbAoaStatus {
   audioSource: number | null
   audioSampleRate: number | null
   audioChannels: number | null
+  controlReady: boolean
   error: string | null
 }
 
@@ -66,12 +111,14 @@ export interface UsbMediaFrame {
   timestampUs: bigint
   body: Buffer
   audio?: UsbAudioFrameInfo
+  controlResult?: DesktopControlResult
 }
 
 interface ActiveAccessory {
   device: usb.Device
   interfaceInfo: usb.Interface
   inEndpoint: usb.InEndpoint
+  outEndpoint: usb.OutEndpoint
   generation: number
 }
 
@@ -82,7 +129,7 @@ interface ParsedMediaFrame {
   frame?: UsbMediaFrame
 }
 
-function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
+export function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
   if (frame.length < 12) return { status: 'incomplete' }
   if (!frame.subarray(0, 4).equals(MAGIC)) return { status: 'invalid', reason: 'magic' }
 
@@ -99,6 +146,21 @@ function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
   const streamType = payload[0]
   const timestampUs = payload.readBigUInt64LE(1)
   const body = payload.subarray(9)
+  if (streamType === USB_STREAM_CONTROL_RESULT) {
+    try {
+      const result = JSON.parse(body.toString('utf8')) as DesktopControlResult
+      if (!result.requestId || !result.type || typeof result.ok !== 'boolean') {
+        return { status: 'invalid', totalLength, reason: 'control-result' }
+      }
+      return {
+        status: 'ok',
+        totalLength,
+        frame: { raw: frame.subarray(0, totalLength), streamType, timestampUs, body, controlResult: result },
+      }
+    } catch {
+      return { status: 'invalid', totalLength, reason: 'control-result-json' }
+    }
+  }
   if (streamType === USB_STREAM_AUDIO) {
     if (body.length < 12) return { status: 'invalid', reason: 'audio-header' }
     if (body[0] !== USB_AUDIO_CODEC_PCM16_LE) {
@@ -142,7 +204,7 @@ function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
   }
 }
 
-function consumeFrames(pending: Buffer, onFrame: (frame: UsbMediaFrame) => void, onInvalid: (reason: string) => void): Buffer {
+export function consumeFrames(pending: Buffer, onFrame: (frame: UsbMediaFrame) => void, onInvalid: (reason: string) => void): Buffer {
   let buffer = pending
   while (buffer.length > 0) {
     const magicAt = buffer.indexOf(MAGIC)
@@ -196,7 +258,23 @@ function configuredVendorIds(): Set<number> | null {
   return values.length > 0 ? new Set(values) : null
 }
 
-export class UsbAoaReceiver {
+export function encodeControlFrame(request: UsbControlRequest, sequence: number): Buffer {
+  const body = Buffer.from(JSON.stringify(request), 'utf8')
+  const payloadLength = 9 + body.length
+  const frame = Buffer.alloc(12 + payloadLength + 4)
+  MAGIC.copy(frame, 0)
+  frame[4] = 0x01
+  frame[5] = 0x0c
+  frame[6] = 0x01
+  frame[7] = sequence & 0xff
+  frame.writeUInt32LE(payloadLength, 8)
+  frame[12] = USB_STREAM_CONTROL_COMMAND
+  frame.writeBigUInt64LE(BigInt(Date.now()) * 1_000n, 13)
+  body.copy(frame, 21)
+  return frame
+}
+
+export class UsbAoaReceiver implements DesktopMediaReceiver {
   private readonly onFrame: (frame: UsbMediaFrame) => void
   private session: ActiveAccessory | null = null
   private generation = 0
@@ -204,26 +282,9 @@ export class UsbAoaReceiver {
   private scanning = false
   private scanTimer: NodeJS.Timeout | null = null
   private pending = Buffer.alloc(0)
-  private statusValue: UsbAoaStatus = {
-    state: 'idle',
-    message: 'USB AOA 接收器未启动',
-    deviceLabel: null,
-    vendorId: null,
-    productId: null,
-    frames: 0,
-    bytes: 0,
-    lastFrameAt: null,
-    videoFrames: 0,
-    videoBytes: 0,
-    lastVideoFrameAt: null,
-    audioFrames: 0,
-    audioBytes: 0,
-    lastAudioFrameAt: null,
-    audioSource: null,
-    audioSampleRate: null,
-    audioChannels: null,
-    error: null,
-  }
+  private controlSequence = 0
+  private controlWriteTail = Promise.resolve()
+  private statusValue: UsbAoaStatus = idleUsbStatus('USB AOA 接收器未启动')
 
   constructor(onFrame: (frame: UsbMediaFrame) => void) {
     this.onFrame = onFrame
@@ -231,6 +292,24 @@ export class UsbAoaReceiver {
 
   status(): UsbAoaStatus {
     return { ...this.statusValue }
+  }
+
+  sendControl(request: UsbControlRequest): Promise<void> {
+    const session = this.session
+    if (!session) throw new Error('手机 USB 尚未连接')
+    const frame = encodeControlFrame(request, this.controlSequence)
+    this.controlSequence = (this.controlSequence + 1) & 0xff
+    const task = this.controlWriteTail
+      .catch(() => undefined)
+      .then(() => new Promise<void>((resolve, reject) => {
+        if (this.session !== session) {
+          reject(new Error('手机 USB 已断开'))
+          return
+        }
+        session.outEndpoint.transfer(frame, (error) => error ? reject(error) : resolve())
+      }))
+    this.controlWriteTail = task.catch(() => undefined)
+    return task
   }
 
   start(): void {
@@ -381,9 +460,15 @@ export class UsbAoaReceiver {
       endpoint.direction === 'in' && endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK,
     ) as usb.InEndpoint | undefined
     if (!inEndpoint) throw new Error('USB AOA 缺少视频输入端点')
+    const outEndpoint = interfaceInfo.endpoints.find((endpoint) =>
+      endpoint.direction === 'out' && endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK,
+    ) as usb.OutEndpoint | undefined
+    if (!outEndpoint) throw new Error('USB AOA 缺少控制输出端点')
+    outEndpoint.timeout = 1_000
 
     this.pending = Buffer.alloc(0)
-    this.session = { device, interfaceInfo, inEndpoint, generation }
+    this.controlWriteTail = Promise.resolve()
+    this.session = { device, interfaceInfo, inEndpoint, outEndpoint, generation }
     this.statusValue = {
       ...this.statusValue,
       state: 'connected',
@@ -391,6 +476,7 @@ export class UsbAoaReceiver {
       deviceLabel: 'Luna 手机 USB AOA',
       vendorId: device.deviceDescriptor.idVendor,
       productId: device.deviceDescriptor.idProduct,
+      controlReady: true,
       error: null,
     }
     logMainInfo('[USB AOA] Bulk 端点已打开')
@@ -447,6 +533,8 @@ export class UsbAoaReceiver {
     ++this.generation
     const session = this.session
     this.session = null
+    this.controlWriteTail = Promise.resolve()
+    this.statusValue = { ...this.statusValue, controlReady: false }
     this.pending = Buffer.alloc(0)
     if (session) {
       await new Promise<void>((resolve) => {
@@ -470,6 +558,7 @@ export class UsbAoaReceiver {
         deviceLabel: null,
         vendorId: null,
         productId: null,
+        controlReady: false,
       }
     }
   }

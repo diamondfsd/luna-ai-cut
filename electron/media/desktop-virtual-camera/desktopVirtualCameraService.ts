@@ -1,6 +1,7 @@
-import { app, shell } from 'electron'
+import { app, shell, type WebContents } from 'electron'
 import { execFile } from 'node:child_process'
-import { existsSync, renameSync, rmSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { createWriteStream, existsSync, renameSync, rmSync, type WriteStream } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createConnection, type Socket } from 'node:net'
@@ -9,12 +10,20 @@ import { promisify } from 'node:util'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import {
   USB_STREAM_AUDIO,
+  USB_STREAM_CONTROL_RESULT,
   USB_STREAM_VIDEO,
-  UsbAoaReceiver,
+  type DesktopMediaReceiver,
   type UsbAoaState,
   type UsbAoaStatus,
 } from './usbAoaReceiver'
+import { createDesktopMediaReceiver } from './desktopMediaReceiver'
+import { LivePreviewStreamService } from './livePreviewStreamService'
 import type {
+  DesktopAudioInputFrame,
+  DesktopAudioSourceMode,
+  DesktopControlCapabilities,
+  DesktopControlCommand,
+  DesktopControlResult,
   DesktopVirtualCameraExtensionState,
   DesktopVirtualCameraOptions,
   DesktopVirtualCameraState,
@@ -31,19 +40,31 @@ const INSTALLED_MICROPHONE_PATH = `/Library/Audio/Plug-Ins/HAL/${MICROPHONE_DRIV
 const MICROPHONE_NAME = 'Luna Virtual Microphone'
 const DEFAULT_PORT = 4184
 const AUDIO_DELAY_STREAM = 0x22
+const AUDIO_STREAM = 0x21
+const AUDIO_CODEC_PCM16_LE = 0x01
+const AUDIO_SOURCE_DESKTOP_MICROPHONE = 0x04
 
 interface ActiveSession {
   state: 'starting' | 'running' | 'stopping'
-  socket: Socket
-  receiver: UsbAoaReceiver
+  socket: Socket | null
+  receiver: DesktopMediaReceiver
   audioDelayMs: number
   sequence: number
+  lastControlResult: DesktopControlResult | null
+  capabilities: DesktopControlCapabilities | null
+  captureStream: WriteStream | null
+  livePreview: LivePreviewStreamService
+  outputEnabled: boolean
+  outputError: string | null
+  audioSourceMode: DesktopAudioSourceMode
+  audioMonitor: WebContents | null
   startedAt: string
   error: string | null
 }
 
 const IDLE_USB_STATUS: UsbAoaStatus = {
   state: 'idle',
+  transport: 'usb-aoa',
   message: 'USB AOA 接收器未启动',
   deviceLabel: null,
   vendorId: null,
@@ -60,6 +81,7 @@ const IDLE_USB_STATUS: UsbAoaStatus = {
   audioSource: null,
   audioSampleRate: null,
   audioChannels: null,
+  controlReady: false,
   error: null,
 }
 
@@ -152,13 +174,14 @@ function statusState(
   usbState: UsbAoaState,
 ): DesktopVirtualCameraState {
   if (unsupported) return 'unsupported'
-  if (!hostInstalled) return 'not-installed'
-  if (extensionState === 'waiting-approval' || extensionState === 'disabled') return 'needs-approval'
-  if (usbState === 'error') return 'error'
   if (activeSession) {
+    if (usbState === 'error') return 'error'
     if (usbState === 'waiting' || usbState === 'switching' || usbState === 'idle') return 'waiting-usb'
     return activeSession.state
   }
+  if (!hostInstalled) return 'not-installed'
+  if (extensionState === 'waiting-approval' || extensionState === 'disabled') return 'needs-approval'
+  if (usbState === 'error') return 'error'
   if (extensionState === 'enabled') return 'ready'
   return 'not-installed'
 }
@@ -198,6 +221,8 @@ export async function getDesktopVirtualCameraStatus(): Promise<DesktopVirtualCam
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
   const hostRunning = !unsupported && await isHostRunning()
   const state = statusState(unsupported, hostInstalled, extension.state, usb.state)
+  const outputEnabled = Boolean(activeSession?.outputEnabled)
+  const outputReady = outputEnabled && Boolean(activeSession?.socket && !activeSession.socket.destroyed)
 
   return {
     state,
@@ -213,15 +238,23 @@ export async function getDesktopVirtualCameraStatus(): Promise<DesktopVirtualCam
     virtualMicrophoneInstalled: microphoneInstalled,
     virtualMicrophoneAvailable: Boolean(microphoneSource),
     virtualMicrophoneName: MICROPHONE_NAME,
+    controlReady: usb.controlReady,
+    lastControlResult: activeSession?.lastControlResult ?? null,
+    capabilities: activeSession?.capabilities ?? null,
+    localPreviewUrl: activeSession?.livePreview.status().url ?? null,
+    localPreviewError: activeSession?.livePreview.status().error ?? null,
     hostRunning,
+    outputEnabled,
+    outputReady,
+    outputMessage: activeSession?.outputError ?? null,
     receiverConnected: usb.state === 'connected' || usb.state === 'streaming',
-    transport: 'usb-aoa',
+    transport: usb.transport,
     usbState: usb.state,
     usbMessage: usb.message,
     usbDeviceLabel: usb.deviceLabel,
     usbVendorId: usb.vendorId,
     usbProductId: usb.productId,
-    port: activeSession?.socket.remotePort ?? DEFAULT_PORT,
+    port: activeSession?.socket?.remotePort ?? DEFAULT_PORT,
     frames: usb.frames,
     bytes: usb.bytes,
     lastFrameAt: usb.lastFrameAt,
@@ -305,9 +338,54 @@ function makeAudioDelayFrame(delayMs: number, sequence: number): Buffer {
 }
 
 function sendAudioDelay(session: ActiveSession): void {
-  if (session.socket.destroyed || !session.socket.writable) return
+  if (!session.socket || session.socket.destroyed || !session.socket.writable) return
   session.sequence = (session.sequence + 1) & 0xff
   session.socket.write(makeAudioDelayFrame(session.audioDelayMs, session.sequence))
+}
+
+function makeAudioFrame(frame: DesktopAudioInputFrame, sequence: number): Buffer {
+  const sampleRate = Math.round(frame.sampleRate)
+  const channels = Math.round(frame.channels)
+  const sampleCount = Math.round(frame.sampleCount)
+  const pcm = Buffer.from(frame.pcm16Le)
+  if (sampleRate <= 0 || channels <= 0 || sampleCount <= 0 || pcm.length !== sampleCount * channels * 2) {
+    throw new Error('电脑麦克风音频格式无效')
+  }
+
+  const audioBody = Buffer.alloc(12 + pcm.length)
+  audioBody[0] = AUDIO_CODEC_PCM16_LE
+  audioBody[1] = AUDIO_SOURCE_DESKTOP_MICROPHONE
+  audioBody.writeUInt32LE(sampleRate, 2)
+  audioBody[6] = channels
+  audioBody.writeUInt32LE(sampleCount, 8)
+  pcm.copy(audioBody, 12)
+
+  const payloadLength = 9 + audioBody.length
+  const packet = Buffer.alloc(12 + payloadLength + 4)
+  Buffer.from([0x55, 0x43, 0x44, 0x32]).copy(packet, 0)
+  packet[4] = 0x01
+  packet[5] = 0x0c
+  packet[6] = 0x01
+  packet[7] = sequence & 0xff
+  packet.writeUInt32LE(payloadLength, 8)
+  packet[12] = AUDIO_STREAM
+  packet.writeBigUInt64LE(BigInt(Date.now()) * 1_000n, 13)
+  audioBody.copy(packet, 21)
+  return packet
+}
+
+export function sendDesktopVirtualCameraAudioFrame(frame: DesktopAudioInputFrame): void {
+  const session = activeSession
+  if (!session?.outputEnabled || session.audioSourceMode !== 'desktop') return
+  const socket = session.socket
+  if (!socket || socket.destroyed || !socket.writable || socket.writableNeedDrain) return
+  session.sequence = (session.sequence + 1) & 0xff
+  socket.write(makeAudioFrame(frame, session.sequence))
+}
+
+export async function setDesktopVirtualCameraAudioSource(source: DesktopAudioSourceMode): Promise<void> {
+  const session = activeSession
+  if (session) session.audioSourceMode = source === 'desktop' ? 'desktop' : 'phone'
 }
 
 export async function setDesktopVirtualCameraAudioDelay(delayMs: number): Promise<DesktopVirtualCameraStatus> {
@@ -318,6 +396,21 @@ export async function setDesktopVirtualCameraAudioDelay(delayMs: number): Promis
     return getDesktopVirtualCameraStatus()
   }
   return getDesktopVirtualCameraStatus()
+}
+
+export function setDesktopVirtualCameraAudioMonitor(enabled: boolean, target: WebContents): boolean {
+  const session = activeSession
+  if (!session) throw new Error('请先获取画面')
+  session.audioMonitor = enabled ? target : null
+  return Boolean(session.audioMonitor)
+}
+
+export async function sendDesktopControlCommand(command: DesktopControlCommand): Promise<string> {
+  const session = activeSession
+  if (!session) throw new Error('手机 USB 尚未连接')
+  const requestId = randomUUID()
+  await session.receiver.sendControl({ ...command, version: 1, requestId })
+  return requestId
 }
 
 async function waitForHost(): Promise<void> {
@@ -356,41 +449,132 @@ export function startDesktopVirtualCamera(options: DesktopVirtualCameraOptions):
   const task = (async () => {
     if (process.platform !== 'darwin') return getDesktopVirtualCameraStatus()
     if (activeSession) return getDesktopVirtualCameraStatus()
-    if (!existsSync(INSTALLED_HOST_PATH)) await installDesktopVirtualCameraHost()
+    const port = options.port ?? DEFAULT_PORT
+    const livePreview = new LivePreviewStreamService()
+    await livePreview.start()
+    const receiver = createDesktopMediaReceiver((frame) => {
+      if (frame.streamType === USB_STREAM_CONTROL_RESULT && frame.controlResult) {
+        if (activeSession?.receiver === receiver) {
+          activeSession.lastControlResult = frame.controlResult
+          if (frame.controlResult.type === 'capabilities.get' && frame.controlResult.ok && frame.controlResult.data) {
+            activeSession.capabilities = frame.controlResult.data as DesktopControlCapabilities
+          }
+        }
+        return
+      }
+      if (activeSession?.receiver !== receiver) return
+      activeSession.captureStream?.write(frame.raw)
+      if (frame.streamType === USB_STREAM_VIDEO) activeSession.livePreview.pushHevcFrame(frame.body)
+      if (frame.streamType === USB_STREAM_AUDIO && frame.audio && activeSession.audioMonitor && !activeSession.audioMonitor.isDestroyed()) {
+        activeSession.audioMonitor.send('desktop-virtual-camera:audio-monitor-frame', {
+          sampleRate: frame.audio.sampleRate,
+          channels: frame.audio.channels,
+          sampleCount: frame.audio.sampleCount,
+          pcm16Le: frame.audio.pcm16Le,
+        })
+      }
+      const socket = activeSession.socket
+      if (!socket || socket.destroyed || !socket.writable || socket.writableNeedDrain) return
+      if (
+        frame.streamType === USB_STREAM_VIDEO
+        || (frame.streamType === USB_STREAM_AUDIO && activeSession.audioSourceMode === 'phone')
+      ) socket.write(frame.raw)
+    })
+    const session: ActiveSession = {
+      state: 'running',
+      socket: null,
+      receiver,
+      audioDelayMs: clampAudioDelay(options.audioDelayMs),
+      sequence: 0,
+      lastControlResult: null,
+      capabilities: null,
+      captureStream: process.env.LUNA_USB_CAPTURE_PATH
+        ? createWriteStream(process.env.LUNA_USB_CAPTURE_PATH, { flags: 'w' })
+        : null,
+      livePreview,
+      outputEnabled: false,
+      outputError: null,
+      audioSourceMode: 'phone',
+      audioMonitor: null,
+      startedAt: new Date().toISOString(),
+      error: null,
+    }
+    activeSession = session
+    sendAudioDelay(session)
+    receiver.start()
+    logMainInfo('[虚拟摄像头] USB AOA 接收已启动', { port })
+    return getDesktopVirtualCameraStatus()
+  })().finally(() => {
+    operation = null
+  })
+  operation = task
+  return task
+}
+
+function outputUnavailableReason(status: DesktopVirtualCameraStatus): string | null {
+  if (status.platform !== 'darwin') return '虚拟摄像头输出暂不支持当前系统'
+  if (!status.hostAppInstalled) return status.bundledHostAvailable ? '需要先安装虚拟摄像头组件' : '当前版本缺少虚拟摄像头组件'
+  if (status.extensionState === 'not-found') return '虚拟摄像头扩展尚未安装，请重新安装组件'
+  if (status.extensionState === 'waiting-approval' || status.extensionState === 'disabled') return '请在系统设置中启用 Luna Virtual Camera'
+  if (!status.extensionEnabled) return '虚拟摄像头扩展当前不可用'
+  return null
+}
+
+export async function startDesktopVirtualCameraOutput(): Promise<DesktopVirtualCameraStatus> {
+  if (operation) return operation
+  const task = (async () => {
+    const session = activeSession
+    if (!session) throw new Error('请先获取画面')
+    if (session.outputEnabled && session.socket && !session.socket.destroyed) {
+      return getDesktopVirtualCameraStatus()
+    }
 
     const runtime = await getDesktopVirtualCameraStatus()
-    if (!runtime.extensionEnabled) {
-      await openDesktopVirtualCameraSettings()
-      throw new Error('请先在系统设置中启用 Luna Virtual Camera Extension，然后重试')
+    const unavailable = outputUnavailableReason(runtime)
+    if (unavailable) {
+      session.outputEnabled = false
+      session.outputError = unavailable
+      return getDesktopVirtualCameraStatus()
     }
 
     if (!await isHostRunning()) {
       await execFileAsync('/usr/bin/open', [INSTALLED_HOST_PATH], { encoding: 'utf8' })
       await waitForHost()
     }
-
-    const port = options.port ?? DEFAULT_PORT
-    const socket = await connectToHost(port)
-    const receiver = new UsbAoaReceiver((frame) => {
-      if (activeSession?.receiver !== receiver || socket.destroyed || !socket.writable || socket.writableNeedDrain) return
-      if (frame.streamType === USB_STREAM_VIDEO || frame.streamType === USB_STREAM_AUDIO) socket.write(frame.raw)
-    })
-    const session: ActiveSession = {
-      state: 'running',
-      socket,
-      receiver,
-      audioDelayMs: clampAudioDelay(options.audioDelayMs),
-      sequence: 0,
-      startedAt: new Date().toISOString(),
-      error: null,
-    }
-    activeSession = session
-    sendAudioDelay(session)
+    const socket = await connectToHost(runtime.port)
+    session.socket = socket
+    session.outputEnabled = true
+    session.outputError = null
     socket.once('close', () => {
-      if (activeSession === session) session.error = '虚拟摄像头接收连接已断开'
+      if (activeSession !== session) return
+      session.outputEnabled = false
+      session.outputError = '虚拟摄像头输出连接已断开'
     })
-    receiver.start()
-    logMainInfo('[虚拟摄像头] USB AOA 接收已启动', { port })
+    sendAudioDelay(session)
+    logMainInfo('[虚拟摄像头] 输出已开启', { port: runtime.port })
+    return getDesktopVirtualCameraStatus()
+  })().finally(() => {
+    operation = null
+  })
+  operation = task
+  return task
+}
+
+export async function stopDesktopVirtualCameraOutput(): Promise<DesktopVirtualCameraStatus> {
+  if (operation) return operation
+  const task = (async () => {
+    const session = activeSession
+    if (!session) return getDesktopVirtualCameraStatus()
+    session.outputEnabled = false
+    session.outputError = null
+    session.socket?.end()
+    session.socket?.destroy()
+    session.socket = null
+    clearPublishedFrame()
+    if (process.platform === 'darwin' && await isHostRunning()) {
+      await execFileAsync('/usr/bin/pkill', ['-TERM', '-f', `^${HOST_EXECUTABLE_PATH}$`], { encoding: 'utf8' }).catch(() => undefined)
+    }
+    logMainInfo('[虚拟摄像头] 输出已关闭')
     return getDesktopVirtualCameraStatus()
   })().finally(() => {
     operation = null
@@ -414,8 +598,11 @@ export function stopDesktopVirtualCamera(): Promise<DesktopVirtualCameraStatus> 
     if (session) {
       session.state = 'stopping'
       await session.receiver.stop()
-      session.socket.end()
-      session.socket.destroy()
+      session.socket?.end()
+      session.socket?.destroy()
+      session.captureStream?.end()
+      session.audioMonitor = null
+      await session.livePreview.stop()
       activeSession = null
     }
     clearPublishedFrame()

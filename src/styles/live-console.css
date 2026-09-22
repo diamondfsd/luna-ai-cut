@@ -1,22 +1,22 @@
 .live-console-page {
-  min-height: 100%;
-  padding: 34px 42px 56px;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 22px 28px 26px;
   background: var(--parchment);
   color: var(--ink);
 }
 
 .live-console-header,
-.live-console-panel,
 .live-console-error {
-  width: min(960px, 100%);
-  margin-right: auto;
-  margin-left: auto;
+  width: 100%;
 }
 
 .live-console-header,
 .live-console-title,
-.live-console-actions,
-.live-console-primary-state {
+.live-console-actions {
   display: flex;
   align-items: center;
 }
@@ -24,7 +24,8 @@
 .live-console-header {
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 20px;
+  flex: 0 0 auto;
+  margin-bottom: 14px;
 }
 
 .live-console-title {
@@ -73,178 +74,38 @@
 
 .live-console-actions {
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.live-console-panel {
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  padding: 22px;
-  background: var(--canvas);
-}
-
-.live-console-primary-state {
-  gap: 12px;
-}
-
-.live-console-primary-icon {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--blue) 8%, transparent);
-  color: var(--blue);
-}
-
-.live-console-primary-state.active .live-console-primary-icon {
-  background: rgba(50, 215, 75, 0.12);
-  color: #248a37;
-}
-
-.live-console-primary-state.danger .live-console-primary-icon {
-  background: rgba(255, 69, 58, 0.1);
-  color: #c0392b;
-}
-
-.live-console-primary-state strong {
-  display: block;
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.live-console-setup {
-  margin-top: 18px;
-  border-radius: 6px;
-  padding: 16px;
-  background: color-mix(in srgb, var(--blue) 6%, transparent);
-  color: var(--ink);
-}
-
-.live-console-setup ol {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.live-console-setup li {
+.live-console-output-switch {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.live-console-setup li > span {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--blue) 12%, transparent);
-  color: var(--blue);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.live-console-setup li p {
-  flex: 1;
-  margin: 0;
-  font-size: 13px;
-}
-
-.live-console-setup > .ui-btn {
-  margin-top: 16px;
-}
-
-.live-console-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
-  margin: 20px 0 0;
-  border-top: 1px solid var(--hairline);
-  padding-top: 18px;
-}
-
-.live-console-metrics > div {
-  min-width: 0;
-}
-
-.live-console-metrics dt {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.live-console-metrics dd {
-  overflow: hidden;
-  margin: 5px 0 0;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.live-console-audio-delay {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-  border-top: 1px solid var(--hairline);
-  padding-top: 18px;
-}
-
-.live-console-audio-delay > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
   color: var(--muted);
   font-size: 12px;
-}
-
-.live-console-audio-delay output {
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
 }
 
 .live-console-error {
+  flex: 0 0 auto;
   margin-top: 0;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   color: #c0392b;
   font-size: 12px;
 }
 
-@media (max-width: 680px) {
+@media (max-width: 760px) {
   .live-console-page {
-    padding: 24px 18px 44px;
+    padding: 18px;
   }
 
   .live-console-header {
     align-items: flex-start;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
   }
 
   .live-console-actions {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .live-console-panel {
-    padding: 18px;
-  }
-
-  .live-console-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .live-console-setup li {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .live-console-setup > .ui-btn {
     width: 100%;
   }
 }

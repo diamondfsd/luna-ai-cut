@@ -1,0 +1,81 @@
+.live-zoom-joystick-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.live-zoom-joystick {
+  position: relative;
+  display: grid;
+  width: 52px;
+  height: 124px;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--muted);
+  touch-action: none;
+  user-select: none;
+}
+
+.live-zoom-joystick[data-active='true'] {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 7%, var(--canvas));
+  color: var(--blue);
+}
+
+.live-zoom-joystick[data-disabled='true'] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.live-zoom-joystick > svg:first-child {
+  position: absolute;
+  top: 3px;
+}
+
+.live-zoom-joystick > svg:last-child {
+  position: absolute;
+  bottom: 3px;
+}
+
+.live-zoom-joystick-track {
+  position: absolute;
+  top: 20px;
+  bottom: 20px;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+}
+
+.live-zoom-joystick-center {
+  position: absolute;
+  width: 18px;
+  height: 1px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+}
+
+.live-zoom-joystick-knob {
+  position: absolute;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.live-zoom-joystick[data-active='true'] .live-zoom-joystick-knob {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.live-zoom-joystick-wrap output {
+  min-width: 48px;
+  color: var(--ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}

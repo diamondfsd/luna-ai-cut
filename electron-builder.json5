@@ -152,6 +152,8 @@
       }
     ],
     "extendInfo": {
+      "NSCameraUsageDescription": "Luna AI Cut 需要读取虚拟摄像头画面用于直播控制",
+      "NSMicrophoneUsageDescription": "Luna AI Cut 需要使用电脑麦克风作为直播声音来源",
       "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接相机并读取素材",
       "NSLocationUsageDescription": "Luna AI Cut 需要扫描附近 Wi-Fi，以自动连接相机网络",
       "NSBluetoothAlwaysUsageDescription": "Luna AI Cut 需要通过 Bluetooth 读取 DJI 相机的 Wi-Fi 连接信息",

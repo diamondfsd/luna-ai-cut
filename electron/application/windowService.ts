@@ -64,6 +64,10 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
 
   win.once('ready-to-show', () => activateMainWindow(win))
 
+  win.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media' || permission === 'unknown')
+  })
+
   win.on('close', (event) => {
     const hasDownloadTasks = options.hasActiveDownloads()
     const hasExportTasks = options.hasActiveExports()

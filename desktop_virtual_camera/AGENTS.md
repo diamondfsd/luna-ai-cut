@@ -36,12 +36,11 @@ USB AOA 描述、UCD2 帧格式和本机 TCP Host 协议是稳定边界。修改
 ## 必读顺序
 
 1. [`docs/app-stream-bridge.md`](docs/app-stream-bridge.md) - USB AOA 完整接入方式。
-2. [`docs/usb-output-protocol.md`](docs/usb-output-protocol.md) - 桌面端必须实现的完整 USB 输出协议。
-3. [`docs/protocol.md`](docs/protocol.md) - UCD2 字节格式速查。
-4. [`docs/audio-pipeline.md`](docs/audio-pipeline.md) - 手机音频采集、USB 音频包和未来混音。
-5. [`macos/README.md`](macos/README.md) - 已工作的 macOS Host 和 Camera Extension。
-6. [`windows/README.md`](windows/README.md) - Windows 11 Media Foundation 实施方案。
-7. [`docs/luna-ai-cut-integration.md`](docs/luna-ai-cut-integration.md) - Electron、直播控制台和验收。
+2. [`docs/protocol.md`](docs/protocol.md) - UCD2 字节格式速查。
+3. [`docs/audio-pipeline.md`](docs/audio-pipeline.md) - 手机音频采集、USB 音频包和未来混音。
+4. [`macos/README.md`](macos/README.md) - 已工作的 macOS Host 和 Camera Extension。
+5. [`windows/README.md`](windows/README.md) - Windows 11 Media Foundation 实施方案。
+6. [`docs/luna-ai-cut-integration.md`](docs/luna-ai-cut-integration.md) - Electron、直播控制台和验收。
 
 ## Desktop 接入点
 

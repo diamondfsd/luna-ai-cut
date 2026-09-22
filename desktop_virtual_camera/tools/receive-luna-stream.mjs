@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+/* eslint-env es2022, node */
 import assert from 'node:assert/strict'
-import { createWriteStream } from 'node:fs'
+import { createWriteStream, readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -176,8 +177,43 @@ Options:
   --timeout <seconds>    Fail when no frame arrives within this time
   --max-frames <count>   Exit successfully after this many frames
   --self-test            Validate the UCD2 parser without opening a socket
+  --inspect <file>       Count stream types in a captured UCD2 byte stream
   --help                 Show this help
 `)
+}
+
+function inspectCapture(filePath) {
+  const bytes = readFileSync(filePath)
+  const counts = { video: 0, audio: 0, drift: 0, other: 0 }
+  let videoBytes = 0
+  let audioBytes = 0
+  let invalid = 0
+  const pending = consumeFrames(
+    bytes,
+    (frame) => {
+      if (frame.streamType === VIDEO_STREAM_TYPE) {
+        counts.video += 1
+        videoBytes += frame.hevc.length
+      } else if (frame.streamType === AUDIO_STREAM_TYPE) {
+        counts.audio += 1
+        audioBytes += frame.audio.pcm16Le.length
+      } else if (frame.streamType === 0x22) {
+        counts.drift += 1
+      } else {
+        counts.other += 1
+      }
+    },
+    () => { invalid += 1 },
+  )
+  console.log(JSON.stringify({
+    file: filePath,
+    bytes: bytes.length,
+    pendingBytes: pending.length,
+    invalid,
+    ...counts,
+    videoBytes,
+    audioBytes,
+  }, null, 2))
 }
 
 function positiveInteger(value, name) {
@@ -303,8 +339,10 @@ async function runReceiver() {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]
 if (isMain) {
   try {
+    const inspectPath = argumentValue('--inspect', null)
     if (hasFlag('--help')) printHelp()
     else if (hasFlag('--self-test')) runSelfTest()
+    else if (inspectPath) inspectCapture(inspectPath)
     else await runReceiver()
   } catch (error) {
     console.error(`[receiver] ${error instanceof Error ? error.message : String(error)}`)
