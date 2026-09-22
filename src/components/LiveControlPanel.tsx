@@ -12,7 +12,6 @@ import {
 import { Button, Select, Slider } from '../ui'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { LiveGimbalPad } from './LiveGimbalPad'
-import { LiveZoomJoystick } from './LiveZoomJoystick'
 import { isDesktopAudioInput, useDesktopMicrophone } from '../hooks/useDesktopMicrophone'
 import { usePcmAudioMonitor } from '../hooks/usePcmAudioMonitor'
 import type {
@@ -55,6 +54,20 @@ function contentPoint(
     x: Math.min(1, Math.max(0, (event.clientX - left) / width)),
     y: Math.min(1, Math.max(0, (event.clientY - top) / height)),
   }
+}
+
+function formatZoom(value: number): string {
+  return `${value.toFixed(value % 1 === 0 ? 0 : 1)}x`
+}
+
+function audioOptionLabel(option: DesktopAudioInputOption): string {
+  const label = option.label?.trim()
+  if (label) return label
+  if (option.kind === 'none') return '关闭'
+  if (option.kind === 'phone-microphone') return '手机麦克风'
+  if (option.kind === 'external' || option.kind === 'phone-external') return '手机外接麦克风'
+  if (option.kind === 'desktop-microphone') return '电脑麦克风'
+  return option.id
 }
 
 export function LiveControlPanel({
@@ -118,9 +131,16 @@ export function LiveControlPanel({
     onFrame: handleDesktopAudioFrame,
   })
   const microphoneOptions = useMemo(
-    () => [...phoneMicrophoneOptions, ...desktopMicrophone.options],
+    () => [...phoneMicrophoneOptions, ...desktopMicrophone.options].map((option) => ({
+      ...option,
+      label: audioOptionLabel(option),
+    })),
     [desktopMicrophone.options, phoneMicrophoneOptions],
   )
+  const selectedMicrophone = microphoneOptions.find((option) => option.id === microphoneId)
+    ?? microphoneOptions.find((option) => option.kind === 'phone-microphone')
+    ?? microphoneOptions[0]
+  const effectiveMicrophoneId = selectedMicrophone?.id ?? microphoneId
 
   const send = useCallback((command: DesktopControlCommand) => {
     void window.luna.desktopVirtualCamera.sendControl(command).catch(() => undefined)
@@ -131,8 +151,8 @@ export function LiveControlPanel({
       .setAudioSource(desktopMicrophoneSelected ? 'desktop' : 'phone')
       .catch(() => undefined)
     if (!status.controlReady) return
-    send({ type: 'audio.selectInput', inputId: desktopMicrophoneSelected ? 'none' : microphoneId })
-  }, [desktopMicrophoneSelected, microphoneId, send, status.controlReady, status.startedAt])
+    send({ type: 'audio.selectInput', inputId: desktopMicrophoneSelected ? 'none' : effectiveMicrophoneId })
+  }, [desktopMicrophoneSelected, effectiveMicrophoneId, send, status.controlReady, status.startedAt])
 
   const stopGimbal = useCallback(() => {
     if (gimbalTimerRef.current != null) window.clearInterval(gimbalTimerRef.current)
@@ -169,11 +189,14 @@ export function LiveControlPanel({
     if (!next) return
     setZoomValue(next.zoom.current)
     if (next.audio.options.length > 0) {
-      setPhoneMicrophoneOptions(next.audio.options)
+      const options = next.audio.options.map((option) => ({ ...option, label: audioOptionLabel(option) }))
+      setPhoneMicrophoneOptions(options)
       setMicrophoneId((current) => (
-        isDesktopAudioInput(current) || next.audio.options.some((option) => option.id === current)
+        isDesktopAudioInput(current) || options.some((option) => option.id === current)
           ? current
-          : next.audio.selectedId
+          : options.some((option) => option.id === next.audio.selectedId)
+            ? next.audio.selectedId
+            : options.find((option) => option.kind === 'phone-microphone')?.id ?? options[0]?.id ?? 'phone-microphone'
       ))
     }
   }, [status.capabilities])
@@ -395,37 +418,29 @@ export function LiveControlPanel({
                 />
               </div>
 
-              <div className="live-control-block">
+              <div className="live-control-block live-zoom-control">
                 <span>焦段</span>
-                <LiveZoomJoystick
+                <Slider
+                  className="live-zoom-slider"
                   value={zoomValue}
                   min={capabilities?.zoom.min ?? 1}
                   max={capabilities?.zoom.max ?? 1}
+                  step={capabilities?.zoom.step ?? 0.1}
+                  ariaLabel="焦段"
                   disabled={disabled || !capabilities?.zoom.supported}
-                  onPreview={(value) => {
+                  onValueChange={(value) => {
                     setZoomValue(value)
                     send({ type: 'zoom.preview', value })
                   }}
-                  onCommit={(value) => send({ type: 'zoom.set', value })}
+                  onValueCommit={(value) => send({ type: 'zoom.set', value })}
                 />
-                {capabilities && capabilities.zoom.presets.length > 0 && (
-                  <div className="live-zoom-presets">
-                    {capabilities.zoom.presets.map((preset) => (
-                      <Button
-                        key={preset}
-                        variant="secondary"
-                        size="mini"
-                        onClick={() => {
-                          setZoomValue(preset)
-                          send({ type: 'zoom.set', value: preset })
-                        }}
-                        disabled={disabled}
-                      >
-                        {preset}x
-                      </Button>
-                    ))}
-                  </div>
-                )}
+                <div className="live-zoom-range">
+                  <output>{formatZoom(zoomValue)}</output>
+                  <span>
+                    <span>{formatZoom(capabilities?.zoom.min ?? 1)}</span>
+                    <span>{formatZoom(capabilities?.zoom.max ?? 1)}</span>
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -441,7 +456,7 @@ export function LiveControlPanel({
                 variant="compact"
                 fullWidth
                 icon={<Mic size={14} />}
-                value={microphoneId}
+                value={effectiveMicrophoneId}
                 options={microphoneOptions.map((option) => ({ value: option.id, label: option.label }))}
                 onValueChange={setMicrophoneId}
                 disabled={!active}
