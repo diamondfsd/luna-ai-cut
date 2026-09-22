@@ -10,7 +10,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, OSSystemExtensionReque
     private let audioRenderer = LunaAudioRenderer()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("[LunaCameraHost] frame store: \(LunaCameraSharedFrameStore.sharedURL()?.path ?? "nil")")
         let decoder = LunaHevcDecoder()
         hevcReceiver = try? LunaTcpHevcReceiver(decoder: decoder, audioRenderer: audioRenderer)
         hevcReceiver?.start()
