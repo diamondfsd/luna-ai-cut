@@ -35,6 +35,8 @@ __pycache__/
 resources/ffmpeg/
 resources/dji-ble-helper/
 resources/macos-native/
+resources/desktop-virtual-camera/*
+!resources/desktop-virtual-camera/.gitkeep
 .ffmpeg-cache/
 resources/dolby-vision/
 .dolby-tools-cache/

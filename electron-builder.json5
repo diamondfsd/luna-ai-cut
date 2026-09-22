@@ -3,7 +3,9 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.diamondfsd.lunaaicut",
   "asar": true,
-  "asarUnpack": [],
+  "asarUnpack": [
+    "node_modules/usb/**/*"
+  ],
   "beforePack": "scripts/verify-native-artifact.mjs",
   "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna AI Cut",
@@ -142,6 +144,11 @@
         "from": "resources/macos-native",
         "to": "macos-native",
         "filter": ["*"]
+      },
+      {
+        "from": "resources/desktop-virtual-camera",
+        "to": "desktop-virtual-camera",
+        "filter": ["**/*"]
       }
     ],
     "extendInfo": {

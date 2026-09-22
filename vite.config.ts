@@ -45,7 +45,7 @@ export default defineConfig({
           },
           build: {
             rollupOptions: {
-              external: [],
+              external: ['usb'],
               output: {
                 chunkFileNames: 'luna-[name].js',
               },

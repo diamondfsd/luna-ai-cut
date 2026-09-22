@@ -21,6 +21,7 @@
     "build": "node scripts/clean-electron-output.mjs && node scripts/build-native.mjs && node scripts/build-macos-helpers.mjs && tsc && vite build && node scripts/copy-ffmpeg.mjs && node scripts/copy-dolby-tools.mjs && LUNA_PACKAGE_RESOURCES_DIR=resources electron-builder",
     "init:rust": "node scripts/setup-rust.mjs",
     "build:rust": "node scripts/build-native.mjs",
+    "build:desktop-camera": "node scripts/build-desktop-camera.mjs",
     "build:app": "node scripts/clean-electron-output.mjs && tsc && vite build",
     "publish:build-dependencies": "node scripts/publish-build-dependencies.mjs",
     "publish:hot": "node scripts/publish-hot-update.mjs",
@@ -105,7 +106,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-easy-crop": "^6.0.2",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.0",
+    "usb": "^2.18.0"
   },
   "devDependencies": {
     "7zip-bin": "5.2.0",
