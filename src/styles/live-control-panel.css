@@ -225,15 +225,33 @@
   justify-items: center;
 }
 
-.live-zoom-presets {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+.live-zoom-control {
+  align-content: start;
 }
 
-.live-zoom-presets .ui-btn {
+.live-zoom-slider {
   width: 100%;
-  padding-inline: 8px;
+}
+
+.live-zoom-range {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-zoom-range > output {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.live-zoom-range > span {
+  display: flex;
+  gap: 10px;
 }
 
 .live-control-output {
