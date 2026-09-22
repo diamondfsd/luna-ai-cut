@@ -156,7 +156,18 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     status: () => ipcRenderer.invoke('desktop-virtual-camera:status'),
     install: () => ipcRenderer.invoke('desktop-virtual-camera:install'),
     start: (options) => ipcRenderer.invoke('desktop-virtual-camera:start', options),
+    startOutput: () => ipcRenderer.invoke('desktop-virtual-camera:start-output'),
+    stopOutput: () => ipcRenderer.invoke('desktop-virtual-camera:stop-output'),
     setAudioDelay: (audioDelayMs: number) => ipcRenderer.invoke('desktop-virtual-camera:set-audio-delay', audioDelayMs),
+    setAudioMonitor: (enabled: boolean) => ipcRenderer.invoke('desktop-virtual-camera:set-audio-monitor', enabled),
+    setAudioSource: (source) => ipcRenderer.invoke('desktop-virtual-camera:set-audio-source', source),
+    sendAudioFrame: (frame) => ipcRenderer.invoke('desktop-virtual-camera:send-audio-frame', frame),
+    onAudioMonitorFrame: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, frame: import('../src/shared/types').DesktopAudioMonitorFrame) => callback(frame)
+      ipcRenderer.on('desktop-virtual-camera:audio-monitor-frame', listener)
+      return () => ipcRenderer.off('desktop-virtual-camera:audio-monitor-frame', listener)
+    },
+    sendControl: (command) => ipcRenderer.invoke('desktop-virtual-camera:send-control', command),
     stop: () => ipcRenderer.invoke('desktop-virtual-camera:stop'),
     openExtensionSettings: () => ipcRenderer.invoke('desktop-virtual-camera:open-extension-settings'),
     revealInstallSource: () => ipcRenderer.invoke('desktop-virtual-camera:reveal-install-source'),

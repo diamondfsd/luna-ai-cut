@@ -28,6 +28,17 @@ Luna 相机
 
 电脑不需要连接相机的 Wi-Fi，因此不会被相机网络占用，也不需要 OBS。
 
+iOS 使用 App 内监听 TCP `4184`，电脑通过 `iproxy 4185:4184` 挂接 usbmuxd；UCD2 帧和
+控制帧格式与 Android 完全一致。默认参数：
+
+```text
+USB_VIDEO_IOS_PROXY=0       禁用自动 iproxy
+USB_VIDEO_IPROXY_BIN        指定 iproxy 可执行文件
+USB_VIDEO_IOS_PROXY_HOST    默认 127.0.0.1
+USB_VIDEO_IOS_PROXY_PORT    默认 4185
+USB_VIDEO_IOS_DEVICE_PORT   默认 4184
+```
+
 ## 手机端职责
 
 手机端项目为 `motionbridge_flutter`（Luna 咔），关键文件：

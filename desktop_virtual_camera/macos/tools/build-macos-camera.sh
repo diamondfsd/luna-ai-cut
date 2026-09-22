@@ -6,6 +6,7 @@ cd "$ROOT"
 
 TEAM_ID="${DEVELOPMENT_TEAM:-}"
 SIGNING_IDENTITY="${CODE_SIGN_IDENTITY:-Apple Development}"
+XCODE_SIGNING_IDENTITY="${SIGNING_IDENTITY%%:*}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 DERIVED_DATA="${DERIVED_DATA_PATH:-$ROOT/.build/SignedData}"
 DRIVER_DIR="$ROOT/.build/LunaVirtualMicrophone.driver"
@@ -49,7 +50,7 @@ xcodebuild \
   -derivedDataPath "$DERIVED_DATA" \
   -destination 'platform=macOS' \
   DEVELOPMENT_TEAM="$TEAM_ID" \
-  CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+  CODE_SIGN_IDENTITY="$XCODE_SIGNING_IDENTITY" \
   CODE_SIGN_STYLE=Automatic \
   -allowProvisioningUpdates \
   -allowProvisioningDeviceRegistration \

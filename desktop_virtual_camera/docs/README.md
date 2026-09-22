@@ -10,11 +10,9 @@
    - Luna 咔手机 App 如何通过 USB AOA 发送帧，Luna AI Cut 如何接收并转发给 Host。
 3. [`protocol.md`](protocol.md)
    - UCD2 帧的字节级定义和接收要求。
-4. [`usb-output-protocol.md`](usb-output-protocol.md)
-   - 给桌面端 AI 的完整 USB 输出协议、AOA 握手、音视频流和验收清单。
-5. [`audio-pipeline.md`](audio-pipeline.md)
+4. [`audio-pipeline.md`](audio-pipeline.md)
    - 麦克风采集、USB 音频包、蓝牙限制和未来混音方案。
-6. [`luna-ai-cut-integration.md`](luna-ai-cut-integration.md)
+5. [`luna-ai-cut-integration.md`](luna-ai-cut-integration.md)
    - Electron 服务、IPC、直播控制台、构建、签名、授权和验收。
 
 ## 平台实现

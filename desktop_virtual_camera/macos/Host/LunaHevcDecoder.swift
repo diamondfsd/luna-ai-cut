@@ -1,3 +1,4 @@
+import Accelerate
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -134,8 +135,6 @@ final class LunaHevcDecoder {
         )
         let attributes: [CFString: Any] = [
             kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey: 1280,
-            kCVPixelBufferHeightKey: 720,
             kCVPixelBufferIOSurfacePropertiesKey: [:]
         ]
         let status = VTDecompressionSessionCreate(
@@ -154,17 +153,47 @@ final class LunaHevcDecoder {
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA,
               let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
-        let rowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        let data = Data(bytes: baseAddress, count: rowBytes * height)
+        let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let sourceRowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let outputWidth = 1280
+        let outputHeight = 720
+        let outputRowBytes = outputWidth * 4
+        var output = Data(count: outputRowBytes * outputHeight)
+        let scale = min(
+            Double(outputWidth) / Double(sourceWidth),
+            Double(outputHeight) / Double(sourceHeight)
+        )
+        let scaledWidth = max(1, min(outputWidth, Int((Double(sourceWidth) * scale).rounded())))
+        let scaledHeight = max(1, min(outputHeight, Int((Double(sourceHeight) * scale).rounded())))
+        let offsetX = (outputWidth - scaledWidth) / 2
+        let offsetY = (outputHeight - scaledHeight) / 2
+
+        output.withUnsafeMutableBytes { outputBytes in
+            guard let outputBase = outputBytes.baseAddress else { return }
+            memset(outputBase, 0, outputRowBytes * outputHeight)
+            var sourceBuffer = vImage_Buffer(
+                data: baseAddress,
+                height: vImagePixelCount(sourceHeight),
+                width: vImagePixelCount(sourceWidth),
+                rowBytes: sourceRowBytes
+            )
+            var destinationBuffer = vImage_Buffer(
+                data: outputBase.advanced(by: offsetY * outputRowBytes + offsetX * 4),
+                height: vImagePixelCount(scaledHeight),
+                width: vImagePixelCount(scaledWidth),
+                rowBytes: outputRowBytes
+            )
+            vImageScale_ARGB8888(&sourceBuffer, &destinationBuffer, nil, vImage_Flags(kvImageHighQualityResampling))
+        }
         sequence += 1
         do {
             try LunaCameraSharedFrameStore.publishBGRA(
-            bytes: data,
-            width: CVPixelBufferGetWidth(pixelBuffer),
-            height: height,
-            sequence: sequence,
-            timestamp: timestamp
+                bytes: output,
+                width: outputWidth,
+                height: outputHeight,
+                sequence: sequence,
+                timestamp: timestamp
             )
             trace("published frame \(sequence)")
         } catch {
