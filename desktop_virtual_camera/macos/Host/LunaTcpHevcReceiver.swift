@@ -4,11 +4,13 @@ import Network
 final class LunaTcpHevcReceiver {
     private let listener: NWListener
     private let decoder: LunaHevcDecoder
+    private let audioRenderer: LunaAudioRenderer
     private let queue = DispatchQueue(label: "com.diamondfsd.luna.hevc-receiver")
     private var connections = [ObjectIdentifier: NWConnection]()
 
-    init(port: UInt16 = 4184, decoder: LunaHevcDecoder) throws {
+    init(port: UInt16 = 4184, decoder: LunaHevcDecoder, audioRenderer: LunaAudioRenderer) throws {
         self.decoder = decoder
+        self.audioRenderer = audioRenderer
         listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
@@ -59,13 +61,42 @@ final class LunaTcpHevcReceiver {
             guard pending.count >= total else { return pending }
             if type == 0x01 {
                 let payloadStart = pending.index(pending.startIndex, offsetBy: 12)
+                let streamType = pending[payloadStart]
                 let timestamp = pending.readUInt64LE(at: 13)
-                let video = Data(pending[payloadStart...].dropFirst(9).prefix(Int(length) - 9))
-                decoder.decodeAnnexB(video, timestamp: timestamp)
+                if streamType == 0x20 {
+                    let video = Data(pending[payloadStart...].dropFirst(9).prefix(Int(length) - 9))
+                    decoder.decodeAnnexB(video, timestamp: timestamp)
+                } else if streamType == 0x21 {
+                    parseAudio(pending, payloadStart: payloadStart, length: Int(length))
+                } else if streamType == 0x22, length >= 13 {
+                    let bodyStart = pending.index(payloadStart, offsetBy: 9)
+                    let milliseconds = pending.readInt32LE(at: pending.distance(from: pending.startIndex, to: bodyStart))
+                    audioRenderer.setDelay(milliseconds: Int(milliseconds))
+                }
             }
             pending.removeFirst(total)
         }
         return pending
+    }
+
+    private func parseAudio(_ packet: Data, payloadStart: Data.Index, length: Int) {
+        guard length >= 21 else { return }
+        let bodyStart = packet.index(payloadStart, offsetBy: 9)
+        let bodyOffset = packet.distance(from: packet.startIndex, to: bodyStart)
+        guard packet[bodyOffset] == 0x01 else { return }
+        let sampleRate = Int(packet.readUInt32LE(at: bodyOffset + 2))
+        let channels = Int(packet[bodyOffset + 6])
+        let sampleCount = Int(packet.readUInt32LE(at: bodyOffset + 8))
+        let byteCount = sampleCount * channels * 2
+        let pcmStart = packet.index(bodyStart, offsetBy: 12)
+        guard sampleRate > 0, channels > 0, sampleCount > 0,
+              packet.distance(from: pcmStart, to: packet.endIndex) >= byteCount else { return }
+        audioRenderer.enqueuePCM16(
+            Data(packet[pcmStart..<packet.index(pcmStart, offsetBy: byteCount)]),
+            sampleRate: sampleRate,
+            channels: channels,
+            sampleCount: sampleCount
+        )
     }
 }
 
@@ -85,5 +116,9 @@ private extension Data {
             value |= UInt64(self[index(start, offsetBy: byteOffset)]) << UInt64(byteOffset * 8)
         }
         return value
+    }
+
+    func readInt32LE(at offset: Int) -> Int32 {
+        Int32(bitPattern: readUInt32LE(at: offset))
     }
 }

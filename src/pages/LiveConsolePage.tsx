@@ -11,7 +11,7 @@ import {
   Video,
 } from 'lucide-react'
 
-import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, IconButton, LoadingIndicator, Slider, Tooltip, toast } from '../ui'
 import type { DesktopVirtualCameraStatus } from '../shared/types'
 import '../styles/live-console.css'
 
@@ -47,9 +47,9 @@ function stateLabel(status: DesktopVirtualCameraStatus | null): string {
 
 function usbLabel(status: DesktopVirtualCameraStatus | null): string {
   switch (status?.usbState) {
-    case 'streaming': return '正在接收视频帧'
-    case 'connected': return '已连接，等待视频帧'
-    case 'switching': return '正在切换 AOA 模式'
+    case 'streaming': return '正在接收画面和声音'
+    case 'connected': return '已连接，等待画面和声音'
+    case 'switching': return '正在切换 USB 模式'
     case 'waiting': return '等待手机连接'
     case 'error': return 'USB 接收异常'
     default: return '接收器未启动'
@@ -58,6 +58,7 @@ function usbLabel(status: DesktopVirtualCameraStatus | null): string {
 
 export function LiveConsolePage() {
   const [status, setStatus] = useState<DesktopVirtualCameraStatus | null>(null)
+  const [audioDelayMs, setAudioDelayMs] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -74,6 +75,10 @@ export function LiveConsolePage() {
   useEffect(() => {
     void refreshStatus()
   }, [refreshStatus])
+
+  useEffect(() => {
+    void window.luna.getSettings().then((settings) => setAudioDelayMs(settings.liveAudioDelayMs ?? 0))
+  }, [])
 
   useEffect(() => {
     if (!status || !['starting', 'waiting-usb', 'running', 'stopping'].includes(status.state)) return undefined
@@ -99,8 +104,18 @@ export function LiveConsolePage() {
   const streaming = status?.usbState === 'streaming'
   const usbConnected = status?.usbState === 'connected' || streaming
   const needsApproval = status?.state === 'needs-approval' || status?.extensionState === 'waiting-approval'
-  const canInstall = Boolean(status?.bundledHostAvailable && !status.hostAppInstalled)
+  const canInstall = Boolean(
+    status?.bundledHostAvailable
+    && status.virtualMicrophoneAvailable
+    && (!status.hostAppInstalled || !status.virtualMicrophoneInstalled),
+  )
   const outputTone = streaming ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
+
+  const commitAudioDelay = useCallback((value: number) => {
+    setAudioDelayMs(value)
+    void window.luna.saveSettings({ liveAudioDelayMs: value })
+    if (active) void window.luna.desktopVirtualCamera.setAudioDelay(value)
+  }, [active])
 
   return (
     <main className="live-console-page">
@@ -129,11 +144,11 @@ export function LiveConsolePage() {
               icon={<MonitorUp size={15} />}
               onClick={() => void runAction(async () => {
                 await window.luna.desktopVirtualCamera.install()
-                toast.success('Luna Camera Host 已安装')
+                toast.success(status?.hostAppInstalled ? '虚拟麦克风已安装' : '音视频组件已安装')
               })}
               disabled={busy}
             >
-              安装摄像头组件
+              {status?.hostAppInstalled ? '安装虚拟麦克风' : '安装音视频组件'}
             </Button>
           )}
           {needsApproval && (
@@ -147,31 +162,18 @@ export function LiveConsolePage() {
               打开系统设置
             </Button>
           )}
-          {active ? (
+          {active && (
             <Button
               variant="danger"
               size="compact"
               icon={<Square size={14} />}
               onClick={() => void runAction(async () => {
                 await window.luna.desktopVirtualCamera.stop()
-                toast.success('USB 直播输出已停止')
+                toast.success('已停止获取画面')
               })}
               disabled={busy}
             >
-              停止输出
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="compact"
-              icon={<Video size={15} />}
-              onClick={() => void runAction(async () => {
-                await window.luna.desktopVirtualCamera.start({ port: DEFAULT_PORT })
-                toast.success('USB 虚拟摄像头已启动')
-              })}
-              disabled={busy || status?.state === 'unsupported' || needsApproval}
-            >
-              {busy ? '处理中...' : '开始直播输出'}
+              停止获取
             </Button>
           )}
         </div>
@@ -190,25 +192,74 @@ export function LiveConsolePage() {
               <strong>{usbLabel(status)}</strong>
             </div>
           </div>
-          {!usbConnected && (
-            <div className="live-console-app-download">
-              <span>连接相机需配合 Luna 咔 App 使用</span>
-              <Button
-                variant="secondary"
-                size="compact"
-                icon={<Download size={15} />}
-                onClick={() => void window.luna.openPath(MOBILE_APP_DOWNLOAD_URL)}
-              >
-                下载移动端 App
-              </Button>
+          {!streaming && (
+            <div className="live-console-setup">
+              <ol>
+                <li>
+                  <span>1</span>
+                  <p>打开 Luna 咔，连接相机设备</p>
+                  {!usbConnected && (
+                    <Button
+                      variant="secondary"
+                      size="mini"
+                      icon={<Download size={14} />}
+                      onClick={() => void window.luna.openPath(MOBILE_APP_DOWNLOAD_URL)}
+                    >
+                      下载 App
+                    </Button>
+                  )}
+                </li>
+                <li>
+                  <span>2</span>
+                  <p>使用 USB 将手机连接到电脑</p>
+                </li>
+              </ol>
+              {!active && (
+                <Button
+                  variant="primary"
+                  icon={<Video size={15} />}
+                  onClick={() => void runAction(async () => {
+                    await window.luna.desktopVirtualCamera.start({ port: DEFAULT_PORT, audioDelayMs })
+                    toast.success('已开始获取画面')
+                  })}
+                  disabled={busy || status.state === 'unsupported' || needsApproval}
+                >
+                  {busy ? '处理中...' : '获取画面'}
+                </Button>
+              )}
             </div>
           )}
           <dl className="live-console-metrics">
-            <div><dt>已接收</dt><dd>{status.frames} 帧</dd></div>
-            <div><dt>数据量</dt><dd>{formatBytes(status.bytes)}</dd></div>
-            <div><dt>最后视频帧</dt><dd>{formatTime(status.lastFrameAt)}</dd></div>
-            <div><dt>输出组件</dt><dd>{status.hostRunning ? '运行中' : '未运行'}</dd></div>
+            <div><dt>视频</dt><dd>{status.videoFrames} 帧</dd></div>
+            <div><dt>音频</dt><dd>{status.audioFrames} 段</dd></div>
+            <div>
+              <dt>音频格式</dt>
+              <dd>
+                {status.audioSampleRate
+                  ? `${(status.audioSampleRate / 1000).toFixed(1)} kHz / ${status.audioChannels ?? 1} ch`
+                  : '--'}
+              </dd>
+            </div>
+            <div><dt>最后收包</dt><dd>{formatTime(status.lastFrameAt)}</dd></div>
+            <div><dt>视频数据</dt><dd>{formatBytes(status.videoBytes)}</dd></div>
+            <div><dt>音频数据</dt><dd>{formatBytes(status.audioBytes)}</dd></div>
+            <div><dt>虚拟麦克风</dt><dd>{status.virtualMicrophoneInstalled ? '已安装' : '未安装'}</dd></div>
           </dl>
+          <div className="live-console-audio-delay">
+            <div>
+              <span>声音漂移</span>
+              <output>{audioDelayMs > 0 ? '+' : ''}{audioDelayMs} ms</output>
+            </div>
+            <Slider
+              value={audioDelayMs}
+              min={-10_000}
+              max={10_000}
+              step={10}
+              ariaLabel="声音漂移"
+              onValueChange={setAudioDelayMs}
+              onValueCommit={commitAudioDelay}
+            />
+          </div>
         </section>
       )}
     </main>

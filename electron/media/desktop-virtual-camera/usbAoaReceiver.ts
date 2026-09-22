@@ -9,6 +9,9 @@ const MAX_FRAME_BYTES = 32 * 1024 * 1024
 const TRANSFER_SIZE = 16 * 1024
 const SCAN_INTERVAL_MS = 1_000
 const LIBUSB_TRANSFER_TYPE_BULK = 2
+export const USB_STREAM_VIDEO = 0x20
+export const USB_STREAM_AUDIO = 0x21
+export const USB_AUDIO_CODEC_PCM16_LE = 0x01
 
 const KNOWN_ANDROID_VENDOR_IDS = new Set([
   0x04e8, // Samsung
@@ -36,7 +39,33 @@ export interface UsbAoaStatus {
   frames: number
   bytes: number
   lastFrameAt: string | null
+  videoFrames: number
+  videoBytes: number
+  lastVideoFrameAt: string | null
+  audioFrames: number
+  audioBytes: number
+  lastAudioFrameAt: string | null
+  audioSource: number | null
+  audioSampleRate: number | null
+  audioChannels: number | null
   error: string | null
+}
+
+export interface UsbAudioFrameInfo {
+  codec: number
+  source: number
+  sampleRate: number
+  channels: number
+  sampleCount: number
+  pcm16Le: Buffer
+}
+
+export interface UsbMediaFrame {
+  raw: Buffer
+  streamType: number
+  timestampUs: bigint
+  body: Buffer
+  audio?: UsbAudioFrameInfo
 }
 
 interface ActiveAccessory {
@@ -50,7 +79,7 @@ interface ParsedMediaFrame {
   status: 'incomplete' | 'invalid' | 'unsupported' | 'ok'
   totalLength?: number
   reason?: string
-  hevc?: Buffer
+  frame?: UsbMediaFrame
 }
 
 function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
@@ -66,13 +95,54 @@ function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
   if (frame[6] !== 0x01) return { status: 'unsupported', totalLength, reason: 'media-type' }
 
   const payload = frame.subarray(12, 12 + rawLength)
-  if (payload[0] !== 0x20) {
-    return { status: 'unsupported', totalLength, reason: 'stream-type' }
+  if (payload.length < 9) return { status: 'invalid', reason: 'payload-header' }
+  const streamType = payload[0]
+  const timestampUs = payload.readBigUInt64LE(1)
+  const body = payload.subarray(9)
+  if (streamType === USB_STREAM_AUDIO) {
+    if (body.length < 12) return { status: 'invalid', reason: 'audio-header' }
+    if (body[0] !== USB_AUDIO_CODEC_PCM16_LE) {
+      return { status: 'unsupported', totalLength, reason: 'audio-codec' }
+    }
+    const sampleRate = body.readUInt32LE(2)
+    const channels = body[6]
+    const sampleCount = body.readUInt32LE(8)
+    const expectedBytes = sampleCount * channels * 2
+    if (channels < 1 || sampleRate < 1 || body.length !== 12 + expectedBytes) {
+      return { status: 'invalid', reason: 'audio-payload' }
+    }
+    return {
+      status: 'ok',
+      totalLength,
+      frame: {
+        raw: frame.subarray(0, totalLength),
+        streamType,
+        timestampUs,
+        body,
+        audio: {
+          codec: body[0],
+          source: body[1],
+          sampleRate,
+          channels,
+          sampleCount,
+          pcm16Le: body.subarray(12),
+        },
+      },
+    }
   }
-  return { status: 'ok', totalLength, hevc: payload.subarray(9) }
+  return {
+    status: 'ok',
+    totalLength,
+    frame: {
+      raw: frame.subarray(0, totalLength),
+      streamType,
+      timestampUs,
+      body,
+    },
+  }
 }
 
-function consumeFrames(pending: Buffer, onFrame: (frame: Buffer) => void, onInvalid: (reason: string) => void): Buffer {
+function consumeFrames(pending: Buffer, onFrame: (frame: UsbMediaFrame) => void, onInvalid: (reason: string) => void): Buffer {
   let buffer = pending
   while (buffer.length > 0) {
     const magicAt = buffer.indexOf(MAGIC)
@@ -81,13 +151,13 @@ function consumeFrames(pending: Buffer, onFrame: (frame: Buffer) => void, onInva
 
     const parsed = parseMediaFrame(buffer)
     if (parsed.status === 'incomplete') return buffer
-    if (parsed.status !== 'ok' || !parsed.hevc || parsed.totalLength == null) {
+    if (parsed.status !== 'ok' || !parsed.frame || parsed.totalLength == null) {
       if (parsed.status === 'invalid') onInvalid(parsed.reason ?? 'unknown')
       buffer = buffer.subarray(parsed.totalLength ?? MAGIC.length)
       continue
     }
 
-    onFrame(buffer.subarray(0, parsed.totalLength))
+    onFrame(parsed.frame)
     buffer = buffer.subarray(parsed.totalLength)
   }
   return buffer
@@ -127,7 +197,7 @@ function configuredVendorIds(): Set<number> | null {
 }
 
 export class UsbAoaReceiver {
-  private readonly onFrame: (frame: Buffer) => void
+  private readonly onFrame: (frame: UsbMediaFrame) => void
   private session: ActiveAccessory | null = null
   private generation = 0
   private running = false
@@ -143,10 +213,19 @@ export class UsbAoaReceiver {
     frames: 0,
     bytes: 0,
     lastFrameAt: null,
+    videoFrames: 0,
+    videoBytes: 0,
+    lastVideoFrameAt: null,
+    audioFrames: 0,
+    audioBytes: 0,
+    lastAudioFrameAt: null,
+    audioSource: null,
+    audioSampleRate: null,
+    audioChannels: null,
     error: null,
   }
 
-  constructor(onFrame: (frame: Buffer) => void) {
+  constructor(onFrame: (frame: UsbMediaFrame) => void) {
     this.onFrame = onFrame
   }
 
@@ -259,12 +338,12 @@ export class UsbAoaReceiver {
       logMainInfo(`[USB AOA] 手机支持 AOA protocol ${version}`)
 
       const strings = [
-        'LunaKa',
-        'Luna USB Video Demo',
-        '1.0',
-        'Luna USB video output',
-        'https://motionbridge.local/usb-video',
-        'LunaKa',
+        'LunaKa', // manufacturer
+        'Luna USB Video Demo', // model
+        'Luna USB video output', // description
+        '1.0', // version
+        'https://motionbridge.local/usb-video', // uri
+        'LunaKa', // serial
       ]
       for (let index = 0; index < strings.length; index += 1) {
         await controlTransfer(device, 0x40, 52, 0, index, Buffer.from(`${strings[index]}\0`, 'utf8'))
@@ -338,14 +417,27 @@ export class UsbAoaReceiver {
     })
   }
 
-  private handleFrame(frame: Buffer): void {
+  private handleFrame(frame: UsbMediaFrame): void {
+    const receivedAt = new Date().toISOString()
+    const isVideo = frame.streamType === USB_STREAM_VIDEO
+    const isAudio = frame.streamType === USB_STREAM_AUDIO
+    const streamLabel = isAudio ? '音频' : isVideo ? '视频' : '媒体'
     this.statusValue = {
       ...this.statusValue,
       state: 'streaming',
-      message: '正在接收手机 USB 视频流',
+      message: `正在接收手机 USB ${streamLabel}流`,
       frames: this.statusValue.frames + 1,
-      bytes: this.statusValue.bytes + frame.length,
-      lastFrameAt: new Date().toISOString(),
+      bytes: this.statusValue.bytes + frame.raw.length,
+      lastFrameAt: receivedAt,
+      videoFrames: this.statusValue.videoFrames + (isVideo ? 1 : 0),
+      videoBytes: this.statusValue.videoBytes + (isVideo ? frame.raw.length : 0),
+      lastVideoFrameAt: isVideo ? receivedAt : this.statusValue.lastVideoFrameAt,
+      audioFrames: this.statusValue.audioFrames + (isAudio ? 1 : 0),
+      audioBytes: this.statusValue.audioBytes + (isAudio ? frame.raw.length : 0),
+      lastAudioFrameAt: isAudio ? receivedAt : this.statusValue.lastAudioFrameAt,
+      audioSource: frame.audio?.source ?? this.statusValue.audioSource,
+      audioSampleRate: frame.audio?.sampleRate ?? this.statusValue.audioSampleRate,
+      audioChannels: frame.audio?.channels ?? this.statusValue.audioChannels,
       error: null,
     }
     this.onFrame(frame)

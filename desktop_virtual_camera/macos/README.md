@@ -96,6 +96,27 @@ is temporarily idle.
 Do not put HEVC decoding in the extension. Decode in the host with VideoToolbox
 and pass tightly packed BGRA bytes across the App Group boundary.
 
+## Virtual microphone
+
+The host also consumes audio stream `0x21`. `LunaAudioRenderer` resamples PCM16
+to 48 kHz stereo and renders it into the hidden `Luna Virtual Microphone Sink`.
+
+`VirtualMicrophone/LunaVirtualMicrophoneDriver.c` is a Core Audio
+AudioServerPlugIn that exposes:
+
+- `Luna Virtual Microphone`: visible input selected by OBS, Zoom, Teams, and
+  other media applications.
+- `Luna Virtual Microphone Sink`: hidden output used only by `LunaAudioRenderer`.
+
+The two devices share a real-time-safe ring buffer. The signed driver is built by
+`tools/build-macos-camera.sh` as `LunaVirtualMicrophone.driver`. Luna AI Cut
+installs it into `/Library/Audio/Plug-Ins/HAL/` with administrator approval and
+restarts `coreaudiod`.
+
+Audio drift control is sent over USB stream `0x22`. A positive value delays
+audio; a negative value drops audio frames. This is a manual A/V sync control,
+not automatic offset estimation.
+
 ## Install and approve
 
 The camera system extension can only be activated by an app located in

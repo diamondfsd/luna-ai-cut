@@ -37,6 +37,11 @@ LunaVirtualCameraHost.exe
   监听 UCD2 TCP 4184，接收 Electron 从 USB AOA 转发的 HEVC access unit
   调用 FFmpeg 解码为 BGRA
   将最新帧写入命名共享内存
+
+LunaVirtualMicrophone
+  与 Camera Host 分开实现
+  接收桌面混音后的 PCM16
+  注册成系统录音设备
 ```
 
 建议的帧共享格式：
@@ -79,6 +84,10 @@ macOS 与 Windows 在 Electron 侧使用同一套状态模型，但安装和原�
 `process.platform !== 'darwin'`。Windows 实现完成后，需要把该分支替换为平台
 策略：macOS 启动 `LunaCameraHost.app`，Windows 启动 `LunaVirtualCameraHost.exe`。
 两种平台都复用 `UsbAoaReceiver` 和相同的 UCD2 转发格式。
+
+音频不能通过 Media Foundation Virtual Camera 暴露。Windows 虚拟麦克风需要单独的
+音频驱动或先用 VB-CABLE 等虚拟音频设备联调，详见
+[`../docs/audio-pipeline.md`](../docs/audio-pipeline.md)。
 
 Windows 还必须先解决 USB AOA 设备访问。npm `usb` 基于 libusb；如果 Accessory 没有
 被 WinUSB 绑定，需要安装合适的 WinUSB/libusb 驱动，用户态可使用 `usb.useUsbDkBackend()`

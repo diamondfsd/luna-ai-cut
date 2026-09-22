@@ -5,6 +5,7 @@ import {
   installDesktopVirtualCameraHost,
   openDesktopVirtualCameraSettings,
   revealDesktopVirtualCameraSource,
+  setDesktopVirtualCameraAudioDelay,
   startDesktopVirtualCamera,
   stopDesktopVirtualCamera,
 } from '../media/desktop-virtual-camera/desktopVirtualCameraService'
@@ -15,6 +16,9 @@ export function register(): void {
   ipcMain.handle('desktop-virtual-camera:install', () => installDesktopVirtualCameraHost())
   ipcMain.handle('desktop-virtual-camera:start', (_event, options: DesktopVirtualCameraOptions) => (
     startDesktopVirtualCamera(options)
+  ))
+  ipcMain.handle('desktop-virtual-camera:set-audio-delay', (_event, delayMs: number) => (
+    setDesktopVirtualCameraAudioDelay(delayMs)
   ))
   ipcMain.handle('desktop-virtual-camera:stop', () => stopDesktopVirtualCamera())
   ipcMain.handle('desktop-virtual-camera:open-extension-settings', () => openDesktopVirtualCameraSettings())

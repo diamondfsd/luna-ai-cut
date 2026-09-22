@@ -15,11 +15,14 @@ Luna 相机
   -> Android AOA FileOutputStream
   -> USB Bulk IN endpoint
   -> luna-ai-cut UsbAoaReceiver
-  -> UCD2 frame parser
+  -> UCD2 generic stream parser
+  -> video 0x20 / audio 0x21
   -> TCP 127.0.0.1:4184
   -> LunaCameraHost
   -> VideoToolbox / Windows Media Foundation
   -> 系统虚拟摄像头
+  -> PCM 音频写入 Luna Virtual Microphone
+  -> 系统虚拟麦克风
   -> 直播软件继续使用电脑原网络推流
 ```
 
@@ -92,7 +95,7 @@ Accessory 模式下的 VID 默认为 `0x18d1`，PID 使用 AOA 的
 2. 发送 AOA 切换控制请求，等待设备重新枚举。
 3. 找到 Bulk IN endpoint 并持续读取数据。
 4. 对任意 USB 分包、粘包执行 UCD2 帧重组。
-5. 把完整 UCD2 media frame 原样交给虚拟摄像头服务。
+5. 按 stream type 解复用：视频和 PCM 音频都转发给 Local Host。
 
 USB 接收器不负责解码 HEVC，不把 USB 数据穿过 React renderer，也不会尝试读取电脑
 网卡或相机 Wi-Fi。
@@ -103,7 +106,7 @@ USB 接收器不负责解码 HEVC，不把 USB 数据穿过 React renderer，也
 
 1. 安装/启动已签名的 `LunaCameraHost.app`。
 2. 连接本机 Host 的 `127.0.0.1:4184`。
-3. 把 `UsbAoaReceiver` 收到的完整 UCD2 帧原样写入 Host。
+3. 把 `UsbAoaReceiver` 收到的 `0x20` 视频帧和 `0x21` 音频帧原样写入 Host。
 4. 维护直播控制台状态、帧数、字节数和最后帧时间。
 
 关键文件：`../../electron/ipc/ipcDesktopVirtualCameraService.ts`
@@ -114,6 +117,7 @@ Renderer 只通过以下稳定 IPC 操作：
 window.luna.desktopVirtualCamera.status()
 window.luna.desktopVirtualCamera.install()
 window.luna.desktopVirtualCamera.start({ port: 4184 })
+window.luna.desktopVirtualCamera.setAudioDelay(0)
 window.luna.desktopVirtualCamera.stop()
 window.luna.desktopVirtualCamera.openExtensionSettings()
 window.luna.desktopVirtualCamera.revealInstallSource()
@@ -138,6 +142,9 @@ offset  size  value / meaning
 ```
 
 `payloadLength = 9 + HEVC length`，整帧长度为 `12 + payloadLength + 4`。
+
+音频 `0x21` 共用外层帧头，媒体 payload 增加 codec、source、采样率、声道和采样数；
+控制帧 `0x22` 用来实时设置声音漂移。格式见 [`audio-pipeline.md`](audio-pipeline.md)。
 
 接收端必须支持：
 
