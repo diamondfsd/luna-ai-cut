@@ -120,8 +120,10 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 			var err: OSStatus = 0
 			let now = CMClockGetTime(CMClockGetHostTimeClock())
 			let sharedFrame = LunaCameraSharedFrameStore.readLatestBGRA()
-			let requestedFormatIndex = sharedFrame.map { $0.height > $0.width ? 1 : 0 } ?? self._streamSource.activeFormatIndex
-			let formatIndex = min(max(requestedFormatIndex, 0), self._bufferPools.count - 1)
+			// The client owns the active CMIO format. The source frame may have the
+			// opposite orientation, so it must be fitted into this format instead
+			// of changing the sample's format behind the client's back.
+			let formatIndex = min(max(self._streamSource.activeFormatIndex, 0), self._bufferPools.count - 1)
 
 			var pixelBuffer: CVPixelBuffer?
 			err = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(kCFAllocatorDefault, self._bufferPools[formatIndex], self._bufferAuxAttributes, &pixelBuffer)
@@ -140,23 +142,30 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 				memset(bufferPtr, 0, rowBytes * height)
 
 				if let sharedFrame,
-				   sharedFrame.width == width,
-				   sharedFrame.height == height,
-				   sharedFrame.bytes.count == width * 4 * height {
+				   sharedFrame.bytes.count == sharedFrame.width * 4 * sharedFrame.height {
 					self._lastFrameBytes = sharedFrame.bytes
-				}
-				if let frameBytes = self._lastFrameBytes,
-				   frameBytes.count == width * 4 * height {
-					let sourceRowBytes = width * 4
-					frameBytes.withUnsafeBytes { bytes in
+					let sourceWidth = sharedFrame.width
+					let sourceHeight = sharedFrame.height
+					let sourceRowBytes = sourceWidth * 4
+					let scale = min(Double(width) / Double(sourceWidth), Double(height) / Double(sourceHeight))
+					let scaledWidth = max(1, min(width, Int((Double(sourceWidth) * scale).rounded())))
+					let scaledHeight = max(1, min(height, Int((Double(sourceHeight) * scale).rounded())))
+					let offsetX = (width - scaledWidth) / 2
+					let offsetY = (height - scaledHeight) / 2
+					sharedFrame.bytes.withUnsafeBytes { bytes in
 						guard let source = bytes.baseAddress else { return }
-						for row in 0..<height {
-							memcpy(
-								bufferPtr.advanced(by: row * rowBytes),
-								source.advanced(by: row * sourceRowBytes),
-								sourceRowBytes
-							)
+						for destinationY in 0..<scaledHeight {
+							let sourceY = min(sourceHeight - 1, destinationY * sourceHeight / scaledHeight)
+							let sourceRow = source.advanced(by: sourceY * sourceRowBytes)
+							let destinationRow = bufferPtr.advanced(by: (offsetY + destinationY) * rowBytes + offsetX * 4)
+							for destinationX in 0..<scaledWidth {
+								let sourceX = min(sourceWidth - 1, destinationX * sourceWidth / scaledWidth)
+								memcpy(destinationRow.advanced(by: destinationX * 4), sourceRow.advanced(by: sourceX * 4), 4)
+							}
 						}
+					}
+					if sharedFrame.sequence == 1 || sharedFrame.sequence.isMultiple(of: 30) {
+						os_log(.info, "copied shared frame seq=%{public}llu source=%{public}dx%{public}d target=%{public}dx%{public}d format=%{public}d", sharedFrame.sequence, sourceWidth, sourceHeight, width, height, formatIndex)
 					}
 					CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
 					var sbuf: CMSampleBuffer!
@@ -262,9 +271,7 @@ class LunaCameraStreamSource: NSObject, CMIOExtensionStreamSource {
 
 		let streamProperties = CMIOExtensionStreamProperties(dictionary: [:])
 		if properties.contains(.streamActiveFormatIndex) {
-			let selectedIndex = LunaCameraSharedFrameStore.readLatestBGRA().map { $0.height > $0.width ? 1 : 0 } ?? 0
-			self.activeFormatIndex = selectedIndex
-			streamProperties.activeFormatIndex = selectedIndex
+			streamProperties.activeFormatIndex = self.activeFormatIndex
 		}
 		if properties.contains(.streamFrameDuration) {
 			let frameDuration = CMTime(value: 1, timescale: Int32(kFrameRate))

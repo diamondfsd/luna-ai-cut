@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0FAA2A27F8C739D2BA1A4670 /* luna-camera-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 46544104285A3777F89B2E20 /* luna-camera-icon.png */; };
+		3031C2874DEDEF3EA588C7AF /* luna-camera-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 8CD137578BCE0A19D68AE63E /* luna-camera-icon.png */; };
 		3F3EAA304F7E1525CCEE0FC6 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 368DDB9D8D4A0E8B77B1358D /* main.swift */; };
 		3FEBD87903117C43E9BE8C41 /* LunaTcpHevcReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F67B6CAD70763CE978A045 /* LunaTcpHevcReceiver.swift */; };
 		431D73DEF11C356783FB8BBF /* LunaCameraShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C810D1259B11A0AC3E00E33 /* LunaCameraShared.swift */; };
@@ -43,11 +45,13 @@
 
 /* Begin PBXFileReference section */
 		368DDB9D8D4A0E8B77B1358D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		46544104285A3777F89B2E20 /* luna-camera-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "luna-camera-icon.png"; sourceTree = "<group>"; };
 		46B594BCE6D528EC77F0E439 /* LunaCameraExtension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = LunaCameraExtension.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
 		55803D3BBE846C6E74863A1C /* LunaAudioRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaAudioRenderer.swift; sourceTree = "<group>"; };
 		57CEB2A02C7A5E5E68EB40AB /* LunaHevcDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaHevcDecoder.swift; sourceTree = "<group>"; };
 		722D9D880B2B2B948797FAE8 /* LunaCameraHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LunaCameraHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C810D1259B11A0AC3E00E33 /* LunaCameraShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaCameraShared.swift; sourceTree = "<group>"; };
+		8CD137578BCE0A19D68AE63E /* luna-camera-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "luna-camera-icon.png"; sourceTree = "<group>"; };
 		B860E34B962EFDC53F03DE89 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CB94658947A7D7536E3029FB /* CameraExtensionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraExtensionProvider.swift; sourceTree = "<group>"; };
 		D4F67B6CAD70763CE978A045 /* LunaTcpHevcReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaTcpHevcReceiver.swift; sourceTree = "<group>"; };
@@ -64,6 +68,14 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		36FAB77E4F0ED9AAEA671E60 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8CD137578BCE0A19D68AE63E /* luna-camera-icon.png */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		49708F6257C86981891B0DB2 /* Host */ = {
 			isa = PBXGroup;
 			children = (
@@ -72,8 +84,17 @@
 				57CEB2A02C7A5E5E68EB40AB /* LunaHevcDecoder.swift */,
 				D4F67B6CAD70763CE978A045 /* LunaTcpHevcReceiver.swift */,
 				368DDB9D8D4A0E8B77B1358D /* main.swift */,
+				36FAB77E4F0ED9AAEA671E60 /* Resources */,
 			);
 			path = Host;
+			sourceTree = "<group>";
+		};
+		8906A46A13C3C6D8C21D1E73 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				46544104285A3777F89B2E20 /* luna-camera-icon.png */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		AE9D3F345F47F668FE3EA07E = {
@@ -91,6 +112,7 @@
 			children = (
 				CB94658947A7D7536E3029FB /* CameraExtensionProvider.swift */,
 				D5CB50FD38CE488DA0B0E34D /* Info.plist */,
+				8906A46A13C3C6D8C21D1E73 /* Resources */,
 			);
 			path = Extension;
 			sourceTree = "<group>";
@@ -111,6 +133,7 @@
 			buildConfigurationList = F359E2C268CB1F265F14A359 /* Build configuration list for PBXNativeTarget "LunaCameraExtension" */;
 			buildPhases = (
 				DAECF3A46E719ED8D9D5F319 /* Sources */,
+				297F6FB7FDA6AAAC84B04BB2 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -128,6 +151,7 @@
 			buildConfigurationList = 8DCBF61D08CD05500BA3572A /* Build configuration list for PBXNativeTarget "LunaCameraHost" */;
 			buildPhases = (
 				18628E0CD22B0A039E9CD817 /* Sources */,
+				4DF3510F1D7D8D0A6107896D /* Resources */,
 				36ED203C3C2BA0BC226D6422 /* Embed System Extensions */,
 			);
 			buildRules = (
@@ -178,6 +202,25 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		297F6FB7FDA6AAAC84B04BB2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0FAA2A27F8C739D2BA1A4670 /* luna-camera-icon.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DF3510F1D7D8D0A6107896D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3031C2874DEDEF3EA588C7AF /* luna-camera-icon.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		18628E0CD22B0A039E9CD817 /* Sources */ = {
