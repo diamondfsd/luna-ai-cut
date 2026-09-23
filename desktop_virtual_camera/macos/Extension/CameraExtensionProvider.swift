@@ -34,9 +34,9 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
 	private let _timerQueue = DispatchQueue(label: "timerQueue", qos: .userInteractive, attributes: [], autoreleaseFrequency: .workItem, target: .global(qos: .userInteractive))
 
-	private var _videoDescription: CMFormatDescription!
+	private var _videoDescriptions: [CMFormatDescription] = []
 
-	private var _bufferPool: CVPixelBufferPool!
+	private var _bufferPools: [CVPixelBufferPool] = []
 
 	private var _bufferAuxAttributes: NSDictionary!
 
@@ -52,22 +52,28 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 		let deviceID = UUID() // replace this with your device UUID
 		self.device = CMIOExtensionDevice(localizedName: localizedName, deviceID: deviceID, legacyDeviceID: nil, source: self)
 
-		let dims = CMVideoDimensions(width: 1280, height: 720)
-		CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_32BGRA, width: dims.width, height: dims.height, extensions: nil, formatDescriptionOut: &_videoDescription)
-
-		let pixelBufferAttributes: NSDictionary = [
-			kCVPixelBufferWidthKey: dims.width,
-			kCVPixelBufferHeightKey: dims.height,
-			kCVPixelBufferPixelFormatTypeKey: _videoDescription.mediaSubType,
-			kCVPixelBufferIOSurfacePropertiesKey: [:] as NSDictionary
-		]
-		CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, pixelBufferAttributes, &_bufferPool)
-
-		let videoStreamFormat = CMIOExtensionStreamFormat.init(formatDescription: _videoDescription, maxFrameDuration: CMTime(value: 1, timescale: Int32(kFrameRate)), minFrameDuration: CMTime(value: 1, timescale: Int32(kFrameRate)), validFrameDurations: nil)
+		let dimensions: [(Int32, Int32)] = [(1280, 720), (720, 1280)]
+		let streamFormats = dimensions.compactMap { width, height -> CMIOExtensionStreamFormat? in
+			var description: CMFormatDescription?
+			guard CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_32BGRA, width: width, height: height, extensions: nil, formatDescriptionOut: &description) == noErr,
+			      let description else { return nil }
+			var pool: CVPixelBufferPool?
+			let pixelBufferAttributes: NSDictionary = [
+				kCVPixelBufferWidthKey: width,
+				kCVPixelBufferHeightKey: height,
+				kCVPixelBufferPixelFormatTypeKey: description.mediaSubType,
+				kCVPixelBufferIOSurfacePropertiesKey: [:] as NSDictionary
+			]
+			CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, pixelBufferAttributes, &pool)
+			guard let pool else { return nil }
+			_videoDescriptions.append(description)
+			_bufferPools.append(pool)
+			return CMIOExtensionStreamFormat(formatDescription: description, maxFrameDuration: CMTime(value: 1, timescale: Int32(kFrameRate)), minFrameDuration: CMTime(value: 1, timescale: Int32(kFrameRate)), validFrameDurations: nil)
+		}
 		_bufferAuxAttributes = [kCVPixelBufferPoolAllocationThresholdKey: 5]
 
 		let videoID = UUID() // replace this with your video UUID
-		_streamSource = LunaCameraStreamSource(localizedName: "Luna Virtual Camera.Video", streamID: videoID, streamFormat: videoStreamFormat, device: device)
+		_streamSource = LunaCameraStreamSource(localizedName: "Luna Virtual Camera.Video", streamID: videoID, streamFormats: streamFormats, device: device)
 		do {
 			try device.addStream(_streamSource.stream)
 		} catch let error {
@@ -100,7 +106,7 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
 	func startStreaming() {
 
-		guard let _ = _bufferPool else {
+		guard !_bufferPools.isEmpty else {
 			return
 		}
 
@@ -113,9 +119,12 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
 			var err: OSStatus = 0
 			let now = CMClockGetTime(CMClockGetHostTimeClock())
+			let sharedFrame = LunaCameraSharedFrameStore.readLatestBGRA()
+			let requestedFormatIndex = sharedFrame.map { $0.height > $0.width ? 1 : 0 } ?? self._streamSource.activeFormatIndex
+			let formatIndex = min(max(requestedFormatIndex, 0), self._bufferPools.count - 1)
 
 			var pixelBuffer: CVPixelBuffer?
-			err = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(kCFAllocatorDefault, self._bufferPool, self._bufferAuxAttributes, &pixelBuffer)
+			err = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(kCFAllocatorDefault, self._bufferPools[formatIndex], self._bufferAuxAttributes, &pixelBuffer)
 			if err != 0 {
 				os_log(.error, "out of pixel buffers \(err)")
 			}
@@ -130,7 +139,6 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 				let rowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
 				memset(bufferPtr, 0, rowBytes * height)
 
-				let sharedFrame = LunaCameraSharedFrameStore.readLatestBGRA()
 				if let sharedFrame,
 				   sharedFrame.width == width,
 				   sharedFrame.height == height,
@@ -154,7 +162,7 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 					var sbuf: CMSampleBuffer!
 					var timingInfo = CMSampleTimingInfo()
 					timingInfo.presentationTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
-					err = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: self._videoDescription, sampleTiming: &timingInfo, sampleBufferOut: &sbuf)
+					err = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: self._videoDescriptions[formatIndex], sampleTiming: &timingInfo, sampleBufferOut: &sbuf)
 					if err == 0 {
 						self._streamSource.stream.send(sbuf, discontinuity: [], hostTimeInNanoseconds: UInt64(timingInfo.presentationTimeStamp.seconds * Double(NSEC_PER_SEC)))
 					}
@@ -184,7 +192,7 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 				var sbuf: CMSampleBuffer!
 				var timingInfo = CMSampleTimingInfo()
 				timingInfo.presentationTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
-				err = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: self._videoDescription, sampleTiming: &timingInfo, sampleBufferOut: &sbuf)
+				err = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: self._videoDescriptions[formatIndex], sampleTiming: &timingInfo, sampleBufferOut: &sbuf)
 				if err == 0 {
 					self._streamSource.stream.send(sbuf, discontinuity: [], hostTimeInNanoseconds: UInt64(timingInfo.presentationTimeStamp.seconds * Double(NSEC_PER_SEC)))
 				}
@@ -221,25 +229,25 @@ class LunaCameraStreamSource: NSObject, CMIOExtensionStreamSource {
 
 	let device: CMIOExtensionDevice
 
-	private let _streamFormat: CMIOExtensionStreamFormat
+	private let _streamFormats: [CMIOExtensionStreamFormat]
 
-	init(localizedName: String, streamID: UUID, streamFormat: CMIOExtensionStreamFormat, device: CMIOExtensionDevice) {
+	init(localizedName: String, streamID: UUID, streamFormats: [CMIOExtensionStreamFormat], device: CMIOExtensionDevice) {
 
 		self.device = device
-		self._streamFormat = streamFormat
+		self._streamFormats = streamFormats
 		super.init()
 		self.stream = CMIOExtensionStream(localizedName: localizedName, streamID: streamID, direction: .source, clockType: .hostTime, source: self)
 	}
 
 	var formats: [CMIOExtensionStreamFormat] {
 
-		return [_streamFormat]
+		return _streamFormats
 	}
 
 	var activeFormatIndex: Int = 0 {
 
 		didSet {
-			if activeFormatIndex >= 1 {
+			if activeFormatIndex >= _streamFormats.count {
 				os_log(.error, "Invalid index")
 			}
 		}
@@ -254,7 +262,9 @@ class LunaCameraStreamSource: NSObject, CMIOExtensionStreamSource {
 
 		let streamProperties = CMIOExtensionStreamProperties(dictionary: [:])
 		if properties.contains(.streamActiveFormatIndex) {
-			streamProperties.activeFormatIndex = 0
+			let selectedIndex = LunaCameraSharedFrameStore.readLatestBGRA().map { $0.height > $0.width ? 1 : 0 } ?? 0
+			self.activeFormatIndex = selectedIndex
+			streamProperties.activeFormatIndex = selectedIndex
 		}
 		if properties.contains(.streamFrameDuration) {
 			let frameDuration = CMTime(value: 1, timescale: Int32(kFrameRate))

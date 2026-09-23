@@ -1,12 +1,16 @@
 import Foundation
 import Network
+import OSLog
 
 final class LunaTcpHevcReceiver {
     private let listener: NWListener
     private let decoder: LunaHevcDecoder
     private let audioRenderer: LunaAudioRenderer
+    private let logger = Logger(subsystem: "com.diamondfsd.luna.virtualcamera.host", category: "tcp-receiver")
     private let queue = DispatchQueue(label: "com.diamondfsd.luna.hevc-receiver")
     private var connections = [ObjectIdentifier: NWConnection]()
+    private var receivedBytes: UInt64 = 0
+    private var receivedPackets: UInt64 = 0
 
     init(port: UInt16 = 4184, decoder: LunaHevcDecoder, audioRenderer: LunaAudioRenderer) throws {
         self.decoder = decoder
@@ -22,7 +26,7 @@ final class LunaTcpHevcReceiver {
     }
 
     private func accept(_ connection: NWConnection) {
-        print("[LunaTcpHevcReceiver] accepted connection")
+        trace("accepted connection")
         let id = ObjectIdentifier(connection)
         connections[id] = connection
         connection.stateUpdateHandler = { [weak self] state in
@@ -37,7 +41,12 @@ final class LunaTcpHevcReceiver {
             guard let self else { return }
             var pending = buffer
             if let data { pending.append(data) }
-            if let data { print("[LunaTcpHevcReceiver] received bytes: \(data.count)") }
+            if let data {
+                receivedBytes += UInt64(data.count)
+                if receivedBytes <= UInt64(data.count) || receivedBytes.isMultiple(of: 1_000_000) {
+                    trace("received bytes total: \(receivedBytes)")
+                }
+            }
             pending = self.parse(pending)
             if !isComplete { self.receive(connection, buffer: pending) }
         }
@@ -56,6 +65,7 @@ final class LunaTcpHevcReceiver {
             let length = pending.readUInt32LE(at: 8)
             let total = 16 + Int(length)
             guard length >= 9, total <= 32 * 1024 * 1024 else {
+                trace("invalid packet length: \(length)")
                 pending.removeFirst(); continue
             }
             guard pending.count >= total else { return pending }
@@ -64,6 +74,10 @@ final class LunaTcpHevcReceiver {
                 let streamType = pending[payloadStart]
                 let timestamp = pending.readUInt64LE(at: 13)
                 if streamType == 0x20 {
+                    receivedPackets += 1
+                    if receivedPackets == 1 || receivedPackets.isMultiple(of: 30) {
+                        trace("video packet \(receivedPackets), bytes: \(length - 9)")
+                    }
                     let video = Data(pending[payloadStart...].dropFirst(9).prefix(Int(length) - 9))
                     decoder.decodeAnnexB(video, timestamp: timestamp)
                 } else if streamType == 0x21 {
@@ -77,6 +91,23 @@ final class LunaTcpHevcReceiver {
             pending.removeFirst(total)
         }
         return pending
+    }
+
+    private func trace(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+        print("[LunaTcpHevcReceiver] \(message)")
+        let line = "\(Date()) \(message)\n"
+        let url = LunaCameraSharedFrameStore.sharedURL()?
+            .deletingLastPathComponent()
+            .appendingPathComponent("host-debug.log")
+            ?? URL(fileURLWithPath: "/tmp/luna-hevc.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url, options: .atomic)
+        }
     }
 
     private func parseAudio(_ packet: Data, payloadStart: Data.Index, length: Int) {

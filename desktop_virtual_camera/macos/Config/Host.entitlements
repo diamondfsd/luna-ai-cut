@@ -12,9 +12,5 @@
 	</array>
 	<key>com.apple.security.network.server</key>
 	<true/>
-	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-	<array>
-		<string>/private/tmp/luna-virtual-camera/</string>
-	</array>
 </dict>
 </plist>

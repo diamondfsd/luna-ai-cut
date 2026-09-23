@@ -2,16 +2,22 @@ import Accelerate
 import CoreMedia
 import CoreVideo
 import Foundation
+import OSLog
 import VideoToolbox
 
 final class LunaHevcDecoder {
+    private let logger = Logger(subsystem: "com.diamondfsd.luna.virtualcamera.host", category: "video-decoder")
     private var formatDescription: CMVideoFormatDescription?
     private var session: VTDecompressionSession?
     private var sequence: UInt64 = 0
 
     private func trace(_ message: String) {
+        logger.info("\(message, privacy: .public)")
         let line = "\(Date()) \(message)\n"
-        let url = URL(fileURLWithPath: "/tmp/luna-hevc.log")
+        let url = LunaCameraSharedFrameStore.sharedURL()?
+            .deletingLastPathComponent()
+            .appendingPathComponent("host-debug.log")
+            ?? URL(fileURLWithPath: "/tmp/luna-hevc.log")
         if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()
             handle.write(Data(line.utf8))
@@ -156,8 +162,9 @@ final class LunaHevcDecoder {
         let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
         let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
         let sourceRowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let outputWidth = 1280
-        let outputHeight = 720
+        let isPortrait = sourceHeight > sourceWidth
+        let outputWidth = isPortrait ? 720 : 1280
+        let outputHeight = isPortrait ? 1280 : 720
         let outputRowBytes = outputWidth * 4
         var output = Data(count: outputRowBytes * outputHeight)
         let scale = min(
@@ -195,7 +202,9 @@ final class LunaHevcDecoder {
                 sequence: sequence,
                 timestamp: timestamp
             )
-            trace("published frame \(sequence)")
+            if sequence == 1 || sequence.isMultiple(of: 30) {
+                trace("published frame \(sequence) to \(LunaCameraSharedFrameStore.sharedURL()?.path ?? "no shared URL")")
+            }
         } catch {
             trace("publish error: \(error)")
         }
@@ -248,8 +257,13 @@ private func outputCallback(
 }
 
 private func decoderTrace(_ message: String) {
+    Logger(subsystem: "com.diamondfsd.luna.virtualcamera.host", category: "video-decoder")
+        .error("\(message, privacy: .public)")
     let line = "\(Date()) \(message)\n"
-    let url = URL(fileURLWithPath: "/tmp/luna-hevc.log")
+    let url = LunaCameraSharedFrameStore.sharedURL()?
+        .deletingLastPathComponent()
+        .appendingPathComponent("host-debug.log")
+        ?? URL(fileURLWithPath: "/tmp/luna-hevc.log")
     if let handle = try? FileHandle(forWritingTo: url) {
         handle.seekToEndOfFile()
         handle.write(Data(line.utf8))

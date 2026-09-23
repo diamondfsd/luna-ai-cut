@@ -18,6 +18,7 @@ import {
 } from './usbAoaReceiver'
 import { createDesktopMediaReceiver } from './desktopMediaReceiver'
 import { LivePreviewStreamService } from './livePreviewStreamService'
+import { DebugVideoStreamService } from './debugVideoStreamService'
 import type {
   DesktopAudioInputFrame,
   DesktopAudioSourceMode,
@@ -62,6 +63,7 @@ interface ActiveSession {
   audioMonitor: WebContents | null
   startedAt: string
   error: string | null
+  debugVideo: DebugVideoStreamService | null
 }
 
 const IDLE_USB_STATUS: UsbAoaStatus = {
@@ -570,6 +572,7 @@ export function startDesktopVirtualCamera(options: DesktopVirtualCameraOptions):
       audioMonitor: null,
       startedAt: new Date().toISOString(),
       error: null,
+      debugVideo: null,
     }
     activeSession = session
     sendAudioDelay(session)
@@ -627,6 +630,8 @@ export async function stopDesktopVirtualCameraOutput(): Promise<DesktopVirtualCa
     const session = activeSession
     if (!session) return getDesktopVirtualCameraStatus()
     session.outputEnabled = false
+    await session.debugVideo?.stop()
+    session.debugVideo = null
     session.outputError = null
     if (session.outputReconnectTimer) clearTimeout(session.outputReconnectTimer)
     session.outputReconnectTimer = null
@@ -664,6 +669,8 @@ export function stopDesktopVirtualCamera(): Promise<DesktopVirtualCameraStatus> 
       await session.receiver.stop()
       session.socket?.end()
       session.socket?.destroy()
+      await session.debugVideo?.stop()
+      session.debugVideo = null
       session.captureStream?.end()
       session.audioMonitor = null
       await session.livePreview.stop()
@@ -680,6 +687,31 @@ export function stopDesktopVirtualCamera(): Promise<DesktopVirtualCameraStatus> 
   })
   operation = task
   return task
+}
+
+export async function startDesktopVirtualCameraDebugVideo(filePath: string): Promise<DesktopVirtualCameraStatus> {
+  if (process.platform !== 'darwin') return getDesktopVirtualCameraStatus()
+  if (!activeSession) await startDesktopVirtualCamera({ port: DEFAULT_PORT })
+  const session = activeSession
+  if (!session) throw new Error('虚拟摄像头接收端启动失败')
+  if (!session.outputEnabled || !session.socket || session.socket.destroyed) {
+    await startDesktopVirtualCameraOutput()
+  }
+  if (!session.socket || session.socket.destroyed) throw new Error('虚拟摄像头输出尚未就绪')
+  await session.debugVideo?.stop()
+  const stream = new DebugVideoStreamService()
+  session.debugVideo = stream
+  await stream.start(filePath, session.socket)
+  return getDesktopVirtualCameraStatus()
+}
+
+export async function stopDesktopVirtualCameraDebugVideo(): Promise<DesktopVirtualCameraStatus> {
+  const session = activeSession
+  if (session?.debugVideo) {
+    await session.debugVideo.stop()
+    session.debugVideo = null
+  }
+  return getDesktopVirtualCameraStatus()
 }
 
 export async function openDesktopVirtualCameraSettings(): Promise<void> {

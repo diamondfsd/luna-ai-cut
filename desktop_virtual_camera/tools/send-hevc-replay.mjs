@@ -68,7 +68,8 @@ async function main() {
     socket.write(encodeMediaFrame(index, BigInt(Date.now()) * 1_000n, accessUnit))
     if (intervalMs > 0) await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
-  socket.end()
+  await new Promise((resolve) => socket.end(resolve))
+  socket.destroy()
   console.log(`[replay] sent ${units.length} HEVC access units to ${host}:${port}`)
 }
 

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Square } from 'lucide-react'
+import { FileVideo, RefreshCw, Square, StopCircle } from 'lucide-react'
 
 import { Button, IconButton, LoadingIndicator, Switch, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
 import type { DesktopVirtualCameraStatus } from '../shared/types'
 import '../styles/live-console.css'
+import '../styles/live-console-debug.css'
 
 const DEFAULT_PORT = 4184
 function stateLabel(status: DesktopVirtualCameraStatus | null): string {
@@ -27,6 +28,7 @@ export function LiveConsolePage() {
   const [audioDelayMs, setAudioDelayMs] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [debugVideoPath, setDebugVideoPath] = useState<string | null>(null)
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -76,6 +78,7 @@ export function LiveConsolePage() {
     && (!status.hostAppInstalled || !status.virtualMicrophoneInstalled),
   )
   const outputTone = streaming ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
+  const debugVideoRunning = Boolean(debugVideoPath && outputEnabled)
 
   const commitAudioDelay = useCallback((value: number) => {
     setAudioDelayMs(value)
@@ -89,7 +92,26 @@ export function LiveConsolePage() {
         ? await window.luna.desktopVirtualCamera.startOutput()
         : await window.luna.desktopVirtualCamera.stopOutput()
       setStatus(next)
+      if (!enabled) setDebugVideoPath(null)
       if (enabled && next.outputReady) toast.success('虚拟摄像头已开启')
+    })
+  }, [runAction])
+
+  const chooseDebugVideo = useCallback(() => {
+    void runAction(async () => {
+      const filePath = await window.luna.desktopVirtualCamera.chooseDebugVideo()
+      if (!filePath) return
+      await window.luna.desktopVirtualCamera.startDebugVideo(filePath)
+      setDebugVideoPath(filePath)
+      toast.success('调试视频已输出')
+    })
+  }, [runAction])
+
+  const stopDebugVideo = useCallback(() => {
+    void runAction(async () => {
+      await window.luna.desktopVirtualCamera.stopDebugVideo()
+      setDebugVideoPath(null)
+      toast.success('调试视频已停止')
     })
   }, [runAction])
 
@@ -122,6 +144,27 @@ export function LiveConsolePage() {
               disabled={busy || !active}
             />
           </label>
+          {debugVideoRunning ? (
+            <Button
+              variant="danger"
+              size="compact"
+              icon={<StopCircle size={14} />}
+              onClick={stopDebugVideo}
+              disabled={busy}
+            >
+              停止调试视频
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="compact"
+              icon={<FileVideo size={14} />}
+              onClick={chooseDebugVideo}
+              disabled={busy || !status?.extensionEnabled}
+            >
+              选择调试视频
+            </Button>
+          )}
           {active && (
             <Button
               variant="danger"
@@ -129,6 +172,7 @@ export function LiveConsolePage() {
               icon={<Square size={14} />}
               onClick={() => void runAction(async () => {
                 await window.luna.desktopVirtualCamera.stop()
+                setDebugVideoPath(null)
                 toast.success('已停止获取画面')
               })}
               disabled={busy}
@@ -140,6 +184,11 @@ export function LiveConsolePage() {
       </header>
 
       {error && <p className="live-console-error" role="alert">{error}</p>}
+      {debugVideoPath && (
+        <p className="live-console-debug-file" title={debugVideoPath}>
+          调试视频：{debugVideoPath.split(/[\\/]/).pop()}
+        </p>
+      )}
       {!status ? (
         <LoadingIndicator label="正在检查输出状态" />
       ) : (
