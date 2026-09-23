@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
 
 import {
   getDesktopVirtualCameraStatus,
@@ -14,6 +14,8 @@ import {
   startDesktopVirtualCameraOutput,
   stopDesktopVirtualCamera,
   stopDesktopVirtualCameraOutput,
+  startDesktopVirtualCameraDebugVideo,
+  stopDesktopVirtualCameraDebugVideo,
 } from '../media/desktop-virtual-camera/desktopVirtualCameraService'
 import type {
   DesktopAudioInputFrame,
@@ -48,4 +50,15 @@ export function register(): void {
   ipcMain.handle('desktop-virtual-camera:stop', () => stopDesktopVirtualCamera())
   ipcMain.handle('desktop-virtual-camera:open-extension-settings', () => openDesktopVirtualCameraSettings())
   ipcMain.handle('desktop-virtual-camera:reveal-install-source', () => revealDesktopVirtualCameraSource())
+  ipcMain.handle('desktop-virtual-camera:choose-debug-video', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: '视频', extensions: ['mp4', 'mov', 'm4v', 'mkv', 'avi', 'webm', 'insv', 'lrv'] }],
+    })
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
+  ipcMain.handle('desktop-virtual-camera:start-debug-video', (_event, filePath: string) => (
+    startDesktopVirtualCameraDebugVideo(filePath)
+  ))
+  ipcMain.handle('desktop-virtual-camera:stop-debug-video', () => stopDesktopVirtualCameraDebugVideo())
 }

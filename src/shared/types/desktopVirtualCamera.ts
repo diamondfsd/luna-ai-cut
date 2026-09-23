@@ -179,4 +179,7 @@ export interface DesktopVirtualCameraApi {
   stop(): Promise<DesktopVirtualCameraStatus>
   openExtensionSettings(): Promise<void>
   revealInstallSource(): Promise<void>
+  chooseDebugVideo(): Promise<string | null>
+  startDebugVideo(filePath: string): Promise<DesktopVirtualCameraStatus>
+  stopDebugVideo(): Promise<DesktopVirtualCameraStatus>
 }

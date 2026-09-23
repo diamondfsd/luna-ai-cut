@@ -6,7 +6,6 @@ import Foundation
 /// BGRA frames published here.
 public final class LunaCameraSharedFrameStore: @unchecked Sendable {
     public static let appGroupIdentifier = "8B6J8663PS.com.diamondfsd.luna.virtualcamera"
-    private static let sharedDirectory = "/private/tmp/luna-virtual-camera"
     private static let frameFileName = "latest-bgra.frame"
 
     public struct Frame: Sendable {
@@ -40,7 +39,10 @@ public final class LunaCameraSharedFrameStore: @unchecked Sendable {
     public init() {}
 
     public static func sharedURL() -> URL? {
-        URL(fileURLWithPath: sharedDirectory, isDirectory: true).appendingPathComponent(frameFileName)
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        )?.appendingPathComponent(frameFileName)
+            ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(frameFileName)
     }
 
     /// Publishes a tightly packed BGRA frame through the App Group container.
