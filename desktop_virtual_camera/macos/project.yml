@@ -15,6 +15,8 @@ targets:
     sources:
       - path: Host
       - path: Sources
+    resources:
+      - path: Host/Resources/luna-camera-icon.png
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.diamondfsd.luna.virtualcamera.host
       INFOPLIST_FILE: Host/Info.plist
@@ -29,6 +31,8 @@ targets:
     sources:
       - path: Extension
       - path: Sources
+    resources:
+      - path: Extension/Resources/luna-camera-icon.png
     settings:
       PRODUCT_NAME: com.diamondfsd.luna.virtualcamera.host.extension
       PRODUCT_BUNDLE_IDENTIFIER: com.diamondfsd.luna.virtualcamera.host.extension

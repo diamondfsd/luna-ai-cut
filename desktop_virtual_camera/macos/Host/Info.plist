@@ -7,6 +7,7 @@
   <key>CFBundleVersion</key><string>9</string>
   <key>CFBundleShortVersionString</key><string>0.1.8</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>luna-camera-icon.png</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSSystemExtensionUsageDescription</key><string>Luna Virtual Camera provides the Luna video stream to camera applications.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
