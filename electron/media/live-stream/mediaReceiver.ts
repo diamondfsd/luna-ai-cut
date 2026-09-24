@@ -1,6 +1,6 @@
 import { IosTcpReceiver } from './iosTcpReceiver'
 import {
-  type DesktopMediaReceiver,
+  type LiveMediaReceiver,
   type UsbAoaStatus,
   type UsbControlRequest,
   type UsbMediaFrame,
@@ -18,9 +18,9 @@ function stateScore(status: UsbAoaStatus): number {
   }
 }
 
-class MultiTransportReceiver implements DesktopMediaReceiver {
-  private readonly receivers: DesktopMediaReceiver[]
-  private lastActive: DesktopMediaReceiver
+class MultiTransportReceiver implements LiveMediaReceiver {
+  private readonly receivers: LiveMediaReceiver[]
+  private lastActive: LiveMediaReceiver
 
   constructor(onFrame: (frame: UsbMediaFrame) => void) {
     const android = new UsbAoaReceiver(onFrame)
@@ -53,7 +53,7 @@ class MultiTransportReceiver implements DesktopMediaReceiver {
     return receiver.sendControl(request)
   }
 
-  private activeReceiver(): DesktopMediaReceiver {
+  private activeReceiver(): LiveMediaReceiver {
     let selected = this.lastActive
     let best = stateScore(selected.status())
     for (const receiver of this.receivers) {
@@ -67,6 +67,6 @@ class MultiTransportReceiver implements DesktopMediaReceiver {
   }
 }
 
-export function createDesktopMediaReceiver(onFrame: (frame: UsbMediaFrame) => void): DesktopMediaReceiver {
+export function createLiveMediaReceiver(onFrame: (frame: UsbMediaFrame) => void): LiveMediaReceiver {
   return new MultiTransportReceiver(onFrame)
 }

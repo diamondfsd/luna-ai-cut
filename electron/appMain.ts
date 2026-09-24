@@ -10,7 +10,7 @@ import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrast
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
 import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
 import { stopObsStreamDemoOnQuit } from './media/obs-demo/obsMp4StreamService'
-import { stopDesktopVirtualCameraOnQuit } from './media/desktop-virtual-camera/desktopVirtualCameraService'
+import { stopLiveStreamOnQuit } from './media/live-stream/liveStreamService'
 import { createUsageAnalytics } from './infrastructure/usageAnalytics'
 
 import {
@@ -110,7 +110,7 @@ const enqueuePreviewTask = createPreviewTaskQueue(2)
 function stopAllKeepAlive(): void {
   void stopAllCameraVideoStreams()
   void stopObsStreamDemoOnQuit()
-  void stopDesktopVirtualCameraOnQuit()
+  void stopLiveStreamOnQuit()
   for (const client of clients.values()) {
     client.stopKeepAlive()
     client.close()

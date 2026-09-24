@@ -1,7 +1,7 @@
 import usb from 'usb'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
-import type { DesktopControlCommand, DesktopControlResult } from '../../../src/shared/types'
+import type { LiveStreamControlCommand, LiveStreamControlResult } from '../../../src/shared/types'
 
 const ACCESSORY_VID = 0x18d1
 const ACCESSORY_PIDS = new Set([0x2d00, 0x2d01, 0x2d04, 0x2d05, 0x2d06, 0x2d07])
@@ -16,12 +16,12 @@ export const USB_STREAM_CONTROL_COMMAND = 0x30
 export const USB_STREAM_CONTROL_RESULT = 0x31
 export const USB_AUDIO_CODEC_PCM16_LE = 0x01
 
-export type UsbControlRequest = DesktopControlCommand & {
+export type UsbControlRequest = LiveStreamControlCommand & {
   version: 1
   requestId: string
 }
 
-export interface DesktopMediaReceiver {
+export interface LiveMediaReceiver {
   status(): UsbAoaStatus
   start(): void
   stop(): Promise<void>
@@ -111,7 +111,7 @@ export interface UsbMediaFrame {
   timestampUs: bigint
   body: Buffer
   audio?: UsbAudioFrameInfo
-  controlResult?: DesktopControlResult
+  controlResult?: LiveStreamControlResult
 }
 
 interface ActiveAccessory {
@@ -148,7 +148,7 @@ export function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
   const body = payload.subarray(9)
   if (streamType === USB_STREAM_CONTROL_RESULT) {
     try {
-      const result = JSON.parse(body.toString('utf8')) as DesktopControlResult
+      const result = JSON.parse(body.toString('utf8')) as LiveStreamControlResult
       if (!result.requestId || !result.type || typeof result.ok !== 'boolean') {
         return { status: 'invalid', totalLength, reason: 'control-result' }
       }
@@ -274,7 +274,7 @@ export function encodeControlFrame(request: UsbControlRequest, sequence: number)
   return frame
 }
 
-export class UsbAoaReceiver implements DesktopMediaReceiver {
+export class UsbAoaReceiver implements LiveMediaReceiver {
   private readonly onFrame: (frame: UsbMediaFrame) => void
   private session: ActiveAccessory | null = null
   private generation = 0

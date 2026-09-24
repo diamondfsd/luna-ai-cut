@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { DesktopAudioInputFrame, DesktopAudioInputOption } from '../shared/types'
+import type { LiveStreamAudioInputFrame, LiveStreamAudioInputOption } from '../shared/types'
 
 const DESKTOP_AUDIO_PREFIX = 'desktop:'
 const DESKTOP_DEFAULT_ID = `${DESKTOP_AUDIO_PREFIX}default`
@@ -28,7 +28,7 @@ registerProcessor('${CAPTURE_WORKLET_NAME}', LunaPcm16CaptureProcessor)
 
 interface UseDesktopMicrophoneOptions {
   selectedInputId: string
-  onFrame: (frame: DesktopAudioInputFrame) => void
+  onFrame: (frame: LiveStreamAudioInputFrame) => void
 }
 
 function deviceInputId(deviceId: string): string {
@@ -46,7 +46,7 @@ export function isDesktopAudioInput(inputId: string): boolean {
 
 export function useDesktopMicrophone({ selectedInputId, onFrame }: UseDesktopMicrophoneOptions) {
   const onFrameRef = useRef(onFrame)
-  const [options, setOptions] = useState<DesktopAudioInputOption[]>([
+  const [options, setOptions] = useState<LiveStreamAudioInputOption[]>([
     { id: DESKTOP_DEFAULT_ID, label: '电脑默认麦克风', kind: 'desktop-microphone' },
   ])
   const [active, setActive] = useState(false)
@@ -64,7 +64,7 @@ export function useDesktopMicrophone({ selectedInputId, onFrame }: UseDesktopMic
       }
       const devices = (await navigator.mediaDevices.enumerateDevices())
         .filter((device) => device.kind === 'audioinput')
-      const next: DesktopAudioInputOption[] = [
+      const next: LiveStreamAudioInputOption[] = [
         { id: DESKTOP_DEFAULT_ID, label: '电脑默认麦克风', kind: 'desktop-microphone' },
       ]
       for (const [index, device] of devices.entries()) {
@@ -132,7 +132,7 @@ export function useDesktopMicrophone({ selectedInputId, onFrame }: UseDesktopMic
         worklet = new AudioWorkletNode(context, CAPTURE_WORKLET_NAME)
         silentGain = context.createGain()
         silentGain.gain.value = 0
-        worklet.port.onmessage = (event: MessageEvent<DesktopAudioInputFrame>) => {
+        worklet.port.onmessage = (event: MessageEvent<LiveStreamAudioInputFrame>) => {
           if (cancelled || !event.data?.pcm16Le) return
           const pcm16Le = event.data.pcm16Le instanceof Uint8Array
             ? event.data.pcm16Le

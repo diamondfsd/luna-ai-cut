@@ -152,28 +152,21 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     start: () => ipcRenderer.invoke('obs-stream-demo:start'),
     stop: () => ipcRenderer.invoke('obs-stream-demo:stop'),
   },
-  desktopVirtualCamera: {
-    status: () => ipcRenderer.invoke('desktop-virtual-camera:status'),
-    install: () => ipcRenderer.invoke('desktop-virtual-camera:install'),
-    start: (options) => ipcRenderer.invoke('desktop-virtual-camera:start', options),
-    startOutput: () => ipcRenderer.invoke('desktop-virtual-camera:start-output'),
-    stopOutput: () => ipcRenderer.invoke('desktop-virtual-camera:stop-output'),
-    setAudioDelay: (audioDelayMs: number) => ipcRenderer.invoke('desktop-virtual-camera:set-audio-delay', audioDelayMs),
-    setAudioMonitor: (enabled: boolean) => ipcRenderer.invoke('desktop-virtual-camera:set-audio-monitor', enabled),
-    setAudioSource: (source) => ipcRenderer.invoke('desktop-virtual-camera:set-audio-source', source),
-    sendAudioFrame: (frame) => ipcRenderer.invoke('desktop-virtual-camera:send-audio-frame', frame),
+  liveStream: {
+    status: () => ipcRenderer.invoke('live-stream:status'),
+    start: () => ipcRenderer.invoke('live-stream:start'),
+    startOutput: (options) => ipcRenderer.invoke('live-stream:start-output', options),
+    stopOutput: () => ipcRenderer.invoke('live-stream:stop-output'),
+    setAudioMonitor: (enabled: boolean) => ipcRenderer.invoke('live-stream:set-audio-monitor', enabled),
+    setAudioSource: (source) => ipcRenderer.invoke('live-stream:set-audio-source', source),
+    sendAudioFrame: (frame) => ipcRenderer.invoke('live-stream:send-audio-frame', frame),
     onAudioMonitorFrame: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, frame: import('../src/shared/types').DesktopAudioMonitorFrame) => callback(frame)
-      ipcRenderer.on('desktop-virtual-camera:audio-monitor-frame', listener)
-      return () => ipcRenderer.off('desktop-virtual-camera:audio-monitor-frame', listener)
+      const listener = (_event: Electron.IpcRendererEvent, frame: import('../src/shared/types').LiveStreamAudioMonitorFrame) => callback(frame)
+      ipcRenderer.on('live-stream:audio-monitor-frame', listener)
+      return () => ipcRenderer.off('live-stream:audio-monitor-frame', listener)
     },
-    sendControl: (command) => ipcRenderer.invoke('desktop-virtual-camera:send-control', command),
-    stop: () => ipcRenderer.invoke('desktop-virtual-camera:stop'),
-    openExtensionSettings: () => ipcRenderer.invoke('desktop-virtual-camera:open-extension-settings'),
-    revealInstallSource: () => ipcRenderer.invoke('desktop-virtual-camera:reveal-install-source'),
-    chooseDebugVideo: () => ipcRenderer.invoke('desktop-virtual-camera:choose-debug-video'),
-    startDebugVideo: (filePath: string) => ipcRenderer.invoke('desktop-virtual-camera:start-debug-video', filePath),
-    stopDebugVideo: () => ipcRenderer.invoke('desktop-virtual-camera:stop-debug-video'),
+    sendControl: (command) => ipcRenderer.invoke('live-stream:send-control', command),
+    stop: () => ipcRenderer.invoke('live-stream:stop'),
   },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),

@@ -2,22 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import {
   Download,
   Mic,
-  MonitorUp,
-  Settings2,
+  Radio,
+  Square,
   Video,
   Volume2,
   VolumeX,
 } from 'lucide-react'
 
-import { Button, Select, Slider } from '../ui'
+import { Button, Input, Select, Slider } from '../ui'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { LiveGimbalPad } from './LiveGimbalPad'
 import { isDesktopAudioInput, useDesktopMicrophone } from '../hooks/useDesktopMicrophone'
 import { usePcmAudioMonitor } from '../hooks/usePcmAudioMonitor'
 import type {
-  DesktopAudioInputOption,
-  DesktopControlCommand,
-  DesktopVirtualCameraStatus,
+  LiveStreamAudioInputOption,
+  LiveStreamControlCommand,
+  LiveStreamStatus,
   NormalizedVideoRegion,
 } from '../shared/types'
 import '../styles/live-control-panel.css'
@@ -25,16 +25,16 @@ import '../styles/live-control-panel.css'
 const MOBILE_APP_DOWNLOAD_URL = 'https://lunaka.diamondfsd.com/'
 
 interface LiveControlPanelProps {
-  status: DesktopVirtualCameraStatus
-  audioDelayMs: number
+  status: LiveStreamStatus
   busy: boolean
-  canInstall: boolean
-  needsApproval: boolean
-  onAudioDelayChange: (value: number) => void
-  onAudioDelayCommit: (value: number) => void
   onStart: () => void
-  onInstall: () => void
-  onOpenSettings: () => void
+  rtmpUrl: string
+  streamKey: string
+  onRtmpUrlChange: (value: string) => void
+  onStreamKeyChange: (value: string) => void
+  onRtmpConfigBlur: () => void
+  onStartOutput: () => void
+  onStopOutput: () => void
 }
 
 function contentPoint(
@@ -60,7 +60,7 @@ function formatZoom(value: number): string {
   return `${value.toFixed(value % 1 === 0 ? 0 : 1)}x`
 }
 
-function audioOptionLabel(option: DesktopAudioInputOption): string {
+function audioOptionLabel(option: LiveStreamAudioInputOption): string {
   const label = option.label?.trim()
   if (label) return label
   if (option.kind === 'none') return '关闭'
@@ -72,15 +72,15 @@ function audioOptionLabel(option: DesktopAudioInputOption): string {
 
 export function LiveControlPanel({
   status,
-  audioDelayMs,
   busy,
-  canInstall,
-  needsApproval,
-  onAudioDelayChange,
-  onAudioDelayCommit,
   onStart,
-  onInstall,
-  onOpenSettings,
+  rtmpUrl,
+  streamKey,
+  onRtmpUrlChange,
+  onStreamKeyChange,
+  onRtmpConfigBlur,
+  onStartOutput,
+  onStopOutput,
 }: LiveControlPanelProps) {
   const previewStageRef = useRef<HTMLDivElement>(null)
   const previewPaneRef = useRef<HTMLDivElement>(null)
@@ -100,13 +100,13 @@ export function LiveControlPanel({
   const [previewDimensions, setPreviewDimensions] = useState({ width: 16, height: 9 })
   const [previewReady, setPreviewReady] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
-  const [phoneMicrophoneOptions, setPhoneMicrophoneOptions] = useState<DesktopAudioInputOption[]>([
+  const [phoneMicrophoneOptions, setPhoneMicrophoneOptions] = useState<LiveStreamAudioInputOption[]>([
     { id: 'none', label: '关闭', kind: 'none' },
     { id: 'phone-microphone', label: '手机麦克风', kind: 'phone-microphone' },
   ])
   const [microphoneId, setMicrophoneId] = useState('phone-microphone')
 
-  const active = status.state === 'running' || status.state === 'waiting-usb' || status.state === 'starting'
+  const active = Boolean(status.startedAt) && status.state !== 'stopping'
   const streaming = status.usbState === 'streaming'
   const disabled = !status.controlReady
   const capabilities = status.capabilities
@@ -114,7 +114,7 @@ export function LiveControlPanel({
   const canMonitorAudio = desktopMicrophoneSelected ? active : status.usbState === 'streaming'
   const audioMonitor = usePcmAudioMonitor(
     canMonitorAudio,
-    audioDelayMs,
+    0,
     !desktopMicrophoneSelected,
     microphoneId,
   )
@@ -126,7 +126,7 @@ export function LiveControlPanel({
     pcm16Le: Uint8Array
   }) => {
     pushPcmFrame(frame)
-    void window.luna.desktopVirtualCamera.sendAudioFrame(frame).catch(() => undefined)
+    void window.luna.liveStream.sendAudioFrame(frame).catch(() => undefined)
   }, [pushPcmFrame])
   const desktopMicrophone = useDesktopMicrophone({
     selectedInputId: microphoneId,
@@ -144,12 +144,12 @@ export function LiveControlPanel({
     ?? microphoneOptions[0]
   const effectiveMicrophoneId = selectedMicrophone?.id ?? microphoneId
 
-  const send = useCallback((command: DesktopControlCommand) => {
-    void window.luna.desktopVirtualCamera.sendControl(command).catch(() => undefined)
+  const send = useCallback((command: LiveStreamControlCommand) => {
+    void window.luna.liveStream.sendControl(command).catch(() => undefined)
   }, [])
 
   useEffect(() => {
-    void window.luna.desktopVirtualCamera
+    void window.luna.liveStream
       .setAudioSource(desktopMicrophoneSelected ? 'desktop' : 'phone')
       .catch(() => undefined)
     if (!status.controlReady) return
@@ -297,6 +297,7 @@ export function LiveControlPanel({
     : status.controlReady
       ? '控制已连接'
       : status.usbMessage
+  const canStartOutput = active && status.usbState !== 'error' && Boolean(rtmpUrl.trim())
 
   return (
     <section className="live-control-panel" aria-label="直播控制">
@@ -358,21 +359,11 @@ export function LiveControlPanel({
                 <li><span>2</span><p>用 USB 连接手机和电脑</p></li>
               </ol>
               <div className="live-preview-actions">
-                {canInstall && (
-                  <Button variant="secondary" icon={<MonitorUp size={15} />} onClick={onInstall} disabled={busy}>
-                    {status.hostAppInstalled ? '安装虚拟麦克风' : '安装音视频组件'}
-                  </Button>
-                )}
-                {needsApproval && (
-                  <Button variant="secondary" icon={<Settings2 size={15} />} onClick={onOpenSettings} disabled={busy}>
-                    打开系统设置
-                  </Button>
-                )}
                 <Button
                   variant="primary"
                   icon={<Video size={15} />}
                   onClick={onStart}
-                  disabled={busy || status.state === 'unsupported'}
+                  disabled={busy}
                 >
                   {busy ? '处理中...' : '获取画面'}
                 </Button>
@@ -401,16 +392,49 @@ export function LiveControlPanel({
           <span className={status.controlReady ? 'ready' : ''}>{controlStatus}</span>
         </div>
 
-        {(needsApproval || (status.outputEnabled && !status.outputReady)) && (
+        {status.outputEnabled && !status.outputReady && (
           <div className="live-control-notice">
-            <span>{status.outputMessage ?? '虚拟摄像头当前不可用'}</span>
-            {needsApproval && (
-              <Button variant="secondary" size="mini" icon={<Settings2 size={14} />} onClick={onOpenSettings}>
-                打开系统设置
-              </Button>
-            )}
+            <span>{status.outputMessage ?? '正在连接推流服务'}</span>
           </div>
         )}
+
+        <section className="live-control-section">
+          <h2>直播推流</h2>
+          <div className="live-control-section-body">
+            <label className="live-control-block">
+              <span>推流地址</span>
+              <Input
+                variant="compact"
+                fullWidth
+                value={rtmpUrl}
+                placeholder="rtmp://"
+                disabled={status.outputEnabled}
+                onChange={(event) => onRtmpUrlChange(event.target.value)}
+                onBlur={onRtmpConfigBlur}
+              />
+            </label>
+            <label className="live-control-block">
+              <span>直播码</span>
+              <Input
+                variant="compact"
+                fullWidth
+                type="password"
+                value={streamKey}
+                disabled={status.outputEnabled}
+                onChange={(event) => onStreamKeyChange(event.target.value)}
+                onBlur={onRtmpConfigBlur}
+              />
+            </label>
+            <Button
+              variant={status.outputEnabled ? 'danger' : 'primary'}
+              icon={status.outputEnabled ? <Square size={15} /> : <Radio size={15} />}
+              onClick={status.outputEnabled ? onStopOutput : onStartOutput}
+              disabled={busy || (!status.outputEnabled && !canStartOutput)}
+            >
+              {status.outputEnabled ? '停止直播' : '开始直播'}
+            </Button>
+          </div>
+        </section>
 
         <section className="live-control-section">
           <h2>画面</h2>
@@ -500,21 +524,6 @@ export function LiveControlPanel({
               </Button>
             </div>
             {audioMonitor.error && <span className="live-control-error">{audioMonitor.error}</span>}
-
-            <div className="live-control-output">
-              <span>虚拟麦克风</span>
-              <strong>{status.virtualMicrophoneInstalled ? status.virtualMicrophoneName : '尚未安装'}</strong>
-              {canInstall && (
-                <Button variant="secondary" size="mini" icon={<MonitorUp size={14} />} onClick={onInstall} disabled={busy}>
-                  安装
-                </Button>
-              )}
-            </div>
-
-            <label className="live-control-block">
-              <span>声音漂移 <output>{audioDelayMs > 0 ? '+' : ''}{audioDelayMs} ms</output></span>
-              <Slider value={audioDelayMs} min={-10_000} max={10_000} step={10} ariaLabel="声音漂移" onValueChange={onAudioDelayChange} onValueCommit={onAudioDelayCommit} />
-            </label>
           </div>
         </section>
       </aside>
