@@ -84,8 +84,10 @@ export interface AppSettings {
   localMediaShareFiles?: string[]
   /** 点击窗口关闭按钮时退出应用，还是只隐藏窗口。 */
   windowCloseBehavior?: WindowCloseBehavior
-  /** 直播声音相对画面的漂移补偿；正值延迟声音，负值提前声音。 */
-  liveAudioDelayMs?: number
+  /** 最近使用的 RTMP 推流地址。 */
+  liveRtmpUrl?: string
+  /** 最近使用的 RTMP 直播码。 */
+  liveRtmpStreamKey?: string
   /** SMB NAS 同步配置。密码按产品要求直接保存在应用设置中。 */
   nasSync?: NasSyncSettings
 }

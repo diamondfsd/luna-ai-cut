@@ -7,7 +7,7 @@ import {
   consumeFrames,
   encodeControlFrame,
   idleUsbStatus,
-  type DesktopMediaReceiver,
+  type LiveMediaReceiver,
   type UsbAoaStatus,
   type UsbControlRequest,
   type UsbMediaFrame,
@@ -32,7 +32,7 @@ function proxyBinary(): string | null {
   return candidates.find((candidate) => candidate === 'iproxy' || existsSync(candidate)) ?? null
 }
 
-export class IosTcpReceiver implements DesktopMediaReceiver {
+export class IosTcpReceiver implements LiveMediaReceiver {
   private readonly onFrame: (frame: UsbMediaFrame) => void
   private statusValue: UsbAoaStatus = idleUsbStatus('iOS USB 接收器未启动', 'ios-tcp')
   private running = false

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { DesktopAudioMonitorFrame } from '../shared/types'
+import type { LiveStreamAudioMonitorFrame } from '../shared/types'
 
 const BASE_LEAD_SECONDS = 0.06
 const DELAY_CHANGE_DEBOUNCE_MS = 150
@@ -75,10 +75,10 @@ export function usePcmAudioMonitor(
     const context = contextRef.current
     contextRef.current = null
     if (context) void context.close().catch(() => undefined)
-    if (notifyMain) void window.luna.desktopVirtualCamera.setAudioMonitor(false).catch(() => undefined)
+    if (notifyMain) void window.luna.liveStream.setAudioMonitor(false).catch(() => undefined)
   }, [clearPendingTimer, clearScheduledSources])
 
-  const pushFrame = useCallback((frame: DesktopAudioMonitorFrame) => {
+  const pushFrame = useCallback((frame: LiveStreamAudioMonitorFrame) => {
     if (!enabledRef.current) return
     const bytes = frame.pcm16Le instanceof Uint8Array
       ? frame.pcm16Le
@@ -112,7 +112,7 @@ export function usePcmAudioMonitor(
   }, [])
 
   useEffect(() => {
-    const unsubscribe = window.luna.desktopVirtualCamera.onAudioMonitorFrame((frame: DesktopAudioMonitorFrame) => {
+    const unsubscribe = window.luna.liveStream.onAudioMonitorFrame((frame: LiveStreamAudioMonitorFrame) => {
       if (!phoneFramesEnabledRef.current) return
       pushFrame(frame)
     })
@@ -154,7 +154,7 @@ export function usePcmAudioMonitor(
     try {
       const context = new AudioContext()
       await context.resume()
-      await window.luna.desktopVirtualCamera.setAudioMonitor(true)
+      await window.luna.liveStream.setAudioMonitor(true)
       contextRef.current = context
       enabledRef.current = true
       resetTimeline()
