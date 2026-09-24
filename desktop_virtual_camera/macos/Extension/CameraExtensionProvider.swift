@@ -46,11 +46,29 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
 	private var _lastFrameBytes: Data?
 
+	private func trace(_ message: String) {
+		NSLog("[LunaExtension] %@", message)
+		os_log(.error, "%{public}@", message)
+		let line = "\(Date()) [extension] \(message)\n"
+		let url = LunaCameraSharedFrameStore.sharedURL()?
+			.deletingLastPathComponent()
+			.appendingPathComponent("extension-debug.log")
+		guard let url else { return }
+		if let handle = try? FileHandle(forWritingTo: url) {
+			handle.seekToEndOfFile()
+			handle.write(Data(line.utf8))
+			try? handle.close()
+		} else {
+			try? Data(line.utf8).write(to: url, options: .atomic)
+		}
+	}
+
 	init(localizedName: String) {
 
 		super.init()
 		let deviceID = UUID() // replace this with your device UUID
 		self.device = CMIOExtensionDevice(localizedName: localizedName, deviceID: deviceID, legacyDeviceID: nil, source: self)
+		trace("initialized sharedURL=\(LunaCameraSharedFrameStore.sharedURL()?.path ?? "nil")")
 
 		let dimensions: [(Int32, Int32)] = [(1280, 720), (720, 1280)]
 		let streamFormats = dimensions.compactMap { width, height -> CMIOExtensionStreamFormat? in
@@ -120,6 +138,9 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 			var err: OSStatus = 0
 			let now = CMClockGetTime(CMClockGetHostTimeClock())
 			let sharedFrame = LunaCameraSharedFrameStore.readLatestBGRA()
+			if Int(now.seconds).isMultiple(of: 5) {
+				self.trace("tick shared=\(sharedFrame != nil) url=\(LunaCameraSharedFrameStore.sharedURL()?.path ?? "nil")")
+			}
 			// The client owns the active CMIO format. The source frame may have the
 			// opposite orientation, so it must be fitted into this format instead
 			// of changing the sample's format behind the client's back.
@@ -165,7 +186,7 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 						}
 					}
 					if sharedFrame.sequence == 1 || sharedFrame.sequence.isMultiple(of: 30) {
-						os_log(.info, "copied shared frame seq=%{public}llu source=%{public}dx%{public}d target=%{public}dx%{public}d format=%{public}d", sharedFrame.sequence, sourceWidth, sourceHeight, width, height, formatIndex)
+						self.trace("copied seq=\(sharedFrame.sequence) source=\(sourceWidth)x\(sourceHeight) target=\(width)x\(height) format=\(formatIndex)")
 					}
 					CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
 					var sbuf: CMSampleBuffer!
@@ -174,8 +195,15 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 					err = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: self._videoDescriptions[formatIndex], sampleTiming: &timingInfo, sampleBufferOut: &sbuf)
 					if err == 0 {
 						self._streamSource.stream.send(sbuf, discontinuity: [], hostTimeInNanoseconds: UInt64(timingInfo.presentationTimeStamp.seconds * Double(NSEC_PER_SEC)))
+					} else {
+						self.trace("sample create error=\(err) copied seq=\(sharedFrame.sequence)")
 					}
 					return
+				}
+				if let sharedFrame {
+					self.trace("shared frame rejected seq=\(sharedFrame.sequence) source=\(sharedFrame.width)x\(sharedFrame.height) bytes=\(sharedFrame.bytes.count) target=\(width)x\(height)")
+				} else {
+					self.trace("shared frame unavailable target=\(width)x\(height)")
 				}
 
 				let whiteStripeStartRow = self._whiteStripeStartRow
@@ -213,6 +241,7 @@ class LunaCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 		}
 
 		_timer!.resume()
+		trace("streaming started activeFormat=\(_streamSource.activeFormatIndex)")
 	}
 
 	func stopStreaming() {

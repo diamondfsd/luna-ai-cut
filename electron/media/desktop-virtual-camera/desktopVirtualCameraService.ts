@@ -2,7 +2,6 @@ import { app, shell, type WebContents } from 'electron'
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createWriteStream, existsSync, renameSync, rmSync, type WriteStream } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createConnection, type Socket } from 'node:net'
 import { promisify } from 'node:util'
@@ -655,7 +654,6 @@ function clearPublishedFrame(): void {
   const candidates = [
     '/private/tmp/luna-virtual-camera/latest-bgra.frame',
     '/tmp/latest-bgra.frame',
-    join(homedir(), 'Library', 'Group Containers', '8B6J8663PS.com.diamondfsd.luna.virtualcamera', 'latest-bgra.frame'),
   ]
   for (const candidate of candidates) rmSync(candidate, { force: true })
 }
