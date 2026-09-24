@@ -32,44 +32,18 @@ final class LunaHevcDecoder {
         let nalUnits = Self.splitAnnexB(accessUnit)
         guard !nalUnits.isEmpty else { return }
 
-        if formatDescription == nil {
-            let parameterSets = nalUnits.filter { nalType($0) == 32 || nalType($0) == 33 || nalType($0) == 34 }
-            guard parameterSets.count >= 3 else { return }
-            let vps = parameterSets.first { nalType($0) == 32 }!
-            let sps = parameterSets.first { nalType($0) == 33 }!
-            let pps = parameterSets.first { nalType($0) == 34 }!
-            var description: CMVideoFormatDescription?
-            let status = vps.withUnsafeBytes { vpsBytes in
-                sps.withUnsafeBytes { spsBytes in
-                    pps.withUnsafeBytes { ppsBytes in
-                        let pointers: [UnsafePointer<UInt8>] = [
-                            vpsBytes.bindMemory(to: UInt8.self).baseAddress!,
-                            spsBytes.bindMemory(to: UInt8.self).baseAddress!,
-                            ppsBytes.bindMemory(to: UInt8.self).baseAddress!
-                        ]
-                        let sizes = [vps.count, sps.count, pps.count]
-                        return pointers.withUnsafeBufferPointer { pointerBuffer in
-                            sizes.withUnsafeBufferPointer { sizeBuffer in
-                                CMVideoFormatDescriptionCreateFromHEVCParameterSets(
-                                    allocator: kCFAllocatorDefault,
-                                    parameterSetCount: 3,
-                                    parameterSetPointers: pointerBuffer.baseAddress!,
-                                    parameterSetSizes: sizeBuffer.baseAddress!,
-                                    nalUnitHeaderLength: 4,
-                                    extensions: nil,
-                                    formatDescriptionOut: &description
-                                )
-                            }
-                        }
-                    }
+        if let nextDescription = makeFormatDescription(from: nalUnits) {
+            let currentDimensions = formatDescription.map(CMVideoFormatDescriptionGetDimensions)
+            let nextDimensions = CMVideoFormatDescriptionGetDimensions(nextDescription)
+            if currentDimensions == nil || currentDimensions!.width != nextDimensions.width || currentDimensions!.height != nextDimensions.height {
+                if let currentDimensions {
+                    trace("format changed \(currentDimensions.width)x\(currentDimensions.height) -> \(nextDimensions.width)x\(nextDimensions.height)")
                 }
+                session.map(VTDecompressionSessionInvalidate)
+                session = nil
+                formatDescription = nextDescription
+                createSession(for: nextDescription)
             }
-            guard status == noErr, let description else {
-                trace("parameter set error: \(status)")
-                return
-            }
-            formatDescription = description
-            createSession(for: description)
         }
 
         guard let formatDescription, let session else { return }
@@ -152,6 +126,45 @@ final class LunaHevcDecoder {
             decompressionSessionOut: &session
         )
         trace("session status: \(status)")
+    }
+
+    private func makeFormatDescription(from nalUnits: [Data]) -> CMVideoFormatDescription? {
+        guard let vps = nalUnits.first(where: { nalType($0) == 32 }),
+              let sps = nalUnits.first(where: { nalType($0) == 33 }),
+              let pps = nalUnits.first(where: { nalType($0) == 34 }) else {
+            return nil
+        }
+        var description: CMVideoFormatDescription?
+        let status = vps.withUnsafeBytes { vpsBytes in
+            sps.withUnsafeBytes { spsBytes in
+                pps.withUnsafeBytes { ppsBytes in
+                    let pointers: [UnsafePointer<UInt8>] = [
+                        vpsBytes.bindMemory(to: UInt8.self).baseAddress!,
+                        spsBytes.bindMemory(to: UInt8.self).baseAddress!,
+                        ppsBytes.bindMemory(to: UInt8.self).baseAddress!
+                    ]
+                    let sizes = [vps.count, sps.count, pps.count]
+                    return pointers.withUnsafeBufferPointer { pointerBuffer in
+                        sizes.withUnsafeBufferPointer { sizeBuffer in
+                            CMVideoFormatDescriptionCreateFromHEVCParameterSets(
+                                allocator: kCFAllocatorDefault,
+                                parameterSetCount: 3,
+                                parameterSetPointers: pointerBuffer.baseAddress!,
+                                parameterSetSizes: sizeBuffer.baseAddress!,
+                                nalUnitHeaderLength: 4,
+                                extensions: nil,
+                                formatDescriptionOut: &description
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        guard status == noErr else {
+            trace("parameter set error: \(status)")
+            return nil
+        }
+        return description
     }
 
     fileprivate func publish(_ pixelBuffer: CVPixelBuffer, timestamp: UInt64) {

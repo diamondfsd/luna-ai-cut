@@ -3,10 +3,11 @@
   <key>CFBundleName</key><string>Luna Virtual Camera Extension</string>
   <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
   <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
-  <key>CFBundleVersion</key><string>10</string>
-  <key>CFBundleShortVersionString</key><string>0.1.9</string>
+  <key>CFBundleVersion</key><string>15</string>
+  <key>CFBundleShortVersionString</key><string>0.1.14</string>
   <key>CFBundlePackageType</key><string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
-  <key>CFBundleIconFile</key><string>luna-camera-icon.png</string>
+  <key>CFBundleIconFile</key><string>luna-camera-icon.icns</string>
+  <key>CFBundleIconName</key><string>luna-camera-icon</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>CMIOExtension</key><dict>
     <key>CMIOExtensionMachServiceName</key><string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
