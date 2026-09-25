@@ -83,9 +83,9 @@ function statusMessage(state: LiveStreamState, usb: UsbAoaStatus, rtmpMessage: s
   if (state === 'idle') return '输入接收未启动'
   if (state === 'waiting-usb') return usb.message
   if (state === 'ready') return '手机连接已就绪'
-  if (state === 'starting') return '正在连接推流服务'
-  if (state === 'running') return '正在直播'
-  if (state === 'stopping') return '正在停止直播'
+  if (state === 'starting') return '正在准备直播地址'
+  if (state === 'running') return '本机直播地址已就绪'
+  if (state === 'stopping') return '正在停止直播输出'
   return usb.error ?? rtmpMessage
 }
 
@@ -127,7 +127,10 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     audioChannels: usb.audioChannels,
     outputEnabled,
     outputReady,
-    outputMessage: rtmp?.error ?? null,
+    pullUrl: rtmp?.pullUrl ?? null,
+    outputAcceleration: rtmp?.acceleration ?? null,
+    outputWarning: rtmp?.warning ?? null,
+    outputMessage: rtmp?.error ?? (rtmp?.state === 'starting' ? rtmp.message : null),
     startedAt: activeSession?.startedAt ?? null,
     message: error ?? statusMessage(state, usb, rtmp?.message ?? ''),
     error,
@@ -237,7 +240,7 @@ export function startLiveStreamOutput(options: LiveStreamOptions): Promise<LiveS
     const session = activeSession
     if (!session) throw new Error('请先获取画面')
     try {
-      await session.rtmp.start(options.rtmpUrl, options.streamKey)
+      await session.rtmp.start(options)
       session.error = null
       return getLiveStreamStatus()
     } catch (error) {
