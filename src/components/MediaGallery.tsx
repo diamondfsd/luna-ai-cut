@@ -1,10 +1,12 @@
 import { CalendarDays, FileQuestion, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { MediaCard } from './MediaCard'
-import { useMediaLib } from '../pages/useMediaLibraryController'
+import { useMediaLib, type CardSize } from '../pages/useMediaLibraryController'
+import type { LunaFile } from '../shared/types'
 import { Button, IconButton, LoadingIndicator } from '../ui'
 import '../styles/media-date-navigation.css'
+import '../styles/media-gallery-virtual.css'
 
 interface MediaGalleryProps {
   mode: 'camera' | 'local'
@@ -22,6 +24,129 @@ function setScrollTop(target: ScrollTarget, top: number): void {
   else (target as HTMLElement).scrollTop = top
 }
 
+const VIRTUAL_OVERSCAN_ROWS = 2
+
+function gridColumns(cardSize: CardSize): number {
+  if (cardSize === 'medium') return 7
+  if (cardSize === 'small') return 10
+  return 5
+}
+
+function gridGap(cardSize: CardSize): number {
+  return cardSize === 'small' ? 12 : 16
+}
+
+function estimatedRowHeight(cardSize: CardSize): number {
+  const columns = gridColumns(cardSize)
+  const gap = gridGap(cardSize)
+  const cardWidth = (1000 - gap * (columns - 1)) / columns
+  return cardWidth * 0.75 + 1 + gap
+}
+
+function findScrollTarget(element: HTMLElement): ScrollTarget {
+  let parent: HTMLElement | null = element
+  while (parent) {
+    const style = window.getComputedStyle(parent)
+    if (style.overflowY === 'auto' || style.overflowY === 'scroll') return parent
+    parent = parent.parentElement
+  }
+  return window
+}
+
+function viewportBounds(target: ScrollTarget): { top: number; bottom: number } {
+  if (target === window) return { top: 0, bottom: window.innerHeight }
+  const rect = (target as HTMLElement).getBoundingClientRect()
+  return { top: rect.top, bottom: rect.bottom }
+}
+
+interface VirtualizedMediaGridProps {
+  items: LunaFile[]
+  cardSize: CardSize
+  layoutSignature: string
+  scrollTarget: ScrollTarget | null
+  scrollVersion: number
+  renderCard: (file: LunaFile) => ReactNode
+}
+
+/**
+ * 保留网格的真实高度，但只将视口附近的行挂载到 DOM，避免大媒体库同时创建数千个卡片副作用。
+ */
+function VirtualizedMediaGrid({ items, cardSize, layoutSignature, scrollTarget, scrollVersion, renderCard }: VirtualizedMediaGridProps) {
+  const gridRef = useRef<HTMLDivElement>(null)
+  const columns = gridColumns(cardSize)
+  const gap = gridGap(cardSize)
+  const rowCount = Math.ceil(items.length / columns)
+  const [layout, setLayout] = useState(() => ({
+    rowHeight: estimatedRowHeight(cardSize),
+    startRow: 0,
+    endRow: 0,
+    layoutSignature: '',
+  }))
+
+  const measure = useCallback(() => {
+    const grid = gridRef.current
+    if (!grid || grid.clientWidth <= 0) return
+
+    const cardWidth = Math.max(1, (grid.clientWidth - gap * (columns - 1)) / columns)
+    const rowHeight = cardWidth * 0.75 + 1 + gap
+    const target = scrollTarget ?? findScrollTarget(grid)
+    const viewport = viewportBounds(target)
+    const gridRect = grid.getBoundingClientRect()
+    const firstVisibleRow = Math.floor((viewport.top - gridRect.top) / rowHeight)
+    const lastVisibleRow = Math.ceil((viewport.bottom - gridRect.top) / rowHeight)
+    const startRow = Math.min(rowCount, Math.max(0, firstVisibleRow - VIRTUAL_OVERSCAN_ROWS))
+    const endRow = Math.min(rowCount, Math.max(startRow, lastVisibleRow + VIRTUAL_OVERSCAN_ROWS))
+
+    setLayout((current) => (
+      current.rowHeight === rowHeight
+        && current.startRow === startRow
+        && current.endRow === endRow
+        && current.layoutSignature === layoutSignature
+        ? current
+        : { rowHeight, startRow, endRow, layoutSignature }
+    ))
+  }, [columns, gap, layoutSignature, rowCount, scrollTarget])
+
+  useLayoutEffect(() => {
+    measure()
+    const grid = gridRef.current
+    if (!grid) return
+    const resizeObserver = new ResizeObserver(measure)
+    resizeObserver.observe(grid)
+    return () => resizeObserver.disconnect()
+  }, [measure])
+
+  useLayoutEffect(() => {
+    measure()
+  }, [measure, scrollVersion])
+
+  const gridHeight = Math.max(0, rowCount * layout.rowHeight - (rowCount > 0 ? gap : 0))
+  const rows = []
+  for (let row = layout.startRow; row < layout.endRow; row += 1) {
+    const startIndex = row * columns
+    const rowItems = items.slice(startIndex, startIndex + columns)
+    rows.push(
+      <div
+        className={`virtual-media-row card-size-${cardSize}`}
+        key={row}
+        style={{ top: row * layout.rowHeight }}
+      >
+        {rowItems.map(renderCard)}
+      </div>,
+    )
+  }
+
+  return (
+    <div
+      ref={gridRef}
+      className={`media-grid virtual-media-grid card-size-${cardSize}`}
+      style={{ height: gridHeight }}
+    >
+      {rows}
+    </div>
+  )
+}
+
 export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
   const ctrl = useMediaLib()
   const { downloadProgress } = ctrl
@@ -33,6 +158,8 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
   const dateNavScrollFrameRef = useRef(0)
   const navigationTargetRef = useRef<string | null>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
+  const [scrollTarget, setScrollTarget] = useState<ScrollTarget | null>(null)
+  const [scrollVersion, setScrollVersion] = useState(0)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dateNavCollapsed, setDateNavCollapsed] = useState(false)
   const [activeDateGroup, setActiveDateGroup] = useState<string | null>(ctrl.firstGroup)
@@ -40,6 +167,32 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
   const selectedLocalPaths = useMemo(() => ctrl.selectedFiles
     .map((file) => file.downloadFilePath ?? file.localPath)
     .filter((filePath): filePath is string => Boolean(filePath)), [ctrl.selectedFiles])
+  const groupLayoutSignature = ctrl.groups
+    .map(([group, items]) => `${group}:${items.length}`)
+    .join('\0')
+
+  useEffect(() => {
+    const gallery = galleryRef.current
+    if (!gallery) return
+    const target = findScrollTarget(gallery)
+    scrollTargetRef.current = target
+    setScrollTarget(target)
+    let frame = 0
+    const updateScrollVersion = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        setScrollVersion((version) => version + 1)
+      })
+    }
+    target.addEventListener('scroll', updateScrollVersion, { passive: true })
+    window.addEventListener('resize', updateScrollVersion)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      target.removeEventListener('scroll', updateScrollVersion)
+      window.removeEventListener('resize', updateScrollVersion)
+    }
+  }, [])
 
   useEffect(() => {
     setActiveDateGroup(ctrl.firstGroup)
@@ -85,7 +238,7 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
       target.removeEventListener('scroll', updateActiveDate)
       window.removeEventListener('resize', updateActiveDate)
     }
-  }, [groupSignature])
+  }, [groupLayoutSignature, groupSignature])
 
   useEffect(() => {
     if (!activeDateGroup || navigationTargetRef.current) return
@@ -281,8 +434,13 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
             </div>
           </div>
 
-          <div className={`media-grid card-size-${ctrl.cardSize}`}>
-            {items.map((file) => {
+          <VirtualizedMediaGrid
+            items={items}
+            cardSize={ctrl.cardSize}
+            layoutSignature={groupLayoutSignature}
+            scrollTarget={scrollTarget}
+            scrollVersion={scrollVersion}
+            renderCard={(file) => {
               const isSelected = ctrl.selected.has(file.id)
               const progress = downloadProgress.get(file.name)
               const localPath = file.downloadFilePath ?? file.localPath
@@ -301,8 +459,8 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
                   onDragStart={isSelected && localPath ? () => window.luna.startFileDrag(selectedLocalPaths, file.thumbnailUrl) : undefined}
                 />
               )
-            })}
-          </div>
+            }}
+          />
         </section>
       ))}
       {!ctrl.isCurrentLoading && ctrl.filteredFiles.length === 0 && (

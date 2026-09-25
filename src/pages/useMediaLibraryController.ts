@@ -21,7 +21,9 @@ export type PageType = 'camera' | 'local'
 function groupFiles(files: LunaFile[]): Array<[string, LunaFile[]]> {
   const groups = new Map<string, LunaFile[]>()
   for (const file of files) {
-    groups.set(file.groupDay, [...(groups.get(file.groupDay) ?? []), file])
+    const group = groups.get(file.groupDay)
+    if (group) group.push(file)
+    else groups.set(file.groupDay, [file])
   }
   return [...groups.entries()]
 }

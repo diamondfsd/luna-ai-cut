@@ -1,5 +1,5 @@
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import { Check, FolderOpen, X } from 'lucide-react'
+import { memo, type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { Check, FolderOpen, Loader2, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { downloadProgressPercent } from '../lib/downloadProgress'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
@@ -7,6 +7,7 @@ import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { ThumbImage } from './ThumbImage'
 import dolbyVisionLogo from '../assets/logos/dolby-vision-vertical.png'
 import '../styles/media-card-format-badge.css'
+import '../styles/media-card.css'
 
 const LIVE_DETECT_ROOT_MARGIN = '0px 0px 300px 0px'
 
@@ -37,7 +38,7 @@ function formatDuration(seconds: number): string {
     : `${m}:${String(s).padStart(2, '0')}`
 }
 
-export function MediaCard({
+function MediaCardImpl({
   file,
   isDownloadsPage,
   selected,
@@ -60,6 +61,7 @@ export function MediaCard({
   const [detectedDolbyVision, setDetectedDolbyVision] = useState<boolean | null>(null)
   const [detectedDolbyVisionProfile, setDetectedDolbyVisionProfile] = useState<number | null>(null)
   const [detectedILog, setDetectedILog] = useState<boolean | null>(null)
+  const [thumbnailLoading, setThumbnailLoading] = useState(false)
   useEffect(() => {
     if (file.kind !== 'video') return
     const unsub = window.luna.onVideoFrameRateReady((data) => {
@@ -82,6 +84,10 @@ export function MediaCard({
     if (file.kind !== 'video' || (file.duration != null && file.dolbyVision != null && file.iLog != null)) return
     void window.luna.requestVideoFrameRate(file, cacheFilePath).catch(() => {})
   }, [file])
+
+  const handleThumbnailLoading = useCallback((loading: boolean) => {
+    setThumbnailLoading((current) => current === loading ? current : loading)
+  }, [])
 
   const effectiveDuration = file.duration ?? videoDuration
   const isDolbyVision = file.dolbyVision ?? detectedDolbyVision ?? false
@@ -167,7 +173,13 @@ export function MediaCard({
           alt={file.name}
           cacheWhenUsingRemoteThumbnail={file.kind === 'video'}
           onCacheReady={handleCacheReady}
+          onLoadingChange={handleThumbnailLoading}
         />
+        {thumbnailLoading && (
+          <span className="media-thumbnail-loading" aria-label="正在加载缩略图">
+            <Loader2 size={20} aria-hidden="true" />
+          </span>
+        )}
         {file.kind === 'video' && effectiveDuration != null ? (
           <span className="duration-badge">{formatDuration(effectiveDuration)}</span>
         ) : isLive ? (
@@ -189,3 +201,5 @@ export function MediaCard({
     </article>
   )
 }
+
+export const MediaCard = memo(MediaCardImpl)
