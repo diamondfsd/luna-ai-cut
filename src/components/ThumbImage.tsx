@@ -25,6 +25,8 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
   onUnavailable?: (src: string) => void
   /** 本地缓存文件准备好时触发 */
   onCacheReady?: (cacheFilePath: string) => void
+  /** 缩略图开始或结束加载时触发 */
+  onLoadingChange?: (loading: boolean) => void
   /** 使用独立缩略图时，仍在后台缓存原视频，供时长等信息探测使用 */
   cacheWhenUsingRemoteThumbnail?: boolean
 }
@@ -41,9 +43,10 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, cacheWhenUsingRemoteThumbnail = false, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onLoadingChange, cacheWhenUsingRemoteThumbnail = false, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const [remoteThumbnail, setRemoteThumbnail] = useState<string | null>(thumbnailSrc ?? null)
   const [remoteThumbnailFailed, setRemoteThumbnailFailed] = useState(false)
@@ -56,7 +59,25 @@ export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300,
 
   const useRemoteThumbnail = Boolean(remoteThumbnail) && !remoteThumbnailFailed
   const shouldCache = visible && !embeddedImage && (!useRemoteThumbnail || cacheWhenUsingRemoteThumbnail)
-  const { thumbnailUrl, cacheFilePath, hasError, retry } = useFileCache(src, shouldCache, previewSrc)
+  const { thumbnailUrl, cacheFilePath, hasError, isLoading, retry } = useFileCache(src, shouldCache, previewSrc)
+
+  const renderedSrc = embeddedImage ? src : remoteThumbnail ?? thumbnailUrl ?? PLACEHOLDER_DATA_URL
+
+  // 后台缓存地址变化不一定会改变当前显示的图片（例如视频优先显示远程代理），
+  // 只有实际显示地址变化时才重置加载状态，避免已显示图片持续转圈。
+  useEffect(() => {
+    setImageLoaded(false)
+  }, [renderedSrc])
+
+  const loading = !imageLoaded && (
+    isLoading
+    || Boolean(remoteThumbnail)
+    || Boolean(thumbnailUrl)
+  )
+
+  useEffect(() => {
+    onLoadingChange?.(loading)
+  }, [loading, onLoadingChange])
 
   useEffect(() => {
     if (cacheFilePath) onCacheReady?.(cacheFilePath)
@@ -133,7 +154,7 @@ export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300,
   return unavailable && unavailableFallback ? unavailableFallback : (
     <img
       ref={imgRef}
-      src={embeddedImage ? src : remoteThumbnail ?? thumbnailUrl ?? PLACEHOLDER_DATA_URL}
+      src={renderedSrc}
       onError={(event) => {
         onError?.(event)
         if (remoteThumbnail && !remoteThumbnailFailed) {
@@ -149,7 +170,10 @@ export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300,
       }}
       onLoad={(event) => {
         onLoad?.(event)
-        if (thumbnailUrl) {
+        if (renderedSrc !== PLACEHOLDER_DATA_URL) {
+          setImageLoaded(true)
+        }
+        if (thumbnailUrl && renderedSrc !== PLACEHOLDER_DATA_URL) {
           retryCountRef.current = 0
           setUnavailable(false)
         }

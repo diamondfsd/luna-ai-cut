@@ -1,0 +1,35 @@
+/* 媒体库大列表只挂载视口附近的行，容器仍保留完整滚动高度。 */
+.media-grid.virtual-media-grid {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+
+.virtual-media-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: grid;
+  min-height: 0;
+}
+
+/* 虚拟化已经限制了挂载数量，卡片不再需要 content-visibility 的占位尺寸。 */
+.virtual-media-row .media-card {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
+.virtual-media-row.card-size-large {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.virtual-media-row.card-size-medium {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.virtual-media-row.card-size-small {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 12px;
+}

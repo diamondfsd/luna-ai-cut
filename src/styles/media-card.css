@@ -1,0 +1,18 @@
+.media-thumbnail-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  background: rgba(244, 242, 238, 0.42);
+  color: var(--blue);
+  pointer-events: none;
+}
+
+.media-thumbnail-loading svg {
+  animation: media-thumbnail-spin 900ms linear infinite;
+}
+
+@keyframes media-thumbnail-spin {
+  to { transform: rotate(360deg); }
+}
