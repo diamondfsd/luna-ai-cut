@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Check,
+  Copy,
   Download,
   Mic,
   Radio,
@@ -9,55 +11,50 @@ import {
   VolumeX,
 } from 'lucide-react'
 
-import { Button, Input, Select, Slider } from '../ui'
+import { Button, IconButton, Input, Select, Switch, Tooltip, toast } from '../ui'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
-import { LiveGimbalPad } from './LiveGimbalPad'
 import { isDesktopAudioInput, useDesktopMicrophone } from '../hooks/useDesktopMicrophone'
 import { usePcmAudioMonitor } from '../hooks/usePcmAudioMonitor'
 import type {
   LiveStreamAudioInputOption,
   LiveStreamControlCommand,
   LiveStreamStatus,
-  NormalizedVideoRegion,
 } from '../shared/types'
 import '../styles/live-control-panel.css'
 
 const MOBILE_APP_DOWNLOAD_URL = 'https://lunaka.diamondfsd.com/'
 
+async function copyText(text: string): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return
+    }
+  } catch {
+    // Fall back to the document copy command for desktop windows without Clipboard API access.
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  textarea.style.pointerEvents = 'none'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  if (!copied) throw new Error('copy failed')
+}
+
 interface LiveControlPanelProps {
   status: LiveStreamStatus
   busy: boolean
   onStart: () => void
-  rtmpUrl: string
-  streamKey: string
-  onRtmpUrlChange: (value: string) => void
-  onStreamKeyChange: (value: string) => void
-  onRtmpConfigBlur: () => void
+  enhanceQuality: boolean
+  onEnhanceQualityChange: (enabled: boolean) => void
   onStartOutput: () => void
   onStopOutput: () => void
-}
-
-function contentPoint(
-  element: HTMLDivElement,
-  dimensions: { width: number; height: number },
-  event: ReactPointerEvent<HTMLDivElement>,
-): { x: number; y: number } {
-  const rect = element.getBoundingClientRect()
-  const sourceWidth = dimensions.width || rect.width
-  const sourceHeight = dimensions.height || rect.height
-  const scale = Math.min(rect.width / sourceWidth, rect.height / sourceHeight)
-  const width = sourceWidth * scale
-  const height = sourceHeight * scale
-  const left = rect.left + (rect.width - width) / 2
-  const top = rect.top + (rect.height - height) / 2
-  return {
-    x: Math.min(1, Math.max(0, (event.clientX - left) / width)),
-    y: Math.min(1, Math.max(0, (event.clientY - top) / height)),
-  }
-}
-
-function formatZoom(value: number): string {
-  return `${value.toFixed(value % 1 === 0 ? 0 : 1)}x`
 }
 
 function audioOptionLabel(option: LiveStreamAudioInputOption): string {
@@ -74,32 +71,17 @@ export function LiveControlPanel({
   status,
   busy,
   onStart,
-  rtmpUrl,
-  streamKey,
-  onRtmpUrlChange,
-  onStreamKeyChange,
-  onRtmpConfigBlur,
+  enhanceQuality,
+  onEnhanceQualityChange,
   onStartOutput,
   onStopOutput,
 }: LiveControlPanelProps) {
-  const previewStageRef = useRef<HTMLDivElement>(null)
   const previewPaneRef = useRef<HTMLDivElement>(null)
-  const gestureRef = useRef<{
-    mode: 'pending' | 'tracking'
-    start: { x: number; y: number }
-  } | null>(null)
-  const gimbalTimerRef = useRef<number | null>(null)
-  const gimbalValueRef = useRef({ horizontal: 0, vertical: 0 })
-  const zoomSessionRef = useRef<string | null>(null)
-  const zoomControlledRef = useRef(false)
-  const [selection, setSelection] = useState<NormalizedVideoRegion | null>(null)
-  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null)
-  const [zoomValue, setZoomValue] = useState(1)
   const [previewAspectRatio, setPreviewAspectRatio] = useState(16 / 9)
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 })
-  const [previewDimensions, setPreviewDimensions] = useState({ width: 16, height: 9 })
   const [previewReady, setPreviewReady] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [pullUrlCopied, setPullUrlCopied] = useState(false)
   const [phoneMicrophoneOptions, setPhoneMicrophoneOptions] = useState<LiveStreamAudioInputOption[]>([
     { id: 'none', label: '关闭', kind: 'none' },
     { id: 'phone-microphone', label: '手机麦克风', kind: 'phone-microphone' },
@@ -108,8 +90,6 @@ export function LiveControlPanel({
 
   const active = Boolean(status.startedAt) && status.state !== 'stopping'
   const streaming = status.usbState === 'streaming'
-  const disabled = !status.controlReady
-  const capabilities = status.capabilities
   const desktopMicrophoneSelected = isDesktopAudioInput(microphoneId)
   const canMonitorAudio = desktopMicrophoneSelected ? active : status.usbState === 'streaming'
   const audioMonitor = usePcmAudioMonitor(
@@ -156,28 +136,6 @@ export function LiveControlPanel({
     send({ type: 'audio.selectInput', inputId: desktopMicrophoneSelected ? 'none' : effectiveMicrophoneId })
   }, [desktopMicrophoneSelected, effectiveMicrophoneId, send, status.controlReady, status.startedAt])
 
-  const stopGimbal = useCallback(() => {
-    if (gimbalTimerRef.current != null) window.clearInterval(gimbalTimerRef.current)
-    gimbalTimerRef.current = null
-    gimbalValueRef.current = { horizontal: 0, vertical: 0 }
-    send({ type: 'gimbal.stop' })
-  }, [send])
-
-  const moveGimbal = useCallback((horizontal: number, vertical: number) => {
-    gimbalValueRef.current = { horizontal, vertical }
-    send({ type: 'gimbal.move', horizontal, vertical })
-    if (gimbalTimerRef.current == null) {
-      gimbalTimerRef.current = window.setInterval(() => {
-        const value = gimbalValueRef.current
-        send({ type: 'gimbal.move', horizontal: value.horizontal, vertical: value.vertical })
-      }, 100)
-    }
-  }, [send])
-
-  useEffect(() => () => {
-    if (gimbalTimerRef.current != null) window.clearInterval(gimbalTimerRef.current)
-  }, [])
-
   useEffect(() => {
     if (!status.controlReady || status.capabilities) return undefined
     const request = () => send({ type: 'capabilities.get' })
@@ -189,12 +147,6 @@ export function LiveControlPanel({
   useEffect(() => {
     const next = status.capabilities
     if (!next) return
-    const sessionKey = status.startedAt ?? 'active'
-    if (zoomSessionRef.current !== sessionKey) {
-      zoomSessionRef.current = sessionKey
-      zoomControlledRef.current = false
-    }
-    if (!zoomControlledRef.current) setZoomValue(next.zoom.current)
     if (next.audio.options.length > 0) {
       const options = next.audio.options.map((option) => ({ ...option, label: audioOptionLabel(option) }))
       setPhoneMicrophoneOptions(options)
@@ -228,9 +180,6 @@ export function LiveControlPanel({
   }, [previewAspectRatio])
 
   const handlePreviewFrame = useCallback((dimensions: { width: number; height: number }) => {
-    setPreviewDimensions((current) => (
-      current.width === dimensions.width && current.height === dimensions.height ? current : dimensions
-    ))
     setPreviewAspectRatio(dimensions.width / dimensions.height)
     setPreviewReady(true)
     setPreviewError(null)
@@ -241,69 +190,31 @@ export function LiveControlPanel({
     setPreviewError(message)
   }, [])
 
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled || !previewReady || !previewStageRef.current) return
-    event.currentTarget.setPointerCapture(event.pointerId)
-    const start = contentPoint(previewStageRef.current, previewDimensions, event)
-    gestureRef.current = { mode: 'pending', start }
-    setSelection(null)
-  }
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const gesture = gestureRef.current
-    if (!gesture || !previewStageRef.current) return
-    const current = contentPoint(previewStageRef.current, previewDimensions, event)
-    if (gesture.mode === 'pending') {
-      const horizontal = Math.abs(current.x - gesture.start.x)
-      const vertical = Math.abs(current.y - gesture.start.y)
-      if (Math.max(horizontal, vertical) < 0.015) return
-      gesture.mode = 'tracking'
+  const copyPullUrl = useCallback(async () => {
+    if (!status.pullUrl) return
+    try {
+      await copyText(status.pullUrl)
+      setPullUrlCopied(true)
+      toast.success('地址已复制')
+      window.setTimeout(() => setPullUrlCopied(false), 1_500)
+    } catch {
+      toast.error('无法复制地址')
     }
-    setSelection({
-      x: Math.min(gesture.start.x, current.x),
-      y: Math.min(gesture.start.y, current.y),
-      width: Math.abs(current.x - gesture.start.x),
-      height: Math.abs(current.y - gesture.start.y),
-    })
-  }
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const gesture = gestureRef.current
-    gestureRef.current = null
-    if (!gesture || !previewStageRef.current) return
-    const end = contentPoint(previewStageRef.current, previewDimensions, event)
-    if (gesture.mode === 'pending') {
-      if (!capabilities?.focus.tap) return
-      setFocusPoint(end)
-      send({ type: 'focus.tap', point: end })
-      return
-    }
-    const region = {
-      x: Math.min(gesture.start.x, end.x),
-      y: Math.min(gesture.start.y, end.y),
-      width: Math.abs(end.x - gesture.start.x),
-      height: Math.abs(end.y - gesture.start.y),
-    }
-    if (capabilities?.tracking.region && (region.width >= 0.04 || region.height >= 0.04)) {
-      setSelection(region)
-      send({ type: 'tracking.selectRegion', region })
-    }
-  }
+  }, [status.pullUrl])
 
   const controlStatus = status.lastControlResult?.ok === false
     ? status.lastControlResult.error
     : status.outputMessage
       ? status.outputMessage
     : status.controlReady
-      ? '控制已连接'
+      ? '已连接'
       : status.usbMessage
-  const canStartOutput = active && status.usbState !== 'error' && Boolean(rtmpUrl.trim())
+  const canStartOutput = active && status.usbState !== 'error'
 
   return (
     <section className="live-control-panel" aria-label="直播控制">
       <div ref={previewPaneRef} className="live-preview-pane">
         <div
-          ref={previewStageRef}
           className="live-preview-stage"
           style={{ width: previewStageSize.width, height: previewStageSize.height }}
         >
@@ -315,29 +226,6 @@ export function LiveControlPanel({
               onError={handlePreviewError}
             />
           )}
-
-          <div
-            className="live-preview-interaction"
-            data-ready={disabled ? 'false' : String(previewReady)}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-          >
-            {selection && (
-              <span
-                className="live-preview-selection"
-                style={{
-                  left: `${selection.x * 100}%`,
-                  top: `${selection.y * 100}%`,
-                  width: `${selection.width * 100}%`,
-                  height: `${selection.height * 100}%`,
-                }}
-              />
-            )}
-            {focusPoint && (
-              <span className="live-preview-focus" style={{ left: `${focusPoint.x * 100}%`, top: `${focusPoint.y * 100}%` }} />
-            )}
-          </div>
 
           {!active && (
             <div className="live-preview-overlay live-preview-onboarding">
@@ -388,98 +276,63 @@ export function LiveControlPanel({
 
       <aside className="live-control-pane">
         <div className="live-preview-toolbar">
-          <span>{capabilities ? '单击对焦，拖动框选' : status.controlReady ? '正在读取相机能力' : '连接手机后启用画面控制'}</span>
           <span className={status.controlReady ? 'ready' : ''}>{controlStatus}</span>
         </div>
 
         {status.outputEnabled && !status.outputReady && (
           <div className="live-control-notice">
-            <span>{status.outputMessage ?? '正在连接推流服务'}</span>
+            <span>{status.outputMessage ?? '正在准备直播地址'}</span>
+          </div>
+        )}
+        {status.outputWarning && (
+          <div className="live-control-warning" role="status">
+            <span>{status.outputWarning}</span>
           </div>
         )}
 
         <section className="live-control-section">
-          <h2>直播推流</h2>
+          <h2>直播输出</h2>
           <div className="live-control-section-body">
             <label className="live-control-block">
-              <span>推流地址</span>
-              <Input
-                variant="compact"
-                fullWidth
-                value={rtmpUrl}
-                placeholder="rtmp://"
-                disabled={status.outputEnabled}
-                onChange={(event) => onRtmpUrlChange(event.target.value)}
-                onBlur={onRtmpConfigBlur}
-              />
+              <span>拉流地址</span>
+              <div className="live-pull-url-row">
+                <Input
+                  variant="compact"
+                  fullWidth
+                  value={status.pullUrl ?? ''}
+                  placeholder="开始输出后生成"
+                  readOnly
+                />
+                <Tooltip content={pullUrlCopied ? '已复制' : '复制地址'}>
+                  <IconButton
+                    variant="outline"
+                    size="compact"
+                    icon={pullUrlCopied ? <Check size={14} /> : <Copy size={14} />}
+                    aria-label="复制拉流地址"
+                    title="复制拉流地址"
+                    onClick={() => void copyPullUrl()}
+                    disabled={!status.pullUrl}
+                  />
+                </Tooltip>
+              </div>
             </label>
-            <label className="live-control-block">
-              <span>直播码</span>
-              <Input
-                variant="compact"
-                fullWidth
-                type="password"
-                value={streamKey}
-                disabled={status.outputEnabled}
-                onChange={(event) => onStreamKeyChange(event.target.value)}
-                onBlur={onRtmpConfigBlur}
+            <div className="live-output-setting">
+              <span>1080P 画质增强</span>
+              <Switch
+                checked={enhanceQuality}
+                onCheckedChange={onEnhanceQualityChange}
+                ariaLabel="1080P 画质增强"
+                disabled={status.outputEnabled || busy}
               />
-            </label>
+            </div>
             <Button
               variant={status.outputEnabled ? 'danger' : 'primary'}
               icon={status.outputEnabled ? <Square size={15} /> : <Radio size={15} />}
               onClick={status.outputEnabled ? onStopOutput : onStartOutput}
               disabled={busy || (!status.outputEnabled && !canStartOutput)}
             >
-              {status.outputEnabled ? '停止直播' : '开始直播'}
+              {status.outputEnabled ? '停止输出' : '开始输出'}
             </Button>
-          </div>
-        </section>
-
-        <section className="live-control-section">
-          <h2>画面</h2>
-          <div className="live-control-section-body">
-            <div className="live-control-cluster">
-              <div className="live-control-block live-gimbal-control">
-                <span>云台</span>
-                <LiveGimbalPad
-                  disabled={disabled || !capabilities?.gimbal.supported}
-                  onMove={moveGimbal}
-                  onStop={stopGimbal}
-                />
-              </div>
-
-              <div className="live-control-block live-zoom-control">
-                <span>焦段</span>
-                <Slider
-                  className="live-zoom-slider"
-                  value={zoomValue}
-                  min={capabilities?.zoom.min ?? 1}
-                  max={capabilities?.zoom.max ?? 1}
-                  step={capabilities?.zoom.step ?? 0.1}
-                  ariaLabel="焦段"
-                  disabled={disabled || !capabilities?.zoom.supported}
-                  onValueChange={(value) => {
-                    zoomControlledRef.current = true
-                    setZoomValue(value)
-                    send({ type: 'zoom.preview', value })
-                  }}
-                  onValueCommit={(value) => {
-                    zoomControlledRef.current = true
-                    setZoomValue(value)
-                    send({ type: 'zoom.set', value })
-                  }}
-                />
-                <div className="live-zoom-range">
-                  <output>{formatZoom(zoomValue)}</output>
-                  <span>
-                    <span>{formatZoom(capabilities?.zoom.min ?? 1)}</span>
-                    <span>{formatZoom(capabilities?.zoom.max ?? 1)}</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
           </div>
         </section>
 

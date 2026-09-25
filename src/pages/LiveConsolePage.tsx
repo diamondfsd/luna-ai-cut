@@ -20,9 +20,7 @@ function stateLabel(status: LiveStreamStatus | null): string {
 
 export function LiveConsolePage() {
   const [status, setStatus] = useState<LiveStreamStatus | null>(null)
-  const [rtmpUrl, setRtmpUrl] = useState('')
-  const [streamKey, setStreamKey] = useState('')
-  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [enhanceQuality, setEnhanceQuality] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,11 +36,6 @@ export function LiveConsolePage() {
 
   useEffect(() => {
     void refreshStatus()
-    void window.luna.getSettings().then((settings) => {
-      setRtmpUrl(settings.liveRtmpUrl ?? '')
-      setStreamKey(settings.liveRtmpStreamKey ?? '')
-      setSettingsLoaded(true)
-    })
   }, [refreshStatus])
 
   useEffect(() => {
@@ -64,14 +57,6 @@ export function LiveConsolePage() {
       void refreshStatus()
     }
   }, [busy, refreshStatus])
-
-  const saveRtmpConfig = useCallback(() => {
-    if (!settingsLoaded) return
-    void window.luna.saveSettings({
-      liveRtmpUrl: rtmpUrl.trim(),
-      liveRtmpStreamKey: streamKey.trim(),
-    })
-  }, [rtmpUrl, settingsLoaded, streamKey])
 
   const active = Boolean(status?.startedAt) && status?.state !== 'stopping'
   const outputTone = status?.outputReady ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
@@ -120,18 +105,14 @@ export function LiveConsolePage() {
         <LiveControlPanel
           status={status}
           busy={busy}
-          rtmpUrl={rtmpUrl}
-          streamKey={streamKey}
-          onRtmpUrlChange={setRtmpUrl}
-          onStreamKeyChange={setStreamKey}
-          onRtmpConfigBlur={saveRtmpConfig}
+          enhanceQuality={enhanceQuality}
+          onEnhanceQualityChange={setEnhanceQuality}
           onStart={() => void runAction(async () => {
             await window.luna.liveStream.start()
             toast.success('已开始获取画面')
           })}
           onStartOutput={() => void runAction(async () => {
-            saveRtmpConfig()
-            const next = await window.luna.liveStream.startOutput({ rtmpUrl, streamKey })
+            const next = await window.luna.liveStream.startOutput({ enhanceQuality })
             setStatus(next)
             toast.success('直播已开始')
           })}

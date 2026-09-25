@@ -8,9 +8,10 @@ export type LiveStreamState =
   | 'error'
 
 export interface LiveStreamOptions {
-  rtmpUrl: string
-  streamKey?: string
+  enhanceQuality?: boolean
 }
+
+export type LiveStreamOutputAcceleration = 'passthrough' | 'hardware' | 'software'
 
 export interface NormalizedVideoPoint {
   x: number
@@ -135,6 +136,9 @@ export interface LiveStreamStatus {
   localPreviewError: string | null
   outputEnabled: boolean
   outputReady: boolean
+  pullUrl: string | null
+  outputAcceleration: LiveStreamOutputAcceleration | null
+  outputWarning: string | null
   outputMessage: string | null
   startedAt: string | null
   message: string

@@ -13,13 +13,25 @@ const PRE_CLIENT_BUFFER_BYTES = 4 * 1024 * 1024
  */
 export class LocalVideoStreamServer {
   private readonly contentType: string
+  private readonly preferredPort: number
+  private readonly preClientBufferBytes: number
   private server: Server | null = null
   private readonly clients = new Set<ServerResponse>()
   private readonly preClientFrames: Buffer[] = []
   private preClientBytes = 0
 
-  constructor(contentType = 'application/octet-stream') {
+  constructor(
+    contentType = 'application/octet-stream',
+    preferredPort = 0,
+    preClientBufferBytes = PRE_CLIENT_BUFFER_BYTES,
+  ) {
     this.contentType = contentType
+    this.preferredPort = Number.isInteger(preferredPort) && preferredPort >= 0 && preferredPort <= 65_535
+      ? preferredPort
+      : 0
+    this.preClientBufferBytes = Number.isFinite(preClientBufferBytes) && preClientBufferBytes > 0
+      ? Math.floor(preClientBufferBytes)
+      : 0
   }
 
   async start(): Promise<LocalVideoStreamInfo> {
@@ -30,7 +42,7 @@ export class LocalVideoStreamServer {
       }
     }
 
-    const server = createServer((request, response) => {
+    const createStreamServer = () => createServer((request, response) => {
       const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
       if (request.method === 'OPTIONS') {
         response.writeHead(204, this.headers())
@@ -52,19 +64,35 @@ export class LocalVideoStreamServer {
       request.once('aborted', remove)
     })
 
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        server.off('listening', onListening)
-        reject(error)
+    const maxAttempts = this.preferredPort > 0 ? 100 : 1
+    let server: Server | null = null
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const candidate = createStreamServer()
+      const port = this.preferredPort > 0 ? this.preferredPort + attempt : 0
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const onError = (error: Error) => {
+            candidate.off('listening', onListening)
+            reject(error)
+          }
+          const onListening = () => {
+            candidate.off('error', onError)
+            resolve()
+          }
+          candidate.once('error', onError)
+          candidate.once('listening', onListening)
+          candidate.listen({ host: '127.0.0.1', port })
+        })
+        server = candidate
+        break
+      } catch (error) {
+        await new Promise<void>((resolve) => candidate.close(() => resolve()))
+        const code = (error as NodeJS.ErrnoException).code
+        if (code !== 'EADDRINUSE' || this.preferredPort === 0 || attempt === maxAttempts - 1) throw error
       }
-      const onListening = () => {
-        server.off('error', onError)
-        resolve()
-      }
-      server.once('error', onError)
-      server.once('listening', onListening)
-      server.listen({ host: '127.0.0.1', port: 0 })
-    })
+    }
+
+    if (!server) throw new Error('无法获取本地视频流端口')
 
     this.server = server
     const address = server.address()
@@ -115,10 +143,11 @@ export class LocalVideoStreamServer {
   }
 
   private queuePreClientFrame(frame: Buffer): void {
+    if (this.preClientBufferBytes === 0) return
     const copy = Buffer.from(frame)
     this.preClientFrames.push(copy)
     this.preClientBytes += copy.length
-    while (this.preClientBytes > PRE_CLIENT_BUFFER_BYTES && this.preClientFrames.length > 1) {
+    while (this.preClientBytes > this.preClientBufferBytes && this.preClientFrames.length > 1) {
       const first = this.preClientFrames.shift()!
       this.preClientBytes -= first.length
     }
