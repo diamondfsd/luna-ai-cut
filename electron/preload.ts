@@ -154,7 +154,12 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   },
   liveStream: {
     status: () => ipcRenderer.invoke('live-stream:status'),
+    replayStatus: () => ipcRenderer.invoke('live-stream:replay-status'),
+    startReplay: (options) => ipcRenderer.invoke('live-stream:start-replay', options),
+    stopReplay: () => ipcRenderer.invoke('live-stream:stop-replay'),
     start: () => ipcRenderer.invoke('live-stream:start'),
+    startCapture: () => ipcRenderer.invoke('live-stream:start-capture'),
+    stopCapture: () => ipcRenderer.invoke('live-stream:stop-capture'),
     startOutput: (options) => ipcRenderer.invoke('live-stream:start-output', options),
     stopOutput: () => ipcRenderer.invoke('live-stream:stop-output'),
     setAudioMonitor: (enabled: boolean) => ipcRenderer.invoke('live-stream:set-audio-monitor', enabled),

@@ -9,10 +9,15 @@ import type {
 import { LocalVideoStreamServer } from '../../devices/common/localVideoStreamServer'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import { getFfmpegPath } from '../../platform/ffmpeg/pipeline'
+import {
+  LIVE_STREAM_INPUT_CHANNELS,
+  LIVE_STREAM_INPUT_SAMPLE_RATE,
+  normalizeLiveStreamPcm,
+} from './liveStreamAudio'
+import { buildLiveStreamFfmpegArgs } from './liveStreamFfmpegArgs'
 
-const INPUT_SAMPLE_RATE = 48_000
-const INPUT_CHANNELS = 1
-const OUTPUT_AUDIO_CHANNELS = 2
+const INPUT_SAMPLE_RATE = LIVE_STREAM_INPUT_SAMPLE_RATE
+const INPUT_CHANNELS = LIVE_STREAM_INPUT_CHANNELS
 const SILENCE_BLOCK_MS = 20
 const AUDIO_GAP_MS = 100
 const INITIAL_SILENCE_BLOCKS = 10
@@ -105,38 +110,6 @@ interface ActiveRtmpProcess {
   audioInput: Writable
 }
 
-function clampSample(value: number): number {
-  return Math.max(-32_768, Math.min(32_767, Math.round(value)))
-}
-
-function normalizePcm(frame: LiveStreamAudioInputFrame): Buffer | null {
-  const sampleRate = Math.round(frame.sampleRate)
-  const channels = Math.round(frame.channels)
-  const sampleCount = Math.round(frame.sampleCount)
-  const source = Buffer.from(frame.pcm16Le)
-  if (sampleRate <= 0 || channels <= 0 || sampleCount <= 0 || source.length !== sampleCount * channels * 2) {
-    return null
-  }
-  if (sampleRate === INPUT_SAMPLE_RATE && channels === INPUT_CHANNELS) return source
-
-  const outputSampleCount = Math.max(1, Math.round(sampleCount * INPUT_SAMPLE_RATE / sampleRate))
-  const output = Buffer.allocUnsafe(outputSampleCount * INPUT_CHANNELS * 2)
-  for (let outputIndex = 0; outputIndex < outputSampleCount; outputIndex += 1) {
-    const sourcePosition = outputIndex * sampleRate / INPUT_SAMPLE_RATE
-    const firstIndex = Math.min(sampleCount - 1, Math.floor(sourcePosition))
-    const secondIndex = Math.min(sampleCount - 1, firstIndex + 1)
-    const mix = sourcePosition - firstIndex
-    let sample = 0
-    for (let channel = 0; channel < channels; channel += 1) {
-      const first = source.readInt16LE((firstIndex * channels + channel) * 2)
-      const second = source.readInt16LE((secondIndex * channels + channel) * 2)
-      sample += first + (second - first) * mix
-    }
-    output.writeInt16LE(clampSample(sample / channels), outputIndex * 2)
-  }
-  return output
-}
-
 export class RtmpStreamService {
   private readonly output = new LocalVideoStreamServer(
     'video/mp2t',
@@ -158,6 +131,9 @@ export class RtmpStreamService {
   }
   private lastAudioAt = 0
   private silenceTimer: NodeJS.Timeout | null = null
+  private diagnosticsTimer: NodeJS.Timeout | null = null
+  private droppedVideoInputFrames = 0
+  private droppedAudioInputFrames = 0
 
   status(): RtmpStreamStatus {
     return { ...this.statusValue }
@@ -169,60 +145,7 @@ export class RtmpStreamService {
     const ffmpegPath = getFfmpegPath()
     const hardware = enhanceQuality ? await probeHardwareDecoder(ffmpegPath) : null
     const local = await this.output.start()
-    const videoFilter = "scale=w='if(gt(iw,ih),1920,-2)':h='if(gt(iw,ih),-2,1920)':flags=lanczos,unsharp=5:5:0.35:5:5:0"
-    const videoInputArgs = hardware ? ['-hwaccel', hardware.decoder] : []
-    const videoOutputArgs = enhanceQuality
-      ? [
-          '-vf', videoFilter,
-          '-c:v', 'libx264',
-          '-preset', 'veryfast',
-          '-tune', 'zerolatency',
-          '-pix_fmt', 'yuv420p',
-          '-profile:v', 'main',
-          '-level:v', '4.1',
-          '-g', '60',
-          '-keyint_min', '60',
-          '-sc_threshold', '0',
-          '-b:v', '6000k',
-          '-maxrate', '6000k',
-          '-bufsize', '12000k',
-        ]
-      : [
-          '-c:v', 'copy',
-          '-bsf:v', 'setts=pts=N*3000:dts=N*3000:duration=3000:time_base=1/90000,dump_extra=freq=keyframe',
-        ]
-    const args = [
-      '-hide_banner',
-      '-loglevel', 'warning',
-      '-thread_queue_size', '64',
-      '-re',
-      ...videoInputArgs,
-      '-f', 'hevc',
-      '-framerate', '30',
-      '-i', 'pipe:0',
-      '-thread_queue_size', '32',
-      '-re',
-      '-f', 's16le',
-      '-ar', String(INPUT_SAMPLE_RATE),
-      '-ac', String(INPUT_CHANNELS),
-      '-i', 'pipe:3',
-      '-map', '0:v:0',
-      '-map', '1:a:0',
-      ...videoOutputArgs,
-      '-r', '30',
-      '-c:a', 'aac',
-      '-af', 'aresample=async=1:first_pts=0:min_hard_comp=0.100',
-      '-b:a', '128k',
-      '-ar', String(INPUT_SAMPLE_RATE),
-      '-ac', String(OUTPUT_AUDIO_CHANNELS),
-      '-max_interleave_delta', '100000',
-      '-mpegts_flags', 'resend_headers+pat_pmt_at_frames',
-      '-flush_packets', '1',
-      '-muxdelay', '0',
-      '-muxpreload', '0',
-      '-f', 'mpegts',
-      'pipe:1',
-    ]
+    const args = buildLiveStreamFfmpegArgs(options, hardware?.decoder ?? null)
     const child = spawn(ffmpegPath, args, {
       stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -237,6 +160,8 @@ export class RtmpStreamService {
 
     this.active = { child, videoInput, audioInput }
     this.lastAudioAt = 0
+    this.droppedVideoInputFrames = 0
+    this.droppedAudioInputFrames = 0
     this.statusValue = {
       state: 'starting',
       videoFrames: 0,
@@ -254,7 +179,10 @@ export class RtmpStreamService {
     child.stderr?.setEncoding('utf8')
     child.stderr?.on('data', (chunk: string) => {
       const detail = chunk.trim()
-      if (detail) stderrTail = detail.slice(-2_000)
+      if (detail) {
+        stderrTail = `${stderrTail}${detail}`.slice(-4_000)
+        logMainWarn('[直播输出] FFmpeg 输出', { detail })
+      }
     })
     child.once('error', (error) => {
       if (this.active?.child !== child) return
@@ -271,6 +199,7 @@ export class RtmpStreamService {
     child.once('close', (code, signal) => {
       if (this.active?.child !== child) return
       this.stopSilenceTimer()
+      this.stopDiagnosticsTimer()
       this.active = null
       const stopped = code === 0 || signal === 'SIGTERM' || this.statusValue.state === 'stopping'
       this.statusValue = {
@@ -282,6 +211,7 @@ export class RtmpStreamService {
         message: stopped ? '直播输出已停止' : '直播输出意外停止',
         error: stopped ? null : stderrTail.trim() || `输出进程退出码 ${code ?? 'unknown'}`,
       }
+      if (!stopped) logMainWarn('[直播输出] FFmpeg 意外退出', { code, signal, detail: stderrTail.trim() })
       if (!stopped) {
         void this.output.stop().catch((error: unknown) => {
           logMainWarn('[直播输出] 本机地址关闭失败', {
@@ -314,6 +244,7 @@ export class RtmpStreamService {
       error: null,
     }
     this.startSilenceTimer()
+    this.startDiagnosticsTimer()
     logMainInfo('[直播输出] 本机拉流地址已启动', {
       url: local.url,
       enhanceQuality,
@@ -330,12 +261,12 @@ export class RtmpStreamService {
         videoFrames: this.statusValue.videoFrames + 1,
         videoBytes: this.statusValue.videoBytes + frame.length,
       }
-    }
+    } else this.droppedVideoInputFrames += 1
   }
 
   pushAudio(frame: LiveStreamAudioInputFrame): void {
     if (!this.active) return
-    const pcm = normalizePcm(frame)
+    const pcm = normalizeLiveStreamPcm(frame)
     if (!pcm) return
     this.lastAudioAt = Date.now()
     if (this.write(this.active.audioInput, pcm)) {
@@ -344,13 +275,15 @@ export class RtmpStreamService {
         audioFrames: this.statusValue.audioFrames + 1,
         audioBytes: this.statusValue.audioBytes + pcm.length,
       }
-    }
+    } else this.droppedAudioInputFrames += 1
   }
 
   async stop(): Promise<RtmpStreamStatus> {
     const active = this.active
+    this.logDiagnostics('stop')
     this.active = null
     this.stopSilenceTimer()
+    this.stopDiagnosticsTimer()
     if (active) {
       this.statusValue = { ...this.statusValue, state: 'stopping', message: '正在停止直播输出', error: null }
       active.videoInput.end()
@@ -418,5 +351,30 @@ export class RtmpStreamService {
     if (!this.silenceTimer) return
     clearInterval(this.silenceTimer)
     this.silenceTimer = null
+  }
+
+  private startDiagnosticsTimer(): void {
+    this.stopDiagnosticsTimer()
+    this.diagnosticsTimer = setInterval(() => this.logDiagnostics('sample'), 5_000)
+  }
+
+  private stopDiagnosticsTimer(): void {
+    if (!this.diagnosticsTimer) return
+    clearInterval(this.diagnosticsTimer)
+    this.diagnosticsTimer = null
+  }
+
+  private logDiagnostics(phase: 'sample' | 'stop'): void {
+    const active = this.active
+    logMainInfo('[直播输出] 传输诊断', {
+      phase,
+      videoFramesAccepted: this.statusValue.videoFrames,
+      audioFramesAccepted: this.statusValue.audioFrames,
+      videoInputDroppedFrames: this.droppedVideoInputFrames,
+      audioInputDroppedFrames: this.droppedAudioInputFrames,
+      videoInputBufferedBytes: active?.videoInput.writableLength ?? 0,
+      audioInputBufferedBytes: active?.audioInput.writableLength ?? 0,
+      ...this.output.stats(),
+    })
   }
 }

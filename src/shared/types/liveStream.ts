@@ -13,6 +13,29 @@ export interface LiveStreamOptions {
 
 export type LiveStreamOutputAcceleration = 'passthrough' | 'hardware' | 'software'
 
+export type LiveStreamReplayState = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
+
+export interface LiveStreamReplayStatus {
+  state: LiveStreamReplayState
+  capturePath: string | null
+  pullUrl: string | null
+  diagnosticsLogPath: string | null
+  startedAt: string | null
+  videoFrames: number
+  audioFrames: number
+  outputBytes: number
+  videoInputBufferedBytes: number
+  audioInputBufferedBytes: number
+  maxPlaybackLagMs: number
+  activeClients: number
+  totalConnections: number
+  totalDisconnections: number
+  publishedBytes: number
+  droppedBytesNoClient: number
+  droppedBytesBackpressure: number
+  error: string | null
+}
+
 export interface NormalizedVideoPoint {
   x: number
   y: number
@@ -134,6 +157,8 @@ export interface LiveStreamStatus {
   audioChannels: number | null
   localPreviewUrl: string | null
   localPreviewError: string | null
+  capturePath: string | null
+  captureActive: boolean
   outputEnabled: boolean
   outputReady: boolean
   pullUrl: string | null
@@ -147,7 +172,12 @@ export interface LiveStreamStatus {
 
 export interface LiveStreamApi {
   status(): Promise<LiveStreamStatus>
+  replayStatus(): Promise<LiveStreamReplayStatus>
+  startReplay(options?: LiveStreamOptions): Promise<LiveStreamReplayStatus>
+  stopReplay(): Promise<LiveStreamReplayStatus>
   start(): Promise<LiveStreamStatus>
+  startCapture(): Promise<string>
+  stopCapture(): Promise<string | null>
   startOutput(options: LiveStreamOptions): Promise<LiveStreamStatus>
   stopOutput(): Promise<LiveStreamStatus>
   setAudioMonitor(enabled: boolean): Promise<boolean>
