@@ -13,6 +13,7 @@ import process from 'node:process'
 import { consumeFrames, USB_STREAM_AUDIO, USB_STREAM_VIDEO } from '../electron/media/live-stream/usbAoaProtocol.ts'
 import { normalizeLiveStreamPcm } from '../electron/media/live-stream/liveStreamAudio.ts'
 import { buildLiveStreamFfmpegArgs } from '../electron/media/live-stream/liveStreamFfmpegArgs.ts'
+import { canQueueLiveStreamInput } from '../electron/media/live-stream/liveStreamInputBuffer.ts'
 import { groupAccessUnits, splitNalUnits } from '../src/lib/annexB.ts'
 
 const require = createRequire(import.meta.url)
@@ -70,6 +71,8 @@ assert.equal(normalized?.length, 8, 'audio replay must use the same mono 48 kHz 
 const args = buildLiveStreamFfmpegArgs({ enhanceQuality: false })
 assert.equal(args.includes('-re'), false, 'live/replayed pipe inputs must not be paced a second time')
 assert.equal(args[args.indexOf('-analyzeduration') + 1], '2250000', 'video probing should cover the first keyframe without the default five-second wait')
+assert.equal(canQueueLiveStreamInput(32_768, 80_000, 512 * 1024), true, 'a pending drain should not drop a frame while the bounded queue has room')
+assert.equal(canQueueLiveStreamInput(500_000, 80_000, 512 * 1024), false, 'input should be dropped when it would exceed the queue limit')
 const audioInputIndex = args.indexOf('pipe:3')
 const audioAnalysisIndex = args.indexOf('-analyzeduration', args.indexOf('-analyzeduration') + 1)
 assert.ok(audioInputIndex > 0 && audioAnalysisIndex < audioInputIndex, 'audio input should have its own analysis limit')
