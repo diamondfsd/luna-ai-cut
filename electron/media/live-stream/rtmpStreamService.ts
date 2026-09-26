@@ -15,12 +15,15 @@ import {
   normalizeLiveStreamPcm,
 } from './liveStreamAudio'
 import { buildLiveStreamFfmpegArgs } from './liveStreamFfmpegArgs'
+import { canQueueLiveStreamInput } from './liveStreamInputBuffer'
 
 const INPUT_SAMPLE_RATE = LIVE_STREAM_INPUT_SAMPLE_RATE
 const INPUT_CHANNELS = LIVE_STREAM_INPUT_CHANNELS
 const SILENCE_BLOCK_MS = 20
 const AUDIO_GAP_MS = 100
 const INITIAL_SILENCE_BLOCKS = 10
+const MAX_VIDEO_INPUT_BUFFER_BYTES = 512 * 1024
+const MAX_AUDIO_INPUT_BUFFER_BYTES = 256 * 1024
 const LIVE_STREAM_BASE_PORT = 18_080
 const LIVE_STREAM_PRE_CLIENT_BUFFER_BYTES = 0
 const SOFTWARE_FALLBACK_WARNING = '未检测到可用硬件解码，已切换软件处理，可能出现卡顿'
@@ -255,7 +258,7 @@ export class RtmpStreamService {
 
   pushVideo(frame: Buffer): void {
     if (!this.active || frame.length === 0) return
-    if (this.write(this.active.videoInput, frame)) {
+    if (this.write(this.active.videoInput, frame, MAX_VIDEO_INPUT_BUFFER_BYTES)) {
       this.statusValue = {
         ...this.statusValue,
         videoFrames: this.statusValue.videoFrames + 1,
@@ -269,7 +272,7 @@ export class RtmpStreamService {
     const pcm = normalizeLiveStreamPcm(frame)
     if (!pcm) return
     this.lastAudioAt = Date.now()
-    if (this.write(this.active.audioInput, pcm)) {
+    if (this.write(this.active.audioInput, pcm, MAX_AUDIO_INPUT_BUFFER_BYTES)) {
       this.statusValue = {
         ...this.statusValue,
         audioFrames: this.statusValue.audioFrames + 1,
@@ -318,8 +321,9 @@ export class RtmpStreamService {
     return this.status()
   }
 
-  private write(stream: Writable, data: Buffer): boolean {
-    if (stream.destroyed || !stream.writable || stream.writableNeedDrain) return false
+  private write(stream: Writable, data: Buffer, maxBufferedBytes: number): boolean {
+    if (stream.destroyed || !stream.writable
+      || !canQueueLiveStreamInput(stream.writableLength, data.length, maxBufferedBytes)) return false
     try {
       stream.write(data)
       return true
@@ -339,11 +343,11 @@ export class RtmpStreamService {
     // the MPEG-TS muxer publish video several seconds ahead of audio.
     for (let index = 0; index < INITIAL_SILENCE_BLOCKS; index += 1) {
       if (!this.active) break
-      this.write(this.active.audioInput, silence)
+      this.write(this.active.audioInput, silence, MAX_AUDIO_INPUT_BUFFER_BYTES)
     }
     this.silenceTimer = setInterval(() => {
       if (!this.active || Date.now() - this.lastAudioAt < AUDIO_GAP_MS) return
-      this.write(this.active.audioInput, silence)
+      this.write(this.active.audioInput, silence, MAX_AUDIO_INPUT_BUFFER_BYTES)
     }, SILENCE_BLOCK_MS)
   }
 
