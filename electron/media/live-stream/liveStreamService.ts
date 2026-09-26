@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { createWriteStream, type WriteStream } from 'node:fs'
+import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs'
+import { app } from 'electron'
+import { finished } from 'node:stream/promises'
+import { join } from 'node:path'
 import type { WebContents } from 'electron'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
@@ -31,6 +34,7 @@ interface ActiveSession {
   lastControlResult: LiveStreamControlResult | null
   capabilities: LiveStreamControlCapabilities | null
   captureStream: WriteStream | null
+  capturePath: string | null
   livePreview: LivePreviewStreamService
   rtmp: RtmpStreamService
   audioSourceMode: LiveStreamAudioSourceMode
@@ -64,6 +68,7 @@ const IDLE_USB_STATUS: UsbAoaStatus = {
 
 let activeSession: ActiveSession | null = null
 let operation: Promise<LiveStreamStatus> | null = null
+let lastCapturePath: string | null = null
 
 function statusState(
   usbState: UsbAoaState,
@@ -106,6 +111,8 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     capabilities: activeSession?.capabilities ?? null,
     localPreviewUrl: activeSession?.livePreview.status().url ?? null,
     localPreviewError: activeSession?.livePreview.status().error ?? null,
+    capturePath: activeSession?.capturePath ?? lastCapturePath,
+    captureActive: Boolean(activeSession?.captureStream),
     receiverConnected: usb.state === 'connected' || usb.state === 'streaming',
     transport: usb.transport,
     usbState: usb.state,
@@ -135,6 +142,65 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     message: error ?? statusMessage(state, usb, rtmp?.message ?? ''),
     error,
   }
+}
+
+export async function startLiveStreamCapture(): Promise<string> {
+  const session = activeSession
+  if (!session) throw new Error('请先获取画面')
+  if (session.captureStream && session.capturePath) return session.capturePath
+
+  const directory = join(app.getPath('userData'), 'live-captures')
+  mkdirSync(directory, { recursive: true })
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const capturePath = join(directory, `live-stream-${timestamp}.ucd2`)
+  const stream = createWriteStream(capturePath, { flags: 'wx' })
+  session.captureStream = stream
+  session.capturePath = capturePath
+  lastCapturePath = capturePath
+  stream.on('error', (error) => {
+    if (session.captureStream !== stream) return
+    session.captureStream = null
+    session.capturePath = null
+    logMainWarn('[直播流] 原始抓取写入失败', { error: error.message })
+  })
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onOpen = () => {
+        stream.off('error', onError)
+        resolve()
+      }
+      const onError = (error: Error) => {
+        stream.off('open', onOpen)
+        reject(error)
+      }
+      stream.once('open', onOpen)
+      stream.once('error', onError)
+    })
+  } catch (error) {
+    if (session.captureStream === stream) {
+      session.captureStream = null
+      session.capturePath = null
+    }
+    throw error
+  }
+
+  logMainInfo('[直播流] 原始抓取已开始', { capturePath })
+  return capturePath
+}
+
+export async function stopLiveStreamCapture(): Promise<string | null> {
+  const session = activeSession
+  if (!session?.captureStream) return session?.capturePath ?? lastCapturePath
+  const stream = session.captureStream
+  const capturePath = session.capturePath
+  session.captureStream = null
+  session.capturePath = null
+  if (capturePath) lastCapturePath = capturePath
+  stream.end()
+  await finished(stream)
+  logMainInfo('[直播流] 原始抓取已保存', { capturePath })
+  return capturePath
 }
 
 export function sendLiveStreamAudioFrame(frame: LiveStreamAudioInputFrame): void {
@@ -216,6 +282,7 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
       captureStream: process.env.LUNA_USB_CAPTURE_PATH
         ? createWriteStream(process.env.LUNA_USB_CAPTURE_PATH, { flags: 'w' })
         : null,
+      capturePath: process.env.LUNA_USB_CAPTURE_PATH ?? null,
       livePreview,
       rtmp,
       audioSourceMode: 'phone',
@@ -277,8 +344,8 @@ export function stopLiveStream(): Promise<LiveStreamStatus> {
     if (session) {
       session.state = 'stopping'
       await session.receiver.stop()
+      await stopLiveStreamCapture()
       await session.rtmp.stop()
-      session.captureStream?.end()
       session.audioMonitor = null
       await session.livePreview.stop()
       activeSession = null

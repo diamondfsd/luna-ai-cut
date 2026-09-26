@@ -178,6 +178,18 @@
   margin-top: 14px;
 }
 
+.live-capture-tools {
+  display: grid;
+  gap: 8px;
+}
+
+.live-capture-path-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+}
+
 .live-control-block {
   display: grid;
   gap: 10px;

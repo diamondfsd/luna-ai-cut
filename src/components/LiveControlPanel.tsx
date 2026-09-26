@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
+  Circle,
   Copy,
   Download,
   Mic,
@@ -13,6 +14,7 @@ import {
 
 import { Button, IconButton, Input, Select, Switch, Tooltip, toast } from '../ui'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
+import { LiveStreamReplayControl } from './LiveStreamReplayControl'
 import { isDesktopAudioInput, useDesktopMicrophone } from '../hooks/useDesktopMicrophone'
 import { usePcmAudioMonitor } from '../hooks/usePcmAudioMonitor'
 import type {
@@ -82,6 +84,10 @@ export function LiveControlPanel({
   const [previewReady, setPreviewReady] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [pullUrlCopied, setPullUrlCopied] = useState(false)
+  const [savedCapturePath, setSavedCapturePath] = useState<string | null>(null)
+  const [captureBusy, setCaptureBusy] = useState(false)
+  const [capturePathCopied, setCapturePathCopied] = useState(false)
+  const [captureActiveOverride, setCaptureActiveOverride] = useState<boolean | null>(null)
   const [phoneMicrophoneOptions, setPhoneMicrophoneOptions] = useState<LiveStreamAudioInputOption[]>([
     { id: 'none', label: '关闭', kind: 'none' },
     { id: 'phone-microphone', label: '手机麦克风', kind: 'phone-microphone' },
@@ -90,6 +96,11 @@ export function LiveControlPanel({
 
   const active = Boolean(status.startedAt) && status.state !== 'stopping'
   const streaming = status.usbState === 'streaming'
+  useEffect(() => {
+    setCaptureActiveOverride(status.captureActive)
+    if (status.capturePath) setSavedCapturePath(status.capturePath)
+  }, [status.captureActive, status.capturePath])
+
   const desktopMicrophoneSelected = isDesktopAudioInput(microphoneId)
   const canMonitorAudio = desktopMicrophoneSelected ? active : status.usbState === 'streaming'
   const audioMonitor = usePcmAudioMonitor(
@@ -201,6 +212,43 @@ export function LiveControlPanel({
       toast.error('无法复制地址')
     }
   }, [status.pullUrl])
+
+  const capturePath = status.capturePath ?? savedCapturePath
+  const capturing = captureActiveOverride ?? status.captureActive
+
+  const toggleCapture = useCallback(async () => {
+    if (captureBusy) return
+    setCaptureBusy(true)
+    try {
+      if (capturing) {
+        const path = await window.luna.liveStream.stopCapture()
+        setCaptureActiveOverride(false)
+        setSavedCapturePath(path)
+        toast.success('样本已保存')
+      } else {
+        const path = await window.luna.liveStream.startCapture()
+        setCaptureActiveOverride(true)
+        setSavedCapturePath(path)
+        toast.success('开始采集')
+      }
+    } catch {
+      toast.error(capturing ? '无法保存样本' : '无法开始采集')
+    } finally {
+      setCaptureBusy(false)
+    }
+  }, [captureBusy, capturing])
+
+  const copyCapturePath = useCallback(async () => {
+    if (!capturePath) return
+    try {
+      await copyText(capturePath)
+      setCapturePathCopied(true)
+      toast.success('路径已复制')
+      window.setTimeout(() => setCapturePathCopied(false), 1_500)
+    } catch {
+      toast.error('无法复制路径')
+    }
+  }, [capturePath])
 
   const controlStatus = status.lastControlResult?.ok === false
     ? status.lastControlResult.error
@@ -333,6 +381,33 @@ export function LiveControlPanel({
             >
               {status.outputEnabled ? '停止输出' : '开始输出'}
             </Button>
+            <div className="live-capture-tools">
+              <Button
+                variant={capturing ? 'danger' : 'secondary'}
+                size="compact"
+                icon={capturing ? <Square size={14} /> : <Circle size={14} />}
+                onClick={() => void toggleCapture()}
+                disabled={captureBusy || !active}
+              >
+                {captureBusy ? '处理中...' : capturing ? '停止采集' : '采集样本'}
+              </Button>
+              {capturePath && (
+                <div className="live-capture-path-row">
+                  <Input variant="compact" fullWidth value={capturePath} readOnly aria-label="样本文件路径" />
+                  <Tooltip content={capturePathCopied ? '已复制' : '复制路径'}>
+                    <IconButton
+                      variant="outline"
+                      size="compact"
+                      icon={capturePathCopied ? <Check size={14} /> : <Copy size={14} />}
+                      aria-label="复制样本路径"
+                      title="复制样本路径"
+                      onClick={() => void copyCapturePath()}
+                    />
+                  </Tooltip>
+                </div>
+              )}
+              <LiveStreamReplayControl captureActive={capturing} enhanceQuality={enhanceQuality} />
+            </div>
           </div>
         </section>
 

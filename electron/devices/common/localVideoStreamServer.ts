@@ -5,6 +5,15 @@ export interface LocalVideoStreamInfo {
   port: number
 }
 
+export interface LocalVideoStreamStats {
+  activeClients: number
+  totalConnections: number
+  totalDisconnections: number
+  publishedBytes: number
+  droppedBytesNoClient: number
+  droppedBytesBackpressure: number
+}
+
 const PRE_CLIENT_BUFFER_BYTES = 4 * 1024 * 1024
 
 /**
@@ -19,6 +28,7 @@ export class LocalVideoStreamServer {
   private readonly clients = new Set<ServerResponse>()
   private readonly preClientFrames: Buffer[] = []
   private preClientBytes = 0
+  private statsValue: LocalVideoStreamStats = this.emptyStats()
 
   constructor(
     contentType = 'application/octet-stream',
@@ -34,6 +44,10 @@ export class LocalVideoStreamServer {
       : 0
   }
 
+  stats(): LocalVideoStreamStats {
+    return { ...this.statsValue, activeClients: this.clients.size }
+  }
+
   async start(): Promise<LocalVideoStreamInfo> {
     if (this.server) {
       const address = this.server.address()
@@ -42,6 +56,7 @@ export class LocalVideoStreamServer {
       }
     }
 
+    this.statsValue = this.emptyStats()
     const createStreamServer = () => createServer((request, response) => {
       const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
       if (request.method === 'OPTIONS') {
@@ -58,8 +73,11 @@ export class LocalVideoStreamServer {
       response.writeHead(200, this.headers())
       response.flushHeaders()
       this.clients.add(response)
+      this.statsValue.totalConnections += 1
       this.flushPreClientFrames(response)
-      const remove = () => this.clients.delete(response)
+      const remove = () => {
+        if (this.clients.delete(response)) this.statsValue.totalDisconnections += 1
+      }
       response.once('close', remove)
       request.once('aborted', remove)
     })
@@ -104,7 +122,9 @@ export class LocalVideoStreamServer {
   }
 
   publish(frame: Buffer): void {
+    this.statsValue.publishedBytes += frame.length
     if (this.clients.size === 0) {
+      if (this.preClientBufferBytes === 0) this.statsValue.droppedBytesNoClient += frame.length
       this.queuePreClientFrame(frame)
       return
     }
@@ -115,7 +135,10 @@ export class LocalVideoStreamServer {
       }
       // Dropping a frame while a renderer is behind is preferable to building
       // an unbounded response buffer. The camera will send another keyframe.
-      if (client.writableNeedDrain) continue
+      if (client.writableNeedDrain) {
+        this.statsValue.droppedBytesBackpressure += frame.length
+        continue
+      }
       client.write(frame)
     }
   }
@@ -150,6 +173,7 @@ export class LocalVideoStreamServer {
     while (this.preClientBytes > this.preClientBufferBytes && this.preClientFrames.length > 1) {
       const first = this.preClientFrames.shift()!
       this.preClientBytes -= first.length
+      this.statsValue.droppedBytesNoClient += first.length
     }
   }
 
@@ -157,5 +181,16 @@ export class LocalVideoStreamServer {
     for (const frame of this.preClientFrames) response.write(frame)
     this.preClientFrames.length = 0
     this.preClientBytes = 0
+  }
+
+  private emptyStats(): LocalVideoStreamStats {
+    return {
+      activeClients: 0,
+      totalConnections: 0,
+      totalDisconnections: 0,
+      publishedBytes: 0,
+      droppedBytesNoClient: 0,
+      droppedBytesBackpressure: 0,
+    }
   }
 }

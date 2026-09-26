@@ -73,6 +73,8 @@
     "test:dji-bluetooth": "node --experimental-strip-types scripts/test-dji-web-bluetooth.mjs",
     "test:luna-ble": "node --experimental-strip-types scripts/test-luna-ble-protocol.mjs",
     "test:camera-video-stream": "node --experimental-strip-types scripts/test-camera-video-stream.mjs",
+    "test:live-stream-capture": "node --experimental-strip-types scripts/test-live-stream-capture.mjs",
+    "replay:live-stream": "node --experimental-strip-types scripts/replay-live-stream-capture.mjs",
     "test:dji-preview": "node --experimental-strip-types scripts/test-dji-preview.mjs",
     "test:dji-udp": "node --experimental-strip-types scripts/test-dji-udp-transport.mjs",
     "test:dji-pocket": "node --experimental-strip-types scripts/test-dji-pocket-protocol.mjs",

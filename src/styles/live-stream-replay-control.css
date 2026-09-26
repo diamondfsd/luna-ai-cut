@@ -1,0 +1,62 @@
+.live-replay-control {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+
+.live-replay-heading {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.live-replay-heading > span {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.live-replay-heading > span.active {
+  color: #248a37;
+}
+
+.live-replay-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.live-replay-path-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+}
+
+.live-replay-path-row input,
+.live-replay-field input {
+  min-width: 0;
+  font-size: 11px;
+}
+
+.live-replay-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-replay-error {
+  color: #c0392b;
+  font-size: 11px;
+}
