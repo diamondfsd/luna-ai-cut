@@ -7,34 +7,7 @@ export type LiveStreamState =
   | 'stopping'
   | 'error'
 
-export interface LiveStreamOptions {
-  enhanceQuality?: boolean
-}
-
-export type LiveStreamOutputAcceleration = 'passthrough' | 'hardware' | 'software'
-
-export type LiveStreamReplayState = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
-
-export interface LiveStreamReplayStatus {
-  state: LiveStreamReplayState
-  capturePath: string | null
-  pullUrl: string | null
-  diagnosticsLogPath: string | null
-  startedAt: string | null
-  videoFrames: number
-  audioFrames: number
-  outputBytes: number
-  videoInputBufferedBytes: number
-  audioInputBufferedBytes: number
-  maxPlaybackLagMs: number
-  activeClients: number
-  totalConnections: number
-  totalDisconnections: number
-  publishedBytes: number
-  droppedBytesNoClient: number
-  droppedBytesBackpressure: number
-  error: string | null
-}
+export type LiveWindowResolution = '1080p' | '720p'
 
 export interface NormalizedVideoPoint {
   x: number
@@ -81,22 +54,6 @@ export interface LiveStreamAudioInputState {
   options: LiveStreamAudioInputOption[]
   selectedId: string
 }
-
-export interface LiveStreamAudioMonitorFrame {
-  sampleRate: number
-  channels: number
-  sampleCount: number
-  pcm16Le: Uint8Array
-}
-
-export interface LiveStreamAudioInputFrame {
-  sampleRate: number
-  channels: number
-  sampleCount: number
-  pcm16Le: Uint8Array
-}
-
-export type LiveStreamAudioSourceMode = 'phone' | 'desktop'
 
 export interface LiveStreamControlCapabilities {
   gimbal: {
@@ -159,12 +116,6 @@ export interface LiveStreamStatus {
   localPreviewError: string | null
   capturePath: string | null
   captureActive: boolean
-  outputEnabled: boolean
-  outputReady: boolean
-  pullUrl: string | null
-  outputAcceleration: LiveStreamOutputAcceleration | null
-  outputWarning: string | null
-  outputMessage: string | null
   startedAt: string | null
   message: string
   error: string | null
@@ -172,18 +123,9 @@ export interface LiveStreamStatus {
 
 export interface LiveStreamApi {
   status(): Promise<LiveStreamStatus>
-  replayStatus(): Promise<LiveStreamReplayStatus>
-  startReplay(options?: LiveStreamOptions): Promise<LiveStreamReplayStatus>
-  stopReplay(): Promise<LiveStreamReplayStatus>
   start(): Promise<LiveStreamStatus>
   startCapture(): Promise<string>
   stopCapture(): Promise<string | null>
-  startOutput(options: LiveStreamOptions): Promise<LiveStreamStatus>
-  stopOutput(): Promise<LiveStreamStatus>
-  setAudioMonitor(enabled: boolean): Promise<boolean>
-  setAudioSource(source: LiveStreamAudioSourceMode): Promise<void>
-  sendAudioFrame(frame: LiveStreamAudioInputFrame): Promise<void>
-  onAudioMonitorFrame(callback: (frame: LiveStreamAudioMonitorFrame) => void): () => void
   sendControl(command: LiveStreamControlCommand): Promise<string>
   stop(): Promise<LiveStreamStatus>
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CameraOff, Copy, Maximize2, Minimize2, Radio, Square } from 'lucide-react'
+import { CameraOff, Maximize2, Minimize2 } from 'lucide-react'
 
-import { Button, Dialog, IconButton, LoadingIndicator, toast, Tooltip } from '../ui'
+import { Button, Dialog, IconButton, LoadingIndicator, Tooltip } from '../ui'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import type { CameraVideoStreamStatus } from '../shared/types'
 import '../styles/camera-live-preview.css'
@@ -18,8 +18,6 @@ interface CameraLivePreviewDialogProps {
 export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode, onOpenChange }: CameraLivePreviewDialogProps) {
   const [status, setStatus] = useState<CameraVideoStreamStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [obsError, setObsError] = useState<string | null>(null)
-  const [obsBusy, setObsBusy] = useState(false)
   const [hasFrame, setHasFrame] = useState(false)
   const [streamDimensions, setStreamDimensions] = useState<{ width: number; height: number } | null>(null)
   const [immersive, setImmersive] = useState(false)
@@ -43,8 +41,6 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
     setHasFrame(false)
     setStreamDimensions(null)
     setError(null)
-    setObsError(null)
-    setObsBusy(false)
     setStatus(null)
     void window.luna.cameraVideoStream.start({ mode, deviceId, host })
       .then((nextStatus) => {
@@ -106,58 +102,11 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
     onOpenChange(nextOpen)
   }
 
-  async function toggleObsStream(): Promise<void> {
-    if (!status || obsBusy) return
-    setObsBusy(true)
-    setObsError(null)
-    try {
-      const nextStatus = status.obsStreamUrl
-        ? await window.luna.cameraVideoStream.stopObs({ mode, deviceId, host })
-        : await window.luna.cameraVideoStream.startObs({ mode, deviceId, host })
-      setStatus(nextStatus)
-      if (nextStatus.obsStreamUrl) toast.success('OBS 地址已启动')
-    } catch (cause: unknown) {
-      setObsError(cause instanceof Error ? cause.message : 'OBS 地址启动失败')
-    } finally {
-      setObsBusy(false)
-    }
-  }
-
-  async function copyObsUrl(): Promise<void> {
-    const url = status?.obsStreamUrl
-    if (!url) return
-    try {
-      await navigator.clipboard.writeText(url)
-      toast.success('OBS 地址已复制')
-    } catch {
-      setObsError('无法复制地址，请手动选择并复制')
-    }
-  }
-
   const waiting = !error && (!status || status.state === 'starting' || (status.state === 'running' && !hasFrame))
   const unsupported = status?.state === 'unsupported'
-  const isObsStreaming = Boolean(status?.obsStreamUrl)
-  const canControlObs = status?.state === 'running'
 
   const footer = (
-    <div className={`camera-live-preview-footer${isObsStreaming ? ' is-streaming' : ''}`}>
-      {isObsStreaming ? (
-        <div className="camera-live-preview-obs-url" aria-live="polite">
-          <span>OBS 推流地址</span>
-          <div className="camera-live-preview-obs-url-value">
-            <code>{status?.obsStreamUrl}</code>
-            <IconButton
-              variant="ghost"
-              size="mini"
-              icon={<Copy size={14} />}
-              aria-label="复制 OBS 推流地址"
-              title="复制 OBS 推流地址"
-              onClick={() => void copyObsUrl()}
-              disabled={obsBusy}
-            />
-          </div>
-        </div>
-      ) : null}
+    <div className="camera-live-preview-footer">
       <Button
         variant="secondary"
         size="compact"
@@ -165,18 +114,6 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
       >
         关闭
       </Button>
-      {canControlObs ? (
-        <Button
-          variant={isObsStreaming ? 'danger' : 'secondary'}
-          size="compact"
-          icon={isObsStreaming ? <Square size={13} /> : <Radio size={15} />}
-          onClick={() => void toggleObsStream()}
-          disabled={obsBusy}
-        >
-          {obsBusy ? '准备中...' : isObsStreaming ? '停止推流' : '启动推流'}
-        </Button>
-      ) : null}
-      {obsError && <span className="camera-live-preview-obs-error" role="alert">{obsError}</span>}
     </div>
   )
 

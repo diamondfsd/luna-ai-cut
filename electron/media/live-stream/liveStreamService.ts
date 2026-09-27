@@ -3,11 +3,9 @@ import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs'
 import { app } from 'electron'
 import { finished } from 'node:stream/promises'
 import { join } from 'node:path'
-import type { WebContents } from 'electron'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import {
-  USB_STREAM_AUDIO,
   USB_STREAM_CONTROL_RESULT,
   USB_STREAM_VIDEO,
   type LiveMediaReceiver,
@@ -16,14 +14,10 @@ import {
 } from './usbAoaReceiver'
 import { createLiveMediaReceiver } from './mediaReceiver'
 import { LivePreviewStreamService } from './livePreviewStreamService'
-import { RtmpStreamService, type RtmpStreamState } from './rtmpStreamService'
 import type {
-  LiveStreamAudioInputFrame,
-  LiveStreamAudioSourceMode,
   LiveStreamControlCapabilities,
   LiveStreamControlCommand,
   LiveStreamControlResult,
-  LiveStreamOptions,
   LiveStreamState,
   LiveStreamStatus,
 } from '../../../src/shared/types'
@@ -36,11 +30,7 @@ interface ActiveSession {
   captureStream: WriteStream | null
   capturePath: string | null
   livePreview: LivePreviewStreamService
-  rtmp: RtmpStreamService
-  audioSourceMode: LiveStreamAudioSourceMode
-  audioMonitor: WebContents | null
   startedAt: string
-  error: string | null
 }
 
 const IDLE_USB_STATUS: UsbAoaStatus = {
@@ -70,38 +60,28 @@ let activeSession: ActiveSession | null = null
 let operation: Promise<LiveStreamStatus> | null = null
 let lastCapturePath: string | null = null
 
-function statusState(
-  usbState: UsbAoaState,
-  rtmpState: RtmpStreamState,
-): LiveStreamState {
+function statusState(usbState: UsbAoaState): LiveStreamState {
   const session = activeSession
   if (!session) return 'idle'
   if (session.state === 'stopping') return 'stopping'
-  if (usbState === 'error' || rtmpState === 'error') return 'error'
+  if (usbState === 'error') return 'error'
   if (usbState === 'waiting' || usbState === 'switching' || usbState === 'idle') return 'waiting-usb'
-  if (rtmpState === 'starting' || rtmpState === 'stopping') return 'starting'
-  if (rtmpState === 'running') return 'running'
-  return 'ready'
+  return usbState === 'streaming' ? 'running' : 'ready'
 }
 
-function statusMessage(state: LiveStreamState, usb: UsbAoaStatus, rtmpMessage: string): string {
+function statusMessage(state: LiveStreamState, usb: UsbAoaStatus): string {
   if (state === 'idle') return '输入接收未启动'
   if (state === 'waiting-usb') return usb.message
   if (state === 'ready') return '手机连接已就绪'
-  if (state === 'starting') return '正在准备直播地址'
-  if (state === 'running') return '本机直播地址已就绪'
-  if (state === 'stopping') return '正在停止直播输出'
-  return usb.error ?? rtmpMessage
+  if (state === 'running') return '直播画面已连接'
+  if (state === 'stopping') return '正在停止画面接收'
+  return usb.error ?? usb.message
 }
 
 export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
-  const rtmp = activeSession?.rtmp.status()
-  const rtmpState = rtmp?.state ?? 'idle'
-  const state = statusState(usb.state, rtmpState)
-  const outputEnabled = rtmpState === 'starting' || rtmpState === 'running' || rtmpState === 'stopping'
-  const outputReady = rtmpState === 'running'
-  const error = activeSession?.error ?? usb.error ?? rtmp?.error ?? null
+  const state = statusState(usb.state)
+  const error = usb.error ?? null
 
   return {
     state,
@@ -132,14 +112,8 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     audioSource: usb.audioSource,
     audioSampleRate: usb.audioSampleRate,
     audioChannels: usb.audioChannels,
-    outputEnabled,
-    outputReady,
-    pullUrl: rtmp?.pullUrl ?? null,
-    outputAcceleration: rtmp?.acceleration ?? null,
-    outputWarning: rtmp?.warning ?? null,
-    outputMessage: rtmp?.error ?? (rtmp?.state === 'starting' ? rtmp.message : null),
     startedAt: activeSession?.startedAt ?? null,
-    message: error ?? statusMessage(state, usb, rtmp?.message ?? ''),
+    message: error ?? statusMessage(state, usb),
     error,
   }
 }
@@ -203,24 +177,6 @@ export async function stopLiveStreamCapture(): Promise<string | null> {
   return capturePath
 }
 
-export function sendLiveStreamAudioFrame(frame: LiveStreamAudioInputFrame): void {
-  const session = activeSession
-  if (!session || session.audioSourceMode !== 'desktop') return
-  session.rtmp.pushAudio(frame)
-}
-
-export async function setLiveStreamAudioSource(source: LiveStreamAudioSourceMode): Promise<void> {
-  const session = activeSession
-  if (session) session.audioSourceMode = source === 'desktop' ? 'desktop' : 'phone'
-}
-
-export function setLiveStreamAudioMonitor(enabled: boolean, target: WebContents): boolean {
-  const session = activeSession
-  if (!session) throw new Error('请先获取画面')
-  session.audioMonitor = enabled ? target : null
-  return Boolean(session.audioMonitor)
-}
-
 export async function sendLiveStreamControlCommand(command: LiveStreamControlCommand): Promise<string> {
   const session = activeSession
   if (!session) throw new Error('手机 USB 尚未连接')
@@ -241,7 +197,6 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
     if (activeSession) return getLiveStreamStatus()
     const livePreview = new LivePreviewStreamService()
     await livePreview.start()
-    const rtmp = new RtmpStreamService()
     const receiver = createLiveMediaReceiver((frame) => {
       const session = activeSession
       if (!session || session.receiver !== receiver) return
@@ -260,18 +215,6 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
       session.captureStream?.write(frame.raw)
       if (frame.streamType === USB_STREAM_VIDEO) {
         session.livePreview.pushHevcFrame(frame.body)
-        rtmp.pushVideo(frame.body)
-      }
-      if (frame.streamType === USB_STREAM_AUDIO && frame.audio) {
-        if (session.audioSourceMode === 'phone') rtmp.pushAudio(frame.audio)
-        if (session.audioMonitor && !session.audioMonitor.isDestroyed()) {
-          session.audioMonitor.send('live-stream:audio-monitor-frame', {
-            sampleRate: frame.audio.sampleRate,
-            channels: frame.audio.channels,
-            sampleCount: frame.audio.sampleCount,
-            pcm16Le: frame.audio.pcm16Le,
-          })
-        }
       }
     })
     const session: ActiveSession = {
@@ -284,51 +227,11 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
         : null,
       capturePath: process.env.LUNA_USB_CAPTURE_PATH ?? null,
       livePreview,
-      rtmp,
-      audioSourceMode: 'phone',
-      audioMonitor: null,
       startedAt: new Date().toISOString(),
-      error: null,
     }
     activeSession = session
     receiver.start()
     logMainInfo('[直播流] USB AOA 接收已启动')
-    return getLiveStreamStatus()
-  })().finally(() => {
-    operation = null
-  })
-  operation = task
-  return task
-}
-
-export function startLiveStreamOutput(options: LiveStreamOptions): Promise<LiveStreamStatus> {
-  if (operation) return operation
-  const task = (async () => {
-    const session = activeSession
-    if (!session) throw new Error('请先获取画面')
-    try {
-      await session.rtmp.start(options)
-      session.error = null
-      return getLiveStreamStatus()
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
-      session.error = detail
-      throw error
-    }
-  })().finally(() => {
-    operation = null
-  })
-  operation = task
-  return task
-}
-
-export function stopLiveStreamOutput(): Promise<LiveStreamStatus> {
-  if (operation) return operation
-  const task = (async () => {
-    const session = activeSession
-    if (!session) return getLiveStreamStatus()
-    await session.rtmp.stop()
-    session.error = null
     return getLiveStreamStatus()
   })().finally(() => {
     operation = null
@@ -345,8 +248,6 @@ export function stopLiveStream(): Promise<LiveStreamStatus> {
       session.state = 'stopping'
       await session.receiver.stop()
       await stopLiveStreamCapture()
-      await session.rtmp.stop()
-      session.audioMonitor = null
       await session.livePreview.stop()
       activeSession = null
     }

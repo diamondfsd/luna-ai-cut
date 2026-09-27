@@ -1,6 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { buildCodecString, detectCodec, drainAccessUnits, splitNalUnits } from '../lib/annexB'
+import type { LiveWindowResolution } from '../shared/types/liveStream'
+import { LiveVideoWebGpuRenderer } from './LiveVideoWebGpuRenderer'
+import { livePreviewOutputSize } from './livePreviewSizing'
 
 interface DecodedVideoFrame {
   displayWidth: number
@@ -14,7 +17,11 @@ interface EncodedVideoChunkLike {
 
 interface VideoDecoderLike {
   state: string
-  configure(config: { codec: string; optimizeForLatency?: boolean }): void
+  configure(config: {
+    codec: string
+    optimizeForLatency?: boolean
+    hardwareAcceleration?: 'prefer-hardware'
+  }): void
   decode(chunk: unknown): void
   close(): void
 }
@@ -35,16 +42,22 @@ function webCodecs(): { Decoder: VideoDecoderConstructor; Chunk: EncodedVideoChu
 
 interface AnnexBVideoCanvasProps {
   url: string
+  resolution?: LiveWindowResolution
   className?: string
   onFrame: (dimensions: { width: number; height: number }) => void
   onError: (message: string) => void
 }
 
-export function AnnexBVideoCanvas({ url, className, onFrame, onError }: AnnexBVideoCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+export function AnnexBVideoCanvas({ url, resolution, className, onFrame, onError }: AnnexBVideoCanvasProps) {
+  const webGpuCanvasRef = useRef<HTMLCanvasElement>(null)
+  const fallbackCanvasRef = useRef<HTMLCanvasElement>(null)
+  const resolutionRef = useRef(resolution)
+  const [webGpuReady, setWebGpuReady] = useState(false)
+  resolutionRef.current = resolution
 
   useEffect(() => {
-    const canvasAtMount = canvasRef.current
+    const webGpuCanvas = webGpuCanvasRef.current
+    const fallbackCanvas = fallbackCanvasRef.current
     const codecs = webCodecs()
     const abort = new AbortController()
     let decoder: VideoDecoderLike | null = null
@@ -55,10 +68,39 @@ export function AnnexBVideoCanvas({ url, className, onFrame, onError }: AnnexBVi
     let seenKeyframe = false
     let timestamp = 0
     let disposed = false
+    let webGpuRenderer: LiveVideoWebGpuRenderer | null = null
+    let webGpuActive = false
+
+    setWebGpuReady(false)
 
     if (!codecs) {
       onError('当前系统不支持相机视频预览')
       return () => undefined
+    }
+
+    if (webGpuCanvas && resolutionRef.current) {
+      void LiveVideoWebGpuRenderer.create(webGpuCanvas, () => {
+        webGpuRenderer = null
+        webGpuActive = false
+        if (!disposed) setWebGpuReady(false)
+      }).then((renderer) => {
+        if (disposed) {
+          renderer?.dispose()
+          return
+        }
+        webGpuRenderer = renderer
+      }).catch(() => undefined)
+    }
+
+    const drawFallback = (frame: DecodedVideoFrame, width: number, height: number) => {
+      if (!fallbackCanvas) return
+      if (fallbackCanvas.width !== width) fallbackCanvas.width = width
+      if (fallbackCanvas.height !== height) fallbackCanvas.height = height
+      const context = fallbackCanvas.getContext('2d')
+      if (!context) return
+      context.imageSmoothingEnabled = true
+      context.imageSmoothingQuality = 'high'
+      context.drawImage(frame as unknown as CanvasImageSource, 0, 0, width, height)
     }
 
     const resetDecoder = () => {
@@ -71,15 +113,28 @@ export function AnnexBVideoCanvas({ url, className, onFrame, onError }: AnnexBVi
     }
 
     const paint = (frame: DecodedVideoFrame) => {
-      const canvas = canvasAtMount
-      if (!canvas || disposed) {
+      if (!webGpuCanvas || !fallbackCanvas || disposed) {
         frame.close()
         return
       }
-      if (canvas.width !== frame.displayWidth) canvas.width = frame.displayWidth
-      if (canvas.height !== frame.displayHeight) canvas.height = frame.displayHeight
-      canvas.getContext('2d')?.drawImage(frame as unknown as CanvasImageSource, 0, 0)
-      const dimensions = { width: frame.displayWidth, height: frame.displayHeight }
+      const outputSize = resolutionRef.current
+        ? livePreviewOutputSize(frame.displayWidth, frame.displayHeight, resolutionRef.current)
+        : { width: frame.displayWidth, height: frame.displayHeight }
+      let gpuRendered = false
+      try {
+        gpuRendered = webGpuRenderer?.render(frame, outputSize.width, outputSize.height) ?? false
+        if (gpuRendered && !webGpuActive) {
+          webGpuActive = true
+          setWebGpuReady(true)
+        }
+      } catch {
+        webGpuRenderer?.dispose()
+        webGpuRenderer = null
+        webGpuActive = false
+        setWebGpuReady(false)
+      }
+      if (!gpuRendered && !webGpuActive) drawFallback(frame, outputSize.width, outputSize.height)
+      const dimensions = outputSize
       frame.close()
       onFrame(dimensions)
     }
@@ -122,7 +177,7 @@ export function AnnexBVideoCanvas({ url, className, onFrame, onError }: AnnexBVi
             },
           })
           try {
-            decoder.configure({ codec: codecString, optimizeForLatency: true })
+            decoder.configure({ codec: codecString, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' })
           } catch (error) {
             onError(`视频格式无法播放：${error instanceof Error ? error.message : String(error)}`)
             return
@@ -159,9 +214,24 @@ export function AnnexBVideoCanvas({ url, className, onFrame, onError }: AnnexBVi
       disposed = true
       abort.abort()
       try { decoder?.close() } catch { /* Decoder may already be closed. */ }
-      canvasAtMount?.getContext('2d')?.clearRect(0, 0, canvasAtMount.width, canvasAtMount.height)
+      webGpuRenderer?.dispose()
+      fallbackCanvas?.getContext('2d')?.clearRect(0, 0, fallbackCanvas.width, fallbackCanvas.height)
     }
   }, [onError, onFrame, url])
 
-  return <canvas ref={canvasRef} className={className} aria-label="直播画面" />
+  const baseClassName = className ?? ''
+  return (
+    <>
+      <canvas
+        ref={webGpuCanvasRef}
+        className={`${baseClassName} live-preview-webgpu${webGpuReady ? ' is-active' : ''}`}
+        aria-label="直播画面"
+      />
+      <canvas
+        ref={fallbackCanvasRef}
+        className={`${baseClassName} live-preview-fallback${webGpuReady ? '' : ' is-active'}`}
+        aria-hidden="true"
+      />
+    </>
+  )
 }

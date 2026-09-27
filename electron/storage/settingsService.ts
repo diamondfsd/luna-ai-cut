@@ -86,8 +86,6 @@ function defaultSettings(): AppSettings {
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
     windowCloseBehavior: 'hide',
-    liveRtmpUrl: '',
-    liveRtmpStreamKey: '',
     nasSync: {
       enabled: false,
       autoSync: false,
@@ -149,7 +147,11 @@ type LegacyNasSyncDebugSettings = {
   nasSyncDebugPrevious?: unknown
 }
 
-type StoredSettings = Partial<AppSettings> & { downloadDir?: string } & LegacyNasSyncDebugSettings
+type StoredSettings = Partial<AppSettings> & {
+  downloadDir?: string
+  liveRtmpUrl?: unknown
+  liveRtmpStreamKey?: unknown
+} & LegacyNasSyncDebugSettings
 
 async function readSettingsFile() {
   return readStoredSettings<StoredSettings>(settingsPath(), legacyPath())
@@ -164,6 +166,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
     baseDir: savedSettings.baseDir,
     cacheDir: cacheDir(savedSettings.baseDir),
   }
+  const legacyLiveSettings = merged as typeof merged & Pick<StoredSettings, 'liveRtmpUrl' | 'liveRtmpStreamKey'>
+  delete legacyLiveSettings.liveRtmpUrl
+  delete legacyLiveSettings.liveRtmpStreamKey
   const hasLegacyNasDebugMode = saved?.nasSyncDebugMode === true
   merged.defaultWatermarkEnabled = typeof saved?.defaultWatermarkEnabled === 'boolean'
     ? saved.defaultWatermarkEnabled
@@ -215,12 +220,6 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   merged.windowCloseBehavior = savedWindowCloseBehavior === 'hide' || savedWindowCloseBehavior === 'quit'
     ? savedWindowCloseBehavior
     : defaults.windowCloseBehavior
-  merged.liveRtmpUrl = typeof saved?.liveRtmpUrl === 'string'
-    ? saved.liveRtmpUrl.trim()
-    : defaults.liveRtmpUrl
-  merged.liveRtmpStreamKey = typeof saved?.liveRtmpStreamKey === 'string'
-    ? saved.liveRtmpStreamKey.trim()
-    : defaults.liveRtmpStreamKey
   const savedNasSync = saved?.nasSync
   const defaultNasSync = defaults.nasSync as NasSyncSettings
   const savedNasPort = savedNasSync?.port
@@ -292,11 +291,16 @@ export async function getSettings(): Promise<AppSettings> {
     return defaults
   }
   const merged = mergeSettings(saved)
+  const hasLegacyLiveSettings = Boolean(saved && (
+    Object.prototype.hasOwnProperty.call(saved, 'liveRtmpUrl')
+    || Object.prototype.hasOwnProperty.call(saved, 'liveRtmpStreamKey')
+  ))
   if (
     stored.fromLegacyPath
     || (saved.downloadDir && !saved.baseDir)
     || saved.experimentalWebGpuExport === true
     || hasLegacyNasSyncDebugSettings(saved)
+    || hasLegacyLiveSettings
   ) {
     await writeSettingsFile(merged)
   }
@@ -339,8 +343,6 @@ export function saveSettings(partial: Partial<AppSettings>): Promise<AppSettings
       if (!validNasPort(next.nasSync.port)) throw new Error('NAS 端口必须是 1 到 65535 的整数')
       if (next.nasSync.enabled && (!next.nasSync.share || !next.nasSync.remotePath)) throw new Error('请先连接 NAS 并选择共享和同步目录')
     }
-    next.liveRtmpUrl = (next.liveRtmpUrl ?? '').trim()
-    next.liveRtmpStreamKey = (next.liveRtmpStreamKey ?? '').trim()
     next.cacheDir = cacheDir(next.baseDir)
     await writeSettingsFile(next)
     return next
