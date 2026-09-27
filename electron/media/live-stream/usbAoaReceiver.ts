@@ -317,9 +317,11 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   }
 
   private async switchToAccessory(device: usb.Device): Promise<void> {
+    device.timeout = 2_000
     device.open()
     try {
       const protocol = await controlTransfer(device, 0xc0, 51, 0, 0, 2)
+      if (!this.running) return
       const version = Buffer.isBuffer(protocol) ? protocol.readUInt16LE(0) : 0
       logMainInfo(`[USB AOA] 手机支持 AOA protocol ${version}`)
 
@@ -332,9 +334,10 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         'LunaKa', // serial
       ]
       for (let index = 0; index < strings.length; index += 1) {
+        if (!this.running) return
         await controlTransfer(device, 0x40, 52, 0, index, Buffer.from(`${strings[index]}\0`, 'utf8'))
       }
-      await controlTransfer(device, 0x40, 53, 0, 0, Buffer.alloc(0))
+      if (this.running) await controlTransfer(device, 0x40, 53, 0, 0, Buffer.alloc(0))
     } finally {
       try {
         device.close()

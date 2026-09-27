@@ -148,6 +148,9 @@ export interface LunaApi {
   startupReady(): void
   trackPageOpened(path: string): void
   setFullScreen(enabled: boolean): Promise<void>
+  minimizeWindow(): Promise<void>
+  toggleMaximizeWindow(): Promise<void>
+  closeWindow(): Promise<void>
   setLiveWindowMode(enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number): Promise<void>
   onLiveWindowModeEnd(callback: () => void): () => void
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void

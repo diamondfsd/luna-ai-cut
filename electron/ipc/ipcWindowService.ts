@@ -26,7 +26,6 @@ function restoreLiveWindow(window: BrowserWindow, notifyRenderer = true): void {
   window.setMinimumSize(...state.minimumSize)
   window.setBounds(state.bounds)
   if (state.wasMaximized) window.maximize()
-  if (process.platform === 'darwin') window.setWindowButtonVisibility(true)
 }
 
 function setLiveWindow(window: BrowserWindow, resolution: LiveWindowResolution, sourceAspectRatio?: number): void {
@@ -48,7 +47,7 @@ function setLiveWindow(window: BrowserWindow, resolution: LiveWindowResolution, 
 
   window.webContents.setBackgroundThrottling(false)
   const display = screen.getDisplayMatching(window.getBounds())
-  const size = liveWindowContentSize(resolution, display.scaleFactor, display.workArea, sourceAspectRatio)
+  const size = liveWindowContentSize(resolution, display.workArea, sourceAspectRatio)
   window.setResizable(false)
   window.setMaximizable(false)
   window.setMinimumSize(0, 0)
@@ -60,7 +59,6 @@ function setLiveWindow(window: BrowserWindow, resolution: LiveWindowResolution, 
     Math.round(workArea.x + (workArea.width - nextBounds.width) / 2),
     Math.round(workArea.y + (workArea.height - nextBounds.height) / 2),
   )
-  if (process.platform === 'darwin') window.setWindowButtonVisibility(false)
 }
 
 function notifyFullScreenState(window: BrowserWindow): void {
@@ -92,6 +90,17 @@ export function register(): void {
     const window = BrowserWindow.fromWebContents(event.sender)
     if (!window || window.isDestroyed() || !window.isFullScreenable()) return
     window.setFullScreen(enabled)
+  })
+
+  ipcMain.handle('window:control', (event, action: 'minimize' | 'toggle-maximize' | 'close') => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window || window.isDestroyed()) return
+    if (action === 'minimize' && window.isMinimizable()) window.minimize()
+    if (action === 'toggle-maximize' && window.isMaximizable()) {
+      if (window.isMaximized()) window.unmaximize()
+      else window.maximize()
+    }
+    if (action === 'close') window.close()
   })
 
   ipcMain.handle('window:set-live-mode', (event, enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number) => {
