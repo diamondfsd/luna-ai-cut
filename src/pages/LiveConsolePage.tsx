@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useState, type MouseEvent } from 'react'
 import { Maximize2, RefreshCw, Square } from 'lucide-react'
 
-import { Button, IconButton, LoadingIndicator, Select, Tooltip, toast } from '../ui'
+import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
 import type { LiveStreamStatus } from '../shared/types'
-import type { LiveWindowResolution } from '../shared/types/liveStream'
 import '../styles/live-console.css'
-
-const liveWindowResolutions = [
-  { value: '1080p', label: '1080p' },
-  { value: '720p', label: '720p' },
-]
 
 interface LiveConsolePageProps {
   windowLiveMode: boolean
@@ -31,7 +25,6 @@ function stateLabel(status: LiveStreamStatus | null): string {
 
 export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: LiveConsolePageProps) {
   const [status, setStatus] = useState<LiveStreamStatus | null>(null)
-  const [windowResolution, setWindowResolution] = useState<LiveWindowResolution>('1080p')
   const [windowControlsVisible, setWindowControlsVisible] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +74,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
 
   const enterWindowLiveMode = () => {
     void runAction(async () => {
-      await window.luna.setLiveWindowMode(true, windowResolution)
+      await window.luna.setLiveWindowMode(true, '720p')
       setWindowControlsVisible(false)
       onWindowLiveModeChange(true)
     })
@@ -107,24 +100,15 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
         </div>
         <div className="live-console-actions">
           {!windowLiveMode && (
-            <>
-              <Select
-                variant="compact"
-                value={windowResolution}
-                onValueChange={(value) => setWindowResolution(value as LiveWindowResolution)}
-                options={liveWindowResolutions}
-                placeholder="窗口尺寸"
-              />
-              <Button
-                variant="primary"
-                size="compact"
-                icon={<Maximize2 size={14} />}
-                onClick={enterWindowLiveMode}
-                disabled={busy}
-              >
-                窗口直播
-              </Button>
-            </>
+            <Button
+              variant="primary"
+              size="compact"
+              icon={<Maximize2 size={14} />}
+              onClick={enterWindowLiveMode}
+              disabled={busy}
+            >
+              720p 窗口直播
+            </Button>
           )}
           <Tooltip content="刷新状态">
             <IconButton
@@ -161,7 +145,6 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
         <LiveControlPanel
           status={status}
           busy={busy}
-          windowResolution={windowResolution}
           windowLiveMode={windowLiveMode}
           onExitWindowLiveMode={exitWindowLiveMode}
           onStart={() => void runAction(async () => {

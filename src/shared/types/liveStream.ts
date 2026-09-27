@@ -7,7 +7,7 @@ export type LiveStreamState =
   | 'stopping'
   | 'error'
 
-export type LiveWindowResolution = '1080p' | '720p'
+export type LiveWindowResolution = '720p'
 
 export interface NormalizedVideoPoint {
   x: number

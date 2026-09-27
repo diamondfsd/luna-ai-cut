@@ -90,12 +90,16 @@
   height: 100vh;
   min-height: 0;
   overflow: hidden;
+  border-radius: 0;
+  background: #000;
 }
 
 .app-window-live .route-stack,
 .app-window-live .route-panel {
   min-height: 0;
   overflow: hidden;
+  border-radius: 0;
+  background: #000;
 }
 
 .live-console-page.is-window-live {
@@ -105,6 +109,7 @@
   padding: 0;
   background: #000;
   color: #fff;
+  border-radius: 0;
 }
 
 .live-console-page.is-window-live .live-console-header {
@@ -122,6 +127,7 @@
   position: absolute;
   inset: 0;
   display: block;
+  border-radius: 0;
 }
 
 .live-console-page.is-window-live .live-preview-stage {
@@ -130,11 +136,22 @@
   width: 100% !important;
   height: 100% !important;
   border-radius: 0;
+  background: #000;
+}
+
+.live-console-page.is-window-live .live-preview-stage canvas {
+  border-radius: 0;
 }
 
 .live-console-page.is-window-live .live-control-pane {
-  top: 16px;
-  right: 16px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(360px, 88vw);
+  border-top: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(32, 32, 34, 0.98);
 }
 
 .live-console-page.is-window-live .live-console-error {
@@ -169,5 +186,17 @@
 
   .live-console-actions {
     width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .live-console-page.is-window-live .live-control-panel {
+    display: block;
+  }
+
+  .live-console-page.is-window-live .live-control-pane {
+    width: min(360px, 88vw);
+    border-top: 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.16);
   }
 }

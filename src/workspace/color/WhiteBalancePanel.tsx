@@ -12,6 +12,7 @@ interface WhiteBalancePanelProps {
   onChange: (patch: Partial<EditPipeline['color']>) => void
   onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
   onActivatePipette?: () => void
+  showPipette?: boolean
 }
 
 const WHITE_BALANCE_OPTIONS: Array<{ value: WhiteBalanceMode; label: string; temperature: number; tint: number }> = [
@@ -21,7 +22,7 @@ const WHITE_BALANCE_OPTIONS: Array<{ value: WhiteBalanceMode; label: string; tem
   { value: 'indoor', label: '室内', temperature: -42, tint: -3 },
 ]
 
-export function WhiteBalancePanel({ value, modified, onChange, onPreviewChange, onActivatePipette }: WhiteBalancePanelProps) {
+export function WhiteBalancePanel({ value, modified, onChange, onPreviewChange, onActivatePipette, showPipette = true }: WhiteBalancePanelProps) {
   const previewChange = onPreviewChange ?? onChange
   function updateWhiteBalanceMode(whiteBalanceMode: string): void {
     const preset = WHITE_BALANCE_OPTIONS.find((item) => item.value === whiteBalanceMode)
@@ -52,9 +53,11 @@ export function WhiteBalancePanel({ value, modified, onChange, onPreviewChange, 
           value={value.whiteBalanceMode}
           onValueChange={updateWhiteBalanceMode}
         />
-        <Tooltip content="吸取白点">
-          <IconButton variant="ghost" size="compact" icon={<Pipette size={16} />} onClick={onActivatePipette} />
-        </Tooltip>
+        {showPipette && (
+          <Tooltip content="吸取白点">
+            <IconButton variant="ghost" size="compact" icon={<Pipette size={16} />} onClick={onActivatePipette} />
+          </Tooltip>
+        )}
       </div>
       <ColorBarSlider color="linear-gradient(90deg, #3958ff, #d9d3a5, #f5a35a)">
         <ParamSlider label="色温" value={value.temperature} {...sliderRange(EDIT_PARAMETER_RANGES.color.temperature)} onChange={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} onPreviewChange={(temperature) => previewChange({ temperature, whiteBalanceMode: 'custom' })} onCommit={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} />

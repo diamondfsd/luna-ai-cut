@@ -9,6 +9,7 @@ const liveWindowStates = new WeakMap<BrowserWindow, {
   wasResizable: boolean
   wasMaximizable: boolean
   wasMaximized: boolean
+  wasBackgroundThrottling: boolean
 }>()
 
 function restoreLiveWindow(window: BrowserWindow, notifyRenderer = true): void {
@@ -17,6 +18,9 @@ function restoreLiveWindow(window: BrowserWindow, notifyRenderer = true): void {
 
   liveWindowStates.delete(window)
   if (notifyRenderer) window.webContents.send('window:live-mode-ended')
+  if (!window.webContents.isDestroyed()) {
+    window.webContents.setBackgroundThrottling(state.wasBackgroundThrottling)
+  }
   window.setResizable(state.wasResizable)
   window.setMaximizable(state.wasMaximizable)
   window.setMinimumSize(...state.minimumSize)
@@ -38,9 +42,11 @@ function setLiveWindow(window: BrowserWindow, resolution: LiveWindowResolution, 
       wasResizable: window.isResizable(),
       wasMaximizable: window.isMaximizable(),
       wasMaximized,
+      wasBackgroundThrottling: window.webContents.backgroundThrottling,
     })
   }
 
+  window.webContents.setBackgroundThrottling(false)
   const display = screen.getDisplayMatching(window.getBounds())
   const size = liveWindowContentSize(resolution, display.scaleFactor, display.workArea, sourceAspectRatio)
   window.setResizable(false)
@@ -93,7 +99,7 @@ export function register(): void {
     if (!window || window.isDestroyed()) return
 
     if (enabled) {
-      if (resolution !== '1080p' && resolution !== '720p') {
+      if (resolution !== '720p') {
         throw new Error('不支持的窗口尺寸')
       }
       setLiveWindow(window, resolution, sourceAspectRatio)

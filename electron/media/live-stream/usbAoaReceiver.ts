@@ -2,6 +2,7 @@ import usb from 'usb'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import type { LiveStreamControlCommand } from '../../../src/shared/types'
+import { createUsbAccessoryShutdown } from './usbAccessoryLifecycle'
 import {
   consumeFrames,
   USB_STREAM_AUDIO,
@@ -114,6 +115,10 @@ interface ActiveAccessory {
   inEndpoint: usb.InEndpoint
   outEndpoint: usb.OutEndpoint
   generation: number
+  polling: boolean
+  onData: (data: Buffer) => void
+  onError: (error: Error) => void
+  shutdown: (() => Promise<void>) | null
 }
 
 function delay(ms: number): Promise<void> {
@@ -171,6 +176,8 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   private generation = 0
   private running = false
   private scanning = false
+  private scanTask: Promise<void> | null = null
+  private disconnectTask: Promise<void> | null = null
   private scanTimer: NodeJS.Timeout | null = null
   private pending = Buffer.alloc(0)
   private controlSequence = 0
@@ -225,6 +232,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     usb.usb.off('detach', this.handleDetach)
     if (this.scanTimer) clearInterval(this.scanTimer)
     this.scanTimer = null
+    await this.scanTask
     await this.disconnectAccessory('stopped')
     this.statusValue = {
       ...this.statusValue,
@@ -267,9 +275,18 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     })
   }
 
-  private async scan(): Promise<void> {
-    if (!this.running || this.scanning || this.session) return
+  private scan(): Promise<void> {
+    if (!this.running || this.scanning || this.session || this.disconnectTask) return Promise.resolve()
     this.scanning = true
+    const task = this.runScan().finally(() => {
+      this.scanning = false
+      if (this.scanTask === task) this.scanTask = null
+    })
+    this.scanTask = task
+    return task
+  }
+
+  private async runScan(): Promise<void> {
     try {
       const accessory = this.findAccessory()
       if (accessory) {
@@ -291,12 +308,11 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         productId: android.deviceDescriptor.idProduct,
       })
       await this.switchToAccessory(android)
+      if (!this.running) return
       const accessoryAfterSwitch = await this.waitForAccessory(5_000)
-      if (accessoryAfterSwitch) await this.connectAccessory(accessoryAfterSwitch)
+      if (accessoryAfterSwitch && this.running) await this.connectAccessory(accessoryAfterSwitch)
     } catch (error) {
-      this.fail(error)
-    } finally {
-      this.scanning = false
+      if (this.running) this.fail(error)
     }
   }
 
@@ -339,27 +355,36 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   }
 
   private async connectAccessory(device: usb.Device): Promise<void> {
+    if (!this.running) return
     const generation = ++this.generation
-    device.open()
-    const interfaceInfo = device.interfaces?.find((item) =>
-      item.endpoints.some((endpoint) => endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK),
-    )
-    if (!interfaceInfo) throw new Error('未找到 USB AOA Bulk 接口')
-
-    interfaceInfo.claim()
-    const inEndpoint = interfaceInfo.endpoints.find((endpoint) =>
-      endpoint.direction === 'in' && endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK,
-    ) as usb.InEndpoint | undefined
-    if (!inEndpoint) throw new Error('USB AOA 缺少视频输入端点')
-    const outEndpoint = interfaceInfo.endpoints.find((endpoint) =>
-      endpoint.direction === 'out' && endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK,
-    ) as usb.OutEndpoint | undefined
-    if (!outEndpoint) throw new Error('USB AOA 缺少控制输出端点')
+    const { interfaceInfo, inEndpoint, outEndpoint } = await this.openAccessory(device)
     outEndpoint.timeout = 1_000
 
     this.pending = Buffer.alloc(0)
     this.controlWriteTail = Promise.resolve()
-    this.session = { device, interfaceInfo, inEndpoint, outEndpoint, generation }
+    const session: ActiveAccessory = {
+      device,
+      interfaceInfo,
+      inEndpoint,
+      outEndpoint,
+      generation,
+      polling: false,
+      shutdown: null,
+      onData: (data) => {
+        if (!this.running || this.session !== session || session.generation !== this.generation) return
+        if (data.length > 0) {
+          this.pending = consumeFrames(
+            Buffer.concat([this.pending, data]),
+            (frame) => this.handleFrame(frame),
+            (reason) => logMainWarn(`[USB AOA] 丢弃无效 UCD2 帧：${reason}`),
+          )
+        }
+      },
+      onError: (error) => {
+        if (this.running && this.session === session) this.fail(error)
+      },
+    }
+    this.session = session
     this.statusValue = {
       ...this.statusValue,
       state: 'connected',
@@ -371,27 +396,50 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       error: null,
     }
     logMainInfo('[USB AOA] Bulk 端点已打开')
-    this.readNext()
+    inEndpoint.on('data', session.onData)
+    inEndpoint.on('error', session.onError)
+    inEndpoint.startPoll(3, TRANSFER_SIZE)
+    session.polling = true
   }
 
-  private readNext(): void {
-    const session = this.session
-    if (!this.running || !session) return
-    session.inEndpoint.transfer(TRANSFER_SIZE, (error, data) => {
-      if (!this.running || this.session !== session || session.generation !== this.generation) return
-      if (error) {
-        this.fail(error)
-        return
+  private async openAccessory(device: usb.Device): Promise<{
+    interfaceInfo: usb.Interface
+    inEndpoint: usb.InEndpoint
+    outEndpoint: usb.OutEndpoint
+  }> {
+    device.open()
+    let interfaceInfo: usb.Interface | undefined
+    let claimed = false
+    try {
+      interfaceInfo = device.interfaces?.find((item) =>
+        item.endpoints.some((endpoint) => endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK),
+      )
+      if (!interfaceInfo) throw new Error('未找到 USB AOA Bulk 接口')
+      interfaceInfo.claim()
+      claimed = true
+
+      const inEndpoint = interfaceInfo.endpoints.find((endpoint) =>
+        endpoint.direction === 'in' && endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK,
+      ) as usb.InEndpoint | undefined
+      if (!inEndpoint) throw new Error('USB AOA 缺少视频输入端点')
+      const outEndpoint = interfaceInfo.endpoints.find((endpoint) =>
+        endpoint.direction === 'out' && endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK,
+      ) as usb.OutEndpoint | undefined
+      if (!outEndpoint) throw new Error('USB AOA 缺少控制输出端点')
+      return { interfaceInfo, inEndpoint, outEndpoint }
+    } catch (error) {
+      if (interfaceInfo && claimed) {
+        await new Promise<void>((resolve) => {
+          try {
+            interfaceInfo!.release(false, () => resolve())
+          } catch {
+            resolve()
+          }
+        })
       }
-      if (data && data.length > 0) {
-        this.pending = consumeFrames(
-          Buffer.concat([this.pending, data]),
-          (frame) => this.handleFrame(frame),
-          (reason) => logMainWarn(`[USB AOA] 丢弃无效 UCD2 帧：${reason}`),
-        )
-      }
-      this.readNext()
-    })
+      try { device.close() } catch { /* Device may already be gone. */ }
+      throw error
+    }
   }
 
   private handleFrame(frame: UsbMediaFrame): void {
@@ -420,38 +468,73 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     this.onFrame(frame)
   }
 
-  private async disconnectAccessory(reason: 'stopped' | 'detached'): Promise<void> {
+  private disconnectAccessory(reason: 'stopped' | 'detached'): Promise<void> {
+    if (this.disconnectTask) return this.disconnectTask
+
     ++this.generation
     const session = this.session
     this.session = null
+    const controlWrites = this.controlWriteTail
     this.controlWriteTail = Promise.resolve()
     this.statusValue = { ...this.statusValue, controlReady: false }
     this.pending = Buffer.alloc(0)
-    if (session) {
-      await new Promise<void>((resolve) => {
-        try {
-          session.interfaceInfo.release(true, () => resolve())
-        } catch {
-          resolve()
+
+    const task = (async () => {
+      if (session) {
+        session.shutdown ??= createUsbAccessoryShutdown({
+          stopPolling: () => new Promise<void>((resolve) => {
+            if (!session.polling) {
+              session.inEndpoint.off('data', session.onData)
+              session.inEndpoint.off('error', session.onError)
+              resolve()
+              return
+            }
+            try {
+              session.inEndpoint.stopPoll(() => {
+                session.polling = false
+                session.inEndpoint.off('data', session.onData)
+                session.inEndpoint.off('error', session.onError)
+                resolve()
+              })
+            } catch {
+              session.polling = false
+              session.inEndpoint.off('data', session.onData)
+              session.inEndpoint.off('error', session.onError)
+              resolve()
+            }
+          }),
+          waitForControlWrites: () => controlWrites,
+          releaseInterface: () => new Promise<void>((resolve) => {
+            try {
+              session.interfaceInfo.release(false, (error) => {
+                if (error) logMainWarn('[USB AOA] 释放 USB 接口失败', { error: error.message })
+                resolve()
+              })
+            } catch {
+              resolve()
+            }
+          }),
+          closeDevice: () => session.device.close(),
+        })
+        await session.shutdown()
+      }
+      if (reason === 'detached' && this.running && this.statusValue.state !== 'error') {
+        this.statusValue = {
+          ...this.statusValue,
+          state: 'waiting',
+          message: '手机 USB 已断开，等待重新连接',
+          deviceLabel: null,
+          vendorId: null,
+          productId: null,
+          controlReady: false,
         }
-      })
-      try {
-        session.device.close()
-      } catch {
-        // Device may already be gone.
       }
-    }
-    if (reason === 'detached' && this.running && this.statusValue.state !== 'error') {
-      this.statusValue = {
-        ...this.statusValue,
-        state: 'waiting',
-        message: '手机 USB 已断开，等待重新连接',
-        deviceLabel: null,
-        vendorId: null,
-        productId: null,
-        controlReady: false,
-      }
-    }
+    })().finally(() => {
+      if (this.disconnectTask === task) this.disconnectTask = null
+      if (reason === 'detached' && this.running) void this.scan()
+    })
+    this.disconnectTask = task
+    return task
   }
 
   private fail(error: unknown): void {

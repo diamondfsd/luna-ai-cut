@@ -6,12 +6,12 @@ interface WorkAreaSize {
 }
 
 export function liveWindowContentSize(
-  resolution: LiveWindowResolution,
+  _resolution: LiveWindowResolution,
   scaleFactor: number,
   workArea: WorkAreaSize,
   sourceAspectRatio = 16 / 9,
 ): WorkAreaSize {
-  const targetLongSide = resolution === '1080p' ? 1920 : 1280
+  const targetLongSide = 1280
   const aspectRatio = Number.isFinite(sourceAspectRatio) && sourceAspectRatio > 0
     ? sourceAspectRatio
     : 16 / 9
@@ -19,6 +19,7 @@ export function liveWindowContentSize(
     ? { width: targetLongSide, height: targetLongSide / aspectRatio }
     : { width: targetLongSide * aspectRatio, height: targetLongSide }
   const scale = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1
+  // BrowserWindow content sizes use DIP; keep the selected output size in physical pixels.
   const targetWidth = target.width / scale
   const targetHeight = target.height / scale
   const availableWidth = Math.max(320, workArea.width - 32)
