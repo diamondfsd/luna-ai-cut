@@ -4,7 +4,7 @@
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  padding: 22px 28px 26px;
+  padding: 14px 22px 20px;
   background: var(--parchment);
   color: var(--ink);
 }
@@ -23,9 +23,10 @@
 
 .live-console-header {
   justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
   flex: 0 0 auto;
-  margin-bottom: 14px;
+  min-height: 42px;
+  margin-bottom: 12px;
 }
 
 .live-console-title {
@@ -36,7 +37,7 @@
 .live-console-title h1 {
   margin: 0;
   color: var(--ink);
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 650;
   letter-spacing: 0;
 }
@@ -128,6 +129,7 @@
   inset: 0;
   display: block;
   border-radius: 0;
+  background: #000;
 }
 
 .live-console-page.is-window-live .live-preview-stage {
