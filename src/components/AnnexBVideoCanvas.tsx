@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { buildCodecString, detectCodec, drainAccessUnits, splitNalUnits } from '../lib/annexB'
-import type { LiveWindowResolution } from '../shared/types/liveStream'
-import { LiveVideoWebGpuRenderer } from './LiveVideoWebGpuRenderer'
+import { LiveVideoWebGpuRenderer, type LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
 import { livePreviewOutputSize } from './livePreviewSizing'
 
 interface DecodedVideoFrame {
@@ -42,18 +41,49 @@ function webCodecs(): { Decoder: VideoDecoderConstructor; Chunk: EncodedVideoChu
 
 interface AnnexBVideoCanvasProps {
   url: string
-  resolution?: LiveWindowResolution
+  lutPath?: string | null
+  lutIntensity?: number
+  colorAdjustments?: LiveVideoColorAdjustments
   className?: string
   onFrame: (dimensions: { width: number; height: number }) => void
   onError: (message: string) => void
+  onWebGpuReadyChange?: (ready: boolean) => void
+  onEffectError?: (message: string) => void
 }
 
-export function AnnexBVideoCanvas({ url, resolution, className, onFrame, onError }: AnnexBVideoCanvasProps) {
+export function AnnexBVideoCanvas({
+  url,
+  lutPath = null,
+  lutIntensity = 100,
+  colorAdjustments,
+  className,
+  onFrame,
+  onError,
+  onWebGpuReadyChange,
+  onEffectError,
+}: AnnexBVideoCanvasProps) {
   const webGpuCanvasRef = useRef<HTMLCanvasElement>(null)
   const fallbackCanvasRef = useRef<HTMLCanvasElement>(null)
-  const resolutionRef = useRef(resolution)
+  const webGpuRendererRef = useRef<LiveVideoWebGpuRenderer | null>(null)
+  const lutPathRef = useRef(lutPath)
+  const lutIntensityRef = useRef(lutIntensity)
+  const colorAdjustmentsRef = useRef(colorAdjustments)
+  const onEffectErrorRef = useRef(onEffectError)
   const [webGpuReady, setWebGpuReady] = useState(false)
-  resolutionRef.current = resolution
+  lutPathRef.current = lutPath
+  lutIntensityRef.current = lutIntensity
+  colorAdjustmentsRef.current = colorAdjustments
+  onEffectErrorRef.current = onEffectError
+
+  useEffect(() => {
+    void webGpuRendererRef.current?.setLut(lutPath, lutIntensity).catch((error: unknown) => {
+      onEffectError?.(error instanceof Error ? error.message : String(error))
+    })
+  }, [lutIntensity, lutPath, onEffectError])
+
+  useEffect(() => {
+    if (colorAdjustments) webGpuRendererRef.current?.setColorAdjustments(colorAdjustments)
+  }, [colorAdjustments])
 
   useEffect(() => {
     const webGpuCanvas = webGpuCanvasRef.current
@@ -72,24 +102,38 @@ export function AnnexBVideoCanvas({ url, resolution, className, onFrame, onError
     let webGpuActive = false
 
     setWebGpuReady(false)
+    onWebGpuReadyChange?.(false)
 
     if (!codecs) {
       onError('当前系统不支持相机视频预览')
       return () => undefined
     }
 
-    if (webGpuCanvas && resolutionRef.current) {
+    if (webGpuCanvas) {
       void LiveVideoWebGpuRenderer.create(webGpuCanvas, () => {
         webGpuRenderer = null
+        webGpuRendererRef.current = null
         webGpuActive = false
-        if (!disposed) setWebGpuReady(false)
+        if (!disposed) {
+          setWebGpuReady(false)
+          onWebGpuReadyChange?.(false)
+        }
       }).then((renderer) => {
         if (disposed) {
           renderer?.dispose()
           return
         }
         webGpuRenderer = renderer
-      }).catch(() => undefined)
+        webGpuRendererRef.current = renderer
+        if (renderer) {
+          if (colorAdjustmentsRef.current) renderer.setColorAdjustments(colorAdjustmentsRef.current)
+          void renderer.setLut(lutPathRef.current, lutIntensityRef.current).catch((error: unknown) => {
+            onEffectErrorRef.current?.(error instanceof Error ? error.message : String(error))
+          })
+        }
+      }).catch((error: unknown) => {
+        console.error('[LivePreview] WebGPU 初始化失败，继续使用兼容预览', error)
+      })
     }
 
     const drawFallback = (frame: DecodedVideoFrame, width: number, height: number) => {
@@ -117,21 +161,23 @@ export function AnnexBVideoCanvas({ url, resolution, className, onFrame, onError
         frame.close()
         return
       }
-      const outputSize = resolutionRef.current
-        ? livePreviewOutputSize(frame.displayWidth, frame.displayHeight, resolutionRef.current)
-        : { width: frame.displayWidth, height: frame.displayHeight }
+      const outputSize = livePreviewOutputSize(frame.displayWidth, frame.displayHeight)
       let gpuRendered = false
       try {
         gpuRendered = webGpuRenderer?.render(frame, outputSize.width, outputSize.height) ?? false
         if (gpuRendered && !webGpuActive) {
           webGpuActive = true
           setWebGpuReady(true)
+          onWebGpuReadyChange?.(true)
         }
-      } catch {
+      } catch (error) {
+        console.error('[LivePreview] WebGPU 渲染失败，已切换兼容预览', error)
         webGpuRenderer?.dispose()
         webGpuRenderer = null
+        webGpuRendererRef.current = null
         webGpuActive = false
         setWebGpuReady(false)
+        onWebGpuReadyChange?.(false)
       }
       if (!gpuRendered && !webGpuActive) drawFallback(frame, outputSize.width, outputSize.height)
       const dimensions = outputSize
@@ -215,9 +261,10 @@ export function AnnexBVideoCanvas({ url, resolution, className, onFrame, onError
       abort.abort()
       try { decoder?.close() } catch { /* Decoder may already be closed. */ }
       webGpuRenderer?.dispose()
+      if (webGpuRendererRef.current === webGpuRenderer) webGpuRendererRef.current = null
       fallbackCanvas?.getContext('2d')?.clearRect(0, 0, fallbackCanvas.width, fallbackCanvas.height)
     }
-  }, [onError, onFrame, url])
+  }, [onError, onFrame, onWebGpuReadyChange, url])
 
   const baseClassName = className ?? ''
   return (
