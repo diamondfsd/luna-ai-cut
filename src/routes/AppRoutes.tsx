@@ -55,6 +55,11 @@ export function AppRoutes() {
   const macOS = window.navigator.platform.includes('Mac')
 
   useEffect(() => {
+    document.documentElement.classList.toggle('macos-window-shell', macOS)
+    return () => document.documentElement.classList.remove('macos-window-shell')
+  }, [macOS])
+
+  useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
   }, [])
 
@@ -140,7 +145,7 @@ export function AppRoutes() {
   // 独立调试包：只渲染设备调试页面，无导航、无路由切换
   if (debugStandalone) {
     return (
-      <main className="app">
+      <main className={`app${macOS ? ' app-macos-window' : ''}`}>
         {macOS && <AppWindowTitleBar />}
         <DeviceDebugPage />
       </main>
@@ -151,7 +156,7 @@ export function AppRoutes() {
     <ExportProgressProvider>
       <DownloadProgressProvider>
         <NasSyncProgressProvider>
-        <main className={`app${showWindowLiveMode ? ' app-window-live' : ''}`}>
+        <main className={`app${macOS ? ' app-macos-window' : ''}${showWindowLiveMode ? ' app-window-live' : ''}`}>
         {macOS && !showWindowLiveMode && <AppWindowTitleBar />}
         {!showWindowLiveMode && <AppNav
         connection={connection}

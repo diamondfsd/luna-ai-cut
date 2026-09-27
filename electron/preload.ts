@@ -72,6 +72,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   trackPageOpened: (path: string) => ipcRenderer.send('usage:page-opened', path),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
+  minimizeWindow: () => ipcRenderer.invoke('window:control', 'minimize'),
+  toggleMaximizeWindow: () => ipcRenderer.invoke('window:control', 'toggle-maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:control', 'close'),
   setLiveWindowMode: (enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number) =>
     ipcRenderer.invoke('window:set-live-mode', enabled, resolution, sourceAspectRatio),
   onLiveWindowModeEnd: (callback: () => void) => {

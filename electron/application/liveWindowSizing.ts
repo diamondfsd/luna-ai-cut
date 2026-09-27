@@ -7,7 +7,6 @@ interface WorkAreaSize {
 
 export function liveWindowContentSize(
   _resolution: LiveWindowResolution,
-  scaleFactor: number,
   workArea: WorkAreaSize,
   sourceAspectRatio = 16 / 9,
 ): WorkAreaSize {
@@ -18,12 +17,11 @@ export function liveWindowContentSize(
   const target = aspectRatio >= 1
     ? { width: targetLongSide, height: targetLongSide / aspectRatio }
     : { width: targetLongSide * aspectRatio, height: targetLongSide }
-  const scale = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1
-  // BrowserWindow content sizes use DIP; keep the selected output size in physical pixels.
-  const targetWidth = target.width / scale
-  const targetHeight = target.height / scale
+  // Electron window bounds use DIP, so display scale must not shrink the visible window.
+  const targetWidth = target.width
+  const targetHeight = target.height
   const availableWidth = Math.max(320, workArea.width - 32)
-  const availableHeight = Math.max(180, workArea.height - 88)
+  const availableHeight = Math.max(180, workArea.height - 32)
   const fit = Math.min(1, availableWidth / targetWidth, availableHeight / targetHeight)
 
   return {
