@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type MouseEvent } from 'react'
-import { Maximize2, RefreshCw, Square } from 'lucide-react'
+import { RefreshCw, Square, Video } from 'lucide-react'
 
 import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
@@ -103,11 +103,11 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
             <Button
               variant="primary"
               size="compact"
-              icon={<Maximize2 size={14} />}
+              icon={<Video size={14} />}
               onClick={enterWindowLiveMode}
               disabled={busy}
             >
-              720p 窗口直播
+              直播模式
             </Button>
           )}
           <Tooltip content="刷新状态">

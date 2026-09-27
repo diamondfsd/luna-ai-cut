@@ -12,6 +12,7 @@
   min-width: 0;
   min-height: 0;
   place-items: center;
+  background: #171719;
 }
 
 .live-preview-stage {
@@ -222,13 +223,26 @@
 }
 
 .live-settings-select-content {
+  min-width: var(--radix-select-trigger-width);
   border-color: #48484c;
   background: #303033;
   color: #f3f3f5;
 }
 
-.live-settings-select-content .ui-select-item[data-highlighted] {
+.ui-select-content.live-settings-select-content {
+  border-color: #48484c;
+  background: #303033;
+  color: #f3f3f5;
+}
+
+.live-settings-select-content .ui-select-item {
+  color: #f3f3f5;
+}
+
+.live-settings-select-content .ui-select-item[data-highlighted],
+.live-settings-select-content .ui-select-item[data-state="checked"] {
   background: #414145;
+  color: #fff;
 }
 
 .live-control-pane-footer {
