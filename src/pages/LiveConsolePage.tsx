@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Square } from 'lucide-react'
+import { useCallback, useEffect, useState, type MouseEvent } from 'react'
+import { Maximize2, RefreshCw, Square } from 'lucide-react'
 
-import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, IconButton, LoadingIndicator, Select, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
 import type { LiveStreamStatus } from '../shared/types'
+import type { LiveWindowResolution } from '../shared/types/liveStream'
 import '../styles/live-console.css'
+
+const liveWindowResolutions = [
+  { value: '1080p', label: '1080p' },
+  { value: '720p', label: '720p' },
+]
+
+interface LiveConsolePageProps {
+  windowLiveMode: boolean
+  onWindowLiveModeChange: (enabled: boolean) => void
+}
 
 function stateLabel(status: LiveStreamStatus | null): string {
   switch (status?.state) {
@@ -18,9 +29,10 @@ function stateLabel(status: LiveStreamStatus | null): string {
   }
 }
 
-export function LiveConsolePage() {
+export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: LiveConsolePageProps) {
   const [status, setStatus] = useState<LiveStreamStatus | null>(null)
-  const [enhanceQuality, setEnhanceQuality] = useState(false)
+  const [windowResolution, setWindowResolution] = useState<LiveWindowResolution>('1080p')
+  const [windowControlsVisible, setWindowControlsVisible] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,17 +71,61 @@ export function LiveConsolePage() {
   }, [busy, refreshStatus])
 
   const active = Boolean(status?.startedAt) && status?.state !== 'stopping'
-  const outputTone = status?.outputReady ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
+  const outputTone = status?.usbState === 'streaming' ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
+
+  const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!windowLiveMode) return
+    if (event.target instanceof Element && event.target.closest('button, input, [role="button"]')) return
+    setWindowControlsVisible((visible) => !visible)
+  }
+
+  const enterWindowLiveMode = () => {
+    void runAction(async () => {
+      await window.luna.setLiveWindowMode(true, windowResolution)
+      setWindowControlsVisible(false)
+      onWindowLiveModeChange(true)
+    })
+  }
+
+  const exitWindowLiveMode = () => {
+    void runAction(async () => {
+      await window.luna.setLiveWindowMode(false)
+      setWindowControlsVisible(true)
+      onWindowLiveModeChange(false)
+    })
+  }
 
   return (
-    <main className="live-console-page">
-      <header className="live-console-header">
+    <main
+      className={`live-console-page${windowLiveMode ? ' is-window-live' : ''}${windowLiveMode && !windowControlsVisible ? ' controls-hidden' : ''}`}
+    >
+      <header className="live-console-header" data-live-window-controls>
         <div className="live-console-title">
           <span className={`live-console-status-dot ${outputTone}`} />
           <h1>直播控制台</h1>
-          <span className={`live-console-badge ${status?.outputReady ? 'active' : ''}`}>{stateLabel(status)}</span>
+          <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{stateLabel(status)}</span>
         </div>
         <div className="live-console-actions">
+          {!windowLiveMode && (
+            <>
+              <Select
+                variant="compact"
+                value={windowResolution}
+                onValueChange={(value) => setWindowResolution(value as LiveWindowResolution)}
+                options={liveWindowResolutions}
+                placeholder="窗口尺寸"
+              />
+              <Button
+                variant="primary"
+                size="compact"
+                icon={<Maximize2 size={14} />}
+                onClick={enterWindowLiveMode}
+                disabled={busy}
+              >
+                窗口直播
+              </Button>
+            </>
+          )}
           <Tooltip content="刷新状态">
             <IconButton
               variant="outline"
@@ -98,29 +154,21 @@ export function LiveConsolePage() {
         </div>
       </header>
 
-      {error && <p className="live-console-error" role="alert">{error}</p>}
+      {error && <p className="live-console-error" role="alert" data-live-window-controls>{error}</p>}
       {!status ? (
-        <LoadingIndicator label="正在检查直播状态" />
+        windowLiveMode ? null : <LoadingIndicator label="正在检查直播状态" />
       ) : (
         <LiveControlPanel
           status={status}
           busy={busy}
-          enhanceQuality={enhanceQuality}
-          onEnhanceQualityChange={setEnhanceQuality}
+          windowResolution={windowResolution}
+          windowLiveMode={windowLiveMode}
+          onExitWindowLiveMode={exitWindowLiveMode}
           onStart={() => void runAction(async () => {
             await window.luna.liveStream.start()
             toast.success('已开始获取画面')
           })}
-          onStartOutput={() => void runAction(async () => {
-            const next = await window.luna.liveStream.startOutput({ enhanceQuality })
-            setStatus(next)
-            toast.success('直播已开始')
-          })}
-          onStopOutput={() => void runAction(async () => {
-            const next = await window.luna.liveStream.stopOutput()
-            setStatus(next)
-            toast.success('直播已停止')
-          })}
+          onPreviewClick={handlePreviewClick}
         />
       )}
     </main>

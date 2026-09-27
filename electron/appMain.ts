@@ -9,9 +9,7 @@ import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage 
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrastructure/crashDiagnostics'
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
 import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
-import { stopObsStreamDemoOnQuit } from './media/obs-demo/obsMp4StreamService'
 import { stopLiveStreamOnQuit } from './media/live-stream/liveStreamService'
-import { stopLiveStreamReplayOnQuit } from './media/live-stream/liveStreamReplayService'
 import { createUsageAnalytics } from './infrastructure/usageAnalytics'
 
 import {
@@ -110,9 +108,7 @@ const enqueuePreviewTask = createPreviewTaskQueue(2)
 /** 停止所有客户端的保活并清理 */
 function stopAllKeepAlive(): void {
   void stopAllCameraVideoStreams()
-  void stopObsStreamDemoOnQuit()
   void stopLiveStreamOnQuit()
-  void stopLiveStreamReplayOnQuit()
   for (const client of clients.values()) {
     client.stopKeepAlive()
     client.close()

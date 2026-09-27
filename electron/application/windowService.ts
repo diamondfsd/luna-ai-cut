@@ -46,6 +46,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     minWidth: 1040,
     minHeight: 680,
     fullscreenable: true,
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
     show: false,
     icon: options.iconPath,
     autoHideMenuBar: true,

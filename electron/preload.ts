@@ -10,6 +10,7 @@ import type {
   ExportFileInput,
   ExportProgress,
   HotUpdateCheckResult,
+  LiveWindowResolution,
   LunaApi,
   LunaFile,
   NetworkDiagnosticsResult,
@@ -71,6 +72,13 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   trackPageOpened: (path: string) => ipcRenderer.send('usage:page-opened', path),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
+  setLiveWindowMode: (enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number) =>
+    ipcRenderer.invoke('window:set-live-mode', enabled, resolution, sourceAspectRatio),
+  onLiveWindowModeEnd: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('window:live-mode-ended', listener)
+    return () => ipcRenderer.off('window:live-mode-ended', listener)
+  },
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean): void => callback(isFullScreen)
     ipcRenderer.on('window:fullscreen-changed', listener)
@@ -143,33 +151,13 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   cameraVideoStream: {
     start: (options) => ipcRenderer.invoke('camera-video-stream:start', options),
     stop: (options) => ipcRenderer.invoke('camera-video-stream:stop', options),
-    startObs: (options) => ipcRenderer.invoke('camera-video-stream:start-obs', options),
-    stopObs: (options) => ipcRenderer.invoke('camera-video-stream:stop-obs', options),
     status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
-  },
-  obsStreamDemo: {
-    status: () => ipcRenderer.invoke('obs-stream-demo:status'),
-    start: () => ipcRenderer.invoke('obs-stream-demo:start'),
-    stop: () => ipcRenderer.invoke('obs-stream-demo:stop'),
   },
   liveStream: {
     status: () => ipcRenderer.invoke('live-stream:status'),
-    replayStatus: () => ipcRenderer.invoke('live-stream:replay-status'),
-    startReplay: (options) => ipcRenderer.invoke('live-stream:start-replay', options),
-    stopReplay: () => ipcRenderer.invoke('live-stream:stop-replay'),
     start: () => ipcRenderer.invoke('live-stream:start'),
     startCapture: () => ipcRenderer.invoke('live-stream:start-capture'),
     stopCapture: () => ipcRenderer.invoke('live-stream:stop-capture'),
-    startOutput: (options) => ipcRenderer.invoke('live-stream:start-output', options),
-    stopOutput: () => ipcRenderer.invoke('live-stream:stop-output'),
-    setAudioMonitor: (enabled: boolean) => ipcRenderer.invoke('live-stream:set-audio-monitor', enabled),
-    setAudioSource: (source) => ipcRenderer.invoke('live-stream:set-audio-source', source),
-    sendAudioFrame: (frame) => ipcRenderer.invoke('live-stream:send-audio-frame', frame),
-    onAudioMonitorFrame: (callback) => {
-      const listener = (_event: Electron.IpcRendererEvent, frame: import('../src/shared/types').LiveStreamAudioMonitorFrame) => callback(frame)
-      ipcRenderer.on('live-stream:audio-monitor-frame', listener)
-      return () => ipcRenderer.off('live-stream:audio-monitor-frame', listener)
-    },
     sendControl: (command) => ipcRenderer.invoke('live-stream:send-control', command),
     stop: () => ipcRenderer.invoke('live-stream:stop'),
   },

@@ -86,6 +86,76 @@
   font-size: 12px;
 }
 
+.app.app-window-live {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-window-live .route-stack,
+.app-window-live .route-panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.live-console-page.is-window-live {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  background: #000;
+  color: #fff;
+}
+
+.live-console-page.is-window-live .live-console-header {
+  display: none;
+}
+
+.live-console-page.is-window-live .live-control-panel {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: auto;
+}
+
+.live-console-page.is-window-live .live-preview-pane {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.live-console-page.is-window-live .live-preview-stage {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0;
+}
+
+.live-console-page.is-window-live .live-control-pane {
+  top: 16px;
+  right: 16px;
+}
+
+.live-console-page.is-window-live .live-console-error {
+  position: absolute;
+  z-index: 6;
+  top: 58px;
+  right: 16px;
+  width: auto;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.live-console-page.is-window-live.controls-hidden .live-console-header,
+.live-console-page.is-window-live.controls-hidden .live-console-error,
+.live-console-page.is-window-live.controls-hidden .live-control-pane,
+.live-console-page.is-window-live.controls-hidden .live-preview-overlay {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .live-console-page {
     padding: 18px;

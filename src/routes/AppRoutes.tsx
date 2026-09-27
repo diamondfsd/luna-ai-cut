@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 import { AppNav } from '../components/AppNav'
+import { AppWindowTitleBar } from '../components/AppWindowTitleBar'
 import { PreviewModalHost } from '../components/PreviewModalHost'
 import { GlobalDownloadProgress } from '../components/GlobalDownloadProgress'
 import { AppRoute } from '../ui'
@@ -19,7 +20,6 @@ import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
-import { ObsStreamDemoPage } from '../pages/ObsStreamDemoPage'
 import { LiveConsolePage } from '../pages/LiveConsolePage'
 import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
@@ -51,6 +51,8 @@ export function AppRoutes() {
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [pagesKey, setPagesKey] = useState(0)
   const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
+  const [windowLiveMode, setWindowLiveMode] = useState(false)
+  const macOS = window.navigator.platform.includes('Mac')
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -85,11 +87,18 @@ export function AppRoutes() {
 
   const developerMode = settings?.developerMode ?? false
   const debugVisible = import.meta.env.DEV || hiddenDevMode
-  const obsStreamDemoVisible = !window.luna.isPackaged
   const location = useLocation()
   const activePath = location.pathname === '/' ? '/library' : location.pathname
   const isActive = (path: string) => activePath === path
   const settingsRoute = activePath === '/settings'
+  const showWindowLiveMode = isActive('/live-console') && windowLiveMode
+
+  useEffect(() => window.luna.onLiveWindowModeEnd(() => setWindowLiveMode(false)), [])
+
+  useEffect(() => {
+    if (activePath === '/live-console' || !windowLiveMode) return
+    void window.luna.setLiveWindowMode(false).finally(() => setWindowLiveMode(false))
+  }, [activePath, windowLiveMode])
 
   // ── 路由访问权限表：path → 是否有权访问 ──
   // 加新路由时，在这里加一行，再在下面加 <section> 即可
@@ -99,7 +108,6 @@ export function AppRoutes() {
     ['/ai-selection', true],
     ['/workspace', true],
     ['/live-console', true],
-    ['/obs-stream', obsStreamDemoVisible],
     ['/settings', true],
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
@@ -133,6 +141,7 @@ export function AppRoutes() {
   if (debugStandalone) {
     return (
       <main className="app">
+        {macOS && <AppWindowTitleBar />}
         <DeviceDebugPage />
       </main>
     )
@@ -142,14 +151,15 @@ export function AppRoutes() {
     <ExportProgressProvider>
       <DownloadProgressProvider>
         <NasSyncProgressProvider>
-        <main className="app">
-        <AppNav
+        <main className={`app${showWindowLiveMode ? ' app-window-live' : ''}`}>
+        {macOS && !showWindowLiveMode && <AppWindowTitleBar />}
+        {!showWindowLiveMode && <AppNav
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
         onChangeConnection={disconnectDevice}
-      />
-      <GlobalDownloadProgress visible={!isActive('/library')} />
+      />}
+      {!showWindowLiveMode && <GlobalDownloadProgress visible={!isActive('/library')} />}
 
       <div className="route-stack" key={pagesKey}>
 
@@ -195,12 +205,11 @@ export function AppRoutes() {
           />
         </AppRoute>
 
-        <AppRoute path="/obs-stream" preserve={false}>
-          <ObsStreamDemoPage />
-        </AppRoute>
-
         <AppRoute path="/live-console" preserve={false}>
-          <LiveConsolePage />
+          <LiveConsolePage
+            windowLiveMode={windowLiveMode}
+            onWindowLiveModeChange={setWindowLiveMode}
+          />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>

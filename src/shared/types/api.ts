@@ -31,8 +31,7 @@ import type {
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { CameraVideoStreamApi } from './cameraVideoStream'
-import type { ObsStreamDemoApi } from './obsStreamDemo'
-import type { LiveStreamApi } from './liveStream'
+import type { LiveStreamApi, LiveWindowResolution } from './liveStream'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
@@ -149,6 +148,8 @@ export interface LunaApi {
   startupReady(): void
   trackPageOpened(path: string): void
   setFullScreen(enabled: boolean): Promise<void>
+  setLiveWindowMode(enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number): Promise<void>
+  onLiveWindowModeEnd(callback: () => void): () => void
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
@@ -190,7 +191,6 @@ export interface LunaApi {
   }
   cameraSource: CameraMediaSourceApi
   cameraVideoStream: CameraVideoStreamApi
-  obsStreamDemo: ObsStreamDemoApi
   liveStream: LiveStreamApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
