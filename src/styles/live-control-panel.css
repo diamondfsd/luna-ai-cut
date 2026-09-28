@@ -12,7 +12,7 @@
   min-width: 0;
   min-height: 0;
   place-items: center;
-  background: #171719;
+  background: #111113;
 }
 
 .live-preview-stage {
@@ -20,7 +20,7 @@
   overflow: hidden;
   flex: none;
   border-radius: 8px;
-  background: #151517;
+  background: #080809;
 }
 
 .live-preview-stage canvas {
@@ -123,8 +123,8 @@
   flex-direction: column;
   overflow: hidden;
   padding: 10px 14px;
-  border-left: 1px solid #38383a;
-  background: #252527;
+  border-left: 1px solid #303034;
+  background: #19191c;
   color: #fff;
 }
 
@@ -140,7 +140,7 @@
 .live-settings-title {
   margin: 0;
   padding: 2px 0 10px;
-  border-bottom: 1px solid #3b3b3e;
+  border-bottom: 1px solid #343438;
   color: #f2f2f4;
   font-size: 13px;
   font-weight: 600;
@@ -154,7 +154,7 @@
 }
 
 .live-control-pane .ui-accordion {
-  border-top-color: #3b3b3e;
+  border-top-color: #343438;
 }
 
 .live-control-pane .ui-accordion:first-child {
@@ -179,8 +179,8 @@
 }
 
 .live-control-pane .workspace-param-value-input {
-  border-color: #48484c;
-  background: #303033;
+  border-color: #414146;
+  background: #27272b;
   color: #f3f3f5;
 }
 
@@ -189,7 +189,7 @@
 }
 
 .live-control-pane .workspace-slider-zero {
-  background: #252527;
+  background: #19191c;
 }
 
 .live-control-pane .wm-settings-content {
@@ -212,8 +212,8 @@
 
 .live-control-pane .ui-select-trigger {
   width: 100%;
-  border-color: #48484c;
-  background: #303033;
+  border-color: #414146;
+  background: #27272b;
   color: #f3f3f5;
 }
 
@@ -224,8 +224,8 @@
 
 .ui-select-content.live-settings-select-content {
   min-width: var(--radix-select-trigger-width);
-  border-color: #48484c;
-  background: #303033;
+  border-color: #414146;
+  background: #27272b;
   color: #f3f3f5;
 }
 
@@ -247,7 +247,7 @@
   }
 
   .live-control-pane {
-    border-top: 1px solid #38383a;
+    border-top: 1px solid #303034;
     border-left: 0;
   }
 

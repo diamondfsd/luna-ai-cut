@@ -147,7 +147,7 @@ export function AppRoutes() {
     <ExportProgressProvider>
         <DownloadProgressProvider>
         <NasSyncProgressProvider>
-        <main className="app">
+        <main className={`app${isActive('/live-console') ? ' app-live-console' : ''}`}>
         <AppNav
         connection={connection}
         sourceMode={sourceMode}
