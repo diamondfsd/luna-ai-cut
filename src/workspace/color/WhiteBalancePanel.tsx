@@ -13,6 +13,7 @@ interface WhiteBalancePanelProps {
   onPreviewChange?: (patch: Partial<EditPipeline['color']>) => void
   onActivatePipette?: () => void
   showPipette?: boolean
+  selectContentClassName?: string
 }
 
 const WHITE_BALANCE_OPTIONS: Array<{ value: WhiteBalanceMode; label: string; temperature: number; tint: number }> = [
@@ -22,7 +23,15 @@ const WHITE_BALANCE_OPTIONS: Array<{ value: WhiteBalanceMode; label: string; tem
   { value: 'indoor', label: '室内', temperature: -42, tint: -3 },
 ]
 
-export function WhiteBalancePanel({ value, modified, onChange, onPreviewChange, onActivatePipette, showPipette = true }: WhiteBalancePanelProps) {
+export function WhiteBalancePanel({
+  value,
+  modified,
+  onChange,
+  onPreviewChange,
+  onActivatePipette,
+  showPipette = true,
+  selectContentClassName,
+}: WhiteBalancePanelProps) {
   const previewChange = onPreviewChange ?? onChange
   function updateWhiteBalanceMode(whiteBalanceMode: string): void {
     const preset = WHITE_BALANCE_OPTIONS.find((item) => item.value === whiteBalanceMode)
@@ -52,6 +61,7 @@ export function WhiteBalancePanel({ value, modified, onChange, onPreviewChange, 
           options={WHITE_BALANCE_OPTIONS.map(({ value: optionValue, label }) => ({ value: optionValue, label }))}
           value={value.whiteBalanceMode}
           onValueChange={updateWhiteBalanceMode}
+          contentClassName={selectContentClassName}
         />
         {showPipette && (
           <Tooltip content="吸取白点">

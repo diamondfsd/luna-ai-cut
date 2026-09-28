@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Video } from 'lucide-react'
 
-import { Accordion, Button, Select, Switch, toast } from '../ui'
+import { Accordion, Button, Switch } from '../ui'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { isTechnicalLut } from '../workspace/lut/restoreLuts'
-import { lutManager } from '../workspace/lut/LutManager'
-import type { LutFileInfo } from '../workspace/lut/builtinLuts'
 import { DEFAULT_PIPELINE, type EditPipeline } from '../workspace/shared/editPipeline'
-import { ParamSlider } from '../workspace/components/ParamSlider'
 import { TonePanel } from '../workspace/color/TonePanel'
 import { WhiteBalancePanel } from '../workspace/color/WhiteBalancePanel'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
@@ -24,20 +20,17 @@ interface LiveControlPanelProps {
   status: LiveStreamStatus
   busy: boolean
   onStart: () => void
-  windowLiveMode: boolean
 }
 
 export function LiveControlPanel({
   status,
   busy,
   onStart,
-  windowLiveMode,
 }: LiveControlPanelProps) {
   const previewPaneRef = useRef<HTMLDivElement>(null)
   const [previewAspectRatio, setPreviewAspectRatio] = useState(16 / 9)
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 })
   const [previewReady, setPreviewReady] = useState(false)
-  const [webGpuReady, setWebGpuReady] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewDimensions, setPreviewDimensions] = useState({ width: 16, height: 9 })
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
@@ -46,9 +39,6 @@ export function LiveControlPanel({
     position: 'bottom-right',
     sourceKind: 'builtin',
   })
-  const [luts, setLuts] = useState<LutFileInfo[]>([])
-  const [lutPath, setLutPath] = useState('none')
-  const [lutIntensity, setLutIntensity] = useState(100)
   const [liveColor, setLiveColor] = useState<EditPipeline['color']>(() => structuredClone(DEFAULT_PIPELINE.color))
   const active = Boolean(status.startedAt) && status.state !== 'stopping'
   const streaming = status.usbState === 'streaming'
@@ -72,23 +62,6 @@ export function LiveControlPanel({
     return () => observer.disconnect()
   }, [previewAspectRatio])
 
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const settings = await window.luna.getSettings()
-        const lutDir = settings?.lutDir || (settings?.baseDir ? `${settings.baseDir}/luts` : '')
-        const discovered = await lutManager.discoverLuts(lutDir)
-        if (!cancelled) setLuts(discovered.filter((lut) => !isTechnicalLut(lut)))
-      } catch (error) {
-        window.luna.log('warn', '直播 LUT 列表加载失败', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    })()
-    return () => { cancelled = true }
-  }, [])
-
   const handlePreviewFrame = useCallback((dimensions: { width: number; height: number }) => {
     const aspectRatio = dimensions.width / dimensions.height
     setPreviewAspectRatio(aspectRatio)
@@ -104,15 +77,6 @@ export function LiveControlPanel({
     setPreviewError(message)
   }, [])
 
-  const handleWebGpuReadyChange = useCallback((ready: boolean) => {
-    setWebGpuReady(ready)
-  }, [])
-
-  const handleEffectError = useCallback((message: string) => {
-    window.luna.log('warn', '直播 LUT 应用失败', { error: message })
-    toast.error('LUT 应用失败')
-  }, [])
-
   const handleColorChange = useCallback((patch: Partial<EditPipeline['color']>) => {
     setLiveColor((current) => ({ ...current, ...patch }))
   }, [])
@@ -124,11 +88,6 @@ export function LiveControlPanel({
     ? resolvePreviewWatermarkPositioning(watermarkLayer, previewDimensions)
     : null, [previewDimensions, watermarkLayer])
   const watermarkSrc = filePathToPreviewUrl(watermarkLayer?.filePath)
-  const activeLut = lutPath !== 'none'
-  const lutOptions = [
-    { value: 'none', label: '关闭' },
-    ...luts.map((lut) => ({ value: lut.filePath, label: lut.name })),
-  ]
   const liveColorAdjustments = useMemo<LiveVideoColorAdjustments>(() => ({
     exposure: liveColor.exposure,
     black: 0,
@@ -145,8 +104,6 @@ export function LiveControlPanel({
   }), [liveColor])
   const previewWindowSettings = useMemo<LivePreviewWindowSettings>(() => ({
     url: status.localPreviewUrl,
-    lutPath: activeLut ? lutPath : null,
-    lutIntensity,
     colorAdjustments: liveColorAdjustments,
     watermark: watermarkSrc && watermarkPositioning
       ? {
@@ -156,10 +113,7 @@ export function LiveControlPanel({
         }
       : null,
   }), [
-    activeLut,
     liveColorAdjustments,
-    lutIntensity,
-    lutPath,
     status.localPreviewUrl,
     watermarkLayer?.opacity,
     watermarkPositioning,
@@ -181,21 +135,17 @@ export function LiveControlPanel({
           className="live-preview-stage"
           style={{ width: previewStageSize.width, height: previewStageSize.height }}
         >
-          {status.localPreviewUrl && !windowLiveMode && (
+          {status.localPreviewUrl && (
             <AnnexBVideoCanvas
               url={status.localPreviewUrl}
-              lutPath={activeLut ? lutPath : null}
-              lutIntensity={lutIntensity}
               colorAdjustments={liveColorAdjustments}
               className="live-preview-canvas"
               onFrame={handlePreviewFrame}
               onError={handlePreviewError}
-              onWebGpuReadyChange={handleWebGpuReadyChange}
-              onEffectError={handleEffectError}
             />
           )}
 
-          {watermarkPositioning && watermarkSrc && !windowLiveMode && (
+          {watermarkPositioning && watermarkSrc && (
             <img
               className="live-preview-watermark"
               src={watermarkSrc}
@@ -203,12 +153,6 @@ export function LiveControlPanel({
               draggable={false}
               style={{ ...watermarkPositionStyle(watermarkPositioning), opacity: watermarkLayer?.opacity ?? 1 }}
             />
-          )}
-
-          {windowLiveMode && (
-            <div className="live-preview-overlay live-preview-window-open">
-              <strong>画面已在直播窗口中显示</strong>
-            </div>
           )}
 
           {!active && (
@@ -283,36 +227,13 @@ export function LiveControlPanel({
             />
           </Accordion>
 
-          <Accordion title="LUT" defaultOpen modified={activeLut}>
-            <Select
-              variant="compact"
-              fullWidth
-              value={lutPath}
-              onValueChange={setLutPath}
-              options={lutOptions}
-              placeholder="LUT"
-              disabled={!webGpuReady || luts.length === 0}
-              contentClassName="live-settings-select-content"
-            />
-            {activeLut && (
-              <ParamSlider
-                  label="强度"
-                  value={lutIntensity}
-                  min={0}
-                  max={100}
-                  step={1}
-                  onChange={setLutIntensity}
-                  formatValue={(value) => `${value}%`}
-              />
-            )}
-          </Accordion>
-
           <WhiteBalancePanel
             value={liveColor}
             modified={whiteBalanceModified}
             onChange={handleColorChange}
             onPreviewChange={handleColorChange}
             showPipette={false}
+            selectContentClassName="live-settings-select-content"
           />
           <TonePanel
             value={liveColor}

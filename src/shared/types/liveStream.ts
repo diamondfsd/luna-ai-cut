@@ -28,8 +28,6 @@ export type LivePreviewColorAdjustments = Pick<RenderColorAdjustments,
 
 export interface LivePreviewWindowSettings {
   url: string | null
-  lutPath: string | null
-  lutIntensity: number
   colorAdjustments: LivePreviewColorAdjustments
   watermark: {
     src: string

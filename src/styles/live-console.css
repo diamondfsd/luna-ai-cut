@@ -1,4 +1,4 @@
-.app-live-console {
+.live-console-page {
   --blue: #2997ff;
   --blue-dark: #1478d4;
   --canvas: #171719;
@@ -7,27 +7,6 @@
   --muted: #a1a1a6;
   --muted-dark: #d0d0d3;
   --hairline: rgba(255, 255, 255, 0.12);
-  background: #111113;
-  color: var(--ink);
-}
-
-.app-live-console .nav-icon-button:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-}
-
-.app-live-console .global-download-progress {
-  border-color: #3b3b40;
-  background: rgba(31, 31, 34, 0.96);
-  color: #f2f2f4;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
-}
-
-.app-live-console .global-download-progress-track {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.live-console-page {
   display: flex;
   height: 100%;
   min-height: 0;

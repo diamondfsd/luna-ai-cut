@@ -53,13 +53,10 @@ export function LivePreviewWindow() {
       {settings?.url && (
         <AnnexBVideoCanvas
           url={settings.url}
-          lutPath={settings.lutPath}
-          lutIntensity={settings.lutIntensity}
           colorAdjustments={settings.colorAdjustments}
           className="live-preview-window-canvas"
           onFrame={handleFrame}
           onError={handleError}
-          onEffectError={handleError}
         />
       )}
       {settings?.watermark && watermarkSrc && (
