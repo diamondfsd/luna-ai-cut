@@ -10,6 +10,7 @@ import type {
   ExportFileInput,
   ExportProgress,
   HotUpdateCheckResult,
+  LivePreviewWindowSettings,
   LiveWindowResolution,
   LunaApi,
   LunaFile,
@@ -72,9 +73,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   trackPageOpened: (path: string) => ipcRenderer.send('usage:page-opened', path),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
-  minimizeWindow: () => ipcRenderer.invoke('window:control', 'minimize'),
-  toggleMaximizeWindow: () => ipcRenderer.invoke('window:control', 'toggle-maximize'),
-  closeWindow: () => ipcRenderer.invoke('window:control', 'close'),
   setLiveWindowMode: (enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number) =>
     ipcRenderer.invoke('window:set-live-mode', enabled, resolution, sourceAspectRatio),
   onLiveWindowModeEnd: (callback: () => void) => {
@@ -82,6 +80,16 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.on('window:live-mode-ended', listener)
     return () => ipcRenderer.off('window:live-mode-ended', listener)
   },
+  updateLivePreviewWindowSettings: (settings: LivePreviewWindowSettings) =>
+    ipcRenderer.send('live-preview-window:update-settings', settings),
+  getLivePreviewWindowSettings: () => ipcRenderer.invoke('live-preview-window:get-settings'),
+  onLivePreviewWindowSettings: (callback: (settings: LivePreviewWindowSettings) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, settings: LivePreviewWindowSettings): void => callback(settings)
+    ipcRenderer.on('live-preview-window:settings', listener)
+    return () => ipcRenderer.off('live-preview-window:settings', listener)
+  },
+  resizeLivePreviewWindow: (sourceAspectRatio: number) =>
+    ipcRenderer.invoke('live-preview-window:resize', sourceAspectRatio),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean): void => callback(isFullScreen)
     ipcRenderer.on('window:fullscreen-changed', listener)

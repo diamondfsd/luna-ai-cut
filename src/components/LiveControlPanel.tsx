@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Download, Minimize2, Video } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Video } from 'lucide-react'
 
 import { Accordion, Button, Select, Switch, toast } from '../ui'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
@@ -15,7 +15,7 @@ import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning, watermarkPositionStyle } from './htmlPreviewGeometry'
 import { buildResolvedWatermarkStaticLayer, WatermarkSettings } from './WatermarkSettings'
 import type { LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
-import type { LiveStreamStatus } from '../shared/types'
+import type { LivePreviewWindowSettings, LiveStreamStatus } from '../shared/types'
 import '../styles/live-control-panel.css'
 
 const MOBILE_APP_DOWNLOAD_URL = 'https://lunaka.diamondfsd.com/'
@@ -25,14 +25,6 @@ interface LiveControlPanelProps {
   busy: boolean
   onStart: () => void
   windowLiveMode: boolean
-  onExitWindowLiveMode: () => void
-  onPreviewClick?: (event: MouseEvent<HTMLDivElement>) => void
-}
-
-function previewStatusLabel(status: LiveStreamStatus, previewReady: boolean): string {
-  if (status.usbState === 'streaming') return previewReady ? '画面已连接' : '正在打开画面'
-  if (status.state === 'starting') return '正在连接'
-  return status.usbMessage || '等待手机连接'
 }
 
 export function LiveControlPanel({
@@ -40,8 +32,6 @@ export function LiveControlPanel({
   busy,
   onStart,
   windowLiveMode,
-  onExitWindowLiveMode,
-  onPreviewClick,
 }: LiveControlPanelProps) {
   const previewPaneRef = useRef<HTMLDivElement>(null)
   const [previewAspectRatio, setPreviewAspectRatio] = useState(16 / 9)
@@ -60,10 +50,6 @@ export function LiveControlPanel({
   const [lutPath, setLutPath] = useState('none')
   const [lutIntensity, setLutIntensity] = useState(100)
   const [liveColor, setLiveColor] = useState<EditPipeline['color']>(() => structuredClone(DEFAULT_PIPELINE.color))
-  const windowLiveModeRef = useRef(windowLiveMode)
-  const lastWindowAspectRef = useRef<number | null>(null)
-  windowLiveModeRef.current = windowLiveMode
-
   const active = Boolean(status.startedAt) && status.state !== 'stopping'
   const streaming = status.usbState === 'streaming'
 
@@ -111,18 +97,6 @@ export function LiveControlPanel({
     ))
     setPreviewReady(true)
     setPreviewError(null)
-    if (!windowLiveModeRef.current) {
-      lastWindowAspectRef.current = null
-      return
-    }
-    if (lastWindowAspectRef.current == null || Math.abs(lastWindowAspectRef.current - aspectRatio) > 0.002) {
-      lastWindowAspectRef.current = aspectRatio
-      void window.luna.setLiveWindowMode(true, '720p', aspectRatio).catch((error: unknown) => {
-        window.luna.log('warn', '窗口直播画面尺寸调整失败', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      })
-    }
   }, [])
 
   const handlePreviewError = useCallback((message: string) => {
@@ -143,12 +117,12 @@ export function LiveControlPanel({
     setLiveColor((current) => ({ ...current, ...patch }))
   }, [])
 
-  const watermarkLayer = watermarkSettings.enabled
+  const watermarkLayer = useMemo(() => watermarkSettings.enabled
     ? buildResolvedWatermarkStaticLayer(watermarkSettings, previewDimensions.width, previewDimensions.height)
-    : null
-  const watermarkPositioning = watermarkLayer
+    : null, [previewDimensions.height, previewDimensions.width, watermarkSettings])
+  const watermarkPositioning = useMemo(() => watermarkLayer
     ? resolvePreviewWatermarkPositioning(watermarkLayer, previewDimensions)
-    : null
+    : null, [previewDimensions, watermarkLayer])
   const watermarkSrc = filePathToPreviewUrl(watermarkLayer?.filePath)
   const activeLut = lutPath !== 'none'
   const lutOptions = [
@@ -169,6 +143,32 @@ export function LiveControlPanel({
     whites: liveColor.whites,
     blacks: liveColor.blacks,
   }), [liveColor])
+  const previewWindowSettings = useMemo<LivePreviewWindowSettings>(() => ({
+    url: status.localPreviewUrl,
+    lutPath: activeLut ? lutPath : null,
+    lutIntensity,
+    colorAdjustments: liveColorAdjustments,
+    watermark: watermarkSrc && watermarkPositioning
+      ? {
+          src: watermarkSrc,
+          positioning: watermarkPositioning,
+          opacity: watermarkLayer?.opacity ?? 1,
+        }
+      : null,
+  }), [
+    activeLut,
+    liveColorAdjustments,
+    lutIntensity,
+    lutPath,
+    status.localPreviewUrl,
+    watermarkLayer?.opacity,
+    watermarkPositioning,
+    watermarkSrc,
+  ])
+
+  useEffect(() => {
+    window.luna.updateLivePreviewWindowSettings(previewWindowSettings)
+  }, [previewWindowSettings])
   const whiteBalanceModified = liveColor.temperature !== 0 || liveColor.tint !== 0 || liveColor.whiteBalanceMode !== 'custom'
   const toneModified = liveColor.exposure !== 0 || liveColor.brightness !== 0 || liveColor.contrast !== 0
     || liveColor.highlights !== 0 || liveColor.shadows !== 0 || liveColor.whites !== 0 || liveColor.blacks !== 0
@@ -176,12 +176,12 @@ export function LiveControlPanel({
 
   return (
     <section className="live-control-panel" aria-label="直播预览">
-      <div ref={previewPaneRef} className="live-preview-pane" onClick={onPreviewClick}>
+      <div ref={previewPaneRef} className="live-preview-pane">
         <div
           className="live-preview-stage"
           style={{ width: previewStageSize.width, height: previewStageSize.height }}
         >
-          {status.localPreviewUrl && (
+          {status.localPreviewUrl && !windowLiveMode && (
             <AnnexBVideoCanvas
               url={status.localPreviewUrl}
               lutPath={activeLut ? lutPath : null}
@@ -195,7 +195,7 @@ export function LiveControlPanel({
             />
           )}
 
-          {watermarkPositioning && watermarkSrc && (
+          {watermarkPositioning && watermarkSrc && !windowLiveMode && (
             <img
               className="live-preview-watermark"
               src={watermarkSrc}
@@ -203,6 +203,12 @@ export function LiveControlPanel({
               draggable={false}
               style={{ ...watermarkPositionStyle(watermarkPositioning), opacity: watermarkLayer?.opacity ?? 1 }}
             />
+          )}
+
+          {windowLiveMode && (
+            <div className="live-preview-overlay live-preview-window-open">
+              <strong>画面已在直播窗口中显示</strong>
+            </div>
           )}
 
           {!active && (
@@ -317,20 +323,6 @@ export function LiveControlPanel({
           />
         </div>
 
-        {windowLiveMode && (
-          <div className="live-control-pane-footer">
-            <span className="live-window-preview-status">{previewStatusLabel(status, previewReady)}</span>
-            <Button
-              variant="secondary"
-              size="compact"
-              icon={<Minimize2 size={14} />}
-              onClick={onExitWindowLiveMode}
-              disabled={busy}
-            >
-              退出窗口直播
-            </Button>
-          </div>
-        )}
       </aside>
     </section>
   )

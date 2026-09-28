@@ -31,7 +31,7 @@ import type {
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { CameraVideoStreamApi } from './cameraVideoStream'
-import type { LiveStreamApi, LiveWindowResolution } from './liveStream'
+import type { LivePreviewWindowSettings, LiveStreamApi, LiveWindowResolution } from './liveStream'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
@@ -148,11 +148,12 @@ export interface LunaApi {
   startupReady(): void
   trackPageOpened(path: string): void
   setFullScreen(enabled: boolean): Promise<void>
-  minimizeWindow(): Promise<void>
-  toggleMaximizeWindow(): Promise<void>
-  closeWindow(): Promise<void>
   setLiveWindowMode(enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number): Promise<void>
   onLiveWindowModeEnd(callback: () => void): () => void
+  updateLivePreviewWindowSettings(settings: LivePreviewWindowSettings): void
+  getLivePreviewWindowSettings(): Promise<LivePreviewWindowSettings | null>
+  onLivePreviewWindowSettings(callback: (settings: LivePreviewWindowSettings) => void): () => void
+  resizeLivePreviewWindow(sourceAspectRatio: number): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
