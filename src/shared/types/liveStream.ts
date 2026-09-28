@@ -59,8 +59,6 @@ export type LiveStreamControlCommand =
   | { type: 'tracking.selectRegion'; region: NormalizedVideoRegion }
   | { type: 'tracking.stop' }
   | { type: 'exposure.set'; value: number }
-  | { type: 'audio.listInputs' }
-  | { type: 'audio.selectInput'; inputId: string }
   | { type: 'capabilities.get' }
 
 export interface LiveStreamControlResult {
@@ -70,18 +68,6 @@ export interface LiveStreamControlResult {
   error: string | null
   data?: unknown
   completedAt: string
-}
-
-export interface LiveStreamAudioInputOption {
-  id: string
-  label: string
-  kind: 'none' | 'phone-microphone' | 'phone-external' | 'external' | 'desktop-microphone'
-  deviceId?: string
-}
-
-export interface LiveStreamAudioInputState {
-  options: LiveStreamAudioInputOption[]
-  selectedId: string
 }
 
 export interface LiveStreamControlCapabilities {
@@ -111,9 +97,6 @@ export interface LiveStreamControlCapabilities {
     stops: number[]
     current: number
   }
-  audio: LiveStreamAudioInputState & {
-    supported: boolean
-  }
 }
 
 export interface LiveStreamStatus {
@@ -135,12 +118,6 @@ export interface LiveStreamStatus {
   videoFrames: number
   videoBytes: number
   lastVideoFrameAt: string | null
-  audioFrames: number
-  audioBytes: number
-  lastAudioFrameAt: string | null
-  audioSource: number | null
-  audioSampleRate: number | null
-  audioChannels: number | null
   localPreviewUrl: string | null
   localPreviewError: string | null
   capturePath: string | null

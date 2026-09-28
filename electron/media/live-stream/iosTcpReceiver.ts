@@ -193,24 +193,17 @@ export class IosTcpReceiver implements LiveMediaReceiver {
   private handleFrame(frame: UsbMediaFrame): void {
     const receivedAt = new Date().toISOString()
     const isVideo = frame.streamType === 0x20
-    const isAudio = frame.streamType === 0x21
     this.statusValue = {
       ...this.statusValue,
       state: 'streaming',
       transport: 'ios-tcp',
-      message: isAudio ? '正在接收 iPhone USB 音频流' : isVideo ? '正在接收 iPhone USB 视频流' : '正在接收 iPhone USB 数据',
+      message: isVideo ? '正在接收 iPhone USB 视频流' : '正在接收 iPhone USB 控制数据',
       frames: this.statusValue.frames + 1,
       bytes: this.statusValue.bytes + frame.raw.length,
       lastFrameAt: receivedAt,
       videoFrames: this.statusValue.videoFrames + (isVideo ? 1 : 0),
       videoBytes: this.statusValue.videoBytes + (isVideo ? frame.raw.length : 0),
       lastVideoFrameAt: isVideo ? receivedAt : this.statusValue.lastVideoFrameAt,
-      audioFrames: this.statusValue.audioFrames + (isAudio ? 1 : 0),
-      audioBytes: this.statusValue.audioBytes + (isAudio ? frame.raw.length : 0),
-      lastAudioFrameAt: isAudio ? receivedAt : this.statusValue.lastAudioFrameAt,
-      audioSource: frame.audio?.source ?? this.statusValue.audioSource,
-      audioSampleRate: frame.audio?.sampleRate ?? this.statusValue.audioSampleRate,
-      audioChannels: frame.audio?.channels ?? this.statusValue.audioChannels,
       controlReady: true,
       error: null,
     }

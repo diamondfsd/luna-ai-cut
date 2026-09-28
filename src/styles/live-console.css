@@ -1,3 +1,32 @@
+.app-live-console {
+  --blue: #2997ff;
+  --blue-dark: #1478d4;
+  --canvas: #171719;
+  --parchment: #171719;
+  --ink: #f2f2f4;
+  --muted: #a1a1a6;
+  --muted-dark: #d0d0d3;
+  --hairline: rgba(255, 255, 255, 0.12);
+  background: #111113;
+  color: var(--ink);
+}
+
+.app-live-console .nav-icon-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.app-live-console .global-download-progress {
+  border-color: #3b3b40;
+  background: rgba(31, 31, 34, 0.96);
+  color: #f2f2f4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+}
+
+.app-live-console .global-download-progress-track {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .live-console-page {
   display: flex;
   height: 100%;
@@ -5,7 +34,7 @@
   flex-direction: column;
   overflow: hidden;
   padding: 14px 22px 20px;
-  background: var(--parchment);
+  background: #111113;
   color: var(--ink);
 }
 
@@ -27,6 +56,8 @@
   flex: 0 0 auto;
   min-height: 42px;
   margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 .live-console-title {
@@ -61,16 +92,18 @@
 
 .live-console-badge {
   flex: 0 0 auto;
-  border: 1px solid var(--hairline);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   padding: 4px 9px;
-  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  color: #b5b5ba;
   font-size: 11px;
 }
 
 .live-console-badge.active {
   border-color: rgba(50, 215, 75, 0.4);
-  color: #248a37;
+  background: rgba(50, 215, 75, 0.08);
+  color: #55df68;
 }
 
 .live-console-actions {

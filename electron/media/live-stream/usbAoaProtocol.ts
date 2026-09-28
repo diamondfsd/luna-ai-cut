@@ -2,28 +2,16 @@ import type { LiveStreamControlResult } from '../../../src/shared/types'
 
 export const UCD2_MAGIC = Buffer.from([0x55, 0x43, 0x44, 0x32])
 export const USB_STREAM_VIDEO = 0x20
-export const USB_STREAM_AUDIO = 0x21
 export const USB_STREAM_CONTROL_COMMAND = 0x30
 export const USB_STREAM_CONTROL_RESULT = 0x31
-export const USB_AUDIO_CODEC_PCM16_LE = 0x01
 
 const MAX_FRAME_BYTES = 32 * 1024 * 1024
-
-export interface UsbAudioFrameInfo {
-  codec: number
-  source: number
-  sampleRate: number
-  channels: number
-  sampleCount: number
-  pcm16Le: Buffer
-}
 
 export interface UsbMediaFrame {
   raw: Buffer
   streamType: number
   timestampUs: bigint
   body: Buffer
-  audio?: UsbAudioFrameInfo
   controlResult?: LiveStreamControlResult
 }
 
@@ -66,36 +54,8 @@ export function parseMediaFrame(frame: Buffer): ParsedMediaFrame {
       return { status: 'invalid', totalLength, reason: 'control-result-json' }
     }
   }
-  if (streamType === USB_STREAM_AUDIO) {
-    if (body.length < 12) return { status: 'invalid', reason: 'audio-header' }
-    if (body[0] !== USB_AUDIO_CODEC_PCM16_LE) {
-      return { status: 'unsupported', totalLength, reason: 'audio-codec' }
-    }
-    const sampleRate = body.readUInt32LE(2)
-    const channels = body[6]
-    const sampleCount = body.readUInt32LE(8)
-    const expectedBytes = sampleCount * channels * 2
-    if (channels < 1 || sampleRate < 1 || body.length !== 12 + expectedBytes) {
-      return { status: 'invalid', reason: 'audio-payload' }
-    }
-    return {
-      status: 'ok',
-      totalLength,
-      frame: {
-        raw: frame.subarray(0, totalLength),
-        streamType,
-        timestampUs,
-        body,
-        audio: {
-          codec: body[0],
-          source: body[1],
-          sampleRate,
-          channels,
-          sampleCount,
-          pcm16Le: body.subarray(12),
-        },
-      },
-    }
+  if (streamType !== USB_STREAM_VIDEO) {
+    return { status: 'unsupported', totalLength, reason: 'stream-type' }
   }
   return {
     status: 'ok',

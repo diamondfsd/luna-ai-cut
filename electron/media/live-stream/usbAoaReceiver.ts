@@ -5,7 +5,6 @@ import type { LiveStreamControlCommand } from '../../../src/shared/types'
 import { createUsbAccessoryShutdown } from './usbAccessoryLifecycle'
 import {
   consumeFrames,
-  USB_STREAM_AUDIO,
   USB_STREAM_CONTROL_COMMAND,
   USB_STREAM_VIDEO,
   UCD2_MAGIC,
@@ -15,13 +14,11 @@ import {
 export {
   consumeFrames,
   parseMediaFrame,
-  USB_AUDIO_CODEC_PCM16_LE,
-  USB_STREAM_AUDIO,
   USB_STREAM_CONTROL_COMMAND,
   USB_STREAM_CONTROL_RESULT,
   USB_STREAM_VIDEO,
 } from './usbAoaProtocol'
-export type { UsbAudioFrameInfo, UsbMediaFrame } from './usbAoaProtocol'
+export type { UsbMediaFrame } from './usbAoaProtocol'
 
 const ACCESSORY_VID = 0x18d1
 const ACCESSORY_PIDS = new Set([0x2d00, 0x2d01, 0x2d04, 0x2d05, 0x2d06, 0x2d07])
@@ -58,12 +55,6 @@ export function idleUsbStatus(
     videoFrames: 0,
     videoBytes: 0,
     lastVideoFrameAt: null,
-    audioFrames: 0,
-    audioBytes: 0,
-    lastAudioFrameAt: null,
-    audioSource: null,
-    audioSampleRate: null,
-    audioChannels: null,
     controlReady: false,
     error: null,
   }
@@ -99,12 +90,6 @@ export interface UsbAoaStatus {
   videoFrames: number
   videoBytes: number
   lastVideoFrameAt: string | null
-  audioFrames: number
-  audioBytes: number
-  lastAudioFrameAt: string | null
-  audioSource: number | null
-  audioSampleRate: number | null
-  audioChannels: number | null
   controlReady: boolean
   error: string | null
 }
@@ -448,8 +433,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   private handleFrame(frame: UsbMediaFrame): void {
     const receivedAt = new Date().toISOString()
     const isVideo = frame.streamType === USB_STREAM_VIDEO
-    const isAudio = frame.streamType === USB_STREAM_AUDIO
-    const streamLabel = isAudio ? '音频' : isVideo ? '视频' : '媒体'
+    const streamLabel = isVideo ? '视频' : '媒体'
     this.statusValue = {
       ...this.statusValue,
       state: 'streaming',
@@ -460,12 +444,6 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       videoFrames: this.statusValue.videoFrames + (isVideo ? 1 : 0),
       videoBytes: this.statusValue.videoBytes + (isVideo ? frame.raw.length : 0),
       lastVideoFrameAt: isVideo ? receivedAt : this.statusValue.lastVideoFrameAt,
-      audioFrames: this.statusValue.audioFrames + (isAudio ? 1 : 0),
-      audioBytes: this.statusValue.audioBytes + (isAudio ? frame.raw.length : 0),
-      lastAudioFrameAt: isAudio ? receivedAt : this.statusValue.lastAudioFrameAt,
-      audioSource: frame.audio?.source ?? this.statusValue.audioSource,
-      audioSampleRate: frame.audio?.sampleRate ?? this.statusValue.audioSampleRate,
-      audioChannels: frame.audio?.channels ?? this.statusValue.audioChannels,
       error: null,
     }
     this.onFrame(frame)
