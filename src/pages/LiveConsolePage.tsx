@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Square, Video } from 'lucide-react'
 
 import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
@@ -25,7 +25,6 @@ function stateLabel(status: LiveStreamStatus | null): string {
 
 export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: LiveConsolePageProps) {
   const [status, setStatus] = useState<LiveStreamStatus | null>(null)
-  const [windowControlsVisible, setWindowControlsVisible] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,32 +65,16 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   const active = Boolean(status?.startedAt) && status?.state !== 'stopping'
   const outputTone = status?.usbState === 'streaming' ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
 
-  const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (!windowLiveMode) return
-    if (event.target instanceof Element && event.target.closest('button, input, [role="button"]')) return
-    setWindowControlsVisible((visible) => !visible)
-  }
-
-  const enterWindowLiveMode = () => {
+  const toggleLivePreviewWindow = () => {
     void runAction(async () => {
-      await window.luna.setLiveWindowMode(true, '720p')
-      setWindowControlsVisible(false)
-      onWindowLiveModeChange(true)
-    })
-  }
-
-  const exitWindowLiveMode = () => {
-    void runAction(async () => {
-      await window.luna.setLiveWindowMode(false)
-      setWindowControlsVisible(true)
-      onWindowLiveModeChange(false)
+      const nextEnabled = !windowLiveMode
+      await window.luna.setLiveWindowMode(nextEnabled, nextEnabled ? '720p' : undefined)
+      onWindowLiveModeChange(nextEnabled)
     })
   }
 
   return (
-    <main
-      className={`live-console-page${windowLiveMode ? ' is-window-live' : ''}${windowLiveMode && !windowControlsVisible ? ' controls-hidden' : ''}`}
-    >
+    <main className="live-console-page">
       <header className="live-console-header" data-live-window-controls>
         <div className="live-console-title">
           <span className={`live-console-status-dot ${outputTone}`} />
@@ -99,17 +82,15 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
           <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{stateLabel(status)}</span>
         </div>
         <div className="live-console-actions">
-          {!windowLiveMode && (
-            <Button
-              variant="primary"
-              size="compact"
-              icon={<Video size={14} />}
-              onClick={enterWindowLiveMode}
-              disabled={busy}
-            >
-              直播模式
-            </Button>
-          )}
+          <Button
+            variant={windowLiveMode ? 'secondary' : 'primary'}
+            size="compact"
+            icon={<Video size={14} />}
+            onClick={toggleLivePreviewWindow}
+            disabled={busy}
+          >
+            {windowLiveMode ? '退出直播模式' : '直播模式'}
+          </Button>
           <Tooltip content="刷新状态">
             <IconButton
               variant="outline"
@@ -146,12 +127,10 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
           status={status}
           busy={busy}
           windowLiveMode={windowLiveMode}
-          onExitWindowLiveMode={exitWindowLiveMode}
           onStart={() => void runAction(async () => {
             await window.luna.liveStream.start()
             toast.success('已开始获取画面')
           })}
-          onPreviewClick={handlePreviewClick}
         />
       )}
     </main>

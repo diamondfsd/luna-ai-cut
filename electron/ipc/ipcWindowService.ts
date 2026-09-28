@@ -1,64 +1,89 @@
-import { app, BrowserWindow, ipcMain, screen, type Rectangle } from 'electron'
-import type { LiveWindowResolution } from '../../src/shared/types/liveStream'
+import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import path from 'node:path'
+import type { LivePreviewWindowSettings, LiveWindowResolution } from '../../src/shared/types/liveStream'
+import type { IpcContext } from './context'
 import { liveWindowContentSize } from '../application/liveWindowSizing'
 
 const attachedWindows = new WeakSet<BrowserWindow>()
-const liveWindowStates = new WeakMap<BrowserWindow, {
-  bounds: Rectangle
-  minimumSize: [number, number]
-  wasResizable: boolean
-  wasMaximizable: boolean
-  wasMaximized: boolean
-  wasBackgroundThrottling: boolean
-}>()
+let livePreviewWindow: BrowserWindow | null = null
+let livePreviewOwner: BrowserWindow | null = null
+let livePreviewSettings: LivePreviewWindowSettings | null = null
 
-function restoreLiveWindow(window: BrowserWindow, notifyRenderer = true): void {
-  const state = liveWindowStates.get(window)
-  if (!state || window.isDestroyed()) return
-
-  liveWindowStates.delete(window)
-  if (notifyRenderer) window.webContents.send('window:live-mode-ended')
-  if (!window.webContents.isDestroyed()) {
-    window.webContents.setBackgroundThrottling(state.wasBackgroundThrottling)
-  }
-  window.setResizable(state.wasResizable)
-  window.setMaximizable(state.wasMaximizable)
-  window.setMinimumSize(...state.minimumSize)
-  window.setBounds(state.bounds)
-  if (state.wasMaximized) window.maximize()
-}
-
-function setLiveWindow(window: BrowserWindow, resolution: LiveWindowResolution, sourceAspectRatio?: number): void {
-  if (!liveWindowStates.has(window)) {
-    const wasMaximized = window.isMaximized()
-    if (wasMaximized) window.unmaximize()
-
-    const bounds = window.getBounds()
-    const minimumSize = window.getMinimumSize()
-    liveWindowStates.set(window, {
-      bounds,
-      minimumSize: [minimumSize[0], minimumSize[1]],
-      wasResizable: window.isResizable(),
-      wasMaximizable: window.isMaximizable(),
-      wasMaximized,
-      wasBackgroundThrottling: window.webContents.backgroundThrottling,
-    })
-  }
-
-  window.webContents.setBackgroundThrottling(false)
+function resizeLivePreviewWindow(window: BrowserWindow, sourceAspectRatio: number): void {
   const display = screen.getDisplayMatching(window.getBounds())
-  const size = liveWindowContentSize(resolution, display.workArea, sourceAspectRatio)
-  window.setResizable(false)
-  window.setMaximizable(false)
-  window.setMinimumSize(0, 0)
+  const size = liveWindowContentSize('720p', display.workArea, sourceAspectRatio)
   window.setContentSize(size.width, size.height)
 
-  const nextBounds = window.getBounds()
-  const { workArea } = display
+  const bounds = window.getBounds()
   window.setPosition(
-    Math.round(workArea.x + (workArea.width - nextBounds.width) / 2),
-    Math.round(workArea.y + (workArea.height - nextBounds.height) / 2),
+    Math.round(display.workArea.x + (display.workArea.width - bounds.width) / 2),
+    Math.round(display.workArea.y + (display.workArea.height - bounds.height) / 2),
   )
+}
+
+async function openLivePreviewWindow(owner: BrowserWindow, aspectRatio = 16 / 9): Promise<void> {
+  if (livePreviewWindow && !livePreviewWindow.isDestroyed()) {
+    resizeLivePreviewWindow(livePreviewWindow, aspectRatio)
+    livePreviewWindow.focus()
+    return
+  }
+
+  const display = screen.getDisplayMatching(owner.getBounds())
+  const size = liveWindowContentSize('720p', display.workArea, aspectRatio)
+  const appRoot = process.env.APP_ROOT ?? app.getAppPath()
+  const window = new BrowserWindow({
+    x: Math.round(display.workArea.x + (display.workArea.width - size.width) / 2),
+    y: Math.round(display.workArea.y + (display.workArea.height - size.height) / 2),
+    width: size.width,
+    height: size.height,
+    title: '',
+    frame: false,
+    transparent: false,
+    backgroundColor: '#000000',
+    hasShadow: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === 'darwin' ? { roundedCorners: false } : {}),
+    webPreferences: {
+      preload: path.join(appRoot, 'dist-electron', 'preload.mjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false,
+    },
+  })
+
+  livePreviewWindow = window
+  livePreviewOwner = owner
+  window.webContents.setBackgroundThrottling(false)
+  window.once('closed', () => {
+    const previousOwner = livePreviewOwner
+    livePreviewWindow = null
+    livePreviewOwner = null
+    if (previousOwner && !previousOwner.isDestroyed() && !previousOwner.webContents.isDestroyed()) {
+      previousOwner.webContents.send('window:live-mode-ended')
+    }
+  })
+
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL
+  try {
+    if (devServerUrl) {
+      await window.loadURL(new URL('#/live-preview-window', devServerUrl).toString())
+    } else {
+      await window.loadFile(path.join(appRoot, 'dist', 'index.html'), { hash: '/live-preview-window' })
+    }
+  } catch (error) {
+    if (!window.isDestroyed()) window.close()
+    throw error
+  }
+  if (!window.isDestroyed()) window.show()
+}
+
+function closeLivePreviewWindow(): void {
+  if (livePreviewWindow && !livePreviewWindow.isDestroyed()) livePreviewWindow.close()
 }
 
 function notifyFullScreenState(window: BrowserWindow): void {
@@ -74,15 +99,10 @@ function attachFullScreenEvents(window: BrowserWindow): void {
   const notify = () => notifyFullScreenState(window)
   window.on('enter-full-screen', notify)
   window.on('leave-full-screen', notify)
-  window.on('close', () => restoreLiveWindow(window))
-  window.webContents.on('render-process-gone', () => restoreLiveWindow(window, false))
-  window.once('closed', () => {
-    attachedWindows.delete(window)
-    liveWindowStates.delete(window)
-  })
+  window.once('closed', () => attachedWindows.delete(window))
 }
 
-export function register(): void {
+export function register(context: IpcContext): void {
   app.on('browser-window-created', (_event, window) => attachFullScreenEvents(window))
   for (const window of BrowserWindow.getAllWindows()) attachFullScreenEvents(window)
 
@@ -92,28 +112,34 @@ export function register(): void {
     window.setFullScreen(enabled)
   })
 
-  ipcMain.handle('window:control', (event, action: 'minimize' | 'toggle-maximize' | 'close') => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window || window.isDestroyed()) return
-    if (action === 'minimize' && window.isMinimizable()) window.minimize()
-    if (action === 'toggle-maximize' && window.isMaximizable()) {
-      if (window.isMaximized()) window.unmaximize()
-      else window.maximize()
-    }
-    if (action === 'close') window.close()
-  })
-
-  ipcMain.handle('window:set-live-mode', (event, enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window || window.isDestroyed()) return
+  ipcMain.handle('window:set-live-mode', async (event, enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (!owner || owner.isDestroyed() || owner !== context.win) return
 
     if (enabled) {
-      if (resolution !== '720p') {
-        throw new Error('不支持的窗口尺寸')
-      }
-      setLiveWindow(window, resolution, sourceAspectRatio)
+      if (resolution !== '720p') throw new Error('不支持的窗口尺寸')
+      await openLivePreviewWindow(owner, sourceAspectRatio)
     } else {
-      restoreLiveWindow(window)
+      closeLivePreviewWindow()
     }
+  })
+
+  ipcMain.on('live-preview-window:update-settings', (event, settings: LivePreviewWindowSettings) => {
+    if (event.sender !== context.win?.webContents) return
+    livePreviewSettings = settings
+    if (livePreviewWindow && !livePreviewWindow.isDestroyed()) {
+      livePreviewWindow.webContents.send('live-preview-window:settings', settings)
+    }
+  })
+
+  ipcMain.handle('live-preview-window:get-settings', (event) => {
+    if (event.sender !== livePreviewWindow?.webContents) return null
+    return livePreviewSettings
+  })
+
+  ipcMain.handle('live-preview-window:resize', (event, sourceAspectRatio: number) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window || window !== livePreviewWindow || !Number.isFinite(sourceAspectRatio) || sourceAspectRatio <= 0) return
+    resizeLivePreviewWindow(window, sourceAspectRatio)
   })
 }

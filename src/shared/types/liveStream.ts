@@ -1,3 +1,5 @@
+import type { RenderColorAdjustments, WatermarkPositioning } from './render'
+
 export type LiveStreamState =
   | 'idle'
   | 'waiting-usb'
@@ -8,6 +10,33 @@ export type LiveStreamState =
   | 'error'
 
 export type LiveWindowResolution = '720p'
+
+export type LivePreviewColorAdjustments = Pick<RenderColorAdjustments,
+  | 'exposure'
+  | 'black'
+  | 'brightness'
+  | 'contrast'
+  | 'saturation'
+  | 'vibrance'
+  | 'temperature'
+  | 'tint'
+  | 'highlights'
+  | 'shadows'
+  | 'whites'
+  | 'blacks'
+>
+
+export interface LivePreviewWindowSettings {
+  url: string | null
+  lutPath: string | null
+  lutIntensity: number
+  colorAdjustments: LivePreviewColorAdjustments
+  watermark: {
+    src: string
+    positioning: WatermarkPositioning
+    opacity: number
+  } | null
+}
 
 export interface NormalizedVideoPoint {
   x: number

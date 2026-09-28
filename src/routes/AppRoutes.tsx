@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 import { AppNav } from '../components/AppNav'
-import { AppWindowTitleBar } from '../components/AppWindowTitleBar'
 import { PreviewModalHost } from '../components/PreviewModalHost'
 import { GlobalDownloadProgress } from '../components/GlobalDownloadProgress'
 import { AppRoute } from '../ui'
@@ -52,12 +51,6 @@ export function AppRoutes() {
   const [pagesKey, setPagesKey] = useState(0)
   const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
   const [windowLiveMode, setWindowLiveMode] = useState(false)
-  const macOS = window.navigator.platform.includes('Mac')
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('macos-window-shell', macOS)
-    return () => document.documentElement.classList.remove('macos-window-shell')
-  }, [macOS])
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -96,7 +89,6 @@ export function AppRoutes() {
   const activePath = location.pathname === '/' ? '/library' : location.pathname
   const isActive = (path: string) => activePath === path
   const settingsRoute = activePath === '/settings'
-  const showWindowLiveMode = isActive('/live-console') && windowLiveMode
 
   useEffect(() => window.luna.onLiveWindowModeEnd(() => setWindowLiveMode(false)), [])
 
@@ -145,8 +137,7 @@ export function AppRoutes() {
   // 独立调试包：只渲染设备调试页面，无导航、无路由切换
   if (debugStandalone) {
     return (
-      <main className={`app${macOS ? ' app-macos-window' : ''}`}>
-        {macOS && <AppWindowTitleBar />}
+      <main className="app">
         <DeviceDebugPage />
       </main>
     )
@@ -154,17 +145,16 @@ export function AppRoutes() {
 
   return (
     <ExportProgressProvider>
-      <DownloadProgressProvider>
+        <DownloadProgressProvider>
         <NasSyncProgressProvider>
-        <main className={`app${macOS ? ' app-macos-window' : ''}${showWindowLiveMode ? ' app-window-live' : ''}`}>
-        {macOS && !showWindowLiveMode && <AppWindowTitleBar />}
-        {!showWindowLiveMode && <AppNav
+        <main className="app">
+        <AppNav
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
         onChangeConnection={disconnectDevice}
-      />}
-      {!showWindowLiveMode && <GlobalDownloadProgress visible={!isActive('/library')} />}
+      />
+      <GlobalDownloadProgress visible={!isActive('/library')} />
 
       <div className="route-stack" key={pagesKey}>
 

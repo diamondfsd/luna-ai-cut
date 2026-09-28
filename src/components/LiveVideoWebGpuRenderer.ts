@@ -1,25 +1,12 @@
 import { BUFFER_USAGE_COPY_DST, BUFFER_USAGE_UNIFORM, createTexture, getWebGpuContext, getWebGpuNavigator, TEXTURE_USAGE_COPY_DST, TEXTURE_USAGE_RENDER_ATTACHMENT, TEXTURE_USAGE_TEXTURE_BINDING, writeTexture } from './webgpu/webgpuGpu'
 import { parseWebGpuCube } from './webgpuPreviewMath'
-import type { RenderColorAdjustments } from '../shared/types'
+import type { LivePreviewColorAdjustments } from '../shared/types'
 import type { GpuBindGroup, GpuBuffer, GpuDevice, GpuPipeline, GpuQueue, GpuSampler, GpuTexture } from './webgpu/webgpuTypes'
 import { LIVE_VIDEO_PREVIEW_SHADER } from './liveVideoFsrShaders'
 
 type LivePreviewPipeline = GpuPipeline & { getBindGroupLayout(index: number): object }
 
-export type LiveVideoColorAdjustments = Pick<RenderColorAdjustments,
-  | 'exposure'
-  | 'black'
-  | 'brightness'
-  | 'contrast'
-  | 'saturation'
-  | 'vibrance'
-  | 'temperature'
-  | 'tint'
-  | 'highlights'
-  | 'shadows'
-  | 'whites'
-  | 'blacks'
->
+export type LiveVideoColorAdjustments = LivePreviewColorAdjustments
 
 const DEFAULT_COLOR_ADJUSTMENTS: LiveVideoColorAdjustments = {
   exposure: 0,
