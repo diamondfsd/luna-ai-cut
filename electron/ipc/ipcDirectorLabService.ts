@@ -72,6 +72,9 @@ function validateDownloadPlanRequest(value: unknown): DirectorLabDownloadPlanReq
       ? (value as Record<string, string>).operationId
       : undefined,
     plan: candidate as unknown as DirectorLabDownloadPlanRequest['plan'],
+    metadata: (value as { metadata?: unknown }).metadata && typeof (value as { metadata?: unknown }).metadata === 'object'
+      ? (value as DirectorLabDownloadPlanRequest).metadata
+      : undefined,
   }
 }
 
@@ -128,7 +131,10 @@ function readmeForPlan(plan: DirectorLabDownloadPlanRequest['plan']): string {
   return `${lines.join('\n')}\n`
 }
 
-function manifestForPlan(plan: DirectorLabDownloadPlanRequest['plan']): string {
+function manifestForPlan(
+  plan: DirectorLabDownloadPlanRequest['plan'],
+  metadata: Record<string, DirectorLabMediaMetadata> = {},
+): string {
   return JSON.stringify({
     format: 'luna-director-plan-v1',
     plan_id: plan.id,
@@ -147,7 +153,12 @@ function manifestForPlan(plan: DirectorLabDownloadPlanRequest['plan']): string {
       media: shot.takes.map((take, takeIndex) => ({
         id: take.id,
         type: take.kind,
-        captured_at: take.created_at,
+        created_at: take.created_at,
+        captured_at: metadata[take.id]?.capturedAt ?? take.captured_at ?? null,
+        duration_ms: metadata[take.id]?.durationMs ?? take.duration_ms ?? null,
+        width: metadata[take.id]?.width ?? take.width ?? null,
+        height: metadata[take.id]?.height ?? take.height ?? null,
+        codec: metadata[take.id]?.codec ?? take.codec ?? null,
         path: take.available
           ? path.posix.join(mediaFolder(shot.order, shot.name).replace(/\\/g, '/'), mediaFileName(takeIndex + 1, take.file_name))
           : null,
@@ -162,7 +173,7 @@ async function downloadPlan(
   value: unknown,
   sender: Electron.WebContents,
 ): Promise<DirectorLabDownloadPlanResult> {
-  const { plan, operationId = `plan-${Date.now()}` } = validateDownloadPlanRequest(value)
+  const { plan, operationId = `plan-${Date.now()}`, metadata = {} } = validateDownloadPlanRequest(value)
   const settings = await getSettings()
   const directory = path.join(
     getDirectorPlanDir(settings),
@@ -223,7 +234,7 @@ async function downloadPlan(
   })
   await Promise.all([
     fs.writeFile(path.join(directory, 'README.md'), readmeForPlan(plan), 'utf8'),
-    fs.writeFile(path.join(directory, 'manifest.json'), manifestForPlan(plan), 'utf8'),
+    fs.writeFile(path.join(directory, 'manifest.json'), manifestForPlan(plan, metadata), 'utf8'),
   ])
   sendDownloadProgress(sender, {
     operationId,
@@ -268,7 +279,12 @@ function validateProbeRequests(value: unknown): DirectorLabProbeRequest[] {
 interface LocalManifestMedia {
   id?: unknown
   type?: unknown
+  created_at?: unknown
   captured_at?: unknown
+  duration_ms?: unknown
+  width?: unknown
+  height?: unknown
+  codec?: unknown
   path?: unknown
   available?: unknown
   selected_range?: unknown
@@ -313,18 +329,62 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       return null
     }
     const directory = path.dirname(manifestPath)
+    let manifestChanged = false
     const shots = await Promise.all((raw.shots as LocalManifestShot[]).map(async (shot, shotIndex) => {
       const media = Array.isArray(shot.media) ? shot.media as LocalManifestMedia[] : []
       const takes = await Promise.all(media.map(async (item, takeIndex) => {
+        const takeId = typeof item.id === 'string' ? item.id : `local-take-${shotIndex}-${takeIndex}`
         const relativePath = typeof item.path === 'string' ? item.path : null
         const absolutePath = relativePath ? localPathForManifestMedia(directory, relativePath) : null
         const available = absolutePath ? await fileExists(absolutePath) : false
         const fileUrl = available && absolutePath ? pathToFileURL(absolutePath).toString() : null
         const fileName = absolutePath ? path.basename(absolutePath) : `${shot.id ?? shotIndex}-${takeIndex}`
+        const durationMs = typeof item.duration_ms === 'number' ? item.duration_ms : null
+        const width = typeof item.width === 'number' ? item.width : null
+        const height = typeof item.height === 'number' ? item.height : null
+        const capturedAt = typeof item.captured_at === 'string' ? item.captured_at : null
+        const needsProbe = available && item.type === 'video' && fileUrl && (
+          durationMs == null || capturedAt == null || width == null || height == null
+        )
+        const observed = needsProbe
+          ? await probeMediaOne({ takeId, url: fileUrl })
+          : null
+        const resolvedDuration = observed?.durationMs ?? durationMs
+        const resolvedCapturedAt = observed?.capturedAt ?? capturedAt
+        const resolvedWidth = observed?.width ?? width
+        const resolvedHeight = observed?.height ?? height
+        const resolvedCodec = observed?.codec ?? (typeof item.codec === 'string' ? item.codec : null)
+        if (
+          observed
+          && !observed.error
+          && (
+            resolvedDuration !== item.duration_ms
+            || resolvedCapturedAt !== item.captured_at
+            || resolvedWidth !== item.width
+            || resolvedHeight !== item.height
+            || resolvedCodec !== item.codec
+          )
+        ) {
+          item.duration_ms = resolvedDuration
+          item.captured_at = resolvedCapturedAt
+          item.width = resolvedWidth
+          item.height = resolvedHeight
+          item.codec = resolvedCodec
+          manifestChanged = true
+        }
         return {
-          id: typeof item.id === 'string' ? item.id : `local-take-${shotIndex}-${takeIndex}`,
+          id: takeId,
           kind: item.type === 'photo' ? 'photo' as const : 'video' as const,
-          created_at: typeof item.captured_at === 'string' ? item.captured_at : new Date(0).toISOString(),
+          created_at: typeof item.created_at === 'string'
+            ? item.created_at
+            : typeof item.captured_at === 'string'
+              ? item.captured_at
+              : new Date(0).toISOString(),
+          captured_at: resolvedCapturedAt,
+          duration_ms: resolvedDuration,
+          width: resolvedWidth,
+          height: resolvedHeight,
+          codec: resolvedCodec,
           file_name: fileName.replace(/^\d+_/, ''),
           mime_type: item.type === 'photo' ? 'image/jpeg' : 'video/mp4',
           size_bytes: available && absolutePath ? (await fs.stat(absolutePath)).size : null,
@@ -349,6 +409,11 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
         takes,
       }
     }))
+    if (manifestChanged) {
+      const temporaryPath = `${manifestPath}.tmp`
+      await fs.writeFile(temporaryPath, JSON.stringify(raw, null, 2), 'utf8')
+      await fs.rename(temporaryPath, manifestPath)
+    }
     return {
       id: raw.plan_id,
       title: typeof raw.title === 'string' ? raw.title : path.basename(directory),

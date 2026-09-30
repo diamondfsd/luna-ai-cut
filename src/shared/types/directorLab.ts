@@ -16,6 +16,7 @@ export interface DirectorLabDownloadResult {
 export interface DirectorLabDownloadPlanRequest {
   operationId?: string
   plan: DirectorLanPlanSummary
+  metadata?: Record<string, DirectorLabMediaMetadata>
 }
 
 export interface DirectorLabDownloadPlanResult {
@@ -115,6 +116,11 @@ export interface DirectorLanTake {
   id: string
   kind: 'photo' | 'video'
   created_at: string
+  captured_at?: string | null
+  duration_ms?: number | null
+  width?: number | null
+  height?: number | null
+  codec?: string | null
   file_name: string
   mime_type: string
   size_bytes: number | null

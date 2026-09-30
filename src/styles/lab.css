@@ -744,23 +744,8 @@
 .lab-viewer-stage > video,
 .lab-viewer-stage > img {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
+  flex: 0 0 auto;
   object-fit: contain;
-}
-
-.lab-viewer-stage.is-landscape > video,
-.lab-viewer-stage.is-landscape > img {
-  width: 100%;
-  height: auto;
-}
-
-.lab-viewer-stage.is-portrait > video,
-.lab-viewer-stage.is-portrait > img {
-  width: auto;
-  height: 100%;
 }
 
 .lab-viewer-stage .ui-video-controls {
