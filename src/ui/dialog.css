@@ -121,14 +121,21 @@
   display: grid;
   width: 28px;
   height: 28px;
+  box-sizing: border-box;
+  padding: 0;
   place-items: center;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.42);
   color: var(--muted);
   cursor: pointer;
+  line-height: 0;
   font-family: inherit;
   transition: background 100ms ease;
+}
+
+.ui-dialog-close > svg {
+  display: block;
 }
 
 .ui-dialog-close:hover {

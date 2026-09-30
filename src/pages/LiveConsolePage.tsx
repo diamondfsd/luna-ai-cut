@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Square, Video } from 'lucide-react'
+import { HelpCircle, RefreshCw, Square, Video } from 'lucide-react'
 
-import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, Dialog, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
 import type { LiveStreamStatus } from '../shared/types'
 import '../styles/live-console.css'
@@ -82,15 +82,34 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
           <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{stateLabel(status)}</span>
         </div>
         <div className="live-console-actions">
-          <Button
-            variant={windowLiveMode ? 'secondary' : 'primary'}
-            size="compact"
-            icon={<Video size={14} />}
-            onClick={toggleLivePreviewWindow}
-            disabled={busy}
+          <Dialog
+            trigger={(
+              <Button variant="secondary" size="compact" icon={<HelpCircle size={14} />}>
+                操作说明
+              </Button>
+            )}
+            title="操作说明"
+            tone="dark"
           >
-            {windowLiveMode ? '退出直播模式' : '直播模式'}
-          </Button>
+            <ol className="live-console-instructions">
+              <li>在手机 Luna 咔中连接相机。</li>
+              <li>用 USB 线连接手机和电脑。</li>
+              <li>点击“获取画面”，等待预览区出现画面。</li>
+              <li>可调整水印和色彩；点击“直播模式”打开独立预览。</li>
+              <li>打开抖音直播伴侣，在场景中添加“窗口画面”，选择直播预览窗口。</li>
+            </ol>
+          </Dialog>
+          {(Boolean(status?.videoFrames) || windowLiveMode) && (
+            <Button
+              variant={windowLiveMode ? 'secondary' : 'primary'}
+              size="compact"
+              icon={<Video size={14} />}
+              onClick={toggleLivePreviewWindow}
+              disabled={busy}
+            >
+              {windowLiveMode ? '退出直播模式' : '直播模式'}
+            </Button>
+          )}
           <Tooltip content="刷新状态">
             <IconButton
               variant="outline"

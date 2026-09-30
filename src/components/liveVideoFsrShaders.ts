@@ -19,6 +19,7 @@ struct Resolution {
   shadows: f32,
   whites: f32,
   blacks: f32,
+  sharpen: f32,
 }
 
 @group(0) @binding(0) var sourceTexture: texture_2d<f32>;
@@ -112,6 +113,16 @@ fn applyLiveColorAdjustments(encodedColor: vec3<f32>) -> vec3<f32> {
 @fragment
 fn previewMain(input: VertexOutput) -> @location(0) vec4<f32> {
   var color = textureSample(sourceTexture, sourceSampler, input.uv).rgb;
+
+  if (resolution.sharpen > 0.0) {
+    let texel = vec2<f32>(1.0) / vec2<f32>(textureDimensions(sourceTexture, 0));
+    let left = textureSample(sourceTexture, sourceSampler, input.uv - vec2<f32>(texel.x, 0.0)).rgb;
+    let right = textureSample(sourceTexture, sourceSampler, input.uv + vec2<f32>(texel.x, 0.0)).rgb;
+    let top = textureSample(sourceTexture, sourceSampler, input.uv - vec2<f32>(0.0, texel.y)).rgb;
+    let bottom = textureSample(sourceTexture, sourceSampler, input.uv + vec2<f32>(0.0, texel.y)).rgb;
+    let softened = color * 0.5 + (left + right + top + bottom) * 0.125;
+    color = clamp(color + (color - softened) * (resolution.sharpen / 100.0 * 1.5), vec3<f32>(0.0), vec3<f32>(1.0));
+  }
 
   if (
     resolution.exposure != 0.0 || resolution.black != 0.0 || resolution.brightness != 0.0 ||
