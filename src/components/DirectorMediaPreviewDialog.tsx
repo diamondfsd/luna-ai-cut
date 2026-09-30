@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ChevronLeft,
@@ -43,6 +43,7 @@ export function DirectorMediaPreviewDialog({
   onClose,
 }: DirectorMediaPreviewDialogProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
   const prepareRequestRef = useRef(0)
   const autoPlayAfterPrepareRef = useRef(false)
   const [playbackUrl, setPlaybackUrl] = useState(take.stream_url)
@@ -54,7 +55,20 @@ export function DirectorMediaPreviewDialog({
   const [muted, setMuted] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ width: number; height: number } | null>(null)
-  const portrait = Boolean(mediaSize && mediaSize.height > mediaSize.width)
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
+  const mediaStyle = useMemo(() => {
+    if (!mediaSize || stageSize.width <= 0 || stageSize.height <= 0) return undefined
+    const mediaRatio = mediaSize.width / mediaSize.height
+    const stageRatio = stageSize.width / stageSize.height
+    const width = mediaRatio > stageRatio ? stageSize.width : stageSize.height * mediaRatio
+    const height = mediaRatio > stageRatio ? stageSize.width / mediaRatio : stageSize.height
+    return {
+      width: `${Math.max(1, Math.floor(width))}px`,
+      height: `${Math.max(1, Math.floor(height))}px`,
+      maxWidth: '100%',
+      maxHeight: '100%',
+    }
+  }, [mediaSize, stageSize])
   const index = takes.findIndex((item) => item.id === take.id)
   const previous = index > 0 ? takes[index - 1] : null
   const next = index >= 0 && index < takes.length - 1 ? takes[index + 1] : null
@@ -71,6 +85,19 @@ export function DirectorMediaPreviewDialog({
     setWaiting(false)
     setMediaSize(null)
   }, [take.id, take.stream_url])
+
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const update = () => setStageSize({
+      width: stage.clientWidth,
+      height: stage.clientHeight,
+    })
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -164,13 +191,14 @@ export function DirectorMediaPreviewDialog({
             />
           )}
 
-          <div className={`lab-viewer-stage ui-video-controls-host${portrait ? ' is-portrait' : ' is-landscape'}`}>
+          <div ref={stageRef} className="lab-viewer-stage ui-video-controls-host">
             {take.kind === 'video' ? (
               <>
                 <video
                   key={`${take.id}:${playbackUrl}`}
                   ref={videoRef}
                   src={playbackUrl ?? undefined}
+                  style={mediaStyle}
                   muted={muted}
                   playsInline
                   preload="metadata"
@@ -222,6 +250,7 @@ export function DirectorMediaPreviewDialog({
               <img
                 src={playbackUrl}
                 alt={take.file_name}
+                style={mediaStyle}
                 onLoad={(event) => setMediaSize({
                   width: event.currentTarget.naturalWidth,
                   height: event.currentTarget.naturalHeight,

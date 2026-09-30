@@ -9,6 +9,7 @@ import {
   Film,
   FolderSync,
   FolderDown,
+  FolderOpen,
   Link2,
   RadioTower,
   RefreshCw,
@@ -24,6 +25,7 @@ import type {
   DirectorLanTake,
 } from '../shared/types'
 import { Button, IconButton, Input, LoadingIndicator, Tooltip, toast } from '../ui'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '../ui'
 import { formatBytes } from '../lib/format'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
 
@@ -151,7 +153,12 @@ function shotMetadata(
   shot: DirectorLanPlanSummary['shots'][number],
   metadata: Record<string, DirectorLabMediaMetadata>,
 ) {
-  const metadataForTakes = shot.takes.map((take) => metadata[take.id]).filter(Boolean)
+  const metadataForTakes = shot.takes.map((take) => ({
+    durationMs: metadata[take.id]?.durationMs ?? take.duration_ms ?? null,
+    capturedAt: metadata[take.id]?.capturedAt ?? take.captured_at ?? null,
+    width: metadata[take.id]?.width ?? take.width ?? null,
+    height: metadata[take.id]?.height ?? take.height ?? null,
+  }))
   const durationMs = metadataForTakes.reduce((total, item) => total + (item.durationMs ?? 0), 0)
   const resolution = metadataForTakes.find((item) => item.width && item.height)
   return {
@@ -162,8 +169,38 @@ function shotMetadata(
       ? `${resolution.width}×${resolution.height}`
       : null,
     metadataPending: shot.takes.some(
-      (take) => take.kind === 'video' && take.available && !metadata[take.id],
+      (take) => take.kind === 'video'
+        && take.available
+        && !metadata[take.id]
+        && take.duration_ms == null
+        && take.captured_at == null,
     ),
+  }
+}
+
+function takeMetadata(
+  take: DirectorLanTake,
+  metadata: Record<string, DirectorLabMediaMetadata>,
+): DirectorLabMediaMetadata | null {
+  const observed = metadata[take.id]
+  if (observed) return observed
+  if (
+    take.duration_ms == null
+    && take.captured_at == null
+    && take.width == null
+    && take.height == null
+    && take.codec == null
+  ) {
+    return null
+  }
+  return {
+    takeId: take.id,
+    durationMs: take.duration_ms ?? null,
+    capturedAt: take.captured_at ?? null,
+    width: take.width ?? null,
+    height: take.height ?? null,
+    codec: take.codec ?? null,
+    error: null,
   }
 }
 
@@ -459,7 +496,11 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     const operationId = `plan:${plan.id}:${Date.now()}`
     setDownloading(`plan:${plan.id}`)
     try {
-      const result = await window.luna.directorLab.downloadPlan({ plan, operationId })
+      const result = await window.luna.directorLab.downloadPlan({
+        plan,
+        operationId,
+        metadata: mediaMetadata,
+      })
       toast.success(`已保存 ${result.fileCount} 个原素材到文件夹`)
       const local = await refreshLocalPlans()
       setPlans((current) => {
@@ -484,6 +525,30 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     } catch (nextError) {
       toast.error(nextError instanceof Error ? nextError.message : '复制失败')
     }
+  }
+
+  async function openLocalPlanDirectory(): Promise<void> {
+    if (!activePlan?.local_directory) return
+    await window.luna.openPath(activePlan.local_directory)
+  }
+
+  async function openTakeDirectory(take: DirectorLanTake): Promise<void> {
+    if (!activePlan) return
+    if (take.stream_path && !/^https?:\/\//i.test(take.stream_path)) {
+      await window.luna.revealFile(take.stream_path)
+      return
+    }
+    const shotIndex = activePlan.shots.findIndex((shot) =>
+      shot.takes.some((item) => item.id === take.id))
+    const shot = activePlan.shots[shotIndex]
+    if (!activePlan.local_directory || !shot) return
+    const shotFolder = `${String(shot.order).padStart(2, '0')}_${shot.name.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim()}`
+    await window.luna.openPath(`${activePlan.local_directory}/media/${shotFolder}`)
+  }
+
+  async function openTakeFile(take: DirectorLanTake): Promise<void> {
+    if (!take.stream_path || /^https?:\/\//i.test(take.stream_path)) return
+    await window.luna.openPath(take.stream_path)
   }
 
   return (
@@ -610,21 +675,39 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
               <span className="lab-plan-summary">
                 {activePlan.shot_count} 个镜头 · {activePlan.take_count} 段素材
               </span>
-              <Button
-                variant="secondary"
-                size="compact"
-                icon={<FolderDown size={15} />}
-                disabled={downloading != null || (activePlan.source === 'local' && !activePlan.update_available)}
-                onClick={() => void downloadPlan(activePlan.remote_plan ?? activePlan)}
-              >
-                {activePlan.source === 'local' && activePlan.update_available
-                  ? '更新本地版本'
-                  : activePlan.source === 'local'
-                    ? '已保存到本地'
-                  : downloading === `plan:${activePlan.id}`
-                    ? '下载中'
-                    : '下载到文件夹'}
-              </Button>
+              {activePlan.source === 'local' ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="compact"
+                    icon={<FolderOpen size={15} />}
+                    onClick={() => void openLocalPlanDirectory()}
+                  >
+                    打开文件夹
+                  </Button>
+                  {activePlan.update_available && (
+                    <Button
+                      variant="primary"
+                      size="compact"
+                      icon={<FolderDown size={15} />}
+                      disabled={downloading != null}
+                      onClick={() => void downloadPlan(activePlan.remote_plan ?? activePlan)}
+                    >
+                      {downloading === `plan:${activePlan.id}` ? '更新中' : '更新本地版本'}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="compact"
+                  icon={<FolderDown size={15} />}
+                  disabled={downloading != null}
+                  onClick={() => void downloadPlan(activePlan)}
+                >
+                  {downloading === `plan:${activePlan.id}` ? '下载中' : '下载到文件夹'}
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 size="compact"
@@ -707,45 +790,56 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
                     {shot.takes.length > 0 ? (
                       <div className="lab-take-grid">
                         {shot.takes.map((take, index) => {
-                          const takeMetadata = mediaMetadata[take.id]
+                          const takeDetails = takeMetadata(take, mediaMetadata)
                           return (
-                            <button
-                              className={`lab-take-card${take.id === activeTake?.id ? ' active' : ''}`}
-                              type="button"
-                              key={take.id}
-                              onClick={() => {
-                                setActiveTakeId(take.id)
-                                setPreviewTakeId(take.id)
-                              }}
-                            >
-                              <span className="lab-take-media">
-                                {take.available && take.stream_url ? (
-                                  take.kind === 'video' ? (
-                                    <video src={take.stream_url} muted preload="metadata" />
-                                  ) : (
-                                    <img src={take.stream_url} alt="" loading="lazy" />
-                                  )
-                                ) : (
-                                  <CloudOff size={20} />
-                                )}
-                              </span>
-                              <span className="lab-take-copy">
-                                <strong>{takeLabel(take, index)}</strong>
-                                <small>
-                                  {take.kind === 'video'
-                                    ? formatDurationMs(takeMetadata?.durationMs)
-                                    : '照片'}
-                                  {' · '}
-                                  {take.size_bytes ? formatBytes(take.size_bytes) : '文件缺失'}
-                                </small>
-                                <small>
-                                  {takeMetadata?.capturedAt
-                                    ? `拍摄 ${formatMediaTime(takeMetadata.capturedAt)}`
-                                    : `创建 ${formatMediaTime(take.created_at)}`}
-                                </small>
-                              </span>
-                              <span className="lab-take-open">查看</span>
-                            </button>
+                            <ContextMenu key={take.id}>
+                              <ContextMenuTrigger asChild>
+                                <button
+                                  className={`lab-take-card${take.id === activeTake?.id ? ' active' : ''}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTakeId(take.id)
+                                    setPreviewTakeId(take.id)
+                                  }}
+                                >
+                                  <span className="lab-take-media">
+                                    {take.available && take.stream_url ? (
+                                      take.kind === 'video' ? (
+                                        <video src={take.stream_url} muted preload="metadata" />
+                                      ) : (
+                                        <img src={take.stream_url} alt="" loading="lazy" />
+                                      )
+                                    ) : (
+                                      <CloudOff size={20} />
+                                    )}
+                                  </span>
+                                  <span className="lab-take-copy">
+                                    <strong>{takeLabel(take, index)}</strong>
+                                    <small>
+                                      {take.kind === 'video'
+                                        ? formatDurationMs(takeDetails?.durationMs)
+                                        : '照片'}
+                                      {' · '}
+                                      {take.size_bytes ? formatBytes(take.size_bytes) : '文件缺失'}
+                                    </small>
+                                    <small>
+                                      {takeDetails?.capturedAt
+                                        ? `拍摄 ${formatMediaTime(takeDetails.capturedAt)}`
+                                        : `创建 ${formatMediaTime(take.created_at)}`}
+                                    </small>
+                                  </span>
+                                  <span className="lab-take-open">查看</span>
+                                </button>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent>
+                                <ContextMenuItem onSelect={() => void openTakeFile(take)} disabled={!take.stream_path || /^https?:\/\//i.test(take.stream_path)}>
+                                  打开文件
+                                </ContextMenuItem>
+                                <ContextMenuItem onSelect={() => void openTakeDirectory(take)} disabled={!take.available}>
+                                  打开所在文件夹
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
                           )
                         })}
                       </div>
