@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createConnection, type Socket } from 'node:net'
+import { join } from 'node:path'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import {
@@ -22,14 +23,20 @@ const CONNECTION_CONFIRM_MS = 400
 
 function proxyBinary(): string | null {
   const configured = process.env.USB_VIDEO_IPROXY_BIN
+  const resourcesPath = process.resourcesPath
+  const bundled = process.platform === 'win32' && resourcesPath
+    ? join(resourcesPath, 'ios-usb', 'iproxy.exe')
+    : null
   const candidates = [
     configured,
+    bundled,
     '/opt/homebrew/bin/iproxy',
     '/usr/local/bin/iproxy',
     '/usr/bin/iproxy',
+    ...(process.platform === 'win32' ? ['iproxy.exe'] : []),
     'iproxy',
   ].filter((value): value is string => Boolean(value))
-  return candidates.find((candidate) => candidate === 'iproxy' || existsSync(candidate)) ?? null
+  return candidates.find((candidate) => candidate === 'iproxy' || candidate === 'iproxy.exe' || existsSync(candidate)) ?? null
 }
 
 export class IosTcpReceiver implements LiveMediaReceiver {
