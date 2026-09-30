@@ -5,6 +5,7 @@ import { Accordion, Button, Switch } from '../ui'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { DEFAULT_PIPELINE, type EditPipeline } from '../workspace/shared/editPipeline'
+import { DetailPanel } from '../workspace/color/DetailPanel'
 import { TonePanel } from '../workspace/color/TonePanel'
 import { WhiteBalancePanel } from '../workspace/color/WhiteBalancePanel'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
@@ -101,6 +102,7 @@ export function LiveControlPanel({
     shadows: liveColor.shadows,
     whites: liveColor.whites,
     blacks: liveColor.blacks,
+    sharpen: liveColor.sharpen,
   }), [liveColor])
   const previewWindowSettings = useMemo<LivePreviewWindowSettings>(() => ({
     url: status.localPreviewUrl,
@@ -241,6 +243,13 @@ export function LiveControlPanel({
             onChange={handleColorChange}
             onPreviewChange={handleColorChange}
             includeDetailControls={false}
+          />
+          <DetailPanel
+            value={liveColor}
+            modified={liveColor.sharpen !== 0}
+            onChange={handleColorChange}
+            onPreviewChange={handleColorChange}
+            includeDenoise={false}
           />
         </div>
 

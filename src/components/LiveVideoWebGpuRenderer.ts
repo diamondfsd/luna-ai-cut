@@ -21,6 +21,7 @@ const DEFAULT_COLOR_ADJUSTMENTS: LiveVideoColorAdjustments = {
   shadows: 0,
   whites: 0,
   blacks: 0,
+  sharpen: 0,
 }
 
 interface DecodedFrameSource {
@@ -223,6 +224,7 @@ export class LiveVideoWebGpuRenderer {
       this.colorAdjustments.shadows,
       this.colorAdjustments.whites,
       this.colorAdjustments.blacks,
+      this.colorAdjustments.sharpen,
     ]))
 
     const encoder = this.device.createCommandEncoder({ label: 'live-preview-frame' })

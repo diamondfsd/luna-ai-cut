@@ -99,6 +99,21 @@
   font-size: 12px;
 }
 
+.live-console-instructions {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 4px 24px 8px 42px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.live-console-instructions li::marker {
+  color: #2997ff;
+  font-weight: 600;
+}
+
 @media (max-width: 760px) {
   .live-console-page {
     padding: 18px;

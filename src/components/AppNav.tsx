@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Camera, MonitorCog, Unplug, Video } from 'lucide-react'
+import { Camera, MonitorCog, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -50,7 +50,6 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
             工作台
           </NavLink>
           <NavLink to="/live-console" className={({ isActive }) => (isActive ? 'active' : '')}>
-            <Video size={14} aria-hidden="true" />
             直播控制台
           </NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>

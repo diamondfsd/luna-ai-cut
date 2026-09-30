@@ -24,6 +24,7 @@ export type LivePreviewColorAdjustments = Pick<RenderColorAdjustments,
   | 'shadows'
   | 'whites'
   | 'blacks'
+  | 'sharpen'
 >
 
 export interface LivePreviewWindowSettings {
