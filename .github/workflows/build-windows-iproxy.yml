@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - limd-build-msys2.sh
+      - .github/workflows/build-windows-iproxy.yml
 
 permissions:
   contents: read
@@ -68,7 +69,7 @@ jobs:
           export LIBS="-lcrypt32"
           bash ./limd-build-msys2.sh 2>&1 | tee "$build_root/build.log"
 
-      - name: Stage iproxy and runtime DLLs
+      - name: Stage iproxy, idevice_id, and runtime DLLs
         if: always() && steps.build_stack.outcome != 'skipped'
         run: |
           set -euo pipefail
@@ -79,24 +80,32 @@ jobs:
           artifact_root="$workspace/build-artifacts"
           runtime_dir="$artifact_root/iproxy-win-x64"
           iproxy="$MINGW_PREFIX/bin/iproxy.exe"
+          idevice_id="$MINGW_PREFIX/bin/idevice_id.exe"
 
-          if [[ ! -f "$iproxy" ]]; then
-            printf 'iproxy.exe was not produced by the build script\n' > "$artifact_root/iproxy-stage-status.txt"
-            exit 0
-          fi
+          for tool in "$iproxy" "$idevice_id"; do
+            if [[ ! -f "$tool" ]]; then
+              printf '%s was not produced by the build script\n' "$(basename "$tool")" > "$artifact_root/iproxy-stage-status.txt"
+              exit 1
+            fi
+          done
 
           mkdir -p "$runtime_dir" "$runtime_dir/licenses"
-          cp "$iproxy" "$runtime_dir/iproxy.exe"
+          cp "$iproxy" "$idevice_id" "$runtime_dir/"
 
-          objdump -f "$iproxy" | tee "$artifact_root/pe-architecture.txt"
-          objdump -f "$iproxy" | grep -Fq 'file format pei-x86-64'
+          : > "$artifact_root/pe-architecture.txt"
+          : > "$artifact_root/ntldd-dependencies.txt"
+          for tool in "$iproxy" "$idevice_id"; do
+            objdump -f "$tool" | tee -a "$artifact_root/pe-architecture.txt"
+            objdump -f "$tool" | grep -Fq 'file format pei-x86-64'
+            printf '\n%s\n' "$(basename "$tool")" >> "$artifact_root/ntldd-dependencies.txt"
+            ntldd -R "$tool" >> "$artifact_root/ntldd-dependencies.txt" 2>&1
+          done
 
-          ntldd -R "$iproxy" > "$artifact_root/ntldd-dependencies.txt" 2>&1
           system32="$(cygpath -u "$WINDIR")/System32"
           dependency_report="$artifact_root/runtime-dependencies.txt"
           : > "$dependency_report"
 
-          queue=("$iproxy")
+          queue=("$iproxy" "$idevice_id")
           declare -A inspected=()
           missing_dependency=0
           while ((${#queue[@]})); do
@@ -128,7 +137,7 @@ jobs:
 
           cat "$dependency_report"
           if ((missing_dependency)); then
-            echo 'iproxy has unresolved non-system DLL dependencies' >&2
+            echo 'iOS USB tools have unresolved non-system DLL dependencies' >&2
             exit 1
           fi
 
@@ -150,7 +159,7 @@ jobs:
           {
             cd "$artifact_root"
             shopt -s nullglob
-            binaries=(iproxy-win-x64/iproxy.exe iproxy-win-x64/*.dll)
+            binaries=(iproxy-win-x64/iproxy.exe iproxy-win-x64/idevice_id.exe iproxy-win-x64/*.dll)
             ((${#binaries[@]} > 0))
             sha256sum "${binaries[@]}"
           } > "$artifact_root/SHA256SUMS.txt"

@@ -40,6 +40,7 @@ const IDLE_USB_STATUS: UsbAoaStatus = {
   deviceLabel: null,
   vendorId: null,
   productId: null,
+  deviceDetectionUnavailable: false,
   frames: 0,
   bytes: 0,
   lastFrameAt: null,

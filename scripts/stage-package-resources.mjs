@@ -87,9 +87,7 @@ function copyIosUsbDirectory(sourceDir, destinationDir, relativeDirectory = '') 
       copyIosUsbDirectory(sourcePath, join(destinationDir, fileName), relativePath)
       continue
     }
-    const isRuntimeBinary = relativeDirectory === ''
-      && (fileName === 'iproxy.exe'
-        || ['libimobiledevice-glue-1.0.dll', 'libplist-2.0.dll', 'libusbmuxd-2.0.dll'].includes(fileName))
+    const isRuntimeBinary = relativeDirectory === '' && /\.(?:exe|dll)$/i.test(fileName)
     const isLicense = relativePath.startsWith('licenses/')
       && /^(?:COPYING|LICENSE|NOTICE)(?:\.|$)/i.test(fileName)
     if (!info.isFile() || (!isRuntimeBinary && !isLicense)) continue
@@ -128,18 +126,15 @@ copySelectedDirectory(sourceDirectories.ffmpeg, join(stageRoot, 'ffmpeg'), isFfm
 copySelectedDirectory(sourceDirectories.dolby, join(stageRoot, 'dolby-vision'), isDolbyFile)
 copySelectedDirectory(sourceDirectories.native, join(stageRoot, 'luna-render-core'), isNativeFile)
 if (target === 'win32') {
-  const requiredIosUsbFiles = [
-    'iproxy.exe',
-    'libimobiledevice-glue-1.0.dll',
-    'libplist-2.0.dll',
-    'libusbmuxd-2.0.dll',
-  ]
-  for (const fileName of requiredIosUsbFiles) {
+  const requiredIosUsbExecutables = ['iproxy.exe', 'idevice_id.exe']
+  for (const fileName of requiredIosUsbExecutables) {
     if (!existsSync(join(sourceDirectories.iosUsb, fileName))) {
       throw new Error(`缺少 iOS USB 运行文件：${join(sourceDirectories.iosUsb, fileName)}`)
     }
   }
-  verifyIosUsbChecksums(requiredIosUsbFiles)
+  const runtimeFiles = readdirSync(sourceDirectories.iosUsb)
+    .filter((fileName) => /\.(?:exe|dll)$/i.test(fileName))
+  verifyIosUsbChecksums(runtimeFiles)
   copyIosUsbDirectory(sourceDirectories.iosUsb, join(stageRoot, 'ios-usb'))
 }
 

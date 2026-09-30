@@ -8,13 +8,15 @@ import {
 } from './usbAoaReceiver'
 
 function stateScore(status: UsbAoaStatus): number {
+  const detectedBonus = status.deviceLabel && status.state === 'waiting' ? 0.5 : 0
+  const detectionUnavailableBonus = status.deviceDetectionUnavailable && status.state === 'waiting' ? 0.25 : 0
   switch (status.state) {
-    case 'streaming': return 6
-    case 'connected': return 5
-    case 'switching': return 4
-    case 'waiting': return 3
-    case 'error': return 2
-    case 'idle': return 1
+    case 'streaming': return 6 + detectedBonus
+    case 'connected': return 5 + detectedBonus
+    case 'switching': return 4 + detectedBonus
+    case 'waiting': return 3 + detectedBonus + detectionUnavailableBonus
+    case 'error': return 2 + detectedBonus
+    case 'idle': return 1 + detectedBonus
   }
 }
 
@@ -30,6 +32,11 @@ class MultiTransportReceiver implements LiveMediaReceiver {
   }
 
   status(): UsbAoaStatus {
+    const statuses = this.receivers.map((receiver) => receiver.status())
+    if (statuses.every((status) => status.state === 'waiting' && !status.deviceLabel && !status.error && !status.deviceDetectionUnavailable)) {
+      this.lastActive = this.receivers[0]
+      return { ...statuses[0], message: '等待 Android 或 iPhone 通过 USB 连接' }
+    }
     const receiver = this.activeReceiver()
     this.lastActive = receiver
     return receiver.status()

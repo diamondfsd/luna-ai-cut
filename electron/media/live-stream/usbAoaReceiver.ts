@@ -49,6 +49,7 @@ export function idleUsbStatus(
     deviceLabel: null,
     vendorId: null,
     productId: null,
+    deviceDetectionUnavailable: false,
     frames: 0,
     bytes: 0,
     lastFrameAt: null,
@@ -60,21 +61,6 @@ export function idleUsbStatus(
   }
 }
 
-const KNOWN_ANDROID_VENDOR_IDS = new Set([
-  0x04e8, // Samsung
-  0x05c6, // Qualcomm
-  0x0bb4, // HTC
-  0x0fce, // Sony
-  0x12d1, // Huawei
-  0x18d1, // Google
-  0x19d2, // ZTE
-  0x1ebf, // Sony
-  0x22d9, // Oppo
-  0x2717, // Xiaomi
-  0x2a70, // OnePlus
-  0x2d95, // Vivo
-])
-
 export type UsbAoaState = 'idle' | 'waiting' | 'switching' | 'connected' | 'streaming' | 'error'
 
 export interface UsbAoaStatus {
@@ -84,6 +70,7 @@ export interface UsbAoaStatus {
   deviceLabel: string | null
   vendorId: number | null
   productId: number | null
+  deviceDetectionUnavailable: boolean
   frames: number
   bytes: number
   lastFrameAt: string | null
@@ -167,6 +154,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   private pending = Buffer.alloc(0)
   private controlSequence = 0
   private controlWriteTail = Promise.resolve()
+  private readonly failedProbeDevices = new Set<string>()
   private statusValue: UsbAoaStatus = idleUsbStatus('USB AOA 接收器未启动')
 
   constructor(onFrame: (frame: UsbMediaFrame) => void) {
@@ -249,14 +237,13 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     return usb.getDeviceList().find((device) => this.isAccessoryDevice(device))
   }
 
-  private findAndroidDevice(): usb.Device | undefined {
+  private findAndroidCandidates(): usb.Device[] {
     const configured = configuredVendorIds()
-    return usb.getDeviceList().find((device) => {
-      const { idVendor, idProduct } = device.deviceDescriptor
-      if (this.isAccessoryDevice(device)) return false
-      if (idVendor === 0x1d6b || idVendor === 0x05ac) return false
-      if (idProduct === 0) return false
-      return configured ? configured.has(idVendor) : KNOWN_ANDROID_VENDOR_IDS.has(idVendor)
+    return usb.getDeviceList().filter((device) => {
+      const { idVendor } = device.deviceDescriptor
+      if (this.isAccessoryDevice(device) || idVendor === 0x1d6b || idVendor === 0x05ac) return false
+      if (device.deviceDescriptor.bDeviceClass === 0x09) return false
+      return !configured || configured.has(idVendor)
     })
   }
 
@@ -279,35 +266,69 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         return
       }
 
-      const android = this.findAndroidDevice()
-      if (!android) {
-        if (this.statusValue.state !== 'waiting') {
-          this.setStatus('waiting', '等待 Android 手机通过 USB 连接')
+      for (const candidate of this.findAndroidCandidates()) {
+        if (!this.running) return
+        let switched: boolean
+        try {
+          switched = await this.switchToAccessory(candidate)
+        } catch (error) {
+          const { idVendor, idProduct } = candidate.deviceDescriptor
+          const key = `${idVendor}:${idProduct}`
+          if (!this.failedProbeDevices.has(key)) {
+            this.failedProbeDevices.add(key)
+            const detail = error instanceof Error ? error.message : String(error)
+            logMainInfo('[USB AOA] 跳过无法探测的 USB 设备', { vendorId: idVendor, productId: idProduct, error: detail })
+          }
+          continue
         }
+        if (!switched) continue
+
+        const accessoryAfterSwitch = await this.waitForAccessory(5_000)
+        if (accessoryAfterSwitch && this.running) await this.connectAccessory(accessoryAfterSwitch)
         return
       }
 
-      this.setStatus('switching', '正在将手机切换为 USB Accessory 模式')
-      logMainInfo('[USB AOA] 切换 Android AOA', {
-        vendorId: android.deviceDescriptor.idVendor,
-        productId: android.deviceDescriptor.idProduct,
-      })
-      await this.switchToAccessory(android)
-      if (!this.running) return
-      const accessoryAfterSwitch = await this.waitForAccessory(5_000)
-      if (accessoryAfterSwitch && this.running) await this.connectAccessory(accessoryAfterSwitch)
+      if (this.running) {
+        this.statusValue = {
+          ...this.statusValue,
+          state: 'waiting',
+          message: '等待支持 USB AOA 的 Android 手机',
+          deviceLabel: null,
+          vendorId: null,
+          productId: null,
+          controlReady: false,
+          error: null,
+        }
+      }
     } catch (error) {
       if (this.running) this.fail(error)
     }
   }
 
-  private async switchToAccessory(device: usb.Device): Promise<void> {
+  private async switchToAccessory(device: usb.Device): Promise<boolean> {
     device.timeout = 2_000
     device.open()
     try {
-      const protocol = await controlTransfer(device, 0xc0, 51, 0, 0, 2)
-      if (!this.running) return
-      const version = Buffer.isBuffer(protocol) ? protocol.readUInt16LE(0) : 0
+      let protocol: Buffer | number | undefined
+      try {
+        protocol = await controlTransfer(device, 0xc0, 51, 0, 0, 2)
+      } catch {
+        return false
+      }
+      if (!this.running || !Buffer.isBuffer(protocol) || protocol.length < 2) return false
+      const version = protocol.readUInt16LE(0)
+      if (version < 1) return false
+
+      const { idVendor, idProduct } = device.deviceDescriptor
+      this.statusValue = {
+        ...this.statusValue,
+        state: 'switching',
+        message: '已识别 Android 手机，正在切换 USB 模式',
+        deviceLabel: 'Android 手机',
+        vendorId: idVendor,
+        productId: idProduct,
+        error: null,
+      }
       logMainInfo(`[USB AOA] 手机支持 AOA protocol ${version}`)
 
       const strings = [
@@ -319,10 +340,11 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         'LunaKa', // serial
       ]
       for (let index = 0; index < strings.length; index += 1) {
-        if (!this.running) return
+        if (!this.running) return false
         await controlTransfer(device, 0x40, 52, 0, index, Buffer.from(`${strings[index]}\0`, 'utf8'))
       }
       if (this.running) await controlTransfer(device, 0x40, 53, 0, 0, Buffer.alloc(0))
+      return true
     } finally {
       try {
         device.close()
@@ -530,7 +552,4 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     void this.disconnectAccessory('detached')
   }
 
-  private setStatus(state: UsbAoaState, message: string): void {
-    this.statusValue = { ...this.statusValue, state, message, error: null }
-  }
 }
