@@ -51,6 +51,7 @@ Windows 的 iPhone 枚举/转发通常需要 Apple Mobile Device Support（例�
 
 - Electron 打包接线已完成，但资源来自实验构建，且没有完成真机验收，暂不代表正式发布通过。
 - 可分发文件位于 `resources/ios-usb/win-x64/`；构建信息、源码 revision、递归依赖和 SHA256 清单位于 `resources/ios-usb/`。
+- GitHub Actions run `36701758919` 已成功构建 x64 `iproxy.exe`、`idevice_id.exe` 和上述 4 个 DLL。实测闭包没有额外的 `libgcc` / `libwinpthread` DLL；最终校验以 `runtime-dependencies.txt` 为准。
 - Windows 打包时，staging 会把两个可执行文件、DLL 闭包和许可证复制到 `.package-resources/win32-x64/ios-usb/`；electron-builder 再将其放入安装包的 `resources/ios-usb/`。
 - 运行时优先使用安装包内的 `iproxy.exe` 和 `idevice_id.exe`，同时保留 `USB_VIDEO_IPROXY_BIN`、`USB_VIDEO_IDEVICE_ID_BIN` 覆盖和 PATH 回退。
 
@@ -73,6 +74,8 @@ Windows 的 iPhone 枚举/转发通常需要 Apple Mobile Device Support（例�
 
 请先阅读项目 `AGENTS.md` 和本文档。仅在 Windows x64/MSYS2 环境处理这项工作。
 
-先在全新临时目录审计并运行 `limd-build-msys2.sh`，确认所需环境变量、实际输出位置、`iproxy.exe` 的递归 DLL 闭包和许可证；不得从项目根目录运行，不得覆盖用户提供的脚本，不得执行会删除或重置项目现有数据的命令。然后在 Windows x64 环境验证当前 Electron 安装包内的程序，并连接真实 iPhone/Luna 咔验收转发。
+本仓库已包含 GitHub Actions run `36701758919` 产出的实验二进制、依赖报告、哈希和许可证。优先在 Windows x64 主机校验并测试 `resources/ios-usb/win-x64/` 内的 `iproxy.exe`、`idevice_id.exe`，再验证 Electron 安装包内的文件；不要为了重复构建而覆盖这些产物。只有产物验证失败或需要重建时，才在全新临时目录审计并运行 `limd-build-msys2.sh`，不得从项目根目录运行、覆盖用户提供的脚本，或执行会删除/重置现有数据的命令。
 
-正式发布前还需新增独立、可复现的 Windows 准备流程，固定源码 revision、依赖来源并校验 SHA256。保留用户已有改动，不做无关整理。最终报告构建命令、版本/commit、DLL 清单、哈希、许可证、真机测试结果和仍需用户预装的驱动/服务。
+Windows 验收需同时覆盖 Android AOA 主动探测和 iPhone 的 `idevice_id -l` 枚举/`iproxy` 转发，并在报告中注明 Apple Mobile Device Support、USB 服务或驱动是否为前置条件。
+
+正式发布前还需新增独立、可复现的 Windows 准备流程，固定源码 revision、依赖来源并校验 SHA256。保留用户已有改动，不做无关整理。最终报告运行命令、版本/commit、DLL 清单、哈希、许可证、真机测试结果和仍需用户预装的驱动/服务。

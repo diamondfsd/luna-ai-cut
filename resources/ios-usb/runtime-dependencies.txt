@@ -11,6 +11,16 @@ api-ms-win-crt-runtime-l1-1-0.dll -> Windows API set
 api-ms-win-crt-stdio-l1-1-0.dll -> Windows API set
 api-ms-win-crt-string-l1-1-0.dll -> Windows API set
 WS2_32.dll -> Windows system
+libimobiledevice-1.0.dll -> bundled
+KERNEL32.dll -> Windows system
+api-ms-win-crt-environment-l1-1-0.dll -> Windows API set
+api-ms-win-crt-heap-l1-1-0.dll -> Windows API set
+api-ms-win-crt-locale-l1-1-0.dll -> Windows API set
+api-ms-win-crt-math-l1-1-0.dll -> Windows API set
+api-ms-win-crt-private-l1-1-0.dll -> Windows API set
+api-ms-win-crt-runtime-l1-1-0.dll -> Windows API set
+api-ms-win-crt-stdio-l1-1-0.dll -> Windows API set
+api-ms-win-crt-string-l1-1-0.dll -> Windows API set
 libimobiledevice-glue-1.0.dll -> bundled
 KERNEL32.dll -> Windows system
 api-ms-win-crt-convert-l1-1-0.dll -> Windows API set
@@ -34,6 +44,27 @@ api-ms-win-crt-string-l1-1-0.dll -> Windows API set
 api-ms-win-crt-time-l1-1-0.dll -> Windows API set
 api-ms-win-crt-utility-l1-1-0.dll -> Windows API set
 libplist-2.0.dll -> bundled
+WS2_32.dll -> Windows system
+ADVAPI32.dll -> Windows system
+CRYPT32.dll -> Windows system
+libimobiledevice-glue-1.0.dll -> bundled
+KERNEL32.dll -> Windows system
+api-ms-win-crt-convert-l1-1-0.dll -> Windows API set
+api-ms-win-crt-environment-l1-1-0.dll -> Windows API set
+api-ms-win-crt-filesystem-l1-1-0.dll -> Windows API set
+api-ms-win-crt-heap-l1-1-0.dll -> Windows API set
+api-ms-win-crt-locale-l1-1-0.dll -> Windows API set
+api-ms-win-crt-private-l1-1-0.dll -> Windows API set
+api-ms-win-crt-runtime-l1-1-0.dll -> Windows API set
+api-ms-win-crt-stdio-l1-1-0.dll -> Windows API set
+api-ms-win-crt-string-l1-1-0.dll -> Windows API set
+api-ms-win-crt-time-l1-1-0.dll -> Windows API set
+api-ms-win-crt-utility-l1-1-0.dll -> Windows API set
+ole32.dll -> Windows system
+libplist-2.0.dll -> bundled
+SHELL32.dll -> Windows system
+libusbmuxd-2.0.dll -> bundled
+USER32.dll -> Windows system
 WS2_32.dll -> Windows system
 KERNEL32.dll -> Windows system
 api-ms-win-crt-convert-l1-1-0.dll -> Windows API set
