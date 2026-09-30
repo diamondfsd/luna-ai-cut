@@ -2,9 +2,9 @@
 
 ## 目标
 
-在 Windows x64 主机上验证仓库根目录现有的 `limd-build-msys2.sh`，用它构建可运行的 `iproxy.exe`，收集完整运行时 DLL 和许可证，并为后续接入 Luna AI Cut 安装包准备可复现的产物。
+验证仓库根目录现有的 `limd-build-msys2.sh`，用 GitHub Actions 实验构建 `iproxy.exe`，收集运行时 DLL 和许可证，并接入 Luna AI Cut Windows 安装包。当前产物和接线仍需 Windows 真机验收，不能视为正式发布依赖。
 
-本任务先完成 Windows 构建和真机验证，不要一开始就把整套 libimobiledevice 工具或 MSYS2 安装目录塞进应用安装包。
+不把整套 libimobiledevice 工具或 MSYS2 安装目录塞进应用安装包，只随包提供 `iproxy.exe`、递归运行时 DLL 和许可证。
 
 ## 当前应用约定
 
@@ -12,8 +12,8 @@
 - 默认端口映射为本机 `127.0.0.1:4185` 到 iPhone 设备端口 `4184`。
 - Electron 通过本机 TCP 连接读取 Luna 咔发送的 UCD2 帧；`iproxy` 只负责 USB 端口转发，不负责生成或解码 Luna 视频流。
 - iPhone 上的 Luna 咔必须实现并启动设备端 `4184` 服务，才能建立此数据通路。
-- 当前查找顺序包含 `USB_VIDEO_IPROXY_BIN` 环境变量和 PATH 中的 `iproxy`，但尚未优先查找安装包内的 `resources/ios-usb/iproxy.exe`。
-- `scripts/stage-package-resources.mjs` 和 `electron-builder.json5` 目前尚未 staging/打包 `ios-usb` 目录。
+- 查找顺序优先使用 `USB_VIDEO_IPROXY_BIN` 覆盖值，然后在 Windows 安装包中查找 `process.resourcesPath/ios-usb/iproxy.exe`，最后回退到 PATH。
+- `resources/ios-usb/win-x64/` 中保存 Windows x64 程序、DLL 和许可证；`scripts/stage-package-resources.mjs` 会校验并复制到打包暂存目录，`electron-builder.json5` 将其放入 Windows 安装包的 `resources/ios-usb/`。
 
 ## 对现有脚本的评估
 
@@ -43,15 +43,16 @@
 
 若 `idevice_id -l` 等辅助工具也由脚本构建，可用于诊断设备可见性，但它们不是最终安装包必须包含的程序。
 
-## 后续应用打包接入
+## 打包接入状态
 
-只有 Windows 构建和真机转发都通过后，才接入 Electron 安装包：
+- Electron 打包接线已完成，但资源来自实验构建，且没有完成真机验收，暂不代表正式发布通过。
+- 可分发文件位于 `resources/ios-usb/win-x64/`；构建信息、源码 revision、递归依赖和 SHA256 清单位于 `resources/ios-usb/`。
+- Windows 打包时，staging 会把可执行文件、3 个 DLL 和许可证复制到 `.package-resources/win32-x64/ios-usb/`；electron-builder 再将其放入安装包的 `resources/ios-usb/`。
+- 运行时优先使用安装包内的 `iproxy.exe`，保留 `USB_VIDEO_IPROXY_BIN` 覆盖和 PATH 回退。
 
-- 正式构建产物建议放入 `.package-resources/win32-x64/ios-usb/`，至少含 `iproxy.exe`、经验证的非系统 DLL、第三方许可证/声明和版本/哈希清单。
-- 增加可重复的 Windows 准备脚本；它应使用固定版本/commit、固定依赖来源和 SHA256 校验，并在依赖不齐或哈希不符时失败。
-- 更新 `scripts/stage-package-resources.mjs` 与 `electron-builder.json5`，将 `ios-usb` 作为 Windows `extraResources` 放进安装包。
-- 更新 `electron/media/live-stream/iosTcpReceiver.ts`：优先使用 `process.resourcesPath/ios-usb/iproxy.exe`，保留 `USB_VIDEO_IPROXY_BIN` 覆盖和 PATH fallback，方便开发和诊断。
-- DLL 应与 `iproxy.exe` 放在同一目录，以便 Windows loader 从应用资源目录解析。不要把整个 MSYS2 `bin` 目录复制进安装包。
+- 当前 Action 使用未固定的上游 `master` 和未经预先 SHA256 校验的 Gist 归档；正式发布前必须固定源码 revision 和依赖来源，并重新生成资源及哈希清单。
+- 仍需在干净 Windows 10/11 x64 环境验证脱离 MSYS2 PATH 的启动，并用真实 iPhone/Luna 咔确认端口转发、视频帧接收和停止时进程清理。
+- DLL 与 `iproxy.exe` 放在同一目录，以便 Windows loader 解析。不要把整个 MSYS2 `bin` 目录复制进安装包。
 - `libimobiledevice`、`libusbmuxd` 和依赖库是用户态软件，不应直接称为 Windows 内核驱动。确认实际 USBMux 后端是否依赖 Apple Mobile Device Support、特定 USB 驱动或额外服务，并在干净 Windows 10/11 x64 机器上记录需要用户预装的条件。未经许可审查，不要分发 Apple 专有驱动或 DLL。
 
 ## 验收标准
@@ -67,6 +68,6 @@
 
 请先阅读项目 `AGENTS.md` 和本文档。仅在 Windows x64/MSYS2 环境处理这项工作。
 
-第一阶段只在全新临时目录审计并运行 `limd-build-msys2.sh`，确认所需环境变量、实际输出位置、`iproxy.exe` 的递归 DLL 闭包、许可证和 iPhone 真机转发结果。不得从项目根目录运行，不得覆盖用户提供的脚本，不得执行会删除或重置项目现有数据的命令。
+先在全新临时目录审计并运行 `limd-build-msys2.sh`，确认所需环境变量、实际输出位置、`iproxy.exe` 的递归 DLL 闭包和许可证；不得从项目根目录运行，不得覆盖用户提供的脚本，不得执行会删除或重置项目现有数据的命令。然后在 Windows x64 环境验证当前 Electron 安装包内的程序，并连接真实 iPhone/Luna 咔验收转发。
 
-若第一阶段通过，再新增独立、可复现的 Windows 准备脚本，并按“后续应用打包接入”完成 Electron 资源打包及运行时路径解析。保留用户已有改动，不做无关整理。最终报告构建命令、版本/commit、DLL 清单、哈希、许可证、真机测试结果和仍需用户预装的驱动/服务。
+正式发布前还需新增独立、可复现的 Windows 准备流程，固定源码 revision、依赖来源并校验 SHA256。保留用户已有改动，不做无关整理。最终报告构建命令、版本/commit、DLL 清单、哈希、许可证、真机测试结果和仍需用户预装的驱动/服务。

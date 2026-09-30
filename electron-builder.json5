@@ -160,6 +160,11 @@
       {
         "from": "node_modules/7zip-bin/win/x64/7za.exe",
         "to": "tools/7za.exe"
+      },
+      {
+        "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/ios-usb",
+        "to": "ios-usb",
+        "filter": ["iproxy.exe", "*.dll", "licenses/**/*"]
       }
     ],
     "target": [
