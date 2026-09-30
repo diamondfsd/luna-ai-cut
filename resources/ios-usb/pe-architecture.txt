@@ -4,3 +4,9 @@ architecture: i386:x86-64, flags 0x0000013b:
 HAS_RELOC, EXEC_P, HAS_DEBUG, HAS_SYMS, HAS_LOCALS, D_PAGED
 start address 0x0000000140001480
 
+
+D:/a/_temp/msys64/ucrt64/bin/idevice_id.exe:     file format pei-x86-64
+architecture: i386:x86-64, flags 0x0000013b:
+HAS_RELOC, EXEC_P, HAS_DEBUG, HAS_SYMS, HAS_LOCALS, D_PAGED
+start address 0x0000000140001480
+

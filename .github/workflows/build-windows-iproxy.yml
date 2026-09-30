@@ -5,7 +5,6 @@ on:
   push:
     paths:
       - limd-build-msys2.sh
-      - .github/workflows/build-windows-iproxy.yml
 
 permissions:
   contents: read
@@ -157,11 +156,11 @@ jobs:
           done
 
           {
-            cd "$artifact_root"
+            cd "$runtime_dir"
             shopt -s nullglob
-            binaries=(iproxy-win-x64/iproxy.exe iproxy-win-x64/idevice_id.exe iproxy-win-x64/*.dll)
+            binaries=(*.exe *.dll)
             ((${#binaries[@]} > 0))
-            sha256sum "${binaries[@]}"
+            sha256sum -b "${binaries[@]}" | sed -E 's|^([a-f0-9]{64}) \*|\1  win-x64/|'
           } > "$artifact_root/SHA256SUMS.txt"
 
           pacman -Q > "$artifact_root/diagnostics/msys2-packages.txt"
