@@ -38,6 +38,7 @@ import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSu
 import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
 import type { WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchAiLutResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
 import type { NasRemoteFile, NasSyncEnqueueResult, NasSyncProbeResult, NasSyncStatus } from './nasSync'
+import type { DirectorLabApi } from './directorLab'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -161,12 +162,14 @@ export interface LunaApi {
   exportDiagnosticsBundle: () => Promise<string>
   clearLogs: () => Promise<void>
   getPathForFile: (file: File) => string
+  copyText(text: string): Promise<void>
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>
   chooseBaseDir(): Promise<string | null>
   chooseLocalResourcesDir(): Promise<string | null>
   chooseExportDir(): Promise<string | null>
+  chooseDirectorPlanDir(): Promise<string | null>
   chooseTransferDirectory(kind: 'download' | 'export', defaultPath?: string): Promise<string | null>
   chooseLutDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
@@ -233,6 +236,7 @@ export interface LunaApi {
     addFiles(filePaths: string[]): Promise<LocalMediaShareStatus>
     removeFile(filePath: string): Promise<LocalMediaShareStatus>
   }
+  directorLab: DirectorLabApi
   getDownloadedRecords(files: LunaFile[], targetDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>

@@ -20,6 +20,7 @@ import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { LiveConsolePage } from '../pages/LiveConsolePage'
+import { LabPage } from '../pages/LabPage'
 import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
@@ -71,6 +72,11 @@ export function AppRoutes() {
     if (dir) setSettings(await window.luna.getSettings())
   }
 
+  async function chooseDirectorPlanDir(): Promise<void> {
+    const dir = await window.luna.chooseDirectorPlanDir()
+    if (dir) setSettings(await window.luna.getSettings())
+  }
+
   function openDirectory(targetPath: string | null | undefined): void {
     if (!targetPath) return
     void window.luna.openPath(targetPath)
@@ -104,6 +110,7 @@ export function AppRoutes() {
     ['/local-resources', true],
     ['/ai-selection', true],
     ['/workspace', true],
+    ['/lab', true],
     ['/live-console', true],
     ['/settings', true],
     ['/developer', developerMode],
@@ -200,6 +207,10 @@ export function AppRoutes() {
           />
         </AppRoute>
 
+        <AppRoute path="/lab" preserve={false}>
+          <LabPage />
+        </AppRoute>
+
         <AppRoute path="/live-console" preserve={false}>
           <LiveConsolePage
             windowLiveMode={windowLiveMode}
@@ -215,6 +226,7 @@ export function AppRoutes() {
             chooseBaseDir={chooseBaseDir}
             chooseLocalResourcesDir={chooseLocalResourcesDir}
             chooseExportDir={chooseExportDir}
+            chooseDirectorPlanDir={chooseDirectorPlanDir}
             clearCache={clearCache}
             connection={connection}
             openDirectory={openDirectory}

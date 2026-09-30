@@ -29,6 +29,8 @@ export interface AppSettings {
   baseDir: string
   localResourcesDir?: string
   exportDir?: string
+  /** 导演计划下载和离线读取目录；未设置时使用 baseDir/导演计划。 */
+  directorPlanDir?: string
   cacheDir: string
   cameraHost: string
   cameraConnectionMode?: CameraConnectionMode
