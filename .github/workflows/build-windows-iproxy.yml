@@ -1,0 +1,166 @@
+name: Build Windows iproxy (MSYS2)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/build-windows-iproxy.yml
+      - limd-build-msys2.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-iproxy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-iproxy:
+    name: Build full libimobiledevice stack (UCRT64 x64)
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-ntldd
+
+      - name: Run upstream build script in isolated directory
+        run: |
+          set -euo pipefail
+
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          build_root="$runner_temp/luna-iproxy-msys2-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          artifact_root="$workspace/build-artifacts"
+          sdkdir="$build_root/sdk"
+
+          mkdir -p "$build_root" "$artifact_root/diagnostics"
+          cp "$workspace/limd-build-msys2.sh" "$build_root/limd-build-msys2.sh"
+
+          mkdir -p "$sdkdir/usr/include"
+          cp "$MINGW_PREFIX/include/zlib.h" "$MINGW_PREFIX/include/zconf.h" "$sdkdir/usr/include/"
+
+          {
+            printf 'script_revision=1.0.4\n'
+            printf 'msystem=%s\n' "$MSYSTEM"
+            printf 'msystem_carch=%s\n' "$MSYSTEM_CARCH"
+            printf 'mingw_prefix=%s\n' "$MINGW_PREFIX"
+            printf 'prefix=%s\n' "$MINGW_PREFIX"
+            printf 'sdkdir=%s\n' "$sdkdir"
+            printf 'source_commit=%s\n' "$GITHUB_SHA"
+          } > "$artifact_root/build-info.txt"
+
+          cd "$build_root"
+          export PREFIX="$MINGW_PREFIX"
+          export SDKDIR="$sdkdir"
+          bash ./limd-build-msys2.sh 2>&1 | tee "$build_root/build.log"
+
+      - name: Stage iproxy and runtime DLLs
+        if: success()
+        run: |
+          set -euo pipefail
+
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          build_root="$runner_temp/luna-iproxy-msys2-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          artifact_root="$workspace/build-artifacts"
+          runtime_dir="$artifact_root/iproxy-win-x64"
+          iproxy="$MINGW_PREFIX/bin/iproxy.exe"
+
+          test -f "$iproxy"
+          mkdir -p "$runtime_dir" "$runtime_dir/licenses"
+          cp "$iproxy" "$runtime_dir/iproxy.exe"
+
+          objdump -f "$iproxy" | tee "$artifact_root/pe-architecture.txt"
+          objdump -f "$iproxy" | grep -Fq 'file format pei-x86-64'
+
+          ntldd -R "$iproxy" > "$artifact_root/ntldd-dependencies.txt" 2>&1
+          cat "$artifact_root/ntldd-dependencies.txt"
+          if grep -Eiq '=>[[:space:]]*not found|not found$' "$artifact_root/ntldd-dependencies.txt"; then
+            echo 'iproxy has unresolved DLL dependencies' >&2
+            exit 1
+          fi
+
+          sed -nE 's/^[[:space:]]*([^[:space:]]+\.[dD][lL][lL])([[:space:]]|$).*/\1/p' \
+            "$artifact_root/ntldd-dependencies.txt" | sort -fu > "$artifact_root/dependency-names.txt"
+
+          while IFS= read -r dll_name; do
+            candidate="$MINGW_PREFIX/bin/$dll_name"
+            if [[ -f "$candidate" ]]; then
+              cp -n "$candidate" "$runtime_dir/"
+            fi
+          done < "$artifact_root/dependency-names.txt"
+
+          for component in libplist libimobiledevice-glue libusbmuxd libimobiledevice libirecovery libtatsu idevicerestore libideviceactivation ideviceinstaller; do
+            component_dir="$build_root/$component"
+            [[ -d "$component_dir" ]] || continue
+            revision="$(git -C "$component_dir" rev-parse HEAD)"
+            printf '%s %s\n' "$component" "$revision" >> "$artifact_root/source-revisions.txt"
+
+            mkdir -p "$runtime_dir/licenses/$component"
+            for license_file in COPYING COPYING.* LICENSE LICENSE.*; do
+              for source_file in "$component_dir"/$license_file; do
+                [[ -f "$source_file" ]] || continue
+                cp "$source_file" "$runtime_dir/licenses/$component/"
+              done
+            done
+          done
+
+          {
+            for binary in "$runtime_dir"/*.exe "$runtime_dir"/*.dll; do
+              [[ -f "$binary" ]] || continue
+              sha256sum "$binary"
+            done
+          } > "$artifact_root/SHA256SUMS.txt"
+
+          pacman -Q > "$artifact_root/diagnostics/msys2-packages.txt"
+
+      - name: Collect build diagnostics
+        if: always()
+        run: |
+          set -u
+
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          build_root="$runner_temp/luna-iproxy-msys2-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          diagnostics="$workspace/build-artifacts/diagnostics"
+          mkdir -p "$diagnostics"
+
+          if [[ -d "$build_root" ]]; then
+            [[ ! -f "$build_root/build.log" ]] || cp "$build_root/build.log" "$diagnostics/"
+            find "$build_root" -maxdepth 1 -type f -name '*.log' -exec cp -f {} "$diagnostics/" \;
+
+            for component in libplist libimobiledevice-glue libusbmuxd libimobiledevice libirecovery libtatsu idevicerestore libideviceactivation ideviceinstaller; do
+              component_dir="$build_root/$component"
+              [[ -d "$component_dir/.git" ]] || continue
+              revision="$(git -C "$component_dir" rev-parse HEAD 2>/dev/null || true)"
+              [[ -z "$revision" ]] || printf '%s %s\n' "$component" "$revision" >> "$diagnostics/source-revisions.txt"
+            done
+
+            for archive in "$build_root"/libcurl-*.tar.bz2 "$build_root"/libzip-*.tar.bz2; do
+              [[ -f "$archive" ]] || continue
+              sha256sum "$archive" >> "$diagnostics/prebuilt-archive-sha256.txt"
+            done
+          fi
+
+          pacman -Q > "$diagnostics/msys2-packages.txt" 2>&1 || true
+
+      - name: Upload experimental build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: luna-iproxy-win-x64-experimental-${{ github.run_id }}
+          path: build-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
