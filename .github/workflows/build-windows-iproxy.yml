@@ -33,7 +33,7 @@ jobs:
         with:
           msystem: UCRT64
           update: true
-          install: mingw-w64-ucrt-x86_64-ntldd
+          install: mingw-w64-ucrt-x86_64-ntldd mingw-w64-ucrt-x86_64-zlib
 
       - name: Run upstream build script in isolated directory
         run: |
