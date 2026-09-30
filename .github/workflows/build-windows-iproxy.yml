@@ -36,6 +36,7 @@ jobs:
           install: mingw-w64-ucrt-x86_64-ntldd mingw-w64-ucrt-x86_64-zlib
 
       - name: Run upstream build script in isolated directory
+        id: build_stack
         run: |
           set -euo pipefail
 
@@ -69,7 +70,7 @@ jobs:
           bash ./limd-build-msys2.sh 2>&1 | tee "$build_root/build.log"
 
       - name: Stage iproxy and runtime DLLs
-        if: success()
+        if: always() && steps.build_stack.outcome != 'skipped'
         run: |
           set -euo pipefail
 
@@ -80,7 +81,11 @@ jobs:
           runtime_dir="$artifact_root/iproxy-win-x64"
           iproxy="$MINGW_PREFIX/bin/iproxy.exe"
 
-          test -f "$iproxy"
+          if [[ ! -f "$iproxy" ]]; then
+            printf 'iproxy.exe was not produced by the build script\n' > "$artifact_root/iproxy-stage-status.txt"
+            exit 0
+          fi
+
           mkdir -p "$runtime_dir" "$runtime_dir/licenses"
           cp "$iproxy" "$runtime_dir/iproxy.exe"
 
@@ -88,21 +93,45 @@ jobs:
           objdump -f "$iproxy" | grep -Fq 'file format pei-x86-64'
 
           ntldd -R "$iproxy" > "$artifact_root/ntldd-dependencies.txt" 2>&1
-          cat "$artifact_root/ntldd-dependencies.txt"
-          if grep -Eiq '=>[[:space:]]*not found|not found$' "$artifact_root/ntldd-dependencies.txt"; then
-            echo 'iproxy has unresolved DLL dependencies' >&2
+          system32="$(cygpath -u "$WINDIR")/System32"
+          dependency_report="$artifact_root/runtime-dependencies.txt"
+          : > "$dependency_report"
+
+          queue=("$iproxy")
+          declare -A inspected=()
+          missing_dependency=0
+          while ((${#queue[@]})); do
+            binary="${queue[0]}"
+            queue=("${queue[@]:1}")
+            binary_key="${binary,,}"
+            [[ -n "${inspected[$binary_key]+present}" ]] && continue
+            inspected[$binary_key]=1
+
+            while IFS= read -r dll_name; do
+              [[ -n "$dll_name" ]] || continue
+              dll_key="${dll_name,,}"
+              candidate="$MINGW_PREFIX/bin/$dll_name"
+
+              if [[ -f "$candidate" ]]; then
+                cp -n "$candidate" "$runtime_dir/"
+                printf '%s -> bundled\n' "$dll_name" >> "$dependency_report"
+                queue+=("$candidate")
+              elif [[ "$dll_key" == api-ms-win-* || "$dll_key" == ext-ms-win-* ]]; then
+                printf '%s -> Windows API set\n' "$dll_name" >> "$dependency_report"
+              elif [[ -f "$system32/$dll_name" ]]; then
+                printf '%s -> Windows system\n' "$dll_name" >> "$dependency_report"
+              else
+                printf '%s -> MISSING\n' "$dll_name" >> "$dependency_report"
+                missing_dependency=1
+              fi
+            done < <(objdump -p "$binary" | sed -nE 's/^[[:space:]]*DLL Name: ([^[:space:]]+).*/\1/p')
+          done
+
+          cat "$dependency_report"
+          if ((missing_dependency)); then
+            echo 'iproxy has unresolved non-system DLL dependencies' >&2
             exit 1
           fi
-
-          sed -nE 's/^[[:space:]]*([^[:space:]]+\.[dD][lL][lL])([[:space:]]|$).*/\1/p' \
-            "$artifact_root/ntldd-dependencies.txt" | sort -fu > "$artifact_root/dependency-names.txt"
-
-          while IFS= read -r dll_name; do
-            candidate="$MINGW_PREFIX/bin/$dll_name"
-            if [[ -f "$candidate" ]]; then
-              cp -n "$candidate" "$runtime_dir/"
-            fi
-          done < "$artifact_root/dependency-names.txt"
 
           for component in libplist libimobiledevice-glue libusbmuxd libimobiledevice libirecovery libtatsu idevicerestore libideviceactivation ideviceinstaller; do
             component_dir="$build_root/$component"
