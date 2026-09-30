@@ -58,12 +58,14 @@ jobs:
             printf 'mingw_prefix=%s\n' "$MINGW_PREFIX"
             printf 'prefix=%s\n' "$MINGW_PREFIX"
             printf 'sdkdir=%s\n' "$sdkdir"
+            printf 'extra_libs=-lcrypt32\n'
             printf 'source_commit=%s\n' "$GITHUB_SHA"
           } > "$artifact_root/build-info.txt"
 
           cd "$build_root"
           export PREFIX="$MINGW_PREFIX"
           export SDKDIR="$sdkdir"
+          export LIBS="-lcrypt32"
           bash ./limd-build-msys2.sh 2>&1 | tee "$build_root/build.log"
 
       - name: Stage iproxy and runtime DLLs
