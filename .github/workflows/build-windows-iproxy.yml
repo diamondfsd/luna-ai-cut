@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - .github/workflows/build-windows-iproxy.yml
       - limd-build-msys2.sh
 
 permissions:
@@ -149,10 +148,11 @@ jobs:
           done
 
           {
-            for binary in "$runtime_dir"/*.exe "$runtime_dir"/*.dll; do
-              [[ -f "$binary" ]] || continue
-              sha256sum "$binary"
-            done
+            cd "$artifact_root"
+            shopt -s nullglob
+            binaries=(iproxy-win-x64/iproxy.exe iproxy-win-x64/*.dll)
+            ((${#binaries[@]} > 0))
+            sha256sum "${binaries[@]}"
           } > "$artifact_root/SHA256SUMS.txt"
 
           pacman -Q > "$artifact_root/diagnostics/msys2-packages.txt"
