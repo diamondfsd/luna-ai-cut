@@ -21,6 +21,7 @@ import type {
   WorkspaceObjectRemovalRequest,
   VideoExportSettings,
   DolbyVisionWatermarkExportRequest,
+  DirectorLabDownloadRequest,
   CustomWatermarkAsset,
   WatermarkSettings,
   DjiBluetoothRendererEvent,
@@ -106,12 +107,14 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   exportDiagnosticsBundle: () => ipcRenderer.invoke('log:export-bundle'),
   clearLogs: () => ipcRenderer.invoke('log:clear'),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  copyText: (text: string) => ipcRenderer.invoke('clipboard:write-text', text),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:save', settings),
   listDevices: () => ipcRenderer.invoke('devices:list'),
   chooseBaseDir: () => ipcRenderer.invoke('settings:chooseBaseDir'),
   chooseLocalResourcesDir: () => ipcRenderer.invoke('settings:chooseLocalResourcesDir'),
   chooseExportDir: () => ipcRenderer.invoke('settings:chooseExportDir'),
+  chooseDirectorPlanDir: () => ipcRenderer.invoke('settings:chooseDirectorPlanDir'),
   chooseTransferDirectory: (kind: 'download' | 'export', defaultPath?: string) => ipcRenderer.invoke('settings:chooseTransferDirectory', kind, defaultPath),
   chooseLutDir: () => ipcRenderer.invoke('settings:chooseLutDir'),
   chooseMockMediaDir: () => ipcRenderer.invoke('settings:chooseMockMediaDir'),
@@ -210,6 +213,19 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     removeDirectory: (directory: string) => ipcRenderer.invoke('local-media-share:remove-directory', directory),
     addFiles: (filePaths: string[]) => ipcRenderer.invoke('local-media-share:add-files', filePaths),
     removeFile: (filePath: string) => ipcRenderer.invoke('local-media-share:remove-file', filePath),
+  },
+  directorLab: {
+    discover: () => ipcRenderer.invoke('director-lab:discover'),
+    download: (request: DirectorLabDownloadRequest) => ipcRenderer.invoke('director-lab:download', request),
+    downloadPlan: (request) => ipcRenderer.invoke('director-lab:download-plan', request),
+    listLocalPlans: () => ipcRenderer.invoke('director-lab:list-local-plans'),
+    onDownloadProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').DirectorLabDownloadProgress): void => callback(progress)
+      ipcRenderer.on('director-lab:download-progress', listener)
+      return () => ipcRenderer.off('director-lab:download-progress', listener)
+    },
+    preparePreview: (request) => ipcRenderer.invoke('director-lab:prepare-preview', request),
+    probeMedia: (requests) => ipcRenderer.invoke('director-lab:probe-media', requests),
   },
   getDownloadedRecords: (files: LunaFile[]) => ipcRenderer.invoke('downloads:records', files),
   revealFile: (filePath: string) => ipcRenderer.invoke('files:reveal', filePath),

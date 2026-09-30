@@ -41,6 +41,10 @@ export function getLocalResourcesDir(settings: AppSettings): string {
   return settings.localResourcesDir || path.join(settings.baseDir, 'localResources')
 }
 
+export function getDirectorPlanDir(settings: AppSettings): string {
+  return settings.directorPlanDir || path.join(settings.baseDir, '导演计划')
+}
+
 export async function previewCacheDir(): Promise<string> {
   return previewCacheDirForBaseDir((await getSettings()).baseDir)
 }
@@ -388,6 +392,20 @@ export async function chooseExportDir(): Promise<string | null> {
   if (result.canceled || result.filePaths.length === 0) return null
 
   await saveSettings({ exportDir: result.filePaths[0] })
+  return result.filePaths[0]
+}
+
+export async function chooseDirectorPlanDir(): Promise<string | null> {
+  const settings = await getSettings()
+  const result = await dialog.showOpenDialog({
+    defaultPath: getDirectorPlanDir(settings),
+    properties: ['openDirectory', 'createDirectory'],
+    title: '选择导演计划目录',
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return null
+
+  await saveSettings({ directorPlanDir: result.filePaths[0] })
   return result.filePaths[0]
 }
 

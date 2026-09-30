@@ -21,6 +21,7 @@ interface SettingsPageProps {
   chooseBaseDir: () => Promise<void>
   chooseLocalResourcesDir: () => Promise<void>
   chooseExportDir: () => Promise<void>
+  chooseDirectorPlanDir: () => Promise<void>
   clearCache: () => Promise<void>
   connection: ConnectionStatus | null
   openDirectory: (targetPath: string | null | undefined) => void
@@ -68,6 +69,7 @@ export function SettingsPage({
   chooseBaseDir,
   chooseLocalResourcesDir,
   chooseExportDir,
+  chooseDirectorPlanDir,
   clearCache,
   connection,
   openDirectory,
@@ -252,6 +254,12 @@ export function SettingsPage({
               path={settings?.localResourcesDir ?? (settings?.baseDir ? `${settings.baseDir}/localResources` : '')}
               onOpen={() => openDirectory(settings?.localResourcesDir)}
               onChange={chooseLocalResourcesDir}
+            />
+            <DirectorySettingRow
+              label="导演计划目录"
+              path={settings?.directorPlanDir ?? (settings?.baseDir ? `${settings.baseDir}/导演计划` : '')}
+              onOpen={() => openDirectory(settings?.directorPlanDir ?? (settings?.baseDir ? `${settings.baseDir}/导演计划` : null))}
+              onChange={chooseDirectorPlanDir}
             />
             <article className="settings-row download-storage-setting-row">
               <div className="settings-row-copy">
