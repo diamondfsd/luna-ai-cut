@@ -4,6 +4,7 @@ import { createConnection, type Socket } from 'node:net'
 import { join } from 'node:path'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import { IosDeviceDiscovery, type IosDeviceDiscoveryResult } from './iosDeviceDiscovery'
 import {
   consumeFrames,
   encodeControlFrame,
@@ -41,7 +42,9 @@ function proxyBinary(): string | null {
 
 export class IosTcpReceiver implements LiveMediaReceiver {
   private readonly onFrame: (frame: UsbMediaFrame) => void
+  private readonly deviceDiscovery = new IosDeviceDiscovery()
   private statusValue: UsbAoaStatus = idleUsbStatus('iOS USB 接收器未启动', 'ios-tcp')
+  private iosDeviceCount = 0
   private running = false
   private proxy: ChildProcess | null = null
   private socket: Socket | null = null
@@ -66,12 +69,15 @@ export class IosTcpReceiver implements LiveMediaReceiver {
       this.setStatus('waiting', 'iOS USB 转发已禁用', null)
       return
     }
+    this.deviceDiscovery.start((result) => this.applyDeviceDiscovery(result))
     this.startProxy()
     this.scheduleConnect(0)
   }
 
   async stop(): Promise<void> {
     this.running = false
+    this.deviceDiscovery.stop()
+    this.iosDeviceCount = 0
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
     this.connecting = false
@@ -105,6 +111,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
     try {
       const proxy = spawn(binary, [`${PROXY_PORT}:${DEVICE_PORT}`], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
       })
       this.proxy = proxy
       proxy.stdout.on('data', (chunk) => logMainInfo('[iOS USB] iproxy', { output: String(chunk).trim() }))
@@ -197,6 +204,24 @@ export class IosTcpReceiver implements LiveMediaReceiver {
     if (socket && !socket.destroyed) socket.destroy()
   }
 
+  private applyDeviceDiscovery(result: IosDeviceDiscoveryResult): void {
+    this.iosDeviceCount = result.state === 'detected' ? result.deviceCount : 0
+    const connected = this.statusValue.state === 'connected' || this.statusValue.state === 'streaming'
+    const detected = this.iosDeviceCount > 0
+    const unavailable = result.state === 'unavailable' && !connected
+    this.statusValue = {
+      ...this.statusValue,
+      deviceLabel: connected ? this.statusValue.deviceLabel : detected ? 'iPhone USB' : null,
+      vendorId: connected ? this.statusValue.vendorId : detected ? 0x05ac : null,
+      productId: connected ? this.statusValue.productId : null,
+      deviceDetectionUnavailable: unavailable,
+      message: connected || this.statusValue.error
+        ? this.statusValue.message
+        : detected ? '已识别 iPhone，等待 Luna 咔启动 USB 画面'
+          : unavailable ? 'iPhone USB 检测不可用' : '等待 iOS 设备通过 USB 连接',
+    }
+  }
+
   private handleFrame(frame: UsbMediaFrame): void {
     const receivedAt = new Date().toISOString()
     const isVideo = frame.streamType === 0x20
@@ -222,7 +247,14 @@ export class IosTcpReceiver implements LiveMediaReceiver {
       ...this.statusValue,
       state,
       transport: 'ios-tcp',
-      message,
+      message: state === 'waiting' && this.iosDeviceCount > 0 && !error
+        ? '已识别 iPhone，等待 Luna 咔启动 USB 画面'
+        : state === 'waiting' && this.statusValue.deviceDetectionUnavailable && !error
+          ? 'iPhone USB 检测不可用'
+          : message,
+      deviceLabel: state === 'idle' ? null : this.iosDeviceCount > 0 ? 'iPhone USB' : this.statusValue.deviceLabel,
+      vendorId: state === 'idle' ? null : this.iosDeviceCount > 0 ? 0x05ac : this.statusValue.vendorId,
+      deviceDetectionUnavailable: state === 'idle' ? false : this.statusValue.deviceDetectionUnavailable,
       controlReady: state === 'connected' || state === 'streaming',
       error,
     }

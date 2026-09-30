@@ -191,8 +191,8 @@ export function LiveControlPanel({
 
           {active && !streaming && (
             <div className="live-preview-overlay">
-              <strong>{status.state === 'starting' ? '正在启动' : '等待手机连接'}</strong>
-              {status.state !== 'starting' && <span>用 USB 连接手机和电脑</span>}
+              <strong>{status.state === 'starting' ? '正在启动' : status.usbMessage || '等待手机连接'}</strong>
+              {status.state !== 'starting' && !status.usbDeviceLabel && <span>用 USB 连接手机和电脑</span>}
             </div>
           )}
 
