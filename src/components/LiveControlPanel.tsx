@@ -12,6 +12,7 @@ import { WhiteBalancePanel } from '../workspace/color/WhiteBalancePanel'
 import { FilterPanel } from '../workspace/lut/FilterPanel'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { LiveCameraControlPanel } from './LiveCameraControlPanel'
+import { AppleDriverDownloadButton } from './AppleDriverDownloadButton'
 import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning, watermarkPositionStyle } from './htmlPreviewGeometry'
 import { buildResolvedWatermarkStaticLayer, WatermarkSettings } from './WatermarkSettings'
 import type { LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
@@ -277,6 +278,9 @@ export function LiveControlPanel({
           {active && !streaming && (
             <div className="live-preview-overlay">
               <strong>{status.state === 'starting' ? '正在启动' : status.usbMessage || '等待手机连接'}</strong>
+              {status.platform === 'win32' && status.appleDeviceSupport === 'missing' && (
+                <AppleDriverDownloadButton status={status.appleDriverDownload} />
+              )}
               {status.state !== 'starting' && !status.usbDeviceLabel && <span>用 USB 连接手机和电脑</span>}
             </div>
           )}

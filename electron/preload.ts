@@ -192,6 +192,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
   },
   liveStream: {
+    installAppleDriver: () => ipcRenderer.invoke('live-stream:install-apple-driver'),
     status: () => ipcRenderer.invoke('live-stream:status'),
     start: () => ipcRenderer.invoke('live-stream:start'),
     startCapture: () => ipcRenderer.invoke('live-stream:start-capture'),
@@ -253,7 +254,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     deleteLocalMaterial: (planId, takeId) => ipcRenderer.invoke('director-lab:delete-local-material', planId, takeId),
     syncMaterials: (endpoint, planId) => ipcRenderer.invoke('director-lab:sync-materials', endpoint, planId),
     acknowledgeLocalPlan: (remote, signature) => ipcRenderer.invoke('director-lab:acknowledge-local-plan', remote, signature),
-    prepareThumbnail: (url) => ipcRenderer.invoke('director-lab:prepare-thumbnail', url),
+    prepareThumbnail: (url, positionMs) => ipcRenderer.invoke('director-lab:prepare-thumbnail', url, positionMs),
     reconcileLocalPlan: (plan, resolveConflict) => ipcRenderer.invoke('director-lab:reconcile-local-plan', plan, resolveConflict),
     onDownloadProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').DirectorLabDownloadProgress): void => callback(progress)

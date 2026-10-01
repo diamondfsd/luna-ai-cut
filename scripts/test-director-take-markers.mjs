@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict'
+import { directorThumbnailRequest } from '../src/lib/directorThumbnailRequest.ts'
 import { validateDirectorTakeMarkers, directorPlanWithTakeMarkers, directorMarkerTime } from '../src/lib/directorTakeMarkers.ts'
 import { directorPlanWithTakeRange, assertDirectorTakeRangesSaved } from '../src/lib/directorTakeRange.ts'
 import { buildDirectorPlanUpdate, directorPlanContentSignature, overlayDirectorLocalPlan } from '../src/lib/directorPlanSync.ts'
 import { manifestForPlan } from '../electron/features/director-lab/directorLabPlanStorage.ts'
+
+const thumbnailSource = 'file:///clip.mp4'
+assert.deepEqual(directorThumbnailRequest(thumbnailSource), { url: thumbnailSource, cacheKey: thumbnailSource, seekArgs: [] })
+assert.deepEqual(directorThumbnailRequest(thumbnailSource, 1234).seekArgs, ['-ss', '1.234'])
+assert.notEqual(directorThumbnailRequest(thumbnailSource, 1234).cacheKey, directorThumbnailRequest(thumbnailSource, 1235).cacheKey)
+assert.notEqual(directorThumbnailRequest(thumbnailSource, 0).cacheKey, directorThumbnailRequest(thumbnailSource).cacheKey)
+for (const position of [-1, 0.5, NaN, Infinity, '1000', null]) {
+  assert.throws(() => directorThumbnailRequest(thumbnailSource, position), /缩略图时间无效/)
+}
+assert.throws(() => directorThumbnailRequest('invalid'), /缩略图地址无效/)
 
 const plan = { id: 'plan-1', title: 'Plan', attributes: [], shots: [{ id: 'shot-1', name: 'Shot', order: 1,
   attributes: [], remark: '', duration_ms: 5000, takes: [{ id: 'video-1', kind: 'video', file_name: 'clip.mp4',

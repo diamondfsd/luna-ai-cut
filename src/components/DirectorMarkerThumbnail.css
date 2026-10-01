@@ -1,0 +1,2 @@
+.director-marker-thumbnail { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; aspect-ratio: 1; color: var(--muted); }
+.director-marker-thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; }

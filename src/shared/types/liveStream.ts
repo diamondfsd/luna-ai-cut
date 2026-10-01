@@ -108,6 +108,8 @@ export interface LiveStreamControlCapabilities {
 export interface LiveStreamStatus {
   state: LiveStreamState
   platform: string
+  appleDeviceSupport: AppleDeviceSupportState
+  appleDriverDownload: AppleDriverDownloadStatus
   controlReady: boolean
   lastControlResult: LiveStreamControlResult | null
   capabilities: LiveStreamControlCapabilities | null
@@ -133,6 +135,14 @@ export interface LiveStreamStatus {
   error: string | null
 }
 
+export type AppleDeviceSupportState = 'not-required' | 'missing' | 'stopped' | 'ready' | 'unavailable'
+
+export interface AppleDriverDownloadStatus {
+  state: 'idle' | 'downloading' | 'verifying' | 'opening' | 'opened' | 'error'
+  completedBytes: number
+  totalBytes: number
+}
+
 export interface LiveStreamApi {
   status(): Promise<LiveStreamStatus>
   start(): Promise<LiveStreamStatus>
@@ -140,4 +150,5 @@ export interface LiveStreamApi {
   stopCapture(): Promise<string | null>
   sendControl(command: LiveStreamControlCommand): Promise<string>
   stop(): Promise<LiveStreamStatus>
+  installAppleDriver(): Promise<void>
 }

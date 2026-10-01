@@ -93,7 +93,7 @@ export interface DirectorLabApi {
   deleteLocalMaterial(planId: string, takeId: string): Promise<DirectorLanPlanSummary>
   syncMaterials(endpoint: string, planId: string): Promise<void>
   acknowledgeLocalPlan(remote: DirectorLanPlanSummary, signature: string): Promise<void>
-  prepareThumbnail(url: string): Promise<DirectorLabPreviewResult>
+  prepareThumbnail(url: string, positionMs?: number): Promise<DirectorLabPreviewResult>
   reconcileLocalPlan(plan: DirectorLanPlanSummary, resolveConflict?: boolean): Promise<boolean>
   onDownloadProgress(callback: (progress: DirectorLabDownloadProgress) => void): () => void
   preparePreview(request: DirectorLabPreviewRequest): Promise<DirectorLabPreviewResult>

@@ -22,7 +22,7 @@ const PROXY_PORT = Number(process.env.USB_VIDEO_IOS_PROXY_PORT ?? 4185)
 const PROXY_ENABLED = process.env.USB_VIDEO_IOS_PROXY !== '0'
 const CONNECT_RETRY_MS = 1_500
 const CONNECTION_TIMEOUT_MS = 10_000
-const DETECTION_UNAVAILABLE_MESSAGE = process.platform === 'win32' ? '请检查苹果设备服务' : 'iPhone USB 检测不可用'
+const DETECTION_UNAVAILABLE_MESSAGE = 'iPhone USB 检测不可用'
 
 function proxyBinary(): string | null {
   const configured = process.env.USB_VIDEO_IPROXY_BIN

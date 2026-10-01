@@ -1,4 +1,5 @@
 import { IosTcpReceiver } from './iosTcpReceiver'
+import { stateScore } from './mediaReceiverStatus'
 import {
   type LiveMediaReceiver,
   type UsbAoaStatus,
@@ -6,19 +7,6 @@ import {
   type UsbMediaFrame,
   UsbAoaReceiver,
 } from './usbAoaReceiver'
-
-function stateScore(status: UsbAoaStatus): number {
-  const detectedBonus = status.deviceLabel && status.state === 'waiting' ? 0.5 : 0
-  const detectionUnavailableBonus = status.deviceDetectionUnavailable && status.state === 'waiting' ? 0.25 : 0
-  switch (status.state) {
-    case 'streaming': return 6 + detectedBonus
-    case 'connected': return 5 + detectedBonus
-    case 'switching': return 4 + detectedBonus
-    case 'waiting': return 3 + detectedBonus + detectionUnavailableBonus
-    case 'error': return 2 + detectedBonus
-    case 'idle': return 1 + detectedBonus
-  }
-}
 
 class MultiTransportReceiver implements LiveMediaReceiver {
   private readonly receivers: LiveMediaReceiver[]

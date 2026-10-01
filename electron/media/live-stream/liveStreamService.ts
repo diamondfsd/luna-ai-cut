@@ -16,6 +16,7 @@ import {
 } from './usbAoaReceiver'
 import { createLiveMediaReceiver } from './mediaReceiver'
 import { LivePreviewStreamService } from './livePreviewStreamService'
+import { getAppleDeviceSupportStatus, getAppleDriverDownloadStatus } from './appleDeviceSupportService'
 import type {
   LiveStreamControlCapabilities,
   LiveStreamControlCommand,
@@ -81,7 +82,15 @@ function statusMessage(state: LiveStreamState, usb: UsbAoaStatus): string {
 }
 
 export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
+  const initialUsb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
+  const support = process.platform === 'win32' && initialUsb.transport === 'ios-tcp' && initialUsb.deviceDetectionUnavailable
+    ? await getAppleDeviceSupportStatus() : 'not-required'
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
+  const appleDeviceSupport = usb.transport === 'ios-tcp' && usb.deviceDetectionUnavailable ? support : 'not-required'
+  const driverMissing = appleDeviceSupport === 'missing' && process.arch === 'x64'
+  const usbMessage = driverMissing ? '请安装苹果设备驱动'
+    : appleDeviceSupport === 'stopped' ? '请启动苹果设备服务'
+      : usb.message
   const state = statusState(usb.state)
   const error = usb.error ?? null
   if (activeSession) liveUsage?.capabilities(activeSession.startedAt, usb.controlReady, activeSession.capabilities)
@@ -89,6 +98,8 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
   return {
     state,
     platform: process.platform,
+    appleDeviceSupport,
+    appleDriverDownload: getAppleDriverDownloadStatus(),
     controlReady: usb.controlReady,
     lastControlResult: activeSession?.lastControlResult ?? null,
     capabilities: activeSession?.capabilities ?? null,
@@ -99,7 +110,7 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     receiverConnected: usb.state === 'connected' || usb.state === 'streaming',
     transport: usb.transport,
     usbState: usb.state,
-    usbMessage: usb.message,
+    usbMessage,
     usbDeviceLabel: usb.deviceLabel,
     usbVendorId: usb.vendorId,
     usbProductId: usb.productId,

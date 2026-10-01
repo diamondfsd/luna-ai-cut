@@ -5,6 +5,7 @@ import type { DirectorTakeRange } from '../lib/directorTakeRange'
 import { Button, Dialog, Input, LoadingIndicator, toast } from '../ui'
 import { DirectorShotInspector } from './DirectorShotInspector'
 import { DirectorTakeMarkerPanel } from './DirectorTakeMarkerPanel'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { DirectorTakeMarker } from '../shared/types/directorLab'
 import { PreviewStage, type PreviewStageHandle } from './PreviewStage'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
@@ -197,7 +198,8 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
       </div>}
       </div>
       <DirectorShotInspector shot={shot} takes={takes} selectedId={take.id} disabled={saving || adding} onAddMaterials={onAddMaterials}
-        markerPanel={isVideo && <DirectorTakeMarkerPanel markers={take.markers ?? []} durationMs={Math.round(media.duration * 1000)}
+        markerPanel={isVideo && <DirectorTakeMarkerPanel key={take.id} markers={take.markers ?? []} durationMs={Math.round(media.duration * 1000)}
+          videoSource={filePathToPreviewUrl(url)}
           range={range} disabled={saving || adding} getPosition={() => desiredSeek.current !== null && seekFrame.current !== null
             ? desiredSeek.current * 1000 : (stage.current?.getCurrentTime() ?? media.currentTime) * 1000}
           onPause={() => { if (stage.current?.isPlaying()) stage.current.togglePlay() }} onSave={onSaveMarkers}
