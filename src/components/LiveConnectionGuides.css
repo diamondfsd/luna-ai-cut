@@ -1,0 +1,25 @@
+.live-connection-guides {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.live-connection-guide-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.live-connection-guide-body ol {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.8;
+}
+
+.live-connection-guide-body p {
+  margin: 0;
+  line-height: 1.6;
+}
