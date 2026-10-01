@@ -170,9 +170,14 @@
 
 /* 内容体 */
 .ui-dialog-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
   overflow: auto;
-  padding: 12px 20px;
-  color: var(--muted);
+  overscroll-behavior: contain;
+  padding: 20px;
+  color: var(--ink);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -185,7 +190,7 @@
   align-items: center;
   gap: 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 14px 16px 16px;
+  padding: 14px 20px 16px;
 }
 
 .ui-dialog-footer .ui-btn {

@@ -21,35 +21,34 @@ export function ReleaseNotesDialog({ open, onOpenChange, latestVersion, latestRe
 
   return (
     <Dialog
+      bodyClassName="release-notes-body"
       open={open}
       onOpenChange={onOpenChange}
       title="更新说明"
       className="release-notes-dialog-content"
     >
-      <div className="release-notes-body">
-        {latestReleaseNotes && (
-          <Accordion
-            title={`v${latestVersion ?? '?'}（最新）`}
-            defaultOpen={true}
-            headerClassName="release-notes-accordion-header"
-          >
-            <MarkdownViewer content={latestReleaseNotes} />
-          </Accordion>
-        )}
-        {notes.map((note, i) => (
-          <Accordion
-            key={note.version}
-            title={`v${note.version}`}
-            defaultOpen={!latestReleaseNotes && i === 0}
-            headerClassName="release-notes-accordion-header"
-          >
-            <MarkdownViewer content={note.content} />
-          </Accordion>
-        ))}
-        {!latestReleaseNotes && notes.length === 0 && (
-          <p className="release-notes-empty">暂无更新说明</p>
-        )}
-      </div>
+      {latestReleaseNotes && (
+        <Accordion
+          title={`v${latestVersion ?? '?'}（最新）`}
+          defaultOpen={true}
+          headerClassName="release-notes-accordion-header"
+        >
+          <MarkdownViewer content={latestReleaseNotes} />
+        </Accordion>
+      )}
+      {notes.map((note, i) => (
+        <Accordion
+          key={note.version}
+          title={`v${note.version}`}
+          defaultOpen={!latestReleaseNotes && i === 0}
+          headerClassName="release-notes-accordion-header"
+        >
+          <MarkdownViewer content={note.content} />
+        </Accordion>
+      ))}
+      {!latestReleaseNotes && notes.length === 0 && (
+        <p className="release-notes-empty">暂无更新说明</p>
+      )}
     </Dialog>
   )
 }

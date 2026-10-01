@@ -112,6 +112,7 @@ export function WorkspaceImportDialog({
   return (
     <MediaLibraryCtx.Provider value={controller}>
       <Dialog
+        bodyClassName="workspace-import-body"
         open={open}
         onOpenChange={onOpenChange}
         title={creatingProject ? '新建项目' : '导入本地素材'}
@@ -131,21 +132,20 @@ export function WorkspaceImportDialog({
           </>
         )}
       >
-        <div className="workspace-import-body">
-          {creatingProject && (
-            <label className="workspace-create-project-title">
-              <span>项目标题</span>
-              <Input
-                fullWidth
-                value={projectName}
-                onChange={(event) => onProjectNameChange?.(event.target.value)}
-                placeholder="选填，不填则按素材数量自动生成"
-                autoFocus
-              />
-            </label>
-          )}
-          <MediaGallery mode="local" groupTitle={groupTitle} />
-        </div>
+        {creatingProject && (
+          <label className="workspace-create-project-title">
+            <span>项目标题</span>
+            <Input
+              fullWidth
+              value={projectName}
+              onChange={(event) => onProjectNameChange?.(event.target.value)}
+              placeholder="选填，不填则按素材数量自动生成"
+              autoFocus
+            />
+          </label>
+        )}
+        <MediaGallery mode="local" groupTitle={groupTitle} />
+
         {controller.previewFile && (
           <PreviewModal
             lightweightPreview

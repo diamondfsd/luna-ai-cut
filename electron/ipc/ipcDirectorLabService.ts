@@ -664,10 +664,10 @@ export function register(): void {
   })
   ipcMain.handle('director-lab:discover', () => discoverDirectorServices())
   ipcMain.handle('director-lab:list-local-plans', () => listLocalPlans())
-  ipcMain.handle('director-lab:reconcile-local-plan', async (_event, value: unknown) => {
+  ipcMain.handle('director-lab:reconcile-local-plan', async (_event, value: unknown, resolveConflict: unknown) => {
     const { plan, metadata = {} } = validateDownloadPlanRequest({ plan: value })
     const settings = await getSettings()
-    return reconcileLocalDirectorPlan(getDirectorPlanDir(settings), plan, metadata)
+    return reconcileLocalDirectorPlan(getDirectorPlanDir(settings), plan, metadata, resolveConflict === true)
   })
   ipcMain.handle('director-lab:prepare-preview', (_event, value: unknown) => preparePreview(value))
   ipcMain.handle('director-lab:probe-media', (_event, value: unknown) => probeMedia(value))

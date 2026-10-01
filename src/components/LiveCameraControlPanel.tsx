@@ -1,6 +1,8 @@
 import { FlipVertical2, LocateFixed, RotateCcw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+
+import { bindLiveGimbalKeyboard } from '../lib/liveGimbalKeyboard'
 
 import type {
   LiveStreamControlCommand,
@@ -33,7 +35,6 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
   const padRef = useRef<HTMLDivElement>(null)
   const activePointer = useRef<number | null>(null)
   const [joyPosition, setJoyPosition] = useState({ x: 0, y: 0 })
-  const [flipped, setFlipped] = useState(false)
   const [zoom, setZoom] = useState(capabilities.zoom.current)
   const [exposure, setExposure] = useState(capabilities.exposure.current)
   const currentZoom = capabilities.zoom.current
@@ -53,6 +54,31 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
       })
     })
   }, [capabilities, controlReady, status.capabilities])
+
+  const dispatchRef = useRef(dispatch)
+  useEffect(() => {
+    dispatchRef.current = dispatch
+  }, [dispatch])
+
+  useEffect(() => {
+    if (!controlReady || !capabilities.gimbal.supported) return
+    return bindLiveGimbalKeyboard({
+      window,
+      document,
+      isPadTarget: (target) => target instanceof Node && Boolean(padRef.current?.contains(target)),
+      isPointerActive: () => activePointer.current !== null,
+      onMove: (position) => {
+        if (activePointer.current !== null) return
+        setJoyPosition(position)
+        dispatchRef.current({ type: 'gimbal.move', horizontal: position.x, vertical: position.y })
+      },
+      onStop: () => {
+        if (activePointer.current !== null) return
+        setJoyPosition({ x: 0, y: 0 })
+        dispatchRef.current({ type: 'gimbal.stop' })
+      },
+    })
+  }, [capabilities.gimbal.supported, controlReady])
 
   useEffect(() => {
     setZoom(currentZoom)
@@ -97,25 +123,6 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
     dispatch({ type: 'gimbal.stop' })
   }, [dispatch])
 
-  const keyGimbal = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const offsets: Record<string, { x: number; y: number }> = {
-      ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
-      ArrowUp: { x: 0, y: 1 }, ArrowDown: { x: 0, y: -1 },
-    }
-    const next = offsets[event.key]
-    if (!next) return
-    event.preventDefault()
-    if (event.repeat) return
-    setJoyPosition(next)
-    dispatch({ type: 'gimbal.move', horizontal: next.x, vertical: next.y })
-  }
-
-  const releaseGimbal = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!event.key.startsWith('Arrow')) return
-    setJoyPosition({ x: 0, y: 0 })
-    dispatch({ type: 'gimbal.stop' })
-  }
-
   return (
     <div className="live-camera-controls">
       <section className="live-control-section">
@@ -133,8 +140,6 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
           onPointerMove={moveGimbal}
           onPointerUp={stopGimbal}
           onPointerCancel={stopGimbal}
-          onKeyDown={keyGimbal}
-          onKeyUp={releaseGimbal}
           onBlur={() => {
             setJoyPosition({ x: 0, y: 0 })
             dispatch({ type: 'gimbal.stop' })
@@ -143,9 +148,9 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
           <div className="live-gimbal-crosshair" />
           <div
             className="live-gimbal-knob"
-            style={{ transform: `translate(${joyPosition.x * 42}px, ${-joyPosition.y * 42}px)` }}
+            style={{ transform: `translate(${joyPosition.x * 37}px, ${-joyPosition.y * 37}px)` }}
           >
-            {flipped ? <FlipVertical2 size={18} /> : <LocateFixed size={18} />}
+            <LocateFixed size={18} />
           </div>
         </div>
         <div className="live-control-button-row">
@@ -164,10 +169,7 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
             variant="toolbar"
             size="compact"
             icon={<FlipVertical2 size={14} />}
-            onClick={() => {
-              setFlipped((current) => !current)
-              dispatch({ type: 'gimbal.flip' })
-            }}
+            onClick={() => dispatch({ type: 'gimbal.flip' })}
           >
             翻转
           </Button>
@@ -181,6 +183,7 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
           min={capabilities.zoom.min}
           max={capabilities.zoom.max}
           step={capabilities.zoom.step}
+          formatValue={(value) => value.toFixed(1)}
           onChange={setZoom}
           onPreviewChange={(value) => {
             setZoom(value)
@@ -200,6 +203,7 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
           min={capabilities.exposure.min}
           max={capabilities.exposure.max}
           step={capabilities.exposure.step}
+          formatValue={(value) => value.toFixed(1)}
           onChange={setExposure}
           onPreviewChange={setExposure}
           onCommit={(value) => {
@@ -209,11 +213,11 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
         />
       </section>
 
-      <section className="live-control-section">
+      <section className="live-control-section live-focus-section">
         <header>
           <span>对焦</span>
+          <span>点击画面选择位置</span>
         </header>
-        <p className="live-preview-control-hint">点击画面选择对焦位置</p>
       </section>
     </div>
   )

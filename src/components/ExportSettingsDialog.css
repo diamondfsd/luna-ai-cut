@@ -61,11 +61,6 @@
 
 /* ── Body ── */
 
-.workspace-export-body {
-  padding: 0 28px 20px;
-  overflow-y: auto;
-}
-
 .workspace-export-body.has-preview {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
@@ -202,10 +197,6 @@
 
   .workspace-export-dialog-content .ui-dialog-header [data-radix-dialog-title] {
     font-size: 20px;
-  }
-
-  .workspace-export-body {
-    padding: 0 18px 16px;
   }
 
   .workspace-export-body .export-settings-panel {

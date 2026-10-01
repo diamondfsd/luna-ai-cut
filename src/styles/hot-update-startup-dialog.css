@@ -4,7 +4,6 @@
 
 .hot-update-startup-body {
   max-height: min(360px, 52vh);
-  padding: 20px 24px;
   color: var(--ink);
 }
 

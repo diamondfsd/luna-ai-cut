@@ -83,7 +83,7 @@ export interface DirectorLabApi {
   downloadPlan(request: DirectorLabDownloadPlanRequest): Promise<DirectorLabDownloadPlanResult>
   discover(): Promise<DirectorLabDiscoveryResult>
   listLocalPlans(): Promise<DirectorLanPlanSummary[]>
-  reconcileLocalPlan(plan: DirectorLanPlanSummary): Promise<boolean>
+  reconcileLocalPlan(plan: DirectorLanPlanSummary, resolveConflict?: boolean): Promise<boolean>
   onDownloadProgress(callback: (progress: DirectorLabDownloadProgress) => void): () => void
   preparePreview(request: DirectorLabPreviewRequest): Promise<DirectorLabPreviewResult>
   probeMedia(requests: DirectorLabProbeRequest[]): Promise<DirectorLabMediaMetadata[]>
@@ -133,6 +133,19 @@ export interface DirectorLanShotAttribute {
 export interface DirectorLanPlanAttribute {
   id: string
   name: string
+}
+
+export interface DirectorShotFieldDefinition {
+  id: string
+  label: string
+  storage_name: string
+  kind: 'text' | 'multiline'
+  max_length: number
+}
+
+export interface DirectorPlanSchema {
+  schema_version: number
+  shot_fields: DirectorShotFieldDefinition[]
 }
 
 export interface DirectorLanTake {

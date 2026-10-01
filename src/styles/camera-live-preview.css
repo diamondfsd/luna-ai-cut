@@ -30,11 +30,9 @@
 
 .camera-live-preview-body {
   display: flex;
-  overflow-y: auto;
   min-height: 0;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 20px 18px;
 }
 
 .camera-live-preview-stage {
@@ -165,10 +163,6 @@
   .camera-live-preview-dialog.ui-dialog-content {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);
-  }
-
-  .camera-live-preview-body {
-    padding: 10px 12px 14px;
   }
 
   .camera-live-preview-stage {
