@@ -1,5 +1,5 @@
 import type usb from 'usb'
-import { UsbDiagnosticError } from './usbAoaDiagnostics'
+import { UsbDiagnosticError } from './usbAoaDiagnostics.ts'
 
 function controlTransfer(
   device: usb.Device,

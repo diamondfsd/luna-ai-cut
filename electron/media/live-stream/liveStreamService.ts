@@ -83,10 +83,10 @@ function statusMessage(state: LiveStreamState, usb: UsbAoaStatus): string {
 
 export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
   const initialUsb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
-  const support = process.platform === 'win32' && initialUsb.transport === 'ios-tcp' && initialUsb.deviceDetectionUnavailable
+  const support = process.platform === 'win32' && initialUsb.state === 'waiting' && (initialUsb.transport === 'ios-tcp' || !initialUsb.deviceLabel)
     ? await getAppleDeviceSupportStatus() : 'not-required'
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
-  const appleDeviceSupport = usb.transport === 'ios-tcp' && usb.deviceDetectionUnavailable ? support : 'not-required'
+  const appleDeviceSupport = usb.state === 'waiting' && (usb.transport === 'ios-tcp' || !usb.deviceLabel) ? support : 'not-required'
   const driverMissing = appleDeviceSupport === 'missing' && process.arch === 'x64'
   const usbMessage = driverMissing ? '请安装苹果设备驱动'
     : appleDeviceSupport === 'stopped' ? '请启动苹果设备服务'
