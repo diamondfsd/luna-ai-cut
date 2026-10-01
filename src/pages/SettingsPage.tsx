@@ -492,7 +492,9 @@ export function SettingsPage({
                 <article className="settings-row">
                   <div className="settings-row-copy">
                     <span>缓存</span>
-                    <strong>{formatBytes(displayCacheStats?.bytes)} · {displayCacheStats?.files ?? 0} 个文件</strong>
+                    <strong title={displayCacheStats?.dir ?? settings?.cacheDir}>
+                      {displayCacheStats?.dir ?? settings?.cacheDir ?? '未设置'} · {formatBytes(displayCacheStats?.bytes)} · {displayCacheStats?.files ?? 0} 个文件
+                    </strong>
                   </div>
                   <div className="settings-row-actions">
                     <Button variant="secondary" size="compact" onClick={() => openDirectory(displayCacheStats?.dir ?? settings?.cacheDir)} icon={<FolderOpen size={15} />}>

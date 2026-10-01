@@ -44,7 +44,7 @@
   resize: vertical;
 }
 
-.lab-shot-editor-dialog { width: min(680px, calc(100vw - 32px)); }
+.ui-dialog-content.lab-shot-editor-dialog { width: min(680px, calc(100vw - 32px)); }
 .lab-shot-editor-fields { display: grid; gap: 16px; border: 0; margin: 0; padding: 0; min-width: 0; }
 .lab-shot-editor-basics { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 16px; }
 .lab-shot-editor-fields .lab-shot-edit-attributes { gap: 16px; }

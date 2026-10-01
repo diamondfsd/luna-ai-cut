@@ -57,7 +57,7 @@
   object-fit: cover;
 }
 
-.lab-shot-card-media.is-empty { cursor: default; }
+.lab-shot-card-media.is-empty { cursor: pointer; }
 .lab-shot-card-media:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 .lab-shot-row-copy {
@@ -70,7 +70,12 @@
 }
 
 .lab-shot-row-heading { display: grid; min-width: 0; gap: 4px; }
-.lab-shot-row-heading > strong {
+.lab-shot-row-heading > .lab-shot-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
   overflow: hidden;
   color: var(--ink);
   font-size: 13px;

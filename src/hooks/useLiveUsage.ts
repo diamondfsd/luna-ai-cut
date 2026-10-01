@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { LiveUsageFeature } from '../shared/types/liveUsage'
 
 interface Options {
+  observeOnly?: boolean
   session: string | null
   streaming: boolean
   watermark: boolean
@@ -35,7 +36,7 @@ export function useLiveUsage(options: Options) {
 
   const commit = useCallback(() => {
     const view = current.current
-    if (!view.session) return
+    if (!view.session || view.observeOnly) return
     const next = [view.watermarkSignature, view.lutSignature, view.colorSignature]
     const features: LiveUsageFeature[] = ['watermark', 'lut', 'color']
     if (signatures.current) {

@@ -266,7 +266,7 @@ function buildAiPrompt(
 
 export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const [connectedEndpoint, setConnectedEndpoint] = useState<string | null>(null)
-  const [schema, setSchema] = useState<DirectorPlanSchema | null>({ schema_version: 2, shot_fields: [
+  const [schema, setSchema] = useState<DirectorPlanSchema>({ schema_version: 2, shot_fields: [
     { id: 'content', label: '画面内容', storage_name: '画面内容', kind: 'multiline', max_length: 4000 },
     { id: 'framing', label: '景别', storage_name: '景别', kind: 'text', max_length: 4000 },
     { id: 'movement', label: '运镜方式', storage_name: '运镜方式', kind: 'multiline', max_length: 4000 },
@@ -414,7 +414,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
 
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useDirectorMaterialSync(active, syncMaterials, connectedEndpoint, mergeLocalPlanCopies)
-  const { status: syncStatus, synchronize, conflicts, resolvingPlanId, resolveConflict } = useDirectorPlanSync({
+  const { status: syncStatus, synchronize, retrySynchronization, writeFailures, conflicts, resolvingPlanId, resolveConflict } = useDirectorPlanSync({
     enabled: active,
     endpoint: connectedEndpoint,
     requestRemotePlans: refreshRemotePlans,
@@ -577,7 +577,6 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       return true
     } catch {
       setConnectedEndpoint(null)
-      setSchema(null)
       return false
     } finally {
       setLoading(false)
@@ -770,7 +769,9 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     ? '同步中'
     : syncStatus === 'conflict'
       ? '有冲突'
-      : syncStatus === 'offline'
+      : syncStatus === 'error'
+        ? '同步失败'
+        : syncStatus === 'offline'
         ? '等待连接'
         : '已同步'
 
@@ -800,15 +801,15 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           <h1>导演计划</h1>
         </div>
         <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
-          onClick={() => setImportOpen(true)}>导入计划</Button>
+          onClick={() => setImportOpen(true)}>{activePlan ? '导入镜头' : '新建计划'}</Button>
         {connectedEndpoint && (
           <div className="lab-director-sync-actions">
-            <span
+            <Tooltip content={writeFailures.length ? writeFailures.map((failure) => `${failure.title}：${failure.message}`).join('\n') : syncStatusLabel}><span
               className={`lab-sync-status is-${syncStatus}`}
               aria-live="polite"
             >
               {syncStatusLabel}
-            </span>
+            </span></Tooltip>
             {conflicts.length > 0 && <Button size="compact" onClick={() => setConflictsOpen(true)}>
               处理冲突 ({conflicts.length})
             </Button>}
@@ -819,7 +820,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
                 icon={<RefreshCw size={15} />}
                 aria-label="刷新导演计划"
                 disabled={loading}
-                onClick={() => void loadPlans(connectedEndpoint)}
+                onClick={() => void loadPlans(connectedEndpoint).then(() => retrySynchronization())}
               />
             </Tooltip>
           </div>
@@ -996,6 +997,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
                 }
                 schema={schema}
                 plan={activePlan}
+                phoneConnected={Boolean(connectedEndpoint)}
                 shots={visibleShots}
                 onLocalPlanChange={handleLocalPlanChange}
                 refreshPlans={async () => {
@@ -1010,7 +1012,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           </div>
         </section>
       )}
-      <DirectorPlanImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={(plan) => {
+      <DirectorPlanImportDialog open={importOpen} targetPlan={activePlan} onOpenChange={setImportOpen} onImported={(plan) => {
         handleLocalPlanChange(plan)
         setActivePlanId(plan.id)
         setShotQuery('')
@@ -1027,9 +1029,12 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       />
       {previewTake && previewShot && activePlan && (
         <DirectorMediaPreviewDialog
+          plan={activePlan}
+          onLocalPlanChange={handleLocalPlanChange}
+          onWriteStateChange={setPlanWritePending}
           take={previewTake}
           shot={previewShot}
-          takes={takes}
+          takes={previewShot.takes}
           planTitle={activePlan.title}
           downloading={downloading === `take:${previewTake.id}`}
           downloadProgress={downloadProgress}

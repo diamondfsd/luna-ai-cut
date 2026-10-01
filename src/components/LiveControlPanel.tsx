@@ -176,6 +176,7 @@ export function LiveControlPanel({
     sharpen: liveColor.sharpen,
   }), [liveColor])
   const previewWindowSettings = useMemo<LivePreviewWindowSettings>(() => ({
+    usageSession: status.startedAt,
     url: status.localPreviewUrl,
     colorAdjustments: liveColorAdjustments,
     lutPath,
@@ -192,6 +193,7 @@ export function LiveControlPanel({
     lutIntensity,
     lutPath,
     status.localPreviewUrl,
+    status.startedAt,
     watermarkLayer?.opacity,
     watermarkPositioning,
     watermarkSrc,
@@ -369,6 +371,7 @@ export function LiveControlPanel({
             </>
           ) : (
             <LiveCameraControlPanel
+              previewAspectRatio={previewAspectRatio}
               status={status}
             />
           )}

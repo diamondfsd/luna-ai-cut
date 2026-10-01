@@ -1,0 +1,10 @@
+.ui-dialog-content.lab-shot-detail-dialog { width: min(760px, calc(100vw - 40px)); }
+.lab-shot-detail { display: grid; gap: 20px; }
+.lab-shot-detail-fields { display: grid; gap: 16px; margin: 0; }
+.lab-shot-detail-fields > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 16px; }
+.lab-shot-detail-fields dt { color: var(--muted); font-size: 13px; }
+.lab-shot-detail-fields dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
+.lab-shot-detail-materials { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.lab-shot-detail-materials > .ui-btn { display: grid; height: auto; padding: 0; overflow: hidden; }
+.lab-shot-detail-materials .lab-media-thumbnail { height: auto; aspect-ratio: 16 / 9; }
+.lab-shot-detail-materials > .ui-btn > span:last-child { padding: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

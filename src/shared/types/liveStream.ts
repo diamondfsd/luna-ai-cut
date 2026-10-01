@@ -28,6 +28,7 @@ export type LivePreviewColorAdjustments = Pick<RenderColorAdjustments,
 >
 
 export interface LivePreviewWindowSettings {
+  usageSession?: string | null
   url: string | null
   colorAdjustments: LivePreviewColorAdjustments
   lutPath: string | null
