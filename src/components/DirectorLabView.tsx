@@ -800,10 +800,11 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           </Tooltip>
           <h1>导演计划</h1>
         </div>
-        {!activePlan && <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
-          onClick={() => setImportOpen(true)}>新建计划</Button>}
-        {connectedEndpoint && (
-          <div className="lab-director-sync-actions">
+        <div className="lab-director-sync-actions">
+          {!activePlan && <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
+            onClick={() => setImportOpen(true)}>新建计划</Button>}
+          {connectedEndpoint && (
+            <>
             <Tooltip content={writeFailures.length ? writeFailures.map((failure) => `${failure.title}：${failure.message}`).join('\n') : syncStatusLabel}><span
               className={`lab-sync-status is-${syncStatus}`}
               aria-live="polite"
@@ -823,8 +824,9 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
                 onClick={() => void loadPlans(connectedEndpoint).then(() => retrySynchronization())}
               />
             </Tooltip>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </header>
 
       {loading && plans.length === 0 && (
@@ -1037,6 +1039,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           shot={previewShot}
           takes={previewShot.takes}
           planTitle={activePlan.title}
+          phoneConnected={Boolean(connectedEndpoint)}
           downloading={downloading === `take:${previewTake.id}`}
           downloadProgress={downloadProgress}
           onSelectTake={(take) => {

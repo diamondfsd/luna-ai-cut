@@ -11,6 +11,7 @@ import type {
 } from '../../src/shared/types'
 import { LunaKaWebSocketChannel } from './lunaka_websocket_channel'
 import { lunaKaHttpErrorMessage } from './lunaKaHttpError'
+import { lunaKaDeviceName } from './lunaka_device_name'
 
 interface StoredCredentials {
   clientId: string
@@ -142,7 +143,7 @@ export class LunaKaHttpClient {
       'POST',
       {
         client_id: clientId,
-        client_name: app.getName() || 'Luna AI Cut',
+        client_name: await lunaKaDeviceName(),
       },
       { 'Content-Type': 'application/json' },
       135_000,

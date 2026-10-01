@@ -29,6 +29,7 @@ interface PreviewModalProps {
   filePath: string
   filePathList?: string[]
   previewOnly?: boolean
+  showThumbnailStrip?: boolean
   lightweightPreview?: boolean
   proxyPreviewPaths?: string[]
   batchExportMode?: boolean
@@ -79,6 +80,7 @@ export function PreviewModal({
   filePath,
   filePathList,
   previewOnly,
+  showThumbnailStrip = true,
   lightweightPreview,
   proxyPreviewPaths,
   batchExportMode,
@@ -529,12 +531,12 @@ export function PreviewModal({
               )}
             </div>
 
-            <PreviewThumbnailStrip
+            {showThumbnailStrip && <PreviewThumbnailStrip
               filePathList={filePathList ?? [currentFilePath]}
               initialFilePath={currentFilePath}
               onChange={(fp) => setCurrentFilePath(fp)}
               renderThumbnail={renderThumbnail}
-            />
+            />}
           </div>
 
           {inspectorOpen && (

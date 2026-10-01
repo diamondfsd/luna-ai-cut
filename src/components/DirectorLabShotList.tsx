@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Camera,
   CloudOff,
@@ -56,6 +56,14 @@ export function DirectorLabShotList({
   const [mutating, setMutating] = useState(false)
   const [creating, setCreating] = useState(false)
   const [detailShotId, setDetailShotId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!detailShotId) return
+    const take = plan.shots.find(shot => shot.id === detailShotId)?.takes.find(take => take.available && take.stream_url)
+    if (!take) return
+    setDetailShotId(null)
+    onOpenTake(take)
+  }, [detailShotId, plan.shots, onOpenTake])
 
   async function handleMutationError(error: unknown, fallback: string, deletingShotId?: string): Promise<void> {
     const message = error instanceof Error ? error.message : fallback
@@ -235,12 +243,14 @@ export function DirectorLabShotList({
     <div className="lab-shot-browser">
       <div className="lab-director-toolbar">
         {tools}
-        <Button variant="secondary" size="compact" icon={<FileUp size={15} />}
-          onClick={onImportShots}>导入镜头</Button>
-        {schema && (
-          <Button variant="secondary" size="compact" icon={<Plus size={15} />}
-            disabled={mutating || editingShotId !== null} onClick={() => void addShot()}>新增镜头</Button>
-        )}
+        <div className="lab-shot-toolbar-actions">
+          <Button variant="secondary" size="compact" icon={<FileUp size={15} />}
+            onClick={onImportShots}>导入镜头</Button>
+          {schema && (
+            <Button variant="secondary" size="compact" icon={<Plus size={15} />}
+              disabled={mutating || editingShotId !== null} onClick={() => void addShot()}>新增镜头</Button>
+          )}
+        </div>
       </div>
       <div className="lab-shot-grid">
         {shots.map((shot) => {
