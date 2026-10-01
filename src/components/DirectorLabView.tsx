@@ -279,8 +279,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const [shotSort, setShotSort] = useState('order')
   const [editingPlanTitle, setEditingPlanTitle] = useState(false)
   const [planTitleDraft, setPlanTitleDraft] = useState('')
-  const [planTitleBaseRevision, setPlanTitleBaseRevision] = useState(0)
-  const [planTitleBaseUpdatedAt, setPlanTitleBaseUpdatedAt] = useState('')
+  const [planTitleBaseSignature, setPlanTitleBaseSignature] = useState('')
   const [savingPlanTitle, setSavingPlanTitle] = useState(false)
   const [previewTakeId, setPreviewTakeId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -712,8 +711,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   function beginPlanTitleEdit(): void {
     if (!activePlan) return
     setPlanTitleDraft(activePlan.title)
-    setPlanTitleBaseRevision(activePlan.revision ?? 0)
-    setPlanTitleBaseUpdatedAt(activePlan.local_updated_at ?? activePlan.updated_at)
+    setPlanTitleBaseSignature(activePlan.local_content_signature ?? directorPlanContentSignature(activePlan))
     setEditingPlanTitle(true)
   }
 
@@ -735,7 +733,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     try {
       handleLocalPlanChange(await window.luna.directorLab.saveLocalPlan({ ...activePlan,
         synced_signature: activePlan.synced_signature ?? directorPlanContentSignature(activePlan),
-        revision: planTitleBaseRevision, local_updated_at: planTitleBaseUpdatedAt, title: planTitleDraft.trim() }))
+        title: planTitleDraft.trim() }, planTitleBaseSignature))
       setEditingPlanTitle(false)
       toast.success('计划名称已保存')
     } catch (nextError) {
@@ -744,10 +742,9 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
         try {
           const latest = await refreshLocalPlans()
           mergeLocalPlanCopies(latest)
-          const revision = latest.find((plan) => plan.id === activePlan.id)?.revision
-          if (revision != null) {
-            setPlanTitleBaseRevision(revision)
-            setPlanTitleBaseUpdatedAt(latest.find((plan) => plan.id === activePlan.id)!.updated_at)
+          const latestPlan = latest.find((plan) => plan.id === activePlan.id)
+          if (latestPlan) {
+            setPlanTitleBaseSignature(latestPlan.local_content_signature ?? directorPlanContentSignature(latestPlan))
             toast.error('计划已在其他端修改，再次保存以应用新名称')
           } else {
             toast.error('版本冲突，远端刷新失败')

@@ -3,6 +3,7 @@ import { HelpCircle, RefreshCw, Square, Video } from 'lucide-react'
 
 import { Button, Dialog, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
+import { flushLiveUsage } from '../hooks/useLiveUsage'
 import type { LiveStreamStatus } from '../shared/types'
 import '../styles/live-console.css'
 
@@ -136,6 +137,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
               size="compact"
               icon={<Square size={14} />}
               onClick={() => void runAction(async () => {
+                flushLiveUsage()
                 await window.luna.liveStream.stop()
                 toast.success('已停止获取画面')
               })}

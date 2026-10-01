@@ -32,9 +32,7 @@ interface SettingsPageProps {
 const SETTINGS_SECTIONS = [
   { id: 'settings-files', label: '文件与存储' },
   { id: 'settings-nas', label: 'NAS 同步' },
-  { id: 'settings-behavior', label: '应用行为' },
-  { id: 'settings-defaults', label: '编辑默认值' },
-  { id: 'settings-preview', label: '预览加速' },
+  { id: 'settings-general', label: '通用设置' },
   { id: 'settings-maintenance', label: '连接与维护' },
 ] as const
 
@@ -420,8 +418,8 @@ export function SettingsPage({
 
             <NasSyncSettings id="settings-nas" settings={settings} setSettings={setSettings} openSetup={location.state?.nasSetup === true} />
 
-            <section id="settings-behavior" className="settings-group">
-              <h2 className="settings-group-title">应用行为</h2>
+            <section id="settings-general" className="settings-group">
+              <h2 className="settings-group-title">通用设置</h2>
               <div className="settings-card">
                 <article className="settings-row">
                   <div className="settings-row-copy">
@@ -435,12 +433,6 @@ export function SettingsPage({
                     onCheckedChange={(enabled) => void saveWindowCloseBehavior(enabled)}
                   />
                 </article>
-              </div>
-            </section>
-
-            <section id="settings-defaults" className="settings-group">
-              <h2 className="settings-group-title">编辑默认值</h2>
-              <div className="settings-card">
                 <article className="settings-row">
                   <div className="settings-row-copy">
                     <span>水印</span>
@@ -448,12 +440,6 @@ export function SettingsPage({
                   </div>
                   <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
                 </article>
-              </div>
-            </section>
-
-            <section id="settings-preview" className="settings-group">
-              <h2 className="settings-group-title">预览加速</h2>
-              <div className="settings-card">
                 <article className="settings-row">
                   <div className="settings-row-copy">
                     <span>预览加速</span>

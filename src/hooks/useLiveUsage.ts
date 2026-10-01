@@ -12,46 +12,80 @@ interface Options {
   colorSignature: string
 }
 
+let flushCurrentUsage: (() => void) | null = null
+
+export function flushLiveUsage(): void {
+  flushCurrentUsage?.()
+}
+
 export function useLiveUsage(options: Options) {
   const current = useRef(options)
   current.current = options
   const lastFrame = useRef(-Infinity)
-  const recordFrame = useCallback(() => { lastFrame.current = performance.now() }, [])
+  const firstFrame = useRef<string | null>(null)
+  const recordFrame = useCallback(() => {
+    lastFrame.current = performance.now()
+    const session = current.current.session
+    if (session && firstFrame.current !== session) {
+      firstFrame.current = session
+      window.luna.trackLiveUsage({ kind: 'frame', session })
+    }
+  }, [])
   const signatures = useRef<string[] | null>(null)
+
+  const commit = useCallback(() => {
+    const view = current.current
+    if (!view.session) return
+    const next = [view.watermarkSignature, view.lutSignature, view.colorSignature]
+    const features: LiveUsageFeature[] = ['watermark', 'lut', 'color']
+    if (signatures.current) {
+      next.forEach((signature, index) => {
+        if (signatures.current?.[index] !== signature) {
+          window.luna.trackLiveUsage({ kind: 'changed', session: view.session!, feature: features[index] })
+        }
+      })
+    }
+    signatures.current = next
+  }, [])
+
+  const sendSnapshot = useCallback(() => {
+    const view = current.current
+    if (!view.session) return
+    window.luna.trackLiveUsage({
+      kind: 'snapshot', session: view.session,
+      frameRecent: view.streaming && performance.now() - lastFrame.current < 1500,
+      watermark: view.watermark, lut: view.lut, color: view.color,
+    })
+  }, [])
 
   useEffect(() => {
     lastFrame.current = -Infinity
-    signatures.current = null
-    const timer = window.setInterval(() => {
-      const view = current.current
-      if (!view.session) return
-      window.luna.trackLiveUsage({
-        kind: 'snapshot', session: view.session,
-        frameRecent: view.streaming && performance.now() - lastFrame.current < 1500,
-        watermark: view.watermark, lut: view.lut, color: view.color,
-      })
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [options.session])
+    signatures.current = [current.current.watermarkSignature, current.current.lutSignature, current.current.colorSignature]
+    const session = options.session
+    const flush = () => {
+      if (current.current.session !== session) return
+      commit()
+      sendSnapshot()
+    }
+    flushCurrentUsage = flush
+    window.addEventListener('beforeunload', flush)
+    const timer = window.setInterval(sendSnapshot, 1000)
+    return () => {
+      flush()
+      if (flushCurrentUsage === flush) flushCurrentUsage = null
+      window.removeEventListener('beforeunload', flush)
+      window.clearInterval(timer)
+    }
+  }, [options.session, commit, sendSnapshot])
 
   useEffect(() => {
-    const next = [options.watermarkSignature, options.lutSignature, options.colorSignature]
-    if (!signatures.current || !options.session) {
-      signatures.current = next
-      return
-    }
-    const session = options.session
+    if (!options.session) return
     const timer = window.setTimeout(() => {
-      const features: LiveUsageFeature[] = ['watermark', 'lut', 'color']
-      next.forEach((signature, index) => {
-        if (signatures.current?.[index] !== signature) {
-          window.luna.trackLiveUsage({ kind: 'changed', session, feature: features[index] })
-        }
-      })
-      signatures.current = next
+      commit()
+      sendSnapshot()
     }, 1000)
     return () => window.clearTimeout(timer)
-  }, [options.session, options.watermarkSignature, options.lutSignature, options.colorSignature])
+  }, [options.session, options.watermarkSignature, options.lutSignature, options.colorSignature, commit, sendSnapshot])
 
   const opened = useCallback((feature: LiveUsageFeature) => {
     const session = current.current.session

@@ -86,7 +86,7 @@ export interface DirectorLabApi {
   addLocalShot(plan: DirectorLanPlanSummary): Promise<DirectorLanPlanSummary>
   importPlan(): Promise<DirectorLanPlanSummary | null>
   importPlanText(text: string): Promise<DirectorLanPlanSummary>
-  saveLocalPlan(plan: DirectorLanPlanSummary): Promise<DirectorLanPlanSummary>
+  saveLocalPlan(plan: DirectorLanPlanSummary, expectedSignature?: string): Promise<DirectorLanPlanSummary>
   importMaterials(plan: DirectorLanPlanSummary, shotId: string): Promise<DirectorLanPlanSummary | null>
   syncMaterials(endpoint: string, planId: string): Promise<void>
   acknowledgeLocalPlan(remote: DirectorLanPlanSummary, signature: string): Promise<void>
@@ -118,6 +118,7 @@ export interface DirectorLanPlanSummary {
   source: 'remote' | 'local'
   local_directory?: string
   local_updated_at?: string
+  local_content_signature?: string
   remote_plan?: DirectorLanPlanSummary
   update_available?: boolean
   shots: DirectorLanShot[]

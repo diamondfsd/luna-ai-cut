@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { LiveUsageFeature, LiveUsageProperties } from '../../src/shared/types/liveUsage'
+import type { LiveStreamControlCapabilities } from '../../src/shared/types/liveStream'
 
 const FEATURES: LiveUsageFeature[] = ['watermark', 'lut', 'color', 'control']
 const CONTROL_TYPES = ['gimbal', 'zoom', 'focus', 'exposure', 'tracking'] as const
@@ -23,6 +24,8 @@ interface Session {
   used: Set<LiveUsageFeature>
   seconds: Record<'watermark' | 'watermark_user' | 'lut' | 'color', number>
   changes: Record<LiveUsageFeature, number>
+  controlReady: boolean
+  available: Record<ControlType, boolean | null>
   controls: Record<ControlType, { attempts: number; failures: number; actions: number; last: number }>
 }
 
@@ -63,6 +66,7 @@ export function createLiveUsageAnalytics(
       summary_sequence: current.sequence,
       summary_reason: reason,
       cumulative: true,
+      control_available: current.controlReady,
       session_seconds: Math.max(0, Math.round((timestamp - current.started) / 1000)),
       first_frame_rendered: current.firstFrame !== null,
       first_frame_ms: current.firstFrame === null ? null : Math.max(0, current.firstFrame - current.started),
@@ -77,6 +81,7 @@ export function createLiveUsageAnalytics(
       properties[`${feature}_configured_seconds`] = Math.round(duration / 1000)
     }
     for (const type of CONTROL_TYPES) {
+      properties[`${type}_available`] = current.available[type]
       properties[`${type}_send_attempts`] = current.controls[type].attempts
       properties[`${type}_send_failures`] = current.controls[type].failures
       properties[`${type}_actions`] = current.controls[type].actions
@@ -95,6 +100,8 @@ export function createLiveUsageAnalytics(
         opened: new Set(), changed: new Set(), used: new Set(),
         seconds: { watermark: 0, watermark_user: 0, lut: 0, color: 0 },
         changes: { watermark: 0, lut: 0, color: 0, control: 0 },
+        controlReady: false,
+        available: { gimbal: null, zoom: null, focus: null, exposure: null, tracking: null },
         controls: Object.fromEntries(CONTROL_TYPES.map(type => [type,
           { attempts: 0, failures: 0, actions: 0, last: -Infinity },
         ])) as Session['controls'],
@@ -104,7 +111,9 @@ export function createLiveUsageAnalytics(
       if (!session || !message || typeof message !== 'object') return
       const input = message as Record<string, unknown>
       if (input.session !== session.key) return
-      if (input.kind === 'snapshot') {
+      if (input.kind === 'frame') {
+        if (session.firstFrame === null) session.firstFrame = now()
+      } else if (input.kind === 'snapshot') {
         if (['frameRecent', 'watermark', 'lut', 'color'].some(key => typeof input[key] !== 'boolean')) return
         const timestamp = now()
         accrue(session, timestamp)
@@ -123,6 +132,19 @@ export function createLiveUsageAnalytics(
           session.changed.add(feature)
           session.changes[feature] += 1
         }
+      }
+    },
+    capabilities(key: string, ready: boolean, capabilities: LiveStreamControlCapabilities | null) {
+      if (!session || session.key !== key || !ready) return
+      session.controlReady = true
+      if (!capabilities) return
+      const available = {
+        gimbal: capabilities.gimbal.supported, zoom: capabilities.zoom.supported,
+        focus: capabilities.focus.tap, exposure: capabilities.exposure.supported,
+        tracking: capabilities.tracking.region,
+      }
+      for (const type of CONTROL_TYPES) {
+        session.available[type] = session.available[type] === true || available[type] === true
       }
     },
     control(key: string, command: string, failed: boolean) {

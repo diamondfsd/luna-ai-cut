@@ -84,6 +84,7 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
   const state = statusState(usb.state)
   const error = usb.error ?? null
+  if (activeSession) liveUsage?.capabilities(activeSession.startedAt, usb.controlReady, activeSession.capabilities)
 
   return {
     state,

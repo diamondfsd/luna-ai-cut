@@ -5,8 +5,7 @@ import './DirectorShotEditorDialog.css'
 
 export interface DirectorShotDraft {
   id: string
-  baseRevision: number
-  baseUpdatedAt: string
+  baseSignature: string
   name: string
   durationMs: number
   values: Record<string, string>
