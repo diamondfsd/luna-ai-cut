@@ -259,7 +259,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
       deviceDetectionUnavailable: unavailable,
       message: connected || this.statusValue.error
         ? this.statusValue.message
-        : detected ? '已识别 iPhone，等待 Luna 咔启动 USB 画面'
+        : detected ? '请打开Luna咔，并且用手机连接上相机设备'
           : unavailable ? DETECTION_UNAVAILABLE_MESSAGE
             : '等待 iOS 设备通过 USB 连接',
     }
@@ -293,7 +293,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
       state,
       transport: 'ios-tcp',
       message: state === 'waiting' && this.iosDeviceCount > 0 && !error
-        ? '已识别 iPhone，等待 Luna 咔启动 USB 画面'
+        ? '请打开Luna咔，并且用手机连接上相机设备'
         : state === 'waiting' && this.statusValue.deviceDetectionUnavailable && !error
           ? DETECTION_UNAVAILABLE_MESSAGE
           : message,
