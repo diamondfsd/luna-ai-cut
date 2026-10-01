@@ -42,7 +42,7 @@ async function openLivePreviewWindow(owner: BrowserWindow, aspectRatio = 16 / 9)
     y: Math.round(display.workArea.y + (display.workArea.height - size.height) / 2),
     width: size.width,
     height: size.height,
-    title: '',
+    title: 'Luna直播投屏专用窗口',
     frame: false,
     transparent: false,
     backgroundColor: '#000000',
@@ -64,6 +64,7 @@ async function openLivePreviewWindow(owner: BrowserWindow, aspectRatio = 16 / 9)
 
   livePreviewWindow = window
   livePreviewOwner = owner
+  window.on('page-title-updated', (event) => event.preventDefault())
   window.webContents.setBackgroundThrottling(false)
   window.once('closed', () => {
     const previousOwner = livePreviewOwner

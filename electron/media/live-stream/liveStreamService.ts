@@ -82,15 +82,10 @@ function statusMessage(state: LiveStreamState, usb: UsbAoaStatus): string {
 }
 
 export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
-  const initialUsb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
-  const support = process.platform === 'win32' && initialUsb.state === 'waiting' && (initialUsb.transport === 'ios-tcp' || !initialUsb.deviceLabel)
-    ? await getAppleDeviceSupportStatus() : 'not-required'
+  const appleDeviceSupport = await getAppleDeviceSupportStatus()
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
-  const appleDeviceSupport = usb.state === 'waiting' && (usb.transport === 'ios-tcp' || !usb.deviceLabel) ? support : 'not-required'
-  const driverMissing = appleDeviceSupport === 'missing' && process.arch === 'x64'
-  const usbMessage = driverMissing ? '请安装苹果设备驱动'
-    : appleDeviceSupport === 'stopped' ? '请启动苹果设备服务'
-      : usb.message
+  const usbMessage = usb.state === 'waiting' && !usb.deviceLabel && !usb.error
+    ? '等待 Android 或 iPhone 通过 USB 连接' : usb.message
   const state = statusState(usb.state)
   const error = usb.error ?? null
   if (activeSession) liveUsage?.capabilities(activeSession.startedAt, usb.controlReady, activeSession.capabilities)
@@ -121,7 +116,7 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     videoBytes: usb.videoBytes,
     lastVideoFrameAt: usb.lastVideoFrameAt,
     startedAt: activeSession?.startedAt ?? null,
-    message: error ?? statusMessage(state, usb),
+    message: error ?? statusMessage(state, { ...usb, message: usbMessage }),
     error,
   }
 }
