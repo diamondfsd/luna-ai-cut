@@ -5,7 +5,7 @@ import './AndroidUsbConnectionMode.css'
 
 export function AndroidUsbConnectionMode({ status, onChanged }: { status: LiveStreamStatus; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
-  const [fallback, setFallback] = useState<'probing' | 'connected' | 'failed' | null>(null)
+  const [fallback, setFallback] = useState<'probing' | 'failed' | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const handledFailure = useRef<string | null>(null)
   const attempt = useRef(0)
@@ -42,8 +42,8 @@ export function AndroidUsbConnectionMode({ status, onChanged }: { status: LiveSt
   useEffect(() => {
     if (fallback !== 'probing' || busy) return
     if (status.transport === 'android-adb' && status.receiverConnected) {
-      setFallback('connected')
-      setDialogOpen(true)
+      setFallback(null)
+      setDialogOpen(false)
       return
     }
     const timer = window.setTimeout(() => {
@@ -54,7 +54,10 @@ export function AndroidUsbConnectionMode({ status, onChanged }: { status: LiveSt
   }, [fallback, busy, status.transport, status.receiverConnected])
 
   useEffect(() => {
-    if (fallback === 'failed' && status.transport === 'android-adb' && status.receiverConnected) setFallback('connected')
+    if (fallback === 'failed' && status.transport === 'android-adb' && status.receiverConnected) {
+      setFallback(null)
+      setDialogOpen(false)
+    }
   }, [fallback, status.transport, status.receiverConnected])
 
   if (status.platform !== 'win32') return null
@@ -104,12 +107,10 @@ export function AndroidUsbConnectionMode({ status, onChanged }: { status: LiveSt
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title="标准连接失败"
-        description={fallback === 'connected'
-          ? '已切换到 USB 调试连接'
-          : fallback === 'probing' ? '正在尝试 USB 调试连接' : '请开启手机开发者模式和 USB 调试，允许调试并重新插线。'}
+        description={fallback === 'probing' ? '正在尝试 USB 调试连接' : '请开启手机开发者模式和 USB 调试，允许调试并重新插线。'}
         footer={<>
           <Button variant="secondary" onClick={() => setDialogOpen(false)}>关闭</Button>
-          {fallback !== 'connected' && <Button variant="primary" disabled={busy || fallback === 'probing'} onClick={() => void retryAdb()}>重试 ADB</Button>}
+          <Button variant="primary" disabled={busy || fallback === 'probing'} onClick={() => void retryAdb()}>重试 ADB</Button>
         </>}
       />
     </div>
