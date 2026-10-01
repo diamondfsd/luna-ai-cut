@@ -10,6 +10,8 @@ const source = join(root, 'resources/android-adb/win-x64')
 export function verifyAndroidAdbResources(directory = source) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   const names = Object.keys(manifest.files)
+  const required = ['adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll', 'NOTICE.txt']
+  if (names.length !== required.length || required.some((name) => !names.includes(name))) throw new Error('ADB 最小资源清单不完整')
   for (const name of readdirSync(directory)) {
     if (!names.includes(name) && name !== 'manifest.json') throw new Error(`ADB 资源未登记：${name}`)
   }

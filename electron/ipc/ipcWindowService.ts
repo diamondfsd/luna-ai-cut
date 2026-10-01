@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { LivePreviewWindowSettings, LiveWindowResolution } from '../../src/shared/types/liveStream'
 import type { IpcContext } from './context'
 import { liveWindowContentSize } from '../application/liveWindowSizing'
-import { setLiveStreamDisconnectHandler } from '../media/live-stream/liveStreamService'
+import { getLiveStreamStatus, setLiveStreamDisconnectHandler } from '../media/live-stream/liveStreamService'
 
 const attachedWindows = new WeakSet<BrowserWindow>()
 let livePreviewWindow: BrowserWindow | null = null
@@ -127,6 +127,7 @@ export function register(context: IpcContext): void {
 
     if (enabled) {
       if (resolution !== '720p') throw new Error('不支持的窗口尺寸')
+      if ((await getLiveStreamStatus()).usbState !== 'streaming') throw new Error('请先获取画面')
       await openLivePreviewWindow(owner, sourceAspectRatio)
     } else {
       closeLivePreviewWindow()
