@@ -204,12 +204,14 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         return
       }
 
+      let probeFailure: unknown = null
       for (const candidate of this.findAndroidCandidates()) {
         if (!this.running) return
         let switched: boolean
         try {
           switched = await this.switchToAccessory(candidate)
         } catch (error) {
+          probeFailure = error
           const details = usbErrorDetails(error)
           const key = JSON.stringify({ ...usbDeviceDetails(candidate), ...details })
           if (!this.failedProbeDevices.has(key)) {
@@ -229,6 +231,8 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         }
         return
       }
+
+      if (probeFailure) throw probeFailure
 
       if (this.running && this.statusValue.state !== 'error') {
         this.statusValue = {

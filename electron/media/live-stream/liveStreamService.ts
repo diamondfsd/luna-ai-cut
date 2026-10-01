@@ -67,7 +67,7 @@ export async function setAndroidConnectionMode(mode: AndroidConnectionMode): Pro
   if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('当前系统不支持此连接方式')
   if (mode !== 'aoa' && mode !== 'adb') throw new Error('不支持的手机连接方式')
   if (changingAndroidMode || operation) throw new Error('连接处理中，请稍后重试')
-  if (mode === androidConnectionMode) return getLiveStreamStatus()
+  if (mode === androidConnectionMode && (mode !== 'adb' || !activeSession || activeSession.receiver.status().controlReady)) return getLiveStreamStatus()
   const state = activeSession?.receiver.status().state
   if (activeSession?.captureStream || state === 'connected' || state === 'streaming') throw new Error('请先停止获取画面')
   changingAndroidMode = true
