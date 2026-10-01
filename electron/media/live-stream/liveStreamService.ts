@@ -259,8 +259,17 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
         session.livePreview.pushHevcFrame(frame.body)
       }
     }, () => {
-      logMainInfo('[直播流] 手机连接断开，关闭直播窗口')
-      onPhoneDisconnected()
+      const disconnectedSession = activeSession
+      if (!disconnectedSession || disconnectedSession.receiver !== receiver || disconnectedSession.state !== 'running') return
+      logMainInfo('[直播流] 手机连接断开，停止画面接收')
+      // Leave the receiver callback before stopping it, and wait for any start operation.
+      void Promise.resolve().then(async () => {
+        if (operation) await operation
+        if (activeSession !== disconnectedSession || disconnectedSession.state !== 'running') return
+        await stopLiveStream()
+      }).catch((error: unknown) => {
+        logMainWarn('[直播流] 断开后停止失败', { error: error instanceof Error ? error.message : String(error) })
+      })
     }, androidConnectionMode)
     const session: ActiveSession = {
       state: 'running',
