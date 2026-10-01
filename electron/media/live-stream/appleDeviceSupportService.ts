@@ -24,9 +24,10 @@ let supportCheck: Promise<AppleDeviceSupportState> | null = null
 let checkedAt = 0
 
 export function getAppleDeviceSupportStatus(): Promise<AppleDeviceSupportState> {
+  if (process.platform !== 'win32' || process.arch !== 'x64') return Promise.resolve('not-required')
   if (!supportCheck || Date.now() - checkedAt >= 5_000) {
-    checkedAt = Date.now()
-    supportCheck = checkAppleDeviceSupport()
+    checkedAt = Number.POSITIVE_INFINITY
+    supportCheck = checkAppleDeviceSupport().finally(() => { checkedAt = Date.now() })
   }
   return supportCheck
 }

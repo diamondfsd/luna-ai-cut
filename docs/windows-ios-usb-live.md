@@ -9,7 +9,7 @@
 ## Windows 前置条件
 
 - 使用当前源码重新构建的 Windows x64 安装包；不要继续使用缺少 `resources/ios-usb` 的旧产物。
-- 电脑安装 Apple Devices，并确保苹果设备服务正常运行。苹果驱动与设备服务不随本项目再分发，也不自动安装。
+- 电脑安装 Apple Mobile Device Support（可通过应用的“下载驱动”获取），或已有 Apple Devices 提供设备支持，并确保苹果设备服务正常运行。应用按需下载独立驱动包并打开安装向导，由用户确认安装，不静默安装。详见 `docs/windows-apple-device-support.md`。
 - 使用支持数据传输的 USB 线，解锁 iPhone 并允许信任此电脑。
 - 手机端打开 Luna 咔并启动 USB 画面。
 

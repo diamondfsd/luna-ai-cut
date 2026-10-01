@@ -105,6 +105,9 @@ interface ActiveAccessory {
   outEndpoint: usb.OutEndpoint
   generation: number
   polling: boolean
+  videoReceived: boolean
+  connectedAt: number
+  waitingLogged: boolean
   onData: (data: Buffer) => void
   onError: (error: Error) => void
   shutdown: (() => Promise<void>) | null
@@ -226,7 +229,10 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
 
   private readonly handleDetach = (device: usb.Device): void => {
     logMainWarn('[USB AOA] USB 设备已断开', usbDeviceDetails(device))
-    if (this.session?.device === device) void this.disconnectAccessory('detached')
+    const active = this.session?.device
+    if (active && active.busNumber === device.busNumber && active.deviceAddress === device.deviceAddress) {
+      void this.disconnectAccessory('detached')
+    }
   }
 
   private isAccessoryDevice(device: usb.Device): boolean {
@@ -249,6 +255,11 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   }
 
   private scan(): Promise<void> {
+    if (this.running && this.session && !this.session.videoReceived && !this.session.waitingLogged && Date.now() - this.session.connectedAt >= 10_000) {
+      this.session.waitingLogged = true
+      this.statusValue = { ...this.statusValue, message: '手机 USB 已连接，尚未收到视频' }
+      logMainWarn('[USB AOA] 连接后仍未收到视频', { ...usbDeviceDetails(this.session.device), waitingMs: Date.now() - this.session.connectedAt, pendingBytes: this.pending.length, frames: this.statusValue.frames })
+    }
     if (!this.running || this.scanning || this.session || this.disconnectTask) return Promise.resolve()
     this.scanning = true
     const task = this.runScan().finally(() => {
@@ -263,13 +274,14 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     try {
       const devices = usb.getDeviceList().map(usbDeviceDetails)
       const snapshot = JSON.stringify(devices)
-      if (snapshot !== this.deviceSnapshot) {
+      const devicesChanged = snapshot !== this.deviceSnapshot
+      if (devicesChanged) {
         this.deviceSnapshot = snapshot
         logMainInfo('[USB AOA] 当前 USB 设备', { count: devices.length, devices })
       }
       const accessory = this.findAccessory()
       if (accessory) {
-        logMainInfo('[USB AOA] 检测到配件模式设备', usbDeviceDetails(accessory))
+        if (devicesChanged) logMainInfo('[USB AOA] 检测到配件模式设备', usbDeviceDetails(accessory))
         this.statusValue = { ...this.statusValue, vendorId: accessory.deviceDescriptor.idVendor, productId: accessory.deviceDescriptor.idProduct }
         await this.connectAccessory(accessory)
         return
@@ -358,6 +370,9 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       outEndpoint,
       generation,
       polling: false,
+      videoReceived: false,
+      connectedAt: Date.now(),
+      waitingLogged: false,
       shutdown: null,
       onData: (data) => {
         if (!this.running || this.session !== session || session.generation !== this.generation) return
@@ -437,7 +452,8 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   }
 
   private handleFrame(frame: UsbMediaFrame): void {
-    if (frame.streamType === USB_STREAM_VIDEO && this.statusValue.videoFrames === 0) {
+    if (frame.streamType === USB_STREAM_VIDEO && this.session && !this.session.videoReceived) {
+      this.session.videoReceived = true
       logMainInfo('[USB AOA] 收到首个视频帧', { bytes: frame.raw.length })
     }
     const receivedAt = new Date().toISOString()
@@ -528,7 +544,12 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
 
   private fail(error: unknown): void {
     const detail = error instanceof UsbDiagnosticError ? error.message : usbFailureMessage(error)
-    logMainWarn('[USB AOA] 接收失败', { vendorId: this.statusValue.vendorId, productId: this.statusValue.productId, ...usbErrorDetails(error) })
+    const details = { vendorId: this.statusValue.vendorId, productId: this.statusValue.productId, ...usbErrorDetails(error) }
+    const key = JSON.stringify(details)
+    if (!this.failedProbeDevices.has(key)) {
+      this.failedProbeDevices.add(key)
+      logMainWarn('[USB AOA] 接收失败', details)
+    }
     this.statusValue = {
       ...this.statusValue,
       state: 'error',

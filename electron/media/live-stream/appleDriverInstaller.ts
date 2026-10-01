@@ -38,7 +38,13 @@ export class AppleDriverInstaller {
     }
     const controller = new AbortController()
     this.controller = controller
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10 * 60_000)])
+    const signal = controller.signal
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, 10 * 60_000)
+    timeout.unref()
     this.progress = { ...this.progress, state: 'downloading', completedBytes: 0 }
     const task = Promise.resolve().then(async () => {
       signal.throwIfAborted()
@@ -59,10 +65,16 @@ export class AppleDriverInstaller {
       if (error) throw new Error('无法打开安装程序，请重试')
       this.progress = { ...this.progress, state: 'opened' }
     }).catch((error: unknown) => {
+      const phase = this.progress.state
       this.progress = { ...this.progress, state: 'error' }
       this.dependencies.onError?.(error)
-      throw error
+      if (timedOut) throw new Error('驱动下载超时，请重试')
+      if (signal.aborted) throw new Error('下载已取消')
+      if (phase === 'verifying') throw new Error('驱动验证失败，请重新下载')
+      if (phase === 'opening') throw new Error('无法打开安装程序，请重试')
+      throw new Error('驱动下载失败，请重试')
     }).finally(() => {
+      clearTimeout(timeout)
       this.operation = null
       this.controller = null
     })

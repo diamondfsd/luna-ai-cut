@@ -24,8 +24,13 @@ export function usbFailureMessage(error: unknown): string {
 }
 
 export class UsbDiagnosticError extends Error {
-  constructor(readonly stage: string, readonly originalError: unknown) {
+  readonly stage: string
+  readonly originalError: unknown
+
+  constructor(stage: string, originalError: unknown) {
     super(usbFailureMessage(originalError))
+    this.stage = stage
+    this.originalError = originalError
   }
 }
 

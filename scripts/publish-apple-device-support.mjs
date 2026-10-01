@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
