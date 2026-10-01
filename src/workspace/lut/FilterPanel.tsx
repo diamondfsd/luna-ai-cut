@@ -22,11 +22,12 @@ interface FilterPanelProps {
   onIntensityChange?: (intensity: number) => void
   /** 当前素材路径（传给 FilterItem 自己加载缩略图） */
   mediaPath?: string | null
+  thumbnailFrame?: ImageData | null
   /** 搜索关键字，按 LUT 名称过滤 */
   searchKey?: string
 }
 
-export function FilterPanel({ showRestore = true, restoreLut: restoreLutConfig, restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
+export function FilterPanel({ showRestore = true, restoreLut: restoreLutConfig, restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, thumbnailFrame, searchKey }: FilterPanelProps) {
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [openCategory, setOpenCategory] = useState<string | null>(null)
@@ -327,6 +328,7 @@ export function FilterPanel({ showRestore = true, restoreLut: restoreLutConfig, 
                       deleting={deletingLutPath === lut.filePath}
                       onDelete={!lut.isBuiltin ? () => void handleDeleteLut(lut) : undefined}
                       mediaPath={mediaPath ?? null}
+                      thumbnailFrame={thumbnailFrame}
                       intensity={intensity}
                     />
                   ))}

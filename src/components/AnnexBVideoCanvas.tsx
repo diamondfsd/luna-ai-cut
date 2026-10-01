@@ -49,6 +49,7 @@ interface AnnexBVideoCanvasProps {
   onError: (message: string) => void
   onWebGpuReadyChange?: (ready: boolean) => void
   onEffectError?: (message: string) => void
+  onDecodedFrame?: (frame: CanvasImageSource, width: number, height: number) => void
 }
 
 export function AnnexBVideoCanvas({
@@ -61,6 +62,7 @@ export function AnnexBVideoCanvas({
   onError,
   onWebGpuReadyChange,
   onEffectError,
+  onDecodedFrame,
 }: AnnexBVideoCanvasProps) {
   const webGpuCanvasRef = useRef<HTMLCanvasElement>(null)
   const fallbackCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -69,6 +71,8 @@ export function AnnexBVideoCanvas({
   const lutIntensityRef = useRef(lutIntensity)
   const colorAdjustmentsRef = useRef(colorAdjustments)
   const onEffectErrorRef = useRef(onEffectError)
+  const onDecodedFrameRef = useRef(onDecodedFrame)
+  onDecodedFrameRef.current = onDecodedFrame
   const [webGpuReady, setWebGpuReady] = useState(false)
   lutPathRef.current = lutPath
   lutIntensityRef.current = lutIntensity
@@ -181,6 +185,7 @@ export function AnnexBVideoCanvas({
       }
       if (!gpuRendered && !webGpuActive) drawFallback(frame, outputSize.width, outputSize.height)
       const dimensions = outputSize
+      onDecodedFrameRef.current?.(frame as unknown as CanvasImageSource, frame.displayWidth, frame.displayHeight)
       frame.close()
       onFrame(dimensions)
     }
