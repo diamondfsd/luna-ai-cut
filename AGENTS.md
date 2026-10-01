@@ -21,6 +21,7 @@
 | `Tooltip` | 悬停提示（基于 Radix） |
 | `Dialog` | 弹窗，统一通过 `title` / `description` / `footer` / `children` 等 props 使用（基于 Radix） |
 | `Popover` | 弹出面板，含 PopoverContent / PopoverTrigger / PopoverClose（基于 Radix） |
+| `DropdownMenu` | 紧凑操作菜单，含 Trigger / Content / Item（基于 Radix），用于更多操作；禁止用宽 Popover 搭配大按钮代替菜单 |
 | `LoadingIndicator` | 加载状态指示器 |
 
 > `TextField` 已弃用，请使用 `Input variant="pill"` 替代。
