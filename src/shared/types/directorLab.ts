@@ -83,12 +83,14 @@ export interface DirectorLabApi {
   downloadPlan(request: DirectorLabDownloadPlanRequest): Promise<DirectorLabDownloadPlanResult>
   discover(): Promise<DirectorLabDiscoveryResult>
   listLocalPlans(): Promise<DirectorLanPlanSummary[]>
+  reconcilePlanDeletions(endpoint: string, remotePlanIds: string[]): Promise<string[]>
   addLocalShot(plan: DirectorLanPlanSummary, shot: DirectorLanShot): Promise<DirectorLanPlanSummary>
   importShots(plan: DirectorLanPlanSummary, text?: string): Promise<DirectorLanPlanSummary | null>
   importPlan(): Promise<DirectorLanPlanSummary | null>
   importPlanText(text: string): Promise<DirectorLanPlanSummary>
   saveLocalPlan(plan: DirectorLanPlanSummary, expectedSignature?: string): Promise<DirectorLanPlanSummary>
   importMaterials(plan: DirectorLanPlanSummary, shotId: string): Promise<DirectorLanPlanSummary | null>
+  deleteLocalMaterial(planId: string, takeId: string): Promise<DirectorLanPlanSummary>
   syncMaterials(endpoint: string, planId: string): Promise<void>
   acknowledgeLocalPlan(remote: DirectorLanPlanSummary, signature: string): Promise<void>
   prepareThumbnail(url: string): Promise<DirectorLabPreviewResult>
@@ -107,9 +109,11 @@ export interface DirectorLanPlanSummary {
   revision?: number
   synced_revision?: number
   synced_signature?: string
+  remote_origin?: string
   pending_shot_ids?: string[]
   pending_create?: boolean
   pending_take_ids?: string[]
+  deleted_local_take_ids?: string[]
   /** 属性名由计划统一定义，所有镜头共用。 */
   attributes: DirectorLanPlanAttribute[]
   shot_count: number

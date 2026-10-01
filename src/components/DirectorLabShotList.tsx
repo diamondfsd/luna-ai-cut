@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   Camera,
   CloudOff,
@@ -56,14 +56,6 @@ export function DirectorLabShotList({
   const [mutating, setMutating] = useState(false)
   const [creating, setCreating] = useState(false)
   const [detailShotId, setDetailShotId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!detailShotId) return
-    const take = plan.shots.find(shot => shot.id === detailShotId)?.takes.find(take => take.available && take.stream_url)
-    if (!take) return
-    setDetailShotId(null)
-    onOpenTake(take)
-  }, [detailShotId, plan.shots, onOpenTake])
 
   async function handleMutationError(error: unknown, fallback: string, deletingShotId?: string): Promise<void> {
     const message = error instanceof Error ? error.message : fallback
@@ -309,9 +301,9 @@ export function DirectorLabShotList({
           )
         })}
       </div>
-      <DirectorShotDetailDialog shot={plan.shots.find((shot) => shot.id === detailShotId) ?? null}
+      <DirectorShotDetailDialog key={detailShotId ?? 'closed'} shot={plan.shots.find((shot) => shot.id === detailShotId) ?? null}
         phoneConnected={phoneConnected}
-        adding={mutating} onClose={() => setDetailShotId(null)} onAddMaterials={(shot) => void addMaterials(shot)} onOpenTake={onOpenTake} />
+        plan={plan} onLocalPlanChange={onLocalPlanChange} onWriteStateChange={onWriteStateChange} onClose={() => setDetailShotId(null)} />
       <DirectorShotEditorDialog draft={shotDraft} schema={schema} saving={mutating} conflict={editConflict} creating={creating}
         onChange={setShotDraft} onClose={() => { setEditingShotId(null); setShotDraft(null) }} onSave={() => void saveShotEdit()} />
       <Dialog

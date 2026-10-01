@@ -102,9 +102,11 @@ export function manifestForPlan(
     revision: plan.revision ?? 0,
     synced_revision: plan.synced_revision ?? plan.revision ?? 0,
     synced_signature: plan.synced_signature ?? directorPlanContentSignature(plan),
+    remote_origin: plan.remote_origin,
     pending_create: plan.pending_create ?? false,
     pending_shot_ids: plan.pending_shot_ids ?? [],
     pending_take_ids: plan.pending_take_ids ?? [],
+    deleted_local_take_ids: plan.deleted_local_take_ids ?? [],
     exported_at: new Date().toISOString(),
     attributes: plan.attributes ?? DIRECTOR_PLAN_ATTRIBUTES,
     shots: plan.shots.map((shot, shotIndex) => ({
@@ -172,6 +174,7 @@ interface ExistingManifestMedia {
 }
 
 interface ExistingManifest {
+  remote_origin?: string
   format?: unknown
   plan_id?: unknown
   title?: unknown
@@ -179,6 +182,7 @@ interface ExistingManifest {
   revision?: unknown
   pending_shot_ids?: unknown
   pending_take_ids?: unknown
+  deleted_local_take_ids?: unknown
   shots?: Array<{ media?: ExistingManifestMedia[] }>
 }
 
@@ -296,6 +300,9 @@ async function reconcileLocalDirectorPlanUnlocked(
   const shots = await Promise.all(plan.shots.map(async (shot) => ({
     ...shot,
     takes: await Promise.all(shot.takes.map(async (take, takeIndex) => {
+      if (Array.isArray(existing?.deleted_local_take_ids) && existing!.deleted_local_take_ids.includes(take.id)) {
+        return { ...take, available: false, stream_url: null, download_url: null, stream_path: null, download_path: null }
+      }
       const relativePath = path.posix.join(
         mediaFolder(shot.order, shot.name).replace(/\\/g, '/'),
         mediaFileName(takeIndex + 1, take.file_name),
@@ -336,7 +343,10 @@ async function reconcileLocalDirectorPlanUnlocked(
     await fs.copyFile(manifestPath, path.join(directory, `manifest.conflict-${randomUUID()}.json`))
   }
   await writeDirectorPlanFilesUnlocked(directory, { ...plan, shots, pending_create: false,
+    remote_origin: plan.remote_origin ?? existing?.remote_origin,
     pending_shot_ids: [], pending_take_ids: [], synced_revision: plan.revision ?? 0,
+    deleted_local_take_ids: Array.isArray(existing?.deleted_local_take_ids)
+      ? existing!.deleted_local_take_ids.filter((id): id is string => typeof id === 'string') : [],
     synced_signature: directorPlanContentSignature(plan) }, { ...recoveredMetadata, ...metadata })
   return true
 }

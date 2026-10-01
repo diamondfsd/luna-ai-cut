@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { DirectorLabDownloadProgress, DirectorLanPlanSummary, DirectorLanShot, DirectorLanTake } from '../shared/types'
 import { toast } from '../ui'
 import { DirectorVideoRangeEditor } from './DirectorVideoRangeEditor'
@@ -11,7 +11,7 @@ interface DirectorMediaPreviewDialogProps {
   plan: DirectorLanPlanSummary
   onLocalPlanChange: (plan: DirectorLanPlanSummary) => void
   onWriteStateChange: (planId: string, pending: boolean) => void
-  take: DirectorLanTake
+  take: DirectorLanTake | null
   shot: DirectorLanShot
   takes: DirectorLanTake[]
   planTitle: string
@@ -29,8 +29,11 @@ function mediaPath(take: DirectorLanTake): string {
   return url.toString()
 }
 
-export function DirectorMediaPreviewDialog({ plan, onLocalPlanChange, onWriteStateChange, take, shot, takes, phoneConnected,
+export function DirectorMediaPreviewDialog({ plan, onLocalPlanChange, onWriteStateChange, take: selectedTake, shot, takes, phoneConnected,
   onSelectTake, onClose }: DirectorMediaPreviewDialogProps) {
+  const take = useMemo<DirectorLanTake>(() => selectedTake ?? { id: `empty-${shot.id}`, kind: 'photo', created_at: '',
+    file_name: shot.name, mime_type: '', size_bytes: null, available: false, selected_range: null,
+    stream_path: null, stream_url: null, download_path: null, download_url: null }, [selectedTake, shot.id, shot.name])
   const [adding, setAdding] = useState(false)
   const addMaterials = async () => {
     if (adding) return
@@ -63,7 +66,18 @@ export function DirectorMediaPreviewDialog({ plan, onLocalPlanChange, onWriteSta
       onLocalPlanChange(saved)
     } finally { onWriteStateChange(plan.id, false) }
   }
+  const deleteMaterial = async (material: DirectorLanTake) => {
+    onWriteStateChange(plan.id, true)
+    try {
+      const saved = await window.luna.directorLab.deleteLocalMaterial(plan.id, material.id)
+      onLocalPlanChange(saved)
+      if (material.id === take.id) {
+        const next = saved.shots.find(item => item.id === shot.id)?.takes.find(item => item.available && item.stream_url)
+        if (next) onSelectTake(next)
+      }
+    } finally { onWriteStateChange(plan.id, false) }
+  }
   return <DirectorVideoRangeEditor take={take} shot={shot} takes={takes} source={source}
     onSave={saveRange} onSelectTake={onSelectTake} onClose={onClose} phoneConnected={phoneConnected}
-    adding={adding} onAddMaterials={() => void addMaterials()} />
+    adding={adding} onAddMaterials={() => void addMaterials()} onDeleteMaterial={deleteMaterial} />
 }

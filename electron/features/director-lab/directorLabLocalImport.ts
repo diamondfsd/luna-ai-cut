@@ -12,12 +12,27 @@ import { directorPlanContentSignature } from '../../../src/lib/directorPlanSync'
 import { directorLocalEditHasConflict } from '../../../src/lib/directorPlanLocalEdit'
 import { validateDirectorTakeRange } from '../../../src/lib/directorTakeRange'
 import { appendDirectorLocalShots } from '../../../src/lib/directorLocalShots'
+import { deleteDirectorLocalMaterial } from './directorLabMaterialDelete'
 import { getDirectorPlanDir, getSettings } from '../../storage/fileService'
 import { lunaKaHttpClient } from '../../network/lunaka_http_client'
 import { downloadToFileWithRetry } from '../../media/fileDownloadService'
 import { mediaFileName, mediaFolder, planDirectory, serializePlanWrite, writeDirectorPlanFilesUnlocked } from './directorLabPlanStorage'
+import { reconcileDirectorPlanDeletions } from './directorLabPlanDeletion'
 
 export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLanPlanSummary[]>) {
+  ipcMain.handle('director-lab:reconcile-plan-deletions', async (_event, endpoint: string, planIds: string[]) => {
+    const root = getDirectorPlanDir(await getSettings())
+    return reconcileDirectorPlanDeletions(root, endpoint, planIds)
+  })
+  ipcMain.handle('director-lab:delete-local-material', async (_event, planId: string, takeId: string) => {
+    if (typeof planId !== 'string' || typeof takeId !== 'string') throw new Error('素材参数无效')
+    return serializePlanWrite(async () => {
+      const plan = (await listPlans()).find(item => item.id === planId)
+      if (!plan?.local_directory) throw new Error('本地计划不存在')
+      const next = await deleteDirectorLocalMaterial(plan, takeId, next => writeDirectorPlanFilesUnlocked(plan.local_directory!, next))
+      return { ...next, local_content_signature: directorPlanContentSignature(next) }
+    })
+  })
   async function importText(text: string, title = '导演计划'): Promise<DirectorLanPlanSummary> {
     if (typeof text !== 'string' || !text.trim()) throw new Error('请输入计划文本')
     if (Buffer.byteLength(text, 'utf8') > 512 * 1024) throw new Error('计划文本不能超过 512 KB')
@@ -84,6 +99,7 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
       return { ...base, shots, local_directory: current.local_directory, revision: remote.revision,
         synced_revision: remote.revision, synced_signature: directorPlanContentSignature(remote), pending_create: false,
         pending_take_ids: current.pending_take_ids,
+        deleted_local_take_ids: current.deleted_local_take_ids,
         pending_shot_ids: current.pending_shot_ids?.filter((id) => !remote.shots.some((shot) => shot.id === id)) }
     })
   })
@@ -204,7 +220,8 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
         if (!take.available || !(take.download_path || take.download_url)) continue
         const current = (await listPlans()).find((item) => item.id === planId)
         const localShot = current?.shots.find((item) => item.id === remoteShot.id)
-        if (!current?.local_directory || !localShot || current.pending_take_ids?.includes(take.id)) continue
+        if (!current?.local_directory || !localShot || current.pending_take_ids?.includes(take.id)
+          || current.deleted_local_take_ids?.includes(take.id)) continue
         const localTake = localShot.takes.find((item) => item.id === take.id)
         if (localTake?.available && localTake.stream_url?.startsWith('file:')) continue
         const remoteUrl = new URL(take.download_path ?? new URL(take.download_url!).pathname, endpoint).toString()
