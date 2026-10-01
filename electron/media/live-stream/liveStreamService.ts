@@ -18,6 +18,7 @@ import { createLiveMediaReceiver } from './mediaReceiver'
 import { LivePreviewStreamService } from './livePreviewStreamService'
 import { getAppleDeviceSupportStatus, getAppleDriverDownloadStatus } from './appleDeviceSupportService'
 import type {
+  AndroidConnectionMode,
   LiveStreamControlCapabilities,
   LiveStreamControlCommand,
   LiveStreamControlResult,
@@ -58,6 +59,32 @@ let activeSession: ActiveSession | null = null
 let operation: Promise<LiveStreamStatus> | null = null
 let lastCapturePath: string | null = null
 let liveUsage: LiveUsageAnalytics | null = null
+let onPhoneDisconnected: () => void = () => {}
+let androidConnectionMode: AndroidConnectionMode = 'aoa'
+let changingAndroidMode = false
+
+export async function setAndroidConnectionMode(mode: AndroidConnectionMode): Promise<LiveStreamStatus> {
+  if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('当前系统不支持此连接方式')
+  if (mode !== 'aoa' && mode !== 'adb') throw new Error('不支持的手机连接方式')
+  if (changingAndroidMode || operation) throw new Error('连接处理中，请稍后重试')
+  if (mode === androidConnectionMode) return getLiveStreamStatus()
+  const state = activeSession?.receiver.status().state
+  if (activeSession?.captureStream || state === 'connected' || state === 'streaming') throw new Error('请先停止获取画面')
+  changingAndroidMode = true
+  try {
+    const wasActive = Boolean(activeSession)
+    if (wasActive) await stopLiveStream()
+    androidConnectionMode = mode
+    logMainInfo('[直播流] 安卓连接方式已切换', { mode })
+    return await (wasActive ? startLiveStream() : getLiveStreamStatus())
+  } finally {
+    changingAndroidMode = false
+  }
+}
+
+export function setLiveStreamDisconnectHandler(handler: () => void): void {
+  onPhoneDisconnected = handler
+}
 
 export function setLiveUsageAnalytics(analytics: LiveUsageAnalytics): void {
   liveUsage = analytics
@@ -84,7 +111,7 @@ function statusMessage(state: LiveStreamState, usb: UsbAoaStatus): string {
 export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
   const appleDeviceSupport = await getAppleDeviceSupportStatus()
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
-  const usbMessage = usb.state === 'waiting' && !usb.deviceLabel && !usb.error
+  const usbMessage = usb.transport !== 'android-adb' && usb.state === 'waiting' && !usb.deviceLabel && !usb.error
     ? '等待 Android 或 iPhone 通过 USB 连接' : usb.message
   const state = statusState(usb.state)
   const error = usb.error ?? null
@@ -93,6 +120,7 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
   return {
     state,
     platform: process.platform,
+    androidConnectionMode,
     appleDeviceSupport,
     appleDriverDownload: getAppleDriverDownloadStatus(),
     controlReady: usb.controlReady,
@@ -230,7 +258,10 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
       if (frame.streamType === USB_STREAM_VIDEO) {
         session.livePreview.pushHevcFrame(frame.body)
       }
-    })
+    }, () => {
+      logMainInfo('[直播流] 手机连接断开，关闭直播窗口')
+      onPhoneDisconnected()
+    }, androidConnectionMode)
     const session: ActiveSession = {
       state: 'running',
       receiver,
@@ -246,7 +277,7 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
     activeSession = session
     liveUsage?.start(session.startedAt)
     receiver.start()
-    logMainInfo('[直播流] USB AOA 接收已启动')
+    logMainInfo('[直播流] 手机输入接收已启动', { androidConnectionMode })
     return getLiveStreamStatus()
   })().finally(() => {
     operation = null

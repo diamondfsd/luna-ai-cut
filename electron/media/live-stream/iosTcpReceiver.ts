@@ -45,6 +45,8 @@ function proxyBinary(): string | null {
 
 export class IosTcpReceiver implements LiveMediaReceiver {
   private readonly onFrame: (frame: UsbMediaFrame) => void
+  private readonly onDisconnected: () => void
+  private phoneConnected = false
   private readonly deviceDiscovery = new IosDeviceDiscovery()
   private statusValue: UsbAoaStatus = idleUsbStatus('iOS USB 接收器未启动', 'ios-tcp')
   private iosDeviceCount = 0
@@ -57,8 +59,9 @@ export class IosTcpReceiver implements LiveMediaReceiver {
   private pending = Buffer.alloc(0)
   private controlSequence = 0
 
-  constructor(onFrame: (frame: UsbMediaFrame) => void) {
+  constructor(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void = () => {}) {
     this.onFrame = onFrame
+    this.onDisconnected = onDisconnected
   }
 
   status(): UsbAoaStatus {
@@ -79,6 +82,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
 
   async stop(): Promise<void> {
     this.running = false
+    this.phoneConnected = false
     this.deviceDiscovery.stop()
     this.iosDeviceCount = 0
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
@@ -223,6 +227,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
     })
     socket.once('error', (error) => {
       if (!this.running || this.socket !== socket) return
+      this.notifyDisconnected()
       logMainWarn('[iOS USB] 连接失败', { error: error.message })
       this.closeSocket()
       this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', null)
@@ -230,6 +235,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
     })
     socket.once('close', () => {
       if (!this.running || this.socket !== socket) return
+      this.notifyDisconnected()
       this.closeSocket()
       this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', null)
       this.scheduleConnect(CONNECT_RETRY_MS)
@@ -247,6 +253,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
   }
 
   private applyDeviceDiscovery(result: IosDeviceDiscoveryResult): void {
+    if (result.state === 'none') this.notifyDisconnected()
     this.iosDeviceCount = result.state === 'detected' ? result.deviceCount : 0
     const connected = this.statusValue.state === 'connected' || this.statusValue.state === 'streaming'
     const detected = this.iosDeviceCount > 0
@@ -266,6 +273,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
   }
 
   private handleFrame(frame: UsbMediaFrame): void {
+    this.phoneConnected = true
     const receivedAt = new Date().toISOString()
     const isVideo = frame.streamType === 0x20
     this.statusValue = {
@@ -285,6 +293,12 @@ export class IosTcpReceiver implements LiveMediaReceiver {
       error: null,
     }
     this.onFrame(frame)
+  }
+
+  private notifyDisconnected(): void {
+    if (!this.phoneConnected) return
+    this.phoneConnected = false
+    this.onDisconnected()
   }
 
   private setStatus(state: UsbAoaStatus['state'], message: string, error: string | null): void {

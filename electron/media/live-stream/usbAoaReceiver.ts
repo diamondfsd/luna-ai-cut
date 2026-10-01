@@ -1,18 +1,15 @@
 import usb from 'usb'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
-import type {
-  LiveStreamControlCommand,
-  LiveStreamControlDelivery,
-} from '../../../src/shared/types'
+import { idleUsbStatus, encodeControlFrame, type LiveMediaReceiver, type UsbAoaStatus, type UsbControlRequest } from './usbMediaReceiver'
+export { idleUsbStatus, encodeControlFrame, controlDelivery } from './usbMediaReceiver'
+export type { LiveMediaReceiver, UsbAoaStatus, UsbAoaState, UsbControlRequest } from './usbMediaReceiver'
 import { createUsbAccessoryShutdown } from './usbAccessoryLifecycle'
 import { UsbDiagnosticError, usbDeviceDetails, usbErrorDetails, usbFailureMessage } from './usbAoaDiagnostics'
 import { switchToUsbAccessory } from './usbAoaSwitch'
 import {
   consumeFrames,
-  USB_STREAM_CONTROL_COMMAND,
   USB_STREAM_VIDEO,
-  UCD2_MAGIC,
   type UsbMediaFrame,
 } from './usbAoaProtocol'
 
@@ -30,73 +27,6 @@ const ACCESSORY_PIDS = new Set([0x2d00, 0x2d01, 0x2d04, 0x2d05, 0x2d06, 0x2d07])
 const TRANSFER_SIZE = 16 * 1024
 const SCAN_INTERVAL_MS = 1_000
 const LIBUSB_TRANSFER_TYPE_BULK = 2
-
-export type UsbControlRequest = LiveStreamControlCommand & {
-  version: 1
-  requestId: string
-  delivery: LiveStreamControlDelivery
-}
-
-export function controlDelivery(command: LiveStreamControlCommand): LiveStreamControlDelivery {
-  if (command.type === 'gimbal.move' || command.type === 'zoom.preview') return 'best-effort'
-  if (
-    command.type === 'gimbal.stop'
-    || command.type === 'gimbal.center'
-    || command.type === 'gimbal.flip'
-    || command.type === 'tracking.stop'
-  ) return 'priority'
-  return 'transactional'
-}
-
-export interface LiveMediaReceiver {
-  status(): UsbAoaStatus
-  start(): void
-  stop(): Promise<void>
-  sendControl(request: UsbControlRequest): Promise<void>
-}
-
-export function idleUsbStatus(
-  message: string,
-  transport: UsbAoaStatus['transport'] = 'usb-aoa',
-): UsbAoaStatus {
-  return {
-    state: 'idle',
-    transport,
-    message,
-    deviceLabel: null,
-    vendorId: null,
-    productId: null,
-    deviceDetectionUnavailable: false,
-    frames: 0,
-    bytes: 0,
-    lastFrameAt: null,
-    videoFrames: 0,
-    videoBytes: 0,
-    lastVideoFrameAt: null,
-    controlReady: false,
-    error: null,
-  }
-}
-
-export type UsbAoaState = 'idle' | 'waiting' | 'switching' | 'connected' | 'streaming' | 'error'
-
-export interface UsbAoaStatus {
-  state: UsbAoaState
-  transport: 'usb-aoa' | 'ios-tcp'
-  message: string
-  deviceLabel: string | null
-  vendorId: number | null
-  productId: number | null
-  deviceDetectionUnavailable: boolean
-  frames: number
-  bytes: number
-  lastFrameAt: string | null
-  videoFrames: number
-  videoBytes: number
-  lastVideoFrameAt: string | null
-  controlReady: boolean
-  error: string | null
-}
 
 interface ActiveAccessory {
   device: usb.Device
@@ -126,24 +56,9 @@ function configuredVendorIds(): Set<number> | null {
   return values.length > 0 ? new Set(values) : null
 }
 
-export function encodeControlFrame(request: UsbControlRequest, sequence: number): Buffer {
-  const body = Buffer.from(JSON.stringify(request), 'utf8')
-  const payloadLength = 9 + body.length
-  const frame = Buffer.alloc(12 + payloadLength + 4)
-  UCD2_MAGIC.copy(frame, 0)
-  frame[4] = 0x01
-  frame[5] = 0x0c
-  frame[6] = 0x01
-  frame[7] = sequence & 0xff
-  frame.writeUInt32LE(payloadLength, 8)
-  frame[12] = USB_STREAM_CONTROL_COMMAND
-  frame.writeBigUInt64LE(BigInt(Date.now()) * 1_000n, 13)
-  body.copy(frame, 21)
-  return frame
-}
-
 export class UsbAoaReceiver implements LiveMediaReceiver {
   private readonly onFrame: (frame: UsbMediaFrame) => void
+  private readonly onDisconnected: () => void
   private session: ActiveAccessory | null = null
   private generation = 0
   private running = false
@@ -158,8 +73,9 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   private deviceSnapshot = ''
   private statusValue: UsbAoaStatus = idleUsbStatus('USB AOA 接收器未启动')
 
-  constructor(onFrame: (frame: UsbMediaFrame) => void) {
+  constructor(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void = () => {}) {
     this.onFrame = onFrame
+    this.onDisconnected = onDisconnected
   }
 
   status(): UsbAoaStatus {
@@ -231,6 +147,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     logMainWarn('[USB AOA] USB 设备已断开', usbDeviceDetails(device))
     const active = this.session?.device
     if (active && active.busNumber === device.busNumber && active.deviceAddress === device.deviceAddress) {
+      this.onDisconnected()
       void this.disconnectAccessory('detached')
     }
   }
@@ -543,6 +460,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   }
 
   private fail(error: unknown): void {
+    if (this.session && /LIBUSB_ERROR_NO_DEVICE/i.test(usbErrorDetails(error).error)) this.onDisconnected()
     const detail = error instanceof UsbDiagnosticError ? error.message : usbFailureMessage(error)
     const details = { vendorId: this.statusValue.vendorId, productId: this.statusValue.productId, ...usbErrorDetails(error) }
     const key = JSON.stringify(details)
