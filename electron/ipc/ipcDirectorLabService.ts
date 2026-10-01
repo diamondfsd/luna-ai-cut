@@ -17,6 +17,7 @@ import type {
   DirectorLabProbeRequest,
 } from '../../src/shared/types'
 import { downloadToFileWithRetry } from '../media/fileDownloadService'
+import { lunaKaHttpClient } from '../network/lunaka_http_client'
 import { getDirectorPlanDir, getSettings } from '../storage/fileService'
 import { discoverDirectorServices } from '../features/director-lab/directorLabDiscovery'
 import { getFfmpegPath, getFfprobePath } from '../platform/ffmpeg/pipeline'
@@ -208,6 +209,7 @@ async function downloadPlan(
         name: take.file_name,
         bytes: take.size_bytes,
         sourceUrl: take.download_url,
+        headers: await lunaKaHttpClient.authorizationHeadersFor(take.download_url),
       }, destination)
       fileCount += 1
       completedFiles += 1
@@ -468,21 +470,27 @@ interface ProbePayload {
   }
 }
 
-function probeMediaOne(request: DirectorLabProbeRequest): Promise<DirectorLabMediaMetadata> {
+async function probeMediaOne(request: DirectorLabProbeRequest): Promise<DirectorLabMediaMetadata> {
   const cached = metadataCache.get(request.url)
-  if (cached) return Promise.resolve({ ...cached, takeId: request.takeId })
+  if (cached) return { ...cached, takeId: request.takeId }
   const active = metadataTasks.get(request.url)
   if (active) return active.then((metadata) => ({ ...metadata, takeId: request.takeId }))
 
+  const authorizationHeaders = await lunaKaHttpClient.authorizationHeadersFor(request.url)
+  const headerBlock = Object.entries(authorizationHeaders)
+    .map(([name, value]) => `${name}: ${value}\r\n`)
+    .join('')
+  const args = [
+    '-v', 'error',
+    '-rw_timeout', '15000000',
+    '-print_format', 'json',
+    '-show_streams',
+    '-show_format',
+    request.url,
+  ]
+  if (headerBlock) args.splice(args.length - 1, 0, '-headers', headerBlock)
   const task = new Promise<DirectorLabMediaMetadata>((resolve) => {
-    execFile(getFfprobePath(), [
-      '-v', 'error',
-      '-rw_timeout', '15000000',
-      '-print_format', 'json',
-      '-show_streams',
-      '-show_format',
-      request.url,
-    ], { encoding: 'utf8', timeout: 20_000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
+    execFile(getFfprobePath(), args, { encoding: 'utf8', timeout: 20_000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
       if (error) {
         resolve({
           takeId: request.takeId,
@@ -589,7 +597,11 @@ async function preparePreview(value: unknown): Promise<DirectorLabPreviewResult>
     await fs.mkdir(directory, { recursive: true })
     await fs.rm(temporaryPath, { force: true })
     try {
-      await runProcess(getFfmpegPath(), [
+      const authorizationHeaders = await lunaKaHttpClient.authorizationHeadersFor(request.url)
+      const headerBlock = Object.entries(authorizationHeaders)
+        .map(([name, value]) => `${name}: ${value}\r\n`)
+        .join('')
+      const args = [
         '-hide_banner',
         '-loglevel', 'error',
         '-i', request.url,
@@ -605,7 +617,9 @@ async function preparePreview(value: unknown): Promise<DirectorLabPreviewResult>
         '-movflags', '+faststart',
         '-y',
         temporaryPath,
-      ])
+      ]
+      if (headerBlock) args.splice(3, 0, '-headers', headerBlock)
+      await runProcess(getFfmpegPath(), args)
       await fs.rename(temporaryPath, outputPath)
     } catch (error) {
       await fs.rm(temporaryPath, { force: true })
@@ -660,6 +674,7 @@ export function register(): void {
       name: fileName,
       bytes: null,
       sourceUrl: request.url,
+      headers: await lunaKaHttpClient.authorizationHeadersFor(request.url),
     }, destination)
     sendDownloadProgress(event.sender, {
       operationId,

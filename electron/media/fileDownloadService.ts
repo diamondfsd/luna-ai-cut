@@ -175,7 +175,7 @@ function httpGet(url: string, headers: Record<string, string>, signal?: AbortSig
 }
 
 export async function downloadToFile(
-  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string },
+  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string; headers?: Record<string, string> },
   destination: string,
   onProgress?: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
   signal?: AbortSignal,
@@ -266,7 +266,11 @@ export async function downloadToFile(
   try {
     response = await httpGet(
       itemSourceUrl,
-      existingPartial > 0 ? { Range: `bytes=${existingPartial}-`, Connection: 'close' } : { Connection: 'close' },
+      {
+        Connection: 'close',
+        ...item.headers,
+        ...(existingPartial > 0 ? { Range: `bytes=${existingPartial}-` } : {}),
+      },
       signal,
     )
   } catch (error) {
@@ -331,7 +335,7 @@ export async function downloadToFile(
 }
 
 async function downloadToFileWithRetryInternal(
-  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string },
+  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string; headers?: Record<string, string> },
   destination: string,
   onProgress?: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
   signal?: AbortSignal,
@@ -359,7 +363,7 @@ function downloadTaskKey(destination: string): string {
 }
 
 export function downloadToFileWithRetry(
-  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string },
+  item: Pick<LunaFile, 'name' | 'bytes'> & { sourceUrl?: string; url?: string; headers?: Record<string, string> },
   destination: string,
   onProgress?: (progress: Omit<DownloadProgress, 'index' | 'totalFiles' | 'status'>) => void,
   signal?: AbortSignal,

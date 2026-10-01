@@ -39,6 +39,7 @@ import type { CompositionEvidence, CompositionScore } from '../compositionAnalys
 import type { WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchAiLutResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
 import type { NasRemoteFile, NasSyncEnqueueResult, NasSyncProbeResult, NasSyncStatus } from './nasSync'
 import type { DirectorLabApi } from './directorLab'
+import type { LunaKaHttpClientApi } from './lunaKaHttpClient'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -146,6 +147,7 @@ export interface WorkspaceSegmentationModelStatus {
 
 export interface LunaApi {
   isPackaged: boolean
+  lunaKaHttpClient: LunaKaHttpClientApi
   startupReady(): void
   trackPageOpened(path: string): void
   setFullScreen(enabled: boolean): Promise<void>

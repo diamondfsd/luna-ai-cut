@@ -22,6 +22,9 @@ import type {
   VideoExportSettings,
   DolbyVisionWatermarkExportRequest,
   DirectorLabDownloadRequest,
+  LunaKaChannelMessageEvent,
+  LunaKaChannelStatusEvent,
+  LunaKaHttpRequestOptions,
   CustomWatermarkAsset,
   WatermarkSettings,
   DjiBluetoothRendererEvent,
@@ -71,6 +74,26 @@ interface LunaExportTaskApi {
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   isPackaged: ipcRenderer.sendSync('app:is-packaged') === true,
+  lunaKaHttpClient: {
+    connect: (endpoint: string) => ipcRenderer.invoke('luna-ka-http-client:connect', endpoint),
+    request: <T,>(endpoint: string, requestPath: string, options?: LunaKaHttpRequestOptions) =>
+      ipcRenderer.invoke('luna-ka-http-client:request', endpoint, requestPath, options) as Promise<T>,
+    connectChannel: (endpoint: string) => ipcRenderer.invoke('luna-ka-http-client:channel:connect', endpoint),
+    sendChannelMessage: (endpoint: string, message: unknown) =>
+      ipcRenderer.invoke('luna-ka-http-client:channel:send', endpoint, message),
+    disconnectChannel: (endpoint: string) =>
+      ipcRenderer.invoke('luna-ka-http-client:channel:disconnect', endpoint),
+    onChannelMessage: (callback: (event: LunaKaChannelMessageEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: LunaKaChannelMessageEvent): void => callback(payload)
+      ipcRenderer.on('luna-ka-http-client:channel:message', listener)
+      return () => ipcRenderer.off('luna-ka-http-client:channel:message', listener)
+    },
+    onChannelStatus: (callback: (event: LunaKaChannelStatusEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: LunaKaChannelStatusEvent): void => callback(payload)
+      ipcRenderer.on('luna-ka-http-client:channel:status', listener)
+      return () => ipcRenderer.off('luna-ka-http-client:channel:status', listener)
+    },
+  },
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   trackPageOpened: (path: string) => ipcRenderer.send('usage:page-opened', path),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),

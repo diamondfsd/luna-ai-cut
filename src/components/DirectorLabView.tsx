@@ -49,9 +49,10 @@ function normalizeEndpoint(value: string): string {
 }
 
 async function requestPlans(endpoint: string): Promise<DirectorLanPlansResponse> {
-  const response = await fetch(`${endpoint}/api/v1/director/plans`, { cache: 'no-store' })
-  if (!response.ok) throw new Error(`连接失败：HTTP ${response.status}`)
-  const payload = await response.json() as DirectorLanPlansResponse
+  const payload = await window.luna.lunaKaHttpClient.request<DirectorLanPlansResponse>(
+    endpoint,
+    '/api/v1/director/plans',
+  )
   if (payload.service !== 'luna-ka-director' || !Array.isArray(payload.plans)) {
     throw new Error('手机返回的数据格式不兼容')
   }
@@ -242,6 +243,7 @@ function buildAiPrompt(
       '3. 使用计划中的 shots[].takes[]，每条 take 包含 stream_url、download_url、selected_range。',
       '4. stream_url 用于读取/播放，download_url 用于下载原文件；请求支持 HTTP Range。',
       '5. 需要整包时 GET archive_url；需要更新本地副本时，重新下载 active plan 并覆盖本地目录。',
+      '6. 服务需要手机端批准设备授权；非 Luna AI Cut 客户端须先 POST /api/v1/auth/authorize，再在 Authorization: Bearer 和 X-Luna-Client-Id 请求头中携带授权信息。',
       '',
     )
   } else if (!plan.local_directory) {
@@ -292,6 +294,10 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   const previewTake = useMemo(
     () => takes.find((take) => take.id === previewTakeId) ?? null,
     [previewTakeId, takes],
+  )
+  const previewShot = useMemo(
+    () => activePlan?.shots.find((shot) => shot.takes.some((take) => take.id === previewTakeId)) ?? null,
+    [activePlan, previewTakeId],
   )
 
   const mergePlans = useCallback((remotePlans: DirectorLanPlanSummary[]): void => {
@@ -370,12 +376,12 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   useEffect(() => {
     if (!connectedEndpoint || !activePlan) return
     let disposed = false
-    const heartbeatUrl = `${connectedEndpoint}/api/v1/director/keepalive`
     const send = (active: boolean): void => {
       if (disposed && active) return
-      void fetch(`${heartbeatUrl}?active=${active ? '1' : '0'}`, {
-        cache: 'no-store',
-      }).catch(() => undefined)
+      void window.luna.lunaKaHttpClient.request<unknown>(
+        connectedEndpoint,
+        `/api/v1/director/keepalive?active=${active ? '1' : '0'}`,
+      ).catch(() => undefined)
     }
     send(true)
     const timer = window.setInterval(() => send(true), 15_000)
@@ -854,9 +860,10 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
           </div>
         </>
       )}
-      {previewTake && activePlan && (
+      {previewTake && previewShot && activePlan && (
         <DirectorMediaPreviewDialog
           take={previewTake}
+          shot={previewShot}
           takes={takes}
           planTitle={activePlan.title}
           downloading={downloading === `take:${previewTake.id}`}
