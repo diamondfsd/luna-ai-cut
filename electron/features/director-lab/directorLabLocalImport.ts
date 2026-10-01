@@ -11,6 +11,7 @@ import { parseDirectorPlanImport } from '../../../src/lib/directorPlanImport'
 import { directorPlanContentSignature } from '../../../src/lib/directorPlanSync'
 import { directorLocalEditHasConflict } from '../../../src/lib/directorPlanLocalEdit'
 import { validateDirectorTakeRange } from '../../../src/lib/directorTakeRange'
+import { validateDirectorTakeMarkers } from '../../../src/lib/directorTakeMarkers'
 import { appendDirectorLocalShots } from '../../../src/lib/directorLocalShots'
 import { deleteDirectorLocalMaterial } from './directorLabMaterialDelete'
 import { getDirectorPlanDir, getSettings } from '../../storage/fileService'
@@ -97,6 +98,7 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
         return { ...shot, takes }
       })
       return { ...base, shots, local_directory: current.local_directory, revision: remote.revision,
+        remote_origin: remote.remote_origin ?? current.remote_origin,
         synced_revision: remote.revision, synced_signature: directorPlanContentSignature(remote), pending_create: false,
         pending_take_ids: current.pending_take_ids,
         deleted_local_take_ids: current.deleted_local_take_ids,
@@ -128,7 +130,8 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
       takes: (current.shots.find((item) => item.id === shot.id)?.takes ?? []).map(take => {
         const requested = shot.takes?.find(item => item.id === take.id)
         return requested && take.kind === 'video'
-          ? { ...take, selected_range: validateDirectorTakeRange(requested.selected_range, take.duration_ms) }
+          ? { ...take, selected_range: validateDirectorTakeRange(requested.selected_range, take.duration_ms),
+            markers: requested.markers === undefined ? take.markers ?? [] : validateDirectorTakeMarkers(requested.markers, take.duration_ms) }
           : take
       }) }))
     return { ...current, title: plan.title, shots, shot_count: shots.length,

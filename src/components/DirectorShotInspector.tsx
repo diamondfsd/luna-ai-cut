@@ -15,9 +15,10 @@ interface Props {
   onAddMaterials: () => void
   onDeleteMaterial?: (take: DirectorLanTake) => Promise<void>
   children?: ReactNode
+  markerPanel?: ReactNode
 }
 
-export function DirectorShotInspector({ shot, takes, selectedId = '', disabled, onSelect, onAddMaterials, onDeleteMaterial, children }: Props) {
+export function DirectorShotInspector({ shot, takes, selectedId = '', disabled, onSelect, onAddMaterials, onDeleteMaterial, children, markerPanel }: Props) {
   const [deleteCandidate, setDeleteCandidate] = useState<DirectorLanTake | null>(null)
   const [deleting, setDeleting] = useState(false)
   const deleteMaterial = async () => {
@@ -35,6 +36,7 @@ export function DirectorShotInspector({ shot, takes, selectedId = '', disabled, 
       <span>{field.name}</span><p>{field.description}</p>
     </section>)}
     {fields.remark && <section className="lab-viewer-shot-section"><span>备注</span><p>{fields.remark}</p></section>}
+    {markerPanel}
     <DirectorTakeList takes={takes} selectedId={selectedId} disabled={disabled || deleting} onSelect={onSelect} onAddMaterials={onAddMaterials}
       onDelete={onDeleteMaterial ? setDeleteCandidate : undefined} />
     {children}

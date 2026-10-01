@@ -1,5 +1,6 @@
 import type { DirectorLanPlanSummary } from '../shared/types'
 import { normalizeDirectorShotFields } from './directorShotFields.ts'
+import { validateDirectorTakeMarkers } from './directorTakeMarkers.ts'
 
 export const DIRECTOR_PLAN_ATTRIBUTES = [
   { id: 'content', name: '画面内容' },
@@ -26,6 +27,8 @@ function stablePlanContent(plan: DirectorLanPlanSummary) {
       name: shot.name,
       durationMs: shot.duration_ms,
       remark: shot.remark,
+      ...(shot.takes.some(take => take.markers?.length) ? { takeMarkers: shot.takes.filter(take => take.markers?.length)
+        .map(take => ({ id: take.id, markers: validateDirectorTakeMarkers(take.markers) })) } : {}),
       ...(shot.takes.some(take => take.selected_range) ? { takeRanges: shot.takes.filter(take => take.selected_range).map(take => ({ id: take.id, selectedRange: take.selected_range })) } : {}),
       attributes: shot.attributes.map((attribute) => ({
         id: attribute.id,
@@ -93,7 +96,8 @@ export function buildDirectorPlanUpdate(
     }
     return { id: shot.id, name: shot.name, duration_ms: shot.duration_ms, ...fields,
       ...(includeTakeRanges ? { take_ranges: shot.takes.filter(take => take.kind === 'video' && !plan.pending_take_ids?.includes(take.id)
-        && !plan.deleted_local_take_ids?.includes(take.id)).map(take => ({ id: take.id, selected_range: take.selected_range })) } : {}),
+        && !plan.deleted_local_take_ids?.includes(take.id)).map(take => ({ id: take.id, selected_range: take.selected_range,
+          markers: validateDirectorTakeMarkers(take.markers ?? [], take.duration_ms) })) } : {}),
     }
   })
   return {
@@ -128,7 +132,8 @@ export function overlayDirectorLocalPlan(remote: DirectorLanPlanSummary, local: 
       const index = takes.findIndex((item) => item.id === take.id)
       if (index < 0 && local.pending_take_ids?.includes(take.id)) takes.push(take)
       else if (index >= 0) takes[index] = { ...takes[index], ...(take.available && take.stream_url ? take : {}),
-        selected_range: dirty ? take.selected_range : takes[index].selected_range }
+        selected_range: dirty ? take.selected_range : takes[index].selected_range,
+        markers: dirty ? take.markers ?? [] : takes[index].markers ?? [] }
     }
     const visibleTakes = takes.map(take => local.deleted_local_take_ids?.includes(take.id)
       ? { ...take, available: false, stream_url: null, download_url: null, stream_path: null, download_path: null } : take)

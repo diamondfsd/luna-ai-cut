@@ -9,6 +9,7 @@ export function isPermanentDirectorPlanWriteError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /HTTP\s+(?:400|404|405|413|415|422|501)\b/.test(message) || message.includes('（invalid-plan-update）')
     || message.includes('手机未保存片段标记')
+    || message.includes('手机未保存亮点标签')
 }
 
 export class DirectorPlanWriteFailures {

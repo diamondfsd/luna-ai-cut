@@ -167,6 +167,13 @@ export interface DirectorPlanSchema {
   shot_fields: DirectorShotFieldDefinition[]
 }
 
+export interface DirectorTakeMarker {
+  id: string
+  start_ms: number
+  end_ms: number | null
+  text: string
+}
+
 export interface DirectorLanTake {
   id: string
   kind: 'photo' | 'video'
@@ -181,6 +188,7 @@ export interface DirectorLanTake {
   size_bytes: number | null
   available: boolean
   selected_range: { start_ms: number; end_ms: number; note?: string } | null
+  markers?: DirectorTakeMarker[]
   stream_path: string | null
   stream_url: string | null
   download_path: string | null

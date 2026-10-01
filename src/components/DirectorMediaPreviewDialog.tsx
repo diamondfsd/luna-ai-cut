@@ -5,6 +5,8 @@ import { DirectorVideoRangeEditor } from './DirectorVideoRangeEditor'
 import { directorPreviewPath } from '../lib/directorMediaSource'
 import { directorPlanWithTakeRange, type DirectorTakeRange } from '../lib/directorTakeRange'
 import { directorPlanContentSignature } from '../lib/directorPlanSync'
+import { directorPlanWithTakeMarkers } from '../lib/directorTakeMarkers'
+import type { DirectorTakeMarker } from '../shared/types/directorLab'
 import './DirectorMediaPreviewDialog.css'
 
 interface DirectorMediaPreviewDialogProps {
@@ -77,7 +79,17 @@ export function DirectorMediaPreviewDialog({ plan, onLocalPlanChange, onWriteSta
       }
     } finally { onWriteStateChange(plan.id, false) }
   }
+  const saveMarkers = async (markers: DirectorTakeMarker[]) => {
+    const expected = plan.local_content_signature ?? directorPlanContentSignature(plan)
+    const next = directorPlanWithTakeMarkers(plan, take.id, markers)
+    onWriteStateChange(plan.id, true)
+    try {
+      const saved = await window.luna.directorLab.saveLocalPlan({ ...next,
+        synced_signature: plan.synced_signature ?? directorPlanContentSignature(plan) }, expected)
+      onLocalPlanChange(saved)
+    } finally { onWriteStateChange(plan.id, false) }
+  }
   return <DirectorVideoRangeEditor take={take} shot={shot} takes={takes} source={source}
     onSave={saveRange} onSelectTake={onSelectTake} onClose={onClose} phoneConnected={phoneConnected}
-    adding={adding} onAddMaterials={() => void addMaterials()} onDeleteMaterial={deleteMaterial} />
+    adding={adding} onAddMaterials={() => void addMaterials()} onDeleteMaterial={deleteMaterial} onSaveMarkers={saveMarkers} />
 }
