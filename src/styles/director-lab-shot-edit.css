@@ -1,0 +1,344 @@
+.lab-shot-browser {
+  min-width: 0;
+}
+
+.lab-shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  align-items: stretch;
+  gap: 12px;
+  padding: 16px;
+}
+
+.lab-shot-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--parchment);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.lab-shot-row:hover {
+  border-color: rgba(0, 102, 204, 0.28);
+  background: #fff;
+}
+
+.lab-shot-row-index {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  left: 10px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  backdrop-filter: blur(10px);
+}
+
+.lab-shot-row-copy {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+
+.lab-shot-row-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+}
+
+.lab-shot-row-heading > strong {
+  min-width: 0;
+  flex: 1 1 100%;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-shot-row-heading > .ui-input {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 100%;
+}
+
+.lab-shot-status,
+.lab-shot-target,
+.lab-shot-edit-duration {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.lab-shot-status.is-complete {
+  color: var(--blue);
+}
+
+.lab-shot-status.is-missing {
+  color: #b35c00;
+}
+
+.lab-shot-target {
+  white-space: nowrap;
+}
+
+.lab-shot-edit-duration .ui-input {
+  width: 64px;
+  flex: 0 0 64px;
+  text-align: right;
+}
+
+.lab-shot-edit-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.lab-shot-attributes {
+  display: grid;
+  min-height: 34px;
+  align-content: start;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.lab-shot-attributes > p {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(40px, max-content) minmax(0, 1fr);
+  gap: 6px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.lab-shot-attributes > p > strong {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-shot-attributes > p > span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.lab-shot-attributes > small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-shot-card-media {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  overflow: hidden;
+  border: 0;
+  background: #e5e5e7;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lab-shot-card-media img,
+.lab-shot-card-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lab-shot-card-media.is-empty {
+  cursor: default;
+}
+
+.lab-shot-card-media-type {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.62);
+  padding: 3px;
+  color: #fff;
+  box-sizing: content-box;
+}
+
+.lab-shot-card-footer {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.lab-shot-card-take-count {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-shot-edit-attributes {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 3px 0;
+}
+
+.lab-shot-edit-attribute {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 5px;
+}
+
+.lab-shot-edit-attribute > .ui-input:first-child {
+  min-width: 0;
+}
+
+.lab-shot-edit-description {
+  min-height: 58px;
+  grid-column: 1 / -1;
+  padding-block: 6px;
+  resize: vertical;
+}
+
+.lab-shot-browser.is-list .lab-shot-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0 16px;
+}
+
+.lab-shot-browser.is-list .lab-shot-row {
+  display: grid;
+  min-height: 148px;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  grid-template-areas:
+    "media heading"
+    "media properties"
+    "media footer";
+  align-items: stretch;
+  column-gap: 16px;
+  row-gap: 6px;
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+  padding: 14px 0;
+}
+
+.lab-shot-browser.is-list .lab-shot-row:hover {
+  background: rgba(245, 245, 247, 0.7);
+}
+
+.lab-shot-browser.is-list .lab-shot-row-index {
+  top: 22px;
+  left: 10px;
+}
+
+.lab-shot-browser.is-list .lab-shot-row-copy {
+  display: contents;
+}
+
+.lab-shot-browser.is-list .lab-shot-row-heading {
+  grid-area: heading;
+}
+
+.lab-shot-browser.is-list .lab-shot-attributes,
+.lab-shot-browser.is-list .lab-shot-edit-attributes {
+  grid-area: properties;
+  align-content: start;
+}
+
+.lab-shot-browser.is-list .lab-shot-card-media {
+  height: 100%;
+  min-height: 120px;
+  grid-area: media;
+  border-radius: 8px;
+  aspect-ratio: auto;
+}
+
+.lab-shot-browser.is-list .lab-shot-card-footer {
+  grid-area: footer;
+}
+
+@media (max-width: 720px) {
+  .lab-shot-browser.is-list .lab-shot-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "media"
+      "heading"
+      "properties"
+      "footer";
+    row-gap: 8px;
+  }
+
+  .lab-shot-browser.is-list .lab-shot-card-media {
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+  }
+}
+
+@media (max-width: 560px) {
+  .lab-shot-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .lab-shot-row-copy {
+    padding: 9px 10px 10px;
+  }
+
+  .lab-shot-row-index {
+    top: 8px;
+    left: 8px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .lab-shot-browser.is-list .lab-shot-grid {
+    padding: 0 10px;
+  }
+}

@@ -6,7 +6,7 @@
 
 ### 共享组件清单
 
-使用 `src/ui` 组件管理所有共享控件。**所有 UI 组件默认基于 Radix 基元进行二次开发**，不使用原生 HTML 元素自制交互行为（如用 `<select>` 做下拉、用 JS 控制显隐等）。Radix 已提供的行为基元包括：Dialog、Popover、Tabs、Switch、Tooltip、Collapsible、Select 等。
+使用 `src/ui` 组件管理所有共享控件。**所有 UI 组件默认基于 Radix 基元进行二次开发**，不使用原生 HTML 元素自制交互行为（如用 `<select>` 做下拉、用 JS 控制显隐等）。Radix 已提供的行为基元包括：Dialog、Popover、Switch、Tooltip、Collapsible、Select 等。
 
 | 组件 | 说明 |
 |------|------|
@@ -21,7 +21,6 @@
 | `Tooltip` | 悬停提示（基于 Radix） |
 | `Dialog` | 弹窗，统一通过 `title` / `description` / `footer` / `children` 等 props 使用（基于 Radix） |
 | `Popover` | 弹出面板，含 PopoverContent / PopoverTrigger / PopoverClose（基于 Radix） |
-| `Tabs` / `PillTabs` | 标签切换，`PillTabs` 是药丸形预设（基于 Radix） |
 | `LoadingIndicator` | 加载状态指示器 |
 
 > `TextField` 已弃用，请使用 `Input variant="pill"` 替代。
@@ -107,27 +106,6 @@
 - `sideOffset` — 与触发元素的间距，默认 6
 - 内容面板带阴影和箭头
 - 面板头部通过 `data-popover-header` 属性启用样式
-
-### Tabs 标签
-
-- **PillTabs** — 药丸形，类似 SegmentedControl，用于紧凑筛选切换
-- **Tabs / TabsList / TabsTrigger / TabsContent** — 原始 Radix 包装，用于内容区域标签
-
-```tsx
-// 药丸形
-<PillTabs value={tab} onValueChange={setTab}
-  items={[{value:'a', label:'素材'}, {value:'b', label:'标注'}]} />
-
-// 内容区标签
-<Tabs value={tab} onValueChange={setTab}>
-  <TabsList>
-    <TabsTrigger value="a">素材</TabsTrigger>
-    <TabsTrigger value="b">标注</TabsTrigger>
-  </TabsList>
-  <TabsContent value="a">素材内容</TabsContent>
-  <TabsContent value="b">标注内容</TabsContent>
-</Tabs>
-```
 
 ### 禁止行为
 
@@ -252,7 +230,6 @@ src/
 │   ├── Input.tsx       # 输入框
 │   ├── Dialog.tsx      # 弹窗（Radix）
 │   ├── Popover.tsx     # 弹出面板（Radix）
-│   ├── Tabs.tsx        # 标签切换（Radix）
 │   ├── SegmentedControl.tsx  # 分段选择器
 │   ├── Switch.tsx      # 开关（Radix）
 │   ├── Tooltip.tsx     # 提示（Radix）

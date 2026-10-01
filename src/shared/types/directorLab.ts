@@ -3,6 +3,9 @@ export interface DirectorLabDownloadRequest {
   url: string
   fileName: string
   planTitle: string
+  plan?: DirectorLanPlanSummary
+  takeId?: string
+  metadata?: Record<string, DirectorLabMediaMetadata>
   shotOrder?: number
   shotName?: string
   takeIndex?: number
@@ -80,6 +83,7 @@ export interface DirectorLabApi {
   downloadPlan(request: DirectorLabDownloadPlanRequest): Promise<DirectorLabDownloadPlanResult>
   discover(): Promise<DirectorLabDiscoveryResult>
   listLocalPlans(): Promise<DirectorLanPlanSummary[]>
+  reconcileLocalPlan(plan: DirectorLanPlanSummary): Promise<boolean>
   onDownloadProgress(callback: (progress: DirectorLabDownloadProgress) => void): () => void
   preparePreview(request: DirectorLabPreviewRequest): Promise<DirectorLabPreviewResult>
   probeMedia(requests: DirectorLabProbeRequest[]): Promise<DirectorLabMediaMetadata[]>
@@ -90,6 +94,9 @@ export interface DirectorLanPlanSummary {
   title: string
   created_at: string
   updated_at: string
+  revision?: number
+  /** 属性名由计划统一定义，所有镜头共用。 */
+  attributes: DirectorLanPlanAttribute[]
   shot_count: number
   completed_shot_count: number
   take_count: number
@@ -105,11 +112,25 @@ export interface DirectorLanShot {
   id: string
   order: number
   name: string
-  visual_description: string
-  movement_description: string
+  attributes: DirectorLanShotAttribute[]
+  /** 镜头额外备注，不属于计划属性。 */
+  remark: string
+  visual_description?: string
+  movement_description?: string
   duration_ms: number
   completed_takes: number
   takes: DirectorLanTake[]
+}
+
+export interface DirectorLanShotAttribute {
+  id: string
+  name: string
+  description: string
+}
+
+export interface DirectorLanPlanAttribute {
+  id: string
+  name: string
 }
 
 export interface DirectorLanTake {

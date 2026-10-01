@@ -271,18 +271,12 @@ export function DirectorMediaPreviewDialog({
               <span>镜头 {shot.order}</span>
               <h3>{shot.name}</h3>
             </div>
-            {shot.visual_description.trim() && (
-              <section className="lab-viewer-shot-section">
-                <span>画面说明</span>
-                <p>{shot.visual_description}</p>
+            {shot.attributes.map((attribute) => (
+              <section className="lab-viewer-shot-section" key={attribute.id}>
+                <span>{attribute.name}</span>
+                <p>{attribute.description}</p>
               </section>
-            )}
-            {shot.movement_description.trim() && (
-              <section className="lab-viewer-shot-section">
-                <span>运镜说明</span>
-                <p>{shot.movement_description}</p>
-              </section>
-            )}
+            ))}
             {shot.duration_ms > 0 && (
               <div className="lab-viewer-shot-duration">
                 <Clock3 size={14} />

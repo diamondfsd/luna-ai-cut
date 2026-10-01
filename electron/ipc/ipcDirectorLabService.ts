@@ -20,24 +20,21 @@ import { downloadToFileWithRetry } from '../media/fileDownloadService'
 import { lunaKaHttpClient } from '../network/lunaka_http_client'
 import { getDirectorPlanDir, getSettings } from '../storage/fileService'
 import { discoverDirectorServices } from '../features/director-lab/directorLabDiscovery'
+import {
+  legacyShotAttribute,
+  mediaFileName,
+  mediaFolder,
+  planDirectory,
+  planWithDownloadedTake,
+  reconcileLocalDirectorPlan,
+  safePathPart,
+  writeDirectorPlanFiles,
+} from '../features/director-lab/directorLabPlanStorage'
 import { getFfmpegPath, getFfprobePath } from '../platform/ffmpeg/pipeline'
 
 const previewTasks = new Map<string, Promise<DirectorLabPreviewResult>>()
 const metadataCache = new Map<string, DirectorLabMediaMetadata>()
 const metadataTasks = new Map<string, Promise<DirectorLabMediaMetadata>>()
-
-function safePathPart(value: string, fallback: string): string {
-  const normalized = path.basename(value.trim())
-    .split('')
-    .map((character) => {
-      const code = character.charCodeAt(0)
-      return code < 32 || /[<>:"/\\|?*]/.test(character) ? '_' : character
-    })
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return normalized && normalized !== '.' && normalized !== '..' ? normalized : fallback
-}
 
 function validateRequest(value: unknown): DirectorLabDownloadRequest {
   if (!value || typeof value !== 'object') throw new Error('下载参数无效')
@@ -49,11 +46,28 @@ function validateRequest(value: unknown): DirectorLabDownloadRequest {
     throw new Error('文件名无效')
   }
   if (typeof request.planTitle !== 'string') throw new Error('计划名称无效')
+  const planRequest = request.plan
+    ? validateDownloadPlanRequest({ plan: request.plan, metadata: request.metadata })
+    : null
+  if (planRequest && planRequest.plan.title !== request.planTitle) {
+    throw new Error('计划名称与素材不匹配')
+  }
+  if (planRequest && (typeof request.takeId !== 'string' || !request.takeId.trim())) {
+    throw new Error('素材标识无效')
+  }
+  if (planRequest && !planRequest.plan.shots.some((shot) => shot.takes.some((take) => take.id === request.takeId))) {
+    throw new Error('素材不属于当前计划')
+  }
   return {
     operationId: typeof request.operationId === 'string' ? request.operationId : undefined,
     url: request.url,
     fileName: request.fileName,
     planTitle: request.planTitle,
+    ...(planRequest ? {
+      plan: planRequest.plan,
+      takeId: request.takeId,
+      metadata: planRequest.metadata,
+    } : {}),
     shotOrder: typeof request.shotOrder === 'number' ? request.shotOrder : undefined,
     shotName: typeof request.shotName === 'string' ? request.shotName : undefined,
     takeIndex: typeof request.takeIndex === 'number' ? request.takeIndex : undefined,
@@ -84,90 +98,6 @@ function sendDownloadProgress(
   progress: DirectorLabDownloadProgress,
 ): void {
   if (!sender.isDestroyed()) sender.send('director-lab:download-progress', progress)
-}
-
-function mediaFolder(shotOrder: number, shotName: string): string {
-  return path.join(
-    'media',
-    `${String(shotOrder).padStart(2, '0')}_${safePathPart(shotName, 'shot')}`,
-  )
-}
-
-function mediaFileName(takeIndex: number, fileName: string): string {
-  return `${String(takeIndex).padStart(2, '0')}_${safePathPart(fileName, 'media')}`
-}
-
-function planDirectory(planTitle: string): string {
-  return safePathPart(planTitle, '导演计划')
-}
-
-function readmeForPlan(plan: DirectorLabDownloadPlanRequest['plan']): string {
-  const lines = [
-    `# ${plan.title}`,
-    '',
-    '拍摄计划素材包',
-    '视频选取范围记录在 manifest.json 中，单位为毫秒；原始视频不会被裁剪或转码。',
-    '',
-    '## 镜头清单',
-  ]
-  plan.shots.forEach((shot, shotIndex) => {
-    lines.push(
-      '',
-      `### ${shotIndex + 1}. ${shot.name}`,
-      '',
-      `- 画面说明：${shot.visual_description.trim() || '未填写'}`,
-      `- 建议时长：${Math.round(shot.duration_ms / 1000)} 秒`,
-      `- 运镜说明：${shot.movement_description.trim() || '未填写'}`,
-    )
-    if (shot.takes.length === 0) lines.push('- 素材：暂无')
-    shot.takes.forEach((take, takeIndex) => {
-      const folder = mediaFolder(shot.order, shot.name)
-      const relativePath = path.posix.join(folder.replace(/\\/g, '/'), mediaFileName(takeIndex + 1, take.file_name))
-      lines.push(`- 素材 ${takeIndex + 1}（${take.kind === 'video' ? '视频' : '照片'}）：${take.available ? relativePath : '文件缺失'}`)
-      if (take.selected_range) {
-        lines.push(`- 选取范围：${take.selected_range.start_ms} - ${take.selected_range.end_ms} ms`)
-      }
-    })
-  })
-  return `${lines.join('\n')}\n`
-}
-
-function manifestForPlan(
-  plan: DirectorLabDownloadPlanRequest['plan'],
-  metadata: Record<string, DirectorLabMediaMetadata> = {},
-): string {
-  return JSON.stringify({
-    format: 'luna-director-plan-v1',
-    plan_id: plan.id,
-    title: plan.title,
-    created_at: plan.created_at,
-    updated_at: plan.updated_at,
-    exported_at: new Date().toISOString(),
-    shots: plan.shots.map((shot, shotIndex) => ({
-      id: shot.id,
-      order: shotIndex + 1,
-      name: shot.name,
-      visual_description: shot.visual_description,
-      objective: shot.visual_description,
-      duration_ms: shot.duration_ms,
-      movement_description: shot.movement_description,
-      media: shot.takes.map((take, takeIndex) => ({
-        id: take.id,
-        type: take.kind,
-        created_at: take.created_at,
-        captured_at: metadata[take.id]?.capturedAt ?? take.captured_at ?? null,
-        duration_ms: metadata[take.id]?.durationMs ?? take.duration_ms ?? null,
-        width: metadata[take.id]?.width ?? take.width ?? null,
-        height: metadata[take.id]?.height ?? take.height ?? null,
-        codec: metadata[take.id]?.codec ?? take.codec ?? null,
-        path: take.available
-          ? path.posix.join(mediaFolder(shot.order, shot.name).replace(/\\/g, '/'), mediaFileName(takeIndex + 1, take.file_name))
-          : null,
-        available: take.available,
-        selected_range: take.selected_range,
-      })),
-    })),
-  }, null, 2)
 }
 
 async function downloadPlan(
@@ -234,10 +164,7 @@ async function downloadPlan(
     totalFiles: media.length,
     percent: 100,
   })
-  await Promise.all([
-    fs.writeFile(path.join(directory, 'README.md'), readmeForPlan(plan), 'utf8'),
-    fs.writeFile(path.join(directory, 'manifest.json'), manifestForPlan(plan, metadata), 'utf8'),
-  ])
+  await writeDirectorPlanFiles(directory, plan, metadata)
   sendDownloadProgress(sender, {
     operationId,
     planId: plan.id,
@@ -296,6 +223,7 @@ interface LocalManifestShot {
   id?: unknown
   name?: unknown
   order?: unknown
+  attributes?: unknown
   visual_description?: unknown
   movement_description?: unknown
   duration_ms?: unknown
@@ -308,6 +236,7 @@ interface LocalManifest {
   title?: unknown
   created_at?: unknown
   updated_at?: unknown
+  revision?: unknown
   shots?: unknown
 }
 
@@ -341,10 +270,19 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
         const available = absolutePath ? await fileExists(absolutePath) : false
         const fileUrl = available && absolutePath ? pathToFileURL(absolutePath).toString() : null
         const fileName = absolutePath ? path.basename(absolutePath) : `${shot.id ?? shotIndex}-${takeIndex}`
-        const durationMs = typeof item.duration_ms === 'number' ? item.duration_ms : null
-        const width = typeof item.width === 'number' ? item.width : null
-        const height = typeof item.height === 'number' ? item.height : null
-        const capturedAt = typeof item.captured_at === 'string' ? item.captured_at : null
+        const durationMs = typeof item.duration_ms === 'number' && Number.isFinite(item.duration_ms) && item.duration_ms > 0
+          ? item.duration_ms
+          : null
+        const width = typeof item.width === 'number' && Number.isFinite(item.width) && item.width > 0
+          ? item.width
+          : null
+        const height = typeof item.height === 'number' && Number.isFinite(item.height) && item.height > 0
+          ? item.height
+          : null
+        const capturedAt = typeof item.captured_at === 'string'
+          && Number.isFinite(Date.parse(item.captured_at))
+          ? item.captured_at
+          : null
         const needsProbe = available && item.type === 'video' && fileUrl && (
           durationMs == null || capturedAt == null || width == null || height == null
         )
@@ -400,12 +338,47 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
           download_url: fileUrl,
         }
       }))
+      const attributes = Array.isArray(shot.attributes)
+        ? shot.attributes
+            .filter((attribute): attribute is Record<string, unknown> =>
+              !!attribute && typeof attribute === 'object')
+            .filter((attribute) => typeof attribute.name === 'string' && attribute.name.trim())
+            .map((attribute, attributeIndex) => ({
+              id: typeof attribute.id === 'string' && attribute.id
+                ? attribute.id
+                : `${shot.id ?? shotIndex}-attribute-${attributeIndex}`,
+              name: (attribute.name as string).trim(),
+              description: typeof attribute.description === 'string' ? attribute.description : '',
+            }))
+        : [
+            ...(typeof shot.visual_description === 'string' && shot.visual_description.trim()
+              ? [{
+                  id: `${shot.id ?? shotIndex}-legacy-visual`,
+                  name: '画面说明',
+                  description: shot.visual_description,
+                }]
+              : []),
+            ...(typeof shot.movement_description === 'string' && shot.movement_description.trim()
+              ? [{
+                  id: `${shot.id ?? shotIndex}-legacy-movement`,
+                  name: '运镜说明',
+                  description: shot.movement_description,
+                }]
+              : []),
+          ]
       return {
         id: typeof shot.id === 'string' ? shot.id : `local-shot-${shotIndex}`,
         order: typeof shot.order === 'number' ? shot.order : shotIndex + 1,
         name: typeof shot.name === 'string' ? shot.name : `镜头 ${shotIndex + 1}`,
-        visual_description: typeof shot.visual_description === 'string' ? shot.visual_description : '',
-        movement_description: typeof shot.movement_description === 'string' ? shot.movement_description : '',
+        attributes,
+        visual_description: legacyShotAttribute(
+          { attributes },
+          ['画面说明', '画面', '目标', '拍摄目标'],
+        ),
+        movement_description: legacyShotAttribute(
+          { attributes },
+          ['运镜说明', '运镜', '相机运动'],
+        ),
         duration_ms: typeof shot.duration_ms === 'number' ? shot.duration_ms : 5000,
         completed_takes: takes.filter((take) => take.available).length,
         takes,
@@ -425,6 +398,9 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
         : typeof raw.created_at === 'string'
           ? raw.created_at
           : new Date(0).toISOString(),
+      revision: typeof raw.revision === 'number' && Number.isSafeInteger(raw.revision)
+        ? raw.revision
+        : 0,
       shot_count: shots.length,
       completed_shot_count: shots.filter((shot) => shot.takes.some((take) => take.available)).length,
       take_count: shots.reduce((total, shot) => total + shot.takes.length, 0),
@@ -506,9 +482,21 @@ async function probeMediaOne(request: DirectorLabProbeRequest): Promise<Director
       try {
         const payload = JSON.parse(stdout) as ProbePayload
         const video = payload.streams?.find((stream) => stream.codec_type === 'video')
-        const durationSeconds = Number(video?.duration ?? payload.format?.duration)
-        const creationTime = video?.tags?.creation_time ?? payload.format?.tags?.creation_time ?? null
-        const parsedCreationTime = creationTime ? new Date(creationTime) : null
+        const durationSeconds = [video?.duration, payload.format?.duration]
+          .map(Number)
+          .find((value) => Number.isFinite(value) && value > 0) ?? 0
+        const creationTimes = [
+          video?.tags?.creation_time,
+          video?.tags?.['com.apple.quicktime.creationdate'],
+          video?.tags?.creationdate,
+          payload.format?.tags?.creation_time,
+          payload.format?.tags?.['com.apple.quicktime.creationdate'],
+          payload.format?.tags?.creationdate,
+        ]
+        const parsedCreationTime = creationTimes
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .map((value) => new Date(value))
+          .find((date) => !Number.isNaN(date.getTime())) ?? null
         resolve({
           takeId: request.takeId,
           durationMs: Number.isFinite(durationSeconds) && durationSeconds > 0
@@ -643,6 +631,11 @@ export function register(): void {
   })
   ipcMain.handle('director-lab:discover', () => discoverDirectorServices())
   ipcMain.handle('director-lab:list-local-plans', () => listLocalPlans())
+  ipcMain.handle('director-lab:reconcile-local-plan', async (_event, value: unknown) => {
+    const { plan, metadata = {} } = validateDownloadPlanRequest({ plan: value })
+    const settings = await getSettings()
+    return reconcileLocalDirectorPlan(getDirectorPlanDir(settings), plan, metadata)
+  })
   ipcMain.handle('director-lab:prepare-preview', (_event, value: unknown) => preparePreview(value))
   ipcMain.handle('director-lab:probe-media', (_event, value: unknown) => probeMedia(value))
   ipcMain.handle('director-lab:download-plan', (event, value: unknown) => downloadPlan(value, event.sender))
@@ -651,9 +644,13 @@ export function register(): void {
     const operationId = request.operationId ?? `take-${Date.now()}`
     const settings = await getSettings()
     const fileName = safePathPart(request.fileName, 'director-media')
-    const shotOrder = Math.max(1, Math.round(request.shotOrder ?? 1))
-    const shotName = request.shotName ?? 'shot'
-    const takeIndex = Math.max(1, Math.round(request.takeIndex ?? 1))
+    const planEntry = request.plan && request.takeId
+      ? request.plan.shots.flatMap((shot) => shot.takes.map((take, index) => ({ shot, take, index })))
+        .find((entry) => entry.take.id === request.takeId)
+      : null
+    const shotOrder = Math.max(1, Math.round(planEntry?.shot.order ?? request.shotOrder ?? 1))
+    const shotName = planEntry?.shot.name ?? request.shotName ?? 'shot'
+    const takeIndex = (planEntry?.index ?? Math.max(0, Math.round((request.takeIndex ?? 1) - 1))) + 1
     const directory = path.join(
       getDirectorPlanDir(settings),
       planDirectory(request.planTitle),
@@ -676,6 +673,11 @@ export function register(): void {
       sourceUrl: request.url,
       headers: await lunaKaHttpClient.authorizationHeadersFor(request.url),
     }, destination)
+    if (request.plan && request.takeId) {
+      const localPlan = planWithDownloadedTake(request.plan, request.takeId)
+      const planPath = path.join(getDirectorPlanDir(settings), planDirectory(localPlan.title))
+      await writeDirectorPlanFiles(planPath, localPlan, request.metadata)
+    }
     sendDownloadProgress(event.sender, {
       operationId,
       planId: request.planTitle,

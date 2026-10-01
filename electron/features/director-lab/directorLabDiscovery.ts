@@ -12,13 +12,16 @@ const DISCOVERY_PORT = 47822
 const HTTP_PORT = 47821
 const DISCOVERY_REQUEST = 'luna-ka-api.discover.v1'
 const LEGACY_DISCOVERY_REQUEST = 'luna-ka-director.discover.v1'
-const DISCOVERY_TIMEOUT_MS = 1_200
-const SUBNET_SCAN_TIMEOUT_MS = 280
+const DISCOVERY_TIMEOUT_MS = 1_800
+const DISCOVERY_RETRY_INTERVAL_MS = 350
+const SUBNET_SCAN_TIMEOUT_MS = 800
 const SUBNET_SCAN_CONCURRENCY = 48
+const SUBNET_SCAN_MAX_HOSTS = 4_096
 
 interface Ipv4Network {
   address: string
   broadcast: string
+  netmask: string
 }
 
 interface DiscoveryPayload {
@@ -55,6 +58,7 @@ function localNetworks(): Ipv4Network[] {
       networks.set(entry.address, {
         address: entry.address,
         broadcast: intToIpv4((address | (~netmask >>> 0)) >>> 0),
+        netmask: entry.netmask,
       })
     }
   }
@@ -94,12 +98,15 @@ function discoverUdp(): Promise<DirectorLabDiscoveredService[]> {
     const socket = dgram.createSocket('udp4')
     const services = new Map<string, DirectorLabDiscoveredService>()
     let timer: ReturnType<typeof setTimeout> | null = null
+    let retryTimer: ReturnType<typeof setInterval> | null = null
     let finished = false
+    let lastSocketError = ''
 
     const finish = (): void => {
       if (finished) return
       finished = true
       if (timer) clearTimeout(timer)
+      if (retryTimer) clearInterval(retryTimer)
       try {
         socket.close()
       } catch {
@@ -114,15 +121,37 @@ function discoverUdp(): Promise<DirectorLabDiscoveredService[]> {
       const service = serviceFromPayload(payload, remote.address, 'udp')
       if (service) services.set(service.id, service)
     })
-    socket.on('error', finish)
+    socket.on('error', (error) => {
+      const errorMessage = error.message
+      if (errorMessage === lastSocketError) return
+      lastSocketError = errorMessage
+      console.warn('[director-lab] UDP discovery socket error', error)
+    })
     socket.bind(0, () => {
       try {
         socket.setBroadcast(true)
         const targets = new Set(['255.255.255.255', ...localNetworks().map((network) => network.broadcast)])
-        for (const target of targets) {
-          socket.send(DISCOVERY_REQUEST, DISCOVERY_PORT, target)
-          socket.send(LEGACY_DISCOVERY_REQUEST, DISCOVERY_PORT, target)
+        console.info('[director-lab] sending UDP discovery', {
+          targets: [...targets],
+          retryIntervalMs: DISCOVERY_RETRY_INTERVAL_MS,
+          timeoutMs: DISCOVERY_TIMEOUT_MS,
+        })
+        const sendDiscovery = (): void => {
+          for (const target of targets) {
+            for (const request of [DISCOVERY_REQUEST, LEGACY_DISCOVERY_REQUEST]) {
+              try {
+                socket.send(request, DISCOVERY_PORT, target)
+              } catch (error) {
+                console.warn('[director-lab] UDP discovery send failed', {
+                  target,
+                  error,
+                })
+              }
+            }
+          }
         }
+        sendDiscovery()
+        retryTimer = setInterval(sendDiscovery, DISCOVERY_RETRY_INTERVAL_MS)
         timer = setTimeout(finish, DISCOVERY_TIMEOUT_MS)
       } catch {
         finish()
@@ -162,16 +191,32 @@ async function scanSubnets(): Promise<{ services: DirectorLabDiscoveredService[]
   const ownAddresses = new Set(interfaces.map((network) => network.address))
   const hosts = new Set<string>()
   for (const network of interfaces) {
-    const parts = network.address.split('.')
-    if (parts.length !== 4) continue
-    const prefix = `${parts[0]}.${parts[1]}.${parts[2]}`
-    for (let host = 1; host <= 254; host += 1) {
-      const candidate = `${prefix}.${host}`
+    const address = ipv4ToInt(network.address)
+    const netmask = ipv4ToInt(network.netmask)
+    const broadcast = ipv4ToInt(network.broadcast)
+    if (address == null || netmask == null || broadcast == null) continue
+    const firstHost = ((address & netmask) >>> 0) + 1
+    const lastHost = broadcast - 1
+    const hostCount = lastHost - firstHost + 1
+    if (hostCount <= 0) continue
+
+    const scanCount = Math.min(hostCount, SUBNET_SCAN_MAX_HOSTS)
+    const scanStart = Math.max(
+      firstHost,
+      Math.min(address - Math.floor(scanCount / 2), lastHost - scanCount + 1),
+    )
+    for (let host = scanStart; host < scanStart + scanCount; host += 1) {
+      const candidate = intToIpv4(host >>> 0)
       if (!ownAddresses.has(candidate)) hosts.add(candidate)
     }
   }
 
   const candidates = [...hosts]
+  console.info('[director-lab] scanning local IPv4 ranges', {
+    interfaces: interfaces.map(({ address, broadcast, netmask }) => ({ address, broadcast, netmask })),
+    hostCount: candidates.length,
+    timeoutPerHostMs: SUBNET_SCAN_TIMEOUT_MS,
+  })
   const services = new Map<string, DirectorLabDiscoveredService>()
   let cursor = 0
   const workers = Array.from({ length: Math.min(SUBNET_SCAN_CONCURRENCY, candidates.length) }, async () => {
@@ -196,7 +241,12 @@ export async function discoverDirectorServices(): Promise<DirectorLabDiscoveryRe
     }
   }
 
+  console.info('[director-lab] UDP discovery found no responders; scanning local subnets')
   const subnet = await scanSubnets()
+  console.info('[director-lab] subnet scan completed', {
+    scannedHostCount: subnet.scannedHostCount,
+    serviceCount: subnet.services.length,
+  })
   return {
     services: subnet.services.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
     udpResponderCount: 0,

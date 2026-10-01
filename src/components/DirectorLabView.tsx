@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
+  ArrowRight,
   Box,
   CalendarDays,
   Camera,
@@ -10,24 +11,29 @@ import {
   FolderSync,
   FolderDown,
   FolderOpen,
-  Link2,
-  RadioTower,
+  ListFilter,
+  Pencil,
   RefreshCw,
+  Save,
+  Search,
   WandSparkles,
+  X,
 } from 'lucide-react'
 
 import type {
-  DirectorLabDiscoveredService,
   DirectorLabDownloadProgress,
   DirectorLabMediaMetadata,
+  DirectorLanPlanAttribute,
   DirectorLanPlanSummary,
   DirectorLanPlansResponse,
+  DirectorLanShot,
   DirectorLanTake,
 } from '../shared/types'
-import { Button, IconButton, Input, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, ButtonGroup, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '../ui'
 import { formatBytes } from '../lib/format'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
+import { DirectorLabShotList } from './DirectorLabShotList'
 
 interface DirectorLabViewProps {
   onBack: () => void
@@ -82,20 +88,92 @@ function normalizePlanUrls(
   return {
     ...payload,
     plans: payload.plans
-      .map((plan) => ({
-        ...plan,
-        source: 'remote' as const,
-        archive_url: normalizeServiceUrl(endpoint, plan.archive_url) ?? plan.archive_url,
-        shots: plan.shots.map((shot) => ({
-          ...shot,
-          takes: shot.takes.map((take) => ({
-            ...take,
-            stream_url: normalizeServiceUrl(endpoint, take.stream_url),
-            download_url: normalizeServiceUrl(endpoint, take.download_url),
-          })),
-        })),
-      }))
+      .map((plan) => normalizeRemotePlan(plan, endpoint))
       .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)),
+  }
+}
+
+function normalizePlanAttributeDefinitions(
+  plan: DirectorLanPlanSummary,
+): DirectorLanPlanAttribute[] {
+  const candidate = plan as DirectorLanPlanSummary & { attribute_definitions?: unknown }
+  const rawDefinitions = Array.isArray(candidate.attributes)
+    ? candidate.attributes
+    : Array.isArray(candidate.attribute_definitions)
+      ? candidate.attribute_definitions
+      : []
+  const definitions = rawDefinitions
+    .filter((attribute): attribute is { id?: unknown; name: unknown } =>
+      !!attribute
+      && typeof attribute === 'object'
+      && typeof attribute.name === 'string'
+      && attribute.name.trim().length > 0)
+    .map((attribute, index) => ({
+      id: typeof attribute.id === 'string' && attribute.id
+        ? attribute.id
+        : `${plan.id}-attribute-${index}`,
+      name: attribute.name.trim(),
+    }))
+  if (definitions.length > 0) return definitions
+
+  const firstLegacyShot = plan.shots.find((shot) => Array.isArray(shot.attributes))
+  return (firstLegacyShot?.attributes ?? [])
+    .filter((attribute) => attribute.name.trim())
+    .map((attribute, index) => ({
+      id: attribute.id || `${plan.id}-attribute-${index}`,
+      name: attribute.name.trim(),
+    }))
+}
+
+function legacyShotDescriptions(shot: DirectorLanShot): Map<string, string> {
+  const descriptions = new Map<string, string>()
+  if (Array.isArray(shot.attributes)) {
+    for (const attribute of shot.attributes) {
+      if (attribute.name?.trim()) {
+        descriptions.set(attribute.name.trim(), attribute.description?.trim() ?? '')
+        if (attribute.id) descriptions.set(attribute.id, attribute.description?.trim() ?? '')
+      }
+    }
+  }
+  const legacy: Array<{ name: string; description?: string }> = [
+    { name: '画面说明', description: shot.visual_description },
+    { name: '运镜说明', description: shot.movement_description },
+  ]
+  for (const attribute of legacy) {
+    if (attribute.description?.trim() && !descriptions.has(attribute.name)) {
+      descriptions.set(attribute.name, attribute.description.trim())
+    }
+  }
+  return descriptions
+}
+
+function normalizeRemotePlan(
+  plan: DirectorLanPlanSummary,
+  endpoint: string,
+): DirectorLanPlanSummary {
+  const attributes = normalizePlanAttributeDefinitions(plan)
+  return {
+    ...plan,
+    source: 'remote' as const,
+    attributes,
+    archive_url: normalizeServiceUrl(endpoint, plan.archive_url) ?? plan.archive_url,
+    shots: plan.shots.map((shot) => {
+      const descriptions = legacyShotDescriptions(shot)
+      return {
+        ...shot,
+        attributes: attributes.map((attribute) => ({
+          id: attribute.id,
+          name: attribute.name,
+          description: descriptions.get(attribute.id) ?? descriptions.get(attribute.name) ?? '',
+        })),
+        remark: typeof shot.remark === 'string' ? shot.remark : '',
+        takes: shot.takes.map((take) => ({
+          ...take,
+          stream_url: normalizeServiceUrl(endpoint, take.stream_url),
+          download_url: normalizeServiceUrl(endpoint, take.download_url),
+        })),
+      }
+    }),
   }
 }
 
@@ -262,25 +340,28 @@ function buildAiPrompt(
 }
 
 export function DirectorLabView({ onBack }: DirectorLabViewProps) {
-  const [endpoint, setEndpoint] = useState(() => localStorage.getItem(ENDPOINT_STORAGE_KEY) ?? '')
   const [connectedEndpoint, setConnectedEndpoint] = useState<string | null>(null)
   const [plans, setPlans] = useState<DirectorLanPlanSummary[]>([])
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
+  const [directorView, setDirectorView] = useState('shots')
+  const [shotQuery, setShotQuery] = useState('')
+  const [shotSort, setShotSort] = useState('order')
+  const [editingPlanTitle, setEditingPlanTitle] = useState(false)
+  const [planTitleDraft, setPlanTitleDraft] = useState('')
+  const [planTitleBaseRevision, setPlanTitleBaseRevision] = useState(0)
+  const [savingPlanTitle, setSavingPlanTitle] = useState(false)
   const [activeTakeId, setActiveTakeId] = useState<string | null>(null)
   const [previewTakeId, setPreviewTakeId] = useState<string | null>(null)
-  const [discovered, setDiscovered] = useState<DirectorLabDiscoveredService[]>([])
-  const [discovering, setDiscovering] = useState(false)
-  const [scanSummary, setScanSummary] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState<DirectorLabDownloadProgress | null>(null)
   const [mediaMetadata, setMediaMetadata] = useState<Record<string, DirectorLabMediaMetadata>>({})
   const [metadataLoading, setMetadataLoading] = useState(false)
   const metadataRequestRef = useRef(0)
+  const pendingWritePlanIdsRef = useRef(new Set<string>())
 
   const activePlan = useMemo(
-    () => plans.find((plan) => plan.id === activePlanId) ?? plans[0] ?? null,
+    () => plans.find((plan) => plan.id === activePlanId) ?? null,
     [activePlanId, plans],
   )
   const takes = useMemo(
@@ -299,28 +380,65 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     () => activePlan?.shots.find((shot) => shot.takes.some((take) => take.id === previewTakeId)) ?? null,
     [activePlan, previewTakeId],
   )
+  const planShotCount = activePlan?.shots.length ?? 0
+  const availableShotCount = activePlan?.shots.filter((shot) =>
+    shot.takes.some((take) => take.available)).length ?? 0
+  const availableTakeCount = takes.filter((take) => take.available).length
+  const missingTakeCount = takes.length - availableTakeCount
+  const visibleShots = useMemo(() => {
+    const query = shotQuery.trim().toLocaleLowerCase()
+    const filtered = (activePlan?.shots ?? []).filter((shot) => {
+      if (!query) return true
+      const values = [
+        shot.name,
+        ...shot.attributes.flatMap((attribute) => [attribute.name, attribute.description]),
+        ...shot.takes.map((take) => take.file_name),
+      ]
+      return values.some((value) => value.toLocaleLowerCase().includes(query))
+    })
+    if (shotSort === 'name') {
+      return [...filtered].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+    }
+    if (shotSort === 'takes') {
+      return [...filtered].sort((left, right) => right.takes.length - left.takes.length || left.order - right.order)
+    }
+    return [...filtered].sort((left, right) => left.order - right.order)
+  }, [activePlan, shotQuery, shotSort])
 
   const mergePlans = useCallback((remotePlans: DirectorLanPlanSummary[]): void => {
     setPlans((current) => {
-      const remoteById = new Map(remotePlans.map((plan) => [plan.id, plan]))
-      const local = current
-        .filter((plan) => plan.source === 'local')
-        .map((plan) => {
-          const remote = remoteById.get(plan.id)
-          return remote
-            ? {
-                ...plan,
-                remote_plan: remote,
-                update_available: Date.parse(remote.updated_at) > Date.parse(plan.updated_at),
-              }
-            : plan
-        })
-      const localIds = new Set(local.map((plan) => plan.id))
+      const localById = new Map(
+        current.filter((plan) => plan.source === 'local').map((plan) => [plan.id, plan]),
+      )
+      const remoteIds = new Set(remotePlans.map((plan) => plan.id))
+      const mergedRemote = remotePlans.map((remote) => {
+        const local = localById.get(remote.id)
+        return local
+          ? {
+              ...remote,
+              local_directory: local.local_directory,
+              update_available: (remote.revision ?? 0) > (local.revision ?? 0)
+                || Date.parse(remote.updated_at) > Date.parse(local.updated_at),
+            }
+          : remote
+      })
       return [
-        ...local,
-        ...remotePlans.filter((plan) => !localIds.has(plan.id)),
+        ...mergedRemote,
+        ...current.filter((plan) => plan.source === 'local' && !remoteIds.has(plan.id)),
       ].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))
     })
+  }, [])
+
+  const refreshRemotePlans = useCallback(async (): Promise<DirectorLanPlanSummary[]> => {
+    if (!connectedEndpoint) return []
+    const payload = await requestPlans(connectedEndpoint)
+    mergePlans(payload.plans)
+    return payload.plans
+  }, [connectedEndpoint, mergePlans])
+
+  const setPlanWritePending = useCallback((planId: string, pending: boolean): void => {
+    if (pending) pendingWritePlanIdsRef.current.add(planId)
+    else pendingWritePlanIdsRef.current.delete(planId)
   }, [])
 
   useEffect(() => window.luna.directorLab.onDownloadProgress(setDownloadProgress), [])
@@ -332,6 +450,30 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     } catch {
       return []
     }
+  }, [])
+
+  const mergeLocalPlanCopies = useCallback((local: DirectorLanPlanSummary[]): void => {
+    setPlans((current) => {
+      const remoteById = new Map(
+        current.filter((plan) => plan.source === 'remote').map((plan) => [plan.id, plan]),
+      )
+      const localIds = new Set(local.map((plan) => plan.id))
+      const mergedLocal = local.map((localPlan) => {
+        const remote = remoteById.get(localPlan.id)
+        return remote
+          ? {
+              ...remote,
+              local_directory: localPlan.local_directory,
+              update_available: (remote.revision ?? 0) > (localPlan.revision ?? 0)
+                || Date.parse(remote.updated_at) > Date.parse(localPlan.updated_at),
+            }
+          : localPlan
+      })
+      return [
+        ...mergedLocal,
+        ...current.filter((plan) => plan.source === 'remote' && !localIds.has(plan.id)),
+      ].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))
+    })
   }, [])
 
   useEffect(() => {
@@ -392,63 +534,81 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     }
   }, [activePlan, connectedEndpoint])
 
-  const loadPlans = useCallback(async (value: string, notify = true): Promise<boolean> => {
+  useEffect(() => {
+    if (!connectedEndpoint) return
+    let disposed = false
+    const unsubscribe = window.luna.lunaKaHttpClient.onChannelMessage((event) => {
+      if (event.endpoint !== new URL(connectedEndpoint).origin || disposed) return
+      const message = event.message as {
+        type?: unknown
+        name?: unknown
+        payload?: { plan_id?: unknown }
+      } | null
+      if (
+        message?.type !== 'event'
+        || (message.name !== 'director.plan.updated' && message.name !== 'director.plan.deleted')
+      ) return
+      const planId = message.payload?.plan_id
+      if (typeof planId === 'string' && pendingWritePlanIdsRef.current.has(planId)) return
+      if (message.name === 'director.plan.deleted') {
+        setActivePlanId((current) => current === planId ? null : current)
+      }
+      void requestPlans(connectedEndpoint)
+        .then((payload) => {
+          if (!disposed) mergePlans(payload.plans)
+        })
+        .catch(() => undefined)
+    })
+    void window.luna.lunaKaHttpClient.connectChannel(connectedEndpoint).catch(() => undefined)
+    return () => {
+      disposed = true
+      unsubscribe()
+      void window.luna.lunaKaHttpClient.disconnectChannel(connectedEndpoint).catch(() => undefined)
+    }
+  }, [connectedEndpoint, mergePlans])
+
+  const loadPlans = useCallback(async (value: string): Promise<boolean> => {
     let normalized: string
     try {
       normalized = normalizeEndpoint(value)
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } catch {
       return false
     }
 
     setLoading(true)
-    setError(null)
     try {
       const payload = await requestPlans(normalized)
       mergePlans(payload.plans)
+      void Promise.all(payload.plans.map((plan) => window.luna.directorLab.reconcileLocalPlan(plan)))
+        .then(async (reconciled) => {
+          if (reconciled.some(Boolean)) mergeLocalPlanCopies(await refreshLocalPlans())
+        })
+        .catch(() => undefined)
       setConnectedEndpoint(normalized)
-      setEndpoint(normalized)
       setActivePlanId((current) => payload.plans.some((plan) => plan.id === current)
         ? current
-        : payload.plans[0]?.id ?? null)
+        : null)
       localStorage.setItem(ENDPOINT_STORAGE_KEY, normalized)
-      if (notify) toast.success(`已连接，发现 ${payload.plans.length} 个导演计划`)
       return true
-    } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : String(nextError)
+    } catch {
       setConnectedEndpoint(null)
-      setError(message)
-      if (notify) toast.error(message)
       return false
     } finally {
       setLoading(false)
     }
-  }, [mergePlans])
+  }, [mergeLocalPlanCopies, mergePlans, refreshLocalPlans])
 
-  const discover = useCallback(async (notify = true): Promise<void> => {
-    setDiscovering(true)
-    setError(null)
-    setScanSummary(null)
+  const discover = useCallback(async (): Promise<boolean> => {
+    setLoading(true)
     try {
       const result = await window.luna.directorLab.discover()
-      setDiscovered(result.services)
-      if (result.udpResponderCount > 0) {
-        setScanSummary(`UDP 发现 ${result.udpResponderCount} 台设备`)
-      } else if (result.scannedHostCount > 0) {
-        setScanSummary(`已扫描 ${result.scannedHostCount} 个地址`)
-      }
-      if (result.services.length === 1) {
-        await loadPlans(result.services[0].baseUrl, false)
-        if (notify) toast.success(`已发现 ${result.services[0].name}`)
-      } else if (result.services.length === 0 && notify) {
-        toast.error('没有发现运行导演服务的手机')
-      }
-    } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : String(nextError)
-      setError(message)
-      if (notify) toast.error(message)
+      return result.services.length > 0
+        ? loadPlans(result.services[0].baseUrl)
+        : false
+    } catch {
+      return false
     } finally {
-      setDiscovering(false)
+      setLoading(false)
     }
   }, [loadPlans])
 
@@ -456,15 +616,14 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     void refreshLocalPlans().then((local) => {
       if (local.length > 0) {
         setPlans(local)
-        setActivePlanId((current) => current ?? local[0]?.id ?? null)
       }
       const saved = localStorage.getItem(ENDPOINT_STORAGE_KEY)
       if (saved) {
-        void loadPlans(saved, false).then((connected) => {
-          if (!connected && local.length === 0) void discover(false)
+        void loadPlans(saved).then((connected) => {
+          if (!connected) void discover()
         })
-      } else if (local.length === 0) {
-        void discover(false)
+      } else {
+        void discover()
       }
     })
   }, [discover, loadPlans, refreshLocalPlans])
@@ -474,7 +633,13 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     url: string | null,
     fileName: string,
     planTitle: string,
-    context?: { shotOrder: number; shotName: string; takeIndex: number },
+    context?: {
+      shotOrder: number
+      shotName: string
+      takeIndex: number
+      takeId: string
+      plan: DirectorLanPlanSummary
+    },
   ): Promise<void> {
     if (!url) {
       toast.error('素材文件不可用')
@@ -488,9 +653,15 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
         url,
         fileName,
         planTitle,
+        metadata: mediaMetadata,
         ...context,
       })
       toast.success(`已保存 ${result.fileName}`)
+      if (context) {
+        void refreshLocalPlans().then((local) => {
+          if (local.length > 0) mergeLocalPlanCopies(local)
+        })
+      }
     } catch (nextError) {
       toast.error(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
@@ -509,13 +680,7 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
       })
       toast.success(`已保存 ${result.fileCount} 个原素材到文件夹`)
       const local = await refreshLocalPlans()
-      setPlans((current) => {
-        const localIds = new Set(local.map((item) => item.id))
-        return [
-          ...local,
-          ...current.filter((item) => item.source === 'remote' && !localIds.has(item.id)),
-        ]
-      })
+      mergeLocalPlanCopies(local)
     } catch (nextError) {
       toast.error(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
@@ -530,6 +695,79 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
       toast.success('已复制完整 AI 提示词')
     } catch (nextError) {
       toast.error(nextError instanceof Error ? nextError.message : '复制失败')
+    }
+  }
+
+  function beginPlanTitleEdit(): void {
+    if (!activePlan) return
+    setPlanTitleDraft(activePlan.title)
+    setPlanTitleBaseRevision(activePlan.revision ?? 0)
+    setEditingPlanTitle(true)
+  }
+
+  async function savePlanTitleEdit(): Promise<void> {
+    if (
+      !activePlan
+      || activePlan.source !== 'remote'
+      || !connectedEndpoint
+      || !planTitleDraft.trim()
+    ) return
+    if (planTitleDraft.trim().length > 120) {
+      toast.error('计划名称不能超过 120 个字符')
+      return
+    }
+    if (planTitleDraft.trim() === activePlan.title) {
+      setEditingPlanTitle(false)
+      return
+    }
+    setSavingPlanTitle(true)
+    setPlanWritePending(activePlan.id, true)
+    try {
+      await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(
+        connectedEndpoint,
+        `/api/v1/director/plans/${encodeURIComponent(activePlan.id)}`,
+        {
+          method: 'PATCH',
+          body: {
+            expected_revision: planTitleBaseRevision,
+            title: planTitleDraft.trim(),
+            shots: activePlan.shots.map((shot) => ({
+              id: shot.id,
+              name: shot.name,
+              duration_ms: shot.duration_ms,
+              attributes: shot.attributes.map((attribute) => ({
+                id: attribute.id,
+                name: attribute.name,
+                description: attribute.description,
+              })),
+            })),
+          },
+        },
+      )
+      setEditingPlanTitle(false)
+      toast.success('计划名称已保存')
+      void refreshRemotePlans().catch(() => undefined)
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : String(nextError)
+      if (message.includes('HTTP 409') || message.includes('其他端修改')) {
+        try {
+          const latest = await refreshRemotePlans()
+          const revision = latest.find((plan) => plan.id === activePlan.id)?.revision
+          if (revision != null) {
+            setPlanTitleBaseRevision(revision)
+            toast.error('计划已在其他端修改，再次保存以应用新名称')
+          } else {
+            toast.error('版本冲突，远端刷新失败')
+          }
+        } catch {
+          toast.error('版本冲突，远端刷新失败')
+        }
+      } else {
+        toast.error(message)
+      }
+    } finally {
+      setPlanWritePending(activePlan.id, false)
+      setSavingPlanTitle(false)
     }
   }
 
@@ -558,160 +796,189 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   }
 
   return (
-    <div className="lab-page">
-      <header className="lab-header">
+    <div className="lab-page lab-director-page">
+      <header className="lab-director-page-header">
         <div className="lab-title-block">
-          <Button
-            variant="ghost"
-            size="compact"
-            icon={<ArrowLeft size={15} />}
-            onClick={onBack}
-          >
-            实验室
-          </Button>
+          <Tooltip content="返回实验室">
+            <IconButton
+              variant="ghost"
+              size="compact"
+              icon={<ArrowLeft size={15} />}
+              aria-label="返回实验室"
+              onClick={onBack}
+            />
+          </Tooltip>
           <h1>导演计划</h1>
         </div>
-        <div className="lab-connection">
-          <Button
-            variant="primary"
-            size="compact"
-            icon={<RadioTower size={15} />}
-            disabled={discovering}
-            onClick={() => void discover()}
-          >
-            {discovering ? '扫描中' : '自动发现'}
-          </Button>
-          <Input
-            aria-label="手机地址"
-            variant="compact"
-            icon={<Link2 size={15} />}
-            fullWidth
-            value={endpoint}
-            placeholder="也可输入 192.168.1.20:47821"
-            onChange={(event) => setEndpoint(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void loadPlans(endpoint)
-            }}
-          />
-          <Button
-            variant="secondary"
-            size="compact"
-            disabled={loading}
-            onClick={() => void loadPlans(endpoint)}
-          >
-            {loading ? '连接中' : '连接'}
-          </Button>
-          {connectedEndpoint && (
-            <Tooltip content="刷新导演计划">
-              <IconButton
-                variant="outline"
-                size="compact"
-                icon={<RefreshCw size={15} />}
-                aria-label="刷新导演计划"
-                disabled={loading}
-                onClick={() => void loadPlans(connectedEndpoint, false)}
-              />
-            </Tooltip>
-          )}
-        </div>
+        {connectedEndpoint && (
+          <Tooltip content="刷新导演计划">
+            <IconButton
+              variant="outline"
+              size="compact"
+              icon={<RefreshCw size={15} />}
+              aria-label="刷新导演计划"
+              disabled={loading}
+              onClick={() => void loadPlans(connectedEndpoint)}
+            />
+          </Tooltip>
+        )}
       </header>
 
-      {(discovering || discovered.length > 1 || scanSummary) && !connectedEndpoint && (
-        <section className="lab-discovery">
-          <div className="lab-discovery-heading">
-            <span className="lab-eyebrow">DEVICES</span>
-            <strong>{discovering ? '正在查找手机' : scanSummary ?? '发现的设备'}</strong>
-          </div>
-          {discovering ? (
-            <LoadingIndicator label="UDP 广播优先，失败后将扫描本机网段" />
-          ) : discovered.length > 0 ? (
-            <div className="lab-device-list">
-              {discovered.map((service) => (
-                <button
-                  key={service.id}
-                  className="lab-device-item"
-                  type="button"
-                  onClick={() => void loadPlans(service.baseUrl)}
-                >
-                  <span className="lab-device-icon"><RadioTower size={17} /></span>
-                  <span>
-                    <strong>{service.name}</strong>
-                    <small>{service.host}:{service.port} · {service.discoveryMethod === 'udp' ? 'UDP' : '网段扫描'}</small>
-                  </span>
-                </button>
-              ))}
+      {loading && plans.length === 0 && (
+        <div className="lab-director-state">
+          <LoadingIndicator label="正在同步导演计划" />
+        </div>
+      )}
+
+      {!loading && plans.length === 0 && (
+        <div className="lab-director-state">
+          <Box size={24} />
+          <strong>暂无导演计划</strong>
+        </div>
+      )}
+
+      {!activePlan && plans.length > 0 && (
+        <section className="lab-plan-shell lab-plan-list-shell">
+          <header className="lab-plan-list-header">
+            <div>
+              <strong>全部计划</strong>
+              <span>{plans.length} 个计划</span>
             </div>
-          ) : null}
+          </header>
+          <div className="lab-plan-list">
+            {plans.map((plan) => {
+              const availableShots = plan.shots.filter((shot) =>
+                shot.takes.some((take) => take.available)).length
+              return (
+                <button
+                  key={plan.id}
+                  className="lab-plan-list-item"
+                  type="button"
+                  onClick={() => {
+                    setActivePlanId(plan.id)
+                    setDirectorView('shots')
+                    setEditingPlanTitle(false)
+                  }}
+                >
+                  <span className="lab-plan-list-icon"><Film size={18} /></span>
+                  <span className="lab-plan-list-copy">
+                    <strong>{plan.title}</strong>
+                    <small>更新于 {formatPlanCreatedAt(plan.updated_at)}</small>
+                  </span>
+                  <span className="lab-plan-list-progress">
+                    <strong>{availableShots}/{plan.shot_count}</strong>
+                    <small>已有素材</small>
+                  </span>
+                  <span className="lab-plan-list-meta">
+                    <span>{plan.take_count} 段素材</span>
+                    {plan.local_directory && <span>本地副本</span>}
+                    {plan.update_available && <span>副本待更新</span>}
+                  </span>
+                  <ArrowRight size={16} />
+                </button>
+              )
+            })}
+          </div>
         </section>
       )}
 
-      {!connectedEndpoint && !discovering && plans.length === 0 && (
-        <div className="lab-empty">
-          {error ? <CloudOff size={24} /> : <RadioTower size={24} />}
-          <strong>{error ? '无法连接手机' : '等待连接手机'}</strong>
-          <span>{error ?? '点击自动发现，或手动输入手机局域网地址'}</span>
-        </div>
-      )}
-
-      {connectedEndpoint && loading && plans.length === 0 && (
-        <div className="lab-empty">
-          <LoadingIndicator label="正在读取导演计划" />
-        </div>
-      )}
-
-      {connectedEndpoint && !loading && plans.length === 0 && (
-        <div className="lab-empty">
-          <Box size={24} />
-          <strong>还没有导演计划</strong>
-          <span>在手机端创建并拍摄后刷新</span>
-        </div>
-      )}
-
       {activePlan && (
-        <>
-          <div className="lab-director-heading">
-            <div>
-              <span className="lab-eyebrow">PLANS</span>
-              <h2>{activePlan.title}</h2>
-              <small className="lab-plan-created">
-                创建于 {formatPlanCreatedAt(activePlan.created_at)} · 更新于 {formatPlanCreatedAt(activePlan.updated_at)}
-              </small>
+        <section className="lab-plan-shell">
+          <header className="lab-plan-header">
+            <div className="lab-plan-heading-main">
+              <div className="lab-plan-title-row">
+                <Tooltip content="返回计划列表">
+                  <IconButton
+                    variant="ghost"
+                    size="compact"
+                    icon={<ArrowLeft size={15} />}
+                    aria-label="返回计划列表"
+                    onClick={() => {
+                      setActivePlanId(null)
+                      setEditingPlanTitle(false)
+                      setPreviewTakeId(null)
+                    }}
+                  />
+                </Tooltip>
+                {editingPlanTitle ? (
+                  <Input
+                    aria-label="计划名称"
+                    variant="compact"
+                    className="lab-plan-title-input"
+                    value={planTitleDraft}
+                    maxLength={120}
+                    onChange={(event) => setPlanTitleDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') void savePlanTitleEdit()
+                      if (event.key === 'Escape') setEditingPlanTitle(false)
+                    }}
+                  />
+                ) : <h2>{activePlan.title}</h2>}
+                {connectedEndpoint && (
+                  editingPlanTitle ? (
+                    <>
+                      <Tooltip content="保存计划名称">
+                        <IconButton
+                          variant="outline"
+                          size="compact"
+                          icon={<Save size={14} />}
+                          aria-label="保存计划名称"
+                          disabled={savingPlanTitle || !planTitleDraft.trim()}
+                          onClick={() => void savePlanTitleEdit()}
+                        />
+                      </Tooltip>
+                      <Tooltip content="取消重命名">
+                        <IconButton
+                          variant="ghost"
+                          size="compact"
+                          icon={<X size={14} />}
+                          aria-label="取消重命名"
+                          disabled={savingPlanTitle}
+                          onClick={() => setEditingPlanTitle(false)}
+                        />
+                      </Tooltip>
+                    </>
+                  ) : (
+                    <Tooltip content="重命名计划">
+                      <IconButton
+                        variant="ghost"
+                        size="compact"
+                        icon={<Pencil size={14} />}
+                        aria-label="重命名计划"
+                        onClick={beginPlanTitleEdit}
+                      />
+                    </Tooltip>
+                  )
+                )}
+              </div>
+              <span className="lab-plan-meta">
+                创建于 {formatPlanCreatedAt(activePlan.created_at)} · {activePlan.shot_count} 个镜头 · {activePlan.take_count} 段素材
+              </span>
             </div>
             <div className="lab-director-actions">
-              <span className="lab-plan-summary">
-                {activePlan.shot_count} 个镜头 · {activePlan.take_count} 段素材
-              </span>
-              {activePlan.source === 'local' ? (
-                <>
-                  <Button
-                    variant="secondary"
-                    size="compact"
-                    icon={<FolderOpen size={15} />}
-                    onClick={() => void openLocalPlanDirectory()}
-                  >
-                    打开文件夹
-                  </Button>
-                  {activePlan.update_available && (
-                    <Button
-                      variant="primary"
-                      size="compact"
-                      icon={<FolderDown size={15} />}
-                      disabled={downloading != null}
-                      onClick={() => void downloadPlan(activePlan.remote_plan ?? activePlan)}
-                    >
-                      {downloading === `plan:${activePlan.id}` ? '更新中' : '更新本地版本'}
-                    </Button>
-                  )}
-                </>
-              ) : (
+              {activePlan.local_directory && (
                 <Button
                   variant="secondary"
+                  size="compact"
+                  icon={<FolderOpen size={15} />}
+                  onClick={() => void openLocalPlanDirectory()}
+                >
+                  打开本地副本
+                </Button>
+              )}
+              {connectedEndpoint && (!activePlan.local_directory || activePlan.update_available) && (
+                <Button
+                  variant={activePlan.update_available ? 'primary' : 'secondary'}
                   size="compact"
                   icon={<FolderDown size={15} />}
                   disabled={downloading != null}
                   onClick={() => void downloadPlan(activePlan)}
                 >
-                  {downloading === `plan:${activePlan.id}` ? '下载中' : '下载到文件夹'}
+                  {downloading === `plan:${activePlan.id}`
+                    ? '下载中'
+                    : activePlan.update_available
+                      ? '更新本地副本'
+                      : '下载到文件夹'}
                 </Button>
               )}
               <Button
@@ -724,11 +991,11 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
               </Button>
               {activePlan.update_available && (
                 <span className="lab-update-badge">
-                  <FolderSync size={13} /> 手机上有新版本
+                  <FolderSync size={13} /> 本地副本待更新
                 </span>
               )}
             </div>
-          </div>
+          </header>
           {downloadProgress && (downloadProgress.phase !== 'done' || downloading != null) && (
             <div className="lab-download-progress">
               <span>{downloadProgress.currentFile ?? '正在准备素材'}</span>
@@ -736,129 +1003,193 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
               <div><i style={{ width: `${downloadProgress.percent}%` }} /></div>
             </div>
           )}
-          <div className="lab-director-body">
-            <aside className="lab-plan-list">
-              {plans.map((plan) => {
-                const progress = plan.shot_count > 0
-                  ? Math.round(plan.completed_shot_count / plan.shot_count * 100)
-                  : 0
-                return (
-                  <button
-                    key={plan.id}
-                    className={`lab-plan-item${plan.id === activePlan.id ? ' active' : ''}`}
-                    type="button"
-                    onClick={() => setActivePlanId(plan.id)}
-                  >
-                    <span className="lab-plan-item-icon"><Film size={17} /></span>
-                    <span className="lab-plan-item-copy">
-                      <strong>{plan.title}</strong>
-                      <small>
-                        {plan.source === 'local' ? '本地' : '手机'} · {formatPlanCreatedAt(plan.created_at)} · {plan.shot_count} 镜头 · {plan.take_count} 素材
-                      </small>
-                      {plan.update_available && <em>有更新</em>}
-                    </span>
-                    <span className="lab-plan-progress">{progress}%</span>
-                  </button>
-                )
-              })}
-            </aside>
-
-            <div className="lab-shot-board">
-              {activePlan.shots.map((shot) => {
-                const stats = shotMetadata(shot, mediaMetadata)
-                return (
-                  <section className="lab-shot" key={shot.id}>
-                    <header>
-                      <span>{String(shot.order).padStart(2, '0')}</span>
-                      <div>
-                        <strong>{shot.name}</strong>
-                        <small>计划 {(shot.duration_ms / 1000).toFixed(1)} 秒 · {shot.takes.length} 段素材</small>
-                      </div>
-                    </header>
-                    <div className="lab-shot-stats">
-                      <span>
-                        <CalendarDays size={13} />
-                        创建 {formatMediaTime(stats.createdAt)}
-                      </span>
-                      <span>
-                        <Camera size={13} />
-                        拍摄 {formatMediaTime(stats.capturedAt)}
-                      </span>
-                      <span>
-                        <Clock3 size={13} />
-                        时长 {stats.metadataPending && metadataLoading
-                          ? '读取中'
-                          : formatDurationMs(stats.durationMs)}
-                      </span>
-                      {stats.resolution && <span className="lab-shot-resolution">{stats.resolution}</span>}
-                    </div>
-                    {shot.visual_description && <p>{shot.visual_description}</p>}
-                    {shot.takes.length > 0 ? (
-                      <div className="lab-take-grid">
-                        {shot.takes.map((take, index) => {
-                          const takeDetails = takeMetadata(take, mediaMetadata)
-                          return (
-                            <ContextMenu key={take.id}>
-                              <ContextMenuTrigger asChild>
-                                <button
-                                  className={`lab-take-card${take.id === activeTake?.id ? ' active' : ''}`}
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveTakeId(take.id)
-                                    setPreviewTakeId(take.id)
-                                  }}
-                                >
-                                  <span className="lab-take-media">
-                                    {take.available && take.stream_url ? (
-                                      take.kind === 'video' ? (
-                                        <video src={take.stream_url} muted preload="metadata" />
-                                      ) : (
-                                        <img src={take.stream_url} alt="" loading="lazy" />
-                                      )
-                                    ) : (
-                                      <CloudOff size={20} />
-                                    )}
-                                  </span>
-                                  <span className="lab-take-copy">
-                                    <strong>{takeLabel(take, index)}</strong>
-                                    <small>
-                                      {take.kind === 'video'
-                                        ? formatDurationMs(takeDetails?.durationMs)
-                                        : '照片'}
-                                      {' · '}
-                                      {take.size_bytes ? formatBytes(take.size_bytes) : '文件缺失'}
-                                    </small>
-                                    <small>
-                                      {takeDetails?.capturedAt
-                                        ? `拍摄 ${formatMediaTime(takeDetails.capturedAt)}`
-                                        : `创建 ${formatMediaTime(take.created_at)}`}
-                                    </small>
-                                  </span>
-                                  <span className="lab-take-open">查看</span>
-                                </button>
-                              </ContextMenuTrigger>
-                              <ContextMenuContent>
-                                <ContextMenuItem onSelect={() => void openTakeFile(take)} disabled={!take.stream_path || /^https?:\/\//i.test(take.stream_path)}>
-                                  打开文件
-                                </ContextMenuItem>
-                                <ContextMenuItem onSelect={() => void openTakeDirectory(take)} disabled={!take.available}>
-                                  打开所在文件夹
-                                </ContextMenuItem>
-                              </ContextMenuContent>
-                            </ContextMenu>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div className="lab-shot-empty">暂无素材</div>
-                    )}
-                  </section>
-                )
-              })}
+          <section className="lab-director-progress" aria-label="拍摄进度">
+            <div className="lab-director-progress-copy">
+              <strong>{availableShotCount}/{planShotCount} 个镜头已有素材</strong>
+              <span>
+                {missingTakeCount > 0
+                  ? `${availableTakeCount} 段可用 · ${missingTakeCount} 段缺失`
+                  : `${availableTakeCount} 段可用素材`}
+              </span>
             </div>
-
+            <div
+              className="lab-director-progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={Math.max(planShotCount, 1)}
+              aria-valuenow={availableShotCount}
+            >
+              <i style={{ width: `${planShotCount ? availableShotCount / planShotCount * 100 : 0}%` }} />
+            </div>
+          </section>
+          <div className="lab-director-workspace">
+            <div className="lab-director-toolbar">
+              <ButtonGroup
+                ariaLabel="素材视图"
+                value={directorView}
+                onChange={setDirectorView}
+                className="lab-director-view-switch"
+                options={[
+                  { value: 'shots', label: '分镜' },
+                  { value: 'media', label: `素材 ${takes.length}` },
+                ]}
+              />
+              <div className="lab-director-tools">
+                <Input
+                  aria-label="搜索镜头、属性或素材"
+                  variant="compact"
+                  icon={<Search size={14} />}
+                  wrapperClassName="lab-shot-search"
+                  placeholder="搜索镜头 / 属性 / 素材"
+                  value={shotQuery}
+                  onChange={(event) => setShotQuery(event.target.value)}
+                />
+                <Select
+                  variant="compact"
+                  icon={<ListFilter size={14} />}
+                  placeholder="排序方式"
+                  value={shotSort}
+                  onValueChange={setShotSort}
+                  options={[
+                    { value: 'order', label: '按镜头序号' },
+                    { value: 'name', label: '按名称' },
+                    { value: 'takes', label: '按素材数量' },
+                  ]}
+                  className="lab-shot-sort"
+                />
+                {directorView === 'shots' && (
+                  <ButtonGroup
+                    ariaLabel="分镜布局"
+                    value={shotLayout}
+                    onChange={setShotLayout}
+                    className="lab-shot-view-toggle"
+                    options={[
+                      {
+                        value: 'grid',
+                        label: <><LayoutGrid size={15} /><span className="lab-view-mode-label">网格</span></>,
+                      },
+                      {
+                        value: 'list',
+                        label: <><List size={15} /><span className="lab-view-mode-label">列表</span></>,
+                      },
+                    ]}
+                  />
+                )}
+              </div>
+            </div>
+            <div className={`lab-director-content lab-director-content-${directorView}`}>
+              {directorView === 'shots' ? (
+                <DirectorLabShotList
+                  plan={activePlan}
+                  shots={visibleShots}
+                  layout={shotLayout}
+                  endpoint={activePlan.source === 'remote' ? connectedEndpoint : null}
+                  refreshPlans={refreshRemotePlans}
+                  onWriteStateChange={setPlanWritePending}
+                  onOpenTake={(take) => {
+                    setActiveTakeId(take.id)
+                    setPreviewTakeId(take.id)
+                  }}
+                />
+              ) : (
+                <div className="lab-material-board">
+                  {visibleShots.map((shot) => {
+                    const stats = shotMetadata(shot, mediaMetadata)
+                    return (
+                      <section className="lab-material-shot" key={shot.id}>
+                        <header>
+                          <div>
+                            <strong>{String(shot.order).padStart(2, '0')} · {shot.name}</strong>
+                            {shot.attributes[0] && (
+                              <small>{shot.attributes[0].name}：{shot.attributes[0].description}</small>
+                            )}
+                          </div>
+                          <span>{shot.takes.length} 段素材</span>
+                        </header>
+                        {shot.takes.length > 0 && (
+                          <div className="lab-shot-stats">
+                            <span><CalendarDays size={13} />创建 {formatMediaTime(stats.createdAt)}</span>
+                            <span><Camera size={13} />拍摄 {formatMediaTime(stats.capturedAt)}</span>
+                            <span>
+                              <Clock3 size={13} />时长 {stats.metadataPending && metadataLoading
+                                ? '读取中'
+                                : formatDurationMs(stats.durationMs)}
+                            </span>
+                            {stats.resolution && <span className="lab-shot-resolution">{stats.resolution}</span>}
+                          </div>
+                        )}
+                        {shot.takes.length > 0 ? (
+                          <div className="lab-take-grid">
+                            {shot.takes.map((take, index) => {
+                              const takeDetails = takeMetadata(take, mediaMetadata)
+                              return (
+                                <ContextMenu key={take.id}>
+                                  <ContextMenuTrigger asChild>
+                                    <button
+                                      className={`lab-take-card${take.id === activeTake?.id ? ' active' : ''}`}
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveTakeId(take.id)
+                                        setPreviewTakeId(take.id)
+                                      }}
+                                    >
+                                      <span className="lab-take-media">
+                                        {take.available && take.stream_url ? (
+                                          take.kind === 'video' ? (
+                                            <video src={take.stream_url} muted preload="metadata" />
+                                          ) : (
+                                            <img src={take.stream_url} alt="" loading="lazy" />
+                                          )
+                                        ) : (
+                                          <CloudOff size={20} />
+                                        )}
+                                      </span>
+                                      <span className="lab-take-copy">
+                                        <strong>{takeLabel(take, index)}</strong>
+                                        <small>
+                                          {take.kind === 'video'
+                                            ? formatDurationMs(takeDetails?.durationMs)
+                                            : '照片'}
+                                          {' · '}
+                                          {take.size_bytes ? formatBytes(take.size_bytes) : '文件缺失'}
+                                        </small>
+                                        <small>
+                                          {takeDetails?.capturedAt
+                                            ? `拍摄 ${formatMediaTime(takeDetails.capturedAt)}`
+                                            : `创建 ${formatMediaTime(take.created_at)}`}
+                                        </small>
+                                      </span>
+                                      <span className="lab-take-open">查看</span>
+                                    </button>
+                                  </ContextMenuTrigger>
+                                  <ContextMenuContent>
+                                    <ContextMenuItem onSelect={() => void openTakeFile(take)} disabled={!take.stream_path || /^https?:\/\//i.test(take.stream_path)}>
+                                      打开文件
+                                    </ContextMenuItem>
+                                    <ContextMenuItem onSelect={() => void openTakeDirectory(take)} disabled={!take.available}>
+                                      打开所在文件夹
+                                    </ContextMenuItem>
+                                  </ContextMenuContent>
+                                </ContextMenu>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="lab-shot-empty">暂无素材</div>
+                        )}
+                      </section>
+                    )
+                  })}
+                  {visibleShots.length === 0 && (
+                    <div className="lab-shot-empty">
+                      {activePlan.shots.length === 0 ? '暂无素材' : '没有匹配的素材'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </>
+        </section>
       )}
       {previewTake && previewShot && activePlan && (
         <DirectorMediaPreviewDialog
@@ -886,6 +1217,8 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
                 shotOrder: shot?.order ?? shotIndex + 1,
                 shotName: shot?.name ?? 'shot',
                 takeIndex: takeIndex + 1,
+                takeId: take.id,
+                plan: activePlan,
               },
             )
           }}
