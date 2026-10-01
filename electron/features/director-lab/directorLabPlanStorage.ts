@@ -81,6 +81,7 @@ function readmeForPlan(plan: DirectorLanPlanSummary): string {
       lines.push(`- 素材 ${takeIndex + 1}（${take.kind === 'video' ? '视频' : '照片'}）：${take.available ? relativePath : '文件缺失'}`)
       if (take.selected_range) {
         lines.push(`- 选取范围：${take.selected_range.start_ms} - ${take.selected_range.end_ms} ms`)
+        if (take.selected_range.note) lines.push(`- 片段备注：${take.selected_range.note}`)
       }
     })
   })

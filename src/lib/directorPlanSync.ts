@@ -1,4 +1,5 @@
 import type { DirectorLanPlanSummary } from '../shared/types'
+import { normalizeDirectorShotFields } from './directorShotFields.ts'
 
 export const DIRECTOR_PLAN_ATTRIBUTES = [
   { id: 'content', name: '画面内容' },
@@ -25,6 +26,7 @@ function stablePlanContent(plan: DirectorLanPlanSummary) {
       name: shot.name,
       durationMs: shot.duration_ms,
       remark: shot.remark,
+      ...(shot.takes.some(take => take.selected_range) ? { takeRanges: shot.takes.filter(take => take.selected_range).map(take => ({ id: take.id, selectedRange: take.selected_range })) } : {}),
       attributes: shot.attributes.map((attribute) => ({
         id: attribute.id,
         name: attribute.name,
@@ -82,23 +84,23 @@ export function directorPlanConflictDetails(remote: DirectorLanPlanSummary, loca
 export function buildDirectorPlanUpdate(
   plan: DirectorLanPlanSummary,
   expectedRevision: number,
+  includeTakeRanges = true,
 ) {
+  const shots = plan.shots.map((shot) => {
+    const fields = normalizeDirectorShotFields(shot)
+    if (fields.remark.length > 4000 || fields.attributes.some((field) => field.description.length > 4000 || field.id.length > 128)) {
+      throw new Error('镜头内容超过手机接口限制（invalid-plan-update）')
+    }
+    return { id: shot.id, name: shot.name, duration_ms: shot.duration_ms, ...fields,
+      ...(includeTakeRanges ? { take_ranges: shot.takes.filter(take => take.kind === 'video' && !plan.pending_take_ids?.includes(take.id)).map(take => ({ id: take.id, selected_range: take.selected_range })) } : {}),
+    }
+  })
   return {
     expected_revision: expectedRevision,
     title: plan.title,
     main_content: plan.main_content ?? '',
     attributes: plan.attributes,
-    shots: plan.shots.map((shot) => ({
-      id: shot.id,
-      name: shot.name,
-      duration_ms: shot.duration_ms,
-      remark: shot.remark,
-      attributes: shot.attributes.map((attribute) => ({
-        id: attribute.id,
-        name: attribute.name,
-        description: attribute.description,
-      })),
-    })),
+    shots,
   }
 }
 
@@ -124,7 +126,8 @@ export function overlayDirectorLocalPlan(remote: DirectorLanPlanSummary, local: 
     for (const take of localShot?.takes ?? []) {
       const index = takes.findIndex((item) => item.id === take.id)
       if (index < 0 && local.pending_take_ids?.includes(take.id)) takes.push(take)
-      else if (index >= 0 && take.available && take.stream_url) takes[index] = take
+      else if (index >= 0) takes[index] = { ...takes[index], ...(take.available && take.stream_url ? take : {}),
+        selected_range: dirty ? take.selected_range : takes[index].selected_range }
     }
     return { ...shot, takes, completed_takes: takes.filter((take) => take.available).length }
   })

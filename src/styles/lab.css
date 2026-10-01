@@ -175,7 +175,8 @@
   background: #32a852;
 }
 
-.lab-sync-status.is-conflict::before {
+.lab-sync-status.is-conflict::before,
+.lab-sync-status.is-error::before {
   background: #ff9f0a;
 }
 

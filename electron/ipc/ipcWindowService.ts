@@ -9,6 +9,12 @@ let livePreviewWindow: BrowserWindow | null = null
 let livePreviewOwner: BrowserWindow | null = null
 let livePreviewSettings: LivePreviewWindowSettings | null = null
 
+export function isLivePreviewUsageSource(event: Electron.IpcMainEvent): boolean {
+  return Boolean(livePreviewWindow && !livePreviewWindow.isDestroyed()
+    && event.sender === livePreviewWindow.webContents
+    && event.senderFrame === livePreviewWindow.webContents.mainFrame)
+}
+
 function resizeLivePreviewWindow(window: BrowserWindow, sourceAspectRatio: number): void {
   const display = screen.getDisplayMatching(window.getBounds())
   const size = liveWindowContentSize('720p', display.workArea, sourceAspectRatio)

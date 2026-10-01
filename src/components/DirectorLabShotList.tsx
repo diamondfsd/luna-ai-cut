@@ -18,6 +18,8 @@ import type {
 import { Button, Dialog, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, IconButton, toast } from '../ui'
 import { DirectorShotEditorDialog, type DirectorShotDraft } from './DirectorShotEditorDialog'
 import { DirectorMediaThumbnail } from './DirectorMediaThumbnail'
+import { DirectorShotDetailDialog } from './DirectorShotDetailDialog'
+import { normalizeDirectorShotFields } from '../lib/directorShotFields'
 import { directorPlanContentSignature } from '../lib/directorPlanSync'
 import '../styles/director-lab-shot-edit.css'
 
@@ -26,6 +28,7 @@ interface DirectorLabShotListProps {
   schema: DirectorPlanSchema | null
   shots: DirectorLanShot[]
   tools?: ReactNode
+  phoneConnected: boolean
   refreshPlans: () => Promise<DirectorLanPlanSummary[]>
   onWriteStateChange: (planId: string, pending: boolean) => void
   onOpenTake: (take: DirectorLanTake) => void
@@ -37,6 +40,7 @@ export function DirectorLabShotList({
   schema,
   shots,
   tools,
+  phoneConnected,
   refreshPlans,
   onWriteStateChange,
   onOpenTake,
@@ -47,6 +51,8 @@ export function DirectorLabShotList({
   const [editConflict, setEditConflict] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<DirectorLanShot | null>(null)
   const [mutating, setMutating] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [detailShotId, setDetailShotId] = useState<string | null>(null)
 
   async function handleMutationError(error: unknown, fallback: string, deletingShotId?: string): Promise<void> {
     const message = error instanceof Error ? error.message : fallback
@@ -79,14 +85,25 @@ export function DirectorLabShotList({
     })) }, expectedSignature).then((saved) => { onLocalPlanChange(saved); return saved })
   }
 
-  async function addShot(): Promise<void> {
+  function addShot(): void {
+    if (mutating) return
+    const id = `shot-${crypto.randomUUID()}`
+    setCreating(true)
+    setEditConflict(false)
+    setEditingShotId(id)
+    setShotDraft({ id, baseSignature: plan.local_content_signature ?? directorPlanContentSignature(plan),
+      name: '', durationMs: 5000, values: {}, remark: '' })
+  }
+
+  async function addMaterials(shot: DirectorLanShot): Promise<void> {
     if (mutating) return
     setMutating(true)
     onWriteStateChange(plan.id, true)
     try {
-      onLocalPlanChange(await window.luna.directorLab.addLocalShot(plan))
+      const saved = await window.luna.directorLab.importMaterials(plan, shot.id)
+      if (saved) onLocalPlanChange(saved)
     } catch (error) {
-      await handleMutationError(error, '新增镜头失败')
+      await handleMutationError(error, '添加素材失败')
     } finally {
       setMutating(false)
       onWriteStateChange(plan.id, false)
@@ -115,6 +132,8 @@ export function DirectorLabShotList({
   }
 
   function beginShotEdit(shot: DirectorLanShot): void {
+    const normalized = normalizeDirectorShotFields(shot)
+    setCreating(false)
     setEditConflict(false)
     setEditingShotId(shot.id)
     setShotDraft({
@@ -124,10 +143,10 @@ export function DirectorLabShotList({
       durationMs: shot.duration_ms,
       values: Object.fromEntries((schema?.shot_fields ?? []).map((definition) => [
         definition.id,
-        shot.attributes.find((attribute) =>
+        normalized.attributes.find((attribute) =>
           attribute.id === `${shot.id}-attribute-${definition.id}`)?.description ?? '',
       ])),
-      remark: shot.remark,
+      remark: normalized.remark,
     })
   }
 
@@ -151,9 +170,13 @@ export function DirectorLabShotList({
     setMutating(true)
     onWriteStateChange(plan.id, true)
     try {
-      if (!plan.shots.some((shot) => shot.id === shotDraft.id)) {
+      if (!creating && !plan.shots.some((shot) => shot.id === shotDraft.id)) {
         throw new Error('该镜头已被删除，草稿已保留')
       }
+      const editedAttributes = schema.shot_fields.flatMap((field) => {
+        const description = shotDraft.values[field.id]?.trim() ?? ''
+        return description ? [{ id: `${shotDraft.id}-attribute-${field.id}`, name: field.storage_name, description }] : []
+      })
       const shots = plan.shots.map((shot) => {
         const isEditedShot = shot.id === shotDraft.id
         return {
@@ -162,22 +185,16 @@ export function DirectorLabShotList({
           duration_ms: isEditedShot ? durationMs : shot.duration_ms,
           remark: isEditedShot ? shotDraft.remark.trim() : shot.remark,
           attributes: isEditedShot
-            ? [
-                ...shot.attributes.filter((attribute) => !schema.shot_fields.some((field) =>
-                  attribute.id === `${shot.id}-attribute-${field.id}`)),
-                ...schema.shot_fields.flatMap((field) => {
-                  const description = shotDraft.values[field.id]?.trim() ?? ''
-                  return description ? [{
-                    id: `${shot.id}-attribute-${field.id}`,
-                    name: field.storage_name,
-                    description,
-                  }] : []
-                }),
-              ]
+            ? editedAttributes
             : shot.attributes,
         }
       })
-      await planUpdate(shots, shotDraft.baseSignature)
+      if (creating) {
+        onLocalPlanChange(await window.luna.directorLab.addLocalShot(plan, {
+          id: shotDraft.id, name: shotDraft.name.trim(), duration_ms: durationMs, remark: shotDraft.remark.trim(),
+          attributes: editedAttributes, order: plan.shots.length + 1, completed_takes: 0, takes: [],
+        }))
+      } else await planUpdate(shots, shotDraft.baseSignature)
       setEditingShotId(null)
       setShotDraft(null)
       toast.success('镜头已保存')
@@ -240,13 +257,14 @@ export function DirectorLabShotList({
                   <DirectorMediaThumbnail url={thumbnailTake.stream_url!} />
                 </button>
               ) : (
-                <div className="lab-shot-card-media is-empty">
+                <button type="button" className="lab-shot-card-media is-empty" aria-label={`查看${shot.name}拍摄详情`}
+                  onClick={() => setDetailShotId(shot.id)}>
                   {shot.takes.length > 0 ? <CloudOff size={20} /> : <Camera size={20} />}
-                </div>
+                </button>
               )}
               <div className="lab-shot-row-copy">
                 <div className="lab-shot-row-heading">
-                  <strong title={shot.name}>{shot.name}</strong>
+                  <button type="button" className="lab-shot-title" title={shot.name} onClick={() => setDetailShotId(shot.id)}>{shot.name}</button>
                   <span className="lab-shot-card-take-count">{shot.takes.length} 条素材</span>
                 </div>
                 <DropdownMenu>
@@ -260,14 +278,7 @@ export function DirectorLabShotList({
                     />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem onSelect={() => {
-                      setMutating(true)
-                      onWriteStateChange(plan.id, true)
-                      void window.luna.directorLab.importMaterials(plan, shot.id).then((saved) => {
-                        if (saved) onLocalPlanChange(saved)
-                      }).catch((error) => toast.error(error instanceof Error ? error.message : '添加素材失败'))
-                        .finally(() => { setMutating(false); onWriteStateChange(plan.id, false) })
-                    }}>
+                    <DropdownMenuItem onSelect={() => void addMaterials(shot)}>
                       <Upload size={14} />添加素材
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => beginShotEdit(shot)}>
@@ -283,7 +294,10 @@ export function DirectorLabShotList({
           )
         })}
       </div>
-      <DirectorShotEditorDialog draft={shotDraft} schema={schema} saving={mutating} conflict={editConflict}
+      <DirectorShotDetailDialog shot={plan.shots.find((shot) => shot.id === detailShotId) ?? null}
+        phoneConnected={phoneConnected}
+        adding={mutating} onClose={() => setDetailShotId(null)} onAddMaterials={(shot) => void addMaterials(shot)} onOpenTake={onOpenTake} />
+      <DirectorShotEditorDialog draft={shotDraft} schema={schema} saving={mutating} conflict={editConflict} creating={creating}
         onChange={setShotDraft} onClose={() => { setEditingShotId(null); setShotDraft(null) }} onSave={() => void saveShotEdit()} />
       <Dialog
         open={deleteCandidate !== null}

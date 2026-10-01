@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { AnnexBVideoCanvas } from '../components/AnnexBVideoCanvas'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { useLiveUsage } from '../hooks/useLiveUsage'
 import { watermarkPositionStyle } from '../components/htmlPreviewGeometry'
 import type { LivePreviewWindowSettings } from '../shared/types'
 import '../styles/live-preview-window.css'
@@ -9,6 +10,15 @@ import '../styles/live-preview-window.css'
 export function LivePreviewWindow() {
   const [settings, setSettings] = useState<LivePreviewWindowSettings | null>(null)
   const lastAspectRatio = useRef(0)
+  const { recordFrame } = useLiveUsage({
+    observeOnly: true,
+    session: settings?.usageSession ?? null,
+    streaming: Boolean(settings?.url),
+    watermark: Boolean(settings?.watermark),
+    lut: Boolean(settings?.lutPath) && (settings?.lutIntensity ?? 0) > 0,
+    color: Object.values(settings?.colorAdjustments ?? {}).some(value => value !== 0),
+    watermarkSignature: '', lutSignature: '', colorSignature: '',
+  })
 
   useEffect(() => {
     document.documentElement.classList.add('live-preview-window-shell')
@@ -31,6 +41,7 @@ export function LivePreviewWindow() {
   }, [])
 
   const handleFrame = useCallback((dimensions: { width: number; height: number }) => {
+    recordFrame()
     const aspectRatio = dimensions.width / dimensions.height
     if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) return
     if (lastAspectRatio.current > 0 && Math.abs(lastAspectRatio.current - aspectRatio) < 0.002) return
@@ -40,7 +51,7 @@ export function LivePreviewWindow() {
         error: error instanceof Error ? error.message : String(error),
       })
     })
-  }, [])
+  }, [recordFrame])
 
   const handleError = useCallback((message: string) => {
     window.luna.log('warn', '直播窗口画面渲染失败', { error: message })

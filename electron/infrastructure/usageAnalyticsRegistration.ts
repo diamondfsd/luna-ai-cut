@@ -3,6 +3,7 @@ import { logMainInfo, logMainWarn } from './loggerService'
 import { createUsageAnalytics } from './usageAnalytics'
 import { createLiveUsageAnalytics } from './liveUsageAnalytics'
 import { setLiveUsageAnalytics } from '../media/live-stream/liveStreamService'
+import { isLivePreviewUsageSource } from '../ipc/ipcWindowService'
 
 export function createAppUsageAnalytics() {
   const analytics = createUsageAnalytics({
@@ -36,6 +37,7 @@ export function createAppUsageAnalytics() {
       })
       ipcMain.on('usage:live', (event, message: unknown) => {
         if (trusted(event)) liveUsage.message(message)
+        else if (isLivePreviewUsageSource(event)) liveUsage.message(message, 'preview')
       })
     },
   }

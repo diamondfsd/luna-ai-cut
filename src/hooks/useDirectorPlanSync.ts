@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { assertDirectorTakeRangesSaved } from '../lib/directorTakeRange'
 
 import {
   buildDirectorPlanUpdate,
@@ -9,8 +10,9 @@ import {
   type DirectorPlanSyncBaseline,
 } from '../lib/directorPlanSync'
 import type { DirectorLanPlanSummary } from '../shared/types'
+import { DirectorPlanWriteFailures, isPermanentDirectorPlanWriteError, type DirectorPlanWriteFailure } from '../lib/directorPlanWriteFailures'
 
-export type DirectorPlanSyncStatus = 'idle' | 'syncing' | 'synced' | 'conflict' | 'offline'
+export type DirectorPlanSyncStatus = 'idle' | 'syncing' | 'synced' | 'conflict' | 'offline' | 'error'
 
 export interface DirectorPlanConflict {
   remote: DirectorLanPlanSummary
@@ -57,6 +59,8 @@ export function useDirectorPlanSync({
   const [conflicts, setConflicts] = useState<DirectorPlanConflict[]>([])
   const [resolvingPlanId, setResolvingPlanId] = useState<string | null>(null)
   const resolvingRef = useRef(false)
+  const failuresRef = useRef(new DirectorPlanWriteFailures())
+  const [writeFailures, setWriteFailures] = useState<DirectorPlanWriteFailure[]>([])
 
   useEffect(() => {
     mountedRef.current = true
@@ -70,6 +74,8 @@ export function useDirectorPlanSync({
     conflictPlanIdsRef.current.clear()
     conflictsRef.current.clear()
     setConflicts([])
+    failuresRef.current.clear()
+    setWriteFailures([])
     setStatus(enabled && endpoint ? 'idle' : 'offline')
   }, [enabled, endpoint])
 
@@ -102,14 +108,18 @@ export function useDirectorPlanSync({
           if (!remotePlans.some((plan) => plan.id === planId)) nextConflicts.delete(planId)
         }
         const pushedPlanIds = new Set<string>()
+        for (const failure of failuresRef.current.entries()) {
+          if (!localPlans.some((plan) => plan.id === failure.planId)) failuresRef.current.remove(failure.planId)
+        }
 
         for (const local of localPlans) {
           if (!local.pending_create || remotePlans.some((plan) => plan.id === local.id) || isPlanWritePending(local.id)) continue
-          const created = await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(activeEndpoint,
-            `/api/v1/director/plans/${encodeURIComponent(local.id)}`, {
-              method: 'POST', body: buildDirectorPlanUpdate(local, 0),
-            })
-          await window.luna.directorLab.acknowledgeLocalPlan(created, directorPlanContentSignature(local))
+          try {
+            await writePhonePlan(local, 'POST', 0, directorPlanContentSignature(local))
+          } catch (error) {
+            if (isPermanentDirectorPlanWriteError(error)) continue
+            throw error
+          }
           remoteRefreshNeeded = true
           localCopiesChanged = true
           pushedPlanIds.add(local.id)
@@ -128,6 +138,7 @@ export function useDirectorPlanSync({
 
           const remoteSignature = directorPlanContentSignature(remote)
           const localSignature = directorPlanContentSignature(local)
+          if (remoteSignature === localSignature) failuresRef.current.remove(local.id)
           if (local.pending_shot_ids?.length) {
             const pendingIds = new Set(local.pending_shot_ids)
             const nonPending = { ...local, shots: local.shots.filter((shot) => !pendingIds.has(shot.id)) }
@@ -141,6 +152,7 @@ export function useDirectorPlanSync({
                 localCopiesChanged = true
                 pushedPlanIds.add(local.id)
               } catch (error) {
+                if (isPermanentDirectorPlanWriteError(error)) continue
                 if (!isRevisionConflict(error)) throw error
               }
               continue
@@ -172,6 +184,7 @@ export function useDirectorPlanSync({
                 pushedPlanIds.add(remote.id)
                 baseline = nextDirectorPlanBaseline(remote, local)
               } catch (error) {
+                if (isPermanentDirectorPlanWriteError(error)) continue
                 if (!isRevisionConflict(error)) throw error
                 hasConflict = true
                 notifyConflict(remote, local)
@@ -205,6 +218,7 @@ export function useDirectorPlanSync({
             continue
           }
           if (remoteSignature === localSignature) {
+            failuresRef.current.remove(local.id)
             await reconcileRemotePlan(remote)
             localCopiesChanged = true
             baselinesRef.current.set(remote.id, nextDirectorPlanBaseline(remote, local))
@@ -218,6 +232,7 @@ export function useDirectorPlanSync({
               pushedPlanIds.add(remote.id)
               baselinesRef.current.set(remote.id, nextDirectorPlanBaseline(remote, local))
             } catch (error) {
+              if (isPermanentDirectorPlanWriteError(error)) continue
               if (!isRevisionConflict(error)) throw error
               hasConflict = true
               notifyConflict(remote, local)
@@ -263,10 +278,15 @@ export function useDirectorPlanSync({
           for (const planId of conflictPlanIdsRef.current) {
             if (!nextConflicts.has(planId)) conflictPlanIdsRef.current.delete(planId)
           }
-          setStatus(hasConflict || nextConflicts.size ? 'conflict' : 'synced')
+          const failures = failuresRef.current.entries()
+          setWriteFailures(failures)
+          setStatus(hasConflict || nextConflicts.size ? 'conflict' : failures.length ? 'error' : 'synced')
         }
-      } catch {
-        if (mountedRef.current) setStatus('offline')
+      } catch (error) {
+        if (mountedRef.current) {
+          setWriteFailures(failuresRef.current.entries())
+          setStatus(isPermanentDirectorPlanWriteError(error) ? 'error' : 'offline')
+        }
         throw new Error('导演计划同步失败')
       }
     })()
@@ -287,17 +307,27 @@ export function useDirectorPlanSync({
     ): Promise<void> {
       setPlanWritePending(local.id, true)
       try {
-        const updated = await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(
-          activeEndpoint,
-          `/api/v1/director/plans/${encodeURIComponent(local.id)}`,
-          {
-            method: 'PATCH',
-            body: buildDirectorPlanUpdate(local, directorPlanRevision(remote)),
-          },
-        )
-        await window.luna.directorLab.acknowledgeLocalPlan(updated, signature)
+        await writePhonePlan(local, 'PATCH', directorPlanRevision(remote), signature)
       } finally {
         setPlanWritePending(local.id, false)
+      }
+    }
+
+    async function writePhonePlan(local: DirectorLanPlanSummary, method: 'POST' | 'PATCH', revision: number, signature: string) {
+      const key = JSON.stringify([activeEndpoint, method, revision, directorPlanContentSignature(local)])
+      const blocked = failuresRef.current.blocked(local.id, key)
+      if (blocked) throw new Error(blocked.message)
+      try {
+        const updated = await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(activeEndpoint,
+          `/api/v1/director/plans/${encodeURIComponent(local.id)}`, {
+            method, body: buildDirectorPlanUpdate(local, revision, method !== 'POST'),
+          })
+        if (method !== 'POST') assertDirectorTakeRangesSaved(local, updated)
+        await window.luna.directorLab.acknowledgeLocalPlan(updated, signature)
+        failuresRef.current.remove(local.id)
+      } catch (error) {
+        failuresRef.current.record(local.id, local.title, key, error)
+        throw error
       }
     }
 
@@ -362,6 +392,7 @@ export function useDirectorPlanSync({
           },
         )
       }
+      if (source === 'local') assertDirectorTakeRangesSaved(local, selected)
       if (!mountedRef.current || endpointRef.current !== endpoint) throw new Error('连接已变化，请重试')
       await window.luna.directorLab.reconcileLocalPlan(selected, true)
       const refreshedLocal = await window.luna.directorLab.listLocalPlans()
@@ -391,6 +422,13 @@ export function useDirectorPlanSync({
     return () => window.clearInterval(timer)
   }, [enabled, endpoint, synchronize])
 
-  return { status, synchronize, conflicts, resolvingPlanId, resolveConflict,
+  const retrySynchronization = useCallback(async () => {
+    await syncTaskRef.current
+    failuresRef.current.clear()
+    setWriteFailures([])
+    await synchronize()
+  }, [synchronize])
+
+  return { status, synchronize, retrySynchronization, writeFailures, conflicts, resolvingPlanId, resolveConflict,
     origin: endpoint ? originForEndpoint(endpoint) : null }
 }

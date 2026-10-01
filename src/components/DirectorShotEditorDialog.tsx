@@ -17,16 +17,17 @@ interface Props {
   schema: DirectorPlanSchema | null
   saving: boolean
   conflict: boolean
+  creating?: boolean
   onChange: (draft: DirectorShotDraft) => void
   onClose: () => void
   onSave: () => void
 }
 
-export function DirectorShotEditorDialog({ draft, schema, saving, conflict, onChange, onClose, onSave }: Props) {
+export function DirectorShotEditorDialog({ draft, schema, saving, conflict, creating, onChange, onClose, onSave }: Props) {
   return <Dialog
     open={draft !== null}
     onOpenChange={(open) => !open && !saving && onClose()}
-    title="编辑镜头"
+    title={creating ? '新增镜头' : '编辑镜头'}
     className="lab-shot-editor-dialog"
     showCloseButton={!saving}
     closeOnMaskClick={false}

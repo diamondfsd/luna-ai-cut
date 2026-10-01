@@ -6,10 +6,12 @@ import * as http from 'node:http'
 import * as https from 'node:https'
 import * as path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import type { DirectorLanPlanSummary } from '../../../src/shared/types'
+import type { DirectorLanPlanSummary, DirectorLanShot } from '../../../src/shared/types'
 import { parseDirectorPlanImport } from '../../../src/lib/directorPlanImport'
 import { directorPlanContentSignature } from '../../../src/lib/directorPlanSync'
 import { directorLocalEditHasConflict } from '../../../src/lib/directorPlanLocalEdit'
+import { validateDirectorTakeRange } from '../../../src/lib/directorTakeRange'
+import { appendDirectorLocalShots } from '../../../src/lib/directorLocalShots'
 import { getDirectorPlanDir, getSettings } from '../../storage/fileService'
 import { lunaKaHttpClient } from '../../network/lunaka_http_client'
 import { downloadToFileWithRetry } from '../../media/fileDownloadService'
@@ -39,7 +41,7 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
         local_content_signature: directorPlanContentSignature(next) }
     })
   }
-  ipcMain.handle('director-lab:import-plan', async () => {
+  async function selectImportText() {
     const selection = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: '导演计划', extensions: ['md', 'txt'] }] })
     if (selection.canceled || !selection.filePaths[0]) return null
     const file = selection.filePaths[0]
@@ -49,7 +51,19 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
     let text: string
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
     catch { throw new Error('请使用 UTF-8 编码的计划文件') }
-    return importText(text, path.basename(file, path.extname(file)))
+    return { text, title: path.basename(file, path.extname(file)) }
+  }
+  ipcMain.handle('director-lab:import-plan', async () => {
+    const selected = await selectImportText()
+    return selected ? importText(selected.text, selected.title) : null
+  })
+  ipcMain.handle('director-lab:import-shots', async (_event, plan: DirectorLanPlanSummary, text?: string) => {
+    const selected = text === undefined ? await selectImportText() : { text, title: plan.title }
+    if (!selected) return null
+    if (typeof selected.text !== 'string' || !selected.text.trim()) throw new Error('请输入镜头文本')
+    if (Buffer.byteLength(selected.text, 'utf8') > 512 * 1024) throw new Error('镜头文本不能超过 512 KB')
+    const imported = parseDirectorPlanImport(selected.text, selected.title, randomUUID)
+    return save(plan, (current) => appendDirectorLocalShots(current, imported.shots))
   })
   ipcMain.handle('director-lab:import-plan-text', (_event, text: string) => importText(text))
   ipcMain.handle('director-lab:acknowledge-local-plan', async (_event, remote: DirectorLanPlanSummary, signature: string) => {
@@ -73,13 +87,16 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
         pending_shot_ids: current.pending_shot_ids?.filter((id) => !remote.shots.some((shot) => shot.id === id)) }
     })
   })
-  ipcMain.handle('director-lab:add-local-shot', async (_event, plan: DirectorLanPlanSummary) => save(plan, (current) => {
+  ipcMain.handle('director-lab:add-local-shot', async (_event, plan: DirectorLanPlanSummary, shot: DirectorLanShot) => save(plan, (current) => {
     if (current.shots.length >= 500) throw new Error('最多支持 500 个镜头')
-    const id = `shot-${randomUUID()}`
-    return { ...current, updated_at: new Date().toISOString(), shot_count: current.shots.length + 1,
-      pending_shot_ids: [...current.pending_shot_ids ?? [], id],
-      shots: [...current.shots, { id, order: current.shots.length + 1, name: `镜头 ${current.shots.length + 1}`,
-        duration_ms: 5000, remark: '', attributes: [], completed_takes: 0, takes: [] }] }
+    if (!shot || !/^[A-Za-z0-9_-]{1,120}$/.test(shot.id) || !shot.name?.trim() || shot.name.length > 120
+      || !Number.isSafeInteger(shot.duration_ms) || shot.duration_ms < 1000 || shot.duration_ms > 3600000
+      || typeof shot.remark !== 'string' || shot.remark.length > 4000 || !Array.isArray(shot.attributes)
+      || shot.attributes.length > 3 || shot.attributes.some((field) => typeof field.description !== 'string' || field.description.length > 4000)) {
+      throw new Error('镜头内容无效')
+    }
+    if (current.shots.some((item) => item.id === shot.id)) return current
+    return appendDirectorLocalShots(current, [{ ...shot, name: shot.name.trim(), completed_takes: 0, takes: [] }])
   }))
   ipcMain.handle('director-lab:save-local-plan', async (_event, plan: DirectorLanPlanSummary, expectedSignature?: string) => save(plan, (current) => {
     if (directorLocalEditHasConflict(current, plan, expectedSignature)) {
@@ -92,7 +109,12 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
         || shot.attributes.some((field) => field.description.length > 4000))) throw new Error('计划内容无效')
     const requestedIds = new Set(plan.shots.map((shot) => shot.id))
     const shots = plan.shots.map((shot, index) => ({ ...shot, order: index + 1,
-      takes: current.shots.find((item) => item.id === shot.id)?.takes ?? [] }))
+      takes: (current.shots.find((item) => item.id === shot.id)?.takes ?? []).map(take => {
+        const requested = shot.takes?.find(item => item.id === take.id)
+        return requested && take.kind === 'video'
+          ? { ...take, selected_range: validateDirectorTakeRange(requested.selected_range, take.duration_ms) }
+          : take
+      }) }))
     return { ...current, title: plan.title, shots, shot_count: shots.length,
       updated_at: new Date().toISOString(),
       pending_shot_ids: current.pending_shot_ids?.filter((id) => requestedIds.has(id)),

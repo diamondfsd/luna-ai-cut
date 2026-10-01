@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
 import { bindLiveGimbalKeyboard } from '../lib/liveGimbalKeyboard'
+import { liveZoomMaximum } from '../lib/liveZoomRange'
 
 import type {
   LiveStreamControlCommand,
@@ -15,6 +16,7 @@ import '../styles/live-camera-controls.css'
 
 interface LiveCameraControlPanelProps {
   status: LiveStreamStatus
+  previewAspectRatio: number
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -23,14 +25,16 @@ function clamp(value: number, min: number, max: number): number {
 
 const DEFAULT_CAPABILITIES: LiveStreamControlCapabilities = {
   gimbal: { supported: true, continuous: true },
-  zoom: { supported: true, min: 1, max: 12, step: 0.1, presets: [1], current: 1 },
+  zoom: { supported: true, min: 1, max: 15, step: 0.1, presets: [1], current: 1 },
   focus: { tap: true },
   tracking: { region: true },
   exposure: { supported: true, min: -4, max: 4, step: 0.1, stops: [0], current: 0 },
 }
 
-export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) {
+export function LiveCameraControlPanel({ status, previewAspectRatio }: LiveCameraControlPanelProps) {
   const capabilities = status.capabilities ?? DEFAULT_CAPABILITIES
+  const maximumZoom = liveZoomMaximum(capabilities.zoom.max, previewAspectRatio)
+  const isPortrait = previewAspectRatio < 1
   const controlReady = status.controlReady && status.receiverConnected
   const padRef = useRef<HTMLDivElement>(null)
   const activePointer = useRef<number | null>(null)
@@ -38,11 +42,14 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
   const [joyPosition, setJoyPosition] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(capabilities.zoom.current)
   const [exposure, setExposure] = useState(capabilities.exposure.current)
-  const currentZoom = capabilities.zoom.current
+  const currentZoom = clamp(capabilities.zoom.current, capabilities.zoom.min, maximumZoom)
   const currentExposure = capabilities.exposure.current
 
   const dispatch = useCallback((command: LiveStreamControlCommand) => {
     if (!controlReady) return
+    if (command.type === 'zoom.preview' || command.type === 'zoom.set') {
+      command = { ...command, value: clamp(command.value, capabilities.zoom.min, maximumZoom) }
+    }
     if (status.capabilities) {
       if (command.type.startsWith('gimbal.') && !capabilities.gimbal.supported) return
       if (command.type.startsWith('zoom.') && !capabilities.zoom.supported) return
@@ -54,7 +61,7 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
         error: reason instanceof Error ? reason.message : String(reason),
       })
     })
-  }, [capabilities, controlReady, status.capabilities])
+  }, [capabilities, controlReady, maximumZoom, status.capabilities])
 
   const dispatchRef = useRef(dispatch)
   useEffect(() => {
@@ -89,9 +96,9 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
   }, [currentExposure])
 
   useEffect(() => {
-    if (!status.controlReady || status.capabilities) return
-    dispatch({ type: 'capabilities.get' })
-  }, [dispatch, status.capabilities, status.controlReady])
+    if (!controlReady) return
+    dispatchRef.current({ type: 'capabilities.get' })
+  }, [controlReady, isPortrait])
 
   const updateGimbal = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = padRef.current?.getBoundingClientRect()
@@ -182,9 +189,9 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
       <section className="live-control-section">
         <ParamSlider
           label="变焦"
-          value={zoom}
+          value={clamp(zoom, capabilities.zoom.min, maximumZoom)}
           min={capabilities.zoom.min}
-          max={capabilities.zoom.max}
+          max={maximumZoom}
           step={capabilities.zoom.step}
           formatValue={(value) => value.toFixed(1)}
           onChange={setZoom}

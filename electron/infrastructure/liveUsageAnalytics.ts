@@ -7,6 +7,7 @@ const CONTROL_TYPES = ['gimbal', 'zoom', 'focus', 'exposure', 'tracking'] as con
 export const LIVE_USAGE_INTERVAL_MS = 5 * 60_000
 
 type ControlType = typeof CONTROL_TYPES[number]
+type Source = 'console' | 'preview'
 type View = { frameRecent: boolean; watermark: boolean; lut: boolean; color: boolean }
 
 interface Session {
@@ -16,6 +17,7 @@ interface Session {
   lastSample: number
   lastReport: number
   view: View | null
+  sources: Partial<Record<Source, { view: View; timestamp: number }>>
   firstFrame: number | null
   sequence: number
   validMs: number
@@ -96,7 +98,7 @@ export function createLiveUsageAnalytics(
       const timestamp = now()
       session = {
         key, id: randomUUID(), started: timestamp, lastSample: timestamp, lastReport: timestamp,
-        view: null, firstFrame: null, sequence: 0, validMs: 0,
+        view: null, sources: {}, firstFrame: null, sequence: 0, validMs: 0,
         opened: new Set(), changed: new Set(), used: new Set(),
         seconds: { watermark: 0, watermark_user: 0, lut: 0, color: 0 },
         changes: { watermark: 0, lut: 0, color: 0, control: 0 },
@@ -107,20 +109,27 @@ export function createLiveUsageAnalytics(
         ])) as Session['controls'],
       }
     },
-    message(message: unknown) {
+    message(message: unknown, source: Source = 'console') {
       if (!session || !message || typeof message !== 'object') return
       const input = message as Record<string, unknown>
       if (input.session !== session.key) return
+      if (source === 'preview' && input.kind !== 'frame' && input.kind !== 'snapshot') return
       if (input.kind === 'frame') {
         if (session.firstFrame === null) session.firstFrame = now()
       } else if (input.kind === 'snapshot') {
         if (['frameRecent', 'watermark', 'lut', 'color'].some(key => typeof input[key] !== 'boolean')) return
         const timestamp = now()
         accrue(session, timestamp)
-        session.view = {
+        const view: View = {
           frameRecent: input.frameRecent as boolean, watermark: input.watermark as boolean,
           lut: input.lut as boolean, color: input.color as boolean,
         }
+        session.sources[source] = { view, timestamp }
+        const preview = session.sources.preview
+        const console = session.sources.console
+        session.view = preview?.view.frameRecent && timestamp - preview.timestamp <= 1500
+          ? preview.view
+          : console?.view.frameRecent && timestamp - console.timestamp <= 1500 ? console.view : view
         if (session.view.frameRecent && session.firstFrame === null) session.firstFrame = timestamp
         adopt(session)
         if (timestamp - session.lastReport >= LIVE_USAGE_INTERVAL_MS) report(session, 'checkpoint')
@@ -139,12 +148,14 @@ export function createLiveUsageAnalytics(
       session.controlReady = true
       if (!capabilities) return
       const available = {
-        gimbal: capabilities.gimbal.supported, zoom: capabilities.zoom.supported,
-        focus: capabilities.focus.tap, exposure: capabilities.exposure.supported,
-        tracking: capabilities.tracking.region,
+        gimbal: capabilities.gimbal?.supported, zoom: capabilities.zoom?.supported,
+        focus: capabilities.focus?.tap, exposure: capabilities.exposure?.supported,
+        tracking: capabilities.tracking?.region,
       }
       for (const type of CONTROL_TYPES) {
-        session.available[type] = session.available[type] === true || available[type] === true
+        if (typeof available[type] === 'boolean') {
+          session.available[type] = session.available[type] === true || available[type] === true
+        }
       }
     },
     control(key: string, command: string, failed: boolean) {

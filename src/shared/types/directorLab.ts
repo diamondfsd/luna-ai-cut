@@ -83,7 +83,8 @@ export interface DirectorLabApi {
   downloadPlan(request: DirectorLabDownloadPlanRequest): Promise<DirectorLabDownloadPlanResult>
   discover(): Promise<DirectorLabDiscoveryResult>
   listLocalPlans(): Promise<DirectorLanPlanSummary[]>
-  addLocalShot(plan: DirectorLanPlanSummary): Promise<DirectorLanPlanSummary>
+  addLocalShot(plan: DirectorLanPlanSummary, shot: DirectorLanShot): Promise<DirectorLanPlanSummary>
+  importShots(plan: DirectorLanPlanSummary, text?: string): Promise<DirectorLanPlanSummary | null>
   importPlan(): Promise<DirectorLanPlanSummary | null>
   importPlanText(text: string): Promise<DirectorLanPlanSummary>
   saveLocalPlan(plan: DirectorLanPlanSummary, expectedSignature?: string): Promise<DirectorLanPlanSummary>
@@ -175,7 +176,7 @@ export interface DirectorLanTake {
   mime_type: string
   size_bytes: number | null
   available: boolean
-  selected_range: { start_ms: number; end_ms: number } | null
+  selected_range: { start_ms: number; end_ms: number; note?: string } | null
   stream_path: string | null
   stream_url: string | null
   download_path: string | null

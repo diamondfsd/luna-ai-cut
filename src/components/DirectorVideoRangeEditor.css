@@ -1,0 +1,60 @@
+.ui-dialog-content.director-range-dialog {
+  width: calc(100vw - 24px);
+  max-width: none;
+  height: calc(100dvh - 24px);
+  max-height: calc(100dvh - 24px);
+}
+
+.director-range-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.director-range-body:has(> .director-take-list) {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.director-range-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  gap: 12px;
+}
+
+.director-range-preview {
+  flex: 1;
+  min-height: 160px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: var(--black);
+}
+
+.director-range-preview > .preview-stage,
+.director-range-preview > .preview-stage-container {
+  width: 100%;
+  height: 100%;
+}
+
+.director-range-controls {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.director-range-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.director-range-actions > .ui-input-full { flex: 1; min-width: 180px; }
+
+@media (max-width: 800px) {
+  .director-range-body:has(> .director-take-list) { grid-template-columns: 160px minmax(0, 1fr); }
+}

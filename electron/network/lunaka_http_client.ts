@@ -10,6 +10,7 @@ import type {
   LunaKaHttpRequestOptions,
 } from '../../src/shared/types'
 import { LunaKaWebSocketChannel } from './lunaka_websocket_channel'
+import { lunaKaHttpErrorMessage } from './lunaKaHttpError'
 
 interface StoredCredentials {
   clientId: string
@@ -247,20 +248,7 @@ export class LunaKaHttpClient {
   }
 
   private httpError(result: HttpResult, fallback: string): Error {
-    let code = ''
-    try {
-      const payload = JSON.parse(result.body) as { error?: unknown }
-      if (typeof payload.error === 'string') code = payload.error
-    } catch {
-      // Use the status code when the service did not return JSON.
-    }
-    const messages: Record<string, string> = {
-      'authorization-denied': '手机端拒绝了此次授权请求',
-      'authorization-request-throttled': '请求过于频繁，请稍后重试',
-      'private-network-required': '只能连接同一局域网中的手机',
-      'revision-conflict': '导演计划已在其他端修改，请刷新后重新应用本次修改',
-    }
-    return new Error(messages[code] ?? `${fallback}：HTTP ${result.statusCode}`)
+    return new Error(lunaKaHttpErrorMessage(result.statusCode, result.body, fallback))
   }
 
   private normalizeEndpoint(value: string): URL {
