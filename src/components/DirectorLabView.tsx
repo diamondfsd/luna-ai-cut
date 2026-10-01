@@ -25,9 +25,10 @@ import type {
   DirectorLanShot,
 } from '../shared/types'
 import { useDirectorPlanSync } from '../hooks/useDirectorPlanSync'
-import { useDirectorMaterialSync } from '../hooks/useDirectorMaterialSync'
+import { DirectorMaterialSyncControl } from './DirectorMaterialSyncControl'
+import { useDirectorMaterialSyncControl } from '../hooks/useDirectorMaterialSyncControl'
 import { DIRECTOR_PLAN_ATTRIBUTES, directorPlanContentSignature, overlayDirectorLocalPlan } from '../lib/directorPlanSync'
-import { Button, IconButton, Input, LoadingIndicator, Select, Switch, Tooltip, toast } from '../ui'
+import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
 import { DirectorLabPlanList } from './DirectorLabPlanList'
 import { DirectorLabShotList } from './DirectorLabShotList'
@@ -272,7 +273,6 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     { id: 'movement', label: '运镜方式', storage_name: '运镜方式', kind: 'multiline', max_length: 4000 },
   ] })
   const [importOpen, setImportOpen] = useState(false)
-  const [syncMaterials, setSyncMaterials] = useState(() => localStorage.getItem('luna.director-lab.sync-materials') === 'true')
   const [plans, setPlans] = useState<DirectorLanPlanSummary[]>([])
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
   const [shotQuery, setShotQuery] = useState('')
@@ -416,7 +416,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   }, [connectedEndpoint])
 
   const [conflictsOpen, setConflictsOpen] = useState(false)
-  useDirectorMaterialSync(active, syncMaterials, connectedEndpoint, mergeLocalPlanCopies)
+  const materialSyncControl = useDirectorMaterialSyncControl(active, connectedEndpoint, mergeLocalPlanCopies)
   const { status: syncStatus, synchronize, retrySynchronization, writeFailures, conflicts, resolvingPlanId, resolveConflict } = useDirectorPlanSync({
     enabled: active,
     endpoint: connectedEndpoint,
@@ -932,8 +932,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
                   onClick={() => void openLocalPlanDirectory()}
                 />
               )}
-              <label className="lab-material-sync"><span>同步素材</span><Switch checked={syncMaterials} ariaLabel="同步素材"
-                onCheckedChange={(checked) => { localStorage.setItem('luna.director-lab.sync-materials', String(checked)); setSyncMaterials(checked) }} /></label>
+              <DirectorMaterialSyncControl {...materialSyncControl} />
               {connectedEndpoint && (!activePlan.local_directory || activePlan.update_available) && (
                 <Button
                   variant={activePlan.update_available ? 'primary' : 'secondary'}

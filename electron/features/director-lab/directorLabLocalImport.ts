@@ -19,6 +19,7 @@ import { lunaKaHttpClient } from '../../network/lunaka_http_client'
 import { downloadToFileWithRetry } from '../../media/fileDownloadService'
 import { mediaFileName, mediaFolder, planDirectory, serializePlanWrite, writeDirectorPlanFilesUnlocked } from './directorLabPlanStorage'
 import { reconcileDirectorPlanDeletions } from './directorLabPlanDeletion'
+import { createMaterialProgress } from './directorMaterialProgress'
 
 export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLanPlanSummary[]>) {
   ipcMain.handle('director-lab:reconcile-plan-deletions', async (_event, endpoint: string, planIds: string[]) => {
@@ -181,15 +182,22 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
     })
   })
   const syncTasks = new Map<string, Promise<void>>()
-  ipcMain.handle('director-lab:sync-materials', async (_event, endpoint: string, planId: string) => {
+  ipcMain.handle('director-lab:sync-materials', async (event, endpoint: string, planId: string, operationId = randomUUID()) => {
     const key = `${endpoint}\n${planId}`
     const existing = syncTasks.get(key)
     if (existing) return existing
+    const progress = createMaterialProgress(event.sender, { operationId, endpoint, planId })
     const task = (async () => {
       const plan = (await listPlans()).find((item) => item.id === planId)
       if (!plan) return
       for (const shot of plan.shots) for (const take of shot.takes) {
+        if (plan.pending_take_ids?.includes(take.id) && take.stream_url?.startsWith('file:')) {
+          progress.queue(take.id, take.file_name, 'upload', take.size_bytes)
+        }
+      }
+      for (const shot of plan.shots) for (const take of shot.takes) {
         if (!plan.pending_take_ids?.includes(take.id) || !take.stream_url?.startsWith('file:')) continue
+        progress.start(take.id, take.file_name, 'upload', take.size_bytes)
         await lunaKaHttpClient.connect(endpoint)
         const url = new URL(`/api/v1/director/plans/${encodeURIComponent(planId)}/shots/${encodeURIComponent(shot.id)}/media/${encodeURIComponent(take.id)}`, endpoint)
         url.searchParams.set('file_name', take.file_name)
@@ -200,6 +208,7 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
         if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) throw new Error('素材不在计划目录中')
         const headers = await lunaKaHttpClient.authorizationHeadersFor(url.toString())
         const size = (await fs.stat(file)).size
+        progress.update(0, size)
         await new Promise<void>((resolve, reject) => {
           const request = (url.protocol === 'https:' ? https : http).request(url, { method: 'POST',
             headers: { ...headers, 'Content-Length': String(size), 'Content-Type': 'application/octet-stream' } }, (response) => {
@@ -211,14 +220,27 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
           request.setTimeout(120000, () => request.destroy(new Error('素材上传超时')))
           request.on('error', reject)
           const source = createReadStream(file)
+          let transferred = 0
+          source.on('data', (chunk) => { transferred += chunk.length; progress.update(transferred) })
           source.on('error', (error) => request.destroy(error))
           request.on('close', () => source.destroy())
           source.pipe(request)
         })
         await save(plan, (current) => ({ ...current, pending_take_ids: current.pending_take_ids?.filter((id) => id !== take.id) }))
+        progress.done()
       }
       const remote = await lunaKaHttpClient.request<DirectorLanPlanSummary>(endpoint,
         `/api/v1/director/plans/${encodeURIComponent(planId)}`)
+      const downloadPlan = (await listPlans()).find((item) => item.id === planId)
+      for (const remoteShot of remote.shots) for (const take of remoteShot.takes) {
+        const localShot = downloadPlan?.shots.find((shot) => shot.id === remoteShot.id)
+        const localTake = localShot?.takes.find((item) => item.id === take.id)
+        if (take.available && (take.download_path || take.download_url) && downloadPlan?.local_directory && localShot
+          && !downloadPlan.pending_take_ids?.includes(take.id) && !downloadPlan.deleted_local_take_ids?.includes(take.id)
+          && !(localTake?.available && localTake.stream_url?.startsWith('file:'))) {
+          progress.queue(take.id, take.file_name, 'download', take.size_bytes)
+        }
+      }
       for (const remoteShot of remote.shots) for (const take of remoteShot.takes) {
         if (!take.available || !(take.download_path || take.download_url)) continue
         const current = (await listPlans()).find((item) => item.id === planId)
@@ -230,8 +252,10 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
         const remoteUrl = new URL(take.download_path ?? new URL(take.download_url!).pathname, endpoint).toString()
         const index = localTake ? localShot.takes.indexOf(localTake) : localShot.takes.length
         const destination = path.join(current.local_directory, mediaFolder(localShot.order, localShot.name), mediaFileName(index + 1, take.file_name))
+        progress.start(take.id, take.file_name, 'download', take.size_bytes)
         await downloadToFileWithRetry({ name: take.file_name, bytes: take.size_bytes, sourceUrl: remoteUrl,
-          headers: await lunaKaHttpClient.authorizationHeadersFor(remoteUrl) }, destination)
+          headers: await lunaKaHttpClient.authorizationHeadersFor(remoteUrl) }, destination,
+          (update) => progress.update(update.downloaded, update.total))
         await save(current, (latest) => ({ ...latest, shots: latest.shots.map((shot) => {
           if (shot.id !== remoteShot.id) return shot
           const downloaded = { ...take, available: true, stream_url: pathToFileURL(destination).toString(),
@@ -239,8 +263,9 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
           const exists = shot.takes.some((item) => item.id === take.id)
           return { ...shot, takes: exists ? shot.takes.map((item) => item.id === take.id ? downloaded : item) : [...shot.takes, downloaded] }
         }) }))
+        progress.done()
       }
-    })().finally(() => syncTasks.delete(key))
+    })().catch((error) => { progress.fail(); throw error }).finally(() => syncTasks.delete(key))
     syncTasks.set(key, task)
     return task
   })

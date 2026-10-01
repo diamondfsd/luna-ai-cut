@@ -253,7 +253,12 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     saveLocalPlan: (plan, expectedSignature) => ipcRenderer.invoke('director-lab:save-local-plan', plan, expectedSignature),
     importMaterials: (plan, shotId) => ipcRenderer.invoke('director-lab:import-materials', plan, shotId),
     deleteLocalMaterial: (planId, takeId) => ipcRenderer.invoke('director-lab:delete-local-material', planId, takeId),
-    syncMaterials: (endpoint, planId) => ipcRenderer.invoke('director-lab:sync-materials', endpoint, planId),
+    syncMaterials: (endpoint, planId, operationId) => ipcRenderer.invoke('director-lab:sync-materials', endpoint, planId, operationId),
+    onMaterialSyncProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').DirectorMaterialSyncProgress): void => callback(progress)
+      ipcRenderer.on('director-lab:material-sync-progress', listener)
+      return () => ipcRenderer.off('director-lab:material-sync-progress', listener)
+    },
     acknowledgeLocalPlan: (remote, signature) => ipcRenderer.invoke('director-lab:acknowledge-local-plan', remote, signature),
     prepareThumbnail: (url, positionMs) => ipcRenderer.invoke('director-lab:prepare-thumbnail', url, positionMs),
     reconcileLocalPlan: (plan, resolveConflict) => ipcRenderer.invoke('director-lab:reconcile-local-plan', plan, resolveConflict),
