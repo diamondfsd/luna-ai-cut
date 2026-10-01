@@ -143,6 +143,24 @@
 }
 
 /* 头部 */
+.ui-dialog-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 40px;
+}
+
+.ui-dialog-header .ui-dialog-header-row > .ui-dialog-title {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-dialog-header-row > .ui-btn {
+  flex-shrink: 0;
+}
+
 .ui-dialog-header {
   display: flex;
   flex-direction: column;

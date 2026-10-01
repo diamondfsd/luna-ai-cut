@@ -12,6 +12,10 @@
   min-height: 0;
 }
 
+.director-range-dialog > .ui-dialog-close {
+  top: 19px;
+}
+
 .director-range-body:has(> .director-take-list) {
   grid-template-columns: 220px minmax(0, 1fr);
 }
@@ -47,13 +51,20 @@
 }
 
 .director-range-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, auto);
   align-items: center;
   gap: 8px;
 }
 
-.director-range-actions > .ui-input-full { flex: 1; min-width: 180px; }
+.director-range-actions > .ui-input {
+  min-width: 0;
+  min-height: 44px;
+}
+
+.director-range-actions > .ui-btn {
+  height: 44px;
+}
 
 @media (max-width: 800px) {
   .director-range-body:has(> .director-take-list) { grid-template-columns: 160px minmax(0, 1fr); }

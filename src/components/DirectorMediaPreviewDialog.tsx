@@ -63,8 +63,7 @@ export function DirectorMediaPreviewDialog({ plan, onLocalPlanChange, onWriteSta
     请连接手机同步素材，或为这个镜头添加本地素材。
   </Dialog>
   if (take.kind === 'video') return <DirectorVideoRangeEditor key={take.id} take={take} shot={shot} takes={takes}
-    source={videoSource} onSave={saveRange} onSelectTake={onSelectTake} onClose={onClose}
-    downloading={downloading} onDownload={() => onDownload(take)} />
+    source={videoSource} onSave={saveRange} onSelectTake={onSelectTake} onClose={onClose} />
   return <PreviewModal filePath={mediaPath(take)} filePathList={[...sources.keys()]} previewOnly
     resolveSource={resolveSource} onFilePathChange={selectPath} onClose={onClose}
     renderThumbnail={(path) => {

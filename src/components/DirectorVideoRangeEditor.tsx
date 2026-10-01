@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MoreHorizontal, Save } from 'lucide-react'
 import type { DirectorLanShot, DirectorLanTake } from '../shared/types'
 import type { DirectorTakeRange } from '../lib/directorTakeRange'
-import { Button, Dialog, IconButton, Input, LoadingIndicator, Select, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, toast } from '../ui'
+import { Button, Dialog, Input, LoadingIndicator, toast } from '../ui'
 import { DirectorTakeList } from './DirectorTakeList'
 import { PreviewStage, type PreviewStageHandle } from './PreviewStage'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
@@ -17,11 +16,9 @@ interface Props {
   onSave: (range: DirectorTakeRange) => Promise<void>
   onSelectTake: (take: DirectorLanTake) => void
   onClose: () => void
-  downloading: boolean
-  onDownload: () => void
 }
 
-export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose, downloading, onDownload }: Props) {
+export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose }: Props) {
   const stage = useRef<PreviewStageHandle>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -30,8 +27,6 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
   const [note, setNote] = useState(take.selected_range?.note ?? '')
   const [marked, setMarked] = useState(Boolean(take.selected_range))
   const [saving, setSaving] = useState(false)
-  const [customSeconds, setCustomSeconds] = useState(String(shot.duration_ms / 1000))
-  const [customDurationOpen, setCustomDurationOpen] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null)
   const initialized = useRef(false)
   const sourceLoader = useRef(source)
@@ -138,7 +133,8 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
   }
 
   return <>
-    <Dialog open onOpenChange={open => { if (!open) navigate(onClose) }} title={take.file_name}
+    <Dialog open onOpenChange={open => { if (!open) onClose() }} title={take.file_name}
+      headerActions={<Button variant="primary" size="compact" disabled={!dirty || saving || media.duration <= 0} onClick={() => void save()}>{saving ? '保存中' : '保存'}</Button>}
       tone="dark" className="director-range-dialog" bodyClassName="director-range-body" closeOnMaskClick={false}>
       {takes.length > 1 && <DirectorTakeList takes={takes} selectedId={take.id} disabled={saving}
         onSelect={selectedTake => { if (selectedTake.id !== take.id) navigate(() => onSelectTake(selectedTake)) }} />}
@@ -162,34 +158,17 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
           onStartTimeChange={seconds => { setRange(current => ({ ...current, start: Math.round(seconds * 1000) })); setMarked(true) }}
           onEndTimeChange={seconds => { endPreview.current = seconds; setRange(current => ({ ...current, end: Math.round(seconds * 1000) })); setMarked(true) }} />
         <div className="director-range-actions">
-          <Select variant="compact" placeholder="快捷范围" value="" options={[
-            { value: 'plan', label: `计划时长 ${shot.duration_ms / 1000} 秒` },
-            ...[3, 5, 10].map(seconds => ({ value: String(seconds), label: `${seconds} 秒` })),
-            { value: 'full', label: '完整素材' },
-            { value: 'custom', label: '自定义时长…' },
-          ]} onValueChange={value => {
-            if (value === 'custom') setCustomDurationOpen(true)
-            else if (value === 'full') { setRange({ start: 0, end: Math.round(media.duration * 1000) }); setMarked(true); seek(0) }
-            else applyDuration(value === 'plan' ? shot.duration_ms : Number(value) * 1000)
-          }} />
-          <Input variant="compact" fullWidth aria-label="片段备注" placeholder="片段备注" maxLength={4000} value={note} onChange={event => { setNote(event.target.value); setMarked(true) }} />
-          <Button variant="primary" size="compact" icon={<Save size={14} />} disabled={!dirty || saving || media.duration <= 0} onClick={() => void save()}>{saving ? '保存中' : '保存标记'}</Button>
-          <DropdownMenu><DropdownMenuTrigger asChild>
-            <IconButton variant="ghost" size="compact" icon={<MoreHorizontal size={16} />} aria-label="更多素材操作" disabled={saving} />
-          </DropdownMenuTrigger><DropdownMenuContent>
-            <DropdownMenuItem disabled={media.duration <= 0} onSelect={() => { setRange(current => ({ ...current, start: Math.min(Math.round(media.currentTime * 1000), current.end - 1) })); setMarked(true) }}>设为入点 I</DropdownMenuItem>
-            <DropdownMenuItem disabled={media.duration <= 0} onSelect={() => { setRange(current => ({ ...current, end: Math.max(Math.round(media.currentTime * 1000), current.start + 1) })); setMarked(true) }}>设为出点 O</DropdownMenuItem>
-            <DropdownMenuItem disabled={!marked} onSelect={() => { setMarked(false); setNote(''); setRange({ start: 0, end: Math.round(media.duration * 1000) }) }}>清除标记</DropdownMenuItem>
-            {take.download_url?.startsWith('http') && <DropdownMenuItem disabled={downloading} onSelect={onDownload}>{downloading ? '下载中' : '下载原素材'}</DropdownMenuItem>}
-          </DropdownMenuContent></DropdownMenu>
+          <Input variant="pill" fullWidth aria-label="片段备注" placeholder="片段备注" maxLength={4000} disabled={saving} value={note} onChange={event => { setNote(event.target.value); setMarked(true) }} />
+          <Button disabled={saving || media.duration <= 0} onClick={() => applyDuration(shot.duration_ms)}>推荐时长</Button>
+          <Button disabled={saving || media.duration <= 0} onClick={() => {
+            setMarked(false)
+            setNote('')
+            setRange({ start: 0, end: Math.round(media.duration * 1000) })
+            seek(0)
+          }}>还原</Button>
         </div>
       </div>
       </div>
-    </Dialog>
-    <Dialog open={customDurationOpen} onOpenChange={setCustomDurationOpen} title="自定义时长（秒）" tone="dark"
-      footer={<Button variant="primary" disabled={!Number.isFinite(Number(customSeconds)) || Number(customSeconds) <= 0 || media.duration <= 0}
-        onClick={() => { applyDuration(Number(customSeconds) * 1000); setCustomDurationOpen(false) }}>应用</Button>}>
-      <Input variant="compact" type="number" min="0.1" step="0.1" aria-label="自定义时长（秒）" value={customSeconds} onChange={event => setCustomSeconds(event.target.value)} />
     </Dialog>
     <Dialog open={Boolean(pendingNavigation)} onOpenChange={open => { if (!open) setPendingNavigation(null) }} title="放弃未保存的标记？" tone="dark" footer={<>
       <Button onClick={() => setPendingNavigation(null)}>继续编辑</Button>
