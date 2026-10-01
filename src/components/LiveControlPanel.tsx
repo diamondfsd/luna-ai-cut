@@ -13,6 +13,7 @@ import { FilterPanel } from '../workspace/lut/FilterPanel'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { LiveCameraControlPanel } from './LiveCameraControlPanel'
 import { LiveConnectionGuides } from './LiveConnectionGuides'
+import { AndroidUsbConnectionMode } from './AndroidUsbConnectionMode'
 import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning, watermarkPositionStyle } from './htmlPreviewGeometry'
 import { buildResolvedWatermarkStaticLayer, WatermarkSettings } from './WatermarkSettings'
 import type { LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
@@ -34,12 +35,14 @@ interface LiveControlPanelProps {
   status: LiveStreamStatus
   busy: boolean
   onStart: () => void
+  onStatusChanged: () => void
 }
 
 export function LiveControlPanel({
   status,
   busy,
   onStart,
+  onStatusChanged,
 }: LiveControlPanelProps) {
   const previewPaneRef = useRef<HTMLDivElement>(null)
   const [previewAspectRatio, setPreviewAspectRatio] = useState(16 / 9)
@@ -270,7 +273,7 @@ export function LiveControlPanel({
                   onClick={onStart}
                   disabled={busy}
                 >
-                  {busy ? '处理中...' : '重新获取画面'}
+                  {busy ? '处理中...' : '获取画面'}
                 </Button>
               </div>
             </div>
@@ -293,6 +296,7 @@ export function LiveControlPanel({
       </div>
 
       <aside className="live-control-pane" data-live-window-controls aria-label="直播设置">
+        <AndroidUsbConnectionMode status={status} onChanged={onStatusChanged} />
         <div className="live-settings-tabs">
           <SegmentedControl
             ariaLabel="直播设置面板"

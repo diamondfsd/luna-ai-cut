@@ -108,13 +108,14 @@ export interface LiveStreamControlCapabilities {
 export interface LiveStreamStatus {
   state: LiveStreamState
   platform: string
+  androidConnectionMode: AndroidConnectionMode
   appleDeviceSupport: AppleDeviceSupportState
   appleDriverDownload: AppleDriverDownloadStatus
   controlReady: boolean
   lastControlResult: LiveStreamControlResult | null
   capabilities: LiveStreamControlCapabilities | null
   receiverConnected: boolean
-  transport: 'usb-aoa' | 'ios-tcp'
+  transport: 'usb-aoa' | 'ios-tcp' | 'android-adb'
   usbState: 'idle' | 'waiting' | 'switching' | 'connected' | 'streaming' | 'error'
   usbMessage: string
   usbDeviceLabel: string | null
@@ -136,6 +137,7 @@ export interface LiveStreamStatus {
 }
 
 export type AppleDeviceSupportState = 'not-required' | 'missing' | 'stopped' | 'ready' | 'unavailable'
+export type AndroidConnectionMode = 'aoa' | 'adb'
 
 export interface AppleDriverDownloadStatus {
   state: 'idle' | 'downloading' | 'verifying' | 'opening' | 'opened' | 'error'
@@ -151,4 +153,5 @@ export interface LiveStreamApi {
   sendControl(command: LiveStreamControlCommand): Promise<string>
   stop(): Promise<LiveStreamStatus>
   installAppleDriver(): Promise<void>
+  setAndroidConnectionMode(mode: AndroidConnectionMode): Promise<LiveStreamStatus>
 }

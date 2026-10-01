@@ -165,6 +165,11 @@
         "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/ios-usb",
         "to": "ios-usb",
         "filter": ["*.exe", "*.dll", "licenses/**/*"]
+      },
+      {
+        "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/android-adb",
+        "to": "android-adb",
+        "filter": ["adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll", "NOTICE.txt", "manifest.json"]
       }
     ],
     "target": [

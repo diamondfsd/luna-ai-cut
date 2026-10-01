@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { HelpCircle, RefreshCw, Square, Video } from 'lucide-react'
 
 import { Button, Dialog, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
@@ -28,7 +28,6 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   const [status, setStatus] = useState<LiveStreamStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const autoStartRequested = useRef(false)
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -64,14 +63,6 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
     }
   }, [busy, refreshStatus])
 
-  useEffect(() => {
-    if (autoStartRequested.current) return
-    autoStartRequested.current = true
-    void runAction(async () => {
-      await window.luna.liveStream.start()
-    })
-  }, [runAction])
-
   const active = Boolean(status?.startedAt) && status?.state !== 'stopping'
   const outputTone = status?.usbState === 'streaming' ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
 
@@ -104,12 +95,12 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
             <ol className="live-console-instructions">
               <li>在手机 Luna 咔中连接相机。</li>
               <li>用 USB 线连接手机和电脑。</li>
-              <li>直播画面会自动连接，等待预览区出现画面。</li>
+              <li>点击“获取画面”，等待预览区出现画面。</li>
               <li>可调整水印和色彩；点击“打开直播窗口”打开独立预览。</li>
               <li>打开抖音直播伴侣，在场景中添加“窗口画面”，选择直播预览窗口。</li>
             </ol>
           </Dialog>
-          {(Boolean(status?.videoFrames) || windowLiveMode) && (
+          {(status?.usbState === 'streaming' || windowLiveMode) && (
             <Button
               variant={windowLiveMode ? 'secondary' : 'primary'}
               size="compact"
@@ -156,6 +147,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
         <LiveControlPanel
           status={status}
           busy={busy}
+          onStatusChanged={() => void refreshStatus()}
           onStart={() => void runAction(async () => {
             await window.luna.liveStream.start()
             toast.success('已开始获取画面')

@@ -1,4 +1,7 @@
 import { IosTcpReceiver } from './iosTcpReceiver'
+import { AndroidAdbReceiver } from './androidAdbReceiver'
+import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import type { AndroidConnectionMode } from '../../../src/shared/types'
 import { stateScore } from './mediaReceiverStatus'
 import {
   type LiveMediaReceiver,
@@ -12,9 +15,13 @@ class MultiTransportReceiver implements LiveMediaReceiver {
   private readonly receivers: LiveMediaReceiver[]
   private lastActive: LiveMediaReceiver
 
-  constructor(onFrame: (frame: UsbMediaFrame) => void) {
-    const android = new UsbAoaReceiver(onFrame)
-    const ios = new IosTcpReceiver(onFrame)
+  constructor(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void, androidMode: AndroidConnectionMode) {
+    const android = androidMode === 'adb'
+      ? new AndroidAdbReceiver(onFrame, onDisconnected, {
+        log: (level, message, details) => level === 'warn' ? logMainWarn(message, details) : logMainInfo(message, details),
+      })
+      : new UsbAoaReceiver(onFrame, onDisconnected)
+    const ios = new IosTcpReceiver(onFrame, onDisconnected)
     this.receivers = [android, ios]
     this.lastActive = android
   }
@@ -62,6 +69,6 @@ class MultiTransportReceiver implements LiveMediaReceiver {
   }
 }
 
-export function createLiveMediaReceiver(onFrame: (frame: UsbMediaFrame) => void): LiveMediaReceiver {
-  return new MultiTransportReceiver(onFrame)
+export function createLiveMediaReceiver(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void = () => {}, androidMode: AndroidConnectionMode = 'aoa'): LiveMediaReceiver {
+  return new MultiTransportReceiver(onFrame, onDisconnected, androidMode)
 }

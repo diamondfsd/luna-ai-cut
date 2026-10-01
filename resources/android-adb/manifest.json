@@ -1,0 +1,15 @@
+{
+  "name": "Android Debug Bridge",
+  "version": "37.0.1",
+  "source": "https://dl.google.com/android/repository/platform-tools-latest-windows.zip",
+  "retrievedAt": "2026-10-01",
+  "archiveSha256": "45f4d63113e895ebde0c90f194099a4676b6ac653bd28d54314a9e022bbc1a99",
+  "target": "win32-x64",
+  "peMachine": 332,
+  "files": {
+    "adb.exe": "b4a6b455702684652cccf7b46258b29e653538904359a58fd4931cf3ef286b3f",
+    "AdbWinApi.dll": "c1d653030b4bde65d3e07e4d0b0979e17be56df1436cdd15528630f27808050d",
+    "AdbWinUsbApi.dll": "0710e894d9b40f71a670c13c694079d564c92c1279da382cfe4850983aaebe1b",
+    "NOTICE.txt": "38ec8c6f5b7799c223ffeab1f9e81c2d5fc67b5e56d6424f649630ca1ee1a811"
+  }
+}

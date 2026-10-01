@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { LivePreviewWindowSettings, LiveWindowResolution } from '../../src/shared/types/liveStream'
 import type { IpcContext } from './context'
 import { liveWindowContentSize } from '../application/liveWindowSizing'
+import { setLiveStreamDisconnectHandler } from '../media/live-stream/liveStreamService'
 
 const attachedWindows = new WeakSet<BrowserWindow>()
 let livePreviewWindow: BrowserWindow | null = null
@@ -110,6 +111,7 @@ function attachFullScreenEvents(window: BrowserWindow): void {
 }
 
 export function register(context: IpcContext): void {
+  setLiveStreamDisconnectHandler(closeLivePreviewWindow)
   app.on('browser-window-created', (_event, window) => attachFullScreenEvents(window))
   for (const window of BrowserWindow.getAllWindows()) attachFullScreenEvents(window)
 
