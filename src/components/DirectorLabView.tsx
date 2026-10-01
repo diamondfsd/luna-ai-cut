@@ -28,6 +28,7 @@ import { useDirectorPlanSync } from '../hooks/useDirectorPlanSync'
 import { DirectorMaterialSyncControl } from './DirectorMaterialSyncControl'
 import { useDirectorMaterialSyncControl } from '../hooks/useDirectorMaterialSyncControl'
 import { DIRECTOR_PLAN_ATTRIBUTES, directorPlanContentSignature, overlayDirectorLocalPlan } from '../lib/directorPlanSync'
+import { buildDirectorAiPrompt } from '../lib/directorAiPrompt'
 import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
 import { DirectorLabPlanList } from './DirectorLabPlanList'
@@ -210,60 +211,6 @@ function formatPlanCreatedAt(value: string | null | undefined): string {
   }).format(date)
 }
 
-function buildAiPrompt(
-  plan: DirectorLanPlanSummary,
-  endpoint: string | null,
-): string {
-  const lines = [
-    '你是处理 Luna咔导演计划素材的 AI。',
-    '',
-    `当前计划：${plan.title}`,
-    `计划 ID：${plan.id}`,
-    `创建时间：${plan.created_at}`,
-    `更新时间：${plan.updated_at}`,
-    '',
-    '任务：读取完整导演计划、镜头/素材元数据和媒体文件，按 shot 和 take 组织处理。不要修改原素材。',
-    '',
-  ]
-  if (plan.local_directory) {
-    lines.push(
-      '本地素材目录：',
-      plan.local_directory,
-      '',
-      '本地读取方式：',
-      `1. 读取 ${plan.local_directory}/manifest.json，获得 shots、takes、selected_range。`,
-      `2. 读取 ${plan.local_directory}/README.md，获得镜头说明。`,
-      '3. manifest 中每个 media.path 是相对计划目录的媒体路径。',
-      '4. 直接读取这些本地视频/图片文件；selected_range 仅表示选取区间，不要裁剪原文件。',
-      '',
-    )
-  }
-  if (endpoint) {
-    lines.push(
-      `手机服务地址：${endpoint}`,
-      '远程读取方式：',
-      `1. GET ${endpoint}/api/v1/director/plans`,
-      `2. GET ${endpoint}/api/v1/director/plans/${encodeURIComponent(plan.id)}`,
-      '3. 使用计划中的 shots[].takes[]，每条 take 包含 stream_url、download_url、selected_range。',
-      '4. stream_url 用于读取/播放，download_url 用于下载原文件；请求支持 HTTP Range。',
-      '5. 需要整包时 GET archive_url；需要更新本地副本时，重新下载 active plan 并覆盖本地目录。',
-      '6. 服务需要手机端批准设备授权；非 Luna AI Cut 客户端须先 POST /api/v1/auth/authorize，再在 Authorization: Bearer 和 X-Luna-Client-Id 请求头中携带授权信息。',
-      '',
-    )
-  } else if (!plan.local_directory) {
-    lines.push(
-      '当前没有可用的本地目录数据。请先连接手机并下载计划，或指定已下载的导演计划目录。',
-      '',
-    )
-  }
-  lines.push(
-    '输出要求：',
-    '- 保持镜头顺序和 take 顺序。',
-    '- 引用素材时同时给出 shot.name、take.id、本地路径或远程 download_url。',
-    '- selected_range.start_ms/end_ms 是原视频时间轴范围，单位为毫秒。',
-  )
-  return lines.join('\n')
-}
 
 export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const [connectedEndpoint, setConnectedEndpoint] = useState<string | null>(null)
@@ -462,25 +409,6 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       })
       .catch(() => undefined)
   }, [active, activePlan])
-
-  useEffect(() => {
-    if (!active || !connectedEndpoint || !activePlan) return
-    let disposed = false
-    const send = (active: boolean): void => {
-      if (disposed && active) return
-      void window.luna.lunaKaHttpClient.request<unknown>(
-        connectedEndpoint,
-        `/api/v1/director/keepalive?active=${active ? '1' : '0'}`,
-      ).catch(() => undefined)
-    }
-    send(true)
-    const timer = window.setInterval(() => send(true), 15_000)
-    return () => {
-      disposed = true
-      window.clearInterval(timer)
-      send(false)
-    }
-  }, [active, activePlan, connectedEndpoint])
 
   useEffect(() => {
     if (!active || !connectedEndpoint) return
@@ -703,8 +631,8 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   async function copyAiPrompt(): Promise<void> {
     if (!activePlan) return
     try {
-      await window.luna.copyText(buildAiPrompt(activePlan, connectedEndpoint))
-      toast.success('已复制完整 AI 提示词')
+      await window.luna.copyText(buildDirectorAiPrompt(activePlan))
+      toast.success('已复制 AI 提示词')
     } catch (nextError) {
       toast.error(nextError instanceof Error ? nextError.message : '复制失败')
     }
