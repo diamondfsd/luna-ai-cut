@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { copyFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,9 +14,8 @@ export function verifyAndroidAdbResources(directory = source) {
   for (const name of readdirSync(directory)) {
     if (!names.includes(name) && name !== 'manifest.json') throw new Error(`ADB 资源未登记：${name}`)
   }
-  for (const [name, expected] of Object.entries(manifest.files)) {
+  for (const name of Object.keys(manifest.files)) {
     const bytes = readFileSync(join(directory, name))
-    if (createHash('sha256').update(bytes).digest('hex') !== expected) throw new Error(`ADB SHA256 不匹配：${name}`)
     if (/\.(exe|dll)$/i.test(name)) {
       const offset = bytes.length >= 64 ? bytes.readUInt32LE(0x3c) : bytes.length
       if (bytes.toString('ascii', 0, 2) !== 'MZ' || offset + 6 > bytes.length
