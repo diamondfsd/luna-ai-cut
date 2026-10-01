@@ -2,15 +2,22 @@ import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import type {
   DirectorLabMediaMetadata,
   DirectorLanPlanSummary,
   DirectorLanShotAttribute,
 } from '../../../src/shared/types'
-import { directorPlanContentSignature } from '../../../src/lib/directorPlanSync.ts'
+import { DIRECTOR_PLAN_ATTRIBUTES, directorPlanContentSignature } from '../../../src/lib/directorPlanSync.ts'
 
-const planWrites = new Map<string, Promise<void>>()
+let planWriteTask: Promise<unknown> = Promise.resolve()
+
+export function serializePlanWrite<Result>(action: () => Promise<Result>): Promise<Result> {
+  const task = planWriteTask.catch(() => undefined).then(action)
+  planWriteTask = task
+  return task
+}
 
 export function safePathPart(value: string, fallback: string): string {
   const normalized = path.basename(value.trim())
@@ -88,13 +95,17 @@ export function manifestForPlan(
     format: 'luna-director-plan-v1',
     plan_id: plan.id,
     title: plan.title,
+    main_content: plan.main_content ?? '',
     created_at: plan.created_at,
     updated_at: plan.updated_at,
     revision: plan.revision ?? 0,
-    synced_revision: plan.revision ?? 0,
-    synced_signature: directorPlanContentSignature(plan),
+    synced_revision: plan.synced_revision ?? plan.revision ?? 0,
+    synced_signature: plan.synced_signature ?? directorPlanContentSignature(plan),
+    pending_create: plan.pending_create ?? false,
+    pending_shot_ids: plan.pending_shot_ids ?? [],
+    pending_take_ids: plan.pending_take_ids ?? [],
     exported_at: new Date().toISOString(),
-    attributes: plan.attributes ?? [],
+    attributes: plan.attributes ?? DIRECTOR_PLAN_ATTRIBUTES,
     shots: plan.shots.map((shot, shotIndex) => ({
       id: shot.id,
       order: shotIndex + 1,
@@ -113,6 +124,7 @@ export function manifestForPlan(
         || '',
       media: shot.takes.map((take, takeIndex) => ({
         id: take.id,
+        file_name: take.file_name,
         type: take.kind,
         created_at: take.created_at,
         captured_at: metadata[take.id]?.capturedAt ?? take.captured_at ?? null,
@@ -164,6 +176,8 @@ interface ExistingManifest {
   title?: unknown
   updated_at?: unknown
   revision?: unknown
+  pending_shot_ids?: unknown
+  pending_take_ids?: unknown
   shots?: Array<{ media?: ExistingManifestMedia[] }>
 }
 
@@ -204,6 +218,15 @@ export async function reconcileLocalDirectorPlan(
   metadata: Record<string, DirectorLabMediaMetadata> = {},
   resolveConflict = false,
 ): Promise<boolean> {
+  return serializePlanWrite(() => reconcileLocalDirectorPlanUnlocked(rootDirectory, plan, metadata, resolveConflict))
+}
+
+async function reconcileLocalDirectorPlanUnlocked(
+  rootDirectory: string,
+  plan: DirectorLanPlanSummary,
+  metadata: Record<string, DirectorLabMediaMetadata>,
+  resolveConflict: boolean,
+): Promise<boolean> {
   let directory = path.join(rootDirectory, planDirectory(plan.title))
   const existingDirectory = await findPlanDirectoryById(rootDirectory, plan.id)
   if (existingDirectory && path.resolve(existingDirectory) !== path.resolve(directory)) {
@@ -221,6 +244,11 @@ export async function reconcileLocalDirectorPlan(
     // A plan downloaded one take at a time may not have a manifest yet.
   }
   if (typeof existing?.plan_id === 'string' && existing.plan_id !== plan.id) return false
+  const pendingShotIds = Array.isArray(existing?.pending_shot_ids)
+    ? existing!.pending_shot_ids.filter((shotId): shotId is string => typeof shotId === 'string')
+    : []
+  if (!resolveConflict && pendingShotIds.some((shotId) => !plan.shots.some((shot) => shot.id === shotId))) return false
+  if (!resolveConflict && Array.isArray(existing?.pending_take_ids) && existing!.pending_take_ids.length) return false
 
   const existingMedia = new Map<string, ExistingManifestMedia>()
   for (const shot of existing?.shots ?? []) {
@@ -269,7 +297,7 @@ export async function reconcileLocalDirectorPlan(
       const absolutePath = path.resolve(directory, relativePath.replace(/[\\/]+/g, path.sep))
       let available = await localFileExists(absolutePath)
       const previous = existingMedia.get(take.id)
-      if (resolveConflict && !available && typeof previous?.path === 'string') {
+      if (!available && typeof previous?.path === 'string') {
         const previousPath = path.resolve(directory, previous.path.replace(/[\\/]+/g, path.sep))
         const realDirectory = await fs.realpath(directory)
         const realPreviousPath = await fs.realpath(previousPath).catch(() => null)
@@ -297,11 +325,13 @@ export async function reconcileLocalDirectorPlan(
     })),
   })))
 
-  if (!manifestNeedsUpdate && !remoteIsNewer && !resolveConflict) return false
+  if (!manifestNeedsUpdate && !remoteIsNewer && !resolveConflict && !pendingShotIds.length) return false
   if (resolveConflict && existing) {
     await fs.copyFile(manifestPath, path.join(directory, `manifest.conflict-${randomUUID()}.json`))
   }
-  await writeDirectorPlanFiles(directory, { ...plan, shots }, { ...recoveredMetadata, ...metadata })
+  await writeDirectorPlanFilesUnlocked(directory, { ...plan, shots, pending_create: false,
+    pending_shot_ids: [], pending_take_ids: [], synced_revision: plan.revision ?? 0,
+    synced_signature: directorPlanContentSignature(plan) }, { ...recoveredMetadata, ...metadata })
   return true
 }
 
@@ -310,10 +340,23 @@ export async function writeDirectorPlanFiles(
   plan: DirectorLanPlanSummary,
   metadata: Record<string, DirectorLabMediaMetadata> = {},
 ): Promise<void> {
-  const key = path.resolve(directory)
-  const previous = planWrites.get(key) ?? Promise.resolve()
-  const current = previous.catch(() => undefined).then(async () => {
+  return serializePlanWrite(() => writeDirectorPlanFilesUnlocked(directory, plan, metadata))
+}
+
+export async function writeDirectorPlanFilesUnlocked(
+  directory: string,
+  plan: DirectorLanPlanSummary,
+  metadata: Record<string, DirectorLabMediaMetadata> = {},
+): Promise<void> {
     await fs.mkdir(directory, { recursive: true })
+    for (const shot of plan.shots) for (const [index, take] of shot.takes.entries()) {
+      if (!take.available || !take.stream_url?.startsWith('file:')) continue
+      const source = fileURLToPath(take.stream_url)
+      const target = path.join(directory, mediaFolder(shot.order, shot.name), mediaFileName(index + 1, take.file_name))
+      if (path.resolve(source) === path.resolve(target)) continue
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      if (!await localFileExists(target)) await fs.copyFile(source, target, constants.COPYFILE_EXCL)
+    }
     const manifestPath = path.join(directory, 'manifest.json')
     const temporaryPath = `${manifestPath}.${process.pid}.${randomUUID()}.tmp`
     try {
@@ -323,11 +366,4 @@ export async function writeDirectorPlanFiles(
     } finally {
       await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
     }
-  })
-  planWrites.set(key, current)
-  try {
-    await current
-  } finally {
-    if (planWrites.get(key) === current) planWrites.delete(key)
-  }
 }

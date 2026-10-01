@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   Camera,
   CloudOff,
@@ -6,6 +6,7 @@ import {
   Plus,
   MoreHorizontal,
   Trash2,
+  Upload,
 } from 'lucide-react'
 
 import type {
@@ -16,26 +17,30 @@ import type {
 } from '../shared/types'
 import { Button, Dialog, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, IconButton, toast } from '../ui'
 import { DirectorShotEditorDialog, type DirectorShotDraft } from './DirectorShotEditorDialog'
+import { DirectorMediaThumbnail } from './DirectorMediaThumbnail'
+import { directorPlanContentSignature } from '../lib/directorPlanSync'
 import '../styles/director-lab-shot-edit.css'
 
 interface DirectorLabShotListProps {
   plan: DirectorLanPlanSummary
   schema: DirectorPlanSchema | null
   shots: DirectorLanShot[]
-  endpoint: string | null
+  tools?: ReactNode
   refreshPlans: () => Promise<DirectorLanPlanSummary[]>
   onWriteStateChange: (planId: string, pending: boolean) => void
   onOpenTake: (take: DirectorLanTake) => void
+  onLocalPlanChange: (plan: DirectorLanPlanSummary) => void
 }
 
 export function DirectorLabShotList({
   plan,
   schema,
   shots,
-  endpoint,
+  tools,
   refreshPlans,
   onWriteStateChange,
   onOpenTake,
+  onLocalPlanChange,
 }: DirectorLabShotListProps) {
   const [editingShotId, setEditingShotId] = useState<string | null>(null)
   const [shotDraft, setShotDraft] = useState<DirectorShotDraft | null>(null)
@@ -67,38 +72,19 @@ export function DirectorLabShotList({
     duration_ms: number
     remark: string
     attributes: DirectorLanShot['attributes']
-  }>) {
-    if (!endpoint) throw new Error('手机尚未连接')
-    return window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(
-      endpoint,
-      `/api/v1/director/plans/${encodeURIComponent(plan.id)}`,
-      {
-        method: 'PATCH',
-        body: {
-          expected_revision: plan.revision ?? 0,
-          title: plan.title,
-          shots,
-        },
-      },
-    )
+  }>, revision = plan.revision, updatedAt = plan.local_updated_at ?? plan.updated_at) {
+    return window.luna.directorLab.saveLocalPlan({ ...plan, revision, local_updated_at: updatedAt,
+      synced_signature: plan.synced_signature ?? directorPlanContentSignature(plan), shots: shots.map((shot, index) => ({
+      ...shot, order: index + 1, completed_takes: 0, takes: [],
+    })) }).then((saved) => { onLocalPlanChange(saved); return saved })
   }
 
   async function addShot(): Promise<void> {
-    if (!schema || !endpoint || mutating) return
+    if (mutating) return
     setMutating(true)
     onWriteStateChange(plan.id, true)
     try {
-      await planUpdate([
-        ...plan.shots,
-        {
-          id: `shot-${crypto.randomUUID()}`,
-          name: `镜头 ${plan.shots.length + 1}`,
-          duration_ms: 5000,
-          remark: '',
-          attributes: [],
-        },
-      ])
-      await refreshPlans()
+      onLocalPlanChange(await window.luna.directorLab.addLocalShot(plan))
     } catch (error) {
       await handleMutationError(error, '新增镜头失败')
     } finally {
@@ -108,12 +94,17 @@ export function DirectorLabShotList({
   }
 
   async function deleteShot(shot: DirectorLanShot): Promise<void> {
-    if (!endpoint || mutating) return
+    if (mutating) return
+    const latest = plan.shots.find((item) => item.id === shot.id)
+    if (JSON.stringify(latest) !== JSON.stringify(shot)) {
+      setDeleteCandidate(latest ?? null)
+      toast.error('镜头已更新，请重新确认删除')
+      return
+    }
     setMutating(true)
     onWriteStateChange(plan.id, true)
     try {
       await planUpdate(plan.shots.filter((item) => item.id !== shot.id))
-      await refreshPlans()
       setDeleteCandidate(null)
     } catch (error) {
       await handleMutationError(error, '删除镜头失败', shot.id)
@@ -129,6 +120,7 @@ export function DirectorLabShotList({
     setShotDraft({
       id: shot.id,
       baseRevision: plan.revision ?? 0,
+      baseUpdatedAt: plan.local_updated_at ?? plan.updated_at,
       name: shot.name,
       durationMs: shot.duration_ms,
       values: Object.fromEntries((schema?.shot_fields ?? []).map((definition) => [
@@ -141,7 +133,7 @@ export function DirectorLabShotList({
   }
 
   async function saveShotEdit(): Promise<void> {
-    if (!endpoint || !schema || !shotDraft || mutating) return
+    if (!schema || !shotDraft || mutating) return
     const durationMs = Math.round(shotDraft.durationMs)
     if (
       !shotDraft.name.trim() ||
@@ -186,22 +178,19 @@ export function DirectorLabShotList({
             : shot.attributes,
         }
       })
-      await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(endpoint,
-        `/api/v1/director/plans/${encodeURIComponent(plan.id)}`, {
-          method: 'PATCH',
-          body: { expected_revision: shotDraft.baseRevision, title: plan.title, shots },
-        })
+      await planUpdate(shots, shotDraft.baseRevision, shotDraft.baseUpdatedAt)
       setEditingShotId(null)
       setShotDraft(null)
       toast.success('镜头已保存')
-      void refreshPlans().catch(() => undefined)
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : String(nextError)
-      if (message.includes('HTTP 409') || message.includes('已在其他端修改')) {
+      if (message.includes('HTTP 409') || message.includes('已在其他端修改') || message.includes('计划已更新')) {
         let latestRevision: number | undefined
+        let latestUpdatedAt = shotDraft.baseUpdatedAt
         try {
           const latest = await refreshPlans()
           latestRevision = latest.find((item) => item.id === plan.id)?.revision
+          latestUpdatedAt = latest.find((item) => item.id === plan.id)?.updated_at ?? latestUpdatedAt
         } catch {
           // Keep the draft and its original revision when refresh fails.
         }
@@ -209,7 +198,7 @@ export function DirectorLabShotList({
           setEditConflict(true)
           const revision = latestRevision
           setShotDraft((current) => current
-            ? { ...current, baseRevision: revision }
+            ? { ...current, baseRevision: revision, baseUpdatedAt: latestUpdatedAt }
             : current)
           toast.error('计划已在其他端修改，远端已刷新；确认草稿后再次保存以应用')
         } else {
@@ -226,21 +215,23 @@ export function DirectorLabShotList({
 
   return (
     <div className="lab-shot-browser">
-      {plan.source === 'remote' && endpoint && schema && (
-        <div className="lab-shot-toolbar">
+      <div className="lab-director-toolbar">
+        {tools}
+        {schema && (
           <Button variant="secondary" size="compact" icon={<Plus size={15} />}
             disabled={mutating || editingShotId !== null} onClick={() => void addShot()}>新增镜头</Button>
-        </div>
-      )}
+        )}
+      </div>
       <div className="lab-shot-grid">
         {shots.map((shot) => {
           const thumbnailTake = shot.takes.find((take) =>
             take.available && take.kind === 'photo' && take.stream_url)
             ?? shot.takes.find((take) => take.available && take.stream_url)
-          const canEdit = plan.source === 'remote' && endpoint && schema
+          const canEdit = Boolean(schema)
 
           return (
             <article className="lab-shot-row" key={shot.id}>
+              <span className="lab-shot-index">{String(shot.order).padStart(2, '0')}</span>
               {thumbnailTake ? (
                 <button
                   className="lab-shot-card-media"
@@ -248,11 +239,7 @@ export function DirectorLabShotList({
                   aria-label={`预览${shot.name}素材`}
                   onClick={() => onOpenTake(thumbnailTake)}
                 >
-                  {thumbnailTake.kind === 'video' ? (
-                    <video src={thumbnailTake.stream_url ?? undefined} muted preload="metadata" />
-                  ) : (
-                    <img src={thumbnailTake.stream_url ?? undefined} alt="" loading="lazy" />
-                  )}
+                  <DirectorMediaThumbnail url={thumbnailTake.stream_url!} />
                 </button>
               ) : (
                 <div className="lab-shot-card-media is-empty">
@@ -275,6 +262,16 @@ export function DirectorLabShotList({
                     />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
+                    <DropdownMenuItem onSelect={() => {
+                      setMutating(true)
+                      onWriteStateChange(plan.id, true)
+                      void window.luna.directorLab.importMaterials(plan, shot.id).then((saved) => {
+                        if (saved) onLocalPlanChange(saved)
+                      }).catch((error) => toast.error(error instanceof Error ? error.message : '添加素材失败'))
+                        .finally(() => { setMutating(false); onWriteStateChange(plan.id, false) })
+                    }}>
+                      <Upload size={14} />添加素材
+                    </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => beginShotEdit(shot)}>
                       <Pencil size={14} />编辑
                     </DropdownMenuItem>

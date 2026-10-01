@@ -1,5 +1,5 @@
 import { FlipVertical2, LocateFixed, RotateCcw } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
 import { bindLiveGimbalKeyboard } from '../lib/liveGimbalKeyboard'
@@ -34,6 +34,7 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
   const controlReady = status.controlReady && status.receiverConnected
   const padRef = useRef<HTMLDivElement>(null)
   const activePointer = useRef<number | null>(null)
+  const keyboardHintId = useId()
   const [joyPosition, setJoyPosition] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(capabilities.zoom.current)
   const [exposure, setExposure] = useState(capabilities.exposure.current)
@@ -61,7 +62,6 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
   }, [dispatch])
 
   useEffect(() => {
-    if (!controlReady || !capabilities.gimbal.supported) return
     return bindLiveGimbalKeyboard({
       window,
       document,
@@ -135,6 +135,8 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
           className="live-gimbal-pad"
           role="group"
           aria-label="云台方向控制"
+          aria-describedby={keyboardHintId}
+          data-moving={joyPosition.x !== 0 || joyPosition.y !== 0 ? '' : undefined}
           tabIndex={0}
           onPointerDown={startGimbal}
           onPointerMove={moveGimbal}
@@ -153,6 +155,7 @@ export function LiveCameraControlPanel({ status }: LiveCameraControlPanelProps) 
             <LocateFixed size={18} />
           </div>
         </div>
+        <p id={keyboardHintId} className="live-gimbal-keyboard-hint">WASD 中速 · Shift 全速 · 松开停止</p>
         <div className="live-control-button-row">
           <Button
             variant="toolbar"

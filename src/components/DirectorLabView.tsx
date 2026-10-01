@@ -12,6 +12,7 @@ import {
   Search,
   WandSparkles,
   X,
+  FileUp,
 } from 'lucide-react'
 
 import type {
@@ -24,11 +25,15 @@ import type {
   DirectorLanShot,
 } from '../shared/types'
 import { useDirectorPlanSync } from '../hooks/useDirectorPlanSync'
-import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
+import { useDirectorMaterialSync } from '../hooks/useDirectorMaterialSync'
+import { DIRECTOR_PLAN_ATTRIBUTES, directorPlanContentSignature, overlayDirectorLocalPlan } from '../lib/directorPlanSync'
+import { Button, IconButton, Input, LoadingIndicator, Select, Switch, Tooltip, toast } from '../ui'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
 import { DirectorLabPlanList } from './DirectorLabPlanList'
 import { DirectorLabShotList } from './DirectorLabShotList'
 import { DirectorPlanConflictDialog } from './DirectorPlanConflictDialog'
+import { DirectorPlanImportDialog } from './DirectorPlanImportDialog'
+import './DirectorLabView.css'
 
 interface DirectorLabViewProps {
   active: boolean
@@ -133,13 +138,7 @@ function normalizePlanAttributeDefinitions(
     }))
   if (definitions.length > 0) return definitions
 
-  const firstLegacyShot = plan.shots.find((shot) => Array.isArray(shot.attributes))
-  return (firstLegacyShot?.attributes ?? [])
-    .filter((attribute) => attribute.name.trim())
-    .map((attribute, index) => ({
-      id: attribute.id || `${plan.id}-attribute-${index}`,
-      name: attribute.name.trim(),
-    }))
+  return DIRECTOR_PLAN_ATTRIBUTES.map((attribute) => ({ ...attribute }))
 }
 
 function legacyShotDescriptions(shot: DirectorLanShot): Map<string, string> {
@@ -267,7 +266,13 @@ function buildAiPrompt(
 
 export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const [connectedEndpoint, setConnectedEndpoint] = useState<string | null>(null)
-  const [schema, setSchema] = useState<DirectorPlanSchema | null>(null)
+  const [schema, setSchema] = useState<DirectorPlanSchema | null>({ schema_version: 2, shot_fields: [
+    { id: 'content', label: '画面内容', storage_name: '画面内容', kind: 'multiline', max_length: 4000 },
+    { id: 'framing', label: '景别', storage_name: '景别', kind: 'text', max_length: 4000 },
+    { id: 'movement', label: '运镜方式', storage_name: '运镜方式', kind: 'multiline', max_length: 4000 },
+  ] })
+  const [importOpen, setImportOpen] = useState(false)
+  const [syncMaterials, setSyncMaterials] = useState(() => localStorage.getItem('luna.director-lab.sync-materials') === 'true')
   const [plans, setPlans] = useState<DirectorLanPlanSummary[]>([])
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
   const [shotQuery, setShotQuery] = useState('')
@@ -275,6 +280,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const [editingPlanTitle, setEditingPlanTitle] = useState(false)
   const [planTitleDraft, setPlanTitleDraft] = useState('')
   const [planTitleBaseRevision, setPlanTitleBaseRevision] = useState(0)
+  const [planTitleBaseUpdatedAt, setPlanTitleBaseUpdatedAt] = useState('')
   const [savingPlanTitle, setSavingPlanTitle] = useState(false)
   const [previewTakeId, setPreviewTakeId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -330,19 +336,14 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     setPlans((current) => {
       const currentById = new Map(current.map((plan) => [plan.id, plan]))
       const localById = new Map(
-        current.filter((plan) => plan.source === 'local').map((plan) => [plan.id, plan]),
+        current.filter((plan) => plan.local_directory).map((plan) => [plan.id, plan]),
       )
       const remoteIds = new Set(remotePlans.map((plan) => plan.id))
       const mergedRemote = remotePlans.map((remote) => {
         const local = localById.get(remote.id)
         const previous = currentById.get(remote.id)
         return local
-          ? {
-              ...remote,
-              local_directory: local.local_directory,
-              update_available: (remote.revision ?? 0) > (local.revision ?? 0)
-                || Date.parse(remote.updated_at) > Date.parse(local.updated_at),
-            }
+          ? overlayDirectorLocalPlan(remote, local)
           : previous?.local_directory
             ? {
                 ...remote,
@@ -402,12 +403,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       const mergedLocal = local.map((localPlan) => {
         const remote = remoteById.get(localPlan.id)
         return remote
-          ? {
-              ...remote,
-              local_directory: localPlan.local_directory,
-              update_available: (remote.revision ?? 0) > (localPlan.revision ?? 0)
-                || Date.parse(remote.updated_at) > Date.parse(localPlan.updated_at),
-            }
+          ? overlayDirectorLocalPlan(remote, localPlan)
           : localPlan
       })
       return [
@@ -418,6 +414,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   }, [])
 
   const [conflictsOpen, setConflictsOpen] = useState(false)
+  useDirectorMaterialSync(active, syncMaterials, connectedEndpoint, mergeLocalPlanCopies)
   const { status: syncStatus, synchronize, conflicts, resolvingPlanId, resolveConflict } = useDirectorPlanSync({
     enabled: active,
     endpoint: connectedEndpoint,
@@ -428,6 +425,15 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     setPlanWritePending,
     onConflict: handleSyncConflict,
   })
+
+  function handleLocalPlanChange(plan: DirectorLanPlanSummary): void {
+    setPlans((current) => {
+      const previous = current.find((item) => item.id === plan.id)
+      const remote = previous?.remote_plan ?? (previous?.source === 'remote' ? previous : null)
+      return [remote ? overlayDirectorLocalPlan(remote, plan) : plan, ...current.filter((item) => item.id !== plan.id)]
+    })
+    window.setTimeout(() => void synchronize().catch(() => undefined), 0)
+  }
 
   useEffect(() => {
     if (!active || !activePlan) {
@@ -503,7 +509,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       try {
         await window.luna.lunaKaHttpClient.connectChannel(connectedEndpoint)
         reconnectAttempt = 0
-        void synchronize()
+        void synchronize().catch(() => undefined)
       } catch {
         scheduleReconnect()
       } finally {
@@ -527,13 +533,13 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       if (message.name === 'director.plan.deleted') {
         setActivePlanId((current) => current === planId ? null : current)
       }
-      void synchronize()
+      void synchronize().catch(() => undefined)
     })
     const unsubscribeStatus = window.luna.lunaKaHttpClient.onChannelStatus((event) => {
       if (event.endpoint !== endpointOrigin || disposed) return
       if (event.state === 'open') {
         reconnectAttempt = 0
-        void synchronize()
+        void synchronize().catch(() => undefined)
       } else {
         scheduleReconnect()
       }
@@ -707,13 +713,13 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     if (!activePlan) return
     setPlanTitleDraft(activePlan.title)
     setPlanTitleBaseRevision(activePlan.revision ?? 0)
+    setPlanTitleBaseUpdatedAt(activePlan.local_updated_at ?? activePlan.updated_at)
     setEditingPlanTitle(true)
   }
 
   async function savePlanTitleEdit(): Promise<void> {
     if (
       !activePlan
-      || !connectedEndpoint
       || !planTitleDraft.trim()
     ) return
     if (planTitleDraft.trim().length > 120) {
@@ -727,40 +733,21 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     setSavingPlanTitle(true)
     setPlanWritePending(activePlan.id, true)
     try {
-      await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(
-        connectedEndpoint,
-        `/api/v1/director/plans/${encodeURIComponent(activePlan.id)}`,
-        {
-          method: 'PATCH',
-          body: {
-            expected_revision: planTitleBaseRevision,
-            title: planTitleDraft.trim(),
-            attributes: activePlan.attributes,
-            shots: activePlan.shots.map((shot) => ({
-              id: shot.id,
-              name: shot.name,
-              duration_ms: shot.duration_ms,
-              remark: shot.remark,
-              attributes: shot.attributes.map((attribute) => ({
-                id: attribute.id,
-                name: attribute.name,
-                description: attribute.description,
-              })),
-            })),
-          },
-        },
-      )
+      handleLocalPlanChange(await window.luna.directorLab.saveLocalPlan({ ...activePlan,
+        synced_signature: activePlan.synced_signature ?? directorPlanContentSignature(activePlan),
+        revision: planTitleBaseRevision, local_updated_at: planTitleBaseUpdatedAt, title: planTitleDraft.trim() }))
       setEditingPlanTitle(false)
       toast.success('计划名称已保存')
-      void refreshRemotePlans().catch(() => undefined)
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : String(nextError)
-      if (message.includes('HTTP 409') || message.includes('其他端修改')) {
+      if (message.includes('HTTP 409') || message.includes('其他端修改') || message.includes('计划已更新')) {
         try {
-          const latest = await refreshRemotePlans()
+          const latest = await refreshLocalPlans()
+          mergeLocalPlanCopies(latest)
           const revision = latest.find((plan) => plan.id === activePlan.id)?.revision
           if (revision != null) {
             setPlanTitleBaseRevision(revision)
+            setPlanTitleBaseUpdatedAt(latest.find((plan) => plan.id === activePlan.id)!.updated_at)
             toast.error('计划已在其他端修改，再次保存以应用新名称')
           } else {
             toast.error('版本冲突，远端刷新失败')
@@ -794,17 +781,29 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     <div className="lab-page lab-director-page">
       <header className="lab-director-page-header">
         <div className="lab-title-block">
-          <Tooltip content="返回实验室">
+          <Tooltip content={activePlan ? '返回计划列表' : '返回实验室'}>
             <IconButton
               variant="ghost"
               size="compact"
               icon={<ArrowLeft size={15} />}
-              aria-label="返回实验室"
-              onClick={onBack}
+              aria-label={activePlan ? '返回计划列表' : '返回实验室'}
+              onClick={() => {
+                if (!activePlan) {
+                  onBack()
+                  return
+                }
+                setActivePlanId(null)
+                setEditingPlanTitle(false)
+                setPreviewTakeId(null)
+                setShotQuery('')
+                setShotSort('order')
+              }}
             />
           </Tooltip>
           <h1>导演计划</h1>
         </div>
+        <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
+          onClick={() => setImportOpen(true)}>导入计划</Button>
         {connectedEndpoint && (
           <div className="lab-director-sync-actions">
             <span
@@ -860,21 +859,6 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           <header className="lab-plan-header">
             <div className="lab-plan-heading-main">
               <div className="lab-plan-title-row">
-                <Tooltip content="返回计划列表">
-                  <IconButton
-                    variant="ghost"
-                    size="compact"
-                    icon={<ArrowLeft size={15} />}
-                    aria-label="返回计划列表"
-                    onClick={() => {
-                      setActivePlanId(null)
-                      setEditingPlanTitle(false)
-                      setPreviewTakeId(null)
-                      setShotQuery('')
-                      setShotSort('order')
-                    }}
-                  />
-                </Tooltip>
                 {editingPlanTitle ? (
                   <Input
                     aria-label="计划名称"
@@ -889,7 +873,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
                     }}
                   />
                 ) : <h2>{activePlan.title}</h2>}
-                {connectedEndpoint && (
+                {schema && (
                   editingPlanTitle ? (
                     <>
                       <Tooltip content="保存计划名称">
@@ -926,21 +910,27 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
                   )
                 )}
               </div>
-              <span className="lab-plan-meta">
-                创建于 {formatPlanCreatedAt(activePlan.created_at)} · {activePlan.shot_count} 个镜头 · {activePlan.take_count} 段素材
-              </span>
+              <div className="lab-plan-meta">
+                <span>{availableShotCount}/{planShotCount} 个镜头已有素材</span>
+                <span>{missingTakeCount > 0
+                  ? `${availableTakeCount} 段可用 · ${missingTakeCount} 段缺失`
+                  : `${availableTakeCount} 段可用素材`}</span>
+                <span>创建于 {formatPlanCreatedAt(activePlan.created_at)}</span>
+              </div>
             </div>
             <div className="lab-director-actions">
               {activePlan.local_directory && (
-                <Button
-                  variant="secondary"
+                <IconButton
+                  variant="outline"
                   size="compact"
                   icon={<FolderOpen size={15} />}
+                  aria-label="打开素材文件夹"
+                  title="打开素材文件夹"
                   onClick={() => void openLocalPlanDirectory()}
-                >
-                  打开本地副本
-                </Button>
+                />
               )}
+              <label className="lab-material-sync"><span>同步素材</span><Switch checked={syncMaterials} ariaLabel="同步素材"
+                onCheckedChange={(checked) => { localStorage.setItem('luna.director-lab.sync-materials', String(checked)); setSyncMaterials(checked) }} /></label>
               {connectedEndpoint && (!activePlan.local_directory || activePlan.update_available) && (
                 <Button
                   variant={activePlan.update_available ? 'primary' : 'secondary'}
@@ -978,59 +968,44 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
               <div><i style={{ width: `${downloadProgress.percent}%` }} /></div>
             </div>
           )}
-          <section className="lab-director-progress" aria-label="拍摄进度">
-            <div className="lab-director-progress-copy">
-              <strong>{availableShotCount}/{planShotCount} 个镜头已有素材</strong>
-              <span>
-                {missingTakeCount > 0
-                  ? `${availableTakeCount} 段可用 · ${missingTakeCount} 段缺失`
-                  : `${availableTakeCount} 段可用素材`}
-              </span>
-            </div>
-            <div
-              className="lab-director-progress-track"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={Math.max(planShotCount, 1)}
-              aria-valuenow={availableShotCount}
-            >
-              <i style={{ width: `${planShotCount ? availableShotCount / planShotCount * 100 : 0}%` }} />
-            </div>
-          </section>
           <div className="lab-director-workspace">
-            <div className="lab-director-toolbar">
-              <div className="lab-director-tools">
-                <Input
-                  aria-label="搜索镜头、属性或素材"
-                  variant="compact"
-                  icon={<Search size={14} />}
-                  wrapperClassName="lab-shot-search"
-                  placeholder="搜索镜头 / 属性 / 素材"
-                  value={shotQuery}
-                  onChange={(event) => setShotQuery(event.target.value)}
-                />
-                <Select
-                  variant="compact"
-                  icon={<ListFilter size={14} />}
-                  placeholder="排序方式"
-                  value={shotSort}
-                  onValueChange={setShotSort}
-                  options={[
-                    { value: 'order', label: '按镜头序号' },
-                    { value: 'name', label: '按名称' },
-                    { value: 'takes', label: '按素材数量' },
-                  ]}
-                  className="lab-shot-sort"
-                />
-              </div>
-            </div>
             <div className="lab-director-content">
               <DirectorLabShotList
+                tools={
+                  <div className="lab-director-tools">
+                    <Input
+                      aria-label="搜索镜头、属性或素材"
+                      variant="compact"
+                      icon={<Search size={14} />}
+                      wrapperClassName="lab-shot-search"
+                      placeholder="搜索镜头 / 属性 / 素材"
+                      value={shotQuery}
+                      onChange={(event) => setShotQuery(event.target.value)}
+                    />
+                    <Select
+                      variant="compact"
+                      icon={<ListFilter size={14} />}
+                      placeholder="排序方式"
+                      value={shotSort}
+                      onValueChange={setShotSort}
+                      options={[
+                        { value: 'order', label: '按镜头序号' },
+                        { value: 'name', label: '按名称' },
+                        { value: 'takes', label: '按素材数量' },
+                      ]}
+                      className="lab-shot-sort"
+                    />
+                  </div>
+                }
                 schema={schema}
                 plan={activePlan}
                 shots={visibleShots}
-                endpoint={activePlan.source === 'remote' ? connectedEndpoint : null}
-                refreshPlans={refreshRemotePlans}
+                onLocalPlanChange={handleLocalPlanChange}
+                refreshPlans={async () => {
+                  const local = await refreshLocalPlans()
+                  mergeLocalPlanCopies(local)
+                  return local
+                }}
                 onWriteStateChange={setPlanWritePending}
                 onOpenTake={(take) => setPreviewTakeId(take.id)}
               />
@@ -1038,6 +1013,14 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           </div>
         </section>
       )}
+      <DirectorPlanImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={(plan) => {
+        handleLocalPlanChange(plan)
+        setActivePlanId(plan.id)
+        setShotQuery('')
+        setShotSort('order')
+        setEditingPlanTitle(false)
+        setPreviewTakeId(null)
+      }} />
       <DirectorPlanConflictDialog
         open={conflictsOpen}
         onOpenChange={setConflictsOpen}

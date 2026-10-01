@@ -21,6 +21,8 @@ import { downloadToFileWithRetry } from '../media/fileDownloadService'
 import { lunaKaHttpClient } from '../network/lunaka_http_client'
 import { getDirectorPlanDir, getSettings } from '../storage/fileService'
 import { discoverDirectorServices } from '../features/director-lab/directorLabDiscovery'
+import { registerDirectorLocalImport } from '../features/director-lab/directorLabLocalImport'
+import { registerDirectorThumbnail } from '../features/director-lab/directorLabThumbnail'
 import {
   legacyShotAttribute,
   mediaFileName,
@@ -207,6 +209,7 @@ function validateProbeRequests(value: unknown): DirectorLabProbeRequest[] {
 }
 
 interface LocalManifestMedia {
+  file_name?: unknown
   id?: unknown
   type?: unknown
   created_at?: unknown
@@ -233,6 +236,10 @@ interface LocalManifestShot {
 }
 
 interface LocalManifest {
+  main_content?: unknown
+  pending_create?: unknown
+  pending_shot_ids?: unknown
+  pending_take_ids?: unknown
   format?: unknown
   plan_id?: unknown
   title?: unknown
@@ -265,7 +272,6 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       return null
     }
     const directory = path.dirname(manifestPath)
-    let manifestChanged = false
     const rawShots = raw.shots as LocalManifestShot[]
     const shots = await Promise.all(rawShots.map(async (shot, shotIndex) => {
       const media = Array.isArray(shot.media) ? shot.media as LocalManifestMedia[] : []
@@ -316,7 +322,6 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
           item.width = resolvedWidth
           item.height = resolvedHeight
           item.codec = resolvedCodec
-          manifestChanged = true
         }
         return {
           id: takeId,
@@ -331,7 +336,7 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
           width: resolvedWidth,
           height: resolvedHeight,
           codec: resolvedCodec,
-          file_name: fileName.replace(/^\d+_/, ''),
+          file_name: typeof item.file_name === 'string' ? item.file_name : fileName.replace(/^\d+_/, ''),
           mime_type: item.type === 'photo' ? 'image/jpeg' : 'video/mp4',
           size_bytes: available && absolutePath ? (await fs.stat(absolutePath)).size : null,
           available,
@@ -410,14 +415,10 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
           id: attribute.id || `${raw.plan_id}-attribute-${index}`,
           name: attribute.name,
         }))
-    if (manifestChanged) {
-      const temporaryPath = `${manifestPath}.tmp`
-      await fs.writeFile(temporaryPath, JSON.stringify(raw, null, 2), 'utf8')
-      await fs.rename(temporaryPath, manifestPath)
-    }
     return {
       id: raw.plan_id,
       title: typeof raw.title === 'string' ? raw.title : path.basename(directory),
+      main_content: typeof raw.main_content === 'string' ? raw.main_content : '',
       created_at: typeof raw.created_at === 'string' ? raw.created_at : new Date(0).toISOString(),
       updated_at: typeof raw.updated_at === 'string'
         ? raw.updated_at
@@ -433,6 +434,9 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       synced_signature: typeof raw.synced_signature === 'string'
         ? raw.synced_signature
         : undefined,
+      pending_create: raw.pending_create === true,
+      pending_shot_ids: Array.isArray(raw.pending_shot_ids) ? raw.pending_shot_ids.filter((id): id is string => typeof id === 'string') : [],
+      pending_take_ids: Array.isArray(raw.pending_take_ids) ? raw.pending_take_ids.filter((id): id is string => typeof id === 'string') : [],
       attributes: planAttributes,
       shot_count: shots.length,
       completed_shot_count: shots.filter((shot) => shot.takes.some((take) => take.available)).length,
@@ -664,6 +668,8 @@ export function register(): void {
   })
   ipcMain.handle('director-lab:discover', () => discoverDirectorServices())
   ipcMain.handle('director-lab:list-local-plans', () => listLocalPlans())
+  registerDirectorLocalImport(listLocalPlans)
+  registerDirectorThumbnail()
   ipcMain.handle('director-lab:reconcile-local-plan', async (_event, value: unknown, resolveConflict: unknown) => {
     const { plan, metadata = {} } = validateDownloadPlanRequest({ plan: value })
     const settings = await getSettings()
