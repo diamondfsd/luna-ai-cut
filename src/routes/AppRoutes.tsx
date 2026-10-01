@@ -207,7 +207,7 @@ export function AppRoutes() {
           />
         </AppRoute>
 
-        <AppRoute path="/lab" preserve={false}>
+        <AppRoute path="/lab">
           <LabPage />
         </AppRoute>
 

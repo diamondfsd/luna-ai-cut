@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Download,
   FileVideo2,
   Image as ImageIcon,
@@ -12,12 +13,14 @@ import {
   X,
 } from 'lucide-react'
 
-import type { DirectorLabDownloadProgress, DirectorLanTake } from '../shared/types'
+import type { DirectorLabDownloadProgress, DirectorLanShot, DirectorLanTake } from '../shared/types'
 import { formatBytes } from '../lib/format'
 import { Button, Dialog, IconButton, VideoControls } from '../ui'
+import './DirectorMediaPreviewDialog.css'
 
 interface DirectorMediaPreviewDialogProps {
   take: DirectorLanTake
+  shot: DirectorLanShot
   takes: DirectorLanTake[]
   planTitle: string
   downloading: boolean
@@ -34,6 +37,7 @@ function rangeLabel(take: DirectorLanTake): string {
 
 export function DirectorMediaPreviewDialog({
   take,
+  shot,
   takes,
   planTitle,
   downloading,
@@ -43,9 +47,8 @@ export function DirectorMediaPreviewDialog({
   onClose,
 }: DirectorMediaPreviewDialogProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const stageRef = useRef<HTMLDivElement | null>(null)
   const prepareRequestRef = useRef(0)
-  const autoPlayAfterPrepareRef = useRef(false)
+  const autoPlayPendingRef = useRef(true)
   const [playbackUrl, setPlaybackUrl] = useState(take.stream_url)
   const [preparing, setPreparing] = useState(false)
   const [playbackError, setPlaybackError] = useState<string | null>(null)
@@ -54,50 +57,24 @@ export function DirectorMediaPreviewDialog({
   const [duration, setDuration] = useState(0)
   const [muted, setMuted] = useState(false)
   const [waiting, setWaiting] = useState(false)
-  const [mediaSize, setMediaSize] = useState<{ width: number; height: number } | null>(null)
-  const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
-  const mediaStyle = useMemo(() => {
-    if (!mediaSize || stageSize.width <= 0 || stageSize.height <= 0) return undefined
-    const mediaRatio = mediaSize.width / mediaSize.height
-    const stageRatio = stageSize.width / stageSize.height
-    const width = mediaRatio > stageRatio ? stageSize.width : stageSize.height * mediaRatio
-    const height = mediaRatio > stageRatio ? stageSize.width / mediaRatio : stageSize.height
-    return {
-      width: `${Math.max(1, Math.floor(width))}px`,
-      height: `${Math.max(1, Math.floor(height))}px`,
-      maxWidth: '100%',
-      maxHeight: '100%',
-    }
-  }, [mediaSize, stageSize])
   const index = takes.findIndex((item) => item.id === take.id)
   const previous = index > 0 ? takes[index - 1] : null
   const next = index >= 0 && index < takes.length - 1 ? takes[index + 1] : null
+  const nextVideo = index >= 0
+    ? takes.slice(index + 1).find((item) => item.kind === 'video' && item.available && item.stream_url) ?? null
+    : null
 
   useEffect(() => {
     prepareRequestRef.current += 1
+    autoPlayPendingRef.current = true
     setPlaybackUrl(take.stream_url)
     setPreparing(false)
-    autoPlayAfterPrepareRef.current = false
     setPlaybackError(null)
     setPlaying(false)
     setCurrentTime(0)
     setDuration(0)
     setWaiting(false)
-    setMediaSize(null)
   }, [take.id, take.stream_url])
-
-  useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
-    const update = () => setStageSize({
-      width: stage.clientWidth,
-      height: stage.clientHeight,
-    })
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(stage)
-    return () => observer.disconnect()
-  }, [])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -116,7 +93,7 @@ export function DirectorMediaPreviewDialog({
   const prepareCompatiblePreview = useCallback(async (): Promise<void> => {
     if (!take.stream_url) return
     const request = ++prepareRequestRef.current
-    autoPlayAfterPrepareRef.current = true
+    autoPlayPendingRef.current = true
     setPreparing(true)
     setPlaybackError(null)
     try {
@@ -134,15 +111,31 @@ export function DirectorMediaPreviewDialog({
     }
   }, [take.id, take.stream_url])
 
+  async function startPlayback(video: HTMLVideoElement): Promise<void> {
+    try {
+      await video.play()
+      return
+    } catch {
+      if (!video.muted) {
+        video.muted = true
+        setMuted(true)
+        try {
+          await video.play()
+          return
+        } catch {
+          // Try a compatible preview below when the original stream cannot start.
+        }
+      }
+    }
+    if (!playbackUrl?.startsWith('file:')) void prepareCompatiblePreview()
+  }
+
   async function togglePlayback(): Promise<void> {
     const video = videoRef.current
     if (!video || preparing) return
     if (video.paused) {
-      try {
-        await video.play()
-      } catch {
-        if (!playbackUrl?.startsWith('file:')) void prepareCompatiblePreview()
-      }
+      autoPlayPendingRef.current = false
+      await startPlayback(video)
     } else {
       video.pause()
     }
@@ -170,116 +163,133 @@ export function DirectorMediaPreviewDialog({
         </header>
 
         <div className="lab-viewer-main">
-          {previous && (
-            <IconButton
-              className="lab-viewer-nav previous"
-              variant="light"
-              icon={<ChevronLeft size={22} />}
-              onClick={() => onSelectTake(previous)}
-              aria-label="上一段素材"
-              title="上一段素材"
-            />
-          )}
-          {next && (
-            <IconButton
-              className="lab-viewer-nav next"
-              variant="light"
-              icon={<ChevronRight size={22} />}
-              onClick={() => onSelectTake(next)}
-              aria-label="下一段素材"
-              title="下一段素材"
-            />
-          )}
-
-          <div ref={stageRef} className="lab-viewer-stage ui-video-controls-host">
-            {take.kind === 'video' ? (
-              <>
-                <video
-                  key={`${take.id}:${playbackUrl}`}
-                  ref={videoRef}
-                  src={playbackUrl ?? undefined}
-                  style={mediaStyle}
-                  muted={muted}
-                  playsInline
-                  preload="metadata"
-                  onClick={() => void togglePlayback()}
-                  onLoadedMetadata={(event) => {
-                    setDuration(event.currentTarget.duration || 0)
-                    setMediaSize({
-                      width: event.currentTarget.videoWidth,
-                      height: event.currentTarget.videoHeight,
-                    })
-                  }}
-                  onCanPlay={(event) => {
-                    setWaiting(false)
-                    setPlaybackError(null)
-                    if (autoPlayAfterPrepareRef.current && playbackUrl?.startsWith('file:')) {
-                      autoPlayAfterPrepareRef.current = false
-                      void event.currentTarget.play()
-                    }
-                  }}
-                  onWaiting={() => setWaiting(true)}
-                  onPlaying={() => { setPlaying(true); setWaiting(false) }}
-                  onPause={() => setPlaying(false)}
-                  onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-                  onEnded={() => setPlaying(false)}
-                  onError={() => {
-                    if (!playbackUrl) return
-                    if (!playbackUrl?.startsWith('file:')) void prepareCompatiblePreview()
-                    else setPlaybackError('当前视频无法播放，请下载原素材')
-                  }}
-                />
-                {!playing && !preparing && !playbackError && (
-                  <button className="lab-viewer-play" type="button" onClick={() => void togglePlayback()}>
-                    <Play size={30} fill="currentColor" />
-                  </button>
-                )}
-                {!preparing && !playbackError && duration > 0 && (
-                  <VideoControls
-                    playing={playing}
-                    currentTime={currentTime}
-                    duration={duration}
-                    onToggle={() => void togglePlayback()}
-                    onSeek={seek}
-                    muted={muted}
-                    onToggleMute={() => setMuted((value) => !value)}
-                  />
-                )}
-              </>
-            ) : playbackUrl ? (
-              <img
-                src={playbackUrl}
-                alt={take.file_name}
-                style={mediaStyle}
-                onLoad={(event) => setMediaSize({
-                  width: event.currentTarget.naturalWidth,
-                  height: event.currentTarget.naturalHeight,
-                })}
+          <div className="lab-viewer-media">
+            {previous && (
+              <IconButton
+                className="lab-viewer-nav previous"
+                variant="light"
+                icon={<ChevronLeft size={22} />}
+                onClick={() => onSelectTake(previous)}
+                aria-label="上一段素材"
+                title="上一段素材"
               />
-            ) : null}
+            )}
+            {next && (
+              <IconButton
+                className="lab-viewer-nav next"
+                variant="light"
+                icon={<ChevronRight size={22} />}
+                onClick={() => onSelectTake(next)}
+                aria-label="下一段素材"
+                title="下一段素材"
+              />
+            )}
 
-            {(preparing || waiting) && (
-              <div className="lab-viewer-loading">
-                <LoaderCircle className="spin" size={28} />
-                <span>{preparing ? '正在准备兼容预览' : '正在缓冲'}</span>
-              </div>
-            )}
-            {playbackError && (
-              <div className="lab-viewer-error">
-                <AlertTriangle size={24} />
-                <strong>无法播放这段视频</strong>
-                <span>{playbackError}</span>
-                <div>
-                  <Button variant="secondary" size="compact" icon={<RotateCcw size={15} />} onClick={() => void prepareCompatiblePreview()}>
-                    重新准备预览
-                  </Button>
-                  <Button variant="primary" size="compact" icon={<Download size={15} />} onClick={() => onDownload(take)}>
-                    下载原素材
-                  </Button>
+            <div className="lab-viewer-stage ui-video-controls-host">
+              {take.kind === 'video' ? (
+                <>
+                  <video
+                    key={`${take.id}:${playbackUrl}`}
+                    ref={videoRef}
+                    src={playbackUrl ?? undefined}
+                    muted={muted}
+                    autoPlay
+                    playsInline
+                    preload="metadata"
+                    onClick={() => void togglePlayback()}
+                    onLoadedMetadata={(event) => {
+                      setDuration(event.currentTarget.duration || 0)
+                    }}
+                    onCanPlay={(event) => {
+                      setWaiting(false)
+                      setPlaybackError(null)
+                      if (!autoPlayPendingRef.current) return
+                      autoPlayPendingRef.current = false
+                      if (event.currentTarget.paused) void startPlayback(event.currentTarget)
+                    }}
+                    onWaiting={() => setWaiting(true)}
+                    onPlaying={() => { setPlaying(true); setWaiting(false) }}
+                    onPause={() => setPlaying(false)}
+                    onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                    onEnded={() => {
+                      setPlaying(false)
+                      if (nextVideo) onSelectTake(nextVideo)
+                    }}
+                    onError={() => {
+                      if (!playbackUrl) return
+                      if (!playbackUrl?.startsWith('file:')) void prepareCompatiblePreview()
+                      else setPlaybackError('当前视频无法播放，请下载原素材')
+                    }}
+                  />
+                  {!playing && !preparing && !playbackError && (
+                    <button className="lab-viewer-play" type="button" onClick={() => void togglePlayback()}>
+                      <Play size={30} fill="currentColor" />
+                    </button>
+                  )}
+                  {!preparing && !playbackError && duration > 0 && (
+                    <VideoControls
+                      playing={playing}
+                      currentTime={currentTime}
+                      duration={duration}
+                      onToggle={() => void togglePlayback()}
+                      onSeek={seek}
+                      muted={muted}
+                      onToggleMute={() => setMuted((value) => !value)}
+                    />
+                  )}
+                </>
+              ) : playbackUrl ? (
+                <img src={playbackUrl} alt={take.file_name} />
+              ) : null}
+
+              {(preparing || waiting) && (
+                <div className="lab-viewer-loading">
+                  <LoaderCircle className="spin" size={28} />
+                  <span>{preparing ? '正在准备兼容预览' : '正在缓冲'}</span>
                 </div>
+              )}
+              {playbackError && (
+                <div className="lab-viewer-error">
+                  <AlertTriangle size={24} />
+                  <strong>无法播放这段视频</strong>
+                  <span>{playbackError}</span>
+                  <div>
+                    <Button variant="secondary" size="compact" icon={<RotateCcw size={15} />} onClick={() => void prepareCompatiblePreview()}>
+                      重新准备预览
+                    </Button>
+                    <Button variant="primary" size="compact" icon={<Download size={15} />} onClick={() => onDownload(take)}>
+                      下载原素材
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <aside className="lab-viewer-shot-info" aria-label="镜头信息">
+            <div className="lab-viewer-shot-heading">
+              <span>镜头 {shot.order}</span>
+              <h3>{shot.name}</h3>
+            </div>
+            {shot.visual_description.trim() && (
+              <section className="lab-viewer-shot-section">
+                <span>画面说明</span>
+                <p>{shot.visual_description}</p>
+              </section>
+            )}
+            {shot.movement_description.trim() && (
+              <section className="lab-viewer-shot-section">
+                <span>运镜说明</span>
+                <p>{shot.movement_description}</p>
+              </section>
+            )}
+            {shot.duration_ms > 0 && (
+              <div className="lab-viewer-shot-duration">
+                <Clock3 size={14} />
+                <span>建议时长 {Math.round(shot.duration_ms / 1000)} 秒</span>
               </div>
             )}
-          </div>
+          </aside>
         </div>
 
         <div className="lab-viewer-filmstrip">

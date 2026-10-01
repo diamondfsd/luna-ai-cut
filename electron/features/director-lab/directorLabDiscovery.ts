@@ -7,10 +7,11 @@ import type {
   DirectorLabDiscoveryResult,
 } from '../../../src/shared/types'
 
-const SERVICE_NAME = 'luna-ka-director'
+const SERVICE_NAMES = new Set(['luna-ka-api', 'luna-ka-director'])
 const DISCOVERY_PORT = 47822
 const HTTP_PORT = 47821
-const DISCOVERY_REQUEST = 'luna-ka-director.discover.v1'
+const DISCOVERY_REQUEST = 'luna-ka-api.discover.v1'
+const LEGACY_DISCOVERY_REQUEST = 'luna-ka-director.discover.v1'
 const DISCOVERY_TIMEOUT_MS = 1_200
 const SUBNET_SCAN_TIMEOUT_MS = 280
 const SUBNET_SCAN_CONCURRENCY = 48
@@ -63,7 +64,9 @@ function localNetworks(): Ipv4Network[] {
 function parsePayload(value: Buffer): DiscoveryPayload | null {
   try {
     const payload = JSON.parse(value.toString('utf8')) as DiscoveryPayload
-    return payload?.service === SERVICE_NAME ? payload : null
+    return typeof payload?.service === 'string' && SERVICE_NAMES.has(payload.service)
+      ? payload
+      : null
   } catch {
     return null
   }
@@ -118,6 +121,7 @@ function discoverUdp(): Promise<DirectorLabDiscoveredService[]> {
         const targets = new Set(['255.255.255.255', ...localNetworks().map((network) => network.broadcast)])
         for (const target of targets) {
           socket.send(DISCOVERY_REQUEST, DISCOVERY_PORT, target)
+          socket.send(LEGACY_DISCOVERY_REQUEST, DISCOVERY_PORT, target)
         }
         timer = setTimeout(finish, DISCOVERY_TIMEOUT_MS)
       } catch {
@@ -140,7 +144,7 @@ function checkService(host: string): Promise<DirectorLabDiscoveredService | null
       response.on('end', () => {
         try {
           const payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) as DiscoveryPayload
-          resolve(payload.service === SERVICE_NAME
+          resolve(typeof payload.service === 'string' && SERVICE_NAMES.has(payload.service)
             ? serviceFromPayload({ ...payload, port: HTTP_PORT, name: 'Luna咔' }, host, 'subnet')
             : null)
         } catch {
