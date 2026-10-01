@@ -23,11 +23,13 @@ try {
     take_count: 2,
     archive_url: '',
     source: 'remote',
+    attributes: [{ id: 'framing', name: '画面说明' }],
     shots: [{
       id: 'shot-1',
       order: 1,
       name: 'Walk',
-      attributes: [],
+      attributes: [{ id: 'framing', name: '画面说明', description: '中景' }],
+      remark: '注意收音',
       duration_ms: 5000,
       completed_takes: 0,
       takes: [
@@ -70,6 +72,8 @@ try {
   assert.equal(manifest.format, 'luna-director-plan-v1')
   assert.equal(manifest.shots[0].media[0].path, null)
   assert.equal(manifest.shots[0].media[1].path, 'media/01_Walk/02_second.mp4')
+  assert.deepEqual(manifest.attributes, [{ id: 'framing', name: '画面说明' }])
+  assert.equal(manifest.shots[0].remark, '注意收音')
   assert.equal(plan.shots[0].takes[1].available, false, 'marking a local take must not mutate the remote plan')
 
   const legacyMedia = path.join(legacyDirectory, 'Plan', 'media', '01_Walk', '01_first.mp4')

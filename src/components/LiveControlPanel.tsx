@@ -183,7 +183,7 @@ export function LiveControlPanel({
                   onClick={onStart}
                   disabled={busy}
                 >
-                  {busy ? '处理中...' : '获取画面'}
+                  {busy ? '处理中...' : '重新获取画面'}
                 </Button>
               </div>
             </div>

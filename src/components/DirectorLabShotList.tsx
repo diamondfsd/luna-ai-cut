@@ -8,26 +8,23 @@ import {
   CloudOff,
   Film,
   Folder,
+  MessageSquare,
   Pencil,
-  Plus,
   Save,
-  Trash2,
   X,
 } from 'lucide-react'
 
 import type {
   DirectorLanPlanSummary,
   DirectorLanShot,
-  DirectorLanShotAttribute,
   DirectorLanTake,
 } from '../shared/types'
-import { Button, IconButton, Input, Tooltip, toast } from '../ui'
+import { IconButton, Input, Tooltip, toast } from '../ui'
 import '../styles/director-lab-shot-edit.css'
 
 interface DirectorLabShotListProps {
   plan: DirectorLanPlanSummary
   shots: DirectorLanShot[]
-  layout: 'grid' | 'list'
   endpoint: string | null
   refreshPlans: () => Promise<DirectorLanPlanSummary[]>
   onWriteStateChange: (planId: string, pending: boolean) => void
@@ -39,13 +36,13 @@ interface DirectorShotDraft {
   baseRevision: number
   name: string
   durationMs: number
-  attributes: DirectorLanShotAttribute[]
+  attributeDescriptions: Record<string, string>
+  remark: string
 }
 
 export function DirectorLabShotList({
   plan,
   shots,
-  layout,
   endpoint,
   refreshPlans,
   onWriteStateChange,
@@ -62,12 +59,17 @@ export function DirectorLabShotList({
       baseRevision: plan.revision ?? 0,
       name: shot.name,
       durationMs: shot.duration_ms,
-      attributes: shot.attributes.map((attribute) => ({ ...attribute })),
+      attributeDescriptions: Object.fromEntries(plan.attributes.map((definition) => [
+        definition.id,
+        shot.attributes.find((attribute) =>
+          attribute.id === definition.id || attribute.name === definition.name)?.description ?? '',
+      ])),
+      remark: shot.remark,
     })
   }
 
   async function saveShotEdit(): Promise<void> {
-    if (!endpoint || plan.source !== 'remote' || !shotDraft) return
+    if (!endpoint || !shotDraft) return
     const durationMs = Math.round(shotDraft.durationMs)
     if (
       !shotDraft.name.trim() ||
@@ -87,13 +89,16 @@ export function DirectorLabShotList({
           id: shot.id,
           name: isEditedShot ? shotDraft.name.trim() : shot.name,
           duration_ms: isEditedShot ? durationMs : shot.duration_ms,
-          attributes: (isEditedShot ? shotDraft.attributes : shot.attributes)
-            .filter((attribute) => attribute.name.trim())
-            .map((attribute) => ({
-              id: attribute.id,
-              name: attribute.name.trim(),
-              description: attribute.description.trim(),
-            })),
+          remark: isEditedShot ? shotDraft.remark.trim() : shot.remark,
+          attributes: plan.attributes.map((definition) => ({
+            id: definition.id,
+            name: definition.name,
+            description: isEditedShot
+              ? shotDraft.attributeDescriptions[definition.id]?.trim() ?? ''
+              : shot.attributes.find((attribute) =>
+                  attribute.id === definition.id || attribute.name === definition.name
+                )?.description.trim() ?? '',
+          })),
         }
       })
       await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(
@@ -104,13 +109,14 @@ export function DirectorLabShotList({
           body: {
             expected_revision: shotDraft.baseRevision,
             title: plan.title,
+            attributes: plan.attributes,
             shots,
           },
         },
       )
       setEditingShotId(null)
       setShotDraft(null)
-      toast.success('镜头计划已保存')
+      toast.success('镜头已保存')
       void refreshPlans().catch(() => undefined)
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : String(nextError)
@@ -141,7 +147,7 @@ export function DirectorLabShotList({
   }
 
   return (
-    <div className={`lab-shot-browser is-${layout}`}>
+    <div className="lab-shot-browser">
       <div className="lab-shot-grid">
       {shots.map((shot) => {
         const availableCount = shot.takes.filter((take) => take.available).length
@@ -268,64 +274,41 @@ export function DirectorLabShotList({
               </div>
               {draft ? (
                 <div className="lab-shot-edit-attributes">
-                  {draft.attributes.map((attribute, index) => (
-                    <div className="lab-shot-edit-attribute" key={attribute.id}>
-                      <Input
-                        aria-label={`属性 ${index + 1} 名称`}
-                        variant="compact"
-                        value={attribute.name}
-                        placeholder="属性名"
-                        maxLength={80}
-                        onChange={(event) => setShotDraft({
-                          ...draft,
-                          attributes: draft.attributes.map((item) => item.id === attribute.id
-                            ? { ...item, name: event.target.value }
-                            : item),
-                        })}
-                      />
+                  {plan.attributes.map((attribute) => (
+                    <label className="lab-shot-edit-attribute" key={attribute.id}>
+                      <span>{attribute.name}</span>
                       <textarea
                         className="ui-input ui-input-compact lab-shot-edit-description"
-                        aria-label={`属性 ${index + 1} 描述`}
-                        value={attribute.description}
-                        placeholder="描述"
+                        aria-label={`${attribute.name}说明`}
+                        value={draft.attributeDescriptions[attribute.id] ?? ''}
+                        placeholder={`填写${attribute.name}`}
                         rows={2}
                         maxLength={4000}
                         onChange={(event) => setShotDraft({
                           ...draft,
-                          attributes: draft.attributes.map((item) => item.id === attribute.id
-                            ? { ...item, description: event.target.value }
-                            : item),
+                          attributeDescriptions: {
+                            ...draft.attributeDescriptions,
+                            [attribute.id]: event.target.value,
+                          },
                         })}
                       />
-                      <Tooltip content="删除属性">
-                        <IconButton
-                          variant="ghost"
-                          size="compact"
-                          icon={<Trash2 size={14} />}
-                          aria-label="删除属性"
-                          onClick={() => setShotDraft({
-                            ...draft,
-                            attributes: draft.attributes.filter((item) => item.id !== attribute.id),
-                          })}
-                        />
-                      </Tooltip>
-                    </div>
+                    </label>
                   ))}
-                  <Button
-                    variant="ghost"
-                    size="compact"
-                    icon={<Plus size={14} />}
-                    onClick={() => setShotDraft({
-                      ...draft,
-                      attributes: [...draft.attributes, {
-                        id: `${shot.id}-attribute-${crypto.randomUUID()}`,
-                        name: '',
-                        description: '',
-                      }],
-                    })}
-                  >
-                    添加属性
-                  </Button>
+                  {plan.attributes.length === 0 && (
+                    <p className="lab-shot-edit-empty">计划未设置属性</p>
+                  )}
+                  <label className="lab-shot-edit-remark">
+                    <span><MessageSquare size={13} />备注</span>
+                    <textarea
+                      className="ui-input ui-input-compact lab-shot-edit-description"
+                      aria-label="镜头备注"
+                      value={draft.remark}
+                      placeholder="填写备注"
+                      rows={2}
+                      maxLength={4000}
+                      onChange={(event) => setShotDraft({ ...draft, remark: event.target.value })}
+                    />
+                  </label>
                 </div>
               ) : shot.attributes.length > 0 ? (
                 <div className="lab-shot-attributes">
@@ -338,8 +321,17 @@ export function DirectorLabShotList({
                   {shot.attributes.length > 2 && (
                     <small>+{shot.attributes.length - 2} 个属性</small>
                   )}
+                  {shot.remark && (
+                    <small className="lab-shot-remark"><MessageSquare size={12} />{shot.remark}</small>
+                  )}
                 </div>
-              ) : <div className="lab-shot-attributes"><small>尚未添加属性</small></div>}
+              ) : (
+                <div className="lab-shot-attributes">
+                  {shot.remark
+                    ? <small className="lab-shot-remark"><MessageSquare size={12} />{shot.remark}</small>
+                    : <small>暂无说明</small>}
+                </div>
+              )}
               <footer className="lab-shot-card-footer">
                 <span className="lab-shot-card-take-count">
                   <Folder size={14} /> {shot.takes.length} 条素材
