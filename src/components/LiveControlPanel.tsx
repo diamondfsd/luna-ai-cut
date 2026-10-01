@@ -10,6 +10,7 @@ import { DetailPanel } from '../workspace/color/DetailPanel'
 import { TonePanel } from '../workspace/color/TonePanel'
 import { WhiteBalancePanel } from '../workspace/color/WhiteBalancePanel'
 import { FilterPanel } from '../workspace/lut/FilterPanel'
+import { captureLiveLutFrame } from '../workspace/lut/liveLutThumbnail'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { LiveCameraControlPanel } from './LiveCameraControlPanel'
 import { LiveConnectionGuides } from './LiveConnectionGuides'
@@ -56,6 +57,26 @@ export function LiveControlPanel({
   const focusTimerRef = useRef<number | null>(null)
   const [lutPath, setLutPath] = useState<string | null>(null)
   const [lutIntensity, setLutIntensity] = useState(30)
+  const [lutThumbnailFrame, setLutThumbnailFrame] = useState<ImageData | null>(null)
+  const lutThumbnailFrameRef = useRef<ImageData | null>(null)
+  const lutCaptureTimeRef = useRef(0)
+
+  useEffect(() => {
+    lutThumbnailFrameRef.current = null
+    lutCaptureTimeRef.current = 0
+    setLutThumbnailFrame(null)
+  }, [status.startedAt, status.localPreviewUrl])
+
+  const captureLutThumbnail = (frame: CanvasImageSource, width: number, height: number) => {
+    if (activeSettingsPanel !== 'lut' || lutThumbnailFrameRef.current || width <= 0 || height <= 0) return
+    const now = performance.now()
+    if (now - lutCaptureTimeRef.current < 500) return
+    lutCaptureTimeRef.current = now
+    const thumbnail = captureLiveLutFrame(frame, width, height)
+    if (!thumbnail) return
+    lutThumbnailFrameRef.current = thumbnail
+    setLutThumbnailFrame(thumbnail)
+  }
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra_cn',
@@ -229,6 +250,7 @@ export function LiveControlPanel({
               colorAdjustments={liveColorAdjustments}
               className="live-preview-canvas"
               onFrame={handlePreviewFrame}
+              onDecodedFrame={captureLutThumbnail}
               onError={handlePreviewError}
             />
           )}
@@ -328,6 +350,7 @@ export function LiveControlPanel({
               intensity={lutIntensity}
               onIntensityChange={setLutIntensity}
               mediaPath={null}
+              thumbnailFrame={lutThumbnailFrame}
             />
           ) : activeSettingsPanel === 'watermark' ? (
             <Accordion
