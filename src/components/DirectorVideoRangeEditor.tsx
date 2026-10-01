@@ -21,9 +21,10 @@ interface Props {
   adding: boolean
   onAddMaterials: () => void
   phoneConnected: boolean
+  onDeleteMaterial: (take: DirectorLanTake) => Promise<void>
 }
 
-export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose, adding, onAddMaterials, phoneConnected }: Props) {
+export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose, adding, onAddMaterials, phoneConnected, onDeleteMaterial }: Props) {
   const playable = take.available && Boolean(take.stream_url)
   const isVideo = take.kind === 'video' && playable
   const stage = useRef<PreviewStageHandle>(null)
@@ -193,6 +194,7 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
       </div>}
       </div>
       <DirectorShotInspector shot={shot} takes={takes} selectedId={take.id} disabled={saving || adding} onAddMaterials={onAddMaterials}
+        onDeleteMaterial={onDeleteMaterial}
         onSelect={selectedTake => { if (selectedTake.id !== take.id) navigate(() => onSelectTake(selectedTake)) }} />
     </Dialog>
     <Dialog open={Boolean(pendingNavigation)} onOpenChange={open => { if (!open) setPendingNavigation(null) }} title="放弃未保存的标记？" tone="dark" footer={<>

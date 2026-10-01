@@ -98,9 +98,22 @@ export function useDirectorPlanSync({
         ])
         if (!mountedRef.current || endpointRef.current !== activeEndpoint) return
 
+        const removedIds = new Set(await window.luna.directorLab.reconcilePlanDeletions(
+          activeEndpoint,
+          [...remotePlans.map((plan) => plan.id),
+            ...initialLocalPlans.filter((plan) => isPlanWritePending(plan.id)).map((plan) => plan.id)],
+        ))
+        if (!mountedRef.current || endpointRef.current !== activeEndpoint) return
+        for (const planId of removedIds) {
+          baselinesRef.current.delete(planId)
+          failuresRef.current.remove(planId)
+          nextConflicts.delete(planId)
+        }
+
         mergeRemotePlans(remotePlans)
-        let localPlans = initialLocalPlans
-        let localCopiesChanged = false
+        let localPlans = initialLocalPlans.filter((plan) => !removedIds.has(plan.id))
+        if (removedIds.size) mergeLocalPlans(localPlans)
+        let localCopiesChanged = removedIds.size > 0
         let remoteRefreshNeeded = false
         let hasConflict = false
         let finalRemotePlans = remotePlans

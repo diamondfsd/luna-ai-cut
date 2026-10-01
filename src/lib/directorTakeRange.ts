@@ -29,7 +29,7 @@ export function directorPlanWithTakeRange(plan: DirectorLanPlanSummary, takeId: 
 export function assertDirectorTakeRangesSaved(requested: DirectorLanPlanSummary, saved: DirectorLanPlanSummary): void {
   const savedTakes = new Map(saved.shots.flatMap(shot => shot.takes).map(take => [take.id, take]))
   for (const take of requested.shots.flatMap(shot => shot.takes)) {
-    if (take.kind !== 'video' || requested.pending_take_ids?.includes(take.id)) continue
+    if (take.kind !== 'video' || requested.pending_take_ids?.includes(take.id) || requested.deleted_local_take_ids?.includes(take.id)) continue
     const actual = savedTakes.get(take.id)
     if (!actual || JSON.stringify(validateDirectorTakeRange(actual.selected_range)) !== JSON.stringify(validateDirectorTakeRange(take.selected_range))) {
       throw new Error('手机未保存片段标记，请更新手机端后重试')

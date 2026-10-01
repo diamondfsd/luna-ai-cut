@@ -366,8 +366,11 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       requestSchema(connectedEndpoint),
     ])
     setSchema(definitions)
-    mergePlans(payload.plans)
-    return payload.plans
+    const remotePlans = payload.plans.map((plan) => ({
+      ...plan, remote_origin: new URL(connectedEndpoint).origin,
+    }))
+    mergePlans(remotePlans)
+    return remotePlans
   }, [connectedEndpoint, mergePlans])
 
   const setPlanWritePending = useCallback((planId: string, pending: boolean): void => {
@@ -396,7 +399,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const mergeLocalPlanCopies = useCallback((local: DirectorLanPlanSummary[]): void => {
     setPlans((current) => {
       const remoteById = new Map(
-        current.filter((plan) => plan.source === 'remote').map((plan) => [plan.id, plan]),
+        current.filter((plan) => Boolean(connectedEndpoint) && plan.source === 'remote').map((plan) => [plan.id, plan.remote_plan ?? plan]),
       )
       const localIds = new Set(local.map((plan) => plan.id))
       const mergedLocal = local.map((localPlan) => {
@@ -410,7 +413,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
         ...current.filter((plan) => plan.source === 'remote' && !localIds.has(plan.id)),
       ].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))
     })
-  }, [])
+  }, [connectedEndpoint])
 
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useDirectorMaterialSync(active, syncMaterials, connectedEndpoint, mergeLocalPlanCopies)

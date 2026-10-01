@@ -92,7 +92,8 @@ export function buildDirectorPlanUpdate(
       throw new Error('镜头内容超过手机接口限制（invalid-plan-update）')
     }
     return { id: shot.id, name: shot.name, duration_ms: shot.duration_ms, ...fields,
-      ...(includeTakeRanges ? { take_ranges: shot.takes.filter(take => take.kind === 'video' && !plan.pending_take_ids?.includes(take.id)).map(take => ({ id: take.id, selected_range: take.selected_range })) } : {}),
+      ...(includeTakeRanges ? { take_ranges: shot.takes.filter(take => take.kind === 'video' && !plan.pending_take_ids?.includes(take.id)
+        && !plan.deleted_local_take_ids?.includes(take.id)).map(take => ({ id: take.id, selected_range: take.selected_range })) } : {}),
     }
   })
   return {
@@ -129,13 +130,16 @@ export function overlayDirectorLocalPlan(remote: DirectorLanPlanSummary, local: 
       else if (index >= 0) takes[index] = { ...takes[index], ...(take.available && take.stream_url ? take : {}),
         selected_range: dirty ? take.selected_range : takes[index].selected_range }
     }
-    return { ...shot, takes, completed_takes: takes.filter((take) => take.available).length }
+    const visibleTakes = takes.map(take => local.deleted_local_take_ids?.includes(take.id)
+      ? { ...take, available: false, stream_url: null, download_url: null, stream_path: null, download_path: null } : take)
+    return { ...shot, takes: visibleTakes, completed_takes: visibleTakes.filter((take) => take.available).length }
   })
   return { ...base, shots, source: local.pending_create ? 'local' : 'remote',
     local_directory: local.local_directory, pending_create: local.pending_create,
     local_updated_at: local.updated_at,
     local_content_signature: local.local_content_signature ?? directorPlanContentSignature(local),
     pending_shot_ids: local.pending_shot_ids, pending_take_ids: local.pending_take_ids,
+    deleted_local_take_ids: local.deleted_local_take_ids,
     synced_revision: local.synced_revision, synced_signature: local.synced_signature,
     remote_plan: remote, shot_count: shots.length,
     take_count: shots.reduce((total, shot) => total + shot.takes.length, 0) }

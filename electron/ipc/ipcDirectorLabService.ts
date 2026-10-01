@@ -239,6 +239,9 @@ interface LocalManifestShot {
 }
 
 interface LocalManifest {
+  remote_origin?: unknown
+  remote_deleted?: unknown
+  deleted_local_take_ids?: unknown
   main_content?: unknown
   pending_create?: unknown
   pending_shot_ids?: unknown
@@ -271,7 +274,8 @@ async function fileExists(filePath: string): Promise<boolean> {
 async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabDownloadPlanRequest['plan'] | null> {
   try {
     const raw = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as LocalManifest
-    if (raw.format !== 'luna-director-plan-v1' || typeof raw.plan_id !== 'string' || !Array.isArray(raw.shots)) {
+    if (raw.remote_deleted === true || raw.format !== 'luna-director-plan-v1'
+      || typeof raw.plan_id !== 'string' || !Array.isArray(raw.shots)) {
       return null
     }
     const directory = path.dirname(manifestPath)
@@ -437,9 +441,11 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       synced_signature: typeof raw.synced_signature === 'string'
         ? raw.synced_signature
         : undefined,
+      remote_origin: typeof raw.remote_origin === 'string' ? raw.remote_origin : undefined,
       pending_create: raw.pending_create === true,
       pending_shot_ids: Array.isArray(raw.pending_shot_ids) ? raw.pending_shot_ids.filter((id): id is string => typeof id === 'string') : [],
       pending_take_ids: Array.isArray(raw.pending_take_ids) ? raw.pending_take_ids.filter((id): id is string => typeof id === 'string') : [],
+      deleted_local_take_ids: Array.isArray(raw.deleted_local_take_ids) ? raw.deleted_local_take_ids.filter((id): id is string => typeof id === 'string') : [],
       attributes: planAttributes,
       shot_count: shots.length,
       completed_shot_count: shots.filter((shot) => shot.takes.some((take) => take.available)).length,
