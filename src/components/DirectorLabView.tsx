@@ -29,6 +29,7 @@ import { DirectorLabPlanList } from './DirectorLabPlanList'
 import { DirectorLabShotList } from './DirectorLabShotList'
 
 interface DirectorLabViewProps {
+  active: boolean
   onBack: () => void
 }
 
@@ -154,11 +155,13 @@ function normalizeRemotePlan(
       const descriptions = legacyShotDescriptions(shot)
       return {
         ...shot,
-        attributes: attributes.map((attribute) => ({
-          id: attribute.id,
-          name: attribute.name,
-          description: descriptions.get(attribute.id) ?? descriptions.get(attribute.name) ?? '',
-        })),
+        attributes: Array.isArray(shot.attributes) && shot.attributes.length > 0
+          ? shot.attributes
+          : attributes.map((attribute) => ({
+              id: attribute.id,
+              name: attribute.name,
+              description: descriptions.get(attribute.id) ?? descriptions.get(attribute.name) ?? '',
+            })),
         remark: typeof shot.remark === 'string' ? shot.remark : '',
         takes: shot.takes.map((take) => ({
           ...take,
@@ -239,7 +242,7 @@ function buildAiPrompt(
   return lines.join('\n')
 }
 
-export function DirectorLabView({ onBack }: DirectorLabViewProps) {
+export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const [connectedEndpoint, setConnectedEndpoint] = useState<string | null>(null)
   const [plans, setPlans] = useState<DirectorLanPlanSummary[]>([])
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
@@ -256,6 +259,7 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   const [mediaMetadata, setMediaMetadata] = useState<Record<string, DirectorLabMediaMetadata>>({})
   const metadataRequestRef = useRef(0)
   const pendingWritePlanIdsRef = useRef(new Set<string>())
+  const discoveryTaskRef = useRef<Promise<boolean> | null>(null)
 
   const activePlan = useMemo(
     () => plans.find((plan) => plan.id === activePlanId) ?? null,
@@ -386,6 +390,7 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   }, [])
 
   const { status: syncStatus, synchronize } = useDirectorPlanSync({
+    enabled: active,
     endpoint: connectedEndpoint,
     requestRemotePlans: refreshRemotePlans,
     mergeRemotePlans: mergePlans,
@@ -396,7 +401,7 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   })
 
   useEffect(() => {
-    if (!activePlan) {
+    if (!active || !activePlan) {
       setMediaMetadata({})
       return
     }
@@ -419,10 +424,10 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
         })
       })
       .catch(() => undefined)
-  }, [activePlan])
+  }, [active, activePlan])
 
   useEffect(() => {
-    if (!connectedEndpoint || !activePlan) return
+    if (!active || !connectedEndpoint || !activePlan) return
     let disposed = false
     const send = (active: boolean): void => {
       if (disposed && active) return
@@ -438,10 +443,10 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
       window.clearInterval(timer)
       send(false)
     }
-  }, [activePlan, connectedEndpoint])
+  }, [active, activePlan, connectedEndpoint])
 
   useEffect(() => {
-    if (!connectedEndpoint) return
+    if (!active || !connectedEndpoint) return
     let disposed = false
     let reconnectTimer: number | null = null
     let reconnectAttempt = 0
@@ -512,9 +517,10 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
       unsubscribeStatus()
       void window.luna.lunaKaHttpClient.disconnectChannel(connectedEndpoint).catch(() => undefined)
     }
-  }, [connectedEndpoint, synchronize])
+  }, [active, connectedEndpoint, synchronize])
 
   const loadPlans = useCallback(async (value: string): Promise<boolean> => {
+    if (!active) return false
     let normalized: string
     try {
       normalized = normalizeEndpoint(value)
@@ -538,37 +544,61 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     } finally {
       setLoading(false)
     }
-  }, [mergePlans])
+  }, [active, mergePlans])
 
   const discover = useCallback(async (): Promise<boolean> => {
-    setLoading(true)
+    if (!active) return false
+    if (discoveryTaskRef.current) return discoveryTaskRef.current
+    const task = (async () => {
+      setLoading(true)
+      try {
+        const result = await window.luna.directorLab.discover()
+        for (const service of result.services) {
+          if (await loadPlans(service.baseUrl)) return true
+        }
+        return false
+      } catch {
+        return false
+      } finally {
+        setLoading(false)
+      }
+    })()
+    discoveryTaskRef.current = task
     try {
-      const result = await window.luna.directorLab.discover()
-      return result.services.length > 0
-        ? loadPlans(result.services[0].baseUrl)
-        : false
-    } catch {
-      return false
+      return await task
     } finally {
-      setLoading(false)
+      if (discoveryTaskRef.current === task) discoveryTaskRef.current = null
     }
-  }, [loadPlans])
+  }, [active, loadPlans])
 
   useEffect(() => {
+    if (!active) return
+    let canceled = false
     void refreshLocalPlans().then((local) => {
+      if (canceled) return
       if (local.length > 0) {
         setPlans(local)
       }
       const saved = localStorage.getItem(ENDPOINT_STORAGE_KEY)
       if (saved) {
         void loadPlans(saved).then((connected) => {
-          if (!connected) void discover()
+          if (!canceled && !connected) void discover()
         })
-      } else {
+      } else if (!canceled) {
         void discover()
       }
     })
-  }, [discover, loadPlans, refreshLocalPlans])
+    return () => {
+      canceled = true
+    }
+  }, [active, discover, loadPlans, refreshLocalPlans])
+
+  useEffect(() => {
+    if (!active || syncStatus !== 'offline') return
+    void discover()
+    const timer = window.setInterval(() => void discover(), 12_000)
+    return () => window.clearInterval(timer)
+  }, [active, discover, syncStatus])
 
   async function download(
     key: string,

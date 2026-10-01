@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Download, Video } from 'lucide-react'
 
 import { Accordion, Button, SegmentedControl, Switch } from '../ui'
@@ -14,12 +14,19 @@ import { LiveCameraControlPanel } from './LiveCameraControlPanel'
 import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning, watermarkPositionStyle } from './htmlPreviewGeometry'
 import { buildResolvedWatermarkStaticLayer, WatermarkSettings } from './WatermarkSettings'
 import type { LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
-import type { LivePreviewWindowSettings, LiveStreamStatus } from '../shared/types'
+import type { LivePreviewWindowSettings, LiveStreamStatus, NormalizedVideoPoint } from '../shared/types'
 import '../styles/live-control-panel.css'
 
 const MOBILE_APP_DOWNLOAD_URL = 'https://lunaka.diamondfsd.com/'
 
 type LiveSettingsPanel = 'color' | 'lut' | 'watermark' | 'control'
+
+function previewPoint(event: ReactPointerEvent<HTMLDivElement>, rect: DOMRect): NormalizedVideoPoint {
+  return {
+    x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+    y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
+  }
+}
 
 interface LiveControlPanelProps {
   status: LiveStreamStatus
@@ -38,7 +45,10 @@ export function LiveControlPanel({
   const [previewReady, setPreviewReady] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewDimensions, setPreviewDimensions] = useState({ width: 16, height: 9 })
-  const [activeSettingsPanel, setActiveSettingsPanel] = useState<LiveSettingsPanel>('watermark')
+  const [activeSettingsPanel, setActiveSettingsPanel] = useState<LiveSettingsPanel>('control')
+  const [focusPoint, setFocusPoint] = useState<NormalizedVideoPoint | null>(null)
+  const gestureRef = useRef<{ pointerId: number; start: NormalizedVideoPoint } | null>(null)
+  const focusTimerRef = useRef<number | null>(null)
   const [lutPath, setLutPath] = useState<string | null>(null)
   const [lutIntensity, setLutIntensity] = useState(30)
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
@@ -50,6 +60,45 @@ export function LiveControlPanel({
   const [liveColor, setLiveColor] = useState<EditPipeline['color']>(() => structuredClone(DEFAULT_PIPELINE.color))
   const active = Boolean(status.startedAt) && status.state !== 'stopping'
   const streaming = status.usbState === 'streaming'
+  const controlReady = status.controlReady && status.receiverConnected
+
+  useEffect(() => () => {
+    if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current)
+  }, [])
+
+  const focusAt = useCallback((point: NormalizedVideoPoint) => {
+    setFocusPoint(point)
+    if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current)
+    focusTimerRef.current = window.setTimeout(() => setFocusPoint(null), 900)
+    if (!controlReady || status.capabilities?.focus.tap === false) return
+    void window.luna.liveStream.sendControl({ type: 'focus.tap', point }).catch((reason: unknown) => {
+      window.luna.log('warn', '直播控制指令发送失败', {
+        type: 'focus.tap',
+        error: reason instanceof Error ? reason.message : String(reason),
+      })
+    })
+  }, [controlReady, status.capabilities])
+
+  const startPreviewGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (activeSettingsPanel !== 'control' || event.button !== 0 ||
+      (event.target instanceof Element && event.target.closest('button'))) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    gestureRef.current = { pointerId: event.pointerId, start: previewPoint(event, rect) }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const endPreviewGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    gestureRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const rect = event.currentTarget.getBoundingClientRect()
+    const end = previewPoint(event, rect)
+    if (Math.hypot((end.x - gesture.start.x) * rect.width, (end.y - gesture.start.y) * rect.height) < 8) {
+      focusAt(end)
+    }
+  }
 
   useEffect(() => {
     const pane = previewPaneRef.current
@@ -140,13 +189,16 @@ export function LiveControlPanel({
   const toneModified = liveColor.exposure !== 0 || liveColor.brightness !== 0 || liveColor.contrast !== 0
     || liveColor.highlights !== 0 || liveColor.shadows !== 0 || liveColor.whites !== 0 || liveColor.blacks !== 0
     || liveColor.vibrance !== 0 || liveColor.saturation !== 0
-
   return (
     <section className="live-control-panel" aria-label="直播预览">
       <div ref={previewPaneRef} className="live-preview-pane">
         <div
           className="live-preview-stage"
+          data-control-active={activeSettingsPanel === 'control' ? '' : undefined}
           style={{ width: previewStageSize.width, height: previewStageSize.height }}
+          onPointerDown={startPreviewGesture}
+          onPointerUp={endPreviewGesture}
+          onPointerCancel={() => { gestureRef.current = null }}
         >
           {status.localPreviewUrl && (
             <AnnexBVideoCanvas
@@ -170,6 +222,9 @@ export function LiveControlPanel({
             />
           )}
 
+          {activeSettingsPanel === 'control' && focusPoint && (
+            <div className="live-preview-focus-marker" style={{ left: `${focusPoint.x * 100}%`, top: `${focusPoint.y * 100}%` }} />
+          )}
           {!active && (
             <div className="live-preview-overlay live-preview-onboarding">
               <ol>
@@ -223,10 +278,10 @@ export function LiveControlPanel({
             ariaLabel="直播设置面板"
             className="live-settings-tabs-control"
             options={[
+              { value: 'control', label: '控制' },
               { value: 'watermark', label: '水印' },
               { value: 'lut', label: 'LUT' },
               { value: 'color', label: '调色' },
-              { value: 'control', label: '控制' },
             ]}
             value={activeSettingsPanel}
             onChange={setActiveSettingsPanel}
@@ -295,7 +350,9 @@ export function LiveControlPanel({
               />
             </>
           ) : (
-            <LiveCameraControlPanel status={status} />
+            <LiveCameraControlPanel
+              status={status}
+            />
           )}
         </div>
 

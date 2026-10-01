@@ -1,0 +1,126 @@
+.live-camera-controls {
+  display: grid;
+  gap: 0;
+  padding-top: 4px;
+}
+
+.live-control-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0 16px;
+  border-bottom: 1px solid #343438;
+}
+
+.live-control-section:last-child {
+  border-bottom: 0;
+}
+
+.live-control-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e4e4e7;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.live-control-section > header > span + span {
+  color: #85858b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.live-control-section > header > span.ready {
+  color: #7bc995;
+}
+
+.live-gimbal-pad {
+  position: relative;
+  width: 136px;
+  height: 136px;
+  justify-self: center;
+  overflow: hidden;
+  border: 1px solid #3b3b40;
+  border-radius: 50%;
+  background: #222226;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.live-gimbal-pad:hover,
+.live-gimbal-pad:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+}
+
+.live-gimbal-crosshair,
+.live-gimbal-crosshair::before,
+.live-gimbal-crosshair::after {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  background: rgba(255, 255, 255, 0.2);
+  content: '';
+  transform: translate(-50%, -50%);
+}
+
+.live-gimbal-crosshair {
+  width: 76%;
+  height: 1px;
+}
+
+.live-gimbal-crosshair::before {
+  width: 76%;
+  height: 1px;
+}
+
+.live-gimbal-crosshair::after {
+  width: 1px;
+  height: 76%;
+}
+
+.live-gimbal-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  margin: -23px 0 0 -23px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  pointer-events: none;
+}
+
+.live-control-button-row .ui-btn {
+  width: 100%;
+  height: 32px;
+  border-color: #45454b;
+  background: #29292e;
+  color: #e4e4e7;
+}
+
+.live-control-button-row .ui-btn:hover {
+  border-color: #5d5d65;
+  background: #34343a;
+}
+
+.live-preview-control-hint {
+  margin: 0;
+  color: #a8a8ad;
+  font-size: 12px;
+}
+
+.live-control-section .workspace-slider-track {
+  background: #49494f;
+}
+
+.live-control-section .workspace-slider-fill {
+  background: rgba(41, 151, 255, 0.32);
+}
+
+.live-control-section .workspace-slider-zero {
+  background: #a8a8ad;
+}

@@ -95,6 +95,8 @@ export interface DirectorLanPlanSummary {
   created_at: string
   updated_at: string
   revision?: number
+  synced_revision?: number
+  synced_signature?: string
   /** 属性名由计划统一定义，所有镜头共用。 */
   attributes: DirectorLanPlanAttribute[]
   shot_count: number

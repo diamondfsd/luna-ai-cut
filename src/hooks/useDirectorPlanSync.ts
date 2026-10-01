@@ -12,6 +12,7 @@ import type { DirectorLanPlanSummary } from '../shared/types'
 export type DirectorPlanSyncStatus = 'idle' | 'syncing' | 'synced' | 'conflict' | 'offline'
 
 interface UseDirectorPlanSyncOptions {
+  enabled: boolean
   endpoint: string | null
   requestRemotePlans: () => Promise<DirectorLanPlanSummary[]>
   mergeRemotePlans: (plans: DirectorLanPlanSummary[]) => void
@@ -30,6 +31,7 @@ function originForEndpoint(endpoint: string): string | null {
 }
 
 export function useDirectorPlanSync({
+  enabled,
   endpoint,
   requestRemotePlans,
   mergeRemotePlans,
@@ -38,7 +40,7 @@ export function useDirectorPlanSync({
   setPlanWritePending,
   onConflict,
 }: UseDirectorPlanSyncOptions) {
-  const [status, setStatus] = useState<DirectorPlanSyncStatus>(endpoint ? 'idle' : 'offline')
+  const [status, setStatus] = useState<DirectorPlanSyncStatus>(enabled && endpoint ? 'idle' : 'offline')
   const baselinesRef = useRef(new Map<string, DirectorPlanSyncBaseline>())
   const syncTaskRef = useRef<Promise<void> | null>(null)
   const conflictPlanIdsRef = useRef(new Set<string>())
@@ -54,11 +56,11 @@ export function useDirectorPlanSync({
   useEffect(() => {
     baselinesRef.current.clear()
     conflictPlanIdsRef.current.clear()
-    setStatus(endpoint ? 'idle' : 'offline')
-  }, [endpoint])
+    setStatus(enabled && endpoint ? 'idle' : 'offline')
+  }, [enabled, endpoint])
 
   const synchronize = useCallback(async (): Promise<void> => {
-    if (!endpoint) {
+    if (!enabled || !endpoint) {
       setStatus('offline')
       return
     }
@@ -79,13 +81,15 @@ export function useDirectorPlanSync({
         let localCopiesChanged = false
         let remoteRefreshNeeded = false
         let hasConflict = false
+        let finalRemotePlans = remotePlans
+        const pushedPlanIds = new Set<string>()
 
         for (const remote of remotePlans) {
           const local = localPlans.find((plan) => plan.id === remote.id)
           if (!local || isPlanWritePending(remote.id)) {
-            if (local) {
-              const baseline = baselinesRef.current.get(remote.id)
-              if (!baseline) baselinesRef.current.set(remote.id, nextDirectorPlanBaseline(remote, local))
+            if (!local) {
+              await reconcileRemotePlan(remote)
+              localCopiesChanged = true
             }
             continue
           }
@@ -93,18 +97,23 @@ export function useDirectorPlanSync({
           const remoteSignature = directorPlanContentSignature(remote)
           const localSignature = directorPlanContentSignature(local)
           let baseline = baselinesRef.current.get(remote.id)
+          if (!baseline && typeof local.synced_signature === 'string'
+            && Number.isSafeInteger(local.synced_revision)) {
+            baseline = {
+              revision: local.synced_revision!,
+              remoteSignature: local.synced_signature,
+              localSignature: local.synced_signature,
+            }
+          }
 
           if (!baseline) {
             const localIsNewer = directorPlanRevision(local) > directorPlanRevision(remote)
-              || (
-                directorPlanRevision(local) === directorPlanRevision(remote)
-                && localSignature !== remoteSignature
-              )
             if (localIsNewer) {
               try {
                 await pushLocalPlan(local, remote)
                 remoteRefreshNeeded = true
                 localCopiesChanged = true
+                pushedPlanIds.add(remote.id)
                 baseline = nextDirectorPlanBaseline(remote, local)
               } catch (error) {
                 if (!isRevisionConflict(error)) throw error
@@ -112,6 +121,11 @@ export function useDirectorPlanSync({
                 notifyConflict(remote)
                 continue
               }
+            } else if (directorPlanRevision(local) === directorPlanRevision(remote)
+              && remoteSignature !== localSignature) {
+              hasConflict = true
+              notifyConflict(remote)
+              continue
             } else if (remoteSignature !== localSignature) {
               await reconcileRemotePlan(remote)
               localCopiesChanged = true
@@ -137,6 +151,7 @@ export function useDirectorPlanSync({
               await pushLocalPlan(local, remote)
               remoteRefreshNeeded = true
               localCopiesChanged = true
+              pushedPlanIds.add(remote.id)
               baselinesRef.current.set(remote.id, nextDirectorPlanBaseline(remote, local))
             } catch (error) {
               if (!isRevisionConflict(error)) throw error
@@ -158,16 +173,24 @@ export function useDirectorPlanSync({
 
         if (remoteRefreshNeeded) {
           const refreshedRemotePlans = await requestRemotePlans()
+          finalRemotePlans = refreshedRemotePlans
           if (mountedRef.current) mergeRemotePlans(refreshedRemotePlans)
           for (const remote of refreshedRemotePlans) {
-            const local = localPlans.find((plan) => plan.id === remote.id)
-            if (local) baselinesRef.current.set(remote.id, nextDirectorPlanBaseline(remote, local))
+            if (pushedPlanIds.has(remote.id)) await reconcileRemotePlan(remote)
           }
         }
 
         if (localCopiesChanged) {
           localPlans = await window.luna.directorLab.listLocalPlans().catch(() => localPlans)
           if (mountedRef.current) mergeLocalPlans(localPlans)
+        }
+
+        if (remoteRefreshNeeded) {
+          for (const local of localPlans) {
+            if (!pushedPlanIds.has(local.id)) continue
+            const remote = finalRemotePlans.find((plan) => plan.id === local.id)
+            if (remote) baselinesRef.current.set(local.id, nextDirectorPlanBaseline(remote, local))
+          }
         }
 
         if (mountedRef.current) setStatus(hasConflict ? 'conflict' : 'synced')
@@ -220,6 +243,7 @@ export function useDirectorPlanSync({
       onConflict(plan)
     }
   }, [
+    enabled,
     endpoint,
     isPlanWritePending,
     mergeLocalPlans,
@@ -230,11 +254,11 @@ export function useDirectorPlanSync({
   ])
 
   useEffect(() => {
-    if (!endpoint) return
+    if (!enabled || !endpoint) return
     void synchronize()
     const timer = window.setInterval(() => void synchronize(), 4_000)
     return () => window.clearInterval(timer)
-  }, [endpoint, synchronize])
+  }, [enabled, endpoint, synchronize])
 
   return { status, synchronize, origin: endpoint ? originForEndpoint(endpoint) : null }
 }

@@ -239,6 +239,8 @@ interface LocalManifest {
   created_at?: unknown
   updated_at?: unknown
   revision?: unknown
+  synced_revision?: unknown
+  synced_signature?: unknown
   attributes?: unknown
   shots?: unknown
 }
@@ -408,16 +410,6 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
           id: attribute.id || `${raw.plan_id}-attribute-${index}`,
           name: attribute.name,
         }))
-    const normalizedShots = shots.map((shot) => ({
-      ...shot,
-      attributes: planAttributes.map((definition) => ({
-        id: definition.id,
-        name: definition.name,
-        description: shot.attributes.find((attribute) =>
-          attribute.id === definition.id || attribute.name === definition.name
-        )?.description ?? '',
-      })),
-    }))
     if (manifestChanged) {
       const temporaryPath = `${manifestPath}.tmp`
       await fs.writeFile(temporaryPath, JSON.stringify(raw, null, 2), 'utf8')
@@ -435,14 +427,20 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       revision: typeof raw.revision === 'number' && Number.isSafeInteger(raw.revision)
         ? raw.revision
         : 0,
+      synced_revision: typeof raw.synced_revision === 'number' && Number.isSafeInteger(raw.synced_revision)
+        ? raw.synced_revision
+        : undefined,
+      synced_signature: typeof raw.synced_signature === 'string'
+        ? raw.synced_signature
+        : undefined,
       attributes: planAttributes,
-      shot_count: normalizedShots.length,
-      completed_shot_count: normalizedShots.filter((shot) => shot.takes.some((take) => take.available)).length,
-      take_count: normalizedShots.reduce((total, shot) => total + shot.takes.length, 0),
+      shot_count: shots.length,
+      completed_shot_count: shots.filter((shot) => shot.takes.some((take) => take.available)).length,
+      take_count: shots.reduce((total, shot) => total + shot.takes.length, 0),
       archive_url: '',
       source: 'local',
       local_directory: directory,
-      shots: normalizedShots,
+      shots,
     }
   } catch {
     return null

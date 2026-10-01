@@ -208,7 +208,7 @@ export function AppRoutes() {
         </AppRoute>
 
         <AppRoute path="/lab">
-          <LabPage />
+          <LabPage pageActive={isActive('/lab')} />
         </AppRoute>
 
         <AppRoute path="/live-console" preserve={false}>
