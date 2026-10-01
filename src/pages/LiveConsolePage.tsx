@@ -123,7 +123,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
             <IconButton
               variant="outline"
               size="compact"
-              icon={<RefreshCw size={15} />}
+              icon={<RefreshCw size={14} />}
               aria-label="刷新状态"
               title="刷新状态"
               onClick={() => void refreshStatus()}

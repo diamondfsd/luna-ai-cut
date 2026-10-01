@@ -14,6 +14,7 @@ import { useNasSyncProgress } from '../context/NasSyncProgressContext'
 import {
   Button,
   ButtonGroup,
+  IconButton,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -293,19 +294,24 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                   value={ctrl.mediaFilter}
                   onChange={(v) => ctrl.setMediaFilter(v as 'all' | 'image' | 'video')}
                 />
-                <button
-                  className="ui-icon-btn ui-icon-btn-outline"
+                <IconButton
+                  variant="outline"
+                  size="compact"
+                  icon={ctrl.sortOrder === 'desc'
+                    ? <ArrowDownWideNarrow size={14} />
+                    : <ArrowUpWideNarrow size={14} />}
                   onClick={() => ctrl.setSortOrder((order) => (order === 'desc' ? 'asc' : 'desc'))}
                   title={ctrl.sortOrder === 'desc' ? '当前倒序，点击正序' : '当前正序，点击倒序'}
-                  type="button"
-                >
-                  {ctrl.sortOrder === 'desc' ? <ArrowDownWideNarrow size={16} /> : <ArrowUpWideNarrow size={16} />}
-                </button>
+                  aria-label={ctrl.sortOrder === 'desc' ? '切换为正序' : '切换为倒序'}
+                />
                 <Popover open={filterOpen} onOpenChange={setFilterOpen}>
                   <PopoverTrigger asChild>
-                    <button className="ui-icon-btn ui-icon-btn-outline" type="button">
-                      <Filter size={16} />
-                    </button>
+                    <IconButton
+                      variant="outline"
+                      size="compact"
+                      icon={<Filter size={14} />}
+                      aria-label="筛选"
+                    />
                   </PopoverTrigger>
                   <PopoverContent align="end" sideOffset={6}>
                     <div className="filter-popover">
@@ -356,8 +362,10 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                     </div>
                   </PopoverContent>
                 </Popover>
-                <button
-                  className="ui-icon-btn ui-icon-btn-outline"
+                <IconButton
+                  variant="outline"
+                  size="compact"
+                  icon={<RefreshCcw size={14} />}
                   onClick={isLocal
                     ? (ctrl.viewMode === 'export' ? ctrl.loadExportLibrary : ctrl.loadDownloadedLibrary)
                     : ctrl.loadCameraLibrary
@@ -366,10 +374,11 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                     ? (ctrl.viewMode === 'export' ? '刷新已导出' : '刷新已下载')
                     : `读取 ${ctrl.mediaSourceLabel}`
                   }
-                  type="button"
-                >
-                  <RefreshCcw size={16} />
-                </button>
+                  aria-label={isLocal
+                    ? (ctrl.viewMode === 'export' ? '刷新已导出' : '刷新已下载')
+                    : `读取 ${ctrl.mediaSourceLabel}`
+                  }
+                />
               </div>
             </>
           )}

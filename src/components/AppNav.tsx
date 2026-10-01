@@ -76,9 +76,8 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           {connected && cameraPreviewSupported && (
             <Tooltip content="打开相机预览">
               <IconButton
-                variant="ghost"
-                size="mini"
-                icon={<Camera size={15} />}
+                variant="nav"
+                icon={<Camera size={14} />}
                 aria-label="打开相机预览"
                 title="打开相机预览"
                 onClick={() => setPreviewOpen(true)}
@@ -86,14 +85,24 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
             </Tooltip>
           )}
           {sourceMode === 'wireless' && (
-            <button className="nav-icon-button" onClick={() => window.luna.openWifiSettings()} title="打开 Wi-Fi 设置">
-              <MonitorCog size={15} />
-            </button>
+            <Tooltip content="打开 Wi-Fi 设置">
+              <IconButton
+                variant="nav"
+                icon={<MonitorCog size={14} />}
+                aria-label="打开 Wi-Fi 设置"
+                onClick={() => window.luna.openWifiSettings()}
+              />
+            </Tooltip>
           )}
           {connected && onChangeConnection && (
-            <button className="nav-icon-button" onClick={() => void onChangeConnection()} title="更换连接方式">
-              <Unplug size={15} />
-            </button>
+            <Tooltip content="更换连接方式">
+              <IconButton
+                variant="nav"
+                icon={<Unplug size={14} />}
+                aria-label="更换连接方式"
+                onClick={() => void onChangeConnection()}
+              />
+            </Tooltip>
           )}
           <NasSyncPopover />
           <ExportProgressModal

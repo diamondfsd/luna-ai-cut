@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Check, Clock, X } from 'lucide-react'
 
 import type { ExportProgress } from '../shared/types'
-import { Dialog, Tooltip } from '../ui'
+import { Dialog, IconButton, Tooltip } from '../ui'
 import { ExportTaskTable } from './ExportTaskTable'
 import '../styles/download-progress.css'
 
@@ -26,21 +26,23 @@ export function ExportProgressModal({
   const activeCount = entries.filter((progress) => progress.status === 'queued' || progress.status === 'exporting').length
 
   const icon =
-    entries.length === 0 ? <Clock size={15} /> :
-    activeCount > 0 ? <Clock size={15} /> :
+    entries.length === 0 ? <Clock size={14} /> :
+    activeCount > 0 ? <Clock size={14} /> :
     failedCount > 0 || canceledCount > 0 ? <X size={14} /> :
     <Check size={14} />
 
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
       <Tooltip content="导出记录">
-        <button className="nav-icon-button" aria-label="导出记录" onClick={() => {
-          setSeenCount(completedCount)
-          setOpen(true)
-        }}>
-          {icon}
-          {activeCount > 0 && <span className="export-breathing-dot" />}
-        </button>
+        <IconButton
+          variant="nav"
+          icon={<>{icon}{activeCount > 0 && <span className="export-breathing-dot" />}</>}
+          aria-label="导出记录"
+          onClick={() => {
+            setSeenCount(completedCount)
+            setOpen(true)
+          }}
+        />
       </Tooltip>
       {completedCount > seenCount && (
         <span className="download-badge-corner">{completedCount - seenCount}</span>

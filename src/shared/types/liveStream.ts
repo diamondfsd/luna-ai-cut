@@ -30,6 +30,8 @@ export type LivePreviewColorAdjustments = Pick<RenderColorAdjustments,
 export interface LivePreviewWindowSettings {
   url: string | null
   colorAdjustments: LivePreviewColorAdjustments
+  lutPath: string | null
+  lutIntensity: number
   watermark: {
     src: string
     positioning: WatermarkPositioning
@@ -52,6 +54,8 @@ export interface NormalizedVideoRegion {
 export type LiveStreamControlCommand =
   | { type: 'gimbal.move'; horizontal: number; vertical: number }
   | { type: 'gimbal.stop' }
+  | { type: 'gimbal.center' }
+  | { type: 'gimbal.flip' }
   | { type: 'zoom.preview'; value: number }
   | { type: 'zoom.set'; value: number }
   | { type: 'focus.tap'; point: NormalizedVideoPoint }
@@ -59,6 +63,8 @@ export type LiveStreamControlCommand =
   | { type: 'tracking.stop' }
   | { type: 'exposure.set'; value: number }
   | { type: 'capabilities.get' }
+
+export type LiveStreamControlDelivery = 'best-effort' | 'priority' | 'transactional'
 
 export interface LiveStreamControlResult {
   requestId: string

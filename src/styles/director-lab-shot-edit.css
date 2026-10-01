@@ -116,55 +116,6 @@
   margin-left: auto;
 }
 
-.lab-shot-attributes {
-  display: grid;
-  min-height: 34px;
-  align-content: start;
-  gap: 4px;
-  overflow: hidden;
-}
-
-.lab-shot-attributes > p {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(40px, max-content) minmax(0, 1fr);
-  gap: 6px;
-  margin: 0;
-  color: var(--ink);
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-.lab-shot-attributes > p > strong {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lab-shot-attributes > p > span {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.lab-shot-attributes > small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lab-shot-attributes > .lab-shot-remark {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .lab-shot-card-media {
   position: relative;
   display: grid;
