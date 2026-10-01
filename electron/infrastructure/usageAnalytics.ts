@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createLiveUsageBudget } from './liveUsageBudget'
+import type { LiveUsageProperties } from '../../src/shared/types/liveUsage'
 
 const TOKEN = 'phc_mFKe7j96gzrDmRZM9prkHRWzDXVsNU9hnHYruVBJTQDy'
 const ENDPOINT = 'https://eu.i.posthog.com/i/v0/e/'
@@ -29,6 +31,7 @@ export function createUsageAnalytics(options: UsageOptions) {
   let started = false
   let lastPage: string | undefined
   let pending = 0
+  const liveBudget = createLiveUsageBudget(options.userData)
 
   async function loadIdentity(): Promise<string> {
     const file = join(options.userData, 'usage-id')
@@ -47,7 +50,7 @@ export function createUsageAnalytics(options: UsageOptions) {
     }
   }
 
-  async function capture(event: string, page?: string): Promise<void> {
+  async function capture(event: string, page?: string, properties: LiveUsageProperties = {}): Promise<void> {
     if (!options.enabled || pending >= 8) return
     pending += 1
     const timestamp = new Date().toISOString()
@@ -64,6 +67,7 @@ export function createUsageAnalytics(options: UsageOptions) {
           timestamp,
           uuid: randomUUID(),
           properties: {
+            ...properties,
             distinct_id: distinctId,
             app_version: options.appVersion,
             os_name: options.osName,
@@ -87,6 +91,10 @@ export function createUsageAnalytics(options: UsageOptions) {
   }
 
   return {
+    liveSummary(properties: LiveUsageProperties): Promise<void> {
+      if (!options.enabled || pending >= 8 || !liveBudget.reserve()) return Promise.resolve()
+      return capture('live_usage_summary', undefined, properties)
+    },
     opened(): Promise<void> {
       if (started) return Promise.resolve()
       started = true

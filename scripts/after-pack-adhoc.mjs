@@ -1,11 +1,17 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import process from 'node:process'
+import { verifyIosUsbResources } from './ios-usb-resources.mjs'
 
 /** electron-builder 生成 DMG 前，对 macOS App 做 Ad Hoc 签名。 */
 export default async function afterPack(context) {
   if (context.electronPlatformName === 'win32') {
     verifyWindowsRuntimeLayout(context.appOutDir)
+    verifyIosUsbResources(
+      join(context.appOutDir, 'resources', 'ios-usb'),
+      join(context.packager.projectDir, 'resources', 'ios-usb', 'SHA256SUMS.txt'),
+    )
     return
   }
   if (context.electronPlatformName !== 'darwin') return

@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { parseDirectorPlanImport } from '../src/lib/directorPlanImport.ts'
 import { directorPlanContentSignature, overlayDirectorLocalPlan } from '../src/lib/directorPlanSync.ts'
 import { reconcileLocalDirectorPlan, writeDirectorPlanFiles } from '../electron/features/director-lab/directorLabPlanStorage.ts'
+import { persistDirectorDownloads } from '../electron/features/director-lab/directorLabDownloadStorage.ts'
 
 const plan = parseDirectorPlanImport('\uFEFF# 城市\r\n主要内容：街道漫游\r\n安静自然\r\n## 01 开场\r\n**画面说明**：街景\r\n建立环境\r\n建议时长：2.5 秒\r\n运镜说明：推进\r\n备注：注意收音\r\n## 02 收尾\r\nduration_ms: 800\r\n景别：远景', '文件名', randomUUID)
 assert.equal(plan.title, '城市')
@@ -55,6 +56,22 @@ try {
   assert.deepEqual(manifest.pending_take_ids, ['take-pc'])
   assert.equal(manifest.shots[0].media[0].file_name, 'clip.mov')
   assert.equal(await fs.readFile(path.join(target, manifest.shots[0].media[0].path), 'utf8'), 'original-pc-recording')
+  const phoneFile = path.join(directory, 'downloaded.mov')
+  await fs.writeFile(phoneFile, 'phone-original')
+  const phoneTake = { ...take, id: 'take-phone', file_name: 'phone.mov', stream_url: null }
+  const incoming = { ...remote, shots: remote.shots.map((shot) => ({ ...shot, takes: [phoneTake] })) }
+  await persistDirectorDownloads(target, incoming, new Map([['take-phone', phoneFile]]), {},
+    async () => [{ ...renamed, local_directory: target }])
+  manifest = JSON.parse(await fs.readFile(path.join(target, 'manifest.json'), 'utf8'))
+  assert.equal(manifest.shots[0].name, '改名镜头', 'downloads must not overwrite local edits')
+  assert.deepEqual(manifest.pending_shot_ids, pending.pending_shot_ids)
+  assert.deepEqual(manifest.pending_take_ids, ['take-pc'])
+  assert.equal(manifest.shots[0].media.length, 2)
+  assert.equal(await fs.readFile(path.join(target, manifest.shots[0].media[1].path), 'utf8'), 'phone-original')
+
+  assert.equal(await reconcileLocalDirectorPlan(directory, { ...remote, id: 'plan-another-id' }), true)
+  assert.equal(JSON.parse(await fs.readFile(path.join(target, 'manifest.json'), 'utf8')).plan_id, plan.id,
+    'plans with equal titles must not overwrite each other')
 } finally {
   await fs.rm(directory, { recursive: true, force: true })
 }

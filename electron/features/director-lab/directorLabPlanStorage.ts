@@ -236,14 +236,19 @@ async function reconcileLocalDirectorPlanUnlocked(
       directory = existingDirectory
     }
   }
-  const manifestPath = path.join(directory, 'manifest.json')
+  let manifestPath = path.join(directory, 'manifest.json')
   let existing: ExistingManifest | null = null
   try {
     existing = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as ExistingManifest
   } catch {
     // A plan downloaded one take at a time may not have a manifest yet.
   }
-  if (typeof existing?.plan_id === 'string' && existing.plan_id !== plan.id) return false
+  if (typeof existing?.plan_id === 'string' && existing.plan_id !== plan.id) {
+    directory = path.join(rootDirectory, `${planDirectory(plan.title)}_${safePathPart(plan.id, 'plan')}`)
+    manifestPath = path.join(directory, 'manifest.json')
+    existing = JSON.parse(await fs.readFile(manifestPath, 'utf8').catch(() => 'null')) as ExistingManifest | null
+    if (existing?.plan_id && existing.plan_id !== plan.id) return false
+  }
   const pendingShotIds = Array.isArray(existing?.pending_shot_ids)
     ? existing!.pending_shot_ids.filter((shotId): shotId is string => typeof shotId === 'string')
     : []

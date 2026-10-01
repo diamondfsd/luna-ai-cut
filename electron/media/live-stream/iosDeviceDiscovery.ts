@@ -24,6 +24,7 @@ function ideviceIdBinary(): string | null {
   const candidates = [
     configured,
     bundled,
+    ...(process.platform === 'win32' ? [join(process.cwd(), 'resources', 'ios-usb', 'win-x64', 'idevice_id.exe')] : []),
     '/opt/homebrew/bin/idevice_id',
     '/usr/local/bin/idevice_id',
     '/usr/bin/idevice_id',
@@ -34,6 +35,7 @@ function ideviceIdBinary(): string | null {
 
 export class IosDeviceDiscovery {
   private running = false
+  private generation = 0
   private child: ChildProcess | null = null
   private timer: NodeJS.Timeout | null = null
   private onResult: ((result: IosDeviceDiscoveryResult) => void) | null = null
@@ -42,12 +44,14 @@ export class IosDeviceDiscovery {
   start(onResult: (result: IosDeviceDiscoveryResult) => void): void {
     if (this.running) return
     this.running = true
+    this.generation += 1
     this.onResult = onResult
     this.scan()
   }
 
   stop(): void {
     this.running = false
+    this.generation += 1
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     const child = this.child
@@ -76,11 +80,13 @@ export class IosDeviceDiscovery {
     }
 
     this.child = child
+    const generation = this.generation
     let output = ''
     let finished = false
     const finish = (result: IosDeviceDiscoveryResult) => {
       if (finished) return
       finished = true
+      if (generation !== this.generation) return
       if (this.timer) clearTimeout(this.timer)
       this.timer = null
       if (this.child === child) this.child = null

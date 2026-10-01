@@ -43,6 +43,7 @@ resources/dolby-vision/
 .package-resources/
 docs/*
 !docs/camera-media-architecture.md
+!docs/windows-ios-usb-live.md
 
 # Local deploy config
 scripts/deploy-release.conf
