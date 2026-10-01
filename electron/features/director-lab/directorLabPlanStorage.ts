@@ -7,6 +7,7 @@ import type {
   DirectorLanPlanSummary,
   DirectorLanShotAttribute,
 } from '../../../src/shared/types'
+import { directorPlanContentSignature } from '../../../src/lib/directorPlanSync.ts'
 
 const planWrites = new Map<string, Promise<void>>()
 
@@ -89,6 +90,8 @@ export function manifestForPlan(
     created_at: plan.created_at,
     updated_at: plan.updated_at,
     revision: plan.revision ?? 0,
+    synced_revision: plan.revision ?? 0,
+    synced_signature: directorPlanContentSignature(plan),
     exported_at: new Date().toISOString(),
     attributes: plan.attributes ?? [],
     shots: plan.shots.map((shot, shotIndex) => ({
@@ -237,7 +240,6 @@ export async function reconcileLocalDirectorPlan(
     }
   }
 
-  let hasLocalMedia = false
   const remoteRevision = plan.revision ?? 0
   const localRevision = typeof existing?.revision === 'number' && Number.isSafeInteger(existing.revision)
     ? existing.revision
@@ -266,7 +268,6 @@ export async function reconcileLocalDirectorPlan(
       const available = await localFileExists(absolutePath)
       const previous = existingMedia.get(take.id)
       if (available) {
-        hasLocalMedia = true
         if (!previous || previous.available !== true || previous.path !== relativePath) {
           manifestNeedsUpdate = true
         }
@@ -275,7 +276,7 @@ export async function reconcileLocalDirectorPlan(
     })),
   })))
 
-  if (!hasLocalMedia || (!manifestNeedsUpdate && !remoteIsNewer)) return false
+  if (!manifestNeedsUpdate && !remoteIsNewer) return false
   await writeDirectorPlanFiles(directory, { ...plan, shots }, { ...recoveredMetadata, ...metadata })
   return true
 }

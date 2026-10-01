@@ -23,6 +23,22 @@
   background: #080809;
 }
 
+.live-preview-stage[data-control-active] {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.live-preview-focus-marker {
+  position: absolute;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--blue);
+  border-radius: 4px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
 .live-preview-stage canvas {
   position: absolute;
   inset: 0;
@@ -58,6 +74,11 @@
   background: rgba(12, 12, 14, 0.76);
   color: #fff;
   text-align: center;
+  pointer-events: none;
+}
+
+.live-preview-overlay button {
+  pointer-events: auto;
 }
 
 .live-preview-overlay strong {
@@ -130,33 +151,38 @@
 
 .live-settings-tabs {
   flex: 0 0 auto;
-  padding: 0 0 10px;
+  padding: 0;
   border-bottom: 1px solid #343438;
 }
 
 .live-settings-tabs-control {
   display: flex;
   width: 100%;
-  gap: 4px;
+  gap: 0;
 }
 
 .live-settings-tabs-control .ui-btn-group-btn {
   min-width: 0;
   flex: 1 1 0;
-  border: 1px solid #36363a;
-  background: #242428;
+  height: 38px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
   color: #a8a8ad;
+  font-size: 12px;
 }
 
 .live-settings-tabs-control .ui-btn-group-btn:hover {
-  background: #303035;
+  background: rgba(255, 255, 255, 0.04);
   color: #e4e4e7;
 }
 
 .live-settings-tabs-control .ui-btn-group-btn.active {
-  border-color: #2997ff;
-  background: #1478d4;
-  color: #fff;
+  border-bottom-color: var(--blue);
+  background: transparent;
+  color: var(--blue);
 }
 
 .live-settings-scroll {
@@ -198,120 +224,6 @@
 .live-control-pane .filter-sidebar .filter-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-}
-
-.live-camera-controls {
-  display: grid;
-  gap: 8px;
-  padding-top: 6px;
-}
-
-.live-control-section {
-  display: grid;
-  gap: 9px;
-  padding: 10px 0 12px;
-  border-bottom: 1px solid #343438;
-}
-
-.live-control-section:last-child {
-  border-bottom: 0;
-}
-
-.live-control-section > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: #e4e4e7;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.live-control-section > header > span:last-child {
-  color: #85858b;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.live-control-section > header > span.ready {
-  color: #55df68;
-}
-
-.live-control-section > header strong {
-  color: #c7c7cc;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.live-gimbal-pad {
-  position: relative;
-  width: 148px;
-  height: 148px;
-  justify-self: center;
-  overflow: hidden;
-  border: 1px solid #3b3b40;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at center, rgba(41, 151, 255, 0.13), transparent 62%),
-    #232327;
-  cursor: crosshair;
-  touch-action: none;
-}
-
-.live-gimbal-pad.disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
-.live-gimbal-crosshair,
-.live-gimbal-crosshair::before,
-.live-gimbal-crosshair::after {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  background: rgba(255, 255, 255, 0.13);
-  content: '';
-  transform: translate(-50%, -50%);
-}
-
-.live-gimbal-crosshair {
-  width: 76%;
-  height: 1px;
-}
-
-.live-gimbal-crosshair::before {
-  width: 76%;
-  height: 1px;
-}
-
-.live-gimbal-crosshair::after {
-  width: 1px;
-  height: 76%;
-}
-
-.live-gimbal-knob {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: grid;
-  width: 46px;
-  height: 46px;
-  place-items: center;
-  margin: -23px 0 0 -23px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  background: #2997ff;
-  color: #fff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
-  pointer-events: none;
-}
-
-.live-control-button-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.live-control-button-row .ui-btn {
-  width: 100%;
 }
 
 .live-settings-title {

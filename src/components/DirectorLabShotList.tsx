@@ -90,15 +90,18 @@ export function DirectorLabShotList({
           name: isEditedShot ? shotDraft.name.trim() : shot.name,
           duration_ms: isEditedShot ? durationMs : shot.duration_ms,
           remark: isEditedShot ? shotDraft.remark.trim() : shot.remark,
-          attributes: plan.attributes.map((definition) => ({
-            id: definition.id,
-            name: definition.name,
-            description: isEditedShot
-              ? shotDraft.attributeDescriptions[definition.id]?.trim() ?? ''
-              : shot.attributes.find((attribute) =>
-                  attribute.id === definition.id || attribute.name === definition.name
-                )?.description.trim() ?? '',
-          })),
+          attributes: isEditedShot
+            ? shot.attributes.map((attribute) => {
+                const definition = plan.attributes.find((item) =>
+                  item.id === attribute.id || item.name === attribute.name)
+                return {
+                  ...attribute,
+                  description: definition
+                    ? shotDraft.attributeDescriptions[definition.id]?.trim() ?? attribute.description
+                    : attribute.description,
+                }
+              })
+            : shot.attributes,
         }
       })
       await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(

@@ -71,6 +71,14 @@ try {
     }],
   }
 
+  const metadataOnly = { ...plan, id: 'plan-no-media', title: 'Metadata only', shots: [] }
+  assert.equal(await reconcileLocalDirectorPlan(syncDirectory, metadataOnly), true)
+  const metadataManifest = JSON.parse(await fs.readFile(
+    path.join(syncDirectory, 'Metadata only', 'manifest.json'), 'utf8',
+  ))
+  assert.equal(metadataManifest.plan_id, 'plan-no-media')
+  assert.equal(await reconcileLocalDirectorPlan(syncDirectory, metadataOnly), false)
+
   const localPlan = planWithDownloadedTake(plan, 'take-2')
   await writeDirectorPlanFiles(directory, localPlan)
 
@@ -79,6 +87,8 @@ try {
   assert.equal(manifest.shots[0].media[0].path, null)
   assert.equal(manifest.shots[0].media[1].path, 'media/01_Walk/02_second.mp4')
   assert.deepEqual(manifest.attributes, [{ id: 'framing', name: '画面说明' }])
+  assert.equal(manifest.synced_signature, directorPlanContentSignature(plan))
+  assert.equal(manifest.synced_revision, plan.revision ?? 0)
   assert.equal(manifest.shots[0].remark, '注意收音')
   assert.equal(plan.shots[0].takes[1].available, false, 'marking a local take must not mutate the remote plan')
   const syncPlanDirectory = path.join(syncDirectory, 'Plan')
@@ -96,6 +106,7 @@ try {
     'a same-revision local edit must not be overwritten by remote reconciliation',
   )
   assert.equal(JSON.parse(await fs.readFile(localManifestPath, 'utf8')).title, 'Local edit')
+  assert.equal(locallyEdited.synced_signature, directorPlanContentSignature(plan))
 
   const remotelyUpdatedPlan = {
     ...plan,
